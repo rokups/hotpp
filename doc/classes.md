@@ -23,7 +23,7 @@ This guide has 2 pages. This page covers fields, methods, short bodies, construc
 
 ## Fields and methods
 
-A field can have an initializer. A method that does not override a native method is a plain script method. An `abstract` method has no body (see [Abstract methods](inheritance.html#abstract-methods)).
+A field can have an initializer. A method that does not override a native method is a plain script method. An `abstract` method has no body (see [Abstract methods](inheritance.html#abstract-methods)). A class can also implement an interface (see [Interfaces](inheritance.html#interfaces)).
 
 ```hot
 class Counter {

@@ -163,3 +163,106 @@ class Grunt : Unit {
 ```
 
 For `is` and `as`, see [Statements](statements-text.html#is-and-as).
+
+## Interfaces
+
+An `interface` is a type with methods and no state. A class can implement many interfaces. A `.hot` script declares an interface at file level.
+
+```hot
+interface IShape {
+    float Area();
+    std.string Name();
+}
+```
+
+A class lists the interfaces in its base list. The parent class comes first. The interfaces come after it. A class with no parent can start with an interface.
+
+```hot
+class Square : Actor, IShape {
+    float side = 2.0;
+    float Area() { return side * side; }
+    std.string Name() { return "square"; }
+}
+
+class Disc : IShape {
+    float Area() { return 3.0; }
+    std.string Name() { return "disc"; }
+}
+```
+
+### Implementation
+
+The implementation is implicit. No `override` is needed. A public method implements an interface method. It must have the same name, the same parameters and the same return type. There is no covariance. A method with another signature is an error:
+
+```text
+class 'Sq' does not implement 'IShape.Scale(int)': the method 'Scale' has another signature
+```
+
+A missing method is also an error: `class 'Sq' does not implement 'IShape.Scale'`. These rules also apply:
+
+- A method of the script parent can implement the method. A child class does not repeat the interface.
+- A private method, a static method and an `async` method do not implement an interface method.
+- An `abstract` method implements an interface method. An `abstract class` does not need all methods. Its child classes must implement them.
+- A native virtual method that a script overrides implements an interface method only when the C++ types are equal. Otherwise add a script method that calls it.
+- A struct cannot implement an interface.
+- An interface cannot have a parent interface or a base list. It cannot have generics.
+- An interface has methods only. It cannot have fields, properties, constructors or default methods.
+- An interface cannot have `static` members, `async` methods or attributes.
+
+### Use
+
+A class handle converts to the interface without a cast. An interface value works in a field, a parameter, a return type and a collection such as `std.vector<IShape>`.
+
+```hot
+class Scene {
+    std.vector<IShape> shapes;
+    float Total() {
+        float sum = 0.0;
+        foreach (var s in shapes) sum += s.Area();
+        return sum;
+    }
+    void Add() {
+        IShape s = new Disc();     // implicit conversion
+        shapes.push_back(s);
+        if (s is Disc) { Disc d = s as Disc; }
+        if (s is IShape) { }       // true when the class implements it
+    }
+}
+```
+
+`is I` and `as I` test a value for an interface. `i is C` and `i as C` test an interface value for a class. The operators `==` and `!=` compare the identity of the objects. An interface value and a class handle can be compared. `null` is a valid interface value.
+
+A call of a method on a `null` interface value throws `ScriptError` with the text `null interface handle 'IShape'`.
+
+The compiler gives an error for these uses:
+
+| Use | Error |
+|---|---|
+| `new IShape()` | `cannot create an instance of the interface 'IShape'` |
+| `[weak] IShape s;` | `[weak] cannot be used with the interface 'IShape': an interface handle is not a class handle. Remove '[weak]'` |
+| `[value] IShape s;` | `[value] cannot be used with the interface 'IShape': an interface handle is not a class handle. Remove '[value]'` |
+| `class C : IShape, X`: an interface before the parent class | `the interface 'IShape' cannot be the base class of 'C': list the base class 'X' first and the interfaces after it` |
+| `class C : Actor, IShape, IShape`: the same interface twice | `'IShape' is listed twice` |
+| `struct S : IShape` | `a struct cannot implement the interface 'IShape'` |
+| An interface in the optimized AOT mode | `script interfaces are not supported in the optimized AOT mode` |
+
+### Reload
+
+An interface value is a handle to the object. It survives a reload. The call finds the method by name in the class of the object. So the call always uses the code of the current generation. The loader rebuilds the interface tables at each reload.
+
+- A class can drop an interface. Stored values keep the object. Then `s is IShape` is false. A call on such a value throws `ScriptError` with the text `class 'C' does not implement 'IShape.Area'`.
+- A class can be removed. A call on its objects is ignored, and the loader counts the call.
+- A reload can change the signature of an interface method. It works when the interface and the implementing classes change together.
+- A reload that changes the signature on one side only is a translate error. The old generation stays active.
+
+The fixtures `tests/scripts/iface_v1.hot` and `tests/scripts/iface_params_v1.hot` show these cases.
+
+### Run time data
+
+The translator writes the table `iface_rows` in each class record. It lists the interface methods of the class with the slot of the implementation. The field `ifaces` lists the interface names. The loader builds `iface_slots` and `iface_slot_count` at each commit. The index of `iface_slots` is a session id of the method. A call uses `hot::call_iface`, and the call site caches the id. A removed class has no table.
+
+### Limits
+
+- Interfaces are only for `.hot` scripts. A `.cpp` script cannot declare or implement them (see [C++ script limits](cpp-limits.html)).
+- The optimized AOT mode does not support interfaces. The translator reports an error.
+- There is no interface inheritance, no generics and no default method.

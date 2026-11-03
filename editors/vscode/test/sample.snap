@@ -428,3 +428,23 @@
 46: "()" 
 46: ";" punctuation.terminator.statement.hot
 46: " }" 
+47: "interface" storage.type.class.hot
+47: "IShape" entity.name.type.class.hot
+47: " { " 
+47: "float" storage.type.builtin.hot
+47: "Area" entity.name.function.hot
+47: "()" 
+47: ";" punctuation.terminator.statement.hot
+47: " }" 
+48: "class" storage.type.class.hot
+48: "Sq" entity.name.type.class.hot
+48: ":" punctuation.separator.inheritance.hot
+48: "Shape, IShape" entity.other.inherited-class.hot
+48: " { " 
+48: "float" storage.type.builtin.hot
+48: "Area" entity.name.function.hot
+48: "() { " 
+48: "return" keyword.control.flow.hot
+48: "1.0" constant.numeric.float.hot
+48: ";" punctuation.terminator.statement.hot
+48: " } }" 

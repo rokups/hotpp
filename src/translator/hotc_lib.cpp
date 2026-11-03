@@ -7551,6 +7551,25 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
         { return std::tie(a.begin.line, a.begin.col) < std::tie(b.begin.line, b.begin.col); });
         res.classes.push_back(std::move(ac));
     }
+    // The script interfaces are facts of the kind "interface". Their methods are members.
+    for (const ast::InterfaceDef& d : sc.interfaces)
+    {
+        AnalyzedClass ai;
+        ai.name = d.name;
+        ai.is_interface = true;
+        ai.begin = src_pos(map, d.pos);
+        for (const ast::Method& m : d.methods)
+        {
+            const uint32_t b = find_word(text, m.pos, m.name);
+            ai.members.push_back({"method", m.name, src_pos(map, b), src_pos(map, b + static_cast<uint32_t>(m.name.size()))});
+        }
+        std::stable_sort(ai.members.begin(), ai.members.end(), [](const AnalyzedMember& a, const AnalyzedMember& b)
+        { return std::tie(a.begin.line, a.begin.col) < std::tie(b.begin.line, b.begin.col); });
+        res.classes.push_back(std::move(ai));
+    }
+    // The facts keep the source order of the types.
+    std::stable_sort(res.classes.begin(), res.classes.end(), [](const AnalyzedClass& a, const AnalyzedClass& b)
+    { return std::tie(a.begin.line, a.begin.col) < std::tie(b.begin.line, b.begin.col); });
 
     // The text for the translation. A member that holds an error, or a line that holds an
     // error outside a member, is replaced by white space. The offsets stay the same.

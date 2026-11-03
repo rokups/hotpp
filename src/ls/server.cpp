@@ -1510,6 +1510,8 @@ json Server::on_completion(const Doc& d, const json& p)
             add(n, 7, "script class", "1");
         for (const std::string& n : scope.structs)
             add(n, 22, "script struct", "1");
+        for (const std::string& n : scope.interfaces)
+            add(n, 8, "script interface", "1");
     }
 
     // ---- the clangd part. The word at the cursor is replaced by the typed prefix and a placeholder
@@ -2070,6 +2072,17 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
             for_other_scripts(d, {here_word, ""}, here_word, add);
         return out;
     }
+    // A script interface has no place in the generated text that maps back. The facts give the
+    // declaration, for example from the base list of a class.
+    if (!is_ref && method == "textDocument/definition" && !here_word.empty())
+        for (const hotc::AnalyzedClass& c : d.facts.classes)
+            if (c.is_interface && c.name == here_word)
+            {
+                const Pos b = class_name_pos(d, c);
+                out.push_back({{"uri", d.uri},
+                    {"range", script_range(d, b, {b.line, b.col + static_cast<int>(c.name.size())})}});
+                return out;
+            }
     // The places in the generated text to ask clangd. A word without a map segment (a type name,
     // a base class, a name after "new") has the places of the same word in the generated lines
     // of its script line. The first place that gives an answer wins.
@@ -2240,10 +2253,11 @@ std::optional<SymbolKey> Server::symbol_key(const Doc& d, Pos decl, const std::s
     if (decl.line < 0)
     {
         // The declaration is in another script. Take the member of this script, if it is the only one.
+        // An interface method has the same name as its implementations. It does not count.
         std::optional<SymbolKey> found;
         for (const hotc::AnalyzedClass& c : d.facts.classes)
             for (const hotc::AnalyzedMember& m : c.members)
-                if (m.name == name)
+                if (m.name == name && !c.is_interface)
                 {
                     if (found)
                         return std::nullopt;
@@ -2505,7 +2519,8 @@ json Server::on_document_symbol(const Doc& d)
             children.push_back({{"name", shown}, {"kind", kind}, {"detail", m.kind}, {"range", script_range(d, mb, me)},
                 {"selectionRange", script_range(d, mb, {mb.line, mb.col + static_cast<int>(m.name.size())})}});
         }
-        out.push_back({{"name", c.name}, {"kind", 5}, {"detail", c.base.empty() ? "class" : "class : " + c.base},
+        const std::string detail = c.is_interface ? "interface" : c.base.empty() ? "class" : "class : " + c.base;
+        out.push_back({{"name", c.name}, {"kind", c.is_interface ? 11 : 5}, {"detail", detail},
             {"range", script_range(d, b, e)},
             {"selectionRange", script_range(d, b, {b.line, b.col + static_cast<int>(c.name.size())})},
             {"children", children}});

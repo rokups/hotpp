@@ -38,7 +38,7 @@ const std::set<std::string>& keywords()
         std::set<std::string> r = {"if", "else", "while", "do", "for", "foreach", "in", "return", "break",
             "continue", "switch", "case", "default", "is", "as", "new", "delete", "public", "private", "protected",
             "override", "virtual", "abstract", "const", "get", "set", "this", "base", "true", "false", "null", "try", "catch",
-            "finally", "throw", "var", "void", "class", "struct", "enum", "using"};
+            "finally", "throw", "var", "void", "class", "struct", "enum", "interface", "using"};
         // "std", "lib", "array" and "attribute" stay names: a script uses them as a namespace or a variable.
         for (const std::string& a : hotc::class_attribute_names())
             if (a != "std" && a != "lib" && a != "array" && a != "attribute")
@@ -354,7 +354,7 @@ ScriptScope scan_scope(const std::string& text, size_t at, size_t typed_begin)
 
     std::vector<Scope> stack;
     std::vector<ScopeName> params;
-    std::string pending; // "class", "struct" or "enum" after the keyword, until "{" or ";"
+    std::string pending; // "class", "struct", "interface" or "enum" after the keyword, until "{" or ";"
     std::string pending_name;
     int par = 0;
     std::vector<ScopeName> snapshot;
@@ -407,7 +407,7 @@ ScriptScope scan_scope(const std::string& text, size_t at, size_t typed_begin)
                     sc.kind = Block::Enum;
                     sc.enum_name = pending_name;
                 }
-                else if (pending == "class" || pending == "struct")
+                else if (pending == "class" || pending == "struct" || pending == "interface")
                 {
                     sc.kind = Block::Type;
                 }
@@ -428,7 +428,7 @@ ScriptScope scan_scope(const std::string& text, size_t at, size_t typed_begin)
             }
             continue;
         }
-        if (t.s == "class" || t.s == "struct" || t.s == "enum")
+        if (t.s == "class" || t.s == "struct" || t.s == "enum" || t.s == "interface")
         {
             if (next && is_name(*next))
             {
@@ -438,6 +438,10 @@ ScriptScope scan_scope(const std::string& text, size_t at, size_t typed_begin)
                 {
                     add_unique(r.enums, next->s);
                     r.enum_members[next->s];
+                }
+                else if (t.s == "interface")
+                {
+                    add_unique(r.interfaces, next->s);
                 }
                 else
                 {

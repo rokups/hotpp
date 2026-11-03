@@ -71,6 +71,17 @@ The translator writes a constructor table for each script class. The table has o
 
 The decay removes the reference and the top-level `const` and `volatile` of each parameter. A type alias is the same type, so `IntFn f` and `int (*f)(int)` have the same key. The `ClassRecord` field `ctors` holds the table. A reload copies it, so the constructors of the current generation run. A removed class has no table.
 
+The `ClassRecord` of a `.hot` class has more fields for script interfaces (see [Interfaces](inheritance.html#interfaces)):
+
+| Field | Meaning |
+|---|---|
+| `iface_rows` | A table of `hot::IfaceRow` (`iface`, `method`, `sig`, `slot`). It lists all interface methods of the class, also the inherited ones. The table ends with a row with a null `iface`. Only the loader reads it. |
+| `ifaces` | The names of the implemented interfaces. The list ends with `nullptr`. |
+| `iface_slots` | The table from the session id of an interface method to a slot, or `hot::kNoIfaceSlot`. The loader builds it at each commit. |
+| `iface_slot_count` | The size of `iface_slots`. An id outside the table means "not implemented". |
+
+The call `hot::call_iface` uses these fields to call an interface method by name. A call site keeps the id of the method. The loader rebuilds the tables at each reload, so a call always uses the slots of the current generation.
+
 The host API:
 
 | Function | Meaning |

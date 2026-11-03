@@ -44,3 +44,5 @@ class Node {
     void See([weak] Node n) { [weak] Node m = n; }
 }
 abstract class Shape { abstract float Area(); }
+interface IShape { float Area(); }
+class Sq : Shape, IShape { float Area() { return 1.0; } }

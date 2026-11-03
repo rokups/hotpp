@@ -2356,3 +2356,133 @@ TEST(LanguageServer, OpenPreludeFileHasNoErrors)
     ASSERT_FALSE(n.is_null());
     EXPECT_FALSE(has_source(n["params"]["diagnostics"], "hot")) << n.dump();
 }
+
+// ------------------------------------------------------------------ script interfaces
+
+namespace
+{
+
+// The lines are 0-based in the checks. "@" is the place of a completion.
+const char* const kInterfaceScript =
+    "using \"Actor.h\";\n" // 0
+    "\n" // 1
+    "interface IShape {\n" // 2
+    "    float Area();\n" // 3
+    "    int Scale(int k);\n" // 4
+    "}\n" // 5
+    "\n" // 6
+    "class Square : Actor, IShape {\n" // 7
+    "    float Area() { return 1.0; }\n" // 8
+    "    int Scale(int k) { return k; }\n" // 9
+    "    void Use(IShape s) {\n" // 10
+    "        @\n" // 11
+    "    }\n" // 12
+    "}\n";
+
+} // namespace
+
+TEST(LanguageServer, DocumentSymbolsListAnInterfaceWithItsMethods)
+{
+    Session s(false, [] { std::string t = kInterfaceScript; t.replace(t.find('@'), 1, ""); return t; }());
+    const json r = s.client->request("textDocument/documentSymbol", {{"textDocument", {{"uri", s.uri}}}});
+    ASSERT_TRUE(r.contains("result") && r["result"].size() == 2) << r.dump();
+    const json& i = r["result"][0];
+    EXPECT_EQ(i["name"], "IShape");
+    EXPECT_EQ(i["kind"], 11); // Interface
+    EXPECT_EQ(i["detail"], "interface");
+    EXPECT_EQ(i["selectionRange"]["start"]["line"], 2);
+    std::vector<std::string> names;
+    for (const json& m : i["children"])
+        names.push_back(m["name"]);
+    EXPECT_EQ(names, (std::vector<std::string>{"Area", "Scale"}));
+    EXPECT_EQ(i["children"][1]["kind"], 6); // Method
+    EXPECT_EQ(i["children"][1]["selectionRange"]["start"]["line"], 4);
+    EXPECT_EQ(i["children"][1]["selectionRange"]["start"]["character"], 8);
+    EXPECT_EQ(r["result"][1]["name"], "Square");
+    EXPECT_EQ(r["result"][1]["kind"], 5);
+}
+
+TEST(LanguageServer, SemanticTokensMarkTheInterfaceKeywordAndNames)
+{
+    Session s(false, [] { std::string t = kInterfaceScript; t.replace(t.find('@'), 1, ""); return t; }());
+    const json types = {"keyword", "type", "class", "method", "property", "number", "string", "comment"};
+    const json r = s.client->request("textDocument/semanticTokens/full", {{"textDocument", {{"uri", s.uri}}}});
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    const json& data = r["result"]["data"];
+    std::vector<std::tuple<int, int, int, std::string>> tokens;
+    int line = 0, col = 0;
+    for (size_t i = 0; i < data.size(); i += 5)
+    {
+        line += data[i].get<int>();
+        col = data[i].get<int>() == 0 ? col + data[i + 1].get<int>() : data[i + 1].get<int>();
+        tokens.emplace_back(line, col, data[i + 2].get<int>(), types[data[i + 3].get<int>()]);
+    }
+    auto has = [&](int l, int c, int n, const char* t)
+    { return std::find(tokens.begin(), tokens.end(), std::make_tuple(l, c, n, std::string(t))) != tokens.end(); };
+    EXPECT_TRUE(has(2, 0, 9, "keyword")); // interface
+    EXPECT_TRUE(has(2, 10, 6, "class")); // IShape
+    EXPECT_TRUE(has(7, 22, 6, "class")); // IShape in the base list
+    EXPECT_TRUE(has(10, 13, 6, "class")); // IShape as a parameter type
+    EXPECT_TRUE(has(3, 10, 4, "method")); // Area
+}
+
+TEST(LanguageServer, DefinitionOfAnInterfaceInTheBaseListIsTheDeclaration)
+{
+    Session s(false, [] { std::string t = kInterfaceScript; t.replace(t.find('@'), 1, ""); return t; }());
+    const json r = s.client->request("textDocument/definition", doc_pos(s.uri, 7, 24));
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array() && r["result"].size() == 1) << r.dump();
+    EXPECT_EQ(r["result"][0]["uri"], s.uri);
+    EXPECT_EQ(r["result"][0]["range"]["start"], pos(2, 10));
+    EXPECT_EQ(r["result"][0]["range"]["end"], pos(2, 16));
+}
+
+TEST(LanguageServer, ReferencesOfAnInterfaceAreTheDeclarationAndTheUses)
+{
+    Session s(false, [] { std::string t = kInterfaceScript; t.replace(t.find('@'), 1, ""); return t; }());
+    json p = doc_pos(s.uri, 2, 12);
+    p["context"] = {{"includeDeclaration", true}};
+    const json r = s.client->request("textDocument/references", p);
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    std::vector<std::pair<int, int>> at;
+    for (const json& l : r["result"])
+        at.emplace_back(l["range"]["start"]["line"].get<int>(), l["range"]["start"]["character"].get<int>());
+    std::sort(at.begin(), at.end());
+    EXPECT_EQ(at, (std::vector<std::pair<int, int>>{{2, 10}, {7, 22}, {10, 13}})) << r.dump();
+}
+
+TEST(LanguageServer, CompletionListsAnInterfaceAsAType)
+{
+    const Completion c = complete_at(false, kInterfaceScript);
+    ASSERT_TRUE(c.has("IShape")) << c.result.dump();
+    EXPECT_TRUE(c.has("interface")); // the keyword
+    for (const json& i : c.result.value("items", json::array()))
+        if (i.value("label", "") == "IShape")
+            EXPECT_EQ(i.value("detail", ""), "script interface");
+}
+
+TEST(LanguageServer, CompletionAfterADotOnAnInterfaceValueListsItsMethods)
+{
+    const Completion c = complete_at(false, kInterfaceScript, "s.");
+    EXPECT_TRUE(c.has("Area")) << c.result.dump();
+    EXPECT_TRUE(c.has("Scale")) << c.result.dump();
+}
+
+// The interface method has the name of its implementation. The rename of the method in a class
+// still finds the same method in the other script, although the interface has the name too.
+TEST(LanguageServer, RenameOfAnImplementingMethodWorksWithAnInterfaceOfTheSameName)
+{
+    REQUIRE_CLANGD();
+    std::string text = kInterfaceScript;
+    text.replace(text.find('@'), 1, "");
+    Session s(true, text);
+    const std::string other_path = (s.dir.path() / "sub" / "shapes_v2.hot").string();
+    std::filesystem::create_directories(std::filesystem::path(other_path).parent_path());
+    write_file(other_path, text);
+    json p = doc_pos(s.uri, 8, 11);
+    p["newName"] = "Size";
+    const json r = s.client->request("textDocument/rename", p);
+    ASSERT_TRUE(r.contains("result") && r["result"].contains("changes")) << r.dump();
+    const json& changes = r["result"]["changes"];
+    EXPECT_TRUE(changes.contains(s.uri)) << r.dump();
+    EXPECT_TRUE(changes.contains(uri_of(other_path))) << r.dump();
+}

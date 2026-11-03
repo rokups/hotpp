@@ -21,6 +21,9 @@ This list shows what version 1 does not support.
 - Runtime checks (null and bounds) in `.cpp` scripts. They cover `.hot` scripts only. They also skip a C++ container other than `std::array` and a C array, and they skip a throw in a constructor.
 - A `noexcept` native virtual that a script overrides and whose result has no default value (a reference, for example). An unhandled `ScriptError` there ends the program.
 - A `noexcept` pure virtual native method that no script class implements. The call traps: it reports `abstract method 'C.F' called` and does not end the program.
+- Script interfaces (see [Interfaces](inheritance.html#interfaces)) have these limits. An interface cannot inherit from another interface. It has no generics, no fields, no default methods, no `static` members and no `async` methods. A struct cannot implement an interface. `[weak]` and `[value]` do not work with an interface, and `new` of an interface is an error. A `.cpp` script has no interfaces. The optimized AOT mode does not support them.
+- A reload that changes the signature of an interface method on one side only. The translator reports an error and the old generation stays active.
+- A native virtual method that a script overrides implements an interface method only when the C++ types are equal.
 - Access checks on native members. Only members of known script types are checked.
 - Brace initializers. Write `T(args)`.
 - `::` and `->`. Write `.`.

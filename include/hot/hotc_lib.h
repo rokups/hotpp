@@ -201,6 +201,8 @@ struct AnalyzedMember
 struct AnalyzedClass
 {
     std::string name, base;
+    // True for a script interface. Its members are methods and its base is empty.
+    bool is_interface = false;
     SourcePos begin;
     std::vector<AnalyzedMember> members; // in source order
 };

@@ -51,6 +51,7 @@ struct ScriptScope
     std::vector<std::string> enums; // the script enums
     std::map<std::string, std::vector<std::string>> enum_members; // the enumerators of each enum
     std::vector<std::string> classes, structs; // the script classes and structs
+    std::vector<std::string> interfaces; // the script interfaces
 };
 
 // Scans "text". The locals are the ones in scope at the byte offset "at". The word that starts at

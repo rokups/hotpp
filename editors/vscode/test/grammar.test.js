@@ -47,7 +47,7 @@ if (pkg) {
 
 const keywords = ['var', 'foreach', 'in', 'using', 'override', 'virtual', 'abstract', 'new', 'public', 'private',
   'protected', 'get', 'set', 'finally', 'void', 'is', 'as', 'try', 'catch', 'throw', 'class',
-  'struct', 'enum', 'const', 'if', 'else', 'while', 'do', 'for', 'return', 'break', 'continue', 'switch',
+  'struct', 'enum', 'interface', 'const', 'if', 'else', 'while', 'do', 'for', 'return', 'break', 'continue', 'switch',
   'case', 'default', 'this', 'base', 'null', 'true', 'false', 'delete', 'weak'];
 
 // The builtin names come from the translator header: {"script", "alias" or nullptr, "cpp"}.

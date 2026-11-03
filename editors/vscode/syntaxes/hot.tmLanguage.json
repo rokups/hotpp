@@ -67,7 +67,7 @@
     "declaration": {
       "patterns": [
         {
-          "match": "\\b(class|struct|enum)\\b(?:\\s+([A-Za-z_]\\w*))?(?:\\s*(:)\\s*([^{;]+?)(?=\\s*[{;]))?",
+          "match": "\\b(class|struct|enum|interface)\\b(?:\\s+([A-Za-z_]\\w*))?(?:\\s*(:)\\s*([^{;]+?)(?=\\s*[{;]))?",
           "captures": {
             "1": { "name": "storage.type.class.hot" },
             "2": { "name": "entity.name.type.class.hot" },
