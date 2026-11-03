@@ -19,6 +19,7 @@
 #include "hot/runtime/threads.h"
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -40,6 +41,8 @@ template <class Tag> class Iface
 {
 public:
     HOT_HIDDEN Iface() noexcept {}
+    // "null" of the script: an empty handle.
+    HOT_HIDDEN Iface(std::nullptr_t) noexcept {}
     HOT_HIDDEN explicit Iface(std::shared_ptr<ShellCore> p) noexcept : p_(std::move(p)) {}
     HOT_HIDDEN ShellCore* get() const noexcept { return p_.get(); }
     HOT_HIDDEN explicit operator bool() const noexcept { return static_cast<bool>(p_); }
@@ -132,6 +135,11 @@ template <class Tag, class X> HOT_HIDDEN Iface<Tag> to_iface(const std::shared_p
         return Iface<Tag>();
     return Iface<Tag>(std::shared_ptr<ShellCore>(p, core)); // the aliasing constructor
 }
+// A handle of the same interface stays as it is. This keeps a conversion of an unknown type safe.
+template <class Tag> HOT_HIDDEN Iface<Tag> to_iface(const Iface<Tag>& i) noexcept
+{
+    return i;
+}
 // Another handle (a type with get() or Get()): the handle gives a shared pointer with a deleter
 // that holds a copy of the handle. The copy lives until the last interface handle goes.
 template <class Tag, class H, std::enable_if_t<detail::has_get_v<H> && !detail::is_std_shared<H>::value, int> = 0>
@@ -141,6 +149,23 @@ HOT_HIDDEN Iface<Tag> to_iface(const H& h)
     if (!core)
         return Iface<Tag>();
     return Iface<Tag>(std::shared_ptr<ShellCore>(core, [keep = h](ShellCore*) mutable { (void)keep; }));
+}
+
+// ---- Identity (D9)
+// The script object behind a handle or an interface handle, or null. "a == b" of the script
+// compares these values when one side is an interface. A native object has no script object, so
+// it has the same identity as null.
+HOT_HIDDEN const ShellCore* iface_id(std::nullptr_t) noexcept
+{
+    return nullptr;
+}
+template <class H, std::enable_if_t<detail::has_get_v<H>, int> = 0> HOT_HIDDEN const ShellCore* iface_id(const H& h)
+{
+    return shell_core_of(detail::get_raw(h));
+}
+template <class A, class B> HOT_HIDDEN bool iface_same(const A& a, const B& b)
+{
+    return iface_id(a) == iface_id(b);
 }
 
 // "obj is I": the object is a script object, and its class or a script parent lists "I".

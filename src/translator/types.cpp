@@ -306,6 +306,27 @@ bool TypeModel::is_script_interface(const std::string& type) const
     return script_ifaces_.count(t) != 0;
 }
 
+static std::string trim_blank(const std::string& s);
+
+std::string TypeModel::iface_storage(const std::string& type) const
+{
+    std::string t = trim_blank(type);
+    std::string prefix, suffix;
+    if (starts_with(t, "const "))
+    {
+        prefix = "const ";
+        t = trim_blank(t.substr(6));
+    }
+    if (!t.empty() && t.back() == '&')
+    {
+        suffix = "&";
+        t = trim_blank(t.substr(0, t.size() - 1));
+    }
+    if (script_ifaces_.count(t) == 0)
+        return {};
+    return prefix + "hot::Iface<" + t + "__iface>" + suffix;
+}
+
 bool TypeModel::is_script_value(const std::string& type) const
 {
     auto it = script_.find(type);
@@ -604,6 +625,8 @@ std::string TypeModel::targ_storage(const std::string& type) const
     {
         if (!keep)
         {
+            if (const std::string i = iface_storage(arg); !i.empty())
+                return i; // an interface handle: "List<I>" holds "hot::Iface<I__iface>" (D12)
             if (is_script_class(arg) && !is_script_value(arg) && is_handle(arg))
                 return storage(arg);
             if (const std::string r = script_ref_storage(arg); !r.empty())
@@ -698,6 +721,8 @@ std::string TypeModel::storage(const std::string& type) const
 {
     if (const std::string r = script_ref_storage(type); !r.empty())
         return r;
+    if (const std::string i = iface_storage(type); !i.empty())
+        return i;
     if (!is_handle(type))
         return targ_storage(type);
     const TypeRule rule = lookup(type);
@@ -862,6 +887,8 @@ std::string TypeModel::param(const std::string& type) const
 {
     if (const std::string r = script_ref_storage(type); !r.empty())
         return r;
+    if (const std::string i = iface_storage(type); !i.empty())
+        return i.back() == '&' ? i : "const " + i + "&"; // a handle goes by const reference
     if (!is_handle(type))
         return targ_storage(type);
     return "const " + storage(type) + "&";
@@ -869,6 +896,9 @@ std::string TypeModel::param(const std::string& type) const
 
 std::string TypeModel::body_param(const std::string& type, bool mutated, bool rebound, bool stored) const
 {
+    if (const std::string i = iface_storage(type); !i.empty() && type.find('&') == std::string::npos
+        && !starts_with(type, "const "))
+        return rebound || stored ? i : param(type); // as a class handle
     if (type.empty() || type.find('*') != std::string::npos || type.find('&') != std::string::npos
         || starts_with(type, "const ") || is_builtin(type))
         return param(type);

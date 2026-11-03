@@ -107,9 +107,13 @@ public:
     void add_script_classes(const std::vector<ast::ClassDef>& classes);
 
     // Registers the script interfaces (design 41b). An interface name is a known type, but it
-    // is not a class: it has no handle rule yet. The storage "hot::Iface<I__iface>" is B4 work.
+    // is not a class and it has no handle rule. Its storage is "hot::Iface<I__iface>" (D4).
     void add_script_interfaces(const std::vector<std::string>& names);
     bool is_script_interface(const std::string& type) const;
+
+    // The C++ type of an interface type: "I" gives "hot::Iface<I__iface>". "const I", "I&" and
+    // "const I&" keep the "const" and the "&". Empty when the type is not an interface type.
+    std::string iface_storage(const std::string& type) const;
 
     // True when the name is a [value] script class.
     bool is_script_value(const std::string& type) const;

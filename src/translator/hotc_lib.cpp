@@ -206,7 +206,7 @@ std::string default_arg(const hotc::ast::Param& p, const std::vector<hotc::ast::
         }
         else if (p.def->expr)
         {
-            hotc::lower_expr(p.def->expr, cx, g_diag);
+            hotc::lower_expr(p.def->expr, cx, g_diag, p.script_type.empty() ? p.type : p.script_type);
             if (!g_diag.items.empty())
                 throw TranslateAbort{};
             p.def->cpp = hotc::ast::print(*p.def->expr);
@@ -4289,7 +4289,10 @@ void translate_impl(
         wire_native_hooks(base_cx);
         base_cx.script_classes = script_names;
         for (const auto& d : sc.interfaces)
+        {
             base_cx.script_interfaces.insert(d.name);
+            base_cx.iface_defs[d.name] = &d;
+        }
         for (const auto& en : sc.enums)
             base_cx.script_enums[en.name] = en.underlying.empty() ? std::string("int32_t") : en.underlying;
         for (const auto& sc_cls : sc.classes)
@@ -4322,7 +4325,7 @@ void translate_impl(
             }
             else if (f.has_init && f.init)
             {
-                hotc::lower_expr(f.init, fc, g_diag);
+                hotc::lower_expr(f.init, fc, g_diag, f.script_type);
                 if (!g_diag.items.empty())
                     throw TranslateAbort{};
                 init = hotc::ast::print(*f.init);
@@ -5599,7 +5602,10 @@ void translate_impl(
         for (const auto& en : sc.enums)
             base_cx.script_enums[en.name] = en.underlying.empty() ? std::string("int32_t") : en.underlying;
         for (const auto& d : sc.interfaces)
+        {
             base_cx.script_interfaces.insert(d.name);
+            base_cx.iface_defs[d.name] = &d;
+        }
         for (const auto& sc_cls : sc.classes)
         {
             base_cx.script_classes.insert(sc_cls.name);
@@ -5689,7 +5695,7 @@ void translate_impl(
                 }
                 else if (f.has_init && f.init)
                 {
-                    hotc::lower_expr(f.init, fc, g_diag);
+                    hotc::lower_expr(f.init, fc, g_diag, f.script_type);
                     if (!g_diag.items.empty())
                         throw TranslateAbort{};
                     field_inits[fi] = hotc::ast::print(*f.init);
@@ -6070,7 +6076,7 @@ void translate_impl(
             }
             else if (f.has_init && f.init)
             {
-                hotc::lower_expr(f.init, fc, g_diag);
+                hotc::lower_expr(f.init, fc, g_diag, f.script_type);
                 if (!g_diag.items.empty())
                     throw TranslateAbort{};
                 init = hotc::ast::print(*f.init);

@@ -8,6 +8,7 @@
 #include "builtin_types.h"
 #include "emit.h"
 
+#include <algorithm>
 #include <cctype>
 #include <optional>
 #include <set>
@@ -330,7 +331,42 @@ struct Lowerer
         if (t.empty())
             return {};
         const ClassDef* d = class_named(t);
-        return (d && !d->is_value) || !container_element_type(t).empty() ? t : std::string();
+        return (d && !d->is_value) || iface_named(t) || !container_element_type(t).empty() ? t : std::string();
+    }
+
+    // ---- script interfaces (design 41b)
+    // The script interface that the type text names ("I", "const I&"), or null.
+    const InterfaceDef* iface_named(const std::string& t) const
+    {
+        if (cx.iface_defs.empty())
+            return nullptr;
+        std::string b = t;
+        while (!b.empty() && (b.back() == '&' || b.back() == ' ' || b.back() == '\t'))
+            b.pop_back();
+        if (b.compare(0, 6, "const ") == 0)
+            b.erase(0, 6);
+        const auto it = cx.iface_defs.find(b);
+        return it == cx.iface_defs.end() ? nullptr : it->second;
+    }
+
+    static const Method* iface_method(const InterfaceDef& d, const std::string& name)
+    {
+        for (const Method& m : d.methods)
+            if (m.name == name)
+                return &m;
+        return nullptr;
+    }
+
+    static std::string ret_text(const Method& m) { return m.script_ret.empty() ? m.ret : m.script_ret; }
+
+    // True when the class "c" or a script parent of it lists the interface.
+    bool class_lists_iface(const ClassDef& c, const std::string& iface) const
+    {
+        int depth = 0;
+        for (const ClassDef* d = &c; d && depth < 64; d = parent_of(*d), ++depth)
+            if (std::find(d->script_ifaces.begin(), d->script_ifaces.end(), iface) != d->script_ifaces.end())
+                return true;
+        return false;
     }
 
     // The script type of an expression before its lowering. Empty: not known.
@@ -374,6 +410,8 @@ struct Lowerer
         if (auto* tt = std::get_if<TypeTestExpr>(&e.v))
         {
             const ClassDef* d = tt->is_as ? class_named(tt->type) : nullptr;
+            if (tt->is_as && iface_named(tt->type))
+                return tt->type;
             return d && !d->is_value ? tt->type : std::string();
         }
         if (auto* nm = std::get_if<NameExpr>(&e.v))
@@ -407,6 +445,11 @@ struct Lowerer
                 if (m->name == "front" || m->name == "back" || m->name == "at")
                     if (const std::string el = element_type(ot); !el.empty())
                         return el;
+                if (const InterfaceDef* id = iface_named(ot))
+                {
+                    const Method* im = iface_method(*id, m->name);
+                    return im ? ret_text(*im) : std::string();
+                }
                 const ClassDef* d = class_named(ot);
                 const Method* fn = d ? find_fn(*d, m->name) : nullptr;
                 return fn ? fn->script_ret : std::string();
@@ -420,6 +463,11 @@ struct Lowerer
                 if (last == "front" || last == "back" || last == "at")
                     if (const std::string el = element_type(t); !el.empty())
                         return el;
+                if (const InterfaceDef* id = iface_named(t))
+                {
+                    const Method* im = iface_method(*id, nm->parts.back());
+                    return im ? ret_text(*im) : std::string();
+                }
                 const ClassDef* d = class_named(t);
                 const Method* fn = d ? find_fn(*d, nm->parts.back()) : nullptr;
                 return fn ? fn->script_ret : std::string();
@@ -745,9 +793,81 @@ struct Lowerer
         return "hot::shell_of<" + d.name + "_Shell>(" + obj_text + ", \"" + d.name + "\")";
     }
 
+    // The name of the interface when "type" is an interface value type ("I" or "const I&"). A
+    // "I&" that is not const is a reference to the handle: nothing converts to it.
+    std::string iface_target(const std::string& type) const
+    {
+        const InterfaceDef* d = iface_named(type);
+        if (!d)
+            return {};
+        std::string t = type;
+        while (!t.empty() && (t.back() == ' ' || t.back() == '\t'))
+            t.pop_back();
+        if (!t.empty() && t.back() == '&' && t.compare(0, 6, "const ") != 0)
+            return {};
+        return d->name;
+    }
+
+    // The expression "e" goes to a target of the interface type "iface" (D5). The result is
+    // "hot::to_iface<I__iface>(e)". "null" becomes the empty handle. A bare "this" first becomes
+    // the handle of the class. A class that does not list the interface is an error. A value
+    // of an unknown type is wrapped: to_iface keeps an interface handle as it is.
+    void to_iface_conv(ExprP& e, const std::string& iface)
+    {
+        const uint32_t pos = pos_of(*e);
+        const std::string storage = cx.types ? cx.types->iface_storage(iface) : "hot::Iface<" + iface + "__iface>";
+        if (std::holds_alternative<NullExpr>(e->v))
+        {
+            e = raw(storage + "()", pos);
+            return;
+        }
+        if (std::holds_alternative<ThisExpr>(e->v))
+        {
+            if (!cx.allow_this || !cx.cls)
+                return;
+            if (!class_lists_iface(*cx.cls, iface))
+            {
+                error(pos, "the class '" + cx.cls->name + "' does not implement the interface '" + iface + "'");
+                return;
+            }
+            coerce(e, cx.cls->name); // "this" becomes the handle of the object
+        }
+        else if (const std::string t = object_type(type_of(*e)); !t.empty())
+        {
+            if (t == iface)
+                return;
+            if (iface_named(t))
+            {
+                error(pos, "the interface '" + t + "' does not convert to the interface '" + iface + "': use 'as "
+                    + iface + "'");
+                return;
+            }
+            if (const ClassDef* d = class_named(t))
+            {
+                if (d->is_value)
+                {
+                    error(pos, "the struct '" + t + "' does not convert to the interface '" + iface + "'");
+                    return;
+                }
+                if (!class_lists_iface(*d, iface))
+                {
+                    error(pos, "the class '" + t + "' does not implement the interface '" + iface + "'");
+                    return;
+                }
+            }
+        }
+        e = call_of("hot::to_iface<" + iface + "__iface>", args_of(std::move(e)), pos);
+    }
+
     // Where a handle type is expected, a bare "this" becomes a handle (design 7.10.1).
     void coerce(ExprP& e, const std::string& type)
     {
+        if (e && !type.empty())
+            if (const std::string iface = iface_target(type); !iface.empty())
+            {
+                to_iface_conv(e, iface);
+                return;
+            }
         if (!e || type.empty() || !cx.types || !cx.allow_this)
             return;
         if (!std::holds_alternative<ThisExpr>(e->v))
@@ -1074,6 +1194,46 @@ struct Lowerer
         return {};
     }
 
+    // "i.M(a)" of an interface value "i": the call "I__M(i, a)" (D9). The helper of the interface
+    // method throws a ScriptError for a null handle. An argument that is a class handle goes to an
+    // interface parameter with to_iface.
+    void iface_call(CallExpr& c, MemberExpr& mm, const InterfaceDef& d)
+    {
+        const uint32_t pos = pos_of(*mm.obj);
+        const Method* m = iface_method(d, mm.name);
+        if (!m)
+        {
+            error(mm.name_pos ? mm.name_pos : pos, "the interface '" + d.name + "' has no method '" + mm.name + "'");
+            return;
+        }
+        if (c.args.size() != m->params.size())
+        {
+            error(pos, "the interface method '" + d.name + "." + mm.name + "' takes " + std::to_string(m->params.size())
+                + " arguments, and the call has " + std::to_string(c.args.size()));
+            return;
+        }
+        const std::string symbol = d.name + "__" + mm.name;
+        ExprP recv = std::move(mm.obj);
+        expr(recv);
+        c.callee = raw(symbol, pos); // "mm" is gone now
+        c.args.insert(c.args.begin(), std::move(recv));
+        coerce_args(c, m->params, 1);
+        for (size_t i = 1; i < c.args.size(); ++i)
+            expr(c.args[i]);
+    }
+
+    // "a == b" or "a != b" where one side is an interface value: the objects are the same (D9).
+    // The result is "hot::iface_same(a, b)". A class handle, an interface value and "null" compare.
+    void iface_compare(ExprP& e, BinaryExpr& b)
+    {
+        const uint32_t pos = b.pos != 0 ? b.pos : pos_of(*b.lhs);
+        const bool negate = b.op == "!=";
+        expr(b.lhs);
+        expr(b.rhs);
+        ExprP res = call_of("hot::iface_same", args_of(std::move(b.lhs), std::move(b.rhs)), pos);
+        e = negate ? make_expr(UnaryExpr{"!", std::move(res), false, pos}) : std::move(res); // "b" is gone now
+    }
+
     void call(CallExpr& c)
     {
         if (const std::string* n = simple_name(*c.callee))
@@ -1169,6 +1329,11 @@ struct Lowerer
         {
             if (!std::holds_alternative<ThisExpr>(mm->obj->v) && !std::holds_alternative<BaseExpr>(mm->obj->v))
             {
+                if (const InterfaceDef* idef = iface_named(type_of(*mm->obj)))
+                {
+                    iface_call(c, *mm, *idef);
+                    return;
+                }
                 const ClassDef* d = class_named(type_of(*mm->obj));
                 const ClassDef* owner = d;
                 const Method* fn =
@@ -1192,6 +1357,12 @@ struct Lowerer
         }
         // A handle that goes to a native parameter "T*" or "T&": the call-site conversion
         // (task 33). The types are from before the lowering of the arguments.
+        // "xs.push_back(c)" of a container of interface values: the class handle converts.
+        if (auto* pm = std::get_if<MemberExpr>(&c.callee->v);
+            pm && c.args.size() == 1 && (pm->name == "push_back" || pm->name == "push_front")
+            && !std::holds_alternative<ThisExpr>(pm->obj->v) && !std::holds_alternative<BaseExpr>(pm->obj->v))
+            if (const std::string el = element_type(type_of(*pm->obj), true); iface_named(el))
+                coerce(c.args[0], el);
         const std::vector<char> forms = native_arg_forms(c);
         expr(c.callee);
         exprs(c.args);
@@ -1390,6 +1561,13 @@ struct Lowerer
         if (m.safe)
             error(pos_of(*m.obj), "'?.' is allowed only at the start of an expression statement");
         const uint32_t obj_pos = pos_of(*m.obj);
+        if (const InterfaceDef* idef = iface_named(type_of(*m.obj)))
+        {
+            error(m.name_pos ? m.name_pos : obj_pos,
+                "'" + m.name + "' is not a call of a method of the interface '" + idef->name
+                    + "': an interface has methods only");
+            return;
+        }
         if (cx.in_default && (std::holds_alternative<ThisExpr>(m.obj->v) || std::holds_alternative<BaseExpr>(m.obj->v)))
         {
             error(obj_pos, kDefaultBan);
@@ -1863,6 +2041,12 @@ struct Lowerer
                     "'" + b->op + "' is not valid for a [value]: a [value] is never null and it has no identity");
                 return;
             }
+            if ((b->op == "==" || b->op == "!=") && b->lhs && b->rhs
+                && (iface_named(type_of(*b->lhs)) || iface_named(type_of(*b->rhs))))
+            {
+                iface_compare(e, *b);
+                return;
+            }
             // "w = e" writes the weak handle "w": the target is not locked. "w = null" resets it.
             if (b->op == "=" && b->lhs)
                 member_chain(b->lhs);
@@ -2046,9 +2230,27 @@ struct Lowerer
                     + "' is a struct");
             return;
         }
+        const std::string obj_type = object_type(type_of(*t.obj)); // before the lowering of the object
+        const bool from_iface = iface_named(obj_type) != nullptr;
         expr(t.obj);
         CallExpr c;
         c.pos = pos;
+        if (iface_named(type))
+        { // "x is I" and "x as I" use the interface list of the class record
+            c.callee = raw(t.is_as ? "hot::as_iface<" + type + "__iface>" : std::string("hot::is_iface"), pos);
+            c.args.push_back(std::move(t.obj));
+            c.args.push_back(raw("\"" + type + "\"", pos));
+            e = make_expr(std::move(c));
+            return;
+        }
+        if (d && from_iface && t.is_as && cx.types)
+        { // "i as C": the class handle of the object behind the interface value
+            c.callee = raw("hot::iface_as<" + cx.types->storage(type) + ", " + type + "_Shell>", pos);
+            c.args.push_back(std::move(t.obj));
+            c.args.push_back(raw("\"" + type + "\"", pos));
+            e = make_expr(std::move(c));
+            return;
+        }
         if (d)
             c.callee = raw(t.is_as ? "hot::as_script<" + type + "_Shell>" : std::string("hot::is_script"), pos);
         else
@@ -2802,9 +3004,11 @@ void lower_block(ast::BlockStmt& b, RCtx& cx, Diagnostics& diag)
     Lowerer{cx, diag}.block(b);
 }
 
-void lower_expr(ast::ExprP& e, RCtx& cx, Diagnostics& diag)
+void lower_expr(ast::ExprP& e, RCtx& cx, Diagnostics& diag, const std::string& target_type)
 {
     Lowerer lw{cx, diag};
+    if (!target_type.empty())
+        lw.coerce(e, target_type); // a class handle to an interface field or parameter
     if (cx.typed_init && e)
         lw.nested_collection(e);
     lw.expr(e);

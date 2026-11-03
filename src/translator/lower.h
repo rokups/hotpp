@@ -97,6 +97,9 @@ struct RCtx
     std::set<std::string> script_classes;
     // The names of the script interfaces. "new I()" and "[value] I" are errors.
     std::set<std::string> script_interfaces;
+    // The script interfaces by name (design 41b). A call "i.M(a)" of an interface value becomes
+    // "I__M(i, a)". The methods give the parameter types for the conversion of the arguments.
+    std::map<std::string, const ast::InterfaceDef*> iface_defs;
     // The script enums: the name to the underlying type. "${e}" of an enum prints the integer.
     std::map<std::string, std::string> script_enums;
     // The script classes that "new" can build now: the class itself and the classes that the
@@ -178,8 +181,9 @@ std::string rewrite_number(const std::string& n);
 
 // Lowers the statements of a block. Each error goes to the diagnostics and the pass continues.
 void lower_block(ast::BlockStmt& b, RCtx& cx, Diagnostics& diag);
-// Lowers one expression. The pass can replace the node.
-void lower_expr(ast::ExprP& e, RCtx& cx, Diagnostics& diag);
+// Lowers one expression. The pass can replace the node. With a "target_type" (the script type of
+// the field or the parameter that takes the value), a class handle converts to an interface.
+void lower_expr(ast::ExprP& e, RCtx& cx, Diagnostics& diag, const std::string& target_type = std::string());
 // Lowers the initializer of a "[value]" field of the script type "type". A missing initializer
 // runs "new T()". The result is a hot::Value expression.
 void lower_value_init(ast::ExprP& e, const std::string& type, RCtx& cx, Diagnostics& diag);
