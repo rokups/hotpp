@@ -7,7 +7,7 @@ group: Hot script
 
 This list shows what version 1 does not support.
 
-- The words `static`, `thread_local`, `friend`, `mutable` and `volatile` on a member of a `.hot` class. For a `static` member, use a module variable (a variable at file level).
+- The words `thread_local`, `friend`, `mutable` and `volatile` on a member of a `.hot` class. A `static` method works (see [Static methods](classes.html#static-methods)). A `static` field does not. Use a module variable (a variable at file level).
 - Coroutines other than `async` methods. See [Async and await](async.html).
 - Generics in script code. You can use C++ templates.
 - Script exception types. You can throw and catch C++ types.
@@ -15,7 +15,10 @@ This list shows what version 1 does not support.
 - A stored `ref` parameter, `ref` local or `T*`. A borrowed value cannot go to a field. The option `--no-strict-borrowed` makes this a warning. See [Borrowing](borrowing.html).
 - A script class, struct or enum with the name of a C++ type from a `using` header. Rename the script type.
 - Shared state in an `inline` function, an `inline` variable or a template static member of a host header. The script modules build with hidden symbol visibility. Each module gets its own copy of that state, and the host does not share it. Put such state in a `.cpp` file of the host, or mark it exported.
-- Free functions. Only the `convert_` hooks can stand at file level.
+- A namespace block in a `.hot` script. Use `using ns;` for a native namespace.
+- A call of a free function by name from the host through `Loader::thunk`. Call a method of a class.
+- A function as a value, such as `var f = Add;`. Call it, or write a lambda.
+- An `async` free function or an `async` static method. An async function needs an object.
 - A collection literal without a declared type: `var x = [1, 2];` is an error.
 - Runtime checks (null and bounds) in `.cpp` scripts. They cover `.hot` scripts only. They also skip a C++ container other than `std::array` and a C array, and they skip a throw in a constructor.
 - A `noexcept` native virtual that a script overrides and whose result has no default value (a reference, for example). An unhandled `ScriptError` there ends the program.

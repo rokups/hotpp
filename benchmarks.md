@@ -86,7 +86,7 @@ The `reload` case and the `chain` case have a `.cpp` version too. The tool makes
 |---|---|---|
 | `.cpp` `n/a` | handle dereference and null check | A `.cpp` script has no handles. The row below it, the pointer chain, is the `.cpp` case. It has its own native twin with raw pointers. |
 | `.hot` `n/a` | pointer dereference and null check | A `.hot` script has no raw pointers. |
-| `.hot` `n/a` | module function and static method | A `.hot` script has no free functions and no static methods. The native twin is a free function and a static method. |
+| `.hot` `n/a` | module function and static method | A `.hot` free function and static method are not measured yet. The native twin is a free function and a static method. |
 | `aot` `n/a` | reload and reload chain | The tool loads the AOT classes with `Loader::load_aot`. It does not reload them. |
 | `aot-opt` `n/a` | reload and reload chain | Optimized AOT code has no reload. |
 | `-` | native owners of `new` | The row is a native twin only. It has no script. |
@@ -383,7 +383,7 @@ The rows after `loop with a method call` in the tables above test code that a re
 - A method call through a handle or a pointer costs 1.46 ns, as the native call. A small method call on `this` costs the same.
 - A virtual call from script to script reads a slot. It costs 0.35 to 0.9 ns more than a native virtual call, depending on the backend and the language.
 - A module variable read and write is 0.94x.
-- The `.hot` language has no free functions and no static methods. The module function row has a `.cpp` script only. The `.cpp` call costs 0.41 ns for the pair, against 0.32 ns for the twin: 1.3x. That is 0.1 ns more.
+- A `.hot` free function and static method are not measured yet. The module function row has a `.cpp` script only. The `.cpp` call costs 0.41 ns for the pair, against 0.32 ns for the twin: 1.3x. That is 0.1 ns more.
 
 ### Reload cost
 

@@ -101,7 +101,7 @@ class Hero : Actor {
 }
 ```
 
-An initializer can use only a variable that is above it. A later variable, or the variable itself, is an error. The name `HotModule` is reserved.
+An initializer can use only a variable that is above it. A later variable, or the variable itself, is an error. An initializer cannot call a function, a free function or a static method. The error is `a module variable initializer cannot call the function '<name>'`. The name `HotModule` is reserved.
 
 `[alias("old")]` before a variable keeps the value of the old name.
 
@@ -123,6 +123,49 @@ class Hero : Actor {
 }
 ```
 
+## Free functions
+
+A function at file level has no class. Write the return type, the name and the body.
+
+```hot
+using "Actor.h";
+
+int Add(int a, int b) {
+    return a + b;
+}
+
+int Scale(int x, int k = 3) {
+    return x * k;
+}
+
+class Hero : Actor {
+    int sum = 0;
+
+    override void Tick(float dt) {
+        sum = Add(2, Scale(4));
+    }
+}
+```
+
+A free function can have default parameter values. It can call itself and it can call other functions. It can read and write a module variable. It has no `this`.
+
+The translator writes a free function as a plain C++ `static` function with the name `hot_fn_<name>`. It has no slot, no thunk and no manifest entry. A reload replaces the code of the module. The next call runs the new body.
+
+Rules:
+
+- A function name is unique. There are no overloads. The error is `function '<name>' is declared twice (overloads are not supported)`.
+- A function cannot have the name of a module variable, a class, an enum, a struct or an interface. The error is `'<name>' is declared twice (a function and a module variable)`, with the kind in the brackets.
+- A free function has no access word. It cannot be `static` or `async`.
+- A function is not a value. `var f = Add;` is the error `'Add' is a function; call it, or write a lambda`.
+- A module variable initializer and a convert hook cannot call a function. The error of a hook is `a convert hook cannot call the function '<name>': the new module state is not complete yet`.
+- A field initializer cannot call a function. The error is `a field initializer cannot call the function '<name>': the prototype of the function comes after the class`.
+- A default argument cannot call a function. The error is `a default argument cannot call the function '<name>': the prototype of the function comes after the declaration`.
+- An imported script cannot have free functions. The error is `an imported script cannot have free functions`.
+- There is no namespace block. Use `using ns;` for a native namespace.
+- The host cannot call a free function by name through `Loader::thunk`. Call a method of a class.
+
+A static method of a class is a function of the class. See [Static methods](classes.html#static-methods).
+
 ## Native stubs
 
 A stub tells the translator how a native type behaves. `handle` makes it a shared handle. `value` makes it a copied value.
@@ -137,4 +180,4 @@ using "Weapon.h";
 
 A stub can cover only the subclasses of a type, and `cpp_prelude` adds C++ text: see "Scope of a stub" in [native-interop-scope.md](native-interop-scope.md).
 
-A script has no free functions. Only a convert hook (`T convert_<var>(Old old)`) is allowed at file level. A convert hook cannot read a module variable. An imported script cannot have module variables or convert hooks.
+A convert hook (`T convert_<var>(Old old)`) is a special function at file level. A convert hook cannot read a module variable. An imported script cannot have module variables, convert hooks or free functions.
