@@ -27,6 +27,7 @@
 #include <type_traits>
 #include <typeinfo>
 #include <utility>
+#include <vector>
 
 namespace hot
 {
@@ -35,6 +36,12 @@ namespace hot
 // (typeid(R(P...)).name()). The first call for a pair gives a new id, starting at 1. Later calls
 // give the same id. An id is never reused in the session. The function is thread safe.
 HOT_NODEBUG HOT_EXPORT uint32_t iface_method_id(const char* key, const char* sig);
+
+// The table from the id of an interface method to the slot, built from the rows of a class
+// record (ClassRecord::iface_rows, null: none). The index is the id, the value is the slot or
+// kNoIfaceSlot. The result is empty when the class has no rows. The loader and the AOT registry
+// use this function, so both give the same table.
+HOT_NODEBUG HOT_EXPORT std::vector<uint32_t> build_iface_table(const IfaceRow* rows);
 
 // A handle of a script object, typed by the interface "Tag". It shares the ownership of the object.
 template <class Tag> class Iface

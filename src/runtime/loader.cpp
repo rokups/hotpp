@@ -738,18 +738,7 @@ void Loader::adopt_ifaces(ClassRecord* canon, const ClassRecord* in)
         canon->ifaces = session_ifaces(in->ifaces);
     // The table from the id to the slot. The ids are global, so the table covers the highest id
     // of this class only. A missing id is "not implemented".
-    std::vector<uint32_t> table;
-    if (in->iface_rows)
-    {
-        for (const IfaceRow* row = in->iface_rows; row->iface; ++row)
-        {
-            const std::string key = std::string(row->iface) + "." + row->method;
-            const uint32_t id = iface_method_id(key.c_str(), row->sig);
-            if (table.size() <= id)
-                table.resize(static_cast<size_t>(id) + 1, kNoIfaceSlot);
-            table[id] = row->slot;
-        }
-    }
+    std::vector<uint32_t> table = build_iface_table(in->iface_rows);
     if (table.empty())
     {
         iface_slots_.erase(canon->name);

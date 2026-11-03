@@ -21,6 +21,7 @@
 #include "hot/runtime/registry.h"
 
 #include <cstddef>
+#include <map>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -106,6 +107,9 @@ public:
 private:
     Registry registry_;
     std::vector<ModuleStateInfo> module_blocks_;
+    // The tables of the interface methods (ClassRecord::iface_slots), by class name. The records
+    // point into them, so the destructor clears the pointers first.
+    std::map<std::string, std::vector<uint32_t>> iface_slots_;
     size_t script_count_ = 0;
 };
 

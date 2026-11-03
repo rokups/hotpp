@@ -123,3 +123,14 @@ endforeach()
 target_compile_definitions(integration_aot_parity_tests PRIVATE
     AOT_COVER_PATH="$<TARGET_FILE:aot_cover>"
     AOT_COVER_OPT_PATH="$<TARGET_FILE:aot_cover_opt>")
+
+# Script interfaces in loader-less AOT code (design 41b, B5): the registry builds the id tables.
+hot_add_scripts(TARGET aot_iface_scripts AOT SCRIPTS ${PROJECT_SOURCE_DIR}/tests/scripts/iface_v1.hot
+    INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
+    DEPENDS ${HOT_HEADERS})
+add_executable(integration_aot_iface_tests aot_iface_tests.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+target_include_directories(integration_aot_iface_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
+target_link_libraries(integration_aot_iface_tests PRIVATE aot_iface_scripts hot::aot GTest::gtest_main)
+hot_gtest(integration_aot_iface_tests)

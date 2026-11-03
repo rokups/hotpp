@@ -24,6 +24,22 @@ uint32_t iface_method_id(const char* key, const char* sig)
     return ids.emplace(std::move(k), static_cast<uint32_t>(ids.size() + 1)).first->second;
 }
 
+std::vector<uint32_t> build_iface_table(const IfaceRow* rows)
+{
+    std::vector<uint32_t> table;
+    if (!rows)
+        return table;
+    for (const IfaceRow* row = rows; row->iface; ++row)
+    {
+        const std::string key = std::string(row->iface) + "." + row->method;
+        const uint32_t id = iface_method_id(key.c_str(), row->sig);
+        if (table.size() <= id)
+            table.resize(static_cast<size_t>(id) + 1, kNoIfaceSlot);
+        table[id] = row->slot;
+    }
+    return table;
+}
+
 namespace detail
 {
 void iface_null_handle(const char* key)

@@ -1228,6 +1228,10 @@ struct Lowerer
     {
         const uint32_t pos = b.pos != 0 ? b.pos : pos_of(*b.lhs);
         const bool negate = b.op == "!=";
+        // A bare "this" becomes the handle of the object, so the identity has a handle to read.
+        for (ExprP* side : {&b.lhs, &b.rhs})
+            if (std::holds_alternative<ThisExpr>((*side)->v) && cx.allow_this && cx.cls)
+                coerce(*side, cx.cls->name);
         expr(b.lhs);
         expr(b.rhs);
         ExprP res = call_of("hot::iface_same", args_of(std::move(b.lhs), std::move(b.rhs)), pos);

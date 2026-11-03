@@ -6,6 +6,7 @@
 // program that has no loader. It does not include loader.h.
 #include "hot/aot.h"
 
+#include "hot/runtime/iface.h"
 #include "hot/runtime/shell.h"
 #include "hot/runtime/state.h"
 #include "hot/runtime/threads.h"
@@ -59,6 +60,16 @@ AotRegistry::AotRegistry(const AotTable& table)
                 if (registry_.find(name))
                     throw std::runtime_error("the class " + name + " is in two AOT scripts (" + script.name + ")");
                 registry_.add(e.record, e.create);
+                // The same table as the loader builds (Loader::adopt_ifaces). Without it, a call
+                // of an interface method finds no slot.
+                std::vector<uint32_t> table = build_iface_table(e.record->iface_rows);
+                if (!table.empty())
+                {
+                    std::vector<uint32_t>& owned = iface_slots_[name];
+                    owned = std::move(table);
+                    e.record->iface_slots = owned.data();
+                    e.record->iface_slot_count = static_cast<uint32_t>(owned.size());
+                }
             }
             for (const auto& [key, t] : reg.thunks())
                 registry_.add_thunk(t);
@@ -100,6 +111,18 @@ AotRegistry::AotRegistry(const AotTable& table)
 
 AotRegistry::~AotRegistry()
 {
+    // The tables go with this object. A record is static: another registry may have set its own
+    // table later. Clear a pointer only when it still points into the table of this registry.
+    for (const auto& [name, e] : registry_.entries())
+    {
+        auto own = iface_slots_.find(name);
+        if (e.record && e.record->iface_slots && own != iface_slots_.end()
+            && e.record->iface_slots == own->second.data())
+        {
+            e.record->iface_slots = nullptr;
+            e.record->iface_slot_count = 0;
+        }
+    }
     for (auto it = module_blocks_.rbegin(); it != module_blocks_.rend(); ++it)
         destroy_module_block(*it);
 }

@@ -1,0 +1,46 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// A native virtual method implements an interface method. IfaceNative has the overloads Foo(int)
+// and Foo(float). P overrides Foo(float) and Area. C inherits both from P. The interface calls
+// through P and through C must reach the exact overload.
+using "IfaceNative.h";
+
+interface IFoo {
+    int Foo(float x);
+}
+
+interface IArea {
+    int Area();
+}
+
+class P : IfaceNative, IFoo, IArea {
+    override int Foo(float x) { return 2000; }
+    override int Area() { return 70; }
+}
+
+class C : P {
+}
+
+class NativeProbe : Actor {
+    int r_foo_p = 0;
+    int r_foo_c = 0;
+    int r_area_p = 0;
+    int r_area_c = 0;
+    int r_native_int = 0;
+
+    override void Tick(float dt) {
+        P p = new P();
+        C c = new C();
+        IFoo fp = p;
+        IFoo fc = c;
+        IArea ap = p;
+        IArea ac = c;
+        this.r_foo_p = fp.Foo(1.5f);
+        this.r_foo_c = fc.Foo(1.5f);
+        this.r_area_p = ap.Area();
+        this.r_area_c = ac.Area();
+        this.r_native_int = c.Foo(3);
+    }
+}

@@ -1,0 +1,114 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Generation 1 of the script interfaces. Square and Disc list IShape. Wide gets it from its
+// parent Square. Plain does not implement it. Probe uses the interface values in Tick.
+using "Actor.h";
+using <string>;
+using <vector>;
+
+interface IShape {
+    int Area();
+    int Scale(int k);
+    std.string Name();
+}
+
+class Square : Actor, IShape {
+    int side = 3;
+
+    virtual int Area() { return this.side * this.side; }
+    int Scale(int k) { return this.side * k; }
+    virtual std.string Name() { return "square"; }
+    bool IsMe(IShape i) { return this == i; }
+}
+
+class Wide : Square {
+    override int Area() { return this.side * 5; }
+    override std.string Name() { return "wide"; }
+}
+
+class Disc : Actor, IShape {
+    int Area() { return 31; }
+    int Scale(int k) { return 31 * k; }
+    std.string Name() { return "disc"; }
+}
+
+class Plain : Actor {
+    int unused = 0;
+}
+
+class Probe : Actor {
+    int area_sq = 0;
+    int area_wide = 0;
+    int area_disc = 0;
+    int scaled = 0;
+    std.string name = "";
+    int list_sum = 0;
+    int is_sq = 0;
+    int is_wide = 0;
+    int is_plain = 0;
+    int as_plain_null = 0;
+    int as_back = 0;
+    int same = 0;
+    int same_cls = 0;
+    int differ = 0;
+    int null_cmp = 0;
+    int me_true = 0;
+    int me_false = 0;
+    int threw = 0;
+    std.string why = "";
+    IShape keep;
+    int kept = 0;
+    int kept_scaled = 0;
+
+    int Total(IShape s) { return s.Area(); }
+
+    override void Tick(float dt) {
+        Square sq = new Square();
+        Wide w = new Wide();
+        Disc d = new Disc();
+        Plain pl = new Plain();
+        IShape a = sq;
+        IShape b = w;
+        if (this.keep == null) this.keep = sq;
+        this.kept = this.keep.Area();
+        this.kept_scaled = this.keep.Scale(2);
+        this.area_sq = this.Total(a);
+        this.area_wide = this.Total(b);
+        this.area_disc = this.Total(d);
+        this.scaled = a.Scale(4);
+        this.name = b.Name();
+        std.vector<IShape> xs;
+        xs.push_back(a);
+        xs.push_back(b);
+        xs.push_back(d);
+        int sum = 0;
+        for (int i = 0; i < 3; i++) {
+            sum = sum + xs[i].Area();
+        }
+        this.list_sum = sum;
+        if (sq is IShape) this.is_sq = 1;
+        if (w is IShape) this.is_wide = 1;
+        if (pl is IShape) this.is_plain = 1;
+        IShape c = pl as IShape;
+        if (c == null) this.as_plain_null = 1;
+        IShape e = sq as IShape;
+        Square back = e as Square;
+        if (back == sq) this.as_back = 1;
+        IShape a2 = sq;
+        if (a == a2) this.same = 1;
+        if (a == sq) this.same_cls = 1;
+        if (a != b) this.differ = 1;
+        IShape n = null;
+        if (n == null) this.null_cmp = 1;
+        if (sq.IsMe(a)) this.me_true = 1;
+        if (sq.IsMe(b)) this.me_false = 1;
+        try {
+            n.Area();
+        } catch (hot.ScriptError ex) {
+            this.threw = 1;
+            this.why = ex.what();
+        }
+    }
+}

@@ -3178,6 +3178,8 @@ void translate_impl(
                 "'" + m.name + "' is not a convert hook: the script has no module variable '" + m.name.substr(8) + "'");
     // ---- script interfaces (design 41b, D1 and D8). A name in the base list that names a script
     // interface moves to "script_ifaces". The class parent (the first name) cannot be an interface.
+    if (opt.aot_optimized && !sc.interfaces.empty())
+        fail_at(map, sc.interfaces.front().pos, "script interfaces are not supported in the optimized AOT mode");
     {
         std::map<std::string, const hotc::ast::InterfaceDef*> iface_by_name;
         for (const hotc::ast::InterfaceDef& d : sc.interfaces)
@@ -4099,6 +4101,60 @@ void translate_impl(
             o.w("};\n");
             reset();
         }
+    }
+
+    // ---- script interfaces (design 41b, B5). The tag "I__iface" types the handle "hot::Iface".
+    // Each method has a helper "I__M(handle, args)" that calls hot::call_iface. The declarations
+    // come here, so a class can call a helper. The definitions come after the last block, where
+    // every type is complete. The rows of a class record use the same types, so the signature
+    // text of a row equals the text that the call computes.
+    struct IfaceMethodTypes
+    {
+        std::string name, ret;
+        std::vector<std::string> params;
+    };
+    std::map<std::string, std::vector<IfaceMethodTypes>> iface_types;
+    {
+        auto helper_head = [](const std::string& iface, const IfaceMethodTypes& t)
+        {
+            std::string h = "inline " + t.ret + " " + iface + "__" + t.name + "(const hot::Iface<" + iface + "__iface>& h";
+            for (size_t i = 0; i < t.params.size(); ++i)
+                h += ", " + name_in_type(t.params[i], "a" + std::to_string(i));
+            return h + ")";
+        };
+        for (const hotc::ast::InterfaceDef& d : sc.interfaces)
+        {
+            std::vector<IfaceMethodTypes>& list = iface_types[d.name];
+            for (const Method& im : d.methods)
+            {
+                IfaceMethodTypes t;
+                t.name = im.name;
+                for (const Param& p : im.params)
+                {
+                    const std::string& st = p.script_type.empty() ? p.type : p.script_type;
+                    t.params.push_back(p.weak ? weak_storage_or_fail(types, map, im.pos, st)
+                            : p.value         ? value_storage_or_fail(types, map, im.pos, st)
+                                              : types.param(st));
+                }
+                std::string r = im.script_ret.empty() ? im.ret : im.script_ret;
+                if (!r.empty())
+                    r = im.ret_value ? value_storage_or_fail(types, map, im.pos, r) : types.storage(r);
+                if (r.empty())
+                    r = "void";
+                t.ret = im.is_async ? "hot::Task<" + r + ">" : r;
+                list.push_back(std::move(t));
+            }
+        }
+        if (!sc.interfaces.empty())
+            o.w("\n// ---------------------------------------------------------------- script interfaces\n");
+        for (const hotc::ast::InterfaceDef& d : sc.interfaces)
+        {
+            o.w("struct " + d.name + "__iface;\n");
+            for (const IfaceMethodTypes& t : iface_types[d.name])
+                o.w(helper_head(d.name, t) + ";\n");
+        }
+        if (!sc.interfaces.empty())
+            reset();
     }
 
     std::vector<std::pair<std::string, bool>> registers; // class name, for the register function
@@ -5136,6 +5192,7 @@ void translate_impl(
                 fail_at(map, m.pos,
                     "method '" + m.name + "' overrides a virtual method of " + hit->owner + "; write 'override'");
             m.overrides_virtual = true;
+            m.native_key = hit->key();
             if (m.is_async) // a native virtual method is never async
                 fail_at(map, m.pos, "'async' of '" + m.name + "' differs from the base method");
             if (hit->final_)
@@ -6885,6 +6942,116 @@ void translate_impl(
                 o.w(fn.empty() ? std::string("    nullptr,\n") : "    reinterpret_cast<hot::SlotFn>(&" + fn + "),\n");
             o.w("};\n\n");
         }
+        // The interface rows of the class (design 41b, B5): all the interface methods of the class
+        // and of its script parents, each with the slot of the implementation in this table. The
+        // signature text is the text that hot::call_iface computes for the helper.
+        {
+            std::vector<std::string> iface_names, rows;
+            auto slot_of = [&](const ClassDef& owner, const Method& m) -> long
+            {
+                if (m.overrides_virtual)
+                {
+                    for (size_t i = 0; i < native_count; ++i)
+                        if (slots[i].impl == &m)
+                            return static_cast<long>(i);
+                    // A method inherited from a script parent has its own slot entry in the table
+                    // of the parent: the exact key of the native method finds the slot here.
+                    for (size_t i = 0; i < native_count; ++i)
+                        if (slots[i].nv && !m.native_key.empty() && slots[i].nv->key() == m.native_key)
+                            return static_cast<long>(i);
+                    return -1;
+                }
+                if (family)
+                {
+                    const std::string& vo = m.is_override && !m.vslot_owner.empty() ? m.vslot_owner : owner.name;
+                    auto it = fam_index.find(vo + "::" + m.name);
+                    return it == fam_index.end() ? -1 : static_cast<long>(it->second);
+                }
+                for (size_t i = native_count; i < slots.size(); ++i)
+                    if (slots[i].impl == &m)
+                        return static_cast<long>(slots[i].index >= 0 ? size_t(slots[i].index) : i);
+                return -1;
+            };
+            auto ptype = [](const Param& p)
+            { return (p.script_type.empty() ? p.type : p.script_type) + (p.weak ? "[weak]" : "") + (p.value ? "[value]" : ""); };
+            auto rtype = [](const Method& m)
+            {
+                const std::string r = m.script_ret.empty() ? m.ret : m.script_ret;
+                return r.empty() ? std::string("void") : r;
+            };
+            for (const ClassDef* a = &cd; a; a = script_parent(*a))
+                for (const std::string& in : a->script_ifaces)
+                {
+                    if (std::find(iface_names.begin(), iface_names.end(), in) != iface_names.end())
+                        continue;
+                    iface_names.push_back(in);
+                    const hotc::ast::InterfaceDef* idef = nullptr;
+                    for (const hotc::ast::InterfaceDef& d : sc.interfaces)
+                        if (d.name == in)
+                            idef = &d;
+                    if (!idef)
+                        continue;
+                    for (size_t k = 0; k < idef->methods.size(); ++k)
+                    {
+                        const Method& im = idef->methods[k];
+                        const IfaceMethodTypes& it = iface_types.at(in)[k];
+                        long slot = -1;
+                        for (const ClassDef* a2 = &cd; a2 && slot < 0; a2 = script_parent(*a2))
+                            for (const Method& m : a2->methods)
+                            {
+                                if (m.name != im.name || m.access != hotc::ast::Access::Public
+                                    || m.is_async != im.is_async || m.params.size() != im.params.size()
+                                    || rtype(m) != rtype(im))
+                                    continue;
+                                bool same = true;
+                                for (size_t i = 0; i < m.params.size(); ++i)
+                                    same = same && ptype(m.params[i]) == ptype(im.params[i]);
+                                if (!same)
+                                    continue;
+                                slot = slot_of(*a2, m);
+                                if (slot < 0)
+                                    fail_at(map, cd.pos,
+                                        "internal error: the interface method '" + in + "." + im.name
+                                            + "' has no slot in the class '" + cn + "'");
+                                if (m.overrides_virtual)
+                                {
+                                    // The call goes through a pointer of the helper signature. The slot of a
+                                    // native virtual method has the C++ types of that method, so they must be equal.
+                                    const NativeVirtual* nvm = slots[size_t(slot)].nv;
+                                    bool equal = nvm && nvm->ptypes.size() == it.params.size()
+                                        && key_norm(nvm->ret) == key_norm(it.ret);
+                                    for (size_t i = 0; equal && i < it.params.size(); ++i)
+                                        equal = key_norm(nvm->ptypes[i]) == key_norm(it.params[i]);
+                                    if (!equal)
+                                        fail_at(map, m.pos,
+                                            "class '" + a2->name + "' implements '" + in + "." + im.name
+                                                + "' with the native virtual method '" + m.name
+                                                + "', whose C++ signature differs from the interface; add a script method that calls it");
+                                }
+                                break;
+                            }
+                        if (slot < 0)
+                            continue; // an abstract class may leave the method open
+                        std::string sig = it.ret + "(";
+                        for (size_t i = 0; i < it.params.size(); ++i)
+                            sig += (i ? ", " : "") + it.params[i];
+                        rows.push_back("    {\"" + in + "\", \"" + im.name + "\", typeid(" + sig + ")).name(), "
+                            + std::to_string(slot) + "},\n");
+                    }
+                }
+            if (!iface_names.empty())
+            {
+                o.w("static const hot::IfaceRow " + P + "iface_rows[] = {\n");
+                for (const std::string& r : rows)
+                    o.w(r);
+                o.w("    {nullptr, nullptr, nullptr, 0}};\nstatic const char* const " + P + "ifaces[] = {");
+                for (const std::string& n : iface_names)
+                    o.w("\"" + n + "\", ");
+                o.w("nullptr};\n\n");
+                flag_regs.push_back("    " + cn + "_record.iface_rows = " + P + "iface_rows;\n    " + cn
+                    + "_record.ifaces = " + P + "ifaces;\n");
+            }
+        }
         std::string on_reload_init;
         // Optimized AOT code never reloads, and its shell has no ShellBase: no hook.
         for (const Method& m : cd.methods)
@@ -6981,6 +7148,28 @@ void translate_impl(
         infos[cn] = std::move(info);
         if (!cd.ns.empty())
             o.w("} // namespace " + hotc::ast::gen_namespace(cd.ns) + "\n");
+    }
+    // The definitions of the interface helpers (see above). Each call site has its own cache.
+    if (!sc.interfaces.empty())
+    {
+        o.w("// ---------------------------------------------------------------- script interface calls\n");
+        for (const hotc::ast::InterfaceDef& d : sc.interfaces)
+            for (const IfaceMethodTypes& t : iface_types[d.name])
+            {
+                std::string sig = t.ret + "(", args;
+                std::string head = "inline " + t.ret + " " + d.name + "__" + t.name + "(const hot::Iface<" + d.name
+                    + "__iface>& h";
+                for (size_t i = 0; i < t.params.size(); ++i)
+                {
+                    const std::string a = "a" + std::to_string(i);
+                    sig += (i ? ", " : "") + t.params[i];
+                    head += ", " + name_in_type(t.params[i], a);
+                    args += ", std::forward<" + t.params[i] + ">(" + a + ")";
+                }
+                o.w(head + ")\n{\n    static std::atomic<uint32_t> site{0};\n    return hot::call_iface<" + sig + ")>(h, site, \""
+                    + d.name + "." + t.name + "\"" + args + ");\n}\n\n");
+            }
+        reset();
     }
     flush_bodies();
     write_texts(seq.size());

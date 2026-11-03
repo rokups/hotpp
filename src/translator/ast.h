@@ -450,6 +450,9 @@ struct Method
     // True when the function overrides a base virtual method. The translator sets it after
     // the match. The parser leaves it false.
     bool overrides_virtual = false;
+    // The key of the native virtual method that the function overrides (empty when it overrides
+    // none). The interface rows use it to find the exact slot of an overload.
+    std::string native_key;
     // True when the script writes "const" after the parameters. It selects the const native
     // virtual method. It does not check the body.
     bool is_const = false;

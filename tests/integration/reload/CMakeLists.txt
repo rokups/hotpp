@@ -29,6 +29,7 @@ add_executable(integration_reload_tests
     inheritance_tests.cpp
     cross_module_tests.cpp
     interface_tests.cpp
+    script_interface_tests.cpp
     runtime_polish_tests.cpp
     core_module_tests.cpp
     host_type_tests.cpp

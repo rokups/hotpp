@@ -9,7 +9,9 @@
 
 #include <gtest/gtest.h>
 
+#include <sstream>
 #include <string>
+#include <vector>
 
 using namespace translator_test;
 
@@ -18,7 +20,10 @@ namespace
 
 const char* kHeader =
     "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n"
-    "class IPing { public: virtual ~IPing() {} virtual int Ping(int n) = 0; };\n";
+    "class IPing { public: virtual ~IPing() {} virtual int Ping(int n) = 0; };\n"
+    "#include <string>\n"
+    "class Nat : public Widget { public: virtual int Foo(int) { return 0; } virtual int Foo(float) { return 1; }\n"
+    "    virtual int Area() { return 0; } virtual int Take(std::string) { return 0; } };\n";
 
 hotc::TranslateResult run(const std::string& script)
 {
@@ -177,7 +182,20 @@ TEST(ScriptInterfaceTranslation, SameCodeAsAClassWithoutBaseList)
         + "class Sq {\n    int Area() { return 4; }\n    void Scale(int k) { }\n}\n");
     ASSERT_TRUE(with.ok) << with.diagnostics;
     ASSERT_TRUE(without.ok) << without.diagnostics;
-    EXPECT_EQ(with.cpp, without.cpp);
+    // The class with the list differs in the interface rows only (B5). The line markers move.
+    auto strip = [](const std::string& text)
+    {
+        std::string out, line;
+        std::istringstream in(text);
+        while (std::getline(in, line))
+            if (!line.empty() && line.rfind("#line", 0) != 0 && line.find(".ifaces =") == std::string::npos
+                && line.find("iface_rows") == std::string::npos && line.find("__ifaces[]") == std::string::npos
+                && line.find("{\"IShape\", ") == std::string::npos
+                && line.find("{nullptr, nullptr, nullptr, 0}};") == std::string::npos)
+                out += line + "\n";
+        return out;
+    };
+    EXPECT_EQ(strip(with.cpp), strip(without.cpp));
 }
 
 TEST(ScriptInterfaceTranslation, ParentAfterInterfaceIsAnError)
@@ -484,7 +502,7 @@ TEST(ScriptInterfaceTranslation, SafeCall)
 {
     const hotc::TranslateResult r = run_user("    void Go(IShape s) { s?.Scale(2); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "if (s) IShape__Scale(s, 2);") || has(r.cpp, "if (s)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "if (s)")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "IShape__Scale(s, 2);")) << r.cpp;
 }
 
@@ -586,6 +604,50 @@ TEST(ScriptInterfaceTranslation, EqualityComparesTheObject)
     EXPECT_TRUE(has(r.cpp, "!hot::iface_same(q, a)")) << r.cpp;
 }
 
+TEST(ScriptInterfaceTranslation, EqualityOfThis)
+{
+    const hotc::TranslateResult r = run(std::string(kShape)
+        + "class Me : Widget, IShape {\n    int Area() { return 1; }\n    void Scale(int k) { }\n"
+          "    bool Same(IShape i) { return this == i; }\n    bool Other(IShape i) { return i != this; }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "hot::iface_same(hot::handle_from_this<")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "!hot::iface_same(i, hot::handle_from_this<")) << r.cpp;
+}
+
+// The code of a script interface (B5): the tag, the declaration and the definition of the helper
+// of each method, and the rows and the names in the record of a class.
+TEST(ScriptInterfaceTranslation, EmitsTheTagTheHelpersAndTheRows)
+{
+    const hotc::TranslateResult r = run(std::string(kShape)
+        + "class Base : Widget {\n    virtual int Area() { return 4; }\n    void Scale(int k) { }\n}\n"
+          "class Sq : Base, IShape {\n    override int Area() { return 5; }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "struct IShape__iface;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "inline int32_t IShape__Area(const hot::Iface<IShape__iface>& h);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "static std::atomic<uint32_t> site{0};")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::call_iface<void(int32_t)>(h, site, \"IShape.Scale\", std::forward<int32_t>(a0))"))
+        << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "{\"IShape\", \"Area\", typeid(int32_t()).name(), ")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "{\"IShape\", \"Scale\", typeid(void(int32_t)).name(), ")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "Sq__ifaces[] = {\"IShape\", nullptr};")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "Sq_record.iface_rows = Sq__iface_rows;")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "Base_record.iface_rows")) << r.cpp;
+}
+
+TEST(ScriptInterfaceTranslation, OptimizedAotRejectsInterfaces)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeader);
+    hotc::TranslateOptions o = temp_options(dir, std::string("using \"w.h\";\n") + kShape);
+    o.aot = true;
+    o.aot_optimized = true;
+    const hotc::TranslateResult r = hotc::translate(o);
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "script interfaces are not supported in the optimized AOT mode")) << r.diagnostics;
+    o.aot_optimized = false;
+    EXPECT_TRUE(hotc::translate(o).ok);
+}
+
 TEST(ScriptInterfaceTranslation, EqualityWithNull)
 {
     const hotc::TranslateResult r = run_user(
@@ -609,4 +671,32 @@ TEST(ScriptInterfaceTranslation, StructCannotConvert)
         + "struct P {\n    int x;\n}\nclass User : Widget {\n    void Go(P p) { IShape a = p; }\n}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "the struct 'P' does not convert to the interface 'IShape'")) << r.diagnostics;
+}
+
+// A native virtual method may implement an interface method when the C++ types are equal (F1).
+TEST(ScriptInterfaceTranslation, NativeOverrideWithEqualTypesImplements)
+{
+    const hotc::TranslateResult r = run(std::string(kShape)
+        + "class Sq : Nat, IShape {\n    override int Area() { return 4; }\n    void Scale(int k) { }\n}\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "{\"IShape\", \"Area\", "));
+}
+
+// A child of a script parent finds the exact slot of an inherited overload (F2): the row of the
+// child equals the row of the parent, and it is the row of Foo(float), not of Foo(int).
+TEST(ScriptInterfaceTranslation, InheritedNativeOverloadUsesTheExactSlot)
+{
+    const hotc::TranslateResult r = run(
+        "interface IFoo {\n    int Foo(float x);\n}\n"
+        "class P : Nat, IFoo {\n    override int Foo(float x) { return 2; }\n}\n"
+        "class C : P {\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    std::vector<std::string> rows;
+    std::istringstream in(r.cpp);
+    std::string line;
+    while (std::getline(in, line))
+        if (line.find("{\"IFoo\", \"Foo\", ") != std::string::npos)
+            rows.push_back(line);
+    ASSERT_EQ(rows.size(), 2u) << r.cpp;
+    EXPECT_EQ(rows[0], rows[1]);
 }
