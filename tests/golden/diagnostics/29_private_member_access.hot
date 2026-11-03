@@ -8,10 +8,14 @@ class Counter : Actor {
 }
 
 class Spy : Actor {
-    int Peek(Counter c) { return c.count; }
+    int Peek($Counter c) {
+        if (c == null) return 0;
+        return c.count;
+    }
 
-    int Both(Counter c)
+    int Both($Counter c)
     {
+        if (c == null) return 0;
         int a = c.count;
         int b = c.Twice();
         return a + b;

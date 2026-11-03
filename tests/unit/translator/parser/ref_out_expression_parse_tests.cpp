@@ -2,7 +2,7 @@
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
-// Tests for the removed words "ref" and "out", the "T&" lambda parameter and the prefix "&".
+// Tests for the reserved words "ref" and "out", the "T&" lambda parameter and the prefix "&".
 #include "emit.h"
 #include "parser/expression.h"
 #include "support/expression_parse_test_support.h"
@@ -24,19 +24,24 @@ TEST(RefOutExpressionParse, ReferenceArgumentHasNoMarker)
 
 TEST(RefOutExpressionParse, RefAndOutAreRemoved)
 {
-    // The words are plain names now. The old forms are parse errors.
+    // The old forms are parse errors. The words are reserved.
     for (const char* text : {"ref x", "f(ref a)", "f(out b.c)", "this.target = ref source", "ref a[1]"})
     {
         Parsed p(text);
         EXPECT_TRUE(p.expr == nullptr || !p.diag.items.empty()) << text;
     }
-    EXPECT_EQ(round_trip("ref + out"), "ref + out");
+    for (const char* text : {"ref + out", "ref", "out"})
+    {
+        Parsed p(text);
+        EXPECT_TRUE(p.expr == nullptr || !p.diag.items.empty()) << text;
+    }
+    EXPECT_EQ(round_trip("refx + outer"), "refx + outer");
     EXPECT_EQ(round_trip("reference + outer"), "reference + outer");
 }
 
 TEST(RefOutExpressionParse, ReferenceLambdaParameters)
 {
-    Parsed p("(Vec3& v, int& n, w) => { }");
+    Parsed p("(ref Vec3 v, ref int n, w) => { }");
     ASSERT_TRUE(p.expr != nullptr) << p.diag.format("t");
     const auto* l = std::get_if<ast::LambdaExpr>(&p.expr->v);
     ASSERT_TRUE(l != nullptr);

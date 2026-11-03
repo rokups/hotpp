@@ -108,7 +108,7 @@ TEST(InterfaceParse, MemberModifierIsAnError)
 
 TEST(InterfaceParse, MemberAttributeIsAnError)
 {
-    ModParsed p(iface("[value] Foo F();"));
+    ModParsed p(iface("[weak] Foo F();"));
     EXPECT_TRUE(has_error(p, "an interface member cannot have an attribute"));
 }
 
@@ -124,7 +124,7 @@ TEST(InterfaceParse, InterfaceModifierIsAnError)
 
 TEST(InterfaceParse, InterfaceAttributeIsAnError)
 {
-    ModParsed p("[value]\ninterface I { }\n");
+    ModParsed p("[weak]\ninterface I { }\n");
     EXPECT_TRUE(has_error(p, "an interface cannot have an attribute"));
 }
 

@@ -94,7 +94,7 @@ TEST(AsyncDiagnostics, AsyncMethodCannotTakeReferenceOrPointer)
 {
     const hotc::TranslateResult r = translate_std(
         "class A {\n"
-        "    async int f(int& a) { return a; }\n"
+        "    async int f(ref int a) { return a; }\n"
         "    async int g(int* b) { return 1; }\n"
         "    async int h(int c) { return c; }\n"
         "}\n",

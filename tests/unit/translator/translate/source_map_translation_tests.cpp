@@ -59,24 +59,24 @@ TEST(SourceMapTranslation, IdentifiersMapBothWaysWithColumns)
 {
     const hotc::TranslateResult r = translate_script(kScript);
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    const int g = line_of(r.cpp, "    HOT_TRACE_LINE(); int64_t total = hits + 2;");
+    const int g = line_of(r.cpp, "    HOT_TRACE_LINE(); const int64_t total = hits + 2;");
     ASSERT_GT(g, 0) << r.cpp;
     // Script line 5: "        long total = hits + 2;" (8 spaces).
-    // Generated:     "    HOT_TRACE_LINE(); int64_t total = hits + 2;" (the macro is 18 columns).
-    // "total": script col 14 to 18, generated col 31 to 35.
-    EXPECT_EQ(r.source_map.map_to_generated(5, 14), (SourcePos{g, 31}));
-    EXPECT_EQ(r.source_map.map_to_generated(5, 16), (SourcePos{g, 33}));
-    EXPECT_EQ(r.source_map.map_to_generated(5, 18), (SourcePos{g, 35}));
-    EXPECT_EQ(r.source_map.map_to_script(g, 31), (SourcePos{5, 14}));
-    EXPECT_EQ(r.source_map.map_to_script(g, 33), (SourcePos{5, 16}));
-    EXPECT_EQ(r.source_map.map_to_script(g, 35), (SourcePos{5, 18}));
-    // "hits": script col 22 to 25, generated col 39 to 42.
-    EXPECT_EQ(r.source_map.map_to_generated(5, 22), (SourcePos{g, 39}));
-    EXPECT_EQ(r.source_map.map_to_generated(5, 25), (SourcePos{g, 42}));
-    EXPECT_EQ(r.source_map.map_to_script(g, 42), (SourcePos{5, 25}));
-    // The number "2": script col 29, generated col 46.
-    EXPECT_EQ(r.source_map.map_to_generated(5, 29), (SourcePos{g, 46}));
-    EXPECT_EQ(r.source_map.map_to_script(g, 46), (SourcePos{5, 29}));
+    // Generated:     "    HOT_TRACE_LINE(); const int64_t total = hits + 2;" (the macro is 18 columns).
+    // "total": script col 14 to 18, generated col 37 to 41.
+    EXPECT_EQ(r.source_map.map_to_generated(5, 14), (SourcePos{g, 37}));
+    EXPECT_EQ(r.source_map.map_to_generated(5, 16), (SourcePos{g, 39}));
+    EXPECT_EQ(r.source_map.map_to_generated(5, 18), (SourcePos{g, 41}));
+    EXPECT_EQ(r.source_map.map_to_script(g, 37), (SourcePos{5, 14}));
+    EXPECT_EQ(r.source_map.map_to_script(g, 39), (SourcePos{5, 16}));
+    EXPECT_EQ(r.source_map.map_to_script(g, 41), (SourcePos{5, 18}));
+    // "hits": script col 22 to 25, generated col 45 to 48.
+    EXPECT_EQ(r.source_map.map_to_generated(5, 22), (SourcePos{g, 45}));
+    EXPECT_EQ(r.source_map.map_to_generated(5, 25), (SourcePos{g, 48}));
+    EXPECT_EQ(r.source_map.map_to_script(g, 48), (SourcePos{5, 25}));
+    // The number "2": script col 29, generated col 52.
+    EXPECT_EQ(r.source_map.map_to_generated(5, 29), (SourcePos{g, 52}));
+    EXPECT_EQ(r.source_map.map_to_script(g, 52), (SourcePos{5, 29}));
     // The next statement: "        hits = total;" and "    HOT_TRACE_LINE(); hits = total;".
     EXPECT_EQ(r.source_map.map_to_generated(6, 9), (SourcePos{g + 2, 23}));
     EXPECT_EQ(r.source_map.map_to_generated(6, 16), (SourcePos{g + 2, 30}));
@@ -87,25 +87,25 @@ TEST(SourceMapTranslation, RewrittenTypeMapsToTheStartOfTheOtherRange)
 {
     const hotc::TranslateResult r = translate_script(kScript);
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    const int g = line_of(r.cpp, "    HOT_TRACE_LINE(); int64_t total = hits + 2;");
+    const int g = line_of(r.cpp, "    HOT_TRACE_LINE(); const int64_t total = hits + 2;");
     ASSERT_GT(g, 0);
-    // "long" (col 9 to 12) is "int64_t" (col 23 to 29): the lengths differ.
-    EXPECT_EQ(r.source_map.map_to_generated(5, 9), (SourcePos{g, 23}));
-    EXPECT_EQ(r.source_map.map_to_generated(5, 12), (SourcePos{g, 23}));
-    EXPECT_EQ(r.source_map.map_to_script(g, 23), (SourcePos{5, 9}));
+    // "long" (col 9 to 12) is "int64_t" (col 29 to 35): the lengths differ. The "const" has no segment.
+    EXPECT_EQ(r.source_map.map_to_generated(5, 9), (SourcePos{g, 29}));
+    EXPECT_EQ(r.source_map.map_to_generated(5, 12), (SourcePos{g, 29}));
     EXPECT_EQ(r.source_map.map_to_script(g, 29), (SourcePos{5, 9}));
+    EXPECT_EQ(r.source_map.map_to_script(g, 35), (SourcePos{5, 9}));
 }
 
 TEST(SourceMapTranslation, TextWithoutSegmentGivesNoValue)
 {
     const hotc::TranslateResult r = translate_script(kScript);
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    const int g = line_of(r.cpp, "    HOT_TRACE_LINE(); int64_t total = hits + 2;");
+    const int g = line_of(r.cpp, "    HOT_TRACE_LINE(); const int64_t total = hits + 2;");
     ASSERT_GT(g, 0);
     // The operator "+" and the spaces have no segment.
-    EXPECT_FALSE(r.source_map.map_to_script(g, 44));
+    EXPECT_FALSE(r.source_map.map_to_script(g, 50));
     EXPECT_FALSE(r.source_map.map_to_script(g, 4));
-    EXPECT_FALSE(r.source_map.map_to_script(g, 100));
+    EXPECT_FALSE(r.source_map.map_to_script(g, 1000));
     EXPECT_FALSE(r.source_map.map_to_script(1, 1)); // the header comment
     EXPECT_FALSE(r.source_map.map_to_script(100000, 1));
     EXPECT_FALSE(r.source_map.map_to_script(0, 0));
@@ -279,16 +279,16 @@ TEST(SourceMapTranslation, ExpressionMapsToItsRealScriptColumn)
 {
     const hotc::TranslateResult r = translate_script(kScript);
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    const int g = line_of(r.cpp, "    HOT_TRACE_LINE(); int64_t total = hits + 2;");
+    const int g = line_of(r.cpp, "    HOT_TRACE_LINE(); const int64_t total = hits + 2;");
     ASSERT_GT(g, 0) << r.cpp;
-    // "hits" in "hits + 2": generated col 39, script col 22 (8 spaces of indent).
-    const std::optional<SourcePos> p = r.source_map.map_to_script(g, 39);
+    // "hits" in "hits + 2": generated col 45, script col 22 (8 spaces of indent).
+    const std::optional<SourcePos> p = r.source_map.map_to_script(g, 45);
     ASSERT_TRUE(p.has_value());
     EXPECT_EQ(p->line, 5);
     EXPECT_EQ(p->col, 22);
     const std::optional<SourcePos> back = r.source_map.map_to_generated(5, 22);
     ASSERT_TRUE(back.has_value());
-    EXPECT_EQ(*back, (SourcePos{g, 39}));
+    EXPECT_EQ(*back, (SourcePos{g, 45}));
 }
 
 namespace

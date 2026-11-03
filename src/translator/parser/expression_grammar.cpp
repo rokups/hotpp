@@ -83,7 +83,7 @@ constexpr auto id_r =
     id.reserve(kw_const, kw_this, kw_base, kw_null, kw_if, kw_else, kw_while, kw_do, kw_for, kw_return, kw_break,
         kw_continue, kw_switch, kw_case, kw_default, kw_try, kw_catch, kw_throw, kw_var, kw_foreach, kw_in, kw_using,
         kw_override, kw_virtual, kw_async, kw_await, kw_new, kw_public, kw_private, kw_protected, kw_get, kw_set,
-        kw_finally, kw_void, kw_interface);
+        kw_finally, kw_void, kw_interface, kw_extern, kw_ref, kw_out);
 
 // ---------------------------------------------------------------- plain helpers
 std::string_view span_text(const ParseState& st, Span sp)
@@ -336,8 +336,12 @@ struct Builder
     static ExprP test(const ParseState& st, ExprP o, Span name, bool is_as)
     {
         const uint32_t pos = ast::pos_of(*o);
-        std::string type =
-            canonical_type_at(st, st.base + name.begin, scope_text(st, st.base + name.begin, span_text(st, name)));
+        const bool handle = st.base[name.begin] == '$';
+        const char* at = st.base + name.begin + (handle ? 1 : 0);
+        std::string type = scope_text(st, at, std::string(span_text(st, name)).substr(handle ? 1 : 0));
+        if (handle)
+            check_type_marks(st, at, "$" + type);
+        type = (handle ? "$" : "") + canonical_type_at(st, at, type);
         return ast::make_expr(ast::TypeTestExpr{std::move(o), std::move(type), is_as, pos});
     }
     // "a->b": the parse reported the error and read the name. The result is not used.
@@ -588,7 +592,7 @@ template <int N> struct targs_body : lexy::token_production
     static constexpr auto rule = []
     {
         auto plain = dsl::ascii::alnum / dsl::lit_c<'_'> / dsl::lit_c<' '> / dsl::lit_c<'\t'> / dsl::lit_c<','>
-            / dsl::lit_c<'*'> / dsl::lit_c<'.'> / dsl::lit_c<'&'>;
+            / dsl::lit_c<'*'> / dsl::lit_c<'.'> / dsl::lit_c<'&'> / dsl::lit_c<'$'>;
         auto head = dsl::lit_c<'>'> >> dsl::break_ | LEXY_LIT("&&") >> dsl::error<e_targs> | LEXY_LIT("::") | plain;
         if constexpr (N > 0)
             return dsl::loop(head | dsl::lit_c<'<'> >> dsl::p<targs_body<N - 1>> | dsl::else_ >> dsl::error<e_targs>);
@@ -625,6 +629,16 @@ struct qname_tok : lexy::token_production
     static constexpr auto value = span_value;
 };
 
+// The type of "is" and "as": a name with an optional handle mark, for example "$Foo". The span
+// starts at the mark.
+struct htype_tok : lexy::token_production
+{
+    static constexpr auto rule = dsl::position + dsl::if_(dsl::lit_c<'$'>) + dsl::p<qname_tok>;
+    static constexpr auto value = lexy::bind(
+        lexy::callback<Span>([](const ParseState& st, const char* b, Span name) { return Span{st.offset(b), name.end}; }),
+        lexy::parse_state, lexy::values);
+};
+
 constexpr auto kw_is = LEXY_KEYWORD("is", id);
 constexpr auto kw_as = LEXY_KEYWORD("as", id);
 
@@ -654,21 +668,29 @@ struct name_p
         lexy::parse_state, lexy::values);
 };
 
-// new T(args). The type is a qualified name with optional template arguments.
+// new T(args) or new $T(args). The type is a qualified name with optional template arguments.
 struct new_p
 {
-    static constexpr auto rule = dsl::position + dsl::token(kw_new) + dsl::p<qname_tok>
+    static constexpr auto rule = dsl::position + dsl::token(kw_new)
+        + dsl::opt(dsl::capture(dsl::lit_c<'$'>)) + dsl::p<qname_tok>
         + (dsl::peek(dsl::lit_c<'{'>) >> dsl::error<e_new_paren>
             | dsl::else_ >> (dsl::lit_c<'('> + dsl::p<elems_p<')'>>));
-    static constexpr auto value =
-        lexy::bind(lexy::callback<ExprP>(
-                       [](const ParseState& st, const char* pos, Span name, std::vector<ExprP>&& args)
+    static ExprP make(const ParseState& st, const char* pos, bool handle, Span name, std::vector<ExprP>&& args)
     {
-        return ast::make_expr(ast::NewExpr{
-            canonical_type_at(st, st.base + name.begin, scope_text(st, st.base + name.begin, span_text(st, name))),
-            std::move(args), st.offset(pos)});
-    }),
-            lexy::parse_state, lexy::values);
+        const char* at = st.base + name.begin;
+        std::string type = scope_text(st, at, span_text(st, name));
+        if (handle)
+            check_type_marks(st, at, "$" + type);
+        type = canonical_type_at(st, at, type);
+        return ast::make_expr(ast::NewExpr{(handle ? "$" : "") + type, std::move(args), st.offset(pos)});
+    }
+    static constexpr auto value = lexy::bind(
+        lexy::callback<ExprP>(
+            [](const ParseState& st, const char* pos, lexy::nullopt, Span name, std::vector<ExprP>&& args)
+    { return make(st, pos, false, name, std::move(args)); },
+            [](const ParseState& st, const char* pos, auto&&, Span name, std::vector<ExprP>&& args)
+    { return make(st, pos, true, name, std::move(args)); }),
+        lexy::parse_state, lexy::values);
 };
 
 // ---------------------------------------------------------------- collection literal
@@ -749,13 +771,16 @@ struct lambda_attr_p
 struct param_p
 {
     static constexpr auto rule = dsl::opt(dsl::peek(dsl::lit_c<'['>) >> dsl::p<lambda_attr_p>)
-        + dsl::p<scan_param_type> + dsl::p<id_str> + dsl::if_(dsl::lit_c<','>);
+        + param_mode_rule + dsl::p<scan_param_type> + dsl::p<id_str> + dsl::if_(dsl::lit_c<','>);
     static constexpr auto value = lexy::bind(lexy::callback<ast::Param>(
-                                                 [](const ParseState& st, auto, Span type, std::string name)
+                                                 [](const ParseState& st, auto, const auto& word, Span type,
+                                                     std::string name)
     {
         if (only_blank(span_text(st, type)))
             return ast::Param{std::move(name), ""};
-        return ast::Param{std::move(name), type_of(st, type)};
+        ast::Param p{std::move(name), type_of(st, type)};
+        apply_param_mode(p, param_mode_of(word));
+        return p;
     }),
         lexy::parse_state, lexy::values);
 };
@@ -863,13 +888,17 @@ constexpr auto cast_builtin = HOT_CAST_WORD("bool") | HOT_CAST_WORD("sbyte") | H
     | HOT_CAST_WORD("nuint") | HOT_CAST_WORD("uintptr") | HOT_CAST_WORD("float") | HOT_CAST_WORD("double")
     | HOT_CAST_WORD("char") | HOT_CAST_WORD("wchar") | HOT_CAST_WORD("char16");
 #undef HOT_CAST_WORD
-constexpr auto cast_mark = dsl::lit_c<'*'> / dsl::lit_c<'&'>;
+constexpr auto cast_mark = dsl::lit_c<'*'> / dsl::lit_c<'&'> / dsl::lit_c<'?'>;
 constexpr auto cast_const = dsl::if_(kw_const >> cast_ws);
 constexpr auto cast_marks = dsl::while_(cast_mark >> cast_ws);
 constexpr auto cast_qname = dsl::token(id) + dsl::while_(dsl::lit_c<'.'> >> dsl::token(id));
 constexpr auto cast_a = dsl::lit_c<'('> + cast_ws + cast_const + cast_builtin + cast_ws + cast_marks + dsl::lit_c<')'>;
 constexpr auto cast_b =
     dsl::lit_c<'('> + cast_ws + cast_const + cast_qname + cast_ws + cast_mark + cast_ws + cast_marks + dsl::lit_c<')'>;
+// A cast to a handle type: "($Foo)h". A "$" makes it a cast for sure. A builtin name is an error
+// that the type check reports ("$" needs a class type).
+constexpr auto cast_h = dsl::lit_c<'('> + cast_ws + cast_const + dsl::lit_c<'$'> + cast_ws
+    + (cast_builtin | dsl::else_ >> cast_qname) + cast_ws + cast_marks + dsl::lit_c<')'>;
 
 // A cast to an array type, for example "(int[3])x" or "(Foo[2])x". It is an error. A name needs
 // an operand after the ")": "(a[3])" is an index expression.
@@ -927,7 +956,8 @@ template <bool Full> struct expr_g : lexy::expression_production
         | dsl::peek(dsl::lit_c<'\''>) >> dsl::p<literal_p<ast::CharExpr, '\''>>
         | dsl::peek(dsl::lit_c<'`'>) >> dsl::error<e_interpolation> | dsl::peek(cast_c) >> dsl::p<cast_array_p>
         | dsl::peek(cast_d) >> dsl::p<cast_array_p> | dsl::peek(cast_a) >> dsl::p<cast_atom_p>
-        | dsl::peek(cast_b) >> dsl::p<cast_atom_p> | dsl::peek(dsl::lit_c<'('>) >> dsl::p<paren_p>
+        | dsl::peek(cast_b) >> dsl::p<cast_atom_p>
+        | dsl::peek(cast_h) >> dsl::p<cast_atom_p> | dsl::peek(dsl::lit_c<'('>) >> dsl::p<paren_p>
         | dsl::peek(dsl::lit_c<'{'>) >> dsl::error<e_brace_init> | dsl::peek(dsl::lit_c<'['>) >> dsl::p<coll_p>
         | dsl::peek(kw_this) >> dsl::p<kw_p<ast::ThisExpr, std::remove_cv_t<decltype(kw_this)>>>
         | dsl::peek(kw_base) >> dsl::p<kw_p<ast::BaseExpr, std::remove_cv_t<decltype(kw_base)>>>
@@ -976,9 +1006,9 @@ template <bool Full> struct expr_g : lexy::expression_production
     struct test_lvl : dsl::postfix_op
     {
         static constexpr auto op =
-            dsl::op<IsTag>(kw_is >> dsl::p<qname_tok> + dsl::if_(dsl::peek(dsl::lit_c<'['>) >> dsl::error<e_test_array>)
+            dsl::op<IsTag>(kw_is >> dsl::p<htype_tok> + dsl::if_(dsl::peek(dsl::lit_c<'['>) >> dsl::error<e_test_array>)
                 + dsl::opt(dsl::peek(id_b) >> dsl::p<bind_tok>))
-            / dsl::op<AsTag>(LEXY_KEYWORD("as", id) >> dsl::p<qname_tok>
+            / dsl::op<AsTag>(LEXY_KEYWORD("as", id) >> dsl::p<htype_tok>
                 + dsl::if_(dsl::peek(dsl::lit_c<'['>) >> dsl::error<e_test_array>));
         using operand = shift_lvl;
     };

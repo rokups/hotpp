@@ -2,7 +2,7 @@
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
-// Tests for the type model with script classes: handle by default, [value] inline (design 7.10.1).
+// Tests for the type model with script classes: a bare name is a value, "$" is a handle (design 7.10.1).
 #include "support/type_model_test_support.h"
 
 #include <gtest/gtest.h>
@@ -81,9 +81,16 @@ TEST(ScriptClassTemplateArg, VectorOfScriptClassHoldsHandles)
     Fixture f;
     f.model.add_script_classes(one("Child", ""));
     const std::string h = "\x01std::shared_ptr<Child>";
-    EXPECT_EQ(f.model.storage("std::vector<Child>"), "std::vector<" + h + ">");
-    EXPECT_EQ(f.model.storage("std::vector<Child>"), f.model.targ_storage("std::vector<Child>"));
-    EXPECT_EQ(f.model.storage("std.vector<Child>"), "std.vector<" + h + ">");
+    EXPECT_EQ(f.model.storage("std::vector<$Child>"), "std::vector<" + h + ">");
+    EXPECT_EQ(f.model.storage("std::vector<$Child>"), f.model.targ_storage("std::vector<$Child>"));
+    EXPECT_EQ(f.model.storage("std.vector<$Child>"), "std.vector<" + h + ">");
+}
+
+TEST(ScriptClassTemplateArg, BareScriptClassIsTheBox)
+{
+    Fixture f;
+    f.model.add_script_classes(one("Child", ""));
+    EXPECT_EQ(f.model.storage("std::vector<Child>"), "std::vector<hot::Value<Child>>");
 }
 
 TEST(ScriptClassTemplateArg, NestedAndMultipleArguments)
@@ -91,9 +98,9 @@ TEST(ScriptClassTemplateArg, NestedAndMultipleArguments)
     Fixture f;
     f.model.add_script_classes(one("Child", ""));
     const std::string h = "\x01std::shared_ptr<Child>";
-    EXPECT_EQ(f.model.storage("std::map<int, std::vector<Child>>"), "std::map<int, std::vector<" + h + ">>");
-    EXPECT_EQ(f.model.storage("std::map<Child, Child>"), "std::map<" + h + ", " + h + ">");
-    EXPECT_EQ(f.model.storage("std::vector<std::vector<Child>>"), "std::vector<std::vector<" + h + ">>");
+    EXPECT_EQ(f.model.storage("std::map<int, std::vector<$Child>>"), "std::map<int, std::vector<" + h + ">>");
+    EXPECT_EQ(f.model.storage("std::map<$Child, $Child>"), "std::map<" + h + ", " + h + ">");
+    EXPECT_EQ(f.model.storage("std::vector<std::vector<$Child>>"), "std::vector<std::vector<" + h + ">>");
 }
 
 TEST(ScriptClassTemplateArg, ParametersKeepTheirReferenceForm)
@@ -101,11 +108,11 @@ TEST(ScriptClassTemplateArg, ParametersKeepTheirReferenceForm)
     Fixture f;
     f.model.add_script_classes(one("Child", ""));
     const std::string v = "std::vector<\x01std::shared_ptr<Child>>";
-    EXPECT_EQ(f.model.param("std::vector<Child>"), v);
-    EXPECT_EQ(f.model.param("const std::vector<Child>&"), "const " + v + "&");
-    EXPECT_EQ(f.model.body_param("std::vector<Child>", false, false, false), v);
-    EXPECT_EQ(f.model.body_param("std::vector<Child>", true, false, false), v);
-    EXPECT_EQ(f.model.body_param("const std::vector<Child>&", false, false, false), "const " + v + "&");
+    EXPECT_EQ(f.model.param("std::vector<$Child>"), "hot::In<" + v + ">");
+    EXPECT_EQ(f.model.param("const std::vector<$Child>&"), "const " + v + "&");
+    EXPECT_EQ(f.model.body_param("std::vector<$Child>", false, false, false), "hot::In<" + v + ">");
+    EXPECT_EQ(f.model.body_param("std::vector<$Child>", true, false, false), v);
+    EXPECT_EQ(f.model.body_param("const std::vector<$Child>&", false, false, false), "const " + v + "&");
 }
 
 TEST(ScriptClassTemplateArg, OtherArgumentsStayAsTheyAre)
@@ -114,7 +121,7 @@ TEST(ScriptClassTemplateArg, OtherArgumentsStayAsTheyAre)
     f.model.add_script_classes(one("Child", ""));
     f.model.add_script_classes(one("Stats", "", true));
     EXPECT_EQ(f.model.storage("std::vector<int>"), "std::vector<int>");
-    EXPECT_EQ(f.model.storage("std::vector<Stats>"), "std::vector<Stats>"); // a [value] class
+    EXPECT_EQ(f.model.storage("std::vector<Stats>"), "std::vector<Stats>"); // a struct
     EXPECT_EQ(f.model.storage("std::vector<Other>"), "std::vector<Other>"); // not a script class
     EXPECT_EQ(f.model.storage("std::vector<Child*>"), "std::vector<Child*>"); // a pointer
     EXPECT_EQ(f.model.storage("std::vector<ns::Child>"), "std::vector<ns::Child>");
@@ -148,11 +155,11 @@ TEST(ScriptClassTemplateArg, FunctionTypeArgumentsAreRewritten)
     Fixture f;
     f.model.add_script_classes(one("Child", ""));
     const std::string h = "\x01std::shared_ptr<Child>";
-    EXPECT_EQ(f.model.storage("std::function<void(Child)>"), "std::function<void(" + h + ")>");
-    EXPECT_EQ(f.model.storage("std::function<Child()>"), "std::function<" + h + "()>");
-    EXPECT_EQ(f.model.storage("std::function<Child(int, Child, const Child&)>"),
+    EXPECT_EQ(f.model.storage("std::function<void($Child)>"), "std::function<void(" + h + ")>");
+    EXPECT_EQ(f.model.storage("std::function<$Child()>"), "std::function<" + h + "()>");
+    EXPECT_EQ(f.model.storage("std::function<$Child(int, $Child, const $Child&)>"),
         "std::function<" + h + "(int, " + h + ", const " + h + "&)>");
-    EXPECT_EQ(f.model.storage("std::vector<std::function<void(std::vector<Child>)>>"),
+    EXPECT_EQ(f.model.storage("std::vector<std::function<void(std::vector<$Child>)>>"),
         "std::vector<std::function<void(std::vector<" + h + ">)>>");
     EXPECT_EQ(f.model.storage("std::function<void(int)>"), "std::function<void(int)>");
 }

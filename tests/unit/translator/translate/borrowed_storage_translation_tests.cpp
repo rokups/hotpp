@@ -44,16 +44,14 @@ TEST(BorrowedStorage, ReferenceFieldIsAnError)
 {
     const hotc::TranslateResult r = check_translate("", "    Weapon& w;\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "a field cannot be a reference: a reference cannot change its target and has no null"))
-        << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "\"&\" is not a type suffix; write ref T x")) << r.diagnostics;
 }
 
 TEST(BorrowedStorage, RefFieldIsAnError)
 {
     const hotc::TranslateResult r = check_translate("", "    Vec3& v;\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "a field cannot be a reference: a reference cannot change its target and has no null"))
-        << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "\"&\" is not a type suffix; write ref T x")) << r.diagnostics;
 }
 
 TEST(BorrowedStorage, CollectionElementIsAnError)
@@ -72,10 +70,10 @@ TEST(BorrowedStorage, ReturnValueIsAnError)
         << r.diagnostics;
 }
 
-TEST(BorrowedStorage, HandleAndConstCharAreAllowed)
+TEST(BorrowedStorage, HandleIsAllowed)
 {
     const hotc::TranslateResult r =
-        check_translate(kHandleStubs, "    Handled h;\n    const char* name;\n    Handled Get() { return null; }\n");
+        check_translate(kHandleStubs, "    Handled h;\n    Handled Get() { return null; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(r.warnings.empty()) << r.warnings;
 }
@@ -103,7 +101,7 @@ TEST(BorrowedStorage, ValueAndStdTypesAreAllowed)
 TEST(BorrowedStorage, LambdaCapturesARefParameter)
 {
     const hotc::TranslateResult r =
-        check_translate("[native, value] class Plain;\n", "    void Run(Plain& q1) { var f = () => { q1.x = 1; }; }\n");
+        check_translate("[native, value] class Plain;\n", "    void Run(ref Plain q1) { var f = () => { q1.x = 1; }; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "error: the lambda captures 'q1', a borrowed pointer or reference"))
         << r.diagnostics;
@@ -120,13 +118,13 @@ TEST(BorrowedStorage, LambdaCapturesARawPointerParameter)
 TEST(BorrowedStorage, LambdaMayUseItsOwnParameterAndAValue)
 {
     const hotc::TranslateResult r =
-        check_translate("", "    int n;\n    void Run(int& q1) { var f = (int b) => { this.n = b; }; }\n");
+        check_translate("", "    int n;\n    void Run(ref int q1) { var f = (int b) => { this.n = b; }; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
 TEST(BorrowedStorage, RefParameterWithoutALambdaIsAllowed)
 {
-    const hotc::TranslateResult r = check_translate("", "    void Run(Vec3& q1, int& b) { b = 1; }\n");
+    const hotc::TranslateResult r = check_translate("", "    void Run(ref Vec3 q1, ref int b) { b = 1; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(r.warnings.empty()) << r.warnings;
 }
@@ -134,7 +132,7 @@ TEST(BorrowedStorage, RefParameterWithoutALambdaIsAllowed)
 TEST(BorrowedStorage, RefLocalOfAFieldIsALocalReference)
 {
     const hotc::TranslateResult r =
-        check_translate("", "    Vec3 pos;\n    void Move() { Vec3& r = this.pos; r.x = 1; }\n");
+        check_translate("", "    Vec3 pos;\n    void Move() { ref Vec3 r = this.pos; r.x = 1; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "Vec3& r = __st->pos;")) << r.cpp;
 }
@@ -142,7 +140,7 @@ TEST(BorrowedStorage, RefLocalOfAFieldIsALocalReference)
 TEST(BorrowedStorage, RefInACallArgumentIsAllowed)
 {
     const hotc::TranslateResult r =
-        check_translate("", "    Vec3 pos;\n    void Take(Vec3& q1) { }\n    void Move() { this.Take(this.pos); }\n");
+        check_translate("", "    Vec3 pos;\n    void Take(ref Vec3 q1) { }\n    void Move() { this.Take(this.pos); }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
@@ -217,7 +215,7 @@ TEST(RefLocal, ALambdaCannotCaptureAVarRefLocal)
 TEST(RefLocal, ALambdaCannotCaptureATypedRefLocal)
 {
     const hotc::TranslateResult r =
-        check_translate("", "    Vec3 pos;\n    void Move() { Vec3& r = this.pos; var f = () => { r.x = 1; }; }\n");
+        check_translate("", "    Vec3 pos;\n    void Move() { ref Vec3 r = this.pos; var f = () => { r.x = 1; }; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'r'")) << r.diagnostics;
 }
@@ -225,14 +223,14 @@ TEST(RefLocal, ALambdaCannotCaptureATypedRefLocal)
 TEST(RefLocal, ALaterRefLocalDoesNotHideAnEarlierCapture)
 {
     const hotc::TranslateResult r = check_translate(
-        "", "    Vec3 pos;\n    void Move() { var f = () => { this.pos.x = 1; }; Vec3& r = this.pos; r.x = 2; }\n");
+        "", "    Vec3 pos;\n    void Move() { var f = () => { this.pos.x = 1; }; ref Vec3 r = this.pos; r.x = 2; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
 TEST(RefLocal, AVarRefLocalCannotBeReturned)
 {
     const hotc::TranslateResult r =
-        check_translate("", "    Vec3 pos;\n    Vec3* Get() { Vec3& r = this.pos; return r; }\n");
+        check_translate("", "    Vec3 pos;\n    Vec3* Get() { ref Vec3 r = this.pos; return r; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "a return value cannot hold a borrowed pointer")) << r.diagnostics;
 }
@@ -247,14 +245,14 @@ TEST(RefLocal, AVarRefLocalCannotInitializeAField)
 TEST(RefLocal, AssigningAVarRefLocalToAValueFieldCopiesTheValue)
 {
     const hotc::TranslateResult r = check_translate(
-        "", "    Vec3 pos;\n    Vec3 saved;\n    void Move() { Vec3& r = this.pos; this.saved = r; }\n");
+        "", "    Vec3 pos;\n    Vec3 saved;\n    void Move() { ref Vec3 r = this.pos; this.saved = r; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
 TEST(RefLocal, ARefLocalCannotBeStoredInAPointerField)
 {
     const hotc::TranslateResult r =
-        check_translate("", "    Vec3 pos;\n    Vec3** p;\n    void Move() { Vec3& r = this.pos; this.p = r; }\n");
+        check_translate("", "    Vec3 pos;\n    Vec3** p;\n    void Move() { ref Vec3 r = this.pos; this.p = r; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "a field cannot hold a borrowed pointer")) << r.diagnostics;
 }
@@ -282,14 +280,14 @@ TEST(RefLocal, AConditionalOfTwoHandlesInAVarLocalIsAllowed)
 TEST(RefLocal, ACopyOfAVarRefLocalIsAValueAndMayBeCaptured)
 {
     const hotc::TranslateResult r = check_translate(
-        "", "    Vec3 pos;\n    void Move() { Vec3& r = this.pos; Vec3 c = r; var f = () => { c.x = 1; }; }\n");
+        "", "    Vec3 pos;\n    void Move() { ref Vec3 r = this.pos; Vec3 c = r; var f = () => { c.x = 1; }; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
 TEST(RefLocal, AVarRefLocalIsAWarningWithoutStrictMode)
 {
     const hotc::TranslateResult r = check_translate(
-        "", "    Vec3 pos;\n    void Move() { Vec3& r = this.pos; var f = () => { r.x = 1; }; }\n", {}, false);
+        "", "    Vec3 pos;\n    void Move() { ref Vec3 r = this.pos; var f = () => { r.x = 1; }; }\n", {}, false);
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.warnings, "the lambda captures 'r'")) << r.warnings;
 }
@@ -298,7 +296,7 @@ TEST(RefLocal, AVarRefLocalIsAWarningWithoutStrictMode)
 TEST(BorrowedStorage, VarFromANativeMethodIsBorrowed)
 {
     const hotc::TranslateResult r =
-        check_translate("", "    void Run(Owner& o) { var w = o.GetWeapon(); var f = () => { int d = w.dmg; }; }\n");
+        check_translate("", "    void Run(ref Owner o) { var w = o.GetWeapon(); if (w == null) return; var f = () => { int d = w.dmg; }; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'w', a borrowed pointer or reference")) << r.diagnostics;
 }
@@ -317,7 +315,7 @@ TEST(BorrowedStorage, VarFromANativeFieldOrFunctionIsBorrowed)
 TEST(BorrowedStorage, VarOfAPointerToAHandleTypeIsNotBorrowed)
 {
     const hotc::TranslateResult r = check_translate("[native, handle(\"Arrow<$T>\")] class Weapon;\n",
-        "    void Run(Owner& o) { var w = o.GetWeapon(); var f = () => { int d = w.dmg; }; }\n");
+        "    void Run(ref Owner o) { var w = o.GetWeapon(); var f = () => { int d = w?.dmg ?? 0; }; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
@@ -325,14 +323,14 @@ TEST(BorrowedStorage, VarOfAnUnknownTypeKeepsTheOldRule)
 {
     // "Pick" has two overloads. Libclang gives no single type, so the local has no type.
     const hotc::TranslateResult r =
-        check_translate("", "    void Run(Owner& o) { var w = o.Pick(); var f = () => { int d = w.dmg; }; }\n");
+        check_translate("", "    void Run(ref Owner o) { var w = o.Pick(); var f = () => { int d = w.dmg; }; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
 TEST(BorrowedStorage, VarFromAChainOfLocalsIsTyped)
 {
     const hotc::TranslateResult r = check_translate(
-        "", "    void Run(Owner& o) { var a = o.GetWeapon(); var n = a.dmg; var f = () => { int d = n; }; }\n");
+        "", "    void Run(ref Owner o) { var a = o.GetWeapon(); if (a == null) return; var n = a.dmg; var f = () => { int d = n; }; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "auto n = hot::deref(a).dmg;")) << r.cpp;
 }
@@ -408,7 +406,7 @@ TEST(BorrowedStorage, LambdaCapturesACopyOfABorrowedPointer)
 
 TEST(BorrowedStorage, LambdaMayCaptureAValueCopyOfAReference)
 {
-    const hotc::TranslateResult r = check_translate("", "    void Run(int& r) { var c = r; var f = () => c; }\n");
+    const hotc::TranslateResult r = check_translate("", "    void Run(ref int r) { var c = r; var f = () => c; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
@@ -442,7 +440,7 @@ TEST(BorrowedStorage, AssignmentOfAddressOfIsAFindingAndBorrows)
 TEST(BorrowedStorage, PlainAssignmentAndValueCopyOfAReferenceStayLegal)
 {
     const hotc::TranslateResult r =
-        check_translate("", "    void Run(int& r) { var c = r; int q = 0; q = 5; c = r; var f = () => c + q; }\n");
+        check_translate("", "    void Run(ref int r) { var c = r; int q = 0; q = 5; c = r; var f = () => c + q; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
@@ -451,8 +449,8 @@ TEST(BorrowedArgs, AddressInTernaryParenCastAndDerefIsAllowedInACall)
 {
     const hotc::TranslateResult r = check_translate("",
         "    void Take(Vec3* p) { }\n"
-        "    void See(Vec3& v) { }\n"
-        "    void Run(Vec3& a, Vec3* b, bool c) {\n"
+        "    void See(ref Vec3 v) { }\n"
+        "    void Run(ref Vec3 a, Vec3* b, bool c) {\n"
         "        Vec3 x; Vec3 y;\n"
         "        Take(c ? &x : &y); Take(c ? b : &x); Take((&x)); Take((Vec3*)&x); Take(c ? &a : (Vec3*)&y);\n"
         "        See(*(c ? &x : &y)); See(*(Vec3*)&x); Take(b ?? &x);\n"
@@ -479,15 +477,16 @@ TEST(BorrowedArgs, EveryCallFormTakesABorrowedParameterAndLocal)
     const hotc::TranslateResult r = check_translate("",
         "    Foo(Vec3* p) { }\n"
         "    void Take(Vec3* p) { }\n"
-        "    void See(Vec3& v) { }\n"
-        "    void Run(Vec3& v, Vec3* p, Owner& o) {\n"
-        "        Vec3 x; var& r = x; var q = &x;\n"
+        "    void See(ref Vec3 v) { }\n"
+        "    void Run(ref Vec3 v, Vec3* p, ref Owner o) {\n"
+        "        Vec3 x; ref r = x; var q = &x;\n"
+        "        if (p == null) return;\n"
         "        Take(p); See(v); Take(&v); See(r); Take(q); Take(&r); Take(&*p);\n"
-        "        var a = new Foo(&x); var b = new Foo(p); var c = new Foo(q);\n"
-        "        var f = (Vec3& w) => { See(w); }; f(v); f(x);\n"
+        "        var a = new $Foo(&x); var b = new $Foo(p); var c = new $Foo(q);\n"
+        "        var f = (ref Vec3 w) => { See(w); }; f(v); f(x);\n"
         "        var g = (Vec3* w) => { Take(w); }; g(&x); g(p); g(q);\n"
-        "        try { Take(&x); } catch (std.exception& e) { Take(&x); }\n"
-        "        std.vector<Vec3> xs; foreach (var& e in xs) { See(e); Take(&e); }\n"
+        "        try { Take(&x); } catch (std.exception e) { Take(&x); }\n"
+        "        std.vector<Vec3> xs; foreach (ref e in xs) { See(e); Take(&e); }\n"
         "    }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
@@ -521,7 +520,7 @@ TEST(BorrowedArgs, AddressStaysAnErrorOutsideACallAndALocal)
 TEST(BorrowedArgs, CastNotInACallArgumentIsStillAnErrorToStore)
 {
     const hotc::TranslateResult r = check_translate("",
-        "    Vec3 keep;\n    Vec3* Get(Vec3& v) { return (Vec3*)&v; }\n");
+        "    Vec3 keep;\n    Vec3* Get(ref Vec3 v) { return (Vec3*)&v; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "a '&' value cannot be stored")) << r.diagnostics;
 }

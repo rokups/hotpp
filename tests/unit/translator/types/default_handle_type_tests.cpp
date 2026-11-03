@@ -94,7 +94,7 @@ TEST(DefaultHandle, PlainDataIsAValueWithoutAnyStub)
     with_classes(f);
     EXPECT_EQ(f.model.lookup("Vec3").kind, Kind::Value);
     EXPECT_EQ(f.model.storage("Vec3"), "Vec3");
-    EXPECT_EQ(f.model.param("Vec3"), "Vec3");
+    EXPECT_EQ(f.model.param("Vec3"), "hot::In<Vec3>");
 }
 
 TEST(DefaultHandle, WantsFactsOnlyForAClassNameWithoutAStub)

@@ -230,7 +230,7 @@ TEST(MigrationPlan, RenameWithoutAliasWarnsAndAliasDoesNot)
     EXPECT_TRUE(p.removed.empty());
 }
 
-// ---- a [value] script class stored inline (design 5.3): the migration recurses into it
+// ---- a struct stored inline (design 5.3): the migration recurses into it
 struct InnerOld
 {
     float hp;
@@ -563,7 +563,7 @@ TEST(Migration, AThrowingNativeMoveRequestsARestart)
     delete obj;
 }
 
-// ---- a native container of a [value] script class (design 5.3, S17)
+// ---- a native container of a struct (design 5.3, S17)
 // The type key has the hash of the layout of the value class. The same hash moves the container.
 // Another hash resets it to the default value with a warning.
 TEST(ContainerOfValueType, SameLayoutMovesOtherLayoutResets)

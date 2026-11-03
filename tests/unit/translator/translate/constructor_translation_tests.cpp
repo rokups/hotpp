@@ -55,9 +55,9 @@ TEST(ConstructorTranslation, ConstructorEmitsTheEntryPoints)
         "    Squad(std.string label, int extra) : base(label) { this.size = this.size + extra; }\n"
         "}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r, "static void Squad__ctor(Squad_Shell* __self, std::string label, int32_t extra)")) << r.cpp;
-    EXPECT_TRUE(has(r, "Squad__super_args(std::string label, int32_t extra)")) << r.cpp;
-    EXPECT_TRUE(has(r, "static Squad_Shell* Squad__new(std::string label, int32_t extra)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Squad__ctor(Squad_Shell* __self, hot::In<std::string> label, int32_t extra)")) << r.cpp;
+    EXPECT_TRUE(has(r, "Squad__super_args(hot::In<std::string> label, int32_t extra)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static Squad_Shell* Squad__new(hot::In<std::string> label, int32_t extra)")) << r.cpp;
     EXPECT_TRUE(has(r, "hot::construct_shell(&Squad_record")) << r.cpp;
     EXPECT_TRUE(has(r, "&Squad__construct")) << r.cpp;
     EXPECT_TRUE(has(r, "&Squad__new_default")) << r.cpp;
@@ -84,7 +84,7 @@ TEST(ConstructorTranslation, NewOfAScriptClass)
         "    Squad(int extra) { this.size = extra; }\n"
         "}\n"
         "class Boss : Unit {\n"
-        "    override void Update(float dt) { var s = new Squad(3); }\n"
+        "    override void Update(float dt) { var s = new $Squad(3); }\n"
         "}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "Squad__new_shared(3)")) << r.cpp;
@@ -95,7 +95,7 @@ TEST(ConstructorTranslation, NewNeedsNoConstructor)
     const hotc::TranslateResult r = translate_script(
         "class Squad : Unit { int size = 5; }\n"
         "class Boss : Unit {\n"
-        "    override void Update(float dt) { var s = new Squad(); }\n"
+        "    override void Update(float dt) { var s = new $Squad(); }\n"
         "}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "Squad__new_shared()")) << r.cpp;
@@ -137,7 +137,7 @@ TEST(ConstructorTranslation, OverloadsAndRefParameters)
         "class Squad : Unit {\n"
         "    int size = 5;\n"
         "    Squad() { this.size = 1; }\n"
-        "    Squad(int n, int& seen) { this.size = n; seen = n; }\n"
+        "    Squad(int n, ref int seen) { this.size = n; seen = n; }\n"
         "}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "static void Squad__ctor(Squad_Shell* __self);")) << r.cpp;
@@ -154,24 +154,19 @@ TEST(ConstructorTranslation, OverloadsAndRefParameters)
 TEST(ConstructorTranslation, SuperArgumentBindsToARefParameter)
 {
     const hotc::TranslateResult r = translate_script(
-        "class A : Unit {\n    A(int v, int& seen) { seen = v; }\n}\n"
-        "class B : A {\n    B(int w, int& seen) : base(w + 1, seen) { }\n}\n");
+        "class A : Unit {\n    A(int v, ref int seen) { seen = v; }\n}\n"
+        "class B : A {\n    B(int w, ref int seen) : base(w + 1, seen) { }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "static auto B__plan(int32_t w, int32_t& seen)")) << r.cpp;
     EXPECT_TRUE(has(r, "std::make_tuple(w + 1, std::ref(seen))")) << r.cpp;
     EXPECT_EQ(r.cpp.find("std::ref(seen)"), r.cpp.rfind("std::ref(seen)")) << r.cpp;
 }
 
-// A "&&" constructor parameter is a const reference in the plan and moves into the constructor.
-TEST(ConstructorTranslation, RvalueReferenceParameter)
+// A "&&" constructor parameter is removed: "&" is not a type suffix.
+TEST(ConstructorTranslation, RvalueReferenceParameterIsAnError)
 {
-    const hotc::TranslateResult r = translate_script(
-        "class A : Unit {\n    std.string t = std.string();\n    A(std.string&& s) { this.t = s; }\n}\n"
-        "class B : A {\n    B(std.string&& s) : base(std.move(s)) { }\n}\n");
-    ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r, "static void A__ctor(A_Shell* __self, std::string&& s);")) << r.cpp;
-    EXPECT_TRUE(has(r, "static auto A__plan(const std::remove_reference_t<std::string&&>& s)")) << r.cpp;
-    EXPECT_TRUE(has(r, "A__ctor_chain(__self, __plan.second, std::move(s));")) << r.cpp;
+    expect_error("class A : Unit {\n    std.string t = std.string();\n    A(std.string&& s) { this.t = s; }\n}\n",
+        "\"&\" is not a type suffix; write ref T x");
 }
 
 TEST(ConstructorTranslation, SuperArgumentsMayUseParametersOnly)
@@ -189,9 +184,9 @@ TEST(ConstructorTranslation, SuperArgumentsMayUseParametersOnly)
 
 TEST(ConstructorTranslation, ConstructorErrors)
 {
-    expect_error("class S : Unit {\n    S(int v) { }\n    S(int& w) { }\n}\n",
+    expect_error("class S : Unit {\n    S(int v) { }\n    S(ref int w) { }\n}\n",
         "class 'S' has two constructors with the same parameter types");
-    expect_error("class Bar : Unit { }\nclass S : Unit {\n    S(Bar b) { }\n    S(const Bar& c) { }\n}\n",
+    expect_error("class Bar : Unit { }\nclass S : Unit {\n    S($Bar b) { }\n    S(in $Bar c) { }\n}\n",
         "class 'S' has two constructors with the same parameter types");
     expect_error("class S : Unit {\n    ~S() { }\n    ~S() { }\n}\n", "one destructor");
     expect_error("class S : Unit {\n    S(int v, int v) { }\n}\n", "is declared twice");
@@ -209,7 +204,7 @@ TEST(ConstructorTranslation, NewBeforeTheDefinitionIsAccepted)
 {
     const hotc::TranslateResult r = translate_script(
         "class Boss : Unit {\n"
-        "    override void Update(float dt) { var s = new Squad(3); }\n"
+        "    override void Update(float dt) { var s = new $Squad(3); }\n"
         "}\n"
         "class Squad : Unit {\n    Squad(int e) { }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
@@ -222,8 +217,8 @@ TEST(ConstructorTranslation, NullForAWeakParameterIsTheEmptyWeakHandle)
 {
     const hotc::TranslateResult r = translate_script(
         "class N {\n    int v = 1;\n}\n"
-        "class C {\n    [weak]\n    N p = null;\n    C([weak] N q) { p = q; }\n}\n"
-        "class K : Unit {\n    override void Update(float dt) { C c = new C(null); }\n}\n");
+        "class C {\n    [weak]\n    $N p = null;\n    C([weak] $N q) { p = q; }\n}\n"
+        "class K : Unit {\n    override void Update(float dt) { $C c = new $C(null); }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "C__new_shared(std::weak_ptr<N>())")) << r.cpp;
     EXPECT_FALSE(has(r, "C__new_shared(nullptr)")) << r.cpp;

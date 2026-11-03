@@ -1,0 +1,3 @@
+50_raw_this_to_shared.hot:5:21: error: cannot create a shared pointer from a raw pointer; use new $T(...)
+    5 |         $Actor me = this;
+1 error generated.

@@ -32,7 +32,7 @@
 //
 // AOT mode (--aot): translate scripts for an AOT build (design M7).
 //   hotc --aot <file.hot>... --out-dir DIR [-I dir]... [--prelude file]...
-//        [--no-strict-borrowed] [--format=std|fmt] [--resource-dir dir] [--aot-optimized]
+//        [--no-strict-borrowed] [--null-warnings] [--format=std|fmt] [--resource-dir dir] [--aot-optimized]
 // The flag --aot-optimized builds optimized AOT code. It needs --aot.
 // For each file the tool writes DIR/<name>.aot.cpp (generation 1). It also writes
 // DIR/hot_aot_registry.cpp, which defines the constant table hot::aot_table
@@ -72,7 +72,7 @@ namespace
 {
     std::fprintf(stderr,
         "usage: hotc <file.hot>... --gen N (--out-dir DIR | -o x.so) [-I dir]... [--resource-dir dir]\n"
-        "            [--cxx command] [--cxxflag flag]... [--slots file] [--no-strict-borrowed] [--format=std|fmt]\n"
+        "            [--cxx command] [--cxxflag flag]... [--slots file] [--no-strict-borrowed] [--null-warnings] [--format=std|fmt]\n"
         "            [--raw-diagnostics] [--compile-commands dir] [--std=c++17|c++20|c++23]\n"
         "       hotc --emit-cpp <file.hot> --gen N [-o out.cpp] [-I dir]... [--prelude file]... [--no-strict-borrowed] "
         "[--format=std|fmt]\n"
@@ -117,6 +117,7 @@ struct Args
     std::string format_lib = "std"; // --format=std|fmt
     bool format_given = false; // the flag --format is present
     bool strict_borrowed = true; // --no-strict-borrowed turns it off
+    bool null_warnings = false; // --null-warnings: a nullability finding is a warning
     bool raw_diagnostics = false; // --raw-diagnostics: the compiler text as it is
     std::string compile_commands; // --compile-commands: the directory of compile_commands.json
 };
@@ -191,6 +192,8 @@ Args parse_args(int argc, char** argv)
             r.strict_borrowed = true;
         else if (a == "--no-strict-borrowed")
             r.strict_borrowed = false;
+        else if (a == "--null-warnings")
+            r.null_warnings = true;
         else if (a == "--raw-diagnostics")
             r.raw_diagnostics = true;
         else if (a == "--compile-commands")
@@ -294,6 +297,7 @@ int run_aot(const Args& args)
     base.aot = true;
     base.aot_optimized = args.aot_optimized;
     base.strict_borrowed = args.strict_borrowed;
+    base.null_warnings = args.null_warnings;
     base.format_lib = args.format_lib;
     // Without --resource-dir the translator needs the default. A portable build finds it at run time.
     base.resource_dir = args.resource_dir.empty() ? hot::default_paths().resource_dir : args.resource_dir;
@@ -405,6 +409,7 @@ int run_emit(const Args& args)
     hotc::TranslateOptions opt;
     opt.generation = args.gen;
     opt.strict_borrowed = args.strict_borrowed;
+    opt.null_warnings = args.null_warnings;
     opt.format_lib = args.format_lib;
     opt.resource_dir = args.resource_dir.empty() ? hot::default_paths().resource_dir : args.resource_dir;
     opt.target = args.target;
@@ -497,6 +502,7 @@ int run_build(const Args& args)
     opt.extra_flags = args.cxxflags;
     opt.include_dirs = args.include_dirs;
     opt.strict_borrowed = args.strict_borrowed;
+    opt.null_warnings = args.null_warnings;
     opt.raw_diagnostics = args.raw_diagnostics;
     std::string out_dir = args.out_dir;
     if (single_so)

@@ -6,6 +6,6 @@ class Helper {
 
 class Player : Actor {
     override void Tick(float dt) {
-        Helper h = Helper();
+        $Helper h = Helper();
     }
 }

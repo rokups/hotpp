@@ -62,33 +62,33 @@ const char* kTwoClasses =
 TEST(TypedAccess, FieldOfAScriptHandleUsesTheState)
 {
     const hotc::TranslateResult r = translate_script(
-        std::string(kTwoClasses) + "class Boss : Unit {\n    Squad s;\n    int Run() { return this.s.size; }\n}\n");
+        std::string(kTwoClasses) + "class Boss : Unit {\n    $Squad s;\n    int Run() { $Squad t = this.s; if (t == null) return 0; return t.size; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r, "state_of(hot::shell_of<Squad_Shell>(__st->s, \"Squad\"))->size")) << r.cpp;
+    EXPECT_TRUE(has(r, "state_of(hot::shell_of<Squad_Shell>(t, \"Squad\"))->size")) << r.cpp;
 }
 
 TEST(TypedAccess, MethodOfAScriptHandleIsADirectCall)
 {
     const hotc::TranslateResult r = translate_script(std::string(kTwoClasses)
-        + "class Boss : Unit {\n    Squad s;\n    int Run(Squad other) { other.Grow(2); return this.s.Count(); }\n}\n");
+        + "class Boss : Unit {\n    $Squad s;\n    int Run($Squad other) { $Squad t = this.s; if (other == null || t == null) return 0; other.Grow(2); return t.Count(); }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "Squad__Grow(hot::shell_of<Squad_Shell>(other, \"Squad\"), 2)")) << r.cpp;
-    EXPECT_TRUE(has(r, "Squad__Count(hot::shell_of<Squad_Shell>(__st->s, \"Squad\"))")) << r.cpp;
+    EXPECT_TRUE(has(r, "Squad__Count(hot::shell_of<Squad_Shell>(t, \"Squad\"))")) << r.cpp;
 }
 
 TEST(TypedAccess, PropertyOfAScriptHandleUsesItsAccessors)
 {
     const hotc::TranslateResult r = translate_script(std::string(kTwoClasses)
-        + "class Boss : Unit {\n    Squad s;\n    int Run() { this.s.Power = 4; return this.s.Power; }\n}\n");
+        + "class Boss : Unit {\n    $Squad s;\n    int Run() { $Squad t = this.s; if (t == null) return 0; t.Power = 4; return t.Power; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r, "Squad__set_Power(hot::shell_of<Squad_Shell>(__st->s, \"Squad\"), 4)")) << r.cpp;
-    EXPECT_TRUE(has(r, "Squad__get_Power(hot::shell_of<Squad_Shell>(__st->s, \"Squad\"))")) << r.cpp;
+    EXPECT_TRUE(has(r, "Squad__set_Power(hot::shell_of<Squad_Shell>(t, \"Squad\"), 4)")) << r.cpp;
+    EXPECT_TRUE(has(r, "Squad__get_Power(hot::shell_of<Squad_Shell>(t, \"Squad\"))")) << r.cpp;
 }
 
 TEST(TypedAccess, LocalFromNewHasTheTypeOfTheClass)
 {
     const hotc::TranslateResult r = translate_script(
-        std::string(kTwoClasses) + "class Boss : Unit {\n    int Run() { var q = new Squad(); return q.size; }\n}\n");
+        std::string(kTwoClasses) + "class Boss : Unit {\n    int Run() { var q = new $Squad(); return q.size; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "state_of(hot::shell_of<Squad_Shell>(q, \"Squad\"))->size")) << r.cpp;
 }
@@ -96,7 +96,7 @@ TEST(TypedAccess, LocalFromNewHasTheTypeOfTheClass)
 TEST(TypedAccess, ScriptFunctionUsedAsAValueIsAnError)
 {
     const hotc::TranslateResult r = translate_script(std::string(kTwoClasses)
-        + "class Boss : Unit {\n    Squad s;\n    int Run() { var f = this.s.Count; return 0; }\n}\n");
+        + "class Boss : Unit {\n    $Squad s;\n    int Run() { $Squad t = this.s; if (t == null) return 0; var f = t.Count; return 0; }\n}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("script function 'Count' must be called"), std::string::npos) << r.diagnostics;
 }
@@ -104,8 +104,8 @@ TEST(TypedAccess, ScriptFunctionUsedAsAValueIsAnError)
 TEST(TypedAccess, ReturnThisAsAHandleUsesSharedFromThis)
 {
     const hotc::TranslateResult r = translate_script(
-        "class Node : Unit {\n    Node Self() { return this; }\n}\n"
-        "class Plain {\n    Plain Me() { return this; }\n}\n");
+        "class Node : Unit {\n    $Node Self() { return this; }\n}\n"
+        "class Plain {\n    $Plain Me() { return this; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "return hot::handle_from_this<std::shared_ptr<Node>>(__self);")) << r.cpp;
     EXPECT_TRUE(has(r, "return hot::handle_from_this<std::shared_ptr<Plain>>(__self);")) << r.cpp;
@@ -121,7 +121,7 @@ TEST(TypedAccess, BareThisAsAPointerNeedsNoSharedFromThis)
 }
 
 // ------------------------------------------------------------------ parameter analysis
-TEST(ParamAnalysis, ReadOnlyValueParamIsAConstReference)
+TEST(ParamAnalysis, ReadOnlyValueParamIsTheInTrait)
 {
     const hotc::TranslateResult r = translate_script(
         "[native, value] class Blob;\nclass Box : Unit {\n    int Size(Blob b) { return b.Get(); }\n    int Peek(Blob "
@@ -129,23 +129,24 @@ TEST(ParamAnalysis, ReadOnlyValueParamIsAConstReference)
         "    void Grow(Blob b) { b.Add(1); }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     // A call of a const native member function is not a change (S20b). Libclang gives the constness.
-    EXPECT_TRUE(has(r, "static int32_t Box__Size(Box_Shell* __self, const Blob& b)")) << r.cpp;
-    EXPECT_TRUE(has(r, "static int32_t Box__Peek(Box_Shell* __self, const Blob& b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static int32_t Box__Size(Box_Shell* __self, hot::In<Blob> b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static int32_t Box__Peek(Box_Shell* __self, hot::In<Blob> b)")) << r.cpp;
     // A non-const member function can change the object: the body gets a copy.
     EXPECT_TRUE(has(r, "static void Box__Grow(Box_Shell* __self, Blob b)")) << r.cpp;
 }
 
-// "var& r = b;" is a writable alias of the parameter: the body gets a copy.
+// "ref r = b;" is a writable alias of the parameter: the body gets a copy.
 TEST(ParamAnalysis, VarReferenceToAParamMarksItMutated)
 {
     const hotc::TranslateResult r = translate_script(
-        "[native, value] class Blob;\nclass Box : Unit {\n    void A(Blob b) { var& r = b; r.Add(1); }\n"
-        "    int B(Blob b) { const var& r = b; return r.Get(); }\n}\n");
+        "[native, value] class Blob;\nclass Box : Unit {\n    void A(Blob b) { ref r = b; r.Add(1); }\n"
+        "    int B(Blob b) { return b.Get(); }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "static void Box__A(Box_Shell* __self, Blob b)")) << r.cpp;
 }
 
-TEST(ParamAnalysis, StoredValueParamIsACopy)
+// The parameter can alias the field "kept" that the body writes: the body gets a copy.
+TEST(ParamAnalysis, StoredValueParamThatAliasesAFieldIsACopy)
 {
     const hotc::TranslateResult r = translate_script(
         "[native, value] class Blob;\nclass Box : Unit {\n    Blob kept;\n    void Keep(Blob b) { this.kept = b; "
@@ -154,21 +155,21 @@ TEST(ParamAnalysis, StoredValueParamIsACopy)
     EXPECT_TRUE(has(r, "static void Box__Keep(Box_Shell* __self, Blob b)")) << r.cpp;
 }
 
-TEST(ParamAnalysis, SmallPlainValueIsPassedByValue)
+TEST(ParamAnalysis, SmallPlainValueIsTheInTrait)
 {
     const hotc::TranslateResult r =
         translate_script("[native, value] class Vec3;\nclass Box : Unit {\n    float Len(Vec3 v) { return 1.0; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r, "static float Box__Len(Box_Shell* __self, Vec3 v)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static float Box__Len(Box_Shell* __self, hot::In<Vec3> v)")) << r.cpp;
 }
 
-TEST(ParamAnalysis, SlotAdapterKeepsTheCanonicalForm)
+TEST(ParamAnalysis, SlotHasTheFormOfTheRule)
 {
     const hotc::TranslateResult r =
         translate_script("[native, value] class Blob;\nclass Box : Unit {\n    int Peek(Blob b) { return 1; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    // The slot is the state member. It has the canonical form of the parameter.
-    EXPECT_TRUE(has(r, "int32_t BoxState_g1::Peek(Blob __b)")) << r.cpp;
+    // The slot is the state member. It has the form of the rule, and the body reads it as it is.
+    EXPECT_TRUE(has(r, "int32_t BoxState_g1::Peek(hot::In<Blob> b)")) << r.cpp;
     EXPECT_TRUE(has(r, "reinterpret_cast<hot::SlotFn>(&BoxState_g1::Peek)")) << r.cpp;
 }
 
@@ -182,7 +183,7 @@ TEST(ParamAnalysis, ParamPassedToAScriptFunctionGetsItsUse)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "static void Box__PassChange(Box_Shell* __self, Blob b)")) << r.cpp;
     EXPECT_TRUE(has(r, "static void Box__PassChangeBare(Box_Shell* __self, Blob b)")) << r.cpp;
-    EXPECT_TRUE(has(r, "static int32_t Box__PassRead(Box_Shell* __self, const Blob& b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static int32_t Box__PassRead(Box_Shell* __self, hot::In<Blob> b)")) << r.cpp;
 }
 
 TEST(ParamAnalysis, ParamPassedToAStoringScriptFunctionIsACopy)
@@ -204,15 +205,15 @@ TEST(ParamAnalysis, ParamThatCanAliasAWrittenFieldIsACopy)
         "    void Inner() { this.cur.Add(2); }\n    int Deep(Blob b) { this.Inner(); return b.Get(); }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "static int32_t Box__Swap(Box_Shell* __self, Blob b)")) << r.cpp;
-    EXPECT_TRUE(has(r, "static int32_t Box__Hit(Box_Shell* __self, const Blob& b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static int32_t Box__Hit(Box_Shell* __self, hot::In<Blob> b)")) << r.cpp;
     EXPECT_TRUE(has(r, "static int32_t Box__Deep(Box_Shell* __self, Blob b)")) << r.cpp;
 }
 
 TEST(ParamAnalysis, HandleParamThatCanAliasAWrittenFieldIsACopy)
 {
     const hotc::TranslateResult r = translate_script(
-        "class Squad : Unit {\n    int size = 3;\n}\nclass Box : Unit {\n    Squad lead;\n"
-        "    int Set(Squad s) { this.lead = new Squad(); return s.size; }\n    int Get(Squad s) { return s.size; "
+        "class Squad : Unit {\n    int size = 3;\n}\nclass Box : Unit {\n    $Squad lead;\n"
+        "    int Set($Squad s) { if (s == null) return 0; this.lead = new $Squad(); return s.size; }\n    int Get($Squad s) { if (s == null) return 0; return s.size; "
         "}\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "static int32_t Box__Set(Box_Shell* __self, std::shared_ptr<Squad> s)")) << r.cpp;
@@ -224,7 +225,7 @@ TEST(TypedAccess, PropertyNameOnAKnownNativeTypeIsTheNativeMember)
 {
     const hotc::TranslateResult r = translate_script(
         "class Box : Unit {\n    int N { get; set; }\n"
-        "    int Run(Rec& r) { r.N = 2; var q = Rec.Get(); q.N = 3; return r.N + q.N; }\n}\n");
+        "    int Run(ref Rec r) { r.N = 2; var q = Rec.Get(); if (q == null) return 0; q.N = 3; return r.N + q.N; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "hot::deref(r).N = 2;")) << r.cpp;
     EXPECT_TRUE(has(r, "hot::deref(q).N = 3;")) << r.cpp;
@@ -242,15 +243,16 @@ TEST(ParamAnalysis, ParamPassedToANativeFunctionFollowsItsSignature)
         "    void E(Blob b) { Both(b); }\n    void F(Blob b) { Mystery(b); }\n"
         "    void G(Blob b) { eng.Peek(b); }\n    void H(Blob b) { eng.Keep(b); }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r, "static void Box__A(Box_Shell* __self, const Blob& b)")) << r.cpp;
-    EXPECT_TRUE(has(r, "static void Box__B(Box_Shell* __self, Blob b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__A(Box_Shell* __self, hot::In<Blob> b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__B(Box_Shell* __self, hot::In<Blob> b)")) << r.cpp;
     EXPECT_TRUE(has(r, "static void Box__C(Box_Shell* __self, Blob b)")) << r.cpp;
     EXPECT_TRUE(has(r, "static void Box__D(Box_Shell* __self, Blob b)")) << r.cpp;
-    // An overload set: the worst form counts. A function that libclang does not find: a copy.
-    EXPECT_TRUE(has(r, "static void Box__E(Box_Shell* __self, Blob b)")) << r.cpp;
-    EXPECT_TRUE(has(r, "static void Box__F(Box_Shell* __self, Blob b)")) << r.cpp;
-    EXPECT_TRUE(has(r, "static void Box__G(Box_Shell* __self, const Blob& b)")) << r.cpp;
-    EXPECT_TRUE(has(r, "static void Box__H(Box_Shell* __self, Blob b)")) << r.cpp;
+    // A function that takes the argument by value only stores a copy: the rule stays. A change needs a copy.
+    // An overload set: the worst form counts.
+    EXPECT_TRUE(has(r, "static void Box__E(Box_Shell* __self, hot::In<Blob> b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__F(Box_Shell* __self, hot::In<Blob> b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__G(Box_Shell* __self, hot::In<Blob> b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__H(Box_Shell* __self, hot::In<Blob> b)")) << r.cpp;
 }
 
 TEST(ParamAnalysis, ParamPassedToANativeMemberFunctionFollowsItsSignature)
@@ -262,13 +264,13 @@ TEST(ParamAnalysis, ParamPassedToANativeMemberFunctionFollowsItsSignature)
         "    void C(Blob b, Sink s) { s.Read(b); }\n    void D(Blob b, Sink s) { s.Keep(b); }\n"
         "    void E(Blob b) { this.sub.Read(b); }\n    void F(Blob b) { this.sub.Keep(b); }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r, "static void Box__A(Box_Shell* __self, const Blob& b)")) << r.cpp;
-    EXPECT_TRUE(has(r, "static void Box__B(Box_Shell* __self, Blob b)")) << r.cpp;
-    EXPECT_TRUE(has(r, "static void Box__C(Box_Shell* __self, const Blob& b, ")) << r.cpp;
-    EXPECT_TRUE(has(r, "static void Box__D(Box_Shell* __self, Blob b, ")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__A(Box_Shell* __self, hot::In<Blob> b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__B(Box_Shell* __self, hot::In<Blob> b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__C(Box_Shell* __self, hot::In<Blob> b, ")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__D(Box_Shell* __self, hot::In<Blob> b, ")) << r.cpp;
     // The member function comes from a native base class.
-    EXPECT_TRUE(has(r, "static void Box__E(Box_Shell* __self, const Blob& b)")) << r.cpp;
-    EXPECT_TRUE(has(r, "static void Box__F(Box_Shell* __self, Blob b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__E(Box_Shell* __self, hot::In<Blob> b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__F(Box_Shell* __self, hot::In<Blob> b)")) << r.cpp;
 }
 
 // S25: a call on a script handle uses the declared method of the script class.
@@ -276,24 +278,23 @@ TEST(ParamAnalysis, ParamPassedToAMethodOfAScriptHandleFollowsTheMethod)
 {
     const hotc::TranslateResult r = translate_script(
         "[native, value] class Blob;\n"
-        "class Squad : Unit {\n    Blob kept;\n    Squad mate;\n"
+        "class Squad : Unit {\n    Blob kept;\n    $Squad mate;\n"
         "    void Take(Blob b) { this.kept = b; }\n    int Look(Blob b) { return b.Get(); }\n"
         "    void Change(Blob b) { b.Add(1); }\n    virtual void Over(Blob b) { }\n"
-        "    void Link(Squad s) { this.mate = s; }\n    int Count(Squad s) { return 1; }\n}\n"
-        "class Box : Unit {\n    Squad lead;\n"
-        "    int A(Squad s, Blob b) { return s.Look(b); }\n    void B(Squad s, Blob b) { s.Take(b); }\n"
-        "    void C(Squad s, Blob b) { s.Change(b); }\n    void D(Squad s, Blob b) { s.Over(b); }\n"
-        "    int E(Blob b) { return this.lead.Look(b); }\n    void F(Blob b) { this.lead.Take(b); }\n"
-        "    int G(Squad s, Squad t) { return s.Count(t); }\n    void H(Squad s, Squad t) { s.Link(t); }\n}\n");
+        "    void Link($Squad s) { this.mate = s; }\n    int Count($Squad s) { return 1; }\n}\n"
+        "class Box : Unit {\n    $Squad lead;\n"
+        "    int A($Squad s, Blob b) { if (s == null) return 0; return s.Look(b); }\n    void B($Squad s, Blob b) { if (s == null) return; s.Take(b); }\n"
+        "    void C($Squad s, Blob b) { if (s == null) return; s.Change(b); }\n    void D($Squad s, Blob b) { if (s == null) return; s.Over(b); }\n"
+        "    int E(Blob b) { $Squad t = this.lead; if (t == null) return 0; return t.Look(b); }\n    void F(Blob b) { $Squad t = this.lead; if (t == null) return; t.Take(b); }\n"
+        "    int G($Squad s, $Squad t) { if (s == null) return 0; return s.Count(t); }\n    void H($Squad s, $Squad t) { if (s == null) return; s.Link(t); }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r, "static int32_t Box__A(Box_Shell* __self, const std::shared_ptr<Squad>& s, const Blob& b)"))
+    EXPECT_TRUE(has(r, "static int32_t Box__A(Box_Shell* __self, const std::shared_ptr<Squad>& s, hot::In<Blob> b)"))
         << r.cpp;
-    EXPECT_TRUE(has(r, "static void Box__B(Box_Shell* __self, const std::shared_ptr<Squad>& s, Blob b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__B(Box_Shell* __self, const std::shared_ptr<Squad>& s, hot::In<Blob> b)")) << r.cpp;
     EXPECT_TRUE(has(r, "static void Box__C(Box_Shell* __self, const std::shared_ptr<Squad>& s, Blob b)")) << r.cpp;
-    // A virtual method can have an override that does more: a copy.
-    EXPECT_TRUE(has(r, "static void Box__D(Box_Shell* __self, const std::shared_ptr<Squad>& s, Blob b)")) << r.cpp;
-    EXPECT_TRUE(has(r, "static int32_t Box__E(Box_Shell* __self, const Blob& b)")) << r.cpp;
-    EXPECT_TRUE(has(r, "static void Box__F(Box_Shell* __self, Blob b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__D(Box_Shell* __self, const std::shared_ptr<Squad>& s, hot::In<Blob> b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static int32_t Box__E(Box_Shell* __self, hot::In<Blob> b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static void Box__F(Box_Shell* __self, hot::In<Blob> b)")) << r.cpp;
     // A handle argument: a read keeps "const Handle&", a store takes a copy.
     EXPECT_TRUE(has(r,
         "static int32_t Box__G(Box_Shell* __self, const std::shared_ptr<Squad>& s, const std::shared_ptr<Squad>& t)"))
@@ -316,13 +317,13 @@ TEST(ParamAnalysis, ParamPassedToALocalLambdaFollowsTheLambda)
         "    int F(Blob b, int n) { var f = (Blob x) => { return x.Get(); }; return b.Get() + n; }\n"
         "    int G(Blob b) { var f = () => { return b.Get(); }; return f(); }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r, "static int32_t Box__A(Box_Shell* __self, const Blob& b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static int32_t Box__A(Box_Shell* __self, hot::In<Blob> b)")) << r.cpp;
     EXPECT_TRUE(has(r, "static void Box__B(Box_Shell* __self, Blob b)")) << r.cpp;
     EXPECT_TRUE(has(r, "static void Box__C(Box_Shell* __self, Blob b)")) << r.cpp;
-    EXPECT_TRUE(has(r, "static int32_t Box__D(Box_Shell* __self, const Blob& b)")) << r.cpp;
-    // A callable that the analysis does not see: a copy.
-    EXPECT_TRUE(has(r, "static void Box__E(Box_Shell* __self, Blob b)")) << r.cpp;
-    EXPECT_TRUE(has(r, "static int32_t Box__F(Box_Shell* __self, const Blob& b, int32_t n)")) << r.cpp;
-    // A lambda that captures the parameter keeps a copy of it.
-    EXPECT_TRUE(has(r, "static int32_t Box__G(Box_Shell* __self, Blob b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static int32_t Box__D(Box_Shell* __self, hot::In<Blob> b)")) << r.cpp;
+    // A callable that the analysis does not see: the rule stays.
+    EXPECT_TRUE(has(r, "static void Box__E(Box_Shell* __self, hot::In<Blob> b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static int32_t Box__F(Box_Shell* __self, hot::In<Blob> b, int32_t n)")) << r.cpp;
+    // A lambda that captures the parameter copies it: the rule stays.
+    EXPECT_TRUE(has(r, "static int32_t Box__G(Box_Shell* __self, hot::In<Blob> b)")) << r.cpp;
 }

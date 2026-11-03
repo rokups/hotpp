@@ -1,0 +1,11 @@
+class Node {
+    int hp = 0;
+}
+
+class Holder {
+    $Node kept = null;
+
+    void Look() {
+        ref r = this.kept;
+    }
+}

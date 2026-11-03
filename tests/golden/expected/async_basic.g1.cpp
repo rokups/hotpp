@@ -388,9 +388,9 @@ hot::Task<int32_t> WorkerState_g1::Double(int32_t x)
 #line 13 "async_basic.hot"
     HOT_NODEBUG_LOCAL auto* __st = state_of(__self);
 #line 13 "async_basic.hot"
-    auto left = co_await Worker__Double(__self, a);
+    const auto left = co_await Worker__Double(__self, a);
 #line 14 "async_basic.hot"
-    auto right = co_await Worker__Double(__self, b);
+    const auto right = co_await Worker__Double(__self, b);
 #line 15 "async_basic.hot"
     __st->total = left + right;
 #line 16 "async_basic.hot"

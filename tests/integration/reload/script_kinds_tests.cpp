@@ -2,7 +2,7 @@
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
-// Reload tests of the kinds of script classes (S5, design 7.10.1 and 5.3): a [value] class
+// Reload tests of the kinds of script classes (S5, design 7.10.1 and 5.3): a class
 // that lives inline in the state block, a class without a base that is a handle, and a class
 // with a native base that is a handle. They use the backend that HOT_BACKEND selected.
 #include "hot/backend.h"
@@ -28,7 +28,7 @@ template <class T> T* fld(Session& s, const char* name)
     return hot::field_ptr<T>(s.inst.shell, name);
 }
 
-// A field of the [value] class that the field "outer" holds inline. The test cannot name the
+// A field of the class that the field "outer" holds inline. The test cannot name the
 // struct, so it reads the field table of the value class.
 template <class T> T* inner(Session& s, const char* outer, const char* name)
 {

@@ -101,9 +101,8 @@ TEST(AbstractParse, AccessAsyncAndConstWithAbstract)
     }
     {
         ModParsed p(abstract_class("abstract int F() const;"));
-        EXPECT_TRUE(p.errors().empty());
+        EXPECT_EQ(p.errors().size(), 1u);
         EXPECT_TRUE(p.method().is_abstract);
-        EXPECT_TRUE(p.method().is_const);
     }
 }
 

@@ -38,12 +38,9 @@ TEST(DefaultValueTranslation, LocalsAreValueInitialized)
     EXPECT_TRUE(has(r.cpp, "for (int32_t i = int32_t(); i < 3; i++)")) << r.cpp;
 }
 
-TEST(DefaultValueTranslation, VarAndConstNeedAnInitializer)
+TEST(DefaultValueTranslation, VarNeedsAnInitializer)
 {
     const hotc::TranslateResult a = weapon_translate("    void F() { var x; }\n");
     EXPECT_FALSE(a.ok);
     EXPECT_TRUE(has(a.diagnostics, "var needs an initializer")) << a.diagnostics;
-    const hotc::TranslateResult b = weapon_translate("    void F() { const int X; }\n");
-    EXPECT_FALSE(b.ok);
-    EXPECT_TRUE(has(b.diagnostics, "a const needs an initializer")) << b.diagnostics;
 }

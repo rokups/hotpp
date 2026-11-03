@@ -86,11 +86,12 @@ A stub with the key of a stub in an earlier file merges into the earlier rule. I
 | `value`, `handle`, `intrusive` | The storage. A later stub that states one of them replaces the full earlier storage. For example, a new `handle` removes an inherited `intrusive`. |
 | `weak_handle` | Replaces the earlier value. It belongs to the handle: a new storage without a handle removes it. A new handle with an inherited weak handle is an error, unless the later stub states `weak_handle` again. |
 | `default_handle` | Replaces the earlier value. |
+| `factory` | Replaces the earlier value. A new `value` storage removes it. The template must hold `$T`. |
 | `native`, `self`, `checked_index` | Add up. A later stub cannot remove them. |
 | `cpp_prelude` | Adds up. The later text comes after the earlier text. |
 | `cpp_overrides` | Adds up. The result has the names of all stubs, each name one time. |
 
-An empty string removes an inherited attribute: `weak_handle("")`, `default_handle("")`, `cpp_prelude("")` and `cpp_overrides("")`. A new storage removes the old storage. The flags `native`, `self` and `checked_index` cannot be removed.
+An empty string removes an inherited attribute: `weak_handle("")`, `factory("")`, `default_handle("")`, `cpp_prelude("")` and `cpp_overrides("")`. A new storage removes the old storage. The flags `native`, `self` and `checked_index` cannot be removed.
 
 The translator checks the merged rule with the same checks as one stub. An error, such as `value` with an inherited `weak_handle`, shows at the later stub. In one file, a second stub with the same key is an error.
 

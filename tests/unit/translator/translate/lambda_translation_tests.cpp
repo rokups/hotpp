@@ -29,7 +29,7 @@ TEST(LambdaTranslation, ParametersGetTypesAndPointersUseArrow)
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
     const hotc::TranslateResult r = hotc::translate(
-        temp_options(dir, lambda_script("        var f = (float x, int* q) => { q.foo(); this.n = x; };")));
+        temp_options(dir, lambda_script("        var f = (float x, int* q) => { if (q == null) return; q.foo(); this.n = x; };")));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("[=](float x, int32_t* q)"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("hot::deref(q).foo();"), std::string::npos) << r.cpp;

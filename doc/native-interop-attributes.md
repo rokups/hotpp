@@ -131,6 +131,10 @@ class HOT_ATTRIBUTE("Spawnable") Enemy : public Actor {
 
 At run time, `Loader::stats().classes` gives one `hot::ClassInfo` for each class. Its field `attributes` holds the tag names in source order. The record field `ClassRecord::attributes` holds the same names as a list that ends with `nullptr`. A reload replaces the tags with the tags of the new generation. A removed class has no tags.
 
+## `[nonnull]`
+
+A `[nonnull]` stub tells the analyzer that a native return of that class is not null. `[nonnull] class *;` sets the default for all stubs. The attribute works on a whole class only. A stub has no members, so `[nonnull]` on a method return, a parameter or a property is not possible in a stub. The members of a native class come from the C++ header (libclang). A contract for a member needs a mark in the header, for example `[[clang::annotate(...)]]`. The frontend already reads annotations for script attributes. This is not done yet.
+
 ## Other limits
 
 - Write `.`, not `::` or `->`.

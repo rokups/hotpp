@@ -1,3 +1,3 @@
-21_member_of_other_object.hot:11:36: error: script class 'Player' has no member 'Heall'
-   11 |     void Foo(Player other) { other.Heall(1.0); }
+21_member_of_other_object.hot:13:15: error: script class 'Player' has no member 'Heall'
+   13 |         other.Heall(1.0);
 1 error generated.

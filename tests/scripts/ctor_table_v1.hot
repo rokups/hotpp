@@ -22,11 +22,15 @@ class Made : Actor {
     // A value parameter.
     Made(int v) : base(std.string("made")) { this.value = v; this.how = 2; }
     // A pointer parameter.
-    Made(Actor* other) : base(std.string("made")) { this.text = other.Name; this.how = 3; }
+    Made(Actor* other) : base(std.string("made")) {
+        if (other == null) return;
+        this.text = other.Name;
+        this.how = 3;
+    }
     // A reference parameter: the constructor writes to the argument of the host.
-    Made(int& out, int v) : base(std.string("made")) { out = v * 2; this.value = v; this.how = 4; }
-    // A "&&" parameter.
-    Made(std.string&& s) : base(std.string("made")) { this.text = s; this.how = 5; }
+    Made(ref int result, int v) : base(std.string("made")) { result = v * 2; this.value = v; this.how = 4; }
+    // A by-value string parameter.
+    Made(std.string s) : base(std.string("made")) { this.text = s; this.how = 5; }
     // A parameter of a native alias type: IntFn is "int (*)(int)".
     Made(IntFn f, float scale) : base(std.string("made")) { this.value = f(3); this.how = 6; }
 }

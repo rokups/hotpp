@@ -8,9 +8,9 @@ using "Actor.h";
 int dead = 0;
 
 class Node {
-    Node child = null;
+    $Node child = null;
     [weak]
-    Node parent = null;
+    $Node parent = null;
     int hp = 0;
 
     ~Node() {
@@ -19,9 +19,9 @@ class Node {
 }
 
 class Keeper : Actor {
-    Node kid = null;
+    $Node kid = null;
     [weak]
-    Node held = null;
+    $Node held = null;
     int frames = 0;
     int parent_hp = -1;
     int parent_alive = 0;
@@ -31,17 +31,17 @@ class Keeper : Actor {
     override void Tick(float dt) {
         frames = frames + 1;
         if (frames == 1) {
-            Node p = new Node();
+            $Node p = new $Node();
             p.hp = 9;
-            Node c = new Node();
+            $Node c = new $Node();
             p.child = c;
             c.parent = p;
             this.kid = c;
-            this.held = new Node();
+            this.held = new $Node();
             parent_hp = c.parent.hp;
             parent_alive = c.parent != null ? 1 : 0;
         } else {
-            parent_alive = kid.parent != null ? 1 : 0;
+            parent_alive = kid?.parent != null ? 1 : 0;
         }
         held_alive = held != null ? 1 : 0;
         deaths = dead;

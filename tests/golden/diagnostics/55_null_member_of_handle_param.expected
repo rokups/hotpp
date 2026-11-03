@@ -1,0 +1,3 @@
+55_null_member_of_handle_param.hot:6:35: error: "c" can be null here; check it with "if (c != null)" or use "c?.m"
+    6 |     int Peek($Counter c) { return c.count; }
+1 error generated.

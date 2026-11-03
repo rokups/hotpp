@@ -65,10 +65,10 @@ class Probe : Actor {
     int Total(IShape s) { return s.Area(); }
 
     override void Tick(float dt) {
-        Square sq = new Square();
-        Wide w = new Wide();
-        Disc d = new Disc();
-        Plain pl = new Plain();
+        $Square sq = new $Square();
+        $Wide w = new $Wide();
+        $Disc d = new $Disc();
+        $Plain pl = new $Plain();
         IShape a = sq;
         IShape b = w;
         if (this.keep == null) this.keep = sq;
@@ -94,7 +94,7 @@ class Probe : Actor {
         IShape c = pl as IShape;
         if (c == null) this.as_plain_null = 1;
         IShape e = sq as IShape;
-        Square back = e as Square;
+        $Square back = e as $Square;
         if (back == sq) this.as_back = 1;
         IShape a2 = sq;
         if (a == a2) this.same = 1;

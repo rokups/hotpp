@@ -26,7 +26,7 @@ using Fighter = Fighter_Shell;
 #include "Actor.h"
 #line 28 "cpp_outofclass_v1.cpp.cpp"
 
-// ---------------------------------------------------------------- [value] class HotModule
+// ---------------------------------------------------------------- struct HotModule
 struct HotModule {
     int ticks;
     int step;

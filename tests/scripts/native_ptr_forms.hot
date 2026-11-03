@@ -38,13 +38,14 @@ class Prober : Actor, Vault {
         this.via_pass = -1;
         this.via_lambda = -1;
         this.via_module = -1;
-        if (this.other != null) {
-            this.other.Bump(1);
-            this.via_call = this.other.Twice();
-            this.via_pass = Polish(this.other);
-            std.function<int()> f = () => { return this.other.Twice(); };
+        Charm* other = this.other;
+        if (other != null) {
+            other.Bump(1);
+            this.via_call = other.Twice();
+            this.via_pass = Polish(other);
+            std.function<int()> f = () => { return this.other?.Twice() ?? -1; };
             this.via_lambda = f();
-            g_other = this.other;
+            g_other = other;
             this.via_module = g_other.Twice();
         } else {
             g_other = null;

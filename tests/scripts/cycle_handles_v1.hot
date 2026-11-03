@@ -7,41 +7,43 @@ using "Object.h";
 // A parent holds its child strongly. The child holds the parent weakly, so the pair is not a
 // cycle of owners.
 class Parent {
-    Child kid = null;
+    $Child kid = null;
     int hp = 7;
 
     void Adopt() {
-        kid = new Child();
-        kid.parent = this;
+        $Child child = new $Child();
+        kid = child;
+        child.parent = this;
     }
 
-    int KidAge() => kid != null ? kid.age : -1;
+    int KidAge() => kid?.age ?? -1;
 }
 
 class Child {
     [weak]
-    Parent parent = null;
+    $Parent parent = null;
     int age = 3;
 
     int ParentHp() {
-        Parent p = parent;
+        $Parent p = parent;
         return p != null ? p.hp + p.KidAge() : -1;
     }
 }
 
 // Two classes that hold each other strongly. The script breaks the cycle with "= null".
 class Ping {
-    Pong other = null;
+    $Pong other = null;
 
-    int Count() => other != null ? other.n : 0;
+    int Count() => other?.n ?? 0;
 }
 
 class Pong {
-    Ping other = null;
+    $Ping other = null;
     int n = 2;
 
-    void Link(Ping p) {
+    void Link($Ping p) {
         other = p;
+        if (p == null) return;
         p.other = this;
     }
 
@@ -50,20 +52,20 @@ class Pong {
 
 // A class that refers to itself.
 class Node {
-    Node next = null;
+    $Node next = null;
 
-    int Length() => next != null ? 1 + next.Length() : 1;
+    int Length() => 1 + (next?.Length() ?? 0);
 }
 
 // Two classes with an intrusive handle that hold each other.
 class Owner : Object {
-    Part part;
+    $Part part;
 
-    int Value() => part != null ? part.v + part.OwnerBack() : 0;
+    int Value() => (part?.v ?? 0) + (part?.OwnerBack() ?? 0);
 }
 
 class Part : Object {
-    Owner owner;
+    $Owner owner;
     int v = 4;
 
     int OwnerBack() => owner != null ? 1 : 0;

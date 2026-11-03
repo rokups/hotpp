@@ -16,6 +16,7 @@
 #include "hot/runtime/handles.h"
 #include "hot/runtime/hashing.h"
 #include "hot/runtime/iface.h"
+#include "hot/runtime/in.h"
 #include "hot/runtime/loader.h"
 #include "hot/runtime/migration.h"
 #include "hot/runtime/old_state.h"
@@ -38,6 +39,7 @@
 #include <memory>
 #include <mutex>
 #include <new>
+#include <optional> // the generated code uses std::optional for "T?"
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -46,3 +48,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#if __has_include(<span>) && (__cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L))
+#include <span> // the generated code uses std::span for "T[]"
+#endif

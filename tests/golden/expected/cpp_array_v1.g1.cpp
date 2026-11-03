@@ -32,7 +32,7 @@ using Buf = Buf_Shell;
 #include <vector>
 #line 34 "cpp_array_v1.cpp.cpp"
 
-// ---------------------------------------------------------------- [value] class HotModule
+// ---------------------------------------------------------------- struct HotModule
 struct HotModule {
     int table[4];
     int Buf__s_hits[3];

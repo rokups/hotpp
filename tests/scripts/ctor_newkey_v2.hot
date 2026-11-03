@@ -21,8 +21,8 @@ class Spawner : Actor {
     int kind_float = 0;
 
     override void Tick(float dt) {
-        Unit u1 = new Unit(3);
-        Unit u2 = new Unit(2.5);
+        $Unit u1 = new $Unit(3);
+        $Unit u2 = new $Unit(2.5);
         this.hp_int = u1.hp;
         this.hp_float = u2.hp;
         this.kind_float = u2.kind;

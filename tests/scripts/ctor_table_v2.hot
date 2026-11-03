@@ -19,9 +19,13 @@ class Made : Actor {
 
     Made() : base(std.string("made")) { this.how = 1; }
     Made(int v) : base(std.string("made")) { this.value = v + 100; this.how = 20; }
-    Made(Actor* other) : base(std.string("made")) { this.text = other.Name; this.how = 3; }
-    Made(int& out, int v) : base(std.string("made")) { out = v * 2; this.value = v; this.how = 4; }
-    Made(std.string&& s) : base(std.string("made")) { this.text = s; this.how = 5; }
+    Made(Actor* other) : base(std.string("made")) {
+        if (other == null) return;
+        this.text = other.Name;
+        this.how = 3;
+    }
+    Made(ref int result, int v) : base(std.string("made")) { result = v * 2; this.value = v; this.how = 4; }
+    Made(std.string s) : base(std.string("made")) { this.text = s; this.how = 5; }
     Made(IntFn f, float scale) : base(std.string("made")) { this.value = f(3); this.how = 6; }
     Made(int a, int b, int c) : base(std.string("made")) { this.value = a + b + c; this.how = 7; }
 }

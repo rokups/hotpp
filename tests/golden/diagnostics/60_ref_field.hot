@@ -1,0 +1,7 @@
+struct Vec3 {
+    float x = 0;
+}
+
+class Holder {
+    ref Vec3 last;
+}

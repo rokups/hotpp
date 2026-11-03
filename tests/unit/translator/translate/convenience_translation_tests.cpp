@@ -86,8 +86,8 @@ TEST(DefaultValueTranslation, SlotKeyDoesNotChangeWithTheDefault)
 TEST(DefaultValueTranslation, ConstructorMayHaveDefaults)
 {
     const hotc::TranslateResult r = check_translate("",
-        "    int n;\n    Foo(int start = 3) { n = start; }\n    void Make() { var f = new Foo(); var g = new "
-        "Foo(7); }\n");
+        "    int n;\n    Foo(int start = 3) { n = start; }\n    void Make() { var f = new $Foo(); var g = new "
+        "$Foo(7); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "Foo__new(int32_t start = 3)")) << r.cpp;
     // The factory of the engine uses the default value too.
@@ -119,7 +119,7 @@ TEST(DefaultValueTranslation, StructMethodAndConstructor)
 TEST(CoalesceTranslation, BecomesARuntimeHelperCall)
 {
     const hotc::TranslateResult r = check_translate("",
-        "    Foo Pick(Foo a, Foo b) { return a ?? b; }\n    int Num(std.shared_ptr<int> p, int d) { return *(p ?? p) + "
+        "    $Foo Pick($Foo a, $Foo b) { return a ?? b; }\n    int Num(std.shared_ptr<int> p, int d) { return *(p ?? p) + "
         "d; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "return hot::coalesce(a, [&]() -> auto { return (b); });")) << r.cpp;
@@ -127,7 +127,7 @@ TEST(CoalesceTranslation, BecomesARuntimeHelperCall)
 
 TEST(CoalesceTranslation, ChainIsRightAssociative)
 {
-    const hotc::TranslateResult r = check_translate("", "    Foo Pick(Foo a, Foo b, Foo c) => a ?? b ?? c;\n");
+    const hotc::TranslateResult r = check_translate("", "    $Foo Pick($Foo a, $Foo b, $Foo c) => a ?? b ?? c;\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(
         has(r.cpp, "hot::coalesce(a, [&]() -> auto { return (hot::coalesce(b, [&]() -> auto { return (c); })); })"))
@@ -154,11 +154,11 @@ TEST(IsBindingTranslation, IfAndWhileBindAHandle)
 {
     const hotc::TranslateResult r = check_translate("",
         "    int rage;\n    void Rage() { rage += 1; }\n"
-        "    void Run(Foo x) {\n"
-        "        if (x is Foo g) { g.Rage(); }\n"
-        "        if (x is Foo h && h.rage > 1) { h.Rage(); } else if (x is Foo k) { k.Rage(); }\n"
-        "        while (x is Foo w && w.rage < 5) { w.Rage(); }\n"
-        "        bool plain = x is Foo;\n"
+        "    void Run($Foo x) {\n"
+        "        if (x is $Foo g) { g.Rage(); }\n"
+        "        if (x is $Foo h && h.rage > 1) { h.Rage(); } else if (x is $Foo k) { k.Rage(); }\n"
+        "        while (x is $Foo w && w.rage < 5) { w.Rage(); }\n"
+        "        bool plain = x is $Foo;\n"
         "    }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "{ HOT_TRACE_LINE(); auto g = hot::as_script<Foo_Shell>(x, \"Foo\"); if (g) {")) << r.cpp;
@@ -171,19 +171,19 @@ TEST(IsBindingTranslation, IfAndWhileBindAHandle)
 TEST(IsBindingTranslation, BindingOutsideTheStartOfAConditionIsAnError)
 {
     const char* bad[] = {
-        "if (a || x is Foo g) { }",
-        "if (!(x is Foo g)) { }",
-        "if (a && x is Foo g) { }",
-        "if ((x is Foo g)) { }",
-        "for (; x is Foo g; ) { }",
-        "bool b = x is Foo g;",
-        "do { } while (x is Foo g);",
-        "if (x is Foo g || a) { }",
+        "if (a || x is $Foo g) { }",
+        "if (!(x is $Foo g)) { }",
+        "if (a && x is $Foo g) { }",
+        "if ((x is $Foo g)) { }",
+        "for (; x is $Foo g; ) { }",
+        "bool b = x is $Foo g;",
+        "do { } while (x is $Foo g);",
+        "if (x is $Foo g || a) { }",
     };
     for (const char* stmt : bad)
     {
         const hotc::TranslateResult r =
-            check_translate("", std::string("    void Run(Foo x, bool a) { ") + stmt + " }\n");
+            check_translate("", std::string("    void Run($Foo x, bool a) { ") + stmt + " }\n");
         EXPECT_FALSE(r.ok) << stmt;
         EXPECT_TRUE(
             has(r.diagnostics, "a 'is T name' binding is allowed only at the start of an if or while condition"))

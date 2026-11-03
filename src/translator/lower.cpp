@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <optional>
 #include <set>
 #include <utility>
@@ -108,7 +109,8 @@ const std::string* simple_name(const Expr& e)
 
 // A catch clause for an exception type of the runtime (include/hot/runtime/errors.h): the type
 // text "NullReference", "hot.IndexOutOfRange" or "const hot::ScriptError &" becomes
-// "const hot::X&". Another type text stays as it is.
+// "const hot::X&". Another type text becomes a const reference too, so the handler never slices an
+// exception. A type with a "&" or a "*" stays as it is.
 void normalize_runtime_catch_type(std::string& type)
 {
     std::string t = type;
@@ -140,6 +142,8 @@ void normalize_runtime_catch_type(std::string& type)
     }
     if (t == "NullReference" || t == "IndexOutOfRange" || t == "ScriptError")
         type = "const hot::" + t + "&";
+    else if (!type.empty() && type.find_first_of("&*") == std::string::npos)
+        type = "const " + type + "&";
 }
 
 // The member of "this". Gives the node or null.
@@ -200,8 +204,28 @@ struct Lowerer
     // ---- type information (see RCtx)
     const ClassDef* class_named(const std::string& t) const
     {
-        auto it = cx.classes.find(t);
+        auto it = cx.classes.find(t.compare(0, 1, "$") == 0 ? t.substr(1) : t);
         return it == cx.classes.end() ? nullptr : it->second;
+    }
+
+    // True when the script type text is "T?": an optional. A "const" prefix and a "&" suffix do not count.
+    static bool is_optional(const std::string& type)
+    {
+        std::string t = type;
+        while (!t.empty() && (t.back() == '&' || t.back() == ' ' || t.back() == '\t'))
+            t.pop_back();
+        return !t.empty() && t.back() == '?';
+    }
+
+    // "$C" names the handle of a script class, an interface or a native handle class. A bare "C" is
+    // the same handle in this step, so the lowering drops the mark and goes on with "C".
+    void drop_handle_mark(std::string& type) const
+    {
+        if (type.compare(0, 1, "$") != 0 || !cx.types)
+            return;
+        const std::string base = type.substr(1);
+        if (cx.types->is_handle(base) || cx.types->is_script_interface(base))
+            type = base;
     }
 
     // The script parent of a class, or null (design 4.5).
@@ -345,6 +369,8 @@ struct Lowerer
             b.pop_back();
         if (b.compare(0, 6, "const ") == 0)
             b.erase(0, 6);
+        if (b.compare(0, 1, "$") == 0)
+            b.erase(0, 1);
         const auto it = cx.iface_defs.find(b);
         return it == cx.iface_defs.end() ? nullptr : it->second;
     }
@@ -367,6 +393,16 @@ struct Lowerer
             if (std::find(d->script_ifaces.begin(), d->script_ifaces.end(), iface) != d->script_ifaces.end())
                 return true;
         return false;
+    }
+
+    // The type of "a?.b" when the member "b" has the type "t". A handle stays a handle (null when "a"
+    // is null). Any other type becomes an optional in the C++ code, so it is not known here.
+    std::string safe_result_type(const std::string& t) const
+    {
+        if (iface_named(t))
+            return t;
+        const ClassDef* d = class_named(t);
+        return d && !d->is_value ? t : std::string();
     }
 
     // The script type of an expression before its lowering. Empty: not known.
@@ -428,7 +464,8 @@ struct Lowerer
         {
             if (std::holds_alternative<BaseExpr>(m->obj->v))
                 return {};
-            return member_type(type_of(*m->obj), m->name);
+            const std::string mt = member_type(type_of(*m->obj), m->name);
+            return m->safe ? safe_result_type(mt) : mt;
         }
         if (auto* c = std::get_if<CallExpr>(&e.v))
         {
@@ -452,7 +489,8 @@ struct Lowerer
                 }
                 const ClassDef* d = class_named(ot);
                 const Method* fn = d ? find_fn(*d, m->name) : nullptr;
-                return fn ? fn->script_ret : std::string();
+                const std::string rt = fn ? fn->script_ret : std::string();
+                return m->safe ? safe_result_type(rt) : rt;
             }
             if (auto* nm = std::get_if<NameExpr>(&c->callee->v))
             {
@@ -530,7 +568,7 @@ struct Lowerer
     {
         cx.locals.insert(name);
         cx.weak_locals.erase(name); // a "[weak]" local adds the name again after this call
-        cx.value_locals.erase(name); // a "[value]" local adds the name again after this call
+        cx.value_locals.erase(name); // a box local adds the name again after this call
         if (type.empty())
             cx.local_type.erase(name);
         else
@@ -636,6 +674,20 @@ struct Lowerer
                 + name + ";'");
     }
 
+    // The C++ type of a script type text, by TypeModel::cpp_storage(). An error is reported at "pos"
+    // and the type stays as it is. The model must exist.
+    std::string cpp_type(const std::string& type, TypeModel::StorageUse use, uint32_t pos)
+    {
+        std::string message;
+        std::string r = cx.types->cpp_storage(type, use, &message);
+        if (!message.empty())
+        {
+            error(pos, message);
+            return type;
+        }
+        return r;
+    }
+
     // The C++ type of a "[weak] T" parameter. The translator can rewrite "type" to it before the pass.
     std::string weak_param_type(const Param& p) const
     {
@@ -648,15 +700,15 @@ struct Lowerer
         return cx.types->is_handle(t) ? cx.types->weak_storage(t) : p.type;
     }
 
-    // ---- [value] uses (V7)
-    // A field of the class "c" (or of a script parent) that has "[value]".
+    // ---- box uses (V7)
+    // A field of the class "c" (or of a script parent) that has box.
     bool value_field_of(const ClassDef& c, const std::string& n) const
     {
         const Field* f = find_field(c, n);
         return f && f->value;
     }
 
-    // A bare name that names a "[value]" parameter, local or field of the current class.
+    // A bare name that names a box parameter, local or field of the current class.
     bool value_bare(const std::string& n) const
     {
         if (cx.locals.count(n))
@@ -690,8 +742,8 @@ struct Lowerer
         return nullptr;
     }
 
-    // True when the expression is a "[value]" storage or reads one: a name, "this.f", "obj.f" of
-    // a "[value]" field or a "[value]" local, or a call of a function that returns "[value] T".
+    // True when the expression is a box storage or reads one: a name, "this.f", "obj.f" of
+    // a box field or a box local, or a call of a function that returns "C" (a bare script class).
     // Call it before the lowering of the expression.
     bool is_value_ref(const Expr& e) const
     {
@@ -720,10 +772,19 @@ struct Lowerer
             const Method* fn = callee_fn(*c);
             return fn && fn->ret_value;
         }
+        if (auto* n = std::get_if<NewExpr>(&e.v))
+            return new_makes_box(*n);
         return false;
     }
 
-    // The element type E of hot::Value<E> for the script type "t". Empty: "t" cannot be a "[value]".
+    // True when "new C(...)" gives a box: C is a script class and the text has no "$".
+    bool new_makes_box(const NewExpr& n) const
+    {
+        const ClassDef* d = n.type.compare(0, 1, "$") != 0 ? class_named(n.type) : nullptr;
+        return d && !d->is_value;
+    }
+
+    // The element type E of hot::Value<E> for the script type "t". Empty: "t" cannot be a box.
     std::string value_elem(const std::string& t) const
     {
         const std::string head = "hot::Value<";
@@ -735,17 +796,17 @@ struct Lowerer
         return v.size() > head.size() ? v.substr(head.size(), v.size() - head.size() - 1) : std::string();
     }
 
-    // A "[value]" goes to a handle: the code must copy the object into a "[value]" first, or the
-    // handle must be a "[value]" itself. The text is the hint of the error.
+    // A box goes to a handle: the code must copy the object into a box first, or the target
+    // must be a box itself. The text is the hint of the error.
     void value_to_handle_error(uint32_t pos)
     {
         error(pos,
-            "a [value] cannot convert to a handle: the object is owned by the [value]. Declare the target as a "
-            "[value] to copy it");
+            "a value cannot convert to a handle: the box owns the object. Declare the target without '$' to copy "
+            "it");
     }
 
-    // Prepares "e" for a "[value] T" target (call it before the lowering of "e"). "new C()" becomes
-    // "hot::Value<E>(new C())": the new object goes into the box without a copy. A "[value]" stays: the
+    // Prepares "e" for a "C" (a bare script class) target (call it before the lowering of "e"). "new C()" becomes
+    // "hot::Value<E>(new C())": the new object goes into the box without a copy. A box stays: the
     // copy or the move of the box does the work. Any other expression is a handle (or it is not
     // known): hot::as_value<E>(e) copies the object, and a null handle throws.
     void value_wrap(ExprP& e, const std::string& type)
@@ -758,17 +819,17 @@ struct Lowerer
         const uint32_t pos = pos_of(*e);
         if (std::holds_alternative<NullExpr>(e->v))
         {
-            error(pos, "a [value] is never null: it always holds an object");
+            error(pos, kNullValueError);
             return;
         }
-        coerce(e, elem); // a bare "this" becomes the handle of the object
+        coerce(e, "$" + elem); // a bare "this" becomes the handle of the object
         if (is_value_ref(*e))
             return;
-        const bool fresh = std::holds_alternative<NewExpr>(e->v);
+        const bool fresh = std::holds_alternative<NewExpr>(e->v); // "new $C()": the box takes the object
         e = call_of((fresh ? "hot::Value<" : "hot::as_value<") + elem + ">", args_of(std::move(e)), pos);
     }
 
-    // The expression "e" goes to the target of the script type "type", which is not a "[value]".
+    // The expression "e" goes to the target of the script type "type", which is not a box.
     void value_not_to_handle(const ExprP& e, const std::string& type)
     {
         if (!e || type.empty())
@@ -859,20 +920,170 @@ struct Lowerer
         e = call_of("hot::to_iface<" + iface + "__iface>", args_of(std::move(e)), pos);
     }
 
+    // The type text of the handle of a script class: "C" gives "$C". Another text stays.
+    std::string handle_form(const std::string& type) const
+    {
+        const ClassDef* d = class_named(type);
+        return d && !d->is_value && type.compare(0, 1, "$") != 0 ? "$" + type : type;
+    }
+
+    // The class T of a handle type text: "$T", "const $T&", "std::shared_ptr<T>" or a bare native handle
+    // class. Empty when the text is not a handle type. A bare script class is a box, so it is not a handle.
+    std::string handle_class(const std::string& type_in) const
+    {
+        std::string t = type_in;
+        auto trim = [&]()
+        {
+            while (!t.empty() && (t.back() == ' ' || t.back() == '\t' || t.back() == '&'))
+                t.pop_back();
+            while (!t.empty() && (t[0] == ' ' || t[0] == '\t'))
+                t.erase(0, 1);
+        };
+        trim();
+        if (t.compare(0, 6, "const ") == 0)
+            t.erase(0, 6);
+        trim();
+        if (t.empty())
+            return {};
+        if (t[0] == '$')
+            t.erase(0, 1);
+        else if (const size_t sp = t.find("shared_ptr<"); sp != std::string::npos && t.back() == '>')
+        {
+            t = t.substr(sp + 11, t.size() - sp - 12);
+            trim();
+        }
+        else if (class_named(t) || !cx.types || !cx.types->is_handle(t))
+            return {};
+        for (char ch : t)
+            if (!(std::isalnum(static_cast<unsigned char>(ch)) || ch == '_' || ch == ':' || ch == '.'))
+                return {};
+        return t;
+    }
+
+    // True when "this", a "&x" or a "C*" typed name or member gives the expression (a raw pointer).
+    bool raw_pointer_source(const Expr& e) const
+    {
+        if (std::holds_alternative<ThisExpr>(e.v))
+            return cx.allow_this && cx.cls;
+        if (auto* p = std::get_if<ParenExpr>(&e.v))
+            return p->inner && raw_pointer_source(*p->inner);
+        std::string t;
+        if (auto* u = std::get_if<UnaryExpr>(&e.v); u && !u->postfix && u->operand)
+        {
+            if (u->op == "&")
+                return true;
+            if (u->op.size() > 2 && u->op.front() == '(' && u->op.back() == ')')
+            { // a cast "(T*)x" to a raw pointer type gives a raw pointer
+                std::string c = u->op.substr(1, u->op.size() - 2);
+                while (!c.empty() && c.back() == ' ')
+                    c.pop_back();
+                return c.size() > 1 && c.back() == '*' && c[0] != '$';
+            }
+            if (u->op == "*")
+            { // "*pp" of a "T**" gives a raw pointer
+                t = type_of(*u->operand);
+                while (!t.empty() && t.back() == ' ')
+                    t.pop_back();
+                return t.size() > 2 && t.compare(t.size() - 2, 2, "**") == 0 && t[0] != '$';
+            }
+        }
+        t = type_of(e);
+        while (!t.empty() && (t.back() == ' ' || t.back() == '\t'))
+            t.pop_back();
+        return t.size() > 1 && t.back() == '*' && t[0] != '$';
+    }
+
+    // The class C of "$C" can give a shared pointer from "this" through a weak source: a script
+    // class (its shell has hot::weak_ref_traits), or a native class with std::enable_shared_from_this.
+    bool has_weak_source(const std::string& cls) const
+    {
+        const ClassDef* d = class_named(cls);
+        if (d)
+            return !d->is_value;
+        return cx.types && cx.types->has_shared_from_this(cls);
+    }
+
+    // "$C x = p" with a raw pointer "p" is an error, unless C has a weak source.
+    void check_raw_to_handle(const ExprP& e, const std::string& type)
+    {
+        if (!e || type.empty() || !cx.types)
+            return;
+        const std::string cls = handle_class(type);
+        if (cls.empty() || !raw_pointer_source(*e) || has_weak_source(cls))
+            return;
+        error(pos_of(*e), kRawToSharedError);
+    }
+
+    // "$Derived x = b" with a "$Base" value "b" needs a cast. "$Base x = d" needs nothing.
+    void check_downcast(const ExprP& e, const std::string& type)
+    {
+        if (!e || type.empty() || !cx.types)
+            return;
+        const std::string target = handle_class(type);
+        if (target.empty() || std::holds_alternative<NullExpr>(e->v) || raw_pointer_source(*e))
+            return;
+        const std::string source = handle_class(type_of(*e));
+        if (source.empty() || source == target || !cx.types->derives_from(target, source))
+            return;
+        error(pos_of(*e),
+            "cannot convert the base handle '$" + source + "' to the derived handle '$" + target
+                + "' without a cast; write ($" + target + ")x");
+    }
+
+    // "h.reset(p)" on a "$C" or a "std::shared_ptr<C>" with a raw pointer "p" is an error.
+    void check_reset(const CallExpr& c)
+    {
+        if (c.args.size() != 1 || !c.args[0] || !c.callee || !cx.types)
+            return;
+        std::string obj_type;
+        bool weak = false;
+        if (auto* m = std::get_if<MemberExpr>(&c.callee->v); m && m->name == "reset" && m->obj)
+        {
+            if (!std::holds_alternative<BaseExpr>(m->obj->v))
+            {
+                obj_type = type_of(*m->obj);
+                weak = is_weak_handle(*m->obj);
+            }
+        }
+        else if (auto* nm = std::get_if<NameExpr>(&c.callee->v);
+                 nm && nm->parts.size() >= 2 && nm->parts.back() == "reset" && nm->template_args.empty())
+        {
+            const Expr head = NameExprView(*nm, nm->parts.size() - 1);
+            obj_type = type_of(head);
+            weak = is_weak_handle(head);
+        }
+        if (weak || handle_class(obj_type).empty() || !raw_pointer_source(*c.args[0]))
+            return;
+        error(pos_of(*c.args[0]), kRawToSharedError);
+    }
+
     // Where a handle type is expected, a bare "this" becomes a handle (design 7.10.1).
     void coerce(ExprP& e, const std::string& type)
     {
+        if (e && is_optional(type) && std::holds_alternative<NullExpr>(e->v))
+        { // "null" for a "T?" is the empty optional
+            e = raw("std::nullopt", pos_of(*e));
+            return;
+        }
+        if (e && std::holds_alternative<NullExpr>(e->v) && type.compare(0, 1, "$") != 0)
+            if (const ClassDef* sd = class_named(type); sd && sd->is_value)
+            { // a struct is a value: it is never null
+                error(pos_of(*e), kNullValueError);
+                return;
+            }
         if (e && !type.empty())
             if (const std::string iface = iface_target(type); !iface.empty())
             {
                 to_iface_conv(e, iface);
                 return;
             }
+        check_raw_to_handle(e, type);
+        check_downcast(e, type);
         if (!e || type.empty() || !cx.types || !cx.allow_this)
             return;
         if (!std::holds_alternative<ThisExpr>(e->v))
             return;
-        const std::string h = cx.types->storage(type);
+        const std::string h = cx.types->cpp_storage(handle_form(type), TypeModel::StorageUse::Local);
         if (h == type)
             return; // not a handle type: "this" stays the pointer
         const uint32_t pos = std::get<ThisExpr>(e->v).pos;
@@ -897,7 +1108,7 @@ struct Lowerer
             const Param& p = params[i - first];
             const std::string& t = p.script_type.empty() ? p.type : p.script_type;
             if (p.value)
-            { // "[value] T": the argument is copied into the parameter
+            { // "C" (a bare script class): the argument is copied into the parameter
                 value_wrap(c.args[i], t);
                 continue;
             }
@@ -926,7 +1137,7 @@ struct Lowerer
                 // "T&" of a script class is a reference to a handle. "this" is not a variable.
                 error(std::get<ThisExpr>(c.args[i]->v).pos,
                     "'this' cannot bind to the reference parameter '" + p.name + "' of the script class '"
-                        + object_type(t) + "'. Copy it to a local first: '" + object_type(t) + " me = this;'");
+                        + object_type(t) + "'. Copy it to a local first: '$" + object_type(t) + " me = this;'");
             }
         }
     }
@@ -1027,7 +1238,7 @@ struct Lowerer
         CallExpr c;
         c.pos = pos;
         if (r.cls->is_value)
-        { // a [value] object: the address of the struct
+        { // a box object: the address of the struct
             c.callee = raw("hot::value_ptr", pos);
             c.args.push_back(std::move(*r.obj));
             return make_expr(std::move(c));
@@ -1176,7 +1387,7 @@ struct Lowerer
     }
 
     // True when "T(args)" is a call of the name of a handle class. A handle needs "new".
-    // A script class is a handle, unless it is a [value] class. A native class is a handle
+    // A script class is a handle, unless it is a struct. A native class is a handle
     // when its own stub says so. The text is the hint for the error.
     std::string handle_call_hint(const std::string& n) const
     {
@@ -1240,6 +1451,7 @@ struct Lowerer
 
     void call(CallExpr& c)
     {
+        check_reset(c);
         if (const std::string* n = simple_name(*c.callee))
         {
             if (const std::string hint = handle_call_hint(*n); !hint.empty())
@@ -1326,7 +1538,7 @@ struct Lowerer
             const uint32_t pos = std::get<NameExpr>(c.callee->v).pos;
             c.callee = raw_named("hot::", *n, pos, pos);
         }
-        // "obj.M(args)" where obj has the type of a script class (not a [value] class) and M is
+        // "obj.M(args)" where obj has the type of a script class (not a struct) and M is
         // a script function of it: a direct call of the generation function.
         member_chain(c.callee);
         if (auto* mm = std::get_if<MemberExpr>(&c.callee->v))
@@ -1454,6 +1666,8 @@ struct Lowerer
     void new_expr(ExprP& e, NewExpr& n)
     {
         const uint32_t pos = n.pos;
+        const bool handle_new = n.type.compare(0, 1, "$") == 0; // "new $C(...)"
+        drop_handle_mark(n.type);
         const std::string type = n.type; // "n" is gone after "e" gets a new node
         if (cx.script_interfaces.count(n.type))
         {
@@ -1473,6 +1687,13 @@ struct Lowerer
                 return;
             }
             check_ctor_access(n);
+            const ClassDef* script_def = class_named(type);
+            if (!handle_new && script_def && !script_def->is_value && cx.types
+                && !cx.types->script_native_base(type).empty())
+            {
+                error(pos, kNativeBaseValueError);
+                return;
+            }
             CallExpr c;
             c.pos = pos;
             c.args = std::move(n.args);
@@ -1497,7 +1718,7 @@ struct Lowerer
             exprs(c.args);
             if (cx.types && cx.types->is_script_value(n.type))
             {
-                // A [value] class: "new Stats(args)" is the value "Stats(args)" (design 7.10.1).
+                // A struct: "new Stats(args)" is the value "Stats(args)" (design 7.10.1).
                 c.callee = raw(n.type, pos);
                 e = make_expr(std::move(c));
                 return;
@@ -1506,7 +1727,8 @@ struct Lowerer
             // handle uses "H(Name__new_shared(args))": one block for the shell and the control block.
             // make_shared_shell gives a std::shared_ptr. So the shared pointer of another standard
             // namespace (the module attribute "std") uses "H(Name__new(args))".
-            const std::string h = cx.types ? cx.types->storage(type) : type;
+            const std::string h = cx.types ? cx.types->cpp_storage("$" + type, TypeModel::StorageUse::Local) : type;
+            const bool box = !handle_new && cx.types;
             const bool shared = h.rfind("std::shared_ptr<", 0) == 0
                 || (h.rfind("\x01std::shared_ptr<", 0) == 0 && (!cx.types || cx.types->std_ns() == "std"));
             c.callee = raw(n.type + (shared ? "__new_shared" : "__new"), pos);
@@ -1521,6 +1743,17 @@ struct Lowerer
                     w.args.push_back(std::move(e));
                     e = make_expr(std::move(w));
                 }
+            }
+            if (box)
+            {
+                // "new C(args)" is a box: the new object goes into it without a copy.
+                const std::string elem = value_elem(type);
+                if (elem.empty())
+                {
+                    error(pos, "a script class value needs a std::shared_ptr handle, and '" + type + "' has not");
+                    return;
+                }
+                e = call_of("hot::Value<" + elem + ">", args_of(std::move(e)), pos);
             }
             return;
         }
@@ -1562,8 +1795,6 @@ struct Lowerer
     void member(ExprP& e, MemberExpr& m)
     {
         const bool target = std::exchange(weak_target, false);
-        if (m.safe)
-            error(pos_of(*m.obj), "'?.' is allowed only at the start of an expression statement");
         const uint32_t obj_pos = pos_of(*m.obj);
         if (const InterfaceDef* idef = iface_named(type_of(*m.obj)))
         {
@@ -1679,7 +1910,7 @@ struct Lowerer
         // A "[weak]" field of a script struct: "hot::lock(hot::deref(s).w)".
         const bool weak_value = td && td->is_value && weak_field_of(*td, m.name) && !target;
         expr(m.obj);
-        deref(m.obj);
+        deref(m.obj); // an empty std::optional throws hot::NullReference, as a null handle does
         if (weak_value)
             lock(e);
     }
@@ -1720,11 +1951,13 @@ struct Lowerer
             if (p.name.empty())
                 error(l.pos, "a lambda parameter needs a name");
             declare(p.name, p.type);
+            if (p.value)
+                cx.value_locals.insert(p.name); // a bare script class parameter holds a box
         }
         if (cx.types)
             for (Param& p : l.params)
                 if (!p.type.empty())
-                    p.type = cx.types->param(p.type);
+                    p.type = cpp_type(p.type, TypeModel::StorageUse::LambdaParam, l.pos);
         // A "return" in a lambda leaves only the lambda. So it is correct in a finally block.
         const FinallyState outer = fin;
         const std::string outer_ret = std::exchange(cx.ret_type, std::string());
@@ -1792,7 +2025,7 @@ struct Lowerer
         const std::string& last = n.parts.back();
         if (kKeep.count(last) || n.parts[0] == "hot")
             return;
-        n.template_args = cx.types->targ_storage(last + n.template_args).substr(last.size());
+        n.template_args = cpp_type(last + n.template_args, TypeModel::StorageUse::Local, n.pos).substr(last.size());
     }
 
     // A bare name. A property of the class becomes a call of the getter.
@@ -1903,7 +2136,7 @@ struct Lowerer
         }
         if (bare)
         {
-            // A bare field of a [value] class: its functions are free functions, "__st" is the object.
+            // A bare field of a struct: its functions are free functions, "__st" is the object.
             // In a lambda, a field of a class reads "__st" too: the lambda must not capture "this".
             if (cx.cls && cx.allow_this && (cx.cls->is_value || in_lambda)
                 && (cx.field_type.count(n.parts[0]) || find_field(*cx.cls, n.parts[0])))
@@ -1976,6 +2209,8 @@ struct Lowerer
         member_chain(e);
         if (prop_write(e, discard))
             return;
+        if (safe_expr(e))
+            return;
         Expr& x = *e;
         if (auto* n = std::get_if<ThisExpr>(&x.v))
         {
@@ -2024,6 +2259,89 @@ struct Lowerer
                 if (!in_lambda)
                     ++cx.co_keywords;
             }
+            if (!u->postfix && cx.types && u->op.size() > 3 && u->op[0] == '(' && u->op[1] == '$' && u->op.back() == ')')
+            { // "($C)h": the cast to the handle of "C", written with the C++ type of the handle
+                const std::string h = cpp_type(u->op.substr(1, u->op.size() - 2), TypeModel::StorageUse::Local, u->pos);
+                const std::string to = u->op.substr(2, u->op.size() - 3);
+                std::string from = u->operand ? object_type(type_of(*u->operand)) : std::string();
+                if (!from.empty() && from[0] == '$')
+                    from.erase(0, 1);
+                // An upcast and a cast to the same type cannot fail: "static_pointer_cast". Every other
+                // cast is checked with the class record, as "as" is: a failed cast gives a null handle.
+                // A cast to the same type or to a base type is a checked unwrap (hot::nonnull): a null
+                // handle throws hot::NullReference and the result is not null.
+                bool upcast = false;
+                for (const ClassDef* d = class_named(from); d && !upcast; d = class_named(d->base))
+                    upcast = d->name == to;
+                const bool same = !from.empty() && from == to;
+                const bool checked = !upcast && !same && class_named(to) != nullptr;
+                expr(u->operand);
+                u->op = "(" + h + ")";
+                for (const char* sp : {"\x01std::shared_ptr<", "std::shared_ptr<"})
+                    if (h.rfind(sp, 0) == 0 && h.back() == '>')
+                    { // a shared handle
+                        CallExpr c;
+                        c.pos = u->pos;
+                        if (checked)
+                        {
+                            c.callee = raw("hot::as_script<" + to + "_Shell>", u->pos);
+                            c.args.push_back(std::move(u->operand));
+                            c.args.push_back(raw("\"" + to + "\"", u->pos));
+                        }
+                        else if (same || upcast)
+                        {
+                            // The cast of an upcast keeps the handle conversion, after the null test.
+                            c.callee = raw("hot::nonnull", u->pos);
+                            c.args.push_back(std::move(u->operand));
+                            if (!same)
+                            {
+                                CallExpr conv;
+                                conv.pos = u->pos;
+                                conv.callee = raw(std::string(sp, std::strlen(sp) - std::strlen("shared_ptr<")) + "static_pointer_cast<"
+                                        + h.substr(std::strlen(sp), h.size() - std::strlen(sp) - 1) + ">", u->pos);
+                                conv.args.push_back(make_expr(std::move(c)));
+                                c = std::move(conv);
+                            }
+                        }
+                        else
+                        {
+                            c.callee = raw(std::string(sp, std::strlen(sp) - std::strlen("shared_ptr<")) + "static_pointer_cast<"
+                                    + h.substr(std::strlen(sp), h.size() - std::strlen(sp) - 1) + ">", u->pos);
+                            c.args.push_back(std::move(u->operand));
+                        }
+                        e = make_expr(std::move(c));
+                        return;
+                    }
+                // Another handle (an intrusive pointer, or a raw pointer): the same checks, then the C cast.
+                if (checked || same || upcast)
+                {
+                    CallExpr c;
+                    c.pos = u->pos;
+                    if (checked)
+                    {
+                        c.callee = raw("hot::as_script<" + to + "_Shell>", u->pos);
+                        c.args.push_back(std::move(u->operand));
+                        c.args.push_back(raw("\"" + to + "\"", u->pos));
+                    }
+                    else
+                    {
+                        c.callee = raw("hot::nonnull", u->pos);
+                        c.args.push_back(std::move(u->operand));
+                    }
+                    u->operand = make_expr(std::move(c));
+                }
+                return;
+            }
+            if (!u->postfix && is_ptr_cast(u->op) && !is_address_of(u->operand))
+            { // "(T*)p": a checked unwrap when "p" has the type "T*" (the C++ compiler decides), else the C cast
+                expr(u->operand);
+                CallExpr c;
+                c.pos = u->pos;
+                c.callee = raw("hot::cast_ptr<" + u->op.substr(1, u->op.size() - 2) + ">", u->pos);
+                c.args.push_back(std::move(u->operand));
+                e = make_expr(std::move(c));
+                return;
+            }
             expr(u->operand);
         }
         else if (auto* b = std::get_if<BinaryExpr>(&x.v))
@@ -2038,17 +2356,37 @@ struct Lowerer
                     value_not_to_handle(b->rhs, type_of(*b->lhs));
                 }
             }
+            if ((b->op == "==" || b->op == "!=") && b->lhs && b->rhs)
+            { // "x == null" and "x != null" on a "T?" compare with the empty optional
+                if (std::holds_alternative<NullExpr>(b->rhs->v) && is_optional(type_of(*b->lhs)))
+                    coerce(b->rhs, type_of(*b->lhs));
+                else if (std::holds_alternative<NullExpr>(b->lhs->v) && is_optional(type_of(*b->rhs)))
+                    coerce(b->lhs, type_of(*b->rhs));
+            }
             if ((b->op == "==" || b->op == "!=") && b->lhs && b->rhs
                 && (is_value_ref(*b->lhs) || is_value_ref(*b->rhs)))
             {
                 error(b->pos != 0 ? b->pos : pos_of(*b->lhs),
-                    "'" + b->op + "' is not valid for a [value]: a [value] is never null and it has no identity");
+                    "'" + b->op + "' is not valid for a value of a script class: it is never null and it has no identity");
                 return;
             }
             if ((b->op == "==" || b->op == "!=") && b->lhs && b->rhs
                 && (iface_named(type_of(*b->lhs)) || iface_named(type_of(*b->rhs))))
             {
                 iface_compare(e, *b);
+                return;
+            }
+            if (is_assign_op(b->op) && b->lhs && safe_target(*b->lhs))
+            {
+                error(pos_of(*b->lhs), "'?.' cannot be the target of an assignment inside an expression");
+                return;
+            }
+            if (b->op == "??" && b->lhs && b->rhs && std::holds_alternative<NullExpr>(b->rhs->v)
+                && is_optional(type_of(*b->lhs)))
+            { // "x ?? null" on a "T?" is "x": the empty optional adds nothing
+                ExprP lhs = std::move(b->lhs);
+                expr(lhs);
+                e = std::move(lhs);
                 return;
             }
             // "w = e" writes the weak handle "w": the target is not locked. "w = null" resets it.
@@ -2223,6 +2561,8 @@ struct Lowerer
     void type_test(ExprP& e, TypeTestExpr& t)
     {
         const uint32_t pos = t.pos;
+        const bool bare = t.type.compare(0, 1, "$") != 0;
+        drop_handle_mark(t.type);
         const std::string type = t.type;
         if (!t.bind.empty())
             error(t.bind_pos, "a 'is T name' binding is allowed only at the start of an if or while condition");
@@ -2232,6 +2572,12 @@ struct Lowerer
             error(pos,
                 std::string("'") + (t.is_as ? "as" : "is") + "' needs a class with a handle: '" + type
                     + "' is a struct");
+            return;
+        }
+        if (d && bare)
+        { // a bare script class is a box: the test needs the handle
+            const std::string kw = t.is_as ? "as" : "is";
+            error(pos, "'" + kw + " " + type + "' names a value; write '" + kw + " $" + type + "'");
             return;
         }
         const std::string obj_type = object_type(type_of(*t.obj)); // before the lowering of the object
@@ -2249,7 +2595,7 @@ struct Lowerer
         }
         if (d && from_iface && t.is_as && cx.types)
         { // "i as C": the class handle of the object behind the interface value
-            c.callee = raw("hot::iface_as<" + cx.types->storage(type) + ", " + type + "_Shell>", pos);
+            c.callee = raw("hot::iface_as<" + cx.types->cpp_storage(handle_form(type), TypeModel::StorageUse::Local) + ", " + type + "_Shell>", pos);
             c.args.push_back(std::move(t.obj));
             c.args.push_back(raw("\"" + type + "\"", pos));
             e = make_expr(std::move(c));
@@ -2347,6 +2693,36 @@ struct Lowerer
         return found;
     }
 
+    // True for "&x": the address of an object is never null, so a cast of it needs no unwrap.
+    static bool is_address_of(const ExprP& e)
+    {
+        const auto* u = e ? std::get_if<UnaryExpr>(&e->v) : nullptr;
+        return u && !u->postfix && u->op == "&";
+    }
+
+    // True for the operator text of a cast to a plain pointer type: "(T*)", not "(const T*)" and
+    // not a handle, a reference or an optional.
+    static bool is_ptr_cast(const std::string& op)
+    {
+        if (op.size() < 4 || op.front() != '(' || op.back() != ')' || op[op.size() - 2] != '*')
+            return false;
+        const std::string t = op.substr(1, op.size() - 2);
+        if (t.find_first_of("$&?()[]") != std::string::npos || t.compare(0, 6, "const ") == 0
+            || t.find(" const") != std::string::npos)
+            return false;
+        return true;
+    }
+
+    // True when the expression is "a?.b" or "a?.f(x)": a value that is not a place.
+    static bool safe_target(const Expr& x)
+    {
+        const MemberExpr* m = std::get_if<MemberExpr>(&x.v);
+        if (!m)
+            if (const auto* c = std::get_if<CallExpr>(&x.v); c && c->callee)
+                m = std::get_if<MemberExpr>(&c->callee->v);
+        return m && m->safe;
+    }
+
     // A new node for a name without template arguments.
     static ExprP copy_name(const NameExpr& n)
     {
@@ -2357,7 +2733,7 @@ struct Lowerer
         return make_expr(std::move(c));
     }
 
-    // "foreach (var& x in enumerate(xs))": the range gives temporary values, so a reference
+    // "foreach (ref x in enumerate(xs))": the range gives temporary values, so a reference
     // cannot bind to them.
     void check_ref_range(const ForOfStmt& fo)
     {
@@ -2386,7 +2762,7 @@ struct Lowerer
                 use += (i ? ", " : "") + fo.names[i];
             use += ")";
         }
-        error(callee->pos, "'var&' cannot bind to the temporary value of '" + helper + "'; use '" + use + "'");
+        error(callee->pos, "'ref' cannot bind to the temporary value of '" + helper + "'; use '" + use + "'");
     }
 
     // "h?.f(a);" becomes "{ if (h) h.f(a); }". When the receiver is not a simple name, the
@@ -2429,6 +2805,48 @@ struct Lowerer
         return true;
     }
     int safe_count = 0;
+
+    // "a?.b" and "a?.f(x)" inside an expression. The receiver "a" is the first argument of
+    // "hot::safe_access". The second argument is a lambda that has the receiver as its parameter, so
+    // "a" runs one time: "hot::safe_access(a, [&](auto&& __safe0) { return hot::deref(__safe0).b; })".
+    // The lambda body is the member access (or the call) with the parameter as the receiver. The
+    // result is the member type made nullable (see hot::safe_access). A "?." after the first one
+    // is in the receiver, so it is lowered by the same function. Returns true when it did so.
+    bool safe_expr(ExprP& e)
+    {
+        MemberExpr* m = std::get_if<MemberExpr>(&e->v);
+        if (!m)
+            if (auto* c = std::get_if<CallExpr>(&e->v); c && c->callee)
+                m = std::get_if<MemberExpr>(&c->callee->v);
+        if (!m || !m->safe || !m->obj)
+            return false;
+        const uint32_t pos = m->pos;
+        std::string recv_type = type_of(*m->obj);
+        if (!recv_type.empty() && recv_type.back() == '?')
+            recv_type.pop_back();
+        ExprP recv = std::move(m->obj);
+        expr(recv);
+        const std::string tmp = "__safe" + std::to_string(safe_count++);
+        NameExpr tn;
+        tn.parts.push_back(tmp);
+        tn.pos = tn.last_pos = pos;
+        m->obj = make_expr(std::move(tn));
+        m->safe = false;
+        {
+            const ScopeSave scope(cx);
+            declare(tmp, recv_type);
+            ++lazy_depth; // the code is in a lambda: it cannot hold an "await"
+            expr(e);
+            --lazy_depth;
+        }
+        ExprP inner = make_expr(ParenExpr{std::move(e), 0});
+        const std::string param = "(auto&& " + tmp + ") { return ";
+        const std::string open = cx.in_default ? "[]" + param : "[&" + binding_captures(bindings, print(*inner), true) + "]" + param;
+        ExprP head = make_expr(UnaryExpr{open, std::move(inner), false, 0});
+        ExprP lazy = make_expr(UnaryExpr{"; }", std::move(head), true, 0});
+        e = call_of("hot::safe_access", args_of(std::move(recv), std::move(lazy)), pos);
+        return true;
+    }
 
     // The statement "s" is an if or a while with a binding in the condition. An if becomes
     // "{ auto g = ...; if (g && rest) ... }". A while becomes
@@ -2607,28 +3025,28 @@ struct Lowerer
             std::string t = d->type;
             if (t.empty() && d->init)
                 t = type_of(*d->init); // "var x = new C()"
-            // "[value] T x" and "var x = valueExpr" hold a hot::Value. "var x = valueExpr" copies it.
+            // "C x" and "var x = valueExpr" hold a hot::Value. "var x = valueExpr" copies it.
             bool value_local = false;
+            if (d->type.empty() && d->init && !d->is_ref && std::holds_alternative<NullExpr>(d->init->v))
+            {
+                error(pos_of(*d->init), kNullTypeError);
+                d->init = nullptr;
+                declare(d->name, std::string());
+                return;
+            }
             if (d->value)
             {
                 if (!d->init)
-                { // "[value] T x;" runs "new T()"
+                { // "C x;" runs "new C()"
                     NewExpr n;
                     n.type = d->type;
                     n.pos = d->pos;
                     d->init = make_expr(std::move(n));
                 }
                 value_local = true;
-                if (cx.script_interfaces.count(object_type(d->type)))
-                {
-                    error(d->value_pos ? d->value_pos : d->pos,
-                        interface_attribute_error("value", script_type_text(d->type)));
-                    d->init = nullptr;
-                    return;
-                }
                 if (cx.types && cx.types->value_storage(object_type(d->type)).empty())
-                    error(d->value_pos ? d->value_pos : d->pos,
-                        "[value] needs a script class with a std::shared_ptr handle, and '" + script_type_text(d->type)
+                    error(d->pos,
+                        "a script class value needs a std::shared_ptr handle, and '" + script_type_text(d->type)
                             + "' has not");
                 else
                     value_wrap(d->init, d->type);
@@ -2639,7 +3057,7 @@ struct Lowerer
             }
             else if (d->type.empty() && d->init && d->is_ref && is_value_ref(*d->init))
             {
-                value_local = true; // "var& r = valueExpr" names the same box
+                value_local = true; // "ref r = valueExpr" names the same box
             }
             else
             {
@@ -2652,7 +3070,7 @@ struct Lowerer
                 nested_collection(d->init);
             // "var me = this;" holds a handle of the current class.
             coerce(d->init, d->type.empty() && cx.cls ? cx.cls->name : d->type);
-            // "var& r = w.f" or "var& r = w" of a weak handle: the lock is a temporary.
+            // "ref r = w.f" or "ref r = w" of a weak handle: the lock is a temporary.
             if (d->is_ref && d->init)
                 if (const std::string w = weak_root(*d->init); !w.empty())
                     weak_ref_error(d->pos, w);
@@ -2685,7 +3103,7 @@ struct Lowerer
                 }
             }
             else if (cx.types && !d->type.empty())
-                d->type = cx.types->storage(d->type);
+                d->type = cpp_type(d->type, TypeModel::StorageUse::Local, d->pos);
             expr(d->init);
         }
         else if (auto* i = std::get_if<IfStmt>(&x.v))
@@ -2734,10 +3152,18 @@ struct Lowerer
             if (!fo->type.empty())
                 elem = class_named(object_type(fo->type)) ? fo->type : std::string();
             declare(fo->name, elem);
+            if (fo->value)
+            { // a bare script class variable holds a box: the range must hold boxes too
+                cx.value_locals.insert(fo->name);
+                const std::string held = fo->range ? container_element_type(type_of(*fo->range), true) : std::string();
+                if (!held.empty() && held[0] == '$')
+                    error(fo->pos, "foreach element type " + script_type_text(fo->type) + " does not match " + held
+                            + "; write " + held + " " + fo->name);
+            }
             for (const std::string& n : fo->names)
                 declare(n, std::string());
             if (cx.types && !fo->type.empty())
-                fo->type = cx.types->storage(fo->type);
+                fo->type = cpp_type(fo->type, TypeModel::StorageUse::Local, fo->pos);
             check_ref_range(*fo);
             expr(fo->range);
             const size_t mark = bindings.size();
@@ -3022,7 +3448,7 @@ void lower_value_init(ast::ExprP& e, const std::string& type, RCtx& cx, Diagnost
 {
     Lowerer lw{cx, diag};
     if (!e)
-    { // a "[value] T f;" field runs "new T()"
+    { // a "box T f;" field runs "new T()"
         ast::NewExpr n;
         n.type = type;
         e = make_expr(std::move(n));

@@ -106,8 +106,8 @@ TEST(InheritanceTranslation, Errors)
 TEST(InheritanceTranslation, IsAndAsUseTheClassRecords)
 {
     const hotc::TranslateResult r = translate_text(
-        family("") + "class C {\n    A a = null;\n    int run() {\n        var b = this.a as B;\n"
-                     "        return this.a is B ? b.hp : 0;\n    }\n}\n");
+        family("") + "class C {\n    $A a = null;\n    int run() {\n        var b = this.a as $B;\n"
+                     "        return b != null && this.a is $B ? b.hp : 0;\n    }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "auto b = hot::as_script<B_Shell>(__st->a, \"B\");")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "hot::is_script(__st->a, \"B\")")) << r.cpp;

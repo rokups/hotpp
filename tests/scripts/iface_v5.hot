@@ -15,7 +15,7 @@ class C : Actor {
 }
 
 class Holder : Actor {
-    C obj;
+    $C obj;
     IThing keep;
     int r = 0;
     int is_i = -1;

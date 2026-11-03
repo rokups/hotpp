@@ -1,0 +1,8 @@
+class Point {
+    int x = 1;
+}
+
+class Game {
+    [value]
+    Point origin;
+}

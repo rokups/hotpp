@@ -19,9 +19,8 @@ using namespace stmt_test;
 
 TEST(RefOutStatementParse, ReferenceLocalAndArguments)
 {
-    EXPECT_EQ(round_trip("Vec3& r = this.pos;"), "Vec3& r = this.pos;");
-    EXPECT_EQ(round_trip("Vec3& r = p;"), "Vec3& r = p;");
-    EXPECT_EQ(round_trip("const Vec3& r = p;"), "const Vec3& r = p;");
+    EXPECT_EQ(round_trip("ref Vec3 r = this.pos;"), "Vec3& r = this.pos;");
+    EXPECT_EQ(round_trip("ref Vec3 r = p;"), "Vec3& r = p;");
     EXPECT_EQ(round_trip("Fill(v); Swap(a, b);"), "Fill(v); Swap(a, b);");
 }
 

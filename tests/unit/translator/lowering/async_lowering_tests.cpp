@@ -74,6 +74,14 @@ TEST(AsyncLowering, AwaitInFinallyIsError)
     EXPECT_EQ(f.errors()[0], "1:19: 'await' is not supported inside a 'finally' block yet");
 }
 
+TEST(AsyncLowering, AwaitInSafeCallArgumentIsError)
+{
+    AsyncFixture f;
+    f.body("var v = x?.f(await t);");
+    ASSERT_EQ(f.errors().size(), 1u);
+    EXPECT_NE(f.errors()[0].find("'await' cannot be used inside this expression yet"), std::string::npos);
+}
+
 TEST(AsyncLowering, AwaitInCoalesceRightSideIsError)
 {
     AsyncFixture f;

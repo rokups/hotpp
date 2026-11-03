@@ -563,7 +563,7 @@ hot::Task<int32_t> BaseState_g1::Run(int32_t x)
 #line 16 "async_virtual.hot"
     HOT_NODEBUG_LOCAL auto* __st = state_of(__self);
 #line 16 "async_virtual.hot"
-    auto b = co_await Base__Compute(__self, x);
+    const auto b = co_await Base__Compute(__self, x);
 #line 17 "async_virtual.hot"
     co_return b * 10;
 #line 18 "async_virtual.hot"

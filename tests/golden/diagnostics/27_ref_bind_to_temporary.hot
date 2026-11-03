@@ -4,6 +4,6 @@ class Player : Actor {
     int hp = 10;
 
     void Heal() {
-        int& r = 5;
+        ref int r = 5;
     }
 }

@@ -12,7 +12,7 @@ class Unit : Actor {
     Unit() : base(std.string("unit")) { this.kind = 1; }
     Unit(int h) : base(std.string("unit")) { this.hp = h; this.kind = 2; }
     Unit(float f) : base(std.string("unit")) { this.hp = 50; this.kind = 3; }
-    Unit(int h, int& seen) : base(std.string("unit")) { this.hp = h; seen = h * 2; this.kind = 4; }
+    Unit(int h, ref int seen) : base(std.string("unit")) { this.hp = h; seen = h * 2; this.kind = 4; }
 }
 
 // The parent overload comes from the "base(...)" arguments of the child.
@@ -36,13 +36,13 @@ class Spawner : Actor {
     int plain = 0;
 
     override void Tick(float dt) {
-        Unit u0 = new Unit();
-        Unit u1 = new Unit(7);
-        Unit u2 = new Unit(2.5);
+        $Unit u0 = new $Unit();
+        $Unit u1 = new $Unit(7);
+        $Unit u2 = new $Unit(2.5);
         int s = 0;
-        Unit u3 = new Unit(4, s);
-        Unit u4 = new Elite();
-        Unit u5 = new Elite(8);
+        $Unit u3 = new $Unit(4, s);
+        $Unit u4 = new $Elite();
+        $Unit u5 = new $Elite(8);
         this.k0 = u0.kind;
         this.k1 = u1.hp;
         this.k2 = u2.kind;

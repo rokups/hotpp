@@ -1,0 +1,3 @@
+51_raw_pointer_local_to_shared.hot:6:20: error: cannot create a shared pointer from a raw pointer; use new $T(...)
+    6 |         $Actor a = raw;
+1 error generated.

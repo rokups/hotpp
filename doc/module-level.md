@@ -48,17 +48,17 @@ The name `std` follows the configured standard namespace, as `std.` does in a ty
 
 ```hot
 using Ints = std.vector<int>;      // a native type
-using Soldier = Recruit;           // a script class: a handle, like Recruit
+using Soldier = $Recruit;          // a script class: a handle, like $Recruit
 
 class Platoon {
     using Count = int;             // in a class body: for this class only
     Ints nums;
-    Soldier lead;                  // null at the start, new Soldier() makes an object
+    Soldier lead;                  // a handle: null at the start
     Count n;
 }
 ```
 
-- The translator replaces the alias name by its target when it reads the script. A script class alias has the handle storage of the class. A native type alias is that type.
+- The translator replaces the alias name by its target when it reads the script. An alias is the type that it names: `$Recruit` is a handle and `Recruit` is a value.
 - A target can use an alias that the script declares before it. A later alias and a cycle (`using A = B; using B = A;`) are errors.
 - An alias in a class body hides a module alias with the same name, in that class.
 - The C++ text has the alias too (as the storage type of the target), for the C++ code of a stub.
@@ -69,7 +69,7 @@ class Platoon {
 
 ## Enums and structs
 
-An enum is a scoped enum. Add a base type after `:`. The default base type is `int`. A struct is a value type. `[value]` on a class definition is an error. `[value]` on a use of a class copies it: see [Value uses](types-handles.html#value-uses).
+An enum is a scoped enum. Add a base type after `:`. The default base type is `int`. A struct is a value type. A bare class name is a value, and `$C` is a handle: see [Value uses](types-handles.html#value-uses).
 
 ```hot
 enum Mode { Idle, Walk, Run }

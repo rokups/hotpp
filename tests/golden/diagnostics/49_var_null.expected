@@ -1,0 +1,3 @@
+49_var_null.hot:3:17: error: null has no type; write the type
+    3 |         var x = null;
+1 error generated.

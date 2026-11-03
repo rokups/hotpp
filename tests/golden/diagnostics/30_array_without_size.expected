@@ -1,3 +1,3 @@
-30_array_without_size.hot:4:5: error: an array type needs a size: write 'T[N]'
+30_array_without_size.hot:4:5: error: T[] is a view; a field needs std.vector<T> or T[N]
     4 |     int[] scores;
 1 error generated.

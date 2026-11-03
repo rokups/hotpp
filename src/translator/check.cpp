@@ -5,6 +5,7 @@
 // The checks of the script AST. See check.h.
 #include "check.h"
 
+#include "ast_walk.h"
 #include "builtin_types.h"
 
 #include <algorithm>
@@ -23,16 +24,52 @@ namespace
 
 using namespace ast;
 
-// ------------------------------------------------------------------ walker
-// Visits the nodes in the order of the script text, parent first. The walk goes into the
-// bodies of lambdas. "on_expr" and "on_stmt" are called for each node.
-template <class FE, class FS> struct Walker
-{
-    FE& on_expr;
-    FS& on_stmt;
-    std::function<void()> lambda_end; // optional: called after the body of each lambda
+using walk::make_walker;
+using walk::Walker;
 
-    void expr(const ExprP& e)
+// ------------------------------------------------------------------ definite assignment
+// A walk over the paths of a body for one name. "PathWalk" keeps one state: "assigned" says
+// that the name has a value on the current path, and "alive" says that the path has not ended.
+// A "return" or a "throw" ends the path. The merge of two paths keeps "assigned" only when each
+// live path has it. A loop body can run zero times, so its assignments do not count after the loop.
+// The null analyzer can reuse the walk: the rules for the paths are here, and the hooks give
+// the events: a read of the name and a return (or the end of the body) with the state.
+struct PathWalk
+{
+    struct State
+    {
+        bool assigned = false;
+        bool alive = true;
+    };
+
+    const std::string& name;
+    std::function<void(uint32_t pos)> on_read; // the name is read before it has a value
+    std::function<void(uint32_t pos)> on_exit; // a path ends in a "return" with no value in the name
+    State st;
+    // The "break" states of the loops and the switches that are open: (some break seen, all assigned).
+    std::vector<std::pair<bool, bool>> breaks;
+    // One entry for each open loop: a "continue" was seen, and all "continue" states assigned.
+    std::vector<std::pair<bool, bool>> continues;
+
+    static bool is_name(const Expr& e, const std::string& n, bool whole)
+    {
+        auto* x = std::get_if<NameExpr>(&e.v);
+        if (!x || x->parts.empty() || x->parts[0] != n)
+            return false;
+        return !whole || x->parts.size() == 1;
+    }
+
+    static State join(const State& a, const State& b)
+    {
+        if (!a.alive)
+            return b;
+        if (!b.alive)
+            return a;
+        return State{a.assigned && b.assigned, true};
+    }
+
+    // The nodes in a lambda body do not count: the lambda runs at another time.
+    void reads(const ExprP& e)
     {
         if (e)
             expr(*e);
@@ -40,67 +77,97 @@ template <class FE, class FS> struct Walker
 
     void expr(const Expr& e)
     {
-        on_expr(e);
-        if (auto* m = std::get_if<MemberExpr>(&e.v))
+        if (auto* n = std::get_if<NameExpr>(&e.v))
         {
-            expr(m->obj);
-        }
-        else if (auto* c = std::get_if<CallExpr>(&e.v))
-        {
-            expr(c->callee);
-            for (const ExprP& a : c->args)
-                expr(a);
-        }
-        else if (auto* ix = std::get_if<IndexExpr>(&e.v))
-        {
-            expr(ix->obj);
-            expr(ix->index);
-        }
-        else if (auto* u = std::get_if<UnaryExpr>(&e.v))
-        {
-            expr(u->operand);
+            if (!n->parts.empty() && n->parts[0] == name && !st.assigned)
+                on_read(n->pos);
         }
         else if (auto* b = std::get_if<BinaryExpr>(&e.v))
         {
-            expr(b->lhs);
-            expr(b->rhs);
+            const bool plain = b->op == "=";
+            const bool assign = plain
+                || (b->op.size() >= 2 && b->op.back() == '=' && b->op != "==" && b->op != "!=" && b->op != "<="
+                    && b->op != ">=");
+            if (assign && b->lhs && is_name(*b->lhs, name, true))
+            {
+                if (!plain)
+                    expr(*b->lhs); // "x += 1" reads x
+                reads(b->rhs);
+                st.assigned = true;
+            }
+            else if (b->op == "&&" || b->op == "||")
+            {
+                reads(b->lhs);
+                const bool before = st.assigned; // the right side runs only on some paths
+                reads(b->rhs);
+                st.assigned = before;
+            }
+            else
+            {
+                reads(b->lhs);
+                reads(b->rhs);
+            }
         }
         else if (auto* t = std::get_if<TernaryExpr>(&e.v))
         {
-            expr(t->cond);
-            expr(t->a);
-            expr(t->b);
+            reads(t->cond);
+            const bool before = st.assigned;
+            reads(t->a);
+            const bool a = st.assigned;
+            st.assigned = before;
+            reads(t->b);
+            st.assigned = a && st.assigned;
+        }
+        else if (auto* c = std::get_if<CallExpr>(&e.v))
+        {
+            reads(c->callee);
+            // The call site does not show the mode of the callee. A name that is a whole
+            // argument can bind to an "out" or "ref" parameter, so the walk takes it as assigned.
+            for (const ExprP& a : c->args)
+            {
+                if (a && is_name(*a, name, true))
+                    st.assigned = true;
+                else
+                    reads(a);
+            }
+        }
+        else if (auto* m = std::get_if<MemberExpr>(&e.v))
+        {
+            reads(m->obj);
+        }
+        else if (auto* ix = std::get_if<IndexExpr>(&e.v))
+        {
+            reads(ix->obj);
+            reads(ix->index);
+        }
+        else if (auto* u = std::get_if<UnaryExpr>(&e.v))
+        {
+            reads(u->operand);
         }
         else if (auto* p = std::get_if<ParenExpr>(&e.v))
         {
-            expr(p->inner);
+            reads(p->inner);
         }
-        else if (auto* n = std::get_if<NewExpr>(&e.v))
+        else if (auto* nw = std::get_if<NewExpr>(&e.v))
         {
-            for (const ExprP& a : n->args)
-                expr(a);
+            for (const ExprP& a : nw->args)
+                reads(a);
         }
         else if (auto* tt = std::get_if<TypeTestExpr>(&e.v))
         {
-            expr(tt->obj);
+            reads(tt->obj);
         }
         else if (auto* ip = std::get_if<InterpExpr>(&e.v))
         {
             for (const ExprP& a : ip->args)
-                expr(a);
+                reads(a);
         }
         else if (auto* co = std::get_if<CollectionExpr>(&e.v))
         {
             for (const ExprP& a : co->elems)
-                expr(a);
+                reads(a);
             for (const ExprP& a : co->values)
-                expr(a);
-        }
-        else if (auto* l = std::get_if<LambdaExpr>(&e.v))
-        {
-            block(l->body);
-            if (lambda_end)
-                lambda_end();
+                reads(a);
         }
     }
 
@@ -116,84 +183,199 @@ template <class FE, class FS> struct Walker
             stmt(*s);
     }
 
+    // Run "f" and restore the state after it. The result is the state at the end of "f".
+    template <class F> State branch(F&& f)
+    {
+        const State saved = st;
+        f();
+        const State out = st;
+        st = saved;
+        return out;
+    }
+
+    // A loop body can run zero times: its assignments are lost.
+    template <class F> void maybe(F&& f)
+    {
+        const State saved = st;
+        breaks.emplace_back(false, true);
+        continues.emplace_back(false, true);
+        f();
+        continues.pop_back();
+        breaks.pop_back();
+        st = saved;
+    }
+
     void stmt(const Stmt& s)
     {
-        on_stmt(s);
+        if (!st.alive)
+            return; // dead code after a return, a throw, a break or a continue
         if (auto* b = std::get_if<BlockStmt>(&s.v))
         {
             block(*b);
         }
         else if (auto* es = std::get_if<ExprStmt>(&s.v))
         {
-            expr(es->expr);
+            reads(es->expr);
         }
         else if (auto* d = std::get_if<VarDeclStmt>(&s.v))
         {
-            expr(d->init);
+            reads(d->init);
         }
         else if (auto* i = std::get_if<IfStmt>(&s.v))
         {
-            expr(i->cond);
-            stmt(i->then);
-            stmt(i->otherwise);
+            reads(i->cond);
+            const State a = branch([&] { stmt(i->then); });
+            const State b = branch([&] { stmt(i->otherwise); });
+            st = join(a, b);
         }
         else if (auto* w = std::get_if<WhileStmt>(&s.v))
         {
-            expr(w->cond);
-            stmt(w->body);
+            reads(w->cond);
+            maybe([&] { stmt(w->body); });
         }
         else if (auto* dw = std::get_if<DoWhileStmt>(&s.v))
         {
+            // The body runs at least one time. A "continue" jumps to the condition. The state at
+            // the condition is the meet of the end of the body and the "continue" states. The
+            // state after the loop is the meet of the condition state and the "break" states.
+            breaks.emplace_back(false, true);
+            continues.emplace_back(false, true);
             stmt(dw->body);
-            expr(dw->cond);
+            const auto brk = breaks.back();
+            const auto cont = continues.back();
+            breaks.pop_back();
+            continues.pop_back();
+            State end = st;
+            if (cont.first)
+            {
+                if (end.alive)
+                    end.assigned = end.assigned && cont.second;
+                else
+                    end = State{cont.second, true};
+            }
+            st = end;
+            if (st.alive)
+                reads(dw->cond);
+            if (!st.alive && brk.first)
+                st = State{brk.second, true};
+            else if (st.alive && brk.first)
+                st.assigned = st.assigned && brk.second;
+            else if (!st.alive)
+                st = State{false, true}; // no path leaves the loop: keep the safe side
         }
         else if (auto* f = std::get_if<ForStmt>(&s.v))
         {
             for (const StmtP& x : f->init)
                 stmt(x);
-            expr(f->cond);
-            for (const ExprP& x : f->step)
-                expr(x);
-            stmt(f->body);
+            reads(f->cond);
+            maybe(
+                [&]
+                {
+                    stmt(f->body);
+                    for (const ExprP& x : f->step)
+                        reads(x);
+                });
         }
         else if (auto* fo = std::get_if<ForOfStmt>(&s.v))
         {
-            expr(fo->range);
-            stmt(fo->body);
+            reads(fo->range);
+            maybe([&] { stmt(fo->body); });
         }
         else if (auto* r = std::get_if<ReturnStmt>(&s.v))
         {
-            expr(r->expr);
+            reads(r->expr);
+            if (!st.assigned)
+                on_exit(r->pos);
+            st.alive = false;
+        }
+        else if (std::holds_alternative<BreakStmt>(s.v))
+        {
+            if (!breaks.empty())
+            {
+                breaks.back().first = true;
+                breaks.back().second = breaks.back().second && st.assigned;
+            }
+            st.alive = false;
+        }
+        else if (std::holds_alternative<ContinueStmt>(s.v))
+        {
+            if (!continues.empty())
+            {
+                continues.back().first = true;
+                continues.back().second = continues.back().second && st.assigned;
+            }
+            st.alive = false;
         }
         else if (auto* sw = std::get_if<SwitchStmt>(&s.v))
         {
-            expr(sw->subject);
+            reads(sw->subject);
+            const State start = st;
+            bool has_default = false;
+            State exit{false, false}; // no path yet
+            breaks.emplace_back(false, true);
             for (const SwitchCase& c : sw->cases)
             {
+                has_default = has_default || c.is_default;
+                st = start; // a fall-through keeps at most what the start has
                 for (const ExprP& l : c.labels)
-                    expr(l);
+                    reads(l);
                 for (const StmtP& x : c.stmts)
                     stmt(x);
+                if (&c == &sw->cases.back())
+                    exit = join(exit, st);
             }
+            const auto brk = breaks.back();
+            breaks.pop_back();
+            if (brk.first)
+                exit = join(exit, State{brk.second, true});
+            if (!has_default)
+                exit = join(exit, start);
+            st = exit;
         }
         else if (auto* t = std::get_if<ThrowStmt>(&s.v))
         {
-            expr(t->expr);
+            reads(t->expr);
+            st.alive = false;
         }
         else if (auto* tr = std::get_if<TryStmt>(&s.v))
         {
+            const State start = st;
             block(tr->block);
+            State exit = st;
             for (const CatchClause& c : tr->catches)
+            {
+                st = start; // the try block can throw before any assignment
                 block(c.block);
+                exit = join(exit, st);
+            }
+            st = exit;
             if (tr->finally_block)
+            {
+                const bool live = st.alive;
+                if (!live)
+                    st = start;
                 block(*tr->finally_block);
+                st.alive = live && st.alive;
+            }
         }
     }
 };
 
-template <class FE, class FS> Walker<FE, FS> make_walker(FE& fe, FS& fs)
+// Report the "out" parameters that a body does not assign (design 7.10.1).
+template <class Report>
+void check_out_params(const std::vector<Param>& params, const BlockStmt& body, uint32_t end_pos, Report&& report)
 {
-    return Walker<FE, FS>{fe, fs, nullptr};
+    for (const Param& p : params)
+    {
+        if (p.mode != ParamMode::Out)
+            continue;
+        const std::string unassigned = "out parameter \"" + p.name + "\" is not assigned on every path";
+        const std::string early = "out parameter \"" + p.name + "\" is read before it is assigned";
+        PathWalk w{p.name, [&](uint32_t pos) { report(pos, early); }, [&](uint32_t pos) { report(pos, unassigned); }, {}, {}};
+        w.block(body);
+        if (w.st.alive && !w.st.assigned)
+            report(end_pos, unassigned);
+    }
 }
 
 // ------------------------------------------------------------------ type text
@@ -283,6 +465,9 @@ struct Checker
     std::vector<Scope> scopes; // the state at the start of each lambda that is open
     std::set<std::string> pointers; // the part of "borrowed" that is a pointer: a copy is borrowed too
     std::map<std::string, std::string> local_types; // the declared type of a local ("": not known)
+    std::set<std::string> owning_locals; // the locals and by-value parameters that own their elements
+    std::vector<std::set<std::string>> owning_stack; // owning_locals at the start of each open block
+    std::string method_ret; // the declared return type of the method in progress
     std::map<std::string, std::string> field_types; // the declared type of each field
     std::set<const Expr*> allowed_refs; // "&x" nodes in a place where they are valid
     std::set<const Expr*> callee_names; // names in the callee place of a call
@@ -404,8 +589,17 @@ struct Checker
             return false;
         if (is_cpp)
             return true;
-        error(pos, "a pointer to the script class '" + base + "' is not allowed: use '" + base + "' (a handle)");
+        error(pos, "a pointer to the script class '" + base + "' is not allowed: use '$" + base + "' (a handle)");
         return true;
+    }
+
+    // A "T[]" is a std::span<T>, which needs C++20.
+    void view_needs_cxx20(const std::string& type, uint32_t pos)
+    {
+        if (std_below_20 && !is_cpp && is_view_type(type))
+            error(pos,
+                "'T[]' is a std::span and needs C++20: set CMAKE_CXX_STANDARD 20 before hot_add_scripts "
+                "(hotc: --std=c++20)");
     }
 
     // True when a local of this declared type holds a borrowed pointer or a reference.
@@ -430,7 +624,12 @@ struct Checker
     {
         in_async = m.is_async && !is_cpp;
         in_async_void = in_async && (m.ret.empty() || m.ret == "void");
+        method_ret = trim(m.ret);
         body(m.params, m.body);
+        method_ret.clear();
+        if (!is_cpp && !m.is_abstract)
+            check_out_params(m.params, m.body, m.body.end_pos ? m.body.end_pos : m.pos,
+                [&](uint32_t pos, const std::string& msg) { error(pos, msg); });
         in_async = in_async_void = false;
     }
 
@@ -462,9 +661,13 @@ struct Checker
         borrowed.clear();
         pointers.clear();
         local_types.clear();
+        owning_locals.clear();
+        owning_stack.clear();
         for (const Param& p : params)
         {
             record_local(p.name, p.type);
+            if (!p.weak && !p.value && is_owning_container(p.type))
+                owning_locals.insert(p.name); // a parameter by value owns its copy
             if (is_borrowed_type(p.type))
                 add_borrowed(p.name, p.type);
         }
@@ -477,6 +680,13 @@ struct Checker
         auto fs = [&](const Stmt& s) { on_stmt(s); };
         auto w = make_walker(fe, fs);
         w.lambda_end = [&] { lambda_end(); };
+        // A local ends at the end of its block: the owning names of the block do not leak out.
+        w.block_begin = [&] { owning_stack.push_back(owning_locals); };
+        w.block_end = [&]
+        {
+            owning_locals = std::move(owning_stack.back());
+            owning_stack.pop_back();
+        };
         w.block(b);
     }
 
@@ -613,15 +823,105 @@ struct Checker
         return !type.empty() && types.is_handle(type) ? name : std::string();
     }
 
+    // True for the type "T[]" (a view): the text of the script or the C++ text.
+    static bool is_view_type(const std::string& type)
+    {
+        std::string t = trim(type);
+        if (!t.empty() && t[0] == '\x01') // the mark of the namespace "std"
+            t.erase(0, 1);
+        return (t.size() >= 2 && t.compare(t.size() - 2, 2, "[]") == 0) || t.rfind("std::span<", 0) == 0;
+    }
+
+    // True for the type of a local that owns its elements: "std.vector<T>" and "T[N]".
+    static bool is_owning_container(const std::string& type)
+    {
+        std::string t = trim(type);
+        if (t.rfind("const ", 0) == 0)
+            t = trim(t.substr(6));
+        if (!t.empty() && t[0] == '\x01') // the mark of the namespace "std"
+            t.erase(0, 1);
+        // A pointer "std::vector<T>*" and a reference "std::vector<T>&" do not own the elements.
+        if (t.empty() || t.back() != '>')
+            return false;
+        return t.rfind("std::vector<", 0) == 0 || t.rfind("std::array<", 0) == 0;
+    }
+
+    // The method of this class with a name, or null.
+    const Method* own_method(const std::string& name) const
+    {
+        for (const Method& m : cd.methods)
+            if (m.name == name)
+                return &m;
+        return nullptr;
+    }
+
+    // True when the value of the expression owns its elements: a new vector or array, a call of a
+    // method of this class that returns one, or a copy of a local that owns its elements. The type of a
+    // "var" local comes from its initializer.
+    bool owning_init(const Expr& e) const
+    {
+        if (auto* p = std::get_if<ParenExpr>(&e.v))
+            return p->inner && owning_init(*p->inner);
+        if (auto* n = std::get_if<NameExpr>(&e.v))
+            return n->parts.size() == 1 && n->template_args.empty() && owning_locals.count(n->parts[0]) != 0;
+        if (auto* c = std::get_if<CallExpr>(&e.v); c && c->callee)
+        {
+            const Method* m = nullptr;
+            if (auto* n = std::get_if<NameExpr>(&c->callee->v))
+            {
+                if (n->parts.size() == 2 && (n->parts[1] == "vector" || n->parts[1] == "array")
+                    && (n->parts[0] == "std" || n->parts[0] == "\x01std"))
+                    return true;
+                if (n->parts.size() == 1 && n->template_args.empty() && !locals.count(n->parts[0]))
+                    m = own_method(n->parts[0]);
+            }
+            else if (auto* mm = std::get_if<MemberExpr>(&c->callee->v); mm && mm->obj && !mm->safe
+                     && std::holds_alternative<ThisExpr>(mm->obj->v))
+                m = own_method(mm->name);
+            return m && is_owning_container(m->ret);
+        }
+        return false;
+    }
+
     void on_stmt(const Stmt& s)
     {
         if (auto* r = std::get_if<ReturnStmt>(&s.v))
+        {
             if (in_async_void && scopes.empty() && r->expr)
                 error(r->pos, "an 'async void' method cannot return a value");
+            // "return v;" in a method of the type "T[]": the view points into the local "v".
+            if (scopes.empty() && r->expr && !is_cpp && is_view_type(method_ret))
+                if (auto* n = std::get_if<NameExpr>(&r->expr->v))
+                    if (n->parts.size() == 1 && owning_locals.count(n->parts[0]))
+                        error(r->pos,
+                            "the view 'T[]' points into the local '" + n->parts[0]
+                                + "', which ends at the return: return a std.vector<T> instead");
+        }
+        if (auto* d = std::get_if<VarDeclStmt>(&s.v))
+        {
+            // The name can hide an outer local of another kind, so a name that does not own erases it.
+            const bool owns = d->names.empty() && !d->is_ref
+                && (d->type.empty() ? d->init && owning_init(*d->init) : is_owning_container(d->type));
+            for (const std::string& n : d->names)
+                owning_locals.erase(n);
+            if (d->names.empty())
+            {
+                if (owns)
+                    owning_locals.insert(d->name);
+                else
+                    owning_locals.erase(d->name);
+            }
+        }
+        else if (auto* fo = std::get_if<ForOfStmt>(&s.v))
+        {
+            owning_locals.erase(fo->name);
+            for (const std::string& n : fo->names)
+                owning_locals.erase(n);
+        }
         if (auto* d = std::get_if<VarDeclStmt>(&s.v))
         {
             if (!d->names.empty())
-            { // a structured binding: plain locals, "var&" borrows
+            { // a structured binding: plain locals, "ref" borrows
                 for (const std::string& n : d->names)
                 {
                     record_local(n, std::string());
@@ -632,10 +932,13 @@ struct Checker
             }
             record_local(d->name, d->type);
             if (!d->type.empty())
+            {
                 script_pointer(d->type, d->pos);
+                view_needs_cxx20(d->type, d->pos);
+            }
             if (d->is_ref)
             {
-                borrowed.insert(d->name); // "var& r = x": a local reference
+                borrowed.insert(d->name); // "ref r = x": a local reference
             }
             else if (d->init && allow_borrow_forms(*d->init, false))
             {
@@ -860,7 +1163,11 @@ struct Checker
         {
             check_async(m);
             for (const Param& p : m.params)
+            {
                 script_pointer(p.type, m.pos);
+                view_needs_cxx20(p.type, m.pos);
+            }
+            view_needs_cxx20(m.ret, m.pos);
             // An override keeps the native signature. The script cannot change its return type.
             if (!m.overrides_virtual && !m.ret.empty())
             {
@@ -874,8 +1181,14 @@ struct Checker
         for (const Ctor& c : cd.ctors)
         {
             for (const Param& p : c.params)
+            {
                 script_pointer(p.type, c.pos);
+                view_needs_cxx20(p.type, c.pos);
+            }
             body(c.params, c.body);
+            if (!is_cpp)
+                check_out_params(c.params, c.body, c.body.end_pos ? c.body.end_pos : c.pos,
+                    [&](uint32_t pos, const std::string& msg) { error(pos, msg); });
         }
         for (const Method& d : cd.dtors)
             body(d);
@@ -906,9 +1219,30 @@ bool cxx_std_below_20(const std::string& std_name)
 namespace
 {
 
-// The rules for one "[value] T" use. "what" names the construct, for example "field 'f'".
-// "needs_ctor" is true for a declaration without an initializer: T must have a constructor
-// with no parameters (a field default runs "new T()").
+// True when the type text is a bare script class: a box of the class (hot::Value<C>). A struct,
+// an interface, a handle "$C" and any other text are not. A reference is not bare. A "const" prefix is allowed.
+bool is_box_type(const TypeModel& types, const std::string& type)
+{
+    std::string t = trim(type);
+    if (starts_with(t, "const "))
+        t = trim(t.substr(6));
+    return !t.empty() && t[0] != '$' && types.is_script_class(t) && !types.is_script_value(t);
+}
+
+// The type of a reference without the "const" and the "&": "const C&" gives "C".
+std::string referent_type(const std::string& type)
+{
+    std::string t = trim(type);
+    while (!t.empty() && t.back() == '&')
+        t = trim(t.substr(0, t.size() - 1));
+    if (starts_with(t, "const "))
+        t = trim(t.substr(6));
+    return t;
+}
+
+// The rules for one box use of a script class. "what" names the construct, for example "field
+// 'f'". "needs_ctor" is true for a declaration without an initializer: C must have a constructor
+// with no parameters (a field default runs "new C()").
 struct ValueUseChecker
 {
     const std::vector<ClassDef>& classes;
@@ -941,100 +1275,148 @@ struct ValueUseChecker
         return false;
     }
 
-    void use(const std::string& type, uint32_t pos, const std::string& what, bool needs_ctor, bool is_ref = false)
+    void use(const std::string& type, uint32_t pos, const std::string& what, bool needs_ctor)
     {
-        std::string t = trim(type);
-        // A reference (also a const reference) is not a value: "[value]" holds its own copy.
-        if (!t.empty() && t.back() == '&')
+        if (!is_box_type(types, type))
+            return;
+        const std::string t = referent_type(type);
+        if (!types.script_native_base(t).empty())
         {
-            is_ref = true;
-            t = trim(t.substr(0, t.size() - 1));
+            diag.add(pos, map, kNativeBaseValueError);
+            return;
         }
-        if (is_ref)
-        {
+        const ClassDef* c = find(t);
+        if (needs_ctor && c && !has_default_ctor(*c))
             diag.add(pos, map,
-                "[value] on a reference is not valid: a [value] holds its own copy. Remove the reference or the "
-                "'[value]'");
-            return;
-        }
-        // "const Pt" by value is the type Pt.
-        if (starts_with(t, "const "))
-            t = trim(t.substr(6));
-        if (t.empty())
-            return; // "[value] var x = e": the lowering decides
-        if (types.is_script_interface(t))
+                "a value of the class '" + t + "' in " + what
+                    + " has no initializer, so the class needs a constructor with no parameters. Add one, or write an "
+                      "initializer");
+    }
+
+    // A bare script class in a template argument is a box too: "std.vector<C>" holds boxes.
+    // A class with a native base cannot be a box, so the argument is an error.
+    void targs(const std::string& type, uint32_t pos)
+    {
+        int depth = 0;
+        for (size_t i = 0; i < type.size();)
         {
-            diag.add(pos, map, interface_attribute_error("value", script_type_text(t)));
-            return;
-        }
-        if (types.is_script_class(t) && !types.is_script_value(t))
-        {
-            const std::string nb = types.script_native_base(t);
-            if (!nb.empty())
+            const char ch = type[i];
+            if (ch == '<')
+                ++depth;
+            else if (ch == '>')
+                --depth;
+            if (!(std::isalpha(static_cast<unsigned char>(ch)) || ch == '_'))
             {
-                diag.add(pos, map,
-                    "[value] on " + what + " needs a script class with no native base, and '" + t
-                        + "' has the native base '" + nb + "'. Remove '[value]'");
+                ++i;
+                continue;
+            }
+            size_t e = i;
+            while (e < type.size() && (std::isalnum(static_cast<unsigned char>(type[e])) || type[e] == '_' || type[e] == '.'))
+                ++e;
+            const bool marked = i > 0 && type[i - 1] == '$';
+            if (depth > 0 && !marked && !types.script_native_base(type.substr(i, e - i)).empty())
+            {
+                diag.add(pos, map, kNativeBaseValueError);
                 return;
             }
-            const ClassDef* c = find(t);
-            if (needs_ctor && c && !has_default_ctor(*c))
-                diag.add(pos, map,
-                    "[value] on " + what + " has no initializer, so the class '" + t
-                        + "' needs a constructor with no parameters. Add one, or write an initializer");
-            return;
+            i = e;
         }
-        if (!types.is_script_value(t) && types.is_handle(t))
-        {
-            diag.add(pos, map,
-                "[value] on " + what + " is not valid for the native type '" + t
-                    + "'. The type rules decide the storage of a native type. Remove '[value]'");
-            return;
-        }
-        diag.add(pos, map,
-            "[value] on " + what + " has no effect: '" + script_type_text(t)
-                + "' is a value type already. Remove '[value]'");
     }
 
     void locals(const BlockStmt& body)
     {
-        auto fe = [](const Expr&) {};
+        auto fe = [&](const Expr& x)
+        {
+            if (const auto* l = std::get_if<LambdaExpr>(&x.v))
+                params(l->params, l->pos);
+        };
         auto fs = [&](const Stmt& s)
         {
             const auto* d = std::get_if<VarDeclStmt>(&s.v);
+            if (d)
+                targs(d->type, d->pos);
             if (d && d->value)
-                use(d->type, d->value_pos ? d->value_pos : d->pos, "local '" + d->name + "'", d->init == nullptr,
-                    d->is_ref);
+                use(d->type, d->pos, "local '" + d->name + "'", d->init == nullptr);
+            const auto* fo = std::get_if<ForOfStmt>(&s.v);
+            if (fo)
+                targs(fo->type, fo->pos);
+            if (fo && fo->value)
+                use(fo->type, fo->pos, "foreach variable '" + fo->name + "'", false);
         };
         make_walker(fe, fs).block(body);
+    }
+
+    // A "ref", "in" or "out" parameter of a box type: the box has no reference form.
+    void params(const std::vector<Param>& ps, uint32_t pos)
+    {
+        for (const Param& p : ps)
+        {
+            targs(p.type, pos);
+            if (p.value)
+                use(p.type, pos, "parameter '" + p.name + "'", false);
+            else if (p.mode != ParamMode::Plain && p.mode != ParamMode::ByVal && !p.weak
+                && is_box_type(types, referent_type(p.type)))
+                diag.add(pos, map,
+                    "a reference to a value of a script class is not supported; write $" + referent_type(p.type));
+        }
+    }
+
+    // True when the type text has the word "ref" as a token: "ref T", "List<ref T>" or a tuple member.
+    static bool has_ref_word(const std::string& type)
+    {
+        auto word_char = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_'; };
+        size_t i = 0;
+        while (i < type.size())
+        {
+            if (!word_char(type[i]))
+            {
+                ++i;
+                continue;
+            }
+            size_t j = i;
+            while (j < type.size() && word_char(type[j]))
+                ++j;
+            if (type.compare(i, j - i, "ref") == 0)
+                return true;
+            i = j;
+        }
+        return false;
+    }
+
+    void ref_storage(const std::string& type, uint32_t pos)
+    {
+        if (has_ref_word(type))
+            diag.add(pos, map, "\"ref\" is only for local variables, foreach and parameters");
     }
 
     void run()
     {
         for (const ClassDef& cd : classes)
         {
+            for (const Property& p : cd.props)
+                ref_storage(p.type, p.pos);
             for (const Field& f : cd.fields)
             {
+                ref_storage(f.type, f.pos);
+                targs(f.type, f.pos);
                 if (!f.value)
                     continue;
-                const uint32_t pos = f.value_pos ? f.value_pos : f.pos;
                 if (cd.is_value)
-                    diag.add(pos, map,
-                        "[value] on field '" + f.name + "' of the struct '" + cd.name + "' is not supported yet");
+                    diag.add(f.pos, map,
+                        cd.name == kModuleClassName
+                            ? "a module variable cannot hold a value of a script class; write $" + trim(f.type) + " "
+                                + f.name
+                            : "the field '" + f.name + "' of the struct '" + cd.name
+                                + "' cannot hold a value of a script class; write $" + trim(f.type) + " " + f.name);
                 else
-                    use(f.type, pos, "field '" + f.name + "'", !f.has_init);
+                    use(f.type, f.pos, "field '" + f.name + "'", !f.has_init);
             }
-            auto params = [&](const std::vector<Param>& ps, uint32_t pos)
-            {
-                for (const Param& p : ps)
-                    if (p.value)
-                        use(p.type, pos, "parameter '" + p.name + "'", false);
-            };
             for (const Method& m : cd.methods)
             {
                 params(m.params, m.pos);
+                targs(m.ret, m.pos);
                 if (m.ret_value)
-                    use(m.ret, m.ret_value_pos ? m.ret_value_pos : m.pos, "the return type of '" + m.name + "'", false);
+                    use(m.ret, m.pos, "the return type of '" + m.name + "'", false);
                 locals(m.body);
             }
             for (const Ctor& c : cd.ctors)
@@ -1048,7 +1430,83 @@ struct ValueUseChecker
     }
 };
 
+// Sets the flag of a box use on each declaration of the script whose type is a bare script class.
+struct ValueResolver
+{
+    const TypeModel& types;
+
+    // A "ref", "in" or "out" parameter and a weak parameter get no flag.
+    void params_of(Param& p)
+    {
+        const bool plain = p.mode == ParamMode::Plain || p.mode == ParamMode::ByVal;
+        p.value = plain && !p.weak && is_box_type(types, p.type);
+    }
+
+    void fn_types(Method& m)
+    {
+        for (Param& p : m.params)
+            params_of(p);
+        m.ret_value = is_box_type(types, m.ret);
+    }
+
+    void locals(BlockStmt& body)
+    {
+        // The walker reads the tree as const. This pass owns the tree and sets the flags.
+        auto fe = [&](const Expr& x)
+        {
+            if (const auto* l = std::get_if<LambdaExpr>(&x.v))
+                for (Param& p : const_cast<LambdaExpr*>(l)->params)
+                    params_of(p);
+        };
+        auto fs = [&](const Stmt& s)
+        {
+            auto* d = std::get_if<VarDeclStmt>(&const_cast<Stmt&>(s).v);
+            if (d && !d->weak && !d->is_ref && d->names.empty() && is_box_type(types, d->type))
+                d->value = true;
+            auto* fo = std::get_if<ForOfStmt>(&const_cast<Stmt&>(s).v);
+            if (fo && !fo->is_ref && fo->names.empty() && is_box_type(types, fo->type))
+                fo->value = true;
+        };
+        make_walker(fe, fs).block(body);
+    }
+
+    void run(ClassDef& cd)
+    {
+        for (Field& f : cd.fields)
+            f.value = !f.weak && is_box_type(types, f.type);
+        for (Method& m : cd.methods)
+        {
+            fn_types(m);
+            locals(m.body);
+        }
+        for (Ctor& c : cd.ctors)
+        {
+            for (Param& p : c.params)
+                params_of(p);
+            locals(c.body);
+        }
+        for (Method& d : cd.dtors)
+            locals(d.body);
+    }
+
+    void run(InterfaceDef& d)
+    {
+        for (Method& m : d.methods)
+            fn_types(m);
+    }
+};
+
 } // namespace
+
+void resolve_value_uses(ClassDef& cd, const TypeModel& types)
+{
+    ValueResolver{types}.run(cd);
+}
+
+void resolve_value_uses(InterfaceDef& d, const TypeModel& types)
+{
+    ValueResolver{types}.run(d);
+}
 
 void check_value_uses(const std::vector<ClassDef>& classes, const TypeModel& types, const LineMap& map, Diagnostics& diag)
 {
@@ -1536,18 +1994,18 @@ struct ParamAnalysis
             if (auto* r = std::get_if<ReturnStmt>(&s.v))
                 if (r->expr && is_exactly(*r->expr, name))
                     use.stored = true;
-            // "T& r = p;" and "var& r = p;" bind a writable alias to the parameter.
+            // "T& r = p;" and "ref r = p;" bind a writable alias to the parameter.
             if (auto* d = std::get_if<VarDeclStmt>(&s.v))
-                if (d->init && (is_ref_type(d->type) || (d->is_ref && d->type.empty() && !d->is_const))
+                if (d->init && (is_ref_type(d->type) || d->is_ref)
                     && rooted(d->init))
                 {
                     use.mutated = true;
                     if (is_exactly(*d->init, name))
                         use.rebound = true;
                 }
-            // "foreach (var& e in p)" binds a writable alias to an element of the parameter.
+            // "foreach (ref e in p)" binds a writable alias to an element of the parameter.
             if (auto* fo = std::get_if<ForOfStmt>(&s.v))
-                if (fo->is_ref && !fo->is_const && rooted(fo->range))
+                if (fo->is_ref && rooted(fo->range))
                     use.mutated = true;
         };
         make_walker(fe, fs).block(body);
@@ -1652,7 +2110,10 @@ struct QueryCollector
     QType of_text(const std::string& type) const
     {
         QType q;
-        std::string t = trim(type), base = t;
+        std::string t = trim(type);
+        if (!t.empty() && t[0] == '$')
+            t = trim(t.substr(1)); // "$C" is the handle of the class "C"
+        std::string base = t;
         if (t.empty())
             return q;
         is_borrowed_form(t, base);
@@ -2122,13 +2583,22 @@ bool uses_bare_this(const ClassDef& cd)
     return found;
 }
 
+namespace
+{
+// The handle mark "$" does not belong to the class name.
+std::string strip_handle_mark(const std::string& t)
+{
+    return !t.empty() && t[0] == '$' ? t.substr(1) : t;
+}
+} // namespace
+
 std::set<std::string> block_new_targets(const ClassDef& cd)
 {
     std::set<std::string> out;
     auto fe = [&](const Expr& e)
     {
         if (auto* n = std::get_if<NewExpr>(&e.v))
-            out.insert(n->type);
+            out.insert(strip_handle_mark(n->type));
     };
     auto fs = [](const Stmt&) {};
     auto w = make_walker(fe, fs);
@@ -2146,7 +2616,7 @@ std::set<std::string> new_targets(const Script& sc)
     auto fe = [&](const Expr& e)
     {
         if (auto* n = std::get_if<NewExpr>(&e.v))
-            out.insert(n->type);
+            out.insert(strip_handle_mark(n->type));
     };
     auto fs = [](const Stmt&) {};
     auto w = make_walker(fe, fs);
@@ -2185,6 +2655,7 @@ std::set<std::string> used_type_names(const ClassDef& cd)
     {
         if (t.empty())
             return;
+        t = strip_handle_mark(t);
         out.insert(t);
         std::string base;
         if (is_borrowed_form(t, base))

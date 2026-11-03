@@ -21,21 +21,21 @@ class Keeper : Actor {
     Thing held = null;
     [weak]
     Thing seen = null;
-    Pet pet = null;
+    $Pet pet = null;
     [weak]
-    Pet seenPet = null;
+    $Pet seenPet = null;
     int ticks;
     int alive;
     int petValue;
 
-    void Watch([weak] Pet p) { seenPet = p; }
+    void Watch([weak] $Pet p) { seenPet = p; }
 
     override void Tick(float dt) {
         ticks = ticks + 1;
         if (ticks == 1) {
             held = new Thing(4);
             seen = held;
-            pet = new Pet();
+            pet = new $Pet();
             Watch(pet);
         }
         if (ticks == 3) {

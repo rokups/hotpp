@@ -110,7 +110,7 @@ struct GridState_g2 {
 
     void Tick(float dt);
     int32_t total();
-    std::array<int32_t, 4> make(std::array<int32_t, 2> p);
+    std::array<int32_t, 4> make(hot::In<std::array<int32_t, 2>> p);
     // Not overridden: call the implementation of Actor.
 #line 5 "array_v2.hot"
     HOT_NODEBUG void __fwd_TakeDamage_f(float a0)
@@ -181,7 +181,7 @@ HOT_HIDDEN GridState_g2* state_of(Grid_Shell* __self)
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Grid__total(Grid_Shell* __self);
-[[maybe_unused]] HOT_HIDDEN static std::array<int32_t, 4> Grid__make(Grid_Shell* __self, std::array<int32_t, 2> p);
+[[maybe_unused]] HOT_HIDDEN static std::array<int32_t, 4> Grid__make(Grid_Shell* __self, hot::In<std::array<int32_t, 2>> p);
 
 #line 5 "array_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static auto Grid__super_args()
@@ -383,16 +383,16 @@ int32_t GridState_g2::total()
 #line 384 "array_v2.hot.cpp"
 
 #line 27 "array_v2.hot"
-[[maybe_unused]] HOT_HIDDEN static std::array<int32_t, 4> Grid__make(Grid_Shell* __self, std::array<int32_t, 2> p)
+[[maybe_unused]] HOT_HIDDEN static std::array<int32_t, 4> Grid__make(Grid_Shell* __self, hot::In<std::array<int32_t, 2>> p)
 #line 27 "array_v2.hot"
 {
 #line 27 "array_v2.hot"
-    return state_of(__self)->make(std::forward<std::array<int32_t, 2>>(p));
+    return state_of(__self)->make(std::forward<hot::In<std::array<int32_t, 2>>>(p));
 #line 27 "array_v2.hot"
 }
 #line 394 "array_v2.hot.cpp"
 #line 27 "array_v2.hot"
-std::array<int32_t, 4> GridState_g2::make(std::array<int32_t, 2> p)
+std::array<int32_t, 4> GridState_g2::make(hot::In<std::array<int32_t, 2>> p)
 #line 27 "array_v2.hot"
 {
 #line 27 "array_v2.hot"

@@ -7,27 +7,32 @@ using "BenchEngine.h";
 
 class BenchNode {
     int v = 0;
-    BenchNode next = null;
+    $BenchNode next = null;
 }
 
 class BenchHandles : BenchBase {
-    BenchNode head = null;
+    $BenchNode head = null;
 
     override long Run(int n) {
         if (head == null) {
-            head = new BenchNode();
-            head.v = 1;
-            BenchNode cur = head;
+            $BenchNode first = new $BenchNode();
+            first.v = 1;
+            head = first;
+            $BenchNode cur = first;
             for (int j = 1; j < 4; j++) {
-                cur.next = new BenchNode();
-                cur.next.v = j + 1;
-                cur = cur.next;
+                if (cur == null) break;
+                $BenchNode node = new $BenchNode();
+                node.v = j + 1;
+                cur.next = node;
+                cur = node;
             }
         }
         long s = 0;
-        BenchNode p = head;
+        $BenchNode start = head;
+        if (start == null) return 0;
+        $BenchNode p = start;
         for (int i = 0; i < n; i++) {
-            if (p == null) p = head;
+            if (p == null) p = start;
             s += p.v;
             p = p.next;
         }

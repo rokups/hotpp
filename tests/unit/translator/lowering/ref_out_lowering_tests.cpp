@@ -23,7 +23,7 @@ TEST(RefOutLowering, ReferenceArgumentAndReferenceLocal)
     Fixture f;
     f.param("v");
     EXPECT_EQ(f.body("Fill(v);"), "Fill(v);");
-    EXPECT_EQ(f.body("Vec3& r = this.health;"), "Vec3& r = __st->health;");
+    EXPECT_EQ(f.body("ref Vec3 r = this.health;"), "Vec3& r = __st->health;");
     EXPECT_EQ(f.body("this.target = &v;"), "__st->target = &v;");
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
@@ -31,7 +31,7 @@ TEST(RefOutLowering, ReferenceArgumentAndReferenceLocal)
 TEST(RefOutLowering, ReferenceLambdaParameterKeepsItsReferenceType)
 {
     Fixture f;
-    EXPECT_NE(f.expr("(Vec3& a, int& b) => { }").find("[=](Vec3& a, int32_t& b)"), std::string::npos);
+    EXPECT_NE(f.expr("(ref Vec3 a, ref int b) => { }").find("[=](Vec3& a, int32_t& b)"), std::string::npos);
 }
 
 TEST(RefOutLowering, PrefixAmpersandIsNotAnError)

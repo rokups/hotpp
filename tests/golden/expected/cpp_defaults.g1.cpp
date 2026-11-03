@@ -31,7 +31,7 @@ const int kStep = 2;
 
 #line 33 "cpp_defaults.cpp.cpp"
 
-// ---------------------------------------------------------------- [value] class HotModule
+// ---------------------------------------------------------------- struct HotModule
 struct HotModule {
     int calls;
 };

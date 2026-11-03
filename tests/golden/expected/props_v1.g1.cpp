@@ -551,7 +551,7 @@ float GaugeState_g1::get_Hp()
 }
 #line 553 "props_v1.hot.cpp"
 #line 7 "props_v1.hot"
-void GaugeState_g1::set_Hp(float value)
+void GaugeState_g1::set_Hp(float const value)
 #line 7 "props_v1.hot"
 {
 #line 7 "props_v1.hot"
@@ -650,7 +650,7 @@ int32_t GaugeState_g1::get_Level()
 }
 #line 652 "props_v1.hot.cpp"
 #line 9 "props_v1.hot"
-void GaugeState_g1::set_Level(int32_t value)
+void GaugeState_g1::set_Level(int32_t const value)
 #line 9 "props_v1.hot"
 {
 #line 9 "props_v1.hot"
@@ -716,7 +716,7 @@ float GaugeState_g1::get_Shield()
 }
 #line 718 "props_v1.hot.cpp"
 #line 13 "props_v1.hot"
-void GaugeState_g1::set_Shield(float value)
+void GaugeState_g1::set_Shield(float const value)
 #line 13 "props_v1.hot"
 {
 #line 13 "props_v1.hot"

@@ -1,0 +1,3 @@
+56_null_call_on_pointer_field.hot:7:9: error: "target" can be null here; copy it to a local and check it
+    7 |         target.Bump(1);
+1 error generated.

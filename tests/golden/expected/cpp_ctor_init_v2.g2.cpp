@@ -388,7 +388,7 @@ static const hot::CtorEntry Unit__constructors[] = {
     {nullptr, nullptr, 0}};
 
 
-// ---------------------------------------------------------------- [value] class HotModule
+// ---------------------------------------------------------------- struct HotModule
 struct HotModule {
     Unit * first;
     Unit * second;

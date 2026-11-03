@@ -11,7 +11,7 @@ Hot++ has fixed-width builtin types. Other types come from C++.
 
 This guide has 2 pages. This page covers builtin types, variables, C++ types, collection literals and arrays.
 
-- [Handles, references and pointers](types-handles.html): handles, weak handles, value uses (`[value]`), references and pointers.
+- [Handles, references and pointers](types-handles.html): handles, weak handles, values and handles of script classes, references and pointers.
 
 ## Builtin types
 
@@ -38,7 +38,7 @@ The C++ spellings with many words are errors, for example `unsigned int` and `lo
 
 ## Variables
 
-A variable can have no initializer. It then gets the default value (zero, `false`, `null`). `var` takes the type from the initializer. `const` makes the variable read only.
+A variable can have no initializer. It then gets the default value (zero, `false`, `null`). `var` takes the type from the initializer. Do not write `const` on a variable. The translator infers it: a local that the body never assigns is const. The error `const is inferred; remove it` shows when you write it.
 
 ```hot
 class Demo {
@@ -51,7 +51,7 @@ class Demo {
 
     void Run() {
         var x = 3;             // int
-        const int limit = 10;  // cannot change
+        int limit = 10;        // never assigned: the translator makes it const
     }
 }
 ```
@@ -71,21 +71,25 @@ class Names {
 
 ## Type aliases
 
-`using Name = type;` names a type (see [Module level](module-level.html#type-aliases)). A native type alias is that type. An alias of a script class has the handle semantics of the class: the storage is a handle, `new Name()` makes an object and `null` is allowed.
+`using Name = type;` names a type (see [Module level](module-level.html#type-aliases)). An alias is the type that it names. `using Soldier = $Recruit;` is a handle. `using Soldier = Recruit;` is a value.
 
 ```hot
-using Squad = std.vector<Recruit>;   // a vector of handles
-using Soldier = Recruit;
+class Recruit {
+    int hp = 3;
+}
+
+using Squad = std.vector<$Recruit>;   // a vector of handles
+using Soldier = $Recruit;
 
 class Platoon {
     Squad squad;
-    Soldier lead = null;
+    Soldier lead;
 }
 ```
 
 ## Script classes in templates
 
-A script class as a template argument is a handle. `std.vector<Child>` holds one handle for each element. It does not hold the objects by value. The rule also works inside other templates, for example `std.map<int, std.vector<Child>>`.
+A template argument `$Child` is a handle. `std.vector<$Child>` holds one handle for each element. The rule also works inside other templates, for example `std.map<int, std.vector<$Child>>`.
 
 ```hot
 using <vector>;
@@ -95,10 +99,10 @@ class Child {
 }
 
 class Parent {
-    std.vector<Child> kids = std.vector<Child>();
+    std.vector<$Child> kids = std.vector<$Child>();
 
     void Run() {
-        this.kids.push_back(new Child());
+        this.kids.push_back(new $Child());
         foreach (var k in this.kids) { k.hp += 1; }
         this.kids[0].hp = 9;
     }
@@ -109,7 +113,7 @@ class Parent {
 - An index that is out of range is an error at run time, as for a native vector.
 - A reload keeps the handles. A new field of `Child` does not reset the vector.
 - A struct in a template stays a value.
-- `[value]` on a template argument is not supported yet. See [Value uses](types-handles.html#value-uses).
+- A bare script class in a template argument is a value: `std.vector<Child>` holds `hot::Value<Child>`. Write `$Child` for a handle.
 - `std.shared_ptr<Child>` already is a handle type. The translator does not change it.
 - A `.cpp` script keeps its own C++ types.
 
@@ -153,7 +157,7 @@ class Grid {
 
 These rules apply to an array:
 
-- The size is a literal. `int[]` and `int[n]` are errors.
+- The size is a literal. `int[n]` is an error.
 - The size is from 1 to 16777216 (`1 << 24`). `int[0]` and a larger size are errors.
 - `is`, `as` and casts do not take an array type. `x is int[3]`, `x as int[3]` and `(int[3])x` are errors.
 - An index is checked. An index that is negative or not less than the size throws `IndexOutOfRange` (see [Runtime errors](statements-errors.html#runtime-errors)). The build option `HOT_RUNTIME_CHECKS=OFF` removes the check. Then an index outside the array is undefined behavior. A custom array type from the module attribute `array` is checked also (see [The array type](native-interop-attributes.html#the-array-type)).
@@ -161,3 +165,48 @@ These rules apply to an array:
 - A copy of an array copies all values.
 - A reload keeps the values of an array field when the type stays the same.
 - A new size is a new type. For example, `int[3]` becomes `int[4]`. Then the field gets its default value.
+
+### Views
+
+`T[]` is a view of values of type `T`. The C++ type is `std::span<T>`. A view does not own the values. It needs C++20.
+
+A view is valid for a parameter, a return type and a local. The owner of the values is a `std.vector<T>`, a `T[N]` or another view. A `std.vector<T>` or a `T[N]` converts to a `T[]` at a call or at a local declaration.
+
+```hot
+using <vector>;
+
+class Stats {
+    int Sum(int[] values) {
+        int sum = 0;
+        foreach (var x in values) {
+            sum += x;
+        }
+        return sum;
+    }
+
+    void Double(int[] values) {
+        foreach (ref x in values) {
+            x *= 2;
+        }
+    }
+
+    int Run() {
+        std.vector<int> list = [1, 2, 3];
+        int[3] fixed;
+        int[] head = list;
+        Double(head);
+        Double(fixed);
+        return Sum(list) + Sum(fixed) + head[0];
+    }
+}
+```
+
+These rules apply to a view:
+
+- A view is an error on a field and on a property. The text is `T[] is a view; a field needs std.vector<T> or T[N]`. Use `std.vector<T>` for a list that the object owns. Use `T[N]` for a fixed array.
+- `foreach (var x in s)`, `foreach (ref x in s)`, `s.size()` and `s.empty()` work on a view.
+- An index is checked as for an array. An index that is negative or not less than `s.size()` throws `IndexOutOfRange`. The build option `HOT_RUNTIME_CHECKS=OFF` removes the check.
+- A write through a view changes the values of the owner. A local that is the source of a `T[]` call or local is not `const`.
+- A `T[]` does not accept a const source, for example an `in std.vector<T>` parameter. Take the same `in std.vector<T>` type for the parameter.
+- A view is valid while the owner lives. A method that returns `T[]` cannot return a local `std.vector<T>` or a local `T[N]`. This is an error: the local ends at the return. Return a `std.vector<T>` or a view that the method got as an argument.
+- A view does not stay valid after a change of the owner size. For example, `push_back` on the vector can move the values.

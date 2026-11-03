@@ -26,7 +26,7 @@ using Counter = Counter_Shell;
 #include "Actor.h"
 #line 28 "cpp_freefn.cpp.cpp"
 
-// ---------------------------------------------------------------- [value] class HotModule
+// ---------------------------------------------------------------- struct HotModule
 struct HotModule {
     int total;
 };

@@ -32,8 +32,10 @@ struct TypeRule
     std::string weak_tpl; // the template of a "[weak]" declaration (weak_handle), else empty
     std::string owner; // the name of the stub that matched (empty for Raw)
     std::string intrusive_add, intrusive_release; // the member names of an intrusive handle, else empty
+    std::string factory_tpl; // the callee template of "new $T(args)" on a native class ([factory]), else empty
     bool native = false; // the stub has the attribute [native]
     bool self = false; // an exact stub with [self]: the rule is for this type only
+    bool nonnull = false; // the stub has the attribute [nonnull]: a native call returns a non null value of the type
     std::string cpp_prelude; // the raw text of [cpp_prelude("...")] of the stub
     std::string cpp_overrides; // the raw text of [cpp_overrides("...")] of the stub
 };
@@ -77,15 +79,19 @@ public:
     // handle and "L::make_shared" makes an object.
     void set_libs(std::vector<std::string> libs) { libs_ = std::move(libs); }
 
+    // True when a native call that returns the type gives a non null value: the stub of the type has
+    // [nonnull], or the stub "class *;" has it (the library default). The nullability analyzer reads it.
+    // The type is a C++ type text. A "const", a "&", a "*" or a handle template around it does not count.
+    bool returns_nonnull(const std::string& cpp_type) const;
+
     // The handle template of the stub "class *;" (empty: there is none).
     const std::string& default_handle() const { return default_handle_; }
 
     // What the headers say about a class. "known" is true for a class type that libclang found.
     // "plain" is true for a trivially copyable, standard-layout type.
-    // "small" is true for a trivially copyable type of 16 bytes or less (design 7.10.5).
     struct ClassFacts
     {
-        bool known = false, plain = false, small = false;
+        bool known = false, plain = false;
         // The type is an enumeration (a native enum). "known" is false for it.
         bool is_enum = false;
         // The class derives (directly or not) from std::enable_shared_from_this<X>.
@@ -101,7 +107,7 @@ public:
     bool wants_facts(const std::string& type) const;
 
     // Registers the script classes of the script (design 7.10.1). A script class is a handle,
-    // unless it is a [value] class. A script class with a native base uses the handle of that
+    // unless it is a struct. A script class with a native base uses the handle of that
     // base (stub, base stub, pattern or "class *"). Else it uses std::shared_ptr<$T>.
     // A script class wins over a stub of the same name. Call it before lookup().
     void add_script_classes(const std::vector<ast::ClassDef>& classes);
@@ -115,7 +121,7 @@ public:
     // "const I&" keep the "const" and the "&". Empty when the type is not an interface type.
     std::string iface_storage(const std::string& type) const;
 
-    // True when the name is a [value] script class.
+    // True when the name is a struct.
     bool is_script_value(const std::string& type) const;
 
     // The direct bases of a qualified C++ class name, in declaration order.
@@ -148,7 +154,7 @@ public:
     // The stubs are the same as for preludes(). The shell gets no slot for these virtuals.
     std::set<std::string> host_overrides(const std::string& type) const;
 
-    // True when the name is a script class of the script ([value] classes too).
+    // True when the name is a script class of the script (structs too).
     bool is_script_class(const std::string& type) const;
 
     // The first class in the parent chain of a script class that is not a script class: the native
@@ -169,6 +175,32 @@ public:
     std::string script_ref_storage(const std::string& type) const;
     void set_raw_script_refs(bool raw) { raw_script_refs_ = raw; }
 
+    // Where a type text is used. It selects the form of the C++ type.
+    enum class StorageUse
+    {
+        Field,  // a field or a module variable
+        Param,  // a plain parameter: a value is "hot::In<T>", a handle is "const H&"
+        LambdaParam, // a lambda parameter: a value goes by value, a handle by "const H&"
+        Return, // a return type
+        Local   // a local variable, a foreach element, a cast or a template argument
+    };
+
+    // The one mapper from a script type text to the C++ type text. Every pass calls it. The text is
+    // the canonical script type (a "T[N]" is an array template already). The rules:
+    //  - "$C" is the handle form of the rule of C (default "std::shared_ptr<C>"). "$S" on a struct
+    //    or a value type is "std::shared_ptr<S>".
+    //  - A bare script class "C" is the box "hot::Value<C>" (see value_storage()). Only "$C" is the
+    //    handle. A class with a native base has no box: the checker reports it.
+    //  - "T*" stays "T*". A field "T*" of a native class with a weak source is "hot::CheckedPtr<T>".
+    //  - "T?" is "std::optional<M>", where M is the mapping of T.
+    //  - "T[]" is "std::span<M>".
+    //  - The builtin types and the other types are as storage() and param() give them.
+    // The mark "?" needs a value type. A pointer, a "$" handle, a script class and an interface are
+    // nullable: "T?" on them is an error. The error text goes to "error" (if not null) and the
+    // result is an empty string. A script is ".cpp" or ".hot" as set_raw_script_refs() tells.
+    std::string cpp_storage(const std::string& script_type, StorageUse use, std::string* error = nullptr) const;
+
+    // The rules for one class or one value type below cpp_storage(). A pass does not call them.
     // The C++ storage type of a declaration. A script class that is a template argument gets
     // the handle storage, for example "std::vector<Child>" gives "std::vector<H>" with
     // H = storage("Child"). The rewrite is recursive. A smart pointer template keeps its argument.
@@ -192,7 +224,7 @@ public:
     // other type (a value, an intrusive handle, a raw type) gives an empty string.
     std::string weak_storage(const std::string& type) const;
 
-    // The C++ storage type of a "[value] T" declaration: "hot::Value<E>". E is the element type of
+    // The C++ storage type of a "C" (a bare script class) declaration: "hot::Value<E>". E is the element type of
     // the handle of T (the shell of the script class). T must be a script class with no native base
     // and a std::shared_ptr handle. Any other type gives an empty string.
     std::string value_storage(const std::string& type) const;
@@ -212,15 +244,16 @@ public:
     // The weak sources of the exact stubs. The module header writes one weak_ref_traits for each.
     std::vector<StubWeakSource> stub_weak_sources() const;
 
-    // The C++ type of a parameter: "const H&" for a handle, else storage().
+    // The C++ type of a plain parameter (a read only input), by one rule (design: "Parameter defaults"):
+    //  - A handle is "const H&".
+    //  - A builtin type, a pointer and a reference keep their form.
+    //  - Any other value is "hot::In<T>". The C++ trait picks "T" or "const T&" (hot/runtime/in.h).
     std::string param(const std::string& type) const;
 
-    // The C++ type of a by-value parameter in the generation function of a script function
-    // (design 7.10.5). "mutated", "rebound" and "stored" come from the analysis of the body (check.h).
+    // The C++ type of a parameter in the generation function of a script function (design 7.10.5).
+    // "mutated", "rebound" and "stored" come from the analysis of the body (check.h).
     //  - A handle is "const H&", unless the body stores it or rebinds it: then it is "H".
-    //  - A value is "const T&", unless the body mutates or stores it, or the type is small and
-    //    trivially copyable (16 bytes or less): then it is "T".
-    //  - Other types (builtin and raw) keep the form of param().
+    //  - A value is the form of param(), unless the body mutates it: then it is "T", a copy.
     // The slot adapter and the thunk keep the form of param(), so the call interface does not
     // change when a reload changes the body.
     std::string body_param(const std::string& type, bool mutated, bool rebound, bool stored) const;
@@ -244,6 +277,11 @@ public:
     // for the class counts, and the fact of each base (the bases of a script class too).
     bool has_shared_from_this(const std::string& type) const;
 
+    // True when "derived" has "base" in its bases, directly or not. The names are equal: false.
+    // A script class uses its script bases and its interfaces. A native class uses the base
+    // callback (set_bases). An unknown name has no bases.
+    bool derives_from(const std::string& derived, const std::string& base) const;
+
     // The handle type T that a native parameter type text carries, else an empty string.
     // T is a handle class (a native stub or a script class). H is the native storage text of T,
     // for example "std::shared_ptr<Weapon>". The carriers of T are: "T*", "const T*", "T&",
@@ -262,6 +300,13 @@ public:
     std::string return_carrier_of(const std::string& native_return_type) const;
 
 private:
+    // The error of the marks "?" in a type text, else an empty string.
+    std::string marks_error(const std::string& type) const;
+    // True when the type (a template argument, no "&") is nullable: a handle, a pointer, an interface.
+    bool is_nullable(const std::string& type) const;
+    std::string map_marked(const std::string& type, StorageUse use) const;
+    std::string map_plain(const std::string& type, StorageUse use) const;
+    std::string param_form(const std::string& type, bool in) const;
     std::string carrier_parse(const std::string& native_param_type, char& form) const;
     TypeRule lookup_stub(const std::string& cpp_type) const;
 
@@ -278,6 +323,7 @@ private:
     BaseFn bases_;
     ClassFn classes_;
     std::string default_handle_;
+    bool default_nonnull_ = false; // the stub "class *;" has [nonnull]
     std::string default_weak_; // the weak_handle of "class *"
     std::string std_ns_ = "std"; // see set_std_ns()
     std::vector<std::string> libs_; // see set_libs()
@@ -302,9 +348,17 @@ private:
 // The message for a "[weak] T" declaration when weak_storage(T) is empty (task 38).
 std::string weak_handle_error(const std::string& script_type);
 
-// The message for "[weak] I" or "[value] I" when "I" is a script interface. The attribute is
-// "weak" or "value".
+// The message for "[weak] I" when "I" is a script interface. The attribute is "weak".
 std::string interface_attribute_error(const std::string& attribute, const std::string& script_type);
+
+// The error texts of the values of a script class (the box "hot::Value<C>") and of "null".
+inline constexpr const char* kNativeBaseValueError =
+    "a script class with a native base cannot be a value; write new $C(...)";
+// The error of a shared pointer that comes from a raw pointer ("$T" rules of the type design).
+inline constexpr const char* kRawToSharedError =
+    "cannot create a shared pointer from a raw pointer; use new $T(...)";
+inline constexpr const char* kNullValueError = "a value cannot be null; write $C w";
+inline constexpr const char* kNullTypeError = "null has no type; write the type";
 
 // A native virtual method as the matcher of an override sees it.
 struct VirtualSig
@@ -321,8 +375,7 @@ struct OverrideMatch
     {
         None, // no virtual matches
         Hit, // "hits" has one index
-        Ambiguous, // "hits" has two or more indices
-        ConstMismatch // the script marks "const" and every match is non-const; "hits" has the matches
+        Ambiguous // "hits" has two or more indices
     };
     Kind kind = Kind::None;
     bool relaxed = false; // the match needed the handle carriers
@@ -336,14 +389,13 @@ std::string override_key_norm(const std::string& type);
 
 // Finds the native virtual that a script method overrides.
 // "script_ptypes" are the parameter type texts of the script. The exact pass compares the
-// canonical type texts. "F()" and "F() const" have the same key. "is_const" (a trailing
-// "const" of the script) selects the const method. Without it the non-const method is the
-// default, and a lone const method matches too.
+// canonical type texts. "F()" and "F() const" have the same key. The script cannot write "const"
+// on a method, so the non-const method is the default, and a lone const method matches too.
 // If the exact pass finds nothing and "relaxed" is true, the relaxed pass replaces each native
 // parameter type that is a carrier of a handle type T (TypeModel::carrier_of) by T and compares
 // again. The exact spelling always wins.
 OverrideMatch match_native_virtual(const std::string& name, const std::vector<std::string>& script_ptypes,
-    const std::vector<VirtualSig>& virtuals, const TypeModel& model, bool is_const, bool relaxed);
+    const std::vector<VirtualSig>& virtuals, const TypeModel& model, bool relaxed);
 
 // True when the return type of a script override fits the return type of the native virtual:
 // the canonical texts are equal, or "relaxed" is true and the native type is H by value

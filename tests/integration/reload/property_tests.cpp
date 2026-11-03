@@ -73,12 +73,12 @@ class Gauge : Actor {
 
     override void Tick(float dt) {}
     override void TakeDamage(float amount) {}
-    override void TakeDamage(Actor& source, float amount) {
+    override void TakeDamage(ref Actor source, float amount) {
         this.seen = source.Hp + source.MaxHp;
         source.Hp -= amount;
         source.Hits++;
         source.Shield = -5.0;
-        Actor& p = source;
+        ref Actor p = source;
         p.Shield += 3.0;
         this.chained = source.Hp = this.Hp = 30.0;
         this.old_hits = source.Hits++;

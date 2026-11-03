@@ -23,7 +23,7 @@ class Pet : Thing, IVal {
 }
 
 class Keeper : Actor {
-    Pet pet = null;
+    $Pet pet = null;
     IVal iv = null;
     [weak]
     Thing seen = null;
@@ -36,13 +36,13 @@ class Keeper : Actor {
     override void Tick(float dt) {
         this.ticks = this.ticks + 1;
         if (this.pet == null && this.ticks == 1) {
-            this.pet = new Pet();
+            this.pet = new $Pet();
             this.seen = this.pet;
         }
         if (this.step == 1) this.iv = this.pet;
         if (this.step == 2) this.pet = null;
         if (this.step == 3) this.iv = null;
-        this.refs = this.iv != null ? this.iv.R() : (this.pet != null ? this.pet.R() : -1);
+        this.refs = this.iv != null ? this.iv.R() : (this.pet?.R() ?? -1);
         this.via = this.iv != null ? this.iv.Value() : -1;
         this.alive = this.seen != null ? this.seen.value : -1;
     }

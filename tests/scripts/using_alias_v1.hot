@@ -15,7 +15,7 @@ class Recruit {
     void Bump() { this.hp = this.hp + 1; }
 }
 
-using Soldier = Recruit;
+using Soldier = $Recruit;
 using Squad = std.vector<Soldier>;
 
 class Platoon : Actor {

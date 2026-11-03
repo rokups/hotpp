@@ -83,9 +83,9 @@ TEST(WeakAttributeParse, NotOnOtherMembers)
 
 TEST(WeakAttributeParse, Local)
 {
-    stmt_test::Parsed p("[weak] Weapon w = s; Weapon t = w; [weak] const Weapon c = s;");
+    stmt_test::Parsed p("[weak] Weapon w = s; Weapon t = w;");
     ASSERT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
-    ASSERT_EQ(p.block.stmts.size(), 3u);
+    ASSERT_EQ(p.block.stmts.size(), 2u);
     const auto* w = std::get_if<ast::VarDeclStmt>(&p.block.stmts[0]->v);
     ASSERT_NE(w, nullptr);
     EXPECT_TRUE(w->weak);
@@ -95,10 +95,6 @@ TEST(WeakAttributeParse, Local)
     const auto* t = std::get_if<ast::VarDeclStmt>(&p.block.stmts[1]->v);
     ASSERT_NE(t, nullptr);
     EXPECT_FALSE(t->weak);
-    const auto* c = std::get_if<ast::VarDeclStmt>(&p.block.stmts[2]->v);
-    ASSERT_NE(c, nullptr);
-    EXPECT_TRUE(c->weak);
-    EXPECT_TRUE(c->is_const);
 }
 
 TEST(WeakAttributeParse, LocalErrors)
@@ -108,7 +104,7 @@ TEST(WeakAttributeParse, LocalErrors)
     const std::string untyped =
         "[weak] needs the handle type of the local: write '[weak] T name', not 'var' or a structured binding";
     EXPECT_EQ(errors_of(Parsed("[weak] var w = s;")), (std::vector<std::string>{"1:2: " + untyped}));
-    EXPECT_EQ(errors_of(Parsed("[weak] var& w = s;")), (std::vector<std::string>{"1:2: " + untyped}));
+    EXPECT_EQ(errors_of(Parsed("[weak] ref w = s;")), (std::vector<std::string>{"1:2: " + untyped}));
     EXPECT_EQ(errors_of(Parsed("[weak] var (a, b) = s;")), (std::vector<std::string>{"1:2: " + untyped}));
     EXPECT_EQ(errors_of(Parsed("[weak, weak] Weapon w;")),
         (std::vector<std::string>{"1:8: duplicate attribute 'weak'"}));

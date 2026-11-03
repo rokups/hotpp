@@ -228,10 +228,27 @@ void rename_char_arrays(std::string& s)
     }
 }
 
+// "hot::In<T>" -> "T". A plain parameter has this type in the generated code. The script writes "T".
+// The argument can have angle brackets of its own: the matching bracket ends it.
+void drop_in(std::string& s)
+{
+    const std::string head = "hot::In<";
+    for (size_t p = s.find(head); p != std::string::npos; p = s.find(head, p))
+    {
+        size_t depth = 1, e = p + head.size();
+        for (; e < s.size() && depth > 0; ++e)
+            depth += s[e] == '<' ? 1 : s[e] == '>' ? -1 : 0;
+        if (depth > 0)
+            break; // an incomplete name: keep the rest
+        s.replace(p, e - p, s.substr(p + head.size(), e - p - head.size() - 1));
+    }
+}
+
 // Generated names to script names, in any text of a message.
 std::string rename_generated(std::string s)
 {
     drop_aka(s);
+    drop_in(s);
     replace_all(s, "std::__cxx11::basic_string<char>", "std::string");
     replace_all(s, "std::basic_string<char>", "std::string");
     replace_all(s, "std::nullptr_t", "nullptr_t");
@@ -413,6 +430,7 @@ bool has_script_function(const std::string& msg)
 std::string rewrite_message(std::string msg, bool script_function)
 {
     drop_aka(msg);
+    drop_in(msg);
     // The warning flag, for example " [-Werror,-Wreturn-type]". A script has no such switch.
     if (!msg.empty() && msg.back() == ']')
     {

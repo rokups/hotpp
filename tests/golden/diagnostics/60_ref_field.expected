@@ -1,0 +1,3 @@
+60_ref_field.hot:6:14: error: "ref" is only for local variables, foreach and parameters
+    6 |     ref Vec3 last;
+1 error generated.

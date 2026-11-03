@@ -32,8 +32,8 @@ TEST(HandleLowering, HandleLocalUsesStorageType)
 
     Fixture f;
     f.cx.types = &types;
-    EXPECT_EQ(f.body("Weapon x = null; var y = null; int k;"),
-        "std::shared_ptr<Weapon> x = nullptr; auto y = nullptr; int32_t k = int32_t();");
+    EXPECT_EQ(f.body("Weapon x = null; var y = 1; int k;"),
+        "std::shared_ptr<Weapon> x = nullptr; auto y = 1; int32_t k = int32_t();");
     EXPECT_EQ(f.body("foreach (Weapon w in ws) { }"), "for (std::shared_ptr<Weapon> w : ws) {}");
 
     // Without a type model the output does not change.

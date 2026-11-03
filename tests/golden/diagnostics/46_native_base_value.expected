@@ -1,0 +1,3 @@
+46_native_base_value.hot:9:9: error: a script class with a native base cannot be a value; write new $C(...)
+    9 |         Player p = new Player();
+1 error generated.

@@ -11,15 +11,17 @@ class BenchCell {
 }
 
 class BenchStateField : BenchBase {
-    BenchCell c = null;
+    $BenchCell c = null;
 
     override long Run(int n) {
-        if (c == null) c = new BenchCell();
+        if (c == null) c = new $BenchCell();
+        $BenchCell cell = c;
+        if (cell == null) return 0;
         long s = 0;
         for (int i = 0; i < n; i++) {
-            c.x = (c.x + i) & 65535;
-            c.y = c.y ^ c.x;
-            s += c.y;
+            cell.x = (cell.x + i) & 65535;
+            cell.y = cell.y ^ cell.x;
+            s += cell.y;
         }
         return s;
     }

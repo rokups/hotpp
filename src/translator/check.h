@@ -41,12 +41,21 @@ namespace hotc
 void check_class(const ast::ClassDef& cd, const TypeModel& types, const LineMap& map, Diagnostics& diag,
     bool strict_borrowed, bool is_cpp = false, bool std_below_20 = false);
 
-// Checks the "[value] T" uses of a script: fields, parameters, return types and locals (design
-// 7.10). "[value]" holds a script "class" with value semantics. The class must have no native base.
-// A native handle type, a struct and a builtin type are errors. A "[value] T x" without an
-// initializer needs a constructor of T with no parameters. A field of a struct and a module
-// variable take no "[value]" yet. A template argument has no syntax for "[value]" yet. Each
-// error goes to the diagnostics. The pass does not change the AST.
+// The name of the synthetic struct that holds the module variables.
+inline constexpr const char* kModuleClassName = "HotModule";
+
+// Sets the flags of the box uses. A bare script class is a box (hot::Value<C>): a field, a
+// parameter, a return type or a local of that type gets the flag "value". "$C" is a handle and gets
+// no flag. A "ref", "in" or "out" parameter gets no flag: check_value_uses() reports it. A ".cpp"
+// script has no box uses: the caller does not call this function for it.
+void resolve_value_uses(ast::ClassDef& cd, const TypeModel& types);
+void resolve_value_uses(ast::InterfaceDef& d, const TypeModel& types);
+
+// Checks the box uses of a script: fields, parameters, return types and locals (design 7.10). The
+// class must have no native base. A declaration without an initializer needs a constructor of the
+// class with no parameters. A field of a struct and a module variable cannot hold a box. A "ref",
+// "in" or "out" parameter of a box type is an error. Each error goes to the diagnostics. The pass
+// does not change the AST.
 void check_value_uses(
     const std::vector<ast::ClassDef>& classes, const TypeModel& types, const LineMap& map, Diagnostics& diag);
 

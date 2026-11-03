@@ -123,7 +123,7 @@ TEST(WeakHandleTranslation, ScriptClass)
     // A script class without a native base is a std::shared_ptr handle.
     TempDir dir;
     hotc::TranslateOptions o = temp_options(dir,
-        "class Node {\n    Node child;\n    [weak]\n    Node parent;\n    int hp;\n"
+        "class Node {\n    $Node child;\n    [weak]\n    $Node parent;\n    int hp;\n"
         "    int Up() { return parent.hp; }\n}\n");
     const hotc::TranslateResult r = hotc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
@@ -160,8 +160,8 @@ TEST(WeakHandleTranslation, UnsupportedForms)
     };
     for (const Case& c : {
              Case{"    void F() { [weak] var x = w; }\n", "[weak] needs the handle type of the local"},
-             Case{"    void F() { [weak] var& x = w; }\n", "[weak] needs the handle type of the local"},
-             Case{"    void F() { var& d = w.dmg; }\n", "a reference into the weak handle 'w' dangles"},
+             Case{"    void F() { [weak] ref x = w; }\n", "[weak] needs the handle type of the local"},
+             Case{"    void F() { ref d = w.dmg; }\n", "a reference into the weak handle 'w' dangles"},
              Case{"    void F() { int* p = &w.dmg; }\n", "a reference into the weak handle 'w' dangles"},
              Case{"    [weak]\n    int G() { return 0; }\n", "[weak] applies to fields, parameters and local"},
              Case{"    void F() { [strong] Weapon x = w; }\n", "unknown attribute 'strong' on a local variable"},
@@ -225,13 +225,14 @@ TEST(WeakHandleTranslation, WeakFieldWinsOverAModuleVariable)
 TEST(WeakHandleTranslation, ShadowEndsWithItsScope)
 {
     // A lambda parameter and a block local hide a weak name only inside their scope.
-    const hotc::TranslateResult r = script_translate("class Node {\n    [weak]\n    Node parent = null;\n    int hp;\n"
-                                                     "    int F(Weapon s, Node k) {\n"
+    const hotc::TranslateResult r = script_translate("class Node {\n    [weak]\n    $Node parent = null;\n    int hp;\n"
+                                                     "    int F(Weapon s, $Node k) {\n"
                                                      "        [weak] Weapon x = s;\n"
                                                      "        var f = (Weapon x) => x.dmg;\n"
                                                      "        int d = x.dmg;\n"
-                                                     "        { Node parent = k; d = parent.hp; }\n"
-                                                     "        return d + parent.hp;\n"
+                                                     "        if (k == null) return 0;\n"
+                                                     "        { $Node parent = k; d = parent.hp; }\n"
+                                                     "        return d + (parent?.hp ?? 0);\n"
                                                      "    }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "[=](const std::shared_ptr<Weapon>& x) { HOT_NODEBUG_LOCAL auto* __st = "
@@ -239,7 +240,7 @@ TEST(WeakHandleTranslation, ShadowEndsWithItsScope)
         << r.cpp;
     EXPECT_TRUE(has(r.cpp, "int32_t d = hot::deref(hot::lock(x)).dmg;")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "d = state_of(hot::shell_of<Node_Shell>(parent, \"Node\"))->hp;")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "return d + state_of(hot::shell_of<Node_Shell>(hot::lock(__st->parent), \"Node\"))->hp;"))
+    EXPECT_TRUE(has(r.cpp, "return d + (hot::coalesce(hot::safe_access(hot::lock(parent), "))
         << r.cpp;
 }
 
@@ -260,8 +261,8 @@ TEST(WeakHandleTranslation, LambdaParameterIsAnError)
 TEST(WeakHandleTranslation, ThisForAWeakParameter)
 {
     const hotc::TranslateResult r =
-        script_translate("class Node {\n    void SetParent([weak] Node p) { }\n"
-                         "    void F(Node k) { k.SetParent(this); SetParent(this); }\n}\n");
+        script_translate("class Node {\n    void SetParent([weak] $Node p) { }\n"
+                         "    void F($Node k) { if (k == null) return; k.SetParent(this); SetParent(this); }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::handle_from_this<std::shared_ptr<Node>>(__self)")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "Node__SetParent(__self, __self)")) << r.cpp;
@@ -269,9 +270,9 @@ TEST(WeakHandleTranslation, ThisForAWeakParameter)
 
 TEST(WeakHandleTranslation, SwitchLocalEndsWithTheSwitch)
 {
-    const hotc::TranslateResult r = script_translate("class Node {\n    [weak]\n    Node parent = null;\n    int hp;\n"
-                                                     "    int F(int k, Node p) {\n"
-                                                     "        switch (k) { case 1: Node parent = p; break; }\n"
+    const hotc::TranslateResult r = script_translate("class Node {\n    [weak]\n    $Node parent = null;\n    int hp;\n"
+                                                     "    int F(int k, $Node p) {\n"
+                                                     "        switch (k) { case 1: $Node parent = p; break; }\n"
                                                      "        return parent.hp;\n"
                                                      "    }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;

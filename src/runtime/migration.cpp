@@ -132,7 +132,7 @@ MigrationPlan build_plan(const StateLayout& o, const StateLayout& n)
         {
             if (nf.sub && of.sub)
             {
-                // A [value] script class: the type name is the same, the layout may differ.
+                // A struct: the type name is the same, the layout may differ.
                 auto sub = std::make_shared<MigrationPlan>(build_plan(*of.sub, *nf.sub));
                 for (const std::string& w : sub->warnings)
                     plan.warnings.push_back(readable_layout(n.name) + "." + nf.name + ": " + w);
@@ -144,7 +144,7 @@ MigrationPlan build_plan(const StateLayout& o, const StateLayout& n)
         }
         // The type changed (design 4.7): the convert hook, else the default value.
         plan.changed.push_back(j);
-        // A native container of a [value] script class with a changed layout (design 5.3). The
+        // A native container of a struct with a changed layout (design 5.3). The
         // runtime cannot migrate the elements of a native container, so the container resets.
         const char* nh = std::strchr(nf.type_key, '#');
         const char* oh = std::strchr(of.type_key, '#');

@@ -1,0 +1,5 @@
+class Game {
+    void Start() {
+        var x = null;
+    }
+}

@@ -58,7 +58,7 @@ class Grunt : Unit {
 }
 
 class Spotter : Actor {
-    Unit seen = null;
+    $Unit seen = null;
     int seen_power = 0;
     int attack = 0;
     bool saw_grunt = false;
@@ -66,12 +66,14 @@ class Spotter : Actor {
     int grunt_rage = 0;
 
     override void Tick(float dt) {
-        if (this.seen == null) this.seen = new Grunt(5, 7);
-        this.seen_power = this.seen.Power();
-        this.attack = this.seen.Attack();
-        this.saw_grunt = this.seen is Grunt;
-        this.saw_unit = this.seen is Unit;
-        var g = this.seen as Grunt;
+        if (this.seen == null) this.seen = new $Grunt(5, 7);
+        $Unit unit = this.seen;
+        if (unit == null) return;
+        this.seen_power = unit.Power();
+        this.attack = unit.Attack();
+        this.saw_grunt = this.seen is $Grunt;
+        this.saw_unit = this.seen is $Unit;
+        var g = this.seen as $Grunt;
         if (g != null) this.grunt_rage = g.rage;
     }
 }

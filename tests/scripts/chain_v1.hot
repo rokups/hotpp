@@ -44,7 +44,7 @@ class Maker : Actor {
     int kid_log = 0;
 
     override void Tick(float dt) {
-        Leaf kid = new Leaf(5);
+        $Leaf kid = new $Leaf(5);
         this.made = this.made + 1;
         this.kid_got = kid.got;
         this.kid_mid = kid.mid;

@@ -84,7 +84,8 @@ TEST(PropertyTranslation, OtherObjectUsesAccessors)
     const hotc::TranslateResult r = translate_props(
         "    int N { get; set; }\n"
         "    int hp = 0;\n"
-        "    int run(Widget& w, Widget* q) {\n"
+        "    int run(ref Widget w, Widget* q) {\n"
+        "        if (q == null) return 0;\n"
         "        w.N = 1;\n"
         "        q.N += 2;\n"
         "        w.N++;\n"
@@ -112,7 +113,7 @@ TEST(PropertyTranslation, OtherObjectPlainMemberIsNotRewritten)
 {
     const hotc::TranslateResult r = translate_props(
         "    int N { get; set; }\n"
-        "    void run(Foo2& p) { p.hp = 1; p.hp += p.n; }");
+        "    void run(ref Foo2 p) { p.hp = 1; p.hp += p.n; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("hot::deref(p).hp = 1;"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("hot::deref(p).hp += hot::deref(p).n;"), std::string::npos) << r.cpp;
@@ -121,10 +122,10 @@ TEST(PropertyTranslation, OtherObjectPlainMemberIsNotRewritten)
 
 TEST(PropertyTranslation, Errors)
 {
-    expect_prop_error("    int N { get; }\n    void run(Widget& w) { w.N = 1; }", "property 'N' has no 'set' accessor");
-    expect_prop_error("    int N { get; }\n    void run(Widget* w) { w.N++; }", "property 'N' has no 'set' accessor");
+    expect_prop_error("    int N { get; }\n    void run(ref Widget w) { w.N = 1; }", "property 'N' has no 'set' accessor");
+    expect_prop_error("    int N { get; }\n    void run(Widget* w) { if (w == null) return; w.N++; }", "property 'N' has no 'set' accessor");
     expect_prop_error(
-        "    int N { set; }\n    int run(Widget& w) { return w.N; }", "property 'N' has no 'get' accessor");
+        "    int N { set; }\n    int run(ref Widget w) { return w.N; }", "property 'N' has no 'get' accessor");
     expect_prop_error("    int N { get; }\n    void run() { N = 1; }", "property 'N' has no 'set' accessor");
     expect_prop_error("    int N { get; }\n    void run() { this.N += 1; }", "property 'N' has no 'set' accessor");
     expect_prop_error("    int N { set; }\n    int run() { return N; }", "property 'N' has no 'get' accessor");

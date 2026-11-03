@@ -1,0 +1,13 @@
+class Node {
+    int hp = 0;
+    $Node next = null;
+}
+
+class Walker {
+    int Run($Node p) {
+        if (p == null) return 0;
+        int a = p.hp;
+        p = p.next;
+        return a + p.hp;
+    }
+}

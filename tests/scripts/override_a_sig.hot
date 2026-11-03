@@ -17,7 +17,7 @@ class Alpha : Actor {
         return this.count + extra;
     }
 
-    void arm(World& w, float delay) {
+    void arm(ref World w, float delay) {
         w.AddTimer(delay, () => {
             this.fired = this.fired + 1;
         });

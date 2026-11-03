@@ -26,13 +26,13 @@ class Derived : Base {
 }
 
 class Holder : Actor {
-    Base plain;
-    Base derived;
+    $Base plain;
+    $Base derived;
 
     override void Tick(float dt) {
         if (this.plain == null) {
-            this.plain = new Base();
-            this.derived = new Derived();
+            this.plain = new $Base();
+            this.derived = new $Derived();
         }
     }
 }

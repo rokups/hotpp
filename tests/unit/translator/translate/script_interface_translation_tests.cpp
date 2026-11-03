@@ -126,7 +126,7 @@ TEST(ScriptInterfaceTranslation, OtherParameterTypeIsAnError)
 TEST(ScriptInterfaceTranslation, OtherParameterFormIsAnError)
 {
     const hotc::TranslateResult r = run(std::string(kShape)
-        + "class Sq : Widget, IShape {\n    int Area() { return 4; }\n    void Scale(int& k) { }\n}\n");
+        + "class Sq : Widget, IShape {\n    int Area() { return 4; }\n    void Scale(ref int k) { }\n}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "another signature")) << r.diagnostics;
 }
@@ -251,16 +251,13 @@ TEST(ScriptInterfaceTranslation, WeakInterfaceIsAnError)
     EXPECT_TRUE(has(local.diagnostics, "[weak] cannot be used with the interface 'IShape'")) << local.diagnostics;
 }
 
-TEST(ScriptInterfaceTranslation, ValueInterfaceIsAnError)
+TEST(ScriptInterfaceTranslation, BareInterfaceNameStaysTheHandle)
 {
-    const hotc::TranslateResult field = run(std::string(kShape) + "class Sq : Widget {\n    [value] IShape s;\n}\n");
-    EXPECT_FALSE(field.ok);
-    EXPECT_TRUE(has(field.diagnostics, "[value] cannot be used with the interface 'IShape'")) << field.diagnostics;
+    const hotc::TranslateResult field = run(std::string(kShape) + "class Sq : Widget {\n    IShape s;\n}\n");
+    EXPECT_TRUE(field.ok) << field.diagnostics;
     const hotc::TranslateResult local = run(std::string(kShape)
-        + "class Sq : Widget {\n    void Go() { [value] IShape s; }\n}\n");
-    EXPECT_FALSE(local.ok);
-    EXPECT_TRUE(has(local.diagnostics, "[value] cannot be used with the interface 'IShape'")) << local.diagnostics;
-    EXPECT_FALSE(has(local.diagnostics, "cannot create an instance")) << local.diagnostics;
+        + "class Sq : Widget {\n    void Go() { IShape s; }\n}\n");
+    EXPECT_TRUE(local.ok) << local.diagnostics;
 }
 
 TEST(ScriptInterfaceTranslation, AliasInInterfaceAndClassConforms)
@@ -339,7 +336,7 @@ hotc::TranslateResult run_user(const std::string& body)
 TEST(ScriptInterfaceTranslation, StorageOfFieldsParametersAndReturns)
 {
     const hotc::TranslateResult r = run_user(
-        "    IShape f;\n    IShape Make(IShape p, const IShape& q) { return p; }\n");
+        "    IShape f;\n    IShape Make(IShape p, in IShape q) { return p; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "    hot::Iface<IShape__iface> f;")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "hot::Iface<IShape__iface> Make(const hot::Iface<IShape__iface>& p"))
@@ -381,7 +378,7 @@ TEST(ScriptInterfaceTranslation, LocalAndNull)
 TEST(ScriptInterfaceTranslation, ClassHandleConvertsInLocalAndAssignment)
 {
     const hotc::TranslateResult r = run_user(
-        "    void Go() { Sq q = new Sq(); IShape a = q; IShape b = new Sq(); b = q; }\n");
+        "    void Go() { $Sq q = new $Sq(); IShape a = q; IShape b = new $Sq(); b = q; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::Iface<IShape__iface> a = hot::to_iface<IShape__iface>(q);")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "hot::Iface<IShape__iface> b = hot::to_iface<IShape__iface>(std::shared_ptr<Sq>(Sq__new_shared()));"))
@@ -401,7 +398,7 @@ TEST(ScriptInterfaceTranslation, InterfaceValueNeedsNoConversion)
 TEST(ScriptInterfaceTranslation, ClassHandleConvertsInArgumentAndReturn)
 {
     const hotc::TranslateResult r = run_user(
-        "    void Use(IShape s) { }\n    IShape Make() { return new Sq(); }\n    IShape Pass(Sq q) { Use(q); return q; }\n"
+        "    void Use(IShape s) { }\n    IShape Make() { return new $Sq(); }\n    IShape Pass($Sq q) { Use(q); return q; }\n"
         "    IShape Nothing() { return null; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "User__Use(__self, hot::to_iface<IShape__iface>(q));")) << r.cpp;
@@ -420,7 +417,7 @@ TEST(ScriptInterfaceTranslation, NullArgument)
 TEST(ScriptInterfaceTranslation, FieldInitializerAndDefaultArgument)
 {
     const hotc::TranslateResult r = run_user(
-        "    IShape f = new Sq();\n    IShape g = null;\n    void Use(IShape s = null) { }\n");
+        "    IShape f = new $Sq();\n    IShape g = null;\n    void Use(IShape s = null) { }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::to_iface<IShape__iface>(std::shared_ptr<Sq>(Sq__new_shared()))")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "g = hot::Iface<IShape__iface>()") || has(r.cpp, "T(hot::Iface<IShape__iface>())")) << r.cpp;
@@ -432,7 +429,7 @@ TEST(ScriptInterfaceTranslation, ThisConvertsInAClassThatListsTheInterface)
     const hotc::TranslateResult r = run(std::string(kShape)
         + "class Reg : Widget {\n    void Add(IShape s) { }\n}\n"
           "class Sq : Widget, IShape {\n    int Area() { return 4; }\n    void Scale(int k) { }\n"
-          "    void Go(Reg r) { r.Add(this); }\n    IShape Me() { return this; }\n}\n");
+          "    void Go($Reg r) { if (r == null) return; r.Add(this); }\n    IShape Me() { return this; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::to_iface<IShape__iface>(hot::handle_from_this<")) << r.cpp;
 }
@@ -448,7 +445,7 @@ TEST(ScriptInterfaceTranslation, ThisInAParentThatListsTheInterface)
 TEST(ScriptInterfaceTranslation, ClassWithoutTheInterfaceIsAnError)
 {
     const hotc::TranslateResult r = run(std::string(kShape)
-        + "class Plain : Widget {\n    IShape Me() { return this; }\n    IShape Make() { return new Plain(); }\n}\n");
+        + "class Plain : Widget {\n    IShape Me() { return this; }\n    IShape Make() { return new $Plain(); }\n}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "the class 'Plain' does not implement the interface 'IShape'")) << r.diagnostics;
 }
@@ -457,7 +454,7 @@ TEST(ScriptInterfaceTranslation, ParentClassHandleConvertsWhenTheParentListsTheI
 {
     const hotc::TranslateResult r = run(std::string(kShape)
         + "class Base : Widget, IShape {\n    int Area() { return 4; }\n    void Scale(int k) { }\n}\n"
-          "class Sq : Base {\n}\nclass User : Widget {\n    void Go(Sq q) { IShape a = q; }\n}\n");
+          "class Sq : Base {\n}\nclass User : Widget {\n    void Go($Sq q) { IShape a = q; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::Iface<IShape__iface> a = hot::to_iface<IShape__iface>(q);")) << r.cpp;
 }
@@ -473,7 +470,7 @@ TEST(ScriptInterfaceTranslation, OtherInterfaceDoesNotConvert)
 TEST(ScriptInterfaceTranslation, PushBackConverts)
 {
     const hotc::TranslateResult r = run_user(
-        "    std.vector<IShape> xs;\n    void Go(Sq q) { xs.push_back(q); xs.push_back(null); }\n");
+        "    std.vector<IShape> xs;\n    void Go($Sq q) { xs.push_back(q); xs.push_back(null); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::deref(__st->xs).push_back(hot::to_iface<IShape__iface>(q));")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "hot::deref(__st->xs).push_back(hot::Iface<IShape__iface>());")) << r.cpp;
@@ -510,7 +507,7 @@ TEST(ScriptInterfaceTranslation, CallConvertsClassHandleArgument)
 {
     const hotc::TranslateResult r = run(std::string(kShape)
         + "interface IReg {\n    void Add(IShape s);\n}\n" + kSq
-        + "class User : Widget {\n    void Go(IReg reg, Sq q) { reg.Add(q); reg.Add(null); }\n}\n");
+        + "class User : Widget {\n    void Go(IReg reg, $Sq q) { reg.Add(q); reg.Add(null); }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "IReg__Add(reg, hot::to_iface<IShape__iface>(q));")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "IReg__Add(reg, hot::Iface<IShape__iface>());")) << r.cpp;
@@ -548,7 +545,7 @@ TEST(ScriptInterfaceTranslation, MemberOfAnInterfaceIsAnError)
 
 TEST(ScriptInterfaceTranslation, IsInterface)
 {
-    const hotc::TranslateResult r = run_user("    bool Go(Widget w, Sq q) { return w is IShape || q is IShape; }\n");
+    const hotc::TranslateResult r = run_user("    bool Go(Widget w, $Sq q) { return w is IShape || q is IShape; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::is_iface(w, \"IShape\") || hot::is_iface(q, \"IShape\")")) << r.cpp;
 }
@@ -571,14 +568,14 @@ TEST(ScriptInterfaceTranslation, IsInterfaceWithBinding)
 
 TEST(ScriptInterfaceTranslation, InterfaceValueIsAClass)
 {
-    const hotc::TranslateResult r = run_user("    bool Go(IShape s) { return s is Sq; }\n");
+    const hotc::TranslateResult r = run_user("    bool Go(IShape s) { return s is $Sq; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "return hot::is_script(s, \"Sq\");")) << r.cpp;
 }
 
 TEST(ScriptInterfaceTranslation, InterfaceValueAsClass)
 {
-    const hotc::TranslateResult r = run_user("    Sq Go(IShape s) { Sq q = s as Sq; return s as Sq; }\n");
+    const hotc::TranslateResult r = run_user("    $Sq Go(IShape s) { $Sq q = s as $Sq; return s as $Sq; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "std::shared_ptr<Sq> q = hot::iface_as<std::shared_ptr<Sq>, Sq_Shell>(s, \"Sq\");")
         || has(r.cpp, "q = hot::iface_as<std::shared_ptr<Sq>, Sq_Shell>(s, \"Sq\");")) << r.cpp;
@@ -587,7 +584,7 @@ TEST(ScriptInterfaceTranslation, InterfaceValueAsClass)
 
 TEST(ScriptInterfaceTranslation, AsInterfaceKeepsTheTypeForACall)
 {
-    const hotc::TranslateResult r = run_user("    int Go(Widget w) { var s = w as IShape; return s.Area(); }\n");
+    const hotc::TranslateResult r = run_user("    int Go(Widget w) { var s = w as IShape; if (s == null) return 0; return s.Area(); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "auto s = hot::as_iface<IShape__iface>(w, \"IShape\");")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "return IShape__Area(s);")) << r.cpp;
@@ -596,7 +593,7 @@ TEST(ScriptInterfaceTranslation, AsInterfaceKeepsTheTypeForACall)
 TEST(ScriptInterfaceTranslation, EqualityComparesTheObject)
 {
     const hotc::TranslateResult r = run_user(
-        "    bool Go(IShape a, IShape b, Sq q) { return a == b || a != b || a == q || q != a; }\n");
+        "    bool Go(IShape a, IShape b, $Sq q) { return a == b || a != b || a == q || q != a; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::iface_same(a, b)")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "!hot::iface_same(a, b)")) << r.cpp;
@@ -660,7 +657,7 @@ TEST(ScriptInterfaceTranslation, EqualityWithNull)
 
 TEST(ScriptInterfaceTranslation, ClassComparisonKeepsItsForm)
 {
-    const hotc::TranslateResult r = run_user("    bool Go(Sq a, Sq b) { return a == b && a != null; }\n");
+    const hotc::TranslateResult r = run_user("    bool Go($Sq a, $Sq b) { return a == b && a != null; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_FALSE(has(r.cpp, "iface_same")) << r.cpp;
 }

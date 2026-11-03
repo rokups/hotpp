@@ -2,7 +2,7 @@
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
-// Tests of the "[value]" attribute with a loaded script (hot::Value). The first Tick of the
+// Tests of the bare script class name (a box) with a loaded script (hot::Value). The first Tick of the
 // holder runs each use once and writes the results to int fields. The tests use the backend that
 // HOT_BACKEND selected.
 #include "hot/backend.h"
@@ -40,7 +40,7 @@ int field_int(Session& s, const char* name)
     return p ? *p : -1000;
 }
 
-// The box of the [value] field "name" of the holder. The host cannot name the type of the field, so
+// The box of the field "name" of the holder. The host cannot name the type of the field, so
 // the function reads the box at the offset of the field.
 Box* box_of(Session& s, const char* name)
 {
@@ -51,7 +51,7 @@ Box* box_of(Session& s, const char* name)
         static_cast<char*>(static_cast<hot::ShellBase*>(s.inst.shell)->state) + f->offset);
 }
 
-// The object of the [value] field "name" of the holder.
+// The object of the field "name" of the holder.
 PlainView* box_object(Session& s, const char* name)
 {
     Box* b = box_of(s, name);
@@ -75,7 +75,7 @@ const hot::GenerationInfo* find_gen(const hot::LoaderStats& st, uint32_t generat
     return nullptr;
 }
 
-// A copy of a [value] is independent of the source. The fields keep their own objects.
+// A copy of a value is independent of the source. The fields keep their own objects.
 TEST_P(BackendTests, ValueCopyIsIndependent)
 {
     Session s;
@@ -98,7 +98,7 @@ TEST_P(BackendTests, ValueCopyKeepsTheRealClass)
     EXPECT_EQ(*hot::field_ptr<int>(sub, "x"), 1); // the copy "s2" changed its own "x" only
 }
 
-// A [value] parameter is a copy. The function changes its copy only.
+// A parameter is a copy. The function changes its copy only.
 TEST_P(BackendTests, ValueParameterIsACopy)
 {
     Session s;
@@ -107,7 +107,7 @@ TEST_P(BackendTests, ValueParameterIsACopy)
     EXPECT_EQ(field_int(s, "r_param_a"), 10);
 }
 
-// A [value] return holds the new object. A return of a field copies the field.
+// A return holds the new object. A return of a field copies the field.
 TEST_P(BackendTests, ValueReturnWorks)
 {
     Session s;
@@ -130,7 +130,7 @@ TEST_P(BackendTests, ValueLocalsCopyTheirSource)
     EXPECT_EQ(field_int(s, "r_var"), 10);
 }
 
-// A copy of a null handle into a [value] throws. A script cannot name a field that does not
+// A copy of a null handle into a value throws. A script cannot name a field that does not
 // copy, so the unit tests of hot::Value check the error text of such a field.
 TEST_P(BackendTests, ValueCopyOfNullHandleThrows)
 {
@@ -139,7 +139,7 @@ TEST_P(BackendTests, ValueCopyOfNullHandleThrows)
     EXPECT_EQ(field_int(s, "caught_null"), 1);
 }
 
-// A reload keeps the object of a [value] field. The loader moves it, and it does not copy it.
+// A reload keeps the object of a field. The loader moves it, and it does not copy it.
 // The new field gets its initializer.
 TEST_P(BackendTests, ValueFieldMigratesOnReload)
 {

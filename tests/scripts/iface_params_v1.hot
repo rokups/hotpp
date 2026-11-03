@@ -2,7 +2,7 @@
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
-// Interface methods with a reference, a const reference, a [weak] handle, a [value] parameter and
+// Interface methods with a reference, a const reference, a [weak] handle, a parameter and
 // a script class type. The row signature must equal the helper signature.
 using "Actor.h";
 using <string>;
@@ -12,29 +12,30 @@ class Pt {
 }
 
 interface IParams {
-    int ByRef(int& out);
-    int ByConst(const std.string& s);
-    int Weak([weak] Pt p);
-    int Val([value] Pt p);
-    Pt Handle(Pt p);
+    int ByRef(ref int result);
+    int ByConst(in std.string s);
+    int Weak([weak] $Pt p);
+    int Val(Pt p);
+    $Pt Handle($Pt p);
 }
 
 class Impl : Actor, IParams {
-    int ByRef(int& out) { out = 42; return 1; }
-    int ByConst(const std.string& s) {
+    int ByRef(ref int result) { result = 42; return 1; }
+    int ByConst(in std.string s) {
         if (s == "abc") return 3;
         return 0;
     }
-    int Weak([weak] Pt p) {
-        Pt strong = p;
+    int Weak([weak] $Pt p) {
+        $Pt strong = p;
         if (strong == null) return -1;
         return strong.x;
     }
-    int Val([value] Pt p) {
+    int Val(Pt p) {
         p.x = p.x + 1;
         return p.x;
     }
-    Pt Handle(Pt p) {
+    $Pt Handle($Pt p) {
+        if (p == null) return null;
         p.x = p.x + 10;
         return p;
     }
@@ -50,10 +51,10 @@ class Prober : Actor {
     int r_handle = 0;
 
     override void Tick(float dt) {
-        Impl im = new Impl();
+        $Impl im = new $Impl();
         IParams ip = im;
-        Pt p = new Pt();
-        [value] Pt v = new Pt();
+        $Pt p = new $Pt();
+        Pt v = new $Pt();
         int o = 0;
         this.r_ref = ip.ByRef(o);
         this.out_ref = o;
@@ -61,7 +62,8 @@ class Prober : Actor {
         this.r_weak = ip.Weak(p);
         this.r_val = ip.Val(v);
         this.r_val_after = v.x;
-        Pt h = ip.Handle(p);
+        $Pt h = ip.Handle(p);
+        if (h == null) return;
         this.r_handle = h.x;
     }
 }

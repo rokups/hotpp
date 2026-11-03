@@ -86,7 +86,7 @@ TEST(MatchNativeVirtual, ExactWins)
     CarrierFixture f;
     // Both methods could match "Weapon": the exact spelling is the only exact hit.
     std::vector<VirtualSig> v = {sig("hit", {"Weapon*"}), sig("hit", {"Weapon"})};
-    OverrideMatch m = match_native_virtual("hit", {"Weapon*"}, v, f.model, false, true);
+    OverrideMatch m = match_native_virtual("hit", {"Weapon*"}, v, f.model, true);
     ASSERT_EQ(m.kind, OverrideMatch::Kind::Hit);
     EXPECT_FALSE(m.relaxed);
     EXPECT_EQ(m.hits, std::vector<size_t>({0}));
@@ -96,7 +96,7 @@ TEST(MatchNativeVirtual, ExactBuiltinCanonical)
 {
     CarrierFixture f;
     std::vector<VirtualSig> v = {sig("f", {"unsigned int"})};
-    OverrideMatch m = match_native_virtual("f", {"uint32"}, v, f.model, false, false);
+    OverrideMatch m = match_native_virtual("f", {"uint32"}, v, f.model, false);
     EXPECT_EQ(m.kind, OverrideMatch::Kind::Hit);
 }
 
@@ -104,7 +104,7 @@ TEST(MatchNativeVirtual, RelaxedSingleHit)
 {
     CarrierFixture f;
     std::vector<VirtualSig> v = {sig("hit", {"const Weapon&", "int"}), sig("other", {"Weapon*"})};
-    OverrideMatch m = match_native_virtual("hit", {"Weapon", "int"}, v, f.model, false, true);
+    OverrideMatch m = match_native_virtual("hit", {"Weapon", "int"}, v, f.model, true);
     ASSERT_EQ(m.kind, OverrideMatch::Kind::Hit);
     EXPECT_TRUE(m.relaxed);
     EXPECT_EQ(m.hits, std::vector<size_t>({0}));
@@ -114,7 +114,7 @@ TEST(MatchNativeVirtual, RelaxedOff)
 {
     CarrierFixture f;
     std::vector<VirtualSig> v = {sig("hit", {"Weapon*"})};
-    OverrideMatch m = match_native_virtual("hit", {"Weapon"}, v, f.model, false, false);
+    OverrideMatch m = match_native_virtual("hit", {"Weapon"}, v, f.model, false);
     EXPECT_EQ(m.kind, OverrideMatch::Kind::None);
     EXPECT_EQ(m.relaxed_candidates, std::vector<size_t>({0}));
 }
@@ -123,7 +123,7 @@ TEST(MatchNativeVirtual, RelaxedAmbiguity)
 {
     CarrierFixture f;
     std::vector<VirtualSig> v = {sig("hit", {"Weapon*"}), sig("hit", {"std::shared_ptr<Weapon>"})};
-    OverrideMatch m = match_native_virtual("hit", {"Weapon"}, v, f.model, false, true);
+    OverrideMatch m = match_native_virtual("hit", {"Weapon"}, v, f.model, true);
     ASSERT_EQ(m.kind, OverrideMatch::Kind::Ambiguous);
     EXPECT_TRUE(m.relaxed);
     EXPECT_EQ(m.hits.size(), 2u);
@@ -133,44 +133,36 @@ TEST(MatchNativeVirtual, NoHit)
 {
     CarrierFixture f;
     std::vector<VirtualSig> v = {sig("hit", {"Weapon*"}), sig("hit", {"int"})};
-    OverrideMatch m = match_native_virtual("hit", {"float"}, v, f.model, false, true);
+    OverrideMatch m = match_native_virtual("hit", {"float"}, v, f.model, true);
     EXPECT_EQ(m.kind, OverrideMatch::Kind::None);
     EXPECT_TRUE(m.hits.empty());
     EXPECT_TRUE(m.relaxed_candidates.empty());
-    m = match_native_virtual("miss", {"Weapon"}, v, f.model, false, true);
+    m = match_native_virtual("miss", {"Weapon"}, v, f.model, true);
     EXPECT_EQ(m.kind, OverrideMatch::Kind::None);
 }
 
 TEST(MatchNativeVirtual, ConstSelection)
 {
     CarrierFixture f;
+    // The script cannot write "const": the non-const method is the default.
     std::vector<VirtualSig> v = {sig("get", {"int"}, true), sig("get", {"int"}, false)};
-    OverrideMatch m = match_native_virtual("get", {"int"}, v, f.model, false, false);
+    OverrideMatch m = match_native_virtual("get", {"int"}, v, f.model, false);
     ASSERT_EQ(m.kind, OverrideMatch::Kind::Hit);
     EXPECT_EQ(m.hits, std::vector<size_t>({1}));
-    m = match_native_virtual("get", {"int"}, v, f.model, true, false);
+    // A lone const method matches.
+    std::vector<VirtualSig> c = {sig("get", {"int"}, true)};
+    m = match_native_virtual("get", {"int"}, c, f.model, false);
     ASSERT_EQ(m.kind, OverrideMatch::Kind::Hit);
     EXPECT_EQ(m.hits, std::vector<size_t>({0}));
-    // A lone const method matches without the marker.
-    std::vector<VirtualSig> c = {sig("get", {"int"}, true)};
-    m = match_native_virtual("get", {"int"}, c, f.model, false, false);
-    ASSERT_EQ(m.kind, OverrideMatch::Kind::Hit);
-    // The marker with only a non-const method is an error.
-    std::vector<VirtualSig> n = {sig("get", {"int"}, false)};
-    m = match_native_virtual("get", {"int"}, n, f.model, true, false);
-    EXPECT_EQ(m.kind, OverrideMatch::Kind::ConstMismatch);
 }
 
 TEST(MatchNativeVirtual, RelaxedConstSelection)
 {
     CarrierFixture f;
     std::vector<VirtualSig> v = {sig("use", {"Weapon*"}, true), sig("use", {"Weapon*"}, false)};
-    OverrideMatch m = match_native_virtual("use", {"Weapon"}, v, f.model, true, true);
+    OverrideMatch m = match_native_virtual("use", {"Weapon"}, v, f.model, true);
     ASSERT_EQ(m.kind, OverrideMatch::Kind::Hit);
     EXPECT_TRUE(m.relaxed);
-    EXPECT_EQ(m.hits, std::vector<size_t>({0}));
-    m = match_native_virtual("use", {"Weapon"}, v, f.model, false, true);
-    ASSERT_EQ(m.kind, OverrideMatch::Kind::Hit);
     EXPECT_EQ(m.hits, std::vector<size_t>({1}));
 }
 

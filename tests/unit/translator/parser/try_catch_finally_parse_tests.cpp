@@ -23,10 +23,10 @@ TEST(TryCatchFinallyParse, Exceptions)
     EXPECT_EQ(round_trip("throw;"), "throw;");
     EXPECT_EQ(round_trip("throw std.runtime_error(\"x\");"), "throw \x01std::runtime_error(\"x\");");
     EXPECT_EQ(round_trip("try { f(); } catch (int e) { g(e); }"), "try { f(); } catch (int32_t e) { g(e); }");
-    EXPECT_EQ(round_trip("try { f(); } catch (std.exception& e) { g(); }\n"
-                         "catch (const std.string& m) { throw; } catch (...) { }"),
-        "try { f(); } catch (\x01std::exception& e) { g(); } "
-        "catch (const \x01std::string& m) { throw; } catch (...) {}");
+    EXPECT_EQ(round_trip("try { f(); } catch (std.exception e) { g(); }\n"
+                         "catch (std.string m) { throw; } catch (...) { }"),
+        "try { f(); } catch (\x01std::exception e) { g(); } "
+        "catch (\x01std::string m) { throw; } catch (...) {}");
     EXPECT_EQ(round_trip("try { try { throw 1; } catch (...) { throw; } } catch (int e) { }"),
         "try { try { throw 1; } catch (...) { throw; } } catch (int32_t e) {}");
     // The words are keywords only as whole words.
@@ -104,7 +104,7 @@ TEST(TryCatchFinallyParse, ExceptionErrors)
         EXPECT_EQ(p.printed(), "a = 1; c = 2;");
     }
     {
-        Parsed p("try { } catch (std::exception& e) { }");
+        Parsed p("try { } catch (std::exception e) { }");
         EXPECT_EQ(errors_of(p), (std::vector<std::string>{"1:19: use '.' instead of '::'"})) << p.diag.format("t");
     }
     {

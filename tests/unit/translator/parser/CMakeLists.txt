@@ -25,6 +25,7 @@ add_executable(unit_translator_parser_tests
     module_decl_parse_tests.cpp
     native_stub_parse_tests.cpp
     property_parse_tests.cpp
+    reserved_word_parse_tests.cpp
     ref_out_expression_parse_tests.cpp
     ref_out_statement_parse_tests.cpp
     statement_error_parse_tests.cpp
@@ -33,7 +34,8 @@ add_executable(unit_translator_parser_tests
     structured_binding_parse_tests.cpp
     string_interpolation_parse_tests.cpp
     tolerant_parse_tests.cpp
-    try_catch_finally_parse_tests.cpp)
+    try_catch_finally_parse_tests.cpp
+    type_syntax_parse_tests.cpp)
 target_link_libraries(unit_translator_parser_tests PRIVATE hotc_lib GTest::gtest_main)
 target_include_directories(unit_translator_parser_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/translator ${PROJECT_SOURCE_DIR}/tests)
 target_compile_definitions(unit_translator_parser_tests PRIVATE HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")

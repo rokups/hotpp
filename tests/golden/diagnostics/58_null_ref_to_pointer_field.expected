@@ -1,0 +1,3 @@
+58_null_ref_to_pointer_field.hot:9:17: error: a ref cannot bind to a nullable field
+    9 |         ref r = this.kept;
+1 error generated.

@@ -11,6 +11,7 @@
 #include <array>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -37,6 +38,19 @@ TEST(RuntimeChecks, DerefOfNullPointerThrows)
     EXPECT_THROW(hot::deref(p), hot::NullReference);
     EXPECT_THROW(hot::deref(p), hot::ScriptError);
     EXPECT_THROW(hot::deref(p), std::exception);
+}
+
+TEST(RuntimeChecks, DerefOfAnEmptyOptionalThrows)
+{
+    std::optional<std::string> o;
+    EXPECT_THROW(hot::deref(o), hot::NullReference);
+    EXPECT_THROW(hot::deref(std::optional<std::string>()), hot::NullReference);
+    const std::optional<std::string>& c = o;
+    EXPECT_THROW(hot::deref(c), hot::NullReference);
+    o = "ab";
+    EXPECT_EQ(hot::deref(o).size(), 2u);
+    hot::deref(o) = "abc";
+    EXPECT_EQ(*o, "abc");
 }
 
 TEST(RuntimeChecks, DerefOfNullHandleThrows)
@@ -72,6 +86,35 @@ TEST(RuntimeChecks, IndexOfArrayOutOfRangeThrows)
     EXPECT_THROW(hot::index(ca, 5), hot::IndexOutOfRange);
     EXPECT_THROW(hot::index(std::array<int, 3>{}, 3), hot::IndexOutOfRange);
 }
+
+#ifdef __cpp_lib_span
+// The script type "T[]" is a std::span<T>. Its index has the same bounds test as an array.
+TEST(RuntimeChecks, SpanIndexOutOfRangeThrows)
+{
+    std::vector<int> v{1, 2, 3};
+    std::span<int> s = v;
+    EXPECT_EQ(hot::index(s, 2), 3);
+    hot::index(s, 0) = 9; // a view gives a reference to the element of the owner
+    EXPECT_EQ(v[0], 9);
+    try
+    {
+        hot::index(s, 3);
+        FAIL() << "no exception";
+    }
+    catch (const hot::IndexOutOfRange& e)
+    {
+        EXPECT_EQ(e.index(), 3u);
+        EXPECT_EQ(e.size(), 3u);
+    }
+    EXPECT_THROW(hot::index(s, -1), hot::IndexOutOfRange);
+    EXPECT_THROW(hot::index(std::span<int>(), 0), hot::IndexOutOfRange);
+    const std::span<const int> cs = v;
+    EXPECT_THROW(hot::index(cs, 7), hot::IndexOutOfRange);
+    // An rvalue view still gives a reference: the element does not die with the view.
+    hot::index(std::span<int>(v), 1) = 5;
+    EXPECT_EQ(v[1], 5);
+}
+#endif
 
 TEST(RuntimeChecks, VectorIndexOutOfRangeThrows)
 {

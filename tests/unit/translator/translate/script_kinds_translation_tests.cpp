@@ -2,7 +2,7 @@
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
-// Tests for hotc::translate with the kinds of script classes: shell class, plain class, [value] class.
+// Tests for hotc::translate with the kinds of script classes: shell class, plain class, class.
 #include "hot/hotc_lib.h"
 #include "support/translator_test_support.h"
 
@@ -56,8 +56,8 @@ TEST(ScriptKindsTranslation, NewOfAShellClassGivesAHandle)
     const hotc::TranslateResult r = translate_script(
         "class Squad : Unit { int size = 5; Squad(int n) { this.size = n; } }\n"
         "class Boss : Unit {\n"
-        "    Squad kid;\n"
-        "    override void Update(float dt) { this.kid = new Squad(3); }\n"
+        "    $Squad kid;\n"
+        "    override void Update(float dt) { this.kid = new $Squad(3); }\n"
         "}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "std::shared_ptr<Squad> kid")) << r.cpp;
@@ -69,8 +69,8 @@ TEST(ScriptKindsTranslation, PlainClassUsesThePlainObjectBase)
     const hotc::TranslateResult r = translate_script(
         "class Counter { int count = 0; Counter(int c) { this.count = c; } }\n"
         "class Boss : Unit {\n"
-        "    Counter c;\n"
-        "    override void Update(float dt) { this.c = new Counter(1); }\n"
+        "    $Counter c;\n"
+        "    override void Update(float dt) { this.c = new $Counter(1); }\n"
         "}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "hot::PlainObject")) << r.cpp;
@@ -108,7 +108,7 @@ TEST(ScriptKindsTranslation, SuperNeedsABase)
 
 TEST(ScriptKindsTranslation, ClassOrderIsChecked)
 {
-    // A [value] class is emitted first, so a later [value] class is fine.
+    // A class is emitted first, so a later class is fine.
     const hotc::TranslateResult r = translate_script("class Boss : Unit { Stats s; }\nstruct Stats { int a = 0; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
@@ -117,7 +117,7 @@ TEST(ScriptKindsTranslation, HandleClassCanBeUsedBeforeItsDeclaration)
 {
     // The translator sorts the classes by use. Squad is emitted before Boss.
     const hotc::TranslateResult r =
-        translate_script("class Boss : Unit { Squad s; }\nclass Squad : Unit { int a = 0; }\n");
+        translate_script("class Boss : Unit { $Squad s; }\nclass Squad : Unit { int a = 0; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_LT(r.cpp.find("struct Squad_Shell final"), r.cpp.find("struct Boss_Shell final")) << r.cpp;
 }
@@ -126,7 +126,7 @@ TEST(ScriptKindsTranslation, ClassesCanUseEachOtherThroughHandles)
 {
     // The forward block declares both shells. The function bodies come after the last block.
     const hotc::TranslateResult r = translate_script(
-        "class A : Unit { B b; int F() { return b.G(); } }\nclass B : Unit { A a; int G() { return a != null ? 1 : 0; } }\n");
+        "class A : Unit { $B b; int F() { $B x = b; if (x == null) return 0; return x.G(); } }\nclass B : Unit { $A a; int G() { return a != null ? 1 : 0; } }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_LT(r.cpp.find("struct B_Shell;"), r.cpp.find("struct A_Shell final")) << r.cpp;
     EXPECT_LT(r.cpp.find("struct B_Shell final"), r.cpp.find("int32_t AState_g1::F(")) << r.cpp;
@@ -137,7 +137,7 @@ TEST(ScriptKindsTranslation, FieldInitializerNewOrdersTheCycle)
     // A "new" in a field initializer needs the "new" function of B in the block of A. So B comes
     // first, also when B comes first in the file and uses A.
     const hotc::TranslateResult r =
-        translate_script("class B : Unit { A a = null; }\nclass A : Unit { B b = new B(); int x = 1; }\n");
+        translate_script("class B : Unit { $A a = null; }\nclass A : Unit { $B b = new $B(); int x = 1; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_LT(r.cpp.find("struct B_Shell final"), r.cpp.find("struct A_Shell final")) << r.cpp;
 }
@@ -172,14 +172,14 @@ TEST(ScriptKindsTranslation, TemplateArgumentThatIsAScriptClassUsesTheHandle)
     // A script class as a template argument is a handle (task 48). A struct stays a value.
     const std::string h = "std::shared_ptr<Squad>";
     const hotc::TranslateResult field = translate_script(
-        "class Squad : Unit { int a = 0; }\nclass Boss : Unit { std.vector<Squad> all; "
-        "std.map<int, std.vector<Squad>> groups; }\n");
+        "class Squad : Unit { int a = 0; }\nclass Boss : Unit { std.vector<$Squad> all; "
+        "std.map<int, std.vector<$Squad>> groups; }\n");
     ASSERT_TRUE(field.ok) << field.diagnostics;
     EXPECT_NE(field.cpp.find("std::vector<" + h + "> all;"), std::string::npos) << field.cpp;
     EXPECT_NE(field.cpp.find("std::map<int32_t, std::vector<" + h + ">> groups;"), std::string::npos) << field.cpp;
     EXPECT_EQ(field.cpp.find("std::vector<Squad>"), std::string::npos) << field.cpp;
     const hotc::TranslateResult param = translate_script(
-        "class Squad : Unit { int a = 0; }\nclass Boss : Unit { int F(std.vector<Squad> v) { return v.size(); } }\n");
+        "class Squad : Unit { int a = 0; }\nclass Boss : Unit { int F(std.vector<$Squad> v) { return v.size(); } }\n");
     ASSERT_TRUE(param.ok) << param.diagnostics;
     EXPECT_NE(param.cpp.find("std::vector<" + h + ">"), std::string::npos) << param.cpp;
     EXPECT_EQ(param.cpp.find("std::vector<Squad>"), std::string::npos) << param.cpp;
@@ -194,12 +194,12 @@ TEST(ScriptKindsTranslation, ElementOfAContainerOfScriptClassesIsAHandle)
     const hotc::TranslateResult r = translate_script(
         "class Squad : Unit { int a = 0; void Hit() { this.a = this.a + 1; } }\n"
         "class Boss : Unit {\n"
-        "    std.vector<Squad> all = std.vector<Squad>();\n"
+        "    std.vector<$Squad> all = std.vector<Squad>();\n"
         "    int sum = 0;\n"
         "    void Run() {\n"
-        "        std.vector<Squad> local;\n"
-        "        local.push_back(new Squad());\n"
-        "        this.all.push_back(new Squad());\n"
+        "        std.vector<$Squad> local;\n"
+        "        local.push_back(new $Squad());\n"
+        "        this.all.push_back(new $Squad());\n"
         "        this.all[0].Hit();\n"
         "        this.sum = this.all[0].a + local.front().a;\n"
         "        foreach (var s in this.all) { s.Hit(); this.sum += s.a; }\n"
@@ -219,7 +219,7 @@ TEST(ScriptKindsTranslation, VariantAccessFunctionsNameTheHandleType)
     const hotc::TranslateResult r = translate_script(
         "using <variant>;\nclass Squad : Unit { int a = 0; }\n"
         "class Boss : Unit {\n"
-        "    std.variant<Squad, int> v;\n"
+        "    std.variant<$Squad, int> v;\n"
         "    bool Run() {\n"
         "        return std.holds_alternative<Squad>(this.v) && std.get<Squad>(this.v) != null;\n"
         "    }\n"
@@ -236,13 +236,51 @@ TEST(ScriptKindsTranslation, FunctionTypeWithAScriptClassUsesTheHandle)
     const hotc::TranslateResult r = translate_script(
         "using <functional>;\nclass Squad : Unit { int a = 0; }\n"
         "class Boss : Unit {\n"
-        "    std.function<void(Squad)> on_hit;\n"
-        "    std.function<Squad()> make;\n"
+        "    std.function<void($Squad)> on_hit;\n"
+        "    std.function<$Squad()> make;\n"
         "}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     const std::string h = "std::shared_ptr<Squad>";
     EXPECT_NE(r.cpp.find("std::function<void(" + h + ")> on_hit;"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("std::function<" + h + "()> make;"), std::string::npos) << r.cpp;
+}
+
+// A cast "($C)x" to the handle of a script class is a cast of the handle. The bare "(C)x" is not a cast.
+TEST(ScriptKindsTranslation, CastToAScriptHandle)
+{
+    const hotc::TranslateResult r = translate_script(
+        "class Squad : Unit { int a = 0; }\nclass Boss : Unit {\n    int Run($Unit u) {\n"
+        "        $Squad s = ($Squad)u;\n        if (s == null) return 0;\n        return s.a;\n    }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("std::shared_ptr<Squad> s = "), std::string::npos) << r.cpp;
+    // A downcast is checked with the class record: a failed cast gives a null handle.
+    EXPECT_NE(r.cpp.find("hot::as_script<Squad_Shell>(u, \"Squad\")"), std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find("static_pointer_cast<Squad>"), std::string::npos) << r.cpp;
+}
+
+TEST(ScriptKindsTranslation, UpcastAndSameTypeCastAreStatic)
+{
+    const hotc::TranslateResult r = translate_script(
+        "class Squad : Unit { int a = 0; }\nclass Boss : Unit {\n    int Run($Squad s) {\n"
+        "        $Unit u = ($Unit)s;\n        $Squad t = ($Squad)s;\n        return t.a;\n    }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    // A cast to the same type is a checked unwrap: a null handle throws hot::NullReference.
+    // The base "Unit" is not a script class, so that upcast stays a static cast.
+    EXPECT_NE(r.cpp.find("std::static_pointer_cast<Unit>(s)"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("= hot::nonnull(s);"), std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find("static_pointer_cast<Squad>"), std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find("hot::as_script<Unit_Shell>(s"), std::string::npos) << r.cpp;
+}
+
+TEST(ScriptKindsTranslation, UpcastToAScriptBaseIsACheckedUnwrap)
+{
+    const hotc::TranslateResult r = translate_script(
+        "class Base { int a = 0; }\nclass Mid : Base { int b = 0; }\nclass Boss {\n    int Run($Mid m) {\n"
+        "        $Base u = ($Base)m;\n        $Mid d = ($Mid)u;\n        return u.a;\n    }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("std::static_pointer_cast<Base>(hot::nonnull(m))"), std::string::npos) << r.cpp;
+    // A downcast keeps hot::as_script: a failed cast gives null.
+    EXPECT_NE(r.cpp.find("hot::as_script<Mid_Shell>(u, \"Mid\")"), std::string::npos) << r.cpp;
 }
 
 // A loop over a map gives pairs: the variable has no script type. The index of a map gives the mapped type.
@@ -251,7 +289,7 @@ TEST(ScriptKindsTranslation, LoopOverAMapDoesNotGiveTheMappedType)
     const hotc::TranslateResult r = translate_script(
         "using <map>;\nclass Squad : Unit { int a = 0; }\n"
         "class Boss : Unit {\n"
-        "    std.map<int, Squad> m;\n"
+        "    std.map<int, $Squad> m;\n"
         "    int sum = 0;\n"
         "    void Run() {\n"
         "        this.sum = this.m[1].a;\n"
@@ -272,24 +310,24 @@ TEST(ScriptKindsTranslation, ClassesThatDeriveFromEachOtherAreAnError)
 TEST(ScriptKindsTranslation, ValueClassCannotUseAHandleClass)
 {
     expect_error(
-        "struct V { Squad s; }\nclass Squad : Unit { int a = 0; }\n", "a struct can use only native types and structs");
+        "struct V { $Squad s; }\nclass Squad : Unit { int a = 0; }\n", "a struct can use only native types and structs");
 }
 
 TEST(ScriptKindsTranslation, ScriptClassCallWithoutNewIsAnError)
 {
     const std::string hint = "'Helper' is a script class. Create it with 'new Helper()'.";
     const std::string cls = "class Helper : Unit { int n = 0; }\n";
-    expect_error(cls + "class User : Unit { void run() { Helper h = Helper(); } }\n", hint);
+    expect_error(cls + "class User : Unit { void run() { $Helper h = Helper(); } }\n", hint);
     expect_error(cls + "class User : Unit { void run() { var h = Helper(); } }\n", hint);
-    expect_error(cls + "class User : Unit { void run() { Helper h = Helper(3); } }\n", hint);
-    expect_error(cls + "class User : Unit { Helper h = Helper(); }\n", hint);
+    expect_error(cls + "class User : Unit { void run() { $Helper h = Helper(3); } }\n", hint);
+    expect_error(cls + "class User : Unit { $Helper h = Helper(); }\n", hint);
 }
 
 TEST(ScriptKindsTranslation, ScriptClassWithNewAndStructCallStayValid)
 {
     const hotc::TranslateResult r = translate_script(
         "struct P { int a = 0; }\nclass Helper : Unit { int n = 0; }\n"
-        "class User : Unit { Helper g; void run() { Helper h = new Helper(); P p = P(); } }\n");
+        "class User : Unit { $Helper g; void run() { $Helper h = new $Helper(); P p = P(); } }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 

@@ -1,0 +1,3 @@
+57_null_index_on_pointer.hot:2:37: error: "values" can be null here; check it with "if (values != null)" or use "values?.m"
+    2 |     int First(int* values) { return values[0]; }
+1 error generated.

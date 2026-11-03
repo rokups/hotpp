@@ -35,7 +35,7 @@ const std::set<std::string>& keywords()
 {
     static const std::set<std::string> k = []
     {
-        std::set<std::string> r = {"if", "else", "while", "do", "for", "foreach", "in", "return", "break",
+        std::set<std::string> r = {"if", "else", "while", "do", "for", "foreach", "in", "ref", "out", "return", "break",
             "continue", "switch", "case", "default", "is", "as", "new", "delete", "public", "private", "protected",
             "override", "virtual", "abstract", "const", "get", "set", "this", "base", "true", "false", "null", "try", "catch",
             "finally", "throw", "var", "void", "class", "struct", "enum", "interface", "using"};
@@ -458,12 +458,10 @@ ScriptScope scan_scope(const std::string& text, size_t at, size_t typed_begin)
                 r.enum_members[stack.back().enum_name].push_back(t.s);
             continue;
         }
-        if (!at_module && here == Block::Body && t.s == "var" && next)
+        if (!at_module && here == Block::Body && (t.s == "var" || t.s == "ref") && next)
         {
-            // A structured binding: "var (a, b)" or "var& (a, b)". Each name is a local.
+            // A structured binding: "var (a, b)" or "ref (a, b)". Each name is a local.
             size_t o = i + 1;
-            if (toks[o].s == "&" && o + 1 < toks.size())
-                ++o;
             if (toks[o].s == "(")
             {
                 size_t close = o + 1;
@@ -484,6 +482,8 @@ ScriptScope scan_scope(const std::string& text, size_t at, size_t typed_begin)
         {
             // A binding of a type test: "x is T name". The type can have dots and template arguments.
             size_t k = i + 1;
+            if (k < toks.size() && toks[k].s == "$")
+                ++k; // "$T" is the handle of "T": the type of the binding is "T"
             std::string type;
             while (k < toks.size() && is_name(toks[k]) && toks[k].off != typed_begin)
             {
@@ -522,8 +522,8 @@ ScriptScope scan_scope(const std::string& text, size_t at, size_t typed_begin)
         if (!is_name(t) || !prev || !next)
             continue;
         // A declaration: "Type name" followed by "=", ";", "," or ")", or "name in".
-        // "var& name" is a declaration too: the "&" follows "var".
-        const bool var_ref = prev->s == "&" && i > 1 && toks[i - 2].id && toks[i - 2].s == "var";
+        // "ref name" is a declaration too.
+        const bool var_ref = prev->id && prev->s == "ref";
         const bool by_type =
             is_type(*prev) || var_ref || ((prev->s == ">" || prev->s == "]") && (next->s == "=" || next->s == ";"));
         const bool foreach_name = prev->s == "(" && next->id && next->s == "in";
@@ -532,7 +532,7 @@ ScriptScope scan_scope(const std::string& text, size_t at, size_t typed_begin)
         if (!((by_type && ends) || foreach_name))
             continue;
         std::string type = by_type && prev->id ? prev->s : std::string();
-        if (type == "var")
+        if (type == "var" || type == "ref")
             type.clear();
         if (at_module && par == 0)
         {

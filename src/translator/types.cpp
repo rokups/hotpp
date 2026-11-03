@@ -39,6 +39,13 @@ bool is_builtin(const std::string& t)
 }
 
 
+// The type text without the mark "$" of a handle: "$Foo" gives "Foo". Every query of the model on a
+// type ignores the mark. cpp_storage() is the only place that reads it.
+std::string unmark(const std::string& t)
+{
+    return !t.empty() && t[0] == '$' ? t.substr(1) : t;
+}
+
 std::string replace_all(std::string s, const std::string& from, const std::string& to)
 {
     for (size_t p = 0; (p = s.find(from, p)) != std::string::npos; p += to.size())
@@ -73,7 +80,7 @@ bool states(const ast::Stub& s, const char* attr)
     const std::string a = attr;
     return (a == "value" && s.is_value) || (a == "handle" && !s.handle.empty())
         || (a == "intrusive" && (!s.intrusive_add.empty() || !s.intrusive_release.empty()))
-        || (a == "weak_handle" && !s.weak_handle.empty()) || (a == "default_handle" && !s.default_handle.empty())
+        || (a == "weak_handle" && !s.weak_handle.empty()) || (a == "factory" && !s.factory.empty()) || (a == "default_handle" && !s.default_handle.empty())
         || (a == "cpp_prelude" && !s.cpp_prelude.empty()) || (a == "cpp_overrides" && !s.cpp_overrides.empty());
 }
 
@@ -110,6 +117,8 @@ std::string merge_stub(ast::Stub& m, const ast::Stub& s)
         m.handle = s.handle;
         m.intrusive_add = s.intrusive_add;
         m.intrusive_release = s.intrusive_release;
+        if (value)
+            m.factory.clear();
         if (!handle || s.handle.empty())
             m.weak_handle.clear();
         else if (had_weak && s.handle != old_handle && !states(s, "weak_handle"))
@@ -120,9 +129,12 @@ std::string merge_stub(ast::Stub& m, const ast::Stub& s)
         m.weak_handle = s.weak_handle;
     if (states(s, "default_handle"))
         m.default_handle = s.default_handle;
+    if (states(s, "factory"))
+        m.factory = s.factory;
     m.is_native = m.is_native || s.is_native;
     m.is_self = m.is_self || s.is_self;
     m.checked_index = m.checked_index || s.checked_index;
+    m.nonnull = m.nonnull || s.nonnull;
     if (states(s, "cpp_prelude"))
         m.cpp_prelude = s.cpp_prelude.empty() || m.cpp_prelude.empty() ? s.cpp_prelude : m.cpp_prelude + "\n" + s.cpp_prelude;
     if (states(s, "cpp_overrides"))
@@ -158,12 +170,18 @@ std::string check_rule(const ast::Stub& s)
             return "'value' is not allowed on 'class *': it breaks polymorphic types";
         if (!s.handle.empty() || !s.intrusive_add.empty() || !s.intrusive_release.empty())
             return "'class *' accepts only 'native', 'default_handle' and 'weak_handle'";
+        if (!s.factory.empty())
+            return "'class *' accepts only 'native', 'default_handle' and 'weak_handle'";
         if (!s.weak_handle.empty() && (s.default_handle.empty() || s.weak_handle.find("$T") == std::string::npos))
             return "'weak_handle' needs a 'default_handle' and a template with '$T'";
         return {};
     }
     if (!s.default_handle.empty())
         return "'default_handle' is valid only on 'class *'";
+    if (!s.factory.empty() && s.factory.find("$T") == std::string::npos)
+        return "'factory' needs a template with '$T'. Example: factory(\"std::make_shared<$T>\")";
+    if (!s.factory.empty() && s.is_value)
+        return "'factory' needs a handle. 'value' and 'factory' are exclusive";
     if (!s.weak_handle.empty() && (s.handle.empty() || s.handle == "$T*" || s.weak_handle.find("$T") == std::string::npos))
         return "'weak_handle' needs a 'handle' template other than \"$T*\" and a template with '$T'";
     if (s.is_value && !s.handle.empty())
@@ -232,6 +250,7 @@ void TypeModel::add_stubs(const std::vector<ast::Stub>& stubs, Diagnostics& diag
         {
             default_handle_ = s.default_handle;
             default_weak_ = s.weak_handle;
+            default_nonnull_ = s.nonnull;
             class_prelude_ = s.cpp_prelude;
             class_overrides_ = s.cpp_overrides;
             continue;
@@ -241,8 +260,10 @@ void TypeModel::add_stubs(const std::vector<ast::Stub>& stubs, Diagnostics& diag
         TypeRule rule;
         rule.self = s.is_self;
         rule.native = s.is_native;
+        rule.nonnull = s.nonnull;
         rule.cpp_prelude = s.cpp_prelude;
         rule.cpp_overrides = s.cpp_overrides;
+        rule.factory_tpl = s.factory;
         if (intrusive)
         {
             rule.kind = Kind::Handle;
@@ -298,7 +319,7 @@ void TypeModel::add_script_interfaces(const std::vector<std::string>& names)
 
 bool TypeModel::is_script_interface(const std::string& type) const
 {
-    std::string t = type;
+    std::string t = unmark(type);
     while (t.rfind("const ", 0) == 0)
         t.erase(0, 6);
     while (!t.empty() && (t.back() == ' ' || t.back() == '&'))
@@ -308,14 +329,27 @@ bool TypeModel::is_script_interface(const std::string& type) const
 
 static std::string trim_blank(const std::string& s);
 
-std::string TypeModel::iface_storage(const std::string& type) const
+// True when the type text has a mark of the new types at its top level: a "$" before the type, or
+// a "?" or a "[]" after it. A "const" prefix and a "&" suffix do not count.
+static bool has_marks(const std::string& type)
 {
     std::string t = trim_blank(type);
+    while (!t.empty() && t.back() == '&')
+        t.pop_back();
+    t = trim_blank(t);
+    if (starts_with(t, "const "))
+        t = trim_blank(t.substr(6));
+    return !t.empty() && (t[0] == '$' || t.back() == '?' || (t.size() >= 2 && ends_with(t, "[]")));
+}
+
+std::string TypeModel::iface_storage(const std::string& type) const
+{
+    std::string t = trim_blank(unmark(type));
     std::string prefix, suffix;
     if (starts_with(t, "const "))
     {
         prefix = "const ";
-        t = trim_blank(t.substr(6));
+        t = trim_blank(unmark(trim_blank(t.substr(6))));
     }
     if (!t.empty() && t.back() == '&')
     {
@@ -329,7 +363,7 @@ std::string TypeModel::iface_storage(const std::string& type) const
 
 bool TypeModel::is_script_value(const std::string& type) const
 {
-    auto it = script_.find(type);
+    auto it = script_.find(unmark(type));
     return it != script_.end() && it->second.is_value;
 }
 
@@ -354,8 +388,25 @@ bool TypeModel::wants_facts(const std::string& type) const
     return lookup_stub(type).kind == Kind::Raw;
 }
 
-TypeRule TypeModel::lookup(const std::string& cpp_type) const
+bool TypeModel::returns_nonnull(const std::string& cpp_type) const
 {
+    std::string t = trim_blank(unmark(cpp_type));
+    // A handle template: the class is the first template argument.
+    const size_t lt = t.find('<');
+    if (lt != std::string::npos && t.back() == '>' && (t.find("shared_ptr") < lt || t.find("unique_ptr") < lt))
+        t = trim_blank(t.substr(lt + 1, t.size() - lt - 2));
+    if (starts_with(t, "const "))
+        t = trim_blank(t.substr(6));
+    while (!t.empty() && (t.back() == '*' || t.back() == '&' || t.back() == ' '))
+        t.pop_back();
+    if (t.empty())
+        return false;
+    return default_nonnull_ || lookup_stub(t).nonnull;
+}
+
+TypeRule TypeModel::lookup(const std::string& cpp_type_in) const
+{
+    const std::string cpp_type = unmark(cpp_type_in);
     TypeRule r = lookup_stub(cpp_type);
     if (r.kind != Kind::Raw || !r.owner.empty() || !classes_ || !wants_facts(cpp_type))
         return r;
@@ -497,8 +548,9 @@ TypeRule TypeModel::lookup_stub(const std::string& cpp_type) const
     return r;
 }
 
-bool TypeModel::is_handle(const std::string& type) const
+bool TypeModel::is_handle(const std::string& type_in) const
 {
+    const std::string type = unmark(type_in);
     if (type.find('*') != std::string::npos || type.find('&') != std::string::npos)
         return false;
     if (starts_with(type, "const ") || is_builtin(type))
@@ -524,14 +576,33 @@ bool TypeModel::has_shared_from_this(const std::string& type) const
     return false;
 }
 
+bool TypeModel::derives_from(const std::string& derived, const std::string& base) const
+{
+    const std::string d = unmark(derived), b = unmark(base);
+    std::set<std::string> visited;
+    std::deque<std::string> queue{d};
+    while (!queue.empty())
+    {
+        const std::string current = queue.front();
+        queue.pop_front();
+        if (!visited.insert(current).second)
+            continue;
+        if (current != d && current == b)
+            return true;
+        for (const std::string& next : direct_bases(current))
+            queue.push_back(next);
+    }
+    return false;
+}
+
 bool TypeModel::is_script_class(const std::string& type) const
 {
-    return script_.count(type) != 0;
+    return script_.count(unmark(type)) != 0;
 }
 
 std::string TypeModel::script_native_base(const std::string& type) const
 {
-    std::string cur = type;
+    std::string cur = unmark(type);
     for (size_t depth = 0; depth < 64; ++depth)
     {
         auto it = script_.find(cur);
@@ -623,16 +694,8 @@ std::string TypeModel::targ_storage(const std::string& type) const
     // One template argument. A function type "R(P1, P2)" gets the rewrite for R and each P.
     std::function<std::string(const std::string&, bool)> rewrite_arg = [&](const std::string& arg, bool keep)
     {
-        if (!keep)
-        {
-            if (const std::string i = iface_storage(arg); !i.empty())
-                return i; // an interface handle: "List<I>" holds "hot::Iface<I__iface>" (D12)
-            if (is_script_class(arg) && !is_script_value(arg) && is_handle(arg))
-                return storage(arg);
-            if (const std::string r = script_ref_storage(arg); !r.empty())
-                return r;
-        }
-        // The first "(" outside the angle brackets starts a function type.
+        // The first "(" outside the angle brackets starts a function type. The return type maps
+        // first, then the signature closes: "$R()" is "H()", not "H" with a broken signature.
         int angle = 0;
         size_t lp = std::string::npos;
         for (size_t i = 0; i < arg.size() && lp == std::string::npos; ++i)
@@ -644,11 +707,9 @@ std::string TypeModel::targ_storage(const std::string& type) const
             else if (arg[i] == '(' && angle == 0)
                 lp = i;
         }
-        if (lp == std::string::npos)
-            return targ_storage(arg);
         int paren = 0;
         size_t rp = std::string::npos;
-        for (size_t i = lp; i < arg.size(); ++i)
+        for (size_t i = lp; i < arg.size() && lp != std::string::npos; ++i)
         {
             if (arg[i] == '(')
                 ++paren;
@@ -659,7 +720,23 @@ std::string TypeModel::targ_storage(const std::string& type) const
             }
         }
         if (rp == std::string::npos)
+        {
+            if (!keep && has_marks(arg))
+                return map_marked(trim_blank(arg), StorageUse::Local);
+            if (!keep)
+            {
+                if (const std::string i = iface_storage(arg); !i.empty())
+                    return i; // an interface handle: "List<I>" holds "hot::Iface<I__iface>" (D12)
+                if (is_script_class(arg) && !is_script_value(arg) && is_handle(arg))
+                { // a bare script class is the box
+                    const std::string v = value_storage(arg);
+                    return v.empty() ? storage(arg) : v;
+                }
+                if (const std::string r = script_ref_storage(arg); !r.empty())
+                    return r;
+            }
             return targ_storage(arg);
+        }
         std::string res = lp == 0 ? std::string() : rewrite_arg(trim_blank(arg.substr(0, lp)), keep);
         res += "(";
         int nest = 0;
@@ -717,8 +794,9 @@ std::string TypeModel::targ_storage(const std::string& type) const
     return out + targ_storage(type.substr(close + 1));
 }
 
-std::string TypeModel::storage(const std::string& type) const
+std::string TypeModel::storage(const std::string& type_in) const
 {
+    const std::string type = unmark(type_in);
     if (const std::string r = script_ref_storage(type); !r.empty())
         return r;
     if (const std::string i = iface_storage(type); !i.empty())
@@ -730,6 +808,142 @@ std::string TypeModel::storage(const std::string& type) const
         return "hot::Intrusive<" + type + ", &" + rule.owner + "::" + rule.intrusive_add + ", &" + rule.owner
             + "::" + rule.intrusive_release + ">";
     return replace_all(rule.handle_tpl, "$T", type);
+}
+
+bool TypeModel::is_nullable(const std::string& type_in) const
+{
+    std::string t = trim_blank(type_in);
+    if (starts_with(t, "const "))
+        t = trim_blank(t.substr(6));
+    if (t.empty())
+        return false;
+    if (t[0] == '$' || t.back() == '*')
+        return true;
+    if (is_script_interface(t))
+        return true;
+    if (is_script_class(t))
+        return !is_script_value(t);
+    return t.find('&') == std::string::npos && !is_builtin(t) && is_handle(t);
+}
+
+std::string TypeModel::marks_error(const std::string& type) const
+{
+    if (type.find('?') == std::string::npos)
+        return {};
+    // The start of the element at each depth of "<" and "(".
+    std::vector<size_t> starts{0};
+    for (size_t i = 0; i < type.size(); ++i)
+    {
+        const char c = type[i];
+        if (c == '<' || c == '(')
+            starts.push_back(i + 1);
+        else if (c == ',')
+            starts.back() = i + 1;
+        else if ((c == '>' || c == ')') && starts.size() > 1)
+            starts.pop_back();
+        else if (c == '?' && is_nullable(type.substr(starts.back(), i - starts.back())))
+            return "\"?\" needs a value type";
+    }
+    return {};
+}
+
+std::string TypeModel::map_plain(const std::string& type, StorageUse use) const
+{
+    switch (use)
+    {
+    case StorageUse::Field:
+        if (std::string c = checked_ptr_storage(type); !c.empty())
+            return c;
+        return storage(type);
+    case StorageUse::Param:
+        return param_form(type, true);
+    case StorageUse::LambdaParam:
+        return param_form(type, false);
+    case StorageUse::Return:
+    case StorageUse::Local:
+        break;
+    }
+    return storage(type);
+}
+
+std::string TypeModel::map_marked(const std::string& type, StorageUse use) const
+{
+    // A bare script class "C" is the box "hot::Value<C>". "const C&" is "const hot::Value<C>&". A class
+    // with a native base or a handle that is not a std::shared_ptr has no box: it keeps its handle.
+    if (!raw_script_refs_)
+    {
+        std::string inner = type;
+        size_t amps = 0;
+        while (!inner.empty() && inner.back() == '&' && amps < 2)
+            inner.pop_back(), ++amps;
+        inner = trim_blank(inner);
+        std::string prefix;
+        if (starts_with(inner, "const "))
+        {
+            prefix = "const ";
+            inner = trim_blank(inner.substr(6));
+        }
+        if (!inner.empty() && inner[0] != '$' && is_script_class(inner) && !is_script_value(inner))
+            if (const std::string v = value_storage(inner); !v.empty())
+                return prefix + v + std::string(amps, '&');
+    }
+    // "X&" with a mark in X: the mark is mapped inside the reference. A "const" before X is the
+    // const of the reference ("in T x" gives "const T&").
+    size_t amps = 0;
+    while (amps < type.size() && type[type.size() - 1 - amps] == '&')
+        ++amps;
+    if (amps > 0 && amps <= 2)
+    {
+        std::string inner = trim_blank(type.substr(0, type.size() - amps));
+        std::string prefix;
+        if (starts_with(inner, "const "))
+        {
+            prefix = "const ";
+            inner = trim_blank(inner.substr(6));
+        }
+        if (!inner.empty() && has_marks(inner))
+            return prefix + map_marked(inner, StorageUse::Local) + std::string(amps, '&');
+    }
+    // "const T[]" is a view of const elements: the "const" stays in the element type.
+    if (type.size() >= 2 && type.compare(type.size() - 2, 2, "[]") == 0)
+        return "std::span<" + map_marked(trim_blank(type.substr(0, type.size() - 2)), StorageUse::Local) + ">";
+    if (starts_with(type, "const ") && has_marks(trim_blank(type.substr(6))))
+        return "const " + map_marked(trim_blank(type.substr(6)), StorageUse::Local);
+    if (type.back() == '?')
+    {
+        const std::string o =
+            "std::optional<" + map_marked(trim_blank(type.substr(0, type.size() - 1)), StorageUse::Local) + ">";
+        return use == StorageUse::Param && !raw_script_refs_ ? "hot::In<" + o + ">" : o;
+    }
+    if (type[0] == '$')
+    {
+        const std::string base = trim_blank(type.substr(1));
+        if (is_handle(base) || is_script_interface(base))
+            return map_plain(base, use);
+        if (is_builtin(base) || base == "void" || base.find('&') != std::string::npos
+            || base.find('*') != std::string::npos)
+            return map_plain(base, use); // the parser rejects these
+        // A struct or a value type: the shared pointer owns a copy.
+        const std::string h = "\x01std::shared_ptr<" + targ_storage(base) + ">";
+        return use == StorageUse::Param ? "const " + h + "&" : h;
+    }
+    return map_plain(type, use);
+}
+
+std::string TypeModel::cpp_storage(const std::string& script_type, StorageUse use, std::string* error) const
+{
+    if (error)
+        error->clear();
+    const std::string type = trim_blank(script_type);
+    if (type.empty())
+        return type;
+    if (const std::string e = marks_error(type); !e.empty())
+    {
+        if (error)
+            *error = e;
+        return {};
+    }
+    return map_marked(type, use);
 }
 
 namespace
@@ -796,8 +1010,9 @@ bool TypeModel::is_value_pointer(const std::string& type) const
     return classes_ && classes_(base).is_enum;
 }
 
-std::string TypeModel::weak_storage(const std::string& type) const
+std::string TypeModel::weak_storage(const std::string& type_in) const
 {
+    const std::string type = unmark(type_in);
     if (!is_handle(type))
         return {};
     const TypeRule rule = lookup(type);
@@ -817,6 +1032,7 @@ std::string TypeModel::value_storage(const std::string& type_in) const
     std::string type = type_in;
     while (type.rfind("const ", 0) == 0)
         type.erase(0, 6);
+    type = unmark(type);
     auto it = script_.find(type);
     if (it == script_.end() || it->second.is_value || !script_native_base(type).empty())
         return {};
@@ -883,36 +1099,53 @@ std::vector<TypeModel::StubWeakSource> TypeModel::stub_weak_sources() const
     return out;
 }
 
-std::string TypeModel::param(const std::string& type) const
+std::string TypeModel::param(const std::string& type_in) const
 {
+    return param_form(type_in, true);
+}
+
+// "in" true: a plain parameter (the one rule). "in" false: a lambda parameter, a value by value.
+// A ".cpp" script writes C++: a plain parameter keeps the C++ meaning (a value), so it has no trait.
+std::string TypeModel::param_form(const std::string& type_in, bool in) const
+{
+    const std::string type = unmark(type_in);
     if (const std::string r = script_ref_storage(type); !r.empty())
         return r;
     if (const std::string i = iface_storage(type); !i.empty())
         return i.back() == '&' ? i : "const " + i + "&"; // a handle goes by const reference
     if (!is_handle(type))
-        return targ_storage(type);
+    {
+        const std::string t = targ_storage(type);
+        // A builtin type, a pointer, a reference and a "const" type keep their form.
+        if (!in || raw_script_refs_ || type.empty() || type.back() == '*' || type.back() == '&' || starts_with(type, "const ")
+            || is_builtin(type))
+            return t;
+        return "hot::In<" + t + ">";
+    }
     return "const " + storage(type) + "&";
 }
 
-std::string TypeModel::body_param(const std::string& type, bool mutated, bool rebound, bool stored) const
+std::string TypeModel::body_param(const std::string& type_in, bool mutated, bool rebound, bool stored) const
 {
+    // A type with a mark of the new types (not "$C" of a handle) has one form in the body.
+    if (has_marks(type_in) && !is_handle(type_in) && !is_script_interface(type_in))
+    {
+        // "$S" of a struct or a native value class: a handle that the body assigns or stores goes by value.
+        // A "T?" that the body changes goes by value too.
+        const bool handle_mark = !trim_blank(type_in).empty() && trim_blank(type_in)[0] == '$';
+        const bool copy = handle_mark ? rebound || stored : mutated;
+        return cpp_storage(type_in, copy ? StorageUse::Local : StorageUse::Param);
+    }
+    const std::string type = unmark(type_in);
     if (const std::string i = iface_storage(type); !i.empty() && type.find('&') == std::string::npos
         && !starts_with(type, "const "))
         return rebound || stored ? i : param(type); // as a class handle
     if (type.empty() || type.find('*') != std::string::npos || type.find('&') != std::string::npos
         || starts_with(type, "const ") || is_builtin(type))
         return param(type);
-    const TypeRule rule = lookup(type);
-    if (rule.kind == Kind::Handle)
+    if (lookup(type).kind == Kind::Handle)
         return rebound || stored ? storage(type) : param(type);
-    const std::string t = targ_storage(type);
-    if (rule.kind != Kind::Value)
-        return t;
-    if (mutated || stored)
-        return t;
-    if (classes_ && classes_(type).small)
-        return t;
-    return "const " + t + "&";
+    return mutated ? targ_storage(type) : param(type);
 }
 
 // The prefix of the shared pointer template "\x01std::shared_ptr<$T>" or "std::shared_ptr<$T>" (the
@@ -930,20 +1163,28 @@ std::string TypeModel::shared_prefix(const std::string& tpl) const
     return {};
 }
 
-std::string TypeModel::make(const std::string& type, const std::string& args) const
+std::string TypeModel::make(const std::string& type_in, const std::string& args) const
 {
+    const std::string type = unmark(type_in);
     if (!is_handle(type))
-        return type + "(" + args + ")";
-    if (const std::string pre = shared_prefix(lookup(type).handle_tpl); !pre.empty())
+        return (type_in != type ? "\x01std::make_shared<" + type + ">(" : type + "(") + args + ")";
+    const TypeRule rule = lookup(type);
+    if (!rule.factory_tpl.empty())
+        return replace_all(rule.factory_tpl, "$T", type) + "(" + args + ")";
+    if (const std::string pre = shared_prefix(rule.handle_tpl); !pre.empty())
         return pre + "make_shared<" + type + ">(" + args + ")";
     return storage(type) + "(new " + type + "(" + args + "))";
 }
 
-TypeModel::Callee TypeModel::make_callee(const std::string& type) const
+TypeModel::Callee TypeModel::make_callee(const std::string& type_in) const
 {
+    const std::string type = unmark(type_in);
     if (!is_handle(type))
-        return {type, false};
-    if (const std::string pre = shared_prefix(lookup(type).handle_tpl); !pre.empty())
+        return type_in != type ? Callee{"\x01std::make_shared<" + type + ">", false} : Callee{type, false};
+    const TypeRule rule = lookup(type);
+    if (!rule.factory_tpl.empty())
+        return {replace_all(rule.factory_tpl, "$T", type), false};
+    if (const std::string pre = shared_prefix(rule.handle_tpl); !pre.empty())
         return {pre + "make_shared<" + type + ">", false};
     return {storage(type), true};
 }
@@ -1118,7 +1359,7 @@ bool override_return_ok(
 }
 
 OverrideMatch match_native_virtual(const std::string& name, const std::vector<std::string>& script_ptypes,
-    const std::vector<VirtualSig>& virtuals, const TypeModel& model, bool is_const, bool relaxed)
+    const std::vector<VirtualSig>& virtuals, const TypeModel& model, bool relaxed)
 {
     OverrideMatch result;
     std::string key;
@@ -1146,15 +1387,9 @@ OverrideMatch match_native_virtual(const std::string& name, const std::vector<st
     {
         std::vector<size_t> same_const;
         for (size_t i : matches)
-            if (virtuals[i].is_const == is_const)
+            if (!virtuals[i].is_const)
                 same_const.push_back(i);
-        if (same_const.empty() && is_const)
-        {
-            result.kind = OverrideMatch::Kind::ConstMismatch;
-            result.hits = matches;
-            return;
-        }
-        // Without "const" and without a non-const match, use the const matches.
+        // Without a non-const match, use the const matches.
         result.hits = same_const.empty() ? matches : same_const;
         result.kind = result.hits.size() > 1 ? OverrideMatch::Kind::Ambiguous : OverrideMatch::Kind::Hit;
     };

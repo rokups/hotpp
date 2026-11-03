@@ -105,7 +105,7 @@ TEST(ConstructorParse, Errors)
     }
 }
 
-// ---- a class without a base and a [value] class (design 7.10.1)
+// ---- a class without a base and a struct (design 7.10.1)
 TEST(ClassKindParse, ClassWithoutBase)
 {
     const std::string text = "class Counter {\n    int count = 0;\n}\n";

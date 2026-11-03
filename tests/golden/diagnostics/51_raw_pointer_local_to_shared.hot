@@ -1,0 +1,8 @@
+using "Actor.h";
+
+class Player : Actor {
+    override void Tick(float dt) {
+        Actor* raw = null;
+        $Actor a = raw;
+    }
+}

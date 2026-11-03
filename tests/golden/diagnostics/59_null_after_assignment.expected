@@ -1,0 +1,3 @@
+59_null_after_assignment.hot:11:20: error: "p" can be null here; check it with "if (p != null)" or use "p?.m"
+   11 |         return a + p.hp;
+1 error generated.

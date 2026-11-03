@@ -1,0 +1,10 @@
+using "Actor.h";
+
+class Player : Actor {
+    float speed = 5.0;
+    float health = 100.0;
+
+    float Speed() const { return this.speed; }
+
+    override void Tick(float dt) { this.health = this.Speed(); }
+}

@@ -31,8 +31,8 @@ class NativeProbe : Actor {
     int r_native_int = 0;
 
     override void Tick(float dt) {
-        P p = new P();
-        C c = new C();
+        $P p = new $P();
+        $C c = new $C();
         IFoo fp = p;
         IFoo fc = c;
         IArea ap = p;

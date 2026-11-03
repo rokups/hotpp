@@ -174,7 +174,7 @@ TEST(LanguageServer, ClangdTypeErrorIsAtTheScriptLine)
         // clangd puts the error on the variable "x" (character 12).
         EXPECT_EQ(d["range"]["start"]["line"], 11) << d.dump();
         EXPECT_EQ(d["range"]["start"]["character"], 12) << d.dump();
-        EXPECT_NE(msg.find("'int'"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("int'"), std::string::npos) << msg; // "'int'" or "'const int'"
         EXPECT_EQ(msg.find("int32_t"), std::string::npos) << msg;
     }
     EXPECT_TRUE(found) << n.dump();
@@ -732,16 +732,16 @@ const char* const kNewSyntaxScript =
     "    private int Twice(int a = 1) => a * 2;\n" // 14
     "    std.vector<int> xs = [1, 2, 3];\n" // 15
     "    std.map<std.string, int> table = [\"a\": 1, \"b\": 2];\n" // 16
-    "    Hero other; override void Tick(float dt) { base.Tick(dt); }\n" // 17
-    "    void Run(Shape s) {\n" // 18
+    "    $Hero other; override void Tick(float dt) { base.Tick(dt); }\n" // 17
+    "    void Run($Shape s) {\n" // 18
     "        var f = (int x) => x * 2;\n" // 19
     "        var (a, b) = std.make_pair(1, 2);\n" // 20
     "        foreach (var (k, v) in this.table) { this.sum = this.sum + v; }\n" // 21
     "        foreach (var (i, e) in enumerate(this.xs)) { this.sum = this.sum + i + e; }\n" // 22
     "        foreach (var j in range(0, 3)) { this.sum = this.sum + j; }\n" // 23
     "        this.other?.Run(s);\n" // 24
-    "        if (s is Circle c && c.Both > 0) { this.sum = c.Both; }\n" // 25
-    "        var sq = s as Circle;\n" // 26
+    "        if (s is $Circle c && c.Both > 0) { this.sum = c.Both; }\n" // 25
+    "        var sq = s as $Circle;\n" // 26
     "        std.string name = \"a\";\n" // 27
     "        switch (name) {\n" // 28
     "            case \"a\":\n" // 29
@@ -824,9 +824,9 @@ TEST(LanguageServer, SemanticTokensMarkBaseIsAsAndTheAccessWordsAsKeywords)
 TEST(LanguageServer, TheRemovedWordsAreNotKeywords)
 {
     const std::vector<std::string>& k = hot::ls::script_keywords();
-    for (const char* w : {"function", "let", "import", "ref", "out", "super", "static", "module"})
+    for (const char* w : {"function", "let", "import", "super", "static", "module"})
         EXPECT_EQ(std::count(k.begin(), k.end(), w), 0) << w;
-    for (const char* w : {"base", "is", "as", "public", "protected", "private", "this", "struct", "using"})
+    for (const char* w : {"base", "ref", "out", "is", "as", "public", "protected", "private", "this", "struct", "using"})
         EXPECT_EQ(std::count(k.begin(), k.end(), w), 1) << w;
     const std::vector<std::string>& h = hot::ls::script_helpers();
     EXPECT_EQ(h, (std::vector<std::string>{"enumerate", "range"}));
@@ -843,10 +843,10 @@ TEST(LanguageServer, BindingsAreLocals)
     // "var (a, b)" and the foreach with "var (k, v)" or "var (i, e)" bind plain locals.
     for (const char* n : {"a", "b", "k", "v", "i", "e", "j", "f", "sq", "name", "s"})
         EXPECT_EQ(locals.count(n), 1u) << n;
-    EXPECT_EQ(locals["c"], "Circle"); // "s is Circle c"
+    EXPECT_EQ(locals["c"], "Circle"); // "s is $Circle c"
     EXPECT_EQ(locals["a"], ""); // no type is written
 
-    const std::string ref = "class A { void F() { var& (x, y) = G(); if (o is std.vector<int> list) { @ } } }";
+    const std::string ref = "class A { void F() { ref (x, y) = G(); if (o is std.vector<int> list) { @ } } }";
     const size_t p = ref.find('@');
     const hot::ls::ScriptScope s2 = hot::ls::scan_scope(ref, p, p);
     std::set<std::string> names;
@@ -1502,7 +1502,7 @@ TEST(LanguageServer, CompletionAfterADotOnALocalAndOnAFieldListsTheMembers)
     REQUIRE_CLANGD();
     std::string text = kCompleteScript;
     text.replace(text.find("    int ticks = 0;\n"), 19, "    int ticks = 0;\n    Point origin;\n");
-    text.replace(text.find("        int counter = 1;\n"), 25, "        int counter = 1;\n        Point pt;\n        Base bs = null;\n        Vec3 vec;\n");
+    text.replace(text.find("        int counter = 1;\n"), 25, "        int counter = 1;\n        Point pt;\n        $Base bs = new $Base();\n        Vec3 vec;\n");
     // A local.
     const Completion l = complete_at(true, text, "pt.");
     EXPECT_TRUE(l.has("x")) << l.result.dump();

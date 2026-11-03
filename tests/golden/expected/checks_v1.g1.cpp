@@ -395,7 +395,7 @@ static const hot::CtorEntry Checks__constructors[] = {
 }
 #line 397 "checks_v1.hot.cpp"
 #line 7 "checks_v1.hot"
-int32_t ChecksState_g1::at(int32_t i)
+int32_t ChecksState_g1::at(int32_t const i)
 #line 7 "checks_v1.hot"
 {
 #line 7 "checks_v1.hot"
@@ -428,7 +428,7 @@ int32_t ChecksState_g1::at(int32_t i)
 }
 #line 430 "checks_v1.hot.cpp"
 #line 11 "checks_v1.hot"
-int32_t ChecksState_g1::load(int32_t* p)
+int32_t ChecksState_g1::load(int32_t* const p)
 #line 11 "checks_v1.hot"
 {
 #line 11 "checks_v1.hot"
@@ -446,7 +446,7 @@ int32_t ChecksState_g1::load(int32_t* p)
 #line 12 "checks_v1.hot"
     HOT_TRACE_FRAME("Checks.load", "checks_v1.hot");
 #line 12 "checks_v1.hot"
-    HOT_TRACE_LINE(); return hot::star(p);
+    HOT_TRACE_LINE(); return hot::star(hot::cast_ptr<int32_t*>(p));
 #line 13 "checks_v1.hot"
 }
 #line 453 "checks_v1.hot.cpp"
@@ -461,7 +461,7 @@ int32_t ChecksState_g1::load(int32_t* p)
 }
 #line 463 "checks_v1.hot.cpp"
 #line 15 "checks_v1.hot"
-int32_t ChecksState_g1::safe_at(int32_t i)
+int32_t ChecksState_g1::safe_at(int32_t const i)
 #line 15 "checks_v1.hot"
 {
 #line 15 "checks_v1.hot"
@@ -502,7 +502,7 @@ int32_t ChecksState_g1::safe_at(int32_t i)
 }
 #line 504 "checks_v1.hot.cpp"
 #line 23 "checks_v1.hot"
-int32_t ChecksState_g1::safe_load(int32_t* p)
+int32_t ChecksState_g1::safe_load(int32_t* const p)
 #line 23 "checks_v1.hot"
 {
 #line 23 "checks_v1.hot"
@@ -522,7 +522,7 @@ int32_t ChecksState_g1::safe_load(int32_t* p)
 #line 24 "checks_v1.hot"
     HOT_TRACE_LINE(); try {
 #line 25 "checks_v1.hot"
-        HOT_TRACE_LINE(); return hot::star(p);
+        HOT_TRACE_LINE(); return hot::star(hot::cast_ptr<int32_t*>(p));
 #line 26 "checks_v1.hot"
     } catch (const hot::NullReference& e) {
 #line 27 "checks_v1.hot"
@@ -551,7 +551,7 @@ int32_t ChecksState_g1::safe_load(int32_t* p)
 }
 #line 553 "checks_v1.hot.cpp"
 #line 35 "checks_v1.hot"
-void ChecksState_g1::first_member(Actor* other)
+void ChecksState_g1::first_member(Actor* const other)
 #line 35 "checks_v1.hot"
 {
 #line 35 "checks_v1.hot"
@@ -569,7 +569,7 @@ void ChecksState_g1::first_member(Actor* other)
 #line 36 "checks_v1.hot"
     HOT_TRACE_FRAME("Checks.first_member", "checks_v1.hot");
 #line 36 "checks_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(other).Move(Vec3());
+    HOT_TRACE_LINE(); hot::deref((hot::cast_ptr<Actor*>(other))).Move(Vec3());
 #line 37 "checks_v1.hot"
 }
 #line 576 "checks_v1.hot.cpp"

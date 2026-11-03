@@ -945,7 +945,7 @@ int32_t Fighter_Shell::__b_get_Level()
 }
 #line 947 "aot_demo.hot.cpp"
 #line 10 "aot_demo.hot"
-void Fighter_Shell::__b_set_Level(int32_t value)
+void Fighter_Shell::__b_set_Level(int32_t const value)
 #line 10 "aot_demo.hot"
 {
 #line 10 "aot_demo.hot"
@@ -995,7 +995,7 @@ float Fighter_Shell::__b_get_Shield()
 }
 #line 997 "aot_demo.hot.cpp"
 #line 14 "aot_demo.hot"
-void Fighter_Shell::__b_set_Shield(float value)
+void Fighter_Shell::__b_set_Shield(float const value)
 #line 14 "aot_demo.hot"
 {
 #line 14 "aot_demo.hot"
@@ -1170,14 +1170,18 @@ void Spawner_Shell::__b_Tick(float dt)
 #line 78 "aot_demo.hot"
     HOT_TRACE_LINE(); if (__st->kid == nullptr) __st->kid = std::shared_ptr<Veteran>(Veteran__new_shared(5, 7));
 #line 79 "aot_demo.hot"
-    HOT_TRACE_LINE(); __st->power = Fighter__Power_virt(hot::shell_of<Fighter_Shell>(__st->kid, "Fighter"));
+    HOT_TRACE_LINE(); const std::shared_ptr<Fighter> unit = __st->kid;
 #line 80 "aot_demo.hot"
-    HOT_TRACE_LINE(); __st->attack = Fighter__Attack(hot::shell_of<Fighter_Shell>(__st->kid, "Fighter"));
+    HOT_TRACE_LINE(); if (unit == nullptr) return;
 #line 81 "aot_demo.hot"
-    HOT_TRACE_LINE(); __st->is_veteran = hot::is_script(__st->kid, "Veteran");
+    HOT_TRACE_LINE(); __st->power = Fighter__Power_virt(hot::shell_of<Fighter_Shell>(unit, "Fighter"));
 #line 82 "aot_demo.hot"
+    HOT_TRACE_LINE(); __st->attack = Fighter__Attack(hot::shell_of<Fighter_Shell>(unit, "Fighter"));
+#line 83 "aot_demo.hot"
+    HOT_TRACE_LINE(); __st->is_veteran = hot::is_script(__st->kid, "Veteran");
+#line 84 "aot_demo.hot"
 }
-#line 1181 "aot_demo.hot.cpp"
+#line 1185 "aot_demo.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

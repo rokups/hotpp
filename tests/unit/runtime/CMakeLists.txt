@@ -25,6 +25,7 @@ add_executable(unit_runtime_tests
     clone_state_tests.cpp
     abstract_called_tests.cpp
     iface_tests.cpp
+    in_tests.cpp
     command_line_tests.cpp
     task_tests.cpp
     scheduler_tests.cpp

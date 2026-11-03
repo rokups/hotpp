@@ -37,6 +37,9 @@ namespace hotc::parser
 
 namespace dsl = lexy::dsl;
 
+// The error text of the removed attribute "value" on a type use.
+inline constexpr const char* kValueRemoved = "[value] is removed; write the type without [value]";
+
 // The state that lexy passes to the callbacks and to the error sink.
 struct ParseState
 {
@@ -67,6 +70,7 @@ constexpr auto any_unit = -dsl::lit_b<0xFF> / dsl::lit_b<0xFF>;
         static constexpr auto name = TEXT; \
     }
 
+HOT_ERROR_TAG(e_extern_reserved, "\"extern\" is a reserved word");
 HOT_ERROR_TAG(e_unterminated_comment, "unterminated comment");
 HOT_ERROR_TAG(e_unterminated_literal, "unterminated string or character literal");
 HOT_ERROR_TAG(e_unexpected_eof, "unexpected end of file");
@@ -117,6 +121,38 @@ constexpr auto kw_get = LEXY_KEYWORD("get", id);
 constexpr auto kw_set = LEXY_KEYWORD("set", id);
 constexpr auto kw_finally = LEXY_KEYWORD("finally", id);
 constexpr auto kw_void = LEXY_KEYWORD("void", id);
+// "extern", "ref" and "out" are reserved for later use. They are not names.
+constexpr auto kw_extern = LEXY_KEYWORD("extern", id);
+constexpr auto kw_ref = LEXY_KEYWORD("ref", id);
+constexpr auto kw_out = LEXY_KEYWORD("out", id);
+
+// The modifier word of a parameter: "in", "ref" or "out". The rule gives a lexeme, or nothing.
+constexpr auto param_mode_rule =
+    dsl::capture(kw_in) | dsl::capture(kw_ref) | dsl::capture(kw_out) | dsl::else_ >> dsl::nullopt;
+
+// The mode of a modifier word. A missing word (lexy::nullopt) gives "Plain".
+inline ast::ParamMode param_mode_of(lexy::nullopt)
+{
+    return ast::ParamMode::Plain;
+}
+template <typename Lexeme> ast::ParamMode param_mode_of(const Lexeme& w)
+{
+    const std::string_view t(w.data(), w.size());
+    return t == "in" ? ast::ParamMode::In : t == "ref" ? ast::ParamMode::Ref : ast::ParamMode::Out;
+}
+
+// Writes the C++ form of a modifier into the parameter type: "const T&" for In, "T&" for Ref and
+// Out. The type text is the type as the script writes it, without the "&".
+inline void apply_param_mode(ast::Param& p, ast::ParamMode mode)
+{
+    p.mode = mode;
+    if (p.type.empty())
+        return;
+    if (mode == ast::ParamMode::In)
+        p.type = "const " + p.type + "&";
+    else if (mode == ast::ParamMode::Ref || mode == ast::ParamMode::Out)
+        p.type += "&";
+}
 
 // ---------------------------------------------------------------- literals
 // A string or character literal. It has two values: the position after the opening quote
@@ -500,7 +536,8 @@ constexpr std::uint64_t max_array_size = std::uint64_t{1} << 24;
 // beginning of the text or after a "<", a "," or a "(". A "[]", a size that is not an integer
 // literal, a size of 0 and a size above "max_array_size" are errors at "pos". If "report" is
 // false, the function does not report the errors and leaves the text of the bad array as it is.
-inline std::string array_types(const ParseState& st, const char* pos, const std::string& t, bool report = true)
+inline std::string array_types(
+    const ParseState& st, const char* pos, const std::string& t, bool report = true, bool view_ok = true)
 {
     if (t.find('[') == std::string::npos)
         return t;
@@ -538,9 +575,15 @@ inline std::string array_types(const ParseState& st, const char* pos, const std:
             const bool literal = !size.empty() && std::all_of(size.begin(), size.end(), is_digit);
             if (!literal)
             {
+                // "T[]" is a view. The text stays as it is. A later pass checks where it is legal.
+                if (size.empty() && view_ok)
+                {
+                    bad = true;
+                    break;
+                }
                 if (report)
                     st.error(pos,
-                        size.empty() ? "an array type needs a size: write 'T[N]'"
+                        size.empty() ? "T[] is a view; a field needs std.vector<T> or T[N]"
                                      : "the size of an array must be an integer literal");
                 bad = true;
                 break;
@@ -578,8 +621,59 @@ inline std::string array_types(const ParseState& st, const char* pos, const std:
     return out;
 }
 
+// Checks the marks of a type text. A "$" needs a class type, so "$int" is an error. A "?" cannot
+// follow a "*" or a "$T", because a pointer and a handle are already nullable. The text is the
+// text of type_text, before the aliases. The errors are at "pos".
+inline void check_type_marks(const ParseState& st, const char* pos, const std::string& t)
+{
+    const bool handle = !t.empty() && t[0] == '$';
+    std::size_t i = 0;
+    if (handle)
+    {
+        std::size_t e = 1;
+        while (e < t.size() && is_id(t[e]))
+            ++e;
+        const std::string word = t.substr(1, e - 1);
+        if (word == "void" || builtin_cpp_name(word))
+        {
+            st.error(pos, "\"$\" needs a class type");
+            return;
+        }
+        i = 1;
+    }
+    bool nullable = handle; // the last mark at depth zero is a "*" or the base of a "$T"
+    int depth = 0;
+    for (; i < t.size(); ++i)
+    {
+        const char c = t[i];
+        if (c == '<' || c == '(' || c == '[')
+        {
+            if (depth == 0 && c == '[')
+                nullable = false;
+            ++depth;
+        }
+        else if (c == '>' || c == ')' || c == ']')
+        {
+            --depth;
+        }
+        else if (depth == 0 && c == '*')
+        {
+            nullable = true;
+        }
+        else if (depth == 0 && c == '?')
+        {
+            if (nullable)
+            {
+                st.error(pos, "\"?\" cannot follow a pointer or handle; T* and $T are already nullable");
+                return;
+            }
+        }
+    }
+}
+
 // The type text of a span. An empty type is an error. A "::" is an error: the script uses ".".
-inline std::string type_of_span(const ParseState& st, Span sp)
+// A "T[]" is an error when "view_ok" is false.
+inline std::string type_of_span(const ParseState& st, Span sp, bool view_ok = true)
 {
     const std::string_view raw(st.base + sp.begin, sp.end - sp.begin);
     if (only_blank(raw))
@@ -588,7 +682,11 @@ inline std::string type_of_span(const ParseState& st, Span sp)
     std::string t = type_text(raw, &colons);
     if (colons != std::string_view::npos)
         st.error(st.base + sp.begin + colons, e_use_dot_colons::name);
-    return array_types(st, st.base + sp.begin, canonical_type_at(st, st.base + sp.begin, t));
+    const std::size_t amp = raw.find('&');
+    if (amp != std::string_view::npos)
+        st.error(st.base + sp.begin + amp, "\"&\" is not a type suffix; write ref T x");
+    check_type_marks(st, st.base + sp.begin, t);
+    return array_types(st, st.base + sp.begin, canonical_type_at(st, st.base + sp.begin, t), true, view_ok);
 }
 
 // Rewrites the scope separators of the raw text of template arguments: "." between two names

@@ -55,12 +55,10 @@ TEST(StatementParse, For)
     EXPECT_EQ(round_trip("for (var i = f(1, 2); ; ) x;"), "for (auto i = f(1, 2);;) x;");
     // foreach
     EXPECT_EQ(round_trip("foreach (var x in xs) f(x);"), "for (auto x : xs) f(x);");
-    EXPECT_EQ(round_trip("foreach (const var x in this.items) { f(x); }"), "for (const auto x : this.items) { f(x); }");
     EXPECT_EQ(round_trip("foreach (Actor* x in actors) f(x);"), "for (Actor* x : actors) f(x);");
     EXPECT_EQ(round_trip("foreach (std.vector<int> x in g()) f(x);"), "for (\x01std::vector<int32_t> x : g()) f(x);");
     // A name that has "in" inside is not the keyword.
     EXPECT_EQ(round_trip("foreach (Din x in xs) f(x);"), "for (Din x : xs) f(x);");
-    EXPECT_EQ(round_trip("foreach (const Actor* a in xs) f(a);"), "for (const Actor* a : xs) f(a);");
     EXPECT_EQ(round_trip("foreach (var of in xs) f(of);"), "for (auto of : xs) f(of);");
     EXPECT_EQ(
         round_trip("foreach (var x in xs) foreach (int y in x) f(y);"), "for (auto x : xs) for (int32_t y : x) f(y);");
@@ -70,8 +68,7 @@ TEST(StatementParse, For)
 
 TEST(StatementParse, ForEachRef)
 {
-    EXPECT_EQ(round_trip("foreach (var& x in xs) f(x);"), "for (auto& x : xs) f(x);");
-    EXPECT_EQ(round_trip("foreach (const var& x in xs) f(x);"), "for (const auto& x : xs) f(x);");
+    EXPECT_EQ(round_trip("foreach (ref x in xs) f(x);"), "for (auto& x : xs) f(x);");
 }
 
 TEST(StatementParse, ReservedWords)
@@ -80,7 +77,7 @@ TEST(StatementParse, ReservedWords)
              "protected", "get", "set", "finally", "void"})
     {
         for (const std::string& text : {std::string("var ") + w + " = 1;", std::string("int ") + w + " = 1;",
-                 std::string("const int ") + w + " = 1;", std::string(w) + " = 1;",
+                 std::string(w) + " = 1;",
                  std::string("foreach (int ") + w + " in xs) f();"})
         {
             EXPECT_FALSE(errors_of(Parsed(text)).empty()) << text;

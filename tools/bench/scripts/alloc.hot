@@ -14,7 +14,7 @@ class BenchAlloc : BenchBase {
     override long Run(int n) {
         long s = 0;
         for (int i = 0; i < n; i++) {
-            BenchObj o = new BenchObj();
+            $BenchObj o = new $BenchObj();
             o.a = i;
             s += o.a + o.b;
         }

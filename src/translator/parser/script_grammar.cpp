@@ -56,9 +56,10 @@ std::string_view span_text(const ParseState& st, Span sp)
 }
 
 // The type text of a span. A "." is a scope and becomes "::". A "::" is an error.
-std::string type_of(const ParseState& st, Span sp)
+// A "T[]" is an error when "view_ok" is false (a field or a property).
+std::string type_of(const ParseState& st, Span sp, bool view_ok = true)
 {
-    return type_of_span(st, sp);
+    return type_of_span(st, sp, view_ok);
 }
 
 // ---------------------------------------------------------------- values
@@ -69,7 +70,7 @@ struct Annot
     std::string alias;
     bool has_alias = false;
     const char* weak_pos = nullptr; // the name of "[weak]", or null
-    const char* value_pos = nullptr; // the name of "[value]", or null
+    const char* byval_pos = nullptr; // the name of "[byval]", or null
 };
 
 // One attribute: a name and a list of strings. The list can be empty.
@@ -95,7 +96,7 @@ struct MethodRest
     Span base_args;
     Span body;
     bool expr_body = false; // "=> e;": the body is the span of "e"
-    bool is_const = false; // "F() const": the marker after the parameters
+    bool is_const = false; // "F() const": the marker after the parameters. It is an error.
     const char* no_body_pos = nullptr; // "F();": the ";" that stands for the body
 };
 
@@ -150,10 +151,12 @@ struct Member
     const char* no_body_pos = nullptr; // the ";" of a method or a constructor with no body
 };
 
-// The words "get", "set", "async", "await" and "interface" are reserved. They are not member or parameter names.
+// The words "get", "set", "async", "await", "interface", "extern", "ref", "out", "true" and "false" are reserved.
+// They are not member or parameter names.
 void check_name(const ParseState& st, const char* pos, const std::string& name)
 {
-    if (name == "get" || name == "set" || name == "async" || name == "await" || name == "interface")
+    if (name == "get" || name == "set" || name == "async" || name == "await" || name == "interface"
+        || name == "extern" || name == "ref" || name == "out" || name == "true" || name == "false")
         st.error(pos, "'" + name + "' is a reserved word");
 }
 
@@ -321,13 +324,12 @@ Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in,
 {
     if (const Annot* a = annot_of(ann))
     {
+        if (a->byval_pos)
+            st.error(a->byval_pos, "[byval] applies to parameters only");
         if (m.kind == Member::IsField)
         {
             m.field.alias = a->alias;
             m.field.weak = a->weak_pos != nullptr;
-            m.field.value = a->value_pos != nullptr;
-            if (a->value_pos)
-                m.field.value_pos = st.offset(a->value_pos);
         }
         else
         {
@@ -335,15 +337,6 @@ Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in,
                 st.error(a->pos, "[alias] applies to fields only");
             if (a->weak_pos)
                 st.error(a->weak_pos, "[weak] applies to fields, parameters and local variables only");
-            if (a->value_pos && m.kind == Member::IsMethod)
-            {
-                // "[value] T f()": the attribute belongs to the return type.
-                m.method.ret_value = true;
-                m.method.ret_value_pos = st.offset(a->value_pos);
-            }
-            else if (a->value_pos)
-                st.error(a->value_pos,
-                    "[value] applies to fields, parameters, local variables and the return type of a method only");
         }
     }
     const Mods mods = mods_of(st, mods_in);
@@ -606,7 +599,8 @@ struct attr_list
     static constexpr auto value = lexy::as_list<std::vector<AttrItem>>;
 };
 
-// "[" attribute { "," attribute } "]". Only "alias", "weak" and "value" are known.
+// "[" attribute { "," attribute } "]". Only "alias", "weak" and "byval" are known. "value" is
+// removed: it gives an error.
 struct attrs_p
 {
     static constexpr auto rule = dsl::position + dsl::lit_c<'['> + dsl::p<attr_list>;
@@ -627,15 +621,17 @@ struct attrs_p
                 else
                     a.weak_pos = it.pos;
             }
-            else if (it.name == "value")
+            else if (it.name == "byval")
             {
                 if (!it.args.empty())
-                    st.error(it.pos, "attribute 'value' takes 0 arguments");
-                else if (a.value_pos)
-                    st.error(it.pos, "duplicate attribute 'value'");
+                    st.error(it.pos, "attribute 'byval' takes 0 arguments");
+                else if (a.byval_pos)
+                    st.error(it.pos, "duplicate attribute 'byval'");
                 else
-                    a.value_pos = it.pos;
+                    a.byval_pos = it.pos;
             }
+            else if (it.name == "value")
+                st.error(it.pos, kValueRemoved);
             else if (it.name != "alias")
                 st.error(it.pos, "unknown attribute '" + it.name + "'");
             else if (it.args.size() != 1)
@@ -648,8 +644,6 @@ struct attrs_p
                 a.alias = std::move(it.args[0]);
             }
         }
-        if (a.weak_pos && a.value_pos)
-            st.error(a.value_pos, "[weak] and [value] cannot be used together: a weak handle is not a value");
         return a;
     }),
             lexy::parse_state, lexy::values);
@@ -672,25 +666,33 @@ struct param_default_cfg
 struct param_p
 {
     static constexpr auto rule = dsl::opt(dsl::peek(dsl::lit_c<'['>) >> dsl::p<attrs_p>) + dsl::position
-        + dsl::p<scan_param_type> + dsl::p<name_p<e_param_name>>
+        + param_mode_rule + dsl::p<scan_param_type> + dsl::p<name_p<e_param_name>>
         + dsl::opt(dsl::peek(dsl::lit_c<'='>) >> dsl::p<scan_until<param_default_cfg>>) + dsl::if_(dsl::lit_c<','>);
     static constexpr auto value =
         lexy::bind(lexy::callback<ast::Param>(
-                       [](const ParseState& st, const auto& ann, const char* pos, Span type, std::string name, auto def)
+                       [](const ParseState& st, const auto& ann, const char* pos, const auto& word, Span type,
+                           std::string name, auto def)
     {
         check_name(st, pos, name);
         ast::Param p{std::move(name), ""};
+        ast::ParamMode mode = param_mode_of(word);
         if (const Annot* a = annot_of(ann))
         {
             if (a->has_alias)
                 st.error(a->pos, "[alias] applies to fields only");
             p.weak = a->weak_pos != nullptr;
-            p.value = a->value_pos != nullptr;
+            if (a->byval_pos)
+            {
+                if (mode != ast::ParamMode::Plain)
+                    st.error(a->byval_pos, "[byval] cannot be used with 'in', 'ref' or 'out'");
+                mode = ast::ParamMode::ByVal;
+            }
         }
         if (only_blank(span_text(st, type)))
             st.error(pos, "a parameter needs a type; write 'Type name'");
         else
             p.type = type_of(st, type);
+        apply_param_mode(p, mode);
         if constexpr (!std::is_same_v<decltype(def), lexy::nullopt>)
         {
             p.def = std::make_shared<ast::ParamDefault>();
@@ -712,6 +714,7 @@ struct params_p
 
 // The part of a method after the name: params, an optional base call and body.
 constexpr auto kw_base = LEXY_KEYWORD("base", id);
+constexpr const char* kConstInferred = "const is inferred; remove it";
 constexpr auto kw_const_mark = LEXY_KEYWORD("const", id);
 
 // ": base(args)". The args stay a raw span. The call is valid in a constructor only.
@@ -741,7 +744,8 @@ struct arrow_body_p
     static constexpr auto value = lexy::callback<ArrowBody>([](Span s) { return ArrowBody{s}; });
 };
 
-// The optional "const" after the parameters of a method.
+// The optional "const" after the parameters of a method. The parser reads it to give one error:
+// the script never writes "const" on a method (the const inference does not change a method).
 struct const_mark_p
 {
     static constexpr auto rule = dsl::capture(kw_const_mark);
@@ -930,7 +934,7 @@ struct typed_member
         if (only_blank(span_text(st, type)))
             st.error(start, "a property needs a type; write 'Type Name { get; set; }'");
         p.name = std::move(name);
-        p.type = type_of(st, type);
+        p.type = type_of(st, type, false);
         for (const AccessorItem& a : rest.accessors)
         {
             const char* word = a.is_get ? "get" : "set";
@@ -1018,7 +1022,8 @@ struct typed_member
         me.ret = ret == "void" ? std::string{} : std::move(ret);
         me.body_span = rest.body;
         me.expr_body = rest.expr_body;
-        me.is_const = rest.is_const;
+        if (rest.is_const)
+            st.error(name_pos, kConstInferred);
         m.no_body_pos = rest.no_body_pos;
         if (rest.expr_body && only_blank(span_text(st, rest.body)))
             st.error(st.base + rest.body.begin, "expected an expression");
@@ -1038,7 +1043,9 @@ struct typed_member
         if (only_blank(span_text(st, type)))
             st.error(start, "a field needs a type; write 'Type name;'");
         f.name = std::move(name);
-        f.type = type_of(st, type);
+        f.type = type_of(st, type, false);
+        if (f.type.compare(0, 6, "const ") == 0)
+            st.error(start, kConstInferred);
         if (rest.has_init)
         {
             f.has_init = true;
@@ -1139,7 +1146,8 @@ struct member_p
     static constexpr auto rule = dsl::position + dsl::opt(dsl::peek(dsl::lit_c<'['>) >> dsl::p<attrs_p>)
         + dsl::opt(dsl::peek(modifier_set) >> dsl::p<mods_p>)
         + (dsl::eof >> dsl::error<e_unexpected_eof> | dsl::peek(dsl::lit_c<'~'>) >> dsl::p<dtor_p>
-            | dsl::peek(kw_using) >> dsl::p<using_member_p> | dsl::peek(id) >> dsl::p<typed_member> | dsl::else_ >> dsl::error<e_member>(junk));
+            | dsl::peek(kw_using) >> dsl::p<using_member_p> | dsl::peek(id) >> dsl::p<typed_member>
+            | dsl::peek(dsl::lit_c<'$'>) >> dsl::p<typed_member> | dsl::else_ >> dsl::error<e_member>(junk));
     static constexpr auto value = lexy::bind(
         lexy::callback<Member>([](const ParseState& st, const char*, const auto& ann, const auto& mods, Member&& m)
     { return finish_member(st, ann, mods, std::move(m)); }),
@@ -1220,9 +1228,10 @@ struct bases_p
 struct ClassAttrs
 {
     const char* pos = nullptr; // the "["
-    bool is_native = false, is_value = false, is_self = false, is_checked_index = false;
+    bool is_native = false, is_value = false, is_self = false, is_checked_index = false, is_nonnull = false;
     std::string handle, default_handle, intrusive_add, intrusive_release;
     std::string weak_handle; // [weak_handle("template")]: valid on a stub only
+    std::string factory; // [factory("template")]: valid on a stub only
     std::string cpp_prelude; // [cpp_prelude("text")]
     bool has_prelude = false;
     std::string cpp_overrides; // [cpp_overrides("A B")]: valid on a stub only
@@ -1251,8 +1260,8 @@ struct ClassAttr
     const char* name;
     int arity;
 };
-constexpr ClassAttr kClassAttrs[] = {{"native", 0}, {"value", 0}, {"self", 0}, {"checked_index", 0}, {"weak", 0},
-    {"attribute", 0}, {"handle", 1}, {"default_handle", 1}, {"weak_handle", 1}, {"alias", 1}, {"cpp_prelude", 1},
+constexpr ClassAttr kClassAttrs[] = {{"native", 0}, {"value", 0}, {"self", 0}, {"checked_index", 0}, {"nonnull", 0}, {"weak", 0},
+    {"attribute", 0}, {"handle", 1}, {"default_handle", 1}, {"weak_handle", 1}, {"factory", 1}, {"alias", 1}, {"cpp_prelude", 1},
     {"cpp_overrides", 1}, {"std", 1}, {"lib", 1}, {"array", 1}, {"intrusive", 2}};
 
 // The expected count of arguments of a class attribute, or -1 for an unknown name.
@@ -1317,6 +1326,8 @@ struct class_attrs_p
                 a.is_self = true;
             else if (it.name == "checked_index")
                 a.is_checked_index = true;
+            else if (it.name == "nonnull")
+                a.is_nonnull = true;
             else if (it.name == "attribute")
                 a.is_attribute = true;
             else if (it.name == "cpp_prelude")
@@ -1354,6 +1365,8 @@ struct class_attrs_p
                 a.default_handle = std_from_user(it.args[0]);
             else if (it.name == "weak_handle")
                 a.weak_handle = std_from_user(it.args[0]);
+            else if (it.name == "factory")
+                a.factory = std_from_user(it.args[0]);
             else if (it.name == "weak")
             {
                 // A field, a parameter or a local takes "[weak]". The user of the list reports it.
@@ -1509,9 +1522,11 @@ TopItem make_stub(const ParseState& st, const char* pos, const ClassAttrs* a, bo
         s.is_value = a->is_value;
         s.is_self = a->is_self;
         s.checked_index = a->is_checked_index;
+        s.nonnull = a->is_nonnull;
         s.handle = a->handle;
         s.default_handle = a->default_handle;
         s.weak_handle = a->weak_handle;
+        s.factory = a->factory;
         s.intrusive_add = a->intrusive_add;
         s.intrusive_release = a->intrusive_release;
         s.cpp_prelude = a->cpp_prelude;
@@ -1670,7 +1685,8 @@ struct iface_member_p
     static constexpr auto rule = dsl::position + dsl::opt(dsl::peek(dsl::lit_c<'['>) >> dsl::p<attrs_p>)
         + dsl::opt(dsl::peek(modifier_set) >> dsl::p<mods_p>)
         + (dsl::eof >> dsl::error<e_unexpected_eof> | dsl::peek(dsl::lit_c<'~'>) >> dsl::p<dtor_p>
-            | dsl::peek(id) >> dsl::p<typed_member> | dsl::else_ >> dsl::error<e_member>(junk));
+            | dsl::peek(id) >> dsl::p<typed_member>
+            | dsl::peek(dsl::lit_c<'$'>) >> dsl::p<typed_member> | dsl::else_ >> dsl::error<e_member>(junk));
     static constexpr auto value = lexy::bind(
         lexy::callback<Member>([](const ParseState& st, const char*, const auto& ann, const auto& mods, Member&& m)
     {
@@ -1827,6 +1843,7 @@ struct class_p
         ast::ClassDef& c = t.cls;
         if (name.find_first_of("*<:") != std::string::npos)
             st.error(name_pos, "a script class needs a plain name");
+        check_name(st, name_pos, name);
         c.name = std::move(name);
         if constexpr (!std::is_same_v<std::decay_t<decltype(base)>, lexy::nullopt>)
         {
@@ -1851,7 +1868,7 @@ struct class_p
             for (const auto& u : a->used)
                 if (u.second != "cpp_prelude")
                     st.error(u.first,
-                            u.second == "value" ? std::string("'[value]' is not allowed on a script class: use 'struct'")
+                            u.second == "value" ? std::string(kValueRemoved)
                                             : "attribute '" + u.second + "' is not allowed on a script class");
         add_members(st, c, std::move(members));
         return t;
@@ -1896,7 +1913,7 @@ struct class_p
             t.var.alias = a->alias;
             for (const auto& u : a->used)
                 if (u.second == "value")
-                    st.error(u.first, "[value] is not supported yet on a module variable");
+                    st.error(u.first, kValueRemoved);
                 else if (u.second != "alias")
                     st.error(u.first, "attribute '" + u.second + "' is not allowed on a module variable");
         }
@@ -1990,7 +2007,8 @@ struct decl
         | dsl::peek(dsl::literal_set(dsl::lit_c<'['>, dsl::lit_c<';'>, kw_class, kw_struct, kw_interface))
             >> dsl::p<class_p>
         | dsl::peek(modifier_then_interface) >> dsl::p<modded_interface_p>
-        | dsl::peek(id) >> dsl::p<class_p> | dsl::else_ >> dsl::error<e_top>(junk);
+        | dsl::peek(id) >> dsl::p<class_p> | dsl::peek(dsl::lit_c<'$'>) >> dsl::p<class_p>
+        | dsl::else_ >> dsl::error<e_top>(junk);
     static constexpr auto value = lexy::callback<TopItem>([](TopItem&& t) { return std::move(t); });
 };
 

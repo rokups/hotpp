@@ -3,7 +3,7 @@
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
 // Translation tests of the reload contract rows that S17 adds (design 5.3): the signature lines
-// and the keyed thunk, the layout key of a native container of a [value] class, and the record
+// and the keyed thunk, the layout key of a native container of a class, and the record
 // flag of a shell with std::enable_shared_from_this.
 #include "hot/hotc_lib.h"
 #include "support/translator_test_support.h"
@@ -87,7 +87,7 @@ std::string key_of(const std::string& cpp)
     return at == std::string::npos ? std::string() : cpp.substr(at + head.size(), 16);
 }
 
-// A native container of a [value] class has a layout key. A [value] field itself has none.
+// A native container of a class has a layout key. A field itself has none.
 // The key changes with the fields of the class, not with an initializer.
 TEST(ContainerLayoutKey, FollowsTheLayoutOfTheValueClass)
 {
@@ -116,7 +116,7 @@ TEST(SharesThisFlag, SetOnlyWhenTheShellSharesThis)
     hotc::TranslateResult plain = hotc::translate(temp_options(dir, head + "}\n"));
     ASSERT_TRUE(plain.ok) << plain.diagnostics;
     EXPECT_FALSE(has(plain.cpp, "shares_this")) << plain.cpp;
-    hotc::TranslateResult shared = hotc::translate(temp_options(dir, head + "    Foo Self() { return this; }\n}\n"));
+    hotc::TranslateResult shared = hotc::translate(temp_options(dir, head + "    $Foo Self() { return this; }\n}\n"));
     ASSERT_TRUE(shared.ok) << shared.diagnostics;
     EXPECT_TRUE(has(shared.cpp, "std::enable_shared_from_this<Foo_Shell>")) << shared.cpp;
     EXPECT_TRUE(has(shared.cpp, "    Foo_record.shares_this = true;\n")) << shared.cpp;

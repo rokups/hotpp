@@ -110,7 +110,7 @@ TEST(AbstractTranslation, GrandchildOfAnImplementedMethodIsNotAnError)
 TEST(AbstractTranslation, NewOfAnAbstractClassIsAnError)
 {
     const hotc::TranslateResult r = run(std::string(kShape)
-        + "class Use : Widget {\n    Shape s = null;\n    void Make() { this.s = new Shape(); }\n}\n");
+        + "class Use : Widget {\n    $Shape s = null;\n    void Make() { this.s = new $Shape(); }\n}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "cannot create an instance of the abstract class 'Shape'")) << r.diagnostics;
 }
@@ -255,8 +255,8 @@ TEST(AbstractTranslation, AbstractMethodWithValueTypes)
 {
     const hotc::TranslateResult r = run(
         "class P {\n    int x = 0;\n}\n"
-        "abstract class Maker : Widget {\n    [value] abstract P Make([value] P seed);\n}\n"
-        "class Real : Maker {\n    [value] override P Make([value] P seed) { return seed; }\n}\n");
+        "abstract class Maker : Widget {\n    abstract P Make(P seed);\n}\n"
+        "class Real : Maker {\n    override P Make(P seed) { return seed; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::abstract_called(\"Maker\", \"Make\");")) << r.cpp;
 }

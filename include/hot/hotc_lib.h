@@ -49,6 +49,10 @@ struct TranslateOptions
     // type that is not a handle. True (the default): a violation is an error. False: it is a
     // warning (hotc --no-strict-borrowed).
     bool strict_borrowed = true;
+    // The nullability analyzer (doc/type-design.md, "Nullability"). False (the default): a finding
+    // is an error. True: it is a warning (hotc --null-warnings). The analyzer runs on ".hot"
+    // scripts only.
+    bool null_warnings = false;
     // The function for string interpolation "${expr}" (DECISIONS item 10): "std" lowers to
     // std::format and adds <format>. "fmt" lowers to fmt::format and adds <fmt/format.h>. The
     // user supplies the fmt header. Any other value is an error.

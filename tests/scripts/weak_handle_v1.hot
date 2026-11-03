@@ -12,22 +12,24 @@ struct Rack {
 }
 
 class Node {
-    Node child = null;
+    $Node child = null;
     [weak]
-    Node parent = null;
+    $Node parent = null;
     [weak]
     Weapon seen = null;
     int hp = 5;
 
-    void Adopt(Node kid) {
+    void Adopt($Node kid) {
+        if (kid == null) return;
         this.child = kid;
         kid.parent = this;
     }
 
     // "this" for a "[weak]" parameter is the strong handle of the object.
-    void SetParent([weak] Node p) { parent = p; }
+    void SetParent([weak] $Node p) { parent = p; }
 
-    void AdoptBySet(Node kid) {
+    void AdoptBySet($Node kid) {
+        if (kid == null) return;
         this.child = kid;
         kid.SetParent(this);
     }

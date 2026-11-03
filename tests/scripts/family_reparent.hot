@@ -51,9 +51,9 @@ class G : S {
 }
 
 class Driver : Actor {
-    A top = null;
-    S sib = null;
-    G leaf = null;
+    $A top = null;
+    $S sib = null;
+    $G leaf = null;
     int top_score = 0;
     int leaf_score = 0;
     int sib_score = 0;
@@ -65,20 +65,26 @@ class Driver : Actor {
 
     override void Tick(float dt) {
         if (this.top == null) {
-            this.leaf = new G();
-            this.top = this.leaf;
-            this.sib = new S();
-            this.leaf.Score = 20;
-            this.leaf.h();
-            this.sib.Score = 7;
+            $G g = new $G();
+            $S s = new $S();
+            this.leaf = g;
+            this.top = g;
+            this.sib = s;
+            g.Score = 20;
+            g.h();
+            s.Score = 7;
         }
         this.ticks = this.ticks + 1;
-        this.top_score = this.top.Score;
-        this.leaf_score = this.leaf.Score;
-        this.sib_score = this.sib.Score;
-        this.sib_only = this.sib.only();
-        this.top_f = this.top.f(1);
+        $A top = this.top;
+        $G leaf = this.leaf;
+        $S sib = this.sib;
+        if (top == null || leaf == null || sib == null) return;
+        this.top_score = top.Score;
+        this.leaf_score = leaf.Score;
+        this.sib_score = sib.Score;
+        this.sib_only = sib.only();
+        this.top_f = top.f(1);
         this.leaf_bonus = 0;
-        this.leaf_a = this.leaf.a;
+        this.leaf_a = leaf.a;
     }
 }

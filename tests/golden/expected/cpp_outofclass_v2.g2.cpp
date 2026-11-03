@@ -28,7 +28,7 @@ using Marker = Marker_Shell;
 #include "Actor.h"
 #line 30 "cpp_outofclass_v2.cpp.cpp"
 
-// ---------------------------------------------------------------- [value] class HotModule
+// ---------------------------------------------------------------- struct HotModule
 struct HotModule {
     int ticks;
     int step;

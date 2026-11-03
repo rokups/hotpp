@@ -50,13 +50,13 @@ std::string base_class(const std::string& access)
 
 TEST(AccessTranslation, PrivateFieldReadFromAnotherClassIsAnError)
 {
-    expect_error(base_class("private") + "class Other : Widget { int Peek(Base b) { return b.secret; } }\n",
+    expect_error(base_class("private") + "class Other : Widget { int Peek($Base b) { if (b == null) return 0; return b.secret; } }\n",
         "'secret' is private in 'Base'");
 }
 
 TEST(AccessTranslation, PrivateFieldWriteFromAnotherClassIsAnError)
 {
-    expect_error(base_class("private") + "class Other : Widget { void Poke(Base b) { b.secret = 2; } }\n",
+    expect_error(base_class("private") + "class Other : Widget { void Poke($Base b) { if (b == null) return; b.secret = 2; } }\n",
         "'secret' is private in 'Base'");
 }
 
@@ -68,7 +68,7 @@ TEST(AccessTranslation, ProtectedFieldFromASubclassIsAllowed)
 
 TEST(AccessTranslation, ProtectedFieldFromOutsideIsAnError)
 {
-    expect_error(base_class("protected") + "class Other : Widget { int Peek(Base b) { return b.secret; } }\n",
+    expect_error(base_class("protected") + "class Other : Widget { int Peek($Base b) { if (b == null) return 0; return b.secret; } }\n",
         "'secret' is protected in 'Base'");
 }
 
@@ -82,7 +82,7 @@ TEST(AccessTranslation, PrivateFieldOfTheParentIsAnErrorInASubclass)
 
 TEST(AccessTranslation, PrivateMethodCallFromAnotherClassIsAnError)
 {
-    expect_error(base_class("private") + "class Other : Widget { int Go(Base b) { return b.Twice(); } }\n",
+    expect_error(base_class("private") + "class Other : Widget { int Go($Base b) { if (b == null) return 0; return b.Twice(); } }\n",
         "'Twice' is private in 'Base'");
     expect_error(
         base_class("private") + "class Sub : Base { int Go() { return Twice(); } }\n", "'Twice' is private in 'Base'");
@@ -93,7 +93,7 @@ TEST(AccessTranslation, PrivateMethodCallFromAnotherClassIsAnError)
 TEST(AccessTranslation, ProtectedMethodFromASubclassIsAllowedAndFromOutsideIsDenied)
 {
     expect_ok(base_class("protected") + "class Sub : Base { int Go() { return Twice() + this.Twice(); } }\n");
-    expect_error(base_class("protected") + "class Other : Widget { int Go(Base b) { return b.Twice(); } }\n",
+    expect_error(base_class("protected") + "class Other : Widget { int Go($Base b) { if (b == null) return 0; return b.Twice(); } }\n",
         "'Twice' is protected in 'Base'");
 }
 
@@ -109,23 +109,23 @@ TEST(AccessTranslation, ProtectedMemberIsUsableOnlyThroughTheTypeOfTheCode)
     const std::string base = base_class("protected");
     // Through this and through a D object. A subclass of D cannot be named in D: it is a cycle.
     expect_ok(base + "class D : Base { int A() { return secret + this.secret + Twice() + Level; } }\n");
-    expect_ok(base + "class D : Base { int A(D o) { return o.secret + o.Twice() + o.Level; } }\n");
+    expect_ok(base + "class D : Base { int A($D o) { if (o == null) return 0; return o.secret + o.Twice() + o.Level; } }\n");
     // Through a Base object and through a sibling class.
     const std::string expected = "(use it through 'D' or a subclass)";
-    expect_error(base + "class D : Base { int A(Base o) { return o.secret; } }\n",
+    expect_error(base + "class D : Base { int A($Base o) { if (o == null) return 0; return o.secret; } }\n",
         "'secret' is protected in 'Base' " + expected);
-    expect_error(base + "class D : Base { int A(Base o) { return o.Twice(); } }\n",
+    expect_error(base + "class D : Base { int A($Base o) { if (o == null) return 0; return o.Twice(); } }\n",
         "'Twice' is protected in 'Base' " + expected);
     expect_error(
-        base + "class D : Base { int A(Base o) { return o.Level; } }\n", "'Level' is protected in 'Base' " + expected);
+        base + "class D : Base { int A($Base o) { if (o == null) return 0; return o.Level; } }\n", "'Level' is protected in 'Base' " + expected);
     expect_error(
-        base + "class D : Base { void A(Base o) { o.Level = 2; } }\n", "'Level' is protected in 'Base' " + expected);
-    expect_error(base + "class D : Base { int A(E o) { return o.secret; } }\nclass E : Base {}\n",
+        base + "class D : Base { void A($Base o) { if (o == null) return; o.Level = 2; } }\n", "'Level' is protected in 'Base' " + expected);
+    expect_error(base + "class D : Base { int A($E o) { if (o == null) return 0; return o.secret; } }\nclass E : Base {}\n",
         "'secret' is protected in 'Base' " + expected);
-    expect_error(base + "class D : Base { int A(E o) { return o.Twice(); } }\nclass E : Base {}\n",
+    expect_error(base + "class D : Base { int A($E o) { if (o == null) return 0; return o.Twice(); } }\nclass E : Base {}\n",
         "'Twice' is protected in 'Base' " + expected);
     // The class that declares the member can use it through an object of its own type.
-    expect_ok("class Base : Widget { protected int secret = 1; int Get(Base o) { return o.secret; } }\n");
+    expect_ok("class Base : Widget { protected int secret = 1; int Get($Base o) { if (o == null) return 0; return o.secret; } }\n");
     // A base call stays allowed.
     expect_ok(base + "class D : Base { int A() { return base.Twice(); } }\n");
 }
@@ -134,9 +134,9 @@ TEST(AccessTranslation, SeveralAccessErrorsInOneMethodAreAllReported)
 {
     const hotc::TranslateResult r = translate_classes(base_class("private")
         + "class Other : Widget {\n"
-          "    int Go(Base b)\n"
+          "    int Go($Base b)\n"
           "    {\n"
-          "        int x = b.secret;\n"
+          "        if (b == null) return 0; int x = b.secret;\n"
           "        b.secret = 2;\n"
           "        return x + b.Twice() + b.Level;\n"
           "    }\n"
@@ -153,9 +153,9 @@ TEST(AccessTranslation, AccessErrorsInSeveralMethodsAreAllReported)
 {
     const hotc::TranslateResult r = translate_classes(base_class("private")
         + "class Other : Widget {\n"
-          "    int A(Base b) { return b.secret; }\n"
-          "    int B(Base b) { return b.Twice(); }\n"
-          "    int C(Base b) { return b.Level; }\n"
+          "    int A($Base b) { if (b == null) return 0; return b.secret; }\n"
+          "    int B($Base b) { if (b == null) return 0; return b.Twice(); }\n"
+          "    int C($Base b) { if (b == null) return 0; return b.Level; }\n"
           "}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("'secret' is private in 'Base'"), std::string::npos) << r.diagnostics;
@@ -165,17 +165,17 @@ TEST(AccessTranslation, AccessErrorsInSeveralMethodsAreAllReported)
 
 TEST(AccessTranslation, PrivatePropertyFromAnotherClassIsAnError)
 {
-    expect_error(base_class("private") + "class Other : Widget { int Peek(Base b) { return b.Level; } }\n",
+    expect_error(base_class("private") + "class Other : Widget { int Peek($Base b) { if (b == null) return 0; return b.Level; } }\n",
         "'Level' is private in 'Base'");
-    expect_error(base_class("private") + "class Other : Widget { void Poke(Base b) { b.Level = 1; } }\n",
+    expect_error(base_class("private") + "class Other : Widget { void Poke($Base b) { if (b == null) return; b.Level = 1; } }\n",
         "'Level' is private in 'Base'");
 }
 
 TEST(AccessTranslation, PrivateSetterOnAPublicPropertyHasItsOwnMessage)
 {
     const std::string base = "class Base : Widget { int Level { get; private set; } = 3; }\n";
-    expect_ok(base + "class Other : Widget { int Peek(Base b) { return b.Level; } }\n");
-    expect_error(base + "class Other : Widget { void Poke(Base b) { b.Level = 1; } }\n",
+    expect_ok(base + "class Other : Widget { int Peek($Base b) { if (b == null) return 0; return b.Level; } }\n");
+    expect_error(base + "class Other : Widget { void Poke($Base b) { if (b == null) return; b.Level = 1; } }\n",
         "the 'set' accessor of 'Level' is private in 'Base'");
     expect_ok(
         "class Base : Widget { int Level { get; private set; } = 3; void Up() { Level = 4; this.Level += 1; } }\n");
@@ -184,12 +184,12 @@ TEST(AccessTranslation, PrivateSetterOnAPublicPropertyHasItsOwnMessage)
 TEST(AccessTranslation, PrivateConstructorFromOutsideIsAnError)
 {
     const std::string base =
-        "class Base : Widget {\n    Base() {}\n    private Base(int n) {}\n    Base Make() { return new Base(1); "
+        "class Base : Widget {\n    Base() {}\n    private Base(int n) {}\n    $Base Make() { return new $Base(1); "
         "}\n}\n";
     expect_ok(base);
     expect_error(
-        base + "class Other : Widget { Base Go() { return new Base(2); } }\n", "the constructor is private in 'Base'");
-    expect_ok(base + "class Other : Widget { Base Go() { return new Base(); } }\n");
+        base + "class Other : Widget { $Base Go() { return new $Base(2); } }\n", "the constructor is private in 'Base'");
+    expect_ok(base + "class Other : Widget { $Base Go() { return new $Base(); } }\n");
 }
 
 TEST(AccessTranslation, PrivateBaseConstructorIsAnErrorInASubclass)
@@ -207,7 +207,7 @@ TEST(AccessTranslation, OwnClassAndNestedLambdaAreAllowed)
         "    private int secret = 1;\n"
         "    private int Twice() { return secret * 2; }\n"
         "    private int Level { get; set; } = 3;\n"
-        "    int Sum(Base other) { return other.secret + other.Twice() + other.Level + this.secret + Level; }\n"
+        "    int Sum($Base other) { if (other == null) return 0; return other.secret + other.Twice() + other.Level + this.secret + Level; }\n"
         "    void Run() { var f = () => { return secret + this.Twice() + Level; }; f(); }\n"
         "}\n");
 }
@@ -216,7 +216,7 @@ TEST(AccessTranslation, DefaultAccessIsPublicForClassAndStruct)
 {
     expect_ok(
         "class Base : Widget { int a = 1; int F() { return 1; } int P { get; set; } = 1; }\n"
-        "class Other : Widget { int Go(Base b) { b.P = b.a; return b.F() + b.P; } }\n");
+        "class Other : Widget { int Go($Base b) { if (b == null) return 0; b.P = b.a; return b.F() + b.P; } }\n");
 }
 
 TEST(AccessTranslation, StructMembersFollowTheSameRules)

@@ -1,0 +1,3 @@
+52_reset_with_raw_pointer.hot:7:17: error: cannot create a shared pointer from a raw pointer; use new $T(...)
+    7 |         a.reset(raw);
+1 error generated.

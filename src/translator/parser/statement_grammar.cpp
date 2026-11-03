@@ -14,6 +14,8 @@
 //  - A keyword uses LEXY_KEYWORD. So "ifx" and "letter" are names, not keywords.
 //    The words "var", "foreach", "in", "using", "override", "virtual", "new", "public",
 //    "private", "protected", "get", "set", "finally" and "void" cannot be names.
+//    The words "extern", "ref" and "out" are reserved too. A statement that starts with "extern"
+//    is an error. The words "true" and "false" cannot be the name of a declaration.
 //  - An expression span ends at a terminator at depth 0. The depth counts (), [] and {}.
 //    Strings, characters and comments are skipped.
 //  - The label of a "case" ends at the first ":" at depth 0. The script has no "::".
@@ -22,10 +24,10 @@
 //  - A catch clause is "catch (Type name)" or "catch (...)". A clause with a type and no
 //    name is an error.
 //  - A try statement has one or more catch clauses, a "finally" block, or both.
-//  - A local declaration is "Type name", "var name", "var& name", "const Type name",
-//    "const var name" or "const var& name". The "var&" form is a local reference.
+//  - A local declaration is "Type name", "var name", "ref name", "ref Type name", "const Type name",
+//    "const var name" or "const ref name". The "ref" forms are a local reference.
 //    The look-ahead rule for "Type name" is in the comment above DeclEnd.
-//  - A foreach statement is "foreach ( (const)? (var &? | Type) name in expr ) stmt".
+//  - A foreach statement is "foreach ( (var | ref | ref Type | Type) name in expr ) stmt".
 //    Other for statements are classic.
 //  - The init of a classic for is one declaration or a list of expressions.
 //
@@ -65,6 +67,7 @@ HOT_ERROR_TAG(e_stmt, "expected a statement");
 HOT_ERROR_TAG(e_while, "expected 'while'");
 HOT_ERROR_TAG(e_name, "expected a name");
 HOT_ERROR_TAG(e_catch, "expected 'catch' or 'finally'");
+constexpr const char* kConstInferred = "const is inferred; remove it";
 HOT_ERROR_TAG(e_const_form, "expected 'var' or a type after 'const'");
 
 // ---------------------------------------------------------------- words
@@ -83,12 +86,14 @@ constexpr auto kw_default = LEXY_KEYWORD("default", id);
 constexpr auto kw_try = LEXY_KEYWORD("try", id);
 constexpr auto kw_catch = LEXY_KEYWORD("catch", id);
 constexpr auto kw_throw = LEXY_KEYWORD("throw", id);
+constexpr auto kw_true = LEXY_KEYWORD("true", id);
+constexpr auto kw_false = LEXY_KEYWORD("false", id);
 
 // A name. The words of the body syntax and the reserved words are not names.
 constexpr auto id_r = id.reserve(kw_const, kw_if, kw_else, kw_while, kw_do, kw_for, kw_return, kw_break, kw_continue,
     kw_switch, kw_case, kw_default, kw_try, kw_catch, kw_throw, kw_var, kw_foreach, kw_in, kw_using, kw_override,
     kw_virtual, kw_async, kw_await, kw_new, kw_public, kw_private, kw_protected, kw_get, kw_set, kw_finally,
-    kw_void, kw_interface);
+    kw_void, kw_interface, kw_extern, kw_ref, kw_out, kw_true, kw_false);
 
 constexpr auto var_or_const = dsl::literal_set(kw_var, kw_const);
 
@@ -135,8 +140,7 @@ struct VarHead
 {
     uint32_t pos = 0;
     uint32_t name_pos = 0; // the byte offset of the name
-    bool is_const = false;
-    bool is_ref = false; // "var& name"
+    bool is_ref = false; // "ref name"
     std::string name, type;
     std::vector<std::string> names; // "var (a, b)": a structured binding, "name" is empty
     std::vector<uint32_t> name_poss;
@@ -206,7 +210,6 @@ struct SwItem
 StmtP make_decl(const ParseState& st, DeclParts&& d)
 {
     ast::VarDeclStmt v;
-    v.is_const = d.head.is_const;
     v.is_ref = d.head.is_ref;
     v.name = std::move(d.head.name);
     v.type = std::move(d.head.type);
@@ -224,13 +227,13 @@ StmtP make_decl(const ParseState& st, DeclParts&& d)
             return nullptr;
         }
     }
-    // "Type name;" is value-initialized by the emitter. "var" and "const" need an initializer.
+    // "Type name;" is value-initialized by the emitter. "var" needs an initializer.
     if (!d.has_init)
     {
-        if (v.type.empty())
+        if (v.is_ref)
+            st.error(st.base + v.pos, "a ref needs an initializer");
+        else if (v.type.empty())
             st.error(st.base + v.pos, "var needs an initializer");
-        else if (v.is_const)
-            st.error(st.base + v.pos, "a const needs an initializer");
     }
     if (d.has_init)
     {
@@ -241,39 +244,30 @@ StmtP make_decl(const ParseState& st, DeclParts&& d)
     return ast::make_stmt(std::move(v));
 }
 
-// A local declaration with attributes: "[weak] T x = e;" or "[value] T x = e;". Only "weak" and
-// "value" are known. A weak local needs a written handle type, so "var", "var&" and a structured
-// binding are errors. The two attributes together are an error.
+// A local declaration with attributes: "[weak] T x = e;". Only "weak" is known. "value" is
+// removed and gives an error. A weak local needs a written handle type, so "var", "ref" and a
+// structured binding are errors.
 StmtP make_attr_decl(const ParseState& st, std::vector<StmtAttr>&& attrs, DeclParts&& d)
 {
-    uint32_t weak_pos = 0, value_pos = 0;
+    uint32_t weak_pos = 0;
     for (const StmtAttr& a : attrs)
     {
-        if (a.first != "weak" && a.first != "value")
+        if (a.first == "value")
+            st.error(st.base + a.second, kValueRemoved);
+        else if (a.first != "weak")
             st.error(st.base + a.second, "unknown attribute '" + a.first + "' on a local variable");
-        else if ((a.first == "weak" ? weak_pos : value_pos) != 0)
+        else if (weak_pos != 0)
             st.error(st.base + a.second, "duplicate attribute '" + a.first + "'");
         else
-            (a.first == "weak" ? weak_pos : value_pos) = a.second;
-    }
-    if (weak_pos != 0 && value_pos != 0)
-    {
-        st.error(st.base + value_pos, "[weak] and [value] cannot be used together: a weak handle is not a value");
-        value_pos = 0;
+            weak_pos = a.second;
     }
     const bool untyped = d.head.type.empty();
     StmtP s = make_decl(st, std::move(d));
-    if (!s || (weak_pos == 0 && value_pos == 0))
+    if (!s || weak_pos == 0)
         return s;
     auto* v = std::get_if<ast::VarDeclStmt>(&s->v);
     if (!v)
         return s;
-    if (value_pos != 0)
-    {
-        v->value = true;
-        v->value_pos = value_pos;
-        return s;
-    }
     if (untyped)
     {
         st.error(st.base + weak_pos,
@@ -494,7 +488,7 @@ inline bool is_decl_keyword(const std::string& w)
 {
     static const char* const words[] = {"if", "else", "while", "do", "for", "return", "break", "continue", "switch",
         "case", "default", "try", "catch", "throw", "var", "foreach", "in", "const", "this", "base", "null", "new",
-        "true", "false", "delete", "async", "await", nullptr};
+        "true", "false", "delete", "async", "await", "extern", "ref", "out", nullptr};
     for (int i = 0; words[i]; ++i)
         if (w == words[i])
             return true;
@@ -552,10 +546,25 @@ template <DeclEnd E, typename Reader> bool find_decl_type(DeclCursor<Reader> c, 
 {
     bool have_type = false; // the scan has one part of the type or more
     bool after_dot = false; // the last token is a "." or a "::"
+    bool dollar = false; // the text starts with a "$"
     for (;;)
     {
+        // A "?" right after a part of the type is a suffix: "Foo? x;". The text "a ? b : c" has a
+        // blank before the "?", and "a?.b" and "a??b" are expressions.
+        if (have_type && !after_dot && c.get() == '?' && c.get(1) != '.' && c.get(1) != '?')
+        {
+            c.bump();
+            continue;
+        }
         c.skip_blank();
         const int ch = c.get();
+        // A "$" starts a handle type: "$Foo x;". No expression starts with it.
+        if (!have_type && ch == '$' && !dollar)
+        {
+            c.bump();
+            dollar = true;
+            continue;
+        }
         if (c.at_id0())
         {
             const typename Reader::marker at = c.marker();
@@ -721,36 +730,63 @@ void set_names(VarHead& h, NameList&& n)
     }
 }
 
-// The optional "&" after "var": a local reference. The value is true when the "&" is there.
-struct ref_mark
+HOT_ERROR_TAG(e_var_amp, "\"var&\" is not valid; write ref name = expr");
+
+// The names after "var". A "&" there is an error: a local reference is "ref name = expr".
+struct var_names
 {
-    static constexpr auto rule = dsl::opt(dsl::capture(dsl::lit_c<'&'>));
-    static constexpr auto value =
-        lexy::callback<bool>([](lexy::nullopt) { return false; }, [](auto&&) { return true; });
+    static constexpr auto rule = dsl::peek(dsl::lit_c<'&'>) >> dsl::error<e_var_amp> | dsl::else_ >> dsl::p<decl_names>;
+    static constexpr auto value = lexy::forward<NameList>;
 };
 
-// The part after "const": "var name", "var& name" or "Type name".
+// The head of a local reference: "ref name" or "ref Type name". "ref (a, b)" is a binding.
+struct RefHead
+{
+    VarHead head;
+};
+
+template <DeclEnd E> struct ref_rest
+{
+    static constexpr auto rule = decl_type<E> >> dsl::p<name_p> | dsl::else_ >> dsl::p<decl_names>;
+    static constexpr auto value = lexy::bind(lexy::callback<RefHead>(
+                                                 [](const ParseState& st, const char* b, const char* e, std::string name)
+    {
+        RefHead r{make_typed_head(st, st.base, b, e, std::move(name))};
+        r.head.is_ref = true;
+        return r;
+    }, [](const ParseState& st, NameList&& n)
+    {
+        RefHead r{make_head(st, st.base, std::string())};
+        r.head.is_ref = true;
+        set_names(r.head, std::move(n));
+        return r;
+    }),
+        lexy::parse_state, lexy::values);
+};
+
+// The part after "const": "var name" or "Type name". The script never writes "const" on a local:
+// the const inference (const_infer.h) sets it. The head after "const" is parsed to give one error.
 template <DeclEnd E> struct const_rest
 {
-    static constexpr auto rule = kw_var >> dsl::p<ref_mark> + dsl::p<decl_names> | decl_type<E> >> dsl::p<name_p>
-        | dsl::else_ >> dsl::error<e_const_form>;
+    static constexpr auto rule =
+        kw_var >> dsl::p<var_names> | decl_type<E> >> dsl::p<name_p> | dsl::else_ >> dsl::error<e_const_form>;
     static constexpr auto value = lexy::bind(lexy::callback<VarHead>(
-                                                 [](const ParseState& st, bool is_ref, NameList&& n)
+                                                 [](const ParseState& st, NameList&& n)
     {
         VarHead h = make_head(st, st.base, std::string());
-        h.is_ref = is_ref;
         set_names(h, std::move(n));
         return h;
-    }, [](const ParseState& st, const char* b, const char* e, std::string name)
+    },
+                                                 [](const ParseState& st, const char* b, const char* e, std::string name)
     { return make_typed_head(st, st.base, b, e, std::move(name)); }),
         lexy::parse_state, lexy::values);
 };
 
-// "var name", "const var name", "const Type name" or "Type name".
+// "var name", "ref name", "ref Type name" or "Type name". "const" before the head is an error.
 template <DeclEnd E> struct var_head
 {
     static constexpr auto rule = dsl::position
-        + (kw_var >> dsl::p<ref_mark> + dsl::p<decl_names> | kw_const >> dsl::p<const_rest<E>>
+        + (kw_var >> dsl::p<var_names> | kw_ref >> dsl::p<ref_rest<E>> | kw_const >> dsl::p<const_rest<E>>
             | decl_type<E> >> dsl::p<name_p> | dsl::else_ >> dsl::error<e_decl_type>)+dsl::position;
     // The last argument is the end of the name. White space can come before it, so the name
     // starts "name.size()" bytes before the end, after the white space is removed.
@@ -762,11 +798,20 @@ template <DeclEnd E> struct var_head
     }
     static constexpr auto value = lexy::bind(
         lexy::callback<VarHead>(
-            [](const ParseState& st, const char* pos, bool is_ref, NameList&& n, const char* end)
+            [](const ParseState& st, const char* pos, NameList&& n, const char* end)
     {
         VarHead h = make_head(st, pos, std::string());
-        h.is_ref = is_ref;
         set_names(h, std::move(n));
+        if (h.names.empty())
+            h.name_pos = name_at(st, pos, end, h.name.size());
+        else
+            h.name_pos = h.name_poss[0];
+        return h;
+    },
+            [](const ParseState& st, const char* pos, RefHead&& r, const char* end)
+    {
+        VarHead h = std::move(r.head);
+        h.pos = st.offset(pos);
         if (h.names.empty())
             h.name_pos = name_at(st, pos, end, h.name.size());
         else
@@ -776,7 +821,7 @@ template <DeclEnd E> struct var_head
             [](const ParseState& st, const char* pos, VarHead&& h, const char* end)
     {
         h.pos = st.offset(pos);
-        h.is_const = true;
+        st.error(st.base + h.pos, kConstInferred);
         if (h.names.empty())
             h.name_pos = name_at(st, pos, end, h.name.size());
         else
@@ -830,7 +875,7 @@ struct stmt_attr_list
     static constexpr auto value = lexy::as_list<std::vector<StmtAttr>>;
 };
 
-// "[weak] T x = e;" or "[value] T x = e;": a local declaration with attributes.
+// "[weak] T x = e;": a local declaration with attributes.
 struct attr_decl_stmt
 {
     static constexpr auto rule = dsl::lit_c<'['> + dsl::p<stmt_attr_list> + dsl::p<decl_p<init_cfg>> + semi;
@@ -1148,7 +1193,7 @@ struct try_stmt
 };
 
 // ---------------------------------------------------------------- for
-// "foreach ( (const)? (var &? | Type) name in expr ) stmt".
+// "foreach ( (var | ref | ref Type | Type) name in expr ) stmt".
 struct foreach_stmt
 {
     static constexpr auto rule = dsl::position + kw_foreach + dsl::lit_c<'('> + dsl::p<var_head<DeclEnd::ForEach>>
@@ -1159,7 +1204,6 @@ struct foreach_stmt
     {
         ast::ForOfStmt n;
         n.pos = st.offset(pos);
-        n.is_const = h.is_const;
         n.is_ref = h.is_ref;
         n.name = std::move(h.name);
         n.names = std::move(h.names);
@@ -1389,6 +1433,7 @@ struct stmt
         | dsl::peek(kw_continue) >> dsl::p<continue_stmt> | dsl::peek(kw_switch) >> dsl::p<switch_stmt>
         | dsl::peek(kw_throw) >> dsl::p<throw_stmt> | dsl::peek(kw_try) >> dsl::p<try_stmt>
         | dsl::peek(dsl::lit_c<';'>) >> dsl::p<empty_stmt> | dsl::peek(dsl::eof | dsl::lit_c<'}'>) >> dsl::error<e_stmt>
+        | dsl::peek(kw_extern) >> dsl::error<e_extern_reserved> | dsl::peek(kw_ref) >> dsl::p<decl_stmt>
         | dsl::peek(dsl::lit_c<'['>) >> dsl::p<attr_decl_stmt> | decl_ahead >> dsl::p<decl_stmt>
         | dsl::else_ >> dsl::p<expr_stmt>;
     static constexpr auto value = lexy::forward<StmtP>;

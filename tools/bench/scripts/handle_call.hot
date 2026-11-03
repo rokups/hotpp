@@ -14,13 +14,15 @@ class BenchAdder {
 }
 
 class BenchHandleCall : BenchBase {
-    BenchAdder a = null;
+    $BenchAdder a = null;
 
     override long Run(int n) {
-        if (a == null) a = new BenchAdder();
+        if (a == null) a = new $BenchAdder();
+        $BenchAdder adder = a;
+        if (adder == null) return 0;
         long s = 0;
         for (int i = 0; i < n; i++) {
-            s += a.Add(i ^ (int)(s & 7));
+            s += adder.Add(i ^ (int)(s & 7));
         }
         return s;
     }

@@ -21,9 +21,7 @@ TEST(StructuredBindingParse, LocalDeclarations)
 {
     EXPECT_EQ(round_trip("var (a, b) = f();"), "auto [a, b] = f();");
     EXPECT_EQ(round_trip("var (a, b, c) = f();"), "auto [a, b, c] = f();");
-    EXPECT_EQ(round_trip("var& (a, b) = x;"), "auto& [a, b] = x;");
-    EXPECT_EQ(round_trip("const var (a, b) = f();"), "const auto [a, b] = f();");
-    EXPECT_EQ(round_trip("const var& (a, b) = x;"), "const auto& [a, b] = x;");
+    EXPECT_EQ(round_trip("ref (a, b) = x;"), "auto& [a, b] = x;");
     EXPECT_EQ(round_trip("var(a,b)=f();"), "auto [a, b] = f();");
     EXPECT_EQ(round_trip("var ( a , b ) = f();"), "auto [a, b] = f();");
 }
@@ -31,8 +29,7 @@ TEST(StructuredBindingParse, LocalDeclarations)
 TEST(StructuredBindingParse, Foreach)
 {
     EXPECT_EQ(round_trip("foreach (var (k, v) in m) f(k, v);"), "for (auto [k, v] : m) f(k, v);");
-    EXPECT_EQ(round_trip("foreach (var& (k, v) in m) f(k, v);"), "for (auto& [k, v] : m) f(k, v);");
-    EXPECT_EQ(round_trip("foreach (const var& (k, v) in m) f(k, v);"), "for (const auto& [k, v] : m) f(k, v);");
+    EXPECT_EQ(round_trip("foreach (ref (k, v) in m) f(k, v);"), "for (auto& [k, v] : m) f(k, v);");
     EXPECT_EQ(
         round_trip("foreach (var (i, x) in enumerate(xs)) f(i, x);"), "for (auto [i, x] : enumerate(xs)) f(i, x);");
     EXPECT_EQ(round_trip("foreach (int i in range(n)) f(i);"), "for (int32_t i : range(n)) f(i);");

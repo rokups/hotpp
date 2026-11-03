@@ -1,0 +1,7 @@
+class Counter {
+    int count = 0;
+}
+
+class Spy {
+    int Peek($Counter c) { return c.count; }
+}

@@ -10,20 +10,21 @@ int dead_parents = 0;
 
 class Child {
     [weak]
-    Parent parent = null;
+    $Parent parent = null;
     [alias("age")] int years = 3;
 
     int ParentHp() {
-        Parent p = parent;
-        return p != null ? p.hp + p.kid.years : -1;
+        $Parent p = parent;
+        return p != null ? p.hp + (p.kid?.years ?? 0) : -1;
     }
 }
 
 class Parent {
-    Child kid = null;
+    $Child kid = null;
     int hp = 9;
 
-    void Adopt(Child c) {
+    void Adopt($Child c) {
+        if (c == null) return;
         kid = c;
         c.parent = this;
     }
@@ -34,8 +35,8 @@ class Parent {
 }
 
 class Keeper : Actor {
-    Parent dad = null;
-    Child kid = null;
+    $Parent dad = null;
+    $Child kid = null;
     int frames = 0;
     int parent_hp = -1;
     int parent_alive = 0;
@@ -45,16 +46,20 @@ class Keeper : Actor {
     override void Tick(float dt) {
         frames = frames + 1;
         if (frames == 1) {
-            dad = new Parent();
-            kid = new Child();
-            dad.Adopt(kid);
-            kid.years = 5;
+            $Parent newDad = new $Parent();
+            $Child newKid = new $Child();
+            dad = newDad;
+            kid = newKid;
+            newDad.Adopt(newKid);
+            newKid.years = 5;
         }
         if (frames == 4)
             dad = null; // the only strong handle of the parent
-        parent_hp = kid.ParentHp();
-        parent_alive = kid.parent != null ? 1 : 0;
+        $Child k = kid;
+        if (k == null) return;
+        parent_hp = k.ParentHp();
+        parent_alive = k.parent != null ? 1 : 0;
         deaths = dead_parents;
-        kid_age = dad != null ? dad.kid.years : -1;
+        kid_age = dad?.kid?.years ?? -1;
     }
 }

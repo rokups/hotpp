@@ -107,9 +107,7 @@
 13: "catch" keyword.control.exception.hot
 13: " (std" 
 13: "." punctuation.accessor.hot
-13: "exception" 
-13: "&" keyword.operator.arithmetic.hot
-13: " e) { } " 
+13: "exception e) { } " 
 13: "finally" keyword.control.exception.hot
 13: " { }" 
 14: "if" keyword.control.flow.hot
@@ -162,9 +160,7 @@
 19: "() { " 
 19: "foreach" keyword.control.flow.hot
 19: " (" 
-19: "const" storage.modifier.hot
-19: "var" storage.type.hot
-19: "&" keyword.operator.arithmetic.hot
+19: "ref" storage.modifier.hot
 19: " y " 
 19: "in" keyword.control.flow.hot
 19: "this" variable.language.hot
@@ -246,15 +242,26 @@
 26: ";" punctuation.terminator.statement.hot
 27: "void" storage.type.hot
 27: "Run" entity.name.function.hot
-27: "(Map" 
+27: "(" 
+27: "ref" storage.modifier.hot
+27: " Map" 
 27: "<" keyword.operator.comparison.hot
 27: "string" 
 27: "," punctuation.separator.comma.hot
 27: "int" storage.type.builtin.hot
 27: ">" keyword.operator.comparison.hot
-27: "&" keyword.operator.arithmetic.hot
 27: " m2" 
 27: "," punctuation.separator.comma.hot
+27: "in" keyword.control.flow.hot
+27: " Shape sh0" 
+27: "," punctuation.separator.comma.hot
+27: "out" storage.modifier.hot
+27: "int" storage.type.builtin.hot
+27: " total" 
+27: "," punctuation.separator.comma.hot
+27: "[" meta.attribute.hot punctuation.definition.attribute.begin.hot
+27: "byval" meta.attribute.hot entity.other.attribute-name.hot
+27: "]" meta.attribute.hot punctuation.definition.attribute.end.hot
 27: " Shape" 
 27: "*" keyword.operator.arithmetic.hot
 27: " sh) {" 
@@ -279,8 +286,7 @@
 29: "Pair" entity.name.function.hot
 29: "()" 
 29: ";" punctuation.terminator.statement.hot
-30: "var" storage.type.hot
-30: "&" storage.modifier.reference.hot
+30: "ref" storage.type.hot
 30: "(" punctuation.definition.binding.begin.hot
 30: "c" variable.other.local.hot
 30: "," punctuation.separator.comma.hot

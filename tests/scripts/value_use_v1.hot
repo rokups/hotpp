@@ -2,7 +2,7 @@
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
-// Generation 1 of the [value] test. The first Tick runs each use of [value] once. The results go
+// Generation 1 of the test. The first Tick runs each use of a value once. The results go
 // to the int fields, and the host reads them. Generation 2 keeps the field "a".
 using "Actor.h";
 using <exception>;
@@ -17,9 +17,9 @@ class Sub : Pt {
 }
 
 class Holder : Actor {
-    [value] Pt a;
-    [value] Pt b = new Pt();
-    [value] Pt sub = new Sub();
+    Pt a;
+    Pt b = new $Pt();
+    Pt sub = new $Sub();
     int ticks = 0;
     int r_a = 0;
     int r_b = 0;
@@ -35,18 +35,18 @@ class Holder : Actor {
     int r_var = 0;
     int caught_null = 0;
 
-    int Bump([value] Pt p) {
+    int Bump(Pt p) {
         p.x = p.x + 1;
         return p.x;
     }
 
-    [value] Pt Make(int v) {
-        [value] Pt t = new Pt();
+    Pt Make(int v) {
+        Pt t = new $Pt();
         t.x = v;
         return t;
     }
 
-    [value] Pt Dup() {
+    Pt Dup() {
         return this.a;
     }
 
@@ -65,28 +65,28 @@ class Holder : Actor {
             this.b = this.Make(7);
             this.r_ret = this.b.x;
 
-            [value] Pt d = this.Dup();
+            Pt d = this.Dup();
             d.x = 99;
             this.r_dup = this.a.x;
 
-            Pt h = new Pt();
+            $Pt h = new $Pt();
             h.x = 42;
-            [value] Pt hv = h;
+            Pt hv = h;
             hv.x = 43;
             this.r_handle = h.x;
             this.r_hv = hv.x;
 
-            [value] Pt z;
+            Pt z;
             this.r_z = z.x;
 
-            [value] Pt cap = new Pt();
+            Pt cap = new $Pt();
             cap.x = 3;
             var f = () => cap.x;
             cap.x = 5;
             this.r_lam = f();
             this.r_cap = cap.x;
 
-            [value] Pt s2 = this.sub;
+            Pt s2 = this.sub;
             s2.x = 8;
 
             var m = this.a;
@@ -94,10 +94,10 @@ class Holder : Actor {
             this.r_var = this.a.x;
 
             try {
-                Pt n = null;
-                [value] Pt bad = n;
+                $Pt n = null;
+                Pt bad = n;
                 bad.x = 1;
-            } catch (const std.exception& e) {
+            } catch (std.exception e) {
                 this.caught_null = 1;
             }
         }

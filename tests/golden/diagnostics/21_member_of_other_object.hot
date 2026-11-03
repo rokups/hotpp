@@ -8,5 +8,8 @@ class Player : Actor {
         this.health = this.health + amount;
     }
 
-    void Foo(Player other) { other.Heall(1.0); }
+    void Foo($Player other) {
+        if (other == null) return;
+        other.Heall(1.0);
+    }
 }

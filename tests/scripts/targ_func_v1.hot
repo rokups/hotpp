@@ -12,18 +12,22 @@ class Recruit {
 }
 
 class Camp : Actor {
-    std.function<int(Recruit)> score;
-    std.variant<Recruit, int> slot;
+    std.function<int($Recruit)> score;
+    std.variant<$Recruit, int> slot;
     int fnres = 0;
     int varres = 0;
 
     override void Tick(float dt) {
-        Recruit r = new Recruit();
-        this.score = (Recruit x) => { return x.hp * 2; };
+        $Recruit r = new $Recruit();
+        this.score = ($Recruit x) => {
+            if (x == null) return 0;
+            return x.hp * 2;
+        };
         this.fnres = this.score(r);
         this.slot = r;
-        if (std.holds_alternative<Recruit>(this.slot)) {
-            Recruit g = std.get<Recruit>(this.slot);
+        if (std.holds_alternative<$Recruit>(this.slot)) {
+            $Recruit g = std.get<$Recruit>(this.slot);
+            if (g == null) return;
             this.varres = g.hp;
         }
     }

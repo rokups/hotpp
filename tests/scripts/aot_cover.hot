@@ -38,7 +38,7 @@ class Tally {
 
     Tally(int start) { this.n = start; }
     ~Tally() { std.printf("[aot_cover] Tally %d gone\n", this.n); }
-    Tally Me() { return this; }
+    $Tally Me() { return this; }
 }
 
 // The hooks onReload and convert_level never run in AOT code. The class must still build.
@@ -89,9 +89,9 @@ class Pin { int v = 7; }
 
 class Watcher {
     [weak]
-    Pin p = null;
+    $Pin p = null;
 
-    Watcher([weak] Pin q) { this.p = q; }
+    Watcher([weak] $Pin q) { this.p = q; }
     int Alive() { return this.p != null ? 1 : 0; }
 }
 
@@ -106,7 +106,7 @@ class Describe {
 class Boss : Actor, IDamageable, IGuarded {
     int hp = 50;
     int[2] table = [10, 20];
-    Unit seen = null;
+    $Unit seen = null;
     int seen_power = 0;
     int seen_attack = 0;
     int seen_mix = 0;
@@ -118,48 +118,53 @@ class Boss : Actor, IDamageable, IGuarded {
     int tally_n = 0;
     int hurt_n = 0;
     std.string hurt_name = "";
-    Hurt keep;
-    Watcher watcher = null;
+    $Hurt keep;
+    $Watcher watcher = null;
     std.string extras = "";
 
     void Probe() {
         this.probed = 1;
-        Tally t = new Tally(7);
-        Tally again = t.Me();
-        Hooked hooked = new Hooked();
+        $Tally t = new $Tally(7);
+        $Tally again = t.Me();
+        $Hooked hooked = new $Hooked();
         this.same = again == t ? 1 : 0;
+        if (again == null) return;
         this.tally_n = again.n;
         try {
-            Fussy f = new Fussy(1);
-        } catch (const std.runtime_error& e) {
+            $Fussy f = new $Fussy(1);
+        } catch (std.runtime_error e) {
             this.caught = this.caught + 1;
             this.why = e.what();
         }
         try {
-            Broken b = new Broken();
-        } catch (const std.invalid_argument& e) {
+            $Broken b = new $Broken();
+        } catch (std.invalid_argument e) {
             this.caught = this.caught + 10;
             this.why = e.what();
         }
         try {
-            Hurt h = new Hurt(2);
-        } catch (const std.runtime_error& e) {
+            $Hurt h = new $Hurt(2);
+        } catch (std.runtime_error e) {
             this.caught = this.caught + 100;
             this.why = e.what();
         }
-        this.keep = new Hurt(1);
-        this.hurt_n = this.keep.n;
-        this.hurt_name = this.keep.Name;
-        this.watcher = new Watcher(null);
-        Describe describe = new Describe();
-        this.extras = "watcher=${this.watcher.Alive()} ${describe.Text()}";
+        $Hurt keep = new $Hurt(1);
+        this.keep = keep;
+        this.hurt_n = keep.n;
+        this.hurt_name = keep.Name;
+        $Watcher watcher = new $Watcher(null);
+        this.watcher = watcher;
+        $Describe describe = new $Describe();
+        this.extras = "watcher=${watcher.Alive()} ${describe.Text()}";
     }
 
     override void Tick(float dt) {
-        if (this.seen == null) this.seen = new Elite();
-        this.seen_power = this.seen.Power();
-        this.seen_attack = this.seen.Attack();
-        this.seen_mix = this.seen.Mix(2, 3);
+        if (this.seen == null) this.seen = new $Elite();
+        $Unit unit = this.seen;
+        if (unit == null) return;
+        this.seen_power = unit.Power();
+        this.seen_attack = unit.Attack();
+        this.seen_mix = unit.Mix(2, 3);
         if (this.probed == 0) {
             this.Probe();
         }

@@ -11,19 +11,20 @@ Two classes can hold handles to each other. A class can also hold a handle to it
 
 ```hot
 class Team {
-    Player captain = null;
+    $Player captain = null;
 
-    int CaptainScore() => captain != null ? captain.score : 0;
+    int CaptainScore() => captain?.score ?? 0;
 }
 
 class Player {
     [weak]
-    Team team = null;
-    Player rival = null;
+    $Team team = null;
+    $Player rival = null;
     int score = 0;
 
-    void Join(Team t) {
+    void Join($Team t) {
         team = t;
+        if (t == null) return;
         t.captain = this;
     }
 }
@@ -36,7 +37,7 @@ These are the rules:
 - Two strong handles to each other make a cycle of owners, and neither object is released. Make one handle `[weak]`, or set it to `null`. See [Weak handles](types-handles.html#weak-handles).
 - A struct holds a struct by value. Two structs that hold each other have no end size, so the translator stops with an error. Make one of them a class.
 - A class that derives from itself through other classes is an error.
-- A script class as a template argument is a handle, for example `std.vector<Player>`. See [Types](types.html#script-classes-in-templates).
+- A template argument `$Player` is a handle, for example `std.vector<$Player>`. See [Types](types.html#script-classes-in-templates).
 - A known limit: a member access of another class in a field initializer or in a base argument needs that class to come first in the file.
 
 ```
@@ -45,13 +46,16 @@ the structs use each other in a cycle: Wheel -> Axle -> Wheel. A struct holds th
 
 ## this as a value
 
-`this` is a handle of the current class. Pass it to a handle parameter or store it in a handle local. A `T&` parameter of a script class cannot take `this`: copy it to a local first, as [Borrowing](borrowing.html) shows.
+`this` is a handle of the current class. Pass it to a handle parameter or store it in a handle local. A `ref` parameter of a script class cannot take `this`: copy it to a local first, as [Borrowing](borrowing.html) shows.
 
 ```hot
 class Squad {
-    Squad leader = null;
+    $Squad leader = null;
 
-    void Join(Squad s) { s.leader = this; }
+    void Join($Squad s) {
+        if (s == null) return;
+        s.leader = this;
+    }
     void Group() {
         Join(this);
         var me = this;               // a Squad handle
@@ -81,7 +85,10 @@ class Vip : Account {
 class Account { private int balance = 0; }
 
 class Spy {
-    void Peek(Account& a) { var b = a.balance; }   // 'balance' is private in 'Account'
+    void Peek(ref $Account a) {
+        if (a == null) return;
+        var b = a.balance;             // 'balance' is private in 'Account'
+    }
 }
 ```
 

@@ -64,7 +64,7 @@ class Veteran : Fighter {
 }
 
 class Spawner : Actor {
-    Fighter kid = null;
+    $Fighter kid = null;
     int power = 0;
     int attack = 0;
     bool is_veteran = false;
@@ -75,9 +75,11 @@ class Spawner : Actor {
     }
 
     override void Tick(float dt) {
-        if (this.kid == null) this.kid = new Veteran(5, 7);
-        this.power = this.kid.Power();
-        this.attack = this.kid.Attack();
-        this.is_veteran = this.kid is Veteran;
+        if (this.kid == null) this.kid = new $Veteran(5, 7);
+        $Fighter unit = this.kid;
+        if (unit == null) return;
+        this.power = unit.Power();
+        this.attack = unit.Attack();
+        this.is_veteran = this.kid is $Veteran;
     }
 }

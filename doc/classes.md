@@ -36,6 +36,8 @@ class Counter {
 }
 ```
 
+Do not write `const` on a field or on a method. A field is never const. A method has no `const` after the parameters. The translator infers the constness of a local variable and of a parameter in the body. A `virtual` or `override` method takes its constness from the native base. The error is `const is inferred; remove it`.
+
 ## Short bodies and default values
 
 `=>` gives a method or a read-only property an expression body. A parameter can have a default value. Put it on the first declaration. Constructors and destructors need a block body.
@@ -55,7 +57,7 @@ A default value is an error on a `virtual` or `override` method. A struct constr
 
 ## Constructors and destructors
 
-The constructor has the class name. The destructor starts with `~`. `new` calls a constructor and gives a handle. A script class is a handle, so `Helper()` without `new` is an error. Write `new Helper()`.
+The constructor has the class name. The destructor starts with `~`. `new` calls a constructor. `new $Helper()` gives a handle, and `new Helper()` gives a value. `Helper()` without `new` is an error.
 
 ```hot
 class Counter {
@@ -66,10 +68,10 @@ class Counter {
 }
 
 class User {
-    Counter c = null;
+    $Counter c = null;
 
     void Make() {
-        c = new Counter(10);
+        c = new $Counter(10);
     }
 }
 ```
@@ -99,7 +101,7 @@ class Gauge : Actor {
 
 ## Structs
 
-A `struct` is a value type: a copy is a real copy. A `class` is a handle. `[value]` on a class definition is an error: write `struct`. `[value]` is valid on a use of a class (a field, a parameter, a return type or a local). See [Value uses](types-handles.html#value-uses).
+A `struct` is a value type: a copy is a real copy. A bare `class` name is a value that owns its object, and `$C` is a handle. See [Value uses](types-handles.html#value-uses).
 
 ```hot
 struct Point {

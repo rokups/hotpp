@@ -39,14 +39,14 @@ class Counter {
 class Hero : Actor {
     Stats stats = Stats(50.0, 2.0);
     Stats saved;
-    Counter counter;
+    $Counter counter;
     float effective = 0.0;
     int ticks = 0;
 
     override void Tick(float dt) {
         this.ticks = this.ticks + 1;
         if (this.counter == null) {
-            this.counter = new Counter(10);
+            this.counter = new $Counter(10);
         }
         this.saved = this.stats;
         this.stats.Hurt(10.0);

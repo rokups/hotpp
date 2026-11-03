@@ -44,9 +44,24 @@ inline bool is_ref_type(const std::string& type)
 // fills "expr" and "span". The lowering fills "cpp" one time (empty until then).
 struct ParamDefault;
 
+// The modifier of a parameter. "in T x" is a const reference, "ref T x" and "out T x" are references,
+// "[byval] T x" is a copy. "Plain" is a parameter with no modifier.
+enum class ParamMode
+{
+    Plain,
+    In,
+    Ref,
+    Out,
+    ByVal
+};
+
 struct Param
 {
+    // The parser keeps the modifier in "mode" and writes the C++ form of it into "type": "const T&"
+    // for In, "T&" for Ref and Out. The code after the parser reads the C++ form. A C++ import has
+    // the mode Plain and a type with a "&".
     std::string name, type;
+    ParamMode mode = ParamMode::Plain;
     std::shared_ptr<ParamDefault> def{}; // null: the parameter has no default value
     // The type as the script writes it. The translator sets it before it rewrites "type" to the
     // C++ storage type. The lowering pass reads it for the type-directed member access.
@@ -54,6 +69,9 @@ struct Param
     // The type of the parameter in the generation function of a script function, when the
     // parameter analysis (design 7.10.5) picks another form than "type". Empty: same as "type".
     std::string body_type{};
+    // True when the body never writes the parameter (const_infer.h). The body form has "const". The
+    // signature and the slot do not change.
+    bool body_const = false;
     // An override that matched a native virtual through the handle carriers (task 33): the native
     // parameter type text. The slot keeps this type. Empty: the type is not relaxed.
     std::string native_type{};
@@ -62,7 +80,8 @@ struct Param
     std::string bind_to{};
     // "[weak] T name": the parameter holds a weak handle (task 38). The storage is a weak_ptr.
     bool weak = false;
-    // "[value] T name": the parameter holds a script class with value semantics (hot::Value<T>).
+    // The type is a bare script class: the parameter holds a box (hot::Value<T>). The resolution of
+    // the value types sets it. The parser does not.
     bool value = false;
 };
 
@@ -123,7 +142,7 @@ struct MemberExpr
     std::string name; // empty: the script has "obj." and no name (a tolerant parse, with an error)
     uint32_t pos = 0;
     uint32_t name_pos = 0; // the byte offset where the name starts (or would start)
-    bool safe = false; // "obj?.name": allowed only at the start of an expression statement
+    bool safe = false; // "obj?.name": the lowering writes hot::safe_access, or an "if" at the start of a statement
 };
 struct CallExpr
 {
@@ -251,8 +270,10 @@ struct ExprStmt
 };
 struct VarDeclStmt
 {
+    // True when the const inference (const_infer.h) finds that the body never writes the local. The
+    // script never writes "const" on a local. The parser leaves it false.
     bool is_const = false;
-    bool is_ref = false; // "var& x = e": a local reference, the C++ text is "auto&"
+    bool is_ref = false; // "ref x = e": a local reference, the C++ text is "auto&"
     std::string name;
     std::string type; // empty: auto
     ExprP init; // may be null
@@ -263,15 +284,15 @@ struct VarDeclStmt
     // does not print it. The checks and the type-directed lowering read it.
     std::string native_type{};
     // "var (a, b) = e": a structured binding. The names are here and "name" is empty. The C++
-    // text is "auto [a, b]". "type" is empty. "var&" and "const var" set "is_ref" and "is_const".
+    // text is "auto [a, b]". "type" is empty. "ref" sets "is_ref".
     std::vector<std::string> names{};
     std::vector<uint32_t> name_poss{}; // the byte offset of each name in "names"
     // "[weak] T x = e": the local holds a weak handle (task 38). The storage is a weak_ptr.
     bool weak = false;
     uint32_t weak_pos = 0; // the byte offset of "weak" (0: not known)
-    // "[value] T x = e": the local holds a script class with value semantics (hot::Value<T>).
+    // The type is a bare script class: the local holds a box (hot::Value<T>). The resolution of
+    // the value types sets it. The parser does not.
     bool value = false;
-    uint32_t value_pos = 0; // the byte offset of "value" (0: not known)
 };
 struct IfStmt
 {
@@ -301,10 +322,14 @@ struct ForStmt
 };
 struct ForOfStmt
 {
+    // True for a "ref" target that the body never writes (const_infer.h). The C++ text is "const auto&".
     bool is_const = false;
-    bool is_ref = false; // "foreach (var& x in c)": the C++ text is "auto&"
+    bool is_ref = false; // "foreach (ref x in c)": the C++ text is "auto&"
     std::string name;
     std::string type; // empty: auto
+    // The type is a bare script class: the variable holds a box. The resolution of the value
+    // types sets it. The parser does not.
+    bool value = false;
     ExprP range;
     StmtP body;
     uint32_t pos = 0;
@@ -421,8 +446,7 @@ struct Field
     std::string name, alias, type; // alias: the previous name from [alias("...")]
     std::string script_type; // "type" as the script writes it (see Param)
     bool weak = false; // "[weak]": the field holds a weak handle (task 38)
-    bool value = false; // "[value]": the field holds a script class with value semantics
-    uint32_t value_pos = 0; // the byte offset of "value" (0: not known)
+    bool value = false; // the type is a bare script class: the field holds a box (hot::Value<T>)
     ExprP init; // null when the field has no initializer, or the parse failed
     Span init_span; // the raw text after "=", up to the ";"
     bool has_init = false;
@@ -453,9 +477,6 @@ struct Method
     // The key of the native virtual method that the function overrides (empty when it overrides
     // none). The interface rows use it to find the exact slot of an overload.
     std::string native_key;
-    // True when the script writes "const" after the parameters. It selects the const native
-    // virtual method. It does not check the body.
-    bool is_const = false;
     // The modifiers as written. The parser stores them. Nothing checks them yet.
     bool is_override = false, is_virtual = false, is_new = false;
     // True when the script writes "abstract" before the method. The method has no body and it
@@ -476,8 +497,7 @@ struct Method
     std::vector<Param> params;
     std::string ret; // empty: not written
     std::string script_ret; // "ret" as the script writes it (see Param)
-    bool ret_value = false; // "[value]" before the method: the return type has value semantics
-    uint32_t ret_value_pos = 0; // the byte offset of "value" (0: not known)
+    bool ret_value = false; // the return type is a bare script class: the method returns a box
     BlockStmt body; // the statements; the parser fills them from body_span
     Span body_span; // the raw text between the braces
     // True for "T f() => e;". The body_span is then the text of "e" and the parser builds the
@@ -575,7 +595,7 @@ struct ClassDef
     std::vector<Method> dtors; // "~Name() { }": the name is "~Name"; the translator allows one
     std::vector<Property> props; // in source order
     std::vector<TypeAlias> aliases; // "using Name = type;" in the class body, in source order
-    bool is_value = false; // the attribute [value]
+    bool is_value = false; // a struct
     bool is_abstract = false; // "abstract class C { }": the class can have abstract methods
     std::string cpp_prelude; // the attribute [cpp_prelude("text")]: C++ text for this class only
     std::string cpp_overrides; // names of virtuals that the shell keeps without a slot (a .cpp script)
@@ -607,12 +627,18 @@ struct Stub
     // [weak_handle("T<$T>")]: the template of a "[weak]" declaration of the handle. Empty: the
     // weak_ptr of a shared_ptr handle.
     std::string weak_handle;
+    // [factory("std::make_shared<$T>")]: the callee of "new $T(args)" on a native class. "$T" is the class.
+    // Empty: the default of the handle.
+    std::string factory;
     std::string intrusive_add, intrusive_release;
     // "class : Base;": the rule is for the subclasses of Base only, and "name" is Base.
     bool derived = false;
     bool is_self = false; // the attribute [self]: the rule is for this type only, not subclasses
     bool is_struct = false; // "struct *;": only "cpp_prelude" is valid
     bool checked_index = false; // the attribute [checked_index]: "a[i]" has a bounds test for the type
+    // The attribute [nonnull]: a native call that returns the type gives a non null value. On "class *"
+    // it is the default of the library.
+    bool nonnull = false;
     std::string cpp_prelude; // the attribute [cpp_prelude("text")]
     // The attribute [cpp_overrides("A B")]: the names of the native virtuals that the cpp_prelude
     // text overrides. The shells get no slot and no stub for them.

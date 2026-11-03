@@ -128,7 +128,7 @@ TEST(TranslateDiagnostics, AnyByteIsAccepted)
     // The byte 0xE9 is not valid UTF-8 here. It is in a comment, a string and a body comment.
     const std::string script =
         "using \"w.h\";\n// caf\xE9\nclass Foo : Widget {\n    int n = 3;  // caf\xE9\n"
-        "    override void Update(float dt) { /* \xE9 */ const char* t = \"na\xE9\"; t; }\n}\n";
+        "    override void Update(float dt) { /* \xE9 */ var t = \"na\xE9\"; t; }\n}\n";
     const hotc::TranslateResult r = hotc::translate(temp_options(dir, script));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("\"na\xE9\""), std::string::npos) << r.cpp;

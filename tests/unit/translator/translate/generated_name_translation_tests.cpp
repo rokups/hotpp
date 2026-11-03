@@ -98,7 +98,7 @@ TEST(GeneratedNameTranslation, CStyleCastOfABuiltinType)
     EXPECT_NE(r.cpp.find("int32_t i = (int32_t)v;"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("float w = (float)i * 2.0f;"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("uint32_t u = (uint32_t)-i;"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("auto p = (int32_t*)q;"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("auto p = hot::cast_ptr<int32_t*>(q);"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("auto s = (v * 2.0f) + (w);"), std::string::npos) << r.cpp;
 }
 

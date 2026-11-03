@@ -1,0 +1,9 @@
+using "Actor.h"; using "Equip.h";
+
+class Hero : Actor {
+    Charm* target = null;
+
+    override void Tick(float dt) {
+        target.Bump(1);
+    }
+}

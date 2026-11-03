@@ -29,6 +29,8 @@
 #include "ast.h"
 #include "builtin_types.h"
 #include "check.h"
+#include "const_infer.h"
+#include "nullcheck.h"
 #include "diag.h"
 #include "file_time.h"
 #include "emit.h"
@@ -148,10 +150,28 @@ std::string name_in_type(const std::string& t, const std::string& name)
     return t.substr(0, close) + name + t.substr(close);
 }
 
+// "hot::In<T>" needs sizeof(T). A struct is incomplete in its own member declarations, so a parameter
+// of the own struct type (also "T?") goes by "const T&". Another struct is complete before this one
+// (a cycle is an error), so it keeps the trait.
+void own_struct_in_to_ref(hotc::ast::Param& p, const std::string& cls)
+{
+    for (std::string* t : {&p.type, &p.body_type})
+    {
+        if (t->rfind("hot::In<", 0) != 0 || t->back() != '>')
+            continue;
+        const std::string inner = t->substr(8, t->size() - 9);
+        if (inner == cls || inner == "std::optional<" + cls + ">")
+            *t = "const " + inner + "&";
+    }
+}
+
 // The type of a parameter of an "async" coroutine: by value. The frame of a coroutine must own
 // the argument, because the caller can end before the task continues. "const T&" gives "T".
 std::string coroutine_param_type(std::string t)
 {
+    // "hot::In<T>" gives "T": the coroutine owns a copy even when the trait is "const T&".
+    if (t.rfind("hot::In<", 0) == 0 && t.back() == '>')
+        return t.substr(8, t.size() - 9);
     if (t.size() > 1 && t.back() == '&' && t[t.size() - 2] != '&')
         t.pop_back();
     while (!t.empty() && t.back() == ' ')
@@ -216,8 +236,8 @@ std::string default_arg(const hotc::ast::Param& p, const std::vector<hotc::ast::
     return p.def->cpp.empty() ? std::string() : " = " + p.def->cpp;
 }
 
-// The name of the synthetic [value] class that holds the module variables (module state block).
-const std::string kModuleName = "HotModule";
+// The name of the synthetic struct that holds the module variables (module state block).
+const std::string kModuleName = hotc::kModuleClassName;
 
 [[noreturn]] void fail(int line, const std::string& msg)
 {
@@ -245,17 +265,61 @@ std::string weak_storage_or_fail(
     return w;
 }
 
-// The C++ storage of a "[value] T" field, parameter or return: hot::Value<E>. A type that
+// The C++ storage of a "C" (a bare script class) field, parameter or return: hot::Value<E>. A type that
 // is not a script class with a shared handle is an error.
 std::string value_storage_or_fail(
     const hotc::TypeModel& types, const hotc::LineMap& map, uint32_t pos, const std::string& type)
 {
-    if (types.is_script_interface(type))
-        fail_at(map, pos, hotc::interface_attribute_error("value", hotc::script_type_text(type)));
     std::string v = types.value_storage(type);
     if (v.empty())
-        fail_at(map, pos, "[value] needs a script class with a shared handle: '" + hotc::script_type_text(type) + "'");
+        fail_at(map, pos, "a value of a script class needs a std::shared_ptr handle: '" + hotc::script_type_text(type) + "'");
     return v;
+}
+
+// The C++ type of a script type text, by cpp_storage(). An error of the mapping stops the translation.
+std::string cpp_type_or_fail(const hotc::TypeModel& types, const hotc::LineMap& map, uint32_t pos,
+    const std::string& type, hotc::TypeModel::StorageUse use)
+{
+    std::string error;
+    std::string r = types.cpp_storage(type, use, &error);
+    if (!error.empty())
+        fail_at(map, pos, error);
+    return r;
+}
+
+// The C++ type of a field or a module variable: "[weak]" and box first, else cpp_storage().
+std::string field_type_or_fail(const hotc::TypeModel& types, const hotc::LineMap& map, const hotc::ast::Field& f)
+{
+    if (f.weak)
+        return weak_storage_or_fail(types, map, f.pos, f.type);
+    if (f.value)
+        return value_storage_or_fail(types, map, f.pos, f.type);
+    return cpp_type_or_fail(types, map, f.pos, f.type, hotc::TypeModel::StorageUse::Field);
+}
+
+// The C++ type of a parameter in the slot: "[weak]" and box first, else cpp_storage().
+std::string param_type_or_fail(const hotc::TypeModel& types, const hotc::LineMap& map, uint32_t pos,
+    const std::string& type, bool weak, bool value, bool byval)
+{
+    if (weak)
+        return weak_storage_or_fail(types, map, pos, type);
+    if (value)
+    { // a box: a copy for "[byval]", else the plain form
+        const std::string v = value_storage_or_fail(types, map, pos, type);
+        return byval ? v : "hot::In<" + v + ">";
+    }
+    // "[byval] T x" is a copy: the storage of a local, so a handle goes by value too.
+    return cpp_type_or_fail(types, map, pos, type,
+        byval ? hotc::TypeModel::StorageUse::Local : hotc::TypeModel::StorageUse::Param);
+}
+
+// The C++ type of a return: box first, else cpp_storage().
+std::string ret_type_or_fail(
+    const hotc::TypeModel& types, const hotc::LineMap& map, uint32_t pos, const std::string& type, bool value)
+{
+    if (value)
+        return value_storage_or_fail(types, map, pos, type);
+    return cpp_type_or_fail(types, map, pos, type, hotc::TypeModel::StorageUse::Return);
 }
 
 // A "[weak] T x = null" field keeps no initializer: an empty weak_ptr is null.
@@ -816,7 +880,6 @@ struct TypeFacts
     bool known = false;
     bool is_class = false, copy = false, nothrow_move = false, polymorphic = false, final_ = false;
     bool plain = false; // trivially copyable and standard layout
-    bool small = false; // trivially copyable and 16 bytes or less (design 7.10.5)
     bool arrow = false; // a pointer, or a type with operator->
     bool esft = false; // a base is std::enable_shared_from_this<X>
     bool is_enum = false; // the type is an enumeration
@@ -1571,8 +1634,6 @@ std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<s
         "else return false; }\n"
         "template <class T> constexpr bool hotc_plain() { if constexpr (hotc_complete<T>()) return "
         "std::is_trivially_copyable_v<T> && std::is_standard_layout_v<T>; else return false; }\n"
-        "template <class T> constexpr bool hotc_small() { if constexpr (hotc_complete<T>()) return "
-        "std::is_trivially_copyable_v<T> && sizeof(T) <= 16; else return false; }\n"
         "template <class U> std::true_type hotc_esft_f(const \x01std::enable_shared_from_this<U>*);\n"
         "std::false_type hotc_esft_f(...);\n"
         "template <class T> constexpr bool hotc_esft() { if constexpr (hotc_complete<T>()) return "
@@ -1599,7 +1660,7 @@ std::string facts_text(const std::vector<FactReq>& reqs, std::vector<std::pair<s
     for (size_t i = 0; i < reqs.size(); ++i)
     {
         const std::string& t = reqs[i].type;
-        const char* kinds[] = {"is_class", "copy", "nothrow_move", "polymorphic", "final", "plain", "small", "arrow", "esft", "is_enum"};
+        const char* kinds[] = {"is_class", "copy", "nothrow_move", "polymorphic", "final", "plain", "arrow", "esft", "is_enum"};
         for (const char* k : kinds)
         {
             lines.emplace_back(i, k);
@@ -2313,8 +2374,6 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
                 f.final_ = v == 1;
             else if (k == "plain")
                 f.plain = v == 1;
-            else if (k == "small")
-                f.small = v == 1;
             else if (k == "arrow")
                 f.arrow = v == 1;
             else if (k == "esft")
@@ -3145,7 +3204,7 @@ void translate_impl(
         }
     }
     // ---- module variables (design 5.3, 7.3). They live in the module state block, which is
-    // the state of a synthetic [value] class. The block migrates like the fields of a class.
+    // the state of a synthetic struct. The block migrates like the fields of a class.
     const bool has_module = !sc.vars.empty();
     std::map<std::string, std::string> module_vars; // the name and the script type
     if (has_module)
@@ -3231,13 +3290,20 @@ void translate_impl(
         types.add_script_interfaces(iface_names);
     }
     types.set_raw_script_refs(sc.is_cpp);
+    if (!sc.is_cpp)
+    {
+        for (ClassDef& cd : sc.classes)
+            hotc::resolve_value_uses(cd, types);
+        for (hotc::ast::InterfaceDef& d : sc.interfaces)
+            hotc::resolve_value_uses(d, types);
+    }
     for (ClassDef& cd : sc.classes)
         snapshot_types(cd);
     for (const ClassDef& cd : sc.classes)
     {
         if (!cd.is_value)
             continue;
-        // A [value] class is a plain struct (design 7.10.1): no base, no virtual method, no hook.
+        // A struct is a plain struct (design 7.10.1): no base, no virtual method, no hook.
         if (!cd.base.empty())
             fail_at(map, cd.pos, "a struct '" + cd.name + "' has no base class");
         if (!cd.dtors.empty())
@@ -3694,7 +3760,6 @@ void translate_impl(
         {
             c.known = it->second.known && it->second.is_class;
             c.plain = it->second.plain;
-            c.small = it->second.small;
             c.shared_from_this = it->second.esft;
             c.is_enum = it->second.is_enum;
         }
@@ -3808,7 +3873,7 @@ void translate_impl(
     if (!g_diag.items.empty())
         throw TranslateAbort{};
 
-    // ---- the rules of "[value] T" on fields, parameters, return types and locals
+    // ---- the rules of "C" (a bare script class) on fields, parameters, return types and locals
     hotc::check_value_uses(sc.classes, types, map, g_diag);
     if (!g_diag.items.empty())
         throw TranslateAbort{};
@@ -3933,6 +3998,49 @@ void translate_impl(
         h->raw_line = m.raw_line;
         h->raw_pre = m.raw_pre;
         return std::shared_ptr<const Method>(std::move(h));
+    };
+    // The const inference (const_infer.h). It runs after the checks of a class and before the lowering.
+    // "script_fn" finds a script function of the class by name. "params" says if the parameters
+    // of the method can get "const" in the body.
+    auto infer_const_in = [&](ClassDef& cd, std::function<const Method*(const std::string&)> script_fn,
+                              std::function<bool(const Method&)> params)
+    {
+        hotc::ConstContext cc;
+        cc.script_fn = std::move(script_fn);
+        cc.params_ok = std::move(params);
+        cc.is_handle = [&types](const std::string& t)
+        {
+            const size_t b = t.find_first_not_of(" \t");
+            const size_t e = t.find_last_not_of(" \t");
+            if (b == std::string::npos)
+                return false;
+            return t[b] == '$' || t[e] == '*' || types.is_handle(t);
+        };
+        hotc::infer_const(cd, cc);
+    };
+    // The nullability analyzer (nullcheck.h). It runs after the const inference, on ".hot" scripts only.
+    auto null_check_in = [&](const ClassDef& cd)
+    {
+        if (sc.is_cpp)
+            return;
+        hotc::NullOptions no;
+        no.as_error = !in.null_warnings;
+        no.find_class = [&](const std::string& n) -> const ClassDef*
+        {
+            auto it = class_by_name.find(n);
+            return it == class_by_name.end() ? nullptr : it->second;
+        };
+        no.module_var = [&](const std::string& n) -> const hotc::ast::Field*
+        {
+            for (const hotc::ast::Field& v : sc.vars)
+                if (v.name == n)
+                    return &v;
+            return nullptr;
+        };
+        const size_t before = g_diag.items.size();
+        hotc::check_nulls(cd, types, map, g_diag, no);
+        if (g_diag.items.size() != before)
+            throw TranslateAbort{};
     };
     // Lowers the statements of a body into an emitter. Returns null for a raw body or an error.
     auto lower_body = [&](Method& m, RCtx& cx, bool trace) -> std::shared_ptr<hotc::ast::Emitter>
@@ -4132,13 +4240,11 @@ void translate_impl(
                 for (const Param& p : im.params)
                 {
                     const std::string& st = p.script_type.empty() ? p.type : p.script_type;
-                    t.params.push_back(p.weak ? weak_storage_or_fail(types, map, im.pos, st)
-                            : p.value         ? value_storage_or_fail(types, map, im.pos, st)
-                                              : types.param(st));
+                    t.params.push_back(param_type_or_fail(types, map, im.pos, st, p.weak, p.value, p.mode == hotc::ast::ParamMode::ByVal));
                 }
                 std::string r = im.script_ret.empty() ? im.ret : im.script_ret;
                 if (!r.empty())
-                    r = im.ret_value ? value_storage_or_fail(types, map, im.pos, r) : types.storage(r);
+                    r = ret_type_or_fail(types, map, im.pos, r, im.ret_value);
                 if (r.empty())
                     r = "void";
                 t.ret = im.is_async ? "hot::Task<" + r + ">" : r;
@@ -4162,7 +4268,7 @@ void translate_impl(
     std::vector<std::string> flag_regs; // the record flags that script_register sets
     std::set<std::string> new_ready; // the classes with a "new" function that are emitted so far
 
-    // ---- [value] script classes (design 7.10.1). A value class is a C++ struct with real
+    // ---- structs (design 7.10.1). A value class is a C++ struct with real
     // copy semantics. Its member functions are inline in the generation module, so a reload
     // replaces them with the module. Its field table lets the migration recurse (design 5.3).
     std::set<std::string> script_names;
@@ -4181,7 +4287,7 @@ void translate_impl(
     };
     // The reload type key of a field type. An enum is its underlying integer type (design 5.3).
     auto key_type = [&](const std::string& t) { return enum_types.count(t) ? "std::underlying_type_t<" + t + ">" : t; };
-    // The [value] script classes that a type names inside a native template, for example
+    // The structs that a type names inside a native template, for example
     // "Stats" in "std::vector<Stats>" (design 5.3). A name after "::" or "." is native.
     auto values_in = [&](const std::string& t)
     {
@@ -4204,8 +4310,8 @@ void translate_impl(
         }
         return out;
     };
-    // The layout text of a [value] class: the name and the type of each field, in order, and
-    // the layout text of each nested [value] class.
+    // The layout text of a struct: the name and the type of each field, in order, and
+    // the layout text of each nested struct.
     std::function<std::string(const std::string&, int)> value_layout = [&](const std::string& name, int depth)
     {
         std::string text = name + "{";
@@ -4224,7 +4330,7 @@ void translate_impl(
         }
         return text + "}";
     };
-    // The type key of a field. A native container of a [value] class adds the hash of the
+    // The type key of a field. A native container of a struct adds the hash of the
     // layout of the class (design 5.3). The key then changes when the layout changes, and the
     // migration resets the container. Other types keep the plain typeid name.
     auto field_key = [&](const std::string& t)
@@ -4257,6 +4363,8 @@ void translate_impl(
             if (f.name.compare(0, 2, "__") == 0)
                 fail_at(map, f.pos, "field name '" + f.name + "' is reserved");
         desugar_props(cd, map);
+        if (!sc.is_cpp)
+            hotc::resolve_value_uses(cd, types); // the accessors of a property are new functions
         {
             const size_t before = g_diag.items.size();
             hotc::check_ctors(cd, map, g_diag);
@@ -4290,30 +4398,38 @@ void translate_impl(
             if (g_diag.items.size() != before)
                 throw TranslateAbort{};
         }
+        infer_const_in(
+            cd,
+            [&cd](const std::string& n) -> const Method*
+            {
+                for (const Method& m : cd.methods)
+                    if (m.name == n)
+                        return &m;
+                return nullptr;
+            },
+            [](const Method&) { return false; }); // a struct method has no body form of the parameters
+        null_check_in(cd);
         for (Field& f : cd.fields)
         {
-            if (!f.weak && !f.value && !types.checked_ptr_storage(f.type).empty())
-                f.type = types.checked_ptr_storage(f.type);
-            else
-                f.type = f.weak ? weak_storage_or_fail(types, map, f.pos, f.type)
-                    : f.value ? value_storage_or_fail(types, map, f.pos, f.type)
-                              : types.storage(f.type);
+            f.type = field_type_or_fail(types, map, f);
             drop_weak_null_init(f);
         }
         for (Method& m : cd.methods)
         {
             for (Param& p : m.params)
-                p.type = p.weak ? weak_storage_or_fail(types, map, m.pos, p.type)
-                    : p.value ? value_storage_or_fail(types, map, m.pos, p.type)
-                              : types.param(p.type);
+            {
+                p.type = param_type_or_fail(types, map, m.pos, p.type, p.weak, p.value, p.mode == hotc::ast::ParamMode::ByVal);
+                own_struct_in_to_ref(p, cd.name);
+            }
             if (!m.ret.empty())
-                m.ret = m.ret_value ? value_storage_or_fail(types, map, m.pos, m.ret) : types.storage(m.ret);
+                m.ret = ret_type_or_fail(types, map, m.pos, m.ret, m.ret_value);
         }
         for (hotc::ast::Ctor& c : cd.ctors)
             for (Param& p : c.params)
-                p.type = p.weak ? weak_storage_or_fail(types, map, c.pos, p.type)
-                    : p.value ? value_storage_or_fail(types, map, c.pos, p.type)
-                              : types.param(p.type);
+            {
+                p.type = param_type_or_fail(types, map, c.pos, p.type, p.weak, p.value, p.mode == hotc::ast::ParamMode::ByVal);
+                own_struct_in_to_ref(p, cd.name);
+            }
         // The convert hooks of the module variables: the same rules as a convert hook of a field.
         const bool is_module = cn == kModuleName;
         std::map<std::string, Method*> hooks; // by variable name
@@ -4328,8 +4444,9 @@ void translate_impl(
                     fail_at(map, m.pos, "'" + m.name + "' is a convert hook. It must return the new variable type");
                 if (!hooks.emplace(m.name.substr(8), &m).second)
                     fail_at(map, m.pos, "the convert hook '" + m.name + "' is declared twice");
-                m.params[0].type = types.storage(m.params[0].type);
-                m.ret = types.storage(m.ret);
+                m.params[0].type =
+                    cpp_type_or_fail(types, map, m.pos, m.params[0].type, hotc::TypeModel::StorageUse::Return);
+                m.ret = cpp_type_or_fail(types, map, m.pos, m.ret, hotc::TypeModel::StorageUse::Return);
                 for (const Field& f : cd.fields)
                     if (f.name == m.name.substr(8) && f.type != m.ret)
                         fail_at(map, m.pos,
@@ -4359,7 +4476,7 @@ void translate_impl(
         base_cx.module_vars = module_vars;
         base_cx.in_module_init = cn == kModuleName;
 
-        o.w("\n// ---------------------------------------------------------------- [value] class " + cn + "\n");
+        o.w("\n// ---------------------------------------------------------------- struct " + cn + "\n");
         // The field initializers: the text is the same in the constructor and in the field table.
         std::vector<std::string> inits;
         std::set<std::string> earlier; // the module variables before this one
@@ -4534,7 +4651,7 @@ void translate_impl(
                         + ", " + P + hk->second->name + "_hook");
                 else
                     o.w(", nullptr, nullptr");
-                // The last two members: the layout of a [value] field, and the copy function.
+                // The last two members: the layout of a box field, and the copy function.
                 o.w(", " + (sub ? "&" + T + "_layout" : std::string("nullptr")) + ", hot::field_copy<" + T + ">()},\n");
             }
             o.w("};\n");
@@ -4623,7 +4740,7 @@ void translate_impl(
     // argument) is a firm use: it needs the "new" function of the class. The lowering reports a
     // firm use that the order cannot satisfy. The other handle uses are soft. A firm or a soft use
     // puts the used class first when no cycle prevents it. The classes keep the script order when
-    // no use forces a change. A [value] class comes first.
+    // no use forces a change. A struct comes first.
     std::vector<ClassDef*> order;
     {
         std::map<std::string, ClassDef*> by_name;
@@ -4991,6 +5108,8 @@ void translate_impl(
             }
         }
         desugar_props(cd, map);
+        if (!sc.is_cpp)
+            hotc::resolve_value_uses(cd, types); // the accessors of a property are new functions
         {
             const size_t before = g_diag.items.size();
             hotc::check_ctors(cd, map, g_diag);
@@ -5042,9 +5161,9 @@ void translate_impl(
                         fail_at(map, m.pos, "default values are not allowed on virtual or override methods");
             // A method overrides a base virtual method when the name and the parameter types match.
             // The method must have the modifier "override" (C# rules).
-            // "F()" and "F() const" have the same name and parameters. A "const" after the
-            // parameters selects the const method. Without it, the non-const method is the
-            // default (the C++ rule), and a lone const method matches too.
+            // "F()" and "F() const" have the same name and parameters. The script cannot write
+            // "const" on a method. The non-const method is the default (the C++ rule), and a lone
+            // const method matches too.
             std::vector<hotc::VirtualSig> sigs;
             for (const auto& nv : bi.virtuals)
                 sigs.push_back({nv.name, nv.ptypes, nv.is_const});
@@ -5053,15 +5172,11 @@ void translate_impl(
             for (const Param& p : m.params)
                 script_ptypes.push_back(p.weak ? weak_storage_or_fail(types, map, m.pos, p.type) : p.type);
             // The relaxed pass (handle carriers) is not for a ".cpp" script.
-            const hotc::OverrideMatch om = hotc::match_native_virtual(m.name, script_ptypes, sigs, types, m.is_const,
+            const hotc::OverrideMatch om = hotc::match_native_virtual(m.name, script_ptypes, sigs, types,
                 hotc::relaxed_override_enabled() && !sc.is_cpp);
             const NativeVirtual* hit = nullptr;
             auto native_text = [&](size_t i)
             { return bi.virtuals[i].text() + (bi.virtuals[i].is_const ? " const" : ""); };
-            if (om.kind == hotc::OverrideMatch::Kind::ConstMismatch)
-                fail_at(map, m.pos,
-                    "'" + m.name + "' is marked const but the native virtual of " + bi.virtuals[om.hits[0]].owner
-                        + " is not const");
             if (!om.hits.empty())
             {
                 hit = &bi.virtuals[om.hits[0]];
@@ -5131,8 +5246,8 @@ void translate_impl(
                     {
                         if (!am || am->vslot_owner.empty())
                             fail_at(map, m.pos, "'override' has no virtual method to override");
-                        auto ptext = [](const Param& p)
-                        { return key_norm(p.script_type.empty() ? p.type : p.script_type); };
+                        // "$C" is the handle and "C" is the value: the two spellings are two types.
+                        auto ptext = [&](const Param& p) { return key_norm(p.script_type.empty() ? p.type : p.script_type); };
                         bool same = am->params.size() == m.params.size();
                         for (size_t k = 0; same && k < m.params.size(); ++k)
                             same = ptext(am->params[k]) == ptext(m.params[k]);
@@ -5140,16 +5255,6 @@ void translate_impl(
                             fail_at(map, m.pos,
                                 "'" + m.name + "' has other parameter types than the virtual method of " + aowner->name
                                     + "; write 'new' to hide it");
-                        for (size_t k = 0; k < m.params.size(); ++k)
-                            if (am->params[k].value != m.params[k].value)
-                                fail_at(map, m.pos,
-                                    "'" + m.name + "' differs in '[value]' on the parameter '" + m.params[k].name
-                                        + "' from the virtual method of " + aowner->name
-                                        + "; write '[value]' on both or on none");
-                        if (am->ret_value != m.ret_value)
-                            fail_at(map, m.pos,
-                                "'" + m.name + "' differs in '[value]' on the return type from the virtual method of "
-                                    + aowner->name + "; write '[value]' on both or on none");
                         const std::string r0 = am->script_ret.empty() ? "void" : am->script_ret;
                         const std::string r1 = m.script_ret.empty() ? "void" : m.script_ret;
                         if (key_norm(r0) != key_norm(r1))
@@ -5264,7 +5369,7 @@ void translate_impl(
                     for (const Method& im : idef->methods)
                     {
                         auto ptype = [](const Param& p)
-                        { return (p.script_type.empty() ? p.type : p.script_type) + (p.weak ? "[weak]" : "") + (p.value ? "[value]" : ""); };
+                        { return (p.script_type.empty() ? p.type : p.script_type) + (p.weak ? "[weak]" : "") + (p.value ? "[box]" : ""); };
                         auto rtype = [](const Method& m)
                         {
                             const std::string r = m.script_ret.empty() ? m.ret : m.script_ret;
@@ -5409,16 +5514,18 @@ void translate_impl(
             return ctx;
         };
         const hotc::ParamContext param_ctx = make_ctx(cd);
+        infer_const_in(cd, param_ctx.script_fn,
+            [&](const Method& m)
+            {
+                return !m.is_virtual && !m.is_override && !m.overrides_virtual && !m.is_abstract && !m.is_async
+                    && !m.raw && hook_of(m) == Hook::None;
+            });
+        null_check_in(cd);
 
         // ---- the C++ storage types. An override keeps the native types.
         for (Field& f : cd.fields)
         {
-            if (!f.weak && !f.value && !types.checked_ptr_storage(f.type).empty())
-                f.type = types.checked_ptr_storage(f.type);
-            else
-                f.type = f.weak ? weak_storage_or_fail(types, map, f.pos, f.type)
-                    : f.value ? value_storage_or_fail(types, map, f.pos, f.type)
-                              : types.storage(f.type);
+            f.type = field_type_or_fail(types, map, f);
             drop_weak_null_init(f);
         }
         for (Method& m : cd.methods)
@@ -5440,7 +5547,8 @@ void translate_impl(
                     const hotc::ParamUse use = hotc::analyze_param_use(m, p.name, param_ctx);
                     p.body_type = types.body_param(
                         p.script_type, use.mutated || use.aliased, use.rebound || use.aliased, use.stored);
-                    p.bind_to = types.storage(p.script_type);
+                    p.bind_to = cpp_type_or_fail(
+                        types, map, m.pos, p.script_type, hotc::TypeModel::StorageUse::Return);
                     p.type = p.native_type;
                 }
                 continue;
@@ -5454,8 +5562,9 @@ void translate_impl(
             }
             if (h == Hook::Convert)
             { // the old value is a copy of the old field type
-                m.params[0].type = types.storage(m.params[0].type);
-                m.ret = types.storage(m.ret);
+                m.params[0].type =
+                    cpp_type_or_fail(types, map, m.pos, m.params[0].type, hotc::TypeModel::StorageUse::Return);
+                m.ret = cpp_type_or_fail(types, map, m.pos, m.ret, hotc::TypeModel::StorageUse::Return);
                 const std::string fname = m.name.substr(8);
                 for (const Field& f : cd.fields)
                     if (f.name == fname && f.type != m.ret)
@@ -5473,35 +5582,69 @@ void translate_impl(
                     p.type = weak_storage_or_fail(types, map, m.pos, p.type);
                     continue;
                 }
-                if (p.value)
-                { // "[value] T": hot::Value<E> by value in the slot and in the body
-                    p.type = value_storage_or_fail(types, map, m.pos, p.type);
+                if (p.mode == hotc::ast::ParamMode::ByVal)
+                { // "[byval] T x": a copy in the slot and in the body
+                    p.type = param_type_or_fail(types, map, m.pos, p.type, false, p.value, true);
                     continue;
                 }
                 if (hotc::ast::is_ref_type(p.type))
                 { // a "T&" parameter keeps its form
-                    p.type = types.param(p.type); // a script class gives "storage(T)&"
+                    p.type = cpp_type_or_fail(
+                        types, map, m.pos, p.type, hotc::TypeModel::StorageUse::Param); // a script class gives "storage(T)&"
                     continue;
                 }
                 const hotc::ParamUse use = hotc::analyze_param_use(m, p.name, param_ctx);
+                if (p.value)
+                { // "C" (a bare script class): "hot::In<hot::Value<E>>" in the slot. A body that
+                  // changes the parameter works on a copy.
+                    const std::string box = value_storage_or_fail(types, map, m.pos, p.type);
+                    p.type = "hot::In<" + box + ">";
+                    if (use.mutated || use.aliased)
+                        p.body_type = box;
+                    continue;
+                }
                 const std::string body =
                     types.body_param(p.type, use.mutated || use.aliased, use.rebound || use.aliased, use.stored);
-                p.type = types.param(p.type);
+                p.type = cpp_type_or_fail(types, map, m.pos, p.type, hotc::TypeModel::StorageUse::Param);
                 if (body != p.type)
                     p.body_type = body;
             }
+            for (Param& p : m.params)
+                own_struct_in_to_ref(p, cd.name);
             if (!m.ret.empty())
-                m.ret = m.ret_value ? value_storage_or_fail(types, map, m.pos, m.ret) : types.storage(m.ret);
+                m.ret = ret_type_or_fail(types, map, m.pos, m.ret, m.ret_value);
             // An "async" method returns the task of its value type (design: hot/runtime/task.h).
             if (m.is_async)
                 m.ret = "hot::Task<" + (m.ret.empty() ? std::string("void") : m.ret) + ">";
         }
 
+        // A constructor has no slot and no generation function. A plain parameter has the one rule,
+        // but a body that changes the parameter gets a copy: the parameter goes by value.
         for (hotc::ast::Ctor& c : cd.ctors)
+        {
+            Method probe;
+            probe.params = c.params;
+            probe.body = std::move(c.body);
             for (Param& p : c.params)
-                p.type = p.weak ? weak_storage_or_fail(types, map, c.pos, p.type)
-                    : p.value ? value_storage_or_fail(types, map, c.pos, p.type)
-                              : types.param(p.type);
+            {
+                const bool plain = p.mode == hotc::ast::ParamMode::Plain && !p.weak && !hotc::ast::is_ref_type(p.type);
+                std::string copy; // the by-value form, when the body changes the parameter
+                if (plain)
+                {
+                    const hotc::ParamUse use = hotc::analyze_param_use(probe, p.name, param_ctx);
+                    const bool changed = use.mutated || use.aliased;
+                    if (p.value && changed)
+                        copy = value_storage_or_fail(types, map, c.pos, p.type);
+                    else if (!p.value)
+                        copy = types.body_param(p.type, changed, use.rebound || use.aliased, use.stored);
+                }
+                p.type = param_type_or_fail(types, map, c.pos, p.type, p.weak, p.value, p.mode == hotc::ast::ParamMode::ByVal);
+                if (!copy.empty())
+                    p.type = copy;
+                own_struct_in_to_ref(p, cd.name);
+            }
+            c.body = std::move(probe.body);
+        }
 
         // ---- slots: native virtuals first, then the script functions
         std::vector<Slot> slots;
@@ -5799,7 +5942,7 @@ void translate_impl(
                         + "(\x01std::forward<A>(a)...)\n    {\n    }\n",
                     cd.line, cd.pos);
         }
-        // The clone constructor (design 5.3, [value]). It exists for a shell with no native base. It
+        // The clone constructor (design 5.3, box). It exists for a shell with no native base. It
         // builds the base without the state, copies the state of the source and does not run a
         // script constructor. A child shell builds on the parent shell with the tag ConstructChild.
         has_clone = root.base.empty() && !opt.aot_optimized;
@@ -6037,7 +6180,7 @@ void translate_impl(
         // The type aliases of the class body (see the aliases of the module).
         for (const hotc::ast::TypeAlias& a : cd.aliases)
             if (!a.resolved.empty())
-                o.w("    using " + a.name + " = " + types.storage(a.resolved) + ";\n");
+                o.w("    using " + a.name + " = " + types.cpp_storage(a.resolved, hotc::TypeModel::StorageUse::Local) + ";\n");
         for (const Field& f : cd.fields)
         {
             // A C array type "int[2][3]" is written as "int name[2][3]".
@@ -6202,7 +6345,7 @@ void translate_impl(
                 row += ", typeid(" + cv->second->params[0].type + ").name(), " + P + cv->second->name + "_hook";
             else
                 row += ", nullptr, nullptr";
-            // The last two members: the layout of a [value] field, and the copy function.
+            // The last two members: the layout of a box field, and the copy function.
             row += ", " + (sub ? "&" + T + "_layout" : std::string("nullptr")) + ", hot::field_copy<" + T + ">()";
             info.rows.push_back(row + "},\n");
         }
@@ -6514,7 +6657,7 @@ void translate_impl(
                 // through the handle. A template, so a class without such a "new" does not compile it.
                 // A class with another handle, or the shared_ptr of another standard namespace, has
                 // no such function: the body does not depend on the template, so it must compile.
-                const std::string own_storage = types.storage(cn);
+                const std::string own_storage = types.cpp_storage("$" + cn, hotc::TypeModel::StorageUse::Local);
                 const bool std_shared = own_storage.rfind("std::shared_ptr<", 0) == 0
                     || (own_storage.rfind("\x01std::shared_ptr<", 0) == 0 && types.std_ns() == "std");
                 std::string shared_text = "template <int = 0>\n[[maybe_unused]] HOT_HIDDEN static \x01std::shared_ptr<"
@@ -6627,19 +6770,32 @@ void translate_impl(
                 co_head += ")\n";
                 co_call += ");\n";
             }
+            // The const inference gives "const" to a parameter that the body never writes. The text
+            // has the "const" after the type ("T* const p"). A reference, a function pointer and an
+            // array stay as they are. The slot does not change: it is the form of the declaration.
+            auto body_const = [](const Param& p, const std::string& type)
+            {
+                const size_t e = type.find_last_not_of(" \t");
+                // "hot::In<T>" is a "const T&" for a type that is not small: no "const" then.
+                if (!p.body_const || e == std::string::npos || type[e] == '&' || type.find('(') != std::string::npos
+                    || type.find('[') != std::string::npos || type.find("hot::In<") != std::string::npos)
+                    return type;
+                return type + " const";
+            };
             std::string params, body_locals;
             for (const Param& p : m.params)
             {
                 const bool conv = !p.body_type.empty();
-                params += std::string(params.empty() ? "" : ", ") + name_in_type(p.type, (conv ? "__" : "") + p.name);
+                params += std::string(params.empty() ? "" : ", ")
+                    + name_in_type(conv ? p.type : body_const(p, p.type), (conv ? "__" : "") + p.name);
                 if (is_async)
                     continue;
                 if (conv && !p.bind_to.empty())
-                    body_locals += "    " + p.body_type + " " + p.name + " = hot::bind<" + p.bind_to
+                    body_locals += "    " + body_const(p, p.body_type) + " " + p.name + " = hot::bind<" + p.bind_to
                         + ">(\x01std::forward<" + p.type + ">(__" + p.name + "));\n";
                 else if (conv)
-                    body_locals +=
-                        "    " + p.body_type + " " + p.name + " = \x01std::forward<" + p.type + ">(__" + p.name + ");\n";
+                    body_locals += "    " + body_const(p, p.body_type) + " " + p.name + " = \x01std::forward<" + p.type
+                        + ">(__" + p.name + ");\n";
             }
             const std::string mhead = ret + " " + (opt.aot_optimized ? shell : S) + "::" + bmember + "(" + params;
             const size_t mhead_from = ret.size() + 1 + (opt.aot_optimized ? shell : S).size() + 2;
@@ -6902,7 +7058,7 @@ void translate_impl(
         // A bare "this" used as a handle in a native-base class needs shared_from_this in the
         // shell. The insert stays in one line, so the line numbers do not change.
         // A shell with script children always gets it: a child cannot add it to the parent.
-        const std::string shared_storage = types.storage(cn);
+        const std::string shared_storage = types.cpp_storage("$" + cn, hotc::TypeModel::StorageUse::Local);
         const bool shared_placeholder = shared_storage.rfind("\x01std::shared_ptr<", 0) == 0;
         if ((handle_this || parent_shell) && !par && !cd.base.empty()
             && (shared_placeholder || shared_storage.rfind("std::shared_ptr<", 0) == 0))
@@ -6973,7 +7129,7 @@ void translate_impl(
                 return -1;
             };
             auto ptype = [](const Param& p)
-            { return (p.script_type.empty() ? p.type : p.script_type) + (p.weak ? "[weak]" : "") + (p.value ? "[value]" : ""); };
+            { return (p.script_type.empty() ? p.type : p.script_type) + (p.weak ? "[weak]" : "") + (p.value ? "[box]" : ""); };
             auto rtype = [](const Method& m)
             {
                 const std::string r = m.script_ret.empty() ? m.ret : m.script_ret;
@@ -7182,7 +7338,7 @@ void translate_impl(
         if (!a.resolved.empty() && alias_done.insert(a.name).second)
         {
             o.w("#line " + std::to_string(a.line) + " \"" + esc(file_at(a.pos)) + "\"\n");
-            o.w("using " + a.name + " = " + types.storage(a.resolved) + ";\n");
+            o.w("using " + a.name + " = " + types.cpp_storage(a.resolved, hotc::TypeModel::StorageUse::Local) + ";\n");
             reset();
         }
 

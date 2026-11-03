@@ -551,7 +551,7 @@ std::map<Loader::ModuleKey, uint32_t> Loader::live_by_module() const
 
 namespace
 {
-// True when a field of the layout, or of a [value] struct in it, has the flag kMayHoldCode.
+// True when a field of the layout, or of a struct in it, has the flag kMayHoldCode.
 bool layout_holds_code(const StateLayout* l, int depth = 0)
 {
     if (!l || depth > 32)

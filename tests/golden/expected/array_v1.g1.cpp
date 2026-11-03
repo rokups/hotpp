@@ -109,7 +109,7 @@ struct GridState_g1 {
 
     void Tick(float dt);
     int32_t total();
-    std::array<int32_t, 4> make(std::array<int32_t, 2> p);
+    std::array<int32_t, 4> make(hot::In<std::array<int32_t, 2>> p);
     // Not overridden: call the implementation of Actor.
 #line 5 "array_v1.hot"
     HOT_NODEBUG void __fwd_TakeDamage_f(float a0)
@@ -175,7 +175,7 @@ HOT_HIDDEN GridState_g1* state_of(Grid_Shell* __self)
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Grid__total(Grid_Shell* __self);
-[[maybe_unused]] HOT_HIDDEN static std::array<int32_t, 4> Grid__make(Grid_Shell* __self, std::array<int32_t, 2> p);
+[[maybe_unused]] HOT_HIDDEN static std::array<int32_t, 4> Grid__make(Grid_Shell* __self, hot::In<std::array<int32_t, 2>> p);
 
 #line 5 "array_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static auto Grid__super_args()
@@ -277,13 +277,13 @@ static int32_t Grid__total__thunk(Actor* __a)
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
 #line 26 "array_v1.hot"
-static std::array<int32_t, 4> Grid__make__thunk(Actor* __a, std::array<int32_t, 2> p)
+static std::array<int32_t, 4> Grid__make__thunk(Actor* __a, hot::In<std::array<int32_t, 2>> p)
 #line 26 "array_v1.hot"
 {
 #line 26 "array_v1.hot"
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Grid_Shell*>(__a);
 #line 26 "array_v1.hot"
-    return hot::call<std::array<int32_t, 4>(Actor*, std::array<int32_t, 2>)>(__self, SLOT_make, p);
+    return hot::call<std::array<int32_t, 4>(Actor*, hot::In<std::array<int32_t, 2>>)>(__self, SLOT_make, p);
 #line 26 "array_v1.hot"
 }
 #line 290 "array_v1.hot.cpp"
@@ -405,16 +405,16 @@ int32_t GridState_g1::total()
 #line 406 "array_v1.hot.cpp"
 
 #line 26 "array_v1.hot"
-[[maybe_unused]] HOT_HIDDEN static std::array<int32_t, 4> Grid__make(Grid_Shell* __self, std::array<int32_t, 2> p)
+[[maybe_unused]] HOT_HIDDEN static std::array<int32_t, 4> Grid__make(Grid_Shell* __self, hot::In<std::array<int32_t, 2>> p)
 #line 26 "array_v1.hot"
 {
 #line 26 "array_v1.hot"
-    return state_of(__self)->make(std::forward<std::array<int32_t, 2>>(p));
+    return state_of(__self)->make(std::forward<hot::In<std::array<int32_t, 2>>>(p));
 #line 26 "array_v1.hot"
 }
 #line 416 "array_v1.hot.cpp"
 #line 26 "array_v1.hot"
-std::array<int32_t, 4> GridState_g1::make(std::array<int32_t, 2> p)
+std::array<int32_t, 4> GridState_g1::make(hot::In<std::array<int32_t, 2>> p)
 #line 26 "array_v1.hot"
 {
 #line 26 "array_v1.hot"

@@ -6,11 +6,18 @@ using "Util.h";
 class Probe {
     float last = 0;
     Probe() { }
-    Probe(Vec3* p) { last = p.x; }
-    void Look(Vec3& v) { last = v.x; }
-    void Take(Vec3* p) { last = p.y; }
+    Probe(Vec3* p) {
+        if (p == null) return;
+        last = p.x;
+    }
+    void Look(ref Vec3 v) { last = v.x; }
+    void Take(Vec3* p) {
+        if (p == null) return;
+        last = p.y;
+    }
     // Passes the borrowed values on to native calls and to other methods.
-    float Pass(Vec3& v, Vec3* p) {
+    float Pass(ref Vec3 v, Vec3* p) {
+        if (p == null) return 0;
         Look(v);
         Take(p);
         return Distance(v, *p);
@@ -18,27 +25,30 @@ class Probe {
 }
 
 class Caller : Actor {
-    Probe probe = null;
+    $Probe probe = null;
 
-    float Run(Vec3& v, Vec3* p, bool c) {
+    float Run(ref Vec3 v, Vec3* p, bool c) {
+        if (p == null) return 0;
         Vec3 a;
         Vec3 b;
-        var& r = a;
+        ref r = a;
         var q = &b;
-        probe = new Probe(&a);
-        var other = new Probe(p);
-        probe.Look(v);
-        probe.Take(&a);
-        probe.Take(q);
-        probe.Look(r);
-        probe.Take(c ? &a : &b);
-        probe.Take(c ? p : &a);
-        probe.Take((Vec3*)&a);
-        probe.Take(&*p);
-        var f = (Vec3& w) => { probe.Look(w); };
+        probe = new $Probe(&a);
+        $Probe pb = probe;
+        if (pb == null) return 0;
+        var other = new $Probe(p);
+        pb.Look(v);
+        pb.Take(&a);
+        pb.Take(q);
+        pb.Look(r);
+        pb.Take(c ? &a : &b);
+        pb.Take(c ? p : &a);
+        pb.Take((Vec3*)&a);
+        pb.Take(&*p);
+        var f = (ref Vec3 w) => { pb?.Look(w); };
         f(a);
         f(v);
         float d = Distance(*(c ? &a : &b), *p);
-        return d + probe.Pass(v, p) + other.Pass(*q, &a) + Util.Sum(r);
+        return d + pb.Pass(v, p) + other.Pass(*q, &a) + Util.Sum(r);
     }
 }

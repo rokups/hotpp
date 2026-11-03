@@ -26,12 +26,13 @@ class Spawner : Actor {
     int spawned = 0;
     std.string last = "";
     float seen_x = 0.0;
-    Squad kid;
+    $Squad kid;
 
     override void Tick(float dt) {
-        this.kid = new Squad(std.string("unit"), 2);
-        this.last = this.kid.Name;
-        this.seen_x = this.kid.Position.x;
+        $Squad kid = new $Squad(std.string("unit"), 2);
+        this.kid = kid;
+        this.last = kid.Name;
+        this.seen_x = kid.Position.x;
         this.spawned = this.spawned + 1;
     }
 }

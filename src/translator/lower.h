@@ -69,13 +69,13 @@ struct RCtx
     // another script object are weak when the AST of the field says so.
     std::set<std::string> weak_fields;
     std::set<std::string> weak_locals;
-    // "[value]" uses (design 7.10). "value_fields" has the "[value]" fields of the class and
-    // "value_locals" has the "[value]" parameters and locals. Such a name holds a hot::Value<E>.
-    // A conversion to a "[value]" target copies the object. "new C()" is the exception: the new
-    // object goes into the Value without a copy. A handle that goes to a "[value]" target is copied.
+    // box uses (design 7.10). "value_fields" has the box fields of the class and
+    // "value_locals" has the box parameters and locals. Such a name holds a hot::Value<E>.
+    // A conversion to a box target copies the object. "new C()" is the exception: the new
+    // object goes into the Value without a copy. A handle that goes to a box target is copied.
     std::set<std::string> value_fields;
     std::set<std::string> value_locals;
-    // True when the function that the pass lowers returns a "[value] T".
+    // True when the function that the pass lowers returns a "C" (a bare script class).
     bool ret_value = false;
     bool allow_this = true;
     // True while the pass lowers the body of an "async" method. A "return" becomes "co_return".
@@ -95,7 +95,7 @@ struct RCtx
     const TypeModel* types = nullptr;
     // The names of all classes of the script.
     std::set<std::string> script_classes;
-    // The names of the script interfaces. "new I()" and "[value] I" are errors.
+    // The names of the script interfaces. "new I()" and "box I" are errors.
     std::set<std::string> script_interfaces;
     // The script interfaces by name (design 41b). A call "i.M(a)" of an interface value becomes
     // "I__M(i, a)". The methods give the parameter types for the conversion of the arguments.
@@ -111,7 +111,7 @@ struct RCtx
     //  - "local_type": the declared type of a parameter or a local, and the type of a "var"
     //    local that starts with "new C(...)" of a script class or with a typed member access,
     //  - "ret_type": the script return type of the function that the pass lowers.
-    // With the type of "obj" known as a script class C that is not a [value] class, "obj.f"
+    // With the type of "obj" known as a script class C that is not a struct, "obj.f"
     // reads the field of C, "obj.M(args)" calls the script function M of C and "obj.P" uses
     // the property P of C. If the type is unknown, "obj.P" keeps the old rule (a property of
     // the current class, by name).
@@ -184,7 +184,7 @@ void lower_block(ast::BlockStmt& b, RCtx& cx, Diagnostics& diag);
 // Lowers one expression. The pass can replace the node. With a "target_type" (the script type of
 // the field or the parameter that takes the value), a class handle converts to an interface.
 void lower_expr(ast::ExprP& e, RCtx& cx, Diagnostics& diag, const std::string& target_type = std::string());
-// Lowers the initializer of a "[value]" field of the script type "type". A missing initializer
+// Lowers the initializer of a box field of the script type "type". A missing initializer
 // runs "new T()". The result is a hot::Value expression.
 void lower_value_init(ast::ExprP& e, const std::string& type, RCtx& cx, Diagnostics& diag);
 

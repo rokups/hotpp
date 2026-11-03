@@ -370,8 +370,6 @@ bool plain_type(const std::string& t)
     return true;
 }
 
-// A local without an initializer is value-initialized: zero, null or the default constructor.
-// It is never indeterminate.
 // The names of a structured binding: "[a, b]".
 void binding_names(const std::vector<std::string>& names, const std::vector<uint32_t>& poss, Emitter& e)
 {
@@ -388,9 +386,49 @@ void binding_names(const std::vector<std::string>& names, const std::vector<uint
     e.put("]");
 }
 
+// The C++ type of a local. An empty type is "auto". "is_ref" adds "&". "is_const" is the result of
+// the const inference. A type with a star needs "const" after the star ("T* const"), because
+// "const T*" is a pointer to const. A type that the printer cannot qualify (a function pointer, an
+// array, a reference) stays as it is: no "const" is always correct.
+std::string local_type(const std::string& type, bool is_ref, bool is_const)
+{
+    std::string t = type.empty() ? std::string("auto") : type;
+    const size_t end = t.find_last_not_of(" \t");
+    const bool ends_ref = end != std::string::npos && t[end] == '&';
+    const bool ends_ptr = end != std::string::npos && t[end] == '*';
+    const bool can_const = is_const && !ends_ref && t.find('(') == std::string::npos && t.find('[') == std::string::npos;
+    if (can_const)
+        t = ends_ptr ? t + " const" : t;
+    return is_ref ? t + "&" : t;
+}
+
+// True when the type of a const local takes a "const" before it ("const T"). The "const" is not
+// part of the segment of the type in the source map: a position in the type must stay exact.
+bool west_const(const std::string& type, bool is_const)
+{
+    if (!is_const)
+        return false;
+    const size_t end = type.find_last_not_of(" \t");
+    return type.find('(') == std::string::npos && type.find('[') == std::string::npos
+        && (end == std::string::npos || (type[end] != '&' && type[end] != '*'));
+}
+
+// The type of a local: "const" first when needed, then the type with its own source position.
+void put_local_type(Emitter& e, const std::string& type, bool is_ref, bool is_const, uint32_t pos)
+{
+    if (west_const(type, is_const))
+    {
+        e.put_plain("const", pos);
+        e.space();
+    }
+    e.put(local_type(type, is_ref, is_const), pos);
+}
+
+// A local without an initializer is value-initialized: zero, null or the default constructor.
+// It is never indeterminate.
 void decl(const VarDeclStmt& d, Emitter& e)
 {
-    e.put(std::string(d.is_const ? "const " : "") + (d.type.empty() ? (d.is_ref ? "auto&" : "auto") : d.type), d.pos);
+    put_local_type(e, d.type, d.is_ref, d.is_const, d.pos);
     e.space();
     if (!d.names.empty())
         binding_names(d.names, d.name_poss, e);
@@ -403,7 +441,7 @@ void decl(const VarDeclStmt& d, Emitter& e)
         e.space();
         emit_expr(*d.init, e);
     }
-    else if (!d.type.empty() && !d.is_const)
+    else if (!d.type.empty())
     {
         e.space();
         e.put("=");
@@ -506,7 +544,7 @@ struct StmtPrinter
     {
         e.put("for", n.pos);
         open_paren(e);
-        e.put(std::string(n.is_const ? "const " : "") + (n.type.empty() ? (n.is_ref ? "auto&" : "auto") : n.type));
+        put_local_type(e, n.type, n.is_ref, n.is_const, 0);
         e.space();
         if (!n.names.empty())
             binding_names(n.names, n.name_poss, e);

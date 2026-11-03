@@ -13,7 +13,7 @@ group: Hot script
 using "Actor.h";
 
 class Holder : Actor {
-    void Run(std.unique_ptr<Actor>& p) {
+    void Run(ref std.unique_ptr<Actor> p) {
         // p.Position.x does not compile
         float x = (*p).Position.x;
     }
@@ -36,6 +36,7 @@ These types are checked by default:
 
 - A C array.
 - `std::array<T, N>`.
+- `std::span<T>`. This is the type of `T[]` in the script (see [Arrays](types.html#arrays)).
 - `std::vector<T, A>`. This is a change: an index outside a vector was undefined behavior before. Now it throws.
 - The array type `T[N]` of the script. This includes a custom type from the module attribute `array` (see [The array type](native-interop-attributes.html#the-array-type)).
 

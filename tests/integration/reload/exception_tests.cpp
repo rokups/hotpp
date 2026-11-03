@@ -43,7 +43,7 @@ class Player : Actor {
     override void Tick(float dt) {
         try {
             throw std.runtime_error("boom");
-        } catch (const std.exception& e) {
+        } catch (std.exception e) {
             var w = e.what();
             if (w[0] == 'b') {
                 this.total = this.total + 1.0;
@@ -63,7 +63,7 @@ class Player : Actor {
     }
 
     override void TakeDamage(float amount) {}
-    override void TakeDamage(Actor& source, float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
 }
 )"};
     hot::LoadResult r = backend->load(src, 1);
@@ -119,7 +119,7 @@ class Player : Actor {
     }
 
     override void TakeDamage(float amount) {}
-    override void TakeDamage(Actor& source, float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
 }
 )"};
     hot::LoadResult r = backend->load(src, 1);
@@ -156,7 +156,7 @@ const char* const kChecksTail = R"(
     }
 
     override void TakeDamage(float amount) {}
-    override void TakeDamage(Actor& source, float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
 }
 )";
 
@@ -197,6 +197,68 @@ TEST_P(BackendTests, NullDerefCaughtInScript)
     EXPECT_EQ(*s.field("after"), 0.0f);
 }
 
+const char* const kBoxClass = R"(
+class Box {
+    int n = 3;
+    $Box next;
+}
+)";
+
+// "a?.b" in an expression gives an optional for a value member. A null handle gives an empty one.
+// A handle member keeps its type. A chain of "?." stops at the first null.
+TEST_P(BackendTests, SafeAccessInAnExpression)
+{
+    const hot::ScriptSource src = {"chk_safe_expr.hot", std::string(kChecksHead) + R"(
+        var d = this.weapon?.dmg;
+        if (d == null) { this.caught = 1.0; }
+        this.v = this.weapon?.dmg ?? 7.0;
+        $Box a = new $Box();
+        var n = a?.n;
+        if (n != null) { this.caught2 = 1.0; }
+        $Box none = null;
+        var np = none?.n;
+        if (np == null) { this.after = 1.0; }
+        var deep = a?.next?.n;
+        if (deep == null) { this.ticks = 1.0; }
+)" + kChecksTail + kBoxClass};
+    hot::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
+    s.world.Tick(kDt);
+    EXPECT_EQ(*s.field("caught"), 1.0f);
+    EXPECT_EQ(*s.field("v"), 7.0f);
+    EXPECT_EQ(*s.field("caught2"), 1.0f);
+    EXPECT_EQ(*s.field("after"), 1.0f);
+    EXPECT_EQ(*s.field("ticks"), 1.0f);
+}
+
+// A cast to the same handle type is a checked unwrap: a null handle throws hot::NullReference.
+// The script catches it. A handle that is not null passes.
+TEST_P(BackendTests, CheckedUnwrapCastThrowsOnNull)
+{
+    const hot::ScriptSource src = {"chk_unwrap.hot", std::string(kChecksHead) + R"(
+        $Box a = new $Box();
+        var ok = ($Box)a;
+        this.v = 5.0;
+        $Box none = null;
+        try {
+            var bad = ($Box)none;
+            this.after = 1.0;
+        } catch (NullReference e) {
+            this.caught = 1.0;
+        }
+)" + kChecksTail + kBoxClass};
+    hot::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
+    s.world.Tick(kDt);
+    EXPECT_EQ(*s.field("v"), 5.0f);
+    EXPECT_EQ(*s.field("caught"), 1.0f);
+    EXPECT_EQ(*s.field("after"), 0.0f);
+}
+
 // An index past the end throws hot::IndexOutOfRange. A catch of the base ScriptError also
 // catches a null reference.
 TEST_P(BackendTests, IndexOutOfRangeCaughtInScript)
@@ -222,6 +284,62 @@ TEST_P(BackendTests, IndexOutOfRangeCaughtInScript)
     s.world.Tick(kDt);
     EXPECT_EQ(*s.field("caught"), 1.0f);
     EXPECT_EQ(*s.field("caught2"), 1.0f);
+    EXPECT_EQ(*s.field("after"), 0.0f);
+}
+
+// The script type "T[]" is a std::span<T>. A vector and an array convert to it for a call. A
+// write through the view changes the owner. An index past the end throws and does not crash.
+TEST_P(BackendTests, ViewParameterConvertsAndChecksIndex)
+{
+    const hot::ScriptSource src = {"view_param.hot", R"(
+using "Actor.h";
+using <vector>;
+
+class Player : Actor {
+    std.vector<int> list = [1, 2, 3];
+    int[3] fixed;
+    float sum = 0.0;
+    float caught = 0.0;
+    float after = 0.0;
+
+    int Pick(int[] s, int i) { return s[i]; }
+
+    int Sum(const int[] s) {
+        int total = 0;
+        foreach (var x in s) { total += x; }
+        return total;
+    }
+
+    void Bump(int[] s) {
+        foreach (ref x in s) { x += 1; }
+    }
+
+    override void Tick(float dt) {
+        this.fixed[2] = 4;
+        Bump(this.list);
+        Bump(this.fixed);
+        this.sum = Sum(this.list) + Pick(this.fixed, 2);
+        try {
+            this.after = Pick(this.list, 3);
+        } catch (IndexOutOfRange e) {
+            this.caught = 1.0;
+        }
+    }
+
+    override void TakeDamage(float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
+}
+)"};
+    hot::DefaultBackendOptions options; // std::span needs C++20
+    options.std_version = "c++20";
+    std::unique_ptr<hot::Backend> view_backend = hot::make_default_backend(options);
+    hot::LoadResult r = view_backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
+    s.world.Tick(kDt);
+    EXPECT_EQ(*s.field("sum"), 14.0f); // (2 + 3 + 4) + 5
+    EXPECT_EQ(*s.field("caught"), 1.0f);
     EXPECT_EQ(*s.field("after"), 0.0f);
 }
 
@@ -326,7 +444,7 @@ class Player : Actor {
     }
 
     override void TakeDamage(float amount) {}
-    override void TakeDamage(Actor& source, float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
 }
 )");
     const auto line_of = [&text](const std::string& needle)
@@ -412,7 +530,7 @@ class Player : Actor {
     }
 
     override void TakeDamage(float amount) {}
-    override void TakeDamage(Actor& source, float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
 }
 )"};
     hot::LoadResult r = backend->load(src, 1);

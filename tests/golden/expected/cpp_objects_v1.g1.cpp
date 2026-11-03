@@ -28,7 +28,7 @@ using Spawner = Spawner_Shell;
 #include "Actor.h"
 #line 30 "cpp_objects_v1.cpp.cpp"
 
-// ---------------------------------------------------------------- [value] class HotModule
+// ---------------------------------------------------------------- struct HotModule
 struct HotModule {
     Minion * Minion__s_first_made;
     Minion * minion;

@@ -2,7 +2,7 @@
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
-// Generation 2 of the [value] test. The field "a" stays, so the loader migrates the object in
+// Generation 2 of the test. The field "a" stays, so the loader migrates the object in
 // its box. The field "added" is new and has an initializer. The other fields go away.
 using "Actor.h";
 
@@ -16,23 +16,23 @@ class Sub : Pt {
 }
 
 class Holder : Actor {
-    [value] Pt a;
-    [value] Pt added = new Pt();
+    Pt a;
+    Pt added = new $Pt();
     int ticks = 0;
 
     // The methods of generation 1 stay: a reload cannot remove a slot.
-    int Bump([value] Pt p) {
+    int Bump(Pt p) {
         p.x = p.x + 1;
         return p.x;
     }
 
-    [value] Pt Make(int v) {
-        [value] Pt t = new Pt();
+    Pt Make(int v) {
+        Pt t = new $Pt();
         t.x = v;
         return t;
     }
 
-    [value] Pt Dup() {
+    Pt Dup() {
         return this.a;
     }
 

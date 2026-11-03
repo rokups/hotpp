@@ -439,7 +439,7 @@ static const hot::CtorEntry Base__constructors[] = {
     {nullptr, nullptr, 0}};
 
 
-// ---------------------------------------------------------------- [value] class HotModule
+// ---------------------------------------------------------------- struct HotModule
 struct HotModule {
     Base * last_ticked;
     int kid_casts;

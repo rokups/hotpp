@@ -110,9 +110,9 @@ TEST(InterfaceTranslation, SameSignatureInTwoBasesIsAnError)
         << r.diagnostics;
 }
 
-// "F()" in one base and "F() const" in another base: "const" after the parameters picks the
-// const method. Without it, the non-const method is the default.
-TEST(InterfaceTranslation, ConstMarkSelectsTheConstOverride)
+// "F()" in one base and "F() const" in another base: the non-const method is the default.
+// The script never writes "const" after the parameters.
+TEST(InterfaceTranslation, ConstAndNonConstPairPicksTheNonConstOverride)
 {
     const hotc::TranslateResult ok = run("class Foo : Widget, IConst { }\n");
     EXPECT_TRUE(ok.ok) << ok.diagnostics; // no override: both slots forward
@@ -120,22 +120,14 @@ TEST(InterfaceTranslation, ConstMarkSelectsTheConstOverride)
     ASSERT_TRUE(plain.ok) << plain.diagnostics;
     EXPECT_TRUE(has(plain.cpp, "int Size() override")) << plain.cpp;
     EXPECT_TRUE(has(plain.cpp, "return IConst::Size();")) << plain.cpp;
-    const hotc::TranslateResult marked =
-        run("class Foo : Widget, IConst {\n    override int Size() const { return 4; }\n}\n");
-    ASSERT_TRUE(marked.ok) << marked.diagnostics;
-    EXPECT_TRUE(has(marked.cpp, "int Size() const override")) << marked.cpp;
-    EXPECT_TRUE(has(marked.cpp, "return Widget::Size();")) << marked.cpp;
-    const hotc::TranslateResult arrow = run("class Foo : Widget, IConst {\n    override int Size() const => 4;\n}\n");
-    EXPECT_TRUE(arrow.ok) << arrow.diagnostics;
 }
 
-// "const" on a method whose native virtual is not const is an error.
-TEST(InterfaceTranslation, ConstMarkOnANonConstVirtualIsAnError)
+// "const" after the parameters of a method is an error: the const is inferred.
+TEST(InterfaceTranslation, ConstMarkOnAMethodIsAnError)
 {
     const hotc::TranslateResult r = run("class Foo : Widget {\n    override int Size() const { return 4; }\n}\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "'Size' is marked const but the native virtual of Widget is not const"))
-        << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "const is inferred; remove it")) << r.diagnostics;
 }
 
 // A lone const native virtual matches an override without the marker.
@@ -144,8 +136,6 @@ TEST(InterfaceTranslation, SingleConstVirtualNeedsNoMarker)
     const hotc::TranslateResult r = run("class Foo : IName {\n    override int Id() { return 4; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "int Id() const override")) << r.cpp;
-    const hotc::TranslateResult m = run("class Foo : IName {\n    override int Id() const { return 4; }\n}\n");
-    EXPECT_TRUE(m.ok) << m.diagnostics;
 }
 
 // A final virtual of an interface base cannot be overridden. A final interface class is an error.

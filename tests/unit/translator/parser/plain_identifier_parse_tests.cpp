@@ -71,7 +71,7 @@ TEST(PlainIdentifierParse, OldWordsAreClassNames)
 TEST(PlainIdentifierParse, ValueAttributeOnAScriptClassIsAnError)
 {
     const std::string d = errors_of_script("[value] class Foo { }\n");
-    EXPECT_NE(d.find("t:1:2: error: '[value]' is not allowed on a script class: use 'struct'"), std::string::npos) << d;
+    EXPECT_NE(d.find("t:1:2: error: [value] is removed; write the type without [value]"), std::string::npos) << d;
     // A native stub still takes the attribute.
     EXPECT_EQ(errors_of_script("[native, value] class std.string;\n"), "");
     // A struct is the way to make a value type.

@@ -298,3 +298,15 @@ TEST(DiagRewrite, TranslatorDiagnosticKeepsOtherLinesAndCountsAll)
         "1 warning and 3 errors generated.\n");
     EXPECT_EQ(hotc::rewrite_translator_diagnostic("", {{"a.hot", script}}), "");
 }
+
+TEST(DiagRewrite, InTraitOfAPlainParameterBecomesTheType)
+{
+    const std::string in = "a.hot:3:5: error: no viable conversion from 'int' to 'hot::In<Vec3>'\n";
+    EXPECT_EQ(rewrite_diagnostic(in), "a.hot:3:1: error: cannot convert 'int' to 'Vec3'\n");
+}
+
+TEST(DiagRewrite, InTraitWithTemplateArgumentsBecomesTheType)
+{
+    EXPECT_EQ(hotc::rewrite_clang_message("cannot bind 'hot::In<std::vector<int, std::allocator<int>>>' and 'hot::In<Big>'"),
+        "cannot bind 'std.vector<int, std.allocator<int>>' and 'Big'");
+}

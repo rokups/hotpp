@@ -87,7 +87,7 @@ class Player : Actor {
     }
 
     override void TakeDamage(float amount) {}
-    override void TakeDamage(Actor& source, float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
 }
 )"};
     hot::LoadResult r = backend->load(src, 1);
@@ -123,7 +123,7 @@ class Player : Actor {
     }
 
     override void TakeDamage(float amount) {}
-    override void TakeDamage(Actor& source, float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
 }
 )"};
     hot::LoadResult r = backend->load(src, 1);

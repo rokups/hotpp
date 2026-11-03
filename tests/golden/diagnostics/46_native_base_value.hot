@@ -1,0 +1,11 @@
+using "Actor.h";
+
+class Player : Actor {
+    int hp = 10;
+}
+
+class Game {
+    void Start() {
+        Player p = new Player();
+    }
+}

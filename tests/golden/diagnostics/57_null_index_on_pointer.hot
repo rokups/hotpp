@@ -1,0 +1,3 @@
+class Reader {
+    int First(int* values) { return values[0]; }
+}

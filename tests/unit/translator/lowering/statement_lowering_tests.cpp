@@ -34,15 +34,23 @@ TEST(StatementLowering, Numbers)
 TEST(StatementLowering, NullAndDeclarations)
 {
     Fixture f;
-    EXPECT_EQ(f.body("var p = null; const Actor* q = null; int k;"),
-        "auto p = nullptr; const Actor* q = nullptr; int32_t k = int32_t();");
+    EXPECT_EQ(f.body("var p = 1; Actor* q = null; int k;"),
+        "auto p = 1; Actor* q = nullptr; int32_t k = int32_t();");
+    EXPECT_EQ(f.errors(), std::vector<std::string>{});
+}
+
+TEST(StatementLowering, VarOfNullHasNoType)
+{
+    Fixture f;
+    f.body("var p = null;");
+    EXPECT_EQ(f.errors(), (std::vector<std::string>{"1:9: null has no type; write the type"}));
 }
 
 TEST(StatementLowering, ForOf)
 {
     Fixture f;
     EXPECT_EQ(f.body("foreach (var x in xs) { this.n = x; }"), "for (auto x : xs) { __st->n = x; }");
-    EXPECT_EQ(f.body("foreach (const var y in ys) { }"), "for (const auto y : ys) {}");
+    EXPECT_EQ(f.body("foreach (var y in ys) { }"), "for (auto y : ys) {}");
 }
 
 TEST(StatementLowering, ForAndControl)

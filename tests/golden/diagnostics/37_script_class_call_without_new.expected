@@ -1,3 +1,3 @@
-37_script_class_call_without_new.hot:9:20: error: 'Helper' is a script class. Create it with 'new Helper()'.
-    9 |         Helper h = Helper();
+37_script_class_call_without_new.hot:9:21: error: 'Helper' is a script class. Create it with 'new Helper()'.
+    9 |         $Helper h = Helper();
 1 error generated.

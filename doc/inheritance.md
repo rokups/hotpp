@@ -46,25 +46,24 @@ These rules apply to the bases:
 - The first base gets the constructor arguments.
 - Each other base needs a default constructor.
 - A signature in two bases is an error.
-- A method pair `F()` and `F() const` needs a marker. See below.
+- A method pair `F()` and `F() const` takes the non-const method. See below.
 - Only the root class of a family can have interface bases. A child class gets them from the root.
 
 ### Const methods
 
-Two native bases can have `F()` and `F() const` as virtual methods. Write `const` after the parameters to select the const method.
+Two native bases can have `F()` and `F() const` as virtual methods. A script method never has `const` after the parameters. The error is `const is inferred; remove it`.
 
-- Without `const`, the override matches by name and parameters. If both methods match, the non-const method wins.
-- A native base with only a const method matches an override without `const`.
-- `const` on an override whose native method is not const is an error.
+- The override matches by name and parameters. If both methods match, the non-const method wins.
+- A native base with only a const method matches the override. The generated method is const.
 
 ```hot
 class Foo : Widget, IConst {
     // Widget has `Size()` and IConst has `Size() const`.
-    override int Size() const => 2; // overrides the const method of IConst
+    override int Size() => 2; // overrides the non-const method of Widget
 }
 ```
 
-A script class has one method for each name. The marker only selects the native method. The body can still write the fields of `this`.
+A script class has one method for each name. The body can write the fields of `this`.
 
 ### Parameter forms of an override
 
@@ -83,11 +82,12 @@ class Foo : Gun {
 }
 ```
 
+- An override copies the native parameter text. A plain parameter matches `T`. An `in T` parameter matches `const T&`. A `ref T` parameter matches `T&`. The default rule for plain parameters is for new methods only.
 - The exact native spelling always works and wins. `override void Hit(Weapon* w)` is the exact form.
 - If two native methods carry the same handle type, the override is ambiguous. The error lists each method. Write the exact parameter type.
 - If no native method matches, the error `hides the virtual method` lists the candidates. A `.cpp` script also gets a hint with the native parameter type.
 - A `std::shared_ptr` stub needs `std::enable_shared_from_this` in the native class to take a `T*` or a `T&`. Without it, the C++ compile stops with a message. Write the exact type instead.
-- A `const Weapon*` or `const Weapon&` binds a normal handle. A script handle has no `const`. The handle gives write access even when the native method passes `const`. Do not write to it.
+- A `const Weapon*` or `const Weapon&` binds a normal handle. A script handle has no `const`: the translator infers it. The handle gives write access even when the native method passes `const`. Do not write to it.
 - An intrusive stub (`intrusive("AddRef", "Release")`) adds a reference for a `T*`.
 - A `T*` of an object that no `std::shared_ptr` owns throws `NullReference` in the override. A null `T*` gives a null handle.
 - A `.cpp` script does not use this rule. It writes the exact native type.
@@ -222,9 +222,9 @@ class Scene {
         return sum;
     }
     void Add() {
-        IShape s = new Disc();     // implicit conversion
+        IShape s = new $Disc();     // implicit conversion
         shapes.push_back(s);
-        if (s is Disc) { Disc d = s as Disc; }
+        if (s is $Disc) { $Disc d = s as $Disc; }
         if (s is IShape) { }       // true when the class implements it
     }
 }
@@ -240,7 +240,6 @@ The compiler gives an error for these uses:
 |---|---|
 | `new IShape()` | `cannot create an instance of the interface 'IShape'` |
 | `[weak] IShape s;` | `[weak] cannot be used with the interface 'IShape': an interface handle is not a class handle. Remove '[weak]'` |
-| `[value] IShape s;` | `[value] cannot be used with the interface 'IShape': an interface handle is not a class handle. Remove '[value]'` |
 | `class C : IShape, X`: an interface before the parent class | `the interface 'IShape' cannot be the base class of 'C': list the base class 'X' first and the interfaces after it` |
 | `class C : Actor, IShape, IShape`: the same interface twice | `'IShape' is listed twice` |
 | `struct S : IShape` | `a struct cannot implement the interface 'IShape'` |

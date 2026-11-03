@@ -40,6 +40,17 @@ TEST(CheckedPtr, EmptyPointerIsNull)
     EXPECT_EQ(q.get(), nullptr);
 }
 
+// The cast "(T*)fld" of a weak native field is a checked unwrap: a null target throws.
+TEST(CheckedPtr, CastPtrIsACheckedUnwrap)
+{
+    hot::CheckedPtr<Charm> n;
+    EXPECT_THROW(hot::cast_ptr<Charm*>(n), hot::NullReference);
+    EXPECT_THROW(hot::cast_ptr<const Charm*>(n), hot::NullReference);
+    auto strong = std::make_shared<Charm>();
+    hot::CheckedPtr<Charm> p = strong;
+    EXPECT_EQ(hot::cast_ptr<Charm*>(p), strong.get());
+}
+
 TEST(CheckedPtr, LiveReadFromHandle)
 {
     auto strong = std::make_shared<Charm>();

@@ -84,7 +84,7 @@ TEST(StatementParseLimits, Truncation)
 {
     // Each prefix of a long block ends: no crash and no hang.
     const std::string full =
-        "var a = 1;\nconst std.vector<int> b = f(1, 2);\nif (a < b) { f(a); } else g(b);\n"
+        "var a = 1;\nstd.vector<int> b = f(1, 2);\nif (a < b) { f(a); } else g(b);\n"
         "while (a) a--;\ndo { a++; } while (a < 3);\n"
         "for (var i = 0; i < n; i++) { f(i); }\nforeach (Actor* x in xs) f(x);\n"
         "for (i = 0, j = 1; i < n; i++, j--) ;\nswitch (a) { case 1: case A.B: f(); break;\n"
@@ -95,7 +95,7 @@ TEST(StatementParseLimits, Truncation)
         "u = 21;\nv = 22;\nw = 23;\nx = 24;\ny = 25;\nz = 26;\nbreak;\ncontinue;\n"
         "if (a) {\n  b = 1;\n  while (c) {\n    d();\n  }\n}\nforeach (var k in ks) {\n  f(k);\n}\n"
         "switch (a) {\n  case 1:\n    f();\n  default:\n    g();\n}\nint z;\nz = 1;\nz = 2;\nz = 3;\n"
-        "try {\n  f();\n} catch (const std.exception& e) {\n  throw;\n} catch (...) {\n  throw 1;\n}\n";
+        "try {\n  f();\n} catch (std.exception e) {\n  throw;\n} catch (...) {\n  throw 1;\n}\n";
     size_t lines = 0;
     for (char c : full)
         lines += c == '\n';

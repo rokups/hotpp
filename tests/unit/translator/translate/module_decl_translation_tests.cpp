@@ -126,7 +126,7 @@ TEST(ModuleDeclTranslation, ErrorEnumUnderlyingType)
 
 TEST(ModuleDeclTranslation, ErrorModuleVariableOfAScriptHandleClass)
 {
-    expect_error("class H { int n; }\nH h;\nclass C : Unit { }\n",
+    expect_error("class H { int n; }\n$H h;\nclass C : Unit { }\n",
         "a module variable can use only native types, enums and structs");
 }
 
@@ -231,7 +231,7 @@ TEST(ModuleDeclTranslation, AliasOfAScriptClassIsAHandle)
 {
     const auto r = translate_alias(
         "class Unit2 : Unit { int hp = 1; }\n"
-        "using Soldier = Unit2;\n"
+        "using Soldier = $Unit2;\n"
         "class A : Unit {\n"
         "    Soldier lead;\n"
         "    std.vector<Soldier> squad;\n"

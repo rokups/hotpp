@@ -597,7 +597,7 @@ std::shared_ptr<Charm> HolderState_g1::Make(int32_t power)
 #line 44 "handle_override_v1.hot"
     HOT_TRACE_FRAME("Holder.Make", "handle_override_v1.hot");
 #line 44 "handle_override_v1.hot"
-    HOT_TRACE_LINE(); std::shared_ptr<Charm> c = std::make_shared<Charm>();
+    HOT_TRACE_LINE(); const std::shared_ptr<Charm> c = std::make_shared<Charm>();
 #line 45 "handle_override_v1.hot"
     HOT_TRACE_LINE(); hot::deref(c).power = power;
 #line 46 "handle_override_v1.hot"

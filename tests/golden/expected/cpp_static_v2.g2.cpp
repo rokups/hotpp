@@ -36,7 +36,7 @@ constexpr int Counter__s_kFactor = 3;
 
 #line 38 "cpp_static_v2.cpp.cpp"
 
-// ---------------------------------------------------------------- [value] class HotModule
+// ---------------------------------------------------------------- struct HotModule
 struct HotModule {
     float Counter__s_count;
     int Counter__s_hits;

@@ -26,7 +26,7 @@ using Bumper = Bumper_Shell;
 #include "Actor.h"
 #line 28 "cpp_namespace_fn.cpp.cpp"
 
-// ---------------------------------------------------------------- [value] class HotModule
+// ---------------------------------------------------------------- struct HotModule
 struct HotModule {
     int total;
 };

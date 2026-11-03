@@ -336,6 +336,7 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
     to.resource_dir = opt_.resource_dir.empty() ? default_paths().resource_dir : opt_.resource_dir;
     to.std_version = opt_.std_version.empty() ? cxx_std_name() : opt_.std_version;
     to.strict_borrowed = opt_.strict_borrowed;
+    to.null_warnings = opt_.null_warnings;
     to.format_lib = format_lib_name();
     to.fs = opt_.fs;
     to.preludes = opt_.preludes;

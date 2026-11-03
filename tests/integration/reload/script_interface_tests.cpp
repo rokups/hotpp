@@ -141,7 +141,7 @@ TEST_P(BackendTests, InterfaceValueSurvivesReloadsThatKeepAndMoveTheSlots)
     EXPECT_EQ(*fld<std::string>(s, "name"), "wide");
 }
 
-// Reference, const reference, [weak], [value] and script class parameters (F3). The call must
+// Reference, const reference, [weak], and script class parameters (F3). The call must
 // find the slot (the row signature equals the helper signature) and pass the values right.
 TEST_P(BackendTests, InterfaceMethodsWithEachKindOfParameter)
 {
@@ -156,7 +156,7 @@ TEST_P(BackendTests, InterfaceMethodsWithEachKindOfParameter)
     EXPECT_EQ(*fld<int>(s, "r_const"), 3);
     EXPECT_EQ(*fld<int>(s, "r_weak"), 1);
     EXPECT_EQ(*fld<int>(s, "r_val"), 2);
-    EXPECT_EQ(*fld<int>(s, "r_val_after"), 1); // a [value] argument is a copy
+    EXPECT_EQ(*fld<int>(s, "r_val_after"), 1); // a argument is a copy
     EXPECT_EQ(*fld<int>(s, "r_handle"), 11);
 }
 

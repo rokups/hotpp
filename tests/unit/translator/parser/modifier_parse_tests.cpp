@@ -162,25 +162,18 @@ TEST(ModifierParse, Errors)
     }
 }
 
-// "const" after the parameters selects the const native virtual method.
-TEST(ModifierParse, ConstMarkAfterTheParameters)
+// The script never writes "const" after the parameters: the const inference does not change a method.
+TEST(ModifierParse, ConstMarkAfterTheParametersIsAnError)
 {
+    for (const char* text : {"override int Size() const { return 1; }", "int Size() const => 1;"})
     {
-        ModParsed p(member_class("override int Size() const { return 1; }"));
-        EXPECT_TRUE(p.errors().empty());
-        EXPECT_TRUE(p.method().is_const);
-        EXPECT_TRUE(p.method().is_override);
-        EXPECT_FALSE(p.method().expr_body);
-    }
-    {
-        ModParsed p(member_class("int Size() const => 1;"));
-        EXPECT_TRUE(p.errors().empty());
-        EXPECT_TRUE(p.method().is_const);
-        EXPECT_TRUE(p.method().expr_body);
+        ModParsed p(member_class(text));
+        EXPECT_EQ(p.errors().size(), 1u);
+        ASSERT_FALSE(p.errors().empty());
+        EXPECT_NE(p.errors()[0].find("const is inferred; remove it"), std::string::npos) << p.errors()[0];
     }
     {
         ModParsed p(member_class("override int Size() { return 1; }"));
         EXPECT_TRUE(p.errors().empty());
-        EXPECT_FALSE(p.method().is_const);
     }
 }

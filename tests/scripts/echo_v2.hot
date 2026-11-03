@@ -13,7 +13,7 @@ class Echo : Actor {
         this.ticks = this.ticks + 1;
     }
 
-    Echo Self() {
+    $Echo Self() {
         return this;
     }
 }

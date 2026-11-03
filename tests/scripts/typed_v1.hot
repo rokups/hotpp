@@ -21,22 +21,24 @@ class Link : Actor {
         this.hits = this.hits + n;
     }
 
-    Link Self() {
+    $Link Self() {
         return this;
     }
 }
 
 class Chain : Actor {
-    Link first;
+    $Link first;
     int power = 0;
     int seen = 0;
 
     override void Tick(float dt) {
-        this.first = new Link(std.string("link"));
-        this.first.Hit(3);
-        this.first.hits = this.first.hits + 1;
-        this.power = this.first.Power;
-        var same = this.first.Self();
+        $Link first = new $Link(std.string("link"));
+        this.first = first;
+        first.Hit(3);
+        first.hits = first.hits + 1;
+        this.power = first.Power;
+        var same = first.Self();
+        if (same == null) return;
         same.Hit(1);
         this.seen = same.hits;
     }

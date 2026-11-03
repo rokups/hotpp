@@ -45,17 +45,17 @@ std::string script(const std::string& body)
 TEST(StructuredBindingTranslation, LocalForms)
 {
     const hotc::TranslateResult r = translate_with_header(
-        script("var (a, b) = Mk(); var& (c, d) = this.pr; const var (e, f) = Mk(); int s = a + b + c + d + e + f;"));
+        script("var (a, b) = Mk(); ref (c, d) = this.pr; var (e, f) = Mk(); int s = a + b + c + d + e + f;"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "auto [a, b] = A__Mk(__self);")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "auto& [c, d] = __st->pr;")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "const auto [e, f] = A__Mk(__self);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "auto [e, f] = A__Mk(__self);")) << r.cpp;
 }
 
 TEST(StructuredBindingTranslation, ForeachForms)
 {
     const hotc::TranslateResult r = translate_with_header(
-        script("int s = 0; foreach (var (k, v) in this.m) s += k + v; foreach (var& (k, v) in this.m) v += 1;"
+        script("int s = 0; foreach (var (k, v) in this.m) s += k + v; foreach (ref (k, v) in this.m) v += 1;"
                " foreach (var (i, x) in enumerate(this.m)) s += x; foreach (int i in range(3)) s += i;"
                " foreach (int i in range(1, 3)) s += i;"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
@@ -75,7 +75,7 @@ TEST(StructuredBindingTranslation, NamesAreLocals)
 
 TEST(StructuredBindingTranslation, RefBindingIsBorrowedForALambda)
 {
-    const hotc::TranslateResult r = translate_with_header(script("var& (c, d) = this.pr; var f = () => c + d;"));
+    const hotc::TranslateResult r = translate_with_header(script("ref (c, d) = this.pr; var f = () => c + d;"));
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'c', a borrowed pointer or reference")) << r.diagnostics;
 }
@@ -83,7 +83,7 @@ TEST(StructuredBindingTranslation, RefBindingIsBorrowedForALambda)
 TEST(StructuredBindingTranslation, ForeachRefBindingIsBorrowedForALambda)
 {
     const hotc::TranslateResult r =
-        translate_with_header(script("foreach (var& (k, v) in this.m) { var f = () => k + v; }"));
+        translate_with_header(script("foreach (ref (k, v) in this.m) { var f = () => k + v; }"));
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'k', a borrowed pointer or reference")) << r.diagnostics;
 }
@@ -101,13 +101,13 @@ TEST(StructuredBindingTranslation, MalformedBindingIsAnError)
 TEST(StructuredBindingTranslation, RefBindingCannotBindToATemporaryRange)
 {
     hotc::TranslateResult r =
-        translate_with_header(script("int s = 0; foreach (var& (i, x) in enumerate(this.m)) s += x;"));
+        translate_with_header(script("int s = 0; foreach (ref (i, x) in enumerate(this.m)) s += x;"));
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "'var&' cannot bind to the temporary value of 'enumerate'; use 'var (i, x)'"))
+    EXPECT_TRUE(has(r.diagnostics, "'ref' cannot bind to the temporary value of 'enumerate'; use 'var (i, x)'"))
         << r.diagnostics;
-    r = translate_with_header(script("int s = 0; foreach (var& i in range(3)) s += i;"));
+    r = translate_with_header(script("int s = 0; foreach (ref i in range(3)) s += i;"));
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "'var&' cannot bind to the temporary value of 'range'; use 'var i'"))
+    EXPECT_TRUE(has(r.diagnostics, "'ref' cannot bind to the temporary value of 'range'; use 'var i'"))
         << r.diagnostics;
 }
 

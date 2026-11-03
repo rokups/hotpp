@@ -21,8 +21,8 @@ using namespace lowering_test;
 TEST(NameResolutionLowering, CatchNameIsALocal)
 {
     Fixture f;
-    EXPECT_EQ(f.body("try { throw 1; } catch (std.exception& e) { e.what(); } catch (...) { throw; }"),
-        "try { throw 1; } catch (\x01std::exception& e) { hot::deref(e).what(); } "
+    EXPECT_EQ(f.body("try { throw 1; } catch (std.exception e) { e.what(); } catch (...) { throw; }"),
+        "try { throw 1; } catch (const \x01std::exception& e) { hot::deref(e).what(); } "
         "catch (...) { throw; }");
     EXPECT_EQ(f.body("throw this.health;"), "throw __st->health;");
     EXPECT_EQ(f.diag.items.size(), 0u);
@@ -132,7 +132,7 @@ TEST(NameResolutionLowering, BareNativeBaseMember)
     EXPECT_EQ(f.diag.items.size(), 0u);
 }
 
-// In a [value] class the functions are free functions, so a bare field is "__st->f".
+// In a class the functions are free functions, so a bare field is "__st->f".
 TEST(NameResolutionLowering, BareFieldOfAValueClass)
 {
     Fixture f;

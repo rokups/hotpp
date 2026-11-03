@@ -26,7 +26,7 @@ using Scaler = Scaler_Shell;
 #include "Actor.h"
 #line 28 "cpp_template_fn.cpp.cpp"
 
-// ---------------------------------------------------------------- [value] class HotModule
+// ---------------------------------------------------------------- struct HotModule
 struct HotModule {
     int total;
 };

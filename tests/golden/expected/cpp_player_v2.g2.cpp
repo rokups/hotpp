@@ -45,7 +45,7 @@ struct Point
 
 #line 47 "cpp_player_v2.cpp.cpp"
 
-// ---------------------------------------------------------------- [value] class HotModule
+// ---------------------------------------------------------------- struct HotModule
 struct HotModule {
     float total;
 };

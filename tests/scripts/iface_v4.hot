@@ -16,7 +16,7 @@ class C : Actor, IThing {
 }
 
 class Holder : Actor {
-    C obj;
+    $C obj;
     IThing keep;
     int r = 0;
     int is_i = -1;
@@ -27,7 +27,7 @@ class Holder : Actor {
     override void Tick(float dt) {
         this.ticks = this.ticks + 1;
         if (this.keep == null) {
-            this.obj = new C();
+            this.obj = new $C();
             this.keep = this.obj;
         }
         this.is_i = 0;

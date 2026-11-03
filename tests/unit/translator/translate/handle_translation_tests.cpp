@@ -48,7 +48,7 @@ TEST(HandleTranslation, StoredParamTakesACopyInTheBody)
     const std::string p = "const std::shared_ptr<Weapon>& src";
     EXPECT_TRUE(has(r.cpp, "static void Foo__Hit(Foo_Shell* __self, std::shared_ptr<Weapon> src);")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "void FooState_g1::Hit(" + p.substr(0, p.size() - 3) + "__src)")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "std::shared_ptr<Weapon> src = std::forward<" + p.substr(0, p.size() - 4) + ">(__src);"))
+    EXPECT_TRUE(has(r.cpp, "std::shared_ptr<Weapon> const src = std::forward<" + p.substr(0, p.size() - 4) + ">(__src);"))
         << r.cpp;
     EXPECT_TRUE(has(r.cpp, "static void Foo__Hit__thunk(Widget* __a, " + p + ")")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "__st->w = src;")) << r.cpp;
@@ -57,7 +57,7 @@ TEST(HandleTranslation, StoredParamTakesACopyInTheBody)
 TEST(HandleTranslation, ReferenceParamIsNotRewritten)
 {
     const hotc::TranslateResult r =
-        weapon_translate("    Weapon w = null;\n    void Swap(Weapon& wp, Vec3& v) { this.w = wp; Vec3& r = v; }\n");
+        weapon_translate("    Weapon w = null;\n    void Swap(ref Weapon wp, ref Vec3 v) { this.w = wp; ref Vec3 r = v; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     const std::string p = "Weapon& wp, Vec3& v";
     EXPECT_TRUE(has(r.cpp, "static void Foo__Swap(Foo_Shell* __self, " + p + ");")) << r.cpp;
@@ -69,7 +69,7 @@ TEST(HandleTranslation, ReferenceParamIsNotRewritten)
 TEST(HandleTranslation, ReferenceArgumentInACall)
 {
     const hotc::TranslateResult r =
-        weapon_translate("    void Fill(Vec3& v) { }\n    void Run() { Vec3 p; this.Fill(p); }\n");
+        weapon_translate("    void Fill(ref Vec3 v) { }\n    void Run() { Vec3 p; this.Fill(p); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "Foo__Fill(__self, p);")) << r.cpp;
 }
@@ -78,7 +78,7 @@ TEST(HandleTranslation, ParamPassedToAReferenceParamTakesACopyInTheBody)
 {
     // "Fill(p)" can rebind "p" through the "T&" parameter: the body takes a copy (design 7.10.5).
     const hotc::TranslateResult r = weapon_translate(
-        "    void Fill(Weapon& v) { }\n    void Run(Weapon p) { this.Fill(p); }\n"
+        "    void Fill(ref Weapon v) { }\n    void Run(Weapon p) { this.Fill(p); }\n"
         "    void Read(Weapon v) { }\n    void Look(Weapon p) { this.Read(p); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "std::shared_ptr<Weapon> p = std::forward<")) << r.cpp;
@@ -91,7 +91,7 @@ TEST(HandleTranslation, AddressOfAPointerLocalGivesANativeOutParameter)
 {
     // "Find(&w)" fills a "Weapon*": the parameter is a "Weapon**".
     const hotc::TranslateResult r =
-        weapon_translate("    void Find(Weapon** out) { }\n    void Run() { Weapon* w = null; this.Find(&w); }\n");
+        weapon_translate("    void Find(Weapon** result) { }\n    void Run() { Weapon* w = null; this.Find(&w); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "Foo__Find(__self, &w);")) << r.cpp;
 }
@@ -168,6 +168,7 @@ TEST(HandleTranslation, DereferenceAndMultiplyEmitCorrectly)
     const hotc::TranslateResult r = weapon_translate(
         "    void Hit(Weapon src) { }\n"
         "    int Run(int* it, Weapon h) {\n"
+        "        if (it == null || h == null) return 0;\n"
         "        int a = *it; int b = (*it) + 1; int n = 2; int c = n * *it; this.Hit(*h); return a + b + c;\n"
         "    }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
@@ -258,7 +259,7 @@ TEST(HandleTranslation, GetOnAHandleIsAMemberOfThePointee)
 TEST(HandleTranslation, ThisIsAHandleArgumentForAScriptHandleParameter)
 {
     const hotc::TranslateResult r = weapon_translate(
-        "    void Hurt(Foo h, float d) { }\n    void Run(Foo other) { other.Hurt(this, 2.0); this.Hurt(this, 1.0); "
+        "    void Hurt($Foo h, float d) { }\n    void Run($Foo other) { if (other == null) return; other.Hurt(this, 2.0); this.Hurt(this, 1.0); "
         "}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::handle_from_this<std::shared_ptr<Foo>>(__self), 2.0f")) << r.cpp;
@@ -268,7 +269,7 @@ TEST(HandleTranslation, ThisIsAHandleArgumentForAScriptHandleParameter)
 TEST(HandleTranslation, VarOfThisIsAHandle)
 {
     const hotc::TranslateResult r = weapon_translate(
-        "    void Join(Foo h) { }\n    void Nat(Actor* a) { }\n"
+        "    void Join($Foo h) { }\n    void Nat(Actor* a) { }\n"
         "    void Run() { var me = this; Join(me); Join(this); Nat(this); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "auto me = hot::handle_from_this<std::shared_ptr<Foo>>(__self);")) << r.cpp;
@@ -280,12 +281,12 @@ TEST(HandleTranslation, VarOfThisIsAHandle)
 TEST(HandleTranslation, ThisCannotBindToAScriptClassReferenceParameter)
 {
     const hotc::TranslateResult r =
-        weapon_translate("    void Take(Foo& h) { }\n    void Run(Foo other) { other.Take(this); }\n");
+        weapon_translate("    void Take(ref $Foo h) { }\n    void Run($Foo other) { if (other == null) return; other.Take(this); }\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "'this' cannot bind to the reference parameter 'h' of the script class 'Foo'"))
+    EXPECT_TRUE(has(r.diagnostics, "'this' cannot bind to the reference parameter 'h' of the script class '$Foo'"))
         << r.diagnostics;
     const hotc::TranslateResult ok =
-        weapon_translate("    void Take(Foo& h) { }\n    void Run(Foo other) { Foo me = this; other.Take(me); }\n");
+        weapon_translate("    void Take(ref $Foo h) { }\n    void Run($Foo other) { if (other == null) return; $Foo me = this; other.Take(me); }\n");
     EXPECT_TRUE(ok.ok) << ok.diagnostics;
 }
 
@@ -297,7 +298,7 @@ TEST(HandleTranslation, UniquePtrFieldIsAnError)
     EXPECT_TRUE(has(r.diagnostics, "field of move-only type 'std::unique_ptr<Weapon>' is not supported"))
         << r.diagnostics;
     const hotc::TranslateResult loc =
-        weapon_translate("    void Run(std.unique_ptr<Weapon>& p) { std.unique_ptr<Weapon> q; }\n");
+        weapon_translate("    void Run(ref std.unique_ptr<Weapon> p) { std.unique_ptr<Weapon> q; }\n");
     EXPECT_TRUE(loc.ok) << loc.diagnostics;
 }
 
@@ -305,7 +306,7 @@ TEST(HandleTranslation, UniquePtrFieldIsAnError)
 TEST(HandleTranslation, LambdaParameterDoesNotLeakItsType)
 {
     const hotc::TranslateResult r = weapon_translate(
-        "    void Take(int* q) { }\n    void F(Foo f) { }\n"
+        "    void Take(int* q) { }\n    void F($Foo f) { }\n"
         "    void Run() { int h = 0; var l = (Weapon h) => 1; this.Take(&h); }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_FALSE(has(r.diagnostics, "'&' on the handle")) << r.diagnostics;
@@ -315,10 +316,10 @@ TEST(HandleTranslation, LambdaParameterDoesNotLeakItsType)
 TEST(HandleTranslation, CastToAHandleReferenceOrPointerIsAnError)
 {
     const char* hint = "use 'as' or static_cast<";
-    for (const char* cast : {"(Weapon&)h", "(Weapon*)h", "(Weapon**)h", "(const Weapon&)h", "(Foo&)f", "(Foo*)f"})
+    for (const char* cast : {"(Weapon*)h", "(Weapon**)h", "(Foo*)f"})
     {
         const hotc::TranslateResult r =
-            weapon_translate(std::string("    void Run(Weapon h, Foo f) { var x = ") + cast + "; }\n");
+            weapon_translate(std::string("    void Run(Weapon h, $Foo f) { var x = ") + cast + "; }\n");
         EXPECT_FALSE(r.ok) << cast;
         EXPECT_TRUE(has(r.diagnostics, hint)) << cast << "\n" << r.diagnostics;
     }
@@ -327,16 +328,16 @@ TEST(HandleTranslation, CastToAHandleReferenceOrPointerIsAnError)
 TEST(HandleTranslation, CastToABuiltinOrNativeValueTypeIsAllowed)
 {
     const hotc::TranslateResult r = weapon_translate(
-        "    void Run(Vec3* v, float f, int* n) { var a = (Vec3*)v; var b = (float&)f; var c = (int*)n; var d = "
+        "    void Run(Vec3* v, float f, int* n) { var a = (Vec3*)v; var c = (int*)n; var d = "
         "(int)f; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
-// "T*&" of a script class is a reference to a handle too: "this" cannot bind to it.
+// "ref T*" of a script class is a reference to a handle too: "this" cannot bind to it.
 TEST(HandleTranslation, ThisCannotBindToAPointerReferenceParameter)
 {
     const hotc::TranslateResult r =
-        weapon_translate("    void Take(Foo*& h) { }\n    void Run(Foo other) { other.Take(this); }\n");
+        weapon_translate("    void Take(ref Foo* h) { }\n    void Run($Foo other) { if (other == null) return; other.Take(this); }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "'this' cannot bind to the reference parameter 'h' of the script class 'Foo'"))
         << r.diagnostics;

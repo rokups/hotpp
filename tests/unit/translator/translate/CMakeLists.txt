@@ -5,6 +5,9 @@
 # The tests of hotc::translate for each language feature.
 add_executable(unit_translator_translate_tests
     abstract_translation_tests.cpp
+    optional_translation_tests.cpp
+    param_form_translation_tests.cpp
+    span_translation_tests.cpp
     access_translation_tests.cpp
     alias_translation_tests.cpp
     collection_switch_translation_tests.cpp
@@ -19,6 +22,7 @@ add_executable(unit_translator_translate_tests
     handle_translation_tests.cpp
     handle_override_translation_tests.cpp
     weak_handle_translation_tests.cpp
+    shared_pointer_translation_tests.cpp
     value_use_translation_tests.cpp
     script_attribute_translation_tests.cpp
     import_translation_tests.cpp

@@ -15,20 +15,20 @@ class Recruit {
 }
 
 class Platoon : Actor {
-    std.vector<Recruit> recruits = std.vector<Recruit>();
-    std.map<int, std.vector<Recruit>> groups;
+    std.vector<$Recruit> recruits = std.vector<$Recruit>();
+    std.map<int, std.vector<$Recruit>> groups;
     int count = 0;
     int grouped = 0;
     int sum = 0;
 
-    int Total(std.vector<Recruit> list) {
+    int Total(std.vector<$Recruit> list) {
         int s = 0;
         foreach (var r in list) { s += r.hp; }
         return s;
     }
 
     override void Tick(float dt) {
-        Recruit r = new Recruit();
+        $Recruit r = new $Recruit();
         this.recruits.push_back(r);
         this.groups[1].push_back(r);
         this.recruits[0].Bump();

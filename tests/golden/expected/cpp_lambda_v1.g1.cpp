@@ -28,7 +28,7 @@ using Lamp = Lamp_Shell;
 #include <functional>
 #line 30 "cpp_lambda_v1.cpp.cpp"
 
-// ---------------------------------------------------------------- [value] class HotModule
+// ---------------------------------------------------------------- struct HotModule
 struct HotModule {
     int calls;
 };

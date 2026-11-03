@@ -22,8 +22,8 @@ class Spawner : Actor {
     bool made_unit = false;
 
     override void Tick(float dt) {
-        Unit u = new Grunt(6);
+        $Unit u = new $Grunt(6);
         this.made_power = u.Power();
-        this.made_unit = u is Unit;
+        this.made_unit = u is $Unit;
     }
 }

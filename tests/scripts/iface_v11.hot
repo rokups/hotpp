@@ -13,7 +13,7 @@ class C : Actor {
 }
 
 class Holder : Actor {
-    C obj;
+    $C obj;
     int keep = 7;
     int r = 0;
     int is_i = -1;

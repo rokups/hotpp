@@ -48,7 +48,7 @@
       ]
     },
     "inline-attribute": {
-      "match": "(\\[)\\s*(weak)\\s*(\\])(?=\\s*[A-Za-z_])",
+      "match": "(\\[)\\s*(weak|byval)\\s*(\\])(?=\\s*[A-Za-z_])",
       "captures": {
         "0": { "name": "meta.attribute.hot" },
         "1": { "name": "punctuation.definition.attribute.begin.hot" },
@@ -105,24 +105,23 @@
       "patterns": [ { "include": "#expression" } ]
     },
     "structured-binding": {
-      "match": "\\b(var)\\b(&)?\\s*(\\()([^()\\n]*)(\\))(?=\\s*(?:=(?!=)|\\bin\\b))",
+      "match": "\\b(var|ref)\\b\\s*(\\()([^()\\n]*)(\\))(?=\\s*(?:=(?!=)|\\bin\\b))",
       "captures": {
         "1": { "name": "storage.type.hot" },
-        "2": { "name": "storage.modifier.reference.hot" },
-        "3": { "name": "punctuation.definition.binding.begin.hot" },
-        "4": {
+        "2": { "name": "punctuation.definition.binding.begin.hot" },
+        "3": {
           "patterns": [
             { "name": "variable.other.local.hot", "match": "\\b[A-Za-z_]\\w*\\b" },
             { "name": "punctuation.separator.comma.hot", "match": "," }
           ]
         },
-        "5": { "name": "punctuation.definition.binding.end.hot" }
+        "4": { "name": "punctuation.definition.binding.end.hot" }
       }
     },
     "type-test": {
       "patterns": [
         {
-          "match": "\\b(is)\\s+(?!(?:null|true|false)\\b)([A-Za-z_][\\w.]*(?:<[^<>\\n]*>)?[*&]?)(?:\\s+(?!(?:is|as|in)\\b)([A-Za-z_]\\w*)\\b(?!\\s*\\())?",
+          "match": "\\b(is)\\s+(?!(?:null|true|false)\\b)([A-Za-z_][\\w.]*(?:<[^<>\\n]*>)?[*]?)(?:\\s+(?!(?:is|as|in)\\b)([A-Za-z_]\\w*)\\b(?!\\s*\\())?",
           "captures": {
             "1": { "name": "keyword.operator.word.hot" },
             "2": { "name": "entity.name.type.hot" },
@@ -130,7 +129,7 @@
           }
         },
         {
-          "match": "\\b(as)\\s+([A-Za-z_][\\w.]*(?:<[^<>\\n]*>)?[*&]?)",
+          "match": "\\b(as)\\s+([A-Za-z_][\\w.]*(?:<[^<>\\n]*>)?[*]?)",
           "captures": {
             "1": { "name": "keyword.operator.word.hot" },
             "2": { "name": "entity.name.type.hot" }
@@ -154,7 +153,7 @@
         },
         {
           "name": "storage.modifier.hot",
-          "match": "\\b(?:public|private|protected|override|virtual|abstract|const|get|set)\\b"
+          "match": "\\b(?:public|private|protected|override|virtual|abstract|const|get|set|ref|out)\\b"
         },
         {
           "name": "storage.type.hot",

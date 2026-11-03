@@ -684,7 +684,7 @@ static const hot::CtorEntry blue__Unit__constructors[] = {
 
 } // namespace blue::hot_gen
 
-// ---------------------------------------------------------------- [value] class HotModule
+// ---------------------------------------------------------------- struct HotModule
 namespace game::hot_gen { using game__score_t = long long; }
 namespace game::ai::hot_gen { using game__ai__mood_t = int; }
 struct HotModule {

@@ -240,7 +240,6 @@ TEST(ExpressionParse, CastOfABuiltinType)
     EXPECT_EQ(round_trip("(int)(a + b)"), "(int32_t)(a + b)");
     EXPECT_EQ(round_trip("(int)(float)x"), "(int32_t)(float)x");
     EXPECT_EQ(round_trip("(byte*)p"), "(uint8_t*)p");
-    EXPECT_EQ(round_trip("(const int&)i"), "(const int32_t&)i");
     Parsed p("(int)f");
     ASSERT_TRUE(p.expr);
     const auto* u = std::get_if<ast::UnaryExpr>(&p.expr->v);
@@ -253,7 +252,6 @@ TEST(ExpressionParse, CastOfABuiltinType)
 TEST(ExpressionParse, CastOfAPointerOrReferenceType)
 {
     EXPECT_EQ(round_trip("(Foo*)p"), "(Foo*)p");
-    EXPECT_EQ(round_trip("(const Foo&)r"), "(const Foo&)r");
     EXPECT_EQ(round_trip("(std.string*)p"), "(\x01std::string*)p");
     EXPECT_EQ(round_trip("(Foo **)p"), "(Foo**)p");
 }

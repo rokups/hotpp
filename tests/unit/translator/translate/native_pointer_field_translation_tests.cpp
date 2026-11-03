@@ -67,11 +67,11 @@ TEST(NativePointerField, HotPointerIsStoredAsCheckedPtr)
     EXPECT_TRUE(has(r.cpp, "hot::CheckedPtr<Shared> m")) << r.cpp;
 }
 
-TEST(NativePointerField, HotConstPointerIsStoredAsCheckedPtrOfConst)
+TEST(NativePointerField, HotConstPointerFieldIsAnError)
 {
     const hotc::TranslateResult r = hot_field("", "const Shared* m;");
-    ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "hot::CheckedPtr<const Shared> m")) << r.cpp;
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "const is inferred; remove it")) << r.diagnostics;
 }
 
 TEST(NativePointerField, HotPointerOfAHandleStubWithAWeakSourceIsStoredAsCheckedPtr)
@@ -135,7 +135,7 @@ TEST(NativePointerField, HotReferenceFieldIsAnError)
     {
         const hotc::TranslateResult r = hot_field("", line);
         EXPECT_FALSE(r.ok) << line;
-        EXPECT_TRUE(has(r.diagnostics, std::string("error: ") + kRefMessage)) << line << "\n" << r.diagnostics;
+        EXPECT_TRUE(has(r.diagnostics, "\"&\" is not a type suffix; write ref T x")) << line << "\n" << r.diagnostics;
     }
 }
 
@@ -198,11 +198,11 @@ TEST(NativePointerField, CppPointerToPointerKeepsTheBorrowedMessage)
     EXPECT_TRUE(has(r.diagnostics, "a field cannot hold a borrowed pointer or reference to 'Mesh'")) << r.diagnostics;
 }
 
-TEST(NativePointerField, HotReferenceToPointerKeepsTheBorrowedMessage)
+TEST(NativePointerField, HotReferenceToPointerIsATypeSuffixError)
 {
     const hotc::TranslateResult r = hot_field("", "Mesh*& m;");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "a field cannot hold a borrowed pointer or reference to 'Mesh'")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "\"&\" is not a type suffix; write ref T x")) << r.diagnostics;
 }
 
 // ---- the places that do not change

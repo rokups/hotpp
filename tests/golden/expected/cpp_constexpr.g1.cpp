@@ -26,7 +26,7 @@ using Limiter = Limiter_Shell;
 #include "Actor.h"
 #line 28 "cpp_constexpr.cpp.cpp"
 
-// ---------------------------------------------------------------- [value] class HotModule
+// ---------------------------------------------------------------- struct HotModule
 struct HotModule {
     int total;
 };

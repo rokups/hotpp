@@ -37,13 +37,15 @@ class Knight : Guard {
 }
 
 class Probe : Actor {
-    Shape seen = null;
+    $Shape seen = null;
     int area = 0;
     int twice = 0;
 
     override void Tick(float dt) {
-        if (this.seen == null) this.seen = new Square();
-        this.area = this.seen.Area();
-        this.twice = this.seen.Twice();
+        if (this.seen == null) this.seen = new $Square();
+        $Shape shape = this.seen;
+        if (shape == null) return;
+        this.area = shape.Area();
+        this.twice = shape.Twice();
     }
 }

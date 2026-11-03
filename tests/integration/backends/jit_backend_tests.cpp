@@ -221,7 +221,7 @@ class Player : Actor {
     }
 
     override void TakeDamage(float amount) {}
-    override void TakeDamage(Actor& source, float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
 }
 )",
         {}};
@@ -281,7 +281,7 @@ class Player : Actor {
         throw 42;
     }
 
-    override void TakeDamage(Actor& source, float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
 }
 )",
         {}};
