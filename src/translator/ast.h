@@ -494,6 +494,9 @@ struct Method
     std::string vslot_owner;
     Access access = Access::Public;
     std::string name;
+    // The operator symbol ("+", "[]", ...) when the method is an operator. Empty otherwise. The
+    // "name" is then the identifier of the operator (see operator_names.h).
+    std::string op;
     std::vector<Param> params;
     std::string ret; // empty: not written
     std::string script_ret; // "ret" as the script writes it (see Param)

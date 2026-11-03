@@ -1,0 +1,3 @@
+64_operator_index_not_ref.hot:6:9: error: operator '[]' must return 'ref T' to be assigned
+    6 |         s[0] = 1;
+1 error generated.

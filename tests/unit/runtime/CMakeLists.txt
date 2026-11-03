@@ -23,6 +23,7 @@ add_executable(unit_runtime_tests
     trace_tests.cpp
     new_shared_tests.cpp
     clone_state_tests.cpp
+    value_operator_tests.cpp
     abstract_called_tests.cpp
     iface_tests.cpp
     in_tests.cpp

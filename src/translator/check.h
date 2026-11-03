@@ -67,6 +67,11 @@ bool cxx_std_below_20(const std::string& std_name);
 // arguments of "base(...)" use the constructor parameters only (design 7.3). Each error goes
 // to the diagnostics.
 void check_ctors(const ast::ClassDef& cd, const LineMap& map, Diagnostics& diag);
+// Checks the operators of a class or struct: the allowed symbols, the parameter count, the return
+// type and the ordering pairs ("<" needs ">"). Each error goes to the diagnostics.
+void check_operators(const ast::ClassDef& cd, const LineMap& map, Diagnostics& diag);
+// Reports a call by the identifier of an operator ("a.op_add(b)") in the initializers of the module variables.
+void check_operator_vars(const std::vector<ast::Field>& vars, const LineMap& map, Diagnostics& diag);
 // A subclass calls a constructor of its script parent with "base(...)", or implicitly. A private
 // constructor of the parent is an error. A protected one is allowed.
 void check_base_ctor_access(

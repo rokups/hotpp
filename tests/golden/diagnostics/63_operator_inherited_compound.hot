@@ -1,0 +1,11 @@
+class Base {
+    int n = 0;
+    Base operator+(in Base o) { return new Base(); }
+}
+class Derived : Base {
+}
+class User {
+    void run(Derived d, Base x) {
+        d += x;
+    }
+}

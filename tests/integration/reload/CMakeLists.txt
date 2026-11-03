@@ -18,6 +18,9 @@ add_executable(integration_reload_tests
     script_kinds_tests.cpp
     clone_tests.cpp
     value_use_tests.cpp
+    operator_struct_tests.cpp
+    operator_class_tests.cpp
+    operator_use_class_tests.cpp
     native_ptr_field_tests.cpp
     template_handle_tests.cpp
     using_alias_tests.cpp

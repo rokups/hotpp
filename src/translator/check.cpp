@@ -7,6 +7,8 @@
 
 #include "ast_walk.h"
 #include "builtin_types.h"
+#include "const_infer.h"
+#include "operator_names.h"
 
 #include <algorithm>
 #include <cctype>
@@ -1346,7 +1348,7 @@ struct ValueUseChecker
         make_walker(fe, fs).block(body);
     }
 
-    // A "ref", "in" or "out" parameter of a box type: the box has no reference form.
+    // A "ref" or "out" parameter of a box type: the box has no reference form. An "in" parameter is the plain form.
     void params(const std::vector<Param>& ps, uint32_t pos)
     {
         for (const Param& p : ps)
@@ -1354,7 +1356,7 @@ struct ValueUseChecker
             targs(p.type, pos);
             if (p.value)
                 use(p.type, pos, "parameter '" + p.name + "'", false);
-            else if (p.mode != ParamMode::Plain && p.mode != ParamMode::ByVal && !p.weak
+            else if (p.mode != ParamMode::Plain && p.mode != ParamMode::ByVal && p.mode != ParamMode::In && !p.weak
                 && is_box_type(types, referent_type(p.type)))
                 diag.add(pos, map,
                     "a reference to a value of a script class is not supported; write $" + referent_type(p.type));
@@ -1435,9 +1437,17 @@ struct ValueResolver
 {
     const TypeModel& types;
 
-    // A "ref", "in" or "out" parameter and a weak parameter get no flag.
+    // A "ref" or "out" parameter and a weak parameter get no flag. An "in" parameter of a box
+    // type is the plain form: the parser wrote "const C&", and the type becomes "C". The box
+    // parameter is "hot::In<hot::Value<C>>", which is a const reference.
     void params_of(Param& p)
     {
+        if (p.mode == ParamMode::In && !p.weak && is_box_type(types, referent_type(p.type)))
+        {
+            p.type = referent_type(p.type);
+            p.value = true;
+            return;
+        }
         const bool plain = p.mode == ParamMode::Plain || p.mode == ParamMode::ByVal;
         p.value = plain && !p.weak && is_box_type(types, p.type);
     }
@@ -1579,6 +1589,178 @@ void check_ctors(const ClassDef& cd, const LineMap& map, Diagnostics& diag)
         for (const ExprP& a : c.base_args)
             w.expr(a);
     }
+}
+
+namespace
+{
+// A call by the identifier of an operator ("a.op_add(b)"). The script writes "a + b". The check does
+// not know the type of the object: any member call with such a name is an error. "syms" holds the
+// symbols that the own class defines: only these have the call "op_add(b)" with no object.
+auto operator_call_check(std::set<std::string> syms, const LineMap& map, Diagnostics& diag)
+{
+    return [syms = std::move(syms), &map, &diag](const Expr& e)
+    {
+        const auto* c = std::get_if<CallExpr>(&e.v);
+        if (!c || !c->callee)
+            return;
+        std::string name;
+        uint32_t pos = c->pos;
+        if (const auto* me = std::get_if<MemberExpr>(&c->callee->v))
+        {
+            name = me->name;
+            pos = me->name_pos;
+        }
+        else if (const auto* ne = std::get_if<NameExpr>(&c->callee->v))
+        {
+            if (ne->parts.size() > 1)
+                name = ne->parts.back();
+            else if (!ne->parts.empty() && syms.count(op_symbol(ne->parts[0])))
+                name = ne->parts[0];
+            if (ne->last_pos)
+                pos = ne->last_pos;
+        }
+        const std::string sym = op_symbol(name);
+        if (!sym.empty())
+        {
+            const bool binary = is_binary_op_ident(name) || is_compare_op_ident(name);
+            const std::string use = binary ? "write 'a " + sym + " b'"
+                : name == "op_index"       ? "write 'a[i]'"
+                                           : "write '" + sym + "a'";
+            diag.add(pos, map, "'" + name + "' is an operator; " + use);
+        }
+    };
+}
+
+// True when the field type is stored in the object and a write through "f[i]" or "f.g" changes the
+// object: a C array or a standard container. A handle, a box or a struct field is not known here.
+bool field_holds_elements(const Field& f)
+{
+    const std::string& t = f.script_type.empty() ? f.type : f.script_type;
+    if (t.find('$') != std::string::npos || t.find('*') != std::string::npos)
+        return false;
+    if (t.size() >= 2 && t.back() == ']' && std::isdigit(static_cast<unsigned char>(t[t.size() - 2])))
+        return true;
+    for (const char* p : {"std::vector<", "std::array<", "std::map<", "std::unordered_map<", "std::string"})
+        if (t.rfind(p, 0) == 0)
+            return true;
+    return false;
+}
+
+// True when the body of "m", or the body of a function of the class that it calls, writes a field.
+bool writes_field(const ClassDef& cd, const Method& m, std::set<const Method*>& seen)
+{
+    if (!seen.insert(&m).second)
+        return false;
+    const DirectWrites w = direct_writes(m);
+    for (const auto& [name, exact] : w.roots)
+        for (const Field& f : cd.fields)
+            if (f.name == name && (exact || field_holds_elements(f)))
+                return true;
+    for (const std::string& call : w.calls)
+        for (const Method& c : cd.methods)
+            if (c.op.empty() && c.name == call && writes_field(cd, c, seen))
+                return true;
+    return false;
+}
+} // namespace
+
+void check_operators(const ClassDef& cd, const LineMap& map, Diagnostics& diag)
+{
+    std::set<std::string> syms;
+    for (const Method& m : cd.methods)
+        if (!m.op.empty())
+            syms.insert(m.op);
+    static const std::set<std::string> compound = {"+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>="};
+    for (const Method& m : cd.methods)
+    {
+        if (m.op.empty())
+        {
+            // The identifier of an operator is the name of the member in the generated code.
+            if (const std::string sym = op_symbol(m.name); !sym.empty())
+                diag.add(m.pos, map, "'" + m.name + "' is reserved for an operator; write 'operator" + sym + "'");
+            continue;
+        }
+        const std::string& sym = m.op;
+        const std::string head = "operator '" + sym + "'";
+        const size_t n = m.params.size();
+        // The symbol: only the operators of the table are allowed.
+        if (!op_ident(sym, 0) && !op_ident(sym, 1))
+        {
+            if (sym == "!=")
+                diag.add(m.pos, map, head + " is generated from 'operator=='; remove it");
+            else if (compound.count(sym))
+                diag.add(m.pos, map,
+                    head + " is generated from 'operator" + sym.substr(0, sym.size() - 1) + "'; remove it");
+            else
+                diag.add(m.pos, map, head + " cannot be declared in a script");
+            continue;
+        }
+        // The parameter count.
+        const bool unary_only = sym == "!" || sym == "~";
+        const bool both = sym == "+" || sym == "-";
+        if (unary_only && n != 0)
+            diag.add(m.pos, map, head + " takes no parameter");
+        else if (both && n > 1)
+            diag.add(m.pos, map, head + " takes no parameter or one parameter");
+        else if (!unary_only && !both && n != 1)
+            diag.add(m.pos, map, head + " takes one parameter");
+        // The return type.
+        if (sym == "==" || sym == "<" || sym == ">" || sym == "<=" || sym == ">=")
+        {
+            if (m.ret != "bool")
+                diag.add(m.pos, map, head + " must return bool");
+        }
+        else if (m.ret.empty() || m.ret == "void")
+        {
+            diag.add(m.pos, map, head + " cannot return void");
+        }
+        // The generated member of a compare or of an operator with a value return is const. It
+        // casts the const away to call the function, so a write to a field is wrong for an object
+        // that is const. A "ref" return gives a non-const member: it can write.
+        if (!m.ret.empty() && (is_compare_op_ident(m.name) || !(m.ret.compare(0, 4, "ref ") == 0 || is_ref_type(m.ret))))
+        {
+            std::set<const Method*> seen;
+            if (writes_field(cd, m, seen))
+                diag.add(m.pos, map, head + " cannot change the object; return a new value instead");
+        }
+        // The ordering pair: C# rule.
+        static const std::pair<const char*, const char*> pairs[] = {{"<", ">"}, {">", "<"}, {"<=", ">="}, {">=", "<="}};
+        for (const auto& pr : pairs)
+            if (sym == pr.first && !syms.count(pr.second))
+                diag.add(m.pos, map, head + " needs 'operator" + pr.second + "'");
+    }
+    auto fe = operator_call_check(syms, map, diag);
+    auto fs = [](const Stmt&) {};
+    auto w = make_walker(fe, fs);
+    for (const Field& f : cd.fields)
+        w.expr(f.init);
+    for (const Method& m : cd.methods)
+        w.block(m.body);
+    for (const Method& d : cd.dtors)
+        w.block(d.body);
+    for (const Ctor& c : cd.ctors)
+    {
+        w.block(c.body);
+        for (const ExprP& a : c.base_args)
+            w.expr(a);
+    }
+    for (const Property& p : cd.props)
+    {
+        w.expr(p.init);
+        if (p.get_body)
+            w.block(*p.get_body);
+        if (p.set_body)
+            w.block(*p.set_body);
+    }
+}
+
+void check_operator_vars(const std::vector<ast::Field>& vars, const LineMap& map, Diagnostics& diag)
+{
+    auto fe = operator_call_check({}, map, diag);
+    auto fs = [](const Stmt&) {};
+    auto w = make_walker(fe, fs);
+    for (const Field& f : vars)
+        w.expr(f.init);
 }
 
 void check_base_ctor_access(const ClassDef& cd, const ClassDef& parent, const LineMap& map, Diagnostics& diag)

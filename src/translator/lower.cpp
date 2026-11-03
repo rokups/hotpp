@@ -7,6 +7,7 @@
 
 #include "builtin_types.h"
 #include "emit.h"
+#include "operator_names.h"
 
 #include <algorithm>
 #include <cctype>
@@ -405,11 +406,237 @@ struct Lowerer
         return d && !d->is_value ? t : std::string();
     }
 
+    // True when the type text names the handle of a script class ("$C").
+    bool is_class_handle_text(const std::string& t) const
+    {
+        const ClassDef* d = t.compare(0, 1, "$") == 0 ? class_named(t) : nullptr;
+        return d && !d->is_value;
+    }
+
+    // The operator method that the use "e" calls on a value of a script class or struct (operator_names.h),
+    // or null. A handle operand has no operator, and "x != y" uses the method of "x == y".
+    const Method* op_use(const Expr& e) const
+    {
+        std::optional<std::string> ident;
+        std::string lt;
+        if (auto* b = std::get_if<BinaryExpr>(&e.v))
+        {
+            if (!b->lhs || !b->rhs)
+                return nullptr;
+            ident = b->op == "!=" ? std::optional<std::string>("op_eq") : op_ident(b->op, 1);
+            if (ident && *ident != "op_index")
+                lt = type_of(*b->lhs);
+        }
+        else if (auto* u = std::get_if<UnaryExpr>(&e.v))
+        {
+            if (u->postfix || !u->operand)
+                return nullptr;
+            ident = op_ident(u->op, 0);
+            if (ident)
+                lt = type_of(*u->operand);
+        }
+        else if (auto* ix = std::get_if<IndexExpr>(&e.v))
+        {
+            if (!ix->obj)
+                return nullptr;
+            ident = "op_index";
+            lt = type_of(*ix->obj);
+        }
+        if (!ident || lt.empty() || lt[0] == '$')
+            return nullptr;
+        const ClassDef* d = class_named(lt);
+        return d ? find_fn(*d, *ident) : nullptr;
+    }
+
+    // An operator on a handle of a script class has no meaning: the operators are for values. Reports
+    // the error and returns true. "==" and "!=" compare the identity of two handles, so they are fine.
+    bool op_on_handle(const Expr& operand, const std::string& sym, size_t arity, uint32_t pos)
+    {
+        if ((sym == "==" || sym == "!=") && arity == 1)
+            return false;
+        if (!op_ident(sym, arity))
+            return false;
+        const std::string t = type_of(operand);
+        if (!is_class_handle_text(t))
+        {
+            // "T?" is a C++ optional: the C++ operator of the optional is not the operator of the script type.
+            if (!is_optional(t))
+                return false;
+            std::string base = t;
+            while (!base.empty() && (base.back() == '&' || base.back() == ' ' || base.back() == '?'))
+                base.pop_back();
+            const ClassDef* d = class_named(base);
+            if (!d || !find_fn(*d, *op_ident(sym, arity)))
+                return false;
+            error(pos, "operator '" + sym + "' needs a value, not an optional");
+            return true;
+        }
+        error(pos, "operator '" + sym + "' needs a value, not a handle");
+        return true;
+    }
+
+    // The text of a parameter type as a type name: no "const", no "&".
+    static std::string param_class_text(const Param& p)
+    {
+        std::string t = p.script_type.empty() ? p.type : p.script_type;
+        if (t.compare(0, 6, "const ") == 0)
+            t.erase(0, 6);
+        while (!t.empty() && (t.back() == '&' || t.back() == ' '))
+            t.pop_back();
+        return t;
+    }
+
+    // Why the right operand "rhs" of the operator method "m" is not a value: "null", "a handle" or
+    // "an optional". Empty: the operand can be a value. A class of an unrelated type is "a value of another class".
+    std::string op_rhs_problem(const Method& m, const Expr& rhs) const
+    {
+        if (std::holds_alternative<NullExpr>(rhs.v))
+            return "null";
+        const std::string t = type_of(rhs);
+        if (is_class_handle_text(t))
+            return "a handle";
+        if (is_optional(t))
+            return "an optional";
+        const ClassDef* c = class_named(t);
+        if (c && !m.params.empty())
+        {
+            const std::string want = param_class_text(m.params[0]);
+            if (class_named(want))
+            {
+                int depth = 0;
+                for (const ClassDef* d = c; d && depth < 64; d = class_named(d->base), ++depth)
+                    if (d->name == want)
+                        return {};
+                return "a value of another class";
+            }
+        }
+        return {};
+    }
+
+    // The operator uses "a + b", "a == b" and the others on a value of a script class or struct: a
+    // right operand that is null, a handle or an optional is an error. Reports it and returns true.
+    // "==" and "!=" have the message of the box compare, so they are not here.
+    bool op_rhs_error(const Expr& e, const BinaryExpr& b, uint32_t pos)
+    {
+        if (b.op == "==" || b.op == "!=" || !b.rhs)
+            return false;
+        const Method* m = op_use(e);
+        if (!m)
+            return false;
+        const std::string why = op_rhs_problem(*m, *b.rhs);
+        if (why.empty())
+            return false;
+        if (why == "a value of another class")
+            error(pos, "operator '" + b.op + "' of the type does not take a value of this class");
+        else
+            error(pos, "operator '" + b.op + "' needs a value, not " + why);
+        return true;
+    }
+
+    // "a += b": the compound operator is generated from the operator "+" of the class of "a", when
+    // "+" returns the class and the class itself declares it. Any other use is an error. Reports it
+    // and returns true.
+    bool op_compound_error(const BinaryExpr& b, uint32_t pos)
+    {
+        if (!b.lhs || !b.rhs || b.op.size() < 2 || b.op.back() != '=')
+            return false;
+        const std::string base = b.op.substr(0, b.op.size() - 1);
+        const std::optional<std::string> ident = op_ident(base, 1);
+        if (!ident || !is_binary_op_ident(*ident))
+            return false;
+        const std::string lt = type_of(*b.lhs);
+        if (is_class_handle_text(lt))
+        {
+            error(pos, "operator '" + b.op + "' needs a value, not a handle");
+            return true;
+        }
+        std::string name = lt;
+        const bool opt = is_optional(lt);
+        while (!name.empty() && (name.back() == '&' || name.back() == ' ' || name.back() == '?'))
+            name.pop_back();
+        const ClassDef* d = class_named(name);
+        if (!d)
+            return false;
+        const ClassDef* owner = nullptr;
+        const Method* m = find_fn(*d, *ident, &owner);
+        if (opt)
+        {
+            if (!m)
+                return false;
+            error(pos, "operator '" + b.op + "' needs a value, not an optional");
+            return true;
+        }
+        const std::string head = "operator '" + b.op + "'";
+        if (!m || m->op.empty())
+        {
+            error(pos, head + " needs 'operator" + base + "' in '" + d->name + "'");
+            return true;
+        }
+        if (owner != d)
+        {
+            error(pos,
+                head + " is not available on '" + d->name + "': 'operator" + base + "' comes from the parent '"
+                    + owner->name + "'. Declare 'operator" + base + "' in '" + d->name + "'");
+            return true;
+        }
+        const std::string ret = ret_text(*m);
+        if (m->params.size() != 1 || ret != d->name)
+        {
+            error(pos, head + " needs 'operator" + base + "' of '" + d->name + "' to return '" + d->name + "'");
+            return true;
+        }
+        if (const std::string why = op_rhs_problem(*m, *b.rhs); !why.empty() && why != "a value of another class")
+        {
+            error(pos, head + " needs a value, not " + why);
+            return true;
+        }
+        return false;
+    }
+
+    // The target "t" of an assignment, "++" or "--" is "a[i]" of an index operator that returns a value:
+    // the code would write a temporary. Reports it and returns true.
+    bool op_index_target_error(const Expr& t, uint32_t pos)
+    {
+        const Expr* x = &t;
+        while (auto* p = std::get_if<ParenExpr>(&x->v))
+        {
+            if (!p->inner)
+                return false;
+            x = p->inner.get();
+        }
+        if (!std::holds_alternative<IndexExpr>(x->v))
+            return false;
+        const Method* m = op_use(*x);
+        if (!m || m->ret.compare(0, 4, "ref ") == 0 || ast::is_ref_type(m->ret))
+            return false;
+        error(pos, "operator '[]' must return 'ref T' to be assigned");
+        return true;
+    }
+
+    // The type of the use "e" of an operator: the type that the operator method returns. A compare
+    // gives "bool". Empty: "e" is no operator use.
+    std::string op_result_type(const Expr& e) const
+    {
+        const Method* m = op_use(e);
+        if (!m)
+            return {};
+        if (is_compare_op_ident(m->name))
+            return "bool";
+        std::string t = ret_text(*m);
+        while (!t.empty() && (t.back() == '&' || t.back() == ' '))
+            t.pop_back();
+        return t;
+    }
+
     // The script type of an expression before its lowering. Empty: not known.
     std::string type_of(const Expr& e) const
     {
         if (auto* ix = std::get_if<IndexExpr>(&e.v))
+        {
+            if (const std::string t = op_result_type(e); !t.empty())
+                return t;
             return ix->obj ? element_type(type_of(*ix->obj)) : std::string();
+        }
         if (std::holds_alternative<ThisExpr>(e.v))
             return cx.allow_this && cx.cls ? cx.cls->name : std::string();
         if (const std::string* n = simple_name(e))
@@ -435,8 +662,12 @@ struct Lowerer
             const std::string ta = type_of(*tn->a);
             return !ta.empty() && ta == type_of(*tn->b) ? ta : std::string();
         }
+        if (auto* u = std::get_if<UnaryExpr>(&e.v))
+            return u->postfix ? std::string() : op_result_type(e);
         if (auto* b = std::get_if<BinaryExpr>(&e.v))
         {
+            if (b->op != "??" && b->lhs && b->rhs)
+                return op_result_type(e);
             if (b->op != "??" || !b->lhs || !b->rhs)
                 return {};
             const std::string t = common_type(type_of(*b->lhs), type_of(*b->rhs));
@@ -774,6 +1005,12 @@ struct Lowerer
         }
         if (auto* n = std::get_if<NewExpr>(&e.v))
             return new_makes_box(*n);
+        if (std::holds_alternative<BinaryExpr>(e.v) || std::holds_alternative<UnaryExpr>(e.v)
+            || std::holds_alternative<IndexExpr>(e.v))
+        { // an operator of a script class that returns "C" gives a box
+            const Method* m = op_use(e);
+            return m && m->ret_value;
+        }
         return false;
     }
 
@@ -2245,11 +2482,19 @@ struct Lowerer
         }
         else if (auto* ix = std::get_if<IndexExpr>(&x.v))
         {
+            if (ix->obj && op_on_handle(*ix->obj, "[]", 1, pos_of(*ix->obj)))
+                return;
             expr(ix->obj);
             expr(ix->index);
         }
         else if (auto* u = std::get_if<UnaryExpr>(&x.v))
         {
+            if (!u->postfix && u->op != "!" && u->operand
+                && op_on_handle(*u->operand, u->op, 0, u->pos != 0 ? u->pos : pos_of(*u->operand)))
+                return;
+            if ((u->op == "++" || u->op == "--") && u->operand
+                && op_index_target_error(*u->operand, u->pos != 0 ? u->pos : pos_of(*u->operand)))
+                return;
             if (u->op == "&" && !u->postfix && u->operand)
                 if (const std::string w = weak_root(*u->operand); !w.empty())
                     weak_ref_error(u->pos ? u->pos : pos_of(*u->operand), w);
@@ -2363,8 +2608,17 @@ struct Lowerer
                 else if (std::holds_alternative<NullExpr>(b->lhs->v) && is_optional(type_of(*b->rhs)))
                     coerce(b->lhs, type_of(*b->rhs));
             }
+            if (b->lhs && b->rhs && op_on_handle(*b->lhs, b->op, 1, b->pos != 0 ? b->pos : pos_of(*b->lhs)))
+                return;
+            if (b->lhs && b->rhs && is_assign_op(b->op) && op_index_target_error(*b->lhs, b->pos != 0 ? b->pos : pos_of(*b->lhs)))
+                return;
+            if (b->lhs && b->rhs && op_compound_error(*b, b->pos != 0 ? b->pos : pos_of(*b->lhs)))
+                return;
+            if (b->lhs && b->rhs && op_rhs_error(x, *b, b->pos != 0 ? b->pos : pos_of(*b->lhs)))
+                return;
             if ((b->op == "==" || b->op == "!=") && b->lhs && b->rhs
-                && (is_value_ref(*b->lhs) || is_value_ref(*b->rhs)))
+                && (is_value_ref(*b->lhs) || is_value_ref(*b->rhs))
+                && !(op_use(x) && op_rhs_problem(*op_use(x), *b->rhs).empty()))
             {
                 error(b->pos != 0 ? b->pos : pos_of(*b->lhs),
                     "'" + b->op + "' is not valid for a value of a script class: it is never null and it has no identity");

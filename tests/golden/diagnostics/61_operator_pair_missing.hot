@@ -1,0 +1,4 @@
+struct Version {
+    int major;
+    bool operator<(in Version o) { return this.major < o.major; }
+}

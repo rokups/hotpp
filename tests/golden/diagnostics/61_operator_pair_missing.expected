@@ -1,0 +1,3 @@
+61_operator_pair_missing.hot:3:5: error: operator '<' needs 'operator>'
+    3 |     bool operator<(in Version o) { return this.major < o.major; }
+1 error generated.

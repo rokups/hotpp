@@ -13,10 +13,12 @@
 #include "lexy_common.hpp"
 #include "parser.h"
 #include "statement.h"
+#include "../operator_names.h"
 #include "../std_ns.h"
 
 #include <algorithm>
 #include <cctype>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -34,6 +36,8 @@ HOT_ERROR_TAG(e_enum_name, "expected an enum name");
 HOT_ERROR_TAG(e_enumerator, "expected an enumerator name");
 HOT_ERROR_TAG(e_member, "expected a member: 'Type name;' or 'Ret name(...)'");
 HOT_ERROR_TAG(e_member_name, "expected a member name");
+HOT_ERROR_TAG(e_op_symbol, "expected an operator symbol after 'operator'");
+HOT_ERROR_TAG(e_op_params, "an operator needs a parameter list");
 HOT_ERROR_TAG(e_class_name, "expected a class name");
 HOT_ERROR_TAG(e_abstract_target, "expected 'class' after 'abstract'");
 HOT_ERROR_TAG(e_iface_name, "expected an interface name");
@@ -243,7 +247,7 @@ const char* unsupported_modifier(const std::string& w)
 }
 
 // Builds the Mods from the word list. It reports duplicates and words that cannot combine.
-Mods collect_mods(const ParseState& st, const std::vector<ModTok>& toks)
+Mods collect_mods(const ParseState& st, const std::vector<ModTok>& toks, bool is_op = false)
 {
     Mods m;
     std::vector<const ModTok*> seen;
@@ -251,6 +255,11 @@ Mods collect_mods(const ParseState& st, const std::vector<ModTok>& toks)
     const ModTok* kind_tok = nullptr;
     for (const ModTok& t : toks)
     {
+        if (is_op && t.word == "static")
+        {
+            st.error(t.pos, "an operator cannot be 'static'");
+            continue;
+        }
         if (const char* why = unsupported_modifier(t.word))
         {
             st.error(t.pos, why);
@@ -309,13 +318,13 @@ Mods collect_mods(const ParseState& st, const std::vector<ModTok>& toks)
     return m;
 }
 
-Mods mods_of(const ParseState&, lexy::nullopt)
+Mods mods_of(const ParseState&, lexy::nullopt, bool = false)
 {
     return Mods{};
 }
-Mods mods_of(const ParseState& st, const std::vector<ModTok>& v)
+Mods mods_of(const ParseState& st, const std::vector<ModTok>& v, bool is_op = false)
 {
-    return collect_mods(st, v);
+    return collect_mods(st, v, is_op);
 }
 
 // Applies the attributes and modifiers before a member to the member.
@@ -339,7 +348,8 @@ Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in,
                 st.error(a->weak_pos, "[weak] applies to fields, parameters and local variables only");
         }
     }
-    const Mods mods = mods_of(st, mods_in);
+    const bool is_op = m.kind == Member::IsMethod && !m.method.op.empty();
+    const Mods mods = mods_of(st, mods_in, is_op);
     if (m.kind == Member::IsDtor)
     {
         m.method.access = mods.access;
@@ -386,7 +396,17 @@ Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in,
         m.method.is_virtual = mods.is_virtual;
         m.method.is_new = mods.is_new;
         m.method.is_async = mods.is_async;
-        if (mods.is_abstract)
+        if (is_op)
+        {
+            // An operator has no modifier of the kind. The word is an error, the flags stay false.
+            for (const ModTok& t : mods.kind_toks)
+                st.error(t.pos, "an operator cannot be '" + t.word + "'");
+            m.method.is_override = m.method.is_virtual = m.method.is_new = m.method.is_async = false;
+            if (!mods.is_abstract && m.no_body_pos)
+                st.error(m.no_body_pos,
+                    "operator '" + m.method.op + "' needs a body; write '{ ... }'");
+        }
+        else if (mods.is_abstract)
         {
             m.method.is_abstract = true;
             for (const ModTok& t : mods.kind_toks)
@@ -895,6 +915,43 @@ struct arrow_prop_tail
     });
 };
 
+// The word "operator" after the type of a member. The word starts an operator member.
+constexpr auto kw_operator = LEXY_KEYWORD("operator", id);
+
+// The symbols of an operator member. The literal set takes the longest match, so "<=>" wins over "<=".
+// The checker accepts only some of them. The parser accepts all of them to give a clear error later.
+constexpr auto op_symbol_set = dsl::literal_set(LEXY_LIT("<=>"), LEXY_LIT("<<="), LEXY_LIT(">>="), LEXY_LIT("[]"),
+    LEXY_LIT("()"), LEXY_LIT("<<"), LEXY_LIT(">>"), LEXY_LIT("<="), LEXY_LIT(">="), LEXY_LIT("=="), LEXY_LIT("!="),
+    LEXY_LIT("&&"), LEXY_LIT("||"), LEXY_LIT("++"), LEXY_LIT("--"), LEXY_LIT("+="), LEXY_LIT("-="), LEXY_LIT("*="),
+    LEXY_LIT("/="), LEXY_LIT("%="), LEXY_LIT("&="), LEXY_LIT("|="), LEXY_LIT("^="), LEXY_LIT("->"), dsl::lit_c<'+'>,
+    dsl::lit_c<'-'>, dsl::lit_c<'*'>, dsl::lit_c<'/'>, dsl::lit_c<'%'>, dsl::lit_c<'&'>, dsl::lit_c<'|'>,
+    dsl::lit_c<'^'>, dsl::lit_c<'!'>, dsl::lit_c<'~'>, dsl::lit_c<'<'>, dsl::lit_c<'>'>, dsl::lit_c<'='>);
+
+// "operator" and one symbol, then "(". The value is "operator" and the symbol, as one name. The
+// callback of the member splits it again (see split_operator_name).
+struct operator_name_p
+{
+    static constexpr auto rule = kw_operator
+        + dsl::must(dsl::capture(op_symbol_set)).error<e_op_symbol>
+        + dsl::must(dsl::peek(dsl::lit_c<'('>)).error<e_op_params>;
+    static constexpr auto value = lexy::callback<std::string>(
+        [](auto sym) { return "operator" + std::string(sym.begin(), sym.end()); });
+};
+
+// The name of a member: an identifier, or "operator" and a symbol.
+struct member_name_p
+{
+    static constexpr auto rule = dsl::peek(kw_operator) >> dsl::p<operator_name_p> | dsl::else_ >> dsl::p<name_p<e_member_name>>;
+    static constexpr auto value = lexy::forward<std::string>;
+};
+
+// True when the name comes from operator_name_p: "operator" and a character that is not a word character.
+bool is_operator_name(const std::string& name)
+{
+    return name.size() > 8 && name.compare(0, 8, "operator") == 0
+        && !(std::isalnum(static_cast<unsigned char>(name[8])) || name[8] == '_' || name[8] == '$');
+}
+
 // The name of a member: an identifier before "(", "=", ";" or "{" (a property).
 constexpr auto member_name_ahead =
     id + dsl::whitespace(ws_rule) + (dsl::lit_c<'('> / dsl::lit_c<'='> / dsl::lit_c<';'> / dsl::lit_c<'{'>);
@@ -906,7 +963,7 @@ constexpr auto member_name_ahead =
 struct scan_member_type : lexy::token_production
 {
     static constexpr auto rule = dsl::position
-        + dsl::loop(dsl::peek(member_name_ahead) >> dsl::break_
+        + dsl::loop(dsl::peek(kw_operator) >> dsl::break_ | dsl::peek(member_name_ahead) >> dsl::break_
             | dsl::peek(
                   dsl::literal_set(dsl::lit_c<'('>, dsl::lit_c<'='>, dsl::lit_c<';'>, dsl::lit_c<'{'>, dsl::lit_c<'}'>))
                 >> dsl::break_
@@ -920,7 +977,7 @@ struct scan_member_type : lexy::token_production
 struct typed_member
 {
     static constexpr auto rule = dsl::position + dsl::p<scan_member_type>
-        + dsl::position + dsl::p<name_p<e_member_name>>
+        + dsl::position + dsl::p<member_name_p>
         + (dsl::peek(dsl::lit_c<'('>) >> dsl::p<method_tail> | dsl::peek(dsl::lit_c<'{'>) >> dsl::p<prop_tail>
             | dsl::peek(LEXY_LIT("=>")) >> dsl::p<arrow_prop_tail> | dsl::else_ >> dsl::p<field_tail>);
     static constexpr auto value = lexy::bind(lexy::callback<Member>(
@@ -985,7 +1042,9 @@ struct typed_member
                                                      const char* name_pos, std::string name, MethodRest&& rest)
     {
         Member m;
-        check_name(st, name_pos, name);
+        const bool is_op = is_operator_name(name);
+        if (!is_op)
+            check_name(st, name_pos, name);
         if (only_blank(span_text(st, type)))
         {
             // No type: a constructor, when the name is the name of the class. The step
@@ -1017,8 +1076,18 @@ struct typed_member
         std::string ret = type_of(st, type);
         if (rest.base_pos)
             st.error(rest.base_pos, "only a constructor can call 'base(...)' after the parameters");
-        me.name = std::move(name);
         me.params = std::move(rest.params);
+        if (is_op)
+        {
+            // The identifier of the operator. An unknown symbol keeps "operator" and the symbol.
+            me.op = name.substr(8);
+            const std::optional<std::string> ident = op_ident(me.op, me.params.size());
+            me.name = ident ? *ident : std::move(name);
+        }
+        else
+        {
+            me.name = std::move(name);
+        }
         me.ret = ret == "void" ? std::string{} : std::move(ret);
         me.body_span = rest.body;
         me.expr_body = rest.expr_body;
@@ -1746,6 +1815,8 @@ struct interface_p
         {
             if (m.kind == Member::IsMethod)
             {
+                if (!m.method.op.empty())
+                    st.error(st.base + m.method.pos, "an operator needs a class or a struct");
                 if (m.no_body_pos == nullptr)
                     st.error(st.base + m.method.body_span.begin,
                         "an interface method cannot have a body; end the declaration with ';'");
@@ -1900,7 +1971,9 @@ struct class_p
         if (m.kind != Member::IsField)
         {
             st.error(pos,
-                m.kind == Member::IsMethod
+                m.kind == Member::IsMethod && !m.method.op.empty()
+                    ? "an operator needs a class or a struct"
+                : m.kind == Member::IsMethod
                     ? "a function must be a member of a class. At file level, only a convert hook "
                       "'T convert_<variable>(Old old)' of a module variable is allowed"
                     : "expected 'class', 'struct', 'enum' or a variable 'Type name = init;'");

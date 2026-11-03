@@ -32,6 +32,8 @@
 #include "ast.h"
 
 #include <functional>
+#include <map>
+#include <set>
 #include <string>
 
 namespace hotc
@@ -47,6 +49,18 @@ struct ConstContext
     // that are not virtual, not override, not abstract and not async.
     std::function<bool(const ast::Method&)> params_ok;
 };
+
+// The direct writes of a function body, for the checks of the operators. "roots" holds the names
+// that the body assigns, increments or decrements ("x = 1", "x += 1", "x++", "this.x = 1", "x[i] = 1",
+// "x.y = 1"). The value is true when the path is the bare name. A name that the body declares (a
+// parameter or a local) is not in it. "calls" holds the names of the functions of the same object that
+// the body calls ("F()", "this.F()"). It does not see a call of a native member function on a field.
+struct DirectWrites
+{
+    std::map<std::string, bool> roots;
+    std::set<std::string> calls;
+};
+DirectWrites direct_writes(const ast::Method& m);
 
 // Sets the flags for each body of the class: the methods, the constructors and the destructors.
 void infer_const(ast::ClassDef& cd, const ConstContext& ctx);

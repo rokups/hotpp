@@ -1,0 +1,4 @@
+Money::op_add 1
+Money::op_eq 1
+Money::op_lt 1
+Money::op_gt 1

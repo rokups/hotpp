@@ -1,0 +1,83 @@
+// A script struct with operators. The first Tick runs each use once and writes the results to
+// int fields. The host reads them.
+using "Actor.h";
+using <algorithm>;
+using <vector>;
+
+struct Vec2 {
+    float x = 0.0;
+    float y = 0.0;
+    float[2] data;
+
+    Vec2(float ax, float ay) {
+        this.x = ax;
+        this.y = ay;
+    }
+    Vec2 operator+(in Vec2 o) { return Vec2(this.x + o.x, this.y + o.y); }
+    Vec2 operator-() { return Vec2(-this.x, -this.y); }
+    Vec2 operator*(float f) { return Vec2(this.x * f, this.y * f); }
+    bool operator<(in Vec2 o) { return this.x < o.x; }
+    bool operator>(in Vec2 o) { return this.x > o.x; }
+    ref float operator[](int i) { return this.data[i]; }
+}
+
+// A struct without a written operator==: the translator generates the field-wise one.
+struct Pair {
+    int a = 0;
+    Vec2 v;
+    int[3] arr;
+    std.vector<int> list;
+}
+
+class Holder : Actor {
+    int ticks = 0;
+    int r_add = 0;
+    int r_neg = 0;
+    int r_mul = 0;
+    int r_lt = 0;
+    int r_gt = 0;
+    int r_index = 0;
+    int r_compound = 0;
+    int r_eq = 0;
+    int r_ne = 0;
+    int r_pair_eq = 0;
+    int r_pair_ne = 0;
+    int r_sorted = 0;
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+        if (this.ticks != 1) { return; }
+        Vec2 a = Vec2(1.0, 2.0);
+        Vec2 b = Vec2(3.0, 5.0);
+        Vec2 s = a + b;
+        this.r_add = (s.x == 4.0 && s.y == 7.0) ? 1 : 0;
+        Vec2 n = -a;
+        this.r_neg = (n.x == -1.0 && n.y == -2.0) ? 1 : 0;
+        Vec2 m = b * 2.0;
+        this.r_mul = (m.x == 6.0 && m.y == 10.0) ? 1 : 0;
+        this.r_lt = (a < b) ? 1 : 0;
+        this.r_gt = (b > a) ? 1 : 0;
+        Vec2 d;
+        d[0] = 4.0;
+        d[1] = 9.0;
+        this.r_index = (d[0] + d[1] == 13.0) ? 1 : 0;
+        Vec2 c = a;
+        c += b;
+        c *= 2.0;
+        this.r_compound = (c.x == 8.0 && c.y == 14.0) ? 1 : 0;
+        Vec2 a2 = a;
+        this.r_eq = (a == a2) ? 1 : 0;
+        this.r_ne = (a != b) ? 1 : 0;
+        Pair p;
+        Pair q;
+        this.r_pair_eq = (p == q) ? 1 : 0;
+        q.list.push_back(1);
+        this.r_pair_ne = (p != q) ? 1 : 0;
+        std.vector<Vec2> list;
+        list.push_back(b);
+        list.push_back(a);
+        list.push_back(s);
+        std.sort(list.begin(), list.end());
+        this.r_sorted = (list[0].x == 1.0 && list[1].x == 3.0 && list[2].x == 4.0) ? 1 : 0;
+    }
+}

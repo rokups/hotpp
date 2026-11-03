@@ -35,7 +35,7 @@ struct Root
     bool exact = false;
 };
 
-Root root_of(const Expr& e)
+Root root_of(const Expr& e, bool this_paths = false)
 {
     if (auto* n = std::get_if<NameExpr>(&e.v))
     {
@@ -45,18 +45,21 @@ Root root_of(const Expr& e)
     }
     if (auto* m = std::get_if<MemberExpr>(&e.v))
     {
-        Root r = m->obj ? root_of(*m->obj) : Root{};
+        // "this.f": with "this_paths" the root is the field "f".
+        if (this_paths && m->obj && std::holds_alternative<ThisExpr>(m->obj->v))
+            return {&m->name, true};
+        Root r = m->obj ? root_of(*m->obj, this_paths) : Root{};
         r.exact = false;
         return r;
     }
     if (auto* ix = std::get_if<IndexExpr>(&e.v))
     {
-        Root r = ix->obj ? root_of(*ix->obj) : Root{};
+        Root r = ix->obj ? root_of(*ix->obj, this_paths) : Root{};
         r.exact = false;
         return r;
     }
     if (auto* p = std::get_if<ParenExpr>(&e.v))
-        return p->inner ? root_of(*p->inner) : Root{};
+        return p->inner ? root_of(*p->inner, this_paths) : Root{};
     if (auto* u = std::get_if<UnaryExpr>(&e.v))
     {
         if (u->postfix || !u->operand)
@@ -64,7 +67,7 @@ Root root_of(const Expr& e)
         const bool ref_cast = u->op.size() > 2 && u->op.front() == '(' && u->op.compare(u->op.size() - 2, 2, "&)") == 0;
         if (u->op == "*" || ref_cast)
         {
-            Root r = root_of(*u->operand);
+            Root r = root_of(*u->operand, this_paths);
             r.exact = false;
             return r;
         }
@@ -369,6 +372,56 @@ bool params_default_ok(const Method& m)
 }
 
 } // namespace
+
+DirectWrites direct_writes(const ast::Method& m)
+{
+    static const ConstContext no_context;
+    BodyInfo info{no_context, {}, {}, {}, {}};
+    info.collect_declarations(m.params, m.body);
+    DirectWrites out;
+    auto write = [&](const ExprP& target)
+    {
+        if (!target)
+            return;
+        const Root r = root_of(*target, true);
+        if (r.name && !info.declared.count(*r.name))
+        {
+            auto it = out.roots.emplace(*r.name, r.exact);
+            it.first->second = it.first->second || r.exact;
+        }
+    };
+    auto fe = [&](const Expr& e)
+    {
+        if (auto* b = std::get_if<BinaryExpr>(&e.v))
+        {
+            if (is_assign_op(b->op))
+                write(b->lhs);
+        }
+        else if (auto* u = std::get_if<UnaryExpr>(&e.v))
+        {
+            if (u->op == "++" || u->op == "--")
+                write(u->operand);
+        }
+        else if (auto* c = std::get_if<CallExpr>(&e.v))
+        {
+            if (!c->callee)
+                return;
+            if (auto* n = std::get_if<NameExpr>(&c->callee->v))
+            {
+                if (n->parts.size() == 1 && !info.declared.count(n->parts[0]))
+                    out.calls.insert(n->parts[0]);
+            }
+            else if (auto* mem = std::get_if<MemberExpr>(&c->callee->v))
+            {
+                if (mem->obj && std::holds_alternative<ThisExpr>(mem->obj->v))
+                    out.calls.insert(mem->name);
+            }
+        }
+    };
+    auto fs = [](const Stmt&) {};
+    walk::make_walker(fe, fs).block(m.body);
+    return out;
+}
 
 void infer_const(ClassDef& cd, const ConstContext& ctx)
 {

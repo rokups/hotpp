@@ -32,6 +32,7 @@
 #include "const_infer.h"
 #include "nullcheck.h"
 #include "diag.h"
+#include "operator_names.h"
 #include "file_time.h"
 #include "emit.h"
 #include "lower.h"
@@ -3875,6 +3876,8 @@ void translate_impl(
 
     // ---- the rules of "C" (a bare script class) on fields, parameters, return types and locals
     hotc::check_value_uses(sc.classes, types, map, g_diag);
+    if (!sc.is_cpp)
+        hotc::check_operator_vars(sc.vars, map, g_diag);
     if (!g_diag.items.empty())
         throw TranslateAbort{};
 
@@ -4368,6 +4371,7 @@ void translate_impl(
         {
             const size_t before = g_diag.items.size();
             hotc::check_ctors(cd, map, g_diag);
+            hotc::check_operators(cd, map, g_diag);
             if (g_diag.items.size() != before)
                 throw TranslateAbort{};
         }
@@ -4385,7 +4389,9 @@ void translate_impl(
         {
             reserved(m.pos, m.params);
             if (!fn_names.insert(m.name).second)
-                fail_at(map, m.pos, "function '" + m.name + "' is declared twice (overloads are not supported)");
+                fail_at(map, m.pos,
+                    m.op.empty() ? "function '" + m.name + "' is declared twice (overloads are not supported)"
+                                 : "operator '" + m.op + "' is declared twice (overloads are not supported)");
             if (field_names.count(m.name))
                 fail_at(map, m.pos, "'" + m.name + "' is a field and a function");
         }
@@ -4421,7 +4427,10 @@ void translate_impl(
                 p.type = param_type_or_fail(types, map, m.pos, p.type, p.weak, p.value, p.mode == hotc::ast::ParamMode::ByVal);
                 own_struct_in_to_ref(p, cd.name);
             }
-            if (!m.ret.empty())
+            // An operator can return "ref T": the C++ return type is "T&".
+            if (!m.op.empty() && m.ret.compare(0, 4, "ref ") == 0)
+                m.ret = ret_type_or_fail(types, map, m.pos, m.ret.substr(4), m.ret_value) + "&";
+            else if (!m.ret.empty())
                 m.ret = ret_type_or_fail(types, map, m.pos, m.ret, m.ret_value);
         }
         for (hotc::ast::Ctor& c : cd.ctors)
@@ -4591,14 +4600,66 @@ void translate_impl(
                 if (!c.params.empty())
                     o.w(at_line(c.line, c.pos) + "    " + cn + "(" + param_text_def(c.params).substr(2)
                         + ") : " + init_call + " { " + P + "ctor(this, " + arg_names(c.params) + "); }\n");
-            for (const Method& m : cd.methods)
+            // A member of an operator calls the free function with the identifier of the operator.
+            // The free function takes a non-const self: a body can call the other functions of the
+            // struct. So a const member passes "const_cast<S*>(this)". The checker does not report
+            // a field write in the body of a const operator.
+            auto forward = [&](const Method& m, const std::string& ret, bool is_const)
             {
                 std::string ps = param_text_def(m.params);
                 if (!ps.empty())
                     ps = ps.substr(2);
-                o.w(at_line(m.line, m.pos) + "    " + fn_ret(m) + " " + m.name + "(" + ps + ") { "
-                    + (fn_ret(m) == "void" ? "" : "return ") + P + m.name + "(this"
+                o.w(at_line(m.line, m.pos) + "    " + ret + " " + hotc::cxx_member_name(m) + "(" + ps + ")"
+                    + (is_const ? " const" : "") + " { " + (ret == "void" ? "" : "return ") + P + m.name
+                    + "(" + (is_const ? "const_cast<" + cn + "*>(this)" : std::string("this"))
                     + (m.params.empty() ? "" : ", " + arg_names(m.params)) + "); }\n");
+            };
+            for (const Method& m : cd.methods)
+            {
+                if (m.op.empty())
+                {
+                    forward(m, fn_ret(m), false);
+                    continue;
+                }
+                const bool ref_ret = hotc::ast::is_ref_type(fn_ret(m));
+                if (ref_ret && m.name == "op_index")
+                {
+                    forward(m, fn_ret(m), false);
+                    forward(m, "const " + fn_ret(m), true); // the const member returns "const T&"
+                }
+                else
+                    forward(m, fn_ret(m), hotc::is_compare_op_ident(m.name) || !ref_ret);
+            }
+            // The members that the translator generates after the written ones. A field type can have
+            // no "==" (a weak pointer). So the generated "==" and "!=" are member templates with a
+            // default argument: "static_cast<const S_&>(o)" depends on the template parameter, so
+            // C++ checks the body only when the code compares the struct.
+            if (!sc.is_cpp)
+            {
+                bool has_eq = false;
+                for (const Method& m : cd.methods)
+                    has_eq = has_eq || m.name == "op_eq";
+                const std::string tpl = "    template <class S_ = " + cn + "> ";
+                if (!has_eq)
+                {
+                    std::string cmp;
+                    for (const Field& f : cd.fields)
+                        cmp += (cmp.empty() ? "" : " && ") + ("this->" + f.name + " == __o." + f.name);
+                    o.w(tpl + "bool operator==(const " + cn + "&" + (cmp.empty() ? "" : " o") + ") const { "
+                        + (cmp.empty() ? std::string("return true;")
+                                       : "const auto& __o = static_cast<const S_&>(o); return " + cmp + ";")
+                        + " }\n");
+                    o.w(tpl + "bool operator!=(const " + cn + "& o) const { return !(*this == static_cast<const S_&>(o)); }\n");
+                }
+                else
+                    o.w("    bool operator!=(const " + cn + "& o) const { return !(*this == o); }\n");
+                for (const Method& m : cd.methods)
+                {
+                    if (!hotc::is_binary_op_ident(m.name) || m.ret != cn || m.params.size() != 1)
+                        continue;
+                    o.w("    " + cn + "& operator" + m.op + "=(" + param_text_def(m.params).substr(2)
+                        + ") { *this = *this " + m.op + " " + m.params[0].name + "; return *this; }\n");
+                }
             }
             reset();
             o.w("};\n\n");
@@ -5113,6 +5174,7 @@ void translate_impl(
         {
             const size_t before = g_diag.items.size();
             hotc::check_ctors(cd, map, g_diag);
+            hotc::check_operators(cd, map, g_diag);
             if (g_diag.items.size() != before)
                 throw TranslateAbort{};
         }
@@ -5286,7 +5348,9 @@ void translate_impl(
                     fail_at(map, m.pos, "'override' has no virtual method to override");
                 }
                 if (!fn_names.insert(m.name).second)
-                    fail_at(map, m.pos, "function '" + m.name + "' is declared twice (overloads are not supported)");
+                    fail_at(map, m.pos,
+                    m.op.empty() ? "function '" + m.name + "' is declared twice (overloads are not supported)"
+                                 : "operator '" + m.op + "' is declared twice (overloads are not supported)");
                 if (field_names.count(m.name))
                     fail_at(map, m.pos, "'" + m.name + "' is a field and a function");
                 continue;
@@ -5951,6 +6015,50 @@ void translate_impl(
                     + (par ? " : " + par->name + "_Shell(hot::ConstructChild{})" : std::string()) + "\n    {\n        "
                     + "hot::clone_state(this, &" + cn + "_record, src);\n    }\n",
                 cd.line, cd.pos);
+        // The operators of the class. Native code and C++ call the shell members. A member reads the
+        // slot of the written operator, like the thunk does, so a reload changes the result. A
+        // parameter "in C" is "const C&" here: the call borrows the object as a hot::Value. The
+        // return of "C" is a hot::Value<C>. The member of a compare operator or of an operator that
+        // returns a value is const, like the member of a struct. The translator adds "!=" for a
+        // written "==" and the compound operators for a written binary operator that returns the
+        // class. A compound operator takes the state of the result (hot::assign_value). Optimized
+        // AOT code has no slot, so its shell has no operator members.
+        if (!opt.aot_optimized && !sc.is_cpp)
+        {
+            std::string ops;
+            bool has_eq = false;
+            std::set<std::string> compound_done;
+            for (const Method& m : cd.methods)
+            {
+                if (m.op.empty() || m.overrides_virtual)
+                    continue;
+                const std::string ret = m.ret.empty() ? std::string("void") : m.ret;
+                const bool ref_ret = hotc::ast::is_ref_type(ret);
+                const bool is_const = hotc::is_compare_op_ident(m.name) || !ref_ret;
+                std::string ps, as, sig_ps;
+                for (const Param& p : m.params)
+                {
+                    const std::string t = p.value ? "const " + p.script_type + "&" : p.type;
+                    ps += (ps.empty() ? "" : ", ") + name_in_type(t, p.name);
+                    as += ", " + (p.value ? "hot::borrow_value(" + p.name + ")" : arg_expr(p.type, p.name));
+                    sig_ps += ", " + p.type;
+                }
+                ops += "    " + ret + " " + hotc::cxx_member_name(m) + "(" + ps + ")" + (is_const ? " const" : "")
+                    + "\n    {\n        return hot::call<" + ret + "(" + B + "*" + sig_ps + ")>("
+                    + (is_const ? "const_cast<" + shell + "*>(this)" : std::string("this")) + ", " + slot_id(m.name) + as
+                    + ");\n    }\n";
+                has_eq = has_eq || m.name == "op_eq";
+                // "a += b" for "a + b": only a binary operator of arithmetic or bits that returns the class.
+                const std::string value_ret = "hot::Value<" + cn + ">";
+                if (m.params.size() == 1 && hotc::is_binary_op_ident(m.name) && ret == value_ret)
+                    ops += "    " + shell + "& operator" + m.op + "=(" + ps + ")\n    {\n        hot::assign_value(*this, (*this "
+                        + m.op + " " + arg_expr(m.params[0].type, m.params[0].name) + "));\n        return *this;\n    }\n";
+            }
+            if (has_eq)
+                ops += "    bool operator!=(const " + cn + "& o) const { return !(*this == o); }\n";
+            if (!ops.empty())
+                mapped("\n" + ops, cd.line, cd.pos);
+        }
         // Base calls: a native virtual that the script does not override. The root shell derives from
         // the native base, so it can call a protected implementation. The forwarder of the state
         // struct and the "base_" function of a parent shell call this public member.

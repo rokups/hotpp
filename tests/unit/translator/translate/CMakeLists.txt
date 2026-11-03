@@ -24,6 +24,9 @@ add_executable(unit_translator_translate_tests
     weak_handle_translation_tests.cpp
     shared_pointer_translation_tests.cpp
     value_use_translation_tests.cpp
+    operator_struct_translation_tests.cpp
+    operator_class_translation_tests.cpp
+    operator_lowering_tests.cpp
     script_attribute_translation_tests.cpp
     import_translation_tests.cpp
     script_import_translation_tests.cpp

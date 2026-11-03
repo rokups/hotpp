@@ -1,0 +1,7 @@
+struct Counter {
+    int n;
+    Counter operator+(in Counter o) {
+        n = n + o.n;
+        return this;
+    }
+}

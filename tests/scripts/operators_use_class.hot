@@ -1,0 +1,89 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Script code that uses the operators of a script class on bare class values (boxes). The first
+// Tick runs each use once and writes the result to an int field. The host reads the fields.
+using "Actor.h";
+
+class Money {
+    int cents = 0;
+
+    Money(int c) {
+        this.cents = c;
+    }
+
+    Money operator+(in Money o) {
+        return new Money(this.cents + o.cents);
+    }
+
+    Money operator*(int f) {
+        return new Money(this.cents * f);
+    }
+
+    Money operator-() {
+        return new Money(-this.cents);
+    }
+
+    bool operator==(in Money o) {
+        return this.cents == o.cents;
+    }
+
+    bool operator<(in Money o) {
+        return this.cents < o.cents;
+    }
+
+    bool operator>(in Money o) {
+        return this.cents > o.cents;
+    }
+
+    int operator[](int i) {
+        return this.cents * 10 + i;
+    }
+}
+
+class Holder : Actor {
+    Money a = new Money(100);
+    Money b = new Money(250);
+    int ticks = 0;
+    int r_add = 0;
+    int r_mul_int = 0;
+    int r_member = 0;
+    int r_var = 0;
+    int r_neg = 0;
+    int r_eq = 0;
+    int r_ne = 0;
+    int r_lt = 0;
+    int r_index = 0;
+    int r_compound = 0;
+    int r_chain = 0;
+    int r_field = 0;
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+        if (this.ticks != 1) { return; }
+        Money c = this.a + this.b;
+        this.r_add = (c.cents == 350) ? 1 : 0;
+        Money d = this.a * 5;
+        this.r_mul_int = (d.cents == 500) ? 1 : 0;
+        this.r_member = ((this.a + this.b).cents == 350) ? 1 : 0;
+        var e = this.a + this.b;
+        this.r_var = (e.cents == 350) ? 1 : 0;
+        Money n = -this.a;
+        this.r_neg = (n.cents == -100) ? 1 : 0;
+        Money a2 = new Money(100);
+        this.r_eq = (this.a == a2) ? 1 : 0;
+        this.r_ne = (this.a != this.b) ? 1 : 0;
+        this.r_lt = (this.a < this.b) ? 1 : 0;
+        this.r_index = (this.a[3] == 1003) ? 1 : 0;
+        Money f = new Money(1);
+        Money g = new Money(2);
+        f += g;
+        f += g;
+        this.r_compound = (f.cents == 5 && g.cents == 2) ? 1 : 0;
+        Money h = this.a + this.b + a2;
+        this.r_chain = (h.cents == 450) ? 1 : 0;
+        this.a = this.a + this.b;
+        this.r_field = (this.a.cents == 350) ? 1 : 0;
+    }
+}

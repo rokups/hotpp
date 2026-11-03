@@ -1,0 +1,8 @@
+class Seq {
+    int operator[](int i) { return i; }
+}
+class User {
+    void run(Seq s) {
+        s[0] = 1;
+    }
+}

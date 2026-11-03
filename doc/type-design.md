@@ -19,6 +19,7 @@ This page records an approved design for the types of HotScript. It is a design 
 - Native declarations are `[native]` stubs and header imports.
 - A suffix operator binds to the type. `int* a, b` declares two pointers.
 - A prefix `$` also binds to the type. `$Foo a, b` declares two handles.
+- An operator is a member method with the name `operator+`. The left operand is `this`. `!=` and the compound forms are generated. See [Operators](classes.html#operators).
 
 ## Type mapping table
 

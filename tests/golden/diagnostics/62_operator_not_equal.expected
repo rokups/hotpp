@@ -1,0 +1,3 @@
+62_operator_not_equal.hot:4:5: error: operator '!=' is generated from 'operator=='; remove it
+    4 |     bool operator!=(in Version o) { return this.major != o.major; }
+1 error generated.

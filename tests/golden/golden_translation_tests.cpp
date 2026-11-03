@@ -303,6 +303,25 @@ TEST(GoldenTranslation, CheckedIndexStubs)
     check_golden("checked_index_v1.g1.slots", r.slots_out);
 }
 
+// A script struct with operators: the members, the generated "==", "!=" and the compound operators.
+TEST(GoldenTranslation, StructOperators)
+{
+    golden_one("operators_struct");
+}
+
+// A script class with operators: the shell members, the borrowed "in" parameter and the Value return.
+// Generation 2 changes the body of operator+ only.
+TEST(GoldenTranslation, ClassOperators)
+{
+    golden_pair("operators_class");
+}
+
+// Script code that uses the operators of a script class on boxes: "a + b", "a == b", "a += b", "-a", "a[i]".
+TEST(GoldenTranslation, ClassOperatorUse)
+{
+    golden_one("operators_use_class");
+}
+
 // A native stub with the name of a header type is not a script type. It gives no name clash error.
 TEST(GoldenTranslation, NativeStubWithAHeaderTypeNameIsNotAClash)
 {

@@ -1,0 +1,43 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Generation 2 of the script class with operators. The body of operator+ adds a fee of one cent.
+// The signatures and the fields do not change.
+using "Actor.h";
+
+class Money {
+    int cents = 0;
+
+    Money(int c) {
+        this.cents = c;
+    }
+
+    Money operator+(in Money o) {
+        return new Money(this.cents + o.cents + 1);
+    }
+
+    bool operator==(in Money o) {
+        return this.cents == o.cents;
+    }
+
+    bool operator<(in Money o) {
+        return this.cents < o.cents;
+    }
+
+    bool operator>(in Money o) {
+        return this.cents > o.cents;
+    }
+}
+
+// The holder keeps three values. The host reads them and calls the operators of the shell.
+class Holder : Actor {
+    Money a = new Money(100);
+    Money b = new Money(250);
+    Money c = new Money(100);
+    int ticks = 0;
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+    }
+}

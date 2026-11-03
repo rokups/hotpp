@@ -130,7 +130,14 @@ TEST(ValueUseTranslation, ReferenceIsAnError)
 {
     const std::string msg = "a reference to a value of a script class is not supported; write $Pt";
     expect_error("class H {\n    void F(ref Pt p) { }\n}\n", msg);
-    expect_error("class H {\n    void F(in Pt p) { }\n}\n", msg);
+    expect_error("class H {\n    void F(out Pt p) { }\n}\n", msg);
+}
+
+// An "in" parameter of a script class is the plain box form: a const reference to the value.
+TEST(ValueUseTranslation, InParameterIsTheBoxForm)
+{
+    const hotc::TranslateResult r = translate_value("class H {\n    void F(in Pt p) { }\n}\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
 TEST(ValueUseTranslation, ConstByValueIsJudgedAsTheClass)
