@@ -2322,6 +2322,19 @@ struct QueryCollector
             out.methods[it->second].insert(fn);
     }
 
+    // The type without a trailing "&" or "&&" and without the "const" in front. The probe asks about
+    // the class: a "const std::vector<int>&" would give "T*" of a reference in the facts.
+    static std::string without_reference(const std::string& cpp)
+    {
+        std::string t = trim(cpp);
+        while (!t.empty() && t.back() == '&')
+            t.pop_back();
+        t = trim(t);
+        if (t.rfind("const ", 0) == 0)
+            t = trim(t.substr(6));
+        return t;
+    }
+
     // The key of a native class for the lookup of its functions: no "const", no "*" or "&" and no
     // template arguments ("std::vector<int>" gives "std::vector"). Empty: not a plain name.
     static std::string type_key(const std::string& cpp)
@@ -2442,7 +2455,7 @@ struct QueryCollector
             declare(p.name, of_text(t));
             const QType q = of_text(t);
             if (!is_ref_type(t) && !q.cpp.empty())
-                value_params[p.name] = q.cpp;
+                value_params[p.name] = without_reference(q.cpp);
         };
         for (const Param& p : params)
             add(p);

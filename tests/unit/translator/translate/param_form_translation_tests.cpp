@@ -180,3 +180,57 @@ TEST(ParamFormTranslation, OverrideThatDoesNotMatchTheBaseFormIsAnError)
     EXPECT_FALSE(override_translate("    override void ByRef(Vec3 v) { }\n").ok);
     EXPECT_FALSE(override_translate("    override void ByConstRef(ref Vec3 v) { }\n").ok);
 }
+
+namespace
+{
+
+// A script class with the members of "members". The standard vector and string are in the scope.
+hotc::TranslateResult std_script(const std::string& members)
+{
+    return translate_text("using <vector>;\nusing <string>;\nclass Foo {\n" + members + "}\n");
+}
+
+} // namespace
+
+TEST(ParamFormTranslation, MemberCallOnInVectorParameter)
+{
+    const hotc::TranslateResult r = std_script("    int F(in std.vector<int> xs) { return xs.size(); }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "const std::vector<int32_t>& xs")) << r.cpp;
+}
+
+TEST(ParamFormTranslation, MemberCallOnInStringParameter)
+{
+    const hotc::TranslateResult r = std_script("    int F(in std.string s) { return s.size(); }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "const std::string& s")) << r.cpp;
+}
+
+TEST(ParamFormTranslation, NestedMemberCallOnInParameter)
+{
+    const hotc::TranslateResult r = std_script(
+        "    int F(in std.vector<int> xs) { return xs.size() + 1; }\n"
+        "    int G(in std.string s) { return s.substr(1).substr(1).size() + s.length(); }\n"
+        "    int H(in std.string s) { var n = s.substr(1).size(); return n; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+}
+
+TEST(ParamFormTranslation, MemberCallOnRefParameter)
+{
+    const hotc::TranslateResult r = std_script(
+        "    int F(ref std.vector<int> xs) { return xs.size() + 1; }\n"
+        "    int G(ref std.string s) { return s.size() + 1; }\n"
+        "    void H(ref std.vector<int> xs) { xs.push_back(1); }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "std::vector<int32_t>& xs")) << r.cpp;
+}
+
+TEST(ParamFormTranslation, MemberCallOnOutParameter)
+{
+    const hotc::TranslateResult r = std_script(
+        "    void F(out std.vector<int> xs) { xs = std.vector<int>(); xs.push_back(xs.size() + 1); }\n"
+        "    void G(out std.string s) { s = std.string(); s.push_back('a'); int n = s.size(); }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "std::vector<int32_t>& xs")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "std::string& s")) << r.cpp;
+}
