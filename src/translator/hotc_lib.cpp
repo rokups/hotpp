@@ -31,6 +31,7 @@
 #include "check.h"
 #include "const_infer.h"
 #include "nullcheck.h"
+#include "lint.h"
 #include "diag.h"
 #include "operator_names.h"
 #include "file_time.h"
@@ -4217,6 +4218,7 @@ void translate_impl(
         hotc::check_nulls(cd, types, map, g_diag, no);
         if (g_diag.items.size() != before)
             throw TranslateAbort{};
+        hotc::lint_class(cd, map, g_diag); // the warnings: dead code, unused locals, shadowing
     };
     // Lowers the statements of a body into an emitter. Returns null for a raw body or an error.
     auto lower_body = [&](Method& m, RCtx& cx, bool trace) -> std::shared_ptr<hotc::ast::Emitter>

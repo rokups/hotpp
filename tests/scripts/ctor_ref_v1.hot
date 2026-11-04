@@ -55,7 +55,7 @@ class Spawner : Actor {
         this.leaf_hp = l.hp;
         this.leaf_seen = t;
         int o = 0;
-        $Wrap w = new $Wrap(o);
+        $Wrap _w = new $Wrap(o);
         this.made = o;
         $Named n = new $Named(std.string("abc"));
         this.named = n.label;

@@ -126,24 +126,24 @@ class Boss : Actor, IDamageable, IGuarded {
         this.probed = 1;
         $Tally t = new $Tally(7);
         $Tally again = t.Me();
-        $Hooked hooked = new $Hooked();
+        $Hooked _hooked = new $Hooked();
         this.same = again == t ? 1 : 0;
         if (again == null) return;
         this.tally_n = again.n;
         try {
-            $Fussy f = new $Fussy(1);
+            $Fussy _f = new $Fussy(1);
         } catch (std.runtime_error e) {
             this.caught = this.caught + 1;
             this.why = e.what();
         }
         try {
-            $Broken b = new $Broken();
+            $Broken _b = new $Broken();
         } catch (std.invalid_argument e) {
             this.caught = this.caught + 10;
             this.why = e.what();
         }
         try {
-            $Hurt h = new $Hurt(2);
+            $Hurt _h = new $Hurt(2);
         } catch (std.runtime_error e) {
             this.caught = this.caught + 100;
             this.why = e.what();
