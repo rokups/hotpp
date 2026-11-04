@@ -9,10 +9,12 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <deque>
 #include <map>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 // The specializations that the translator writes for the stub attribute checked_index and for the
@@ -136,6 +138,68 @@ TEST(RuntimeChecks, VectorIndexOutOfRangeThrows)
     EXPECT_THROW(hot::index(std::vector<int>(), 0), hot::IndexOutOfRange);
 }
 
+TEST(RuntimeChecks, DequeIndexOutOfRangeThrows)
+{
+    std::deque<int> d{1, 2, 3};
+    try
+    {
+        hot::index(d, 3);
+        FAIL() << "no exception";
+    }
+    catch (const hot::IndexOutOfRange& e)
+    {
+        EXPECT_EQ(e.index(), 3u);
+        EXPECT_EQ(e.size(), 3u);
+    }
+    EXPECT_THROW(hot::index(d, -1), hot::IndexOutOfRange);
+    const std::deque<int>& cd = d;
+    EXPECT_THROW(hot::index(cd, 7), hot::IndexOutOfRange);
+    EXPECT_THROW(hot::index(std::deque<int>(), 0), hot::IndexOutOfRange);
+}
+
+TEST(RuntimeChecks, StringIndexOutOfRangeThrows)
+{
+    std::string s = "abc";
+    try
+    {
+        hot::index(s, 3);
+        FAIL() << "no exception";
+    }
+    catch (const hot::IndexOutOfRange& e)
+    {
+        EXPECT_EQ(e.index(), 3u);
+        EXPECT_EQ(e.size(), 3u);
+    }
+    const std::string& cs = s;
+    EXPECT_THROW(hot::index(cs, 7), hot::IndexOutOfRange);
+    EXPECT_THROW(hot::index(std::string(), 0), hot::IndexOutOfRange);
+    EXPECT_THROW(hot::index(std::string("abc"), 3), hot::IndexOutOfRange);
+}
+
+TEST(RuntimeChecks, NegativeStringIndexThrows)
+{
+    std::string s = "abc";
+    EXPECT_THROW(hot::index(s, -1), hot::IndexOutOfRange);
+    std::string_view sv = s;
+    EXPECT_THROW(hot::index(sv, -1), hot::IndexOutOfRange);
+}
+
+TEST(RuntimeChecks, StringViewIndexOutOfRangeThrows)
+{
+    std::string_view sv = "abc";
+    try
+    {
+        hot::index(sv, 3);
+        FAIL() << "no exception";
+    }
+    catch (const hot::IndexOutOfRange& e)
+    {
+        EXPECT_EQ(e.index(), 3u);
+        EXPECT_EQ(e.size(), 3u);
+    }
+    EXPECT_THROW(hot::index(std::string_view(), 0), hot::IndexOutOfRange);
+}
+
 TEST(RuntimeChecks, CustomContainerWithTheTraitIsChecked)
 {
     hostns2::Ring<int> ring(3);
@@ -230,6 +294,27 @@ TEST(RuntimeChecks, IndexOfVectorInRangeWorks)
     static_assert(std::is_same_v<decltype(hot::index(std::vector<bool>{true}, 0)), bool>);
     EXPECT_TRUE(hot::index(std::vector<bool>{false, true}, 1));
     EXPECT_FALSE(hot::index(std::vector<bool>{false, true}, 0));
+}
+
+TEST(RuntimeChecks, RvalueStringIndexReturnsByValue)
+{
+    // An rvalue std::string returns a char by value, as an rvalue std::vector does.
+    static_assert(std::is_same_v<decltype(hot::index(std::string("abc"), 1)), char>);
+    EXPECT_EQ(hot::index(std::string("abc"), 1), 'b');
+    std::string s = "abc";
+    hot::index(s, 0) = 'x';
+    EXPECT_EQ(s, "xbc");
+}
+
+TEST(RuntimeChecks, StringViewIndexInRangeReturnsConstRef)
+{
+    std::string_view sv = "abc";
+    static_assert(std::is_same_v<decltype(hot::index(sv, 1)), const char&>);
+    EXPECT_EQ(hot::index(sv, 2), 'c');
+    EXPECT_EQ(&hot::index(sv, 1), &sv[1]);
+    std::deque<int> d{4, 5};
+    hot::index(d, 1) = 9;
+    EXPECT_EQ(d[1], 9);
 }
 
 TEST(RuntimeChecks, IndexOfMapUsesItsOperator)

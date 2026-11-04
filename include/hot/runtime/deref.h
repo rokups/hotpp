@@ -13,7 +13,10 @@
 
 #include <array>
 #include <cstddef>
+#include <deque>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -255,8 +258,9 @@ template <class T> HOT_HIDDEN T& as_ref(T* p)
 }
 
 // The trait "checked_index<C>" tells whether "c[i]" has a bounds test for the container type C.
-// The default is false, so a container uses its own operator[]. std::array and std::vector are
-// checked by default, and so is std::span (the private trait default_checked_index below). The stub attribute
+// The default is false, so a container uses its own operator[]. std::array, std::vector,
+// std::deque, std::basic_string and std::basic_string_view are checked by default, and so is
+// std::span (the private trait default_checked_index below). The stub attribute
 // "checked_index" of a native type makes the translator write a specialization in the module
 // header (see doc/native-interop-checks.md). A host can also write one by hand:
 //     template <class T> struct hot::checked_index<my::Ring<T>> : std::true_type {};
@@ -282,6 +286,15 @@ template <class T, std::size_t N> struct default_checked_index<std::array<T, N>>
 {
 };
 template <class T, class A> struct default_checked_index<std::vector<T, A>> : std::true_type
+{
+};
+template <class T, class A> struct default_checked_index<std::deque<T, A>> : std::true_type
+{
+};
+template <class C, class Tr, class A> struct default_checked_index<std::basic_string<C, Tr, A>> : std::true_type
+{
+};
+template <class C, class Tr> struct default_checked_index<std::basic_string_view<C, Tr>> : std::true_type
 {
 };
 #ifdef __cpp_lib_span
