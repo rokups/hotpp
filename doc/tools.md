@@ -18,7 +18,7 @@ nav_order: 42
 - Code lens: the number of references above each script class, method and constructor.
 - Call hierarchy: the incoming and outgoing calls of a script method or constructor.
 - Many workspace folders: the symbol index and the `clangd` cache cover all folders. A folder that the editor adds or removes (`workspace/didChangeWorkspaceFolders`) takes effect at once.
-- Formatting, and quick fixes for a missing `;` and for a typo.
+- Formatting (the whole file or a range), and quick fixes for a missing `;` and for a typo.
 
 ## Setup
 
@@ -87,11 +87,11 @@ Or add the same flags to the entry of the script in `compile_commands.json`:
 
 ## Format a script file
 
-`tools/format-hot.sh [--check] files...` formats `.hot` files with `clang-format`. It reads the `CSharp` section of the `.clang-format` file in the Hot++ repository. `--check` reports a difference and changes no file. The script works from any directory. The first run changes K&R braces in old scripts.
+`tools/format-hot.sh [--check] files...` formats `.hot` files with `clang-format`. It reads the `CSharp` section of the `.clang-format` file in the Hot++ repository. `--check` reports a difference and changes no file. The script works from any directory. The first run changes K&R braces in old scripts. `hot-ls` formats natively with no `clang-format`: it keeps the braces where the author put them (see [Formatter rules](tools-ls.html#formatter-rules)).
 
 ## Language server limits
 
-- The formatter of `hot-ls` is a brace-depth indenter, not a full formatter.
+- The formatter of `hot-ls` works on tokens. It does not parse and it does not move braces or break lines.
 - Diagnostics can be missing after an edit that gives the same C++ text.
 - The index folder is the first workspace folder only.
 

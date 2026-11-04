@@ -1998,6 +1998,99 @@ TEST(LanguageServer, FormattingFixesTheIndentAndKeepsStringsAndComments)
     EXPECT_TRUE(again["result"].empty()) << again.dump();
 }
 
+TEST(LanguageServer, RangeFormattingChangesTheLinesOfTheRangeOnly)
+{
+    const std::string messy =
+        "class A {\n"
+        "int x=1;\n"
+        "      int y=2;\n"
+        "\n"
+        "\n"
+        "  int z=3;\n"
+        "}\n";
+    Session s(false, messy);
+    json o = {{"tabSize", 4}, {"insertSpaces", true}};
+    // The range holds line 2 only (the line numbers are 0-based).
+    json r = s.client->request("textDocument/rangeFormatting",
+        {{"textDocument", {{"uri", s.uri}}}, {"options", o}, {"range", {{"start", pos(2, 0)}, {"end", pos(2, 5)}}}});
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array() && r["result"].size() == 1) << r.dump();
+    EXPECT_EQ(r["result"][0]["newText"], "    int y = 2;\n");
+    EXPECT_EQ(r["result"][0]["range"]["start"], pos(2, 0));
+    EXPECT_EQ(r["result"][0]["range"]["end"], pos(3, 0));
+    // The range holds lines 2 to 5: the second blank line goes away.
+    r = s.client->request("textDocument/rangeFormatting",
+        {{"textDocument", {{"uri", s.uri}}}, {"options", o}, {"range", {{"start", pos(2, 0)}, {"end", pos(5, 3)}}}});
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array() && r["result"].size() == 1) << r.dump();
+    EXPECT_EQ(r["result"][0]["newText"], "    int y = 2;\n\n    int z = 3;\n");
+    EXPECT_EQ(r["result"][0]["range"]["end"], pos(6, 0));
+    // A range of lines that are right has no edit.
+    r = s.client->request("textDocument/rangeFormatting",
+        {{"textDocument", {{"uri", s.uri}}}, {"options", o}, {"range", {{"start", pos(0, 0)}, {"end", pos(0, 9)}}}});
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    EXPECT_TRUE(r["result"].empty()) << r.dump();
+}
+
+namespace
+{
+
+// The result of a range format: the text after the edits, or the text itself when there is no edit.
+std::string range_format(const std::string& text, int l0, int c0, int l1, int c1, bool* has_edit = nullptr)
+{
+    Session s(false, text);
+    json o = {{"tabSize", 4}, {"insertSpaces", true}};
+    const json r = s.client->request("textDocument/rangeFormatting",
+        {{"textDocument", {{"uri", s.uri}}}, {"options", o}, {"range", {{"start", pos(l0, c0)}, {"end", pos(l1, c1)}}}});
+    EXPECT_TRUE(r.contains("result") && r["result"].is_array()) << r.dump();
+    if (has_edit)
+        *has_edit = !r["result"].empty();
+    std::string out = text;
+    if (r["result"].empty())
+        return out;
+    const json e = r["result"][0];
+    auto offset = [&](const json& p)
+    {
+        size_t off = 0;
+        for (int line = 0; line < p["line"].get<int>(); ++line)
+            off = text.find('\n', off) + 1;
+        return off + p["character"].get<size_t>();
+    };
+    const size_t b = offset(e["range"]["start"]), en = offset(e["range"]["end"]);
+    return text.substr(0, b) + e["newText"].get<std::string>() + text.substr(en);
+}
+
+} // namespace
+
+TEST(LanguageServer, RangeFormattingDoesNotChangeTheInsideOfAStringOrAComment)
+{
+    bool edit = true;
+    // Line 2 is the end of a string with "${...}" and its ";".
+    const std::string str = "class A {\nstring t = \"a${ f(\n   x ,y) }b\";\n  int  z =1;\n}\n";
+    range_format(str, 2, 0, 2, 5, &edit);
+    EXPECT_FALSE(edit);
+    EXPECT_EQ(range_format(str, 3, 0, 3, 5), "class A {\nstring t = \"a${ f(\n   x ,y) }b\";\n    int z = 1;\n}\n");
+    // Lines 2 and 3 are inside a block comment. The comment keeps its inner lines.
+    const std::string com = "class A {\n/* a\n     b   \n  */\nint  z;\n}\n";
+    range_format(com, 2, 0, 2, 4, &edit);
+    EXPECT_FALSE(edit);
+    EXPECT_EQ(range_format(com, 1, 0, 3, 4), "class A {\n    /* a\n     b   \n  */\nint  z;\n}\n");
+}
+
+TEST(LanguageServer, RangeFormattingAtTheEndOfTheText)
+{
+    // No new line at the end: the edit adds none.
+    const std::string no_nl = "class A {\nint x=1;\n  }";
+    EXPECT_EQ(range_format(no_nl, 0, 0, 2, 3), "class A {\n    int x = 1;\n}");
+    EXPECT_EQ(range_format(no_nl, 2, 0, 2, 3), "class A {\nint x=1;\n}");
+    // A new line at the end. The range ends at the start of the line after the last line.
+    const std::string nl = "class A {\nint x=1;\n  }\n";
+    EXPECT_EQ(range_format(nl, 0, 0, 3, 0), "class A {\n    int x = 1;\n}\n");
+    EXPECT_EQ(range_format(nl, 2, 0, 2, 3), "class A {\nint x=1;\n}\n");
+    // A range of the empty last line has no edit.
+    bool edit = true;
+    range_format(nl, 3, 0, 3, 0, &edit);
+    EXPECT_FALSE(edit);
+}
+
 TEST(LanguageServer, CodeActionInsertsAMissingSemicolon)
 {
     std::string text = kScript;

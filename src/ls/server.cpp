@@ -5,6 +5,7 @@
 #include "server.h"
 
 #include "clangd_process.h"
+#include "format.h"
 #include "hosts.h"
 #include "jsonrpc.h"
 #include "long_path.h"
@@ -622,6 +623,7 @@ private:
     json on_hover(const Doc& d, const json& p);
     json on_signature_help(const Doc& d, const json& p);
     json on_formatting(const Doc& d, const json& p);
+    json on_range_formatting(const Doc& d, const json& p);
     json on_code_action(const Doc& d, const json& p);
     json on_locations(const Doc& d, const json& p, const std::string& method);
     std::vector<Pos> gen_word_candidates(const Doc& d, Pos script_pos) const;
@@ -1078,6 +1080,7 @@ json Server::on_initialize(const json& p)
                 {"completionProvider", {{"triggerCharacters", {".", ":"}}}}, {"hoverProvider", true},
                 {"inlayHintProvider", true}, {"codeLensProvider", {{"resolveProvider", false}}},
                 {"callHierarchyProvider", true}, {"signatureHelpProvider", {{"triggerCharacters", {"(", ","}}}}, {"documentFormattingProvider", true},
+                {"documentRangeFormattingProvider", true},
                 {"codeActionProvider", {{"codeActionKinds", {"quickfix"}}}}, {"definitionProvider", true},
                 {"referencesProvider", true}, {"documentSymbolProvider", true}, {"renameProvider", true},
                 {"workspaceSymbolProvider", true},
@@ -1880,122 +1883,77 @@ json Server::on_signature_help(const Doc& d, const json& p)
     return out;
 }
 
-// The format of a script: the indent follows the braces, a line inside open brackets has one
-// more level, a line has no trailing white space, and the text ends with a new line. The text
-// of a string, of a char and of a comment does not change.
-static std::string format_script(const std::string& text, int tab_size, bool use_spaces)
-{
-    const std::string unit = use_spaces ? std::string(static_cast<size_t>(std::max(tab_size, 1)), ' ') : "\t";
-    std::string out;
-    int braces = 0, parens = 0;
-    bool in_block = false;
-    size_t pos = 0;
-    while (pos < text.size())
-    {
-        size_t end = text.find('\n', pos);
-        const bool last = end == std::string::npos;
-        if (last)
-            end = text.size();
-        std::string line = text.substr(pos, end - pos);
-        const bool cr = !line.empty() && line.back() == '\r';
-        if (cr)
-            line.pop_back();
-        while (!line.empty() && (line.back() == ' ' || line.back() == '\t'))
-            line.pop_back();
-        size_t first = 0;
-        while (first < line.size() && (line[first] == ' ' || line[first] == '\t'))
-            ++first;
-        std::string body = line.substr(first);
-        if (in_block)
-        {
-            // The inside of a block comment keeps its own indent.
-        }
-        else if (!body.empty())
-        {
-            int b = braces, q = parens;
-            if (body[0] == '}')
-                b = std::max(b - 1, 0);
-            if (body[0] == ')' || body[0] == ']')
-                q = std::max(q - 1, 0);
-            int level = b + (q > 0 ? 1 : 0);
-            std::string indent;
-            for (int k = 0; k < level; ++k)
-                indent += unit;
-            line = indent + body;
-        }
-        else
-        {
-            line.clear();
-        }
-        // Scan the line for the brackets.
-        char quote = 0;
-        for (size_t k = 0; k < body.size(); ++k)
-        {
-            const char c = body[k];
-            if (in_block)
-            {
-                if (c == '*' && k + 1 < body.size() && body[k + 1] == '/')
-                {
-                    in_block = false;
-                    ++k;
-                }
-            }
-            else if (quote)
-            {
-                if (c == '\\')
-                    ++k;
-                else if (c == quote)
-                    quote = 0;
-            }
-            else if (c == '"' || c == '\'')
-            {
-                quote = c;
-            }
-            else if (c == '/' && k + 1 < body.size() && body[k + 1] == '/')
-            {
-                break;
-            }
-            else if (c == '/' && k + 1 < body.size() && body[k + 1] == '*')
-            {
-                in_block = true;
-                ++k;
-            }
-            else if (c == '{')
-            {
-                ++braces;
-            }
-            else if (c == '}')
-            {
-                braces = std::max(braces - 1, 0);
-            }
-            else if (c == '(' || c == '[')
-            {
-                ++parens;
-            }
-            else if (c == ')' || c == ']')
-            {
-                parens = std::max(parens - 1, 0);
-            }
-        }
-        out += line;
-        if (!last)
-            out += cr ? "\r\n" : "\n";
-        else if (!line.empty() || !out.empty())
-            out += cr ? "\r\n" : "\n";
-        pos = end + 1;
-    }
-    return out;
-}
-
-json Server::on_formatting(const Doc& d, const json& p)
+// The options of a format request. The formatter has its own default for the indent width.
+static FormatOptions format_options(const json& p)
 {
     const json o = p.value("options", json::object());
-    const std::string formatted = format_script(d.text.s, o.value("tabSize", 4), o.value("insertSpaces", true));
+    FormatOptions f;
+    f.indent_width = std::max(o.value("tabSize", 4), 1);
+    f.use_tabs = !o.value("insertSpaces", true);
+    return f;
+}
+
+// The format of the whole script (see format.h). The reply is one edit.
+json Server::on_formatting(const Doc& d, const json& p)
+{
+    const std::string formatted = format_hot(d.text.s, format_options(p));
     if (formatted == d.text.s)
         return json::array();
     const int last = static_cast<int>(d.text.starts.size()) - 1;
     const Pos end = {last, static_cast<int>(d.text.line(last).size())};
     return json::array({{{"range", script_range(d, {0, 0}, end)}, {"newText", formatted}}});
+}
+
+// The format of the lines of a range. The formatter runs on the whole text. The edit holds the
+// new text of the lines in the range only.
+json Server::on_range_formatting(const Doc& d, const json& p)
+{
+    const Text& t = d.text;
+    const int lines = static_cast<int>(t.starts.size());
+    const json r = p.value("range", json::object());
+    int first = r.value("/start/line"_json_pointer, 0);
+    int last = r.value("/end/line"_json_pointer, first);
+    if (r.value("/end/character"_json_pointer, 1) == 0 && last > first)
+        --last;
+    first = std::clamp(first, 0, lines - 1);
+    last = std::clamp(last, first, lines - 1);
+    const FormatResult f = format_hot_map(t.s, format_options(p));
+    if (f.text == t.s)
+        return json::array();
+    // The lines of the output.
+    std::vector<std::string> out;
+    for (size_t pos = 0; pos < f.text.size();)
+    {
+        const size_t e = f.text.find('\n', pos);
+        out.push_back(f.text.substr(pos, e == std::string::npos ? std::string::npos : e + 1 - pos));
+        pos = e == std::string::npos ? f.text.size() : e + 1;
+    }
+    int lo = -1, hi = -1;
+    for (int k = first; k <= last && k < static_cast<int>(f.line_map.size()); ++k)
+    {
+        const int m = f.line_map[static_cast<size_t>(k)];
+        if (m < 0)
+            continue;
+        lo = lo < 0 ? m : std::min(lo, m);
+        hi = std::max(hi, m);
+    }
+    std::string text;
+    for (int k = lo; lo >= 0 && k <= hi && k < static_cast<int>(out.size()); ++k)
+        text += out[static_cast<size_t>(k)];
+    Pos end = {last + 1, 0};
+    if (last + 1 >= lines)
+    {
+        end = {last, static_cast<int>(t.line(last).size())};
+        // The last line has no new line when it has text. The edit adds none.
+        if (end.col > 0)
+            while (!text.empty() && (text.back() == '\n' || text.back() == '\r'))
+                text.pop_back();
+    }
+    const size_t from = t.starts[static_cast<size_t>(first)];
+    const size_t to = end.line < lines ? t.starts[static_cast<size_t>(end.line)] + static_cast<size_t>(end.col) : t.s.size();
+    if (t.s.compare(from, to - from, text) == 0)
+        return json::array();
+    return json::array({{{"range", script_range(d, {first, 0}, end)}, {"newText", text}}});
 }
 
 // The quick fixes for the diagnostics of the request: a missing ";" and a name that clangd
@@ -3238,7 +3196,7 @@ void Server::handle(const json& msg)
     static const std::set<std::string> doc_methods = {"textDocument/completion", "textDocument/hover",
         "textDocument/definition", "textDocument/references", "textDocument/documentSymbol",
         "textDocument/semanticTokens/full", "textDocument/rename", "textDocument/signatureHelp",
-        "textDocument/formatting", "textDocument/codeAction", "textDocument/inlayHint", "textDocument/codeLens",
+        "textDocument/formatting", "textDocument/rangeFormatting", "textDocument/codeAction", "textDocument/inlayHint", "textDocument/codeLens",
         "textDocument/prepareCallHierarchy"};
     if (!doc_methods.count(method))
         return reply_error(id, kMethodNotFound, "unknown method: " + method);
@@ -3266,6 +3224,8 @@ void Server::handle(const json& msg)
         return reply(id, on_prepare_call_hierarchy(*d, p));
     if (method == "textDocument/formatting")
         return reply(id, on_formatting(*d, p));
+    if (method == "textDocument/rangeFormatting")
+        return reply(id, on_range_formatting(*d, p));
     if (method == "textDocument/codeAction")
         return reply(id, on_code_action(*d, p));
     if (method == "textDocument/definition" || method == "textDocument/references")

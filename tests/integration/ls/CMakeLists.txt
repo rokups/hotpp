@@ -24,3 +24,10 @@ hot_gtest(integration_ls_tests DISCOVERY_TIMEOUT 30)
 add_executable(integration_ls_hosts_tests hosts_tests.cpp)
 target_link_libraries(integration_ls_hosts_tests PRIVATE hot_ls_lib GTest::gtest_main)
 hot_gtest(integration_ls_hosts_tests DISCOVERY_TIMEOUT 30)
+
+# Tests of the formatter. They need no clangd. They run the formatter on all the example scripts.
+add_executable(integration_ls_format_tests format_tests.cpp)
+target_include_directories(integration_ls_format_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
+target_link_libraries(integration_ls_format_tests PRIVATE hot_ls_lib GTest::gtest_main)
+target_compile_definitions(integration_ls_format_tests PRIVATE HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+hot_gtest(integration_ls_format_tests DISCOVERY_TIMEOUT 30)

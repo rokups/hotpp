@@ -7,7 +7,7 @@
 # C++ to a stock clangd child process. It maps the positions with the source map. The library
 # hot_ls_lib holds the server, so the tests run it in the test process over pipes.
 add_library(hot_ls_lib STATIC jsonrpc.cpp clangd_process.cpp server.cpp long_path.cpp
-    semantic.cpp symbol_index.cpp hosts.cpp)
+    semantic.cpp symbol_index.cpp hosts.cpp format.cpp)
 target_include_directories(hot_ls_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} PRIVATE ${PROJECT_SOURCE_DIR}/src/translator)
 target_link_libraries(hot_ls_lib PUBLIC hot_clang_backend nlohmann_json::nlohmann_json Threads::Threads)
 add_executable(hot_ls main.cpp)

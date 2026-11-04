@@ -76,7 +76,7 @@ Features:
   - The server keeps the last `clangd` answer. While the user types more characters of the same word, and the rest of the text does not change, it filters the answer and does not translate again. A failed translation is kept the same way.
 - A `clangd` error in the code of an imported script is published for the imported script, at its own line and column. The importing document does not get it. An open script keeps its own diagnostics.
 - Signature help (`(` and `,` trigger) asks `clangd` at the generated call. The active parameter is the number of commas before the cursor. The labels have script names.
-- Formatting (`textDocument/formatting`) sets the indent from the braces, adds one level inside open brackets, removes trailing white space and ends the text with a new line. Strings, chars and comments stay. The result is one edit, or none when the text is already formatted.
+- Formatting (`textDocument/formatting` and `textDocument/rangeFormatting`) is native. See "Formatter rules" below. The result is one edit, or none when the text is already formatted.
 - Code actions (quick fix): insert a missing `;` for the error `expected ';'`, and replace a word with the name from a `clangd` `did you mean '...'` message.
 - Hover, go-to-definition and references. A script symbol goes to the script. A native symbol goes to the native header.
 - Document symbols come from analyze. Semantic tokens come from a small lexer and the facts.
@@ -111,3 +111,17 @@ Limits:
 
 The tests are in `tests/integration/ls/` (`LanguageServer.*`). They run the server on a thread with an LSP client over pipes. The `clangd` tests are skipped when `clangd` is missing. Set `HOT_LS_CLANGD_LOG=file` to get the `clangd` log of a test.
 
+## Formatter rules
+
+The formatter of `hot-ls` works on a token stream. It keeps the comments and the literals as tokens. It does not parse the script. The code is `src/ls/format.cpp`. The function `format_hot` is pure. It is idempotent and it never changes a token: only white space changes. Tests check this on all example scripts.
+
+- The line breaks stay as the author put them. The formatter does not move a brace and does not join or split a line.
+- The indent follows the open `{`, `(` and `[`. A line in open parentheses or brackets gets one more level. A line that continues an expression (after `=`, `+`, `&&`, `.` ... or before `&&`, `?`, `.` ...) gets one more level. The body of an `if`, `for`, `while`, `else` or `do` on its own line gets one more level. A `case` or `default` label is one level inside the `switch`. Its body is one more level. The width is the `tabSize` of the request (default 4). `insertSpaces: false` gives one tab for each level.
+- One space goes around a binary operator (`=`, `==`, `+`, `-`, `/`, `&&`, `||`, `=>`, `??` and the compound assignments). `*`, `&` and `&&` get it when the author used the same spacing on both sides. A unary operator takes no space. `<`, `>`, `?` and `:` keep the spacing of the author, because they can be a generic, a nullable type or a label.
+- No space before `,` and `;`. One space after them. No space inside `( )` and `[ ]`. No space before the `(` of a call. One space between `if`, `for`, `foreach`, `while`, `switch`, `catch`, `using`, `lock`, `return` and the `(`. No space around `.`, `?.` and `::`. No space in `operator+(`.
+- One space before `{` and inside `{ }` on one line.
+- A run of blank lines becomes one blank line. The text has no leading blank line, no trailing white space and one new line at the end. A file with CRLF keeps CRLF.
+- The text of a string, of a char, of a `${...}` and of a block comment is byte exact, also the inner lines and their trailing white space. A line comment loses its trailing white space only. All comments keep their place. A line comment keeps the white space before it.
+- A token sequence that the rules do not know keeps the spacing of the author (one space for a run of spaces).
+
+Range formatting runs the formatter on the whole text. The edit holds the new text of the lines in the range only. A line inside a string or a block comment does not change.
