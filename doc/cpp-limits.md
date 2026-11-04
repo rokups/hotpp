@@ -42,7 +42,16 @@ The first version gives an error for each form in this list. The text in the sec
 | A delegating constructor, for example `Player() : Player(1) {}` | `a delegating constructor is not supported in a .cpp script class` |
 | A default member initializer that reads a field which has an entry in the list | `the default member initializer of the field '<b>' reads the field '<a>', which this constructor sets in its initializer list; ...` |
 | An entry in the initializer list that is not a field of the class, or a field that has two entries | An error of the C++ parser, for example `member initializer 'x' does not name a non-static data member or base class` |
+| A nested type in the class: a struct, a class, a union or an enum | `a nested type is not supported in a .cpp script class` |
+| A type alias in the class: `using T = int;` or `typedef int T;` | `a type alias is not supported in a .cpp script class` |
+| A friend declaration | `a friend declaration is not supported in a .cpp script class` |
+| A conversion operator, for example `operator int() const` | `a conversion operator is not supported in a .cpp script class` |
+| A member template: a method template, a constructor template, a class template or an alias template in the class | `a member template is not supported in a .cpp script class` |
+| A `static_assert` in the class | `a static_assert is not supported in a .cpp script class` |
+| A using declaration in the class, for example `using Actor::Move;` | `a using declaration is not supported in a .cpp script class` |
 | Any other declaration in the class | `this declaration is not supported in a .cpp script class` |
+| A pointer to a data member as a field, for example `int P::* mp;` | `a field cannot be a pointer to a data member ('int P::*'): it is not supported in a .cpp script. Use a pointer to a member function, or an index` (a pointer to a member function is allowed) |
+| A method that returns `Mesh*` or `Mesh&` of a native class, or a collection of such pointers | `a return value cannot hold a borrowed pointer or reference to 'Mesh': the object can be gone when the caller uses it. Use a value or a smart pointer such as 'std::shared_ptr<Mesh>'` (the words `a collection element` replace `a return value` for a collection) |
 | Properties | There is no property syntax in C++. Use two methods. |
 | Script-class handles | A script class is not a handle in a `.cpp` script. Use a pointer. See [Script classes as types](cpp-types.html#script-classes-as-types). |
 | A reference field or a reference module variable, for example `Mesh& r;` | `a field cannot be a reference: a reference cannot change its target and has no null. Use 'T*' (a checked pointer) or a value` |
@@ -65,6 +74,17 @@ The first version gives an error for each form in this list. The text in the sec
 | An include of a `.hot` script | `a .cpp script cannot include a .hot script` |
 
 For a `const` field or a reference field, use a default member initializer in the class body. For a delegating constructor, write the shared code in a method.
+
+## Warnings
+
+A warning does not stop the translation. These forms give a warning.
+
+| Form | Warning |
+|---|---|
+| A class template that has a base class, for example `template <class T> class Box : public Actor` | `the class template 'Box' has a base class, but it is not a script class: it is copied as plain C++ and has no hot reload` |
+| A `static` or `thread_local` local variable in a method, a constructor, a destructor, a static method or a lambda in them | `the static local variable 'n' resets to its initial value when the script reloads: a reload loads a new module` (a `const` local gives no warning) |
+
+An explicit constructor, for example `explicit Player(int hp)`, is allowed. It is a normal constructor.
 
 ## Known limits
 

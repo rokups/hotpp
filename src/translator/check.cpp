@@ -526,6 +526,14 @@ struct Checker
     {
         const std::string& t = type;
         std::string base;
+        // A pointer to a data member ("int P::*") is not a borrowed pointer. It has an own message.
+        if (is_cpp && what == "a field" && t.find("::*") != std::string::npos && t.find('(') == std::string::npos)
+        {
+            error(pos,
+                "a field cannot be a pointer to a data member ('" + trim(t)
+                    + "'): it is not supported in a .cpp script. Use a pointer to a member function, or an index");
+            return;
+        }
         if (is_borrowed_form(t, base))
         {
             if (base == "char")
@@ -540,6 +548,14 @@ struct Checker
             if (what == "a field" && field_pointer_rule(t, base, pos))
                 return;
             const std::string name = script_type_text(base);
+            if (is_cpp && what != "a field")
+            { // the text for C++: a .cpp script has no stub with 'handle'
+                borrowed_finding(pos,
+                    what + " cannot hold a borrowed pointer or reference to '" + name
+                        + "': the object can be gone when the caller uses it. Use a value or a smart pointer such as "
+                          "'std::shared_ptr<" + name + ">'");
+                return;
+            }
             borrowed_finding(pos,
                 what + " cannot hold a borrowed pointer or reference to '" + name
                     + "'. Declare a stub with 'handle' or 'intrusive' for '" + name + "', or use a value");

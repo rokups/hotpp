@@ -347,3 +347,61 @@ TEST(NativePointerField, HotConstructorAssignsNullToTheCheckedPointer)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::CheckedPtr<Shared> m")) << r.cpp;
 }
+
+// ---- a .cpp script speaks C++
+
+TEST(NativePointerField, CppMemberPointerFieldHasItsOwnMessage)
+{
+    const hotc::TranslateResult r = cpp_script(
+        "struct P { int a; };\nclass A : public Widget { public:\n    int P::* mp = nullptr;\n};\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics,
+        "t.cpp:4:14: error: a field cannot be a pointer to a data member ('int P::*'): it is not supported in a .cpp "
+        "script. Use a pointer to a member function, or an index"))
+        << r.diagnostics;
+    EXPECT_FALSE(has(r.diagnostics, "borrowed")) << r.diagnostics;
+}
+
+TEST(NativePointerField, CppMemberFunctionPointerFieldIsStillValid)
+{
+    const hotc::TranslateResult r = cpp_script(
+        "struct P { void f(); };\nclass A : public Widget { public:\n    void (P::* mp)() = nullptr;\n};\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+TEST(NativePointerField, CppBorrowedReturnMessageSpeaksCpp)
+{
+    for (const char* ret : {"Mesh*", "Mesh&"})
+    {
+        const hotc::TranslateResult r = cpp_script(std::string("Mesh m;\nclass A : public Widget { public:\n    ") + ret +
+            " Find() { return " + (ret[4] == '&' ? "m" : "&m") + "; }\n};\n");
+        EXPECT_FALSE(r.ok) << ret;
+        EXPECT_TRUE(has(r.diagnostics,
+            "a return value cannot hold a borrowed pointer or reference to 'Mesh': the object can be gone when the "
+            "caller uses it. Use a value or a smart pointer such as 'std::shared_ptr<Mesh>'"))
+            << ret << "\n" << r.diagnostics;
+        EXPECT_FALSE(has(r.diagnostics, "stub")) << r.diagnostics;
+        EXPECT_FALSE(has(r.diagnostics, "handle")) << r.diagnostics;
+    }
+}
+
+TEST(NativePointerField, CppBorrowedCollectionElementMessageSpeaksCpp)
+{
+    const hotc::TranslateResult r = cpp_field("std::vector<Mesh*> list;");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "a collection element cannot hold a borrowed pointer or reference to 'Mesh': "))
+        << r.diagnostics;
+    EXPECT_FALSE(has(r.diagnostics, "stub")) << r.diagnostics;
+}
+
+// The warnings of the .cpp frontend reach the result of the translation. They do not stop it.
+TEST(NativePointerField, CppFrontendWarningsReachTheResult)
+{
+    const hotc::TranslateResult r = cpp_script(
+        "template <class T> class Crate : public Widget { public: T v; };\n"
+        "class A : public Widget { public:\n    void F() { static int n = 0; n++; }\n};\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.warnings, "t.cpp:4:27: warning: the static local variable 'n' resets")) << r.warnings;
+    EXPECT_TRUE(has(r.warnings, "t.cpp:2:")) << r.warnings;
+    EXPECT_TRUE(has(r.warnings, "warning: the class template 'Crate' has a base class")) << r.warnings;
+}

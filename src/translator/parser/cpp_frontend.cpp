@@ -170,6 +170,37 @@ bool has_child(CXCursor c, CXCursorKind kind)
     return false;
 }
 
+// The name of a construct that a script class does not support, for the error message.
+// The text "this declaration" is for a construct with no own name.
+std::string unsupported_member(CXCursorKind kind)
+{
+    switch (kind)
+    {
+    case CXCursor_StructDecl:
+    case CXCursor_ClassDecl:
+    case CXCursor_UnionDecl:
+    case CXCursor_EnumDecl:
+        return "a nested type";
+    case CXCursor_TypeAliasDecl:
+    case CXCursor_TypedefDecl:
+        return "a type alias";
+    case CXCursor_FriendDecl:
+        return "a friend declaration";
+    case CXCursor_ConversionFunction:
+        return "a conversion operator";
+    case CXCursor_FunctionTemplate:
+    case CXCursor_ClassTemplate:
+    case CXCursor_TypeAliasTemplateDecl:
+        return "a member template";
+    case CXCursor_StaticAssert:
+        return "a static_assert";
+    case CXCursor_UsingDeclaration:
+        return "a using declaration";
+    default:
+        return "this declaration";
+    }
+}
+
 bool is_ident(char ch)
 {
     return std::isalnum(static_cast<unsigned char>(ch)) || ch == '_';
@@ -367,7 +398,11 @@ public:
 
     ast::Script run(CXTranslationUnit tu, const std::string& name);
 
+    // The warnings of the read: the byte offset in the text and the message.
+    const std::vector<std::pair<uint32_t, std::string>>& warnings() const { return warnings_; }
+
 private:
+    std::vector<std::pair<uint32_t, std::string>> warnings_;
     CXFile main_ = nullptr;
     const std::string& text_;
     const LineMap& map_;
@@ -514,6 +549,7 @@ private:
     void read_static_def(CXCursor c);
     void check_late_refs(CXCursor var);
     void check_static_init(CXCursor c);
+    void warn_static_locals(CXCursor fn);
     void examine(CXCursor k, WalkState& st);
     void visit(CXCursor k, WalkState& st);
     void walk_main(WalkState& st);
@@ -2030,12 +2066,52 @@ void Frontend::make_method(CXCursor c, const ClassInfo* cls, const Where<ast::Me
     read_method_body(c, cls, where, index);
 }
 
+// A "static" or "thread_local" local variable of a method lives in the code of the module. A
+// reload loads a new module, so the variable gets its initial value again. A const variable
+// keeps its value, so it gets no warning.
+void Frontend::warn_static_locals(CXCursor fn)
+{
+    std::function<void(CXCursor)> visit_node = [&](CXCursor n) {
+        for (CXCursor k : children(n))
+        {
+            if (clang_getCursorKind(k) == CXCursor_VarDecl && !clang_isConstQualifiedType(clang_getCursorType(k)))
+            {
+                // The words before the name: "static", "thread_local" or both.
+                const size_t b = extent_of(k).begin, e = std::min<size_t>(pos_of(k), text_.size());
+                bool is_static = false, is_tls = false;
+                for (size_t i = b; i < e;)
+                {
+                    if (!is_ident(text_[i]))
+                    {
+                        ++i;
+                        continue;
+                    }
+                    size_t j = i;
+                    while (j < e && is_ident(text_[j]))
+                        ++j;
+                    const std::string w = text_.substr(i, j - i);
+                    is_static = is_static || w == "static";
+                    is_tls = is_tls || w == "thread_local";
+                    i = j;
+                }
+                if (is_static || is_tls)
+                    warnings_.emplace_back(pos_of(k),
+                        std::string("the ") + (is_tls ? "thread_local" : "static") + " local variable '" + spelling(k) +
+                            "' resets to its initial value when the script reloads: a reload loads a new module");
+            }
+            visit_node(k);
+        }
+    };
+    visit_node(fn);
+}
+
 // Reads the body of the method "index" from the definition "c". The definition is in the class
 // or outside it.
 void Frontend::read_method_body(CXCursor c, const ClassInfo* cls, const Where<ast::Method>& where, size_t index)
 {
     ast::Method& m = where()[index];
     const Range b = extent_of(body_of(c));
+    warn_static_locals(c);
     {
         CXCursor body;
         bool co = false;
@@ -2269,6 +2345,7 @@ void Frontend::read_ctor_body(CXCursor c, const ClassInfo& cls, const Where<ast:
     ast::Ctor& ct = where()[index];
     const uint32_t cpos = pos_of(c);
     const Range b = extent_of(body_of(c));
+    warn_static_locals(c);
     ct.end_pos = b.end - 1;
     ct.end_line = line(ct.end_pos);
     // The text between the ")" of the parameters and the "{" of the body has the initializers.
@@ -2405,6 +2482,7 @@ void Frontend::make_static_const(CXCursor c, const ClassInfo* cls)
 void Frontend::make_static_fn(CXCursor c, const ClassInfo* cls)
 {
     const Range b = extent_of(body_of(c));
+    warn_static_locals(c);
     drop_static_word(c);
     const Range e = extent_of(c);
     ast::Script::Chunk def;
@@ -2652,7 +2730,7 @@ void Frontend::process_class(CXCursor c)
             make_method(k, &info, [this, ci]() -> std::vector<ast::Method>& { return sc_.classes[ci].dtors; });
             break;
         default:
-            fail(pos_of(k), "this declaration is not supported in a .cpp script class");
+            fail(pos_of(k), unsupported_member(kind) + " is not supported in a .cpp script class");
         }
     }
     // A class with a pure method that no method overrides is abstract. A child that does not
@@ -3059,6 +3137,10 @@ void Frontend::read_top(const std::vector<CXCursor>& top)
         }
         else
         { // a template, a namespace, a prototype, a plain type: the edits of a body apply to all of it
+            if (kind == CXCursor_ClassTemplate && clang_isCursorDefinition(k) && has_child(k, CXCursor_CXXBaseSpecifier))
+                warnings_.emplace_back(pos_of(k),
+                    "the class template '" + spelling(k) +
+                        "' has a base class, but it is not a script class: it is copied as plain C++ and has no hot reload");
             check_static_init(k);
             std::string var;
             uint32_t var_pos = 0;
@@ -3133,6 +3215,8 @@ ast::Script parse_cpp_script(const std::string& text, const std::string& name,
     {
         Frontend fe(text, map, aot_optimized);
         sc = fe.run(h.tu, name);
+        for (const auto& [wpos, wmsg] : fe.warnings())
+            diag.warn(wpos, map, wmsg);
     }
     catch (const CppFail& f)
     {

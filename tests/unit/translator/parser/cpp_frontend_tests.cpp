@@ -464,7 +464,7 @@ TEST(CppFrontend, MemberInitializerErrors)
         "multiple initializations given for non-static member 'v'");
     // A pack needs a constructor template, and a script class has none.
     expect_error("class S : public Actor { template <class... A> S(A... a) : v(a...) {} int v = 0; };",
-        "this declaration is not supported in a .cpp script class");
+        "a member template is not supported in a .cpp script class");
 }
 
 // Comments between the entries and before the body do not change the result.
@@ -1710,4 +1710,81 @@ TEST(CppFrontend, PreludeFileTextReachesShell)
     const hotc::TranslateResult r = hotc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("PRE_TEXT(C, C_Shell, Actor);"), std::string::npos) << r.cpp;
+}
+
+// The error names the construct that a script class does not support.
+TEST(CppFrontend, UnsupportedMembersAreNamed)
+{
+    const std::pair<const char*, const char*> cases[] = {
+        {"struct In { int a; };", "a nested type"},
+        {"class In {};", "a nested type"},
+        {"enum E { A };", "a nested type"},
+        {"union U { int a; float b; };", "a nested type"},
+        {"using T = int;", "a type alias"},
+        {"typedef int T;", "a type alias"},
+        {"friend class X;", "a friend declaration"},
+        {"friend void f();", "a friend declaration"},
+        {"operator int() const { return 1; }", "a conversion operator"},
+        {"explicit operator bool() const { return true; }", "a conversion operator"},
+        {"template <class T> void F(T) {}", "a member template"},
+        {"template <class T> static void F(T) {}", "a member template"},
+        {"template <class T> S(T) {}", "a member template"},
+        {"template <class T> struct Box {};", "a member template"},
+        {"static_assert(true, \"x\");", "a static_assert"},
+        {"using Actor::Move;", "a using declaration"},
+    };
+    for (const auto& [member, what] : cases)
+        expect_error(std::string("class S : public Actor { ") + member + " };",
+            std::string(": error: ") + what + " is not supported in a .cpp script class");
+}
+
+// An explicit constructor is a normal constructor in a script class: it gives no error.
+TEST(CppFrontend, ExplicitConstructorIsSupported)
+{
+    Parsed p("#include \"Actor.h\"\nclass S : public Actor { public: S() {} explicit S(int a) { v = a; } int v = 0; };\n");
+    EXPECT_TRUE(p.diag.items.empty()) << p.errors();
+    EXPECT_EQ(p.script.classes.at(0).ctors.size(), 2u);
+}
+
+std::string warnings_of(const std::string& body)
+{
+    Parsed p("#include \"Actor.h\"\n" + body);
+    EXPECT_TRUE(p.diag.items.empty()) << p.errors();
+    return p.diag.format_warnings("t");
+}
+
+// A class template with a base class is plain text: it is not a script class.
+TEST(CppFrontend, ClassTemplateWithBaseGivesAWarning)
+{
+    const std::string w = warnings_of("template <class T> class Box : public Actor { public: T v; };\n");
+    EXPECT_NE(w.find("t:2:"), std::string::npos) << w;
+    EXPECT_NE(w.find("warning: the class template 'Box' has a base class, but it is not a script class: "
+                     "it is copied as plain C++ and has no hot reload"),
+        std::string::npos)
+        << w;
+    // A template with no base class and a script class give no warning.
+    EXPECT_EQ(warnings_of("template <class T> class Box { public: T v; };\n"), "");
+    EXPECT_EQ(warnings_of("class S : public Actor {};\n"), "");
+}
+
+// A static or thread_local local of a method starts again after a reload.
+TEST(CppFrontend, StaticLocalInAMethodGivesAWarning)
+{
+    const std::string w = warnings_of(
+        "class S : public Actor\n{\npublic:\n    void F() { static int n = 0; n++; }\n"
+        "    void G() { thread_local int t = 0; t++; }\n    static void H() { static int h = 0; h++; }\n"
+        "    S() { static int c = 0; c++; }\n    ~S() { static int d = 0; d++; }\n"
+        "    void L() { auto f = [] { static int k = 0; return ++k; }; f(); }\n    void Out();\n};\n"
+        "void S::Out() { static int o = 0; o++; }\n");
+    for (const char* name : {"'n'", "'t'", "'h'", "'c'", "'d'", "'k'", "'o'"})
+        EXPECT_NE(w.find(std::string("the ") + (name[1] == 't' ? "thread_local" : "static") + " local variable " + name +
+                         " resets to its initial value when the script reloads"),
+            std::string::npos)
+            << name << "\n"
+            << w;
+    EXPECT_NE(w.find("t:5:27: warning: the static local variable 'n'"), std::string::npos) << w; // the line of 'n'
+    // A const static local, a plain local and a static local of a free function give no warning.
+    EXPECT_EQ(warnings_of("class S : public Actor { public: void F() { static const int k = 1; int a = k; (void)a; } };\n"
+                          "int free_fn() { static int z = 0; return ++z; }\n"),
+        "");
 }
