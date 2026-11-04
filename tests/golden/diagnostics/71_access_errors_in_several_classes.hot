@@ -1,0 +1,20 @@
+using "Actor.h";
+
+class Counter : Actor {
+    private int count = 0;
+    private int Twice() { return count * 2; }
+}
+
+class A : Actor {
+    int Peek($Counter c) {
+        if (c == null) return 0;
+        return c.count;
+    }
+}
+
+class B : Actor {
+    int Double($Counter c) {
+        if (c == null) return 0;
+        return c.Twice();
+    }
+}

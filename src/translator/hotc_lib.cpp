@@ -5278,6 +5278,8 @@ void translate_impl(
         lower_statics(fn_cls, fn_cx, true); // an error here does not stop the other bodies
     }
 
+    // The errors of the bodies of one class do not stop the next class: all classes report their errors.
+    // An error of an earlier step (a static function or a free function) also stops the run after the loop.
     for (size_t si = 0; si < seq.size(); ++si)
     {
         if (sc.is_cpp && !texts[si].empty())
@@ -7351,8 +7353,6 @@ void translate_impl(
                 emit_body(m, true, P + m.name, fn_ret(m), body_what(cd.key_name(), m), m.name);
             }
         }
-        if (!g_diag.items.empty())
-            throw TranslateAbort{};
 
         // The native implementation that a child sees: "base.M()" in a child calls it.
         if (parent_shell)
@@ -7684,6 +7684,8 @@ void translate_impl(
         if (!cd.ns.empty())
             o.w("} // namespace " + hotc::ast::gen_namespace(cd.ns) + "\n");
     }
+    if (!g_diag.items.empty())
+        throw TranslateAbort{};
     // The definitions of the interface helpers (see above). Each call site has its own cache.
     if (!sc.interfaces.empty())
     {

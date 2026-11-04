@@ -163,6 +163,20 @@ TEST(AccessTranslation, AccessErrorsInSeveralMethodsAreAllReported)
     EXPECT_NE(r.diagnostics.find("'Level' is private in 'Base'"), std::string::npos) << r.diagnostics;
 }
 
+TEST(AccessTranslation, AccessErrorsInSeveralClassesAreAllReported)
+{
+    const hotc::TranslateResult r = translate_classes(
+        "class Counter : Widget {\n"
+        "    private int count = 1;\n"
+        "    private int Twice() { return this.count * 2; }\n"
+        "}\n"
+        "class A : Widget { int Go($Counter c) { if (c == null) return 0; return c.count; } }\n"
+        "class B : Widget { int Go($Counter c) { if (c == null) return 0; return c.Twice(); } }\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("'count' is private in 'Counter'"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("'Twice' is private in 'Counter'"), std::string::npos) << r.diagnostics;
+}
+
 TEST(AccessTranslation, PrivatePropertyFromAnotherClassIsAnError)
 {
     expect_error(base_class("private") + "class Other : Widget { int Peek($Base b) { if (b == null) return 0; return b.Level; } }\n",

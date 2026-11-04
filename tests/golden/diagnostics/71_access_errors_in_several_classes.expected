@@ -1,0 +1,5 @@
+71_access_errors_in_several_classes.hot:11:18: error: 'count' is private in 'Counter'
+   11 |         return c.count;
+71_access_errors_in_several_classes.hot:18:18: error: 'Twice' is private in 'Counter'
+   18 |         return c.Twice();
+2 errors generated.
