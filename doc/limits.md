@@ -33,6 +33,7 @@ This list shows what version 1 does not support.
 - A reload that changes the signature of an interface method on one side only. The translator reports an error and the old generation stays active.
 - A native virtual method that a script overrides implements an interface method only when the C++ types are equal.
 - Access checks on native members. Only members of known script types are checked, because the translator has no member list for other types. The C++ compiler reports a private native member. The message names the C++ member and points at the script line.
+- Two classes whose field initializers build each other with `new`. No order of the classes works, so `hotc` reports `class '<name>' must come before the class that builds it with 'new'`. Use a constructor or a method for one of the two. A field initializer can use a class that comes later in the file when there is no such cycle.
 - Brace initializers. Write `T(args)`.
 - `::` and `->`. Write `.`.
 - A C style cast to a type other than a builtin type or `T*`. Use `static_cast<T>(e)`.

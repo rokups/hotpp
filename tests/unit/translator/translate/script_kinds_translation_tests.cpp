@@ -142,6 +142,29 @@ TEST(ScriptKindsTranslation, FieldInitializerNewOrdersTheCycle)
     EXPECT_LT(r.cpp.find("struct B_Shell final"), r.cpp.find("struct A_Shell final")) << r.cpp;
 }
 
+TEST(ScriptKindsTranslation, FieldInitializerWithANewOfALaterClassIsAllowed)
+{
+    // The translator emits B first. A member read of the new object works too.
+    const hotc::TranslateResult r = translate_script(
+        "class A : Unit { $B b = new $B(); int k = (new $B()).v; }\nclass B : Unit { int v = 1; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_LT(r.cpp.find("struct B_Shell final"), r.cpp.find("struct A_Shell final")) << r.cpp;
+}
+
+TEST(ScriptKindsTranslation, FieldInitializerWithANewOfAnEarlierClassIsAllowed)
+{
+    const hotc::TranslateResult r =
+        translate_script("class B : Unit { int v = 1; }\nclass A : Unit { $B b = new $B(); }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+TEST(ScriptKindsTranslation, FieldInitializersThatBuildEachOtherAreAnError)
+{
+    // Each class needs the "new" function of the other class in its own block: no order works.
+    expect_error("class A : Unit { int k = (new $B()).v; }\nclass B : Unit { int v = (new $A()).k; }\n",
+        "class 'B' must come before the class that builds it with 'new'");
+}
+
 TEST(ScriptKindsTranslation, CppBodyDoesNotSeeLaterDeclarations)
 {
     // A ".cpp" script writes the bodies of a block before the next text of the file. So the body
