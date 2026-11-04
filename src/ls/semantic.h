@@ -41,6 +41,25 @@ struct ParamHint
 // parameter name. An argument that is the plain name of its parameter gets no hint.
 std::vector<ParamHint> script_param_hints(const std::string& text, const hotc::AnalyzeResult& facts);
 
+// A call whose name is not a method or a constructor of the facts: a native function, method or
+// constructor, or a free function of the script. The arguments are the text between the brackets,
+// split at the commas of depth 0. A declaration (a word or "~" before the name) is not a call.
+struct CallArg
+{
+    size_t begin = 0; // the byte offset of the first token of the argument
+    std::string plain; // the name when the argument is one identifier, else empty
+    bool empty = false; // no tokens: "f(a,,b)" or a trailing comma
+};
+
+struct CallSite
+{
+    size_t name_off = 0, close_off = 0; // the byte offsets of the name and of the ")"
+    std::string name;
+    std::vector<CallArg> args;
+};
+
+std::vector<CallSite> script_unknown_calls(const std::string& text, const hotc::AnalyzeResult& facts);
+
 // A use of a name in a script: an identifier that is not a keyword. The name in the declaration
 // of a class or of a member is not a use. The name in a destructor ("~Name") is a declaration too. "call" is set when "(" follows the name. The scan reads
 // the tokens only. It does not know the type of an object, so the same name in two classes (or

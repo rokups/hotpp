@@ -561,6 +561,70 @@ ScriptScope scan_scope(const std::string& text, size_t at, size_t typed_begin)
     return r;
 }
 
+static bool bracket_open(const Tok& t)
+{
+    return t.s == "(" || t.s == "[" || t.s == "{";
+}
+
+static bool bracket_close(const Tok& t)
+{
+    return t.s == ")" || t.s == "]" || t.s == "}";
+}
+
+// The index of the token that starts at "off", or the size when there is none.
+static size_t token_index(const std::vector<Tok>& toks, size_t off)
+{
+    const auto it = std::lower_bound(toks.begin(), toks.end(), off, [](const Tok& t, size_t o) { return t.off < o; });
+    return it != toks.end() && it->off == off ? static_cast<size_t>(it - toks.begin()) : toks.size();
+}
+
+// The index of the token that closes the bracket at "open", or the size. A closing bracket of
+// an other kind, or the end of the text, gives the size.
+static size_t bracket_match(const std::vector<Tok>& toks, size_t open)
+{
+    std::string stack;
+    for (size_t k = open; k < toks.size(); ++k)
+    {
+        if (bracket_open(toks[k]))
+        {
+            stack += toks[k].s[0] == '(' ? ')' : toks[k].s[0] == '[' ? ']' : '}';
+        }
+        else if (bracket_close(toks[k]))
+        {
+            if (stack.empty() || stack.back() != toks[k].s[0])
+                return toks.size();
+            stack.pop_back();
+            if (stack.empty())
+                return k;
+        }
+    }
+    return toks.size();
+}
+
+// The bounds [begin, end) of the arguments between the brackets "open" and "close".
+static std::vector<std::pair<size_t, size_t>> bracket_split(const std::vector<Tok>& toks, size_t open, size_t close)
+{
+    std::vector<std::pair<size_t, size_t>> parts;
+    if (close == open + 1)
+        return parts;
+    size_t begin = open + 1;
+    int depth = 0;
+    for (size_t k = open + 1; k < close; ++k)
+    {
+        if (bracket_open(toks[k]))
+            ++depth;
+        else if (bracket_close(toks[k]))
+            --depth;
+        else if (depth == 0 && toks[k].s == ",")
+        {
+            parts.emplace_back(begin, k);
+            begin = k + 1;
+        }
+    }
+    parts.emplace_back(begin, close);
+    return parts;
+}
+
 std::vector<NameUse> script_name_uses(const std::string& text, const hotc::AnalyzeResult& facts)
 {
     std::vector<NameUse> out;
@@ -618,59 +682,12 @@ std::vector<ParamHint> script_param_hints(const std::string& text, const hotc::A
     std::vector<ParamHint> out;
     const std::vector<Tok> toks = tokenize(text, true);
     const std::vector<size_t> starts = line_starts(text);
-    auto open_of = [](const Tok& t) { return t.s == "(" || t.s == "[" || t.s == "{"; };
-    auto close_of = [](const Tok& t) { return t.s == ")" || t.s == "]" || t.s == "}"; };
+    auto open_of = [](const Tok& t) { return bracket_open(t); };
+    auto close_of = [](const Tok& t) { return bracket_close(t); };
     // The index of the token that starts at "off", or the size when there is none.
-    auto token_at = [&](size_t off)
-    {
-        const auto it = std::lower_bound(toks.begin(), toks.end(), off, [](const Tok& t, size_t o) { return t.off < o; });
-        return it != toks.end() && it->off == off ? static_cast<size_t>(it - toks.begin()) : toks.size();
-    };
-    // The index of the token that closes the bracket at "open", or the size. A closing bracket of
-    // an other kind, or the end of the text, gives the size.
-    auto match = [&](size_t open)
-    {
-        std::string stack;
-        for (size_t k = open; k < toks.size(); ++k)
-        {
-            if (open_of(toks[k]))
-            {
-                stack += toks[k].s[0] == '(' ? ')' : toks[k].s[0] == '[' ? ']' : '}';
-            }
-            else if (close_of(toks[k]))
-            {
-                if (stack.empty() || stack.back() != toks[k].s[0])
-                    return toks.size();
-                stack.pop_back();
-                if (stack.empty())
-                    return k;
-            }
-        }
-        return toks.size();
-    };
-    // The bounds [begin, end) of the arguments between the brackets "open" and "close".
-    auto split = [&](size_t open, size_t close)
-    {
-        std::vector<std::pair<size_t, size_t>> parts;
-        if (close == open + 1)
-            return parts;
-        size_t begin = open + 1;
-        int depth = 0;
-        for (size_t k = open + 1; k < close; ++k)
-        {
-            if (open_of(toks[k]))
-                ++depth;
-            else if (close_of(toks[k]))
-                --depth;
-            else if (depth == 0 && toks[k].s == ",")
-            {
-                parts.emplace_back(begin, k);
-                begin = k + 1;
-            }
-        }
-        parts.emplace_back(begin, close);
-        return parts;
-    };
+    auto token_at = [&](size_t off) { return token_index(toks, off); };
+    auto match = [&](size_t open) { return bracket_match(toks, open); };
+    auto split = [&](size_t open, size_t close) { return bracket_split(toks, open, close); };
 
     // ---- the callees: the methods and the constructors of the facts
     struct Callee
@@ -754,6 +771,81 @@ std::vector<ParamHint> script_param_hints(const std::string& text, const hotc::A
                 continue;
             out.push_back({toks[b].off, name + ":"});
         }
+    }
+    return out;
+}
+
+std::vector<CallSite> script_unknown_calls(const std::string& text, const hotc::AnalyzeResult& facts)
+{
+    std::vector<CallSite> out;
+    const std::vector<Tok> toks = tokenize(text, true);
+    const std::vector<size_t> starts = line_starts(text);
+    std::set<std::string> script_names; // the methods and the constructors: script_param_hints has them
+    std::set<size_t> declared;
+    for (const hotc::AnalyzedClass& c : facts.classes)
+        for (const hotc::AnalyzedMember& m : c.members)
+        {
+            if (m.begin.line < 1 || static_cast<size_t>(m.begin.line) > starts.size() || m.begin.col < 1)
+                continue;
+            declared.insert(starts[static_cast<size_t>(m.begin.line - 1)] + static_cast<size_t>(m.begin.col - 1));
+            if (m.kind == "method" || m.kind == "constructor")
+                script_names.insert(m.name);
+        }
+    for (size_t i = 0; i + 1 < toks.size(); ++i)
+    {
+        if (!toks[i].id || toks[i + 1].s != "(" || declared.count(toks[i].off) || script_names.count(toks[i].s)
+            || keywords().count(toks[i].s))
+            continue;
+        // A word before the name (a type or "void") or a "~" makes a declaration, not a call.
+        if (i > 0)
+        {
+            const Tok& prev = toks[i - 1];
+            const bool word_before = prev.id && (!keywords().count(prev.s) || prev.s == "void" || prev.s == "var");
+            if (word_before || prev.s == "~")
+                continue;
+            // "Foo<int> bar(" and "int* f(": a type with "<>", "*" or "&" that starts a statement.
+            if (prev.s == ">" || prev.s == "*" || prev.s == "&")
+            {
+                size_t j = i;
+                int angle = 0;
+                while (j > 0)
+                {
+                    const Tok& t = toks[j - 1];
+                    if (t.id && keywords().count(t.s) && t.s != "const")
+                        break;
+                    if (t.s == ">")
+                        ++angle;
+                    else if (t.s == "<")
+                        --angle;
+                    else if (!(t.id || t.s == "*" || t.s == "&" || t.s == "." || t.s == ":" || (t.s == "," && angle > 0)))
+                        break;
+                    --j;
+                }
+                const bool starts_statement = j == 0 || toks[j - 1].s == ";" || toks[j - 1].s == "{" || toks[j - 1].s == "}";
+                if (starts_statement && angle == 0 && j < i)
+                    continue;
+            }
+        }
+        const size_t close = bracket_match(toks, i + 1);
+        if (close == toks.size())
+            continue;
+        // A "{" after the ")" is a function body: the name is a declaration.
+        if (close + 1 < toks.size() && toks[close + 1].s == "{")
+            continue;
+        CallSite site;
+        site.name_off = toks[i].off;
+        site.name = toks[i].s;
+        site.close_off = toks[close].off;
+        for (const auto& [b, e] : bracket_split(toks, i + 1, close))
+        {
+            CallArg a;
+            a.begin = b < e ? toks[b].off : toks[close].off;
+            if (e == b + 1 && toks[b].id)
+                a.plain = toks[b].s;
+            a.empty = b >= e;
+            site.args.push_back(std::move(a));
+        }
+        out.push_back(std::move(site));
     }
     return out;
 }

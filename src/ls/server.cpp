@@ -261,6 +261,16 @@ struct Doc
     mutable CompletionCache completion;
 };
 
+// The string member of a JSON object, or an empty string. A missing member, a null and any other
+// type give the empty string, so a forged request cannot throw.
+static std::string json_str(const json& j, const char* key)
+{
+    if (!j.is_object())
+        return {};
+    const auto f = j.find(key);
+    return f != j.end() && f->is_string() ? f->get<std::string>() : std::string();
+}
+
 // A method or a constructor of a document, with the byte range of its declaration. A destructor is
 // not in the call hierarchy.
 struct Callable
@@ -639,6 +649,17 @@ private:
     json on_prepare_call_hierarchy(const Doc& d, const json& p);
     json on_call_hierarchy(const std::string& method, const json& p);
     json call_item(const Doc& d, const Callable& c) const;
+    json use_range(const Doc& d, const NameUse& u) const;
+    // The calls with the name "name" in the methods and constructors of one document, as the
+    // "incomingCalls" entries.
+    json incoming_by_name(const Doc& d, const std::string& name) const;
+    // The native items (clangd) of a call hierarchy for the word at a script position.
+    json native_call_items(const Doc& d, Pos here, int budget_ms);
+    json native_item(const Doc& d, json item) const;
+    bool is_generated_uri(const std::string& uri) const;
+    json on_native_call_hierarchy(bool incoming, const json& data);
+    // The parameter names of the native callee of a call, from the signature help of clangd.
+    std::vector<std::string> native_param_names(const Doc& d, const CallSite& site, size_t arg_count, int budget_ms);
     json on_workspace_symbol(const json& p);
     // The script symbols of the .hot files of the workspace folders. A closed file counts only if
     // the index has a valid shard for it. This request never analyzes a closed file.
@@ -2812,7 +2833,179 @@ json Server::on_inlay_hint(const Doc& d, const json& p)
             continue;
         out.push_back({{"position", to_lsp(d.text, at, utf8_)}, {"label", h.label}, {"kind", 2}, {"paddingRight", true}});
     }
+    // The calls of native functions, methods and constructors: clangd gives the parameter names.
+    // The calls share a short time budget, so a slow clangd does not hold the editor.
+    constexpr int kHintBudgetMs = 3000, kMaxNativeCalls = 64;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kHintBudgetMs);
+    int asked = 0;
+    for (const CallSite& site : script_unknown_calls(d.text.s, d.facts))
+    {
+        const auto [nl, nc] = d.text.pos(site.name_off);
+        if (Pos{nl, nc} < lo || hi < Pos{nl, nc})
+            continue;
+        if (site.args.empty() || !is_symbol_word(site.name) || asked >= kMaxNativeCalls)
+            continue;
+        const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now()).count();
+        if (left <= 0)
+            break;
+        ++asked;
+        const std::vector<std::string> names = native_param_names(d, site, site.args.size(), static_cast<int>(left));
+        if (names.size() < site.args.size())
+            continue;
+        for (size_t k = 0; k < site.args.size(); ++k)
+        {
+            const CallArg& a = site.args[k];
+            if (a.empty || names[k].empty() || a.plain == names[k])
+                continue;
+            const auto [al, ac] = d.text.pos(a.begin);
+            out.push_back({{"position", to_lsp(d.text, {al, ac}, utf8_)}, {"label", names[k] + ":"}, {"kind", 2},
+                {"paddingRight", true}});
+        }
+    }
     return out;
+}
+
+// The name of a parameter in the label of a signature ("int by", "const char* text = nullptr").
+// A label with a type only gives no name.
+static std::string param_name_of_label(std::string label)
+{
+    const size_t eq = label.find('=');
+    if (eq != std::string::npos)
+        label.resize(eq);
+    auto trim = [](std::string& t)
+    {
+        while (!t.empty() && (t.back() == ' ' || t.back() == '\t'))
+            t.pop_back();
+    };
+    trim(label);
+    if (!label.empty() && label.back() == ']')
+    {
+        const size_t open = label.find('[');
+        if (open != std::string::npos)
+            label.resize(open);
+        trim(label);
+    }
+    size_t b = label.size();
+    while (b > 0 && is_id_char(label[b - 1]))
+        --b;
+    const std::string name = label.substr(b);
+    std::string prefix = label.substr(0, b);
+    trim(prefix);
+    if (name.empty() || prefix.empty() || prefix.back() == ':' || name[0] == '_' || std::isdigit(static_cast<unsigned char>(name[0])))
+        return "";
+    static const std::set<std::string> type_words = {"int", "char", "short", "long", "unsigned", "signed", "float",
+        "double", "bool", "void", "auto", "wchar_t", "char8_t", "char16_t", "char32_t"};
+    static const std::set<std::string> qualifiers = {"const", "volatile", "struct", "class", "enum", "typename"};
+    if (type_words.count(name))
+        return "";
+    // "const Counter" is a type only: every word before the last is a qualifier.
+    std::istringstream words(prefix);
+    std::string w;
+    bool only_qualifiers = true;
+    while (words >> w)
+        only_qualifiers = only_qualifiers && qualifiers.count(w);
+    return only_qualifiers ? std::string() : name;
+}
+
+// The parameter names of the signature that clangd picks for the call. The place for clangd is
+// the end of the generated arguments: then the arguments choose the overload. An empty answer
+// means that the callee is not known, or has fewer parameters than the call has arguments.
+std::vector<std::string> Server::native_param_names(const Doc& d, const CallSite& site, size_t arg_count, int budget_ms)
+{
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(budget_ms);
+    const auto [nl, nc] = d.text.pos(site.name_off);
+    bool by_word = false;
+    for (const Pos& g : gen_asks(d, {nl, nc}, by_word))
+    {
+        const std::string_view gl = d.gen.line(g.line);
+        size_t i = static_cast<size_t>(g.col) + site.name.size();
+        while (i < gl.size() && (gl[i] == ' ' || gl[i] == '>'))
+            ++i;
+        if (i >= gl.size() || gl[i] != '(' || gl.compare(static_cast<size_t>(g.col), site.name.size(), site.name) != 0)
+            continue;
+        // The matching ")" on the same line, else the place after the "(". With the place after
+        // the "(" the arguments do not choose the overload: then the signatures must agree.
+        bool block = false;
+        const std::string code = blank_non_code(gl, block);
+        size_t cursor = i + 1;
+        bool closed = false;
+        int depth = 0;
+        for (size_t k = i; k < code.size(); ++k)
+        {
+            if (code[k] == '(')
+                ++depth;
+            else if (code[k] == ')' && --depth == 0)
+            {
+                cursor = k;
+                closed = true;
+                break;
+            }
+        }
+        const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now()).count();
+        if (left <= 0)
+            break;
+        const auto r = clangd_result("textDocument/signatureHelp",
+            {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, {g.line, static_cast<int>(cursor)})}},
+            static_cast<int>(left));
+        if (!r || !r->is_object() || !r->contains("signatures") || !(*r)["signatures"].is_array()
+            || (*r)["signatures"].empty())
+            continue;
+        const json& sigs = (*r)["signatures"];
+        std::vector<std::vector<std::string>> all_names;
+        for (const json& sig : sigs)
+        {
+            const std::string text = json_str(sig, "label");
+            std::vector<std::string> names;
+            const auto plist = sig.is_object() ? sig.find("parameters") : sig.end();
+            if (sig.is_object() && plist != sig.end() && plist->is_array())
+                for (const json& prm : *plist)
+                {
+                    std::string label;
+                    const auto lf = prm.is_object() ? prm.find("label") : prm.end();
+                    if (prm.is_object() && lf != prm.end())
+                    {
+                        if (lf->is_string())
+                            label = lf->get<std::string>();
+                        else if (lf->is_array() && lf->size() == 2 && (*lf)[0].is_number_integer()
+                            && (*lf)[1].is_number_integer())
+                        {
+                            const size_t b = static_cast<size_t>(std::max((*lf)[0].get<int>(), 0));
+                            const size_t e = static_cast<size_t>(std::max((*lf)[1].get<int>(), 0));
+                            if (b <= e && e <= text.size())
+                                label = text.substr(b, e - b);
+                        }
+                    }
+                    names.push_back(param_name_of_label(label));
+                }
+            all_names.push_back(std::move(names));
+        }
+        if (closed)
+        {
+            const auto af = r->find("activeSignature");
+            const int active = af != r->end() && af->is_number_integer() ? af->get<int>() : 0;
+            const auto& names = all_names[static_cast<size_t>(active >= 0 && active < static_cast<int>(all_names.size()) ? active : 0)];
+            if (names.size() >= arg_count)
+                return names;
+            continue;
+        }
+        // Every signature with enough parameters must have the same names for the arguments.
+        const std::vector<std::string>* first = nullptr;
+        bool agree = true;
+        for (const auto& names : all_names)
+        {
+            if (names.size() < arg_count)
+                continue;
+            if (!first)
+                first = &names;
+            else if (!std::equal(first->begin(), first->begin() + static_cast<long>(arg_count), names.begin()))
+                agree = false;
+        }
+        if (first && agree)
+            return *first;
+    }
+    return {};
 }
 
 // One lens for each script class and each method or constructor. The title has the number of
@@ -2882,7 +3075,94 @@ json Server::on_prepare_call_hierarchy(const Doc& d, const json& p)
     for (const Callable& c : all)
         if (c.m->name == w)
             out.push_back(call_item(d, c));
+    if (!out.empty())
+        return out;
+    // A native function, method or constructor: clangd gives the item.
+    constexpr int kNativeBudgetMs = 3000;
+    out = native_call_items(d, here, kNativeBudgetMs);
     return out.empty() ? json(nullptr) : out;
+}
+
+bool Server::is_generated_uri(const std::string& uri) const
+{
+    return gen_docs_.count(uri) || (uri.size() > 8 && uri.compare(uri.size() - 8, 8, ".hot.cpp") == 0);
+}
+
+// An item of clangd as an item of the server. "data" holds the item of clangd, so that the next
+// request can give it back, and the script that asked.
+json Server::native_item(const Doc& d, json item) const
+{
+    item["data"] = {{"native", item}, {"script", d.uri}};
+    return item;
+}
+
+// The items of clangd for the word at a script position. The place is the word in the generated
+// text. An item in a generated file is not native, and an item with an other name is not the word.
+json Server::native_call_items(const Doc& d, Pos here, int budget_ms)
+{
+    json out = json::array();
+    const std::string w = word(d, here);
+    if (!is_symbol_word(w))
+        return out;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(budget_ms);
+    bool by_word = false;
+    for (const Pos& g : gen_asks(d, here, by_word))
+    {
+        const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now()).count();
+        if (left <= 0)
+            break;
+        const auto r = clangd_result("textDocument/prepareCallHierarchy",
+            {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, g)}}, static_cast<int>(left));
+        if (!r || !r->is_array())
+            continue;
+        for (const json& item : *r)
+            if (item.is_object() && json_str(item, "name") == w && !is_generated_uri(json_str(item, "uri")))
+                out.push_back(native_item(d, item));
+        if (!out.empty())
+            break;
+    }
+    return out;
+}
+
+// The incoming calls of an item of clangd are the script calls with its name (the open
+// documents) and the C++ calls that clangd knows. The outgoing calls are the calls that clangd knows.
+json Server::on_native_call_hierarchy(bool incoming, const json& data)
+{
+    json out = json::array();
+    const json& native = data["native"];
+    if (incoming)
+    {
+        // A script that has a method or a constructor with the name calls that one, not the
+        // native symbol. The match is by name only (see the documentation).
+        const std::string name = json_str(native, "name");
+        for (const auto& [uri, doc] : docs_)
+        {
+            if (doc->cpp)
+                continue;
+            const std::vector<Callable> own = callables_of(*doc);
+            if (std::any_of(own.begin(), own.end(), [&](const Callable& c) { return c.m->name == name; }))
+                continue;
+            for (json& e : incoming_by_name(*doc, name))
+                out.push_back(std::move(e));
+        }
+    }
+    constexpr int kClangdMs = 3000;
+    const auto r = clangd_result(incoming ? "callHierarchy/incomingCalls" : "callHierarchy/outgoingCalls",
+        {{"item", native}}, kClangdMs);
+    if (!r || !r->is_array())
+        return out;
+    const char* key = incoming ? "from" : "to";
+    const std::string script = json_str(data, "script");
+    for (json e : *r)
+    {
+        if (!e.is_object() || !e.contains(key) || !e[key].is_object()
+            || is_generated_uri(json_str(e[key], "uri")))
+            continue;
+        e[key]["data"] = {{"native", e[key]}, {"script", script}};
+        out.push_back(std::move(e));
+    }
+    return out;
 }
 
 // The incoming calls of a method are the calls with its name in the bodies of the methods and
@@ -2905,6 +3185,9 @@ json Server::on_call_hierarchy(const std::string& method, const json& p)
     const json* data = item ? field(*item, "data", json::value_t::object) : nullptr;
     if (!uri || !data)
         return out;
+    const bool incoming = method == "callHierarchy/incomingCalls";
+    if (const json* native = field(*data, "native", json::value_t::object); native && !native->empty())
+        return on_native_call_hierarchy(incoming, *data);
     const auto it = docs_.find(uri->get<std::string>());
     if (it == docs_.end() || it->second->cpp)
         return out;
@@ -2928,49 +3211,95 @@ json Server::on_call_hierarchy(const std::string& method, const json& p)
             self = &c;
     if (!self)
         return out;
+    if (method == "callHierarchy/incomingCalls")
+        return incoming_by_name(d, name);
     const std::vector<NameUse> uses = script_name_uses(d.text.s, d.facts);
-    auto name_range = [&](const NameUse& u)
-    {
-        const auto [l, c] = d.text.pos(u.off);
-        return script_range(d, {l, c}, {l, c + static_cast<int>(u.name.size())});
-    };
     std::map<const Callable*, json> groups; // the items that the calls reach
     std::vector<const Callable*> order;
-    auto add = [&](const Callable& c, const NameUse& u)
-    {
-        if (!groups.count(&c))
-        {
-            groups[&c] = json::array();
-            order.push_back(&c);
-        }
-        groups[&c].push_back(name_range(u));
-    };
-    const bool incoming = method == "callHierarchy/incomingCalls";
+    // The native callees: the uses of each name that no script method has, in source order.
+    std::vector<std::string> native_order;
+    std::map<std::string, std::vector<const NameUse*>> native_uses;
     for (const NameUse& u : uses)
     {
-        if (!u.call)
+        if (!u.call || !(self->begin <= u.off && u.off < self->end))
             continue;
-        if (incoming)
-        {
-            if (u.name != name)
-                continue;
-            for (const Callable& c : all)
-                if (c.begin <= u.off && u.off < c.end)
+        bool script_callee = false;
+        for (const Callable& c : all)
+            if (c.m->name == u.name)
+            {
+                script_callee = true;
+                if (!groups.count(&c))
                 {
-                    add(c, u);
-                    break;
+                    groups[&c] = json::array();
+                    order.push_back(&c);
                 }
-        }
-        else if (self->begin <= u.off && u.off < self->end)
+                groups[&c].push_back(use_range(d, u));
+            }
+        if (!script_callee && is_symbol_word(u.name))
         {
-            for (const Callable& c : all)
-                if (c.m->name == u.name)
-                    add(c, u);
+            if (!native_uses.count(u.name))
+                native_order.push_back(u.name);
+            native_uses[u.name].push_back(&u);
         }
     }
     std::sort(order.begin(), order.end(), [](const Callable* a, const Callable* b) { return a->begin < b->begin; });
     for (const Callable* c : order)
-        out.push_back({{incoming ? "from" : "to", call_item(d, *c)}, {"fromRanges", groups[c]}});
+        out.push_back({{"to", call_item(d, *c)}, {"fromRanges", groups[c]}});
+    // clangd gives the item of each native name. The names share a short time budget.
+    constexpr int kNativeBudgetMs = 3000;
+    constexpr size_t kMaxNativeNames = 16;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kNativeBudgetMs);
+    for (size_t i = 0; i < native_order.size() && i < kMaxNativeNames; ++i)
+    {
+        const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now()).count();
+        if (left <= 0)
+            break;
+        const auto& list = native_uses[native_order[i]];
+        const auto [l, c] = d.text.pos(list[0]->off);
+        const json items = native_call_items(d, {l, c}, static_cast<int>(left));
+        if (items.empty())
+            continue;
+        json ranges = json::array();
+        for (const NameUse* u : list)
+            ranges.push_back(use_range(d, *u));
+        out.push_back({{"to", items[0]}, {"fromRanges", ranges}});
+    }
+    return out;
+}
+
+// The script range of the name of a use.
+json Server::use_range(const Doc& d, const NameUse& u) const
+{
+    const auto [l, c] = d.text.pos(u.off);
+    return script_range(d, {l, c}, {l, c + static_cast<int>(u.name.size())});
+}
+
+json Server::incoming_by_name(const Doc& d, const std::string& name) const
+{
+    json out = json::array();
+    const std::vector<Callable> all = callables_of(d);
+    std::map<const Callable*, json> groups;
+    std::vector<const Callable*> order;
+    for (const NameUse& u : script_name_uses(d.text.s, d.facts))
+    {
+        if (!u.call || u.name != name)
+            continue;
+        for (const Callable& c : all)
+            if (c.begin <= u.off && u.off < c.end)
+            {
+                if (!groups.count(&c))
+                {
+                    groups[&c] = json::array();
+                    order.push_back(&c);
+                }
+                groups[&c].push_back(use_range(d, u));
+                break;
+            }
+    }
+    std::sort(order.begin(), order.end(), [](const Callable* a, const Callable* b) { return a->begin < b->begin; });
+    for (const Callable* c : order)
+        out.push_back({{"from", call_item(d, *c)}, {"fromRanges", groups[c]}});
     return out;
 }
 

@@ -527,7 +527,8 @@ const char* const kNativeHeader =
     "};\n"
     "\n"
     "int Clamp100(int v);\n"
-    "int Tag(const char* text, Counter c);\n";
+    "int Tag(const char* text, Counter c);\n"
+    "int Run(int v);\n";
 
 const char* const kNativeScript =
     "using \"Actor.h\";\n"
@@ -577,17 +578,17 @@ struct NativeSession
     TempDir dir;
     std::string path, uri;
     std::unique_ptr<LsClient> client;
-    NativeSession()
+    explicit NativeSession(const char* script = kNativeScript)
     {
         write_file((dir.path() / "natives.h").string(), kNativeHeader);
         path = (dir.path() / "hero.hot").string();
         uri = uri_of(path);
-        write_file(path, kNativeScript);
+        write_file(path, script);
         hot::ls::ServerOptions o = options(dir, true);
         o.include_dirs.push_back(dir.path().string());
         client = std::make_unique<LsClient>(o);
         client->initialize(uri_of(dir.path().string()));
-        client->open(uri, kNativeScript);
+        client->open(uri, script);
     }
     // F12 on the first "word" in the first "context" of the script. The answer is a location in
     // the header "header" (a file of the temporary directory or of tests/engine). The line of the
@@ -952,6 +953,317 @@ TEST(LanguageServerNative, HoverOfAnEnum)
     expect_native_hover(s, "Mood mood", "Mood", "enum class Mood");
     expect_native_hover(s, "= Mood.Calm", "Calm", "In Mood\\nCalm");
     expect_native_hover(s, "= LevelHigh;", "LevelHigh", "In Level\\nLevelHigh");
+}
+
+// ------------------------------------------------------------------ inlay hints and call hierarchy of native symbols
+namespace
+{
+
+const char* const kNativeCalls =
+    "using \"natives.h\";\n"
+    "\n"
+    "class Caller {\n"
+    "    int Helper(int arg) {\n"
+    "        return Clamp100(arg);\n"
+    "    }\n"
+    "    int Run(Counter c) {\n"
+    "        int a = Clamp100(7);\n"
+    "        int b = c.Bump(a + 1);\n"
+    "        int t = Tag(\"x\", Counter());\n"
+    "        string note = \"Clamp100(1)\"; // Clamp100(2)\n"
+    "        return a + b + t + Helper(2) + Clamp100(Helper(3));\n"
+    "    }\n"
+    "    void Other() {\n"
+    "        int z = Clamp100(1);\n"
+    "        Run(Counter());\n"
+    "    }\n"
+    "}\n";
+
+// The 0-based position of the "nth" "word" in the first "context" of "text".
+json pos_in(const std::string& text, const std::string& context, const std::string& word, int nth = 0)
+{
+    size_t at = text.find(context);
+    EXPECT_NE(at, std::string::npos) << context;
+    size_t w = at + context.find(word);
+    for (int i = 0; i < nth; ++i)
+        w = at + context.find(word, w - at + 1);
+    return pos(static_cast<int>(std::count(text.begin(), text.begin() + static_cast<long>(w), '\n')),
+        static_cast<int>(w - (text.rfind('\n', w - 1) + 1)));
+}
+
+json prepare_at(NativeSession& s, const json& p)
+{
+    const json r = s.client->request("textDocument/prepareCallHierarchy", doc_pos(s.uri, p["line"], p["character"]));
+    return r.contains("result") ? r["result"] : json();
+}
+
+json native_calls(NativeSession& s, const char* method, const json& item)
+{
+    const json r = s.client->request(method, {{"item", item}});
+    return r.contains("result") ? r["result"] : json();
+}
+
+// The names of the callers or callees of an answer.
+std::vector<std::string> call_names(const json& calls, const char* key)
+{
+    std::vector<std::string> out;
+    for (const json& c : calls)
+        out.push_back(c[key]["name"].get<std::string>());
+    return out;
+}
+
+const json* call_of(const json& calls, const char* key, const std::string& name)
+{
+    for (const json& c : calls)
+        if (c[key]["name"] == name)
+            return &c;
+    return nullptr;
+}
+
+} // namespace
+
+TEST(LanguageServerNative, InlayHintsNameTheParametersOfNativeCalls)
+{
+    REQUIRE_CLANGD();
+    NativeSession s(kNativeCalls);
+    const std::string text = kNativeCalls;
+    const json r = s.client->request("textDocument/inlayHint", {{"textDocument", {{"uri", s.uri}}}});
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array()) << r.dump();
+    std::set<std::string> got;
+    size_t count = 0;
+    for (const json& h : r["result"])
+        ++count, got.insert(std::to_string(h["position"]["line"].get<int>()) + ":" + std::to_string(h["position"]["character"].get<int>())
+            + " " + h["label"].get<std::string>());
+    auto want = [&](const std::string& context, const std::string& arg, const std::string& label)
+    {
+        const json p = pos_in(text, context, arg);
+        return std::to_string(p["line"].get<int>()) + ":" + std::to_string(p["character"].get<int>()) + " " + label;
+    };
+    EXPECT_TRUE(got.count(want("Clamp100(7)", "7", "v:"))) << r.dump(); // a native function
+    EXPECT_TRUE(got.count(want("c.Bump(a + 1)", "a + 1", "by:"))) << r.dump(); // a native method
+    EXPECT_TRUE(got.count(want("Tag(\"x\", Counter())", "\"x\"", "text:"))) << r.dump(); // two arguments
+    EXPECT_TRUE(got.count(want("Tag(\"x\", Counter())", "Counter()", "c:"))) << r.dump();
+    EXPECT_TRUE(got.count(want("Clamp100(Helper(3))", "Helper(3)", "v:"))) << r.dump(); // a nested call
+    EXPECT_TRUE(got.count(want("Helper(2)", "2", "arg:"))) << r.dump(); // a script method still has its hint
+    EXPECT_TRUE(got.count(want("Helper(3)", "3", "arg:"))) << r.dump(); // the script call inside a native call
+    EXPECT_EQ(count, got.size()) << "a hint is twice in " << r.dump();
+    // The argument "arg" is not the name "v" of the parameter, so it has a hint.
+    EXPECT_TRUE(got.count(want("Clamp100(arg)", "arg", "v:"))) << r.dump();
+    // A call in a string or a comment, and a call with no argument, have no hint.
+    for (const std::string& g : got)
+    {
+        EXPECT_NE(g.rfind("10:", 0), 0u) << g;
+    }
+    // The 7 above, "arg:" of Helper(3), "v:" of Clamp100(1) and "c:" of Run(Counter()).
+    EXPECT_EQ(got.size(), 10u) << r.dump();
+}
+
+TEST(LanguageServerNative, InlayHintOfANativeCallSkipsAnArgumentWithTheNameOfItsParameter)
+{
+    REQUIRE_CLANGD();
+    const std::string text =
+        "using \"natives.h\";\n"
+        "\n"
+        "class K {\n"
+        "    int Run(int v, int by) {\n"
+        "        return Clamp100(v) + Counter().Bump(by) + Tag(\"n\", Counter());\n"
+        "    }\n"
+        "}\n";
+    NativeSession s(text.c_str());
+    const json r = s.client->request("textDocument/inlayHint", {{"textDocument", {{"uri", s.uri}}}});
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array()) << r.dump();
+    // Only the two arguments of Tag have a hint.
+    std::vector<std::string> labels;
+    for (const json& h : r["result"])
+        labels.push_back(h["label"].get<std::string>());
+    EXPECT_EQ(labels, (std::vector<std::string>{"text:", "c:"})) << r.dump();
+}
+
+TEST(LanguageServerNative, InlayHintsOfNativeCallsHonorTheRange)
+{
+    REQUIRE_CLANGD();
+    NativeSession s(kNativeCalls);
+    const json r = s.client->request("textDocument/inlayHint",
+        {{"textDocument", {{"uri", s.uri}}}, {"range", {{"start", pos(7, 0)}, {"end", pos(8, 0)}}}});
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array()) << r.dump();
+    ASSERT_EQ(r["result"].size(), 1u) << r.dump();
+    EXPECT_EQ(r["result"][0]["label"], "v:");
+}
+
+TEST(LanguageServerNative, PrepareCallHierarchyOfANativeFunctionGivesTheHeaderItem)
+{
+    REQUIRE_CLANGD();
+    NativeSession s(kNativeCalls);
+    const std::string text = kNativeCalls;
+    for (const json& at : {pos_in(text, "Clamp100(7)", "Clamp100"), pos_in(text, "Clamp100(Helper(3))", "Clamp100")})
+    {
+        const json items = prepare_at(s, at);
+        ASSERT_TRUE(items.is_array() && items.size() == 1) << items.dump();
+        EXPECT_EQ(items[0]["name"], "Clamp100");
+        EXPECT_EQ(items[0]["uri"], uri_of((s.dir.path() / "natives.h").string()));
+        const int line = line_of(kNativeHeader, "int Clamp100");
+        EXPECT_EQ(items[0]["selectionRange"], json({{"start", pos(line, 4)}, {"end", pos(line, 12)}})) << items.dump();
+        EXPECT_EQ(items[0]["range"]["start"]["line"], line) << items.dump();
+        EXPECT_EQ(items[0]["range"]["end"]["line"], line) << items.dump();
+    }
+    const json method = prepare_at(s, pos_in(text, "c.Bump(a", "Bump"));
+    ASSERT_TRUE(method.is_array() && method.size() == 1) << method.dump();
+    EXPECT_EQ(method[0]["name"], "Bump");
+    const int bump_line = line_of(kNativeHeader, "int Bump");
+    EXPECT_EQ(method[0]["selectionRange"], json({{"start", pos(bump_line, 8)}, {"end", pos(bump_line, 12)}})) << method.dump();
+    EXPECT_EQ(method[0]["uri"], uri_of((s.dir.path() / "natives.h").string()));
+    // A local, a script method, a word in a string and a keyword are not native callables.
+    EXPECT_TRUE(prepare_at(s, pos_in(text, "int a = ", "a")).is_null());
+    EXPECT_TRUE(prepare_at(s, pos_in(text, "\"Clamp100(1)\"", "Clamp100")).is_null());
+    EXPECT_TRUE(prepare_at(s, pos_in(text, "return a + b", "return")).is_null());
+}
+
+TEST(LanguageServerNative, IncomingCallsOfANativeFunctionAreTheScriptCallers)
+{
+    REQUIRE_CLANGD();
+    NativeSession s(kNativeCalls);
+    const std::string text = kNativeCalls;
+    const json items = prepare_at(s, pos_in(text, "Clamp100(7)", "Clamp100"));
+    ASSERT_TRUE(items.is_array() && items.size() == 1) << items.dump();
+    const json in = native_calls(s, "callHierarchy/incomingCalls", items[0]);
+    ASSERT_TRUE(in.is_array()) << in.dump();
+    EXPECT_EQ(call_names(in, "from"), (std::vector<std::string>{"Helper", "Run", "Other"})) << in.dump();
+    for (const json& c : in)
+        EXPECT_EQ(c["from"]["uri"], s.uri) << in.dump(); // no generated place
+    const json* run = call_of(in, "from", "Run");
+    ASSERT_NE(run, nullptr);
+    ASSERT_EQ((*run)["fromRanges"].size(), 2u) << in.dump();
+    EXPECT_EQ((*run)["fromRanges"][0]["start"], pos_in(text, "int a = Clamp100(7)", "Clamp100"));
+    EXPECT_EQ((*run)["fromRanges"][1]["start"], pos_in(text, "Clamp100(Helper(3))", "Clamp100"));
+    // The items of the answer are script items: they open the next level.
+    const json deeper = native_calls(s, "callHierarchy/incomingCalls", (*run)["from"]);
+    EXPECT_EQ(call_names(deeper, "from"), (std::vector<std::string>{"Other"})) << deeper.dump();
+}
+
+TEST(LanguageServerNative, IncomingCallsOfANativeMethodAreTheScriptCallers)
+{
+    REQUIRE_CLANGD();
+    NativeSession s(kNativeCalls);
+    const json items = prepare_at(s, pos_in(kNativeCalls, "c.Bump(a", "Bump"));
+    ASSERT_TRUE(items.is_array() && items.size() == 1) << items.dump();
+    const json in = native_calls(s, "callHierarchy/incomingCalls", items[0]);
+    EXPECT_EQ(call_names(in, "from"), (std::vector<std::string>{"Run"})) << in.dump();
+}
+
+TEST(LanguageServerNative, IncomingCallsCrossTheOpenDocuments)
+{
+    REQUIRE_CLANGD();
+    NativeSession s(kNativeCalls);
+    const std::string other_text =
+        "using \"natives.h\";\n"
+        "\n"
+        "class Second {\n"
+        "    int Go() {\n"
+        "        return Clamp100(5);\n"
+        "    }\n"
+        "}\n";
+    const std::string other = uri_of((s.dir.path() / "second.hot").string());
+    write_file((s.dir.path() / "second.hot").string(), other_text);
+    s.client->open(other, other_text);
+    const json items = prepare_at(s, pos_in(kNativeCalls, "Clamp100(7)", "Clamp100"));
+    ASSERT_TRUE(items.is_array() && items.size() == 1) << items.dump();
+    const json in = native_calls(s, "callHierarchy/incomingCalls", items[0]);
+    const json* go = call_of(in, "from", "Go");
+    ASSERT_NE(go, nullptr) << in.dump();
+    EXPECT_EQ((*go)["from"]["uri"], other);
+    EXPECT_EQ(call_names(in, "from").size(), 4u) << in.dump();
+}
+
+TEST(LanguageServerNative, OutgoingCallsOfAScriptMethodIncludeTheNativeCallees)
+{
+    REQUIRE_CLANGD();
+    NativeSession s(kNativeCalls);
+    const std::string text = kNativeCalls;
+    const json run = prepare_at(s, pos_in(text, "int Run(", "Run"));
+    ASSERT_TRUE(run.is_array() && run.size() == 1) << run.dump();
+    const json out = native_calls(s, "callHierarchy/outgoingCalls", run[0]);
+    ASSERT_TRUE(out.is_array()) << out.dump();
+    // The script callee first, then the native callees in source order.
+    EXPECT_EQ(call_names(out, "to"), (std::vector<std::string>{"Helper", "Clamp100", "Bump", "Tag"})) << out.dump();
+    const std::string header = uri_of((s.dir.path() / "natives.h").string());
+    const json* clamp = call_of(out, "to", "Clamp100");
+    ASSERT_NE(clamp, nullptr);
+    EXPECT_EQ((*clamp)["to"]["uri"], header);
+    ASSERT_EQ((*clamp)["fromRanges"].size(), 2u) << out.dump();
+    EXPECT_EQ((*clamp)["fromRanges"][0]["start"], pos_in(text, "int a = Clamp100(7)", "Clamp100"));
+    EXPECT_EQ(call_of(out, "to", "Bump")->at("to")["uri"], header);
+    EXPECT_EQ(call_of(out, "to", "Tag")->at("to")["uri"], header);
+    // The native item opens the next level: a declaration has no callee, and the callers are the script ones.
+    const json next = native_calls(s, "callHierarchy/outgoingCalls", (*clamp)["to"]);
+    EXPECT_TRUE(next.is_array()) << next.dump();
+    const json back = native_calls(s, "callHierarchy/incomingCalls", (*clamp)["to"]);
+    EXPECT_EQ(call_names(back, "from"), (std::vector<std::string>{"Helper", "Run", "Other"})) << back.dump();
+}
+
+TEST(LanguageServerNative, IncomingCallsSkipADocumentThatHasAScriptMethodWithTheName)
+{
+    REQUIRE_CLANGD();
+    // The first document has a script method Run. The second document calls the native function Run.
+    NativeSession s(kNativeCalls);
+    const std::string other_text =
+        "using \"natives.h\";\n"
+        "\n"
+        "class Second {\n"
+        "    int Go() {\n"
+        "        return Run(5);\n"
+        "    }\n"
+        "}\n";
+    const std::string other = uri_of((s.dir.path() / "second.hot").string());
+    write_file((s.dir.path() / "second.hot").string(), other_text);
+    s.client->open(other, other_text);
+    const json r = s.client->request("textDocument/prepareCallHierarchy", doc_pos(other, 4, 15));
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array() && r["result"].size() == 1) << r.dump();
+    const json item = r["result"][0];
+    EXPECT_EQ(item["uri"], uri_of((s.dir.path() / "natives.h").string()));
+    const json in = native_calls(s, "callHierarchy/incomingCalls", item);
+    // Only Go: the callers of the script method Run in the first document are not callers of the native Run.
+    EXPECT_EQ(call_names(in, "from"), (std::vector<std::string>{"Go"})) << in.dump();
+}
+
+TEST(LanguageServerNative, OutgoingCallsKeepAScriptMethodAndTheNativeCallsApart)
+{
+    REQUIRE_CLANGD();
+    NativeSession s(kNativeCalls);
+    const json other = prepare_at(s, pos_in(kNativeCalls, "void Other()", "Other"));
+    ASSERT_TRUE(other.is_array() && other.size() == 1) << other.dump();
+    const json out = native_calls(s, "callHierarchy/outgoingCalls", other[0]);
+    // Run is a script method of the document, so it is the script item. The native Run is not listed.
+    ASSERT_EQ(out.size(), 2u) << out.dump(); // Run (script) and Clamp100 (native)
+    EXPECT_EQ(call_of(out, "to", "Run")->at("to")["uri"], s.uri) << out.dump();
+    EXPECT_EQ(call_of(out, "to", "Clamp100")->at("to")["uri"], uri_of((s.dir.path() / "natives.h").string()));
+}
+
+TEST(LanguageServerNative, MalformedNativeCallHierarchyItemsKeepTheServerAlive)
+{
+    REQUIRE_CLANGD();
+    NativeSession s(kNativeCalls);
+    const std::string header = uri_of((s.dir.path() / "natives.h").string());
+    for (const json& data : {json({{"native", {{"name", 5}}}, {"script", nullptr}}),
+             json({{"native", {{"name", nullptr}, {"uri", 7}}}, {"script", 3}}), json({{"native", {{"x", 1}}}}),
+             json({{"native", json::array()}}), json({{"native", "x"}, {"script", nullptr}})})
+        for (const char* method : {"callHierarchy/incomingCalls", "callHierarchy/outgoingCalls"})
+        {
+            const json r = s.client->request(
+                method, {{"item", {{"name", "X"}, {"uri", header}, {"data", data}}}});
+            EXPECT_TRUE(r.contains("result") || r.contains("error")) << data.dump() << " " << r.dump();
+        }
+    const json items = prepare_at(s, pos_in(kNativeCalls, "Clamp100(7)", "Clamp100"));
+    EXPECT_TRUE(items.is_array() && items.size() == 1) << items.dump();
+}
+
+TEST(LanguageServerNative, CodeLensStaysOnTheScriptDeclarations)
+{
+    REQUIRE_CLANGD();
+    NativeSession s(kNativeCalls);
+    const json r = s.client->request("textDocument/codeLens", {{"textDocument", {{"uri", s.uri}}}});
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array()) << r.dump();
+    // One lens for the class and one for each of the three methods: a native symbol has no declaration here.
+    EXPECT_EQ(r["result"].size(), 4u) << r.dump();
 }
 
 TEST(LanguageServer, ReferencesOfAScriptFieldAreInTheScript)
