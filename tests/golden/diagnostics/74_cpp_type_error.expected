@@ -1,0 +1,3 @@
+74_cpp_type_error.cpp:11:13: error: no viable conversion from 'std::string' (aka 'basic_string<char>') to 'int'
+   11 |         int n = s;
+1 error generated.

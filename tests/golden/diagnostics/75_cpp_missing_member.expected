@@ -1,0 +1,5 @@
+75_cpp_missing_member.cpp:8:9: error: use of undeclared identifier 'hpp'
+    8 |         hpp = 0;
+75_cpp_missing_member.cpp:9:15: error: no member named 'Jump' in 'Player'
+    9 |         this->Jump();
+2 errors generated.

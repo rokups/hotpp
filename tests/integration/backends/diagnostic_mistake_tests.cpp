@@ -5,7 +5,8 @@
 // Experiment F2 (design 4.2): common mistakes in a script. The compile fails. The error text
 // speaks script names and points to the script line.
 //
-// Each case is a pair of files in tests/golden/diagnostics: NN_name.hot and NN_name.expected.
+// Each case is a pair of files in tests/golden/diagnostics: NN_name.hot (or NN_name.cpp for a
+// plain C++ script) and NN_name.expected.
 // The test loads the script with the backend that HOT_BACKEND selected. The text of the error
 // must equal the expected file. The source directory shows as "<src>". The last line of the
 // error ("the compile of ... failed") is not part of the expected text.
@@ -69,8 +70,11 @@ class DiagnosticMistakes : public ::testing::TestWithParam<std::string>
 TEST_P(DiagnosticMistakes, ErrorSpeaksScriptNames)
 {
     const std::string name = GetParam();
+    // A case is a .cpp script when NN_name.cpp exists, else a .hot script.
     // A relative name: the error text starts with it.
-    const hot::ScriptSource source{name + ".hot", test_support::read_file(kDir + name + ".hot"), {}};
+    const bool is_cpp = fs::exists(kDir + name + ".cpp");
+    const std::string file = name + (is_cpp ? ".cpp" : ".hot");
+    const hot::ScriptSource source{file, test_support::read_file(kDir + file), {}};
     ASSERT_FALSE(source.text.empty());
     auto backend = hot::make_default_backend();
     const hot::LoadResult r = backend->load(source, 1);
@@ -92,7 +96,9 @@ TEST_P(DiagnosticMistakes, ErrorSpeaksScriptNames)
     // No generated name is left in the lines that name the script.
     // A script that uses "__" in a name of its own can see that name in the error.
     const bool script_has_dunder = source.text.find("__") != std::string::npos;
-    for (const char* generated : {"_Shell", "State_g", "__", "self->", "hot::deref", ".cpp"})
+    // The script name of a .cpp case ends with ".cpp", so only the generated file name ".g1.cpp"
+    // is forbidden for it.
+    for (const char* generated : {"_Shell", "State_g", "__", "self->", "hot::deref", "state_of", is_cpp ? ".g1.cpp" : ".cpp"})
     {
         if (script_has_dunder && std::string(generated) == "__")
             continue;

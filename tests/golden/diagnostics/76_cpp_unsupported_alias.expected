@@ -1,0 +1,3 @@
+76_cpp_unsupported_alias.cpp:6:11: error: a type alias is not supported in a .cpp script class
+    6 |     using Score = int;
+1 error generated.
