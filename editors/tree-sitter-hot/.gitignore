@@ -1,0 +1,5 @@
+src/
+build/
+*.so
+*.wasm
+node_modules/

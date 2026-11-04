@@ -1659,7 +1659,12 @@ TEST(LanguageServer, TheRemovedWordsAreNotKeywords)
 // The parser has no exported keyword list. Each keyword is a LEXY_KEYWORD("word", id) in the
 // parser sources, so the test reads the words from the sources. The words of the list below are
 // no keywords of the script for the editor. The list is the only place that names them.
-TEST(LanguageServer, TheKeywordsMatchTheParser)
+namespace
+{
+
+// The keywords of the parser (the LEXY_KEYWORD words) as the editors know them: the C++ words that
+// the parser only rejects are removed, and the word "delete" is added.
+std::set<std::string> parser_keywords()
 {
     // C++ words that the parser accepts to give a clear error, and "extern", which is reserved.
     const std::set<std::string> not_highlighted = {
@@ -1676,10 +1681,18 @@ TEST(LanguageServer, TheKeywordsMatchTheParser)
         for (std::sregex_iterator it(text.begin(), text.end(), re), end; it != end; ++it)
             parser.insert((*it)[1].str());
     }
-    ASSERT_GT(parser.size(), 30u) << "the parser keywords were not found";
+    EXPECT_GT(parser.size(), 30u) << "the parser keywords were not found";
     for (const std::string& w : not_highlighted)
         EXPECT_EQ(parser.erase(w), 1u) << "not a parser word any more: " << w;
     parser.insert(other_parser_words.begin(), other_parser_words.end());
+    return parser;
+}
+
+} // namespace
+
+TEST(LanguageServer, TheKeywordsMatchTheParser)
+{
+    const std::set<std::string> parser = parser_keywords();
 
     // The attribute names are keywords of the editor too. They are not words of the parser list.
     const std::vector<std::string>& attrs = hotc::class_attribute_names();
@@ -1692,6 +1705,137 @@ TEST(LanguageServer, TheKeywordsMatchTheParser)
         EXPECT_EQ(ls.count(w), 1u) << "parser keyword is not in script_keywords(): " << w;
     for (const std::string& w : ls)
         EXPECT_EQ(parser.count(w), 1u) << "script_keywords() word is not a parser keyword: " << w;
+}
+
+namespace
+{
+
+std::string read_editor_file(const char* relative)
+{
+    std::ifstream in(std::string(HOT_SOURCE_DIR "/editors/") + relative, std::ios::binary);
+    EXPECT_TRUE(in.good()) << "missing file: editors/" << relative;
+    return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+}
+
+// All matches of group 1 of a regex in a text.
+std::set<std::string> regex_words(const std::string& text, const std::regex& re)
+{
+    std::set<std::string> r;
+    for (std::sregex_iterator it(text.begin(), text.end(), re), end; it != end; ++it)
+        r.insert((*it)[1].str());
+    return r;
+}
+
+// The text between the first "begin" and the next "end" after it.
+std::string between(const std::string& text, const std::string& begin, const std::string& end)
+{
+    const size_t b = text.find(begin);
+    if (b == std::string::npos)
+        return {};
+    const size_t e = text.find(end, b);
+    return e == std::string::npos ? std::string() : text.substr(b + begin.size(), e - b - begin.size());
+}
+
+// A list of the editor must have every required word. Each other word must be an attribute name
+// or a helper of the language (these are highlighted in some editors).
+void check_editor_list(const char* where, const std::set<std::string>& found, const std::set<std::string>& required,
+    const std::set<std::string>& extra_allowed)
+{
+    EXPECT_GT(found.size(), 20u) << where << ": the word list was not found";
+    for (const std::string& w : required)
+        EXPECT_EQ(found.count(w), 1u) << where << ": missing word: " << w;
+    for (const std::string& w : found)
+        if (!required.count(w))
+            EXPECT_EQ(extra_allowed.count(w), 1u) << where << ": word is not a keyword or a type: " << w;
+}
+
+} // namespace
+
+// The editor files outside VS Code (Vim, tree-sitter) and the TextMate grammar list the same
+// keywords and builtin types as the parser. A missing word fails the test.
+TEST(LanguageServer, EditorKeywordListsMatchTheParser)
+{
+    const std::set<std::string> keywords = parser_keywords();
+    std::set<std::string> types;
+    for (const std::string& t : hot::ls::builtin_type_names())
+        types.insert(t);
+    ASSERT_GT(types.size(), 15u);
+    std::set<std::string> required = keywords;
+    required.insert(types.begin(), types.end());
+
+    // The helpers enumerate and range are highlighted in the editors. They are extra words of the
+    // lists, so the test needs them in the allowed words. Check that the server list has them.
+    const std::vector<std::string>& helpers = hot::ls::script_helpers();
+    EXPECT_NE(std::find(helpers.begin(), helpers.end(), "enumerate"), helpers.end());
+    EXPECT_NE(std::find(helpers.begin(), helpers.end(), "range"), helpers.end());
+    std::set<std::string> extra_allowed(helpers.begin(), helpers.end());
+    for (const std::string& a : hotc::class_attribute_names())
+        extra_allowed.insert(a);
+
+    // Vim: the words of the "syn keyword" lines. The group hotTodo holds comment markers.
+    {
+        const std::string text = read_editor_file("vim/syntax/hot.vim");
+        std::set<std::string> found;
+        const std::regex line_re("(?:^|\\n)[ \\t]*syn(?:tax)?[ \\t]+keyword[ \\t]+(\\w+)([^\\n]*)");
+        for (std::sregex_iterator it(text.begin(), text.end(), line_re), end; it != end; ++it)
+        {
+            if ((*it)[1].str() == "hotTodo")
+                continue;
+            std::istringstream words((*it)[2].str());
+            for (std::string w; words >> w;)
+                if (w != "contained" && w != "skipwhite" && w != "skipnl" && w != "skipempty")
+                    found.insert(w);
+        }
+        check_editor_list("vim/syntax/hot.vim", found, required, extra_allowed);
+    }
+
+    // tree-sitter: the arrays KEYWORDS and TYPES of grammar.js, and the quoted words of the query.
+    {
+        const std::string js = read_editor_file("tree-sitter-hot/grammar.js");
+        const std::regex word_re("'(\\w+)'");
+        const std::set<std::string> js_keywords = regex_words(between(js, "const KEYWORDS = [", "];"), word_re);
+        const std::set<std::string> js_types = regex_words(between(js, "const TYPES = [", "];"), word_re);
+        check_editor_list("tree-sitter-hot/grammar.js KEYWORDS", js_keywords, keywords, extra_allowed);
+        check_editor_list("tree-sitter-hot/grammar.js TYPES", js_types, types, {});
+
+        // The query: the lines of a comment start with ";".
+        std::string query = read_editor_file("tree-sitter-hot/queries/highlights.scm");
+        query = std::regex_replace(query, std::regex(";[^\\n]*"), "");
+        const std::set<std::string> found = regex_words(query, std::regex("\"(\\w+)\""));
+        check_editor_list("tree-sitter-hot/queries/highlights.scm", found, required, extra_allowed);
+    }
+
+    // TextMate: the words of the keyword scopes only. These are the "match" regexes of the rules
+    // "keywords", "types", "declaration" and "using". A keyword in another rule (for example in
+    // an attribute list) does not count. A word list is a group of the form (?:a|b|c) or (a|b).
+    {
+        const nlohmann::json grammar =
+            nlohmann::json::parse(read_editor_file("vscode/syntaxes/hot.tmLanguage.json"));
+        const nlohmann::json& repo = grammar.at("repository");
+        std::vector<std::string> matches;
+        for (const nlohmann::json& p : repo.at("keywords").at("patterns"))
+            matches.push_back(p.at("match").get<std::string>());
+        matches.push_back(repo.at("types").at("match").get<std::string>());
+        for (const nlohmann::json& p : repo.at("declaration").at("patterns"))
+            matches.push_back(p.at("match").get<std::string>());
+        matches.push_back(repo.at("using").at("match").get<std::string>());
+
+        const std::regex group_re("\\((?:\\?:)?(\\w+(?:\\|\\w+)*)\\)");
+        const std::regex word_re("\\w+");
+        std::set<std::string> found;
+        for (const std::string& m : matches)
+            for (std::sregex_iterator g(m.begin(), m.end(), group_re), end; g != end; ++g)
+            {
+                const std::string list = (*g)[1].str();
+                for (std::sregex_iterator w(list.begin(), list.end(), word_re); w != end; ++w)
+                    found.insert((*w)[0].str());
+            }
+        check_editor_list("vscode/syntaxes/hot.tmLanguage.json", found, required, extra_allowed);
+    }
+
+    // The jetbrains template and the vim ftdetect name the file extension.
+    EXPECT_NE(read_editor_file("vim/ftdetect/hot.vim").find("*.hot"), std::string::npos);
+    EXPECT_NE(read_editor_file("jetbrains/lsp4ij/template.json").find("*.hot"), std::string::npos);
 }
 
 TEST(LanguageServer, BindingsAreLocals)

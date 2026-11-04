@@ -1,0 +1,9 @@
+{
+  "name": "tree-sitter-hot",
+  "version": "0.1.0",
+  "description": "Tree-sitter grammar for Hot++ scripts (.hot), for highlighting",
+  "license": "MIT",
+  "private": true,
+  "main": "grammar.js",
+  "tree-sitter": [{ "scope": "source.hot", "file-types": ["hot"], "highlights": "queries/highlights.scm" }]
+}

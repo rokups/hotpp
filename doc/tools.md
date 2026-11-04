@@ -111,6 +111,33 @@ The extension is in `editors/vscode/`. It gives highlighting, the language serve
 
 The command `Hot++: Show Script Position` maps a place in a generated `.cpp` file to the script. The command `Hot++: Restart Language Server` reads the settings again.
 
+## Other editors
+
+Each editor below gets highlighting for `.hot` files and the language server `hot-ls --stdio`. `hot-ls` is the same server for all editors. By default, it shares the index of `clangd` with the C++ `clangd` of the project. Add `--private-clangd-dir` to the command to keep a private index. Add `--no-native-tokens` to remove the semantic tokens for C++ names. The test `LanguageServer.EditorKeywordListsMatchTheParser` checks that the keyword lists of all editor files equal the keywords of the parser.
+
+### Vim and Neovim
+
+The folder `editors/vim` has `ftdetect`, `ftplugin` and `syntax` files. Add the folder to the runtime path. Then give Neovim the server:
+
+```lua
+vim.lsp.config('hot_ls', {
+  cmd = { 'hot-ls', '--stdio' },
+  filetypes = { 'hot' },
+  root_markers = { '.cache/hot', 'compile_commands.json', 'CMakeLists.txt', '.git' },
+})
+vim.lsp.enable('hot_ls')
+```
+
+The README in the folder has the setup for older Neovim (`nvim-lspconfig`) and for `vim-lsp`.
+
+### Tree-sitter
+
+The folder `editors/tree-sitter-hot` has a loose grammar for highlighting and `queries/highlights.scm`. The grammar does not check the language. Run `tree-sitter generate` in the folder to make the parser. The repository has no generated parser. The README in the folder shows the setup for `nvim-treesitter`.
+
+### JetBrains IDEs
+
+Add the folder `editors/vscode` in `Settings > Editor > TextMate Bundles` for the colors. Install the plugin LSP4IJ, and import the template `editors/jetbrains/lsp4ij` for the server. The setup is not tested with a real IDE. The README in `editors/jetbrains` has the steps.
+
 ## Debugger helpers
 
 `tools/lldb` has formatters for state blocks and handles. `tools/natvis/hot.natvis` does the same for Visual Studio. Both are untested in a real debugger session.

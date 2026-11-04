@@ -1,0 +1,16 @@
+{
+  "id": "hot-ls",
+  "name": "Hot++ language server",
+  "programArgs": {
+    "default": "hot-ls --stdio"
+  },
+  "fileTypeMappings": [
+    {
+      "fileType": {
+        "name": "Hot++",
+        "patterns": ["*.hot"]
+      },
+      "languageId": "hot"
+    }
+  ]
+}

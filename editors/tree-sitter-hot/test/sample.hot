@@ -1,0 +1,48 @@
+// A sample for the grammar snapshot.
+using <vector>;
+using "Actor.h";
+
+[native, handle("Actor")]
+struct Stats : Actor {
+    float hp = 1.5f;
+    ulong big = 0xFFul;
+    int Level { get; private set; } = 1;
+    override void Tick(float dt) {
+        var s = "hp ${this.hp:.2f} of ${Max(a, {1}[0])} \${no} \"q\"";
+        foreach (var x in this.items) { x += 1e-3 + 2u; }
+        try { throw std.runtime_error("e"); } catch (std.exception e) { } finally { }
+        if (a is Stats && b as Foo) { return null; } /* block */
+        if (a is Stats st && st.n > 1) { var q = a ?? b ?? null; }
+    }
+}
+enum Mode { Idle, Walk }
+void Each() { foreach (ref y in this.items) { y; } }
+// New syntax: bodies with =>, lambdas, bindings, helpers, switch on strings, literals.
+class Calc : Base {
+    int Twice(int a = 1) => a * 2;
+    int Total => this.sum + base.Total;
+    protected int sum = 0;
+    List<int> xs = [1, 2, 3];
+    Map<string, int> m = ["a": 1, "b": 2];
+    void Run(ref Map<string, int> m2, in Shape sh0, out int total, [byval] Shape* sh) {
+        var f = (int x) => x * 2;
+        var (a, b) = Pair();
+        ref (c, d) = Pair();
+        foreach (var (k, v) in m2) { k; }
+        foreach (var (i, e) in enumerate(this.xs)) { i; }
+        for (var i in range(0, 3)) { &i; *sh; }
+        this.owner?.Tick(1.0f);
+        if (sh is Circle ci && ci.r > 0) { var sq = sh as Square; }
+        switch (name) { case "a": case "b": return; default: break; }
+        var let = function + super;
+    }
+}
+// Weak handles: the field style and the inline style.
+class Node {
+    [weak]
+    Node parent;
+    void See([weak] Node n) { [weak] Node m = n; }
+}
+abstract class Shape { abstract float Area(); }
+interface IShape { float Area(); }
+class Sq : Shape, IShape { float Area() { return 1.0; } }

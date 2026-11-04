@@ -344,6 +344,9 @@ if(HOT_BUILD_VSCODE)
     add_subdirectory(editors/vscode)
 endif()
 
+# The tree-sitter grammar. The folder has one test. It needs node and the tree-sitter tool.
+add_subdirectory(editors/tree-sitter-hot)
+
 if(HOT_BUILD_SAMPLES)
     add_subdirectory(samples)
 endif()
