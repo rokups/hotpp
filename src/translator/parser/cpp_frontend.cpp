@@ -2733,6 +2733,12 @@ void Frontend::process_class(CXCursor c)
         }
         case CXCursor_CXXMethod:
         {
+            // An operator has no usable name in the generated shell and state. A defaulted or deleted
+            // operator gets the message of make_method.
+            const std::string mname = spelling(k);
+            if (mname.compare(0, 8, "operator") == 0 && (mname.size() == 8 || !is_ident(mname[8]))
+                && !is_defaulted(k))
+                fail(pos_of(k), "an operator member is not supported in a .cpp script class; use a named method");
             std::string var;
             if (!clang_CXXMethod_isStatic(k))
                 make_method(k, &info, [this, ci]() -> std::vector<ast::Method>& { return sc_.classes[ci].methods; });

@@ -598,6 +598,44 @@ TEST_P(BackendTests, CppScriptChildClassReload)
     EXPECT_EQ(*fld<int>(shell, "kid_hits"), 4);
 }
 
+// Fluent style: a method returns "Counter&" or "Counter*" of a script class. The address of a script
+// object is fixed for its life, and a reload moves only the state block. So the reference is valid.
+// The chain "c.add(1).add(2)" works before and after the reload. The new body of "add" runs.
+TEST_P(BackendTests, CppScriptFluentReturnsSurviveReload)
+{
+    hot::LoadResult v1 = backend->load(source("cpp_fluent_v1.cpp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    hot::LoadResult v2 = backend->load(source("cpp_fluent_v2.cpp"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Builder"));
+    s.actor->Tick(kDt); // add(1).add(2): n is 3
+    Actor** slot = modvar<Actor*>(s, "counter");
+    ASSERT_NE(slot, nullptr);
+    ASSERT_NE(*slot, nullptr);
+    Actor* counter = *slot;
+    auto* shell = dynamic_cast<hot::ShellBase*>(counter);
+    ASSERT_NE(shell, nullptr);
+    EXPECT_EQ(*fld<int>(shell, "n"), 3);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "total"), 3);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "same_ref"), 1); // the reference is the object itself
+    EXPECT_EQ(*fld<int>(s.inst.shell, "same_ptr"), 1); // the pointer is the object itself
+
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    const hot::ReloadResult res = s.loader.commit_pending();
+    ASSERT_TRUE(res) << res.error;
+    EXPECT_EQ(hot::active_generation, 2u);
+    EXPECT_EQ(*modvar<Actor*>(s, "counter"), counter); // the same address
+    EXPECT_EQ(*fld<int>(shell, "n"), 3); // the state stays
+
+    s.actor->Tick(kDt); // the new body: add(1) gives 10, add(2) gives 20
+    EXPECT_EQ(*fld<int>(shell, "n"), 3 + 30);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "total"), 33);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "same_ref"), 2);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "same_ptr"), 2);
+    EXPECT_EQ(*modvar<Actor*>(s, "counter"), counter);
+}
+
 // A chain of three script classes: Leaf derives from Mid, and Mid derives from Base. The object
 // of generation 1 survives the reload with the state of the three classes. Generation 2 adds the
 // virtual method Extra to Base. Mid and Leaf override it, and Base calls it.

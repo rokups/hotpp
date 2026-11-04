@@ -540,6 +540,10 @@ struct Checker
                 return; // "const char*": the text of a string literal
             if (script_pointer(t, pos))
                 return;
+            // A script object has a fixed address for its life: a reload moves only the state block.
+            // So a return of "P&", "const P&" or "P*" of a script class is not a borrowed value.
+            if (is_cpp && what == "a return value" && types.is_script_class(base) && is_single_ref_or_pointer(t))
+                return;
             const TypeRule rule = types.lookup(base);
             // An intrusive stub: "T*" is the handle. A "T&" or a "T**" is still borrowed.
             if (rule.kind == Kind::Handle && !rule.intrusive_add.empty() && !types.is_script_class(base)
@@ -596,6 +600,16 @@ struct Checker
         return rest.empty() || (rest.back() != '*' && rest.back() != '&');
     }
 
+
+    // True when the type is "T&", "const T&", "T*" or "const T*": one trailing sign and no other sign.
+    static bool is_single_ref_or_pointer(const std::string& type)
+    {
+        const std::string t = trim(type);
+        if (t.empty() || (t.back() != '*' && t.back() != '&'))
+            return false;
+        const std::string rest = trim(t.substr(0, t.size() - 1));
+        return !rest.empty() && rest.back() != '*' && rest.back() != '&';
+    }
 
     // A single "T*" of a script class is always an error: the class is already a handle.
     // Gives true when the type is such a pointer. A ".cpp" script has no handles: there the

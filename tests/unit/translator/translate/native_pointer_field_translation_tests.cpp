@@ -385,6 +385,77 @@ TEST(NativePointerField, CppBorrowedReturnMessageSpeaksCpp)
     }
 }
 
+// A script object has a fixed address for its life: a reload moves only the state block.
+// So a return of "P&", "const P&" or "P*" of a script class is not a borrowed value.
+namespace
+{
+const char* const kFluentPeer = "class P : public Widget { public:\n    int n = 0;\n    ";
+}
+
+TEST(NativePointerField, CppFluentReferenceReturnIsValid)
+{
+    const hotc::TranslateResult r = cpp_script(
+        std::string(kFluentPeer) + "P& add(int v) { n += v; return *this; }\n};\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(r.diagnostics.empty()) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "return *__self;")) << r.cpp;
+}
+
+TEST(NativePointerField, CppConstReferenceReturnIsValid)
+{
+    const hotc::TranslateResult r = cpp_script(
+        std::string(kFluentPeer) + "const P& get() const { return *this; }\n};\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+TEST(NativePointerField, CppPointerReturnOfAScriptClassIsValid)
+{
+    const hotc::TranslateResult r = cpp_script(std::string(kFluentPeer) + "P* self() { return this; }\n};\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "return __self;")) << r.cpp;
+}
+
+TEST(NativePointerField, CppDoublePointerReturnOfAScriptClassIsStillAnError)
+{
+    const hotc::TranslateResult r =
+        cpp_script(std::string(kFluentPeer) + "P** bad() { return nullptr; }\n};\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "a return value cannot hold a borrowed pointer or reference to 'P'"))
+        << r.diagnostics;
+}
+
+TEST(NativePointerField, CppNativeReferenceReturnKeepsTheBorrowedMessage)
+{
+    const hotc::TranslateResult r = cpp_script(
+        "Mesh m;\nclass A : public Widget { public:\n    Mesh& find() { return m; }\n};\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "a return value cannot hold a borrowed pointer or reference to 'Mesh'"))
+        << r.diagnostics;
+}
+
+TEST(NativePointerField, CppScriptClassReferenceFieldIsStillAnError)
+{
+    for (const char* line : {"P& peer;", "const P& peer;"})
+    {
+        const hotc::TranslateResult r = cpp_script(
+            std::string("class P : public Widget { public: int n = 0; };\nclass A : public Widget { public:\n    ") +
+            line + "\n};\n");
+        EXPECT_FALSE(r.ok) << line;
+        EXPECT_TRUE(has(r.diagnostics, std::string("error: ") + kRefMessage)) << line << "\n" << r.diagnostics;
+    }
+}
+
+TEST(NativePointerField, CppStaleFluentReturnsCompileShapes)
+{
+    // A retired generation cannot return a reference: the stale call throws. A pointer gives null.
+    const hotc::TranslateResult r = cpp_script(std::string(kFluentPeer) +
+        "P& add(int v) { n += v; return *this; }\n    P* self() { return this; }\n};\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "throw_null_reference(\"call of a retired generation: P::add\")")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "return P &();")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "return P *();")) << r.cpp;
+}
+
 TEST(NativePointerField, CppBorrowedCollectionElementMessageSpeaksCpp)
 {
     const hotc::TranslateResult r = cpp_field("std::vector<Mesh*> list;");

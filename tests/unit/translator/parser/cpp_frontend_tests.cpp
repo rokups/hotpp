@@ -1738,6 +1738,32 @@ TEST(CppFrontend, UnsupportedMembersAreNamed)
             std::string(": error: ") + what + " is not supported in a .cpp script class");
 }
 
+// An operator member has no usable name in the generated shell and state. The error is clear.
+TEST(CppFrontend, OperatorMemberIsAnError)
+{
+    const char* const cases[] = {
+        "S& operator+=(int v) { n += v; return *this; }",
+        "bool operator==(const S& o) const { return n == o.n; }",
+        "int operator()(int v) { return v; }",
+        "int operator[](int i) { return i; }",
+        "S& operator=(const S& o) { n = o.n; return *this; }",
+    };
+    for (const char* member : cases)
+        expect_error(std::string("class S : public Actor { public: int n = 0; ") + member + " };",
+            "t:2:");
+    for (const char* member : cases)
+        expect_error(std::string("class S : public Actor { public: int n = 0; ") + member + " };",
+            ": error: an operator member is not supported in a .cpp script class; use a named method");
+}
+
+// A method whose name only starts with "operator" is a normal method.
+TEST(CppFrontend, MethodNamedLikeAnOperatorIsValid)
+{
+    Parsed p("#include \"Actor.h\"\nclass S : public Actor { public: S() {} int operator_plus(int v) { return v; } "
+             "int operatorX() { return 1; } };\n");
+    EXPECT_TRUE(p.diag.items.empty()) << p.errors();
+}
+
 // An explicit constructor is a normal constructor in a script class: it gives no error.
 TEST(CppFrontend, ExplicitConstructorIsSupported)
 {

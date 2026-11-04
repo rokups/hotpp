@@ -1,0 +1,3 @@
+Counter::add 1
+Counter::peek 1
+Counter::self 1

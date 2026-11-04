@@ -203,6 +203,13 @@ TEST(GoldenTranslation, CppObjects)
     golden_pair("cpp_objects", ".cpp");
 }
 
+// A .cpp script class method returns "P&", "const P&" or "P*" of a script class (fluent style).
+// The stale stub of a reference throws, and the stale stub of a pointer returns null.
+TEST(GoldenTranslation, CppFluent)
+{
+    golden_pair("cpp_fluent", ".cpp");
+}
+
 // A .cpp script class derives from a script class. The parent declares a virtual method.
 // Generation 2 adds an override of a native virtual and a new virtual method in the child.
 TEST(GoldenTranslation, CppInherit)

@@ -46,12 +46,13 @@ The first version gives an error for each form in this list. The text in the sec
 | A type alias in the class: `using T = int;` or `typedef int T;` | `a type alias is not supported in a .cpp script class` |
 | A friend declaration | `a friend declaration is not supported in a .cpp script class` |
 | A conversion operator, for example `operator int() const` | `a conversion operator is not supported in a .cpp script class` |
+| An operator member, for example `Vec& operator+=(int v)` or `int operator()(int v)` (not a conversion operator) | `an operator member is not supported in a .cpp script class; use a named method` (a defaulted or deleted operator gets the message of the defaulted or deleted method) |
 | A member template: a method template, a constructor template, a class template or an alias template in the class | `a member template is not supported in a .cpp script class` |
 | A `static_assert` in the class | `a static_assert is not supported in a .cpp script class` |
 | A using declaration in the class, for example `using Actor::Move;` | `a using declaration is not supported in a .cpp script class` |
 | Any other declaration in the class | `this declaration is not supported in a .cpp script class` |
 | A pointer to a data member as a field, for example `int P::* mp;` | `a field cannot be a pointer to a data member ('int P::*'): it is not supported in a .cpp script. Use a pointer to a member function, or an index` (a pointer to a member function is allowed) |
-| A method that returns `Mesh*` or `Mesh&` of a native class, or a collection of such pointers | `a return value cannot hold a borrowed pointer or reference to 'Mesh': the object can be gone when the caller uses it. Use a value or a smart pointer such as 'std::shared_ptr<Mesh>'` (the words `a collection element` replace `a return value` for a collection) |
+| A method that returns `Mesh*` or `Mesh&` of a native class, or a collection of such pointers | `a return value cannot hold a borrowed pointer or reference to 'Mesh': the object can be gone when the caller uses it. Use a value or a smart pointer such as 'std::shared_ptr<Mesh>'` (the words `a collection element` replace `a return value` for a collection). A script class is not a borrowed type for a return value: `P&`, `const P&` and `P*` of a script class are valid (see [Script classes as types](cpp-types.html#script-classes-as-types)). `P**`, `P*&` and a reference field of a script class are still errors. |
 | Properties | There is no property syntax in C++. Use two methods. |
 | Script-class handles | A script class is not a handle in a `.cpp` script. Use a pointer. See [Script classes as types](cpp-types.html#script-classes-as-types). |
 | A reference field or a reference module variable, for example `Mesh& r;` | `a field cannot be a reference: a reference cannot change its target and has no null. Use 'T*' (a checked pointer) or a value` |

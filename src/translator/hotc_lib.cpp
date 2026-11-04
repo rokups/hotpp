@@ -7199,9 +7199,11 @@ void translate_impl(
                 : std::string();
             const std::string stale_ret = is_coroutine
                 ? "        throw hot::TaskReloadCancelled(\"task cancelled by reload: " + what + "\");\n"
-                : m.ret_value
-                    // A hot::Value has no empty state: a stale call of a function that returns it throws.
+                : m.ret_value || (!ret.empty() && ret.back() == '&')
+                    // A hot::Value has no empty state, and a reference has no null: a stale call of a
+                    // function that returns one of them throws.
                     ? "        hot::detail::throw_null_reference(\"call of a retired generation: " + what + "\");\n"
+                    : !ret.empty() && ret.back() == '*' ? std::string("        return nullptr;\n")
                     : "        return" + (ret == "void" ? std::string() : " " + ret + "()") + ";\n";
             bodies.push_back({cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns),
                 [&o, &all_text, &mapped, &reset, &write_stmts, h = body_head(m), em, file, end_line, first_line,
