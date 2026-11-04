@@ -57,18 +57,6 @@ TEST(ModuleDeclParse, EnumWithoutUnderlyingType)
     EXPECT_EQ(p.script.enums[0].items.size(), 2u);
 }
 
-// A script enum is always scoped. The C++ spelling "enum class" and "enum struct" is the same enum.
-TEST(ModuleDeclParse, EnumClassSpellingIsAnEnum)
-{
-    StubParsed p("enum class Mode { Idle, Run }\nenum struct Small : byte { A, B }\n");
-    ASSERT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
-    ASSERT_EQ(p.script.enums.size(), 2u);
-    EXPECT_EQ(p.script.enums[0].name, "Mode");
-    EXPECT_EQ(p.script.enums[0].items.size(), 2u);
-    EXPECT_EQ(p.script.enums[1].name, "Small");
-    EXPECT_FALSE(p.script.enums[1].underlying.empty());
-}
-
 TEST(ModuleDeclParse, ModuleVariables)
 {
     StubParsed p("int counter = 0;\n[alias(\"old\")] float speed = 1.5;\nPoint last;\n");

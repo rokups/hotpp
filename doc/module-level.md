@@ -69,7 +69,7 @@ class Platoon {
 
 ## Enums and structs
 
-An enum is a scoped enum. The C++ spelling `enum class Mode { ... }` and `enum struct Mode { ... }` means the same, so `class` is optional. Add a base type after `:`. The default base type is `int`. A struct is a value type. A bare class name is a value, and `$C` is a handle: see [Value uses](types-handles.html#value-uses).
+An enum is a scoped enum. Add a base type after `:`. The default base type is `int`. A struct is a value type. A bare class name is a value, and `$C` is a handle: see [Value uses](types-handles.html#value-uses).
 
 ```hot
 enum Mode { Idle, Walk, Run }
