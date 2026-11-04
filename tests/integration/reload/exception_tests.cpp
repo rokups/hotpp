@@ -554,6 +554,163 @@ class Player : Actor {
     EXPECT_EQ(*s.field("ticks"), 1.0f);
 }
 
+// A struct with the base ScriptError is an exception type. A child struct is caught by the parent type.
+TEST_P(BackendTests, ExceptionStructCaughtByParentType)
+{
+    const hot::ScriptSource src = {"chk_exc_struct.hot", R"(
+using "Actor.h";
+
+struct GameError : ScriptError {
+    int code = 0;
+    GameError(int c) : base("game error") { code = c; }
+}
+
+struct NetError : GameError {
+    NetError(int c) : base(c) { }
+}
+
+class Player : Actor {
+    int code = 0;
+    std.string msg = "";
+
+    override void Tick(float dt) {
+        try {
+            throw NetError(7);
+        } catch (GameError e) {
+            this.code = e.code;
+            this.msg = e.what();
+        }
+    }
+
+    override void TakeDamage(float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
+}
+)"};
+    hot::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
+    s.world.Tick(kDt);
+    EXPECT_EQ(*hot::field_ptr<int>(s.inst.shell, "code"), 7);
+    EXPECT_EQ(*hot::field_ptr<std::string>(s.inst.shell, "msg"), "game error");
+}
+
+// An exception struct that nothing catches reaches the handler of the host as a hot::ScriptError.
+TEST_P(BackendTests, ExceptionStructEscapesToTheHost)
+{
+    const hot::ScriptSource src = {"chk_exc_escape.hot", R"(
+using "Actor.h";
+
+struct GameError : ScriptError {
+    int code = 0;
+    GameError(int c) : base("game error") { code = c; }
+}
+
+struct NetError : GameError {
+    NetError(int c) : base(c) { }
+}
+
+class Player : Actor {
+    override void Tick(float dt) {
+        throw GameError(3);
+    }
+
+    override void TakeDamage(float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
+}
+)"};
+    hot::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
+    HandlerGuard guard;
+    RecordedReport rec;
+    hot::set_script_error_handler([&rec](const hot::ScriptErrorReport& e)
+    {
+        rec.type = e.type;
+        rec.message = e.message;
+        rec.class_name = e.class_name;
+        ++rec.count;
+    });
+    s.world.Tick(kDt);
+    EXPECT_EQ(rec.count, 1);
+    EXPECT_EQ(rec.type, "hot::ScriptError");
+    EXPECT_EQ(rec.message, "game error");
+    EXPECT_EQ(rec.class_name, "Player");
+}
+
+// A reload that adds a field to an exception struct: the new code throws and catches its own type.
+TEST_P(BackendTests, ExceptionStructSurvivesAReload)
+{
+    const hot::ScriptSource src1 = {"chk_exc_reload.hot", R"(
+using "Actor.h";
+
+struct GameError : ScriptError {
+    int code = 0;
+    GameError(int c) : base("game error") { code = c; }
+}
+
+struct NetError : GameError {
+    NetError(int c) : base(c) { }
+}
+
+class Player : Actor {
+    int result = 0;
+
+    override void Tick(float dt) {
+        try {
+            throw NetError(4);
+        } catch (GameError e) {
+            this.result = e.code;
+        }
+    }
+
+    override void TakeDamage(float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
+}
+)"};
+    const hot::ScriptSource src2 = {"chk_exc_reload.hot", R"(
+using "Actor.h";
+
+struct GameError : ScriptError {
+    int code = 0;
+    int extra = 5;
+    GameError(int c) : base("game error") { code = c; extra = 10; }
+}
+
+struct NetError : GameError {
+    NetError(int c) : base(c) { }
+}
+
+class Player : Actor {
+    int result = 0;
+
+    override void Tick(float dt) {
+        try {
+            throw NetError(4);
+        } catch (GameError e) {
+            this.result = e.code + e.extra;
+        }
+    }
+
+    override void TakeDamage(float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
+}
+)"};
+    hot::LoadResult v1 = backend->load(src1, 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module)));
+    s.world.Tick(kDt);
+    EXPECT_EQ(*hot::field_ptr<int>(s.inst.shell, "result"), 4);
+    hot::LoadResult v2 = backend->load(src2, 2);
+    ASSERT_TRUE(v2) << v2.error;
+    EXPECT_TRUE(s.loader.request_reload(std::move(*v2.module)));
+    EXPECT_TRUE(s.loader.commit_pending());
+    s.world.Tick(kDt);
+    EXPECT_EQ(*hot::field_ptr<int>(s.inst.shell, "result"), 14);
+}
+
 // Script code calls native code, and the native code calls a script override that throws. The
 // error is not at the end of the script stack, so it passes to the catch of the calling script.
 // Only a call from the host reports.

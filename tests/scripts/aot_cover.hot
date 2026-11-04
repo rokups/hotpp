@@ -103,6 +103,16 @@ class Describe {
     std.string Text() { return "phase=${m == Phase.Run ? m : Phase.Idle}"; }
 }
 
+// Script exception types: a child struct is caught by the parent type.
+struct ProbeError : ScriptError {
+    int code = 0;
+    ProbeError(int c) : base("probe error") { code = c; }
+}
+
+struct ProbeChild : ProbeError {
+    ProbeChild(int c) : base(c) { }
+}
+
 class Boss : Actor, IDamageable, IGuarded {
     int hp = 50;
     int[2] table = [10, 20];
@@ -130,6 +140,13 @@ class Boss : Actor, IDamageable, IGuarded {
         this.same = again == t ? 1 : 0;
         if (again == null) return;
         this.tally_n = again.n;
+        int exc_code = 0;
+        try {
+            throw ProbeChild(5);
+        } catch (ProbeError pe) {
+            exc_code = pe.code;
+        }
+        if (exc_code != 5) return;
         try {
             $Fussy _f = new $Fussy(1);
         } catch (std.runtime_error e) {

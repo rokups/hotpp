@@ -1,0 +1,35 @@
+// Generation 1 of the Thrower class: the script exception types.
+// A struct with the base ScriptError is an exception type. NetError derives from AppError.
+// AppError() without base(...) uses the name of the type as the message.
+using "Actor.h";
+
+struct AppError : ScriptError {
+    int code = 0;
+
+    AppError(std.string message) : base(message) {
+        code = 7;
+    }
+}
+
+struct NetError : AppError {
+    int port = 0;
+
+    NetError(int p) : base("net down") {
+        port = p;
+    }
+}
+
+class Thrower : Actor {
+    int caught() {
+        try {
+            throw NetError(80);
+        } catch (AppError e) {
+            return e.code + 1;
+        }
+        return 0;
+    }
+
+    void escape() {
+        throw AppError("app down");
+    }
+}

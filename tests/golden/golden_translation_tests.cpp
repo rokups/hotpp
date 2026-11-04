@@ -114,6 +114,12 @@ TEST(GoldenTranslation, Checks)
     golden_one("checks_v1");
 }
 
+// The script exception types: a struct with the base ScriptError, and a struct with such a parent.
+TEST(GoldenTranslation, Exceptions)
+{
+    golden_one("exceptions_v1");
+}
+
 // The scoped stub rules and cpp_prelude: "self", "class : Base" and the text in the shell.
 TEST(GoldenTranslation, Prelude)
 {

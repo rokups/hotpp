@@ -10,7 +10,7 @@ This list shows what version 1 does not support.
 - The words `thread_local`, `friend`, `mutable` and `volatile` on a member of a `.hot` class. A `static` method works (see [Static methods](classes.html#static-methods)). A `static` field does not. Use a module variable (a variable at file level).
 - Coroutines other than `async` methods. See [Async and await](async.html).
 - Generics in script code. You can use C++ templates.
-- Script exception types. You can throw and catch C++ types.
+- An exception struct (a struct with the base `ScriptError`) as the type of a field, a module variable or an element of a container. Use it only for `throw` and `catch`. A `.cpp` script has no exception struct. The only base of an exception struct is `ScriptError` (or another exception struct). See [Script exception types](statements-errors.html#script-exception-types).
 - Reload while a worker thread runs script code, in the default `StopTheWorld` mode. The commit waits for the frame boundary. The `EntryCounters` mode allows it (see [Internals](internals.html)).
 - A stored `ref` parameter, `ref` local or `T*`. A borrowed value cannot go to a field. The option `--no-strict-borrowed` makes this a warning. See [Borrowing](borrowing.html).
 - A script class, struct or enum with the name of a C++ type from a `using` header. Rename the script type.

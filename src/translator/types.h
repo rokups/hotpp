@@ -40,6 +40,10 @@ struct TypeRule
     std::string cpp_overrides; // the raw text of [cpp_overrides("...")] of the stub
 };
 
+// True for the base names of a script exception type: "ScriptError", "hot.ScriptError" and
+// "hot::ScriptError".
+bool is_exception_base(const std::string& name);
+
 class TypeModel
 {
 public:
@@ -159,8 +163,12 @@ public:
 
     // The first class in the parent chain of a script class that is not a script class: the native
     // base. An empty string: the chain ends in a script class with no base, or the type is not
-    // a script class.
+    // a script class, or the type is a struct (also an exception struct).
     std::string script_native_base(const std::string& type) const;
+
+    // True when the name is a struct of the script that is a script exception type: its base is
+    // ScriptError or another exception struct.
+    bool is_exception_struct(const std::string& type) const;
 
     // The names that the native headers declare in the global namespace (a function, a
     // variable, a type or a namespace). Only the names that the translator asked for are in

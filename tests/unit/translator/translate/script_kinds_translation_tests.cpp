@@ -101,6 +101,79 @@ TEST(ScriptKindsTranslation, ValueClassErrors)
     expect_error("struct V { int a = 0; void onReload() { } }\n", "cannot have the hook 'onReload'");
 }
 
+TEST(ScriptKindsTranslation, ExceptionStructs)
+{
+    const std::string e = "struct E : ScriptError { int code = 0; }\n";
+    hotc::TranslateResult r = translate_script(e);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "struct E : hot::ScriptError {")) << r.cpp;
+    EXPECT_TRUE(has(r, "hot::ScriptError(\"E\")")) << r.cpp;
+    EXPECT_FALSE(has(r, "hot::Construct")) << r.cpp;
+
+    r = translate_script("struct E : hot.ScriptError { int code = 0; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "struct E : hot::ScriptError {")) << r.cpp;
+
+    r = translate_script(e + "struct E2 : E { int more = 1; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "struct E2 : E {")) << r.cpp;
+
+    r = translate_script("struct E : ScriptError { int c = 0; E(int x) : base(\"boom\") { c = x; } }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "hot::ScriptError(\"boom\")")) << r.cpp;
+    EXPECT_FALSE(has(r, "hot::Construct")) << r.cpp;
+
+    // A child without base(...) passes no argument: the message is the name of the first struct
+    // in the chain whose base is ScriptError.
+    r = translate_script(e + "struct E2 : E { int more = 1; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, ": E()")) << r.cpp;
+    EXPECT_FALSE(has(r, "hot::ScriptError(\"E2\")")) << r.cpp;
+    // A child struct passes the arguments of base(...) to the parent constructor.
+    r = translate_script(e + "struct E2 : E { E2() : base(1, 2) { } }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+
+    r = translate_script(e + "int F() { E e = E(); return e.code; }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+TEST(ScriptKindsTranslation, ExceptionStructErrors)
+{
+    const std::string need = "base() of an exception struct needs exactly one message argument";
+    expect_error("struct E : ScriptError { E() : base() { } }\n", need);
+    expect_error("struct E : ScriptError { E() : base(\"a\", \"b\") { } }\n", need);
+    expect_error("struct V : Unit { int a = 0; }\n", "a struct 'V' has no base class");
+    expect_error("struct E : ScriptError { int a = 0; }\nclass C : E { }\n", "cannot derive from the struct 'E'");
+}
+
+TEST(ScriptKindsTranslation, ExceptionStructIsNotStored)
+{
+    const std::string e = "struct E : ScriptError { int c = 0; }\n";
+    const std::string msg = "cannot have the exception type 'E': throw and catch it only";
+    expect_error(e + "class C : Unit { E last; }\n", msg);
+    expect_error(e + "class C : Unit { std.vector<E> all; }\n", msg);
+    expect_error(e + "struct S { E inner; }\n", msg);
+    expect_error(e + "E g = E();\n", msg);
+    hotc::TranslateResult r = translate_script(e + "int F() { E e = E(); return e.c; }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    r = translate_script(e + "void F(E e) { }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+TEST(ScriptKindsTranslation, ThrowOfAScriptClassIsAnError)
+{
+    const std::string e = "struct E : ScriptError { int c = 0; }\n";
+    const std::string msg = "cannot throw the script class 'C': declare 'struct C : ScriptError' for an exception";
+    expect_error("class C : Unit { void F() { throw new $C(); } }\n", msg);
+    expect_error("class C : Unit { void F() { $C h = new $C(); throw h; } }\n", msg);
+    for (const char* ok : {"throw E();", "throw std.runtime_error(\"x\");", "throw 42;"})
+    {
+        const hotc::TranslateResult r =
+            translate_script(e + "using <stdexcept>;\nclass C : Unit { void F() { " + ok + " } }\n");
+        EXPECT_TRUE(r.ok) << ok << "\n" << r.diagnostics;
+    }
+}
+
 TEST(ScriptKindsTranslation, SuperNeedsABase)
 {
     expect_error("class P { int a = 0; P(int x) : base(x) { } }\n", "has no base class");

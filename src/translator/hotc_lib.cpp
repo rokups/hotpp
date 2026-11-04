@@ -3411,7 +3411,10 @@ void translate_impl(
         if (!cd.is_value)
             continue;
         // A struct is a plain struct (design 7.10.1): no base, no virtual method, no hook.
-        if (!cd.base.empty())
+        // The exception: a struct with the base ScriptError or an exception struct is a script
+        // exception type. A ".cpp" script has no such struct.
+        const bool is_exception = !sc.is_cpp && types.is_exception_struct(cd.name);
+        if (!cd.base.empty() && !is_exception)
             fail_at(map, cd.pos, "a struct '" + cd.name + "' has no base class");
         if (!cd.dtors.empty())
             fail_at(map, cd.dtors[0].pos, "a struct '" + cd.name + "' cannot have a destructor");
@@ -3423,8 +3426,12 @@ void translate_impl(
                 fail_at(map, m.pos, "a struct '" + cd.name + "' cannot have the hook '" + m.name + "'");
         }
         for (const hotc::ast::Ctor& c : cd.ctors)
-            if (c.has_base_call)
+            if (c.has_base_call && !is_exception)
                 fail_at(map, c.pos, "a struct '" + cd.name + "' has no base class: remove 'base(...)'");
+        if (is_exception && hotc::is_exception_base(cd.base))
+            for (const hotc::ast::Ctor& c : cd.ctors)
+                if (c.has_base_call && c.base_args.size() != 1)
+                    fail_at(map, c.pos, "base() of an exception struct needs exactly one message argument");
         // A constructor with a default value for each parameter would be a second default
         // constructor of the C++ struct.
         for (const hotc::ast::Ctor& c : cd.ctors)
@@ -3434,6 +3441,29 @@ void translate_impl(
                 fail_at(map, c.pos,
                     "a struct '" + cd.name + "' cannot have a constructor with a default value for each parameter");
     }
+    // An exception struct is for throw and catch only (design: the Nested migration of a
+    // field drops the message of the base). A field, a module variable or a container element
+    // cannot have the type.
+    if (!sc.is_cpp)
+        for (const ClassDef& cd : sc.classes)
+            for (const Field& f : cd.fields)
+            {
+                std::string word;
+                for (size_t i = 0; i <= f.type.size(); ++i)
+                {
+                    const char ch = i < f.type.size() ? f.type[i] : ' ';
+                    if (std::isalnum(static_cast<unsigned char>(ch)) || ch == '_')
+                    {
+                        word += ch;
+                        continue;
+                    }
+                    if (!word.empty() && types.is_exception_struct(word))
+                        fail_at(map, f.pos,
+                            std::string(cd.name == kModuleName ? "a module variable" : "a field")
+                                + " cannot have the exception type '" + word + "': throw and catch it only");
+                    word.clear();
+                }
+            }
     for (const ClassDef& cd : sc.classes)
         if (cd.base.empty() && !cd.is_value)
             for (const hotc::ast::Ctor& c : cd.ctors)
@@ -3460,6 +3490,8 @@ void translate_impl(
             continue;
         if (par == &cd)
             fail_at(map, cd.pos, "class '" + cd.name + "' cannot derive from itself");
+        if (cd.is_value && par->is_value && !sc.is_cpp && types.is_exception_struct(cd.name))
+            continue; // an exception struct derives from an exception struct
         if (par->is_value)
             fail_at(map, cd.pos, "class '" + cd.name + "' cannot derive from the struct '" + par->name + "'");
         if (cd.is_value)
@@ -3756,7 +3788,7 @@ void translate_impl(
         import_paths.insert(im.path);
     for (const auto& cd : sc.classes)
     {
-        if (!cd.base.empty() && !class_by_name.count(cd.base))
+        if (!cd.base.empty() && !class_by_name.count(cd.base) && !(cd.is_value && hotc::is_exception_base(cd.base)))
             base_names.insert(cd.base);
         for (const std::string& i : cd.interfaces)
             base_names.insert(i);
@@ -4772,11 +4804,14 @@ void translate_impl(
             o.w("static void " + P + "ctor(" + cn + "* __self" + param_text(c.params) + ");\n");
         // A constructor without parameters next to other overloads: the field initializers go to a
         // tag constructor. So an overload with parameters does not run the body of the other one.
-        const hotc::ast::Ctor* zero = nullptr;
-        for (const hotc::ast::Ctor& c : cd.ctors)
+        hotc::ast::Ctor* zero = nullptr;
+        for (hotc::ast::Ctor& c : cd.ctors)
             if (c.params.empty())
                 zero = &c;
-        const bool tag_init = zero && cd.ctors.size() > 1;
+        // An exception struct has a base class: each constructor has a full init list, with the
+        // constructor of the base first. So it has no tag constructor and no delegation.
+        const bool exc = !sc.is_cpp && !is_module && types.is_exception_struct(cn);
+        const bool tag_init = !exc && zero && cd.ctors.size() > 1;
         // The module block is at file scope. The type of a variable in a namespace gets an alias in
         // the namespace, so the names of the type resolve as in the script.
         for (Field& f : cd.fields)
@@ -4786,7 +4821,8 @@ void translate_impl(
                 o.w("namespace " + gen + " { using " + alias + " = " + f.type + "; }\n");
                 f.type = "::" + gen + "::" + alias;
             }
-        o.w("struct " + cn + " {\n");
+        o.w("struct " + cn + (exc ? " : " + (hotc::is_exception_base(cd.base) ? std::string("hot::ScriptError") : cd.base) : "")
+            + " {\n");
         if (!is_module && !sc.is_cpp)
             o.w(prelude_block(types.preludes(cn), cn, std::string(), cn));
         for (const Field& f : cd.fields)
@@ -4804,26 +4840,76 @@ void translate_impl(
             // never stops in the generated file.
             auto at_line = [&](int line, uint32_t pos)
             { return "#line " + std::to_string(line) + " \"" + esc(file_at(pos)) + "\"\n"; };
-            o.w(at_line(cd.line, cd.pos));
-            o.w("    " + cn + (tag_init ? "(hot::Construct)" : "()"));
-            for (size_t i = 0; i < cd.fields.size(); ++i)
+            // The init list of a constructor of an exception struct: the base, then each field.
+            auto exc_ctor = [&](hotc::ast::Ctor* c, const std::string& params)
             {
-                o.w("\n" + at_line(cd.fields[i].line, cd.fields[i].pos));
-                o.w(std::string(i ? "        , " : "        : ") + cd.fields[i].name
-                    + (cd.fields[i].raw_brace_init ? inits[i] : "(" + inits[i] + ")"));
+                const int line = c ? c->line : cd.line;
+                const uint32_t pos = c ? c->pos : cd.pos;
+                std::string base_text;
+                if (c && c->has_base_call)
+                {
+                    RCtx fc = base_cx;
+                    fc.allow_this = false;
+                    fc.where = cd.key_name() + "::" + last_component(cd.key_name());
+                    hotc::add_params(fc, c->params);
+                    std::vector<std::string> parts;
+                    for (ExprP& a : c->base_args)
+                    {
+                        hotc::lower_expr(a, fc, g_diag);
+                        if (!g_diag.items.empty())
+                            throw TranslateAbort{};
+                        parts.push_back(hotc::ast::print(*a));
+                    }
+                    base_text = str_join(parts, ", ");
+                }
+                else if (hotc::is_exception_base(cd.base))
+                {
+                    base_text = "\"" + esc(cn) + "\""; // the message is the name of the type
+                }
+                const std::string base_name = hotc::is_exception_base(cd.base) ? "hot::ScriptError" : cd.base;
+                o.w(at_line(line, pos) + "    " + cn + "(" + params + ")\n        : " + base_name + "(" + base_text + ")");
+                for (size_t i = 0; i < cd.fields.size(); ++i)
+                {
+                    o.w("\n" + at_line(cd.fields[i].line, cd.fields[i].pos));
+                    o.w("        , " + cd.fields[i].name
+                        + (cd.fields[i].raw_brace_init ? inits[i] : "(" + inits[i] + ")"));
+                }
+                o.w("\n" + at_line(line, pos));
+                if (!c)
+                    o.w(" {}\n");
+                else
+                    o.w(" { " + P + "ctor(this" + (c->params.empty() ? "" : ", " + arg_names(c->params)) + "); }\n");
+            };
+            if (exc)
+            {
+                exc_ctor(zero, "");
+                for (hotc::ast::Ctor& c : cd.ctors)
+                    if (!c.params.empty())
+                        exc_ctor(&c, param_text_def(c.params).substr(2));
             }
-            o.w("\n" + at_line(cd.line, cd.pos));
-            if (zero && !tag_init)
-                o.w(" { " + P + "ctor(this); }\n");
             else
-                o.w(" {}\n");
-            const std::string init_call = cn + (tag_init ? "(hot::Construct{})" : "()");
-            if (tag_init)
-                o.w(at_line(cd.line, cd.pos) + "    " + cn + "() : " + init_call + " { " + P + "ctor(this); }\n");
-            for (const hotc::ast::Ctor& c : cd.ctors)
-                if (!c.params.empty())
-                    o.w(at_line(c.line, c.pos) + "    " + cn + "(" + param_text_def(c.params).substr(2)
-                        + ") : " + init_call + " { " + P + "ctor(this, " + arg_names(c.params) + "); }\n");
+            {
+                o.w(at_line(cd.line, cd.pos));
+                o.w("    " + cn + (tag_init ? "(hot::Construct)" : "()"));
+                for (size_t i = 0; i < cd.fields.size(); ++i)
+                {
+                    o.w("\n" + at_line(cd.fields[i].line, cd.fields[i].pos));
+                    o.w(std::string(i ? "        , " : "        : ") + cd.fields[i].name
+                        + (cd.fields[i].raw_brace_init ? inits[i] : "(" + inits[i] + ")"));
+                }
+                o.w("\n" + at_line(cd.line, cd.pos));
+                if (zero && !tag_init)
+                    o.w(" { " + P + "ctor(this); }\n");
+                else
+                    o.w(" {}\n");
+                const std::string init_call = cn + (tag_init ? "(hot::Construct{})" : "()");
+                if (tag_init)
+                    o.w(at_line(cd.line, cd.pos) + "    " + cn + "() : " + init_call + " { " + P + "ctor(this); }\n");
+                for (const hotc::ast::Ctor& c : cd.ctors)
+                    if (!c.params.empty())
+                        o.w(at_line(c.line, c.pos) + "    " + cn + "(" + param_text_def(c.params).substr(2)
+                            + ") : " + init_call + " { " + P + "ctor(this, " + arg_names(c.params) + "); }\n");
+            }
             // A member of an operator calls the free function with the identifier of the operator.
             // The free function takes a non-const self: a body can call the other functions of the
             // struct. So a const member passes "const_cast<S*>(this)". The checker does not report

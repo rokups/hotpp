@@ -141,7 +141,8 @@ void normalize_runtime_catch_type(std::string& type)
             break;
         }
     }
-    if (t == "NullReference" || t == "IndexOutOfRange" || t == "ScriptError")
+    if (t == "NullReference" || t == "IndexOutOfRange" || t == "ScriptError" || t == "TaskCancelled"
+        || t == "TaskReloadCancelled")
         type = "const hot::" + t + "&";
     else if (!type.empty() && type.find_first_of("&*") == std::string::npos)
         type = "const " + type + "&";
@@ -3643,6 +3644,15 @@ struct Lowerer
         }
         else if (auto* th = std::get_if<ThrowStmt>(&x.v))
         {
+            // A script class is not an exception type. Only a struct with the base ScriptError is.
+            if (th->expr)
+            {
+                const ClassDef* thrown = class_named(type_of(*th->expr));
+                if (thrown && !thrown->is_value)
+                    error(th->pos,
+                        "cannot throw the script class '" + thrown->name + "': declare 'struct " + thrown->name
+                            + " : ScriptError' for an exception");
+            }
             expr(th->expr);
         }
         else if (auto* tr = std::get_if<TryStmt>(&x.v))

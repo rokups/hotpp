@@ -18,6 +18,15 @@
 using namespace hotc;
 using namespace lowering_test;
 
+TEST(NameResolutionLowering, CatchOfTheRuntimeTaskErrors)
+{
+    Fixture f;
+    EXPECT_EQ(f.body("try { throw 1; } catch (TaskCancelled e) { e.what(); } catch (hot.TaskReloadCancelled r) { r.what(); }"),
+        "try { throw 1; } catch (const hot::TaskCancelled& e) { hot::deref(e).what(); } "
+        "catch (const hot::TaskReloadCancelled& r) { hot::deref(r).what(); }");
+    EXPECT_EQ(f.diag.items.size(), 0u);
+}
+
 TEST(NameResolutionLowering, CatchNameIsALocal)
 {
     Fixture f;

@@ -608,11 +608,31 @@ std::string TypeModel::script_native_base(const std::string& type) const
         auto it = script_.find(cur);
         if (it == script_.end())
             return depth == 0 ? std::string() : cur;
-        if (it->second.base.empty())
-            return {};
+        if (it->second.is_value || it->second.base.empty())
+            return {}; // a struct has no native base, even an exception struct
         cur = it->second.base;
     }
     return {};
+}
+
+bool is_exception_base(const std::string& name)
+{
+    return name == "ScriptError" || name == "hot.ScriptError" || name == "hot::ScriptError";
+}
+
+bool TypeModel::is_exception_struct(const std::string& type) const
+{
+    std::string cur = unmark(type);
+    for (size_t depth = 0; depth < 64; ++depth)
+    {
+        auto it = script_.find(cur);
+        if (it == script_.end() || !it->second.is_value)
+            return false;
+        if (is_exception_base(it->second.base))
+            return true;
+        cur = it->second.base;
+    }
+    return false;
 }
 
 std::string TypeModel::script_ref_storage(const std::string& type) const
