@@ -128,17 +128,34 @@ HOT_HIDDEN typename detail::sig_result<Sig>::type call_script(ShellBase* self, u
     return (static_cast<StateBase*>(self->state)->*reinterpret_cast<Pmf>(cls->slots[slot]))(std::forward<A>(a)...);
 }
 
+// Result of a noexcept shell override after an unhandled script error, when the result type has no
+// default value (a reference, for example). The host specializes it with "static R get()".
+template <class R> struct noexcept_result;
+
+namespace detail
+{
+template <class R, class = void> struct has_noexcept_result : std::false_type
+{
+};
+template <class R> struct has_noexcept_result<R, std::void_t<decltype(noexcept_result<R>::get())>> : std::true_type
+{
+};
+} // namespace detail
+
 // The call from the host into the script: a shell override of a native virtual function, and a
 // thunk of a delegate. This is the end of the script stack. A hot::ScriptError that the script does
 // not handle goes to hot::detail::report_unhandled (errors.h). Then the call returns a value-initialized
-// result. A result type with no default value (for example a reference) throws the exception again.
+// result. A result type with no default value (for example a reference) throws the exception again,
+// unless the call is "NoExcept" and the host specialized hot::noexcept_result<R>: then the call
+// returns the value of that specialization.
 // Any other exception passes to the host, which can catch it. A call inside another call (the
 // native code calls a script override while a script call runs) lets the error pass: only the
 // outermost call reports.
 // The fast path reads the call depth (errors.h), the slot and the state, and calls the slot. The
 // rare paths (the counted entry, the signature key, the catch) are out of line.
 // "NoExcept" is true for the shell override of a noexcept native virtual function. An exception
-// must not leave it, so it always reports and returns the result, also inside another call.
+// must not leave it, so it always reports and returns the result, also inside another call. Without
+// a default value and without hot::noexcept_result<R>, the exception leaves it and ends the program.
 namespace detail
 {
 // The number of hot::call frames on the thread (errors.h). A call inside another call
@@ -164,6 +181,8 @@ template <class R, bool NoExcept> HOT_NOINLINE R call_unhandled(ShellCore* self,
     report_unhandled(self, std::current_exception());
     if constexpr (std::is_void_v<R> || std::is_default_constructible_v<R>)
         return detached_result<R>();
+    else if constexpr (NoExcept && has_noexcept_result<R>::value)
+        return noexcept_result<R>::get();
     else
         throw;
 }

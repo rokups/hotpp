@@ -89,6 +89,25 @@ An error reports only when it leaves the outermost script call. A script that ca
 
 Only a `ScriptError` stops at the boundary. Any other C++ exception that a script throws reaches the host. The host must catch it. If the return type has no default value (for example a reference), the runtime reports the error and throws it again.
 
+A `noexcept` native virtual function cannot throw, so the runtime reports the error and must return a value. If the return type has no default value, the host gives that value with a specialization of `hot::noexcept_result<R>`. Without it, the exception leaves the `noexcept` function and ends the program.
+
+```cpp
+#include "hot/runtime.h"
+#include <string>
+
+namespace hot
+{
+template <> struct noexcept_result<const std::string&>
+{
+    static const std::string& get()
+    {
+        static const std::string empty;
+        return empty;
+    }
+};
+} // namespace hot
+```
+
 The checks are a build-time choice. The CMake option `HOT_RUNTIME_CHECKS` (default `ON`) sets the macro `HOT_RUNTIME_CHECKS`. With `OFF` the macro is `0`: the generated code has no checks, and an installed host sees the same setting. Each check costs one compare for a pointer access, a handle access or an index of a checked container (`std::array`, `std::vector`, a stub with `checked_index`). See [CMake](cmake-options.html).
 
 ### Traceback
