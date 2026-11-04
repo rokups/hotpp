@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Hot++ natvis for Visual Studio (design 4.12). It was NOT tested: the session had no Windows.
+<!-- Hot++ natvis for Visual Studio (design 4.12). Visual Studio never loaded it (no Windows here).
+     tests/unit/python/test_natvis.py checks the XML and the type names.
      A state block "XState_gN" and a shell "X_Shell" show as the script class X.
      The generated names follow the translator: see tools/lldb/hot_formatters.py. -->
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">

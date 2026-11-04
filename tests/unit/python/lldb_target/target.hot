@@ -1,0 +1,27 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// The script of the lldb session test. The program stops in Tick and lldb prints the values.
+using <string>;
+using <vector>;
+using "Npc.h";
+
+class Mate {
+    int rank = 7;
+}
+
+class Hero : Npc {
+    int hp = 80;
+    float shield = 25.5;
+    std.string title = "knight";
+    std.vector<int> bag = [1, 2, 3];
+    $Mate buddy = null;
+    $Mate empty = null;
+
+    override void Tick() {
+        $Mate local = new $Mate();
+        buddy = local;
+        hp = hp + 1;
+    }
+}

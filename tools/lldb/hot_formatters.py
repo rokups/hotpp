@@ -12,7 +12,7 @@ The translator makes C++ with generated names. These formatters show the script 
 
 The first part of this file is pure Python. It does not import lldb, so a plain Python test
 can run it (tests/unit/python/test_hot_formatters.py). The second part needs lldb. It runs
-only when lldb loads the file. lldb was NOT run against this file in the session that wrote it.
+only when lldb loads the file. A real lldb session tests it (tests/unit/python/test_lldb_session.py).
 
 Use: "command script import /path/to/hot_formatters.py" (see tools/lldb/hot.lldbinit).
 """
@@ -149,12 +149,51 @@ def shell_summary_provider(valobj, internal_dict):  # pragma: no cover
     return "%s object" % cls
 
 
+def _find_member(value, name):
+    """Return the member "name" of a value. The search goes into the base classes."""
+    child = value.GetChildMemberWithName(name)
+    if child.IsValid():
+        return child
+    for i in range(value.GetNumChildren()):
+        base = value.GetChildAtIndex(i)
+        if base.GetName() and base.GetName().startswith(("std::", "_")):
+            child = _find_member(base, name)
+            if child.IsValid():
+                return child
+    return child
+
+
+def _use_count(valobj):
+    """The use count of a shared_ptr (libstdc++ or libc++), or "?"."""
+    try:
+        pi = _find_member(valobj, "_M_pi")  # libstdc++
+        if pi.IsValid() and pi.GetValueAsUnsigned() != 0:
+            count = pi.Dereference().GetChildMemberWithName("_M_use_count")
+            if count.IsValid():
+                return str(count.GetValueAsSigned())
+        cntrl = _find_member(valobj, "__cntrl_")  # libc++: the owners count starts at -1
+        if cntrl.IsValid() and cntrl.GetValueAsUnsigned() != 0:
+            owners = cntrl.Dereference().GetChildMemberWithName("__shared_owners_")
+            if owners.IsValid():
+                return str(owners.GetValueAsSigned() + 1)
+    except Exception:  # a layout that is not known: show "?"
+        pass
+    return "?"
+
+
 def handle_summary_provider(valobj, internal_dict):  # pragma: no cover
-    ptr = valobj.GetChildMemberWithName("_M_ptr")
-    if not ptr.IsValid():
-        ptr = valobj.GetChildMemberWithName("__ptr_")
-    null = (not ptr.IsValid()) or ptr.GetValueAsUnsigned() == 0
-    return handle_summary(valobj.GetType().GetName(), "?", null)
+    name = valobj.GetType().GetName()
+    try:
+        valobj = valobj.GetNonSyntheticValue()
+        ptr = _find_member(valobj, "_M_ptr")  # libstdc++
+        if not ptr.IsValid():
+            ptr = _find_member(valobj, "__ptr_")  # libc++
+        if not ptr.IsValid():
+            ptr = _find_member(valobj, "p_")  # hot::Intrusive
+        null = (not ptr.IsValid()) or ptr.GetValueAsUnsigned() == 0
+        return handle_summary(name, _use_count(valobj), null)
+    except Exception:  # a layout that is not known: show "?"
+        return handle_summary(name, "?", False)
 
 
 class StateChildren:  # pragma: no cover - needs lldb
@@ -199,11 +238,15 @@ def script_backtrace(debugger, command, result, internal_dict):  # pragma: no co
 
 def __lldb_init_module(debugger, internal_dict):  # pragma: no cover
     module = __name__
+    # The regex of lldb has no "\w" (it is not a Python regex): use a character class.
+    w = "[A-Za-z0-9_]"
+    state = "^(%s+::)*%s+State_g[0-9]+$" % (w, w)
+    shell = "^(%s+::)*%s+_Shell$" % (w, w)
+    handle = "^(std::(__1::|__cxx11::)?shared_ptr|hot::Intrusive)<(%s+::)*%s+_Shell.*>$" % (w, w)
     add = "type summary add --regex --python-function %s.%%s \"%%s\"" % module
-    debugger.HandleCommand(add % ("state_summary_provider", r"^(\w+::)*\w+State_g[0-9]+$"))
-    debugger.HandleCommand(add % ("shell_summary_provider", r"^(\w+::)*\w+_Shell$"))
-    debugger.HandleCommand(add % ("handle_summary_provider",
-                                  r"^(std::(__1::)?shared_ptr|hot::Intrusive)<(\w+::)*\w+_Shell.*>$"))
+    debugger.HandleCommand(add % ("state_summary_provider", state))
+    debugger.HandleCommand(add % ("shell_summary_provider", shell))
+    debugger.HandleCommand(add % ("handle_summary_provider", handle))
     debugger.HandleCommand("type synthetic add --regex --python-class %s.StateChildren \"%s\""
-                           % (module, r"^(\w+::)*\w+State_g[0-9]+$"))
+                           % (module, state))
     debugger.HandleCommand("command script add -f %s.script_backtrace hot-bt" % module)

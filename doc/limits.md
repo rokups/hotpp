@@ -41,7 +41,7 @@ This list shows what version 1 does not support.
 - A field of a move-only type, such as `std.unique_ptr<T>`. A reload copies each field. Use a handle.
 - More than 64 nested statements, 15 nested lambdas or 256 operators in one expression. Each level uses parser stack, so the limits are fixed. The parser reports `maximum nesting depth exceeded`.
 - macOS. It is untested. Windows works with MSVC, and the CI tests it on Windows (see [Windows](windows.html)).
-- A real Visual Studio, gdb or lldb debugger session. It is untested.
+- A real Visual Studio or gdb debugger session. It is untested. An lldb session and an lldb-dap session run in the tests on Linux when lldb is installed.
 
 A `.cpp` script (see [C++ scripts](cpp-scripts.html)) has more limits. It has no properties, no script virtual methods without `override`, no script-class handles and no `new`, and no script inheritance.
 

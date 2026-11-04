@@ -15,7 +15,7 @@ Each row is a milestone. "Not testable here" means that the work needs a part th
 | M0 Spikes | Partial | R0 and P1 are done with the test host `tests/engine`. The spikes for risk 2 and 3 need the real engine: not testable here. |
 | M1 Runtime spine | Done | R1 to R6 pass, also under ASan and TSan. |
 | M2 Translator v0 | Done | F1 passes, also for a native base that derives from a class template instance, a template over a template and a partial specialization (design risk 8). `class Foo : Tmpl<int>` works. |
-| M3 Diagnostics and debugging | Partial | F2 passes. F3 passes with `gdb`. `lldb`, the `lldb` formatters in a live session and Visual Studio with `natvis` are not testable here. |
+| M3 Diagnostics and debugging | Partial | F2 passes. F3 passes with `gdb`. `lldb` sessions run in the tests. Visual Studio with `natvis` is not testable here. |
 | M4 Engine integration | Not testable here | The test host `tests/engine` and the samples in `samples/` are the only hosts. A real engine is needed. |
 | M5 Contract enforcement | Done | The rows of design 5.3 have tests in `tests/integration/reload/` and `tests/unit/translator/translate/`. |
 | M6 Language v1 | Done | Inheritance, virtuals, `is`/`as`, lambdas, enums, structs, module variables, interpolation, constructors. `async` methods and `await` (C++20). |
@@ -28,7 +28,7 @@ Each row is a milestone. "Not testable here" means that the work needs a part th
 | M13 Language server stage 2 | Done | One test for each feature. |
 | M14 Language server stage 3 | Done | Background index, `hot/toScript`, rename across the workspace, `hotc --compile-commands`. |
 
-Not done, and not testable here: Windows and macOS, a real engine, a real `lldb` and Visual Studio session, the optional ORC debug-symbol resolver.
+Not done, and not testable here: Windows and macOS, a real engine, a real Visual Studio session, the optional ORC debug-symbol resolver.
 
 ## Source layout
 

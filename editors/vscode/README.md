@@ -101,6 +101,44 @@ Every valid include path works: spaces, quotes, backslashes, non-ASCII character
 You can also link the folder into `~/.vscode/extensions/`.
 Without the server, set `files.associations` to map `*.hot` to `cpp`. The grammar does not apply then.
 
+## Debug
+
+A breakpoint in a `.hot` file works in lldb, because the generated C++ has `#line` directives.
+A real `lldb-dap` session stops on a line of a `.hot` file (the test `PythonLldbDap` runs it when `lldb-dap` is installed). Install the extension "LLDB DAP"
+(`llvm-vs-code-extensions.lldb-dap`) or "CodeLLDB" (`vadimcn.vscode-lldb`).
+A breakpoint in a script that a host loads at run time is pending until the script loads.
+It resolves after each reload.
+
+Template for `.vscode/launch.json`. Only the `lldb-dap` entry is verified. The CodeLLDB entry is untested. Change `program` to your host. Change the path of the formatters
+to your Hot++ checkout or SDK. The formatters show the script names for state blocks, objects and handles.
+
+```json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug host (lldb-dap)",
+      "type": "lldb-dap",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/my_host",
+      "cwd": "${workspaceFolder}",
+      "initCommands": ["command script import /path/to/hotpp/tools/lldb/hot_formatters.py"]
+    },
+    {
+      "name": "Debug host (CodeLLDB)",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/my_host",
+      "cwd": "${workspaceFolder}",
+      "initCommands": ["command script import /path/to/hotpp/tools/lldb/hot_formatters.py"]
+    }
+  ]
+}
+```
+
+Limits: the compile of the script must have debug info (`-g`). The `clang-files` backend does this. The debugger shows a `hot::Value<T>` box of a script class as `<incomplete type>`.
+A handle `$T` shows fully. The extension has no debug adapter of its own. See `doc/diagnostics.md`.
+
 ## Test
 
 Run `node test/grammar.test.js`. CTest runs it as `VscodeGrammar` when `node` is found.
