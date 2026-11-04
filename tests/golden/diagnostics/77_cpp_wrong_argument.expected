@@ -1,0 +1,5 @@
+77_cpp_wrong_argument.cpp:8:14: error: cannot initialize a parameter of type 'float' with an lvalue of type 'const char[2]'
+    8 |         heal("x");
+77_cpp_wrong_argument.cpp:11:21: note: passing argument to parameter 'a' here
+   11 |     void heal(float a)
+1 error generated.

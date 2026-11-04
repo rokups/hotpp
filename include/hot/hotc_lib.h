@@ -225,6 +225,7 @@ struct AnalyzeError
     SourcePos pos;
     uint32_t offset = 0; // the byte offset in the script
     std::string message;
+    bool note = false; // a note of the error before it, not an error
 };
 
 struct AnalyzeResult

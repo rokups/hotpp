@@ -3224,6 +3224,17 @@ ast::Script parse_cpp_script(const std::string& text, const std::string& name,
                 if (msg.compare(0, abstract_new.size(), abstract_new) == 0)
                     msg = "cannot create an instance of the abstract class " + msg.substr(abstract_new.size());
                 diag.add(offset_of(loc), map, msg);
+                // The notes of the error. Notes in a header are dropped. libclang owns the child
+                // set, but the caller must dispose each diagnostic that clang_getDiagnosticInSet returns.
+                CXDiagnosticSet children = clang_getChildDiagnostics(d);
+                for (unsigned c = 0, cn = clang_getNumDiagnosticsInSet(children); c < cn; ++c)
+                {
+                    CXDiagnostic child = clang_getDiagnosticInSet(children, c);
+                    CXSourceLocation cloc = clang_getDiagnosticLocation(child);
+                    if (clang_Location_isFromMainFile(cloc))
+                        diag.note(offset_of(cloc), map, cxs(clang_getDiagnosticSpelling(child)));
+                    clang_disposeDiagnostic(child);
+                }
             }
             else
             { // an error in a header: use the presumed location, as for the imports

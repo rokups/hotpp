@@ -8285,7 +8285,9 @@ AnalyzeResult analyze_cpp(
         else
             continue; // an error in another file (a header that libclang reads)
         static const std::string tag = ": error: ";
-        if (rest.compare(0, tag.size(), tag) != 0)
+        static const std::string note_tag = ": note: ";
+        const bool is_note = rest.compare(0, note_tag.size(), note_tag) == 0;
+        if (!is_note && rest.compare(0, tag.size(), tag) != 0)
             continue;
         line = std::max(line, 1);
         col = std::max(col, 1);
@@ -8293,7 +8295,7 @@ AnalyzeResult analyze_cpp(
         if (static_cast<size_t>(line) <= starts.size())
             offset = static_cast<uint32_t>(
                 std::min<size_t>(starts[static_cast<size_t>(line) - 1] + static_cast<size_t>(col - 1), text.size()));
-        res.errors.push_back({{line, col}, offset, rest.substr(tag.size())});
+        res.errors.push_back({{line, col}, offset, rest.substr(is_note ? note_tag.size() : tag.size()), is_note});
     }
     return res;
 }

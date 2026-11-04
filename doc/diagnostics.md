@@ -105,6 +105,43 @@ p.hot:20:17: warning: 'i' hides the local variable 'i' that is declared at line 
 
 The pass is in `src/translator/lint.cpp`. There is no option to turn it off.
 
+## Diagnostics of a .cpp script
+
+A `.cpp` script is plain C++, so its diagnostics keep the C++ form. The messages show the script file, the line, the column and the script text. Two paths make them.
+
+**Translator errors.** The `.cpp` frontend of `hotc` first parses the script with `libclang`. An error of this parse shows the script file, the line, the column and the script text. The clang notes of such an error show as `note:` lines. Only notes in the main file show. `hot-ls` shows a note as an Information diagnostic.
+
+```
+77_cpp_wrong_argument.cpp:8:14: error: cannot initialize a parameter of type 'float' with an lvalue of type 'const char[2]'
+    8 |         heal("x");
+77_cpp_wrong_argument.cpp:11:21: note: passing argument to parameter 'a' here
+   11 |     void heal(float a)
+1 error generated.
+```
+
+**Backend errors.** The backends (files, JIT and the `hotc` build) compile the generated C++. Their clang errors and warnings go through `hotc::rewrite_diagnostic`. The C++ dialect applies to each file whose name ends in `.cpp`.
+
+The C++ dialect keeps the C++ spelling. It keeps `::`, `(aka ...)`, `const char[N]`, the `[-W...]` flag and the clang wording. It does not use the `.hot` wording. It changes only the generated names, and only for classes that the script declares:
+
+| Clang text | Shown as |
+|---|---|
+| `Player_Shell`, `PlayerState_g1` | `Player` |
+| `Player__heal` | `Player::heal` |
+| `Player__ctor` | `Player::Player` |
+| `Player__dtor` | `Player::~Player` |
+| `__self`, `__st` | `this` |
+| `state_of(__self)->hp` | `this->hp` |
+
+The column rules:
+
+- When the generated line is the copied script line, the clang column, the caret line and the fix-it lines stay. The column also stays when the first col-1 characters of the two lines are equal.
+- When hotc rewrote the line, for example a lambda capture `[this]`, the column is 1. The script line shows and the caret is dropped.
+- An error in generated glue maps to the nearest script line. The column is 1 and the script line text shows.
+
+`--raw-diagnostics` shows the clang text unchanged. The warnings of a successful compile do not show, as for `.hot` scripts.
+
+The golden cases 74 to 77 in `tests/golden/diagnostics/` are `.cpp` cases.
+
 ## Raw compiler text
 
 `hotc --raw-diagnostics` prints the text of the C++ compiler as it is. Use it when a message is not clear. The option `raw_diagnostics` does the same in the backends.

@@ -1860,3 +1860,25 @@ TEST(CppFrontend, ClassTemplateWarningReachesNamespacesAndSpecializations)
         std::string::npos)
         << w;
 }
+
+// A clang note of an error in the script file comes after the error, with the script position.
+TEST(CppFrontend, ErrorNoteKeepsSeverityAndPosition)
+{
+    const Parsed p(
+        "#include \"Actor.h\"\n"
+        "class Player : public Actor\n"
+        "{\n"
+        "public:\n"
+        "    void Tick(float dt) override { heal(\"x\"); }\n"
+        "    void heal(float a) { hp += a; }\n"
+        "    int hp = 10;\n"
+        "};\n");
+    ASSERT_EQ(p.diag.items.size(), 2u) << p.errors();
+    EXPECT_EQ(p.diag.items[0].severity, "error");
+    EXPECT_EQ(p.diag.items[0].line, 5);
+    EXPECT_EQ(p.diag.items[1].severity, "note");
+    EXPECT_EQ(p.diag.items[1].line, 6);
+    EXPECT_EQ(p.diag.items[1].col, 21);
+    EXPECT_NE(p.diag.items[1].msg.find("parameter 'a'"), std::string::npos) << p.errors();
+    EXPECT_TRUE(p.diag.warnings.empty());
+}

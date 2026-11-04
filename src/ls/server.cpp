@@ -1090,7 +1090,7 @@ json Server::analyze_diagnostics(const Doc& d) const
             {{"range", script_range(d, p, end)}, {"severity", severity}, {"source", "hot"}, {"message", message}});
     };
     for (const hotc::AnalyzeError& e : d.facts.errors)
-        add({e.pos.line - 1, e.pos.col - 1}, e.message, 1);
+        add({e.pos.line - 1, e.pos.col - 1}, e.message, e.note ? 3 : 1);
     // A removed field and an added field without [alias] make a pair, in declaration order. The
     // value of the old field is lost at reload. A field with [alias] covers its old name.
     for (const hotc::AnalyzedClass& c : d.facts.classes)
@@ -1125,7 +1125,7 @@ json Server::analyze_diagnostics(const Doc& d) const
         }
     }
     // The translation errors: "name:line:col: error: text", one line each.
-    static const std::regex re(R"(^(.*):(\d+):(\d+): (fatal error|error|warning): (.*)$)");
+    static const std::regex re(R"(^(.*):(\d+):(\d+): (fatal error|error|warning|note): (.*)$)");
     std::istringstream ss(d.facts.diagnostics);
     for (std::string l; std::getline(ss, l);)
     {
@@ -1137,11 +1137,11 @@ json Server::analyze_diagnostics(const Doc& d) const
             // An imported script: import_diagnostics() has it. An error in a C++ header does not
             // go to the header (the C++ tools own it): it shows at the "using" line of the script.
             const std::string path = script_file_path(d, m[1]);
-            if (!is_served_path(path) && path != d.path && m[4] != "warning")
+            if (!is_served_path(path) && path != d.path && m[4] != "warning" && m[4] != "note")
                 headers.emplace(path, std::make_pair(std::stoi(m[2]), m[5].str()));
             continue;
         }
-        add({std::stoi(m[2]) - 1, std::stoi(m[3]) - 1}, m[5], m[4] == "warning" ? 2 : 1);
+        add({std::stoi(m[2]) - 1, std::stoi(m[3]) - 1}, m[5], m[4] == "note" ? 3 : m[4] == "warning" ? 2 : 1);
     }
     for (const auto& [uri, diags] : d.clang_import_diags)
     {
@@ -1198,7 +1198,7 @@ static std::string script_file_path(const Doc& d, const std::string& name)
 std::map<std::string, json> Server::import_diagnostics(const Doc& d) const
 {
     std::map<std::string, json> out;
-    static const std::regex re(R"(^(.*):(\d+):(\d+): (fatal error|error|warning): (.*)$)");
+    static const std::regex re(R"(^(.*):(\d+):(\d+): (fatal error|error|warning|note): (.*)$)");
     std::istringstream ss(d.facts.diagnostics);
     std::map<std::string, Text> texts;
     for (std::string l; std::getline(ss, l);)
@@ -1222,8 +1222,8 @@ std::map<std::string, json> Server::import_diagnostics(const Doc& d) const
             end = col + 1;
         const json range = {
             {"start", to_lsp(t->second, {line, col}, utf8_)}, {"end", to_lsp(t->second, {line, end}, utf8_)}};
-        out[uri].push_back(
-            {{"range", range}, {"severity", m[4] == "warning" ? 2 : 1}, {"source", "hot"}, {"message", m[5].str()}});
+        const int severity = m[4] == "note" ? 3 : m[4] == "warning" ? 2 : 1;
+        out[uri].push_back({{"range", range}, {"severity", severity}, {"source", "hot"}, {"message", m[5].str()}});
     }
     for (const auto& [uri, diags] : d.clang_import_diags)
     {

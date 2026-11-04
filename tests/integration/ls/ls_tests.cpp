@@ -2272,6 +2272,32 @@ TEST(LanguageServerCpp, ScriptWithAnUnsupportedFormGivesTheHotcMessageAtTheLine)
     EXPECT_EQ(diags[0]["source"], "hot");
 }
 
+TEST(LanguageServerCpp, ClangNoteOfAnErrorIsAnInformationDiagnostic)
+{
+    CppScriptCase c;
+    LsClient client(c.o);
+    client.initialize(uri_of(c.dir.path().string()));
+    CppScriptCase::open(client, c.script_uri,
+        "#include \"Actor.h\"\n"
+        "\n"
+        "class Hero : public Actor\n"
+        "{\n"
+        "public:\n"
+        "    void Tick(float dt) override { heal(\"x\"); }\n"
+        "    void heal(float a) { hp += a; }\n"
+        "    int hp = 10;\n"
+        "};\n");
+    const json n = CppScriptCase::diagnostics_of(client, c.script_uri);
+    ASSERT_FALSE(n.is_null());
+    const json& diags = n["params"]["diagnostics"];
+    ASSERT_EQ(diags.size(), 2u) << n.dump();
+    EXPECT_EQ(diags[0]["severity"], 1);
+    EXPECT_EQ(diags[0]["range"]["start"]["line"], 5);
+    EXPECT_EQ(diags[1]["severity"], 3);
+    EXPECT_EQ(diags[1]["range"]["start"]["line"], 6);
+    EXPECT_NE(diags[1]["message"].get<std::string>().find("parameter 'a'"), std::string::npos) << n.dump();
+}
+
 TEST(LanguageServerCpp, ValidScriptGivesNoDiagnostic)
 {
     CppScriptCase c;

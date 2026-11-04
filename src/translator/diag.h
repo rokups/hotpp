@@ -120,6 +120,12 @@ struct Diagnostics
             Diag{pos, map.line(pos), map.col(pos), script_form(std::move(msg)), map.file(pos), "warning"});
     }
 
+    // A note of the error before it. It has a position in the script.
+    void note(uint32_t pos, const LineMap& map, std::string msg)
+    {
+        items.push_back(Diag{pos, map.line(pos), map.col(pos), script_form(std::move(msg)), map.file(pos), "note"});
+    }
+
     void add_line(int line, std::string msg)
     {
         items.push_back(Diag{0, line, 0, script_form(std::move(msg)), {}, "error"});
