@@ -213,7 +213,9 @@ void ClangdProcess::reader_loop()
         {
             const int64_t id = msg["id"].get<int64_t>();
             std::lock_guard<std::mutex> lock(mutex_);
-            responses_[id] = std::move(msg);
+            // The waiter of an abandoned id is gone (a timeout): the response is dropped.
+            if (abandoned_.erase(id) == 0)
+                responses_[id] = std::move(msg);
             cv_.notify_all();
         }
     }
@@ -237,7 +239,10 @@ json ClangdProcess::request(const std::string& method, json params, int timeout_
         if (closed_ || cv_.wait_until(lock, deadline) == std::cv_status::timeout)
         {
             if (!responses_.count(id))
+            {
+                abandoned_.insert(id);
                 return nullptr;
+            }
         }
     }
     json r = std::move(responses_[id]);

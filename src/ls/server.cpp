@@ -19,8 +19,10 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <chrono>
+#include <condition_variable>
 #include <thread>
 #include <filesystem>
 #include <fstream>
@@ -33,6 +35,7 @@
 #include <set>
 #include <signal.h>
 #include <sstream>
+#include <tuple>
 #include <variant>
 #ifdef _WIN32
     #include <fcntl.h>
@@ -337,6 +340,10 @@ public:
     {
         if (clangd_)
             clangd_->stop();
+        // The stop of clangd ends the requests of the workers.
+        for (TokenWorker& w : token_workers_)
+            if (w.thread.joinable())
+                w.thread.join();
     }
     int run();
 
@@ -642,6 +649,9 @@ private:
     std::vector<Pos> gen_asks(const Doc& d, Pos script_pos, bool& by_word) const;
     // The script lines (in gen_script) of the generated lines, or -1 for the text of the translator.
     std::vector<int> gen_script_lines(const Doc& d) const;
+    // The script place of a use of a word with no map segment, by the k-th use rule.
+    std::optional<Pos> script_use_of_gen_word(
+        const Doc& d, const std::vector<int>& script_lines, int gl, int gcol, const std::string& word) const;
     json on_document_symbol(const Doc& d);
     json on_semantic_tokens(const Doc& d);
     json on_inlay_hint(const Doc& d, const json& p);
@@ -673,11 +683,29 @@ private:
     json on_to_script(const json& p);
     // Gives the edit, or an error message.
     std::variant<json, std::string> on_rename(const Doc& d, const json& p);
+    // Gives the range of the word that a rename changes, or an error message.
+    std::variant<json, std::string> on_prepare_rename(const Doc& d, const json& p);
+    // The rename of an imported C++ symbol through clangd (see doc/tools-ls.md). "cur" is the
+    // place of the word "old_name" in the script. Gives the edit, or an error message. "no_symbol"
+    // is the message when the word is not a symbol that clangd knows.
+    std::variant<json, std::string> native_rename(
+        const Doc& d, Pos cur, const std::string& old_name, const std::string& new_name, const std::string& no_symbol);
+    // True when the file is in a workspace folder.
+    bool in_workspace(const std::string& path) const;
+    // The tokens of the native names of a document: clangd classifies the generated text. The
+    // names that the script tokens did not classify get a token.
+    std::vector<SemanticToken> native_tokens(const Doc& d, const std::vector<SemanticToken>& known);
+    // The tokens (with the names) that the answer "data" of clangd gives for the document.
+    std::vector<std::pair<SemanticToken, std::string>> derive_native_tokens(const Doc& d, const json& data);
+    // Asks clangd for the tokens of the generated text in a worker thread. A late answer goes to the cache.
+    void start_token_worker(const std::string& gen_uri, int version, uint64_t nonce);
 
     // ---- symbols across the .hot files of the workspace (S18)
     // The script places of the symbol at "cur": the declaration and each use. Or an error
     // message. "decl" gets the script place of the declaration.
-    std::variant<std::set<Pos>, std::string> symbol_places(const Doc& d, Pos cur, const std::string& name, Pos* decl);
+    // "generated" (if not null) is set when the error is a name that the translator makes.
+    std::variant<std::set<Pos>, std::string> symbol_places(
+        const Doc& d, Pos cur, const std::string& name, Pos* decl, bool* generated = nullptr);
     // The class (and the member) that is declared at "decl", or no value for a local symbol.
     std::optional<SymbolKey> symbol_key(const Doc& d, Pos decl, const std::string& name) const;
     std::optional<SymbolKey> key_at(const Doc& d, Pos cur);
@@ -708,6 +736,7 @@ private:
     std::vector<std::string> roots_;
     std::vector<HostSet> hosts_; // the host files: one set for each hosts dir
     bool utf8_ = false, clangd_utf8_ = false, shutdown_ = false;
+    std::vector<std::string> clangd_token_types_; // the legend of the semantic tokens of clangd
     std::set<std::string> preamble_ready_;
     // The analyze facts of the scripts on disk that are not open (script_member_location).
     std::map<std::string, std::pair<std::string, hotc::AnalyzeResult>> disk_facts_;
@@ -715,6 +744,27 @@ private:
                              // first completion
     // The saved symbol index of the scripts on disk (S28, symbol_index.h).
     SymbolIndex index_;
+    // The answer of clangd for the semantic tokens of a generated text, by the URI of that text.
+    struct NativeTokenCache
+    {
+        int version = -1; // the gen_version of "data" (-1: no answer)
+        json data; // the answer of clangd, until the tokens are derived from it
+        bool pending = false; // a worker thread waits for clangd
+        uint64_t nonce = 0; // identifies this entry: the entry of a closed and reopened document is new
+        int last_version = -1; // the gen_version of "last"
+        std::vector<std::pair<SemanticToken, std::string>> last; // the tokens of the script and their names
+    };
+    struct TokenWorker
+    {
+        std::thread thread;
+        std::shared_ptr<std::atomic<bool>> done;
+    };
+    std::map<std::string, NativeTokenCache> token_cache_;
+    uint64_t token_nonce_ = 0; // the last nonce of a cache entry (token_mutex_)
+    std::mutex token_mutex_;
+    std::condition_variable token_cv_;
+    std::vector<TokenWorker> token_workers_;
+    std::atomic<int> native_token_requests_{0}; // the requests of tokens to clangd (hot/indexStats)
     int completion_translations_ = 0; // the translations of a completion text (hot/indexStats)
     int closed_analyses_ = 0; // the analyze calls of for_other_scripts (hot/indexStats)
     hotc::TranslatorSession session_;
@@ -899,6 +949,7 @@ void Server::start_clangd(const json& init)
                 {"textDocument",
                     {{"completion", {{"completionItem", {{"snippetSupport", false}}}}},
                         {"hover", {{"contentFormat", {"markdown", "plaintext"}}}},
+                        {"semanticTokens", {{"requests", {{"full", true}}}, {"tokenTypes", json::array()}, {"tokenModifiers", json::array()}, {"formats", {"relative"}}}},
                         {"publishDiagnostics", {{"versionSupport", true}}}}}}},
     };
     for (const char* k : {"rootUri", "rootPath", "workspaceFolders"})
@@ -911,6 +962,9 @@ void Server::start_clangd(const json& init)
         return;
     }
     clangd_utf8_ = r.value("/result/capabilities/positionEncoding"_json_pointer, std::string()) == "utf-8";
+    clangd_token_types_.clear();
+    for (const json& t : r.value("/result/capabilities/semanticTokensProvider/legend/tokenTypes"_json_pointer, json::array()))
+        clangd_token_types_.push_back(t.is_string() ? t.get<std::string>() : std::string());
     c->notify("initialized", json::object());
     // clangd loads the compile_commands.json, and starts the background index, at the first
     // file that it opens. The server opens and closes one entry of the database for this.
@@ -1076,6 +1130,8 @@ json Server::on_initialize(const json& p)
             opt_.hosts_dir = o.value("hostsDir", std::string());
         if (o.contains("privateClangdDir") && o["privateClangdDir"].is_boolean())
             opt_.private_clangd_dir = o["privateClangdDir"].get<bool>();
+        if (o.contains("nativeSemanticTokens") && o["nativeSemanticTokens"].is_boolean())
+            opt_.native_semantic_tokens = o["nativeSemanticTokens"].get<bool>();
         if (o.contains("compileCommandsDir"))
         {
             opt_.compile_commands_dir = o.value("compileCommandsDir", std::string());
@@ -1112,7 +1168,7 @@ json Server::on_initialize(const json& p)
                 {"callHierarchyProvider", true}, {"signatureHelpProvider", {{"triggerCharacters", {"(", ","}}}}, {"documentFormattingProvider", true},
                 {"documentRangeFormattingProvider", true},
                 {"codeActionProvider", {{"codeActionKinds", {"quickfix"}}}}, {"definitionProvider", true},
-                {"referencesProvider", true}, {"documentSymbolProvider", true}, {"renameProvider", true},
+                {"referencesProvider", true}, {"documentSymbolProvider", true}, {"renameProvider", {{"prepareProvider", true}}},
                 {"workspaceSymbolProvider", true},
                 {"workspace", {{"workspaceFolders", {{"supported", true}, {"changeNotifications", true}}}}},
                 {"semanticTokensProvider",
@@ -2215,6 +2271,29 @@ std::vector<Pos> Server::gen_word_candidates(const Doc& d, Pos script_pos) const
     return out;
 }
 
+// The script place of a use of "word" at the generated place (line "gl", byte column "gcol") when
+// the use has no map segment. "script_lines" is gen_script_lines(d). The k-th use of the word on the
+// generated line is the k-th use on the script line when both lines have the same count. A script
+// line with one use gives that use. Else the place is not clear and there is no place. A
+// parameter or a local with the same name is not a use of the symbol.
+std::optional<Pos> Server::script_use_of_gen_word(
+    const Doc& d, const std::vector<int>& script_lines, int gl, int gcol, const std::string& word) const
+{
+    const int sl = gl >= 0 && gl < static_cast<int>(script_lines.size()) ? script_lines[static_cast<size_t>(gl)] : -1;
+    const auto t = sl < 0 ? std::nullopt : d.gen_script_to_text({sl, 0});
+    if (!t || t->line >= static_cast<int>(d.text.starts.size()))
+        return std::nullopt;
+    bool block = false, gen_block = false;
+    const std::vector<int> in_text = whole_word_cols(blank_non_code(d.text.line(t->line), block), word);
+    const std::vector<int> in_gen = whole_word_cols(blank_non_code(d.gen.line(gl), gen_block), word);
+    const auto k = std::find(in_gen.begin(), in_gen.end(), gcol) - in_gen.begin();
+    if (in_text.size() == 1)
+        return Pos{t->line, in_text[0]};
+    if (in_text.size() == in_gen.size() && k < static_cast<long>(in_gen.size()))
+        return Pos{t->line, in_text[static_cast<size_t>(k)]};
+    return std::nullopt;
+}
+
 std::vector<Pos> Server::gen_asks(const Doc& d, Pos script_pos, bool& by_word) const
 {
     by_word = false;
@@ -2339,28 +2418,11 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
                 if (script_lines.empty())
                     script_lines = gen_script_lines(d);
                 const int gl = loc["range"]["start"]["line"].get<int>();
-                const int sl = gl < static_cast<int>(script_lines.size()) ? script_lines[static_cast<size_t>(gl)] : -1;
-                const auto t = sl < 0 ? std::nullopt : d.gen_script_to_text({sl, 0});
-                if (!t || t->line >= static_cast<int>(d.text.starts.size()))
-                    continue;
-                // The k-th use of the word on the generated line is the k-th use on the script
-                // line when both lines have the same count. A script line with one use gives
-                // that use. Else the place is not clear and there is no place. A parameter or a
-                // local with the same name is not a use of the symbol.
-                bool block = false, gen_block = false;
-                const std::vector<int> in_text = whole_word_cols(blank_non_code(d.text.line(t->line), block), here_word);
-                const std::vector<int> in_gen = whole_word_cols(blank_non_code(d.gen.line(gl), gen_block), here_word);
                 const int gcol = from_lsp(d.gen, loc["range"]["start"], clangd_utf8_).col;
-                const auto k = std::find(in_gen.begin(), in_gen.end(), gcol) - in_gen.begin();
-                int col = -1;
-                if (in_text.size() == 1)
-                    col = in_text[0];
-                else if (in_text.size() == in_gen.size() && k < static_cast<long>(in_gen.size()))
-                    col = in_text[static_cast<size_t>(k)];
-                if (col >= 0)
+                if (const auto at = script_use_of_gen_word(d, script_lines, gl, gcol, here_word))
                 {
                     json w = {{"uri", d.uri},
-                        {"range", script_range(d, {t->line, col}, {t->line, col + static_cast<int>(here_word.size())})}};
+                        {"range", script_range(d, *at, {at->line, at->col + static_cast<int>(here_word.size())})}};
                     if (seen.insert(w.dump()).second)
                         out.push_back(std::move(w));
                 }
@@ -2449,8 +2511,10 @@ bool Server::is_script_class(const Doc& d, const std::string& name) const
 }
 
 std::variant<std::set<Pos>, std::string> Server::symbol_places(
-    const Doc& d, Pos cur, const std::string& old_name, Pos* decl)
+    const Doc& d, Pos cur, const std::string& old_name, Pos* decl, bool* generated)
 {
+    if (generated)
+        *generated = false;
     if (is_script_class(d, old_name))
     {
         if (decl)
@@ -2475,7 +2539,11 @@ std::variant<std::set<Pos>, std::string> Server::symbol_places(
         if (uri != d.gen_uri && !gen_docs_.count(uri))
             return std::string("cannot rename a native symbol: " + old_name);
         if (uri == d.gen_uri && map_location(d, loc).is_null())
+        {
+            if (generated)
+                *generated = true;
             return std::string("cannot rename a generated name: " + old_name);
+        }
     }
     if (decl)
     {
@@ -2744,9 +2812,10 @@ std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
         || (new_name[0] >= '0' && new_name[0] <= '9'))
         return std::string("the new name is not an identifier: " + new_name);
     Pos decl;
-    const auto r = symbol_places(d, cur, old_name, &decl);
+    bool generated = false;
+    const auto r = symbol_places(d, cur, old_name, &decl, &generated);
     if (const auto* e = std::get_if<std::string>(&r))
-        return *e;
+        return generated ? *e : native_rename(d, cur, old_name, new_name, *e);
     auto edits_of = [&](const Doc& doc, const std::set<Pos>& places)
     {
         json edits = json::array();
@@ -2762,6 +2831,275 @@ std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
         for_other_scripts(d, *key, old_name,
             [&](const Doc& doc, const std::set<Pos>& places) { changes[doc.uri] = edits_of(doc, places); });
     return json{{"changes", changes}};
+}
+
+bool Server::in_workspace(const std::string& path) const
+{
+    std::error_code ec;
+    const fs::path p = fs::weakly_canonical(path, ec);
+    for (const std::string& r : roots_)
+    {
+        const fs::path rel = p.lexically_relative(fs::weakly_canonical(r, ec));
+        if (!rel.empty() && *rel.begin() != "..")
+            return true;
+    }
+    return false;
+}
+
+std::variant<json, std::string> Server::native_rename(
+    const Doc& d, Pos cur, const std::string& old_name, const std::string& new_name, const std::string& no_symbol)
+{
+    if (!clangd_ || !is_symbol_word(old_name))
+        return no_symbol;
+    bool by_word = false;
+    const std::vector<Pos> asks = gen_asks(d, cur, by_word);
+    if (asks.empty())
+        return no_symbol;
+    const std::string what = "cannot rename the native symbol " + old_name;
+    // All the clangd calls of one rename share a time budget.
+    constexpr int kRenameBudgetMs = 10000;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kRenameBudgetMs);
+    auto left_ms = [&]
+    {
+        return static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now()).count());
+    };
+    auto locations = [](const std::optional<json>& r)
+    { return r ? (r->is_array() ? *r : json::array({*r})) : json::array(); };
+    std::string last_error = "clangd gives no answer";
+    for (const Pos& g : asks)
+    {
+        if (left_ms() <= 0)
+            break;
+        const json tdp = {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, g)}};
+        // A declaration or a definition in a file outside the workspace folders (a system header,
+        // a library): the rename would change files of the user that are not in the project.
+        // The places in the workspace are edits too: clangd can miss a header that no indexed
+        // translation unit includes.
+        std::vector<std::pair<std::string, json>> declared; // the uri and the range
+        for (const char* kind : {"textDocument/declaration", "textDocument/definition"})
+            for (const json& loc : locations(clangd_result(kind, tdp, std::max(left_ms(), 1))))
+            {
+                const std::string uri = loc.contains("targetUri") ? json_str(loc, "targetUri") : json_str(loc, "uri");
+                if (uri.empty() || uri == d.gen_uri || gen_docs_.count(uri))
+                    continue;
+                const std::string path = uri_to_path(uri);
+                if (!in_workspace(path))
+                    return what + ": it is declared in " + path + ", outside the workspace folders";
+                const json range = loc.contains("targetSelectionRange") ? loc["targetSelectionRange"] : loc.value("range", json());
+                if (range.is_object() && range.contains("start") && range.contains("end"))
+                    declared.emplace_back(uri, range);
+            }
+        json params = tdp;
+        params["newName"] = new_name;
+        const json resp = clangd_->request("textDocument/rename", params, std::max(left_ms(), 1));
+        if (!resp.is_object())
+            continue;
+        if (resp.contains("error"))
+        {
+            last_error = json_str(resp["error"], "message");
+            continue;
+        }
+        if (!resp.contains("result") || !resp["result"].is_object())
+            continue;
+        // The edits by file. A client with "documentChanges" gets the other form; clangd gives
+        // "changes" to a client without it, and this server does not ask for it.
+        std::map<std::string, json> by_uri;
+        const json& edit = resp["result"];
+        if (edit.contains("changes") && edit["changes"].is_object())
+            for (const auto& [uri, edits] : edit["changes"].items())
+                by_uri[uri] = edits;
+        if (edit.contains("documentChanges") && edit["documentChanges"].is_array())
+            for (const json& dc : edit["documentChanges"])
+                if (dc.contains("textDocument") && dc.contains("edits"))
+                    by_uri[json_str(dc["textDocument"], "uri")] = dc["edits"];
+        json changes = json::object();
+        std::map<std::string, std::pair<const Doc*, std::set<Pos>>> places; // by the uri of the script
+        // The uri of a script, the generated line, and the script place of each edit.
+        std::set<std::tuple<std::string, int, int, int>> seen;
+        // The text of the real C++ files. A file that is not readable has no text.
+        std::map<std::string, std::shared_ptr<Text>> cpp_texts;
+        auto cpp_text = [&](const std::string& uri)
+        {
+            auto& t = cpp_texts[uri];
+            if (!t)
+                if (const auto content = read_file(uri_to_path(uri)))
+                    t = std::make_shared<Text>(*content);
+            return t;
+        };
+        // True when the range of a real C++ file holds exactly the old name.
+        auto is_old_name = [&](const std::string& uri, const json& range)
+        {
+            const auto t = cpp_text(uri);
+            if (!t || !range.is_object() || !range.contains("start") || !range.contains("end"))
+                return false;
+            const int line = range["start"].value("line", -1);
+            if (line < 0 || line >= static_cast<int>(t->starts.size()) || range["end"].value("line", -2) != line)
+                return false;
+            const int b = from_lsp(*t, range["start"], clangd_utf8_).col, e = from_lsp(*t, range["end"], clangd_utf8_).col;
+            return b >= 0 && e > b && e <= static_cast<int>(t->line(line).size())
+                && t->line(line).substr(static_cast<size_t>(b), static_cast<size_t>(e - b)) == old_name;
+        };
+        // The lines of a script without the comments and the strings.
+        std::map<const Doc*, std::vector<std::string>> code_lines;
+        auto code_of = [&](const Doc& doc, int line) -> const std::string&
+        {
+            auto& lines = code_lines[&doc];
+            if (lines.empty())
+            {
+                bool block = false;
+                for (int i = 0; i < static_cast<int>(doc.text.starts.size()); ++i)
+                    lines.push_back(blank_non_code(doc.text.line(i), block));
+            }
+            return lines[static_cast<size_t>(line)];
+        };
+        for (const auto& [uri, edits] : by_uri)
+        {
+            if (!edits.is_array())
+                continue;
+            const auto gen_it = gen_docs_.find(uri);
+            if (gen_it == gen_docs_.end())
+            {
+                // A real C++ file: the edit passes through. It must be in a workspace folder, and it
+                // must change the old name.
+                if (!in_workspace(uri_to_path(uri)))
+                    return what + ": the edit changes " + uri_to_path(uri) + ", outside the workspace folders";
+                for (const json& e : edits)
+                    if (!e.contains("range") || !is_old_name(uri, e["range"]))
+                        return what + ": an edit of " + uri_to_path(uri) + " does not change the name " + old_name;
+                changes[uri] = edits;
+                continue;
+            }
+            const Doc& o = *gen_it->second;
+            if (&o != &d && !in_workspace(o.path))
+                return what + ": the edit changes " + o.path + ", outside the workspace folders";
+            const std::vector<int> script_lines = gen_script_lines(o);
+            for (const json& e : edits)
+            {
+                if (!e.contains("range"))
+                    continue;
+                const Pos gb = from_lsp(o.gen, e["range"]["start"], clangd_utf8_);
+                const Pos ge = from_lsp(o.gen, e["range"]["end"], clangd_utf8_);
+                if (gb.line < 0 || gb.line >= static_cast<int>(o.gen.starts.size()))
+                    return what + ": a changed range in the generated code is not the name";
+                const std::string_view gl = o.gen.line(gb.line);
+                if (gb.line != ge.line || gb.col < 0 || gb.col > ge.col || ge.col > static_cast<int>(gl.size())
+                    || gl.substr(static_cast<size_t>(gb.col), static_cast<size_t>(ge.col - gb.col)) != old_name)
+                    return what + ": a changed range in the generated code is not the name";
+                const int sl = gb.line < static_cast<int>(script_lines.size()) ? script_lines[static_cast<size_t>(gb.line)] : -1;
+                std::optional<Pos> at;
+                if (const auto s = to_script(o, e["range"]["start"]))
+                {
+                    // The mapped start can be the start of the expression ("this" of "this.heal").
+                    // Take the first whole word from there.
+                    const std::string_view l = o.text.line(s->line);
+                    for (size_t w = l.find(old_name, static_cast<size_t>(s->col)); w != std::string_view::npos && !at;
+                        w = l.find(old_name, w + 1))
+                        if ((w == 0 || !is_id_char(l[w - 1]))
+                            && (w + old_name.size() >= l.size() || !is_id_char(l[w + old_name.size()])))
+                            at = Pos{s->line, static_cast<int>(w)};
+                }
+                else if (sl < 0)
+                    continue; // text of the translator: no script place
+                if (at && whole_word_cols(code_of(o, at->line), old_name).size() != 1)
+                {
+                    // The line has another word of the same name (a local, a member). The first word
+                    // from the segment start is the use only if the k-th use rule agrees.
+                    const auto kth = script_use_of_gen_word(o, script_lines, gb.line, gb.col, old_name);
+                    if (!kth || kth->line != at->line || kth->col != at->col)
+                        return what + ": line " + std::to_string(at->line + 1) + " of " + o.path + " has another word "
+                            + old_name + " that is not clearly this symbol";
+                }
+                if (!at)
+                    at = script_use_of_gen_word(o, script_lines, gb.line, gb.col, old_name);
+                if (!at)
+                {
+                    // Code of the translator in the region of a script line (the copy of a
+                    // parameter, for example) does not use the word in the script line.
+                    const auto t = o.gen_script_to_text({sl, 0});
+                    bool block = false;
+                    if (t && t->line < static_cast<int>(o.text.starts.size())
+                        && whole_word_cols(blank_non_code(o.text.line(t->line), block), old_name).empty())
+                        continue;
+                }
+                if (!at)
+                    return what + ": a use at line " + std::to_string(sl + 1) + " of " + o.path + " has no clear place in the script";
+                auto& entry = places[o.uri];
+                entry.first = &o;
+                // Two edits of one generated line for one place, in a script line with more than one
+                // word of the name: the map cannot tell the uses apart. No partial rename. The
+                // translator can write a use twice (a method declaration and definition, the type in
+                // "Counter local = Counter()"), so these duplicates are fine in a line with one word.
+                entry.second.insert(*at);
+                if (!seen.insert({o.uri, gb.line, at->line, at->col}).second
+                    && whole_word_cols(code_of(o, at->line), old_name).size() != 1)
+                    return what + ": two uses at line " + std::to_string(at->line + 1) + " of " + o.path
+                        + " map to the same place in the script";
+            }
+        }
+        for (const auto& [uri, range] : declared)
+        {
+            // The name at the place must be the old name, and the answer of clangd must not have it.
+            if (!is_old_name(uri, range))
+                continue;
+            // The range must not overlap a range of the answer of clangd.
+            auto before = [](const json& a, const json& b)
+            { // the position a is before the position b
+                const int al = a.value("line", 0), bl = b.value("line", 0);
+                return al < bl || (al == bl && a.value("character", 0) < b.value("character", 0));
+            };
+            bool have = false;
+            if (changes.contains(uri))
+                for (const json& e : changes[uri])
+                    have = have
+                        || (e.contains("range") && before(e["range"]["start"], range["end"])
+                            && before(range["start"], e["range"]["end"]));
+            if (have)
+                continue;
+            if (!changes.contains(uri))
+                changes[uri] = json::array();
+            changes[uri].push_back({{"range", range}, {"newText", new_name}});
+        }
+        for (const auto& [uri, entry] : places)
+        {
+            const Doc* doc = entry.first;
+            json edits = json::array();
+            for (const Pos& s : entry.second)
+                edits.push_back({{"range", script_range(*doc, s, {s.line, s.col + static_cast<int>(old_name.size())})},
+                    {"newText", new_name}});
+            changes[uri] = edits;
+        }
+        if (changes.empty())
+        {
+            last_error = "the answer of clangd has no edit";
+            continue;
+        }
+        return json{{"changes", changes}};
+    }
+    return what + ": " + last_error;
+}
+
+std::variant<json, std::string> Server::on_prepare_rename(const Doc& d, const json& p)
+{
+    const Pos cur = from_lsp(d.text, p["position"], utf8_);
+    const std::string old_name = word(d, cur);
+    if (old_name.empty())
+        return std::string("no symbol at the position");
+    Pos decl;
+    bool generated = false;
+    const auto r = symbol_places(d, cur, old_name, &decl, &generated);
+    if (const auto* e = std::get_if<std::string>(&r))
+    {
+        // The probe name makes clangd do the full check (the declaration, the files, the map) of a
+        // native rename, so that prepareRename and rename give the same answer.
+        if (generated)
+            return *e;
+        const auto n = native_rename(d, cur, old_name, "hot_rename_probe", *e);
+        if (const auto* ne = std::get_if<std::string>(&n))
+            return *ne;
+    }
+    const auto [b, e] = word_at(d, cur);
+    return json{{"range", script_range(d, {cur.line, b}, {cur.line, e})}, {"placeholder", old_name}};
 }
 
 json Server::on_document_symbol(const Doc& d)
@@ -2797,11 +3135,194 @@ json Server::on_document_symbol(const Doc& d)
     return out;
 }
 
+void Server::start_token_worker(const std::string& gen_uri, int version, uint64_t nonce)
+{
+    constexpr int kBudgetMs = 3000;
+    token_workers_.erase(std::remove_if(token_workers_.begin(), token_workers_.end(),
+                             [](TokenWorker& w)
+                             {
+                                 if (!w.done->load())
+                                     return false;
+                                 w.thread.join();
+                                 return true;
+                             }),
+        token_workers_.end());
+    auto done = std::make_shared<std::atomic<bool>>(false);
+    ClangdProcess* clangd = clangd_.get();
+    ++native_token_requests_;
+    token_workers_.push_back({std::thread(
+                                  [this, clangd, gen_uri, version, nonce, done]
+                                  {
+                                      json r = clangd->request("textDocument/semanticTokens/full",
+                                          {{"textDocument", {{"uri", gen_uri}}}}, kBudgetMs);
+                                      {
+                                          std::lock_guard<std::mutex> lock(token_mutex_);
+                                          const auto it = token_cache_.find(gen_uri);
+                                          // A new entry (the document was closed and opened again) is not the entry of this request.
+                                          if (it != token_cache_.end() && it->second.nonce == nonce)
+                                          {
+                                              NativeTokenCache& c = it->second;
+                                              c.pending = false;
+                                              // An answer with no token is not kept: clangd can answer before it
+                                              // has the syntax tree. The next request asks again.
+                                              if (r.is_object() && r.contains("result") && r["result"].is_object()
+                                                  && r["result"].contains("data") && r["result"]["data"].is_array()
+                                                  && !r["result"]["data"].empty() && version >= c.version)
+                                              {
+                                                  c.version = version;
+                                                  c.data = std::move(r["result"]["data"]);
+                                              }
+                                          }
+                                      }
+                                      token_cv_.notify_all();
+                                      done->store(true);
+                                  }),
+        done});
+}
+
+// The semantic tokens of clangd for the generated text, as tokens of the script. The answer of
+// clangd is in a cache for each version of the generated text. A request waits a short time for
+// a missing answer. Then it uses the tokens of the last answer that still fit, or no token. A late
+// answer goes to the cache for the next request. The server thread never waits for the full time.
+std::vector<SemanticToken> Server::native_tokens(const Doc& d, const std::vector<SemanticToken>& known)
+{
+    if (!opt_.native_semantic_tokens || !clangd_ || !clangd_->running() || clangd_token_types_.empty() || !d.map
+        || d.gen.s.empty())
+        return {};
+    std::unique_lock<std::mutex> lock(token_mutex_);
+    NativeTokenCache& c = token_cache_[d.gen_uri];
+    if (c.nonce == 0)
+        c.nonce = ++token_nonce_;
+    if (c.version != d.gen_version && !c.pending)
+    {
+        c.pending = true;
+        start_token_worker(d.gen_uri, d.gen_version, c.nonce);
+    }
+    if (opt_.native_token_wait_ms > 0)
+        token_cv_.wait_for(lock, std::chrono::milliseconds(opt_.native_token_wait_ms),
+            [&] { return c.version == d.gen_version || !c.pending; });
+    if (c.version == d.gen_version && c.last_version != d.gen_version)
+    {
+        c.last = derive_native_tokens(d, c.data);
+        c.last_version = d.gen_version;
+        c.data = json();
+    }
+    std::set<std::pair<int, int>> taken;
+    for (const SemanticToken& t : known)
+        taken.insert({t.line, t.col});
+    std::vector<SemanticToken> out;
+    for (const auto& [t, name] : c.last)
+    {
+        if (taken.count({t.line, t.col}))
+            continue;
+        if (c.last_version != d.gen_version)
+        {
+            // The tokens of an older text: keep a token only if the same name is still at the place.
+            if (t.line >= static_cast<int>(d.text.starts.size()) || t.col < 0)
+                continue;
+            const std::string_view l = d.text.line(t.line);
+            if (static_cast<size_t>(t.col) + static_cast<size_t>(t.len) > l.size()
+                || l.substr(static_cast<size_t>(t.col), static_cast<size_t>(t.len)) != name)
+                continue;
+        }
+        out.push_back(t);
+    }
+    return out;
+}
+
+// A native name has no segment in the source map, so the match is by the name and the script
+// line: a token of the generated lines of a script line is a token for the same name in that
+// script line. A name that clangd classifies in two ways in those lines (a parameter with the
+// name of a type, for example) gets no token. There is a cap on the number of tokens.
+std::vector<std::pair<SemanticToken, std::string>> Server::derive_native_tokens(const Doc& d, const json& answer)
+{
+    constexpr size_t kMaxClangdTokens = 50000;
+    constexpr int kSkip = -1, kOther = -2; // no token for the type, and a name that is not a native symbol
+    if (!answer.is_array())
+        return {};
+    // The type of the legend of hot-ls for each type of the legend of clangd.
+    std::vector<int> ours;
+    for (const std::string& t : clangd_token_types_)
+    {
+        int v = kSkip;
+        if (t == "class" || t == "struct" || t == "interface" || t == "enum")
+            v = 2;
+        else if (t == "type")
+            v = 1;
+        else if (t == "function" || t == "method")
+            v = 3;
+        else if (t == "property" || t == "enumMember")
+            v = 4;
+        else if (t == "variable" || t == "parameter" || t == "macro" || t == "typeParameter")
+            v = kOther;
+        ours.push_back(v);
+    }
+    const std::vector<int> script_lines = gen_script_lines(d);
+    std::map<int, std::map<std::string, int>> by_line; // the text line, the name, the type
+    const json& data = answer;
+    int gl = 0, gc = 0;
+    for (size_t i = 0; i + 4 < data.size() && i / 5 < kMaxClangdTokens; i += 5)
+    {
+        if (!data[i].is_number_integer() || !data[i + 1].is_number_integer() || !data[i + 2].is_number_integer()
+            || !data[i + 3].is_number_integer())
+            return {};
+        gl += data[i].get<int>();
+        gc = data[i].get<int>() == 0 ? gc + data[i + 1].get<int>() : data[i + 1].get<int>();
+        const int type = data[i + 3].get<int>();
+        if (type < 0 || type >= static_cast<int>(ours.size()) || ours[static_cast<size_t>(type)] == kSkip || gl < 0
+            || gl >= static_cast<int>(script_lines.size()) || script_lines[static_cast<size_t>(gl)] < 0)
+            continue;
+        const auto t = d.gen_script_to_text({script_lines[static_cast<size_t>(gl)], 0});
+        if (!t)
+            continue;
+        const std::string_view l = d.gen.line(gl);
+        const int b = from_lsp(d.gen, {{"line", gl}, {"character", gc}}, clangd_utf8_).col;
+        const int e = from_lsp(d.gen, {{"line", gl}, {"character", gc + data[i + 2].get<int>()}}, clangd_utf8_).col;
+        if (b < 0 || e <= b || e > static_cast<int>(l.size()))
+            continue;
+        const std::string name(l.substr(static_cast<size_t>(b), static_cast<size_t>(e - b)));
+        const auto [it, fresh] = by_line[t->line].emplace(name, ours[static_cast<size_t>(type)]);
+        if (!fresh && it->second != ours[static_cast<size_t>(type)])
+            it->second = kOther;
+    }
+    std::vector<std::pair<SemanticToken, std::string>> out;
+    bool in_block = false;
+    for (int line = 0; line < static_cast<int>(d.text.starts.size()) && !by_line.empty(); ++line)
+    {
+        const std::string code = blank_non_code(d.text.line(line), in_block);
+        const auto found = by_line.find(line);
+        if (found == by_line.end())
+            continue;
+        for (size_t i = 0; i < code.size();)
+        {
+            if (!is_id_char(code[i]))
+            {
+                ++i;
+                continue;
+            }
+            size_t e = i;
+            while (e < code.size() && is_id_char(code[e]))
+                ++e;
+            const std::string name = code.substr(i, e - i);
+            const auto t = found->second.find(name);
+            if (!(code[i] >= '0' && code[i] <= '9') && t != found->second.end() && t->second >= 0 && is_symbol_word(name))
+                out.push_back({{line, static_cast<int>(i), static_cast<int>(e - i), t->second}, name});
+            i = e;
+        }
+    }
+    return out;
+}
+
 json Server::on_semantic_tokens(const Doc& d)
 {
     json data = json::array();
     int pl = 0, pc = 0;
-    for (const SemanticToken& t : script_tokens(d.text.s, d.facts))
+    std::vector<SemanticToken> tokens = script_tokens(d.text.s, d.facts);
+    std::vector<SemanticToken> native = native_tokens(d, tokens);
+    tokens.insert(tokens.end(), native.begin(), native.end());
+    std::stable_sort(tokens.begin(), tokens.end(),
+        [](const SemanticToken& a, const SemanticToken& b) { return a.line != b.line ? a.line < b.line : a.col < b.col; });
+    for (const SemanticToken& t : tokens)
     {
         const std::string_view l = d.text.line(t.line);
         const int c = utf8_ ? t.col : byte_to_utf16(l, t.col);
@@ -3646,6 +4167,10 @@ void Server::handle(const json& msg)
             if (!d->cpp)
                 gen_docs_.erase(d->gen_uri);
         }
+        {
+            std::lock_guard<std::mutex> lock(token_mutex_);
+            token_cache_.erase(d->gen_uri);
+        }
         if (d->cpp && !d->cpp_published)
             return; // an ignored ".cpp" document: the server never published for it
         send_client({{"jsonrpc", "2.0"}, {"method", "textDocument/publishDiagnostics"},
@@ -3666,7 +4191,8 @@ void Server::handle(const json& msg)
     if (method == "hot/indexStats")
         return reply(id,
             {{"analyzed", closed_analyses_}, {"loaded", index_.loads()}, {"stored", index_.stores()},
-                {"dir", index_.dir()}, {"completions", completion_translations_}});
+                {"dir", index_.dir()}, {"completions", completion_translations_},
+                {"tokenRequests", native_token_requests_.load()}});
     if (method == "hot/toScript")
         return reply(id, on_to_script(p));
 
@@ -3676,7 +4202,7 @@ void Server::handle(const json& msg)
 
     static const std::set<std::string> doc_methods = {"textDocument/completion", "textDocument/hover",
         "textDocument/definition", "textDocument/references", "textDocument/documentSymbol",
-        "textDocument/semanticTokens/full", "textDocument/rename", "textDocument/signatureHelp",
+        "textDocument/semanticTokens/full", "textDocument/rename", "textDocument/prepareRename", "textDocument/signatureHelp",
         "textDocument/formatting", "textDocument/rangeFormatting", "textDocument/codeAction", "textDocument/inlayHint", "textDocument/codeLens",
         "textDocument/prepareCallHierarchy"};
     if (!doc_methods.count(method))
@@ -3715,7 +4241,7 @@ void Server::handle(const json& msg)
         return reply(id, on_document_symbol(*d));
     if (method == "textDocument/semanticTokens/full")
         return reply(id, on_semantic_tokens(*d));
-    auto r = on_rename(*d, p);
+    auto r = method == "textDocument/prepareRename" ? on_prepare_rename(*d, p) : on_rename(*d, p);
     if (auto* e = std::get_if<std::string>(&r))
         return reply_error(id, kRequestFailed, *e);
     return reply(id, std::get<json>(r));
@@ -3801,7 +4327,7 @@ const char* usage_text()
 {
     return "usage: hot-ls [--stdio] [--clangd path] [-I dir]... [--resource-dir dir] [--cxxflag flag]...\n"
            "              [--compile-commands-dir dir] [--private-clangd-dir] [--index-dir dir]\n"
-           "              [--hosts-dir dir] [--clangd-log file]\n"
+           "              [--hosts-dir dir] [--clangd-log file] [--no-native-tokens]\n"
            "  --clangd path      the clangd binary (default: clangd from PATH). \"\" turns clangd off.\n"
            "  -I dir             an include dir for the script imports and for clangd.\n"
            "  --compile-commands-dir dir\n"
@@ -3814,7 +4340,9 @@ const char* usage_text()
            "  --index-dir dir    the directory of the saved symbol index (default:\n"
            "                     .cache/hot/index in the first workspace folder).\n"
            "  --hosts-dir dir    the directory of the host files from hot_script_host (default:\n"
-           "                     .cache/hot/hosts in each workspace folder).\n";
+           "                     .cache/hot/hosts in each workspace folder).\n"
+           "  --no-native-tokens\n"
+           "                     the semantic tokens have no tokens for native (C++) names.\n";
 }
 
 bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, std::string& error)
@@ -3869,6 +4397,10 @@ bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, s
         else if (a == "--private-clangd-dir")
         {
             out.private_clangd_dir = true;
+        }
+        else if (a == "--no-native-tokens")
+        {
+            out.native_semantic_tokens = false;
         }
         else if (a == "--index-dir")
         {

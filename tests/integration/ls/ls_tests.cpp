@@ -578,7 +578,9 @@ struct NativeSession
     TempDir dir;
     std::string path, uri;
     std::unique_ptr<LsClient> client;
-    explicit NativeSession(const char* script = kNativeScript)
+    // "token_wait_ms" is the wait of a semantic tokens request for clangd. The tests give a long wait
+    // so that the first answer has the native tokens.
+    explicit NativeSession(const char* script = kNativeScript, int token_wait_ms = 10000, bool native_tokens = true)
     {
         write_file((dir.path() / "natives.h").string(), kNativeHeader);
         path = (dir.path() / "hero.hot").string();
@@ -586,6 +588,8 @@ struct NativeSession
         write_file(path, script);
         hot::ls::ServerOptions o = options(dir, true);
         o.include_dirs.push_back(dir.path().string());
+        o.native_token_wait_ms = token_wait_ms;
+        o.native_semantic_tokens = native_tokens;
         client = std::make_unique<LsClient>(o);
         client->initialize(uri_of(dir.path().string()));
         client->open(uri, script);
@@ -4082,4 +4086,521 @@ TEST(LanguageServer, MalformedCallHierarchyRequestsKeepTheServerAlive)
     const json no_pos = s.client->request("textDocument/prepareCallHierarchy", {{"textDocument", {{"uri", s.uri}}}});
     EXPECT_TRUE(no_pos.contains("result") || no_pos.contains("error")) << no_pos.dump();
     EXPECT_FALSE(lenses_of(s).empty()); // the server still answers
+}
+
+// ------------------------------------------------------------------ rename and tokens of native symbols
+namespace
+{
+
+// The places "line:col-line:col" (UTF-16 columns) of the whole word "word" in "text", outside the
+// strings and the comments. "skip" holds places of the word that are not uses of the symbol.
+std::set<std::string> word_places(const std::string& text, const std::string& word, const std::set<std::string>& skip = {})
+{
+    std::set<std::string> out;
+    std::istringstream in(text);
+    std::string l;
+    for (int line = 0; std::getline(in, l); ++line)
+        for (size_t at = l.find(word); at != std::string::npos; at = l.find(word, at + 1))
+        {
+            const bool whole = (at == 0 || !(std::isalnum(static_cast<unsigned char>(l[at - 1])) || l[at - 1] == '_'))
+                && (at + word.size() >= l.size()
+                    || !(std::isalnum(static_cast<unsigned char>(l[at + word.size()])) || l[at + word.size()] == '_'));
+            const bool quoted = std::count(l.begin(), l.begin() + static_cast<long>(at), '"') % 2 == 1;
+            const size_t comment = l.find("//");
+            if (!whole || quoted || (comment != std::string::npos && comment < at))
+                continue;
+            int col = 0;
+            for (size_t i = 0; i < at; ++i)
+                col += (static_cast<unsigned char>(l[i]) & 0xC0) != 0x80;
+            const std::string key = std::to_string(line) + ":" + std::to_string(col) + "-" + std::to_string(line) + ":"
+                + std::to_string(col + static_cast<int>(word.size()));
+            if (!skip.count(key))
+                out.insert(key);
+        }
+    return out;
+}
+
+// The place of the last "word" in the first "context" of the native script, as "line:col-line:col".
+std::string place_of(const std::string& context, const std::string& word)
+{
+    const json p = native_pos(context, word);
+    return std::to_string(p["line"].get<int>()) + ":" + std::to_string(p["character"].get<int>()) + "-"
+        + std::to_string(p["line"].get<int>()) + ":" + std::to_string(p["character"].get<int>() + static_cast<int>(word.size()));
+}
+
+// The places of the edits of a file in a WorkspaceEdit. Every edit must have the text "new_text".
+std::set<std::string> edit_places(const json& result, const std::string& uri, const std::string& new_text)
+{
+    std::set<std::string> out;
+    if (!result.is_object() || !result.contains("changes") || !result["changes"].contains(uri))
+        return out;
+    for (const json& e : result["changes"][uri])
+    {
+        EXPECT_EQ(e["newText"], new_text) << e.dump();
+        const json &b = e["range"]["start"], &f = e["range"]["end"];
+        out.insert(std::to_string(b["line"].get<int>()) + ":" + std::to_string(b["character"].get<int>()) + "-"
+            + std::to_string(f["line"].get<int>()) + ":" + std::to_string(f["character"].get<int>()));
+    }
+    return out;
+}
+
+// A rename request at the word. The index of clangd can need some time for a symbol that a header
+// declares: ask again until the answer is an edit.
+json native_rename_request(NativeSession& s, const std::string& context, const std::string& word, const std::string& name)
+{
+    json p = {{"textDocument", {{"uri", s.uri}}}, {"position", native_pos(context, word)}, {"newName", name}};
+    json r;
+    for (int i = 0; i < 20; ++i)
+    {
+        r = s.client->request("textDocument/rename", p);
+        if (r.contains("result") && r["result"].is_object()
+            && r["result"]["changes"].contains(uri_of((s.dir.path() / "natives.h").string())))
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    return r;
+}
+
+// Checks the whole edit of a native rename: the script places, and the places in natives.h.
+void expect_native_rename(NativeSession& s, const std::string& context, const std::string& word, const std::string& name,
+    const std::set<std::string>& script_skip, const std::set<std::string>& header_skip = {},
+    const std::string& script_text = kNativeScript)
+{
+    const json r = native_rename_request(s, context, word, name);
+    SCOPED_TRACE(context + " -> " + r.dump());
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    EXPECT_EQ(edit_places(r["result"], s.uri, name), word_places(script_text, word, script_skip));
+    const std::string header_uri = uri_of((s.dir.path() / "natives.h").string());
+    EXPECT_EQ(edit_places(r["result"], header_uri, name), word_places(kNativeHeader, word, header_skip));
+    EXPECT_EQ(r["result"]["changes"].size(), 2u) << r.dump(); // the script and natives.h only
+}
+
+} // namespace
+
+TEST(LanguageServerNative, RenameOfAFunction)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    expect_native_rename(s, "Clamp100(MAX_HP)", "Clamp100", "ClampHp", {});
+}
+
+TEST(LanguageServerNative, RenameOfAClassChangesTypeUsesWithoutMapSegment)
+{
+    REQUIRE_CLANGD();
+    // The parameter "Counter" of Take has the name of the class, in the same line as a use of the
+    // class. The server cannot tell the two words apart, so the next test refuses the rename. Here
+    // the parameter has another name.
+    std::string text = kNativeScript;
+    text.replace(text.find("void Take(Counter Counter)"), 26, "void Take(Counter other) ");
+    NativeSession s(text.c_str());
+    // clangd knows the declaration of the class in natives.h from the generated file only. The
+    // use in the parameter list of Tag (line 24 of the header) is not in its index.
+    const std::string tag_use = "23:" + std::to_string(std::string("int Tag(const char* text, ").size()) + "-23:"
+        + std::to_string(std::string("int Tag(const char* text, Counter").size());
+    expect_native_rename(s, "Counter local;", "Counter", "Tally", {}, {tag_use}, text);
+}
+
+// A use of the class and a parameter with the same name are in one line: no clear place.
+TEST(LanguageServerNative, RenameIsRefusedForAClassWithAParameterOfTheSameNameInTheLine)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    const json r = native_rename_request(s, "Counter local;", "Counter", "Tally");
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+    EXPECT_NE(r["error"].value("message", "").find("another word"), std::string::npos) << r.dump();
+}
+
+TEST(LanguageServerNative, RenameOfAMethod)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    // The parameter "Bump" of Pick is not a use.
+    expect_native_rename(s, "local.Bump(", "Bump", "Raise", {place_of("(Bump)", "Bump"), place_of("int Bump,", "Bump")});
+}
+
+TEST(LanguageServerNative, RenameOfAField)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    // The parameter "count" of Pick is not a use.
+    expect_native_rename(s, "this.counter.count", "count", "total", {place_of("int count)", "count"), place_of("= count;", "count")});
+}
+
+TEST(LanguageServerNative, RenameOfABaseClassMethodAndFieldChangesNativeFile)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    expect_native_rename(s, "this.Roar()", "Roar", "Bellow", {});
+    NativeSession t;
+    expect_native_rename(t, "this.rage =", "rage", "fury", {});
+}
+
+// The header of the symbol is in a directory that is not a workspace folder.
+TEST(LanguageServerNative, RenameIsRefusedForASymbolOutsideTheWorkspace)
+{
+    REQUIRE_CLANGD();
+    TempDir outside;
+    write_file((outside.path() / "outside.h").string(), "#pragma once\nint OutsideFn(int v);\n");
+    const std::string script = "using \"outside.h\";\n\nclass Hero {\n    int x = OutsideFn(1);\n}\n";
+    TempDir dir;
+    const std::string path = (dir.path() / "hero.hot").string();
+    write_file(path, script);
+    hot::ls::ServerOptions o = options(dir, true);
+    o.include_dirs.push_back(outside.path().string());
+    LsClient client(o);
+    client.initialize(uri_of(dir.path().string()));
+    client.open(uri_of(path), script);
+    json p = doc_pos(uri_of(path), 3, 12);
+    p["newName"] = "OutsideFn2";
+    const json r = client.request("textDocument/rename", p);
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+    EXPECT_NE(r["error"]["message"].get<std::string>().find("outside the workspace folders"), std::string::npos) << r.dump();
+    p.erase("newName");
+    const json prep = client.request("textDocument/prepareRename", p);
+    ASSERT_TRUE(prep.contains("error")) << prep.dump();
+    EXPECT_NE(prep["error"]["message"].get<std::string>().find("outside the workspace folders"), std::string::npos)
+        << prep.dump();
+}
+
+// Weapon is in tests/engine, not in the temporary workspace folder.
+TEST(LanguageServerNative, RenameIsRefusedForAClassOfAnotherDirectory)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    json p = {{"textDocument", {{"uri", s.uri}}}, {"position", native_pos("new Weapon(", "Weapon")}, {"newName", "Blade"}};
+    const json r = s.client->request("textDocument/rename", p);
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+    EXPECT_NE(r["error"]["message"].get<std::string>().find("outside the workspace folders"), std::string::npos) << r.dump();
+}
+
+TEST(LanguageServerNative, RenameOfAKeywordOrOfAWordInACommentOrStringIsAnError)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    for (const auto& c : {std::make_pair("override void Tick", "override"), std::make_pair("Roar and Clamp100 in", "Clamp100"),
+             std::make_pair("\"Clamp100 in a string", "Clamp100")})
+    {
+        json p = {{"textDocument", {{"uri", s.uri}}}, {"position", native_pos(c.first, c.second)}, {"newName", "Other"}};
+        const json r = s.client->request("textDocument/rename", p);
+        EXPECT_TRUE(r.contains("error")) << c.first << " -> " << r.dump();
+    }
+}
+
+TEST(LanguageServerNative, PrepareRenameAgreesWithRename)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    auto prepare = [&](const std::string& context, const std::string& word)
+    {
+        json r;
+        for (int i = 0; i < 20; ++i)
+        {
+            r = s.client->request("textDocument/prepareRename",
+                {{"textDocument", {{"uri", s.uri}}}, {"position", native_pos(context, word)}});
+            if (r.contains("result"))
+                break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        }
+        return r;
+    };
+    // Renameable natives (a function, a class with no map segment): the range of the word.
+    for (const auto& c : {std::make_pair("Clamp100(MAX_HP)", "Clamp100"), std::make_pair("Mood m = ", "Mood")})
+    {
+        const json r = prepare(c.first, c.second);
+        ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << c.first << " -> " << r.dump();
+        const json at = native_pos(c.first, c.second);
+        EXPECT_EQ(r["result"]["range"]["start"], at) << r.dump();
+        EXPECT_EQ(r["result"]["range"]["end"], pos(at["line"], at["character"].get<int>() + static_cast<int>(std::string(c.second).size())))
+            << r.dump();
+        EXPECT_EQ(r["result"]["placeholder"], c.second) << r.dump();
+    }
+    // A script symbol is renameable.
+    const json script = prepare("int limit = ", "limit");
+    EXPECT_TRUE(script.contains("result") && script["result"].is_object()) << script.dump();
+    // Not renameable: a class of another directory, a keyword, a word in a string.
+    for (const auto& c : {std::make_pair("new Weapon(", "Weapon"), std::make_pair("override void Tick", "override"),
+             std::make_pair("\"Clamp100 in a string", "Clamp100")})
+    {
+        const json r = s.client->request("textDocument/prepareRename",
+            {{"textDocument", {{"uri", s.uri}}}, {"position", native_pos(c.first, c.second)}});
+        EXPECT_TRUE(r.contains("error")) << c.first << " -> " << r.dump();
+    }
+}
+
+namespace
+{
+
+struct Tok
+{
+    int line, col, len, type;
+    bool operator==(const Tok& o) const { return line == o.line && col == o.col && len == o.len && type == o.type; }
+};
+
+std::vector<Tok> decode_native_tokens(const json& data)
+{
+    std::vector<Tok> out;
+    int line = 0, col = 0;
+    for (size_t i = 0; i + 4 < data.size(); i += 5)
+    {
+        line += data[i].get<int>();
+        col = data[i].get<int>() == 0 ? col + data[i + 1].get<int>() : data[i + 1].get<int>();
+        out.push_back({line, col, data[i + 2].get<int>(), data[i + 3].get<int>()});
+    }
+    return out;
+}
+
+} // namespace
+
+// The legend: keyword 0, type 1, class 2, method 3, property 4. The legend does not change.
+TEST(LanguageServerNative, SemanticTokensClassifyNativeNames)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    json r;
+    std::vector<Tok> tokens;
+    auto has = [&](const std::string& context, const std::string& word, int type)
+    {
+        const json p = native_pos(context, word);
+        const Tok want{p["line"], p["character"], static_cast<int>(word.size()), type};
+        return std::count(tokens.begin(), tokens.end(), want) == 1;
+    };
+    auto any_at = [&](const std::string& context, const std::string& word)
+    {
+        const json p = native_pos(context, word);
+        return std::any_of(tokens.begin(), tokens.end(), [&](const Tok& t) { return t.line == p["line"] && t.col == p["character"]; });
+    };
+    // The first answers can come before clangd has the syntax tree: ask again.
+    for (int i = 0; i < 20 && !has("Clamp100(MAX_HP)", "Clamp100", 3); ++i)
+    {
+        r = s.client->request("textDocument/semanticTokens/full", {{"textDocument", {{"uri", s.uri}}}});
+        ASSERT_TRUE(r.contains("result")) << r.dump();
+        tokens = decode_native_tokens(r["result"]["data"]);
+        if (!has("Clamp100(MAX_HP)", "Clamp100", 3))
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    EXPECT_TRUE(has("Clamp100(MAX_HP)", "Clamp100", 3)); // a function
+    EXPECT_TRUE(has("after = Clamp100(2)", "Clamp100", 3)); // after a two-byte character
+    EXPECT_TRUE(has("Counter local;", "Counter", 2)); // a class with no map segment
+    EXPECT_TRUE(has("Mood m = ", "Mood", 2)); // an enum
+    EXPECT_TRUE(has("Mood.Angry;", "Angry", 4)); // an enumerator
+    EXPECT_TRUE(has("local.Bump(", "Bump", 3)); // a method
+    EXPECT_TRUE(has("this.Roar()", "Roar", 3));
+    EXPECT_TRUE(has("this.rage =", "rage", 4)); // a field
+    EXPECT_TRUE(has("this.counter.count", "count", 4));
+    EXPECT_TRUE(has("class Hero : Boss", "Boss", 2)); // the script scanner classifies it: one token only
+    EXPECT_TRUE(has("class Hero : Boss", "Hero", 2));
+    // A word in a comment or a string, a parameter with the name of a type, a macro: no native token.
+    EXPECT_FALSE(any_at("Roar and", "Roar"));
+    EXPECT_FALSE(any_at("\"Clamp100 in a string", "Clamp100"));
+    EXPECT_FALSE(any_at("Take(Counter Counter)", "Counter"));
+    EXPECT_FALSE(any_at("(MAX_HP)", "MAX_HP"));
+}
+
+// Without clangd the tokens are the tokens of the script scanner.
+TEST(LanguageServerNative, SemanticTokensWithoutClangdAreTheScriptTokens)
+{
+    TempDir dir;
+    const std::string path = (dir.path() / "hero.hot").string();
+    write_file(path, kNativeScript);
+    LsClient client(options(dir, false));
+    client.initialize(uri_of(dir.path().string()));
+    client.open(uri_of(path), kNativeScript);
+    const json r = client.request("textDocument/semanticTokens/full", {{"textDocument", {{"uri", uri_of(path)}}}});
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    const std::vector<Tok> tokens = decode_native_tokens(r["result"]["data"]);
+    const json p = native_pos("Counter local;", "Counter");
+    EXPECT_TRUE(std::none_of(tokens.begin(), tokens.end(), [&](const Tok& t) { return t.line == p["line"] && t.col == p["character"]; }));
+    EXPECT_FALSE(tokens.empty());
+}
+
+namespace
+{
+
+// Two native uses in one expression, and a local with the name of a native member.
+const char* const kRenameTraps =
+    "using \"natives.h\";\n"
+    "\n"
+    "class Hero {\n"
+    "    Counter counter;\n"
+    "\n"
+    "    int Nested(int v) {\n"
+    "        return Clamp100(Clamp100(v));\n"
+    "    }\n"
+    "\n"
+    "    int Shadow() {\n"
+    "        int count = counter.count;\n"
+    "        return count;\n"
+    "    }\n"
+    "}\n";
+
+// A rename request for the traps script. The index of clangd can need some time: ask again while
+// the answer says that clangd has no answer.
+json rename_traps(
+    NativeSession& s, const std::string& context, const std::string& word, const std::string& name, int nth = 0)
+{
+    json p = {{"textDocument", {{"uri", s.uri}}}, {"position", pos_in(kRenameTraps, context, word, nth)}, {"newName", name}};
+    json r;
+    for (int i = 0; i < 20; ++i)
+    {
+        r = s.client->request("textDocument/rename", p);
+        const std::string message = r.contains("error") ? r["error"].value("message", "") : std::string();
+        if (!r.contains("error") || (message.find("clangd gives no answer") == std::string::npos
+                                        && message.find("has no edit") == std::string::npos))
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    return r;
+}
+
+} // namespace
+
+// Two native uses in one expression: each use gets its own place (the k-th use rule).
+TEST(LanguageServerNative, RenameOfTwoNativeUsesInOneExpressionChangesBoth)
+{
+    REQUIRE_CLANGD();
+    NativeSession s(kRenameTraps);
+    const json r = rename_traps(s, "Clamp100(Clamp100", "Clamp100", "ClampHp");
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    const json p = pos_in(kRenameTraps, "Clamp100(Clamp100", "Clamp100");
+    const int line = p["line"], col = p["character"];
+    const std::string first = std::to_string(line) + ":" + std::to_string(col) + "-" + std::to_string(line) + ":" + std::to_string(col + 8);
+    const std::string second = std::to_string(line) + ":" + std::to_string(col + 9) + "-" + std::to_string(line) + ":" + std::to_string(col + 17);
+    EXPECT_EQ(edit_places(r["result"], s.uri, "ClampHp"), (std::set<std::string>{first, second})) << r.dump();
+}
+
+// The local "count" comes before the native member "count" in the line: only the member changes.
+TEST(LanguageServerNative, RenameWithALocalOfTheSameNameInTheLineNeverChangesTheLocal)
+{
+    REQUIRE_CLANGD();
+    NativeSession s(kRenameTraps);
+    const json r = rename_traps(s, "counter.count", "count", "total", 1);
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    const json p = pos_in(kRenameTraps, "int count = counter.count;", "count", 2);
+    const std::string member = std::to_string(p["line"].get<int>()) + ":" + std::to_string(p["character"].get<int>()) + "-"
+        + std::to_string(p["line"].get<int>()) + ":" + std::to_string(p["character"].get<int>() + 5);
+    EXPECT_EQ(edit_places(r["result"], s.uri, "total"), std::set<std::string>{member}) << r.dump();
+}
+
+// The answer of clangd is in a cache for each version of the text: the second request does not
+// ask clangd again.
+TEST(LanguageServerNative, SemanticTokensAnswerIsCachedForEachVersion)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    auto requests = [&] { return s.client->request("hot/indexStats", json::object())["result"].value("tokenRequests", -1); };
+    json first;
+    for (int i = 0; i < 20; ++i)
+    {
+        first = s.client->request("textDocument/semanticTokens/full", {{"textDocument", {{"uri", s.uri}}}});
+        const int n = requests();
+        if (n >= 1 && first["result"]["data"].size() > 0
+            && decode_native_tokens(first["result"]["data"]).size() > 40)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    const int before = requests();
+    const json again = s.client->request("textDocument/semanticTokens/full", {{"textDocument", {{"uri", s.uri}}}});
+    EXPECT_EQ(requests(), before);
+    EXPECT_EQ(again["result"], first["result"]);
+    // A new version of the text asks clangd again.
+    std::string changed = kNativeScript;
+    changed += "\n";
+    s.client->change(s.uri, 2, changed);
+    s.client->request("textDocument/semanticTokens/full", {{"textDocument", {{"uri", s.uri}}}});
+    EXPECT_GT(requests(), before);
+}
+
+// No wait: the first answer has the script tokens only. The late answer of clangd goes to the
+// cache, and the next request has the native tokens.
+TEST(LanguageServerNative, SemanticTokensTimeoutGivesTheScriptTokensThenTheLateAnswer)
+{
+    REQUIRE_CLANGD();
+    NativeSession s(kNativeScript, 0);
+    const json p = native_pos("Counter local;", "Counter");
+    auto has_native = [&](const std::vector<Tok>& tokens)
+    { return std::any_of(tokens.begin(), tokens.end(), [&](const Tok& t) { return t.line == p["line"] && t.col == p["character"]; }); };
+    const json first = s.client->request("textDocument/semanticTokens/full", {{"textDocument", {{"uri", s.uri}}}});
+    ASSERT_TRUE(first.contains("result")) << first.dump();
+    const std::vector<Tok> script_only = decode_native_tokens(first["result"]["data"]);
+    EXPECT_FALSE(script_only.empty());
+    EXPECT_FALSE(has_native(script_only));
+    bool filled = false;
+    for (int i = 0; i < 40 && !filled; ++i)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        const json r = s.client->request("textDocument/semanticTokens/full", {{"textDocument", {{"uri", s.uri}}}});
+        filled = has_native(decode_native_tokens(r["result"]["data"]));
+    }
+    EXPECT_TRUE(filled);
+}
+
+// The document closes and opens again while a worker waits for clangd. The old worker does not
+// write into the new cache entry; the new entry asks clangd itself and gets its own answer.
+TEST(LanguageServerNative, SemanticTokensAfterCloseAndReopenUseTheNewCacheEntry)
+{
+    REQUIRE_CLANGD();
+    NativeSession s(kNativeScript, 0);
+    auto requests = [&] { return s.client->request("hot/indexStats", json::object())["result"].value("tokenRequests", -1); };
+    s.client->request("textDocument/semanticTokens/full", {{"textDocument", {{"uri", s.uri}}}});
+    EXPECT_EQ(requests(), 1);
+    s.client->notify("textDocument/didClose", {{"textDocument", {{"uri", s.uri}}}});
+    s.client->open(s.uri, kNativeScript);
+    s.client->request("textDocument/semanticTokens/full", {{"textDocument", {{"uri", s.uri}}}});
+    EXPECT_EQ(requests(), 2); // the new entry has its own request
+    const json p = native_pos("Counter local;", "Counter");
+    bool filled = false;
+    for (int i = 0; i < 40 && !filled; ++i)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        const json r = s.client->request("textDocument/semanticTokens/full", {{"textDocument", {{"uri", s.uri}}}});
+        const std::vector<Tok> tokens = decode_native_tokens(r["result"]["data"]);
+        filled = std::any_of(tokens.begin(), tokens.end(), [&](const Tok& t) { return t.line == p["line"] && t.col == p["character"]; });
+    }
+    EXPECT_TRUE(filled);
+}
+
+// The switch "nativeSemanticTokens": off gives the script tokens and no request to clangd.
+TEST(LanguageServerNative, SemanticTokensSwitchTurnsTheNativeTokensOff)
+{
+    REQUIRE_CLANGD();
+    NativeSession s(kNativeScript, 10000, false);
+    const json r = s.client->request("textDocument/semanticTokens/full", {{"textDocument", {{"uri", s.uri}}}});
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    const json p = native_pos("Counter local;", "Counter");
+    const std::vector<Tok> tokens = decode_native_tokens(r["result"]["data"]);
+    EXPECT_FALSE(tokens.empty());
+    EXPECT_TRUE(std::none_of(tokens.begin(), tokens.end(), [&](const Tok& t) { return t.line == p["line"] && t.col == p["character"]; }));
+    EXPECT_EQ(s.client->request("hot/indexStats", json::object())["result"].value("tokenRequests", -1), 0);
+}
+
+// The command line switch.
+TEST(LanguageServerNative, SemanticTokensSwitchOnTheCommandLine)
+{
+    hot::ls::ServerOptions o;
+    std::string error;
+    ASSERT_TRUE(hot::ls::parse_arguments({"--stdio", "--no-native-tokens"}, o, error)) << error;
+    EXPECT_FALSE(o.native_semantic_tokens);
+    EXPECT_TRUE(hot::ls::ServerOptions().native_semantic_tokens);
+}
+
+// The switch in the initializationOptions.
+TEST(LanguageServerNative, SemanticTokensSwitchInInitializationOptions)
+{
+    REQUIRE_CLANGD();
+    TempDir dir;
+    write_file((dir.path() / "natives.h").string(), kNativeHeader);
+    const std::string path = (dir.path() / "hero.hot").string();
+    write_file(path, kNativeScript);
+    hot::ls::ServerOptions o = options(dir, true);
+    o.include_dirs.push_back(dir.path().string());
+    LsClient client(o);
+    client.request("initialize", {{"processId", nullptr}, {"rootUri", uri_of(dir.path().string())},
+                                     {"capabilities", json::object()},
+                                     {"initializationOptions", {{"nativeSemanticTokens", false}}}});
+    client.notify("initialized", json::object());
+    client.open(uri_of(path), kNativeScript);
+    const json r = client.request("textDocument/semanticTokens/full", {{"textDocument", {{"uri", uri_of(path)}}}});
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    EXPECT_FALSE(r["result"]["data"].empty());
+    EXPECT_EQ(client.request("hot/indexStats", json::object())["result"].value("tokenRequests", -1), 0);
 }

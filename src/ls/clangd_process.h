@@ -11,6 +11,7 @@
 #include <condition_variable>
 #include <functional>
 #include <map>
+#include <set>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -61,6 +62,7 @@ private:
     std::mutex write_mutex_, mutex_;
     std::condition_variable cv_;
     std::map<int64_t, nlohmann::json> responses_;
+    std::set<int64_t> abandoned_; // the ids of requests that timed out: a late response is dropped
     std::atomic<int64_t> next_id_{1};
     std::atomic<bool> closed_{false};
     Handler on_notification_;

@@ -45,6 +45,12 @@ struct ServerOptions
     // when no host is near.
     std::string prelude_suffix;
     std::string clangd_log; // the stderr of clangd. Empty: /dev/null.
+    // False: the semantic tokens of the script have no tokens of native (C++) names, and the server
+    // does not ask clangd for them (initializationOptions "nativeSemanticTokens").
+    bool native_semantic_tokens = true;
+    // The time in ms that a semantic tokens request waits for the clangd answer. A late answer is
+    // kept for the next request.
+    int native_token_wait_ms = 300;
 };
 
 // Runs the server on two file descriptors until "exit" or the end of the input.
