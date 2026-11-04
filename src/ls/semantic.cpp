@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <map>
+#include <optional>
 #include <set>
 
 namespace hot::ls
@@ -558,6 +559,58 @@ ScriptScope scan_scope(const std::string& text, size_t at, size_t typed_begin)
         snap();
     r.locals = std::move(snapshot);
     return r;
+}
+
+std::vector<NameUse> script_name_uses(const std::string& text, const hotc::AnalyzeResult& facts)
+{
+    std::vector<NameUse> out;
+    const std::vector<Tok> toks = tokenize(text);
+    const std::vector<size_t> starts = line_starts(text);
+    auto offset_of = [&](const hotc::SourcePos& p) -> std::optional<size_t>
+    {
+        if (p.line < 1 || static_cast<size_t>(p.line) > starts.size() || p.col < 1)
+            return std::nullopt;
+        return starts[static_cast<size_t>(p.line - 1)] + static_cast<size_t>(p.col - 1);
+    };
+    auto token_at = [&](size_t off)
+    {
+        const auto it = std::lower_bound(toks.begin(), toks.end(), off, [](const Tok& t, size_t o) { return t.off < o; });
+        return it != toks.end() && it->off == off ? static_cast<size_t>(it - toks.begin()) : toks.size();
+    };
+    std::set<size_t> declared; // the offsets of the names in the declarations
+    for (const hotc::AnalyzedClass& c : facts.classes)
+    {
+        // The begin of a class is at the keyword. The name is the first token with the name after it.
+        if (const auto b = offset_of(c.begin))
+        {
+            const size_t first = token_at(*b);
+            for (size_t i = first; i < toks.size() && i < first + 4; ++i)
+                if (toks[i].s == c.name)
+                {
+                    declared.insert(toks[i].off);
+                    break;
+                }
+        }
+        for (const hotc::AnalyzedMember& m : c.members)
+            if (const auto b = offset_of(m.begin))
+            {
+                declared.insert(*b);
+                // The begin of a destructor is at the "~". The name is the token after it.
+                if (m.kind == "destructor")
+                {
+                    const size_t i = token_at(*b);
+                    if (i + 1 < toks.size() && toks[i].s == "~")
+                        declared.insert(toks[i + 1].off);
+                }
+            }
+    }
+    for (size_t i = 0; i < toks.size(); ++i)
+    {
+        if (!toks[i].id || keywords().count(toks[i].s) || declared.count(toks[i].off))
+            continue;
+        out.push_back({toks[i].off, toks[i].s, i + 1 < toks.size() && toks[i + 1].s == "("});
+    }
+    return out;
 }
 
 std::vector<ParamHint> script_param_hints(const std::string& text, const hotc::AnalyzeResult& facts)

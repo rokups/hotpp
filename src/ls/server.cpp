@@ -260,6 +260,26 @@ struct Doc
     mutable CompletionCache completion;
 };
 
+// A method or a constructor of a document, with the byte range of its declaration. A destructor is
+// not in the call hierarchy.
+struct Callable
+{
+    const hotc::AnalyzedClass* cls;
+    const hotc::AnalyzedMember* m;
+    size_t begin, end;
+};
+
+std::vector<Callable> callables_of(const Doc& d)
+{
+    std::vector<Callable> out;
+    for (const hotc::AnalyzedClass& c : d.facts.classes)
+        for (const hotc::AnalyzedMember& m : c.members)
+            if (m.kind == "method" || m.kind == "constructor")
+                out.push_back({&c, &m, d.text.offset(m.begin.line - 1, m.begin.col - 1),
+                    d.text.offset(m.end.line - 1, m.end.col - 1)});
+    return out;
+}
+
 std::optional<Pos> Doc::text_to_gen_script(Pos p) const
 {
     if (!edited)
@@ -608,6 +628,10 @@ private:
     json on_document_symbol(const Doc& d);
     json on_semantic_tokens(const Doc& d);
     json on_inlay_hint(const Doc& d, const json& p);
+    json on_code_lens(const Doc& d);
+    json on_prepare_call_hierarchy(const Doc& d, const json& p);
+    json on_call_hierarchy(const std::string& method, const json& p);
+    json call_item(const Doc& d, const Callable& c) const;
     json on_workspace_symbol(const json& p);
     // The script symbols of the .hot files of the workspace folders. A closed file counts only if
     // the index has a valid shard for it. This request never analyzes a closed file.
@@ -1052,7 +1076,8 @@ json Server::on_initialize(const json& p)
             {{"positionEncoding", utf8_ ? "utf-8" : "utf-16"},
                 {"textDocumentSync", {{"openClose", true}, {"change", 1}}},
                 {"completionProvider", {{"triggerCharacters", {".", ":"}}}}, {"hoverProvider", true},
-                {"inlayHintProvider", true}, {"signatureHelpProvider", {{"triggerCharacters", {"(", ","}}}}, {"documentFormattingProvider", true},
+                {"inlayHintProvider", true}, {"codeLensProvider", {{"resolveProvider", false}}},
+                {"callHierarchyProvider", true}, {"signatureHelpProvider", {{"triggerCharacters", {"(", ","}}}}, {"documentFormattingProvider", true},
                 {"codeActionProvider", {{"codeActionKinds", {"quickfix"}}}}, {"definitionProvider", true},
                 {"referencesProvider", true}, {"documentSymbolProvider", true}, {"renameProvider", true},
                 {"workspaceSymbolProvider", true},
@@ -2684,6 +2709,165 @@ json Server::on_inlay_hint(const Doc& d, const json& p)
     return out;
 }
 
+// One lens for each script class and each method or constructor. The title has the number of
+// references. The count is a name scan of the document (see script_name_uses): it uses neither
+// clangd nor the other scripts, so the request is quick. The lens has no command: the title is all.
+json Server::on_code_lens(const Doc& d)
+{
+    json out = json::array();
+    const std::vector<NameUse> uses = script_name_uses(d.text.s, d.facts);
+    auto count = [&](const std::string& name)
+    {
+        return static_cast<int>(
+            std::count_if(uses.begin(), uses.end(), [&](const NameUse& u) { return u.name == name; }));
+    };
+    auto lens = [&](Pos b, size_t len, int n)
+    {
+        const std::string title = std::to_string(n) + (n == 1 ? " reference" : " references");
+        out.push_back({{"range", script_range(d, b, {b.line, b.col + static_cast<int>(len)})},
+            {"command", {{"title", title}, {"command", ""}}}});
+    };
+    for (const hotc::AnalyzedClass& c : d.facts.classes)
+    {
+        lens(class_name_pos(d, c), c.name.size(), count(c.name));
+        for (const hotc::AnalyzedMember& m : c.members)
+            if (m.kind == "method" || m.kind == "constructor")
+                lens({m.begin.line - 1, m.begin.col - 1}, m.name.size(), count(m.name));
+    }
+    return out;
+}
+
+// The item of a call hierarchy for a method or a constructor. "data" lets the next requests find
+// the member again.
+json Server::call_item(const Doc& d, const Callable& c) const
+{
+    const Pos b = {c.m->begin.line - 1, c.m->begin.col - 1}, e = {c.m->end.line - 1, c.m->end.col - 1};
+    return {{"name", c.m->name}, {"kind", c.m->kind == "constructor" ? 9 : 6}, {"detail", c.cls->name},
+        {"uri", d.uri}, {"range", script_range(d, b, e)},
+        {"selectionRange", script_range(d, b, {b.line, b.col + static_cast<int>(c.m->name.size())})},
+        {"data", {{"cls", c.cls->name}, {"name", c.m->name}, {"line", b.line}, {"col", b.col}}}};
+}
+
+// The methods and the constructors at the position: the one that is declared there, or else all
+// the ones that have the name of the word. The match is by name.
+json Server::on_prepare_call_hierarchy(const Doc& d, const json& p)
+{
+    const json position = p.is_object() ? p.value("position", json::object()) : json::object();
+    if (!position.is_object())
+        return nullptr;
+    const Pos here = from_lsp(d.text, position, utf8_);
+    const size_t at = d.text.offset(here.line, here.col);
+    const std::vector<Callable> all = callables_of(d);
+    json out = json::array();
+    for (const Callable& c : all)
+        if (c.begin <= at && at <= c.begin + c.m->name.size())
+            return json::array({call_item(d, c)});
+    // The name of a destructor is not a call.
+    for (const hotc::AnalyzedClass& c : d.facts.classes)
+        for (const hotc::AnalyzedMember& m : c.members)
+        {
+            const size_t b = d.text.offset(m.begin.line - 1, m.begin.col - 1);
+            if (m.kind == "destructor" && b <= at && at <= b + m.name.size())
+                return nullptr;
+        }
+    const std::string w = word(d, here);
+    if (w.empty())
+        return nullptr;
+    for (const Callable& c : all)
+        if (c.m->name == w)
+            out.push_back(call_item(d, c));
+    return out.empty() ? json(nullptr) : out;
+}
+
+// The incoming calls of a method are the calls with its name in the bodies of the methods and
+// constructors of the document, grouped by the one that holds them. The outgoing calls are the calls in the body of
+// the method whose name is the name of a method or a constructor of the document. A call
+// inside a field initializer or in another document is not found.
+json Server::on_call_hierarchy(const std::string& method, const json& p)
+{
+    json out = json::array();
+    // A request with a malformed item gets an empty answer. A member of a wrong type is absent.
+    auto field = [](const json& j, const char* key, json::value_t type) -> const json*
+    {
+        if (!j.is_object())
+            return nullptr;
+        const auto f = j.find(key);
+        return f != j.end() && f->type() == type ? &*f : nullptr;
+    };
+    const json* item = field(p, "item", json::value_t::object);
+    const json* uri = item ? field(*item, "uri", json::value_t::string) : nullptr;
+    const json* data = item ? field(*item, "data", json::value_t::object) : nullptr;
+    if (!uri || !data)
+        return out;
+    const auto it = docs_.find(uri->get<std::string>());
+    if (it == docs_.end() || it->second->cpp)
+        return out;
+    const Doc& d = *it->second;
+    const std::vector<Callable> all = callables_of(d);
+    const json* cls_j = field(*data, "cls", json::value_t::string);
+    const json* name_j = field(*data, "name", json::value_t::string);
+    if (!cls_j || !name_j)
+        return out;
+    const std::string cls = cls_j->get<std::string>(), name = name_j->get<std::string>();
+    auto number = [&](const char* key)
+    {
+        const auto f = data->find(key);
+        return f != data->end() && f->is_number_integer() ? f->get<int>() : -1;
+    };
+    const int want_line = number("line"), want_col = number("col");
+    const Callable* self = nullptr;
+    for (const Callable& c : all)
+        if (c.cls->name == cls && c.m->name == name
+            && (!self || (c.m->begin.line - 1 == want_line && c.m->begin.col - 1 == want_col)))
+            self = &c;
+    if (!self)
+        return out;
+    const std::vector<NameUse> uses = script_name_uses(d.text.s, d.facts);
+    auto name_range = [&](const NameUse& u)
+    {
+        const auto [l, c] = d.text.pos(u.off);
+        return script_range(d, {l, c}, {l, c + static_cast<int>(u.name.size())});
+    };
+    std::map<const Callable*, json> groups; // the items that the calls reach
+    std::vector<const Callable*> order;
+    auto add = [&](const Callable& c, const NameUse& u)
+    {
+        if (!groups.count(&c))
+        {
+            groups[&c] = json::array();
+            order.push_back(&c);
+        }
+        groups[&c].push_back(name_range(u));
+    };
+    const bool incoming = method == "callHierarchy/incomingCalls";
+    for (const NameUse& u : uses)
+    {
+        if (!u.call)
+            continue;
+        if (incoming)
+        {
+            if (u.name != name)
+                continue;
+            for (const Callable& c : all)
+                if (c.begin <= u.off && u.off < c.end)
+                {
+                    add(c, u);
+                    break;
+                }
+        }
+        else if (self->begin <= u.off && u.off < self->end)
+        {
+            for (const Callable& c : all)
+                if (c.m->name == u.name)
+                    add(c, u);
+        }
+    }
+    std::sort(order.begin(), order.end(), [](const Callable* a, const Callable* b) { return a->begin < b->begin; });
+    for (const Callable* c : order)
+        out.push_back({{incoming ? "from" : "to", call_item(d, *c)}, {"fromRanges", groups[c]}});
+    return out;
+}
+
 // A place in a generated file on disk (from "hotc --compile-commands") as a script location.
 // The "#line" directives give the script and the line.
 json disk_to_script(const std::string& cpp_path, int line)
@@ -3047,10 +3231,15 @@ void Server::handle(const json& msg)
     if (method == "hot/toScript")
         return reply(id, on_to_script(p));
 
+    // These requests carry an item of a call hierarchy, not a text document.
+    if (method == "callHierarchy/incomingCalls" || method == "callHierarchy/outgoingCalls")
+        return reply(id, on_call_hierarchy(method, p));
+
     static const std::set<std::string> doc_methods = {"textDocument/completion", "textDocument/hover",
         "textDocument/definition", "textDocument/references", "textDocument/documentSymbol",
         "textDocument/semanticTokens/full", "textDocument/rename", "textDocument/signatureHelp",
-        "textDocument/formatting", "textDocument/codeAction", "textDocument/inlayHint"};
+        "textDocument/formatting", "textDocument/codeAction", "textDocument/inlayHint", "textDocument/codeLens",
+        "textDocument/prepareCallHierarchy"};
     if (!doc_methods.count(method))
         return reply_error(id, kMethodNotFound, "unknown method: " + method);
     auto d = doc_of(p);
@@ -3071,6 +3260,10 @@ void Server::handle(const json& msg)
         return reply(id, on_signature_help(*d, p));
     if (method == "textDocument/inlayHint")
         return reply(id, on_inlay_hint(*d, p));
+    if (method == "textDocument/codeLens")
+        return reply(id, on_code_lens(*d));
+    if (method == "textDocument/prepareCallHierarchy")
+        return reply(id, on_prepare_call_hierarchy(*d, p));
     if (method == "textDocument/formatting")
         return reply(id, on_formatting(*d, p));
     if (method == "textDocument/codeAction")

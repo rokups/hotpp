@@ -3007,3 +3007,256 @@ TEST(LanguageServer, FirstFolderAddedLaterOpensTheIndex)
     const std::string uri = fill(client, one / "first.hot", "Alpha");
     EXPECT_TRUE(has_symbol(symbols(client, "alpha"), "Alpha", uri));
 }
+
+// ------------------------------------------------------------------ code lens and call hierarchy
+
+namespace
+{
+
+// The 0-based lines: 1 Add, 2 Unused, 3 Run with two calls of Add on 4 and 5, 6 the new Calc, 8 Twice.
+const char* const kLensScript =
+    "class Calc {\n"
+    "    int Add(int a, int b) { return a + b; }\n"
+    "    int Unused() { return 0; }\n"
+    "    void Run() {\n"
+    "        this.Add(1, 2);\n"
+    "        this.Add(3, 4);\n"
+    "        var c = new Calc();\n"
+    "    }\n"
+    "    void Twice() {\n"
+    "        this.Run();\n"
+    "    }\n"
+    "}\n";
+
+// The (line, title) of each lens.
+std::vector<std::pair<int, std::string>> lenses_of(Session& s)
+{
+    const json r = s.client->request("textDocument/codeLens", {{"textDocument", {{"uri", s.uri}}}});
+    std::vector<std::pair<int, std::string>> out;
+    if (!r.contains("result") || !r["result"].is_array())
+        return out;
+    for (const json& l : r["result"])
+        out.emplace_back(l["range"]["start"]["line"].get<int>(), l["command"]["title"].get<std::string>());
+    return out;
+}
+
+// The first item of prepareCallHierarchy at a position, or null.
+json prepare_item(Session& s, int line, int character)
+{
+    const json r = s.client->request("textDocument/prepareCallHierarchy", doc_pos(s.uri, line, character));
+    if (!r.contains("result") || !r["result"].is_array() || r["result"].empty())
+        return nullptr;
+    return r["result"][0];
+}
+
+json calls_of(Session& s, const char* method, const json& item)
+{
+    const json r = s.client->request(method, {{"item", item}});
+    return r.contains("result") ? r["result"] : json();
+}
+
+} // namespace
+
+TEST(LanguageServer, CodeLensAndCallHierarchyAreAdvertised)
+{
+    TempDir dir;
+    LsClient client(options(dir, false));
+    const json init = client.initialize(uri_of(dir.path().string()));
+    ASSERT_TRUE(init.contains("capabilities")) << init.dump();
+    EXPECT_EQ(init["capabilities"].value("codeLensProvider", json()), json({{"resolveProvider", false}})) << init.dump();
+    EXPECT_EQ(init["capabilities"].value("callHierarchyProvider", json()), true) << init.dump();
+}
+
+TEST(LanguageServer, CodeLensCountsTheReferences)
+{
+    Session s(false, kLensScript);
+    using L = std::pair<int, std::string>;
+    const std::vector<L> want = {{0, "1 reference"}, {1, "2 references"}, {2, "0 references"}, {3, "1 reference"},
+        {8, "0 references"}};
+    EXPECT_EQ(lenses_of(s), want);
+}
+
+TEST(LanguageServerCpp, ScriptGetsNoCodeLensOrCallHierarchy)
+{
+    CppScriptCase c;
+    LsClient client(c.o);
+    client.initialize(uri_of(c.dir.path().string()));
+    CppScriptCase::open(client, c.script_uri, kCppValid);
+    ASSERT_FALSE(CppScriptCase::diagnostics_of(client, c.script_uri).is_null());
+    for (const char* method : {"textDocument/codeLens", "textDocument/prepareCallHierarchy"})
+    {
+        const json r = client.request(method, doc_pos(c.script_uri, 2, 8));
+        ASSERT_TRUE(r.contains("result")) << method << ": " << r.dump();
+        EXPECT_TRUE(r["result"].is_null() || r["result"].empty()) << method << ": " << r.dump();
+    }
+}
+
+TEST(LanguageServer, PrepareCallHierarchyGivesTheMethod)
+{
+    Session s(false, kLensScript);
+    for (const auto& [line, ch] : {std::pair{1, 9}, std::pair{4, 14}})
+    {
+        const json item = prepare_item(s, line, ch);
+        ASSERT_FALSE(item.is_null()) << line;
+        EXPECT_EQ(item["name"], "Add");
+        EXPECT_EQ(item["kind"], 6);
+        EXPECT_EQ(item["detail"], "Calc");
+        EXPECT_EQ(item["uri"], s.uri);
+        EXPECT_EQ(item["selectionRange"]["start"], pos(1, 8));
+    }
+    EXPECT_TRUE(prepare_item(s, 0, 1).is_null()); // "class" is not a method
+}
+
+TEST(LanguageServer, IncomingCallsListTheCallerAndTheCallRanges)
+{
+    Session s(false, kLensScript);
+    const json in = calls_of(s, "callHierarchy/incomingCalls", prepare_item(s, 1, 9));
+    ASSERT_TRUE(in.is_array() && in.size() == 1) << in.dump();
+    EXPECT_EQ(in[0]["from"]["name"], "Run");
+    ASSERT_EQ(in[0]["fromRanges"].size(), 2u);
+    EXPECT_EQ(in[0]["fromRanges"][0], json({{"start", pos(4, 13)}, {"end", pos(4, 16)}}));
+    EXPECT_EQ(in[0]["fromRanges"][1]["start"], pos(5, 13));
+    // Run is called by Twice. Twice has no caller.
+    const json run = calls_of(s, "callHierarchy/incomingCalls", prepare_item(s, 3, 10));
+    ASSERT_TRUE(run.is_array() && run.size() == 1) << run.dump();
+    EXPECT_EQ(run[0]["from"]["name"], "Twice");
+    EXPECT_TRUE(calls_of(s, "callHierarchy/incomingCalls", prepare_item(s, 8, 10)).empty());
+}
+
+TEST(LanguageServer, OutgoingCallsListTheCallee)
+{
+    Session s(false, kLensScript);
+    const json out = calls_of(s, "callHierarchy/outgoingCalls", prepare_item(s, 3, 10));
+    ASSERT_TRUE(out.is_array() && out.size() == 1) << out.dump();
+    EXPECT_EQ(out[0]["to"]["name"], "Add");
+    ASSERT_EQ(out[0]["fromRanges"].size(), 2u);
+    EXPECT_EQ(out[0]["fromRanges"][1]["start"], pos(5, 13));
+    // Unused calls nothing.
+    EXPECT_TRUE(calls_of(s, "callHierarchy/outgoingCalls", prepare_item(s, 2, 9)).empty());
+}
+
+namespace
+{
+
+// The 0-based lines: 1 the constructor, 2 the destructor, 3 and 4 the overloads of Twice, 5 Fact
+// (it calls itself), 6 a comment and 9 a string with "Twice", 7 Run, 8 the new Tool, 10 the call.
+const char* const kToolScript =
+    "class Tool {\n"
+    "    public Tool(int n) { }\n"
+    "    ~Tool() { }\n"
+    "    int Twice(int x) { return x * 2; }\n"
+    "    int Twice(int x, int y) { return x + y; }\n"
+    "    int Fact(int n) { if (n > 1) { return n * this.Fact(n - 1); } return 1; }\n"
+    "    // Twice(1) in a comment\n"
+    "    void Run() {\n"
+    "        var t = new Tool(1);\n"
+    "        string s = \"Twice(2)\";\n"
+    "        this.Twice(3);\n"
+    "    }\n"
+    "}\n";
+
+} // namespace
+
+TEST(LanguageServer, CodeLensOfAConstructorCountsTheUsesOfTheClassName)
+{
+    Session s(false, kToolScript);
+    using L = std::pair<int, std::string>;
+    // The constructor and the destructor names are declarations. Only "new Tool" is a use. The
+    // comment and the string do not count. Both overloads of Twice get the count of the name.
+    const std::vector<L> want = {{0, "1 reference"}, {1, "1 reference"}, {3, "1 reference"}, {4, "1 reference"},
+        {5, "1 reference"}, {7, "0 references"}};
+    EXPECT_EQ(lenses_of(s), want);
+}
+
+TEST(LanguageServer, IncomingCallsOfAConstructorHaveNoDestructorName)
+{
+    Session s(false, kToolScript);
+    const json item = prepare_item(s, 1, 12);
+    ASSERT_FALSE(item.is_null());
+    EXPECT_EQ(item["kind"], 9);
+    EXPECT_EQ(item["selectionRange"]["start"], pos(1, 11));
+    const json in = calls_of(s, "callHierarchy/incomingCalls", item);
+    ASSERT_TRUE(in.is_array() && in.size() == 1) << in.dump();
+    EXPECT_EQ(in[0]["from"]["name"], "Run");
+    ASSERT_EQ(in[0]["fromRanges"].size(), 1u);
+    EXPECT_EQ(in[0]["fromRanges"][0], json({{"start", pos(8, 20)}, {"end", pos(8, 24)}}));
+    // The name of the destructor is not an item.
+    EXPECT_TRUE(prepare_item(s, 2, 5).is_null());
+}
+
+TEST(LanguageServer, CallsInACommentOrAStringAreNotCounted)
+{
+    Session s(false, kToolScript);
+    const json in = calls_of(s, "callHierarchy/incomingCalls", prepare_item(s, 3, 9));
+    ASSERT_TRUE(in.is_array() && in.size() == 1) << in.dump();
+    ASSERT_EQ(in[0]["fromRanges"].size(), 1u);
+    EXPECT_EQ(in[0]["fromRanges"][0]["start"], pos(10, 13));
+}
+
+TEST(LanguageServer, OverloadsShareTheIncomingCalls)
+{
+    Session s(false, kToolScript);
+    const json first = prepare_item(s, 3, 9), second = prepare_item(s, 4, 9);
+    ASSERT_FALSE(first.is_null());
+    ASSERT_FALSE(second.is_null());
+    EXPECT_NE(first["selectionRange"], second["selectionRange"]);
+    EXPECT_EQ(calls_of(s, "callHierarchy/incomingCalls", first), calls_of(s, "callHierarchy/incomingCalls", second));
+}
+
+TEST(LanguageServer, ARecursiveMethodIsItsOwnCallerAndCallee)
+{
+    Session s(false, kToolScript);
+    const json item = prepare_item(s, 5, 9);
+    ASSERT_FALSE(item.is_null());
+    for (const char* method : {"callHierarchy/incomingCalls", "callHierarchy/outgoingCalls"})
+    {
+        const json r = calls_of(s, method, item);
+        ASSERT_TRUE(r.is_array() && r.size() == 1) << method << ": " << r.dump();
+        EXPECT_EQ(r[0][std::string(method).find("incoming") != std::string::npos ? "from" : "to"]["name"], "Fact");
+        ASSERT_EQ(r[0]["fromRanges"].size(), 1u);
+        EXPECT_EQ(r[0]["fromRanges"][0]["start"], pos(5, 51));
+    }
+}
+
+TEST(LanguageServer, CallHierarchyColumnsAreUtf16)
+{
+    // On line 3 the string has an accented letter (2 bytes) and an emoji (4 bytes, 2 code units).
+    Session s(false,
+        "class U {\n"
+        "    int F() { return 1; }\n"
+        "    void Run() {\n"
+        "        string u = \"\xC3\xA9\xF0\x9F\x98\x80\"; this.F();\n"
+        "    }\n"
+        "}\n");
+    const json item = prepare_item(s, 3, 31);
+    ASSERT_FALSE(item.is_null());
+    EXPECT_EQ(item["name"], "F");
+    const json in = calls_of(s, "callHierarchy/incomingCalls", item);
+    ASSERT_TRUE(in.is_array() && in.size() == 1) << in.dump();
+    EXPECT_EQ(in[0]["fromRanges"][0], json({{"start", pos(3, 31)}, {"end", pos(3, 32)}}));
+}
+
+TEST(LanguageServer, MalformedCallHierarchyRequestsKeepTheServerAlive)
+{
+    Session s(false, kToolScript);
+    const json item = prepare_item(s, 3, 9);
+    const std::vector<json> items = {json::object(), 5, "text", nullptr, {{"uri", 5}},
+        {{"uri", s.uri}}, {{"uri", s.uri}, {"data", 7}}, {{"uri", s.uri}, {"data", {{"cls", 3}, {"name", json::array()}}}},
+        {{"uri", "file:///nowhere.hot"}, {"data", item["data"]}}};
+    for (const char* method : {"callHierarchy/incomingCalls", "callHierarchy/outgoingCalls"})
+        for (const json& bad : items)
+        {
+            const json r = s.client->request(method, {{"item", bad}});
+            ASSERT_TRUE(r.contains("result")) << method << " " << bad.dump() << ": " << r.dump();
+            EXPECT_TRUE(r["result"].empty()) << bad.dump() << ": " << r.dump();
+        }
+    // A position of a wrong type falls back to the first member with the class and the name.
+    const json bad_pos = s.client->request("callHierarchy/incomingCalls",
+        {{"item", {{"uri", s.uri}, {"data", {{"cls", "Tool"}, {"name", "Twice"}, {"line", "x"}, {"col", nullptr}}}}}});
+    EXPECT_TRUE(bad_pos.contains("result") && bad_pos["result"].is_array()) << bad_pos.dump();
+    const json no_item = s.client->request("callHierarchy/incomingCalls", json::object());
+    EXPECT_TRUE(no_item.contains("result") && no_item["result"].empty()) << no_item.dump();
+    const json no_pos = s.client->request("textDocument/prepareCallHierarchy", {{"textDocument", {{"uri", s.uri}}}});
+    EXPECT_TRUE(no_pos.contains("result") || no_pos.contains("error")) << no_pos.dump();
+    EXPECT_FALSE(lenses_of(s).empty()); // the server still answers
+}

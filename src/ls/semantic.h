@@ -41,6 +41,21 @@ struct ParamHint
 // parameter name. An argument that is the plain name of its parameter gets no hint.
 std::vector<ParamHint> script_param_hints(const std::string& text, const hotc::AnalyzeResult& facts);
 
+// A use of a name in a script: an identifier that is not a keyword. The name in the declaration
+// of a class or of a member is not a use. The name in a destructor ("~Name") is a declaration too. "call" is set when "(" follows the name. The scan reads
+// the tokens only. It does not know the type of an object, so the same name in two classes (or
+// a local with the name of a method) is the same name. The references, the code lens and the
+// call hierarchy use this scan.
+struct NameUse
+{
+    size_t off = 0; // the byte offset of the name
+    std::string name;
+    bool call = false;
+};
+
+// The uses of all the names, in source order.
+std::vector<NameUse> script_name_uses(const std::string& text, const hotc::AnalyzeResult& facts);
+
 // The keywords of the script, and the names of its builtin types (with the aliases).
 const std::vector<std::string>& script_keywords();
 // The global helper functions that every script has: "enumerate" and "range". They are not keywords.
