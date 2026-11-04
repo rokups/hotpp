@@ -541,6 +541,17 @@ const char* const kNativeScript =
     "    Score score = 0;\n"
     "    std.vector<Counter> counters;\n"
     "    Mood mood = Mood.Calm;\n"
+    "    int limit = Clamp100(MAX_HP);\n"
+    "    int bumped = Counter().Bump(2);\n"
+    "    int seen = Counter().count;\n"
+    "\n"
+    "    void Take(Counter Counter) {\n"
+    "    }\n"
+    "\n"
+    "    int Pick(Counter c, int Bump, int count) {\n"
+    "        c.count = count;\n"
+    "        return c.Bump(Bump);\n"
+    "    }\n"
     "\n"
     "    override void Tick(float dt) {\n"
     "        Counter local;\n"
@@ -554,6 +565,9 @@ const char* const kNativeScript =
     "        Level lv = LevelHigh;\n"
     "        Mood m = Mood.Angry;\n"
     "        int tag = Tag(\"Counter Counter Counter Counter\", Counter());\n"
+    "        // Roar and Clamp100 in a comment\n"
+    "        string note = \"Clamp100 in a string\";\n"
+    "        string wide = \"\xC3\xA9\"; int after = Clamp100(2);\n"
     "    }\n"
     "}\n";
 
@@ -698,6 +712,246 @@ TEST(LanguageServerNative, TypeAliasAndMacroJumpToTheirDeclaration)
     NativeSession s;
     s.expect("Score score", "Score", "natives.h", "using Score");
     s.expect("Clamp100(MAX_HP)", "MAX_HP", "natives.h", "#define MAX_HP");
+}
+
+// ------------------------------------------------------------------ references and hover of native symbols
+namespace
+{
+
+// The 0-based line and column of the last "word" in the first "context" of the native script.
+json native_pos(const std::string& context, const std::string& word)
+{
+    const std::string text = kNativeScript;
+    const size_t at = text.find(context);
+    EXPECT_NE(at, std::string::npos) << context;
+    const size_t w = at + context.rfind(word);
+    // The column counts UTF-16 units: a byte of a multi-byte character (10xxxxxx) is not a unit.
+    int col = 0;
+    for (size_t i = text.rfind('\n', w - 1) + 1; i < w; ++i)
+        col += (static_cast<unsigned char>(text[i]) & 0xC0) != 0x80;
+    return pos(static_cast<int>(std::count(text.begin(), text.begin() + static_cast<long>(w), '\n')), col);
+}
+
+// The 0-based line of the first "text" in "source".
+int line_of(const std::string& source, const std::string& text)
+{
+    const size_t at = source.find(text);
+    EXPECT_NE(at, std::string::npos) << text;
+    return static_cast<int>(std::count(source.begin(), source.begin() + static_cast<long>(at), '\n'));
+}
+
+// The references of the word in the context. The cursor has no map segment or has one. The answer
+// must have the declaration in natives.h (the line of "decl") and a place in the script for each
+// context of "script_contexts".
+void expect_native_references(NativeSession& s, const std::string& context, const std::string& word,
+    const std::string& decl, const std::vector<std::string>& script_contexts)
+{
+    json p = {{"textDocument", {{"uri", s.uri}}}, {"position", native_pos(context, word)},
+        {"context", {{"includeDeclaration", true}}}};
+    // The index of clangd can need some time.
+    json r;
+    bool have_decl = false;
+    for (int i = 0; i < 20 && !have_decl; ++i)
+    {
+        r = s.client->request("textDocument/references", p);
+        ASSERT_TRUE(r.contains("result") && r["result"].is_array()) << r.dump();
+        for (const json& l : r["result"])
+            have_decl = have_decl
+                || (l.value("uri", "") == uri_of((s.dir.path() / "natives.h").string())
+                    && l["range"]["start"]["line"] == line_of(kNativeHeader, decl));
+        if (!have_decl)
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    EXPECT_TRUE(have_decl) << "no declaration in natives.h: " << r.dump();
+    for (const std::string& c : script_contexts)
+    {
+        const json at = native_pos(c, word);
+        bool found = false;
+        for (const json& l : r["result"])
+            found = found
+                || (l.value("uri", "") == s.uri && l["range"]["start"] == at
+                    && l["range"]["end"]["character"] == at["character"].get<int>() + static_cast<int>(word.size()));
+        EXPECT_TRUE(found) << "no place in the script for: " << c << " in " << r.dump();
+    }
+}
+
+// The hover text of the word in the context has the text "want".
+void expect_native_hover(NativeSession& s, const std::string& context, const std::string& word, const std::string& want)
+{
+    const json r = s.client->request("textDocument/hover", doc_pos(s.uri, native_pos(context, word)["line"],
+                                                               native_pos(context, word)["character"]));
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << context << " -> " << r.dump();
+    EXPECT_NE(r["result"].dump().find(want), std::string::npos) << context << " -> " << r.dump();
+}
+
+} // namespace
+
+TEST(LanguageServerNative, ReferencesOfAFunction)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    expect_native_references(s, "Clamp100(MAX_HP)", "Clamp100", "int Clamp100", {"Clamp100(MAX_HP)", "limit = Clamp100(", "after = Clamp100(2)"});
+}
+
+TEST(LanguageServerNative, ReferencesOfAClass)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    expect_native_references(s, "Counter local;", "Counter", "struct Counter", {"Counter local;", "Counter counter;"});
+    expect_native_references(s, "class Hero : Boss", "Boss", "class Boss", {"class Hero : Boss", "this as Boss"});
+}
+
+TEST(LanguageServerNative, ReferencesOfAMethod)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    expect_native_references(s, "local.Bump(", "Bump", "int Bump", {"local.Bump(", "bumped = Counter().Bump("});
+    expect_native_references(s, "this.Roar()", "Roar", "void Roar", {"this.Roar()"});
+}
+
+TEST(LanguageServerNative, ReferencesOfAField)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    expect_native_references(s, "this.rage =", "rage", "int rage", {"this.rage ="});
+    expect_native_references(s, "this.counter.count", "count", "int count", {"this.counter.count", "seen = Counter().count"});
+}
+
+TEST(LanguageServerNative, ReferencesOfAnEnum)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    expect_native_references(s, "Mood m = ", "Mood", "enum class Mood", {"Mood m = ", "Mood mood"});
+    expect_native_references(s, "Mood.Angry;", "Angry", "Angry", {"Mood.Angry;"});
+    expect_native_references(s, "Level lv", "Level", "enum Level", {"Level lv"});
+}
+
+// The hover range uses the UTF-16 columns: a character before the word has two bytes, one unit.
+TEST(LanguageServerNative, HoverRangeIsTheWordInUtf16Columns)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    const json at = native_pos("after = Clamp100(2)", "Clamp100");
+    EXPECT_EQ(at["character"], 39); // the byte column is 40: the character has two bytes
+    const json r = s.client->request("textDocument/hover", doc_pos(s.uri, at["line"], at["character"]));
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    EXPECT_EQ(r["result"]["range"]["start"], at) << r.dump();
+    EXPECT_EQ(r["result"]["range"]["end"], pos(at["line"], at["character"].get<int>() + 8)) << r.dump();
+}
+
+// A native name in a comment or in a string is not a symbol. The word search does not run there.
+TEST(LanguageServerNative, HoverInACommentOrAStringGivesNothing)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    for (const auto& c : {std::make_pair("Roar and", "Roar"), std::make_pair("Roar and Clamp100 in", "Clamp100"),
+             std::make_pair("\"Clamp100 in a string", "Clamp100")})
+    {
+        const json at = native_pos(c.first, c.second);
+        const json r = s.client->request("textDocument/hover", doc_pos(s.uri, at["line"], at["character"]));
+        ASSERT_TRUE(r.contains("result")) << r.dump();
+        EXPECT_TRUE(r["result"].is_null()) << c.first << " -> " << r.dump();
+    }
+}
+
+// The parameter "Counter" of Take has the name of the class. The use of the class in the head has
+// no map segment and is found by the word. The parameter name is not a use.
+TEST(LanguageServerNative, ReferencesSkipAParameterWithTheNameOfTheSymbol)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    const json at = native_pos("Counter local;", "Counter");
+    const json r = s.client->request("textDocument/references",
+        {{"textDocument", {{"uri", s.uri}}}, {"position", at}, {"context", {{"includeDeclaration", true}}}});
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array()) << r.dump();
+    const json param = native_pos("Take(Counter Counter)", "Counter"); // the parameter name
+    const json type = pos(param["line"], param["character"].get<int>() - 8);
+    bool has_type = false;
+    for (const json& l : r["result"])
+    {
+        has_type = has_type || (l.value("uri", "") == s.uri && l["range"]["start"] == type);
+        EXPECT_FALSE(l.value("uri", "") == s.uri && l["range"]["start"] == param) << r.dump();
+    }
+    EXPECT_TRUE(has_type) << r.dump();
+}
+
+// A parameter has the name of a native method and of a native field. The use of the symbol is
+// the name after the dot. The parameter in the arguments is not a use.
+TEST(LanguageServerNative, ReferencesSkipAParameterWithTheNameOfAMember)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    struct Case
+    {
+        const char *symbol, *word, *use, *param;
+    };
+    for (const Case& c : {Case{"local.Bump(", "Bump", "c.Bump(", "c.Bump(Bump)"},
+             Case{"this.counter.count", "count", "c.count =", "= count;"}})
+    {
+        const json r = s.client->request("textDocument/references",
+            {{"textDocument", {{"uri", s.uri}}}, {"position", native_pos(c.symbol, c.word)},
+                {"context", {{"includeDeclaration", true}}}});
+        ASSERT_TRUE(r.contains("result") && r["result"].is_array()) << r.dump();
+        const json use = native_pos(c.use, c.word), param = native_pos(c.param, c.word);
+        bool has_use = false;
+        for (const json& l : r["result"])
+        {
+            if (l.value("uri", "") != s.uri)
+                continue;
+            has_use = has_use || l["range"]["start"] == use;
+            EXPECT_NE(l["range"]["start"], param) << c.param << " -> " << r.dump();
+        }
+        EXPECT_TRUE(has_use) << c.use << " -> " << r.dump();
+    }
+}
+
+TEST(LanguageServerNative, HoverOfAFunction)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    expect_native_hover(s, "Clamp100(MAX_HP)", "Clamp100", "int Clamp100(int v)");
+    expect_native_hover(s, "limit = Clamp100(", "Clamp100", "int Clamp100(int v)");
+    expect_native_hover(s, "after = Clamp100(2)", "Clamp100", "int Clamp100(int v)");
+}
+
+TEST(LanguageServerNative, HoverOfAClass)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    expect_native_hover(s, "Counter local;", "Counter", "struct Counter");
+    expect_native_hover(s, "Counter counter;", "Counter", "struct Counter");
+    expect_native_hover(s, "class Hero : Boss", "Boss", "class Boss");
+    expect_native_hover(s, "new Weapon(", "Weapon", "struct Weapon");
+}
+
+TEST(LanguageServerNative, HoverOfAMethod)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    expect_native_hover(s, "local.Bump(", "Bump", "int Bump(int by)");
+    expect_native_hover(s, "this.Roar()", "Roar", "void Roar()");
+    expect_native_hover(s, "bumped = Counter().Bump(", "Bump", "int Bump(int by)");
+}
+
+TEST(LanguageServerNative, HoverOfAField)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    expect_native_hover(s, "this.rage =", "rage", "int rage");
+    expect_native_hover(s, "this.counter.count", "count", "int count");
+    expect_native_hover(s, "this.rage =", "rage", "public: int rage");
+    expect_native_hover(s, "seen = Counter().count", "count", "int count");
+}
+
+TEST(LanguageServerNative, HoverOfAnEnum)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    expect_native_hover(s, "Mood m = ", "Mood", "enum class Mood");
+    expect_native_hover(s, "Level lv", "Level", "enum Level");
+    expect_native_hover(s, "Mood mood", "Mood", "enum class Mood");
+    expect_native_hover(s, "= Mood.Calm", "Calm", "In Mood\\nCalm");
+    expect_native_hover(s, "= LevelHigh;", "LevelHigh", "In Level\\nLevelHigh");
 }
 
 TEST(LanguageServer, ReferencesOfAScriptFieldAreInTheScript)

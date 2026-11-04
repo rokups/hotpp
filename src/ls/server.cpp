@@ -627,6 +627,11 @@ private:
     json on_code_action(const Doc& d, const json& p);
     json on_locations(const Doc& d, const json& p, const std::string& method);
     std::vector<Pos> gen_word_candidates(const Doc& d, Pos script_pos) const;
+    // The places in the generated text to ask clangd about a script position. "by_word" is set when
+    // the position has no map segment and the places come from the word.
+    std::vector<Pos> gen_asks(const Doc& d, Pos script_pos, bool& by_word) const;
+    // The script lines (in gen_script) of the generated lines, or -1 for the text of the translator.
+    std::vector<int> gen_script_lines(const Doc& d) const;
     json on_document_symbol(const Doc& d);
     json on_semantic_tokens(const Doc& d);
     json on_inlay_hint(const Doc& d, const json& p);
@@ -1783,31 +1788,62 @@ json Server::on_completion(const Doc& d, const json& p)
     return {{"isIncomplete", incomplete}, {"items", items}};
 }
 
+static std::string blank_non_code(std::string_view l, bool& in_block);
+
 json Server::on_hover(const Doc& d, const json& p)
 {
-    const auto g = to_gen(d, from_lsp(d.text, p["position"], utf8_));
-    if (!g)
-        return nullptr;
-    auto r =
-        clangd_result("textDocument/hover", {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, *g)}});
-    if (!r || !r->contains("contents"))
-        return nullptr;
-    json c = (*r)["contents"];
-    if (c.is_object() && c.contains("value"))
-        c["value"] = hotc::rewrite_generated_names(c.value("value", std::string()));
-    else if (c.is_string())
-        c = hotc::rewrite_generated_names(c.get<std::string>());
-    json out = {{"contents", c}};
-    if (r->contains("range"))
+    const Pos here = from_lsp(d.text, p["position"], utf8_);
+    // A word in a comment or in a string is not a symbol: no hover.
     {
-        const auto b = to_script(d, (*r)["range"]["start"]);
-        if (b)
-        {
-            const auto [wb, we] = word_at(d, *b);
-            out["range"] = script_range(d, {b->line, wb}, {b->line, we});
-        }
+        const auto [wb, we] = word_at(d, here);
+        bool block = false;
+        const std::string code = blank_non_code(d.text.line(here.line), block);
+        if (we > wb && static_cast<size_t>(wb) < code.size() && code[static_cast<size_t>(wb)] == ' ')
+            return nullptr;
     }
-    return out;
+    bool by_word = false;
+    const std::vector<Pos> asks = gen_asks(d, here, by_word);
+    // The asks of a word share a short time budget (see on_locations).
+    constexpr int kWordBudgetMs = 3000;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kWordBudgetMs);
+    for (const Pos& g : asks)
+    {
+        int timeout_ms = 60000;
+        if (by_word)
+        {
+            const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+                deadline - std::chrono::steady_clock::now()).count();
+            if (left <= 0)
+                break;
+            timeout_ms = static_cast<int>(left);
+        }
+        auto r = clangd_result(
+            "textDocument/hover", {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, g)}}, timeout_ms);
+        if (!r || !r->contains("contents"))
+            continue;
+        json c = (*r)["contents"];
+        if (c.is_object() && c.contains("value"))
+            c["value"] = hotc::rewrite_generated_names(c.value("value", std::string()));
+        else if (c.is_string())
+            c = hotc::rewrite_generated_names(c.get<std::string>());
+        json out = {{"contents", c}};
+        const auto [wb, we] = word_at(d, here);
+        if (by_word)
+        {
+            out["range"] = script_range(d, {here.line, wb}, {here.line, we});
+        }
+        else if (r->contains("range"))
+        {
+            const auto b = to_script(d, (*r)["range"]["start"]);
+            if (b)
+            {
+                const auto [rb, re] = word_at(d, *b);
+                out["range"] = script_range(d, {b->line, rb}, {b->line, re});
+            }
+        }
+        return out;
+    }
+    return nullptr;
 }
 
 // The signature of the function that the cursor is in. The call is in the script. clangd gets the
@@ -2040,6 +2076,16 @@ static std::string blank_non_code(std::string_view l, bool& in_block)
     return out;
 }
 
+// The columns of the whole-word matches of "w" in a line.
+static std::vector<int> whole_word_cols(std::string_view l, const std::string& w)
+{
+    std::vector<int> cols;
+    for (size_t from = 0, at; (at = l.find(w, from)) != std::string_view::npos; from = at + 1)
+        if ((at == 0 || !is_id_char(l[at - 1])) && (at + w.size() >= l.size() || !is_id_char(l[at + w.size()])))
+            cols.push_back(static_cast<int>(at));
+    return cols;
+}
+
 // The generated places of the word at a script position, for a word with no map segment. The
 // "#line" directives give the script line of each generated line. A generated line of the same
 // script line that has the word gives a place. A word in a string or a comment is not a place.
@@ -2059,17 +2105,13 @@ std::vector<Pos> Server::gen_word_candidates(const Doc& d, Pos script_pos) const
     const auto old = d.text_to_gen_script({script_pos.line, wb});
     if (!old)
         return out;
-    auto whole_words = [&w](std::string_view l)
-    {
-        std::vector<int> cols;
-        for (size_t from = 0, at; (at = l.find(w, from)) != std::string_view::npos; from = at + 1)
-            if ((at == 0 || !is_id_char(l[at - 1])) && (at + w.size() >= l.size() || !is_id_char(l[at + w.size()])))
-                cols.push_back(static_cast<int>(at));
-        return cols;
-    };
+    auto whole_words = [&w](std::string_view l) { return whole_word_cols(l, w); };
     bool script_block = false;
     const std::vector<int> in_script = whole_words(blank_non_code(d.gen_script.line(old->line), script_block));
     const auto nth = std::find(in_script.begin(), in_script.end(), old->col);
+    // The cursor is not on a code word: it is in a comment or in a string.
+    if (nth == in_script.end())
+        return out;
     // Walk the generated lines. A directive sets the script line of the lines after it. A
     // directive of the .cpp file marks text of the translator: it has no script line.
     struct Place
@@ -2148,6 +2190,55 @@ std::vector<Pos> Server::gen_word_candidates(const Doc& d, Pos script_pos) const
     return out;
 }
 
+std::vector<Pos> Server::gen_asks(const Doc& d, Pos script_pos, bool& by_word) const
+{
+    by_word = false;
+    if (const auto g = to_gen(d, script_pos))
+        return {*g};
+    by_word = true;
+    return gen_word_candidates(d, script_pos);
+}
+
+std::vector<int> Server::gen_script_lines(const Doc& d) const
+{
+    std::vector<int> out(d.gen.starts.size(), -1);
+    int script_line = -1, last_directive = -1;
+    bool in_block = false;
+    for (int l = 0; l < static_cast<int>(out.size()); ++l)
+    {
+        const std::string_view t = d.gen.line(l);
+        size_t i = 0;
+        while (i < t.size() && (t[i] == ' ' || t[i] == '\t'))
+            ++i;
+        if (!in_block && i < t.size() && t[i] == '#')
+        {
+            ++i;
+            while (i < t.size() && t[i] == ' ')
+                ++i;
+            if (t.compare(i, 4, "line") == 0)
+            {
+                i += 4;
+                const int n = std::atoi(std::string(t.substr(i)).c_str());
+                const size_t q1 = t.find('"', i), q2 = t.rfind('"');
+                std::string file;
+                for (size_t k = q1 + 1; q1 != std::string_view::npos && k < q2; ++k)
+                {
+                    if (t[k] == '\\' && k + 1 < q2)
+                        ++k;
+                    file += t[k];
+                }
+                script_line = file == d.path ? n - 1 : -1;
+                last_directive = l;
+            }
+            continue;
+        }
+        blank_non_code(t, in_block);
+        if (script_line >= 0)
+            out[static_cast<size_t>(l)] = script_line + (l - last_directive - 1);
+    }
+    return out;
+}
+
 json Server::on_locations(const Doc& d, const json& p, const std::string& method)
 {
     json out = json::array();
@@ -2182,15 +2273,8 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
     // The places in the generated text to ask clangd. A word without a map segment (a type name,
     // a base class, a name after "new") has the places of the same word in the generated lines
     // of its script line. The first place that gives an answer wins.
-    std::vector<Pos> asks;
     bool by_word = false;
-    if (const auto g = to_gen(d, here))
-        asks.push_back(*g);
-    else if (method == "textDocument/definition")
-    {
-        asks = gen_word_candidates(d, here);
-        by_word = true;
-    }
+    const std::vector<Pos> asks = gen_asks(d, here, by_word);
     // The asks of a word share a short time budget: a place that clangd does not answer in time
     // does not hold the editor.
     constexpr int kWordBudgetMs = 3000;
@@ -2214,15 +2298,79 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
         if (!r)
             continue;
         json list = r->is_array() ? *r : json::array({*r});
+        std::vector<int> script_lines;
         for (const json& loc : list)
         {
             json m = map_location(d, loc);
+            // A map segment of an expression ("this as Boss") maps to the start of the expression:
+            // the word there is not the word of the use.
+            const bool wrong_word = !m.is_null() && m.value("uri", std::string()) == d.uri
+                && word(d, from_lsp(d.text, m["range"]["start"], utf8_)) != here_word;
+            if ((m.is_null() || wrong_word) && is_ref && loc.value("uri", std::string()) == d.gen_uri
+                && !here_word.empty())
+            {
+                // A use with no map segment (a type name, a base class): the same word in the
+                // script line of the generated line is the place.
+                if (script_lines.empty())
+                    script_lines = gen_script_lines(d);
+                const int gl = loc["range"]["start"]["line"].get<int>();
+                const int sl = gl < static_cast<int>(script_lines.size()) ? script_lines[static_cast<size_t>(gl)] : -1;
+                const auto t = sl < 0 ? std::nullopt : d.gen_script_to_text({sl, 0});
+                if (!t || t->line >= static_cast<int>(d.text.starts.size()))
+                    continue;
+                // The k-th use of the word on the generated line is the k-th use on the script
+                // line when both lines have the same count. A script line with one use gives
+                // that use. Else the place is not clear and there is no place. A parameter or a
+                // local with the same name is not a use of the symbol.
+                bool block = false, gen_block = false;
+                const std::vector<int> in_text = whole_word_cols(blank_non_code(d.text.line(t->line), block), here_word);
+                const std::vector<int> in_gen = whole_word_cols(blank_non_code(d.gen.line(gl), gen_block), here_word);
+                const int gcol = from_lsp(d.gen, loc["range"]["start"], clangd_utf8_).col;
+                const auto k = std::find(in_gen.begin(), in_gen.end(), gcol) - in_gen.begin();
+                int col = -1;
+                if (in_text.size() == 1)
+                    col = in_text[0];
+                else if (in_text.size() == in_gen.size() && k < static_cast<long>(in_gen.size()))
+                    col = in_text[static_cast<size_t>(k)];
+                if (col >= 0)
+                {
+                    json w = {{"uri", d.uri},
+                        {"range", script_range(d, {t->line, col}, {t->line, col + static_cast<int>(here_word.size())})}};
+                    if (seen.insert(w.dump()).second)
+                        out.push_back(std::move(w));
+                }
+                continue;
+            }
             if (m.is_null() || !seen.insert(m.dump()).second)
                 continue;
             out.push_back(std::move(m));
         }
         if (!out.empty())
+        {
+            // The places in the C++ files: clangd has the declaration in a header only in its
+            // index, so ask for the declaration and the definition too. Skip it when a C++
+            // place is already there. The two calls share a short budget.
+            const bool have_native = std::any_of(out.begin(), out.end(),
+                [&](const json& l) { return l.value("uri", std::string()) != d.uri; });
+            const auto extra_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kWordBudgetMs);
+            if (is_ref && !have_native)
+                for (const char* kind : {"textDocument/declaration", "textDocument/definition"})
+                {
+                    const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        extra_deadline - std::chrono::steady_clock::now()).count();
+                    if (left <= 0)
+                        break;
+                    const auto decl = clangd_result(kind,
+                        {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, g)}}, static_cast<int>(left));
+                    for (const json& loc : decl ? (decl->is_array() ? *decl : json::array({*decl})) : json::array())
+                    {
+                        json m = map_location(d, loc);
+                        if (!m.is_null() && m.value("uri", std::string()) != d.uri && seen.insert(m.dump()).second)
+                            out.push_back(std::move(m));
+                    }
+                }
             break;
+        }
     }
     // A symbol word with a place in the generated text (or no generated text at all, because the
     // translation never worked), but no answer, and no host in use (a host that
