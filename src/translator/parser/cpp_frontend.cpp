@@ -550,6 +550,7 @@ private:
     void check_late_refs(CXCursor var);
     void check_static_init(CXCursor c);
     void warn_static_locals(CXCursor fn);
+    void warn_plain_text(CXCursor k);
     void examine(CXCursor k, WalkState& st);
     void visit(CXCursor k, WalkState& st);
     void walk_main(WalkState& st);
@@ -2066,7 +2067,8 @@ void Frontend::make_method(CXCursor c, const ClassInfo* cls, const Where<ast::Me
     read_method_body(c, cls, where, index);
 }
 
-// A "static" or "thread_local" local variable of a method lives in the code of the module. A
+// A "static" or "thread_local" local variable of a method or of a free function lives in the code
+// of the module. A
 // reload loads a new module, so the variable gets its initial value again. A const variable
 // keeps its value, so it gets no warning.
 void Frontend::warn_static_locals(CXCursor fn)
@@ -2103,6 +2105,27 @@ void Frontend::warn_static_locals(CXCursor fn)
         }
     };
     visit_node(fn);
+}
+
+// Warnings for the text that stays as written: a class template or a partial specialization with a
+// base class, and a free function with a static local variable. A namespace that holds no script
+// code stays one declaration, so the function looks into it.
+void Frontend::warn_plain_text(CXCursor k)
+{
+    const CXCursorKind kind = clang_getCursorKind(k);
+    if (kind == CXCursor_Namespace)
+    {
+        for (CXCursor c : children(k))
+            if (from_main(c))
+                warn_plain_text(c);
+    }
+    else if ((kind == CXCursor_ClassTemplate || kind == CXCursor_ClassTemplatePartialSpecialization) &&
+        clang_isCursorDefinition(k) && has_child(k, CXCursor_CXXBaseSpecifier))
+        warnings_.emplace_back(pos_of(k),
+            "the class template '" + spelling(k) +
+                "' has a base class, but it is not a script class: it is copied as plain C++ and has no hot reload");
+    else if (kind == CXCursor_FunctionDecl && clang_isCursorDefinition(k))
+        warn_static_locals(k);
 }
 
 // Reads the body of the method "index" from the definition "c". The definition is in the class
@@ -3126,7 +3149,10 @@ void Frontend::read_top(const std::vector<CXCursor>& top)
                 make_method(k, nullptr, [this]() -> std::vector<ast::Method>& { return sc_.var_hooks; });
             }
             else
+            {
+                warn_static_locals(k);
                 add_text(e, find_module_ref(k, nullptr, var, var_pos, kAll) || names_script_class(k));
+            }
         }
         else if (kind == CXCursor_MacroDefinition)
         { // the extent starts at the name: take the "#define" of the line too
@@ -3137,10 +3163,7 @@ void Frontend::read_top(const std::vector<CXCursor>& top)
         }
         else
         { // a template, a namespace, a prototype, a plain type: the edits of a body apply to all of it
-            if (kind == CXCursor_ClassTemplate && clang_isCursorDefinition(k) && has_child(k, CXCursor_CXXBaseSpecifier))
-                warnings_.emplace_back(pos_of(k),
-                    "the class template '" + spelling(k) +
-                        "' has a base class, but it is not a script class: it is copied as plain C++ and has no hot reload");
+            warn_plain_text(k);
             check_static_init(k);
             std::string var;
             uint32_t var_pos = 0;

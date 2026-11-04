@@ -81,8 +81,8 @@ A warning does not stop the translation. These forms give a warning.
 
 | Form | Warning |
 |---|---|
-| A class template that has a base class, for example `template <class T> class Box : public Actor` | `the class template 'Box' has a base class, but it is not a script class: it is copied as plain C++ and has no hot reload` |
-| A `static` or `thread_local` local variable in a method, a constructor, a destructor, a static method or a lambda in them | `the static local variable 'n' resets to its initial value when the script reloads: a reload loads a new module` (a `const` local gives no warning) |
+| A class template or a partial specialization that has a base class, also in a namespace and also when the base is a standard class such as `std::vector<T>`, for example `template <class T> class Box : public Actor` | `the class template 'Box' has a base class, but it is not a script class: it is copied as plain C++ and has no hot reload` |
+| A `static` or `thread_local` local variable in a method, a constructor, a destructor, a static method, a free function (also in a namespace) or a lambda in them | `the static local variable 'n' resets to its initial value when the script reloads: a reload loads a new module` (a `const` local gives no warning) |
 
 An explicit constructor, for example `explicit Player(int hp)`, is allowed. It is a normal constructor.
 

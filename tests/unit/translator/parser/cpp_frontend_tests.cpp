@@ -1783,8 +1783,54 @@ TEST(CppFrontend, StaticLocalInAMethodGivesAWarning)
             << name << "\n"
             << w;
     EXPECT_NE(w.find("t:5:27: warning: the static local variable 'n'"), std::string::npos) << w; // the line of 'n'
-    // A const static local, a plain local and a static local of a free function give no warning.
+    // A const static local and a plain local give no warning.
     EXPECT_EQ(warnings_of("class S : public Actor { public: void F() { static const int k = 1; int a = k; (void)a; } };\n"
-                          "int free_fn() { static int z = 0; return ++z; }\n"),
+                          "int const_fn() { static const int k = 1; static constexpr int c = 2; int a = 3; return k + c + a; }\n"),
         "");
+}
+
+// A free function resets its static local after a reload too.
+TEST(CppFrontend, StaticLocalInAFreeFunctionGivesAWarning)
+{
+    const std::string w = warnings_of(
+        "int free_fn() { static int z = 0; return ++z; }\n"
+        "static int tls_fn() { thread_local int y = 0; return ++y; }\n"
+        "namespace util { int in_ns() { static int x = 0; return ++x; } namespace deep { int d() { static int w = 0; return ++w; } } }\n"
+        "namespace game { int in_script_ns() { static int v = 0; return ++v; } class P : public Actor {}; }\n");
+    EXPECT_NE(w.find("t:2:28: warning: the static local variable 'z' resets to its initial value when the script reloads"),
+        std::string::npos)
+        << w;
+    for (const char* name : {"the thread_local local variable 'y'", "the static local variable 'x'",
+             "the static local variable 'w'", "the static local variable 'v'"})
+        EXPECT_NE(w.find(name), std::string::npos) << name << "\n" << w;
+    // One warning for each variable.
+    size_t count = 0;
+    for (size_t at = w.find("warning:"); at != std::string::npos; at = w.find("warning:", at + 1))
+        ++count;
+    EXPECT_EQ(count, 5u) << w;
+}
+
+// A class template with a base class in a namespace, a partial specialization and a standard base.
+TEST(CppFrontend, ClassTemplateWarningReachesNamespacesAndSpecializations)
+{
+    const char* const text =
+        "#include <vector>\n"
+        "namespace util { template <class T> class InNs : public Actor { public: T v; }; }\n"
+        "namespace game { template <class T> class InScriptNs : public Actor { public: T v; }; class P : public Actor {}; }\n"
+        "template <class T, class U> class Pair : public Actor { public: T a; U b; };\n"
+        "template <class T> class Pair<T, int> : public Actor { public: T a; };\n"
+        "template <class T> class Vec : public std::vector<T> {};\n";
+    const std::string w = warnings_of(text);
+    EXPECT_NE(w.find("t:3:"), std::string::npos) << w;
+    for (const char* name : {"'InNs'", "'InScriptNs'", "'Pair'", "'Vec'"})
+        EXPECT_NE(w.find(std::string("warning: the class template ") + name + " has a base class"), std::string::npos)
+            << name << "\n" << w;
+    size_t count = 0;
+    for (size_t at = w.find("warning:"); at != std::string::npos; at = w.find("warning:", at + 1))
+        ++count;
+    EXPECT_EQ(count, 5u) << w; // InNs, InScriptNs, Pair, the partial specialization of Pair, Vec
+    // The text says that the template is copied as plain C++, also for a standard base.
+    EXPECT_NE(w.find("'Vec' has a base class, but it is not a script class: it is copied as plain C++ and has no hot reload"),
+        std::string::npos)
+        << w;
 }
