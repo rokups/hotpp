@@ -17,6 +17,7 @@
 // A write goes to a temporary file first. Then a rename puts it in place.
 #pragma once
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -79,6 +80,9 @@ public:
     // Deletes the shards of missing files, the shards with another version and old temporary
     // files. Gives the number of deleted files.
     int prune();
+    // Deletes the shards of the files for which "match" gives true. Gives the number of deleted
+    // shards.
+    int remove_if(const std::function<bool(const std::string&)>& match);
 
     int loads() const { return loads_; }
     int stores() const { return stores_; }

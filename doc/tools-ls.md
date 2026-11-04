@@ -29,6 +29,10 @@ Both servers can use the same project and the same `.cache/` directory. They do 
 - The symbol index of `hot-ls` is in `.cache/hot/index/`.
 - The C++ `clangd` does not get an open `.hot` document, and `hot-ls` does not get a C++ document. A diagnostic of one server never shows in the files of the other.
 
+`hot-ls` supports many workspace folders. The index directory and the `clangd` directory are in the first folder that `initialize` gives. Each is one flat directory for all folders, so a shard of any folder is in it. The `clangd` child keeps its directory for the whole session. If `initialize` gives no folder, the first folder that the editor adds gives the index directory. The editor can add or remove a folder (`workspace/didChangeWorkspaceFolders`). The server then updates the folder list and reloads the host files. For a removed folder, it deletes the shards of the files of that folder. It keeps a shard of a file that another folder still holds.
+
+A workspace symbol request also lists the classes and members of the `.hot` files of all folders. Cost rule: the request never analyzes a closed file. It lists a closed file only if the index has a valid shard for it. A shard comes from a rename or references request that scans the file, and from a document that closes with the text of the file on disk. An open document uses its own analysis. An empty query lists no script symbol.
+
 ## Automatic setup (script hosts)
 
 A script host tells `hot-ls` how the engine compiles its scripts. CMake writes the host files. So the user does not pass `-I` flags.

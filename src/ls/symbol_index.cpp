@@ -303,4 +303,23 @@ int SymbolIndex::prune()
     return removed;
 }
 
+int SymbolIndex::remove_if(const std::function<bool(const std::string&)>& match)
+{
+    if (!enabled())
+        return 0;
+    int removed = 0;
+    std::error_code ec;
+    for (fs::directory_iterator it(dir_, ec), end; !ec && it != end; it.increment(ec))
+    {
+        const fs::path p = it->path();
+        if (p.extension() != ".idx")
+            continue;
+        const auto h = read_header(p.string());
+        std::error_code ec2;
+        if (h && match(h->path) && fs::remove(p, ec2))
+            ++removed;
+    }
+    return removed;
+}
+
 } // namespace hot::ls

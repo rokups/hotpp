@@ -18,6 +18,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <thread>
 #include <filesystem>
@@ -530,7 +531,7 @@ private:
     }
     // Checks the host files after a document event. A document whose host changed gets the new
     // compile command. "current" is the document of the event: the caller updates it.
-    void refresh_hosts(Doc* current);
+    void refresh_hosts(Doc* current, bool force = false);
     // The notification workspace/didChangeWatchedFiles: new, changed and deleted files on disk.
     void on_watched_files(const json& p);
     void update(Doc& d);
@@ -594,6 +595,8 @@ private:
 
     // ---- features
     json on_initialize(const json& p);
+    // The notification workspace/didChangeWorkspaceFolders.
+    void on_workspace_folders(const json& p);
     json on_completion(const Doc& d, const json& p);
     json on_hover(const Doc& d, const json& p);
     json on_signature_help(const Doc& d, const json& p);
@@ -604,6 +607,14 @@ private:
     json on_document_symbol(const Doc& d);
     json on_semantic_tokens(const Doc& d);
     json on_workspace_symbol(const json& p);
+    // The script symbols of the .hot files of the workspace folders. A closed file counts only if
+    // the index has a valid shard for it. This request never analyzes a closed file.
+    void map_clangd_symbols(const json& symbols, json& out);
+    void add_script_symbols(const std::string& query, json& out);
+    // The digest of a closed script for the index.
+    std::string shard_digest(const std::string& path, const std::string& text);
+    // Stores the shard of a document that closes, if the text is the text on disk.
+    void store_closed_shard(const Doc& d);
     json script_member_location(const std::string& uri, const std::string& script_name);
     json on_to_script(const json& p);
     // Gives the edit, or an error message.
@@ -637,7 +648,10 @@ private:
     std::map<std::string, std::shared_ptr<Doc>> docs_; // by the script uri
     std::map<std::string, std::shared_ptr<Doc>> gen_docs_; // by the generated uri
     std::unique_ptr<ClangdProcess> clangd_;
-    std::vector<std::string> roots_; // the workspace folders (paths), from initialize
+    // The workspace folders (paths). They come from initialize and from didChangeWorkspaceFolders.
+    // The index directory and the database directory of the clangd child are in the first folder
+    // of initialize. Each is one flat directory for all folders, so it stays for the whole session.
+    std::vector<std::string> roots_;
     std::vector<HostSet> hosts_; // the host files: one set for each hosts dir
     bool utf8_ = false, clangd_utf8_ = false, shutdown_ = false;
     std::set<std::string> preamble_ready_;
@@ -871,9 +885,9 @@ void Server::load_hosts()
     }
 }
 
-void Server::refresh_hosts(Doc* current)
+void Server::refresh_hosts(Doc* current, bool force)
 {
-    bool changed = false;
+    bool changed = force;
     for (HostSet& h : hosts_)
         changed = h.refresh() || changed;
     if (!changed)
@@ -924,6 +938,66 @@ void Server::on_watched_files(const json& p)
     }
     if (host_file)
         refresh_hosts(nullptr);
+}
+
+void Server::on_workspace_folders(const json& p)
+{
+    const json ev = p.value("event", json::object());
+    if (!ev.is_object())
+        return;
+    // A folder is known by its normalized path: "/a/b/" and "/a/b" are the same folder.
+    auto norm = [](const std::string& path)
+    {
+        std::string s = fs::path(path).lexically_normal().string();
+        while (s.size() > 1 && (s.back() == '/' || s.back() == '\\'))
+            s.pop_back();
+        return s;
+    };
+    auto path_of = [](const json& f)
+    { return f.is_object() ? uri_to_path(f.value("uri", std::string())) : std::string(); };
+    auto find_root = [&](const std::string& path)
+    {
+        return std::find_if(roots_.begin(), roots_.end(), [&](const std::string& r) { return norm(r) == norm(path); });
+    };
+    std::vector<std::string> removed;
+    for (const json& f : ev.value("removed", json::array()))
+    {
+        const std::string path = path_of(f);
+        const auto it = path.empty() ? roots_.end() : find_root(path);
+        if (it != roots_.end())
+        {
+            removed.push_back(norm(*it));
+            roots_.erase(it);
+        }
+    }
+    for (const json& f : ev.value("added", json::array()))
+    {
+        const std::string path = path_of(f);
+        if (!path.empty() && find_root(path) == roots_.end())
+            roots_.push_back(path);
+    }
+    // No folder at initialize: the index was off. The first folder now gives the index directory.
+    // The clangd child keeps the database directory that it has: it is not started again.
+    if (!index_.enabled() && opt_.index_dir.empty() && !roots_.empty())
+    {
+        index_.open((fs::path(roots_[0]) / ".cache" / "hot" / "index").string());
+        index_.prune();
+    }
+    // The shards of the files that are in a removed folder, and in no other folder, go.
+    auto under = [&](const std::string& file, const std::string& root)
+    {
+        const fs::path rel = fs::path(norm(file)).lexically_relative(root);
+        return !rel.empty() && *rel.begin() != "..";
+    };
+    index_.remove_if(
+        [&](const std::string& file)
+        {
+            const auto in = [&](const std::string& r) { return under(file, norm(r)); };
+            return std::any_of(removed.begin(), removed.end(), in) && !std::any_of(roots_.begin(), roots_.end(), in);
+        });
+    disk_facts_.clear();
+    load_hosts();
+    refresh_hosts(nullptr, true);
 }
 
 json Server::on_initialize(const json& p)
@@ -980,6 +1054,7 @@ json Server::on_initialize(const json& p)
                 {"codeActionProvider", {{"codeActionKinds", {"quickfix"}}}}, {"definitionProvider", true},
                 {"referencesProvider", true}, {"documentSymbolProvider", true}, {"renameProvider", true},
                 {"workspaceSymbolProvider", true},
+                {"workspace", {{"workspaceFolders", {{"supported", true}, {"changeNotifications", true}}}}},
                 {"semanticTokensProvider",
                     {{"legend", {{"tokenTypes", tokens}, {"tokenModifiers", json::array()}}}, {"full", true}}},
                 {"experimental", {{"hotToScript", true}, {"clangd", clangd_ != nullptr}}}}},
@@ -2654,10 +2729,17 @@ json Server::script_member_location(const std::string& uri, const std::string& s
 json Server::on_workspace_symbol(const json& p)
 {
     json out = json::array();
-    auto r = clangd_result("workspace/symbol", {{"query", p.value("query", std::string())}});
-    if (!r || !r->is_array())
-        return out;
-    for (const json& s : *r)
+    const std::string query = p.value("query", std::string());
+    auto r = clangd_result("workspace/symbol", {{"query", query}});
+    if (r && r->is_array())
+        map_clangd_symbols(*r, out);
+    add_script_symbols(query, out);
+    return out;
+}
+
+void Server::map_clangd_symbols(const json& symbols, json& out)
+{
+    for (const json& s : symbols)
     {
         json loc = s.value("location", json());
         const std::string uri = loc.value("uri", std::string());
@@ -2703,7 +2785,108 @@ json Server::on_workspace_symbol(const json& p)
         item["location"] = mapped;
         out.push_back(std::move(item));
     }
-    return out;
+}
+
+std::string Server::shard_digest(const std::string& path, const std::string& text)
+{
+    // The digest holds the import files. The flags of the host also go in.
+    const Effective eff = effective_options(path);
+    std::string flags_text;
+    for (const std::string& f : eff.extra_flags)
+        flags_text += f + '\n';
+    return SymbolIndex::digest(SymbolIndex::digest(path, text, eff.include_dirs) + flags_text);
+}
+
+void Server::add_script_symbols(const std::string& query, json& out)
+{
+    if (query.empty())
+        return; // every symbol of every file: too much
+    auto lower = [](std::string s)
+    {
+        for (char& c : s)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return s;
+    };
+    const std::string q = lower(query);
+    std::set<std::pair<std::string, std::string>> seen; // (uri, name) of the symbols that are in "out"
+    for (const json& s : out)
+        seen.insert({s.value("/location/uri"_json_pointer, std::string()), s.value("name", std::string())});
+    struct Hit
+    {
+        std::string name;
+        int kind;
+        Pos at;
+        size_t len;
+    };
+    for (const std::string& path : workspace_scripts())
+    {
+        const std::string uri = path_to_uri(path);
+        std::vector<Hit> hits;
+        auto add = [&](const std::string& name, int kind, Pos at, size_t len)
+        {
+            if (lower(name).find(q) != std::string::npos && seen.insert({uri, name}).second)
+                hits.push_back({name, kind, at, len});
+        };
+        std::shared_ptr<Doc> open;
+        for (const auto& [u, doc] : docs_)
+            if (doc->path == path)
+                open = doc;
+        const Text* text = nullptr;
+        Text closed_text;
+        if (open)
+        {
+            // An open document has its own facts.
+            text = &open->text;
+            for (const hotc::AnalyzedClass& c : open->facts.classes)
+            {
+                add(c.name, 5, class_name_pos(*open, c), c.name.size());
+                for (const hotc::AnalyzedMember& m : c.members)
+                    add(c.name + "." + m.name, m.kind == "field" ? 8 : 6, {m.begin.line - 1, m.begin.col - 1},
+                        m.name.size());
+            }
+        }
+        else
+        {
+            // A closed file is never analyzed here: only a saved shard counts.
+            auto content = read_file(path);
+            if (!content)
+                continue;
+            auto shard = index_.load(path, shard_digest(path, *content));
+            if (!shard)
+                continue;
+            for (const IndexClass& c : shard->classes)
+            {
+                add(c.name, 5, {c.begin.line, c.begin.col}, c.name.size());
+                for (const IndexMember& m : c.members)
+                    add(c.name + "." + m.name, m.kind == "field" ? 8 : 6, {m.begin.line, m.begin.col}, m.name.size());
+            }
+            if (!hits.empty())
+            {
+                closed_text = Text(std::move(*content));
+                text = &closed_text;
+            }
+        }
+        for (const Hit& h : hits)
+        {
+            const Pos e = {h.at.line, h.at.col + static_cast<int>(h.len)};
+            out.push_back({{"name", h.name}, {"kind", h.kind},
+                {"location",
+                    {{"uri", uri},
+                        {"range", {{"start", to_lsp(*text, h.at, utf8_)}, {"end", to_lsp(*text, e, utf8_)}}}}}});
+        }
+    }
+}
+
+void Server::store_closed_shard(const Doc& d)
+{
+    // A saved document that closes gives its shard to the index. A document with changes that are
+    // not saved, or with no class (a parse error), gives none.
+    if (!index_.enabled() || d.cpp || d.facts.classes.empty())
+        return;
+    const auto disk = read_file(d.path);
+    if (!disk || *disk != d.text.s)
+        return;
+    index_.store(d.path, shard_digest(d.path, *disk), shard_of_doc(d));
 }
 
 json Server::on_to_script(const json& p)
@@ -2808,6 +2991,7 @@ void Server::handle(const json& msg)
             return;
         if (clangd_ && d->in_clangd)
             clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", d->gen_uri}}}});
+        store_closed_shard(*d);
         {
             std::lock_guard<std::mutex> lock(docs_mutex_);
             docs_.erase(d->uri);
@@ -2825,6 +3009,8 @@ void Server::handle(const json& msg)
     }
     if (method == "workspace/didChangeWatchedFiles")
         return on_watched_files(p);
+    if (method == "workspace/didChangeWorkspaceFolders")
+        return on_workspace_folders(p);
     if (!is_request)
         return; // initialized, $/cancelRequest and other notifications
     if (method == "workspace/symbol")

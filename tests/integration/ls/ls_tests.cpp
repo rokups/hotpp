@@ -2607,3 +2607,206 @@ TEST(LanguageServer, RenameOfAnImplementingMethodWorksWithAnInterfaceOfTheSameNa
     EXPECT_TRUE(changes.contains(s.uri)) << r.dump();
     EXPECT_TRUE(changes.contains(uri_of(other_path))) << r.dump();
 }
+
+// Workspace folders: the symbol index covers all folders, and the folders can change.
+// A closed file has symbols in a workspace symbol answer only when the index has its shard. The
+// tests make the shard with "fill": the document opens and closes, and the close stores the shard.
+namespace
+{
+
+std::string folder_script(const char* cls)
+{
+    return std::string("using \"Actor.h\";\n\nclass ") + cls + " : Actor {\n    void jump() {\n    }\n}\n";
+}
+
+json folder_json(const std::filesystem::path& p, const char* suffix = "")
+{
+    return {{"uri", uri_of(p.string()) + suffix}, {"name", p.filename().string()}};
+}
+
+bool has_symbol(const json& r, const std::string& name, const std::string& uri)
+{
+    for (const json& s : r.value("result", json::array()))
+        if (s.value("name", "") == name && s["location"].value("uri", "") == uri)
+            return true;
+    return false;
+}
+
+json symbols(LsClient& c, const std::string& query)
+{
+    return c.request("workspace/symbol", {{"query", query}});
+}
+
+// Writes a script and opens and closes it, so that its shard is in the index.
+std::string fill(LsClient& c, const std::filesystem::path& file, const char* cls)
+{
+    const std::string text = folder_script(cls);
+    write_file(file, text);
+    const std::string uri = uri_of(file.string());
+    c.open(uri, text);
+    c.notify("textDocument/didClose", {{"textDocument", {{"uri", uri}}}});
+    return uri;
+}
+
+void init_folders(LsClient& c, const std::vector<std::filesystem::path>& folders)
+{
+    json list = json::array();
+    for (const auto& f : folders)
+        list.push_back(folder_json(f));
+    c.request("initialize", {{"processId", nullptr}, {"workspaceFolders", list}, {"capabilities", json::object()}});
+    c.notify("initialized", json::object());
+}
+
+void change_folders(LsClient& c, json added, json removed)
+{
+    c.notify("workspace/didChangeWorkspaceFolders", {{"event", {{"added", std::move(added)}, {"removed", std::move(removed)}}}});
+}
+
+int shard_count(LsClient& c)
+{
+    const std::string dir = c.request("hot/indexStats", json::object())["result"].value("dir", "");
+    int n = 0;
+    std::error_code ec;
+    for (std::filesystem::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec))
+        n += it->path().extension() == ".idx";
+    return n;
+}
+
+int analyses(LsClient& c)
+{
+    return c.request("hot/indexStats", json::object())["result"].value("analyzed", -1);
+}
+
+} // namespace
+
+TEST(LanguageServer, InitializeAdvertisesWorkspaceFolders)
+{
+    TempDir dir;
+    LsClient client(options(dir, false));
+    const json r = client.initialize(uri_of(dir.path().string()));
+    EXPECT_TRUE(r["capabilities"]["workspace"]["workspaceFolders"]["supported"].get<bool>()) << r.dump();
+    EXPECT_TRUE(r["capabilities"]["workspace"]["workspaceFolders"]["changeNotifications"].get<bool>()) << r.dump();
+}
+
+TEST(LanguageServer, WorkspaceSymbolFindsASymbolOfTheSecondFolder)
+{
+    TempDir dir;
+    const auto one = dir.path() / "one", two = dir.path() / "two";
+    std::filesystem::create_directories(one);
+    std::filesystem::create_directories(two);
+    LsClient client(options(dir, false));
+    init_folders(client, {one, two});
+    const std::string first = fill(client, one / "first.hot", "Alpha");
+    const std::string second = fill(client, two / "second.hot", "Bravo");
+    EXPECT_TRUE(has_symbol(symbols(client, "bravo"), "Bravo.jump", second));
+    EXPECT_TRUE(has_symbol(symbols(client, "alpha"), "Alpha", first));
+}
+
+TEST(LanguageServer, WorkspaceSymbolUsesOnlyTheShardsOfClosedFiles)
+{
+    TempDir dir;
+    const auto one = dir.path() / "one";
+    std::filesystem::create_directories(one);
+    // The file is on disk, but it is never open: no shard, no symbol, and no analysis.
+    write_file(one / "lonely.hot", folder_script("Charlie"));
+    LsClient client(options(dir, false));
+    init_folders(client, {one});
+    const std::string kept = fill(client, one / "kept.hot", "Alpha");
+    const int before = analyses(client);
+    const json r = symbols(client, "charlie");
+    EXPECT_TRUE(r["result"].empty()) << r.dump();
+    EXPECT_TRUE(has_symbol(symbols(client, "alpha"), "Alpha", kept));
+    EXPECT_EQ(analyses(client), before);
+}
+
+TEST(LanguageServer, WorkspaceSymbolAcceptsADottedQueryAndNoEmptyQuery)
+{
+    TempDir dir;
+    const auto one = dir.path() / "one";
+    std::filesystem::create_directories(one);
+    LsClient client(options(dir, false));
+    init_folders(client, {one});
+    const std::string uri = fill(client, one / "first.hot", "Alpha");
+    EXPECT_TRUE(has_symbol(symbols(client, "Alpha.jump"), "Alpha.jump", uri));
+    EXPECT_TRUE(has_symbol(symbols(client, "alpha.ju"), "Alpha.jump", uri));
+    EXPECT_FALSE(has_symbol(symbols(client, "Beta.jump"), "Alpha.jump", uri));
+    const json r = symbols(client, "");
+    EXPECT_TRUE(r["result"].empty()) << r.dump();
+}
+
+TEST(LanguageServer, WorkspaceFoldersCanBeAddedAndRemoved)
+{
+    TempDir dir;
+    const auto one = dir.path() / "one", two = dir.path() / "two";
+    std::filesystem::create_directories(one);
+    std::filesystem::create_directories(two);
+    LsClient client(options(dir, false));
+    client.initialize(uri_of(one.string()));
+    const std::string first = fill(client, one / "first.hot", "Alpha");
+    // The file of the second folder gets its shard while the folder is not in the workspace.
+    const std::string second = fill(client, two / "second.hot", "Bravo");
+    EXPECT_FALSE(has_symbol(symbols(client, "bravo"), "Bravo", second));
+
+    change_folders(client, {folder_json(two)}, json::array());
+    EXPECT_TRUE(has_symbol(symbols(client, "bravo"), "Bravo", second));
+    EXPECT_EQ(shard_count(client), 2);
+
+    change_folders(client, json::array(), {folder_json(two)});
+    EXPECT_FALSE(has_symbol(symbols(client, "bravo"), "Bravo", second));
+    EXPECT_EQ(shard_count(client), 1); // the shard of the removed folder is gone
+    EXPECT_TRUE(has_symbol(symbols(client, "alpha"), "Alpha", first));
+}
+
+TEST(LanguageServer, WorkspaceFolderWithATrailingSlashIsTheSameFolder)
+{
+    TempDir dir;
+    const auto one = dir.path() / "one", two = dir.path() / "two";
+    std::filesystem::create_directories(one);
+    std::filesystem::create_directories(two);
+    LsClient client(options(dir, false));
+    client.initialize(uri_of(one.string()));
+    change_folders(client, {folder_json(two)}, json::array());
+    const std::string second = fill(client, two / "second.hot", "Bravo");
+    EXPECT_TRUE(has_symbol(symbols(client, "bravo"), "Bravo", second));
+    change_folders(client, {folder_json(two, "/")}, json::array()); // not a new folder
+    change_folders(client, json::array(), {folder_json(two, "/")});
+    EXPECT_FALSE(has_symbol(symbols(client, "bravo"), "Bravo", second));
+    EXPECT_EQ(shard_count(client), 0);
+}
+
+TEST(LanguageServer, RemovedFolderKeepsTheShardsOfASiblingAndOfAnotherFolder)
+{
+    TempDir dir;
+    // "b" and "bc" are siblings: the path of "b" is a text prefix of the path of "bc".
+    // "outer" holds "outer/inner".
+    const auto b = dir.path() / "a" / "b", bc = dir.path() / "a" / "bc";
+    const auto outer = dir.path() / "outer", inner = outer / "inner";
+    for (const auto& f : {b, bc, inner})
+        std::filesystem::create_directories(f);
+    LsClient client(options(dir, false));
+    init_folders(client, {b, bc, outer, inner});
+    const std::string in_b = fill(client, b / "b.hot", "Alpha");
+    const std::string in_bc = fill(client, bc / "bc.hot", "Bravo");
+    const std::string in_inner = fill(client, inner / "inner.hot", "Charlie");
+    EXPECT_EQ(shard_count(client), 3);
+
+    change_folders(client, json::array(), {folder_json(b), folder_json(inner)});
+    EXPECT_FALSE(has_symbol(symbols(client, "alpha"), "Alpha", in_b));
+    EXPECT_TRUE(has_symbol(symbols(client, "bravo"), "Bravo", in_bc)); // the sibling keeps its shard
+    EXPECT_TRUE(has_symbol(symbols(client, "charlie"), "Charlie", in_inner)); // "outer" still holds it
+    EXPECT_EQ(shard_count(client), 2);
+}
+
+TEST(LanguageServer, FirstFolderAddedLaterOpensTheIndex)
+{
+    TempDir dir;
+    const auto one = dir.path() / "one";
+    std::filesystem::create_directories(one);
+    LsClient client(options(dir, false));
+    client.request("initialize", {{"processId", nullptr}, {"capabilities", json::object()}});
+    client.notify("initialized", json::object());
+    EXPECT_EQ(client.request("hot/indexStats", json::object())["result"].value("dir", "x"), "");
+    change_folders(client, {folder_json(one)}, json::array());
+    const std::string uri = fill(client, one / "first.hot", "Alpha");
+    EXPECT_TRUE(has_symbol(symbols(client, "alpha"), "Alpha", uri));
+}
