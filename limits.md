@@ -11,7 +11,7 @@ This list shows what version 1 does not support.
 - Coroutines other than `async` methods. See [Async and await](async.html).
 - Generics in script code. You can use C++ templates.
 - Script exception types. You can throw and catch C++ types.
-- Reload while a worker thread runs script code. The default commit waits for the frame boundary.
+- Reload while a worker thread runs script code, in the default `StopTheWorld` mode. The commit waits for the frame boundary. The `EntryCounters` mode allows it (see [Internals](internals.html)).
 - A stored `ref` parameter, `ref` local or `T*`. A borrowed value cannot go to a field. The option `--no-strict-borrowed` makes this a warning. See [Borrowing](borrowing.html).
 - A script class, struct or enum with the name of a C++ type from a `using` header. Rename the script type.
 - Shared state in an `inline` function, an `inline` variable or a template static member of a host header. The script modules build with hidden symbol visibility. Each module gets its own copy of that state, and the host does not share it. Put such state in a `.cpp` file of the host, or mark it exported.

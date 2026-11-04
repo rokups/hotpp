@@ -49,7 +49,7 @@ The custom command depends on these items:
 - every file in `DEPENDS`;
 - in AOT mode, every file in `PRELUDES`.
 
-The command does not read the headers of the script. The native headers that a script includes with `using "X.h";` are not dependencies. A script that another script imports with `using "parent.hot";` is also not a dependency. List such files in `DEPENDS`, or the build does not run `hotc` when they change. The samples use `DEPENDS Creature.h`.
+`hotc` writes a depfile (`--depfile`) with the files that the translation read. The native headers that a script includes with `using "X.h";` are dependencies. A script that another script imports with `using "parent.hot";` is also a dependency. The system headers, such as the headers of the standard library, are not dependencies. A change of one of these files runs `hotc` again. The depfile needs the Ninja generator or a Makefile generator. With another generator, list these files in `DEPENDS`. `DEPENDS` is for other files that the command needs.
 
 ### Default mode
 
