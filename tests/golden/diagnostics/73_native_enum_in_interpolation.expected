@@ -1,0 +1,2 @@
+73_native_enum_in_interpolation.hot:6:16: error: 'Weather' cannot be printed in a '${...}' string: it has no formatter. For an enum class, cast the value to its integer type, for example 'static_cast<int>(value)'
+    6 |         return "weather: ${current_weather()}";

@@ -2122,10 +2122,12 @@ struct enumerators_p
     static constexpr auto value = lexy::as_list<std::vector<ast::Enumerator>>;
 };
 
-// "enum Name { A, B = 5 }" or "enum Name : type { ... }".
+// "enum Name { A, B = 5 }" or "enum Name : type { ... }". A script enum is always scoped, so the
+// C++ spelling "enum class Name" and "enum struct Name" means the same. The word has no value.
 struct enum_p
 {
-    static constexpr auto rule = dsl::position + kw_enum + dsl::position + dsl::p<name_p<e_enum_name>>
+    static constexpr auto rule = dsl::position + kw_enum + dsl::if_(dsl::literal_set(kw_class, kw_struct))
+        + dsl::position + dsl::p<name_p<e_enum_name>>
         + dsl::opt(dsl::lit_c<':'> >> (dsl::position + dsl::p<scan_type<ret_term>>)) + dsl::p<enumerators_p>;
     static constexpr auto value =
         lexy::bind(lexy::callback<TopItem>(

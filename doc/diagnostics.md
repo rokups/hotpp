@@ -33,6 +33,13 @@ Typos, wrong types and a missing `return` have plain messages.
 1 error generated.
 ```
 
+A value that has no formatter in a `${...}` string, for example a native `enum class`, gives one error at the script line:
+
+```
+73_native_enum_in_interpolation.hot:6:16: error: 'Weather' cannot be printed in a '${...}' string: it has no formatter. For an enum class, cast the value to its integer type, for example 'static_cast<int>(value)'
+    6 |         return "weather: ${current_weather()}";
+```
+
 ## Null checks
 
 The analyzer finds an access to a value that can be null. It runs on `.hot` scripts only. By default each finding is an error. The option `null_warnings` and the flag `hotc --null-warnings` make each finding a warning. Then the compile goes on.

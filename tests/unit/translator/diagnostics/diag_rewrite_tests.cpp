@@ -310,3 +310,72 @@ TEST(DiagRewrite, InTraitWithTemplateArgumentsBecomesTheType)
     EXPECT_EQ(hotc::rewrite_clang_message("cannot bind 'hot::In<std::vector<int, std::allocator<int>>>' and 'hot::In<Big>'"),
         "cannot bind 'std.vector<int, std.allocator<int>>' and 'Big'");
 }
+
+// A value without a formatter. The error is in a library header. The note "requested here" has the
+// script position. The rewriter moves the error to that position and hides the library lines.
+TEST(DiagRewrite, FmtValueWithoutFormatterMovesToTheScriptLine)
+{
+    const std::string in =
+        "In file included from /w/a.g1.cpp:10:\n"
+        "In file included from /usr/include/fmt/format.h:41:\n"
+        "/usr/include/fmt/base.h:2260:45: error: implicit instantiation of undefined template "
+        "'fmt::detail::type_is_unformattable_for<Weather, char>'\n"
+        " 2260 |     type_is_unformattable_for<T, char_type> _;\n"
+        "      |                                             ^\n"
+        "/usr/include/fmt/base.h:2233:42: note: in instantiation of function template specialization "
+        "'fmt::detail::value<fmt::context>::value<Weather, 0>' requested here\n"
+        " 2233 |   FMT_CONSTEXPR FMT_INLINE value(T& x) : value(x, custom_tag()) {}\n"
+        "a.hot:9:35: note: in instantiation of function template specialization 'fmt::format<Weather>' requested here\n"
+        "/usr/include/fmt/base.h:2107:45: note: template is declared here\n"
+        "1 error generated.\n";
+    const std::string out = rewrite_diagnostic(in);
+    EXPECT_NE(out.find("a.hot:9:1: error: 'Weather' cannot be printed in a '${...}' string: it has no formatter"),
+        std::string::npos)
+        << out;
+    EXPECT_EQ(out.find("fmt"), std::string::npos) << out;
+    EXPECT_EQ(out.find("In file included"), std::string::npos) << out;
+    EXPECT_EQ(out.find("note:"), std::string::npos) << out;
+}
+
+// The std library gives several errors for one value. Each error has the same script position.
+// The rewriter shows one error.
+TEST(DiagRewrite, StdValueWithoutFormatterShowsOneError)
+{
+    const std::string in =
+        "/usr/include/c++/16/format:4829:18: error: static assertion failed due to requirement "
+        "'is_default_constructible_v<std::formatter<Weather, char>>': std::formatter must be specialized\n"
+        "/usr/include/c++/16/format:4851:12: note: in instantiation of function template specialization 'x' requested "
+        "here\n"
+        "a.hot:9:35: note: in instantiation of function template specialization 'std::format<Weather &>' requested "
+        "here\n"
+        "/usr/include/c++/16/concepts:162:30: error: call to deleted constructor of 'std::formatter<Weather>'\n"
+        "a.hot:9:35: note: in instantiation of function template specialization 'std::format<Weather &>' requested "
+        "here\n"
+        "2 errors generated.\n";
+    const std::string out = rewrite_diagnostic(in);
+    size_t count = 0;
+    for (size_t p = out.find("cannot be printed"); p != std::string::npos; p = out.find("cannot be printed", p + 1))
+        ++count;
+    EXPECT_EQ(count, 1u) << out;
+    EXPECT_NE(out.find("'Weather' cannot be printed"), std::string::npos) << out;
+}
+
+// An error in a library header with no script note stays as it is.
+TEST(DiagRewrite, FormatErrorWithoutScriptNoteIsNotMoved)
+{
+    const std::string in =
+        "/usr/include/fmt/base.h:2260:45: error: implicit instantiation of undefined template "
+        "'fmt::detail::type_is_unformattable_for<Weather, char>'\n";
+    EXPECT_EQ(rewrite_diagnostic(in).find("cannot be printed"), std::string::npos);
+}
+
+// An error in a library header that is not a missing formatter stays as it is, also when a script
+// note follows it.
+TEST(DiagRewrite, OtherLibraryErrorWithScriptNoteIsNotMoved)
+{
+    const std::string in =
+        "/usr/include/c++/16/vector:100:5: error: a library problem\n"
+        "a.hot:9:1: note: requested here\n"
+        "1 error generated.\n";
+    EXPECT_EQ(rewrite_diagnostic(in), in);
+}

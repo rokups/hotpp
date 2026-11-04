@@ -1,0 +1,8 @@
+using "ScopedEnum.h";
+using <string>;
+
+class Report {
+    std.string Describe() {
+        return "weather: ${current_weather()}";
+    }
+}

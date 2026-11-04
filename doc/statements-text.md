@@ -23,7 +23,7 @@ class Hud : Actor {
 }
 ```
 
-The string must use double quotes. A backtick string is an error. Write `\${` to get a literal `${`. A `{` or `}` in the text of an interpolated string prints as one brace: the compiler doubles it for you. A string with no `${` stays a plain literal. A script enum prints as its underlying integer.
+The string must use double quotes. A backtick string is an error. Write `\${` to get a literal `${`. A `{` or `}` in the text of an interpolated string prints as one brace: the compiler doubles it for you. A string with no `${` stays a plain literal. A script enum prints as its underlying integer. A native `enum class` has no formatter. It is an error at the `${` string: cast the value to its integer type, for example `${static_cast<int>(value)}`.
 
 ## Casts
 

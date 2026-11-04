@@ -453,6 +453,98 @@ std::string rewrite_message(std::string msg, bool script_function)
     return rename_generated(msg);
 }
 
+// ------------------------------------------------------------------ unformattable values
+
+// The type in the error of a library header that says: this type has no formatter. A native
+// "enum class" has none. The text of the error depends on the format library. Empty: another error.
+std::string unformattable_type(const std::string& msg)
+{
+    if (msg.size() > kMaxRegexMessage)
+        return {};
+    static const std::regex fmt_lib(
+        R"(^implicit instantiation of undefined template '[\w:]*type_is_unformattable_for<(.+), char>')");
+    static const std::regex std_assert(
+        R"(^static assertion failed due to requirement 'is_default_constructible_v<std::formatter<(.+), char>>')");
+    static const std::regex std_deleted(
+        R"(^call to (?:implicitly-)?deleted (?:default )?constructor of 'std::formatter<(.+?)(?:, char)?>')");
+    std::smatch m;
+    for (const std::regex* re : {&fmt_lib, &std_assert, &std_deleted})
+        if (std::regex_search(msg, m, *re))
+            return m[1].str();
+    return {};
+}
+
+// The format library reports a value without a formatter inside its own header. The error then
+// has no script position, but a note "requested here" has one. This pass moves the error to the
+// position of the first script note and gives it a message about the script text. It drops the
+// notes in the library headers of this error. The same error at the same position shows once.
+std::vector<std::string> promote_format_errors(
+    const std::vector<std::string>& lines, const std::map<std::string, std::vector<std::string>>& scripts)
+{
+    std::vector<Header> headers(lines.size());
+    std::vector<bool> is_header(lines.size(), false);
+    for (size_t i = 0; i < lines.size(); ++i)
+        is_header[i] = parse_header(lines[i], headers[i]);
+
+    std::vector<std::string> out;
+    std::vector<std::string> shown; // the promoted errors that are already in the output
+    size_t i = 0;
+    while (i < lines.size())
+    {
+        const std::string type = is_header[i] && headers[i].level != "note"
+                && classify(headers[i].file, scripts) == Place::System
+            ? unformattable_type(headers[i].message)
+            : std::string();
+        if (type.empty())
+        {
+            out.push_back(lines[i++]);
+            continue;
+        }
+        // The group: this error and the notes after it.
+        size_t end = i + 1;
+        while (end < lines.size() && (!is_header[end] || headers[end].level == "note"))
+            ++end;
+        size_t script_note = end;
+        for (size_t k = i + 1; k < end && script_note == end; ++k)
+            if (is_header[k] && classify(headers[k].file, scripts) == Place::Script)
+                script_note = k;
+        if (script_note == end)
+        {
+            for (; i < end; ++i)
+                out.push_back(lines[i]);
+            continue;
+        }
+        // The lines "In file included from ..." before the error name the library header.
+        while (!out.empty() && out.back().rfind("In file included from ", 0) == 0)
+            out.pop_back();
+        const Header& at = headers[script_note];
+        const std::string message = "'" + type
+            + "' cannot be printed in a '${...}' string: it has no formatter. For an enum class, cast the "
+              "value to its integer type, for example 'static_cast<int>(value)'";
+        const std::string head = at.file + ":" + std::to_string(at.line) + ":" + std::to_string(at.col) + ": error: ";
+        const bool again = std::find(shown.begin(), shown.end(), head) != shown.end();
+        shown.push_back(head);
+        // Keep the script note and its snippet, and the notes that are not in a system header.
+        // Lines before the script note and the system notes after it go away.
+        bool keep = !again;
+        for (size_t k = script_note; k < end; ++k)
+        {
+            if (is_header[k])
+            {
+                keep = !again && (k == script_note || classify(headers[k].file, scripts) != Place::System);
+                if (keep)
+                    out.push_back(k == script_note ? head + message : lines[k]);
+            }
+            else if (keep)
+            {
+                out.push_back(lines[k]);
+            }
+        }
+        i = end;
+    }
+    return out;
+}
+
 // ------------------------------------------------------------------ the pass over the lines
 
 std::vector<std::string> split_lines(const std::string& text, bool& final_newline)
@@ -589,7 +681,7 @@ std::string rewrite_diagnostic(
     const std::string& text, const ScriptTexts& scripts, const ScriptTexts& generated, const SourceMap* map)
 {
     bool final_newline = true;
-    const std::vector<std::string> lines = split_lines(text, final_newline);
+    std::vector<std::string> lines = split_lines(text, final_newline);
 
     std::map<std::string, std::vector<std::string>> script_lines;
     for (const auto& s : scripts)
@@ -605,6 +697,7 @@ std::string rewrite_diagnostic(
             if (!script_lines.count(f.name))
                 script_lines[f.name] = split_lines(f.text, nl);
         }
+    lines = promote_format_errors(lines, script_lines);
 
     std::map<std::string, std::vector<std::string>> generated_lines;
     for (const auto& g : generated)
