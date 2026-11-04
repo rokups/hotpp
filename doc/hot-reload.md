@@ -38,7 +38,9 @@ A task of an `async` method keeps its generation alive. After a reload, a suspen
 
 A few changes cannot keep live objects. `Loader::request_reload` then returns the status `FullReloadRequired`, with a reason and the class names. The live generation stays. The host restarts all script state and keeps its own state.
 
-The runtime does not see a change in a native header. When a native header changes, the host starts a full reload itself.
+A native base, a script parent or a shell layout change changes the C++ layout of the shell. A live object cannot move to a new layout. A removed function cannot free its slot, because the slot table only grows. These changes stay full reloads.
+
+The runtime does not see a change in a native header. When a native header changes, the host starts a full reload itself. `LoadResult::dependencies` lists the headers and the imported scripts that the build read: the host watches these files.
 
 The host sequence:
 

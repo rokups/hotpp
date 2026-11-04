@@ -1411,6 +1411,9 @@ struct FileStamp
     // same. The version 0 means unknown: "hashed" is true and each check reads the content.
     bool virt = false;
     uint64_t version = 0;
+    // The file is a system header (a standard library header, for example). It is no dependency
+    // of the translation that a build system or a host must track.
+    bool system = false;
 };
 
 // A file is recent when its time is less than this value before the check.
@@ -2332,6 +2335,7 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
         std::vector<FileStamp>* files;
         hot::FileSystem* fs;
         const std::map<std::string, std::string>* virtual_names;
+        CXTranslationUnit tu;
     };
     auto on_include = [](CXFile f, CXSourceLocation*, unsigned depth, CXClientData d)
     {
@@ -2343,9 +2347,13 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
         if (vn != v->virtual_names->end())
             path = vn->second; // an unsaved file: the stamp uses the path of the file system
         if (v->seen->insert(path).second)
+        {
             v->files->push_back(stamp_of(v->fs, path));
+            // The start of the file itself tells if the file is a system header.
+            v->files->back().system = clang_Location_isInSystemHeader(clang_getLocation(v->tu, f, 1, 1)) != 0;
+        }
     };
-    IncludeCtx ctx{&seen, &files, fs, &virtual_names};
+    IncludeCtx ctx{&seen, &files, fs, &virtual_names, tu};
     files.clear();
     clang_getInclusions(tu, on_include, &ctx);
 
@@ -2558,7 +2566,8 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
     const std::set<std::string>& names, const std::vector<FactReq>& reqs, const std::vector<std::string>& queries,
     const std::function<void(std::map<std::string, BaseInfo>&, std::vector<FileStamp>&, Hierarchy&, FactMap&,
         std::map<std::string, std::string>&)>& parse,
-    Hierarchy& hierarchy, FactMap& facts_out, std::map<std::string, std::string>& answers_out, hot::FileSystem* fs)
+    Hierarchy& hierarchy, FactMap& facts_out, std::map<std::string, std::string>& answers_out, hot::FileSystem* fs,
+    std::vector<std::string>* deps)
 {
     std::lock_guard<std::mutex> lock(S.mutex);
     auto& e = S.entries[key];
@@ -2602,6 +2611,11 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
         e.facts = std::move(facts);
         e.queries = std::move(answers);
     }
+    if (deps)
+        for (const FileStamp& f : e.files)
+            // A stamp of a missing file (a shadow header) or of a system header is no dependency.
+            if (!f.system && (f.virt || f.mtime_ns >= 0))
+                deps->push_back(f.path); // the same on a cache hit and a miss
     hierarchy = e.hierarchy;
     for (const FactReq& r : reqs)
         facts_out[r.type] = e.facts[r.type];
@@ -3769,7 +3783,21 @@ void translate_impl(
         [&](std::map<std::string, BaseInfo>& out, std::vector<FileStamp>& files, Hierarchy& h, FactMap& fm,
             std::map<std::string, std::string>& qa)
     { parse_bases(probe, args, base_names, import_paths, out, files, h, reqs, fm, query_texts, qa, res.virtual_files, fs); },
-        hier, facts, query_answers, fs);
+        hier, facts, query_answers, fs, &res.dependencies);
+    // The imported scripts, and for a .cpp script the headers of the host file system.
+    for (const auto& im : res.imports)
+        res.dependencies.push_back(im.first);
+    if (is_cpp_script)
+        for (const auto& v : res.virtual_files)
+            res.dependencies.push_back(v.first);
+    {
+        std::set<std::string> dep_seen;
+        std::vector<std::string> unique;
+        for (std::string& d : res.dependencies)
+            if (dep_seen.insert(d).second)
+                unique.push_back(std::move(d));
+        res.dependencies = std::move(unique);
+    }
     for (auto& [d, q] : native_q.vars)
         d->native_type = query_answers[q];
     // The hooks of the call-site conversion of a handle to a native parameter (task 33, phase 3).
@@ -3973,6 +4001,10 @@ void translate_impl(
     std::vector<ManifestEntry> old_manifest;
     std::map<std::string, std::string> old_sigs; // "Cls::fn" to the signature of the last generation
     std::vector<std::string> sig_lines; // the signature lines of the new slot file
+    // The field names of the last generation by class, and the "field Cls::name type" lines of
+    // the new slot file (the rename check). A slot file from an old version has no such line.
+    std::map<std::string, std::vector<std::string>> old_fields;
+    std::vector<std::string> field_lines;
     {
         // Keep the entries of the earlier generations. Keep also the entries of
         // the classes that this script does not define (an other script owns them).
@@ -3987,6 +4019,24 @@ void translate_impl(
         std::string line;
         while (std::getline(f, line))
         {
+            if (line.rfind("field ", 0) == 0)
+            {
+                // "field Cls::name type" (the rename check). The class name can hold "::".
+                const size_t fsp = line.find(' ', 6);
+                const std::string fname = line.substr(6, fsp == std::string::npos ? std::string::npos : fsp - 6);
+                const size_t fp = fname.rfind("::");
+                if (fp == std::string::npos)
+                    continue;
+                const std::string fcls = fname.substr(0, fp);
+                auto& names = old_fields[fcls];
+                const std::string fn = fname.substr(fp + 2);
+                if (std::find(names.begin(), names.end(), fn) == names.end())
+                    names.push_back(fn);
+                // A class of another script keeps its lines.
+                if (!mine.count(fcls) && std::find(field_lines.begin(), field_lines.end(), line + "\n") == field_lines.end())
+                    field_lines.push_back(line + "\n");
+                continue;
+            }
             if (line.rfind("sig ", 0) != 0)
                 continue;
             const size_t sp = line.find(' ', 4);
@@ -4001,6 +4051,38 @@ void translate_impl(
             else
                 sig_lines.push_back(line + "\n"); // a class of another script
         }
+    }
+    // The field lines of this script, and the rename check: a removed field and an added field of
+    // a class look like a rename. The value is lost at reload, unless the new field has [alias].
+    for (const auto& cd : sc.classes)
+    {
+        std::vector<const Field*> added;
+        std::set<std::string> new_names, aliases;
+        for (const auto& f : cd.fields)
+        {
+            std::string t = f.script_type.empty() ? f.type : f.script_type;
+            t.erase(std::remove_if(t.begin(), t.end(), [](char c) { return std::isspace(static_cast<unsigned char>(c)); }),
+                t.end());
+            field_lines.push_back("field " + cd.key_name() + "::" + f.name + " " + t + "\n");
+            new_names.insert(f.name);
+            if (!f.alias.empty())
+                aliases.insert(f.alias);
+        }
+        const auto old = old_fields.find(cd.key_name());
+        if (old == old_fields.end())
+            continue;
+        std::vector<std::string> removed;
+        for (const auto& n : old->second)
+            if (!new_names.count(n) && !aliases.count(n))
+                removed.push_back(n);
+        for (const auto& f : cd.fields)
+            if (f.alias.empty() && std::find(old->second.begin(), old->second.end(), f.name) == old->second.end())
+                added.push_back(&f);
+        for (size_t i = 0; i < removed.size() && i < added.size(); ++i)
+            g_diag.warn(added[i]->pos, map,
+                "field '" + removed[i] + "' of class '" + cd.key_name() + "' is removed and field '" + added[i]->name
+                    + "' is added. This looks like a rename; the value is lost at reload. Add [alias(\"" + removed[i]
+                    + "\")]");
     }
     std::vector<ManifestEntry> new_manifest = old_manifest;
 
@@ -7753,6 +7835,8 @@ void translate_impl(
     res.slots_out = mf.str();
     for (const auto& l : sig_lines)
         res.sigs_out += l;
+    for (const auto& l : field_lines)
+        res.sigs_out += l;
 }
 
 } // namespace
@@ -8049,15 +8133,16 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
         ac.name = c.name;
         ac.base = expand_std(c.base, module_ns);
         ac.begin = src_pos(map, c.pos);
-        auto add = [&](const char* kind, const std::string& name, uint32_t begin, uint32_t end, bool body)
+        auto add = [&](const char* kind, const std::string& name, uint32_t begin, uint32_t end, bool body,
+                       const std::string& alias = std::string())
         {
             const uint32_t e = std::max(end, begin + static_cast<uint32_t>(name.size()));
-            ac.members.push_back({kind, name, src_pos(map, begin), src_pos(map, e)});
+            ac.members.push_back({kind, name, src_pos(map, begin), src_pos(map, e), alias});
             if (body)
                 ranges.emplace_back(begin, e);
         };
         for (const ast::Field& f : c.fields)
-            add("field", f.name, f.pos, f.has_init ? f.init_span.end + 1 : 0, false);
+            add("field", f.name, f.pos, f.has_init ? f.init_span.end + 1 : 0, false, f.alias);
         // The pos of a method is the start of its type. The name comes after it.
         for (const ast::Method& m : c.methods)
             add("method", m.name, find_word(text, m.pos, m.name), m.end_pos + 1, true);

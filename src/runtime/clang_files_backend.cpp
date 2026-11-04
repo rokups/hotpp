@@ -344,19 +344,22 @@ std::string compile_commands_json(const std::vector<CompileCommandEntry>& entrie
     return r + "]\n";
 }
 
-bool ClangFilesBackend::build(
-    const ScriptSource& source, uint32_t generation, const std::string& out_so, std::string& error)
+bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation, const std::string& out_so,
+    std::string& error, std::vector<std::string>* dependencies)
 {
-    return build_impl(source, generation, LoadMode::Reload, out_so, error, nullptr, nullptr);
+    return build_impl(source, generation, LoadMode::Reload, out_so, error, nullptr, nullptr, dependencies);
 }
 
 // "deferred_slots" null: write the slots file when the compile succeeds (the tool hotc).
 // Else give the new content of the slots file back, and leave the file as it is.
 bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generation, LoadMode mode,
-    const std::string& out_so, std::string& error, std::string* deferred_slots, bool* slots_removed)
+    const std::string& out_so, std::string& error, std::string* deferred_slots, bool* slots_removed,
+    std::vector<std::string>* dependencies)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     error.clear();
+    if (dependencies)
+        dependencies->clear();
     if (slots_removed)
         *slots_removed = false;
     std::error_code ec;
@@ -389,6 +392,8 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     if (mode == LoadMode::Reload)
         read_text(opt_.slots_file, to.slots_in);
     hotc::TranslateResult tr = hotc::translate(to, *opt_.session);
+    if (dependencies)
+        *dependencies = tr.dependencies; // also after a failure
     if (!tr.ok)
     {
         if (slots_removed)
@@ -474,7 +479,7 @@ LoadResult ClangFilesBackend::load(const ScriptSource& source, uint32_t generati
     LoadResult r;
     std::string slots;
     bool slots_removed = false;
-    if (!build_impl(source, generation, mode, so, r.error, &slots, &slots_removed))
+    if (!build_impl(source, generation, mode, so, r.error, &slots, &slots_removed, &r.dependencies))
     {
         r.reason = slots_removed ? ReloadReason::SlotsRemoved : ReloadReason::CompileError;
         return r;
@@ -498,7 +503,9 @@ LoadResult ClangFilesBackend::load(const ScriptSource& source, uint32_t generati
             return r;
         }
     }
+    std::vector<std::string> dependencies = std::move(r.dependencies);
     r = module_from_library(so);
+    r.dependencies = std::move(dependencies);
     if (!r.module)
     {
         if (r.reason == ReloadReason::None)

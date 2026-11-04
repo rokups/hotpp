@@ -202,6 +202,9 @@ struct Doc
     mutable bool no_host_told = false;
     Text text;
     hotc::AnalyzeResult facts;
+    // The field names of each class when the document opened, in declaration order. The rename
+    // warning compares them with the current fields. A save does not refresh them.
+    std::map<std::string, std::vector<std::string>> open_fields;
     // The generated C++ that clangd has as the real text, and its map. The map belongs to the
     // script text "gen_script". After a translation error, the last good state stays. The
     // positions of the script then go through the edit between "gen_script" and "text".
@@ -1088,6 +1091,39 @@ json Server::analyze_diagnostics(const Doc& d) const
     };
     for (const hotc::AnalyzeError& e : d.facts.errors)
         add({e.pos.line - 1, e.pos.col - 1}, e.message, 1);
+    // A removed field and an added field without [alias] make a pair, in declaration order. The
+    // value of the old field is lost at reload. A field with [alias] covers its old name.
+    for (const hotc::AnalyzedClass& c : d.facts.classes)
+    {
+        const auto base = d.open_fields.find(c.name);
+        if (base == d.open_fields.end())
+            continue;
+        std::set<std::string> now, covered;
+        for (const hotc::AnalyzedMember& m : c.members)
+            if (m.kind == "field")
+            {
+                now.insert(m.name);
+                if (!m.alias.empty())
+                    covered.insert(m.alias);
+            }
+        std::vector<std::string> removed;
+        for (const std::string& n : base->second)
+            if (!now.count(n) && !covered.count(n))
+                removed.push_back(n);
+        size_t next = 0;
+        for (const hotc::AnalyzedMember& m : c.members)
+        {
+            if (next >= removed.size())
+                break;
+            if (m.kind != "field" || !m.alias.empty()
+                || std::find(base->second.begin(), base->second.end(), m.name) != base->second.end())
+                continue;
+            add({m.begin.line - 1, m.begin.col - 1},
+                "field '" + removed[next] + "' is renamed to '" + m.name + "' without [alias]; the value is lost at hot reload",
+                2);
+            ++next;
+        }
+    }
     // The translation errors: "name:line:col: error: text", one line each.
     static const std::regex re(R"(^(.*):(\d+):(\d+): (fatal error|error|warning): (.*)$)");
     std::istringstream ss(d.facts.diagnostics);
@@ -2736,7 +2772,16 @@ void Server::handle(const json& msg)
         d->host = host_of(d->path);
         refresh_hosts(d.get());
         log_host(*d, d->host);
-        return update(*d);
+        update(*d);
+        if (!d->cpp)
+        {
+            std::lock_guard<std::mutex> lock(docs_mutex_);
+            for (const hotc::AnalyzedClass& c : d->facts.classes)
+                for (const hotc::AnalyzedMember& m : c.members)
+                    if (m.kind == "field")
+                        d->open_fields[c.name].push_back(m.name);
+        }
+        return;
     }
     if (method == "textDocument/didChange")
     {

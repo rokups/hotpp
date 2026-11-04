@@ -185,6 +185,19 @@ function(hot_add_scripts)
         list(APPEND format_args --format=fmt)
     endif()
 
+    # hotc writes a depfile: the headers and the imported scripts that the translation read. Only
+    # the Ninja and the Makefile generators support DEPFILE. The policy CMP0116 NEW makes the
+    # depfile path rules the same for both generators. The depfile path is absolute anyway.
+    if(POLICY CMP0116)
+        cmake_policy(SET CMP0116 NEW)
+    endif()
+    set(use_depfile FALSE)
+    if(CMAKE_GENERATOR MATCHES "^Ninja|^Unix Makefiles" AND NOT CMAKE_VERSION VERSION_LESS 3.20)
+        set(use_depfile TRUE)
+    endif()
+    set(depfile_args "")
+    set(depfile_opts "")
+
     if(A_AOT)
         if(NOT A_OUT_DIR)
             set(A_OUT_DIR ${CMAKE_BINARY_DIR}/hot_aot/${A_TARGET})
@@ -203,10 +216,16 @@ function(hot_add_scripts)
         if(A_OPTIMIZED)
             set(optimized_args --aot-optimized)
         endif()
+        if(use_depfile)
+            set(depfile ${registry}.d)
+            set(depfile_args --depfile ${depfile})
+            set(depfile_opts DEPFILE ${depfile})
+        endif()
         add_custom_command(
             OUTPUT ${sources} ${registry}
             COMMAND ${CMAKE_COMMAND} -E make_directory ${A_OUT_DIR}
-            COMMAND hot::hotc --aot ${optimized_args} ${scripts} --out-dir ${A_OUT_DIR} ${args} ${A_FLAGS} ${format_args} ${A_HOTC_ARGS}
+            COMMAND hot::hotc --aot ${optimized_args} ${scripts} --out-dir ${A_OUT_DIR} ${args} ${A_FLAGS} ${format_args} ${depfile_args} ${A_HOTC_ARGS}
+            ${depfile_opts}
             DEPENDS hot::hotc ${scripts} ${A_PRELUDES} ${A_DEPENDS}
             COMMENT "hotc --aot: ${A_SCRIPTS}"
             VERBATIM)
@@ -260,11 +279,18 @@ function(hot_add_scripts)
         list(APPEND args --host-implib $<TARGET_LINKER_FILE:${A_HOST}>)
         set(host_depends ${A_HOST})
     endif()
+    if(use_depfile)
+        list(GET outputs 0 first_output)
+        set(depfile ${first_output}.d)
+        set(depfile_args --depfile ${depfile})
+        set(depfile_opts DEPFILE ${depfile})
+    endif()
     add_custom_command(
         OUTPUT ${outputs}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${A_OUT_DIR}
         COMMAND hot::hotc ${scripts} --out-dir ${A_OUT_DIR}
-                --cxx ${script_cxx} ${args} --gen ${A_GEN} ${A_HOTC_ARGS}
+                --cxx ${script_cxx} ${args} --gen ${A_GEN} ${depfile_args} ${A_HOTC_ARGS}
+        ${depfile_opts}
         DEPENDS hot::hotc ${scripts} ${A_DEPENDS} ${host_depends}
         COMMENT "hotc: generation ${A_GEN} of ${A_SCRIPTS}"
         VERBATIM)

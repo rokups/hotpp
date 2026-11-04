@@ -86,12 +86,15 @@ public:
 
     // Translates and compiles one script into "out_so". It writes the .cpp
     // next to the .so. It does not load the library. The slot file changes only
-    // when the compile succeeds. On failure, "error" has the diagnostics.
-    bool build(const ScriptSource& source, uint32_t generation, const std::string& out_so, std::string& error);
+    // when the compile succeeds. On failure, "error" has the diagnostics. "dependencies" (when not
+    // null) gets the files that the translation read (TranslateResult::dependencies), also on failure.
+    bool build(const ScriptSource& source, uint32_t generation, const std::string& out_so, std::string& error,
+        std::vector<std::string>* dependencies = nullptr);
 
 private:
     bool build_impl(const ScriptSource& source, uint32_t generation, LoadMode mode, const std::string& out_so,
-        std::string& error, std::string* deferred_slots, bool* slots_removed);
+        std::string& error, std::string* deferred_slots, bool* slots_removed,
+        std::vector<std::string>* dependencies);
 
     ClangFilesOptions opt_;
     std::mutex mutex_; // one build at a time: the slot file is shared

@@ -47,6 +47,13 @@
 // of the compile of the generated code. The default is the C++ standard of the host (HOT_CXX_STANDARD
 // in include/hot/config.h). The flag is useful when hotc is built apart from the host.
 //
+// The flag --depfile <path> writes a dependency file in the Make format after a success:
+// "<output>: dep1 dep2 ...". The dependencies are the native headers and the imported scripts
+// that the translation read. A space in a path gets a backslash. In AOT mode the file has one
+// rule for each script, and the output of the rule is the .aot.cpp file. Each rule lists the
+// dependencies of all scripts: one command makes all outputs. In build mode the
+// output is the .so file. In emit mode it needs -o. CMake and Ninja read the file.
+//
 // Exit code: 0 success, 1 error, 2 bad usage.
 #include "hot/clang_files_backend.h"
 #include "hot/config.h"
@@ -80,6 +87,7 @@ namespace
         "       hotc --aot <file.hot>... --out-dir DIR [-I dir]... [--prelude file]... [--no-strict-borrowed]\n"
         "            [--format=std|fmt] [--resource-dir dir] [--std=c++17|c++20|c++23] [--aot-optimized]\n"
         "Each mode also accepts:\n"
+        "  --depfile <path>     write the headers and imported scripts that the translation read (Make format)\n"
         "  --target <triple>    the target triple of the parse and of the modules (-target)\n"
         "  --sysroot <dir>      the sysroot of the parse and of the modules (--sysroot=)\n"
         "  --host-implib <path> the import library of the host for the link of a module DLL (build mode)\n");
@@ -120,6 +128,7 @@ struct Args
     bool null_warnings = false; // --null-warnings: a nullability finding is a warning
     bool raw_diagnostics = false; // --raw-diagnostics: the compiler text as it is
     std::string compile_commands; // --compile-commands: the directory of compile_commands.json
+    std::string depfile; // --depfile: the dependency file of the build system
 };
 
 Args parse_args(int argc, char** argv)
@@ -157,6 +166,8 @@ Args parse_args(int argc, char** argv)
         }
         else if (a == "--resource-dir")
             r.resource_dir = next();
+        else if (a == "--depfile")
+            r.depfile = next();
         else if (a == "--target")
             r.target = next();
         else if (a == "--sysroot")
@@ -259,6 +270,58 @@ bool write_file(const std::string& path, const std::string& text)
     return true;
 }
 
+// One rule of a dependency file: an output and the files that it depends on.
+struct DepRule
+{
+    std::string target;
+    std::vector<std::string> deps;
+};
+
+// A path in the Make format. A space and a '#' get a backslash. A '$' is doubled.
+std::string depfile_path(const std::string& path)
+{
+    std::string r;
+    for (char c : path)
+    {
+        if (c == ' ' || c == '#')
+            r += '\\';
+        else if (c == '$')
+            r += '$';
+        r += c;
+    }
+    return r;
+}
+
+// Writes the dependency file: one line for each rule. A dependency is an absolute path, so the
+// working directory of the build system does not matter. All outputs of one call come from one
+// command, and a change of any dependency must run it again. Some build systems (the CMake
+// Makefile generators) read only the first rule. So each rule lists the dependencies of all rules.
+bool write_depfile(const std::string& path, const std::vector<DepRule>& rules)
+{
+    std::vector<std::string> all;
+    std::set<std::string> seen;
+    for (const DepRule& rule : rules)
+        for (const std::string& d : rule.deps)
+        {
+            // The file system resolves ".." here. A lexical form is wrong when a directory is a link.
+            std::error_code ec;
+            fs::path p = fs::weakly_canonical(fs::absolute(d, ec), ec);
+            if (ec)
+                p = fs::path(d);
+            if (seen.insert(p.generic_string()).second)
+                all.push_back(p.generic_string());
+        }
+    std::string text;
+    for (const DepRule& rule : rules)
+    {
+        text += depfile_path(rule.target) + ":";
+        for (const std::string& d : all)
+            text += " " + depfile_path(d);
+        text += "\n";
+    }
+    return write_file(path, text);
+}
+
 // Writes the text as a C++ string literal, one literal for each line (adjacent literals join).
 std::string cpp_string_literal(const std::string& text)
 {
@@ -330,6 +393,7 @@ int run_aot(const Args& args)
 
     hotc::TranslatorSession session;
     std::vector<std::string> names;
+    std::vector<DepRule> dep_rules;
     std::string slots; // the manifests of all scripts: a class belongs to one script
     bool failed = false;
     for (const std::string& path : args.inputs)
@@ -363,6 +427,7 @@ int run_aot(const Args& args)
             failed = true;
         slots += r.slots_out + r.sigs_out;
         names.push_back(stem);
+        dep_rules.push_back({out, r.dependencies});
     }
     if (failed)
         return 1;
@@ -380,7 +445,11 @@ int run_aot(const Args& args)
     reg += "const AotTable aot_table = {kAotScripts, " + std::to_string(names.size()) + ", kAotSlots"
         + (args.aot_optimized ? ", true" : "") + "};\n";
     reg += "}  // namespace hot\n";
-    return write_file(args.out_dir + "/hot_aot_registry.cpp", reg) ? 0 : 1;
+    if (!write_file(args.out_dir + "/hot_aot_registry.cpp", reg))
+        return 1;
+    if (!args.depfile.empty() && !write_depfile(args.depfile, dep_rules))
+        return 1;
+    return 0;
 }
 
 // True when the two paths name the same existing file. A missing file is never the same file.
@@ -431,6 +500,11 @@ int run_emit(const Args& args)
     opt.output_name = args.output; // empty: the default name
     if (!args.output.empty() && !check_not_input(args, args.output))
         return 1;
+    if (!args.depfile.empty() && args.output.empty())
+    {
+        std::fprintf(stderr, "hotc: error: --depfile needs -o in the mode --emit-cpp\n");
+        return 2;
+    }
     if (!read_file(input, opt.script_text))
     {
         std::fprintf(stderr, "hotc: error: cannot read %s\n", input.c_str());
@@ -468,6 +542,8 @@ int run_emit(const Args& args)
         }
         mf << r.slots_out << r.sigs_out;
     }
+    if (!args.depfile.empty() && !write_depfile(args.depfile, {{args.output, r.dependencies}}))
+        return 1;
     return 0;
 }
 
@@ -535,6 +611,7 @@ int run_build(const Args& args)
 
     hot::ClangFilesBackend backend(opt);
     std::vector<hot::CompileCommandEntry> db;
+    std::vector<DepRule> dep_rules;
     bool failed = false;
     for (const std::string& path : args.inputs)
     {
@@ -551,12 +628,15 @@ int run_build(const Args& args)
         const std::string so =
             single_so ? args.output : out_dir + "/" + stem + ".g" + std::to_string(args.gen) + hot::module_suffix();
         std::string error;
-        const bool built = backend.build({path, ss.str(), {}}, static_cast<uint32_t>(args.gen), so, error);
+        std::vector<std::string> deps;
+        const bool built = backend.build({path, ss.str(), {}}, static_cast<uint32_t>(args.gen), so, error, &deps);
         if (!built)
         {
             std::fputs(error.c_str(), stderr);
             failed = true;
         }
+        else
+            dep_rules.push_back({so, std::move(deps)});
         // The .cpp exists after a failed compile too. A translation error leaves no .cpp.
         const fs::path cpp = fs::path(so).replace_extension(".cpp");
         if (!args.compile_commands.empty() && fs::exists(cpp))
@@ -573,6 +653,8 @@ int run_build(const Args& args)
         if (!write_file(args.compile_commands + "/compile_commands.json", hot::compile_commands_json(db)))
             failed = true;
     }
+    if (!failed && !args.depfile.empty() && !write_depfile(args.depfile, dep_rules))
+        failed = true;
     return failed ? 1 : 0;
 }
 

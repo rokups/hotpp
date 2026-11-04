@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <string>
 
 using namespace translator_test;
@@ -182,6 +183,86 @@ TEST(NativeHoldsCode, CppMarkComesAfterTheIncludeOfTheStruct)
     EXPECT_GT(at, r.cpp.find("#include \"cb.h\"")) << "after the include";
     EXPECT_LT(at, r.cpp.find("B_fields")) << "before the class that uses it";
     EXPECT_FALSE(has(r.cpp, "native_holds_code<Plain>"));
+}
+
+// The slot text has a line "field Cls::name type" for each field. The slot numbers do not change.
+TEST(FieldRename, SlotTextHasFieldLines)
+{
+    hotc::TranslateResult r = gen("class A { int hp = 0; float[4] xs; void f() { } }\n", 1, "");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_EQ(r.slots_out, "A::f 1\n");
+    EXPECT_TRUE(has(r.sigs_out, "field A::hp int32_t\n")) << r.sigs_out;
+    EXPECT_TRUE(has(r.sigs_out, "field A::xs ")) << r.sigs_out;
+    // The next generation keeps the slot numbers, and the field lines stay the same.
+    hotc::TranslateResult r2 = gen("class A { int hp = 0; float[4] xs; void f() { } void g() { } }\n", 2,
+        r.slots_out + r.sigs_out);
+    ASSERT_TRUE(r2.ok) << r2.diagnostics;
+    EXPECT_EQ(r2.slots_out, "A::f 1\nA::g 2\n");
+    EXPECT_TRUE(r2.warnings.empty()) << r2.warnings;
+}
+
+// A removed field and an added field in the same class give a warning that says "rename".
+TEST(FieldRename, RemovedAndAddedFieldWarn)
+{
+    hotc::TranslateResult g1 = gen("class A { int hp = 0; int mp = 0; }\n", 1, "");
+    ASSERT_TRUE(g1.ok) << g1.diagnostics;
+    hotc::TranslateResult g2 = gen("class A { int health = 0; int mp = 0; }\n", 2, g1.slots_out + g1.sigs_out);
+    ASSERT_TRUE(g2.ok) << g2.diagnostics;
+    EXPECT_EQ(std::count(g2.warnings.begin(), g2.warnings.end(), '\n'), 1) << g2.warnings;
+    EXPECT_TRUE(has(g2.warnings, "looks like a rename")) << g2.warnings;
+    EXPECT_TRUE(has(g2.warnings, "field 'hp' of class 'A' is removed and field 'health' is added"))
+        << g2.warnings;
+    EXPECT_TRUE(has(g2.warnings, "[alias(\"hp\")]")) << g2.warnings;
+}
+
+// An [alias] that names the old field gives no warning.
+TEST(FieldRename, AliasGivesNoWarning)
+{
+    hotc::TranslateResult g1 = gen("class A { int hp = 0; }\n", 1, "");
+    ASSERT_TRUE(g1.ok) << g1.diagnostics;
+    hotc::TranslateResult g2 = gen("class A { [alias(\"hp\")] int health = 0; }\n", 2, g1.slots_out + g1.sigs_out);
+    ASSERT_TRUE(g2.ok) << g2.diagnostics;
+    EXPECT_TRUE(g2.warnings.empty()) << g2.warnings;
+}
+
+// A new field with no removed field gives no warning. A slot text with no field line gives none.
+TEST(FieldRename, AddedFieldAndOldSlotTextGiveNoWarning)
+{
+    hotc::TranslateResult g1 = gen("class A { int hp = 0; void f() { } }\n", 1, "");
+    ASSERT_TRUE(g1.ok) << g1.diagnostics;
+    hotc::TranslateResult g2 = gen("class A { int hp = 0; int mp = 0; void f() { } }\n", 2, g1.slots_out + g1.sigs_out);
+    ASSERT_TRUE(g2.ok) << g2.diagnostics;
+    EXPECT_TRUE(g2.warnings.empty()) << g2.warnings;
+
+    const size_t at = g1.sigs_out.find("field ");
+    ASSERT_NE(at, std::string::npos);
+    const std::string old_text = g1.slots_out + g1.sigs_out.substr(0, at); // no field line
+    hotc::TranslateResult g3 = gen("class A { int health = 0; void f() { } }\n", 2, old_text);
+    ASSERT_TRUE(g3.ok) << g3.diagnostics;
+    EXPECT_TRUE(g3.warnings.empty()) << g3.warnings;
+}
+
+// A .cpp script gives the same warning.
+TEST(FieldRename, CppScriptWarns)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    auto run = [&](const std::string& field, int generation, const std::string& slots_in)
+    {
+        hotc::TranslateOptions o = temp_options(
+            dir, "#include \"w.h\"\nclass A : public Widget { public: int " + field + " = 0; };\n");
+        o.script_name = "t.cpp";
+        o.generation = generation;
+        o.slots_in = slots_in;
+        return hotc::translate(o);
+    };
+    const hotc::TranslateResult g1 = run("hp", 1, "");
+    ASSERT_TRUE(g1.ok) << g1.diagnostics;
+    EXPECT_TRUE(has(g1.sigs_out, "field A::hp int\n")) << g1.sigs_out;
+    const hotc::TranslateResult g2 = run("health", 2, g1.slots_out + g1.sigs_out);
+    ASSERT_TRUE(g2.ok) << g2.diagnostics;
+    EXPECT_EQ(std::count(g2.warnings.begin(), g2.warnings.end(), '\n'), 1) << g2.warnings;
+    EXPECT_TRUE(has(g2.warnings, "looks like a rename")) << g2.warnings;
 }
 
 } // namespace

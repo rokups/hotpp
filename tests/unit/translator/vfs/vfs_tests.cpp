@@ -9,8 +9,10 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <map>
 #include <mutex>
+#include <set>
 #include <string>
 
 namespace
@@ -106,6 +108,36 @@ TEST(Vfs, TranslatesImportsThatExistOnlyInMemory)
     EXPECT_EQ(r.virtual_files[1].first, d + "/inner.h");
     ASSERT_EQ(r.imports.size(), 1u);
     EXPECT_EQ(r.imports[0].first, d + "/m.hot");
+}
+
+// The dependencies hold the header, the header that it includes, and the imported script.
+// A second translation with the same session gives the same list.
+TEST(Vfs, DependenciesListTheFilesThatTheTranslationRead)
+{
+    TempDir dir;
+    const std::string d = dir.path().string();
+    auto mem = std::make_shared<MemoryFs>();
+    mem->set(d + "/v.h", "#include \"inner.h\"\n");
+    mem->set(d + "/inner.h", kHeaderV1);
+    mem->set(d + "/m.hot", "class Base : Widget {\n    virtual int Power() { return 1; }\n}\n");
+    hotc::TranslateOptions o = temp_options(dir, "using \"v.h\";\nusing \"m.hot\";\n"
+                                                 "class Kid : Base {\n    override int Power() { return 2; }\n}\n");
+    o.fs = mem;
+    hotc::TranslatorSession session;
+    const hotc::TranslateResult first = hotc::translate(o, session);
+    ASSERT_TRUE(first.ok) << first.diagnostics;
+    const auto& deps = first.dependencies;
+    EXPECT_NE(std::find(deps.begin(), deps.end(), d + "/v.h"), deps.end());
+    EXPECT_NE(std::find(deps.begin(), deps.end(), d + "/inner.h"), deps.end());
+    EXPECT_NE(std::find(deps.begin(), deps.end(), d + "/m.hot"), deps.end());
+    EXPECT_EQ(std::set<std::string>(deps.begin(), deps.end()).size(), deps.size()) << "duplicates";
+    for (const std::string& dep : deps)
+        EXPECT_EQ(dep.find("/include/c++/"), std::string::npos) << "a system header: " << dep;
+
+    const hotc::TranslateResult second = hotc::translate(o, session);
+    ASSERT_TRUE(second.ok) << second.diagnostics;
+    EXPECT_EQ(session.parse_count(), 1);
+    EXPECT_EQ(second.dependencies, first.dependencies);
 }
 
 // The include directory has no folder on the disk.

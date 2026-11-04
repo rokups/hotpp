@@ -348,6 +348,7 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
     }
     hotc::TranslateResult tr = hotc::translate(to, *opt_.session);
     timings_.translate_ms = ms_since(t0);
+    r.dependencies = tr.dependencies; // also after a failure
     if (!tr.ok)
     {
         r.error = opt_.raw_diagnostics
@@ -437,6 +438,7 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
         }
         return add_to_jit(impl, id + ".core", std::move(*core_ir));
     };
+    added.dependencies = std::move(r.dependencies);
     return added;
 }
 

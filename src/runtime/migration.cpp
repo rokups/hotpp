@@ -196,17 +196,38 @@ MigrationPlan build_plan(const StateLayout& o, const StateLayout& n)
     // A removed field and a new field of the same type look like a rename without [alias].
     // The value is lost (design 5.3). Pair each removed field with one new field.
     std::vector<bool> paired(n.field_count, false);
+    std::vector<bool> warned(o.field_count, false);
     for (uint32_t j : plan.removed)
         for (uint32_t i = 0; i < n.field_count; ++i)
         {
             if (done[i] || paired[i] || std::strcmp(n.fields[i].type_key, o.fields[j].type_key) != 0)
                 continue;
             paired[i] = true;
+            warned[j] = true;
             plan.warnings.push_back(readable_layout(n.name) + ": field " + o.fields[j].name + " is removed and field "
                 + n.fields[i].name + " is added. This looks like a rename; the value is lost. Add [alias(\""
                 + o.fields[j].name + "\")] to keep it");
             break;
         }
+    // A removed field and a new field of another type can be a rename with a type change.
+    // Pair each removed field that is still unpaired with the first unpaired new field.
+    for (uint32_t j : plan.removed)
+    {
+        if (warned[j])
+            continue;
+        for (uint32_t i = 0; i < n.field_count; ++i)
+        {
+            if (done[i] || paired[i])
+                continue;
+            paired[i] = true;
+            plan.warnings.push_back(readable_layout(n.name) + ": field " + o.fields[j].name + " is removed and field "
+                + n.fields[i].name + " is added. This looks like a rename with a type change ("
+                + readable_type(o.fields[j].type_key) + " -> " + readable_type(n.fields[i].type_key)
+                + "); the value is lost. Add [alias(\"" + o.fields[j].name
+                + "\")] and a convert_ hook to keep it");
+            break;
+        }
+    }
     return plan;
 }
 

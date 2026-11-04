@@ -160,7 +160,9 @@ struct TranslateResult
     std::string slots_out; // the new slot file content (valid when ok)
     // The signature lines of the slot file (design 5.3): "sig Cls::fn Sig", one for each script
     // function. A backend writes them after "slots_out" and gives both back in "slots_in". A
-    // reload that changes a signature then gets a new thunk with a signature key.
+    // reload that changes a signature then gets a new thunk with a signature key. After the sig
+    // lines come the lines "field Cls::name type", one for each field. The next translation
+    // reads them to warn about a field rename. A reader of the slot text skips these lines.
     std::string sigs_out;
     std::string diagnostics; // the errors, one line each: "name:line:col: error: text"
     // True when the translation failed because a function of an earlier generation is removed
@@ -179,6 +181,11 @@ struct TranslateResult
     // The native headers that the parse read from TranslateOptions::fs, as path and text. The
     // headers that these include, and that the host file system holds, are here too.
     std::vector<std::pair<std::string, std::string>> virtual_files;
+    // The files that the translation read: the native headers and the imported scripts. The system
+    // headers (the standard library, for example) are not here. A build
+    // system or a host uses them to know when to translate again. There is no duplicate. The
+    // order is stable. The list is valid when ok is true.
+    std::vector<std::string> dependencies;
 };
 
 // The main script and the imported scripts of a translation, as input for the rewriters.
@@ -200,6 +207,8 @@ struct AnalyzedMember
     // The begin is the start of the name. The end is after the closing brace of a body, after
     // the initializer of a field or a property, or else after the name.
     SourcePos begin, end;
+    // The previous name from [alias("...")]. Only a field has it. It is empty with no alias.
+    std::string alias;
 };
 
 struct AnalyzedClass

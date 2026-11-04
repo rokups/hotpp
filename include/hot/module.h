@@ -11,6 +11,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace hot
 {
@@ -65,6 +66,10 @@ struct LoadResult
     // Why the build failed. A backend failure is CompileError. SlotsRemoved means that a class has
     // fewer slots than before: only a full reload can apply the change.
     ReloadReason reason = ReloadReason::None;
+    // The files that the build read, other than the script: the native headers and the imported
+    // scripts. The host watches them. A change of one of them needs a full reload. A backend fills
+    // the list also when the build fails.
+    std::vector<std::string> dependencies;
     explicit operator bool() const { return module.has_value(); }
 };
 

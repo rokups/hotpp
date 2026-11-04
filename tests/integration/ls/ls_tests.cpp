@@ -315,6 +315,61 @@ TEST(LanguageServer, HeaderErrorShowsOnTheUsingLine)
     }
 }
 
+// The rename warning: a removed field and an added field without [alias] give a Warning at the
+// new name. The baseline is the field set at didOpen.
+namespace
+{
+
+std::vector<json> rename_warnings(Session& s, const std::string& text, int version)
+{
+    s.client->change(s.uri, version, text);
+    // The open and the change each publish. The last publish is the one that counts.
+    json n;
+    for (;;)
+    {
+        const json next = s.client->wait_notification("textDocument/publishDiagnostics",
+            [&](const json& p) { return p.value("uri", std::string()) == s.uri; }, n.is_null() ? 20000 : 500);
+        if (next.is_null())
+            break;
+        n = next;
+    }
+    std::vector<json> out;
+    if (n.is_null())
+        return out;
+    for (const json& d : n["params"]["diagnostics"])
+        if (d.value("message", std::string()).find("is renamed to") != std::string::npos)
+            out.push_back(d);
+    return out;
+}
+
+const char* const kRenameBase = "class A {\n    float hp = 1.0;\n    int mp = 2;\n}\n";
+
+} // namespace
+
+TEST(LanguageServer, RenamedFieldWithoutAliasGivesAWarning)
+{
+    Session s(false, kRenameBase);
+    const auto w = rename_warnings(s, "class A {\n    float health = 1.0;\n    int mp = 2;\n}\n", 2);
+    ASSERT_EQ(w.size(), 1u);
+    EXPECT_EQ(w[0]["severity"], 2);
+    EXPECT_EQ(w[0]["message"],
+        "field 'hp' is renamed to 'health' without [alias]; the value is lost at hot reload");
+    EXPECT_EQ(w[0]["range"]["start"]["line"], 1);
+    EXPECT_EQ(w[0]["range"]["start"]["character"], 10);
+}
+
+TEST(LanguageServer, RenamedFieldWithAliasGivesNoWarning)
+{
+    Session s(false, kRenameBase);
+    EXPECT_TRUE(rename_warnings(s, "class A {\n    [alias(\"hp\")] float health = 1.0;\n    int mp = 2;\n}\n", 2).empty());
+}
+
+TEST(LanguageServer, NewFieldWithoutARemovedFieldGivesNoWarning)
+{
+    Session s(false, kRenameBase);
+    EXPECT_TRUE(rename_warnings(s, "class A {\n    float hp = 1.0;\n    int mp = 2;\n    int xp = 3;\n}\n", 2).empty());
+}
+
 // S30 (a): the translation fails, so clangd keeps the last good C++. The positions go through
 // the edit. The call of heal moves two lines down. A missing import makes the translation fail. The definition is still
 // found.

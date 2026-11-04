@@ -382,13 +382,39 @@ TEST(MigrationPlan, MigrateBlockRunsTheInitializerForAFieldThatCannotMove)
     EXPECT_EQ(to, 77); // the initializer ran: the old value is not carried
 }
 
-TEST(MigrationPlan, PlainRemoveAndPlainAddGiveNoWarning)
+TEST(MigrationPlan, PlainRemoveWithoutAnyNewFieldGivesNoWarning)
 {
-    hot::FieldInfo of[] = {mk<float>("hp", nullptr, 0, nullptr)};
-    hot::FieldInfo nf[] = {mk<int>("count", nullptr, 0, nullptr)}; // another type: not a rename
+    hot::FieldInfo of[] = {mk<float>("hp", nullptr, 0, nullptr), mk<int>("level", nullptr, 4, nullptr)};
+    hot::StateLayout o{"Player", 8, 4, 2, of};
+    hot::StateLayout n{"Player", 0, 4, 0, nullptr};
+    hot::MigrationPlan p = hot::build_plan(o, n);
+    EXPECT_EQ(p.removed.size(), 2u);
+    EXPECT_TRUE(p.warnings.empty());
+}
+
+TEST(MigrationPlan, RenameWithATypeChangeWarnsWithBothTypes)
+{
+    hot::FieldInfo of[] = {mk<int>("a", nullptr, 0, nullptr)};
+    hot::FieldInfo nf[] = {mk<float>("b", nullptr, 0, nullptr)};
     hot::StateLayout o{"Player", 4, 4, 1, of};
     hot::StateLayout n{"Player", 4, 4, 1, nf};
-    EXPECT_TRUE(hot::build_plan(o, n).warnings.empty());
+    hot::MigrationPlan p = hot::build_plan(o, n);
+    ASSERT_EQ(p.warnings.size(), 1u);
+    EXPECT_NE(p.warnings[0].find("field a is removed and field b is added"), std::string::npos) << p.warnings[0];
+    EXPECT_NE(p.warnings[0].find("type change"), std::string::npos) << p.warnings[0];
+    EXPECT_NE(p.warnings[0].find("[alias(\"a\")] and a convert_ hook"), std::string::npos) << p.warnings[0];
+}
+
+TEST(MigrationPlan, RenameWithTheSameTypeKeepsTheOldText)
+{
+    hot::FieldInfo of[] = {mk<int>("a", nullptr, 0, nullptr)};
+    hot::FieldInfo nf[] = {mk<int>("b", nullptr, 0, nullptr)};
+    hot::StateLayout o{"Player", 4, 4, 1, of};
+    hot::StateLayout n{"Player", 4, 4, 1, nf};
+    hot::MigrationPlan p = hot::build_plan(o, n);
+    ASSERT_EQ(p.warnings.size(), 1u);
+    EXPECT_NE(p.warnings[0].find("This looks like a rename; the value is lost."), std::string::npos) << p.warnings[0];
+    EXPECT_EQ(p.warnings[0].find("type change"), std::string::npos) << p.warnings[0];
 }
 
 TEST(Migration, ConvertDefaultRenameAndOnReloadHook)

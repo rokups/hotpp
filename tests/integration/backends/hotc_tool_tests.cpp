@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 #include <sys/wait.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -1544,6 +1545,84 @@ TEST(HotcTool, OutputNeverOverwritesAnInput)
         << text2;
     EXPECT_NE(text2.find("the output file"), std::string::npos) << text2;
     EXPECT_EQ(read_file(script), source);
+}
+
+// --depfile writes "<output>: deps" in the Make format. The headers that the script includes
+// are in the list.
+TEST(HotcTool, EmitCppWritesTheDepfile)
+{
+    TestScratch scratch;
+    const std::string out = scratch.file("hotc_dep_emit.cpp");
+    const std::string dep = scratch.file("hotc_dep_emit.d");
+    std::string text;
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp " + player_args() + " -o '" + out
+                      + "' --depfile '" + dep + "' 2>&1",
+                  text),
+        0)
+        << text;
+    const std::string d = read_file(dep);
+    EXPECT_EQ(d.rfind(out + ":", 0), 0u) << d;
+    EXPECT_NE(d.find("/tests/engine/Actor.h"), std::string::npos) << d;
+    EXPECT_NE(d.find("/tests/engine/EngineMath.h"), std::string::npos) << d;
+    EXPECT_EQ(d.find("/include/c++/"), std::string::npos) << d; // no system header
+    EXPECT_EQ(d.back(), '\n');
+    EXPECT_EQ(std::count(d.begin(), d.end(), '\n'), 1) << d;
+}
+
+// A failed translation leaves no depfile.
+TEST(HotcTool, EmitCppWritesNoDepfileOnAnError)
+{
+    TestScratch scratch;
+    const std::string dep = scratch.file("hotc_dep_bad.d");
+    const std::string out = scratch.file("hotc_dep_bad.cpp");
+    const std::string script = scratch.file("hotc_dep_bad.hot");
+    std::ofstream(script) << "using \"Actor.h\";\nclass Dep : Nothing {\n}\n";
+    std::string text;
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp '" + script + "' --gen 1 -I '"
+                      + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' -o '" + out
+                      + "' --depfile '" + dep + "' 2>&1",
+                  text),
+        1)
+        << text;
+    EXPECT_FALSE(std::filesystem::exists(dep));
+}
+
+// In AOT mode the file has one rule for each script.
+TEST(HotcTool, AotModeWritesOneDepfileRuleForEachScript)
+{
+    TestScratch scratch;
+    const std::string out_dir = scratch.file("hotc_dep_aot");
+    const std::string dep = scratch.file("hotc_dep_aot.d");
+    std::string text;
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --aot '" + HOT_SOURCE_DIR + "/tests/scripts/aot_demo.hot' '"
+                      + HOT_SOURCE_DIR + "/tests/scripts/props_v1.hot' --out-dir '" + out_dir + "' -I '"
+                      + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' --depfile '" + dep
+                      + "' 2>&1",
+                  text),
+        0)
+        << text;
+    const std::string d = read_file(dep);
+    EXPECT_NE(d.find(out_dir + "/aot_demo.aot.cpp:"), std::string::npos) << d;
+    EXPECT_NE(d.find(out_dir + "/props_v1.aot.cpp:"), std::string::npos) << d;
+    EXPECT_EQ(std::count(d.begin(), d.end(), '\n'), 2) << d;
+    EXPECT_NE(d.find("/tests/engine/Actor.h"), std::string::npos) << d;
+}
+
+// Build mode: the rule has the library as the output.
+TEST(HotcTool, BuildModeWritesTheDepfile)
+{
+    TestScratch scratch;
+    const std::string so = scratch.file("hotc_dep_build.so");
+    const std::string dep = scratch.file("hotc_dep_build.d");
+    std::string text;
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' " + player_args() + " -o '" + so + "' --cxx '" + HOT_CXX
+                      + "' --depfile '" + dep + "' 2>&1",
+                  text),
+        0)
+        << text;
+    const std::string d = read_file(dep);
+    EXPECT_EQ(d.rfind(so + ":", 0), 0u) << d;
+    EXPECT_NE(d.find("/tests/engine/Actor.h"), std::string::npos) << d;
 }
 
 } // namespace

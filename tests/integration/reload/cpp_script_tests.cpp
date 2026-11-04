@@ -41,6 +41,28 @@ template <class T> T* modvar(Session& s, const char* name)
     return nullptr;
 }
 
+// LoadResult lists the files that the build read: the native header that the script includes.
+// The list is there also when the build fails.
+TEST_P(BackendTests, LoadResultListsDependencies)
+{
+    const auto has_header = [](const hot::LoadResult& r)
+    {
+        for (const std::string& d : r.dependencies)
+            if (d.size() >= 9 && d.compare(d.size() - 9, 9, "Guarded.h") == 0)
+                return true;
+        return false;
+    };
+    const hot::ScriptSource good = {"deps_good.hot", "using \"Actor.h\";\nusing \"Guarded.h\";\nclass Dep : Actor {\n}\n"};
+    const hot::LoadResult r = backend->load(good, 1);
+    ASSERT_TRUE(r) << r.error;
+    EXPECT_TRUE(has_header(r));
+
+    const hot::ScriptSource bad = {"deps_bad.hot", "using \"Actor.h\";\nusing \"Guarded.h\";\nclass Dep : Nothing {\n}\n"};
+    const hot::LoadResult f = backend->load(bad, 1);
+    EXPECT_FALSE(f);
+    EXPECT_TRUE(has_header(f)) << f.error;
+}
+
 // Generation 1 as a C++ script. The native virtual Tick runs the script code.
 TEST_P(BackendTests, CppScriptRunsThroughNativeVirtual)
 {
@@ -888,6 +910,60 @@ TEST_P(BackendTests, CppClassWithOpenNativePureVirtualIsAbstract)
     EXPECT_EQ(result, 0);
     EXPECT_NE(err.find("abstract method 'Warden.Seal' called"), std::string::npos) << err;
     delete static_cast<Actor*>(w.native);
+}
+
+// An inline ".cpp" script. The path names a file that does not exist. Only the text counts.
+hot::ScriptSource inline_cpp(const char* file, const std::string& text)
+{
+    return {std::string(HOT_SOURCE_DIR) + "/tests/scripts/" + file, text, {}};
+}
+
+// A compile error of a ".cpp" script names the script and the script line. The text of the
+// error does not name a generated file.
+TEST_P(BackendTests, CompileErrorDiagnosticsHaveScriptPosition)
+{
+    const std::string text =
+        "#include \"Actor.h\"\n"
+        "\n"
+        "class Broken : public Actor\n"
+        "{\n"
+        "public:\n"
+        "    Broken() : Actor(\"Broken\") {}\n"
+        "    int Run() { return undeclared_name; }\n"
+        "};\n";
+    const int bad_line = test_support::line_with(text, "undeclared_name");
+    ASSERT_EQ(bad_line, 7);
+    const hot::ScriptSource src = inline_cpp("cpp_diag_position.cpp", text);
+    const hot::LoadResult r = backend->load(src, 1);
+    ASSERT_FALSE(r);
+    EXPECT_EQ(r.reason, hot::ReloadReason::CompileError);
+    const std::string expect = src.name + ":" + std::to_string(bad_line) + ":";
+    EXPECT_NE(r.error.find(expect), std::string::npos) << "no '" << expect << "' in:\n" << r.error;
+}
+
+// Generation 2 removes a method of a live class. The slot count shrinks. Each backend reports
+// SlotsRemoved and does not build the module.
+TEST_P(BackendTests, SlotsRemovedIsReportedOnEveryBackend)
+{
+    const std::string head =
+        "#include \"Actor.h\"\n"
+        "\n"
+        "class Healer : public Actor\n"
+        "{\n"
+        "public:\n"
+        "    Healer() : Actor(\"Healer\") {}\n"
+        "    void Tick(float dt) override { Move(Vec3(dt, 0, 0)); }\n";
+    const std::string v1_text = head + "    void heal(float a) { hp += a; }\n    float hp = 1.0f;\n};\n";
+    const std::string v2_text = head + "    float hp = 1.0f;\n};\n";
+    hot::LoadResult v1 = backend->load(inline_cpp("cpp_slots_removed.cpp", v1_text), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Healer"));
+    s.commit_at_frame_boundary();
+
+    hot::LoadResult v2 = backend->load(inline_cpp("cpp_slots_removed.cpp", v2_text), 2);
+    ASSERT_FALSE(v2);
+    EXPECT_EQ(v2.reason, hot::ReloadReason::SlotsRemoved) << v2.error;
 }
 
 } // namespace
