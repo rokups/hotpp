@@ -479,6 +479,8 @@ struct Method
     std::string native_key;
     // The modifiers as written. The parser stores them. Nothing checks them yet.
     bool is_override = false, is_virtual = false, is_new = false;
+    // True for a const method of a ".cpp" script class.
+    bool is_const = false;
     // True when the script writes "abstract" before the method. The method has no body and it
     // implies "virtual". The parser leaves "is_virtual" false. Only a class with "is_abstract" has it.
     bool is_abstract = false;

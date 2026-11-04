@@ -132,6 +132,35 @@ TEST_P(BackendTests, CppScriptFreeFunctionUsesModuleVariable)
     EXPECT_EQ(*modvar<int>(s, "total"), 214);
 }
 
+// Operator members of a .cpp script class. The shell has the operators that the script writes. A
+// reload changes the body of "operator+=" and the signature of "operator()", and it adds
+// "operator*". The state of the objects stays.
+TEST_P(BackendTests, CppOperators)
+{
+    hot::LoadResult v1 = backend->load(source("cpp_operators_v1.cpp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    hot::LoadResult v2 = backend->load(source("cpp_operators_v2.cpp"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Driver"));
+    testing::internal::CaptureStdout();
+    s.actor->Tick(kDt); // a: 2 + 1 = 3. b: 5.
+    std::string out = testing::internal::GetCapturedStdout();
+    // (*a)(3) = 3 + 3, (*a)[1] = 31, == 0, != 1, < 1, -a = -3, b - a = 2
+    EXPECT_NE(out.find("[v1] 6 31 0 1 1 -3 2\n"), std::string::npos) << out;
+
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    const hot::ReloadResult res = s.loader.commit_pending();
+    ASSERT_TRUE(res) << res.error;
+    EXPECT_EQ(hot::active_generation, 2u);
+
+    testing::internal::CaptureStdout();
+    s.actor->Tick(kDt); // a: 3 + 2 * 2 + 2 * 1 = 9. b: 5 + 2 * 5 = 15.
+    out = testing::internal::GetCapturedStdout();
+    // (*a)(3, 2) = 9 + 6, (*a)[1] = 91, == 0, != 1, < 1, -a = -9, b - a = 6, a * 4 = 36
+    EXPECT_NE(out.find("[v2] 15 91 0 1 1 -9 6 36\n"), std::string::npos) << out;
+}
+
 // A function template uses a module variable. The method and the template share the value, also
 // after a reload.
 TEST_P(BackendTests, CppScriptTemplateUsesModuleVariable)

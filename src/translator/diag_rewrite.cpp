@@ -13,6 +13,7 @@
 // The table of the common mistakes is kMistakes. Each row has a test in
 // tests/golden/diagnostics (one script and one expected text).
 #include "hot/hotc_lib.h"
+#include "operator_names.h"
 
 #include <algorithm>
 #include <cctype>
@@ -213,6 +214,8 @@ std::string script_name(const std::string& t)
         std::string member = t.substr(us + 2);
         if (member.size() > 5 && ends_with(member, "_virt"))
             member.resize(member.size() - 5);
+        if (const std::string sym = hotc::cpp_op_symbol(member); !sym.empty())
+            member = "operator" + sym;
         return t.substr(0, us) + "." + member;
     }
     return t;
@@ -313,6 +316,8 @@ std::string cpp_script_name(const std::string& t, const std::set<std::string>& c
     std::string member = t.substr(us + 2);
     if (member.size() > 5 && ends_with(member, "_virt"))
         member.resize(member.size() - 5);
+    if (const std::string sym = hotc::cpp_op_symbol(member); !sym.empty())
+        member = "operator" + sym;
     if (member == "ctor")
         return cls + "::" + cls;
     if (member == "dtor")

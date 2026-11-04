@@ -4589,7 +4589,8 @@ void translate_impl(
         {
             const size_t before = g_diag.items.size();
             hotc::check_ctors(cd, map, g_diag);
-            hotc::check_operators(cd, map, g_diag);
+            if (!sc.is_cpp) // the C++ compiler checks the operators of a .cpp class
+                hotc::check_operators(cd, map, g_diag);
             if (g_diag.items.size() != before)
                 throw TranslateAbort{};
         }
@@ -5449,7 +5450,8 @@ void translate_impl(
         {
             const size_t before = g_diag.items.size();
             hotc::check_ctors(cd, map, g_diag);
-            hotc::check_operators(cd, map, g_diag);
+            if (!sc.is_cpp) // the C++ compiler checks the operators of a .cpp class
+                hotc::check_operators(cd, map, g_diag);
             if (g_diag.items.size() != before)
                 throw TranslateAbort{};
         }
@@ -6216,7 +6218,13 @@ void translate_impl(
         // initializer as a default member initializer, in the order of the declaration.
         // The member of the shell for an ordinary script function. The body of a ".cpp" script calls
         // the function by its own name, so that member has no prefix.
-        auto body_member = [&](const Method& m) { return (opt.aot_optimized && !m.raw ? "__b_" : "") + m.name; };
+        // An operator of a ".cpp" script is a member "operator+=" of the shell, so the body can use it.
+        auto body_member = [&](const Method& m)
+        {
+            if (opt.aot_optimized && m.raw && !m.op.empty())
+                return hotc::cxx_member_name(m);
+            return (opt.aot_optimized && !m.raw ? "__b_" : "") + m.name;
+        };
         std::vector<std::string> field_inits(cd.fields.size());
         if (opt.aot_optimized)
             for (size_t fi = 0; fi < cd.fields.size(); ++fi)
@@ -6299,9 +6307,11 @@ void translate_impl(
         // return of "C" is a hot::Value<C>. The member of a compare operator or of an operator that
         // returns a value is const, like the member of a struct. The translator adds "!=" for a
         // written "==" and the compound operators for a written binary operator that returns the
-        // class. A compound operator takes the state of the result (hot::assign_value). Optimized
-        // AOT code has no slot, so its shell has no operator members.
-        if (!opt.aot_optimized && !sc.is_cpp)
+        // class. A compound operator takes the state of the result (hot::assign_value). A ".cpp"
+        // script has only the written operators. The member is const when the C++ method is const.
+        // Optimized AOT code has no slot, so this block adds no operator members. The body of the
+        // operator is the member then (see body_member).
+        if (!opt.aot_optimized)
         {
             std::string ops;
             bool has_eq = false;
@@ -6312,7 +6322,7 @@ void translate_impl(
                     continue;
                 const std::string ret = m.ret.empty() ? std::string("void") : m.ret;
                 const bool ref_ret = hotc::ast::is_ref_type(ret);
-                const bool is_const = hotc::is_compare_op_ident(m.name) || !ref_ret;
+                const bool is_const = sc.is_cpp ? m.is_const : (hotc::is_compare_op_ident(m.name) || !ref_ret);
                 std::string ps, as, sig_ps;
                 for (const Param& p : m.params)
                 {
@@ -6328,11 +6338,11 @@ void translate_impl(
                 has_eq = has_eq || m.name == "op_eq";
                 // "a += b" for "a + b": only a binary operator of arithmetic or bits that returns the class.
                 const std::string value_ret = "hot::Value<" + cn + ">";
-                if (m.params.size() == 1 && hotc::is_binary_op_ident(m.name) && ret == value_ret)
+                if (!sc.is_cpp && m.params.size() == 1 && hotc::is_binary_op_ident(m.name) && ret == value_ret)
                     ops += "    " + shell + "& operator" + m.op + "=(" + ps + ")\n    {\n        hot::assign_value(*this, (*this "
                         + m.op + " " + arg_expr(m.params[0].type, m.params[0].name) + "));\n        return *this;\n    }\n";
             }
-            if (has_eq)
+            if (has_eq && !sc.is_cpp)
                 ops += "    bool operator!=(const " + cn + "& o) const { return !(*this == o); }\n";
             if (!ops.empty())
                 mapped("\n" + ops, cd.line, cd.pos);
@@ -6514,7 +6524,7 @@ void translate_impl(
                 // The body of a ".cpp" script calls the member directly, so the member has the defaults.
                 members += "    " + std::string(declares ? "virtual " : "") + (m.ret.empty() ? std::string("void") : m.ret)
                     + " " + body_member(m) + "(" + no_comma(m.raw ? param_defaults(m) : param_types(m)) + ")"
-                    + (is_override ? " override" : "") + ";\n";
+                    + (m.raw && !m.op.empty() && m.is_const ? " const" : "") + (is_override ? " override" : "") + ";\n";
             }
             if (!members.empty())
                 mapped("\n" + members, cd.line, cd.pos);
@@ -7120,6 +7130,7 @@ void translate_impl(
                 return;
             // The member of the shell. A plain member only in a ".cpp" body (see body_member).
             const std::string bmember = !opt.aot_optimized ? member
+                : m.raw && !m.op.empty() ? hotc::cxx_member_name(m)
                 : m.raw && !m.overrides_virtual && member == m.name ? member
                                                                     : "__b_" + member;
             // The wrapper of a script function: it only calls the member.
@@ -7188,6 +7199,8 @@ void translate_impl(
             }
             const std::string mhead = ret + " " + (opt.aot_optimized ? shell : S) + "::" + bmember + "(" + params;
             const size_t mhead_from = ret.size() + 1 + (opt.aot_optimized ? shell : S).size() + 2;
+            // An operator of a ".cpp" script keeps the "const" of the C++ method (optimized AOT code).
+            const std::string mconst = opt.aot_optimized && m.raw && !m.op.empty() && m.is_const ? " const" : "";
             // The frame of the traceback (hot/runtime/trace.h). The macro is empty when HOT_TRACEBACK is 0.
             std::string tname = what.substr(0, what.find('('));
             for (size_t c; (c = tname.find("::")) != std::string::npos;)
@@ -7209,7 +7222,7 @@ void translate_impl(
                     : "        return" + (ret == "void" ? std::string() : " " + ret + "()") + ";\n";
             bodies.push_back({cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns),
                 [&o, &all_text, &mapped, &reset, &write_stmts, h = body_head(m), em, file, end_line, first_line,
-                    is_fn, sym, whead, wbody, bmember, mhead, mhead_from, what, shell, body_locals, tname, stale_ret,
+                    is_fn, sym, whead, wbody, bmember, mhead, mconst, mhead_from, what, shell, body_locals, tname, stale_ret,
                     is_async, is_coroutine, co_head, co_call, abstract_text, aot_optimized = opt.aot_optimized]
                 {
                     const Method& m = *h;
@@ -7238,7 +7251,7 @@ void translate_impl(
                     }
                     o.w(line_at(m.line));
                     o.head_segments(mhead, bmember, m, all_text, mhead_from);
-                    o.w(mhead + ")\n");
+                    o.w(mhead + ")" + mconst + "\n");
                     // The brace and the check of the generation map to the line of the function. So
                     // the entry row and the prologue end are on this line, and a breakpoint on the
                     // first statement line does not resolve to the function line.

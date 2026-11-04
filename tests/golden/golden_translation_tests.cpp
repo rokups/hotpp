@@ -40,7 +40,7 @@ void check_golden(const std::string& name, const std::string& text)
 }
 
 // Translates "<base>_v1" as generation 1 and "<base>_v2" as generation 2.
-// The slot input of generation 2 is the slot output of generation 1.
+// The slot input of generation 2 is the slot output and the signature lines of generation 1.
 // "ext" is the extension of the script files.
 void golden_pair(const std::string& base, const std::string& ext = ".hot")
 {
@@ -56,7 +56,7 @@ void golden_pair(const std::string& base, const std::string& ext = ".hot")
         const std::string stem = base + "_v" + std::to_string(gen) + ".g" + std::to_string(gen);
         check_golden(stem + ".cpp", r.cpp);
         check_golden(stem + ".slots", r.slots_out);
-        slots = r.slots_out;
+        slots = r.slots_out + r.sigs_out;
     }
 }
 
@@ -208,6 +208,13 @@ TEST(GoldenTranslation, CppObjects)
 TEST(GoldenTranslation, CppFluent)
 {
     golden_pair("cpp_fluent", ".cpp");
+}
+
+// A .cpp script class has operator members. The frontend mangles the names (op_add_assign). The
+// shell has the written operators only. Generation 2 changes the signature of "operator()".
+TEST(GoldenTranslation, CppOperators)
+{
+    golden_pair("cpp_operators", ".cpp");
 }
 
 // A .cpp script class derives from a script class. The parent declares a virtual method.

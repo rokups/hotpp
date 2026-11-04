@@ -23,6 +23,26 @@ The generated file keeps the source order of the script. A block at the top decl
 
 All other text stays as you wrote it.
 
+## Operators
+
+A script class can have operator members. These operators are allowed:
+
+- Binary: `+ - * / % & | ^ << >>`
+- Compare: `== != < > <= >=`
+- Other: `[]` and `()`
+- Unary: `-`, `+`, `!` and `~`
+- Compound: `+= -= *= /= %= &= |= ^= <<= >>=`
+
+`hotc` gives each operator a safe name. For example, `operator+=` becomes `op_add_assign`. The slot, the state member and the thunk use this name. A message of the compiler shows the operator again, for example `Vec::operator+=`.
+
+The shell keeps a C++ operator member. So the code `a += b` stays as you wrote it, in the script and in native code. The member calls the slot of the written operator. A reload changes the body of the operator.
+
+`hotc` generates no operator for you. It does not make `!=` from `==`. It does not make a compound operator from a binary operator. Write each operator that you need.
+
+A class can have one overload for each symbol. The member is `const` when the written method is `const`. The C++ compiler checks the number of parameters of an operator.
+
+An operator that a script class cannot define is an error. See [Limits](cpp-limits.html).
+
 ## Lambdas
 
 A lambda in a method, in a constructor or in a field initializer can use the fields, the methods and the native base members of the object. Use any capture: `[this]`, `[=]`, `[&]`, `[=, this]`, `[&, this]` or an init-capture such as `[self = this]`. A generic lambda and a nested lambda work too.

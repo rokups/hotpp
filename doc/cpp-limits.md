@@ -46,7 +46,9 @@ The first version gives an error for each form in this list. The text in the sec
 | A type alias in the class: `using T = int;` or `typedef int T;` | `a type alias is not supported in a .cpp script class` |
 | A friend declaration | `a friend declaration is not supported in a .cpp script class` |
 | A conversion operator, for example `operator int() const` | `a conversion operator is not supported in a .cpp script class` |
-| An operator member, for example `Vec& operator+=(int v)` or `int operator()(int v)` (not a conversion operator) | `an operator member is not supported in a .cpp script class; use a named method` (a defaulted or deleted operator gets the message of the defaulted or deleted method) |
+| An operator symbol that a script class cannot define: `=`, `<=>`, `->`, `->*`, `,`, `&&`, `||`, `++`, `--`, unary `*`, unary `&`, `new`, `delete`, `co_await` and a literal operator | `operator '<sym>' is not supported in a .cpp script class`. The other operators are valid (see [Operators](cpp-translation.html#operators)). A defaulted or deleted operator gets the message of the defaulted or deleted method. |
+| A `static` operator member, for example `static int operator()(int v)` | `a static operator is not supported in a .cpp script class` |
+| Two overloads of one operator symbol, for example `int operator+(int) const` and `int operator+(const S&) const` | `operator '+' is declared twice (overloads are not supported)` |
 | A member template: a method template, a constructor template, a class template or an alias template in the class | `a member template is not supported in a .cpp script class` |
 | A `static_assert` in the class | `a static_assert is not supported in a .cpp script class` |
 | A using declaration in the class, for example `using Actor::Move;` | `a using declaration is not supported in a .cpp script class` |

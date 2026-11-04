@@ -52,6 +52,29 @@ inline constexpr OpRow kOpRows[] = {
     {"~", "op_compl", 0, false, false},
 };
 
+struct CppOpRow
+{
+    std::string_view sym;
+    std::string_view ident;
+    bool any_arity; // true: the operator takes any parameter count
+};
+
+// The operators that only a .cpp script class defines. A .hot class does not define them.
+inline constexpr CppOpRow kCppOpRows[] = {
+    {"!=", "op_ne", false},
+    {"()", "op_call", true},
+    {"+=", "op_add_assign", false},
+    {"-=", "op_sub_assign", false},
+    {"*=", "op_mul_assign", false},
+    {"/=", "op_div_assign", false},
+    {"%=", "op_mod_assign", false},
+    {"&=", "op_and_assign", false},
+    {"|=", "op_or_assign", false},
+    {"^=", "op_xor_assign", false},
+    {"<<=", "op_shl_assign", false},
+    {">>=", "op_shr_assign", false},
+};
+
 } // namespace op_names_detail
 
 // The identifier of an operator symbol with the given parameter count. Empty when the script
@@ -79,6 +102,31 @@ inline std::string op_symbol(std::string_view ident)
     if (ident == "op_pos")
         return "+";
     for (const op_names_detail::OpRow& r : op_names_detail::kOpRows)
+        if (r.ident == ident)
+            return std::string(r.sym);
+    return {};
+}
+
+// The identifier of an operator of a .cpp script class. The .hot operators come first. Empty when
+// the frontend cannot define the operator.
+inline std::optional<std::string> cpp_op_ident(std::string_view sym, size_t arity)
+{
+    if (std::optional<std::string> id = op_ident(sym, arity))
+        return id;
+    for (const op_names_detail::CppOpRow& r : op_names_detail::kCppOpRows)
+        if (r.sym == sym && (r.any_arity || arity == 1))
+            return std::string(r.ident);
+    return std::nullopt;
+}
+
+// The symbol of an operator identifier of a .cpp script class. Empty when the text is not an
+// operator identifier.
+inline std::string cpp_op_symbol(std::string_view ident)
+{
+    std::string sym = op_symbol(ident);
+    if (!sym.empty())
+        return sym;
+    for (const op_names_detail::CppOpRow& r : op_names_detail::kCppOpRows)
         if (r.ident == ident)
             return std::string(r.sym);
     return {};

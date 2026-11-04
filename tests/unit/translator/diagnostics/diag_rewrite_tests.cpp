@@ -56,6 +56,16 @@ TEST(DiagRewrite, VirtualWrapperNameLosesItsSuffix)
     EXPECT_EQ(rewrite_diagnostic(in), "a.hot:3:1: error: no method or function 'Boss.roar' fits these arguments\n");
 }
 
+// The mangled name of an operator shows as the operator.
+TEST(DiagRewrite, OperatorNameShowsAsOperator)
+{
+    const std::string in = "a.hot:3:5: error: no matching function for call to 'Vec__op_add_assign_virt'\n"
+                           "a.hot:4:5: error: no matching function for call to 'Vec__op_add_assign'\n";
+    EXPECT_EQ(rewrite_diagnostic(in),
+        "a.hot:3:1: error: no method or function 'Vec.operator+=' fits these arguments\n"
+        "a.hot:4:1: error: no method or function 'Vec.operator+=' fits these arguments\n");
+}
+
 TEST(DiagRewrite, BuiltinTypesAndStdScopeUseScriptSpelling)
 {
     const std::string in =
@@ -503,6 +513,9 @@ TEST(DiagRewrite, CppScriptKeepsCppSpelling)
         {"no member named 'x' in 'PlayerState_g1'", "no member named 'x' in 'Player'"},
         {"no matching function for call to 'Player__heal'", "no matching function for call to 'Player::heal'"},
         {"no matching function for call to 'Player__heal_virt'", "no matching function for call to 'Player::heal'"},
+        {"no matching function for call to 'Player__op_add_assign'",
+            "no matching function for call to 'Player::operator+='"},
+        {"no matching function for call to 'Player__op_call_virt'", "no matching function for call to 'Player::operator()'"},
         {"call to 'Player__ctor'", "call to 'Player::Player'"},
         {"call to 'Player__dtor'", "call to 'Player::~Player'"},
         {"use of undeclared identifier '__self'", "use of undeclared identifier 'this'"},

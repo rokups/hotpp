@@ -1,0 +1,9 @@
+Vec::op_add_assign 1
+Vec::op_eq 1
+Vec::op_ne 1
+Vec::op_lt 1
+Vec::op_call 1
+Vec::op_index 1
+Vec::op_neg 1
+Vec::op_sub 1
+Vec::op_mul 2

@@ -49,6 +49,13 @@ class CppReader : public Actor
 {
 public:
     CppReader() : Actor("CppReader") {}
+    // Operators: the optimized shell has them as members, and the bodies are the members.
+    CppReader& operator+=(int v)
+    {
+        mine += v;
+        return *this;
+    }
+    int operator()(int k) const { return mine + k; }
     int ReadPtr(CppUnit* u) { return u->base_power; }
     int ReadRef(CppUnit& u) { return u.base_power; }
     int ReadConst(const CppUnit& u) { return u.base_power; }
@@ -105,6 +112,10 @@ public:
             CppApply* a = new CppApply([](int v) { return v * 2; }, grid);
             applied = a->Run([](int v) { return v + 1; }, grid);
             owned.push_back(std::make_unique<int>(7));
+            CppReader* r = new CppReader();
+            *r += 1;
+            const CppReader& cr = *r; // a call of a const operator through a const reference
+            power += cr(0) - 5; // the operators change nothing in the output
         }
         ticks += 1;
         hits += 1;

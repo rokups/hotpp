@@ -7,6 +7,7 @@
 // generated code cannot resolve. An edit never adds a newline, so the line numbers stay.
 #include "cpp_frontend.h"
 #include "../file_time.h"
+#include "../operator_names.h"
 
 #include "../std_ns.h"
 
@@ -2011,6 +2012,28 @@ void Frontend::make_method(CXCursor c, const ClassInfo* cls, const Where<ast::Me
     m.line = line(m.pos);
     m.access = access_of(c);
     const CXCursorKind kind = clang_getCursorKind(c);
+    if (kind == CXCursor_CXXMethod)
+    {
+        m.is_const = clang_CXXMethod_isConst(c) != 0;
+        // An operator gets a safe identifier as the name. A defaulted or deleted operator gets the
+        // message of the missing body below.
+        const std::string& sp = m.name;
+        if (sp.compare(0, 8, "operator") == 0 && (sp.size() == 8 || !is_ident(sp[8])) && !is_defaulted(c))
+        {
+            size_t b = 8, e = sp.size();
+            while (b < e && is_space(sp[b]))
+                ++b;
+            while (e > b && is_space(sp[e - 1]))
+                --e;
+            const std::string sym = sp.substr(b, e - b);
+            const int arity = clang_Cursor_getNumArguments(c);
+            const std::optional<std::string> ident = cpp_op_ident(sym, arity < 0 ? 0 : static_cast<size_t>(arity));
+            if (!ident)
+                fail(m.pos, "operator '" + sym + "' is not supported in a .cpp script class");
+            m.op = sym;
+            m.name = *ident;
+        }
+    }
     if (kind == CXCursor_CXXMethod && !clang_CXXMethod_isStatic(c)) // a static convert hook has no "this"
     {
         m.is_override = has_child(c, CXCursor_CXXOverrideAttr);
@@ -2733,13 +2756,13 @@ void Frontend::process_class(CXCursor c)
         }
         case CXCursor_CXXMethod:
         {
-            // An operator has no usable name in the generated shell and state. A defaulted or deleted
-            // operator gets the message of make_method.
-            const std::string mname = spelling(k);
-            if (mname.compare(0, 8, "operator") == 0 && (mname.size() == 8 || !is_ident(mname[8]))
-                && !is_defaulted(k))
-                fail(pos_of(k), "an operator member is not supported in a .cpp script class; use a named method");
             std::string var;
+            if (clang_CXXMethod_isStatic(k))
+            { // make_method reports an operator; a static function never reaches it
+                const std::string sp = spelling(k);
+                if (sp.compare(0, 8, "operator") == 0 && (sp.size() == 8 || !is_ident(sp[8])) && !is_defaulted(k))
+                    fail(pos_of(k), "a static operator is not supported in a .cpp script class");
+            }
             if (!clang_CXXMethod_isStatic(k))
                 make_method(k, &info, [this, ci]() -> std::vector<ast::Method>& { return sc_.classes[ci].methods; });
             else if (static_hook_of(k, info.usr, &var))

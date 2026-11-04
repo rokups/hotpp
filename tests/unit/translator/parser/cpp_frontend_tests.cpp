@@ -6,6 +6,7 @@
 // The base class Actor comes from tests/engine/Actor.h.
 #include "parser/cpp_frontend.h"
 #include "hot/hotc_lib.h"
+#include "operator_names.h"
 
 #include <gtest/gtest.h>
 
@@ -1738,22 +1739,139 @@ TEST(CppFrontend, UnsupportedMembersAreNamed)
             std::string(": error: ") + what + " is not supported in a .cpp script class");
 }
 
-// An operator member has no usable name in the generated shell and state. The error is clear.
-TEST(CppFrontend, OperatorMemberIsAnError)
+// The names of the operators of a .cpp script class.
+TEST(CppFrontend, CppOperatorNames)
 {
-    const char* const cases[] = {
-        "S& operator+=(int v) { n += v; return *this; }",
-        "bool operator==(const S& o) const { return n == o.n; }",
-        "int operator()(int v) { return v; }",
-        "int operator[](int i) { return i; }",
-        "S& operator=(const S& o) { n = o.n; return *this; }",
+    EXPECT_EQ(hotc::cpp_op_ident("+=", 1), "op_add_assign");
+    EXPECT_EQ(hotc::cpp_op_ident("()", 3), "op_call");
+    EXPECT_EQ(hotc::cpp_op_ident("-", 0), "op_neg");
+    EXPECT_EQ(hotc::cpp_op_ident("!=", 1), "op_ne");
+    EXPECT_FALSE(hotc::cpp_op_ident("=", 1));
+    EXPECT_FALSE(hotc::cpp_op_ident("!=", 0));
+    EXPECT_EQ(hotc::cpp_op_symbol("op_ne"), "!=");
+    EXPECT_EQ(hotc::cpp_op_symbol("op_shr_assign"), ">>=");
+    EXPECT_EQ(hotc::cpp_op_symbol("op_add"), "+");
+    EXPECT_TRUE(hotc::cpp_op_symbol("op_none").empty());
+    // The .hot table does not change.
+    EXPECT_FALSE(hotc::op_ident("!=", 1));
+    EXPECT_FALSE(hotc::op_ident("+=", 1));
+}
+
+// An operator member gets a safe identifier as the name.
+TEST(CppFrontend, OperatorMemberIsMangled)
+{
+    hotc::TranslateOptions o;
+    o.script_name = "t.cpp";
+    o.script_text = "#include \"Actor.h\"\nclass S : public Actor\n{\npublic:\n    S() : Actor(\"S\") {}\n"
+                    "    S& operator+=(int v) { n += v; return *this; }\n"
+                    "    bool operator==(const S& o) const { return n == o.n; }\n"
+                    "    bool operator!=(const S& o) const { return n != o.n; }\n"
+                    "    int operator()(int v) const { return v; }\n"
+                    "    int operator[](int i) { return i; }\n"
+                    "    int operator-() const { return -n; }\n"
+                    "    int operator-(const S& o) const { return n - o.n; }\n"
+                    "    S& operator<<=(int v) { n <<= v; return *this; }\n"
+                    "    int n = 0;\n};\n";
+    o.generation = 1;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
+    o.resource_dir = HOT_RESOURCE_DIR;
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    for (const char* name : {"SLOT_op_add_assign", "S__op_eq(", "S__op_ne(", "S__op_call(", "S__op_index(",
+             "S__op_neg(", "S__op_sub(", "S__op_shl_assign("})
+        EXPECT_NE(r.cpp.find(name), std::string::npos) << name << "\n" << r.cpp;
+    // The shell member of "operator+=" is not const. The one of "operator==" is const.
+    for (const char* text : {"S & operator+=(int v)\n", "hot::call<S &(Actor*, int)>(this, SLOT_op_add_assign, v)",
+             "bool operator==(const S & o) const\n",
+             "hot::call<bool(Actor*, const S &)>(const_cast<S_Shell*>(this), SLOT_op_eq, o)"})
+        EXPECT_NE(r.cpp.find(text), std::string::npos) << text << "\n" << r.cpp;
+}
+
+// Optimized AOT code: the body of an operator is the member "operator+=" of the shell.
+TEST(CppFrontend, OperatorMemberInOptimizedAot)
+{
+    hotc::TranslateOptions o;
+    o.script_name = "t.cpp";
+    o.script_text = "#include \"Actor.h\"\nclass S : public Actor\n{\npublic:\n    S() : Actor(\"S\") {}\n"
+                    "    S& operator+=(int v) { n += v; return *this; }\n"
+                    "    int operator()(int k) const { return n + k; }\n    int n = 0;\n};\n"
+                    "S* g = nullptr;\nclass D : public Actor\n{\npublic:\n    D() : Actor(\"D\") {}\n"
+                    "    void Tick(float) override { if (!g) g = new S(); *g += 2; }\n};\n";
+    o.generation = 1;
+    o.aot = true;
+    o.aot_optimized = true;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
+    o.resource_dir = HOT_RESOURCE_DIR;
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("S_Shell::operator+=(int v)\n"), std::string::npos) << r.cpp;
+    // The const operator keeps "const" in the declaration and in the definition.
+    EXPECT_NE(r.cpp.find("operator()(int k) const;"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("S_Shell::operator()(int k) const\n"), std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find("hot::call<S &(Actor*, int)>"), std::string::npos) << r.cpp;
+}
+
+// The translator adds no operator to a .cpp script class: "==" does not make a "!=".
+TEST(CppFrontend, NoOperatorIsGenerated)
+{
+    hotc::TranslateOptions o;
+    o.script_name = "t.cpp";
+    o.script_text = "#include \"Actor.h\"\nclass S : public Actor\n{\npublic:\n    S() : Actor(\"S\") {}\n"
+                    "    bool operator==(const S& o) const { return n == o.n; }\n"
+                    "    int operator+(const S& o) const { return o.n; }\n"
+                    "    int n = 0;\n};\n";
+    o.generation = 1;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
+    o.resource_dir = HOT_RESOURCE_DIR;
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("operator=="), std::string::npos);
+    EXPECT_EQ(r.cpp.find("operator!="), std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find("operator+="), std::string::npos) << r.cpp;
+}
+
+// An operator that the frontend does not support is an error with a clear message.
+TEST(CppFrontend, UnsupportedOperatorIsAnError)
+{
+    const std::pair<const char*, const char*> cases[] = {
+        {"S& operator=(const S& o) { n = o.n; return *this; }", "operator '=' is not supported in a .cpp script class"},
+        {"S& operator++() { ++n; return *this; }", "operator '++' is not supported in a .cpp script class"},
+        {"int operator*() const { return n; }", "operator '*' is not supported in a .cpp script class"},
+        {"static int operator()(int v) { return v; }", "a static operator is not supported in a .cpp script class"},
     };
-    for (const char* member : cases)
+    for (const auto& [member, msg] : cases)
         expect_error(std::string("class S : public Actor { public: int n = 0; ") + member + " };",
-            "t:2:");
-    for (const char* member : cases)
-        expect_error(std::string("class S : public Actor { public: int n = 0; ") + member + " };",
-            ": error: an operator member is not supported in a .cpp script class; use a named method");
+            std::string(": error: ") + msg);
+
+    // The three-way compare needs C++20.
+    {
+        hotc::TranslateOptions o;
+        o.script_name = "t.cpp";
+        o.script_text = "#include \"Actor.h\"\nclass S : public Actor\n{\npublic:\n    S() : Actor(\"S\") {}\n"
+                        "    int operator<=>(const S& o) const { return n - o.n; }\n    int n = 0;\n};\n";
+        o.generation = 1;
+        o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
+        o.resource_dir = HOT_RESOURCE_DIR;
+        o.std_version = "c++20";
+        const hotc::TranslateResult r = hotc::translate(o);
+        EXPECT_FALSE(r.ok);
+        EXPECT_NE(r.diagnostics.find("operator '<=>' is not supported in a .cpp script class"), std::string::npos)
+            << r.diagnostics;
+    }
+
+    hotc::TranslateOptions o;
+    o.script_name = "t.cpp";
+    o.script_text = "#include \"Actor.h\"\nclass S : public Actor\n{\npublic:\n    S() : Actor(\"S\") {}\n"
+                    "    int operator+(int v) const { return v; }\n"
+                    "    int operator+(const S& o) const { return o.n; }\n"
+                    "    int n = 0;\n};\n";
+    o.generation = 1;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
+    o.resource_dir = HOT_RESOURCE_DIR;
+    const hotc::TranslateResult r = hotc::translate(o);
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("operator '+' is declared twice (overloads are not supported)"), std::string::npos)
+        << r.diagnostics;
 }
 
 // A method whose name only starts with "operator" is a normal method.
