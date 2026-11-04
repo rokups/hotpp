@@ -42,7 +42,19 @@ The first version gives an error for each form in this list. The text in the sec
 | A delegating constructor, for example `Player() : Player(1) {}` | `a delegating constructor is not supported in a .cpp script class` |
 | A default member initializer that reads a field which has an entry in the list | `the default member initializer of the field '<b>' reads the field '<a>', which this constructor sets in its initializer list; ...` |
 | An entry in the initializer list that is not a field of the class, or a field that has two entries | An error of the C++ parser, for example `member initializer 'x' does not name a non-static data member or base class` |
+| A nested type in the class: a struct, a class, a union or an enum | `a nested type is not supported in a .cpp script class` |
+| A type alias in the class: `using T = int;` or `typedef int T;` | `a type alias is not supported in a .cpp script class` |
+| A friend declaration | `a friend declaration is not supported in a .cpp script class` |
+| A conversion operator, for example `operator int() const` | `a conversion operator is not supported in a .cpp script class` |
+| An operator symbol that a script class cannot define: `=`, `<=>`, `->`, `->*`, `,`, `&&`, `||`, `++`, `--`, unary `*`, unary `&`, `new`, `delete`, `co_await` and a literal operator | `operator '<sym>' is not supported in a .cpp script class`. The other operators are valid (see [Operators](cpp-translation.html#operators)). A defaulted or deleted operator gets the message of the defaulted or deleted method. |
+| A `static` operator member, for example `static int operator()(int v)` | `a static operator is not supported in a .cpp script class` |
+| Two overloads of one operator symbol, for example `int operator+(int) const` and `int operator+(const S&) const` | `operator '+' is declared twice (overloads are not supported)` |
+| A member template: a method template, a constructor template, a class template or an alias template in the class | `a member template is not supported in a .cpp script class` |
+| A `static_assert` in the class | `a static_assert is not supported in a .cpp script class` |
+| A using declaration in the class, for example `using Actor::Move;` | `a using declaration is not supported in a .cpp script class` |
 | Any other declaration in the class | `this declaration is not supported in a .cpp script class` |
+| A pointer to a data member as a field, for example `int P::* mp;` | `a field cannot be a pointer to a data member ('int P::*'): it is not supported in a .cpp script. Use a pointer to a member function, or an index` (a pointer to a member function is allowed) |
+| A method that returns `Mesh*` or `Mesh&` of a native class, or a collection of such pointers | `a return value cannot hold a borrowed pointer or reference to 'Mesh': the object can be gone when the caller uses it. Use a value or a smart pointer such as 'std::shared_ptr<Mesh>'` (the words `a collection element` replace `a return value` for a collection). A script class is not a borrowed type for a return value: `P&`, `const P&` and `P*` of a script class are valid (see [Script classes as types](cpp-types.html#script-classes-as-types)). `P**`, `P*&` and a reference field of a script class are still errors. |
 | Properties | There is no property syntax in C++. Use two methods. |
 | Script-class handles | A script class is not a handle in a `.cpp` script. Use a pointer. See [Script classes as types](cpp-types.html#script-classes-as-types). |
 | A reference field or a reference module variable, for example `Mesh& r;` | `a field cannot be a reference: a reference cannot change its target and has no null. Use 'T*' (a checked pointer) or a value` |
@@ -66,12 +78,24 @@ The first version gives an error for each form in this list. The text in the sec
 
 For a `const` field or a reference field, use a default member initializer in the class body. For a delegating constructor, write the shared code in a method.
 
+## Warnings
+
+A warning does not stop the translation. These forms give a warning.
+
+| Form | Warning |
+|---|---|
+| A class template or a partial specialization that has a base class, also in a namespace and also when the base is a standard class such as `std::vector<T>`, for example `template <class T> class Box : public Actor` | `the class template 'Box' has a base class, but it is not a script class: it is copied as plain C++ and has no hot reload` |
+| A `static` or `thread_local` local variable in a method, a constructor, a destructor, a static method, a free function (also in a namespace) or a lambda in them | `the static local variable 'n' resets to its initial value when the script reloads: a reload loads a new module` (a `const` local gives no warning) |
+
+An explicit constructor, for example `explicit Player(int hp)`, is allowed. It is a normal constructor.
+
 ## Known limits
 
 - A field of a native struct type that has a function pointer can point into the code of an old version. `hotc` finds such a struct in an included header, wherever the `#include` is. Then the old version stays loaded while a live object has the field. `hotc` does not find a struct that you define in the script file itself.
 - A field type that has no copy and no move constructor, for example `std::atomic<int>`, is built in place. A reload cannot carry its value. The new object runs the initializer of the field again. A move-only field, for example `std::unique_ptr`, of the old object is moved-from after a failed migration.
 - An in-class brace initializer of a class-type field is not visited by `libclang`. A module variable inside such an initializer is not rewritten.
 - A `.cpp` translation does one more `libclang` parse than a `.hot` translation. A reload is slower. One parse of the engine headers takes about 400 ms.
+- A `.cpp` script has no null or bounds checks. The translator keeps a `.cpp` body as C++ text and does not parse expressions. See [Limits](limits.html).
 - A `.cpp` script has no script interfaces. The `interface` type is a feature of `.hot` scripts (see [Interfaces](inheritance.html#interfaces)). A `.cpp` class can still list a native interface base, and it can have pure virtual methods.
 - In a normal build the file has plain C++ meaning. There is no state migration and there are no slots. Objects must not be shared between the two builds.
 - The language server gives only the errors of `hotc` for a `.cpp` script, and only when a host lists the file. The other editor features come from `clangd`. For a script with aids, `clangd` needs the flags `-include hot/script.h` and `-I<hot>/include`. See [Tools](tools.html#a-cpp-script-in-the-editor).

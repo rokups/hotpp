@@ -33,6 +33,13 @@ Typos, wrong types and a missing `return` have plain messages.
 1 error generated.
 ```
 
+A value that has no formatter in a `${...}` string, for example a native `enum class`, gives one error at the script line:
+
+```
+73_native_enum_in_interpolation.hot:6:16: error: 'Weather' cannot be printed in a '${...}' string: it has no formatter. For an enum class, cast the value to its integer type, for example 'static_cast<int>(value)'
+    6 |         return "weather: ${current_weather()}";
+```
+
 ## Null checks
 
 The analyzer finds an access to a value that can be null. It runs on `.hot` scripts only. By default each finding is an error. The option `null_warnings` and the flag `hotc --null-warnings` make each finding a warning. Then the compile goes on.
@@ -71,6 +78,69 @@ Other rules:
 - `ref r = this.f;` to a nullable field is always an error: `a ref cannot bind to a nullable field`. Copy the field to a local first.
 
 Limits: a stub has no members, so `[nonnull]` works on a whole class only. A bare call to a native base method has an unknown type. A native `ref` or `out` argument does not clear the narrowing.
+
+## Lint warnings
+
+The lint pass runs on `.hot` scripts only. Each finding is a warning. The compile goes on. A warning has the script file, the line and the column.
+
+```
+p.hot:12:13: warning: local variable 'x' is never used. Remove it, or start its name with '_'
+p.hot:15:9: warning: unreachable code: this statement follows 'return' and never runs
+p.hot:20:17: warning: 'i' hides the local variable 'i' that is declared at line 18
+```
+
+**Dead code.** A statement that follows `return`, `break`, `continue` or `throw` in the same block never runs. The pass warns once for the first such statement of the block. It does not look into `if` branches: a `return` in one branch is not an exit of the block. In a `switch` case, a lone `break;` after the exit of the case gives no warning. This holds only when the `break;` is a direct statement of the case. In `case 1: { return; break; }` the `break;` is in a block of its own, so it warns.
+
+**Unused local.** A local that the body never reads gives `local variable 'x' is never used`. The warning also covers a local with a side effect in the initializer, for example `int x = this.calc();`. The pass cannot know if the effect is wanted. To keep the call and drop the warning, start the name with `_`. The rules:
+
+- A name that starts with `_` is exempt.
+- A read in a nested block, in a lambda, in a `${...}` string or as a call argument (also for an `out` parameter) is a use.
+- `x += 1`, `x++` and a member write such as `x.field = 1` are uses.
+- The statement `x = e;` is a write. A local that has only writes is unused. A later read makes it used.
+- A parameter, a `foreach` variable, a `catch` variable, a `var (a, b)` binding and an `is T name` binding never give this warning.
+- A body that has C++ text the pass cannot read gives no unused warning.
+- A local that holds an object only for its constructor and destructor (RAII), for example `$Wrap w = new $Wrap(o);`, also warns, because the script never reads it. Start the name with `_`, for example `_w`.
+
+**Shadowing.** A local, a lambda parameter, a `foreach` variable, a `catch` variable, a name of a `var (a, b)` or `foreach (var (k, v) in c)` binding, or an `is T name` binding that has the name of a local, a binding or a parameter of the enclosing function (also an outer function of a lambda) gives `'x' hides ...`. The message says if the hidden name is a parameter, a local or a pattern binding, and the line of the local or the binding. The scope of an `is T name` binding is the condition and the `then` branch. So `if (o is A n) { } else if (o is B n) { }` gives no warning. The name `_` is exempt. A field does not count: a local with the name of a field is common, and `this.name` still reaches the field. Two sibling blocks, two sibling lambdas or two `if` statements can use the same name.
+
+The pass is in `src/translator/lint.cpp`. There is no option to turn it off.
+
+## Diagnostics of a .cpp script
+
+A `.cpp` script is plain C++, so its diagnostics keep the C++ form. The messages show the script file, the line, the column and the script text. Two paths make them.
+
+**Translator errors.** The `.cpp` frontend of `hotc` first parses the script with `libclang`. An error of this parse shows the script file, the line, the column and the script text. The clang notes of such an error show as `note:` lines. Only notes in the main file show. `hot-ls` shows a note as an Information diagnostic.
+
+```
+77_cpp_wrong_argument.cpp:8:14: error: cannot initialize a parameter of type 'float' with an lvalue of type 'const char[2]'
+    8 |         heal("x");
+77_cpp_wrong_argument.cpp:11:21: note: passing argument to parameter 'a' here
+   11 |     void heal(float a)
+1 error generated.
+```
+
+**Backend errors.** The backends (files, JIT and the `hotc` build) compile the generated C++. Their clang errors and warnings go through `hotc::rewrite_diagnostic`. The C++ dialect applies to each file whose name ends in `.cpp`.
+
+The C++ dialect keeps the C++ spelling. It keeps `::`, `(aka ...)`, `const char[N]`, the `[-W...]` flag and the clang wording. It does not use the `.hot` wording. It changes only the generated names, and only for classes that the script declares:
+
+| Clang text | Shown as |
+|---|---|
+| `Player_Shell`, `PlayerState_g1` | `Player` |
+| `Player__heal` | `Player::heal` |
+| `Player__ctor` | `Player::Player` |
+| `Player__dtor` | `Player::~Player` |
+| `__self`, `__st` | `this` |
+| `state_of(__self)->hp` | `this->hp` |
+
+The column rules:
+
+- When the generated line is the copied script line, the clang column, the caret line and the fix-it lines stay. The column also stays when the first col-1 characters of the two lines are equal.
+- When hotc rewrote the line, for example a lambda capture `[this]`, the column is 1. The script line shows and the caret is dropped.
+- An error in generated glue maps to the nearest script line. The column is 1 and the script line text shows.
+
+`--raw-diagnostics` shows the clang text unchanged. The warnings of a successful compile do not show, as for `.hot` scripts.
+
+The golden cases 74 to 77 in `tests/golden/diagnostics/` are `.cpp` cases.
 
 ## Raw compiler text
 

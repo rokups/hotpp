@@ -37,6 +37,10 @@ A `.cpp` script has no `async` word. A method can be a plain C++20 coroutine tha
 
 The script build needs C++20.
 
+## Diagnostics
+
+An error in a `.cpp` script shows the script file, the line, the column and the script text. The names keep the C++ spelling. See [Diagnostics of a .cpp script](diagnostics.html#diagnostics-of-a-cpp-script).
+
 ## Pages of this section
 
 - [Example](cpp-example.html): two generations of a `.cpp` script, and the CMake commands that build them.

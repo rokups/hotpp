@@ -147,7 +147,7 @@ abstract class Shape {
 }
 ```
 
-A `.hot` class must override each pure virtual method of a native base, or it must be `abstract`. A pure virtual method with `noexcept` cannot throw. The call reports the error and does not end the program.
+A `.hot` class must override each pure virtual method of a native base, or it must be `abstract`. A pure virtual method with `noexcept` cannot throw. The call reports the error and does not end the program. If the result type has no default value (a reference), the host gives a `hot::noexcept_result<R>` specialization (see [Embedding rules](embedding-rules.html)).
 
 ## Parent in another file
 

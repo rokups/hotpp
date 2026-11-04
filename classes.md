@@ -103,6 +103,8 @@ class Gauge : Actor {
 
 A `struct` is a value type: a copy is a real copy. A bare `class` name is a value that owns its object, and `$C` is a handle. See [Value uses](types-handles.html#value-uses).
 
+A struct with the base `ScriptError` is an exception type. See [Script exception types](statements-errors.html#script-exception-types).
+
 ```hot
 struct Point {
     float x = 0.0;

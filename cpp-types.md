@@ -14,6 +14,7 @@ Script code can use a script class as a type. A method of another class, a free 
 | Form | Meaning |
 |---|---|
 | `Minion*`, `Minion&`, `const Minion&` | A pointer or a reference to a script object. |
+| `Minion& add(int v) { n += v; return *this; }` | A method can return `Minion&`, `const Minion&` or `Minion*` of a script class (fluent style). |
 | `new Minion(3)`, `new Minion`, `new Minion{3}` | Makes a script object with the constructor of the script class. |
 | `p->power`, `ref.power` | Reads or writes a field of the object. |
 | `p->boost(2)` | Calls a method of the object. |
@@ -27,6 +28,9 @@ Script code can use a script class as a type. A method of another class, a free 
 These rules apply:
 
 - A pointer to a script object stays valid after a reload. The fields of the object migrate as the fields of any script object. A call after the reload runs the new code.
+- A script class is not a borrowed type for a return value. A script object has a fixed address for its life, and a reload moves only the state block. So a method can return `P&`, `const P&` or `P*` of a script class, and `return *this;` is valid. The chain `a.add(1).add(2)` works before and after a reload. The fixtures `tests/scripts/cpp_fluent_v1.cpp` and `tests/scripts/cpp_fluent_v2.cpp` show it.
+- The rule is only for one `*` or one `&`. A return of `P**` or `P*&` is an error. A return of a native `Mesh&` is still an error. A field of type `P&` is still an error.
+- A call of a retired generation (a stale call) of a method that returns a reference throws. A stale call of a method that returns a pointer gives `nullptr`.
 - A module variable can hold the pointer. The class must come before the first module variable.
 - `dynamic_cast` to a script class works after a reload. It does not use the C++ RTTI of the script class. The test uses the name of the script class.
 - A failed `dynamic_cast` to a reference throws `std::runtime_error`, not `std::bad_cast`.
