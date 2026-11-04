@@ -28,6 +28,11 @@ struct ServerOptions
     // (--compile-commands-dir) and runs its background index on the generated files. The
     // server also reads the -I, -isystem and -D flags of the first entry.
     std::string compile_commands_dir;
+    // Default (false): the clangd child uses compile_commands_dir directly. It shares the
+    // background index "<compile_commands_dir>/.cache/clangd/index" with a C++ clangd, so the
+    // project is indexed once. True: the child uses its own dir ".cache/hot/clangd" in the first
+    // workspace folder, with a link (a copy on Windows) to compile_commands.json.
+    bool private_clangd_dir = false;
     // The directory of the saved symbol index (S28). Empty: ".cache/hot/index" in the first
     // workspace folder.
     std::string index_dir;

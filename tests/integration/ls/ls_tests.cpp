@@ -1911,41 +1911,188 @@ TEST(LanguageServer, BackgroundIndexFindsAScriptSymbolInAGeneratedFile)
     EXPECT_EQ(found["location"]["range"]["start"]["line"], 10);
 }
 
-// S31 (DECISIONS 18): a C++ clangd (the editor extension) and hot-ls run on one project. The
-// project has one compile_commands.json and one ".cache" directory. The clangd child of hot-ls
-// keeps its index in ".cache/hot/clangd", so it does not mix with the index of the C++ clangd.
+// S31 (Tooling 6b2): a C++ clangd (the editor extension) and hot-ls run on one project. The
+// project has one compile_commands.json and one ".cache" directory. By default the clangd child
+// of hot-ls uses the same compile-commands dir, so both clangd processes share the background
+// index in "<cdb dir>/.cache/clangd/index". With "private_clangd_dir" the child keeps its index
+// in ".cache/hot/clangd".
+namespace
+{
+
+// True when the dir has a file whose name starts with "stem".
+bool has_shard(const std::filesystem::path& dir_, const std::string& stem)
+{
+    std::error_code ec;
+    for (const auto& e : std::filesystem::directory_iterator(dir_, ec))
+        if (e.path().filename().string().rfind(stem, 0) == 0)
+            return true;
+    return false;
+}
+
+// The lines of a clangd log that report a bad shard. A missing shard on the first start gives no
+// such line. The texts are the clangd messages for a shard that fails to load or to parse.
+std::string bad_shard_lines(const std::string& log_path)
+{
+    std::ifstream in(log_path);
+    std::string line, bad;
+    while (std::getline(in, line))
+    {
+        std::string low = line;
+        std::transform(low.begin(), low.end(), low.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (low.find("failed to load shard") != std::string::npos
+            || low.find("error while reading shard") != std::string::npos
+            || low.find("corrupt") != std::string::npos)
+            bad += line + "\n";
+    }
+    return bad;
+}
+
+// The shard names with the last write times of the dir, for the stems.
+std::map<std::string, std::filesystem::file_time_type> shard_times(const std::filesystem::path& dir_)
+{
+    std::map<std::string, std::filesystem::file_time_type> r;
+    std::error_code ec;
+    for (const auto& e : std::filesystem::directory_iterator(dir_, ec))
+    {
+        const std::string n = e.path().filename().string();
+        if (n.rfind("main.cpp.", 0) == 0 || n.rfind("player.g1.cpp.", 0) == 0)
+            r[n] = e.last_write_time(ec);
+    }
+    return r;
+}
+
+// A project: the generated C++ of kScript, "main.cpp" and one compile_commands.json in the root.
+struct SharedProject
+{
+    TempDir dir;
+    std::filesystem::path root = dir.path();
+    std::string script = (root / "player.hot").string();
+    std::string cpp = (root / "main.cpp").string();
+    std::string cpp_text = "int cpp_function() { return 1; }\nint cpp_bad() { int x = \"abc\"; return x; }\n";
+
+    SharedProject()
+    {
+        write_file(script, kScript);
+        hotc::TranslateOptions o;
+        o.script_text = kScript;
+        o.script_name = script;
+        o.generation = 1;
+        o.include_dirs = {HOT_SOURCE_DIR "/include", HOT_SOURCE_DIR "/tests/engine"};
+        const hotc::TranslateResult t = hotc::translate(o);
+        EXPECT_TRUE(t.ok) << t.diagnostics;
+        const std::string gen = (root / "player.g1.cpp").string();
+        write_file(gen, t.cpp);
+        write_file(cpp, cpp_text);
+        write_cdb();
+    }
+
+    void write_cdb() const
+    {
+        const std::string gen = (root / "player.g1.cpp").string();
+        hot::ClangFilesOptions co;
+        co.include_dirs = {HOT_SOURCE_DIR "/include", HOT_SOURCE_DIR "/tests/engine"};
+        write_file(root / "compile_commands.json",
+            hot::compile_commands_json({{root.string(), gen, hot::compile_command(co, gen, gen + ".so"), gen + ".so"},
+                {root.string(), cpp, hot::compile_command(co, cpp, cpp + ".so"), cpp + ".so"}}));
+    }
+
+    std::filesystem::path index_dir() const { return root / ".cache" / "clangd" / "index"; }
+    std::filesystem::path private_dir() const { return root / ".cache" / "hot" / "clangd"; }
+
+    hot::ls::ServerOptions server_options(bool private_dir_) const
+    {
+        hot::ls::ServerOptions opt = options(dir, true);
+        opt.include_dirs.clear();
+        opt.compile_commands_dir = root.string();
+        opt.private_clangd_dir = private_dir_;
+        return opt;
+    }
+
+    // Waits for the shards of main.cpp and of the generated file in the dir.
+    static bool wait_shard(const std::filesystem::path& index)
+    {
+        for (int i = 0; i < 120; ++i)
+        {
+            if (has_shard(index, "main.cpp.") && has_shard(index, "player.g1.cpp."))
+                return true;
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
+        return false;
+    }
+};
+
+} // namespace
+
+TEST(LanguageServer, ClangdChildSharesTheIndexDirOfTheCompileCommandsDirByDefault)
+{
+    REQUIRE_CLANGD();
+    namespace fs = std::filesystem;
+    SharedProject p;
+    LsClient client(p.server_options(false));
+    client.initialize(uri_of(p.root.string()));
+    client.open(uri_of(p.script), kScript);
+    EXPECT_TRUE(SharedProject::wait_shard(p.index_dir())) << "no shard in " << p.index_dir();
+    // The virtual shadow file needs no entry in the database, and the child makes no private dir.
+    EXPECT_FALSE(fs::exists(p.private_dir())) << p.private_dir();
+    // A native symbol still works: references and hover of "Actor" in "class Player : Actor".
+    const json refs = client.request("textDocument/references",
+        {{"textDocument", {{"uri", uri_of(p.script)}}}, {"position", pos(2, 16)},
+            {"context", {{"includeDeclaration", true}}}});
+    ASSERT_TRUE(refs.contains("result") && refs["result"].is_array()) << refs.dump();
+    bool in_script = false, in_header = false;
+    for (const json& l : refs["result"])
+    {
+        in_script = in_script || l.value("uri", "") == uri_of(p.script);
+        in_header = in_header || l.value("uri", "").find("Actor.h") != std::string::npos;
+    }
+    EXPECT_TRUE(in_script && in_header) << refs.dump();
+    const json hover = client.request("textDocument/hover", doc_pos(uri_of(p.script), 2, 16));
+    ASSERT_TRUE(hover.contains("result") && hover["result"].is_object()) << hover.dump();
+    EXPECT_NE(hover["result"].dump().find("Actor"), std::string::npos) << hover.dump();
+}
+
+TEST(LanguageServer, PrivateClangdDirOptionKeepsTheIndexOutOfTheSharedDir)
+{
+    REQUIRE_CLANGD();
+    namespace fs = std::filesystem;
+    SharedProject p;
+    LsClient client(p.server_options(true));
+    client.initialize(uri_of(p.root.string()));
+    client.open(uri_of(p.script), kScript);
+    EXPECT_TRUE(SharedProject::wait_shard(p.private_dir() / ".cache" / "clangd" / "index"));
+    EXPECT_TRUE(fs::exists(p.private_dir() / "compile_commands.json"));
+    EXPECT_FALSE(fs::exists(p.index_dir())) << "the private child wrote into the shared dir";
+    const json hover = client.request("textDocument/hover", doc_pos(uri_of(p.script), 2, 16));
+    ASSERT_TRUE(hover.contains("result") && hover["result"].is_object()) << hover.dump();
+}
+
+TEST(LanguageServer, PrivateClangdDirFlagIsParsed)
+{
+    hot::ls::ServerOptions o;
+    std::string error;
+    EXPECT_FALSE(o.private_clangd_dir);
+    ASSERT_TRUE(hot::ls::parse_arguments({"--stdio", "--private-clangd-dir"}, o, error)) << error;
+    EXPECT_TRUE(o.private_clangd_dir);
+}
+
 TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOther)
 {
     REQUIRE_CLANGD();
     namespace fs = std::filesystem;
-    TempDir dir;
-    const fs::path root = dir.path();
-    const std::string script = (root / "player.hot").string();
-    write_file(script, kScript);
-    hotc::TranslateOptions o;
-    o.script_text = kScript;
-    o.script_name = script;
-    o.generation = 1;
-    o.include_dirs = {HOT_SOURCE_DIR "/include", HOT_SOURCE_DIR "/tests/engine"};
-    const hotc::TranslateResult t = hotc::translate(o);
-    ASSERT_TRUE(t.ok) << t.diagnostics;
-    const std::string gen = (root / "player.g1.cpp").string();
-    write_file(gen, t.cpp);
-    const std::string cpp_text = "int cpp_function() { return 1; }\nint cpp_bad() { int x = \"abc\"; return x; }\n";
-    const std::string cpp = (root / "main.cpp").string();
-    write_file(cpp, cpp_text);
-    hot::ClangFilesOptions co;
-    co.include_dirs = o.include_dirs;
-    write_file(root / "compile_commands.json",
-        hot::compile_commands_json({{root.string(), gen, hot::compile_command(co, gen, gen + ".so"), gen + ".so"},
-            {root.string(), cpp, hot::compile_command(co, cpp, cpp + ".so"), cpp + ".so"}}));
+    SharedProject proj;
+    const fs::path root = proj.root;
+    const std::string& script = proj.script;
+    const std::string& cpp = proj.cpp;
+    const std::string& cpp_text = proj.cpp_text;
 
     // The C++ clangd, as the clangd extension starts it.
     std::mutex mu;
     std::vector<json> published;
+    const std::string cpp_log = (root / "cpp-clangd.log").string();
+    const std::string cpp_log2 = (root / "cpp-clangd2.log").string();
     hot::ls::ClangdProcess cpp_clangd;
     ASSERT_TRUE(cpp_clangd.start(HOT_CLANGD_PATH,
-        {"--log=error", "--background-index", "--compile-commands-dir=" + root.string()}, "", [&](const json& m)
+        {"--log=info", "--background-index", "--compile-commands-dir=" + root.string()}, cpp_log, [&](const json& m)
     {
         if (m.value("method", std::string()) != "textDocument/publishDiagnostics")
             return;
@@ -1960,10 +2107,7 @@ TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOt
         {{"textDocument", {{"uri", uri_of(cpp)}, {"languageId", "cpp"}, {"version", 1}, {"text", cpp_text}}}});
 
     // hot-ls on the same project.
-    hot::ls::ServerOptions opt = options(dir, true);
-    opt.include_dirs.clear();
-    opt.compile_commands_dir = root.string();
-    LsClient client(opt);
+    LsClient client(proj.server_options(false));
     client.initialize(uri_of(root.string()));
     std::string bad = kScript;
     bad.replace(bad.find("this.hp = this.hp + amount;"), 27, "int x = \"abc\";");
@@ -1994,34 +2138,54 @@ TEST(LanguageServer, CppClangdAndTheServerRunOnOneProjectWithoutDisturbingEachOt
             EXPECT_EQ(p.value("uri", std::string()).find(".hot"), std::string::npos) << p.dump();
     }
 
-    // Both background indexes run. The shards of the two clangd processes are in two directories.
-    const fs::path cpp_index = root / ".cache" / "clangd" / "index";
-    const fs::path hot_index = root / ".cache" / "hot" / "clangd" / ".cache" / "clangd" / "index";
-    auto has_shard = [](const fs::path& dir_, const std::string& stem)
+    // Both clangd processes run their background index on one shared index dir.
+    const fs::path index = proj.index_dir();
+    ASSERT_TRUE(SharedProject::wait_shard(index)) << "the shared background index is missing";
+    EXPECT_FALSE(fs::exists(proj.private_dir()));
+
+    // Stop the C++ clangd, change main.cpp, and start a new C++ clangd while hot-ls runs. The new
+    // process loads the shards of the old one. It indexes the changed file again, so it writes a
+    // shard while the clangd child of hot-ls runs. The shard of main.cpp gets a new write time.
+    cpp_clangd.stop();
+    const auto before = shard_times(index);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1100)); // the file system time step
+    const std::string cpp_text2 = cpp_text + "int cpp_changed() { return 2; }\n";
+    write_file(cpp, cpp_text2);
+    hot::ls::ClangdProcess cpp2;
+    ASSERT_TRUE(cpp2.start(HOT_CLANGD_PATH,
+        {"--log=info", "--background-index", "--compile-commands-dir=" + root.string()}, cpp_log2, [](const json&) {}));
+    const json init2 = cpp2.request("initialize",
+        {{"processId", nullptr}, {"rootUri", uri_of(root.string())}, {"capabilities", json::object()}}, 30000);
+    ASSERT_TRUE(init2.contains("result")) << init2.dump();
+    cpp2.notify("initialized", json::object());
+    cpp2.notify("textDocument/didOpen",
+        {{"textDocument", {{"uri", uri_of(cpp)}, {"languageId", "cpp"}, {"version", 1}, {"text", cpp_text2}}}});
+    bool rewritten = false;
+    for (int i = 0; i < 120 && !rewritten; ++i)
     {
-        std::error_code ec;
-        for (const auto& e : fs::directory_iterator(dir_, ec))
-            if (e.path().filename().string().rfind(stem, 0) == 0)
-                return true;
-        return false;
-    };
-    bool ready = false;
-    for (int i = 0; i < 120 && !ready; ++i)
-    {
-        ready = has_shard(cpp_index, "main.cpp.") && has_shard(hot_index, "main.cpp.");
-        if (!ready)
+        for (const auto& [name, t] : shard_times(index))
+            if (name.rfind("main.cpp.", 0) == 0 && before.count(name) && t != before.at(name))
+                rewritten = true;
+        if (!rewritten)
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
-    EXPECT_TRUE(ready) << "a background index is missing";
-    EXPECT_TRUE(fs::exists(root / ".cache" / "hot" / "clangd" / "compile_commands.json"));
+    EXPECT_TRUE(rewritten) << "the shard of main.cpp is not written again";
+    EXPECT_TRUE(cpp2.running());
 
     // The C++ clangd still answers for C++, and hot-ls still answers for the script.
-    const json sym = cpp_clangd.request("workspace/symbol", {{"query", "cpp_function"}}, 30000);
+    const json sym = cpp2.request("workspace/symbol", {{"query", "cpp_function"}}, 30000);
     ASSERT_TRUE(sym.contains("result")) << sym.dump();
     EXPECT_FALSE(sym["result"].empty()) << sym.dump();
+    const json sym2 = cpp2.request("workspace/symbol", {{"query", "cpp_changed"}}, 30000);
+    ASSERT_TRUE(sym2.contains("result")) << sym2.dump();
+    EXPECT_FALSE(sym2["result"].empty()) << "the C++ clangd does not know the new function: " << sym2.dump();
     const json hover = client.request("textDocument/hover", doc_pos(uri_of(script), 3, 11));
-    EXPECT_TRUE(hover.contains("result")) << hover.dump();
-    cpp_clangd.stop();
+    ASSERT_TRUE(hover.contains("result") && hover["result"].is_object()) << hover.dump();
+    EXPECT_NE(hover["result"].dump().find("hp"), std::string::npos) << hover.dump();
+    cpp2.stop();
+    EXPECT_EQ(bad_shard_lines(cpp_log), "");
+    EXPECT_EQ(bad_shard_lines(cpp_log2), "");
+    EXPECT_EQ(bad_shard_lines((root / "clangd.log").string()), "");
 }
 
 // ------------------------------------------------------------------ S28: saved symbol index

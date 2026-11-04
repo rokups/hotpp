@@ -59,9 +59,10 @@ Put the server arguments in `hot.server.args`. For example:
 | `--resource-dir dir` | The Clang resource dir. |
 | `--cxxflag flag` | A flag for the compile command of the generated C++. |
 | `--compile-commands-dir dir` | The output dir of `hotc --compile-commands`. It starts the clangd background index. The server also reads the `-I`, `-isystem` and `-D` flags of the first entry. |
+| `--private-clangd-dir` | The clangd child keeps its own index in `.cache/hot/clangd/.cache/clangd/index/`. It does not share the index of the clangd extension. |
 | `--clangd-log file` | The stderr of clangd, with `--log=info`. |
 
-The client can also give `includeDirs`, `clangd`, `compileCommandsDir` and `preludes` in `initializationOptions`.
+The client can also give `includeDirs`, `clangd`, `compileCommandsDir`, `privateClangdDir` and `preludes` in `initializationOptions`.
 `preludes` is a list of prelude files for the scripts whose host has no `preludes`.
 The extension expands `${workspaceFolder}` in `hot.server.path` and in `hot.server.args`.
 It is the path of the first workspace folder. For example: `"-I", "${workspaceFolder}/include"`.
@@ -78,7 +79,8 @@ Install both extensions. They run side by side on one project.
 4. Add `.cache/` to the ignore list of the project.
 
 The two servers can share the `.cache/` directory. The index of the clangd extension is in
-`.cache/clangd/index/` next to its `compile_commands.json`. The clangd child of `hot-ls` has its own
+`.cache/clangd/index/` next to its `compile_commands.json`. The clangd child of `hot-ls` shares this
+index by default. Add `--private-clangd-dir` to `hot.server.args` to give the child its own
 index in `.cache/hot/clangd/.cache/clangd/index/`. The index of `hot-ls` is in `.cache/hot/index/`.
 See "Language server" in the top `README.md`.
 

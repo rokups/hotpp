@@ -776,9 +776,11 @@ void Server::read_compile_commands()
 }
 
 // clangd stores its background index in "<dir of compile_commands.json>/.cache/clangd/index".
-// XDG_CACHE_HOME does not change this. The child of hot-ls gets its own directory under
-// ".cache/hot/clangd" with a link to the real compile_commands.json (a copy on Windows). So its
-// index does not mix with the index of a C++ clangd on the same database (DECISIONS 18).
+// XDG_CACHE_HOME does not change this. By default the child of hot-ls uses the real dir, so it
+// shares the index with a C++ clangd on the same database. The shards are written to a temporary
+// file and renamed, so two clangd processes can write one dir. With "private_clangd_dir" the
+// child gets its own directory under ".cache/hot/clangd" with a link to the real
+// compile_commands.json (a copy on Windows). Then its index does not mix with the other index.
 #ifdef _WIN32
 // A copy with the long names, not a link. clangd keys a file by its path. A database with the
 // short 8.3 names ("RUNNER~1") gives a second key for a file that the editor and hot-ls open
@@ -842,7 +844,7 @@ void Server::refresh_cdb_copy()
 
 std::string Server::private_cdb_dir()
 {
-    if (roots_.empty())
+    if (!opt_.private_clangd_dir || roots_.empty())
         return opt_.compile_commands_dir;
     std::error_code ec;
     const fs::path dir = fs::path(roots_[0]) / ".cache" / "hot" / "clangd";
@@ -1072,6 +1074,8 @@ json Server::on_initialize(const json& p)
             opt_.prelude_suffix = o.value("preludeSuffix", std::string());
         if (o.contains("hostsDir"))
             opt_.hosts_dir = o.value("hostsDir", std::string());
+        if (o.contains("privateClangdDir") && o["privateClangdDir"].is_boolean())
+            opt_.private_clangd_dir = o["privateClangdDir"].get<bool>();
         if (o.contains("compileCommandsDir"))
         {
             opt_.compile_commands_dir = o.value("compileCommandsDir", std::string());
@@ -3796,13 +3800,17 @@ int run_server(int in_fd, int out_fd, const ServerOptions& options)
 const char* usage_text()
 {
     return "usage: hot-ls [--stdio] [--clangd path] [-I dir]... [--resource-dir dir] [--cxxflag flag]...\n"
-           "              [--compile-commands-dir dir] [--index-dir dir]\n"
+           "              [--compile-commands-dir dir] [--private-clangd-dir] [--index-dir dir]\n"
            "              [--hosts-dir dir] [--clangd-log file]\n"
            "  --clangd path      the clangd binary (default: clangd from PATH). \"\" turns clangd off.\n"
            "  -I dir             an include dir for the script imports and for clangd.\n"
            "  --compile-commands-dir dir\n"
            "                     the directory of compile_commands.json from hotc --compile-commands.\n"
-           "                     clangd runs its background index on it.\n"
+           "                     clangd runs its background index on it. The index is in\n"
+           "                     <dir>/.cache/clangd/index, shared with a C++ clangd.\n"
+           "  --private-clangd-dir\n"
+           "                     the clangd child keeps its own index in .cache/hot/clangd\n"
+           "                     (first workspace folder) and does not share the C++ index.\n"
            "  --index-dir dir    the directory of the saved symbol index (default:\n"
            "                     .cache/hot/index in the first workspace folder).\n"
            "  --hosts-dir dir    the directory of the host files from hot_script_host (default:\n"
@@ -3857,6 +3865,10 @@ bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, s
         {
             if (!next(out.compile_commands_dir))
                 return false;
+        }
+        else if (a == "--private-clangd-dir")
+        {
+            out.private_clangd_dir = true;
         }
         else if (a == "--index-dir")
         {

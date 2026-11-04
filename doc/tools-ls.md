@@ -25,7 +25,8 @@ Steps:
 Both servers can use the same project and the same `.cache/` directory. They do not disturb each other:
 
 - The C++ `clangd` stores its index in `<dir of compile_commands.json>/.cache/clangd/index/`.
-- The `clangd` child of `hot-ls` has its own database directory `.cache/hot/clangd/` in the first workspace folder. The directory has a link to the real `compile_commands.json`. So its index is in `.cache/hot/clangd/.cache/clangd/index/`. The extra nesting is accepted. `XDG_CACHE_HOME` does not move this index.
+- The `clangd` child of `hot-ls` uses the same `--compile-commands-dir` by default. So it uses the same index directory, `<dir of compile_commands.json>/.cache/clangd/index/`, and the project is indexed once. `clangd` writes a shard to a temporary file and renames it, so two `clangd` processes can write the directory. The shadow files of the scripts are virtual and need no entry in `compile_commands.json`. The child writes nothing else in the directory of the database.
+- The option `--private-clangd-dir` (or `privateClangdDir` in `initializationOptions`) gives the child its own database directory `.cache/hot/clangd/` in the first workspace folder. The directory has a link to the real `compile_commands.json` (a copy on Windows). So its index is in `.cache/hot/clangd/.cache/clangd/index/`, and the project is indexed twice. Use it if the shared index causes a problem. `XDG_CACHE_HOME` does not move this index.
 - The symbol index of `hot-ls` is in `.cache/hot/index/`.
 - The C++ `clangd` does not get an open `.hot` document, and `hot-ls` does not get a C++ document. A diagnostic of one server never shows in the files of the other.
 
