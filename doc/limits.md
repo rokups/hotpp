@@ -20,7 +20,10 @@ This list shows what version 1 does not support.
 - A function as a value, such as `var f = Add;`. Call it, or write a lambda.
 - An `async` free function or an `async` static method. An async function needs an object.
 - A collection literal without a declared type: `var x = [1, 2];` is an error.
-- Runtime checks (null and bounds) in `.cpp` scripts. They cover `.hot` scripts only. They also skip a C++ container other than `std::array` and a C array, and they skip a throw in a constructor.
+- A `.cpp` script has no null or bounds checks. The translator keeps a `.cpp` body as C++ text and does not parse expressions. The checks cover `.hot` scripts only.
+- A bounds check covers a C array, `std::array`, `std::vector`, `std::span` and a stub with `[native, checked_index]`. `std::map` and `std::unordered_map` keep their own `operator[]`, which inserts a key. Use `at` or `find`. Other C++ containers have no bounds check, because the translator does not know their index rules.
+- A `ScriptError` in a constructor goes to the code that creates the object. A script `new` can catch it. A host `create` call gets the C++ exception. The script error handler does not see it, because no object exists yet.
+- A class with two constructors of the same arity does not coerce `null` for a `[weak]` parameter. Give the constructors different arities. The translator cannot choose the constructor from a `null` argument.
 - A `noexcept` native virtual that a script overrides and whose result has no default value (a reference, for example). An unhandled `ScriptError` there ends the program.
 - A `noexcept` pure virtual native method that no script class implements. The call traps: it reports `abstract method 'C.F' called` and does not end the program.
 - Script interfaces (see [Interfaces](inheritance.html#interfaces)) have these limits. An interface cannot inherit from another interface. It has no generics, no fields, no default methods, no `static` members and no `async` methods. A struct cannot implement an interface. `[weak]` does not work with an interface, and `new` of an interface is an error. A `.cpp` script has no interfaces. The optimized AOT mode does not support them.
@@ -29,13 +32,13 @@ This list shows what version 1 does not support.
 - A compound operator (`+=`) is not available on a subclass when the binary operator comes from the parent. `assign_value` throws a `hot::ScriptError` when the two objects have different classes.
 - A reload that changes the signature of an interface method on one side only. The translator reports an error and the old generation stays active.
 - A native virtual method that a script overrides implements an interface method only when the C++ types are equal.
-- Access checks on native members. Only members of known script types are checked.
+- Access checks on native members. Only members of known script types are checked, because the translator has no member list for other types. The C++ compiler reports a private native member. The message names the C++ member and points at the script line.
 - Brace initializers. Write `T(args)`.
 - `::` and `->`. Write `.`.
 - A C style cast to a type other than a builtin type or `T*`. Use `static_cast<T>(e)`.
 - Member access with `.` on an iterator, a `std.optional` or a `std.unique_ptr`. Write `(*p).x`.
 - A field of a move-only type, such as `std.unique_ptr<T>`. A reload copies each field. Use a handle.
-- More than 64 nested statements, 15 nested lambdas or 256 operators in one expression.
+- More than 64 nested statements, 15 nested lambdas or 256 operators in one expression. Each level uses parser stack, so the limits are fixed. The parser reports `maximum nesting depth exceeded`.
 - macOS. It is untested. Windows works with MSVC, and the CI tests it on Windows (see [Windows](windows.html)).
 - A real Visual Studio, gdb or lldb debugger session. It is untested.
 
