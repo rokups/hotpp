@@ -67,6 +67,7 @@ These are the rules:
 - Assign a strong handle to set it. `x = null` clears it. A `null` argument or the default `= null` gives an empty weak handle.
 - `Weapon w = x;` copies a strong handle out. A lambda that uses `x` captures the weak handle, and each read in the body locks it.
 - A reference into the object is an error, for example `ref r = x.hp`, `&x.hp` or `foreach (var i in x.items)`. The lock ends with the statement, so the reference dangles. Copy the handle to a local first: `Node h = x;`.
+- A weak handle takes a strong handle, `this`, another weak handle, `null` or the result of a call. It cannot take a `new` object: see "A new object in a weak handle" below.
 - A reload that changes a field from strong to weak, or from weak to strong, resets the field to `null`.
 
 `[weak]` is an error in these places:
@@ -78,6 +79,23 @@ These are the rules:
 | A `for` initializer, a `foreach` variable or a lambda parameter | Use a local before the loop or the lambda |
 | A method, a stub or a module variable | Put it on a field, a parameter or a local |
 | `new C(null)` for a `[weak]` constructor parameter (a known gap: the generated C++ does not compile) | Pass a variable: `$Node none = null; new $C(none)` |
+
+#### A new object in a weak handle
+
+A new object has no strong handle yet. A weak handle does not keep it alive, so the object dies at once and the handle is `null`. The `.hot` frontend reports an error when `new` is the whole value of a weak handle. The error text is `'new' cannot be stored in a weak handle: the new object dies at once and the handle is null.` The error is for these places:
+
+- the initializer of a `[weak]` field, local or parameter default: `[weak] $Node w = new $Node();`
+- an assignment to a weak handle: `parent = new $Node();`, `this.parent = new $Node();` or `k.parent = new $Node();`
+- an argument for a `[weak]` parameter of a function, a method or a constructor: `Take(new $Node());`
+
+Parentheses around `new` do not hide it. Keep the object in a strong handle first, then give that handle to the weak one:
+
+```hot
+$Node n = new $Node();
+parent = n;
+```
+
+The check sees only a direct `new`. A `new` inside a longer expression, for example `c ? new $Node() : n`, is not checked. A function returns a strong handle, so no function returns a weak handle. The `.cpp` frontend does not check this: it keeps its minimal rewriting.
 
 A `[weak]` parameter does not match a native virtual method with a strong handle parameter. The override then gives the usual "hides" error.
 

@@ -279,3 +279,73 @@ TEST(WeakHandleTranslation, SwitchLocalEndsWithTheSwitch)
     EXPECT_TRUE(has(r.cpp, "return state_of(hot::shell_of<Node_Shell>(hot::lock(__st->parent), \"Node\"))->hp;"))
         << r.cpp;
 }
+
+// A "new" object has no strong handle, so a weak handle to it is null at once. The error is in
+// the .hot frontend only.
+TEST(WeakHandleTranslation, NewInAWeakHandleIsAnError)
+{
+    const std::string head = "class Node {\n    [weak]\n    $Node parent = null;\n    int hp;\n";
+    struct Case
+    {
+        std::string body;
+        int count; // the number of errors
+    };
+    for (const Case& c : {
+             Case{"    void F() { [weak] $Node x = new $Node(); }\n", 1},
+             Case{"    void F() { [weak] $Node x = (new $Node()); }\n", 1},
+             Case{"    void F() { parent = new $Node(); }\n", 1},
+             Case{"    void F() { this.parent = new $Node(); }\n", 1},
+             Case{"    void F($Node k) { if (k == null) return; k.parent = new $Node(); }\n", 1},
+             Case{"    void F([weak] $Node p) { p = new $Node(); }\n", 1},
+             Case{"    void F() { [weak] $Node x = null; x = new $Node(); }\n", 1},
+             Case{"    void P([weak] $Node p) { }\n    void F() { P(new $Node()); }\n", 1},
+             Case{"    void P(int k, [weak] $Node p = null) { }\n    void F() { P(1, new $Node()); }\n", 1},
+             Case{"    void F($Node k) { if (k == null) return; k.P(new $Node()); }\n    void P([weak] $Node p) { }\n", 1},
+             Case{"    Node([weak] $Node p) { }\n    void F() { var n = new $Node(new $Node()); }\n", 1},
+             Case{"    void P([weak] $Node p = new $Node()) { }\n", 1},
+         })
+    {
+        const hotc::TranslateResult r = script_translate(head + c.body + "}\n");
+        EXPECT_FALSE(r.ok) << c.body;
+        EXPECT_TRUE(has(r.diagnostics, "'new' cannot be stored in a weak handle")) << c.body << r.diagnostics;
+        // One error for each case, also when the lowering runs more than one time.
+        const std::string msg = "'new' cannot be stored in a weak handle";
+        int found = 0;
+        for (size_t at = r.diagnostics.find(msg); at != std::string::npos; at = r.diagnostics.find(msg, at + 1))
+            ++found;
+        EXPECT_EQ(found, c.count) << c.body << r.diagnostics;
+    }
+}
+
+TEST(WeakHandleTranslation, NewInAWeakFieldInitializerIsAnError)
+{
+    const hotc::TranslateResult r = script_translate("class Node {\n    [weak]\n    $Node parent = new $Node();\n}\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "'new' cannot be stored in a weak handle")) << r.diagnostics;
+}
+
+TEST(WeakHandleTranslation, ValidSourcesOfAWeakHandle)
+{
+    // A strong handle, "this", a parameter, a call result and a strong handle made by "new" first.
+    const hotc::TranslateResult r = script_translate(
+        "class Node {\n    [weak]\n    $Node parent = null;\n    int hp;\n"
+        "    $Node Make() { return new $Node(); }\n"
+        "    void P([weak] $Node p) { }\n"
+        "    void F($Node k) {\n"
+        "        if (k == null) return;\n"
+        "        $Node s = new $Node();\n"
+        "        [weak] $Node a = s;\n"
+        "        [weak] $Node b = k;\n"
+        "        [weak] $Node c = Make();\n"
+        "        parent = s;\n"
+        "        k.parent = this;\n"
+        "        a = this;\n"
+        "        P(s);\n"
+        "        P(this);\n"
+        "        P(null);\n"
+        "        $Node t = new $Node();\n"
+        "        parent = t;\n"
+        "    }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_FALSE(has(r.diagnostics, "weak handle")) << r.diagnostics;
+}

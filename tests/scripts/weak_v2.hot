@@ -37,7 +37,8 @@ class Keeper : Actor {
             p.child = c;
             c.parent = p;
             this.kid = c;
-            this.held = new $Node();
+            $Node h = new $Node();
+            this.held = h;
             parent_hp = c.parent.hp;
             parent_alive = c.parent != null ? 1 : 0;
         } else {

@@ -1,0 +1,18 @@
+using "Actor.h";
+
+class Node {
+    [weak]
+    $Node parent = null;
+    int hp = 0;
+
+    void Link($Node other) {
+        if (other == null) return;
+        $Node ok = new $Node();
+        parent = ok;
+        parent = new $Node();
+        [weak] $Node w = new $Node();
+        Take(new $Node());
+    }
+
+    void Take([weak] $Node p) { }
+}

@@ -200,6 +200,9 @@ std::string static_fn_symbol(const std::string& owner, const std::string& name);
 // Lowers one expression. The pass can replace the node. With a "target_type" (the script type of
 // the field or the parameter that takes the value), a class handle converts to an interface.
 void lower_expr(ast::ExprP& e, RCtx& cx, Diagnostics& diag, const std::string& target_type = std::string());
+// Reports an error when "e" is a "new" expression. Call it for the initializer or the default
+// value of a "[weak]" field or parameter: the new object dies at once.
+void check_weak_new(const ast::ExprP& e, RCtx& cx, Diagnostics& diag);
 // Lowers the initializer of a box field of the script type "type". A missing initializer
 // runs "new T()". The result is a hot::Value expression.
 void lower_value_init(ast::ExprP& e, const std::string& type, RCtx& cx, Diagnostics& diag);

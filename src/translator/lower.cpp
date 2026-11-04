@@ -1012,6 +1012,26 @@ struct Lowerer
                 + name + ";'");
     }
 
+    // "new C()" as the whole value of a weak handle. The new object has no strong handle, so it
+    // dies at once and the weak handle reads null.
+    void reject_weak_new(const ExprP& e)
+    {
+        const Expr* x = e.get();
+        while (x)
+        {
+            if (auto* p = std::get_if<ParenExpr>(&x->v))
+                x = p->inner.get();
+            else
+                break;
+        }
+        if (!x)
+            return;
+        if (auto* n = std::get_if<NewExpr>(&x->v))
+            error(n->pos ? n->pos : pos_of(*x),
+                "'new' cannot be stored in a weak handle: the new object dies at once and the handle is null. "
+                "Store it in a strong handle first: 'T h = new T(); w = h;'");
+    }
+
     // The C++ type of a script type text, by TypeModel::cpp_storage(). An error is reported at "pos"
     // and the type stays as it is. The model must exist.
     std::string cpp_type(const std::string& type, TypeModel::StorageUse use, uint32_t pos)
@@ -1460,6 +1480,7 @@ struct Lowerer
                 value_not_to_handle(c.args[i], t);
             if (p.weak)
             { // "null" for a "[weak] T" parameter: the empty weak_ptr (a weak_ptr has no nullptr form)
+                reject_weak_new(c.args[i]);
                 if (c.args[i] && std::holds_alternative<NullExpr>(c.args[i]->v))
                 {
                     const std::string w = weak_param_type(p);
@@ -2813,6 +2834,8 @@ struct Lowerer
                 member_chain(b->lhs);
             const bool weak_lhs = b->op == "=" && b->lhs && is_weak_handle(*b->lhs);
             const bool reset = weak_lhs && b->rhs && std::holds_alternative<NullExpr>(b->rhs->v);
+            if (weak_lhs)
+                reject_weak_new(b->rhs);
             target_next = weak_lhs;
             expr(b->lhs);
             if (reset)
@@ -3507,6 +3530,7 @@ struct Lowerer
             {
                 // "[weak] T x": a weak_ptr of the shared handle of T. "= null" is the empty weak_ptr.
                 cx.weak_locals.insert(d->name);
+                reject_weak_new(d->init);
                 if (d->init && std::holds_alternative<NullExpr>(d->init->v))
                     d->init = nullptr;
                 if (cx.script_interfaces.count(object_type(d->type)))
@@ -3866,6 +3890,11 @@ void lower_expr(ast::ExprP& e, RCtx& cx, Diagnostics& diag, const std::string& t
     if (cx.typed_init && e)
         lw.nested_collection(e);
     lw.expr(e);
+}
+
+void check_weak_new(const ast::ExprP& e, RCtx& cx, Diagnostics& diag)
+{
+    Lowerer{cx, diag}.reject_weak_new(e);
 }
 
 void lower_value_init(ast::ExprP& e, const std::string& type, RCtx& cx, Diagnostics& diag)

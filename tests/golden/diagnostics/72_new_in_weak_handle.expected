@@ -1,0 +1,7 @@
+72_new_in_weak_handle.hot:12:18: error: 'new' cannot be stored in a weak handle: the new object dies at once and the handle is null. Store it in a strong handle first: 'T h = new T(); w = h;'
+   12 |         parent = new $Node();
+72_new_in_weak_handle.hot:13:26: error: 'new' cannot be stored in a weak handle: the new object dies at once and the handle is null. Store it in a strong handle first: 'T h = new T(); w = h;'
+   13 |         [weak] $Node w = new $Node();
+72_new_in_weak_handle.hot:14:14: error: 'new' cannot be stored in a weak handle: the new object dies at once and the handle is null. Store it in a strong handle first: 'T h = new T(); w = h;'
+   14 |         Take(new $Node());
+3 errors generated.

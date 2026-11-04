@@ -227,6 +227,8 @@ std::string default_arg(const hotc::ast::Param& p, const std::vector<hotc::ast::
         }
         else if (p.def->expr)
         {
+            if (p.weak)
+                hotc::check_weak_new(p.def->expr, cx, g_diag);
             hotc::lower_expr(p.def->expr, cx, g_diag, p.script_type.empty() ? p.type : p.script_type);
             if (!g_diag.items.empty())
                 throw TranslateAbort{};
@@ -4724,6 +4726,8 @@ void translate_impl(
             }
             else if (f.has_init && f.init)
             {
+                if (f.weak)
+                    hotc::check_weak_new(f.init, fc, g_diag);
                 hotc::lower_expr(f.init, fc, g_diag, f.script_type);
                 if (!g_diag.items.empty())
                     throw TranslateAbort{};
@@ -6657,6 +6661,8 @@ void translate_impl(
             }
             else if (f.has_init && f.init)
             {
+                if (f.weak)
+                    hotc::check_weak_new(f.init, fc, g_diag);
                 hotc::lower_expr(f.init, fc, g_diag, f.script_type);
                 if (!g_diag.items.empty())
                     throw TranslateAbort{};
