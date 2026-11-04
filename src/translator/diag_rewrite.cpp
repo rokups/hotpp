@@ -21,6 +21,7 @@
 #include <functional>
 #include <map>
 #include <regex>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -177,6 +178,25 @@ const char* script_type_name(const std::string& t)
     return it == kTypes.end() ? nullptr : it->second;
 }
 
+// "Player_Shell" -> "Player". "PlayerState_g3" -> "Player". Gives false for any other name.
+bool class_of_generated(const std::string& t, std::string& cls)
+{
+    if (t.size() > 6 && ends_with(t, "_Shell"))
+    {
+        cls = t.substr(0, t.size() - 6);
+        return true;
+    }
+    const size_t st = t.rfind("State_g");
+    if (st != std::string::npos && st > 0 && st + 7 < t.size()
+        && std::all_of(t.begin() + static_cast<long>(st) + 7, t.end(),
+            [](char c) { return std::isdigit(static_cast<unsigned char>(c)) != 0; }))
+    {
+        cls = t.substr(0, st);
+        return true;
+    }
+    return false;
+}
+
 // "Player_Shell" -> "Player". "PlayerState_g3" -> "Player". "Player__heal" -> "Player.heal".
 std::string script_name(const std::string& t)
 {
@@ -184,13 +204,9 @@ std::string script_name(const std::string& t)
         return s;
     if (t.empty() || !std::isalpha(static_cast<unsigned char>(t[0])))
         return t;
-    if (t.size() > 6 && ends_with(t, "_Shell"))
-        return t.substr(0, t.size() - 6);
-    const size_t st = t.rfind("State_g");
-    if (st != std::string::npos && st > 0 && st + 7 < t.size()
-        && std::all_of(t.begin() + static_cast<long>(st) + 7, t.end(),
-            [](char c) { return std::isdigit(static_cast<unsigned char>(c)) != 0; }))
-        return t.substr(0, st);
+    std::string cls;
+    if (class_of_generated(t, cls))
+        return cls;
     const size_t us = t.find("__");
     if (us != std::string::npos && us > 0 && us + 2 < t.size())
     {
@@ -244,15 +260,84 @@ void drop_in(std::string& s)
     }
 }
 
-// Generated names to script names, in any text of a message.
-std::string rename_generated(std::string s)
+// The names of the classes that the C++ scripts declare ("class X" or "struct X"). A generated
+// name is a script name only when its class is in this set. A name of the user is then safe.
+std::set<std::string> declared_classes(const std::map<std::string, std::vector<std::string>>& script_lines)
 {
-    drop_aka(s);
-    drop_in(s);
-    replace_all(s, "std::__cxx11::basic_string<char>", "std::string");
-    replace_all(s, "std::basic_string<char>", "std::string");
-    replace_all(s, "std::nullptr_t", "nullptr_t");
-    rename_char_arrays(s);
+    std::set<std::string> classes;
+    auto is_word = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
+    for (const auto& script : script_lines)
+    {
+        if (!ends_with(script.first, ".cpp"))
+            continue;
+        for (const std::string& line : script.second)
+            for (const char* keyword : {"class", "struct"})
+            {
+                const size_t n = std::char_traits<char>::length(keyword);
+                for (size_t p = line.find(keyword); p != std::string::npos; p = line.find(keyword, p + n))
+                {
+                    const bool word_start = p == 0 || !is_word(line[p - 1]);
+                    const bool blank_after = p + n < line.size() && (line[p + n] == ' ' || line[p + n] == '\t');
+                    if (!word_start || !blank_after)
+                        continue;
+                    size_t b = line.find_first_not_of(" \t", p + n);
+                    size_t e = b;
+                    while (e != std::string::npos && e < line.size() && is_word(line[e]))
+                        ++e;
+                    if (b != std::string::npos && e > b && !std::isdigit(static_cast<unsigned char>(line[b])))
+                        classes.insert(line.substr(b, e - b));
+                }
+            }
+    }
+    return classes;
+}
+
+// A generated name to the name in a C++ script: "Player_Shell" -> "Player", "Player__heal" ->
+// "Player::heal", "Player__ctor" -> "Player::Player", "__self" -> "this". A type keeps its spelling.
+// "classes" are the classes of the scripts. A name with another class stays: it is a name of the user.
+std::string cpp_script_name(const std::string& t, const std::set<std::string>& classes)
+{
+    if (t == "__self" || t == "__st")
+        return "this";
+    if (t.empty() || !std::isalpha(static_cast<unsigned char>(t[0])))
+        return t;
+    std::string cls;
+    if (class_of_generated(t, cls))
+        return classes.count(cls) ? cls : t;
+    const size_t us = t.find("__");
+    if (us == std::string::npos || us == 0 || us + 2 >= t.size())
+        return t;
+    cls = t.substr(0, us);
+    if (!classes.count(cls))
+        return t;
+    std::string member = t.substr(us + 2);
+    if (member.size() > 5 && ends_with(member, "_virt"))
+        member.resize(member.size() - 5);
+    if (member == "ctor")
+        return cls + "::" + cls;
+    if (member == "dtor")
+        return cls + "::~" + cls;
+    return cls + "::" + member;
+}
+
+// Generated names to script names, in any text of a message. "cpp": the script is a .cpp file.
+// The message then keeps the spelling of C++.
+std::string rename_generated(std::string s, bool cpp, const std::set<std::string>& classes)
+{
+    if (cpp)
+    {
+        replace_all(s, "state_of(__self)->", "this->");
+        replace_all(s, "state_of(this)->", "this->");
+    }
+    else
+    {
+        drop_aka(s);
+        drop_in(s);
+        replace_all(s, "std::__cxx11::basic_string<char>", "std::string");
+        replace_all(s, "std::basic_string<char>", "std::string");
+        replace_all(s, "std::nullptr_t", "nullptr_t");
+        rename_char_arrays(s);
+    }
     std::string out;
     size_t i = 0;
     while (i < s.size())
@@ -267,11 +352,20 @@ std::string rename_generated(std::string s)
         while (e < s.size() && (std::isalnum(static_cast<unsigned char>(s[e])) || s[e] == '_'))
             ++e;
         const std::string token = s.substr(i, e - i);
-        out += std::isdigit(c) ? token : script_name(token); // a number or "1st" stays
+        if (std::isdigit(c)) // a number or "1st" stays
+            out += token;
+        else
+            out += cpp ? cpp_script_name(token, classes) : script_name(token);
         i = e;
     }
-    replace_all(out, "::", ".");
+    if (!cpp)
+        replace_all(out, "::", ".");
     return out;
+}
+
+std::string rename_generated(std::string s)
+{
+    return rename_generated(std::move(s), false, {});
 }
 
 // ------------------------------------------------------------------ messages
@@ -304,7 +398,7 @@ std::string replace_matches(
 }
 
 // The number words of a call. A script function has a hidden first argument "self" (the object).
-// The script does not write it, so it leaves the count and the position.
+// The script does not write this argument, so the function removes it from the counts and the positions.
 std::string fix_counts(const std::string& msg, bool script_function)
 {
     static const std::regex expected(R"(expected (\d+), have (\d+))");
@@ -427,8 +521,17 @@ bool has_script_function(const std::string& msg)
     return std::regex_search(msg, fn);
 }
 
-std::string rewrite_message(std::string msg, bool script_function)
+std::string rewrite_message(
+    std::string msg, bool script_function, bool cpp = false, const std::set<std::string>& classes = {})
 {
+    if (cpp)
+    {
+        // A C++ script keeps the words of the compiler. Only the generated names and the counts
+        // of the hidden argument "self" change.
+        if (msg.size() <= kMaxRegexMessage)
+            msg = fix_counts(msg, script_function);
+        return rename_generated(msg, true, classes);
+    }
     drop_aka(msg);
     drop_in(msg);
     // The warning flag, for example " [-Werror,-Wreturn-type]". A script has no such switch.
@@ -574,7 +677,11 @@ std::vector<std::string> split_lines(const std::string& text, bool& final_newlin
 
 // The last "#line N "script"" before the line "before" (a 1-based line of the generated text).
 // A directive that names the generated file itself (the reset) does not count.
-bool last_script_line(const std::vector<std::string>& gen, size_t before, std::string& file, int& line)
+// A directive with the name of a generated file does not count. A directive with a ".cpp" name
+// counts only when the name is a script (a .cpp script).
+bool last_script_line(const std::vector<std::string>& gen, size_t before,
+    const std::map<std::string, std::vector<std::string>>& generated_lines,
+    const std::map<std::string, std::vector<std::string>>& script_lines, std::string& file, int& line)
 {
     for (size_t i = std::min(before, gen.size() + 1); i-- > 1;)
     {
@@ -586,7 +693,7 @@ bool last_script_line(const std::vector<std::string>& gen, size_t before, std::s
         if (q1 == std::string::npos || q2 <= q1)
             continue;
         const std::string name = l.substr(q1 + 1, q2 - q1 - 1);
-        if (ends_with(name, ".cpp"))
+        if (generated_lines.count(name) || (ends_with(name, ".cpp") && !script_lines.count(name)))
             continue;
         file = name;
         line = std::atoi(l.c_str() + 6);
@@ -634,29 +741,69 @@ LineIndex index_generated(const std::vector<std::string>& gen)
     return index;
 }
 
-// The script column of a generated column on the script line "line". Zero: not known. The
-// column of a text that the translator writes by itself (for example "hot::deref(") has no
-// segment, so the function looks at the next columns of the same generated line. Several
-// generated lines can have the same script line (a generation function, a member head, a
-// body). "snippet" is the generated line that the compiler shows. It selects the right one.
+std::string trimmed(const std::string& t)
+{
+    const size_t b = t.find_first_not_of(" \t");
+    return b == std::string::npos ? std::string() : t.substr(b, t.find_last_not_of(" \t\r") - b + 1);
+}
+
+// The physical lines of one script line that the compiler can show as "snippet". When no line
+// has the text of the snippet, all lines are candidates, and "exact" is false.
+std::vector<int> candidate_lines(const std::vector<int>& physical_lines, const std::vector<std::string>& gen,
+    const std::string& snippet, bool* exact = nullptr)
+{
+    std::vector<int> candidates;
+    if (!trimmed(snippet).empty())
+        for (int physical : physical_lines)
+            if (trimmed(gen[static_cast<size_t>(physical) - 1]) == trimmed(snippet))
+                candidates.push_back(physical);
+    if (exact)
+        *exact = !candidates.empty();
+    return candidates.empty() ? physical_lines : candidates;
+}
+
+// The column of an error in a .cpp script. The translator copies a body as it is. The column of
+// the compiler is right when the first "col - 1" characters of the generated line and of the
+// script line are equal. The function then gives "col". Otherwise it gives zero (the column is
+// not known). "equal" is true when the line that the compiler shows (the "snippet") is equal to
+// the script line. The caret line and the fix-it lines are then right too.
+int raw_column(const LineIndex& index, const std::vector<std::string>& gen, const std::vector<std::string>& script,
+    const std::string& file, int line, int col, const std::string& snippet, bool& equal)
+{
+    equal = false;
+    auto it = index.find({file, line});
+    if (it == index.end() || col < 1 || line < 1 || static_cast<size_t>(line) > script.size())
+        return 0;
+    const std::string& want = script[static_cast<size_t>(line) - 1];
+    bool prefix = false;
+    bool exact = false;
+    for (int physical : candidate_lines(it->second, gen, snippet, &exact))
+    {
+        const std::string& have = gen[static_cast<size_t>(physical) - 1];
+        if (have == want)
+        {
+            equal = exact;
+            return col;
+        }
+        const size_t n = static_cast<size_t>(col) - 1;
+        if (n <= have.size() && n <= want.size() && have.compare(0, n, want, 0, n) == 0)
+            prefix = true;
+    }
+    return prefix ? col : 0;
+}
+
+// The script column of a generated column on the script line "line". Zero: the column is not
+// known. A text that the translator writes by itself (for example "hot::deref(") has no segment
+// in the map. For such a column the function looks at the next columns of the same generated
+// line. Several generated lines can have the same script line (a generation function, a member
+// head, a body). "snippet" is the generated line that the compiler shows. It selects the right one.
 int script_column(const SourceMap& map, const LineIndex& index, const std::vector<std::string>& gen,
     const std::string& file, int line, int col, const std::string& snippet)
 {
     auto it = index.find({file, line});
     if (it == index.end() || col < 1)
         return 0;
-    auto trimmed = [](const std::string& t)
-    {
-        const size_t b = t.find_first_not_of(" \t");
-        return b == std::string::npos ? std::string() : t.substr(b, t.find_last_not_of(" \t\r") - b + 1);
-    };
-    std::vector<int> candidates;
-    if (!trimmed(snippet).empty())
-        for (int physical : it->second)
-            if (trimmed(gen[static_cast<size_t>(physical) - 1]) == trimmed(snippet))
-                candidates.push_back(physical);
-    if (candidates.empty())
-        candidates = it->second;
+    const std::vector<int> candidates = candidate_lines(it->second, gen, snippet);
     // The file number in the map: 0 is the main script, else an imported script.
     uint32_t want = 0;
     for (size_t i = 0; i < map.files().size(); ++i)
@@ -706,12 +853,28 @@ std::string rewrite_diagnostic(
         generated_lines[g.first] = split_lines(g.second, nl);
     }
 
+    // A .cpp script: the translator copies a body as it is, so the column of the compiler is
+    // often right. The messages about this script then keep the spelling of C++. Each header
+    // selects the dialect by its script file ("cur_cpp"). A header with no script file uses the
+    // dialect of the last script header. At the start, this is the C++ dialect only when all
+    // scripts are .cpp scripts.
+    const bool any_cpp = std::any_of(scripts.begin(), scripts.end(),
+        [](const std::pair<std::string, std::string>& s) { return ends_with(s.first, ".cpp"); });
+    bool cur_cpp = any_cpp
+        && std::all_of(scripts.begin(), scripts.end(),
+            [](const std::pair<std::string, std::string>& s) { return ends_with(s.first, ".cpp"); });
+    const std::set<std::string> classes = any_cpp ? declared_classes(script_lines) : std::set<std::string>();
+
     LineIndex line_index;
+    const std::vector<std::string>* front_gen = nullptr; // the first generated text
     const std::vector<std::string>* map_gen = nullptr; // the generated text that "map" describes
-    if (map && !map->empty() && !generated.empty())
+    const bool has_map = map && !map->empty();
+    if ((has_map || any_cpp) && !generated.empty())
     {
-        map_gen = &generated_lines[generated.front().first];
-        line_index = index_generated(*map_gen);
+        front_gen = &generated_lines[generated.front().first];
+        line_index = index_generated(*front_gen);
+        if (has_map)
+            map_gen = front_gen;
     }
 
     // Pass 1: the headers, and for each error group whether it calls a script function.
@@ -737,6 +900,7 @@ std::string rewrite_diagnostic(
     std::vector<std::string> out;
     std::string primary_location; // "file:line:col" of the last error that points into a script
     Snippet snippet = Snippet::None;
+    bool keep_caret = false; // the caret and fix-it lines of the snippet are right
     int hidden = 0;
     const std::vector<std::string>* snippet_script = nullptr;
 
@@ -769,6 +933,7 @@ std::string rewrite_diagnostic(
                 snippet = Snippet::Drop;
                 continue;
             }
+            keep_caret = false;
             bool mapped = false; // the snippet numbers are then lines of the generated file
             if (place == Place::Generated && !note)
             {
@@ -778,7 +943,7 @@ std::string rewrite_diagnostic(
                 {
                     std::string file;
                     int script_line = 0;
-                    if (last_script_line(g->second, static_cast<size_t>(h.line), file, script_line))
+                    if (last_script_line(g->second, static_cast<size_t>(h.line), generated_lines, script_lines, file, script_line))
                     {
                         h.file = file;
                         h.line = script_line;
@@ -795,8 +960,16 @@ std::string rewrite_diagnostic(
                 size_t shown_begin = 0;
                 if (i + 1 < lines.size() && parse_gutter(lines[i + 1], shown_number, shown_begin))
                     shown = lines[i + 1].substr(shown_begin);
-                const int real =
+                int real =
                     map_gen && !mapped ? script_column(*map, line_index, *map_gen, h.file, h.line, h.col, shown) : 0;
+                cur_cpp = ends_with(h.file, ".cpp");
+                if (cur_cpp && !mapped && real == 0 && front_gen)
+                {
+                    auto sl = script_lines.find(h.file);
+                    if (sl != script_lines.end())
+                        real = raw_column(
+                            line_index, *front_gen, sl->second, h.file, h.line, h.col, shown, keep_caret);
+                }
                 h.col = real > 0 ? real : 1;
             }
             std::string location = h.file + ":" + std::to_string(h.line) + ":" + std::to_string(h.col);
@@ -804,7 +977,18 @@ std::string rewrite_diagnostic(
                 primary_location = location;
             if (place == Place::Generated && note && !primary_location.empty())
                 location = primary_location;
-            out.push_back(location + ": " + h.level + ": " + rewrite_message(h.message, script_function[i]));
+            out.push_back(location + ": " + h.level + ": " + rewrite_message(h.message, script_function[i], cur_cpp, classes));
+            if (cur_cpp && mapped && place == Place::Script)
+            {
+                // An error in the glue: show the script line of the last "#line".
+                auto sl = script_lines.find(h.file);
+                if (sl != script_lines.end() && h.line >= 1 && static_cast<size_t>(h.line) <= sl->second.size())
+                {
+                    char gutter[32];
+                    std::snprintf(gutter, sizeof gutter, "%5d | ", h.line);
+                    out.push_back(gutter + sl->second[static_cast<size_t>(h.line) - 1]);
+                }
+            }
             switch (place)
             {
             case Place::Script:
@@ -832,7 +1016,11 @@ std::string rewrite_diagnostic(
         {
             // A numbered line is a source line. A line without a number is the caret line or a
             // fix-it line. Both show generated code.
-            if (snippet == Snippet::Replace && number > 0 && snippet_script
+            if (snippet == Snippet::Replace && number == 0 && keep_caret)
+            {
+                out.push_back(l);
+            }
+            else if (snippet == Snippet::Replace && number > 0 && snippet_script
                 && static_cast<size_t>(number) <= snippet_script->size())
             {
                 out.push_back(l.substr(0, text_begin) + (*snippet_script)[static_cast<size_t>(number) - 1]);
@@ -842,7 +1030,7 @@ std::string rewrite_diagnostic(
         // Any other line: "In file included from ...", "1 error generated." and so on.
         snippet = Snippet::None;
         flush_hidden();
-        out.push_back(l.rfind("In ", 0) == 0 ? rename_generated(l) : l);
+        out.push_back(l.rfind("In ", 0) == 0 ? rename_generated(l, cur_cpp, classes) : l);
     }
     flush_hidden();
 

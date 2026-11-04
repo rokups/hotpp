@@ -20,6 +20,7 @@
 #include <sys/resource.h>
 
 #include <atomic>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -371,6 +372,45 @@ TEST(JitTests, DebuggerSupportCanBeOff)
     hot::LoadResult r = backend.load(source("player_v1.hot"), 1);
     ASSERT_TRUE(r) << r.error;
     EXPECT_FALSE(backend.debugger_support());
+}
+
+// A warning in a .cpp script (an error by -Werror) shows the script name, the line, the real
+// column and the script text. No generated name is visible.
+TEST(JitTests, CppScriptWarningSpeaksScriptText)
+{
+    {
+        // The exact text of the warnings is the text of Clang.
+        std::string version;
+        if (FILE* p = popen((std::string("'") + HOT_CXX + "' --version 2>&1").c_str(), "r"))
+        {
+            char buf[256];
+            while (size_t n = fread(buf, 1, sizeof buf, p))
+                version.append(buf, n);
+            pclose(p);
+        }
+        if (version.find("clang") == std::string::npos)
+            GTEST_SKIP() << "the compiler is not Clang";
+    }
+    hot::JitOptions o;
+    o.compiler = HOT_CXX;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/include", std::string(HOT_SOURCE_DIR) + "/tests/engine"};
+    o.resource_dir = HOT_RESOURCE_DIR;
+    o.extra_flags = {"-Wall", "-Werror"};
+    hot::JitBackend backend(o);
+    hot::ScriptSource src = source("cpp_diag_warn.cpp");
+    src.name = "warn.cpp"; // a relative name
+    hot::LoadResult r = backend.load(src, 1);
+    ASSERT_FALSE(r);
+    EXPECT_NE(r.error.find("warn.cpp:10:13: error: unused variable 'unused' [-Werror,-Wunused-variable]"),
+        std::string::npos)
+        << r.error;
+    EXPECT_NE(r.error.find("   10 |         int unused = 1;\n      |             ^~~~~~\n"), std::string::npos)
+        << r.error;
+    EXPECT_NE(r.error.find("warn.cpp:11:16: error: "), std::string::npos) << r.error;
+    EXPECT_EQ(r.error.find("warn.cpp:10:1:"), std::string::npos) << r.error; // the column is not 1
+    EXPECT_EQ(r.error.find("warn.cpp:11:1:"), std::string::npos) << r.error;
+    for (const char* generated : {".g1.cpp", "_Shell", "State_g", "__self", "state_of"})
+        EXPECT_EQ(r.error.find(generated), std::string::npos) << generated << "\n" << r.error;
 }
 
 } // namespace

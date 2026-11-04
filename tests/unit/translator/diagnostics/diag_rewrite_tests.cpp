@@ -379,3 +379,249 @@ TEST(DiagRewrite, OtherLibraryErrorWithScriptNoteIsNotMoved)
         "1 error generated.\n";
     EXPECT_EQ(rewrite_diagnostic(in), in);
 }
+
+// ------------------------------------------------------------------ .cpp scripts
+//
+// The translator copies the body of a .cpp script into the generated file, with "#line" before
+// it. The column of the compiler is then right, and the caret and fix-it lines are right.
+
+namespace
+{
+
+// The script of the .cpp tests. Line 10 and line 11 are the lines of the warnings.
+const std::string kWarnScript =
+    "// line 1\n"
+    "// line 2\n"
+    "// line 3\n"
+    "// line 4\n"
+    "// line 5\n"
+    "// line 6\n"
+    "class Player : public Actor\n"
+    "{\n"
+    "    void Tick(float dt)\n"
+    "        int unused = 1;\n"
+    "        if (hp = dt)\n"
+    "            hp = 0;\n"
+    "        auto f = [this] { return hp; };\n"
+    "    }\n"
+    "class My_Class\n"
+    "{\n"
+    "};\n";
+
+// A generated text. The body from line 9 is a copy of the script. The last directive names the
+// generated file again, as the translator does.
+std::string warn_generated(const std::string& line13 = "        auto f = [this] { return hp; };")
+{
+    return "#line 9 \"warn.cpp\"\n"
+           "    void Tick(float dt)\n"
+           "        int unused = 1;\n"
+           "        if (hp = dt)\n"
+           "            hp = 0;\n"
+        + line13
+        + "\n"
+          "    }\n"
+          "#line 8 \"out/warn.g1.cpp\"\n";
+}
+
+std::string cpp_rewrite(const std::string& in, const std::string& gen = warn_generated())
+{
+    return rewrite_diagnostic(in, {{"warn.cpp", kWarnScript}}, {{"out/warn.g1.cpp", gen}}, nullptr);
+}
+
+} // namespace
+
+// A warning in a copied line keeps its column, its caret line and its flag.
+TEST(DiagRewrite, CppScriptKeepsColumnCaretAndFlag)
+{
+    const std::string in =
+        "warn.cpp:10:13: error: unused variable 'unused' [-Werror,-Wunused-variable]\n"
+        "   10 |         int unused = 1;\n"
+        "      |             ^~~~~~\n"
+        "1 error generated.\n";
+    EXPECT_EQ(cpp_rewrite(in), in);
+}
+
+// The fix-it lines and the notes stay too.
+TEST(DiagRewrite, CppScriptKeepsFixItLines)
+{
+    const std::string in =
+        "warn.cpp:11:16: error: using the result of an assignment as a condition without parentheses "
+        "[-Werror,-Wparentheses]\n"
+        "   11 |         if (hp = dt)\n"
+        "      |                ~~~^~~~\n"
+        "warn.cpp:11:16: note: place parentheses around the assignment to silence this warning\n"
+        "   11 |         if (hp = dt)\n"
+        "      |                ^\n"
+        "      |             (       )\n"
+        "warn.cpp:11:16: note: use '==' to turn this assignment into an equality comparison\n"
+        "   11 |         if (hp = dt)\n"
+        "      |                ^\n"
+        "      |                ==\n"
+        "1 error generated.\n";
+    EXPECT_EQ(cpp_rewrite(in), in);
+}
+
+// A line that the translator changed: the column is right before the first change only. The caret
+// line shows generated code, so it goes.
+TEST(DiagRewrite, CppScriptColumnOnRewrittenLine)
+{
+    const std::string gen = warn_generated("        auto f = [__self] { return state_of(__self)->hp; };");
+    const std::string shown = "   13 |         auto f = [__self] { return state_of(__self)->hp; };\n";
+    const std::string script_line = "   13 |         auto f = [this] { return hp; };\n";
+    EXPECT_EQ(cpp_rewrite("warn.cpp:13:18: error: x\n" + shown + "      |                  ^\n1 error generated.\n", gen),
+        "warn.cpp:13:18: error: x\n" + script_line + "1 error generated.\n");
+    EXPECT_EQ(cpp_rewrite("warn.cpp:13:36: error: x\n" + shown + "      |                    ^\n1 error generated.\n", gen),
+        "warn.cpp:13:1: error: x\n" + script_line + "1 error generated.\n");
+}
+
+// An error in the glue of the generated file goes to the last script line. It shows the script line.
+TEST(DiagRewrite, CppScriptMapsGeneratedGlueToScriptLine)
+{
+    const std::string gen =
+        "#line 3 \"warn.cpp\"\n"
+        "// line 3\n"
+        "// line 4\n"
+        "#line 5 \"out/warn.g1.cpp\"\n"
+        "int glue = Player_Shell().x;\n";
+    const std::string in =
+        "out/warn.g1.cpp:5:12: error: no member named 'x' in 'Player_Shell'\n"
+        "    5 | int glue = Player_Shell().x;\n"
+        "      |                           ^\n"
+        "1 error generated.\n";
+    EXPECT_EQ(cpp_rewrite(in, gen),
+        "warn.cpp:3:1: error: no member named 'x' in 'Player'\n"
+        "    3 | // line 3\n"
+        "1 error generated.\n");
+}
+
+// A message of a .cpp script keeps the spelling of C++. Only the generated names change.
+TEST(DiagRewrite, CppScriptKeepsCppSpelling)
+{
+    auto message = [](const std::string& m) { return "warn.cpp:10:1: error: " + m + "\n"; };
+    const std::pair<const char*, const char*> cases[] = {
+        {"no member named 'x' in 'Player_Shell'", "no member named 'x' in 'Player'"},
+        {"no member named 'x' in 'PlayerState_g1'", "no member named 'x' in 'Player'"},
+        {"no matching function for call to 'Player__heal'", "no matching function for call to 'Player::heal'"},
+        {"no matching function for call to 'Player__heal_virt'", "no matching function for call to 'Player::heal'"},
+        {"call to 'Player__ctor'", "call to 'Player::Player'"},
+        {"call to 'Player__dtor'", "call to 'Player::~Player'"},
+        {"use of undeclared identifier '__self'", "use of undeclared identifier 'this'"},
+        {"use of undeclared identifier '__st'", "use of undeclared identifier 'this'"},
+        {"no member named 'hp' in 'state_of(__self)->hp'", "no member named 'hp' in 'this->hp'"},
+        {"no member named 'hp' in 'state_of(this)->hp'", "no member named 'hp' in 'this->hp'"},
+        {"no viable conversion from 'const char[2]' to 'std::string' (aka 'basic_string<char>')",
+            "no viable conversion from 'const char[2]' to 'std::string' (aka 'basic_string<char>')"},
+        {"cannot initialize a variable of type 'int32_t' with an lvalue of type 'std::string'",
+            "cannot initialize a variable of type 'int32_t' with an lvalue of type 'std::string'"},
+        {"unused variable 'x' [-Werror,-Wunused-variable]", "unused variable 'x' [-Werror,-Wunused-variable]"},
+        {"std::vector<int>::iterator is not a type", "std::vector<int>::iterator is not a type"},
+        // A name of the user stays. The class of a generated name must be a class of the script.
+        {"use of undeclared identifier 'my__var'", "use of undeclared identifier 'my__var'"},
+        {"use of undeclared identifier 'My_Class__m'", "use of undeclared identifier 'My_Class::m'"},
+        {"use of undeclared identifier 'My__Class__m'", "use of undeclared identifier 'My__Class__m'"},
+        {"unknown type name 'Foo_Shell'", "unknown type name 'Foo_Shell'"},
+        {"unknown type name 'FooState_g3'", "unknown type name 'FooState_g3'"},
+        {"use of undeclared identifier 'foo_virt'", "use of undeclared identifier 'foo_virt'"},
+    };
+    for (const auto& c : cases)
+        EXPECT_EQ(cpp_rewrite(message(c.first)), message(c.second));
+}
+
+// The same texts for a .hot script keep the old words.
+TEST(DiagRewrite, HotScriptOutputDoesNotChange)
+{
+    const std::string script = "class Boss\n{\n    void Run() { }\n}\n";
+    const std::string gen = "#line 3 \"a.hot\"\n    void Run() { }\n";
+    const std::string in =
+        "a.hot:3:5: error: no member named 'x' in 'Boss_Shell'\n"
+        "    3 |     auto Boss__x = hot::deref(p);\n"
+        "      |     ^\n"
+        "a.hot:3:5: error: cannot convert 'const char[2]' to 'int32_t' (aka 'int') [-Wfoo]\n";
+    EXPECT_EQ(rewrite_diagnostic(in, {{"a.hot", script}}, {{"out/a.g1.cpp", gen}}, nullptr),
+        "a.hot:3:1: error: script class 'Boss' has no member 'x'\n"
+        "    3 |     void Run() { }\n"
+        "a.hot:3:1: error: cannot convert 'string' to 'int'\n");
+}
+
+// The dialect comes from the file of each diagnostic, not from the first script.
+TEST(DiagRewrite, CppFirstScriptDoesNotChangeAHotError)
+{
+    const std::string hot = "class Boss\n{\n    void Run() { }\n}\n";
+    const std::string in = "b.hot:3:5: error: no member named 'x' in 'Boss_Shell'\n";
+    EXPECT_EQ(rewrite_diagnostic(in, {{"warn.cpp", kWarnScript}, {"b.hot", hot}}, {}, nullptr),
+        "b.hot:3:1: error: script class 'Boss' has no member 'x'\n");
+}
+
+TEST(DiagRewrite, HotFirstScriptDoesNotChangeACppError)
+{
+    const std::string hot = "class Boss\n{\n    void Run() { }\n}\n";
+    const std::string in =
+        "warn.cpp:10:13: error: unused variable 'unused' [-Werror,-Wunused-variable]\n"
+        "   10 |         int unused = 1;\n"
+        "      |             ^~~~~~\n"
+        "1 error generated.\n";
+    EXPECT_EQ(rewrite_diagnostic(in, {{"a.hot", hot}, {"warn.cpp", kWarnScript}},
+                  {{"out/warn.g1.cpp", warn_generated()}}, nullptr),
+        in);
+}
+
+// A "#line" with a ".cpp" name that is a script counts. A ".cpp" name that is not a script does not.
+TEST(DiagRewrite, MixedRunMapsGlueToACppScript)
+{
+    const std::string hot = "class Boss\n{\n    void Run() { }\n}\n";
+    const std::string gen =
+        "#line 2 \"warn.cpp\"\n"
+        "// line 2\n"
+        "#line 4 \"other.cpp\"\n"
+        "// other\n"
+        "#line 5 \"out/a.g1.cpp\"\n"
+        "int glue = Player_Shell().x;\n";
+    const std::string in =
+        "out/a.g1.cpp:6:12: error: no member named 'x' in 'Player_Shell'\n"
+        "    6 | int glue = Player_Shell().x;\n"
+        "1 error generated.\n";
+    EXPECT_EQ(rewrite_diagnostic(in, {{"a.hot", hot}, {"warn.cpp", kWarnScript}}, {{"out/a.g1.cpp", gen}}, nullptr),
+        "warn.cpp:2:1: error: no member named 'x' in 'Player'\n"
+        "    2 | // line 2\n"
+        "1 error generated.\n");
+}
+
+// A line beyond the script has no column and no text.
+TEST(DiagRewrite, CppScriptLineBeyondTheScript)
+{
+    const std::string in =
+        "warn.cpp:99:3: error: x\n"
+        "   99 | foo\n"
+        "      |   ^\n"
+        "1 error generated.\n";
+    EXPECT_EQ(cpp_rewrite(in), "warn.cpp:99:1: error: x\n1 error generated.\n");
+}
+
+// No generated text: the column is not known, but the script line shows.
+TEST(DiagRewrite, CppScriptWithoutGeneratedText)
+{
+    const std::string in =
+        "warn.cpp:10:13: error: unused variable 'unused' [-Werror,-Wunused-variable]\n"
+        "   10 |         int unused = 1;\n"
+        "      |             ^~~~~~\n"
+        "1 error generated.\n";
+    EXPECT_EQ(rewrite_diagnostic(in, {{"warn.cpp", kWarnScript}}, {}, nullptr),
+        "warn.cpp:10:1: error: unused variable 'unused' [-Werror,-Wunused-variable]\n"
+        "   10 |         int unused = 1;\n"
+        "1 error generated.\n");
+}
+
+// The caret stays only when the line that the compiler shows is the script line.
+TEST(DiagRewrite, CppScriptCaretNeedsTheShownLine)
+{
+    // The shown line is not a line of the generated text: no caret.
+    const std::string in =
+        "warn.cpp:10:13: error: x\n"
+        "   10 |         something else\n"
+        "      |             ^~~~~~\n"
+        "1 error generated.\n";
+    EXPECT_EQ(cpp_rewrite(in),
+        "warn.cpp:10:13: error: x\n"
+        "   10 |         int unused = 1;\n"
+        "1 error generated.\n");
+}

@@ -120,6 +120,42 @@ TEST(HotcTool, EmitCppModeTranslatesWithoutCompiling)
     EXPECT_NE(read_file(out).find("hot::deref"), std::string::npos); // the #line names differ
 }
 
+// A warning in a .cpp script (here an error by -Werror) shows the script file, the line, the real
+// column and the script text. No generated name is visible. --raw-diagnostics keeps the compiler text.
+TEST(HotcTool, CppScriptWarningSpeaksScriptText)
+{
+    {
+        // The exact text of the warnings is the text of Clang.
+        std::string version;
+        run_command(std::string("'") + HOT_CXX + "' --version 2>&1", version);
+        if (version.find("clang") == std::string::npos)
+            GTEST_SKIP() << "the compiler is not Clang";
+    }
+    TestScratch scratch;
+    const std::string script = scratch.file("warn.cpp");
+    std::filesystem::copy_file(std::string(HOT_SOURCE_DIR) + "/tests/scripts/cpp_diag_warn.cpp", script);
+    const std::string base = std::string("'") + HOTC_PATH + "' --gen 1 --out-dir '" + scratch.file("hotc_cpp_warn") + "' -I '"
+        + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' --cxx '" + HOT_CXX
+        + "' --cxxflag -Wall --cxxflag -Werror '" + script + "' ";
+    std::string text, raw;
+    EXPECT_NE(run_command(base + "2>&1", text), 0) << text;
+    EXPECT_NE(run_command(base + "--raw-diagnostics 2>&1", raw), 0) << raw;
+    for (const std::string* t : {&text, &raw})
+    {
+        EXPECT_NE(t->find("warn.cpp:10:13: error: unused variable 'unused' [-Werror,-Wunused-variable]"),
+            std::string::npos)
+            << *t;
+        EXPECT_NE(t->find("warn.cpp:11:16: error: "), std::string::npos) << *t;
+    }
+    EXPECT_NE(text.find("   10 |         int unused = 1;\n      |             ^~~~~~\n"), std::string::npos) << text;
+    EXPECT_NE(text.find("   11 |         if (hp = dt)\n"), std::string::npos) << text;
+    EXPECT_EQ(text.find("warn.cpp:10:1:"), std::string::npos) << text; // the column is not 1
+    EXPECT_EQ(text.find("warn.cpp:11:1:"), std::string::npos) << text;
+    EXPECT_NE(text.find("[-Werror,-Wparentheses]"), std::string::npos) << text;
+    for (const char* generated : {".g1.cpp", "_Shell", "State_g", "__self", "state_of"})
+        EXPECT_EQ(text.find(generated), std::string::npos) << generated << "\n" << text;
+}
+
 // A translator error (here a parse error) has the final form of a rewritten compiler error:
 // script path, line, real column, the script line, and the count line. --raw-diagnostics keeps
 // the plain translator text.
