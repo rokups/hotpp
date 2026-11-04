@@ -20,8 +20,10 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <optional>
+#include <regex>
 #include <set>
 #include <sstream>
 #include <string>
@@ -885,6 +887,44 @@ TEST(LanguageServer, TheRemovedWordsAreNotKeywords)
         EXPECT_EQ(std::count(k.begin(), k.end(), w), 1) << w;
     const std::vector<std::string>& h = hot::ls::script_helpers();
     EXPECT_EQ(h, (std::vector<std::string>{"enumerate", "range"}));
+}
+
+// The parser has no exported keyword list. Each keyword is a LEXY_KEYWORD("word", id) in the
+// parser sources, so the test reads the words from the sources. The words of the list below are
+// no keywords of the script for the editor. The list is the only place that names them.
+TEST(LanguageServer, TheKeywordsMatchTheParser)
+{
+    // C++ words that the parser accepts to give a clear error, and "extern", which is reserved.
+    const std::set<std::string> not_highlighted = {
+        "static", "thread_local", "friend", "mutable", "volatile", "operator", "extern"};
+    // Keywords that the parser reads without LEXY_KEYWORD.
+    const std::set<std::string> other_parser_words = {"delete"};
+
+    std::set<std::string> parser;
+    const std::regex re("LEXY_KEYWORD\\(\"(\\w+)\"");
+    for (const auto& e : std::filesystem::directory_iterator(std::string(HOT_SOURCE_DIR "/src/translator/parser")))
+    {
+        std::ifstream in(e.path());
+        const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        for (std::sregex_iterator it(text.begin(), text.end(), re), end; it != end; ++it)
+            parser.insert((*it)[1].str());
+    }
+    ASSERT_GT(parser.size(), 30u) << "the parser keywords were not found";
+    for (const std::string& w : not_highlighted)
+        EXPECT_EQ(parser.erase(w), 1u) << "not a parser word any more: " << w;
+    parser.insert(other_parser_words.begin(), other_parser_words.end());
+
+    // The attribute names are keywords of the editor too. They are not words of the parser list.
+    const std::vector<std::string>& attrs = hotc::class_attribute_names();
+    std::set<std::string> ls;
+    for (const std::string& w : hot::ls::script_keywords())
+        if (std::find(attrs.begin(), attrs.end(), w) == attrs.end())
+            ls.insert(w);
+
+    for (const std::string& w : parser)
+        EXPECT_EQ(ls.count(w), 1u) << "parser keyword is not in script_keywords(): " << w;
+    for (const std::string& w : ls)
+        EXPECT_EQ(parser.count(w), 1u) << "script_keywords() word is not a parser keyword: " << w;
 }
 
 TEST(LanguageServer, BindingsAreLocals)

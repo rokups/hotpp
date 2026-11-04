@@ -145,7 +145,7 @@
       "patterns": [
         {
           "name": "keyword.control.flow.hot",
-          "match": "\\b(?:if|else|while|do|for|foreach|in|return|break|continue|switch|case|default)\\b"
+          "match": "\\b(?:if|else|while|do|for|foreach|in|return|break|continue|switch|case|default|await)\\b"
         },
         {
           "name": "keyword.control.exception.hot",
@@ -153,7 +153,7 @@
         },
         {
           "name": "storage.modifier.hot",
-          "match": "\\b(?:public|private|protected|override|virtual|abstract|const|get|set|ref|out)\\b"
+          "match": "\\b(?:public|private|protected|override|virtual|abstract|async|const|get|set|ref|out)\\b"
         },
         {
           "name": "storage.type.hot",

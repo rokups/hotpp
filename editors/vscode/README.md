@@ -105,6 +105,9 @@ Run `node test/grammar.test.js`. CTest runs it as `VscodeGrammar` when `node` is
 
 - The test always checks the JSON files and the keyword and builtin type coverage.
   It reads the builtin types from `src/translator/builtin_types.h`.
+- The test reads the keywords from the list in `src/ls/semantic.cpp` (the `hot-ls` keywords). The C++ test
+  `LanguageServer.TheKeywordsMatchTheParser` checks that this list equals the `LEXY_KEYWORD` words of the parser.
+  A new keyword must go to the parser, to `semantic.cpp` and to `syntaxes/hot.tmLanguage.json`. Else a test fails.
 - `node test/expand.test.js` checks the expansion of `${workspaceFolder}` (CTest: `VscodeExpand`).
 - After `npm install` it also tokenizes every `tests/scripts/*.hot` file
   and compares `test/sample.hot` with `test/sample.snap`.

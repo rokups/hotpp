@@ -45,10 +45,15 @@ if (pkg) {
   if (!c.configuration || !c.configuration.properties['hot.server.path']) fail('setting hot.server.path');
 }
 
-const keywords = ['var', 'foreach', 'in', 'using', 'override', 'virtual', 'abstract', 'new', 'public', 'private',
-  'protected', 'get', 'set', 'finally', 'void', 'is', 'as', 'try', 'catch', 'throw', 'class',
-  'struct', 'enum', 'interface', 'const', 'if', 'else', 'while', 'do', 'for', 'return', 'break', 'continue', 'switch',
-  'case', 'default', 'this', 'base', 'null', 'true', 'false', 'delete', 'weak'];
+// The keywords come from the language server list in src/ls/semantic.cpp. A C++ test checks that
+// this list equals the keywords of the parser. The attribute names (for example "weak") are
+// keywords of the server too, but the grammar colors only "weak" of them.
+const semantic = fs.readFileSync(path.join(repo, 'src', 'ls', 'semantic.cpp'), 'utf8');
+const block = /std::set<std::string> r = \{([^}]*)\};/.exec(semantic);
+if (!block) fail('the keyword list is not found in src/ls/semantic.cpp');
+const keywords = [...(block ? block[1].matchAll(/"(\w+)"/g) : [])].map((m) => m[1]);
+if (keywords.length < 40) fail(`only ${keywords.length} keywords found in src/ls/semantic.cpp`);
+keywords.push('weak');
 
 // The builtin names come from the translator header: {"script", "alias" or nullptr, "cpp"}.
 const header = fs.readFileSync(path.join(repo, 'src', 'translator', 'builtin_types.h'), 'utf8');
