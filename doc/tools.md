@@ -14,6 +14,7 @@ nav_order: 42
 - Signature help, hover, go to definition and references.
 - Rename of script symbols in all `.hot` files of the workspace.
 - Document symbols, workspace symbols and semantic tokens.
+- Inlay hints: the parameter names at the calls of script methods and constructors.
 - Many workspace folders: the symbol index and the `clangd` cache cover all folders. A folder that the editor adds or removes (`workspace/didChangeWorkspaceFolders`) takes effect at once.
 - Formatting, and quick fixes for a missing `;` and for a typo.
 

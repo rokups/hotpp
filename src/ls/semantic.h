@@ -28,6 +28,19 @@ struct SemanticToken
 // comments. The names come from the facts of analyze(). A token never spans two lines.
 std::vector<SemanticToken> script_tokens(const std::string& text, const hotc::AnalyzeResult& facts);
 
+// A parameter-name hint: "label" (the name and ":") goes before the byte offset "off".
+struct ParamHint
+{
+    size_t off = 0;
+    std::string label;
+};
+
+// The hints for the arguments of the calls of script methods and constructors. The callee is a
+// member in the facts of analyze(), found by its name. A call with the name of more than one
+// member gets a hint only for an argument where all the members that fit have the same
+// parameter name. An argument that is the plain name of its parameter gets no hint.
+std::vector<ParamHint> script_param_hints(const std::string& text, const hotc::AnalyzeResult& facts);
+
 // The keywords of the script, and the names of its builtin types (with the aliases).
 const std::vector<std::string>& script_keywords();
 // The global helper functions that every script has: "enumerate" and "range". They are not keywords.

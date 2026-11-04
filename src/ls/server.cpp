@@ -24,6 +24,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <limits>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -606,6 +607,7 @@ private:
     std::vector<Pos> gen_word_candidates(const Doc& d, Pos script_pos) const;
     json on_document_symbol(const Doc& d);
     json on_semantic_tokens(const Doc& d);
+    json on_inlay_hint(const Doc& d, const json& p);
     json on_workspace_symbol(const json& p);
     // The script symbols of the .hot files of the workspace folders. A closed file counts only if
     // the index has a valid shard for it. This request never analyzes a closed file.
@@ -1050,7 +1052,7 @@ json Server::on_initialize(const json& p)
             {{"positionEncoding", utf8_ ? "utf-8" : "utf-16"},
                 {"textDocumentSync", {{"openClose", true}, {"change", 1}}},
                 {"completionProvider", {{"triggerCharacters", {".", ":"}}}}, {"hoverProvider", true},
-                {"signatureHelpProvider", {{"triggerCharacters", {"(", ","}}}}, {"documentFormattingProvider", true},
+                {"inlayHintProvider", true}, {"signatureHelpProvider", {{"triggerCharacters", {"(", ","}}}}, {"documentFormattingProvider", true},
                 {"codeActionProvider", {{"codeActionKinds", {"quickfix"}}}}, {"definitionProvider", true},
                 {"referencesProvider", true}, {"documentSymbolProvider", true}, {"renameProvider", true},
                 {"workspaceSymbolProvider", true},
@@ -2659,6 +2661,29 @@ json Server::on_semantic_tokens(const Doc& d)
     return {{"data", data}};
 }
 
+// The parameter names at the call sites of the script methods and constructors. The hints inside
+// the "range" of the request are the answer. The facts of the last analysis give the callees.
+// Hints for the type of a "var" are not available: the server has no type of a local.
+json Server::on_inlay_hint(const Doc& d, const json& p)
+{
+    Pos lo = {0, 0}, hi = {std::numeric_limits<int>::max(), 0};
+    if (p.contains("range"))
+    {
+        lo = from_lsp(d.text, p["range"]["start"], utf8_);
+        hi = from_lsp(d.text, p["range"]["end"], utf8_);
+    }
+    json out = json::array();
+    for (const ParamHint& h : script_param_hints(d.text.s, d.facts))
+    {
+        const auto [line, col] = d.text.pos(h.off);
+        const Pos at = {line, col};
+        if (at < lo || hi < at)
+            continue;
+        out.push_back({{"position", to_lsp(d.text, at, utf8_)}, {"label", h.label}, {"kind", 2}, {"paddingRight", true}});
+    }
+    return out;
+}
+
 // A place in a generated file on disk (from "hotc --compile-commands") as a script location.
 // The "#line" directives give the script and the line.
 json disk_to_script(const std::string& cpp_path, int line)
@@ -3025,7 +3050,7 @@ void Server::handle(const json& msg)
     static const std::set<std::string> doc_methods = {"textDocument/completion", "textDocument/hover",
         "textDocument/definition", "textDocument/references", "textDocument/documentSymbol",
         "textDocument/semanticTokens/full", "textDocument/rename", "textDocument/signatureHelp",
-        "textDocument/formatting", "textDocument/codeAction"};
+        "textDocument/formatting", "textDocument/codeAction", "textDocument/inlayHint"};
     if (!doc_methods.count(method))
         return reply_error(id, kMethodNotFound, "unknown method: " + method);
     auto d = doc_of(p);
@@ -3044,6 +3069,8 @@ void Server::handle(const json& msg)
         return reply(id, on_hover(*d, p));
     if (method == "textDocument/signatureHelp")
         return reply(id, on_signature_help(*d, p));
+    if (method == "textDocument/inlayHint")
+        return reply(id, on_inlay_hint(*d, p));
     if (method == "textDocument/formatting")
         return reply(id, on_formatting(*d, p));
     if (method == "textDocument/codeAction")

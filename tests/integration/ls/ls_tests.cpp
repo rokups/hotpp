@@ -736,6 +736,203 @@ TEST(LanguageServer, DocumentSymbolsComeFromAnalyze)
     EXPECT_EQ(c["children"][2]["selectionRange"]["start"]["line"], 10);
 }
 
+// ------------------------------------------------------------------ inlay hints
+
+namespace
+{
+
+// The 0-based lines: 1 Add, 2 the constructor, 4 Run, 6 and 7 the calls of Add, 8 the new Calc.
+const char* const kHintScript =
+    "class Calc {\n"
+    "    int Add(int a, int b) { return a + b; }\n"
+    "    Calc(int start, int step = 1) { }\n"
+    "\n"
+    "    void Run() {\n"
+    "        int a = 5;\n"
+    "        this.Add(1, 2);\n"
+    "        this.Add(a, 3);\n"
+    "        var c = new Calc(7);\n"
+    "    }\n"
+    "}\n";
+
+// The (line, character, label, kind) of each hint.
+std::vector<std::tuple<int, int, std::string, int>> hints_of(Session& s, const json& range = json())
+{
+    json params = {{"textDocument", {{"uri", s.uri}}}};
+    if (!range.is_null())
+        params["range"] = range;
+    const json r = s.client->request("textDocument/inlayHint", params);
+    std::vector<std::tuple<int, int, std::string, int>> out;
+    if (!r.contains("result") || !r["result"].is_array())
+        return out;
+    for (const json& h : r["result"])
+        out.emplace_back(h["position"]["line"].get<int>(), h["position"]["character"].get<int>(),
+            h["label"].get<std::string>(), h["kind"].get<int>());
+    return out;
+}
+
+} // namespace
+
+TEST(LanguageServer, InlayHintProviderIsAdvertised)
+{
+    TempDir dir;
+    LsClient client(options(dir, false));
+    const json init = client.initialize(uri_of(dir.path().string()));
+    ASSERT_TRUE(init.contains("capabilities")) << init.dump();
+    EXPECT_EQ(init["capabilities"].value("inlayHintProvider", json()), true) << init.dump();
+}
+
+TEST(LanguageServer, InlayHintsNameTheParametersOfAScriptMethodCall)
+{
+    Session s(false, kHintScript);
+    const auto hints = hints_of(s);
+    using H = std::tuple<int, int, std::string, int>;
+    EXPECT_NE(std::find(hints.begin(), hints.end(), H(6, 17, "a:", 2)), hints.end());
+    EXPECT_NE(std::find(hints.begin(), hints.end(), H(6, 20, "b:", 2)), hints.end());
+    // The argument "a" has the name of its parameter. The argument 3 has a hint.
+    EXPECT_EQ(std::count_if(hints.begin(), hints.end(), [](const H& h) { return std::get<0>(h) == 7; }), 1);
+    EXPECT_NE(std::find(hints.begin(), hints.end(), H(7, 20, "b:", 2)), hints.end());
+}
+
+TEST(LanguageServer, InlayHintsNameTheParametersOfAConstructorCall)
+{
+    Session s(false, kHintScript);
+    const auto hints = hints_of(s);
+    using H = std::tuple<int, int, std::string, int>;
+    EXPECT_NE(std::find(hints.begin(), hints.end(), H(8, 25, "start:", 2)), hints.end());
+    // The declarations get no hint.
+    EXPECT_EQ(std::count_if(hints.begin(), hints.end(), [](const H& h) { return std::get<0>(h) < 6; }), 0);
+    EXPECT_EQ(hints.size(), 4u);
+}
+
+TEST(LanguageServer, InlayHintsHonorTheRange)
+{
+    Session s(false, kHintScript);
+    const auto hints = hints_of(s, {{"start", pos(7, 0)}, {"end", pos(8, 0)}});
+    ASSERT_EQ(hints.size(), 1u);
+    EXPECT_EQ(std::get<0>(hints[0]), 7);
+    EXPECT_EQ(std::get<2>(hints[0]), "b:");
+}
+
+namespace
+{
+
+using Hint = std::tuple<int, int, std::string, int>;
+
+// The full answer to an inlay hint request for a file with "text". "utf8" asks for UTF-8 columns.
+json hint_response(const std::string& file, const std::string& text, bool utf8 = false)
+{
+    TempDir dir;
+    LsClient client(options(dir, false));
+    json caps = json::object();
+    if (utf8)
+        caps = {{"general", {{"positionEncodings", {"utf-8", "utf-16"}}}}};
+    client.request("initialize", {{"processId", nullptr}, {"rootUri", uri_of(dir.path().string())}, {"capabilities", caps}});
+    client.notify("initialized", json::object());
+    const std::string path = (dir.path() / file).string();
+    write_file(path, text);
+    client.open(uri_of(path), text);
+    return client.request("textDocument/inlayHint", {{"textDocument", {{"uri", uri_of(path)}}}});
+}
+
+std::vector<Hint> hints_in(const json& response)
+{
+    std::vector<Hint> out;
+    if (!response.contains("result") || !response["result"].is_array())
+        return out;
+    for (const json& h : response["result"])
+        out.emplace_back(h["position"]["line"].get<int>(), h["position"]["character"].get<int>(),
+            h["label"].get<std::string>(), h["kind"].get<int>());
+    return out;
+}
+
+bool has_hint(const std::vector<Hint>& hints, const Hint& h)
+{
+    return std::find(hints.begin(), hints.end(), h) != hints.end();
+}
+
+// The method Add is on line 1. The body of Run is on line 3 and the following lines.
+std::string add_script(const std::string& body)
+{
+    return "class C {\n    int Add(int a, int b) { return a + b; }\n    void Run() {\n" + body + "    }\n}\n";
+}
+
+} // namespace
+
+TEST(LanguageServer, InlayHintColumnAfterMultiByteTextFollowsThePositionEncoding)
+{
+    // In bytes the 2 is at column 26. In UTF-16 units it is at column 23.
+    const std::string text = add_script("        this.Add(\"\xC3\xA9\xE2\x82\xAC\", 2);\n");
+    const auto utf16 = hints_in(hint_response("m.hot", text, false));
+    EXPECT_TRUE(has_hint(utf16, Hint(3, 17, "a:", 2)));
+    EXPECT_TRUE(has_hint(utf16, Hint(3, 23, "b:", 2)));
+    const auto utf8 = hints_in(hint_response("m.hot", text, true));
+    EXPECT_TRUE(has_hint(utf8, Hint(3, 17, "a:", 2)));
+    EXPECT_TRUE(has_hint(utf8, Hint(3, 26, "b:", 2)));
+}
+
+TEST(LanguageServer, InlayHintOfACppDocumentIsNull)
+{
+    const json r = hint_response("m.cpp", "int Add(int a, int b);\nint x = Add(1, 2);\n");
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    EXPECT_TRUE(r["result"].is_null()) << r.dump();
+}
+
+TEST(LanguageServer, InlayHintsOfOverloadsNeedTheSameNameAndAFittingCount)
+{
+    const std::string text =
+        "class C {\n"
+        "    int Pick(int a, int b) { return a; }\n"
+        "    int Pick(float x, int b) { return b; }\n"
+        "    int Tag(int a, int b) { return a; }\n"
+        "    int Tag(int p, int q, int r) { return p; }\n"
+        "    void Run() {\n"
+        "        this.Pick(1, 2);\n"
+        "        this.Tag(1, 2);\n"
+        "    }\n"
+        "}\n";
+    const auto hints = hints_in(hint_response("o.hot", text));
+    // Pick: the first name differs (a, x), the second is b in both.
+    EXPECT_TRUE(has_hint(hints, Hint(6, 21, "b:", 2)));
+    EXPECT_FALSE(has_hint(hints, Hint(6, 18, "a:", 2)));
+    EXPECT_FALSE(has_hint(hints, Hint(6, 18, "x:", 2)));
+    // Tag: the overload with 3 parameters does not fit 2 arguments.
+    EXPECT_TRUE(has_hint(hints, Hint(7, 17, "a:", 2)));
+    EXPECT_TRUE(has_hint(hints, Hint(7, 20, "b:", 2)));
+    EXPECT_EQ(hints.size(), 3u);
+}
+
+TEST(LanguageServer, InlayHintsOfANestedCallNameBothCalls)
+{
+    const auto hints = hints_in(hint_response("n.hot", add_script("        this.Add(this.Add(1, 2), 3);\n")));
+    EXPECT_TRUE(has_hint(hints, Hint(3, 17, "a:", 2)));
+    EXPECT_TRUE(has_hint(hints, Hint(3, 26, "a:", 2)));
+    EXPECT_TRUE(has_hint(hints, Hint(3, 29, "b:", 2)));
+    EXPECT_TRUE(has_hint(hints, Hint(3, 33, "b:", 2)));
+    EXPECT_EQ(hints.size(), 4u);
+}
+
+TEST(LanguageServer, InlayHintsIgnoreACallInAStringOrAComment)
+{
+    const auto hints = hints_in(hint_response("s.hot",
+        add_script("        var s = \"this.Add(1, 2)\";\n"
+                   "        // this.Add(1, 2)\n"
+                   "        /* this.Add(3, 4) */\n"
+                   "        this.Add(5, 6);\n")));
+    ASSERT_EQ(hints.size(), 2u);
+    EXPECT_EQ(std::get<0>(hints[0]), 6);
+    EXPECT_EQ(std::get<0>(hints[1]), 6);
+}
+
+TEST(LanguageServer, InlayHintsOfAnIncompleteCallAreANormalAnswer)
+{
+    const json r = hint_response("i.hot", add_script("        this.Add(1,\n"));
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    EXPECT_FALSE(r.contains("error")) << r.dump();
+    EXPECT_TRUE(r["result"].is_array()) << r.dump();
+    EXPECT_TRUE(hints_in(r).empty()) << r.dump();
+}
+
 TEST(LanguageServer, SemanticTokensMarkKeywordsTypesAndMembers)
 {
     Session s(false);

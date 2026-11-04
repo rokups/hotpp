@@ -274,8 +274,9 @@ struct Tok
     bool id = false;
 };
 
-// The identifiers and the punctuation of a script. Comments, strings and numbers are left out.
-std::vector<Tok> tokenize(const std::string& text)
+// The identifiers and the punctuation of a script. Comments are left out. Strings and numbers are
+// left out too, unless "literals" is set: then each one is a token with "id" not set.
+std::vector<Tok> tokenize(const std::string& text, bool literals = false)
 {
     std::vector<Tok> out;
     size_t i = 0;
@@ -297,12 +298,18 @@ std::vector<Tok> tokenize(const std::string& text)
             size_t e = i + 1;
             while (e < text.size() && text[e] != c && text[e] != '\n')
                 e += text[e] == '\\' ? 2 : 1;
-            i = std::min(e + 1, text.size());
+            const size_t end = std::min(e + 1, text.size());
+            if (literals)
+                out.push_back({text.substr(i, end - i), i, false});
+            i = end;
         }
         else if (c >= '0' && c <= '9')
         {
+            const size_t b = i;
             while (i < text.size() && (is_id_char(text[i]) || text[i] == '.'))
                 ++i;
+            if (literals)
+                out.push_back({text.substr(b, i - b), b, false});
         }
         else if (is_id_char(c))
         {
@@ -551,6 +558,151 @@ ScriptScope scan_scope(const std::string& text, size_t at, size_t typed_begin)
         snap();
     r.locals = std::move(snapshot);
     return r;
+}
+
+std::vector<ParamHint> script_param_hints(const std::string& text, const hotc::AnalyzeResult& facts)
+{
+    std::vector<ParamHint> out;
+    const std::vector<Tok> toks = tokenize(text, true);
+    const std::vector<size_t> starts = line_starts(text);
+    auto open_of = [](const Tok& t) { return t.s == "(" || t.s == "[" || t.s == "{"; };
+    auto close_of = [](const Tok& t) { return t.s == ")" || t.s == "]" || t.s == "}"; };
+    // The index of the token that starts at "off", or the size when there is none.
+    auto token_at = [&](size_t off)
+    {
+        const auto it = std::lower_bound(toks.begin(), toks.end(), off, [](const Tok& t, size_t o) { return t.off < o; });
+        return it != toks.end() && it->off == off ? static_cast<size_t>(it - toks.begin()) : toks.size();
+    };
+    // The index of the token that closes the bracket at "open", or the size. A closing bracket of
+    // an other kind, or the end of the text, gives the size.
+    auto match = [&](size_t open)
+    {
+        std::string stack;
+        for (size_t k = open; k < toks.size(); ++k)
+        {
+            if (open_of(toks[k]))
+            {
+                stack += toks[k].s[0] == '(' ? ')' : toks[k].s[0] == '[' ? ']' : '}';
+            }
+            else if (close_of(toks[k]))
+            {
+                if (stack.empty() || stack.back() != toks[k].s[0])
+                    return toks.size();
+                stack.pop_back();
+                if (stack.empty())
+                    return k;
+            }
+        }
+        return toks.size();
+    };
+    // The bounds [begin, end) of the arguments between the brackets "open" and "close".
+    auto split = [&](size_t open, size_t close)
+    {
+        std::vector<std::pair<size_t, size_t>> parts;
+        if (close == open + 1)
+            return parts;
+        size_t begin = open + 1;
+        int depth = 0;
+        for (size_t k = open + 1; k < close; ++k)
+        {
+            if (open_of(toks[k]))
+                ++depth;
+            else if (close_of(toks[k]))
+                --depth;
+            else if (depth == 0 && toks[k].s == ",")
+            {
+                parts.emplace_back(begin, k);
+                begin = k + 1;
+            }
+        }
+        parts.emplace_back(begin, close);
+        return parts;
+    };
+
+    // ---- the callees: the methods and the constructors of the facts
+    struct Callee
+    {
+        std::vector<std::string> names;
+        size_t required = 0;
+    };
+    std::map<std::string, std::vector<Callee>> callees;
+    std::set<size_t> declared; // the offsets of the names in the declarations
+    for (const hotc::AnalyzedClass& c : facts.classes)
+        for (const hotc::AnalyzedMember& m : c.members)
+        {
+            if ((m.kind != "method" && m.kind != "constructor") || m.begin.line < 1
+                || static_cast<size_t>(m.begin.line) > starts.size())
+                continue;
+            const size_t i = token_at(starts[static_cast<size_t>(m.begin.line - 1)] + static_cast<size_t>(m.begin.col - 1));
+            if (i + 1 >= toks.size() || toks[i].s != m.name || toks[i + 1].s != "(")
+                continue;
+            declared.insert(toks[i].off);
+            const size_t close = match(i + 1);
+            if (close == toks.size())
+                continue;
+            Callee callee;
+            bool has_default = false;
+            for (const auto& [b, e] : split(i + 1, close))
+            {
+                // The name is the last word before a default value "=".
+                std::string name;
+                bool defaulted = false;
+                int depth = 0;
+                for (size_t k = b; k < e; ++k)
+                {
+                    if (open_of(toks[k]))
+                        ++depth;
+                    else if (close_of(toks[k]))
+                        --depth;
+                    else if (depth == 0 && toks[k].s == "=")
+                    {
+                        defaulted = true;
+                        break;
+                    }
+                    else if (depth == 0 && toks[k].id)
+                        name = toks[k].s;
+                }
+                if (!has_default && !defaulted)
+                    callee.required = callee.names.size() + 1;
+                has_default = has_default || defaulted;
+                callee.names.push_back(name);
+            }
+            callees[m.name].push_back(std::move(callee));
+        }
+    if (callees.empty())
+        return out;
+
+    // ---- the calls
+    for (size_t i = 0; i + 1 < toks.size(); ++i)
+    {
+        if (!toks[i].id || toks[i + 1].s != "(" || declared.count(toks[i].off))
+            continue;
+        const auto it = callees.find(toks[i].s);
+        if (it == callees.end() || keywords().count(toks[i].s))
+            continue;
+        const size_t close = match(i + 1);
+        if (close == toks.size())
+            continue;
+        const auto args = split(i + 1, close);
+        std::vector<const Callee*> fit;
+        for (const Callee& c : it->second)
+            if (c.required <= args.size() && args.size() <= c.names.size())
+                fit.push_back(&c);
+        if (fit.empty())
+            continue;
+        for (size_t k = 0; k < args.size(); ++k)
+        {
+            const std::string& name = fit[0]->names[k];
+            const bool same = std::all_of(fit.begin(), fit.end(), [&](const Callee* c) { return c->names[k] == name; });
+            const auto [b, e] = args[k];
+            if (!same || name.empty() || b >= e)
+                continue;
+            if (e == b + 1 && toks[b].id && toks[b].s == name)
+                continue;
+            out.push_back({toks[b].off, name + ":"});
+        }
+    }
+    return out;
 }
 
 } // namespace hot::ls
