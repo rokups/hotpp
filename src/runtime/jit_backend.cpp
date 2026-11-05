@@ -280,6 +280,11 @@ LoadResult add_to_jit(const std::shared_ptr<JitState>& impl, const std::string& 
     m.register_fn = addr->toPtr<Module::RegisterFn>();
     m.keep_alive = std::shared_ptr<void>(holder.release(), [](void* p) { delete static_cast<Generation*>(p); });
     m.origin = "jit:" + id;
+    // A missing "hot_main" is not an error: the module has no entry point.
+    if (auto entry = jit.lookup(*dylib, "hot_main"))
+        m.entry_main = entry->toPtr<Module::EntryMainFn>();
+    else
+        llvm::consumeError(entry.takeError());
     r.module = std::move(m);
     return r;
 }

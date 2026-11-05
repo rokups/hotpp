@@ -77,7 +77,7 @@ hot::LoadResult module = hot::module_from_library("out/player_v1.g1.so");
 if (!module || !loader.load(std::move(*module.module))) { /* report */ }
 ```
 
-**Run time:** `module_from_library` calls `dlopen` and looks up `script_register`. Later generations go through `request_reload`, as in the hot reload case. Build them with `--gen 2` and the same output folder, because the generations share a slot file.
+**Run time:** `module_from_library` calls `dlopen` and looks up `script_register`. It also looks up `hot_main`. The symbol exists when the entry script has a free function `main` (see [Entry point main](module-level.html#entry-point-main)). The result goes to `Module::entry_main`, a function pointer `int32_t (*)(int32_t, const char* const*)`. A missing symbol is not an error: the field stays null. The pointer stays valid while the library stays loaded. An AOT module leaves it null. The call does not catch an exception of the script. Later generations go through `request_reload`, as in the hot reload case. Build them with `--gen 2` and the same output folder, because the generations share a slot file.
 
 **Requires:** no compiler at run time. The host must export the functions that the script calls (`ENABLE_EXPORTS`). The library must use the same standard, the same flags (for example a sanitizer) and the same format library as the host.
 

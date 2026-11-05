@@ -10,7 +10,8 @@ set(BACKEND_TEST_SOURCES
     generated_name_compile_tests.cpp
     protected_base_compile_tests.cpp
     vfs_backend_tests.cpp
-    backend_selection_tests.cpp)
+    backend_selection_tests.cpp
+    entry_main_module_tests.cpp)
 # The hotc tool tests run hotc through a POSIX shell (popen, sys/wait.h, WEXITSTATUS). About 100
 # command lines use POSIX quotes ('...') and /tmp paths, and cmd.exe does not read them. A port
 # needs a process helper with an argument list for each of the 54 tests. Not on Windows yet.

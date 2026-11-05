@@ -96,7 +96,15 @@ LoadResult open_library(const std::string& path, const std::string& origin, bool
         r.error = "symbol script_register not found in " + path;
         return r; // "owner" closes the library
     }
+    // A missing "hot_main" is not an error: the module has no entry point.
+#ifdef _WIN32
+    auto entry = reinterpret_cast<Module::EntryMainFn>(
+        reinterpret_cast<void*>(GetProcAddress(reinterpret_cast<HMODULE>(h), "hot_main")));
+#else
+    auto entry = reinterpret_cast<Module::EntryMainFn>(dlsym(h, "hot_main"));
+#endif
     r.module = Module{fn, std::move(owner), origin, {}, {}};
+    r.module->entry_main = entry;
     return r;
 }
 

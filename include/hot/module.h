@@ -7,6 +7,7 @@
 
 #include "hot/runtime/reload_result.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -46,6 +47,11 @@ struct Module
     // removes only the missing classes of this unit, and it keeps the module block of each other
     // unit. A class that arrives in another unit than its first unit makes the module bad.
     std::string unit;
+    // The entry point "main" of the script (the symbol "hot_main"). It is null when the module has
+    // no "main". The pointer stays valid while the module library stays loaded. An AOT module
+    // leaves it null. The function does not catch an exception of the script.
+    using EntryMainFn = int32_t (*)(int32_t, const char* const*);
+    EntryMainFn entry_main = nullptr;
 };
 
 // The file suffix of a module library on this platform.
