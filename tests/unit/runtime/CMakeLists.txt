@@ -6,6 +6,7 @@
 add_executable(unit_runtime_tests
     checked_ptr_tests.cpp
     coalesce_tests.cpp
+    container_ops_tests.cpp
     deref_tests.cpp
     noexcept_result_tests.cpp
     runtime_checks_tests.cpp

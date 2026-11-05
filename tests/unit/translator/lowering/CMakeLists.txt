@@ -5,6 +5,7 @@
 # The tests of the lowering pass.
 add_executable(unit_translator_lowering_tests
     arith_lowering_tests.cpp
+    container_ops_lowering_tests.cpp
     async_lowering_tests.cpp
     const_infer_tests.cpp
     handle_lowering_tests.cpp

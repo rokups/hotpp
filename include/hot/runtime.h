@@ -10,6 +10,7 @@
 #include "hot/runtime/arith.h"
 #include "hot/runtime/checked_ptr.h"
 #include "hot/runtime/closure.h"
+#include "hot/runtime/container_ops.h"
 #include "hot/runtime/coalesce.h"
 #include "hot/runtime/deref.h"
 #include "hot/runtime/enumerate.h"

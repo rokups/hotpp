@@ -411,6 +411,9 @@ struct TryStmt
     std::optional<BlockStmt> finally_block;
     uint32_t pos = 0;
     std::string finally_captures; // the lowering: init-captures after "[&", for example ", &a = a"
+    // The lowering: a catch clause for ScriptError or NativeError also takes a native exception
+    // (std::exception) from the block. The block gets an inner handler that converts it.
+    bool convert_native = false;
 };
 struct EmptyStmt
 {

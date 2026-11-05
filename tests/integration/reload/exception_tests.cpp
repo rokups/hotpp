@@ -704,6 +704,158 @@ TEST_P(BackendTests, SignedOverflowWrapsWithTheOptimizer)
     run_shift_script(*optimized);
 }
 
+// front, back, pop and at on an empty container throw. A native std exception in a try block
+// with a catch clause for ScriptError becomes a catchable NativeError. The checks do not depend on
+// HOT_RUNTIME_CHECKS.
+const char* const kContainerSource = R"(
+using "Actor.h";
+using "Damageable.h";
+using <vector>;
+using <deque>;
+using <list>;
+using <queue>;
+using <stack>;
+using <map>;
+using <string>;
+using <optional>;
+using <stdexcept>;
+
+class Boss : Actor, IDamageable {
+    std.vector<int> v = [];
+    std.deque<int> d = [];
+    std.list<int> l = [];
+    std.queue<int> q;
+    std.stack<int> st;
+    std.priority_queue<int> pq;
+    std.map<std.string, int> m = ["a": 1];
+    float n_front = 0.0;
+    float n_back = 0.0;
+    float n_pop_back = 0.0;
+    float n_pop_front = 0.0;
+    float n_dq_front = 0.0;
+    float n_list_back = 0.0;
+    float n_queue_pop = 0.0;
+    float n_stack_top = 0.0;
+    float n_stack_pop = 0.0;
+    float n_pq_top = 0.0;
+    float n_at = 0.0;
+    float n_native = 0.0;
+    float n_native_type = 0.0;
+    float n_native_sub = 0.0;
+    float n_finally = 0.0;
+    float n_order = 0.0;
+    float n_std = 0.0;
+    float r_ok = 0.0;
+    float r_at = 0.0;
+    float after = 0.0;
+
+    override int Absorb(int amount) { return this.v.back(); }
+
+    override void Tick(float dt) {
+        try { var x = this.v.front(); } catch (IndexOutOfRange e) { this.n_front = 1.0; }
+        try { var x = this.v.back(); } catch (ScriptError e) { this.n_back = 1.0; }
+        try { this.v.pop_back(); } catch (IndexOutOfRange e) { this.n_pop_back = 1.0; }
+        try { this.d.pop_front(); } catch (IndexOutOfRange e) { this.n_pop_front = 1.0; }
+        try { var x = this.d.front(); } catch (IndexOutOfRange e) { this.n_dq_front = 1.0; }
+        try { var x = this.l.back(); } catch (IndexOutOfRange e) { this.n_list_back = 1.0; }
+        try { this.q.pop(); } catch (IndexOutOfRange e) { this.n_queue_pop = 1.0; }
+        try { var x = this.st.top(); } catch (IndexOutOfRange e) { this.n_stack_top = 1.0; }
+        try { this.st.pop(); } catch (IndexOutOfRange e) { this.n_stack_pop = 1.0; }
+        try { var x = this.pq.top(); } catch (IndexOutOfRange e) { this.n_pq_top = 1.0; }
+        this.v.push_back(4);
+        this.v.push_back(5);
+        this.r_ok = this.v.front() * 10 + this.v.back();
+        this.v.pop_back();
+        this.r_at = this.m.at("a");
+        try { var x = this.m.at("zz"); } catch (ScriptError e) {
+            this.n_at = 1.0;
+        }
+        try { throw std.out_of_range("native"); } catch (ScriptError e) {
+            this.n_native = 1.0;
+            if (e.what()[0] == 'n') { this.n_native_type = 1.0; }
+        }
+        try { throw std.out_of_range("native"); } catch (NativeError e) { this.n_native_sub = 1.0; }
+        try {
+            try { throw std.bad_optional_access(); } finally { this.n_finally = 1.0; }
+        } catch (ScriptError e) { this.n_native = this.n_native + 1.0; }
+        try { throw std.out_of_range("order"); }
+        catch (ScriptError e) { this.n_order = 5.0; }
+        catch (std.out_of_range e) { this.n_order = 1.0; }
+        try { throw std.out_of_range("order"); }
+        catch (std.exception e) { if (e.what()[0] == 'o') { this.n_std = 1.0; } }
+        this.after = 1.0;
+    }
+}
+)";
+
+TEST_P(BackendTests, EmptyContainerOperationsAndNativeExceptionsAreCatchable)
+{
+    const hot::ScriptSource src = {"container_ops.hot", kContainerSource};
+    hot::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module), "Boss"));
+    s.commit_at_frame_boundary();
+    HandlerGuard guard;
+    std::vector<std::string> types, messages;
+    hot::set_script_error_handler(
+        [&](const hot::ScriptErrorReport& e)
+        {
+            types.push_back(e.type);
+            messages.push_back(e.message);
+        });
+    s.world.Tick(kDt);
+    for (const char* name : {"n_front", "n_back", "n_pop_back", "n_pop_front", "n_dq_front", "n_list_back",
+             "n_queue_pop", "n_stack_top", "n_stack_pop", "n_pq_top", "n_at", "n_native_type", "n_native_sub",
+             "n_finally", "n_order", "n_std", "after"})
+        EXPECT_EQ(*s.field(name), 1.0f) << name;
+    EXPECT_EQ(*s.field("n_native"), 2.0f); // two catches
+    EXPECT_EQ(*s.field("r_ok"), 45.0f);
+    EXPECT_EQ(*s.field("r_at"), 1.0f);
+    EXPECT_TRUE(types.empty());
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
+    // A call from the host reports the error and gives a default value.
+    auto* dmg = dynamic_cast<IDamageable*>(s.actor);
+    ASSERT_NE(dmg, nullptr);
+    EXPECT_EQ(dmg->Absorb(0), 4); // v has one element left
+    EXPECT_TRUE(types.empty());
+}
+
+TEST_P(BackendTests, NativeExceptionOutsideTryIsReportedWithItsType)
+{
+    const hot::ScriptSource src = {"native_report.hot", R"(
+using "Actor.h";
+using "Damageable.h";
+using <map>;
+using <string>;
+
+class Boss : Actor, IDamageable {
+    std.map<std.string, int> m = [];
+    override int Absorb(int amount) { return this.m.at("none"); }
+    override void Tick(float dt) { }
+}
+)"};
+    hot::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module), "Boss"));
+    s.commit_at_frame_boundary();
+    HandlerGuard guard;
+    std::vector<std::string> types, messages;
+    hot::set_script_error_handler(
+        [&](const hot::ScriptErrorReport& e)
+        {
+            types.push_back(e.type);
+            messages.push_back(e.message);
+        });
+    auto* dmg = dynamic_cast<IDamageable*>(s.actor);
+    ASSERT_NE(dmg, nullptr);
+    EXPECT_EQ(dmg->Absorb(1), 0);
+    ASSERT_EQ(types.size(), 1u);
+    EXPECT_EQ(types[0], "hot::ScriptError"); // the helper maps out_of_range
+    EXPECT_NE(messages[0].find("key not found"), std::string::npos) << messages[0];
+}
+
 #if HOT_RUNTIME_CHECKS
 
 // The class of the checks tests. Tick runs the body that the test gives. The handle is null.

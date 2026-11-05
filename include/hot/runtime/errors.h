@@ -56,6 +56,17 @@ public:
     ~ArithmeticError() override;
 };
 
+// A native exception that is not a ScriptError (std::out_of_range from "map.at", std::bad_alloc,
+// an exception of the host) in a try block with a catch clause for ScriptError. The translator
+// converts it at the try block (detail::rethrow_as_script_error). The message is
+// "native exception <type>: <what>".
+class HOT_EXPORT NativeError : public ScriptError
+{
+public:
+    using ScriptError::ScriptError;
+    ~NativeError() override;
+};
+
 // A task ended without a result because of a cancellation. User code can throw it. A task whose
 // body ends with it counts as cancelled: report_unhandled does not see it. The awaiter of the
 // task gets the exception with its dynamic type (task.h).
@@ -190,6 +201,10 @@ HOT_HIDDEN uint32_t& call_depth() noexcept
 HOT_EXPORT void frame_overflow(uint32_t frames);
 [[noreturn]] HOT_EXPORT void throw_null_reference(const char* what);
 [[noreturn]] HOT_EXPORT void throw_index_out_of_range(std::size_t index, std::size_t size);
+
+// Call it in "catch (const std::exception&)". It rethrows a ScriptError as it is. Any other
+// exception becomes a NativeError that holds the type and the text of the first one.
+[[noreturn]] HOT_EXPORT void rethrow_as_script_error();
 
 // Reports the exception "ep" that no script code handled. "self" can be null.
 HOT_EXPORT void report_unhandled(const ShellCore* self, std::exception_ptr ep);

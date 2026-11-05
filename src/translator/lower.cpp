@@ -142,7 +142,7 @@ void normalize_runtime_catch_type(std::string& type)
         }
     }
     if (t == "NullReference" || t == "IndexOutOfRange" || t == "ScriptError" || t == "TaskCancelled"
-        || t == "TaskReloadCancelled" || t == "ArithmeticError")
+        || t == "TaskReloadCancelled" || t == "ArithmeticError" || t == "NativeError")
         type = "const hot::" + t + "&";
     else if (!type.empty() && type.find_first_of("&*") == std::string::npos)
         type = "const " + type + "&";
@@ -2053,6 +2053,25 @@ struct Lowerer
         e = negate ? make_expr(UnaryExpr{"!", std::move(res), false, pos}) : std::move(res); // "b" is gone now
     }
 
+    // True for a call that has a checked helper: "c.front()", "c.back()", "c.top()", "c.pop()",
+    // "c.pop_back()", "c.pop_front()" and "c.at(k)".
+    static bool checked_container_call(const std::string& name, size_t args)
+    {
+        if (args == 0)
+            return name == "front" || name == "back" || name == "top" || name == "pop" || name == "pop_back"
+                || name == "pop_front";
+        return args == 1 && name == "at";
+    }
+
+    // True when the receiver type is known and it is not a script class or an interface. An unknown
+    // type keeps the plain member call.
+    bool checked_receiver_type(std::string t) const
+    {
+        while (!t.empty() && (t.back() == '?' || t.back() == ' '))
+            t.pop_back();
+        return !t.empty() && !iface_named(t) && !class_named(t);
+    }
+
     void call(CallExpr& c)
     {
         check_reset(c);
@@ -2214,6 +2233,21 @@ struct Lowerer
             && !std::holds_alternative<ThisExpr>(pm->obj->v) && !std::holds_alternative<BaseExpr>(pm->obj->v))
             if (const std::string el = element_type(type_of(*pm->obj), true); iface_named(el))
                 coerce(c.args[0], el);
+        // "xs.back()" and the like: the checked helper of the runtime (container_ops.h).
+        if (auto* cm = std::get_if<MemberExpr>(&c.callee->v);
+            cm && checked_container_call(cm->name, c.args.size())
+            && !std::holds_alternative<ThisExpr>(cm->obj->v) && !std::holds_alternative<BaseExpr>(cm->obj->v)
+            && cm->name.find('<') == std::string::npos && checked_receiver_type(type_of(*cm->obj)))
+        {
+            const uint32_t pos = pos_of(*cm->obj);
+            ExprP recv = std::move(cm->obj);
+            const std::string helper = "hot::" + cm->name;
+            expr(recv);
+            exprs(c.args);
+            c.callee = raw(helper, pos);
+            c.args.insert(c.args.begin(), std::move(recv));
+            return;
+        }
         const std::vector<char> forms = native_arg_forms(c);
         expr(c.callee);
         exprs(c.args);
@@ -3988,18 +4022,37 @@ struct Lowerer
         else if (auto* tr = std::get_if<TryStmt>(&x.v))
         {
             block(tr->block);
+            // A native exception becomes a NativeError only when each clause names a runtime type
+            // or a script exception type. A clause for "..." or for a native type (std::exception,
+            // std::out_of_range) must keep the original exception and the order of the clauses.
+            bool wants_convert = false, has_native_clause = false;
             for (CatchClause& c : tr->catches)
             {
                 const ScopeSave scope(cx);
-                if (!c.is_all)
+                if (c.is_all)
+                    has_native_clause = true;
+                else
                 {
                     declare(c.name, std::string());
                     normalize_runtime_catch_type(c.type);
+                    if (c.type == "const hot::ScriptError&" || c.type == "const hot::NativeError&")
+                        wants_convert = true;
+                    if (c.type.compare(0, 11, "const hot::") != 0)
+                    {
+                        std::string bare = c.type;
+                        if (bare.compare(0, 6, "const ") == 0)
+                            bare.erase(0, 6);
+                        while (!bare.empty() && (bare.back() == '&' || bare.back() == ' '))
+                            bare.pop_back();
+                        if (!class_named(bare))
+                            has_native_clause = true;
+                    }
                 }
                 ++catch_depth;
                 block(c.block);
                 --catch_depth;
             }
+            tr->convert_native = wants_convert && !has_native_clause;
             if (tr->finally_block)
             {
                 const FinallyState outer = fin;

@@ -10,10 +10,15 @@
 #include "hot/runtime/trace.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <exception>
 #include <mutex>
+#include <string>
 #include <typeinfo>
 #include <utility>
+#if defined(__GNUC__) || defined(__clang__)
+    #include <cxxabi.h>
+#endif
 
 namespace hot
 {
@@ -33,6 +38,7 @@ ScriptError::ScriptError(const char* what) : std::runtime_error(what) {}
 ScriptError::~ScriptError() = default;
 NullReference::~NullReference() = default;
 ArithmeticError::~ArithmeticError() = default;
+NativeError::~NativeError() = default;
 TaskCancelled::~TaskCancelled() = default;
 TaskReloadCancelled::~TaskReloadCancelled() = default;
 
@@ -118,12 +124,51 @@ void throw_index_out_of_range(std::size_t index, std::size_t size)
     throw IndexOutOfRange(index, size);
 }
 
+namespace
+{
+
+// The readable name of the dynamic type of an exception.
+std::string exception_type_name(const std::exception& e)
+{
+    const char* raw = typeid(e).name();
+#if defined(__GNUC__) || defined(__clang__)
+    int status = 0;
+    char* name = abi::__cxa_demangle(raw, nullptr, nullptr, &status);
+    if (name && status == 0)
+    {
+        std::string result = name;
+        std::free(name);
+        return result;
+    }
+    std::free(name);
+#endif
+    return raw;
+}
+
+} // namespace
+
+void rethrow_as_script_error()
+{
+    try
+    {
+        throw;
+    }
+    catch (const ScriptError&)
+    {
+        throw;
+    }
+    catch (const std::exception& e)
+    {
+        throw NativeError("native exception " + exception_type_name(e) + ": " + e.what());
+    }
+}
+
 void report_unhandled(const ShellCore* self, std::exception_ptr ep)
 {
     if (!ep)
         return;
     const char* type = "unknown";
-    std::string message, traceback;
+    std::string message, traceback, native_type;
     try
     {
         std::rethrow_exception(ep);
@@ -136,6 +181,8 @@ void report_unhandled(const ShellCore* self, std::exception_ptr ep)
             type = "hot::IndexOutOfRange";
         else if (dynamic_cast<const ArithmeticError*>(&e))
             type = "hot::ArithmeticError";
+        else if (dynamic_cast<const NativeError*>(&e))
+            type = "hot::NativeError";
         else
             type = "hot::ScriptError";
         message = e.what();
@@ -143,7 +190,8 @@ void report_unhandled(const ShellCore* self, std::exception_ptr ep)
     }
     catch (const std::exception& e)
     {
-        type = typeid(e).name();
+        native_type = exception_type_name(e);
+        type = native_type.c_str();
         message = e.what();
     }
     catch (...)

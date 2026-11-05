@@ -637,7 +637,20 @@ struct StmtPrinter
         // A try without a catch clause has no use in C++. The body is a plain block.
         if (!n.catches.empty())
             e.put("try", n.pos);
-        block(n.block, e);
+        if (n.convert_native && !n.catches.empty())
+        { // try { try BLOCK catch (const std::exception&) { convert } } catch ...
+            e.space();
+            e.put("{");
+            e.space();
+            e.put("try");
+            block(n.block, e);
+            e.space();
+            e.put("catch (const std::exception&) { hot::detail::rethrow_as_script_error(); }");
+            e.space();
+            e.put("}");
+        }
+        else
+            block(n.block, e);
         for (const CatchClause& c : n.catches)
         {
             e.space();
