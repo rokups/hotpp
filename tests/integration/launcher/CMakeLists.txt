@@ -10,5 +10,6 @@ add_executable(integration_launcher_tests launcher_tests.cpp)
 target_link_libraries(integration_launcher_tests PRIVATE hot_launcher GTest::gtest_main)
 set_target_properties(integration_launcher_tests PROPERTIES ENABLE_EXPORTS ON)
 target_compile_definitions(integration_launcher_tests PRIVATE
-    HOT_SCRATCH_DIR="${HOT_SCRATCH_DIR}/tests/launcher")
+    HOT_SCRATCH_DIR="${HOT_SCRATCH_DIR}/tests/launcher"
+    HOT_LAUNCHER_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 hot_gtest(integration_launcher_tests)

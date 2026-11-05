@@ -6,6 +6,7 @@
 // Each test runs for each backend that the build has.
 #include "hot/launcher.h"
 
+#include "TestHost.h"
 #include "hot/backend.h"
 
 #include <gtest/gtest.h>
@@ -15,6 +16,10 @@
 #include <fstream>
 #include <string>
 #include <vector>
+
+// The statics of TestHost. They live in the test executable. The script modules find them there.
+std::function<void(int frame)> TestHost::on_frame;
+bool TestHost::running = false;
 
 namespace
 {
@@ -176,6 +181,45 @@ TEST(Launcher, ThrowingMainGivesCode1)
         EXPECT_EQ(launcher::run_main(*program, {}), 1);
         ASSERT_EQ(logs.size(), 1u);
         EXPECT_NE(logs[0].find("boom"), std::string::npos) << logs[0];
+    }
+}
+
+// A script class derives from the native class TestHost. The native loop Run calls its Step.
+// on_frame runs before Step. The test stops the loop at frame 3 after Step runs for frame 3.
+// The loop checks "running" at the start of the next iteration. Steps 1, 2 and 3 give 1 + 2 + 3 = 6.
+TEST(Launcher, LoopRunsFrames)
+{
+    for (const std::string& backend : backends())
+    {
+        SCOPED_TRACE(backend);
+        const fs::path dir = make_temp_dir();
+        fs::copy_file(fs::path(HOT_LAUNCHER_TEST_DIR) / "TestHost.h", dir / "TestHost.h");
+        const std::string script = write_file(dir, "entry.hot",
+                                              "using \"TestHost.h\";\n"
+                                              "class Game : TestHost {\n"
+                                              "    int count = 0;\n"
+                                              "    override int Step() { count = count + 1; return count; }\n"
+                                              "}\n"
+                                              "int main() { $Game g = new $Game(); return g.Run(); }\n");
+        launcher::Options options = options_for(backend, dir, nullptr);
+        options.include_dirs.push_back(dir.string());
+        std::string error;
+        auto program = launcher::load(options, script, error);
+        ASSERT_NE(program, nullptr) << error;
+
+        std::vector<int> frames;
+        TestHost::running = true;
+        TestHost::on_frame = [&frames](int frame)
+        {
+            frames.push_back(frame);
+            if (frame == 3)
+                TestHost::running = false;
+        };
+        const int result = launcher::run_main(*program, {});
+        TestHost::on_frame = nullptr;
+        TestHost::running = false;
+        EXPECT_EQ(result, 6);
+        EXPECT_EQ(frames, (std::vector<int>{1, 2, 3}));
     }
 }
 
