@@ -1,0 +1,9 @@
+80_ref_in_container.hot:9:5: error: 'ref' cannot be stored in a field, a collection, a 'T?', a tuple or a handle. A 'ref' lives only in a local, a 'foreach' variable, a parameter or a 'ref' return. Use a value or '$T'
+    9 |     void F(std.vector<ref Vec3> items) {
+80_ref_in_container.hot:10:9: error: 'ref' cannot be stored in a field, a collection, a 'T?', a tuple or a handle. A 'ref' lives only in a local, a 'foreach' variable, a parameter or a 'ref' return. Use a value or '$T'
+   10 |         std.vector<ref Vec3> local;
+80_ref_in_container.hot:14:9: error: 'ref' cannot be stored in a field, a collection, a 'T?', a tuple or a handle. A 'ref' lives only in a local, a 'foreach' variable, a parameter or a 'ref' return. Use a value or '$T'
+   14 |         foreach (std.vector<ref Vec3> x in items) {
+80_ref_in_container.hot:6:5: error: 'ref' cannot be stored in a field, a collection, a 'T?', a tuple or a handle. A 'ref' lives only in a local, a 'foreach' variable, a parameter or a 'ref' return. Use a value or '$T'
+    6 |     Holder(std.vector<ref Vec3> items) {
+4 errors generated.

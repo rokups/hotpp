@@ -1,0 +1,5 @@
+99_ref_return_through_ref_local.hot:7:9: error: 'return' of a 'ref' to the local 'x': it ends at the return. Return a value, or a ref to a field or a 'ref' parameter
+    7 |         return r;
+99_ref_return_through_ref_local.hot:12:9: error: 'return' of a 'ref' to the parameter 'a': the parameter is a copy and ends at the return. Return a value, or take the parameter by 'ref'
+   12 |         return r;
+2 errors generated.

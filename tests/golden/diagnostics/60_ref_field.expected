@@ -1,3 +1,3 @@
-60_ref_field.hot:6:14: error: "ref" is only for local variables, foreach and parameters
+60_ref_field.hot:6:14: error: 'ref' cannot be stored in a field, a collection, a 'T?', a tuple or a handle. A 'ref' lives only in a local, a 'foreach' variable, a parameter or a 'ref' return. Use a value or '$T'
     6 |     ref Vec3 last;
 1 error generated.

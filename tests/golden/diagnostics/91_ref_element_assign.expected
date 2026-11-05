@@ -1,0 +1,5 @@
+91_ref_element_assign.hot:11:9: error: assignment to 'xs' can move or remove the elements of 'xs' while the 'ref' 'r' points to one. Copy the value with 'var', or end the ref before the call
+   11 |         xs = other;
+91_ref_element_assign.hot:12:9: error: 'xs' passed by 'ref' can move or remove the elements of 'xs' while the 'ref' 'r' points to one. Copy the value with 'var', or end the ref before the call
+   12 |         Fill(xs);
+2 errors generated.

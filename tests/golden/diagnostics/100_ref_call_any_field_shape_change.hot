@@ -1,0 +1,28 @@
+using <vector>;
+
+class Holder {
+    std.vector<int> xs;
+    std.vector<int> ys;
+
+    ref int Item(int i) {
+        return this.xs[i];
+    }
+
+    void PushOther() {
+        ref r = this.Item(0);
+        this.ys.push_back(2);
+        r = 1;
+    }
+
+    void Assign(std.vector<int> other) {
+        ref r = this.Item(0);
+        this.xs = other;
+        r = 1;
+    }
+
+    void Clear() {
+        ref r = Item(0);
+        xs.clear();
+        r = 1;
+    }
+}

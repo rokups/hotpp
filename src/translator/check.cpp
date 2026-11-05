@@ -8,6 +8,7 @@
 #include "ast_walk.h"
 #include "builtin_types.h"
 #include "const_infer.h"
+#include "mutating_methods.h"
 #include "operator_names.h"
 
 #include <algorithm>
@@ -442,6 +443,61 @@ std::vector<std::string> template_args(const std::string& type)
 }
 
 // ------------------------------------------------------------------ the checker
+// True when the type text has the word "ref" as a token: "ref T", "List<ref T>" or a tuple member.
+bool has_ref_word(const std::string& type)
+{
+    auto word_char = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_'; };
+    size_t i = 0;
+    while (i < type.size())
+    {
+        if (!word_char(type[i]))
+        {
+            ++i;
+            continue;
+        }
+        size_t j = i;
+        while (j < type.size() && word_char(type[j]))
+            ++j;
+        if (type.compare(i, j - i, "ref") == 0)
+            return true;
+        i = j;
+    }
+    return false;
+}
+
+constexpr const char* kRefStorageError =
+    "'ref' cannot be stored in a field, a collection, a 'T?', a tuple or a handle. A 'ref' lives only in a local, "
+    "a 'foreach' variable, a parameter or a 'ref' return. Use a value or '$T'";
+
+// The place that a "ref" names (doc/type-design.md, "Lifetime of a ref"). "roots" are the names at the
+// start of the place. A field of "this" has the root "this.name": it cannot collide with a local. "element"
+// is true when the place can dangle after a change of its root: an element of a container, or a place
+// behind a handle, a pointer, a "T?" or a "*". "any_field" is true for the result of a call of a "ref"
+// method: it can be an element of any field of the object, so the change of the shape of any such field
+// ends it.
+struct Place
+{
+    std::set<std::string> roots;
+    bool element = false;
+    bool any_field = false;
+    bool temporary = false;
+    // Roots from an argument of a "ref" call that is not an element: a shape change of such a root does not
+    // end the ref. A root in this set is also in "roots".
+    std::set<std::string> plain_roots;
+
+    // True when a shape change of the root "r" ends a ref with this place.
+    bool shape_root(const std::string& r) const { return element && roots.count(r) && !plain_roots.count(r); }
+};
+
+// A live "ref" local or "foreach (ref ...)" variable.
+struct RefInfo
+{
+    Place place;
+    uint32_t pos = 0;
+    bool loop = false;
+    std::string type; // the declared type of the initializer, or empty when not known
+};
+
 struct Checker
 {
     const ClassDef& cd;
@@ -473,6 +529,336 @@ struct Checker
     std::map<std::string, std::string> field_types; // the declared type of each field
     std::set<const Expr*> allowed_refs; // "&x" nodes in a place where they are valid
     std::set<const Expr*> callee_names; // names in the callee place of a call
+    std::map<std::string, RefInfo> refs; // the "ref" locals that are live in the body in progress
+    std::vector<std::map<std::string, RefInfo>> refs_stack; // "refs" at the start of each open block
+    std::set<std::string> ref_params; // the "ref" and "out" parameters of the body in progress
+    // The live "ref" entries that the variable of a "foreach" hides. The end of the loop gives them back.
+    std::map<const Stmt*, std::vector<std::pair<std::string, RefInfo>>> hidden_refs;
+    // The refs of a declaration that start at the end of the declaration statement.
+    std::map<const VarDeclStmt*, std::vector<std::pair<std::string, RefInfo>>> pending_refs;
+    std::set<std::string> copy_params; // the plain, "in" and "[byval]" parameters of the body in progress
+    bool method_ret_ref = false; // true while the body of a method with a "ref T" return is in progress
+
+    // True when the method returns "ref T". The checker runs before and after the lowering of the return type.
+    static bool is_ref_ret(const Method& m) { return m.ret_ref || is_ref_return_text(m.ret); }
+
+    // The own method (a method or a static) with a name and a "ref" return, or null.
+    const Method* own_ref_method(const std::string& name) const
+    {
+        for (const std::vector<Method>* list : {&cd.methods, &cd.statics})
+            for (const Method& m : *list)
+                if (m.name == name && is_ref_ret(m))
+                    return &m;
+        return nullptr;
+    }
+
+    // True when the method is one of the statics of the class.
+    bool is_own_static(const Method* m) const
+    {
+        for (const Method& s : cd.statics)
+            if (&s == m)
+                return true;
+        return false;
+    }
+
+    // The root of a plain name: a field of this gets the tag "this.name". A local or a parameter keeps its name.
+    std::string name_root(const std::string& n) const
+    {
+        return !locals.count(n) && field_names.count(n) ? "this." + n : n;
+    }
+
+    // The declared type of a local, a parameter or a field. Empty when not known (a "var" local).
+    std::string name_type(const std::string& n) const
+    {
+        if (locals.count(n))
+        {
+            auto l = local_types.find(n);
+            return l == local_types.end() ? std::string() : l->second;
+        }
+        auto f = field_types.find(n);
+        return f == field_types.end() ? std::string() : f->second;
+    }
+
+    // The declared type of an object expression, or empty.
+    std::string expr_type(const Expr& e) const
+    {
+        if (const auto* n = std::get_if<NameExpr>(&e.v))
+            return n->parts.size() == 1 ? name_type(n->parts[0]) : std::string();
+        if (const auto* m = std::get_if<MemberExpr>(&e.v))
+        {
+            if (m->obj && std::holds_alternative<ThisExpr>(m->obj->v))
+            {
+                auto f = field_types.find(m->name);
+                return f == field_types.end() ? std::string() : f->second;
+            }
+            return std::string();
+        }
+        if (const auto* p = std::get_if<ParenExpr>(&e.v))
+            return p->inner ? expr_type(*p->inner) : std::string();
+        return std::string();
+    }
+
+    // True when a place behind a value of this type can dangle after the value is replaced: a handle, a
+    // pointer, a "T?" or a box of a script class. A struct and a builtin value are not.
+    bool is_replaceable_type(const std::string& type) const
+    {
+        std::string t = trim(type);
+        if (t.rfind("const ", 0) == 0)
+            t = trim(t.substr(6));
+        if (t.empty())
+            return false;
+        if (t.back() == '?' || t.back() == '*' || t[0] == '$')
+            return true;
+        return types.is_handle(t) || (types.is_script_class(t) && !types.is_script_value(t));
+    }
+
+    // True when a change of a field of this type can move or remove the places inside it: any type that is
+    // not a builtin scalar (a container, a string, an array, a struct or a replaceable value).
+    bool can_reshape(const std::string& type) const
+    {
+        const std::string t = trim(type);
+        if (t.empty())
+            return false;
+        // Any type that is not a builtin scalar can hold a container: a struct, for example.
+        for (const BuiltinType& b : builtin_types())
+            if (t == b.script || (b.alias && t == b.alias) || t == b.cpp)
+                return false;
+        return true;
+    }
+
+    // The place of a plain name that starts a chain. "stepped" is true when the chain goes on with ".member".
+    void name_place(const std::string& first, bool stepped, Place& out) const
+    {
+        out = Place();
+        auto it = refs.find(first);
+        if (it != refs.end())
+        {
+            out = it->second.place; // a "ref" local: the place that it stores
+            // The owner behind the ref can be replaced when its type is not known or is replaceable.
+            if (stepped && (it->second.type.empty() || is_replaceable_type(it->second.type)))
+                out.element = true;
+            return;
+        }
+        out.roots.insert(name_root(first)); // an unknown name is a module variable: a valid root
+        if (stepped)
+        {
+            const std::string t = name_type(first);
+            // A "var" local has no type text: treat it as a handle.
+            if (is_replaceable_type(t) || (t.empty() && locals.count(first)))
+                out.element = true;
+        }
+    }
+
+    // R5 and D4: the place of the result of a call of the own "ref" method "m" is the shortest of the roots of
+    // the object ("obj") and the roots of each argument at a "ref" or "out" parameter.
+    bool call_place(const CallExpr& c, const Method& m, const Place& obj, Place& out) const
+    {
+        out = obj;
+        out.element = true;
+        out.any_field = true;
+        for (size_t i = 0; i < c.args.size() && i < m.params.size(); ++i)
+        {
+            const ParamMode mode = m.params[i].mode;
+            Place a;
+            if (!c.args[i] || (mode != ParamMode::Ref && mode != ParamMode::Out) || !place_of(*c.args[i], a))
+                continue;
+            // The flags "element" and "any_field" are for the object only: an argument keeps its own flags.
+            for (const std::string& r : a.roots)
+            {
+                if (out.roots.insert(r).second)
+                {
+                    if (!a.shape_root(r))
+                        out.plain_roots.insert(r);
+                }
+                else if (a.shape_root(r))
+                    out.plain_roots.erase(r);
+            }
+        }
+        return true;
+    }
+
+    // Finds the place of an expression. Returns false for a temporary value: "out.temporary" is true.
+    bool place_of(const Expr& e, Place& out) const
+    {
+        auto temp = [&]
+        {
+            out = Place();
+            out.temporary = true;
+            return false;
+        };
+        if (const auto* n = std::get_if<NameExpr>(&e.v))
+        {
+            if (n->parts.empty())
+                return temp();
+            name_place(n->parts[0], n->parts.size() > 1, out);
+            return true;
+        }
+        if (std::holds_alternative<ThisExpr>(e.v) || std::holds_alternative<BaseExpr>(e.v))
+        {
+            out = Place();
+            out.roots.insert("this");
+            return true;
+        }
+        if (const auto* m = std::get_if<MemberExpr>(&e.v))
+        {
+            if (m->safe || !m->obj)
+                return temp();
+            if (std::holds_alternative<ThisExpr>(m->obj->v))
+            { // a field of this: the field is the root
+                out = Place();
+                out.roots.insert("this." + m->name);
+                return true;
+            }
+            if (!place_of(*m->obj, out))
+                return temp();
+            if (is_replaceable_type(expr_type(*m->obj)))
+                out.element = true; // the owner can be replaced
+            return true;
+        }
+        if (const auto* ix = std::get_if<IndexExpr>(&e.v))
+        {
+            if (!ix->obj || !place_of(*ix->obj, out))
+                return temp();
+            out.element = true;
+            return true;
+        }
+        if (const auto* pe = std::get_if<ParenExpr>(&e.v))
+            return pe->inner && place_of(*pe->inner, out) ? true : temp();
+        if (const auto* u = std::get_if<UnaryExpr>(&e.v))
+        {
+            if (u->postfix || u->op != "*" || !u->operand || !place_of(*u->operand, out))
+                return temp();
+            out.element = true; // the target of a handle or a pointer: the owner can be replaced
+            return true;
+        }
+        if (const auto* t = std::get_if<TernaryExpr>(&e.v))
+        {
+            Place a, b;
+            if (!t->a || !t->b || !place_of(*t->a, a) || !place_of(*t->b, b))
+                return temp();
+            out = a;
+            out.roots.insert(b.roots.begin(), b.roots.end());
+            out.element = a.element || b.element;
+            out.any_field = a.any_field || b.any_field;
+            for (const Place* side : {&a, &b})
+                for (const std::string& r : side->plain_roots)
+                    if (!a.shape_root(r) && !b.shape_root(r))
+                        out.plain_roots.insert(r);
+            return true;
+        }
+        if (const auto* c = std::get_if<CallExpr>(&e.v))
+        {
+            if (!c->callee)
+                return temp();
+            auto is_element_call = [](const std::string& name) { return name == "front" || name == "back" || name == "at"; };
+            if (const auto* cn = std::get_if<NameExpr>(&c->callee->v))
+            {
+                // "xs.back()": the container is the first part of the name.
+                if (cn->parts.size() >= 2 && is_element_call(cn->parts.back()))
+                {
+                    name_place(cn->parts[0], true, out);
+                    out.element = true;
+                    return true;
+                }
+                if (const Method* om = own_ref_method(cn->parts.back());
+                    om && (cn->parts.size() > 1 || !locals.count(cn->parts[0])))
+                {
+                    Place obj; // a static method has no object: only the arguments are roots
+                    if (!is_own_static(om))
+                    {
+                        if (cn->parts.size() == 1)
+                            obj.roots.insert("this");
+                        else
+                            name_place(cn->parts[0], true, obj);
+                    }
+                    return call_place(*c, *om, obj, out);
+                }
+                return temp();
+            }
+            if (const auto* cm = std::get_if<MemberExpr>(&c->callee->v))
+            {
+                if (!cm->safe && cm->obj && is_element_call(cm->name) && place_of(*cm->obj, out))
+                {
+                    out.element = true;
+                    return true;
+                }
+                if (const Method* om = cm->safe || !cm->obj ? nullptr : own_ref_method(cm->name))
+                {
+                    Place obj;
+                    if (!is_own_static(om) && !place_of(*cm->obj, obj))
+                        return temp();
+                    return call_place(*c, *om, obj, out);
+                }
+                return temp();
+            }
+        }
+        return temp();
+    }
+
+    // R1 and the place of a "ref" local. A temporary is an error.
+    void track_ref(const VarDeclStmt& d)
+    {
+        if (is_cpp || !d.init)
+            return;
+        Place pl;
+        if (!place_of(*d.init, pl))
+        {
+            const std::string n = ref_names_text(d.name, d.names);
+            error(d.pos, "'ref " + n + "' binds to a temporary value: it ends at the end of the statement. Use 'var " + n
+                             + "' to copy the value");
+            return;
+        }
+        // The ref starts after its own statement, so the call in its initializer does not hit it.
+        RefInfo info{pl, d.pos, false, d.type.empty() ? expr_type(*d.init) : d.type};
+        auto& pending = pending_refs[&d];
+        if (!d.name.empty())
+            pending.emplace_back(d.name, info);
+        for (const std::string& n : d.names)
+            pending.emplace_back(n, info);
+    }
+
+    // The loop variable of "foreach (ref x in c)" names an element of the range. A temporary range lives
+    // as long as the loop, so it gets no entry.
+    void track_loop_ref(const ForOfStmt& fo)
+    {
+        Place pl;
+        if (is_cpp || !fo.range || !place_of(*fo.range, pl))
+            return;
+        pl.element = true;
+        RefInfo info{pl, fo.pos, true};
+        if (!fo.name.empty())
+            refs[fo.name] = info;
+        for (const std::string& n : fo.names)
+            refs[n] = info;
+    }
+
+    // The name text of a declaration for a message: "r", or "(a, b)" for a structured binding.
+    static std::string ref_names_text(const std::string& name, const std::vector<std::string>& names)
+    {
+        if (names.empty())
+            return name;
+        std::string t = "(";
+        for (size_t i = 0; i < names.size(); ++i)
+            t += (i ? ", " : "") + names[i];
+        return t + ")";
+    }
+
+    void forget_ref(const std::string& name) { refs.erase(name); }
+
+    // The type text of a parameter without its own "ref" modifier.
+    static std::string param_inner(const Param& p)
+    {
+        if ((p.mode == ParamMode::Ref || p.mode == ParamMode::Out) && p.type.compare(0, 4, "ref ") == 0)
+            return p.type.substr(4);
+        return p.type;
+    }
+
+    // A "ref" word inside a stored type is an error (a ".hot" script only).
+    void ref_storage(const std::string& type, uint32_t pos)
+    {
+        if (!is_cpp && has_ref_word(type))
+            error(pos, kRefStorageError);
+    }
 
     void error(uint32_t pos, const std::string& msg)
     {
@@ -648,8 +1034,10 @@ struct Checker
         in_async = m.is_async && !is_cpp;
         in_async_void = in_async && (m.ret.empty() || m.ret == "void");
         method_ret = trim(m.ret);
+        method_ret_ref = !is_cpp && is_ref_ret(m);
         body(m.params, m.body);
         method_ret.clear();
+        method_ret_ref = false;
         if (!is_cpp && !m.is_abstract)
             check_out_params(m.params, m.body, m.body.end_pos ? m.body.end_pos : m.pos,
                 [&](uint32_t pos, const std::string& msg) { error(pos, msg); });
@@ -686,8 +1074,16 @@ struct Checker
         local_types.clear();
         owning_locals.clear();
         owning_stack.clear();
+        refs.clear();
+        refs_stack.clear();
+        ref_params.clear();
+        copy_params.clear();
         for (const Param& p : params)
         {
+            if (p.mode == ParamMode::Ref || p.mode == ParamMode::Out)
+                ref_params.insert(p.name);
+            else
+                copy_params.insert(p.name);
             record_local(p.name, p.type);
             if (!p.weak && !p.value && is_owning_container(p.type))
                 owning_locals.insert(p.name); // a parameter by value owns its copy
@@ -697,19 +1093,55 @@ struct Checker
         walk_block(block);
     }
 
+    // The hooks of the walk: a local, an owning name and a "ref" end with their block or statement.
+    template <class W>
+    void install_walk_hooks(W& w)
+    {
+        w.lambda_end = [&] { lambda_end(); };
+        // A local ends at the end of its block: the owning names of the block do not leak out.
+        w.block_begin = [&]
+        {
+            owning_stack.push_back(owning_locals);
+            refs_stack.push_back(refs);
+        };
+        w.block_end = [&]
+        {
+            owning_locals = std::move(owning_stack.back());
+            owning_stack.pop_back();
+            refs = std::move(refs_stack.back());
+            refs_stack.pop_back();
+        };
+        // The variable of "foreach (ref x in c)" ends with the loop.
+        w.stmt_end = [&](const Stmt& st)
+        {
+            if (const auto* vd = std::get_if<VarDeclStmt>(&st.v))
+                if (auto it = pending_refs.find(vd); it != pending_refs.end())
+                {
+                    for (auto& [n, info] : it->second)
+                        refs[n] = std::move(info);
+                    pending_refs.erase(it);
+                }
+            if (const auto* fo = std::get_if<ForOfStmt>(&st.v))
+            {
+                refs.erase(fo->name);
+                for (const std::string& n : fo->names)
+                    refs.erase(n);
+                if (auto it = hidden_refs.find(&st); it != hidden_refs.end())
+                {
+                    for (auto& [n, info] : it->second)
+                        refs[n] = std::move(info);
+                    hidden_refs.erase(it);
+                }
+            }
+        };
+    }
+
     void walk_block(const BlockStmt& b)
     {
         auto fe = [&](const Expr& e) { on_expr(e); };
         auto fs = [&](const Stmt& s) { on_stmt(s); };
         auto w = make_walker(fe, fs);
-        w.lambda_end = [&] { lambda_end(); };
-        // A local ends at the end of its block: the owning names of the block do not leak out.
-        w.block_begin = [&] { owning_stack.push_back(owning_locals); };
-        w.block_end = [&]
-        {
-            owning_locals = std::move(owning_stack.back());
-            owning_stack.pop_back();
-        };
+        install_walk_hooks(w);
         w.block(b);
     }
 
@@ -907,12 +1339,54 @@ struct Checker
         return false;
     }
 
+    // R4: "return e;" in a method with a "ref T" return. Every root of the place must outlive the call.
+    void check_ref_return(const ReturnStmt& r)
+    {
+        Place pl;
+        if (!place_of(*r.expr, pl))
+        {
+            error(r.pos, "'return' of a temporary from a 'ref' method: the value ends at the return. Return 'T' by value");
+            return;
+        }
+        for (const std::string& root : pl.roots)
+        {
+            if (root == "this" || root.rfind("this.", 0) == 0 || ref_params.count(root))
+                continue;
+            if (copy_params.count(root))
+                error(r.pos, "'return' of a 'ref' to the parameter '" + root
+                                 + "': the parameter is a copy and ends at the return. Return a value, or take the "
+                                   "parameter by 'ref'");
+            else if (locals.count(root))
+                error(r.pos, "'return' of a 'ref' to the local '" + root
+                                 + "': it ends at the return. Return a value, or a ref to a field or a 'ref' parameter");
+        }
+    }
+
+    // The rules of the declaration of a method with a "ref T" return (a ".hot" script only).
+    void check_ref_return_decl(const Method& m)
+    {
+        if (is_cpp || !is_ref_ret(m))
+            return;
+        if (m.is_async)
+            error(m.pos, "an 'async' method cannot return 'ref': the task outlives the call");
+        std::string base = trim(is_ref_return_text(m.ret) ? strip_ref_return_word(m.ret) : m.ret);
+        while (!base.empty() && (base.back() == '&' || base.back() == ' '))
+            base.pop_back();
+        if ((types.is_script_class(base) && !types.is_script_value(base)) || types.is_handle(base))
+        {
+            const std::string t = !base.empty() && base[0] == '$' ? base.substr(1) : base;
+            error(m.pos, "'ref " + base + "' return is not allowed for a class type: return the handle '$" + t + "'");
+        }
+    }
+
     void on_stmt(const Stmt& s)
     {
         if (auto* r = std::get_if<ReturnStmt>(&s.v))
         {
             if (in_async_void && scopes.empty() && r->expr)
                 error(r->pos, "an 'async void' method cannot return a value");
+            if (method_ret_ref && scopes.empty() && r->expr)
+                check_ref_return(*r);
             // "return v;" in a method of the type "T[]": the view points into the local "v".
             if (scopes.empty() && r->expr && !is_cpp && is_view_type(method_ret))
                 if (auto* n = std::get_if<NameExpr>(&r->expr->v))
@@ -949,19 +1423,25 @@ struct Checker
                 for (const std::string& n : d->names)
                 {
                     record_local(n, std::string());
+                    forget_ref(n);
                     if (d->is_ref)
                         borrowed.insert(n);
                 }
+                if (d->is_ref)
+                    track_ref(*d);
                 return;
             }
             record_local(d->name, d->type);
+            forget_ref(d->name);
             if (!d->type.empty())
             {
                 script_pointer(d->type, d->pos);
+                ref_storage(d->type, d->pos);
             }
             if (d->is_ref)
             {
                 borrowed.insert(d->name); // "ref r = x": a local reference
+                track_ref(*d);
             }
             else if (d->init && allow_borrow_forms(*d->init, false))
             {
@@ -983,8 +1463,22 @@ struct Checker
         else if (auto* fo = std::get_if<ForOfStmt>(&s.v))
         {
             record_local(fo->name, fo->type);
+            std::vector<std::string> loop_names{fo->name};
+            loop_names.insert(loop_names.end(), fo->names.begin(), fo->names.end());
+            for (const std::string& n : loop_names)
+            {
+                auto it = refs.find(n);
+                if (it != refs.end())
+                    hidden_refs[&s].emplace_back(n, it->second);
+                forget_ref(n);
+            }
+            if (fo->is_ref)
+                track_loop_ref(*fo);
             if (!fo->type.empty())
+            {
                 script_pointer(fo->type, fo->pos);
+                ref_storage(fo->type, fo->pos);
+            }
             if (fo->is_ref)
                 borrowed.insert(fo->name);
             for (const std::string& n : fo->names)
@@ -998,6 +1492,137 @@ struct Checker
         {
             for (const CatchClause& c : tr->catches)
                 record_local(c.name, c.type);
+        }
+    }
+
+    // The root of a container in an expression: "this.xs" or the field "xs" gives "this.xs", and a local
+    // "v" gives "v". Else the result is empty. The roots of the places use the same names.
+    std::string root_name(const Expr& e) const
+    {
+        if (const auto* n = std::get_if<NameExpr>(&e.v))
+            return n->parts.size() == 1 && n->template_args.empty() ? name_root(n->parts[0]) : std::string();
+        if (const auto* m = std::get_if<MemberExpr>(&e.v))
+            if (!m->safe && m->obj && std::holds_alternative<ThisExpr>(m->obj->v))
+                return "this." + m->name;
+        return std::string();
+    }
+
+    // The name of a root in a message: the field "this.xs" is written "xs".
+    static std::string root_text(const std::string& r) { return r.rfind("this.", 0) == 0 ? r.substr(5) : r; }
+
+    // R2 and the foreach rule: an operation that can change the shape of the container "r" while a "ref"
+    // points to an element of it. "what" starts the message.
+    void report_shape_change(uint32_t pos, const std::string& r, const std::string& what)
+    {
+        const std::string t = root_text(r);
+        for (const auto& [n, info] : refs)
+        {
+            if (!info.place.element)
+                continue;
+            // The result of a call of a "ref" method can be inside any field of the object that can change.
+            bool hit = info.place.shape_root(r);
+            if (!hit && info.place.any_field && r.rfind("this.", 0) == 0)
+            {
+                auto f = field_types.find(t);
+                hit = f != field_types.end() && can_reshape(f->second);
+            }
+            if (!hit)
+                continue;
+            if (info.loop)
+                error(pos, what + " changes '" + t + "' inside 'foreach (ref " + n + " in " + t
+                               + ")': the loop variable can dangle. Collect the changes in a new list, and apply "
+                                 "them after the loop");
+            else
+                error(pos, what + " can move or remove the elements of '" + t + "' while the 'ref' '" + n
+                               + "' points to one. Copy the value with 'var', or end the ref before the call");
+        }
+    }
+
+    static bool is_assign_op(const std::string& op)
+    {
+        return !op.empty() && op.back() == '=' && op != "==" && op != "!=" && op != "<=" && op != ">=";
+    }
+
+    // The own method (a method or a static) of the class that a call names, with a "ref" or "out"
+    // parameter at the position "i".
+    bool own_ref_param(const std::string& name, size_t argc, size_t i) const
+    {
+        for (const std::vector<Method>* list : {&cd.methods, &cd.statics})
+            for (const Method& m : *list)
+                if (m.name == name && m.params.size() >= argc && i < m.params.size()
+                    && (m.params[i].mode == ParamMode::Ref || m.params[i].mode == ParamMode::Out))
+                    return true;
+        return false;
+    }
+
+    // The name of the own method or static that a call names ("F()", "this.F()" or "Class.F()"), else empty.
+    std::string own_callee_name(const CallExpr& c) const
+    {
+        if (const auto* cn = std::get_if<NameExpr>(&c.callee->v))
+        {
+            if (cn->parts.size() == 1)
+                return cn->parts[0];
+            if (cn->parts.size() == 2 && cn->parts[0] == cd.name)
+                return cn->parts[1];
+        }
+        else if (const auto* cm = std::get_if<MemberExpr>(&c.callee->v))
+        {
+            if (!cm->safe && cm->obj && std::holds_alternative<ThisExpr>(cm->obj->v))
+                return cm->name;
+        }
+        return std::string();
+    }
+
+    void check_invalidation(const Expr& e)
+    {
+        if (const auto* c = std::get_if<CallExpr>(&e.v); c && c->callee)
+        {
+            std::string r, method;
+            // An argument at a "ref" or "out" parameter of an own method can change the shape of the container.
+            if (const std::string own = own_callee_name(*c); !own.empty())
+                for (size_t i = 0; i < c->args.size(); ++i)
+                    if (c->args[i] && own_ref_param(own, c->args.size(), i))
+                    {
+                        const std::string a = root_name(*c->args[i]);
+                        if (!a.empty())
+                            report_shape_change(c->pos, a, "'" + root_text(a) + "' passed by 'ref'");
+                    }
+            if (const auto* cn = std::get_if<NameExpr>(&c->callee->v))
+            {
+                if (cn->parts.size() == 2)
+                {
+                    r = name_root(cn->parts[0]);
+                    method = cn->parts[1];
+                }
+            }
+            else if (const auto* cm = std::get_if<MemberExpr>(&c->callee->v))
+            {
+                if (!cm->safe && cm->obj)
+                {
+                    r = root_name(*cm->obj);
+                    method = cm->name;
+                }
+            }
+            if (!r.empty() && is_mutating_method(method))
+                report_shape_change(c->pos, r, "'" + root_text(r) + "." + method + "()'");
+        }
+        else if (const auto* b = std::get_if<BinaryExpr>(&e.v))
+        {
+            if (is_assign_op(b->op) && b->lhs)
+            {
+                const std::string r = root_name(*b->lhs);
+                if (!r.empty())
+                    report_shape_change(b->pos, r, "assignment to '" + root_text(r) + "'");
+            }
+        }
+        else if (const UnaryExpr* u = as_address_of(e))
+        {
+            if (u->operand)
+            {
+                const std::string r = root_name(*u->operand);
+                if (!r.empty())
+                    report_shape_change(u->pos, r, "'" + root_text(r) + "' passed by 'ref'");
+            }
         }
     }
 
@@ -1019,6 +1644,8 @@ struct Checker
 
     void on_expr(const Expr& e)
     {
+        if (!is_cpp && !refs.empty())
+            check_invalidation(e);
         if (auto* un = std::get_if<UnaryExpr>(&e.v))
         {
             check_cast(*un);
@@ -1028,6 +1655,11 @@ struct Checker
                     error(un->pos, "'await' is only valid inside an 'async' method (a lambda cannot await yet)");
                 else if (!in_async)
                     error(un->pos, "'await' is only valid inside an 'async' method");
+                else
+                    for (const auto& r : refs)
+                        error(un->pos, "the 'ref' '" + r.first
+                                           + "' is live across 'await': the target can end before the task continues. "
+                                             "Copy the value, or put the ref in a block that ends before the await");
             }
         }
         if (auto* c = std::get_if<CallExpr>(&e.v))
@@ -1112,7 +1744,11 @@ struct Checker
         };
         make_walker(fe, fs).block(l.body);
         for (const std::string& n : used)
-            if (!declared.count(n) && borrowed.count(n))
+            if (!declared.count(n) && !is_cpp && (refs.count(n) || ref_params.count(n)))
+                error(l.pos, "the lambda captures the 'ref' '" + n
+                                 + "'. The closure can outlive the target. Copy the value before the lambda, or "
+                                   "capture a handle '$T'");
+            else if (!declared.count(n) && borrowed.count(n))
                 borrowed_finding(l.pos, "the lambda captures '" + n + "', a borrowed pointer or reference. "
                              "A closure cannot keep it. Copy the value or use a handle");
         // The parameters and the locals of the body live only to the end of the lambda.
@@ -1175,10 +1811,11 @@ struct Checker
                 borrowed.clear();
                 pointers.clear();
                 local_types.clear();
+                refs.clear();
                 auto fe = [&](const Expr& e) { on_expr(e); };
                 auto fs = [&](const Stmt& s) { on_stmt(s); };
                 auto w = make_walker(fe, fs);
-                w.lambda_end = [&] { lambda_end(); };
+                install_walk_hooks(w);
                 w.expr(*f.init);
             }
         }
@@ -1190,15 +1827,19 @@ struct Checker
                 for (const Param& p : m.params)
                 {
                     script_pointer(p.type, m.pos);
+                    ref_storage(param_inner(p), m.pos);
                 }
+                // A "ref" return type is valid. The type after it is a stored type.
+                ref_storage(is_ref_return_text(m.ret) ? strip_ref_return_word(m.ret) : m.ret, m.pos);
                 // An override keeps the native signature. The script cannot change its return type.
                 if (!m.overrides_virtual && !m.ret.empty())
                 {
                     // The hidden field of an auto property reports the type, so skip the getter.
                     const bool getter = m.name.rfind("get_", 0) == 0 && field_names.count("__p_" + m.name.substr(4));
-                    if (!getter)
+                    if (!getter && !(is_ref_ret(m) && !is_cpp))
                         check_storage(m.ret, m.pos, "a return value");
                 }
+                check_ref_return_decl(m);
                 body(m);
             }
         for (const Ctor& c : cd.ctors)
@@ -1206,6 +1847,7 @@ struct Checker
             for (const Param& p : c.params)
             {
                 script_pointer(p.type, c.pos);
+                ref_storage(param_inner(p), c.pos);
             }
             body(c.params, c.body);
             if (!is_cpp)
@@ -1383,32 +2025,10 @@ struct ValueUseChecker
         }
     }
 
-    // True when the type text has the word "ref" as a token: "ref T", "List<ref T>" or a tuple member.
-    static bool has_ref_word(const std::string& type)
-    {
-        auto word_char = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_'; };
-        size_t i = 0;
-        while (i < type.size())
-        {
-            if (!word_char(type[i]))
-            {
-                ++i;
-                continue;
-            }
-            size_t j = i;
-            while (j < type.size() && word_char(type[j]))
-                ++j;
-            if (type.compare(i, j - i, "ref") == 0)
-                return true;
-            i = j;
-        }
-        return false;
-    }
-
     void ref_storage(const std::string& type, uint32_t pos)
     {
         if (has_ref_word(type))
-            diag.add(pos, map, "\"ref\" is only for local variables, foreach and parameters");
+            diag.add(pos, map, kRefStorageError);
     }
 
     void run()

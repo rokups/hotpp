@@ -1,0 +1,16 @@
+using <vector>;
+using <unordered_map>;
+
+class Holder {
+    std.vector<int> xs;
+    std.unordered_map<int, int> m;
+
+    void F() {
+        ref a = xs.back();
+        xs.erase(xs.begin());
+        xs.clear();
+        ref b = m.at(1);
+        m.rehash(64);
+        b = a;
+    }
+}

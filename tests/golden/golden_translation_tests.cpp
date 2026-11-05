@@ -114,6 +114,12 @@ TEST(GoldenTranslation, Checks)
     golden_one("checks_v1");
 }
 
+// A "ref T" return of a method, a static method and a virtual method: the C++ return type is "T&".
+TEST(GoldenTranslation, RefReturn)
+{
+    golden_one("ref_return_v1");
+}
+
 // The script exception types: a struct with the base ScriptError, and a struct with such a parent.
 TEST(GoldenTranslation, Exceptions)
 {

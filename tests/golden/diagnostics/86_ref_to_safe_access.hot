@@ -1,0 +1,9 @@
+class Pos {
+    int x = 0;
+}
+
+class Holder {
+    void F($Pos p) {
+        ref r = p?.x;
+    }
+}

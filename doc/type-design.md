@@ -71,19 +71,55 @@ Notes on `hot::Value<T>`:
 - A constructor parameter that the body writes is a by-value parameter.
 - A C++ error message shows `T` for `hot::In<T>`.
 - An `override` or an interface method copies the base signature. The default rule applies to new methods only.
-- A return type is by value, unless `ref` is written.
+- A return type is by value, unless `ref` is written. A `ref T` return type gives `T&`. See "Lifetime of a ref".
 
 ## Locals and ref
 
 - `var x = e;` gives `auto x = e;`. After const inference it gives `const auto x = e;`.
 - `var x = null;` is an error.
-- `ref r = x;` gives `ref auto r = x;`. The name `x` must be an lvalue that outlives the scope.
-- `ref r = f();` is an error.
+- `ref r = x;` gives `auto& r = x;`. See "Lifetime of a ref".
 - `foreach (ref x in c)` is the loop form of `ref`.
 - `null` lowers by the target type:
   - `nullptr` for `T*`.
   - The empty handle for `$T`.
   - `std::nullopt` for `T?`.
+
+### Lifetime of a ref
+
+A `ref` names a place. A place has a root. The checker finds the root in the initializer. It removes parentheses, `.name`, `[index]` and a prefix `*`. The name that remains is the root.
+
+| Root | Lifetime of the place |
+|---|---|
+| a local | the block of the local |
+| a parameter (plain, `in`, `[byval]`) | the body |
+| a `ref` or `out` parameter | the place of the caller |
+| `this`, a field | the object |
+| a module variable, a name that is not a local or a field | the program |
+| a `ref` local | the lifetime of its own root |
+| `c[i]`, `c.front()`, `c.back()`, `c.at(k)` | an element of `c`: valid until `c` changes its shape |
+| `o.F(a, b)` where `F` returns `ref` | an element of any field of `o`, with the shortest of: the root of `o` and the root of each `ref` argument |
+| a literal, `new`, an operator result, a cast, `?.`, a string interpolation, a collection literal, any other call | a temporary: no lifetime |
+
+Rules:
+
+- R1 Bind. A `ref` local or `ref` loop variable needs a root with a lifetime. A temporary is an error.
+- R2 Element. When the root is an element of `c`, `c` must not change shape while the `ref` lives. A `ref` lives to the end of its block. `foreach (ref x in c)` follows the same rule for the loop body.
+  - A shape change is a call of one of these methods on `c`: push_back, emplace_back, pop_back, push_front, pop_front, emplace_front, emplace, emplace_hint, insert, insert_or_assign, try_emplace, erase, clear, resize, reserve, shrink_to_fit, assign, swap, rehash, merge, extract, append, replace, remove, remove_if or splice.
+  - An assignment to `c` is a shape change.
+  - Use of `c` as a `ref`, `out` or `&c` argument is a shape change. This includes a call such as `F(c)`, `this.F(c)` or `Class.F(c)` of an own method.
+  - The owner of a place can be replaced: a handle `$T`, a pointer `T*`, a `T?` or a script class value. An assignment to the owner is a shape change for a `ref` that goes through it (`ref r = this.p.hp; this.p = new P();`). A struct value field is not replaceable, so `ref r = this.pos.x; this.pos = Vec3();` is allowed.
+- R3 Escape. A `ref` cannot leave its block. It cannot go into a field, module variable, container element, `T?`, tuple, handle or lambda. It cannot cross an `await`. A type with `ref` inside is an error.
+- R4 Return. A method with a `ref T` return type returns a place.
+  - Each root of the place is `this`, a field, a module variable, a `ref` or `out` parameter, or a `ref` local with such roots.
+  - A local, a plain/`in`/`[byval]` parameter and a temporary are errors.
+  - `T` is a builtin, struct or native value type. A class type or a handle type is an error: return the handle `$T` by value.
+  - An `async` method cannot return `ref`.
+- R5 Call. The result of a `ref` call is a place (see the table). Rules R2 and R3 apply to each of its roots.
+  - The result of `this.F(...)` can be an element of any field of the object. A shape change of any container, string, array or replaceable field of the object (`this.xs.push_back(2)`, `this.xs = other`, `xs.clear()`) ends the `ref`. A change of a scalar field does not.
+
+Fix: copy the value (`var r = ...`), or keep the owner alive with a handle (`$T`).
+
+Note: the check sees direct mutation only. See doc/limits.md.
 
 ## new forms
 

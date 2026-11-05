@@ -1,0 +1,5 @@
+class Holder {
+    void F() {
+        $std.vector<ref int> h;
+    }
+}

@@ -1,0 +1,5 @@
+94_ref_return_local.hot:6:9: error: 'return' of a 'ref' to the local 'x': it ends at the return. Return a value, or a ref to a field or a 'ref' parameter
+    6 |         return x;
+94_ref_return_local.hot:12:13: error: 'return' of a 'ref' to the local 'v': it ends at the return. Return a value, or a ref to a field or a 'ref' parameter
+   12 |             return v;
+2 errors generated.

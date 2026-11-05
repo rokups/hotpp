@@ -1,0 +1,7 @@
+class Holder {
+    int n = 0;
+
+    async ref int Get() {
+        return this.n;
+    }
+}

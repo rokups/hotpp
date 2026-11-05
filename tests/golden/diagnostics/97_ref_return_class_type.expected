@@ -1,0 +1,5 @@
+97_ref_return_class_type.hot:9:5: error: 'ref Weapon' return is not allowed for a class type: return the handle '$Weapon'
+    9 |     ref Weapon ByClass() {
+97_ref_return_class_type.hot:13:5: error: 'ref $Weapon' return is not allowed for a class type: return the handle '$Weapon'
+   13 |     ref $Weapon ByHandle() {
+2 errors generated.

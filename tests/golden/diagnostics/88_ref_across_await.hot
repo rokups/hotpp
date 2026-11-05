@@ -1,0 +1,18 @@
+using <vector>;
+
+class Holder {
+    int n = 0;
+    std.vector<int> xs;
+
+    async int Get() {
+        return 1;
+    }
+
+    async void F() {
+        ref r = this.n;
+        var a = await this.Get();
+        foreach (ref x in this.xs) {
+            var b = await this.Get();
+        }
+    }
+}

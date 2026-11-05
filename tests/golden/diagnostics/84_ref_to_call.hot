@@ -1,0 +1,12 @@
+using <vector>;
+
+class Holder {
+    int Value() {
+        return 1;
+    }
+
+    void F(std.vector<int> xs) {
+        ref r = Value();
+        ref n = xs.size();
+    }
+}

@@ -1,0 +1,13 @@
+class Holder {
+    int n = 0;
+
+    void F(ref int v) {
+        ref r = this.n;
+        var a = () => {
+            r = 1;
+        };
+        var b = () => {
+            v = 2;
+        };
+    }
+}

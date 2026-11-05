@@ -4458,7 +4458,9 @@ void translate_impl(
                     t.params.push_back(param_type_or_fail(types, map, im.pos, st, p.weak, p.value, p.mode == hotc::ast::ParamMode::ByVal));
                 }
                 std::string r = im.script_ret.empty() ? im.ret : im.script_ret;
-                if (!r.empty())
+                if (hotc::ast::is_ref_return_text(r))
+                    r = ret_type_or_fail(types, map, im.pos, hotc::ast::strip_ref_return_word(r), im.ret_value) + "&";
+                else if (!r.empty())
                     r = ret_type_or_fail(types, map, im.pos, r, im.ret_value);
                 if (r.empty())
                     r = "void";
@@ -4511,7 +4513,12 @@ void translate_impl(
         {
             for (Param& p : m.params)
                 p.type = param_type_or_fail(types, map, m.pos, p.type, p.weak, p.value, p.mode == hotc::ast::ParamMode::ByVal);
-            if (!m.ret.empty())
+            if (hotc::ast::is_ref_return_text(m.ret))
+            {
+                m.ret = ret_type_or_fail(types, map, m.pos, hotc::ast::strip_ref_return_word(m.ret), m.ret_value) + "&";
+                m.ret_ref = true;
+            }
+            else if (!m.ret.empty())
                 m.ret = ret_type_or_fail(types, map, m.pos, m.ret, m.ret_value);
             LoweredStatic ls;
             ls.owner = is_free ? std::string() : host.name;
@@ -4683,9 +4690,12 @@ void translate_impl(
                 p.type = param_type_or_fail(types, map, m.pos, p.type, p.weak, p.value, p.mode == hotc::ast::ParamMode::ByVal);
                 own_struct_in_to_ref(p, cd.name);
             }
-            // An operator can return "ref T": the C++ return type is "T&".
-            if (!m.op.empty() && m.ret.compare(0, 4, "ref ") == 0)
-                m.ret = ret_type_or_fail(types, map, m.pos, m.ret.substr(4), m.ret_value) + "&";
+            // A method can return "ref T": the C++ return type is "T&".
+            if (hotc::ast::is_ref_return_text(m.ret))
+            {
+                m.ret = ret_type_or_fail(types, map, m.pos, hotc::ast::strip_ref_return_word(m.ret), m.ret_value) + "&";
+                m.ret_ref = true;
+            }
             else if (!m.ret.empty())
                 m.ret = ret_type_or_fail(types, map, m.pos, m.ret, m.ret_value);
         }
@@ -6043,7 +6053,12 @@ void translate_impl(
             }
             for (Param& p : m.params)
                 own_struct_in_to_ref(p, cd.name);
-            if (!m.ret.empty())
+            if (hotc::ast::is_ref_return_text(m.ret))
+            {
+                m.ret = ret_type_or_fail(types, map, m.pos, hotc::ast::strip_ref_return_word(m.ret), m.ret_value) + "&";
+                m.ret_ref = true;
+            }
+            else if (!m.ret.empty())
                 m.ret = ret_type_or_fail(types, map, m.pos, m.ret, m.ret_value);
             // An "async" method returns the task of its value type (design: hot/runtime/task.h).
             if (m.is_async)

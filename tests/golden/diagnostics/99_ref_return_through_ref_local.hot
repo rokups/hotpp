@@ -1,0 +1,19 @@
+class Holder {
+    int n = 0;
+
+    ref int Local() {
+        int x = 1;
+        ref r = x;
+        return r;
+    }
+
+    ref int Param(int a) {
+        ref r = a;
+        return r;
+    }
+
+    ref int Field() {
+        ref r = this.n;
+        return r;
+    }
+}

@@ -24,6 +24,7 @@ template <class FE, class FS> struct Walker
     std::function<void()> lambda_end; // optional: called after the body of each lambda
     std::function<void()> block_begin; // optional: called before the statements of each block
     std::function<void()> block_end; // optional: called after the statements of each block
+    std::function<void(const Stmt&)> stmt_end; // optional: called after a statement and its children
 
     void expr(const ExprP& e)
     {
@@ -185,6 +186,8 @@ template <class FE, class FS> struct Walker
             if (tr->finally_block)
                 block(*tr->finally_block);
         }
+        if (stmt_end)
+            stmt_end(s);
     }
 };
 

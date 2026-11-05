@@ -1,0 +1,5 @@
+class Holder {
+    void F() {
+        std.optional<ref int> x;
+    }
+}

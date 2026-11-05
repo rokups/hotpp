@@ -1,0 +1,11 @@
+88_ref_across_await.hot:7:11: error: 'async' needs C++20: set CMAKE_CXX_STANDARD 20 before hot_add_scripts (hotc: --std=c++20)
+    7 |     async int Get() {
+88_ref_across_await.hot:11:11: error: 'async' needs C++20: set CMAKE_CXX_STANDARD 20 before hot_add_scripts (hotc: --std=c++20)
+   11 |     async void F() {
+88_ref_across_await.hot:13:17: error: the 'ref' 'r' is live across 'await': the target can end before the task continues. Copy the value, or put the ref in a block that ends before the await
+   13 |         var a = await this.Get();
+88_ref_across_await.hot:15:21: error: the 'ref' 'r' is live across 'await': the target can end before the task continues. Copy the value, or put the ref in a block that ends before the await
+   15 |             var b = await this.Get();
+88_ref_across_await.hot:15:21: error: the 'ref' 'x' is live across 'await': the target can end before the task continues. Copy the value, or put the ref in a block that ends before the await
+   15 |             var b = await this.Get();
+5 errors generated.

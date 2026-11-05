@@ -1,0 +1,16 @@
+class Weapon {
+    int dmg = 1;
+}
+
+class Hero {
+    $Weapon wp;
+    Weapon w;
+
+    ref Weapon ByClass() {
+        return this.w;
+    }
+
+    ref $Weapon ByHandle() {
+        return this.wp;
+    }
+}

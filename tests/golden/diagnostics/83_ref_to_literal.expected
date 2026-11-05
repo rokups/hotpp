@@ -1,0 +1,5 @@
+83_ref_to_literal.hot:3:9: error: 'ref r' binds to a temporary value: it ends at the end of the statement. Use 'var r' to copy the value
+    3 |         ref int r = 5;
+83_ref_to_literal.hot:4:9: error: 'ref s' binds to a temporary value: it ends at the end of the statement. Use 'var s' to copy the value
+    4 |         ref s = a + b;
+2 errors generated.

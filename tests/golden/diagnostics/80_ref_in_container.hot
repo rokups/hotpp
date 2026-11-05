@@ -1,0 +1,17 @@
+struct Vec3 {
+    float x = 0;
+}
+
+class Holder {
+    Holder(std.vector<ref Vec3> items) {
+    }
+
+    void F(std.vector<ref Vec3> items) {
+        std.vector<ref Vec3> local;
+    }
+
+    void G(std.vector<Vec3> items) {
+        foreach (std.vector<ref Vec3> x in items) {
+        }
+    }
+}

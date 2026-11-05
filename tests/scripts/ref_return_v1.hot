@@ -1,0 +1,37 @@
+// A method can return "ref T". The result is a place: a field, an element of a field or a "ref" parameter.
+struct Vec3 {
+    float[3] data;
+
+    ref float At(int i) {
+        return this.data[i];
+    }
+
+    void Fill() {
+        ref r = this.At(0);
+        r = 1;
+    }
+}
+
+class Unit {
+    int hp = 5;
+    Vec3 pos;
+
+    virtual ref int Hp() {
+        return this.hp;
+    }
+
+    static ref int Pick(ref int a, ref int b) {
+        return a > 0 ? a : b;
+    }
+
+    ref int Choose(ref int a) {
+        return Unit.Pick(a, this.hp);
+    }
+
+    void Run() {
+        ref h = this.Hp();
+        h = 2;
+        ref k = this.Choose(h);
+        k = 3;
+    }
+}

@@ -1,0 +1,5 @@
+87_ref_captured_by_lambda.hot:6:17: error: the lambda captures the 'ref' 'r'. The closure can outlive the target. Copy the value before the lambda, or capture a handle '$T'
+    6 |         var a = () => {
+87_ref_captured_by_lambda.hot:9:17: error: the lambda captures the 'ref' 'v'. The closure can outlive the target. Copy the value before the lambda, or capture a handle '$T'
+    9 |         var b = () => {
+2 errors generated.

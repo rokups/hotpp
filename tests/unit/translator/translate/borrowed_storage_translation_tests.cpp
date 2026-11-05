@@ -103,7 +103,7 @@ TEST(BorrowedStorage, LambdaCapturesARefParameter)
     const hotc::TranslateResult r =
         check_translate("[native, value] class Plain;\n", "    void Run(ref Plain q1) { var f = () => { q1.x = 1; }; }\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "error: the lambda captures 'q1', a borrowed pointer or reference"))
+    EXPECT_TRUE(has(r.diagnostics, "error: the lambda captures the 'ref' 'q1'"))
         << r.diagnostics;
 }
 
@@ -217,7 +217,7 @@ TEST(RefLocal, ALambdaCannotCaptureATypedRefLocal)
     const hotc::TranslateResult r =
         check_translate("", "    Vec3 pos;\n    void Move() { ref Vec3 r = this.pos; var f = () => { r.x = 1; }; }\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'r'")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "the lambda captures the 'ref' 'r'")) << r.diagnostics;
 }
 
 TEST(RefLocal, ALaterRefLocalDoesNotHideAnEarlierCapture)
@@ -284,12 +284,13 @@ TEST(RefLocal, ACopyOfAVarRefLocalIsAValueAndMayBeCaptured)
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
-TEST(RefLocal, AVarRefLocalIsAWarningWithoutStrictMode)
+// The capture of a "ref" is an error in the non-strict mode too (R3).
+TEST(RefLocal, AVarRefLocalCaptureIsAnErrorWithoutStrictMode)
 {
     const hotc::TranslateResult r = check_translate(
         "", "    Vec3 pos;\n    void Move() { ref Vec3 r = this.pos; var f = () => { r.x = 1; }; }\n", {}, false);
-    EXPECT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.warnings, "the lambda captures 'r'")) << r.warnings;
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "the lambda captures the 'ref' 'r'")) << r.diagnostics;
 }
 
 // S20b: a "var" local from a native call or member gets its type from libclang.

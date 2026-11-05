@@ -1,0 +1,6 @@
+class Holder {
+    void F(int a, int b) {
+        ref int r = 5;
+        ref s = a + b;
+    }
+}

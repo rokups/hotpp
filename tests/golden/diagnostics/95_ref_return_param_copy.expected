@@ -1,0 +1,7 @@
+95_ref_return_param_copy.hot:5:9: error: 'return' of a 'ref' to the parameter 'a': the parameter is a copy and ends at the return. Return a value, or take the parameter by 'ref'
+    5 |         return a;
+95_ref_return_param_copy.hot:9:9: error: 'return' of a 'ref' to the parameter 'a': the parameter is a copy and ends at the return. Return a value, or take the parameter by 'ref'
+    9 |         return a;
+95_ref_return_param_copy.hot:13:9: error: 'return' of a 'ref' to the parameter 'a': the parameter is a copy and ends at the return. Return a value, or take the parameter by 'ref'
+   13 |         return a;
+3 errors generated.

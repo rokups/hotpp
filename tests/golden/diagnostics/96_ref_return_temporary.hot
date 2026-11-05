@@ -1,0 +1,19 @@
+class Holder {
+    int n = 0;
+
+    int Make() {
+        return 1;
+    }
+
+    ref int Literal() {
+        return 5;
+    }
+
+    ref int Sum() {
+        return this.n + 1;
+    }
+
+    ref int Call() {
+        return this.Make();
+    }
+}

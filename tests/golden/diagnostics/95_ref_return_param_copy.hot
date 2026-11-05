@@ -1,0 +1,19 @@
+class Holder {
+    int n = 0;
+
+    ref int Plain(int a) {
+        return a;
+    }
+
+    ref int ByIn(in int a) {
+        return a;
+    }
+
+    ref int ByVal([byval] int a) {
+        return a;
+    }
+
+    ref int ByRef(ref int a) {
+        return a;
+    }
+}

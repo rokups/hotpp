@@ -1,0 +1,7 @@
+100_ref_call_any_field_shape_change.hot:13:9: error: 'ys.push_back()' can move or remove the elements of 'ys' while the 'ref' 'r' points to one. Copy the value with 'var', or end the ref before the call
+   13 |         this.ys.push_back(2);
+100_ref_call_any_field_shape_change.hot:19:9: error: assignment to 'xs' can move or remove the elements of 'xs' while the 'ref' 'r' points to one. Copy the value with 'var', or end the ref before the call
+   19 |         this.xs = other;
+100_ref_call_any_field_shape_change.hot:25:9: error: 'xs.clear()' can move or remove the elements of 'xs' while the 'ref' 'r' points to one. Copy the value with 'var', or end the ref before the call
+   25 |         xs.clear();
+3 errors generated.

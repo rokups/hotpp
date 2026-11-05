@@ -1,0 +1,5 @@
+84_ref_to_call.hot:9:9: error: 'ref r' binds to a temporary value: it ends at the end of the statement. Use 'var r' to copy the value
+    9 |         ref r = Value();
+84_ref_to_call.hot:10:9: error: 'ref n' binds to a temporary value: it ends at the end of the statement. Use 'var n' to copy the value
+   10 |         ref n = xs.size();
+2 errors generated.

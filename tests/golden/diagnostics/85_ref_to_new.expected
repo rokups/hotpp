@@ -1,0 +1,3 @@
+85_ref_to_new.hot:7:9: error: 'ref v' binds to a temporary value: it ends at the end of the statement. Use 'var v' to copy the value
+    7 |         ref v = new Vec3();
+1 error generated.

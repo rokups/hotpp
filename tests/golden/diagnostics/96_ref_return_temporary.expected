@@ -1,0 +1,7 @@
+96_ref_return_temporary.hot:9:9: error: 'return' of a temporary from a 'ref' method: the value ends at the return. Return 'T' by value
+    9 |         return 5;
+96_ref_return_temporary.hot:13:9: error: 'return' of a temporary from a 'ref' method: the value ends at the return. Return 'T' by value
+   13 |         return this.n + 1;
+96_ref_return_temporary.hot:17:9: error: 'return' of a temporary from a 'ref' method: the value ends at the return. Return 'T' by value
+   17 |         return this.Make();
+3 errors generated.

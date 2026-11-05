@@ -77,7 +77,7 @@ TEST(StructuredBindingTranslation, RefBindingIsBorrowedForALambda)
 {
     const hotc::TranslateResult r = translate_with_header(script("ref (c, d) = this.pr; var f = () => c + d;"));
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'c', a borrowed pointer or reference")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "the lambda captures the 'ref' 'c'")) << r.diagnostics;
 }
 
 TEST(StructuredBindingTranslation, ForeachRefBindingIsBorrowedForALambda)
@@ -85,7 +85,7 @@ TEST(StructuredBindingTranslation, ForeachRefBindingIsBorrowedForALambda)
     const hotc::TranslateResult r =
         translate_with_header(script("foreach (ref (k, v) in this.m) { var f = () => k + v; }"));
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'k', a borrowed pointer or reference")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "the lambda captures the 'ref' 'k'")) << r.diagnostics;
 }
 
 TEST(StructuredBindingTranslation, MalformedBindingIsAnError)

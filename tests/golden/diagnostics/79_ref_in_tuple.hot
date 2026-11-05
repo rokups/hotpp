@@ -1,0 +1,5 @@
+class Holder {
+    void F() {
+        std.tuple<ref int, int> t;
+    }
+}

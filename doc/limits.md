@@ -12,7 +12,21 @@ This list shows what version 1 does not support.
 - Generics in script code. You can use C++ templates.
 - An exception struct (a struct with the base `ScriptError`) as the type of a field, a module variable or an element of a container. Use it only for `throw` and `catch`. A `.cpp` script has no exception struct. The only base of an exception struct is `ScriptError` (or another exception struct). See [Script exception types](statements-errors.html#script-exception-types).
 - Reload while a worker thread runs script code, in the default `StopTheWorld` mode. The commit waits for the frame boundary. The `EntryCounters` mode allows it (see [Internals](internals.html)).
-- A stored `ref` parameter, `ref` local or `T*`. A borrowed value cannot go to a field. The option `--no-strict-borrowed` makes this a warning. See [Borrowing](borrowing.html).
+- A stored `ref` parameter, `ref` local or `T*`. A borrowed value cannot go to a field. The option `--no-strict-borrowed` makes this a warning for `T*`. A stored `ref` is always an error. See [Borrowing](borrowing.html).
+- The check of a `ref` (see "Lifetime of a ref" in [Type design](type-design.html#lifetime-of-a-ref)) has these limits:
+  - It sees direct mutation only: a call of a method name from the shape list, an assignment, `&c`, and a bare name passed to a `ref` or `out` parameter.
+  - It does not check a callee with 3 or more name parts, such as `p.items.push_back(x)`.
+  - A `ref` into a field of another object with 3 or more name parts, such as `ref r = a.b.c`, uses the root `a` only.
+  - A `var` local or a `ref` local of an unknown type counts as a handle. `var v = Vec3(); ref r = v.x; v = Vec3();` is a false error.
+  - A field of a type that is not a builtin scalar (a struct, an enum, a native type) counts as able to change shape after a `ref` call. This can give a false error.
+  - After a call of a `ref` method, a shape change of any reshapeable field ends the `ref`, even a field that the method does not touch. This is a false error.
+  - The message for a replaced owner says "elements of" the owner, also when the owner is a handle or a `T?`.
+  - It does not see mutation by another method of the same class, `std.swap(a, b)`, or a free function that takes the container.
+  - A native `T&` getter cannot bind to a `ref`. Copy the value, or use an index.
+  - A `ref` call on an object of another class counts as a temporary.
+  - `ref r = xs[await Idx()]` is allowed, because the ref starts after its own statement. Another live ref gives the error about that ref.
+  - `foreach (var x in c)` with a change of `c` in the body is not checked yet.
+  - A `.cpp` script keeps C++ semantics and has no `ref` lifetime rules.
 - A script class, struct or enum with the name of a C++ type from a `using` header. Rename the script type.
 - Shared state in an `inline` function, an `inline` variable or a template static member of a host header. The script modules build with hidden symbol visibility. Each module gets its own copy of that state, and the host does not share it. Put such state in a `.cpp` file of the host, or mark it exported.
 - A namespace block in a `.hot` script. Use `using ns;` for a native namespace.

@@ -8,6 +8,7 @@
 
 #include "parser/span.h"
 
+#include <cctype>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -38,6 +39,25 @@ inline bool is_ref_type(const std::string& type)
     if (e > 0 && type[e - 1] == '&')
         return false;
     return type.compare(0, 6, "const ") != 0;
+}
+
+// True when a return type text starts with the word "ref": "ref T". The parser can write "ref$T" for a
+// handle type, so the text after the word can start with "$".
+inline bool is_ref_return_text(const std::string& type)
+{
+    if (type.compare(0, 3, "ref") != 0 || type.size() == 3)
+        return false;
+    const unsigned char c = static_cast<unsigned char>(type[3]);
+    return !(std::isalnum(c) || c == '_');
+}
+
+// The type text after the word "ref" of a "ref T" return type.
+inline std::string strip_ref_return_word(const std::string& type)
+{
+    size_t i = 3;
+    while (i < type.size() && type[i] == ' ')
+        ++i;
+    return type.substr(i);
 }
 
 // The default value of a parameter: "T name = e". The copies of a parameter share it. The parser
@@ -506,6 +526,9 @@ struct Method
     std::string ret; // empty: not written
     std::string script_ret; // "ret" as the script writes it (see Param)
     bool ret_value = false; // the return type is a bare script class: the method returns a box
+    // True when the script writes "ref T" as the return type. The lowering maps "ret" to "T&". The
+    // checker applies the return rule of doc/type-design.md ("Lifetime of a ref", R4).
+    bool ret_ref = false;
     BlockStmt body; // the statements; the parser fills them from body_span
     Span body_span; // the raw text between the braces
     // True for "T f() => e;". The body_span is then the text of "e" and the parser builds the

@@ -1,0 +1,5 @@
+98_ref_return_async.hot:4:11: error: 'async' needs C++20: set CMAKE_CXX_STANDARD 20 before hot_add_scripts (hotc: --std=c++20)
+    4 |     async ref int Get() {
+98_ref_return_async.hot:4:11: error: an 'async' method cannot return 'ref': the task outlives the call
+    4 |     async ref int Get() {
+2 errors generated.

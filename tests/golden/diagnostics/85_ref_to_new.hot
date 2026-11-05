@@ -1,0 +1,9 @@
+struct Vec3 {
+    float x = 0;
+}
+
+class Holder {
+    void F() {
+        ref v = new Vec3();
+    }
+}
