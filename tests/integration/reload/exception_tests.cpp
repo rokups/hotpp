@@ -856,6 +856,46 @@ class Boss : Actor, IDamageable {
     EXPECT_NE(messages[0].find("key not found"), std::string::npos) << messages[0];
 }
 
+// A null handle passed to a native "const T&" parameter throws NullReference. A null handle passed
+// to a native "T*" parameter gives nullptr. The checks do not depend on HOT_RUNTIME_CHECKS.
+TEST_P(BackendTests, NullHandleToNativeReferenceParameterIsCatchable)
+{
+    const hot::ScriptSource src = {"null_native_ref.hot", R"(
+using "Actor.h";
+using "Equip.h";
+
+[native, handle("std::shared_ptr<$T>")] class Charm;
+
+class Boss : Actor {
+    Charm last;
+    float n_ref = 0.0;
+    float n_ptr = 0.0;
+    float after = 0.0;
+
+    override void Tick(float dt) {
+        Charm local = this.last;
+        try { var x = Shine(local); } catch (NullReference e) { this.n_ref = 1.0; }
+        try { var x = Shine(this.last); } catch (NullReference e) { this.n_ref = this.n_ref + 1.0; }
+        this.n_ptr = Polish(local);
+        this.after = 1.0;
+    }
+}
+)"};
+    hot::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module), "Boss"));
+    s.commit_at_frame_boundary();
+    HandlerGuard guard;
+    std::vector<std::string> types;
+    hot::set_script_error_handler([&](const hot::ScriptErrorReport& e) { types.push_back(e.type); });
+    s.world.Tick(kDt);
+    EXPECT_EQ(*s.field("n_ref"), 2.0f);
+    EXPECT_EQ(*s.field("n_ptr"), -1.0f);
+    EXPECT_EQ(*s.field("after"), 1.0f);
+    EXPECT_TRUE(types.empty());
+}
+
 #if HOT_RUNTIME_CHECKS
 
 // The class of the checks tests. Tick runs the body that the test gives. The handle is null.

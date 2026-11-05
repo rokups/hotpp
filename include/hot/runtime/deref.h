@@ -237,12 +237,14 @@ template <class P, std::enable_if_t<is_checked_ptr_v<P>, int> = 0> HOT_HIDDEN au
 }
 
 // The script passes a handle "h" to a native parameter "T&" or "const T&". The translator
-// writes "hot::as_ref(h)". A null handle throws hot::NullReference, unless HOT_RUNTIME_CHECKS
-// is 0. Else the result is "*h".
+// writes "hot::as_ref(h)". A null handle or a null pointer throws hot::NullReference. The test
+// is always on, also when HOT_RUNTIME_CHECKS is 0, because a null reference is undefined
+// behavior in the native code. Else the result is "*h". (hot::as_ptr keeps a null: a null
+// pointer is a valid value for a "T*" parameter.)
 template <class H, std::enable_if_t<is_handle_v<H>, int> = 0>
 HOT_HIDDEN decltype(auto) as_ref(const H& h)
 {
-    if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(!h))
+    if (HOT_UNLIKELY(!h))
         detail::throw_null_reference("null handle passed to a reference parameter");
     return *h;
 }
@@ -253,8 +255,8 @@ template <class P, std::enable_if_t<is_checked_ptr_v<P>, int> = 0> HOT_HIDDEN de
 }
 template <class T> HOT_HIDDEN T& as_ref(T* p)
 {
-    if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(!p))
-        detail::throw_null_reference("null handle passed to a reference parameter");
+    if (HOT_UNLIKELY(!p))
+        detail::throw_null_reference("null pointer passed to a reference parameter");
     return *p;
 }
 
