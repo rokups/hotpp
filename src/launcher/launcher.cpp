@@ -16,7 +16,10 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <mutex>
 #include <sstream>
+#include <system_error>
+#include <thread>
 #include <utility>
 
 namespace hot::launcher
@@ -66,6 +69,27 @@ struct Program::Impl
     bool busy_logged = false;        // the log has the Busy line for the pending reload
     uint32_t active_generation = 1; // the generation that new calls reach
     uint32_t main_generation = 1;   // the generation that holds the frame of "main"
+
+    // The build on the worker thread. One worker runs at a time: "worker.joinable()" is the guard.
+    // The worker runs only Backend::load. It writes "build_result" and "build_done" under "mutex"
+    // and does not touch the other members. The main thread reads them under "mutex", joins the
+    // worker, and then handles the result. All Loader calls stay on the main thread.
+    std::thread worker;
+    std::mutex mutex;
+    bool build_done = false;
+    hot::LoadResult build_result;
+    // What the main thread remembers about the running build. Only the main thread uses them.
+    std::map<std::string, Stamp> build_pre; // the stamps from before the build read the files
+    uint32_t build_generation = 0;          // the generation number of the build
+    hot::LoadMode build_mode = hot::LoadMode::Reload;
+
+    // Waits for the worker. The worker uses the backend, so the join must come before the members
+    // go. A build can take seconds, so the destructor can wait for that time.
+    ~Impl()
+    {
+        if (worker.joinable())
+            worker.join();
+    }
 };
 
 Program::Program(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
@@ -339,9 +363,25 @@ PollStatus Program::poll()
     const auto elapsed_ms = [&](Impl::Clock::time_point since)
     { return std::chrono::duration_cast<std::chrono::milliseconds>(now - since).count(); };
 
-    // 1. The scan. "seen" holds the stamps of the last scan: a difference from "seen" restarts the
+    // 1. A build runs on the worker thread. The scan waits until the result is handled.
+    // A finished build is joined and handled below.
+    bool have_result = false;
+    if (impl.worker.joinable())
+    {
+        {
+            const std::lock_guard<std::mutex> lock(impl.mutex);
+            have_result = impl.build_done;
+        }
+        if (!have_result)
+        {
+            impl.loader.frame_boundary();
+            return PollStatus::Building;
+        }
+    }
+
+    // 2. The scan. "seen" holds the stamps of the last scan: a difference from "seen" restarts the
     // debounce time. A difference from the stamps of the last build makes the program dirty.
-    if (!impl.scanned_once || elapsed_ms(impl.last_scan) >= static_cast<long long>(impl.poll_interval_ms))
+    if (!have_result && (!impl.scanned_once || elapsed_ms(impl.last_scan) >= static_cast<long long>(impl.poll_interval_ms)))
     {
         impl.scanned_once = true;
         impl.last_scan = now;
@@ -389,75 +429,135 @@ PollStatus Program::poll()
         return PollStatus::Failed;
     };
 
-    PollStatus status = PollStatus::Idle;
-    if (impl.loader.reload_pending())
+    // Takes the stamps of a build. "pre" holds the stamps from before the build read the files.
+    const auto take_stamps = [&](const std::map<std::string, Stamp>& pre, const std::vector<std::string>& dependencies,
+                                 bool keep_known)
     {
-        // 2a. A reload from an earlier Busy result. The dirty flag keeps its value, so a new edit
+        impl.stamps = adopt_stamps(impl.script_path, impl.include_dirs, pre, dependencies, keep_known);
+        impl.seen = impl.stamps;
+    };
+
+    PollStatus status = PollStatus::Idle;
+    if (have_result)
+    {
+        // 2a. The worker finished. Join it and handle the result. The worker is gone, so the
+        // result and the remembered values belong to this thread again.
+        impl.worker.join();
+        hot::LoadResult built;
+        {
+            const std::lock_guard<std::mutex> lock(impl.mutex);
+            built = std::move(impl.build_result);
+            impl.build_result = hot::LoadResult{};
+            impl.build_done = false;
+        }
+        const std::map<std::string, Stamp> pre = std::move(impl.build_pre);
+        impl.build_pre.clear();
+        const uint32_t generation = impl.build_generation;
+        status = PollStatus::Failed;
+        try
+        {
+            if (!built)
+            {
+                take_stamps(pre, built.dependencies, true);
+                impl.log("[hot] reload failed: " + (built.error.empty() ? "the script did not compile" : built.error));
+            }
+            else
+            {
+                impl.dependencies = built.dependencies;
+                take_stamps(pre, impl.dependencies, false);
+                const hot::ReloadResult requested = impl.loader.request_reload(std::move(built));
+                if (requested.status == hot::ReloadStatus::Pending)
+                {
+                    impl.pending_generation = generation;
+                    status = finish_commit();
+                }
+                else if (requested.status == hot::ReloadStatus::FullReloadRequired)
+                {
+                    impl.log("[hot] full restart needed: " + requested.error);
+                }
+                else
+                {
+                    impl.log("[hot] reload failed: " +
+                             (requested.error.empty() ? "the loader rejected the module" : requested.error));
+                }
+            }
+        }
+        catch (const std::exception& e)
+        {
+            impl.log(std::string("[hot] reload failed: ") + e.what());
+            take_stamps(pre, {}, true);
+        }
+        catch (...)
+        {
+            impl.log("[hot] reload failed: unknown exception");
+            take_stamps(pre, {}, true);
+        }
+    }
+    else if (impl.loader.reload_pending())
+    {
+        // 2b. A reload from an earlier Busy result. The dirty flag keeps its value, so a new edit
         // builds in a later call.
         status = finish_commit();
     }
     else if (impl.dirty && elapsed_ms(impl.change_seen) >= static_cast<long long>(impl.debounce_ms))
     {
-        // 2b. The build, after the debounce time.
+        // 2c. The build, after the debounce time.
         impl.dirty = false;
         status = PollStatus::Failed;
         // The stamps from before the build reads the files.
-        const std::map<std::string, Stamp> pre = stat_known(impl.stamps);
-        const auto take_stamps = [&](const std::vector<std::string>& dependencies, bool keep_known)
-        {
-            impl.stamps = adopt_stamps(impl.script_path, impl.include_dirs, pre, dependencies, keep_known);
-            impl.seen = impl.stamps;
-        };
+        std::map<std::string, Stamp> pre = stat_known(impl.stamps);
         std::string text;
         if (!read_file(impl.script_path, text))
         {
             impl.log("[hot] reload failed: cannot read the script '" + impl.script_path + "'");
             // Take the new stamps. The missing file is a change only once.
-            take_stamps({}, true);
+            take_stamps(pre, {}, true);
         }
         else
         {
+            // The worker gets copies of the values and a pointer to the Impl. The Impl is on the
+            // heap, and its destructor joins the worker, so the pointer stays valid.
+            std::error_code ec;
+            hot::ScriptSource source{fs::absolute(impl.script_path, ec).string(), std::move(text), {}};
+            impl.build_pre = std::move(pre);
+            impl.build_generation = impl.next_generation;
+            impl.build_mode = hot::LoadMode::Reload;
+            impl.build_done = false;
             try
             {
-                std::error_code ec;
-                const std::string name = fs::absolute(impl.script_path, ec).string();
-                hot::LoadResult built =
-                    impl.backend->load(hot::ScriptSource{name, text, {}}, impl.next_generation, hot::LoadMode::Reload);
-                if (!built)
-                {
-                    take_stamps(built.dependencies, true);
-                    impl.log("[hot] reload failed: " + (built.error.empty() ? "the script did not compile" : built.error));
-                }
-                else
-                {
-                    impl.dependencies = built.dependencies;
-                    take_stamps(impl.dependencies, false);
-                    const hot::ReloadResult requested = impl.loader.request_reload(std::move(built));
-                    if (requested.status == hot::ReloadStatus::Pending)
+                impl.worker = std::thread(
+                    [state = &impl, backend = impl.backend.get(), source = std::move(source),
+                     generation = impl.build_generation, mode = impl.build_mode]()
                     {
-                        impl.pending_generation = impl.next_generation;
-                        status = finish_commit();
-                    }
-                    else if (requested.status == hot::ReloadStatus::FullReloadRequired)
-                    {
-                        impl.log("[hot] full restart needed: " + requested.error);
-                    }
-                    else
-                    {
-                        impl.log("[hot] reload failed: " +
-                                 (requested.error.empty() ? "the loader rejected the module" : requested.error));
-                    }
-                }
+                        hot::LoadResult result;
+                        try
+                        {
+                            result = backend->load(source, generation, mode);
+                        }
+                        catch (const std::exception& e)
+                        {
+                            result = hot::LoadResult{};
+                            result.error = e.what();
+                            result.reason = hot::ReloadReason::CompileError;
+                        }
+                        catch (...)
+                        {
+                            result = hot::LoadResult{};
+                            result.error = "unknown exception";
+                            result.reason = hot::ReloadReason::CompileError;
+                        }
+                        const std::lock_guard<std::mutex> lock(state->mutex);
+                        state->build_result = std::move(result);
+                        state->build_done = true;
+                    });
+                status = PollStatus::Building;
             }
-            catch (const std::exception& e)
+            catch (const std::system_error& e)
             {
-                impl.log(std::string("[hot] reload failed: ") + e.what());
-                take_stamps({}, true);
-            }
-            catch (...)
-            {
-                impl.log("[hot] reload failed: unknown exception");
-                take_stamps({}, true);
+                // The thread did not start. Treat it as a failed build.
+                impl.log(std::string("[hot] reload failed: cannot start the build thread: ") + e.what());
+                take_stamps(impl.build_pre, {}, true);
+                impl.build_pre.clear();
             }
         }
     }

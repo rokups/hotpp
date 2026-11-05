@@ -24,7 +24,7 @@ namespace hot::launcher
 
 // The result of Program::poll.
 //   Idle:           nothing happened.
-//   Building:       a build runs (reserved for the worker thread of a later step).
+//   Building:       a build runs on the worker thread. Call poll again at a later frame.
 //   Applied:        a reload was applied. The new code runs from now.
 //   Failed:         the build or the reload failed. The old code keeps running.
 //   RestartPending: a full restart is needed (reserved for a later step).
@@ -73,10 +73,13 @@ public:
 
     // Applies the edits of the entry script and its dependencies to the running program.
     // Call it on the main thread, once for each frame, at the frame boundary. A scan finds a
-    // changed file (a different write time or size, or a missing file). Then poll builds the new
-    // generation on the calling thread and commits it. Each call also runs Loader::frame_boundary.
-    // A failed build keeps the old code and gives Failed. It does not try again until the next
-    // file change.
+    // changed file (a different write time or size, or a missing file). Then poll starts the build
+    // of the new generation on one worker thread and gives Building. The calls that follow give
+    // Building until the build ends. The first call after the end commits the new generation on
+    // the calling thread and gives Applied, or Failed. Each call also runs Loader::frame_boundary.
+    // A failed build keeps the old code. It does not try again until the next file change.
+    // A file that changes during a build starts a new build after the first one ends.
+    // The destructor of Program waits for a running build. A build can take seconds.
     PollStatus poll();
     // The number of the active generation. It is 1 after load and grows with each applied reload.
     uint32_t generation() const;

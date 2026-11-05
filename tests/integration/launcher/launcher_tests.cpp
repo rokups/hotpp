@@ -299,6 +299,20 @@ struct ReloadFixture
     }
 };
 
+// Calls poll with a 10 ms sleep until the status is not Building. It gives the last status.
+// The status Building stays when the build does not end in the time limit (60 s).
+launcher::PollStatus poll_until_settled(launcher::Program& program)
+{
+    const auto limit = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    launcher::PollStatus status = program.poll();
+    while (status == launcher::PollStatus::Building && std::chrono::steady_clock::now() < limit)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        status = program.poll();
+    }
+    return status;
+}
+
 // Frames 1 and 2 run v1: count is 1 and 2. At frame 3 the poll applies v2 before Step. Frames 3 to 6
 // run v2. The count continues from 2 (the state moves to the new generation): 3, 4, 5 and 6, and
 // each frame adds 1000. Total = (1 + 2) + (3 + 4 + 5 + 6) + 4 * 1000 = 4021.
@@ -315,13 +329,87 @@ TEST(Launcher, ReloadKeepsState)
         {
             if (frame == 3)
                 edit_file(f.script, game_script("count = count + 1; return count + 1000;"));
-            statuses.push_back(f.program->poll());
+            statuses.push_back(poll_until_settled(*f.program));
         });
         ASSERT_EQ(statuses.size(), 6u);
         for (size_t i = 0; i < statuses.size(); ++i)
             EXPECT_EQ(statuses[i], i == 2 ? launcher::PollStatus::Applied : launcher::PollStatus::Idle) << "frame " << i + 1;
         EXPECT_EQ(total, 4021);
         EXPECT_EQ(f.program->generation(), 2u);
+    }
+}
+
+// The first poll after an edit starts the build and gives Building. A later poll gives Applied.
+TEST(Launcher, PollReturnsBuildingThenApplied)
+{
+    for (const std::string& backend : backends())
+    {
+        SCOPED_TRACE(backend);
+        ReloadFixture f;
+        ASSERT_TRUE(f.open(backend, "return 1;")) << f.logs.back();
+        edit_file(f.script, game_script("return 10;"));
+        EXPECT_EQ(f.program->poll(), launcher::PollStatus::Building);
+        // The new code is not live while the build runs or before the commit.
+        EXPECT_EQ(f.program->generation(), 1u);
+        EXPECT_EQ(poll_until_settled(*f.program), launcher::PollStatus::Applied);
+        EXPECT_EQ(f.program->generation(), 2u);
+        EXPECT_EQ(f.program->poll(), launcher::PollStatus::Idle);
+    }
+}
+
+// The destructor waits for a running build. The test has no loop: the program never runs.
+TEST(Launcher, DestroyWhileBuilding)
+{
+    for (const std::string& backend : backends())
+    {
+        SCOPED_TRACE(backend);
+        ReloadFixture f;
+        ASSERT_TRUE(f.open(backend, "return 1;")) << f.logs.back();
+        edit_file(f.script, game_script("return 10;"));
+        EXPECT_EQ(f.program->poll(), launcher::PollStatus::Building);
+        f.program.reset();
+    }
+}
+
+// An edit during a build is not lost. The first build has the first text. The scan after the build
+// sees the second edit, and a second build applies it.
+// Frame 1: the first poll starts the build of v2, and the file changes to v3 at once. The build
+// applies v2 before Step: 10. Frame 2: the hook waits for the build of v3: 100. Total = 110.
+TEST(Launcher, EditDuringBuildIsNotLost)
+{
+    for (const std::string& backend : backends())
+    {
+        SCOPED_TRACE(backend);
+        ReloadFixture f;
+        ASSERT_TRUE(f.open(backend, "return 1;")) << f.logs.back();
+        std::vector<launcher::PollStatus> statuses;
+        const int total = f.run(2, [&](int frame)
+        {
+            if (frame == 1)
+            {
+                edit_file(f.script, game_script("return 10;"));
+                statuses.push_back(f.program->poll());
+                edit_file(f.script, game_script("return 100;"));
+                statuses.push_back(poll_until_settled(*f.program));
+                return;
+            }
+            // The poll after the first reload starts the second build.
+            const auto limit = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+            launcher::PollStatus status = launcher::PollStatus::Idle;
+            while (status == launcher::PollStatus::Idle && std::chrono::steady_clock::now() < limit)
+            {
+                status = poll_until_settled(*f.program);
+                if (status == launcher::PollStatus::Idle)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+            statuses.push_back(status);
+        });
+        ASSERT_EQ(statuses.size(), 3u);
+        EXPECT_EQ(statuses[0], launcher::PollStatus::Building);
+        EXPECT_EQ(statuses[1], launcher::PollStatus::Applied);
+        EXPECT_EQ(statuses[2], launcher::PollStatus::Applied);
+        EXPECT_EQ(total, 110);
+        EXPECT_EQ(f.program->generation(), 3u);
     }
 }
 
@@ -340,12 +428,12 @@ TEST(Launcher, CompileErrorKeepsOldCode)
             if (frame == 3)
             {
                 edit_file(f.script, game_script("count = count + 1; return count +;"));
-                first = f.program->poll();
+                first = poll_until_settled(*f.program);
             }
             else if (frame == 4)
-                second = f.program->poll();
+                second = poll_until_settled(*f.program);
             else
-                f.program->poll();
+                poll_until_settled(*f.program);
         });
         EXPECT_EQ(first, launcher::PollStatus::Failed);
         EXPECT_EQ(second, launcher::PollStatus::Idle);
@@ -378,7 +466,7 @@ TEST(Launcher, ImportChangeReloads)
         {
             if (frame == 3)
                 edit_file(f.dir / "util.hot", "class Util { static int Bonus() { return 100; } }\n");
-            statuses.push_back(f.program->poll());
+            statuses.push_back(poll_until_settled(*f.program));
         });
         ASSERT_EQ(statuses.size(), 4u);
         for (size_t i = 0; i < statuses.size(); ++i)
@@ -426,7 +514,7 @@ TEST(Launcher, MainGenerationStaysLoadedAfterReloads)
                 edit_file(f.script, game_script("return 10;"));
             if (frame == 3)
                 edit_file(f.script, game_script("return 100;"));
-            statuses.push_back(f.program->poll());
+            statuses.push_back(poll_until_settled(*f.program));
             // The pin of generation 1 (the generation of "main") guards its library.
             pins.push_back(hot::pin_count(1));
         });
@@ -529,7 +617,7 @@ TEST(Launcher, IncludeDirImportChangeReloads)
         {
             if (frame == 2)
                 edit_file(inc / "lib" / "helper.hot", "class Helper { static int Bonus() { return 100; } }\n");
-            statuses.push_back(f.program->poll());
+            statuses.push_back(poll_until_settled(*f.program));
         });
         ASSERT_EQ(statuses.size(), 3u);
         EXPECT_EQ(statuses[0], launcher::PollStatus::Idle);
