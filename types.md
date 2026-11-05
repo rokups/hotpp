@@ -36,6 +36,23 @@ This guide has 2 pages. This page covers builtin types, variables, C++ types, co
 
 The C++ spellings with many words are errors, for example `unsigned int` and `long long`. The message gives the script type: use `uint` or `long`. A native virtual method with an `unsigned` parameter matches a script override with `uint`.
 
+## Integer arithmetic and casts
+
+Integer operations have no undefined behavior in a script, except where this section says so.
+
+- Signed overflow wraps. `INT_MAX + 1` is `INT_MIN`, and `-INT_MIN` is `INT_MIN`. The script compile uses `-fwrapv` for the JIT backend, the Clang files backend and the AOT library.
+- A divide or modulo by zero throws `ArithmeticError`. `INT_MIN / -1` wraps.
+- `<<` and `>>` (and `<<=` and `>>=`) throw `ArithmeticError("shift count out of range")` when the count is negative or not less than the bit width of the promoted left operand. A `byte` or `short` operand promotes to `int`, so its width is 32.
+- A left shift keeps the low bits. A shift of a negative value, or into the sign bit, wraps: `1 << 31` is `INT_MIN`.
+- A right shift of a negative value is an arithmetic shift: `-8 >> 1` is `-4`.
+- A cast from `float` or `double` to an integer type cuts the fraction. A value out of range gives the nearest limit of the type. `NaN` gives `0`. This is true for `(int)f`, `int(f)` and `static_cast<int>(f)`.
+
+The shift check and the divide check are always on, also with `HOT_RUNTIME_CHECKS=0`. The translator skips a check when it can see that the check is not needed: a shift by a literal count in range, or a float operand. A class with its own `<<` or `>>` operator (a stream, for example) keeps the operator.
+
+MSVC has no `-fwrapv`. The script compile in an MSVC build does not guard signed overflow. MSVC does not use signed overflow for optimization in practice, so a wrap is the result there too.
+
+The implicit conversion from a float to an integer is not checked. Use a cast (see [Limits](limits.html)).
+
 ## Variables
 
 A variable can have no initializer. It then gets the default value (zero, `false`, `null`). `var` takes the type from the initializer. Do not write `const` on a variable. The translator infers it: a local that the body never assigns is const. The error `const is inferred; remove it` shows when you write it.
@@ -168,7 +185,7 @@ These rules apply to an array:
 
 ### Views
 
-`T[]` is a view of values of type `T`. The C++ type is `std::span<T>`. A view does not own the values. It needs C++20.
+`T[]` is a view of values of type `T`. The C++ type is `hot::span<T>` by default. It works with C++17. A view does not own the values. See [The view type](#the-view-type) for the option that selects `std::span<T>`.
 
 A view is valid for a parameter, a return type and a local. The owner of the values is a `std.vector<T>`, a `T[N]` or another view. A `std.vector<T>` or a `T[N]` converts to a `T[]` at a call or at a local declaration.
 
@@ -208,5 +225,24 @@ These rules apply to a view:
 - An index is checked as for an array. An index that is negative or not less than `s.size()` throws `IndexOutOfRange`. The build option `HOT_RUNTIME_CHECKS=OFF` removes the check.
 - A write through a view changes the values of the owner. A local that is the source of a `T[]` call or local is not `const`.
 - A `T[]` does not accept a const source, for example an `in std.vector<T>` parameter. Take the same `in std.vector<T>` type for the parameter.
-- A view is valid while the owner lives. A method that returns `T[]` cannot return a local `std.vector<T>` or a local `T[N]`. This is an error: the local ends at the return. Return a `std.vector<T>` or a view that the method got as an argument.
-- A view does not stay valid after a change of the owner size. For example, `push_back` on the vector can move the values.
+- A view is valid while the owner lives. A method that returns `T[]` or `std.string_view` cannot return a local owner (`std.vector<T>`, `T[N]` or `std.string`), a view local over such an owner, or a temporary vector. This is an error: the local ends at the return. Return a `std.vector<T>` or a `std.string`, or a view that the method got as an argument.
+- A view does not stay valid after a change of the owner size. For example, `push_back` on the vector can move the values. The checker treats a view local (`T[] s = v;`) like a `ref` to an element of `v`. After a shape change of `v` (see "Lifetime of a ref" in [Type design](type-design.html#lifetime-of-a-ref)), a later use of `s` is an error. Assign the view again (`s = v;`) to use it. See [Limits](limits.html) for what the check does not see.
+- A `std.string_view` or a `T[]` is an error as a field type, and as an element of a container field (`std.vector<std.string_view>`). A field of type `std.string_view` with a string literal as initializer is valid.
+
+#### The view type
+
+`hot::span<T>` is the default C++ type of `T[]`. It is in `hot/runtime/span.h`. It has these properties:
+
+- It has a dynamic extent only. It has no fixed size in the type.
+- It needs C++17. The build does not need C++20.
+- It holds a pointer and a size. It does not own the values.
+- Its own `operator[]` has no check, as for `std::span`. The index in a script goes through `hot::index`, which throws `IndexOutOfRange` for a bad index. `HOT_RUNTIME_CHECKS=OFF` removes the check.
+
+You can select `std::span<T>` instead. Use the CMake option `HOT_VIEW_TYPE=std`. These rules apply:
+
+- `std::span` needs C++20. With a lower `CMAKE_CXX_STANDARD`, the configure step stops with an error.
+- The choice is one constant for the whole build. Do not mix the two types in one build. The two types have different C++ names, so a mix breaks the link of a host function with a `T[]` parameter and can break the One Definition Rule.
+- The choice must be the same in `hotc` and in the host. `hotc` has the flag `--view=hot|std`. `hot_add_scripts` sets it. In build mode, a `--view` value that differs from the `hotc` build is an error. `hotc` prints `hotc: error: this hotc is built for --view=..., not --view=...` and exits with code 2. `--view=std` with `--std=c++17` is a translation error.
+- Host code that uses the `T[]` type of a script method sees the selected type. Host code must use the same option as the scripts.
+
+See [CMake options](cmake-options.html#options) for the option `HOT_VIEW_TYPE`.

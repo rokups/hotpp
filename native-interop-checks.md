@@ -36,7 +36,7 @@ These types are checked by default:
 
 - A C array.
 - `std::array<T, N>`.
-- `std::span<T>`. This is the type of `T[]` in the script (see [Arrays](types.html#arrays)).
+- `hot::span<T>` and `std::span<T>`. One of them is the type of `T[]` in the script (see [Arrays](types.html#arrays) and [The view type](types.html#the-view-type)).
 - `std::vector<T, A>`. This is a change: an index outside a vector was undefined behavior before. Now it throws.
 - `std::deque<T, A>`, `std::basic_string<C, Tr, A>` (so `std::string`) and `std::basic_string_view<C, Tr>`. An index outside them was undefined behavior before. Now it throws.
 - The array type `T[N]` of the script. This includes a custom type from the module attribute `array` (see [The array type](native-interop-attributes.html#the-array-type)).

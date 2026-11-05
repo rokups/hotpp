@@ -61,7 +61,7 @@ The generated code, `include/hot` and the runtime library need C++17 only. A C++
 
 ### Error reports
 
-A script can throw `NullReference`, `IndexOutOfRange` or `ScriptError` (see [Statements](statements.html)). All three derive from `hot::ScriptError`, which derives from `std::runtime_error`. Include `hot/runtime.h`.
+A script can throw `NullReference`, `IndexOutOfRange`, `ArithmeticError` or `ScriptError` (see [Statements](statements.html)). All of them derive from `hot::ScriptError`, which derives from `std::runtime_error`. Include `hot/runtime.h`.
 
 When the host calls a script function and the script does not catch a `ScriptError`, the runtime reports it. Then the call returns a default value (`0`, `false`, or nothing for `void`). The object stays alive. The next call works. A field keeps the values that the script wrote before the throw.
 
@@ -77,7 +77,7 @@ hot::set_script_error_handler([](const hot::ScriptErrorReport& r) {
 
 | Field | Meaning |
 |---|---|
-| `type` | `hot::NullReference`, `hot::IndexOutOfRange` or `hot::ScriptError`. |
+| `type` | `hot::NullReference`, `hot::IndexOutOfRange`, `hot::ArithmeticError` or `hot::ScriptError`. |
 | `message` | The text of `what()`. |
 | `class_name` | The script class of the object, or `?`. |
 | `self` | The shell of the object (`const hot::ShellCore*`), or null. The `state` member needs an object that is not optimized (`hot::ShellBase`). |

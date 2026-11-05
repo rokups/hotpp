@@ -9,6 +9,8 @@ group: Hot script
 
 A local is borrowed when it is `ref r = x;`, `var p = &x;`, a typed `T*` or a `ref T r` local, or a `var` that takes a native pointer from a call. A native pointer to a handle type is not borrowed. A pointer field of a native class with a weak source is a checked pointer, not a borrowed value (see "Pointer fields" in `borrowing.md`). A lambda that uses a borrowed local gives the capture error.
 
+A `ref` local has more rules about its lifetime. A `ref` cannot bind to a temporary. A `ref` to a container element must not live over a shape change of the container, such as `push_back`. A `ref` cannot cross an `await`. A `ref` return must return a place that outlives the call. These rules are always errors. See "Lifetime of a ref" in [Type design](type-design.html#lifetime-of-a-ref).
+
 ```hot
 using "Actor.h"; using "Armory.h";
 class Scan : Actor {
@@ -62,7 +64,7 @@ class Probe {
 
 ## Escape hatch
 
-`hotc --no-strict-borrowed` makes the field, return, collection element, `&x` and lambda capture findings warnings. The backends have `strict_borrowed = false`. These stay errors: a `T*` of a script class, `&h` on a handle, `this` to a `T&` and a move-only field.
+`hotc --no-strict-borrowed` makes the field, return, collection element, `&x` and pointer lambda capture findings warnings. The backends have `strict_borrowed = false`. These stay errors: all rules of "Lifetime of a ref" (including a `ref` lambda capture), a `T*` of a script class, `&h` on a handle, `this` to a `T&` and a move-only field.
 
 ## Quick fixes
 
@@ -73,6 +75,9 @@ class Probe {
 | `a pointer field is already a weak reference` | Remove `[weak]` |
 | `a field`, `a return value`, `a collection element` | A value `T`, a handle, or a copy such as `std.string`. For a field of a native class: add a weak source (`enable_shared_from_this` or a stub with `handle`) and keep `T*` |
 | `a '&' value cannot be stored` | Pass `&x` to the call, or store a copy of `x` |
+| `binds to a temporary value` | `var r = ...;` to copy the value |
+| `can move or remove the elements` | `var r = ...;`, or end the ref before the call |
+| `is live across 'await'` | Copy the value before the `await` |
 | `the lambda captures` | Copy first: `var c = r;`, then use `c` |
 | `field of move-only type` | A handle: a stub with `handle` |
 | `'&' on the handle` | `h`, `&*h` or `*h` |

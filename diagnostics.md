@@ -152,5 +152,7 @@ The generated C++ has `#line` directives. A debugger shows `.hot` files and line
 
 - `gdb` and `lldb`: set a breakpoint with `breakpoint set --file player.hot --line 12` (`lldb`) or `break player.hot:12` (`gdb`).
 - `lldb`: `tools/lldb/hot.lldbinit` loads formatters. The command `hot-bt` prints script frames.
-- VS Code: the extension enables breakpoints in `.hot` files.
-- Status: a real `gdb` or `lldb` session and Visual Studio are untested. Tests check only the `.hot` line table.
+- VS Code: the extension enables breakpoints in `.hot` files. It has no debug adapter. Use `lldb-dap` or CodeLLDB: `editors/vscode/README.md` has a `launch.json` template.
+- Reload: a breakpoint in a script that a host loads later is pending. It resolves when the script loads, and again after each reload.
+- Status: when `lldb` is installed, tests run a real `lldb` session and a real `lldb-dap` session on Linux. A `gdb` session, CodeLLDB and Visual Studio are untested.
+- Limit: lldb shows a `hot::Value<T>` box of a script class as `<incomplete type>`. A handle `$T` shows fully.
