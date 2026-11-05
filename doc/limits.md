@@ -35,7 +35,7 @@ This list shows what version 1 does not support.
   - A view that a lambda captures, a view parameter of an `async` method, and a view that a native function stores are not checked. The translator cannot tell a stored closure from an immediate call (a sort comparator). The owner can end first, and the view then points to freed memory. Copy the values (`std.vector<T>`, `std.string`) in such code.
   - A native function that takes a `ref`, a `T&` or a view can keep it. The checker cannot see this. The `as_ref` check only tests for null at the call.
   - A view in a container field of a native type or in a tuple is not checked. A `std.string_view` that a script call returns from a native getter has the lifetime that the native code gives it.
-- A raw `T*` in a local or a parameter keeps its target address across a reload or after a native free. A `CheckedPtr` field is checked, a local or a parameter is not. A native `T*` that the host frees while a script frame holds it is undefined behavior. Keep a `CheckedPtr` or a handle, and check it again after a call that can free the object.
+- A raw `T*` in a local or a parameter keeps its target address after a native free. A `CheckedPtr` field is checked, a local or a parameter is not. A native `T*` that the host frees while a script frame holds it is undefined behavior. This includes a frame that an `await` suspends. A reload does not free a native object. Keep a `CheckedPtr` or a handle, and check it again after a call that can free the object.
 - A script class, struct or enum with the name of a C++ type from a `using` header. Rename the script type.
 - Shared state in an `inline` function, an `inline` variable or a template static member of a host header. The script modules build with hidden symbol visibility. Each module gets its own copy of that state, and the host does not share it. Put such state in a `.cpp` file of the host, or mark it exported.
 - A namespace block in a `.hot` script. Use `using ns;` for a native namespace.
@@ -82,7 +82,7 @@ A `.cpp` script (see [C++ scripts](cpp-scripts.html)) has more limits. It has no
 
 A HotScript program does not crash the process through an invalid access, with these exceptions. Each item has its details in the list above. The table of the checks that exist is in [Checks against crashes](statements-errors.html#checks-against-crashes).
 
-- A raw `T*` in a local or a parameter, after a reload or a native free.
+- A raw `T*` in a local or a parameter, after a native free. This includes a frame that an `await` suspends.
 - A native function that stores a `ref`, a `T&` or a view. A view that a lambda or an `async` method keeps.
 - A change of a container through an alias, another method or a free function, while a `ref`, a view or a `foreach` uses it.
 - A `.cpp` script. It has no null, bounds, shift, float cast or `ref` lifetime checks.
