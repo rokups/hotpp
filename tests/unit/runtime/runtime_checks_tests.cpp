@@ -89,8 +89,35 @@ TEST(RuntimeChecks, IndexOfArrayOutOfRangeThrows)
     EXPECT_THROW(hot::index(std::array<int, 3>{}, 3), hot::IndexOutOfRange);
 }
 
+// The view hot::span<T> of C++17 has the same bounds test as an array.
+TEST(RuntimeChecks, HotSpanIndexOutOfRangeThrows)
+{
+    std::vector<int> v{1, 2, 3};
+    hot::span<int> s = v;
+    EXPECT_EQ(hot::index(s, 2), 3);
+    hot::index(s, 0) = 9; // a view gives a reference to the element of the owner
+    EXPECT_EQ(v[0], 9);
+    try
+    {
+        hot::index(s, 3);
+        FAIL() << "no exception";
+    }
+    catch (const hot::IndexOutOfRange& e)
+    {
+        EXPECT_EQ(e.index(), 3u);
+        EXPECT_EQ(e.size(), 3u);
+    }
+    EXPECT_THROW(hot::index(s, -1), hot::IndexOutOfRange);
+    EXPECT_THROW(hot::index(hot::span<int>(), 0), hot::IndexOutOfRange);
+    const hot::span<const int> cs = v;
+    EXPECT_THROW(hot::index(cs, 7), hot::IndexOutOfRange);
+    // An rvalue view still gives a reference: the element does not die with the view.
+    hot::index(hot::span<int>(v), 1) = 5;
+    EXPECT_EQ(v[1], 5);
+}
+
 #ifdef __cpp_lib_span
-// The script type "T[]" is a std::span<T>. Its index has the same bounds test as an array.
+// The std::span<T> of C++20 has the same bounds test as an array.
 TEST(RuntimeChecks, SpanIndexOutOfRangeThrows)
 {
     std::vector<int> v{1, 2, 3};

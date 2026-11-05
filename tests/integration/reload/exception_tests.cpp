@@ -287,7 +287,7 @@ TEST_P(BackendTests, IndexOutOfRangeCaughtInScript)
     EXPECT_EQ(*s.field("after"), 0.0f);
 }
 
-// The script type "T[]" is a std::span<T>. A vector and an array convert to it for a call. A
+// The script type "T[]" is a hot::span<T> (std::span<T> with HOT_VIEW_TYPE=std). A vector and an array convert to it for a call. A
 // write through the view changes the owner. An index past the end throws and does not crash.
 TEST_P(BackendTests, ViewParameterConvertsAndChecksIndex)
 {
@@ -330,8 +330,7 @@ class Player : Actor {
     override void TakeDamage(ref Actor source, float amount) {}
 }
 )"};
-    hot::DefaultBackendOptions options; // std::span needs C++20
-    options.std_version = "c++20";
+    hot::DefaultBackendOptions options; // the default view type hot::span works with the host standard
     std::unique_ptr<hot::Backend> view_backend = hot::make_default_backend(options);
     hot::LoadResult r = view_backend->load(src, 1);
     ASSERT_TRUE(r) << r.error;

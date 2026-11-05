@@ -31,6 +31,8 @@ add_executable(unit_runtime_tests
     command_line_tests.cpp
     task_tests.cpp
     scheduler_tests.cpp
+    span_tests.cpp
+    view_type_tests.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Object.cpp)
 target_link_libraries(unit_runtime_tests PRIVATE hot_runtime engine_harness GTest::gtest_main)
 target_include_directories(unit_runtime_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)

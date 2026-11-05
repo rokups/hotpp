@@ -625,15 +625,6 @@ struct Checker
         return true;
     }
 
-    // A "T[]" is a std::span<T>, which needs C++20.
-    void view_needs_cxx20(const std::string& type, uint32_t pos)
-    {
-        if (std_below_20 && !is_cpp && is_view_type(type))
-            error(pos,
-                "'T[]' is a std::span and needs C++20: set CMAKE_CXX_STANDARD 20 before hot_add_scripts "
-                "(hotc: --std=c++20)");
-    }
-
     // True when a local of this declared type holds a borrowed pointer or a reference.
     static bool is_borrowed_type(const std::string& type)
     {
@@ -861,7 +852,8 @@ struct Checker
         std::string t = trim(type);
         if (!t.empty() && t[0] == '\x01') // the mark of the namespace "std"
             t.erase(0, 1);
-        return (t.size() >= 2 && t.compare(t.size() - 2, 2, "[]") == 0) || t.rfind("std::span<", 0) == 0;
+        return (t.size() >= 2 && t.compare(t.size() - 2, 2, "[]") == 0) || t.rfind("std::span<", 0) == 0 ||
+            t.rfind("hot::span<", 0) == 0;
     }
 
     // True for the type of a local that owns its elements: "std.vector<T>" and "T[N]".
@@ -966,7 +958,6 @@ struct Checker
             if (!d->type.empty())
             {
                 script_pointer(d->type, d->pos);
-                view_needs_cxx20(d->type, d->pos);
             }
             if (d->is_ref)
             {
@@ -1199,9 +1190,7 @@ struct Checker
                 for (const Param& p : m.params)
                 {
                     script_pointer(p.type, m.pos);
-                    view_needs_cxx20(p.type, m.pos);
                 }
-                view_needs_cxx20(m.ret, m.pos);
                 // An override keeps the native signature. The script cannot change its return type.
                 if (!m.overrides_virtual && !m.ret.empty())
                 {
@@ -1217,7 +1206,6 @@ struct Checker
             for (const Param& p : c.params)
             {
                 script_pointer(p.type, c.pos);
-                view_needs_cxx20(p.type, c.pos);
             }
             body(c.params, c.body);
             if (!is_cpp)

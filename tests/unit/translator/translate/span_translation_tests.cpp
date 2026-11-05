@@ -2,7 +2,7 @@
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
-// Tests for hotc::translate with the type "T[]" (a view): one mapper gives std::span<T>.
+// Tests for hotc::translate with the type "T[]" (a view): one mapper gives hot::span<T> (or std::span<T> for the view type std).
 #include "hot/hotc_lib.h"
 #include "support/translator_test_support.h"
 
@@ -20,14 +20,16 @@ bool has(const std::string& text, const std::string& part)
     return text.find(part) != std::string::npos;
 }
 
-// A view is a std::span: the standard is C++20.
-hotc::TranslateResult script(const std::string& members, const char* std_version = "c++20")
+// The default view type is hot (hot::span), which works with C++17.
+hotc::TranslateResult script(
+    const std::string& members, const char* std_version = "c++20", const char* view_type = "hot")
 {
     hotc::TranslateOptions o;
     o.script_name = "t.hot";
     o.script_text = "class Foo {\n" + members + "}\n";
     o.generation = 1;
     o.std_version = std_version;
+    o.view_type = view_type;
     return hotc::translate(o);
 }
 
@@ -38,8 +40,8 @@ TEST(SpanTranslation, ParameterAndReturn)
     const hotc::TranslateResult r =
         script("    int Sum(int[] s) { return 0; }\n    int[] Same(int[] s) { return s; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "int32_t Sum(std::span<int32_t> s);")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "std::span<int32_t> Same(std::span<int32_t> s);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "int32_t Sum(hot::span<int32_t> s);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::span<int32_t> Same(hot::span<int32_t> s);")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "int32_t[]")) << r.cpp;
 }
 
@@ -47,14 +49,14 @@ TEST(SpanTranslation, SpanOfOptionalElements)
 {
     const hotc::TranslateResult r = script("    void F(int?[] s) { }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "std::span<std::optional<int32_t>> s")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::span<std::optional<int32_t>> s")) << r.cpp;
 }
 
 TEST(SpanTranslation, LocalSpan)
 {
     const hotc::TranslateResult r = script("    void F(int[] s) { int[] t = s; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "std::span<int32_t> t = s;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::span<int32_t> t = s;")) << r.cpp;
 }
 
 TEST(SpanTranslation, SpanFieldIsAnError)
@@ -103,8 +105,8 @@ TEST(SpanTranslation, LocalViewOfVectorAndArray)
         "    }\n"
         "    void G(int[] s) { }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "std::span<int32_t> s = v;")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "std::span<int32_t> t = a;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::span<int32_t> s = v;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::span<int32_t> t = a;")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "const std::vector<int32_t> v")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "const std::array<int32_t, 2> a")) << r.cpp;
 }
@@ -115,7 +117,7 @@ TEST(SpanTranslation, ConstSourceGoesToConstView)
         "    int Total(const int[] s) { return s.size(); }\n"
         "    int F(in std.vector<int> v, in int[3] a) { return Total(v) + Total(a); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "std::span<const int32_t> s")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::span<const int32_t> s")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "const std::vector<int32_t>& v")) << r.cpp;
 }
 
@@ -189,9 +191,49 @@ TEST(SpanTranslation, ReturnOfParameterViewIsValid)
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
-TEST(SpanTranslation, ViewNeedsCxx20)
+TEST(SpanTranslation, ViewWorksWithCxx17)
 {
-    const hotc::TranslateResult r = script("    void F(int[] s) { }\n", "c++17");
+    const hotc::TranslateResult r = script(
+        "    int Sum(int[] s) { return s[0]; }\n"
+        "    void F() { std.vector<int> v = [1, 2]; int[] t = v; Sum(t); }\n",
+        "c++17");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "int32_t Sum(hot::span<int32_t> s);")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "std::span<")) << r.cpp;
+}
+
+TEST(SpanTranslation, ViewTypeHotGivesHotSpan)
+{
+    const hotc::TranslateResult r = script("    void F(int[] s, const int[] c) { }\n", "c++20", "hot");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "hot::span<int32_t> s")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::span<const int32_t> c")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "std::span<")) << r.cpp;
+}
+
+TEST(SpanTranslation, ViewTypeStdGivesStdSpan)
+{
+    const hotc::TranslateResult r = script(
+        "    int[] F(int[] s) { int[] t = s; return t; }\n"
+        "    void G(const int[] c) { }\n",
+        "c++20", "std");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "std::span<int32_t> F(std::span<int32_t> s);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "std::span<int32_t> t = s;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "std::span<const int32_t> c")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "hot::span<")) << r.cpp;
+}
+
+TEST(SpanTranslation, ViewTypeStdNeedsCxx20)
+{
+    const hotc::TranslateResult r = script("    void F(int[] s) { }\n", "c++17", "std");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "needs C++20")) << r.diagnostics;
+}
+
+TEST(SpanTranslation, UnknownViewTypeIsAnError)
+{
+    const hotc::TranslateResult r = script("    void F(int[] s) { }\n", "c++20", "span");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "view type")) << r.diagnostics;
 }

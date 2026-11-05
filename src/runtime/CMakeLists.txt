@@ -37,6 +37,10 @@ endif()
 if(HOT_TRACEBACK)
     target_compile_definitions(hot_runtime_core PUBLIC HOT_TRACEBACK=1)
 endif()
+# The view type of "T[]" (include/hot/config.h). The define is PUBLIC for the same reason.
+if(HOT_VIEW_TYPE STREQUAL "std")
+    target_compile_definitions(hot_runtime_core PUBLIC HOT_VIEW_STD=1)
+endif()
 # The C++ standard of the host (include/hot/config.h). The backends use it for the compile of
 # the scripts and for the parse of the native headers. The target hotc_lib gets the same value.
 hot_effective_cxx_standard(HOT_HOST_CXX_STANDARD hot_runtime_core)

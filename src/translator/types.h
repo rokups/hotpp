@@ -76,6 +76,10 @@ public:
     // The namespace of the standard library names (module attribute std, std_ns.h). The text of a
     // stub with a plain "std::" matches the native text for this name only. The default is "std".
     void set_std_ns(std::string ns) { std_ns_ = std::move(ns); }
+
+    // The view type of "T[]": "hot" (hot::span, the default) or "std" (std::span). The head of the
+    // C++ type is set one time. The std head has no std mark.
+    void set_view_type(const std::string& view) { view_head_ = view == "std" ? "std::span<" : "hot::span<"; }
     const std::string& std_ns() const { return std_ns_; }
 
     // The standard-like library namespaces (the module attribute "lib"). A handle template
@@ -201,7 +205,7 @@ public:
     //    handle. A class with a native base has no box: the checker reports it.
     //  - "T*" stays "T*". A field "T*" of a native class with a weak source is "hot::CheckedPtr<T>".
     //  - "T?" is "std::optional<M>", where M is the mapping of T.
-    //  - "T[]" is "std::span<M>".
+    //  - "T[]" is "hot::span<M>", or "std::span<M>" after set_view_type("std").
     //  - The builtin types and the other types are as storage() and param() give them.
     // The mark "?" needs a value type. A pointer, a "$" handle, a script class and an interface are
     // nullable: "T?" on them is an error. The error text goes to "error" (if not null) and the
@@ -334,6 +338,7 @@ private:
     bool default_nonnull_ = false; // the stub "class *;" has [nonnull]
     std::string default_weak_; // the weak_handle of "class *"
     std::string std_ns_ = "std"; // see set_std_ns()
+    std::string view_head_ = "hot::span<"; // see set_view_type()
     std::vector<std::string> libs_; // see set_libs()
     // The namespace prefix of a shared pointer template: "\x01std::", "std::", "L::" or empty.
     std::string shared_prefix(const std::string& tpl) const;

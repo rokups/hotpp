@@ -266,6 +266,19 @@ option(HOT_TRACEBACK "Record the script call stack for the error report" OFF)
 # must use the same value. The constructor of the Loader checks this.
 option(HOT_THREAD_SAFE "Allow any thread to create and destroy script objects" ON)
 
+# The view type of "T[]" (include/hot/config.h): hot::span<T> ("hot") or std::span<T> ("std").
+# One value for the whole build. "std" needs C++20.
+set(HOT_VIEW_TYPE "hot" CACHE STRING "View type of T[]: hot (hot::span) or std (std::span, C++20)")
+set_property(CACHE HOT_VIEW_TYPE PROPERTY STRINGS hot std)
+if(NOT HOT_VIEW_TYPE STREQUAL "hot" AND NOT HOT_VIEW_TYPE STREQUAL "std")
+    message(FATAL_ERROR "HOT_VIEW_TYPE is '${HOT_VIEW_TYPE}'. The value must be 'hot' or 'std'.")
+endif()
+if(HOT_VIEW_TYPE STREQUAL "std" AND CMAKE_CXX_STANDARD LESS 20)
+    message(FATAL_ERROR "HOT_VIEW_TYPE=std needs C++20 (std::span). CMAKE_CXX_STANDARD is ${CMAKE_CXX_STANDARD}. "
+            "Set CMAKE_CXX_STANDARD to 20 or 23, or set HOT_VIEW_TYPE=hot.")
+endif()
+message(STATUS "The view type of T[] is: ${HOT_VIEW_TYPE}")
+
 # The compiler flags for the scripts. The backends use them.
 # A list value uses "|" between the items.
 # MSVC: the flags of cl (/EHsc, /DWIN32) are not flags of the script compiler (clang++).
@@ -282,6 +295,9 @@ if(HOT_TRACEBACK)
 endif()
 if(NOT HOT_THREAD_SAFE)
     list(APPEND HOT_CXXFLAGS_LIST -DHOT_THREAD_SAFE=0)
+endif()
+if(HOT_VIEW_TYPE STREQUAL "std")
+    list(APPEND HOT_CXXFLAGS_LIST -DHOT_VIEW_STD=1)
 endif()
 list(JOIN HOT_CXXFLAGS_LIST "|" HOT_CXXFLAGS_JOINED)
 

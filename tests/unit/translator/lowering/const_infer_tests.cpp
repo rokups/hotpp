@@ -4,6 +4,7 @@
 
 // Tests for the const inference: which locals and parameters get "const", the two errors for a
 // written "const", and the casts that keep "const".
+#include "const_infer.h"
 #include "hot/hotc_lib.h"
 #include "support/translator_test_support.h"
 
@@ -189,4 +190,18 @@ TEST(ConstInfer, ArrayDoesNotDecayToAPointerParameter)
         "    int Run() { int[3] a; Fill(a); return a[0]; }\n");
     EXPECT_TRUE(has(r.cpp, "std::array<int32_t, 3> a = ")) << r.cpp << r.diagnostics;
     EXPECT_FALSE(has(r.cpp, "const std::array<int32_t, 3> a")) << r.cpp << r.diagnostics;
+}
+
+// A view that can write is a mutable view. The view has three texts: the script text, hot::span and
+// std::span. The check of "hot::span<" is the branch that the view type hot needs.
+TEST(ConstInfer, MutableViewTexts)
+{
+    EXPECT_TRUE(hotc::is_mutable_view("int[]"));
+    EXPECT_FALSE(hotc::is_mutable_view("const int[]"));
+    EXPECT_TRUE(hotc::is_mutable_view("hot::span<int32_t>"));
+    EXPECT_FALSE(hotc::is_mutable_view("hot::span<const int32_t>"));
+    EXPECT_TRUE(hotc::is_mutable_view("std::span<int32_t>"));
+    EXPECT_FALSE(hotc::is_mutable_view("std::span<const int32_t>"));
+    EXPECT_FALSE(hotc::is_mutable_view("std::vector<int32_t>"));
+    EXPECT_FALSE(hotc::is_mutable_view("int32_t"));
 }

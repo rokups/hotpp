@@ -184,6 +184,10 @@ function(hot_add_scripts)
     if(format_lib STREQUAL "fmt")
         list(APPEND format_args --format=fmt)
     endif()
+    # The view type of "T[]". The default "hot" needs no flag.
+    if(HOT_VIEW_TYPE STREQUAL "std")
+        list(APPEND format_args --view=std)
+    endif()
 
     # hotc writes a depfile: the headers and the imported scripts that the translation read. Only
     # the Ninja and the Makefile generators support DEPFILE. The policy CMP0116 NEW makes the

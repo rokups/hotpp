@@ -996,6 +996,51 @@ TEST(HotcTool, FormatOptionSelectsTheFormatFunction)
 #endif
 }
 
+// --view selects the view type of "T[]": hot::span (the default) or std::span (C++20 only).
+TEST(HotcTool, ViewOptionSelectsTheViewType)
+{
+    TestScratch scratch;
+    const std::string script = scratch.file("hotc_view.hot");
+    {
+        std::ofstream f(script);
+        f << "class Foo {\n    int Sum(int[] s) { return s[0]; }\n}\n";
+    }
+    const std::string emit = std::string("'") + HOTC_PATH + "' --emit-cpp ";
+    const std::string tail = " '" + script + "'" + engine_args() + " 2>&1";
+    std::string def, hot_view, std_view, bad, c17;
+    // Without --view, the emitted code uses the view type of this build.
+    EXPECT_EQ(run_command(emit + "--std=c++20" + tail, def), 0) << def;
+    EXPECT_NE(def.find(std::string(hot::view_type_name()) + "::span<int32_t> s"), std::string::npos) << def;
+    EXPECT_EQ(run_command(emit + "--view=hot --std=c++17" + tail, hot_view), 0) << hot_view;
+    EXPECT_NE(hot_view.find("hot::span<int32_t> s"), std::string::npos) << hot_view;
+    EXPECT_EQ(run_command(emit + "--view=std --std=c++20" + tail, std_view), 0) << std_view;
+    EXPECT_NE(std_view.find("std::span<int32_t> s"), std::string::npos) << std_view;
+    EXPECT_EQ(std_view.find("hot::span<"), std::string::npos) << std_view;
+    EXPECT_NE(run_command(emit + "--view=std --std=c++17" + tail, c17), 0) << c17;
+    EXPECT_NE(c17.find("needs C++20"), std::string::npos) << c17;
+    EXPECT_EQ(run_command(emit + "--view=other" + tail, bad), 2) << bad;
+}
+
+// In build mode the view type of this hotc is fixed. A different --view is an error (exit code 2).
+TEST(HotcTool, ViewOptionMismatchWithTheBuildIsAnError)
+{
+    TestScratch scratch;
+    const std::string script = scratch.file("hotc_view_mismatch.hot");
+    {
+        std::ofstream f(script);
+        f << "class Foo {\n    int Sum(int[] s) { return s[0]; }\n}\n";
+    }
+    const std::string other = std::string(hot::view_type_name()) == "hot" ? "std" : "hot";
+    std::string text;
+    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' '" + script + "' --gen 1 --out-dir '"
+                      + scratch.file("hotc_view_mismatch_out") + "' --view=" + other + " -I '" + HOT_SOURCE_DIR
+                      + "/include' 2>&1",
+                  text),
+        2)
+        << text;
+    EXPECT_NE(text.find("--view=" + other), std::string::npos) << text;
+}
+
 #if __has_include(<fmt/format.h>)
 // The text of --format=fmt compiles as C++17. This is the format of a C++17 build.
 TEST(HotcTool, FormatFmtOutputCompilesAsCxx17)

@@ -21,7 +21,7 @@ This list shows what version 1 does not support.
 - An `async` free function or an `async` static method. An async function needs an object.
 - A collection literal without a declared type: `var x = [1, 2];` is an error.
 - A `.cpp` script has no null or bounds checks. The translator keeps a `.cpp` body as C++ text and does not parse expressions. The checks cover `.hot` scripts only.
-- A bounds check covers a C array, `std::array`, `std::vector`, `std::deque`, `std::basic_string` (`std::string`), `std::basic_string_view`, `std::span` and a stub with `[native, checked_index]`. `std::map` and `std::unordered_map` keep their own `operator[]`, which inserts a key. Use `at` or `find`. Other C++ containers have no bounds check, because the translator does not know their index rules.
+- A bounds check covers a C array, `std::array`, `std::vector`, `std::deque`, `std::basic_string` (`std::string`), `std::basic_string_view`, `std::span`, `hot::span` and a stub with `[native, checked_index]`. `std::map` and `std::unordered_map` keep their own `operator[]`, which inserts a key. Use `at` or `find`. Other C++ containers have no bounds check, because the translator does not know their index rules.
 - A `ScriptError` in a constructor goes to the code that creates the object. A script `new` can catch it. A host `create` call gets the C++ exception. The script error handler does not see it, because no object exists yet.
 - A class with two constructors of the same arity does not coerce `null` for a `[weak]` parameter. Give the constructors different arities. The translator cannot choose the constructor from a `null` argument.
 - A `noexcept` native virtual that a script overrides and whose result has no default value (a reference, for example). The host must give a `hot::noexcept_result<R>` specialization for it. Without it an unhandled `ScriptError` ends the program.
@@ -53,4 +53,4 @@ These limits come from the type system and the null analysis.
 - The analyzer does not check an argument to a `[nonnull]` parameter.
 - `h.reset(rawptr)` is always an error. A shared pointer cannot come from a raw pointer.
 - `$NativeBase b = this;` is an error, unless `enable_shared_from_this` is known for the native base.
-- `T[]` needs C++20, because it is `std::span<T>`.
+- `T[]` is `hot::span<T>` and works with C++17. The option `HOT_VIEW_TYPE=std` selects `std::span<T>`, which needs C++20. The choice is one constant for the whole build. See [The view type](types.html#the-view-type).

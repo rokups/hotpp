@@ -168,7 +168,7 @@ These rules apply to an array:
 
 ### Views
 
-`T[]` is a view of values of type `T`. The C++ type is `std::span<T>`. A view does not own the values. It needs C++20.
+`T[]` is a view of values of type `T`. The C++ type is `hot::span<T>` by default. It works with C++17. A view does not own the values. See [The view type](#the-view-type) for the option that selects `std::span<T>`.
 
 A view is valid for a parameter, a return type and a local. The owner of the values is a `std.vector<T>`, a `T[N]` or another view. A `std.vector<T>` or a `T[N]` converts to a `T[]` at a call or at a local declaration.
 
@@ -210,3 +210,21 @@ These rules apply to a view:
 - A `T[]` does not accept a const source, for example an `in std.vector<T>` parameter. Take the same `in std.vector<T>` type for the parameter.
 - A view is valid while the owner lives. A method that returns `T[]` cannot return a local `std.vector<T>` or a local `T[N]`. This is an error: the local ends at the return. Return a `std.vector<T>` or a view that the method got as an argument.
 - A view does not stay valid after a change of the owner size. For example, `push_back` on the vector can move the values.
+
+#### The view type
+
+`hot::span<T>` is the default C++ type of `T[]`. It is in `hot/runtime/span.h`. It has these properties:
+
+- It has a dynamic extent only. It has no fixed size in the type.
+- It needs C++17. The build does not need C++20.
+- It holds a pointer and a size. It does not own the values.
+- Its own `operator[]` has no check, as for `std::span`. The index in a script goes through `hot::index`, which throws `IndexOutOfRange` for a bad index. `HOT_RUNTIME_CHECKS=OFF` removes the check.
+
+You can select `std::span<T>` instead. Use the CMake option `HOT_VIEW_TYPE=std`. These rules apply:
+
+- `std::span` needs C++20. With a lower `CMAKE_CXX_STANDARD`, the configure step stops with an error.
+- The choice is one constant for the whole build. Do not mix the two types in one build. The two types have different C++ names, so a mix breaks the link of a host function with a `T[]` parameter and can break the One Definition Rule.
+- The choice must be the same in `hotc` and in the host. `hotc` has the flag `--view=hot|std`. `hot_add_scripts` sets it. In build mode, a `--view` value that differs from the `hotc` build is an error. `hotc` prints `hotc: error: this hotc is built for --view=..., not --view=...` and exits with code 2. `--view=std` with `--std=c++17` is a translation error.
+- Host code that uses the `T[]` type of a script method sees the selected type. Host code must use the same option as the scripts.
+
+See [CMake options](cmake-options.html#options) for the option `HOT_VIEW_TYPE`.

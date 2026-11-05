@@ -83,14 +83,14 @@ TEST(ParamFormTranslation, OptionalIsTheInTrait)
 
 TEST(ParamFormTranslation, ArrayIsSpanByValue)
 {
-    hotc::TranslateOptions o; // std::span needs C++20
+    hotc::TranslateOptions o; // the default view type is hot::span
     o.script_name = "t.hot";
     o.script_text = "class Foo {\n    void F(int[] xs) { }\n}\n";
     o.generation = 1;
     o.std_version = "c++20";
     const hotc::TranslateResult r = hotc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "std::span<int32_t> xs")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::span<int32_t> xs")) << r.cpp;
 }
 
 TEST(ParamFormTranslation, PointerIsPointer)

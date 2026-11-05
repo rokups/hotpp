@@ -95,14 +95,21 @@ bool is_builtin_scalar(const std::string& type)
     return false;
 }
 
+} // namespace
+
 // True for the type "T[]" (a view of mutable elements). A "const T[]" and a "std::span<const T>"
 // view cannot write. The parser can write the script text or the C++ text of the type.
 bool is_mutable_view(const std::string& type)
 {
     if (type.size() >= 2 && type.compare(type.size() - 2, 2, "[]") == 0)
         return type.compare(0, 6, "const ") != 0;
+    if (type.compare(0, 10, "hot::span<") == 0)
+        return type.compare(0, 16, "hot::span<const ") != 0;
     return type.compare(0, 10, "std::span<") == 0 && type.compare(0, 16, "std::span<const ") != 0;
 }
+
+namespace
+{
 
 // What the pass knows about the names of one function body.
 struct BodyInfo

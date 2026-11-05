@@ -20,6 +20,8 @@ if(HOT_SDK_FORMAT_LIB STREQUAL "fmt")
 else()
     set(HOT_USE_FMT OFF CACHE INTERNAL "The Hot++ SDK uses fmt")
 endif()
+# The view type of "T[]" in the SDK: "hot" (hot::span) or "std" (std::span). hot_add_scripts uses it.
+set(HOT_VIEW_TYPE "@HOT_VIEW_TYPE@" CACHE INTERNAL "The view type of the Hot++ SDK")
 # The compiler, the target triple and the sysroot of the precompiled script modules
 # (hot_add_scripts). They default to the values of the SDK build. A consumer can set them first.
 # The compiler has a value only for a cross build of the SDK. Empty means CMAKE_CXX_COMPILER.

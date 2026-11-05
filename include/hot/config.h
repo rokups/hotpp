@@ -48,6 +48,11 @@
 #ifndef HOT_TRACEBACK
     #define HOT_TRACEBACK 0
 #endif
+// The view type of "T[]". CMake sets HOT_VIEW_STD=1 for the option HOT_VIEW_TYPE=std. Without it,
+// the view type is hot::span. std::span needs C++20. The value is one constant for the build.
+#if defined(HOT_VIEW_STD) && __cplusplus < 202002L && !(defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
+    #error "HOT_VIEW_STD needs C++20 (std::span). Use HOT_VIEW_TYPE=hot or a C++20 compiler mode."
+#endif
 // The include directory of fmt, or an empty text when the compiler finds fmt by itself.
 #ifndef HOT_FMT_INCLUDE_DIR
     #define HOT_FMT_INCLUDE_DIR ""
@@ -60,6 +65,16 @@ namespace hot
 constexpr const char* format_lib_name()
 {
     return HOT_USE_FMT ? "fmt" : "std";
+}
+
+// The view type of "T[]": "hot" (hot::span) or "std" (std::span).
+constexpr const char* view_type_name()
+{
+#ifdef HOT_VIEW_STD
+    return "std";
+#else
+    return "hot";
+#endif
 }
 
 // The standard name for the option -std= of the compiler: "c++17", "c++20" or "c++2b".

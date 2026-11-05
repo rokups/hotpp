@@ -441,6 +441,7 @@ private:
         o.resource_dir = e.resource_dir;
         o.std_version = e.std_version;
         o.format_lib = hot::format_lib_name();
+        o.view_type = hot::view_type_name();
         // The preludes of the host, as at run time. A prelude file that is open is analyzed
         // as a script, so it does not also get its own text as a prelude.
         for (const std::string& p : e.preludes)

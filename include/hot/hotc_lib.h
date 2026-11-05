@@ -57,6 +57,9 @@ struct TranslateOptions
     // std::format and adds <format>. "fmt" lowers to fmt::format and adds <fmt/format.h>. The
     // user supplies the fmt header. Any other value is an error.
     std::string format_lib = "std";
+    // The view type of "T[]" (hotc --view): "hot" lowers to hot::span<T> (C++17 or newer). "std"
+    // lowers to std::span<T> and needs C++20. Any other value is an error.
+    std::string view_type = "hot";
     // The file system of the host for the imports ("using "x.hot";" and "using "x.h";"). For each
     // directory the translator reads this file system first and then the disk. Null: the disk only.
     // The file system must be thread safe.

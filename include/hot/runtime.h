@@ -49,5 +49,5 @@
 #include <utility>
 #include <vector>
 #if __has_include(<span>) && (__cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L))
-#include <span> // the generated code uses std::span for "T[]"
+#include <span> // std::span, the view "T[]" with the view type std
 #endif

@@ -34,7 +34,7 @@ This page records an approved design for the types of HotScript. It is a design 
 | `$T` | The handle form of the type rule. The default is `std::shared_ptr<T>`. | A shared owner. The analyzer treats it as nullable. A field with no initializer is null. |
 | `T*?` and `$T?` | none | Not valid. `T*` and `$T` are already nullable. |
 | `T?` | `std::optional<T>` | Value types only. It is an error on a pointer, a handle or a script class. |
-| `T[]` | `std::span<T>` | A view. It is an error on a field and on a property. A local or a parameter is valid. A return of a local `std.vector<T>` or `T[N]` is an error. The index is checked. The owning list is the std prelude type `std.vector<T>`. |
+| `T[]` | `hot::span<T>` (or `std::span<T>` with `HOT_VIEW_TYPE=std`) | A view. It is an error on a field and on a property. A local or a parameter is valid. A return of a local `std.vector<T>` or `T[N]` is an error. The index is checked. The owning list is the std prelude type `std.vector<T>`. |
 | `T[N]` | `std::array<T, N>` | A fixed array. |
 | `[weak] $T` | The weak template of the rule. The default is `std::weak_ptr<T>`. | A read emits `hot::lock(w)` and gives `$T`. |
 | `int` | `int32_t` | |
@@ -62,7 +62,7 @@ Notes on `hot::Value<T>`:
 | `$T x` | `const std::shared_ptr<T>&` |
 | `[byval] $T x` | `std::shared_ptr<T>` by value |
 | `T* p` | `T*` |
-| `T[] xs` | `std::span<T>` by value |
+| `T[] xs` | `hot::span<T>` by value (`std::span<T>` with `HOT_VIEW_TYPE=std`) |
 
 - `hot::In<T>` is a C++ trait. It is `T` if `T` is trivially copyable and `sizeof(T) <= 16`. Else it is `const T&`.
 - The translator never computes `sizeof`.
@@ -199,7 +199,7 @@ The design removes no project keyword. These keywords stay: `struct`, `enum`, `i
 | `Weapon w = null;` (a bare script class as a handle) | `$Weapon w;` | A bare script class is a value. `$` marks the shared owner. A value is never null. |
 | `const` on a local, a field or a script method | Remove it. | The translator infers `const`. A cast and a `[native]` stub still name it. |
 | `new T(args)` as a handle on a script class | `new $T(args)` | `new T(args)` gives a value. `new $T(args)` gives a handle. |
-| Old owning `T[]` | `std.vector<T>` | `T[]` is now a view (`std::span<T>`). It needs C++20. |
+| Old owning `T[]` | `std.vector<T>` | `T[]` is now a view (`hot::span<T>`, or `std::span<T>` with `HOT_VIEW_TYPE=std`). The default works with C++17. |
 | A checked pointer in script text | `T*`. It is borrowed and the analyzer treats it as nullable. | The null analysis checks each access at compile time. A `T*` field of a native class with a weak source is still `hot::CheckedPtr<T>` in the C++ output. |
 | `--null-errors` | None. A null finding is an error by default. Use `--null-warnings` for warnings. | The default is the strict form. |
 | An `extern` block | A `[native]` stub or a header import (`using "x.h";`) | `extern` is a reserved word only. It has no syntax. |

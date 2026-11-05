@@ -185,11 +185,22 @@ TEST(CppStorage, OptionalNeedsAValueType)
 TEST(CppStorage, SpanOfAnyElement)
 {
     StorageFixture s;
+    EXPECT_EQ(s.map("int32_t[]"), "hot::span<int32_t>");
+    EXPECT_EQ(s.map("const int32_t[]"), "hot::span<const int32_t>");
+    EXPECT_EQ(s.map("int32_t[]", TypeModel::StorageUse::Param), "hot::span<int32_t>");
+    EXPECT_EQ(s.map("Weapon[]"), "hot::span<std::shared_ptr<Weapon>>");
+    EXPECT_EQ(s.map("int32_t?[]"), "hot::span<std::optional<int32_t>>");
+}
+
+TEST(CppStorage, SpanOfAnyElementWithViewTypeStd)
+{
+    StorageFixture s;
+    s.f.model.set_view_type("std");
     EXPECT_EQ(s.map("int32_t[]"), "std::span<int32_t>");
     EXPECT_EQ(s.map("const int32_t[]"), "std::span<const int32_t>");
-    EXPECT_EQ(s.map("int32_t[]", TypeModel::StorageUse::Param), "std::span<int32_t>");
     EXPECT_EQ(s.map("Weapon[]"), "std::span<std::shared_ptr<Weapon>>");
-    EXPECT_EQ(s.map("int32_t?[]"), "std::span<std::optional<int32_t>>");
+    s.f.model.set_view_type("hot");
+    EXPECT_EQ(s.map("int32_t[]"), "hot::span<int32_t>");
 }
 
 TEST(CppStorage, MarksInTemplateArguments)

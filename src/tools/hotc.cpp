@@ -32,7 +32,7 @@
 //
 // AOT mode (--aot): translate scripts for an AOT build (design M7).
 //   hotc --aot <file.hot>... --out-dir DIR [-I dir]... [--prelude file]...
-//        [--no-strict-borrowed] [--null-warnings] [--format=std|fmt] [--resource-dir dir] [--aot-optimized]
+//        [--no-strict-borrowed] [--null-warnings] [--format=std|fmt] [--view=hot|std] [--resource-dir dir] [--aot-optimized]
 // The flag --aot-optimized builds optimized AOT code. It needs --aot.
 // For each file the tool writes DIR/<name>.aot.cpp (generation 1). It also writes
 // DIR/hot_aot_registry.cpp, which defines the constant table hot::aot_table
@@ -42,6 +42,10 @@
 //
 // The flag --format=std|fmt is a flag for build systems. In build mode the build of hotc fixes
 // the format library (include/hot/config.h), and a different --format is an error (exit code 2).
+//
+// The flag --view=hot|std is also a flag for build systems. It names the view type of "T[]"
+// (hot::span or std::span). In build mode the build of hotc fixes the view type, and a different
+// --view is an error (exit code 2). --view=std with --std=c++17 is a translation error.
 //
 // The flag --std=c++17|c++20|c++23 sets the C++ standard of the parse of the native headers and
 // of the compile of the generated code. The default is the C++ standard of the host (HOT_CXX_STANDARD
@@ -79,13 +83,13 @@ namespace
 {
     std::fprintf(stderr,
         "usage: hotc <file.hot>... --gen N (--out-dir DIR | -o x.so) [-I dir]... [--resource-dir dir]\n"
-        "            [--cxx command] [--cxxflag flag]... [--slots file] [--no-strict-borrowed] [--null-warnings] [--format=std|fmt]\n"
+        "            [--cxx command] [--cxxflag flag]... [--slots file] [--no-strict-borrowed] [--null-warnings] [--format=std|fmt] [--view=hot|std]\n"
         "            [--raw-diagnostics] [--compile-commands dir] [--std=c++17|c++20|c++23]\n"
         "       hotc --emit-cpp <file.hot> --gen N [-o out.cpp] [-I dir]... [--prelude file]... [--no-strict-borrowed] "
-        "[--format=std|fmt]\n"
+        "[--format=std|fmt] [--view=hot|std]\n"
         "            [--slots file] [--resource-dir dir] [--std=c++17|c++20|c++23]\n"
         "       hotc --aot <file.hot>... --out-dir DIR [-I dir]... [--prelude file]... [--no-strict-borrowed]\n"
-        "            [--format=std|fmt] [--resource-dir dir] [--std=c++17|c++20|c++23] [--aot-optimized]\n"
+        "            [--format=std|fmt] [--view=hot|std] [--resource-dir dir] [--std=c++17|c++20|c++23] [--aot-optimized]\n"
         "Each mode also accepts:\n"
         "  --depfile <path>     write the headers and imported scripts that the translation read (Make format)\n"
         "  --target <triple>    the target triple of the parse and of the modules (-target)\n"
@@ -123,6 +127,8 @@ struct Args
     bool has_build_only = false; // --out-dir, --cxx, --cxxflag
     bool has_emit_only = false; // --prelude
     std::string format_lib = "std"; // --format=std|fmt
+    std::string view_type = hot::view_type_name(); // --view=hot|std (default: the view type of this build)
+    bool view_given = false; // the flag --view is present
     bool format_given = false; // the flag --format is present
     bool strict_borrowed = true; // --no-strict-borrowed turns it off
     bool null_warnings = false; // --null-warnings: a nullability finding is a warning
@@ -221,6 +227,16 @@ Args parse_args(int argc, char** argv)
         {
             r.format_lib = "fmt";
             r.format_given = true;
+        }
+        else if (a == "--view=hot")
+        {
+            r.view_type = "hot";
+            r.view_given = true;
+        }
+        else if (a == "--view=std")
+        {
+            r.view_type = "std";
+            r.view_given = true;
         }
         else if (a == "--std=c++17" || a == "--std=c++20" || a == "--std=c++23")
             r.std_version = a.substr(6);
@@ -362,6 +378,7 @@ int run_aot(const Args& args)
     base.strict_borrowed = args.strict_borrowed;
     base.null_warnings = args.null_warnings;
     base.format_lib = args.format_lib;
+    base.view_type = args.view_type;
     // Without --resource-dir the translator needs the default. A portable build finds it at run time.
     base.resource_dir = args.resource_dir.empty() ? hot::default_paths().resource_dir : args.resource_dir;
     base.target = args.target;
@@ -480,6 +497,7 @@ int run_emit(const Args& args)
     opt.strict_borrowed = args.strict_borrowed;
     opt.null_warnings = args.null_warnings;
     opt.format_lib = args.format_lib;
+    opt.view_type = args.view_type;
     opt.resource_dir = args.resource_dir.empty() ? hot::default_paths().resource_dir : args.resource_dir;
     opt.target = args.target;
     opt.sysroot = args.sysroot;
@@ -563,6 +581,14 @@ int run_build(const Args& args)
     {
         std::fprintf(stderr, "hotc: error: this hotc is built for --format=%s, not --format=%s\n",
             hot::format_lib_name(), args.format_lib.c_str());
+        return 2;
+    }
+
+    // The same rule holds for the view type of "T[]" (--view=hot|std).
+    if (args.view_given && args.view_type != hot::view_type_name())
+    {
+        std::fprintf(stderr, "hotc: error: this hotc is built for --view=%s, not --view=%s\n", hot::view_type_name(),
+            args.view_type.c_str());
         return 2;
     }
 

@@ -62,6 +62,10 @@ struct DirectWrites
 };
 DirectWrites direct_writes(const ast::Method& m);
 
+// True for the type "T[]" (a view of mutable elements), also in the C++ form "hot::span<T>" or
+// "std::span<T>". A "const T[]" and a view of const elements cannot write.
+bool is_mutable_view(const std::string& type);
+
 // Sets the flags for each body of the class: the methods, the constructors and the destructors.
 void infer_const(ast::ClassDef& cd, const ConstContext& ctx);
 

@@ -2828,6 +2828,10 @@ void translate_impl(
         fail(0, "the generation must be 1 or more");
     if (in.format_lib != "std" && in.format_lib != "fmt")
         fail(0, "the format library must be 'std' or 'fmt'");
+    if (in.view_type != "hot" && in.view_type != "std")
+        fail(0, "the view type must be 'hot' or 'std'");
+    if (in.view_type == "std" && hotc::cxx_std_below_20(opt.std_version))
+        fail(0, "the view type 'std' (std::span) needs C++20: use the view type 'hot' or the standard c++20");
     if (opt.output.empty())
         opt.output = opt.input + ".cpp";
     g_script = opt.input;
@@ -3173,6 +3177,7 @@ void translate_impl(
     // ---- the type model: the preludes first, then the stubs of the script
     hotc::TypeModel types;
     types.set_std_ns(std_ns);
+    types.set_view_type(in.view_type);
     types.set_libs(libs);
     // A stub with the place that holds it. The checks of the stubs (7.10.7) report there.
     struct StubSrc

@@ -926,7 +926,7 @@ std::string TypeModel::map_marked(const std::string& type, StorageUse use) const
     }
     // "const T[]" is a view of const elements: the "const" stays in the element type.
     if (type.size() >= 2 && type.compare(type.size() - 2, 2, "[]") == 0)
-        return "std::span<" + map_marked(trim_blank(type.substr(0, type.size() - 2)), StorageUse::Local) + ">";
+        return view_head_ + map_marked(trim_blank(type.substr(0, type.size() - 2)), StorageUse::Local) + ">";
     if (starts_with(type, "const ") && has_marks(trim_blank(type.substr(6))))
         return "const " + map_marked(trim_blank(type.substr(6)), StorageUse::Local);
     if (type.back() == '?')
