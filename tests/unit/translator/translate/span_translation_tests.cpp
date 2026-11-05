@@ -237,3 +237,159 @@ TEST(SpanTranslation, UnknownViewTypeIsAnError)
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "view type")) << r.diagnostics;
 }
+
+// A view that is last used before the shape change of its source is valid.
+TEST(SpanTranslation, ViewUsedBeforeShapeChangeIsValid)
+{
+    const hotc::TranslateResult r = script(
+        "    std.vector<int> xs;\n"
+        "    int F() {\n"
+        "        std.vector<int> v = [1, 2, 3];\n"
+        "        int[] s = v;\n"
+        "        int first = s[0];\n"
+        "        v.push_back(first);\n"
+        "        return first;\n"
+        "    }\n"
+        "    int G() {\n"
+        "        int[] s = this.xs;\n"
+        "        int n = s.size();\n"
+        "        this.xs.clear();\n"
+        "        return n;\n"
+        "    }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+TEST(SpanTranslation, ViewTakenAgainAfterShapeChangeIsValid)
+{
+    const hotc::TranslateResult r = script(
+        "    int F() {\n"
+        "        std.vector<int> v = [1, 2, 3];\n"
+        "        int[] s = v;\n"
+        "        v.push_back(4);\n"
+        "        s = v;\n"
+        "        int[] t = v;\n"
+        "        return s[0] + t[0];\n"
+        "    }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+TEST(SpanTranslation, ViewOfAnotherContainerSurvivesTheShapeChange)
+{
+    const hotc::TranslateResult r = script(
+        "    int F() {\n"
+        "        std.vector<int> v = [1, 2, 3];\n"
+        "        std.vector<int> w = [4];\n"
+        "        int[] s = v;\n"
+        "        w.push_back(5);\n"
+        "        return s[0];\n"
+        "    }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+TEST(SpanTranslation, StaleViewIsAnErrorAfterAnInnerBlockChange)
+{
+    const hotc::TranslateResult r = script(
+        "    int F(bool b) {\n"
+        "        std.vector<int> v = [1, 2, 3];\n"
+        "        int[] s = v;\n"
+        "        if (b) { v.clear(); }\n"
+        "        return s[0];\n"
+        "    }\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "the view 's' is used after")) << r.diagnostics;
+}
+
+TEST(SpanTranslation, ViewReturnedFromARefParameterOrAViewParameterIsValid)
+{
+    const hotc::TranslateResult r = script(
+        "    int[] F(ref std.vector<int> v) { int[] s = v; return s; }\n"
+        "    int[] G(int[] p) { int[] s = p; return s; }\n"
+        "    std.string_view H(std.string_view p) { return p; }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+TEST(SpanTranslation, StringViewFieldWithALiteralIsValid)
+{
+    const hotc::TranslateResult r = script("    std.string_view Name = \"literal\";\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    const hotc::TranslateResult bad = script("    std.string_view name;\n");
+    EXPECT_FALSE(bad.ok);
+    EXPECT_TRUE(has(bad.diagnostics, "cannot be stored in a field")) << bad.diagnostics;
+}
+
+// A native function may keep a view or a ref. The checker cannot see it, so it accepts the call.
+TEST(SpanTranslation, ViewOrRefLocalFromARefParameterIsValid)
+{
+    const hotc::TranslateResult r = script(
+        "    int F(ref int r) { var p = &r; return *p; }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+// The statement reads its own operands before the change takes effect.
+TEST(SpanTranslation, ViewReadInTheStatementThatChangesTheSourceIsValid)
+{
+    const hotc::TranslateResult r = script(
+        "    int F() {\n"
+        "        std.vector<int> v = [1, 2, 3];\n"
+        "        int[] s = v;\n"
+        "        v.push_back(s[0]);\n"
+        "        return v.size();\n"
+        "    }\n"
+        "    std.string G() {\n"
+        "        std.string t = \"abc\";\n"
+        "        std.string_view w = t;\n"
+        "        t = std.string(w.substr(1));\n"
+        "        return t;\n"
+        "    }\n"
+        "    std.string H() {\n"
+        "        std.string t = \"abc\";\n"
+        "        std.string_view w = t;\n"
+        "        t += w;\n"
+        "        return t;\n"
+        "    }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+TEST(SpanTranslation, ViewUsedAfterTheStatementThatChangesTheSourceIsAnError)
+{
+    const hotc::TranslateResult r = script(
+        "    int F() {\n"
+        "        std.vector<int> v = [1, 2, 3];\n"
+        "        int[] s = v;\n"
+        "        v.push_back(s[0]);\n"
+        "        return s[1];\n"
+        "    }\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "the view 's' is used after")) << r.diagnostics;
+}
+
+// A block that ends with a jump never reaches the code after it.
+TEST(SpanTranslation, ChangeInABlockThatEndsWithAJumpKeepsTheViewValid)
+{
+    const hotc::TranslateResult r = script(
+        "    int F(bool c) {\n"
+        "        std.vector<int> v = [1, 2, 3];\n"
+        "        int[] s = v;\n"
+        "        if (c) { v.push_back(1); return 0; }\n"
+        "        return s[0];\n"
+        "    }\n"
+        "    int G() {\n"
+        "        std.vector<int> v = [1, 2, 3];\n"
+        "        int[] s = v;\n"
+        "        int n = 0;\n"
+        "        for (int i = 0; i < 3; i++) {\n"
+        "            if (i == 1) { v.clear(); break; }\n"
+        "            n += s[i];\n"
+        "        }\n"
+        "        return n;\n"
+        "    }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+TEST(SpanTranslation, ViewInAFunctionTypeOfAFieldIsNotStorage)
+{
+    const hotc::TranslateResult r = script("    std.function<void(int[])> OnData;\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    const hotc::TranslateResult bad = script("    std.vector<std.string_view> Names;\n");
+    EXPECT_FALSE(bad.ok);
+}

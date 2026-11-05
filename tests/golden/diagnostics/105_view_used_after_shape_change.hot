@@ -1,0 +1,27 @@
+class Holder {
+    std.vector<int> xs;
+
+    int AfterPush() {
+        std.vector<int> v = [1, 2, 3];
+        int[] s = v;
+        v.push_back(4);
+        return s[0];
+    }
+
+    int AfterClearField() {
+        int[] s = this.xs;
+        this.xs.clear();
+        return s[0];
+    }
+
+    int AfterRefCall() {
+        std.vector<int> v = [1, 2, 3];
+        int[] s = v;
+        Grow(v);
+        return s[0];
+    }
+
+    void Grow(ref std.vector<int> v) {
+        v.push_back(1);
+    }
+}

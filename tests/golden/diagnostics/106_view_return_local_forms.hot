@@ -1,0 +1,28 @@
+class Maker {
+    int[] ViewLocalOverVector() {
+        std.vector<int> v = [1, 2, 3];
+        int[] s = v;
+        return s;
+    }
+
+    int[] ViewLocalOverArray() {
+        int[3] a = [1, 2, 3];
+        int[] s = a;
+        return s;
+    }
+
+    std.string_view TextLocal() {
+        std.string s = "abc";
+        return s;
+    }
+
+    std.string_view TextViewLocal() {
+        std.string s = "abc";
+        std.string_view w = s;
+        return w;
+    }
+
+    int[] Temporary() {
+        return std.vector<int>();
+    }
+}

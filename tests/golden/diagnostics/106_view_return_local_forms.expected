@@ -1,0 +1,11 @@
+106_view_return_local_forms.hot:5:9: error: the view 'T[]' points into the local 'v', which ends at the return: return a std.vector<T> instead
+    5 |         return s;
+106_view_return_local_forms.hot:11:9: error: the view 'T[]' points into the local 'a', which ends at the return: return a std.vector<T> instead
+   11 |         return s;
+106_view_return_local_forms.hot:16:9: error: the view 'std.string_view' points into the local 's', which ends at the return: return a std.string instead
+   16 |         return s;
+106_view_return_local_forms.hot:22:9: error: the view 'std.string_view' points into the local 's', which ends at the return: return a std.string instead
+   22 |         return w;
+106_view_return_local_forms.hot:26:9: error: the view 'T[]' points into a temporary value, which ends at the return: return a std.vector<T> instead
+   26 |         return std.vector<int>();
+5 errors generated.

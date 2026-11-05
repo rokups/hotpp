@@ -225,8 +225,9 @@ These rules apply to a view:
 - An index is checked as for an array. An index that is negative or not less than `s.size()` throws `IndexOutOfRange`. The build option `HOT_RUNTIME_CHECKS=OFF` removes the check.
 - A write through a view changes the values of the owner. A local that is the source of a `T[]` call or local is not `const`.
 - A `T[]` does not accept a const source, for example an `in std.vector<T>` parameter. Take the same `in std.vector<T>` type for the parameter.
-- A view is valid while the owner lives. A method that returns `T[]` cannot return a local `std.vector<T>` or a local `T[N]`. This is an error: the local ends at the return. Return a `std.vector<T>` or a view that the method got as an argument.
-- A view does not stay valid after a change of the owner size. For example, `push_back` on the vector can move the values.
+- A view is valid while the owner lives. A method that returns `T[]` or `std.string_view` cannot return a local owner (`std.vector<T>`, `T[N]` or `std.string`), a view local over such an owner, or a temporary vector. This is an error: the local ends at the return. Return a `std.vector<T>` or a `std.string`, or a view that the method got as an argument.
+- A view does not stay valid after a change of the owner size. For example, `push_back` on the vector can move the values. The checker treats a view local (`T[] s = v;`) like a `ref` to an element of `v`. After a shape change of `v` (see "Lifetime of a ref" in [Type design](type-design.html#lifetime-of-a-ref)), a later use of `s` is an error. Assign the view again (`s = v;`) to use it. See [Limits](limits.html) for what the check does not see.
+- A `std.string_view` or a `T[]` is an error as a field type, and as an element of a container field (`std.vector<std.string_view>`). A field of type `std.string_view` with a string literal as initializer is valid.
 
 #### The view type
 

@@ -1,0 +1,5 @@
+107_view_stored_in_field.hot:2:21: error: a view ('T[]' or 'std.string_view') cannot be stored in a field or a container: it can outlive its source. Use std.vector<T> or std.string
+    2 |     std.string_view name;
+107_view_stored_in_field.hot:3:33: error: a view ('T[]' or 'std.string_view') cannot be stored in a field or a container: it can outlive its source. Use std.vector<T> or std.string
+    3 |     std.vector<std.string_view> names;
+2 errors generated.

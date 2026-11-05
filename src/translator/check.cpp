@@ -465,6 +465,23 @@ bool has_ref_word(const std::string& type)
     return false;
 }
 
+// True when the type text names a view: "T[]", "string_view" or "span<". A view stored in a field or a
+// container can outlive its source.
+// A "function<...>" part is skipped: a view in its signature is a parameter or a result, not storage.
+bool has_view_word(const std::string& type)
+{
+    std::string t = type;
+    for (size_t p = t.find("function<"); p != std::string::npos; p = t.find("function<"))
+    {
+        size_t i = p + 9;
+        for (int depth = 1; i < t.size() && depth > 0; ++i)
+            depth += t[i] == '<' ? 1 : t[i] == '>' ? -1 : 0;
+        t.erase(p, i - p);
+    }
+    return t.find("[]") != std::string::npos || t.find("string_view") != std::string::npos
+        || t.find("span<") != std::string::npos;
+}
+
 constexpr const char* kRefStorageError =
     "'ref' cannot be stored in a field, a collection, a 'T?', a tuple or a handle. A 'ref' lives only in a local, "
     "a 'foreach' variable, a parameter or a 'ref' return. Use a value or '$T'";
@@ -525,6 +542,16 @@ struct Checker
     std::map<std::string, std::string> local_types; // the declared type of a local ("": not known)
     std::set<std::string> owning_locals; // the locals and by-value parameters that own their elements
     std::vector<std::set<std::string>> owning_stack; // owning_locals at the start of each open block
+    // The view locals ("T[] s = v;", "std.string_view w = t;") and the root of the container that they
+    // view. A view acts like a "ref" to an element of the root (doc/type-design.md, "Lifetime of a view").
+    std::map<std::string, std::string> view_src;
+    std::vector<std::map<std::string, std::string>> view_stack; // view_src at the start of each open block
+    std::map<std::string, std::string> stale_views; // the views whose source changed shape: name -> cause
+    // The stale marks of the statement in progress. They start at the end of the statement, because the
+    // statement reads its own operands first ("v.push_back(s[0]);").
+    std::map<std::string, std::string> pending_stale;
+    std::vector<std::map<std::string, std::string>> stale_stack; // stale_views at the start of each open block
+    bool last_stmt_exits = false; // the last statement that ended is a return, break, continue or throw
     std::string method_ret; // the declared return type of the method in progress
     std::map<std::string, std::string> field_types; // the declared type of each field
     std::set<const Expr*> allowed_refs; // "&x" nodes in a place where they are valid
@@ -801,6 +828,26 @@ struct Checker
             }
         }
         return temp();
+    }
+
+    // A view local over a container ("T[] s = v;") acts like a "ref" to an element of the root of "v": a
+    // later shape change of "v" makes the view stale, and a use of a stale view is an error.
+    void track_view(const VarDeclStmt& d)
+    {
+        for (const std::string& n : d.names)
+        {
+            view_src.erase(n);
+            stale_views.erase(n);
+        }
+        if (d.names.empty())
+        {
+            view_src.erase(d.name);
+            stale_views.erase(d.name);
+        }
+        if (is_cpp || scopes.size() || d.is_ref || !d.names.empty() || !d.init || !is_view_type(d.type))
+            return;
+        if (const std::string r = root_name(*d.init); !r.empty() && (r.rfind("this.", 0) == 0 || owning_locals.count(r)))
+            view_src[d.name] = r;
     }
 
     // R1 and the place of a "ref" local. A temporary is an error.
@@ -1082,6 +1129,11 @@ struct Checker
         local_types.clear();
         owning_locals.clear();
         owning_stack.clear();
+        view_src.clear();
+        view_stack.clear();
+        stale_views.clear();
+        pending_stale.clear();
+        stale_stack.clear();
         refs.clear();
         refs_stack.clear();
         ref_params.clear();
@@ -1110,18 +1162,34 @@ struct Checker
         w.block_begin = [&]
         {
             owning_stack.push_back(owning_locals);
+            view_stack.push_back(view_src);
+            stale_stack.push_back(stale_views);
             refs_stack.push_back(refs);
         };
         w.block_end = [&]
         {
             owning_locals = std::move(owning_stack.back());
             owning_stack.pop_back();
+            view_src = std::move(view_stack.back());
+            view_stack.pop_back();
+            // A block that ends with a jump never reaches the code after it: its stale marks end too.
+            if (last_stmt_exits)
+                stale_views = stale_stack.back();
+            stale_stack.pop_back();
+            for (auto it = stale_views.begin(); it != stale_views.end();)
+                it = view_src.count(it->first) ? std::next(it) : stale_views.erase(it);
             refs = std::move(refs_stack.back());
             refs_stack.pop_back();
         };
         // The variable of "foreach (ref x in c)" ends with the loop.
         w.stmt_end = [&](const Stmt& st)
         {
+            for (auto& [n, cause] : pending_stale)
+                if (view_src.count(n) && !stale_views.count(n))
+                    stale_views[n] = std::move(cause);
+            pending_stale.clear();
+            last_stmt_exits = std::holds_alternative<ReturnStmt>(st.v) || std::holds_alternative<BreakStmt>(st.v)
+                || std::holds_alternative<ContinueStmt>(st.v) || std::holds_alternative<ThrowStmt>(st.v);
             if (const auto* vd = std::get_if<VarDeclStmt>(&st.v))
                 if (auto it = pending_refs.find(vd); it != pending_refs.end())
                 {
@@ -1295,7 +1363,7 @@ struct Checker
         if (!t.empty() && t[0] == '\x01') // the mark of the namespace "std"
             t.erase(0, 1);
         return (t.size() >= 2 && t.compare(t.size() - 2, 2, "[]") == 0) || t.rfind("std::span<", 0) == 0 ||
-            t.rfind("hot::span<", 0) == 0;
+            t.rfind("hot::span<", 0) == 0 || t == "std::string_view";
     }
 
     // True for the type of a local that owns its elements: "std.vector<T>" and "T[N]".
@@ -1306,6 +1374,8 @@ struct Checker
             t = trim(t.substr(6));
         if (!t.empty() && t[0] == '\x01') // the mark of the namespace "std"
             t.erase(0, 1);
+        if (t == "std::string")
+            return true;
         // A pointer "std::vector<T>*" and a reference "std::vector<T>&" do not own the elements.
         if (t.empty() || t.back() != '>')
             return false;
@@ -1397,13 +1467,30 @@ struct Checker
                 error(r->pos, "an 'async void' method cannot return a value");
             if (method_ret_ref && scopes.empty() && r->expr)
                 check_ref_return(*r);
-            // "return v;" in a method of the type "T[]": the view points into the local "v".
+            // "return v;" in a method of the type "T[]": the view points into the local "v". The same holds
+            // for a view local over such a local ("T[] s = v; return s;").
             if (scopes.empty() && r->expr && !is_cpp && is_view_type(method_ret))
+            {
+                std::string target; // the owner of the elements, as text for the message
                 if (auto* n = std::get_if<NameExpr>(&r->expr->v))
+                {
                     if (n->parts.size() == 1 && owning_locals.count(n->parts[0]))
-                        error(r->pos,
-                            "the view 'T[]' points into the local '" + n->parts[0]
-                                + "', which ends at the return: return a std.vector<T> instead");
+                        target = "the local '" + n->parts[0] + "'";
+                    else if (auto v = view_src.find(n->parts[0]);
+                             n->parts.size() == 1 && v != view_src.end() && owning_locals.count(v->second))
+                        target = "the local '" + v->second + "'";
+                }
+                else if (owning_init(*r->expr)) // "return std.vector<int>();"
+                    target = "a temporary value";
+                if (!target.empty())
+                {
+                    const bool text = trim(method_ret).back() != ']';
+                    error(r->pos,
+                        std::string("the view '") + (text ? "std.string_view" : "T[]") + "' points into " + target
+                            + ", which ends at the return: return a " + (text ? "std.string" : "std.vector<T>")
+                            + " instead");
+                }
+            }
         }
         if (auto* d = std::get_if<VarDeclStmt>(&s.v))
         {
@@ -1412,6 +1499,7 @@ struct Checker
                 && (d->type.empty() ? d->init && owning_init(*d->init) : is_owning_container(d->type));
             for (const std::string& n : d->names)
                 owning_locals.erase(n);
+            track_view(*d);
             if (d->names.empty())
             {
                 if (owns)
@@ -1534,6 +1622,10 @@ struct Checker
                 if (it.root == r)
                     error(pos, what + " changes '" + t + "' inside the 'foreach' over '" + t
                                    + "': the loop can crash. Collect the changes in a new list, and apply them after the loop");
+        if (scopes.empty())
+            for (const auto& [n, src] : view_src)
+                if (src == r && !stale_views.count(n))
+                    pending_stale.emplace(n, what + " changes '" + t + "'");
         for (const auto& [n, info] : refs)
         {
             if (!info.place.element)
@@ -1661,10 +1753,32 @@ struct Checker
                     + "' is not allowed: use 'as' or static_cast<" + base + ">(...)");
     }
 
+    // A use of a view after its source changed shape. An assignment "s = x" gives the view a new source.
+    void check_stale_view(const Expr& e)
+    {
+        if (const auto* b = std::get_if<BinaryExpr>(&e.v); b && b->op == "=" && b->lhs)
+            if (const auto* l = std::get_if<NameExpr>(&b->lhs->v); l && l->parts.size() == 1)
+                if (stale_views.erase(l->parts[0]))
+                {
+                    view_src.erase(l->parts[0]);
+                    return;
+                }
+        if (const auto* n = std::get_if<NameExpr>(&e.v); n && !n->parts.empty())
+            if (auto it = stale_views.find(n->parts[0]); it != stale_views.end())
+            {
+                error(n->pos, "the view '" + n->parts[0] + "' is used after " + it->second
+                                  + ". The view can point to freed memory. Take the view again after the change, or use "
+                                    "an index");
+                stale_views.erase(it);
+            }
+    }
+
     void on_expr(const Expr& e)
     {
-        if (!is_cpp && (!refs.empty() || !iterating.empty()))
+        if (!is_cpp && (!refs.empty() || !iterating.empty() || !view_src.empty()))
             check_invalidation(e);
+        if (!stale_views.empty() && scopes.empty())
+            check_stale_view(e);
         if (auto* un = std::get_if<UnaryExpr>(&e.v))
         {
             check_cast(*un);
@@ -1824,6 +1938,9 @@ struct Checker
                 error(f.pos, "a 'Task' field is not supported: hold the task in a local variable or in a host object");
             if (!is_cpp) // a ".cpp" field is the C++ of the user; the reload moves a field that does not copy
                 check_copyable(f.type, f.pos);
+            if (!is_cpp && has_view_word(f.type) && !(f.init && std::holds_alternative<StringExpr>(f.init->v)))
+                error(f.pos, "a view ('T[]' or 'std.string_view') cannot be stored in a field or a container: it can "
+                             "outlive its source. Use std.vector<T> or std.string");
             if (f.init)
             {
                 locals.clear();

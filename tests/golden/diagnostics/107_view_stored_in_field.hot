@@ -1,0 +1,5 @@
+class Store {
+    std.string_view name;
+    std.vector<std.string_view> names;
+    std.string_view Fixed = "literal";
+}

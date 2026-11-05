@@ -27,6 +27,15 @@ This list shows what version 1 does not support.
   - `ref r = xs[await Idx()]` is allowed, because the ref starts after its own statement. Another live ref gives the error about that ref.
   - The check of `foreach (var x in c)` (see [Runtime errors](statements-errors.html#change-of-a-container-in-a-foreach)) sees only a range that is a local or a field of `this`, such as `xs` or `this.xs`. It compares the name of the root and does no alias analysis. A change through another name, a call of a script method, a free function or a lambda is not checked. A local that hides the field name can give a false error.
   - A `.cpp` script keeps C++ semantics and has no `ref` lifetime rules.
+- The check of a view (`T[]` and `std.string_view`, see [Views](types.html#views)) has these limits:
+  - It tracks a view local with a declared type and a source that is a name or a field of `this`. A `var` view, a view from a call (`var s = v.subspan(1)`) and a view of an element are not tracked.
+  - A view local over a field (`std.string_view w = this.label;`) is tracked as a view of the field. A literal initializer of the field does not make it safe.
+  - It follows the order of the text. A shape change at the end of a loop body and a use at its start are not seen. A shape change in one branch makes a use in another branch an error, unless the branch ends with `return`, `break`, `continue` or `throw`.
+  - It sees direct mutation only, as the `ref` check does (see above). A change through an alias, another method or a free function is not seen.
+  - A view that a lambda captures, a view parameter of an `async` method, and a view that a native function stores are not checked. The translator cannot tell a stored closure from an immediate call (a sort comparator). The owner can end first, and the view then points to freed memory. Copy the values (`std.vector<T>`, `std.string`) in such code.
+  - A native function that takes a `ref`, a `T&` or a view can keep it. The checker cannot see this. The `as_ref` check only tests for null at the call.
+  - A view in a container field of a native type or in a tuple is not checked. A `std.string_view` that a script call returns from a native getter has the lifetime that the native code gives it.
+- A raw `T*` in a local or a parameter keeps its target address across a reload or after a native free. A `CheckedPtr` field is checked, a local or a parameter is not. A native `T*` that the host frees while a script frame holds it is undefined behavior. Keep a `CheckedPtr` or a handle, and check it again after a call that can free the object.
 - A script class, struct or enum with the name of a C++ type from a `using` header. Rename the script type.
 - Shared state in an `inline` function, an `inline` variable or a template static member of a host header. The script modules build with hidden symbol visibility. Each module gets its own copy of that state, and the host does not share it. Put such state in a `.cpp` file of the host, or mark it exported.
 - A namespace block in a `.hot` script. Use `using ns;` for a native namespace.

@@ -544,6 +544,7 @@ inline std::string array_types(
     std::string out;
     std::size_t start = 0; // the start of the current element type in "out"
     std::size_t i = 0;
+    int paren = 0; // the depth inside "(...)": a function signature, where a "T[]" is a parameter and not storage
     while (i < t.size())
     {
         const char c = t[i];
@@ -551,6 +552,7 @@ inline std::string array_types(
         {
             out += c;
             ++i;
+            paren += c == '(' ? 1 : c == ')' ? -1 : 0;
             if (c == '<' || c == ',' || c == '(')
             {
                 start = out.size();
@@ -576,7 +578,7 @@ inline std::string array_types(
             if (!literal)
             {
                 // "T[]" is a view. The text stays as it is. A later pass checks where it is legal.
-                if (size.empty() && view_ok)
+                if (size.empty() && (view_ok || paren > 0))
                 {
                     bad = true;
                     break;

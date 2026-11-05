@@ -1,0 +1,7 @@
+105_view_used_after_shape_change.hot:8:16: error: the view 's' is used after 'v.push_back()' changes 'v'. The view can point to freed memory. Take the view again after the change, or use an index
+    8 |         return s[0];
+105_view_used_after_shape_change.hot:14:16: error: the view 's' is used after 'xs.clear()' changes 'xs'. The view can point to freed memory. Take the view again after the change, or use an index
+   14 |         return s[0];
+105_view_used_after_shape_change.hot:21:16: error: the view 's' is used after 'v' passed by 'ref' changes 'v'. The view can point to freed memory. Take the view again after the change, or use an index
+   21 |         return s[0];
+3 errors generated.

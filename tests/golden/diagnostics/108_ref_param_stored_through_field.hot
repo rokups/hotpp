@@ -1,0 +1,11 @@
+class Keeper {
+    int* p;
+
+    void Keep(ref int r) {
+        this.p = &r;
+    }
+
+    void KeepElement(int[] v) {
+        this.p = &v[0];
+    }
+}
