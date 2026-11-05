@@ -438,6 +438,8 @@ void GaugeState_g1::Tick(float dt)
 #line 17 "props_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 17 "props_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 17 "props_v1.hot"
     HOT_TRACE_FRAME("Gauge.Tick", "props_v1.hot");
 #line 17 "props_v1.hot"
     HOT_TRACE_LINE(); if (Gauge__get_Hp(__self) < Gauge__get_MaxHp(__self)) Gauge__set_Hp(__self, Gauge__get_Hp(__self) + (1.0f));
@@ -447,7 +449,7 @@ void GaugeState_g1::Tick(float dt)
     HOT_TRACE_LINE(); Gauge__set_Level(__self, Gauge__get_Level(__self) + 1);
 #line 20 "props_v1.hot"
 }
-#line 451 "props_v1.hot.cpp"
+#line 453 "props_v1.hot.cpp"
 
 #line 22 "props_v1.hot"
 void GaugeState_g1::TakeDamage_f(float amount)
@@ -466,6 +468,8 @@ void GaugeState_g1::TakeDamage_f(float amount)
 #line 23 "props_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 23 "props_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 23 "props_v1.hot"
     HOT_TRACE_FRAME("Gauge.TakeDamage", "props_v1.hot");
 #line 23 "props_v1.hot"
     HOT_TRACE_LINE(); Gauge__set_Shield(__self, Gauge__get_Shield(__self) - (amount));
@@ -473,7 +477,7 @@ void GaugeState_g1::TakeDamage_f(float amount)
     HOT_TRACE_LINE(); if (Gauge__get_Shield(__self) <= 0.0f) Gauge__set_Hp(__self, Gauge__get_Hp(__self) - amount);
 #line 25 "props_v1.hot"
 }
-#line 477 "props_v1.hot.cpp"
+#line 481 "props_v1.hot.cpp"
 
 #line 27 "props_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static float Gauge__total(Gauge_Shell* __self)
@@ -483,7 +487,7 @@ void GaugeState_g1::TakeDamage_f(float amount)
     return state_of(__self)->total();
 #line 27 "props_v1.hot"
 }
-#line 487 "props_v1.hot.cpp"
+#line 491 "props_v1.hot.cpp"
 #line 27 "props_v1.hot"
 float GaugeState_g1::total()
 #line 27 "props_v1.hot"
@@ -501,12 +505,14 @@ float GaugeState_g1::total()
 #line 28 "props_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 28 "props_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 28 "props_v1.hot"
     HOT_TRACE_FRAME("Gauge.total", "props_v1.hot");
 #line 28 "props_v1.hot"
     HOT_TRACE_LINE(); return Gauge__get_Hp(__self) + Gauge__get_Shield(__self);
 #line 29 "props_v1.hot"
 }
-#line 510 "props_v1.hot.cpp"
+#line 516 "props_v1.hot.cpp"
 
 #line 7 "props_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static float Gauge__get_Hp(Gauge_Shell* __self)
@@ -516,7 +522,7 @@ float GaugeState_g1::total()
     return state_of(__self)->get_Hp();
 #line 7 "props_v1.hot"
 }
-#line 520 "props_v1.hot.cpp"
+#line 526 "props_v1.hot.cpp"
 #line 7 "props_v1.hot"
 float GaugeState_g1::get_Hp()
 #line 7 "props_v1.hot"
@@ -534,12 +540,14 @@ float GaugeState_g1::get_Hp()
 #line 7 "props_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 7 "props_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 7 "props_v1.hot"
     HOT_TRACE_FRAME("Gauge.get_Hp", "props_v1.hot");
 #line 7 "props_v1.hot"
     HOT_TRACE_LINE(); return __st->__p_Hp;
 #line 7 "props_v1.hot"
 }
-#line 543 "props_v1.hot.cpp"
+#line 551 "props_v1.hot.cpp"
 
 #line 7 "props_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Gauge__set_Hp(Gauge_Shell* __self, float value)
@@ -549,7 +557,7 @@ float GaugeState_g1::get_Hp()
     return state_of(__self)->set_Hp(std::forward<float>(value));
 #line 7 "props_v1.hot"
 }
-#line 553 "props_v1.hot.cpp"
+#line 561 "props_v1.hot.cpp"
 #line 7 "props_v1.hot"
 void GaugeState_g1::set_Hp(float const value)
 #line 7 "props_v1.hot"
@@ -567,12 +575,14 @@ void GaugeState_g1::set_Hp(float const value)
 #line 7 "props_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 7 "props_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 7 "props_v1.hot"
     HOT_TRACE_FRAME("Gauge.set_Hp", "props_v1.hot");
 #line 7 "props_v1.hot"
     HOT_TRACE_LINE(); __st->__p_Hp = value;
 #line 7 "props_v1.hot"
 }
-#line 576 "props_v1.hot.cpp"
+#line 586 "props_v1.hot.cpp"
 
 #line 8 "props_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static float Gauge__get_MaxHp(Gauge_Shell* __self)
@@ -582,7 +592,7 @@ void GaugeState_g1::set_Hp(float const value)
     return state_of(__self)->get_MaxHp();
 #line 8 "props_v1.hot"
 }
-#line 586 "props_v1.hot.cpp"
+#line 596 "props_v1.hot.cpp"
 #line 8 "props_v1.hot"
 float GaugeState_g1::get_MaxHp()
 #line 8 "props_v1.hot"
@@ -600,12 +610,14 @@ float GaugeState_g1::get_MaxHp()
 #line 8 "props_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 8 "props_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 8 "props_v1.hot"
     HOT_TRACE_FRAME("Gauge.get_MaxHp", "props_v1.hot");
 #line 8 "props_v1.hot"
     HOT_TRACE_LINE(); return __st->__p_MaxHp;
 #line 8 "props_v1.hot"
 }
-#line 609 "props_v1.hot.cpp"
+#line 621 "props_v1.hot.cpp"
 
 #line 9 "props_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Gauge__get_Level(Gauge_Shell* __self)
@@ -615,7 +627,7 @@ float GaugeState_g1::get_MaxHp()
     return state_of(__self)->get_Level();
 #line 9 "props_v1.hot"
 }
-#line 619 "props_v1.hot.cpp"
+#line 631 "props_v1.hot.cpp"
 #line 9 "props_v1.hot"
 int32_t GaugeState_g1::get_Level()
 #line 9 "props_v1.hot"
@@ -633,12 +645,14 @@ int32_t GaugeState_g1::get_Level()
 #line 9 "props_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 9 "props_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 9 "props_v1.hot"
     HOT_TRACE_FRAME("Gauge.get_Level", "props_v1.hot");
 #line 9 "props_v1.hot"
     HOT_TRACE_LINE(); return __st->__p_Level;
 #line 9 "props_v1.hot"
 }
-#line 642 "props_v1.hot.cpp"
+#line 656 "props_v1.hot.cpp"
 
 #line 9 "props_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Gauge__set_Level(Gauge_Shell* __self, int32_t value)
@@ -648,7 +662,7 @@ int32_t GaugeState_g1::get_Level()
     return state_of(__self)->set_Level(std::forward<int32_t>(value));
 #line 9 "props_v1.hot"
 }
-#line 652 "props_v1.hot.cpp"
+#line 666 "props_v1.hot.cpp"
 #line 9 "props_v1.hot"
 void GaugeState_g1::set_Level(int32_t const value)
 #line 9 "props_v1.hot"
@@ -666,12 +680,14 @@ void GaugeState_g1::set_Level(int32_t const value)
 #line 9 "props_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 9 "props_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 9 "props_v1.hot"
     HOT_TRACE_FRAME("Gauge.set_Level", "props_v1.hot");
 #line 9 "props_v1.hot"
     HOT_TRACE_LINE(); __st->__p_Level = value;
 #line 9 "props_v1.hot"
 }
-#line 675 "props_v1.hot.cpp"
+#line 691 "props_v1.hot.cpp"
 
 #line 12 "props_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static float Gauge__get_Shield(Gauge_Shell* __self)
@@ -681,7 +697,7 @@ void GaugeState_g1::set_Level(int32_t const value)
     return state_of(__self)->get_Shield();
 #line 12 "props_v1.hot"
 }
-#line 685 "props_v1.hot.cpp"
+#line 701 "props_v1.hot.cpp"
 #line 12 "props_v1.hot"
 float GaugeState_g1::get_Shield()
 #line 12 "props_v1.hot"
@@ -699,12 +715,14 @@ float GaugeState_g1::get_Shield()
 #line 12 "props_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 12 "props_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 12 "props_v1.hot"
     HOT_TRACE_FRAME("Gauge.get_Shield", "props_v1.hot");
 #line 12 "props_v1.hot"
     HOT_TRACE_LINE(); return __st->shield_raw;
 #line 12 "props_v1.hot"
 }
-#line 708 "props_v1.hot.cpp"
+#line 726 "props_v1.hot.cpp"
 
 #line 13 "props_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Gauge__set_Shield(Gauge_Shell* __self, float value)
@@ -714,7 +732,7 @@ float GaugeState_g1::get_Shield()
     return state_of(__self)->set_Shield(std::forward<float>(value));
 #line 13 "props_v1.hot"
 }
-#line 718 "props_v1.hot.cpp"
+#line 736 "props_v1.hot.cpp"
 #line 13 "props_v1.hot"
 void GaugeState_g1::set_Shield(float const value)
 #line 13 "props_v1.hot"
@@ -732,12 +750,14 @@ void GaugeState_g1::set_Shield(float const value)
 #line 13 "props_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 13 "props_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 13 "props_v1.hot"
     HOT_TRACE_FRAME("Gauge.set_Shield", "props_v1.hot");
 #line 13 "props_v1.hot"
     HOT_TRACE_LINE(); __st->shield_raw = value < 0.0f ? 0.0f : value;
 #line 13 "props_v1.hot"
 }
-#line 741 "props_v1.hot.cpp"
+#line 761 "props_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

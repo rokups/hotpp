@@ -304,6 +304,8 @@ void GridState_g1::Tick(float dt)
 #line 12 "module_attrs_array_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 12 "module_attrs_array_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 12 "module_attrs_array_v1.hot"
     HOT_TRACE_FRAME("Grid.Tick", "module_attrs_array_v1.hot");
 #line 12 "module_attrs_array_v1.hot"
     HOT_TRACE_LINE(); hot::index(__st->cells, 1) = 7;
@@ -311,7 +313,7 @@ void GridState_g1::Tick(float dt)
     HOT_TRACE_LINE(); hot::index(hot::index(__st->weights, 1), 2) = dt;
 #line 14 "module_attrs_array_v1.hot"
 }
-#line 315 "module_attrs_array_v1.hot.cpp"
+#line 317 "module_attrs_array_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

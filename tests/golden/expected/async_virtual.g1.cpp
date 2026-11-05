@@ -495,12 +495,14 @@ hot::Task<int32_t> BaseState_g1::Compute(int32_t x)
 #line 6 "async_virtual.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 6 "async_virtual.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 6 "async_virtual.hot"
     HOT_TRACE_FRAME("Base.Compute", "async_virtual.hot");
 #line 6 "async_virtual.hot"
     return Base__Compute_co(hot::detail::TaskOriginData{GEN, &hot_live, "Base::Compute"}, __self, std::forward<int32_t>(x));
 #line 7 "async_virtual.hot"
 }
-#line 504 "async_virtual.hot.cpp"
+#line 506 "async_virtual.hot.cpp"
 
 #line 9 "async_virtual.hot"
 [[maybe_unused]] HOT_HIDDEN static hot::Task<int32_t> Base__Run(Base_Shell* __self, int32_t x)
@@ -510,7 +512,7 @@ hot::Task<int32_t> BaseState_g1::Compute(int32_t x)
     return state_of(__self)->Run(std::forward<int32_t>(x));
 #line 9 "async_virtual.hot"
 }
-#line 514 "async_virtual.hot.cpp"
+#line 516 "async_virtual.hot.cpp"
 #line 9 "async_virtual.hot"
 [[maybe_unused]] static hot::Task<int32_t> Base__Run_co(hot::detail::TaskOriginData, Base_Shell* __self, int32_t x)
 #line 9 "async_virtual.hot"
@@ -521,7 +523,7 @@ hot::Task<int32_t> BaseState_g1::Compute(int32_t x)
     co_return co_await Base__Compute_virt(__self, x);
 #line 11 "async_virtual.hot"
 }
-#line 525 "async_virtual.hot.cpp"
+#line 527 "async_virtual.hot.cpp"
 
 #line 9 "async_virtual.hot"
 hot::Task<int32_t> BaseState_g1::Run(int32_t x)
@@ -540,12 +542,14 @@ hot::Task<int32_t> BaseState_g1::Run(int32_t x)
 #line 10 "async_virtual.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 10 "async_virtual.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 10 "async_virtual.hot"
     HOT_TRACE_FRAME("Base.Run", "async_virtual.hot");
 #line 10 "async_virtual.hot"
     return Base__Run_co(hot::detail::TaskOriginData{GEN, &hot_live, "Base::Run"}, __self, std::forward<int32_t>(x));
 #line 11 "async_virtual.hot"
 }
-#line 549 "async_virtual.hot.cpp"
+#line 553 "async_virtual.hot.cpp"
 
 #line 15 "async_virtual.hot"
 [[maybe_unused]] HOT_HIDDEN static hot::Task<int32_t> Derived__Compute(Derived_Shell* __self, int32_t x)
@@ -555,7 +559,7 @@ hot::Task<int32_t> BaseState_g1::Run(int32_t x)
     return state_of(__self)->Compute(std::forward<int32_t>(x));
 #line 15 "async_virtual.hot"
 }
-#line 559 "async_virtual.hot.cpp"
+#line 563 "async_virtual.hot.cpp"
 #line 15 "async_virtual.hot"
 [[maybe_unused]] static hot::Task<int32_t> Derived__Compute_co(hot::detail::TaskOriginData, Derived_Shell* __self, int32_t x)
 #line 15 "async_virtual.hot"
@@ -568,7 +572,7 @@ hot::Task<int32_t> BaseState_g1::Run(int32_t x)
     co_return b * 10;
 #line 18 "async_virtual.hot"
 }
-#line 572 "async_virtual.hot.cpp"
+#line 576 "async_virtual.hot.cpp"
 
 #line 15 "async_virtual.hot"
 hot::Task<int32_t> DerivedState_g1::Compute(int32_t x)
@@ -587,12 +591,14 @@ hot::Task<int32_t> DerivedState_g1::Compute(int32_t x)
 #line 16 "async_virtual.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 16 "async_virtual.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 16 "async_virtual.hot"
     HOT_TRACE_FRAME("Derived.Compute", "async_virtual.hot");
 #line 16 "async_virtual.hot"
     return Derived__Compute_co(hot::detail::TaskOriginData{GEN, &hot_live, "Derived::Compute"}, __self, std::forward<int32_t>(x));
 #line 18 "async_virtual.hot"
 }
-#line 596 "async_virtual.hot.cpp"
+#line 602 "async_virtual.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

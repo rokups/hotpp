@@ -467,6 +467,8 @@ void LampState_g2::ctor()
 #line 13 "cpp_lambda_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 13 "cpp_lambda_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 13 "cpp_lambda_v2.cpp"
     HOT_TRACE_FRAME("Lamp.Lamp", "cpp_lambda_v2.cpp");
 #line 14 "cpp_lambda_v2.cpp"
 
@@ -475,7 +477,7 @@ void LampState_g2::ctor()
     
 #line 17 "cpp_lambda_v2.cpp"
 }
-#line 479 "cpp_lambda_v2.cpp.cpp"
+#line 481 "cpp_lambda_v2.cpp.cpp"
 
 #line 19 "cpp_lambda_v2.cpp"
 void LampState_g2::Tick(float dt)
@@ -493,6 +495,8 @@ void LampState_g2::Tick(float dt)
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Lamp_Shell*>(this->__hot_owner);
 #line 19 "cpp_lambda_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 19 "cpp_lambda_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
 #line 19 "cpp_lambda_v2.cpp"
     HOT_TRACE_FRAME("Lamp.Tick", "cpp_lambda_v2.cpp");
 #line 20 "cpp_lambda_v2.cpp"
@@ -522,7 +526,7 @@ void LampState_g2::Tick(float dt)
     
 #line 43 "cpp_lambda_v2.cpp"
 }
-#line 526 "cpp_lambda_v2.cpp.cpp"
+#line 530 "cpp_lambda_v2.cpp.cpp"
 
 #line 45 "cpp_lambda_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Lamp__bump(Lamp_Shell* __self, int n)
@@ -532,7 +536,7 @@ void LampState_g2::Tick(float dt)
     return state_of(__self)->bump(std::forward<int>(n));
 #line 45 "cpp_lambda_v2.cpp"
 }
-#line 536 "cpp_lambda_v2.cpp.cpp"
+#line 540 "cpp_lambda_v2.cpp.cpp"
 #line 45 "cpp_lambda_v2.cpp"
 void LampState_g2::bump(int n)
 #line 45 "cpp_lambda_v2.cpp"
@@ -550,12 +554,14 @@ void LampState_g2::bump(int n)
 #line 45 "cpp_lambda_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 45 "cpp_lambda_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 45 "cpp_lambda_v2.cpp"
     HOT_TRACE_FRAME("Lamp.bump", "cpp_lambda_v2.cpp");
 #line 45 "cpp_lambda_v2.cpp"
  count += n + 5; 
 #line 45 "cpp_lambda_v2.cpp"
 }
-#line 559 "cpp_lambda_v2.cpp.cpp"
+#line 565 "cpp_lambda_v2.cpp.cpp"
 
 #line 46 "cpp_lambda_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static bool Lamp__self_is_set(Lamp_Shell* __self, Actor * a)
@@ -565,7 +571,7 @@ void LampState_g2::bump(int n)
     return state_of(__self)->self_is_set(std::forward<Actor *>(a));
 #line 46 "cpp_lambda_v2.cpp"
 }
-#line 569 "cpp_lambda_v2.cpp.cpp"
+#line 575 "cpp_lambda_v2.cpp.cpp"
 #line 46 "cpp_lambda_v2.cpp"
 bool LampState_g2::self_is_set(Actor * a)
 #line 46 "cpp_lambda_v2.cpp"
@@ -583,12 +589,14 @@ bool LampState_g2::self_is_set(Actor * a)
 #line 46 "cpp_lambda_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 46 "cpp_lambda_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 46 "cpp_lambda_v2.cpp"
     HOT_TRACE_FRAME("Lamp.self_is_set", "cpp_lambda_v2.cpp");
 #line 46 "cpp_lambda_v2.cpp"
  return a != nullptr; 
 #line 46 "cpp_lambda_v2.cpp"
 }
-#line 592 "cpp_lambda_v2.cpp.cpp"
+#line 600 "cpp_lambda_v2.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

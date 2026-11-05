@@ -36,6 +36,17 @@
 #ifndef HOT_RUNTIME_CHECKS
     #define HOT_RUNTIME_CHECKS 1
 #endif
+// The default limit of the script call depth (hot::set_max_call_depth changes it at run time). A
+// script function called above this depth throws ScriptError "stack overflow". The check is always
+// on. The largest value is 65519. The macro has an effect only when the runtime library is compiled.
+// The default is 10000. On Windows the main thread stack is 1 MB, so the default is 1000.
+#ifndef HOT_MAX_CALL_DEPTH
+    #ifdef _WIN32
+        #define HOT_MAX_CALL_DEPTH 1000
+    #else
+        #define HOT_MAX_CALL_DEPTH 10000
+    #endif
+#endif
 // The thread safety of the runtime. The value 1 means that any thread can create and destroy
 // script objects: the list of live objects has a small lock. The value 0 removes the lock, and
 // only one thread at a time creates or destroys script objects. The default is 1. The host and the

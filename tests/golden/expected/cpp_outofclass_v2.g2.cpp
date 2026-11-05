@@ -756,6 +756,8 @@ void FighterState_g2::ctor()
 #line 11 "cpp_outofclass_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 11 "cpp_outofclass_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 11 "cpp_outofclass_v2.cpp"
     HOT_TRACE_FRAME("Fighter.Fighter", "cpp_outofclass_v2.cpp");
 #line 31 "cpp_outofclass_v2.cpp"
 
@@ -763,7 +765,7 @@ void FighterState_g2::ctor()
 
 #line 33 "cpp_outofclass_v2.cpp"
 }
-#line 767 "cpp_outofclass_v2.cpp.cpp"
+#line 769 "cpp_outofclass_v2.cpp.cpp"
 
 #line 12 "cpp_outofclass_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Fighter__dtor(Fighter_Shell* __self)
@@ -773,7 +775,7 @@ void FighterState_g2::ctor()
     return state_of(__self)->dtor();
 #line 12 "cpp_outofclass_v2.cpp"
 }
-#line 777 "cpp_outofclass_v2.cpp.cpp"
+#line 779 "cpp_outofclass_v2.cpp.cpp"
 #line 12 "cpp_outofclass_v2.cpp"
 void FighterState_g2::dtor()
 #line 12 "cpp_outofclass_v2.cpp"
@@ -798,7 +800,7 @@ void FighterState_g2::dtor()
 
 #line 38 "cpp_outofclass_v2.cpp"
 }
-#line 802 "cpp_outofclass_v2.cpp.cpp"
+#line 804 "cpp_outofclass_v2.cpp.cpp"
 
 #line 14 "cpp_outofclass_v2.cpp"
 void FighterState_g2::Tick(float dt)
@@ -817,6 +819,8 @@ void FighterState_g2::Tick(float dt)
 #line 14 "cpp_outofclass_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 14 "cpp_outofclass_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 14 "cpp_outofclass_v2.cpp"
     HOT_TRACE_FRAME("Fighter.Tick", "cpp_outofclass_v2.cpp");
 #line 41 "cpp_outofclass_v2.cpp"
 
@@ -827,7 +831,7 @@ void FighterState_g2::Tick(float dt)
 
 #line 46 "cpp_outofclass_v2.cpp"
 }
-#line 831 "cpp_outofclass_v2.cpp.cpp"
+#line 835 "cpp_outofclass_v2.cpp.cpp"
 
 #line 16 "cpp_outofclass_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Fighter__hit(Fighter_Shell* __self, int damage, int factor)
@@ -837,7 +841,7 @@ void FighterState_g2::Tick(float dt)
     return state_of(__self)->hit(std::forward<int>(damage), std::forward<int>(factor));
 #line 16 "cpp_outofclass_v2.cpp"
 }
-#line 841 "cpp_outofclass_v2.cpp.cpp"
+#line 845 "cpp_outofclass_v2.cpp.cpp"
 #line 16 "cpp_outofclass_v2.cpp"
 int FighterState_g2::hit(int damage, int factor)
 #line 16 "cpp_outofclass_v2.cpp"
@@ -855,6 +859,8 @@ int FighterState_g2::hit(int damage, int factor)
 #line 16 "cpp_outofclass_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 16 "cpp_outofclass_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 16 "cpp_outofclass_v2.cpp"
     HOT_TRACE_FRAME("Fighter.hit", "cpp_outofclass_v2.cpp");
 #line 50 "cpp_outofclass_v2.cpp"
 
@@ -863,7 +869,7 @@ int FighterState_g2::hit(int damage, int factor)
 
 #line 53 "cpp_outofclass_v2.cpp"
 }
-#line 867 "cpp_outofclass_v2.cpp.cpp"
+#line 873 "cpp_outofclass_v2.cpp.cpp"
 
 #line 17 "cpp_outofclass_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Fighter__get(Fighter_Shell* __self)
@@ -873,7 +879,7 @@ int FighterState_g2::hit(int damage, int factor)
     return state_of(__self)->get();
 #line 17 "cpp_outofclass_v2.cpp"
 }
-#line 877 "cpp_outofclass_v2.cpp.cpp"
+#line 883 "cpp_outofclass_v2.cpp.cpp"
 #line 17 "cpp_outofclass_v2.cpp"
 int FighterState_g2::get()
 #line 17 "cpp_outofclass_v2.cpp"
@@ -891,6 +897,8 @@ int FighterState_g2::get()
 #line 17 "cpp_outofclass_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 17 "cpp_outofclass_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 17 "cpp_outofclass_v2.cpp"
     HOT_TRACE_FRAME("Fighter.get", "cpp_outofclass_v2.cpp");
 #line 56 "cpp_outofclass_v2.cpp"
 
@@ -898,7 +906,7 @@ int FighterState_g2::get()
 
 #line 58 "cpp_outofclass_v2.cpp"
 }
-#line 902 "cpp_outofclass_v2.cpp.cpp"
+#line 910 "cpp_outofclass_v2.cpp.cpp"
 
 #line 26 "cpp_outofclass_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Marker__ctor(Marker_Shell* __self)
@@ -908,7 +916,7 @@ int FighterState_g2::get()
     return state_of(__self)->ctor();
 #line 26 "cpp_outofclass_v2.cpp"
 }
-#line 912 "cpp_outofclass_v2.cpp.cpp"
+#line 920 "cpp_outofclass_v2.cpp.cpp"
 #line 26 "cpp_outofclass_v2.cpp"
 void MarkerState_g2::ctor()
 #line 26 "cpp_outofclass_v2.cpp"
@@ -926,12 +934,14 @@ void MarkerState_g2::ctor()
 #line 26 "cpp_outofclass_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 26 "cpp_outofclass_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 26 "cpp_outofclass_v2.cpp"
     HOT_TRACE_FRAME("Marker.Marker", "cpp_outofclass_v2.cpp");
 #line 26 "cpp_outofclass_v2.cpp"
 
 #line 26 "cpp_outofclass_v2.cpp"
 }
-#line 935 "cpp_outofclass_v2.cpp.cpp"
+#line 945 "cpp_outofclass_v2.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

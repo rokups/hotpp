@@ -935,12 +935,14 @@ void VecState_g1::ctor()
 #line 10 "cpp_operators_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 10 "cpp_operators_v1.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 10 "cpp_operators_v1.cpp"
     HOT_TRACE_FRAME("Vec.Vec", "cpp_operators_v1.cpp");
 #line 10 "cpp_operators_v1.cpp"
 
 #line 10 "cpp_operators_v1.cpp"
 }
-#line 944 "cpp_operators_v1.cpp.cpp"
+#line 946 "cpp_operators_v1.cpp.cpp"
 
 #line 12 "cpp_operators_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static Vec & Vec__op_add_assign(Vec_Shell* __self, int v)
@@ -950,7 +952,7 @@ void VecState_g1::ctor()
     return state_of(__self)->op_add_assign(std::forward<int>(v));
 #line 12 "cpp_operators_v1.cpp"
 }
-#line 954 "cpp_operators_v1.cpp.cpp"
+#line 956 "cpp_operators_v1.cpp.cpp"
 #line 12 "cpp_operators_v1.cpp"
 Vec & VecState_g1::op_add_assign(int v)
 #line 12 "cpp_operators_v1.cpp"
@@ -968,6 +970,8 @@ Vec & VecState_g1::op_add_assign(int v)
 #line 12 "cpp_operators_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 12 "cpp_operators_v1.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 12 "cpp_operators_v1.cpp"
     HOT_TRACE_FRAME("Vec.op_add_assign", "cpp_operators_v1.cpp");
 #line 13 "cpp_operators_v1.cpp"
 
@@ -976,7 +980,7 @@ Vec & VecState_g1::op_add_assign(int v)
     
 #line 16 "cpp_operators_v1.cpp"
 }
-#line 980 "cpp_operators_v1.cpp.cpp"
+#line 984 "cpp_operators_v1.cpp.cpp"
 
 #line 17 "cpp_operators_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static bool Vec__op_eq(Vec_Shell* __self, const Vec & o)
@@ -986,7 +990,7 @@ Vec & VecState_g1::op_add_assign(int v)
     return state_of(__self)->op_eq(std::forward<const Vec &>(o));
 #line 17 "cpp_operators_v1.cpp"
 }
-#line 990 "cpp_operators_v1.cpp.cpp"
+#line 994 "cpp_operators_v1.cpp.cpp"
 #line 17 "cpp_operators_v1.cpp"
 bool VecState_g1::op_eq(const Vec & o)
 #line 17 "cpp_operators_v1.cpp"
@@ -1004,12 +1008,14 @@ bool VecState_g1::op_eq(const Vec & o)
 #line 17 "cpp_operators_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 17 "cpp_operators_v1.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 17 "cpp_operators_v1.cpp"
     HOT_TRACE_FRAME("Vec.op_eq", "cpp_operators_v1.cpp");
 #line 17 "cpp_operators_v1.cpp"
  return n == state_of(const_cast<Vec_Shell*>(&(o)))->n; 
 #line 17 "cpp_operators_v1.cpp"
 }
-#line 1013 "cpp_operators_v1.cpp.cpp"
+#line 1019 "cpp_operators_v1.cpp.cpp"
 
 #line 18 "cpp_operators_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static bool Vec__op_ne(Vec_Shell* __self, const Vec & o)
@@ -1019,7 +1025,7 @@ bool VecState_g1::op_eq(const Vec & o)
     return state_of(__self)->op_ne(std::forward<const Vec &>(o));
 #line 18 "cpp_operators_v1.cpp"
 }
-#line 1023 "cpp_operators_v1.cpp.cpp"
+#line 1029 "cpp_operators_v1.cpp.cpp"
 #line 18 "cpp_operators_v1.cpp"
 bool VecState_g1::op_ne(const Vec & o)
 #line 18 "cpp_operators_v1.cpp"
@@ -1037,12 +1043,14 @@ bool VecState_g1::op_ne(const Vec & o)
 #line 18 "cpp_operators_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 18 "cpp_operators_v1.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 18 "cpp_operators_v1.cpp"
     HOT_TRACE_FRAME("Vec.op_ne", "cpp_operators_v1.cpp");
 #line 18 "cpp_operators_v1.cpp"
  return n != state_of(const_cast<Vec_Shell*>(&(o)))->n; 
 #line 18 "cpp_operators_v1.cpp"
 }
-#line 1046 "cpp_operators_v1.cpp.cpp"
+#line 1054 "cpp_operators_v1.cpp.cpp"
 
 #line 19 "cpp_operators_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static bool Vec__op_lt(Vec_Shell* __self, const Vec & o)
@@ -1052,7 +1060,7 @@ bool VecState_g1::op_ne(const Vec & o)
     return state_of(__self)->op_lt(std::forward<const Vec &>(o));
 #line 19 "cpp_operators_v1.cpp"
 }
-#line 1056 "cpp_operators_v1.cpp.cpp"
+#line 1064 "cpp_operators_v1.cpp.cpp"
 #line 19 "cpp_operators_v1.cpp"
 bool VecState_g1::op_lt(const Vec & o)
 #line 19 "cpp_operators_v1.cpp"
@@ -1070,12 +1078,14 @@ bool VecState_g1::op_lt(const Vec & o)
 #line 19 "cpp_operators_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 19 "cpp_operators_v1.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 19 "cpp_operators_v1.cpp"
     HOT_TRACE_FRAME("Vec.op_lt", "cpp_operators_v1.cpp");
 #line 19 "cpp_operators_v1.cpp"
  return n < state_of(const_cast<Vec_Shell*>(&(o)))->n; 
 #line 19 "cpp_operators_v1.cpp"
 }
-#line 1079 "cpp_operators_v1.cpp.cpp"
+#line 1089 "cpp_operators_v1.cpp.cpp"
 
 #line 20 "cpp_operators_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Vec__op_call(Vec_Shell* __self, int k)
@@ -1085,7 +1095,7 @@ bool VecState_g1::op_lt(const Vec & o)
     return state_of(__self)->op_call(std::forward<int>(k));
 #line 20 "cpp_operators_v1.cpp"
 }
-#line 1089 "cpp_operators_v1.cpp.cpp"
+#line 1099 "cpp_operators_v1.cpp.cpp"
 #line 20 "cpp_operators_v1.cpp"
 int VecState_g1::op_call(int k)
 #line 20 "cpp_operators_v1.cpp"
@@ -1103,12 +1113,14 @@ int VecState_g1::op_call(int k)
 #line 20 "cpp_operators_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 20 "cpp_operators_v1.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 20 "cpp_operators_v1.cpp"
     HOT_TRACE_FRAME("Vec.op_call", "cpp_operators_v1.cpp");
 #line 20 "cpp_operators_v1.cpp"
  return n + k; 
 #line 20 "cpp_operators_v1.cpp"
 }
-#line 1112 "cpp_operators_v1.cpp.cpp"
+#line 1124 "cpp_operators_v1.cpp.cpp"
 
 #line 21 "cpp_operators_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Vec__op_index(Vec_Shell* __self, int i)
@@ -1118,7 +1130,7 @@ int VecState_g1::op_call(int k)
     return state_of(__self)->op_index(std::forward<int>(i));
 #line 21 "cpp_operators_v1.cpp"
 }
-#line 1122 "cpp_operators_v1.cpp.cpp"
+#line 1134 "cpp_operators_v1.cpp.cpp"
 #line 21 "cpp_operators_v1.cpp"
 int VecState_g1::op_index(int i)
 #line 21 "cpp_operators_v1.cpp"
@@ -1136,12 +1148,14 @@ int VecState_g1::op_index(int i)
 #line 21 "cpp_operators_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 21 "cpp_operators_v1.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 21 "cpp_operators_v1.cpp"
     HOT_TRACE_FRAME("Vec.op_index", "cpp_operators_v1.cpp");
 #line 21 "cpp_operators_v1.cpp"
  return n * 10 + i; 
 #line 21 "cpp_operators_v1.cpp"
 }
-#line 1145 "cpp_operators_v1.cpp.cpp"
+#line 1159 "cpp_operators_v1.cpp.cpp"
 
 #line 22 "cpp_operators_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Vec__op_neg(Vec_Shell* __self)
@@ -1151,7 +1165,7 @@ int VecState_g1::op_index(int i)
     return state_of(__self)->op_neg();
 #line 22 "cpp_operators_v1.cpp"
 }
-#line 1155 "cpp_operators_v1.cpp.cpp"
+#line 1169 "cpp_operators_v1.cpp.cpp"
 #line 22 "cpp_operators_v1.cpp"
 int VecState_g1::op_neg()
 #line 22 "cpp_operators_v1.cpp"
@@ -1169,12 +1183,14 @@ int VecState_g1::op_neg()
 #line 22 "cpp_operators_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 22 "cpp_operators_v1.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 22 "cpp_operators_v1.cpp"
     HOT_TRACE_FRAME("Vec.op_neg", "cpp_operators_v1.cpp");
 #line 22 "cpp_operators_v1.cpp"
  return -n; 
 #line 22 "cpp_operators_v1.cpp"
 }
-#line 1178 "cpp_operators_v1.cpp.cpp"
+#line 1194 "cpp_operators_v1.cpp.cpp"
 
 #line 23 "cpp_operators_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Vec__op_sub(Vec_Shell* __self, const Vec & o)
@@ -1184,7 +1200,7 @@ int VecState_g1::op_neg()
     return state_of(__self)->op_sub(std::forward<const Vec &>(o));
 #line 23 "cpp_operators_v1.cpp"
 }
-#line 1188 "cpp_operators_v1.cpp.cpp"
+#line 1204 "cpp_operators_v1.cpp.cpp"
 #line 23 "cpp_operators_v1.cpp"
 int VecState_g1::op_sub(const Vec & o)
 #line 23 "cpp_operators_v1.cpp"
@@ -1202,12 +1218,14 @@ int VecState_g1::op_sub(const Vec & o)
 #line 23 "cpp_operators_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 23 "cpp_operators_v1.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 23 "cpp_operators_v1.cpp"
     HOT_TRACE_FRAME("Vec.op_sub", "cpp_operators_v1.cpp");
 #line 23 "cpp_operators_v1.cpp"
  return n - state_of(const_cast<Vec_Shell*>(&(o)))->n; 
 #line 23 "cpp_operators_v1.cpp"
 }
-#line 1211 "cpp_operators_v1.cpp.cpp"
+#line 1229 "cpp_operators_v1.cpp.cpp"
 
 #line 35 "cpp_operators_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Driver__ctor(Driver_Shell* __self)
@@ -1217,7 +1235,7 @@ int VecState_g1::op_sub(const Vec & o)
     return state_of(__self)->ctor();
 #line 35 "cpp_operators_v1.cpp"
 }
-#line 1221 "cpp_operators_v1.cpp.cpp"
+#line 1239 "cpp_operators_v1.cpp.cpp"
 #line 35 "cpp_operators_v1.cpp"
 void DriverState_g1::ctor()
 #line 35 "cpp_operators_v1.cpp"
@@ -1235,12 +1253,14 @@ void DriverState_g1::ctor()
 #line 35 "cpp_operators_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 35 "cpp_operators_v1.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 35 "cpp_operators_v1.cpp"
     HOT_TRACE_FRAME("Driver.Driver", "cpp_operators_v1.cpp");
 #line 35 "cpp_operators_v1.cpp"
 
 #line 35 "cpp_operators_v1.cpp"
 }
-#line 1244 "cpp_operators_v1.cpp.cpp"
+#line 1264 "cpp_operators_v1.cpp.cpp"
 
 #line 37 "cpp_operators_v1.cpp"
 void DriverState_g1::Tick(float dt)
@@ -1258,6 +1278,8 @@ void DriverState_g1::Tick(float dt)
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Driver_Shell*>(this->__hot_owner);
 #line 37 "cpp_operators_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 37 "cpp_operators_v1.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
 #line 37 "cpp_operators_v1.cpp"
     HOT_TRACE_FRAME("Driver.Tick", "cpp_operators_v1.cpp");
 #line 38 "cpp_operators_v1.cpp"
@@ -1278,7 +1300,7 @@ void DriverState_g1::Tick(float dt)
     
 #line 52 "cpp_operators_v1.cpp"
 }
-#line 1282 "cpp_operators_v1.cpp.cpp"
+#line 1304 "cpp_operators_v1.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

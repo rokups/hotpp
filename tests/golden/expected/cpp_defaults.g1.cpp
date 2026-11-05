@@ -401,6 +401,8 @@ void CounterState_g1::ctor(int start)
 #line 17 "cpp_defaults.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 17 "cpp_defaults.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 17 "cpp_defaults.cpp"
     HOT_TRACE_FRAME("Counter.Counter", "cpp_defaults.cpp");
 #line 18 "cpp_defaults.cpp"
 
@@ -408,7 +410,7 @@ void CounterState_g1::ctor(int start)
     
 #line 20 "cpp_defaults.cpp"
 }
-#line 412 "cpp_defaults.cpp.cpp"
+#line 414 "cpp_defaults.cpp.cpp"
 
 #line 23 "cpp_defaults.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Counter__Add(Counter_Shell* __self, int a, int b, int c)
@@ -418,7 +420,7 @@ void CounterState_g1::ctor(int start)
     return state_of(__self)->Add(std::forward<int>(a), std::forward<int>(b), std::forward<int>(c));
 #line 23 "cpp_defaults.cpp"
 }
-#line 422 "cpp_defaults.cpp.cpp"
+#line 424 "cpp_defaults.cpp.cpp"
 #line 23 "cpp_defaults.cpp"
 int CounterState_g1::Add(int a, int b, int c)
 #line 23 "cpp_defaults.cpp"
@@ -436,6 +438,8 @@ int CounterState_g1::Add(int a, int b, int c)
 #line 23 "cpp_defaults.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 23 "cpp_defaults.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 23 "cpp_defaults.cpp"
     HOT_TRACE_FRAME("Counter.Add", "cpp_defaults.cpp");
 #line 24 "cpp_defaults.cpp"
 
@@ -444,7 +448,7 @@ int CounterState_g1::Add(int a, int b, int c)
     
 #line 27 "cpp_defaults.cpp"
 }
-#line 448 "cpp_defaults.cpp.cpp"
+#line 452 "cpp_defaults.cpp.cpp"
 
 #line 29 "cpp_defaults.cpp"
 void CounterState_g1::Tick(float dt)
@@ -463,6 +467,8 @@ void CounterState_g1::Tick(float dt)
 #line 29 "cpp_defaults.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 29 "cpp_defaults.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 29 "cpp_defaults.cpp"
     HOT_TRACE_FRAME("Counter.Tick", "cpp_defaults.cpp");
 #line 30 "cpp_defaults.cpp"
 
@@ -472,7 +478,7 @@ void CounterState_g1::Tick(float dt)
     
 #line 34 "cpp_defaults.cpp"
 }
-#line 476 "cpp_defaults.cpp.cpp"
+#line 482 "cpp_defaults.cpp.cpp"
 
 #line 37 "cpp_defaults.cpp"
 void CounterState_g1::TakeDamage_f(float amount)
@@ -491,6 +497,8 @@ void CounterState_g1::TakeDamage_f(float amount)
 #line 37 "cpp_defaults.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 37 "cpp_defaults.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 37 "cpp_defaults.cpp"
     HOT_TRACE_FRAME("Counter.TakeDamage", "cpp_defaults.cpp");
 #line 38 "cpp_defaults.cpp"
 
@@ -498,7 +506,7 @@ void CounterState_g1::TakeDamage_f(float amount)
     
 #line 40 "cpp_defaults.cpp"
 }
-#line 502 "cpp_defaults.cpp.cpp"
+#line 510 "cpp_defaults.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

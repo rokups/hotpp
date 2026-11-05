@@ -748,12 +748,14 @@ void CounterState_g2::ctor()
 #line 9 "cpp_fluent_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 9 "cpp_fluent_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 9 "cpp_fluent_v2.cpp"
     HOT_TRACE_FRAME("Counter.Counter", "cpp_fluent_v2.cpp");
 #line 9 "cpp_fluent_v2.cpp"
 
 #line 9 "cpp_fluent_v2.cpp"
 }
-#line 757 "cpp_fluent_v2.cpp.cpp"
+#line 759 "cpp_fluent_v2.cpp.cpp"
 
 #line 12 "cpp_fluent_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static Counter & Counter__add(Counter_Shell* __self, int v)
@@ -763,7 +765,7 @@ void CounterState_g2::ctor()
     return state_of(__self)->add(std::forward<int>(v));
 #line 12 "cpp_fluent_v2.cpp"
 }
-#line 767 "cpp_fluent_v2.cpp.cpp"
+#line 769 "cpp_fluent_v2.cpp.cpp"
 #line 12 "cpp_fluent_v2.cpp"
 Counter & CounterState_g2::add(int v)
 #line 12 "cpp_fluent_v2.cpp"
@@ -781,6 +783,8 @@ Counter & CounterState_g2::add(int v)
 #line 12 "cpp_fluent_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 12 "cpp_fluent_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 12 "cpp_fluent_v2.cpp"
     HOT_TRACE_FRAME("Counter.add", "cpp_fluent_v2.cpp");
 #line 13 "cpp_fluent_v2.cpp"
 
@@ -789,7 +793,7 @@ Counter & CounterState_g2::add(int v)
     
 #line 16 "cpp_fluent_v2.cpp"
 }
-#line 793 "cpp_fluent_v2.cpp.cpp"
+#line 797 "cpp_fluent_v2.cpp.cpp"
 
 #line 18 "cpp_fluent_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static const Counter & Counter__peek(Counter_Shell* __self)
@@ -799,7 +803,7 @@ Counter & CounterState_g2::add(int v)
     return state_of(__self)->peek();
 #line 18 "cpp_fluent_v2.cpp"
 }
-#line 803 "cpp_fluent_v2.cpp.cpp"
+#line 807 "cpp_fluent_v2.cpp.cpp"
 #line 18 "cpp_fluent_v2.cpp"
 const Counter & CounterState_g2::peek()
 #line 18 "cpp_fluent_v2.cpp"
@@ -817,12 +821,14 @@ const Counter & CounterState_g2::peek()
 #line 18 "cpp_fluent_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 18 "cpp_fluent_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 18 "cpp_fluent_v2.cpp"
     HOT_TRACE_FRAME("Counter.peek", "cpp_fluent_v2.cpp");
 #line 18 "cpp_fluent_v2.cpp"
  return *__self; 
 #line 18 "cpp_fluent_v2.cpp"
 }
-#line 826 "cpp_fluent_v2.cpp.cpp"
+#line 832 "cpp_fluent_v2.cpp.cpp"
 
 #line 19 "cpp_fluent_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static Counter * Counter__self(Counter_Shell* __self)
@@ -832,7 +838,7 @@ const Counter & CounterState_g2::peek()
     return state_of(__self)->self();
 #line 19 "cpp_fluent_v2.cpp"
 }
-#line 836 "cpp_fluent_v2.cpp.cpp"
+#line 842 "cpp_fluent_v2.cpp.cpp"
 #line 19 "cpp_fluent_v2.cpp"
 Counter * CounterState_g2::self()
 #line 19 "cpp_fluent_v2.cpp"
@@ -850,12 +856,14 @@ Counter * CounterState_g2::self()
 #line 19 "cpp_fluent_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 19 "cpp_fluent_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 19 "cpp_fluent_v2.cpp"
     HOT_TRACE_FRAME("Counter.self", "cpp_fluent_v2.cpp");
 #line 19 "cpp_fluent_v2.cpp"
  return __self; 
 #line 19 "cpp_fluent_v2.cpp"
 }
-#line 859 "cpp_fluent_v2.cpp.cpp"
+#line 867 "cpp_fluent_v2.cpp.cpp"
 
 #line 30 "cpp_fluent_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Builder__ctor(Builder_Shell* __self)
@@ -865,7 +873,7 @@ Counter * CounterState_g2::self()
     return state_of(__self)->ctor();
 #line 30 "cpp_fluent_v2.cpp"
 }
-#line 869 "cpp_fluent_v2.cpp.cpp"
+#line 877 "cpp_fluent_v2.cpp.cpp"
 #line 30 "cpp_fluent_v2.cpp"
 void BuilderState_g2::ctor()
 #line 30 "cpp_fluent_v2.cpp"
@@ -883,12 +891,14 @@ void BuilderState_g2::ctor()
 #line 30 "cpp_fluent_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 30 "cpp_fluent_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 30 "cpp_fluent_v2.cpp"
     HOT_TRACE_FRAME("Builder.Builder", "cpp_fluent_v2.cpp");
 #line 30 "cpp_fluent_v2.cpp"
 
 #line 30 "cpp_fluent_v2.cpp"
 }
-#line 892 "cpp_fluent_v2.cpp.cpp"
+#line 902 "cpp_fluent_v2.cpp.cpp"
 
 #line 32 "cpp_fluent_v2.cpp"
 void BuilderState_g2::Tick(float dt)
@@ -907,6 +917,8 @@ void BuilderState_g2::Tick(float dt)
 #line 32 "cpp_fluent_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 32 "cpp_fluent_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 32 "cpp_fluent_v2.cpp"
     HOT_TRACE_FRAME("Builder.Tick", "cpp_fluent_v2.cpp");
 #line 33 "cpp_fluent_v2.cpp"
 
@@ -923,7 +935,7 @@ void BuilderState_g2::Tick(float dt)
     
 #line 44 "cpp_fluent_v2.cpp"
 }
-#line 927 "cpp_fluent_v2.cpp.cpp"
+#line 939 "cpp_fluent_v2.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

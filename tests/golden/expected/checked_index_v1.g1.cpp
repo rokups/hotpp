@@ -312,6 +312,8 @@ void GridState_g1::Tick(float dt)
 #line 17 "checked_index_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 17 "checked_index_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 17 "checked_index_v1.hot"
     HOT_TRACE_FRAME("Grid.Tick", "checked_index_v1.hot");
 #line 17 "checked_index_v1.hot"
     HOT_TRACE_LINE(); hot::index(__st->cells, 1) = 7;
@@ -321,7 +323,7 @@ void GridState_g1::Tick(float dt)
     HOT_TRACE_LINE(); hot::index(__st->plain, 0) = 1;
 #line 20 "checked_index_v1.hot"
 }
-#line 325 "checked_index_v1.hot.cpp"
+#line 327 "checked_index_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

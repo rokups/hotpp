@@ -584,12 +584,14 @@ int32_t BaseState_g2::Power()
 #line 13 "abi_child_v2.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 13 "abi_child_v2.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 13 "abi_child_v2.hot"
     HOT_TRACE_FRAME("Base.Power", "abi_child_v2.hot");
 #line 13 "abi_child_v2.hot"
     HOT_TRACE_LINE(); return 1;
 #line 13 "abi_child_v2.hot"
 }
-#line 593 "abi_child_v2.hot.cpp"
+#line 595 "abi_child_v2.hot.cpp"
 
 #line 15 "abi_child_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Base__Twice(Base_Shell* __self)
@@ -599,7 +601,7 @@ int32_t BaseState_g2::Power()
     return state_of(__self)->Twice();
 #line 15 "abi_child_v2.hot"
 }
-#line 603 "abi_child_v2.hot.cpp"
+#line 605 "abi_child_v2.hot.cpp"
 #line 15 "abi_child_v2.hot"
 int32_t BaseState_g2::Twice()
 #line 15 "abi_child_v2.hot"
@@ -617,12 +619,14 @@ int32_t BaseState_g2::Twice()
 #line 15 "abi_child_v2.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 15 "abi_child_v2.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 15 "abi_child_v2.hot"
     HOT_TRACE_FRAME("Base.Twice", "abi_child_v2.hot");
 #line 15 "abi_child_v2.hot"
     HOT_TRACE_LINE(); return Base__Power_virt(__self) * 2;
 #line 15 "abi_child_v2.hot"
 }
-#line 626 "abi_child_v2.hot.cpp"
+#line 630 "abi_child_v2.hot.cpp"
 
 #line 17 "abi_child_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static void Base__Bump(Base_Shell* __self)
@@ -632,7 +636,7 @@ int32_t BaseState_g2::Twice()
     return state_of(__self)->Bump();
 #line 17 "abi_child_v2.hot"
 }
-#line 636 "abi_child_v2.hot.cpp"
+#line 640 "abi_child_v2.hot.cpp"
 #line 17 "abi_child_v2.hot"
 void BaseState_g2::Bump()
 #line 17 "abi_child_v2.hot"
@@ -650,12 +654,14 @@ void BaseState_g2::Bump()
 #line 17 "abi_child_v2.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 17 "abi_child_v2.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 17 "abi_child_v2.hot"
     HOT_TRACE_FRAME("Base.Bump", "abi_child_v2.hot");
 #line 17 "abi_child_v2.hot"
     HOT_TRACE_LINE(); __st->hits = __st->hits + 10;
 #line 17 "abi_child_v2.hot"
 }
-#line 659 "abi_child_v2.hot.cpp"
+#line 665 "abi_child_v2.hot.cpp"
 
 #line 19 "abi_child_v2.hot"
 void BaseState_g2::TakeDamage_f(float amount)
@@ -674,6 +680,8 @@ void BaseState_g2::TakeDamage_f(float amount)
 #line 20 "abi_child_v2.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 20 "abi_child_v2.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 20 "abi_child_v2.hot"
     HOT_TRACE_FRAME("Base.TakeDamage", "abi_child_v2.hot");
 #line 20 "abi_child_v2.hot"
     HOT_TRACE_LINE(); __st->hp = __st->hp - amount;
@@ -681,7 +689,7 @@ void BaseState_g2::TakeDamage_f(float amount)
     HOT_TRACE_LINE(); __st->hits = __st->hits + 1;
 #line 22 "abi_child_v2.hot"
 }
-#line 685 "abi_child_v2.hot.cpp"
+#line 693 "abi_child_v2.hot.cpp"
 
 #line 31 "abi_child_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Kid__Power(Kid_Shell* __self)
@@ -691,7 +699,7 @@ void BaseState_g2::TakeDamage_f(float amount)
     return state_of(__self)->Power();
 #line 31 "abi_child_v2.hot"
 }
-#line 695 "abi_child_v2.hot.cpp"
+#line 703 "abi_child_v2.hot.cpp"
 #line 31 "abi_child_v2.hot"
 int32_t KidState_g2::Power()
 #line 31 "abi_child_v2.hot"
@@ -709,12 +717,14 @@ int32_t KidState_g2::Power()
 #line 31 "abi_child_v2.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 31 "abi_child_v2.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 31 "abi_child_v2.hot"
     HOT_TRACE_FRAME("Kid.Power", "abi_child_v2.hot");
 #line 31 "abi_child_v2.hot"
     HOT_TRACE_LINE(); return 7;
 #line 31 "abi_child_v2.hot"
 }
-#line 718 "abi_child_v2.hot.cpp"
+#line 728 "abi_child_v2.hot.cpp"
 
 #line 33 "abi_child_v2.hot"
 void KidState_g2::TakeDamage_f(float amount)
@@ -733,6 +743,8 @@ void KidState_g2::TakeDamage_f(float amount)
 #line 34 "abi_child_v2.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 34 "abi_child_v2.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 34 "abi_child_v2.hot"
     HOT_TRACE_FRAME("Kid.TakeDamage", "abi_child_v2.hot");
 #line 34 "abi_child_v2.hot"
     HOT_TRACE_LINE(); Base__base_TakeDamage(__self, amount * 3.0f);
@@ -740,7 +752,7 @@ void KidState_g2::TakeDamage_f(float amount)
     HOT_TRACE_LINE(); __st->kid_hits = __st->kid_hits + 1;
 #line 36 "abi_child_v2.hot"
 }
-#line 744 "abi_child_v2.hot.cpp"
+#line 756 "abi_child_v2.hot.cpp"
 
 #line 38 "abi_child_v2.hot"
 void KidState_g2::Tick(float dt)
@@ -759,6 +771,8 @@ void KidState_g2::Tick(float dt)
 #line 39 "abi_child_v2.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 39 "abi_child_v2.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 39 "abi_child_v2.hot"
     HOT_TRACE_FRAME("Kid.Tick", "abi_child_v2.hot");
 #line 39 "abi_child_v2.hot"
     HOT_TRACE_LINE(); Base__base_Tick(__self, dt);
@@ -774,7 +788,7 @@ void KidState_g2::Tick(float dt)
     HOT_TRACE_LINE(); __st->super_power = Base__Power(__self);
 #line 45 "abi_child_v2.hot"
 }
-#line 778 "abi_child_v2.hot.cpp"
+#line 792 "abi_child_v2.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

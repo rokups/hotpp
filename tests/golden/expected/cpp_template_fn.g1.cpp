@@ -399,12 +399,14 @@ void ScalerState_g1::ctor()
 #line 20 "cpp_template_fn.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 20 "cpp_template_fn.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 20 "cpp_template_fn.cpp"
     HOT_TRACE_FRAME("Scaler.Scaler", "cpp_template_fn.cpp");
 #line 20 "cpp_template_fn.cpp"
 
 #line 20 "cpp_template_fn.cpp"
 }
-#line 408 "cpp_template_fn.cpp.cpp"
+#line 410 "cpp_template_fn.cpp.cpp"
 
 #line 22 "cpp_template_fn.cpp"
 void ScalerState_g1::Tick(float dt)
@@ -423,6 +425,8 @@ void ScalerState_g1::Tick(float dt)
 #line 22 "cpp_template_fn.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 22 "cpp_template_fn.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 22 "cpp_template_fn.cpp"
     HOT_TRACE_FRAME("Scaler.Tick", "cpp_template_fn.cpp");
 #line 23 "cpp_template_fn.cpp"
 
@@ -432,7 +436,7 @@ void ScalerState_g1::Tick(float dt)
     
 #line 27 "cpp_template_fn.cpp"
 }
-#line 436 "cpp_template_fn.cpp.cpp"
+#line 440 "cpp_template_fn.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

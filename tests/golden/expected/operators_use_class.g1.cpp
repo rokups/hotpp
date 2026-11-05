@@ -851,12 +851,14 @@ void MoneyState_g1::ctor(int32_t c)
 #line 13 "operators_use_class.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 13 "operators_use_class.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 13 "operators_use_class.hot"
     HOT_TRACE_FRAME("Money.Money", "operators_use_class.hot");
 #line 13 "operators_use_class.hot"
     HOT_TRACE_LINE(); __st->cents = c;
 #line 14 "operators_use_class.hot"
 }
-#line 860 "operators_use_class.hot.cpp"
+#line 862 "operators_use_class.hot.cpp"
 
 #line 16 "operators_use_class.hot"
 [[maybe_unused]] HOT_HIDDEN static hot::Value<Money> Money__op_add(Money_Shell* __self, hot::In<hot::Value<Money>> o)
@@ -866,7 +868,7 @@ void MoneyState_g1::ctor(int32_t c)
     return state_of(__self)->op_add(std::forward<hot::In<hot::Value<Money>>>(o));
 #line 16 "operators_use_class.hot"
 }
-#line 870 "operators_use_class.hot.cpp"
+#line 872 "operators_use_class.hot.cpp"
 #line 16 "operators_use_class.hot"
 hot::Value<Money> MoneyState_g1::op_add(hot::In<hot::Value<Money>> o)
 #line 16 "operators_use_class.hot"
@@ -884,12 +886,14 @@ hot::Value<Money> MoneyState_g1::op_add(hot::In<hot::Value<Money>> o)
 #line 17 "operators_use_class.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 17 "operators_use_class.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 17 "operators_use_class.hot"
     HOT_TRACE_FRAME("Money.op_add", "operators_use_class.hot");
 #line 17 "operators_use_class.hot"
     HOT_TRACE_LINE(); return hot::Value<Money>(std::shared_ptr<Money>(Money__new_shared(__st->cents + state_of(hot::shell_of<Money_Shell>(o, "Money"))->cents)));
 #line 18 "operators_use_class.hot"
 }
-#line 893 "operators_use_class.hot.cpp"
+#line 897 "operators_use_class.hot.cpp"
 
 #line 20 "operators_use_class.hot"
 [[maybe_unused]] HOT_HIDDEN static hot::Value<Money> Money__op_mul(Money_Shell* __self, int32_t f)
@@ -899,7 +903,7 @@ hot::Value<Money> MoneyState_g1::op_add(hot::In<hot::Value<Money>> o)
     return state_of(__self)->op_mul(std::forward<int32_t>(f));
 #line 20 "operators_use_class.hot"
 }
-#line 903 "operators_use_class.hot.cpp"
+#line 907 "operators_use_class.hot.cpp"
 #line 20 "operators_use_class.hot"
 hot::Value<Money> MoneyState_g1::op_mul(int32_t const f)
 #line 20 "operators_use_class.hot"
@@ -917,12 +921,14 @@ hot::Value<Money> MoneyState_g1::op_mul(int32_t const f)
 #line 21 "operators_use_class.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 21 "operators_use_class.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 21 "operators_use_class.hot"
     HOT_TRACE_FRAME("Money.op_mul", "operators_use_class.hot");
 #line 21 "operators_use_class.hot"
     HOT_TRACE_LINE(); return hot::Value<Money>(std::shared_ptr<Money>(Money__new_shared(__st->cents * f)));
 #line 22 "operators_use_class.hot"
 }
-#line 926 "operators_use_class.hot.cpp"
+#line 932 "operators_use_class.hot.cpp"
 
 #line 24 "operators_use_class.hot"
 [[maybe_unused]] HOT_HIDDEN static hot::Value<Money> Money__op_neg(Money_Shell* __self)
@@ -932,7 +938,7 @@ hot::Value<Money> MoneyState_g1::op_mul(int32_t const f)
     return state_of(__self)->op_neg();
 #line 24 "operators_use_class.hot"
 }
-#line 936 "operators_use_class.hot.cpp"
+#line 942 "operators_use_class.hot.cpp"
 #line 24 "operators_use_class.hot"
 hot::Value<Money> MoneyState_g1::op_neg()
 #line 24 "operators_use_class.hot"
@@ -950,12 +956,14 @@ hot::Value<Money> MoneyState_g1::op_neg()
 #line 25 "operators_use_class.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 25 "operators_use_class.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 25 "operators_use_class.hot"
     HOT_TRACE_FRAME("Money.op_neg", "operators_use_class.hot");
 #line 25 "operators_use_class.hot"
     HOT_TRACE_LINE(); return hot::Value<Money>(std::shared_ptr<Money>(Money__new_shared(-__st->cents)));
 #line 26 "operators_use_class.hot"
 }
-#line 959 "operators_use_class.hot.cpp"
+#line 967 "operators_use_class.hot.cpp"
 
 #line 28 "operators_use_class.hot"
 [[maybe_unused]] HOT_HIDDEN static bool Money__op_eq(Money_Shell* __self, hot::In<hot::Value<Money>> o)
@@ -965,7 +973,7 @@ hot::Value<Money> MoneyState_g1::op_neg()
     return state_of(__self)->op_eq(std::forward<hot::In<hot::Value<Money>>>(o));
 #line 28 "operators_use_class.hot"
 }
-#line 969 "operators_use_class.hot.cpp"
+#line 977 "operators_use_class.hot.cpp"
 #line 28 "operators_use_class.hot"
 bool MoneyState_g1::op_eq(hot::In<hot::Value<Money>> o)
 #line 28 "operators_use_class.hot"
@@ -983,12 +991,14 @@ bool MoneyState_g1::op_eq(hot::In<hot::Value<Money>> o)
 #line 29 "operators_use_class.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 29 "operators_use_class.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 29 "operators_use_class.hot"
     HOT_TRACE_FRAME("Money.op_eq", "operators_use_class.hot");
 #line 29 "operators_use_class.hot"
     HOT_TRACE_LINE(); return __st->cents == state_of(hot::shell_of<Money_Shell>(o, "Money"))->cents;
 #line 30 "operators_use_class.hot"
 }
-#line 992 "operators_use_class.hot.cpp"
+#line 1002 "operators_use_class.hot.cpp"
 
 #line 32 "operators_use_class.hot"
 [[maybe_unused]] HOT_HIDDEN static bool Money__op_lt(Money_Shell* __self, hot::In<hot::Value<Money>> o)
@@ -998,7 +1008,7 @@ bool MoneyState_g1::op_eq(hot::In<hot::Value<Money>> o)
     return state_of(__self)->op_lt(std::forward<hot::In<hot::Value<Money>>>(o));
 #line 32 "operators_use_class.hot"
 }
-#line 1002 "operators_use_class.hot.cpp"
+#line 1012 "operators_use_class.hot.cpp"
 #line 32 "operators_use_class.hot"
 bool MoneyState_g1::op_lt(hot::In<hot::Value<Money>> o)
 #line 32 "operators_use_class.hot"
@@ -1016,12 +1026,14 @@ bool MoneyState_g1::op_lt(hot::In<hot::Value<Money>> o)
 #line 33 "operators_use_class.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 33 "operators_use_class.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 33 "operators_use_class.hot"
     HOT_TRACE_FRAME("Money.op_lt", "operators_use_class.hot");
 #line 33 "operators_use_class.hot"
     HOT_TRACE_LINE(); return __st->cents < state_of(hot::shell_of<Money_Shell>(o, "Money"))->cents;
 #line 34 "operators_use_class.hot"
 }
-#line 1025 "operators_use_class.hot.cpp"
+#line 1037 "operators_use_class.hot.cpp"
 
 #line 36 "operators_use_class.hot"
 [[maybe_unused]] HOT_HIDDEN static bool Money__op_gt(Money_Shell* __self, hot::In<hot::Value<Money>> o)
@@ -1031,7 +1043,7 @@ bool MoneyState_g1::op_lt(hot::In<hot::Value<Money>> o)
     return state_of(__self)->op_gt(std::forward<hot::In<hot::Value<Money>>>(o));
 #line 36 "operators_use_class.hot"
 }
-#line 1035 "operators_use_class.hot.cpp"
+#line 1047 "operators_use_class.hot.cpp"
 #line 36 "operators_use_class.hot"
 bool MoneyState_g1::op_gt(hot::In<hot::Value<Money>> o)
 #line 36 "operators_use_class.hot"
@@ -1049,12 +1061,14 @@ bool MoneyState_g1::op_gt(hot::In<hot::Value<Money>> o)
 #line 37 "operators_use_class.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 37 "operators_use_class.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 37 "operators_use_class.hot"
     HOT_TRACE_FRAME("Money.op_gt", "operators_use_class.hot");
 #line 37 "operators_use_class.hot"
     HOT_TRACE_LINE(); return __st->cents > state_of(hot::shell_of<Money_Shell>(o, "Money"))->cents;
 #line 38 "operators_use_class.hot"
 }
-#line 1058 "operators_use_class.hot.cpp"
+#line 1072 "operators_use_class.hot.cpp"
 
 #line 40 "operators_use_class.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Money__op_index(Money_Shell* __self, int32_t i)
@@ -1064,7 +1078,7 @@ bool MoneyState_g1::op_gt(hot::In<hot::Value<Money>> o)
     return state_of(__self)->op_index(std::forward<int32_t>(i));
 #line 40 "operators_use_class.hot"
 }
-#line 1068 "operators_use_class.hot.cpp"
+#line 1082 "operators_use_class.hot.cpp"
 #line 40 "operators_use_class.hot"
 int32_t MoneyState_g1::op_index(int32_t const i)
 #line 40 "operators_use_class.hot"
@@ -1082,12 +1096,14 @@ int32_t MoneyState_g1::op_index(int32_t const i)
 #line 41 "operators_use_class.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 41 "operators_use_class.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 41 "operators_use_class.hot"
     HOT_TRACE_FRAME("Money.op_index", "operators_use_class.hot");
 #line 41 "operators_use_class.hot"
     HOT_TRACE_LINE(); return __st->cents * 10 + i;
 #line 42 "operators_use_class.hot"
 }
-#line 1091 "operators_use_class.hot.cpp"
+#line 1107 "operators_use_class.hot.cpp"
 
 #line 62 "operators_use_class.hot"
 void HolderState_g1::Tick(float dt)
@@ -1105,6 +1121,8 @@ void HolderState_g1::Tick(float dt)
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Holder_Shell*>(this->__hot_owner);
 #line 63 "operators_use_class.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 63 "operators_use_class.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
 #line 63 "operators_use_class.hot"
     HOT_TRACE_FRAME("Holder.Tick", "operators_use_class.hot");
 #line 63 "operators_use_class.hot"
@@ -1159,7 +1177,7 @@ void HolderState_g1::Tick(float dt)
     HOT_TRACE_LINE(); __st->r_field = (state_of(hot::shell_of<Money_Shell>(__st->a, "Money"))->cents == 350) ? 1 : 0;
 #line 88 "operators_use_class.hot"
 }
-#line 1163 "operators_use_class.hot.cpp"
+#line 1181 "operators_use_class.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

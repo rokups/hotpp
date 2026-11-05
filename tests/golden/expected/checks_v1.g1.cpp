@@ -411,12 +411,14 @@ int32_t ChecksState_g1::at(int32_t const i)
 #line 8 "checks_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 8 "checks_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 8 "checks_v1.hot"
     HOT_TRACE_FRAME("Checks.at", "checks_v1.hot");
 #line 8 "checks_v1.hot"
     HOT_TRACE_LINE(); return hot::index(__st->vals, i);
 #line 9 "checks_v1.hot"
 }
-#line 420 "checks_v1.hot.cpp"
+#line 422 "checks_v1.hot.cpp"
 
 #line 11 "checks_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Checks__load(Checks_Shell* __self, int32_t* p)
@@ -426,7 +428,7 @@ int32_t ChecksState_g1::at(int32_t const i)
     return state_of(__self)->load(std::forward<int32_t*>(p));
 #line 11 "checks_v1.hot"
 }
-#line 430 "checks_v1.hot.cpp"
+#line 432 "checks_v1.hot.cpp"
 #line 11 "checks_v1.hot"
 int32_t ChecksState_g1::load(int32_t* const p)
 #line 11 "checks_v1.hot"
@@ -444,12 +446,14 @@ int32_t ChecksState_g1::load(int32_t* const p)
 #line 12 "checks_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 12 "checks_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 12 "checks_v1.hot"
     HOT_TRACE_FRAME("Checks.load", "checks_v1.hot");
 #line 12 "checks_v1.hot"
     HOT_TRACE_LINE(); return hot::star(hot::cast_ptr<int32_t*>(p));
 #line 13 "checks_v1.hot"
 }
-#line 453 "checks_v1.hot.cpp"
+#line 457 "checks_v1.hot.cpp"
 
 #line 15 "checks_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Checks__safe_at(Checks_Shell* __self, int32_t i)
@@ -459,7 +463,7 @@ int32_t ChecksState_g1::load(int32_t* const p)
     return state_of(__self)->safe_at(std::forward<int32_t>(i));
 #line 15 "checks_v1.hot"
 }
-#line 463 "checks_v1.hot.cpp"
+#line 467 "checks_v1.hot.cpp"
 #line 15 "checks_v1.hot"
 int32_t ChecksState_g1::safe_at(int32_t const i)
 #line 15 "checks_v1.hot"
@@ -477,6 +481,8 @@ int32_t ChecksState_g1::safe_at(int32_t const i)
 #line 16 "checks_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 16 "checks_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 16 "checks_v1.hot"
     HOT_TRACE_FRAME("Checks.safe_at", "checks_v1.hot");
 #line 16 "checks_v1.hot"
     HOT_TRACE_LINE(); try {
@@ -490,7 +496,7 @@ int32_t ChecksState_g1::safe_at(int32_t const i)
     }
 #line 21 "checks_v1.hot"
 }
-#line 494 "checks_v1.hot.cpp"
+#line 500 "checks_v1.hot.cpp"
 
 #line 23 "checks_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Checks__safe_load(Checks_Shell* __self, int32_t* p)
@@ -500,7 +506,7 @@ int32_t ChecksState_g1::safe_at(int32_t const i)
     return state_of(__self)->safe_load(std::forward<int32_t*>(p));
 #line 23 "checks_v1.hot"
 }
-#line 504 "checks_v1.hot.cpp"
+#line 510 "checks_v1.hot.cpp"
 #line 23 "checks_v1.hot"
 int32_t ChecksState_g1::safe_load(int32_t* const p)
 #line 23 "checks_v1.hot"
@@ -517,6 +523,8 @@ int32_t ChecksState_g1::safe_load(int32_t* const p)
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Checks_Shell*>(this->__hot_owner);
 #line 24 "checks_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 24 "checks_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
 #line 24 "checks_v1.hot"
     HOT_TRACE_FRAME("Checks.safe_load", "checks_v1.hot");
 #line 24 "checks_v1.hot"
@@ -539,7 +547,7 @@ int32_t ChecksState_g1::safe_load(int32_t* const p)
     }
 #line 33 "checks_v1.hot"
 }
-#line 543 "checks_v1.hot.cpp"
+#line 551 "checks_v1.hot.cpp"
 
 #line 35 "checks_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Checks__first_member(Checks_Shell* __self, Actor* other)
@@ -549,7 +557,7 @@ int32_t ChecksState_g1::safe_load(int32_t* const p)
     return state_of(__self)->first_member(std::forward<Actor*>(other));
 #line 35 "checks_v1.hot"
 }
-#line 553 "checks_v1.hot.cpp"
+#line 561 "checks_v1.hot.cpp"
 #line 35 "checks_v1.hot"
 void ChecksState_g1::first_member(Actor* const other)
 #line 35 "checks_v1.hot"
@@ -567,12 +575,14 @@ void ChecksState_g1::first_member(Actor* const other)
 #line 36 "checks_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 36 "checks_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 36 "checks_v1.hot"
     HOT_TRACE_FRAME("Checks.first_member", "checks_v1.hot");
 #line 36 "checks_v1.hot"
     HOT_TRACE_LINE(); hot::deref((hot::cast_ptr<Actor*>(other))).Move(Vec3());
 #line 37 "checks_v1.hot"
 }
-#line 576 "checks_v1.hot.cpp"
+#line 586 "checks_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

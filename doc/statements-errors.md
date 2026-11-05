@@ -33,7 +33,7 @@ The runtime checks a pointer, a handle and an index of an array, a `std::vector`
 
 - `NullReference`: the script used a null pointer or a null handle, for example `p.x` or `*p`.
 - `IndexOutOfRange`: an index is negative or not less than the size of an array, a `std::vector` or a checked native container.
-- `ScriptError`: the base of the two types above.
+- `ScriptError`: the base of the two types above. A call that is too deep throws a `ScriptError` with the message `stack overflow`. See [Limits](limits.html).
 - `TaskCancelled` and `TaskReloadCancelled`: a task ends without a result. See [Async and await](async.html).
 
 Write the type name in a `catch` clause. The prefix `hot.` is also valid. Use `catch (ScriptError e)` to catch both types. `e.what()` gives the message.

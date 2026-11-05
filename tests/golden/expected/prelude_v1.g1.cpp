@@ -513,12 +513,14 @@ void SmithState_g1::Tick(float dt)
 #line 15 "prelude_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 15 "prelude_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 15 "prelude_v1.hot"
     HOT_TRACE_FRAME("Smith.Tick", "prelude_v1.hot");
 #line 15 "prelude_v1.hot"
     HOT_TRACE_LINE(); __st->ticks = __st->ticks + 1;
 #line 16 "prelude_v1.hot"
 }
-#line 522 "prelude_v1.hot.cpp"
+#line 524 "prelude_v1.hot.cpp"
 
 #line 23 "prelude_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Tool__Use(Tool_Shell* __self)
@@ -528,7 +530,7 @@ void SmithState_g1::Tick(float dt)
     return state_of(__self)->Use();
 #line 23 "prelude_v1.hot"
 }
-#line 532 "prelude_v1.hot.cpp"
+#line 534 "prelude_v1.hot.cpp"
 #line 23 "prelude_v1.hot"
 void ToolState_g1::Use()
 #line 23 "prelude_v1.hot"
@@ -546,12 +548,14 @@ void ToolState_g1::Use()
 #line 24 "prelude_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 24 "prelude_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 24 "prelude_v1.hot"
     HOT_TRACE_FRAME("Tool.Use", "prelude_v1.hot");
 #line 24 "prelude_v1.hot"
     HOT_TRACE_LINE(); __st->uses = __st->uses + 1;
 #line 25 "prelude_v1.hot"
 }
-#line 555 "prelude_v1.hot.cpp"
+#line 559 "prelude_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

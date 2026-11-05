@@ -328,6 +328,8 @@ void GridState_g2::Tick(float dt)
 #line 13 "array_v2.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 13 "array_v2.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 13 "array_v2.hot"
     HOT_TRACE_FRAME("Grid.Tick", "array_v2.hot");
 #line 13 "array_v2.hot"
     HOT_TRACE_LINE(); for (int32_t i = 0; i < 3; i++) {
@@ -339,7 +341,7 @@ void GridState_g2::Tick(float dt)
     HOT_TRACE_LINE(); hot::index(hot::index(__st->m, 1), 2) = hot::index(__st->a, 0) + 5;
 #line 17 "array_v2.hot"
 }
-#line 343 "array_v2.hot.cpp"
+#line 345 "array_v2.hot.cpp"
 
 #line 19 "array_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Grid__total(Grid_Shell* __self)
@@ -349,7 +351,7 @@ void GridState_g2::Tick(float dt)
     return state_of(__self)->total();
 #line 19 "array_v2.hot"
 }
-#line 353 "array_v2.hot.cpp"
+#line 355 "array_v2.hot.cpp"
 #line 19 "array_v2.hot"
 int32_t GridState_g2::total()
 #line 19 "array_v2.hot"
@@ -367,6 +369,8 @@ int32_t GridState_g2::total()
 #line 20 "array_v2.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 20 "array_v2.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 20 "array_v2.hot"
     HOT_TRACE_FRAME("Grid.total", "array_v2.hot");
 #line 20 "array_v2.hot"
     HOT_TRACE_LINE(); int32_t sum = 0;
@@ -380,7 +384,7 @@ int32_t GridState_g2::total()
     HOT_TRACE_LINE(); return sum + hot::deref(__st->a).size() + __st->extra;
 #line 25 "array_v2.hot"
 }
-#line 384 "array_v2.hot.cpp"
+#line 388 "array_v2.hot.cpp"
 
 #line 27 "array_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static std::array<int32_t, 4> Grid__make(Grid_Shell* __self, hot::In<std::array<int32_t, 2>> p)
@@ -390,7 +394,7 @@ int32_t GridState_g2::total()
     return state_of(__self)->make(std::forward<hot::In<std::array<int32_t, 2>>>(p));
 #line 27 "array_v2.hot"
 }
-#line 394 "array_v2.hot.cpp"
+#line 398 "array_v2.hot.cpp"
 #line 27 "array_v2.hot"
 std::array<int32_t, 4> GridState_g2::make(hot::In<std::array<int32_t, 2>> p)
 #line 27 "array_v2.hot"
@@ -408,6 +412,8 @@ std::array<int32_t, 4> GridState_g2::make(hot::In<std::array<int32_t, 2>> p)
 #line 28 "array_v2.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 28 "array_v2.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 28 "array_v2.hot"
     HOT_TRACE_FRAME("Grid.make", "array_v2.hot");
 #line 28 "array_v2.hot"
     HOT_TRACE_LINE(); std::array<int32_t, 4> r = std::array<int32_t, 4>();
@@ -417,7 +423,7 @@ std::array<int32_t, 4> GridState_g2::make(hot::In<std::array<int32_t, 2>> p)
     HOT_TRACE_LINE(); return r;
 #line 31 "array_v2.hot"
 }
-#line 421 "array_v2.hot.cpp"
+#line 427 "array_v2.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

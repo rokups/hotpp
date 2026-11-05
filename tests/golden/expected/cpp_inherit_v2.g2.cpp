@@ -769,6 +769,8 @@ void BaseState_g2::ctor(int start)
 #line 11 "cpp_inherit_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 11 "cpp_inherit_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 11 "cpp_inherit_v2.cpp"
     HOT_TRACE_FRAME("Base.Base", "cpp_inherit_v2.cpp");
 #line 11 "cpp_inherit_v2.cpp"
 { decltype(__st->hits) __hot_mi(start); __st->hits = std::move(__hot_mi); }
@@ -776,7 +778,7 @@ void BaseState_g2::ctor(int start)
 
 #line 11 "cpp_inherit_v2.cpp"
 }
-#line 780 "cpp_inherit_v2.cpp.cpp"
+#line 782 "cpp_inherit_v2.cpp.cpp"
 
 #line 13 "cpp_inherit_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Base__Power(Base_Shell* __self)
@@ -786,7 +788,7 @@ void BaseState_g2::ctor(int start)
     return state_of(__self)->Power();
 #line 13 "cpp_inherit_v2.cpp"
 }
-#line 790 "cpp_inherit_v2.cpp.cpp"
+#line 792 "cpp_inherit_v2.cpp.cpp"
 #line 13 "cpp_inherit_v2.cpp"
 int BaseState_g2::Power()
 #line 13 "cpp_inherit_v2.cpp"
@@ -804,12 +806,14 @@ int BaseState_g2::Power()
 #line 13 "cpp_inherit_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 13 "cpp_inherit_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 13 "cpp_inherit_v2.cpp"
     HOT_TRACE_FRAME("Base.Power", "cpp_inherit_v2.cpp");
 #line 13 "cpp_inherit_v2.cpp"
  return 1; 
 #line 13 "cpp_inherit_v2.cpp"
 }
-#line 813 "cpp_inherit_v2.cpp.cpp"
+#line 817 "cpp_inherit_v2.cpp.cpp"
 
 #line 15 "cpp_inherit_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Base__Twice(Base_Shell* __self)
@@ -819,7 +823,7 @@ int BaseState_g2::Power()
     return state_of(__self)->Twice();
 #line 15 "cpp_inherit_v2.cpp"
 }
-#line 823 "cpp_inherit_v2.cpp.cpp"
+#line 827 "cpp_inherit_v2.cpp.cpp"
 #line 15 "cpp_inherit_v2.cpp"
 int BaseState_g2::Twice()
 #line 15 "cpp_inherit_v2.cpp"
@@ -837,12 +841,14 @@ int BaseState_g2::Twice()
 #line 15 "cpp_inherit_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 15 "cpp_inherit_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 15 "cpp_inherit_v2.cpp"
     HOT_TRACE_FRAME("Base.Twice", "cpp_inherit_v2.cpp");
 #line 15 "cpp_inherit_v2.cpp"
  return Base__Power_virt(__self) * 2; 
 #line 15 "cpp_inherit_v2.cpp"
 }
-#line 846 "cpp_inherit_v2.cpp.cpp"
+#line 852 "cpp_inherit_v2.cpp.cpp"
 
 #line 17 "cpp_inherit_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Base__Bump(Base_Shell* __self)
@@ -852,7 +858,7 @@ int BaseState_g2::Twice()
     return state_of(__self)->Bump();
 #line 17 "cpp_inherit_v2.cpp"
 }
-#line 856 "cpp_inherit_v2.cpp.cpp"
+#line 862 "cpp_inherit_v2.cpp.cpp"
 #line 17 "cpp_inherit_v2.cpp"
 void BaseState_g2::Bump()
 #line 17 "cpp_inherit_v2.cpp"
@@ -870,12 +876,14 @@ void BaseState_g2::Bump()
 #line 17 "cpp_inherit_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 17 "cpp_inherit_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 17 "cpp_inherit_v2.cpp"
     HOT_TRACE_FRAME("Base.Bump", "cpp_inherit_v2.cpp");
 #line 17 "cpp_inherit_v2.cpp"
  hits += 10; 
 #line 17 "cpp_inherit_v2.cpp"
 }
-#line 879 "cpp_inherit_v2.cpp.cpp"
+#line 887 "cpp_inherit_v2.cpp.cpp"
 
 #line 19 "cpp_inherit_v2.cpp"
 void BaseState_g2::TakeDamage_f(float amount)
@@ -894,6 +902,8 @@ void BaseState_g2::TakeDamage_f(float amount)
 #line 19 "cpp_inherit_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 19 "cpp_inherit_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 19 "cpp_inherit_v2.cpp"
     HOT_TRACE_FRAME("Base.TakeDamage", "cpp_inherit_v2.cpp");
 #line 20 "cpp_inherit_v2.cpp"
 
@@ -902,7 +912,7 @@ void BaseState_g2::TakeDamage_f(float amount)
     
 #line 23 "cpp_inherit_v2.cpp"
 }
-#line 906 "cpp_inherit_v2.cpp.cpp"
+#line 916 "cpp_inherit_v2.cpp.cpp"
 
 #line 39 "cpp_inherit_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Kid__ctor(Kid_Shell* __self, int start)
@@ -912,7 +922,7 @@ void BaseState_g2::TakeDamage_f(float amount)
     return state_of(__self)->ctor(std::forward<int>(start));
 #line 39 "cpp_inherit_v2.cpp"
 }
-#line 916 "cpp_inherit_v2.cpp.cpp"
+#line 926 "cpp_inherit_v2.cpp.cpp"
 #line 39 "cpp_inherit_v2.cpp"
 void KidState_g2::ctor(int start)
 #line 39 "cpp_inherit_v2.cpp"
@@ -930,12 +940,14 @@ void KidState_g2::ctor(int start)
 #line 39 "cpp_inherit_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 39 "cpp_inherit_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 39 "cpp_inherit_v2.cpp"
     HOT_TRACE_FRAME("Kid.Kid", "cpp_inherit_v2.cpp");
 #line 39 "cpp_inherit_v2.cpp"
  kid_hits = start; 
 #line 39 "cpp_inherit_v2.cpp"
 }
-#line 939 "cpp_inherit_v2.cpp.cpp"
+#line 951 "cpp_inherit_v2.cpp.cpp"
 
 #line 41 "cpp_inherit_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Kid__Power(Kid_Shell* __self)
@@ -945,7 +957,7 @@ void KidState_g2::ctor(int start)
     return state_of(__self)->Power();
 #line 41 "cpp_inherit_v2.cpp"
 }
-#line 949 "cpp_inherit_v2.cpp.cpp"
+#line 961 "cpp_inherit_v2.cpp.cpp"
 #line 41 "cpp_inherit_v2.cpp"
 int KidState_g2::Power()
 #line 41 "cpp_inherit_v2.cpp"
@@ -963,12 +975,14 @@ int KidState_g2::Power()
 #line 41 "cpp_inherit_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 41 "cpp_inherit_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 41 "cpp_inherit_v2.cpp"
     HOT_TRACE_FRAME("Kid.Power", "cpp_inherit_v2.cpp");
 #line 41 "cpp_inherit_v2.cpp"
  return 7; 
 #line 41 "cpp_inherit_v2.cpp"
 }
-#line 972 "cpp_inherit_v2.cpp.cpp"
+#line 986 "cpp_inherit_v2.cpp.cpp"
 
 #line 44 "cpp_inherit_v2.cpp"
 void KidState_g2::TakeDamage_f(float amount)
@@ -987,6 +1001,8 @@ void KidState_g2::TakeDamage_f(float amount)
 #line 44 "cpp_inherit_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 44 "cpp_inherit_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 44 "cpp_inherit_v2.cpp"
     HOT_TRACE_FRAME("Kid.TakeDamage", "cpp_inherit_v2.cpp");
 #line 45 "cpp_inherit_v2.cpp"
 
@@ -995,7 +1011,7 @@ void KidState_g2::TakeDamage_f(float amount)
     
 #line 48 "cpp_inherit_v2.cpp"
 }
-#line 999 "cpp_inherit_v2.cpp.cpp"
+#line 1015 "cpp_inherit_v2.cpp.cpp"
 
 #line 51 "cpp_inherit_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Kid__Bonus(Kid_Shell* __self)
@@ -1005,7 +1021,7 @@ void KidState_g2::TakeDamage_f(float amount)
     return state_of(__self)->Bonus();
 #line 51 "cpp_inherit_v2.cpp"
 }
-#line 1009 "cpp_inherit_v2.cpp.cpp"
+#line 1025 "cpp_inherit_v2.cpp.cpp"
 #line 51 "cpp_inherit_v2.cpp"
 int KidState_g2::Bonus()
 #line 51 "cpp_inherit_v2.cpp"
@@ -1023,12 +1039,14 @@ int KidState_g2::Bonus()
 #line 51 "cpp_inherit_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 51 "cpp_inherit_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 51 "cpp_inherit_v2.cpp"
     HOT_TRACE_FRAME("Kid.Bonus", "cpp_inherit_v2.cpp");
 #line 51 "cpp_inherit_v2.cpp"
  return gen * 10; 
 #line 51 "cpp_inherit_v2.cpp"
 }
-#line 1032 "cpp_inherit_v2.cpp.cpp"
+#line 1050 "cpp_inherit_v2.cpp.cpp"
 
 #line 53 "cpp_inherit_v2.cpp"
 void KidState_g2::Tick(float dt)
@@ -1046,6 +1064,8 @@ void KidState_g2::Tick(float dt)
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Kid_Shell*>(this->__hot_owner);
 #line 53 "cpp_inherit_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 53 "cpp_inherit_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
 #line 53 "cpp_inherit_v2.cpp"
     HOT_TRACE_FRAME("Kid.Tick", "cpp_inherit_v2.cpp");
 #line 54 "cpp_inherit_v2.cpp"
@@ -1065,7 +1085,7 @@ void KidState_g2::Tick(float dt)
     
 #line 67 "cpp_inherit_v2.cpp"
 }
-#line 1069 "cpp_inherit_v2.cpp.cpp"
+#line 1089 "cpp_inherit_v2.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

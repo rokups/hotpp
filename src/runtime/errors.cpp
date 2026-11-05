@@ -10,6 +10,7 @@
 #include "hot/runtime/trace.h"
 
 #include <cstdio>
+#include <exception>
 #include <mutex>
 #include <typeinfo>
 #include <utility>
@@ -76,6 +77,7 @@ namespace detail
 
 #if HOT_ELF_TLS_DEPTH
 __thread uint32_t g_call_depth = 0;
+uint32_t g_max_call_depth = HOT_MAX_CALL_DEPTH;
 
 intptr_t call_depth_tp_offset() noexcept
 {
@@ -87,7 +89,23 @@ uint32_t& call_depth_slot() noexcept
     static thread_local uint32_t depth = 0;
     return depth;
 }
+
+uint32_t g_max_call_depth = HOT_MAX_CALL_DEPTH;
+
+uint32_t max_call_depth_slot() noexcept
+{
+    return g_max_call_depth;
+}
 #endif
+
+static_assert(HOT_MAX_CALL_DEPTH <= kMaxCallDepthLimit, "HOT_MAX_CALL_DEPTH must be 65519 or less");
+
+void frame_overflow(uint32_t frames)
+{
+    if (std::uncaught_exceptions() > 0 && frames < max_call_depth_value() + kUnwindHeadroom)
+        return;
+    throw ScriptError("stack overflow");
+}
 
 void throw_null_reference(const char* what)
 {
@@ -143,5 +161,15 @@ void report_unhandled(const ShellCore* self, std::exception_ptr ep)
 }
 
 } // namespace detail
+
+void set_max_call_depth(uint32_t limit) noexcept
+{
+    detail::g_max_call_depth = limit > detail::kMaxCallDepthLimit ? detail::kMaxCallDepthLimit : limit;
+}
+
+uint32_t max_call_depth() noexcept
+{
+    return detail::g_max_call_depth;
+}
 
 } // namespace hot

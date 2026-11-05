@@ -170,13 +170,32 @@ struct CallDepth
     CallDepth& operator=(const CallDepth&) = delete;
 };
 
+// Counts the script function frames of the thread in the high bits of the call depth (errors.h).
+// A frame above the limit throws ScriptError "stack overflow" (frame_overflow). The check is always
+// on: it does not depend on HOT_RUNTIME_CHECKS. The check comes before the add, so the field never
+// wraps and a failed constructor leaves nothing to undo. The destructor removes the frame also when
+// an exception passes.
+struct FrameGuard
+{
+    uint32_t& d;
+    HOT_HIDDEN FrameGuard() : d(call_depth())
+    {
+        if (HOT_UNLIKELY((d >> 16) >= max_call_depth_value()))
+            frame_overflow(d >> 16);
+        d += kScriptFrame;
+    }
+    HOT_HIDDEN ~FrameGuard() { d -= kScriptFrame; }
+    FrameGuard(const FrameGuard&) = delete;
+    FrameGuard& operator=(const FrameGuard&) = delete;
+};
+
 // The catch path of hot::call. It runs inside the catch handler, so "throw;" and
 // std::current_exception() see the exception. It is out of line: then the fast path has no
 // std::exception_ptr on its stack, and so no stack protector and fewer saved registers.
 template <class R, bool NoExcept> HOT_NOINLINE R call_unhandled(ShellCore* self, uint32_t depth)
 {
     if constexpr (!NoExcept)
-        if (depth > 1)
+        if ((depth & kHostFrameMask) > 1)
             throw;
     report_unhandled(self, std::current_exception());
     if constexpr (std::is_void_v<R> || std::is_default_constructible_v<R>)

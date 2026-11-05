@@ -282,6 +282,8 @@ void PlayerState_g2::Tick(float dt)
 #line 13 "player_v2.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 13 "player_v2.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 13 "player_v2.hot"
     HOT_TRACE_FRAME("Player.Tick", "player_v2.hot");
 #line 13 "player_v2.hot"
     HOT_TRACE_LINE(); __self->Move(Vec3(2.0f * __st->speed * dt, 0, 0));
@@ -291,7 +293,7 @@ void PlayerState_g2::Tick(float dt)
     hot::deref(__self->Name).c_str(), dt, hot::deref(__self->Position).x, __st->health, __st->shield);
 #line 16 "player_v2.hot"
 }
-#line 295 "player_v2.hot.cpp"
+#line 297 "player_v2.hot.cpp"
 
 #line 18 "player_v2.hot"
 void PlayerState_g2::TakeDamage_f(float amount)
@@ -310,6 +312,8 @@ void PlayerState_g2::TakeDamage_f(float amount)
 #line 19 "player_v2.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 19 "player_v2.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 19 "player_v2.hot"
     HOT_TRACE_FRAME("Player.TakeDamage", "player_v2.hot");
 #line 19 "player_v2.hot"
     HOT_TRACE_LINE(); __st->health = Math::Max(__st->health - amount, 0.0f);
@@ -319,7 +323,7 @@ void PlayerState_g2::TakeDamage_f(float amount)
     __st->health);
 #line 22 "player_v2.hot"
 }
-#line 323 "player_v2.hot.cpp"
+#line 327 "player_v2.hot.cpp"
 
 #line 24 "player_v2.hot"
 void PlayerState_g2::TakeDamage_Af(Actor& source, float amount)
@@ -338,6 +342,8 @@ void PlayerState_g2::TakeDamage_Af(Actor& source, float amount)
 #line 25 "player_v2.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 25 "player_v2.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 25 "player_v2.hot"
     HOT_TRACE_FRAME("Player.TakeDamage", "player_v2.hot");
 #line 25 "player_v2.hot"
     HOT_TRACE_LINE(); __st->target = hot::deref(source).Name;
@@ -347,7 +353,7 @@ void PlayerState_g2::TakeDamage_Af(Actor& source, float amount)
     HOT_TRACE_LINE(); __self->TakeDamage(amount);
 #line 28 "player_v2.hot"
 }
-#line 351 "player_v2.hot.cpp"
+#line 357 "player_v2.hot.cpp"
 
 #line 30 "player_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static void Player__heal(Player_Shell* __self, float amount)
@@ -357,7 +363,7 @@ void PlayerState_g2::TakeDamage_Af(Actor& source, float amount)
     return state_of(__self)->heal(std::forward<float>(amount));
 #line 30 "player_v2.hot"
 }
-#line 361 "player_v2.hot.cpp"
+#line 367 "player_v2.hot.cpp"
 #line 30 "player_v2.hot"
 void PlayerState_g2::heal(float amount)
 #line 30 "player_v2.hot"
@@ -375,6 +381,8 @@ void PlayerState_g2::heal(float amount)
 #line 31 "player_v2.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 31 "player_v2.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 31 "player_v2.hot"
     HOT_TRACE_FRAME("Player.heal", "player_v2.hot");
 #line 31 "player_v2.hot"
     HOT_TRACE_LINE(); __st->health = Math::Min(__st->health + 2.0f * amount, 100.0f);
@@ -384,7 +392,7 @@ void PlayerState_g2::heal(float amount)
     __st->health);
 #line 34 "player_v2.hot"
 }
-#line 388 "player_v2.hot.cpp"
+#line 396 "player_v2.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

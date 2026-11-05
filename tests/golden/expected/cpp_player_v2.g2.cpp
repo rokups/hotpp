@@ -462,12 +462,14 @@ void PlayerState_g2::ctor()
 #line 34 "cpp_player_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 34 "cpp_player_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 34 "cpp_player_v2.cpp"
     HOT_TRACE_FRAME("Player.Player", "cpp_player_v2.cpp");
 #line 34 "cpp_player_v2.cpp"
 
 #line 34 "cpp_player_v2.cpp"
 }
-#line 471 "cpp_player_v2.cpp.cpp"
+#line 473 "cpp_player_v2.cpp.cpp"
 
 #line 36 "cpp_player_v2.cpp"
 void PlayerState_g2::Tick(float dt)
@@ -486,6 +488,8 @@ void PlayerState_g2::Tick(float dt)
 #line 36 "cpp_player_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 36 "cpp_player_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 36 "cpp_player_v2.cpp"
     HOT_TRACE_FRAME("Player.Tick", "cpp_player_v2.cpp");
 #line 37 "cpp_player_v2.cpp"
 
@@ -498,7 +502,7 @@ void PlayerState_g2::Tick(float dt)
     
 #line 44 "cpp_player_v2.cpp"
 }
-#line 502 "cpp_player_v2.cpp.cpp"
+#line 506 "cpp_player_v2.cpp.cpp"
 
 #line 46 "cpp_player_v2.cpp"
 void PlayerState_g2::TakeDamage_f(float amount)
@@ -517,6 +521,8 @@ void PlayerState_g2::TakeDamage_f(float amount)
 #line 46 "cpp_player_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 46 "cpp_player_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 46 "cpp_player_v2.cpp"
     HOT_TRACE_FRAME("Player.TakeDamage", "cpp_player_v2.cpp");
 #line 47 "cpp_player_v2.cpp"
 
@@ -525,7 +531,7 @@ void PlayerState_g2::TakeDamage_f(float amount)
     
 #line 50 "cpp_player_v2.cpp"
 }
-#line 529 "cpp_player_v2.cpp.cpp"
+#line 535 "cpp_player_v2.cpp.cpp"
 
 #line 52 "cpp_player_v2.cpp"
 void PlayerState_g2::TakeDamage_Af(Actor & source, float amount)
@@ -544,6 +550,8 @@ void PlayerState_g2::TakeDamage_Af(Actor & source, float amount)
 #line 52 "cpp_player_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 52 "cpp_player_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 52 "cpp_player_v2.cpp"
     HOT_TRACE_FRAME("Player.TakeDamage", "cpp_player_v2.cpp");
 #line 53 "cpp_player_v2.cpp"
 
@@ -553,7 +561,7 @@ void PlayerState_g2::TakeDamage_Af(Actor & source, float amount)
     
 #line 57 "cpp_player_v2.cpp"
 }
-#line 557 "cpp_player_v2.cpp.cpp"
+#line 565 "cpp_player_v2.cpp.cpp"
 
 #line 59 "cpp_player_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Player__heal(Player_Shell* __self, float a)
@@ -563,7 +571,7 @@ void PlayerState_g2::TakeDamage_Af(Actor & source, float amount)
     return state_of(__self)->heal(std::forward<float>(a));
 #line 59 "cpp_player_v2.cpp"
 }
-#line 567 "cpp_player_v2.cpp.cpp"
+#line 575 "cpp_player_v2.cpp.cpp"
 #line 59 "cpp_player_v2.cpp"
 void PlayerState_g2::heal(float a)
 #line 59 "cpp_player_v2.cpp"
@@ -581,6 +589,8 @@ void PlayerState_g2::heal(float a)
 #line 59 "cpp_player_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 59 "cpp_player_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 59 "cpp_player_v2.cpp"
     HOT_TRACE_FRAME("Player.heal", "cpp_player_v2.cpp");
 #line 60 "cpp_player_v2.cpp"
 
@@ -589,7 +599,7 @@ void PlayerState_g2::heal(float a)
     
 #line 63 "cpp_player_v2.cpp"
 }
-#line 593 "cpp_player_v2.cpp.cpp"
+#line 603 "cpp_player_v2.cpp.cpp"
 
 #line 66 "cpp_player_v2.cpp"
 static float Player__convert_level(int old)
@@ -599,7 +609,7 @@ static float Player__convert_level(int old)
  return old * 10.0f; 
 #line 66 "cpp_player_v2.cpp"
 }
-#line 603 "cpp_player_v2.cpp.cpp"
+#line 613 "cpp_player_v2.cpp.cpp"
 
 #line 68 "cpp_player_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Player__onReload(Player_Shell* __self, const hot::OldState& old)
@@ -609,7 +619,7 @@ static float Player__convert_level(int old)
     return state_of(__self)->onReload(std::forward<const hot::OldState&>(old));
 #line 68 "cpp_player_v2.cpp"
 }
-#line 613 "cpp_player_v2.cpp.cpp"
+#line 623 "cpp_player_v2.cpp.cpp"
 #line 68 "cpp_player_v2.cpp"
 void PlayerState_g2::onReload(const hot::OldState& old)
 #line 68 "cpp_player_v2.cpp"
@@ -627,6 +637,8 @@ void PlayerState_g2::onReload(const hot::OldState& old)
 #line 68 "cpp_player_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 68 "cpp_player_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 68 "cpp_player_v2.cpp"
     HOT_TRACE_FRAME("Player.onReload", "cpp_player_v2.cpp");
 #line 69 "cpp_player_v2.cpp"
 
@@ -635,7 +647,7 @@ void PlayerState_g2::onReload(const hot::OldState& old)
     
 #line 72 "cpp_player_v2.cpp"
 }
-#line 639 "cpp_player_v2.cpp.cpp"
+#line 651 "cpp_player_v2.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

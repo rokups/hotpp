@@ -433,12 +433,14 @@ void CounterState_g1::ctor()
 #line 31 "cpp_freefn.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 31 "cpp_freefn.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 31 "cpp_freefn.cpp"
     HOT_TRACE_FRAME("Counter.Counter", "cpp_freefn.cpp");
 #line 31 "cpp_freefn.cpp"
 
 #line 31 "cpp_freefn.cpp"
 }
-#line 442 "cpp_freefn.cpp.cpp"
+#line 444 "cpp_freefn.cpp.cpp"
 
 #line 33 "cpp_freefn.cpp"
 void CounterState_g1::Tick(float dt)
@@ -457,6 +459,8 @@ void CounterState_g1::Tick(float dt)
 #line 33 "cpp_freefn.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 33 "cpp_freefn.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 33 "cpp_freefn.cpp"
     HOT_TRACE_FRAME("Counter.Tick", "cpp_freefn.cpp");
 #line 34 "cpp_freefn.cpp"
 
@@ -466,7 +470,7 @@ void CounterState_g1::Tick(float dt)
     
 #line 38 "cpp_freefn.cpp"
 }
-#line 470 "cpp_freefn.cpp.cpp"
+#line 474 "cpp_freefn.cpp.cpp"
 
 #line 41 "cpp_freefn.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Counter__Peek(Counter_Shell* __self)
@@ -476,7 +480,7 @@ void CounterState_g1::Tick(float dt)
     return state_of(__self)->Peek();
 #line 41 "cpp_freefn.cpp"
 }
-#line 480 "cpp_freefn.cpp.cpp"
+#line 484 "cpp_freefn.cpp.cpp"
 #line 41 "cpp_freefn.cpp"
 int CounterState_g1::Peek()
 #line 41 "cpp_freefn.cpp"
@@ -494,12 +498,14 @@ int CounterState_g1::Peek()
 #line 41 "cpp_freefn.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 41 "cpp_freefn.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 41 "cpp_freefn.cpp"
     HOT_TRACE_FRAME("Counter.Peek", "cpp_freefn.cpp");
 #line 41 "cpp_freefn.cpp"
  return read_total(); 
 #line 41 "cpp_freefn.cpp"
 }
-#line 503 "cpp_freefn.cpp.cpp"
+#line 509 "cpp_freefn.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

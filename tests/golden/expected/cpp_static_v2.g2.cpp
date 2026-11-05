@@ -456,12 +456,14 @@ void CounterState_g2::ctor()
 #line 12 "cpp_static_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 12 "cpp_static_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 12 "cpp_static_v2.cpp"
     HOT_TRACE_FRAME("Counter.Counter", "cpp_static_v2.cpp");
 #line 12 "cpp_static_v2.cpp"
 
 #line 12 "cpp_static_v2.cpp"
 }
-#line 465 "cpp_static_v2.cpp.cpp"
+#line 467 "cpp_static_v2.cpp.cpp"
 
 #line 14 "cpp_static_v2.cpp"
 void CounterState_g2::Tick(float dt)
@@ -480,6 +482,8 @@ void CounterState_g2::Tick(float dt)
 #line 14 "cpp_static_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 14 "cpp_static_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 14 "cpp_static_v2.cpp"
     HOT_TRACE_FRAME("Counter.Tick", "cpp_static_v2.cpp");
 #line 15 "cpp_static_v2.cpp"
 
@@ -492,7 +496,7 @@ void CounterState_g2::Tick(float dt)
     
 #line 22 "cpp_static_v2.cpp"
 }
-#line 496 "cpp_static_v2.cpp.cpp"
+#line 500 "cpp_static_v2.cpp.cpp"
 
 #line 24 "cpp_static_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Counter__Peek(Counter_Shell* __self)
@@ -502,7 +506,7 @@ void CounterState_g2::Tick(float dt)
     return state_of(__self)->Peek();
 #line 24 "cpp_static_v2.cpp"
 }
-#line 506 "cpp_static_v2.cpp.cpp"
+#line 510 "cpp_static_v2.cpp.cpp"
 #line 24 "cpp_static_v2.cpp"
 int CounterState_g2::Peek()
 #line 24 "cpp_static_v2.cpp"
@@ -520,6 +524,8 @@ int CounterState_g2::Peek()
 #line 24 "cpp_static_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 24 "cpp_static_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 24 "cpp_static_v2.cpp"
     HOT_TRACE_FRAME("Counter.Peek", "cpp_static_v2.cpp");
 #line 25 "cpp_static_v2.cpp"
 
@@ -528,18 +534,18 @@ int CounterState_g2::Peek()
     
 #line 28 "cpp_static_v2.cpp"
 }
-#line 532 "cpp_static_v2.cpp.cpp"
+#line 538 "cpp_static_v2.cpp.cpp"
 
 
 #line 30 "cpp_static_v2.cpp"
 int Counter__s_scale(int v) { return v * Counter__s_kFactor; }
 
-#line 538 "cpp_static_v2.cpp.cpp"
+#line 544 "cpp_static_v2.cpp.cpp"
 
 #line 33 "cpp_static_v2.cpp"
 int Counter__s_plus(int a, int b) { return a + b; }
 
-#line 543 "cpp_static_v2.cpp.cpp"
+#line 549 "cpp_static_v2.cpp.cpp"
 
 #line 50 "cpp_static_v2.cpp"
 int tally()
@@ -547,7 +553,7 @@ int tally()
     return Counter__s_scale(static_cast<int>(hot_mod()->Counter__s_count)) + hot_mod()->Counter__s_hits;
 }
 
-#line 551 "cpp_static_v2.cpp.cpp"
+#line 557 "cpp_static_v2.cpp.cpp"
 extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_live_flag(&hot_live);

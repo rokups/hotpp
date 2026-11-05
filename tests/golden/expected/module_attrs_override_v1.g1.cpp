@@ -291,6 +291,8 @@ void CounterState_g1::Tick(float dt)
 #line 14 "module_attrs_override_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 14 "module_attrs_override_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 14 "module_attrs_override_v1.hot"
     HOT_TRACE_FRAME("Counter.Tick", "module_attrs_override_v1.hot");
 #line 14 "module_attrs_override_v1.hot"
     HOT_TRACE_LINE(); hot::deref(__st->history).push_back(1);
@@ -298,7 +300,7 @@ void CounterState_g1::Tick(float dt)
     HOT_TRACE_LINE(); __st->label = other_std::to_string(hot::deref(__st->history).size());
 #line 16 "module_attrs_override_v1.hot"
 }
-#line 302 "module_attrs_override_v1.hot.cpp"
+#line 304 "module_attrs_override_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

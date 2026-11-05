@@ -761,10 +761,12 @@ void ProbeState_g1::ctor()
 #line 8 "borrowed_args_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 8 "borrowed_args_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 8 "borrowed_args_v1.hot"
     HOT_TRACE_FRAME("Probe.Probe", "borrowed_args_v1.hot");
 #line 8 "borrowed_args_v1.hot"
 }
-#line 768 "borrowed_args_v1.hot.cpp"
+#line 770 "borrowed_args_v1.hot.cpp"
 
 #line 9 "borrowed_args_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Probe__ctor(Probe_Shell* __self, Vec3* p)
@@ -774,7 +776,7 @@ void ProbeState_g1::ctor()
     return state_of(__self)->ctor(std::forward<Vec3*>(p));
 #line 9 "borrowed_args_v1.hot"
 }
-#line 778 "borrowed_args_v1.hot.cpp"
+#line 780 "borrowed_args_v1.hot.cpp"
 #line 9 "borrowed_args_v1.hot"
 void ProbeState_g1::ctor(Vec3* p)
 #line 9 "borrowed_args_v1.hot"
@@ -792,6 +794,8 @@ void ProbeState_g1::ctor(Vec3* p)
 #line 10 "borrowed_args_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 10 "borrowed_args_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 10 "borrowed_args_v1.hot"
     HOT_TRACE_FRAME("Probe.Probe", "borrowed_args_v1.hot");
 #line 10 "borrowed_args_v1.hot"
     HOT_TRACE_LINE(); if (p == nullptr) return;
@@ -799,7 +803,7 @@ void ProbeState_g1::ctor(Vec3* p)
     HOT_TRACE_LINE(); last = hot::deref(p).x;
 #line 12 "borrowed_args_v1.hot"
 }
-#line 803 "borrowed_args_v1.hot.cpp"
+#line 807 "borrowed_args_v1.hot.cpp"
 
 #line 13 "borrowed_args_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Probe__Look(Probe_Shell* __self, Vec3& v)
@@ -809,7 +813,7 @@ void ProbeState_g1::ctor(Vec3* p)
     return state_of(__self)->Look(std::forward<Vec3&>(v));
 #line 13 "borrowed_args_v1.hot"
 }
-#line 813 "borrowed_args_v1.hot.cpp"
+#line 817 "borrowed_args_v1.hot.cpp"
 #line 13 "borrowed_args_v1.hot"
 void ProbeState_g1::Look(Vec3& v)
 #line 13 "borrowed_args_v1.hot"
@@ -827,12 +831,14 @@ void ProbeState_g1::Look(Vec3& v)
 #line 13 "borrowed_args_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 13 "borrowed_args_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 13 "borrowed_args_v1.hot"
     HOT_TRACE_FRAME("Probe.Look", "borrowed_args_v1.hot");
 #line 13 "borrowed_args_v1.hot"
     HOT_TRACE_LINE(); last = hot::deref(v).x;
 #line 13 "borrowed_args_v1.hot"
 }
-#line 836 "borrowed_args_v1.hot.cpp"
+#line 842 "borrowed_args_v1.hot.cpp"
 
 #line 14 "borrowed_args_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Probe__Take(Probe_Shell* __self, Vec3* p)
@@ -842,7 +848,7 @@ void ProbeState_g1::Look(Vec3& v)
     return state_of(__self)->Take(std::forward<Vec3*>(p));
 #line 14 "borrowed_args_v1.hot"
 }
-#line 846 "borrowed_args_v1.hot.cpp"
+#line 852 "borrowed_args_v1.hot.cpp"
 #line 14 "borrowed_args_v1.hot"
 void ProbeState_g1::Take(Vec3* const p)
 #line 14 "borrowed_args_v1.hot"
@@ -860,6 +866,8 @@ void ProbeState_g1::Take(Vec3* const p)
 #line 15 "borrowed_args_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 15 "borrowed_args_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 15 "borrowed_args_v1.hot"
     HOT_TRACE_FRAME("Probe.Take", "borrowed_args_v1.hot");
 #line 15 "borrowed_args_v1.hot"
     HOT_TRACE_LINE(); if (p == nullptr) return;
@@ -867,7 +875,7 @@ void ProbeState_g1::Take(Vec3* const p)
     HOT_TRACE_LINE(); last = hot::deref(p).y;
 #line 17 "borrowed_args_v1.hot"
 }
-#line 871 "borrowed_args_v1.hot.cpp"
+#line 879 "borrowed_args_v1.hot.cpp"
 
 #line 19 "borrowed_args_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static float Probe__Pass(Probe_Shell* __self, Vec3& v, Vec3* p)
@@ -877,7 +885,7 @@ void ProbeState_g1::Take(Vec3* const p)
     return state_of(__self)->Pass(std::forward<Vec3&>(v), std::forward<Vec3*>(p));
 #line 19 "borrowed_args_v1.hot"
 }
-#line 881 "borrowed_args_v1.hot.cpp"
+#line 889 "borrowed_args_v1.hot.cpp"
 #line 19 "borrowed_args_v1.hot"
 float ProbeState_g1::Pass(Vec3& v, Vec3* const p)
 #line 19 "borrowed_args_v1.hot"
@@ -895,6 +903,8 @@ float ProbeState_g1::Pass(Vec3& v, Vec3* const p)
 #line 20 "borrowed_args_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 20 "borrowed_args_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 20 "borrowed_args_v1.hot"
     HOT_TRACE_FRAME("Probe.Pass", "borrowed_args_v1.hot");
 #line 20 "borrowed_args_v1.hot"
     HOT_TRACE_LINE(); if (p == nullptr) return 0;
@@ -906,7 +916,7 @@ float ProbeState_g1::Pass(Vec3& v, Vec3* const p)
     HOT_TRACE_LINE(); return Distance(v, hot::star(p));
 #line 24 "borrowed_args_v1.hot"
 }
-#line 910 "borrowed_args_v1.hot.cpp"
+#line 920 "borrowed_args_v1.hot.cpp"
 
 #line 30 "borrowed_args_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static float Caller__Run(Caller_Shell* __self, Vec3& v, Vec3* p, bool c)
@@ -916,7 +926,7 @@ float ProbeState_g1::Pass(Vec3& v, Vec3* const p)
     return state_of(__self)->Run(std::forward<Vec3&>(v), std::forward<Vec3*>(p), std::forward<bool>(c));
 #line 30 "borrowed_args_v1.hot"
 }
-#line 920 "borrowed_args_v1.hot.cpp"
+#line 930 "borrowed_args_v1.hot.cpp"
 #line 30 "borrowed_args_v1.hot"
 float CallerState_g1::Run(Vec3& v, Vec3* p, bool const c)
 #line 30 "borrowed_args_v1.hot"
@@ -933,6 +943,8 @@ float CallerState_g1::Run(Vec3& v, Vec3* p, bool const c)
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Caller_Shell*>(this->__hot_owner);
 #line 31 "borrowed_args_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 31 "borrowed_args_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
 #line 31 "borrowed_args_v1.hot"
     HOT_TRACE_FRAME("Caller.Run", "borrowed_args_v1.hot");
 #line 31 "borrowed_args_v1.hot"
@@ -981,7 +993,7 @@ float CallerState_g1::Run(Vec3& v, Vec3* p, bool const c)
     HOT_TRACE_LINE(); return d + Probe__Pass(hot::shell_of<Probe_Shell>(pb, "Probe"), v, p) + Probe__Pass(hot::shell_of<Probe_Shell>(other, "Probe"), hot::star(q), &a) + Util::Sum(r);
 #line 53 "borrowed_args_v1.hot"
 }
-#line 985 "borrowed_args_v1.hot.cpp"
+#line 997 "borrowed_args_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

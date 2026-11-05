@@ -462,12 +462,14 @@ void BufState_g1::ctor()
 #line 14 "cpp_array_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 14 "cpp_array_v1.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 14 "cpp_array_v1.cpp"
     HOT_TRACE_FRAME("Buf.Buf", "cpp_array_v1.cpp");
 #line 14 "cpp_array_v1.cpp"
  names[0] = "first"; 
 #line 14 "cpp_array_v1.cpp"
 }
-#line 471 "cpp_array_v1.cpp.cpp"
+#line 473 "cpp_array_v1.cpp.cpp"
 
 #line 16 "cpp_array_v1.cpp"
 void BufState_g1::Tick(float dt)
@@ -486,6 +488,8 @@ void BufState_g1::Tick(float dt)
 #line 16 "cpp_array_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 16 "cpp_array_v1.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 16 "cpp_array_v1.cpp"
     HOT_TRACE_FRAME("Buf.Tick", "cpp_array_v1.cpp");
 #line 17 "cpp_array_v1.cpp"
 
@@ -500,7 +504,7 @@ void BufState_g1::Tick(float dt)
     
 #line 26 "cpp_array_v1.cpp"
 }
-#line 504 "cpp_array_v1.cpp.cpp"
+#line 508 "cpp_array_v1.cpp.cpp"
 
 #line 28 "cpp_array_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Buf__sum(Buf_Shell* __self)
@@ -510,7 +514,7 @@ void BufState_g1::Tick(float dt)
     return state_of(__self)->sum();
 #line 28 "cpp_array_v1.cpp"
 }
-#line 514 "cpp_array_v1.cpp.cpp"
+#line 518 "cpp_array_v1.cpp.cpp"
 #line 28 "cpp_array_v1.cpp"
 int BufState_g1::sum()
 #line 28 "cpp_array_v1.cpp"
@@ -528,6 +532,8 @@ int BufState_g1::sum()
 #line 28 "cpp_array_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 28 "cpp_array_v1.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 28 "cpp_array_v1.cpp"
     HOT_TRACE_FRAME("Buf.sum", "cpp_array_v1.cpp");
 #line 29 "cpp_array_v1.cpp"
 
@@ -538,7 +544,7 @@ int BufState_g1::sum()
     
 #line 34 "cpp_array_v1.cpp"
 }
-#line 542 "cpp_array_v1.cpp.cpp"
+#line 548 "cpp_array_v1.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

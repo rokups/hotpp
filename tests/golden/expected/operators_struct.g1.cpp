@@ -589,6 +589,8 @@ void HolderState_g1::Tick(float dt)
 #line 48 "operators_struct.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 48 "operators_struct.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 48 "operators_struct.hot"
     HOT_TRACE_FRAME("Holder.Tick", "operators_struct.hot");
 #line 48 "operators_struct.hot"
     HOT_TRACE_LINE(); __st->ticks = __st->ticks + 1;
@@ -660,7 +662,7 @@ void HolderState_g1::Tick(float dt)
     HOT_TRACE_LINE(); __st->r_sorted = (hot::deref(hot::index(list, 0)).x == 1.0f && hot::deref(hot::index(list, 1)).x == 3.0f && hot::deref(hot::index(list, 2)).x == 4.0f) ? 1 : 0;
 #line 82 "operators_struct.hot"
 }
-#line 664 "operators_struct.hot.cpp"
+#line 666 "operators_struct.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

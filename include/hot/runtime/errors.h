@@ -91,6 +91,13 @@ struct ScriptErrorReport
     const char* traceback;  // the script call stack (trace.h); empty when HOT_TRACEBACK is 0
 };
 
+// The limit of the script call depth. A script function that is called at a depth above the limit
+// throws ScriptError "stack overflow". The default is HOT_MAX_CALL_DEPTH (config.h). The largest
+// value is 65519 (a larger value gives 65519). Set the limit before the script code runs. The frames of the native code
+// between script calls need stack too, so a large limit needs a large stack.
+HOT_EXPORT void set_max_call_depth(uint32_t limit) noexcept;
+HOT_EXPORT uint32_t max_call_depth() noexcept;
+
 using ScriptErrorHandler = std::function<void(const ScriptErrorReport&)>;
 
 // Sets the handler of an unhandled exception. An empty function selects the default:
@@ -105,9 +112,16 @@ HOT_EXPORT ScriptErrorHandler script_error_handler();
 namespace detail
 {
 
-// The number of hot::call frames on the calling thread (shell.h). The report of an error is
-// only at the outermost frame. The thread-local count is in the host runtime, so a script module
-// of any generation shares it.
+// The call depth of the calling thread (shell.h). The low 16 bits count the hot::call frames:
+// the report of an error is only at the outermost frame. The high 16 bits count the script
+// function frames (kScriptFrame each): a script function that is too deep throws "stack overflow".
+// The thread-local count is in the host runtime, so a script module of any generation shares it.
+constexpr uint32_t kScriptFrame = 1u << 16;
+constexpr uint32_t kHostFrameMask = kScriptFrame - 1;
+// The frames that a destructor can add above the limit during an unwind.
+constexpr uint32_t kUnwindHeadroom = 16;
+// The largest limit. The frames of the limit and the headroom must fit in 16 bits.
+constexpr uint32_t kMaxCallDepthLimit = kHostFrameMask - kUnwindHeadroom;
 #if defined(__ELF__) && (defined(__clang__) || defined(__GNUC__))
     // ELF (Linux): the count is in static TLS. A script module reads it with the initial-exec
     // model: one instruction, no call. The host runtime must be in the executable, in a library
@@ -115,6 +129,9 @@ namespace detail
     // static TLS (glibc.rtld.optional_static_tls, see doc/embedding-rules.md).
     #define HOT_ELF_TLS_DEPTH 1
 extern __thread uint32_t g_call_depth __attribute__((visibility("default"), tls_model("initial-exec")));
+
+// The limit of the script frames (set_max_call_depth). A script module reads it directly.
+extern uint32_t g_max_call_depth __attribute__((visibility("default")));
 
 // The offset of g_call_depth from the thread pointer. The offset of a static TLS variable is
 // the same in each thread.
@@ -132,7 +149,18 @@ extern "C" char hot_call_depth_tp_offset[];
     // target.
     #define HOT_ELF_TLS_DEPTH 0
 HOT_EXPORT uint32_t& call_depth_slot() noexcept;
+HOT_EXPORT uint32_t max_call_depth_slot() noexcept;
 #endif
+
+// The limit of the script frames.
+HOT_HIDDEN uint32_t max_call_depth_value() noexcept
+{
+#if HOT_ELF_TLS_DEPTH
+    return g_max_call_depth;
+#else
+    return max_call_depth_slot();
+#endif
+}
 
 // The count of the calling thread.
 HOT_HIDDEN uint32_t& call_depth() noexcept
@@ -147,6 +175,11 @@ HOT_HIDDEN uint32_t& call_depth() noexcept
 #endif
 }
 
+// Called when a script frame starts at the limit. It throws ScriptError "stack overflow". While an
+// exception unwinds the stack, a destructor can call a script function, and an exception from there
+// ends the program. So during an unwind it returns, and the frame goes up to kUnwindHeadroom above
+// the limit.
+HOT_EXPORT void frame_overflow(uint32_t frames);
 [[noreturn]] HOT_EXPORT void throw_null_reference(const char* what);
 [[noreturn]] HOT_EXPORT void throw_index_out_of_range(std::size_t index, std::size_t size);
 

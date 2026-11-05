@@ -7314,6 +7314,7 @@ void translate_impl(
             // A ".cpp" coroutine cannot "return". Its task is lazy, and the guard of the task checks the
             // generation before the body starts (hot/runtime/task.h). So this throw only keeps the form.
             const bool is_coroutine = m.is_coroutine;
+            const bool is_dtor = is_fn && sym.size() >= 4 && sym.compare(sym.size() - 4, 4, "dtor") == 0 && member == "dtor";
             // An abstract method has no body: the member only traps (hot::abstract_called).
             const std::string abstract_text = m.is_abstract
                 ? "    hot::abstract_called(\"" + cd.key_name() + "\", \"" + m.name + "\");\n"
@@ -7329,7 +7330,7 @@ void translate_impl(
             bodies.push_back({cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns),
                 [&o, &all_text, &mapped, &reset, &write_stmts, h = body_head(m), em, file, end_line, first_line,
                     is_fn, sym, whead, wbody, bmember, mhead, mconst, mhead_from, what, shell, body_locals, tname, stale_ret,
-                    is_async, is_coroutine, co_head, co_call, abstract_text, aot_optimized = opt.aot_optimized]
+                    is_async, is_coroutine, is_dtor, co_head, co_call, abstract_text, aot_optimized = opt.aot_optimized]
                 {
                     const Method& m = *h;
                     auto line_at = [&](int l) { return "#line " + std::to_string(l) + " \"" + file + "\"\n"; };
@@ -7392,6 +7393,14 @@ void translate_impl(
                         o.w("    HOT_NODEBUG_LOCAL auto* __self = static_cast<" + shell + "*>(this->__hot_owner);\n");
                     o.w(line_at(first_line));
                     o.w("    HOT_NODEBUG_LOCAL auto* __st = this;\n");
+                    // The frame guard counts the script frames of the thread and throws "stack overflow"
+                    // above the limit (hot/runtime/shell.h). It is a scope object like the trace frame, so a
+                    // coroutine has none. A destructor has none: it must not throw.
+                    if (!is_coroutine && !is_dtor)
+                    {
+                        o.w(line_at(first_line));
+                        o.w("    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;\n");
+                    }
                     // A trace frame is a scope object. A coroutine frame keeps it across a suspension,
                     // so the frames of the thread do not nest then: a coroutine has none.
                     if (!is_coroutine)
@@ -7897,6 +7906,9 @@ void translate_impl(
                     o.w(head + ")\n");
                     o.w(line_at(h->line));
                     o.w("{\n");
+                    // The frame guard of a static method and a free function (see the member bodies).
+                    o.w(line_at(first_line));
+                    o.w("    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;\n");
                     o.w(line_at(first_line));
                     o.w("    HOT_TRACE_FRAME(\"" + ls.where + "\", \"" + file + "\");\n");
                     write_stmts(*h, ls.body.get());

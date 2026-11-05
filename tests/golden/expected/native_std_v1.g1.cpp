@@ -334,6 +334,8 @@ void TrackerState_g1::Tick(float dt)
 #line 19 "native_std_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 19 "native_std_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 19 "native_std_v1.hot"
     HOT_TRACE_FRAME("Tracker.Tick", "native_std_v1.hot");
 #line 19 "native_std_v1.hot"
     HOT_TRACE_LINE(); auto v = std::vector<float>();
@@ -363,7 +365,7 @@ void TrackerState_g1::Tick(float dt)
     HOT_TRACE_LINE(); hot::deref(__st->history).push_back(static_cast<int32_t>(hot::deref(__st->history).size()) * 10);
 #line 32 "native_std_v1.hot"
 }
-#line 367 "native_std_v1.hot.cpp"
+#line 369 "native_std_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

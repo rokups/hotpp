@@ -403,12 +403,14 @@ void BumperState_g1::ctor()
 #line 23 "cpp_namespace_fn.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 23 "cpp_namespace_fn.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 23 "cpp_namespace_fn.cpp"
     HOT_TRACE_FRAME("Bumper.Bumper", "cpp_namespace_fn.cpp");
 #line 23 "cpp_namespace_fn.cpp"
 
 #line 23 "cpp_namespace_fn.cpp"
 }
-#line 412 "cpp_namespace_fn.cpp.cpp"
+#line 414 "cpp_namespace_fn.cpp.cpp"
 
 #line 25 "cpp_namespace_fn.cpp"
 void BumperState_g1::Tick(float dt)
@@ -427,6 +429,8 @@ void BumperState_g1::Tick(float dt)
 #line 25 "cpp_namespace_fn.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 25 "cpp_namespace_fn.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 25 "cpp_namespace_fn.cpp"
     HOT_TRACE_FRAME("Bumper.Tick", "cpp_namespace_fn.cpp");
 #line 26 "cpp_namespace_fn.cpp"
 
@@ -436,7 +440,7 @@ void BumperState_g1::Tick(float dt)
     
 #line 30 "cpp_namespace_fn.cpp"
 }
-#line 440 "cpp_namespace_fn.cpp.cpp"
+#line 444 "cpp_namespace_fn.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

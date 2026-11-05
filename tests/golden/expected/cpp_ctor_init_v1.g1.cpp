@@ -739,6 +739,8 @@ void UnitState_g1::ctor(int hp_, std::string n, int bonus)
 #line 12 "cpp_ctor_init_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 12 "cpp_ctor_init_v1.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 12 "cpp_ctor_init_v1.cpp"
     HOT_TRACE_FRAME("Unit.Unit", "cpp_ctor_init_v1.cpp");
 #line 17 "cpp_ctor_init_v1.cpp"
 { decltype(__st->hp) __hot_mi(hp_ * 2); __st->hp = std::move(__hot_mi); }
@@ -756,7 +758,7 @@ void UnitState_g1::ctor(int hp_, std::string n, int bonus)
     
 #line 21 "cpp_ctor_init_v1.cpp"
 }
-#line 760 "cpp_ctor_init_v1.cpp.cpp"
+#line 762 "cpp_ctor_init_v1.cpp.cpp"
 
 #line 23 "cpp_ctor_init_v1.cpp"
 void UnitState_g1::Tick(float dt)
@@ -775,12 +777,14 @@ void UnitState_g1::Tick(float dt)
 #line 23 "cpp_ctor_init_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 23 "cpp_ctor_init_v1.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 23 "cpp_ctor_init_v1.cpp"
     HOT_TRACE_FRAME("Unit.Tick", "cpp_ctor_init_v1.cpp");
 #line 23 "cpp_ctor_init_v1.cpp"
  __self->Move(Vec3(dt, 0, 0)); 
 #line 23 "cpp_ctor_init_v1.cpp"
 }
-#line 784 "cpp_ctor_init_v1.cpp.cpp"
+#line 788 "cpp_ctor_init_v1.cpp.cpp"
 
 #line 39 "cpp_ctor_init_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Spawner__ctor(Spawner_Shell* __self)
@@ -790,7 +794,7 @@ void UnitState_g1::Tick(float dt)
     return state_of(__self)->ctor();
 #line 39 "cpp_ctor_init_v1.cpp"
 }
-#line 794 "cpp_ctor_init_v1.cpp.cpp"
+#line 798 "cpp_ctor_init_v1.cpp.cpp"
 #line 39 "cpp_ctor_init_v1.cpp"
 void SpawnerState_g1::ctor()
 #line 39 "cpp_ctor_init_v1.cpp"
@@ -808,12 +812,14 @@ void SpawnerState_g1::ctor()
 #line 39 "cpp_ctor_init_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 39 "cpp_ctor_init_v1.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 39 "cpp_ctor_init_v1.cpp"
     HOT_TRACE_FRAME("Spawner.Spawner", "cpp_ctor_init_v1.cpp");
 #line 39 "cpp_ctor_init_v1.cpp"
 
 #line 39 "cpp_ctor_init_v1.cpp"
 }
-#line 817 "cpp_ctor_init_v1.cpp.cpp"
+#line 823 "cpp_ctor_init_v1.cpp.cpp"
 
 #line 41 "cpp_ctor_init_v1.cpp"
 void SpawnerState_g1::Tick(float )
@@ -832,6 +838,8 @@ void SpawnerState_g1::Tick(float )
 #line 41 "cpp_ctor_init_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 41 "cpp_ctor_init_v1.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 41 "cpp_ctor_init_v1.cpp"
     HOT_TRACE_FRAME("Spawner.Tick", "cpp_ctor_init_v1.cpp");
 #line 42 "cpp_ctor_init_v1.cpp"
 
@@ -840,7 +848,7 @@ void SpawnerState_g1::Tick(float )
     
 #line 45 "cpp_ctor_init_v1.cpp"
 }
-#line 844 "cpp_ctor_init_v1.cpp.cpp"
+#line 852 "cpp_ctor_init_v1.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

@@ -460,6 +460,8 @@ int32_t ThrowerState_g1::caught()
 #line 24 "exceptions_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 24 "exceptions_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 24 "exceptions_v1.hot"
     HOT_TRACE_FRAME("Thrower.caught", "exceptions_v1.hot");
 #line 24 "exceptions_v1.hot"
     HOT_TRACE_LINE(); try {
@@ -475,7 +477,7 @@ int32_t ThrowerState_g1::caught()
     HOT_TRACE_LINE(); return 0;
 #line 30 "exceptions_v1.hot"
 }
-#line 479 "exceptions_v1.hot.cpp"
+#line 481 "exceptions_v1.hot.cpp"
 
 #line 32 "exceptions_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Thrower__escape(Thrower_Shell* __self)
@@ -485,7 +487,7 @@ int32_t ThrowerState_g1::caught()
     return state_of(__self)->escape();
 #line 32 "exceptions_v1.hot"
 }
-#line 489 "exceptions_v1.hot.cpp"
+#line 491 "exceptions_v1.hot.cpp"
 #line 32 "exceptions_v1.hot"
 void ThrowerState_g1::escape()
 #line 32 "exceptions_v1.hot"
@@ -503,12 +505,14 @@ void ThrowerState_g1::escape()
 #line 33 "exceptions_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 33 "exceptions_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 33 "exceptions_v1.hot"
     HOT_TRACE_FRAME("Thrower.escape", "exceptions_v1.hot");
 #line 33 "exceptions_v1.hot"
     HOT_TRACE_LINE(); throw AppError("app down");
 #line 34 "exceptions_v1.hot"
 }
-#line 512 "exceptions_v1.hot.cpp"
+#line 516 "exceptions_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

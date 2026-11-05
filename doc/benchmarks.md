@@ -285,7 +285,7 @@ Other calls:
 
 - A script to native call went through a PLT jump in `files` and `jit`. Now the module compiles with `-fno-plt`, and the call costs 1.46 ns, as in `aot`.
 - A `.hot` closure was a `std::function` that held a `hot::Closure`, and the closure held a second `std::function`. Now the `std::function` holds the guarded lambda directly. The call has one indirect call, the entry check and the generation check: 2.6 ns, not 4.4 ns.
-- A script to script virtual call has no `try` and no call depth. It costs the same as the member function pointer call in the micro benchmark. A non-virtual script to script call is a direct call. These calls did not change.
+- A script to script virtual call has no `try`. It costs the same as the member function pointer call in the micro benchmark. A non-virtual script to script call is a direct call. These numbers are from before the frame guard. Now each script function adds one add, one compare and one subtract on the call depth, and an exception cleanup. This cost is not measured.
 
 ### Optimized AOT (`aot-opt`)
 

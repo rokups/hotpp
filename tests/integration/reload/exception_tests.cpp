@@ -132,6 +132,269 @@ class Player : Actor {
     EXPECT_EQ(*s.field("total"), 2236.0f);
 }
 
+// Restores the default handler at the end of the scope, also when an assertion fails.
+struct HandlerGuard
+{
+    ~HandlerGuard() { hot::set_script_error_handler({}); }
+};
+
+// The class of the recursion tests. Tick calls the body that the test gives.
+const char* const kRecursionHead = R"(
+using "Actor.h";
+
+class Player : Actor {
+    int result = 0;
+    float caught = 0.0;
+    float after = 0.0;
+
+    int Down(int n) {
+        if (n == 0) { return 0; }
+        return this.Down(n - 1) + 1;
+    }
+
+    int Forever(int n) {
+        return this.Forever(n + 1) + 1;
+    }
+
+    virtual int VForever(int n) {
+        return this.VForever(n + 1) + 1;
+    }
+
+    int Probe(int n) {
+        this.result = n;
+        return this.Probe(n + 1) + 1;
+    }
+
+    override void Tick(float dt) {
+)";
+const char* const kRecursionTail = R"(
+    }
+
+    override void TakeDamage(float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
+}
+)";
+
+hot::ScriptSource recursion_source(const char* name, const std::string& body)
+{
+    return {name, std::string(kRecursionHead) + body + kRecursionTail};
+}
+
+// A recursion under the limit works, and the depth is 0 after it.
+TEST_P(BackendTests, RecursionUnderTheLimitWorks)
+{
+    const hot::ScriptSource src = recursion_source("rec_ok.hot", "this.result = this.Down(1000);");
+    hot::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
+    s.world.Tick(kDt);
+    EXPECT_EQ(*hot::field_ptr<int>(s.inst.shell, "result"), 1000);
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
+}
+
+// An infinite recursion throws ScriptError "stack overflow". The script catches it, and the
+// depth is 0 after it.
+TEST_P(BackendTests, InfiniteRecursionIsCaughtInScript)
+{
+    const hot::ScriptSource src = recursion_source("rec_catch.hot", R"(
+        try {
+            this.result = this.Forever(0);
+            this.after = 1.0;
+        } catch (ScriptError e) {
+            this.caught = 1.0;
+        }
+        this.result = this.Down(10);
+)");
+    hot::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
+    HandlerGuard guard;
+    int reports = 0;
+    hot::set_script_error_handler([&reports](const hot::ScriptErrorReport&) { ++reports; });
+    s.world.Tick(kDt);
+    EXPECT_EQ(*s.field("caught"), 1.0f);
+    EXPECT_EQ(*s.field("after"), 0.0f);
+    EXPECT_EQ(*hot::field_ptr<int>(s.inst.shell, "result"), 10);
+    EXPECT_EQ(reports, 0);
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
+}
+
+// An infinite recursion of a virtual function that nobody catches goes to the error handler. The
+// host stays alive, and the next tick works.
+TEST_P(BackendTests, InfiniteVirtualRecursionIsReported)
+{
+    const hot::ScriptSource src = recursion_source("rec_report.hot", R"(
+        this.after = this.after + 1.0;
+        this.result = this.VForever(0);
+)");
+    hot::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
+    HandlerGuard guard;
+    std::vector<std::string> messages;
+    hot::set_script_error_handler([&messages](const hot::ScriptErrorReport& e)
+                                  { messages.push_back(std::string(e.type) + ": " + e.message); });
+    s.world.Tick(kDt);
+    s.world.Tick(kDt);
+    ASSERT_EQ(messages.size(), 2u);
+    EXPECT_EQ(messages[0], "hot::ScriptError: stack overflow");
+    EXPECT_EQ(*s.field("after"), 2.0f);
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
+}
+
+// Restores the call depth limit at the end of the scope, also when an assertion fails.
+struct LimitGuard
+{
+    uint32_t old = hot::max_call_depth();
+    ~LimitGuard() { hot::set_max_call_depth(old); }
+};
+
+// The setter keeps the limit in the range that the 16 bit frame field holds.
+TEST(CallDepthLimit, SetterClampsTheLimit)
+{
+    LimitGuard guard;
+    hot::set_max_call_depth(50);
+    EXPECT_EQ(hot::max_call_depth(), 50u);
+    hot::set_max_call_depth(65519);
+    EXPECT_EQ(hot::max_call_depth(), 65519u);
+    hot::set_max_call_depth(65520);
+    EXPECT_EQ(hot::max_call_depth(), 65519u);
+    hot::set_max_call_depth(0xFFFFFFFFu);
+    EXPECT_EQ(hot::max_call_depth(), 65519u);
+}
+
+// The limit is exact: with the limit 50, the frames are Tick and 49 calls of Probe. The call that
+// would be the 51st frame throws.
+TEST_P(BackendTests, RecursionLimitIsExactAndCanChange)
+{
+    const hot::ScriptSource src = recursion_source("rec_exact.hot", R"(
+        try {
+            this.Probe(0);
+        } catch (ScriptError e) {
+            this.caught = 1.0;
+        }
+)");
+    hot::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
+    LimitGuard guard;
+    hot::set_max_call_depth(50);
+    s.world.Tick(kDt);
+    EXPECT_EQ(*s.field("caught"), 1.0f);
+    EXPECT_EQ(*hot::field_ptr<int>(s.inst.shell, "result"), 48);
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
+    hot::set_max_call_depth(100);
+    s.world.Tick(kDt);
+    EXPECT_EQ(*hot::field_ptr<int>(s.inst.shell, "result"), 98);
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
+}
+
+// A free function and a static method count their frames too.
+TEST_P(BackendTests, FreeFunctionAndStaticMethodRecursionThrow)
+{
+    const hot::ScriptSource src = {"rec_free.hot", R"(
+using "Actor.h";
+
+int FreeForever(int n) {
+    return FreeForever(n + 1) + 1;
+}
+
+class Player : Actor {
+    float caught = 0.0;
+    float caught2 = 0.0;
+    float after = 0.0;
+
+    static int StaticForever(int n) {
+        return Player.StaticForever(n + 1) + 1;
+    }
+
+    override void Tick(float dt) {
+        try {
+            var a = FreeForever(0);
+        } catch (ScriptError e) {
+            this.caught = 1.0;
+        }
+        try {
+            var b = Player.StaticForever(0);
+        } catch (ScriptError e) {
+            this.caught2 = 1.0;
+        }
+        this.after = 1.0;
+    }
+
+    override void TakeDamage(float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
+}
+)"};
+    hot::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
+    s.world.Tick(kDt);
+    EXPECT_EQ(*s.field("caught"), 1.0f);
+    EXPECT_EQ(*s.field("caught2"), 1.0f);
+    EXPECT_EQ(*s.field("after"), 1.0f);
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
+}
+
+// A destructor that runs while the "stack overflow" unwinds the stack calls a script function at the
+// limit. That call must not throw: the runtime would log "the destructor of Sentinel threw" on stderr
+// and skip the rest of the destructor.
+TEST_P(BackendTests, DestructorDuringTheUnwindOfAStackOverflow)
+{
+    const hot::ScriptSource src = {"rec_dtor.hot", R"(
+using "Actor.h";
+
+class Sentinel {
+    int Touch() { return 1; }
+    ~Sentinel() { var x = this.Touch(); }
+}
+
+class Player : Actor {
+    float caught = 0.0;
+    float after = 0.0;
+
+    int Deep(int n) {
+        $Sentinel s = new $Sentinel();
+        return this.Deep(n + 1) + 1;
+    }
+
+    override void Tick(float dt) {
+        try {
+            var a = this.Deep(0);
+        } catch (ScriptError e) {
+            this.caught = 1.0;
+        }
+        this.after = 1.0;
+    }
+
+    override void TakeDamage(float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
+}
+)"};
+    hot::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
+    LimitGuard guard;
+    hot::set_max_call_depth(200);
+    HandlerGuard handler;
+    int reports = 0;
+    hot::set_script_error_handler([&reports](const hot::ScriptErrorReport&) { ++reports; });
+    testing::internal::CaptureStderr();
+    s.world.Tick(kDt);
+    const std::string err = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(err.find("threw"), std::string::npos) << err;
+    EXPECT_EQ(*s.field("caught"), 1.0f);
+    EXPECT_EQ(*s.field("after"), 1.0f);
+    EXPECT_EQ(reports, 0);
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
+}
+
 #if HOT_RUNTIME_CHECKS
 
 // The class of the checks tests. Tick runs the body that the test gives. The handle is null.
@@ -164,12 +427,6 @@ hot::ScriptSource checks_source(const char* name, const std::string& body)
 {
     return {name, std::string(kChecksHead) + body + kChecksTail};
 }
-
-// Restores the default handler at the end of the scope, also when an assertion fails.
-struct HandlerGuard
-{
-    ~HandlerGuard() { hot::set_script_error_handler({}); }
-};
 
 struct RecordedReport
 {

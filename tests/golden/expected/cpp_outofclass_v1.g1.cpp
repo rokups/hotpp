@@ -438,12 +438,14 @@ void FighterState_g1::ctor()
 #line 11 "cpp_outofclass_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 11 "cpp_outofclass_v1.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 11 "cpp_outofclass_v1.cpp"
     HOT_TRACE_FRAME("Fighter.Fighter", "cpp_outofclass_v1.cpp");
 #line 11 "cpp_outofclass_v1.cpp"
 
 #line 11 "cpp_outofclass_v1.cpp"
 }
-#line 447 "cpp_outofclass_v1.cpp.cpp"
+#line 449 "cpp_outofclass_v1.cpp.cpp"
 
 #line 13 "cpp_outofclass_v1.cpp"
 void FighterState_g1::Tick(float dt)
@@ -462,6 +464,8 @@ void FighterState_g1::Tick(float dt)
 #line 13 "cpp_outofclass_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 13 "cpp_outofclass_v1.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 13 "cpp_outofclass_v1.cpp"
     HOT_TRACE_FRAME("Fighter.Tick", "cpp_outofclass_v1.cpp");
 #line 14 "cpp_outofclass_v1.cpp"
 
@@ -472,7 +476,7 @@ void FighterState_g1::Tick(float dt)
     
 #line 19 "cpp_outofclass_v1.cpp"
 }
-#line 476 "cpp_outofclass_v1.cpp.cpp"
+#line 480 "cpp_outofclass_v1.cpp.cpp"
 
 #line 21 "cpp_outofclass_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Fighter__hit(Fighter_Shell* __self, int d, int scale)
@@ -482,7 +486,7 @@ void FighterState_g1::Tick(float dt)
     return state_of(__self)->hit(std::forward<int>(d), std::forward<int>(scale));
 #line 21 "cpp_outofclass_v1.cpp"
 }
-#line 486 "cpp_outofclass_v1.cpp.cpp"
+#line 490 "cpp_outofclass_v1.cpp.cpp"
 #line 21 "cpp_outofclass_v1.cpp"
 int FighterState_g1::hit(int d, int scale)
 #line 21 "cpp_outofclass_v1.cpp"
@@ -500,6 +504,8 @@ int FighterState_g1::hit(int d, int scale)
 #line 21 "cpp_outofclass_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 21 "cpp_outofclass_v1.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 21 "cpp_outofclass_v1.cpp"
     HOT_TRACE_FRAME("Fighter.hit", "cpp_outofclass_v1.cpp");
 #line 22 "cpp_outofclass_v1.cpp"
 
@@ -508,7 +514,7 @@ int FighterState_g1::hit(int d, int scale)
     
 #line 25 "cpp_outofclass_v1.cpp"
 }
-#line 512 "cpp_outofclass_v1.cpp.cpp"
+#line 518 "cpp_outofclass_v1.cpp.cpp"
 
 #line 27 "cpp_outofclass_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Fighter__get(Fighter_Shell* __self)
@@ -518,7 +524,7 @@ int FighterState_g1::hit(int d, int scale)
     return state_of(__self)->get();
 #line 27 "cpp_outofclass_v1.cpp"
 }
-#line 522 "cpp_outofclass_v1.cpp.cpp"
+#line 528 "cpp_outofclass_v1.cpp.cpp"
 #line 27 "cpp_outofclass_v1.cpp"
 int FighterState_g1::get()
 #line 27 "cpp_outofclass_v1.cpp"
@@ -536,12 +542,14 @@ int FighterState_g1::get()
 #line 27 "cpp_outofclass_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 27 "cpp_outofclass_v1.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 27 "cpp_outofclass_v1.cpp"
     HOT_TRACE_FRAME("Fighter.get", "cpp_outofclass_v1.cpp");
 #line 27 "cpp_outofclass_v1.cpp"
  return hp; 
 #line 27 "cpp_outofclass_v1.cpp"
 }
-#line 545 "cpp_outofclass_v1.cpp.cpp"
+#line 553 "cpp_outofclass_v1.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

@@ -529,6 +529,8 @@ int CallerState_g1::WearRaw(Charm* __c)
 #line 14 "handle_call_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 14 "handle_call_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 14 "handle_call_v1.hot"
     HOT_TRACE_FRAME("Caller.WearRaw", "handle_call_v1.hot");
 #line 14 "handle_call_v1.hot"
     std::shared_ptr<Charm> c = hot::bind<std::shared_ptr<Charm>>(std::forward<Charm*>(__c));
@@ -538,7 +540,7 @@ int CallerState_g1::WearRaw(Charm* __c)
     HOT_TRACE_LINE(); return 1;
 #line 16 "handle_call_v1.hot"
 }
-#line 542 "handle_call_v1.hot.cpp"
+#line 544 "handle_call_v1.hot.cpp"
 
 #line 19 "handle_call_v1.hot"
 int CallerState_g1::WearBlade(Blade* __b)
@@ -556,6 +558,8 @@ int CallerState_g1::WearBlade(Blade* __b)
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Caller_Shell*>(this->__hot_owner);
 #line 20 "handle_call_v1.hot"
     HOT_NODEBUG_LOCAL auto* __st = this;
+#line 20 "handle_call_v1.hot"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
 #line 20 "handle_call_v1.hot"
     HOT_TRACE_FRAME("Caller.WearBlade", "handle_call_v1.hot");
 #line 20 "handle_call_v1.hot"
@@ -604,7 +608,7 @@ int CallerState_g1::WearBlade(Blade* __b)
     HOT_TRACE_LINE(); return Mixed(hot::star(local));
 #line 41 "handle_call_v1.hot"
 }
-#line 608 "handle_call_v1.hot.cpp"
+#line 612 "handle_call_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
