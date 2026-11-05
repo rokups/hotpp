@@ -78,6 +78,21 @@ This list shows what version 1 does not support.
 
 A `.cpp` script (see [C++ scripts](cpp-scripts.html)) has more limits. It has no properties, no script virtual methods without `override`, no script-class handles and no `new`, and no script inheritance.
 
+## What can still crash
+
+A HotScript program does not crash the process through an invalid access, with these exceptions. Each item has its details in the list above. The table of the checks that exist is in [Checks against crashes](statements-errors.html#checks-against-crashes).
+
+- A raw `T*` in a local or a parameter, after a reload or a native free.
+- A native function that stores a `ref`, a `T&` or a view. A view that a lambda or an `async` method keeps.
+- A change of a container through an alias, another method or a free function, while a `ref`, a view or a `foreach` uses it.
+- A `.cpp` script. It has no null, bounds, shift, float cast or `ref` lifetime checks.
+- A null native pointer from a native call, when you build with `HOT_RUNTIME_CHECKS=0`.
+- A container with no bounds check, `a?.back()`, `begin()`, `end()` and `*it`.
+- An implicit float to integer conversion that is out of range.
+- Signed overflow in an MSVC build.
+- A recursion only through a closure, a coroutine or a free function of a `.cpp` script. A thread with a small stack.
+- A crash inside native code that the script calls.
+
 ## Limits
 
 These limits come from the type system and the null analysis.

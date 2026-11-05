@@ -1017,6 +1017,55 @@ TEST_P(BackendTests, CheckedUnwrapCastThrowsOnNull)
     EXPECT_EQ(*s.field("after"), 0.0f);
 }
 
+// "x as $C" and a cast "($C)x" to a derived script class never crash. A wrong class and a null
+// source give a null handle. The use of that handle throws hot::NullReference.
+TEST_P(BackendTests, BadAsAndDerivedCastGiveNullAndTheUseThrows)
+{
+    const hot::ScriptSource src = {"chk_bad_as.hot", R"(
+using "Actor.h";
+
+class Base { int n = 3; }
+class Derived : Base { int m = 4; }
+
+class Player : Actor {
+    std.vector<$Derived> xs;
+    float caught = 0.0;
+    float caught2 = 0.0;
+    float ticks = 0.0;
+    float after = 0.0;
+    float v = 0.0;
+
+    override void Tick(float dt) {
+        $Base b = new $Base();
+        $Base none = null;
+        this.xs.push_back(b as $Derived);
+        this.xs.push_back(($Derived)b);
+        this.xs.push_back(none as $Derived);
+        this.xs.push_back(new $Derived());
+        $Derived first = this.xs[0];
+        if (first == null) { this.caught = 1.0; }
+        try { this.v = this.xs[0].m; this.after = 1.0; } catch (NullReference e) { this.caught2 = 1.0; }
+        try { this.v = this.xs[1].m; this.after = 1.0; } catch (NullReference e) { this.ticks = 1.0; }
+        try { this.v = this.xs[2].m; this.after = 1.0; } catch (NullReference e) { this.ticks = this.ticks + 1.0; }
+        this.v = this.xs[3].m;
+    }
+
+    override void TakeDamage(float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
+}
+)"};
+    hot::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
+    s.world.Tick(kDt);
+    EXPECT_EQ(*s.field("caught"), 1.0f);
+    EXPECT_EQ(*s.field("caught2"), 1.0f);
+    EXPECT_EQ(*s.field("ticks"), 2.0f);
+    EXPECT_EQ(*s.field("after"), 0.0f);
+    EXPECT_EQ(*s.field("v"), 4.0f);
+}
+
 // An index past the end throws hot::IndexOutOfRange. A catch of the base ScriptError also
 // catches a null reference.
 TEST_P(BackendTests, IndexOutOfRangeCaughtInScript)

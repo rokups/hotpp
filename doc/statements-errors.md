@@ -109,3 +109,28 @@ An exception struct is for `throw` and `catch` only. It cannot be the type of a 
 ## Change of a container in a foreach
 
 A change of the shape of a container while `foreach (var x in c)` walks it is undefined behavior in C++. The translator reports a compile error for such a change in the loop body. The shape changes are `c = ...`, and a call of `push_back`, `insert`, `erase`, `clear`, `resize`, `emplace`, `pop_back` and the other methods that can move or remove elements. Collect the changes in a new list, and apply them after the loop. A write to an element (`c[i] = v`, `x.field = v`) and a change of a different container are allowed. The check has limits. See [Limits](limits.html).
+
+## Checks against crashes
+
+Each row shows how HotScript stops one cause of a crash. The mechanism is a compile error (the translator rejects the script), a runtime exception (a recoverable `ScriptError`), or unchecked. [What can still crash](limits.html#what-can-still-crash) lists the unchecked cases.
+
+| Cause | Mechanism | Exception | Test |
+|---|---|---|---|
+| Null handle, pointer or optional | Compile error where the analysis sees null. Else runtime. | `NullReference` | golden `55`-`59`; `NullDerefCaughtInScript`; `StarNullCaught`; `RuntimeChecks.DerefOfNullPointerThrows`, `DerefOfAnEmptyOptionalThrows` |
+| Null interface | Runtime | `ScriptError` | `CallOfANullInterfaceThrowsAScriptError`; `Fixture.NullHandleThrows` |
+| Null or expired `CheckedPtr` | Runtime, always on | `NullReference` | `CheckedPtr.ArrowOnNullThrows`, `ArrowOnExpiredThrows`; `CheckedPtrFieldReadsNullAfterTheTargetDies` |
+| Null handle to a native `T&` | Runtime, always on | `NullReference` | `NullHandleToNativeReferenceParameterIsCatchable`; `NullAlwaysOn.*` |
+| Index out of range: vector, array, span, string | Runtime | `IndexOutOfRange` | `IndexOutOfRangeCaughtInScript`; `ViewParameterConvertsAndChecksIndex`; `RuntimeChecks.*IndexOutOfRangeThrows` |
+| Missing key in a map | Runtime, `at` only | `IndexOutOfRange` or `NativeError` | `EmptyContainerOperationsAndNativeExceptionsAreCatchable`; `RuntimeChecks.IndexOfMapUsesItsOperator` |
+| Empty `front`, `back`, `pop` | Runtime, always on | `IndexOutOfRange` | `EmptyContainerOperationsAndNativeExceptionsAreCatchable`; `container_ops_tests.cpp` |
+| Dangling `ref` | Compile error | None | golden `27`, `28`, `82`-`91`, `94`-`103`, `108` |
+| Dangling view | Compile error | None | golden `105`-`107` |
+| Container change in `foreach` | Compile error | None | golden `92`, `93`, `104` |
+| Use after reload | A handle stays valid. A task of the old code is cancelled. | `TaskReloadCancelled` | `AsyncHost.ReloadCancelsTheSuspendedTask`; `TaskReload.*`; `CheckedPtrFieldKeepsItsTargetAcrossReload` |
+| Use after a native free | `CheckedPtr` and handles are checked. A raw `T*` is unchecked. | `NullReference` | `CheckedPtrFieldReadsNullAfterTheTargetDies` |
+| Integer divide or modulo by zero | Runtime, always on | `ArithmeticError` | `IntegerDivideAndModuloAreChecked`; `arith_tests.cpp` |
+| Shift out of range | Runtime, always on | `ArithmeticError` | `ShiftsOverflowAndFloatCastsAreDefined`; `arith_tests.cpp` |
+| Signed overflow, float to int cast | Defined result (`-fwrapv`, saturation) | None | `SignedOverflowWrapsWithTheOptimizer`; `ShiftsOverflowAndFloatCastsAreDefined` |
+| Deep recursion | Runtime, always on | `ScriptError("stack overflow")` | `InfiniteRecursionIsCaughtInScript`; `RecursionLimitIsExactAndCanChange` |
+| Bad `as` or derived cast | Gives a null handle. The use is checked as null. | `NullReference` | `BadAsAndDerivedCastGiveNullAndTheUseThrows`; `IsAs.ScriptClassesWalkTheParentRecords`; `CheckedUnwrapCastThrowsOnNull` |
+| `await` on a dead task | Runtime | `ScriptError` (`TaskCancelled` for a cancel) | `TaskTests.EmptyTaskAwaitThrows`, `DestroyOfAnAwaitedChildGivesTheParentAnError`; `TaskReload.AwaitOfATaskCreatedBeforeAReloadGetsTheError` |
