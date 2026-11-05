@@ -438,6 +438,23 @@ TEST(ReferenceTranslation, ShapeChangeAfterTheRefBlockIsAllowed)
     }
 }
 
+// The foreach rule for "var": element writes and a change of a different container are allowed.
+TEST(ReferenceTranslation, ForeachVarElementWriteAndOtherContainerAreAllowed)
+{
+    const char* const prelude = "using <vector>;\nclass P {\n    int hp = 0;\n}\n"
+                                "class A {\n    std.vector<int> xs;\n    std.vector<int> ys;\n    std.vector<P> ps;\n";
+    for (const char* body : {"foreach (var x in xs) { ys.push_back(x); ys.clear(); }", "foreach (var x in xs) { xs[0] = x; }",
+             "foreach (var p in ps) { p.hp = 1; ps[0].hp = 2; }", "foreach (ref x in xs) { x = 1; }",
+             "foreach (var x in xs) { xs[0] += 1; } xs.push_back(1);",
+             "foreach (var x in xs) { var f = () => { xs.clear(); }; }",
+             "foreach (var x in xs) { } xs = ys; xs.clear();",
+             "foreach (var x in xs) { var xs = ys; xs.clear(); }"})
+    {
+        const hotc::TranslateResult r = translate_text(std::string(prelude) + "    void Run() { " + body + " }\n}\n");
+        EXPECT_FALSE(has(r.diagnostics, "inside the 'foreach' over")) << body << r.diagnostics;
+    }
+}
+
 // R4: a method with a "ref T" return. The C++ return type is "T&" and the return keeps the place.
 TEST(ReferenceTranslation, RefReturnOfAFieldEmitsAReferenceReturn)
 {

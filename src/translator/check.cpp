@@ -530,6 +530,14 @@ struct Checker
     std::set<const Expr*> allowed_refs; // "&x" nodes in a place where they are valid
     std::set<const Expr*> callee_names; // names in the callee place of a call
     std::map<std::string, RefInfo> refs; // the "ref" locals that are live in the body in progress
+    // The "foreach (var x in c)" loops in progress. "c" is a local or a field of this. The body must not change
+    // the shape of "c". A "foreach (ref ...)" loop uses "refs" instead.
+    struct IterLoop
+    {
+        const Stmt* stmt;
+        std::string root;
+    };
+    std::vector<IterLoop> iterating;
     std::vector<std::map<std::string, RefInfo>> refs_stack; // "refs" at the start of each open block
     std::set<std::string> ref_params; // the "ref" and "out" parameters of the body in progress
     // The live "ref" entries that the variable of a "foreach" hides. The end of the loop gives them back.
@@ -1121,6 +1129,8 @@ struct Checker
                         refs[n] = std::move(info);
                     pending_refs.erase(it);
                 }
+            if (!iterating.empty() && iterating.back().stmt == &st)
+                iterating.pop_back();
             if (const auto* fo = std::get_if<ForOfStmt>(&st.v))
             {
                 refs.erase(fo->name);
@@ -1474,6 +1484,9 @@ struct Checker
             }
             if (fo->is_ref)
                 track_loop_ref(*fo);
+            else if (!is_cpp && scopes.empty() && fo->range)
+                if (std::string r = root_name(*fo->range); !r.empty())
+                    iterating.push_back({&s, r});
             if (!fo->type.empty())
             {
                 script_pointer(fo->type, fo->pos);
@@ -1515,6 +1528,12 @@ struct Checker
     void report_shape_change(uint32_t pos, const std::string& r, const std::string& what)
     {
         const std::string t = root_text(r);
+        // A change of the container that a "foreach (var ...)" loop walks invalidates its iterators.
+        if (scopes.empty())
+            for (const IterLoop& it : iterating)
+                if (it.root == r)
+                    error(pos, what + " changes '" + t + "' inside the 'foreach' over '" + t
+                                   + "': the loop can crash. Collect the changes in a new list, and apply them after the loop");
         for (const auto& [n, info] : refs)
         {
             if (!info.place.element)
@@ -1644,7 +1663,7 @@ struct Checker
 
     void on_expr(const Expr& e)
     {
-        if (!is_cpp && !refs.empty())
+        if (!is_cpp && (!refs.empty() || !iterating.empty()))
             check_invalidation(e);
         if (auto* un = std::get_if<UnaryExpr>(&e.v))
         {

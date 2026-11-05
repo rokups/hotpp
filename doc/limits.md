@@ -25,7 +25,7 @@ This list shows what version 1 does not support.
   - A native `T&` getter cannot bind to a `ref`. Copy the value, or use an index.
   - A `ref` call on an object of another class counts as a temporary.
   - `ref r = xs[await Idx()]` is allowed, because the ref starts after its own statement. Another live ref gives the error about that ref.
-  - `foreach (var x in c)` with a change of `c` in the body is not checked yet.
+  - The check of `foreach (var x in c)` (see [Runtime errors](statements-errors.html#change-of-a-container-in-a-foreach)) sees only a range that is a local or a field of `this`, such as `xs` or `this.xs`. It compares the name of the root and does no alias analysis. A change through another name, a call of a script method, a free function or a lambda is not checked. A local that hides the field name can give a false error.
   - A `.cpp` script keeps C++ semantics and has no `ref` lifetime rules.
 - A script class, struct or enum with the name of a C++ type from a `using` header. Rename the script type.
 - Shared state in an `inline` function, an `inline` variable or a template static member of a host header. The script modules build with hidden symbol visibility. Each module gets its own copy of that state, and the host does not share it. Put such state in a `.cpp` file of the host, or mark it exported.

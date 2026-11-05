@@ -1,0 +1,11 @@
+104_foreach_var_container_change.hot:9:13: error: 'xs.push_back()' changes 'xs' inside the 'foreach' over 'xs': the loop can crash. Collect the changes in a new list, and apply them after the loop
+    9 |             xs.push_back(x);
+104_foreach_var_container_change.hot:15:13: error: 'xs.erase()' changes 'xs' inside the 'foreach' over 'xs': the loop can crash. Collect the changes in a new list, and apply them after the loop
+   15 |             this.xs.erase(xs.begin());
+104_foreach_var_container_change.hot:16:13: error: 'xs.clear()' changes 'xs' inside the 'foreach' over 'xs': the loop can crash. Collect the changes in a new list, and apply them after the loop
+   16 |             xs.clear();
+104_foreach_var_container_change.hot:22:13: error: assignment to 'list' changes 'list' inside the 'foreach' over 'list': the loop can crash. Collect the changes in a new list, and apply them after the loop
+   22 |             list = other;
+104_foreach_var_container_change.hot:23:13: error: 'list.resize()' changes 'list' inside the 'foreach' over 'list': the loop can crash. Collect the changes in a new list, and apply them after the loop
+   23 |             list.resize(1);
+5 errors generated.

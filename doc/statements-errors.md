@@ -105,3 +105,7 @@ class Player : Actor {
 - A script class (not a struct) is not an exception type. `throw new $C()` is an error: `cannot throw the script class 'C': declare 'struct C : ScriptError' for an exception`.
 
 An exception struct is for `throw` and `catch` only. It cannot be the type of a field, a module variable or an element of a container such as `std.vector<E>`. A reload moves the state of a field with the Nested migration, and this migration does not keep the message of the base. A local variable and a parameter can have the type.
+
+## Change of a container in a foreach
+
+A change of the shape of a container while `foreach (var x in c)` walks it is undefined behavior in C++. The translator reports a compile error for such a change in the loop body. The shape changes are `c = ...`, and a call of `push_back`, `insert`, `erase`, `clear`, `resize`, `emplace`, `pop_back` and the other methods that can move or remove elements. Collect the changes in a new list, and apply them after the loop. A write to an element (`c[i] = v`, `x.field = v`) and a change of a different container are allowed. The check has limits. See [Limits](limits.html).
