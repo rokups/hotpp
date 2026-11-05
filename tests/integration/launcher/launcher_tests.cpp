@@ -8,13 +8,18 @@
 
 #include "TestHost.h"
 #include "hot/backend.h"
+#include "hot/runtime/threads.h"
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 // The statics of TestHost. They live in the test executable. The script modules find them there.
@@ -41,6 +46,7 @@ fs::path make_temp_dir()
 std::string write_file(const fs::path& dir, const std::string& name, const std::string& text)
 {
     const fs::path path = dir / name;
+    fs::create_directories(path.parent_path());
     std::ofstream(path, std::ios::binary) << text;
     return path.string();
 }
@@ -220,6 +226,316 @@ TEST(Launcher, LoopRunsFrames)
         TestHost::running = false;
         EXPECT_EQ(result, 6);
         EXPECT_EQ(frames, (std::vector<int>{1, 2, 3}));
+    }
+}
+
+// Writes the new text of a file and moves its write time forward by two seconds. Then a poll sees
+// the change, also on a file system with a coarse clock.
+void edit_file(const fs::path& path, const std::string& text)
+{
+    const fs::file_time_type old_time = fs::last_write_time(path);
+    std::ofstream(path, std::ios::binary | std::ios::trunc) << text;
+    fs::last_write_time(path, old_time + std::chrono::seconds(2));
+}
+
+// The script of a reload test: a class Game derived from TestHost. "step_body" is the body of Step.
+std::string game_script(const std::string& step_body, const std::string& imports = "")
+{
+    return "using \"TestHost.h\";\n" + imports +
+           "class Game : TestHost {\n"
+           "    int count = 0;\n"
+           "    override int Step() { " + step_body + " }\n"
+           "}\n"
+           "int main() { $Game g = new $Game(); return g.Run(); }\n";
+}
+
+// A program for a reload test. It has poll_interval_ms = 0 and debounce_ms = 0.
+struct ReloadFixture
+{
+    fs::path dir;
+    std::vector<std::string> logs;
+    std::string script;
+    std::unique_ptr<launcher::Program> program;
+    // Include directories that open adds after the folder of the script. They are relative to it.
+    std::vector<std::string> extra_include_dirs;
+    unsigned debounce_ms = 0;
+
+    // Returns false when the load failed. The caller uses ASSERT_TRUE.
+    bool open(const std::string& backend, const std::string& step_body, const std::string& imports = "",
+              const std::vector<std::pair<std::string, std::string>>& extra_files = {})
+    {
+        dir = make_temp_dir();
+        for (const auto& [name, text] : extra_files)
+            write_file(dir, name, text);
+        fs::copy_file(fs::path(HOT_LAUNCHER_TEST_DIR) / "TestHost.h", dir / "TestHost.h");
+        script = write_file(dir, "entry.hot", game_script(step_body, imports));
+        launcher::Options options = options_for(backend, dir, &logs);
+        options.include_dirs.push_back(dir.string());
+        for (const std::string& d : extra_include_dirs)
+            options.include_dirs.push_back((dir / d).string());
+        options.poll_interval_ms = 0;
+        options.debounce_ms = debounce_ms;
+        std::string error;
+        program = launcher::load(options, script, error);
+        if (!program)
+            logs.push_back(error);
+        return program != nullptr;
+    }
+
+    // Runs "main" with the hook. The loop stops after the frame "last_frame".
+    int run(int last_frame, std::function<void(int)> hook)
+    {
+        TestHost::running = true;
+        TestHost::on_frame = [&](int frame)
+        {
+            hook(frame);
+            if (frame == last_frame)
+                TestHost::running = false;
+        };
+        const int result = launcher::run_main(*program, {});
+        TestHost::on_frame = nullptr;
+        TestHost::running = false;
+        return result;
+    }
+};
+
+// Frames 1 and 2 run v1: count is 1 and 2. At frame 3 the poll applies v2 before Step. Frames 3 to 6
+// run v2. The count continues from 2 (the state moves to the new generation): 3, 4, 5 and 6, and
+// each frame adds 1000. Total = (1 + 2) + (3 + 4 + 5 + 6) + 4 * 1000 = 4021.
+TEST(Launcher, ReloadKeepsState)
+{
+    for (const std::string& backend : backends())
+    {
+        SCOPED_TRACE(backend);
+        ReloadFixture f;
+        ASSERT_TRUE(f.open(backend, "count = count + 1; return count;")) << f.logs.back();
+        EXPECT_EQ(f.program->generation(), 1u);
+        std::vector<launcher::PollStatus> statuses;
+        const int total = f.run(6, [&](int frame)
+        {
+            if (frame == 3)
+                edit_file(f.script, game_script("count = count + 1; return count + 1000;"));
+            statuses.push_back(f.program->poll());
+        });
+        ASSERT_EQ(statuses.size(), 6u);
+        for (size_t i = 0; i < statuses.size(); ++i)
+            EXPECT_EQ(statuses[i], i == 2 ? launcher::PollStatus::Applied : launcher::PollStatus::Idle) << "frame " << i + 1;
+        EXPECT_EQ(total, 4021);
+        EXPECT_EQ(f.program->generation(), 2u);
+    }
+}
+
+TEST(Launcher, CompileErrorKeepsOldCode)
+{
+    for (const std::string& backend : backends())
+    {
+        SCOPED_TRACE(backend);
+        ReloadFixture f;
+        ASSERT_TRUE(f.open(backend, "count = count + 1; return count;")) << f.logs.back();
+        launcher::PollStatus first = launcher::PollStatus::Idle;
+        launcher::PollStatus second = launcher::PollStatus::Applied;
+        // The old code runs for all 6 frames: 1 + 2 + 3 + 4 + 5 + 6 = 21.
+        const int total = f.run(6, [&](int frame)
+        {
+            if (frame == 3)
+            {
+                edit_file(f.script, game_script("count = count + 1; return count +;"));
+                first = f.program->poll();
+            }
+            else if (frame == 4)
+                second = f.program->poll();
+            else
+                f.program->poll();
+        });
+        EXPECT_EQ(first, launcher::PollStatus::Failed);
+        EXPECT_EQ(second, launcher::PollStatus::Idle);
+        EXPECT_EQ(total, 21);
+        EXPECT_EQ(f.program->generation(), 1u);
+        bool reported = false;
+        for (const std::string& line : f.logs)
+            reported = reported || line.find("[hot] reload failed: ") == 0;
+        EXPECT_TRUE(reported);
+    }
+}
+
+// Frames 1 and 2 give 1 each. At frame 3 the poll applies the new util.hot. Frames 3 and 4 give 100 each.
+// Total = 2 + 200 = 202.
+TEST(Launcher, ImportChangeReloads)
+{
+    for (const std::string& backend : backends())
+    {
+        SCOPED_TRACE(backend);
+        ReloadFixture f;
+        ASSERT_TRUE(f.open(backend, "return Util.Bonus();", "using \"util.hot\";\n",
+                           {{"util.hot", "class Util { static int Bonus() { return 1; } }\n"}}))
+            << f.logs.back();
+        bool found = false;
+        for (const std::string& d : f.program->dependencies())
+            found = found || d.find("util.hot") != std::string::npos;
+        ASSERT_TRUE(found);
+        std::vector<launcher::PollStatus> statuses;
+        const int total = f.run(4, [&](int frame)
+        {
+            if (frame == 3)
+                edit_file(f.dir / "util.hot", "class Util { static int Bonus() { return 100; } }\n");
+            statuses.push_back(f.program->poll());
+        });
+        ASSERT_EQ(statuses.size(), 4u);
+        for (size_t i = 0; i < statuses.size(); ++i)
+            EXPECT_EQ(statuses[i], i == 2 ? launcher::PollStatus::Applied : launcher::PollStatus::Idle) << "frame " << i + 1;
+        EXPECT_EQ(total, 202);
+        EXPECT_EQ(f.program->generation(), 2u);
+    }
+}
+
+TEST(Launcher, NoChangeIsIdle)
+{
+    for (const std::string& backend : backends())
+    {
+        SCOPED_TRACE(backend);
+        ReloadFixture f;
+        ASSERT_TRUE(f.open(backend, "count = count + 1; return count;")) << f.logs.back();
+        int not_idle = 0;
+        const int total = f.run(5, [&](int)
+        {
+            if (f.program->poll() != launcher::PollStatus::Idle)
+                ++not_idle;
+        });
+        EXPECT_EQ(not_idle, 0);
+        EXPECT_EQ(total, 15);
+        EXPECT_EQ(f.program->generation(), 1u);
+    }
+}
+
+// Two reloads happen while "main" is on the stack. The generation of "main" is retired, and the
+// pin keeps it loaded. Frame 1 gives 1 (v1). At frame 2 the poll applies v2 (10). At frame 3 the
+// poll applies v3 (100). Frames 4, 5 and 6 run frame_boundary again and give 100 each.
+// Total = 1 + 10 + 4 * 100 = 411.
+TEST(Launcher, MainGenerationStaysLoadedAfterReloads)
+{
+    for (const std::string& backend : backends())
+    {
+        SCOPED_TRACE(backend);
+        ReloadFixture f;
+        ASSERT_TRUE(f.open(backend, "return 1;")) << f.logs.back();
+        std::vector<launcher::PollStatus> statuses;
+        std::vector<uint32_t> pins;
+        const int total = f.run(6, [&](int frame)
+        {
+            if (frame == 2)
+                edit_file(f.script, game_script("return 10;"));
+            if (frame == 3)
+                edit_file(f.script, game_script("return 100;"));
+            statuses.push_back(f.program->poll());
+            // The pin of generation 1 (the generation of "main") guards its library.
+            pins.push_back(hot::pin_count(1));
+        });
+        // The pin is gone when run_main returns.
+        EXPECT_EQ(hot::pin_count(1), 0u);
+        ASSERT_EQ(pins.size(), 6u);
+        for (size_t i = 1; i < pins.size(); ++i)
+            EXPECT_EQ(pins[i], 1u) << "frame " << i + 1;
+        ASSERT_EQ(statuses.size(), 6u);
+        EXPECT_EQ(statuses[1], launcher::PollStatus::Applied);
+        EXPECT_EQ(statuses[2], launcher::PollStatus::Applied);
+        EXPECT_EQ(total, 411);
+        EXPECT_EQ(f.program->generation(), 3u);
+    }
+}
+
+// The debounce time is longer than the poll interval (0). Each scan finds the same change. The
+// debounce time must run from the first scan that sees the change, not restart on each scan.
+TEST(Launcher, NonZeroDebounceStillBuilds)
+{
+    for (const std::string& backend : backends())
+    {
+        SCOPED_TRACE(backend);
+        ReloadFixture f;
+        f.debounce_ms = 50;
+        ASSERT_TRUE(f.open(backend, "return 1;")) << f.logs.back();
+        launcher::PollStatus result = launcher::PollStatus::Idle;
+        const int total = f.run(2, [&](int frame)
+        {
+            if (frame != 1)
+                return;
+            edit_file(f.script, game_script("return 10;"));
+            const auto limit = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+            while (std::chrono::steady_clock::now() < limit)
+            {
+                result = f.program->poll();
+                if (result == launcher::PollStatus::Applied)
+                    break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+        });
+        EXPECT_EQ(result, launcher::PollStatus::Applied);
+        EXPECT_EQ(f.program->generation(), 2u);
+        // The hook runs before Step. Frames 1 and 2 run v2 (10 each).
+        EXPECT_EQ(total, 20);
+    }
+}
+
+// A change that returns to the stamps of the build is no change. The poll does not build.
+TEST(Launcher, RevertedChangeIsIdle)
+{
+    for (const std::string& backend : backends())
+    {
+        SCOPED_TRACE(backend);
+        ReloadFixture f;
+        f.debounce_ms = 50;
+        ASSERT_TRUE(f.open(backend, "return 1;")) << f.logs.back();
+        const fs::file_time_type old_time = fs::last_write_time(f.script);
+        const std::string old_text = game_script("return 1;");
+        edit_file(f.script, game_script("return 2;"));
+        EXPECT_EQ(f.program->poll(), launcher::PollStatus::Idle); // dirty, waits for the debounce
+        // The same size and the old write time: the stamps equal the stamps of the build.
+        std::ofstream(f.script, std::ios::binary | std::ios::trunc) << old_text;
+        fs::last_write_time(f.script, old_time);
+        EXPECT_EQ(f.program->poll(), launcher::PollStatus::Idle); // the scan clears the dirty flag
+        // A dirty flag that stays set would build now and give Applied.
+        std::this_thread::sleep_for(std::chrono::milliseconds(80));
+        EXPECT_EQ(f.program->poll(), launcher::PollStatus::Idle);
+        EXPECT_EQ(f.program->generation(), 1u);
+        EXPECT_TRUE(f.logs.empty());
+    }
+}
+
+// The script imports "lib/helper.hot". The file is only in an include directory, not in the folder
+// of the script. The program watches the file there. An edit of it applies a reload.
+// Frame 1 gives 1. At frame 2 the poll applies the new file. Frames 2 and 3 give 100 each. Total = 201.
+TEST(Launcher, IncludeDirImportChangeReloads)
+{
+    for (const std::string& backend : backends())
+    {
+        SCOPED_TRACE(backend);
+        ReloadFixture f;
+        f.extra_include_dirs.push_back("inc");
+        ASSERT_TRUE(f.open(backend, "return Helper.Bonus();", "using \"lib/helper.hot\";\n",
+                           {{"inc/lib/helper.hot", "class Helper { static int Bonus() { return 1; } }\n"}}))
+            << f.logs.back();
+        const fs::path inc = f.dir / "inc";
+        // The translator gives the path where it found the import. For this import it is absolute.
+        bool found = false;
+        for (const std::string& d : f.program->dependencies())
+            if (d.find("helper.hot") != std::string::npos)
+            {
+                found = true;
+                EXPECT_TRUE(fs::path(d).is_absolute()) << d;
+                EXPECT_TRUE(fs::exists(d)) << d;
+            }
+        ASSERT_TRUE(found);
+        std::vector<launcher::PollStatus> statuses;
+        const int total = f.run(3, [&](int frame)
+        {
+            if (frame == 2)
+                edit_file(inc / "lib" / "helper.hot", "class Helper { static int Bonus() { return 100; } }\n");
+            statuses.push_back(f.program->poll());
+        });
+        ASSERT_EQ(statuses.size(), 3u);
+        EXPECT_EQ(statuses[0], launcher::PollStatus::Idle);
+        EXPECT_EQ(statuses[1], launcher::PollStatus::Applied);
+        EXPECT_EQ(total, 201);
+        EXPECT_EQ(f.program->generation(), 2u);
     }
 }
 
