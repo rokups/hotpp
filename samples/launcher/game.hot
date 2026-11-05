@@ -1,0 +1,26 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Run: sample_runner_game --frames=5 game.hot
+// The native engine owns the loop. The script class Game derives from the native class Game.
+// Edit this file while the runner runs: the runner reloads the code at the next frame.
+using <cstdio>;
+using "Engine.h";
+
+class MyGame : Game {
+    int total = 0;
+
+    override void on_start() { std.printf("[game] start\n"); }
+    override void on_frame(int frame) {
+        total = total + frame;
+        std.printf("[game] frame %d\n", frame);
+    }
+    override void on_stop() { std.printf("[game] stop, total %d\n", total); }
+}
+
+void main() {
+    // The object must die before the engine loop returns, so that the full restart works.
+    $MyGame g = new $MyGame();
+    run_engine(*g);
+}

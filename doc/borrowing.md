@@ -88,7 +88,7 @@ the lambda captures 'v', a borrowed pointer or reference. A closure cannot keep 
 
 ## Handles and borrowing
 
-`.` on a handle means a member of the pointee. `&h` on a handle is an error. Pass `h` for a handle parameter, or for a native `T*` or `T&` parameter: the translator converts the handle (see "Native objects as parameters" in `native-interop.md`). `&*h` and `*h` stay valid. A `ref` parameter of a script class is a reference to the handle, so the callee can rebind it. `this` is not a variable: copy it to a local first. An intrusive stub is an exception: its `T*` is the handle, so a field can have it.
+`.` on a handle means a member of the pointee. `&h` on a handle is an error. Pass `h` for a handle parameter, or for a native `T*` or `T&` parameter: the translator converts the handle (see "Native objects as parameters" in `native-interop.md`). The conversion needs the exact class of the parameter. For a handle of a derived class, write `*h`. `&*h` and `*h` stay valid. A `ref` parameter of a script class is a reference to the handle, so the callee can rebind it. `this` is not a variable: copy it to a local first. An intrusive stub is an exception: its `T*` is the handle, so a field can have it.
 
 ```hot
 using "Actor.h"; using "Weapon.h"; using "Armory.h"; using "Object.h";

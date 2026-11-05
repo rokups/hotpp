@@ -34,10 +34,20 @@ target_link_libraries(sample_runner PRIVATE hot::launcher)
 set_target_properties(sample_runner PROPERTIES ENABLE_EXPORTS ON)
 hot_export_host(sample_runner)
 
+# The sample with an engine: the native engine owns the loop and the script derives from Game.
+add_executable(sample_runner_game main_game.cpp)
+target_link_libraries(sample_runner_game PRIVATE hot::launcher)
+set_target_properties(sample_runner_game PROPERTIES ENABLE_EXPORTS ON)
+hot_export_host(sample_runner_game)
+
 # hello.hot returns the number of the arguments: the program name and two more give 3.
 add_test(NAME sample_runner_hello COMMAND sample_runner ${CMAKE_CURRENT_SOURCE_DIR}/hello.hot a b)
 set_tests_properties(sample_runner_hello PROPERTIES PASS_REGULAR_EXPRESSION "hello from hot: 3 arguments")
 add_test(NAME sample_runner_import COMMAND sample_runner ${CMAKE_CURRENT_SOURCE_DIR}/hello_import.hot)
 set_tests_properties(sample_runner_import PROPERTIES PASS_REGULAR_EXPRESSION "square of 7 is 49")
+add_test(NAME sample_runner_game COMMAND sample_runner_game --frames=5 ${CMAKE_CURRENT_SOURCE_DIR}/game.hot)
+set_tests_properties(sample_runner_game PROPERTIES PASS_REGULAR_EXPRESSION "frame 3.*stop, total 15")
+# A test with PASS_REGULAR_EXPRESSION ignores the exit code. This test checks the exit code (0).
+add_test(NAME sample_runner_game_exit COMMAND sample_runner_game --frames=5 ${CMAKE_CURRENT_SOURCE_DIR}/game.hot)
 
 enable_testing()

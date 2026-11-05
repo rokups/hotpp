@@ -96,12 +96,86 @@ int code = hot::launcher::run_main(*program, args);
 
 - `load` compiles the entry script with all imports (`using "x.hot";`) and loads the module. A relative import path is relative to the folder of the entry script. On an error it returns null and sets `error`.
 - `run_main` calls `main` with `argv[0]` set to the script path, then `args`. It returns the result of `main`. It returns 1 and logs the message when the script throws a C++ exception. It returns 2 when the script has no `main`.
-- `Program` is move-only. It owns the backend, the loader and the loaded generation. `dependencies()` lists the imported scripts and the native headers. A later reload milestone uses the list.
+- `Program` is move-only. It owns the backend, the loader and the loaded generation. `dependencies()` lists the imported scripts and the native headers.
 - `Options::backend` is `""`, `"files"` or `"jit"`. `Options::log` receives the diagnostics (default: stderr).
 - `Options::work_dir` is the folder for the compiled files. When it is empty, the folder is `default_cache_dir(script)`: `$XDG_CACHE_HOME/hot/<hash>`, or `~/.cache/hot/<hash>`, or `%LOCALAPPDATA%\hot\<hash>` on Windows.
 - The backend owns the sub-directory `<work_dir>/p<pid>`. It removes the sub-directory at start and at exit, so do not keep files there. A crash can leave stale `p<pid>` directories.
 
-Usually `main` calls native engine code that runs a blocking loop. The launcher has no frame loop. The program ends when `main` returns. The sample runner is `sample_runner [-I dir]... [--backend=files|jit] file.hot [args...]`.
+Usually `main` calls native engine code that runs a blocking loop. The launcher has no frame loop. The sample runner is `sample_runner [-I dir]... [--backend=files|jit] file.hot [args...]`.
+
+### Reload with `poll`
+
+The engine calls `Program::poll()` on the main thread, once for each frame, at the frame boundary. `poll` scans the files that the build read. A changed file (a different write time or size, or a missing file) starts a build on one worker thread. The first `poll` after the build ends commits the new generation. Each call also runs `Loader::frame_boundary`.
+
+| `PollStatus` | Meaning |
+| --- | --- |
+| `Idle` | Nothing happened. |
+| `Building` | A build runs on the worker thread. Call `poll` again at a later frame. |
+| `Applied` | A reload was applied. The new code runs from now. |
+| `Failed` | The build or the reload failed. The old code keeps running. |
+| `RestartPending` | A full restart is needed and the Fresh build is ready. |
+
+- `Options::poll_interval_ms` (default 200): `poll` scans the files at most once in this time. 0 scans on each call.
+- `Options::debounce_ms` (default 100): `poll` waits this time after the last seen change before it builds. 0 builds at once.
+- A file that changes during a build starts a new build after the first one ends.
+- The destructor of `Program` waits for a running build. A build can take seconds.
+- `generation()` is 1 after `load` and grows with each applied reload.
+
+### Compile errors
+
+A failed build keeps the old code. `poll` logs the error through `Options::log` and gives `Failed`. It logs `[hot] reload failed: <error>`. For a failed build of a full restart, it logs `[hot] full restart build failed: <error>`. `poll` does not try again until the next file change.
+
+### Full restart
+
+Some changes cannot reload: a class lost a slot, or a file that is not a `.hot` file (a native header) changed. Then `poll` does these steps:
+
+1. It logs `[hot] full restart needed: <reason>`. The reason is, for example, `native header changed: <path>`.
+2. It builds a Fresh generation 1 on the worker thread. It gives `Building` until the build ends.
+3. It keeps the new module and gives `RestartPending`. If the build fails, it gives `Failed` and the old code keeps running.
+4. It logs `[hot] full restart: waiting for the program to quit` and calls `Options::request_quit` once.
+5. The engine ends its loop, so that `main` returns. Do not destroy the `Program` from the hook.
+6. `run_main` cancels the script tasks, calls `Loader::reset`, loads the fresh module and calls `main` again with the same arguments. It logs `[hot] full restart: <reason>`. The generation numbers start again at 1.
+
+While a restart is pending, `poll` takes no file change and starts no build. `restart_pending()` is true from `RestartPending` until `run_main` restarts the program.
+
+If a step fails, `run_main` logs `[hot] full restart failed: <error>` and returns 1. If the quit hook throws, `poll` logs `[hot] full restart: the quit hook threw an exception: <message>`.
+
+When `Options::request_quit` is empty, `poll` logs `[hot] restart needed, but the engine has no quit hook: the old code goes on` once. The old code goes on and `poll` keeps giving `RestartPending`. Reload stops for good. If `main` returns by itself without a quit request, `run_main` returns its result and does not restart. An exception from `main` also ends `run_main` with 1 and no restart.
+
+### Rules for the engine
+
+- Destroy all script objects before the engine loop returns, and let `main` release its handles. Else `Loader::reset` fails with `N live objects remain: ...`.
+- Keep no closure, task or `hot::pin` of a script generation. A script task pins its generation, and `reset` fails while a task is alive.
+- Keep no pointer into the old script code (function pointers, closures, thunks). They dangle after the restart.
+- `run_main` pins the generation of the running `main` frame. The frame stays on the stack, so `frame_boundary` must not unload its library. A reload does not refresh this `main`. Only a restart takes a new one. The pin ends before the restart.
+
+### Limits
+
+- There is no compile cache across runs yet. Each start builds the script again.
+- A header change restarts the script. It cannot change the native layout of the host classes that are already compiled into the runner.
+- `hot::scheduler().cancel_all()` needs C++20. A C++17 build of `hot_launcher` does not call it. The engine must cancel its script tasks before the loop returns.
+- On Windows, the import library of the runner is one string: `ClangFilesOptions::host_import_library`.
+
+### Sample with an engine
+
+The sample `sample_runner_game` (`samples/launcher/main_game.cpp`) shows the whole cycle. `Engine.h` is a small native engine with the class `Game` and `run_engine`. The runner sets `Engine::frame_hook` to call `Program::poll` for each frame. It sets `Options::request_quit` to `request_quit`, which ends the loop. `game.hot` derives `MyGame` from `Game`.
+
+```
+sample_runner_game --frames=5 game.hot
+```
+
+- `--frames=N` ends the loop after N frames (default 60).
+- `--frame-ms=N` sleeps N ms in each frame. Use it to edit `game.hot` while the runner runs.
+- The runner logs `[runner] poll: <status> (generation N)` when the status changes.
+
+In `main`, the script creates the object, runs the loop and lets the object die before the loop returns:
+
+```
+$MyGame g = new $MyGame();
+run_engine(*g);
+```
+
+Known compiler limit: a `$MyGame` handle does not convert to `Game&` in a free function call. The sample calls `run_engine(*g)` for this reason.
 
 ## Parts of this guide
 

@@ -117,7 +117,7 @@ class Shop : Actor {
 }
 ```
 
-`&h` on a handle is an error. Pass `h` for a handle parameter, or for a native `T*` or `T&` parameter. `&*h` for a `T*` and `*h` for a `T&` stay valid. `.` on a handle always means a member of the pointee, so `h.get()` calls `get` of the pointee. Inside a method, `this` is a handle for a handle parameter. For a native `Actor&` parameter, write `*this`. A `T&` parameter of a script class takes a variable, not `this`: write `$Hero me = this;` first.
+`&h` on a handle is an error. Pass `h` for a handle parameter, or for a native `T*` or `T&` parameter. The conversion needs the exact class of the parameter. For a handle of a derived class, write `*h`. `&*h` for a `T*` and `*h` for a `T&` stay valid. `.` on a handle always means a member of the pointee, so `h.get()` calls `get` of the pointee. Inside a method, `this` is a handle for a handle parameter. For a native `Actor&` parameter, write `*this`. A `T&` parameter of a script class takes a variable, not `this`: write `$Hero me = this;` first.
 
 ## Fallback handle
 
