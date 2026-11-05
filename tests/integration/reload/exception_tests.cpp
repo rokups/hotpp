@@ -18,6 +18,7 @@
 #include "Guarded.h"
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -393,6 +394,141 @@ class Player : Actor {
     EXPECT_EQ(*s.field("after"), 1.0f);
     EXPECT_EQ(reports, 0);
     EXPECT_EQ(hot::detail::call_depth(), 0u);
+}
+
+// The integer divide and modulo are checked. The checks do not depend on HOT_RUNTIME_CHECKS.
+const char* const kArithSource = R"(
+using "Actor.h";
+using "Damageable.h";
+
+class Boss : Actor, IDamageable {
+    int zero = 0;
+    int three = 3;
+    int imin = -2147483647 - 1;
+    long lmin = -9223372036854775807 - 1;
+    int[2] arr = [7, 9];
+    int next_calls = 0;
+    float caught = 0.0;
+    float after = 0.0;
+    float r_div = 0.0;
+    float r_mod = 0.0;
+    float r_ldiv = 0.0;
+    float r_lmod = 0.0;
+    float r_short = 0.0;
+    float r_udiv = 0.0;
+    float r_assign = 0.0;
+    float r_amod = 0.0;
+    float r_elem = 0.0;
+    float r_inf = 0.0;
+    float r_lit = 0.0;
+    float r_prop = 0.0;
+    float r_ass_min = 0.0;
+    float r_unsigned = 0.0;
+    float n_div0 = 0.0;
+    float n_mod0 = 0.0;
+    float n_assign0 = 0.0;
+    float n_amod0 = 0.0;
+    float n_ldiv0 = 0.0;
+    float n_udiv0 = 0.0;
+    float n_byte0 = 0.0;
+    float n_lit0 = 0.0;
+    float n_elem0 = 0.0;
+    float n_prop0 = 0.0;
+    float msg_ok = 0.0;
+    int P { get; set; } = 8;
+
+    int Div(int a, int b) { return a / b; }
+    int Mod(int a, int b) { return a % b; }
+    long LDiv(long a, long b) { return a / b; }
+    long LMod(long a, long b) { return a % b; }
+    uint UDiv(uint a, uint b) { return a / b; }
+    int ShortDiv(short a, short b) { return a / b; }
+    int ByteDiv(sbyte a, sbyte b) { return a / b; }
+    int Assign(int a, int b) { a /= b; return a; }
+    int AssignMod(int a, int b) { a %= b; return a; }
+    int LitDiv(int a) { return a / 2; }
+    int LitZero(int a) { return a / 0; }
+    float FDiv(float a, float b) { return a / b; }
+    int Next() { this.next_calls = this.next_calls + 1; return 1; }
+
+    override int Absorb(int amount) { return 100 / amount; }
+
+    override void Tick(float dt) {
+        this.r_div = this.Div(this.imin, -1);
+        this.r_mod = this.Mod(this.imin, -1);
+        this.r_ldiv = this.LDiv(this.lmin, -1);
+        this.r_lmod = this.LMod(this.lmin, -1);
+        this.r_short = this.ShortDiv(-32768, -1);
+        this.r_udiv = this.UDiv(7, 2);
+        this.r_assign = this.Assign(9, 2);
+        this.r_amod = this.AssignMod(9, 4);
+        this.r_ass_min = this.Assign(this.imin, -1);
+        this.r_lit = this.LitDiv(9);
+        this.r_inf = this.FDiv(1.0, this.zero);
+        this.arr[this.Next()] /= this.three;
+        this.r_elem = this.arr[1];
+        this.P /= this.three;
+        this.r_prop = this.P;
+        try { var x = this.Div(1, this.zero); } catch (ArithmeticError e) {
+            this.n_div0 = 1.0;
+            if (e.what()[0] == 'i') { this.msg_ok = 1.0; }
+        }
+        try { var x = this.Mod(1, this.zero); } catch (ArithmeticError e) { this.n_mod0 = 1.0; }
+        try { var x = this.Assign(1, this.zero); } catch (ScriptError e) { this.n_assign0 = 1.0; }
+        try { var x = this.AssignMod(1, this.zero); } catch (ScriptError e) { this.n_amod0 = 1.0; }
+        try { var x = this.LDiv(1, 0); } catch (ArithmeticError e) { this.n_ldiv0 = 1.0; }
+        try { var x = this.UDiv(1, 0); } catch (ArithmeticError e) { this.n_udiv0 = 1.0; }
+        try { var x = this.ByteDiv(1, 0); } catch (ArithmeticError e) { this.n_byte0 = 1.0; }
+        try { var x = this.LitZero(1); } catch (ArithmeticError e) { this.n_lit0 = 1.0; }
+        try { this.arr[0] %= this.zero; } catch (ArithmeticError e) { this.n_elem0 = 1.0; }
+        try { this.P /= this.zero; } catch (ArithmeticError e) { this.n_prop0 = 1.0; }
+        try { var x = HitThrough(*this, 0); } catch (ScriptError e) { this.caught = 1.0; }
+        this.after = 1.0;
+    }
+}
+)";
+
+TEST_P(BackendTests, IntegerDivideAndModuloAreChecked)
+{
+    const hot::ScriptSource src = {"arith.hot", kArithSource};
+    hot::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module), "Boss"));
+    s.commit_at_frame_boundary();
+    HandlerGuard guard;
+    int reports = 0;
+    hot::set_script_error_handler([&reports](const hot::ScriptErrorReport&) { ++reports; });
+    s.world.Tick(kDt);
+    EXPECT_EQ(*s.field("r_div"), -2147483648.0f); // INT_MIN / -1 wraps
+    EXPECT_EQ(*s.field("r_mod"), 0.0f);
+    EXPECT_EQ(*s.field("r_ldiv"), -9223372036854775808.0f);
+    EXPECT_EQ(*s.field("r_lmod"), 0.0f);
+    EXPECT_EQ(*s.field("r_short"), 32768.0f); // short promotes to int
+    EXPECT_EQ(*s.field("r_udiv"), 3.0f);
+    EXPECT_EQ(*s.field("r_assign"), 4.0f);
+    EXPECT_EQ(*s.field("r_amod"), 1.0f);
+    EXPECT_EQ(*s.field("r_ass_min"), -2147483648.0f);
+    EXPECT_EQ(*s.field("r_lit"), 4.0f);
+    EXPECT_TRUE(std::isinf(*s.field("r_inf"))); // a float divide by zero does not throw
+    EXPECT_EQ(*s.field("r_elem"), 3.0f);
+    EXPECT_EQ(*hot::field_ptr<int>(s.inst.shell, "next_calls"), 1); // the target is evaluated one time
+    EXPECT_EQ(*s.field("r_prop"), 2.0f);
+    for (const char* name : {"n_div0", "n_mod0", "n_assign0", "n_amod0", "n_ldiv0", "n_udiv0", "n_byte0", "n_lit0",
+             "n_elem0", "n_prop0", "msg_ok", "caught", "after"})
+        EXPECT_EQ(*s.field(name), 1.0f) << name;
+    EXPECT_EQ(reports, 0);
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
+    // A call from the host reports the error as a ScriptError and gives a default value.
+    std::vector<std::string> types;
+    hot::set_script_error_handler([&types](const hot::ScriptErrorReport& e) { types.push_back(e.type); });
+    auto* dmg = dynamic_cast<IDamageable*>(s.actor);
+    ASSERT_NE(dmg, nullptr);
+    EXPECT_EQ(dmg->Absorb(5), 20);
+    EXPECT_TRUE(types.empty());
+    EXPECT_EQ(dmg->Absorb(0), 0);
+    ASSERT_EQ(types.size(), 1u);
+    EXPECT_EQ(types[0], "hot::ArithmeticError");
 }
 
 #if HOT_RUNTIME_CHECKS

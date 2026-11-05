@@ -48,6 +48,14 @@ public:
     ~NullReference() override;
 };
 
+// An integer divide or modulo had a zero divisor (arith.h).
+class HOT_EXPORT ArithmeticError : public ScriptError
+{
+public:
+    using ScriptError::ScriptError;
+    ~ArithmeticError() override;
+};
+
 // A task ended without a result because of a cancellation. User code can throw it. A task whose
 // body ends with it counts as cancelled: report_unhandled does not see it. The awaiter of the
 // task gets the exception with its dynamic type (task.h).

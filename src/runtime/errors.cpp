@@ -32,6 +32,7 @@ ScriptError::ScriptError(const char* what) : std::runtime_error(what) {}
 #endif
 ScriptError::~ScriptError() = default;
 NullReference::~NullReference() = default;
+ArithmeticError::~ArithmeticError() = default;
 TaskCancelled::~TaskCancelled() = default;
 TaskReloadCancelled::~TaskReloadCancelled() = default;
 
@@ -133,6 +134,8 @@ void report_unhandled(const ShellCore* self, std::exception_ptr ep)
             type = "hot::NullReference";
         else if (dynamic_cast<const IndexOutOfRange*>(&e))
             type = "hot::IndexOutOfRange";
+        else if (dynamic_cast<const ArithmeticError*>(&e))
+            type = "hot::ArithmeticError";
         else
             type = "hot::ScriptError";
         message = e.what();

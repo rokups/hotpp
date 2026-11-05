@@ -4,6 +4,7 @@
 
 // Helpers for the property access of the script (lower.h).
 #pragma once
+#include "hot/runtime/arith.h"
 #include "hot/runtime/compat.h"
 #include "hot/runtime/hidden.h"
 
@@ -25,14 +26,27 @@ namespace hot
 HOT_PROP_OP(op_add, +)
 HOT_PROP_OP(op_sub, -)
 HOT_PROP_OP(op_mul, *)
-HOT_PROP_OP(op_div, /)
-HOT_PROP_OP(op_mod, %)
 HOT_PROP_OP(op_and, &)
 HOT_PROP_OP(op_or, |)
 HOT_PROP_OP(op_xor, ^)
 HOT_PROP_OP(op_shl, <<)
 HOT_PROP_OP(op_shr, >>)
 #undef HOT_PROP_OP
+// The divide and modulo are checked for integers (arith.h).
+struct op_div
+{
+    template <class A, class B> HOT_HIDDEN auto operator()(A&& a, B&& b) const
+    {
+        return hot::div(std::forward<A>(a), std::forward<B>(b));
+    }
+};
+struct op_mod
+{
+    template <class A, class B> HOT_HIDDEN auto operator()(A&& a, B&& b) const
+    {
+        return hot::mod(std::forward<A>(a), std::forward<B>(b));
+    }
+};
 
 // A property write that gives a value (lower.h). Each helper evaluates the object once.
 // "o.P = v" gives v. "o.P op= e" and "++o.P" give the new value. "o.P++" gives the old value.

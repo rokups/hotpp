@@ -142,7 +142,7 @@ void normalize_runtime_catch_type(std::string& type)
         }
     }
     if (t == "NullReference" || t == "IndexOutOfRange" || t == "ScriptError" || t == "TaskCancelled"
-        || t == "TaskReloadCancelled")
+        || t == "TaskReloadCancelled" || t == "ArithmeticError")
         type = "const hot::" + t + "&";
     else if (!type.empty() && type.find_first_of("&*") == std::string::npos)
         type = "const " + type + "&";
@@ -730,6 +730,121 @@ struct Lowerer
         while (!t.empty() && (t.back() == '&' || t.back() == ' '))
             t.pop_back();
         return t;
+    }
+
+    // ---- checked integer divide and modulo (runtime/arith.h)
+    enum class NumKind
+    {
+        Unknown, // the pass does not know the type: the helper decides at C++ compile time
+        Int,
+        Float,
+        Other // another known type, for example a class with its own operator
+    };
+
+    // The kind of a type text.
+    NumKind type_kind(std::string t) const
+    {
+        if (t.compare(0, 6, "const ") == 0)
+            t.erase(0, 6);
+        while (!t.empty() && (t.back() == '&' || t.back() == ' '))
+            t.pop_back();
+        if (t.empty())
+            return NumKind::Unknown;
+        if (t == "float" || t == "double" || t == "long double")
+            return NumKind::Float;
+        static const std::set<std::string> ints = {"bool", "char", "wchar_t", "signed char", "unsigned char", "short",
+            "unsigned short", "int", "unsigned", "unsigned int", "long", "unsigned long", "long long",
+            "unsigned long long", "size_t", "std::size_t", "ptrdiff_t", "std::ptrdiff_t", "ssize_t"};
+        if (ints.count(t))
+            return NumKind::Int;
+        if (const char* cpp = builtin_cpp_name(t))
+        {
+            const std::string c = cpp;
+            return c == "float" || c == "double" ? NumKind::Float : NumKind::Int;
+        }
+        if ((t.compare(0, 3, "int") == 0 || t.compare(0, 4, "uint") == 0) && t.size() > 5
+            && t.compare(t.size() - 2, 2, "_t") == 0)
+            return NumKind::Int; // int32_t, uint64_t, intptr_t and the others
+        // A script class has its own operator. Any other name can be an alias of an integer type.
+        return class_named(t) ? NumKind::Other : NumKind::Unknown;
+    }
+
+    // The text of an integer literal without a sign, or empty for any other expression.
+    static std::string int_literal(const Expr& e)
+    {
+        const auto* n = std::get_if<NumberExpr>(&e.v);
+        if (!n)
+            return {};
+        const std::string& t = n->text;
+        const bool hex = t.size() > 2 && t[0] == '0' && (t[1] == 'x' || t[1] == 'X');
+        if (!hex && t.find_first_of(".eEfF") != std::string::npos)
+            return {};
+        return t;
+    }
+
+    // The literal "e" without parentheses and a sign: gives the sign too.
+    static const Expr& strip_sign(const Expr& e, bool& negative)
+    {
+        const Expr* x = &e;
+        for (;;)
+        {
+            if (auto* p = std::get_if<ParenExpr>(&x->v); p && p->inner)
+                x = p->inner.get();
+            else if (auto* u = std::get_if<UnaryExpr>(&x->v); u && !u->postfix && u->operand && (u->op == "-" || u->op == "+"))
+            {
+                negative = negative != (u->op == "-");
+                x = u->operand.get();
+            }
+            else
+                return *x;
+        }
+    }
+
+    // True when the divisor is an integer literal that is not 0 and not -1: no check is needed.
+    static bool safe_divisor_literal(const Expr& e)
+    {
+        bool negative = false;
+        const std::string t = int_literal(strip_sign(e, negative));
+        if (t.empty())
+            return false;
+        size_t i = t.size() > 2 && t[0] == '0' && (t[1] == 'x' || t[1] == 'X' || t[1] == 'b' || t[1] == 'B') ? 2 : 0;
+        std::string digits; // without the prefix, the separators and the suffix
+        for (; i < t.size(); ++i)
+            if (t[i] != '\'' && t[i] != 'u' && t[i] != 'U' && t[i] != 'l' && t[i] != 'L')
+                digits += t[i];
+        const size_t first = digits.find_first_not_of('0');
+        if (first == std::string::npos)
+            return false; // zero
+        return !(negative && digits.compare(first, std::string::npos, "1") == 0);
+    }
+
+    // The kind of the operand "e" (before its lowering).
+    NumKind num_kind(const Expr& e) const
+    {
+        bool negative = false;
+        const Expr& x = strip_sign(e, negative);
+        if (const auto* n = std::get_if<NumberExpr>(&x.v))
+            return int_literal(x).empty() && !n->text.empty() ? NumKind::Float : NumKind::Int;
+        if (const std::string* n = simple_name(x); n && !cx.locals.count(*n) && cx.cls && cx.allow_this)
+            if (const Property* p = find_prop(*cx.cls, *n))
+                return type_kind(p->script_type.empty() ? p->type : p->script_type);
+        if (const MemberExpr* m = this_member(x); m && cx.allow_this && cx.cls)
+        { // this.name: a field or a property of the class
+            if (const Field* f = find_field(*cx.cls, m->name))
+                return type_kind(type_text(*f));
+            if (const Property* p = find_prop(*cx.cls, m->name))
+                return type_kind(p->script_type.empty() ? p->type : p->script_type);
+        }
+        return type_kind(type_of(x));
+    }
+
+    // True when "l op r" needs hot::div or hot::mod. "r" is the right operand.
+    bool div_checked(NumKind l, const Expr& r) const
+    {
+        const NumKind rk = num_kind(r);
+        if (l == NumKind::Float || l == NumKind::Other || rk == NumKind::Float || rk == NumKind::Other)
+            return false;
+        return !safe_divisor_literal(r);
     }
 
     // The script type of an expression before its lowering. Empty: not known.
@@ -1706,7 +1821,12 @@ struct Lowerer
                 // "++P" adds 1 without parentheses. "P op= e" puts e in parentheses.
                 bin.rhs = is_inc ? std::move(value) : make_expr(ParenExpr{std::move(value), pos});
                 bin.pos = pos;
-                value = make_expr(std::move(bin));
+                const Property* pr = find_prop(*r->cls, r->name);
+                const NumKind lk = pr ? type_kind(pr->script_type.empty() ? pr->type : pr->script_type) : NumKind::Unknown;
+                if ((op == "/" || op == "%") && div_checked(lk, *bin.rhs))
+                    value = call_of(op == "/" ? "hot::div" : "hot::mod", args_of(std::move(bin.lhs), std::move(bin.rhs)), pos);
+                else
+                    value = make_expr(std::move(bin));
             }
             e = call_of(set, args_of(std::move(recv), std::move(value)), pos);
         }
@@ -2833,6 +2953,13 @@ struct Lowerer
             // "w = e" writes the weak handle "w": the target is not locked. "w = null" resets it.
             if (b->op == "=" && b->lhs)
                 member_chain(b->lhs);
+            const bool div_op = (b->op == "/" || b->op == "%" || b->op == "/=" || b->op == "%=") && b->lhs && b->rhs;
+            if (div_op)
+            { // the kinds need the form that the lowering of the name chain gives
+                member_chain(b->lhs);
+                member_chain(b->rhs);
+            }
+            const bool use_div = div_op && div_checked(num_kind(*b->lhs), *b->rhs);
             const bool weak_lhs = b->op == "=" && b->lhs && is_weak_handle(*b->lhs);
             const bool reset = weak_lhs && b->rhs && std::holds_alternative<NullExpr>(b->rhs->v);
             if (weak_lhs)
@@ -2850,6 +2977,16 @@ struct Lowerer
             expr(b->rhs);
             if (b->op == "??")
                 --lazy_depth;
+            // An integer "/" and "%" call the checked helper. A compound form passes the target by
+            // reference, so the helper evaluates it one time.
+            if (use_div)
+            {
+                const bool assign = b->op.back() == '=';
+                const std::string name = std::string(b->op[0] == '/' ? "div" : "mod") + (assign ? "_assign" : "");
+                const uint32_t pos = b->pos != 0 ? b->pos : pos_of(*b->lhs);
+                e = call_of("hot::" + name, args_of(std::move(b->lhs), std::move(b->rhs)), pos);
+                return;
+            }
             // "x ?? y" is a call of the runtime helper. The helper reads x one time. The
             // second argument is a lambda, so y runs only when x is false.
             if (b->op == "??" && b->lhs && b->rhs)

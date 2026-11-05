@@ -7,7 +7,7 @@ group: Hot script
 
 ## `try`, `catch`, `finally`
 
-You throw and catch C++ exception types. A `finally` block always runs. A script can declare an exception type (see "Script exception types"). It can also catch the builtin types `NullReference`, `IndexOutOfRange`, `ScriptError`, `TaskCancelled` and `TaskReloadCancelled` (see "Runtime errors").
+You throw and catch C++ exception types. A `finally` block always runs. A script can declare an exception type (see "Script exception types"). It can also catch the builtin types `NullReference`, `IndexOutOfRange`, `ArithmeticError`, `ScriptError`, `TaskCancelled` and `TaskReloadCancelled` (see "Runtime errors").
 
 ```hot
 class Safe {
@@ -33,10 +33,11 @@ The runtime checks a pointer, a handle and an index of an array, a `std::vector`
 
 - `NullReference`: the script used a null pointer or a null handle, for example `p.x` or `*p`.
 - `IndexOutOfRange`: an index is negative or not less than the size of an array, a `std::vector` or a checked native container.
-- `ScriptError`: the base of the two types above. A call that is too deep throws a `ScriptError` with the message `stack overflow`. See [Limits](limits.html).
+- `ArithmeticError`: an integer `/`, `%`, `/=` or `%=` had a zero divisor. The message is `integer divide by zero` or `integer modulo by zero`. The check is always on, also with `HOT_RUNTIME_CHECKS=0`. `INT_MIN / -1` does not throw: it wraps to `INT_MIN`, and `INT_MIN % -1` is `0`. A float divide by zero gives `inf` or `nan` and does not throw.
+- `ScriptError`: the base of the types above. A call that is too deep throws a `ScriptError` with the message `stack overflow`. See [Limits](limits.html).
 - `TaskCancelled` and `TaskReloadCancelled`: a task ends without a result. See [Async and await](async.html).
 
-Write the type name in a `catch` clause. The prefix `hot.` is also valid. Use `catch (ScriptError e)` to catch both types. `e.what()` gives the message.
+Write the type name in a `catch` clause. The prefix `hot.` is also valid. Use `catch (ScriptError e)` to catch all of them. `e.what()` gives the message.
 
 ```hot
 class Grid {
