@@ -26,8 +26,9 @@ namespace hot::launcher
 //   Idle:           nothing happened.
 //   Building:       a build runs on the worker thread. Call poll again at a later frame.
 //   Applied:        a reload was applied. The new code runs from now.
-//   Failed:         the build or the reload failed. The old code keeps running.
-//   RestartPending: a full restart is needed (reserved for a later step).
+//   Failed:         the build or the reload failed. The old code keeps running. This includes
+//                   a failed Fresh build for a full restart.
+//   RestartPending: a full restart is needed and the Fresh build is ready. See Program::poll.
 enum class PollStatus
 {
     Idle,
@@ -50,7 +51,11 @@ struct Options
     unsigned poll_interval_ms = 200;
     // Program::poll waits this time after the last seen change before it builds. 0: build at once.
     unsigned debounce_ms = 100;
-    // Reserved for the full restart of a later step. The launcher does not use it yet.
+    // The launcher calls it once on the main thread, from Program::poll, when a full restart is
+    // ready. The engine must end its loop, so that "main" returns (do not destroy the program
+    // from the hook). Then run_main restarts the program. Empty: the engine has no quit hook.
+    // Then the launcher logs that the restart is needed and the old code goes on. If "main"
+    // returns by itself, run_main returns its result and does not restart.
     std::function<void()> request_quit;
 };
 
@@ -80,7 +85,17 @@ public:
     // A failed build keeps the old code. It does not try again until the next file change.
     // A file that changes during a build starts a new build after the first one ends.
     // The destructor of Program waits for a running build. A build can take seconds.
+    //
+    // A change that hot reload cannot apply needs a full restart: a class lost a slot (the
+    // loader gives FullReloadRequired), or a file that is not a ".hot" file (a native header)
+    // changed. Then poll builds the Fresh generation 1 on the worker thread, and gives Building.
+    // When the build ends, poll keeps the new module and gives RestartPending, and calls
+    // Options::request_quit once. A failed Fresh build gives Failed and the old code keeps
+    // running. While a restart is pending, poll takes no file change and no new build starts.
+    // It only calls Loader::frame_boundary and gives RestartPending.
     PollStatus poll();
+    // True from the RestartPending status until run_main restarts the program.
+    bool restart_pending() const;
     // The number of the active generation. It is 1 after load and grows with each applied reload.
     uint32_t generation() const;
 
@@ -100,6 +115,22 @@ std::unique_ptr<Program> load(const Options& options, const std::string& script_
 // Calls the "main" of the script with argc and argv. argv[0] is the script path, and then come
 // "args". Returns the result of "main" (0 for a "void main"). Returns 1 when the script throws a
 // C++ exception: the message goes to Options::log. Returns 2 when the script has no "main".
+//
+// run_main can call "main" more than once. When "main" returns after poll asked for the quit
+// (Options::request_quit), run_main does the full restart: it cancels the tasks of hot::scheduler(),
+// calls Loader::reset, loads the fresh module and calls its "main" again with the same arguments.
+// The generation numbers start again at 1. The restart needs these things:
+//   - The engine destroys all script objects before its loop returns, and "main" releases its
+//     handles. Else Loader::reset fails ("N live objects remain: ..."), run_main logs
+//     "[hot] full restart failed: <error>" and returns 1.
+//   - No closure, task or hot::pin of a script generation remains. A script task pins its
+//     generation, and reset fails while a task is alive. The launcher calls
+//     hot::scheduler().cancel_all() only when it builds with coroutine support (C++20). An engine
+//     that builds hot_launcher without it must cancel its own tasks before its loop returns.
+//   - The engine does not keep pointers into the old script code (function pointers, closures,
+//     thunks). They dangle after the restart.
+// If "main" ends by itself without a quit request (no quit hook), run_main does not restart.
+// An exception from "main" ends run_main with 1, with no restart.
 int run_main(Program& program, const std::vector<std::string>& args);
 
 // The default work directory of a script: "$XDG_CACHE_HOME/hot/<hash>", or "~/.cache/hot/<hash>"

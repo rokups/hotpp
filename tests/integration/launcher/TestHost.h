@@ -19,10 +19,12 @@ public:
     // A script class overrides it. The result adds to the total of Run.
     virtual int Step() { return 0; }
 
-    // The loop. The frame starts at 1. Each iteration calls on_frame(frame), then Step.
+    // The loop. It sets "running" to true when it starts, so a restarted "main" runs again after
+    // a quit. The frame starts at 1. Each iteration calls on_frame(frame), then Step.
     // The loop ends when "running" is false after Step. It returns the sum of the Step results.
     int Run()
     {
+        running = true;
         int total = 0;
         for (int frame = 1; running; ++frame)
         {

@@ -6,6 +6,7 @@
 
 #include "hot/backend.h"
 #include "hot/runtime/loader.h"
+#include "hot/runtime/scheduler.h"
 #include "hot/runtime/threads.h"
 
 #include <cstdint>
@@ -17,6 +18,7 @@
 #include <fstream>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <sstream>
 #include <system_error>
 #include <thread>
@@ -82,6 +84,18 @@ struct Program::Impl
     std::map<std::string, Stamp> build_pre; // the stamps from before the build read the files
     uint32_t build_generation = 0;          // the generation number of the build
     hot::LoadMode build_mode = hot::LoadMode::Reload;
+
+    // The full restart. Only the main thread uses these members.
+    std::function<void()> request_quit;
+    // A Fresh build gave a module. The restart starts when "main" returns.
+    bool restart_pending = false;
+    bool quit_requested = false;  // the launcher called request_quit for the restart
+    bool no_quit_logged = false;  // the log has the "no quit hook" line
+    std::string restart_reason;   // why the restart is needed
+    // A full restart is needed and not yet built. Each build is Fresh until a Fresh build works
+    // or the program restarts. A failed Fresh build does not make the change live.
+    bool fresh_needed = false;
+    std::optional<hot::LoadResult> fresh; // the Fresh build for the restart
 
     // Waits for the worker. The worker uses the backend, so the join must come before the members
     // go. A build can take seconds, so the destructor can wait for that time.
@@ -311,44 +325,139 @@ std::unique_ptr<Program> load(const Options& options, const std::string& script_
     impl->log = log_of(options);
     impl->poll_interval_ms = options.poll_interval_ms;
     impl->debounce_ms = options.debounce_ms;
+    impl->request_quit = options.request_quit;
     impl->include_dirs = options.include_dirs;
     impl->stamps = adopt_stamps(impl->script_path, impl->include_dirs, pre, impl->dependencies, false);
     impl->seen = impl->stamps;
     return std::unique_ptr<Program>(new Program(std::move(impl)));
 }
 
+namespace
+{
+
+// The restart of run_main, after "main" returned. It stops the tasks, resets the loader, loads the
+// fresh module and takes its "main". It gives false when the restart cannot go on. The caller
+// logs nothing more.
+// A template, because Program::Impl is private: the compiler deduces the type.
+template <class ImplT>
+bool restart_program(ImplT& impl)
+{
+    // The worker cannot run here, because poll starts no build after the restart is pending.
+    // Join it anyway and drop its result.
+    if (impl.worker.joinable())
+    {
+        impl.worker.join();
+        const std::lock_guard<std::mutex> lock(impl.mutex);
+        impl.build_result = hot::LoadResult{};
+        impl.build_done = false;
+    }
+    // The tasks pin their generation, and Loader::reset fails while a pin exists. Tasks need C++20
+    // coroutines: the Scheduler type exists only when this file builds with them.
+#if defined(HOT_HAS_TASK)
+    hot::scheduler().cancel_all();
+#endif
+    std::string error;
+    if (!impl.loader.reset(error))
+    {
+        impl.log("[hot] full restart failed: " + (error.empty() ? "the loader cannot reset" : error));
+        return false;
+    }
+    // After the reset the old "main" pointer dangles.
+    impl.entry_main = nullptr;
+    hot::LoadResult fresh = std::move(*impl.fresh);
+    impl.fresh.reset();
+    // Read the pointer before the move of the module.
+    const hot::Module::EntryMainFn entry_main = fresh.module->entry_main;
+    const hot::ReloadResult loaded = impl.loader.load(std::move(*fresh.module));
+    if (!loaded)
+    {
+        impl.log("[hot] full restart failed: " + (loaded.error.empty() ? "the loader rejected the module" : loaded.error));
+        return false;
+    }
+    impl.entry_main = entry_main;
+    impl.active_generation = 1;
+    impl.main_generation = 1;
+    impl.next_generation = 2;
+    impl.pending_generation = 0;
+    impl.busy_logged = false;
+    impl.dirty = false;
+    impl.build_pre.clear();
+    impl.build_generation = 0;
+    impl.restart_pending = false;
+    impl.fresh_needed = false;
+    impl.quit_requested = false;
+    impl.no_quit_logged = false;
+    impl.log("[hot] full restart: " + impl.restart_reason);
+    impl.restart_reason.clear();
+    return true;
+}
+
+} // namespace
+
 int run_main(Program& program, const std::vector<std::string>& args)
 {
     Program::Impl& impl = *program.impl_;
-    if (!impl.entry_main)
-    {
-        impl.log("the script has no 'main'");
-        return 2;
-    }
     std::vector<const char*> argv;
     argv.push_back(impl.script_path.c_str());
     for (const std::string& a : args)
         argv.push_back(a.c_str());
-    // The frame of "main" stays on the stack during the whole run, and "main" calls the code of
-    // its generation directly (hot_fn_main). Loader::frame_boundary does not look at the native
-    // call frames. After a reload, the generation of "main" is retired, and frame_boundary could
-    // unload its library while "main" still runs in it. A pin keeps a generation loaded:
-    // frame_boundary skips a pinned generation. The pin takes the generation number.
-    // entry_main is not refreshed on a reload, because "main" does not run again.
-    try
+    for (;;)
     {
-        const PinGuard pin(impl.main_generation);
-        return impl.entry_main(static_cast<int32_t>(argv.size()), argv.data());
+        if (!impl.entry_main)
+        {
+            impl.log("the script has no 'main'");
+            return 2;
+        }
+        int code = 1;
+        // The frame of "main" stays on the stack during the whole run, and "main" calls the code of
+        // its generation directly (hot_fn_main). Loader::frame_boundary does not look at the native
+        // call frames. After a reload, the generation of "main" is retired, and frame_boundary
+        // could unload its library while "main" still runs in it. A pin keeps a generation loaded:
+        // frame_boundary skips a pinned generation. The pin takes the generation number.
+        // A reload does not refresh entry_main, because "main" does not run again. Only the
+        // restart below takes a new one. The pin ends before the restart.
+        try
+        {
+            const PinGuard pin(impl.main_generation);
+            code = impl.entry_main(static_cast<int32_t>(argv.size()), argv.data());
+        }
+        catch (const std::exception& e)
+        {
+            impl.log(std::string("the script threw an exception: ") + e.what());
+            return 1;
+        }
+        catch (...)
+        {
+            impl.log("the script threw an unknown exception");
+            return 1;
+        }
+        // The restart needs the fresh build and the quit request of the launcher. Without a quit
+        // request, "main" ended by itself (for example the user closed the window): do not restart.
+        if (!impl.restart_pending || !impl.quit_requested)
+            return code;
+        // The restart keeps the stamps of the Fresh build. An edit that came during the wait is a
+        // change for the next poll.
+        try
+        {
+            if (!restart_program(impl))
+                return 1;
+        }
+        catch (const std::exception& e)
+        {
+            impl.log(std::string("[hot] full restart failed: ") + e.what());
+            return 1;
+        }
+        catch (...)
+        {
+            impl.log("[hot] full restart failed: unknown exception");
+            return 1;
+        }
     }
-    catch (const std::exception& e)
-    {
-        impl.log(std::string("the script threw an exception: ") + e.what());
-    }
-    catch (...)
-    {
-        impl.log("the script threw an unknown exception");
-    }
-    return 1;
+}
+
+bool Program::restart_pending() const
+{
+    return impl_->restart_pending;
 }
 
 uint32_t Program::generation() const
@@ -362,6 +471,14 @@ PollStatus Program::poll()
     const Impl::Clock::time_point now = Impl::Clock::now();
     const auto elapsed_ms = [&](Impl::Clock::time_point since)
     { return std::chrono::duration_cast<std::chrono::milliseconds>(now - since).count(); };
+
+    // 0. A restart is pending: a Fresh build gave the new module, and the program must quit. The
+    // launcher takes no new file change until the restart ends.
+    if (impl.restart_pending)
+    {
+        impl.loader.frame_boundary();
+        return PollStatus::RestartPending;
+    }
 
     // 1. A build runs on the worker thread. The scan waits until the result is handled.
     // A finished build is joined and handled below.
@@ -437,6 +554,76 @@ PollStatus Program::poll()
         impl.seen = impl.stamps;
     };
 
+    // Starts the build on the worker thread. "pre" holds the stamps from before the build reads the
+    // files. A Fresh build has the generation 1. It gives Building, or Failed with a log line.
+    const auto start_build = [&](hot::LoadMode mode, std::map<std::string, Stamp> pre) -> PollStatus
+    {
+        const char* const prefix = mode == hot::LoadMode::Fresh ? "[hot] full restart build failed: " : "[hot] reload failed: ";
+        std::string text;
+        if (!read_file(impl.script_path, text))
+        {
+            impl.log(std::string(prefix) + "cannot read the script '" + impl.script_path + "'");
+            // Take the new stamps. The missing file is a change only once.
+            take_stamps(pre, {}, true);
+            return PollStatus::Failed;
+        }
+        // The worker gets copies of the values and a pointer to the Impl. The Impl is on the
+        // heap, and its destructor joins the worker, so the pointer stays valid.
+        std::error_code ec;
+        hot::ScriptSource source{fs::absolute(impl.script_path, ec).string(), std::move(text), {}};
+        impl.build_pre = std::move(pre);
+        impl.build_generation = mode == hot::LoadMode::Fresh ? 1 : impl.next_generation;
+        impl.build_mode = mode;
+        impl.build_done = false;
+        try
+        {
+            impl.worker = std::thread(
+                [state = &impl, backend = impl.backend.get(), source = std::move(source),
+                 generation = impl.build_generation, mode = impl.build_mode]()
+                {
+                    hot::LoadResult result;
+                    try
+                    {
+                        result = backend->load(source, generation, mode);
+                    }
+                    catch (const std::exception& e)
+                    {
+                        result = hot::LoadResult{};
+                        result.error = e.what();
+                        result.reason = hot::ReloadReason::CompileError;
+                    }
+                    catch (...)
+                    {
+                        result = hot::LoadResult{};
+                        result.error = "unknown exception";
+                        result.reason = hot::ReloadReason::CompileError;
+                    }
+                    const std::lock_guard<std::mutex> lock(state->mutex);
+                    state->build_result = std::move(result);
+                    state->build_done = true;
+                });
+            return PollStatus::Building;
+        }
+        catch (const std::system_error& e)
+        {
+            // The thread did not start. Treat it as a failed build.
+            impl.log(std::string(prefix) + "cannot start the build thread: " + e.what());
+            take_stamps(impl.build_pre, {}, true);
+            impl.build_pre.clear();
+            return PollStatus::Failed;
+        }
+    };
+
+    // Starts the Fresh build of a full restart. "reason" says why the restart is needed.
+    const auto start_restart = [&](const std::string& reason) -> PollStatus
+    {
+        impl.fresh_needed = true;
+        impl.restart_reason = reason;
+        impl.log("[hot] full restart needed: " + reason);
+        // The stamps from before the second build reads the files.
+        return start_build(hot::LoadMode::Fresh, stat_known(impl.stamps));
+    };
+
     PollStatus status = PollStatus::Idle;
     if (have_result)
     {
@@ -453,13 +640,61 @@ PollStatus Program::poll()
         const std::map<std::string, Stamp> pre = std::move(impl.build_pre);
         impl.build_pre.clear();
         const uint32_t generation = impl.build_generation;
+        const hot::LoadMode mode = impl.build_mode;
+        const char* const prefix = mode == hot::LoadMode::Fresh ? "[hot] full restart build failed: " : "[hot] reload failed: ";
+        std::string restart_needed; // not empty: a Reload build shows that a full restart is needed
         status = PollStatus::Failed;
         try
         {
-            if (!built)
+            if (mode == hot::LoadMode::Fresh)
+            {
+                if (!built)
+                {
+                    // "fresh_needed" stays: the next build is Fresh again.
+                    take_stamps(pre, built.dependencies, true);
+                    impl.log(std::string(prefix) + (built.error.empty() ? "the script did not compile" : built.error));
+                }
+                else
+                {
+                    impl.dependencies = built.dependencies;
+                    take_stamps(pre, impl.dependencies, false);
+                    impl.fresh = std::move(built);
+                    impl.restart_pending = true;
+                    impl.fresh_needed = false;
+                    status = PollStatus::RestartPending;
+                    if (impl.request_quit)
+                    {
+                        impl.quit_requested = true;
+                        impl.log("[hot] full restart: waiting for the program to quit");
+                        try
+                        {
+                            impl.request_quit();
+                        }
+                        catch (const std::exception& e)
+                        {
+                            impl.quit_requested = false;
+                            impl.log(std::string("[hot] full restart: the quit hook threw an exception: ") + e.what());
+                        }
+                        catch (...)
+                        {
+                            impl.quit_requested = false;
+                            impl.log("[hot] full restart: the quit hook threw an unknown exception");
+                        }
+                    }
+                    else if (!impl.no_quit_logged)
+                    {
+                        impl.no_quit_logged = true;
+                        impl.log("[hot] restart needed, but the engine has no quit hook: the old code goes on");
+                    }
+                }
+            }
+            else if (!built)
             {
                 take_stamps(pre, built.dependencies, true);
-                impl.log("[hot] reload failed: " + (built.error.empty() ? "the script did not compile" : built.error));
+                if (built.reason == hot::ReloadReason::SlotsRemoved)
+                    restart_needed = built.error.empty() ? "a class has fewer slots" : built.error;
+                else
+                    impl.log(std::string(prefix) + (built.error.empty() ? "the script did not compile" : built.error));
             }
             else
             {
@@ -473,24 +708,28 @@ PollStatus Program::poll()
                 }
                 else if (requested.status == hot::ReloadStatus::FullReloadRequired)
                 {
-                    impl.log("[hot] full restart needed: " + requested.error);
+                    restart_needed = requested.error.empty() ? "the change needs a full restart" : requested.error;
                 }
                 else
                 {
-                    impl.log("[hot] reload failed: " +
+                    impl.log(std::string(prefix) +
                              (requested.error.empty() ? "the loader rejected the module" : requested.error));
                 }
             }
+            if (!restart_needed.empty())
+                status = start_restart(restart_needed);
         }
         catch (const std::exception& e)
         {
-            impl.log(std::string("[hot] reload failed: ") + e.what());
+            impl.log(std::string(prefix) + e.what());
             take_stamps(pre, {}, true);
+            status = PollStatus::Failed;
         }
         catch (...)
         {
-            impl.log("[hot] reload failed: unknown exception");
+            impl.log(std::string(prefix) + "unknown exception");
             take_stamps(pre, {}, true);
+            status = PollStatus::Failed;
         }
     }
     else if (impl.loader.reload_pending())
@@ -503,63 +742,35 @@ PollStatus Program::poll()
     {
         // 2c. The build, after the debounce time.
         impl.dirty = false;
-        status = PollStatus::Failed;
         // The stamps from before the build reads the files.
         std::map<std::string, Stamp> pre = stat_known(impl.stamps);
-        std::string text;
-        if (!read_file(impl.script_path, text))
+        // A changed file that is not a ".hot" file (a native header) needs a Fresh build: only a
+        // full restart can apply it. The entry script always counts as a script.
+        std::string header;
+        for (const auto& entry : pre)
         {
-            impl.log("[hot] reload failed: cannot read the script '" + impl.script_path + "'");
-            // Take the new stamps. The missing file is a change only once.
-            take_stamps(pre, {}, true);
+            const std::string& path = entry.first;
+            const bool is_script =
+                path == impl.script_path || (path.size() >= 4 && path.compare(path.size() - 4, 4, ".hot") == 0);
+            if (!is_script && !(entry.second == impl.stamps[path]))
+            {
+                header = path;
+                break;
+            }
+        }
+        if (!header.empty())
+        {
+            impl.fresh_needed = true;
+            impl.restart_reason = "native header changed: " + header;
+        }
+        // After an earlier restart trigger, each build stays Fresh until a Fresh build works.
+        if (impl.fresh_needed)
+        {
+            impl.log("[hot] full restart needed: " + impl.restart_reason);
+            status = start_build(hot::LoadMode::Fresh, std::move(pre));
         }
         else
-        {
-            // The worker gets copies of the values and a pointer to the Impl. The Impl is on the
-            // heap, and its destructor joins the worker, so the pointer stays valid.
-            std::error_code ec;
-            hot::ScriptSource source{fs::absolute(impl.script_path, ec).string(), std::move(text), {}};
-            impl.build_pre = std::move(pre);
-            impl.build_generation = impl.next_generation;
-            impl.build_mode = hot::LoadMode::Reload;
-            impl.build_done = false;
-            try
-            {
-                impl.worker = std::thread(
-                    [state = &impl, backend = impl.backend.get(), source = std::move(source),
-                     generation = impl.build_generation, mode = impl.build_mode]()
-                    {
-                        hot::LoadResult result;
-                        try
-                        {
-                            result = backend->load(source, generation, mode);
-                        }
-                        catch (const std::exception& e)
-                        {
-                            result = hot::LoadResult{};
-                            result.error = e.what();
-                            result.reason = hot::ReloadReason::CompileError;
-                        }
-                        catch (...)
-                        {
-                            result = hot::LoadResult{};
-                            result.error = "unknown exception";
-                            result.reason = hot::ReloadReason::CompileError;
-                        }
-                        const std::lock_guard<std::mutex> lock(state->mutex);
-                        state->build_result = std::move(result);
-                        state->build_done = true;
-                    });
-                status = PollStatus::Building;
-            }
-            catch (const std::system_error& e)
-            {
-                // The thread did not start. Treat it as a failed build.
-                impl.log(std::string("[hot] reload failed: cannot start the build thread: ") + e.what());
-                take_stamps(impl.build_pre, {}, true);
-                impl.build_pre.clear();
-            }
-        }
+            status = start_build(hot::LoadMode::Reload, std::move(pre));
     }
 
     // 3. Unload the retired generations. This also runs after a commit of this call.

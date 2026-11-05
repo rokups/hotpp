@@ -17,6 +17,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <thread>
@@ -239,11 +240,13 @@ void edit_file(const fs::path& path, const std::string& text)
 }
 
 // The script of a reload test: a class Game derived from TestHost. "step_body" is the body of Step.
-std::string game_script(const std::string& step_body, const std::string& imports = "")
+// "members" are more members of the class.
+std::string game_script(const std::string& step_body, const std::string& imports = "", const std::string& members = "")
 {
     return "using \"TestHost.h\";\n" + imports +
            "class Game : TestHost {\n"
            "    int count = 0;\n"
+           "    " + members + "\n"
            "    override int Step() { " + step_body + " }\n"
            "}\n"
            "int main() { $Game g = new $Game(); return g.Run(); }\n";
@@ -259,6 +262,9 @@ struct ReloadFixture
     // Include directories that open adds after the folder of the script. They are relative to it.
     std::vector<std::string> extra_include_dirs;
     unsigned debounce_ms = 0;
+    // More members of the class Game, and the quit hook of the options.
+    std::string members;
+    std::function<void()> request_quit;
 
     // Returns false when the load failed. The caller uses ASSERT_TRUE.
     bool open(const std::string& backend, const std::string& step_body, const std::string& imports = "",
@@ -268,13 +274,14 @@ struct ReloadFixture
         for (const auto& [name, text] : extra_files)
             write_file(dir, name, text);
         fs::copy_file(fs::path(HOT_LAUNCHER_TEST_DIR) / "TestHost.h", dir / "TestHost.h");
-        script = write_file(dir, "entry.hot", game_script(step_body, imports));
+        script = write_file(dir, "entry.hot", game_script(step_body, imports, members));
         launcher::Options options = options_for(backend, dir, &logs);
         options.include_dirs.push_back(dir.string());
         for (const std::string& d : extra_include_dirs)
             options.include_dirs.push_back((dir / d).string());
         options.poll_interval_ms = 0;
         options.debounce_ms = debounce_ms;
+        options.request_quit = request_quit;
         std::string error;
         program = launcher::load(options, script, error);
         if (!program)
@@ -624,6 +631,264 @@ TEST(Launcher, IncludeDirImportChangeReloads)
         EXPECT_EQ(statuses[1], launcher::PollStatus::Applied);
         EXPECT_EQ(total, 201);
         EXPECT_EQ(f.program->generation(), 2u);
+    }
+}
+
+// The number of log lines that start with the text.
+int count_logs(const std::vector<std::string>& logs, const std::string& prefix)
+{
+    int n = 0;
+    for (const std::string& line : logs)
+        n += line.rfind(prefix, 0) == 0 ? 1 : 0;
+    return n;
+}
+
+// The quit hook of the restart tests: it ends the loop of the engine.
+void stop_loop()
+{
+    TestHost::running = false;
+}
+
+// v1 of Game has the member Helper, v2 does not. A class that loses a slot needs a full restart.
+const char* const kHelper = "int Helper() { return 1; }";
+const char* const kStepV1 = "count = count + 1; return count;";
+const char* const kStepV2 = "count = count + 1; return count + 100;";
+
+// The first run starts v1. At frame 1 the hook writes v2 (no Helper). The poll gives
+// RestartPending and calls the quit hook, which ends the loop. Step of frame 1 runs: v1, the
+// result 1 is lost with the first run. "main" returns and run_main restarts: a new Game
+// object, and "count" starts at 0 again. The second run uses v2 and stops at frame 2 (the
+// limit of f.run). Frame 1 gives 0 + 1 + 100 = 101, frame 2 gives 2 + 100 = 102.
+// Total = 203. The hook sees two starts (frame 1 twice).
+TEST(Launcher, SlotRemovalRestarts)
+{
+    for (const std::string& backend : backends())
+    {
+        SCOPED_TRACE(backend);
+        ReloadFixture f;
+        f.members = kHelper;
+        f.request_quit = stop_loop;
+        ASSERT_TRUE(f.open(backend, kStepV1)) << f.logs.back();
+        int starts = 0;
+        launcher::PollStatus status = launcher::PollStatus::Idle;
+        bool pending_in_hook = false;
+        const int total = f.run(2, [&](int frame)
+        {
+            if (frame != 1)
+                return;
+            if (++starts == 1)
+            {
+                edit_file(f.script, game_script(kStepV2));
+                status = poll_until_settled(*f.program);
+                pending_in_hook = f.program->restart_pending();
+            }
+        });
+        EXPECT_EQ(status, launcher::PollStatus::RestartPending);
+        EXPECT_TRUE(pending_in_hook);
+        EXPECT_EQ(starts, 2);
+        EXPECT_EQ(total, 203);
+        EXPECT_FALSE(f.program->restart_pending());
+        EXPECT_EQ(f.program->generation(), 1u);
+        EXPECT_EQ(count_logs(f.logs, "[hot] full restart: "), 2); // "waiting" and the restart itself
+        EXPECT_EQ(count_logs(f.logs, "[hot] full restart needed: "), 1);
+        // The program goes on after the restart: no change, no status.
+        EXPECT_EQ(f.program->poll(), launcher::PollStatus::Idle);
+    }
+}
+
+// A change of a native header needs a Fresh build and a full restart. The test adds a comment line
+// to the copy of TestHost.h. The script does not change, so v1 runs again after the restart.
+// The first run ends after frame 1 (quit). The second run stops at frame 2: 1 + 2 = 3.
+TEST(Launcher, HeaderChangeRestarts)
+{
+    for (const std::string& backend : backends())
+    {
+        SCOPED_TRACE(backend);
+        ReloadFixture f;
+        f.request_quit = stop_loop;
+        ASSERT_TRUE(f.open(backend, kStepV1)) << f.logs.back();
+        const fs::path header = f.dir / "TestHost.h";
+        int starts = 0;
+        launcher::PollStatus status = launcher::PollStatus::Idle;
+        const int total = f.run(2, [&](int frame)
+        {
+            if (frame != 1)
+                return;
+            if (++starts == 1)
+            {
+                std::ifstream in(header, std::ios::binary);
+                const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+                in.close();
+                edit_file(header, text + "// a comment line\n");
+                status = poll_until_settled(*f.program);
+            }
+        });
+        EXPECT_EQ(status, launcher::PollStatus::RestartPending);
+        EXPECT_EQ(starts, 2);
+        EXPECT_EQ(total, 3);
+        EXPECT_FALSE(f.program->restart_pending());
+        EXPECT_EQ(f.program->generation(), 1u);
+        EXPECT_EQ(count_logs(f.logs, "[hot] full restart needed: native header changed: "), 1);
+        EXPECT_EQ(count_logs(f.logs, "[hot] full restart: native header changed: "), 1);
+    }
+}
+
+// The engine has no quit hook. The poll gives RestartPending and logs one line. The old code
+// goes on: the loop stops at frame 4 (the limit of f.run), and run_main returns the total of v1
+// (1 + 2 + 3 + 4 = 10) with no restart. The later polls give RestartPending and ignore edits.
+TEST(Launcher, NoQuitHookLogs)
+{
+    for (const std::string& backend : backends())
+    {
+        SCOPED_TRACE(backend);
+        ReloadFixture f;
+        f.members = kHelper;
+        ASSERT_TRUE(f.open(backend, kStepV1)) << f.logs.back();
+        int starts = 0;
+        std::vector<launcher::PollStatus> statuses;
+        const int total = f.run(4, [&](int frame)
+        {
+            if (frame == 1)
+            {
+                ++starts;
+                edit_file(f.script, game_script(kStepV2));
+            }
+            statuses.push_back(poll_until_settled(*f.program));
+            if (frame == 2)
+                edit_file(f.script, game_script("return 5;", "", kHelper)); // ignored
+        });
+        EXPECT_EQ(starts, 1);
+        EXPECT_EQ(total, 10);
+        ASSERT_EQ(statuses.size(), 4u);
+        for (const launcher::PollStatus s : statuses)
+            EXPECT_EQ(s, launcher::PollStatus::RestartPending);
+        EXPECT_TRUE(f.program->restart_pending());
+        EXPECT_EQ(f.program->generation(), 1u);
+        EXPECT_EQ(count_logs(f.logs, "[hot] restart needed, but the engine has no quit hook"), 1);
+        EXPECT_EQ(count_logs(f.logs, "[hot] full restart: "), 0);
+    }
+}
+
+// The first edit removes Helper and has a syntax error: the build fails (Failed, no restart).
+// The second edit fixes the syntax and still removes Helper: RestartPending and a restart.
+// The first run has frames 1 and 2 (the quit ends it after frame 2). The second run runs v2 and
+// stops at frame 2: 101 + 102 = 203.
+TEST(Launcher, RestartBuildFailureKeepsOldCode)
+{
+    for (const std::string& backend : backends())
+    {
+        SCOPED_TRACE(backend);
+        ReloadFixture f;
+        f.members = kHelper;
+        f.request_quit = stop_loop;
+        ASSERT_TRUE(f.open(backend, kStepV1)) << f.logs.back();
+        int starts = 0;
+        launcher::PollStatus first = launcher::PollStatus::Idle;
+        launcher::PollStatus second = launcher::PollStatus::Idle;
+        const int total = f.run(2, [&](int frame)
+        {
+            if (frame == 1)
+                ++starts;
+            if (starts != 1)
+                return;
+            if (frame == 1)
+            {
+                edit_file(f.script, game_script("count = count + 1; return count +;"));
+                first = poll_until_settled(*f.program);
+            }
+            else if (frame == 2)
+            {
+                edit_file(f.script, game_script(kStepV2));
+                second = poll_until_settled(*f.program);
+            }
+        });
+        EXPECT_EQ(first, launcher::PollStatus::Failed);
+        EXPECT_EQ(second, launcher::PollStatus::RestartPending);
+        EXPECT_EQ(starts, 2);
+        EXPECT_EQ(total, 203);
+        EXPECT_GE(count_logs(f.logs, "[hot] reload failed: "), 1);
+        EXPECT_EQ(count_logs(f.logs, "[hot] full restart: "), 2);
+        EXPECT_EQ(f.program->generation(), 1u);
+    }
+}
+
+// A failed Fresh build does not forget the header change. The first edit changes TestHost.h and
+// adds a syntax error to the script: the Fresh build fails (Failed). The second edit fixes only the
+// script. The header stays as it is, so the build must be Fresh again: RestartPending, not Applied.
+// The first run has frames 1 and 2 (the quit ends it after frame 2). The second run runs v2 and
+// stops at frame 2: 101 + 102 = 203.
+TEST(Launcher, FailedFreshBuildKeepsFreshNeeded)
+{
+    for (const std::string& backend : backends())
+    {
+        SCOPED_TRACE(backend);
+        ReloadFixture f;
+        f.request_quit = stop_loop;
+        ASSERT_TRUE(f.open(backend, kStepV1)) << f.logs.back();
+        const fs::path header = f.dir / "TestHost.h";
+        int starts = 0;
+        launcher::PollStatus first = launcher::PollStatus::Idle;
+        launcher::PollStatus second = launcher::PollStatus::Idle;
+        const int total = f.run(2, [&](int frame)
+        {
+            if (frame == 1)
+                ++starts;
+            if (starts != 1)
+                return;
+            if (frame == 1)
+            {
+                std::ifstream in(header, std::ios::binary);
+                const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+                in.close();
+                edit_file(header, text + "// a comment line\n");
+                edit_file(f.script, game_script("count = count + 1; return count +;"));
+                first = poll_until_settled(*f.program);
+            }
+            else if (frame == 2)
+            {
+                edit_file(f.script, game_script(kStepV2));
+                second = poll_until_settled(*f.program);
+            }
+        });
+        EXPECT_EQ(first, launcher::PollStatus::Failed);
+        EXPECT_EQ(second, launcher::PollStatus::RestartPending);
+        EXPECT_EQ(starts, 2);
+        EXPECT_EQ(total, 203);
+        EXPECT_GE(count_logs(f.logs, "[hot] full restart build failed: "), 1);
+        EXPECT_EQ(count_logs(f.logs, "[hot] reload applied: "), 0);
+        EXPECT_EQ(count_logs(f.logs, "[hot] full restart: "), 2);
+        EXPECT_FALSE(f.program->restart_pending());
+        EXPECT_EQ(f.program->generation(), 1u);
+    }
+}
+
+// A pin on generation 1 makes Loader::reset fail. run_main logs the error and returns 1. The
+// program is not restarted and stays pending.
+TEST(Launcher, ResetFailureReturns1)
+{
+    for (const std::string& backend : backends())
+    {
+        SCOPED_TRACE(backend);
+        ReloadFixture f;
+        f.members = kHelper;
+        f.request_quit = stop_loop;
+        ASSERT_TRUE(f.open(backend, kStepV1)) << f.logs.back();
+        int starts = 0;
+        const int result = f.run(2, [&](int frame)
+        {
+            if (frame != 1)
+                return;
+            ++starts;
+            edit_file(f.script, game_script(kStepV2));
+            EXPECT_EQ(poll_until_settled(*f.program), launcher::PollStatus::RestartPending);
+            hot::pin(1); // a closure or a task would do the same
+        });
+        hot::unpin(1);
+        EXPECT_EQ(result, 1);
+        EXPECT_EQ(starts, 1);
+        EXPECT_EQ(count_logs(f.logs, "[hot] full restart failed: "), 1);
+        EXPECT_TRUE(f.program->restart_pending());
+        EXPECT_EQ(f.program->generation(), 1u);
     }
 }
 
