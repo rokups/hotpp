@@ -263,6 +263,35 @@ struct LoweredStatic
     const hotc::ast::Method* method = nullptr;
 };
 
+// Checks the signature of the entry function "main". The allowed forms are "void main()", "int main()",
+// "void main(std.string[] args)" and "int main(std.string[] args)". "takes_args" and "returns_int" tell
+// which one it is. The result is false for any other form.
+bool entry_main_shape(const hotc::ast::Method& f, bool& takes_args, bool& returns_int)
+{
+    takes_args = returns_int = false;
+    if (f.is_async || f.ret_ref || f.ret_value || !f.op.empty())
+        return false;
+    if (f.ret == "int32_t")
+        returns_int = true;
+    else if (!f.ret.empty() && f.ret != "void")
+        return false;
+    if (f.params.empty())
+        return true;
+    if (f.params.size() != 1)
+        return false;
+    const hotc::ast::Param& p = f.params.front();
+    std::string type;
+    for (char c : p.type)
+        if (!std::isspace(static_cast<unsigned char>(c)))
+            type += c;
+    if (const size_t at = type.find(hotc::kStdPlaceholder); at != std::string::npos)
+        type.replace(at, hotc::kStdPlaceholder.size(), "std::");
+    if (type != "std::string[]" || p.mode != hotc::ast::ParamMode::Plain || p.def || p.weak || p.value)
+        return false;
+    takes_args = true;
+    return true;
+}
+
 // The name of the synthetic struct that holds the module variables (module state block).
 const std::string kModuleName = hotc::kModuleClassName;
 
@@ -3060,6 +3089,9 @@ void translate_impl(
                 if (!is.var_hooks.empty())
                     fail_at(map, is.var_hooks.front().pos,
                         "an imported script cannot have convert hooks of module variables");
+                for (const Method& f : is.fns)
+                    if (f.name == "main")
+                        fail_at(map, f.pos, hotc::ast::kMainSignatureError);
                 if (!is.fns.empty())
                     fail_at(map, is.fns.front().pos,
                         "an imported script cannot have free functions: '" + is.fns.front().name + "' is in '" + file
@@ -3295,6 +3327,8 @@ void translate_impl(
     // "sc.classes", so no code is made for it as a class.
     hotc::ast::ClassDef fn_cls;
     fn_cls.name = "HotFns";
+    // The entry point "main" (see entry_main_shape): the translator writes "hot_main" for the host.
+    bool has_main = false, main_args = false, main_int = false;
     {
         std::set<std::string> fn_names;
         for (const Method& f : sc.fns)
@@ -3317,6 +3351,12 @@ void translate_impl(
             for (const hotc::ast::Param& p : f.params)
                 if (p.name.compare(0, 2, "__") == 0)
                     fail_at(map, f.pos, "parameter name '" + p.name + "' is reserved");
+            if (f.name == "main")
+            {
+                if (!entry_main_shape(f, main_args, main_int))
+                    fail_at(map, f.pos, hotc::ast::kMainSignatureError);
+                has_main = true;
+            }
         }
         for (const ClassDef& cd : sc.classes)
         {
@@ -7933,6 +7973,28 @@ void translate_impl(
             o.w("using " + a.name + " = " + types.cpp_storage(a.resolved, hotc::TypeModel::StorageUse::Local) + ";\n");
             reset();
         }
+
+    // The entry point for the host. The arguments of the script are a view over a vector of strings.
+    // An exception of the script is not caught here: it leaves the function (see doc/module-level.md).
+    if (has_main && g_diag.items.empty())
+    {
+        const std::string span_type = main_args ? lowered_statics.at("main").method->params.front().type : "";
+        o.w("#include <vector>\n");
+        o.w("extern \"C\" HOT_MODULE_EXPORT int32_t hot_main(int32_t argc, const char* const* argv)\n{\n");
+        if (main_args)
+        {
+            o.w("    using Args = " + span_type + ";\n");
+            o.w("    std::vector<std::remove_cv_t<typename Args::value_type>> args;\n");
+            o.w("    args.reserve(argc > 0 ? static_cast<size_t>(argc) : 0);\n");
+            o.w("    for (int32_t i = 0; i < argc; ++i)\n");
+            o.w("        args.emplace_back(argv[i]);\n");
+        }
+        else
+            o.w("    (void)argc;\n    (void)argv;\n");
+        const std::string call = std::string("hot_fn_main(") + (main_args ? "Args(args.data(), args.size())" : "") + ")";
+        o.w(main_int ? "    return " + call + ";\n" : "    " + call + ";\n    return 0;\n");
+        o.w("}\n\n");
+    }
 
     o.w("extern \"C\" void script_register(hot::Registry& reg)\n{\n");
     if (!opt.aot_optimized)

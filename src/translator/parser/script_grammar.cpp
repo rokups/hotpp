@@ -2025,12 +2025,14 @@ struct class_p
         if (m.kind == Member::IsMethod && m.method.op.empty())
         {
             // A function at file level has no modifier.
+            // The function "main" has one error for each wrong form (see kMainSignatureError).
+            const bool is_main = m.method.name == "main";
             if (m.access_pos)
-                st.error(m.access_pos, "a free function has no access word");
+                st.error(m.access_pos, is_main ? ast::kMainSignatureError : "a free function has no access word");
             if (m.async_pos)
-                st.error(m.async_pos, "a free function cannot be 'async'");
+                st.error(m.async_pos, is_main ? ast::kMainSignatureError : "a free function cannot be 'async'");
             if (m.static_pos)
-                st.error(m.static_pos, "a free function cannot be 'static'");
+                st.error(m.static_pos, is_main ? ast::kMainSignatureError : "a free function cannot be 'static'");
             for (const auto& w : m.kind_words)
                 st.error(w.first, "a free function cannot be '" + w.second + "'");
             m.method.is_override = m.method.is_virtual = m.method.is_new = m.method.is_async = false;

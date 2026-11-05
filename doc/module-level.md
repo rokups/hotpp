@@ -166,6 +166,37 @@ Rules:
 
 A static method of a class is a function of the class. See [Static methods](classes.html#static-methods).
 
+### Entry point main
+
+The entry script can have a free function with the name `main`. The host calls it as the entry point of the program. The allowed forms are:
+
+```hot
+void main() { }
+int main() { return 0; }
+void main(std.string[] args) { }
+int main(std.string[] args) { return 0; }
+```
+
+The parameter `args` is a view (`T[]`, see [Views](types.html#views)) of the arguments of the host. The program name is the first value. A `void` function gives the result 0.
+
+Any other `main` is an error. These forms are errors:
+
+- a different return type
+- other parameters
+- a `ref`, `in` or default parameter
+- a `ref` return type
+- the word `async`, `static` or an access word
+
+A `main` in an imported script is also an error. A second `main` is an error too. The error is `the function 'main' must be 'void main()', 'int main()', 'void main(std.string[] args)' or 'int main(std.string[] args)'`.
+
+For a valid `main` the translator writes this symbol next to `script_register`:
+
+```cpp
+extern "C" HOT_MODULE_EXPORT int32_t hot_main(int32_t argc, const char* const* argv);
+```
+
+The symbol builds the array `args` from `argv`. It calls `hot_fn_main` and returns the result. The symbol does not catch an exception of the script. An exception leaves `hot_main`. The host must catch it, or the program ends.
+
 ## Native stubs
 
 A stub tells the translator how a native type behaves. `handle` makes it a shared handle. `value` makes it a copied value.

@@ -20,6 +20,11 @@
 namespace hotc::ast
 {
 
+// The error of a function "main" with a form that the host cannot call.
+inline constexpr const char* kMainSignatureError =
+    "the function 'main' must be 'void main()', 'int main()', 'void main(std.string[] args)' or "
+    "'int main(std.string[] args)'";
+
 // The nested namespace of a namespace "ns" of a ".cpp" script. It holds the names that hotc
 // generates for the script classes of "ns". It is empty for the file scope.
 inline std::string gen_namespace(const std::string& ns)

@@ -7,6 +7,7 @@ add_executable(unit_translator_translate_tests
     abstract_translation_tests.cpp
     optional_translation_tests.cpp
     param_form_translation_tests.cpp
+    entry_main_translation_tests.cpp
     span_translation_tests.cpp
     access_translation_tests.cpp
     alias_translation_tests.cpp
