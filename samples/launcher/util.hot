@@ -1,0 +1,9 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// A helper script. hello_import.hot imports it.
+// An imported script cannot have a free function, so the helper is a static method.
+class MathUtil {
+    static int Square(int x) { return x * x; }
+}

@@ -82,6 +82,27 @@ The load numbers come from the benchmark in `README.md` (section "JIT backend").
 
 Linux and Windows (MSVC) are the tested platforms. macOS is untested. `src/runtime/module.cpp` has a Windows branch (`LoadLibraryA`). `make_default_backend` also works on Windows.
 
+## Launcher
+
+The library `hot_launcher` (`hot/launcher.h`, CMake target `hot::launcher`) loads an entry script and calls its `main`. It needs a run-time backend. Each project builds its own runner. The runner links the engine of the project and `hot_launcher`. Hot++ ships no runner program. The sample `samples/launcher` and the launcher tests have a small runner. Set `ENABLE_EXPORTS` and call `hot_export_host` for the runner target, as the other hosts do.
+
+```cpp
+hot::launcher::Options options;            // include_dirs, extra_flags, std_version, backend, work_dir, log
+std::string error;
+auto program = hot::launcher::load(options, "game.hot", error);
+if (!program) { /* error has the diagnostics */ }
+int code = hot::launcher::run_main(*program, args);
+```
+
+- `load` compiles the entry script with all imports (`using "x.hot";`) and loads the module. A relative import path is relative to the folder of the entry script. On an error it returns null and sets `error`.
+- `run_main` calls `main` with `argv[0]` set to the script path, then `args`. It returns the result of `main`. It returns 1 and logs the message when the script throws a C++ exception. It returns 2 when the script has no `main`.
+- `Program` is move-only. It owns the backend, the loader and the loaded generation. `dependencies()` lists the imported scripts and the native headers. A later reload milestone uses the list.
+- `Options::backend` is `""`, `"files"` or `"jit"`. `Options::log` receives the diagnostics (default: stderr).
+- `Options::work_dir` is the folder for the compiled files. When it is empty, the folder is `default_cache_dir(script)`: `$XDG_CACHE_HOME/hot/<hash>`, or `~/.cache/hot/<hash>`, or `%LOCALAPPDATA%\hot\<hash>` on Windows.
+- The backend owns the sub-directory `<work_dir>/p<pid>`. It removes the sub-directory at start and at exit, so do not keep files there. A crash can leave stale `p<pid>` directories.
+
+Usually `main` calls native engine code that runs a blocking loop. The launcher has no frame loop. The program ends when `main` returns. The sample runner is `sample_runner [-I dir]... [--backend=files|jit] file.hot [args...]`.
+
 ## Parts of this guide
 
 - [Rules, errors and traceback](embedding-rules.html): ownership, threads, symbol export, error reports and the traceback.

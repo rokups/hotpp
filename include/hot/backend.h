@@ -189,6 +189,12 @@ struct DefaultBackendOptions
     // The C++ standard of the scripts, for example "c++20" for "async" scripts. Empty: the
     // standard of the host (hot::cxx_std_name()).
     std::string std_version;
+    // The work directory of the clang files backend (the .cpp and .so files). Empty: the default
+    // directory of the build. The backend makes the sub-directory "p<pid>" in it, so two processes
+    // can use the same directory. The backend owns "<work_dir>/p<pid>". It removes the directory at
+    // start and at exit, so do not keep files there. A crash can leave stale "p<pid>" directories.
+    // The JIT backend ignores it.
+    std::string work_dir;
 };
 std::unique_ptr<Backend> make_default_backend(const DefaultBackendOptions& options);
 

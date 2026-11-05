@@ -18,6 +18,9 @@ if(TARGET hot::hotc AND TARGET hot_backend)
     add_subdirectory(clang-files-backend)
     add_subdirectory(jit-backend)
     add_subdirectory(imgui)
+    if(TARGET hot_launcher)
+        add_subdirectory(launcher)
+    endif()
 endif()
 
 # Option: build the sample aot as a separate project, in a new build directory. The test checks

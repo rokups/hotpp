@@ -90,12 +90,13 @@ std::unique_ptr<Backend> make_clang_files(const DefaultBackendOptions& options)
     o.host_import_library = paths.host_import_library;
 #ifdef HOT_PORTABLE
     // The work directory of a portable host is in a shared place. Refuse an unsafe one.
-    const std::string work_error = check_work_dir(paths.work_dir);
+    const std::string work_error = check_work_dir(options.work_dir.empty() ? paths.work_dir : options.work_dir);
     if (!work_error.empty())
         throw std::runtime_error(work_error);
 #endif
     // One work directory for each process, so parallel test processes do not share files.
-    o.work_dir = paths.work_dir + "/p" + std::to_string(hot::detail::process_id());
+    o.work_dir = (options.work_dir.empty() ? paths.work_dir : options.work_dir) + "/p" +
+                 std::to_string(hot::detail::process_id());
     std::error_code ec;
     std::filesystem::remove_all(o.work_dir, ec);
     // Only this p<pid> directory goes. The parent directory is shared with other processes.

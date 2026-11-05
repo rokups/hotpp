@@ -1,0 +1,12 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Run: sample_runner hello.hot a b
+// The exit code is the number of the arguments.
+using <cstdio>;
+
+int main(std.string[] args) {
+    std.printf("hello from hot: %d arguments\n", (int)args.size());
+    return (int)args.size();
+}
