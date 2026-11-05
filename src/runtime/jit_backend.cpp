@@ -138,7 +138,9 @@ CompileSetup make_invocation(const JitOptions& opt, const std::string& path, con
 
     std::vector<std::string>& args = s.args;
     args = {opt.compiler, "-std=" + (opt.std_version.empty() ? std::string(cxx_std_name()) : opt.std_version), "-O1",
-        "-fPIC", "-Werror=return-type", "-fvisibility=hidden", "-fvisibility-inlines-hidden",
+        "-fPIC", "-Werror=return-type",
+        // A signed overflow wraps in a script. The compiler must not use it as undefined behavior.
+        "-fwrapv", "-fvisibility=hidden", "-fvisibility-inlines-hidden",
         // A call to the host reads the address from the GOT. A stub would add one jump to each call.
         "-fno-plt"};
 #if HOT_ELF_TLS_DEPTH

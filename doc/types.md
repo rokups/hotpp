@@ -36,6 +36,23 @@ This guide has 2 pages. This page covers builtin types, variables, C++ types, co
 
 The C++ spellings with many words are errors, for example `unsigned int` and `long long`. The message gives the script type: use `uint` or `long`. A native virtual method with an `unsigned` parameter matches a script override with `uint`.
 
+## Integer arithmetic and casts
+
+Integer operations have no undefined behavior in a script, except where this section says so.
+
+- Signed overflow wraps. `INT_MAX + 1` is `INT_MIN`, and `-INT_MIN` is `INT_MIN`. The script compile uses `-fwrapv` for the JIT backend, the Clang files backend and the AOT library.
+- A divide or modulo by zero throws `ArithmeticError`. `INT_MIN / -1` wraps.
+- `<<` and `>>` (and `<<=` and `>>=`) throw `ArithmeticError("shift count out of range")` when the count is negative or not less than the bit width of the promoted left operand. A `byte` or `short` operand promotes to `int`, so its width is 32.
+- A left shift keeps the low bits. A shift of a negative value, or into the sign bit, wraps: `1 << 31` is `INT_MIN`.
+- A right shift of a negative value is an arithmetic shift: `-8 >> 1` is `-4`.
+- A cast from `float` or `double` to an integer type cuts the fraction. A value out of range gives the nearest limit of the type. `NaN` gives `0`. This is true for `(int)f`, `int(f)` and `static_cast<int>(f)`.
+
+The shift check and the divide check are always on, also with `HOT_RUNTIME_CHECKS=0`. The translator skips a check when it can see that the check is not needed: a shift by a literal count in range, or a float operand. A class with its own `<<` or `>>` operator (a stream, for example) keeps the operator.
+
+MSVC has no `-fwrapv`. The script compile in an MSVC build does not guard signed overflow. MSVC does not use signed overflow for optimization in practice, so a wrap is the result there too.
+
+The implicit conversion from a float to an integer is not checked. Use a cast (see [Limits](limits.html)).
+
 ## Variables
 
 A variable can have no initializer. It then gets the default value (zero, `false`, `null`). `var` takes the type from the initializer. Do not write `const` on a variable. The translator infers it: a local that the body never assigns is const. The error `const is inferred; remove it` shows when you write it.

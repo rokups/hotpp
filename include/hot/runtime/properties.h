@@ -29,10 +29,22 @@ HOT_PROP_OP(op_mul, *)
 HOT_PROP_OP(op_and, &)
 HOT_PROP_OP(op_or, |)
 HOT_PROP_OP(op_xor, ^)
-HOT_PROP_OP(op_shl, <<)
-HOT_PROP_OP(op_shr, >>)
 #undef HOT_PROP_OP
-// The divide and modulo are checked for integers (arith.h).
+// The divide, modulo and shifts are checked for integers (arith.h).
+struct op_shl
+{
+    template <class A, class B> HOT_HIDDEN auto operator()(A&& a, B&& b) const
+    {
+        return hot::shl(std::forward<A>(a), std::forward<B>(b));
+    }
+};
+struct op_shr
+{
+    template <class A, class B> HOT_HIDDEN auto operator()(A&& a, B&& b) const
+    {
+        return hot::shr(std::forward<A>(a), std::forward<B>(b));
+    }
+};
 struct op_div
 {
     template <class A, class B> HOT_HIDDEN auto operator()(A&& a, B&& b) const

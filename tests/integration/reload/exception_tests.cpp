@@ -531,6 +531,179 @@ TEST_P(BackendTests, IntegerDivideAndModuloAreChecked)
     EXPECT_EQ(types[0], "hot::ArithmeticError");
 }
 
+// The shifts, the signed overflow and the cast from a float to an integer. The checks and the wrap
+// do not depend on HOT_RUNTIME_CHECKS. The values come from fields and parameters, so the C++
+// compiler cannot fold them.
+const char* const kShiftSource = R"(
+using "Actor.h";
+
+class Boss : Actor {
+    int imax = 2147483647;
+    int imin = -2147483647 - 1;
+    float fz = 0.0;
+    float caught = 0.0;
+    float after = 0.0;
+    float msg_ok = 0.0;
+    float ok = 0.0;
+    float bad = 0.0;
+    int P { get; set; } = 1;
+
+    int Shl(int a, int n) { return a << n; }
+    int Shr(int a, int n) { return a >> n; }
+    uint UShl(uint a, int n) { return a << n; }
+    uint UShr(uint a, int n) { return a >> n; }
+    long LShl(long a, int n) { return a << n; }
+    long LShr(long a, long n) { return a >> n; }
+    int ByteShl(byte a, int n) { return a << n; }
+    int SByteShl(sbyte a, int n) { return a << n; }
+    int ShortShr(short a, int n) { return a >> n; }
+    int ShlAssign(int a, int n) { a <<= n; return a; }
+    int ShrAssign(int a, int n) { a >>= n; return a; }
+    byte ByteAssign(byte a, int n) { a <<= n; return a; }
+    int LitShl(int a) { return a << 3; }
+    int LitBad(int a) { return a << 32; }
+    int LitNeg(int a) { return a >> -1; }
+    int Add(int a, int b) { return a + b; }
+    int Sub(int a, int b) { return a - b; }
+    int Mul(int a, int b) { return a * b; }
+    int Neg(int a) { return -a; }
+    int Inc(int a) { a++; return a; }
+    int PlusOneIsGreater(int a) { if (a + 1 > a) { return 1; } return 0; }
+    int AbsIsNegative(int a) { if (a < 0) { a = -a; } if (a < 0) { return 1; } return 0; }
+    int F2I(float f) { return (int)f; }
+    int D2I(double d) { return (int)d; }
+    int Fn2I(double d) { return int(d); }
+    int Sc2I(double d) { return static_cast<int>(d); }
+    long D2L(double d) { return (long)d; }
+    uint D2U(double d) { return (uint)d; }
+    int PointerBits(int* p) { nuint a = (nuint)p; if (a != 0) { return 1; } return 0; }
+    int AddressIsNotZero() { int x = 5; return this.PointerBits(&x); }
+    byte D2B(double d) { return (byte)d; }
+    sbyte D2SB(double d) { return (sbyte)d; }
+
+    void Check(bool cond) { if (cond) { this.ok = this.ok + 1.0; } else { this.bad = this.bad + 1.0; } }
+
+    override void Tick(float dt) {
+        this.Check(this.Shl(1, 31) == this.imin);
+        this.Check(this.Shl(1, 0) == 1);
+        this.Check(this.Shl(3, 4) == 48);
+        this.Check(this.Shl(-1, 4) == -16);
+        this.Check(this.Shl(this.imax, 1) == -2);
+        this.Check(this.Shr(this.imin, 31) == -1);
+        this.Check(this.Shr(-8, 1) == -4);
+        this.Check(this.Shr(48, 4) == 3);
+        this.Check(this.UShl(1, 31) == 2147483648);
+        this.Check(this.UShr(2147483648, 31) == 1);
+        this.Check(this.LShl(1, 63) == -9223372036854775807 - 1);
+        this.Check(this.LShl(1, 40) == 1099511627776);
+        this.Check(this.LShr(-1, 63) == -1);
+        this.Check(this.ByteShl(255, 24) == -16777216);
+        this.Check(this.ByteShl(1, 8) == 256);
+        this.Check(this.SByteShl(-1, 7) == -128);
+        this.Check(this.ShortShr(-32768, 15) == -1);
+        this.Check(this.ShlAssign(3, 2) == 12);
+        this.Check(this.ShrAssign(-16, 2) == -4);
+        this.Check(this.ByteAssign(129, 1) == 2);
+        this.Check(this.LitShl(5) == 40);
+        this.P <<= 4;
+        this.Check(this.P == 16);
+        this.P >>= 2;
+        this.Check(this.P == 4);
+        try { var x = this.Shl(1, 32); } catch (ArithmeticError e) {
+            this.Check(true);
+            if (e.what()[0] == 's') { this.msg_ok = 1.0; }
+        }
+        try { var x = this.Shl(1, -1); } catch (ArithmeticError e) { this.Check(true); }
+        try { var x = this.Shr(1, 32); } catch (ArithmeticError e) { this.Check(true); }
+        try { var x = this.Shr(1, -1); } catch (ScriptError e) { this.Check(true); }
+        try { var x = this.UShl(1, 33); } catch (ArithmeticError e) { this.Check(true); }
+        try { var x = this.LShl(1, 64); } catch (ArithmeticError e) { this.Check(true); }
+        try { var x = this.LShr(1, -1); } catch (ArithmeticError e) { this.Check(true); }
+        try { var x = this.ByteShl(1, 32); } catch (ArithmeticError e) { this.Check(true); }
+        try { var x = this.ShlAssign(1, 32); } catch (ArithmeticError e) { this.Check(true); }
+        try { var x = this.ShrAssign(1, -1); } catch (ArithmeticError e) { this.Check(true); }
+        try { var x = this.ByteAssign(1, 32); } catch (ArithmeticError e) { this.Check(true); }
+        try { var x = this.LitBad(1); } catch (ArithmeticError e) { this.Check(true); }
+        try { var x = this.LitNeg(1); } catch (ArithmeticError e) { this.Check(true); }
+        try { this.P <<= 32; } catch (ArithmeticError e) { this.Check(true); }
+        this.Check(this.P == 4);
+        // The signed overflow wraps.
+        this.Check(this.Add(this.imax, 1) == this.imin);
+        this.Check(this.Sub(this.imin, 1) == this.imax);
+        this.Check(this.Mul(this.imax, 2) == -2);
+        this.Check(this.Neg(this.imin) == this.imin);
+        this.Check(this.Inc(this.imax) == this.imin);
+        this.Check(this.PlusOneIsGreater(this.imax) == 0);
+        this.Check(this.PlusOneIsGreater(5) == 1);
+        this.Check(this.AbsIsNegative(this.imin) == 1);
+        this.Check(this.AbsIsNegative(-5) == 0);
+        // A float cast cuts the fraction, saturates, and gives 0 for NaN.
+        this.Check(this.F2I(3.9) == 3);
+        this.Check(this.F2I(-3.9) == -3);
+        this.Check(this.D2I(3.9) == 3);
+        this.Check(this.D2I(-3.9) == -3);
+        this.Check(this.D2I(1e20) == this.imax);
+        this.Check(this.D2I(-1e20) == this.imin);
+        this.Check(this.F2I(1e20) == this.imax);
+        this.Check(this.F2I(-1e20) == this.imin);
+        this.Check(this.F2I(this.fz / this.fz) == 0);
+        this.Check(this.F2I(1.0 / this.fz) == this.imax);
+        this.Check(this.F2I(-1.0 / this.fz) == this.imin);
+        this.Check(this.Fn2I(1e20) == this.imax);
+        this.Check(this.Fn2I(3.9) == 3);
+        this.Check(this.Sc2I(-1e20) == this.imin);
+        this.Check(this.Sc2I(-3.9) == -3);
+        this.Check(this.D2L(1e30) == 9223372036854775807);
+        this.Check(this.D2L(-1e30) == -9223372036854775807 - 1);
+        this.Check(this.D2L(this.fz / this.fz) == 0);
+        this.Check(this.AddressIsNotZero() == 1);
+        this.Check(this.D2U(1e20) == 4294967295);
+        this.Check(this.D2U(-5.0) == 0);
+        this.Check(this.D2B(300.0) == 255);
+        this.Check(this.D2B(-1.0) == 0);
+        this.Check(this.D2SB(-300.0) == -128);
+        this.Check(this.D2SB(300.0) == 127);
+        this.after = 1.0;
+    }
+}
+)";
+
+// Loads the script with the backend, runs one tick and reads the counters of the script checks.
+void run_shift_script(hot::Backend& be)
+{
+    const hot::ScriptSource src = {"shift.hot", kShiftSource};
+    hot::LoadResult r = be.load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module), "Boss"));
+    s.commit_at_frame_boundary();
+    HandlerGuard guard;
+    int reports = 0;
+    hot::set_script_error_handler([&reports](const hot::ScriptErrorReport&) { ++reports; });
+    s.world.Tick(kDt);
+    EXPECT_EQ(*s.field("bad"), 0.0f);
+    EXPECT_EQ(*s.field("ok"), 72.0f);
+    EXPECT_EQ(*s.field("msg_ok"), 1.0f);
+    EXPECT_EQ(*s.field("after"), 1.0f);
+    EXPECT_EQ(reports, 0);
+    EXPECT_EQ(hot::detail::call_depth(), 0u);
+}
+
+TEST_P(BackendTests, ShiftsOverflowAndFloatCastsAreDefined)
+{
+    run_shift_script(*backend);
+}
+
+// The same script with the optimizer. The compiler exploits a signed overflow unless the
+// script compile has -fwrapv.
+TEST_P(BackendTests, SignedOverflowWrapsWithTheOptimizer)
+{
+    hot::DefaultBackendOptions o;
+    o.extra_flags = {"-O2"};
+    std::unique_ptr<hot::Backend> optimized = hot::make_default_backend(o);
+    run_shift_script(*optimized);
+}
+
 #if HOT_RUNTIME_CHECKS
 
 // The class of the checks tests. Tick runs the body that the test gives. The handle is null.

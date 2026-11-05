@@ -818,6 +818,22 @@ struct Lowerer
         return !(negative && digits.compare(first, std::string::npos, "1") == 0);
     }
 
+    // The type text of the operand "e" (before its lowering). Empty: not known.
+    std::string operand_type(const Expr& e) const
+    {
+        if (const std::string* n = simple_name(e); n && !cx.locals.count(*n) && cx.cls && cx.allow_this)
+            if (const Property* p = find_prop(*cx.cls, *n))
+                return p->script_type.empty() ? p->type : p->script_type;
+        if (const MemberExpr* m = this_member(e); m && cx.allow_this && cx.cls)
+        { // this.name: a field or a property of the class
+            if (const Field* f = find_field(*cx.cls, m->name))
+                return type_text(*f);
+            if (const Property* p = find_prop(*cx.cls, m->name))
+                return p->script_type.empty() ? p->type : p->script_type;
+        }
+        return type_of(e);
+    }
+
     // The kind of the operand "e" (before its lowering).
     NumKind num_kind(const Expr& e) const
     {
@@ -825,17 +841,114 @@ struct Lowerer
         const Expr& x = strip_sign(e, negative);
         if (const auto* n = std::get_if<NumberExpr>(&x.v))
             return int_literal(x).empty() && !n->text.empty() ? NumKind::Float : NumKind::Int;
-        if (const std::string* n = simple_name(x); n && !cx.locals.count(*n) && cx.cls && cx.allow_this)
-            if (const Property* p = find_prop(*cx.cls, *n))
-                return type_kind(p->script_type.empty() ? p->type : p->script_type);
-        if (const MemberExpr* m = this_member(x); m && cx.allow_this && cx.cls)
-        { // this.name: a field or a property of the class
-            if (const Field* f = find_field(*cx.cls, m->name))
-                return type_kind(type_text(*f));
-            if (const Property* p = find_prop(*cx.cls, m->name))
-                return type_kind(p->script_type.empty() ? p->type : p->script_type);
+        return type_kind(operand_type(x));
+    }
+
+    // The bit width of an integer type after the promotion, or 0 when the width is not sure.
+    // A type with a width that depends on the target (long, size_t) gives its smallest width.
+    static unsigned promoted_width(std::string t)
+    {
+        if (t.compare(0, 6, "const ") == 0)
+            t.erase(0, 6);
+        while (!t.empty() && (t.back() == '&' || t.back() == ' '))
+            t.pop_back();
+        if (const char* cpp = builtin_cpp_name(t))
+            t = cpp;
+        static const std::map<std::string, unsigned> widths = {{"bool", 32}, {"char", 32}, {"signed char", 32},
+            {"unsigned char", 32}, {"short", 32}, {"unsigned short", 32}, {"int", 32}, {"unsigned", 32},
+            {"unsigned int", 32}, {"long", 32}, {"unsigned long", 32}, {"long long", 64},
+            {"unsigned long long", 64}, {"char16_t", 32}, {"wchar_t", 32}};
+        if (auto it = widths.find(t); it != widths.end())
+            return it->second;
+        const bool u = t.compare(0, 4, "uint") == 0;
+        if ((u || t.compare(0, 3, "int") == 0) && t.size() > 5 && t.compare(t.size() - 2, 2, "_t") == 0)
+        { // int8_t, uint32_t, int64_t. The names intptr_t and uintptr_t give 0.
+            const std::string digits = t.substr(u ? 4 : 3, t.size() - (u ? 6 : 5));
+            if (digits == "8" || digits == "16" || digits == "32")
+                return 32;
+            if (digits == "64")
+                return 64;
         }
-        return type_kind(type_of(x));
+        return 0;
+    }
+
+    // The value of an integer literal without a sign. False when the text is not exact.
+    static bool literal_value(const std::string& text, uint64_t& value)
+    {
+        size_t i = 0;
+        unsigned base = 10;
+        if (text.size() > 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X'))
+            base = 16, i = 2;
+        else if (text.size() > 2 && text[0] == '0' && (text[1] == 'b' || text[1] == 'B'))
+            base = 2, i = 2;
+        else if (text.size() > 1 && text[0] == '0')
+            base = 8, i = 1;
+        value = 0;
+        bool any = false;
+        for (; i < text.size(); ++i)
+        {
+            const char c = text[i];
+            if (c == '\'')
+                continue;
+            unsigned d;
+            if (c >= '0' && c <= '9')
+                d = static_cast<unsigned>(c - '0');
+            else if (base == 16 && c >= 'a' && c <= 'f')
+                d = static_cast<unsigned>(c - 'a' + 10);
+            else if (base == 16 && c >= 'A' && c <= 'F')
+                d = static_cast<unsigned>(c - 'A' + 10);
+            else if (c == 'u' || c == 'U' || c == 'l' || c == 'L')
+                continue; // the suffix
+            else
+                return false;
+            if (d >= base || value > (UINT64_MAX - d) / base)
+                return false;
+            value = value * base + d;
+            any = true;
+        }
+        return any;
+    }
+
+    // True when the shift "l op r" needs hot::shl or hot::shr. "lk" is the kind of the left operand
+    // and "lw" its promoted width (0: not known). A literal count from 0 to lw - 1 is safe.
+    bool shift_checked(NumKind lk, unsigned lw, const Expr& r) const
+    {
+        const NumKind rk = num_kind(r);
+        if (lk == NumKind::Float || lk == NumKind::Other || rk == NumKind::Float || rk == NumKind::Other)
+            return false;
+        // A stream manipulator such as std::endl is a function template: it has no type to deduce.
+        if (const auto* raw = std::get_if<RawExpr>(&r.v); raw && raw->text.find("std::") != std::string::npos
+            && raw->text.find_first_of("()") == std::string::npos)
+            return false;
+        if (const auto* nm = std::get_if<NameExpr>(&r.v); nm && nm->parts.size() > 1 && nm->parts[0] == "std")
+            return false;
+        if (const auto* mem = std::get_if<MemberExpr>(&r.v); mem && mem->obj)
+        {
+            const Expr* root = mem->obj.get();
+            while (const auto* m2 = std::get_if<MemberExpr>(&root->v))
+                root = m2->obj.get();
+            if (const std::string* rn = root ? simple_name(*root) : nullptr; rn && *rn == "std")
+                return false;
+        }
+        if (lw != 0)
+        {
+            bool negative = false;
+            uint64_t n = 0;
+            const Expr& c = strip_sign(r, negative);
+            if (!negative && literal_value(int_literal(c), n) && n < lw)
+                return false;
+        }
+        return true;
+    }
+
+    // The promoted width of the left operand "l" of a shift.
+    unsigned shift_width(const Expr& l) const
+    {
+        bool negative = false;
+        const Expr& x = strip_sign(l, negative);
+        if (std::holds_alternative<NumberExpr>(x.v))
+            return int_literal(x).empty() ? 0 : 32; // a literal: the compiler gives it a wide type when needed
+        return promoted_width(operand_type(x));
     }
 
     // True when "l op r" needs hot::div or hot::mod. "r" is the right operand.
@@ -1825,6 +1938,9 @@ struct Lowerer
                 const NumKind lk = pr ? type_kind(pr->script_type.empty() ? pr->type : pr->script_type) : NumKind::Unknown;
                 if ((op == "/" || op == "%") && div_checked(lk, *bin.rhs))
                     value = call_of(op == "/" ? "hot::div" : "hot::mod", args_of(std::move(bin.lhs), std::move(bin.rhs)), pos);
+                else if ((op == "<<" || op == ">>")
+                    && shift_checked(lk, pr ? promoted_width(pr->script_type.empty() ? pr->type : pr->script_type) : 0, *bin.rhs))
+                    value = call_of(op == "<<" ? "hot::shl" : "hot::shr", args_of(std::move(bin.lhs), std::move(bin.rhs)), pos);
                 else
                     value = make_expr(std::move(bin));
             }
@@ -2785,6 +2901,22 @@ struct Lowerer
         }
         else if (auto* c = std::get_if<CallExpr>(&x.v))
         {
+            // "int(f)" and "static_cast<int>(f)" are casts too.
+            std::string to = functional_int_cast(*c);
+            if (!to.empty())
+            {
+                member_chain(c->args[0]);
+                if (num_kind(*c->args[0]) != NumKind::Int)
+                {
+                    expr(c->args[0]);
+                    CallExpr h;
+                    h.pos = c->pos;
+                    h.callee = raw("hot::float_to_int<" + canonical_type(to) + ">", c->pos);
+                    h.args.push_back(std::move(c->args[0]));
+                    e = make_expr(std::move(h));
+                    return;
+                }
+            }
             call(*c);
         }
         else if (auto* ix = std::get_if<IndexExpr>(&x.v))
@@ -2894,6 +3026,20 @@ struct Lowerer
                 e = make_expr(std::move(c));
                 return;
             }
+            if (!u->postfix && u->operand && is_int_cast(u->op))
+            { // "(int)f": a float out of the range gives the nearest limit, NaN gives 0
+                member_chain(u->operand);
+                if (num_kind(*u->operand) != NumKind::Int)
+                {
+                    expr(u->operand);
+                    CallExpr c;
+                    c.pos = u->pos;
+                    c.callee = raw("hot::float_to_int<" + canonical_type(u->op.substr(1, u->op.size() - 2)) + ">", u->pos);
+                    c.args.push_back(std::move(u->operand));
+                    e = make_expr(std::move(c));
+                    return;
+                }
+            }
             expr(u->operand);
         }
         else if (auto* b = std::get_if<BinaryExpr>(&x.v))
@@ -2954,12 +3100,14 @@ struct Lowerer
             if (b->op == "=" && b->lhs)
                 member_chain(b->lhs);
             const bool div_op = (b->op == "/" || b->op == "%" || b->op == "/=" || b->op == "%=") && b->lhs && b->rhs;
-            if (div_op)
+            const bool shift_op = (b->op == "<<" || b->op == ">>" || b->op == "<<=" || b->op == ">>=") && b->lhs && b->rhs;
+            if (div_op || shift_op)
             { // the kinds need the form that the lowering of the name chain gives
                 member_chain(b->lhs);
                 member_chain(b->rhs);
             }
             const bool use_div = div_op && div_checked(num_kind(*b->lhs), *b->rhs);
+            const bool use_shift = shift_op && shift_checked(num_kind(*b->lhs), shift_width(*b->lhs), *b->rhs);
             const bool weak_lhs = b->op == "=" && b->lhs && is_weak_handle(*b->lhs);
             const bool reset = weak_lhs && b->rhs && std::holds_alternative<NullExpr>(b->rhs->v);
             if (weak_lhs)
@@ -2983,6 +3131,15 @@ struct Lowerer
             {
                 const bool assign = b->op.back() == '=';
                 const std::string name = std::string(b->op[0] == '/' ? "div" : "mod") + (assign ? "_assign" : "");
+                const uint32_t pos = b->pos != 0 ? b->pos : pos_of(*b->lhs);
+                e = call_of("hot::" + name, args_of(std::move(b->lhs), std::move(b->rhs)), pos);
+                return;
+            }
+            // The shifts do the same with hot::shl and hot::shr.
+            if (use_shift)
+            {
+                const bool assign = b->op.back() == '=';
+                const std::string name = std::string(b->op[0] == '<' ? "shl" : "shr") + (assign ? "_assign" : "");
                 const uint32_t pos = b->pos != 0 ? b->pos : pos_of(*b->lhs);
                 e = call_of("hot::" + name, args_of(std::move(b->lhs), std::move(b->rhs)), pos);
                 return;
@@ -3278,6 +3435,42 @@ struct Lowerer
     {
         const auto* u = e ? std::get_if<UnaryExpr>(&e->v) : nullptr;
         return u && !u->postfix && u->op == "&";
+    }
+
+    // True for the operator text of a cast to a builtin integer type other than bool: "(int)".
+    bool is_int_cast(const std::string& op) const
+    {
+        if (op.size() < 3 || op.front() != '(' || op.back() != ')')
+            return false;
+        std::string t = op.substr(1, op.size() - 2);
+        if (t.find_first_of("*&$?()[]<>:") != std::string::npos)
+            return false;
+        while (!t.empty() && t.back() == ' ')
+            t.pop_back();
+        if (t == "bool" || t == "float" || t == "double")
+            return false;
+        if (const char* cpp = builtin_cpp_name(t); cpp && std::string(cpp) == "bool")
+            return false;
+        return type_kind(t) == NumKind::Int;
+    }
+
+    // The integer type of the call "int(x)" or "static_cast<int>(x)", or empty for any other call.
+    std::string functional_int_cast(const CallExpr& c) const
+    {
+        const auto* nm = c.callee ? std::get_if<NameExpr>(&c.callee->v) : nullptr;
+        if (!nm || c.args.size() != 1 || !c.args[0] || nm->parts.size() != 1)
+            return {};
+        std::string to;
+        if (nm->parts[0] == "static_cast" && nm->template_args.size() > 2 && nm->template_args.front() == '<'
+            && nm->template_args.back() == '>')
+            to = nm->template_args.substr(1, nm->template_args.size() - 2);
+        else if (nm->template_args.empty())
+            to = nm->parts[0];
+        while (!to.empty() && to.front() == ' ')
+            to.erase(0, 1);
+        while (!to.empty() && to.back() == ' ')
+            to.pop_back();
+        return !to.empty() && is_int_cast("(" + to + ")") ? to : std::string();
     }
 
     // True for the operator text of a cast to a plain pointer type: "(T*)", not "(const T*)" and

@@ -362,7 +362,7 @@ void TrackerState_g1::Tick(float dt)
 #line 30 "native_std_v1.hot"
     HOT_TRACE_LINE(); __self->Name = FormatVec(__self->Position);
 #line 31 "native_std_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(__st->history).push_back(static_cast<int32_t>(hot::deref(__st->history).size()) * 10);
+    HOT_TRACE_LINE(); hot::deref(__st->history).push_back(hot::float_to_int<int32_t>(hot::deref(__st->history).size()) * 10);
 #line 32 "native_std_v1.hot"
 }
 #line 369 "native_std_v1.hot.cpp"

@@ -111,7 +111,7 @@ TEST(MemberAccessLowering, TemplateArgumentsAreLowered)
 TEST(MemberAccessLowering, TypeTemplateArgumentsKeepTheirText)
 {
     Fixture f;
-    EXPECT_EQ(f.expr("static_cast<int>(x)"), "static_cast<int32_t>(x)");
+    EXPECT_EQ(f.expr("static_cast<int>(1)"), "static_cast<int32_t>(1)"); // an integer operand stays plain
     EXPECT_EQ(f.expr("std.vector<std.vector<int>>()"), "\x01std::vector<\x01std::vector<int32_t>>()");
     EXPECT_EQ(f.expr("f<b>(c)"), "f<b>(c)");
     EXPECT_EQ(f.expr("f<int*>(c)"), "f<int32_t*>(c)");

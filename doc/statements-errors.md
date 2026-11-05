@@ -34,6 +34,7 @@ The runtime checks a pointer, a handle and an index of an array, a `std::vector`
 - `NullReference`: the script used a null pointer or a null handle, for example `p.x` or `*p`.
 - `IndexOutOfRange`: an index is negative or not less than the size of an array, a `std::vector` or a checked native container.
 - `ArithmeticError`: an integer `/`, `%`, `/=` or `%=` had a zero divisor. The message is `integer divide by zero` or `integer modulo by zero`. The check is always on, also with `HOT_RUNTIME_CHECKS=0`. `INT_MIN / -1` does not throw: it wraps to `INT_MIN`, and `INT_MIN % -1` is `0`. A float divide by zero gives `inf` or `nan` and does not throw.
+- `ArithmeticError` also covers a shift: `<<`, `>>`, `<<=` or `>>=` with a negative count, or with a count not less than the bit width of the promoted left operand. The message is `shift count out of range`. The check is always on. A left shift wraps and does not throw. A right shift of a negative value copies the sign bit.
 - `ScriptError`: the base of the types above. A call that is too deep throws a `ScriptError` with the message `stack overflow`. See [Limits](limits.html).
 - `TaskCancelled` and `TaskReloadCancelled`: a task ends without a result. See [Async and await](async.html).
 

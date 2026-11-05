@@ -237,6 +237,8 @@ std::vector<std::string> compile_command(const ClangFilesOptions& opt, const std
         "-fPIC",
 #endif
         "-shared", "-g", "-Werror=return-type",
+        // A signed overflow wraps in a script. The compiler must not use it as undefined behavior.
+        "-fwrapv",
         // A module symbol must not bind to a host symbol with the same mangled name. The entry
         // point script_register has default visibility (hot/runtime/registry.h).
         "-fvisibility=hidden", "-fvisibility-inlines-hidden",

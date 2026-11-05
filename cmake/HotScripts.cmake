@@ -242,6 +242,8 @@ function(hot_add_scripts)
         # Hero_Shell). Without hidden symbols the dynamic linker binds the library to the AOT code.
         if(NOT MSVC)
             target_compile_options(${A_TARGET} PRIVATE -fvisibility=hidden -fvisibility-inlines-hidden)
+            # A signed overflow wraps in a script. The compiler must not use it as undefined behavior.
+            target_compile_options(${A_TARGET} PRIVATE -fwrapv)
         endif()
         # The generated code uses the format library that the effective standard selects (std::format
         # from C++20). The library gets this standard as a minimum. A higher standard of the
