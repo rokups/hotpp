@@ -482,4 +482,53 @@ template <class T> inline T* field_ptr(ShellCore* s, const char* name)
     return reinterpret_cast<T*>(static_cast<char*>(sb->state) + f->offset);
 }
 
+// The cache of one access site of a field of another unit (field, mod_var). "layout" is the layout
+// that "offset" belongs to. The site is a static variable of the generated code. It follows the
+// thread rule of script code: only one script thread at a time runs a site (threads.h).
+struct FieldSite
+{
+    const StateLayout* layout = nullptr;
+    uint32_t offset = 0;
+};
+
+namespace detail
+{
+// The offset of the field "name" of type "type" in "layout". It throws ScriptError when the layout
+// is null, when the name is missing or when the type key differs. "owner" names the class or the
+// unit for the text of the error.
+HOT_NODEBUG HOT_EXPORT uint32_t resolve_field_offset(
+    const StateLayout* layout, const char* name, const char* type, const char* owner);
+} // namespace detail
+
+// A field of an object of another unit, by name. The offset of the site stays valid while the
+// layout pointer of the class stays the same. A reload gives a new layout, and the next access
+// finds the field again by name and type key. "s" must be a live script object.
+template <class T> HOT_HIDDEN T& field(ShellBase* s, FieldSite& site, const char* name)
+{
+    if (!s)
+        detail::throw_null_reference((std::string("the handle is null: expected a field '") + name + "'").c_str());
+    const ClassRecord* cls = s->cls;
+    if (HOT_UNLIKELY(site.layout != cls->layout || !cls->layout))
+    {
+        site.offset = detail::resolve_field_offset(cls->layout, name, type_key<T>(), cls->name);
+        site.layout = cls->layout;
+    }
+    return *reinterpret_cast<T*>(static_cast<char*>(s->state) + site.offset);
+}
+
+// A module variable of another unit, by name. The block of the unit changes at a reload, so the
+// reference "unit" must be a fresh unit_ref. The site caches the offset as field does.
+template <class T> HOT_HIDDEN T& mod_var(const UnitRef& unit, FieldSite& site, const char* name)
+{
+    const UnitInfo& u = unit.info;
+    if (HOT_UNLIKELY(site.layout != u.layout || !u.layout || !u.block))
+    {
+        if (!u.block)
+            throw ScriptError(std::string("unit '") + unit.name + "' has no module variable '" + name + "'");
+        site.offset = detail::resolve_field_offset(u.layout, name, type_key<T>(), unit.name);
+        site.layout = u.layout;
+    }
+    return *reinterpret_cast<T*>(static_cast<char*>(u.block) + site.offset);
+}
+
 } // namespace hot

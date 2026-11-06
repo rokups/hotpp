@@ -598,4 +598,84 @@ HOT_HIDDEN T* as_native(U& v)
     return as_native<T>(&v);
 }
 
+// Cross-module access (module system). A script of one unit uses a class or a unit of another unit
+// by name. The runtime core asks a resolver. The Loader and the AotRegistry set the resolvers.
+struct FnTable;
+
+// The live data of a unit for another unit. "layout" and "block" describe the module variables:
+// both are null when the unit has none. "fns" is the function table of the unit (registry.h).
+// The loader gives a new FnTable object at each swap of the unit, so the address and the id of the
+// table show a change.
+struct UnitInfo
+{
+    const StateLayout* layout = nullptr;
+    void* block = nullptr;
+    const FnTable* fns = nullptr;
+};
+
+// A reference to a class of another unit. "record" is the canonical record of the class.
+struct ClassRef
+{
+    const char* name = nullptr;
+    ClassRecord* record = nullptr;
+};
+
+// A reference to another unit. The value is a snapshot: ask for it again after each reload.
+struct UnitRef
+{
+    const char* name = nullptr;
+    UnitInfo info;
+};
+
+namespace detail
+{
+// The resolver of a class name: the canonical record, or null when the class is unknown.
+using ClassResolver = ClassRecord* (*)(const char* name);
+// The resolver of a unit name: it fills "out" and returns true, or returns false.
+using UnitResolver = bool (*)(const char* name, UnitInfo& out);
+// A null resolver removes it. A new class resolver clears the cache of class_ref.
+HOT_EXPORT void set_class_resolver(ClassResolver fn);
+HOT_EXPORT void set_unit_resolver(UnitResolver fn);
+// Slow paths of class_ref, unit_ref and construct. They throw ScriptError.
+HOT_NODEBUG HOT_EXPORT ClassRecord* resolve_class(const char* name);
+HOT_NODEBUG HOT_EXPORT UnitInfo resolve_unit(const char* name);
+// Makes an object with the constructor of "cls" whose key is "key". "args" has one pointer for each
+// parameter. "const_mask" has bit i set when argument i is const. With no argument and no constructor
+// with the key, it uses ClassRecord::new_default. The result has the ownership of a "new".
+HOT_NODEBUG HOT_EXPORT ShellCore* construct_raw(
+    const ClassRef& cls, const char* key, void** args, size_t count, uint64_t const_mask);
+template <class... Args> constexpr uint64_t arg_const_mask()
+{
+    uint64_t mask = 0, bit = 1;
+    ((mask |= std::is_const_v<std::remove_reference_t<Args>> ? bit : 0, bit <<= 1), ...);
+    return mask;
+}
+} // namespace detail
+
+// The canonical record of the class "name" of another unit. It throws ScriptError for an unknown class.
+HOT_NODEBUG inline ClassRef class_ref(const char* name)
+{
+    return ClassRef{name, detail::resolve_class(name)};
+}
+
+// The live data of the unit "name". It throws ScriptError for an unknown unit.
+HOT_NODEBUG inline UnitRef unit_ref(const char* name)
+{
+    return UnitRef{name, detail::resolve_unit(name)};
+}
+
+// Makes an object of a class of another unit with the script constructor whose decayed parameter
+// types are the decayed types of "args" (ctor_key, ClassRecord::ctors). The match is exact, as in
+// ClassEntry::construct. "Shell" is the shell class of the interface of the unit. The result has the
+// ownership of a "new". It throws ScriptError when no constructor matches.
+template <class Shell, class... Args> HOT_HIDDEN Shell* construct(const ClassRef& cls, Args&&... args)
+{
+    static_assert(std::is_base_of_v<ShellCore, Shell>, "construct needs a shell class");
+    void* ptrs[sizeof...(Args) + 1] = {
+        const_cast<void*>(static_cast<const volatile void*>(std::addressof(args)))..., nullptr};
+    ShellCore* made = detail::construct_raw(
+        cls, ctor_key<Args...>(), ptrs, sizeof...(Args), detail::arg_const_mask<Args...>());
+    return static_cast<Shell*>(made);
+}
+
 } // namespace hot

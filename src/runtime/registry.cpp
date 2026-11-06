@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <mutex>
 #include <set>
+#include <unordered_map>
 #include <utility>
 
 namespace hot
@@ -32,6 +33,14 @@ std::atomic<bool> g_removed_logged{false};
 [[gnu::used]]
 #endif
 void (*const g_keep_errors)(const char*) = &detail::throw_null_reference; // cl: the whole archive keeps it
+
+// The resolvers of the cross-module access and the cache of class_ref. The cache keeps the canonical
+// record of a class by name. A record lives as long as the session.
+std::mutex g_resolver_mutex;
+detail::ClassResolver g_class_resolver = nullptr;
+detail::UnitResolver g_unit_resolver = nullptr;
+std::unordered_map<std::string, ClassRecord*> g_class_cache;
+std::atomic<uint64_t> g_fn_table_id{0};
 } // namespace
 
 void note_removed_call()
@@ -101,6 +110,11 @@ void Registry::add(ClassRecord* record, Factory create)
         max_generation_ = record->generation;
 }
 
+void Registry::add_fn(const std::string& name, const char* sig_key, void* fn)
+{
+    fns_.entries.insert_or_assign(name, FnEntry{name, sig_key ? sig_key : "", fn});
+}
+
 void Registry::add_thunk(const std::string& name, void* fn)
 {
     add_thunk(ThunkEntry{fn, name, {}, 0});
@@ -142,5 +156,119 @@ void* Registry::thunk(const std::string& name) const
     auto it = thunks_.find(cur == current_.end() ? name : cur->second);
     return it == thunks_.end() ? nullptr : it->second.fn;
 }
+
+namespace detail
+{
+
+uint64_t next_fn_table_id()
+{
+    return g_fn_table_id.fetch_add(1, std::memory_order_relaxed) + 1;
+}
+
+void set_class_resolver(ClassResolver fn)
+{
+    std::lock_guard<std::mutex> lock(g_resolver_mutex);
+    g_class_resolver = fn;
+    g_class_cache.clear();
+}
+
+void set_unit_resolver(UnitResolver fn)
+{
+    std::lock_guard<std::mutex> lock(g_resolver_mutex);
+    g_unit_resolver = fn;
+}
+
+ClassRecord* resolve_class(const char* name)
+{
+    ClassResolver resolver = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_resolver_mutex);
+        auto it = g_class_cache.find(name);
+        if (it != g_class_cache.end())
+            return it->second;
+        resolver = g_class_resolver;
+    }
+    // The resolver runs without the lock: it can take locks of the loader.
+    ClassRecord* rec = resolver ? resolver(name) : nullptr;
+    if (!rec)
+        throw ScriptError(std::string("unknown script class '") + name + "' of another unit");
+    if (rec->canonical)
+        rec = rec->canonical;
+    std::lock_guard<std::mutex> lock(g_resolver_mutex);
+    if (g_class_resolver == resolver)
+        g_class_cache[name] = rec;
+    return rec;
+}
+
+UnitInfo resolve_unit(const char* name)
+{
+    UnitResolver resolver;
+    {
+        std::lock_guard<std::mutex> lock(g_resolver_mutex);
+        resolver = g_unit_resolver;
+    }
+    UnitInfo info;
+    if (!resolver || !resolver(name, info))
+        throw ScriptError(std::string("unknown script unit '") + name + "'");
+    return info;
+}
+
+uint32_t resolve_field_offset(const StateLayout* layout, const char* name, const char* type, const char* owner)
+{
+    if (!layout)
+        throw ScriptError(std::string(owner) + " has no state layout for the field '" + name + "'");
+    for (uint32_t i = 0; i < layout->field_count; ++i)
+    {
+        const FieldInfo& f = layout->fields[i];
+        if (std::strcmp(f.name, name) != 0)
+            continue;
+        if (!type_key_matches(f.type_key, type))
+            throw ScriptError(std::string("the field '") + owner + "." + name + "' has type key '" +
+                f.type_key + "', not '" + type + "'");
+        return f.offset;
+    }
+    throw ScriptError(std::string(owner) + " has no field '" + name + "'");
+}
+
+void* resolve_fn(const UnitRef& unit, const char* name, const char* sig_key)
+{
+    if (!unit.info.fns)
+        throw ScriptError(std::string("unit '") + unit.name + "' has no function table");
+    const FnEntry* e = unit.info.fns->find(name);
+    if (!e)
+        throw ScriptError(std::string("unit '") + unit.name + "' has no function '" + name + "'");
+    if (e->sig != sig_key)
+        throw ScriptError(std::string("the function '") + unit.name + "." + name + "' has signature key '" +
+            e->sig.c_str() + "', not '" + sig_key + "'");
+    return e->fn;
+}
+
+ShellCore* construct_raw(const ClassRef& cls, const char* key, void** args, size_t count, uint64_t const_mask)
+{
+    const ClassRecord* rec = cls.record;
+    if (!rec)
+        throw ScriptError(std::string("construct of the null class reference '") + (cls.name ? cls.name : "") + "'");
+    const CtorEntry* found = nullptr;
+    if (rec->ctors)
+        for (const CtorEntry* c = rec->ctors; c->key; ++c)
+            if (std::strcmp(c->key, key) == 0)
+            {
+                found = c;
+                break;
+            }
+    if (!found)
+    {
+        if (count == 0 && rec->new_default)
+            return rec->new_default();
+        throw ScriptError(std::string("class ") + rec->name + " has no constructor for the arguments (" +
+            key + ")");
+    }
+    if (found->write_mask & const_mask)
+        throw ScriptError(std::string("a constructor of class ") + rec->name +
+            " changes an argument that is const (" + key + ")");
+    return found->make(args).shell;
+}
+
+} // namespace detail
 
 } // namespace hot
