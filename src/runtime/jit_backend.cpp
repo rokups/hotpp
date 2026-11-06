@@ -362,7 +362,7 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
         r.error = opt_.raw_diagnostics
             ? tr.diagnostics
             : hotc::rewrite_translator_diagnostic(tr.diagnostics, hotc::script_texts(source.name, source.text, tr));
-        r.reason = tr.slots_removed ? ReloadReason::SlotsRemoved : ReloadReason::CompileError;
+        r.reason = ReloadReason::CompileError;
         return r;
     }
 

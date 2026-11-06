@@ -127,6 +127,14 @@ HOT_HIDDEN typename detail::sig_result<Sig>::type call_iface(
     const uint32_t slot = id < cls->iface_slot_count ? cls->iface_slots[id] : kNoIfaceSlot;
     if (HOT_UNLIKELY(slot == kNoIfaceSlot))
         detail::iface_not_implemented(cls, key);
+    if (HOT_UNLIKELY(cls->slot_keys != nullptr))
+        if (slot_is_defunct(cls, slot))
+            removed_function_called(cls, slot);
+    if (HOT_UNLIKELY(slot_is_removed(cls, slot)))
+    {
+        detached_call(cls, slot);
+        return detail::detached_result<typename detail::sig_result<Sig>::type>();
+    }
     using Pmf = typename detail::iface_pmf<Sig>::type;
     auto* self = static_cast<ShellBase*>(core);
     return (static_cast<StateBase*>(self->state)->*reinterpret_cast<Pmf>(cls->slots[slot]))(std::forward<A>(a)...);

@@ -57,7 +57,7 @@ auto backend = hot::make_default_backend(options);
 
 **Requires:** with the clang files backend, the compiler of the build must exist on the machine that runs the program. With the JIT backend, the program needs the LLVM and Clang libraries and no compiler process. A build with both backends links LLVM and Clang into the program, also when it uses the clang files backend.
 
-**Failure:** `LoadResult` has `error` (the compiler diagnostics with script names) and `reason` (`CompileError`, or `SlotsRemoved` when a class has fewer slots). `Loader::load` returns a `ReloadResult` with `Failed` and the reason `BadModule` when the module has no `script_register`, or when the loader already has a generation.
+**Failure:** `LoadResult` has `error` (the compiler diagnostics with script names) and `reason` (`CompileError`, or `SlotsRemoved` when the loader finds fewer slots in the new record: a safety net). `Loader::load` returns a `ReloadResult` with `Failed` and the reason `BadModule` when the module has no `script_register`, or when the loader already has a generation.
 
 **Sample:** [runtime-compile](https://github.com/rokups/hotpp/tree/master/samples/runtime-compile).
 

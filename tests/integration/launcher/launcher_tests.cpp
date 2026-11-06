@@ -649,24 +649,35 @@ void stop_loop()
     TestHost::running = false;
 }
 
-// v1 of Game has the member Helper, v2 does not. A class that loses a slot needs a full restart.
-const char* const kHelper = "int Helper() { return 1; }";
+// v1 of Game derives from the native class TestHost. v2 derives from the script class Base. A
+// change of the script parent needs a full restart. A removed function does not: it reloads live.
+std::string reparented_script(const std::string& step_body)
+{
+    return "using \"TestHost.h\";\n"
+           "class Base : TestHost {\n"
+           "}\n"
+           "class Game : Base {\n"
+           "    int count = 0;\n"
+           "    override int Step() { " + step_body + " }\n"
+           "}\n"
+           "int main() { $Game g = new $Game(); return g.Run(); }\n";
+}
+
 const char* const kStepV1 = "count = count + 1; return count;";
 const char* const kStepV2 = "count = count + 1; return count + 100;";
 
-// The first run starts v1. At frame 1 the hook writes v2 (no Helper). The poll gives
+// The first run starts v1. At frame 1 the hook writes v2 (Game gets a script parent). The poll gives
 // RestartPending and calls the quit hook, which ends the loop. Step of frame 1 runs: v1, the
 // result 1 is lost with the first run. "main" returns and run_main restarts: a new Game
 // object, and "count" starts at 0 again. The second run uses v2 and stops at frame 2 (the
 // limit of f.run). Frame 1 gives 0 + 1 + 100 = 101, frame 2 gives 2 + 100 = 102.
 // Total = 203. The hook sees two starts (frame 1 twice).
-TEST(Launcher, SlotRemovalRestarts)
+TEST(Launcher, ScriptParentChangeRestarts)
 {
     for (const std::string& backend : backends())
     {
         SCOPED_TRACE(backend);
         ReloadFixture f;
-        f.members = kHelper;
         f.request_quit = stop_loop;
         ASSERT_TRUE(f.open(backend, kStepV1)) << f.logs.back();
         int starts = 0;
@@ -678,7 +689,7 @@ TEST(Launcher, SlotRemovalRestarts)
                 return;
             if (++starts == 1)
             {
-                edit_file(f.script, game_script(kStepV2));
+                edit_file(f.script, reparented_script(kStepV2));
                 status = poll_until_settled(*f.program);
                 pending_in_hook = f.program->restart_pending();
             }
@@ -792,7 +803,6 @@ TEST(Launcher, NoQuitHookLogs)
     {
         SCOPED_TRACE(backend);
         ReloadFixture f;
-        f.members = kHelper;
         ASSERT_TRUE(f.open(backend, kStepV1)) << f.logs.back();
         int starts = 0;
         std::vector<launcher::PollStatus> statuses;
@@ -801,11 +811,11 @@ TEST(Launcher, NoQuitHookLogs)
             if (frame == 1)
             {
                 ++starts;
-                edit_file(f.script, game_script(kStepV2));
+                edit_file(f.script, reparented_script(kStepV2));
             }
             statuses.push_back(poll_until_settled(*f.program));
             if (frame == 2)
-                edit_file(f.script, game_script("return 5;", "", kHelper)); // ignored
+                edit_file(f.script, game_script("return 5;")); // ignored
         });
         EXPECT_EQ(starts, 1);
         EXPECT_EQ(total, 10);
@@ -819,8 +829,8 @@ TEST(Launcher, NoQuitHookLogs)
     }
 }
 
-// The first edit removes Helper and has a syntax error: the build fails (Failed, no restart).
-// The second edit fixes the syntax and still removes Helper: RestartPending and a restart.
+// The first edit changes the script parent and has a syntax error: the build fails (Failed, no
+// restart). The second edit fixes the syntax and keeps the new parent: RestartPending and a restart.
 // The first run has frames 1 and 2 (the quit ends it after frame 2). The second run runs v2 and
 // stops at frame 2: 101 + 102 = 203.
 TEST(Launcher, RestartBuildFailureKeepsOldCode)
@@ -829,7 +839,6 @@ TEST(Launcher, RestartBuildFailureKeepsOldCode)
     {
         SCOPED_TRACE(backend);
         ReloadFixture f;
-        f.members = kHelper;
         f.request_quit = stop_loop;
         ASSERT_TRUE(f.open(backend, kStepV1)) << f.logs.back();
         int starts = 0;
@@ -848,7 +857,7 @@ TEST(Launcher, RestartBuildFailureKeepsOldCode)
             }
             else if (frame == 2)
             {
-                edit_file(f.script, game_script(kStepV2));
+                edit_file(f.script, reparented_script(kStepV2));
                 second = poll_until_settled(*f.program);
             }
         });
@@ -862,10 +871,10 @@ TEST(Launcher, RestartBuildFailureKeepsOldCode)
     }
 }
 
-// A failed Fresh build does not forget the full restart. The first edit removes Helper: the
-// build of v2 works, and the loader says that a full restart is needed. While that build runs, the
-// script gets a syntax error. The Fresh build reads the new text and fails (Failed). The second
-// edit is a valid script that keeps Helper, so a Reload build would apply it (Applied). Because
+// A failed Fresh build does not forget the full restart. The first edit changes the script parent:
+// the build of v2 works, and the loader says that a full restart is needed. While that build runs,
+// the script gets a syntax error. The Fresh build reads the new text and fails (Failed). The second
+// edit is a valid script with the old parent, so a Reload build would apply it (Applied). Because
 // the restart is still needed, the build must be Fresh: RestartPending, not Applied.
 // The first run has frames 1 and 2 (the quit ends it after frame 2). The second run runs the
 // text of the second edit and stops at frame 2: 101 + 102 = 203.
@@ -875,7 +884,6 @@ TEST(Launcher, FailedFreshBuildKeepsFreshNeeded)
     {
         SCOPED_TRACE(backend);
         ReloadFixture f;
-        f.members = kHelper;
         f.request_quit = stop_loop;
         ASSERT_TRUE(f.open(backend, kStepV1)) << f.logs.back();
         int starts = 0;
@@ -890,14 +898,14 @@ TEST(Launcher, FailedFreshBuildKeepsFreshNeeded)
                 return;
             if (frame == 1)
             {
-                edit_file(f.script, game_script(kStepV2));
+                edit_file(f.script, reparented_script(kStepV2));
                 begin = f.program->poll(); // the Reload build of v2 starts and has the text of v2
-                edit_file(f.script, game_script("count = count + 1; return count +;", "", kHelper));
+                edit_file(f.script, game_script("count = count + 1; return count +;"));
                 first = poll_until_settled(*f.program);
             }
             else if (frame == 2)
             {
-                edit_file(f.script, game_script(kStepV2, "", kHelper));
+                edit_file(f.script, game_script(kStepV2));
                 second = poll_until_settled(*f.program);
             }
         });
@@ -922,7 +930,6 @@ TEST(Launcher, ResetFailureReturns1)
     {
         SCOPED_TRACE(backend);
         ReloadFixture f;
-        f.members = kHelper;
         f.request_quit = stop_loop;
         ASSERT_TRUE(f.open(backend, kStepV1)) << f.logs.back();
         int starts = 0;
@@ -931,7 +938,7 @@ TEST(Launcher, ResetFailureReturns1)
             if (frame != 1)
                 return;
             ++starts;
-            edit_file(f.script, game_script(kStepV2));
+            edit_file(f.script, reparented_script(kStepV2));
             EXPECT_EQ(poll_until_settled(*f.program), launcher::PollStatus::RestartPending);
             hot::pin(1); // a closure or a task would do the same
         });

@@ -67,7 +67,7 @@ The target does not build automatically. Your host target must depend on it: `ad
 
 The generation `n` in the file name is 1. The option `--gen n` in `HOTC_ARGS` sets another number. The function reads the number for the output names, and `hotc` gets the option. A reload needs a new generation that is newer than the active one. A module with the same number gives `GenerationNotNewer`.
 
-The generations of one class share the slot file `OUT_DIR/slots.txt`. This file keeps the slot order between generations. So build generation 2 after generation 1 and use the same `OUT_DIR`. Give `AFTER` the target of generation 1. `AFTER` only orders the targets. It adds a dependency of the target, not of the files.
+The generations of one class share the slot file `OUT_DIR/slots.txt`. This file keeps the slot order between generations, also the defunct slots of removed functions. So build generation 2 after generation 1 and use the same `OUT_DIR`. Give `AFTER` the target of generation 1. `AFTER` only orders the targets. It adds a dependency of the target, not of the files.
 
 ### Variables that the function sets
 

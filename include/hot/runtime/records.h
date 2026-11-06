@@ -9,6 +9,8 @@
 #include <type_traits>
 #include <typeinfo>
 
+#include "hot/runtime/export.h"
+
 namespace hot
 {
 
@@ -93,9 +95,18 @@ struct CtorEntry
 // runtime stores it as a member of this type and casts it back at the call (shell.h).
 struct StateBase
 {
-    void* __removed(); // the slot of a removed class (loader.cpp)
+    // The slot of a removed class or a removed function (loader.cpp). The generated slot table of a
+    // module names it, so it must be exported: a module with its own runtime copy must see the
+    // address of the host.
+    HOT_EXPORT void* __removed();
 };
 using SlotFn = void (StateBase::*)();
+// The signature key of a slot of a removed class. No typeid name has this text, so a call of the
+// slot detaches (a silent default result) and does not call StateBase::__removed (see call_script).
+inline constexpr const char* kRemovedSlotKey = "!removed";
+// The signature key of a defunct slot of a live class: the function is removed from the source.
+// A call of the slot throws ScriptError (removed_function_called in shell.h).
+inline constexpr const char* kDefunctSlotKey = "!defunct";
 class OldState;
 
 // Tag type. It marks the constructor of a shell that the script runtime makes.
@@ -230,7 +241,14 @@ struct ClassRecord
     // The signature key of each slot (typeid(Sig).name()), or null (design 5.3). The loader
     // sets it when a reload changes the signature of a script function. hot::call compares
     // the key with its own signature. A call with another signature detaches: it does not run.
+    // A slot of a removed class has the key kRemovedSlotKey: a call gives a default result. A
+    // defunct slot of a live class (a removed function) has the key kDefunctSlotKey: a call throws
+    // ScriptError. No signature matches these keys.
     const char* const* slot_keys = nullptr;
+    // The names ("Cls::fn") of the defunct slots, one entry for each slot (null for a slot that is not
+    // defunct), or null when the class has no defunct slot. The error of a call of a removed function
+    // uses it. The text lives in the module of the record. A commit copies the pointer.
+    const char* const* slot_names = nullptr;
     // True when the shell derives from std::enable_shared_from_this (design 7.10.1): the class
     // uses "this" as a handle or has script children. The bit changes the shell layout.
     bool shares_this = false;

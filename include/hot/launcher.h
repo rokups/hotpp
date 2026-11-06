@@ -93,9 +93,10 @@ public:
     // each new stamp, and gives Failed for that call. The pause ends when the header is back at
     // its build stamp.
     //
-    // A change that hot reload cannot apply needs a full restart: a class lost a slot (the
-    // loader gives FullReloadRequired). Then poll builds the Fresh generation 1 on the worker
-    // thread. Poll gives Building.
+    // A change that hot reload cannot apply needs a full restart (the loader gives
+    // FullReloadRequired). Examples: a changed native base, a changed script parent or a changed
+    // shell layout. A removed function needs no restart: its slot stays defunct. Then poll builds
+    // the Fresh generation 1 on the worker thread. Poll gives Building.
     // When the build ends, poll keeps the new module and gives RestartPending, and calls
     // Options::request_quit once. A failed Fresh build gives Failed and the old code keeps
     // running. While a restart is pending, poll takes no file change and no new build starts.

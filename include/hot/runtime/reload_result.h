@@ -28,7 +28,7 @@ enum class ReloadReason
     InterfaceBasesChanged, // a native interface base was added or removed
     ScriptParentChanged, // the script parent of a class changed
     ShellLayoutChanged, // the layout of the shell of a class changed
-    SlotsRemoved, // a class has fewer slots in the new generation
+    SlotsRemoved, // a class has fewer slots in the new generation (a safety net only)
     CompileError, // the backend could not build the module
     BadModule, // the module has no register function, no layout or no slot
     GenerationNotNewer, // the generation of a class is not newer than the active one

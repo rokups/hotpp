@@ -77,6 +77,25 @@ HOT_HIDDEN bool record_is(const ClassRecord* r, const char* name)
 // calls (loader.cpp). The call does not run.
 HOT_NODEBUG HOT_EXPORT void detached_call(const ClassRecord* cls, unsigned slot);
 uint64_t detached_call_count();
+// The call of a slot of a removed class (key kRemovedSlotKey): it counts the call and logs the first one.
+void note_removed_call();
+uint64_t removed_call_count();
+// The call of a defunct slot of a live class (key kDefunctSlotKey): the function is removed from the
+// source. The call counts, logs the first call of the slot and throws ScriptError "call of removed
+// script function Cls::fn". The name comes from ClassRecord::slot_names, else the text has the slot number.
+[[noreturn]] HOT_NODEBUG HOT_EXPORT void removed_function_called(const ClassRecord* cls, unsigned slot);
+// True when the slot is a slot of a removed class.
+HOT_HIDDEN bool slot_is_removed(const ClassRecord* cls, unsigned slot)
+{
+    const char* const* keys = cls->slot_keys;
+    return keys != nullptr && keys[slot] != nullptr && std::strcmp(keys[slot], kRemovedSlotKey) == 0;
+}
+// True when the slot is a defunct slot of a live class: its function is removed from the source.
+HOT_HIDDEN bool slot_is_defunct(const ClassRecord* cls, unsigned slot)
+{
+    const char* const* keys = cls->slot_keys;
+    return keys != nullptr && keys[slot] != nullptr && std::strcmp(keys[slot], kDefunctSlotKey) == 0;
+}
 
 namespace detail
 {
@@ -100,13 +119,15 @@ template <class R> HOT_HIDDEN R detached_result()
     else if constexpr (std::is_default_constructible_v<R>)
         return R();
     else
-        throw std::runtime_error("a detached delegate cannot make a result value");
+        throw ScriptError("a detached delegate cannot make a result value");
 }
 } // namespace detail
 
 // Calls slot "slot" of the class of the shell "self". The slot is a member of the state of "self". "Sig" is the
 // signature of the slot. When the slot has a signature key (ClassRecord::slot_keys) and "Sig" is another signature, the
-// call detaches. The call is a script entry (threads.h). In StopTheWorld mode the entry is one flag check. The entry
+// call detaches. A slot of a removed class has a key that no signature matches, so its call detaches too: it
+// gives a default result and does not run the slot. A defunct slot of a live class (a removed function)
+// throws ScriptError (removed_function_called). The call is a script entry (threads.h). In StopTheWorld mode the entry is one flag check. The entry
 // starts before the read of the slot, so a commit cannot change the slot under it.
 // This form lets an exception pass to the caller. A call from one script function to another
 // script virtual function uses it, because the script caller can catch the exception.
@@ -120,6 +141,8 @@ HOT_HIDDEN typename detail::sig_result<Sig>::type call_script(ShellBase* self, u
     {
         if (keys[slot] && std::strcmp(keys[slot], typeid(Sig).name()) != 0)
         {
+            if (std::strcmp(keys[slot], kDefunctSlotKey) == 0)
+                removed_function_called(cls, slot);
             detached_call(cls, slot);
             return detail::detached_result<typename detail::sig_result<Sig>::type>();
         }

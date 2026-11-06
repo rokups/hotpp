@@ -25,10 +25,20 @@ The host compiles the new script as a new generation. The commit runs at the fra
 | Change the native base class or a native interface base | Full reload |
 | Change the script parent class | Full reload |
 | Change the shell layout, for example the first use of `this` as a handle | Full reload |
-| Remove a function so that a class has fewer slots | Full reload |
+| Remove a function | LIVE. The slot becomes defunct (see below). |
 | Change a native header, a native class layout or a native virtual signature | Full reload. The host triggers it. |
 
 A `.cpp` script (see [C++ scripts](cpp-scripts.html)) follows the same table. It has no properties, no script virtual methods and no script-class handles. A `.cpp` reload is slower, because `hotc` does one more `libclang` parse. A normal build of the file has no state migration and no slots.
+
+## Removed functions
+
+A removed function keeps its slot as a defunct entry. The reload applies live. The slot stays defunct until a full restart. A fresh load (generation 1) resets all slots.
+
+A call of a removed function throws `hot::ScriptError`. The message is "call of removed script function Cls::fn". A script caller can catch it. A host call of a thunk is a normal script error: the outermost call gives the error to the script error handler and returns a default result (zero, an empty string, a null handle). A host call inside another call lets the error pass to the caller. The runtime counts each call (`hot::removed_call_count()`) and logs the first call of each removed function on stderr.
+
+A removed class is different. A call of a method of a removed class does not throw. It logs once: "call of a method of a removed script class or function ignored (it is no longer in the source); later calls are counted only". Then the runtime counts the calls and returns a default result (zero, an empty string, a null handle).
+
+A function that returns with the same name reuses its slot. A function that returns with a new signature gets a new keyed thunk. The slot table grows by one entry for each distinct removed name until the restart. A parent virtual function that a child still overrides cannot be removed: this is a normal compile error ("'override' has no virtual method to override").
 
 ## Tasks
 
@@ -38,7 +48,7 @@ A task of an `async` method keeps its generation alive. After a reload, a suspen
 
 A few changes cannot keep live objects. `Loader::request_reload` then returns the status `FullReloadRequired`, with a reason and the class names. The live generation stays. The host restarts all script state and keeps its own state.
 
-A native base, a script parent or a shell layout change changes the C++ layout of the shell. A live object cannot move to a new layout. A removed function cannot free its slot, because the slot table only grows. These changes stay full reloads.
+A native base, a script parent or a shell layout change changes the C++ layout of the shell. A live object cannot move to a new layout. These changes stay full reloads. A removed function is not a cause: it reloads live.
 
 The runtime does not see a change in a native header. When a native header changes, the host starts a full reload itself. `LoadResult::dependencies` lists the headers and the imported scripts that the build read: the host watches these files.
 

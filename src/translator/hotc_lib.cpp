@@ -201,7 +201,6 @@ std::string field_declarator(const std::string& t, const std::string& name)
 // State of the call in progress. Each thread has its own copy.
 thread_local std::string g_script; // the script name, as given by the caller
 thread_local hotc::Diagnostics g_diag; // the diagnostics of the call
-thread_local bool g_slots_removed = false; // the call failed because a slot of an earlier generation is gone
 
 struct TranslateAbort
 {
@@ -1301,10 +1300,13 @@ struct Slot
 {
     std::string id; // "Tick", "TakeDamage_f", "heal"
     const NativeVirtual* nv = nullptr;
-    const Method* impl = nullptr; // override (native slot) or function (script slot)
+    // An override (native slot) or a function (script slot). It is null for an un-overridden
+    // native slot, or for a defunct script slot (a function of an earlier generation that the source lacks).
+    const Method* impl = nullptr;
     int intro_gen = 0; // script functions only
     int index = -1; // the slot number in a family of script classes, else -1
     bool native() const { return nv != nullptr; }
+    bool defunct() const { return !native() && !impl; }
 };
 
 std::string mangle_type(const std::string& t)
@@ -6171,6 +6173,7 @@ void translate_impl(
         // The classes of a family (one root) share one slot numbering (design 7.6). The slots of
         // the manifest entries of the family come in the manifest order, so a number is stable
         // over generations. The table of a class has holes for the functions of other branches.
+        // A removed function keeps its manifest entry and its number as a defunct slot.
         std::map<std::string, size_t> fam_index; // "Cls::fn" to the slot number
         size_t table_size = 0;
         if (!family)
@@ -6179,16 +6182,11 @@ void translate_impl(
             {
                 if (e.cls != cn)
                     continue;
+                // A function that the source lacks keeps its slot as a defunct entry.
                 auto it = fn_by_name.find(e.fn);
-                if (it == fn_by_name.end())
-                {
-                    g_slots_removed = true;
-                    fail_at(map, cd.pos,
-                        "function '" + e.fn + "' of an earlier generation is removed. The slot count must not shrink");
-                }
                 Slot s;
                 s.id = e.fn;
-                s.impl = it->second;
+                s.impl = it == fn_by_name.end() ? nullptr : it->second;
                 s.intro_gen = e.gen;
                 slots.push_back(s);
             }
@@ -6212,13 +6210,6 @@ void translate_impl(
         }
         else
         {
-            for (const auto& e : old_manifest)
-                if (e.cls == cn && !fn_by_name.count(e.fn))
-                {
-                    g_slots_removed = true;
-                    fail_at(map, cd.pos,
-                        "function '" + e.fn + "' of an earlier generation is removed. The slot count must not shrink");
-                }
             // An "override" of a script virtual uses the slot of the parent. It adds no entry.
             for (const Method& m : cd.methods)
             {
@@ -6245,7 +6236,8 @@ void translate_impl(
                     continue;
                 Slot s;
                 s.id = e.fn;
-                s.impl = fn_by_name.at(e.fn);
+                auto fit = fn_by_name.find(e.fn);
+                s.impl = fit == fn_by_name.end() ? nullptr : fit->second; // null: a defunct slot
                 s.intro_gen = e.gen;
                 s.index = static_cast<int>(idx);
                 slots.push_back(s);
@@ -6270,8 +6262,15 @@ void translate_impl(
         if (pinfo)
             for (size_t i = native_count; i < pinfo->table.size() && i < table_size; ++i)
                 table[i] = pinfo->table[i];
+        // The name of each defunct slot, for the error of a call of a removed function (empty: not defunct).
+        std::vector<std::string> defunct_names(table_size);
         for (size_t i = native_count; i < slots.size(); ++i)
-            table[slots[i].index >= 0 ? size_t(slots[i].index) : i] = member_text(slots[i].id);
+        {
+            const size_t at = slots[i].index >= 0 ? size_t(slots[i].index) : i;
+            table[at] = slots[i].defunct() ? std::string("hot::StateBase::__removed") : member_text(slots[i].id);
+            if (slots[i].defunct())
+                defunct_names[at] = cd.key_name() + "::" + slots[i].id;
+        }
         // An "override" of a script virtual uses the slot of the parent: its member fills the entry.
         for (const Method& m : cd.methods)
             if (m.is_override && !m.overrides_virtual)
@@ -7551,6 +7550,16 @@ void translate_impl(
         // thunks for the script functions
         for (size_t i = native_count; i < slots.size(); ++i)
         {
+            if (!slots[i].impl)
+            {
+                // A defunct slot has no thunk. Its signature line stays, so a later return of the
+                // function with a new signature gets a keyed thunk.
+                const std::string key = cd.key_name() + "::" + slots[i].id;
+                auto old = old_sigs.find(key);
+                if (old != old_sigs.end())
+                    sig_lines.push_back("sig " + key + " " + old->second + "\n");
+                continue;
+            }
             const Method& m = *slots[i].impl;
             // A changed signature of an earlier function gets a new thunk with a signature key
             // (design 5.3). The thunk of the old signature detaches. The same signature emits nothing.
@@ -7654,6 +7663,18 @@ void translate_impl(
             for (const std::string& fn : table)
                 o.w(fn.empty() ? std::string("    nullptr,\n") : "    reinterpret_cast<hot::SlotFn>(&" + fn + "),\n");
             o.w("};\n\n");
+            // The names of the defunct slots (removed functions). The loader copies the pointer into
+            // the record, and a call of a removed function names the function in its error.
+            if (std::any_of(defunct_names.begin(), defunct_names.end(), [](const std::string& n) { return !n.empty(); }))
+            {
+                o.w("static const char* const " + P + "slot_names[" + slot_id("COUNT") + "] = {\n");
+                for (size_t i = 0; i < table.size(); ++i)
+                    o.w(i < defunct_names.size() && !defunct_names[i].empty()
+                            ? "    \"" + defunct_names[i] + "\",\n"
+                            : std::string("    nullptr,\n"));
+                o.w("};\n\n");
+                flag_regs.push_back("    " + cn + "_record.slot_names = " + P + "slot_names;\n");
+            }
         }
         // The interface rows of the class (design 41b, B5): all the interface methods of the class
         // and of its script parents, each with the slot of the implementation in this table. The
@@ -8222,7 +8243,6 @@ TranslateResult translate(const TranslateOptions& in, TranslatorSession& session
     TranslateResult res;
     g_diag.clear();
     g_script = in.script_name;
-    g_slots_removed = false;
     try
     {
         translate_impl(in, *session.impl_, res);
@@ -8235,7 +8255,7 @@ TranslateResult translate(const TranslateOptions& in, TranslatorSession& session
         res.slots_out.clear();
         res.sigs_out.clear();
     }
-    res.slots_removed = !res.ok && g_slots_removed;
+    res.slots_removed = false;
     res.diagnostics = g_diag.format(g_script);
     res.warnings = g_diag.format_warnings(g_script);
     return res;

@@ -168,9 +168,7 @@ struct TranslateResult
     // reads them to warn about a field rename. A reader of the slot text skips these lines.
     std::string sigs_out;
     std::string diagnostics; // the errors, one line each: "name:line:col: error: text"
-    // True when the translation failed because a function of an earlier generation is removed
-    // ("the slot count must not shrink"). Hot reload cannot apply this change: only a full
-    // reload can. A backend maps it to ReloadReason::SlotsRemoved.
+    // Always false. A removed function keeps a defunct slot. The field stays for API compatibility.
     bool slots_removed = false;
     // The warnings, one line each: "name:line:col: warning: text". The translation can be ok
     // with warnings. The text is empty when there is no warning.

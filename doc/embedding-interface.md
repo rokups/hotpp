@@ -33,7 +33,7 @@ Fields of `LoadResult`:
 |---|---|
 | `module` | `std::optional<Module>`. `operator bool` is true when it has a value. |
 | `error` | The diagnostics or the error text. Empty on success. |
-| `reason` | A `ReloadReason`. A backend failure is `CompileError`. `SlotsRemoved` means that a class has fewer slots: only a full reload applies the change. Default `None`. |
+| `reason` | A `ReloadReason`. A backend failure is `CompileError`. `SlotsRemoved` means that the loader found fewer slots in the new record. It is a safety net: the translator does not produce it. Only a full reload applies the change. Default `None`. |
 
 Fields of `Module`:
 

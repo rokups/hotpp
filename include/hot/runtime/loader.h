@@ -75,9 +75,11 @@ struct LoaderStats
 // The text of the stats for a log or a command channel ("script_stats", design 8.4).
 std::string format_stats(const LoaderStats& stats);
 
-// The handler that the slots of a removed class (design 6.1) point to. It logs the first
-// call, counts the calls and returns zero (a null pointer, 0 or false). The caller may pass any
-// arguments. A floating point result is not defined.
+// The backup handler of a defunct slot (a removed class or function, design 6.1). A defunct slot
+// has the key kRemovedSlotKey or kDefunctSlotKey, so a normal call does not reach the handler: a
+// call of a removed class detaches, and a call of a removed function throws ScriptError. The
+// handler logs the first call, counts the calls and returns zero. A caller that reads a class
+// result or a floating point result from it is not defined.
 void* removed_class_handler();
 uint64_t removed_class_call_count();
 
@@ -305,8 +307,14 @@ private:
     // Makes the module (and its core) of a unit live: the live flags of the older module of the
     // unit go to 0, the flags of the new module go to 1. A null flag (an old library) is skipped.
     void switch_live(const std::string& unit, const Registry& code, const Registry* core);
-    // Sets the signature key of the slot of a keyed thunk in the canonical record (design 5.3).
+    // Stores the signature key of the slot of a keyed thunk (design 5.3) in "slot_keys_".
     void set_slot_key(const ThunkEntry& t);
+    // Builds the key table of each class (ClassRecord::slot_keys) from "slot_keys_" and the slot
+    // tables: a defunct slot of a removed class gets kRemovedSlotKey, and a defunct slot of a live class
+    // (a removed function) gets kDefunctSlotKey. A function that
+    // returns has a normal slot again, so it gets its own key back. Call it after the slot tables
+    // of a commit are in place.
+    void refresh_slot_keys();
     // Builds the interface tables of the canonical record "canon" from the rows of the generation
     // record "in" (ClassRecord::iface_rows): the id to slot table and the interface names. The
     // loader owns both, so no pointer goes into a module that unloads. "canon" can be "in".
@@ -364,6 +372,8 @@ private:
     // The signature keys of the slots (ClassRecord::slot_keys), by class name. A class gets a
     // table when a reload changes the signature of one of its script functions (design 5.3).
     std::unordered_map<std::string, std::vector<const char*>> slot_keys_;
+    // The key tables that the records use: "slot_keys_" and the keys of the defunct slots.
+    std::unordered_map<std::string, std::vector<const char*>> eff_keys_;
     std::set<std::string> key_text_; // the text of the keys; a module can unload
     // The tables from the id of an interface method to the slot (ClassRecord::iface_slots), by
     // class name. A rebuild reuses the vector of the class.

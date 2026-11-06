@@ -63,7 +63,7 @@ TEST_P(BackendTests, RemovedClassKeepsItsObjectsValid)
     ASSERT_FALSE(s.commit_failed);
 
     EXPECT_NE(log.find("WARNING: class Ghost is removed from the source; 1 live object(s)"), std::string::npos) << log;
-    EXPECT_NE(log.find("call of a method of a removed script class ignored"), std::string::npos) << log;
+    EXPECT_NE(log.find("call of a method of a removed script class or function ignored"), std::string::npos) << log;
     EXPECT_EQ(hot::active_generation, 2u);
     // The Ghost object kept its state. The Tick of the first frame after the commit ran in the
     // old code (the commit is at the end of that frame), so haunts is 3 and not more.
@@ -268,7 +268,7 @@ TEST(HarnessTests, FileChangeReloadsAndCommandsWork)
     testing::internal::GetCapturedStdout();
 }
 
-// A removed function needs a full reload. The harness saves the actors, resets the Loader,
+// A change of the script parent needs a full reload. The harness saves the actors, resets the Loader,
 // loads the script as generation 1 and makes the actors again with the saved state.
 TEST(HarnessTests, FullReloadKeepsPositionAndName)
 {
@@ -281,7 +281,7 @@ TEST(HarnessTests, FullReloadKeepsPositionAndName)
     h.world().Actors()[0]->Position = Vec3(1.5f, 2.0f, -3.0f);
     h.frame(kDt, 0);
 
-    script.write("fnremoved_v2.hot");
+    script.write("medic_reparent.hot");
     h.frame(kDt, 2000);
     const std::string out = testing::internal::GetCapturedStdout();
     EXPECT_NE(out.find("[host] full reload: "), std::string::npos) << out;
@@ -293,9 +293,10 @@ TEST(HarnessTests, FullReloadKeepsPositionAndName)
     EXPECT_EQ(h.world().Actors()[0]->Position.z, -3.0f);
 }
 
-// A script that removes a function and has a C++ type error: the Fresh build fails before the
-// harness clears the world. The actors and the old generation stay as they are.
-TEST(HarnessTests, FullReloadBuildErrorKeepsTheActors)
+// A script that changes the script parent and has a C++ type error: the Reload build fails, so
+// the harness starts no full reload. The actors and the old generation stay as they are. The fixed
+// script then gives the full reload.
+TEST(HarnessTests, BrokenScriptFailsTheReloadAndKeepsTheActors)
 {
     TempScript script("fnremoved_v1.hot");
     harness::Harness h(script.file.string(), "Medic");
@@ -307,20 +308,20 @@ TEST(HarnessTests, FullReloadBuildErrorKeepsTheActors)
 
     {
         std::ofstream f(script.file, std::ios::trunc);
-        f << read_file(std::string(HOT_SOURCE_DIR) + "/tests/scripts/fnremoved_v2.hot");
+        f << read_file(std::string(HOT_SOURCE_DIR) + "/tests/scripts/medic_reparent.hot");
         f << "\nclass Broken : Actor {\n    void f() { int x = \"text\"; }\n}\n";
     }
     testing::internal::CaptureStderr();
     const hot::ReloadResult result = h.reload();
     const std::string log = testing::internal::GetCapturedStderr();
     EXPECT_EQ(result.status, hot::ReloadStatus::Failed) << result.error << log;
-    EXPECT_NE(result.error.find("full reload failed"), std::string::npos) << result.error;
+    EXPECT_FALSE(result.error.empty());
     EXPECT_EQ(hot::active_generation, 1u);
     ASSERT_EQ(h.world().Actors().size(), 1u);
     EXPECT_EQ(h.world().Actors()[0]->Name, "Doc");
 
     // The fixed script applies the full reload. The actor comes back.
-    script.write("fnremoved_v2.hot");
+    script.write("medic_reparent.hot");
     EXPECT_EQ(h.reload().status, hot::ReloadStatus::Applied);
     ASSERT_EQ(h.world().Actors().size(), 1u);
     EXPECT_EQ(h.world().Actors()[0]->Name, "Doc");

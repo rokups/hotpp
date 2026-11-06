@@ -1,0 +1,20 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Generation 2 of the defunct slot call test. The three functions with a result are gone.
+// The slots stay defunct. A call of the old thunk gives a default result.
+using "Actor.h";
+using <string>;
+
+class Peer : Actor {
+    int mark = 1;
+}
+
+class Oracle : Actor {
+    int hp = 10;
+
+    void Touch() {
+        this.hp = this.hp + 1;
+    }
+}

@@ -711,10 +711,7 @@ PollStatus Program::poll()
             else if (!built)
             {
                 take_stamps(pre, built.dependencies, true);
-                if (built.reason == hot::ReloadReason::SlotsRemoved)
-                    restart_needed = built.error.empty() ? "a class has fewer slots" : built.error;
-                else
-                    impl.log(std::string(prefix) + (built.error.empty() ? "the script did not compile" : built.error));
+                impl.log(std::string(prefix) + (built.error.empty() ? "the script did not compile" : built.error));
             }
             else
             {

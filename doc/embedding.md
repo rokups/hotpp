@@ -131,7 +131,7 @@ A change of a file that is not a `.hot` file (a native header) usually needs a r
 
 ### Full restart
 
-Some changes cannot reload: a class lost a slot. Then `poll` does these steps:
+Some changes cannot reload: a changed native base or native interface base, a changed script parent, or a changed shell layout. A removed function is not a cause. It reloads live. Then `poll` does these steps:
 
 1. It logs `[hot] full restart needed: <reason>`.
 2. It builds a Fresh generation 1 on the worker thread. It gives `Building` until the build ends.

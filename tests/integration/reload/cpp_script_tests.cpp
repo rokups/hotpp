@@ -1008,9 +1008,9 @@ TEST_P(BackendTests, CompileErrorDiagnosticsHaveScriptPosition)
     EXPECT_NE(r.error.find(expect), std::string::npos) << "no '" << expect << "' in:\n" << r.error;
 }
 
-// Generation 2 removes a method of a live class. The slot count shrinks. Each backend reports
-// SlotsRemoved and does not build the module.
-TEST_P(BackendTests, SlotsRemovedIsReportedOnEveryBackend)
+// Generation 2 removes a method of a live class. The slot stays defunct. Each backend loads the
+// module and the reload applies live.
+TEST_P(BackendTests, RemovedMethodReloadsLiveOnEveryBackend)
 {
     const std::string head =
         "#include \"Actor.h\"\n"
@@ -1029,8 +1029,10 @@ TEST_P(BackendTests, SlotsRemovedIsReportedOnEveryBackend)
     s.commit_at_frame_boundary();
 
     hot::LoadResult v2 = backend->load(inline_cpp("cpp_slots_removed.cpp", v2_text), 2);
-    ASSERT_FALSE(v2);
-    EXPECT_EQ(v2.reason, hot::ReloadReason::SlotsRemoved) << v2.error;
+    ASSERT_TRUE(v2) << v2.error;
+    EXPECT_EQ(v2.reason, hot::ReloadReason::None);
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    s.commit_at_frame_boundary();
 }
 
 } // namespace

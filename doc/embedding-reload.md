@@ -19,7 +19,7 @@ loader.commit_pending();
 loader.frame_boundary();                                        // unloads old generations
 ```
 
-`request_reload` has two overloads. One takes a `Module`. The other takes a `LoadResult`: a failed result becomes a `ReloadResult` without a call of the validation. A backend failure with the reason `SlotsRemoved` becomes `FullReloadRequired`. Any other failure becomes `Failed`.
+`request_reload` has two overloads. One takes a `Module`. The other takes a `LoadResult`: a failed result becomes a `ReloadResult` without a call of the validation. A backend failure with the reason `SlotsRemoved` becomes `FullReloadRequired`. This is a safety net: the translator does not produce this reason. Any other failure becomes `Failed`.
 
 `request_reload` returns a `hot::ReloadResult` (`include/hot/runtime/reload_result.h`). It has a `status`, a `reason`, an `error` text and the `classes` involved. The status is one of these:
 
@@ -30,7 +30,7 @@ loader.frame_boundary();                                        // unloads old g
 | `FullReloadRequired` | Hot reload cannot apply the change. The host does a full reload. |
 | `Failed` | The module is not acceptable. The live generation continues. |
 
-The result converts to `true` for `Applied` and `Pending`. The reason is one of `None`, `NativeBaseChanged`, `InterfaceBasesChanged`, `ScriptParentChanged`, `ShellLayoutChanged`, `SlotsRemoved`, `CompileError`, `BadModule`, `GenerationNotNewer`, `Busy` and `MigrationFailed`. `to_string` gives the name.
+The result converts to `true` for `Applied` and `Pending`. The reason is one of `None`, `NativeBaseChanged`, `InterfaceBasesChanged`, `ScriptParentChanged`, `ShellLayoutChanged`, `SlotsRemoved` (a safety net only), `CompileError`, `BadModule`, `GenerationNotNewer`, `Busy` and `MigrationFailed`. `to_string` gives the name.
 
 `commit_pending` returns `Applied` when it committed. With nothing pending it returns `Failed` with the reason `None` and an empty error. It returns `Busy` when the commit cannot run now, and `MigrationFailed` when the state does not migrate. If the runtime cannot go on (for example a native move constructor throws during a migration), it calls `hot::request_restart`. This calls the handler from `set_restart_handler` and aborts when there is none. When the handler returns, the commit fails, the old generation stays active and `restart_requested()` is true.
 

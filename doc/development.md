@@ -68,7 +68,7 @@ Windows notes:
 
 ## Translator notes
 
-- The slot file (`--slots`) keeps the slot order of the script methods stable between generations. A generation can add a method, but it cannot remove one.
+- The slot file (`--slots`) keeps the slot order of the script methods stable between generations. A generation can add a method. A removed method keeps its slot as a defunct entry until a full restart.
 - A custom handle type needs the `hot::is_handle` trait. `std::shared_ptr` is built in.
 - `intrusive("AddRef", "Release")` implies a handle. The storage type is `hot::Intrusive<T, &Owner::AddRef, &Owner::Release>`. A new object starts with zero references (the boost `intrusive_ptr` convention). The wrapper adds a reference when it is made from `T*`. A reload copies the field (add) and destroys the old block (release), so the count stays correct. See `tests/scripts/intrusive_v1.hot`, `intrusive_v2.hot` and `tests/engine/Object.h`.
 - A handle stub on a native base class applies to all native subclasses. The nearest base wins. An exact stub on a subclass wins. A base stub beats a pattern stub. Only `handle` and `intrusive` are inherited. `value` is not inherited.
@@ -130,7 +130,7 @@ Command line of the translate mode. Without `-o`, the tool prints the C++ to the
 - `--resource-dir dir` is the Clang resource dir. The default is the one that the build found.
 - `--cxx command` is the compiler command. The default is `clang++`.
 - `--cxxflag flag` adds one flag to the compile command. Repeat it for more flags.
-- `--slots file` is the slot file. The default is `DIR/slots.txt`. It keeps the slot order of the script methods between generations. Build the generations of one class in order.
+- `--slots file` is the slot file. The default is `DIR/slots.txt`. It keeps the slot order of the script methods between generations. A removed method keeps a defunct slot. Build the generations of one class in order.
 
 The exit code is 0 for success, 1 for an error and 2 for a wrong command line. The tool prints the compiler errors at the script line. It does not need CMake.
 

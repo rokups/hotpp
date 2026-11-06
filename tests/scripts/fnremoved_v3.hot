@@ -1,0 +1,19 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Generation 3 of the removed function test. The function rest() comes back with a new
+// signature. It reuses its defunct slot and gets a thunk with a signature key.
+using "Actor.h";
+
+class Medic : Actor {
+    int hp = 10;
+
+    void heal(int amount) {
+        this.hp = this.hp + amount;
+    }
+
+    void rest(int hours) {
+        this.hp = this.hp + hours;
+    }
+}

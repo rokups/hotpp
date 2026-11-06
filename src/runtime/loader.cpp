@@ -62,6 +62,7 @@ void adopt(ClassRecord* canon, ClassRecord* in)
     canon->is_abstract = in->is_abstract;
     canon->dtor = in->dtor;
     canon->attributes = in->attributes;
+    canon->slot_names = in->slot_names;
     canon->ctors = in->ctors;
     if (in != canon)
         in->canonical = canon;
@@ -280,6 +281,7 @@ bool Loader::reset(std::string& error)
     unit_live_.clear(); // the flags are in the code that unloads next
     removed_.clear();
     slot_keys_.clear();
+    eff_keys_.clear();
     iface_slots_.clear(); // the records go with "registry_" below
     iface_names_.clear();
     record_gen_.clear();
@@ -460,6 +462,7 @@ ReloadResult Loader::load_unit(Module module, Registry* code_out)
             adopt(ar, e.record);
             adopt_ifaces(ar, e.record);
         }
+    refresh_slot_keys();
     const uint32_t gen = registry_.max_generation();
     if (!have_core)
         note_records(code, gen);
@@ -689,11 +692,8 @@ std::string format_stats(const LoaderStats& st)
 
 namespace
 {
-std::atomic<uint64_t> g_removed_calls{0};
 } // namespace
 
-// The caller passes the arguments of the slot. The handler ignores them. The caller cleans the
-// argument registers or the stack in the ABIs that this project supports.
 void Loader::set_slot_key(const ThunkEntry& t)
 {
     const std::string cls = t.name.substr(0, t.name.find("::"));
@@ -706,7 +706,38 @@ void Loader::set_slot_key(const ThunkEntry& t)
     if (keys.size() < n)
         keys.resize(n, nullptr);
     keys[t.slot] = key_text_.insert(t.sig).first->c_str(); // the module of "t" can unload
-    r->slot_keys = keys.data();
+}
+
+// The key table of a class has the key of each keyed thunk. A slot that holds the removed handler
+// is defunct, and a call through it is wrong for a result that the caller builds in a buffer
+// (std::string, a handle, a struct), so such a slot gets a key that no signature matches. A slot of
+// a removed class gets kRemovedSlotKey: hot::call detaches and makes a default result. A defunct
+// slot of a live class (a removed function) gets kDefunctSlotKey: the call throws ScriptError. A
+// defunct slot that a function reuses gets its own key back at the next refresh. The tables stay allocated, so a record keeps a valid pointer.
+void Loader::refresh_slot_keys()
+{
+    const SlotFn removed = reinterpret_cast<SlotFn>(&StateBase::__removed);
+    for (const auto& [name, e] : registry_.entries())
+    {
+        ClassRecord* r = e.record;
+        const auto real = slot_keys_.find(name);
+        const auto eff = eff_keys_.find(name);
+        bool defunct = false;
+        for (uint32_t i = 0; r->slots && i < r->slot_count; ++i)
+            defunct |= r->slots[i] == removed;
+        if (!defunct && real == slot_keys_.end() && eff == eff_keys_.end())
+            continue;
+        std::vector<const char*>& keys = eff_keys_[name];
+        keys.assign(r->slot_count, nullptr);
+        if (real != slot_keys_.end())
+            for (size_t i = 0; i < keys.size() && i < real->second.size(); ++i)
+                keys[i] = real->second[i];
+        const char* const defunct_key = removed_.count(name) ? kRemovedSlotKey : kDefunctSlotKey;
+        for (uint32_t i = 0; r->slots && i < r->slot_count; ++i)
+            if (r->slots[i] == removed)
+                keys[i] = defunct_key;
+        r->slot_keys = keys.data();
+    }
 }
 
 const char* const* Loader::session_ifaces(const char* const* list)
@@ -759,21 +790,18 @@ void Loader::adopt_ifaces(ClassRecord* canon, const ClassRecord* in)
 
 void* removed_class_handler()
 {
-    if (g_removed_calls.fetch_add(1, std::memory_order_relaxed) == 0)
-        std::fprintf(stderr,
-            "[script] call of a method of a removed script class ignored (the class is no "
-            "longer in the source); later calls are counted only\n");
+    note_removed_call();
     return nullptr;
 }
 
-void* StateBase::__removed()
+HOT_EXPORT void* StateBase::__removed()
 {
     return removed_class_handler();
 }
 
 uint64_t removed_class_call_count()
 {
-    return g_removed_calls.load(std::memory_order_relaxed);
+    return removed_call_count();
 }
 
 ReloadResult Loader::request_reload(LoadResult built)
@@ -785,7 +813,7 @@ ReloadResult Loader::request_reload(LoadResult built)
     }
     // The host checked the LoadResult of the backend itself, then it calls this overload. A
     // backend failure becomes a result here. So a host needs no own mapping of the reason: a
-    // SlotsRemoved failure (a class lost slots, see hotc_lib.h) is a FullReloadRequired result.
+    // SlotsRemoved failure is a FullReloadRequired result. It is a safety net: hotc does not give it.
     if (!built.module)
     {
         const ReloadReason reason = built.reason == ReloadReason::None ? ReloadReason::CompileError : built.reason;
@@ -910,6 +938,8 @@ ReloadResult Loader::revert_unit(const std::string& unit, Backend& backend)
                 revert_slots_.push_back(std::move(table));
                 copy.slots = revert_slots_.back().data();
                 copy.slot_count = static_cast<uint32_t>(revert_slots_.back().size());
+                // The name array has only the entries of the AOT record. The padded slots have no name.
+                copy.slot_names = nullptr;
             }
             revert_records_.push_back(copy);
             st.add(&revert_records_.back(), e.create);
@@ -1205,6 +1235,7 @@ ReloadResult Loader::commit_locked()
         r->dtor = nullptr; // the script destructor belongs to a source that does not exist now
         r->new_default = nullptr; // the same: the factory makes an object without a constructor
         r->attributes = nullptr; // the text is in the module of a source that does not exist now
+        r->slot_names = nullptr; // the same
         r->ctors = nullptr; // the same: only the factory makes an object of a removed class
         r->iface_rows = nullptr; // the rows are in the module; the tables of the loader stay
         r->ifaces = session_ifaces(r->ifaces); // the module of the record can unload
@@ -1259,11 +1290,9 @@ ReloadResult Loader::commit_locked()
     // The slot count can grow. The key table of each class follows it.
     for (auto& [cls, keys] : slot_keys_)
         if (ClassEntry* ce = registry_.find(cls))
-        {
             if (keys.size() < ce->record->slot_count)
                 keys.resize(ce->record->slot_count, nullptr);
-            ce->record->slot_keys = keys.data();
-        }
+    refresh_slot_keys();
     if (P.have_core)
         cores_.push_back(std::move(P.core));
 

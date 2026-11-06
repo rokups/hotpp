@@ -105,9 +105,9 @@ TEST_P(BackendTests, RejectedReloadLeavesTheSlotsFileUnchanged)
     EXPECT_NE(slots_text(*backend), after_v1);
 }
 
-// A removed script function shrinks the slot count. hotc fails with the reason SlotsRemoved.
-// The Loader overload for a LoadResult gives FullReloadRequired.
-TEST_P(BackendTests, SlotsRemovalRequiresFullReload)
+// A removed script function keeps its slot as a defunct entry. The reload applies live. The
+// function that comes back with a new signature reuses the slot and gets a keyed thunk.
+TEST_P(BackendTests, RemovedFunctionReloadsLive)
 {
     hot::LoadResult v1 = backend->load(source("fnremoved_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
@@ -116,24 +116,114 @@ TEST_P(BackendTests, SlotsRemovalRequiresFullReload)
     s.commit_at_frame_boundary();
 
     hot::LoadResult v2 = backend->load(source("fnremoved_v2.hot"), 2);
-    ASSERT_FALSE(v2);
-    EXPECT_EQ(v2.reason, hot::ReloadReason::SlotsRemoved);
-    EXPECT_NE(v2.error.find("slot count must not shrink"), std::string::npos) << v2.error;
+    ASSERT_TRUE(v2) << v2.error;
+    EXPECT_EQ(v2.reason, hot::ReloadReason::None);
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    s.world.Tick(kDt); // the frame boundary commits: the generation is live
+    EXPECT_EQ(hot::active_generation, 2u);
+    if (is_files_backend(*backend))
+        EXPECT_NE(slots_text(*backend).find("Medic::rest 1"), std::string::npos) << slots_text(*backend);
 
-    const hot::ReloadResult res = s.loader.request_reload(std::move(v2));
-    EXPECT_FALSE(res);
-    EXPECT_EQ(res.status, hot::ReloadStatus::FullReloadRequired);
-    EXPECT_EQ(res.reason, hot::ReloadReason::SlotsRemoved);
-    EXPECT_FALSE(res.error.empty());
-    EXPECT_FALSE(s.loader.reload_pending());
-    EXPECT_EQ(hot::active_generation, 1u);
+    hot::LoadResult v3 = backend->load(source("fnremoved_v3.hot"), 3);
+    ASSERT_TRUE(v3) << v3.error;
+    EXPECT_EQ(v3.reason, hot::ReloadReason::None);
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v3.module)));
+    s.world.Tick(kDt);
+    EXPECT_EQ(hot::active_generation, 3u);
+    if (is_files_backend(*backend))
+    {
+        const std::string slots = slots_text(*backend);
+        // The slot line has the number after the name. The signature line has the signature.
+        const size_t first = slots.find("Medic::rest 1");
+        ASSERT_NE(first, std::string::npos) << slots;
+        EXPECT_EQ(slots.find("Medic::rest 1", first + 1), std::string::npos) << slots;
+        EXPECT_NE(slots.find("sig Medic::rest void(Actor*, int32_t)"), std::string::npos) << slots;
+    }
+}
+
+// A host call of a removed function through the old thunk throws ScriptError with the name of the
+// function. The call does not run the slot: a removed function can return a class by value, and the
+// caller then owns a result buffer. The call is a normal script error: the outermost call reports it
+// to the error handler and gives a default result (an empty string, 0, a null handle). A call inside
+// another call lets the error pass to the caller. The log line comes once for each function.
+TEST_P(BackendTests, CallOfARemovedFunctionThrows)
+{
+    hot::LoadResult v1 = backend->load(source("defunct_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Oracle"));
+    s.commit_at_frame_boundary();
+
+    auto label = reinterpret_cast<std::string (*)(Actor*)>(s.loader.thunk("Oracle::Label"));
+    auto score = reinterpret_cast<int (*)(Actor*)>(s.loader.thunk("Oracle::Score"));
+    auto friend_of = reinterpret_cast<std::shared_ptr<void> (*)(Actor*)>(s.loader.thunk("Oracle::Friend"));
+    ASSERT_NE(label, nullptr);
+    ASSERT_NE(score, nullptr);
+    ASSERT_NE(friend_of, nullptr);
+    EXPECT_EQ(label(s.actor), "gen1 label that does not fit in a small buffer");
+    EXPECT_EQ(score(s.actor), 7);
+    EXPECT_NE(friend_of(s.actor), nullptr);
+
+    hot::LoadResult v2 = backend->load(source("defunct_v2.hot"), 2); // after v1: it reads the slots of v1
+    ASSERT_TRUE(v2) << v2.error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    s.world.Tick(kDt); // the frame boundary commits: the generation is live
+    ASSERT_EQ(hot::active_generation, 2u);
+
+    const uint64_t calls0 = hot::removed_call_count();
+    std::vector<std::string> reports;
+    hot::set_script_error_handler([&reports](const hot::ScriptErrorReport& r) { reports.push_back(r.message); });
+    testing::internal::CaptureStderr();
+    // The outermost call reports the error and gives a default result.
+    EXPECT_EQ(label(s.actor), "");
+    EXPECT_EQ(label(s.actor), "");
+    EXPECT_EQ(score(s.actor), 0);
+    EXPECT_EQ(friend_of(s.actor), nullptr);
+    hot::set_script_error_handler(nullptr);
+    ASSERT_EQ(reports.size(), 4u);
+    EXPECT_NE(reports[0].find("call of removed script function Oracle::Label"), std::string::npos) << reports[0];
+    EXPECT_NE(reports[2].find("call of removed script function Oracle::Score"), std::string::npos) << reports[2];
+    EXPECT_NE(reports[3].find("call of removed script function Oracle::Friend"), std::string::npos) << reports[3];
+    // A call inside another call (the depth is 1 more): the error passes to the caller.
+    uint32_t& depth = hot::detail::call_depth();
+    ++depth;
+    auto thrown = [&](auto&& call) {
+        std::string what;
+        try
+        {
+            call();
+        }
+        catch (const hot::ScriptError& e)
+        {
+            what = e.what();
+        }
+        return what;
+    };
+    const std::string w_label = thrown([&] { label(s.actor); });
+    const std::string w_score = thrown([&] { score(s.actor); });
+    const std::string w_friend = thrown([&] { friend_of(s.actor); });
+    --depth;
+    EXPECT_NE(w_label.find("call of removed script function Oracle::Label"), std::string::npos) << w_label;
+    EXPECT_NE(w_score.find("call of removed script function Oracle::Score"), std::string::npos) << w_score;
+    EXPECT_NE(w_friend.find("call of removed script function Oracle::Friend"), std::string::npos) << w_friend;
+    const std::string log = testing::internal::GetCapturedStderr();
+    // One log line for each function, although each function was called more than once.
+    for (const char* fn : {"Oracle::Label", "Oracle::Score", "Oracle::Friend"})
+    {
+        const std::string line = std::string("call of removed script function ") + fn + " (";
+        const size_t at = log.find(line);
+        // A test that ran before in the process can have logged the line already.
+        EXPECT_TRUE(at == std::string::npos || log.find(line, at + 1) == std::string::npos) << log;
+    }
+    EXPECT_EQ(hot::removed_call_count(), calls0 + 7);
+    EXPECT_EQ(hot::active_generation, 2u);
+    s.world.Tick(kDt); // the object still works
 }
 
 // A script with a compile error is a failed reload, not a full reload.
 TEST_P(BackendTests, CompileErrorIsAFailedReload)
 {
-    // Build the bad script first: with the slot state of player_v1 it would fail for the removed
-    // functions (SlotsRemoved) before it reaches the type error.
+    // Build the bad script first, as generation 1. The slots file has no state of player_v1 yet.
     hot::LoadResult bad = backend->load(source("bad.hot"), 1);
     ASSERT_FALSE(bad);
     EXPECT_EQ(bad.reason, hot::ReloadReason::CompileError);
@@ -304,8 +394,8 @@ TEST_P(BackendTests, FullReloadSequenceAfterAParentChange)
     EXPECT_EQ(*host.field<int>("ticks"), saved_ticks + 2);
 }
 
-// A removed function needs a full reload. The fresh slots file has no entry of the old function.
-TEST_P(BackendTests, FullReloadSequenceAfterARemovedFunction)
+// A change of the script parent needs a full reload. The fresh slots file starts again.
+TEST_P(BackendTests, FullReloadSequenceAfterAScriptParentChange)
 {
     hot::LoadResult v1 = backend->load(source("fnremoved_v1.hot"), 1);
     ASSERT_TRUE(v1) << v1.error;
@@ -318,9 +408,21 @@ TEST_P(BackendTests, FullReloadSequenceAfterARemovedFunction)
         EXPECT_NE(slots_text(*backend).find("Medic::rest"), std::string::npos);
     }
 
-    hot::LoadResult v2 = backend->load(source("fnremoved_v2.hot"), 2);
-    ASSERT_FALSE(v2);
-    ASSERT_EQ(host.loader.request_reload(std::move(v2)).status, hot::ReloadStatus::FullReloadRequired);
+    // A live reload removes rest(): its slot is defunct and its line stays in the slots file.
+    hot::LoadResult removed = backend->load(source("fnremoved_v2.hot"), 2);
+    ASSERT_TRUE(removed) << removed.error;
+    ASSERT_RELOAD_OK(host.loader.request_reload(std::move(*removed.module)));
+    ASSERT_RELOAD_OK(host.loader.commit_pending());
+    ASSERT_EQ(hot::active_generation, 2u);
+    EXPECT_EQ(*host.field<int>("hp"), 42);
+    if (is_files_backend(*backend))
+        EXPECT_NE(slots_text(*backend).find("Medic::rest 1"), std::string::npos) << slots_text(*backend);
+
+    hot::LoadResult v2 = backend->load(source("medic_reparent.hot"), 3);
+    ASSERT_TRUE(v2) << v2.error;
+    const hot::ReloadResult req = host.loader.request_reload(std::move(*v2.module));
+    ASSERT_EQ(req.status, hot::ReloadStatus::FullReloadRequired) << req.error;
+    EXPECT_EQ(req.reason, hot::ReloadReason::ScriptParentChanged);
 
     const int saved_hp = *host.field<int>("hp");
     std::string error;
@@ -329,13 +431,26 @@ TEST_P(BackendTests, FullReloadSequenceAfterARemovedFunction)
     host.drop();
     ASSERT_TRUE(host.loader.reset(error)) << error;
 
-    hot::LoadResult fresh = backend->load(source("fnremoved_v2.hot"), 1, hot::LoadMode::Fresh);
+    hot::LoadResult fresh = backend->load(source("medic_reparent.hot"), 1, hot::LoadMode::Fresh);
     ASSERT_TRUE(fresh) << fresh.error;
     ASSERT_RELOAD_OK(host.loader.load(std::move(*fresh.module)));
     ASSERT_NO_FATAL_FAILURE(host.create("Medic"));
     *host.field<int>("hp") = saved_hp;
     EXPECT_EQ(*host.field<int>("hp"), 42);
     EXPECT_EQ(hot::active_generation, 1u);
+    if (is_files_backend(*backend))
+    {
+        const std::string slots = slots_text(*backend);
+        EXPECT_NE(slots.find("Medic::rest"), std::string::npos) << slots;
+        EXPECT_NE(slots.find("Medic::heal"), std::string::npos) << slots;
+    }
+
+    // A fresh load of a script without rest() drops the defunct entry of the old slots file.
+    host.drop();
+    ASSERT_TRUE(host.loader.reset(error)) << error;
+    hot::LoadResult without = backend->load(source("fnremoved_v2.hot"), 1, hot::LoadMode::Fresh);
+    ASSERT_TRUE(without) << without.error;
+    ASSERT_RELOAD_OK(host.loader.load(std::move(*without.module)));
     if (is_files_backend(*backend))
     {
         const std::string slots = slots_text(*backend);

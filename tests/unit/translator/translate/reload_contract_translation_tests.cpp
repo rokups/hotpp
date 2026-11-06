@@ -265,4 +265,64 @@ TEST(FieldRename, CppScriptWarns)
     EXPECT_TRUE(has(g2.warnings, "looks like a rename")) << g2.warnings;
 }
 
+// A removed function keeps its slot as a defunct entry. The reload applies live.
+std::string two_functions(const std::string& sub_params)
+{
+    return "class Counter {\n    int n = 0;\n    void add(int x1) { this.n = this.n + x1; }\n"
+           "    void sub(" + sub_params + ") { this.n = this.n - x1; }\n}\n";
+}
+
+TEST(DefunctSlots, RemovedFunctionKeepsItsSlot)
+{
+    const hotc::TranslateResult g1 = gen(two_functions("int x1"), 1, "");
+    ASSERT_TRUE(g1.ok) << g1.diagnostics;
+    const hotc::TranslateResult g2 = gen(counter("int x1", "this.n = this.n + x1;"), 2, g1.slots_out + g1.sigs_out);
+    ASSERT_TRUE(g2.ok) << g2.diagnostics;
+    EXPECT_EQ(g2.slots_out, g1.slots_out);
+    EXPECT_TRUE(has(g2.cpp, "reinterpret_cast<hot::SlotFn>(&hot::StateBase::__removed)")) << g2.cpp;
+    EXPECT_TRUE(has(g2.cpp, "SLOT_sub = ")) << g2.cpp;
+    EXPECT_TRUE(has(g2.cpp, "SLOT_COUNT = 2")) << g2.cpp;
+    EXPECT_TRUE(has(g2.sigs_out, "sig Counter::sub ")) << g2.sigs_out;
+    EXPECT_FALSE(g2.slots_removed);
+}
+
+TEST(DefunctSlots, ReturnedFunctionReusesItsSlot)
+{
+    const hotc::TranslateResult g1 = gen(two_functions("int x1"), 1, "");
+    ASSERT_TRUE(g1.ok) << g1.diagnostics;
+    const hotc::TranslateResult g2 = gen(counter("int x1", "this.n = this.n + x1;"), 2, g1.slots_out + g1.sigs_out);
+    ASSERT_TRUE(g2.ok) << g2.diagnostics;
+    const hotc::TranslateResult g3 = gen(two_functions("int x1"), 3, g2.slots_out + g2.sigs_out);
+    ASSERT_TRUE(g3.ok) << g3.diagnostics;
+    EXPECT_EQ(g3.slots_out, g1.slots_out);
+    EXPECT_FALSE(has(g3.cpp, "sub__thunk(")) << g3.cpp;
+    EXPECT_FALSE(has(g3.cpp, "__removed")) << g3.cpp;
+}
+
+TEST(DefunctSlots, ReturnedFunctionWithANewSignatureEmitsAKeyedThunk)
+{
+    const hotc::TranslateResult g1 = gen(two_functions("int x1"), 1, "");
+    ASSERT_TRUE(g1.ok) << g1.diagnostics;
+    const hotc::TranslateResult g2 = gen(counter("int x1", "this.n = this.n + x1;"), 2, g1.slots_out + g1.sigs_out);
+    ASSERT_TRUE(g2.ok) << g2.diagnostics;
+    const hotc::TranslateResult g3 = gen(two_functions("int x1, int x2"), 3, g2.slots_out + g2.sigs_out);
+    ASSERT_TRUE(g3.ok) << g3.diagnostics;
+    EXPECT_EQ(g3.slots_out, g1.slots_out);
+    EXPECT_TRUE(has(g3.cpp, "sub__thunk(")) << g3.cpp;
+}
+
+TEST(DefunctSlots, RemovedFamilyFunctionKeepsItsNumber)
+{
+    const std::string with_b = "class Base {\n    virtual void a() {}\n    void b() {}\n}\n"
+                               "class Child : Base {\n    void c() {}\n}\n";
+    const std::string no_b = "class Base {\n    virtual void a() {}\n}\n"
+                             "class Child : Base {\n    void c() {}\n}\n";
+    const hotc::TranslateResult g1 = gen(with_b, 1, "");
+    ASSERT_TRUE(g1.ok) << g1.diagnostics;
+    const hotc::TranslateResult g2 = gen(no_b, 2, g1.slots_out + g1.sigs_out);
+    ASSERT_TRUE(g2.ok) << g2.diagnostics;
+    EXPECT_EQ(g2.slots_out, g1.slots_out);
+    EXPECT_TRUE(has(g2.cpp, "__removed")) << g2.cpp;
+}
+
 } // namespace

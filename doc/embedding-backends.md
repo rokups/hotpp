@@ -51,7 +51,7 @@ hot::LoadResult built = backend.load({"player.hot", text}, 1);
 
 **Failure:** `LoadResult::error` has the diagnostics and `the compile of <script> failed (exit code N)`, or `cannot write <path>`.
 
-**Extra API:** `build(source, generation, out_so, error)` builds a `.so` without loading it (`hotc` uses it). `slots_file()` gives the slot file path. `compile_commands_json` and `run_command` are helpers.
+**Extra API:** `build(source, generation, out_so, error)` builds a `.so` without loading it (`hotc` uses it). `slots_file()` gives the slot file path. The file keeps the defunct slots of removed functions. `compile_commands_json` and `run_command` are helpers.
 
 **Sample:** [clang-files-backend](https://github.com/rokups/hotpp/tree/master/samples/clang-files-backend).
 

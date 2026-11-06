@@ -349,21 +349,19 @@ std::string compile_commands_json(const std::vector<CompileCommandEntry>& entrie
 bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation, const std::string& out_so,
     std::string& error, std::vector<std::string>* dependencies)
 {
-    return build_impl(source, generation, LoadMode::Reload, out_so, error, nullptr, nullptr, dependencies);
+    return build_impl(source, generation, LoadMode::Reload, out_so, error, nullptr, dependencies);
 }
 
 // "deferred_slots" null: write the slots file when the compile succeeds (the tool hotc).
 // Else give the new content of the slots file back, and leave the file as it is.
 bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generation, LoadMode mode,
-    const std::string& out_so, std::string& error, std::string* deferred_slots, bool* slots_removed,
+    const std::string& out_so, std::string& error, std::string* deferred_slots,
     std::vector<std::string>* dependencies)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     error.clear();
     if (dependencies)
         dependencies->clear();
-    if (slots_removed)
-        *slots_removed = false;
     std::error_code ec;
     const fs::path so_path(out_so);
     if (so_path.has_parent_path())
@@ -399,8 +397,6 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
         *dependencies = tr.dependencies; // also after a failure
     if (!tr.ok)
     {
-        if (slots_removed)
-            *slots_removed = tr.slots_removed;
         error = opt_.raw_diagnostics
             ? tr.diagnostics
             : hotc::rewrite_translator_diagnostic(tr.diagnostics, hotc::script_texts(source.name, source.text, tr));
@@ -481,10 +477,9 @@ LoadResult ClangFilesBackend::load(const ScriptSource& source, uint32_t generati
         + "." + std::to_string(sequence_++) + module_suffix();
     LoadResult r;
     std::string slots;
-    bool slots_removed = false;
-    if (!build_impl(source, generation, mode, so, r.error, &slots, &slots_removed, &r.dependencies))
+    if (!build_impl(source, generation, mode, so, r.error, &slots, &r.dependencies))
     {
-        r.reason = slots_removed ? ReloadReason::SlotsRemoved : ReloadReason::CompileError;
+        r.reason = ReloadReason::CompileError;
         return r;
     }
     // Check now that the slots file is writable: the write at on_accept time then rarely fails.

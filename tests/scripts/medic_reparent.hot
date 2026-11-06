@@ -1,0 +1,23 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// The script parent of Medic changes (full reload). Generation 1 is fnremoved_v1.hot.
+// There, Medic derives from the native class Actor. Here, it derives from the script class Base.
+using "Actor.h";
+
+class Base : Actor {
+    int level = 1;
+}
+
+class Medic : Base {
+    int hp = 10;
+
+    void heal(int amount) {
+        this.hp = this.hp + amount;
+    }
+
+    void rest() {
+        this.hp = this.hp + 1;
+    }
+}

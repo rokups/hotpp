@@ -2,7 +2,8 @@
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
-// Generation 2 of the removed function test (full reload). The function rest() is gone.
+// Generation 2 of the removed function test. The function rest() is gone.
+// Its slot stays defunct. The reload applies live.
 using "Actor.h";
 
 class Medic : Actor {
