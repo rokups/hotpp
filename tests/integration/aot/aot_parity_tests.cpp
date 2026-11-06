@@ -8,6 +8,7 @@
 #include "demo_run.h"
 #include "hot/backend.h"
 #include "hot/runtime.h"
+#include "support/llvm_tool.h"
 #include "support/process.h"
 #include "support/script_files.h"
 
@@ -198,21 +199,6 @@ std::string self_exe_path()
 #endif
 }
 
-#ifdef _WIN32
-// The command of an LLVM tool for run_process (Windows). The tool is in HOT_LLVM_TOOLS_DIR when
-// the folder is known and has the tool. Else the command is the name with ".exe", and PATH finds it.
-std::string llvm_tool(const std::string& name)
-{
-    #ifdef HOT_LLVM_TOOLS_DIR
-    const std::filesystem::path in_dir = std::filesystem::path(HOT_LLVM_TOOLS_DIR) / (name + ".exe");
-    std::error_code ec;
-    if (std::filesystem::exists(in_dir, ec))
-        return in_dir.string();
-    #endif
-    return name + ".exe";
-}
-#endif
-
 // A PE image from MSVC has no symbols. They are in the PDB file. MinGW writes a COFF symbol table
 // into the image, so llvm-nm reads it. The check text of MSVC has the mangled names of the PDB.
 #if defined(_WIN32) && !defined(__MINGW32__)
@@ -260,9 +246,9 @@ std::string symbols_of(const std::string& path)
     if (!std::filesystem::exists(pdb, ec))
         return {};
     const test_support::RunResult r =
-        test_support::run_process({llvm_tool("llvm-pdbutil"), "dump", "--publics", pdb.string()});
+        test_support::run_process({test_support::llvm_tool("llvm-pdbutil"), "dump", "--publics", pdb.string()});
 #elif defined(_WIN32)
-    const test_support::RunResult r = test_support::run_process({llvm_tool("llvm-nm"), "-C", path});
+    const test_support::RunResult r = test_support::run_process({test_support::llvm_tool("llvm-nm"), "-C", path});
 #else
     const test_support::RunResult r = test_support::run_process({"nm", "-C", path});
 #endif
@@ -319,7 +305,7 @@ TEST(AotLink, AotProgramNeedsNoClangLibrary)
     std::string needed;
 #ifdef _WIN32
     const test_support::RunResult imports =
-        test_support::run_process({llvm_tool("llvm-readobj"), "--coff-imports", AOT_DEMO_PATH});
+        test_support::run_process({test_support::llvm_tool("llvm-readobj"), "--coff-imports", AOT_DEMO_PATH});
     if (imports.exit_code == 0)
     {
         std::istringstream lines(test_support::lf_only(imports.output));

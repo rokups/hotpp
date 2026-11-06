@@ -50,4 +50,10 @@ endif()
 if(HOT_JIT_ENABLED)
     target_compile_definitions(integration_backend_tests PRIVATE HOT_RESOURCE_DIR="${CLANG_RESOURCE_DIR}")
 endif()
+# The folder of the LLVM tools (llvm-dwarfdump) for the debug info tests on Windows. It is the "bin"
+# folder of the LLVM release that has libclang.dll. It can be empty: the tests then search PATH.
+if(HOT_LIBCLANG_DLL)
+    get_filename_component(_hot_llvm_tools_dir "${HOT_LIBCLANG_DLL}" DIRECTORY)
+    target_compile_definitions(integration_backend_tests PRIVATE HOT_LLVM_TOOLS_DIR="${_hot_llvm_tools_dir}")
+endif()
 hot_gtest(integration_backend_tests)

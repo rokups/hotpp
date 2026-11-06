@@ -6,6 +6,7 @@
 // the functions of the debug info.
 #pragma once
 
+#include "llvm_tool.h"
 #include "process.h"
 
 #include <cstdio>
@@ -21,28 +22,26 @@ namespace test_support
 
 // True when llvm-dwarfdump runs. A test skips when it does not.
 // MSVC host: the modules have the target x86_64-pc-windows-msvc. Their debug info is CodeView
-// (a PDB), not DWARF. The tests read DWARF, so they skip.
+// (a PDB), not DWARF. The tests read DWARF, so they skip. MinGW has DWARF.
 inline bool have_dwarfdump()
 {
 #if defined(_MSC_VER)
     return false;
-#elif defined(_WIN32)
-    return std::system("llvm-dwarfdump --version >NUL 2>&1") == 0;
 #else
-    return std::system("llvm-dwarfdump --version >/dev/null 2>&1") == 0;
+    return run_process({llvm_tool("llvm-dwarfdump"), "--version"}).exit_code == 0;
 #endif
 }
 
-// Runs a program from an argument list. Gives stdout and stderr in one text.
+// Runs a program from an argument list. Gives stdout and stderr in one text. The line ends are "\n".
 inline std::string run_capture(const std::vector<std::string>& argv)
 {
-    return run_process(argv).output;
+    return lf_only(run_process(argv).output);
 }
 
 // The text of "llvm-dwarfdump --debug-line file".
 inline std::string dump_line_table(const std::string& file)
 {
-    return run_capture({"llvm-dwarfdump", "--debug-line", file});
+    return run_capture({llvm_tool("llvm-dwarfdump"), "--debug-line", file});
 }
 
 // One row of the line table. The file is the name from the file table of the row.
@@ -54,11 +53,15 @@ struct LineRow
 };
 
 // True when the name in the file table is the base name, or a path that ends with "/base_name".
+// A Windows path can have a backslash as the separator, also mixed with "/".
 inline bool file_has_base_name(const std::string& n, const std::string& base_name)
 {
-    return n == base_name
-        || (n.size() > base_name.size() && n.compare(n.size() - base_name.size(), base_name.size(), base_name) == 0
-            && n[n.size() - base_name.size() - 1] == '/');
+    if (n == base_name)
+        return true;
+    if (n.size() <= base_name.size() || n.compare(n.size() - base_name.size(), base_name.size(), base_name) != 0)
+        return false;
+    const char separator = n[n.size() - base_name.size() - 1];
+    return separator == '/' || separator == '\\';
 }
 
 // All rows of the line table, in the order of the dump.
@@ -118,7 +121,7 @@ inline std::set<int> lines_of_file(const std::string& dump, const std::string& b
 // The text of "llvm-dwarfdump --debug-info file".
 inline std::string dump_debug_info(const std::string& file)
 {
-    return run_capture({"llvm-dwarfdump", "--debug-info", file});
+    return run_capture({llvm_tool("llvm-dwarfdump"), "--debug-info", file});
 }
 
 // A variable or a parameter of a function.

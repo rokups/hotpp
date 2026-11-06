@@ -9,7 +9,9 @@
 // The debugger itself (lldb, gdb) is not started here.
 //
 // CMake defines these macros: HOT_SOURCE_DIR, HOT_SCRATCH_DIR, HOT_CXX and PRE_V2_SO.
+#include "hot/command_line.h"
 #include "hot/hotc_lib.h"
+#include "hot/paths.h"
 #include "support/dwarf_lines.h"
 #include "support/scratch_dir.h"
 #include "support/script_files.h"
@@ -34,6 +36,35 @@ int heal_line()
 {
     return test_support::line_with(
         test_support::read_file(std::string(HOT_SOURCE_DIR) + "/tests/scripts/player_v2.hot"), "Math.Min");
+}
+
+// The start of a command of the script compiler. It has the target flags of the build: the
+// triple, the sysroot and, for MinGW, the libstdc++ headers of the sysroot (as the backend). They
+// are empty on Linux. Windows has no position independent code flag.
+std::vector<std::string> cxx_command()
+{
+    static const hot::DefaultPaths paths = hot::default_paths();
+    std::vector<std::string> argv = {HOT_CXX};
+    if (!paths.target_triple.empty())
+        argv.push_back("--target=" + paths.target_triple);
+    if (!paths.sysroot.empty())
+        argv.push_back("--sysroot=" + paths.sysroot);
+    const std::vector<std::string> mingw = hot::mingw_target_flags(paths.target_triple, paths.sysroot);
+    argv.insert(argv.end(), mingw.begin(), mingw.end());
+    if (!mingw.empty())
+        argv.push_back("-Wno-unused-command-line-argument");
+#ifndef _WIN32
+    argv.push_back("-fPIC");
+#endif
+    return argv;
+}
+
+// The import library of the host. A module DLL on Windows links it to reach the runtime symbols.
+// It is empty on other systems.
+std::string host_import_library()
+{
+    static const hot::DefaultPaths paths = hot::default_paths();
+    return paths.host_import_library;
 }
 
 // A script that the test translated and compiled with "-g" and a given optimization flag.
@@ -75,9 +106,13 @@ const Compiled& compile_with_debug_info(const std::string& script, const std::st
     }
     const std::string library = dir + "/" + script + opt + ".so";
     fs::remove(library);
-    const std::string compile_output = test_support::run_capture({HOT_CXX, "-std=c++20", opt, "-fPIC", "-shared", "-g",
-        "-I", std::string(HOT_SOURCE_DIR) + "/include", "-I", std::string(HOT_SOURCE_DIR) + "/tests/engine",
-        to.output_name, "-o", library});
+    std::vector<std::string> argv = cxx_command();
+    argv.insert(argv.end(), {"-std=c++20", opt, "-shared", "-g", "-I", std::string(HOT_SOURCE_DIR) + "/include", "-I",
+                                std::string(HOT_SOURCE_DIR) + "/tests/engine", to.output_name});
+    if (!host_import_library().empty())
+        argv.push_back(host_import_library());
+    argv.insert(argv.end(), {"-o", library});
+    const std::string compile_output = test_support::run_capture(argv);
     EXPECT_TRUE(fs::exists(library)) << compile_output;
     if (!fs::exists(library))
         return cache[key] = c;
@@ -144,9 +179,10 @@ TEST(DebugInfo, LineTablesOnlyKeepsTheScriptLines)
         std::ofstream(to.output_name) << tr.cpp;
     }
     const std::string object = dir + "/player_v2.o";
-    const std::string compile_output = test_support::run_capture({HOT_CXX, "-std=c++20", "-O1", "-fPIC",
-        "-gline-tables-only", "-I", std::string(HOT_SOURCE_DIR) + "/include", "-I",
-        std::string(HOT_SOURCE_DIR) + "/tests/engine", "-c", to.output_name, "-o", object});
+    std::vector<std::string> argv = cxx_command();
+    argv.insert(argv.end(), {"-std=c++20", "-O1", "-gline-tables-only", "-I", std::string(HOT_SOURCE_DIR) + "/include",
+                                "-I", std::string(HOT_SOURCE_DIR) + "/tests/engine", "-c", to.output_name, "-o", object});
+    const std::string compile_output = test_support::run_capture(argv);
     ASSERT_TRUE(fs::exists(object)) << compile_output;
     const std::string dump = test_support::dump_line_table(object);
     const std::set<int> lines = test_support::lines_of_file(dump, "player_v2.hot");
