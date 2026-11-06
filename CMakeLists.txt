@@ -349,6 +349,7 @@ if(HOT_BUILD_TESTS)
                 -DBUILD_DIR=${CMAKE_BINARY_DIR} -DSAMPLE_DIR=${PROJECT_SOURCE_DIR}/samples/aot
                 -DWORK_DIR=${CMAKE_BINARY_DIR}/sdk_install
                 -DCXX_COMPILER=${CMAKE_CXX_COMPILER} "-DCXX_FLAGS=${CMAKE_CXX_FLAGS}"
+                -DSCRIPT_COMPILER=${HOT_SCRIPT_COMPILER}
                 -DGENERATOR=${CMAKE_GENERATOR} -DCONFIG=$<CONFIG>
                 -P ${PROJECT_SOURCE_DIR}/cmake/SdkInstallTest.cmake)
         set_tests_properties(sdk_install_sample PROPERTIES LABELS sdk TIMEOUT 600)

@@ -131,7 +131,23 @@ if(NOT TARGET libclang AND NOT HOT_CLANG_C_LIBRARY)
             enable_language(C)
         endif()
     endif()
+    # LLVMConfig.cmake of the LLVM release for Windows sets CMAKE_MSVC_RUNTIME_LIBRARY to
+    # MultiThreaded (/MT). find_package has no variable scope of its own, so the value goes into
+    # the directory of the consumer. Then all its targets use /MT, and they do not link with the
+    # /MD libraries of the SDK (LNK2038). Keep the value of the consumer.
+    set(_hot_had_msvc_runtime OFF)
+    if(DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
+        set(_hot_had_msvc_runtime ON)
+        set(_hot_msvc_runtime "${CMAKE_MSVC_RUNTIME_LIBRARY}")
+    endif()
     find_package(Clang CONFIG QUIET ${_hot_clang_hints})
+    if(_hot_had_msvc_runtime)
+        set(CMAKE_MSVC_RUNTIME_LIBRARY "${_hot_msvc_runtime}")
+    else()
+        unset(CMAKE_MSVC_RUNTIME_LIBRARY)
+    endif()
+    unset(_hot_had_msvc_runtime)
+    unset(_hot_msvc_runtime)
 endif()
 # The package must have the major version of the SDK build. Else use the fallback.
 set(_hot_use_package OFF)

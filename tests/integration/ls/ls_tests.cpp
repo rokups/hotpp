@@ -34,10 +34,17 @@
 using ls_test::json;
 using ls_test::LsClient;
 using translator_test::TempDir;
-using translator_test::write_file;
 
 namespace
 {
+
+// Writes the bytes of "text" unchanged. The text mode of the C runtime on Windows writes "\r\n"
+// for "\n". Then the file on disk is not the text that the test sends in "didOpen", and the
+// server stores no shard when the document closes (store_closed_shard compares the two texts).
+void write_file(const std::filesystem::path& path, const std::string& text)
+{
+    std::ofstream(path, std::ios::binary) << text;
+}
 
 // The 0-based lines: 0 using, 2 class, 3 hp, 5 Tick, 6 Move, 7 heal call, 10 heal, 11 hp.
 const char* const kScript =
@@ -2053,8 +2060,28 @@ TEST(LanguageServer, BackgroundIndexFindsAScriptSymbolInAGeneratedFile)
         if (found.is_null())
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
-    ASSERT_FALSE(found.is_null()) << "the index has no script symbol for " << uri_of(script) << "\n"
-                                   << last.dump().substr(0, 3000);
+    if (found.is_null())
+    {
+        // The diagnostics for a failure: the lines of the clangd log that tell the state of the
+        // background index, and the compilation database. An empty answer can come from clangd
+        // (no index) or from hot-ls (a symbol of the generated file that has no script location).
+        std::string notes;
+        std::ifstream log(opt.clangd_log, std::ios::binary);
+        for (std::string line; std::getline(log, line);)
+            if (line.rfind("E[", 0) == 0 || line.find("ndex") != std::string::npos
+                || line.find("compilation database") != std::string::npos
+                || line.find("workspace/symbol") != std::string::npos)
+                notes += line.substr(0, 300) + "\n";
+        if (notes.size() > 6000)
+            notes = notes.substr(notes.size() - 6000);
+        std::ifstream db(dir.path() / "compile_commands.json", std::ios::binary);
+        std::stringstream db_text;
+        db_text << db.rdbuf();
+        FAIL() << "the index has no script symbol for " << uri_of(script) << "\n"
+               << last.dump().substr(0, 3000) << "\nclangd log (" << opt.clangd_log << "):\n"
+               << notes << "\ncompile_commands.json:\n"
+               << db_text.str().substr(0, 2000);
+    }
     EXPECT_EQ(found["name"], "Player.heal");
     EXPECT_EQ(found["location"]["range"]["start"]["line"], 10);
 }
