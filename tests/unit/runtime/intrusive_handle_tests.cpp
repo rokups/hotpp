@@ -228,3 +228,32 @@ TEST_F(IntrusiveFixture, AddressOfTheDereferenceIsTheRawPointer)
 }
 
 } // namespace
+
+// "$C h = node.GetComponent<C>()": a raw pointer of a native call becomes a handle (hot::handle_from_raw).
+// An intrusive handle takes a new reference. A null pointer gives a null handle. A handle passes through.
+TEST(HandleFromRaw, IntrusiveHandleFromARawPointer)
+{
+    BaseH owner(new RcDerived());
+    RcBase* raw = owner.get();
+    DerivedH d = hot::handle_from_raw<DerivedH>(static_cast<RcDerived*>(raw));
+    EXPECT_EQ(raw->refs, 2);
+    EXPECT_TRUE(hot::handle_from_raw<DerivedH>(static_cast<RcDerived*>(nullptr)) == nullptr);
+    DerivedH copy = hot::handle_from_raw<DerivedH>(d);
+    EXPECT_EQ(raw->refs, 3);
+}
+
+namespace
+{
+struct SharedObj : std::enable_shared_from_this<SharedObj>
+{
+    int v = 4;
+};
+} // namespace
+
+TEST(HandleFromRaw, SharedHandleFromARawPointer)
+{
+    auto owner = std::make_shared<SharedObj>();
+    std::shared_ptr<SharedObj> h = hot::handle_from_raw<std::shared_ptr<SharedObj>>(owner.get());
+    EXPECT_EQ(h, owner);
+    EXPECT_EQ(hot::handle_from_raw<std::shared_ptr<SharedObj>>(static_cast<SharedObj*>(nullptr)), nullptr);
+}

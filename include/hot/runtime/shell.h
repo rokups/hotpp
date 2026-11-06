@@ -435,6 +435,28 @@ template <class H, class S> HOT_HIDDEN H handle_from_this(S* self)
     }
 }
 
+// A handle "H" of an object that a raw pointer of a native call gives, for example
+// "$C h = node.GetComponent<C>()" or "p as $C". A value that converts to "H" passes through.
+// A null pointer gives a null handle. A raw pointer uses handle_from_this: shared_from_this for a
+// std::shared_ptr handle, else "H(p)" (an intrusive handle takes a new reference).
+template <class H, class P> HOT_HIDDEN H handle_from_raw(P&& p)
+{
+    using D = std::decay_t<P>;
+    if constexpr (std::is_convertible_v<P&&, H>)
+        return H(std::forward<P>(p));
+    else if constexpr (std::is_pointer_v<D>)
+    {
+        if (!p)
+            return H();
+        return handle_from_this<H>(p);
+    }
+    else
+    {
+        static_assert(detail::has_get_v<D>, "hot::handle_from_raw needs a pointer or a handle");
+        return handle_from_raw<H>(detail::get_raw(p));
+    }
+}
+
 // The address of a [value] script object, for a property access on another object.
 template <class T> HOT_HIDDEN T* value_ptr(T& v)
 {

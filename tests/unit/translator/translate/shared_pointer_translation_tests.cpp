@@ -26,7 +26,8 @@ const char* kShapeHeader =
     "struct Pt { int x = 0; };\n"
     "struct Rc { void AddRef(); void Release(); virtual ~Rc() {} };\n"
     "struct Owned : std::enable_shared_from_this<Owned> { virtual ~Owned() {} };\n"
-    "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n";
+    "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n"
+    "struct Host { template <class T> T* Get() const { return nullptr; } Widget* Any() const { return nullptr; } };\n";
 
 const char* kShapeStubs = "[native, handle(\"std::shared_ptr<$T>\")] class Shape;\n"
                           "[native, handle(\"std::shared_ptr<$T>\")] class Owned;\n"
@@ -188,4 +189,26 @@ TEST(SharedPointerFactory, FactoryNeedsAPlaceholder)
         "[native, handle(\"std::shared_ptr<$T>\"), factory(\"std::make_shared\")] class Shape;\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "'factory' needs a template with '$T'")) << r.diagnostics;
+}
+
+// A raw pointer of a script class from a native call becomes a handle at run time (hot::handle_from_raw).
+TEST(SharedPointerRules, NativeCallResultToTheScriptClassHandle)
+{
+    const hotc::TranslateResult r = shape_translate("    void Run(Host* h) { if (h == null) return; $Foo f = h.Get<Foo>(); }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "hot::handle_from_raw<std::shared_ptr<Foo>>(")) << r.cpp;
+}
+
+TEST(SharedPointerRules, AsOfARawPointerToTheScriptClassHandle)
+{
+    const hotc::TranslateResult r = shape_translate("    void Run(Host* h) { if (h == null) return; $Foo f = h.Any() as $Foo; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "hot::handle_from_raw<std::shared_ptr<Foo>>(hot::as_script<Foo_Shell>(")) << r.cpp;
+}
+
+TEST(SharedPointerRules, ScriptHandleToScriptHandleIsNotWrapped)
+{
+    const hotc::TranslateResult r = shape_translate("    void Run($Foo a) { $Foo f = a; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_FALSE(has(r.cpp, "hot::handle_from_raw")) << r.cpp;
 }

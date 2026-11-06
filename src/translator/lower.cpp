@@ -1607,6 +1607,36 @@ struct Lowerer
         error(pos_of(*e), kRawToSharedError);
     }
 
+    // "$C x = node.GetComponent<C>()" and "$C x = p as $C" of a script class C: the source is a raw
+    // pointer of C (a native call, or "as" on a raw pointer or on a non-std handle). The raw pointer
+    // cannot initialize the handle in C++, so "hot::handle_from_raw<H>(...)" makes the handle at run time.
+    // A source of an unknown type is wrapped too: the helper passes a value that converts to H through.
+    void wrap_native_to_script_handle(ExprP& e, const std::string& type)
+    {
+        if (!e || type.empty() || !cx.types || type.compare(0, 1, "$") != 0)
+            return;
+        if (std::holds_alternative<ThisExpr>(e->v) || std::holds_alternative<NullExpr>(e->v))
+            return;
+        const std::string cls = handle_class(type);
+        const ClassDef* d = cls.empty() ? nullptr : class_named(cls);
+        if (!d || d->is_value)
+            return;
+        const auto* tt = std::get_if<TypeTestExpr>(&e->v);
+        const bool as_cast = tt && tt->is_as;
+        const std::string src = type_of(*e);
+        if (!as_cast && !src.empty() && !raw_pointer_source(*e))
+            return; // a known type: a handle, or a value that the C++ compiler checks
+        if (!as_cast && (std::holds_alternative<UnaryExpr>(e->v) || std::holds_alternative<NewExpr>(e->v)))
+            return;
+        const std::string h = cx.types->cpp_storage(handle_form(type), TypeModel::StorageUse::Local);
+        if (h == type)
+            return;
+        const uint32_t pos = pos_of(*e);
+        std::vector<ExprP> a;
+        a.push_back(std::move(e));
+        e = call_of("hot::handle_from_raw<" + h + ">", std::move(a), pos);
+    }
+
     // "$Derived x = b" with a "$Base" value "b" needs a cast. "$Base x = d" needs nothing.
     void check_downcast(const ExprP& e, const std::string& type)
     {
@@ -1672,6 +1702,7 @@ struct Lowerer
             }
         check_raw_to_handle(e, type);
         check_downcast(e, type);
+        wrap_native_to_script_handle(e, type);
         if (!e || type.empty() || !cx.types || !cx.allow_this)
             return;
         if (!std::holds_alternative<ThisExpr>(e->v))
