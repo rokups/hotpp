@@ -6,11 +6,19 @@
 # tests each SDK on a clean runner. A push to master then puts the SDKs in the release "latest".
 #
 # Jobs:
-#   linux              Build and test on Linux. Make hotpp-sdk-linux-x86_64.tar.gz.
+#   linux              Build and test on Linux with the files backend only (no JIT). Make
+#                      hotpp-sdk-linux-x86_64.tar.gz.
+#   build-linux        Build the test build of Linux once, with both backends. Upload the build tree.
+#   test-linux         Download the build tree. Four jobs run in parallel: files, jit, aot, aot-optimized.
+#   test-linux-jit-only  Build and test on Linux with the JIT backend only (no files backend).
 #   windows-msvc       Build and test on Windows with MSVC. Make hotpp-sdk-windows-x86_64.zip.
 #   sdk-smoke-linux    Unpack the Linux SDK on a clean Ubuntu 24.04 runner. Run tests/sdk_smoke/run.cmake.
 #   sdk-smoke-windows  Unpack the Windows SDK on a clean Windows runner. Run the same script with MSVC.
 #   release            Push to master only. Move the tag "latest" and replace the release assets.
+#
+# The tests run in three configurations: both backends (build-linux and test-linux), the files
+# backend only (linux) and the JIT backend only (test-linux-jit-only). The runs overlap on purpose,
+# so a fault shows early: each AOT test runs in several jobs.
 #
 # Each SDK comes from a second build with HOT_PORTABLE=ON and HOT_BUILD_TESTS=OFF. Such a build
 # has no build paths in the binaries (CMakeLists.txt). The tests need the build paths, so the
@@ -73,7 +81,8 @@ jobs:
       # All tests run. No test is excluded: the Linux suite is fast in parallel. The tests that
       # need a tool get it here: node (VscodeGrammar and the other editor tests) comes with the
       # runner, and clangd comes from apt. The packaging of the VS Code extension needs vsce. The
-      # runner has no vsce, so the build skips that part.
+      # runner has no vsce, so the build skips that part. This build has the files backend only:
+      # it is the test of a build without the JIT backend. The files backend is the default here.
       - name: Test
         run: ctest --preset linux-clang-files-rel -j "$(nproc)"
 
@@ -97,6 +106,159 @@ jobs:
           name: hotpp-sdk-linux-x86_64
           path: dist/hotpp-sdk-linux-x86_64.tar.gz
           if-no-files-found: error
+
+  # The test build is one build with both run-time backends (the preset linux-clang-both). The
+  # job builds all targets once. The job test-linux uses the build tree of this job. The tests
+  # keep the absolute paths of the build tree, so the test jobs use the same path (the checkout
+  # of the same repository on the same runner image). tar keeps the file modes and the symbolic
+  # links. The tree goes in the archive whole: the tests need the executables, the libraries,
+  # the generated files and the CMake files, and some tests use the build tree again.
+  build-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install LLVM, Clang and Ninja
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc > /dev/null
+          echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-${LLVM_VERSION} main" | sudo tee /etc/apt/sources.list.d/llvm.list
+          sudo apt-get update
+          sudo apt-get install -y clang-${LLVM_VERSION} clangd-${LLVM_VERSION} libclang-${LLVM_VERSION}-dev llvm-${LLVM_VERSION}-dev ninja-build
+          # The presets use "clang" and "clang++". This folder has them for the pinned version.
+          echo "/usr/lib/llvm-${LLVM_VERSION}/bin" >> "$GITHUB_PATH"
+          echo "CPM_SOURCE_CACHE=$HOME/.cache/cpm" >> "$GITHUB_ENV"
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/cpm
+          key: cpm-linux-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+          restore-keys: cpm-linux-
+
+      - name: Configure
+        run: cmake --preset linux-clang-both
+
+      - name: Build
+        run: cmake --build --preset linux-clang-both-rel
+
+      - name: Pack the build tree
+        run: tar -C cmake-build -I 'zstd -T0 -3' -cf "$RUNNER_TEMP/linux-clang-both.tar.zst" linux-clang-both
+
+      # The archive is compressed, so the upload does not compress it again.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: build-linux-clang-both
+          path: ${{ runner.temp }}/linux-clang-both.tar.zst
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
+  # Each backend has its own runner, so the four test runs are parallel. Each job runs ctest on
+  # the build of build-linux. The jobs files and jit run the full suite, with the run-time
+  # backend (HOT_BACKEND). AOT has no run-time switch: the AOT tests are separate test programs.
+  # They have the ctest label "aot" (plain AOT) or "aot-opt" (optimized AOT), set in
+  # tests/integration/aot/CMakeLists.txt. The jobs aot and aot-optimized run only the AOT tests
+  # of one variant, so each AOT variant has its own status. The label "aot-opt" has the parity
+  # test (AotParity, AotLink), which compares the plain and the optimized AOT programs.
+  # The AOT tests run again in the jobs files and jit, in the job linux and in the job
+  # test-linux-jit-only. The duplicate runs are on purpose: they give more chances to find a
+  # fault early. The regex of -L is not anchored by default, so "aot" without anchors also
+  # matches "aot-opt".
+  # No test is excluded: the Linux suite is fast in parallel. The tools for the tests are the
+  # same as in the job linux (node comes with the runner, clangd comes from apt). The jobs files
+  # and jit run clang and LLVM at run time, so all jobs install them.
+  test-linux:
+    name: test-linux (${{ matrix.name }})
+    needs: build-linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: files
+            backend: files
+          - name: jit
+            backend: jit
+          - name: aot
+            args: -L ^aot$
+          - name: aot-optimized
+            args: -L ^aot-opt$
+    env:
+      BACKEND: ${{ matrix.backend }}
+      ARGS: ${{ matrix.args }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install LLVM, Clang and Ninja
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc > /dev/null
+          echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-${LLVM_VERSION} main" | sudo tee /etc/apt/sources.list.d/llvm.list
+          sudo apt-get update
+          sudo apt-get install -y clang-${LLVM_VERSION} clangd-${LLVM_VERSION} libclang-${LLVM_VERSION}-dev llvm-${LLVM_VERSION}-dev ninja-build
+          # The presets use "clang" and "clang++". This folder has them for the pinned version.
+          echo "/usr/lib/llvm-${LLVM_VERSION}/bin" >> "$GITHUB_PATH"
+          echo "CPM_SOURCE_CACHE=$HOME/.cache/cpm" >> "$GITHUB_ENV"
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/cpm
+          key: cpm-linux-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+          restore-keys: cpm-linux-
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: build-linux-clang-both
+          path: ${{ runner.temp }}/artifact
+
+      - name: Unpack the build tree
+        run: |
+          mkdir -p cmake-build
+          tar -C cmake-build -I 'zstd -d' -xf "$RUNNER_TEMP/artifact/linux-clang-both.tar.zst"
+
+      # An empty BACKEND keeps the default backend (the AOT tests do not use HOT_BACKEND). An empty
+      # ARGS runs all tests.
+      - name: Test
+        run: |
+          if [ -n "$BACKEND" ]; then export HOT_BACKEND="$BACKEND"; fi
+          # shellcheck disable=SC2086
+          ctest --preset linux-clang-both-rel -j "$(nproc)" $ARGS
+
+  # The JIT backend only (the preset linux-clang-jit): the build has no files backend. It tests
+  # a build that a user can make, and the shared build of build-linux cannot show its faults.
+  # The job builds on its own runner, so it does not wait for build-linux.
+  test-linux-jit-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install LLVM, Clang and Ninja
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc > /dev/null
+          echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-${LLVM_VERSION} main" | sudo tee /etc/apt/sources.list.d/llvm.list
+          sudo apt-get update
+          sudo apt-get install -y clang-${LLVM_VERSION} clangd-${LLVM_VERSION} libclang-${LLVM_VERSION}-dev llvm-${LLVM_VERSION}-dev ninja-build
+          # The presets use "clang" and "clang++". This folder has them for the pinned version.
+          echo "/usr/lib/llvm-${LLVM_VERSION}/bin" >> "$GITHUB_PATH"
+          echo "CPM_SOURCE_CACHE=$HOME/.cache/cpm" >> "$GITHUB_ENV"
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/cpm
+          key: cpm-linux-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+          restore-keys: cpm-linux-
+
+      - name: Configure
+        run: cmake --preset linux-clang-jit
+
+      - name: Build
+        run: cmake --build --preset linux-clang-jit-rel
+
+      - name: Test
+        env:
+          HOT_BACKEND: jit
+        run: ctest --preset linux-clang-jit-rel -j "$(nproc)"
 
   # The native Windows build with MSVC (the preset vs-files). cl.exe builds hotc, the runtime and
   # the tests. clang++.exe of the LLVM release compiles the script modules. All tests run, except
@@ -299,7 +461,7 @@ jobs:
   # time, and a new job does not cancel the job in progress. A job that is not for the head of
   # master does not release (the step below).
   release:
-    needs: [linux, windows-msvc, sdk-smoke-linux, sdk-smoke-windows]
+    needs: [linux, test-linux, test-linux-jit-only, windows-msvc, sdk-smoke-linux, sdk-smoke-windows]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     concurrency:
       group: release-latest

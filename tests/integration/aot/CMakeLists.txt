@@ -2,6 +2,12 @@
 # This work is licensed under the terms of the MIT license.
 # For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
+# Each test program has the ctest label "aot" or "aot-opt". The CI selects the tests with the
+# label: ctest -L '^aot$' or ctest -L '^aot-opt$'. The registry tests of the two variants run the
+# same test source. ctest sets test properties by name, so the names must differ: the optimized
+# registry tests have the name prefix "opt/". The parity test builds both variants and compares
+# them, so it has the label "aot-opt".
+
 # aot_demo has the C++ of a script in the binary. It links hot_aot and not hot_runtime, so it has
 # no loader, no migration, no dlopen and no Clang. Actor.cpp and Util.cpp are the engine.
 hot_add_scripts(TARGET aot_demo_scripts AOT SCRIPTS ${PROJECT_SOURCE_DIR}/tests/scripts/aot_demo.hot
@@ -28,7 +34,7 @@ add_dependencies(integration_aot_parity_tests aot_demo)
 target_compile_definitions(integration_aot_parity_tests PRIVATE
     HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
     AOT_DEMO_PATH="$<TARGET_FILE:aot_demo>")
-hot_gtest(integration_aot_parity_tests)
+hot_gtest(integration_aot_parity_tests PROPERTIES LABELS aot-opt)
 
 # Two scripts in one AOT library: the demo and the module variables.
 hot_add_scripts(TARGET aot_registry_scripts AOT
@@ -40,7 +46,7 @@ add_executable(integration_aot_registry_tests aot_registry_tests.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
 target_include_directories(integration_aot_registry_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
 target_link_libraries(integration_aot_registry_tests PRIVATE aot_registry_scripts hot::aot GTest::gtest_main)
-hot_gtest(integration_aot_registry_tests)
+hot_gtest(integration_aot_registry_tests PROPERTIES LABELS aot)
 
 # Loader::load_aot and Backend::seed_slots: the loader, a backend and the AOT scripts in one
 # program. The scripts library links only the core of the runtime.
@@ -51,7 +57,7 @@ target_include_directories(integration_aot_load_tests PRIVATE ${PROJECT_SOURCE_D
 target_link_libraries(integration_aot_load_tests PRIVATE aot_registry_scripts hot_backend hot_clang_backend GTest::gtest_main)
 set_target_properties(integration_aot_load_tests PROPERTIES ENABLE_EXPORTS ON)
 target_compile_definitions(integration_aot_load_tests PRIVATE HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
-hot_gtest(integration_aot_load_tests)
+hot_gtest(integration_aot_load_tests PROPERTIES LABELS aot)
 
 # Override and revert of one AOT unit at run time: two units, the loader and a backend.
 hot_add_scripts(TARGET aot_override_scripts AOT
@@ -65,7 +71,7 @@ target_include_directories(integration_aot_override_tests PRIVATE ${PROJECT_SOUR
 target_link_libraries(integration_aot_override_tests PRIVATE aot_override_scripts hot_backend GTest::gtest_main)
 set_target_properties(integration_aot_override_tests PROPERTIES ENABLE_EXPORTS ON)
 target_compile_definitions(integration_aot_override_tests PRIVATE HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
-hot_gtest(integration_aot_override_tests)
+hot_gtest(integration_aot_override_tests PROPERTIES LABELS aot)
 
 # Optimized AOT (MODE AOT OPTIMIZED): the same scripts, built with "hotc --aot-optimized". The
 # optimized libraries have no slots, so the loader cannot override or reload them.
@@ -91,7 +97,7 @@ add_executable(integration_aot_registry_opt_tests aot_registry_tests.cpp
 target_include_directories(integration_aot_registry_opt_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
 target_compile_definitions(integration_aot_registry_opt_tests PRIVATE AOT_EXPECT_OPTIMIZED=1)
 target_link_libraries(integration_aot_registry_opt_tests PRIVATE aot_registry_opt_scripts hot::aot GTest::gtest_main)
-hot_gtest(integration_aot_registry_opt_tests)
+hot_gtest(integration_aot_registry_opt_tests TEST_PREFIX opt/ PROPERTIES LABELS aot-opt)
 
 add_executable(integration_aot_opt_load_tests aot_opt_load_tests.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
@@ -99,7 +105,7 @@ add_executable(integration_aot_opt_load_tests aot_opt_load_tests.cpp
 target_include_directories(integration_aot_opt_load_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
 target_link_libraries(integration_aot_opt_load_tests PRIVATE aot_registry_opt_scripts hot_backend GTest::gtest_main)
 set_target_properties(integration_aot_opt_load_tests PROPERTIES ENABLE_EXPORTS ON)
-hot_gtest(integration_aot_opt_load_tests)
+hot_gtest(integration_aot_opt_load_tests PROPERTIES LABELS aot-opt)
 
 # The cover script has the cases that the demo lacks: a noexcept override, a const virtual that
 # the shell forwards, an interface base, and a script virtual through a base handle. The parity
@@ -133,4 +139,4 @@ add_executable(integration_aot_iface_tests aot_iface_tests.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
 target_include_directories(integration_aot_iface_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
 target_link_libraries(integration_aot_iface_tests PRIVATE aot_iface_scripts hot::aot GTest::gtest_main)
-hot_gtest(integration_aot_iface_tests)
+hot_gtest(integration_aot_iface_tests PROPERTIES LABELS aot)

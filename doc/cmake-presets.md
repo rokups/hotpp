@@ -29,6 +29,7 @@ Scripts and the host must use the same sanitizer runtime. The root file `CMakeLi
 | `linux-clang-jit` | JIT only | none | The JIT backend. It needs LLVM and Clang. |
 | `linux-clang-jit-asan` | JIT only | `-fsanitize=address` | Memory errors with the JIT. |
 | `linux-clang-jit-tsan` | JIT only | `-fsanitize=thread` | Data races with the JIT. |
+| `linux-clang-both` | clang files and JIT | none | One build for both backends. `HOT_BACKEND` picks the backend at run time. The CI uses it. |
 
 ### Windows presets
 
@@ -54,8 +55,10 @@ The build presets and the test presets have the same names for each configure pr
 | `linux-clang-jit-rel` | `linux-clang-jit` | `RelWithDebInfo` |
 | `linux-clang-jit-asan` | `linux-clang-jit-asan` | `Debug` |
 | `linux-clang-jit-tsan` | `linux-clang-jit-tsan` | `Debug` |
+| `linux-clang-both-dbg` | `linux-clang-both` | `Debug` |
+| `linux-clang-both-rel` | `linux-clang-both` | `RelWithDebInfo` |
 
-The hidden presets `base`, `base-files`, `base-jit`, `base-clang`, `base-asan`, `base-tsan` and `base-test` hold the common settings. The sanitizer presets set `CMAKE_CXX_FLAGS` to the sanitizer flag only. The test presets print the output of a failed test. Example:
+The hidden presets `base`, `base-files`, `base-jit`, `base-both`, `base-clang`, `base-asan`, `base-tsan` and `base-test` hold the common settings. The sanitizer presets set `CMAKE_CXX_FLAGS` to the sanitizer flag only. The test presets print the output of a failed test. Example:
 
 ```
 cmake --preset linux-clang-files

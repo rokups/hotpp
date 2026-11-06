@@ -36,6 +36,15 @@
       }
     },
     {
+      "name": "base-both",
+      "hidden": true,
+      "inherits": "base",
+      "cacheVariables": {
+        "HOT_ENABLE_CLANG_FILES": "ON",
+        "HOT_ENABLE_JIT": "ON"
+      }
+    },
+    {
       "name": "base-clang",
       "hidden": true,
       "environment": {
@@ -75,6 +84,10 @@
     {
       "name": "linux-clang-jit",
       "inherits": ["base-clang", "base-jit"]
+    },
+    {
+      "name": "linux-clang-both",
+      "inherits": ["base-clang", "base-both"]
     },
     {
       "name": "vs-files",
@@ -123,6 +136,8 @@
     { "name": "mingw-llvm-dbg", "configurePreset": "mingw-llvm", "configuration": "Debug" },
     { "name": "linux-clang-jit-dbg", "configurePreset": "linux-clang-jit", "configuration": "Debug" },
     { "name": "linux-clang-jit-rel", "configurePreset": "linux-clang-jit", "configuration": "RelWithDebInfo" },
+    { "name": "linux-clang-both-dbg", "configurePreset": "linux-clang-both", "configuration": "Debug" },
+    { "name": "linux-clang-both-rel", "configurePreset": "linux-clang-both", "configuration": "RelWithDebInfo" },
     { "name": "linux-clang-jit-asan", "configurePreset": "linux-clang-jit-asan", "configuration": "Debug" },
     { "name": "linux-clang-jit-tsan", "configurePreset": "linux-clang-jit-tsan", "configuration": "Debug" }
   ],
@@ -142,6 +157,8 @@
     { "name": "mingw-llvm-dbg", "inherits": "base-test", "configurePreset": "mingw-llvm", "configuration": "Debug" },
     { "name": "linux-clang-jit-dbg", "inherits": "base-test", "configurePreset": "linux-clang-jit", "configuration": "Debug" },
     { "name": "linux-clang-jit-rel", "inherits": "base-test", "configurePreset": "linux-clang-jit", "configuration": "RelWithDebInfo" },
+    { "name": "linux-clang-both-dbg", "inherits": "base-test", "configurePreset": "linux-clang-both", "configuration": "Debug" },
+    { "name": "linux-clang-both-rel", "inherits": "base-test", "configurePreset": "linux-clang-both", "configuration": "RelWithDebInfo" },
     { "name": "linux-clang-jit-asan", "inherits": "base-test", "configurePreset": "linux-clang-jit-asan", "configuration": "Debug" },
     { "name": "linux-clang-jit-tsan", "inherits": "base-test", "configurePreset": "linux-clang-jit-tsan", "configuration": "Debug" }
   ]
