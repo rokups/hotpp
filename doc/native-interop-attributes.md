@@ -117,7 +117,23 @@ class Enemy : Actor {
 - A prelude, the script or an imported script can declare it. A prelude declaration makes the tag available to all scripts of the host.
 - A tag has no arguments. A tag with no declaration is an error: `unknown attribute 'Name' on class 'C'`.
 - A tag applies to its class only. A child class does not get the tags of its parent.
-- Only a script class takes a tag. A stub, a module variable and a module attribute list do not.
+- Only a script class and a field of a script class take a tag. A stub, a method, a parameter, a module variable and a module attribute list do not.
+
+A field takes a tag with optional string arguments:
+
+```hot
+[attribute] class Attribute;
+
+class Enemy : Actor {
+    [Attribute("Max Health", "net")] float maxHealth = 100.0f;
+    [Attribute] int level = 1;
+}
+```
+
+- A tag on a field needs a declaration, as a tag on a class does: `unknown attribute 'Name' on field 'C.f'`.
+- One tag name is valid one time on one field.
+- The strings keep the escapes of the script. The host gets the decoded text.
+- A `.cpp` script has no field tags yet.
 
 A `.cpp` script puts the macro `HOT_ATTRIBUTE("Name")` after `class`. The macro is in `hot/script.h`:
 
@@ -130,6 +146,8 @@ class HOT_ATTRIBUTE("Spawnable") Enemy : public Actor {
 - A `.cpp` script cannot declare an attribute class. A prelude must declare it.
 
 At run time, `Loader::stats().classes` gives one `hot::ClassInfo` for each class. Its field `attributes` holds the tag names in source order. The record field `ClassRecord::attributes` holds the same names as a list that ends with `nullptr`. A reload replaces the tags with the tags of the new generation. A removed class has no tags.
+
+The tags of a field are in its row of the state layout: `FieldInfo::attributes` (use `hot::find_field`). It is null for a field without a tag. Otherwise it is a list of `hot::AttributeTag` that ends with a row with `name` null. `AttributeTag::args` is null for a tag without strings. Otherwise it is a list of the strings that ends with `nullptr`. The text lives in the module of the record, so read it again after each reload.
 
 ## `[nonnull]`
 

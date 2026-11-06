@@ -11,7 +11,7 @@ using "Actor.h";
 
 [Spawnable, Editor]
 class Player : Actor {
-    int hp = 1;
+    [Editor("Hit points", "net")] int hp = 1;
 }
 
 class Plain : Actor {

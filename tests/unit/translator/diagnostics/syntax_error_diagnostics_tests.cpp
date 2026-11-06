@@ -29,7 +29,7 @@ TEST(SyntaxErrorDiagnostics, MethodNeedsAReturnType)
 
 TEST(SyntaxErrorDiagnostics, UnknownAttribute)
 {
-    EXPECT_EQ(diag_of("class A : B {\n    [foo(\"x\")] int n;\n}\n"), "t.hot:2:6: error: unknown attribute 'foo'\n");
+    EXPECT_EQ(diag_of("class A : B {\n    [foo(\"x\")] int n;\n}\n"), "t.hot:2:6: error: unknown attribute 'foo' on field 'A.n': declare it as '[attribute] class foo;'\n");
 }
 
 TEST(SyntaxErrorDiagnostics, AliasNeedsAString)
@@ -48,7 +48,7 @@ TEST(SyntaxErrorDiagnostics, TwoAttributesInAList)
 {
     // The second attribute is checked like the first one.
     EXPECT_EQ(diag_of("class A : B {\n    [alias(\"a\"), foo(\"b\")] int n;\n}\n"),
-        "t.hot:2:18: error: unknown attribute 'foo'\n");
+        "t.hot:2:18: error: unknown attribute 'foo' on field 'A.n': declare it as '[attribute] class foo;'\n");
     EXPECT_EQ(diag_of("class A : B {\n    [alias(\"a\"), alias(\"b\")] int n;\n}\n"),
         "t.hot:2:18: error: duplicate attribute 'alias'\n");
 }

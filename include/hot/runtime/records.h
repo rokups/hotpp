@@ -142,6 +142,14 @@ enum FieldFlags : uint8_t
     kNotMovable = 16,
 };
 
+// A script attribute tag on a field: "[Name]" or "[Name("a", "b")]". "args" is null for a
+// tag without strings, else a list of the strings that ends with nullptr.
+struct AttributeTag
+{
+    const char* name;
+    const char* const* args;
+};
+
 // One row of the reflection table of a state struct (section 4.7).
 struct FieldInfo
 {
@@ -164,6 +172,9 @@ struct FieldInfo
     // Copy-constructs the field in raw memory "dst" from the field "src". Null when the type
     // cannot be copied (hot::field_copy in state.h). The copy of a [value] object uses it.
     void (*copy)(void* dst, const void* src) = nullptr;
+    // The script attribute tags of the field in source order, or null. The list ends with a
+    // row with "name" null. The text lives in the module of the record.
+    const AttributeTag* attributes = nullptr;
 };
 
 // Size, alignment and fields of the state struct of one generation.

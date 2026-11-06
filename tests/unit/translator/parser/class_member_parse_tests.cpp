@@ -46,9 +46,11 @@ TEST(ClassMemberParse, FieldAlias)
         EXPECT_GE(p.diag.items.size(), 1u);
     }
     {
+        // Another name on a field is a script attribute tag. The translation checks its declaration.
         StubParsed p("class A : B { [native] int y; }\n");
-        ASSERT_EQ(p.diag.items.size(), 1u) << p.diag.format("t");
-        EXPECT_EQ(p.diag.items[0].msg, "unknown attribute 'native'");
+        ASSERT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
+        ASSERT_EQ(p.script.classes[0].fields[0].attributes.size(), 1u);
+        EXPECT_EQ(p.script.classes[0].fields[0].attributes[0].name, "native");
     }
 }
 

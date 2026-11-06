@@ -126,3 +126,35 @@ TEST(ScriptAttributeTranslation, CppScriptIgnoresOtherAnnotations)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_FALSE(has(r.cpp, "Foo_record.attributes")) << r.cpp;
 }
+
+// A tag on a field goes to the row of the field. The strings of the tag are its arguments.
+TEST(ScriptAttributeTranslation, FieldTagsGoToTheFieldRow)
+{
+    const hotc::TranslateResult r = attr_translate("[attribute] class Saved;\n"
+                                                   "class Foo : Widget {\n"
+                                                   "    [Saved(\"Hit \\\"points\\\"\", \"net\")] int hp = 1;\n"
+                                                   "    [Saved, alias(\"old\")] float speed = 2.0f;\n"
+                                                   "    int plain = 0;\n"
+                                                   "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "{\"Hit \\\"points\\\"\", \"net\", nullptr};")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "attrs_hp[] = {{\"Saved\", ")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "attrs_speed[] = {{\"Saved\", nullptr}, {nullptr, nullptr}};")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "attrs_plain")) << r.cpp;
+}
+
+TEST(ScriptAttributeTranslation, FieldTagMisuseIsAnError)
+{
+    const std::pair<const char*, const char*> cases[] = {
+        {"class Foo : Widget { [Saved] int hp = 1; }\n",
+            "unknown attribute 'Saved' on field 'Foo.hp': declare it as '[attribute] class Saved;'"},
+        {"[attribute] class Saved;\nclass Foo : Widget { [Saved] void Run() { } }\n", "unknown attribute 'Saved'"},
+        {"[attribute] class Saved;\nclass Foo : Widget { [Saved, Saved] int hp = 1; }\n", "duplicate attribute 'Saved'"},
+    };
+    for (const auto& [script, error] : cases)
+    {
+        const hotc::TranslateResult r = attr_translate(script);
+        EXPECT_FALSE(r.ok) << script;
+        EXPECT_TRUE(has(r.diagnostics, error)) << script << r.diagnostics;
+    }
+}

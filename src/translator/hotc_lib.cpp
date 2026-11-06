@@ -2550,6 +2550,33 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
     }
 }
 
+// The tag table of a field (FieldInfo::attributes). "out" gets the arrays. The result is the
+// table name for the row, or "nullptr" when the field has no tag. A string argument keeps the
+// escapes of the script text, as an alias does, so it is a valid C++ literal.
+std::string emit_field_tags(std::string& out, const std::string& prefix, const hotc::ast::Field& f)
+{
+    if (f.attributes.empty())
+        return "nullptr";
+    const std::string table = prefix + "attrs_" + f.name;
+    std::string rows;
+    for (size_t i = 0; i < f.attributes.size(); ++i)
+    {
+        const hotc::ast::FieldTag& t = f.attributes[i];
+        std::string args = "nullptr";
+        if (!t.args.empty())
+        {
+            args = table + "_" + std::to_string(i);
+            out += "static const char* const " + args + "[] = {";
+            for (const std::string& a : t.args)
+                out += "\"" + a + "\", ";
+            out += "nullptr};\n";
+        }
+        rows += "{\"" + t.name + "\", " + args + "}, ";
+    }
+    out += "static const hot::AttributeTag " + table + "[] = {" + rows + "{nullptr, nullptr}};\n";
+    return table;
+}
+
 } // namespace
 
 namespace hotc
@@ -3265,6 +3292,13 @@ void translate_impl(
                     fail_at(map, c.pos,
                         "unknown attribute '" + a + "' on class '" + c.name + "': declare it as '[attribute] class "
                             + a + ";'");
+        for (const ClassDef& c : sc.classes)
+            for (const Field& f : c.fields)
+                for (const hotc::ast::FieldTag& a : f.attributes)
+                    if (!attribute_names.count(a.name))
+                        fail_at(map, a.pos,
+                            "unknown attribute '" + a.name + "' on field '" + c.name + "." + f.name
+                                + "': declare it as '[attribute] class " + a.name + ";'");
     }
     // ---- script enums (design 5.3, 7.2). An enum becomes a C++ "enum class". A field of an
     // enum type reloads as its underlying integer type.
@@ -5063,6 +5097,10 @@ void translate_impl(
         }
         else
         {
+            std::string tag_tables;
+            for (const Field& f : cd.fields)
+                emit_field_tags(tag_tables, P, f);
+            o.w(tag_tables);
             o.w("static const hot::FieldInfo " + cn + "_fields[] = {\n");
             for (const Field& f : cd.fields)
             {
@@ -5080,7 +5118,10 @@ void translate_impl(
                 else
                     o.w(", nullptr, nullptr");
                 // The last two members: the layout of a box field, and the copy function.
-                o.w(", " + (sub ? "&" + T + "_layout" : std::string("nullptr")) + ", hot::field_copy<" + T + ">()},\n");
+                std::string unused;
+                const std::string tags = emit_field_tags(unused, P, f);
+                o.w(", " + (sub ? "&" + T + "_layout" : std::string("nullptr")) + ", hot::field_copy<" + T + ">()"
+                    + (f.attributes.empty() ? "" : ", " + tags) + "},\n");
             }
             o.w("};\n");
         }
@@ -6890,7 +6931,12 @@ void translate_impl(
             else
                 row += ", nullptr, nullptr";
             // The last two members: the layout of a box field, and the copy function.
-            row += ", " + (sub ? "&" + T + "_layout" : std::string("nullptr")) + ", hot::field_copy<" + T + ">()";
+            std::string tag_tables;
+            // A row without a tag leaves out the last member: FieldInfo::attributes is null then.
+            const std::string tags = emit_field_tags(tag_tables, P, f);
+            row += ", " + (sub ? "&" + T + "_layout" : std::string("nullptr")) + ", hot::field_copy<" + T + ">()"
+                + (f.attributes.empty() ? "" : ", " + tags);
+            o.w(tag_tables);
             info.rows.push_back(row + "},\n");
         }
         if (info.rows.empty())

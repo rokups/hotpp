@@ -75,7 +75,22 @@ struct Annot
     bool has_alias = false;
     const char* weak_pos = nullptr; // the name of "[weak]", or null
     const char* byval_pos = nullptr; // the name of "[byval]", or null
+    // The other names: script attribute tags with optional strings. Only a field accepts them.
+    struct Tag
+    {
+        const char* pos;
+        std::string name;
+        std::vector<std::string> args;
+    };
+    std::vector<Tag> tags;
 };
+
+// A tag is valid only on a field. Other members and parameters report it as an unknown attribute.
+void reject_member_tags(const ParseState& st, const Annot& a)
+{
+    for (const Annot::Tag& t : a.tags)
+        st.error(t.pos, "unknown attribute '" + t.name + "'");
+}
 
 // One attribute: a name and a list of strings. The list can be empty.
 struct AttrItem
@@ -360,9 +375,12 @@ Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in,
         {
             m.field.alias = a->alias;
             m.field.weak = a->weak_pos != nullptr;
+            for (const Annot::Tag& t : a->tags)
+                m.field.attributes.push_back({t.name, t.args, st.offset(t.pos)});
         }
         else
         {
+            reject_member_tags(st, *a);
             if (a->has_alias)
                 st.error(a->pos, "[alias] applies to fields only");
             if (a->weak_pos)
@@ -707,7 +725,15 @@ struct attrs_p
             else if (it.name == "value")
                 st.error(it.pos, kValueRemoved);
             else if (it.name != "alias")
-                st.error(it.pos, "unknown attribute '" + it.name + "'");
+            {
+                bool duplicate = false;
+                for (const Annot::Tag& t : a.tags)
+                    duplicate = duplicate || t.name == it.name;
+                if (duplicate)
+                    st.error(it.pos, "duplicate attribute '" + it.name + "'");
+                else
+                    a.tags.push_back({it.pos, std::move(it.name), std::move(it.args)});
+            }
             else if (it.args.size() != 1)
                 st.error(it.pos, "attribute 'alias' takes 1 arguments");
             else if (a.has_alias)
@@ -754,6 +780,7 @@ struct param_p
         {
             if (a->has_alias)
                 st.error(a->pos, "[alias] applies to fields only");
+            reject_member_tags(st, *a);
             p.weak = a->weak_pos != nullptr;
             if (a->byval_pos)
             {

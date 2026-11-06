@@ -469,9 +469,18 @@ enum class Access
     Protected
 };
 
+// A script attribute tag on a field: "[Name]" or "[Name("a", "b")]".
+struct FieldTag
+{
+    std::string name;
+    std::vector<std::string> args;
+    uint32_t pos = 0; // the byte offset of the name
+};
+
 struct Field
 {
     std::string name, alias, type; // alias: the previous name from [alias("...")]
+    std::vector<FieldTag> attributes; // the tags in source order
     std::string script_type; // "type" as the script writes it (see Param)
     bool weak = false; // "[weak]": the field holds a weak handle (task 38)
     bool value = false; // the type is a bare script class: the field holds a box (hot::Value<T>)

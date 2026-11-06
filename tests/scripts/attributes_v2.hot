@@ -2,7 +2,7 @@
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
-// The reload of attributes_v1.hot: Player drops a tag and Plain gets one.
+// The reload of attributes_v1.hot: Player drops a tag and Plain gets one. The tag of a field loses its arguments.
 using "Actor.h";
 
 [attribute] class Spawnable;
@@ -10,7 +10,7 @@ using "Actor.h";
 
 [Editor]
 class Player : Actor {
-    int hp = 1;
+    [Editor] int hp = 1;
 }
 
 [Spawnable]

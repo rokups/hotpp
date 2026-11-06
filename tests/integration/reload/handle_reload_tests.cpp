@@ -179,6 +179,23 @@ TEST_P(BackendTests, ScriptAttributesAreInTheStats)
     };
     EXPECT_EQ(attributes("Player"), (std::vector<std::string>{"Spawnable", "Editor"}));
     EXPECT_EQ(attributes("Plain"), std::vector<std::string>{});
+    // The tags of a field are in its row: the name, then the arguments.
+    auto fieldTags = [&](const char* className, const char* fieldName)
+    {
+        std::vector<std::string> result;
+        const hot::ClassEntry* entry = s.loader.find(className);
+        const hot::FieldInfo* f = entry ? hot::find_field(entry->record, fieldName) : nullptr;
+        if (!f)
+            return std::vector<std::string>{"<no field>"};
+        for (const hot::AttributeTag* t = f->attributes; t && t->name; ++t)
+        {
+            result.push_back(t->name);
+            for (const char* const* a = t->args; a && *a; ++a)
+                result.push_back(std::string("=") + *a);
+        }
+        return result;
+    };
+    EXPECT_EQ(fieldTags("Player", "hp"), (std::vector<std::string>{"Editor", "=Hit points", "=net"}));
 
     std::string error;
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
@@ -187,6 +204,7 @@ TEST_P(BackendTests, ScriptAttributesAreInTheStats)
     EXPECT_EQ(hot::active_generation, 2u);
     EXPECT_EQ(attributes("Player"), std::vector<std::string>{"Editor"});
     EXPECT_EQ(attributes("Plain"), std::vector<std::string>{"Spawnable"});
+    EXPECT_EQ(fieldTags("Player", "hp"), std::vector<std::string>{"Editor"});
 }
 
 // The stub names a method that the native class does not have. The load gives an error.

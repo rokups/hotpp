@@ -41,7 +41,7 @@ TEST(TranslateDiagnostics, BodyErrorsAndAnnotationErrorsComeInSourceOrder)
         "    void g() { var y = 1 + ; }\n"
         "}\n"
         "class C : B {\n"
-        "    [foo(\"x\")] int n;\n"
+        "    [weak(\"x\")] int n;\n"
         "    void h() { var z = ; }\n"
         "}\n");
     EXPECT_FALSE(r.ok);
@@ -56,7 +56,7 @@ TEST(TranslateDiagnostics, BodyErrorsAndAnnotationErrorsComeInSourceOrder)
     }
     EXPECT_EQ(prefixes, (std::vector<std::string>{"t.hot:2:24", "t.hot:3:28", "t.hot:6:6", "t.hot:7:24"}))
         << r.diagnostics;
-    EXPECT_NE(r.diagnostics.find("unknown attribute 'foo'"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("attribute 'weak' takes 0 arguments"), std::string::npos) << r.diagnostics;
 }
 
 // One fault gives one error. The end of the file after an unterminated comment or literal
