@@ -28,7 +28,7 @@ Each row is a milestone. "Not testable here" means that the work needs a part th
 | M13 Language server stage 2 | Done | One test for each feature. |
 | M14 Language server stage 3 | Done | Background index, `hot/toScript`, rename across the workspace, `hotc --compile-commands`. |
 
-Not done, and not testable here: Windows and macOS, a real engine, a real Visual Studio session, the optional ORC debug-symbol resolver.
+Not done, and not testable here: macOS, a real engine, a real Visual Studio session, the optional ORC debug-symbol resolver.
 
 ## Source layout
 
@@ -62,8 +62,12 @@ All tests are GoogleTest cases. CMake registers them with `hot_gtest` (a wrapper
 Windows notes:
 
 - The job `windows-msvc` uses `vswhere.exe` to find `VsDevCmd.bat`. The Windows SDK comes from this job.
-- The job excludes `hotc_tool_tests`. These tests run POSIX shell commands.
-- The job skips the `DebugInfo` tests. The modules have CodeView debug info, and the tests read DWARF with `llvm-dwarfdump`.
+- The job puts the LLVM tools (`clangd`, `llvm-nm`, `llvm-pdbutil`, `llvm-dwarfdump`) on `PATH`, and runs `ctest --preset vs-files-rel -j`.
+- The tests start programs with `run_process` (`tests/support/process.h`). It does not use a shell. `tests/support/llvm_tool.h` finds the LLVM tools. So the `hotc_tool_tests`, the `AotLink` tests and the launcher and `paths` tests run on Windows.
+- The JIT tests are not built on MSVC. The JIT backend is off there.
+- The lldb session tests are off on MSVC.
+- The `DebugInfo` tests skip on MSVC. The modules have CodeView debug info, and the tests read DWARF with `llvm-dwarfdump`. They run on MinGW.
+- The `AotLink` symbol check for MSVC reads the PDB file with `llvm-pdbutil`. This branch is untested.
 - Only the job `test-mingw-wine` builds the MinGW preset `mingw-llvm`. Its tests run under wine. Two language server completion tests fail under wine.
 
 ## Translator notes

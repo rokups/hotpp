@@ -132,7 +132,8 @@ The script modules need `link.exe`, the UCRT and the MSVC STL. Run CMake from a 
 
 ## Limits
 
-- The JIT backend is off for MinGW and for MSVC. The preset `vs-files` uses the clang files backend.
+- The JIT backend is off for MinGW and for MSVC. The preset `vs-files` uses the clang files backend. The JIT tests do not run on Windows.
+- On MSVC the lldb tests and the `DebugInfo` tests do not run. The `DebugInfo` tests run on MinGW. The check of the symbols with `llvm-pdbutil` is untested.
 - The SDK is a Release build (`/MD`). A Debug consumer (`/MDd`) cannot link its static libraries.
 - The static libraries of the SDK need the MSVC toolset of the SDK build or a newer one. The release notes give this version.
 

@@ -140,4 +140,4 @@ Add the folder `editors/vscode` in `Settings > Editor > TextMate Bundles` for th
 
 ## Debugger helpers
 
-`tools/lldb` has formatters for state blocks, shells and handles. When `lldb` is installed, the test `PythonLldbSession` runs them in a real lldb session. Without `lldb`, CMake does not register the test. `tools/natvis/hot.natvis` does the same for Visual Studio. The test `PythonNatvis` checks only the XML and the type names. Visual Studio never loaded the file. See [Debugging](diagnostics.md#debugging) for breakpoints.
+`tools/lldb` has formatters for state blocks, shells and handles. When `lldb` is installed, the test `PythonLldbSession` runs them in a real lldb session. Without `lldb`, and on MSVC, CMake does not register the test. `tools/natvis/hot.natvis` does the same for Visual Studio. The test `PythonNatvis` checks only the XML and the type names. Visual Studio never loaded the file. See [Debugging](diagnostics.md#debugging) for breakpoints.

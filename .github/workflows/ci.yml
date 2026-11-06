@@ -338,13 +338,10 @@ jobs:
   # The native Windows build with MSVC (the preset vs-files). cl.exe builds hotc, the runtime and
   # the tests. clang++.exe of the LLVM release compiles the script modules. Some tests do not run
   # or skip on MSVC today. These are known gaps. Later steps remove them.
-  #   - tests/integration/backends/hotc_tool_tests.cpp is not built (it needs a POSIX shell).
   #   - The JIT tests are not built (the preset vs-files has HOT_ENABLE_JIT=OFF).
   #   - The lldb session tests of tests/unit/python/CMakeLists.txt are off (MSVC).
   #   - The DebugInfo tests skip (the modules have CodeView, and llvm-dwarfdump reads DWARF).
-  #   - The AotLink and AotParity symbol tests skip (they need nm or readelf).
-  #   - The launcher XDG test and the work directory test of paths_tests are not built
-  #     (#ifndef _WIN32).
+  #   - The AotLink symbol checks read the PDB with llvm-pdbutil. They never ran on MSVC.
   # The runner windows-2022 has Visual Studio 2022 (toolset v143). The static libraries of the SDK
   # then link with Visual Studio 2022 and with each newer toolset. sdk-smoke-windows runs on a
   # newer Visual Studio (windows-latest), so it tests this rule.
