@@ -2604,9 +2604,15 @@ struct Lowerer
             { // a field of a script object behind a handle
                 const bool weak = weak_field_of(*d, m.name);
                 expr(m.obj);
-                e = raw(cx.aot_optimized ? shell_text(*d, print(*m.obj)) + "->" + m.name
-                                         : "state_of(" + shell_text(*d, print(*m.obj)) + ")->" + m.name,
-                    obj_pos);
+                const ClassDef* fowner = nullptr;
+                find_field(*d, m.name, &fowner);
+                // A field of a class of an import: the owner unit has the state (hot::field).
+                if (fowner && !fowner->foreign_unit.empty())
+                    e = raw(fowner->name + "__fld_" + m.name + "(" + shell_text(*d, print(*m.obj)) + ")", obj_pos);
+                else
+                    e = raw(cx.aot_optimized ? shell_text(*d, print(*m.obj)) + "->" + m.name
+                                             : "state_of(" + shell_text(*d, print(*m.obj)) + ")->" + m.name,
+                        obj_pos);
                 if (weak && !target)
                     lock(e);
                 return;

@@ -396,9 +396,11 @@ TEST(GoldenTranslation, AotDemoOptimized)
 }
 
 // Cross-module access (modules step 3). "xmod_use.hot" imports "xmod_lib.hot". The owner registers
-// its free functions (Registry::add_fn). The importer calls them through hot::call_fn and reads and
-// writes the module variable through hot::mod_var. The import text comes from
-// TranslateOptions::modules, so the unit name in the output has no absolute path.
+// its free functions and static methods (Registry::add_fn). The importer calls them through
+// hot::call_fn and reads and writes the module variable through hot::mod_var. A method and a
+// property of the imported class are slot calls, a field is hot::field and "new" is hot::construct.
+// The importer has no record, no state and no body of the imported class.
+// The import text comes from TranslateOptions::modules, so the unit name has no absolute path.
 TEST(GoldenTranslation, CrossModuleOwner)
 {
     golden_one("xmod_lib");
@@ -417,4 +419,15 @@ TEST(GoldenTranslation, CrossModuleImporter)
         std::string::npos);
     EXPECT_NE(r.cpp.find("hot::mod_var<int32_t>(hot::unit_ref(\"xmod_lib.hot\"), __site, \"counter\")"), std::string::npos);
     EXPECT_NE(r.cpp.find("hot_mv_counter() = hot_mv_counter() + 1;"), std::string::npos);
+    EXPECT_NE(r.cpp.find("return hot::call_script<void(hot::PlainObject*, int32_t)>(__self, Box_SLOT_grow, "),
+        std::string::npos);
+    EXPECT_NE(r.cpp.find("return hot::call_script<int32_t(hot::PlainObject*)>(__self, Box_SLOT_get_Doubled);"),
+        std::string::npos);
+    EXPECT_NE(r.cpp.find("return hot::field<int32_t>(__s, __site, \"size\");"), std::string::npos);
+    EXPECT_NE(r.cpp.find("Box__fld_size(hot::shell_of<Box_Shell>(b, \"Box\")) = "), std::string::npos);
+    EXPECT_NE(r.cpp.find("hot::construct<Box_Shell, int32_t>(hot::class_ref(\"Box\"), "), std::string::npos);
+    EXPECT_NE(r.cpp.find("__site, \"Box::unit\");"), std::string::npos);
+    EXPECT_EQ(r.cpp.find("reg.add(&Box_record"), std::string::npos);
+    EXPECT_EQ(r.cpp.find("BoxState_g1"), std::string::npos);
+    EXPECT_EQ(r.cpp.find("reg.add_fn(\"Box::unit\""), std::string::npos);
 }

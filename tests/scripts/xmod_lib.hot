@@ -1,5 +1,5 @@
 // The owner module of the cross-module golden test. "xmod_use.hot" imports this file.
-// It has a class, a struct, an enum, a constant, a module variable and a free function.
+// It has a class (with a property and a static method), a struct, an enum, a constant, a module variable and a free function.
 struct Pt {
     int x = 0;
     int y = 0;
@@ -21,6 +21,12 @@ class Box {
 
     Box() { }
     Box(int s) { this.size = s; }
+
+    int Doubled { get { return this.size * 2; } }
+
+    static int unit() {
+        return 1;
+    }
 
     int area() {
         return this.size * this.size;

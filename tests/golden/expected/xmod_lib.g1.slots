@@ -1,2 +1,3 @@
 Box::area 1
 Box::grow 1
+Box::get_Doubled 1

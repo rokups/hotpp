@@ -650,6 +650,10 @@ struct ClassDef
     bool is_value = false; // a struct
     bool is_abstract = false; // "abstract class C { }": the class can have abstract methods
     bool is_private = false; // "private class C { }" at file level: importers do not see the class
+    // The unit of the module that owns a class of an import. The importer has the interface of the
+    // class only: no bodies, no state and no record. Calls, fields and "new" go through the runtime
+    // helpers (hot::call_script, hot::field, hot::construct). Empty: the class of this module.
+    std::string foreign_unit;
     std::string cpp_prelude; // the attribute [cpp_prelude("text")]: C++ text for this class only
     std::string cpp_overrides; // names of virtuals that the shell keeps without a slot (a .cpp script)
     // The script attributes of the class: "[Tag] class C { }". Each name is an attribute class

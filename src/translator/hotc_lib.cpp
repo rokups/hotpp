@@ -3245,11 +3245,14 @@ void translate_impl(
                 for (Import& n : is.imports)
                     if (native_paths.insert(n.path).second)
                         natives.push_back(std::move(n));
-                // BRIDGE (modules step 1): the importer still gets a copy of the classes of the import,
-                // with their bodies. The emit of cross-module calls, fields and parents (modules steps
-                // 3 and 5) replaces the copy with the interface of the class. Remove the copy then.
+                // A class of an import is an interface here (ClassDef::foreign_unit). A struct is a
+                // definition of the interface: the importer gets a copy.
                 for (ClassDef& c : is.classes)
+                {
+                    if (!c.is_value)
+                        c.foreign_unit = file;
                     classes.push_back(std::move(c));
+                }
                 // An enum and a constant are definitions of the interface: the importer gets a copy.
                 // A private one stays in its module.
                 for (auto& e : is.enums)
@@ -3291,6 +3294,45 @@ void translate_impl(
                 if (own.count(c.name))
                     fail_at(map, c.pos,
                         "class '" + c.name + "' is declared in '" + map.file(c.pos) + "' and in '" + opt.input + "'");
+            // BRIDGE (modules step 1, removed in step 5): a class of this module with a parent in an
+            // import needs the full parent. The parent chain in the imports stays a copy with its
+            // bodies, as before modules. The loader link of a parent in another unit is step 5.
+            {
+                std::map<std::string, ClassDef*> imported;
+                for (ClassDef& c : classes)
+                    imported[c.name] = &c;
+                for (const ClassDef& c : sc.classes)
+                    for (auto it = imported.find(c.base); it != imported.end(); it = imported.find(it->second->base))
+                    {
+                        if (it->second->foreign_unit.empty())
+                            break;
+                        it->second->foreign_unit.clear();
+                    }
+            }
+            // The interface of a class of an import has no bodies: the owner module runs them.
+            for (ClassDef& c : classes)
+            {
+                if (c.foreign_unit.empty())
+                    continue;
+                for (Method& m : c.methods)
+                    m.body.stmts.clear();
+                for (Method& m : c.statics)
+                {
+                    m.body.stmts.clear();
+                    m.foreign_unit = c.foreign_unit;
+                }
+                for (Method& m : c.dtors)
+                    m.body.stmts.clear();
+                for (hotc::ast::Ctor& k : c.ctors)
+                    k.body.stmts.clear();
+                for (hotc::ast::Property& pr : c.props)
+                {
+                    if (pr.get_body)
+                        pr.get_body->stmts.clear();
+                    if (pr.set_body)
+                        pr.set_body->stmts.clear();
+                }
+            }
             sc.classes.insert(
                 sc.classes.begin(), std::make_move_iterator(classes.begin()), std::make_move_iterator(classes.end()));
             sc.enums.insert(
@@ -6901,6 +6943,9 @@ void translate_impl(
         }
         o.w("};\n\n");
 
+        // A class of an import ends after its shell (see below): the text from here is not kept.
+        const size_t foreign_mark = o.s.size(), foreign_segs = o.segs.size();
+        const int foreign_lines = o.lines;
         // ---- state struct and field table
         if (!opt.aot_optimized)
             o.w("// ---------------------------------------------------------------- state\n");
@@ -7169,6 +7214,64 @@ void translate_impl(
                 r += ", " + arg_expr(p.type, p.name);
             return r;
         };
+
+        // ---- the interface of a class of an import. The owner unit holds the record, the state, the
+        // slot table and the bodies. The importer gets the slot numbers, the shell and functions with
+        // the names of the local forms: a method is a slot call, a field is hot::field, "new" is
+        // hot::construct. The slot numbers come from the shared slot manifest (slots_in).
+        if (!cd.foreign_unit.empty())
+        {
+            o.s.resize(foreign_mark);
+            o.segs.resize(foreign_segs);
+            o.lines = foreign_lines;
+            reset();
+            o.w("// ---------------------------------------------------------------- interface of " + cn + " (unit "
+                + esc(cd.foreign_unit) + ")\n");
+            auto fwd_args = [](const std::vector<Param>& ps)
+            {
+                std::string r;
+                for (const Param& p : ps)
+                    r += ", std::forward<decltype(" + p.name + ")>(" + p.name + ")";
+                return r;
+            };
+            for (const Method& m : cd.methods)
+                if (!m.overrides_virtual && hook_of(m) != Hook::Convert)
+                    o.w("[[maybe_unused]] HOT_HIDDEN static " + fn_ret(m) + " " + P + m.name + "(" + shell + "* __self"
+                        + param_decl_def(m) + ")\n{\n    return hot::call_script<" + fn_ret(m) + "(" + B + "*" + type_list(m)
+                        + ")>(__self, " + slot_id(m.name) + fwd_args(m.params) + ");\n}\n");
+            for (const Field& f : cd.fields)
+            {
+                const std::string t = types.cpp_storage(f.type, hotc::TypeModel::StorageUse::Field);
+                o.w("[[maybe_unused]] HOT_HIDDEN static " + t + "& " + P + "fld_" + f.name
+                    + "(hot::ShellBase* __s)\n{\n    static hot::FieldSite __site;\n    return hot::field<" + t
+                    + ">(__s, __site, \"" + f.name + "\");\n}\n");
+            }
+            std::vector<std::vector<Param>> overloads;
+            for (const hotc::ast::Ctor& k : cd.ctors)
+                overloads.push_back(k.params);
+            if (overloads.empty())
+                overloads.emplace_back();
+            for (const std::vector<Param>& ps : overloads)
+            {
+                std::string decl, ptypes;
+                for (const Param& p : ps)
+                {
+                    decl += std::string(decl.empty() ? "" : ", ") + name_in_type(p.type, p.name) + default_arg(p, ps, base_cx);
+                    ptypes += ", " + p.type;
+                }
+                const std::string make = "hot::construct<" + shell + ptypes + ">(hot::class_ref(\"" + cd.key_name()
+                    + "\")" + fwd_args(ps) + ")";
+                o.w("[[maybe_unused]] HOT_HIDDEN static " + shell + "* " + P + "new(" + decl + ")\n{\n    return " + make
+                    + ";\n}\n");
+                o.w("[[maybe_unused]] HOT_HIDDEN static std::shared_ptr<" + shell + "> " + P + "new_shared(" + decl
+                    + ")\n{\n    return std::shared_ptr<" + shell + ">(" + make + ");\n}\n");
+            }
+            o.w("\n");
+            if (!cd.ns.empty())
+                o.w("} // namespace " + hotc::ast::gen_namespace(cd.ns) + "\n");
+            reset();
+            continue;
+        }
 
         // forward declarations of the script functions
         for (const Method& m : cd.methods)
@@ -8221,7 +8324,8 @@ void translate_impl(
                             args += ", std::forward<decltype(" + p.name + ")>(" + p.name + ")";
                         o.w("    static hot::FnSite __site;\n");
                         o.w("    return hot::call_fn<decltype(" + ls.symbol + ")>(hot::unit_ref(\"" + esc(ls.method->foreign_unit)
-                            + "\"), __site, \"" + ls.method->name + "\"" + args + ");\n");
+                            + "\"), __site, \"" + (ls.owner.empty() ? "" : ls.owner + "::") + ls.method->name + "\"" + args
+                            + ");\n");
                         o.w("}\n");
                         reset();
                         o.w("\n");
@@ -8290,11 +8394,24 @@ void translate_impl(
     // The function table of the unit: an importer calls a public free function through it
     // (hot::call_fn). The key is the C++ function type.
     if (!opt.aot_optimized)
+    {
+        // A static method of a class has the key "C::F".
+        for (const ClassDef& cd : sc.classes)
+            if (cd.foreign_unit.empty() && !cd.is_private)
+                for (const Method& m : cd.statics)
+                    if (m.access != hotc::ast::Access::Private)
+                        if (auto it = lowered_statics.find(cd.name + "::" + m.name); it != lowered_statics.end())
+                            o.w("    reg.add_fn(\"" + cd.name + "::" + m.name + "\", typeid(decltype("
+                                + (cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns) + "::") + it->second.symbol
+                                + ")).name(), reinterpret_cast<void*>(&"
+                                + (cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns) + "::") + it->second.symbol
+                                + "));\n");
         for (const Method& m : fn_cls.statics)
             if (m.foreign_unit.empty() && m.access != hotc::ast::Access::Private && m.name != "main")
                 if (auto it = lowered_statics.find(m.name); it != lowered_statics.end())
                     o.w("    reg.add_fn(\"" + m.name + "\", typeid(decltype(" + it->second.symbol + ")).name(), reinterpret_cast<void*>(&"
                         + it->second.symbol + "));\n");
+    }
     for (const auto& t : flag_regs)
         o.w(t);
     for (const auto& t : thunk_regs)

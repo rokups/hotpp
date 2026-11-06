@@ -1,5 +1,5 @@
 // The importer of the cross-module golden test. It uses each access form of "xmod_lib.hot":
-// a method call, a field read and write, "new", a free function and a module variable.
+// a method call, a property, a static method, a field read and write, "new", a free function and a module variable.
 using "xmod_lib.hot";
 
 class User {
@@ -15,9 +15,10 @@ class User {
         int a = b.area();
         b.size = b.size + kLimit;
         Pt p = b.corner;
+        int d = b.Doubled + Box.unit();
         counter = counter + 1;
         counter += a;
         Kind _k = Kind.Big;
-        return a + p.x + counter;
+        return a + p.x + d + counter;
     }
 }

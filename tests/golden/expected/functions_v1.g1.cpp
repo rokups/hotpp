@@ -751,6 +751,8 @@ extern "C" void script_register(hot::Registry& reg)
     reg.set_live_flag(&hot_live);
     reg.add(&Hero_record, &Hero_create);
     reg.add(&Helper_record, &Helper_create);
+    reg.add_fn("Vec::Twice", typeid(decltype(Vec__s_Twice)).name(), reinterpret_cast<void*>(&Vec__s_Twice));
+    reg.add_fn("Hero::Weight", typeid(decltype(Hero__s_Weight)).name(), reinterpret_cast<void*>(&Hero__s_Weight));
     reg.add_fn("Add", typeid(decltype(hot_fn_Add)).name(), reinterpret_cast<void*>(&hot_fn_Add));
     reg.add_fn("Fact", typeid(decltype(hot_fn_Fact)).name(), reinterpret_cast<void*>(&hot_fn_Fact));
     reg.add_fn("Scale", typeid(decltype(hot_fn_Scale)).name(), reinterpret_cast<void*>(&hot_fn_Scale));

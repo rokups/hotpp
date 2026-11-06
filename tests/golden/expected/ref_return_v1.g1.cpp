@@ -481,6 +481,7 @@ extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_live_flag(&hot_live);
     reg.add(&Unit_record, &Unit_create);
+    reg.add_fn("Unit::Pick", typeid(decltype(Unit__s_Pick)).name(), reinterpret_cast<void*>(&Unit__s_Pick));
     Unit_record.construct_keys = Unit__construct_keys;
     Unit_record.ctors = Unit__constructors;
     reg.add_thunk("Unit::Hp", reinterpret_cast<void*>(&Unit__Hp__thunk));
