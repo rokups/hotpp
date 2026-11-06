@@ -4,22 +4,27 @@
 
 // Tests of the tool hotc as a child process.
 //
-// CMake defines these macros: HOT_SOURCE_DIR, HOT_SCRATCH_DIR, HOTC_PATH and HOT_CXX.
+// CMake defines these macros: HOT_SOURCE_DIR, HOT_SCRATCH_DIR, HOTC_PATH and HOT_CXX (the script
+// compiler). The tests run each program from an argument list, without a shell.
 #include "hot/backend.h"
 #include "hot/clang_files_backend.h"
+#include "hot/command_line.h"
 #include "hot/config.h"
+#include "hot/module.h"
+#include "hot/paths.h"
+#include "support/process.h"
 #include "support/scratch_dir.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
 
 #include <gtest/gtest.h>
-#include <sys/wait.h>
 
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <string>
 #include <vector>
 
@@ -31,25 +36,106 @@ using test_support::line_with;
 using test_support::read_file;
 using test_support::TestScratch;
 
+// The arguments of a program.
+using Args = std::vector<std::string>;
+
+const std::string kSource = HOT_SOURCE_DIR;
+
+// The lists of arguments, one after the other, as one list.
+Args cat(std::initializer_list<Args> parts)
+{
+    Args all;
+    for (const Args& part : parts)
+        all.insert(all.end(), part.begin(), part.end());
+    return all;
+}
+
+// Runs a program with the arguments (no shell). Gives the exit code (-1: the program did not start
+// or a signal killed it). The text is the standard output and the standard error, with "\n" line ends.
+int run_command(const Args& argv, std::string& text)
+{
+    const test_support::RunResult result = test_support::run_process(argv);
+    text = test_support::lf_only(result.output);
+    return result.exit_code;
+}
+
+// The target of the build. They are empty on Linux. A MinGW build has the triple and the sysroot.
+// CMake gives them to hotc in the same way (--target, --sysroot).
+const hot::DefaultPaths& build_paths()
+{
+    static const hot::DefaultPaths paths = hot::default_paths();
+    return paths;
+}
+
+// Runs hotc with the target of the build (and the import library of the host, see below).
+int run_hotc(const Args& args, std::string& text)
+{
+    Args argv = {HOTC_PATH};
+    if (!build_paths().target_triple.empty())
+        argv.insert(argv.end(), {"--target", build_paths().target_triple});
+    if (!build_paths().sysroot.empty())
+        argv.insert(argv.end(), {"--sysroot", build_paths().sysroot});
+    // Windows: a call with --cxx builds a module DLL. The DLL links the import library of the host
+    // (this test program) to reach the runtime symbols. It is empty on other systems.
+    if (!build_paths().host_import_library.empty() && std::find(args.begin(), args.end(), "--cxx") != args.end())
+        argv.insert(argv.end(), {"--host-implib", build_paths().host_import_library});
+    argv.insert(argv.end(), args.begin(), args.end());
+    return run_command(argv, text);
+}
+
+// Runs the script compiler with the target flags of the build: the triple, the sysroot and, for
+// MinGW, the libstdc++ headers of the sysroot (as the backend). The link flags of MinGW do not
+// apply to a compile without a link, so the compiler must not report them.
+int run_cxx(const Args& args, std::string& text)
+{
+    Args argv = {HOT_CXX};
+    const hot::DefaultPaths& paths = build_paths();
+    if (!paths.target_triple.empty())
+        argv.push_back("--target=" + paths.target_triple);
+    if (!paths.sysroot.empty())
+        argv.push_back("--sysroot=" + paths.sysroot);
+    const Args mingw = hot::mingw_target_flags(paths.target_triple, paths.sysroot);
+    argv.insert(argv.end(), mingw.begin(), mingw.end());
+    if (!mingw.empty())
+        argv.push_back("-Wno-unused-command-line-argument");
+    argv.insert(argv.end(), args.begin(), args.end());
+    return run_command(argv, text);
+}
+
+// The name of a module that hotc builds: the platform suffix (.so or .dll).
+std::string module_file(const std::string& dir, const std::string& stem)
+{
+    return dir + "/" + stem + hot::module_suffix();
+}
+
+// The include directories of the engine headers and of the Hot++ headers.
+Args include_args()
+{
+    return {"-I", kSource + "/tests/engine", "-I", kSource + "/include"};
+}
+
+// The generation and the include directories of hotc.
+Args engine_args()
+{
+    return cat({{"--gen", "1"}, include_args()});
+}
+
+// The flags that reject each C++20 feature and each extension of the compiler. Generated code and
+// the runtime headers need C++17 only (DECISIONS).
+const Args kCxx17Flags = {"-std=c++17", "-fsyntax-only", "-pedantic", "-Wc++20-extensions", "-Werror"};
+
 // hotc on a bad script: exit code 1, an error at the script line, no library.
 TEST(HotcTool, HotcReportsErrorAtTheScriptLine)
 {
     TestScratch scratch;
     const std::string out_dir = scratch.file("hotc_diag");
     const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/bad.hot";
-    const std::string cmd = std::string("'") + HOTC_PATH + "' '" + script + "' --gen 1 --out-dir '" + out_dir + "' -I '"
-        + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' --cxx '" + HOT_CXX + "' 2>&1";
     std::string text;
-    FILE* p = popen(cmd.c_str(), "r");
-    ASSERT_NE(p, nullptr);
-    char buf[512];
-    while (size_t n = fread(buf, 1, sizeof buf, p))
-        text.append(buf, n);
-    const int status = pclose(p);
-    EXPECT_TRUE(WIFEXITED(status));
-    EXPECT_EQ(WEXITSTATUS(status), 1) << text;
+    EXPECT_EQ(
+        run_hotc(cat({{script, "--gen", "1", "--out-dir", out_dir}, include_args(), {"--cxx", HOT_CXX}}), text), 1)
+        << text;
     expect_errors_at_script(text, line_with(read_file(script), "\"fast\""));
-    EXPECT_FALSE(std::filesystem::exists(out_dir + "/bad.g1.so"));
+    EXPECT_FALSE(std::filesystem::exists(module_file(out_dir, "bad.g1")));
 }
 
 // The error text speaks script names. --raw-diagnostics gives the text of the compiler.
@@ -58,20 +144,10 @@ TEST(HotcTool, RawDiagnosticsKeepsTheCompilerText)
     TestScratch scratch;
     const std::string out_dir = scratch.file("hotc_raw_diag");
     const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/bad.hot";
-    const std::string base = std::string("'") + HOTC_PATH + "' '" + script + "' --gen 1 --out-dir '" + out_dir
-        + "' -I '" + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' --cxx '" + HOT_CXX + "' ";
+    const Args base = cat({{script, "--gen", "1", "--out-dir", out_dir}, include_args(), {"--cxx", HOT_CXX}});
     std::string script_names, raw;
-    FILE* p = popen((base + "2>&1").c_str(), "r");
-    ASSERT_NE(p, nullptr);
-    char buf[512];
-    while (size_t n = fread(buf, 1, sizeof buf, p))
-        script_names.append(buf, n);
-    pclose(p);
-    p = popen((base + "--raw-diagnostics 2>&1").c_str(), "r");
-    ASSERT_NE(p, nullptr);
-    while (size_t n = fread(buf, 1, sizeof buf, p))
-        raw.append(buf, n);
-    pclose(p);
+    run_hotc(base, script_names);
+    run_hotc(cat({base, {"--raw-diagnostics"}}), raw);
     EXPECT_NE(script_names.find("cannot assign a value of type 'string' to 'float'"), std::string::npos)
         << script_names;
     EXPECT_EQ(script_names.find("st->"), std::string::npos) << script_names;
@@ -84,39 +160,22 @@ TEST(HotcTool, RawDiagnosticsKeepsTheCompilerText)
 namespace
 {
 
-// Runs a shell command. Gives the exit code and the output.
-int run_command(const std::string& cmd, std::string& text)
+Args player_args()
 {
-    FILE* p = popen(cmd.c_str(), "r");
-    if (p == nullptr)
-        return -1;
-    char buf[512];
-    while (size_t n = fread(buf, 1, sizeof buf, p))
-        text.append(buf, n);
-    const int status = pclose(p);
-    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-}
-
-std::string player_args()
-{
-    return std::string("'") + HOT_SOURCE_DIR + "/tests/scripts/player_v1.hot' --gen 1 -I '" + HOT_SOURCE_DIR
-        + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include'";
+    return cat({{kSource + "/tests/scripts/player_v1.hot"}, engine_args()});
 }
 
 // hotc --emit-cpp prints the C++ to the standard output, or writes it with -o.
 TEST(HotcTool, EmitCppModeTranslatesWithoutCompiling)
 {
     std::string text;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp " + player_args() + " 2>&1", text), 0) << text;
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp"}, player_args()}), text), 0) << text;
     EXPECT_NE(text.find("hot::deref"), std::string::npos);
 
     TestScratch scratch;
     const std::string out = scratch.file("hotc_emit.cpp");
     std::string text2;
-    EXPECT_EQ(
-        run_command(std::string("'") + HOTC_PATH + "' --emit-cpp " + player_args() + " -o '" + out + "' 2>&1", text2),
-        0)
-        << text2;
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp"}, player_args(), {"-o", out}}), text2), 0) << text2;
     EXPECT_NE(read_file(out).find("hot::deref"), std::string::npos); // the #line names differ
 }
 
@@ -127,23 +186,22 @@ TEST(HotcTool, CppScriptWarningSpeaksScriptText)
     {
         // The exact text of the warnings is the text of Clang.
         std::string version;
-        run_command(std::string("'") + HOT_CXX + "' --version 2>&1", version);
+        run_cxx({"--version"}, version);
         if (version.find("clang") == std::string::npos)
             GTEST_SKIP() << "the compiler is not Clang";
     }
     TestScratch scratch;
     const std::string script = scratch.file("warn.cpp");
     std::filesystem::copy_file(std::string(HOT_SOURCE_DIR) + "/tests/scripts/cpp_diag_warn.cpp", script);
-    const std::string base = std::string("'") + HOTC_PATH + "' --gen 1 --out-dir '" + scratch.file("hotc_cpp_warn") + "' -I '"
-        + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' --cxx '" + HOT_CXX
-        + "' --cxxflag -Wall --cxxflag -Werror '" + script + "' ";
+    const Args base = cat({{"--gen", "1", "--out-dir", scratch.file("hotc_cpp_warn")}, include_args(),
+        {"--cxx", HOT_CXX, "--cxxflag", "-Wall", "--cxxflag", "-Werror", script}});
     std::string text, raw;
-    EXPECT_NE(run_command(base + "2>&1", text), 0) << text;
-    EXPECT_NE(run_command(base + "--raw-diagnostics 2>&1", raw), 0) << raw;
+    EXPECT_NE(run_hotc(base, text), 0) << text;
+    EXPECT_NE(run_hotc(cat({base, {"--raw-diagnostics"}}), raw), 0) << raw;
     for (const std::string* t : {&text, &raw})
     {
-        EXPECT_NE(t->find("warn.cpp:10:13: error: unused variable 'unused' [-Werror,-Wunused-variable]"),
-            std::string::npos)
+        EXPECT_NE(
+            t->find("warn.cpp:10:13: error: unused variable 'unused' [-Werror,-Wunused-variable]"), std::string::npos)
             << *t;
         EXPECT_NE(t->find("warn.cpp:11:16: error: "), std::string::npos) << *t;
     }
@@ -168,10 +226,8 @@ TEST(HotcTool, TranslatorErrorHasTheFinalForm)
         f << "class Foo {\n    void Run() { int x = ; }\n}\n";
     }
     std::string text, raw;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp '" + script + "' --gen 1 2>&1", text), 1);
-    EXPECT_EQ(
-        run_command(std::string("'") + HOTC_PATH + "' --emit-cpp '" + script + "' --gen 1 --raw-diagnostics 2>&1", raw),
-        1);
+    EXPECT_EQ(run_hotc({"--emit-cpp", script, "--gen", "1"}, text), 1);
+    EXPECT_EQ(run_hotc({"--emit-cpp", script, "--gen", "1", "--raw-diagnostics"}, raw), 1);
     const size_t at = text.find(":2:");
     ASSERT_NE(at, std::string::npos) << text;
     EXPECT_EQ(text.compare(0, script.size(), script), 0) << text;
@@ -192,18 +248,11 @@ TEST(HotcTool, OutputOptionBuildsOneLibrary)
     const std::string dir = scratch.file("hotc_one_so");
     std::filesystem::create_directories(dir);
     std::string text;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' " + player_args() + " -o '" + dir + "/x.so' --cxx '"
-                      + HOT_CXX + "' 2>&1",
-                  text),
-        0)
-        << text;
-    EXPECT_TRUE(std::filesystem::exists(dir + "/x.so"));
+    EXPECT_EQ(run_hotc(cat({player_args(), {"-o", module_file(dir, "x"), "--cxx", HOT_CXX}}), text), 0) << text;
+    EXPECT_TRUE(std::filesystem::exists(module_file(dir, "x")));
 
     std::string text2;
-    EXPECT_EQ(
-        run_command(
-            std::string("'") + HOTC_PATH + "' --emit-cpp " + player_args() + " --out-dir '" + dir + "' 2>&1", text2),
-        2);
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp"}, player_args(), {"--out-dir", dir}}), text2), 2);
 }
 
 // A field with a borrowed pointer is an error by default. --no-strict-borrowed makes it a warning.
@@ -217,17 +266,10 @@ TEST(HotcTool, StrictBorrowedIsTheDefault)
         std::fputs("using \"Actor.h\";\nclass P : Actor {\n    Actor** target = null;\n}\n", f);
         std::fclose(f);
     }
-    const std::string args =
-        std::string("' --gen 1 -I '") + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include'";
     std::string strict, relaxed;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp '" + script + args + " 2>&1", strict), 1)
-        << strict;
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp", script}, engine_args()}), strict), 1) << strict;
     EXPECT_NE(strict.find("a field cannot hold a borrowed pointer"), std::string::npos) << strict;
-    EXPECT_EQ(
-        run_command(
-            std::string("'") + HOTC_PATH + "' --emit-cpp --no-strict-borrowed '" + script + args + " 2>&1", relaxed),
-        0)
-        << relaxed;
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp", "--no-strict-borrowed", script}, engine_args()}), relaxed), 0) << relaxed;
     EXPECT_NE(relaxed.find("warning"), std::string::npos) << relaxed;
 }
 
@@ -257,43 +299,25 @@ std::string write_interp_script(const TestScratch& scratch, const std::string& n
     return script;
 }
 
-std::string engine_args()
-{
-    return std::string(" --gen 1 -I '") + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include'";
-}
-
-// Generated code and the runtime headers need C++17 only (DECISIONS). The flags reject each
-// C++20 feature and each extension of the compiler.
-const char* const kCxx17Flags = " -std=c++17 -fsyntax-only -pedantic -Wc++20-extensions -Werror";
-
 // Translates the script and compiles the C++ with -std=c++17. A script with "${...}" uses
 // --format=fmt, because std::format is C++20. Without the fmt headers, such a script is not checked.
 void expect_compiles_as_cxx17(const std::string& script)
 {
-    std::string format, defines;
+    Args format, defines;
     if (read_file(script).find("${") != std::string::npos)
     {
 #if __has_include(<fmt/format.h>)
-        format = " --format=fmt";
-        defines = " -DFMT_HEADER_ONLY";
+        format = {"--format=fmt"};
+        defines = {"-DFMT_HEADER_ONLY"};
 #else
         return;
 #endif
     }
     const std::string out = script + ".cxx17.cpp";
     std::string log;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp" + format + " -o '" + out + "' '" + script + "'"
-                      + engine_args() + " 2>&1",
-                  log),
-        0)
-        << log;
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp"}, format, {"-o", out, script}, engine_args()}), log), 0) << log;
     std::string cc;
-    EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "'" + kCxx17Flags + defines + " -I '" + HOT_SOURCE_DIR
-                      + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '" + out + "' 2>&1",
-                  cc),
-        0)
-        << "C++17: " << script << "\n"
-        << cc;
+    EXPECT_EQ(run_cxx(cat({kCxx17Flags, defines, include_args(), {out}}), cc), 0) << "C++17: " << script << "\n" << cc;
 }
 
 // An "async" method needs C++20. The generated C++ of the async scripts compiles clean as C++20,
@@ -306,24 +330,18 @@ TEST(HotcTool, AsyncScriptsCompileAsCxx20)
         const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/" + name + ".hot";
         const std::string out = scratch.file(std::string(name) + ".cpp");
         std::string log;
-        EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp --std=c++20 -o '" + out + "' '" + script
-                          + "'" + engine_args() + " 2>&1",
-                      log),
-            0)
-            << log;
-        const std::string flags = std::string(" -std=c++20 -fsyntax-only -Werror -I '") + HOT_SOURCE_DIR
-            + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '";
+        EXPECT_EQ(run_hotc(cat({{"--emit-cpp", "--std=c++20", "-o", out, script}, engine_args()}), log), 0) << log;
+        const Args flags = {"-std=c++20", "-fsyntax-only", "-Werror"};
         std::string cc;
-        EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "'" + flags + out + "' 2>&1", cc), 0) << name << "\n" << cc;
+        EXPECT_EQ(run_cxx(cat({flags, include_args(), {out}}), cc), 0) << name << "\n" << cc;
 
         const std::string aot_dir = scratch.file(std::string(name) + "_aot");
-        EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --aot --aot-optimized --std=c++20 '" + script
-                          + "' --out-dir '" + aot_dir + "' -I '" + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR
-                          + "/include' 2>&1",
-                      log),
+        EXPECT_EQ(
+            run_hotc(
+                cat({{"--aot", "--aot-optimized", "--std=c++20", script, "--out-dir", aot_dir}, include_args()}), log),
             0)
             << log;
-        EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "'" + flags + aot_dir + "/" + name + ".aot.cpp' 2>&1", cc), 0)
+        EXPECT_EQ(run_cxx(cat({flags, include_args(), {aot_dir + "/" + name + ".aot.cpp"}}), cc), 0)
             << name << " (optimized AOT)\n"
             << cc;
     }
@@ -335,10 +353,8 @@ TEST(HotcTool, AsyncScriptNeedsCxx20)
     TestScratch scratch;
     const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/async_basic.hot";
     std::string log;
-    EXPECT_NE(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp --std=c++17 -o '" + scratch.file("a17.cpp")
-                      + "' '" + script + "'" + engine_args() + " 2>&1",
-                  log),
-        0);
+    EXPECT_NE(
+        run_hotc(cat({{"--emit-cpp", "--std=c++17", "-o", scratch.file("a17.cpp"), script}, engine_args()}), log), 0);
     EXPECT_NE(log.find("'async' needs C++20"), std::string::npos) << log;
 }
 
@@ -369,17 +385,9 @@ TEST(HotcTool, ScriptClassReferenceCompiles)
     expect_compiles_as_cxx17(script);
     const std::string out = scratch.file("hotc_class_ref.cpp");
     std::string log;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'"
-                      + engine_args() + " 2>&1",
-                  log),
-        0)
-        << log;
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp", "-o", out, script}, engine_args()}), log), 0) << log;
     std::string cc;
-    EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "' -std=c++20 -fsyntax-only -I '" + HOT_SOURCE_DIR
-                      + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '" + out + "' 2>&1",
-                  cc),
-        0)
-        << cc;
+    EXPECT_EQ(run_cxx(cat({{"-std=c++20", "-fsyntax-only"}, include_args(), {out}}), cc), 0) << cc;
 }
 
 // Classes that use each other through handles (task 47): the golden script builds a library, and
@@ -391,12 +399,9 @@ TEST(HotcTool, ClassesThatUseEachOtherBuildALibrary)
     std::filesystem::create_directories(dir);
     const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/cycle_handles_v1.hot";
     std::string text;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' '" + script + "'" + engine_args() + " -o '" + dir
-                      + "/cycle.so' --cxx '" + HOT_CXX + "' 2>&1",
-                  text),
-        0)
+    EXPECT_EQ(run_hotc(cat({{script}, engine_args(), {"-o", module_file(dir, "cycle"), "--cxx", HOT_CXX}}), text), 0)
         << text;
-    EXPECT_TRUE(std::filesystem::exists(dir + "/cycle.so"));
+    EXPECT_TRUE(std::filesystem::exists(module_file(dir, "cycle")));
     const std::string copy = scratch.file("hotc_cycle_handles.hot");
     std::ofstream(copy) << read_file(script);
     expect_compiles_as_cxx17(copy);
@@ -420,20 +425,12 @@ TEST(HotcTool, ModuleAttributeStdCompiles)
                                  "        this.label = std.to_string(this.history.size());\n    }\n}\n";
     }
     std::string log;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp --prelude '" + prelude + "' -o '" + out + "' '"
-                      + script + "'" + engine_args() + " 2>&1",
-                  log),
-        0)
-        << log;
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp", "--prelude", prelude, "-o", out, script}, engine_args()}), log), 0) << log;
     const std::string cpp = read_file(out);
     EXPECT_NE(cpp.find("mystd::string"), std::string::npos);
     EXPECT_EQ(cpp.find("\x01std::"), std::string::npos);
     std::string cc;
-    EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "' -std=c++17 -fsyntax-only -I '" + HOT_SOURCE_DIR
-                      + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '" + out + "' 2>&1",
-                  cc),
-        0)
-        << cc;
+    EXPECT_EQ(run_cxx(cat({{"-std=c++17", "-fsyntax-only"}, include_args(), {out}}), cc), 0) << cc;
 }
 
 // The module attribute array in a prelude: the generated C++ names the host array template. The header
@@ -454,20 +451,12 @@ TEST(HotcTool, ModuleAttributeArrayCompiles)
                                  "        this.weights[1][2] = dt;\n    }\n}\n";
     }
     std::string log;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp --prelude '" + prelude + "' -o '" + out + "' '"
-                      + script + "'" + engine_args() + " 2>&1",
-                  log),
-        0)
-        << log;
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp", "--prelude", prelude, "-o", out, script}, engine_args()}), log), 0) << log;
     const std::string cpp = read_file(out);
     EXPECT_NE(cpp.find("hostns::FixedArray<int32_t, 4> cells"), std::string::npos);
     EXPECT_EQ(cpp.find("std::array"), std::string::npos);
     std::string cc;
-    EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "' -std=c++17 -fsyntax-only -I '" + HOT_SOURCE_DIR
-                      + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '" + out + "' 2>&1",
-                  cc),
-        0)
-        << cc;
+    EXPECT_EQ(run_cxx(cat({{"-std=c++17", "-fsyntax-only"}, include_args(), {out}}), cc), 0) << cc;
 }
 
 // The stubs with checked_index and the custom array template: the generated C++ has the
@@ -494,11 +483,7 @@ TEST(HotcTool, CheckedIndexStubsCompile)
                                  "        this.plain[0] = 1;\n    }\n}\n";
     }
     std::string log;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'"
-                      + engine_args() + " 2>&1",
-                  log),
-        0)
-        << log;
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp", "-o", out, script}, engine_args()}), log), 0) << log;
     const std::string cpp = read_file(out);
     EXPECT_NE(cpp.find("struct checked_index< ::hostns2::Ring<A...>>"), std::string::npos) << cpp;
     EXPECT_NE(cpp.find("struct checked_index< ::hostns2::Plain>"), std::string::npos) << cpp;
@@ -508,11 +493,7 @@ TEST(HotcTool, CheckedIndexStubsCompile)
     EXPECT_NE(cpp.find("checked_index< ::hostns2::__detail::Deep<A...>>"), std::string::npos) << cpp;
     EXPECT_NE(cpp.find("checked_index< ::hostns2::Versioned<A...>>"), std::string::npos) << cpp;
     std::string cc;
-    EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "' -std=c++17 -fsyntax-only -I '" + HOT_SOURCE_DIR
-                      + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '" + out + "' 2>&1",
-                  cc),
-        0)
-        << cc;
+    EXPECT_EQ(run_cxx(cat({{"-std=c++17", "-fsyntax-only"}, include_args(), {out}}), cc), 0) << cc;
 }
 
 // The module attribute array with the alias template FixedArray of ArrayAlias.h: the partial
@@ -523,19 +504,11 @@ TEST(HotcTool, ArrayAliasCheckedIndexCompiles)
     const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/module_attrs_array_v1.hot";
     const std::string out = scratch.file("hotc_array_alias.cpp");
     std::string log;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'"
-                      + engine_args() + " 2>&1",
-                  log),
-        0)
-        << log;
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp", "-o", out, script}, engine_args()}), log), 0) << log;
     const std::string cpp = read_file(out);
     EXPECT_NE(cpp.find("checked_index< ::hostns::FixedArray<T, N>>"), std::string::npos) << cpp;
     std::string cc;
-    EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "' -std=c++17 -fsyntax-only -I '" + HOT_SOURCE_DIR
-                      + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '" + out + "' 2>&1",
-                  cc),
-        0)
-        << cc;
+    EXPECT_EQ(run_cxx(cat({{"-std=c++17", "-fsyntax-only"}, include_args(), {out}}), cc), 0) << cc;
 }
 
 // A stub with checked_index must fit the kind of its name. The message gives the fix.
@@ -549,11 +522,7 @@ void expect_checked_index_error(const char* name, const char* stub, const char* 
                               << stub << "\n\nclass Grid : Actor {\n}\n";
     }
     std::string log;
-    EXPECT_NE(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'"
-                      + engine_args() + " 2>&1",
-                  log),
-        0)
-        << log;
+    EXPECT_NE(run_hotc(cat({{"--emit-cpp", "-o", out, script}, engine_args()}), log), 0) << log;
     EXPECT_NE(log.find(message), std::string::npos) << log;
     EXPECT_NE(log.find(":5:"), std::string::npos) << log; // the line of the stub
 }
@@ -594,7 +563,11 @@ TEST(HotcTool, CheckedIndexHasNoTestWithoutRuntimeChecks)
 {
     TestScratch scratch;
     const std::string src = scratch.file("hotc_unchecked_index.cpp");
+#ifdef _WIN32
+    const std::string exe = scratch.file("hotc_unchecked_index.exe");
+#else
     const std::string exe = scratch.file("hotc_unchecked_index.bin");
+#endif
     {
         std::ofstream(src) << "#include \"hot/runtime/deref.h\"\n#include <cstdlib>\n#include <vector>\n"
                               "namespace hot::detail {\n"
@@ -606,12 +579,20 @@ TEST(HotcTool, CheckedIndexHasNoTestWithoutRuntimeChecks)
                               "int main() { Lax l; std::vector<int> g(1); return hot::index(l, 5) == 3 ? 0 : 1; }\n";
     }
     std::string log;
-    ASSERT_EQ(run_command(std::string("'") + HOT_CXX + "' -std=c++17 -DHOT_RUNTIME_CHECKS=0 -I '" + HOT_SOURCE_DIR
-                      + "/include' '" + src + "' -o '" + exe + "' 2>&1",
-                  log),
-        0)
-        << log;
-    EXPECT_EQ(run_command("'" + exe + "' 2>&1", log), 0) << log;
+    Args compile = {"-std=c++17", "-DHOT_RUNTIME_CHECKS=0", "-I", kSource + "/include", src, "-o", exe};
+#ifdef _WIN32
+    // The exceptions of the runtime are in the library. The same library object also defines the two
+    // throw functions of this program. The first definition (the program) wins.
+    compile.push_back(HOT_RUNTIME_LIB);
+    #ifdef __MINGW32__
+    compile.push_back("-Wl,--allow-multiple-definition");
+    #else
+    // MSVC target: lld-link does not know the GNU ld option.
+    compile.push_back("-Wl,/force:multiple");
+    #endif
+#endif
+    ASSERT_EQ(run_cxx(compile, log), 0) << log;
+    EXPECT_EQ(run_command({exe}, log), 0) << log;
 }
 
 // Translates the script text and compiles the C++ with -fsyntax-only.
@@ -625,17 +606,9 @@ void expect_script_compiles(TestScratch& scratch, const char* name, const char* 
     expect_compiles_as_cxx17(script);
     const std::string out = scratch.file(std::string(name) + ".cpp");
     std::string log;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'"
-                      + engine_args() + " 2>&1",
-                  log),
-        0)
-        << log;
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp", "-o", out, script}, engine_args()}), log), 0) << log;
     std::string cc;
-    EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "' -std=c++20 -fsyntax-only -I '" + HOT_SOURCE_DIR
-                      + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '" + out + "' 2>&1",
-                  cc),
-        0)
-        << cc;
+    EXPECT_EQ(run_cxx(cat({{"-std=c++20", "-fsyntax-only"}, include_args(), {out}}), cc), 0) << cc;
 }
 
 // "ref r = p;" and "foreach (ref e in p)" write through a value parameter: the generated
@@ -705,13 +678,9 @@ TEST(HotcTool, IsBindingCompilesAndRuns)
         f);
     std::fclose(f);
     expect_compiles_as_cxx17(script);
-    const std::string so = scratch.file("hotc_is_bind.so");
+    const std::string so = module_file(scratch.path(), "hotc_is_bind");
     std::string log;
-    ASSERT_EQ(run_command(std::string("'") + HOTC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
-                      + "' --cxx '" + HOT_CXX + "' 2>&1",
-                  log),
-        0)
-        << log;
+    ASSERT_EQ(run_hotc(cat({{script}, engine_args(), {"-o", so, "--cxx", HOT_CXX}}), log), 0) << log;
     test_support::Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(test_support::library(so.c_str()), "Hero"));
     s.world.Tick(1.0f / 60);
@@ -753,13 +722,9 @@ TEST(HotcTool, AccessWordsCompileAndRun)
         f);
     std::fclose(f);
     expect_compiles_as_cxx17(script);
-    const std::string so = scratch.file("hotc_access.so");
+    const std::string so = module_file(scratch.path(), "hotc_access");
     std::string log;
-    ASSERT_EQ(run_command(std::string("'") + HOTC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
-                      + "' --cxx '" + HOT_CXX + "' 2>&1",
-                  log),
-        0)
-        << log;
+    ASSERT_EQ(run_hotc(cat({{script}, engine_args(), {"-o", so, "--cxx", HOT_CXX}}), log), 0) << log;
     test_support::Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(test_support::library(so.c_str()), "Hero"));
     s.world.Tick(1.0f / 60);
@@ -807,13 +772,9 @@ TEST(HotcTool, BareMemberNamesCompileAndRun)
         f);
     std::fclose(f);
     expect_compiles_as_cxx17(script);
-    const std::string so = scratch.file("hotc_bare_members.so");
+    const std::string so = module_file(scratch.path(), "hotc_bare_members");
     std::string log;
-    ASSERT_EQ(run_command(std::string("'") + HOTC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
-                      + "' --cxx '" + HOT_CXX + "' 2>&1",
-                  log),
-        0)
-        << log;
+    ASSERT_EQ(run_hotc(cat({{script}, engine_args(), {"-o", so, "--cxx", HOT_CXX}}), log), 0) << log;
     test_support::Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(test_support::library(so.c_str()), "Hero"));
     s.world.Tick(1.0f / 60);
@@ -865,13 +826,9 @@ TEST(HotcTool, StructuredBindingsCompileAndRun)
         f);
     std::fclose(f);
     expect_compiles_as_cxx17(script);
-    const std::string so = scratch.file("hotc_bindings.so");
+    const std::string so = module_file(scratch.path(), "hotc_bindings");
     std::string log;
-    ASSERT_EQ(run_command(std::string("'") + HOTC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
-                      + "' --cxx '" + HOT_CXX + "' 2>&1",
-                  log),
-        0)
-        << log;
+    ASSERT_EQ(run_hotc(cat({{script}, engine_args(), {"-o", so, "--cxx", HOT_CXX}}), log), 0) << log;
     test_support::Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(test_support::library(so.c_str()), "Hero"));
     s.world.Tick(1.0f / 60);
@@ -919,17 +876,9 @@ TEST(HotcTool, HandleAddressOfDereferenceAndThisCompile)
     expect_compiles_as_cxx17(script);
     const std::string out = scratch.file("hotc_handle_deref.cpp");
     std::string log;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'"
-                      + engine_args() + " 2>&1",
-                  log),
-        0)
-        << log;
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp", "-o", out, script}, engine_args()}), log), 0) << log;
     std::string cc;
-    EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "' -std=c++20 -fsyntax-only -I '" + HOT_SOURCE_DIR
-                      + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '" + out + "' 2>&1",
-                  cc),
-        0)
-        << cc;
+    EXPECT_EQ(run_cxx(cat({{"-std=c++20", "-fsyntax-only"}, include_args(), {out}}), cc), 0) << cc;
 }
 
 // A std.unique_ptr field is an error: a reload copies each field.
@@ -946,10 +895,7 @@ TEST(HotcTool, MoveOnlyFieldIsAnError)
     std::fclose(f);
     const std::string out = scratch.file("hotc_unique_field.cpp");
     std::string log;
-    EXPECT_NE(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp -o '" + out + "' '" + script + "'"
-                      + engine_args() + " 2>&1",
-                  log),
-        0);
+    EXPECT_NE(run_hotc(cat({{"--emit-cpp", "-o", out, script}, engine_args()}), log), 0);
     EXPECT_NE(log.find("field of move-only type 'std::unique_ptr<Weapon>' is not supported"), std::string::npos) << log;
 }
 
@@ -959,40 +905,22 @@ TEST(HotcTool, FormatOptionSelectsTheFormatFunction)
     TestScratch scratch;
     const std::string script = write_interp_script(scratch, "hotc_interp_text.hot");
     std::string std_text, fmt_text, bad;
-    EXPECT_EQ(
-        run_command(std::string("'") + HOTC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", std_text),
-        0)
-        << std_text;
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp", script}, engine_args()}), std_text), 0) << std_text;
     EXPECT_NE(std_text.find("#include <format>"), std::string::npos) << std_text;
     EXPECT_NE(std_text.find("std::format(\"hp = {}, name {}, r {:.2f} {{x}} ${{y}} {}\""), std::string::npos)
         << std_text;
-    EXPECT_EQ(run_command(
-                  std::string("'") + HOTC_PATH + "' --emit-cpp --format=fmt '" + script + "'" + engine_args() + " 2>&1",
-                  fmt_text),
-        0)
-        << fmt_text;
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp", "--format=fmt", script}, engine_args()}), fmt_text), 0) << fmt_text;
     EXPECT_NE(fmt_text.find("#include <fmt/format.h>"), std::string::npos) << fmt_text;
     EXPECT_NE(fmt_text.find("fmt::format(\"hp = {}"), std::string::npos) << fmt_text;
     EXPECT_EQ(fmt_text.find("std::format"), std::string::npos) << fmt_text;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp --format=printf '" + script + "'" + engine_args()
-                      + " 2>&1",
-                  bad),
-        2);
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp", "--format=printf", script}, engine_args()}), bad), 2);
 #if __has_include(<fmt/format.h>)
     // fmt is installed: the generated text compiles.
     const std::string out = scratch.file("hotc_interp_fmt.cpp");
     std::string log;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp --format=fmt -o '" + out + "' '" + script + "'"
-                      + engine_args() + " 2>&1",
-                  log),
-        0)
-        << log;
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp", "--format=fmt", "-o", out, script}, engine_args()}), log), 0) << log;
     std::string cc;
-    EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "' -std=c++20 -fsyntax-only -DFMT_HEADER_ONLY -I '"
-                      + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '" + out + "' 2>&1",
-                  cc),
-        0)
-        << cc;
+    EXPECT_EQ(run_cxx(cat({{"-std=c++20", "-fsyntax-only", "-DFMT_HEADER_ONLY"}, include_args(), {out}}), cc), 0) << cc;
 #endif
 }
 
@@ -1005,20 +933,20 @@ TEST(HotcTool, ViewOptionSelectsTheViewType)
         std::ofstream f(script);
         f << "class Foo {\n    int Sum(int[] s) { return s[0]; }\n}\n";
     }
-    const std::string emit = std::string("'") + HOTC_PATH + "' --emit-cpp ";
-    const std::string tail = " '" + script + "'" + engine_args() + " 2>&1";
+    const auto emit = [&](const Args& flags, std::string& text)
+    { return run_hotc(cat({{"--emit-cpp"}, flags, {script}, engine_args()}), text); };
     std::string def, hot_view, std_view, bad, c17;
     // Without --view, the emitted code uses the view type of this build.
-    EXPECT_EQ(run_command(emit + "--std=c++20" + tail, def), 0) << def;
+    EXPECT_EQ(emit({"--std=c++20"}, def), 0) << def;
     EXPECT_NE(def.find(std::string(hot::view_type_name()) + "::span<int32_t> s"), std::string::npos) << def;
-    EXPECT_EQ(run_command(emit + "--view=hot --std=c++17" + tail, hot_view), 0) << hot_view;
+    EXPECT_EQ(emit({"--view=hot", "--std=c++17"}, hot_view), 0) << hot_view;
     EXPECT_NE(hot_view.find("hot::span<int32_t> s"), std::string::npos) << hot_view;
-    EXPECT_EQ(run_command(emit + "--view=std --std=c++20" + tail, std_view), 0) << std_view;
+    EXPECT_EQ(emit({"--view=std", "--std=c++20"}, std_view), 0) << std_view;
     EXPECT_NE(std_view.find("std::span<int32_t> s"), std::string::npos) << std_view;
     EXPECT_EQ(std_view.find("hot::span<"), std::string::npos) << std_view;
-    EXPECT_NE(run_command(emit + "--view=std --std=c++17" + tail, c17), 0) << c17;
+    EXPECT_NE(emit({"--view=std", "--std=c++17"}, c17), 0) << c17;
     EXPECT_NE(c17.find("needs C++20"), std::string::npos) << c17;
-    EXPECT_EQ(run_command(emit + "--view=other" + tail, bad), 2) << bad;
+    EXPECT_EQ(emit({"--view=other"}, bad), 2) << bad;
 }
 
 // In build mode the view type of this hotc is fixed. A different --view is an error (exit code 2).
@@ -1032,9 +960,8 @@ TEST(HotcTool, ViewOptionMismatchWithTheBuildIsAnError)
     }
     const std::string other = std::string(hot::view_type_name()) == "hot" ? "std" : "hot";
     std::string text;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' '" + script + "' --gen 1 --out-dir '"
-                      + scratch.file("hotc_view_mismatch_out") + "' --view=" + other + " -I '" + HOT_SOURCE_DIR
-                      + "/include' 2>&1",
+    EXPECT_EQ(run_hotc({script, "--gen", "1", "--out-dir", scratch.file("hotc_view_mismatch_out"),
+                           std::string("--view=") + other, "-I", kSource + "/include"},
                   text),
         2)
         << text;
@@ -1049,16 +976,8 @@ TEST(HotcTool, FormatFmtOutputCompilesAsCxx17)
     const std::string script = write_interp_script(scratch, "hotc_interp_fmt17.hot");
     const std::string out = scratch.file("hotc_interp_fmt17.cpp");
     std::string log, cc;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp --format=fmt -o '" + out + "' '" + script + "'"
-                      + engine_args() + " 2>&1",
-                  log),
-        0)
-        << log;
-    EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "'" + kCxx17Flags + " -DFMT_HEADER_ONLY -I '" + HOT_SOURCE_DIR
-                      + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '" + out + "' 2>&1",
-                  cc),
-        0)
-        << cc;
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp", "--format=fmt", "-o", out, script}, engine_args()}), log), 0) << log;
+    EXPECT_EQ(run_cxx(cat({kCxx17Flags, {"-DFMT_HEADER_ONLY"}, include_args(), {out}}), cc), 0) << cc;
 }
 #endif
 
@@ -1070,16 +989,8 @@ TEST(HotcTool, FormatStdOutputCompilesAsCxx20)
     const std::string script = write_interp_script(scratch, "hotc_interp_std20.hot");
     const std::string out = scratch.file("hotc_interp_std20.cpp");
     std::string log, cc;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp --format=std -o '" + out + "' '" + script + "'"
-                      + engine_args() + " 2>&1",
-                  log),
-        0)
-        << log;
-    EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "' -std=c++20 -fsyntax-only -I '" + HOT_SOURCE_DIR
-                      + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' '" + out + "' 2>&1",
-                  cc),
-        0)
-        << cc;
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp", "--format=std", "-o", out, script}, engine_args()}), log), 0) << log;
+    EXPECT_EQ(run_cxx(cat({{"-std=c++20", "-fsyntax-only"}, include_args(), {out}}), cc), 0) << cc;
 }
 #endif
 
@@ -1091,9 +1002,10 @@ TEST(HotcTool, BuildModeRejectsAFormatThatTheBuildDoesNotUse)
     const std::string script = write_interp_script(scratch, "hotc_interp_mismatch.hot");
     const std::string other = HOT_USE_FMT ? "std" : "fmt";
     std::string log;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' '" + script + "'" + engine_args() + " -o '"
-                      + scratch.file("hotc_interp_mismatch.so") + "' --format=" + other + " 2>&1",
-                  log),
+    EXPECT_EQ(
+        run_hotc(cat({{script}, engine_args(),
+                     {"-o", module_file(scratch.path(), "hotc_interp_mismatch"), std::string("--format=") + other}}),
+            log),
         2)
         << log;
     EXPECT_NE(log.find("this hotc is built for --format="), std::string::npos) << log;
@@ -1123,13 +1035,9 @@ TEST(HotcTool, CoalesceRunsTheRightSideOnlyWhenNeeded)
         f);
     std::fclose(f);
     expect_compiles_as_cxx17(script);
-    const std::string so = scratch.file("hotc_coalesce_run.so");
+    const std::string so = module_file(scratch.path(), "hotc_coalesce_run");
     std::string log;
-    ASSERT_EQ(run_command(std::string("'") + HOTC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
-                      + "' --cxx '" + HOT_CXX + "' 2>&1",
-                  log),
-        0)
-        << log;
+    ASSERT_EQ(run_hotc(cat({{script}, engine_args(), {"-o", so, "--cxx", HOT_CXX}}), log), 0) << log;
     test_support::Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(test_support::library(so.c_str()), "Hero"));
     s.world.Tick(1.0f / 60);
@@ -1174,13 +1082,9 @@ TEST(HotcTool, CoalesceInVarKeepsTheOperandType)
         f);
     std::fclose(f);
     expect_compiles_as_cxx17(script);
-    const std::string so = scratch.file("hotc_coalesce_var.so");
+    const std::string so = module_file(scratch.path(), "hotc_coalesce_var");
     std::string log;
-    ASSERT_EQ(run_command(std::string("'") + HOTC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
-                      + "' --cxx '" + HOT_CXX + "' 2>&1",
-                  log),
-        0)
-        << log;
+    ASSERT_EQ(run_hotc(cat({{script}, engine_args(), {"-o", so, "--cxx", HOT_CXX}}), log), 0) << log;
     test_support::Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(test_support::library(so.c_str()), "Hero"));
     s.world.Tick(1.0f / 60);
@@ -1194,13 +1098,9 @@ TEST(HotcTool, InterpolationRunsWithStdFormat)
     TestScratch scratch;
     const std::string script = write_interp_script(scratch, "hotc_interp_run.hot");
     expect_compiles_as_cxx17(script);
-    const std::string so = scratch.file("hotc_interp_run.so");
+    const std::string so = module_file(scratch.path(), "hotc_interp_run");
     std::string log;
-    ASSERT_EQ(run_command(std::string("'") + HOTC_PATH + "' '" + script + "'" + engine_args() + " -o '" + so
-                      + "' --cxx '" + HOT_CXX + "' 2>&1",
-                  log),
-        0)
-        << log;
+    ASSERT_EQ(run_hotc(cat({{script}, engine_args(), {"-o", so, "--cxx", HOT_CXX}}), log), 0) << log;
     test_support::Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(test_support::library(so.c_str()), "Hero"));
     s.world.Tick(1.0f / 60);
@@ -1270,15 +1170,13 @@ TEST(HotcTool, PublicHeadersCompileAloneAsCxx17)
         const std::string tu = scratch.file("hdr_" + std::filesystem::path(h).stem().string() + ".cpp");
         std::FILE* f = std::fopen(tu.c_str(), "w");
         ASSERT_NE(f, nullptr);
-        std::fputs(("#include \"" + h + "\"\n").c_str(), f);
+        // The include name is relative to the include directory (-I). A path with a drive letter or a
+        // backslash is not portable in the text of an include line.
+        const std::string name = std::filesystem::relative(h, kSource + "/include").generic_string();
+        std::fputs(("#include \"" + name + "\"\n").c_str(), f);
         std::fclose(f);
         std::string cc;
-        EXPECT_EQ(run_command(std::string("'") + HOT_CXX + "'" + kCxx17Flags + " -I '" + HOT_SOURCE_DIR + "/include' '"
-                          + tu + "' 2>&1",
-                      cc),
-            0)
-            << h << "\n"
-            << cc;
+        EXPECT_EQ(run_cxx(cat({kCxx17Flags, {"-I", kSource + "/include", tu}}), cc), 0) << h << "\n" << cc;
     }
 }
 
@@ -1287,23 +1185,17 @@ TEST(HotcTool, AotModeWritesTheCppAndTheRegistrationFile)
 {
     TestScratch scratch;
     const std::string out_dir = scratch.file("hotc_aot");
-    const std::string scripts = std::string("'") + HOT_SOURCE_DIR + "/tests/scripts/aot_demo.hot' '" + HOT_SOURCE_DIR
-        + "/tests/scripts/props_v1.hot'";
-    const std::string cmd = std::string("'") + HOTC_PATH + "' --aot " + scripts + " --out-dir '" + out_dir + "' -I '"
-        + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' 2>&1";
-    FILE* p = popen(cmd.c_str(), "r");
-    ASSERT_NE(p, nullptr);
     std::string text;
-    char buf[512];
-    while (size_t n = fread(buf, 1, sizeof buf, p))
-        text.append(buf, n);
-    const int status = pclose(p);
-    ASSERT_TRUE(WIFEXITED(status));
-    EXPECT_EQ(WEXITSTATUS(status), 0) << text;
+    EXPECT_EQ(run_hotc(cat({{"--aot", kSource + "/tests/scripts/aot_demo.hot", kSource + "/tests/scripts/props_v1.hot",
+                                "--out-dir", out_dir},
+                           include_args()}),
+                  text),
+        0)
+        << text;
     const std::string demo = read_file(out_dir + "/aot_demo.aot.cpp");
     EXPECT_NE(demo.find("#define script_register hot_script_register_aot_demo"), std::string::npos);
     EXPECT_NE(demo.find("extern \"C\" void script_register("), std::string::npos);
-    EXPECT_FALSE(std::filesystem::exists(out_dir + "/aot_demo.g1.so"));
+    EXPECT_FALSE(std::filesystem::exists(module_file(out_dir, "aot_demo.g1")));
     const std::string reg = read_file(out_dir + "/hot_aot_registry.cpp");
     EXPECT_NE(reg.find("{\"aot_demo\", &hot_script_register_aot_demo}"), std::string::npos) << reg;
     EXPECT_NE(reg.find("{\"props_v1\", &hot_script_register_props_v1}"), std::string::npos) << reg;
@@ -1316,17 +1208,9 @@ TEST(HotcTool, AotOptimizedWritesTheDefineAndTheTableFlag)
     TestScratch scratch;
     const std::string out_dir = scratch.file("hotc_aot_opt");
     const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/aot_demo.hot";
-    const std::string cmd = std::string("'") + HOTC_PATH + "' --aot --aot-optimized '" + script + "' --out-dir '"
-        + out_dir + "' -I '" + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' 2>&1";
-    FILE* p = popen(cmd.c_str(), "r");
-    ASSERT_NE(p, nullptr);
     std::string text;
-    char buf[512];
-    while (size_t n = fread(buf, 1, sizeof buf, p))
-        text.append(buf, n);
-    const int status = pclose(p);
-    ASSERT_TRUE(WIFEXITED(status));
-    EXPECT_EQ(WEXITSTATUS(status), 0) << text;
+    EXPECT_EQ(run_hotc(cat({{"--aot", "--aot-optimized", script, "--out-dir", out_dir}, include_args()}), text), 0)
+        << text;
     const std::string demo = read_file(out_dir + "/aot_demo.aot.cpp");
     EXPECT_NE(demo.find("\n#define HOT_AOT_OPTIMIZED 1\n"), std::string::npos);
     const std::string reg = read_file(out_dir + "/hot_aot_registry.cpp");
@@ -1339,17 +1223,9 @@ TEST(HotcTool, AotOptimizedFieldAccessUsesTheShell)
     TestScratch scratch;
     const std::string out_dir = scratch.file("hotc_aot_opt_fields");
     const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/aot_opt_fields.hot";
-    const std::string cmd = std::string("'") + HOTC_PATH + "' --aot --aot-optimized '" + script + "' --out-dir '"
-        + out_dir + "' -I '" + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' 2>&1";
-    FILE* p = popen(cmd.c_str(), "r");
-    ASSERT_NE(p, nullptr);
     std::string text;
-    char buf[512];
-    while (size_t n = fread(buf, 1, sizeof buf, p))
-        text.append(buf, n);
-    const int status = pclose(p);
-    ASSERT_TRUE(WIFEXITED(status));
-    EXPECT_EQ(WEXITSTATUS(status), 0) << text;
+    EXPECT_EQ(run_hotc(cat({{"--aot", "--aot-optimized", script, "--out-dir", out_dir}, include_args()}), text), 0)
+        << text;
     const std::string out = read_file(out_dir + "/aot_opt_fields.aot.cpp");
     EXPECT_NE(out.find("hot::ShellCore"), std::string::npos) << out;
     EXPECT_EQ(out.find("state_of("), std::string::npos) << out;
@@ -1365,17 +1241,9 @@ TEST(HotcTool, AotOptimizedCppScriptHasNoStateOf)
     TestScratch scratch;
     const std::string out_dir = scratch.file("hotc_aot_opt_cpp_fields");
     const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/aot_cover_cpp.cpp";
-    const std::string cmd = std::string("'") + HOTC_PATH + "' --aot --aot-optimized '" + script + "' --out-dir '"
-        + out_dir + "' -I '" + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' 2>&1";
-    FILE* p = popen(cmd.c_str(), "r");
-    ASSERT_NE(p, nullptr);
     std::string text;
-    char buf[512];
-    while (size_t n = fread(buf, 1, sizeof buf, p))
-        text.append(buf, n);
-    const int status = pclose(p);
-    ASSERT_TRUE(WIFEXITED(status));
-    EXPECT_EQ(WEXITSTATUS(status), 0) << text;
+    EXPECT_EQ(run_hotc(cat({{"--aot", "--aot-optimized", script, "--out-dir", out_dir}, include_args()}), text), 0)
+        << text;
     const std::string out = read_file(out_dir + "/aot_cover_cpp.aot.cpp");
     EXPECT_NE(out.find("CppReader"), std::string::npos) << out;
     EXPECT_EQ(out.find("state_of("), std::string::npos) << out;
@@ -1385,17 +1253,10 @@ TEST(HotcTool, AotOptimizedCppScriptHasNoStateOf)
 // --aot-optimized without --aot is a usage error. The tool prints the reason and the usage text.
 TEST(HotcTool, AotOptimizedWithoutAotPrintsTheUsage)
 {
+    TestScratch scratch;
     const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/aot_demo.hot";
-    const std::string cmd = std::string("'") + HOTC_PATH + "' --aot-optimized '" + script + "' --out-dir /tmp/x 2>&1";
-    FILE* p = popen(cmd.c_str(), "r");
-    ASSERT_NE(p, nullptr);
     std::string text;
-    char buf[512];
-    while (size_t n = fread(buf, 1, sizeof buf, p))
-        text.append(buf, n);
-    const int status = pclose(p);
-    ASSERT_TRUE(WIFEXITED(status));
-    EXPECT_EQ(WEXITSTATUS(status), 2) << text;
+    EXPECT_EQ(run_hotc(Args{"--aot-optimized", script, "--out-dir", scratch.file("aot_out")}, text), 2) << text;
     EXPECT_NE(text.find("hotc: --aot-optimized needs --aot"), std::string::npos) << text;
     EXPECT_NE(text.find("usage: hotc"), std::string::npos) << text;
 }
@@ -1404,13 +1265,14 @@ TEST(HotcTool, AotOptimizedWithoutAotPrintsTheUsage)
 TEST(HotcTool, AotModeRejectsBadUsage)
 {
     const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/aot_demo.hot";
-    for (const char* extra :
-        {"", "--out-dir /tmp/x --gen 1", "--out-dir /tmp/x -o /tmp/x.so", "--emit-cpp --out-dir /tmp/x"})
+    TestScratch scratch;
+    const std::string dir = scratch.file("x");
+    const std::vector<Args> extras = {{}, {"--out-dir", dir, "--gen", "1"},
+        {"--out-dir", dir, "-o", module_file(scratch.path(), "x")}, {"--emit-cpp", "--out-dir", dir}};
+    for (const Args& extra : extras)
     {
-        const std::string cmd = std::string("'") + HOTC_PATH + "' --aot '" + script + "' " + extra + " >/dev/null 2>&1";
-        const int status = std::system(cmd.c_str());
-        ASSERT_TRUE(WIFEXITED(status));
-        EXPECT_EQ(WEXITSTATUS(status), 2) << extra;
+        std::string text;
+        EXPECT_EQ(run_hotc(cat({{"--aot", script}, extra}), text), 2) << text;
     }
 }
 
@@ -1426,17 +1288,8 @@ TEST(HotcTool, AotModeReportsParseErrorAtTheScriptLine)
         std::ofstream f(script);
         f << "using \"Actor.h\";\n\nclass Broken : Actor {\n    int x = ;\n}\n";
     }
-    const std::string cmd = std::string("'") + HOTC_PATH + "' --aot '" + script + "' --out-dir '" + out_dir + "' -I '"
-        + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' 2>&1";
-    FILE* p = popen(cmd.c_str(), "r");
-    ASSERT_NE(p, nullptr);
     std::string text;
-    char buf[512];
-    while (size_t n = fread(buf, 1, sizeof buf, p))
-        text.append(buf, n);
-    const int status = pclose(p);
-    ASSERT_TRUE(WIFEXITED(status));
-    EXPECT_EQ(WEXITSTATUS(status), 1) << text;
+    EXPECT_EQ(run_hotc(cat({{"--aot", script, "--out-dir", out_dir}, include_args()}), text), 1) << text;
     EXPECT_NE(text.find("broken.hot:4:"), std::string::npos) << text;
     EXPECT_FALSE(std::filesystem::exists(out_dir + "/hot_aot_registry.cpp"));
 }
@@ -1472,8 +1325,17 @@ TEST(HotcTool, CompileCommandUsesTheBackendFlags)
     o.include_dirs = {"/i1", "/i2"};
     o.extra_flags = {"-O2"};
     o.resource_dir = "/res";
-    std::vector<std::string> expected = {"cc", std::string("-std=") + hot::cxx_std_name(), "-fPIC", "-shared", "-g",
-        "-Werror=return-type", "-fwrapv", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-fno-plt", "-resource-dir=/res", "-O2", "-I/i1", "-I/i2"};
+    std::vector<std::string> expected = {"cc", std::string("-std=") + hot::cxx_std_name(),
+#ifndef _WIN32
+        "-fPIC",
+#endif
+        "-shared", "-g", "-Werror=return-type", "-fwrapv", "-fvisibility=hidden", "-fvisibility-inlines-hidden",
+#ifdef _WIN32
+        "-DHOT_MODULE_BUILD=1",
+#else
+        "-fno-plt",
+#endif
+        "-resource-dir=/res", "-O2", "-I/i1", "-I/i2"};
     for (const std::string& f : hot::format_compile_flags())
         expected.push_back(f); // fmt build only
     for (const std::string& f : hot::checks_compile_flags())
@@ -1501,6 +1363,10 @@ TEST(HotcTool, CompileCommandStdVersionOverridesTheHostStandard)
 // hotc --compile-commands writes one entry for each generated .cpp.
 TEST(HotcTool, CompileCommandsOptionWritesTheDatabase)
 {
+#ifdef _WIN32
+    GTEST_SKIP() << "the expected text has the POSIX flags; Windows has other flags, the target flags and "
+                    "the JSON escape of the backslash in each path";
+#endif
     namespace fs = std::filesystem;
     TestScratch scratch;
     const std::string out_dir = scratch.file("hotc_cdb");
@@ -1508,20 +1374,15 @@ TEST(HotcTool, CompileCommandsOptionWritesTheDatabase)
     const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/boss_v1.hot";
     const std::string engine = std::string(HOT_SOURCE_DIR) + "/tests/engine";
     const std::string inc = std::string(HOT_SOURCE_DIR) + "/include";
-    const std::string cmd = std::string("'") + HOTC_PATH + "' '" + script + "' --gen 1 --out-dir '" + out_dir + "' -I '"
-        + engine + "' -I '" + inc + "' --cxx '" + HOT_CXX + "' --cxxflag -O1 --compile-commands '" + cdb_dir + "' 2>&1";
     std::string text;
-    FILE* p = popen(cmd.c_str(), "r");
-    ASSERT_NE(p, nullptr);
-    char buf[512];
-    while (size_t n = fread(buf, 1, sizeof buf, p))
-        text.append(buf, n);
-    const int status = pclose(p);
-    ASSERT_TRUE(WIFEXITED(status));
-    ASSERT_EQ(WEXITSTATUS(status), 0) << text;
+    ASSERT_EQ(run_hotc(cat({{script, "--gen", "1", "--out-dir", out_dir}, {"-I", engine, "-I", inc},
+                           {"--cxx", HOT_CXX, "--cxxflag", "-O1", "--compile-commands", cdb_dir}}),
+                  text),
+        0)
+        << text;
 
     const std::string cpp = fs::absolute(out_dir + "/boss_v1.g1.cpp").string();
-    const std::string so = fs::absolute(out_dir + "/boss_v1.g1.so").string();
+    const std::string so = fs::absolute(module_file(out_dir, "boss_v1.g1")).string();
     const std::string cxx = HOT_CXX;
     std::string fmt_args; // fmt build only
     for (const std::string& f : hot::format_compile_flags())
@@ -1545,9 +1406,7 @@ TEST(HotcTool, EmitCppTranslatesACppScript)
 {
     std::string text;
     const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/cpp_player_v1.cpp";
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", text),
-        0)
-        << text;
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp", script}, engine_args()}), text), 0) << text;
     EXPECT_NE(text.find("script_register"), std::string::npos) << text;
 }
 
@@ -1557,9 +1416,7 @@ TEST(HotcTool, EmitCppInjectsTheScriptHeaderForTheAids)
 {
     std::string text;
     const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/cpp_player_v2.cpp";
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", text),
-        0)
-        << text;
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp", script}, engine_args()}), text), 0) << text;
     EXPECT_NE(text.find("script_register"), std::string::npos) << text;
 }
 
@@ -1573,8 +1430,7 @@ TEST(HotcTool, CppScriptWithUnsupportedFormFails)
         f << "#include \"Actor.h\"\nclass Foo : public Actor\n{\npublic:\n    void Run() = delete;\n};\n";
     }
     std::string text;
-    EXPECT_NE(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", text),
-        0);
+    EXPECT_NE(run_hotc(cat({{"--emit-cpp", script}, engine_args()}), text), 0);
     EXPECT_NE(text.find("error"), std::string::npos) << text;
     EXPECT_NE(text.find("deleted"), std::string::npos) << text;
 }
@@ -1586,11 +1442,11 @@ TEST(HotcTool, CppScriptWithSyntaxErrorFails)
     const std::string script = scratch.file("hotc_cpp_syntax.cpp");
     {
         std::ofstream f(script);
-        f << "#include \"Actor.h\"\nclass Foo : public Actor\n{\npublic:\n    void Tick(float dt) override { int x = ; }\n};\n";
+        f << "#include \"Actor.h\"\nclass Foo : public Actor\n{\npublic:\n    void Tick(float dt) override { int x = ; "
+             "}\n};\n";
     }
     std::string text;
-    EXPECT_NE(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp '" + script + "'" + engine_args() + " 2>&1", text),
-        0);
+    EXPECT_NE(run_hotc(cat({{"--emit-cpp", script}, engine_args()}), text), 0);
     EXPECT_NE(text.find("hotc_cpp_syntax.cpp:5:"), std::string::npos) << text;
     EXPECT_NE(text.find("error"), std::string::npos) << text;
 }
@@ -1608,20 +1464,18 @@ TEST(HotcTool, OutputNeverOverwritesAnInput)
         f << source;
     }
     std::string text;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' '" + script + "' --gen 1 -o '" + dir + "/a.so' --cxx '"
-                      + HOT_CXX + "'" + engine_args() + " 2>&1",
-                  text),
-        1)
+    EXPECT_EQ(
+        run_hotc(cat({{script, "--gen", "1", "-o", module_file(dir, "a"), "--cxx", HOT_CXX}, engine_args()}), text), 1)
         << text;
     EXPECT_NE(text.find("the output file"), std::string::npos) << text;
     EXPECT_EQ(read_file(script), source);
-    EXPECT_FALSE(std::filesystem::exists(dir + "/a.so"));
+    EXPECT_FALSE(std::filesystem::exists(module_file(dir, "a")));
 
     // The same file by another path (a relative path with "..") is found too.
     std::string text2;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp '" + script + "' --gen 1 -o '" + dir
-                      + "/../hotc_no_overwrite/a.cpp'" + engine_args() + " 2>&1",
-                  text2),
+    EXPECT_EQ(
+        run_hotc(cat({{"--emit-cpp", script, "--gen", "1", "-o", dir + "/../hotc_no_overwrite/a.cpp"}, engine_args()}),
+            text2),
         1)
         << text2;
     EXPECT_NE(text2.find("the output file"), std::string::npos) << text2;
@@ -1636,11 +1490,7 @@ TEST(HotcTool, EmitCppWritesTheDepfile)
     const std::string out = scratch.file("hotc_dep_emit.cpp");
     const std::string dep = scratch.file("hotc_dep_emit.d");
     std::string text;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp " + player_args() + " -o '" + out
-                      + "' --depfile '" + dep + "' 2>&1",
-                  text),
-        0)
-        << text;
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp"}, player_args(), {"-o", out, "--depfile", dep}}), text), 0) << text;
     const std::string d = read_file(dep);
     EXPECT_EQ(d.rfind(out + ":", 0), 0u) << d;
     EXPECT_NE(d.find("/tests/engine/Actor.h"), std::string::npos) << d;
@@ -1659,11 +1509,8 @@ TEST(HotcTool, EmitCppWritesNoDepfileOnAnError)
     const std::string script = scratch.file("hotc_dep_bad.hot");
     std::ofstream(script) << "using \"Actor.h\";\nclass Dep : Nothing {\n}\n";
     std::string text;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --emit-cpp '" + script + "' --gen 1 -I '"
-                      + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' -o '" + out
-                      + "' --depfile '" + dep + "' 2>&1",
-                  text),
-        1)
+    EXPECT_EQ(
+        run_hotc(cat({{"--emit-cpp", script, "--gen", "1"}, include_args(), {"-o", out, "--depfile", dep}}), text), 1)
         << text;
     EXPECT_FALSE(std::filesystem::exists(dep));
 }
@@ -1675,10 +1522,9 @@ TEST(HotcTool, AotModeWritesOneDepfileRuleForEachScript)
     const std::string out_dir = scratch.file("hotc_dep_aot");
     const std::string dep = scratch.file("hotc_dep_aot.d");
     std::string text;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' --aot '" + HOT_SOURCE_DIR + "/tests/scripts/aot_demo.hot' '"
-                      + HOT_SOURCE_DIR + "/tests/scripts/props_v1.hot' --out-dir '" + out_dir + "' -I '"
-                      + HOT_SOURCE_DIR + "/tests/engine' -I '" + HOT_SOURCE_DIR + "/include' --depfile '" + dep
-                      + "' 2>&1",
+    EXPECT_EQ(run_hotc(cat({{"--aot", kSource + "/tests/scripts/aot_demo.hot", kSource + "/tests/scripts/props_v1.hot",
+                                "--out-dir", out_dir},
+                           include_args(), {"--depfile", dep}}),
                   text),
         0)
         << text;
@@ -1693,14 +1539,10 @@ TEST(HotcTool, AotModeWritesOneDepfileRuleForEachScript)
 TEST(HotcTool, BuildModeWritesTheDepfile)
 {
     TestScratch scratch;
-    const std::string so = scratch.file("hotc_dep_build.so");
+    const std::string so = module_file(scratch.path(), "hotc_dep_build");
     const std::string dep = scratch.file("hotc_dep_build.d");
     std::string text;
-    EXPECT_EQ(run_command(std::string("'") + HOTC_PATH + "' " + player_args() + " -o '" + so + "' --cxx '" + HOT_CXX
-                      + "' --depfile '" + dep + "' 2>&1",
-                  text),
-        0)
-        << text;
+    EXPECT_EQ(run_hotc(cat({player_args(), {"-o", so, "--cxx", HOT_CXX, "--depfile", dep}}), text), 0) << text;
     const std::string d = read_file(dep);
     EXPECT_EQ(d.rfind(so + ":", 0), 0u) << d;
     EXPECT_NE(d.find("/tests/engine/Actor.h"), std::string::npos) << d;

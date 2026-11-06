@@ -12,12 +12,9 @@ set(BACKEND_TEST_SOURCES
     vfs_backend_tests.cpp
     backend_selection_tests.cpp
     entry_main_module_tests.cpp)
-# The hotc tool tests run hotc through a POSIX shell (popen, sys/wait.h, WEXITSTATUS). About 100
-# command lines use POSIX quotes ('...') and /tmp paths, and cmd.exe does not read them. A port
-# needs a process helper with an argument list for each of the 54 tests. Not on Windows yet.
-if(NOT WIN32)
-    list(APPEND BACKEND_TEST_SOURCES hotc_tool_tests.cpp)
-endif()
+# The hotc tool tests run hotc and the script compiler from an argument list (support/process.h).
+# On Windows, process.h needs hot::windows_command_line. The target gets it from hot_runtime.
+list(APPEND BACKEND_TEST_SOURCES hotc_tool_tests.cpp)
 if(HOT_JIT_ENABLED)
     list(APPEND BACKEND_TEST_SOURCES jit_backend_tests.cpp)
 endif()
@@ -38,7 +35,7 @@ target_compile_definitions(integration_backend_tests PRIVATE
     HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
     HOT_SCRATCH_DIR="${HOT_SCRATCH_DIR}/tests"
     HOTC_PATH="$<TARGET_FILE:hotc>"
-    HOT_CXX="${CMAKE_CXX_COMPILER}"
+    HOT_CXX="${HOT_SCRIPT_COMPILER}"
     PRE_V1_SO="${CMAKE_BINARY_DIR}/hot_scripts/player_v1.g1${CMAKE_SHARED_MODULE_SUFFIX}"
     PRE_V2_SO="${CMAKE_BINARY_DIR}/hot_scripts/player_v2.g2${CMAKE_SHARED_MODULE_SUFFIX}"
     PRE_NATIVE_V1_SO="${CMAKE_BINARY_DIR}/hot_scripts/native_std_v1.g1${CMAKE_SHARED_MODULE_SUFFIX}"
@@ -46,6 +43,10 @@ target_compile_definitions(integration_backend_tests PRIVATE
     PRE_HANDLE_V1_SO="${CMAKE_BINARY_DIR}/hot_scripts/handle_v1.g1${CMAKE_SHARED_MODULE_SUFFIX}"
     PRE_HANDLE_V2_SO="${CMAKE_BINARY_DIR}/hot_scripts/handle_v2.g2${CMAKE_SHARED_MODULE_SUFFIX}"
     PRE_HANDLE_V1B_SO="${CMAKE_BINARY_DIR}/hot_scripts/handle_v1.g3${CMAKE_SHARED_MODULE_SUFFIX}")
+if(WIN32)
+    # A test program that uses the exceptions of the runtime links the core library (errors.cpp).
+    target_compile_definitions(integration_backend_tests PRIVATE HOT_RUNTIME_LIB="$<TARGET_FILE:hot_runtime_core>")
+endif()
 if(HOT_JIT_ENABLED)
     target_compile_definitions(integration_backend_tests PRIVATE HOT_RESOURCE_DIR="${CLANG_RESOURCE_DIR}")
 endif()
