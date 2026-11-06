@@ -125,11 +125,15 @@ The engine calls `Program::poll()` on the main thread, once for each frame, at t
 
 A failed build keeps the old code. `poll` logs the error through `Options::log` and gives `Failed`. It logs `[hot] reload failed: <error>`. For a failed build of a full restart, it logs `[hot] full restart build failed: <error>`. `poll` does not try again until the next file change.
 
+### Native dependencies
+
+A change of a file that is not a `.hot` file (a native header) usually needs a rebuild of the engine. A build against the new header can give a layout mismatch. So `poll` rejects the change. It starts no build, also when a `.hot` file changed too. It logs `[hot] native dependency changed: <path>. Rebuild the engine. Reload is paused.` once for each new stamp of the header, and gives `Failed` for that call. The reload stays paused until the header is back at its build stamp. Then the normal rules apply again.
+
 ### Full restart
 
-Some changes cannot reload: a class lost a slot, or a file that is not a `.hot` file (a native header) changed. Then `poll` does these steps:
+Some changes cannot reload: a class lost a slot. Then `poll` does these steps:
 
-1. It logs `[hot] full restart needed: <reason>`. The reason is, for example, `native header changed: <path>`.
+1. It logs `[hot] full restart needed: <reason>`.
 2. It builds a Fresh generation 1 on the worker thread. It gives `Building` until the build ends.
 3. It keeps the new module and gives `RestartPending`. If the build fails, it gives `Failed` and the old code keeps running.
 4. It logs `[hot] full restart: waiting for the program to quit` and calls `Options::request_quit` once.
@@ -152,7 +156,7 @@ When `Options::request_quit` is empty, `poll` logs `[hot] restart needed, but th
 ### Limits
 
 - There is no compile cache across runs yet. Each start builds the script again.
-- A header change restarts the script. It cannot change the native layout of the host classes that are already compiled into the runner.
+- A header change pauses the reload. The launcher cannot change the native layout of the host classes that are already compiled into the runner.
 - `hot::scheduler().cancel_all()` needs C++20. A C++17 build of `hot_launcher` does not call it. The engine must cancel its script tasks before the loop returns.
 - On Windows, the import library of the runner is one string: `ClangFilesOptions::host_import_library`.
 

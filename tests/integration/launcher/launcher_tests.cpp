@@ -696,10 +696,17 @@ TEST(Launcher, SlotRemovalRestarts)
     }
 }
 
-// A change of a native header needs a Fresh build and a full restart. The test adds a comment line
-// to the copy of TestHost.h. The script does not change, so v1 runs again after the restart.
-// The first run ends after frame 1 (quit). The second run stops at frame 2: 1 + 2 = 3.
-TEST(Launcher, HeaderChangeRestarts)
+// The text of a file.
+std::string read_text(const fs::path& path)
+{
+    std::ifstream in(path, std::ios::binary);
+    return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+}
+
+// A change of a native header is rejected. The test adds a comment line to the copy of TestHost.h.
+// The poll starts no build and gives Failed once, with one log line. The later polls give Idle.
+// The old code goes on: no restart. The loop stops at frame 4: 1 + 2 + 3 + 4 = 10.
+TEST(Launcher, HeaderChangeIsRejected)
 {
     for (const std::string& backend : backends())
     {
@@ -709,27 +716,70 @@ TEST(Launcher, HeaderChangeRestarts)
         ASSERT_TRUE(f.open(backend, kStepV1)) << f.logs.back();
         const fs::path header = f.dir / "TestHost.h";
         int starts = 0;
-        launcher::PollStatus status = launcher::PollStatus::Idle;
+        std::vector<launcher::PollStatus> statuses;
+        const int total = f.run(4, [&](int frame)
+        {
+            if (frame == 1)
+            {
+                ++starts;
+                edit_file(header, read_text(header) + "// a comment line\n");
+            }
+            statuses.push_back(poll_until_settled(*f.program));
+        });
+        ASSERT_EQ(statuses.size(), 4u);
+        EXPECT_EQ(statuses[0], launcher::PollStatus::Failed);
+        for (size_t i = 1; i < statuses.size(); ++i)
+            EXPECT_EQ(statuses[i], launcher::PollStatus::Idle) << "frame " << i + 1;
+        EXPECT_EQ(starts, 1);
+        EXPECT_EQ(total, 10);
+        EXPECT_FALSE(f.program->restart_pending());
+        EXPECT_EQ(f.program->generation(), 1u);
+        EXPECT_EQ(count_logs(f.logs, "[hot] native dependency changed: "), 1);
+        EXPECT_EQ(count_logs(f.logs, "[hot] full restart"), 0);
+        EXPECT_EQ(count_logs(f.logs, "[hot] reload"), 0);
+    }
+}
+
+// A header change and a script edit together: no build starts while the header differs from its
+// build stamp. Then the test restores the header (the old text and the old write time): the stamps
+// are equal again, the pause ends, and the script edit builds (Applied).
+// Frame 1 runs v2 after the commit (count 1 + 100 = 101). Frame 2 gives 102. Total = 203.
+TEST(Launcher, HeaderRestoredEndsThePause)
+{
+    for (const std::string& backend : backends())
+    {
+        SCOPED_TRACE(backend);
+        ReloadFixture f;
+        ASSERT_TRUE(f.open(backend, kStepV1)) << f.logs.back();
+        const fs::path header = f.dir / "TestHost.h";
+        const std::string old_text = read_text(header);
+        const fs::file_time_type old_time = fs::last_write_time(header);
+        std::vector<launcher::PollStatus> statuses;
+        int logs_while_paused = 0;
         const int total = f.run(2, [&](int frame)
         {
             if (frame != 1)
                 return;
-            if (++starts == 1)
-            {
-                std::ifstream in(header, std::ios::binary);
-                const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-                in.close();
-                edit_file(header, text + "// a comment line\n");
-                status = poll_until_settled(*f.program);
-            }
+            edit_file(header, old_text + "// a comment line\n");
+            edit_file(f.script, game_script(kStepV2));
+            statuses.push_back(poll_until_settled(*f.program));
+            statuses.push_back(poll_until_settled(*f.program));
+            statuses.push_back(poll_until_settled(*f.program));
+            logs_while_paused = static_cast<int>(f.logs.size());
+            EXPECT_EQ(f.program->generation(), 1u);
+            std::ofstream(header, std::ios::binary | std::ios::trunc) << old_text;
+            fs::last_write_time(header, old_time);
+            statuses.push_back(poll_until_settled(*f.program));
         });
-        EXPECT_EQ(status, launcher::PollStatus::RestartPending);
-        EXPECT_EQ(starts, 2);
-        EXPECT_EQ(total, 3);
-        EXPECT_FALSE(f.program->restart_pending());
-        EXPECT_EQ(f.program->generation(), 1u);
-        EXPECT_EQ(count_logs(f.logs, "[hot] full restart needed: native header changed: "), 1);
-        EXPECT_EQ(count_logs(f.logs, "[hot] full restart: native header changed: "), 1);
+        ASSERT_EQ(statuses.size(), 4u);
+        EXPECT_EQ(statuses[0], launcher::PollStatus::Failed);
+        EXPECT_EQ(statuses[1], launcher::PollStatus::Idle);
+        EXPECT_EQ(statuses[2], launcher::PollStatus::Idle);
+        EXPECT_EQ(statuses[3], launcher::PollStatus::Applied);
+        EXPECT_EQ(logs_while_paused, 1);
+        EXPECT_EQ(count_logs(f.logs, "[hot] native dependency changed: "), 1);
+        EXPECT_EQ(total, 203);
+        EXPECT_EQ(f.program->generation(), 2u);
     }
 }
 
@@ -812,21 +862,24 @@ TEST(Launcher, RestartBuildFailureKeepsOldCode)
     }
 }
 
-// A failed Fresh build does not forget the header change. The first edit changes TestHost.h and
-// adds a syntax error to the script: the Fresh build fails (Failed). The second edit fixes only the
-// script. The header stays as it is, so the build must be Fresh again: RestartPending, not Applied.
-// The first run has frames 1 and 2 (the quit ends it after frame 2). The second run runs v2 and
-// stops at frame 2: 101 + 102 = 203.
+// A failed Fresh build does not forget the full restart. The first edit removes Helper: the
+// build of v2 works, and the loader says that a full restart is needed. While that build runs, the
+// script gets a syntax error. The Fresh build reads the new text and fails (Failed). The second
+// edit is a valid script that keeps Helper, so a Reload build would apply it (Applied). Because
+// the restart is still needed, the build must be Fresh: RestartPending, not Applied.
+// The first run has frames 1 and 2 (the quit ends it after frame 2). The second run runs the
+// text of the second edit and stops at frame 2: 101 + 102 = 203.
 TEST(Launcher, FailedFreshBuildKeepsFreshNeeded)
 {
     for (const std::string& backend : backends())
     {
         SCOPED_TRACE(backend);
         ReloadFixture f;
+        f.members = kHelper;
         f.request_quit = stop_loop;
         ASSERT_TRUE(f.open(backend, kStepV1)) << f.logs.back();
-        const fs::path header = f.dir / "TestHost.h";
         int starts = 0;
+        launcher::PollStatus begin = launcher::PollStatus::Idle;
         launcher::PollStatus first = launcher::PollStatus::Idle;
         launcher::PollStatus second = launcher::PollStatus::Idle;
         const int total = f.run(2, [&](int frame)
@@ -837,24 +890,23 @@ TEST(Launcher, FailedFreshBuildKeepsFreshNeeded)
                 return;
             if (frame == 1)
             {
-                std::ifstream in(header, std::ios::binary);
-                const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-                in.close();
-                edit_file(header, text + "// a comment line\n");
-                edit_file(f.script, game_script("count = count + 1; return count +;"));
+                edit_file(f.script, game_script(kStepV2));
+                begin = f.program->poll(); // the Reload build of v2 starts and has the text of v2
+                edit_file(f.script, game_script("count = count + 1; return count +;", "", kHelper));
                 first = poll_until_settled(*f.program);
             }
             else if (frame == 2)
             {
-                edit_file(f.script, game_script(kStepV2));
+                edit_file(f.script, game_script(kStepV2, "", kHelper));
                 second = poll_until_settled(*f.program);
             }
         });
+        EXPECT_EQ(begin, launcher::PollStatus::Building);
         EXPECT_EQ(first, launcher::PollStatus::Failed);
         EXPECT_EQ(second, launcher::PollStatus::RestartPending);
         EXPECT_EQ(starts, 2);
         EXPECT_EQ(total, 203);
-        EXPECT_GE(count_logs(f.logs, "[hot] full restart build failed: "), 1);
+        EXPECT_EQ(count_logs(f.logs, "[hot] full restart build failed: "), 1);
         EXPECT_EQ(count_logs(f.logs, "[hot] reload applied: "), 0);
         EXPECT_EQ(count_logs(f.logs, "[hot] full restart: "), 2);
         EXPECT_FALSE(f.program->restart_pending());

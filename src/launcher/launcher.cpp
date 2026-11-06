@@ -95,6 +95,8 @@ struct Program::Impl
     // A full restart is needed and not yet built. Each build is Fresh until a Fresh build works
     // or the program restarts. A failed Fresh build does not make the change live.
     bool fresh_needed = false;
+    // The stamps of the native dependencies that the log reported as changed. One line each stamp.
+    std::map<std::string, Stamp> native_reported;
     std::optional<hot::LoadResult> fresh; // the Fresh build for the restart
 
     // Waits for the worker. The worker uses the backend, so the join must come before the members
@@ -224,6 +226,14 @@ std::map<std::string, Stamp> adopt_stamps(const std::string& script_path, const 
         next[path] = it != pre.end() ? it->second : stat_file(path);
     }
     return next;
+}
+
+// True for a dependency that is not a ".hot" file (a native header). The entry script is a script.
+bool is_native(const std::string& script_path, const std::string& path)
+{
+    if (path == script_path)
+        return false;
+    return !(path.size() >= 4 && path.compare(path.size() - 4, 4, ".hot") == 0);
 }
 
 // Pins a generation while the object lives, also when an exception leaves the scope.
@@ -509,6 +519,16 @@ PollStatus Program::poll()
             impl.change_seen = now;
         }
         impl.dirty = !(current == impl.stamps);
+        // A header that is back at its build stamp ends the pause. Its next change gets a log line.
+        for (auto it = impl.native_reported.begin(); it != impl.native_reported.end();)
+        {
+            const auto now_stamp = current.find(it->first);
+            const auto build_stamp = impl.stamps.find(it->first);
+            if (now_stamp == current.end() || build_stamp == impl.stamps.end() || now_stamp->second == build_stamp->second)
+                it = impl.native_reported.erase(it);
+            else
+                ++it;
+        }
     }
 
     // Commits the pending reload. A reload stays pending only after a Busy result: the commit
@@ -742,34 +762,35 @@ PollStatus Program::poll()
     {
         // 2c. The build, after the debounce time.
         impl.dirty = false;
+        bool paused = false;
         // The stamps from before the build reads the files.
         std::map<std::string, Stamp> pre = stat_known(impl.stamps);
-        // A changed file that is not a ".hot" file (a native header) needs a Fresh build: only a
-        // full restart can apply it. The entry script always counts as a script.
-        std::string header;
+        // A changed file that is not a ".hot" file (a native header) pauses the reload. Such a change
+        // usually needs a rebuild of the engine, and a build against the new header can give a
+        // layout mismatch. No build starts, also when a ".hot" file changed too. The entry script
+        // always counts as a script. The log has one line for each new stamp of the header.
         for (const auto& entry : pre)
         {
             const std::string& path = entry.first;
-            const bool is_script =
-                path == impl.script_path || (path.size() >= 4 && path.compare(path.size() - 4, 4, ".hot") == 0);
-            if (!is_script && !(entry.second == impl.stamps[path]))
+            if (is_native(impl.script_path, path) && !(entry.second == impl.stamps[path]))
             {
-                header = path;
-                break;
+                const auto reported = impl.native_reported.find(path);
+                if (reported == impl.native_reported.end() || !(reported->second == entry.second))
+                {
+                    impl.native_reported[path] = entry.second;
+                    impl.log("[hot] native dependency changed: " + path + ". Rebuild the engine. Reload is paused.");
+                    status = PollStatus::Failed;
+                }
+                paused = true;
             }
         }
-        if (!header.empty())
-        {
-            impl.fresh_needed = true;
-            impl.restart_reason = "native header changed: " + header;
-        }
         // After an earlier restart trigger, each build stays Fresh until a Fresh build works.
-        if (impl.fresh_needed)
+        if (!paused && impl.fresh_needed)
         {
             impl.log("[hot] full restart needed: " + impl.restart_reason);
             status = start_build(hot::LoadMode::Fresh, std::move(pre));
         }
-        else
+        else if (!paused)
             status = start_build(hot::LoadMode::Reload, std::move(pre));
     }
 

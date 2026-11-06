@@ -86,9 +86,16 @@ public:
     // A file that changes during a build starts a new build after the first one ends.
     // The destructor of Program waits for a running build. A build can take seconds.
     //
+    // A change of a file that is not a ".hot" file (a native header) pauses the reload. Such a
+    // change usually needs a rebuild of the engine. A build against the new header can give a
+    // layout mismatch. So poll starts no build, also when a ".hot" file changed too. It logs
+    // "[hot] native dependency changed: <path>. Rebuild the engine. Reload is paused." once for
+    // each new stamp, and gives Failed for that call. The pause ends when the header is back at
+    // its build stamp.
+    //
     // A change that hot reload cannot apply needs a full restart: a class lost a slot (the
-    // loader gives FullReloadRequired), or a file that is not a ".hot" file (a native header)
-    // changed. Then poll builds the Fresh generation 1 on the worker thread, and gives Building.
+    // loader gives FullReloadRequired). Then poll builds the Fresh generation 1 on the worker
+    // thread. Poll gives Building.
     // When the build ends, poll keeps the new module and gives RestartPending, and calls
     // Options::request_quit once. A failed Fresh build gives Failed and the old code keeps
     // running. While a restart is pending, poll takes no file change and no new build starts.
