@@ -2785,6 +2785,8 @@ struct Lowerer
     // The access to a module variable: "hot_mod()->name".
     ExprP module_ref(const std::string& n, uint32_t pos)
     {
+        if (cx.foreign_vars.count(n)) // a variable of an imported module: the accessor of the importer
+            return raw("hot_mv_" + n + "()", pos);
         if (cx.in_module_init && !cx.module_earlier.count(n))
             error(pos, "the module variable '" + n +
                            "' is not declared before this variable. An initializer of a module variable can use only "

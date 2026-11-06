@@ -3099,6 +3099,15 @@ void translate_impl(
         std::string file, text;
     };
     std::vector<ImportedFile> imported_files;
+    // The free functions and the module variables of the direct imports. They stay in their own
+    // module: the importer gets declarations and calls them through hot::call_fn and hot::mod_var.
+    std::vector<Method> foreign_fns;
+    struct ForeignVar
+    {
+        Field field;
+        std::string unit;
+    };
+    std::vector<ForeignVar> foreign_vars;
     {
         auto is_script = [](const Import& im)
         { return im.path.size() > 4 && im.path.compare(im.path.size() - 4, 4, ".hot") == 0; };
@@ -3212,8 +3221,21 @@ void translate_impl(
                 if (depth == 0)
                     res.import_hashes.emplace_back(file, hash_text(module_interface(is, import_texts.back())));
                 // The module variables, the convert hooks and the free functions of the import stay in
-                // their own module: the importer gets no copy of them. The emit of an access to
-                // them comes later (modules step 3).
+                // their own module: the importer gets no copy of them. A direct import gives the
+                // declarations of the public ones. The import is not transitive.
+                if (depth == 0)
+                {
+                    for (Method& f : is.fns)
+                        if (f.access != hotc::ast::Access::Private)
+                        {
+                            f.foreign_unit = file;
+                            f.body.stmts.clear();
+                            foreign_fns.push_back(std::move(f));
+                        }
+                    for (Field& v : is.vars)
+                        if (v.access != hotc::ast::Access::Private)
+                            foreign_vars.push_back({std::move(v), file});
+                }
                 for (ClassDef& c : is.classes)
                     if (c.is_private)
                         private_classes.emplace(c.name, file);
@@ -3459,6 +3481,16 @@ void translate_impl(
         mod.fields = std::move(sc.vars);
         sc.vars.clear();
         sc.classes.push_back(std::move(mod));
+    }
+    // The module variables of the direct imports: the owner module holds them (hot::mod_var).
+    std::map<std::string, std::string> foreign_var_units; // the name and the unit of the owner
+    for (const ForeignVar& v : foreign_vars)
+    {
+        if (module_vars.count(v.field.name))
+            fail_at(map, v.field.pos,
+                "module variable '" + v.field.name + "' is declared in '" + v.unit + "' and in '" + opt.input + "'");
+        module_vars[v.field.name] = v.field.type;
+        foreign_var_units[v.field.name] = v.unit;
     }
     // Convert hooks of module variables. The module class emits them.
     std::vector<Method> mod_hooks = std::move(sc.var_hooks);
@@ -4751,7 +4783,8 @@ void translate_impl(
             cx.static_name = m.name;
             cx.in_module_init = false;
             hotc::add_params(cx, m.params);
-            ls.body = lower_body(m, cx, true);
+            if (m.foreign_unit.empty()) // a function of an import has no body here
+                ls.body = lower_body(m, cx, true);
             if (g_diag.items.empty())
             {
                 for (const Param& p : m.params)
@@ -4963,6 +4996,7 @@ void translate_impl(
         base_cx.format_lib = in.format_lib;
         base_cx.uses_format = &uses_format;
         base_cx.module_vars = module_vars;
+        base_cx.foreign_vars = foreign_var_units;
         base_cx.in_module_init = cn == kModuleName;
         base_cx.free_fns = &fn_cls.statics;
         lower_statics(cd, base_cx, false);
@@ -5559,10 +5593,20 @@ void translate_impl(
 
     // ---- the free functions: the same checks as for a class, in the synthetic class "HotFns". The code
     // for a free function comes later. The queries to libclang already have the bodies (sc.fns).
-    if (!sc.fns.empty())
+    if (!sc.fns.empty() || !foreign_fns.empty())
     {
         fn_cls.statics = std::move(sc.fns);
         sc.fns.clear();
+        // The free functions of the imports: a declaration without a body (see Method::foreign_unit).
+        for (Method& f : foreign_fns)
+        {
+            for (const Method& own : fn_cls.statics)
+                if (own.name == f.name)
+                    fail_at(map, own.pos,
+                        "function '" + f.name + "' is declared in '" + f.foreign_unit + "' and in '" + opt.input + "'");
+            fn_cls.statics.push_back(std::move(f));
+        }
+        foreign_fns.clear();
         snapshot_types(fn_cls);
         if (!sc.is_cpp)
             hotc::resolve_value_uses(fn_cls, types);
@@ -5603,6 +5647,7 @@ void translate_impl(
         fn_cx.format_lib = in.format_lib;
         fn_cx.uses_format = &uses_format;
         fn_cx.module_vars = module_vars;
+        fn_cx.foreign_vars = foreign_var_units;
         fn_cx.free_fns = &fn_cls.statics;
         lower_statics(fn_cls, fn_cx, true); // an error here does not stop the other bodies
     }
@@ -6535,6 +6580,7 @@ void translate_impl(
         base_cx.format_lib = in.format_lib;
         base_cx.uses_format = &uses_format;
         base_cx.module_vars = module_vars;
+        base_cx.foreign_vars = foreign_var_units;
         base_cx.in_module_init = cn == kModuleName;
         base_cx.free_fns = &fn_cls.statics;
         lower_statics(cd, base_cx, false);
@@ -8091,6 +8137,21 @@ void translate_impl(
             }
         reset();
     }
+    // ---- the module variables of the imports. The owner unit holds each one in its module block.
+    // The accessor gives a reference: an importer reads and writes the variable (hot::mod_var).
+    if (g_diag.items.empty() && !foreign_vars.empty())
+    {
+        o.w("// ---------------------------------------------------------------- module variables of the imports\n");
+        for (const ForeignVar& v : foreign_vars)
+        {
+            const std::string t = types.cpp_storage(v.field.type, hotc::TypeModel::StorageUse::Field);
+            o.w("[[maybe_unused]] HOT_HIDDEN static " + t + "& hot_mv_" + v.field.name + "()\n{\n");
+            o.w("    static hot::FieldSite __site;\n");
+            o.w("    return hot::mod_var<" + t + ">(hot::unit_ref(\"" + esc(v.unit) + "\"), __site, \"" + v.field.name
+                + "\");\n}\n\n");
+        }
+        reset();
+    }
     // ---- static methods and free functions. A function has a prototype here, after all the blocks. So
     // a body of a method sees it. The definition comes in the bodies section. The function has no
     // slot, no "sig" line, no manifest entry and no register call: the calls are direct.
@@ -8151,6 +8212,21 @@ void translate_impl(
                     o.w(head + ")\n");
                     o.w(line_at(h->line));
                     o.w("{\n");
+                    if (!ls.method->foreign_unit.empty())
+                    {
+                        // A function of an imported module: a call through the function table of
+                        // its unit. The signature key is the type of this declaration.
+                        std::string args;
+                        for (const hotc::ast::Param& p : ls.method->params)
+                            args += ", std::forward<decltype(" + p.name + ")>(" + p.name + ")";
+                        o.w("    static hot::FnSite __site;\n");
+                        o.w("    return hot::call_fn<decltype(" + ls.symbol + ")>(hot::unit_ref(\"" + esc(ls.method->foreign_unit)
+                            + "\"), __site, \"" + ls.method->name + "\"" + args + ");\n");
+                        o.w("}\n");
+                        reset();
+                        o.w("\n");
+                        return;
+                    }
                     // The frame guard of a static method and a free function (see the member bodies).
                     o.w(line_at(first_line));
                     o.w("    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;\n");
@@ -8211,6 +8287,14 @@ void translate_impl(
         o.w("    hot::set_value_caller(&" + registers.front().first + "_record);\n");
     for (const auto& r : registers)
         o.w("    reg.add(&" + r.first + "_record, &" + r.first + "_create);\n");
+    // The function table of the unit: an importer calls a public free function through it
+    // (hot::call_fn). The key is the C++ function type.
+    if (!opt.aot_optimized)
+        for (const Method& m : fn_cls.statics)
+            if (m.foreign_unit.empty() && m.access != hotc::ast::Access::Private && m.name != "main")
+                if (auto it = lowered_statics.find(m.name); it != lowered_statics.end())
+                    o.w("    reg.add_fn(\"" + m.name + "\", typeid(decltype(" + it->second.symbol + ")).name(), reinterpret_cast<void*>(&"
+                        + it->second.symbol + "));\n");
     for (const auto& t : flag_regs)
         o.w(t);
     for (const auto& t : thunk_regs)

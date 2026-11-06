@@ -109,6 +109,7 @@ TEST(StaticFunctionTranslation, GeneratedNameCollision)
 }
 
 // An imported script can have free functions (modules). The importer gets no copy of the body.
+// It gets a declaration that calls the function through the function table of the owner unit.
 TEST(StaticFunctionTranslation, ImportedScriptCanHaveFreeFunctions)
 {
     TempDir dir;
@@ -118,7 +119,11 @@ TEST(StaticFunctionTranslation, ImportedScriptCanHaveFreeFunctions)
         "using \"w.h\";\nint Helper() { return 1; }\nclass Base : Widget { }\n");
     const hotc::TranslateResult r = hotc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_EQ(r.cpp.find("Helper"), std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find("return 1;"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("hot::call_fn<decltype(hot_fn_Helper)>(hot::unit_ref(\"base.hot\"), __site, \"Helper\");"),
+        std::string::npos)
+        << r.cpp;
+    EXPECT_EQ(r.cpp.find("reg.add_fn(\"Helper\""), std::string::npos) << r.cpp;
 }
 
 // A static method of an imported class goes with its class: the output has its prototype and its body.

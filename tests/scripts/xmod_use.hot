@@ -1,0 +1,23 @@
+// The importer of the cross-module golden test. It uses each access form of "xmod_lib.hot":
+// a method call, a field read and write, "new", a free function and a module variable.
+using "xmod_lib.hot";
+
+class User {
+    $Box box;
+
+    User() {
+        this.box = new $Box(3);
+    }
+
+    int run() {
+        $Box b = new $Box(3);
+        b.grow(twice(1));
+        int a = b.area();
+        b.size = b.size + kLimit;
+        Pt p = b.corner;
+        counter = counter + 1;
+        counter += a;
+        Kind _k = Kind.Big;
+        return a + p.x + counter;
+    }
+}

@@ -167,6 +167,9 @@ struct RCtx
     bool in_module_init = false;
     std::set<std::string> module_earlier;
     bool in_module_hook = false;
+    // The module variables of an imported module: the name and the unit of the owner module. The
+    // name is also in "module_vars". An access is "hot_mv_<name>()", a reference from hot::mod_var.
+    std::map<std::string, std::string> foreign_vars;
     // True when the top expression of lower_expr is an initializer with a declared type. Then a
     // collection literal is allowed as the whole expression.
     bool typed_init = false;

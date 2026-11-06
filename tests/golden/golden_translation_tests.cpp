@@ -394,3 +394,27 @@ TEST(GoldenTranslation, AotDemoOptimized)
 {
     golden_aot("aot_demo_opt.g1.cpp", true);
 }
+
+// Cross-module access (modules step 3). "xmod_use.hot" imports "xmod_lib.hot". The owner registers
+// its free functions (Registry::add_fn). The importer calls them through hot::call_fn and reads and
+// writes the module variable through hot::mod_var. The import text comes from
+// TranslateOptions::modules, so the unit name in the output has no absolute path.
+TEST(GoldenTranslation, CrossModuleOwner)
+{
+    golden_one("xmod_lib");
+}
+
+TEST(GoldenTranslation, CrossModuleImporter)
+{
+    hotc::TranslateOptions o = engine_options("xmod_use.hot", 1);
+    o.script_name = "xmod_use.hot";
+    o.modules = {{"xmod_lib.hot", read_file(std::string(HOT_SOURCE_DIR) + "/tests/scripts/xmod_lib.hot")}};
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    check_golden("xmod_use.g1.cpp", r.cpp);
+    check_golden("xmod_use.g1.slots", r.slots_out);
+    EXPECT_NE(r.cpp.find("hot::call_fn<decltype(hot_fn_twice)>(hot::unit_ref(\"xmod_lib.hot\"), __site, \"twice\""),
+        std::string::npos);
+    EXPECT_NE(r.cpp.find("hot::mod_var<int32_t>(hot::unit_ref(\"xmod_lib.hot\"), __site, \"counter\")"), std::string::npos);
+    EXPECT_NE(r.cpp.find("hot_mv_counter() = hot_mv_counter() + 1;"), std::string::npos);
+}

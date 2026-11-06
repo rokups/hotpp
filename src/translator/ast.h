@@ -547,6 +547,9 @@ struct Method
     // checker applies the return rule of doc/type-design.md ("Lifetime of a ref", R4).
     bool ret_ref = false;
     BlockStmt body; // the statements; the parser fills them from body_span
+    // The unit of the module that owns a free function of an import. The function has no body
+    // here: the call goes through the function table of that unit (hot::call_fn). Empty: own function.
+    std::string foreign_unit;
     Span body_span; // the raw text between the braces
     // True for "T f() => e;". The body_span is then the text of "e" and the parser builds the
     // body as "{ return e; }", or as "{ e; }" for a void function.

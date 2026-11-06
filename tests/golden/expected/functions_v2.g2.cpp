@@ -751,6 +751,9 @@ extern "C" void script_register(hot::Registry& reg)
     reg.set_live_flag(&hot_live);
     reg.add(&Hero_record, &Hero_create);
     reg.add(&Helper_record, &Helper_create);
+    reg.add_fn("Add", typeid(decltype(hot_fn_Add)).name(), reinterpret_cast<void*>(&hot_fn_Add));
+    reg.add_fn("Fact", typeid(decltype(hot_fn_Fact)).name(), reinterpret_cast<void*>(&hot_fn_Fact));
+    reg.add_fn("Scale", typeid(decltype(hot_fn_Scale)).name(), reinterpret_cast<void*>(&hot_fn_Scale));
     Hero_record.construct_keys = Hero__construct_keys;
     Hero_record.ctors = Hero__constructors;
     Helper_record.construct_keys = Helper__construct_keys;
