@@ -6,6 +6,7 @@
 // the status, the reason and the classes of a ReloadResult, and the deferred write of the
 // slot state. The slot state changes only when the Loader accepts the module. The last tests
 // run the full sequence: reset of the Loader, a fresh load and a later hot reload.
+#include "IfaceNative.h"
 #include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/reload_assert.h"
@@ -139,6 +140,48 @@ TEST_P(BackendTests, RemovedFunctionReloadsLive)
         EXPECT_EQ(slots.find("Medic::rest 1", first + 1), std::string::npos) << slots;
         EXPECT_NE(slots.find("sig Medic::rest void(Actor*, int32_t)"), std::string::npos) << slots;
     }
+}
+
+// A script override of a native virtual has no slot manifest entry. The native slot always exists.
+// A later generation removes the override. The reload applies live. A call through the native
+// virtual then runs the native base. It does not throw and it does not log a removed function.
+// A third generation adds the override again. The override runs again.
+TEST_P(BackendTests, RemovedNativeOverrideCallsTheBase)
+{
+    hot::LoadResult v1 = backend->load(source("native_override_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    EXPECT_EQ(v1.reason, hot::ReloadReason::None);
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Scout"));
+    s.commit_at_frame_boundary();
+    auto* scout = static_cast<IfaceNative*>(s.actor);
+    EXPECT_EQ(scout->Area(), 70); // the script override
+
+    const uint64_t calls0 = hot::removed_call_count();
+    testing::internal::CaptureStderr();
+
+    hot::LoadResult v2 = backend->load(source("native_override_v2.hot"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    EXPECT_EQ(v2.reason, hot::ReloadReason::None);
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    s.world.Tick(kDt); // the frame boundary commits: the generation is live
+    EXPECT_FALSE(s.commit_failed);
+    EXPECT_EQ(hot::active_generation, 2u);
+    EXPECT_EQ(scout->Area(), 7); // the native base
+
+    hot::LoadResult v3 = backend->load(source("native_override_v3.hot"), 3);
+    ASSERT_TRUE(v3) << v3.error;
+    EXPECT_EQ(v3.reason, hot::ReloadReason::None);
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v3.module)));
+    s.world.Tick(kDt);
+    EXPECT_FALSE(s.commit_failed);
+    EXPECT_EQ(hot::active_generation, 3u);
+    EXPECT_EQ(scout->Area(), 700); // the script override again
+
+    const std::string log = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(log.find("removed script class or function"), std::string::npos) << log;
+    EXPECT_EQ(log.find("removed script function"), std::string::npos) << log;
+    EXPECT_EQ(hot::removed_call_count(), calls0);
 }
 
 // A host call of a removed function through the old thunk throws ScriptError with the name of the
