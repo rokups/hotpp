@@ -152,7 +152,7 @@ TEST(ConstInfer, WrittenConstOnAMethodOrAFieldIsAnError)
     EXPECT_TRUE(has(m.diagnostics, "const is inferred; remove it")) << m.diagnostics;
     const hotc::TranslateResult f = translate_text("class A {\n    const int k = 1;\n}\n");
     EXPECT_FALSE(f.ok);
-    EXPECT_TRUE(has(f.diagnostics, "const is inferred; remove it")) << f.diagnostics;
+    EXPECT_TRUE(has(f.diagnostics, "a class member cannot be 'const'")) << f.diagnostics;
 }
 
 TEST(ConstInfer, CastWithConstStaysLegal)

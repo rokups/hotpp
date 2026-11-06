@@ -71,7 +71,7 @@ TEST(NativePointerField, HotConstPointerFieldIsAnError)
 {
     const hotc::TranslateResult r = hot_field("", "const Shared* m;");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "const is inferred; remove it")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "a class member cannot be 'const'")) << r.diagnostics;
 }
 
 TEST(NativePointerField, HotPointerOfAHandleStubWithAWeakSourceIsStoredAsCheckedPtr)
