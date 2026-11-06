@@ -184,13 +184,16 @@ hot::ScriptSource recursion_source(const char* name, const std::string& body)
 // A recursion under the limit works, and the depth is 0 after it.
 TEST_P(BackendTests, RecursionUnderTheLimitWorks)
 {
-    const hot::ScriptSource src = recursion_source("rec_ok.hot", "this.result = this.Down(1000);");
+    // The depth is under the limit. The limit is 1000 on Windows, so the depth is the smaller value.
+    const int depth = static_cast<int>(std::min<uint32_t>(1000, hot::max_call_depth() - 10));
+    const hot::ScriptSource src =
+        recursion_source("rec_ok.hot", "this.result = this.Down(" + std::to_string(depth) + ");");
     hot::LoadResult r = backend->load(src, 1);
     ASSERT_TRUE(r) << r.error;
     Session s;
     ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
     s.world.Tick(kDt);
-    EXPECT_EQ(*hot::field_ptr<int>(s.inst.shell, "result"), 1000);
+    EXPECT_EQ(*hot::field_ptr<int>(s.inst.shell, "result"), depth);
     EXPECT_EQ(hot::detail::call_depth(), 0u);
 }
 

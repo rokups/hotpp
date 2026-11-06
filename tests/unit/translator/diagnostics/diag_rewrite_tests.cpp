@@ -347,6 +347,40 @@ TEST(DiagRewrite, FmtValueWithoutFormatterMovesToTheScriptLine)
     EXPECT_EQ(out.find("note:"), std::string::npos) << out;
 }
 
+// The format library can be outside the system paths: a CPM cache on Linux or a build directory on
+// Windows. The rewriter must still move the error to the script line.
+static void expect_fmt_error_moves_to_script(const std::string& dir)
+{
+    const std::string in =
+        "In file included from " + dir + "/fmt/format.h:41:\n"
+        + dir + "/fmt/base.h:2260:45: error: implicit instantiation of undefined template "
+          "'fmt::detail::type_is_unformattable_for<Weather, char>'\n"
+        " 2260 |     type_is_unformattable_for<T, char_type> _;\n"
+        "      |                                             ^\n"
+        + dir + "/fmt/base.h:2233:42: note: in instantiation of function template specialization "
+          "'fmt::detail::value<fmt::context>::value<Weather, 0>' requested here\n"
+        "a.hot:9:35: note: in instantiation of function template specialization 'fmt::format<Weather>' requested here\n"
+        + dir + "/fmt/base.h:2107:45: note: template is declared here\n"
+        "1 error generated.\n";
+    const std::string out = rewrite_diagnostic(in);
+    EXPECT_NE(out.find("a.hot:9:1: error: 'Weather' cannot be printed in a '${...}' string: it has no formatter"),
+        std::string::npos)
+        << out;
+    EXPECT_EQ(out.find("fmt"), std::string::npos) << out;
+    EXPECT_EQ(out.find("In file included"), std::string::npos) << out;
+    EXPECT_EQ(out.find("note:"), std::string::npos) << out;
+}
+
+TEST(DiagRewrite, FmtValueWithoutFormatterInACpmCacheMovesToTheScriptLine)
+{
+    expect_fmt_error_moves_to_script("/home/runner/.cache/cpm/fmt/0123abcd/include");
+}
+
+TEST(DiagRewrite, FmtValueWithoutFormatterWithWindowsPathMovesToTheScriptLine)
+{
+    expect_fmt_error_moves_to_script("C:\\src\\hotpp\\cmake-build\\vs-files\\_deps\\fmt-src\\include");
+}
+
 // The std library gives several errors for one value. Each error has the same script position.
 // The rewriter shows one error.
 TEST(DiagRewrite, StdValueWithoutFormatterShowsOneError)

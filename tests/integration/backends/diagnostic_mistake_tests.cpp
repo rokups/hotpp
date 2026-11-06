@@ -54,6 +54,10 @@ std::string normalize(std::string text)
         for (size_t i = p; i < text.size() && text[i] != ':' && text[i] != '\n'; ++i)
             if (text[i] == '\\')
                 text[i] = '/';
+    // The MSVC STL spells the default arguments of std::string. The golden file has the short form.
+    const std::string long_string = "basic_string<char, char_traits<char>, allocator<char>>";
+    for (size_t p = text.find(long_string); p != std::string::npos; p = text.find(long_string, p))
+        text.replace(p, long_string.size(), "basic_string<char>");
 #endif
     std::istringstream in(text);
     std::string out;

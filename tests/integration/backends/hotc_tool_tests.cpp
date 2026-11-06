@@ -50,6 +50,22 @@ Args cat(std::initializer_list<Args> parts)
     return all;
 }
 
+// The flag of the C runtime library of the module on an MSVC host. The backend adds it (see
+// clang_files_backend.cpp). A program that links hot_runtime_core (/MD) needs the same flag,
+// or lld-link reports a mismatch of 'RuntimeLibrary'. The list is empty with MinGW and on Linux.
+Args ms_runtime_flags()
+{
+#if defined(_MSC_VER)
+    #ifdef _DEBUG
+    return {"-fms-runtime-lib=dll_dbg"};
+    #else
+    return {"-fms-runtime-lib=dll"};
+    #endif
+#else
+    return {};
+#endif
+}
+
 // Runs a program with the arguments (no shell). Gives the exit code (-1: the program did not start
 // or a signal killed it). The text is the standard output and the standard error, with "\n" line ends.
 int run_command(const Args& argv, std::string& text)
@@ -589,6 +605,8 @@ TEST(HotcTool, CheckedIndexHasNoTestWithoutRuntimeChecks)
     #else
     // MSVC target: lld-link does not know the GNU ld option.
     compile.push_back("-Wl,/force:multiple");
+    for (const std::string& f : ms_runtime_flags())
+        compile.push_back(f);
     #endif
 #endif
     ASSERT_EQ(run_cxx(compile, log), 0) << log;
@@ -1333,9 +1351,13 @@ TEST(HotcTool, CompileCommandUsesTheBackendFlags)
 #ifdef _WIN32
         "-DHOT_MODULE_BUILD=1",
 #else
-        "-fno-plt",
+        "-fno-plt"
 #endif
-        "-resource-dir=/res", "-O2", "-I/i1", "-I/i2"};
+    };
+    for (const std::string& f : ms_runtime_flags())
+        expected.push_back(f); // MSVC host only
+    for (const char* f : {"-resource-dir=/res", "-O2", "-I/i1", "-I/i2"})
+        expected.push_back(f);
     for (const std::string& f : hot::format_compile_flags())
         expected.push_back(f); // fmt build only
     for (const std::string& f : hot::checks_compile_flags())
