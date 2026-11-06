@@ -102,3 +102,4 @@ These limits come from the type system and the null analysis.
 - `h.reset(rawptr)` is always an error. A shared pointer cannot come from a raw pointer.
 - `$NativeBase b = this;` is an error, unless `enable_shared_from_this` is known for the native base.
 - `T[]` is `hot::span<T>` and works with C++17. The option `HOT_VIEW_TYPE=std` selects `std::span<T>`, which needs C++20. The choice is one constant for the whole build. See [The view type](types.html#the-view-type).
+- The lldb formatters (`tools/lldb/hot_formatters.py`) do not show fields or frames of optimized AOT code (`OPTIMIZED`, `HOT_SCRIPT_MODE=AOT_OPTIMIZED`).

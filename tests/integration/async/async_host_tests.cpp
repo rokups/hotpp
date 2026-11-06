@@ -664,6 +664,13 @@ std::string mode_name(const ::testing::TestParamInfo<Mode>& info)
     return "Unknown";
 }
 
+// The Aot mode overrides an AOT unit and reads the fields of an AOT object. That needs the slots and
+// the field table of plain AOT code. HOT_SCRIPT_MODE=AOT_OPTIMIZED makes async_aot_scripts optimized,
+// and optimized AOT code has neither, so that build has no Aot mode.
+#ifdef __HOTPP_AOT_OPTIMIZED__
+INSTANTIATE_TEST_SUITE_P(Backends, AsyncHost, ::testing::Values(Mode::Files, Mode::Jit), mode_name);
+#else
 INSTANTIATE_TEST_SUITE_P(Backends, AsyncHost, ::testing::Values(Mode::Files, Mode::Jit, Mode::Aot), mode_name);
+#endif
 
 } // namespace

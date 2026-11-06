@@ -43,6 +43,12 @@
 # OPTIMIZED (AOT mode only) passes "--aot-optimized" to hotc. An optimized AOT library has no
 # slots, so no override and no reload is possible.
 #
+# The cache option HOT_SCRIPT_MODE of the Hot++ build (AOT or AOT_OPTIMIZED) sets HOT_SCRIPT_AOT.
+# Then each call acts as if it has AOT, and AOT_OPTIMIZED also adds OPTIMIZED. A call without AOT
+# then loses AFTER, HOST and "--gen N" of HOTC_ARGS. Its FLAGS become compile options of the
+# library. The generated code gets the define __HOTPP_AOT__. The hosts of hot_add_host with a
+# mode other than AOT keep their mode and their scripts.
+#
 # String interpolation "${...}": the C++ standard picks the format library at build time
 # (cmake/HotFormat.cmake). The standard comes from hot_effective_cxx_standard: the property
 # CXX_STANDARD of the target, else CMAKE_CXX_STANDARD, else the Hot++ default 17.
@@ -80,6 +86,34 @@ function(hot_add_scripts)
     endif()
     if(A_OPTIMIZED AND NOT A_AOT)
         message(FATAL_ERROR "hot_add_scripts: OPTIMIZED works only with AOT (target ${A_TARGET})")
+    endif()
+    # The global AOT mode (HOT_SCRIPT_MODE AOT or AOT_OPTIMIZED). Each call acts as if it has AOT,
+    # and OPTIMIZED in the mode AOT_OPTIMIZED. hot_add_host sets _hot_keep_mode for a host that
+    # keeps a reload mode, and _hot_keep_slots for AOT code that the program overrides at run time.
+    set(forced_flags "")
+    if(HOT_SCRIPT_AOT AND NOT A_AOT AND NOT _hot_keep_mode)
+        set(A_AOT ON)
+        if(DEFINED A_AFTER)
+            message(STATUS "hot_add_scripts: HOT_SCRIPT_MODE=${HOT_SCRIPT_MODE} drops AFTER ${A_AFTER} (target ${A_TARGET})")
+            unset(A_AFTER)
+        endif()
+        if(DEFINED A_HOST)
+            message(STATUS "hot_add_scripts: HOT_SCRIPT_MODE=${HOT_SCRIPT_MODE} drops HOST ${A_HOST} (target ${A_TARGET})")
+            unset(A_HOST)
+        endif()
+        # hotc --aot has no generation. "--gen N" goes out of HOTC_ARGS.
+        list(FIND A_HOTC_ARGS --gen gen_at)
+        if(NOT gen_at EQUAL -1)
+            list(REMOVE_AT A_HOTC_ARGS ${gen_at})
+            list(REMOVE_AT A_HOTC_ARGS ${gen_at})
+        endif()
+        # FLAGS are the flags of the module compile. The AOT code compiles in the static library,
+        # so the flags become compile options of the library. hotc --aot does not take them.
+        set(forced_flags ${A_FLAGS})
+        set(A_FLAGS "")
+    endif()
+    if(HOT_SCRIPT_AOT_OPTIMIZED AND A_AOT AND NOT A_OPTIMIZED AND NOT _hot_keep_slots)
+        set(A_OPTIMIZED ON)
     endif()
     if(A_AOT)
         if(DEFINED A_AFTER)
@@ -237,6 +271,14 @@ function(hot_add_scripts)
         # The library needs only the core. The program picks hot::aot (no loader) or the loader
         # (hot::backend; Loader::load_aot takes hot::aot_table). It never links both.
         target_link_libraries(${A_TARGET} PUBLIC hot::runtime_core)
+        if(forced_flags)
+            target_compile_options(${A_TARGET} PRIVATE ${forced_flags})
+        endif()
+        # hotc does not take -D, so the define of the global AOT mode goes to the compile of the
+        # generated code.
+        if(HOT_SCRIPT_AOT)
+            target_compile_definitions(${A_TARGET} PRIVATE __HOTPP_AOT__)
+        endif()
         # The symbols of the generated code stay inside the program. A run-time generation of the
         # same script (a library that a backend makes) defines the same names (Hero_record,
         # Hero_Shell). Without hidden symbols the dynamic linker binds the library to the AOT code.
@@ -348,7 +390,7 @@ endfunction()
 
 # hot_add_host: set up the scripts of one host program. The target must exist before the call.
 #
-#   hot_add_host(TARGET t [MODE AOT|AOT_RELOAD|HOT_RELOAD|PRECOMPILED] [OPTIMIZED] SCRIPTS a.hot b.hot
+#   hot_add_host(TARGET t [MODE AOT|AOT_RELOAD|HOT_RELOAD|PRECOMPILED] [OPTIMIZED|NO_OPTIMIZE] SCRIPTS a.hot b.hot
 #                [INCLUDES dir...] [DEPENDS file...] [PRELUDES file...] [FLAGS flag...]
 #                [HOTC_ARGS arg...])
 #
@@ -374,9 +416,13 @@ endfunction()
 #                gets the define HOT_SCRIPT_DIR (the directory of the first script). A portable
 #                build (HOT_PORTABLE) holds no build path. It copies the include dir of Hot++ to
 #                <directory of t>/hot/include after the build, where default_paths() finds it.
-# In every mode, INCLUDES are include dirs of the target t.
+# In every mode, INCLUDES are include dirs of the target t. The macros of the script mode come from
+# tests/CMakeLists.txt, not from this function.
+# HOT_SCRIPT_MODE AOT or AOT_OPTIMIZED (HOT_SCRIPT_AOT): MODE AOT gets OPTIMIZED in AOT_OPTIMIZED.
+# The other modes stay, because their programs call the backend or the loader.
+# NO_OPTIMIZE (only with MODE AOT): the host stays plain AOT in the mode AOT_OPTIMIZED.
 function(hot_add_host)
-    cmake_parse_arguments(H "OPTIMIZED" "TARGET;MODE" "SCRIPTS;INCLUDES;DEPENDS;PRELUDES;FLAGS;HOTC_ARGS" ${ARGN})
+    cmake_parse_arguments(H "OPTIMIZED;NO_OPTIMIZE" "TARGET;MODE" "SCRIPTS;INCLUDES;DEPENDS;PRELUDES;FLAGS;HOTC_ARGS" ${ARGN})
     if(H_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "hot_add_host: unknown arguments: ${H_UNPARSED_ARGUMENTS}")
     endif()
@@ -397,6 +443,9 @@ function(hot_add_host)
         message(FATAL_ERROR "hot_add_host: OPTIMIZED works only with MODE AOT. An optimized AOT library "
                 "has no slots, so no override and no reload is possible (target ${H_TARGET})")
     endif()
+    if(H_OPTIMIZED AND H_NO_OPTIMIZE)
+        message(FATAL_ERROR "hot_add_host: OPTIMIZED and NO_OPTIMIZE exclude each other (target ${H_TARGET})")
+    endif()
     if(H_MODE STREQUAL "AOT_RELOAD" AND NOT TARGET hot::backend)
         message(FATAL_ERROR "hot_add_host: MODE AOT_RELOAD needs a backend (the target hot::backend), "
                 "because the program compiles overrides at run time. This Hot++ has no backend. "
@@ -407,6 +456,25 @@ function(hot_add_host)
                 "because the program compiles scripts at run time. This Hot++ has no backend. "
                 "Use MODE AOT or PRECOMPILED, or use a Hot++ build or SDK that has a backend "
                 "(HOT_ENABLE_CLANG_FILES or HOT_ENABLE_JIT) (target ${H_TARGET})")
+    endif()
+    # The global AOT mode (HOT_SCRIPT_MODE AOT or AOT_OPTIMIZED). A host with MODE AOT gets
+    # OPTIMIZED in the mode AOT_OPTIMIZED. The program of a host with a different mode calls the
+    # backend or the loader, and hot::aot has neither. So such a host keeps its mode.
+    if(HOT_SCRIPT_AOT)
+        if(H_MODE STREQUAL "AOT")
+            if(H_NO_OPTIMIZE)
+                # hot_add_scripts sees this variable of this scope.
+                set(_hot_keep_slots ON)
+            elseif(HOT_SCRIPT_AOT_OPTIMIZED)
+                set(H_OPTIMIZED ON)
+            endif()
+        else()
+            message(STATUS "hot_add_host: HOT_SCRIPT_MODE=${HOT_SCRIPT_MODE} keeps MODE ${H_MODE}, "
+                    "because the program needs a backend or the loader (target ${H_TARGET})")
+            # hot_add_scripts sees these variables of this scope.
+            set(_hot_keep_mode ON)
+            set(_hot_keep_slots ON)
+        endif()
     endif()
     set(t ${H_TARGET})
     set(common_args SCRIPTS ${H_SCRIPTS})

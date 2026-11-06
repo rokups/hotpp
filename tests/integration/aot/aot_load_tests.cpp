@@ -33,6 +33,9 @@
 namespace
 {
 
+// The slot tests need the slot manifest of plain AOT code. HOT_SCRIPT_MODE=AOT_OPTIMIZED makes
+// the scripts optimized, and optimized AOT code has no slots, so that build has no such tests.
+#ifndef __HOTPP_AOT_OPTIMIZED__
 // The script module_v1 with one more method before "Weight". A generation 2 that has no
 // seeded slot state gives the new method the slot of "Weight".
 hot::ScriptSource module_with_extra_method()
@@ -102,6 +105,7 @@ TEST(AotLoad, UnseededBackendRenumbersTheSlots)
     // The control of the test above: it proves that the seed has an effect.
     EXPECT_NE(weight_after_reload_with(false), 10);
 }
+#endif // __HOTPP_AOT_OPTIMIZED__
 
 // The seed rule: the text must cover the state that the backend has.
 TEST(AotLoad, SlotsCoverRule)
@@ -111,6 +115,7 @@ TEST(AotLoad, SlotsCoverRule)
     EXPECT_FALSE(hot::slots_cover("A::f 1\n", "A::f 1\nA::g 2\n")); // the backend has a newer method
 }
 
+#ifndef __HOTPP_AOT_OPTIMIZED__ // the test needs the slot manifest (see above)
 std::string read_all(const std::filesystem::path& p)
 {
     std::ifstream in(p);
@@ -149,6 +154,7 @@ TEST(AotLoad, SeedReplacesAStaleSlotsFileAndKeepsANewerOne)
     }
     fs::remove_all(dir);
 }
+#endif // __HOTPP_AOT_OPTIMIZED__
 
 TEST(AotLoad, LoadAotRegistersEachScriptAsAUnit)
 {

@@ -30,6 +30,8 @@ Scripts and the host must use the same sanitizer runtime. The root file `CMakeLi
 | `linux-clang-jit-asan` | JIT only | `-fsanitize=address` | Memory errors with the JIT. |
 | `linux-clang-jit-tsan` | JIT only | `-fsanitize=thread` | Data races with the JIT. |
 | `linux-clang-both` | clang files and JIT | none | One build for both backends. `HOT_BACKEND` picks the backend at run time. The CI uses it. |
+| `linux-clang-aot` | clang files and JIT | none | As `linux-clang-both` with `HOT_SCRIPT_MODE=AOT`: the scripts compile ahead of time. |
+| `linux-clang-aot-opt` | clang files and JIT | none | As `linux-clang-both` with `HOT_SCRIPT_MODE=AOT_OPTIMIZED`: AOT with the optimized layout. |
 
 ### Windows presets
 
@@ -40,6 +42,8 @@ These presets build for Windows. They use the same generator and configurations.
 | `mingw-files` | A cross build on Linux with MinGW-w64. It has no translator. It needs `HOT_HOST_HOTC`, a `hotc` that runs on Linux. The tests run under wine. |
 | `mingw-llvm` | A cross build on Linux with MinGW-w64 and the LLVM release for Windows. It builds `hotc.exe` and `hot-ls`. `HOT_LLVM_RELEASES_DIR` is `cmake-build`. The tests run under wine. |
 | `vs-files` | Visual Studio 2022, x64. It works only on a Windows host. It sets `HOT_DOWNLOAD_LLVM=ON`. The CI job `windows-msvc` builds it and runs the tests with `vs-files-rel`. |
+| `vs-aot` | As `vs-files` with `HOT_SCRIPT_MODE=AOT`. |
+| `vs-aot-opt` | As `vs-files` with `HOT_SCRIPT_MODE=AOT_OPTIMIZED`. |
 
 Each Windows preset has a build preset and a test preset: `mingw-files-dbg`, `mingw-llvm-dbg`, `mingw-llvm-rel`, `vs-files-dbg` and `vs-files-rel`. The `-rel` presets use `RelWithDebInfo`.
 
@@ -57,6 +61,10 @@ The build presets and the test presets have the same names for each configure pr
 | `linux-clang-jit-tsan` | `linux-clang-jit-tsan` | `Debug` |
 | `linux-clang-both-dbg` | `linux-clang-both` | `Debug` |
 | `linux-clang-both-rel` | `linux-clang-both` | `RelWithDebInfo` |
+| `linux-clang-aot-rel` | `linux-clang-aot` | `RelWithDebInfo` |
+| `linux-clang-aot-opt-rel` | `linux-clang-aot-opt` | `RelWithDebInfo` |
+| `vs-aot-rel` | `vs-aot` | `RelWithDebInfo` |
+| `vs-aot-opt-rel` | `vs-aot-opt` | `RelWithDebInfo` |
 
 The hidden presets `base`, `base-files`, `base-jit`, `base-both`, `base-clang`, `base-asan`, `base-tsan` and `base-test` hold the common settings. The sanitizer presets set `CMAKE_CXX_FLAGS` to the sanitizer flag only. The test presets print the output of a failed test. Example:
 

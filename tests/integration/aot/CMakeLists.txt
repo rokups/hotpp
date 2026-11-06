@@ -53,6 +53,10 @@ add_executable(integration_aot_registry_tests aot_registry_tests.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
 target_include_directories(integration_aot_registry_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
 target_link_libraries(integration_aot_registry_tests PRIVATE aot_registry_scripts hot::aot GTest::gtest_main)
+# HOT_SCRIPT_MODE=AOT_OPTIMIZED makes aot_registry_scripts optimized. The test then expects an optimized table.
+if(HOT_SCRIPT_AOT_OPTIMIZED)
+    target_compile_definitions(integration_aot_registry_tests PRIVATE AOT_EXPECT_OPTIMIZED=1)
+endif()
 hot_gtest(integration_aot_registry_tests PROPERTIES LABELS aot)
 
 # Loader::load_aot and Backend::seed_slots: the loader, a backend and the AOT scripts in one
@@ -67,18 +71,22 @@ target_compile_definitions(integration_aot_load_tests PRIVATE HOT_SOURCE_DIR="${
 hot_gtest(integration_aot_load_tests PROPERTIES LABELS aot)
 
 # Override and revert of one AOT unit at run time: two units, the loader and a backend.
-hot_add_scripts(TARGET aot_override_scripts AOT
-    SCRIPTS ${PROJECT_SOURCE_DIR}/tests/scripts/override_a_v1.hot ${PROJECT_SOURCE_DIR}/tests/scripts/override_b_v1.hot
-    INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
-    DEPENDS ${HOT_HEADERS})
-add_executable(integration_aot_override_tests aot_override_tests.cpp
-    ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
-    ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
-target_include_directories(integration_aot_override_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
-target_link_libraries(integration_aot_override_tests PRIVATE aot_override_scripts hot_backend GTest::gtest_main)
-set_target_properties(integration_aot_override_tests PROPERTIES ENABLE_EXPORTS ON)
-target_compile_definitions(integration_aot_override_tests PRIVATE HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
-hot_gtest(integration_aot_override_tests PROPERTIES LABELS aot)
+# An override needs the slots of the AOT unit. HOT_SCRIPT_MODE=AOT_OPTIMIZED makes this target
+# optimized, and optimized AOT code has no slots, so that build has no such test.
+if(NOT HOT_SCRIPT_AOT_OPTIMIZED)
+    hot_add_scripts(TARGET aot_override_scripts AOT
+        SCRIPTS ${PROJECT_SOURCE_DIR}/tests/scripts/override_a_v1.hot ${PROJECT_SOURCE_DIR}/tests/scripts/override_b_v1.hot
+        INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
+        DEPENDS ${HOT_HEADERS})
+    add_executable(integration_aot_override_tests aot_override_tests.cpp
+        ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
+        ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+    target_include_directories(integration_aot_override_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
+    target_link_libraries(integration_aot_override_tests PRIVATE aot_override_scripts hot_backend GTest::gtest_main)
+    set_target_properties(integration_aot_override_tests PROPERTIES ENABLE_EXPORTS ON)
+    target_compile_definitions(integration_aot_override_tests PRIVATE HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+    hot_gtest(integration_aot_override_tests PROPERTIES LABELS aot)
+endif()
 
 # Optimized AOT (MODE AOT OPTIMIZED): the same scripts, built with "hotc --aot-optimized". The
 # optimized libraries have no slots, so the loader cannot override or reload them.
@@ -138,12 +146,16 @@ target_compile_definitions(integration_aot_parity_tests PRIVATE
     AOT_COVER_OPT_PATH="$<TARGET_FILE:aot_cover_opt>")
 
 # Script interfaces in loader-less AOT code (design 41b, B5): the registry builds the id tables.
-hot_add_scripts(TARGET aot_iface_scripts AOT SCRIPTS ${PROJECT_SOURCE_DIR}/tests/scripts/iface_v1.hot
-    INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
-    DEPENDS ${HOT_HEADERS})
-add_executable(integration_aot_iface_tests aot_iface_tests.cpp
-    ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
-    ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
-target_include_directories(integration_aot_iface_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
-target_link_libraries(integration_aot_iface_tests PRIVATE aot_iface_scripts hot::aot GTest::gtest_main)
-hot_gtest(integration_aot_iface_tests PROPERTIES LABELS aot)
+# HOT_SCRIPT_MODE=AOT_OPTIMIZED makes this AOT target optimized. hotc does not compile script
+# interfaces in the optimized AOT mode, so that build has no such test.
+if(NOT HOT_SCRIPT_AOT_OPTIMIZED)
+    hot_add_scripts(TARGET aot_iface_scripts AOT SCRIPTS ${PROJECT_SOURCE_DIR}/tests/scripts/iface_v1.hot
+        INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
+        DEPENDS ${HOT_HEADERS})
+    add_executable(integration_aot_iface_tests aot_iface_tests.cpp
+        ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
+        ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+    target_include_directories(integration_aot_iface_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
+    target_link_libraries(integration_aot_iface_tests PRIVATE aot_iface_scripts hot::aot GTest::gtest_main)
+    hot_gtest(integration_aot_iface_tests PROPERTIES LABELS aot)
+endif()

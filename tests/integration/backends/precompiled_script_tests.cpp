@@ -22,7 +22,9 @@
 namespace
 {
 
-// The libraries come from hot_add_scripts, which calls hotc.
+// The libraries come from hot_add_scripts, which calls hotc. An AOT build (HOT_SCRIPT_MODE)
+// makes no such libraries and reloads no module, so these tests are only in a RELOAD build.
+#ifdef __HOTPP_RELOAD__
 TEST(PrecompiledTests, F1ReloadWithModulesFromLibraries)
 {
     f1::run_f1_reload(test_support::library(PRE_V1_SO), test_support::library(PRE_V2_SO));
@@ -38,6 +40,7 @@ TEST(PrecompiledTests, HandleFieldSurvivesReloadWithLibraries)
     handlereload::run_handle_reload(test_support::library(PRE_HANDLE_V1_SO), test_support::library(PRE_HANDLE_V2_SO),
         test_support::library(PRE_HANDLE_V1B_SO));
 }
+#endif
 
 TEST(PrecompiledTests, MissingLibraryGivesErrorString)
 {

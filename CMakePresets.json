@@ -90,6 +90,18 @@
       "inherits": ["base-clang", "base-both"]
     },
     {
+      "name": "linux-clang-aot",
+      "description": "HOT_SCRIPT_MODE=AOT: each script target compiles ahead of time.",
+      "inherits": "linux-clang-both",
+      "cacheVariables": { "HOT_SCRIPT_MODE": "AOT" }
+    },
+    {
+      "name": "linux-clang-aot-opt",
+      "description": "HOT_SCRIPT_MODE=AOT_OPTIMIZED: AOT with the optimized layout (no slots).",
+      "inherits": "linux-clang-both",
+      "cacheVariables": { "HOT_SCRIPT_MODE": "AOT_OPTIMIZED" }
+    },
+    {
       "name": "vs-files",
       "description": "No generator: CMake takes the newest Visual Studio of the host.",
       "binaryDir": "${sourceDir}/cmake-build/${presetName}",
@@ -102,6 +114,18 @@
         "HOT_DOWNLOAD_LLVM": "ON"
       },
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    },
+    {
+      "name": "vs-aot",
+      "description": "HOT_SCRIPT_MODE=AOT with the vs-files settings.",
+      "inherits": "vs-files",
+      "cacheVariables": { "HOT_SCRIPT_MODE": "AOT" }
+    },
+    {
+      "name": "vs-aot-opt",
+      "description": "HOT_SCRIPT_MODE=AOT_OPTIMIZED with the vs-files settings.",
+      "inherits": "vs-files",
+      "cacheVariables": { "HOT_SCRIPT_MODE": "AOT_OPTIMIZED" }
     },
     {
       "name": "vs-both",
@@ -155,7 +179,11 @@
     { "name": "linux-clang-both-dbg", "configurePreset": "linux-clang-both", "configuration": "Debug" },
     { "name": "linux-clang-both-rel", "configurePreset": "linux-clang-both", "configuration": "RelWithDebInfo" },
     { "name": "linux-clang-jit-asan", "configurePreset": "linux-clang-jit-asan", "configuration": "Debug" },
-    { "name": "linux-clang-jit-tsan", "configurePreset": "linux-clang-jit-tsan", "configuration": "Debug" }
+    { "name": "linux-clang-jit-tsan", "configurePreset": "linux-clang-jit-tsan", "configuration": "Debug" },
+    { "name": "linux-clang-aot-rel", "configurePreset": "linux-clang-aot", "configuration": "RelWithDebInfo" },
+    { "name": "linux-clang-aot-opt-rel", "configurePreset": "linux-clang-aot-opt", "configuration": "RelWithDebInfo" },
+    { "name": "vs-aot-rel", "configurePreset": "vs-aot", "configuration": "RelWithDebInfo" },
+    { "name": "vs-aot-opt-rel", "configurePreset": "vs-aot-opt", "configuration": "RelWithDebInfo" }
   ],
   "testPresets": [
     {
@@ -179,6 +207,10 @@
     { "name": "linux-clang-both-dbg", "inherits": "base-test", "configurePreset": "linux-clang-both", "configuration": "Debug" },
     { "name": "linux-clang-both-rel", "inherits": "base-test", "configurePreset": "linux-clang-both", "configuration": "RelWithDebInfo" },
     { "name": "linux-clang-jit-asan", "inherits": "base-test", "configurePreset": "linux-clang-jit-asan", "configuration": "Debug" },
-    { "name": "linux-clang-jit-tsan", "inherits": "base-test", "configurePreset": "linux-clang-jit-tsan", "configuration": "Debug" }
+    { "name": "linux-clang-jit-tsan", "inherits": "base-test", "configurePreset": "linux-clang-jit-tsan", "configuration": "Debug" },
+    { "name": "linux-clang-aot-rel", "inherits": "base-test", "configurePreset": "linux-clang-aot", "configuration": "RelWithDebInfo" },
+    { "name": "linux-clang-aot-opt-rel", "inherits": "base-test", "configurePreset": "linux-clang-aot-opt", "configuration": "RelWithDebInfo" },
+    { "name": "vs-aot-rel", "inherits": "base-test", "configurePreset": "vs-aot", "configuration": "RelWithDebInfo" },
+    { "name": "vs-aot-opt-rel", "inherits": "base-test", "configurePreset": "vs-aot-opt", "configuration": "RelWithDebInfo" }
   ]
 }

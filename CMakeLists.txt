@@ -87,6 +87,23 @@ option(HOT_ENABLE_CLANG_FILES "Build the clang files backend (external clang++) 
 set(HOT_ENABLE_JIT AUTO CACHE STRING "Build the JIT backend into hot::backend: AUTO, ON or OFF")
 set_property(CACHE HOT_ENABLE_JIT PROPERTY STRINGS AUTO ON OFF)
 
+# HOT_SCRIPT_MODE selects how the hosts and the script targets of this build compile scripts.
+# RELOAD keeps the mode of each call. AOT makes hot_add_scripts and the AOT hosts compile the
+# scripts ahead of time. AOT_OPTIMIZED also gives --aot-optimized (see cmake/HotScripts.cmake).
+set(HOT_SCRIPT_MODE RELOAD CACHE STRING "Script mode of the build: RELOAD, AOT or AOT_OPTIMIZED")
+set_property(CACHE HOT_SCRIPT_MODE PROPERTY STRINGS RELOAD AOT AOT_OPTIMIZED)
+if(NOT HOT_SCRIPT_MODE MATCHES "^(RELOAD|AOT|AOT_OPTIMIZED)$")
+    message(FATAL_ERROR "HOT_SCRIPT_MODE must be RELOAD, AOT or AOT_OPTIMIZED. It is: ${HOT_SCRIPT_MODE}")
+endif()
+set(HOT_SCRIPT_AOT OFF)
+set(HOT_SCRIPT_AOT_OPTIMIZED OFF)
+if(HOT_SCRIPT_MODE STREQUAL "AOT" OR HOT_SCRIPT_MODE STREQUAL "AOT_OPTIMIZED")
+    set(HOT_SCRIPT_AOT ON)
+endif()
+if(HOT_SCRIPT_MODE STREQUAL "AOT_OPTIMIZED")
+    set(HOT_SCRIPT_AOT_OPTIMIZED ON)
+endif()
+
 # All scratch files go under one root. HOT_KEEP_TEMP keeps them for debugging.
 option(HOT_KEEP_TEMP "Keep the scratch files under tmp/ for debugging" OFF)
 set(HOT_SCRATCH_DIR ${CMAKE_BINARY_DIR}/tmp)

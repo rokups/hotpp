@@ -150,7 +150,9 @@ std::vector<const test_support::DwarfFunction*> script_functions(const Compiled&
 
 const std::vector<std::string> kOptimizations = {"-O0", "-O2"};
 
-// The library that hotc built ahead of time (full debug info, "-g").
+// The library that hotc built ahead of time (full debug info, "-g"). An AOT build (HOT_SCRIPT_MODE)
+// makes no library for a reload, so this test is only in a RELOAD build.
+#ifdef __HOTPP_RELOAD__
 TEST(DebugInfo, LibraryFromHotcHasLinesOfTheScript)
 {
     if (!have_dwarfdump())
@@ -159,6 +161,7 @@ TEST(DebugInfo, LibraryFromHotcHasLinesOfTheScript)
     EXPECT_FALSE(lines.empty());
     EXPECT_TRUE(lines.count(heal_line())) << "no row for line " << heal_line();
 }
+#endif
 
 // The flags of the JIT backend: "-O1 -gline-tables-only". The object has the script lines.
 TEST(DebugInfo, LineTablesOnlyKeepsTheScriptLines)

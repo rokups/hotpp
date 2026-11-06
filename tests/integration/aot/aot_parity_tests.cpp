@@ -54,6 +54,8 @@ std::string run_with_loader()
     return testing::internal::GetCapturedStdout() + log;
 }
 
+static std::string without_fields(const std::string& text);
+
 TEST(AotParity, AotProgramBehavesLikeTheLoader)
 {
     const std::string loaded = run_with_loader();
@@ -61,7 +63,12 @@ TEST(AotParity, AotProgramBehavesLikeTheLoader)
     const std::string aot = test_support::lf_only(aot_run.output);
     EXPECT_EQ(aot_run.exit_code, 0);
     ASSERT_FALSE(loaded.empty());
+#ifdef __HOTPP_AOT_OPTIMIZED__
+    // HOT_SCRIPT_MODE=AOT_OPTIMIZED makes aot_demo optimized. Its object lines have no fields.
+    EXPECT_EQ(aot, without_fields(loaded));
+#else
     EXPECT_EQ(aot, loaded);
+#endif
 }
 
 // The demo prints the fields of a plain AOT object from its layout. An optimized object has no
@@ -163,6 +170,9 @@ TEST(AotParity, LoadAotBehavesLikeTheAotProgram)
 }
 
 // The text has the facts that the task names, so an empty or a wrong run cannot pass.
+// The test reads the fields of the plain AOT objects. HOT_SCRIPT_MODE=AOT_OPTIMIZED makes aot_demo
+// optimized, and an optimized object has no field table, so that build has no such test.
+#ifndef __HOTPP_AOT_OPTIMIZED__
 TEST(AotParity, AotProgramShowsTheLanguageFeatures)
 {
     const std::string out = test_support::lf_only(test_support::run_process({AOT_DEMO_PATH}).output);
@@ -186,6 +196,7 @@ TEST(AotParity, AotProgramShowsTheLanguageFeatures)
     EXPECT_NE(child, std::string::npos) << out;
     EXPECT_NE(parent, std::string::npos) << out;
 }
+#endif // __HOTPP_AOT_OPTIMIZED__
 
 // The path of this executable.
 std::string self_exe_path()
