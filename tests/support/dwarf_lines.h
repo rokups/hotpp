@@ -6,6 +6,8 @@
 // the functions of the debug info.
 #pragma once
 
+#include "process.h"
+
 #include <cstdio>
 #include <cstdlib>
 #include <map>
@@ -31,32 +33,16 @@ inline bool have_dwarfdump()
 #endif
 }
 
-// Runs a shell command. Gives stdout and stderr.
-inline std::string run_capture(const std::string& cmd)
+// Runs a program from an argument list. Gives stdout and stderr in one text.
+inline std::string run_capture(const std::vector<std::string>& argv)
 {
-    std::string text;
-#ifdef _WIN32
-    FILE* p = _popen((cmd + " 2>&1").c_str(), "r");
-#else
-    FILE* p = popen((cmd + " 2>&1").c_str(), "r");
-#endif
-    if (p == nullptr)
-        return text;
-    char buf[4096];
-    while (size_t n = fread(buf, 1, sizeof buf, p))
-        text.append(buf, n);
-#ifdef _WIN32
-    _pclose(p);
-#else
-    pclose(p);
-#endif
-    return text;
+    return run_process(argv).output;
 }
 
 // The text of "llvm-dwarfdump --debug-line file".
 inline std::string dump_line_table(const std::string& file)
 {
-    return run_capture("llvm-dwarfdump --debug-line '" + file + "'");
+    return run_capture({"llvm-dwarfdump", "--debug-line", file});
 }
 
 // One row of the line table. The file is the name from the file table of the row.
@@ -132,7 +118,7 @@ inline std::set<int> lines_of_file(const std::string& dump, const std::string& b
 // The text of "llvm-dwarfdump --debug-info file".
 inline std::string dump_debug_info(const std::string& file)
 {
-    return run_capture("llvm-dwarfdump --debug-info '" + file + "'");
+    return run_capture({"llvm-dwarfdump", "--debug-info", file});
 }
 
 // A variable or a parameter of a function.

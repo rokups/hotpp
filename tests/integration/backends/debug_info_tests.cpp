@@ -75,10 +75,9 @@ const Compiled& compile_with_debug_info(const std::string& script, const std::st
     }
     const std::string library = dir + "/" + script + opt + ".so";
     fs::remove(library);
-    const std::string cmd = std::string("'") + HOT_CXX + "' -std=c++20 " + opt + " -fPIC -shared -g -I '"
-        + HOT_SOURCE_DIR + "/include' -I '" + HOT_SOURCE_DIR + "/tests/engine' '" + to.output_name + "' -o '"
-        + library + "'";
-    const std::string compile_output = test_support::run_capture(cmd);
+    const std::string compile_output = test_support::run_capture({HOT_CXX, "-std=c++20", opt, "-fPIC", "-shared", "-g",
+        "-I", std::string(HOT_SOURCE_DIR) + "/include", "-I", std::string(HOT_SOURCE_DIR) + "/tests/engine",
+        to.output_name, "-o", library});
     EXPECT_TRUE(fs::exists(library)) << compile_output;
     if (!fs::exists(library))
         return cache[key] = c;
@@ -145,10 +144,9 @@ TEST(DebugInfo, LineTablesOnlyKeepsTheScriptLines)
         std::ofstream(to.output_name) << tr.cpp;
     }
     const std::string object = dir + "/player_v2.o";
-    const std::string cmd = std::string("'") + HOT_CXX + "' -std=c++20 -O1 -fPIC -gline-tables-only -I '"
-        + HOT_SOURCE_DIR + "/include' -I '" + HOT_SOURCE_DIR + "/tests/engine' -c '" + to.output_name + "' -o '"
-        + object + "'";
-    const std::string compile_output = test_support::run_capture(cmd);
+    const std::string compile_output = test_support::run_capture({HOT_CXX, "-std=c++20", "-O1", "-fPIC",
+        "-gline-tables-only", "-I", std::string(HOT_SOURCE_DIR) + "/include", "-I",
+        std::string(HOT_SOURCE_DIR) + "/tests/engine", "-c", to.output_name, "-o", object});
     ASSERT_TRUE(fs::exists(object)) << compile_output;
     const std::string dump = test_support::dump_line_table(object);
     const std::set<int> lines = test_support::lines_of_file(dump, "player_v2.hot");

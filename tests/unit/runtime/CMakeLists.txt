@@ -35,10 +35,15 @@ add_executable(unit_runtime_tests
     scheduler_tests.cpp
     arith_tests.cpp
     span_tests.cpp
+    process_tests.cpp
     view_type_tests.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Object.cpp)
 target_link_libraries(unit_runtime_tests PRIVATE hot_runtime engine_harness GTest::gtest_main)
 target_include_directories(unit_runtime_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
+# The program that the tests of run_process (support/process.h) start.
+add_executable(process_probe process_probe_main.cpp)
+add_dependencies(unit_runtime_tests process_probe)
+target_compile_definitions(unit_runtime_tests PRIVATE PROCESS_PROBE_PATH="$<TARGET_FILE:process_probe>")
 # The task tests need C++20 coroutines. The rest of the project stays C++17.
 set_target_properties(unit_runtime_tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 hot_gtest(unit_runtime_tests)

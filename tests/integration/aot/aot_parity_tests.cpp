@@ -8,6 +8,7 @@
 #include "demo_run.h"
 #include "hot/backend.h"
 #include "hot/runtime.h"
+#include "support/process.h"
 #include "support/script_files.h"
 
 #include <gtest/gtest.h>
@@ -21,30 +22,6 @@
 
 namespace
 {
-
-std::string run_command(const std::string& command, int* status = nullptr)
-{
-    std::string out;
-#ifdef _WIN32
-    FILE* pipe = _popen(command.c_str(), "r");
-#else
-    FILE* pipe = popen(command.c_str(), "r");
-#endif
-    if (!pipe)
-        return out;
-    char buf[4096];
-    size_t n;
-    while ((n = fread(buf, 1, sizeof buf, pipe)) > 0)
-        out.append(buf, n);
-#ifdef _WIN32
-    const int st = _pclose(pipe);
-#else
-    const int st = pclose(pipe);
-#endif
-    if (status)
-        *status = st;
-    return out;
-}
 
 // The output of the demo with the loader: the text that the script prints, then the log.
 std::string run_with_loader()
@@ -77,9 +54,9 @@ std::string run_with_loader()
 TEST(AotParity, AotProgramBehavesLikeTheLoader)
 {
     const std::string loaded = run_with_loader();
-    int status = -1;
-    const std::string aot = run_command(std::string(AOT_DEMO_PATH) + " 2>&1", &status);
-    EXPECT_EQ(status, 0);
+    const test_support::RunResult aot_run = test_support::run_process({AOT_DEMO_PATH});
+    const std::string aot = test_support::lf_only(aot_run.output);
+    EXPECT_EQ(aot_run.exit_code, 0);
     ASSERT_FALSE(loaded.empty());
     EXPECT_EQ(aot, loaded);
 }
@@ -103,11 +80,12 @@ static std::string without_fields(const std::string& text)
 // The optimized AOT program (MODE AOT OPTIMIZED) prints the same text as the AOT program.
 TEST(AotParity, OptimizedProgramBehavesLikeTheAotProgram)
 {
-    int status = -1, opt_status = -1;
-    const std::string aot = run_command(std::string(AOT_DEMO_PATH) + " 2>&1", &status);
-    const std::string opt = run_command(std::string(AOT_DEMO_OPT_PATH) + " 2>&1", &opt_status);
-    EXPECT_EQ(status, 0);
-    EXPECT_EQ(opt_status, 0);
+    const test_support::RunResult aot_run = test_support::run_process({AOT_DEMO_PATH});
+    const test_support::RunResult opt_run = test_support::run_process({AOT_DEMO_OPT_PATH});
+    const std::string aot = test_support::lf_only(aot_run.output);
+    const std::string opt = test_support::lf_only(opt_run.output);
+    EXPECT_EQ(aot_run.exit_code, 0);
+    EXPECT_EQ(opt_run.exit_code, 0);
     ASSERT_FALSE(aot.empty());
     // The optimized objects have no field table, so the object lines of the demo have no fields.
     // The script destructors print the fields, so the lines of the two programs are the same.
@@ -122,11 +100,12 @@ TEST(AotParity, OptimizedProgramBehavesLikeTheAotProgram)
 // the facts, so a wrong run in both programs cannot pass.
 TEST(AotParity, OptimizedCoverProgramBehavesLikeTheAotProgram)
 {
-    int status = -1, opt_status = -1;
-    const std::string aot = run_command(std::string(AOT_COVER_PATH) + " 2>&1", &status);
-    const std::string opt = run_command(std::string(AOT_COVER_OPT_PATH) + " 2>&1", &opt_status);
-    EXPECT_EQ(status, 0) << aot;
-    EXPECT_EQ(opt_status, 0) << opt;
+    const test_support::RunResult aot_run = test_support::run_process({AOT_COVER_PATH});
+    const test_support::RunResult opt_run = test_support::run_process({AOT_COVER_OPT_PATH});
+    const std::string aot = test_support::lf_only(aot_run.output);
+    const std::string opt = test_support::lf_only(opt_run.output);
+    EXPECT_EQ(aot_run.exit_code, 0) << aot;
+    EXPECT_EQ(opt_run.exit_code, 0) << opt;
     EXPECT_EQ(opt, aot);
     // Elite::Power = Grunt::Power + 100; Attack uses it; Mix goes to Elite; hp 50 - 3 - 4, and Armor adds 2 to each hit.
     EXPECT_NE(opt.find("Boss seen_power=103 seen_attack=1030 seen_mix=5\n"), std::string::npos) << opt;
@@ -173,9 +152,9 @@ TEST(AotParity, LoadAotBehavesLikeTheAotProgram)
     }
     std::fflush(stdout);
     const std::string via_loader = testing::internal::GetCapturedStdout() + log;
-    int status = -1;
-    const std::string aot = run_command(std::string(AOT_DEMO_PATH) + " 2>&1", &status);
-    EXPECT_EQ(status, 0);
+    const test_support::RunResult aot_run = test_support::run_process({AOT_DEMO_PATH});
+    const std::string aot = test_support::lf_only(aot_run.output);
+    EXPECT_EQ(aot_run.exit_code, 0);
     ASSERT_FALSE(via_loader.empty());
     EXPECT_EQ(aot, via_loader);
 }
@@ -183,7 +162,7 @@ TEST(AotParity, LoadAotBehavesLikeTheAotProgram)
 // The text has the facts that the task names, so an empty or a wrong run cannot pass.
 TEST(AotParity, AotProgramShowsTheLanguageFeatures)
 {
-    const std::string out = run_command(std::string(AOT_DEMO_PATH) + " 2>&1");
+    const std::string out = test_support::lf_only(test_support::run_process({AOT_DEMO_PATH}).output);
     // create and tick: three frames of 0.5 move the Fighter to x=1.5
     EXPECT_NE(out.find("frame 3: Fighter fighter pos.x=1.500 hp=100 ticks=3"), std::string::npos) << out;
     // constructor: Fighter(int) adds 100 to the start value and Veteran passes start + 1 to it
@@ -205,10 +184,17 @@ TEST(AotParity, AotProgramShowsTheLanguageFeatures)
     EXPECT_NE(parent, std::string::npos) << out;
 }
 
-// The symbols of an executable (nm). Empty when nm does not run.
+// The symbols of an executable (nm). Empty when nm does not run or fails.
+// Windows: the check reads ELF tools and stays off (the skip logic is the same as before).
 std::string symbols_of(const std::string& path)
 {
-    return run_command("nm -C '" + path + "' 2>/dev/null");
+#ifdef _WIN32
+    (void)path;
+    return {};
+#else
+    const test_support::RunResult r = test_support::run_process({"nm", "-C", path});
+    return r.exit_code == 0 ? r.output : std::string();
+#endif
 }
 
 // The sanitizer runtime of the compiler has dlopen and the LLVM symbolizer. A sanitizer build
@@ -258,7 +244,18 @@ TEST(AotLink, ScanFindsTheLoaderInAProgramThatLinksIt)
 
 TEST(AotLink, AotProgramNeedsNoClangLibrary)
 {
-    const std::string needed = run_command(std::string("readelf -d '") + AOT_DEMO_PATH + "' 2>/dev/null | grep NEEDED");
+    // The lines of "readelf -d" that have NEEDED. Empty when readelf does not run or fails.
+    std::string needed;
+#ifndef _WIN32
+    const test_support::RunResult dynamic = test_support::run_process({"readelf", "-d", AOT_DEMO_PATH});
+    if (dynamic.exit_code == 0)
+    {
+        std::istringstream lines(dynamic.output);
+        for (std::string line; std::getline(lines, line);)
+            if (line.find("NEEDED") != std::string::npos)
+                needed += line + "\n";
+    }
+#endif
     if (needed.empty())
         GTEST_SKIP() << "readelf is not available";
     EXPECT_EQ(needed.find("clang"), std::string::npos) << needed;
