@@ -3150,9 +3150,10 @@ struct QueryCollector
             if (f.script || (!f.cpp.empty() && f.cpp.rfind("decltype", 0) != 0))
                 return f;
         }
-        for (const Field& v : sc.vars)
-            if (v.name == n)
-                return of_text(stype(v));
+        for (const std::vector<Field>* list : {&sc.vars, &sc.consts})
+            for (const Field& v : *list)
+                if (v.name == n)
+                    return of_text(stype(v));
         return {};
     }
 

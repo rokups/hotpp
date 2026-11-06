@@ -3058,6 +3058,7 @@ void translate_impl(
         std::vector<Import> natives;
         std::vector<ClassDef> classes;
         std::vector<hotc::ast::EnumDef> enums;
+        std::vector<Field> consts; // the module constants of the imported scripts
         std::vector<hotc::ast::UsingNs> using_ns;
         std::vector<hotc::ast::TypeAlias> aliases;
         std::vector<Stub> stubs;
@@ -3133,6 +3134,8 @@ void translate_impl(
                     classes.push_back(std::move(c));
                 for (auto& e : is.enums)
                     enums.push_back(std::move(e));
+                for (Field& f : is.consts)
+                    consts.push_back(std::move(f));
                 for (Stub& st : is.stubs)
                     stubs.push_back(std::move(st));
                 for (Stub& st : is.attribute_classes)
@@ -3166,6 +3169,8 @@ void translate_impl(
                 sc.classes.begin(), std::make_move_iterator(classes.begin()), std::make_move_iterator(classes.end()));
             sc.enums.insert(
                 sc.enums.begin(), std::make_move_iterator(enums.begin()), std::make_move_iterator(enums.end()));
+            sc.consts.insert(
+                sc.consts.begin(), std::make_move_iterator(consts.begin()), std::make_move_iterator(consts.end()));
             sc.using_ns.insert(sc.using_ns.begin(), std::make_move_iterator(using_ns.begin()),
                 std::make_move_iterator(using_ns.end()));
             sc.aliases.insert(
@@ -4498,6 +4503,35 @@ void translate_impl(
                 o.w(",\n");
             }
             o.w("};\n");
+            reset();
+        }
+    }
+
+    // ---- module constants: "const T Name = value;". Each one is a C++ "static const" at file
+    // scope, before the classes. The imported constants come first. A reload translates the code
+    // again, so a new value is in the next generation.
+    {
+        const ClassDef no_class;
+        std::set<std::string> const_names;
+        for (Field& f : sc.consts)
+        {
+            if (!const_names.insert(f.name).second)
+                fail_at(map, f.pos, "constant '" + f.name + "' is declared twice");
+            if (!f.init)
+                fail_at(map, f.pos, "the constant '" + f.name + "' needs a value");
+            RCtx ec = hotc::make_class_ctx(no_class);
+            ec.aot_optimized = opt.aot_optimized;
+            ec.map = &map;
+            ec.types = &types;
+            ec.allow_this = false;
+            ec.format_lib = in.format_lib;
+            ec.uses_format = &uses_format;
+            hotc::lower_expr(f.init, ec, g_diag);
+            if (!g_diag.items.empty())
+                throw TranslateAbort{};
+            o.w("\n#line " + std::to_string(f.line) + " \"" + esc(file_at(f.pos)) + "\"\n");
+            o.w("[[maybe_unused]] static const " + types.cpp_storage(f.type, hotc::TypeModel::StorageUse::Local) + " "
+                + f.name + " = " + hotc::ast::print(*f.init) + ";\n");
             reset();
         }
     }

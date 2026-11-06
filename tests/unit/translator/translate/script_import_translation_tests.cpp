@@ -321,3 +321,46 @@ TEST(ScriptImportTranslation, SameAliasInTwoScripts)
 }
 
 } // namespace
+
+// A module constant: "const T Name = value;" at file level. An imported script can have it.
+// The output has one C++ "static const" before the classes. A case label can use an integral constant.
+TEST(ScriptImportTranslation, ImportedConstantIsUsableInTheChild)
+{
+    TempDir dir;
+    hotc::TranslateOptions o = options(dir, std::string(kParent) + "const int MaxHp = 3;\nconst float Scale = 0.5f * 2.0f;\n");
+    o.script_text = "using \"base.hot\";\nconst int Twice = MaxHp * 2;\nclass Kid : Base {\n"
+                    "    override int Power() {\n        switch (hp) {\n            case MaxHp: return Twice;\n"
+                    "            default: return (int)Scale;\n        }\n    }\n}\n";
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    const size_t max_hp = r.cpp.find("static const int32_t MaxHp = 3;");
+    ASSERT_NE(max_hp, std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find("MaxHp = 3;", max_hp + 30), std::string::npos) << "the constant is in the output one time";
+    EXPECT_NE(r.cpp.find("static const float Scale = 0.5f * 2.0f;"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("static const int32_t Twice = MaxHp * 2;"), std::string::npos) << r.cpp;
+    EXPECT_LT(max_hp, r.cpp.find("static const int32_t Twice")) << "the imported constants come first";
+    EXPECT_LT(max_hp, r.cpp.find("case MaxHp:")) << "the constants come before the method bodies";
+    EXPECT_NE(r.cpp.find("case MaxHp:"), std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find("hot_mod()->MaxHp"), std::string::npos) << "a constant is not a module variable";
+}
+
+// Errors: "const" on a class member, "const" with no value, and a constant that is declared twice.
+TEST(ScriptImportTranslation, ConstantErrors)
+{
+    TempDir dir;
+    hotc::TranslateOptions o = options(dir, kParent);
+    o.script_text = "using \"base.hot\";\nclass Kid : Base {\n    const int Max = 1;\n}\n";
+    const hotc::TranslateResult member = hotc::translate(o);
+    EXPECT_NE(member.diagnostics.find("a class member cannot be 'const'; write the constant at file level"),
+        std::string::npos)
+        << member.diagnostics;
+    o.script_text = "using \"base.hot\";\nconst int Max;\n";
+    const hotc::TranslateResult no_value = hotc::translate(o);
+    EXPECT_NE(no_value.diagnostics.find("the constant 'Max' needs a value"), std::string::npos) << no_value.diagnostics;
+    const hotc::TranslateResult twice = hotc::translate(options(dir, std::string(kParent) + "const int Max = 1;\n"));
+    o = options(dir, std::string(kParent) + "const int Max = 1;\n");
+    o.script_text = "using \"base.hot\";\nconst int Max = 2;\n";
+    const hotc::TranslateResult dup = hotc::translate(o);
+    EXPECT_NE(dup.diagnostics.find("constant 'Max' is declared twice"), std::string::npos) << dup.diagnostics;
+    EXPECT_TRUE(twice.ok) << twice.diagnostics;
+}

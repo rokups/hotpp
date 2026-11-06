@@ -123,6 +123,31 @@ class Hero : Actor {
 }
 ```
 
+## Module constants
+
+A `const` variable at file level is a module constant. It is not a part of the module state block.
+The translator writes a C++ `static const` value before the classes.
+
+```
+const int MaxHoles = 8;
+const float CellSize = 0.25f * 2.0f;
+
+class Wall : Actor {
+    int Room(int holes) {
+        switch (holes) {
+            case MaxHoles: return 0;
+            default: return MaxHoles - holes;
+        }
+    }
+}
+```
+
+- A constant needs a value. The value is an expression that C++ accepts in a `static const` initializer.
+- An imported script can have constants. A script that imports the file can use them.
+- An integral or an enum constant is a C++ constant expression: a `case` label can use it.
+- A class member cannot be `const`. Write the constant at file level.
+- A reload translates the code again. A changed value is in the next generation.
+
 ## Free functions
 
 A function at file level has no class. Write the return type, the name and the body.

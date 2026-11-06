@@ -769,6 +769,9 @@ struct Script
     // Module variables: "Type name = init;" at file level. The translator collects them in
     // the module state block.
     std::vector<Field> vars;
+    // Module constants: "const Type name = value;" at file level. They are C++ "static const" values,
+    // not parts of the module state block. An imported script can have them.
+    std::vector<Field> consts;
     // Convert hooks of module variables: "T convert_<var>(Old old) { }" at file level.
     std::vector<Method> var_hooks;
     // Free functions: "T name(args) { }" at file level. A convert hook is not one of them.

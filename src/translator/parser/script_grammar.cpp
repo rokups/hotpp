@@ -171,6 +171,7 @@ struct Member
     const char* access_pos = nullptr; // the access word, or null
     const char* async_pos = nullptr; // the "async" word, or null
     const char* static_pos = nullptr; // the "static" word, or null
+    const char* const_pos = nullptr; // a field only: the "const" word of a module constant, or null
     std::vector<std::pair<const char*, std::string>> kind_words; // "virtual", "override", "new", "abstract"
     const char* no_body_pos = nullptr; // the ";" of a method or a constructor with no body
 };
@@ -200,6 +201,7 @@ struct TopItem
         IsStub,
         IsEnum,
         IsVar,
+        IsConst,
         IsHook,
         IsFn,
         IsModuleAttrs,
@@ -246,6 +248,7 @@ struct Mods
     const char* access_pos = nullptr; // the access word, or null
     bool is_static = false;
     const char* static_pos = nullptr; // the "static" word, or null
+    const char* const_pos = nullptr; // the "const" word, or null. Only a variable at file level can have it.
     ast::Access access = ast::Access::Public;
     std::vector<ModTok> kind_toks; // the "override", "virtual", "new" and "async" words
 };
@@ -286,6 +289,17 @@ Mods collect_mods(const ParseState& st, const std::vector<ModTok>& toks, bool is
         if (const char* why = unsupported_modifier(t.word))
         {
             st.error(t.pos, why);
+            continue;
+        }
+        if (t.word == "const")
+        {
+            // The top-level item and the class body check the place of "const".
+            if (m.const_pos)
+            {
+                st.error(t.pos, "duplicate modifier 'const'");
+                continue;
+            }
+            m.const_pos = t.pos;
             continue;
         }
         if (t.word == "static")
@@ -389,6 +403,13 @@ Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in,
     }
     const bool is_op = m.kind == Member::IsMethod && !m.method.op.empty();
     const Mods mods = mods_of(st, mods_in, is_op);
+    if (mods.const_pos)
+    {
+        if (m.kind == Member::IsField)
+            m.const_pos = mods.const_pos;
+        else
+            st.error(mods.const_pos, "only a variable at file level can be 'const'");
+    }
     if (mods.is_static)
     {
         const char* what = m.kind == Member::IsField
@@ -1221,7 +1242,7 @@ constexpr auto kw_mutable = LEXY_KEYWORD("mutable", id);
 constexpr auto kw_volatile = LEXY_KEYWORD("volatile", id);
 
 constexpr auto modifier_set = dsl::literal_set(kw_override, kw_virtual, kw_abstract, kw_async, kw_new, kw_public, kw_private,
-    kw_protected, kw_static, kw_thread_local, kw_friend, kw_mutable, kw_volatile);
+    kw_protected, kw_static, kw_thread_local, kw_friend, kw_mutable, kw_volatile, kw_const_mark);
 
 struct mod_item : lexy::token_production
 {
@@ -1608,7 +1629,11 @@ void add_members(const ParseState& st, ast::ClassDef& c, std::vector<Member>&& m
                 c.methods.push_back(std::move(m.method));
         }
         else if (m.kind == Member::IsField)
+        {
+            if (m.const_pos)
+                st.error(m.const_pos, "a class member cannot be 'const'; write the constant at file level");
             c.fields.push_back(std::move(m.field));
+        }
         else if (m.kind == Member::IsProp)
             c.props.push_back(std::move(m.prop));
         else if (m.kind == Member::IsAlias)
@@ -2091,9 +2116,18 @@ struct class_p
                     : "expected 'class', 'struct', 'enum' or a variable 'Type name = init;'");
             return t;
         }
-        t.kind = TopItem::IsVar;
+        t.kind = m.const_pos ? TopItem::IsConst : TopItem::IsVar;
         t.var = std::move(m.field);
-        if (a)
+        if (m.const_pos && !t.var.has_init)
+            st.error(m.const_pos, "the constant '" + t.var.name + "' needs a value");
+        if (a && m.const_pos)
+        {
+            for (const auto& u : a->used)
+                st.error(u.first, "attribute '" + u.second + "' is not allowed on a constant");
+            for (const auto& tag : a->tags)
+                st.error(tag.first, "attribute '" + tag.second + "' is not allowed on a constant");
+        }
+        else if (a)
         {
             t.var.alias = a->alias;
             for (const auto& u : a->used)
@@ -2422,6 +2456,8 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
                 script.enums.push_back(std::move(t.en));
             else if (t.kind == TopItem::IsVar)
                 script.vars.push_back(std::move(t.var));
+            else if (t.kind == TopItem::IsConst)
+                script.consts.push_back(std::move(t.var));
             else if (t.kind == TopItem::IsHook)
                 script.var_hooks.push_back(std::move(t.hook));
             else if (t.kind == TopItem::IsFn)
@@ -2459,6 +2495,8 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
             rw.type(e.underlying);
         for (ast::Field& f : script.vars)
             rw.type(f.type);
+        for (ast::Field& f : script.consts)
+            rw.type(f.type);
         for (ast::Method& m : script.var_hooks)
             rw.method(m);
         for (ast::Method& m : script.fns)
@@ -2473,9 +2511,10 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
         for (ast::Enumerator& m : e.items)
             if (m.has_value && !only_blank(span_text(st, m.value_span)))
                 m.value = parse_expression(in, m.value_span, diag);
-    for (ast::Field& f : script.vars)
-        if (f.has_init && !only_blank(span_text(st, f.init_span)))
-            f.init = parse_expression(in, f.init_span, diag);
+    for (std::vector<ast::Field>* list : {&script.vars, &script.consts})
+        for (ast::Field& f : *list)
+            if (f.has_init && !only_blank(span_text(st, f.init_span)))
+                f.init = parse_expression(in, f.init_span, diag);
     // "=> e;" is "{ return e; }", or "{ e; }" for a void function.
     auto arrow_block = [&](Span span, bool is_void)
     {
