@@ -94,7 +94,10 @@ if(_hot_llvm_msvc_jit)
     # have them. LLVMExports.cmake links the targets ZLIB::ZLIB and zstd::libzstd_static. The module
     # Findzstd.cmake of LLVM does not make the second target for the library "zstd.lib" of vcpkg.
     # So this file makes it. Add the folder of the libraries to CMAKE_PREFIX_PATH (for example
-    # <vcpkg>/installed/x64-windows-static-md).
+    # <vcpkg>/installed/x64-windows-static-md). The zlib port of vcpkg 1.3.2 installs the static
+    # library as "zs.lib" (release) and "zsd.lib" (debug). FindZLIB does not search for "zs", so
+    # this file finds the library first.
+    find_library(ZLIB_LIBRARY NAMES zs zlibstatic zlib z PATH_SUFFIXES lib)
     find_package(ZLIB)
     find_library(HOT_ZSTD_LIBRARY NAMES zstd_static zstd)
     find_path(HOT_ZSTD_INCLUDE_DIR zstd.h)
