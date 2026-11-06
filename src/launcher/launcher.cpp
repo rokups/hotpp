@@ -778,7 +778,7 @@ PollStatus Program::poll()
                 if (reported == impl.native_reported.end() || !(reported->second == entry.second))
                 {
                     impl.native_reported[path] = entry.second;
-                    impl.log("[hot] native dependency changed: " + path + ". Rebuild the engine. Reload is paused.");
+                    impl.log("[hot] native dependency changed: " + path + ". Rebuild the native dependencies. Reload is paused.");
                     status = PollStatus::Failed;
                 }
                 paused = true;

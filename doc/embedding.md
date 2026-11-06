@@ -127,7 +127,7 @@ A failed build keeps the old code. `poll` logs the error through `Options::log` 
 
 ### Native dependencies
 
-A change of a file that is not a `.hot` file (a native header) usually needs a rebuild of the engine. A build against the new header can give a layout mismatch. So `poll` rejects the change. It starts no build, also when a `.hot` file changed too. It logs `[hot] native dependency changed: <path>. Rebuild the engine. Reload is paused.` once for each new stamp of the header, and gives `Failed` for that call. The reload stays paused until the header is back at its build stamp. Then the normal rules apply again.
+A change of a file that is not a `.hot` file (a native header) usually needs a rebuild of the engine. A build against the new header can give a layout mismatch. So `poll` rejects the change. It starts no build, also when a `.hot` file changed too. It logs `[hot] native dependency changed: <path>. Rebuild the native dependencies. Reload is paused.` once for each new stamp of the header, and gives `Failed` for that call. The reload stays paused until the header is back at its build stamp. Then the normal rules apply again.
 
 ### Full restart
 
