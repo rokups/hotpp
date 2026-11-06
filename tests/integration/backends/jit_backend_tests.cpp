@@ -17,9 +17,9 @@
 #include "support/script_files.h"
 
 #include <gtest/gtest.h>
-#include <sys/resource.h>
 
 #include <atomic>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -29,9 +29,17 @@
 #include <sstream>
 #include <string>
 #include <thread>
-#include <unistd.h>
 
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <sys/resource.h>
+#include <unistd.h>
+#endif
+
+#ifndef _WIN32
 // The GDB JIT interface (the layout is fixed by the GDB manual). LLVM defines the descriptor.
+// The tests that use it read an ELF image, so they are POSIX only.
 extern "C"
 {
     struct jit_code_entry
@@ -50,6 +58,7 @@ extern "C"
     };
     extern jit_descriptor __jit_debug_descriptor;
 }
+#endif
 
 namespace
 {
@@ -65,6 +74,37 @@ hot::ScriptSource source(const char* file)
     return {path, ss.str(), {}};
 }
 
+// The id of this process.
+int current_pid()
+{
+#ifdef _WIN32
+    return _getpid();
+#else
+    return getpid();
+#endif
+}
+
+// Runs a shell command and reads its output. Windows has no single quotes: the
+// callers use double quotes in the command.
+FILE* open_pipe(const std::string& command)
+{
+#ifdef _WIN32
+    return _popen(command.c_str(), "r");
+#else
+    return popen(command.c_str(), "r");
+#endif
+}
+
+void close_pipe(FILE* pipe)
+{
+#ifdef _WIN32
+    _pclose(pipe);
+#else
+    pclose(pipe);
+#endif
+}
+
+#ifndef _WIN32
 // The page faults of the children that the process waited for. A child that
 // ran and ended always adds page faults here.
 long child_faults()
@@ -86,36 +126,43 @@ int live_children()
     }
     return n;
 }
+#endif
 
-// Sets the current directory and TMPDIR to a new empty directory. The
-// destructor restores both and removes the directory.
+// Sets the current directory to a new empty directory. On POSIX it sets TMPDIR to the
+// directory too. The destructor restores both and removes the directory.
 struct EmptyWorkDir
 {
     fs::path dir;
     fs::path old_cwd = fs::current_path();
+#ifndef _WIN32
     std::string old_tmp;
     bool had_tmp = false;
+#endif
 
     EmptyWorkDir()
     {
-        dir = fs::temp_directory_path() / ("hot_jit_empty_" + std::to_string(getpid()));
+        dir = fs::temp_directory_path() / ("hot_jit_empty_" + std::to_string(current_pid()));
         fs::remove_all(dir);
         fs::create_directories(dir);
+#ifndef _WIN32
         if (const char* t = std::getenv("TMPDIR"))
         {
             had_tmp = true;
             old_tmp = t;
         }
         setenv("TMPDIR", dir.c_str(), 1);
+#endif
         fs::current_path(dir);
     }
     ~EmptyWorkDir()
     {
         fs::current_path(old_cwd);
+#ifndef _WIN32
         if (had_tmp)
             setenv("TMPDIR", old_tmp.c_str(), 1);
         else
             unsetenv("TMPDIR");
+#endif
         fs::remove_all(dir);
     }
     size_t entries() const
@@ -130,6 +177,7 @@ struct EmptyWorkDir
     }
 };
 
+#ifndef _WIN32
 // The detector must see a child process, or the next test proves nothing.
 TEST(JitTests, ChildDetectorSeesAChild)
 {
@@ -159,6 +207,7 @@ TEST(JitTests, NoFileAndNoChildProcess)
     EXPECT_EQ(live_children(), 0);
     EXPECT_EQ(child_faults(), faults_before) << "a child process ran";
 }
+#endif
 
 // The error text names the script. The text has no stray line from the compiler.
 TEST(JitTests, ErrorTextNamesTheScript)
@@ -328,6 +377,7 @@ TEST(JitTests, ModuleOutlivesBackendAndGenerationsCanBeRemoved)
     EXPECT_NE(s.field("hp"), nullptr);
 }
 
+#ifndef _WIN32
 // Experiment F3: the JIT registers each object with the debugger. The object is an ELF image
 // in memory. Its line table names the .hot file and the lines of the script.
 TEST(JitTests, DebuggerGetsObjectWithScriptLines)
@@ -359,6 +409,7 @@ TEST(JitTests, DebuggerGetsObjectWithScriptLines)
     const std::set<int> lines = test_support::lines_of_file(test_support::dump_line_table(image), "player_v2.hot");
     EXPECT_TRUE(lines.count(test_support::line_with(src.text, "Math.Min")));
 }
+#endif
 
 // The option turns the plugin off.
 TEST(JitTests, DebuggerSupportCanBeOff)
@@ -381,12 +432,18 @@ TEST(JitTests, CppScriptWarningSpeaksScriptText)
     {
         // The exact text of the warnings is the text of Clang.
         std::string version;
-        if (FILE* p = popen((std::string("'") + HOT_CXX + "' --version 2>&1").c_str(), "r"))
+#ifdef _WIN32
+        // The cmd shell needs double quotes. The outer pair of quotes keeps the command whole.
+        const std::string command = std::string("\"\"") + HOT_CXX + "\" --version 2>&1\"";
+#else
+        const std::string command = std::string("'") + HOT_CXX + "' --version 2>&1";
+#endif
+        if (FILE* p = open_pipe(command))
         {
             char buf[256];
             while (size_t n = fread(buf, 1, sizeof buf, p))
                 version.append(buf, n);
-            pclose(p);
+            close_pipe(p);
         }
         if (version.find("clang") == std::string::npos)
             GTEST_SKIP() << "the compiler is not Clang";

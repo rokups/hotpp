@@ -2042,7 +2042,8 @@ TEST(LanguageServer, BackgroundIndexFindsAScriptSymbolInAGeneratedFile)
     co.include_dirs = o.include_dirs;
     const std::string so = (dir.path() / "player.g1.so").string();
     write_file(dir.path() / "compile_commands.json",
-        hot::compile_commands_json({{dir.path().string(), cpp, hot::compile_command(co, cpp, so), so}}));
+        hot::compile_commands_json({{hot::ls::long_path(dir.path().string()), hot::ls::long_path(cpp),
+            hot::compile_command(co, hot::ls::long_path(cpp), hot::ls::long_path(so)), hot::ls::long_path(so)}}));
 
     hot::ls::ServerOptions opt = options(dir, true);
     opt.include_dirs.clear(); // the server reads them from compile_commands.json
@@ -3852,6 +3853,15 @@ void init_folders(LsClient& c, const std::vector<std::filesystem::path>& folders
     c.notify("initialized", json::object());
 }
 
+// A JSON array of one folder. A brace list of one json is a copy of the element on MSVC, so the
+// tests do not use it.
+json one_folder(json f)
+{
+    json a = json::array();
+    a.push_back(std::move(f));
+    return a;
+}
+
 void change_folders(LsClient& c, json added, json removed)
 {
     c.notify("workspace/didChangeWorkspaceFolders", {{"event", {{"added", std::move(added)}, {"removed", std::move(removed)}}}});
@@ -3942,11 +3952,11 @@ TEST(LanguageServer, WorkspaceFoldersCanBeAddedAndRemoved)
     const std::string second = fill(client, two / "second.hot", "Bravo");
     EXPECT_FALSE(has_symbol(symbols(client, "bravo"), "Bravo", second));
 
-    change_folders(client, {folder_json(two)}, json::array());
+    change_folders(client, one_folder(folder_json(two)), json::array());
     EXPECT_TRUE(has_symbol(symbols(client, "bravo"), "Bravo", second));
     EXPECT_EQ(shard_count(client), 2);
 
-    change_folders(client, json::array(), {folder_json(two)});
+    change_folders(client, json::array(), one_folder(folder_json(two)));
     EXPECT_FALSE(has_symbol(symbols(client, "bravo"), "Bravo", second));
     EXPECT_EQ(shard_count(client), 1); // the shard of the removed folder is gone
     EXPECT_TRUE(has_symbol(symbols(client, "alpha"), "Alpha", first));
@@ -3960,11 +3970,11 @@ TEST(LanguageServer, WorkspaceFolderWithATrailingSlashIsTheSameFolder)
     std::filesystem::create_directories(two);
     LsClient client(options(dir, false));
     client.initialize(uri_of(one.string()));
-    change_folders(client, {folder_json(two)}, json::array());
+    change_folders(client, one_folder(folder_json(two)), json::array());
     const std::string second = fill(client, two / "second.hot", "Bravo");
     EXPECT_TRUE(has_symbol(symbols(client, "bravo"), "Bravo", second));
-    change_folders(client, {folder_json(two, "/")}, json::array()); // not a new folder
-    change_folders(client, json::array(), {folder_json(two, "/")});
+    change_folders(client, one_folder(folder_json(two, "/")), json::array()); // not a new folder
+    change_folders(client, json::array(), one_folder(folder_json(two, "/")));
     EXPECT_FALSE(has_symbol(symbols(client, "bravo"), "Bravo", second));
     EXPECT_EQ(shard_count(client), 0);
 }
@@ -4001,7 +4011,7 @@ TEST(LanguageServer, FirstFolderAddedLaterOpensTheIndex)
     client.request("initialize", {{"processId", nullptr}, {"capabilities", json::object()}});
     client.notify("initialized", json::object());
     EXPECT_EQ(client.request("hot/indexStats", json::object())["result"].value("dir", "x"), "");
-    change_folders(client, {folder_json(one)}, json::array());
+    change_folders(client, one_folder(folder_json(one)), json::array());
     const std::string uri = fill(client, one / "first.hot", "Alpha");
     EXPECT_TRUE(has_symbol(symbols(client, "alpha"), "Alpha", uri));
 }
