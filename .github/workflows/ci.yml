@@ -261,8 +261,15 @@ jobs:
         run: ctest --preset linux-clang-jit-rel -j "$(nproc)"
 
   # The native Windows build with MSVC (the preset vs-files). cl.exe builds hotc, the runtime and
-  # the tests. clang++.exe of the LLVM release compiles the script modules. All tests run, except
-  # the tests that tests/integration/backends/CMakeLists.txt excludes on MSVC, with a reason.
+  # the tests. clang++.exe of the LLVM release compiles the script modules. Some tests do not run
+  # or skip on MSVC today. These are known gaps. Later steps remove them.
+  #   - tests/integration/backends/hotc_tool_tests.cpp is not built (it needs a POSIX shell).
+  #   - The JIT tests are not built (the preset vs-files has HOT_ENABLE_JIT=OFF).
+  #   - The lldb session tests of tests/unit/python/CMakeLists.txt are off (MSVC).
+  #   - The DebugInfo tests skip (the modules have CodeView, and llvm-dwarfdump reads DWARF).
+  #   - The AotLink and AotParity symbol tests skip (they need nm or readelf).
+  #   - The launcher XDG test and the work directory test of paths_tests are not built
+  #     (#ifndef _WIN32).
   # The runner windows-2022 has Visual Studio 2022 (toolset v143). The static libraries of the SDK
   # then link with Visual Studio 2022 and with each newer toolset. sdk-smoke-windows runs on a
   # newer Visual Studio (windows-latest), so it tests this rule.
@@ -319,6 +326,27 @@ jobs:
             if ($_ -match '^([^=]+)=(.+)$') { Add-Content -Path $env:GITHUB_ENV -Value "$($Matches[1])=$($Matches[2])" -Encoding utf8 }
           }
 
+      # The tools of the LLVM release (clangd, llvm-nm, llvm-pdbutil, llvm-dwarfdump) go on PATH.
+      # This step is after VsDevCmd. The runner puts the path in front of PATH, and the bin folder
+      # has no cl.exe and no link.exe, so the MSVC tools still win. Steps that use the release by
+      # explicit path are not changed. GITHUB_PATH needs a Windows path, so the step uses pwd -W.
+      - name: Add the LLVM tools to PATH
+        run: echo "$(pwd -W)/cmake-build/${{ steps.llvm.outputs.name }}/bin" >> "$GITHUB_PATH"
+
+      # The step only prints. A missing tool does not hide the other tools.
+      - name: Print the versions of the tools
+        continue-on-error: true
+        run: |
+          for cmd in "clangd --version" "node --version" "llvm-nm --version" "llvm-pdbutil --help" \
+                     "llvm-dwarfdump --version" "llvm-readobj --version"; do
+            echo "::group::$cmd"
+            { $cmd 2>&1 | head -n 5; } || echo "FAILED: $cmd"
+            echo "::endgroup::"
+          done
+          echo "::group::where.exe lldb"
+          where.exe lldb 2>&1 || echo "lldb not found"
+          echo "::endgroup::"
+
       # The release notes name this toolset. The static libraries of the SDK need the same MSVC
       # toolset or a newer one in the consumer.
       - name: Record the MSVC toolset
@@ -351,7 +379,7 @@ jobs:
       - name: Test
         if: ${{ !cancelled() && steps.hotc.outcome == 'success' }}
         timeout-minutes: 40
-        run: ctest --test-dir "$BUILD_DIR" -C "$CONFIG" -j 4 --timeout 300 --output-on-failure
+        run: ctest --preset vs-files-rel -j "$NUMBER_OF_PROCESSORS"
 
       # The test build is large. Remove it before the SDK build, so the disk does not become full.
       - name: Remove the test build

@@ -146,7 +146,8 @@
     {
       "name": "base-test",
       "hidden": true,
-      "output": { "outputOnFailure": true }
+      "output": { "outputOnFailure": true },
+      "execution": { "timeout": 300 }
     },
     { "name": "linux-clang-files-dbg", "inherits": "base-test", "configurePreset": "linux-clang-files", "configuration": "Debug" },
     { "name": "linux-clang-files-rel", "inherits": "base-test", "configurePreset": "linux-clang-files", "configuration": "RelWithDebInfo" },
