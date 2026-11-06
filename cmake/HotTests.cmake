@@ -21,7 +21,8 @@ function(hot_gtest target)
     # An emulator (wine) starts slowly. The default discovery timeout (5 s) is too short for it,
     # so the timeout is at least 60 s there. A larger value of the caller wins.
     set(_hot_timeout "${A_DISCOVERY_TIMEOUT}")
-    if(CMAKE_CROSSCOMPILING_EMULATOR AND (NOT _hot_timeout OR _hot_timeout LESS 60))
+    # A cold start of a large executable on a loaded Windows runner is also slow.
+    if((CMAKE_CROSSCOMPILING_EMULATOR OR WIN32) AND (NOT _hot_timeout OR _hot_timeout LESS 60))
         set(_hot_timeout 60)
     endif()
     set(_hot_discovery "")

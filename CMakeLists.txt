@@ -231,10 +231,26 @@ set(HOT_JIT_ENABLED OFF)
 if(NOT HOT_JIT_MODE STREQUAL "OFF")
     # LLVMConfig.cmake probes C headers (FindLibEdit), so the C language must be on.
     enable_language(C)
+    # LLVMConfig.cmake of the LLVM release for Windows sets CMAKE_MSVC_RUNTIME_LIBRARY to
+    # MultiThreaded (/MT). find_package has no variable scope of its own, so the value would reach
+    # all targets of the project, and they would not link with the /MD libraries (GoogleTest,
+    # vcpkg). Keep the value of the project (see also cmake/HotConfig.cmake.in).
+    set(_hot_had_msvc_runtime OFF)
+    if(DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
+        set(_hot_had_msvc_runtime ON)
+        set(_hot_msvc_runtime "${CMAKE_MSVC_RUNTIME_LIBRARY}")
+    endif()
     find_package(LLVM CONFIG QUIET)
     if(LLVM_FOUND)
         find_package(Clang CONFIG QUIET)
     endif()
+    if(_hot_had_msvc_runtime)
+        set(CMAKE_MSVC_RUNTIME_LIBRARY "${_hot_msvc_runtime}")
+    else()
+        unset(CMAKE_MSVC_RUNTIME_LIBRARY)
+    endif()
+    unset(_hot_had_msvc_runtime)
+    unset(_hot_msvc_runtime)
     if(LLVM_FOUND AND Clang_FOUND)
         set(HOT_JIT_ENABLED ON)
         message(STATUS "JIT backend: on (LLVM ${LLVM_PACKAGE_VERSION}, Clang ${Clang_VERSION})")

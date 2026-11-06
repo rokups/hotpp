@@ -23,6 +23,18 @@ if(TARGET hot::hotc AND TARGET hot_backend)
     endif()
 endif()
 
+# The sample tests use the default work folder in the scratch folder. The test hot_scratch_clean
+# removes this folder, so no sample test runs at the same time as the clean test.
+if(COMMAND hot_gtest AND CMAKE_VERSION VERSION_GREATER_EQUAL 3.28) # needs set_property(TEST DIRECTORY)
+    foreach(_hot_dir aot aot-reload runtime-compile hot-reload clang-files-backend jit-backend imgui
+                     precompiled-library launcher)
+        get_property(_hot_sample_tests DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${_hot_dir} PROPERTY TESTS)
+        foreach(_hot_test ${_hot_sample_tests})
+            set_property(TEST ${_hot_test} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${_hot_dir} APPEND PROPERTY FIXTURES_REQUIRED hot_scratch)
+        endforeach()
+    endforeach()
+endif()
+
 # Option: build the sample aot as a separate project, in a new build directory. The test checks
 # that the sample works without the build settings of the Hot++ source tree.
 if(HOT_SAMPLES_STANDALONE_TEST)
