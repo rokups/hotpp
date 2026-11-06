@@ -209,6 +209,7 @@ struct TopItem
         IsAlias,
         IsInterface
     } kind = None;
+    bool is_private = false; // "private" before "class", "struct" or "enum" at file level
     ast::Import import;
     ast::UsingNs using_ns;
     ast::TypeAlias alias;
@@ -2079,7 +2080,8 @@ struct class_p
             // A function at file level has no modifier.
             // The function "main" has one error for each wrong form (see kMainSignatureError).
             const bool is_main = m.method.name == "main";
-            if (m.access_pos)
+            // "private" hides the function from importers. The other access words are errors.
+            if (m.access_pos && (is_main || m.method.access != ast::Access::Private))
                 st.error(m.access_pos, is_main ? ast::kMainSignatureError : "a free function has no access word");
             if (m.async_pos)
                 st.error(m.async_pos, is_main ? ast::kMainSignatureError : "a free function cannot be 'async'");
@@ -2219,12 +2221,28 @@ struct enum_p
             lexy::parse_state, lexy::values);
 };
 
+// "private" before "class", "struct", "abstract" or "enum" at file level. Importers do not see
+// the name. A variable, a constant and a free function read "private" as their access word.
+constexpr auto private_then_type = kw_private + dsl::whitespace(ws_rule)
+    + dsl::literal_set(kw_class, kw_struct, kw_abstract, kw_enum);
+
+struct private_type_p
+{
+    static constexpr auto rule = kw_private + (dsl::peek(kw_enum) >> dsl::p<enum_p> | dsl::else_ >> dsl::p<class_p>);
+    static constexpr auto value = lexy::callback<TopItem>([](TopItem&& t)
+    {
+        t.is_private = true;
+        return std::move(t);
+    });
+};
+
 // ---------------------------------------------------------------- file
 struct decl
 {
     static constexpr auto rule = dsl::peek(kw_using) >> dsl::p<import_p> | dsl::peek(kw_enum) >> dsl::p<enum_p>
         | dsl::peek(dsl::literal_set(dsl::lit_c<'['>, dsl::lit_c<';'>, kw_class, kw_struct, kw_interface))
             >> dsl::p<class_p>
+        | dsl::peek(private_then_type) >> dsl::p<private_type_p>
         | dsl::peek(modifier_then_interface) >> dsl::p<modded_interface_p>
         | dsl::peek(id) >> dsl::p<class_p> | dsl::peek(dsl::lit_c<'$'>) >> dsl::p<class_p>
         | dsl::else_ >> dsl::error<e_top>(junk);
@@ -2437,7 +2455,10 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
             else if (t.kind == TopItem::IsAlias)
                 script.aliases.push_back(std::move(t.alias));
             else if (t.kind == TopItem::IsClass)
+            {
+                t.cls.is_private = t.is_private;
                 script.classes.push_back(std::move(t.cls));
+            }
             else if (t.kind == TopItem::IsInterface)
             {
                 bool dup = false;
@@ -2453,7 +2474,10 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
             else if (t.kind == TopItem::IsStub)
                 script.stubs.push_back(std::move(t.stub));
             else if (t.kind == TopItem::IsEnum)
+            {
+                t.en.is_private = t.is_private;
                 script.enums.push_back(std::move(t.en));
+            }
             else if (t.kind == TopItem::IsVar)
                 script.vars.push_back(std::move(t.var));
             else if (t.kind == TopItem::IsConst)

@@ -52,6 +52,10 @@ struct Module
     // leaves it null. The function does not catch an exception of the script.
     using EntryMainFn = int32_t (*)(int32_t, const char* const*);
     EntryMainFn entry_main = nullptr;
+    // The interface hash of the module (hotc::TranslateResult::iface_hash). Zero: not known.
+    uint64_t iface_hash = 0;
+    // The direct script imports of the module as unit name and interface hash.
+    std::vector<std::pair<std::string, uint64_t>> imports;
 };
 
 // The file suffix of a module library on this platform.
@@ -76,6 +80,10 @@ struct LoadResult
     // scripts. The host watches them. A change of one of them needs a full reload. A backend fills
     // the list also when the build fails.
     std::vector<std::string> dependencies;
+    // The interface hash and the import hashes of the translation. A backend copies them to
+    // "module" after a successful build (Module::iface_hash, Module::imports).
+    uint64_t iface_hash = 0;
+    std::vector<std::pair<std::string, uint64_t>> import_hashes;
     explicit operator bool() const { return module.has_value(); }
 };
 

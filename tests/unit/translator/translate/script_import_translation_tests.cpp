@@ -251,9 +251,6 @@ TEST(ScriptImportTranslation, ImportErrors)
     hotc::TranslateOptions o = options(dir, kParent);
     o.modules.clear();
     EXPECT_NE(hotc::translate(o).diagnostics.find("the script 'base.hot' is not found"), std::string::npos);
-    const hotc::TranslateResult v = hotc::translate(options(dir, std::string(kParent) + "int count = 0;\n"));
-    EXPECT_NE(v.diagnostics.find("an imported script cannot have module variables"), std::string::npos)
-        << v.diagnostics;
     const hotc::TranslateResult twice =
         hotc::translate(options(dir, std::string(kParent) + "class Kid : Widget { }\n"));
     EXPECT_NE(twice.diagnostics.find("class 'Kid' is declared in 'base.hot' and in 't.hot'"), std::string::npos)
@@ -320,7 +317,6 @@ TEST(ScriptImportTranslation, SameAliasInTwoScripts)
         << r.diagnostics;
 }
 
-} // namespace
 
 // A module constant: "const T Name = value;" at file level. An imported script can have it.
 // The output has one C++ "static const" before the classes. A case label can use an integral constant.
@@ -364,3 +360,117 @@ TEST(ScriptImportTranslation, ConstantErrors)
     EXPECT_NE(dup.diagnostics.find("constant 'Max' is declared twice"), std::string::npos) << dup.diagnostics;
     EXPECT_TRUE(twice.ok) << twice.diagnostics;
 }
+
+// Modules (step 1): each script is a module. An import gives the declarations of the module.
+
+hotc::TranslateResult translate_alone(const TempDir& dir, const std::string& text)
+{
+    write_file(dir.path() / "w.h", kHeaderV1);
+    return hotc::translate(temp_options(dir, text));
+}
+
+// A cycle A <-> B translates. The main script is in the set of the read scripts, so the import
+// of the main script does not read it again.
+TEST(ScriptImportTranslation, ImportCycleWithTheMainScript)
+{
+    TempDir dir;
+    const hotc::TranslateResult r = hotc::translate(options(dir, "using \"t.hot\";\n" + std::string(kParent)));
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    ASSERT_EQ(r.imports.size(), 1u);
+    EXPECT_EQ(r.imports.front().first, "base.hot") << "the main script is not an import";
+    ASSERT_EQ(r.import_hashes.size(), 1u);
+    EXPECT_EQ(r.import_hashes.front().first, "base.hot");
+}
+
+// The interface hash ignores a body change. A field change gives another hash.
+TEST(ScriptImportTranslation, InterfaceHashIsStableForABodyChange)
+{
+    TempDir dir;
+    const hotc::TranslateResult a = translate_alone(dir, kParent);
+    ASSERT_TRUE(a.ok) << a.diagnostics;
+    std::string body(kParent);
+    body.replace(body.find("return 1"), 8, "return 7");
+    const hotc::TranslateResult b = translate_alone(dir, body);
+    ASSERT_TRUE(b.ok) << b.diagnostics;
+    EXPECT_NE(a.iface_hash, 0u);
+    EXPECT_EQ(a.iface_hash, b.iface_hash) << a.iface << "\n" << b.iface;
+    std::string field(kParent);
+    field.replace(field.find("int hp"), 6, "float hp");
+    const hotc::TranslateResult c = translate_alone(dir, field);
+    ASSERT_TRUE(c.ok) << c.diagnostics;
+    EXPECT_NE(a.iface_hash, c.iface_hash) << c.iface;
+}
+
+// The importer sees the same hash of an import as the owner of the import.
+TEST(ScriptImportTranslation, ImportHashIsTheHashOfTheOwner)
+{
+    TempDir dir;
+    const hotc::TranslateResult owner = translate_alone(dir, kParent);
+    ASSERT_TRUE(owner.ok) << owner.diagnostics;
+    const hotc::TranslateResult r = hotc::translate(options(dir, kParent));
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    ASSERT_EQ(r.import_hashes.size(), 1u);
+    EXPECT_EQ(r.import_hashes.front().second, owner.iface_hash);
+    EXPECT_NE(r.iface_hash, owner.iface_hash);
+}
+
+// The interface of a class has its parent, its fields and its virtual slots. Class B in b.hot
+// derives from class A in a.hot.
+TEST(ScriptImportTranslation, InterfaceOfAClassHasItsParentFieldsAndSlots)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    hotc::TranslateOptions o = temp_options(dir,
+        "using \"a.hot\";\nclass B : A {\n    int armor = 2;\n    override int Power() { return 3; }\n}\n");
+    o.script_name = "b.hot";
+    o.modules.emplace_back("a.hot",
+        "using \"w.h\";\nclass A : Widget {\n    int hp = 1;\n    virtual int Power() { return 1; }\n}\n");
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.iface.find("class B : A"), std::string::npos) << r.iface;
+    EXPECT_NE(r.iface.find("field int32_t armor"), std::string::npos) << r.iface;
+    EXPECT_NE(r.iface.find("override int32_t Power()"), std::string::npos) << r.iface;
+    EXPECT_EQ(r.iface.find("class A"), std::string::npos) << "the interface has only the own names: " << r.iface;
+    const hotc::TranslateResult a = translate_alone(dir,
+        "using \"w.h\";\nclass A : Widget {\n    int hp = 1;\n    virtual int Power() { return 1; }\n}\n");
+    ASSERT_TRUE(a.ok) << a.diagnostics;
+    EXPECT_NE(a.iface.find("class A : Widget"), std::string::npos) << a.iface;
+    EXPECT_NE(a.iface.find("field int32_t hp"), std::string::npos) << a.iface;
+    EXPECT_NE(a.iface.find("virtual int32_t Power()"), std::string::npos) << a.iface;
+    ASSERT_EQ(r.import_hashes.size(), 1u);
+    EXPECT_EQ(r.import_hashes.front().second, a.iface_hash);
+}
+
+// An imported script can have module variables and free functions. The importer gets their
+// declarations only: the body of the free function is not in the output of the importer.
+TEST(ScriptImportTranslation, ImportWithModuleVariableAndFreeFunction)
+{
+    TempDir dir;
+    const hotc::TranslateResult r = hotc::translate(
+        options(dir, std::string(kParent) + "int count = 0;\nint Twice(int x) { return x * 2 + 12345; }\n"));
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_EQ(r.cpp.find("12345"), std::string::npos) << "the body stays in its own module";
+    const hotc::TranslateResult own = translate_alone(dir, "int count = 0;\nint Twice(int x) { return x * 2; }\n");
+    ASSERT_TRUE(own.ok) << own.diagnostics;
+    EXPECT_NE(own.iface.find("var int32_t count"), std::string::npos) << own.iface;
+    EXPECT_NE(own.iface.find("fn int32_t Twice(int32_t x)"), std::string::npos) << own.iface;
+}
+
+// "private" at file level hides a name from the importers. The interface does not have it.
+TEST(ScriptImportTranslation, PrivateHidesANameFromImporters)
+{
+    TempDir dir;
+    const std::string lib = "using \"w.h\";\nprivate class Base : Widget { }\nprivate struct P { int x = 0; }\n"
+                            "private enum E { A }\nprivate const int K = 1;\nprivate int count = 0;\n"
+                            "private int F() { return 1; }\nint G() { return F() + count + K; }\n";
+    const hotc::TranslateResult own = translate_alone(dir, lib);
+    ASSERT_TRUE(own.ok) << own.diagnostics;
+    EXPECT_NE(own.iface.find("fn int32_t G()"), std::string::npos) << own.iface;
+    for (const char* hidden : {"Base", "P", "E", "K", "count", "F("})
+        EXPECT_EQ(own.iface.find(std::string(" ") + hidden), std::string::npos) << hidden << ": " << own.iface;
+    const hotc::TranslateResult r = hotc::translate(options(dir, lib));
+    ASSERT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("class 'Base' is private in 'base.hot'"), std::string::npos) << r.diagnostics;
+}
+
+} // namespace

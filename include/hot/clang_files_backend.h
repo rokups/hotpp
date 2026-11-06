@@ -93,7 +93,8 @@ public:
 
 private:
     bool build_impl(const ScriptSource& source, uint32_t generation, LoadMode mode, const std::string& out_so,
-        std::string& error, std::string* deferred_slots, std::vector<std::string>* dependencies);
+        std::string& error, std::string* deferred_slots, std::vector<std::string>* dependencies,
+        LoadResult* hashes = nullptr);
 
     ClangFilesOptions opt_;
     std::mutex mutex_; // one build at a time: the slot file is shared

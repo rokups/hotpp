@@ -122,7 +122,8 @@ TEST(ModuleDeclParse, ErrorFreeFunctionWords)
 {
     auto errs = [](const char* text) { return StubParsed(text).diag.format("t"); };
     EXPECT_NE(errs("public int F() { return 1; }\n").find("a free function has no access word"), std::string::npos);
-    EXPECT_NE(errs("private int F() { return 1; }\n").find("a free function has no access word"), std::string::npos);
+    // "private" at file level hides the function from importers (modules). It is no error.
+    EXPECT_EQ(errs("private int F() { return 1; }\n"), "");
     EXPECT_NE(errs("async int F() { return 1; }\n").find("a free function cannot be 'async'"), std::string::npos);
     EXPECT_NE(errs("static int F() { return 1; }\n").find("a free function cannot be 'static'"), std::string::npos);
     EXPECT_NE(errs("virtual int F() { return 1; }\n").find("a free function cannot be 'virtual'"), std::string::npos);

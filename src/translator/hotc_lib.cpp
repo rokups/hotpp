@@ -397,6 +397,78 @@ Script parse_structure(const std::string& text, const hotc::LineMap& map, std::s
     return sc;
 }
 
+// The interface text of one module (modules step 1): the declarations that importers see. It has
+// no body, so a body change keeps the text. The order is the source order: a field order change
+// changes the layout and the text. A name with "private" is not in it. "text" is the parsed text
+// of the module: the spans of the constant values point into it.
+std::string module_interface(const Script& sc, const std::string& text)
+{
+    auto span = [&](Span sp) { return sp.end > sp.begin && sp.end <= text.size() ? text.substr(sp.begin, sp.end - sp.begin) : std::string(); };
+    auto params = [](const std::vector<hotc::ast::Param>& ps)
+    {
+        std::string o;
+        for (const hotc::ast::Param& p : ps)
+            o += (o.empty() ? "" : ", ") + p.type + " " + p.name;
+        return o;
+    };
+    auto access = [](hotc::ast::Access a)
+    { return a == hotc::ast::Access::Private ? "private " : a == hotc::ast::Access::Protected ? "protected " : ""; };
+    auto method = [&](const char* kind, const Method& m)
+    {
+        std::string o = std::string("  ") + access(m.access) + kind;
+        if (m.is_virtual || m.is_abstract || !m.vslot_owner.empty())
+            o += "virtual ";
+        if (m.is_override)
+            o += "override ";
+        if (m.is_abstract)
+            o += "abstract ";
+        if (m.is_async)
+            o += "async ";
+        return o + m.ret + " " + m.name + "(" + params(m.params) + ")" + (m.is_const ? " const" : "") + "\n";
+    };
+    std::string o;
+    for (const hotc::ast::EnumDef& e : sc.enums)
+    {
+        if (e.is_private)
+            continue;
+        o += "enum " + e.name + " : " + e.underlying + " {";
+        for (const hotc::ast::Enumerator& it : e.items)
+            o += " " + it.name + (it.has_value ? " = " + span(it.value_span) : std::string()) + ",";
+        o += " }\n";
+    }
+    for (const ClassDef& c : sc.classes)
+    {
+        if (c.is_private)
+            continue;
+        // The parent link, the fields and the virtual slots: a child in another module needs them.
+        o += std::string(c.is_value ? "struct " : c.is_abstract ? "abstract class " : "class ") + c.name + " : " + c.base;
+        for (const std::string& i : c.interfaces)
+            o += ", " + i;
+        o += " {\n";
+        for (const Field& f : c.fields)
+            o += std::string("  ") + access(f.access) + "field " + (f.weak ? "weak " : "") + f.type + " " + f.name + "\n";
+        for (const hotc::ast::Property& pr : c.props)
+            o += "  prop " + pr.type + " " + pr.name + "\n";
+        for (const hotc::ast::Ctor& k : c.ctors)
+            o += std::string("  ") + access(k.access) + "ctor(" + params(k.params) + ")\n";
+        for (const Method& m : c.methods)
+            o += method("", m);
+        for (const Method& m : c.statics)
+            o += method("static ", m);
+        o += "}\n";
+    }
+    for (const Field& f : sc.consts)
+        if (f.access != hotc::ast::Access::Private)
+            o += "const " + f.type + " " + f.name + " = " + span(f.init_span) + "\n";
+    for (const Field& f : sc.vars)
+        if (f.access != hotc::ast::Access::Private)
+            o += "var " + f.type + " " + f.name + "\n";
+    for (const Method& f : sc.fns)
+        if (f.access != hotc::ast::Access::Private && f.name != "main")
+            o += "fn " + f.ret + " " + f.name + "(" + params(f.params) + ")\n";
+    return o;
+}
+
 // ----------------------------------------------------------------- libclang
 std::string cxs(CXString s)
 {
@@ -3009,6 +3081,10 @@ void translate_impl(
         hotc::current_std_ns() = std_ns;
     }
 
+    // The interface of the main script, before the merge with the imports.
+    res.iface = module_interface(sc, in.script_text);
+    res.iface_hash = hash_text(res.iface);
+
     // ---- script imports (design 4.10): "using "parent.hot";". One generation holds all script
     // modules of the program, so a class can derive from a class of another script. The
     // translator parses each imported script and adds its classes, enums and stubs. The parser
@@ -3053,7 +3129,22 @@ void translate_impl(
             }
             return false;
         };
-        std::set<std::string> seen;
+        // The main script is in the set: an import cycle back to it does not read it again.
+        std::set<std::string> seen{opt.input};
+        // An import path that names the main script (relative to its folder) is the main script too.
+        auto is_main_script = [&](const std::string& path)
+        {
+            if (path == opt.input)
+                return true;
+            const std::string dir = dir_of(opt.input);
+            const std::filesystem::path full = std::filesystem::path(dir.empty() ? "." : dir) / path;
+            return full.lexically_normal() == std::filesystem::path(opt.input).lexically_normal()
+                || (dir.empty() && std::filesystem::path(path).lexically_normal() == std::filesystem::path(opt.input).lexically_normal());
+        };
+        // The private classes of the imports, as name and file. Importers do not see them.
+        std::map<std::string, std::string> private_classes;
+        // The direct imports of the main script: the depth of the visit is 0.
+        int depth = 0;
         std::set<std::string> native_paths;
         std::vector<Import> natives;
         std::vector<ClassDef> classes;
@@ -3074,11 +3165,13 @@ void translate_impl(
                     keep.push_back(std::move(im));
                     continue;
                 }
-                if (!seen.insert(im.path).second)
+                if (is_main_script(im.path) || !seen.insert(im.path).second)
                     continue;
                 std::string text, file;
                 if (!read_import(im.path, text, file))
                     fail_at(map, im.pos, "the script '" + im.path + "' is not found");
+                if (file == opt.input)
+                    continue;
                 const uint32_t base = next_base;
                 next_base += static_cast<uint32_t>(text.size()) + 1;
                 // The byte 0x01 is the internal placeholder of the standard namespace (std_ns.h).
@@ -3112,30 +3205,37 @@ void translate_impl(
                                     + hotc::std_to_user(array_tpl) + "'");
                     }
                 }
-                if (!is.vars.empty())
-                    fail_at(map, is.vars.front().pos,
-                        "an imported script cannot have module variables: '" + is.vars.front().name + "' is in '" + file
-                            + "'");
-                if (!is.var_hooks.empty())
-                    fail_at(map, is.var_hooks.front().pos,
-                        "an imported script cannot have convert hooks of module variables");
                 for (const Method& f : is.fns)
                     if (f.name == "main")
                         fail_at(map, f.pos, hotc::ast::kMainSignatureError);
-                if (!is.fns.empty())
-                    fail_at(map, is.fns.front().pos,
-                        "an imported script cannot have free functions: '" + is.fns.front().name + "' is in '" + file
-                            + "'");
+                // The interface hash of the import is the hash that its own translation gives.
+                if (depth == 0)
+                    res.import_hashes.emplace_back(file, hash_text(module_interface(is, import_texts.back())));
+                // The module variables, the convert hooks and the free functions of the import stay in
+                // their own module: the importer gets no copy of them. The emit of an access to
+                // them comes later (modules step 3).
+                for (ClassDef& c : is.classes)
+                    if (c.is_private)
+                        private_classes.emplace(c.name, file);
+                ++depth;
                 visit_imports(is.imports);
+                --depth;
                 for (Import& n : is.imports)
                     if (native_paths.insert(n.path).second)
                         natives.push_back(std::move(n));
+                // BRIDGE (modules step 1): the importer still gets a copy of the classes of the import,
+                // with their bodies. The emit of cross-module calls, fields and parents (modules steps
+                // 3 and 5) replaces the copy with the interface of the class. Remove the copy then.
                 for (ClassDef& c : is.classes)
                     classes.push_back(std::move(c));
+                // An enum and a constant are definitions of the interface: the importer gets a copy.
+                // A private one stays in its module.
                 for (auto& e : is.enums)
-                    enums.push_back(std::move(e));
+                    if (!e.is_private)
+                        enums.push_back(std::move(e));
                 for (Field& f : is.consts)
-                    consts.push_back(std::move(f));
+                    if (f.access != hotc::ast::Access::Private)
+                        consts.push_back(std::move(f));
                 for (Stub& st : is.stubs)
                     stubs.push_back(std::move(st));
                 for (Stub& st : is.attribute_classes)
@@ -3160,7 +3260,11 @@ void translate_impl(
             sc.imports = std::move(all);
             std::set<std::string> own;
             for (const ClassDef& c : sc.classes)
+            {
                 own.insert(c.name);
+                if (const auto it = private_classes.find(c.base); it != private_classes.end())
+                    fail_at(map, c.pos, "class '" + c.base + "' is private in '" + it->second + "'");
+            }
             for (const ClassDef& c : classes)
                 if (own.count(c.name))
                     fail_at(map, c.pos,

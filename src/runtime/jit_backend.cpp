@@ -368,6 +368,8 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
     hotc::TranslateResult tr = hotc::translate(to, *opt_.session);
     timings_.translate_ms = ms_since(t0);
     r.dependencies = tr.dependencies; // also after a failure
+    r.iface_hash = tr.iface_hash;
+    r.import_hashes = tr.import_hashes;
     if (!tr.ok)
     {
         r.error = opt_.raw_diagnostics
@@ -458,6 +460,10 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
         return add_to_jit(impl, id + ".core", std::move(*core_ir));
     };
     added.dependencies = std::move(r.dependencies);
+    added.iface_hash = r.iface_hash;
+    added.import_hashes = r.import_hashes;
+    added.module->iface_hash = r.iface_hash;
+    added.module->imports = std::move(r.import_hashes);
     return added;
 }
 

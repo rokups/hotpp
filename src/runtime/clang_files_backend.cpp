@@ -356,7 +356,7 @@ bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation, c
 // Else give the new content of the slots file back, and leave the file as it is.
 bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generation, LoadMode mode,
     const std::string& out_so, std::string& error, std::string* deferred_slots,
-    std::vector<std::string>* dependencies)
+    std::vector<std::string>* dependencies, LoadResult* hashes)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     error.clear();
@@ -395,6 +395,11 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     hotc::TranslateResult tr = hotc::translate(to, *opt_.session);
     if (dependencies)
         *dependencies = tr.dependencies; // also after a failure
+    if (hashes)
+    {
+        hashes->iface_hash = tr.iface_hash;
+        hashes->import_hashes = tr.import_hashes;
+    }
     if (!tr.ok)
     {
         error = opt_.raw_diagnostics
@@ -477,7 +482,7 @@ LoadResult ClangFilesBackend::load(const ScriptSource& source, uint32_t generati
         + "." + std::to_string(sequence_++) + module_suffix();
     LoadResult r;
     std::string slots;
-    if (!build_impl(source, generation, mode, so, r.error, &slots, &r.dependencies))
+    if (!build_impl(source, generation, mode, so, r.error, &slots, &r.dependencies, &r))
     {
         r.reason = ReloadReason::CompileError;
         return r;
@@ -502,8 +507,17 @@ LoadResult ClangFilesBackend::load(const ScriptSource& source, uint32_t generati
         }
     }
     std::vector<std::string> dependencies = std::move(r.dependencies);
+    const uint64_t iface_hash = r.iface_hash;
+    std::vector<std::pair<std::string, uint64_t>> import_hashes = std::move(r.import_hashes);
     r = module_from_library(so);
     r.dependencies = std::move(dependencies);
+    r.iface_hash = iface_hash;
+    r.import_hashes = std::move(import_hashes);
+    if (r.module)
+    {
+        r.module->iface_hash = iface_hash;
+        r.module->imports = r.import_hashes;
+    }
     if (!r.module)
     {
         if (r.reason == ReloadReason::None)

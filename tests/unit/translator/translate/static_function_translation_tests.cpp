@@ -108,7 +108,8 @@ TEST(StaticFunctionTranslation, GeneratedNameCollision)
         "have the same generated name 'C__s_F'");
 }
 
-TEST(StaticFunctionTranslation, ImportedScriptCannotHaveFreeFunctions)
+// An imported script can have free functions (modules). The importer gets no copy of the body.
+TEST(StaticFunctionTranslation, ImportedScriptCanHaveFreeFunctions)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
@@ -116,10 +117,8 @@ TEST(StaticFunctionTranslation, ImportedScriptCannotHaveFreeFunctions)
     o.modules.emplace_back("base.hot",
         "using \"w.h\";\nint Helper() { return 1; }\nclass Base : Widget { }\n");
     const hotc::TranslateResult r = hotc::translate(o);
-    EXPECT_FALSE(r.ok);
-    EXPECT_NE(r.diagnostics.find("an imported script cannot have free functions: 'Helper' is in 'base.hot'"),
-        std::string::npos)
-        << r.diagnostics;
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_EQ(r.cpp.find("Helper"), std::string::npos) << r.cpp;
 }
 
 // A static method of an imported class goes with its class: the output has its prototype and its body.
