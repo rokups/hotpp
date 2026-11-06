@@ -9,16 +9,22 @@
 #   linux              Build and test on Linux with the files backend only (no JIT). Make
 #                      hotpp-sdk-linux-x86_64.tar.gz.
 #   build-linux        Build the test build of Linux once, with both backends. Upload the build tree.
-#   test-linux         Download the build tree. Four jobs run in parallel: files, jit, aot, aot-optimized.
-#   windows-msvc       Build and test on Windows with MSVC. Make hotpp-sdk-windows-x86_64.zip.
-#   windows-msvc-jit   Experiment: build the JIT backend on MSVC and test it. Not blocking.
+#   test-linux         Download the build tree. Two jobs run in parallel: files, jit.
+#   aot-linux          Build and test the whole suite in an AOT build. Two jobs run in parallel: aot,
+#                      aot-optimized.
+#   windows-msvc       Build and test on Windows with MSVC (files backend only). Make
+#                      hotpp-sdk-windows-x86_64.zip.
+#   build-windows      Build the test build of Windows once, with both backends. Upload the build tree.
+#   test-windows       Download the build tree. Two jobs run in parallel: files, jit.
+#   aot-windows        Build and test the whole suite in an AOT build with MSVC. Two jobs run in
+#                      parallel: aot, aot-optimized.
 #   sdk-smoke-linux    Unpack the Linux SDK on a clean Ubuntu 24.04 runner. Run tests/sdk_smoke/run.cmake.
 #   sdk-smoke-windows  Unpack the Windows SDK on a clean Windows runner. Run the same script with MSVC.
 #   release            Push to master only. Move the tag "latest" and replace the release assets.
 #
-# The tests run in two configurations: both backends (build-linux and test-linux) and the files
-# backend only (linux). The runs overlap on purpose, so a fault shows early: each AOT test runs
-# in several jobs.
+# The tests run in three configurations: both backends (build-linux, test-linux, build-windows and
+# test-windows), the files backend only (linux and windows-msvc) and AOT (aot-linux and
+# aot-windows).
 #
 # Each SDK comes from a second build with HOT_PORTABLE=ON and HOT_BUILD_TESTS=OFF. Such a build
 # has no build paths in the binaries (CMakeLists.txt). The tests need the build paths, so the
@@ -153,16 +159,9 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  # Each backend has its own runner, so the four test runs are parallel. Each job runs ctest on
+  # Each backend has its own runner, so the two test runs are parallel. Each job runs ctest on
   # the build of build-linux. The jobs files and jit run the full suite, with the run-time
-  # backend (HOT_BACKEND). AOT has no run-time switch: the AOT tests are separate test programs.
-  # They have the ctest label "aot" (plain AOT) or "aot-opt" (optimized AOT), set in
-  # tests/integration/aot/CMakeLists.txt. The jobs aot and aot-optimized run only the AOT tests
-  # of one variant, so each AOT variant has its own status. The label "aot-opt" has the parity
-  # test (AotParity, AotLink), which compares the plain and the optimized AOT programs.
-  # The AOT tests run again in the jobs files and jit and in the job linux. The duplicate runs
-  # are on purpose: they give more chances to find a fault early. The regex of -L is not anchored by default, so "aot" without anchors also
-  # matches "aot-opt".
+  # backend (HOT_BACKEND). The job aot-linux runs the AOT builds.
   # No test is excluded: the Linux suite is fast in parallel. The tools for the tests are the
   # same as in the job linux (node comes with the runner, clangd comes from apt). The jobs files
   # and jit run clang and LLVM at run time, so all jobs install them.
@@ -179,13 +178,8 @@ jobs:
             backend: files
           - name: jit
             backend: jit
-          - name: aot
-            args: -L ^aot$
-          - name: aot-optimized
-            args: -L ^aot-opt$
     env:
-      BACKEND: ${{ matrix.backend }}
-      ARGS: ${{ matrix.args }}
+      HOT_BACKEND: ${{ matrix.backend }}
     steps:
       - uses: actions/checkout@v7
 
@@ -215,13 +209,53 @@ jobs:
           mkdir -p cmake-build
           tar -C cmake-build -I 'zstd -d' -xf "$RUNNER_TEMP/artifact/linux-clang-both.tar.zst"
 
-      # An empty BACKEND keeps the default backend (the AOT tests do not use HOT_BACKEND). An empty
-      # ARGS runs all tests.
       - name: Test
+        run: ctest --preset linux-clang-both-rel -j "$(nproc)"
+
+  # The AOT test builds on Linux. The job builds and runs the whole suite in a separate AOT build
+  # (the preset linux-clang-aot or linux-clang-aot-opt). The macros __HOTPP_AOT__ and
+  # __HOTPP_RELOAD__ compile out the tests that need the reload. Each AOT build runs the
+  # parity test. Some cases are only for the optimized variant. The steps are the steps of the job linux. The matrix runs in
+  # parallel, so each AOT variant has its own status.
+  aot-linux:
+    name: aot-linux (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: aot
+            preset: linux-clang-aot
+          - name: aot-optimized
+            preset: linux-clang-aot-opt
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install LLVM, Clang and Ninja
         run: |
-          if [ -n "$BACKEND" ]; then export HOT_BACKEND="$BACKEND"; fi
-          # shellcheck disable=SC2086
-          ctest --preset linux-clang-both-rel -j "$(nproc)" $ARGS
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc > /dev/null
+          echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-${LLVM_VERSION} main" | sudo tee /etc/apt/sources.list.d/llvm.list
+          sudo apt-get update
+          sudo apt-get install -y clang-${LLVM_VERSION} clangd-${LLVM_VERSION} libclang-${LLVM_VERSION}-dev llvm-${LLVM_VERSION}-dev ninja-build
+          # The presets use "clang" and "clang++". This folder has them for the pinned version.
+          echo "/usr/lib/llvm-${LLVM_VERSION}/bin" >> "$GITHUB_PATH"
+          echo "CPM_SOURCE_CACHE=$HOME/.cache/cpm" >> "$GITHUB_ENV"
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/cpm
+          key: cpm-linux-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+          restore-keys: cpm-linux-
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}-rel
+
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }}-rel -j "$(nproc)"
 
   # The native Windows build with MSVC (the preset vs-files). cl.exe builds hotc, the runtime and
   # the tests. clang++.exe of the LLVM release compiles the script modules. Some tests do not run
@@ -376,24 +410,19 @@ jobs:
           path: dist/hotpp-sdk-windows-x86_64.zip
           if-no-files-found: error
 
-  # EXPERIMENT. The JIT backend on MSVC is unproven. The job never fails the workflow
-  # (continue-on-error) and the job "release" does not need it. Known risks:
-  #   - dllexport: the JIT code imports the runtime symbols from the host (HOT_MODULE_BUILD=1).
-  #     The host must export them, and ORC must resolve the "__imp_" names.
-  #   - .pdata: the unwind data of C++ exceptions in the JIT code may not register.
-  #   - the build is blind: it never ran on MSVC. The LLVM release has no clang-cpp, so the build
-  #     links the component libraries. The libraries need zlib and zstd (from vcpkg).
-  # The release has /MD Release libraries only, so only RelWithDebInfo builds.
-  windows-msvc-jit:
+  # The test build of Windows has both run-time backends (the preset vs-both), like build-linux.
+  # The job builds all targets once. The job test-windows uses the build tree of this job. The
+  # build tree has absolute paths (the CMake cache and the LLVM release folder cmake-build), so the
+  # test jobs unpack the tree to the same path: the checkout of the same repository on the same
+  # runner image. The JIT backend needs zlib and zstd. The component libraries of the LLVM release
+  # link them (the release has no clang-cpp). The release has /MD Release libraries only, so only
+  # RelWithDebInfo builds.
+  build-windows:
     runs-on: windows-2022
     timeout-minutes: 90
-    continue-on-error: true
     defaults:
       run:
         shell: bash
-    env:
-      BUILD_DIR: cmake-build/vs-both
-      CONFIG: RelWithDebInfo
     steps:
       - uses: actions/checkout@v7
 
@@ -453,16 +482,169 @@ jobs:
       - name: Build
         run: cmake --build --preset vs-both-rel --parallel
 
-      - name: Test with the default backend
-        timeout-minutes: 30
+      # GNU tar reads "D:" in a file name as a host name, so the step gives tar the path in the
+      # Unix form (cygpath -u).
+      - name: Pack the build tree
+        run: |
+          archive="$(cygpath -u "$RUNNER_TEMP")/vs-both.tar.zst"
+          tar -C cmake-build -I 'zstd -T0 -3' -cf "$archive" vs-both
+
+      # The archive is compressed, so the upload does not compress it again.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: build-windows-vs-both
+          path: ${{ runner.temp }}/vs-both.tar.zst
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
+  # Each backend has its own runner, so the two test runs are parallel. Each job runs ctest on the
+  # build of build-windows, with the run-time backend (HOT_BACKEND). The jobs follow the matrix of
+  # test-linux. The tests use the LLVM release by its path (HOT_LLVM_RELEASES_DIR in the cache of
+  # the build tree) and clang++.exe needs link.exe, the UCRT and the MSVC STL. So each job gets the
+  # LLVM release and the Visual Studio environment as build-windows does. The release folder is
+  # not in the archive. The step checkout gives the sources at the same path as in build-windows.
+  # The preset vs-both-rel has the configuration RelWithDebInfo, so ctest needs no -C option.
+  test-windows:
+    name: test-windows (${{ matrix.backend }})
+    needs: build-windows
+    runs-on: windows-2022
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [files, jit]
+    defaults:
+      run:
+        shell: bash
+    env:
+      HOT_BACKEND: ${{ matrix.backend }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Read the LLVM release of cmake/HotLlvmVersion.cmake
+        id: llvm
+        run: |
+          version=$(sed -n 's/^set(HOT_LLVM_VERSION \(.*\))$/\1/p' cmake/HotLlvmVersion.cmake)
+          sha=$(grep -oE '[0-9a-f]{64}' cmake/HotLlvmVersion.cmake | head -1)
+          name="clang+llvm-${version}-x86_64-pc-windows-msvc"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "url=https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/${name}.tar.zst" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v6
+        with:
+          path: llvm-archive
+          key: llvm-windows-msvc-${{ steps.llvm.outputs.sha }}
+
+      - name: Download and unpack the LLVM release for Windows
+        run: |
+          archive="llvm-archive/${{ steps.llvm.outputs.name }}.tar.zst"
+          if [ ! -f "$archive" ]; then
+            mkdir -p llvm-archive
+            curl -fsSL -o "$archive" "${{ steps.llvm.outputs.url }}"
+          fi
+          echo "${{ steps.llvm.outputs.sha }}  $archive" | sha256sum -c -
+          mkdir -p cmake-build
+          zstd -d --long=31 -c "$archive" | tar -x -C cmake-build
+
+      - name: Load the Visual Studio environment
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
+          cmd /c "`"$vs\Common7\Tools\VsDevCmd.bat`" -arch=x64 -host_arch=x64 -no_logo && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.+)$') { Add-Content -Path $env:GITHUB_ENV -Value "$($Matches[1])=$($Matches[2])" -Encoding utf8 }
+          }
+
+      # This step is after VsDevCmd, so the MSVC tools still win over the LLVM tools.
+      - name: Add the LLVM tools to PATH
+        run: echo "$(pwd -W)/cmake-build/${{ steps.llvm.outputs.name }}/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: build-windows-vs-both
+          path: ${{ runner.temp }}/artifact
+
+      - name: Unpack the build tree
+        run: |
+          archive="$(cygpath -u "$RUNNER_TEMP")/artifact/vs-both.tar.zst"
+          mkdir -p cmake-build
+          tar -C cmake-build -I 'zstd -d' -xf "$archive"
+
+      - name: Test
+        timeout-minutes: 40
         run: ctest --preset vs-both-rel -j "$NUMBER_OF_PROCESSORS"
 
-      - name: Test with the JIT backend
-        if: ${{ !cancelled() }}
-        timeout-minutes: 30
-        env:
-          HOT_BACKEND: jit
-        run: ctest --preset vs-both-rel -j "$NUMBER_OF_PROCESSORS"
+  # The AOT test builds on Windows. The job builds and runs the whole suite in a separate AOT
+  # build (the preset vs-aot or vs-aot-opt). The two presets inherit vs-files: they need no JIT,
+  # no zlib and no zstd. The steps are the steps of windows-msvc without the SDK.
+  aot-windows:
+    name: aot-windows (${{ matrix.name }})
+    runs-on: windows-2022
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: aot
+            preset: vs-aot
+          - name: aot-optimized
+            preset: vs-aot-opt
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Read the LLVM release of cmake/HotLlvmVersion.cmake
+        id: llvm
+        run: |
+          version=$(sed -n 's/^set(HOT_LLVM_VERSION \(.*\))$/\1/p' cmake/HotLlvmVersion.cmake)
+          sha=$(grep -oE '[0-9a-f]{64}' cmake/HotLlvmVersion.cmake | head -1)
+          name="clang+llvm-${version}-x86_64-pc-windows-msvc"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "url=https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/${name}.tar.zst" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v6
+        with:
+          path: llvm-archive
+          key: llvm-windows-msvc-${{ steps.llvm.outputs.sha }}
+
+      - name: Download and unpack the LLVM release for Windows
+        run: |
+          archive="llvm-archive/${{ steps.llvm.outputs.name }}.tar.zst"
+          if [ ! -f "$archive" ]; then
+            mkdir -p llvm-archive
+            curl -fsSL -o "$archive" "${{ steps.llvm.outputs.url }}"
+          fi
+          echo "${{ steps.llvm.outputs.sha }}  $archive" | sha256sum -c -
+          mkdir -p cmake-build
+          zstd -d --long=31 -c "$archive" | tar -x -C cmake-build
+
+      - name: Load the Visual Studio environment
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
+          cmd /c "`"$vs\Common7\Tools\VsDevCmd.bat`" -arch=x64 -host_arch=x64 -no_logo && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.+)$') { Add-Content -Path $env:GITHUB_ENV -Value "$($Matches[1])=$($Matches[2])" -Encoding utf8 }
+          }
+
+      # This step is after VsDevCmd, so the MSVC tools still win over the LLVM tools.
+      - name: Add the LLVM tools to PATH
+        run: echo "$(pwd -W)/cmake-build/${{ steps.llvm.outputs.name }}/bin" >> "$GITHUB_PATH"
+
+      - name: Configure
+        run: |
+          cmake --preset ${{ matrix.preset }} -DHOT_DOWNLOAD_LLVM=OFF -DHOT_LLVM_RELEASES_DIR="$(pwd -W)/cmake-build" \
+            -DHOT_BUILD_TRANSLATOR=ON -DHOT_BUILD_TESTS=ON -DHOT_BUILD_SAMPLES=OFF
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}-rel --parallel
+
+      - name: Test
+        timeout-minutes: 40
+        run: ctest --preset ${{ matrix.preset }}-rel -j "$NUMBER_OF_PROCESSORS"
 
   # The smoke tests run without the source tree and without the build. The sparse checkout
   # gives only tests/sdk_smoke.
@@ -537,7 +719,7 @@ jobs:
   # time, and a new job does not cancel the job in progress. A job that is not for the head of
   # master does not release (the step below).
   release:
-    needs: [linux, test-linux, windows-msvc, sdk-smoke-linux, sdk-smoke-windows]
+    needs: [linux, test-linux, aot-linux, windows-msvc, test-windows, aot-windows, sdk-smoke-linux, sdk-smoke-windows]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     concurrency:
       group: release-latest
