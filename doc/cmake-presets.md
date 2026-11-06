@@ -41,7 +41,7 @@ These presets build for Windows. They use the same generator and configurations.
 | `mingw-llvm` | A cross build on Linux with MinGW-w64 and the LLVM release for Windows. It builds `hotc.exe` and `hot-ls`. `HOT_LLVM_RELEASES_DIR` is `cmake-build`. The tests run under wine. |
 | `vs-files` | Visual Studio 2022, x64. It works only on a Windows host. It sets `HOT_DOWNLOAD_LLVM=ON`. Nobody tested it. |
 
-Each Windows preset has a build preset and a test preset: `mingw-files-dbg`, `mingw-llvm-dbg`, `vs-files-dbg` and `vs-files-rel`. The last one uses `RelWithDebInfo`.
+Each Windows preset has a build preset and a test preset: `mingw-files-dbg`, `mingw-llvm-dbg`, `mingw-llvm-rel`, `vs-files-dbg` and `vs-files-rel`. The `-rel` presets use `RelWithDebInfo`.
 
 The build presets and the test presets have the same names for each configure preset:
 
