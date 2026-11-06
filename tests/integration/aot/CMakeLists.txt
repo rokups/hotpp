@@ -34,6 +34,13 @@ add_dependencies(integration_aot_parity_tests aot_demo)
 target_compile_definitions(integration_aot_parity_tests PRIVATE
     HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
     AOT_DEMO_PATH="$<TARGET_FILE:aot_demo>")
+# The folder of the LLVM tools (llvm-nm, llvm-readobj, llvm-pdbutil) for the Windows symbol checks.
+# It is the "bin" folder of the LLVM release that has libclang.dll. It can be empty: the test then
+# searches PATH.
+if(HOT_LIBCLANG_DLL)
+    get_filename_component(_hot_llvm_tools_dir "${HOT_LIBCLANG_DLL}" DIRECTORY)
+    target_compile_definitions(integration_aot_parity_tests PRIVATE HOT_LLVM_TOOLS_DIR="${_hot_llvm_tools_dir}")
+endif()
 hot_gtest(integration_aot_parity_tests PROPERTIES LABELS aot-opt)
 
 # Two scripts in one AOT library: the demo and the module variables.

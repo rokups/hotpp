@@ -14,11 +14,13 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <filesystem>
 #include <memory>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -184,17 +186,87 @@ TEST(AotParity, AotProgramShowsTheLanguageFeatures)
     EXPECT_NE(parent, std::string::npos) << out;
 }
 
-// The symbols of an executable (nm). Empty when nm does not run or fails.
-// Windows: the check reads ELF tools and stays off (the skip logic is the same as before).
-std::string symbols_of(const std::string& path)
+// The path of this executable.
+std::string self_exe_path()
 {
 #ifdef _WIN32
-    (void)path;
-    return {};
+    char buf[MAX_PATH * 4];
+    const DWORD n = GetModuleFileNameA(nullptr, buf, static_cast<DWORD>(sizeof buf));
+    return std::string(buf, n);
+#else
+    return std::filesystem::read_symlink("/proc/self/exe").string();
+#endif
+}
+
+#ifdef _WIN32
+// The command of an LLVM tool for run_process (Windows). The tool is in HOT_LLVM_TOOLS_DIR when
+// the folder is known and has the tool. Else the command is the name with ".exe", and PATH finds it.
+std::string llvm_tool(const std::string& name)
+{
+    #ifdef HOT_LLVM_TOOLS_DIR
+    const std::filesystem::path in_dir = std::filesystem::path(HOT_LLVM_TOOLS_DIR) / (name + ".exe");
+    std::error_code ec;
+    if (std::filesystem::exists(in_dir, ec))
+        return in_dir.string();
+    #endif
+    return name + ".exe";
+}
+#endif
+
+// A PE image from MSVC has no symbols. They are in the PDB file. MinGW writes a COFF symbol table
+// into the image, so llvm-nm reads it. The check text of MSVC has the mangled names of the PDB.
+#if defined(_WIN32) && !defined(__MINGW32__)
+constexpr bool kMangledSymbols = true;
+#else
+constexpr bool kMangledSymbols = false;
+#endif
+
+// Makes the MSVC mangled form of a qualified name. "a::b::c" gives "c@b@a@". "a::" gives "@a@".
+// The MSVC mangling writes the name and then its scopes in the reverse order, each one before "@".
+std::string msvc_form(const std::string& mark)
+{
+    std::vector<std::string> parts;
+    size_t start = 0;
+    for (size_t at; (at = mark.find("::", start)) != std::string::npos; start = at + 2)
+        parts.push_back(mark.substr(start, at - start));
+    const std::string last = mark.substr(start);
+    // A constructor name is not repeated in the MSVC mangling ("??0AotRegistry@hot@@").
+    if (!parts.empty() && parts.back() == last)
+        parts.pop_back();
+    std::string out = last.empty() ? std::string("@") : last + "@";
+    for (size_t i = parts.size(); i-- > 0;)
+        out += parts[i] + "@";
+    return out;
+}
+
+// True when the symbol text has the mark. For the PDB text of MSVC the mangled form of a qualified
+// name counts too. A plain name (no "::") is in a mangled name as text, so the mark itself works.
+bool has_symbol(const std::string& syms, const std::string& mark)
+{
+    if (syms.find(mark) != std::string::npos)
+        return true;
+    return kMangledSymbols && mark.find("::") != std::string::npos && syms.find(msvc_form(mark)) != std::string::npos;
+}
+
+// The symbols of an executable as text. Empty when the tool does not run or fails.
+// Linux: nm -C. MinGW: llvm-nm -C (the COFF symbol table). MSVC: the public symbols of the PDB
+// file next to the executable (llvm-pdbutil dump --publics). The MSVC branch is untested.
+std::string symbols_of(const std::string& path)
+{
+#if defined(_WIN32) && !defined(__MINGW32__)
+    std::filesystem::path pdb = path;
+    pdb.replace_extension(".pdb");
+    std::error_code ec;
+    if (!std::filesystem::exists(pdb, ec))
+        return {};
+    const test_support::RunResult r =
+        test_support::run_process({llvm_tool("llvm-pdbutil"), "dump", "--publics", pdb.string()});
+#elif defined(_WIN32)
+    const test_support::RunResult r = test_support::run_process({llvm_tool("llvm-nm"), "-C", path});
 #else
     const test_support::RunResult r = test_support::run_process({"nm", "-C", path});
-    return r.exit_code == 0 ? r.output : std::string();
 #endif
+    return r.exit_code == 0 ? test_support::lf_only(r.output) : std::string();
 }
 
 // The sanitizer runtime of the compiler has dlopen and the LLVM symbolizer. A sanitizer build
@@ -220,33 +292,51 @@ TEST(AotLink, AotProgramHasNoLoaderOrClangSymbol)
 {
     const std::string syms = symbols_of(AOT_DEMO_PATH);
     if (syms.empty())
-        GTEST_SKIP() << "nm is not available";
+        GTEST_SKIP() << "the symbol tool (nm, llvm-nm or llvm-pdbutil with a PDB file) is not available";
     // The scripts and the AOT runtime are in the binary.
-    EXPECT_NE(syms.find("hot::AotRegistry::AotRegistry"), std::string::npos);
-    EXPECT_NE(syms.find("Veteran_record"), std::string::npos);
-    EXPECT_NE(syms.find("hot::aot_table"), std::string::npos);
+    EXPECT_TRUE(has_symbol(syms, "hot::AotRegistry::AotRegistry"));
+    EXPECT_TRUE(has_symbol(syms, "Veteran_record"));
+    EXPECT_TRUE(has_symbol(syms, "hot::aot_table"));
     for (const char* mark : kLoaderMarks)
-        EXPECT_EQ(syms.find(mark), std::string::npos) << mark;
+        EXPECT_FALSE(has_symbol(syms, mark)) << mark;
 }
 
 // A control: the same scan finds the loader in this test program, which links it.
 TEST(AotLink, ScanFindsTheLoaderInAProgramThatLinksIt)
 {
-#ifdef _WIN32
-    GTEST_SKIP() << "the test reads /proc/self/exe and runs nm through a POSIX shell";
-#endif
-    const std::string syms = symbols_of(std::filesystem::read_symlink("/proc/self/exe").string());
+    const std::string syms = symbols_of(self_exe_path());
     if (syms.empty())
-        GTEST_SKIP() << "nm is not available";
-    EXPECT_NE(syms.find("hot::Loader"), std::string::npos);
-    EXPECT_NE(syms.find("migrate_block"), std::string::npos);
+        GTEST_SKIP() << "the symbol tool (nm, llvm-nm or llvm-pdbutil with a PDB file) is not available";
+    EXPECT_TRUE(has_symbol(syms, "hot::Loader"));
+    EXPECT_TRUE(has_symbol(syms, "migrate_block"));
 }
 
 TEST(AotLink, AotProgramNeedsNoClangLibrary)
 {
-    // The lines of "readelf -d" that have NEEDED. Empty when readelf does not run or fails.
+    // The libraries that the program needs, one on each line. Empty when the tool does not run or fails.
+    // Linux: the NEEDED lines of "readelf -d". Windows: the "Name:" lines of the imports
+    // ("llvm-readobj --coff-imports"), for MinGW and for MSVC programs.
     std::string needed;
-#ifndef _WIN32
+#ifdef _WIN32
+    const test_support::RunResult imports =
+        test_support::run_process({llvm_tool("llvm-readobj"), "--coff-imports", AOT_DEMO_PATH});
+    if (imports.exit_code == 0)
+    {
+        std::istringstream lines(test_support::lf_only(imports.output));
+        for (std::string line; std::getline(lines, line);)
+            if (line.find("Name:") != std::string::npos)
+                needed += line + "\n";
+        // A program always imports a system library, so a tool output without one is a wrong output.
+        ASSERT_NE(needed.find(".dll"), std::string::npos) << imports.output;
+    }
+    // The names of the DLL files have any case: the check uses the lower case.
+    std::string checked = needed;
+    std::transform(checked.begin(), checked.end(), checked.begin(), [](unsigned char c) { return std::tolower(c); });
+    if (needed.empty())
+        GTEST_SKIP() << "llvm-readobj is not available: " << imports.output;
+    EXPECT_EQ(checked.find("clang"), std::string::npos) << needed;
+    EXPECT_EQ(checked.find("llvm"), std::string::npos) << needed;
+#else
     const test_support::RunResult dynamic = test_support::run_process({"readelf", "-d", AOT_DEMO_PATH});
     if (dynamic.exit_code == 0)
     {
@@ -255,11 +345,11 @@ TEST(AotLink, AotProgramNeedsNoClangLibrary)
             if (line.find("NEEDED") != std::string::npos)
                 needed += line + "\n";
     }
-#endif
     if (needed.empty())
         GTEST_SKIP() << "readelf is not available";
     EXPECT_EQ(needed.find("clang"), std::string::npos) << needed;
     EXPECT_EQ(needed.find("LLVM"), std::string::npos) << needed;
+#endif
 }
 
 } // namespace
