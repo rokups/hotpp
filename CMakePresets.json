@@ -104,6 +104,20 @@
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
     },
     {
+      "name": "vs-both",
+      "description": "Experimental: both backends on MSVC. The LLVM release has Release libraries (/MD) only, so only RelWithDebInfo works. The JIT needs zlib and zstd in CMAKE_PREFIX_PATH.",
+      "binaryDir": "${sourceDir}/cmake-build/${presetName}",
+      "installDir": "${sourceDir}/cmake-build/${presetName}/install",
+      "architecture": "x64",
+      "cacheVariables": {
+        "CMAKE_CONFIGURATION_TYPES": "RelWithDebInfo",
+        "HOT_ENABLE_CLANG_FILES": "ON",
+        "HOT_ENABLE_JIT": "ON",
+        "HOT_DOWNLOAD_LLVM": "ON"
+      },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    },
+    {
       "name": "mingw-files",
       "inherits": "base-files",
       "toolchainFile": "${sourceDir}/cmake/toolchains/mingw-w64-x86_64.cmake"
@@ -132,6 +146,7 @@
     { "name": "linux-clang-files-tsan", "configurePreset": "linux-clang-files-tsan", "configuration": "Debug" },
     { "name": "vs-files-dbg", "configurePreset": "vs-files", "configuration": "Debug" },
     { "name": "vs-files-rel", "configurePreset": "vs-files", "configuration": "RelWithDebInfo" },
+    { "name": "vs-both-rel", "configurePreset": "vs-both", "configuration": "RelWithDebInfo" },
     { "name": "mingw-files-dbg", "configurePreset": "mingw-files", "configuration": "Debug" },
     { "name": "mingw-llvm-dbg", "configurePreset": "mingw-llvm", "configuration": "Debug" },
     { "name": "mingw-llvm-rel", "configurePreset": "mingw-llvm", "configuration": "RelWithDebInfo" },
@@ -155,6 +170,7 @@
     { "name": "linux-clang-files-tsan", "inherits": "base-test", "configurePreset": "linux-clang-files-tsan", "configuration": "Debug" },
     { "name": "vs-files-dbg", "inherits": "base-test", "configurePreset": "vs-files", "configuration": "Debug" },
     { "name": "vs-files-rel", "inherits": "base-test", "configurePreset": "vs-files", "configuration": "RelWithDebInfo" },
+    { "name": "vs-both-rel", "inherits": "base-test", "configurePreset": "vs-both", "configuration": "RelWithDebInfo" },
     { "name": "mingw-files-dbg", "inherits": "base-test", "configurePreset": "mingw-files", "configuration": "Debug" },
     { "name": "mingw-llvm-dbg", "inherits": "base-test", "configurePreset": "mingw-llvm", "configuration": "Debug" },
     { "name": "mingw-llvm-rel", "inherits": "base-test", "configurePreset": "mingw-llvm", "configuration": "RelWithDebInfo" },

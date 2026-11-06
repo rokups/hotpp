@@ -13,6 +13,7 @@
 #   test-linux-jit-only  Build and test on Linux with the JIT backend only (no files backend).
 #   test-mingw-wine    MinGW cross build on Arch Linux. Run the tests under Wine. Not blocking.
 #   windows-msvc       Build and test on Windows with MSVC. Make hotpp-sdk-windows-x86_64.zip.
+#   windows-msvc-jit   Experiment: build the JIT backend on MSVC and test it. Not blocking.
 #   sdk-smoke-linux    Unpack the Linux SDK on a clean Ubuntu 24.04 runner. Run tests/sdk_smoke/run.cmake.
 #   sdk-smoke-windows  Unpack the Windows SDK on a clean Windows runner. Run the same script with MSVC.
 #   release            Push to master only. Move the tag "latest" and replace the release assets.
@@ -487,6 +488,92 @@ jobs:
           name: hotpp-sdk-windows-x86_64
           path: dist/hotpp-sdk-windows-x86_64.zip
           if-no-files-found: error
+
+  # EXPERIMENT. The JIT backend on MSVC is unproven. The job never fails the workflow
+  # (continue-on-error) and the job "release" does not need it. Known risks:
+  #   - dllexport: the JIT code imports the runtime symbols from the host (HOT_MODULE_BUILD=1).
+  #     The host must export them, and ORC must resolve the "__imp_" names.
+  #   - .pdata: the unwind data of C++ exceptions in the JIT code may not register.
+  #   - the build is blind: it never ran on MSVC. The LLVM release has no clang-cpp, so the build
+  #     links the component libraries. The libraries need zlib and zstd (from vcpkg).
+  # The release has /MD Release libraries only, so only RelWithDebInfo builds.
+  windows-msvc-jit:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    continue-on-error: true
+    defaults:
+      run:
+        shell: bash
+    env:
+      BUILD_DIR: cmake-build/vs-both
+      CONFIG: RelWithDebInfo
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Read the LLVM release of cmake/HotLlvmVersion.cmake
+        id: llvm
+        run: |
+          version=$(sed -n 's/^set(HOT_LLVM_VERSION \(.*\))$/\1/p' cmake/HotLlvmVersion.cmake)
+          sha=$(grep -oE '[0-9a-f]{64}' cmake/HotLlvmVersion.cmake | head -1)
+          name="clang+llvm-${version}-x86_64-pc-windows-msvc"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "url=https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/${name}.tar.zst" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v6
+        with:
+          path: llvm-archive
+          key: llvm-windows-msvc-${{ steps.llvm.outputs.sha }}
+
+      - name: Download and unpack the LLVM release for Windows
+        run: |
+          archive="llvm-archive/${{ steps.llvm.outputs.name }}.tar.zst"
+          if [ ! -f "$archive" ]; then
+            mkdir -p llvm-archive
+            curl -fsSL -o "$archive" "${{ steps.llvm.outputs.url }}"
+          fi
+          echo "${{ steps.llvm.outputs.sha }}  $archive" | sha256sum -c -
+          mkdir -p cmake-build
+          zstd -d --long=31 -c "$archive" | tar -x -C cmake-build
+
+      # The static libraries zlib and zstd with the DLL C++ runtime (/MD). The LLVM libraries of
+      # the release link them.
+      - name: Install zlib and zstd
+        run: |
+          "$VCPKG_INSTALLATION_ROOT/vcpkg.exe" install zlib zstd --triplet x64-windows-static-md
+          echo "DEPS_PREFIX=$(cygpath -m "$VCPKG_INSTALLATION_ROOT")/installed/x64-windows-static-md" >> "$GITHUB_ENV"
+
+      - name: Load the Visual Studio environment
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
+          cmd /c "`"$vs\Common7\Tools\VsDevCmd.bat`" -arch=x64 -host_arch=x64 -no_logo && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.+)$') { Add-Content -Path $env:GITHUB_ENV -Value "$($Matches[1])=$($Matches[2])" -Encoding utf8 }
+          }
+
+      # This step is after VsDevCmd, so the MSVC tools still win over the LLVM tools.
+      - name: Add the LLVM tools to PATH
+        run: echo "$(pwd -W)/cmake-build/${{ steps.llvm.outputs.name }}/bin" >> "$GITHUB_PATH"
+
+      - name: Configure
+        run: |
+          cmake --preset vs-both -DHOT_DOWNLOAD_LLVM=OFF -DHOT_LLVM_RELEASES_DIR="$(pwd -W)/cmake-build" \
+            -DCMAKE_PREFIX_PATH="$DEPS_PREFIX" \
+            -DHOT_BUILD_TRANSLATOR=ON -DHOT_BUILD_TESTS=ON -DHOT_BUILD_SAMPLES=OFF
+
+      - name: Build
+        run: cmake --build --preset vs-both-rel --parallel
+
+      - name: Test with the default backend
+        timeout-minutes: 30
+        run: ctest --preset vs-both-rel -j "$NUMBER_OF_PROCESSORS"
+
+      - name: Test with the JIT backend
+        if: ${{ !cancelled() }}
+        timeout-minutes: 30
+        env:
+          HOT_BACKEND: jit
+        run: ctest --preset vs-both-rel -j "$NUMBER_OF_PROCESSORS"
 
   # The smoke tests run without the source tree and without the build. The sparse checkout
   # gives only tests/sdk_smoke.

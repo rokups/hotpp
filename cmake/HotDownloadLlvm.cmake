@@ -13,6 +13,8 @@
 # It also sets HOT_SCRIPT_COMPILER to the clang++.exe of the release when it has the default value
 # (CMAKE_CXX_COMPILER) or a value of the file.
 # A MinGW build sets HOT_LIBCLANG_NO_PACKAGE (no Clang CMake package) and turns the JIT off.
+# An MSVC build sets it too, except with HOT_ENABLE_JIT=ON (experimental): then LLVM_DIR and Clang_DIR
+# point to the release, and the root file finds the packages.
 # A cross build runs hotc.exe and the tests with CMAKE_CROSSCOMPILING_EMULATOR (wine).
 
 if(NOT WIN32)
@@ -69,8 +71,47 @@ if(HOT_SCRIPT_COMPILER STREQUAL CMAKE_CXX_COMPILER)
 endif()
 hot_llvm_cache(HOT_SCRIPT_COMPILER "${_hot_llvm_dir}/bin/clang++.exe" STRING
     "The compiler of the script modules at run time")
-# The build links libclang.lib directly. The CMake package of the release is not used.
-set(HOT_LIBCLANG_NO_PACKAGE ON)
+# Experimental: an MSVC build with HOT_ENABLE_JIT=ON uses the CMake packages of the release (the JIT
+# needs the LLVM libraries). Else the build links libclang.lib directly, and the CMake package of the
+# release is not used.
+set(_hot_llvm_msvc_jit OFF)
+if(MSVC AND HOT_BUILD_TRANSLATOR)
+    string(TOUPPER "$CACHE{HOT_ENABLE_JIT}" _hot_llvm_jit_mode)
+    if(_hot_llvm_jit_mode STREQUAL "ON")
+        set(_hot_llvm_msvc_jit ON)
+    endif()
+endif()
+if(_hot_llvm_msvc_jit)
+    foreach(_hot_llvm_file lib/cmake/llvm/LLVMConfig.cmake lib/cmake/clang/ClangConfig.cmake)
+        if(NOT EXISTS "${_hot_llvm_dir}/${_hot_llvm_file}")
+            message(FATAL_ERROR "HOT_ENABLE_JIT=ON needs ${_hot_llvm_file} in the LLVM release at "
+                "${_hot_llvm_dir}.")
+        endif()
+    endforeach()
+    hot_llvm_cache(LLVM_DIR "${_hot_llvm_dir}/lib/cmake/llvm" PATH "The folder of LLVMConfig.cmake")
+    hot_llvm_cache(Clang_DIR "${_hot_llvm_dir}/lib/cmake/clang" PATH "The folder of ClangConfig.cmake")
+    # The LLVM libraries of the release need zlib and zstd (static, /MD). The release does not
+    # have them. LLVMExports.cmake links the targets ZLIB::ZLIB and zstd::libzstd_static. The module
+    # Findzstd.cmake of LLVM does not make the second target for the library "zstd.lib" of vcpkg.
+    # So this file makes it. Add the folder of the libraries to CMAKE_PREFIX_PATH (for example
+    # <vcpkg>/installed/x64-windows-static-md).
+    find_package(ZLIB)
+    find_library(HOT_ZSTD_LIBRARY NAMES zstd_static zstd)
+    find_path(HOT_ZSTD_INCLUDE_DIR zstd.h)
+    if(NOT ZLIB_FOUND OR NOT HOT_ZSTD_LIBRARY OR NOT HOT_ZSTD_INCLUDE_DIR)
+        message(FATAL_ERROR "HOT_ENABLE_JIT=ON with MSVC needs the static libraries zlib and zstd "
+            "(the LLVM libraries use them). CMake does not find them. Add their folder to "
+            "CMAKE_PREFIX_PATH, for example <vcpkg>/installed/x64-windows-static-md.")
+    endif()
+    if(NOT TARGET zstd::libzstd_static)
+        add_library(zstd::libzstd_static STATIC IMPORTED)
+        set_target_properties(zstd::libzstd_static PROPERTIES
+            IMPORTED_LOCATION "${HOT_ZSTD_LIBRARY}"
+            INTERFACE_INCLUDE_DIRECTORIES "${HOT_ZSTD_INCLUDE_DIR}")
+    endif()
+else()
+    set(HOT_LIBCLANG_NO_PACKAGE ON)
+endif()
 if(MINGW)
     # The release has no LLVM libraries for a MinGW JIT.
     string(TOUPPER "$CACHE{HOT_ENABLE_JIT}" _hot_llvm_jit)

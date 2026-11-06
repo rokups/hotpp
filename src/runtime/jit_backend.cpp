@@ -138,11 +138,22 @@ CompileSetup make_invocation(const JitOptions& opt, const std::string& path, con
 
     std::vector<std::string>& args = s.args;
     args = {opt.compiler, "-std=" + (opt.std_version.empty() ? std::string(cxx_std_name()) : opt.std_version), "-O1",
-        "-fPIC", "-Werror=return-type",
+#ifndef _WIN32
+        "-fPIC",
+#endif
+        "-Werror=return-type",
         // A signed overflow wraps in a script. The compiler must not use it as undefined behavior.
-        "-fwrapv", "-fvisibility=hidden", "-fvisibility-inlines-hidden",
+        "-fwrapv",
+#ifdef _WIN32
+        // Experimental. HOT_EXPORT becomes dllimport: the code takes the runtime symbols from the host.
+        // A Windows target has no -fPIC and no ELF visibility.
+        "-DHOT_MODULE_BUILD=1"
+#else
+        "-fvisibility=hidden", "-fvisibility-inlines-hidden",
         // A call to the host reads the address from the GOT. A stub would add one jump to each call.
-        "-fno-plt"};
+        "-fno-plt"
+#endif
+    };
 #if HOT_ELF_TLS_DEPTH
     // The JIT links its code without TLS relocations. On ELF the code reads the call depth of the
     // host through the thread pointer and an absolute symbol (errors.h). Other targets call

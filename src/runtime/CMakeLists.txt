@@ -102,8 +102,30 @@ if(HOT_JIT_ENABLED)
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
     target_include_directories(hot_jit_backend SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
-    target_compile_definitions(hot_jit_backend PRIVATE ${LLVM_DEFINITIONS})
-    target_link_libraries(hot_jit_backend PUBLIC hot_runtime hotc_lib clang-cpp LLVM)
+    if(MSVC)
+        # The LLVM release for MSVC sets LLVM_DEFINITIONS as one string with spaces. UNICODE and
+        # _UNICODE are only for the LLVM sources. They would change the Windows API macros of the host.
+        separate_arguments(_hot_llvm_defs WINDOWS_COMMAND "${LLVM_DEFINITIONS}")
+        list(FILTER _hot_llvm_defs EXCLUDE REGEX "^-D_?UNICODE$")
+        target_compile_definitions(hot_jit_backend PRIVATE ${_hot_llvm_defs})
+    else()
+        target_compile_definitions(hot_jit_backend PRIVATE ${LLVM_DEFINITIONS})
+    endif()
+    if(TARGET clang-cpp)
+        target_link_libraries(hot_jit_backend PUBLIC hot_runtime hotc_lib clang-cpp LLVM)
+    else()
+        # Experimental (MSVC). The LLVM release for MSVC has no clang-cpp and no LLVM library. It
+        # has static component libraries. The imported targets bring their own dependencies.
+        # LLVM_NATIVE_ARCH is X86 there.
+        target_link_libraries(hot_jit_backend PUBLIC hot_runtime hotc_lib
+            clangFrontend clangCodeGen clangDriver LLVMOrcJIT LLVMOrcDebugging
+            LLVM${LLVM_NATIVE_ARCH}CodeGen LLVM${LLVM_NATIVE_ARCH}AsmParser
+            LLVM${LLVM_NATIVE_ARCH}Desc LLVM${LLVM_NATIVE_ARCH}Info)
+    endif()
+    if(MSVC AND NOT LLVM_ENABLE_RTTI)
+        # The LLVM libraries have no RTTI. The code that uses their classes must have none too.
+        target_compile_options(hot_jit_backend PRIVATE /GR-)
+    endif()
 endif()
 
 # make_default_backend() returns the backend that the program chooses at run time. The target
