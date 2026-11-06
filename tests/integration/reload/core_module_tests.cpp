@@ -18,6 +18,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cctype>
 #include <cstdlib>
 #include <deque>
 #include <filesystem>
@@ -25,6 +26,10 @@
 #include <set>
 #include <string>
 #ifdef _WIN32
+    #include <windows.h>
+    // clang-format off
+    #include <tlhelp32.h>
+    // clang-format on
     #include <process.h>
     #define getpid _getpid // the MSVC CRT has the POSIX name only as a deprecated name (C4996)
 #else
@@ -58,17 +63,38 @@ size_t loaded_modules(const hot::LoaderStats& st)
     return n;
 }
 
-// The count of different mapped files whose path has "needle".
+// The count of different mapped files whose path has "needle". Linux reads /proc/self/maps.
+// Windows lists the modules of the process.
 size_t mapped_files(const std::string& needle)
 {
-    std::ifstream maps("/proc/self/maps");
     std::set<std::string> paths;
+#ifdef _WIN32
+    const HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, GetCurrentProcessId());
+    if (snap == INVALID_HANDLE_VALUE)
+        return 0;
+    MODULEENTRY32 entry;
+    entry.dwSize = sizeof entry;
+    for (BOOL ok = Module32First(snap, &entry); ok; ok = Module32Next(snap, &entry))
+    {
+        std::string path = entry.szExePath;
+        for (char& c : path)
+            c = c == '/' ? '\\' : static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        std::string want = needle;
+        for (char& c : want)
+            c = c == '/' ? '\\' : static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (path.find(want) != std::string::npos)
+            paths.insert(path);
+    }
+    CloseHandle(snap);
+#else
+    std::ifstream maps("/proc/self/maps");
     for (std::string line; std::getline(maps, line);)
     {
         const size_t slash = line.find('/');
         if (slash != std::string::npos && line.find(needle) != std::string::npos)
             paths.insert(line.substr(slash));
     }
+#endif
     return paths.size();
 }
 
@@ -174,10 +200,7 @@ void run_reloads(int reloads)
     EXPECT_EQ(find_gen(st, first)->state, GenState::Unloaded);
     EXPECT_LE(max_loaded, 2u + 1u); // at most one pin is open at a time
     EXPECT_LE(max_mapped, max_loaded);
-#ifndef _WIN32
-    // mapped_files reads /proc/self/maps. Windows has no such file.
     EXPECT_EQ(mapped_files(dir.string()) + mapped_files("hot-core-"), 2u);
-#endif
     EXPECT_EQ(st.live_objects, 1 + objs.size());
 
     // The object of generation 1 kept its state over all reloads.

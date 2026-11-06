@@ -61,8 +61,11 @@ TEST(HostPathAlternatives, GivesTheOtherNamesOnceWithoutThePath)
 {
     const std::vector<std::string> plain = hotc::host_path_alternatives("/d/x.h");
     EXPECT_FALSE(has(plain, "/d/x.h"));
-#ifndef _WIN32
-    EXPECT_TRUE(plain.empty()); // on Windows, lexically_normal gives "\\d\\x.h"
+#ifdef _WIN32
+    // lexically_normal gives the preferred separator, so the only other name has backslashes.
+    EXPECT_EQ(plain, std::vector<std::string>{"\\d\\x.h"});
+#else
+    EXPECT_TRUE(plain.empty());
 #endif
     const std::vector<std::string> c = hotc::host_path_alternatives("/d/a/../b/y.h");
     EXPECT_FALSE(has(c, "/d/a/../b/y.h"));

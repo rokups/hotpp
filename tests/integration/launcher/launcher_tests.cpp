@@ -9,6 +9,7 @@
 #include "TestHost.h"
 #include "hot/backend.h"
 #include "hot/runtime/threads.h"
+#include "support/test_env.h"
 
 #include <gtest/gtest.h>
 
@@ -951,38 +952,46 @@ TEST(Launcher, ResetFailureReturns1)
     }
 }
 
-#ifndef _WIN32
-// Restores the environment variable XDG_CACHE_HOME when the test ends, also after a failed ASSERT.
-class XdgCacheHomeGuard
+// Restores an environment variable when the test ends, also after a failed ASSERT.
+class EnvGuard
 {
 public:
-    XdgCacheHomeGuard()
+    explicit EnvGuard(const char* name)
+        : name_(name)
     {
-        const char* old = std::getenv("XDG_CACHE_HOME");
+        const char* old = std::getenv(name);
         had_value_ = old != nullptr;
         if (had_value_)
             old_value_ = old;
     }
-    ~XdgCacheHomeGuard()
+    ~EnvGuard()
     {
         if (had_value_)
-            setenv("XDG_CACHE_HOME", old_value_.c_str(), 1);
+            test_support::set_env(name_.c_str(), old_value_.c_str());
         else
-            unsetenv("XDG_CACHE_HOME");
+            test_support::unset_env(name_.c_str());
     }
-    XdgCacheHomeGuard(const XdgCacheHomeGuard&) = delete;
-    XdgCacheHomeGuard& operator=(const XdgCacheHomeGuard&) = delete;
+    EnvGuard(const EnvGuard&) = delete;
+    EnvGuard& operator=(const EnvGuard&) = delete;
 
 private:
+    std::string name_;
     bool had_value_ = false;
     std::string old_value_;
 };
 
-TEST(Launcher, DefaultCacheDirUsesXdgCacheHome)
+// The cache folder comes from XDG_CACHE_HOME on Linux and from LOCALAPPDATA on Windows.
+#ifdef _WIN32
+constexpr const char* kCacheHomeVar = "LOCALAPPDATA";
+#else
+constexpr const char* kCacheHomeVar = "XDG_CACHE_HOME";
+#endif
+
+TEST(Launcher, DefaultCacheDirUsesTheCacheHomeVariable)
 {
-    XdgCacheHomeGuard guard;
+    EnvGuard guard(kCacheHomeVar);
     const fs::path dir = make_temp_dir();
-    ASSERT_EQ(setenv("XDG_CACHE_HOME", dir.string().c_str(), 1), 0);
+    test_support::set_env(kCacheHomeVar, dir.string().c_str());
     const std::string a = launcher::default_cache_dir((dir / "a.hot").string());
     const std::string b = launcher::default_cache_dir((dir / "b.hot").string());
     EXPECT_NE(a, b);
@@ -990,6 +999,5 @@ TEST(Launcher, DefaultCacheDirUsesXdgCacheHome)
     EXPECT_EQ(fs::path(a).parent_path(), dir / "hot");
     EXPECT_TRUE(fs::is_directory(a));
 }
-#endif
 
 } // namespace
