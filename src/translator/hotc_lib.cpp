@@ -2950,15 +2950,14 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
 // The tag table of a field (FieldInfo::attributes). "out" gets the arrays. The result is the
 // table name for the row, or "nullptr" when the field has no tag. A string argument keeps the
 // escapes of the script text, as an alias does, so it is a valid C++ literal.
-std::string emit_field_tags(std::string& out, const std::string& prefix, const hotc::ast::Field& f)
+// "table" is the name of the C++ table. "tags" must not be empty.
+std::string emit_tag_table(
+    std::string& out, const std::string& table, const std::vector<hotc::ast::FieldTag>& tags)
 {
-    if (f.attributes.empty())
-        return "nullptr";
-    const std::string table = prefix + "attrs_" + f.name;
     std::string rows;
-    for (size_t i = 0; i < f.attributes.size(); ++i)
+    for (size_t i = 0; i < tags.size(); ++i)
     {
-        const hotc::ast::FieldTag& t = f.attributes[i];
+        const hotc::ast::FieldTag& t = tags[i];
         std::string args = "nullptr";
         if (!t.args.empty())
         {
@@ -2972,6 +2971,13 @@ std::string emit_field_tags(std::string& out, const std::string& prefix, const h
     }
     out += "static const hot::AttributeTag " + table + "[] = {" + rows + "{nullptr, nullptr}};\n";
     return table;
+}
+
+std::string emit_field_tags(std::string& out, const std::string& prefix, const hotc::ast::Field& f)
+{
+    if (f.attributes.empty())
+        return "nullptr";
+    return emit_tag_table(out, prefix + "attrs_" + f.name, f.attributes);
 }
 
 } // namespace
@@ -3803,6 +3809,29 @@ void translate_impl(
                         fail_at(map, a.pos,
                             "unknown attribute '" + a.name + "' on field '" + c.name + "." + f.name
                                 + "': declare it as '[attribute] class " + a.name + ";'");
+        // A tag on a property: the host reads and writes the value, so the property needs both accessors.
+        for (const ClassDef& c : sc.classes)
+            for (const hotc::ast::Property& p : c.sprops)
+                for (const hotc::ast::FieldTag& a : p.attributes)
+                    fail_at(map, a.pos,
+                        "the attribute '" + a.name + "' is not allowed on the static property '" + c.name + "." + p.name
+                            + "': the host needs an object");
+        for (const ClassDef& c : sc.classes)
+            for (const hotc::ast::Property& p : c.props)
+                for (const hotc::ast::FieldTag& a : p.attributes)
+                {
+                    if (!attribute_names.count(a.name))
+                        fail_at(map, a.pos,
+                            "unknown attribute '" + a.name + "' on property '" + c.name + "." + p.name
+                                + "': declare it as '[attribute] class " + a.name + ";'");
+                    if (p.is_static)
+                        fail_at(map, a.pos,
+                            "the attribute '" + a.name + "' is not allowed on the static property '" + c.name + "."
+                                + p.name + "': the host needs an object");
+                    if (!p.has_get || !p.has_set)
+                        fail_at(map, a.pos,
+                            "the attribute '" + a.name + "' on property '" + c.name + "." + p.name + "' needs both 'get' and 'set': the host reads and writes the value");
+                }
     }
     // ---- script enums (design 5.3, 7.2). An enum becomes a C++ "enum class". A field of an
     // enum type reloads as its underlying integer type.
@@ -7603,8 +7632,27 @@ void translate_impl(
             o.w("};\n");
         }
         o.w("#if defined(__clang__)\n#pragma clang diagnostic pop\n#endif\n\n");
+        // The properties with tags: the thunks come after the declarations of the accessors.
+        std::string prop_rows;
+        size_t prop_count = 0;
+        for (const hotc::ast::Property& pr : cd.props)
+        {
+            if (pr.attributes.empty() || pr.is_static || !pr.has_get || !pr.has_set)
+                continue;
+            std::string tables;
+            const std::string tags = emit_tag_table(tables, P + "pattrs_" + pr.name, pr.attributes);
+            o.w(tables);
+            o.w("static void " + P + "pget_" + pr.name + "(hot::ShellBase*, void*);\n");
+            o.w("static void " + P + "pset_" + pr.name + "(hot::ShellBase*, const void*);\n");
+            prop_rows += "    {\"" + pr.name + "\", " + field_key(pr.type) + ", " + P + "pget_" + pr.name + ", " + P
+                + "pset_" + pr.name + ", " + tags + "},\n";
+            ++prop_count;
+        }
+        if (prop_count)
+            o.w("static const hot::PropertyInfo " + cn + "_props[] = {\n" + prop_rows + "};\n");
         o.w("static const hot::StateLayout " + cn + "_layout = {\n    \"" + S + "\", sizeof(" + S + "), alignof(" + S
-            + "), " + std::to_string(info.rows.size()) + ", " + cn + "_fields, true,\n};\n\n");
+            + "), " + std::to_string(info.rows.size()) + ", " + cn + "_fields, true"
+            + (prop_count ? ", " + cn + "_props, " + std::to_string(prop_count) : std::string()) + ",\n};\n\n");
         }
 
         // ---- generation functions
@@ -7712,6 +7760,17 @@ void translate_impl(
                 o.w(decl);
             }
         o.w("\n");
+        // The thunks of the properties with tags (PropertyInfo). The shell is the shell of this class.
+        for (const hotc::ast::Property& pr : cd.props)
+        {
+            if (pr.attributes.empty() || pr.is_static || !pr.has_get || !pr.has_set)
+                continue;
+            o.w("static void " + P + "pget_" + pr.name + "(hot::ShellBase* __s, void* __out)\n{\n    *static_cast<"
+                + pr.type + "*>(__out) = " + P + "get_" + pr.name + "(static_cast<" + shell + "*>(__s));\n}\n");
+            o.w("static void " + P + "pset_" + pr.name + "(hot::ShellBase* __s, const void* __in)\n{\n    " + P
+                + "set_" + pr.name + "(static_cast<" + shell + "*>(__s), *static_cast<const " + pr.type
+                + "*>(__in));\n}\n\n");
+        }
         // A script virtual function (design 7.6). A call reads the slot of the class of the object.
         for (const Method& m : cd.methods)
         {

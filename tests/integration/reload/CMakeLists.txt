@@ -23,6 +23,7 @@ add_executable(integration_reload_tests
     operator_use_class_tests.cpp
     function_reload_tests.cpp
     native_ptr_field_tests.cpp
+    property_tag_tests.cpp
     template_handle_tests.cpp
     using_alias_tests.cpp
     module_state_tests.cpp

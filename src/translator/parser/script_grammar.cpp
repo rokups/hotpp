@@ -401,7 +401,14 @@ Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in,
         }
         else
         {
-            reject_member_tags(st, *a);
+            if (m.kind == Member::IsProp)
+            {
+                // A tag on a property goes to the PropertyInfo table. The check of the accessors is later.
+                for (const Annot::Tag& t : a->tags)
+                    m.prop.attributes.push_back({t.name, t.args, st.offset(t.pos)});
+            }
+            else
+                reject_member_tags(st, *a);
             if (a->has_alias)
                 st.error(a->pos, "[alias] applies to fields only");
             if (a->weak_pos)

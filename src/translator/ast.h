@@ -610,6 +610,7 @@ struct Property
 {
     std::string name, type;
     std::string script_type; // "type" as the script writes it (see Param)
+    std::vector<FieldTag> attributes; // the tags in source order (the PropertyInfo table)
     Access access = Access::Public;
     bool has_get = false, has_set = false;
     Access get_access = Access::Public, set_access = Access::Public;

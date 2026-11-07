@@ -1,0 +1,18 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Tags on properties. A property with a tag has a row in the property table of the layout.
+using "Actor.h";
+
+[attribute] class Attribute;
+
+class Holder : Actor {
+    int hp = 40;
+    [Attribute("Max Health", "AM_DEFAULT")] int Health { get { return hp; } set { hp = value * 2; } }
+    [Attribute] float Speed { get; set; } = 1.5f;
+    int Plain { get; set; }
+
+    override void Tick(float dt) {
+    }
+}

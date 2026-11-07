@@ -177,6 +177,18 @@ struct FieldInfo
     const AttributeTag* attributes = nullptr;
 };
 
+// One property with script attribute tags (a property with no tag has no row). The thunks
+// call the accessors of the current generation, so a host needs no reflection. "get" assigns to a constructed value of the type "type_key".
+// "set" copies from a value of that type.
+struct PropertyInfo
+{
+    const char* name;
+    const char* type_key; // mangled C++ type name of the property (as FieldInfo::type_key)
+    void (*get)(ShellBase* shell, void* out);
+    void (*set)(ShellBase* shell, const void* in);
+    const AttributeTag* attributes; // the tags in source order, ends with a row with "name" null
+};
+
 // Size, alignment and fields of the state struct of one generation.
 struct StateLayout
 {
@@ -186,6 +198,9 @@ struct StateLayout
     const FieldInfo* fields;
     // When true, the block starts with a ShellBase* that the runtime writes (set_owner).
     bool has_owner = false;
+    // The properties with tags of the class itself (not of a script parent), or null.
+    const PropertyInfo* props = nullptr;
+    uint32_t prop_count = 0;
 };
 
 // The slot value of an interface method that a class does not implement.

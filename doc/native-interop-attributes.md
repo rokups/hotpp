@@ -135,6 +135,8 @@ class Enemy : Actor {
 - The strings keep the escapes of the script. The host gets the decoded text.
 - A `.cpp` script has no field tags yet.
 
+A property takes tags too: `[Attribute("Max Health")] int Health { get { return hp; } set { hp = value; } }`. The property needs both `get` and `set`: the host reads and writes the value. A read-only property, a write-only property, an expression property and a static property with a tag are errors. A tag on a property needs a declaration, as on a field: `unknown attribute 'Name' on property 'C.P'`.
+
 A `.cpp` script puts the macro `HOT_ATTRIBUTE("Name")` after `class`. The macro is in `hot/script.h`:
 
 ```cpp
@@ -148,6 +150,8 @@ class HOT_ATTRIBUTE("Spawnable") Enemy : public Actor {
 At run time, `Loader::stats().classes` gives one `hot::ClassInfo` for each class. Its field `attributes` holds the tag names in source order. The record field `ClassRecord::attributes` holds the same names as a list that ends with `nullptr`. A reload replaces the tags with the tags of the new generation. A removed class has no tags.
 
 The tags of a field are in its row of the state layout: `FieldInfo::attributes` (use `hot::find_field`). It is null for a field without a tag. Otherwise it is a list of `hot::AttributeTag` that ends with a row with `name` null. `AttributeTag::args` is null for a tag without strings. Otherwise it is a list of the strings that ends with `nullptr`. The text lives in the module of the record, so read it again after each reload.
+
+The tags of a property are in the property table of the state layout: `StateLayout::props` and `StateLayout::prop_count`. A property with no tag has no row. A `hot::PropertyInfo` row has the name, the type key, the tags and two thunks. `get(shell, out)` assigns the value to a constructed object of the property type. `set(shell, in)` reads a value of that type. The thunks call the accessors of the current generation, so the host needs no reflection and the table works in an AOT build. The table has the properties of the class itself, not of a script parent.
 
 ## `[nonnull]`
 

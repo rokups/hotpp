@@ -158,3 +158,57 @@ TEST(ScriptAttributeTranslation, FieldTagMisuseIsAnError)
         EXPECT_TRUE(has(r.diagnostics, error)) << script << r.diagnostics;
     }
 }
+
+// ---- tags on a property
+
+TEST(ScriptAttributeTranslation, PropertyTagGoesToThePropertyTable)
+{
+    const hotc::TranslateResult r = attr_translate(
+        "[attribute] class Attribute;\n"
+        "class Foo : Widget {\n"
+        "    int hp = 5;\n"
+        "    [Attribute(\"Max Health\", \"AM_DEFAULT\")] int Health { get { return hp; } set { hp = value; } }\n"
+        "    [Attribute] float Speed { get; set; }\n"
+        "    int Plain { get; set; }\n"
+        "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "static const hot::PropertyInfo Foo_props[]")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "{\"Health\", ")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "{\"Speed\", ")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "{\"Plain\", ")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "\"Max Health\", \"AM_DEFAULT\", nullptr")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "Foo__pget_Health(")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "Foo__pset_Health(")) << r.cpp;
+}
+
+TEST(ScriptAttributeTranslation, ClassWithoutPropertyTagHasNoPropertyTable)
+{
+    const hotc::TranslateResult r = attr_translate(
+        "[attribute] class Attribute;\nclass Foo : Widget { [Attribute] int n = 1;\n int P { get; set; } }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_FALSE(has(r.cpp, "hot::PropertyInfo")) << r.cpp;
+}
+
+TEST(ScriptAttributeTranslation, PropertyTagNeedsBothAccessors)
+{
+    const char* bodies[] = {"[Attribute] int P { get; }\n", "[Attribute] int P { set; }\n",
+        "[Attribute] int P => 3;\n"};
+    for (const char* body : bodies)
+    {
+        const hotc::TranslateResult r = attr_translate(
+            std::string("[attribute] class Attribute;\nclass Foo : Widget { ") + body + "}\n");
+        EXPECT_FALSE(r.ok) << body;
+        EXPECT_TRUE(has(r.diagnostics, "on property 'Foo.P' needs both 'get' and 'set'")) << body << r.diagnostics;
+    }
+}
+
+TEST(ScriptAttributeTranslation, PropertyTagMisuseIsAnError)
+{
+    const hotc::TranslateResult undeclared = attr_translate("class Foo : Widget { [Spawn] int P { get; set; } }\n");
+    EXPECT_FALSE(undeclared.ok);
+    EXPECT_TRUE(has(undeclared.diagnostics, "unknown attribute 'Spawn' on property 'Foo.P'")) << undeclared.diagnostics;
+    const hotc::TranslateResult stat =
+        attr_translate("[attribute] class Attribute;\nclass Foo : Widget { [Attribute] static int P { get; set; } }\n");
+    EXPECT_FALSE(stat.ok);
+    EXPECT_TRUE(has(stat.diagnostics, "not allowed on the static property 'Foo.P'")) << stat.diagnostics;
+}
