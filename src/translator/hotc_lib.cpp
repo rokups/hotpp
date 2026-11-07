@@ -240,6 +240,16 @@ std::string default_arg(const hotc::ast::Param& p, const std::vector<hotc::ast::
     return p.def->cpp.empty() ? std::string() : " = " + p.def->cpp;
 }
 
+// The part of a C++ name for a unit: each character that is not a letter or a digit becomes "_".
+// Optimized AOT code names the exported forwarders of a unit with it ("hot_fn_<unit>__<symbol>").
+std::string unit_symbol(std::string unit)
+{
+    for (char& c : unit)
+        if (!std::isalnum(static_cast<unsigned char>(c)))
+            c = '_';
+    return unit;
+}
+
 // A static method or a free function after the lowering. The lowering runs one time (for the
 // checks). The text of the definition and of the prototype come from this record.
 //  - owner: the class that declares the function; empty for a free function.
@@ -6421,10 +6431,11 @@ void translate_impl(
             emit_value(cd);
             continue;
         }
-        // Plain AOT code: the interface header of the owner unit gives the text of an imported class
-        // (the slot numbers, the record, the shell and the state struct). This TU has no copy of it.
+        // AOT code: the interface header of the owner unit gives the text of an imported class (the
+        // slot numbers, the record, the shell and the state struct). This TU has no copy of it.
         // The include comes before the first class of the unit, after the structs that come first.
-        const bool from_header = opt.aot && !opt.aot_optimized && !cd.foreign_unit.empty();
+        // Optimized AOT code links all units into one program, so a copy gives duplicate symbols.
+        const bool from_header = opt.aot && !cd.foreign_unit.empty();
         if (from_header && iface_units.insert(cd.foreign_unit).second)
             o.w("#include \"" + esc(cd.foreign_unit) + ".iface.h\"\n");
         // The block of a class in a namespace is in the nested namespace "hot_gen" of the namespace,
@@ -7951,7 +7962,8 @@ void translate_impl(
         size_t prop_count = 0;
         for (const hotc::ast::Property& pr : cd.props)
         {
-            if (pr.attributes.empty() || pr.is_static || !pr.has_get || !pr.has_set)
+            // Optimized AOT code has no layout, so it has no property table and no thunks.
+            if (pr.attributes.empty() || pr.is_static || !pr.has_get || !pr.has_set || opt.aot_optimized)
                 continue;
             std::string tables;
             const std::string tags = emit_tag_table(tables, P + "pattrs_" + pr.name, pr.attributes);
@@ -7975,7 +7987,7 @@ void translate_impl(
         if (!opt.aot_optimized)
             o.w("HOT_HIDDEN " + S + "* state_of(" + shell + "* __self)\n{\n    return static_cast<" + S
                 + "*>(__self->state);\n}\n\n");
-        if (!direct_defs.empty())
+        if (!direct_defs.empty() && !from_header) // the owner unit defines the members of the header shell
         {
             o.w("// Direct dispatch of optimized AOT code: the shell calls the state member, no slot.\n");
             mapped(direct_defs, cd.line, cd.pos);
@@ -8002,13 +8014,18 @@ void translate_impl(
         // hot::construct. The slot numbers come from the shared slot manifest (slots_in).
         // An interface parent keeps the state and the chain of the class, and gets the field access
         // of the interface. Its bodies forward to the owner unit (emit_body).
+        // Optimized AOT code: a field is a member of the shell in the header.
         if (cd.iface_parent)
             for (const Field& f : cd.fields)
             {
                 const std::string t = types.cpp_storage(f.type, hotc::TypeModel::StorageUse::Field);
-                o.w("[[maybe_unused]] HOT_HIDDEN static " + t + "& " + P + "fld_" + f.name
-                    + "(hot::ShellBase* __s)\n{\n    static hot::FieldSite __site;\n    return hot::field<" + t
-                    + ">(__s, __site, \"" + f.name + "\");\n}\n");
+                if (opt.aot_optimized)
+                    o.w("[[maybe_unused]] HOT_HIDDEN static " + t + "& " + P + "fld_" + f.name + "(" + shell
+                        + "* __s)\n{\n    return __s->" + f.name + ";\n}\n");
+                else
+                    o.w("[[maybe_unused]] HOT_HIDDEN static " + t + "& " + P + "fld_" + f.name
+                        + "(hot::ShellBase* __s)\n{\n    static hot::FieldSite __site;\n    return hot::field<" + t
+                        + ">(__s, __site, \"" + f.name + "\");\n}\n");
             }
         const size_t thunk_mark = thunk_regs.size();
         // The base for shared_from_this of the shell (see the use after the bodies), or an empty text.
@@ -8042,8 +8059,21 @@ void translate_impl(
                     r += ", std::forward<decltype(" + p.name + ")>(" + p.name + ")";
                 return r;
             };
+            // Optimized AOT code: a method is a member of the shell in the header. The owner unit
+            // defines it. A call of a virtual member goes through the vtable, as a slot call does.
             for (const Method& m : cd.methods)
-                if (!m.overrides_virtual && hook_of(m) != Hook::Convert)
+                if (!m.overrides_virtual && hook_of(m) != Hook::Convert && opt.aot_optimized)
+                {
+                    std::string as;
+                    for (const Param& p : m.params)
+                        as += (as.empty() ? "" : ", ") + arg_expr(p.type, p.name);
+                    for (const std::string sfx : {std::string(), std::string("_virt")})
+                        if (sfx.empty() || (m.vslot_owner == cn && !m.is_override))
+                            o.w("[[maybe_unused]] HOT_HIDDEN static " + fn_ret(m) + " " + P + m.name + sfx + "(" + shell
+                                + "* __self" + param_decl_def(m) + ")\n{\n    return __self->" + body_member(m) + "(" + as
+                                + ");\n}\n");
+                }
+                else if (!m.overrides_virtual && hook_of(m) != Hook::Convert)
                     o.w("[[maybe_unused]] HOT_HIDDEN static " + fn_ret(m) + " " + P + m.name + "(" + shell + "* __self"
                         + param_decl_def(m) + ")\n{\n    return hot::call_script<" + fn_ret(m) + "(" + B + "*" + type_list(m)
                         + ")>(__self, " + slot_id(m.name) + fwd_args(m.params) + ");\n}\n");
@@ -8069,9 +8099,13 @@ void translate_impl(
             for (const Field& f : cd.fields)
             {
                 const std::string t = types.cpp_storage(f.type, hotc::TypeModel::StorageUse::Field);
-                o.w("[[maybe_unused]] HOT_HIDDEN static " + t + "& " + P + "fld_" + f.name
-                    + "(hot::ShellBase* __s)\n{\n    static hot::FieldSite __site;\n    return hot::field<" + t
-                    + ">(__s, __site, \"" + f.name + "\");\n}\n");
+                if (opt.aot_optimized)
+                    o.w("[[maybe_unused]] HOT_HIDDEN static " + t + "& " + P + "fld_" + f.name + "(" + shell
+                        + "* __s)\n{\n    return __s->" + f.name + ";\n}\n");
+                else
+                    o.w("[[maybe_unused]] HOT_HIDDEN static " + t + "& " + P + "fld_" + f.name
+                        + "(hot::ShellBase* __s)\n{\n    static hot::FieldSite __site;\n    return hot::field<" + t
+                        + ">(__s, __site, \"" + f.name + "\");\n}\n");
             }
             std::vector<std::vector<Param>> overloads;
             for (const hotc::ast::Ctor& k : cd.ctors)
@@ -8085,6 +8119,24 @@ void translate_impl(
                 {
                     decl += std::string(decl.empty() ? "" : ", ") + name_in_type(p.type, p.name) + default_arg(p, ps, base_cx);
                     ptypes += ", " + p.type;
+                }
+                // Optimized AOT code: "new" calls the forwarder that the owner unit exports.
+                if (opt.aot_optimized)
+                {
+                    std::string nodef, as;
+                    for (const Param& p : ps)
+                    {
+                        nodef += std::string(nodef.empty() ? "" : ", ") + name_in_type(p.type, p.name);
+                        as += std::string(as.empty() ? "" : ", ") + arg_expr(p.type, p.name);
+                    }
+                    const std::string fn = "hot_fn_" + unit_symbol(cd.foreign_unit) + "__" + P;
+                    o.w(shell + "* " + fn + "new(" + nodef + ");\n");
+                    o.w("[[maybe_unused]] HOT_HIDDEN static " + shell + "* " + P + "new(" + decl + ")\n{\n    return " + fn
+                        + "new(" + as + ");\n}\n");
+                    o.w("std::shared_ptr<" + shell + "> " + fn + "new_shared(" + nodef + ");\n");
+                    o.w("[[maybe_unused]] HOT_HIDDEN static std::shared_ptr<" + shell + "> " + P + "new_shared(" + decl
+                        + ")\n{\n    return " + fn + "new_shared(" + as + ");\n}\n");
+                    continue;
                 }
                 const std::string make = "hot::construct<" + shell + ptypes + ">(hot::class_ref(\"" + cd.key_name()
                     + "\")" + fwd_args(ps) + ")";
@@ -8113,7 +8165,8 @@ void translate_impl(
         // The thunks of the properties with tags (PropertyInfo). The shell is the shell of this class.
         for (const hotc::ast::Property& pr : cd.props)
         {
-            if (pr.attributes.empty() || pr.is_static || !pr.has_get || !pr.has_set)
+            // Optimized AOT code has no layout, so it has no property table and no thunks.
+            if (pr.attributes.empty() || pr.is_static || !pr.has_get || !pr.has_set || opt.aot_optimized)
                 continue;
             o.w("static void " + P + "pget_" + pr.name + "(hot::ShellBase* __s, void* __out)\n{\n    *static_cast<"
                 + pr.type + "*>(__out) = " + P + "get_" + pr.name + "(static_cast<" + shell + "*>(__s));\n}\n");
@@ -8397,7 +8450,7 @@ void translate_impl(
                 build_text += "    return __self;\n}\n";
                 mapped(build_text, cline, cpos);
                 std::string iface_make; // "new" of an interface parent: the owner unit builds the object
-                if (cd.iface_parent)
+                if (cd.iface_parent && !opt.aot_optimized)
                 {
                     std::string ptypes, fwd;
                     for (const Param& p : cm.params)
@@ -8408,7 +8461,7 @@ void translate_impl(
                     iface_make = "hot::construct<" + shell + ptypes + ">(hot::class_ref(\"" + cd.key_name() + "\")" + fwd + ")";
                 }
                 mapped("[[maybe_unused]] HOT_HIDDEN static " + shell + "* " + P + "new(" + pd_def + ")\n{\n    return "
-                        + (cd.iface_parent ? iface_make : P + "build(true" + ctor_fwd + ")") + ";\n}\n",
+                        + (!iface_make.empty() ? iface_make : P + "build(true" + ctor_fwd + ")") + ";\n}\n",
                     cline, cpos);
                 // "new" of a class with a std::shared_ptr handle: one block for the shell and the
                 // control block (make_shared_shell). An exception of the constructor frees the object
@@ -8431,12 +8484,23 @@ void translate_impl(
                 if (has_entry)
                     shared_text += "    " + entry + "(__h.get(), __plan.second" + ctor_fwd + ");\n";
                 shared_text += "    return __h;\n}\n";
-                if (cd.iface_parent)
+                if (!iface_make.empty())
                     shared_text = "template <int = 0>\n[[maybe_unused]] HOT_HIDDEN static \x01std::shared_ptr<" + shell + "> "
                         + P + "new_shared(" + pd_def + ")\n{\n    return \x01std::shared_ptr<" + shell + ">(" + iface_make
                         + ");\n}\n";
                 if (std_shared)
                     mapped(shared_text, cline, cpos);
+                // Optimized AOT code: the exported forwarders of "new". An importer calls them.
+                if (opt.aot_optimized && cd.foreign_unit.empty())
+                {
+                    const std::string fn = "hot_fn_" + unit_symbol(std::filesystem::path(opt.input).stem().string())
+                        + "__" + P;
+                    const std::string as = ctor_fwd.empty() ? std::string() : ctor_fwd.substr(2);
+                    o.w(shell + "* " + fn + "new(" + pd + ")\n{\n    return " + P + "new(" + as + ");\n}\n");
+                    if (std_shared)
+                        o.w("\x01std::shared_ptr<" + shell + "> " + fn + "new_shared(" + pd + ")\n{\n    return " + P
+                            + "new_shared(" + as + ");\n}\n");
+                }
                 o.w("\n");
             }
             if (has_entry)
@@ -8576,7 +8640,8 @@ void translate_impl(
             // An interface parent: a method calls the slot of the canonical record of the parent. The
             // constructor and the destructor call the function that the owner unit exports.
             std::string iface_text;
-            if (cd.iface_parent)
+            // Optimized AOT code: the wrapper calls the member of the shell. The owner unit defines it.
+            if (cd.iface_parent && !opt.aot_optimized)
             {
                 std::string types_text, fwd;
                 for (const Param& p : m.params)
@@ -8844,7 +8909,7 @@ void translate_impl(
                 std::string types_text;
                 for (const std::string& t : nv.ptypes)
                     types_text += (types_text.empty() ? "" : ", ") + t;
-                if (from_header && cd.iface_parent)
+                if (from_header && cd.iface_parent && !opt.aot_optimized)
                     o.w("[[maybe_unused]] HOT_HIDDEN static " + nv.ret + " " + P + "base_" + nv.name + "(" + B + "* a" + ps
                         + ")\n{\n    return hot::call_parent<" + nv.ret + "(" + types_text + ")>(hot::class_ref(\""
                         + cd.key_name() + "\").record, state_of(static_cast<" + shell + "*>(a)), " + std::to_string(i)
@@ -9254,12 +9319,20 @@ void translate_impl(
     }
     // ---- the module variables of the imports. The owner unit holds each one in its module block.
     // The accessor gives a reference: an importer reads and writes the variable (hot::mod_var).
+    // Optimized AOT code: the accessor calls the forwarder "hot_mv_<unit>__<name>" of the owner unit.
     if (g_diag.items.empty() && !foreign_vars.empty())
     {
         o.w("// ---------------------------------------------------------------- module variables of the imports\n");
         for (const ForeignVar& v : foreign_vars)
         {
             const std::string t = types.cpp_storage(v.field.type, hotc::TypeModel::StorageUse::Field);
+            if (opt.aot_optimized)
+            {
+                const std::string fn = "hot_mv_" + unit_symbol(v.unit) + "__" + v.field.name;
+                o.w(t + "& " + fn + "();\n[[maybe_unused]] HOT_HIDDEN static " + t + "& hot_mv_" + v.field.name
+                    + "()\n{\n    return " + fn + "();\n}\n\n");
+                continue;
+            }
             o.w("[[maybe_unused]] HOT_HIDDEN static " + t + "& hot_mv_" + v.field.name + "()\n{\n");
             o.w("    static hot::FieldSite __site;\n");
             o.w("    return hot::mod_var<" + t + ">(hot::unit_ref(\"" + esc(v.unit) + "\"), __site, \"" + v.field.name
@@ -9267,6 +9340,18 @@ void translate_impl(
         }
         reset();
     }
+    // ---- optimized AOT code: the exported forwarders of the module variables of this unit. An
+    // importer reads and writes a variable through them.
+    if (g_diag.items.empty() && opt.aot_optimized && !sc.is_cpp)
+        for (const ClassDef& c : sc.classes)
+            if (c.name == kModuleName && c.foreign_unit.empty())
+                for (const Field& f : c.fields)
+                {
+                    const std::string t = types.cpp_storage(f.type, hotc::TypeModel::StorageUse::Field);
+                    o.w(t + "& hot_mv_" + unit_symbol(std::filesystem::path(opt.input).stem().string()) + "__" + f.name
+                        + "()\n{\n    return hot_mod()->" + f.name + ";\n}\n\n");
+                    reset();
+                }
     // ---- static_assert at file level and in class bodies (gap G08). Each one is a C++ "static_assert"
     // at file scope here, after the types: a struct is complete, so "sizeof" of it is valid. A class
     // item sees the names of its class (its constants) as a body of the class does.
@@ -9364,8 +9449,12 @@ void translate_impl(
             int first_line = m.line;
             if (!m.body.stmts.empty() && hotc::ast::pos_of(*m.body.stmts.front()) != 0)
                 first_line = map.line(hotc::ast::pos_of(*m.body.stmts.front()));
+            // Optimized AOT code: the exported forwarder of the function, "hot_fn_<unit>__<symbol>".
+            const std::string fwd_fn = !opt.aot_optimized ? std::string()
+                : "hot_fn_" + unit_symbol(m.foreign_unit.empty() ? std::filesystem::path(opt.input).stem().string()
+                                                                   : m.foreign_unit) + "__" + ls.symbol;
             bodies.push_back({r.ns,
-                [&o, &all_text, &reset, &write_stmts, h = body_head(m), ls, file, end_line, first_line]
+                [&o, &all_text, &reset, &write_stmts, h = body_head(m), ls, file, end_line, first_line, fwd_fn]
                 {
                     auto line_at = [&](int l) { return "#line " + std::to_string(l) + " \"" + file + "\"\n"; };
                     const std::string head = "[[maybe_unused]] HOT_HIDDEN static " + ls.ret + " " + ls.symbol + "(" + ls.params;
@@ -9374,6 +9463,18 @@ void translate_impl(
                     o.w(head + ")\n");
                     o.w(line_at(h->line));
                     o.w("{\n");
+                    std::string fargs;
+                    for (const hotc::ast::Param& p : ls.method->params)
+                        fargs += std::string(fargs.empty() ? "" : ", ") + "std::forward<decltype(" + p.name + ")>(" + p.name + ")";
+                    if (!ls.method->foreign_unit.empty() && !fwd_fn.empty())
+                    {
+                        // Optimized AOT code: a plain call of the forwarder of the owner unit.
+                        o.w("    " + ls.ret + " " + fwd_fn + "(" + ls.params + ");\n");
+                        o.w("    return " + fwd_fn + "(" + fargs + ");\n}\n");
+                        reset();
+                        o.w("\n");
+                        return;
+                    }
                     if (!ls.method->foreign_unit.empty())
                     {
                         // A function of an imported module: a call through the function table of
@@ -9398,6 +9499,9 @@ void translate_impl(
                     write_stmts(*h, ls.body.get());
                     o.w(line_at(end_line));
                     o.w("}\n");
+                    if (!fwd_fn.empty())
+                        o.w(ls.ret + " " + fwd_fn + "(" + ls.params + ")\n{\n    return " + ls.symbol + "(" + fargs
+                            + ");\n}\n");
                     reset();
                     o.w("\n");
                 }});

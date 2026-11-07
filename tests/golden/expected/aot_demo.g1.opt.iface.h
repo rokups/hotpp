@@ -124,7 +124,7 @@ struct Veteran_Shell : Fighter_Shell {
     }
 #line 43 "aot_demo.hot"
     ~Veteran_Shell() override { hot::finish_object(this, &Veteran_record); }
-#line 404 "aot_demo.hot.cpp"
+#line 412 "aot_demo.hot.cpp"
 #line 43 "aot_demo.hot"
     template <class... A>
 #line 43 "aot_demo.hot"
@@ -133,17 +133,17 @@ struct Veteran_Shell : Fighter_Shell {
     {
 #line 43 "aot_demo.hot"
     }
-#line 413 "aot_demo.hot.cpp"
+#line 421 "aot_demo.hot.cpp"
 
 #line 43 "aot_demo.hot"
     void Tick(float a0) override;
-#line 417 "aot_demo.hot.cpp"
+#line 425 "aot_demo.hot.cpp"
 #line 44 "aot_demo.hot"
     int32_t rage = hot::field_init<int32_t>(3);
-#line 420 "aot_demo.hot.cpp"
+#line 428 "aot_demo.hot.cpp"
 #line 45 "aot_demo.hot"
     int32_t parent_power = hot::field_init<int32_t>(0);
-#line 423 "aot_demo.hot.cpp"
+#line 431 "aot_demo.hot.cpp"
 
 #line 43 "aot_demo.hot"
     void __b_ctor(int32_t start, int32_t r);
@@ -155,7 +155,7 @@ struct Veteran_Shell : Fighter_Shell {
     int32_t __b_Attack();
 #line 43 "aot_demo.hot"
     void __b_Tick(float dt);
-#line 435 "aot_demo.hot.cpp"
+#line 443 "aot_demo.hot.cpp"
 };
 
 
@@ -176,7 +176,7 @@ struct Spawner_Shell : Actor, hot::ShellCore {
     }
 #line 66 "aot_demo.hot"
     ~Spawner_Shell() override { hot::finish_object(this, &Spawner_record); }
-#line 632 "aot_demo.hot.cpp"
+#line 648 "aot_demo.hot.cpp"
 #line 66 "aot_demo.hot"
     template <class... A>
 #line 66 "aot_demo.hot"
@@ -185,7 +185,7 @@ struct Spawner_Shell : Actor, hot::ShellCore {
     {
 #line 66 "aot_demo.hot"
     }
-#line 641 "aot_demo.hot.cpp"
+#line 657 "aot_demo.hot.cpp"
 #line 66 "aot_demo.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 66 "aot_demo.hot"
@@ -194,7 +194,7 @@ struct Spawner_Shell : Actor, hot::ShellCore {
         return Actor::TakeDamage(a0);
 #line 66 "aot_demo.hot"
     }
-#line 650 "aot_demo.hot.cpp"
+#line 666 "aot_demo.hot.cpp"
 #line 66 "aot_demo.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 66 "aot_demo.hot"
@@ -203,28 +203,28 @@ struct Spawner_Shell : Actor, hot::ShellCore {
         return Actor::TakeDamage(a0, a1);
 #line 66 "aot_demo.hot"
     }
-#line 659 "aot_demo.hot.cpp"
+#line 675 "aot_demo.hot.cpp"
 
 #line 66 "aot_demo.hot"
     void Tick(float a0) override;
-#line 663 "aot_demo.hot.cpp"
+#line 679 "aot_demo.hot.cpp"
 #line 67 "aot_demo.hot"
     std::shared_ptr<Fighter> kid = hot::field_init<std::shared_ptr<Fighter>>(nullptr);
-#line 666 "aot_demo.hot.cpp"
+#line 682 "aot_demo.hot.cpp"
 #line 68 "aot_demo.hot"
     int32_t power = hot::field_init<int32_t>(0);
-#line 669 "aot_demo.hot.cpp"
+#line 685 "aot_demo.hot.cpp"
 #line 69 "aot_demo.hot"
     int32_t attack = hot::field_init<int32_t>(0);
-#line 672 "aot_demo.hot.cpp"
+#line 688 "aot_demo.hot.cpp"
 #line 70 "aot_demo.hot"
     bool is_veteran = hot::field_init<bool>(false);
-#line 675 "aot_demo.hot.cpp"
+#line 691 "aot_demo.hot.cpp"
 
 #line 66 "aot_demo.hot"
     void __b_dtor();
 #line 66 "aot_demo.hot"
     void __b_Tick(float dt);
-#line 681 "aot_demo.hot.cpp"
+#line 697 "aot_demo.hot.cpp"
 };
 

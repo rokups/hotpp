@@ -12,8 +12,10 @@
 #ifdef AOT_UNITS_LOADER
 #include "hot/runtime/loader.h"
 #endif
-#if defined(AOT_UNITS_LOADER) && defined(AOT_UNITS_CHAIN)
+#ifdef AOT_UNITS_LOADER
 #include "hot/backend.h"
+#endif
+#if defined(AOT_UNITS_LOADER) && defined(AOT_UNITS_CHAIN) && !defined(AOT_EXPECT_OPTIMIZED)
 #include "support/script_files.h"
 #endif
 
@@ -88,6 +90,11 @@ void expect_native_thunk(void* thunk, Actor* app)
 
 TEST(AotUnits, TableListsTheImportsWithTheInterfaceHashes)
 {
+#ifdef AOT_EXPECT_OPTIMIZED
+    EXPECT_TRUE(hot::aot_table.optimized);
+#else
+    EXPECT_FALSE(hot::aot_table.optimized);
+#endif
     std::vector<std::string> names;
     const hot::AotScript* app = nullptr;
     for (size_t i = 0; i < hot::aot_table.count; ++i)
@@ -196,7 +203,26 @@ TEST(AotUnits, LoadAotRejectsAMissingImport)
     EXPECT_NE(r.error.find("is not in the AOT table"), std::string::npos) << r.error;
 }
 
-#ifdef AOT_UNITS_CHAIN
+#ifdef AOT_EXPECT_OPTIMIZED
+// Optimized AOT code has no slots: the loader refuses a revert of a unit. The objects still work.
+TEST(AotUnits, LoaderRefusesARevertOfAnOptimizedUnit)
+{
+    ASSERT_TRUE(hot::aot_table.optimized);
+    std::unique_ptr<hot::Backend> backend = hot::make_default_backend();
+    hot::Loader loader;
+    const hot::ReloadResult r = loader.load_aot(hot::aot_table);
+    ASSERT_TRUE(r) << r.error;
+    const hot::ReloadResult rv = loader.revert_unit("aot_unit_base", *backend);
+    ASSERT_FALSE(rv);
+    EXPECT_NE(rv.error.find("optimized AOT code"), std::string::npos) << rv.error;
+    const hot::ClassEntry* e = loader.find("UnitApp");
+    ASSERT_NE(e, nullptr);
+    World world;
+    expect_one_tick(world, static_cast<Actor*>(e->create().native));
+}
+#endif
+
+#if defined(AOT_UNITS_CHAIN) && !defined(AOT_EXPECT_OPTIMIZED)
 // A revert of the base unit keeps the chain: the children in the other units link to the new
 // record of UnitBase, and "base.Score()" and "base.Tick()" reach it.
 TEST(AotUnits, RevertOfTheBaseUnitKeepsTheChain)

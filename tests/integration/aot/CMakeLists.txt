@@ -162,55 +162,56 @@ endif()
 
 # Two scripts as two units (modules step 6): "new", a field, a method, a module variable and an
 # overloaded free function of another unit. The same tests run with AotRegistry (hot::aot) and
-# with Loader::load_aot. Optimized AOT code has no cross-module access yet, so the mode
-# AOT_OPTIMIZED has no such test.
-if(NOT HOT_SCRIPT_AOT_OPTIMIZED)
+# with Loader::load_aot. The chain has three units: UnitApp derives from UnitMid, UnitMid from
+# UnitBase. The importers include the interface headers (<name>.iface.h) of their imports.
+# The variant "_opt" is optimized AOT code. HOT_SCRIPT_MODE=AOT_OPTIMIZED makes the plain variant
+# optimized too, so its tests then expect optimized code.
 set(_hot_unit_scripts
     ${PROJECT_SOURCE_DIR}/tests/scripts/aot_units/aot_unit_base.hot
     ${PROJECT_SOURCE_DIR}/tests/scripts/aot_units/aot_unit_app.hot)
-hot_add_scripts(TARGET aot_units_scripts AOT SCRIPTS ${_hot_unit_scripts}
-    INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
-    DEPENDS ${HOT_HEADERS})
-add_executable(integration_aot_units_tests aot_units_tests.cpp
-    ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
-    ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
-target_include_directories(integration_aot_units_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests/engine)
-target_link_libraries(integration_aot_units_tests PRIVATE aot_units_scripts hot::aot GTest::gtest_main)
-add_executable(integration_aot_units_load_tests aot_units_tests.cpp
-    ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
-    ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
-target_include_directories(integration_aot_units_load_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests/engine)
-target_compile_definitions(integration_aot_units_load_tests PRIVATE AOT_UNITS_LOADER=1)
-target_link_libraries(integration_aot_units_load_tests PRIVATE aot_units_scripts hot_backend GTest::gtest_main)
-set_target_properties(integration_aot_units_load_tests PROPERTIES ENABLE_EXPORTS ON)
-hot_gtest(integration_aot_units_tests TEST_PREFIX units/ PROPERTIES LABELS aot)
-hot_gtest(integration_aot_units_load_tests TEST_PREFIX units_load/ PROPERTIES LABELS aot)
-
-# A script parent chain over three units: UnitApp derives from UnitMid, UnitMid from UnitBase.
-# The importers include the interface headers (<name>.iface.h) of their imports.
 set(_hot_chain_scripts
     ${PROJECT_SOURCE_DIR}/tests/scripts/aot_units/aot_unit_base.hot
     ${PROJECT_SOURCE_DIR}/tests/scripts/aot_units/aot_unit_mid.hot
     ${PROJECT_SOURCE_DIR}/tests/scripts/aot_units/aot_unit_app_parent_chain.hot)
-hot_add_scripts(TARGET aot_units_chain_scripts AOT SCRIPTS ${_hot_chain_scripts}
-    INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
-    DEPENDS ${HOT_HEADERS})
-add_executable(integration_aot_units_chain_tests aot_units_tests.cpp
-    ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
-    ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
-target_include_directories(integration_aot_units_chain_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests/engine)
-target_compile_definitions(integration_aot_units_chain_tests PRIVATE AOT_UNITS_CHAIN=1)
-target_link_libraries(integration_aot_units_chain_tests PRIVATE aot_units_chain_scripts hot::aot GTest::gtest_main)
-add_executable(integration_aot_units_chain_load_tests aot_units_tests.cpp
-    ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
-    ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
-target_include_directories(integration_aot_units_chain_load_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests/engine
-    ${PROJECT_SOURCE_DIR}/tests)
-target_compile_definitions(integration_aot_units_chain_load_tests PRIVATE AOT_UNITS_LOADER=1 AOT_UNITS_CHAIN=1
-    HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
-target_link_libraries(integration_aot_units_chain_load_tests PRIVATE aot_units_chain_scripts hot_backend
-    GTest::gtest_main)
-set_target_properties(integration_aot_units_chain_load_tests PROPERTIES ENABLE_EXPORTS ON)
-hot_gtest(integration_aot_units_chain_tests TEST_PREFIX units_chain/ PROPERTIES LABELS aot)
-hot_gtest(integration_aot_units_chain_load_tests TEST_PREFIX units_chain_load/ PROPERTIES LABELS aot)
-endif()
+foreach(set_name units units_chain)
+    foreach(variant "" _opt)
+        set(opt_keyword "")
+        set(expect_opt "")
+        set(label aot)
+        if(variant STREQUAL "_opt")
+            set(opt_keyword OPTIMIZED)
+            set(label aot-opt)
+        endif()
+        if(variant STREQUAL "_opt" OR HOT_SCRIPT_AOT_OPTIMIZED)
+            set(expect_opt AOT_EXPECT_OPTIMIZED=1)
+        endif()
+        set(chain_def "")
+        set(scripts ${_hot_unit_scripts})
+        if(set_name STREQUAL "units_chain")
+            set(chain_def AOT_UNITS_CHAIN=1)
+            set(scripts ${_hot_chain_scripts})
+        endif()
+        set(name ${set_name}${variant})
+        hot_add_scripts(TARGET aot_${name}_scripts AOT ${opt_keyword} SCRIPTS ${scripts}
+            INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
+            DEPENDS ${HOT_HEADERS})
+        add_executable(integration_aot_${name}_tests aot_units_tests.cpp
+            ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
+            ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+        target_include_directories(integration_aot_${name}_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests/engine)
+        target_compile_definitions(integration_aot_${name}_tests PRIVATE ${chain_def} ${expect_opt})
+        target_link_libraries(integration_aot_${name}_tests PRIVATE aot_${name}_scripts hot::aot GTest::gtest_main)
+        add_executable(integration_aot_${name}_load_tests aot_units_tests.cpp
+            ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
+            ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+        target_include_directories(integration_aot_${name}_load_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests/engine
+            ${PROJECT_SOURCE_DIR}/tests)
+        target_compile_definitions(integration_aot_${name}_load_tests PRIVATE AOT_UNITS_LOADER=1 ${chain_def}
+            ${expect_opt} HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+        target_link_libraries(integration_aot_${name}_load_tests PRIVATE aot_${name}_scripts hot_backend
+            GTest::gtest_main)
+        set_target_properties(integration_aot_${name}_load_tests PROPERTIES ENABLE_EXPORTS ON)
+        hot_gtest(integration_aot_${name}_tests TEST_PREFIX ${name}/ PROPERTIES LABELS ${label})
+        hot_gtest(integration_aot_${name}_load_tests TEST_PREFIX ${name}_load/ PROPERTIES LABELS ${label})
+    endforeach()
+endforeach()
