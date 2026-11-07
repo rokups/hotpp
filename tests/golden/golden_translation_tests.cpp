@@ -492,9 +492,9 @@ TEST(GoldenTranslation, CrossModuleImporter)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     check_golden("xmod_use.g1.cpp", r.cpp);
     check_golden("xmod_use.g1.slots", r.slots_out);
-    EXPECT_NE(r.cpp.find("hot::call_fn<decltype(hot_fn_twice)>(hot::unit_ref(\"xmod_lib.hot\"), __site, \"twice\""),
+    EXPECT_NE(r.cpp.find("hot::call_fn<decltype(hot_fn_twice)>(hot::unit_ref(\"xmod_lib\"), __site, \"twice\""),
         std::string::npos);
-    EXPECT_NE(r.cpp.find("hot::mod_var<int32_t>(hot::unit_ref(\"xmod_lib.hot\"), __site, \"counter\")"), std::string::npos);
+    EXPECT_NE(r.cpp.find("hot::mod_var<int32_t>(hot::unit_ref(\"xmod_lib\"), __site, \"counter\")"), std::string::npos);
     EXPECT_NE(r.cpp.find("hot_mv_counter() = hot_mv_counter() + 1;"), std::string::npos);
     EXPECT_NE(r.cpp.find("return hot::call_script<void(hot::PlainObject*, int32_t)>(__self, Box_SLOT_grow, "),
         std::string::npos);

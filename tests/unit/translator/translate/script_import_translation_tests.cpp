@@ -184,6 +184,51 @@ TEST(ScriptImportTranslation, NestedImportIsRelativeToItsImporter)
     EXPECT_EQ(r.imports.size(), 2u);
 }
 
+// The unit name rule (doc/module-level.md). The host gives the unit name of the main script. Without
+// it, the name is the stem. An import found next to its importer gets the directory of the importer
+// unit and the import path, without ".hot". AOT code and other code give the same names.
+TEST(ScriptImportTranslation, AotAndOtherCodeGiveTheSameUnitNames)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    std::filesystem::create_directories(dir.path() / "lib");
+    std::filesystem::create_directories(dir.path() / "app");
+    write_file(dir.path() / "lib" / "base.hot", std::string(kParent) + "int Twice(int v) { return v * 2; }\n");
+    write_file(dir.path() / "lib" / "mid.hot", "using \"./base.hot\";\nclass Mid : Base { }\n");
+    for (const bool aot : {false, true})
+        for (const std::string& unit : {std::string("game/app/t"), std::string()})
+        {
+            hotc::TranslateOptions o = temp_options(dir,
+                "using \"../lib/base.hot\";\n"
+                "using \"../lib/mid.hot\";\n"
+                "class Kid : Mid {\n"
+                "    override int Power() { return Twice(2); }\n"
+                "}\n");
+            o.script_name = (dir.path() / "app" / "t.hot").string();
+            o.unit_name = unit;
+            o.aot = aot;
+            const hotc::TranslateResult r = hotc::translate(o);
+            ASSERT_TRUE(r.ok) << r.diagnostics;
+            const std::string root = unit.empty() ? std::string("../lib/") : std::string("game/lib/");
+            EXPECT_EQ(r.unit, unit.empty() ? std::string("t") : unit);
+            ASSERT_EQ(r.import_hashes.size(), 2u) << aot;
+            EXPECT_EQ(r.import_hashes[0].first, root + "base") << aot;
+            EXPECT_EQ(r.import_hashes[1].first, root + "mid") << aot;
+            EXPECT_NE(r.cpp.find("hot::unit_ref(\"" + root + "base\")"), std::string::npos) << aot;
+        }
+}
+
+// The units of TranslateOptions::modules are the module names without ".hot".
+TEST(ScriptImportTranslation, UnitOfANamedModuleIsItsNameWithoutTheExtension)
+{
+    TempDir dir;
+    hotc::TranslateOptions o = options(dir, kParent);
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    ASSERT_EQ(r.import_hashes.size(), 1u);
+    EXPECT_EQ(r.import_hashes[0].first, "base");
+}
+
 // The "-D" flags of TranslateOptions::defines reach the parse of the native headers.
 TEST(ScriptImportTranslation, DefinesReachTheHeaderParse)
 {
@@ -391,7 +436,7 @@ TEST(ScriptImportTranslation, ImportCycleWithTheMainScript)
     ASSERT_EQ(r.imports.size(), 1u);
     EXPECT_EQ(r.imports.front().first, "base.hot") << "the main script is not an import";
     ASSERT_EQ(r.import_hashes.size(), 1u);
-    EXPECT_EQ(r.import_hashes.front().first, "base.hot");
+    EXPECT_EQ(r.import_hashes.front().first, "base");
 }
 
 // A child in another unit runs the field initializers and the "base(...)" arguments of its parent

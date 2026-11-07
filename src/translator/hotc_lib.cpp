@@ -1904,6 +1904,8 @@ std::string arg_expr(const std::string& type, const std::string& name)
 struct Options
 {
     std::string input, output;
+    // The unit name of the main script (TranslateOptions::unit_name, or the stem of "input").
+    std::string unit;
     int gen = 0;
     std::vector<std::string> includes;
     std::string resource_dir; // the Clang resource directory (builtin headers)
@@ -3282,6 +3284,17 @@ std::string dir_of(const std::string& path)
     return slash == std::string::npos ? std::string(".") : path.substr(0, slash);
 }
 
+// The unit name of a script path (doc/module-level.md, "Unit names"): the lexically normal path
+// with "/" separators and without the extension ".hot". "dir" is a unit directory or empty.
+std::string unit_name_of(const std::string& dir, const std::string& path)
+{
+    const std::filesystem::path full = dir.empty() ? std::filesystem::path(path) : std::filesystem::path(dir) / path;
+    std::string name = full.lexically_normal().generic_string();
+    if (name.size() > 4 && name.compare(name.size() - 4, 4, ".hot") == 0)
+        name.resize(name.size() - 4);
+    return name;
+}
+
 // The most nested "#include" level that the search follows. A deeper level stops quietly.
 constexpr int kMaxVirtualIncludeDepth = 64;
 
@@ -3405,6 +3418,8 @@ void translate_impl(
 {
     Options opt;
     opt.input = in.script_name;
+    opt.unit = in.unit_name.empty() ? std::filesystem::path(in.script_name).stem().string() : in.unit_name;
+    res.unit = opt.unit;
     opt.output = in.output_name;
     opt.gen = in.generation;
     opt.aot = in.aot;
@@ -3582,30 +3597,35 @@ void translate_impl(
         // or the path of the file on disk.
         auto normal_path = [](const std::string& path)
         { return std::filesystem::path(path).lexically_normal().generic_string(); };
-        // "from_dir" is the directory of the script that has the import. The search starts there.
-        auto read_import = [&](const std::string& path, const std::string& from_dir, std::string& text,
-                               std::string& file)
+        // "from_dir" is the directory of the script that has the import, and "from_unit_dir" is the
+        // directory of its unit name. The search starts there. "unit" gets the unit name of the
+        // import: the same rule on each backend (doc/module-level.md, "Unit names").
+        auto read_import = [&](const std::string& path, const std::string& from_dir, const std::string& from_unit_dir,
+                               std::string& text, std::string& file, std::string& unit)
         {
             for (const auto& [name, t] : in.modules)
                 if (name == path)
                 {
                     text = t;
                     file = name;
+                    unit = unit_name_of(std::string(), name);
                     return true;
                 }
-            std::vector<std::string> dirs;
-            dirs.push_back(from_dir);
+            // The directories with the unit directory that each one gives.
+            std::vector<std::pair<std::string, std::string>> dirs;
+            dirs.emplace_back(from_dir, from_unit_dir);
             if (from_dir != dir_of(opt.input))
-                dirs.push_back(dir_of(opt.input));
+                dirs.emplace_back(dir_of(opt.input), dir_of(opt.unit));
             for (const std::string& d : in.include_dirs)
-                dirs.push_back(d);
+                dirs.emplace_back(d, std::string());
             // For each directory: the file system of the host first, then the disk.
-            for (const std::string& d : dirs)
+            for (const auto& [d, unit_dir] : dirs)
             {
                 const std::string full = d + "/" + path;
                 if ((in.fs && in.fs->read(full, text)) || hot::disk_file_system()->read(full, text))
                 {
                     file = full;
+                    unit = unit_name_of(unit_dir, path);
                     return true;
                 }
             }
@@ -3637,8 +3657,8 @@ void translate_impl(
         std::vector<Stub> stubs;
         uint32_t next_base = static_cast<uint32_t>(in.script_text.size()) + 1;
         // Depth first: the imports of an imported script come before its own classes.
-        std::function<void(std::vector<Import>&, const std::string&)> visit_imports =
-            [&](std::vector<Import>& ims, const std::string& from_dir)
+        std::function<void(std::vector<Import>&, const std::string&, const std::string&)> visit_imports =
+            [&](std::vector<Import>& ims, const std::string& from_dir, const std::string& from_unit_dir)
         {
             std::vector<Import> keep;
             for (Import& im : ims)
@@ -3650,8 +3670,8 @@ void translate_impl(
                 }
                 if (is_main_script(im.path))
                     continue;
-                std::string text, file;
-                if (!read_import(im.path, from_dir, text, file))
+                std::string text, file, unit;
+                if (!read_import(im.path, from_dir, from_unit_dir, text, file, unit))
                     fail_at(map, im.pos, "the script '" + im.path + "' is not found");
                 // The set has the lexically normal name: two relative paths to one file give one visit.
                 if (!seen.insert(normal_path(file)).second)
@@ -3692,10 +3712,8 @@ void translate_impl(
                 for (const Method& f : is.fns)
                     if (f.name == "main")
                         fail_at(map, f.pos, hotc::ast::kMainSignatureError);
-                // The interface hash of the import is the hash that its own translation gives.
-                // AOT code names a unit by the file name without the extension: the name of the
-                // script in the AOT table (hotc --aot). Other code uses the path of the import.
-                const std::string unit = opt.aot ? std::filesystem::path(file).stem().string() : file;
+                // The interface hash of the import is the hash that its own translation gives. The
+                // unit name is the same in AOT code and in other code.
                 if (depth == 0)
                     res.import_hashes.emplace_back(unit, hash_text(module_interface(is, import_texts.back())));
                 // The module variables, the convert hooks and the free functions of the import stay in
@@ -3718,7 +3736,7 @@ void translate_impl(
                     if (c.is_private)
                         private_classes.emplace(c.name, file);
                 ++depth;
-                visit_imports(is.imports, dir_of(file));
+                visit_imports(is.imports, dir_of(file), dir_of(unit));
                 --depth;
                 for (Import& n : is.imports)
                     if (native_paths.insert(n.path).second)
@@ -3728,7 +3746,10 @@ void translate_impl(
                 for (ClassDef& c : is.classes)
                 {
                     if (!c.is_value)
+                    {
                         c.foreign_unit = unit;
+                        c.foreign_iface = std::filesystem::path(file).stem().string();
+                    }
                     classes.push_back(std::move(c));
                 }
                 // An enum and a constant are definitions of the interface: the importer gets a copy.
@@ -3751,7 +3772,7 @@ void translate_impl(
             }
             ims = std::move(keep);
         };
-        visit_imports(sc.imports, dir_of(opt.input));
+        visit_imports(sc.imports, dir_of(opt.input), dir_of(opt.unit));
         if (!seen.empty())
         {
             for (const Import& im : sc.imports)
@@ -6437,7 +6458,7 @@ void translate_impl(
         // Optimized AOT code links all units into one program, so a copy gives duplicate symbols.
         const bool from_header = opt.aot && !cd.foreign_unit.empty();
         if (from_header && iface_units.insert(cd.foreign_unit).second)
-            o.w("#include \"" + esc(cd.foreign_unit) + ".iface.h\"\n");
+            o.w("#include \"" + esc(cd.foreign_iface) + ".iface.h\"\n");
         // The block of a class in a namespace is in the nested namespace "hot_gen" of the namespace,
         // so the script text in the class finds the names of the namespace.
         if (!cd.ns.empty())
@@ -8502,7 +8523,7 @@ void translate_impl(
                 // Optimized AOT code: the exported forwarders of "new". An importer calls them.
                 if (opt.aot_optimized && cd.foreign_unit.empty())
                 {
-                    const std::string fn = "hot_fn_" + unit_symbol(std::filesystem::path(opt.input).stem().string())
+                    const std::string fn = "hot_fn_" + unit_symbol(opt.unit)
                         + "__" + P;
                     const std::string as = ctor_fwd.empty() ? std::string() : ctor_fwd.substr(2);
                     o.w(shell + "* " + fn + "new(" + pd + ")\n{\n    return " + P + "new(" + as + ");\n}\n");
@@ -9357,7 +9378,7 @@ void translate_impl(
                 for (const Field& f : c.fields)
                 {
                     const std::string t = types.cpp_storage(f.type, hotc::TypeModel::StorageUse::Field);
-                    o.w(t + "& hot_mv_" + unit_symbol(std::filesystem::path(opt.input).stem().string()) + "__" + f.name
+                    o.w(t + "& hot_mv_" + unit_symbol(opt.unit) + "__" + f.name
                         + "()\n{\n    return hot_mod()->" + f.name + ";\n}\n\n");
                     reset();
                 }
@@ -9460,7 +9481,7 @@ void translate_impl(
                 first_line = map.line(hotc::ast::pos_of(*m.body.stmts.front()));
             // Optimized AOT code: the exported forwarder of the function, "hot_fn_<unit>__<symbol>".
             const std::string fwd_fn = !opt.aot_optimized ? std::string()
-                : "hot_fn_" + unit_symbol(m.foreign_unit.empty() ? std::filesystem::path(opt.input).stem().string()
+                : "hot_fn_" + unit_symbol(m.foreign_unit.empty() ? opt.unit
                                                                    : m.foreign_unit) + "__" + ls.symbol;
             bodies.push_back({r.ns,
                 [&o, &all_text, &reset, &write_stmts, h = body_head(m), ls, file, end_line, first_line, fwd_fn]

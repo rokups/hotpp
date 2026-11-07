@@ -113,7 +113,7 @@ struct Box_Shell final : hot::PlainObject, hot::ShellBase {
 };
 
 #line 116 "xmod_use.hot.cpp"
-// ---------------------------------------------------------------- interface of Box (unit xmod_lib.hot)
+// ---------------------------------------------------------------- interface of Box (unit xmod_lib)
 [[maybe_unused]] HOT_HIDDEN static int32_t Box__area(Box_Shell* __self)
 {
     return hot::call_script<int32_t(hot::PlainObject*)>(__self, Box_SLOT_area);
@@ -441,7 +441,7 @@ static const hot::CtorEntry User__constructors[] = {
 [[maybe_unused]] HOT_HIDDEN static int32_t& hot_mv_counter()
 {
     static hot::FieldSite __site;
-    return hot::mod_var<int32_t>(hot::unit_ref("xmod_lib.hot"), __site, "counter");
+    return hot::mod_var<int32_t>(hot::unit_ref("xmod_lib"), __site, "counter");
 }
 
 #line 448 "xmod_use.hot.cpp"
@@ -544,7 +544,7 @@ int32_t UserState_g1::run()
 #line 27 "xmod_lib.hot"
 {
     static hot::FnSite __site;
-    return hot::call_fn<decltype(Box__s_unit)>(hot::unit_ref("xmod_lib.hot"), __site, "Box::unit");
+    return hot::call_fn<decltype(Box__s_unit)>(hot::unit_ref("xmod_lib"), __site, "Box::unit");
 }
 #line 550 "xmod_use.hot.cpp"
 
@@ -553,7 +553,7 @@ int32_t UserState_g1::run()
 #line 14 "xmod_lib.hot"
 {
     static hot::FnSite __site;
-    return hot::call_fn<decltype(hot_fn_twice)>(hot::unit_ref("xmod_lib.hot"), __site, "twice", std::forward<decltype(v)>(v));
+    return hot::call_fn<decltype(hot_fn_twice)>(hot::unit_ref("xmod_lib"), __site, "twice", std::forward<decltype(v)>(v));
 }
 #line 559 "xmod_use.hot.cpp"
 

@@ -347,6 +347,7 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
     to.script_text = source.text;
     to.modules = source.modules;
     to.script_name = source.name;
+    to.unit_name = source.unit;
     to.output_name = cpp_path;
     to.generation = static_cast<int>(generation);
     to.include_dirs = opt_.include_dirs;
@@ -468,6 +469,8 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
     added.import_hashes = r.import_hashes;
     added.module->iface_hash = r.iface_hash;
     added.module->imports = std::move(r.import_hashes);
+    if (!source.unit.empty())
+        added.module->unit = source.unit;
     return added;
 }
 

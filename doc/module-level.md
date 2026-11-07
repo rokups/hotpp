@@ -23,6 +23,19 @@ class Grunt : Unit {
 using <map>;                   // allowed here too
 ```
 
+### Unit names
+
+Each script is one unit. The loader knows a unit by its unit name (`Module::unit`). A JIT build, a files build and an AOT build use the same rule, so a build of one backend can replace a unit of another backend.
+
+- The host gives the unit name of the script that it builds: `ScriptSource::unit`, `TranslateOptions::unit_name` or `hotc --unit-name`. The backend then sets `Module::unit` to it.
+- Without a unit name, the unit name of the script is its file name without the extension (the stem). `Module::unit` then stays empty, and the host sets it.
+- The unit name of an import comes from the unit name of the importer. Take the directory of the importer unit name. Add the path in the `using` line. Make the path lexically normal with `/` separators. Remove the extension `.hot`.
+- An import that the translator finds in the folder of the main script uses the directory of the main unit name. An import from an include directory (`-I`) has the `using` path as its name, without `.hot`. An import from `TranslateOptions::modules` has the module name as its name, without `.hot`.
+- Example: the unit `game/app/hero` has the line `using "../lib/base.hot";`. The unit name of the import is `game/lib/base`. Without a host name, the unit is `hero` and the import is `../lib/base`.
+- AOT code names its C++ symbols with the unit name. Each character that is not a letter or a digit becomes `_` (`hot_fn_<unit>__<symbol>`). `hotc --aot` refuses two units with the same C++ name.
+- The file names of AOT code stay the stem of the script: `<stem>.aot.cpp` and `<stem>.iface.h`.
+- rbfx-script gives the path of the script relative to the resource root, without `.hot`, for example `Scripts/Hero`. The launcher gives the absolute path without `.hot`.
+
 These headers are always included, so they need no `using`:
 `<cstddef>`, `<cstdint>`, `<cstdio>`, `<cstdlib>`, `<cstring>`, `<functional>`, `<memory>`, `<mutex>`, `<new>`, `<stdexcept>`, `<string>`, `<tuple>`, `<type_traits>`, `<typeinfo>`, `<unordered_map>`, `<utility>` and `<vector>`. Any other standard header (`<map>`, `<optional>`, `<algorithm>`) needs a `using`.
 
@@ -202,7 +215,7 @@ Rules:
 - A field initializer cannot call a function. The error is `a field initializer cannot call the function '<name>': the prototype of the function comes after the class`.
 - A default argument cannot call a function. The error is `a default argument cannot call the function '<name>': the prototype of the function comes after the declaration`.
 - An imported script can have free functions and module variables. The importer gets the declarations of the public ones. The body and the storage stay in the owner module. The importer calls a function through `hot::call_fn` and uses a variable through `hot::mod_var`. A `private` name is hidden from the importer. The import is not transitive.
-- AOT code (`hotc --aot`): each script is one unit. The unit name is the file name of the script without the extension. The AOT table lists the interface hash and the imports of each script. `Loader::load_aot` and `hot::AotRegistry` check the import hashes, load an imported unit first and link the units. A stale or missing import is the error `ImportMismatch`. An importer includes the interface header of each import (`<name>.iface.h`), so a script parent can be in another unit. In optimized AOT code (`OPTIMIZED`), an importer calls the forwarders that the owner unit exports. The sample `samples/aot` has two units (see [Limits](limits.html)).
+- AOT code (`hotc --aot`): each script is one unit. The unit name follows the rule in [Unit names](#unit-names). The default is the file name of the script without the extension. The AOT table lists the interface hash and the imports of each script. `Loader::load_aot` and `hot::AotRegistry` check the import hashes, load an imported unit first and link the units. A stale or missing import is the error `ImportMismatch`. An importer includes the interface header of each import (`<stem>.iface.h`), so a script parent can be in another unit. In optimized AOT code (`OPTIMIZED`), an importer calls the forwarders that the owner unit exports. The sample `samples/aot` has two units (see [Limits](limits.html)).
 - There is no namespace block. Use `using ns;` for a native namespace.
 - The host cannot call a free function by name through `Loader::thunk`. Call a method of a class.
 

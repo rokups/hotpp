@@ -42,9 +42,9 @@ struct Stamp
     }
 };
 
-// One script unit of the program: the entry script or an imported script. The unit name is the
-// name that the importers use (the import path as the translator finds it). The entry script has
-// the absolute path as its unit name.
+// One script unit of the program: the entry script or an imported script. The unit name follows
+// the rule in doc/module-level.md: the entry script has its absolute path without ".hot" as its
+// unit name, and the file of an import unit is the unit name with ".hot".
 struct UnitState
 {
     std::string path; // the file to read
@@ -302,16 +302,15 @@ BuildOutput build_batch(hot::Backend& backend, const std::string& script_path, c
         const auto old = known.find(name);
         const std::string path = name == main_unit ? script_path
                                  : old != known.end() ? old->second.path
-                                                      : resolve_path(script_path, include_dirs, name);
+                                                      : resolve_path(script_path, include_dirs, name + ".hot");
         std::string text;
         if (const auto t = texts.find(path); t != texts.end())
             text = t->second;
         else if (!read_file(path, text))
             return fail("cannot read the script '" + path + "'", {});
-        hot::LoadResult r = backend.load(hot::ScriptSource{name, std::move(text), {}}, generation, mode);
+        hot::LoadResult r = backend.load(hot::ScriptSource{path, std::move(text), {}, name}, generation, mode);
         if (!r)
             return fail(r.error.empty() ? "the script '" + path + "' did not compile" : r.error, r.dependencies);
-        r.module->unit = name;
         const bool changed = old == known.end() || old->second.iface_hash != r.iface_hash;
         known[name] = UnitState{path, r.iface_hash, r.import_hashes, r.dependencies};
         for (const auto& [dep, hash] : r.import_hashes)
@@ -413,7 +412,7 @@ std::unique_ptr<Program> load(const Options& options, const std::string& script_
         backend_options.work_dir = options.work_dir.empty() ? default_cache_dir(script_path) : options.work_dir;
         impl->backend = hot::make_default_backend(backend_options);
         std::error_code ec;
-        impl->main_unit = fs::absolute(script_path, ec).string();
+        impl->main_unit = fs::absolute(script_path, ec).lexically_normal().replace_extension().generic_string();
         BuildOutput built = build_batch(*impl->backend, script_path, options.include_dirs, impl->main_unit, {},
                                         {impl->main_unit}, 1, hot::LoadMode::Reload);
         impl->dependencies = built.dependencies;

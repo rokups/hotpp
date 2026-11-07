@@ -374,6 +374,7 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     to.script_text = source.text;
     to.modules = source.modules;
     to.script_name = source.name;
+    to.unit_name = source.unit;
     to.output_name = cpp_path;
     to.generation = static_cast<int>(generation);
     to.include_dirs = opt_.include_dirs;
@@ -521,6 +522,8 @@ LoadResult ClangFilesBackend::load(const ScriptSource& source, uint32_t generati
     {
         r.module->iface_hash = iface_hash;
         r.module->imports = r.import_hashes;
+        if (!source.unit.empty())
+            r.module->unit = source.unit;
     }
     if (!r.module)
     {

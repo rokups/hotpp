@@ -1,0 +1,13 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// The body change of aot_unit_mid.hot (the same interface): Score adds 5. The test loads a JIT
+// build of it over the AOT unit and reverts it.
+using "Actor.h";
+using "aot_unit_base.hot";
+
+class UnitMid : UnitBase {
+    int m = 100;
+    override int Score() { return base.Score() + this.m + 5; }
+}

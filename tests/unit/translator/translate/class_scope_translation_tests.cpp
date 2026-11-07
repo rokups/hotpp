@@ -326,7 +326,7 @@ TEST(ClassScopeTranslation, ImportedStaticMembers)
     const hotc::TranslateResult r = hotc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot_mv_Counter__count_() += 1")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "hot::mod_var<int32_t>(hot::unit_ref(\"lib.hot\"), __site, \"Counter__count_\")")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::mod_var<int32_t>(hot::unit_ref(\"lib\"), __site, \"Counter__count_\")")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "Counter__s_set_Count(Counter__s_get_Count() + Counter__s_Bump(2))")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "\"Counter::get_Count\"")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "secret_")) << "a private static field stays in its module" << r.cpp;

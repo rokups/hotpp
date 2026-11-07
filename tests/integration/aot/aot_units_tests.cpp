@@ -255,9 +255,12 @@ TEST(AotUnits, OverrideAndRevertOfTheBaseUnitReachTheChild)
     hot::Loader loader;
     const hot::ReloadResult r = loader.load_aot(hot::aot_table);
     ASSERT_TRUE(r) << r.error;
-    hot::LoadResult built = backend->load(test_support::source("aot_units/aot_unit_base_v2.hot"), 2);
+    // The host gives the unit name of the AOT unit. The backend sets Module::unit to it.
+    hot::ScriptSource src = test_support::source("aot_units/aot_unit_base_v2.hot");
+    src.unit = "aot_unit_base";
+    hot::LoadResult built = backend->load(src, 2);
     ASSERT_TRUE(built) << built.error;
-    built.module->unit = "aot_unit_base";
+    ASSERT_EQ(built.module->unit, "aot_unit_base");
     const hot::ReloadResult req = loader.request_reload(std::move(*built.module));
     ASSERT_TRUE(req) << req.error;
     const hot::ReloadResult done = loader.commit_pending();
@@ -284,6 +287,43 @@ TEST(AotUnits, OverrideAndRevertOfTheBaseUnitReachTheChild)
     // Each Tick deletes a UnitApp: the destructor of v2 adds 200 to base_count, of v1 adds 100. The Tick
     // adds 1, and z is 1640 + base_count. So the two z values are 1640 + 205 and 1640 + 306.
     EXPECT_FLOAT_EQ(app->Position.z + fresh->Position.z, 2 * 1640.0f + 205.0f + 306.0f);
+}
+
+// A JIT build of the child unit "aot_unit_mid" replaces the AOT unit. Its parent UnitBase stays in the
+// AOT unit "aot_unit_base". The JIT import of "aot_unit_base.hot" has the unit name of the AOT
+// table, so the loader links it. A revert gives the AOT code of the child unit again.
+TEST(AotUnits, JitBuildOfAChildUnitReplacesTheAotUnit)
+{
+    std::unique_ptr<hot::Backend> backend = hot::make_default_backend();
+    backend->seed_slots(hot::aot_table.slots);
+    hot::Loader loader;
+    const hot::ReloadResult r = loader.load_aot(hot::aot_table);
+    ASSERT_TRUE(r) << r.error;
+    const hot::ClassEntry* e = loader.find("UnitApp");
+    ASSERT_NE(e, nullptr);
+    World world;
+    Actor* app = static_cast<Actor*>(e->create().native);
+    expect_one_tick(world, app);
+    hot::ScriptSource src = test_support::source("aot_units/aot_unit_mid_v2.hot");
+    src.unit = "aot_unit_mid";
+    hot::LoadResult built = backend->load(src, 2);
+    ASSERT_TRUE(built) << built.error;
+    ASSERT_EQ(built.module->imports.size(), 1u);
+    EXPECT_EQ(built.module->imports[0].first, "aot_unit_base");
+    const hot::ReloadResult req = loader.request_reload(std::move(*built.module));
+    ASSERT_TRUE(req) << req.error;
+    const hot::ReloadResult done = loader.commit_pending();
+    ASSERT_TRUE(done) << done.error;
+    loader.frame_boundary();
+    world.Tick(0.5f);
+    EXPECT_FLOAT_EQ(app->Position.x, kScore + 1.0f + 5.0f); // hp is 12, and UnitMid.Score adds 5
+    const hot::ReloadResult rv = loader.revert_unit("aot_unit_mid", *backend);
+    ASSERT_TRUE(rv) << rv.error;
+    const hot::ReloadResult back = loader.commit_pending();
+    ASSERT_TRUE(back) << back.error;
+    loader.frame_boundary();
+    world.Tick(0.5f);
+    EXPECT_FLOAT_EQ(app->Position.x, kScore + 2.0f); // hp is 13: the AOT UnitMid.Score again
 }
 #endif
 

@@ -121,7 +121,7 @@ TEST(StaticFunctionTranslation, ImportedScriptCanHaveFreeFunctions)
     const hotc::TranslateResult r = hotc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_EQ(r.cpp.find("return 1;"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("hot::call_fn<decltype(hot_fn_Helper)>(hot::unit_ref(\"base.hot\"), __site, \"Helper\");"),
+    EXPECT_NE(r.cpp.find("hot::call_fn<decltype(hot_fn_Helper)>(hot::unit_ref(\"base\"), __site, \"Helper\");"),
         std::string::npos)
         << r.cpp;
     EXPECT_EQ(r.cpp.find("reg.add_fn(\"Helper\""), std::string::npos) << r.cpp;

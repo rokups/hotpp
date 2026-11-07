@@ -13,6 +13,8 @@
 
 #include <gtest/gtest.h>
 
+#include <filesystem>
+
 #include <memory>
 #include <string>
 #include <utility>
@@ -99,12 +101,11 @@ protected:
     hot::LoadResult build(const char* unit, const std::string& text,
         std::vector<std::pair<std::string, std::string>> deps, uint32_t gen)
     {
-        hot::ScriptSource src{unit, text, {}};
+        // The unit name is the script name without ".hot" (doc/module-level.md, "Unit names").
+        hot::ScriptSource src{unit, text, {}, std::filesystem::path(unit).replace_extension().generic_string()};
         for (auto& d : deps)
             src.modules.emplace_back(d.first, d.second);
         hot::LoadResult r = backend->load(src, gen);
-        if (r)
-            r.module->unit = unit;
         return r;
     }
 

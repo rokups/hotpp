@@ -11,6 +11,8 @@
 
 #include <gtest/gtest.h>
 
+#include <filesystem>
+
 #include <memory>
 #include <string>
 #include <utility>
@@ -125,12 +127,11 @@ protected:
     // Builds one unit. "dep" is the text of the other unit, under its import name.
     hot::LoadResult build(const char* unit, const char* text, const char* dep_name, const char* dep, uint32_t gen)
     {
-        hot::ScriptSource src{unit, text, {}};
+        // The unit name is the script name without ".hot" (doc/module-level.md, "Unit names").
+        hot::ScriptSource src{unit, text, {}, std::filesystem::path(unit).replace_extension().generic_string()};
         if (dep_name)
             src.modules.emplace_back(dep_name, dep);
         hot::LoadResult r = backend->load(src, gen);
-        if (r)
-            r.module->unit = unit;
         return r;
     }
 
@@ -179,7 +180,7 @@ TEST_P(ModuleLinkTests, BodyChangeOfTheImportKeepsTheImporter)
     hot::LoadResult a1 = build("a.hot", kA, "b.hot", kB1, 1);
     ASSERT_TRUE(a1) << a1.error;
     ASSERT_EQ(a1.import_hashes.size(), 1u);
-    EXPECT_EQ(a1.import_hashes[0].first, "b.hot");
+    EXPECT_EQ(a1.import_hashes[0].first, "b");
     EXPECT_EQ(a1.import_hashes[0].second, b1.iface_hash);
     Session s;
     std::vector<hot::LoadResult> first;
@@ -233,7 +234,7 @@ TEST_P(ModuleLinkTests, FieldChangeOfTheImportNeedsTheImporterInTheBatch)
     const hot::ReloadResult stale = s.loader.request_reload(std::move(alone));
     EXPECT_EQ(stale.status, hot::ReloadStatus::Failed);
     EXPECT_EQ(stale.reason, hot::ReloadReason::DependentsStale) << stale.error;
-    EXPECT_EQ(stale.units, std::vector<std::string>{"a.hot"});
+    EXPECT_EQ(stale.units, std::vector<std::string>{"a"});
     EXPECT_FALSE(s.loader.reload_pending());
 
     // A new generation number: the rejected build keeps its library name.
@@ -263,7 +264,7 @@ TEST_P(ModuleLinkTests, ImportWithAnotherHashIsRejected)
     const hot::ReloadResult r = s.loader.request_reload(std::move(batch));
     EXPECT_EQ(r.status, hot::ReloadStatus::Failed);
     EXPECT_EQ(r.reason, hot::ReloadReason::ImportMismatch) << r.error;
-    EXPECT_EQ(r.units, std::vector<std::string>{"a.hot"});
+    EXPECT_EQ(r.units, std::vector<std::string>{"a"});
     // A first load also checks the imports.
     Session t;
     std::vector<hot::Module> mods;

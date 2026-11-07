@@ -26,6 +26,9 @@ struct TranslateOptions
 {
     std::string script_text; // the content of the script
     std::string script_name; // the name for "#line" and for the diagnostics
+    // The unit name of the script (doc/module-level.md, "Unit names"). Empty: the stem of script_name.
+    // The imports get their unit names from it, and AOT code names its symbols with it.
+    std::string unit_name;
     std::string output_name; // the name of the generated .cpp for "#line" (default: script_name + ".cpp")
     int generation = 0; // 1 or more
     std::string slots_in; // the content of the slot file (empty: no earlier generation)
@@ -195,10 +198,12 @@ struct TranslateResult
     std::string iface;
     // The FNV-1a hash of "iface". It is valid when ok is true.
     uint64_t iface_hash = 0;
-    // The direct script imports as name and interface hash. The name is the one of "imports".
-    // The hash is the one that the translation of the imported script gives as "iface_hash".
+    // The direct script imports as unit name and interface hash. The unit name of an import follows
+    // the rule in doc/module-level.md. The hash is the "iface_hash" of the imported script.
     std::vector<std::pair<std::string, uint64_t>> import_hashes;
-    // AOT code only (TranslateOptions::aot): the C++ text of "<stem>.iface.h". It holds the shell
+    // The unit name of the script: TranslateOptions::unit_name, or the stem of the script name.
+    std::string unit;
+    // AOT code only (TranslateOptions::aot): the C++ text of "<stem>.iface.h" (the stem of the script file). It holds the shell
     // and the state struct of each public class, as copies of the text in "cpp". The importers
     // include it. The TU in "cpp" does not include it, so each TU has one definition of a class.
     std::string iface_header;

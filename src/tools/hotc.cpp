@@ -34,6 +34,9 @@
 //   hotc --aot <file.hot>... --out-dir DIR [-I dir]... [--prelude file]...
 //        [--no-strict-borrowed] [--null-warnings] [--format=std|fmt] [--view=hot|std] [--resource-dir dir] [--aot-optimized]
 // The flag --aot-optimized builds optimized AOT code. It needs --aot.
+// The option --unit-name NAME gives the unit name of a script (doc/module-level.md, "Unit names").
+// The n-th option is for the n-th file. Without it, the unit name of a file is its stem. The
+// option is for --aot and --emit-cpp. The AOT table names each script by its unit name.
 // For each file the tool writes DIR/<name>.aot.cpp (generation 1). It also writes
 // DIR/hot_aot_registry.cpp, which defines the constant table hot::aot_table
 // (include/hot/aot.h). The tool does not compile. The CMake function
@@ -90,6 +93,7 @@ namespace
         "            [--slots file] [--resource-dir dir] [--std=c++17|c++20|c++23]\n"
         "       hotc --aot <file.hot>... --out-dir DIR [-I dir]... [--prelude file]... [--no-strict-borrowed]\n"
         "            [--format=std|fmt] [--view=hot|std] [--resource-dir dir] [--std=c++17|c++20|c++23] [--aot-optimized]\n"
+        "  --unit-name <name>   (--aot, --emit-cpp) the unit name of the n-th script (default: the stem)\n"
         "Each mode also accepts:\n"
         "  --depfile <path>     write the headers and imported scripts that the translation read (Make format)\n"
         "  --target <triple>    the target triple of the parse and of the modules (-target)\n"
@@ -116,6 +120,7 @@ struct Args
     bool aot_optimized = false; // --aot-optimized: needs --aot
     bool has_compiler_option = false; // --cxx, --cxxflag, --slots, --gen, -o
     std::vector<std::string> inputs;
+    std::vector<std::string> unit_names; // --unit-name: one for each input, in the order of the inputs
     std::string out_dir, output, slots, resource_dir;
     std::string target, sysroot; // --target, --sysroot: empty means the default of the build
     std::string host_implib; // --host-implib: the import library of the host (build mode)
@@ -203,6 +208,11 @@ Args parse_args(int argc, char** argv)
         else if (a == "--prelude")
         {
             r.preludes.push_back(next());
+            r.has_emit_only = true;
+        }
+        else if (a == "--unit-name")
+        {
+            r.unit_names.push_back(next());
             r.has_emit_only = true;
         }
         else if (a == "--strict-borrowed")
@@ -395,13 +405,22 @@ int run_aot(const Args& args)
         }
         base.preludes.emplace_back(file, std::move(text));
     }
-    std::set<std::string> ids;
-    for (const std::string& s : args.inputs)
+    if (!args.unit_names.empty() && args.unit_names.size() != args.inputs.size())
     {
-        const std::string stem = fs::path(s).stem().string();
-        if (!ids.insert(identifier(stem)).second)
+        std::fprintf(stderr, "hotc: error: give one --unit-name for each script or none\n");
+        return 1;
+    }
+    // The unit name of each input. The C++ names of two units must differ, and so must the file
+    // names of the outputs (the stems).
+    std::vector<std::string> unit_names;
+    std::set<std::string> ids, stems;
+    for (size_t i = 0; i < args.inputs.size(); ++i)
+    {
+        const std::string stem = fs::path(args.inputs[i]).stem().string();
+        unit_names.push_back(args.unit_names.empty() ? stem : args.unit_names[i]);
+        if (!ids.insert(identifier(unit_names.back())).second || !stems.insert(stem).second)
         {
-            std::fprintf(stderr, "hotc: error: two scripts have the name %s\n", stem.c_str());
+            std::fprintf(stderr, "hotc: error: two scripts have the name %s\n", unit_names.back().c_str());
             return 1;
         }
     }
@@ -416,13 +435,15 @@ int run_aot(const Args& args)
     std::string slots; // the manifests of all scripts: a class belongs to one script
     std::set<std::string> seen_slot_lines;
     bool failed = false;
-    for (const std::string& path : args.inputs)
+    for (size_t input = 0; input < args.inputs.size(); ++input)
     {
+        const std::string& path = args.inputs[input];
         const std::string stem = fs::path(path).stem().string();
-        const std::string id = identifier(stem);
+        const std::string id = identifier(unit_names[input]);
         const std::string out = args.out_dir + "/" + stem + ".aot.cpp";
         hotc::TranslateOptions opt = base;
         opt.script_name = path;
+        opt.unit_name = unit_names[input];
         opt.output_name = out;
         if (!read_file(path, opt.script_text))
         {
@@ -456,7 +477,7 @@ int run_aot(const Args& args)
                 if (seen_slot_lines.insert(line).second)
                     slots += line + "\n";
         }
-        names.push_back(stem);
+        names.push_back(r.unit);
         units.push_back({r.iface_hash, r.import_hashes});
         dep_rules.push_back({out, r.dependencies});
     }
@@ -547,6 +568,13 @@ int run_emit(const Args& args)
     }
     const std::string& input = args.inputs[0];
     opt.script_name = input;
+    if (args.unit_names.size() > 1)
+    {
+        std::fprintf(stderr, "hotc: error: --emit-cpp takes one --unit-name\n");
+        return 1;
+    }
+    if (!args.unit_names.empty())
+        opt.unit_name = args.unit_names[0];
     opt.output_name = args.output; // empty: the default name
     if (!args.output.empty() && !check_not_input(args, args.output))
         return 1;

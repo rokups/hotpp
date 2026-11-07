@@ -700,6 +700,8 @@ struct ClassDef
     // class only: no bodies, no state and no record. Calls, fields and "new" go through the runtime
     // helpers (hot::call_script, hot::field, hot::construct). Empty: the class of this module.
     std::string foreign_unit;
+    // AOT code: the stem of the file of the owner unit. The importer includes "<foreign_iface>.iface.h".
+    std::string foreign_iface;
     // A class of an import that is a script parent of a class of this module (modules step 5). The
     // importer gets the shell and the state struct with the fields, so the child state derives from
     // it. Each body is a forward to the owner unit. The record of the importer is not registered.
