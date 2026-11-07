@@ -2627,6 +2627,8 @@ struct Lowerer
     void member(ExprP& e, MemberExpr& m)
     {
         const bool target = std::exchange(weak_target, false);
+        if (m.name.find('<') != std::string::npos)
+            plain_class_marks(m.name);
         const uint32_t obj_pos = pos_of(*m.obj);
         if (const InterfaceDef* idef = iface_named(type_of(*m.obj)))
         {
@@ -2886,12 +2888,13 @@ struct Lowerer
     // The explicit template arguments of a native function template (gap G09): "obj.F<C>()",
     // "MakeShared<C>()". A script class "C" or "$C" there is the plain class "C". The native code
     // gives "C*" (or its smart pointer), and hot::handle_from_raw makes the handle "$C" of it.
-    void plain_class_targs(NameExpr& n) const
+    void plain_class_targs(NameExpr& n) const { plain_class_marks(n.template_args); }
+    // The same for the text "F<$C>" of a member name (gap G24).
+    void plain_class_marks(std::string& t) const
     {
-        if (n.template_args.find('$') == std::string::npos || !cx.types)
+        if (t.find('$') == std::string::npos || !cx.types)
             return;
         std::string out;
-        const std::string& t = n.template_args;
         for (size_t i = 0; i < t.size(); ++i)
         {
             if (t[i] == '$' && (i == 0 || !(std::isalnum(static_cast<unsigned char>(t[i - 1])) || t[i - 1] == '_')))
@@ -2904,7 +2907,7 @@ struct Lowerer
             }
             out += t[i];
         }
-        n.template_args = out;
+        t = out;
     }
 
     // A script class in the template arguments of a type name is a handle (task 48): the text

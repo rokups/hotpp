@@ -214,4 +214,45 @@ TEST(NativeGapTranslation, ImportCycleOfStructsByValueIsAnError)
     EXPECT_TRUE(has(r.diagnostics, "the structs use each other in a cycle")) << r.diagnostics;
 }
 
+// G24: a generic call after "." or "?." on a call result or a member chain. A "<" with no
+// ">" and "(" after it stays less-than.
+const char* kG24Header =
+    "class Octree {};\n"
+    "class Node {\n"
+    "public:\n"
+    "    Node* GetParent() { return this; }\n"
+    "    template <class T> T* Get() { return nullptr; }\n"
+    "    template <class T> T* GetComponent() { return nullptr; }\n"
+    "    template <class T> T* Make(int a, int b) { return nullptr; }\n"
+    "    int b = 0;\n"
+    "    int f() { return 0; }\n"
+    "};\n"
+    "class Comp { public: virtual ~Comp() {} Node* GetScene() { return nullptr; } };\n";
+
+TEST(NativeGapTranslation, GenericCallOnACallResultOrAMemberChain)
+{
+    TempDir dir;
+    write_file(dir.path() / "g.h", kG24Header);
+    const hotc::TranslateResult r = hotc::translate(temp_options(dir,
+        "using \"g.h\";\n"
+        "class Foo : Comp {\n"
+        "    void M(Node* node, int c) {\n"
+        "        node?.GetComponent<Octree>();\n"
+        "        if (node == null) return;\n"
+        "        Octree* o = GetScene().GetComponent<Octree>();\n"
+        "        Octree* p = node.GetParent().Get<Octree>();\n"
+        "        Octree* q = node.GetParent().Make<Octree>(1, 2);\n"
+        "        bool x = node.b < c;\n"
+        "        bool y = node.f() < c;\n"
+        "    }\n"
+        "}\n"));
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "GetScene()).GetComponent<Octree>()")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "GetParent()).Get<Octree>()")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "GetParent()).Make<Octree>(1, 2)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "if (node) hot::deref(node).GetComponent<Octree>();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, ".b < c")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, ".f() < c")) << r.cpp;
+}
+
 } // namespace

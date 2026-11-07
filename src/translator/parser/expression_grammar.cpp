@@ -15,7 +15,8 @@
 //    "parameter syntax changed; write 'Type name'".
 //  - A "<" starts template arguments when a scan of "<...>" ends before a "(" or a
 //    ".". The scan has a fixed nesting depth (targs_depth). It stops at a newline,
-//    at ";" and at each char that a type cannot have.
+//    at ";" and at each char that a type cannot have. After a "." or a "?." on any receiver
+//    expression, the scan must end before a "(" (gap G24).
 #include "expression.h"
 #include "lexy_common.hpp"
 #include "statement.h"
@@ -368,27 +369,6 @@ struct id_str : lexy::token_production
     static constexpr auto value = lexy::as_string<std::string>;
 };
 
-// The name after a ".". When there is no name, the parse adds an error and the name is empty.
-// The tree keeps the node, so a language server can complete the name (tolerant parse).
-struct member_name_p
-{
-    static constexpr auto rule = dsl::peek(id) >> (dsl::position + dsl::p<id_str>) | dsl::else_ >> dsl::position;
-    static constexpr auto value =
-        lexy::bind(lexy::callback<MemberName>([](const ParseState& st, const char* pos, std::string&& name)
-    { return MemberName{std::move(name), st.offset(pos)}; },
-                       [](const ParseState& st, const char* pos)
-    {
-        // The hole is right after the ".", before any white space.
-        uint32_t dot_end = st.offset(pos);
-        while (dot_end > 0 && std::isspace(static_cast<unsigned char>(st.base[dot_end - 1])))
-            --dot_end;
-        st.diag->add(dot_end, *st.map, "expected a member name after '.'");
-        st.diag->member_holes.push_back(dot_end);
-        return MemberName{std::string(), st.offset(pos)};
-    }),
-            lexy::parse_state, lexy::values);
-};
-
 // A number. The rules are the rules of the old lexer. The text stays raw.
 // A sign belongs to the number after an "e" or an "E", but not in a hex number.
 constexpr auto num_word = dsl::ascii::word / dsl::lit_c<'.'>;
@@ -611,6 +591,48 @@ struct targs_tok : lexy::token_production
 // "<...>" that is followed by "(" or ".".
 constexpr auto targs_head = dsl::lit_c<'<'> + dsl::p<targs_body<targs_depth>>
     + dsl::while_(dsl::lit_c<' '> / dsl::lit_c<'\t'>) + dsl::literal_set(dsl::lit_c<'('>, dsl::lit_c<'.'>);
+
+// "<...>" that is followed by "(". A member name after "." or "?." takes it (gap G24).
+constexpr auto member_targs_head = dsl::lit_c<'<'> + dsl::p<targs_body<targs_depth>>
+    + dsl::while_(dsl::lit_c<' '> / dsl::lit_c<'\t'>) + dsl::lit_c<'('>;
+
+// A member name with optional template arguments: "F" or "F<T>". The value is the span.
+struct member_id_tok : lexy::token_production
+{
+    static constexpr auto rule = dsl::position + dsl::token(id) + dsl::if_(dsl::peek(member_targs_head) >> dsl::p<targs_tok>)
+        + dsl::position;
+    static constexpr auto value = span_value;
+};
+
+// The name after a ".". When there is no name, the parse adds an error and the name is empty.
+// The tree keeps the node, so a language server can complete the name (tolerant parse).
+// A "<" after the name starts template arguments only when "<...>" ends before a "(" (gap G24).
+// The arguments stay in the name, in C++ form, as the lowering of a member chain writes them.
+struct member_name_p
+{
+    static constexpr auto rule = dsl::peek(id) >> dsl::p<member_id_tok> | dsl::else_ >> dsl::position;
+    static constexpr auto value = lexy::bind(lexy::callback<MemberName>([](const ParseState& st, Span sp)
+    {
+        const std::string_view t = span_text(st, sp);
+        const std::size_t lt = t.find('<');
+        if (lt == std::string_view::npos)
+            return MemberName{std::string(t), sp.begin};
+        const char* at = st.base + sp.begin + lt;
+        std::string targs = array_types(st, at, canonical_type_at(st, at, scope_text(st, at, t.substr(lt))), false);
+        return MemberName{std::string(t.substr(0, lt)) + targs, sp.begin};
+    },
+                       [](const ParseState& st, const char* pos)
+    {
+        // The hole is right after the ".", before any white space.
+        uint32_t dot_end = st.offset(pos);
+        while (dot_end > 0 && std::isspace(static_cast<unsigned char>(st.base[dot_end - 1])))
+            --dot_end;
+        st.diag->add(dot_end, *st.map, "expected a member name after '.'");
+        st.diag->member_holes.push_back(dot_end);
+        return MemberName{std::string(), st.offset(pos)};
+    }),
+            lexy::parse_state, lexy::values);
+};
 
 // ---------------------------------------------------------------- names
 // The value is the span of the whole name, with the template arguments.

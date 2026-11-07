@@ -117,6 +117,23 @@ TEST(ExpressionParse, Names)
     EXPECT_EQ(one_error("a.b<int>"), "1:9: expected an expression");
 }
 
+// G24: a generic call after "." or "?." on any receiver: a call result, a member chain, "this".
+TEST(ExpressionParse, GenericCallOnAnyReceiver)
+{
+    EXPECT_EQ(round_trip("GetScene().GetComponent<Octree>()"), "GetScene().GetComponent<Octree>()");
+    EXPECT_EQ(round_trip("node.GetParent().Get<T>()"), "node::GetParent().Get<T>()");
+    EXPECT_EQ(round_trip("a.b().c<T>(x, y)"), "a::b().c<T>(x, y)");
+    EXPECT_EQ(round_trip("f().g<std.vector<int>>(x)"), "f().g<\x01std::vector<int32_t>>(x)");
+    EXPECT_EQ(round_trip("this.F<A.B>()"), "this.F<A::B>()");
+    EXPECT_EQ(round_trip("x?.F<T>()"), "x.F<T>()"); // the printer writes "." for "?."
+    // A "<" with no ">" and "(" after it stays less-than.
+    EXPECT_EQ(round_trip("a.b < c"), "a::b < c");
+    EXPECT_EQ(round_trip("a.f() < c"), "a::f() < c");
+    EXPECT_EQ(round_trip("a.f().g < c"), "a::f().g < c");
+    EXPECT_EQ(round_trip("a.f().g < b && c > (d)"), "a::f().g < b && c > (d)");
+    EXPECT_EQ(round_trip("a.f().g < b > c"), "a::f().g < b > c");
+}
+
 TEST(ExpressionParse, NameNode)
 {
     Parsed p("a.B<int>.c<float>(x)");

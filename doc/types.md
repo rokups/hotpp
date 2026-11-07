@@ -140,6 +140,7 @@ A native function template can get a script class as an explicit argument (G09).
 - `C` and `$C` are the same here. The native template gets the plain class `C`.
 - The result becomes a handle: `$PlayerStance s = node.GetComponent<PlayerStance>();`.
 - A class that is not the target or a script child of it is an error. The error is `'GetComponent<User>' gives a 'User', and 'User' is not 'PlayerStance' or a script child of it`.
+- Any receiver works, for example `GetScene().GetComponent<Octree>()` or `node?.Get<T>()` (G24). After `.`, `<...>` must come before `(`.
 
 ## Collection literals
 
