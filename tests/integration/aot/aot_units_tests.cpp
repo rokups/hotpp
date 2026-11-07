@@ -255,6 +255,9 @@ TEST(AotUnits, OverrideAndRevertOfTheBaseUnitReachTheChild)
     world.Tick(0.5f);
     EXPECT_FLOAT_EQ(app->Position.x, kScore + 42.0f); // hp is 53: Tick adds 1 again
     EXPECT_FLOAT_EQ(fresh->Position.x, kScore);
+    // Each Tick deletes a UnitApp: the destructor of v2 adds 200 to base_count, of v1 adds 100. The Tick
+    // adds 1, and z is 1640 + base_count. So the two z values are 1640 + 205 and 1640 + 306.
+    EXPECT_FLOAT_EQ(app->Position.z + fresh->Position.z, 2 * 1640.0f + 205.0f + 306.0f);
 }
 #endif
 

@@ -8011,10 +8011,26 @@ void translate_impl(
                     + ">(__s, __site, \"" + f.name + "\");\n}\n");
             }
         const size_t thunk_mark = thunk_regs.size();
+        // The base for shared_from_this of the shell (see the use after the bodies), or an empty text.
+        auto shared_this_base = [&](bool shares) -> std::string
+        {
+            const std::string storage = types.cpp_storage("$" + cn, hotc::TypeModel::StorageUse::Local);
+            const bool placeholder = storage.rfind("\x01std::shared_ptr<", 0) == 0;
+            const bool cross_child = par && par->foreign_unit != cd.foreign_unit && !sc.is_cpp;
+            if (!shares || (par && !cross_child) || root.base.empty() || from_header
+                || !(placeholder || storage.rfind("std::shared_ptr<", 0) == 0))
+                return {};
+            return !par ? std::string(placeholder ? ", \x01std::" : ", std::") + "enable_shared_from_this<" + shell + ">"
+                        : ", hot::share_this_base<" + par->name + "_Shell, " + shell + ">";
+        };
         if (!cd.foreign_unit.empty() && !cd.iface_parent)
         {
             o.s.resize(from_header ? iface_begin : foreign_mark);
             o.segs.resize(from_header ? iface_segs : foreign_segs);
+            // The copy of the shell has the base of the owner unit: the same layout in each unit.
+            // The insert comes after the cut: the cut position is after the shell.
+            if (const std::string b = shared_this_base(cd.bare_this || unit_parents.count(cn)); !b.empty() && shell_head_end < o.s.size())
+                o.insert(shell_head_end, b);
             o.lines = from_header ? iface_lines : foreign_lines;
             reset();
             o.w("// ---------------------------------------------------------------- interface of " + cn + " (unit "
@@ -8930,17 +8946,11 @@ void translate_impl(
         // A ".hot" class decides from its own unit only (ClassDef::bare_this, unit_parents), so the
         // copy of a class in an importer has the layout of the owner. A child of a class of another
         // unit adds the base itself, if the shell of the parent has none (hot::share_this_base).
-        const std::string shared_storage = types.cpp_storage("$" + cn, hotc::TypeModel::StorageUse::Local);
-        const bool shared_placeholder = shared_storage.rfind("\x01std::shared_ptr<", 0) == 0;
         const bool shares = sc.is_cpp ? handle_this || parent_shell
                                       : cd.bare_this || unit_parents.count(cn) || (cd.foreign_unit.empty() && handle_this);
-        const bool cross_child = par && par->foreign_unit != cd.foreign_unit && !sc.is_cpp;
-        if (shares && (!par || cross_child) && !root.base.empty() && !from_header
-            && (shared_placeholder || shared_storage.rfind("std::shared_ptr<", 0) == 0))
+        if (const std::string b = shared_this_base(shares); !b.empty())
         {
-            o.insert(shell_head_end,
-                !par ? std::string(shared_placeholder ? ", \x01std::" : ", std::") + "enable_shared_from_this<" + shell + ">"
-                     : ", hot::share_this_base<" + par->name + "_Shell, " + shell + ">");
+            o.insert(shell_head_end, b);
             // The loader names this cause when the shell hash changes (design 5.3).
             flag_regs.push_back("    " + cn + "_record.shares_this = true;\n");
         }

@@ -325,12 +325,17 @@ class Hero : Actor {
 // and runs the new body of a static method. A new type of a static field resets it to the initializer.
 // "this" as a handle in a child of a class of another unit. The unit of the parent decides the
 // shell of the parent alone: the copy in the importer has the same layout. The child adds
-// std::enable_shared_from_this itself, and its own child in the unit uses that base.
+// std::enable_shared_from_this itself, and its own child in the unit uses that base. SSolo uses
+// "this" as a handle in its own unit: the copy in the importer has the base of the owner too.
 const char* const kShareRoot1 = R"(
 using "Actor.h";
 class SRoot : Actor {
     int r = 1;
     virtual int Val() { return 1; }
+}
+class SSolo : Actor {
+    int r = 3;
+    int Probe() { $SSolo me = this; if (me != null) { return me.r; } return 0; }
 }
 )";
 
@@ -339,6 +344,10 @@ using "Actor.h";
 class SRoot : Actor {
     int r = 1;
     virtual int Val() { return 5; }
+}
+class SSolo : Actor {
+    int r = 3;
+    int Probe() { $SSolo me = this; if (me != null) { return me.r; } return 0; }
 }
 )";
 
@@ -360,7 +369,8 @@ class SHost : Actor {
         k.Poke();
         $SMid mid = new $SMid();
         mid.Poke();
-        this.got = k.seen * 1000 + mid.seen;
+        $SSolo solo = new $SSolo();
+        this.got = k.seen * 1000 + mid.seen + solo.Probe() * 1000000;
     }
 }
 )";
@@ -383,7 +393,8 @@ class SHost : Actor {
         k.Poke();
         $SMid mid = new $SMid();
         mid.Poke();
-        this.got = k.seen * 1000 + mid.seen;
+        $SSolo solo = new $SSolo();
+        this.got = k.seen * 1000 + mid.seen + solo.Probe() * 1000000;
     }
 }
 )";
@@ -403,15 +414,15 @@ TEST_P(FamilyTests, ThisAsAHandleInAChildOfAnotherUnit)
             build("skids.hot", kShareKids1, {{"sroot.hot", kShareRoot1}}, 1)),
         "SHost"));
     s.world.Tick(kDt);
-    EXPECT_EQ(*fld<int>(s, "got"), 111 * 1000 + 11);
+    EXPECT_EQ(*fld<int>(s, "got"), 3000000 + 111 * 1000 + 11);
     // A body change of the parent unit keeps the importer.
     ASSERT_NO_FATAL_FAILURE(reload(s, one_of(build("sroot.hot", kShareRoot2, {}, 2))));
     s.world.Tick(kDt);
-    EXPECT_EQ(*fld<int>(s, "got"), 115 * 1000 + 15);
+    EXPECT_EQ(*fld<int>(s, "got"), 3000000 + 115 * 1000 + 15);
     // A body change of the child unit.
     ASSERT_NO_FATAL_FAILURE(reload(s, one_of(build("skids.hot", kShareKids2, {{"sroot.hot", kShareRoot2}}, 3))));
     s.world.Tick(kDt);
-    EXPECT_EQ(*fld<int>(s, "got"), 215 * 1000 + 15);
+    EXPECT_EQ(*fld<int>(s, "got"), 3000000 + 215 * 1000 + 15);
 }
 
 TEST_P(FamilyTests, StaticMembersOverTwoUnits)
