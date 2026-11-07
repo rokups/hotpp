@@ -1,0 +1,3 @@
+109_sizeof_script_class.hot:6:15: error: 'sizeof' of the script class 'Player' is not valid: a reload can change the layout of its state
+    6 | static_assert(sizeof(Player) == 8, "size");
+1 error generated.

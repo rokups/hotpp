@@ -158,8 +158,10 @@ struct Member
         IsProp,
         IsCtor,
         IsDtor,
-        IsAlias
+        IsAlias,
+        IsStaticAssert
     } kind = None;
+    ast::StaticAssert sa;
     ast::TypeAlias alias;
     ast::Method method;
     ast::Ctor ctor; // a member with no type: the add step checks the name
@@ -207,8 +209,10 @@ struct TopItem
         IsModuleAttrs,
         IsUsingNs,
         IsAlias,
-        IsInterface
+        IsInterface,
+        IsStaticAssert
     } kind = None;
+    ast::StaticAssert sa;
     bool is_private = false; // "private" before "class", "struct" or "enum" at file level
     ast::Import import;
     ast::UsingNs using_ns;
@@ -382,6 +386,8 @@ Mods mods_of(const ParseState& st, const std::vector<ModTok>& v, bool is_op = fa
 template <typename Ann, typename ModsT>
 Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in, Member&& m)
 {
+    if (m.kind == Member::IsStaticAssert)
+        return std::move(m);
     if (const Annot* a = annot_of(ann))
     {
         if (a->byval_pos)
@@ -840,6 +846,46 @@ struct params_p
 constexpr auto kw_base = LEXY_KEYWORD("base", id);
 constexpr const char* kConstInferred = "const is inferred; remove it";
 constexpr auto kw_const_mark = LEXY_KEYWORD("const", id);
+
+// "static_assert(cond, "message");" at file level or in a class body (gap G08). The arguments
+// stay a raw span. The span-then-call step parses them.
+constexpr auto kw_static_assert = LEXY_KEYWORD("static_assert", id);
+struct static_assert_p
+{
+    static constexpr auto rule = dsl::position + kw_static_assert + dsl::p<scan_until<paren_cfg>> + dsl::lit_c<')'>
+        + dsl::lit_c<';'>;
+    static constexpr auto value = lexy::bind(lexy::callback<ast::StaticAssert>([](const ParseState& st, const char* pos, Span args)
+    {
+        ast::StaticAssert s;
+        s.pos = st.offset(pos);
+        s.line = st.map->line(s.pos);
+        s.args_span = args;
+        return s;
+    }),
+        lexy::parse_state, lexy::values);
+};
+struct static_assert_member_p
+{
+    static constexpr auto rule = dsl::p<static_assert_p>;
+    static constexpr auto value = lexy::callback<Member>([](ast::StaticAssert&& s)
+    {
+        Member m;
+        m.kind = Member::IsStaticAssert;
+        m.sa = std::move(s);
+        return m;
+    });
+};
+struct static_assert_top_p
+{
+    static constexpr auto rule = dsl::p<static_assert_p>;
+    static constexpr auto value = lexy::callback<TopItem>([](ast::StaticAssert&& s)
+    {
+        TopItem t;
+        t.kind = TopItem::IsStaticAssert;
+        t.sa = std::move(s);
+        return t;
+    });
+};
 
 // ": base(args)". The args stay a raw span. The call is valid in a constructor only.
 struct base_call_p
@@ -1319,7 +1365,8 @@ struct member_p
     static constexpr auto rule = dsl::position + dsl::opt(dsl::peek(dsl::lit_c<'['>) >> dsl::p<attrs_p>)
         + dsl::opt(dsl::peek(modifier_set) >> dsl::p<mods_p>)
         + (dsl::eof >> dsl::error<e_unexpected_eof> | dsl::peek(dsl::lit_c<'~'>) >> dsl::p<dtor_p>
-            | dsl::peek(kw_using) >> dsl::p<using_member_p> | dsl::peek(id) >> dsl::p<typed_member>
+            | dsl::peek(kw_using) >> dsl::p<using_member_p>
+            | dsl::peek(kw_static_assert) >> dsl::p<static_assert_member_p> | dsl::peek(id) >> dsl::p<typed_member>
             | dsl::peek(dsl::lit_c<'$'>) >> dsl::p<typed_member> | dsl::else_ >> dsl::error<e_member>(junk));
     static constexpr auto value = lexy::bind(
         lexy::callback<Member>([](const ParseState& st, const char*, const auto& ann, const auto& mods, Member&& m)
@@ -1605,6 +1652,11 @@ void add_members(const ParseState& st, ast::ClassDef& c, std::vector<Member>&& m
 {
     for (Member& m : members)
     {
+        if (m.kind == Member::IsStaticAssert)
+        {
+            c.static_asserts.push_back(std::move(m.sa));
+            continue;
+        }
         if (m.kind == Member::IsDtor)
         {
             if (m.ctor_name == c.name)
@@ -2264,6 +2316,7 @@ struct decl
             >> dsl::p<class_p>
         | dsl::peek(private_then_type) >> dsl::p<private_type_p>
         | dsl::peek(modifier_then_interface) >> dsl::p<modded_interface_p>
+        | dsl::peek(kw_static_assert) >> dsl::p<static_assert_top_p>
         | dsl::peek(id) >> dsl::p<class_p> | dsl::peek(dsl::lit_c<'$'>) >> dsl::p<class_p>
         | dsl::else_ >> dsl::error<e_top>(junk);
     static constexpr auto value = lexy::callback<TopItem>([](TopItem&& t) { return std::move(t); });
@@ -2571,6 +2624,8 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
                 script.vars.push_back(std::move(t.var));
             else if (t.kind == TopItem::IsConst)
                 script.consts.push_back(std::move(t.var));
+            else if (t.kind == TopItem::IsStaticAssert)
+                script.static_asserts.push_back(std::move(t.sa));
             else if (t.kind == TopItem::IsHook)
                 script.var_hooks.push_back(std::move(t.hook));
             else if (t.kind == TopItem::IsFn)
@@ -2610,6 +2665,12 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
             script.consts.push_back(std::move(f));
         }
         c.consts.clear();
+        for (ast::StaticAssert& a : c.static_asserts)
+        {
+            a.owner = c.name;
+            script.static_asserts.push_back(std::move(a));
+        }
+        c.static_asserts.clear();
         // A static field (gap G23) is a module variable of the owner module with the name
         // "Class__Name" and the owner "Class". The module block holds it, so a reload keeps it.
         for (ast::Field& f : c.svars)
@@ -2648,6 +2709,8 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
         for (ast::Field& f : *list)
             if (f.has_init && !only_blank(span_text(st, f.init_span)))
                 f.init = parse_expression(in, f.init_span, diag);
+    for (ast::StaticAssert& a : script.static_asserts)
+        a.args = parse_expression_list(in, a.args_span, diag);
     // "=> e;" is "{ return e; }", or "{ e; }" for a void function.
     auto arrow_block = [&](Span span, bool is_void)
     {

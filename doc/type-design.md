@@ -65,7 +65,7 @@ Notes on `hot::Value<T>`:
 | `T[] xs` | `hot::span<T>` by value (`std::span<T>` with `HOT_VIEW_TYPE=std`) |
 
 - `hot::In<T>` is a C++ trait. It is `T` if `T` is trivially copyable and `sizeof(T) <= 16`. Else it is `const T&`.
-- The translator never computes `sizeof`.
+- The translator never computes `sizeof`. A script `sizeof(T)` is the C++ `sizeof` (see statements.md).
 - A plain parameter is read only. If the body writes it, or can write a field that it aliases, the body works on a by-value copy. The signature does not change.
 - A `[byval]`, `in`, `ref` or `out` parameter keeps its own form. A `.cpp` script writes C++, so it has no `hot::In`.
 - A constructor parameter that the body writes is a by-value parameter.

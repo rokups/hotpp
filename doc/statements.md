@@ -9,7 +9,7 @@ Statements look like C#, with C++ names and `.` for scope.
 
 ## Parts of this guide
 
-This guide has 3 pages. This page covers control flow, `switch`, `foreach` and structured bindings.
+This guide has 3 pages. This page covers control flow, `switch`, `foreach`, structured bindings, `assert`, `static_assert` and `sizeof`.
 
 - [try, catch and runtime errors](statements-errors.html): `try`, `catch`, `finally` and the errors that the runtime throws.
 - [Strings, casts and patterns](statements-text.html): string interpolation, casts, `??`, `?.`, `is` and `as`.
@@ -122,3 +122,27 @@ class Split {
 ```
 
 A lambda, a `??` right side and a `finally` block can use a binding. A `ref` binding is a borrowed name, so a lambda cannot capture it.
+
+## `assert`, `static_assert` and `sizeof`
+
+These 3 builtins give the C++ forms. A local or a script function of the same name hides `assert` and `sizeof`.
+
+- `assert(cond)` is the C++ `assert(cond)`. A release build with `NDEBUG` removes it.
+- `assert(cond, "message")` is `assert((cond) && "message")`. The failure text shows the message.
+- `static_assert(cond, "message")` is valid at file level, in a class or struct body, and in a function body. The message is necessary.
+- A file-level or class-level `static_assert` goes to file scope, after the types. A class item sees the class constants.
+- `sizeof(T)` takes a type: a builtin type, a native type, an enum or a script struct. The result type is `nuint` (C++ `size_t`).
+- The C++ compiler computes the value. The translator writes `sizeof` of the C++ type, for example `sizeof(int32_t)` for `sizeof(int)`.
+- A struct holds only native types and structs. Its layout is fixed in one generation, so `sizeof` of a struct is valid.
+- `sizeof` of a script class is an error. A reload can change the layout of the class state.
+- `sizeof(x)` of a value is an error. Write the type.
+
+```hot
+struct Header { uint magic; ushort version; ushort count; }
+static_assert(sizeof(Header) == 8, "the wire header has 8 bytes");
+
+int Scale(int v) {
+    assert(v > 0, "v is positive");
+    return v * int(sizeof(Header));
+}
+```

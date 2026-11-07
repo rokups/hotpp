@@ -578,6 +578,12 @@ void resolve_class_consts(hotc::ast::Script& sc, const std::vector<const hotc::a
         auto it = classes.find(f.owner);
         run_block(it == classes.end() ? nullptr : it->second, nullptr, {}, {&f.init});
     }
+    for (StaticAssert& a : sc.static_asserts)
+    {
+        auto it = classes.find(a.owner);
+        for (ExprP& e : a.args)
+            run_block(it == classes.end() ? nullptr : it->second, nullptr, {}, {&e});
+    }
     for (const Field& f : sc.vars)
         run_block(nullptr, nullptr, {}, {&f.init});
     for (const Method& m : sc.fns)
@@ -8742,6 +8748,42 @@ void translate_impl(
         }
         reset();
     }
+    // ---- static_assert at file level and in class bodies (gap G08). Each one is a C++ "static_assert"
+    // at file scope here, after the types: a struct is complete, so "sizeof" of it is valid. A class
+    // item sees the names of its class (its constants) as a body of the class does.
+    if (!sc.static_asserts.empty())
+    {
+        const ClassDef no_class;
+        for (StaticAssert& a : sc.static_asserts)
+        {
+            if (a.args.size() != 2 || !std::holds_alternative<hotc::ast::StringExpr>(a.args[1]->v))
+                fail_at(map, a.pos, "'static_assert' takes a condition and a text literal: static_assert(cond, \"message\")");
+            const ClassDef* owner = &no_class;
+            for (const ClassDef& c : sc.classes)
+                if (!a.owner.empty() && c.name == a.owner)
+                    owner = &c;
+            RCtx ec = hotc::make_class_ctx(*owner);
+            ec.aot_optimized = opt.aot_optimized;
+            ec.map = &map;
+            ec.types = &types;
+            ec.allow_this = false;
+            ec.format_lib = in.format_lib;
+            ec.uses_format = &uses_format;
+            CallExpr call;
+            call.pos = a.pos;
+            call.callee = hotc::ast::make_expr(hotc::ast::NameExpr{{"static_assert"}, "", {}, false, a.pos});
+            call.args = std::move(a.args);
+            ExprP e = hotc::ast::make_expr(std::move(call));
+            hotc::lower_expr(e, ec, g_diag);
+            if (!g_diag.items.empty())
+                throw TranslateAbort{};
+            o.w("\n#line " + std::to_string(a.line) + " \"" + esc(file_at(a.pos)) + "\"\n");
+            o.w(hotc::ast::print(*e) + ";\n");
+            reset();
+        }
+        o.w("\n");
+    }
+
     // ---- static methods and free functions. A function has a prototype here, after all the blocks. So
     // a body of a method sees it. The definition comes in the bodies section. The function has no
     // slot, no "sig" line, no manifest entry and no register call: the calls are direct.

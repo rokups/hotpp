@@ -511,6 +511,18 @@ struct RawLine
     std::string text;
 };
 
+// "static_assert(cond, "message");" at file level or in a class body (gap G08). The parser
+// moves a class item to Script::static_asserts and sets the owner. The translator writes each
+// one at file scope after the types, so a script struct is complete there.
+struct StaticAssert
+{
+    Span args_span; // the text between the parentheses
+    std::vector<ExprP> args; // the condition and the message, after the parse
+    std::string owner; // the class of a class item, else empty
+    int line = 0;
+    uint32_t pos = 0;
+};
+
 struct Method
 {
     // True when the function overrides a base virtual method. The translator sets it after
@@ -650,6 +662,8 @@ struct ClassDef
     // The class constants ("static const T Name = value;"). The parse step moves them to
     // Script::consts (see Field::owner), so the list is empty after the parse.
     std::vector<Field> consts;
+    // The static_assert items of the class body. The parse step moves them to Script::static_asserts.
+    std::vector<StaticAssert> static_asserts;
     // The static fields ("static T Name;", gap G23). The parse step moves them to Script::vars
     // (see Field::owner), so the list is empty after the parse.
     std::vector<Field> svars;
@@ -800,6 +814,8 @@ struct Script
     // Module constants: "const Type name = value;" at file level. They are C++ "static const" values,
     // not parts of the module state block. An imported script can have them.
     std::vector<Field> consts;
+    // The static_assert items at file level and in class bodies, in source order.
+    std::vector<StaticAssert> static_asserts;
     // Convert hooks of module variables: "T convert_<var>(Old old) { }" at file level.
     std::vector<Method> var_hooks;
     // Free functions: "T name(args) { }" at file level. A convert hook is not one of them.

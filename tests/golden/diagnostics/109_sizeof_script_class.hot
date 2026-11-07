@@ -1,0 +1,6 @@
+using "Actor.h";
+
+class Player : Actor {
+    int hp = 1;
+}
+static_assert(sizeof(Player) == 8, "size");

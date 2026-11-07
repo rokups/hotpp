@@ -2140,11 +2140,70 @@ struct Lowerer
         return !t.empty() && !iface_named(t) && !class_named(t);
     }
 
+    // The builtins of gap G08: "sizeof(T)", "assert(cond)", "assert(cond, "message")" and
+    // "static_assert(cond, "message")" in a body. A local or a script function of the same name
+    // hides the builtin. True when the call is a builtin.
+    bool builtin_call(CallExpr& c, const std::string& n)
+    {
+        if ((n != "sizeof" && n != "assert" && n != "static_assert") || cx.locals.count(n) || cx.fns.count(n))
+            return false;
+        const uint32_t at = std::get<NameExpr>(c.callee->v).pos;
+        if (n == "sizeof")
+        {
+            const NameExpr* t = c.args.size() == 1 ? std::get_if<NameExpr>(&c.args[0]->v) : nullptr;
+            if (!t || t->parts.empty())
+            {
+                error(at, "'sizeof' takes one type: sizeof(T)");
+                return true;
+            }
+            std::string text;
+            for (const std::string& part : t->parts)
+                text += (text.empty() ? "" : ".") + part;
+            const std::string& head = t->parts[0];
+            if (t->parts.size() == 1 && t->template_args.empty()
+                && (cx.locals.count(head) || cx.field_type.count(head) || is_module_var(head)))
+            {
+                error(at, "'sizeof' takes a type, not the value '" + head + "'");
+                return true;
+            }
+            // A struct holds only native types and structs, so its layout is fixed in one generation.
+            // The state of a script class is not: a reload can add or remove fields.
+            if (t->parts.size() == 1 && cx.types->is_script_class(head) && !cx.types->is_script_value(head))
+            {
+                error(at, "'sizeof' of the script class '" + head + "' is not valid: a reload can change the layout of its state");
+                return true;
+            }
+            std::string bad;
+            text = canonical_type(text, &bad);
+            c.args[0] = raw(cpp_type(text + t->template_args, TypeModel::StorageUse::Local, t->pos), t->pos);
+            return true;
+        }
+        const bool is_static = n == "static_assert";
+        const bool msg_ok = c.args.size() == 2 && std::holds_alternative<StringExpr>(c.args[1]->v);
+        if (c.args.empty() || c.args.size() > 2 || (c.args.size() == 2 && !msg_ok) || (is_static && !msg_ok))
+        {
+            error(at, is_static ? "'static_assert' takes a condition and a text literal: static_assert(cond, \"message\")"
+                                : "'assert' takes a condition and an optional text literal: assert(cond, \"message\")");
+            return true;
+        }
+        expr(c.args[0]);
+        if (!is_static && c.args.size() == 2)
+        {
+            // "assert(cond, "m")" is the C++ form "assert((cond) && "m")": the message is in the text of the failure.
+            const std::string m = std::get<StringExpr>(c.args[1]->v).text;
+            c.args[0] = raw("(" + print(*c.args[0]) + ") && " + m, at);
+            c.args.pop_back();
+        }
+        return true;
+    }
+
     void call(CallExpr& c)
     {
         check_reset(c);
         if (const std::string* n = simple_name(*c.callee))
         {
+            if (builtin_call(c, *n))
+                return;
             if (const std::string hint = handle_call_hint(*n); !hint.empty())
             {
                 error(std::get<NameExpr>(c.callee->v).pos, hint);
