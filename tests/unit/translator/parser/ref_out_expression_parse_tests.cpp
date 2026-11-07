@@ -54,12 +54,10 @@ TEST(RefOutExpressionParse, ReferenceLambdaParameters)
     EXPECT_EQ(ast::print(*p.expr), "[=](Vec3& v, int32_t& n, auto w) {}");
 }
 
-TEST(RefOutExpressionParse, PrefixAmpersandIsAddressOf)
+// The binary "&" and "&&" stay. The prefix "&" is an error (see expression_error_parse_tests.cpp).
+TEST(RefOutExpressionParse, BinaryAmpersandStays)
 {
-    EXPECT_EQ(round_trip("&x"), "&x");
-    EXPECT_EQ(round_trip("f(a, &b)"), "f(a, &b)");
-    EXPECT_EQ(round_trip("this.p = &source"), "this.p = &source");
     EXPECT_EQ(round_trip("a & b"), "a & b");
     EXPECT_EQ(round_trip("a && b"), "a && b");
-    EXPECT_EQ(round_trip("a & &b"), "a & &b");
+    EXPECT_EQ(round_trip("a & *b"), "a & hot::star(b)");
 }

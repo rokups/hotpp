@@ -52,7 +52,7 @@ A field or an expression with no simple name uses the expression text. Sometimes
 
 - A value of `T*`, `$T` or `T?` can be null.
 - An access is `p.m`, a call, an index or a dereference.
-- A value is not null in these cases: `this`, `new $T(...)`, `&x`, an `is $T name` binding, a box or a value local, a string literal, and a narrowed name.
+- A value is not null in these cases: `this`, `new $T(...)`, an `is $T name` binding, a box or a value local, a string literal, and a narrowed name.
 - A native return is not null if its stub has `[nonnull]`. `[nonnull] class *;` sets a default for all stubs. A return is the `var` local type or a `this.f()` call.
 - A comparison with `null` never gives a warning.
 - An unknown type never gives a warning.

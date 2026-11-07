@@ -1,7 +1,0 @@
-108_ref_param_stored_through_field.hot:2:10: error: a field cannot hold a pointer to the value type 'int': nothing owns it, so the pointer can dangle. Use a value, or a pointer to the object that owns it
-    2 |     int* p;
-108_ref_param_stored_through_field.hot:5:18: error: a '&' value cannot be stored in an assignment, a 'return' or a field initializer. Use '&' only for a call argument or a local
-    5 |         this.p = &r;
-108_ref_param_stored_through_field.hot:9:18: error: a '&' value cannot be stored in an assignment, a 'return' or a field initializer. Use '&' only for a call argument or a local
-    9 |         this.p = &v[0];
-3 errors generated.

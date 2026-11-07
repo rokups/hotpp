@@ -34,8 +34,13 @@ TEST(RefOutStatementParse, RefAndOutAreRemoved)
     }
 }
 
-TEST(RefOutStatementParse, PrefixAmpersandIsAddressOf)
+// The prefix "&" is removed: it is a syntax error with a message that names the replacement.
+TEST(RefOutStatementParse, PrefixAmpersandIsAnError)
 {
-    EXPECT_EQ(round_trip("var r = &x;"), "auto r = &x;");
-    EXPECT_EQ(round_trip("f(&x);"), "f(&x);");
+    for (const char* text : {"var r = &x;", "f(&x);", "p = c ? &a : &b;"})
+    {
+        Parsed p(text);
+        ASSERT_FALSE(p.diag.items.empty()) << text;
+        EXPECT_NE(p.diag.items[0].msg.find("the prefix '&' is not supported"), std::string::npos) << text;
+    }
 }

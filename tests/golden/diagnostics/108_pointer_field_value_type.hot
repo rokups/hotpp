@@ -1,0 +1,7 @@
+class Keeper {
+    int* p;
+
+    void Keep(ref int r) {
+        int copy = r;
+    }
+}

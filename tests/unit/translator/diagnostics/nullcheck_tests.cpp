@@ -317,12 +317,11 @@ TEST(NullCheck, ConditionalExpressionNarrows)
 }
 
 // ---- known non null values
-TEST(NullCheck, NewThisAndAddressAreNonNull)
+TEST(NullCheck, NewAndThisAreNonNull)
 {
     EXPECT_EQ(warns("var n = new $Node(); n.hp = 1; n.val();"), 0);
     EXPECT_EQ(warns("var n = new Node(); n.hp = 1; n.val();"), 0);
     EXPECT_EQ(warns("this.val2(); var n = new $Node(); n.hp = 1;", "    int val2() { return 1; }\n"), 0);
-    EXPECT_EQ(warns("int x = 0; var a = &x; var b = *a;"), 0);
 }
 
 TEST(NullCheck, NewIsNonNullOnlyUntilAnAssignment)

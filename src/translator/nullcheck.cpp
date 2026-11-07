@@ -660,15 +660,6 @@ private:
     {
         if (!u.operand)
             return {};
-        if (!u.postfix && u.op == "&")
-        {
-            expr(*u.operand);
-            Val v;
-            v.type = "void*";
-            v.ptr = true;
-            v.nonnull = true; // the address of an object is not null
-            return v;
-        }
         const Val ov = expr(*u.operand);
         if (!u.postfix && u.op == "*")
             require(ov, u.pos ? u.pos : pos_of(*u.operand));

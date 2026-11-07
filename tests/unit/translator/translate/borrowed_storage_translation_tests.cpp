@@ -145,29 +145,6 @@ TEST(BorrowedStorage, RefInACallArgumentIsAllowed)
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
-TEST(ErrorRows, StoredRefInAnAssignmentIsAnError)
-{
-    const hotc::TranslateResult r =
-        check_translate("", "    Vec3 pos;\n    Vec3* p;\n    ~Foo() { p = null; }\n    void Move() { this.p = &this.pos; }\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "error: a '&' value cannot be stored in an assignment")) << r.diagnostics;
-}
-
-TEST(ErrorRows, StoredRefInAReturnIsAnError)
-{
-    const hotc::TranslateResult r = check_translate("", "    Vec3 pos;\n    int Move() { return &this.pos; }\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "a '&' value cannot be stored")) << r.diagnostics;
-}
-
-TEST(ErrorRows, StoredRefIsAWarningByDefault)
-{
-    const hotc::TranslateResult r =
-        check_translate("", "    Vec3 pos;\n    Vec3* p;\n    ~Foo() { p = null; }\n    void Move() { this.p = &this.pos; }\n", {}, false);
-    EXPECT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.warnings, "warning: a '&' value cannot be stored")) << r.warnings;
-}
-
 TEST(ErrorRows, AddressOfAScriptFunctionIsAnError)
 {
     const hotc::TranslateResult r = check_translate("", "    void G() { }\n    void Run() { var f = G; }\n");
@@ -203,15 +180,7 @@ TEST(ErrorRows, ALocalWithTheNameOfAFunctionIsNotAnAddress)
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
-// ---- a local that is a "T&" or holds a "&e" (design 7.10.6): allowed in a local, not stored.
-
-TEST(RefLocal, ALambdaCannotCaptureAVarRefLocal)
-{
-    const hotc::TranslateResult r =
-        check_translate("", "    Vec3 pos;\n    void Move() { var r = &this.pos; var f = () => { r.x = 1; }; }\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'r'")) << r.diagnostics;
-}
+// ---- a local that is a "T&" (design 7.10.6): allowed in a local, not stored.
 
 TEST(RefLocal, ALambdaCannotCaptureATypedRefLocal)
 {
@@ -228,21 +197,6 @@ TEST(RefLocal, ALaterRefLocalDoesNotHideAnEarlierCapture)
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
-TEST(RefLocal, AVarRefLocalCannotBeReturned)
-{
-    const hotc::TranslateResult r =
-        check_translate("", "    Vec3 pos;\n    Vec3* Get() { ref Vec3 r = this.pos; return r; }\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "a 'T*' return of a value struct must be 'null' or '&place'")) << r.diagnostics;
-}
-
-TEST(RefLocal, AVarRefLocalCannotInitializeAField)
-{
-    const hotc::TranslateResult r = check_translate("", "    Vec3 pos;\n    Vec3 copy = &this.pos;\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "a '&' value cannot be stored")) << r.diagnostics;
-}
-
 TEST(RefLocal, AssigningAVarRefLocalToAValueFieldCopiesTheValue)
 {
     const hotc::TranslateResult r = check_translate(
@@ -256,19 +210,6 @@ TEST(RefLocal, ARefLocalCannotBeStoredInAPointerField)
         check_translate("", "    Vec3 pos;\n    Vec3** p;\n    void Move() { ref Vec3 r = this.pos; this.p = r; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "a field cannot hold a borrowed pointer")) << r.diagnostics;
-}
-
-// A conditional "&" value in a "var" local is a borrowed local (commit 177b924). The local is legal,
-// but a lambda cannot capture it.
-TEST(RefLocal, AVarRefLocalInAConditionalIsBorrowedAndCannotBeCaptured)
-{
-    const hotc::TranslateResult ok =
-        check_translate("", "    Vec3 pos;\n    void Move(bool c) { var r = c ? &this.pos : &this.pos; }\n");
-    EXPECT_TRUE(ok.ok) << ok.diagnostics;
-    const hotc::TranslateResult r = check_translate(
-        "", "    Vec3 pos;\n    void Move(bool c) { var r = c ? &this.pos : &this.pos; var f = () => { r.x = 1; }; }\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'r'")) << r.diagnostics;
 }
 
 TEST(RefLocal, AConditionalOfTwoHandlesInAVarLocalIsAllowed)
@@ -337,106 +278,10 @@ TEST(BorrowedStorage, VarFromAChainOfLocalsIsTyped)
     EXPECT_TRUE(has(r.cpp, "auto n = hot::deref(a).dmg;")) << r.cpp;
 }
 
-TEST(AddressOf, AddressOfALocalIsABorrowedLocal)
-{
-    const hotc::TranslateResult r =
-        check_translate("", "    Vec3 pos;\n    void Move() { var p = &this.pos; p.x = 1; }\n");
-    ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "auto p = &__st->pos;")) << r.cpp;
-}
-
-TEST(AddressOf, ABorrowedAddressCannotBeCapturedByALambda)
-{
-    const hotc::TranslateResult r =
-        check_translate("", "    Vec3 pos;\n    void Move() { var p = &this.pos; var f = () => { p.x = 1; }; }\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'p'")) << r.diagnostics;
-}
-
-TEST(AddressOf, AddressInACallArgumentIsAllowed)
-{
-    const hotc::TranslateResult r =
-        check_translate("", "    Vec3 pos;\n    void Take(Vec3* q) { }\n    void Move() { this.Take(&this.pos); }\n");
-    EXPECT_TRUE(r.ok) << r.diagnostics;
-}
-
-TEST(AddressOf, AddressCannotBeStoredInAField)
-{
-    const hotc::TranslateResult r =
-        check_translate("", "    Vec3 pos;\n    void Move() { var p = &this.pos; this.pos = *p; }\n");
-    EXPECT_TRUE(r.ok) << r.diagnostics;
-    const hotc::TranslateResult s =
-        check_translate("", "    Vec3 pos;\n    Vec3* keep;\n    void Move() { this.keep = &this.pos; }\n");
-    EXPECT_FALSE(s.ok);
-    EXPECT_TRUE(has(s.diagnostics, "a '&' value cannot be stored")) << s.diagnostics;
-}
-
-TEST(AddressOf, AddressAsAStatementOrReturnIsAFinding)
-{
-    const hotc::TranslateResult r = check_translate("", "    Vec3 pos;\n    void Move() { &this.pos; }\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "a '&' value cannot be stored")) << r.diagnostics;
-    const hotc::TranslateResult s = check_translate("", "    Vec3 pos;\n    int Get() { return &this.pos; }\n");
-    EXPECT_FALSE(s.ok);
-    EXPECT_TRUE(has(s.diagnostics, "a '&' value cannot be stored")) << s.diagnostics;
-}
-
-TEST(AddressOf, AddressInANewArgumentAndAFieldInitializer)
-{
-    const hotc::TranslateResult r =
-        check_translate("", "    Vec3 pos;\n    void Move() { var w = new Weapon(&this.pos); }\n");
-    EXPECT_TRUE(has(r.diagnostics, "a '&' value cannot be stored") == false) << r.diagnostics;
-    const hotc::TranslateResult s = check_translate("", "    Vec3 pos;\n    Vec3* copy = &this.pos;\n");
-    EXPECT_FALSE(s.ok);
-}
-
-// A "var" copy of a borrowed pointer is borrowed too, also through parentheses, a ternary
-// expression and a cast. A typed "T*" local is borrowed by its type.
-TEST(BorrowedStorage, LambdaCapturesACopyOfABorrowedPointer)
-{
-    const hotc::TranslateResult r =
-        check_translate("", "    void Run(bool c) { int x = 1; var p = &x; var q = p; var f = () => *q; }\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'q', a borrowed pointer or reference")) << r.diagnostics;
-    const hotc::TranslateResult v = check_translate("",
-        "    void Run(bool c) { int x = 1; var p = &x; var a = (p); var b = c ? p : p; var d = (int*)p;\n"
-        "        int* t = p; var f = () => *a + *b + *d + *t; }\n");
-    EXPECT_FALSE(v.ok);
-    for (const char* n : {"'a'", "'b'", "'d'", "'t'"})
-        EXPECT_TRUE(has(v.diagnostics, std::string("the lambda captures ") + n)) << n << v.diagnostics;
-}
-
 TEST(BorrowedStorage, LambdaMayCaptureAValueCopyOfAReference)
 {
     const hotc::TranslateResult r = check_translate("", "    void Run(ref int r) { var c = r; var f = () => c; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
-}
-
-// An assignment of a borrowed pointer makes the local borrowed from that point on.
-TEST(BorrowedStorage, LambdaCapturesALocalThatReceivesABorrowedPointer)
-{
-    const hotc::TranslateResult r = check_translate("",
-        "    std.function<int()> cb;\n"
-        "    void Run() { int x = 1; var q = (int*)null; var p = &x; q = p; this.cb = () => *q; }\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'q', a borrowed pointer or reference")) << r.diagnostics;
-    const hotc::TranslateResult v = check_translate("",
-        "    void Run(bool c) { int x = 1; int y = 2; var p = &x; var r = &y; var a = (int*)null;\n"
-        "        var b = (int*)null; var d = (int*)null; int* t = nullptr;\n"
-        "        a = c ? p : r; b = (p); d = (int*)p; t = p;\n"
-        "        var f = () => *a + *b + *d + *t; }\n");
-    EXPECT_FALSE(v.ok);
-    for (const char* n : {"'a'", "'b'", "'d'", "'t'"})
-        EXPECT_TRUE(has(v.diagnostics, std::string("the lambda captures ") + n)) << n << v.diagnostics;
-}
-
-TEST(BorrowedStorage, AssignmentOfAddressOfIsAFindingAndBorrows)
-{
-    const hotc::TranslateResult r =
-        check_translate("", "    void Run() { int x = 1; var q = (int*)null; q = &x; var f = () => *q; }\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "a '&' value cannot be stored")) << r.diagnostics;
-    EXPECT_TRUE(has(r.diagnostics, "the lambda captures 'q'")) << r.diagnostics;
 }
 
 TEST(BorrowedStorage, PlainAssignmentAndValueCopyOfAReferenceStayLegal)
@@ -446,34 +291,6 @@ TEST(BorrowedStorage, PlainAssignmentAndValueCopyOfAReferenceStayLegal)
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
-// Task 40: a borrowed value is valid for the whole call, so every call form takes it.
-TEST(BorrowedArgs, AddressInTernaryParenCastAndDerefIsAllowedInACall)
-{
-    const hotc::TranslateResult r = check_translate("",
-        "    void Take(Vec3* p) { }\n"
-        "    void See(ref Vec3 v) { }\n"
-        "    void Run(ref Vec3 a, Vec3* b, bool c) {\n"
-        "        Vec3 x; Vec3 y;\n"
-        "        Take(c ? &x : &y); Take(c ? b : &x); Take((&x)); Take((Vec3*)&x); Take(c ? &a : (Vec3*)&y);\n"
-        "        See(*(c ? &x : &y)); See(*(Vec3*)&x); Take(b ?? &x);\n"
-        "    }\n");
-    EXPECT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "c ? &x : &y);")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "(Vec3*)&x);")) << r.cpp;
-}
-
-TEST(BorrowedArgs, AddressInTernaryAndCastIsAllowedForALocalAndBorrows)
-{
-    const hotc::TranslateResult r = check_translate("",
-        "    void Take(Vec3* p) { }\n"
-        "    void Run(bool c) { Vec3 x; Vec3 y; var p = c ? &x : &y; var q = (Vec3*)&x; Take(p); Take(q); }\n");
-    EXPECT_TRUE(r.ok) << r.diagnostics;
-    const hotc::TranslateResult s = check_translate("",
-        "    void Run(bool c) { Vec3 x; Vec3 y; var p = c ? &x : &y; var f = () => { p.x = 1; }; }\n");
-    EXPECT_FALSE(s.ok);
-    EXPECT_TRUE(has(s.diagnostics, "the lambda captures 'p'")) << s.diagnostics;
-}
-
 TEST(BorrowedArgs, EveryCallFormTakesABorrowedParameterAndLocal)
 {
     const hotc::TranslateResult r = check_translate("",
@@ -481,14 +298,14 @@ TEST(BorrowedArgs, EveryCallFormTakesABorrowedParameterAndLocal)
         "    void Take(Vec3* p) { }\n"
         "    void See(ref Vec3 v) { }\n"
         "    void Run(ref Vec3 v, Vec3* p, ref Owner o) {\n"
-        "        Vec3 x; ref r = x; var q = &x;\n"
+        "        Vec3 x; ref r = x; var q = p;\n"
         "        if (p == null) return;\n"
-        "        Take(p); See(v); Take(&v); See(r); Take(q); Take(&r); Take(&*p);\n"
-        "        var a = new $Foo(&x); var b = new $Foo(p); var c = new $Foo(q);\n"
+        "        Take(p); See(v); Take(v); See(r); Take(q); Take(r); See(*p);\n"
+        "        var a = new $Foo(x); var b = new $Foo(p); var c = new $Foo(q);\n"
         "        var f = (ref Vec3 w) => { See(w); }; f(v); f(x);\n"
-        "        var g = (Vec3* w) => { Take(w); }; g(&x); g(p); g(q);\n"
-        "        try { Take(&x); } catch (std.exception e) { Take(&x); }\n"
-        "        std.vector<Vec3> xs; foreach (ref e in xs) { See(e); Take(&e); }\n"
+        "        var g = (Vec3* w) => { Take(w); }; g(x); g(p); g(q);\n"
+        "        try { Take(x); } catch (std.exception e) { Take(x); }\n"
+        "        std.vector<Vec3> xs; foreach (ref e in xs) { See(e); Take(e); }\n"
         "    }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
@@ -497,34 +314,10 @@ TEST(BorrowedArgs, EveryCallFormTakesABorrowedParameterAndLocal)
 // local. A copy of the pointer cannot be stored or captured.
 TEST(BorrowedArgs, ResultOfACallWithABorrowedArgumentStaysBorrowed)
 {
-    const hotc::TranslateResult r = check_translate("",
-        "    Weapon* Pick(Weapon* w) { return w; }\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "a 'T*' return of a value struct must be 'null' or '&place'")) << r.diagnostics;
     const hotc::TranslateResult s = check_translate("",
         "    void Run(Weapon* w) { var q = Echo(w); var f = () => { q.dmg = 1; }; }\n");
     EXPECT_FALSE(s.ok);
     EXPECT_TRUE(has(s.diagnostics, "the lambda captures 'q'")) << s.diagnostics;
-}
-
-TEST(BorrowedArgs, AddressStaysAnErrorOutsideACallAndALocal)
-{
-    for (const char* body : {"Vec3 x; Vec3 k = *(&x);", "Vec3 x; var n = &x + 1;", "Vec3 x; (c ? &x : &x);",
-             "Vec3 x; last = c ? &x : &x;"})
-    {
-        const hotc::TranslateResult r = check_translate("",
-            std::string("    Vec3* last;\n    void Run(bool c) { ") + body + " }\n");
-        EXPECT_FALSE(r.ok) << body;
-        EXPECT_TRUE(has(r.diagnostics, "a '&' value cannot be stored")) << body << r.diagnostics;
-    }
-}
-
-TEST(BorrowedArgs, CastNotInACallArgumentIsStillAnErrorToStore)
-{
-    const hotc::TranslateResult r = check_translate("",
-        "    Vec3 keep;\n    Vec3* Get(ref Vec3 v) { return (Vec3*)&v; }\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "a '&' value cannot be stored")) << r.diagnostics;
 }
 
 // "base(*p)" is a reference to the pointee. The plan binds it by reference, like "base(r)".

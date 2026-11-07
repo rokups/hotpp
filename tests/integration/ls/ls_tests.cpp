@@ -542,7 +542,7 @@ const char* const kNativeScript =
     "\n"
     "    override void Tick(float dt) {\n"
     "        Counter local;\n"
-    "        Counter* ptr = &local;\n"
+    "        Counter* ptr = null;\n"
     "        Weapon w = new Weapon(1, \"a\");\n"
     "        Boss other = this as Boss;\n"
     "        bool isBoss = this is Boss;\n"

@@ -123,7 +123,7 @@ Command line of the translate mode. Without `-o`, the tool prints the C++ to the
          [--slots file] [--resource-dir dir] [--no-strict-borrowed] [--null-warnings]
 
 - `--raw-diagnostics` prints the compiler text as it is. By default `hotc` rewrites it (see "Diagnostics and debugging").
-- `--no-strict-borrowed` makes the borrowed-storage findings (a stored `T*`, `T&` or `&x`) warnings. By default they are errors.
+- `--no-strict-borrowed` makes the borrowed-storage findings (a stored `T*` or `T&`) warnings. By default they are errors.
 - `--null-warnings` makes the nullability findings warnings. By default they are errors (see "Null checks" in [Diagnostics](diagnostics.html)).
 - The order of the classes in a script does not matter. A cycle of classes is an error.
 - `<script>...` is one or more script files. Each script gives one library.

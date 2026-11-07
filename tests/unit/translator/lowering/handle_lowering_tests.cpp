@@ -112,8 +112,34 @@ TEST(HandleLowering, HandleToNativePointerAndReference)
     EXPECT_EQ(f.body("Weapon w = null; Use(w);"), "std::shared_ptr<Weapon> w = nullptr; Use(w);");
     // An explicit form and a non-handle argument are not converted.
     carrier = "p:Weapon";
-    EXPECT_EQ(f.body("Weapon w = null; Use(&*w); Use(3);"),
-        "std::shared_ptr<Weapon> w = nullptr; Use(&hot::star(w)); Use(3);");
+    EXPECT_EQ(f.body("Weapon w = null; Use((Weapon*)w); Use(3);"),
+        "std::shared_ptr<Weapon> w = nullptr; Use(hot::cast_ptr<Weapon*>(w)); Use(3);");
+}
+
+// A value lvalue of type T goes to a native "T*" or "const T*" parameter: "hot::as_ptr(x)".
+TEST(HandleLowering, ValueLvalueToNativeValuePointer)
+{
+    const TypeModel types = stub_model("Weapon", "std::shared_ptr<$T>");
+    Fixture f;
+    f.cx.types = &types;
+    std::string carrier;
+    f.cx.native_key = [](const ast::CallExpr&) { return std::string("Nudge"); };
+    f.cx.native_carrier = [&carrier](const std::string&, size_t arg, size_t) { return arg == 0 ? carrier : std::string(); };
+
+    carrier = "v:Vec3";
+    EXPECT_EQ(f.body("Vec3 v; Nudge(v);"), "Vec3 v = Vec3(); Nudge(hot::as_ptr(v));");
+    carrier = "v:float";
+    EXPECT_EQ(f.body("Nudge(health);"), "Nudge(hot::as_ptr(health));");
+    carrier = "v:int32_t";
+    EXPECT_EQ(f.body("int n = 0; Nudge(n);"), "int32_t n = 0; Nudge(hot::as_ptr(n));");
+    // A native namespace on the parameter type still matches the script name.
+    carrier = "v:Urho3D::Vec3";
+    EXPECT_EQ(f.body("Vec3 v; Nudge(v);"), "Vec3 v = Vec3(); Nudge(hot::as_ptr(v));");
+    // Another type and a handle keep the argument.
+    carrier = "v:float";
+    EXPECT_EQ(f.body("Vec3 v; Nudge(v);"), "Vec3 v = Vec3(); Nudge(v);");
+    carrier = "v:Weapon";
+    EXPECT_EQ(f.body("Weapon w = null; Nudge(w);"), "std::shared_ptr<Weapon> w = nullptr; Nudge(w);");
 }
 
 TEST(HandleLowering, HandleToNativeNeedsTheHooks)

@@ -134,22 +134,6 @@ TEST(CoalesceTranslation, ChainIsRightAssociative)
         << r.cpp;
 }
 
-TEST(CoalesceTranslation, BorrowedPointerOnEitherSideIsBorrowed)
-{
-    const hotc::TranslateResult l = check_translate("",
-        "    std.function<int()> cb;\n"
-        "    void Run() { int x = 1; var p = &x; var n = (int*)null; var q = (int*)null;\n"
-        "        q = p ?? n; this.cb = () => *q; }\n");
-    EXPECT_FALSE(l.ok);
-    EXPECT_TRUE(has(l.diagnostics, "the lambda captures 'q'")) << l.diagnostics;
-    const hotc::TranslateResult rr = check_translate("",
-        "    std.function<int()> cb;\n"
-        "    void Run() { int x = 1; var p = &x; var n = (int*)null; var q = (int*)null;\n"
-        "        q = n ?? p; this.cb = () => *q; }\n");
-    EXPECT_FALSE(rr.ok);
-    EXPECT_TRUE(has(rr.diagnostics, "the lambda captures 'q'")) << rr.diagnostics;
-}
-
 TEST(IsBindingTranslation, IfAndWhileBindAHandle)
 {
     const hotc::TranslateResult r = check_translate("",

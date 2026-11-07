@@ -1,9 +1,0 @@
-112_ptr_return_bad_place.hot:12:9: error: 'return' of a pointer to the local 'i': it ends at the return. Return a value, or a pointer to a field or a 'ref' parameter
-   12 |         return &i;
-112_ptr_return_bad_place.hot:16:9: error: 'return' of a pointer to the parameter 'a': the parameter is a copy and ends at the return. Return a value, or take the parameter by 'ref'
-   16 |         return &a;
-112_ptr_return_bad_place.hot:20:9: error: a 'T*' return of a value struct must be 'null' or '&place', such as '&this.items[i]'. Return the place, or a value
-   20 |         return Local();
-112_ptr_return_bad_place.hot:25:17: error: the lambda captures 'p', a borrowed pointer or reference. A closure cannot keep it. Copy the value or use a handle
-   25 |         var f = () => { p.x = 1; };
-4 errors generated.

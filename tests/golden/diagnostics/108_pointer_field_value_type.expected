@@ -1,0 +1,3 @@
+108_pointer_field_value_type.hot:2:10: error: a field cannot hold a pointer to the value type 'int': nothing owns it, so the pointer can dangle. Use a value, or a pointer to the object that owns it
+    2 |     int* p;
+1 error generated.

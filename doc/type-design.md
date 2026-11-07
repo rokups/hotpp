@@ -108,7 +108,7 @@ Rules:
 - R2 Element. When the root is an element of `c`, `c` must not change shape while the `ref` lives. A `ref` lives to the end of its block. `foreach (ref x in c)` follows the same rule for the loop body.
   - A shape change is a call of one of these methods on `c`: push_back, emplace_back, pop_back, push_front, pop_front, emplace_front, emplace, emplace_hint, insert, insert_or_assign, try_emplace, erase, clear, resize, reserve, shrink_to_fit, assign, swap, rehash, merge, extract, append, replace, remove, remove_if or splice.
   - An assignment to `c` is a shape change.
-  - Use of `c` as a `ref`, `out` or `&c` argument is a shape change. This includes a call such as `F(c)`, `this.F(c)` or `Class.F(c)` of an own method.
+  - Use of `c` as a `ref` or `out` argument is a shape change. This includes a call such as `F(c)`, `this.F(c)` or `Class.F(c)` of an own method.
   - The owner of a place can be replaced: a handle `$T`, a pointer `T*`, a `T?` or a script class value. An assignment to the owner is a shape change for a `ref` that goes through it (`ref r = this.p.hp; this.p = new P();`). A struct value field is not replaceable, so `ref r = this.pos.x; this.pos = Vec3();` is allowed.
 - R3 Escape. A `ref` cannot leave its block. It cannot go into a field, module variable, container element, `T?`, tuple, handle or lambda. It cannot cross an `await`. A type with `ref` inside is an error.
 - R4 Return. A method with a `ref T` return type returns a place.
@@ -116,11 +116,7 @@ Rules:
   - A local, a plain/`in`/`[byval]` parameter and a temporary are errors.
   - `T` is a builtin, struct or native value type. A class type or a handle type is an error: return the handle `$T` by value.
   - An `async` method cannot return `ref`.
-- R4p Pointer return. A method can return `T*`, where `T` is a script struct or a native value type (not a builtin scalar).
-  - Each `return` gives `null`, `&place`, or a choice `c ? &a : null` of these.
-  - The place of `&` follows rule R4. `&local` and `&param` of a copy are errors.
-  - Another form, such as `return p;` or `return Find(0);`, is an error.
-  - A caller `var p = c.Find(0);` is a borrowed pointer. It cannot go into a field, a container element or a lambda. The checker does not follow a shape change of the owner: a `push_back` can make `p` dangle.
+- R4p was removed. The prefix `&` does not exist, so a method cannot return `&place`. A method returns `ref T` (rule R4) or `T?` for a value struct. A `T*` return of a value struct can give `null` or a pointer that the method got from its caller. A caller `var p = c.Find(0);` is a borrowed pointer. It cannot go into a field, a container element or a lambda.
 - R5 Call. The result of a `ref` call is a place (see the table). Rules R2 and R3 apply to each of its roots.
   - The result of `this.F(...)` can be an element of any field of the object. A shape change of any container, string, array or replaceable field of the object (`this.xs.push_back(2)`, `this.xs = other`, `xs.clear()`) ends the `ref`. A change of a scalar field does not.
 
@@ -199,7 +195,7 @@ Note: the check sees direct mutation only. See doc/limits.md.
 - `x ?? y` gives `y` when `x` is null. When `y` is not null, the result is not null.
 - `x is T name` binds a non null name.
 - `x as T` gives a nullable result.
-- `(T*)p` where `p` is `T*`, and `($C)h` where `h` is `$C` or a script `$Derived` of `C`, emit `hot::nonnull(p)`. It throws a recoverable `hot::NullReference`, also when `HOT_RUNTIME_CHECKS` is 0. The result is not null. The C++ compiler decides the type of `p` for `(T*)p`: the translator writes `hot::cast_ptr<T*>(p)`. `(T*)&x` stays a C cast.
+- `(T*)p` where `p` is `T*`, and `($C)h` where `h` is `$C` or a script `$Derived` of `C`, emit `hot::nonnull(p)`. It throws a recoverable `hot::NullReference`, also when `HOT_RUNTIME_CHECKS` is 0. The result is not null. The C++ compiler decides the type of `p` for `(T*)p`: the translator writes `hot::cast_ptr<T*>(p)`. For a handle `h` of a derived class, `(Base*)h` is a checked unwrap that gives the raw pointer of the object, converted to `Base*`.
 - A downcast `($Derived)h` keeps `hot::as_script`. The result can be null.
 - `(const T*)p` keeps the null state of `p`. `(T)x` for a `T?` is not a cast.
 - The error text is `"p" can be null here; check it with "if (p != null)" or use "p?.m"`.

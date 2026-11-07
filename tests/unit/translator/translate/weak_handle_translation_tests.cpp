@@ -162,7 +162,6 @@ TEST(WeakHandleTranslation, UnsupportedForms)
              Case{"    void F() { [weak] var x = w; }\n", "[weak] needs the handle type of the local"},
              Case{"    void F() { [weak] ref x = w; }\n", "[weak] needs the handle type of the local"},
              Case{"    void F() { ref d = w.dmg; }\n", "a reference into the weak handle 'w' dangles"},
-             Case{"    void F() { int* p = &w.dmg; }\n", "a reference into the weak handle 'w' dangles"},
              Case{"    [weak]\n    int G() { return 0; }\n", "[weak] applies to fields, parameters and local"},
              Case{"    void F() { [strong] Weapon x = w; }\n", "unknown attribute 'strong' on a local variable"},
          })

@@ -132,12 +132,6 @@ TEST(GoldenTranslation, RefReturnOtherClass)
     golden_one("ref_return_xclass_v1");
 }
 
-// A "T*" return of a value struct: "null" or "&place". A caller "var p" is a borrowed pointer.
-TEST(GoldenTranslation, PtrReturn)
-{
-    golden_one("ptr_return_v1");
-}
-
 // A lambda that writes a captured local or parameter: the variable is a shared cell (G06).
 TEST(GoldenTranslation, SharedCell)
 {
@@ -183,7 +177,7 @@ TEST(GoldenTranslation, CycleHandles)
     golden_one("cycle_handles_v1");
 }
 
-// A borrowed value (T&, T*, ref, &x) is an argument of every call form: a method, a native call, a
+// A borrowed value (T&, T*, ref, or a value lvalue to a native T*) is an argument of every call form: a method, a native call, a
 // constructor, new, a lambda, a ternary, a cast and a nested call.
 TEST(GoldenTranslation, BorrowedArgs)
 {

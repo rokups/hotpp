@@ -883,7 +883,7 @@ TEST(HotcTool, HandleAddressOfDereferenceAndThisCompile)
         "    void Hurt($Hero h, float d) { }\n"
         "    void Join($Hero h) { }\n    void Nat(Actor* a) { }\n    $Hero buddy;\n    $Hero Me() { return this; }\n"
         "    void Run(Weapon w, Item i, $Hero other, Actor a) {\n"
-        "        TakeW(&*w); RefW(*w); TakeI(&*i); RefI(*i);\n"
+        "        TakeW((Weapon*)w); RefW(*w); TakeI((Item*)i); RefI(*i);\n"
         "        Join(this); Nat(this); this.buddy = this; var me = this; Join(me);\n"
         "        if (other == null) return;\n"
         "        other.Hurt(this, 2.0);\n"

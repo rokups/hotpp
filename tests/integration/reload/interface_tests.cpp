@@ -212,7 +212,7 @@ TEST_P(BackendTests, HandleCallConvertsToNativePointerAndReference)
     EXPECT_EQ(select(0), 7);
     EXPECT_EQ(select(1), 7);
     EXPECT_EQ(select(2), 7);
-    EXPECT_EQ(select(3), 7); // the explicit "&*"
+    EXPECT_EQ(select(3), 7); // the explicit "(Charm*)local" cast
     EXPECT_EQ(select(4), 1); // Mixed(Charm*)
     EXPECT_EQ(select(5), 2); // Mixed(const Charm&)
 }

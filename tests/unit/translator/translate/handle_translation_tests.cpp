@@ -2,7 +2,7 @@
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
-// Tests for hotc::translate with handle types: fields, parameters, "T&", "&x", "new" and preludes.
+// Tests for hotc::translate with handle types: fields, parameters, "T&", "new" and preludes.
 #include "hot/hotc_lib.h"
 #include "support/stub_translate_test_support.h"
 #include "support/translator_test_support.h"
@@ -87,80 +87,20 @@ TEST(HandleTranslation, ParamPassedToAReferenceParamTakesACopyInTheBody)
         << r.cpp;
 }
 
-TEST(HandleTranslation, AddressOfAPointerLocalGivesANativeOutParameter)
-{
-    // "Find(&w)" fills a "Weapon*": the parameter is a "Weapon**".
-    const hotc::TranslateResult r =
-        weapon_translate("    void Find(Weapon** result) { }\n    void Run() { Weapon* w = null; this.Find(&w); }\n");
-    ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "Foo__Find(__self, &w);")) << r.cpp;
-}
-
-TEST(HandleTranslation, AddressOfAValueLocalIsAPointer)
-{
-    const hotc::TranslateResult r =
-        weapon_translate("    void Take(Vec3* q) { }\n    void Run() { Vec3 p; var q = &p; this.Take(&p); }\n");
-    ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "auto q = &p;")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "Foo__Take(__self, &p);")) << r.cpp;
-}
-
-TEST(HandleTranslation, AddressOfAHandleLocalIsAnError)
+TEST(HandleTranslation, AddressOfAHandleIsTheGeneralError)
 {
     const hotc::TranslateResult r = weapon_translate("    void Run() { Weapon h = null; var q = &h; }\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics,
-        "'&' on the handle 'h' is not allowed. Pass 'h' for a handle parameter or a native 'T*' or 'T&' "
-        "parameter, or use '&*h' for a 'T*' and '*h' for a 'T&'"))
-        << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "the prefix '&' is not supported")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "cast a handle with (T*)h")) << r.diagnostics;
 }
 
-TEST(HandleTranslation, AddressOfAHandleParameterIsAnError)
+TEST(HandleTranslation, CastOfAHandleToAPointerGivesTheRawPointer)
 {
     const hotc::TranslateResult r =
-        weapon_translate("    void Take(Weapon* q) { }\n    void Run(Weapon h) { this.Take(&h); }\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "'&' on the handle 'h' is not allowed")) << r.diagnostics;
-}
-
-TEST(HandleTranslation, AddressOfAHandleFieldIsAnError)
-{
-    const hotc::TranslateResult r = weapon_translate(
-        "    Weapon w = null;\n    void Take(Weapon* q) { }\n"
-        "    void Run() { this.Take(&w); this.Take(&this.w); }\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "'&' on the handle 'w' is not allowed")) << r.diagnostics;
-}
-
-TEST(HandleTranslation, AddressOfThisIsAnError)
-{
-    const hotc::TranslateResult r =
-        weapon_translate("    void Take(Foo* q) { }\n    void Run() { this.Take(&this); }\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "'&' on the handle 'this' is not allowed")) << r.diagnostics;
-}
-
-TEST(HandleTranslation, AddressOfADereferencedHandleIsAllowed)
-{
-    const hotc::TranslateResult r =
-        weapon_translate("    void Take(Weapon* q) { }\n    void Run() { Weapon h = null; this.Take(&*h); }\n");
+        weapon_translate("    void Take(Weapon* q) { }\n    void Run() { Weapon h = null; this.Take((Weapon*)h); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "&hot::star(h)")) << r.cpp;
-}
-
-TEST(HandleTranslation, AddressOfAMemberOfAHandleIsAllowed)
-{
-    const hotc::TranslateResult r =
-        weapon_translate("    void Take(int* q) { }\n    void Run() { Weapon h = null; this.Take(&h.dmg); }\n");
-    ASSERT_TRUE(r.ok) << r.diagnostics;
-}
-
-TEST(HandleTranslation, AddressOfAnUntypedVarIsNotChecked)
-{
-    // The type of the var is not known to the translator. Clang reports a wrong use.
-    const hotc::TranslateResult r =
-        weapon_translate("    void Take(Vec3* q) { }\n    void Run() { var p = new Weapon(); this.Take(&p); }\n");
-    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "hot::cast_ptr<Weapon*>(h)")) << r.cpp;
 }
 
 TEST(HandleTranslation, DereferenceAndMultiplyEmitCorrectly)
@@ -185,10 +125,10 @@ TEST(HandleTranslation, AmpersandAndAndAreUnchanged)
     EXPECT_TRUE(has(r.cpp, "int32_t c = m & n;")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "x && y")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "c = c & 3;")) << r.cpp;
-    // A "&" after a binary "&" is the prefix operator. The checker allows it only for a call argument.
+    // A "&" after a binary "&" is the removed prefix operator.
     const hotc::TranslateResult q = weapon_translate("    int Run(int m, int n) { int c = m & &n; return c; }\n");
     EXPECT_FALSE(q.ok);
-    EXPECT_TRUE(has(q.diagnostics, "a '&' value cannot be stored")) << q.diagnostics;
+    EXPECT_TRUE(has(q.diagnostics, "the prefix '&' is not supported")) << q.diagnostics;
 }
 
 TEST(HandleTranslation, NewAssignsAField)
@@ -236,15 +176,6 @@ TEST(HandleTranslation, PreludeWithClassIsAnError)
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "bad.prelude")) << r.diagnostics;
     EXPECT_TRUE(has(r.diagnostics, "a prelude can hold only stubs")) << r.diagnostics;
-}
-
-// The message does not offer "h.get()": "." on a handle always names a member of the pointee.
-TEST(HandleTranslation, AddressOfAHandleMessageDoesNotOfferGet)
-{
-    const hotc::TranslateResult r = weapon_translate("    void Run() { Weapon h = null; var q = &h; }\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_FALSE(has(r.diagnostics, ".get()")) << r.diagnostics;
-    EXPECT_TRUE(has(r.diagnostics, "'&*h' for a 'T*'")) << r.diagnostics;
 }
 
 // "h.get()" on a handle calls "get" of the pointee, so the member must exist there.
@@ -307,16 +238,15 @@ TEST(HandleTranslation, LambdaParameterDoesNotLeakItsType)
 {
     const hotc::TranslateResult r = weapon_translate(
         "    void Take(int* q) { }\n    void F($Foo f) { }\n"
-        "    void Run() { int h = 0; var l = (Weapon h) => 1; this.Take(&h); }\n");
+        "    void Run() { int h = 0; var l = (Weapon h) => 1; this.Take(h); }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_FALSE(has(r.diagnostics, "'&' on the handle")) << r.diagnostics;
 }
 
-// A cast to "T&" or "T*" of a script class or a handle would reinterpret the handle.
-TEST(HandleTranslation, CastToAHandleReferenceOrPointerIsAnError)
+// A cast to "T&", "T**" or a script class pointer would reinterpret the handle. "(T*)h" of a handle is allowed.
+TEST(HandleTranslation, CastToAHandleReferenceOrDoublePointerIsAnError)
 {
     const char* hint = "use 'as' or static_cast<";
-    for (const char* cast : {"(Weapon*)h", "(Weapon**)h", "(Foo*)f"})
+    for (const char* cast : {"(Weapon**)h", "(Foo*)f"})
     {
         const hotc::TranslateResult r =
             weapon_translate(std::string("    void Run(Weapon h, $Foo f) { var x = ") + cast + "; }\n");

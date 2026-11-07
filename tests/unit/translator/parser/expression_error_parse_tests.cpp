@@ -76,3 +76,17 @@ TEST(ExpressionParseError, CollectionLiteralErrors)
     EXPECT_EQ(b.diag.items[0].msg, "a map entry needs a value: key: value");
     EXPECT_EQ(b.diag.items[0].col, 8u);
 }
+
+// The prefix "&" is not in the expression grammar. The error names the replacement.
+TEST(ExpressionParseError, AddressOfIsAnError)
+{
+    const char* msg = "the prefix '&' is not supported; pass the value to a native pointer parameter, "
+                      "write ref name = expr, or cast a handle with (T*)h";
+    EXPECT_EQ(one_error("&x"), std::string("1:1: ") + msg);
+    EXPECT_EQ(one_error("f(&x)"), std::string("1:3: ") + msg);
+    EXPECT_EQ(one_error("p = c ? &a : &b"), std::string("1:9: ") + msg);
+    EXPECT_EQ(one_error("&*h"), std::string("1:1: ") + msg);
+    // The binary "&" and the logical "&&" stay.
+    Parsed ok("a & b && c");
+    EXPECT_TRUE(ok.diag.items.empty()) << ok.diag.format("t");
+}

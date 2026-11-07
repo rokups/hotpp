@@ -580,7 +580,7 @@ class Boss : Actor {
     long D2L(double d) { return (long)d; }
     uint D2U(double d) { return (uint)d; }
     int PointerBits(int* p) { nuint a = (nuint)p; if (a != 0) { return 1; } return 0; }
-    int AddressIsNotZero() { int x = 5; return this.PointerBits(&x); }
+    int NullIsZero() { return this.PointerBits(null); }
     byte D2B(double d) { return (byte)d; }
     sbyte D2SB(double d) { return (sbyte)d; }
 
@@ -659,7 +659,7 @@ class Boss : Actor {
         this.Check(this.D2L(1e30) == 9223372036854775807);
         this.Check(this.D2L(-1e30) == -9223372036854775807 - 1);
         this.Check(this.D2L(this.fz / this.fz) == 0);
-        this.Check(this.AddressIsNotZero() == 1);
+        this.Check(this.NullIsZero() == 0);
         this.Check(this.D2U(1e20) == 4294967295);
         this.Check(this.D2U(-5.0) == 0);
         this.Check(this.D2B(300.0) == 255);

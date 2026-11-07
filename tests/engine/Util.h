@@ -13,6 +13,11 @@
 // The distance between two points.
 HOT_EXPORT float Distance(const Vec3& a, const Vec3& b);
 
+// Native functions with a pointer parameter. The script passes a value lvalue: "Nudge(v, 1)".
+// Peek takes "null" too. It gives -1 for a null pointer.
+HOT_EXPORT void Nudge(Vec3* v, float dx);
+HOT_EXPORT float Peek(const Vec3* v);
+
 // A text such as "(1.5, 2, 3)".
 HOT_EXPORT std::string FormatVec(const Vec3& v);
 

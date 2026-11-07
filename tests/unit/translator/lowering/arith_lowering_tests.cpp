@@ -251,7 +251,6 @@ TEST(FloatToIntLowering, PointerCastUsesTheHelper)
     add_numbers(f);
     f.param("p"); // a local without a known type
     EXPECT_EQ(f.expr("(nuint)p"), "hot::float_to_int<uintptr_t>(p)");
-    EXPECT_EQ(f.expr("(nuint)&i"), "hot::float_to_int<uintptr_t>(&i)");
 }
 
 TEST(FloatToIntLowering, UnknownOperandUsesTheHelper)

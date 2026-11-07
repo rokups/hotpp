@@ -66,7 +66,7 @@ These are the rules:
 - A stub with another handle template can name its weak template with `weak_handle` (see "Custom handles" below).
 - Assign a strong handle to set it. `x = null` clears it. A `null` argument or the default `= null` gives an empty weak handle.
 - `Weapon w = x;` copies a strong handle out. A lambda that uses `x` captures the weak handle, and each read in the body locks it.
-- A reference into the object is an error, for example `ref r = x.hp`, `&x.hp` or `foreach (var i in x.items)`. The lock ends with the statement, so the reference dangles. Copy the handle to a local first: `Node h = x;`.
+- A reference into the object is an error, for example `ref r = x.hp` or `foreach (var i in x.items)`. The lock ends with the statement, so the reference dangles. Copy the handle to a local first: `Node h = x;`.
 - A weak handle takes a strong handle, `this`, another weak handle, `null` or the result of a call. It cannot take a `new` object: see "A new object in a weak handle" below.
 - A reload that changes a field from strong to weak, or from weak to strong, resets the field to `null`.
 
@@ -111,7 +111,7 @@ A host can use its own smart pointer, for example an intrusive pointer of an eng
 - `new T(args)` gives `H(new T(args))`. The handle must take the ownership of a new raw pointer, as an intrusive pointer does.
 - `weak_handle` is valid on a stub with a `handle` other than `"$T*"`, and on `class *` with a `default_handle`. The template must hold `$T`.
 - `factory("std::make_shared<$T>")` sets the callee of `new $T(args)` on a native class. `$T` is the class. The text `(args)` follows the template. An intrusive stub with no `factory` emits `H(new T(args))`. A `std::shared_ptr` handle with no `factory` emits `std::make_shared<T>(args)`.
-- A `$T` cannot come from a raw pointer. This applies to `this`, to a `T*` value, to `&x` and to `h.reset(p)`. The error text is `cannot create a shared pointer from a raw pointer; use new $T(...)`. The exception is a class with a weak source: a script class, or a native class with `std::enable_shared_from_this`. The form `h.reset(p)` is always an error.
+- A `$T` cannot come from a raw pointer. This applies to `this`, to a `T*` value and to `h.reset(p)`. The error text is `cannot create a shared pointer from a raw pointer; use new $T(...)`. The exception is a class with a weak source: a script class, or a native class with `std::enable_shared_from_this`. The form `h.reset(p)` is always an error.
 - `$Derived` converts to `$Base`. The reverse needs a cast.
 - A read of a `[weak]` value calls `lock() or `Lock()` of the weak pointer.
 - The handle needs `operator->`, `operator*` and a test against `nullptr`. The raw pointer comes from `get()` or `Get()`.
@@ -238,7 +238,7 @@ A parameter `ref T x` or `out T x` is a reference. A parameter `in T x` is a con
 
 An `out T x` parameter must have a value on every path. The body assigns it before each `return` and before the end of the body. A loop can run zero times, so an assignment in a loop does not count after the loop. The error is `out parameter "x" is not assigned on every path`. A read before the first assignment gives `out parameter "x" is read before it is assigned`. A parameter `[byval] T x` is a copy. `T& x` is an error: write `ref T x`.
 
-`&x` is the address of `x` and has the type `T*`: write `f(&x)`. `*e` reads through an iterator, an `std.optional`, a smart pointer or a handle. `&h` on a handle is an error: [Native interop](native-interop.html) shows the right forms.
+There is no prefix `&` (address-of) in `.hot`. Pass a value lvalue `x` to a native `T*` parameter as `f(x)`: the call writes `hot::as_ptr(x)`. `*e` reads through an iterator, an `std.optional`, a smart pointer or a handle. [Native interop](native-interop.html) shows the forms for a handle.
 
 `ref r = x;` makes a reference local. `var r = x;` copies.
 

@@ -266,8 +266,6 @@ struct BodyInfo
             {
                 if (u->operand && (u->op == "++" || u->op == "--"))
                     assign_through(root_of(*u->operand));
-                else if (u->operand && u->op == "&" && !u->postfix)
-                    write_through(root_of(*u->operand));
                 // "await t": the members of an awaiter are not const.
                 else if (u->operand && u->op == "await" && !u->postfix)
                     write_through(root_of(*u->operand));

@@ -321,7 +321,7 @@ TEST(SpanTranslation, StringViewFieldWithALiteralIsValid)
 TEST(SpanTranslation, ViewOrRefLocalFromARefParameterIsValid)
 {
     const hotc::TranslateResult r = script(
-        "    int F(ref int r) { var p = &r; return *p; }\n");
+        "    int F(ref int r) { ref q = r; return q; }\n");
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 

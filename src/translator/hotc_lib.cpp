@@ -4757,7 +4757,30 @@ void translate_impl(
             auto it = native_q.calls.find(&c);
             return it == native_q.calls.end() ? std::string() : it->second.native;
         };
-        cx.native_carrier = [&query_answers, &types](const std::string& key, size_t arg, size_t argc) -> std::string
+        // The pointee T of the parameter type "T*" or "const T*" with no other mark, in the canonical
+        // text with no space. Empty for any other type.
+        auto value_pointee = [](std::string p) -> std::string
+        {
+            while (!p.empty() && (static_cast<unsigned char>(p[0]) < 0x20 || p[0] == ' '))
+                p.erase(0, 1);
+            while (!p.empty() && p.back() == ' ')
+                p.pop_back();
+            if (p.empty() || p.back() != '*')
+                return {};
+            p.pop_back();
+            while (!p.empty() && p.back() == ' ')
+                p.pop_back();
+            if (p.rfind("const ", 0) == 0)
+                p.erase(0, 6);
+            if (p.empty() || p.find_first_of("*&") != std::string::npos)
+                return {};
+            std::string core;
+            for (char c : hotc::canonical_type(p, nullptr, true))
+                if (c != ' ' && c != '\t')
+                    core += c;
+            return core == "void" ? std::string() : core;
+        };
+        cx.native_carrier = [&query_answers, &types, value_pointee](const std::string& key, size_t arg, size_t argc) -> std::string
         {
             auto it = query_answers.find(kFnParamQuery + key);
             if (it == query_answers.end() || it->second.empty())
@@ -4794,10 +4817,17 @@ void translate_impl(
                     any = true;
                     continue;
                 }
-                const char form = types.carrier_form(ps[arg]);
-                const std::string t = types.carrier_of(ps[arg]);
+                char form = types.carrier_form(ps[arg]);
+                std::string t = types.carrier_of(ps[arg]);
                 if (!form || t.empty())
-                    return {};
+                {
+                    // A "T*" or "const T*" of a value type: the script passes the lvalue "x" and
+                    // the call writes "hot::as_ptr(x)". The form is 'v' and the text is the type.
+                    t = value_pointee(ps[arg]);
+                    if (t.empty())
+                        return {};
+                    form = 'v';
+                }
                 const std::string r = std::string(1, form) + ":" + t;
                 if (any && r != result)
                     return {};

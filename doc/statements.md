@@ -20,7 +20,7 @@ The words `extern`, `ref` and `out` are reserved. `extern` is a reserved word on
 
 ## Const is inferred
 
-Do not write `const` on a local variable. The translator makes a local const when the body never assigns it after the declaration. The error is `const is inferred; remove it`. These uses count as a write: an assignment, `++` or `--`, `&x`, `x[i]` on a value, a call of a method on `x`, and a pass of `x` to a function that takes it by reference. A `ref` local is never const. A local with no initializer is not const. A cast can still name `const`: `(const T*)p`.
+Do not write `const` on a local variable. The translator makes a local const when the body never assigns it after the declaration. The error is `const is inferred; remove it`. These uses count as a write: an assignment, `++` or `--`, `x[i]` on a value, a call of a method on `x`, and a pass of `x` to a function that takes it by reference. A `ref` local is never const. A local with no initializer is not const. A cast can still name `const`: `(const T*)p`.
 
 ## Control flow
 

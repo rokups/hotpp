@@ -1,0 +1,3 @@
+28_address_of_removed.hot:7:17: error: the prefix '&' is not supported; pass the value to a native pointer parameter, write ref name = expr, or cast a handle with (T*)h
+    7 |         var p = &(this.hp + 1);
+1 error generated.

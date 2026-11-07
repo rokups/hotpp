@@ -1,5 +1,6 @@
 // Generation 1: a borrowed value is valid for the whole call, so every call form takes it
-// (task 40). Distance and Util.Sum are native calls that take "const Vec3&".
+// (task 40). Distance and Util.Sum are native calls that take "const Vec3&". Nudge and Peek are
+// native calls that take "Vec3*" and "const Vec3*": a value lvalue goes there as it is.
 using "Actor.h";
 using "Util.h";
 
@@ -26,29 +27,34 @@ class Probe {
 
 class Caller : Actor {
     $Probe probe = null;
+    Vec3 spot;
 
     float Run(ref Vec3 v, Vec3* p, bool c) {
         if (p == null) return 0;
         Vec3 a;
         Vec3 b;
         ref r = a;
-        var q = &b;
-        probe = new $Probe(&a);
+        var q = p;
+        probe = new $Probe(p);
         $Probe pb = probe;
         if (pb == null) return 0;
         var other = new $Probe(p);
         pb.Look(v);
-        pb.Take(&a);
+        pb.Look(a);
         pb.Take(q);
         pb.Look(r);
-        pb.Take(c ? &a : &b);
-        pb.Take(c ? p : &a);
-        pb.Take((Vec3*)&a);
-        pb.Take(&*p);
+        pb.Take(c ? p : null);
+        pb.Take((Vec3*)p);
         var f = (ref Vec3 w) => { pb?.Look(w); };
         f(a);
         f(v);
-        float d = Distance(*(c ? &a : &b), *p);
-        return d + pb.Pass(v, p) + other.Pass(*q, &a) + Util.Sum(r);
+        Nudge(a, 1);
+        Nudge(r, 2);
+        Nudge(v, 0);
+        Nudge(spot, 3);
+        Nudge(this.spot, 4);
+        float peeked = Peek(a) + Peek(b) + Peek(v) + Peek(null);
+        float d = Distance(c ? a : b, *p);
+        return d + peeked + pb.Pass(v, p) + other.Pass(*q, p) + Util.Sum(r);
     }
 }

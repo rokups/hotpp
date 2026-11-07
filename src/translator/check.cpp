@@ -535,10 +535,9 @@ struct Checker
     {
         std::set<std::string> locals;
         std::map<std::string, std::string> local_types;
-        std::set<std::string> borrowed, pointers;
+        std::set<std::string> borrowed;
     };
     std::vector<Scope> scopes; // the state at the start of each lambda that is open
-    std::set<std::string> pointers; // the part of "borrowed" that is a pointer: a copy is borrowed too
     std::map<std::string, std::string> local_types; // the declared type of a local ("": not known)
     std::set<std::string> owning_locals; // the locals and by-value parameters that own their elements
     std::vector<std::set<std::string>> owning_stack; // owning_locals at the start of each open block
@@ -554,7 +553,6 @@ struct Checker
     bool last_stmt_exits = false; // the last statement that ended is a return, break, continue or throw
     std::string method_ret; // the declared return type of the method in progress
     std::map<std::string, std::string> field_types; // the declared type of each field
-    std::set<const Expr*> allowed_refs; // "&x" nodes in a place where they are valid
     std::set<const Expr*> callee_names; // names in the callee place of a call
     std::map<std::string, RefInfo> refs; // the "ref" locals that are live in the body in progress
     // The "foreach (var x in c)" loops in progress. "c" is a local or a field of this. The body must not change
@@ -573,7 +571,6 @@ struct Checker
     std::map<const VarDeclStmt*, std::vector<std::pair<std::string, RefInfo>>> pending_refs;
     std::set<std::string> copy_params; // the plain, "in" and "[byval]" parameters of the body in progress
     bool method_ret_ref = false; // true while the body of a method with a "ref T" return is in progress
-    bool method_ret_ptr = false; // true while the body of a method with a "T*" return of a value struct is in progress
     std::set<std::string> weak_fields; // the "[weak]" fields of the class
     std::set<std::string> weak_locals; // the "[weak]" parameters and locals of the body in progress
     const std::vector<ClassDef>* classes = nullptr; // the script classes of the unit, with the imported classes
@@ -736,7 +733,7 @@ struct Checker
     }
 
     // True when the method returns "T*" where "T" is a value struct: a script struct or a native value
-    // that is not a builtin scalar. The body returns "null" or "&place" (a ".hot" script only).
+    // that is not a builtin scalar (a ".hot" script only).
     bool is_ptr_ret(const Method& m) const
     {
         std::string base;
@@ -1292,11 +1289,9 @@ struct Checker
         in_async_void = in_async && (m.ret.empty() || m.ret == "void");
         method_ret = trim(m.ret);
         method_ret_ref = !is_cpp && is_ref_ret(m);
-        method_ret_ptr = is_ptr_ret(m);
         body(m.params, m.body);
         method_ret.clear();
         method_ret_ref = false;
-        method_ret_ptr = false;
         if (!is_cpp && !m.is_abstract)
             check_out_params(m.params, m.body, m.body.end_pos ? m.body.end_pos : m.pos,
                 [&](uint32_t pos, const std::string& msg) { error(pos, msg); });
@@ -1329,7 +1324,6 @@ struct Checker
     {
         locals.clear();
         borrowed.clear();
-        pointers.clear();
         local_types.clear();
         owning_locals.clear();
         owning_stack.clear();
@@ -1352,7 +1346,7 @@ struct Checker
             if (!p.weak && !p.value && is_owning_container(p.type))
                 owning_locals.insert(p.name); // a parameter by value owns its copy
             if (is_borrowed_type(p.type))
-                add_borrowed(p.name, p.type);
+                add_borrowed(p.name);
         }
         walk_block(block);
     }
@@ -1427,88 +1421,8 @@ struct Checker
         w.block(b);
     }
 
-    // True when the expression is the prefix "&" (the address-of operator).
-    static const UnaryExpr* as_address_of(const Expr& e)
-    {
-        const auto* u = std::get_if<UnaryExpr>(&e.v);
-        return u && !u->postfix && u->op == "&" ? u : nullptr;
-    }
-
-    // True when the expression is a "&e" value.
-    static bool is_borrow_form(const Expr& e) { return as_address_of(e) != nullptr; }
-
-    // Allows each "&e" value that the expression passes on to a call or a local. The value can stand in
-    // parentheses, in a branch of a ternary expression or of "??", and in a cast to a pointer
-    // type. With "deref" it can also stand under a prefix "*", because "*(c ? &a : &b)" is a
-    // reference for a call argument. Returns true when the expression has such a value.
-    bool allow_borrow_forms(const Expr& e, bool deref)
-    {
-        if (is_borrow_form(e))
-        {
-            allowed_refs.insert(&e);
-            return true;
-        }
-        if (auto* p = std::get_if<ParenExpr>(&e.v))
-            return p->inner && allow_borrow_forms(*p->inner, deref);
-        if (auto* t = std::get_if<TernaryExpr>(&e.v))
-        {
-            const bool a = t->a && allow_borrow_forms(*t->a, deref);
-            const bool b = t->b && allow_borrow_forms(*t->b, deref);
-            return a || b;
-        }
-        if (auto* b = std::get_if<BinaryExpr>(&e.v))
-        {
-            if (b->op != "??")
-                return false;
-            const bool l = b->lhs && allow_borrow_forms(*b->lhs, deref);
-            const bool r = b->rhs && allow_borrow_forms(*b->rhs, deref);
-            return l || r;
-        }
-        if (auto* u = std::get_if<UnaryExpr>(&e.v); u && !u->postfix && u->operand)
-        {
-            if (u->op == "*")
-                return deref && allow_borrow_forms(*u->operand, deref);
-            if (u->op.size() >= 3 && u->op.front() == '(' && u->op.back() == ')')
-            {
-                const std::string ty = trim(u->op.substr(1, u->op.size() - 2));
-                return !ty.empty() && ty.back() == '*' && allow_borrow_forms(*u->operand, deref);
-            }
-        }
-        return false;
-    }
-
-    // Marks a local of a borrowed type. A pointer stays borrowed when a "var" copies it.
-    void add_borrowed(const std::string& name, const std::string& type)
-    {
-        borrowed.insert(name);
-        const std::string t = trim(type);
-        if (!t.empty() && t.back() == '*')
-            pointers.insert(name);
-    }
-
-    // True when the expression is a borrowed pointer local, also in parentheses, in a cast to a
-    // pointer type or in a branch of a ternary expression.
-    bool copies_borrowed_pointer(const Expr& e) const
-    {
-        if (auto* p = std::get_if<ParenExpr>(&e.v))
-            return p->inner && copies_borrowed_pointer(*p->inner);
-        if (auto* t = std::get_if<TernaryExpr>(&e.v))
-            return (t->a && copies_borrowed_pointer(*t->a)) || (t->b && copies_borrowed_pointer(*t->b));
-        // "p ?? q" gives p or q, so it copies a borrowed pointer when one side is borrowed.
-        if (auto* b = std::get_if<BinaryExpr>(&e.v))
-            return b->op == "??"
-                && ((b->lhs && copies_borrowed_pointer(*b->lhs)) || (b->rhs && copies_borrowed_pointer(*b->rhs)));
-        if (auto* u = std::get_if<UnaryExpr>(&e.v))
-        {
-            if (u->postfix || !u->operand || u->op.size() < 3 || u->op.front() != '(')
-                return false;
-            std::string ty = trim(u->op.substr(1, u->op.size() - 2));
-            return !ty.empty() && ty.back() == '*' && copies_borrowed_pointer(*u->operand);
-        }
-        if (auto* n = std::get_if<NameExpr>(&e.v))
-            return n->parts.size() == 1 && n->template_args.empty() && pointers.count(n->parts[0]) != 0;
-        return false;
-    }
+    // Marks a local of a borrowed type.
+    void add_borrowed(const std::string& name) { borrowed.insert(name); }
 
     void record_local(const std::string& name, const std::string& type, bool weak = false)
     {
@@ -1518,50 +1432,6 @@ struct Checker
             weak_locals.insert(name);
         else
             weak_locals.erase(name);
-    }
-
-    // The name of the handle that the operand of "&" is, else an empty string. A handle is a
-    // field, a typed local or a parameter of a handle type, or "this". The type of a "var" local
-    // is not known here, so the check skips it. The C++ compiler reports that case.
-    std::string handle_operand(const Expr& e) const
-    {
-        if (auto* p = std::get_if<ParenExpr>(&e.v))
-            return p->inner ? handle_operand(*p->inner) : std::string();
-        if (std::holds_alternative<ThisExpr>(e.v))
-            return "this";
-        std::string name, type;
-        if (auto* n = std::get_if<NameExpr>(&e.v))
-        {
-            if (n->parts.size() != 1 || !n->template_args.empty())
-                return {};
-            name = n->parts[0];
-        }
-        else if (auto* m = std::get_if<MemberExpr>(&e.v))
-        {
-            if (!m->obj || !std::holds_alternative<ThisExpr>(m->obj->v))
-                return {};
-            auto f = field_types.find(m->name);
-            if (f == field_types.end())
-                return {};
-            return types.is_handle(f->second) ? m->name : std::string();
-        }
-        else
-        {
-            return {};
-        }
-        auto l = local_types.find(name);
-        if (l != local_types.end())
-        {
-            type = l->second;
-        }
-        else if (!locals.count(name))
-        {
-            auto f = field_types.find(name);
-            if (f == field_types.end())
-                return {};
-            type = f->second;
-        }
-        return !type.empty() && types.is_handle(type) ? name : std::string();
     }
 
     // True for the type "T[]" (a view): the text of the script or the C++ text.
@@ -1628,19 +1498,17 @@ struct Checker
     }
 
     // R4: "return e;" in a method with a "ref T" return. Every root of the place must outlive the call.
-    void check_ref_return(const ReturnStmt& r) { check_return_place(*r.expr, r.pos, false); }
+    void check_ref_return(const ReturnStmt& r) { check_return_place(*r.expr, r.pos); }
 
-    // The place of a "ref" return, or the operand of "&" in a "T*" return ("ptr"). Every root of the place
-    // must outlive the call.
-    void check_return_place(const Expr& e, uint32_t pos, bool ptr)
+    // The place of a "ref" return. Every root of the place must outlive the call.
+    void check_return_place(const Expr& e, uint32_t pos)
     {
-        const std::string what = ptr ? "a pointer" : "a 'ref'";
+        const std::string what = "a 'ref'";
         Place pl;
         if (!place_of(e, pl))
         {
-            error(pos, ptr ? "'return' of a pointer to a temporary: the value ends at the return. Return 'T' by value"
-                           : "'return' of a temporary from a 'ref' method: the value ends at the return. Return 'T' by "
-                             "value");
+            error(pos, "'return' of a temporary from a 'ref' method: the value ends at the return. Return 'T' by "
+                       "value");
             return;
         }
         for (const std::string& root : pl.roots)
@@ -1653,37 +1521,8 @@ struct Checker
                                  "parameter by 'ref'");
             else if (locals.count(root))
                 error(pos, "'return' of " + what + " to the local '" + root + "': it ends at the return. Return a value, or "
-                               + (ptr ? "a pointer" : "a ref") + " to a field or a 'ref' parameter");
+                               "a ref to a field or a 'ref' parameter");
         }
-    }
-
-    // "return e;" in a method with a "T*" return of a value struct. "e" is "null", "&place" or a choice of
-    // these. The place of "&" follows the rules of a "ref" return.
-    void check_ptr_return(const Expr& e, uint32_t pos)
-    {
-        if (const auto* p = std::get_if<ParenExpr>(&e.v))
-        {
-            if (p->inner)
-                check_ptr_return(*p->inner, pos);
-            return;
-        }
-        if (const auto* t = std::get_if<TernaryExpr>(&e.v))
-        {
-            for (const ExprP* side : {&t->a, &t->b})
-                if (*side)
-                    check_ptr_return(**side, pos);
-            return;
-        }
-        if (std::holds_alternative<NullExpr>(e.v))
-            return;
-        if (const UnaryExpr* u = as_address_of(e); u && u->operand)
-        {
-            allowed_refs.insert(&e);
-            check_return_place(*u->operand, pos, true);
-            return;
-        }
-        error(pos, "a 'T*' return of a value struct must be 'null' or '&place', such as '&this.items[i]'. Return "
-                   "the place, or a value");
     }
 
     // The rules of the declaration of a method with a "ref T" return (a ".hot" script only).
@@ -1711,8 +1550,6 @@ struct Checker
                 error(r->pos, "an 'async void' method cannot return a value");
             if (method_ret_ref && scopes.empty() && r->expr)
                 check_ref_return(*r);
-            if (method_ret_ptr && scopes.empty() && r->expr)
-                check_ptr_return(*r->expr, r->pos);
             // "return v;" in a method of the type "T[]": the view points into the local "v". The same holds
             // for a view local over such a local ("T[] s = v; return s;").
             if (scopes.empty() && r->expr && !is_cpp && is_view_type(method_ret))
@@ -1787,26 +1624,18 @@ struct Checker
                 borrowed.insert(d->name); // "ref r = x": a local reference
                 track_ref(*d);
             }
-            else if (d->init && allow_borrow_forms(*d->init, false))
-            {
-                add_borrowed(d->name, "*");
-            }
             else if (!d->type.empty() && is_borrowed_type(d->type))
             {
-                add_borrowed(d->name, d->type);
+                add_borrowed(d->name);
             }
             else if (d->type.empty() && is_borrowed_native(d->native_type))
             {
-                add_borrowed(d->name, d->native_type); // "var w = a.GetWeapon()" with a native "Weapon*" (S20b)
-            }
-            else if (d->type.empty() && d->init && copies_borrowed_pointer(*d->init))
-            {
-                add_borrowed(d->name, "*"); // "var q = p": the copy of a borrowed pointer
+                add_borrowed(d->name); // "var w = a.GetWeapon()" with a native "Weapon*" (S20b)
             }
             else if (const Method* cm = d->type.empty() && d->init ? called_method(*d->init) : nullptr;
                 cm && is_ptr_ret(*cm))
             {
-                add_borrowed(d->name, "*"); // "var p = c.Find(1)": a "T*" return of a value struct
+                add_borrowed(d->name); // "var p = c.Find(1)": a "T*" return of a value struct
             }
         }
         else if (auto* fo = std::get_if<ForOfStmt>(&s.v))
@@ -1977,19 +1806,10 @@ struct Checker
                     report_shape_change(b->pos, r, "assignment to '" + root_text(r) + "'");
             }
         }
-        else if (const UnaryExpr* u = as_address_of(e))
-        {
-            if (u->operand)
-            {
-                const std::string r = root_name(*u->operand);
-                if (!r.empty())
-                    report_shape_change(u->pos, r, "'" + root_text(r) + "' passed by 'ref'");
-            }
-        }
     }
 
-    // A cast "(T&)e", "(T*)e" or "(T**)e" to a script class or a handle type is a C-style cast of
-    // the handle storage in C++. It would reinterpret the handle.
+    // A cast "(T&)e" or "(T**)e" to a script class or a handle type is a C-style cast of the handle
+    // storage in C++. It would reinterpret the handle. A cast "(T*)h" to a handle type is allowed.
     void check_cast(const UnaryExpr& u)
     {
         if (u.postfix || u.op.size() < 3 || u.op.front() != '(' || u.op.back() != ')')
@@ -1997,6 +1817,9 @@ struct Checker
         const std::string type = trim(u.op.substr(1, u.op.size() - 2));
         std::string base;
         if (!is_borrowed_form(type, base))
+            return;
+        // "(T*)h" of a handle type is the raw pointer of the object: "hot::cast_ptr" unwraps the handle.
+        if (types.is_handle(base) && !types.is_script_class(base) && is_single_pointer(type))
             return;
         if (types.is_script_class(base) || types.is_handle(base))
             error(u.pos,
@@ -2049,39 +1872,6 @@ struct Checker
         if (auto* c = std::get_if<CallExpr>(&e.v))
         {
             callee_names.insert(c->callee.get());
-            for (const ExprP& a : c->args)
-                if (a)
-                    allow_borrow_forms(*a, true);
-        }
-        else if (auto* n = std::get_if<NewExpr>(&e.v))
-        {
-            for (const ExprP& a : n->args)
-                if (a)
-                    allow_borrow_forms(*a, true);
-        }
-        else if (auto* b = std::get_if<BinaryExpr>(&e.v))
-        {
-            // "q = p;": the local keeps a borrowed pointer from here on. The check never unmarks it.
-            if (b->op == "=" && b->lhs && b->rhs && (copies_borrowed_pointer(*b->rhs) || is_borrow_form(*b->rhs)))
-                if (auto* ln = std::get_if<NameExpr>(&b->lhs->v))
-                    if (ln->parts.size() == 1 && ln->template_args.empty() && locals.count(ln->parts[0]))
-                        add_borrowed(ln->parts[0], "*");
-        }
-        else if (const UnaryExpr* u = as_address_of(e))
-        {
-            if (u->operand)
-            {
-                const std::string h = handle_operand(*u->operand);
-                if (!h.empty())
-                    error(u->pos,
-                        "'&' on the handle '" + h + "' is not allowed. Pass '" + h
-                            + "' for a handle parameter or a native 'T*' or 'T&' parameter, or use '&*" + h + "' for a 'T*' and '*"
-                            + h + "' for a 'T&'");
-            }
-            if (!allowed_refs.count(&e))
-                borrowed_finding(u->pos,
-                    "a '&' value cannot be stored in an assignment, a 'return' or a "
-                    "field initializer. Use '&' only for a call argument or a local");
         }
         else if (auto* nm = std::get_if<NameExpr>(&e.v))
         {
@@ -2136,12 +1926,12 @@ struct Checker
                 borrowed_finding(l.pos, "the lambda captures '" + n + "', a borrowed pointer or reference. "
                              "A closure cannot keep it. Copy the value or use a handle");
         // The parameters and the locals of the body live only to the end of the lambda.
-        scopes.push_back({locals, local_types, borrowed, pointers});
+        scopes.push_back({locals, local_types, borrowed});
         for (const Param& p : l.params)
         {
             record_local(p.name, p.type, p.weak);
             if (is_borrowed_type(p.type))
-                add_borrowed(p.name, p.type);
+                add_borrowed(p.name);
         }
     }
 
@@ -2154,7 +1944,6 @@ struct Checker
         locals = std::move(sc.locals);
         local_types = std::move(sc.local_types);
         borrowed = std::move(sc.borrowed);
-        pointers = std::move(sc.pointers);
         scopes.pop_back();
     }
 
@@ -2324,7 +2113,6 @@ struct Checker
             {
                 locals.clear();
                 borrowed.clear();
-                pointers.clear();
                 local_types.clear();
                 refs.clear();
                 auto fe = [&](const Expr& e) { on_expr(e); };
@@ -3110,7 +2898,7 @@ struct ParamAnalysis
             }
             else if (auto* u = std::get_if<UnaryExpr>(&e.v))
             {
-                if (u->op == "++" || u->op == "--" || (u->op == "&" && !u->postfix))
+                if (u->op == "++" || u->op == "--")
                     mark(u->operand);
             }
             else if (auto* c = std::get_if<CallExpr>(&e.v))
@@ -3271,7 +3059,7 @@ struct ParamAnalysis
             }
             else if (auto* u = std::get_if<UnaryExpr>(&e.v))
             {
-                if ((u->op == "++" || u->op == "--" || (u->op == "&" && !u->postfix)) && rooted(u->operand))
+                if ((u->op == "++" || u->op == "--") && rooted(u->operand))
                 {
                     use.mutated = true;
                     if (is_exactly(*u->operand, name))

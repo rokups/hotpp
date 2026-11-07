@@ -15,7 +15,7 @@ This guide has 2 pages. This page covers what borrowing is, where it is allowed 
 
 ## What borrowing is
 
-A value (`Vec3`) is a copy. A handle (a script class, or a native class with a stub) is a smart pointer. A borrowed value is a `ref` or `in` parameter, a `T*`, a `ref` local or `&x`. The state block of a script object moves when the script reloads. A stored pointer into the block would dangle. A handle is safe: its pointee does not move.
+A value (`Vec3`) is a copy. A handle (a script class, or a native class with a stub) is a smart pointer. A borrowed value is a `ref` or `in` parameter, a `T*` or a `ref` local. The state block of a script object moves when the script reloads. A stored pointer into the block would dangle. A handle is safe: its pointee does not move.
 
 ```hot
 using "Actor.h";
@@ -32,12 +32,12 @@ class Hero : Actor {
 | Position | Example | Allowed |
 |---|---|---|
 | Parameter | `void F(ref Vec3 v)`, `void F(Vec3* v)` | yes |
-| Local | `ref r = x;`, `Vec3* p = &x;`, `var p = &x;` | yes |
+| Local | `ref r = x;`, `Vec3* p = a.Best();`, `var p = a.Best();` | yes |
 | `catch`, lambda parameter, `foreach` | `catch (std.exception e)`, `(ref Vec3 v) => ...`, `foreach (ref x in xs)` | yes |
-| `&x` in a call, `new` or `base(...)` | `f(&x)`, `new $Hero(&x)` | yes |
+| A value lvalue in a call to a native `T*` parameter | `Nudge(x)`, `Peek(this.pos)` | yes: the call writes `hot::as_ptr(x)` |
+| A `T*` parameter passed on in a call, `new` or `base(...)` | `f(p)`, `new $Hero(p)` | yes |
 | Field of a native class with a weak source | `Weapon* last;` | yes: stored as a checked pointer (see "Pointer fields") |
 | Field of another type, return type, collection element, lambda capture | `ref Vec3 last;`, `() => p.x` | no |
-| `&x` in an assignment or `return` | `p = &x;` | no |
 
 ```hot
 using "Actor.h";
@@ -51,15 +51,14 @@ class Hero {
         std.vector<int> xs = std.vector<int>();
         foreach (ref x in xs) x = x + 1;              // foreach
         ref r = total;                                // local reference
-        var p = &pos;                                  // local pointer
-        var h = new $Hero(&total);                      // &x as new argument
+        var h = new $Hero(null);                        // null for a T* parameter
     }
 }
 ```
 
 ## Where borrowing is rejected
 
-A field, a return value, a collection element, a lambda capture and a stored `&x` are errors. A `T*` return of a value struct (`Info* Find(int i) { return &this.items[i]; }`) is the exception: see rule R4p in [Type design](type-design.html#lifetime-of-a-ref). A field of the move-only type `std.unique_ptr<T>` is also an error, because a reload copies each field. A pointer field of a native class with a weak source is the exception (see "Pointer fields").
+A field, a return value, a collection element and a lambda capture are errors. The prefix `&` does not exist in `.hot`. A method that gives access to a value struct returns `ref T` or `T?`, not `T*`: see [Type design](type-design.html#lifetime-of-a-ref). A field of the move-only type `std.unique_ptr<T>` is also an error, because a reload copies each field. A pointer field of a native class with a weak source is the exception (see "Pointer fields").
 
 ```hot
 // error
@@ -69,9 +68,7 @@ class Bad {
     Vec3* ptr;                          // pointer to a value type
     std.vector<Vec3*> all;              // collection element
     std.unique_ptr<Vec3> own;           // move-only field
-    Vec3* Addr() { Vec3 v = last; return &v; } // return &local
     void Run(ref Vec3 v) {
-        last = &v;                 // assignment of &x
         var f = () => { v.x = 1; };     // capture
     }
 }
@@ -81,14 +78,12 @@ class Bad {
 a field cannot hold a pointer to the value type 'Vec3': nothing owns it, so the pointer can dangle. Use a value, or a pointer to the object that owns it
 a collection element cannot hold a borrowed pointer or reference to 'Vec3'. Declare a stub ...
 field of move-only type 'std::unique_ptr<Vec3>' is not supported: a reload copies each field. Use a handle
-'return' of a pointer to the local 'v': it ends at the return. Return a value, or a pointer to a field or a 'ref' parameter
-a '&' value cannot be stored in an assignment, a 'return' or a field initializer. Use '&' only for a call argument or a local
 the lambda captures 'v', a borrowed pointer or reference. A closure cannot keep it. Copy the value or use a handle
 ```
 
 ## Handles and borrowing
 
-`.` on a handle means a member of the pointee. `&h` on a handle is an error. Pass `h` for a handle parameter, or for a native `T*` or `T&` parameter: the translator converts the handle (see "Native objects as parameters" in `native-interop.md`). The conversion needs the exact class of the parameter. For a handle of a derived class, write `*h`. `&*h` and `*h` stay valid. A `ref` parameter of a script class is a reference to the handle, so the callee can rebind it. `this` is not a variable: copy it to a local first. An intrusive stub is an exception: its `T*` is the handle, so a field can have it.
+`.` on a handle means a member of the pointee. Pass `h` for a handle parameter, or for a native `T*` or `T&` parameter: the translator converts the handle (see "Native objects as parameters" in `native-interop.md`). The conversion needs the exact class of the parameter. For a handle of a derived class, write the cast `(T*)h` for a `T*` and `*h` for a `T&`. The cast is a checked unwrap: a null handle throws `NullReference`. A `ref` parameter of a script class is a reference to the handle, so the callee can rebind it. `this` is not a variable: copy it to a local first. An intrusive stub is an exception: its `T*` is the handle, so a field can have it.
 
 ```hot
 using "Actor.h"; using "Weapon.h"; using "Armory.h"; using "Object.h";
@@ -102,7 +97,7 @@ class Hero : Actor {
     void Join(ref $Hero other) { }
     void Run(ref Armory a, Weapon h) {
         a.Use(h); a.Hit(h);              // native T* parameter, native T& parameter: the plain handle
-        a.Use(&*h); a.Hit(*h);           // the same, written out
+        a.Use((Weapon*)h); a.Hit(*h);    // the same, written out
         $Hero me = this; Join(me);        // this is not a variable: pass a copy
     }
 }
@@ -112,7 +107,7 @@ An override can take a native `Weapon*` or `Weapon&` as the plain handle `Weapon
 
 A `Weapon*` field is not a finding when `Weapon` has a weak source. The field is a checked pointer (see "Pointer fields"). A `Weapon*` field of a class with no weak source is a finding. `Hero*` of a script class is always an error. The `this` error shows after the other errors are fixed.
 
-A weak handle `[weak] T x` does not keep its object alive, so it breaks a cycle of handles. Each read locks it for one statement. So `ref r = x.hp` and `&x.hp` are errors: the reference dangles. See "Weak handles" in `types-handles.md`.
+A weak handle `[weak] T x` does not keep its object alive, so it breaks a cycle of handles. Each read locks it for one statement. So `ref r = x.hp` is an error: the reference dangles. See "Weak handles" in `types-handles.md`.
 
 ```hot
 // error
@@ -125,7 +120,6 @@ class Hero : Actor {
     Hero* buddy;
     void Join(ref $Hero other) { }
     void Run(ref Armory a, Weapon h) {
-        a.Use(&h);
         Join(this);
     }
 }
@@ -134,7 +128,6 @@ class Hero : Actor {
 ```
 a field cannot hold a borrowed pointer or reference to 'Mesh'. Declare a stub with 'handle' or 'intrusive' for 'Mesh', or use a value
 a pointer to the script class 'Hero' is not allowed: use '$Hero' (a handle)
-'&' on the handle 'h' is not allowed. Pass 'h' for a handle parameter or a native 'T*' or 'T&' parameter, or use '&*h' for a 'T*' and '*h' for a 'T&'
 'this' cannot bind to the reference parameter 'other' of the script class 'Hero'. Copy it to a local first: '$Hero me = this;'
 ```
 

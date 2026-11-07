@@ -15,6 +15,7 @@
 #include <array>
 #include <cstddef>
 #include <deque>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -147,13 +148,16 @@ template <class T> HOT_HIDDEN T nonnull(std::optional<T>&& o)
 
 // The script writes the cast "(T*)p". The translator writes "hot::cast_ptr<T*>(p)". When the type
 // of "p" is already "T*", or "p" is a CheckedPtr or a handle, the cast is a checked unwrap: the
-// null test (hot::nonnull) comes before the C cast. Else it is the C cast.
+// null test (hot::nonnull) comes before the C cast. A handle gives the raw pointer of its object:
+// "(Base*)h" of a handle of a derived class gives the base pointer. Else it is the C cast.
 // The C++ compiler tests the type, so the translator needs no type of "p".
 template <class To, class P> HOT_HIDDEN constexpr decltype(auto) cast_ptr(P&& p)
 {
     if constexpr (std::is_same_v<detail::remove_cvref_t<P>, To>)
         return nonnull(static_cast<P&&>(p));
-    else if constexpr (is_checked_ptr_v<P> || is_handle_v<P>)
+    else if constexpr (is_handle_v<P>) // the raw pointer of the object, checked for null
+        return (To)std::addressof(*nonnull(static_cast<P&&>(p)));
+    else if constexpr (is_checked_ptr_v<P>)
         return (To)nonnull(static_cast<P&&>(p)); // the analyzer treats this cast as a checked unwrap
     else
         return (To)(static_cast<P&&>(p));
@@ -229,6 +233,13 @@ template <class H, std::enable_if_t<is_handle_v<H>, int> = 0> HOT_HIDDEN auto as
 template <class T> HOT_HIDDEN T* as_ptr(T* p)
 {
     return p;
+}
+// The script passes a value lvalue "x" to a native parameter "T*" or "const T*": the address of "x".
+// A temporary does not bind: the C++ compiler reports an error.
+template <class T, std::enable_if_t<!is_handle_v<T> && !is_checked_ptr_v<T> && !std::is_pointer_v<T>, int> = 0>
+HOT_HIDDEN T* as_ptr(T& v)
+{
+    return std::addressof(v);
 }
 // A CheckedPtr gives its borrowed pointer: nullptr when the pointer is null or expired.
 template <class P, std::enable_if_t<is_checked_ptr_v<P>, int> = 0> HOT_HIDDEN auto as_ptr(const P& p)

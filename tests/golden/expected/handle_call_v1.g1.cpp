@@ -600,13 +600,13 @@ int CallerState_g1::WearBlade(Blade* __b)
 #line 34 "handle_call_v1.hot"
     HOT_TRACE_LINE(); if (hot::deref(b).power == 3) {
 #line 35 "handle_call_v1.hot"
-        HOT_TRACE_LINE(); return Polish(&hot::star(local));
+        HOT_TRACE_LINE(); return Polish(hot::cast_ptr<Charm*>(local));
 #line 36 "handle_call_v1.hot"
     }
 #line 37 "handle_call_v1.hot"
     HOT_TRACE_LINE(); if (hot::deref(b).power == 4) {
 #line 38 "handle_call_v1.hot"
-        HOT_TRACE_LINE(); return Mixed(&hot::star(local));
+        HOT_TRACE_LINE(); return Mixed(hot::cast_ptr<Charm*>(local));
 #line 39 "handle_call_v1.hot"
     }
 #line 40 "handle_call_v1.hot"

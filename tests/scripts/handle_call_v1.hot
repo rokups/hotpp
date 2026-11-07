@@ -1,4 +1,4 @@
-// Generation 1: a handle goes to a native parameter without "&*" and "*" (task 33, phase 3).
+// Generation 1: a handle goes to a native parameter without a cast and without "*" (task 33, phase 3).
 // Polish takes a "Charm*" and Shine takes a "const Charm&": the plain handle converts.
 // Mixed has both forms: no conversion happens, so the script writes the form.
 using "Actor.h";
@@ -32,10 +32,10 @@ class Caller : Actor, Wearer {
             }
         }
         if (b.power == 3) {
-            return Polish(&*local);
+            return Polish((Charm*)local);
         }
         if (b.power == 4) {
-            return Mixed(&*local);
+            return Mixed((Charm*)local);
         }
         return Mixed(*local);
     }

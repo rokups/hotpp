@@ -1611,7 +1611,7 @@ struct Lowerer
         return t;
     }
 
-    // True when "this", a "&x" or a "C*" typed name or member gives the expression (a raw pointer).
+    // True when "this" or a "C*" typed name or member gives the expression (a raw pointer).
     bool raw_pointer_source(const Expr& e) const
     {
         if (std::holds_alternative<ThisExpr>(e.v))
@@ -1621,8 +1621,6 @@ struct Lowerer
         std::string t;
         if (auto* u = std::get_if<UnaryExpr>(&e.v); u && !u->postfix && u->operand)
         {
-            if (u->op == "&")
-                return true;
             if (u->op.size() > 2 && u->op.front() == '(' && u->op.back() == ')')
             { // a cast "(T*)x" to a raw pointer type gives a raw pointer
                 std::string c = u->op.substr(1, u->op.size() - 2);
@@ -2437,7 +2435,9 @@ struct Lowerer
     // For each argument of the native call: 'p' (hot::as_ptr), 'r' (hot::as_ref) or 0 (keep). An
     // argument converts when its script type is a handle type T, the form of the parameter is
     // "T*" or "T&" and all overloads of the native function agree (hook "native_carrier").
-    // Only an argument with a known type that is a name or a member access converts.
+    // A value lvalue of type T converts with 'p' when the parameter is "T*" or "const T*".
+    // Only an argument with a known type that is a name, a member access or (for a value) an
+    // index converts.
     std::vector<char> native_arg_forms(const CallExpr& c) const
     {
         std::vector<char> forms(c.args.size(), 0);
@@ -2449,12 +2449,32 @@ struct Lowerer
         for (size_t i = 0; i < c.args.size(); ++i)
         {
             const Expr* a = c.args[i].get();
-            if (!a || !(std::holds_alternative<NameExpr>(a->v) || std::holds_alternative<MemberExpr>(a->v)))
+            if (!a)
+                continue;
+            const bool value_form = std::holds_alternative<IndexExpr>(a->v);
+            if (!(std::holds_alternative<NameExpr>(a->v) || std::holds_alternative<MemberExpr>(a->v) || value_form))
                 continue;
             const std::string t = type_of(*a);
             if (t.empty())
                 continue;
             const std::string r = cx.native_carrier(key, i, c.args.size());
+            // A value lvalue to a native "T*" or "const T*" parameter of the same type: "hot::as_ptr(x)".
+            if (r.size() > 2 && r[0] == 'v' && r[1] == ':')
+            {
+                std::string core;
+                for (char ch : canonical_type(t))
+                    if (ch != ' ' && ch != '\t')
+                        core += ch;
+                const std::string want = r.substr(2);
+                if (!core.empty() && core[0] != '$' && !is_optional(t) && !cx.types->is_handle(t)
+                    && (core == want || (core.find("::") == std::string::npos && want.size() > core.size() + 2
+                        && want.compare(want.size() - core.size(), core.size(), core) == 0
+                        && want.compare(want.size() - core.size() - 2, 2, "::") == 0)))
+                    forms[i] = 'p';
+                continue;
+            }
+            if (value_form)
+                continue;
             // A view to a native span parameter (gap G22): "hot::span_as".
             if (r == "s:" && t.size() > 2 && t.compare(t.size() - 2, 2, "[]") == 0)
             {
@@ -3204,9 +3224,6 @@ struct Lowerer
             if ((u->op == "++" || u->op == "--") && u->operand
                 && op_index_target_error(*u->operand, u->pos != 0 ? u->pos : pos_of(*u->operand)))
                 return;
-            if (u->op == "&" && !u->postfix && u->operand)
-                if (const std::string w = weak_root(*u->operand); !w.empty())
-                    weak_ref_error(u->pos ? u->pos : pos_of(*u->operand), w);
             if (u->op == "await" && !u->postfix)
             {
                 check_await(u->pos);
@@ -3286,7 +3303,7 @@ struct Lowerer
                 }
                 return;
             }
-            if (!u->postfix && is_ptr_cast(u->op) && !is_address_of(u->operand))
+            if (!u->postfix && is_ptr_cast(u->op))
             { // "(T*)p": a checked unwrap when "p" has the type "T*" (the C++ compiler decides), else the C cast
                 expr(u->operand);
                 CallExpr c;
@@ -3719,13 +3736,6 @@ struct Lowerer
             cur = next;
         }
         return found;
-    }
-
-    // True for "&x": the address of an object is never null, so a cast of it needs no unwrap.
-    static bool is_address_of(const ExprP& e)
-    {
-        const auto* u = e ? std::get_if<UnaryExpr>(&e->v) : nullptr;
-        return u && !u->postfix && u->op == "&";
     }
 
     // True for the operator text of a cast to a builtin integer type other than bool: "(int)".

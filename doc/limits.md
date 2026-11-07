@@ -14,7 +14,7 @@ This list shows what version 1 does not support.
 - Reload while a worker thread runs script code, in the default `StopTheWorld` mode. The commit waits for the frame boundary. The `EntryCounters` mode allows it (see [Internals](internals.html)).
 - A stored `ref` parameter, `ref` local or `T*`. A borrowed value cannot go to a field. The option `--no-strict-borrowed` makes this a warning for `T*`. A stored `ref` is always an error. See [Borrowing](borrowing.html).
 - The check of a `ref` (see "Lifetime of a ref" in [Type design](type-design.html#lifetime-of-a-ref)) has these limits:
-  - It sees direct mutation only: a call of a method name from the shape list, an assignment, `&c`, and a bare name passed to a `ref` or `out` parameter.
+  - It sees direct mutation only: a call of a method name from the shape list, an assignment, and a bare name passed to a `ref` or `out` parameter.
   - It does not check a callee with 3 or more name parts, such as `p.items.push_back(x)`.
   - A `ref` into a field of another object with 3 or more name parts, such as `ref r = a.b.c`, uses the root `a` only.
   - A `var` local or a `ref` local of an unknown type counts as a handle. `var v = Vec3(); ref r = v.x; v = Vec3();` is a false error.
@@ -24,7 +24,7 @@ This list shows what version 1 does not support.
   - It does not see mutation by another method of the same class, `std.swap(a, b)`, or a free function that takes the container.
   - A native call on a native receiver (`ref m = o.GetMotion();`) gives a place that is an element of the receiver. The checker does not know the real owner of the reference. A receiver of an unknown type (a `var` local, a longer chain) counts as native. When the method returns a value, the C++ compile fails.
   - A `var p` from a `T*` return of a value struct is a borrowed pointer. A later shape change of the owner is not seen: `var p = c.Find(0); c.items.push_back(x); p.x = 1;` can use a freed element. A typed local `Info* p` of a script struct is not allowed: use `var`.
-  - After `ref r = o.F();` on an object `o` of another script class, an assignment to `o` or a use of `o` as a `ref`, `out` or `&` argument ends the ref. A call of another method on `o` is not seen.
+  - After `ref r = o.F();` on an object `o` of another script class, an assignment to `o` or a use of `o` as a `ref` or `out` argument ends the ref. A call of another method on `o` is not seen.
   - `ref r = xs[await Idx()]` is allowed, because the ref starts after its own statement. Another live ref gives the error about that ref.
   - The check of `foreach (var x in c)` (see [Runtime errors](statements-errors.html#change-of-a-container-in-a-foreach)) sees only a range that is a local or a field of `this`, such as `xs` or `this.xs`. It compares the name of the root and does no alias analysis. A change through another name, a call of a script method, a free function or a lambda is not checked. A local that hides the field name can give a false error.
   - A `.cpp` script keeps C++ semantics and has no `ref` lifetime rules.

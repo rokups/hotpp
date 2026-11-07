@@ -221,6 +221,36 @@ TEST(AsPtr, RawPointerPassesThrough)
     EXPECT_EQ(hot::as_ptr(p), &i);
 }
 
+// A value lvalue goes to a native "T*" or "const T*" parameter: the address of the lvalue.
+TEST(AsPtr, ValueLvalueGivesTheAddress)
+{
+    Item i;
+    EXPECT_EQ(hot::as_ptr(i), &i);
+    static_assert(std::is_same_v<decltype(hot::as_ptr(i)), Item*>);
+    const Item c;
+    static_assert(std::is_same_v<decltype(hot::as_ptr(c)), const Item*>);
+    EXPECT_EQ(hot::as_ptr(c), &c);
+    int n = 4;
+    EXPECT_EQ(hot::as_ptr(n), &n);
+    std::vector<Item> v(2);
+    EXPECT_EQ(hot::as_ptr(v[1]), &v[1]);
+}
+
+struct DerivedItem : Item
+{
+    int extra = 0;
+};
+
+// The cast "(T*)h" of a handle is a checked unwrap that gives the raw pointer.
+TEST(CastPtr, HandleGivesTheRawPointer)
+{
+    auto h = std::make_shared<DerivedItem>();
+    EXPECT_EQ(hot::cast_ptr<Item*>(h), static_cast<Item*>(h.get()));
+    EXPECT_EQ(hot::cast_ptr<DerivedItem*>(h), h.get());
+    std::shared_ptr<DerivedItem> n;
+    EXPECT_THROW(hot::cast_ptr<Item*>(n), hot::NullReference);
+}
+
 TEST(AsRef, HandleGivesTheObject)
 {
     auto h = std::make_shared<Item>(Item{9});

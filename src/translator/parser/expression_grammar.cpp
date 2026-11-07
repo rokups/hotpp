@@ -42,6 +42,8 @@ HOT_ERROR_TAG(e_expected_expr, "expected an expression");
 HOT_ERROR_TAG(e_end_of_expr, "expected end of expression");
 HOT_ERROR_TAG(e_test_array, "is and as do not accept an array type");
 HOT_ERROR_TAG(e_brace_init, "brace initialization is not supported; use parentheses");
+HOT_ERROR_TAG(e_address_of, "the prefix '&' is not supported; pass the value to a native pointer parameter, "
+                            "write ref name = expr, or cast a handle with (T*)h");
 HOT_ERROR_TAG(e_new_paren, "expected '(' after the type of 'new'");
 HOT_ERROR_TAG(e_targs, "not a template argument list");
 
@@ -271,7 +273,6 @@ constexpr auto cc_amp = dsl::lit_c<'&'> / dsl::lit_c<'='>;
 constexpr auto cc_bar = dsl::lit_c<'|'> / dsl::lit_c<'='>;
 constexpr auto cc_plus_only = dsl::lit_c<'+'>;
 constexpr auto cc_minus_only = dsl::lit_c<'-'>;
-constexpr auto cc_amp_only = dsl::lit_c<'&'>;
 
 struct expr;
 struct unary_expr; // the operand of a cast: a prefix operator or an atom with postfix operators
@@ -980,6 +981,7 @@ template <bool Full> struct expr_g : lexy::expression_production
         | dsl::peek(cast_d) >> dsl::p<cast_array_p> | dsl::peek(cast_a) >> dsl::p<cast_atom_p>
         | dsl::peek(cast_b) >> dsl::p<cast_atom_p>
         | dsl::peek(cast_h) >> dsl::p<cast_atom_p> | dsl::peek(dsl::lit_c<'('>) >> dsl::p<paren_p>
+        | dsl::peek(dsl::lit_c<'&'>) >> dsl::error<e_address_of>
         | dsl::peek(dsl::lit_c<'{'>) >> dsl::error<e_brace_init> | dsl::peek(dsl::lit_c<'['>) >> dsl::p<coll_p>
         | dsl::peek(kw_this) >> dsl::p<kw_p<ast::ThisExpr, std::remove_cv_t<decltype(kw_this)>>>
         | dsl::peek(kw_base) >> dsl::p<kw_p<ast::BaseExpr, std::remove_cv_t<decltype(kw_base)>>>
@@ -1000,11 +1002,11 @@ template <bool Full> struct expr_g : lexy::expression_production
         using operand = dsl::atom;
     };
 
-    // - + ! ~ * & ++ -- await. The prefix "&" does not match "&&". A cast "(T)" is a prefix too.
+    // - + ! ~ * ++ -- await. A cast "(T)" is a prefix too. There is no prefix "&".
     struct prefix_lvl : dsl::prefix_op
     {
         static constexpr auto op = HOT_PRE("++") / HOT_PRE("--") / HOT_PRE_NF("-", cc_minus_only)
-            / HOT_PRE_NF("+", cc_plus_only) / HOT_PRE("!") / HOT_PRE("~") / HOT_PRE("*") / HOT_PRE_NF("&", cc_amp_only)
+            / HOT_PRE_NF("+", cc_plus_only) / HOT_PRE("!") / HOT_PRE("~") / HOT_PRE("*")
             / dsl::op<AwaitTag>(kw_await);
         using operand = postfix_lvl;
     };

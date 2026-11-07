@@ -66,13 +66,6 @@ TEST(SharedPointerRules, RawPointerLocalIsAnError)
     EXPECT_TRUE(has(r.diagnostics, kRawError)) << r.diagnostics;
 }
 
-TEST(SharedPointerRules, AddressOfIsAnError)
-{
-    const hotc::TranslateResult r = shape_translate("    void Run() { Pt v; $Pt s = &v; }\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, kRawError)) << r.diagnostics;
-}
-
 TEST(SharedPointerRules, ResetWithARawPointerIsAnError)
 {
     const hotc::TranslateResult r = shape_translate("    void Run(Shape* p, $Shape s) { if (s == null) return; s.reset(p); }\n");

@@ -14,6 +14,17 @@ float Distance(const Vec3& a, const Vec3& b)
     return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
 
+void Nudge(Vec3* v, float dx)
+{
+    if (v)
+        v->x += dx;
+}
+
+float Peek(const Vec3* v)
+{
+    return v ? v->x : -1.0f;
+}
+
 std::string FormatVec(const Vec3& v)
 {
     char buf[96];
