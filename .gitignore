@@ -3,3 +3,6 @@ cmake-build/
 .cache/
 __pycache__/
 *.pyc
+
+# Local patches and benchmarks (not part of the project)
+.backup/

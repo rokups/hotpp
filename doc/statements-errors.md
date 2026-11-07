@@ -118,12 +118,12 @@ foreach (ref x in xs) { x = x + 1; }                // allowed
 
 The guard has these forms:
 
-- An indexed container (an array, `std.vector`, `std.string`, a span): the guard walks an index. Each step and each use of a `ref` variable compare the size and the address of the buffer with the values at the loop start.
+- An indexed container (an array, `std.vector`, `std.string`, a span): the guard walks an index. Each step and each use of a `ref` variable compare the size and the address of the container object with the values at the loop start.
 - A container with unique keys (`std.map`, `std.unordered_map`, `std.set`): the guard keeps a copy of the current key. Each step and each use of a `ref` variable find the key again. A removed key or a rehash throws.
 - A temporary range (the result of a call): the body cannot change it. The guard walks it with a plain iterator.
 - `range(a, b)` keeps the plain loop.
 
-A range with a root that can move is evaluated again at each step: an element of a container (`this.rows[0]`), or a field behind a handle (`h.items`). A named range of a different kind (`std.list`, `std.multimap`) is a compile error: copy the elements to a `std.vector` first. A `ref` variable of a `foreach` is not a C++ reference: each use reads the element through the guard.
+A range with a root that can move is evaluated again at each step: an element of a container (`this.rows[0]`), or a field behind a handle (`h.items`). A `ref` local, a view of a named owner and a `ref` loop variable of an outer `foreach` are paths too: the guard walks the path, not an old address. A member of a temporary (`this.Make().items`, `new $Q().items`) keeps the temporary alive in the guard during the loop. A named range of a different kind (`std.list`, `std.multimap`) is a compile error: copy the elements to a `std.vector` first. A `ref` variable of a `foreach` is not a C++ reference: each use reads the element through the guard.
 
 ## Checks against crashes
 
