@@ -1,0 +1,53 @@
+// Golden: the checked paths of Task 2. A ref to a local is a C++ reference. A ref to an element or
+// behind a handle, and a view of a named owner, write the path again at each use. A foreach has
+// the run-time guard.
+using "Actor.h";
+using <map>;
+using <string>;
+using <vector>;
+
+class Shared {
+    int hp = 0;
+}
+
+class Player : Actor {
+    std.vector<int> xs;
+    std.map<int, int> m;
+    std.string label;
+    $Shared shared;
+
+    int Local() {
+        int n = 1;
+        ref r = n;
+        r = 2;
+        return n;
+    }
+
+    void Element(int i) {
+        ref r = this.xs[i];
+        r = 3;
+    }
+
+    void Owner($Shared s) {
+        if (s == null) { return; }
+        ref hp = s.hp;
+        hp = 4;
+    }
+
+    int View() {
+        int[] s = this.xs;
+        std.string_view w = this.label;
+        return s[0] + (int)w.size();
+    }
+
+    int Loops() {
+        int sum = 0;
+        foreach (var x in this.xs) { sum += x; }
+        foreach (var (k, v) in this.m) { sum += k + v; }
+        return sum;
+    }
+
+    override void Tick(float dt) {}
+    override void TakeDamage(float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
+}

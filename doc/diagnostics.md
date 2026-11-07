@@ -40,6 +40,19 @@ A value that has no formatter in a `${...}` string, for example a native `enum c
     6 |         return "weather: ${current_weather()}";
 ```
 
+## Run-time checks in place of compile errors
+
+These messages do not exist now. The cases are safe at run time and give a `ScriptError`:
+
+- `... changes 'xs' inside 'foreach (ref x in xs)'` and the other `foreach` change errors. The `foreach` guard throws `ContainerChanged`. See [Change of a container in a foreach](statements-errors.html#change-of-a-container-in-a-foreach).
+- `... can move or remove the elements of 'xs' while the 'ref' 'r' points to one` for `ref r = xs[i]` and for a `ref` behind a handle, a pointer or a `T?`. The `ref` is a checked path. A use gives the new element, `IndexOutOfRange` or `NullReference`. The message stays for a `ref` that takes the result of a `ref` call.
+- `the view 's' is used after ...`. A view of a named owner is a checked path. A use gives the view of the new buffer or `IndexOutOfRange`.
+
+These messages are new:
+
+- `'ref (a, b)' cannot bind an element or a place behind an owner; ...`. Copy with `var`, or take `ref p = xs[i];` first.
+- `the view 's' of a named owner cannot take a new value; declare a new view`.
+
 ## Null checks
 
 The analyzer finds an access to a value that can be null. It runs on `.hot` scripts only. By default each finding is an error. The option `null_warnings` and the flag `hotc --null-warnings` make each finding a warning. Then the compile goes on.

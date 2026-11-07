@@ -506,12 +506,12 @@ struct Place
     bool shape_root(const std::string& r) const { return element && roots.count(r) && !plain_roots.count(r); }
 };
 
-// A live "ref" local or "foreach (ref ...)" variable.
+// A live "ref" local or "foreach (ref ...)" variable. The "await" and lambda rules use each entry.
+// The shape rule uses only an entry with "call" (B5): the other forms are checked paths.
 struct RefInfo
 {
     Place place;
     uint32_t pos = 0;
-    bool loop = false;
     std::string type; // the declared type of the initializer, or empty when not known
     // The initializer has a call of a "ref" method (B5): the lowering gives a C++ reference, not a checked
     // path. Only such a ref gets the shape change rule. "front", "back" and "at" are path steps.
@@ -998,7 +998,7 @@ struct Checker
             return;
         }
         // The ref starts after its own statement, so the call in its initializer does not hit it.
-        RefInfo info{pl, d.pos, false, d.type.empty() ? expr_type(*d.init) : d.type, has_ref_call(*d.init)};
+        RefInfo info{pl, d.pos, d.type.empty() ? expr_type(*d.init) : d.type, has_ref_call(*d.init)};
         auto& pending = pending_refs[&d];
         if (!d.name.empty())
             pending.emplace_back(d.name, info);
@@ -1587,7 +1587,7 @@ struct Checker
             }
             if (fo->is_ref && !is_cpp && fo->range && !std::holds_alternative<CallExpr>(fo->range->v))
             { // The "await" rule sees the variable. The run-time guard checks the shape (foreach.h).
-                const RefInfo info{Place{}, fo->pos, true};
+                const RefInfo info{Place{}, fo->pos};
                 if (!fo->name.empty())
                     refs[fo->name] = info;
                 for (const std::string& n : fo->names)
@@ -1648,12 +1648,7 @@ struct Checker
             }
             if (!hit)
                 continue;
-            if (info.loop)
-                error(pos, what + " changes '" + t + "' inside 'foreach (ref " + n + " in " + t
-                               + ")': the loop variable can dangle. Collect the changes in a new list, and apply "
-                                 "them after the loop");
-            else
-                error(pos, what + " can move or remove the elements of '" + t + "' while the 'ref' '" + n
+            error(pos, what + " can move or remove the elements of '" + t + "' while the 'ref' '" + n
                                + "' points to one. Copy the value with 'var', or end the ref before the call");
         }
     }

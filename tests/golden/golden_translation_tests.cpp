@@ -115,6 +115,13 @@ TEST(GoldenTranslation, Checks)
 }
 
 // A "ref T" return of a method, a static method and a virtual method: the C++ return type is "T&".
+// Task 2: a ref to a local is a C++ reference. An element ref, an owner ref and a view of a named
+// owner are checked paths. A foreach has the run-time guard (foreach.h).
+TEST(GoldenTranslation, CheckedPaths)
+{
+    golden_one("checked_paths_v1");
+}
+
 TEST(GoldenTranslation, RefReturn)
 {
     golden_one("ref_return_v1");

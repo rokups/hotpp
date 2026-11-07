@@ -42,6 +42,7 @@ This list shows what version 1 does not support.
 - A namespace block in a `.hot` script. Use `using ns;` for a native namespace.
 - A call of a free function by name from the host through `Loader::thunk`. Call a method of a class.
 - A function as a value, such as `var f = Add;`. Call it, or write a lambda.
+- A `foreach` over a `std.map`, a `std.set` or an unordered container finds the current key again at each step and at each use of a `ref` loop variable. On a map of 4096 elements and an empty body, the loop is about 15 times slower than a plain C++ loop. A `foreach` over a vector, an array, a string or a span has no measured cost.
 - A `foreach` over a named `std.list`, `std.multimap` or another container with no index and no unique key: a compile error. Copy the elements to a `std.vector` first.
 - A lambda that assigns a `foreach` variable, a structured binding, a `catch` variable, a parameter of an outer lambda or a `for` init local. Only a local or a plain parameter can be a shared cell (see doc/lambdas.md). Copy the value into a local first.
 - An `async` free function or an `async` static method. An async function needs an object.
