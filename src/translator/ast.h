@@ -385,6 +385,10 @@ struct ForOfStmt
     std::string guard{};
     bool guard_path = false; // the range is a checked path: "hot::iter_path" evaluates it again
     bool guard_enum = false; // "enumerate(c)": the range is "c", the binding is (index, element)
+    // A call or a "new" at the root of the range ("this.Make().items"). The guard keeps the
+    // value alive. The range uses the name "guard_root_name" in its place ("hot::iter_root").
+    ExprP guard_root{};
+    std::string guard_root_name{};
     std::vector<uint32_t> name_poss{};
 };
 struct ReturnStmt

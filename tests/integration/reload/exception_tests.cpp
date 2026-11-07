@@ -1833,3 +1833,125 @@ class Player : Actor {
     EXPECT_EQ(*s.field("local_sum"), 100.0f);
     EXPECT_TRUE(types.empty());
 }
+
+// A foreach over a checked path, a view, a ref loop variable or a member of a temporary. The
+// deleted cases of goldens 91 and 101. Each case gives ContainerChanged or a defined value. Each
+// case is a separate test: ASan shows each old use after free.
+namespace
+{
+std::string paths_script(const std::string& tick)
+{
+    return R"(
+using "Actor.h";
+using <vector>;
+
+class Q {
+    int hp = 0;
+    std.vector<int> items;
+    Q() { this.items.push_back(1); this.items.push_back(2); }
+}
+
+class Player : Actor {
+    std.vector<std.vector<int>> rows;
+    std.vector<int> xs;
+    std.vector<int> other;
+    Q p;
+    float res = 0.0;
+    float res2 = 0.0;
+
+    void Fill(ref std.vector<int> v) {
+        for (int k = 0; k < 100; k++) { v.push_back(k); }
+    }
+
+    void Grow() {
+        for (int k = 0; k < 100; k++) { this.rows.push_back(this.xs); }
+    }
+
+    override void Tick(float dt) {
+        this.xs.push_back(1);
+        this.xs.push_back(2);
+        this.rows.push_back(this.xs);
+        this.other.push_back(5);
+        this.other.push_back(6);
+)" + tick + R"(
+    }
+
+    override void TakeDamage(float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
+}
+)";
+}
+} // namespace
+
+#define HOT_PATH_CASE(NAME, TICK, OUT, OUT2)                                                         \
+    TEST_P(BackendTests, NAME)                                                                       \
+    {                                                                                                \
+        const std::string text = paths_script(TICK);                                                 \
+        const hot::ScriptSource src = {"foreach_paths.hot", text.c_str()};                           \
+        hot::LoadResult r = backend->load(src, 1);                                                   \
+        ASSERT_TRUE(r) << r.error;                                                                   \
+        Session s;                                                                                   \
+        ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module), "Player"));                            \
+        s.commit_at_frame_boundary();                                                                \
+        HandlerGuard guard;                                                                          \
+        std::vector<std::string> types;                                                              \
+        hot::set_script_error_handler([&](const hot::ScriptErrorReport& e) { types.push_back(e.type); }); \
+        s.world.Tick(kDt);                                                                           \
+        EXPECT_EQ(*s.field("res"), OUT);                                                             \
+        EXPECT_EQ(*s.field("res2"), OUT2);                                                           \
+        EXPECT_TRUE(types.empty());                                                                  \
+    }
+
+// "row" is a checked path: the guard sees the new buffer of "rows".
+HOT_PATH_CASE(ForeachOverARefPathThrowsContainerChanged,
+    "ref row = this.rows[0];\n"
+    "foreach (var x in row) { this.res2 += x; }\n"
+    "try { foreach (var x in row) { this.Grow(); } } catch (ContainerChanged e) { this.res = 1.0; }\n",
+    1.0f, 3.0f)
+
+// The inner range is the "ref" variable of the outer loop.
+HOT_PATH_CASE(NestedForeachOverARefLoopVariableThrowsContainerChanged,
+    "try {\n"
+    "    foreach (ref r2 in this.rows) { foreach (var y in r2) { this.res2 += y; this.Grow(); } }\n"
+    "} catch (ContainerChanged e) { this.res = 1.0; }\n",
+    1.0f, 1.0f)
+
+// "s" is a view of a named owner: the loop walks the owner, not a copy of the old span.
+HOT_PATH_CASE(ForeachOverAViewLocalThrowsContainerChanged,
+    "int[] s = this.xs;\n"
+    "try { foreach (var x in s) { this.res2 += x; this.Fill(this.xs); } } catch (ContainerChanged e) { this.res = 1.0; }\n",
+    1.0f, 1.0f)
+
+// The guard keeps the new object alive during the loop.
+HOT_PATH_CASE(ForeachOverAMemberOfATemporaryKeepsTheRoot,
+    "foreach (var x in new $Q().items) { this.res += x; }\n"
+    "foreach (ref x in this.xs) { x += 1; }\n"
+    "this.res2 = this.xs[0];\n",
+    3.0f, 2.0f)
+
+// Golden 91: a new value of the owner and a call that changes the owner.
+HOT_PATH_CASE(RefPathAfterAnAssignmentOfTheOwnerUsesTheNewElement,
+    "ref e1 = this.xs[0];\n"
+    "this.xs = this.other;\n"
+    "e1 = 1;\n"
+    "this.res = this.xs[0];\n"
+    "this.res2 = this.other[0];\n",
+    1.0f, 5.0f)
+HOT_PATH_CASE(RefPathAfterACallThatGrowsTheOwnerUsesTheNewElement,
+    "ref f = this.xs[1];\n"
+    "this.Fill(this.xs);\n"
+    "f = 7;\n"
+    "this.res = this.xs[1];\n"
+    "this.res2 = this.xs[2];\n",
+    7.0f, 0.0f)
+
+// Golden 101: a new value of the struct owner. A null "T?" owner is a static error.
+HOT_PATH_CASE(RefPathAfterANewStructOwnerUsesTheNewField,
+    "ref hp = this.p.hp;\n"
+    "this.p = new Q();\n"
+    "hp = 9;\n"
+    "this.res = this.p.hp;\n"
+    "this.res2 = this.p.items.size();\n",
+    9.0f, 2.0f)
+
+#undef HOT_PATH_CASE

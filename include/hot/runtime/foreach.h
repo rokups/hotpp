@@ -15,7 +15,8 @@
 //    with a plain iterator.
 // A named range of a different kind (std::list, std::multimap) is a compile error.
 // "hot::iter_path(getter)" evaluates the range again at each step: the range is a checked path
-// (an element of a container, a field behind a handle). "index()" and "item()" are the forms of
+// (an element of a container, a field behind a handle). "hot::iter_root(root, getter)" keeps a
+// temporary root alive and does the same. "index()" and "item()" are the forms of
 // "enumerate(c)".
 #pragma once
 #include "hot/runtime/errors.h"
@@ -204,6 +205,16 @@ public:
             return *it_;
     }
 
+    // The current element right after "next()", with no user code between: the copy of a "var"
+    // loop. "next()" did the test. A keyed container does not find the key again.
+    HOT_HIDDEN decltype(auto) current()
+    {
+        if constexpr (kKeyed)
+            return *it_;
+        else
+            return ref();
+    }
+
     // The index of the current element: the "i" of "foreach (var (i, x) in enumerate(c))".
     HOT_HIDDEN std::size_t index() const { return n_; }
 
@@ -245,6 +256,25 @@ template <class R> HOT_HIDDEN auto iter(R&& r)
             detail::RefSource<std::remove_reference_t<R>>{r});
     else
         return Iter<detail::OwnSource<std::remove_cv_t<R>>>(detail::OwnSource<std::remove_cv_t<R>>{std::move(r)});
+}
+
+// A range with a call or a "new" at the root ("this.Make().items"). The source keeps the root
+// value alive and evaluates the path from the root again at each step.
+template <class V, class G> struct RootSource
+{
+    V v;
+    G g;
+    HOT_HIDDEN decltype(auto) get() { return g(v); }
+};
+
+template <class V, class G> HOT_HIDDEN auto iter_root(V&& root, G g)
+{
+    using R = decltype(g(root));
+    if constexpr (std::is_lvalue_reference_v<R>)
+        return Iter<RootSource<V, G>>(RootSource<V, G>{std::forward<V>(root), std::move(g)});
+    else
+        return Iter<detail::OwnSource<std::remove_cv_t<std::remove_reference_t<R>>>>(
+            detail::OwnSource<std::remove_cv_t<std::remove_reference_t<R>>>{g(root)});
 }
 
 // A range that is a checked path: "get()" evaluates the path again at each step.

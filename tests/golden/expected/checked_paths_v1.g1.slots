@@ -3,3 +3,4 @@ Player::Element 1
 Player::Owner 1
 Player::View 1
 Player::Loops 1
+Player::PathLoops 1

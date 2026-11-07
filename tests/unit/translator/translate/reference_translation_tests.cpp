@@ -153,7 +153,7 @@ TEST(ReferenceTranslation, ForeachPlainVarCopies)
         "using <vector>;\nclass A {\n    std.vector<int> xs;\n"
         "    void Run() { foreach (var x in this.xs) { } }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "auto x = __it0.ref();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "auto x = __it0.current();")) << r.cpp;
 }
 
 TEST(ReferenceTranslation, VarRefLocalIsABorrowedLocalForALambda)

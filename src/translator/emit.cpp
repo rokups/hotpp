@@ -618,7 +618,15 @@ struct StmtPrinter
         e.put("for", n.pos);
         open_paren(e);
         e.put("auto " + n.guard + " = ");
-        if (n.guard_path)
+        if (n.guard_root)
+        {
+            e.put("hot::iter_root(");
+            emit_expr(*n.guard_root, e);
+            e.put(", [&](auto& " + n.guard_root_name + ") -> decltype(auto) { return (");
+            emit_expr(*n.range, e);
+            e.put("); })");
+        }
+        else if (n.guard_path)
         {
             e.put("hot::iter_path([&]() -> decltype(auto) { return (");
             emit_expr(*n.range, e);
@@ -653,7 +661,7 @@ struct StmtPrinter
                 binding_names(n.names, n.name_poss, e);
             else
                 e.put_mapped(n.name, n.name_pos);
-            e.put(" = " + n.guard + ".ref();");
+            e.put(" = " + n.guard + ".current();");
             e.space();
         }
         emit_stmt(*n.body, e);

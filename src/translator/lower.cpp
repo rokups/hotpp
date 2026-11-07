@@ -4047,27 +4047,41 @@ struct Lowerer
     }
 
     // A range with a simple root cannot move during the loop: a local, a parameter, a field of
-    // "this". Other ranges are checked paths (foreach.h). A range with a call at the root is
-    // evaluated one time: a path would use the temporary after its end.
-    static bool simple_range(const Expr& r)
+    // "this". Other ranges are checked paths (foreach.h). A name of a checked path (a "ref" local,
+    // a view of a named owner, a "ref" foreach variable) is a path too. A range that is a call is
+    // evaluated one time.
+    bool simple_range(const Expr& r) const
     {
         if (const auto* p = std::get_if<ParenExpr>(&r.v))
             return p->inner && simple_range(*p->inner);
         if (const auto* n = std::get_if<NameExpr>(&r.v))
-            return n->parts.size() == 1;
+            return n->parts.size() == 1 && !cx.path_names.count(n->parts[0]) && !cx.path_exprs.count(n->parts[0]);
         if (const auto* m = std::get_if<MemberExpr>(&r.v))
-            return m->obj && (std::holds_alternative<ThisExpr>(m->obj->v) || call_root(*m->obj));
-        return call_root(r);
-    }
-    static bool call_root(const Expr& r)
-    {
-        if (const auto* p = std::get_if<ParenExpr>(&r.v))
-            return p->inner && call_root(*p->inner);
-        if (const auto* m = std::get_if<MemberExpr>(&r.v))
-            return m->obj && call_root(*m->obj);
-        if (const auto* ix = std::get_if<IndexExpr>(&r.v))
-            return ix->obj && call_root(*ix->obj);
+            return m->obj && std::holds_alternative<ThisExpr>(m->obj->v);
         return std::holds_alternative<CallExpr>(r.v);
+    }
+
+    // The call or the "new" at the root of a member or index chain, with one step or more above
+    // it: "this.Make().items". Null: no such root.
+    static ExprP* temp_root(ExprP& r)
+    {
+        ExprP* at = &r;
+        bool step = false;
+        while (*at)
+        {
+            if (auto* p = std::get_if<ParenExpr>(&(*at)->v))
+                at = &p->inner;
+            else if (auto* m = std::get_if<MemberExpr>(&(*at)->v))
+                at = &m->obj, step = true;
+            else if (auto* ix = std::get_if<IndexExpr>(&(*at)->v))
+                at = &ix->obj, step = true;
+            else
+                break;
+        }
+        if (!step || !*at)
+            return nullptr;
+        const auto& v = (*at)->v;
+        return std::holds_alternative<CallExpr>(v) || std::holds_alternative<NewExpr>(v) ? at : nullptr;
     }
 
     // The run-time guard of a "foreach" (foreach.h). "range(a, b)" gives values: it keeps the
@@ -4090,6 +4104,30 @@ struct Lowerer
         }
         fo.guard = "__it" + std::to_string(safe_count++);
         fo.guard_path = !simple_range(*fo.range);
+        if (ExprP* root = temp_root(fo.range))
+        {
+            // The guard keeps the temporary root alive. The range names it in its place.
+            NameExpr held;
+            held.parts = {fo.guard + "_root"};
+            held.pos = pos_of(**root);
+            fo.guard_root_name = fo.guard + "_root";
+            declare(fo.guard_root_name, type_of(**root));
+            fo.guard_root = std::move(*root);
+            *root = make_expr(std::move(held));
+        }
+    }
+
+    // A "foreach" over a view of a named owner walks the owner path: a span of the owner is a
+    // copy of the old buffer address.
+    static void path_owner(Expr& r)
+    {
+        if (auto* p = std::get_if<ParenExpr>(&r.v))
+        {
+            if (p->inner)
+                path_owner(*p->inner);
+        }
+        else if (auto* n = std::get_if<NameExpr>(&r.v))
+            n->emit_path_view.clear();
     }
 
     // The names that the guard gives at each use. They are set after the range is lowered.
@@ -4553,7 +4591,11 @@ struct Lowerer
                 fo->type = cpp_type(fo->type, TypeModel::StorageUse::Local, fo->pos);
             check_ref_range(*fo);
             guard_foreach(*fo);
+            if (fo->guard_root)
+                expr(fo->guard_root);
             expr(fo->range);
+            if (fo->guard_path)
+                path_owner(*fo->range);
             guard_names(*fo);
             const size_t mark = bindings.size();
             bindings.insert(bindings.end(), fo->names.begin(), fo->names.end());

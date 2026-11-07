@@ -10,6 +10,10 @@ class Shared {
     int hp = 0;
 }
 
+class Q {
+    std.vector<int> items;
+}
+
 class Player : Actor {
     std.vector<int> xs;
     std.map<int, int> m;
@@ -44,6 +48,18 @@ class Player : Actor {
         int sum = 0;
         foreach (var x in this.xs) { sum += x; }
         foreach (var (k, v) in this.m) { sum += k + v; }
+        return sum;
+    }
+
+    // A path range: a ref local, a view of a named owner, a ref loop variable, a temporary root.
+    int PathLoops(std.vector<std.vector<int>> rows) {
+        int sum = 0;
+        ref row = rows[0];
+        foreach (var x in row) { sum += x; }
+        int[] s = this.xs;
+        foreach (var x in s) { sum += x; }
+        foreach (ref r in rows) { foreach (var y in r) { sum += y; } }
+        foreach (var x in new $Q().items) { sum += x; }
         return sum;
     }
 
