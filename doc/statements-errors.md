@@ -140,7 +140,8 @@ Each row shows how HotScript stops one cause of a crash. The mechanism is a comp
 | Empty `front`, `back`, `pop` | Runtime, always on | `IndexOutOfRange` | `EmptyContainerOperationsAndNativeExceptionsAreCatchable`; `container_ops_tests.cpp` |
 | Dangling `ref` to a temporary, a local or a `ref` call result | Compile error | None | golden `27`, `28`, `82`-`88`, `94`-`100`, `108` |
 | `ref` to an element or behind an owner after a shape change | Runtime: a checked path | `IndexOutOfRange` or `NullReference` | `RefCheckedPathsGiveANewElementOrAScriptError` |
-| Dangling view | Compile error | None | golden `105`-`107` |
+| Dangling view: a return of a local owner, a view field | Compile error | None | golden `106`, `107` |
+| View of a named owner after a shape change | Runtime: a checked path | `IndexOutOfRange` | `ViewOfANamedOwnerSeesTheNewBufferOrThrows` |
 | Container change in `foreach` | Runtime, always on | `ContainerChanged` | `ForeachContainerChangeThrowsContainerChanged`; `foreach_tests.cpp` |
 | Use after reload | A handle stays valid. A task of the old code is cancelled. | `TaskReloadCancelled` | `AsyncHost.ReloadCancelsTheSuspendedTask`; `TaskReload.*`; `CheckedPtrFieldKeepsItsTargetAcrossReload` |
 | Use after a native free | `CheckedPtr` and handles are checked. A raw `T*` is unchecked. | `NullReference` | `CheckedPtrFieldReadsNullAfterTheTargetDies` |

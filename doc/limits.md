@@ -29,11 +29,10 @@ This list shows what version 1 does not support.
   - After `ref r = o.F();` on an object `o` of another script class, an assignment to `o` or a use of `o` as a `ref` or `out` argument ends the ref. A call of another method on `o` is not seen.
   - `ref r = xs[await Idx()]` is allowed, because the ref starts after its own statement. Another live ref gives the error about that ref.
   - A `.cpp` script keeps C++ semantics and has no `ref` lifetime rules.
-- The check of a view (`T[]` and `std.string_view`, see [Views](types.html#views)) has these limits:
-  - It tracks a view local with a declared type and a source that is a name or a field of `this`. A `var` view, a view from a call (`var s = v.subspan(1)`) and a view of an element are not tracked.
-  - A view local over a field (`std.string_view w = this.label;`) is tracked as a view of the field. A literal initializer of the field does not make it safe.
-  - It follows the order of the text. A shape change at the end of a loop body and a use at its start are not seen. A shape change in one branch makes a use in another branch an error, unless the branch ends with `return`, `break`, `continue` or `throw`.
-  - It sees direct mutation only, as the `ref` check does (see above). A change through an alias, another method or a free function is not seen.
+- A view local of a named owner (`T[] s = v;`, `std.string_view w = this.label;`) is a checked path (B7). Each use takes the view of the owner again. It has these limits:
+  - A view from a call (`var t = s.subspan(1)`), a view of a view parameter and a `var` view are plain views. A shape change of the owner can make them point to freed memory.
+  - A view of a named owner cannot take a new value. Declare a new view.
+  - With `HOT_RUNTIME_CHECKS` off, the index of a view is not checked.
   - A view that a lambda captures, a view parameter of an `async` method, and a view that a native function stores are not checked. The translator cannot tell a stored closure from an immediate call (a sort comparator). The owner can end first, and the view then points to freed memory. Copy the values (`std.vector<T>`, `std.string`) in such code.
   - A native function that takes a `ref`, a `T&` or a view can keep it. The checker cannot see this. The `as_ref` check only tests for null at the call.
   - A view in a container field of a native type or in a tuple is not checked. A `std.string_view` that a script call returns from a native getter has the lifetime that the native code gives it.

@@ -105,8 +105,9 @@ TEST(SpanTranslation, LocalViewOfVectorAndArray)
         "    }\n"
         "    void G(int[] s) { }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "hot::span<int32_t> s = v;")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "hot::span<int32_t> t = a;")) << r.cpp;
+    // A view of a named owner is a checked path (B7): the declaration only reads the owner.
+    EXPECT_TRUE(has(r.cpp, "(void)(v);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "(void)(a);")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "const std::vector<int32_t> v")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "const std::array<int32_t, 2> a")) << r.cpp;
 }
@@ -259,7 +260,8 @@ TEST(SpanTranslation, ViewUsedBeforeShapeChangeIsValid)
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
-TEST(SpanTranslation, ViewTakenAgainAfterShapeChangeIsValid)
+// A view of a named owner is a path: it cannot take a new value.
+TEST(SpanTranslation, ViewOfANamedOwnerCannotTakeANewValue)
 {
     const hotc::TranslateResult r = script(
         "    int F() {\n"
@@ -270,7 +272,8 @@ TEST(SpanTranslation, ViewTakenAgainAfterShapeChangeIsValid)
         "        int[] t = v;\n"
         "        return s[0] + t[0];\n"
         "    }\n");
-    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "the view 's' of a named owner cannot take a new value")) << r.diagnostics;
 }
 
 TEST(SpanTranslation, ViewOfAnotherContainerSurvivesTheShapeChange)
@@ -286,7 +289,8 @@ TEST(SpanTranslation, ViewOfAnotherContainerSurvivesTheShapeChange)
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
-TEST(SpanTranslation, StaleViewIsAnErrorAfterAnInnerBlockChange)
+// A view of a named owner is a checked path: each use takes the view again (B7).
+TEST(SpanTranslation, ViewAfterAnInnerBlockChangeIsAPath)
 {
     const hotc::TranslateResult r = script(
         "    int F(bool b) {\n"
@@ -295,8 +299,8 @@ TEST(SpanTranslation, StaleViewIsAnErrorAfterAnInnerBlockChange)
         "        if (b) { v.clear(); }\n"
         "        return s[0];\n"
         "    }\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "the view 's' is used after")) << r.diagnostics;
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "hot::index((hot::span<int32_t>(v)), 0)")) << r.cpp;
 }
 
 TEST(SpanTranslation, ViewReturnedFromARefParameterOrAViewParameterIsValid)
@@ -350,7 +354,7 @@ TEST(SpanTranslation, ViewReadInTheStatementThatChangesTheSourceIsValid)
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
-TEST(SpanTranslation, ViewUsedAfterTheStatementThatChangesTheSourceIsAnError)
+TEST(SpanTranslation, ViewUsedAfterTheStatementThatChangesTheSourceIsAPath)
 {
     const hotc::TranslateResult r = script(
         "    int F() {\n"
@@ -359,8 +363,7 @@ TEST(SpanTranslation, ViewUsedAfterTheStatementThatChangesTheSourceIsAnError)
         "        v.push_back(s[0]);\n"
         "        return s[1];\n"
         "    }\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "the view 's' is used after")) << r.diagnostics;
+    EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
 // A block that ends with a jump never reaches the code after it.

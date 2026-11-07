@@ -140,6 +140,7 @@ struct NameExpr
     // The lowering: a "ref" local that is a checked path (VarDeclStmt::path). The emitter writes
     // this expression at each use. Null: the normal name.
     const Expr* emit_path = nullptr;
+    std::string emit_path_view{}; // a view path (B7): the C++ view type around the path
 };
 struct ThisExpr
 {

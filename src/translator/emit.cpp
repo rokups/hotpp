@@ -169,8 +169,10 @@ struct ExprPrinter
         if (n.emit_path)
         { // a "ref" local that is a checked path: the path again (VarDeclStmt::path)
             e.put("(", n.pos);
+            if (!n.emit_path_view.empty())
+                e.put(n.emit_path_view + "(");
             emit_expr(*n.emit_path, e);
-            e.put(")");
+            e.put(n.emit_path_view.empty() ? ")" : "))");
             return;
         }
         std::string t;

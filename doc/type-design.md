@@ -34,7 +34,7 @@ This page records an approved design for the types of HotScript. It is a design 
 | `$T` | The handle form of the type rule. The default is `std::shared_ptr<T>`. | A shared owner. The analyzer treats it as nullable. A field with no initializer is null. |
 | `T*?` and `$T?` | none | Not valid. `T*` and `$T` are already nullable. |
 | `T?` | `std::optional<T>` | Value types only. It is an error on a pointer, a handle or a script class. |
-| `T[]` | `hot::span<T>` (or `std::span<T>` with `HOT_VIEW_TYPE=std`) | A view. It is an error on a field and on a property. A local or a parameter is valid. A return of a local `std.vector<T>` or `T[N]` is an error, and so is a later use of a view after the source changed shape (see "Lifetime of a ref"). The index is checked. The owning list is the std prelude type `std.vector<T>`. |
+| `T[]` | `hot::span<T>` (or `std::span<T>` with `HOT_VIEW_TYPE=std`) | A view. It is an error on a field and on a property. A local or a parameter is valid. A return of a local `std.vector<T>` or `T[N]` is an error. A view local of a named owner is a checked path (see "Lifetime of a ref", rule V1). The index is checked. The owning list is the std prelude type `std.vector<T>`. |
 | `T[N]` | `std::array<T, N>` | A fixed array. |
 | `[weak] $T` | The weak template of the rule. The default is `std::weak_ptr<T>`. | A read emits `hot::lock(w)` and gives `$T`. |
 | `int` | `int32_t` | |
@@ -127,9 +127,9 @@ Rules:
 
 Fix: copy the value (`var r = ...`), or keep the owner alive with a handle (`$T`).
 
-Views. A view local acts like a `ref` to an element of its source. This holds for a local that has the declared type `T[]` or `std.string_view` and an initializer that is a local owner (`std.vector<T>`, `T[N]`, `std.string`) or a field of `this`.
+Views. A view local with the declared type `T[]` or `std.string_view` and an initializer with a named owner (`T[] s = v;`, `std.string_view w = this.label;`) is a checked path.
 
-- V1 Stale. A shape change of the source (the list in R2) makes the view stale. A later use of the stale view is an error. The assignment `s = x;` makes the view valid again. The view ends at the end of its block.
+- V1 Path. Each use of the view takes the view of the owner again. A shape change of the owner is safe. A removed element gives `IndexOutOfRange`. The view cannot take a new value: declare a new view. A view from a call or of a view parameter is a plain view.
 - V2 Return. A method that returns a view cannot return a local owner, a view local over a local owner, or a temporary vector. Rule R4 covers a `ref` return only.
 - V3 Storage. A field cannot have the type `std.string_view` or `T[]`, also not inside a container type. A string literal as initializer is the exception.
 

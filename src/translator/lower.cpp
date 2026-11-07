@@ -3082,7 +3082,8 @@ struct Lowerer
             }
             if (auto it = cx.path_exprs.find(n.parts[0]); it != cx.path_exprs.end())
             {
-                n.emit_path = it->second;
+                n.emit_path = it->second.first;
+                n.emit_path_view = it->second.second;
                 return;
             }
         }
@@ -3377,6 +3378,11 @@ struct Lowerer
         }
         else if (auto* b = std::get_if<BinaryExpr>(&x.v))
         {
+            if (is_assign_op(b->op) && b->lhs)
+                if (const auto* n = std::get_if<NameExpr>(&b->lhs->v); n && n->parts.size() == 1)
+                    if (auto it = cx.path_exprs.find(n->parts[0]); it != cx.path_exprs.end() && !it->second.second.empty())
+                        error(b->pos != 0 ? b->pos : n->pos, "the view '" + n->parts[0]
+                                + "' of a named owner cannot take a new value; declare a new view");
             if (b->op == "=" && b->lhs && b->rhs)
             {
                 if (is_value_ref(*b->lhs))
@@ -3974,7 +3980,54 @@ struct Lowerer
         expr(d.init);
         d.path = true;
         declare(d.name, t);
-        cx.path_exprs[d.name] = d.init.get();
+        cx.path_exprs[d.name] = {d.init.get(), std::string()};
+        return true;
+    }
+
+    // True for the script or C++ text of a view type: "T[]", a span, "std.string_view".
+    static bool view_type_text(std::string t)
+    {
+        while (!t.empty() && (t.back() == ' ' || t.back() == '\t'))
+            t.pop_back();
+        t.erase(0, t.find_first_not_of(" \t") == std::string::npos ? t.size() : t.find_first_not_of(" \t"));
+        if (!t.empty() && t[0] == '\x01') // the mark of the namespace "std"
+            t.erase(0, 1);
+        return (t.size() >= 2 && t.compare(t.size() - 2, 2, "[]") == 0) || t.rfind("std::span<", 0) == 0
+            || t.rfind("hot::span<", 0) == 0 || t == "std::string_view" || t == "std.string_view" || t == "string_view";
+    }
+    // A place with a name at the root: a name, a member, an element. A call at the root is not.
+    static bool named_owner(const Expr& e)
+    {
+        if (const auto* p = std::get_if<ParenExpr>(&e.v))
+            return p->inner && named_owner(*p->inner);
+        if (std::holds_alternative<NameExpr>(e.v))
+            return true;
+        if (const auto* m = std::get_if<MemberExpr>(&e.v))
+            return m->obj && !m->safe && (std::holds_alternative<ThisExpr>(m->obj->v) || named_owner(*m->obj));
+        if (const auto* ix = std::get_if<IndexExpr>(&e.v))
+            return ix->obj && named_owner(*ix->obj);
+        return false;
+    }
+
+    // B7: a view local of a named owner ("T[] s = v;", "std.string_view w = this.label;") is a
+    // checked path. Each use writes the view of the owner again, so a shape change of the owner
+    // is safe. A view of a view or of a call result stays a plain view.
+    bool view_path(VarDeclStmt& d)
+    {
+        if (d.is_ref || d.shared || d.weak || d.value || !d.init || !d.names.empty() || !view_type_text(d.type)
+            || !named_owner(*d.init))
+            return false;
+        const std::string src = type_of(*d.init);
+        if (src.empty() || view_type_text(src))
+            return false;
+        const std::string t = d.type;
+        int k = 0;
+        cache_indices(d.init, d, k, "__r" + std::to_string(safe_count++));
+        expr(d.init);
+        d.type = cpp_type(d.type, TypeModel::StorageUse::Local, d.pos);
+        d.path = true;
+        declare(d.name, t);
+        cx.path_exprs[d.name] = {d.init.get(), d.type};
         return true;
     }
 
@@ -4217,7 +4270,7 @@ struct Lowerer
         RCtx& cx;
         std::set<std::string> locals, weak_locals, value_locals, cell_locals;
         std::map<std::string, std::string> local_type, path_names;
-        std::map<std::string, const Expr*> path_exprs;
+        std::map<std::string, std::pair<const Expr*, std::string>> path_exprs;
         explicit ScopeSave(RCtx& c)
             : cx(c)
             , locals(c.locals)
@@ -4341,7 +4394,7 @@ struct Lowerer
         }
         else if (auto* d = std::get_if<VarDeclStmt>(&x.v))
         {
-            if (path_ref(*d))
+            if (path_ref(*d) || view_path(*d))
                 return;
             if (!d->names.empty())
             { // a structured binding: the names are plain locals

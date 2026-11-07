@@ -1775,3 +1775,61 @@ class Player : Actor {
     EXPECT_EQ(*s.field("index_cached"), 4.0f);
     EXPECT_TRUE(types.empty());
 }
+
+// B7: a view local of a named owner is a checked path. A shape change of the owner gives the view
+// of the new buffer or IndexOutOfRange. No case reads freed memory.
+TEST_P(BackendTests, ViewOfANamedOwnerSeesTheNewBufferOrThrows)
+{
+    const hot::ScriptSource src = {"view_paths.hot", R"(
+using "Actor.h";
+using <string>;
+using <vector>;
+
+class Player : Actor {
+    std.vector<int> xs;
+    std.string label = "ab";
+    float after_push = 0.0;
+    float n_clear = 0.0;
+    float label_size = 0.0;
+    float local_sum = 0.0;
+
+    void Grow(ref std.vector<int> v) {
+        for (int k = 0; k < 100; k++) { v.push_back(k); }
+    }
+
+    override void Tick(float dt) {
+        this.xs.push_back(1);
+        int[] s = this.xs;
+        for (int k = 0; k < 100; k++) { this.xs.push_back(k); }
+        s[0] = 7;
+        this.after_push = this.xs[0];
+        this.xs.clear();
+        try { s[0] = 1; } catch (IndexOutOfRange x) { this.n_clear = 1.0; }
+        std.string_view w = this.label;
+        for (int k = 0; k < 100; k++) { this.label += "c"; }
+        this.label_size = w.size();
+        std.vector<int> v = [1, 2, 3];
+        int[] t = v;
+        this.Grow(v);
+        this.local_sum = t[0] + t[102];
+    }
+
+    override void TakeDamage(float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
+}
+)"};
+    hot::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module), "Player"));
+    s.commit_at_frame_boundary();
+    HandlerGuard guard;
+    std::vector<std::string> types;
+    hot::set_script_error_handler([&](const hot::ScriptErrorReport& e) { types.push_back(e.type); });
+    s.world.Tick(kDt);
+    EXPECT_EQ(*s.field("after_push"), 7.0f);
+    EXPECT_EQ(*s.field("n_clear"), 1.0f);
+    EXPECT_EQ(*s.field("label_size"), 102.0f);
+    EXPECT_EQ(*s.field("local_sum"), 100.0f);
+    EXPECT_TRUE(types.empty());
+}

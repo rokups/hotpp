@@ -545,15 +545,10 @@ struct Checker
     std::set<std::string> owning_locals; // the locals and by-value parameters that own their elements
     std::vector<std::set<std::string>> owning_stack; // owning_locals at the start of each open block
     // The view locals ("T[] s = v;", "std.string_view w = t;") and the root of the container that they
-    // view. A view acts like a "ref" to an element of the root (doc/type-design.md, "Lifetime of a view").
+    // view. Rule V2 uses it: a return of "s" is a view of a local owner. A use after a shape change is
+    // safe: the lowering writes the view of the owner again at each use (B7).
     std::map<std::string, std::string> view_src;
     std::vector<std::map<std::string, std::string>> view_stack; // view_src at the start of each open block
-    std::map<std::string, std::string> stale_views; // the views whose source changed shape: name -> cause
-    // The stale marks of the statement in progress. They start at the end of the statement, because the
-    // statement reads its own operands first ("v.push_back(s[0]);").
-    std::map<std::string, std::string> pending_stale;
-    std::vector<std::map<std::string, std::string>> stale_stack; // stale_views at the start of each open block
-    bool last_stmt_exits = false; // the last statement that ended is a return, break, continue or throw
     std::string method_ret; // the declared return type of the method in progress
     std::map<std::string, std::string> field_types; // the declared type of each field
     std::set<const Expr*> callee_names; // names in the callee place of a call
@@ -980,15 +975,9 @@ struct Checker
     void track_view(const VarDeclStmt& d)
     {
         for (const std::string& n : d.names)
-        {
             view_src.erase(n);
-            stale_views.erase(n);
-        }
         if (d.names.empty())
-        {
             view_src.erase(d.name);
-            stale_views.erase(d.name);
-        }
         if (is_cpp || scopes.size() || d.is_ref || !d.names.empty() || !d.init || !is_view_type(d.type))
             return;
         if (const std::string r = root_name(*d.init); !r.empty() && (r.rfind("this.", 0) == 0 || owning_locals.count(r)))
@@ -1294,9 +1283,6 @@ struct Checker
         owning_stack.clear();
         view_src.clear();
         view_stack.clear();
-        stale_views.clear();
-        pending_stale.clear();
-        stale_stack.clear();
         refs.clear();
         refs_stack.clear();
         ref_params.clear();
@@ -1326,7 +1312,6 @@ struct Checker
         {
             owning_stack.push_back(owning_locals);
             view_stack.push_back(view_src);
-            stale_stack.push_back(stale_views);
             refs_stack.push_back(refs);
         };
         w.block_end = [&]
@@ -1335,24 +1320,12 @@ struct Checker
             owning_stack.pop_back();
             view_src = std::move(view_stack.back());
             view_stack.pop_back();
-            // A block that ends with a jump never reaches the code after it: its stale marks end too.
-            if (last_stmt_exits)
-                stale_views = stale_stack.back();
-            stale_stack.pop_back();
-            for (auto it = stale_views.begin(); it != stale_views.end();)
-                it = view_src.count(it->first) ? std::next(it) : stale_views.erase(it);
             refs = std::move(refs_stack.back());
             refs_stack.pop_back();
         };
         // The variable of "foreach (ref x in c)" ends with the loop.
         w.stmt_end = [&](const Stmt& st)
         {
-            for (auto& [n, cause] : pending_stale)
-                if (view_src.count(n) && !stale_views.count(n))
-                    stale_views[n] = std::move(cause);
-            pending_stale.clear();
-            last_stmt_exits = std::holds_alternative<ReturnStmt>(st.v) || std::holds_alternative<BreakStmt>(st.v)
-                || std::holds_alternative<ContinueStmt>(st.v) || std::holds_alternative<ThrowStmt>(st.v);
             if (const auto* vd = std::get_if<VarDeclStmt>(&st.v))
                 if (auto it = pending_refs.find(vd); it != pending_refs.end())
                 {
@@ -1661,10 +1634,6 @@ struct Checker
     void report_shape_change(uint32_t pos, const std::string& r, const std::string& what)
     {
         const std::string t = root_text(r);
-        if (scopes.empty())
-            for (const auto& [n, src] : view_src)
-                if (src == r && !stale_views.count(n))
-                    pending_stale.emplace(n, what + " changes '" + t + "'");
         // A "ref" of a checked path reads the place again at each use (the lowering): it needs no rule.
         for (const auto& [n, info] : refs)
         {
@@ -1787,32 +1756,10 @@ struct Checker
                     + "' is not allowed: use 'as' or static_cast<" + base + ">(...)");
     }
 
-    // A use of a view after its source changed shape. An assignment "s = x" gives the view a new source.
-    void check_stale_view(const Expr& e)
-    {
-        if (const auto* b = std::get_if<BinaryExpr>(&e.v); b && b->op == "=" && b->lhs)
-            if (const auto* l = std::get_if<NameExpr>(&b->lhs->v); l && l->parts.size() == 1)
-                if (stale_views.erase(l->parts[0]))
-                {
-                    view_src.erase(l->parts[0]);
-                    return;
-                }
-        if (const auto* n = std::get_if<NameExpr>(&e.v); n && !n->parts.empty())
-            if (auto it = stale_views.find(n->parts[0]); it != stale_views.end())
-            {
-                error(n->pos, "the view '" + n->parts[0] + "' is used after " + it->second
-                                  + ". The view can point to freed memory. Take the view again after the change, or use "
-                                    "an index");
-                stale_views.erase(it);
-            }
-    }
-
     void on_expr(const Expr& e)
     {
-        if (!is_cpp && (!refs.empty() || !view_src.empty()))
+        if (!is_cpp && !refs.empty())
             check_invalidation(e);
-        if (!stale_views.empty() && scopes.empty())
-            check_stale_view(e);
         if (auto* un = std::get_if<UnaryExpr>(&e.v))
         {
             check_cast(*un);
