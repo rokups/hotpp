@@ -1,0 +1,9 @@
+111_ref_call_on_other_class.hot:30:9: error: assignment to 'cat' can move or remove the elements of 'cat' while the 'ref' 'r' points to one. Copy the value with 'var', or end the ref before the call
+   30 |         this.cat = new $Catalog();
+111_ref_call_on_other_class.hot:35:9: error: 'ref r' binds to a temporary value: it ends at the end of the statement. Use 'var r' to copy the value
+   35 |         ref r = Make().Find(0);
+111_ref_call_on_other_class.hot:41:9: error: 'c' passed by 'ref' can move or remove the elements of 'c' while the 'ref' 'r' points to one. Copy the value with 'var', or end the ref before the call
+   41 |         Take(c);
+111_ref_call_on_other_class.hot:46:9: error: 'ref n' binds to a temporary value: it ends at the end of the statement. Use 'var n' to copy the value
+   46 |         ref n = this.cat.Count();
+4 errors generated.

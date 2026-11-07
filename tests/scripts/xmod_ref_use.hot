@@ -1,0 +1,14 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// A "ref" local binds to a "ref" call on an object of an imported class.
+using "xmod_ref_lib.hot";
+
+class Reader {
+    void Touch() {
+        $Shelf shelf = new $Shelf();
+        ref s = shelf.At(0);
+        s.x = 1;
+    }
+}

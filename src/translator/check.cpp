@@ -575,6 +575,7 @@ struct Checker
     bool method_ret_ref = false; // true while the body of a method with a "ref T" return is in progress
     std::set<std::string> weak_fields; // the "[weak]" fields of the class
     std::set<std::string> weak_locals; // the "[weak]" parameters and locals of the body in progress
+    const std::vector<ClassDef>* classes = nullptr; // the script classes of the unit, with the imported classes
 
     // True when the method returns "ref T". The checker runs before and after the lowering of the return type.
     static bool is_ref_ret(const Method& m) { return m.ret_ref || is_ref_return_text(m.ret); }
@@ -674,10 +675,8 @@ struct Checker
         return false;
     }
 
-    // True when a call on a receiver of this type can give a reference into the receiver: a native class,
-    // a handle or a pointer to one, or a type that is not known. A script class, a builtin scalar, a view,
-    // an array and a type of the prelude give a temporary.
-    bool is_native_receiver(const std::string& type) const
+    // The type text without "const ", "$" and the marks "&", "*" and "?".
+    static std::string bare_type(const std::string& type)
     {
         std::string t = trim(type);
         if (t.rfind("const ", 0) == 0)
@@ -686,6 +685,43 @@ struct Checker
             t = trim(t.substr(0, t.size() - 1));
         if (!t.empty() && t[0] == '$')
             t = trim(t.substr(1));
+        return t;
+    }
+
+    // A method with a "ref" return of a script class. "is_static" is true for a static method.
+    struct RefMethod
+    {
+        const Method* m = nullptr;
+        bool is_static = false;
+    };
+
+    // The method "name" with a "ref" return of the script class of the type, else an empty result.
+    RefMethod ref_method_of(const std::string& type, const std::string& name) const
+    {
+        const std::string t = bare_type(type);
+        if (!classes || t.empty())
+            return {};
+        for (const ClassDef& c : *classes)
+        {
+            if (c.name != t && c.key_name() != t)
+                continue;
+            for (const Method& m : c.methods)
+                if (m.name == name && is_ref_ret(m))
+                    return {&m, false};
+            for (const Method& m : c.statics)
+                if (m.name == name && is_ref_ret(m))
+                    return {&m, true};
+            return {};
+        }
+        return {};
+    }
+
+    // True when a call on a receiver of this type can give a reference into the receiver: a native class,
+    // a handle or a pointer to one, or a type that is not known. A script class, a builtin scalar, a view,
+    // an array and a type of the prelude give a temporary.
+    bool is_native_receiver(const std::string& type) const
+    {
+        const std::string t = bare_type(type);
         if (t.empty())
             return true;
         if (t.find('[') != std::string::npos || is_prelude_container(t) || types.is_script_class(t))
@@ -860,6 +896,24 @@ struct Checker
                     }
                     return call_place(*c, *om, obj, out);
                 }
+                // "o.F()" or "Class.F()" where "F" of another script class returns "ref": the roots of "o",
+                // as an element, and the roots of each "ref" argument.
+                if (cn->parts.size() == 2 && !starts_weak(*c->callee))
+                {
+                    const std::string& first = cn->parts[0];
+                    const bool is_var = locals.count(first) || field_names.count(first) || refs.count(first);
+                    if (is_var || types.is_script_class(first))
+                    {
+                        const RefMethod rm = ref_method_of(is_var ? name_type(first) : first, cn->parts[1]);
+                        if (rm.m && (is_var || rm.is_static))
+                        {
+                            Place obj; // a static method has no object: only the arguments are roots
+                            if (!rm.is_static)
+                                name_place(first, true, obj);
+                            return call_place(*c, *rm.m, obj, out);
+                        }
+                    }
+                }
                 // A native call "o.G()" on a native receiver "o": the place is an element of "o". The checker
                 // does not know the real owner of the reference. A value return fails in the C++ compile.
                 if (cn->parts.size() >= 2 && !starts_weak(*c->callee))
@@ -890,6 +944,15 @@ struct Checker
                         return temp();
                     return call_place(*c, *om, obj, out);
                 }
+                // A "ref" call on an object of another script class: see the NameExpr form above.
+                if (!cm->safe && cm->obj && !starts_weak(*cm->obj))
+                    if (const RefMethod rm = ref_method_of(expr_type(*cm->obj), cm->name); rm.m)
+                    {
+                        Place obj;
+                        if (!rm.is_static && !place_of(*cm->obj, obj))
+                            return temp();
+                        return call_place(*c, *rm.m, obj, out);
+                    }
                 // A native call on a native receiver: see the NameExpr form above.
                 if (!cm->safe && cm->obj && !std::holds_alternative<ThisExpr>(cm->obj->v)
                     && !std::holds_alternative<BaseExpr>(cm->obj->v) && !starts_weak(*cm->obj)
@@ -2205,9 +2268,11 @@ struct Checker
 } // namespace
 
 void check_class(const ClassDef& cd, const TypeModel& types, const LineMap& map, Diagnostics& diag,
-    bool strict_borrowed, bool is_cpp, bool std_below_20)
+    bool strict_borrowed, bool is_cpp, bool std_below_20, const std::vector<ClassDef>* classes)
 {
-    Checker{cd, types, map, diag, strict_borrowed, is_cpp, std_below_20, {}, false, {}, {}, {}, {}, {}, {}}.run();
+    Checker c{cd, types, map, diag, strict_borrowed, is_cpp, std_below_20, {}, false, {}, {}, {}, {}, {}, {}};
+    c.classes = classes;
+    c.run();
 }
 
 bool cxx_std_below_20(const std::string& std_name)

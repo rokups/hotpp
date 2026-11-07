@@ -126,6 +126,12 @@ TEST(GoldenTranslation, NativeRefGetter)
     golden_one("native_ref_getter_v1");
 }
 
+// A "ref" call on an object of another script class, a "ref" parameter and a static method.
+TEST(GoldenTranslation, RefReturnOtherClass)
+{
+    golden_one("ref_return_xclass_v1");
+}
+
 // The script exception types: a struct with the base ScriptError, and a struct with such a parent.
 TEST(GoldenTranslation, Exceptions)
 {
@@ -410,6 +416,33 @@ TEST(GoldenTranslation, AotDemoOptimized)
 TEST(GoldenTranslation, CrossModuleOwner)
 {
     golden_one("xmod_lib");
+}
+
+// A "ref" call on an object of an imported class binds to a "ref" local. An assignment to the
+// receiver ends the ref.
+TEST(GoldenTranslation, CrossModuleRefCall)
+{
+    const std::string lib = read_file(std::string(HOT_SOURCE_DIR) + "/tests/scripts/xmod_ref_lib.hot");
+    hotc::TranslateOptions o = engine_options("xmod_ref_use.hot", 1);
+    o.script_name = "xmod_ref_use.hot";
+    o.modules = {{"xmod_ref_lib.hot", lib}};
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("auto& s = "), std::string::npos);
+
+    hotc::TranslateOptions bad = o;
+    bad.script_text = "using \"xmod_ref_lib.hot\";\n"
+                             "class Reader {\n"
+                             "    void Touch() {\n"
+                             "        $Shelf shelf = new $Shelf();\n"
+                             "        ref s = shelf.At(0);\n"
+                             "        shelf = new $Shelf();\n"
+                             "        s.x = 1;\n"
+                             "    }\n"
+                             "}\n";
+    const hotc::TranslateResult rb = hotc::translate(bad);
+    ASSERT_FALSE(rb.ok);
+    EXPECT_NE(rb.diagnostics.find("can move or remove the elements of 'shelf'"), std::string::npos) << rb.diagnostics;
 }
 
 TEST(GoldenTranslation, CrossModuleImporter)

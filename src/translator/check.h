@@ -37,9 +37,11 @@ namespace hotc
 // are warnings. The rule on the address of a script function is always an error. "is_cpp" is
 // true for a class of a ".cpp" script: it can hold a raw pointer to a script class.
 // "std_below_20" is true when the C++ standard of the build is older than C++20: an "async"
-// method is then an error, because it needs coroutines.
+// method is then an error, because it needs coroutines. "classes" are the script classes of the unit
+// with the imported classes: a "ref" call on an object of one of them binds to a "ref" local.
 void check_class(const ast::ClassDef& cd, const TypeModel& types, const LineMap& map, Diagnostics& diag,
-    bool strict_borrowed, bool is_cpp = false, bool std_below_20 = false);
+    bool strict_borrowed, bool is_cpp = false, bool std_below_20 = false,
+    const std::vector<ast::ClassDef>* classes = nullptr);
 
 // The name of the synthetic struct that holds the module variables.
 inline constexpr const char* kModuleClassName = "HotModule";

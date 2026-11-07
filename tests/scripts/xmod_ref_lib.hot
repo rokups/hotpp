@@ -1,0 +1,18 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// The owner module of a class with a "ref" method. "xmod_ref_use.hot" imports it.
+using <vector>;
+
+struct Slot {
+    int x = 0;
+}
+
+class Shelf {
+    std.vector<Slot> slots;
+
+    ref Slot At(int i) {
+        return this.slots[i];
+    }
+}

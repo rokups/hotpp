@@ -97,7 +97,8 @@ A `ref` names a place. A place has a root. The checker finds the root in the ini
 | a module variable, a name that is not a local or a field | the program |
 | a `ref` local | the lifetime of its own root |
 | `c[i]`, `c.front()`, `c.back()`, `c.at(k)` | an element of `c`: valid until `c` changes its shape |
-| `o.F(a, b)` where `F` returns `ref` | an element of any field of `o`, with the shortest of: the root of `o` and the root of each `ref` argument |
+| `o.F(a, b)` where `F` returns `ref` and `o` is `this` or an object of any script class | an element of any field of `o`, with the shortest of: the root of `o` and the root of each `ref` argument |
+| `Class.F(a, b)` where the static `F` returns `ref` | the shortest of the roots of each `ref` argument |
 | `o.G(...)` where `o` is a native object or a handle to one | an element of `o`. A `[weak]` handle `o` gives a temporary |
 | a literal, `new`, an operator result, a cast, `?.`, a string interpolation, a collection literal, any other call | a temporary: no lifetime |
 

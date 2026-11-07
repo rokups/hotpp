@@ -5341,7 +5341,7 @@ void translate_impl(
         {
             const size_t before = g_diag.items.size();
             hotc::check_class(cd, types, map, g_diag, in.strict_borrowed, sc.is_cpp,
-                hotc::cxx_std_below_20(opt.std_version));
+                hotc::cxx_std_below_20(opt.std_version), &sc.classes);
             if (g_diag.items.size() != before)
                 throw TranslateAbort{};
         }
@@ -6078,7 +6078,7 @@ void translate_impl(
         {
             const size_t before = g_diag.items.size();
             hotc::check_class(fn_cls, types, map, g_diag, in.strict_borrowed, sc.is_cpp,
-                hotc::cxx_std_below_20(opt.std_version));
+                hotc::cxx_std_below_20(opt.std_version), &sc.classes);
             if (g_diag.items.size() != before)
                 throw TranslateAbort{};
         }
@@ -6624,7 +6624,7 @@ void translate_impl(
         {
             const size_t before = g_diag.items.size();
             hotc::check_class(cd, types, map, g_diag, in.strict_borrowed, sc.is_cpp,
-                hotc::cxx_std_below_20(opt.std_version));
+                hotc::cxx_std_below_20(opt.std_version), &sc.classes);
             if (g_diag.items.size() != before)
                 throw TranslateAbort{};
         }

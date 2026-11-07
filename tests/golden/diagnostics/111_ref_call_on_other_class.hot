@@ -1,0 +1,48 @@
+using <vector>;
+
+struct Info {
+    int x = 0;
+}
+
+class Catalog {
+    std.vector<Info> items;
+
+    ref Info Find(int i) {
+        return this.items[i];
+    }
+
+    int Count() {
+        return 0;
+    }
+}
+
+class User {
+    $Catalog cat;
+
+    $Catalog Make() {
+        return new $Catalog();
+    }
+
+    void Take(ref $Catalog c) { }
+
+    void Replace() {
+        ref r = this.cat.Find(0);
+        this.cat = new $Catalog();
+        r.x = 1;
+    }
+
+    void Temporary() {
+        ref r = Make().Find(0);
+        r.x = 1;
+    }
+
+    void Passed($Catalog c) {
+        ref r = c.Find(0);
+        Take(c);
+        r.x = 1;
+    }
+
+    void Value() {
+        ref n = this.cat.Count();
+    }
+}

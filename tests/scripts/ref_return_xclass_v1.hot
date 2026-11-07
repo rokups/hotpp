@@ -1,0 +1,44 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// A "ref" local binds to a "ref" call on an object of another script class.
+// The roots of the place are the roots of the receiver, as an element.
+using <vector>;
+
+struct Info {
+    int x = 0;
+}
+
+class Catalog {
+    std.vector<Info> items;
+
+    ref Info Find(int i) {
+        return this.items[i];
+    }
+
+    static ref Info Pick(ref Info a) {
+        return a;
+    }
+}
+
+class User {
+    Catalog cat;
+    Info mine;
+
+    void Field() {
+        ref r = this.cat.Find(0);
+        r.x = 1;
+    }
+
+    void Param(ref $Catalog c) {
+        if (c == null) return;
+        ref r = c.Find(0);
+        r.x = 2;
+    }
+
+    void Static() {
+        ref p = Catalog.Pick(this.mine);
+        p.x = 3;
+    }
+}
