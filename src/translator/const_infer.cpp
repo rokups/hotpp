@@ -120,6 +120,11 @@ struct BodyInfo
     std::map<std::string, bool> copy_ok; // true when "return name;" copies at no risk
     std::map<std::string, bool> scalar; // true when each declaration of the name is a number
     std::set<std::string> written;
+    // The names that an assignment, "++" or "--" writes (a subset of "written"). The check of a
+    // lambda (G06) reads it: only such a write is sure.
+    std::set<std::string> assigned;
+    // False for a lambda body (G06): "return x;" in a lambda does not need a shared cell.
+    bool return_writes = true;
 
     void declare(const std::string& name, bool is_handle, bool is_copy_ok)
     {
@@ -170,6 +175,14 @@ struct BodyInfo
             return;
         if (r.exact || !is_handle_name(*r.name))
             written.insert(*r.name);
+    }
+
+    // An assignment, "++" or "--" through the path of a name.
+    void assign_through(const Root& r)
+    {
+        if (r.name && (r.exact || !is_handle_name(*r.name)))
+            assigned.insert(*r.name);
+        write_through(r);
     }
 
     // The script function that a call names, when the callee is not a local.
@@ -236,7 +249,7 @@ struct BodyInfo
             if (auto* b = std::get_if<BinaryExpr>(&e.v))
             {
                 if (is_assign_op(b->op) && b->lhs)
-                    write_through(root_of(*b->lhs));
+                    assign_through(root_of(*b->lhs));
                 // "s << x" and "s >> x" can be stream operators: they change the left operand, and ">>" the
                 // right operand. A number does not change.
                 else if ((b->op == "<<" || b->op == ">>") && b->lhs && b->rhs)
@@ -251,7 +264,9 @@ struct BodyInfo
             }
             else if (auto* u = std::get_if<UnaryExpr>(&e.v))
             {
-                if (u->operand && (u->op == "++" || u->op == "--" || (u->op == "&" && !u->postfix)))
+                if (u->operand && (u->op == "++" || u->op == "--"))
+                    assign_through(root_of(*u->operand));
+                else if (u->operand && u->op == "&" && !u->postfix)
                     write_through(root_of(*u->operand));
                 // "await t": the members of an awaiter are not const.
                 else if (u->operand && u->op == "await" && !u->postfix)
@@ -328,7 +343,7 @@ struct BodyInfo
             }
             else if (auto* r = std::get_if<ReturnStmt>(&s.v))
             {
-                if (r->expr)
+                if (r->expr && return_writes)
                 {
                     const Root root = root_of(*r->expr);
                     if (root.name && root.exact)
@@ -370,6 +385,87 @@ struct BodyInfo
             }
         };
         walk::make_walker(fe, fs).block(body);
+    }
+
+    // The shared cells (G06). Each lambda gets "assigns": the names outside it that its body assigns.
+    // A local or a plain parameter that a lambda writes lives in a shared cell. The pass sets
+    // "VarDeclStmt::shared" on the local. A parameter gets a new shared local with its name and
+    // value: the body becomes "{ var p = p; <body> }". The C++ local hides the parameter.
+    void mark_shared(std::vector<Param>* params, BlockStmt& body) const
+    {
+        std::set<std::string> lambda_written;
+        auto fe = [&](const Expr& e)
+        {
+            auto* l = std::get_if<LambdaExpr>(&e.v);
+            if (!l)
+                return;
+            BodyInfo own{ctx, {}, {}, {}, {}};
+            own.collect_declarations(l->params, l->body);
+            BodyInfo in = *this; // the handle and scalar facts of the function
+            in.written.clear();
+            in.assigned.clear();
+            in.return_writes = false;
+            in.collect_writes(l->body);
+            auto* ml = const_cast<LambdaExpr*>(l);
+            ml->assigns.clear();
+            for (const std::string& n : in.written)
+                if (!own.declared.count(n))
+                    lambda_written.insert(n);
+            for (const std::string& n : in.assigned)
+                if (!own.declared.count(n))
+                    ml->assigns.insert(n);
+        };
+        // A local in the init part of a "for" cannot be a cell: the C++ init part has one declaration.
+        std::set<const VarDeclStmt*> for_init;
+        auto fs = [&](const Stmt& s)
+        {
+            if (auto* f = std::get_if<ForStmt>(&s.v))
+                for (const StmtP& i : f->init)
+                    if (i)
+                        if (auto* d = std::get_if<VarDeclStmt>(&i->v))
+                            for_init.insert(d);
+        };
+        walk::make_walker(fe, fs).block(body);
+        if (lambda_written.empty())
+            return;
+        auto mark = [&](const Stmt& s)
+        {
+            auto* d = std::get_if<VarDeclStmt>(&s.v);
+            if (d && d->names.empty() && !d->is_ref && !is_ref_type(d->type) && !d->weak && !d->value
+                && !for_init.count(d) && lambda_written.count(d->name))
+                const_cast<VarDeclStmt*>(d)->shared = true;
+        };
+        auto none = [](const Expr&) {};
+        walk::make_walker(none, mark).block(body);
+        if (!params)
+            return;
+        std::vector<StmtP> cells;
+        for (const Param& p : *params)
+        {
+            const bool plain = p.mode == ParamMode::Plain || p.mode == ParamMode::ByVal;
+            if (!plain || p.weak || p.value || p.name.empty() || is_ref_type(p.type) || !lambda_written.count(p.name))
+                continue;
+            VarDeclStmt d;
+            d.shared = true;
+            d.name = p.name;
+            d.type = p.script_type.empty() ? p.type : p.script_type;
+            NameExpr n;
+            n.parts = {p.name};
+            n.pos = body.pos;
+            d.init = make_expr(std::move(n));
+            d.pos = body.pos;
+            cells.push_back(make_stmt(std::move(d)));
+        }
+        if (cells.empty())
+            return;
+        BlockStmt inner;
+        inner.pos = body.pos;
+        inner.end_pos = body.end_pos;
+        inner.stmts = std::move(cells);
+        for (StmtP& s : body.stmts)
+            inner.stmts.push_back(std::move(s));
+        body.stmts.clear();
+        body.stmts.push_back(make_stmt(std::move(inner)));
     }
 };
 
@@ -440,6 +536,7 @@ void infer_const(ClassDef& cd, const ConstContext& ctx)
             BodyInfo info{ctx, {}, {}, {}, {}};
             info.run(m.params, m.body);
             info.mark_locals(m.body);
+            info.mark_shared(&m.params, m.body);
             if (ctx.params_ok ? !ctx.params_ok(m) : !params_default_ok(m))
                 continue;
             for (Param& p : m.params)
@@ -456,6 +553,7 @@ void infer_const(ClassDef& cd, const ConstContext& ctx)
         BodyInfo info{ctx, {}, {}, {}, {}};
         info.run(c.params, c.body);
         info.mark_locals(c.body);
+        info.mark_shared(&c.params, c.body);
     }
     for (Method& m : cd.dtors)
     {
@@ -464,6 +562,7 @@ void infer_const(ClassDef& cd, const ConstContext& ctx)
         BodyInfo info{ctx, {}, {}, {}, {}};
         info.run(m.params, m.body);
         info.mark_locals(m.body);
+        info.mark_shared(&m.params, m.body);
     }
 }
 

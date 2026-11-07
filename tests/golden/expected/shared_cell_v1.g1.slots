@@ -1,0 +1,4 @@
+Counter::count 1
+Counter::share 1
+Counter::bump 1
+Counter::arm 1

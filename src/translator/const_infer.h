@@ -25,6 +25,10 @@
 //    implicit move, and a move-only type then does not compile).
 // The target of a handle ("$C", "T*" or a native handle class) stays mutable: "h.f = 1" and
 // "h.M()" do not write "h". Only a new value of "h" is a write.
+// The pass also finds the shared cells (G06). A local or a plain parameter that a lambda body writes
+// (by the rules above, without the "return" rule) gets a shared cell: "VarDeclStmt::shared". A
+// parameter gets a shared local with the same name and value at the start of the body. Each
+// lambda gets "LambdaExpr::assigns" for the check of the lowering.
 // The analysis works by name over the whole body (lambdas included). Two locals with the same name
 // share the result, so a name that is written anywhere is not const anywhere in the body.
 #pragma once

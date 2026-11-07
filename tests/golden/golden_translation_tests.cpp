@@ -138,6 +138,12 @@ TEST(GoldenTranslation, PtrReturn)
     golden_one("ptr_return_v1");
 }
 
+// A lambda that writes a captured local or parameter: the variable is a shared cell (G06).
+TEST(GoldenTranslation, SharedCell)
+{
+    golden_one("shared_cell_v1");
+}
+
 // The script exception types: a struct with the base ScriptError, and a struct with such a parent.
 TEST(GoldenTranslation, Exceptions)
 {

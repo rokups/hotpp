@@ -86,6 +86,7 @@ void add_params(RCtx& cx, const std::vector<ast::Param>& params)
             cx.value_locals.insert(p.name);
         else
             cx.value_locals.erase(p.name);
+        cx.cell_locals.erase(p.name);
         const std::string t = object_type(p.script_type.empty() ? p.type : p.script_type);
         if (t.empty())
             cx.local_type.erase(p.name);
@@ -1155,6 +1156,7 @@ struct Lowerer
         cx.locals.insert(name);
         cx.weak_locals.erase(name); // a "[weak]" local adds the name again after this call
         cx.value_locals.erase(name); // a box local adds the name again after this call
+        cx.cell_locals.erase(name); // a shared local adds the name again after this call
         if (type.empty())
             cx.local_type.erase(name);
         else
@@ -2792,13 +2794,26 @@ struct Lowerer
         const std::string outer_ret = std::exchange(cx.ret_type, std::string());
         const bool outer_ret_value = std::exchange(cx.ret_value, false);
         fin = {};
+        // A lambda captures by value. A write needs a shared cell (G06): a plain local or parameter
+        // of the function gets one. Another name (a loop variable, a binding) cannot.
+        for (const std::string& n : l.assigns)
+            if (cx.locals.count(n) && !cx.cell_locals.count(n))
+                error(l.pos, "the lambda writes '" + n + "', and '" + n + "' cannot be a shared cell. "
+                             "Only a local or a plain parameter of a function can. Copy the value into a local before the lambda");
         const bool outer_lambda = std::exchange(in_lambda, true);
         block(l.body);
         in_lambda = outer_lambda;
         std::set<std::string> param_names;
         for (const Param& p : l.params)
             param_names.insert(p.name);
-        l.captures = binding_captures(bindings, text_of(l.body), false, param_names);
+        const std::string body_text = text_of(l.body);
+        l.captures = binding_captures(bindings, body_text, false, param_names);
+        // The lambda captures the cell "__cell_x" by value and binds "x" to it again. So the
+        // lambda does not copy the value of "x".
+        for (auto it = cx.cell_locals.rbegin(); it != cx.cell_locals.rend(); ++it)
+            if (!binding_captures({*it}, body_text, false, param_names).empty())
+                l.body.stmts.insert(l.body.stmts.begin(),
+                    make_stmt(RawStmt{"auto& " + *it + " = *__cell_" + *it + ";", 0}));
         fin = outer;
         cx.ret_type = outer_ret;
         cx.ret_value = outer_ret_value;
@@ -3900,13 +3915,14 @@ struct Lowerer
     struct ScopeSave
     {
         RCtx& cx;
-        std::set<std::string> locals, weak_locals, value_locals;
+        std::set<std::string> locals, weak_locals, value_locals, cell_locals;
         std::map<std::string, std::string> local_type;
         explicit ScopeSave(RCtx& c)
             : cx(c)
             , locals(c.locals)
             , weak_locals(c.weak_locals)
             , value_locals(c.value_locals)
+            , cell_locals(c.cell_locals)
             , local_type(c.local_type)
         {
         }
@@ -3915,6 +3931,7 @@ struct Lowerer
             cx.locals = std::move(locals);
             cx.weak_locals = std::move(weak_locals);
             cx.value_locals = std::move(value_locals);
+            cx.cell_locals = std::move(cell_locals);
             cx.local_type = std::move(local_type);
         }
     };
@@ -4080,6 +4097,10 @@ struct Lowerer
                 if (const std::string w = weak_root(*d->init); !w.empty())
                     weak_ref_error(d->pos, w);
             declare(d->name, t);
+            if (d->shared && (value_local || d->weak))
+                d->shared = false;
+            if (d->shared)
+                cx.cell_locals.insert(d->name);
             if (value_local)
             {
                 cx.value_locals.insert(d->name);

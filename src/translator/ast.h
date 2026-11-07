@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <variant>
@@ -247,6 +248,9 @@ struct LambdaExpr
     BlockStmt body;
     uint32_t pos = 0;
     std::string captures; // the lowering: init-captures after "[=", for example ", a = a"
+    // The names outside the lambda that the body assigns, increments or decrements (const_infer.h).
+    // The lowering gives an error when such a name is not a shared cell.
+    std::set<std::string> assigns{};
 };
 // A string with "${expr}" or "${expr:spec}" (design 7.3, DECISIONS item 10). The literal parts
 // keep the script text between the quotes (with escapes). "lits" has one more item than "args".
@@ -318,6 +322,9 @@ struct VarDeclStmt
     // The type is a bare script class: the local holds a box (hot::Value<T>). The resolution of
     // the value types sets it. The parser does not.
     bool value = false;
+    // True when a lambda writes the local (const_infer.h, G06). The local lives in a shared cell:
+    // "auto __cell_x = hot::make_cell<T>(init); T& x = *__cell_x;". The parser leaves it false.
+    bool shared = false;
 };
 struct IfStmt
 {

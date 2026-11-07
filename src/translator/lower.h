@@ -75,6 +75,9 @@ struct RCtx
     // object goes into the Value without a copy. A handle that goes to a box target is copied.
     std::set<std::string> value_fields;
     std::set<std::string> value_locals;
+    // The shared cells (G06): the locals with "VarDeclStmt::shared". A lambda that uses such a
+    // name binds "auto& x = *__cell_x;" at the start of its body.
+    std::set<std::string> cell_locals;
     // True when the function that the pass lowers returns a "C" (a bare script class).
     bool ret_value = false;
     bool allow_this = true;

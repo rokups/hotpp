@@ -1,0 +1,51 @@
+// Shared cells (G06). A lambda that writes a captured local or parameter makes it a shared cell.
+// The variable lives in a heap cell. The function and each lambda use the same cell.
+using "Actor.h";
+
+class Counter : Actor {
+    int counted = 0;
+    int shared = 0;
+    int param = 0;
+    int fired = 0;
+
+    // A counter lambda increments a captured local. The function reads the value after the calls.
+    void count() {
+        int n = 0;
+        var inc = () => { n++; };
+        inc();
+        inc();
+        inc();
+        this.counted = n;
+    }
+
+    // Two lambdas share one cell. The lambda "read" only reads it.
+    void share() {
+        var total = 1;
+        var add = (int k) => { total += k; };
+        var read = () => { return total; };
+        add(4);
+        add(5);
+        this.shared = read() * 100 + total;
+    }
+
+    // A lambda writes a parameter. The function copies the parameter into a cell at the start.
+    void bump(int p) {
+        var f = () => { p = p * 2; };
+        f();
+        f();
+        this.param = p;
+    }
+
+    // Two timer lambdas outlive the function. They share the cell of "n".
+    void arm(ref World w) {
+        int n = 0;
+        w.AddTimer(0.5, () => {
+            n += 1;
+            this.fired = n;
+        });
+        w.AddTimer(0.5, () => {
+            n += 10;
+            this.fired = n;
+        });
+    }
+}

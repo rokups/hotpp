@@ -205,3 +205,60 @@ TEST(ConstInfer, MutableViewTexts)
     EXPECT_FALSE(hotc::is_mutable_view("std::vector<int32_t>"));
     EXPECT_FALSE(hotc::is_mutable_view("int32_t"));
 }
+
+// Shared cells (G06): a lambda that writes a captured local or parameter.
+
+TEST(ConstInfer, LambdaThatOnlyReadsALocalGetsNoCell)
+{
+    const hotc::TranslateResult r = run("    void Run() { int x = 3; var f = () => { return x + 1; }; n = f(); }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_FALSE(has(r.cpp, "make_cell")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "const int32_t x = 3;")) << r.cpp;
+}
+
+TEST(ConstInfer, LambdaThatAssignsALocalMakesACell)
+{
+    const hotc::TranslateResult r = run("    void Run() { int x = 3; var f = () => { x = 4; }; f(); n = x; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "auto __cell_x = hot::make_cell<int32_t>(3); int32_t& x = *__cell_x;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "auto& x = *__cell_x; x = 4;")) << r.cpp;
+}
+
+TEST(ConstInfer, MemberCallOnAValueInALambdaMakesACell)
+{
+    const hotc::TranslateResult r
+        = run("    void Run() { std.vector<int> v; var f = () => { v.push_back(1); }; f(); n = v.size(); }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "auto __cell_v = hot::make_cell<std::vector<int32_t>>();")) << r.cpp;
+}
+
+TEST(ConstInfer, HandleTargetWriteInALambdaGetsNoCell)
+{
+    const hotc::TranslateResult r = run("    void Run() { $Weapon w = new $Weapon(); var f = () => { if (w != null) { w.dmg = 2; } }; f(); }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_FALSE(has(r.cpp, "make_cell")) << r.cpp;
+}
+
+TEST(ConstInfer, LocalOfALambdaThatANestedLambdaWritesIsACell)
+{
+    const hotc::TranslateResult r = run(
+        "    void Run() { var f = () => { int k = 0; var g = () => { k++; }; g(); return k; }; n = f(); }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "auto __cell_k = hot::make_cell<int32_t>(0);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "auto& k = *__cell_k; k++;")) << r.cpp;
+}
+
+TEST(ConstInfer, ParameterThatALambdaWritesIsCopiedIntoACell)
+{
+    const hotc::TranslateResult r = run("    void Run(int p) { var f = () => { p += 1; }; f(); n = p; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "auto __cell_p = hot::make_cell<int32_t>(p); int32_t& p = *__cell_p;")) << r.cpp;
+}
+
+TEST(ConstInfer, ForInitLocalThatALambdaWritesIsAnError)
+{
+    const hotc::TranslateResult r
+        = run("    void Run() { for (int i = 0; i < 2; i++) { var f = () => { i = 5; }; f(); } }\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "the lambda writes 'i', and 'i' cannot be a shared cell")) << r.diagnostics;
+}

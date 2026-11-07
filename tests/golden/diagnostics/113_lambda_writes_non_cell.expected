@@ -1,0 +1,5 @@
+113_lambda_writes_non_cell.hot:4:21: error: the lambda writes 'x', and 'x' cannot be a shared cell. Only a local or a plain parameter of a function can. Copy the value into a local before the lambda
+    4 |             var f = () => {
+113_lambda_writes_non_cell.hot:9:21: error: the lambda writes 'k', and 'k' cannot be a shared cell. Only a local or a plain parameter of a function can. Copy the value into a local before the lambda
+    9 |             var h = () => {
+2 errors generated.

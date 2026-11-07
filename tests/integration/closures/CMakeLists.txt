@@ -6,6 +6,7 @@
 add_executable(integration_closure_tests
     closure_tests.cpp
     generation_unload_tests.cpp
+    shared_cell_tests.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
 target_include_directories(integration_closure_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)

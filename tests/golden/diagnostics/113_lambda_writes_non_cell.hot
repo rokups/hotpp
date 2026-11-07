@@ -1,0 +1,14 @@
+class Holder {
+    void F(std.vector<int> xs) {
+        foreach (var x in xs) {
+            var f = () => {
+                x = 1;
+            };
+        }
+        var g = (int k) => {
+            var h = () => {
+                k++;
+            };
+        };
+    }
+}

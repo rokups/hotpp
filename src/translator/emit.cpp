@@ -428,6 +428,29 @@ void put_local_type(Emitter& e, const std::string& type, bool is_ref, bool is_co
 // It is never indeterminate.
 void decl(const VarDeclStmt& d, Emitter& e)
 {
+    // A shared cell (G06): "auto __cell_x = hot::make_cell<T>(init); T& x = *__cell_x".
+    if (d.shared && d.names.empty())
+    {
+        e.put("auto", d.pos);
+        e.space();
+        e.put("__cell_" + d.name);
+        e.space();
+        e.put("=");
+        e.space();
+        e.put(d.type.empty() ? "hot::make_cell(" : "hot::make_cell<" + d.type + ">(");
+        if (d.init)
+            emit_expr(*d.init, e);
+        e.put(");");
+        e.space();
+        e.put(local_type(d.type, true, false), d.pos);
+        e.space();
+        e.put_mapped(d.name, d.name_pos);
+        e.space();
+        e.put("=");
+        e.space();
+        e.put("*__cell_" + d.name);
+        return;
+    }
     put_local_type(e, d.type, d.is_ref, d.is_const, d.pos);
     e.space();
     if (!d.names.empty())
