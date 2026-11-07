@@ -159,3 +159,30 @@ if(NOT HOT_SCRIPT_AOT_OPTIMIZED)
     target_link_libraries(integration_aot_iface_tests PRIVATE aot_iface_scripts hot::aot GTest::gtest_main)
     hot_gtest(integration_aot_iface_tests PROPERTIES LABELS aot)
 endif()
+
+# Two scripts as two units (modules step 6): "new", a field, a method, a module variable and an
+# overloaded free function of another unit. The same tests run with AotRegistry (hot::aot) and
+# with Loader::load_aot. Optimized AOT code has no cross-module access yet, so the mode
+# AOT_OPTIMIZED has no such test.
+if(NOT HOT_SCRIPT_AOT_OPTIMIZED)
+set(_hot_unit_scripts
+    ${PROJECT_SOURCE_DIR}/tests/scripts/aot_units/aot_unit_base.hot
+    ${PROJECT_SOURCE_DIR}/tests/scripts/aot_units/aot_unit_app.hot)
+hot_add_scripts(TARGET aot_units_scripts AOT SCRIPTS ${_hot_unit_scripts}
+    INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
+    DEPENDS ${HOT_HEADERS})
+add_executable(integration_aot_units_tests aot_units_tests.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+target_include_directories(integration_aot_units_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests/engine)
+target_link_libraries(integration_aot_units_tests PRIVATE aot_units_scripts hot::aot GTest::gtest_main)
+add_executable(integration_aot_units_load_tests aot_units_tests.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+target_include_directories(integration_aot_units_load_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests/engine)
+target_compile_definitions(integration_aot_units_load_tests PRIVATE AOT_UNITS_LOADER=1)
+target_link_libraries(integration_aot_units_load_tests PRIVATE aot_units_scripts hot_backend GTest::gtest_main)
+set_target_properties(integration_aot_units_load_tests PROPERTIES ENABLE_EXPORTS ON)
+hot_gtest(integration_aot_units_tests TEST_PREFIX units/ PROPERTIES LABELS aot)
+hot_gtest(integration_aot_units_load_tests TEST_PREFIX units_load/ PROPERTIES LABELS aot)
+endif()

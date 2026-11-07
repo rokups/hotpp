@@ -3597,8 +3597,11 @@ void translate_impl(
                     if (f.name == "main")
                         fail_at(map, f.pos, hotc::ast::kMainSignatureError);
                 // The interface hash of the import is the hash that its own translation gives.
+                // AOT code names a unit by the file name without the extension: the name of the
+                // script in the AOT table (hotc --aot). Other code uses the path of the import.
+                const std::string unit = opt.aot ? std::filesystem::path(file).stem().string() : file;
                 if (depth == 0)
-                    res.import_hashes.emplace_back(file, hash_text(module_interface(is, import_texts.back())));
+                    res.import_hashes.emplace_back(unit, hash_text(module_interface(is, import_texts.back())));
                 // The module variables, the convert hooks and the free functions of the import stay in
                 // their own module: the importer gets no copy of them. A direct import gives the
                 // declarations of the public ones. The import is not transitive.
@@ -3607,13 +3610,13 @@ void translate_impl(
                     for (Method& f : is.fns)
                         if (f.access != hotc::ast::Access::Private)
                         {
-                            f.foreign_unit = file;
+                            f.foreign_unit = unit;
                             f.body.stmts.clear();
                             foreign_fns.push_back(std::move(f));
                         }
                     for (Field& v : is.vars)
                         if (v.access != hotc::ast::Access::Private)
-                            foreign_vars.push_back({std::move(v), file});
+                            foreign_vars.push_back({std::move(v), unit});
                 }
                 for (ClassDef& c : is.classes)
                     if (c.is_private)
@@ -3629,7 +3632,7 @@ void translate_impl(
                 for (ClassDef& c : is.classes)
                 {
                     if (!c.is_value)
-                        c.foreign_unit = file;
+                        c.foreign_unit = unit;
                     classes.push_back(std::move(c));
                 }
                 // An enum and a constant are definitions of the interface: the importer gets a copy.

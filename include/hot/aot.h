@@ -22,6 +22,7 @@
 
 #include <cstddef>
 #include <map>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -30,11 +31,22 @@
 namespace hot
 {
 
-// One script of the AOT table.
+// One import of an AOT script: the unit name of the imported script and the interface hash that
+// the importer compiled against (Module::imports).
+struct AotImport
+{
+    const char* unit;
+    uint64_t hash;
+};
+
+// One script of the AOT table. Each script is one unit. The unit name is "name".
 struct AotScript
 {
     const char* name; // the file name of the script without the extension
     void (*register_fn)(Registry&); // the register function that hotc generated
+    uint64_t iface_hash = 0; // the interface hash of the script (Module::iface_hash)
+    const AotImport* imports = nullptr; // the direct imports of the script
+    size_t import_count = 0;
 };
 
 struct AotTable
@@ -105,8 +117,28 @@ public:
     size_t script_count() const { return script_count_; }
 
 private:
+    void link_parents();
+    void unlink();
+    static ClassRecord* resolve_class(const char* name);
+    static bool resolve_unit(const char* name, UnitInfo& out);
+
     Registry registry_;
     std::vector<ModuleStateInfo> module_blocks_;
+    // The units of the scripts: the free functions and the module block (cross-module access).
+    struct Unit
+    {
+        std::unique_ptr<FnTable> fns;
+        ModuleStateInfo block;
+    };
+    std::map<std::string, Unit> units_;
+    // A script parent in another unit: the linked slot table of the child and the record values
+    // before the link. The destructor puts them back, because the records are constant data.
+    struct Linked
+    {
+        std::vector<SlotFn> slots;
+        const SlotFn* own_slots = nullptr;
+    };
+    std::map<std::string, Linked> linked_;
     // The tables of the interface methods (ClassRecord::iface_slots), by class name. The records
     // point into them, so the destructor clears the pointers first.
     std::map<std::string, std::vector<uint32_t>> iface_slots_;

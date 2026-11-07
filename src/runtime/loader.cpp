@@ -539,42 +539,92 @@ ReloadResult Loader::load_aot(const AotTable& table)
     }
     if (table.count == 0)
         return failed(ReloadReason::BadModule, "the AOT table has no script");
+    // Each script is one unit. The checks of the imports are the checks of load(std::vector<Module>).
+    std::vector<Module> modules(table.count);
+    std::map<std::string, size_t> by_unit;
     for (size_t i = 0; i < table.count; ++i)
     {
-        Module m;
-        m.register_fn = table.scripts[i].register_fn;
-        m.origin = std::string("aot:") + table.scripts[i].name;
-        m.unit = table.scripts[i].name;
+        const AotScript& sc = table.scripts[i];
+        Module& m = modules[i];
+        m.register_fn = sc.register_fn;
+        m.origin = std::string("aot:") + sc.name;
+        m.unit = sc.name;
+        m.iface_hash = sc.iface_hash;
+        for (size_t k = 0; k < sc.import_count; ++k)
+            m.imports.emplace_back(sc.imports[k].unit, sc.imports[k].hash);
+        if (!by_unit.emplace(m.unit, i).second)
+            return failed(ReloadReason::BadModule, "the AOT table has two scripts with the name '" + m.unit + "'");
+    }
+    for (const Module& m : modules)
+        for (const auto& [unit, hash] : m.imports)
+        {
+            const auto it = by_unit.find(unit);
+            if (it == by_unit.end() || modules[it->second].iface_hash != hash)
+            {
+                ReloadResult r = failed(ReloadReason::ImportMismatch,
+                    "AOT script " + m.unit + " imports '" + unit + "', which "
+                        + (it == by_unit.end() ? "is not in the AOT table" : "has another interface hash"));
+                r.units = {m.unit};
+                return r;
+            }
+        }
+    // An imported unit loads before its importer: an initializer of a module variable can use it.
+    std::vector<size_t> order;
+    std::vector<int> mark(modules.size(), 0); // 0: new, 1: on the path, 2: done
+    const std::function<void(size_t)> visit = [&](size_t i)
+    {
+        if (mark[i] != 0)
+            return;
+        mark[i] = 1;
+        for (const auto& [unit, hash] : modules[i].imports)
+            visit(by_unit.at(unit));
+        mark[i] = 2;
+        order.push_back(i);
+    };
+    for (size_t i = 0; i < modules.size(); ++i)
+        visit(i);
+    for (size_t i : order)
+    {
+        const std::string unit = modules[i].unit;
+        const uint64_t iface_hash = modules[i].iface_hash;
+        std::vector<std::pair<std::string, uint64_t>> imports = modules[i].imports;
         Registry code;
-        ReloadResult r = load_unit(std::move(m), &code);
+        ReloadResult r = load_unit(std::move(modules[i]), &code);
         if (r)
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            AotUnit& au = aot_units_[table.scripts[i].name];
+            AotUnit& au = aot_units_[unit];
             au.register_fn = table.scripts[i].register_fn;
             au.reg = std::move(code);
+            au.iface_hash = iface_hash;
+            au.imports = std::move(imports);
         }
         else
         {
             std::string ignored;
             reset(ignored); // no object exists yet: the loader is empty again
-            r.error = std::string("AOT script ") + table.scripts[i].name + ": " + r.error;
+            r.error = "AOT script " + unit + ": " + r.error;
             return r;
         }
     }
-    std::lock_guard<std::mutex> lock(mutex_);
-    aot_slots_ = table.slots ? table.slots : "";
-    aot_optimized_ = table.optimized; // from now on the loader refuses an override and a reload
-    for (const auto& [name, e] : registry_.entries())
     {
-        // The saved copy has no key table: the table belongs to the loader and can move or go.
-        // The commit of a revert sets the key table of the canonical record again.
-        ClassRecord& saved = aot_records_.emplace(name, *e.record).first->second;
-        saved.slot_keys = nullptr;
-        saved.iface_slots = nullptr; // the same: adopt_ifaces rebuilds the table at the revert
-        saved.iface_slot_count = 0;
+        std::lock_guard<std::mutex> lock(mutex_);
+        aot_slots_ = table.slots ? table.slots : "";
+        aot_optimized_ = table.optimized; // from now on the loader refuses an override and a reload
+        for (const auto& [name, e] : registry_.entries())
+        {
+            // The saved copy has no key table: the table belongs to the loader and can move or go.
+            // The commit of a revert sets the key table of the canonical record again. The copy is
+            // the record before the link of a script parent in another unit: a revert links again.
+            ClassRecord& saved = aot_records_.emplace(name, *e.record).first->second;
+            saved.slot_keys = nullptr;
+            saved.iface_slots = nullptr; // the same: adopt_ifaces rebuilds the table at the revert
+            saved.iface_slot_count = 0;
+        }
     }
-    return make_result(ReloadStatus::Applied, ReloadReason::None);
+    // The script parents in other units: link, check the layout hash, fill the inherited slots.
+    // A failure resets the loader (link_first_load).
+    return link_first_load();
 }
 
 ReloadResult Loader::load_unit(Module module, Registry* code_out)
@@ -1120,6 +1170,8 @@ ReloadResult Loader::revert_unit(const std::string& unit, Backend& backend)
         pu.module.register_fn = au->second.register_fn;
         pu.module.origin = "aot:" + unit + " (revert)";
         pu.module.unit = unit;
+        pu.module.iface_hash = au->second.iface_hash;
+        pu.module.imports = au->second.imports;
         std::set<std::string> classes;
         for (const auto& [name, e] : au->second.reg.entries())
             classes.insert(name);

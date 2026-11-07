@@ -413,6 +413,9 @@ private:
     {
         void (*register_fn)(Registry&) = nullptr;
         Registry reg;
+        // The interface hash and the imports of the AOT table: a revert links them again.
+        uint64_t iface_hash = 0;
+        std::vector<std::pair<std::string, uint64_t>> imports;
     };
     std::map<std::string, AotUnit> aot_units_;
     // The records and the slot tables that revert_unit stages. record_gen_ and the canonical

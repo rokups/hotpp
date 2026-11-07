@@ -1215,8 +1215,8 @@ TEST(HotcTool, AotModeWritesTheCppAndTheRegistrationFile)
     EXPECT_NE(demo.find("extern \"C\" void script_register("), std::string::npos);
     EXPECT_FALSE(std::filesystem::exists(module_file(out_dir, "aot_demo.g1")));
     const std::string reg = read_file(out_dir + "/hot_aot_registry.cpp");
-    EXPECT_NE(reg.find("{\"aot_demo\", &hot_script_register_aot_demo}"), std::string::npos) << reg;
-    EXPECT_NE(reg.find("{\"props_v1\", &hot_script_register_props_v1}"), std::string::npos) << reg;
+    EXPECT_NE(reg.find("{\"aot_demo\", &hot_script_register_aot_demo, "), std::string::npos) << reg;
+    EXPECT_NE(reg.find("{\"props_v1\", &hot_script_register_props_v1, "), std::string::npos) << reg;
     EXPECT_NE(reg.find("aot_table = {kAotScripts, 2, kAotSlots}"), std::string::npos) << reg;
 }
 

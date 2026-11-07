@@ -1,0 +1,25 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// The base unit of the AOT module tests: a module variable, an overloaded free function,
+// a class with a virtual method and a class that other units construct.
+using "Actor.h";
+
+int base_count = 3;
+
+int Scale(int v) { return v * 2; }
+int Scale(float v) { return 700; }
+
+class UnitBase : Actor {
+    int hp = 10;
+    virtual int Score() { return this.hp; }
+    override void Tick(float dt) { this.hp = this.hp + 1; }
+}
+
+class UnitBox {
+    int size = 2;
+    UnitBox() { }
+    UnitBox(int s) { this.size = s; }
+    int area() { return this.size * this.size; }
+}
