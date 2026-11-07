@@ -378,6 +378,10 @@ HOT_NODEBUG static hot::ShellCore* Lamp__new_default()
 }
 #line 380 "cpp_lambda_v2.cpp.cpp"
 
+[[maybe_unused]] HOT_HIDDEN static void Lamp__ctor_export0(hot::ShellBase* __s)
+{
+    Lamp__ctor(static_cast<Lamp_Shell*>(__s));
+}
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Lamp_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&LampState_g2::Tick),
@@ -420,7 +424,7 @@ HOT_NODEBUG static hot::Instance Lamp_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "cpp_lambda_v2.cpp"
 }
-#line 424 "cpp_lambda_v2.cpp.cpp"
+#line 428 "cpp_lambda_v2.cpp.cpp"
 
 #line 13 "cpp_lambda_v2.cpp"
 HOT_NODEBUG static hot::Instance Lamp__make_0([[maybe_unused]] void** __a)
@@ -434,7 +438,7 @@ HOT_NODEBUG static hot::Instance Lamp__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 13 "cpp_lambda_v2.cpp"
 }
-#line 438 "cpp_lambda_v2.cpp.cpp"
+#line 442 "cpp_lambda_v2.cpp.cpp"
 
 static const hot::CtorEntry Lamp__constructors[] = {
     {hot::ctor_key<>(), &Lamp__make_0, hot::ctor_write_mask<>()},
@@ -449,7 +453,7 @@ static const hot::CtorEntry Lamp__constructors[] = {
     return state_of(__self)->ctor();
 #line 13 "cpp_lambda_v2.cpp"
 }
-#line 453 "cpp_lambda_v2.cpp.cpp"
+#line 457 "cpp_lambda_v2.cpp.cpp"
 #line 13 "cpp_lambda_v2.cpp"
 void LampState_g2::ctor()
 #line 13 "cpp_lambda_v2.cpp"
@@ -477,7 +481,7 @@ void LampState_g2::ctor()
     
 #line 17 "cpp_lambda_v2.cpp"
 }
-#line 481 "cpp_lambda_v2.cpp.cpp"
+#line 485 "cpp_lambda_v2.cpp.cpp"
 
 #line 19 "cpp_lambda_v2.cpp"
 void LampState_g2::Tick(float dt)
@@ -526,7 +530,7 @@ void LampState_g2::Tick(float dt)
     
 #line 43 "cpp_lambda_v2.cpp"
 }
-#line 530 "cpp_lambda_v2.cpp.cpp"
+#line 534 "cpp_lambda_v2.cpp.cpp"
 
 #line 45 "cpp_lambda_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Lamp__bump(Lamp_Shell* __self, int n)
@@ -536,7 +540,7 @@ void LampState_g2::Tick(float dt)
     return state_of(__self)->bump(std::forward<int>(n));
 #line 45 "cpp_lambda_v2.cpp"
 }
-#line 540 "cpp_lambda_v2.cpp.cpp"
+#line 544 "cpp_lambda_v2.cpp.cpp"
 #line 45 "cpp_lambda_v2.cpp"
 void LampState_g2::bump(int n)
 #line 45 "cpp_lambda_v2.cpp"
@@ -561,7 +565,7 @@ void LampState_g2::bump(int n)
  count += n + 5; 
 #line 45 "cpp_lambda_v2.cpp"
 }
-#line 565 "cpp_lambda_v2.cpp.cpp"
+#line 569 "cpp_lambda_v2.cpp.cpp"
 
 #line 46 "cpp_lambda_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static bool Lamp__self_is_set(Lamp_Shell* __self, Actor * a)
@@ -571,7 +575,7 @@ void LampState_g2::bump(int n)
     return state_of(__self)->self_is_set(std::forward<Actor *>(a));
 #line 46 "cpp_lambda_v2.cpp"
 }
-#line 575 "cpp_lambda_v2.cpp.cpp"
+#line 579 "cpp_lambda_v2.cpp.cpp"
 #line 46 "cpp_lambda_v2.cpp"
 bool LampState_g2::self_is_set(Actor * a)
 #line 46 "cpp_lambda_v2.cpp"
@@ -596,7 +600,7 @@ bool LampState_g2::self_is_set(Actor * a)
  return a != nullptr; 
 #line 46 "cpp_lambda_v2.cpp"
 }
-#line 600 "cpp_lambda_v2.cpp.cpp"
+#line 604 "cpp_lambda_v2.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -604,5 +608,6 @@ extern "C" void script_register(hot::Registry& reg)
     reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Lamp_record, &Lamp_create);
     Lamp_record.construct_keys = Lamp__construct_keys;
+    reg.add_fn("Lamp::ctor()", typeid(void(hot::ShellBase*)).name(), reinterpret_cast<void*>(&Lamp__ctor_export0));
     Lamp_record.ctors = Lamp__constructors;
 }

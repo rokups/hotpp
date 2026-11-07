@@ -318,6 +318,10 @@ HOT_NODEBUG static hot::ShellCore* Base__new_default()
 }
 #line 320 "cpp_inherit_v1.cpp.cpp"
 
+[[maybe_unused]] HOT_HIDDEN static void Base__ctor_export0(hot::ShellBase* __s, int start)
+{
+    Base__ctor(static_cast<Base_Shell*>(__s), std::forward<int>(start));
+}
 [[maybe_unused]] HOT_HIDDEN static void Base__base_Tick(Actor* a, float a0)
 {
     return state_of(static_cast<Base_Shell*>(a))->BaseState_g1::__fwd_Tick(a0);
@@ -345,7 +349,7 @@ static int Base__Power__thunk(Actor* __a)
     return hot::call<int(Actor*)>(__self, Base_SLOT_Power);
 #line 13 "cpp_inherit_v1.cpp"
 }
-#line 349 "cpp_inherit_v1.cpp.cpp"
+#line 353 "cpp_inherit_v1.cpp.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -359,7 +363,7 @@ static int Base__Twice__thunk(Actor* __a)
     return hot::call<int(Actor*)>(__self, Base_SLOT_Twice);
 #line 15 "cpp_inherit_v1.cpp"
 }
-#line 363 "cpp_inherit_v1.cpp.cpp"
+#line 367 "cpp_inherit_v1.cpp.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -373,7 +377,7 @@ static void Base__Bump__thunk(Actor* __a)
     return hot::call<void(Actor*)>(__self, Base_SLOT_Bump);
 #line 17 "cpp_inherit_v1.cpp"
 }
-#line 377 "cpp_inherit_v1.cpp.cpp"
+#line 381 "cpp_inherit_v1.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Base_slots[Base_SLOT_COUNT] = {
@@ -418,7 +422,7 @@ HOT_NODEBUG static hot::Instance Base_create()
     return {static_cast<Actor*>(p), p};
 #line 8 "cpp_inherit_v1.cpp"
 }
-#line 422 "cpp_inherit_v1.cpp.cpp"
+#line 426 "cpp_inherit_v1.cpp.cpp"
 
 #line 11 "cpp_inherit_v1.cpp"
 HOT_NODEBUG static hot::Instance Base__make_0([[maybe_unused]] void** __a)
@@ -432,7 +436,7 @@ HOT_NODEBUG static hot::Instance Base__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 11 "cpp_inherit_v1.cpp"
 }
-#line 436 "cpp_inherit_v1.cpp.cpp"
+#line 440 "cpp_inherit_v1.cpp.cpp"
 
 static const hot::CtorEntry Base__constructors[] = {
     {hot::ctor_key<int>(), &Base__make_0, hot::ctor_write_mask<int>()},
@@ -447,10 +451,10 @@ struct HotModule {
 
 #line 31 "cpp_inherit_v1.cpp"
 static void HotModule__init_last_ticked(void*, void* f) { using T = Base *; new (f) T(nullptr); }
-#line 451 "cpp_inherit_v1.cpp.cpp"
+#line 455 "cpp_inherit_v1.cpp.cpp"
 #line 32 "cpp_inherit_v1.cpp"
 static void HotModule__init_kid_casts(void*, void* f) { using T = int; new (f) T(0); }
-#line 454 "cpp_inherit_v1.cpp.cpp"
+#line 458 "cpp_inherit_v1.cpp.cpp"
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
@@ -494,7 +498,7 @@ struct Kid_Shell final : Base_Shell {
         hot::init_state(this, &Kid_record);
 #line 34 "cpp_inherit_v1.cpp"
     }
-#line 498 "cpp_inherit_v1.cpp.cpp"
+#line 502 "cpp_inherit_v1.cpp.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -511,16 +515,16 @@ struct KidState_g1 : BaseState_g1 {
 
 #line 57 "cpp_inherit_v1.cpp"
 static void Kid__init_kid_hits(void*, void* f) { using T = int; new (f) T(0); }
-#line 515 "cpp_inherit_v1.cpp.cpp"
+#line 519 "cpp_inherit_v1.cpp.cpp"
 #line 58 "cpp_inherit_v1.cpp"
 static void Kid__init_moved(void*, void* f) { using T = float; new (f) T(0.0f); }
-#line 518 "cpp_inherit_v1.cpp.cpp"
+#line 522 "cpp_inherit_v1.cpp.cpp"
 #line 59 "cpp_inherit_v1.cpp"
 static void Kid__init_super_power(void*, void* f) { using T = int; new (f) T(0); }
-#line 521 "cpp_inherit_v1.cpp.cpp"
+#line 525 "cpp_inherit_v1.cpp.cpp"
 #line 60 "cpp_inherit_v1.cpp"
 static void Kid__init_seen_hits(void*, void* f) { using T = int; new (f) T(0); }
-#line 524 "cpp_inherit_v1.cpp.cpp"
+#line 528 "cpp_inherit_v1.cpp.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -584,7 +588,7 @@ HOT_HIDDEN static void Kid__ctor_chain(Kid_Shell* __self, [[maybe_unused]] Chain
     Kid__ctor(__self, start);
 #line 38 "cpp_inherit_v1.cpp"
 }
-#line 588 "cpp_inherit_v1.cpp.cpp"
+#line 592 "cpp_inherit_v1.cpp.cpp"
 using Kid_SuperArgs = decltype(Kid__plan(std::declval<int>()).first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -609,7 +613,7 @@ HOT_NODEBUG static hot::ShellBase* Kid__construct(void* mem, const char* key, co
     return nullptr;
 #line 34 "cpp_inherit_v1.cpp"
 }
-#line 613 "cpp_inherit_v1.cpp.cpp"
+#line 617 "cpp_inherit_v1.cpp.cpp"
 
 static const char* const Kid__construct_keys[] = {typeid(Kid_SuperArgs).name(), nullptr};
 
@@ -637,7 +641,7 @@ HOT_HIDDEN static Kid_Shell* Kid__build([[maybe_unused]] bool __note, int start)
     return __self;
 #line 38 "cpp_inherit_v1.cpp"
 }
-#line 641 "cpp_inherit_v1.cpp.cpp"
+#line 645 "cpp_inherit_v1.cpp.cpp"
 #line 38 "cpp_inherit_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static Kid_Shell* Kid__new(int start = 3)
 #line 38 "cpp_inherit_v1.cpp"
@@ -646,7 +650,7 @@ HOT_HIDDEN static Kid_Shell* Kid__build([[maybe_unused]] bool __note, int start)
     return Kid__build(true, start);
 #line 38 "cpp_inherit_v1.cpp"
 }
-#line 650 "cpp_inherit_v1.cpp.cpp"
+#line 654 "cpp_inherit_v1.cpp.cpp"
 #line 38 "cpp_inherit_v1.cpp"
 template <int = 0>
 #line 38 "cpp_inherit_v1.cpp"
@@ -663,7 +667,7 @@ template <int = 0>
     return __h;
 #line 38 "cpp_inherit_v1.cpp"
 }
-#line 667 "cpp_inherit_v1.cpp.cpp"
+#line 671 "cpp_inherit_v1.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -675,8 +679,12 @@ HOT_NODEBUG static hot::ShellCore* Kid__new_default()
     return Kid__build(false, 3);
 #line 38 "cpp_inherit_v1.cpp"
 }
-#line 679 "cpp_inherit_v1.cpp.cpp"
+#line 683 "cpp_inherit_v1.cpp.cpp"
 
+[[maybe_unused]] HOT_HIDDEN static void Kid__ctor_export0(hot::ShellBase* __s, int start)
+{
+    Kid__ctor(static_cast<Kid_Shell*>(__s), std::forward<int>(start));
+}
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Kid_slots[Kid_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&KidState_g1::Tick),
@@ -720,7 +728,7 @@ HOT_NODEBUG static hot::Instance Kid_create()
     return {static_cast<Actor*>(p), p};
 #line 34 "cpp_inherit_v1.cpp"
 }
-#line 724 "cpp_inherit_v1.cpp.cpp"
+#line 732 "cpp_inherit_v1.cpp.cpp"
 
 #line 38 "cpp_inherit_v1.cpp"
 HOT_NODEBUG static hot::Instance Kid__make_0([[maybe_unused]] void** __a)
@@ -734,7 +742,7 @@ HOT_NODEBUG static hot::Instance Kid__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 38 "cpp_inherit_v1.cpp"
 }
-#line 738 "cpp_inherit_v1.cpp.cpp"
+#line 746 "cpp_inherit_v1.cpp.cpp"
 
 static const hot::CtorEntry Kid__constructors[] = {
     {hot::ctor_key<int>(), &Kid__make_0, hot::ctor_write_mask<int>()},
@@ -749,7 +757,7 @@ static const hot::CtorEntry Kid__constructors[] = {
     return state_of(__self)->ctor(std::forward<int>(start));
 #line 11 "cpp_inherit_v1.cpp"
 }
-#line 753 "cpp_inherit_v1.cpp.cpp"
+#line 761 "cpp_inherit_v1.cpp.cpp"
 #line 11 "cpp_inherit_v1.cpp"
 void BaseState_g1::ctor(int start)
 #line 11 "cpp_inherit_v1.cpp"
@@ -776,7 +784,7 @@ void BaseState_g1::ctor(int start)
 
 #line 11 "cpp_inherit_v1.cpp"
 }
-#line 780 "cpp_inherit_v1.cpp.cpp"
+#line 788 "cpp_inherit_v1.cpp.cpp"
 
 #line 13 "cpp_inherit_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Base__Power(Base_Shell* __self)
@@ -786,7 +794,7 @@ void BaseState_g1::ctor(int start)
     return state_of(__self)->Power();
 #line 13 "cpp_inherit_v1.cpp"
 }
-#line 790 "cpp_inherit_v1.cpp.cpp"
+#line 798 "cpp_inherit_v1.cpp.cpp"
 #line 13 "cpp_inherit_v1.cpp"
 int BaseState_g1::Power()
 #line 13 "cpp_inherit_v1.cpp"
@@ -811,7 +819,7 @@ int BaseState_g1::Power()
  return 1; 
 #line 13 "cpp_inherit_v1.cpp"
 }
-#line 815 "cpp_inherit_v1.cpp.cpp"
+#line 823 "cpp_inherit_v1.cpp.cpp"
 
 #line 15 "cpp_inherit_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Base__Twice(Base_Shell* __self)
@@ -821,7 +829,7 @@ int BaseState_g1::Power()
     return state_of(__self)->Twice();
 #line 15 "cpp_inherit_v1.cpp"
 }
-#line 825 "cpp_inherit_v1.cpp.cpp"
+#line 833 "cpp_inherit_v1.cpp.cpp"
 #line 15 "cpp_inherit_v1.cpp"
 int BaseState_g1::Twice()
 #line 15 "cpp_inherit_v1.cpp"
@@ -846,7 +854,7 @@ int BaseState_g1::Twice()
  return Base__Power_virt(__self) * 2; 
 #line 15 "cpp_inherit_v1.cpp"
 }
-#line 850 "cpp_inherit_v1.cpp.cpp"
+#line 858 "cpp_inherit_v1.cpp.cpp"
 
 #line 17 "cpp_inherit_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Base__Bump(Base_Shell* __self)
@@ -856,7 +864,7 @@ int BaseState_g1::Twice()
     return state_of(__self)->Bump();
 #line 17 "cpp_inherit_v1.cpp"
 }
-#line 860 "cpp_inherit_v1.cpp.cpp"
+#line 868 "cpp_inherit_v1.cpp.cpp"
 #line 17 "cpp_inherit_v1.cpp"
 void BaseState_g1::Bump()
 #line 17 "cpp_inherit_v1.cpp"
@@ -881,7 +889,7 @@ void BaseState_g1::Bump()
  hits += 10; 
 #line 17 "cpp_inherit_v1.cpp"
 }
-#line 885 "cpp_inherit_v1.cpp.cpp"
+#line 893 "cpp_inherit_v1.cpp.cpp"
 
 #line 19 "cpp_inherit_v1.cpp"
 void BaseState_g1::TakeDamage_f(float amount)
@@ -910,7 +918,7 @@ void BaseState_g1::TakeDamage_f(float amount)
     
 #line 23 "cpp_inherit_v1.cpp"
 }
-#line 914 "cpp_inherit_v1.cpp.cpp"
+#line 922 "cpp_inherit_v1.cpp.cpp"
 
 #line 38 "cpp_inherit_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Kid__ctor(Kid_Shell* __self, int start)
@@ -920,7 +928,7 @@ void BaseState_g1::TakeDamage_f(float amount)
     return state_of(__self)->ctor(std::forward<int>(start));
 #line 38 "cpp_inherit_v1.cpp"
 }
-#line 924 "cpp_inherit_v1.cpp.cpp"
+#line 932 "cpp_inherit_v1.cpp.cpp"
 #line 38 "cpp_inherit_v1.cpp"
 void KidState_g1::ctor(int start)
 #line 38 "cpp_inherit_v1.cpp"
@@ -945,7 +953,7 @@ void KidState_g1::ctor(int start)
  kid_hits = start; 
 #line 38 "cpp_inherit_v1.cpp"
 }
-#line 949 "cpp_inherit_v1.cpp.cpp"
+#line 957 "cpp_inherit_v1.cpp.cpp"
 
 #line 40 "cpp_inherit_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Kid__Power(Kid_Shell* __self)
@@ -955,7 +963,7 @@ void KidState_g1::ctor(int start)
     return state_of(__self)->Power();
 #line 40 "cpp_inherit_v1.cpp"
 }
-#line 959 "cpp_inherit_v1.cpp.cpp"
+#line 967 "cpp_inherit_v1.cpp.cpp"
 #line 40 "cpp_inherit_v1.cpp"
 int KidState_g1::Power()
 #line 40 "cpp_inherit_v1.cpp"
@@ -980,7 +988,7 @@ int KidState_g1::Power()
  return 5; 
 #line 40 "cpp_inherit_v1.cpp"
 }
-#line 984 "cpp_inherit_v1.cpp.cpp"
+#line 992 "cpp_inherit_v1.cpp.cpp"
 
 #line 42 "cpp_inherit_v1.cpp"
 void KidState_g1::Tick(float dt)
@@ -1018,7 +1026,7 @@ void KidState_g1::Tick(float dt)
     
 #line 55 "cpp_inherit_v1.cpp"
 }
-#line 1022 "cpp_inherit_v1.cpp.cpp"
+#line 1030 "cpp_inherit_v1.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -1027,9 +1035,11 @@ extern "C" void script_register(hot::Registry& reg)
     reg.add(&Base_record, &Base_create);
     reg.add(&Kid_record, &Kid_create);
     Base_record.construct_keys = Base__construct_keys;
+    reg.add_fn("Base::ctor(int)", typeid(void(hot::ShellBase*, int)).name(), reinterpret_cast<void*>(&Base__ctor_export0));
     Base_record.shares_this = true;
     Base_record.ctors = Base__constructors;
     Kid_record.construct_keys = Kid__construct_keys;
+    reg.add_fn("Kid::ctor(int)", typeid(void(hot::ShellBase*, int)).name(), reinterpret_cast<void*>(&Kid__ctor_export0));
     Kid_record.ctors = Kid__constructors;
     reg.add_thunk("Base::Power", reinterpret_cast<void*>(&Base__Power__thunk));
     reg.add_thunk("Base::Twice", reinterpret_cast<void*>(&Base__Twice__thunk));

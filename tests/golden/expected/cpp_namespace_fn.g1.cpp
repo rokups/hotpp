@@ -316,6 +316,10 @@ HOT_NODEBUG static hot::ShellCore* Bumper__new_default()
 }
 #line 318 "cpp_namespace_fn.cpp.cpp"
 
+[[maybe_unused]] HOT_HIDDEN static void Bumper__ctor_export0(hot::ShellBase* __s)
+{
+    Bumper__ctor(static_cast<Bumper_Shell*>(__s));
+}
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Bumper_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&BumperState_g1::Tick),
@@ -356,7 +360,7 @@ HOT_NODEBUG static hot::Instance Bumper_create()
     return {static_cast<Actor*>(p), p};
 #line 18 "cpp_namespace_fn.cpp"
 }
-#line 360 "cpp_namespace_fn.cpp.cpp"
+#line 364 "cpp_namespace_fn.cpp.cpp"
 
 #line 23 "cpp_namespace_fn.cpp"
 HOT_NODEBUG static hot::Instance Bumper__make_0([[maybe_unused]] void** __a)
@@ -370,7 +374,7 @@ HOT_NODEBUG static hot::Instance Bumper__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 23 "cpp_namespace_fn.cpp"
 }
-#line 374 "cpp_namespace_fn.cpp.cpp"
+#line 378 "cpp_namespace_fn.cpp.cpp"
 
 static const hot::CtorEntry Bumper__constructors[] = {
     {hot::ctor_key<>(), &Bumper__make_0, hot::ctor_write_mask<>()},
@@ -385,7 +389,7 @@ static const hot::CtorEntry Bumper__constructors[] = {
     return state_of(__self)->ctor();
 #line 23 "cpp_namespace_fn.cpp"
 }
-#line 389 "cpp_namespace_fn.cpp.cpp"
+#line 393 "cpp_namespace_fn.cpp.cpp"
 #line 23 "cpp_namespace_fn.cpp"
 void BumperState_g1::ctor()
 #line 23 "cpp_namespace_fn.cpp"
@@ -410,7 +414,7 @@ void BumperState_g1::ctor()
 
 #line 23 "cpp_namespace_fn.cpp"
 }
-#line 414 "cpp_namespace_fn.cpp.cpp"
+#line 418 "cpp_namespace_fn.cpp.cpp"
 
 #line 25 "cpp_namespace_fn.cpp"
 void BumperState_g1::Tick(float dt)
@@ -440,7 +444,7 @@ void BumperState_g1::Tick(float dt)
     
 #line 30 "cpp_namespace_fn.cpp"
 }
-#line 444 "cpp_namespace_fn.cpp.cpp"
+#line 448 "cpp_namespace_fn.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -448,5 +452,6 @@ extern "C" void script_register(hot::Registry& reg)
     reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Bumper_record, &Bumper_create);
     Bumper_record.construct_keys = Bumper__construct_keys;
+    reg.add_fn("Bumper::ctor()", typeid(void(hot::ShellBase*)).name(), reinterpret_cast<void*>(&Bumper__ctor_export0));
     Bumper_record.ctors = Bumper__constructors;
 }

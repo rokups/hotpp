@@ -18,6 +18,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <vector>
 #ifdef _WIN32
     #include <process.h>
     #define getpid _getpid // the MSVC CRT has the POSIX name only as a deprecated name (C4996)
@@ -106,6 +107,39 @@ float tick_result(Session& s)
     return *s.field("result");
 }
 
+// The parent "Base" is in its own unit (modules step 5). This builds that unit with the same
+// backend. It returns the batch of the parent unit and the child unit.
+std::vector<hot::Module> family(hot::Backend& backend, hot::LoadResult& child, float scale, uint32_t gen)
+{
+    std::vector<hot::Module> batch;
+    if (!child || child.module->imports.empty())
+    {
+        ADD_FAILURE() << "the child unit has no import";
+        return batch;
+    }
+    hot::LoadResult parent = backend.load({"m.hot", module_text(scale), {}}, gen);
+    if (!parent)
+    {
+        ADD_FAILURE() << parent.error;
+        return batch;
+    }
+    parent.module->unit = child.module->imports.begin()->first;
+    batch.push_back(std::move(*parent.module));
+    batch.push_back(std::move(*child.module));
+    return batch;
+}
+
+// Loads the batch and makes an object of "Kid".
+void start_family(Session& s, std::vector<hot::Module> batch)
+{
+    ASSERT_RELOAD_OK(s.loader.load(std::move(batch)));
+    const hot::ClassEntry* entry = s.loader.find("Kid");
+    ASSERT_NE(entry, nullptr);
+    s.inst = entry->create();
+    s.actor = static_cast<Actor*>(s.inst.native);
+    s.world.Add(s.actor);
+}
+
 // Backend::set_preludes: the next load uses the new preludes. An empty list removes them.
 TEST(VfsBackend, SetPreludesChangesTheNextLoad)
 {
@@ -133,7 +167,7 @@ TEST(VfsBackend, ImportsFromTheIncludeDirectoryInMemory)
     hot::LoadResult r = backend->load({"main.hot", kMain, {}}, 1);
     ASSERT_TRUE(r) << r.error;
     Session s;
-    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module), "Kid"));
+    ASSERT_NO_FATAL_FAILURE(start_family(s, family(*backend, r, 2.0f, 1)));
     EXPECT_FLOAT_EQ(tick_result(s), 6.0f);
 }
 
@@ -146,7 +180,7 @@ TEST(VfsBackend, ImportsFromTheScriptDirectoryInMemory)
     hot::LoadResult r = backend->load({kDir + "/script/main.hot", kMain, {}}, 1);
     ASSERT_TRUE(r) << r.error;
     Session s;
-    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module), "Kid"));
+    ASSERT_NO_FATAL_FAILURE(start_family(s, family(*backend, r, 2.0f, 1)));
     EXPECT_FLOAT_EQ(tick_result(s), 8.0f);
 }
 
@@ -160,7 +194,7 @@ TEST(VfsBackend, NewVersionReloadsWithNewBehavior)
     hot::LoadResult v1 = backend->load(src, 1);
     ASSERT_TRUE(v1) << v1.error;
     Session s;
-    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Kid"));
+    ASSERT_NO_FATAL_FAILURE(start_family(s, family(*backend, v1, 2.0f, 1)));
     s.commit_at_frame_boundary();
     EXPECT_FLOAT_EQ(tick_result(s), 6.0f);
 
@@ -168,7 +202,7 @@ TEST(VfsBackend, NewVersionReloadsWithNewBehavior)
     hot::LoadResult v2 = backend->load(src, 2);
     ASSERT_TRUE(v2) << v2.error;
     std::string error;
-    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    ASSERT_RELOAD_OK(s.loader.request_reload(family(*backend, v2, 4.0f, 2)));
     s.world.Tick(kDt); // the reload commits after this Tick
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(hot::active_generation, 2u);
@@ -194,7 +228,7 @@ TEST(VfsBackend, DiskHeadersStillWork)
         hot::LoadResult r = backend->load({"main.hot", kMain, {}}, 1);
         ASSERT_TRUE(r) << r.error;
         Session s;
-        ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module), "Kid"));
+        ASSERT_NO_FATAL_FAILURE(start_family(s, family(*backend, r, 3.0f, 1)));
         EXPECT_FLOAT_EQ(tick_result(s), 6.0f);
     }
     fs::remove_all(dir);
@@ -212,7 +246,7 @@ TEST(VfsBackend, RelativeDirectoryThatExistsOnlyInMemory)
     hot::LoadResult r = backend->load({"main.hot", kMain, {}}, 1);
     ASSERT_TRUE(r) << r.error;
     Session s;
-    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module), "Kid"));
+    ASSERT_NO_FATAL_FAILURE(start_family(s, family(*backend, r, 2.0f, 1)));
     EXPECT_FLOAT_EQ(tick_result(s), 6.0f);
     EXPECT_FALSE(std::filesystem::exists("hot_vfs_virt_only"));
 }
@@ -230,7 +264,7 @@ TEST(VfsBackend, RelativeDirectoriesWithDotDotWork)
     hot::LoadResult r = backend->load({"../hot_vfs_rel/script/main.hot", kMain, {}}, 1);
     ASSERT_TRUE(r) << r.error;
     Session s;
-    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module), "Kid"));
+    ASSERT_NO_FATAL_FAILURE(start_family(s, family(*backend, r, 2.0f, 1)));
     EXPECT_FLOAT_EQ(tick_result(s), 6.0f);
 }
 

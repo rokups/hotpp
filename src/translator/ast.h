@@ -654,6 +654,10 @@ struct ClassDef
     // class only: no bodies, no state and no record. Calls, fields and "new" go through the runtime
     // helpers (hot::call_script, hot::field, hot::construct). Empty: the class of this module.
     std::string foreign_unit;
+    // A class of an import that is a script parent of a class of this module (modules step 5). The
+    // importer gets the shell and the state struct with the fields, so the child state derives from
+    // it. Each body is a forward to the owner unit. The record of the importer is not registered.
+    bool iface_parent = false;
     std::string cpp_prelude; // the attribute [cpp_prelude("text")]: C++ text for this class only
     std::string cpp_overrides; // names of virtuals that the shell keeps without a slot (a .cpp script)
     // The script attributes of the class: "[Tag] class C { }". Each name is an attribute class

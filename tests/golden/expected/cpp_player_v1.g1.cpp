@@ -332,6 +332,10 @@ HOT_NODEBUG static hot::ShellCore* Player__new_default()
 }
 #line 334 "cpp_player_v1.cpp.cpp"
 
+[[maybe_unused]] HOT_HIDDEN static void Player__ctor_export0(hot::ShellBase* __s)
+{
+    Player__ctor(static_cast<Player_Shell*>(__s));
+}
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
 #line 53 "cpp_player_v1.cpp"
@@ -344,7 +348,7 @@ static void Player__heal__thunk(Actor* __a, float a)
     return hot::call<void(Actor*, float)>(__self, SLOT_heal, a);
 #line 53 "cpp_player_v1.cpp"
 }
-#line 348 "cpp_player_v1.cpp.cpp"
+#line 352 "cpp_player_v1.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Player_slots[SLOT_COUNT] = {
@@ -387,7 +391,7 @@ HOT_NODEBUG static hot::Instance Player_create()
     return {static_cast<Actor*>(p), p};
 #line 25 "cpp_player_v1.cpp"
 }
-#line 391 "cpp_player_v1.cpp.cpp"
+#line 395 "cpp_player_v1.cpp.cpp"
 
 #line 28 "cpp_player_v1.cpp"
 HOT_NODEBUG static hot::Instance Player__make_0([[maybe_unused]] void** __a)
@@ -401,7 +405,7 @@ HOT_NODEBUG static hot::Instance Player__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 28 "cpp_player_v1.cpp"
 }
-#line 405 "cpp_player_v1.cpp.cpp"
+#line 409 "cpp_player_v1.cpp.cpp"
 
 static const hot::CtorEntry Player__constructors[] = {
     {hot::ctor_key<>(), &Player__make_0, hot::ctor_write_mask<>()},
@@ -416,7 +420,7 @@ static const hot::CtorEntry Player__constructors[] = {
     return state_of(__self)->ctor();
 #line 28 "cpp_player_v1.cpp"
 }
-#line 420 "cpp_player_v1.cpp.cpp"
+#line 424 "cpp_player_v1.cpp.cpp"
 #line 28 "cpp_player_v1.cpp"
 void PlayerState_g1::ctor()
 #line 28 "cpp_player_v1.cpp"
@@ -441,7 +445,7 @@ void PlayerState_g1::ctor()
 
 #line 28 "cpp_player_v1.cpp"
 }
-#line 445 "cpp_player_v1.cpp.cpp"
+#line 449 "cpp_player_v1.cpp.cpp"
 
 #line 30 "cpp_player_v1.cpp"
 void PlayerState_g1::Tick(float dt)
@@ -474,7 +478,7 @@ void PlayerState_g1::Tick(float dt)
     
 #line 38 "cpp_player_v1.cpp"
 }
-#line 478 "cpp_player_v1.cpp.cpp"
+#line 482 "cpp_player_v1.cpp.cpp"
 
 #line 40 "cpp_player_v1.cpp"
 void PlayerState_g1::TakeDamage_f(float amount)
@@ -503,7 +507,7 @@ void PlayerState_g1::TakeDamage_f(float amount)
     
 #line 44 "cpp_player_v1.cpp"
 }
-#line 507 "cpp_player_v1.cpp.cpp"
+#line 511 "cpp_player_v1.cpp.cpp"
 
 #line 46 "cpp_player_v1.cpp"
 void PlayerState_g1::TakeDamage_Af(Actor & source, float amount)
@@ -533,7 +537,7 @@ void PlayerState_g1::TakeDamage_Af(Actor & source, float amount)
     
 #line 51 "cpp_player_v1.cpp"
 }
-#line 537 "cpp_player_v1.cpp.cpp"
+#line 541 "cpp_player_v1.cpp.cpp"
 
 #line 53 "cpp_player_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Player__heal(Player_Shell* __self, float a)
@@ -543,7 +547,7 @@ void PlayerState_g1::TakeDamage_Af(Actor & source, float amount)
     return state_of(__self)->heal(std::forward<float>(a));
 #line 53 "cpp_player_v1.cpp"
 }
-#line 547 "cpp_player_v1.cpp.cpp"
+#line 551 "cpp_player_v1.cpp.cpp"
 #line 53 "cpp_player_v1.cpp"
 void PlayerState_g1::heal(float a)
 #line 53 "cpp_player_v1.cpp"
@@ -571,7 +575,7 @@ void PlayerState_g1::heal(float a)
     
 #line 57 "cpp_player_v1.cpp"
 }
-#line 575 "cpp_player_v1.cpp.cpp"
+#line 579 "cpp_player_v1.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -579,6 +583,7 @@ extern "C" void script_register(hot::Registry& reg)
     reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Player_record, &Player_create);
     Player_record.construct_keys = Player__construct_keys;
+    reg.add_fn("Player::ctor()", typeid(void(hot::ShellBase*)).name(), reinterpret_cast<void*>(&Player__ctor_export0));
     Player_record.ctors = Player__constructors;
     reg.add_thunk("Player::heal", reinterpret_cast<void*>(&Player__heal__thunk));
 }

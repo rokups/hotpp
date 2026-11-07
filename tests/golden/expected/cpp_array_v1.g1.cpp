@@ -360,6 +360,10 @@ HOT_NODEBUG static hot::ShellCore* Buf__new_default()
 }
 #line 362 "cpp_array_v1.cpp.cpp"
 
+[[maybe_unused]] HOT_HIDDEN static void Buf__ctor_export0(hot::ShellBase* __s)
+{
+    Buf__ctor(static_cast<Buf_Shell*>(__s));
+}
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
 #line 28 "cpp_array_v1.cpp"
@@ -372,7 +376,7 @@ static int Buf__sum__thunk(Actor* __a)
     return hot::call<int(Actor*)>(__self, SLOT_sum);
 #line 28 "cpp_array_v1.cpp"
 }
-#line 376 "cpp_array_v1.cpp.cpp"
+#line 380 "cpp_array_v1.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Buf_slots[SLOT_COUNT] = {
@@ -415,7 +419,7 @@ HOT_NODEBUG static hot::Instance Buf_create()
     return {static_cast<Actor*>(p), p};
 #line 11 "cpp_array_v1.cpp"
 }
-#line 419 "cpp_array_v1.cpp.cpp"
+#line 423 "cpp_array_v1.cpp.cpp"
 
 #line 14 "cpp_array_v1.cpp"
 HOT_NODEBUG static hot::Instance Buf__make_0([[maybe_unused]] void** __a)
@@ -429,7 +433,7 @@ HOT_NODEBUG static hot::Instance Buf__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 14 "cpp_array_v1.cpp"
 }
-#line 433 "cpp_array_v1.cpp.cpp"
+#line 437 "cpp_array_v1.cpp.cpp"
 
 static const hot::CtorEntry Buf__constructors[] = {
     {hot::ctor_key<>(), &Buf__make_0, hot::ctor_write_mask<>()},
@@ -444,7 +448,7 @@ static const hot::CtorEntry Buf__constructors[] = {
     return state_of(__self)->ctor();
 #line 14 "cpp_array_v1.cpp"
 }
-#line 448 "cpp_array_v1.cpp.cpp"
+#line 452 "cpp_array_v1.cpp.cpp"
 #line 14 "cpp_array_v1.cpp"
 void BufState_g1::ctor()
 #line 14 "cpp_array_v1.cpp"
@@ -469,7 +473,7 @@ void BufState_g1::ctor()
  names[0] = "first"; 
 #line 14 "cpp_array_v1.cpp"
 }
-#line 473 "cpp_array_v1.cpp.cpp"
+#line 477 "cpp_array_v1.cpp.cpp"
 
 #line 16 "cpp_array_v1.cpp"
 void BufState_g1::Tick(float dt)
@@ -504,7 +508,7 @@ void BufState_g1::Tick(float dt)
     
 #line 26 "cpp_array_v1.cpp"
 }
-#line 508 "cpp_array_v1.cpp.cpp"
+#line 512 "cpp_array_v1.cpp.cpp"
 
 #line 28 "cpp_array_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Buf__sum(Buf_Shell* __self)
@@ -514,7 +518,7 @@ void BufState_g1::Tick(float dt)
     return state_of(__self)->sum();
 #line 28 "cpp_array_v1.cpp"
 }
-#line 518 "cpp_array_v1.cpp.cpp"
+#line 522 "cpp_array_v1.cpp.cpp"
 #line 28 "cpp_array_v1.cpp"
 int BufState_g1::sum()
 #line 28 "cpp_array_v1.cpp"
@@ -544,7 +548,7 @@ int BufState_g1::sum()
     
 #line 34 "cpp_array_v1.cpp"
 }
-#line 548 "cpp_array_v1.cpp.cpp"
+#line 552 "cpp_array_v1.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -552,6 +556,7 @@ extern "C" void script_register(hot::Registry& reg)
     reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Buf_record, &Buf_create);
     Buf_record.construct_keys = Buf__construct_keys;
+    reg.add_fn("Buf::ctor()", typeid(void(hot::ShellBase*)).name(), reinterpret_cast<void*>(&Buf__ctor_export0));
     Buf_record.ctors = Buf__constructors;
     reg.add_thunk("Buf::sum", reinterpret_cast<void*>(&Buf__sum__thunk));
 }

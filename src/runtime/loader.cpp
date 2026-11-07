@@ -395,7 +395,41 @@ ReloadResult Loader::load(Module module)
         if (!gens_.empty()) // "active_generation" is global: a destroyed loader can leave it set
             return failed(ReloadReason::BadModule, "the loader already has a generation: call reset first");
     }
-    return load_unit(std::move(module));
+    if (ReloadResult r = load_unit(std::move(module)); !r)
+        return r;
+    return link_first_load();
+}
+
+// A script parent in another unit (modules step 5): link "super", check the parent layout and
+// fill the inherited slots, after all the units of the first load are in the registry.
+ReloadResult Loader::link_first_load()
+{
+    for (auto& [name, e] : registry_.entries())
+    {
+        ClassRecord* r = e.record;
+        if (!r->super_name)
+            continue;
+        ClassEntry* pe = registry_.find(r->super_name);
+        std::string why;
+        if (!pe)
+            why = "the script parent " + std::string(r->super_name) + " is not loaded";
+        else if (layout_hash(pe->record->layout) != r->super_layout_hash)
+            why = "the state layout of the script parent " + std::string(r->super_name)
+                + " is not the layout that the class compiled against";
+        if (!why.empty())
+        {
+            const std::string cls = name;
+            std::string ignored;
+            reset(ignored);
+            ReloadResult f = failed(ReloadReason::ImportMismatch, "class " + cls + ": " + why);
+            f.classes = {cls};
+            return f;
+        }
+        r->super = pe->record;
+        own_slots_[name] = r->slots;
+    }
+    link_inherited_slots();
+    return make_result(ReloadStatus::Applied, ReloadReason::None);
 }
 
 ReloadResult Loader::load(std::vector<Module> modules)
@@ -451,34 +485,7 @@ ReloadResult Loader::load(std::vector<Module> modules)
             return r;
         }
     }
-    // A script parent in another unit (modules step 5): link "super", check the parent layout and
-    // fill the inherited slots, after all the units of the batch are in the registry.
-    for (auto& [name, e] : registry_.entries())
-    {
-        ClassRecord* r = e.record;
-        if (!r->super_name)
-            continue;
-        ClassEntry* pe = registry_.find(r->super_name);
-        std::string why;
-        if (!pe)
-            why = "the script parent " + std::string(r->super_name) + " is not in the batch";
-        else if (layout_hash(pe->record->layout) != r->super_layout_hash)
-            why = "the state layout of the script parent " + std::string(r->super_name)
-                + " is not the layout that the class compiled against";
-        if (!why.empty())
-        {
-            const std::string cls = name;
-            std::string ignored;
-            reset(ignored);
-            ReloadResult f = failed(ReloadReason::ImportMismatch, "class " + cls + ": " + why);
-            f.classes = {cls};
-            return f;
-        }
-        r->super = pe->record;
-        own_slots_[name] = r->slots;
-    }
-    link_inherited_slots();
-    return make_result(ReloadStatus::Applied, ReloadReason::None);
+    return link_first_load();
 }
 
 void Loader::install_resolvers()

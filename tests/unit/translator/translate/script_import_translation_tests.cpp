@@ -123,28 +123,6 @@ TEST(ScriptImportTranslation, TranslatorErrorHasRealFileLineColumnAndSnippet)
     EXPECT_NE(out.find("    4 |     int hp = 2;\n"), std::string::npos) << out;
 }
 
-// A compiler error in the imported script gets its file, line, column and source line.
-TEST(ScriptImportTranslation, CompilerErrorHasRealFileLineColumnAndSnippet)
-{
-    TempDir dir;
-    const hotc::TranslateResult r = hotc::translate(options(dir, kParent));
-    ASSERT_TRUE(r.ok) << r.diagnostics;
-    // The physical line and column of "return 1" in the generated text.
-    const size_t at = r.cpp.find("return 1");
-    ASSERT_NE(at, std::string::npos);
-    const int col = static_cast<int>(at - (r.cpp.rfind('\n', at) + 1)) + 1;
-    // Clang prints the position of the "#line" directive: the file and the script line. It shows
-    // the generated line. Several generated lines can have the same script line.
-    const size_t line_end = r.cpp.find('\n', at);
-    const std::string shown = r.cpp.substr(r.cpp.rfind('\n', at) + 1, line_end - (r.cpp.rfind('\n', at) + 1));
-    const std::string clang =
-        "base.hot:4:" + std::to_string(col) + ": error: expected ';'\n    4 | " + shown + "\n      | ^\n";
-    const std::string out =
-        hotc::rewrite_diagnostic(clang, {{"t.hot", kChild}}, {{"/w/t.hot.cpp", r.cpp}}, &r.source_map);
-    // "    virtual int Power() { return 1; }": "return" is at column 27.
-    EXPECT_EQ(out, "base.hot:4:27: error: expected ';'\n    4 |     virtual int Power() { return 1; }\n");
-}
-
 // An error in the imported script names the file and the line of that script.
 TEST(ScriptImportTranslation, ErrorInTheImportNamesItsFile)
 {
@@ -380,6 +358,27 @@ TEST(ScriptImportTranslation, ImportCycleWithTheMainScript)
     EXPECT_EQ(r.imports.front().first, "base.hot") << "the main script is not an import";
     ASSERT_EQ(r.import_hashes.size(), 1u);
     EXPECT_EQ(r.import_hashes.front().first, "base.hot");
+}
+
+// A child in another unit runs the field initializers and the "base(...)" arguments of its parent
+// (modules step 5), so they are part of the interface hash.
+TEST(ScriptImportTranslation, InterfaceHashCoversFieldInitializersAndBaseArguments)
+{
+    TempDir dir;
+    const std::string text = "using \"w.h\";\nclass Unit : Widget {\n    int hp = 3;\n    Unit(int v) { this.hp = v; }\n}\n"
+                             "class Elite : Unit {\n    Elite() : base(1) { }\n}\n";
+    const hotc::TranslateResult a = translate_alone(dir, text);
+    ASSERT_TRUE(a.ok) << a.diagnostics;
+    std::string init = text;
+    init.replace(init.find("hp = 3"), 6, "hp = 4");
+    const hotc::TranslateResult b = translate_alone(dir, init);
+    ASSERT_TRUE(b.ok) << b.diagnostics;
+    EXPECT_NE(a.iface_hash, b.iface_hash) << b.iface;
+    std::string sup = text;
+    sup.replace(sup.find("base(1)"), 7, "base(2)");
+    const hotc::TranslateResult c = translate_alone(dir, sup);
+    ASSERT_TRUE(c.ok) << c.diagnostics;
+    EXPECT_NE(a.iface_hash, c.iface_hash) << c.iface;
 }
 
 // The interface hash ignores a body change. A field change gives another hash.

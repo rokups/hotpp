@@ -321,6 +321,10 @@ HOT_NODEBUG static hot::ShellCore* Fighter__new_default()
 }
 #line 323 "cpp_outofclass_v1.cpp.cpp"
 
+[[maybe_unused]] HOT_HIDDEN static void Fighter__ctor_export0(hot::ShellBase* __s)
+{
+    Fighter__ctor(static_cast<Fighter_Shell*>(__s));
+}
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
 #line 21 "cpp_outofclass_v1.cpp"
@@ -333,7 +337,7 @@ static int Fighter__hit__thunk(Actor* __a, int d, int scale)
     return hot::call<int(Actor*, int, int)>(__self, SLOT_hit, d, scale);
 #line 21 "cpp_outofclass_v1.cpp"
 }
-#line 337 "cpp_outofclass_v1.cpp.cpp"
+#line 341 "cpp_outofclass_v1.cpp.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -347,7 +351,7 @@ static int Fighter__get__thunk(Actor* __a)
     return hot::call<int(Actor*)>(__self, SLOT_get);
 #line 27 "cpp_outofclass_v1.cpp"
 }
-#line 351 "cpp_outofclass_v1.cpp.cpp"
+#line 355 "cpp_outofclass_v1.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Fighter_slots[SLOT_COUNT] = {
@@ -391,7 +395,7 @@ HOT_NODEBUG static hot::Instance Fighter_create()
     return {static_cast<Actor*>(p), p};
 #line 8 "cpp_outofclass_v1.cpp"
 }
-#line 395 "cpp_outofclass_v1.cpp.cpp"
+#line 399 "cpp_outofclass_v1.cpp.cpp"
 
 #line 11 "cpp_outofclass_v1.cpp"
 HOT_NODEBUG static hot::Instance Fighter__make_0([[maybe_unused]] void** __a)
@@ -405,7 +409,7 @@ HOT_NODEBUG static hot::Instance Fighter__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 11 "cpp_outofclass_v1.cpp"
 }
-#line 409 "cpp_outofclass_v1.cpp.cpp"
+#line 413 "cpp_outofclass_v1.cpp.cpp"
 
 static const hot::CtorEntry Fighter__constructors[] = {
     {hot::ctor_key<>(), &Fighter__make_0, hot::ctor_write_mask<>()},
@@ -420,7 +424,7 @@ static const hot::CtorEntry Fighter__constructors[] = {
     return state_of(__self)->ctor();
 #line 11 "cpp_outofclass_v1.cpp"
 }
-#line 424 "cpp_outofclass_v1.cpp.cpp"
+#line 428 "cpp_outofclass_v1.cpp.cpp"
 #line 11 "cpp_outofclass_v1.cpp"
 void FighterState_g1::ctor()
 #line 11 "cpp_outofclass_v1.cpp"
@@ -445,7 +449,7 @@ void FighterState_g1::ctor()
 
 #line 11 "cpp_outofclass_v1.cpp"
 }
-#line 449 "cpp_outofclass_v1.cpp.cpp"
+#line 453 "cpp_outofclass_v1.cpp.cpp"
 
 #line 13 "cpp_outofclass_v1.cpp"
 void FighterState_g1::Tick(float dt)
@@ -476,7 +480,7 @@ void FighterState_g1::Tick(float dt)
     
 #line 19 "cpp_outofclass_v1.cpp"
 }
-#line 480 "cpp_outofclass_v1.cpp.cpp"
+#line 484 "cpp_outofclass_v1.cpp.cpp"
 
 #line 21 "cpp_outofclass_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Fighter__hit(Fighter_Shell* __self, int d, int scale)
@@ -486,7 +490,7 @@ void FighterState_g1::Tick(float dt)
     return state_of(__self)->hit(std::forward<int>(d), std::forward<int>(scale));
 #line 21 "cpp_outofclass_v1.cpp"
 }
-#line 490 "cpp_outofclass_v1.cpp.cpp"
+#line 494 "cpp_outofclass_v1.cpp.cpp"
 #line 21 "cpp_outofclass_v1.cpp"
 int FighterState_g1::hit(int d, int scale)
 #line 21 "cpp_outofclass_v1.cpp"
@@ -514,7 +518,7 @@ int FighterState_g1::hit(int d, int scale)
     
 #line 25 "cpp_outofclass_v1.cpp"
 }
-#line 518 "cpp_outofclass_v1.cpp.cpp"
+#line 522 "cpp_outofclass_v1.cpp.cpp"
 
 #line 27 "cpp_outofclass_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Fighter__get(Fighter_Shell* __self)
@@ -524,7 +528,7 @@ int FighterState_g1::hit(int d, int scale)
     return state_of(__self)->get();
 #line 27 "cpp_outofclass_v1.cpp"
 }
-#line 528 "cpp_outofclass_v1.cpp.cpp"
+#line 532 "cpp_outofclass_v1.cpp.cpp"
 #line 27 "cpp_outofclass_v1.cpp"
 int FighterState_g1::get()
 #line 27 "cpp_outofclass_v1.cpp"
@@ -549,7 +553,7 @@ int FighterState_g1::get()
  return hp; 
 #line 27 "cpp_outofclass_v1.cpp"
 }
-#line 553 "cpp_outofclass_v1.cpp.cpp"
+#line 557 "cpp_outofclass_v1.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -557,6 +561,7 @@ extern "C" void script_register(hot::Registry& reg)
     reg.set_module_state(&HotModule_layout, &HotModule_slot);
     reg.add(&Fighter_record, &Fighter_create);
     Fighter_record.construct_keys = Fighter__construct_keys;
+    reg.add_fn("Fighter::ctor()", typeid(void(hot::ShellBase*)).name(), reinterpret_cast<void*>(&Fighter__ctor_export0));
     Fighter_record.ctors = Fighter__constructors;
     reg.add_thunk("Fighter::hit", reinterpret_cast<void*>(&Fighter__hit__thunk));
     reg.add_thunk("Fighter::get", reinterpret_cast<void*>(&Fighter__get__thunk));

@@ -151,6 +151,24 @@ HOT_HIDDEN typename detail::sig_result<Sig>::type call_script(ShellBase* self, u
     return (static_cast<StateBase*>(self->state)->*reinterpret_cast<Pmf>(cls->slots[slot]))(std::forward<A>(a)...);
 }
 
+// Calls slot "slot" of the record "parent" with the state "state" (modules step 5). A child of a
+// parent in another unit uses it for "base.M()" and for an inherited method. "Sig" is R(P...).
+namespace detail
+{
+template <class Sig> struct plain_pmf;
+template <class R, class... P> struct plain_pmf<R(P...)>
+{
+    using type = R (StateBase::*)(P...);
+    using result = R;
+};
+} // namespace detail
+template <class Sig, class... A>
+HOT_HIDDEN typename detail::plain_pmf<Sig>::result call_parent(const ClassRecord* parent, void* state, unsigned slot, A&&... a)
+{
+    using Pmf = typename detail::plain_pmf<Sig>::type;
+    return (static_cast<StateBase*>(state)->*reinterpret_cast<Pmf>(parent->slots[slot]))(std::forward<A>(a)...);
+}
+
 // Result of a noexcept shell override after an unhandled script error, when the result type has no
 // default value (a reference, for example). The host specializes it with "static R get()".
 template <class R> struct noexcept_result;

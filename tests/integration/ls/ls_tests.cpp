@@ -458,27 +458,6 @@ TEST(LanguageServer, TranslatorErrorInAnImportedScriptIsPublishedForThatScript)
     EXPECT_EQ(d["source"], "hot");
 }
 
-// S30 (c): a clangd error in imported code is published for the imported script, at its own line
-// and column. The importing script does not get it.
-TEST(LanguageServer, ClangdErrorInAnImportedScriptIsPublishedForThatScript)
-{
-    REQUIRE_CLANGD();
-    std::string imported = kImported;
-    imported.replace(imported.find("    float hp = 2.0;\n"), 20, "");
-    imported.replace(imported.find("void Boost() { }"), 16, "void Boost() { int x = \"abc\"; }");
-    Session s(true); // the importer comes after the imported script is on disk
-    write_file(s.dir.path() / "base.hot", imported);
-    s.client->change(s.uri, 2, kImporter);
-    const std::string base_uri = uri_of((s.dir.path() / "base.hot").lexically_normal().string());
-    const json n = s.client->wait_notification("textDocument/publishDiagnostics", [&](const json& p)
-    { return p.value("uri", std::string()) == base_uri && has_source(p["diagnostics"], "clangd"); });
-    ASSERT_FALSE(n.is_null()) << "no clangd diagnostics for the imported script";
-    const json& d = n["params"]["diagnostics"][0];
-    EXPECT_EQ(d["range"]["start"]["line"], 4) << n.dump();
-    EXPECT_EQ(d["range"]["start"]["character"], 23) << n.dump();
-    EXPECT_NE(d.value("message", "").find("initialize"), std::string::npos) << n.dump();
-}
-
 // The definition of a method of an imported script is in that script, at the real line and column.
 TEST(LanguageServer, DefinitionInAnImportedScriptIsInThatScript)
 {

@@ -376,6 +376,8 @@ private:
     std::unordered_map<std::string, const SlotFn*> own_slots_;
     std::unordered_map<std::string, std::vector<SlotFn>> linked_slots_;
     void link_inherited_slots();
+    // Links the script parents of other units after a first load. A missing parent fails the load.
+    ReloadResult link_first_load();
     // The live module state block of a unit (module-level script variables). A unit without a
     // block has no entry. "slot" is the slot variable of the module that made the layout. It points
     // to the block. The empty unit (key "") is the unit of a module without a unit name.

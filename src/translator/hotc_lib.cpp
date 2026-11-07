@@ -446,11 +446,25 @@ std::string module_interface(const Script& sc, const std::string& text)
             o += ", " + i;
         o += " {\n";
         for (const Field& f : c.fields)
-            o += std::string("  ") + access(f.access) + "field " + (f.weak ? "weak " : "") + f.type + " " + f.name + "\n";
+            o += std::string("  ") + access(f.access) + "field " + (f.weak ? "weak " : "") + f.type + " " + f.name
+                + (span(f.init_span).empty() ? std::string() : " = " + span(f.init_span)) + "\n";
         for (const hotc::ast::Property& pr : c.props)
             o += "  prop " + pr.type + " " + pr.name + "\n";
         for (const hotc::ast::Ctor& k : c.ctors)
-            o += std::string("  ") + access(k.access) + "ctor(" + params(k.params) + ")\n";
+        {
+            // The "base(...)" arguments are part of the interface: a child in another module runs them.
+            std::string base;
+            if (k.has_base_call && k.raw)
+                base = " : base(" + k.raw_base_args + ")";
+            else if (k.has_base_call)
+            {
+                base = " : base(";
+                for (size_t i = 0; i < k.base_args.size(); ++i)
+                    base += (i ? ", " : "") + hotc::ast::print(*k.base_args[i]);
+                base += ")";
+            }
+            o += std::string("  ") + access(k.access) + "ctor(" + params(k.params) + ")" + base + "\n";
+        }
         for (const Method& m : c.methods)
             o += method("", m);
         for (const Method& m : c.statics)
@@ -3294,9 +3308,8 @@ void translate_impl(
                 if (own.count(c.name))
                     fail_at(map, c.pos,
                         "class '" + c.name + "' is declared in '" + map.file(c.pos) + "' and in '" + opt.input + "'");
-            // BRIDGE (modules step 1, removed in step 5): a class of this module with a parent in an
-            // import needs the full parent. The parent chain in the imports stays a copy with its
-            // bodies, as before modules. The loader link of a parent in another unit is step 5.
+            // A class of this module with a parent in an import: the parent chain in the imports is
+            // an interface parent (ClassDef::iface_parent). The loader links the slots of the parent.
             {
                 std::map<std::string, ClassDef*> imported;
                 for (ClassDef& c : classes)
@@ -3304,9 +3317,9 @@ void translate_impl(
                 for (const ClassDef& c : sc.classes)
                     for (auto it = imported.find(c.base); it != imported.end(); it = imported.find(it->second->base))
                     {
-                        if (it->second->foreign_unit.empty())
+                        if (it->second->foreign_unit.empty() || it->second->iface_parent)
                             break;
-                        it->second->foreign_unit.clear();
+                        it->second->iface_parent = true;
                     }
             }
             // The interface of a class of an import has no bodies: the owner module runs them.
@@ -7219,7 +7232,18 @@ void translate_impl(
         // slot table and the bodies. The importer gets the slot numbers, the shell and functions with
         // the names of the local forms: a method is a slot call, a field is hot::field, "new" is
         // hot::construct. The slot numbers come from the shared slot manifest (slots_in).
-        if (!cd.foreign_unit.empty())
+        // An interface parent keeps the state and the chain of the class, and gets the field access
+        // of the interface. Its bodies forward to the owner unit (emit_body).
+        if (cd.iface_parent)
+            for (const Field& f : cd.fields)
+            {
+                const std::string t = types.cpp_storage(f.type, hotc::TypeModel::StorageUse::Field);
+                o.w("[[maybe_unused]] HOT_HIDDEN static " + t + "& " + P + "fld_" + f.name
+                    + "(hot::ShellBase* __s)\n{\n    static hot::FieldSite __site;\n    return hot::field<" + t
+                    + ">(__s, __site, \"" + f.name + "\");\n}\n");
+            }
+        const size_t thunk_mark = thunk_regs.size();
+        if (!cd.foreign_unit.empty() && !cd.iface_parent)
         {
             o.s.resize(foreign_mark);
             o.segs.resize(foreign_segs);
@@ -7526,8 +7550,19 @@ void translate_impl(
                 }
                 build_text += "    return __self;\n}\n";
                 mapped(build_text, cline, cpos);
+                std::string iface_make; // "new" of an interface parent: the owner unit builds the object
+                if (cd.iface_parent)
+                {
+                    std::string ptypes, fwd;
+                    for (const Param& p : cm.params)
+                    {
+                        ptypes += ", " + p.type;
+                        fwd += ", std::forward<decltype(" + p.name + ")>(" + p.name + ")";
+                    }
+                    iface_make = "hot::construct<" + shell + ptypes + ">(hot::class_ref(\"" + cd.key_name() + "\")" + fwd + ")";
+                }
                 mapped("[[maybe_unused]] HOT_HIDDEN static " + shell + "* " + P + "new(" + pd_def + ")\n{\n    return "
-                        + P + "build(true" + ctor_fwd + ");\n}\n",
+                        + (cd.iface_parent ? iface_make : P + "build(true" + ctor_fwd + ")") + ";\n}\n",
                     cline, cpos);
                 // "new" of a class with a std::shared_ptr handle: one block for the shell and the
                 // control block (make_shared_shell). An exception of the constructor frees the object
@@ -7550,6 +7585,10 @@ void translate_impl(
                 if (has_entry)
                     shared_text += "    " + entry + "(__h.get(), __plan.second" + ctor_fwd + ");\n";
                 shared_text += "    return __h;\n}\n";
+                if (cd.iface_parent)
+                    shared_text = "template <int = 0>\n[[maybe_unused]] HOT_HIDDEN static \x01std::shared_ptr<" + shell + "> "
+                        + P + "new_shared(" + pd_def + ")\n{\n    return \x01std::shared_ptr<" + shell + ">(" + iface_make
+                        + ");\n}\n";
                 if (std_shared)
                     mapped(shared_text, cline, cpos);
                 o.w("\n");
@@ -7603,7 +7642,7 @@ void translate_impl(
                 first_line = map.line(hotc::ast::pos_of(*m.body.stmts.front()));
             // The text of the body comes after the last block (see "bodies"). The lowering is here.
             // The body of a coroutine has no trace frame: the frame is a guard of the thread.
-            std::shared_ptr<hotc::ast::Emitter> em = lower_body(m, cx, !m.is_async);
+            std::shared_ptr<hotc::ast::Emitter> em = cd.iface_parent ? nullptr : lower_body(m, cx, !m.is_async);
             if (!g_diag.items.empty())
                 return;
             // The member of the shell. A plain member only in a ".cpp" body (see body_member).
@@ -7631,7 +7670,7 @@ void translate_impl(
             // The first parameter of the coroutine is the origin of the code (hot/runtime/task.h).
             // The coroutine owns its parameters: they are values.
             // An abstract method has no coroutine: the member traps before it would make a task.
-            const bool is_async = m.is_async && !m.is_abstract;
+            const bool is_async = m.is_async && !m.is_abstract && !cd.iface_parent;
             std::string co_head, co_call;
             if (is_async)
             {
@@ -7688,7 +7727,32 @@ void translate_impl(
             const bool is_coroutine = m.is_coroutine;
             const bool is_dtor = is_fn && sym.size() >= 4 && sym.compare(sym.size() - 4, 4, "dtor") == 0 && member == "dtor";
             // An abstract method has no body: the member only traps (hot::abstract_called).
-            const std::string abstract_text = m.is_abstract
+            // An interface parent: a method calls the slot of the canonical record of the parent. The
+            // constructor and the destructor call the function that the owner unit exports.
+            std::string iface_text;
+            if (cd.iface_parent)
+            {
+                std::string types_text, fwd;
+                for (const Param& p : m.params)
+                {
+                    types_text += (types_text.empty() ? "" : ", ") + p.type;
+                    fwd += ", \x01std::forward<" + p.type + ">(" + (p.body_type.empty() ? "" : "__") + p.name + ")";
+                }
+                if (member == "ctor" || member == "dtor")
+                    iface_text = "    static hot::FnSite __site;\n    return hot::call_fn<void(hot::ShellBase*"
+                        + (types_text.empty() ? "" : ", " + types_text) + ")>(hot::unit_ref(\"" + esc(cd.foreign_unit)
+                        + "\"), __site, \"" + cd.key_name() + "::" + member + "(" + types_text + ")\", this->__hot_owner" + fwd
+                        + ");\n";
+                else
+                    iface_text = "    return hot::call_parent<" + ret + "(" + types_text + ")>(hot::class_ref(\"" + cd.key_name()
+                        + "\").record, this, "
+                        + (!m.vslot_owner.empty() && m.vslot_owner != cn
+                                  ? (multi ? m.vslot_owner + "_" : std::string()) + "SLOT_" + member
+                                  : slot_id(member))
+                        + fwd + ");\n";
+            }
+            const std::string abstract_text = !iface_text.empty() ? iface_text
+                : m.is_abstract
                 ? "    hot::abstract_called(\"" + cd.key_name() + "\", \"" + m.name + "\");\n"
                 : std::string();
             const std::string stale_ret = is_coroutine
@@ -7844,6 +7908,32 @@ void translate_impl(
         }
         if (has_dtor)
             emit_body(cd.dtors[0], true, P + "dtor", "void", cd.key_name() + "::~" + last_component(cd.key_name()), "dtor");
+        // The constructors and the destructor of a class of this module for a child in another unit
+        // (modules step 5): the function table of the unit has them (hot::call_fn).
+        if (cd.foreign_unit.empty() && !cd.is_private && !opt.aot_optimized)
+        {
+            auto export_fn = [&](const std::string& what, const std::vector<Param>& ps, size_t k)
+            {
+                std::string decl, types_text, fwd;
+                for (const Param& p : ps)
+                {
+                    decl += ", " + name_in_type(p.type, p.name);
+                    types_text += (types_text.empty() ? "" : ", ") + p.type;
+                    fwd += ", \x01std::forward<" + p.type + ">(" + p.name + ")";
+                }
+                const std::string sym = P + what + "_export" + std::to_string(k);
+                o.w("[[maybe_unused]] HOT_HIDDEN static void " + sym + "(hot::ShellBase* __s" + decl + ")\n{\n    " + P + what
+                    + "(static_cast<" + shell + "*>(__s)" + fwd + ");\n}\n");
+                flag_regs.push_back("    reg.add_fn(\"" + cd.key_name() + "::" + what + "(" + types_text
+                    + ")\", typeid(void(hot::ShellBase*" + (types_text.empty() ? "" : ", " + types_text)
+                    + ")).name(), reinterpret_cast<void*>(&" + (cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns) + "::")
+                    + sym + "));\n");
+            };
+            for (size_t k = 0; has_ctor && k < cd.ctors.size(); ++k)
+                export_fn("ctor", ctor_ms[k].params, k);
+            if (has_dtor)
+                export_fn("dtor", {}, 0);
+        }
         for (Method& m : cd.methods)
         {
             if (hook_of(m) == Hook::Convert)
@@ -7993,8 +8083,16 @@ void translate_impl(
         else
         {
             o.w("static const hot::SlotFn " + cn + "_slots[" + slot_id("COUNT") + "] = {\n");
+            // A slot of an interface parent is a hole: the loader fills it from the parent record.
+            auto inherited = [&](const std::string& fn)
+            {
+                for (const ClassDef& c : sc.classes)
+                    if (c.iface_parent && !cd.iface_parent && fn.rfind(c.name + "State_g" + std::to_string(opt.gen) + "::", 0) == 0)
+                        return true;
+                return false;
+            };
             for (const std::string& fn : table)
-                o.w(fn.empty() ? std::string("    nullptr,\n") : "    reinterpret_cast<hot::SlotFn>(&" + fn + "),\n");
+                o.w(fn.empty() || inherited(fn) ? std::string("    nullptr,\n") : "    reinterpret_cast<hot::SlotFn>(&" + fn + "),\n");
             o.w("};\n\n");
             // The names of the defunct slots (removed functions). The loader copies the pointer into
             // the record, and a call of a removed function names the function in its error.
@@ -8146,7 +8244,7 @@ void translate_impl(
                 + (!entry.empty() && !cd.is_abstract ? "&" + P + "new_default" : std::string("nullptr")) + ", nullptr, "
                 + (dtor_chain ? "&" + P + "dtor_slot" : std::string("nullptr")) + ",\n";
         o.w("hot::ClassRecord " + cn + "_record = {\n    \"" + cd.key_name() + "\", GEN, "
-            + (opt.aot_optimized ? std::string("nullptr, 0") : cn + "_slots, " + slot_id("COUNT")) + ", " + (opt.aot_optimized ? std::string("nullptr") : "&" + cn + "_layout") + ", " + (par ? "&" + par->name + "_record" : std::string("nullptr")) + ",\n    \"" + BL
+            + (opt.aot_optimized ? std::string("nullptr, 0") : cn + "_slots, " + slot_id("COUNT")) + ", " + (opt.aot_optimized ? std::string("nullptr") : "&" + cn + "_layout") + ", " + (par && !par->iface_parent ? "&" + par->name + "_record" : std::string("nullptr")) + ",\n    \"" + BL
             + "\", hot::shell_layout_hash(\"" + BL + "\", sizeof(" + shell + "), alignof(" + shell + "), "
             + std::to_string(native_count) + "),\n" + (on_reload_init.empty() ? "" : "   " + on_reload_init) + ctor_init
             + "};\n\n");
@@ -8211,7 +8309,13 @@ void translate_impl(
         }
         if (cd.is_abstract)
             flag_regs.push_back("    " + cn + "_record.is_abstract = true;\n");
-        registers.push_back({cn, true});
+        if (par && par->iface_parent && !cd.iface_parent && !opt.aot_optimized)
+            flag_regs.push_back("    " + cn + "_record.super_name = \"" + par->key_name() + "\";\n    " + cn
+                + "_record.super_layout_hash = hot::layout_hash(&" + par->name + "_layout);\n");
+        if (cd.iface_parent)
+            thunk_regs.resize(thunk_mark); // the owner unit registers the class
+        else
+            registers.push_back({cn, true});
         infos[cn] = std::move(info);
         if (!cd.ns.empty())
             o.w("} // namespace " + hotc::ast::gen_namespace(cd.ns) + "\n");

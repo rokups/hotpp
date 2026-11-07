@@ -2,9 +2,9 @@
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
-// Reload tests of a script family over two modules (S20a, design 4.5 and 4.10). The child module
-// imports the parent module with "using "xmod_parent.hot";". One generation holds both modules.
-// A reload of either module builds a new generation from the current text of both modules.
+// Reload tests of a script family over two or three units (modules step 5). The child unit imports
+// the parent unit with "using". Each unit is its own module. The child state derives from the
+// parent state of the interface. The loader fills the inherited slots of the child from the parent.
 #include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/reload_assert.h"
@@ -13,7 +13,10 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace
 {
@@ -26,14 +29,6 @@ template <class T> T* fld(Session& s, const char* name)
     return hot::field_ptr<T>(s.inst.shell, name);
 }
 
-// The child module with the text of a parent module under the name of the "using" line.
-hot::ScriptSource family(const char* child, const char* parent)
-{
-    hot::ScriptSource src = test_support::source(child);
-    src.modules.emplace_back("xmod_parent.hot", test_support::source(parent).text);
-    return src;
-}
-
 void reload(Session& s, hot::LoadResult& r, uint32_t gen)
 {
     ASSERT_TRUE(r) << r.error;
@@ -44,18 +39,135 @@ void reload(Session& s, hot::LoadResult& r, uint32_t gen)
     EXPECT_EQ(hot::active_generation, gen);
 }
 
-// A reload of the parent module, then a reload of the child module. The live child object keeps
-// its address and its values. The child override stays in its slot after the parent adds a slot.
-TEST_P(BackendTests, FamilyOverTwoModulesReloadsEachModule)
+// The root of a chain over three units: "c.hot".
+const char* const kC1 = R"(
+using "Actor.h";
+class Root : Actor {
+    int r = 1;
+    virtual int Val() { return 1; }
+    override void Tick(float dt) { this.r = this.r + 1; }
+}
+)";
+
+// A body change of the root: the interface stays the same.
+const char* const kC2 = R"(
+using "Actor.h";
+class Root : Actor {
+    int r = 1;
+    virtual int Val() { return 5; }
+    override void Tick(float dt) { this.r = this.r + 2; }
+}
+)";
+
+// The middle of the chain: "b.hot". It reads a field of the root and calls the root with "base".
+const char* const kB = R"(
+using "Actor.h";
+using "c.hot";
+class Mid : Root {
+    int m = 10;
+    override int Val() { return base.Val() + this.m + this.r * 0; }
+}
+)";
+
+// The leaf of the chain: "a.hot". It imports only "b.hot".
+const char* const kA = R"(
+using "Actor.h";
+using "b.hot";
+class Leaf : Mid {
+    int total = 0;
+    override int Val() { return base.Val() + 100; }
+    override void Tick(float dt) {
+        base.Tick(dt);
+        this.total = Val() + this.r * 1000 + this.m;
+    }
+}
+)";
+
+class FamilyTests : public ::testing::TestWithParam<hot::BackendKind>
 {
-    hot::LoadResult g1 = backend->load(family("xmod_child_v1.hot", "xmod_parent_v1.hot"), 1);
-    ASSERT_TRUE(g1) << g1.error;
+protected:
+    void SetUp() override
+    {
+        if (!hot::backend_available(GetParam()))
+            GTEST_SKIP() << "the backend is not in this build";
+        hot::DefaultBackendOptions o;
+        o.kind = GetParam();
+        backend = hot::make_default_backend(o);
+    }
+
+    // Builds one unit. "deps" are the texts of the imported units, under their import names.
+    hot::LoadResult build(const char* unit, const std::string& text,
+        std::vector<std::pair<std::string, std::string>> deps, uint32_t gen)
+    {
+        hot::ScriptSource src{unit, text, {}};
+        for (auto& d : deps)
+            src.modules.emplace_back(d.first, d.second);
+        hot::LoadResult r = backend->load(src, gen);
+        if (r)
+            r.module->unit = unit;
+        return r;
+    }
+
+    // Loads the units as one batch and makes an object of the class "cls".
+    void start(Session& s, std::vector<hot::LoadResult> units, const char* cls)
+    {
+        std::vector<hot::Module> modules;
+        for (hot::LoadResult& r : units)
+        {
+            ASSERT_TRUE(r) << r.error;
+            modules.push_back(std::move(*r.module));
+        }
+        ASSERT_RELOAD_OK(s.loader.load(std::move(modules)));
+        const hot::ClassEntry* e = s.loader.find(cls);
+        ASSERT_NE(e, nullptr);
+        s.inst = e->create();
+        s.actor = static_cast<Actor*>(s.inst.native);
+        s.world.Add(s.actor);
+        s.commit_at_frame_boundary();
+    }
+
+    // Requests a batch reload and commits it at the next frame.
+    void reload(Session& s, std::vector<hot::LoadResult> units)
+    {
+        for (const hot::LoadResult& r : units)
+            ASSERT_TRUE(r) << r.error;
+        ASSERT_RELOAD_OK(s.loader.request_reload(std::move(units)));
+        s.world.Tick(kDt);
+        ASSERT_FALSE(s.commit_failed);
+        ASSERT_FALSE(s.loader.reload_pending());
+    }
+
+    std::unique_ptr<hot::Backend> backend;
+};
+
+std::string text_of(const char* file)
+{
+    return test_support::source(file).text;
+}
+
+std::vector<hot::LoadResult> batch_of(hot::LoadResult a, hot::LoadResult b)
+{
+    std::vector<hot::LoadResult> v;
+    v.push_back(std::move(a));
+    v.push_back(std::move(b));
+    return v;
+}
+
+// "Grunt" of the child unit derives from "Unit" of the parent unit. A field change of the parent
+// needs the child in the batch. A reload of the child alone keeps the parent. The live child object
+// keeps its address and its values. The child override stays in its slot after the parent adds a slot.
+TEST_P(FamilyTests, FamilyOverTwoUnitsReloadsEachUnit)
+{
+    const std::string p1 = text_of("xmod_parent_v1.hot"), p2 = text_of("xmod_parent_v2.hot");
     Session s;
-    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*g1.module), "Grunt"));
-    s.commit_at_frame_boundary();
+    ASSERT_NO_FATAL_FAILURE(start(s,
+        batch_of(build("xmod_child.hot", text_of("xmod_child_v1.hot"), {{"xmod_parent.hot", p1}}, 1),
+            build("xmod_parent.hot", p1, {}, 1)),
+        "Grunt"));
     ASSERT_NE(s.inst.shell->cls->super, nullptr);
     EXPECT_STREQ(s.inst.shell->cls->super->name, "Unit");
-    EXPECT_EQ(*fld<int>(s, "ctor_log"), 12); // Unit(int) of the parent module first, then Grunt(int)
+    EXPECT_EQ(s.loader.find("Unit")->record, s.inst.shell->cls->super) << "the parent record of the parent unit";
+    EXPECT_EQ(*fld<int>(s, "ctor_log"), 12); // Unit(int) of the parent unit first, then Grunt(int)
     EXPECT_EQ(*fld<int>(s, "hp"), 1);
     *fld<int>(s, "rage") = 7;
     s.world.Tick(kDt);
@@ -63,9 +175,17 @@ TEST_P(BackendTests, FamilyOverTwoModulesReloadsEachModule)
     EXPECT_EQ(*fld<int>(s, "power"), 7); // the parent Tick calls the child override
     void* const shell = s.inst.shell;
 
-    // Reload the parent module: a new field and a new virtual function before "Power".
-    hot::LoadResult g2 = backend->load(family("xmod_child_v1.hot", "xmod_parent_v2.hot"), 2);
-    ASSERT_NO_FATAL_FAILURE(reload(s, g2, 2));
+    // A new field of the parent changes its interface: the parent alone is rejected.
+    std::vector<hot::LoadResult> alone;
+    alone.push_back(build("xmod_parent.hot", p2, {}, 2));
+    const hot::ReloadResult stale = s.loader.request_reload(std::move(alone));
+    EXPECT_EQ(stale.status, hot::ReloadStatus::Failed);
+    EXPECT_EQ(stale.reason, hot::ReloadReason::DependentsStale) << stale.error;
+
+    // The parent and the rebuilt child in one batch: the child object migrates.
+    ASSERT_NO_FATAL_FAILURE(reload(s,
+        batch_of(build("xmod_parent.hot", p2, {}, 3),
+            build("xmod_child.hot", text_of("xmod_child_v1.hot"), {{"xmod_parent.hot", p2}}, 3))));
     s.world.Tick(kDt);
     EXPECT_EQ(s.inst.shell, shell);
     EXPECT_EQ(*fld<int>(s, "power"), 107); // the Tick of parent v2 and the Power of child v1
@@ -73,11 +193,12 @@ TEST_P(BackendTests, FamilyOverTwoModulesReloadsEachModule)
     EXPECT_EQ(*fld<int>(s, "armor"), 9); // the new parent field of the old child object
     EXPECT_EQ(*fld<int>(s, "hp"), 1);
     EXPECT_EQ(*fld<int>(s, "rage"), 7);
-    EXPECT_EQ(s.inst.shell->cls->super->generation, 2u);
+    EXPECT_EQ(s.inst.shell->cls->super->generation, 3u);
 
-    // Reload the child module: a changed override, a new override and a new field.
-    hot::LoadResult g3 = backend->load(family("xmod_child_v2.hot", "xmod_parent_v2.hot"), 3);
-    ASSERT_NO_FATAL_FAILURE(reload(s, g3, 3));
+    // The child alone: a changed override, a new override and a new field.
+    std::vector<hot::LoadResult> child;
+    child.push_back(build("xmod_child.hot", text_of("xmod_child_v2.hot"), {{"xmod_parent.hot", p2}}, 4));
+    ASSERT_NO_FATAL_FAILURE(reload(s, std::move(child)));
     s.world.Tick(kDt);
     EXPECT_EQ(s.inst.shell, shell);
     EXPECT_EQ(*fld<int>(s, "power"), 114); // rage * 2 + 100
@@ -85,23 +206,55 @@ TEST_P(BackendTests, FamilyOverTwoModulesReloadsEachModule)
     EXPECT_EQ(*fld<int>(s, "bonus"), 4); // the child override of Bonus reads the new field
     EXPECT_EQ(*fld<int>(s, "armor"), 9);
     EXPECT_EQ(*fld<int>(s, "ticks"), 5); // one tick in each frame, also in the two commit frames
+    EXPECT_EQ(s.inst.shell->cls->super->generation, 3u) << "the parent unit is not in the batch";
 }
 
-// The child module builds a child object with "new" and uses it through a parent handle.
-TEST_P(BackendTests, FamilyOverTwoModulesNewAndIs)
+// The child unit builds a child object with "new" and uses it through a parent handle.
+TEST_P(FamilyTests, FamilyOverTwoUnitsNewAndIs)
 {
-    hot::LoadResult g1 = backend->load(family("xmod_child_v1.hot", "xmod_parent_v1.hot"), 1);
-    ASSERT_TRUE(g1) << g1.error;
+    const std::string p1 = text_of("xmod_parent_v1.hot"), p2 = text_of("xmod_parent_v2.hot");
     Session s;
-    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*g1.module), "Spawner"));
-    s.commit_at_frame_boundary();
+    ASSERT_NO_FATAL_FAILURE(start(s,
+        batch_of(build("xmod_parent.hot", p1, {}, 1),
+            build("xmod_child.hot", text_of("xmod_child_v1.hot"), {{"xmod_parent.hot", p1}}, 1)),
+        "Spawner"));
     s.world.Tick(kDt);
     EXPECT_EQ(*fld<int>(s, "made_power"), 6);
     EXPECT_TRUE(*fld<bool>(s, "made_unit"));
-    hot::LoadResult g2 = backend->load(family("xmod_child_v2.hot", "xmod_parent_v2.hot"), 2);
-    ASSERT_NO_FATAL_FAILURE(reload(s, g2, 2));
+    ASSERT_NO_FATAL_FAILURE(reload(s,
+        batch_of(build("xmod_parent.hot", p2, {}, 2),
+            build("xmod_child.hot", text_of("xmod_child_v2.hot"), {{"xmod_parent.hot", p2}}, 2))));
     s.world.Tick(kDt);
     EXPECT_EQ(*fld<int>(s, "made_power"), 12);
+}
+
+// A chain over three units: Leaf (a.hot) : Mid (b.hot) : Root (c.hot). "base" calls, overrides and
+// parent fields cross the units. A body change of the root reloads the root alone: the live leaf
+// keeps its state and runs the new root code.
+TEST_P(FamilyTests, ChainOverThreeUnitsAndBodyReloadOfTheRoot)
+{
+    Session s;
+    std::vector<hot::LoadResult> first;
+    first.push_back(build("a.hot", kA, {{"b.hot", kB}, {"c.hot", kC1}}, 1));
+    first.push_back(build("b.hot", kB, {{"c.hot", kC1}}, 1));
+    first.push_back(build("c.hot", kC1, {}, 1));
+    ASSERT_NO_FATAL_FAILURE(start(s, std::move(first), "Leaf"));
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "total"), 111 + 2000 + 10);
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "total"), 111 + 3000 + 10);
+    const hot::ClassRecord* leaf = s.inst.shell->cls;
+    ASSERT_NE(leaf->super, nullptr);
+    ASSERT_NE(leaf->super->super, nullptr);
+    EXPECT_STREQ(leaf->super->super->name, "Root");
+
+    std::vector<hot::LoadResult> root;
+    root.push_back(build("c.hot", kC2, {}, 2));
+    ASSERT_NO_FATAL_FAILURE(reload(s, std::move(root)));
+    EXPECT_EQ(s.inst.shell->cls, leaf);
+    EXPECT_EQ(leaf->generation, 1u) << "a.hot is not in the batch";
+    s.world.Tick(kDt); // r: 4 with the old code in the commit frame, then 6 with the new code
+    EXPECT_EQ(*fld<int>(s, "total"), 115 + 6000 + 10);
 }
 
 // A missing parent module is a translation error at the "using" line.
@@ -185,5 +338,13 @@ TEST_P(BackendTests, ConstructorOverloadWithANewKeyTypeInALaterGeneration)
     EXPECT_EQ(*fld<int>(s, "hp_float"), 40);
     EXPECT_EQ(s.loader.stats().core_modules, cores1 + 1);
 }
+
+std::string kind_name(const ::testing::TestParamInfo<hot::BackendKind>& info)
+{
+    return info.param == hot::BackendKind::Jit ? "Jit" : "ClangFiles";
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Backends, FamilyTests, ::testing::Values(hot::BackendKind::Jit, hot::BackendKind::ClangFiles), kind_name);
 
 } // namespace
