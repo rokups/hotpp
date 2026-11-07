@@ -444,6 +444,9 @@ int run_aot(const Args& args)
         cpp += "#undef script_register\n";
         if (!write_file(out, cpp))
             failed = true;
+        // The interface header of the script: the importers include it. The TU does not include it.
+        if (!write_file(args.out_dir + "/" + stem + ".iface.h", r.iface_header))
+            failed = true;
         slots += r.slots_out + r.sigs_out;
         names.push_back(stem);
         units.push_back({r.iface_hash, r.import_hashes});

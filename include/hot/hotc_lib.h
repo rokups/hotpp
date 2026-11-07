@@ -198,6 +198,10 @@ struct TranslateResult
     // The direct script imports as name and interface hash. The name is the one of "imports".
     // The hash is the one that the translation of the imported script gives as "iface_hash".
     std::vector<std::pair<std::string, uint64_t>> import_hashes;
+    // AOT code only (TranslateOptions::aot): the C++ text of "<stem>.iface.h". It holds the shell
+    // and the state struct of each public class, as copies of the text in "cpp". The importers
+    // include it. The TU in "cpp" does not include it, so each TU has one definition of a class.
+    std::string iface_header;
 };
 
 // The main script and the imported scripts of a translation, as input for the rewriters.

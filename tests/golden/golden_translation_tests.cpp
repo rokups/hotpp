@@ -402,7 +402,8 @@ TEST(GoldenTranslation, NativeStubWithAHeaderTypeNameIsNotAClash)
 namespace
 {
 // Translates aot_demo.hot as AOT code (generation 1) and checks the golden file "name".
-void golden_aot(const std::string& name, bool optimized)
+// The interface header of the script has the golden file "iface_name".
+void golden_aot(const std::string& name, const std::string& iface_name, bool optimized)
 {
     hotc::TranslateOptions o = engine_options("aot_demo.hot", 1);
     o.script_name = "aot_demo.hot";
@@ -411,19 +412,37 @@ void golden_aot(const std::string& name, bool optimized)
     const hotc::TranslateResult r = hotc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     check_golden(name, r.cpp);
+    check_golden(iface_name, r.iface_header);
+    // The ODR guard: the text of each class in the header is the same text as in the TU.
+    // The owner TU does not include the header, so a class has one definition in each TU.
+    const std::string mark = "\n// ---------------------------------------------------------------- class ";
+    const std::string& h = r.iface_header;
+    size_t count = 0;
+    for (size_t b = h.find(mark); b != std::string::npos; ++count)
+    {
+        const size_t next = h.find(mark, b + 1);
+        std::string piece = h.substr(b, next == std::string::npos ? std::string::npos : next - b);
+        const size_t ns_end = piece.find("\n} // namespace ");
+        if (ns_end != std::string::npos)
+            piece.resize(ns_end + 1);
+        EXPECT_NE(r.cpp.find(piece), std::string::npos) << "the class text is not in the TU:\n" << piece;
+        b = next;
+    }
+    EXPECT_EQ(count, 3u) << h; // Fighter, Veteran and Spawner
+    EXPECT_NE(h.find("#pragma once\n"), std::string::npos) << h;
 }
 } // namespace
 
 // The plain AOT output of the demo. The shape of plain AOT code must not change.
 TEST(GoldenTranslation, AotDemoAot)
 {
-    golden_aot("aot_demo_aot.g1.cpp", false);
+    golden_aot("aot_demo_aot.g1.cpp", "aot_demo.g1.iface.h", false);
 }
 
 // The optimized AOT output of the demo (hotc --aot-optimized): direct dispatch, no slot.
 TEST(GoldenTranslation, AotDemoOptimized)
 {
-    golden_aot("aot_demo_opt.g1.cpp", true);
+    golden_aot("aot_demo_opt.g1.cpp", "aot_demo.g1.opt.iface.h", true);
 }
 
 // Cross-module access (modules step 3). "xmod_use.hot" imports "xmod_lib.hot". The owner registers

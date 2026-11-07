@@ -1214,6 +1214,12 @@ TEST(HotcTool, AotModeWritesTheCppAndTheRegistrationFile)
     EXPECT_NE(demo.find("#define script_register hot_script_register_aot_demo"), std::string::npos);
     EXPECT_NE(demo.find("extern \"C\" void script_register("), std::string::npos);
     EXPECT_FALSE(std::filesystem::exists(module_file(out_dir, "aot_demo.g1")));
+    // Each script gets its interface header. The TU of the script does not include it.
+    const std::string iface = read_file(out_dir + "/aot_demo.iface.h");
+    EXPECT_NE(iface.find("#pragma once\n"), std::string::npos) << iface;
+    EXPECT_NE(iface.find("struct Fighter_Shell"), std::string::npos) << iface;
+    EXPECT_EQ(demo.find("aot_demo.iface.h"), std::string::npos);
+    EXPECT_TRUE(std::filesystem::exists(out_dir + "/props_v1.iface.h"));
     const std::string reg = read_file(out_dir + "/hot_aot_registry.cpp");
     EXPECT_NE(reg.find("{\"aot_demo\", &hot_script_register_aot_demo, "), std::string::npos) << reg;
     EXPECT_NE(reg.find("{\"props_v1\", &hot_script_register_props_v1, "), std::string::npos) << reg;
