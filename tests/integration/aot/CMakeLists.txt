@@ -204,8 +204,10 @@ target_link_libraries(integration_aot_units_chain_tests PRIVATE aot_units_chain_
 add_executable(integration_aot_units_chain_load_tests aot_units_tests.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
-target_include_directories(integration_aot_units_chain_load_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests/engine)
-target_compile_definitions(integration_aot_units_chain_load_tests PRIVATE AOT_UNITS_LOADER=1 AOT_UNITS_CHAIN=1)
+target_include_directories(integration_aot_units_chain_load_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests/engine
+    ${PROJECT_SOURCE_DIR}/tests)
+target_compile_definitions(integration_aot_units_chain_load_tests PRIVATE AOT_UNITS_LOADER=1 AOT_UNITS_CHAIN=1
+    HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 target_link_libraries(integration_aot_units_chain_load_tests PRIVATE aot_units_chain_scripts hot_backend
     GTest::gtest_main)
 set_target_properties(integration_aot_units_chain_load_tests PROPERTIES ENABLE_EXPORTS ON)

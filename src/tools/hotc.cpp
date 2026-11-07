@@ -414,6 +414,7 @@ int run_aot(const Args& args)
     std::vector<std::pair<uint64_t, std::vector<std::pair<std::string, uint64_t>>>> units;
     std::vector<DepRule> dep_rules;
     std::string slots; // the manifests of all scripts: a class belongs to one script
+    std::set<std::string> seen_slot_lines;
     bool failed = false;
     for (const std::string& path : args.inputs)
     {
@@ -447,7 +448,14 @@ int run_aot(const Args& args)
         // The interface header of the script: the importers include it. The TU does not include it.
         if (!write_file(args.out_dir + "/" + stem + ".iface.h", r.iface_header))
             failed = true;
-        slots += r.slots_out + r.sigs_out;
+        // An importer has the lines of the classes of its imports too. A line is in the manifest
+        // once: a backend seeds its slot file with it and makes one enumerator for each line.
+        {
+            std::istringstream lines(r.slots_out + r.sigs_out);
+            for (std::string line; std::getline(lines, line);)
+                if (seen_slot_lines.insert(line).second)
+                    slots += line + "\n";
+        }
         names.push_back(stem);
         units.push_back({r.iface_hash, r.import_hashes});
         dep_rules.push_back({out, r.dependencies});

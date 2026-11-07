@@ -1,0 +1,33 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// The body change of aot_unit_base.hot (the same interface): a new constructor, destructor and
+// Tick. The test loads it over the AOT unit and reverts it.
+// The base unit of the AOT module tests: a module variable, an overloaded free function,
+// a class with a virtual method and a class that other units construct.
+using "Actor.h";
+
+int base_count = 3;
+
+int Scale(int v) { return v * 2; }
+int Scale(float v) { return 700; }
+
+class UnitBase : Actor {
+    int hp = 0;
+    UnitStats stats;
+    UnitBase() { this.hp = 50; }
+    ~UnitBase() { base_count = base_count + 200; }
+    virtual int Score() { return this.hp; }
+    override void Tick(float dt) { this.hp = this.hp + 2; }
+}
+
+// A struct after the first class: the interface header needs it before the state struct.
+struct UnitStats { int armor = 5; }
+
+class UnitBox {
+    int size = 2;
+    UnitBox() { }
+    UnitBox(int s) { this.size = s; }
+    int area() { return this.size * this.size; }
+}

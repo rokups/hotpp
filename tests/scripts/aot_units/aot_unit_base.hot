@@ -12,10 +12,16 @@ int Scale(int v) { return v * 2; }
 int Scale(float v) { return 700; }
 
 class UnitBase : Actor {
-    int hp = 10;
+    int hp = 0;
+    UnitStats stats;
+    UnitBase() { this.hp = 10; }
+    ~UnitBase() { base_count = base_count + 100; }
     virtual int Score() { return this.hp; }
     override void Tick(float dt) { this.hp = this.hp + 1; }
 }
+
+// A struct after the first class: the interface header needs it before the state struct.
+struct UnitStats { int armor = 5; }
 
 class UnitBox {
     int size = 2;

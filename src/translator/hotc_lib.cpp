@@ -697,12 +697,79 @@ void drop_weak_null_init(hotc::ast::Field& f)
 }
 
 // Parses the script: the structure, the method bodies and the field initializers.
+// True if the text "s" has the word "this" that is not the object of a member access ("this.x" or
+// "this->x") or of a dereference ("*this"). A comment and a string literal do not count.
+bool has_bare_this(std::string_view s)
+{
+    const auto word = [](char ch) { return std::isalnum(static_cast<unsigned char>(ch)) || ch == '_'; };
+    for (size_t i = 0; i < s.size(); ++i)
+    {
+        const char ch = s[i];
+        if (ch == '/' && i + 1 < s.size() && (s[i + 1] == '/' || s[i + 1] == '*'))
+        {
+            i = s[i + 1] == '/' ? s.find('\n', i) : s.find("*/", i + 2);
+            if (i == std::string_view::npos)
+                return false;
+            if (s[i] == '*')
+                ++i;
+            continue;
+        }
+        if (ch == '"' || ch == '\'')
+        {
+            for (++i; i < s.size() && s[i] != ch; ++i)
+                if (s[i] == '\\')
+                    ++i;
+            continue;
+        }
+        if (s.compare(i, 4, "this") != 0 || (i > 0 && word(s[i - 1])) || (i + 4 < s.size() && word(s[i + 4])))
+            continue;
+        size_t k = i; // "*this" is the object, not a handle
+        while (k > 0 && std::isspace(static_cast<unsigned char>(s[k - 1])))
+            --k;
+        if (k > 0 && s[k - 1] == '*')
+            continue;
+        size_t j = i + 4;
+        while (j < s.size() && std::isspace(static_cast<unsigned char>(s[j])))
+            ++j;
+        if (j < s.size() && (s[j] == '.' || s.compare(j, 2, "->") == 0))
+            continue;
+        return true;
+    }
+    return false;
+}
+
+// The decision of the class for std::enable_shared_from_this needs "this" as a handle. A text scan
+// of the bodies gives it before the lowering, so an importer gets the value of the owner unit.
+bool has_bare_this(const ClassDef& c, const std::string& text)
+{
+    const auto in = [&](Span sp)
+    { return sp.end > sp.begin && sp.end <= text.size() && has_bare_this(std::string_view(text).substr(sp.begin, sp.end - sp.begin)); };
+    for (const Method& m : c.methods)
+        if (in(m.body_span))
+            return true;
+    for (const Method& m : c.dtors)
+        if (in(m.body_span))
+            return true;
+    for (const hotc::ast::Ctor& k : c.ctors)
+        if (in(k.body_span))
+            return true;
+    for (const hotc::ast::Property& pr : c.props)
+        if (in(pr.get_span) || in(pr.set_span))
+            return true;
+    for (const Field& f : c.fields)
+        if (in(f.init_span))
+            return true;
+    return false;
+}
+
 // The parser reports all syntax errors in source order. Any error stops the translation.
 Script parse_structure(const std::string& text, const hotc::LineMap& map, std::string_view host_array_tpl)
 {
     Script sc = hotc::parse_script_array(text, map, g_diag, host_array_tpl);
     if (!g_diag.items.empty())
         throw TranslateAbort{};
+    for (ClassDef& c : sc.classes)
+        c.bare_this = !c.is_value && has_bare_this(c, text);
     return sc;
 }
 
@@ -754,6 +821,9 @@ std::string module_interface(const Script& sc, const std::string& text)
         for (const std::string& i : c.interfaces)
             o += ", " + i;
         o += " {\n";
+        // The shell of the class derives from std::enable_shared_from_this (see ClassDef::bare_this).
+        if (c.bare_this)
+            o += "  shares this\n";
         for (const Field& f : c.fields)
             o += std::string("  ") + access(f.access) + "field " + (f.weak ? "weak " : "") + f.type + " " + f.name
                 + (span(f.init_span).empty() ? std::string() : " = " + span(f.init_span)) + "\n";
@@ -4344,6 +4414,12 @@ void translate_impl(
     for (const ClassDef& cd : sc.classes)
         if (const ClassDef* par = script_parent(cd))
             has_children.insert(par->name);
+    // The classes with a child in their own unit. The owner unit and each importer see the same set,
+    // so they make the same choice of std::enable_shared_from_this for the shell.
+    std::set<std::string> unit_parents;
+    for (const ClassDef& cd : sc.classes)
+        if (const ClassDef* par = script_parent(cd); par && par->foreign_unit == cd.foreign_unit)
+            unit_parents.insert(par->name);
 
     // ---- the questions for libclang about the types (design 7.10.7 and the stub "class *;")
     std::map<std::string, std::set<std::string>> asked; // type text, member names
@@ -8493,10 +8569,21 @@ void translate_impl(
                     fwd += ", \x01std::forward<" + p.type + ">(" + (p.body_type.empty() ? "" : "__") + p.name + ")";
                 }
                 if (member == "ctor" || member == "dtor")
-                    iface_text = "    static hot::FnSite __site;\n    return hot::call_fn<void(hot::ShellBase*"
+                {
+                    const std::string call = "    static hot::FnSite __site;\n    return hot::call_fn<void(hot::ShellBase*"
                         + (types_text.empty() ? "" : ", " + types_text) + ")>(hot::unit_ref(\"" + esc(cd.foreign_unit)
-                        + "\"), __site, \"" + cd.key_name() + "::" + member + "(" + types_text + ")\", this->__hot_owner" + fwd
-                        + ");\n";
+                        + "\"), __site, \"" + cd.key_name() + "::" + member + "(" + types_text + ")\", ";
+                    iface_text = call + "this->__hot_owner" + fwd + ");\n";
+                    // Plain AOT code: the wrapper calls the function that the owner unit exports, so a
+                    // reload of the owner applies to the constructor and the destructor of a child.
+                    if (from_header && is_fn)
+                    {
+                        std::string wfwd;
+                        for (const Param& p : m.params)
+                            wfwd += ", \x01std::forward<" + (p.body_type.empty() ? p.type : p.body_type) + ">(" + p.name + ")";
+                        wbody = "{\n" + call + "__self" + wfwd + ");\n}\n";
+                    }
+                }
                 else
                 {
                     const std::string call = "    return hot::call_parent<" + ret + "(" + types_text
@@ -8736,9 +8823,20 @@ void translate_impl(
                     ps += ", " + nv.ptypes[k] + " a" + std::to_string(k);
                     as += (k ? ", " : "") + arg_expr(nv.ptypes[k], "a" + std::to_string(k));
                 }
-                o.w("[[maybe_unused]] HOT_HIDDEN static " + nv.ret + " " + P + "base_" + nv.name + "(" + B + "* a" + ps
-                    + ")\n{\n    return " + (opt.aot_optimized ? "" : "state_of(") + "static_cast<" + shell + "*>(a)"
-                    + (opt.aot_optimized ? "->" : ")->") + table[i] + "(" + as + ");\n}\n\n");
+                // An interface parent of plain AOT code: the owner unit defines the implementation. The
+                // helper calls the slot of the canonical record, so a reload of the owner applies.
+                std::string types_text;
+                for (const std::string& t : nv.ptypes)
+                    types_text += (types_text.empty() ? "" : ", ") + t;
+                if (from_header && cd.iface_parent)
+                    o.w("[[maybe_unused]] HOT_HIDDEN static " + nv.ret + " " + P + "base_" + nv.name + "(" + B + "* a" + ps
+                        + ")\n{\n    return hot::call_parent<" + nv.ret + "(" + types_text + ")>(hot::class_ref(\""
+                        + cd.key_name() + "\").record, state_of(static_cast<" + shell + "*>(a)), " + std::to_string(i)
+                        + (as.empty() ? "" : ", " + as) + ");\n}\n\n");
+                else
+                    o.w("[[maybe_unused]] HOT_HIDDEN static " + nv.ret + " " + P + "base_" + nv.name + "(" + B + "* a" + ps
+                        + ")\n{\n    return " + (opt.aot_optimized ? "" : "state_of(") + "static_cast<" + shell + "*>(a)"
+                        + (opt.aot_optimized ? "->" : ")->") + table[i] + "(" + as + ");\n}\n\n");
             }
 
         // thunks for the script functions
@@ -8828,14 +8926,21 @@ void translate_impl(
 
         // A bare "this" used as a handle in a native-base class needs shared_from_this in the
         // shell. The insert stays in one line, so the line numbers do not change.
-        // A shell with script children always gets it: a child cannot add it to the parent.
+        // A shell with script children in its unit always gets it: a child cannot add it to the parent.
+        // A ".hot" class decides from its own unit only (ClassDef::bare_this, unit_parents), so the
+        // copy of a class in an importer has the layout of the owner. A child of a class of another
+        // unit adds the base itself, if the shell of the parent has none (hot::share_this_base).
         const std::string shared_storage = types.cpp_storage("$" + cn, hotc::TypeModel::StorageUse::Local);
         const bool shared_placeholder = shared_storage.rfind("\x01std::shared_ptr<", 0) == 0;
-        if ((handle_this || parent_shell) && !par && !cd.base.empty() && !from_header
+        const bool shares = sc.is_cpp ? handle_this || parent_shell
+                                      : cd.bare_this || unit_parents.count(cn) || (cd.foreign_unit.empty() && handle_this);
+        const bool cross_child = par && par->foreign_unit != cd.foreign_unit && !sc.is_cpp;
+        if (shares && (!par || cross_child) && !root.base.empty() && !from_header
             && (shared_placeholder || shared_storage.rfind("std::shared_ptr<", 0) == 0))
         {
             o.insert(shell_head_end,
-                std::string(shared_placeholder ? ", \x01std::" : ", std::") + "enable_shared_from_this<" + shell + ">");
+                !par ? std::string(shared_placeholder ? ", \x01std::" : ", std::") + "enable_shared_from_this<" + shell + ">"
+                     : ", hot::share_this_base<" + par->name + "_Shell, " + shell + ">");
             // The loader names this cause when the shell hash changes (design 5.3).
             flag_regs.push_back("    " + cn + "_record.shares_this = true;\n");
         }

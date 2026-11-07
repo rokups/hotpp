@@ -16,6 +16,8 @@ class UnitApp : UnitMid {
     [Attribute("Total", "AM_DEFAULT")] int Total { get { return total; } set { total = value * 2; } }
 
     override int Score() { return base.Score() + 1000; }
+    // "this" as a handle: the shell of the parent has no shared_from_this, so this shell adds it.
+    int Selfie() { $UnitApp me = this; if (me == null) { return 0; } return me.m; }
     override void Tick(float dt) {
         base.Tick(dt);
         $UnitBox b = this.box;
@@ -26,7 +28,8 @@ class UnitApp : UnitMid {
         base_count = base_count + 1;
         this.total = Score();
         this.Position.x = this.total;
-        this.Position.y = Scale(5) + Scale(1.5f);
+        $UnitApp other = new $UnitApp();
+        this.Position.y = Scale(5) + Scale(1.5f) + other.Selfie() - 100;
         this.Position.z = b.area() * 100 + b.size * 10 + base_count;
     }
 }

@@ -14,6 +14,7 @@
 #endif
 #if defined(AOT_UNITS_LOADER) && defined(AOT_UNITS_CHAIN)
 #include "hot/backend.h"
+#include "support/script_files.h"
 #endif
 
 #include <gtest/gtest.h>
@@ -217,6 +218,43 @@ TEST(AotUnits, RevertOfTheBaseUnitKeepsTheChain)
     loader.frame_boundary();
     world.Tick(0.5f);
     EXPECT_FLOAT_EQ(app->Position.x, kScore + 1.0f); // hp is 12 after the second tick
+}
+
+// A body change of the base unit: the constructor of the parent and the inherited slot Tick of the
+// child use the new bodies. A revert gives the AOT bodies again, also to the object of the override.
+TEST(AotUnits, OverrideAndRevertOfTheBaseUnitReachTheChild)
+{
+    std::unique_ptr<hot::Backend> backend = hot::make_default_backend();
+    backend->seed_slots(hot::aot_table.slots);
+    hot::Loader loader;
+    const hot::ReloadResult r = loader.load_aot(hot::aot_table);
+    ASSERT_TRUE(r) << r.error;
+    hot::LoadResult built = backend->load(test_support::source("aot_units/aot_unit_base_v2.hot"), 2);
+    ASSERT_TRUE(built) << built.error;
+    built.module->unit = "aot_unit_base";
+    const hot::ReloadResult req = loader.request_reload(std::move(*built.module));
+    ASSERT_TRUE(req) << req.error;
+    const hot::ReloadResult done = loader.commit_pending();
+    ASSERT_TRUE(done) << done.error;
+    loader.frame_boundary();
+    const hot::ClassEntry* e = loader.find("UnitApp");
+    ASSERT_NE(e, nullptr);
+    World world;
+    Actor* app = static_cast<Actor*>(e->create().native);
+    world.Add(app);
+    world.Tick(0.5f);
+    EXPECT_FLOAT_EQ(app->Position.x, kScore + 41.0f); // the constructor sets hp to 50, Tick adds 2
+    EXPECT_FLOAT_EQ(app->Position.y, kScale);
+    const hot::ReloadResult rv = loader.revert_unit("aot_unit_base", *backend);
+    ASSERT_TRUE(rv) << rv.error;
+    const hot::ReloadResult back = loader.commit_pending();
+    ASSERT_TRUE(back) << back.error;
+    loader.frame_boundary();
+    Actor* fresh = static_cast<Actor*>(e->create().native);
+    world.Add(fresh);
+    world.Tick(0.5f);
+    EXPECT_FLOAT_EQ(app->Position.x, kScore + 42.0f); // hp is 53: Tick adds 1 again
+    EXPECT_FLOAT_EQ(fresh->Position.x, kScore);
 }
 #endif
 

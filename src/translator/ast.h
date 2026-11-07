@@ -693,6 +693,9 @@ struct ClassDef
     bool is_value = false; // a struct
     bool is_abstract = false; // "abstract class C { }": the class can have abstract methods
     bool is_private = false; // "private class C { }" at file level: importers do not see the class
+    // A body or a field initializer has a "this" that is not the object of a member access. The
+    // parser sets it from the text. The owner unit and each importer get the same value.
+    bool bare_this = false;
     // The unit of the module that owns a class of an import. The importer has the interface of the
     // class only: no bodies, no state and no record. Calls, fields and "new" go through the runtime
     // helpers (hot::call_script, hot::field, hot::construct). Empty: the class of this module.

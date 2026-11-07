@@ -434,6 +434,18 @@ HOT_HIDDEN std::shared_ptr<Shell> make_shared_plain(A&... a)
         return std::make_shared<Shell>(Construct{}, a...);
 }
 
+namespace detail
+{
+template <class T> struct no_shared_this
+{
+};
+} // namespace detail
+// The base of a script child whose parent is in another unit: std::enable_shared_from_this of the
+// child, if the shell of the parent has no shared_from_this. Two such bases make the call ambiguous.
+template <class Parent, class Child>
+using share_this_base = std::conditional_t<detail::has_shared_from_this<Parent>::value, detail::no_shared_this<Child>,
+    std::enable_shared_from_this<Child>>;
+
 // A handle of the script object that owns the shell "self": the lowering of a bare "this"
 // where a handle type is expected (design 7.10.1). "H" is the handle type of the class.
 // A std::shared_ptr handle uses shared_from_this. The object must be owned by a handle.
