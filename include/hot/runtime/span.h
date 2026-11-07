@@ -139,4 +139,22 @@ template <class T, std::size_t N> span(std::array<T, N>&) -> span<T>;
 template <class T, std::size_t N> span(const std::array<T, N>&) -> span<const T>;
 template <class R> span(R&&) -> span<detail::span_range_element_t<R>>;
 
+// A view as the argument of a native span parameter (gap G22). It converts to each type S that
+// has the constructor S(T*, size_t): eastl::span<T>, std::span<T> and span<const T>. The translator
+// writes "hot::span_as(v)" when the native parameter is an eastl::span or a std::span.
+template <class T> struct span_arg
+{
+    T* data_;
+    std::size_t size_;
+    template <class S, std::enable_if_t<!detail::is_hot_span<S>::value && std::is_constructible_v<S, T*, std::size_t>, int> = 0>
+    constexpr operator S() const
+    {
+        return S(data_, size_);
+    }
+};
+template <class V> constexpr auto span_as(const V& v) noexcept
+{
+    return span_arg<std::remove_reference_t<decltype(*v.data())>>{v.data(), v.size()};
+}
+
 } // namespace hot

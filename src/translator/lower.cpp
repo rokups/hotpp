@@ -2385,7 +2385,7 @@ struct Lowerer
             const uint32_t pos = pos_of(*c.args[i]);
             CallExpr w;
             w.pos = pos;
-            w.callee = raw(forms[i] == 'p' ? "hot::as_ptr" : "hot::as_ref", pos);
+            w.callee = raw(forms[i] == 's' ? "hot::span_as" : forms[i] == 'p' ? "hot::as_ptr" : "hot::as_ref", pos);
             w.args.push_back(std::move(c.args[i]));
             c.args[i] = make_expr(std::move(w));
         }
@@ -2412,6 +2412,12 @@ struct Lowerer
             if (t.empty())
                 continue;
             const std::string r = cx.native_carrier(key, i, c.args.size());
+            // A view to a native span parameter (gap G22): "hot::span_as".
+            if (r == "s:" && t.size() > 2 && t.compare(t.size() - 2, 2, "[]") == 0)
+            {
+                forms[i] = 's';
+                continue;
+            }
             if (r.size() > 2 && r[1] == ':' && (r[0] == 'p' || r[0] == 'r') && r.compare(2, std::string::npos, t) == 0
                 && cx.types->is_handle(t))
                 forms[i] = r[0];

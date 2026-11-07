@@ -245,6 +245,8 @@ These rules apply to a view:
 - It holds a pointer and a size. It does not own the values.
 - Its own `operator[]` has no check, as for `std::span`. The index in a script goes through `hot::index`, which throws `IndexOutOfRange` for a bad index. `HOT_RUNTIME_CHECKS=OFF` removes the check.
 
+A view converts to a native parameter of type `eastl::span<T>`, `std::span<T>` or `span<const T>`. A `const&` parameter of these types is also valid. The translator writes `hot::span_as(v)`. It gives a span of the same pointer and size. All overloads of the native function must take a span at that position.
+
 You can select `std::span<T>` instead. Use the CMake option `HOT_VIEW_TYPE=std`. These rules apply:
 
 - `std::span` needs C++20. With a lower `CMAKE_CXX_STANDARD`, the configure step stops with an error.

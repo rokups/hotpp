@@ -4461,6 +4461,22 @@ void translate_impl(
                     continue; // too many arguments: not this overload
                 if (arg >= ps.size())
                     return {}; // a pack or a variadic argument: no conversion
+                // An eastl::span or a std::span parameter, by value or by const reference (gap G22): "s:".
+                std::string pt = ps[arg];
+                while (!pt.empty() && static_cast<unsigned char>(pt[0]) < 0x20)
+                    pt.erase(0, 1); // a mark byte of the answer
+                if (pt.rfind("const ", 0) == 0)
+                    pt.erase(0, 6);
+                while (!pt.empty() && (pt.back() == '&' || pt.back() == ' '))
+                    pt.pop_back();
+                if (pt.rfind("eastl::span<", 0) == 0 || pt.rfind("std::span<", 0) == 0 || pt.rfind("std::__1::span<", 0) == 0)
+                {
+                    if (any && result != "s:")
+                        return {};
+                    result = "s:";
+                    any = true;
+                    continue;
+                }
                 const char form = types.carrier_form(ps[arg]);
                 const std::string t = types.carrier_of(ps[arg]);
                 if (!form || t.empty())

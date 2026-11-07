@@ -393,3 +393,28 @@ TEST(SpanTranslation, ViewInAFunctionTypeOfAFieldIsNotStorage)
     const hotc::TranslateResult bad = script("    std.vector<std.string_view> Names;\n");
     EXPECT_FALSE(bad.ok);
 }
+
+// G22: a view "T[]" as the argument of a native parameter of a span type. The argument is
+// "hot::span_as(v)": it converts to eastl::span<T>, std::span<T> and span<const T>.
+TEST(SpanTranslation, ViewToNativeSpanParameter)
+{
+    translator_test::TempDir dir;
+    translator_test::write_file(dir.path() / "w.h",
+        "#include <cstddef>\n#include <span>\n"
+        "namespace eastl { template <class T> class span { public: span() {}\n"
+        "    span(T* p, std::size_t n) : p_(p), n_(n) {} T* p_ = nullptr; std::size_t n_ = 0; }; }\n"
+        "inline int SumE(eastl::span<int> s) { return 0; }\n"
+        "inline int SumS(std::span<int> s) { return 0; }\n"
+        "inline int SumC(std::span<const int> s) { return 0; }\n"
+        "inline int SumR(const eastl::span<const int>& s) { return 0; }\n");
+    hotc::TranslateOptions o = translator_test::temp_options(dir,
+        "using \"w.h\";\n"
+        "int F(int[] v) { return SumE(v) + SumS(v) + SumC(v) + SumR(v); }\n");
+    o.std_version = "c++20";
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "SumE(hot::span_as(v))")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "SumS(hot::span_as(v))")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "SumC(hot::span_as(v))")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "SumR(hot::span_as(v))")) << r.cpp;
+}
