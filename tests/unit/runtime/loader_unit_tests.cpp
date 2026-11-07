@@ -154,6 +154,72 @@ struct Units : ::testing::Test
 
 } // namespace
 
+namespace
+{
+// A parent "Par" in unit P and a child "Kid" in unit K (modules step 5). The child table has a null
+// hole for the inherited slot 0. Slot 1 is the override of the child.
+struct Fns : hot::StateBase
+{
+    void p1() { }
+    void p2() { }
+    void k1() { }
+};
+const hot::SlotFn kP1 = static_cast<hot::SlotFn>(&Fns::p1);
+const hot::SlotFn kP2 = static_cast<hot::SlotFn>(&Fns::p2);
+const hot::SlotFn kK1 = static_cast<hot::SlotFn>(&Fns::k1);
+hot::SlotFn par1_slots[2] = {kP1, kP1};
+hot::SlotFn par2_slots[2] = {kP2, kP2};
+hot::SlotFn kid_slots[2] = {nullptr, kK1};
+hot::ClassRecord par1, par2, kid1;
+void register_par1(hot::Registry& reg) { reg.add(&par1, &create_fake1); }
+void register_par2(hot::Registry& reg) { reg.add(&par2, &create_fake2); }
+void register_kid1(hot::Registry& reg) { reg.add(&kid1, &create_fake1); }
+
+struct CrossParent : Units
+{
+    CrossParent()
+    {
+        par1 = hot::ClassRecord{"Par", 1, par1_slots, 2, &layout, nullptr, "Base", kHash};
+        par2 = hot::ClassRecord{"Par", 2, par2_slots, 2, &layout, nullptr, "Base", kHash};
+        kid1 = hot::ClassRecord{"Kid", 1, kid_slots, 2, &layout, nullptr, "Base", kHash};
+        kid1.super_name = "Par";
+        kid1.super_layout_hash = hot::layout_hash(&layout);
+    }
+};
+} // namespace
+
+// The loader links a child to a parent of another unit. It fills the hole of the inherited slot
+// from the parent, and fills it again when the parent unit reloads alone.
+TEST_F(CrossParent, LoaderFillsTheInheritedSlotsFromTheParentOfAnotherUnit)
+{
+    std::vector<hot::Module> first;
+    first.push_back(module_of(register_kid1, "K1", "K"));
+    first.push_back(module_of(register_par1, "P1", "P"));
+    ASSERT_RELOAD_OK(loader.load(std::move(first)));
+    const hot::ClassRecord* kid = loader.find("Kid")->record;
+    ASSERT_EQ(kid->super, loader.find("Par")->record);
+    EXPECT_TRUE(kid->slots[0] == kP1);
+    EXPECT_TRUE(kid->slots[1] == kK1);
+    EXPECT_TRUE(kid_slots[0] == nullptr) << "the table of the module keeps its hole";
+
+    ASSERT_RELOAD_OK(loader.request_reload(module_of(register_par2, "P2", "P")));
+    ASSERT_RELOAD_OK(loader.commit_pending());
+    EXPECT_TRUE(kid->slots[0] == kP2) << "the hole follows the new parent";
+    EXPECT_TRUE(kid->slots[1] == kK1);
+}
+
+// A child that compiled against another layout of the parent is rejected.
+TEST_F(CrossParent, ParentWithAnotherLayoutIsRejected)
+{
+    kid1.super_layout_hash ^= 1;
+    std::vector<hot::Module> first;
+    first.push_back(module_of(register_par1, "P1", "P"));
+    first.push_back(module_of(register_kid1, "K1", "K"));
+    const hot::ReloadResult r = loader.load(std::move(first));
+    EXPECT_EQ(r.status, hot::ReloadStatus::Failed);
+    EXPECT_EQ(r.reason, hot::ReloadReason::ImportMismatch) << r.error;
+}
+
 TEST_F(Units, ReloadOfOneUnitKeepsTheClassAndTheBlockOfTheOtherUnit)
 {
     ASSERT_RELOAD_OK(loader.load(module_of(register_a1, "A1", "A")));

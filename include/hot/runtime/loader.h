@@ -371,6 +371,11 @@ private:
     // The dispatch tables of the removed classes (design 6.1), by class name. The record of a
     // removed class keeps its place in "registry_" while objects live.
     std::unordered_map<std::string, std::vector<SlotFn>> removed_;
+    // A class with a script parent in another unit (modules step 5): the slot table of its
+    // generation, with null holes for the inherited slots, and the table that the loader fills.
+    std::unordered_map<std::string, const SlotFn*> own_slots_;
+    std::unordered_map<std::string, std::vector<SlotFn>> linked_slots_;
+    void link_inherited_slots();
     // The live module state block of a unit (module-level script variables). A unit without a
     // block has no entry. "slot" is the slot variable of the module that made the layout. It points
     // to the block. The empty unit (key "") is the unit of a module without a unit name.

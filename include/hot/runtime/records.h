@@ -294,6 +294,13 @@ struct ClassRecord
     // An id outside the table (id >= iface_slot_count) means "not implemented".
     const uint32_t* iface_slots = nullptr;
     uint32_t iface_slot_count = 0;
+    // A script parent in another unit (modules step 5). "super_name" is the name of the parent,
+    // and "super" is null in the module. The loader sets "super" to the canonical parent record.
+    // An inherited slot is null in "slots": the loader fills it from the parent at each commit.
+    // "super_layout_hash" is the layout_hash (state.h) of the parent state that the child
+    // compiled against. The loader rejects a parent with another layout.
+    const char* super_name = nullptr;
+    uint64_t super_layout_hash = 0;
 };
 
 } // namespace hot

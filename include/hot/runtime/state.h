@@ -440,6 +440,35 @@ template <class T> HOT_HIDDEN constexpr auto field_copy()
         return static_cast<void (*)(void*, const void*)>(nullptr);
 }
 
+// The hash of the first "n" fields of a state layout and of the size "size" (modules step 5). The
+// child of a parent in another unit compares the hash of the parent layout with this value.
+inline uint64_t layout_hash(const FieldInfo* fields, uint32_t n, uint32_t size)
+{
+    uint64_t h = 1469598103934665603ull;
+    const auto mix = [&h](const char* t)
+    {
+        for (; t && *t; ++t)
+            h = (h ^ static_cast<unsigned char>(*t)) * 1099511628211ull;
+        h = (h ^ 0xFFu) * 1099511628211ull;
+    };
+    const auto num = [&h](uint64_t v) { h = (h ^ v) * 1099511628211ull; };
+    num(size);
+    for (uint32_t i = 0; i < n; ++i)
+    {
+        mix(fields[i].name);
+        mix(fields[i].type_key);
+        num(fields[i].offset);
+        num(fields[i].size);
+    }
+    return h;
+}
+
+// The layout_hash of all the fields of "layout". A null layout gives 0.
+inline uint64_t layout_hash(const StateLayout* layout)
+{
+    return layout ? layout_hash(layout->fields, layout->field_count, layout->size) : 0;
+}
+
 // Reflection helpers.
 // An optimized AOT class has no layout: the result is null.
 inline const FieldInfo* find_field(const ClassRecord* cls, const char* name)

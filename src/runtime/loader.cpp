@@ -57,6 +57,12 @@ namespace
 // A removed class also gets it when the generation of its last layout unloads.
 const StateLayout kEmptyLayout = {"", 1, 1, 0, nullptr};
 
+// The name of the script parent of "r", in this unit or in another unit, or "".
+const char* parent_name(const ClassRecord* r)
+{
+    return r->super ? r->super->name : r->super_name ? r->super_name : "";
+}
+
 // Copies the parts of a generation record that change at a reload into the canonical record.
 void adopt(ClassRecord* canon, ClassRecord* in)
 {
@@ -299,6 +305,8 @@ bool Loader::reset(std::string& error)
     revert_slots_.clear();
     unit_live_.clear(); // the flags are in the code that unloads next
     removed_.clear();
+    own_slots_.clear();
+    linked_slots_.clear();
     slot_keys_.clear();
     eff_keys_.clear();
     iface_slots_.clear(); // the records go with "registry_" below
@@ -443,6 +451,33 @@ ReloadResult Loader::load(std::vector<Module> modules)
             return r;
         }
     }
+    // A script parent in another unit (modules step 5): link "super", check the parent layout and
+    // fill the inherited slots, after all the units of the batch are in the registry.
+    for (auto& [name, e] : registry_.entries())
+    {
+        ClassRecord* r = e.record;
+        if (!r->super_name)
+            continue;
+        ClassEntry* pe = registry_.find(r->super_name);
+        std::string why;
+        if (!pe)
+            why = "the script parent " + std::string(r->super_name) + " is not in the batch";
+        else if (layout_hash(pe->record->layout) != r->super_layout_hash)
+            why = "the state layout of the script parent " + std::string(r->super_name)
+                + " is not the layout that the class compiled against";
+        if (!why.empty())
+        {
+            const std::string cls = name;
+            std::string ignored;
+            reset(ignored);
+            ReloadResult f = failed(ReloadReason::ImportMismatch, "class " + cls + ": " + why);
+            f.classes = {cls};
+            return f;
+        }
+        r->super = pe->record;
+        own_slots_[name] = r->slots;
+    }
+    link_inherited_slots();
     return make_result(ReloadStatus::Applied, ReloadReason::None);
 }
 
@@ -1202,6 +1237,26 @@ ReloadResult Loader::validate_and_stage(std::unique_ptr<Pending> p)
                         + " is not newer than the active generation " + std::to_string(active_generation),
                     {name});
             PendingClass pc{canon, in.record, in.create, {}};
+            // A parent in another unit: its layout must be the layout that the child compiled against.
+            if (in.record->super_name)
+            {
+                const ClassRecord* parent = nullptr;
+                for (const PendingUnit& pu : p->units)
+                    if (const ClassEntry* pe = pu.staged.find(in.record->super_name))
+                        parent = pe->record;
+                if (!parent)
+                    if (const ClassEntry* pe = registry_.find(in.record->super_name); pe && !removed_.count(pe->record->name))
+                        parent = pe->record;
+                if (!parent)
+                    return failed(ReloadReason::ImportMismatch,
+                        "class " + name + ": the script parent " + in.record->super_name + " is not live and not in the batch",
+                        {name});
+                if (layout_hash(parent->layout) != in.record->super_layout_hash)
+                    return failed(ReloadReason::ImportMismatch,
+                        "class " + name + ": the state layout of the script parent " + in.record->super_name
+                            + " is not the layout that the class compiled against",
+                        {name});
+            }
             if (canon)
             {
                 if (const auto uo = unit_of_.find(name); uo != unit_of_.end() && uo->second != u.module.unit)
@@ -1226,8 +1281,8 @@ ReloadResult Loader::validate_and_stage(std::unique_ptr<Pending> p)
                         "class " + name + ": base class changed (" + s0 + " -> " + s1 + ")", name);
                 }
                 // A change of the script parent changes the shell hierarchy (design 5.3: RECONSTRUCT).
-                const char* p0 = cur->super ? cur->super->name : "";
-                const char* p1 = in.record->super ? in.record->super->name : "";
+                const char* p0 = parent_name(cur);
+                const char* p1 = parent_name(in.record);
                 if (std::strcmp(p0, p1) != 0)
                     return full_reload(ReloadReason::ScriptParentChanged,
                         "class " + name + ": script parent class changed (" + (*p0 ? p0 : "none") + " -> "
@@ -1525,11 +1580,16 @@ ReloadResult Loader::commit_locked()
             if (pc.canon)
                 continue;
             ClassRecord* r = registry_.find(pc.incoming->name)->record;
-            if (!r->super)
+            if (!r->super && !r->super_name)
                 continue;
-            if (ClassEntry* pe = registry_.find(r->super->name))
+            if (ClassEntry* pe = registry_.find(parent_name(r)))
                 r->super = pe->record;
         }
+    for (const PendingUnit& u : P.units)
+        for (const PendingClass& pc : u.classes)
+            if (pc.incoming->super_name)
+                own_slots_[pc.incoming->name] = pc.incoming->slots;
+    link_inherited_slots();
     // With a core, the new thunks come from the core and the generation holds no entry.
     std::vector<uint32_t> new_refs(P.units.size(), 0);
     for (size_t i = 0; i < P.units.size(); ++i)
@@ -1655,4 +1715,35 @@ ReloadResult Loader::commit_locked()
     return make_result(ReloadStatus::Applied, ReloadReason::None);
 }
 
+} // namespace hot
+
+namespace hot
+{
+// Fills the inherited slots of each class with a script parent in another unit (modules step 5).
+// A parent comes before its child, so a hole of a chain over three units gets the final function.
+// A commit calls it after each adopt, also when only the parent unit changed.
+void Loader::link_inherited_slots()
+{
+    std::set<std::string> done;
+    std::function<void(const std::string&)> link = [&](const std::string& name)
+    {
+        if (!done.insert(name).second)
+            return;
+        const auto own = own_slots_.find(name);
+        ClassEntry* e = registry_.find(name);
+        if (own == own_slots_.end() || !e || removed_.count(name))
+            return;
+        ClassRecord* r = e->record;
+        if (r->super)
+            link(r->super->name);
+        std::vector<SlotFn>& table = linked_slots_[name];
+        table.assign(own->second, own->second + r->slot_count);
+        for (uint32_t i = 0; i < r->slot_count; ++i)
+            if (!table[i] && r->super && i < r->super->slot_count)
+                table[i] = r->super->slots[i];
+        r->slots = table.data();
+    };
+    for (const auto& [name, own] : own_slots_)
+        link(name);
+}
 } // namespace hot
