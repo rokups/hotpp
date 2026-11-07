@@ -1,0 +1,3 @@
+115_overload_in_child.hot:12:9: error: function 'Score' adds an overload to the overloads of 'Base'; declare all overloads of a name in one class
+   12 |     new int Score(bool b) {
+1 error generated.

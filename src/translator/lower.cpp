@@ -50,7 +50,7 @@ RCtx make_class_ctx(const ast::ClassDef& cd)
     }
     for (const ast::Method& m : cd.methods)
         if (!m.overrides_virtual)
-            cx.fns.insert(m.name);
+            cx.fns.insert(m.written_name());
     for (const ast::Property& p : cd.props)
         cx.props[p.name] = {p.has_get, p.has_set};
     return cx;
@@ -345,13 +345,38 @@ struct Lowerer
         int depth = 0;
         for (const ClassDef* d = &c; d && depth < 64; d = parent_of(*d), ++depth)
             for (const Method& m : d->methods)
-                if (m.name == n && !m.overrides_virtual)
+                if ((m.name == n || m.src_name == n) && !m.overrides_virtual)
                 {
                     if (owner)
                         *owner = d;
                     return &m;
                 }
         return nullptr;
+    }
+
+    // The overload of "m" (found by find_fn) for a call with "argc" arguments (gap G17): the one
+    // overload that takes this number of arguments. Else null: C++ selects the overload, and
+    // the arguments get no coercion.
+    static const Method* overload_for(const ClassDef& owner, const Method* m, size_t argc)
+    {
+        if (!m || m->src_name.empty())
+            return m;
+        const Method* hit = nullptr;
+        int n = 0;
+        for (const Method& o : owner.methods)
+        {
+            if (o.src_name != m->src_name)
+                continue;
+            size_t req = 0;
+            for (const Param& p : o.params)
+                req += p.def ? 0 : 1;
+            if (argc >= req && argc <= o.params.size())
+            {
+                hit = &o;
+                ++n;
+            }
+        }
+        return n == 1 ? hit : nullptr;
     }
 
     // A static method of the class or of a script parent. The nearest class wins. "owner" gets
@@ -461,6 +486,9 @@ struct Lowerer
     // through the dispatcher of its slot (design 7.6). Else the call is direct.
     static std::string fn_symbol(const ClassDef& owner, const Method& m)
     {
+        // An overload group has C++ forwarders "<owner>__<name>" (see the emitter).
+        if (!m.src_name.empty())
+            return (m.vslot_owner.empty() ? owner.name : m.vslot_owner) + "__" + m.src_name;
         return m.vslot_owner.empty() ? owner.name + "__" + m.name : m.vslot_owner + "__" + m.name + "_virt";
     }
 
@@ -2234,7 +2262,7 @@ struct Lowerer
                 if (fn)
                     check_member(fn->access, *owner, *n, std::get<NameExpr>(c.callee->v).pos);
                 script_call(c, *n, std::get<NameExpr>(c.callee->v).pos);
-                coerce_args(c, fn, 1);
+                coerce_args(c, owner ? overload_for(*owner, fn, c.args.size() - 1) : fn, 1);
                 exprs(c.args);
                 return;
             }
@@ -2255,7 +2283,7 @@ struct Lowerer
                 if (fn)
                     check_member(fn->access, *owner, m->name, m->name_pos ? m->name_pos : pos_of(*m->obj));
                 script_call(c, m->name, pos_of(*m->obj), m->name_pos);
-                coerce_args(c, fn, 1);
+                coerce_args(c, owner ? overload_for(*owner, fn, c.args.size() - 1) : fn, 1);
                 exprs(c.args);
                 return;
             }
@@ -2347,7 +2375,7 @@ struct Lowerer
                     ExprP recv = raw(shell_text(*d, print(*mm->obj)), pos);
                     c.callee = raw(name, pos);
                     c.args.insert(c.args.begin(), std::move(recv));
-                    coerce_args(c, fn, 1);
+                    coerce_args(c, overload_for(*owner, fn, c.args.size() - 1), 1);
                     for (size_t i = 1; i < c.args.size(); ++i)
                         expr(c.args[i]);
                     return;

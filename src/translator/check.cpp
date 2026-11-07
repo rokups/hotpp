@@ -586,7 +586,7 @@ struct Checker
     {
         for (const std::vector<Method>* list : {&cd.methods, &cd.statics})
             for (const Method& m : *list)
-                if (m.name == name && is_ref_ret(m))
+                if (m.written_name() == name && is_ref_ret(m))
                     return &m;
         return nullptr;
     }
@@ -707,10 +707,10 @@ struct Checker
             if (c.name != t && c.key_name() != t)
                 continue;
             for (const Method& m : c.methods)
-                if (m.name == name && is_ref_ret(m))
+                if (m.written_name() == name && is_ref_ret(m))
                     return {&m, false};
             for (const Method& m : c.statics)
-                if (m.name == name && is_ref_ret(m))
+                if (m.written_name() == name && is_ref_ret(m))
                     return {&m, true};
             return {};
         }
@@ -728,7 +728,7 @@ struct Checker
             {
                 for (const std::vector<Method>* list : {&c.methods, &c.statics})
                     for (const Method& m : *list)
-                        if (m.name == name)
+                        if (m.written_name() == name)
                             return &m;
                 return nullptr;
             }
@@ -761,7 +761,7 @@ struct Checker
         {
             for (const std::vector<Method>* list : {&cd.methods, &cd.statics})
                 for (const Method& m : *list)
-                    if (m.name == name)
+                    if (m.written_name() == name)
                         return &m;
             return nullptr;
         };
@@ -1594,7 +1594,7 @@ struct Checker
     const Method* own_method(const std::string& name) const
     {
         for (const Method& m : cd.methods)
-            if (m.name == name)
+            if (m.written_name() == name)
                 return &m;
         return nullptr;
     }
@@ -1911,7 +1911,7 @@ struct Checker
     {
         for (const std::vector<Method>* list : {&cd.methods, &cd.statics})
             for (const Method& m : *list)
-                if (m.name == name && m.params.size() >= argc && i < m.params.size()
+                if (m.written_name() == name && m.params.size() >= argc && i < m.params.size()
                     && (m.params[i].mode == ParamMode::Ref || m.params[i].mode == ParamMode::Out))
                     return true;
         return false;
@@ -2689,7 +2689,7 @@ void check_ctors(const ClassDef& cd, const LineMap& map, Diagnostics& diag)
     for (const Field& f : cd.fields)
         members.insert(f.name);
     for (const Method& m : cd.methods)
-        members.insert(m.name);
+        members.insert(m.written_name());
     for (const Property& p : cd.props)
         members.insert(p.name);
     if (cd.dtors.size() > 1)
@@ -3506,7 +3506,7 @@ struct QueryCollector
             int depth = 0;
             for (const ClassDef* d = obj.script; d && depth < 64; d = parent_of(*d), ++depth)
                 for (const Method& m : d->methods)
-                    if (m.name == name && !m.overrides_virtual)
+                    if (m.written_name() == name && !m.overrides_virtual)
                         return of_text(m.script_ret.empty() ? m.ret : m.script_ret);
             const std::string nb = native_root(*obj.script);
             return nb.empty() ? QType{} : QType{"decltype(hotc_ret_f(&" + nb + "::" + name + "))"};
@@ -3607,7 +3607,7 @@ struct QueryCollector
                         int depth = 0;
                         for (const ClassDef* d = cls; d && depth < 64; d = parent_of(*d), ++depth)
                             for (const Method& m : d->methods)
-                                if (m.name == f && !m.overrides_virtual)
+                                if (m.written_name() == f && !m.overrides_virtual)
                                     return method(self, f);
                     }
                     return script_names.count(f) ? QType{} : QType{"decltype(hotc_ret_f(&" + f + "))"};
@@ -3703,7 +3703,7 @@ struct QueryCollector
         int depth = 0;
         for (const ClassDef* d = &c; d && depth < 64; d = parent_of(*d), ++depth)
             for (const Method& m : d->methods)
-                if (m.name == name && !m.overrides_virtual)
+                if (m.written_name() == name && !m.overrides_virtual)
                     return true;
         return false;
     }

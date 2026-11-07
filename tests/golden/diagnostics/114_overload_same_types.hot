@@ -1,0 +1,11 @@
+class Scorer {
+    int n = 0;
+
+    int Score(int x) {
+        return x;
+    }
+
+    int Score(ref int y) {
+        return y;
+    }
+}

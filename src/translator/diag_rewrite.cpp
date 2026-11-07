@@ -468,6 +468,9 @@ const std::vector<Rule>& mistakes()
         // 8. No overload fits the call.
         {std::regex(R"(^no matching (?:member )?function for call to '([^']+)')"),
             "no method or function '$1' fits these arguments"},
+        // 8a. More than one overload fits the call (gap G17).
+        {std::regex(R"(^call to '([^']+)' is ambiguous)"),
+            "the call of '$1' fits more than one overload. Convert the argument to the parameter type of one overload"},
         {std::regex(R"(^no matching constructor for initialization of '([^']+)')"),
             "no constructor of '$1' fits these arguments"},
         {std::regex(R"(^candidate does not fit: no known conversion from '([^']+)' to '([^']+)' for (.+?) argument)"),

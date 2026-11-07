@@ -374,6 +374,9 @@ TEST(GoldenTranslation, ClassOperatorUse)
 
 // Free functions and static methods: the prototypes come before the bodies, and the manifest has no entry.
 // Generation 2 changes two bodies.
+// Method overloads (gap G17): the keys of the slots and the C++ forwarders of the written name.
+TEST(GoldenTranslation, MethodOverload) { golden_pair("method_overload"); }
+
 TEST(GoldenTranslation, StaticFunctions)
 {
     golden_pair("functions");

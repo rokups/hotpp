@@ -860,6 +860,41 @@ std::string key_norm(const std::string& s)
     return norm(hotc::canonical_type(s, nullptr, true));
 }
 
+// The parameter signature of a method in identifier form (gap G17). Two overloads have two
+// signatures. The pass mode ("ref", "in") is not a part: C++ cannot select an overload by it.
+// "$C" (the handle) and "C" (the value) are two types: "$" gives "H".
+std::string method_sig(const hotc::ast::Method& m)
+{
+    std::string r;
+    for (const hotc::ast::Param& p : m.params)
+    {
+        std::string t = key_norm(p.script_type.empty() ? p.type : p.script_type);
+        std::string id;
+        for (char c : t)
+        {
+            if (std::isalnum(static_cast<unsigned char>(c)))
+                id += c;
+            else if (c == '$')
+                id += 'H';
+            else if (c == '*')
+                id += 'P';
+            else if (c != '&' && (id.empty() || id.back() != '_'))
+                id += '_';
+        }
+        if (t.rfind("const", 0) == 0 && t.size() > 5 && !std::isalnum(static_cast<unsigned char>(t[5])))
+            id = id.substr(5);
+        while (!id.empty() && id.back() == '_')
+            id.pop_back();
+        while (!id.empty() && id.front() == '_')
+            id.erase(0, 1);
+        r += (r.empty() ? "" : "_") + (id.empty() ? std::string("x") : id);
+    }
+    return r.empty() ? "v" : r;
+}
+
+// The unique key of an overload "name" with the signature "sig" (see Method::src_name).
+std::string overload_key(const std::string& name, const std::string& sig) { return name + "__ov_" + sig; }
+
 struct NativeVirtual
 {
     std::string name, ret, owner;
@@ -3901,6 +3936,77 @@ void translate_impl(
         if (!module_vars.count(m.name.substr(8)))
             fail_at(map, m.pos,
                 "'" + m.name + "' is not a convert hook: the script has no module variable '" + m.name.substr(8) + "'");
+    // ---- method overloads (gap G17). Two methods of a class with one name are an overload group
+    // when the parameter types differ. Each member gets a unique key (see Method::src_name). A
+    // name with one method keeps its name, so its slot and the slot manifest do not change. An
+    // override in a child class gets the key of the parent overload with the same parameter types.
+    {
+        std::map<std::string, ClassDef*> by_name;
+        for (ClassDef& c : sc.classes)
+            by_name[c.name] = &c;
+        std::set<std::string> grouped;
+        std::function<void(ClassDef&)> group = [&](ClassDef& cd)
+        {
+            if (!grouped.insert(cd.name).second)
+                return;
+            std::vector<ClassDef*> anc;
+            for (auto it = by_name.find(cd.base); it != by_name.end() && anc.size() < 64; it = by_name.find(it->second->base))
+            {
+                group(*it->second);
+                anc.push_back(it->second);
+            }
+            if (cd.is_value)
+                return;
+            std::map<std::string, std::vector<Method*>> by;
+            for (Method& m : cd.methods)
+                if (m.op.empty() && m.name != "onReload" && m.name.rfind("convert_", 0) != 0)
+                    by[m.name].push_back(&m);
+            for (auto& [n, ms] : by)
+            {
+                const ClassDef* gowner = nullptr;
+                for (const ClassDef* a : anc)
+                    for (const Method& pm : a->methods)
+                        if (pm.src_name == n)
+                            gowner = a;
+                if (gowner)
+                {
+                    for (Method* m : ms)
+                    {
+                        const std::string key = overload_key(n, method_sig(*m));
+                        bool hit = false;
+                        for (const ClassDef* a : anc)
+                            for (const Method& pm : a->methods)
+                                hit |= pm.name == key;
+                        if (!hit)
+                            fail_at(map, m->pos,
+                                "function '" + n + "' adds an overload to the overloads of '" + gowner->name
+                                    + "'; declare all overloads of a name in one class");
+                        m->src_name = n;
+                        m->name = key;
+                    }
+                    continue;
+                }
+                if (ms.size() < 2)
+                    continue;
+                bool native = false; // overrides of native overloads keep their names
+                for (const Method* m : ms)
+                    native |= m->is_override;
+                if (native)
+                    continue;
+                std::set<std::string> keys;
+                for (Method* m : ms)
+                {
+                    const std::string key = overload_key(n, method_sig(*m));
+                    if (!keys.insert(key).second)
+                        fail_at(map, m->pos, "function '" + n + "' is declared twice with the same parameter types");
+                    m->src_name = n;
+                    m->name = key;
+                }
+            }
+        };
+        for (ClassDef& c : sc.classes)
+            group(c);
+    }
     // ---- static methods and free functions. One function has one name: there are no overloads.
     // The free functions live in a synthetic class "HotFns" (the member "statics"). It is not in
     // "sc.classes", so no code is made for it as a class.
@@ -6561,7 +6667,7 @@ void translate_impl(
                         for (const ClassDef* a2 = &cd; a2 && !found; a2 = script_parent(*a2))
                             for (const Method& m : a2->methods)
                             {
-                                if (m.name != im.name)
+                                if (m.written_name() != im.name)
                                     continue;
                                 if (m.access != hotc::ast::Access::Public)
                                     hidden = true;
@@ -7716,6 +7822,12 @@ void translate_impl(
                     o.w("[[maybe_unused]] HOT_HIDDEN static " + fn_ret(m) + " " + P + m.name + "(" + shell + "* __self"
                         + param_decl_def(m) + ")\n{\n    return hot::call_script<" + fn_ret(m) + "(" + B + "*" + type_list(m)
                         + ")>(__self, " + slot_id(m.name) + fwd_args(m.params) + ");\n}\n");
+            // The forwarders of an overload group (gap G17), as in the class of the unit.
+            for (const Method& m : cd.methods)
+                if (!m.src_name.empty() && !m.is_override && !m.overrides_virtual && hook_of(m) == Hook::None)
+                    o.w("[[maybe_unused]] HOT_HIDDEN static " + fn_ret(m) + " " + P + m.src_name + "(" + shell
+                        + "* __self" + param_decl_def(m) + ")\n{\n    return " + P + m.name + "(__self"
+                        + fwd_args(m.params) + ");\n}\n");
             for (const Field& f : cd.fields)
             {
                 const std::string t = types.cpp_storage(f.type, hotc::TypeModel::StorageUse::Field);
@@ -7789,6 +7901,20 @@ void translate_impl(
             o.w("[[maybe_unused]] HOT_HIDDEN static " + fn_ret(m) + " " + P + m.name + "_virt(" + shell + "* __self"
                 + param_decl(m) + ")\n{\n    return hot::call_script<" + fn_ret(m) + "(" + B + "*" + type_list(m)
                 + ")>(__self, " + slot_id(m.name) + arg_list(m) + ");\n}\n\n");
+        }
+        // The forwarders of an overload group (gap G17): one C++ overload of the written name for
+        // each member. C++ selects the member by the argument types. A virtual member forwards
+        // to its dispatcher, so the call reads the slot.
+        for (const Method& m : cd.methods)
+        {
+            if (m.src_name.empty() || m.is_override || m.overrides_virtual || hook_of(m) != Hook::None)
+                continue;
+            std::string as;
+            for (const Param& p : m.params)
+                as += ", std::forward<decltype(" + p.name + ")>(" + p.name + ")";
+            o.w("[[maybe_unused]] HOT_HIDDEN static " + fn_ret(m) + " " + P + m.src_name + "(" + shell + "* __self"
+                + param_decl_def(m) + ")\n{\n    return " + P + m.name + (m.vslot_owner == cn ? "_virt" : "")
+                + "(__self" + as + ");\n}\n\n");
         }
 
         // The constructors (design 7.3). A constructor body is not a slot. A "new" function
@@ -8628,7 +8754,7 @@ void translate_impl(
                         for (const ClassDef* a2 = &cd; a2 && slot < 0; a2 = script_parent(*a2))
                             for (const Method& m : a2->methods)
                             {
-                                if (m.name != im.name || m.access != hotc::ast::Access::Public
+                                if (m.written_name() != im.name || m.access != hotc::ast::Access::Public
                                     || m.is_async != im.is_async || m.params.size() != im.params.size()
                                     || rtype(m) != rtype(im))
                                     continue;

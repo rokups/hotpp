@@ -1,0 +1,15 @@
+class Base {
+    int Score(int x) {
+        return x;
+    }
+
+    int Score(float x) {
+        return 0;
+    }
+}
+
+class Child : Base {
+    new int Score(bool b) {
+        return 1;
+    }
+}

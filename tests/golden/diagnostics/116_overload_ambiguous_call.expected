@@ -1,0 +1,5 @@
+116_overload_ambiguous_call.hot:14:23: error: the call of 'Scorer.Score' fits more than one overload. Convert the argument to the parameter type of one overload
+   14 |         this.n = this.Score(big);
+116_overload_ambiguous_call.hot:14:23: note: candidate function
+116_overload_ambiguous_call.hot:14:23: note: candidate function
+1 error generated.

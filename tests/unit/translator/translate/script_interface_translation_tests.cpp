@@ -277,10 +277,8 @@ TEST(ScriptInterfaceTranslation, OverloadWithOtherSignatureDoesNotHideTheMatch)
     const hotc::TranslateResult r = run(std::string(kShape)
         + "class Sq : Widget, IShape {\n    int Area() { return 4; }\n    void Scale(int k) { }\n"
           "    void Scale(float k) { }\n}\n");
-    // A script class has no overloads, so the translator rejects the second declaration. The
-    // error is not a conformance error.
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "function 'Scale' is declared twice")) << r.diagnostics;
+    // The overload with the interface signature implements the interface method (gap G17).
+    EXPECT_TRUE(r.ok) << r.diagnostics;
 }
 
 TEST(ScriptInterfaceTranslation, GrandparentImplementsTheMethod)

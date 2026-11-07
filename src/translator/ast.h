@@ -560,6 +560,12 @@ struct Method
     std::string vslot_owner;
     Access access = Access::Public;
     std::string name;
+    // The name as the script writes it, for a method of an overload group (gap G17). Empty
+    // for other methods. The translator then sets "name" to a unique key "<name>__ov_<sig>":
+    // the slot, the state member and the thunk use the key. The calls use this name, and
+    // C++ forwarders of this name select the overload by the argument types.
+    std::string src_name;
+    const std::string& written_name() const { return src_name.empty() ? name : src_name; }
     // The operator symbol ("+", "[]", ...) when the method is an operator. Empty otherwise. The
     // "name" is then the identifier of the operator (see operator_names.h).
     std::string op;

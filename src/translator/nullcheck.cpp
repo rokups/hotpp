@@ -400,7 +400,7 @@ private:
         int depth = 0;
         for (const ClassDef* d = c; d && depth < 64; d = parent_of(*d), ++depth)
             for (const Method& m : d->methods)
-                if (m.name == name)
+                if (m.written_name() == name)
                     return &m;
         return nullptr;
     }

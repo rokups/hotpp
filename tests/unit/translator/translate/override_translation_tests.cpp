@@ -92,7 +92,7 @@ TEST(OverrideTranslation, FunctionChecksUseTheWordFunction)
     const std::string head = "using \"w.h\";\nclass Foo : Widget {\n";
     hotc::TranslateResult r = hotc::translate(temp_options(dir, head + "    void f() { }\n    void f() { }\n}\n"));
     EXPECT_FALSE(r.ok);
-    EXPECT_NE(r.diagnostics.find("function 'f' is declared twice (overloads are not supported)"), std::string::npos)
+    EXPECT_NE(r.diagnostics.find("function 'f' is declared twice with the same parameter types"), std::string::npos)
         << r.diagnostics;
     r = hotc::translate(temp_options(dir, head + "    int f;\n    void f() { }\n}\n"));
     EXPECT_FALSE(r.ok);
