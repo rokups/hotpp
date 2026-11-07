@@ -144,8 +144,10 @@ class Wall : Actor {
 
 - A constant needs a value. The value is an expression that C++ accepts in a `static const` initializer.
 - An imported script can have constants. A script that imports the file can use them.
+- Two imported scripts can import each other. Their classes can use each other by a handle or by a call. A struct that holds a struct of the cycle by value is an error.
 - An integral or an enum constant is a C++ constant expression: a `case` label can use it.
 - A class member cannot be `const`. Write the constant at file level.
+- The value can be a native constexpr call, for example `std.numeric_limits<float>.infinity()` or `eastl.string()`.
 - A reload translates the code again. A changed value is in the next generation.
 
 ## Free functions
@@ -185,7 +187,7 @@ Rules:
 - A module variable initializer and a convert hook cannot call a function. The error of a hook is `a convert hook cannot call the function '<name>': the new module state is not complete yet`.
 - A field initializer cannot call a function. The error is `a field initializer cannot call the function '<name>': the prototype of the function comes after the class`.
 - A default argument cannot call a function. The error is `a default argument cannot call the function '<name>': the prototype of the function comes after the declaration`.
-- An imported script cannot have free functions. The error is `an imported script cannot have free functions`.
+- An imported script can have free functions and module variables. The importer gets the declarations of the public ones. The body and the storage stay in the owner module. The importer calls a function through `hot::call_fn` and uses a variable through `hot::mod_var`. A `private` name is hidden from the importer. The import is not transitive.
 - There is no namespace block. Use `using ns;` for a native namespace.
 - The host cannot call a free function by name through `Loader::thunk`. Call a method of a class.
 
@@ -236,4 +238,4 @@ using "Weapon.h";
 
 A stub can cover only the subclasses of a type, and `cpp_prelude` adds C++ text: see "Scope of a stub" in [native-interop-scope.md](native-interop-scope.md).
 
-A convert hook (`T convert_<var>(Old old)`) is a special function at file level. A convert hook cannot read a module variable. An imported script cannot have module variables, convert hooks or free functions.
+A convert hook (`T convert_<var>(Old old)`) is a special function at file level. A convert hook cannot read a module variable. An imported script can have module variables and free functions: the importer gets the declarations of the public ones. A convert hook stays in its own module. The importer gets no copy of it.
