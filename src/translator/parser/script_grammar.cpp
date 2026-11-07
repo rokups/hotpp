@@ -1452,6 +1452,7 @@ struct ClassAttrs
     std::string handle, default_handle, intrusive_add, intrusive_release;
     std::string weak_handle; // [weak_handle("template")]: valid on a stub only
     std::string factory; // [factory("template")]: valid on a stub only
+    std::string weak_source; // [weak_source("traits base")]: valid on a stub only
     std::string cpp_prelude; // [cpp_prelude("text")]
     bool has_prelude = false;
     std::string cpp_overrides; // [cpp_overrides("A B")]: valid on a stub only
@@ -1481,7 +1482,7 @@ struct ClassAttr
     int arity;
 };
 constexpr ClassAttr kClassAttrs[] = {{"native", 0}, {"value", 0}, {"self", 0}, {"checked_index", 0}, {"nonnull", 0}, {"weak", 0},
-    {"attribute", 0}, {"handle", 1}, {"default_handle", 1}, {"weak_handle", 1}, {"factory", 1}, {"alias", 1}, {"cpp_prelude", 1},
+    {"attribute", 0}, {"handle", 1}, {"default_handle", 1}, {"weak_handle", 1}, {"weak_source", 1}, {"factory", 1}, {"alias", 1}, {"cpp_prelude", 1},
     {"cpp_overrides", 1}, {"std", 1}, {"lib", 1}, {"array", 1}, {"intrusive", 2}};
 
 // The expected count of arguments of a class attribute, or -1 for an unknown name.
@@ -1585,6 +1586,8 @@ struct class_attrs_p
                 a.default_handle = std_from_user(it.args[0]);
             else if (it.name == "weak_handle")
                 a.weak_handle = std_from_user(it.args[0]);
+            else if (it.name == "weak_source")
+                a.weak_source = std_from_user(it.args[0]);
             else if (it.name == "factory")
                 a.factory = std_from_user(it.args[0]);
             else if (it.name == "weak")
@@ -1775,6 +1778,7 @@ TopItem make_stub(const ParseState& st, const char* pos, const ClassAttrs* a, bo
         s.default_handle = a->default_handle;
         s.weak_handle = a->weak_handle;
         s.factory = a->factory;
+        s.weak_source = a->weak_source;
         s.intrusive_add = a->intrusive_add;
         s.intrusive_release = a->intrusive_release;
         s.cpp_prelude = a->cpp_prelude;

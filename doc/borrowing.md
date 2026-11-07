@@ -156,6 +156,7 @@ A weak source is one of these:
 - The class derives from `std::enable_shared_from_this`.
 - A stub gives the class a non-intrusive `handle` or `weak_handle`.
 - The host specializes `hot::weak_ref_traits<T>` (see "Custom handles" in `types-handles.md`).
+- A stub has the attribute `weak_source("Base<$T>")` (see "A class that no handle owns").
 
 ```hot
 using "Actor.h"; using "Equip.h";
@@ -184,3 +185,23 @@ A field with an intrusive stub stays the handle: `Object*` is the handle (see ab
 | `Weapon**`, `void*`, a return type or a collection element `Weapon*` | the borrowed message above |
 
 A pointer to a script class is still an error. Use the handle `Hero`.
+
+### A class that no handle owns
+
+Some native classes have no owner that a script can see. They do not derive from `RefCounted`, no `std::shared_ptr` owns them, and a stub with a handle does not fit. Examples are `ImFont` and `ConnectionCloser`. A raw pointer to such an object can dangle. The attribute `weak_source` marks the class as a weak source. The class has no `handle`, `intrusive` or `value`. The text is the base of `hot::weak_ref_traits<T>` and has `$T`. The module header writes the traits.
+
+```
+[native, weak_source("hot::registered_weak_ref<$T>")] class ImFont;
+```
+
+The runtime has `hot::registered_weak_ref<T>` and `hot::weak_registry<T>` (`hot/runtime/weak_registry.h`). The host calls `hot::weak_registry<T>::add(p)` when an object starts to live. The host calls `remove(p)` before it dies. A field `T*` is then a checked pointer. It reads null after `remove(p)`. A new object at the same address does not revive an old pointer. A raw pointer that the host did not add throws `NullReference` at the assignment.
+
+The rules:
+
+- The host must call `add` and `remove` for each object. A missing `remove` leaves a dangling pointer: the registry cannot see the death.
+- The registry is one for each class in the whole process. `add` and `remove` can run on any thread.
+- A host that reads the field with `hot::field_ptr<hot::CheckedPtr<T>>` writes the same specialization: `template <> struct hot::weak_ref_traits<T> : hot::registered_weak_ref<T> {};`
+- A different base is possible for a class with its own token: the base needs `strong_type`, `weak_type`, `to_weak`, `lock` and, for an assignment from `T*`, `from_raw` (see `checked_ptr.h`).
+- `weak_source` is an error on a stub with `handle`, `intrusive` or `value`, on `class *`, and without `$T`.
+
+A pointer field of a class with a weak source still needs the destructor rule above.

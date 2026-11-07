@@ -1,0 +1,22 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// A pointer field of a native class that no handle owns (stub attribute "weak_source").
+// The stub of Rune is a weak source: the field "target" is a hot::CheckedPtr<Rune>.
+// The host tracks each Rune with hot::weak_registry. The field reads null after the host removes it.
+using "Actor.h";
+using "Equip.h";
+
+[native, weak_source("hot::registered_weak_ref<$T>")] class Rune;
+
+class Holder : Actor {
+    Rune* target = null;
+    int ticks = 0;
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+    }
+
+    ~Holder() { target = null; }
+}

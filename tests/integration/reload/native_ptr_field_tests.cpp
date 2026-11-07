@@ -9,6 +9,7 @@
 #include "RefPtr.h"
 #include "hot/backend.h"
 #include "hot/runtime/checked_ptr.h"
+#include "hot/runtime/weak_registry.h"
 #include "support/backend_fixture.h"
 #include "support/reload_assert.h"
 #include "support/script_files.h"
@@ -26,6 +27,12 @@ namespace hot
 template <class U>
 struct weak_ref_traits<U, std::enable_if_t<std::is_same_v<U, ::RefBase> && !detail::has_weak_from_this<U>::value>>
     : hot::custom_weak_ref<U, RefPtr<U>, WeakRef<U>>
+{
+};
+// The host tracks each Rune with hot::weak_registry. This is the traits that the stub attribute
+// "weak_source" writes in the module header.
+template <>
+struct weak_ref_traits<::Rune> : registered_weak_ref<::Rune>
 {
 };
 } // namespace hot
@@ -110,6 +117,31 @@ TEST_P(BackendTests, CheckedPtrFieldOverACustomWeakHandle)
     thing = nullptr;
     EXPECT_EQ(field->get(), nullptr);
     EXPECT_THROW({ (void)(**field).Refs(); }, hot::NullReference);
+}
+
+// A stub with "weak_source" is a weak source for a class that no handle owns. The host tracks the
+// object. The field reads null after the host removes the object.
+TEST_P(BackendTests, CheckedPtrFieldOverAWeakSourceRegistry)
+{
+    hot::LoadResult v1 = backend->load(source("weak_source_ptr_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Holder"));
+    s.commit_at_frame_boundary();
+
+    auto* field = hot::field_ptr<hot::CheckedPtr<Rune>>(s.inst.shell, "target");
+    ASSERT_NE(field, nullptr);
+    EXPECT_EQ(*field, nullptr); // the initializer "null"
+    Rune rune;
+    rune.power = 4;
+    hot::weak_registry<Rune>::add(&rune);
+    *field = &rune;
+    s.world.Tick(kDt);
+    EXPECT_EQ(field->get(), &rune);
+    EXPECT_EQ((*field)->power, 4);
+    hot::weak_registry<Rune>::remove(&rune);
+    EXPECT_EQ(field->get(), nullptr);
+    EXPECT_THROW({ (void)(*field)->power; }, hot::NullReference);
 }
 
 // The expression forms on a pointer field, in both frontends. The ".hot" script and the ".cpp"

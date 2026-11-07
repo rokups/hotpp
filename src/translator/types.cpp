@@ -80,7 +80,7 @@ bool states(const ast::Stub& s, const char* attr)
     const std::string a = attr;
     return (a == "value" && s.is_value) || (a == "handle" && !s.handle.empty())
         || (a == "intrusive" && (!s.intrusive_add.empty() || !s.intrusive_release.empty()))
-        || (a == "weak_handle" && !s.weak_handle.empty()) || (a == "factory" && !s.factory.empty()) || (a == "default_handle" && !s.default_handle.empty())
+        || (a == "weak_handle" && !s.weak_handle.empty()) || (a == "weak_source" && !s.weak_source.empty()) || (a == "factory" && !s.factory.empty()) || (a == "default_handle" && !s.default_handle.empty())
         || (a == "cpp_prelude" && !s.cpp_prelude.empty()) || (a == "cpp_overrides" && !s.cpp_overrides.empty());
 }
 
@@ -127,6 +127,8 @@ std::string merge_stub(ast::Stub& m, const ast::Stub& s)
     }
     if (states(s, "weak_handle"))
         m.weak_handle = s.weak_handle;
+    if (states(s, "weak_source"))
+        m.weak_source = s.weak_source;
     if (states(s, "default_handle"))
         m.default_handle = s.default_handle;
     if (states(s, "factory"))
@@ -170,6 +172,8 @@ std::string check_rule(const ast::Stub& s)
             return "'value' is not allowed on 'class *': it breaks polymorphic types";
         if (!s.handle.empty() || !s.intrusive_add.empty() || !s.intrusive_release.empty())
             return "'class *' accepts only 'native', 'default_handle' and 'weak_handle'";
+        if (!s.weak_source.empty())
+            return "'class *' accepts only 'native', 'default_handle' and 'weak_handle'";
         if (!s.factory.empty())
             return "'class *' accepts only 'native', 'default_handle' and 'weak_handle'";
         if (!s.weak_handle.empty() && (s.default_handle.empty() || s.weak_handle.find("$T") == std::string::npos))
@@ -184,6 +188,13 @@ std::string check_rule(const ast::Stub& s)
         return "'factory' needs a handle. 'value' and 'factory' are exclusive";
     if (!s.weak_handle.empty() && (s.handle.empty() || s.handle == "$T*" || s.weak_handle.find("$T") == std::string::npos))
         return "'weak_handle' needs a 'handle' template other than \"$T*\" and a template with '$T'";
+    if (!s.weak_source.empty())
+    {
+        if (s.weak_source.find("$T") == std::string::npos)
+            return "'weak_source' needs a template with '$T'. Example: weak_source(\"hot::registered_weak_ref<$T>\")";
+        if (!s.handle.empty() || !s.intrusive_add.empty() || !s.intrusive_release.empty() || s.is_value)
+            return "'weak_source' is for a class with no 'handle', 'intrusive' or 'value': those give their own weak form";
+    }
     if (s.is_value && !s.handle.empty())
         return "'value' and 'handle' are exclusive";
     const bool intrusive = !s.intrusive_add.empty() || !s.intrusive_release.empty();
@@ -264,6 +275,7 @@ void TypeModel::add_stubs(const std::vector<ast::Stub>& stubs, Diagnostics& diag
         rule.cpp_prelude = s.cpp_prelude;
         rule.cpp_overrides = s.cpp_overrides;
         rule.factory_tpl = s.factory;
+        rule.weak_source = s.weak_source;
         if (intrusive)
         {
             rule.kind = Kind::Handle;
@@ -1097,6 +1109,12 @@ std::vector<TypeModel::StubWeakSource> TypeModel::stub_weak_sources() const
     std::vector<StubWeakSource> out;
     for (const auto& [name, rule] : exact_)
     {
+        if (!rule.weak_source.empty() && rule.kind == Kind::Raw && !script_.count(name) && name.find('<') == std::string::npos)
+        {
+            // The class of a "weak_source" stub: the traits base comes from the stub. "U" is the class.
+            out.push_back({name, replace_all(rule.weak_source, "$T", "U")});
+            continue;
+        }
         if (rule.kind != Kind::Handle || !rule.intrusive_add.empty() || rule.handle_tpl.find("$T") == std::string::npos
             || rule.handle_tpl == "$T*" || script_.count(name) || name.find('<') != std::string::npos)
             continue;

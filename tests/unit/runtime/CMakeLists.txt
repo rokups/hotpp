@@ -18,6 +18,7 @@ add_executable(unit_runtime_tests
     module_state_tests.cpp
     intrusive_handle_tests.cpp
     weak_handle_tests.cpp
+    weak_registry_tests.cpp
     shell_tests.cpp
     log_text_tests.cpp
     file_watcher_tests.cpp

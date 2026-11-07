@@ -326,7 +326,7 @@ std::string rewrite_clang_message(const std::string& message);
 TranslateResult translate(const TranslateOptions& options);
 
 // The names of the built-in attributes of a stub, a class definition and a module attribute list,
-// for example "native", "weak_handle" and "cpp_overrides". A script attribute tag is not in the list.
+// for example "native", "weak_handle", "weak_source" and "cpp_overrides". A script attribute tag is not in the list.
 const std::vector<std::string>& class_attribute_names();
 
 // The libclang arguments for the target of the parse: "-target", "--sysroot=" and, for a MinGW

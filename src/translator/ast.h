@@ -720,6 +720,9 @@ struct Stub
     // [factory("std::make_shared<$T>")]: the callee of "new $T(args)" on a native class. "$T" is the class.
     // Empty: the default of the handle.
     std::string factory;
+    // [weak_source("hot::registered_weak_ref<$T>")]: the class is a weak source for pointer fields with
+    // no handle. The text is the base of weak_ref_traits<T>. "$T" is the class. Empty: no such source.
+    std::string weak_source;
     std::string intrusive_add, intrusive_release;
     // "class : Base;": the rule is for the subclasses of Base only, and "name" is Base.
     bool derived = false;

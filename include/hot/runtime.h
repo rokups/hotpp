@@ -31,6 +31,7 @@
 #include "hot/runtime/threads.h"
 #include "hot/runtime/trace.h"
 #include "hot/runtime/value.h"
+#include "hot/runtime/weak_registry.h"
 
 #include <array> // the generated code uses std::array for the array types of a script
 #include <cassert> // the script builtin "assert" (gap G08) is the C++ assert

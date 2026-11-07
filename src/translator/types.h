@@ -32,6 +32,7 @@ struct TypeRule
     std::string weak_tpl; // the template of a "[weak]" declaration (weak_handle), else empty
     std::string owner; // the name of the stub that matched (empty for Raw)
     std::string intrusive_add, intrusive_release; // the member names of an intrusive handle, else empty
+    std::string weak_source; // the traits base of [weak_source("...")], "$T" is the class, else empty
     std::string factory_tpl; // the callee template of "new $T(args)" on a native class ([factory]), else empty
     bool native = false; // the stub has the attribute [native]
     bool self = false; // an exact stub with [self]: the rule is for this type only
@@ -247,7 +248,8 @@ public:
     std::vector<std::string> custom_handle_templates() const;
 
     // A stub class is a weak source when its exact stub has a "handle" (not intrusive) with a weak
-    // type: the "weak_handle" template, or the weak_ptr of a shared_ptr handle.
+    // type: the "weak_handle" template, or the weak_ptr of a shared_ptr handle. A stub with the
+    // attribute "weak_source" is a weak source too: it has no handle, and the attribute gives the traits base.
     struct StubWeakSource
     {
         std::string name;  // the class of the exact stub

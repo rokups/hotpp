@@ -127,6 +127,42 @@ TEST(NativePointerField, HotModuleVariableIsStoredAsCheckedPtr)
     EXPECT_TRUE(has(m.cpp, "hot::CheckedPtr<Shared> g_mesh")) << m.cpp;
 }
 
+// ---- the stub attribute weak_source
+
+const char* kMeshSource = "[native, weak_source(\"hot::registered_weak_ref<$T>\")] class Mesh;\n";
+
+TEST(NativePointerField, HotWeakSourceStubMakesThePointerAChecked)
+{
+    const hotc::TranslateResult r = hot_field(kMeshSource, "Mesh* m;\n    ~Foo() { m = null; }");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "hot::CheckedPtr<Mesh> m")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "weak_ref_traits<U, std::enable_if_t<std::is_same_v<U, ::Mesh>")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::registered_weak_ref<U>")) << r.cpp;
+}
+
+TEST(NativePointerField, HotWithoutWeakSourceTheBorrowedFindingStays)
+{
+    const hotc::TranslateResult r = hot_field("[native] class Mesh;\n", "Mesh* m;");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "a field cannot hold a borrowed pointer or reference to 'Mesh'")) << r.diagnostics;
+}
+
+TEST(NativePointerField, HotWeakSourceNeedsATemplateWithT)
+{
+    const hotc::TranslateResult r =
+        hot_field("[native, weak_source(\"hot::registered_weak_ref<Mesh>\")] class Mesh;\n", "int n;");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "'weak_source' needs a template with '$T'")) << r.diagnostics;
+}
+
+TEST(NativePointerField, HotWeakSourceAndHandleAreExclusive)
+{
+    const hotc::TranslateResult r = hot_field(
+        "[native, handle(\"std::shared_ptr<$T>\"), weak_source(\"hot::registered_weak_ref<$T>\")] class Mesh;\n", "int n;");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "'weak_source' is for a class with no 'handle'")) << r.diagnostics;
+}
+
 // ---- reference fields
 
 TEST(NativePointerField, HotReferenceFieldIsAnError)
