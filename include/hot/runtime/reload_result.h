@@ -34,6 +34,8 @@ enum class ReloadReason
     GenerationNotNewer, // the generation of a class is not newer than the active one
     Busy, // a reload is already pending, or the commit cannot run now
     MigrationFailed, // the commit could not migrate the state
+    ImportMismatch, // an import of a module is not live and not in the batch with the same interface hash
+    DependentsStale, // a live unit imports a changed interface and is not in the batch
 };
 
 // The name of a status or a reason, for a log or a test message.
@@ -64,6 +66,8 @@ inline const char* to_string(ReloadReason reason)
     case ReloadReason::GenerationNotNewer: return "GenerationNotNewer";
     case ReloadReason::Busy: return "Busy";
     case ReloadReason::MigrationFailed: return "MigrationFailed";
+    case ReloadReason::ImportMismatch: return "ImportMismatch";
+    case ReloadReason::DependentsStale: return "DependentsStale";
     }
     return "?";
 }
@@ -74,6 +78,9 @@ struct ReloadResult
     ReloadReason reason = ReloadReason::None;
     std::string error; // the text for a log; empty on success
     std::vector<std::string> classes; // the names of the classes involved
+    // The units involved. DependentsStale: the live units that must go into the batch.
+    // ImportMismatch: the units whose import failed the check.
+    std::vector<std::string> units;
 
     // True for Applied and Pending.
     explicit operator bool() const { return status == ReloadStatus::Applied || status == ReloadStatus::Pending; }

@@ -791,6 +791,9 @@ TEST_P(BackendTests, CppScriptNamespacesReload)
     hot::Instance blue = blue_entry->create();
     ASSERT_NE(red.shell, nullptr);
     ASSERT_NE(blue.shell, nullptr);
+    // The test owns the two objects. They go before the session.
+    const std::unique_ptr<Actor> red_owner(static_cast<Actor*>(red.native));
+    const std::unique_ptr<Actor> blue_owner(static_cast<Actor*>(blue.native));
 
     s.actor->Tick(kDt); // Player::Tick: score 1, points 11. Then mood 5 and thought 2 + 5.
     EXPECT_EQ(*fld<int>(shell, "points"), 11);

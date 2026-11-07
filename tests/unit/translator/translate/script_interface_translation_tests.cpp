@@ -577,9 +577,10 @@ TEST(ScriptInterfaceTranslation, InterfaceValueAsClass)
 {
     const hotc::TranslateResult r = run_user("    $Sq Go(IShape s) { $Sq q = s as $Sq; return s as $Sq; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "std::shared_ptr<Sq> q = hot::iface_as<std::shared_ptr<Sq>, Sq_Shell>(s, \"Sq\");")
-        || has(r.cpp, "q = hot::iface_as<std::shared_ptr<Sq>, Sq_Shell>(s, \"Sq\");")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "return hot::iface_as<std::shared_ptr<Sq>, Sq_Shell>(s, \"Sq\");")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "const std::shared_ptr<Sq> q = hot::handle_from_raw<std::shared_ptr<Sq>>("
+                           "hot::iface_as<std::shared_ptr<Sq>, Sq_Shell>(s, \"Sq\"));")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "return hot::handle_from_raw<std::shared_ptr<Sq>>("
+                           "hot::iface_as<std::shared_ptr<Sq>, Sq_Shell>(s, \"Sq\"));")) << r.cpp;
 }
 
 TEST(ScriptInterfaceTranslation, AsInterfaceKeepsTheTypeForACall)

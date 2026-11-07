@@ -32,7 +32,8 @@ struct PendingClass
     MigrationPlan plan;
 };
 
-struct Loader::Pending
+// One module of a Pending: one unit.
+struct PendingUnit
 {
     Module module; // keeps the code alive; released with the Pending when the reload fails
     Registry staged;
@@ -42,6 +43,12 @@ struct Loader::Pending
     bool have_core = false;
     Module core;
     Registry core_reg;
+};
+
+// A staged reload: one or more units that one commit makes live.
+struct Loader::Pending
+{
+    std::vector<PendingUnit> units;
 };
 
 namespace
@@ -203,9 +210,21 @@ void Loader::restore_aot_records()
             *e->record = saved;
 }
 
+namespace
+{
+// The loader that the resolvers of the cross-module access use (install_resolvers).
+std::atomic<Loader*> g_link_loader{nullptr};
+} // namespace
+
 Loader::~Loader()
 {
     set_sync_mode(SyncMode::StopTheWorld); // the mode is global; the next loader starts clean
+    Loader* self = this;
+    if (g_link_loader.compare_exchange_strong(self, nullptr))
+    { // the records and the tables of this loader go now
+        detail::set_class_resolver(nullptr);
+        detail::set_unit_resolver(nullptr);
+    }
     restore_aot_records();
     for (auto& [unit, mb] : mod_blocks_)
     { // the code of the field destroyers is still loaded: "gens_" goes later
@@ -285,6 +304,11 @@ bool Loader::reset(std::string& error)
     iface_slots_.clear(); // the records go with "registry_" below
     iface_names_.clear();
     record_gen_.clear();
+    links_.clear();
+    old_fns_.clear();
+    if (g_link_loader.load() == this)
+        detail::set_class_resolver(&resolve_class_link); // clears the cache of class_ref
+    ++link_epoch;
     registry_ = Registry{}; // the records point into the code that unloads next
     gens_.clear(); // unloads the libraries of the generations
     cores_.clear(); // after "gens_", as in the destructor
@@ -366,6 +390,104 @@ ReloadResult Loader::load(Module module)
     return load_unit(std::move(module));
 }
 
+ReloadResult Loader::load(std::vector<Module> modules)
+{
+    if (modules.empty())
+        return failed(ReloadReason::BadModule, "the batch has no module");
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!gens_.empty())
+            return failed(ReloadReason::BadModule, "the loader already has a generation: call reset first");
+    }
+    std::map<std::string, size_t> by_unit;
+    for (size_t i = 0; i < modules.size(); ++i)
+        if (!by_unit.emplace(modules[i].unit, i).second)
+            return failed(ReloadReason::BadModule, "the batch has two modules of unit '" + modules[i].unit + "'");
+    for (const Module& m : modules)
+        for (const auto& [unit, hash] : m.imports)
+        {
+            const auto it = by_unit.find(unit);
+            if (it == by_unit.end() || modules[it->second].iface_hash != hash)
+            {
+                ReloadResult r = failed(ReloadReason::ImportMismatch,
+                    "unit '" + m.unit + "' imports '" + unit + "', which "
+                        + (it == by_unit.end() ? "is not in the batch" : "has another interface hash"));
+                r.units = {m.unit};
+                return r;
+            }
+        }
+    // An imported unit loads before its importer. A cycle keeps the order of the batch.
+    std::vector<size_t> order;
+    std::vector<int> mark(modules.size(), 0); // 0: new, 1: on the path, 2: done
+    const std::function<void(size_t)> visit = [&](size_t i)
+    {
+        if (mark[i] != 0)
+            return;
+        mark[i] = 1;
+        for (const auto& [unit, hash] : modules[i].imports)
+            visit(by_unit.at(unit));
+        mark[i] = 2;
+        order.push_back(i);
+    };
+    for (size_t i = 0; i < modules.size(); ++i)
+        visit(i);
+    for (size_t i : order)
+    {
+        const std::string unit = modules[i].unit;
+        ReloadResult r = load_unit(std::move(modules[i]));
+        if (!r)
+        {
+            std::string ignored;
+            reset(ignored); // no object exists yet: the loader is empty again
+            r.error = "unit '" + unit + "': " + r.error;
+            return r;
+        }
+    }
+    return make_result(ReloadStatus::Applied, ReloadReason::None);
+}
+
+void Loader::install_resolvers()
+{
+    g_link_loader.store(this);
+    detail::set_class_resolver(&resolve_class_link); // clears the cache of class_ref
+    detail::set_unit_resolver(&resolve_unit_link);
+}
+
+void Loader::set_link(const Module& module, const Registry& code)
+{
+    UnitLink& link = links_[module.unit];
+    link.iface_hash = module.iface_hash;
+    link.imports = module.imports;
+    if (link.fns)
+        old_fns_.push_back(std::move(link.fns));
+    link.fns = std::make_unique<FnTable>(); // a new id
+    link.fns->entries = code.fn_table().entries;
+}
+
+ClassRecord* Loader::resolve_class_link(const char* name)
+{
+    const Loader* l = g_link_loader.load();
+    const ClassEntry* e = l ? l->registry_.find(name) : nullptr;
+    return e ? e->record : nullptr;
+}
+
+bool Loader::resolve_unit_link(const char* name, UnitInfo& out)
+{
+    const Loader* l = g_link_loader.load();
+    if (!l)
+        return false;
+    const auto it = l->links_.find(name);
+    if (it == l->links_.end())
+        return false;
+    out.fns = it->second.fns.get();
+    if (const auto mb = l->mod_blocks_.find(name); mb != l->mod_blocks_.end())
+    {
+        out.layout = mb->second.layout;
+        out.block = mb->second.block;
+    }
+    return true;
+}
+
 ReloadResult Loader::load_aot(const AotTable& table)
 {
     {
@@ -433,13 +555,23 @@ ReloadResult Loader::load_unit(Module module, Registry* code_out)
         if (const auto u = unit_of_.find(name); u != unit_of_.end())
             return failed(ReloadReason::BadModule,
                 "class " + name + " is in two units ('" + u->second + "' and '" + module.unit + "')", {name});
+    if (links_.count(module.unit))
+        return failed(ReloadReason::BadModule, "unit '" + module.unit + "' is loaded already");
+    // An initializer of a module variable can use another unit: the links come first.
+    install_resolvers();
+    set_link(module, code);
     if (const ModuleStateInfo& ms = code.module_state(); ms.layout)
     {
-        if (mod_blocks_.count(module.unit))
-            return failed(ReloadReason::BadModule, "the loader has a module state block already");
         std::string error;
-        if (!make_module_block(module.unit, ms, error))
+        if (mod_blocks_.count(module.unit))
+            error = "the loader has a module state block already";
+        else
+            make_module_block(module.unit, ms, error);
+        if (!error.empty())
+        {
+            links_.erase(module.unit);
             return failed(ReloadReason::BadModule, std::move(error));
+        }
     }
     const Registry& canon = have_core ? core_reg : code;
     for (const auto& [name, e] : canon.entries())
@@ -633,6 +765,8 @@ unsigned Loader::frame_boundary()
         ++unloaded;
     }
     ++frame_;
+    if (unloaded != 0)
+        ++link_epoch; // a new layout can get the address of an unloaded layout
     return unloaded;
 }
 
@@ -824,7 +958,27 @@ ReloadResult Loader::request_reload(LoadResult built)
     return request_reload(std::move(*built.module));
 }
 
+ReloadResult Loader::request_reload(std::vector<LoadResult> built)
+{
+    std::vector<Module> modules;
+    modules.reserve(built.size());
+    for (LoadResult& r : built)
+    {
+        if (!r.module)
+            return request_reload(std::move(r)); // the mapping of a backend failure
+        modules.push_back(std::move(*r.module));
+    }
+    return request_reload(std::move(modules));
+}
+
 ReloadResult Loader::request_reload(Module module)
+{
+    std::vector<Module> modules;
+    modules.push_back(std::move(module));
+    return request_reload(std::move(modules));
+}
+
+ReloadResult Loader::request_reload(std::vector<Module> modules)
 {
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -833,35 +987,45 @@ ReloadResult Loader::request_reload(Module module)
         if (pending_)
             return failed(ReloadReason::Busy, "a reload is already pending");
     }
-    if (!module.register_fn)
-        return failed(ReloadReason::BadModule, "the module has no script_register function");
+    if (modules.empty())
+        return failed(ReloadReason::BadModule, "the batch has no module");
     auto p = std::make_unique<Pending>();
-    p->module = std::move(module);
-    try
+    p->units.resize(modules.size());
+    for (size_t i = 0; i < modules.size(); ++i)
     {
-        p->module.register_fn(p->staged);
-    }
-    catch (...)
-    {
-        return failed(ReloadReason::BadModule, "script_register threw an exception");
-    }
-    // A generation that adds a class or a thunk gets a core instance (module.h). Only a commit
-    // changes "registry_", and a commit needs "pending_". The check of "pending_" below
-    // rejects this request when another request was faster.
-    bool adds = false;
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        for (const auto& [name, e] : p->staged.entries())
+        PendingUnit& u = p->units[i];
+        if (!modules[i].register_fn)
+            return failed(ReloadReason::BadModule, "the module has no script_register function");
+        u.module = std::move(modules[i]);
+        try
         {
-            const ClassEntry* ce = registry_.find(name);
-            adds = adds || !ce || has_new_ctor_key(ce->record, e.record);
+            u.module.register_fn(u.staged);
         }
-        for (const auto& [key, t] : p->staged.thunks())
-            adds = adds || !registry_.has_thunk(key);
+        catch (...)
+        {
+            return failed(ReloadReason::BadModule, "script_register threw an exception");
+        }
     }
-    if (adds)
-        p->have_core = open_core(p->module, p->staged, p->core, p->core_reg);
-    p->module.make_core = nullptr; // the JIT keeps a copy of the IR for it
+    for (PendingUnit& u : p->units)
+    {
+        // A generation that adds a class or a thunk gets a core instance (module.h). Only a commit
+        // changes "registry_", and a commit needs "pending_". The check of "pending_" in
+        // validate_and_stage rejects this request when another request was faster.
+        bool adds = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            for (const auto& [name, e] : u.staged.entries())
+            {
+                const ClassEntry* ce = registry_.find(name);
+                adds = adds || !ce || has_new_ctor_key(ce->record, e.record);
+            }
+            for (const auto& [key, t] : u.staged.thunks())
+                adds = adds || !registry_.has_thunk(key);
+        }
+        if (adds)
+            u.have_core = open_core(u.module, u.staged, u.core, u.core_reg);
+        u.module.make_core = nullptr; // the JIT keeps a copy of the IR for it
+    }
     return validate_and_stage(std::move(p));
 }
 
@@ -893,6 +1057,8 @@ std::string slot_lines_of(const std::string& aot, const std::set<std::string>& c
 ReloadResult Loader::revert_unit(const std::string& unit, Backend& backend)
 {
     auto p = std::make_unique<Pending>();
+    p->units.resize(1);
+    PendingUnit& pu = p->units[0];
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (aot_optimized_)
@@ -902,18 +1068,20 @@ ReloadResult Loader::revert_unit(const std::string& unit, Backend& backend)
         const auto au = aot_units_.find(unit);
         if (au == aot_units_.end())
             return failed(ReloadReason::BadModule, "unit '" + unit + "' has no AOT module to revert to");
-        p->module.register_fn = au->second.register_fn;
-        p->module.origin = "aot:" + unit + " (revert)";
-        p->module.unit = unit;
+        pu.module.register_fn = au->second.register_fn;
+        pu.module.origin = "aot:" + unit + " (revert)";
+        pu.module.unit = unit;
         std::set<std::string> classes;
         for (const auto& [name, e] : au->second.reg.entries())
             classes.insert(name);
         // The commit runs this callback. The backend gets the AOT signatures of this unit only.
-        p->module.on_accept = [&backend, lines = slot_lines_of(aot_slots_, classes)]
+        pu.module.on_accept = [&backend, lines = slot_lines_of(aot_slots_, classes)]
         { backend.revert_slots(lines); };
         // A fresh generation number: the "generation is newer" check of the validation passes.
         const uint32_t generation = active_generation + 1;
-        Registry& st = p->staged;
+        Registry& st = pu.staged;
+        for (const auto& [fn_name, fe] : au->second.reg.fn_table().entries)
+            st.add_fn(fn_name, fe.sig.c_str(), fe.fn);
         // The AOT thunks make the AOT signature the current one again. The commit sets the slot
         // keys of the AOT signatures again (see commit_pending).
         for (const auto& [key, t] : au->second.reg.thunks())
@@ -948,6 +1116,68 @@ ReloadResult Loader::revert_unit(const std::string& unit, Backend& backend)
     return validate_and_stage(std::move(p));
 }
 
+ReloadResult Loader::check_links(const Pending& p) const
+{
+    std::map<std::string, const Module*> batch;
+    std::map<std::string, std::string> owner; // a class of the batch to its unit
+    for (const PendingUnit& u : p.units)
+    {
+        if (!batch.emplace(u.module.unit, &u.module).second)
+            return failed(ReloadReason::BadModule, "the batch has two modules of unit '" + u.module.unit + "'");
+        for (const auto& [name, e] : u.staged.entries())
+            if (const auto [it, added] = owner.emplace(name, u.module.unit); !added)
+                return failed(ReloadReason::BadModule,
+                    "class " + name + " is in two units ('" + it->second + "' and '" + u.module.unit + "')", {name});
+    }
+    // An import in the batch or live must have the interface hash that the importer compiled against.
+    // An import that is not a unit is bridged: the importer has a copy of it (the load accepts it too).
+    for (const PendingUnit& u : p.units)
+        for (const auto& [unit, hash] : u.module.imports)
+        {
+            std::string why;
+            if (const auto b = batch.find(unit); b != batch.end())
+            {
+                if (b->second->iface_hash != hash)
+                    why = "the batch module of '" + unit + "' has another interface hash";
+            }
+            else if (const auto l = links_.find(unit); l == links_.end())
+                continue;
+            else if (l->second.iface_hash != hash)
+                why = "the live module of '" + unit + "' has another interface hash; add it to the batch";
+            if (!why.empty())
+            {
+                ReloadResult r = failed(ReloadReason::ImportMismatch, "unit '" + u.module.unit + "' imports '" + unit + "': " + why);
+                r.units = {u.module.unit};
+                return r;
+            }
+        }
+    // A live unit outside the batch that imports a changed interface must be in the batch.
+    std::vector<std::string> stale;
+    for (const auto& [unit, link] : links_)
+    {
+        if (batch.count(unit))
+            continue;
+        for (const auto& [dep, hash] : link.imports)
+            if (const auto b = batch.find(dep); b != batch.end() && b->second->iface_hash != hash)
+            {
+                stale.push_back(unit);
+                break;
+            }
+    }
+    if (!stale.empty())
+    {
+        std::sort(stale.begin(), stale.end());
+        std::string list;
+        for (const std::string& u : stale)
+            list += (list.empty() ? "'" : ", '") + u + "'";
+        ReloadResult r = failed(ReloadReason::DependentsStale,
+            "the live units " + list + " import a changed interface of the batch; compile them into the batch");
+        r.units = std::move(stale);
+        return r;
+    }
+    return make_result(ReloadStatus::Pending, ReloadReason::None);
+}
+
 ReloadResult Loader::validate_and_stage(std::unique_ptr<Pending> p)
 {
     // Validation. Nothing here changes a live class or a live object.
@@ -956,85 +1186,90 @@ ReloadResult Loader::validate_and_stage(std::unique_ptr<Pending> p)
     std::lock_guard<std::mutex> lock(mutex_);
     if (pending_) // another thread was faster
         return failed(ReloadReason::Busy, "a reload is already pending");
-    // A class that is missing in the new generation is removed (design 6.1): no rejection.
-    for (const auto& [name, in] : p->staged.entries())
+    if (ReloadResult links = check_links(*p); !links)
+        return links;
+    for (PendingUnit& u : p->units)
     {
-        ClassEntry* canon = registry_.find(name);
-        if (!in.record->layout)
-            return failed(ReloadReason::BadModule, "class " + name + " has no state layout", {name});
-        if (in.record->generation <= active_generation)
-            return failed(ReloadReason::GenerationNotNewer,
-                "class " + name + ": generation " + std::to_string(in.record->generation)
-                    + " is not newer than the active generation " + std::to_string(active_generation),
-                {name});
-        PendingClass pc{canon, in.record, in.create, {}};
-        if (canon)
+        // A class that is missing in the new generation is removed (design 6.1): no rejection.
+        for (const auto& [name, in] : u.staged.entries())
         {
-            if (const auto u = unit_of_.find(name); u != unit_of_.end() && u->second != p->module.unit)
-                return failed(ReloadReason::BadModule,
-                    "class " + name + " belongs to unit '" + u->second + "' and cannot move to unit '"
-                        + p->module.unit + "'",
+            ClassEntry* canon = registry_.find(name);
+            if (!in.record->layout)
+                return failed(ReloadReason::BadModule, "class " + name + " has no state layout", {name});
+            if (in.record->generation <= active_generation)
+                return failed(ReloadReason::GenerationNotNewer,
+                    "class " + name + ": generation " + std::to_string(in.record->generation)
+                        + " is not newer than the active generation " + std::to_string(active_generation),
                     {name});
-            const ClassRecord* cur = canon->record;
-            const char* b0 = cur->base_name ? cur->base_name : "";
-            const char* b1 = in.record->base_name ? in.record->base_name : "";
-            if (std::strcmp(b0, b1) != 0)
+            PendingClass pc{canon, in.record, in.create, {}};
+            if (canon)
             {
-                // "base_name" lists the native bases: the primary base, then the interface bases
-                // (design 4.4). An added or removed interface base changes the shell (5.3: RECONSTRUCT).
-                const std::string s0 = b0, s1 = b1;
-                if (s0.substr(0, s0.find(',')) == s1.substr(0, s1.find(',')))
-                    return full_reload(ReloadReason::InterfaceBasesChanged,
-                        "class " + name + ": native interface bases changed (" + s0 + " -> " + s1
-                            + "; RECONSTRUCT change)",
+                if (const auto uo = unit_of_.find(name); uo != unit_of_.end() && uo->second != u.module.unit)
+                    return failed(ReloadReason::BadModule,
+                        "class " + name + " belongs to unit '" + uo->second + "' and cannot move to unit '"
+                            + u.module.unit + "'",
+                        {name});
+                const ClassRecord* cur = canon->record;
+                const char* b0 = cur->base_name ? cur->base_name : "";
+                const char* b1 = in.record->base_name ? in.record->base_name : "";
+                if (std::strcmp(b0, b1) != 0)
+                {
+                    // "base_name" lists the native bases: the primary base, then the interface bases
+                    // (design 4.4). An added or removed interface base changes the shell (5.3: RECONSTRUCT).
+                    const std::string s0 = b0, s1 = b1;
+                    if (s0.substr(0, s0.find(',')) == s1.substr(0, s1.find(',')))
+                        return full_reload(ReloadReason::InterfaceBasesChanged,
+                            "class " + name + ": native interface bases changed (" + s0 + " -> " + s1
+                                + "; RECONSTRUCT change)",
+                            name);
+                    return full_reload(ReloadReason::NativeBaseChanged,
+                        "class " + name + ": base class changed (" + s0 + " -> " + s1 + ")", name);
+                }
+                // A change of the script parent changes the shell hierarchy (design 5.3: RECONSTRUCT).
+                const char* p0 = cur->super ? cur->super->name : "";
+                const char* p1 = in.record->super ? in.record->super->name : "";
+                if (std::strcmp(p0, p1) != 0)
+                    return full_reload(ReloadReason::ScriptParentChanged,
+                        "class " + name + ": script parent class changed (" + (*p0 ? p0 : "none") + " -> "
+                            + (*p1 ? p1 : "none") + "; RECONSTRUCT change)",
                         name);
-                return full_reload(ReloadReason::NativeBaseChanged,
-                    "class " + name + ": base class changed (" + s0 + " -> " + s1 + ")", name);
+                if (cur->shell_hash != in.record->shell_hash)
+                {
+                    std::string error;
+                    if (!cur->shares_this && in.record->shares_this)
+                        error = "class " + name +
+                                ": the new generation uses 'this' as a handle (or adds a script child) for the "
+                                "first time. The shell then derives from std::enable_shared_from_this and its "
+                                "layout changes (RECONSTRUCT change). Restart the program, or use 'this' as a "
+                                "handle in generation 1";
+                    else if (cur->shares_this && !in.record->shares_this)
+                        error = "class " + name +
+                                ": the shell of the new generation has no std::enable_shared_from_this, so its "
+                                "layout changes (RECONSTRUCT change). Restart the program";
+                    else
+                        error = "class " + name + ": shell layout hash differs (RECONSTRUCT change)";
+                    return full_reload(ReloadReason::ShellLayoutChanged, std::move(error), name);
+                }
+                if (in.record->slot_count < cur->slot_count)
+                    return full_reload(
+                        ReloadReason::SlotsRemoved, "class " + name + ": the new generation has fewer slots", name);
+                // A type change does not reject the reload (design 4.7): the plan converts the
+                // field or uses the default value. The commit logs the warnings of the plan.
+                pc.plan = build_plan(*cur->layout, *in.record->layout);
             }
-            // A change of the script parent changes the shell hierarchy (design 5.3: RECONSTRUCT).
-            const char* p0 = cur->super ? cur->super->name : "";
-            const char* p1 = in.record->super ? in.record->super->name : "";
-            if (std::strcmp(p0, p1) != 0)
-                return full_reload(ReloadReason::ScriptParentChanged,
-                    "class " + name + ": script parent class changed (" + (*p0 ? p0 : "none") + " -> "
-                        + (*p1 ? p1 : "none") + "; RECONSTRUCT change)",
-                    name);
-            if (cur->shell_hash != in.record->shell_hash)
-            {
-                std::string error;
-                if (!cur->shares_this && in.record->shares_this)
-                    error = "class " + name +
-                            ": the new generation uses 'this' as a handle (or adds a script child) for the "
-                            "first time. The shell then derives from std::enable_shared_from_this and its "
-                            "layout changes (RECONSTRUCT change). Restart the program, or use 'this' as a "
-                            "handle in generation 1";
-                else if (cur->shares_this && !in.record->shares_this)
-                    error = "class " + name +
-                            ": the shell of the new generation has no std::enable_shared_from_this, so its "
-                            "layout changes (RECONSTRUCT change). Restart the program";
-                else
-                    error = "class " + name + ": shell layout hash differs (RECONSTRUCT change)";
-                return full_reload(ReloadReason::ShellLayoutChanged, std::move(error), name);
-            }
-            if (in.record->slot_count < cur->slot_count)
-                return full_reload(
-                    ReloadReason::SlotsRemoved, "class " + name + ": the new generation has fewer slots", name);
-            // A type change does not reject the reload (design 4.7): the plan converts the
-            // field or uses the default value. The commit logs the warnings of the plan.
-            pc.plan = build_plan(*cur->layout, *in.record->layout);
+            u.classes.push_back(std::move(pc));
         }
-        p->classes.push_back(std::move(pc));
+        // The module state block migrates like the fields of a class (design 5.3). A type change
+        // never rejects the reload. Without a block in the old generation, all variables are new.
+        if (const ModuleStateInfo& nms = u.staged.module_state(); nms.layout)
+        {
+            if (!nms.slot)
+                return failed(ReloadReason::BadModule, "the module state has no slot");
+            const auto mb = mod_blocks_.find(u.module.unit);
+            u.mod_plan = build_plan(mb != mod_blocks_.end() ? *mb->second.layout : kEmptyLayout, *nms.layout);
+        }
     }
-    // The module state block migrates like the fields of a class (design 5.3). A type change
-    // never rejects the reload. Without a block in the old generation, all variables are new.
-    if (const ModuleStateInfo& nms = p->staged.module_state(); nms.layout)
-    {
-        if (!nms.slot)
-            return failed(ReloadReason::BadModule, "the module state has no slot");
-        const auto mb = mod_blocks_.find(p->module.unit);
-        p->mod_plan = build_plan(mb != mod_blocks_.end() ? *mb->second.layout : kEmptyLayout, *nms.layout);
-    }
-    // The module is valid. The callback "on_accept" runs when the commit makes the generation live.
+    // The modules are valid. The callback "on_accept" runs when the commit makes the generation live.
     pending_ = std::move(p);
     return make_result(ReloadStatus::Pending, ReloadReason::None);
 }
@@ -1093,21 +1328,47 @@ ReloadResult Loader::commit_locked()
         char* new_block;
         const PendingClass* pc;
     };
+    // The module block of one unit of the batch: the old block (if any) and the new block.
+    struct BlockWork
+    {
+        PendingUnit* u;
+        bool had_old = false;
+        ModBlock old;
+        char* new_mod = nullptr;
+    };
     std::vector<Work> work;
-    const ModuleStateInfo& nms = P.staged.module_state();
-    char* new_mod = nullptr;
-    const std::string& unit = P.module.unit;
-    const auto old_mb = mod_blocks_.find(unit); // the block of the unit before this commit
+    std::vector<BlockWork> blocks;
+    for (PendingUnit& u : P.units)
+    {
+        BlockWork bw;
+        bw.u = &u;
+        if (const auto mb = mod_blocks_.find(u.module.unit); mb != mod_blocks_.end())
+            bw.had_old = true, bw.old = mb->second;
+        blocks.push_back(bw);
+    }
+    const auto free_new = [&]
+    {
+        for (Work& w : work)
+            aligned_free(w.new_block);
+        for (BlockWork& bw : blocks)
+        {
+            if (bw.new_mod && bw.u->staged.module_state().slot)
+                *bw.u->staged.module_state().slot = nullptr;
+            aligned_free(bw.new_mod);
+            bw.new_mod = nullptr;
+        }
+    };
 
     // Step 1: allocate all new blocks. A failure here changes nothing.
     try
     {
-        if (nms.layout)
-        {
-            new_mod = alloc_state(nms.layout);
-            if (!new_mod)
-                throw std::bad_alloc();
-        }
+        for (BlockWork& bw : blocks)
+            if (const ModuleStateInfo& nms = bw.u->staged.module_state(); nms.layout)
+            {
+                bw.new_mod = alloc_state(nms.layout);
+                if (!bw.new_mod)
+                    throw std::bad_alloc();
+            }
         // The pass holds the lock, but the migration after it does not (it runs script code). So
         // no thread creates or destroys an object while commit_pending runs (runtime_internal.h).
         const LiveObjects::Guard guard(g_live);
@@ -1115,9 +1376,10 @@ ReloadResult Loader::commit_locked()
         for (const auto& [s, creator] : g_live)
         {
             const PendingClass* pc = nullptr;
-            for (const PendingClass& c : P.classes)
-                if (c.canon && c.canon->record == s->cls)
-                    pc = &c;
+            for (const PendingUnit& u : P.units)
+                for (const PendingClass& c : u.classes)
+                    if (c.canon && c.canon->record == s->cls)
+                        pc = &c;
             if (!pc)
                 continue;
             char* b = alloc_state(pc->incoming->layout);
@@ -1129,18 +1391,19 @@ ReloadResult Loader::commit_locked()
     }
     catch (...)
     {
-        for (Work& w : work)
-            aligned_free(w.new_block);
-        aligned_free(new_mod);
+        free_new();
         pending_.reset();
         return failed(ReloadReason::MigrationFailed, "out of memory in commit step 1; the old generation continues");
     }
 
-    for (const std::string& w : P.mod_plan.warnings)
-        std::fprintf(stderr, "[script] WARNING: %s\n", w.c_str());
-    for (const PendingClass& pc : P.classes)
-        for (const std::string& w : pc.plan.warnings)
+    for (const PendingUnit& u : P.units)
+    {
+        for (const std::string& w : u.mod_plan.warnings)
             std::fprintf(stderr, "[script] WARNING: %s\n", w.c_str());
+        for (const PendingClass& pc : u.classes)
+            for (const std::string& w : pc.plan.warnings)
+                std::fprintf(stderr, "[script] WARNING: %s\n", w.c_str());
+    }
 
     // Step 2: migrate. A throwing move constructor (or initializer) is fatal (design 6.6): the
     // runtime cannot undo a partial move of native objects. The runtime requests a restart.
@@ -1150,25 +1413,20 @@ ReloadResult Loader::commit_locked()
     // a failed migration. The old object keeps the field, but its value is empty.
     try
     {
-        // The module block comes first. A field initializer of a class can read a module variable.
-        if (nms.layout)
-        {
-            *nms.slot = new_mod;
-            migrate_block(old_mb != mod_blocks_.end() ? *old_mb->second.layout : kEmptyLayout, *nms.layout, P.mod_plan,
-                old_mb != mod_blocks_.end() ? old_mb->second.block : nullptr, new_mod);
-        }
+        // The module blocks come first. A field initializer of a class can read a module variable.
+        for (BlockWork& bw : blocks)
+            if (const ModuleStateInfo& nms = bw.u->staged.module_state(); nms.layout)
+            {
+                *nms.slot = bw.new_mod;
+                migrate_block(bw.had_old ? *bw.old.layout : kEmptyLayout, *nms.layout, bw.u->mod_plan,
+                    bw.had_old ? bw.old.block : nullptr, bw.new_mod);
+            }
         for (Work& w : work)
             migrate_block(*w.old_layout, *w.pc->incoming->layout, w.pc->plan, w.old_block, w.new_block);
     }
     catch (...)
     {
-        for (Work& w : work)
-            aligned_free(w.new_block);
-        if (nms.layout)
-        {
-            *nms.slot = nullptr;
-            aligned_free(new_mod);
-        }
+        free_new();
         pending_.reset();
         const std::string error = "FATAL: exception during state migration; a restart is needed";
         request_restart(error.c_str());
@@ -1177,115 +1435,129 @@ ReloadResult Loader::commit_locked()
     for (Work& w : work)
         w.obj->state = w.new_block;
 
-    // Step 4: swap the dispatch table and the layout. Add the new classes.
-    for (const PendingClass& pc : P.classes)
-    {
-        if (pc.canon)
+    // Step 4: swap the dispatch tables and the layouts. Add the new classes.
+    for (PendingUnit& u : P.units)
+        for (const PendingClass& pc : u.classes)
         {
-            ClassRecord* r = pc.canon->record;
-            // A new constructor key: the "construct" of the new core becomes canonical. The shell
-            // of the core uses the canonical record (init_state).
-            if (P.have_core && has_new_ctor_key(r, pc.incoming))
+            if (pc.canon)
             {
-                if (const ClassEntry* ce = P.core_reg.find(pc.incoming->name))
+                ClassRecord* r = pc.canon->record;
+                // A new constructor key: the "construct" of the new core becomes canonical. The shell
+                // of the core uses the canonical record (init_state).
+                if (u.have_core && has_new_ctor_key(r, pc.incoming))
                 {
-                    r->construct = ce->record->construct;
-                    r->construct_key = ce->record->construct_key;
-                    r->construct_keys = ce->record->construct_keys;
-                    ce->record->canonical = r;
+                    if (const ClassEntry* ce = u.core_reg.find(pc.incoming->name))
+                    {
+                        r->construct = ce->record->construct;
+                        r->construct_key = ce->record->construct_key;
+                        r->construct_keys = ce->record->construct_keys;
+                        ce->record->canonical = r;
+                    }
                 }
+                adopt(r, pc.incoming);
+                adopt_ifaces(r, pc.incoming);
+                removed_.erase(r->name); // the class is back; the table above replaced the handler table
             }
-            adopt(r, pc.incoming);
-            adopt_ifaces(r, pc.incoming);
-            removed_.erase(r->name); // the class is back; the table above replaced the handler table
+            else if (u.have_core)
+            {
+                // The record, the factory and the shell of the core module are canonical.
+                const ClassEntry* ce = u.core_reg.find(pc.incoming->name);
+                registry_.add(ce->record, ce->create);
+                adopt(ce->record, pc.incoming);
+                adopt_ifaces(ce->record, pc.incoming);
+            }
+            else
+            {
+                registry_.add(pc.incoming, pc.create);
+                adopt_ifaces(pc.incoming, pc.incoming);
+            }
+            if (!pc.canon)
+                unit_of_.emplace(pc.incoming->name, u.module.unit);
         }
-        else if (P.have_core)
-        {
-            // The record, the factory and the shell of the core module are canonical.
-            const ClassEntry* ce = P.core_reg.find(pc.incoming->name);
-            registry_.add(ce->record, ce->create);
-            adopt(ce->record, pc.incoming);
-            adopt_ifaces(ce->record, pc.incoming);
-        }
-        else
-        {
-            registry_.add(pc.incoming, pc.create);
-            adopt_ifaces(pc.incoming, pc.incoming);
-        }
-        if (!pc.canon)
-            unit_of_.emplace(pc.incoming->name, unit);
-    }
     // A class that the new generation does not have is removed (design 6.1). The record stays
     // in the registry. Each slot points to the handler. The objects keep their state block.
-    for (auto& [name, entry] : registry_.entries())
+    const auto in_batch = [&](const std::string& name)
     {
-        if (P.staged.find(name) || removed_.count(name))
-            continue;
-        if (!unit.empty()) // a named unit removes only its own classes
+        for (const PendingUnit& u : P.units)
+            if (u.staged.find(name))
+                return true;
+        return false;
+    };
+    for (const PendingUnit& u : P.units)
+        for (auto& [name, entry] : registry_.entries())
         {
-            const auto u = unit_of_.find(name);
-            if (u == unit_of_.end() || u->second != unit)
+            if (in_batch(name) || removed_.count(name))
                 continue;
+            if (!u.module.unit.empty()) // a named unit removes only its own classes
+            {
+                const auto un = unit_of_.find(name);
+                if (un == unit_of_.end() || un->second != u.module.unit)
+                    continue;
+            }
+            ClassRecord* r = entry.record;
+            std::vector<SlotFn>& table = removed_[name];
+            table.assign(r->slot_count, reinterpret_cast<SlotFn>(&StateBase::__removed));
+            r->slots = table.data();
+            r->on_reload = nullptr;
+            r->dtor = nullptr; // the script destructor belongs to a source that does not exist now
+            r->new_default = nullptr; // the same: the factory makes an object without a constructor
+            r->attributes = nullptr; // the text is in the module of a source that does not exist now
+            r->slot_names = nullptr; // the same
+            r->ctors = nullptr; // the same: only the factory makes an object of a removed class
+            r->iface_rows = nullptr; // the rows are in the module; the tables of the loader stay
+            r->ifaces = session_ifaces(r->ifaces); // the module of the record can unload
+            size_t live = 0;
+            {
+                const LiveObjects::Guard guard(g_live);
+                for (const auto& [s, creator] : g_live)
+                    live += s->cls == r;
+            }
+            std::fprintf(stderr,
+                "[script] WARNING: class %s is removed from the source; %zu live object(s) keep "
+                "their state, and calls of its methods are ignored\n",
+                name.c_str(), live);
         }
-        ClassRecord* r = entry.record;
-        std::vector<SlotFn>& table = removed_[name];
-        table.assign(r->slot_count, reinterpret_cast<SlotFn>(&StateBase::__removed));
-        r->slots = table.data();
-        r->on_reload = nullptr;
-        r->dtor = nullptr; // the script destructor belongs to a source that does not exist now
-        r->new_default = nullptr; // the same: the factory makes an object without a constructor
-        r->attributes = nullptr; // the text is in the module of a source that does not exist now
-        r->slot_names = nullptr; // the same
-        r->ctors = nullptr; // the same: only the factory makes an object of a removed class
-        r->iface_rows = nullptr; // the rows are in the module; the tables of the loader stay
-        r->ifaces = session_ifaces(r->ifaces); // the module of the record can unload
-        size_t live = 0;
-        {
-            const LiveObjects::Guard guard(g_live);
-            for (const auto& [s, creator] : g_live)
-                live += s->cls == r;
-        }
-        std::fprintf(stderr,
-            "[script] WARNING: class %s is removed from the source; %zu live object(s) keep "
-            "their state, and calls of its methods are ignored\n",
-            name.c_str(), live);
-    }
     // A new class with a script parent: "super" points to the record of the parent in the
     // registry, so a walk of the records sees the canonical records (design 4.5).
-    for (const PendingClass& pc : P.classes)
-    {
-        if (pc.canon)
-            continue;
-        ClassRecord* r = registry_.find(pc.incoming->name)->record;
-        if (!r->super)
-            continue;
-        if (ClassEntry* pe = registry_.find(r->super->name))
-            r->super = pe->record;
-    }
-    // With a core, the new thunks come from the core and the generation holds no entry.
-    uint32_t new_refs = 0;
-    for (const PendingClass& pc : P.classes)
-        if (!pc.canon && !P.have_core)
-            ++new_refs;
-    // A revert gives the AOT code back. The AOT thunks carry the signature keys of the AOT code.
-    // The loop below sets these keys again, so a delegate of an override signature detaches.
-    for (const auto& [key, t] : (P.have_core ? P.core_reg : P.staged).thunks())
-    {
-        if (!registry_.has_thunk(key) && !P.have_core)
-            ++new_refs;
-        // A thunk with a signature key (design 5.3): the signature of the function changed. The
-        // slot gets the key, so a delegate on a thunk of another signature detaches.
-        if (!t.sig.empty())
+    for (const PendingUnit& u : P.units)
+        for (const PendingClass& pc : u.classes)
         {
-            const std::string prev = registry_.current_thunk_key(t.name);
-            if (!prev.empty() && prev != key)
-                std::fprintf(stderr,
-                    "[script] WARNING: the signature of %s changed; native delegates bound to the "
-                    "old signature detach (a call logs once and does not run)\n",
-                    t.name.c_str());
-            set_slot_key(t);
+            if (pc.canon)
+                continue;
+            ClassRecord* r = registry_.find(pc.incoming->name)->record;
+            if (!r->super)
+                continue;
+            if (ClassEntry* pe = registry_.find(r->super->name))
+                r->super = pe->record;
         }
-        registry_.add_thunk(t);
+    // With a core, the new thunks come from the core and the generation holds no entry.
+    std::vector<uint32_t> new_refs(P.units.size(), 0);
+    for (size_t i = 0; i < P.units.size(); ++i)
+    {
+        PendingUnit& u = P.units[i];
+        for (const PendingClass& pc : u.classes)
+            if (!pc.canon && !u.have_core)
+                ++new_refs[i];
+        // A revert gives the AOT code back. The AOT thunks carry the signature keys of the AOT code.
+        // The loop below sets these keys again, so a delegate of an override signature detaches.
+        for (const auto& [key, t] : (u.have_core ? u.core_reg : u.staged).thunks())
+        {
+            if (!registry_.has_thunk(key) && !u.have_core)
+                ++new_refs[i];
+            // A thunk with a signature key (design 5.3): the signature of the function changed. The
+            // slot gets the key, so a delegate on a thunk of another signature detaches.
+            if (!t.sig.empty())
+            {
+                const std::string prev = registry_.current_thunk_key(t.name);
+                if (!prev.empty() && prev != key)
+                    std::fprintf(stderr,
+                        "[script] WARNING: the signature of %s changed; native delegates bound to the "
+                        "old signature detach (a call logs once and does not run)\n",
+                        t.name.c_str());
+                set_slot_key(t);
+            }
+            registry_.add_thunk(t);
+        }
     }
     // The slot count can grow. The key table of each class follows it.
     for (auto& [cls, keys] : slot_keys_)
@@ -1293,12 +1565,28 @@ ReloadResult Loader::commit_locked()
             if (keys.size() < ce->record->slot_count)
                 keys.resize(ce->record->slot_count, nullptr);
     refresh_slot_keys();
-    if (P.have_core)
-        cores_.push_back(std::move(P.core));
+    for (PendingUnit& u : P.units)
+        if (u.have_core)
+            cores_.push_back(std::move(u.core));
 
-    // Step 5: switch the generation.
-    active_generation = P.staged.max_generation();
-    switch_live(unit, P.staged, P.have_core ? &P.core_reg : nullptr);
+    // Step 5: switch the generation and the links. The importers of a unit find the new module
+    // block and the new function table by name. A new link epoch makes each access site resolve
+    // again (FieldSite).
+    uint32_t gen = 0;
+    for (const PendingUnit& u : P.units)
+        gen = std::max(gen, u.staged.max_generation());
+    active_generation = gen;
+    for (BlockWork& bw : blocks)
+    {
+        const std::string& unit = bw.u->module.unit;
+        if (const ModuleStateInfo& nms = bw.u->staged.module_state(); nms.layout)
+            mod_blocks_[unit] = {nms.layout, nms.slot, bw.new_mod};
+        else
+            mod_blocks_.erase(unit);
+        switch_live(unit, bw.u->staged, bw.u->have_core ? &bw.u->core_reg : nullptr);
+        set_link(bw.u->module, bw.u->staged);
+    }
+    ++link_epoch;
 
     // Step 5b: run the onReload hooks (design 4.7, 6.6). They run in the new generation. The
     // old blocks are still alive. A hook that throws is logged. The object stays valid.
@@ -1326,34 +1614,43 @@ ReloadResult Loader::commit_locked()
         destroy_fields(w.old_layout, w.old_block);
         aligned_free(w.old_block);
     }
-    if (old_mb != mod_blocks_.end())
+    for (BlockWork& bw : blocks)
     {
-        *old_mb->second.slot = nullptr; // the old generation must not read the freed block
-        destroy_fields(old_mb->second.layout, old_mb->second.block);
-        aligned_free(old_mb->second.block);
-        mod_blocks_.erase(old_mb);
+        if (!bw.had_old)
+            continue;
+        // The old generation must not read the freed block. A slot that the new module shares
+        // (an AOT revert) keeps the new block.
+        if (bw.old.slot && bw.old.slot != bw.u->staged.module_state().slot)
+            *bw.old.slot = nullptr;
+        destroy_fields(bw.old.layout, bw.old.block);
+        aligned_free(bw.old.block);
     }
-    if (nms.layout)
-        mod_blocks_[unit] = {nms.layout, nms.slot, new_mod};
 
-    std::fprintf(stderr, "[script] reload committed: %s, generation %u, %zu objects migrated\n",
-        P.module.origin.c_str(), active_generation, work.size());
-    // The loader owns the module. The old generations of the unit are retired now. The live
+    // The loader owns the modules. The old generations of the units are retired now. The live
     // module of another unit keeps its code: its functions are still in use.
-    for (Gen& g : gens_)
-        if (g.state == GenState::Active && g.module.unit == unit)
-        {
-            g.state = GenState::Retired;
-            g.retired_frame = frame_;
-        }
-    if (!P.have_core)
-        note_records(P.staged, active_generation);
-    const std::function<void()> on_accept = P.module.on_accept;
-    add_generation(std::move(P.module), active_generation);
-    gens_.back().registry_refs = new_refs;
+    std::vector<std::function<void()>> accepts;
+    for (size_t i = 0; i < P.units.size(); ++i)
+    {
+        PendingUnit& u = P.units[i];
+        const std::string unit = u.module.unit;
+        std::fprintf(stderr, "[script] reload committed: %s, generation %u, %zu objects migrated\n",
+            u.module.origin.c_str(), active_generation, work.size());
+        for (Gen& g : gens_)
+            if (g.state == GenState::Active && g.module.unit == unit)
+            {
+                g.state = GenState::Retired;
+                g.retired_frame = frame_;
+            }
+        if (!u.have_core)
+            note_records(u.staged, active_generation);
+        if (u.module.on_accept)
+            accepts.push_back(u.module.on_accept);
+        add_generation(std::move(u.module), active_generation);
+        gens_.back().registry_refs = new_refs[i];
+    }
     pending_.reset();
-    // The generation is live. The callback runs under the loader mutex: it must not call the Loader.
-    if (on_accept)
+    // The generation is live. The callbacks run under the loader mutex: they must not call the Loader.
+    for (const std::function<void()>& on_accept : accepts)
         on_accept();
     return make_result(ReloadStatus::Applied, ReloadReason::None);
 }

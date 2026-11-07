@@ -20,6 +20,11 @@ namespace hot
 
 // The generation that is live now. A generation function checks it.
 HOT_EXPORT extern uint32_t active_generation;
+// The link epoch. The Loader increments it at each commit, at each unload and at each reset. A
+// cache of a cross-module access site (FieldSite, state.h) keeps the epoch of its last resolve. A
+// different epoch makes the site resolve again, so a new layout at the address of an unloaded
+// layout cannot reuse a stale offset.
+HOT_EXPORT extern uint32_t link_epoch;
 
 // ---------------------------------------------------------------- synchronization modes
 // The two modes of design 6.3. Loader::set_sync_mode selects one at run time.

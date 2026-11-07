@@ -484,11 +484,13 @@ template <class T> inline T* field_ptr(ShellCore* s, const char* name)
 
 // The cache of one access site of a field of another unit (field, mod_var). "layout" is the layout
 // that "offset" belongs to. The site is a static variable of the generated code. It follows the
-// thread rule of script code: only one script thread at a time runs a site (threads.h).
+// thread rule of script code: only one script thread at a time runs a site (threads.h). "epoch" is
+// the link epoch of the last resolve (threads.h).
 struct FieldSite
 {
     const StateLayout* layout = nullptr;
     uint32_t offset = 0;
+    uint32_t epoch = 0;
 };
 
 namespace detail
@@ -508,10 +510,11 @@ template <class T> HOT_HIDDEN T& field(ShellBase* s, FieldSite& site, const char
     if (!s)
         detail::throw_null_reference((std::string("the handle is null: expected a field '") + name + "'").c_str());
     const ClassRecord* cls = s->cls;
-    if (HOT_UNLIKELY(site.layout != cls->layout || !cls->layout))
+    if (HOT_UNLIKELY(site.layout != cls->layout || site.epoch != link_epoch || !cls->layout))
     {
         site.offset = detail::resolve_field_offset(cls->layout, name, type_key<T>(), cls->name);
         site.layout = cls->layout;
+        site.epoch = link_epoch;
     }
     return *reinterpret_cast<T*>(static_cast<char*>(s->state) + site.offset);
 }
@@ -521,12 +524,13 @@ template <class T> HOT_HIDDEN T& field(ShellBase* s, FieldSite& site, const char
 template <class T> HOT_HIDDEN T& mod_var(const UnitRef& unit, FieldSite& site, const char* name)
 {
     const UnitInfo& u = unit.info;
-    if (HOT_UNLIKELY(site.layout != u.layout || !u.layout || !u.block))
+    if (HOT_UNLIKELY(site.layout != u.layout || site.epoch != link_epoch || !u.layout || !u.block))
     {
         if (!u.block)
             throw ScriptError(std::string("unit '") + unit.name + "' has no module variable '" + name + "'");
         site.offset = detail::resolve_field_offset(u.layout, name, type_key<T>(), unit.name);
         site.layout = u.layout;
+        site.epoch = link_epoch;
     }
     return *reinterpret_cast<T*>(static_cast<char*>(u.block) + site.offset);
 }

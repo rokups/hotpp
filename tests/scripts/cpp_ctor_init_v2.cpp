@@ -40,6 +40,14 @@ class Spawner : public Actor
 {
 public:
     Spawner() : Actor("Spawner") {}
+    // The spawner owns the object of the module variable. Without this, it stays alive after the test.
+    ~Spawner()
+    {
+        delete first;
+        delete second;
+        first = nullptr;
+        second = nullptr;
+    }
 
     void Tick(float) override
     {

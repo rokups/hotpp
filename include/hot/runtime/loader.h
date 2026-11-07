@@ -29,6 +29,7 @@ namespace hot
 {
 
 class Backend;
+struct UnitInfo;
 
 // The state of a generation module in the loader (section 4.9).
 enum class GenState : uint8_t
@@ -160,6 +161,12 @@ public:
     // It fails with ReloadReason::BadModule when the loader already has a generation: call reset
     // first.
     ReloadResult load(Module module);
+    // Registers the first modules as one batch, one unit for each module (Module::unit). Each
+    // import of a module (Module::imports) must be a unit of the batch with the same interface
+    // hash, else the result is Failed with ImportMismatch. The units load in the order of their
+    // imports: an imported unit before its importer (a cycle loads in the order of the batch).
+    // Two modules of one unit give BadModule. After a failure the loader is empty again.
+    ReloadResult load(std::vector<Module> modules);
 
     // Registers all scripts of an AOT table (include/hot/aot.h) as generation 1. Each script is
     // one unit: the unit name is the name of the script. The classes of the scripts keep the
@@ -204,6 +211,20 @@ public:
     // Failed with the reason of the LoadResult (CompileError when it is None).
     // A successful LoadResult goes to request_reload(Module).
     ReloadResult request_reload(LoadResult built);
+    // A batch reload: one Pending with several modules (one unit each) and one commit. The
+    // validation checks each module as request_reload(Module) does, and the links of the units:
+    //   - each import of a module is a unit of the batch, or a live unit, with the same interface
+    //     hash. Else the result is Failed with ImportMismatch.
+    //   - each live unit outside the batch that imports a unit of the batch has the interface hash
+    //     of the batch module in its import. Else the result is Failed with DependentsStale, and
+    //     ReloadResult::units names the units that must go into the batch.
+    // A body change of a unit keeps the code of its importers. The commit publishes the new
+    // module block and the new function table of the unit, and the importers find them by name
+    // (detail::set_unit_resolver, shell.h). A class reference finds the canonical record, which
+    // never changes (detail::set_class_resolver).
+    ReloadResult request_reload(std::vector<Module> modules);
+    // The batch form of request_reload(LoadResult). The first failed LoadResult gives the result.
+    ReloadResult request_reload(std::vector<LoadResult> built);
     bool reload_pending() const
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -292,6 +313,19 @@ private:
     ReloadResult load_unit(Module module, Registry* code_out = nullptr);
     // The validation of request_reload for a Pending with a staged registry. It takes the mutex.
     ReloadResult validate_and_stage(std::unique_ptr<Pending> p);
+    // The import checks of a batch (request_reload(std::vector<Module>)). Call it under the mutex.
+    ReloadResult check_links(const Pending& p) const;
+    // Makes this loader the target of the class resolver and the unit resolver (shell.h). The
+    // call clears the cache of class_ref.
+    void install_resolvers();
+    // Publishes the link data of a unit: the interface hash, the imports and a copy of the
+    // function table of "code". A new table has a new id, so each call site resolves again.
+    void set_link(const Module& module, const Registry& code);
+    // The resolvers. They read "registry_", "links_" and "mod_blocks_" without the mutex: only a
+    // commit, a load and a reset change them, and then no other thread runs script code. The
+    // commit thread itself runs script code (initializers and hooks) under the mutex.
+    static ClassRecord* resolve_class_link(const char* name);
+    static bool resolve_unit_link(const char* name, UnitInfo& out);
     void add_generation(Module module, uint32_t generation);
     void note_records(const Registry& reg, uint32_t generation);
     // Makes the module state block of a registry and sets the slot. False: an initializer threw.
@@ -382,6 +416,17 @@ private:
     // null-terminated pointer list into them. A node never moves and a list is never changed, so
     // a saved record can keep a list pointer until reset.
     std::map<std::vector<std::string>, std::vector<const char*>> iface_names_;
+    // The link data of each live unit (Module::iface_hash, Module::imports, the function table).
+    struct UnitLink
+    {
+        uint64_t iface_hash = 0;
+        std::vector<std::pair<std::string, uint64_t>> imports;
+        std::unique_ptr<FnTable> fns;
+    };
+    std::unordered_map<std::string, UnitLink> links_;
+    // The function tables that a commit replaced. A UnitRef of a running call can still point to
+    // one. They stay until reset.
+    std::vector<std::unique_ptr<FnTable>> old_fns_;
 };
 
 } // namespace hot

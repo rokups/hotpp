@@ -15,6 +15,7 @@ namespace hot
 {
 
 uint32_t active_generation = 0;
+uint32_t link_epoch = 1;
 
 namespace detail
 {

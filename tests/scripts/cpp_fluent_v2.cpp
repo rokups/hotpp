@@ -28,6 +28,12 @@ class Builder : public Actor
 {
 public:
     Builder() : Actor("Builder") {}
+    // The builder owns the object of the module variable. Without this, it stays alive after the test.
+    ~Builder()
+    {
+        delete counter;
+        counter = nullptr;
+    }
 
     void Tick(float dt) override
     {

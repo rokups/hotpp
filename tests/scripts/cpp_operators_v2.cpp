@@ -35,6 +35,14 @@ class Driver : public Actor
 {
 public:
     Driver() : Actor("Driver") {}
+    // The driver owns the objects of the module variables. Without this, they stay alive after the test.
+    ~Driver()
+    {
+        delete a;
+        delete b;
+        a = nullptr;
+        b = nullptr;
+    }
 
     void Tick(float dt) override
     {

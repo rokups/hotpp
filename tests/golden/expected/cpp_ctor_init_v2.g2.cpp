@@ -499,6 +499,7 @@ struct SpawnerState_g2 {
     hot::ShellBase* __hot_owner;
 
     void ctor();
+    void dtor();
     void Tick(float );
     // Not overridden: call the implementation of Actor.
 #line 39 "cpp_ctor_init_v2.cpp"
@@ -509,7 +510,7 @@ struct SpawnerState_g2 {
         return static_cast<Spawner_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 39 "cpp_ctor_init_v2.cpp"
     }
-#line 513 "cpp_ctor_init_v2.cpp.cpp"
+#line 514 "cpp_ctor_init_v2.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 39 "cpp_ctor_init_v2.cpp"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -519,7 +520,7 @@ struct SpawnerState_g2 {
         return static_cast<Spawner_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 39 "cpp_ctor_init_v2.cpp"
     }
-#line 523 "cpp_ctor_init_v2.cpp.cpp"
+#line 524 "cpp_ctor_init_v2.cpp.cpp"
 };
 
 
@@ -545,6 +546,7 @@ HOT_HIDDEN SpawnerState_g2* state_of(Spawner_Shell* __self)
 
 
 [[maybe_unused]] HOT_HIDDEN static void Spawner__ctor(Spawner_Shell* __self);
+[[maybe_unused]] HOT_HIDDEN static void Spawner__dtor(Spawner_Shell* __self);
 #line 42 "cpp_ctor_init_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static auto Spawner__super_args()
 #line 42 "cpp_ctor_init_v2.cpp"
@@ -571,7 +573,7 @@ HOT_HIDDEN static void Spawner__ctor_chain(Spawner_Shell* __self, [[maybe_unused
     Spawner__ctor(__self);
 #line 42 "cpp_ctor_init_v2.cpp"
 }
-#line 575 "cpp_ctor_init_v2.cpp.cpp"
+#line 577 "cpp_ctor_init_v2.cpp.cpp"
 using Spawner_SuperArgs = decltype(Spawner__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -596,7 +598,7 @@ HOT_NODEBUG static hot::ShellBase* Spawner__construct(void* mem, const char* key
     return nullptr;
 #line 39 "cpp_ctor_init_v2.cpp"
 }
-#line 600 "cpp_ctor_init_v2.cpp.cpp"
+#line 602 "cpp_ctor_init_v2.cpp.cpp"
 
 static const char* const Spawner__construct_keys[] = {typeid(Spawner_SuperArgs).name(), nullptr};
 
@@ -624,7 +626,7 @@ HOT_HIDDEN static Spawner_Shell* Spawner__build([[maybe_unused]] bool __note)
     return __self;
 #line 42 "cpp_ctor_init_v2.cpp"
 }
-#line 628 "cpp_ctor_init_v2.cpp.cpp"
+#line 630 "cpp_ctor_init_v2.cpp.cpp"
 #line 42 "cpp_ctor_init_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static Spawner_Shell* Spawner__new()
 #line 42 "cpp_ctor_init_v2.cpp"
@@ -633,7 +635,7 @@ HOT_HIDDEN static Spawner_Shell* Spawner__build([[maybe_unused]] bool __note)
     return Spawner__build(true);
 #line 42 "cpp_ctor_init_v2.cpp"
 }
-#line 637 "cpp_ctor_init_v2.cpp.cpp"
+#line 639 "cpp_ctor_init_v2.cpp.cpp"
 #line 42 "cpp_ctor_init_v2.cpp"
 template <int = 0>
 #line 42 "cpp_ctor_init_v2.cpp"
@@ -650,7 +652,7 @@ template <int = 0>
     return __h;
 #line 42 "cpp_ctor_init_v2.cpp"
 }
-#line 654 "cpp_ctor_init_v2.cpp.cpp"
+#line 656 "cpp_ctor_init_v2.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -662,7 +664,17 @@ HOT_NODEBUG static hot::ShellCore* Spawner__new_default()
     return Spawner__build(false);
 #line 42 "cpp_ctor_init_v2.cpp"
 }
-#line 666 "cpp_ctor_init_v2.cpp.cpp"
+#line 668 "cpp_ctor_init_v2.cpp.cpp"
+
+#line 44 "cpp_ctor_init_v2.cpp"
+static void Spawner__dtor_slot(hot::ShellCore* s)
+#line 44 "cpp_ctor_init_v2.cpp"
+{
+#line 44 "cpp_ctor_init_v2.cpp"
+    Spawner__dtor(static_cast<Spawner_Shell*>(s));
+#line 44 "cpp_ctor_init_v2.cpp"
+}
+#line 678 "cpp_ctor_init_v2.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Spawner_slots[Spawner_SLOT_COUNT] = {
@@ -675,7 +687,7 @@ hot::ClassRecord Spawner_record = {
     "Spawner", GEN, Spawner_slots, Spawner_SLOT_COUNT, &Spawner_layout, nullptr,
     "Actor", hot::shell_layout_hash("Actor", sizeof(Spawner_Shell), alignof(Spawner_Shell), 3),
     nullptr,
-    &Spawner__construct, typeid(Spawner_SuperArgs).name(), &Spawner__new_default, nullptr, nullptr,
+    &Spawner__construct, typeid(Spawner_SuperArgs).name(), &Spawner__new_default, nullptr, &Spawner__dtor_slot,
 };
 
 #line 39 "cpp_ctor_init_v2.cpp"
@@ -704,7 +716,7 @@ HOT_NODEBUG static hot::Instance Spawner_create()
     return {static_cast<Actor*>(p), p};
 #line 39 "cpp_ctor_init_v2.cpp"
 }
-#line 708 "cpp_ctor_init_v2.cpp.cpp"
+#line 720 "cpp_ctor_init_v2.cpp.cpp"
 
 #line 42 "cpp_ctor_init_v2.cpp"
 HOT_NODEBUG static hot::Instance Spawner__make_0([[maybe_unused]] void** __a)
@@ -718,7 +730,7 @@ HOT_NODEBUG static hot::Instance Spawner__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 42 "cpp_ctor_init_v2.cpp"
 }
-#line 722 "cpp_ctor_init_v2.cpp.cpp"
+#line 734 "cpp_ctor_init_v2.cpp.cpp"
 
 static const hot::CtorEntry Spawner__constructors[] = {
     {hot::ctor_key<>(), &Spawner__make_0, hot::ctor_write_mask<>()},
@@ -733,7 +745,7 @@ static const hot::CtorEntry Spawner__constructors[] = {
     return state_of(__self)->ctor(std::forward<int>(hp_), std::forward<std::string>(n), std::forward<int>(bonus));
 #line 12 "cpp_ctor_init_v2.cpp"
 }
-#line 737 "cpp_ctor_init_v2.cpp.cpp"
+#line 749 "cpp_ctor_init_v2.cpp.cpp"
 #line 12 "cpp_ctor_init_v2.cpp"
 void UnitState_g2::ctor(int hp_, std::string n, int bonus)
 #line 12 "cpp_ctor_init_v2.cpp"
@@ -772,7 +784,7 @@ void UnitState_g2::ctor(int hp_, std::string n, int bonus)
     
 #line 22 "cpp_ctor_init_v2.cpp"
 }
-#line 776 "cpp_ctor_init_v2.cpp.cpp"
+#line 788 "cpp_ctor_init_v2.cpp.cpp"
 
 #line 24 "cpp_ctor_init_v2.cpp"
 void UnitState_g2::Tick(float dt)
@@ -798,7 +810,7 @@ void UnitState_g2::Tick(float dt)
  __self->Move(Vec3(dt, 0, 0)); 
 #line 24 "cpp_ctor_init_v2.cpp"
 }
-#line 802 "cpp_ctor_init_v2.cpp.cpp"
+#line 814 "cpp_ctor_init_v2.cpp.cpp"
 
 #line 42 "cpp_ctor_init_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Spawner__ctor(Spawner_Shell* __self)
@@ -808,7 +820,7 @@ void UnitState_g2::Tick(float dt)
     return state_of(__self)->ctor();
 #line 42 "cpp_ctor_init_v2.cpp"
 }
-#line 812 "cpp_ctor_init_v2.cpp.cpp"
+#line 824 "cpp_ctor_init_v2.cpp.cpp"
 #line 42 "cpp_ctor_init_v2.cpp"
 void SpawnerState_g2::ctor()
 #line 42 "cpp_ctor_init_v2.cpp"
@@ -833,16 +845,25 @@ void SpawnerState_g2::ctor()
 
 #line 42 "cpp_ctor_init_v2.cpp"
 }
-#line 837 "cpp_ctor_init_v2.cpp.cpp"
+#line 849 "cpp_ctor_init_v2.cpp.cpp"
 
 #line 44 "cpp_ctor_init_v2.cpp"
-void SpawnerState_g2::Tick(float )
+[[maybe_unused]] HOT_HIDDEN static void Spawner__dtor(Spawner_Shell* __self)
+#line 44 "cpp_ctor_init_v2.cpp"
+{
+#line 44 "cpp_ctor_init_v2.cpp"
+    return state_of(__self)->dtor();
+#line 44 "cpp_ctor_init_v2.cpp"
+}
+#line 859 "cpp_ctor_init_v2.cpp.cpp"
+#line 44 "cpp_ctor_init_v2.cpp"
+void SpawnerState_g2::dtor()
 #line 44 "cpp_ctor_init_v2.cpp"
 {
 #line 44 "cpp_ctor_init_v2.cpp"
     if (HOT_UNLIKELY(!hot_live)) {
 #line 44 "cpp_ctor_init_v2.cpp"
-        hot::stale_call("Spawner::Tick(float)");
+        hot::stale_call("Spawner::~Spawner");
 #line 44 "cpp_ctor_init_v2.cpp"
         return;
 #line 44 "cpp_ctor_init_v2.cpp"
@@ -852,19 +873,48 @@ void SpawnerState_g2::Tick(float )
 #line 44 "cpp_ctor_init_v2.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 44 "cpp_ctor_init_v2.cpp"
-    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
-#line 44 "cpp_ctor_init_v2.cpp"
-    HOT_TRACE_FRAME("Spawner.Tick", "cpp_ctor_init_v2.cpp");
+    HOT_TRACE_FRAME("Spawner.~Spawner", "cpp_ctor_init_v2.cpp");
 #line 45 "cpp_ctor_init_v2.cpp"
+
+        delete hot_mod()->first;
+        delete hot_mod()->second;
+        hot_mod()->first = nullptr;
+        hot_mod()->second = nullptr;
+    
+#line 50 "cpp_ctor_init_v2.cpp"
+}
+#line 887 "cpp_ctor_init_v2.cpp.cpp"
+
+#line 52 "cpp_ctor_init_v2.cpp"
+void SpawnerState_g2::Tick(float )
+#line 52 "cpp_ctor_init_v2.cpp"
+{
+#line 52 "cpp_ctor_init_v2.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 52 "cpp_ctor_init_v2.cpp"
+        hot::stale_call("Spawner::Tick(float)");
+#line 52 "cpp_ctor_init_v2.cpp"
+        return;
+#line 52 "cpp_ctor_init_v2.cpp"
+    }
+#line 52 "cpp_ctor_init_v2.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Spawner_Shell*>(this->__hot_owner);
+#line 52 "cpp_ctor_init_v2.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 52 "cpp_ctor_init_v2.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 52 "cpp_ctor_init_v2.cpp"
+    HOT_TRACE_FRAME("Spawner.Tick", "cpp_ctor_init_v2.cpp");
+#line 53 "cpp_ctor_init_v2.cpp"
 
         if (!hot_mod()->first)
             hot_mod()->first = Unit__new(4, "bob");
         if (!hot_mod()->second)
             hot_mod()->second = Unit__new(4, "bob");
     
-#line 50 "cpp_ctor_init_v2.cpp"
+#line 58 "cpp_ctor_init_v2.cpp"
 }
-#line 868 "cpp_ctor_init_v2.cpp.cpp"
+#line 918 "cpp_ctor_init_v2.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

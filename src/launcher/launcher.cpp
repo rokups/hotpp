@@ -19,6 +19,7 @@
 #include <map>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <system_error>
 #include <thread>
@@ -39,6 +40,28 @@ struct Stamp
     {
         return exists == o.exists && write_time == o.write_time && size == o.size;
     }
+};
+
+// One script unit of the program: the entry script or an imported script. The unit name is the
+// name that the importers use (the import path as the translator finds it). The entry script has
+// the absolute path as its unit name.
+struct UnitState
+{
+    std::string path; // the file to read
+    uint64_t iface_hash = 0;
+    std::vector<std::pair<std::string, uint64_t>> imports;
+    std::vector<std::string> dependencies;
+};
+
+// The result of a batch build on the worker thread.
+struct BuildOutput
+{
+    bool ok = false;
+    std::string error; // the text of the first failure
+    std::vector<hot::LoadResult> results; // one module for each unit of the batch
+    std::map<std::string, UnitState> units; // the table of all units after the build
+    std::vector<std::string> dependencies; // the union of the dependencies of all units
+    std::set<std::string> attempted; // the units that the build tried
 };
 
 struct Program::Impl
@@ -79,7 +102,15 @@ struct Program::Impl
     std::thread worker;
     std::mutex mutex;
     bool build_done = false;
-    hot::LoadResult build_result;
+    BuildOutput build_result;
+    std::set<std::string> build_todo; // the units of the running build
+    // The script units. "units" is the table of the live modules. "pending_units" is the table of a
+    // pending reload; the commit makes it live. "retry" holds the units of a build that failed or
+    // that the loader rejected: the next build includes them again.
+    std::string main_unit;
+    std::map<std::string, UnitState> units;
+    std::map<std::string, UnitState> pending_units;
+    std::set<std::string> retry;
     // What the main thread remembers about the running build. Only the main thread uses them.
     std::map<std::string, Stamp> build_pre; // the stamps from before the build read the files
     uint32_t build_generation = 0;          // the generation number of the build
@@ -97,7 +128,7 @@ struct Program::Impl
     bool fresh_needed = false;
     // The stamps of the native dependencies that the log reported as changed. One line each stamp.
     std::map<std::string, Stamp> native_reported;
-    std::optional<hot::LoadResult> fresh; // the Fresh build for the restart
+    std::optional<BuildOutput> fresh; // the Fresh build for the restart
 
     // Waits for the worker. The worker uses the backend, so the join must come before the members
     // go. A build can take seconds, so the destructor can wait for that time.
@@ -228,6 +259,79 @@ std::map<std::string, Stamp> adopt_stamps(const std::string& script_path, const 
     return next;
 }
 
+// The union of the dependencies of all units.
+std::vector<std::string> all_dependencies(const std::map<std::string, UnitState>& units)
+{
+    std::set<std::string> seen;
+    std::vector<std::string> out;
+    for (const auto& [name, u] : units)
+        for (const std::string& d : u.dependencies)
+            if (seen.insert(d).second)
+                out.push_back(d);
+    return out;
+}
+
+// Builds the units in "todo" as one batch (design: modules, step 4). Each unit is its own module. A
+// unit that the batch does not know yet (a new import) joins the batch. When the interface hash of a
+// unit changes, its importers join the batch too, until no hash changes. "known" is the table of
+// the live units. "texts" has the text of files that the caller read before the build (by path):
+// the build uses that text, so an edit during the build is a change for the next build. It runs on
+// the worker thread and uses only its arguments.
+BuildOutput build_batch(hot::Backend& backend, const std::string& script_path, const std::vector<std::string>& include_dirs,
+                        const std::string& main_unit, std::map<std::string, UnitState> known, std::set<std::string> todo,
+                        uint32_t generation, hot::LoadMode mode, const std::map<std::string, std::string>& texts = {})
+{
+    BuildOutput out;
+    std::map<std::string, hot::LoadResult> built;
+    const auto fail = [&](std::string error, const std::vector<std::string>& deps)
+    {
+        out.error = std::move(error);
+        out.units = known;
+        out.dependencies = all_dependencies(known);
+        for (const std::string& d : deps)
+            out.dependencies.push_back(d);
+        return out;
+    };
+    while (!todo.empty())
+    {
+        const std::string name = *todo.begin();
+        todo.erase(todo.begin());
+        if (built.count(name))
+            continue;
+        out.attempted.insert(name);
+        const auto old = known.find(name);
+        const std::string path = name == main_unit ? script_path
+                                 : old != known.end() ? old->second.path
+                                                      : resolve_path(script_path, include_dirs, name);
+        std::string text;
+        if (const auto t = texts.find(path); t != texts.end())
+            text = t->second;
+        else if (!read_file(path, text))
+            return fail("cannot read the script '" + path + "'", {});
+        hot::LoadResult r = backend.load(hot::ScriptSource{name, std::move(text), {}}, generation, mode);
+        if (!r)
+            return fail(r.error.empty() ? "the script '" + path + "' did not compile" : r.error, r.dependencies);
+        r.module->unit = name;
+        const bool changed = old == known.end() || old->second.iface_hash != r.iface_hash;
+        known[name] = UnitState{path, r.iface_hash, r.import_hashes, r.dependencies};
+        for (const auto& [dep, hash] : r.import_hashes)
+            if (!known.count(dep) && !built.count(dep))
+                todo.insert(dep); // a new import
+        if (changed)
+            for (const auto& [unit, u] : known)
+                for (const auto& [dep, hash] : u.imports)
+                    if (dep == name && !built.count(unit) && unit != name)
+                        todo.insert(unit); // an importer of the changed interface
+        built.emplace(name, std::move(r));
+    }
+    for (auto& [name, r] : built)
+        out.results.push_back(std::move(r));
+    out.units = std::move(known);
+    out.dependencies = all_dependencies(out.units);
+    out.ok = true;
+    return out;
+}
+
 // True for a dependency that is not a ".hot" file (a native header). The entry script is a script.
 bool is_native(const std::string& script_path, const std::string& path)
 {
@@ -309,17 +413,25 @@ std::unique_ptr<Program> load(const Options& options, const std::string& script_
         backend_options.work_dir = options.work_dir.empty() ? default_cache_dir(script_path) : options.work_dir;
         impl->backend = hot::make_default_backend(backend_options);
         std::error_code ec;
-        const std::string name = fs::absolute(script_path, ec).string();
-        hot::LoadResult result = impl->backend->load(hot::ScriptSource{name, text, {}}, 1);
-        impl->dependencies = result.dependencies;
-        if (!result)
+        impl->main_unit = fs::absolute(script_path, ec).string();
+        BuildOutput built = build_batch(*impl->backend, script_path, options.include_dirs, impl->main_unit, {},
+                                        {impl->main_unit}, 1, hot::LoadMode::Reload);
+        impl->dependencies = built.dependencies;
+        if (!built.ok)
         {
-            error = result.error.empty() ? "the script did not compile" : result.error;
+            error = built.error.empty() ? "the script did not compile" : built.error;
             return nullptr;
         }
-        // Read the pointer before the move of the module.
-        impl->entry_main = result.module->entry_main;
-        const hot::ReloadResult loaded = impl->loader.load(std::move(*result.module));
+        std::vector<hot::Module> modules;
+        for (hot::LoadResult& r : built.results)
+        {
+            // Read the pointer before the move of the module.
+            if (r.module->unit == impl->main_unit)
+                impl->entry_main = r.module->entry_main;
+            modules.push_back(std::move(*r.module));
+        }
+        impl->units = std::move(built.units);
+        const hot::ReloadResult loaded = impl->loader.load(std::move(modules));
         if (!loaded)
         {
             error = loaded.error.empty() ? "the loader rejected the module" : loaded.error;
@@ -358,7 +470,7 @@ bool restart_program(ImplT& impl)
     {
         impl.worker.join();
         const std::lock_guard<std::mutex> lock(impl.mutex);
-        impl.build_result = hot::LoadResult{};
+        impl.build_result = BuildOutput{};
         impl.build_done = false;
     }
     // The tasks pin their generation, and Loader::reset fails while a pin exists. Tasks need C++20
@@ -374,11 +486,21 @@ bool restart_program(ImplT& impl)
     }
     // After the reset the old "main" pointer dangles.
     impl.entry_main = nullptr;
-    hot::LoadResult fresh = std::move(*impl.fresh);
+    BuildOutput fresh = std::move(*impl.fresh);
     impl.fresh.reset();
-    // Read the pointer before the move of the module.
-    const hot::Module::EntryMainFn entry_main = fresh.module->entry_main;
-    const hot::ReloadResult loaded = impl.loader.load(std::move(*fresh.module));
+    hot::Module::EntryMainFn entry_main = nullptr;
+    std::vector<hot::Module> modules;
+    for (hot::LoadResult& r : fresh.results)
+    {
+        // Read the pointer before the move of the module.
+        if (r.module->unit == impl.main_unit)
+            entry_main = r.module->entry_main;
+        modules.push_back(std::move(*r.module));
+    }
+    impl.units = std::move(fresh.units);
+    impl.pending_units.clear();
+    impl.retry.clear();
+    const hot::ReloadResult loaded = impl.loader.load(std::move(modules));
     if (!loaded)
     {
         impl.log("[hot] full restart failed: " + (loaded.error.empty() ? "the loader rejected the module" : loaded.error));
@@ -544,6 +666,9 @@ PollStatus Program::poll()
         {
             impl.active_generation = impl.pending_generation;
             impl.next_generation = impl.pending_generation + 1;
+            impl.units = std::move(impl.pending_units);
+            impl.pending_units.clear();
+            impl.retry.clear();
             impl.pending_generation = 0;
             impl.busy_logged = false;
             impl.log("[hot] reload applied: generation " + std::to_string(impl.active_generation));
@@ -562,6 +687,9 @@ PollStatus Program::poll()
         }
         impl.pending_generation = 0;
         impl.busy_logged = false;
+        for (const auto& [name, u] : impl.pending_units)
+            impl.retry.insert(name);
+        impl.pending_units.clear();
         impl.log("[hot] reload failed: " + (committed.error.empty() ? "the commit failed" : committed.error));
         return PollStatus::Failed;
     };
@@ -587,10 +715,42 @@ PollStatus Program::poll()
             take_stamps(pre, {}, true);
             return PollStatus::Failed;
         }
+        // The units to build. A Fresh build starts from the entry script and builds all units. A
+        // Reload builds the units whose file changed, and the units of an earlier failure. A
+        // changed script that is not a unit makes the build include all units.
+        std::set<std::string> todo;
+        std::map<std::string, UnitState> known;
+        if (mode == hot::LoadMode::Fresh)
+            todo.insert(impl.main_unit);
+        else
+        {
+            known = impl.units;
+            todo = impl.retry;
+            for (const auto& [path, stamp] : pre)
+            {
+                const auto old = impl.stamps.find(path);
+                if (old != impl.stamps.end() && old->second == stamp)
+                    continue;
+                bool mapped = false;
+                for (const auto& [name, u] : known)
+                    if (u.path == path)
+                        todo.insert(name), mapped = true;
+                if (!mapped && !is_native(impl.script_path, path))
+                    for (const auto& [name, u] : known)
+                        todo.insert(name);
+            }
+            if (todo.empty())
+                todo.insert(impl.main_unit);
+        }
+        impl.build_todo = todo;
+        // The texts of the entry script and of the known units, read now (see build_batch).
+        std::map<std::string, std::string> texts;
+        texts[impl.script_path] = std::move(text);
+        for (const auto& [name, u] : impl.units)
+            if (std::string t; !texts.count(u.path) && read_file(u.path, t))
+                texts[u.path] = std::move(t);
         // The worker gets copies of the values and a pointer to the Impl. The Impl is on the
         // heap, and its destructor joins the worker, so the pointer stays valid.
-        std::error_code ec;
-        hot::ScriptSource source{fs::absolute(impl.script_path, ec).string(), std::move(text), {}};
         impl.build_pre = std::move(pre);
         impl.build_generation = mode == hot::LoadMode::Fresh ? 1 : impl.next_generation;
         impl.build_mode = mode;
@@ -598,25 +758,25 @@ PollStatus Program::poll()
         try
         {
             impl.worker = std::thread(
-                [state = &impl, backend = impl.backend.get(), source = std::move(source),
-                 generation = impl.build_generation, mode = impl.build_mode]()
+                [state = &impl, backend = impl.backend.get(), script_path = impl.script_path,
+                 include_dirs = impl.include_dirs, main_unit = impl.main_unit, known = std::move(known),
+                 todo = std::move(todo), texts = std::move(texts), generation = impl.build_generation,
+                 mode = impl.build_mode]()
                 {
-                    hot::LoadResult result;
+                    BuildOutput result;
                     try
                     {
-                        result = backend->load(source, generation, mode);
+                        result = build_batch(*backend, script_path, include_dirs, main_unit, known, todo, generation, mode, texts);
                     }
                     catch (const std::exception& e)
                     {
-                        result = hot::LoadResult{};
+                        result = BuildOutput{};
                         result.error = e.what();
-                        result.reason = hot::ReloadReason::CompileError;
                     }
                     catch (...)
                     {
-                        result = hot::LoadResult{};
+                        result = BuildOutput{};
                         result.error = "unknown exception";
-                        result.reason = hot::ReloadReason::CompileError;
                     }
                     const std::lock_guard<std::mutex> lock(state->mutex);
                     state->build_result = std::move(result);
@@ -650,13 +810,15 @@ PollStatus Program::poll()
         // 2a. The worker finished. Join it and handle the result. The worker is gone, so the
         // result and the remembered values belong to this thread again.
         impl.worker.join();
-        hot::LoadResult built;
+        BuildOutput built;
         {
             const std::lock_guard<std::mutex> lock(impl.mutex);
             built = std::move(impl.build_result);
-            impl.build_result = hot::LoadResult{};
+            impl.build_result = BuildOutput{};
             impl.build_done = false;
         }
+        const std::set<std::string> todo = std::move(impl.build_todo);
+        impl.build_todo.clear();
         const std::map<std::string, Stamp> pre = std::move(impl.build_pre);
         impl.build_pre.clear();
         const uint32_t generation = impl.build_generation;
@@ -668,7 +830,7 @@ PollStatus Program::poll()
         {
             if (mode == hot::LoadMode::Fresh)
             {
-                if (!built)
+                if (!built.ok)
                 {
                     // "fresh_needed" stays: the next build is Fresh again.
                     take_stamps(pre, built.dependencies, true);
@@ -708,18 +870,24 @@ PollStatus Program::poll()
                     }
                 }
             }
-            else if (!built)
+            else if (!built.ok)
             {
                 take_stamps(pre, built.dependencies, true);
+                impl.retry.insert(todo.begin(), todo.end());
+                impl.retry.insert(built.attempted.begin(), built.attempted.end());
                 impl.log(std::string(prefix) + (built.error.empty() ? "the script did not compile" : built.error));
             }
             else
             {
                 impl.dependencies = built.dependencies;
                 take_stamps(pre, impl.dependencies, false);
-                const hot::ReloadResult requested = impl.loader.request_reload(std::move(built));
+                std::map<std::string, UnitState> next_units = std::move(built.units);
+                const hot::ReloadResult requested = impl.loader.request_reload(std::move(built.results));
+                if (requested.status != hot::ReloadStatus::Pending)
+                    impl.retry.insert(built.attempted.begin(), built.attempted.end());
                 if (requested.status == hot::ReloadStatus::Pending)
                 {
+                    impl.pending_units = std::move(next_units);
                     impl.pending_generation = generation;
                     status = finish_commit();
                 }

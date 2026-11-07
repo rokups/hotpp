@@ -111,6 +111,12 @@ class Watcher : public Actor
 {
 public:
     Watcher() : Actor("Watcher") {}
+    // The watcher owns the object of the module variable. Without this, it stays alive after the test.
+    ~Watcher()
+    {
+        delete brain;
+        brain = nullptr;
+    }
 
     void Tick(float dt) override
     {

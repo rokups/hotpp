@@ -1684,6 +1684,7 @@ struct WatcherState_g1 {
     int thought_seen;
 
     void ctor();
+    void dtor();
     void Tick(float dt);
     // Not overridden: call the implementation of Actor.
 #line 100 "cpp_ns_v1.cpp"
@@ -1694,7 +1695,7 @@ struct WatcherState_g1 {
         return static_cast<Watcher_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 100 "cpp_ns_v1.cpp"
     }
-#line 1698 "cpp_ns_v1.cpp.cpp"
+#line 1699 "cpp_ns_v1.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 100 "cpp_ns_v1.cpp"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -1704,18 +1705,18 @@ struct WatcherState_g1 {
         return static_cast<Watcher_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 100 "cpp_ns_v1.cpp"
     }
-#line 1708 "cpp_ns_v1.cpp.cpp"
+#line 1709 "cpp_ns_v1.cpp.cpp"
 };
 
-#line 117 "cpp_ns_v1.cpp"
+#line 123 "cpp_ns_v1.cpp"
 static void Watcher__init_seen(void*, void* f) { using T = int; new (f) T(0); }
-#line 1713 "cpp_ns_v1.cpp.cpp"
-#line 118 "cpp_ns_v1.cpp"
+#line 1714 "cpp_ns_v1.cpp.cpp"
+#line 124 "cpp_ns_v1.cpp"
 static void Watcher__init_points_seen(void*, void* f) { using T = int; new (f) T(0); }
-#line 1716 "cpp_ns_v1.cpp.cpp"
-#line 119 "cpp_ns_v1.cpp"
+#line 1717 "cpp_ns_v1.cpp.cpp"
+#line 125 "cpp_ns_v1.cpp"
 static void Watcher__init_thought_seen(void*, void* f) { using T = int; new (f) T(0); }
-#line 1719 "cpp_ns_v1.cpp.cpp"
+#line 1720 "cpp_ns_v1.cpp.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -1746,6 +1747,7 @@ HOT_HIDDEN WatcherState_g1* state_of(Watcher_Shell* __self)
 
 
 [[maybe_unused]] HOT_HIDDEN static void Watcher__ctor(Watcher_Shell* __self);
+[[maybe_unused]] HOT_HIDDEN static void Watcher__dtor(Watcher_Shell* __self);
 #line 103 "cpp_ns_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static auto Watcher__super_args()
 #line 103 "cpp_ns_v1.cpp"
@@ -1772,7 +1774,7 @@ HOT_HIDDEN static void Watcher__ctor_chain(Watcher_Shell* __self, [[maybe_unused
     Watcher__ctor(__self);
 #line 103 "cpp_ns_v1.cpp"
 }
-#line 1776 "cpp_ns_v1.cpp.cpp"
+#line 1778 "cpp_ns_v1.cpp.cpp"
 using Watcher_SuperArgs = decltype(Watcher__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -1797,7 +1799,7 @@ HOT_NODEBUG static hot::ShellBase* Watcher__construct(void* mem, const char* key
     return nullptr;
 #line 100 "cpp_ns_v1.cpp"
 }
-#line 1801 "cpp_ns_v1.cpp.cpp"
+#line 1803 "cpp_ns_v1.cpp.cpp"
 
 static const char* const Watcher__construct_keys[] = {typeid(Watcher_SuperArgs).name(), nullptr};
 
@@ -1825,7 +1827,7 @@ HOT_HIDDEN static Watcher_Shell* Watcher__build([[maybe_unused]] bool __note)
     return __self;
 #line 103 "cpp_ns_v1.cpp"
 }
-#line 1829 "cpp_ns_v1.cpp.cpp"
+#line 1831 "cpp_ns_v1.cpp.cpp"
 #line 103 "cpp_ns_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static Watcher_Shell* Watcher__new()
 #line 103 "cpp_ns_v1.cpp"
@@ -1834,7 +1836,7 @@ HOT_HIDDEN static Watcher_Shell* Watcher__build([[maybe_unused]] bool __note)
     return Watcher__build(true);
 #line 103 "cpp_ns_v1.cpp"
 }
-#line 1838 "cpp_ns_v1.cpp.cpp"
+#line 1840 "cpp_ns_v1.cpp.cpp"
 #line 103 "cpp_ns_v1.cpp"
 template <int = 0>
 #line 103 "cpp_ns_v1.cpp"
@@ -1851,7 +1853,7 @@ template <int = 0>
     return __h;
 #line 103 "cpp_ns_v1.cpp"
 }
-#line 1855 "cpp_ns_v1.cpp.cpp"
+#line 1857 "cpp_ns_v1.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -1863,7 +1865,17 @@ HOT_NODEBUG static hot::ShellCore* Watcher__new_default()
     return Watcher__build(false);
 #line 103 "cpp_ns_v1.cpp"
 }
-#line 1867 "cpp_ns_v1.cpp.cpp"
+#line 1869 "cpp_ns_v1.cpp.cpp"
+
+#line 105 "cpp_ns_v1.cpp"
+static void Watcher__dtor_slot(hot::ShellCore* s)
+#line 105 "cpp_ns_v1.cpp"
+{
+#line 105 "cpp_ns_v1.cpp"
+    Watcher__dtor(static_cast<Watcher_Shell*>(s));
+#line 105 "cpp_ns_v1.cpp"
+}
+#line 1879 "cpp_ns_v1.cpp.cpp"
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Watcher_slots[Watcher_SLOT_COUNT] = {
@@ -1876,7 +1888,7 @@ hot::ClassRecord Watcher_record = {
     "Watcher", GEN, Watcher_slots, Watcher_SLOT_COUNT, &Watcher_layout, nullptr,
     "Actor", hot::shell_layout_hash("Actor", sizeof(Watcher_Shell), alignof(Watcher_Shell), 3),
     nullptr,
-    &Watcher__construct, typeid(Watcher_SuperArgs).name(), &Watcher__new_default, nullptr, nullptr,
+    &Watcher__construct, typeid(Watcher_SuperArgs).name(), &Watcher__new_default, nullptr, &Watcher__dtor_slot,
 };
 
 #line 100 "cpp_ns_v1.cpp"
@@ -1905,7 +1917,7 @@ HOT_NODEBUG static hot::Instance Watcher_create()
     return {static_cast<Actor*>(p), p};
 #line 100 "cpp_ns_v1.cpp"
 }
-#line 1909 "cpp_ns_v1.cpp.cpp"
+#line 1921 "cpp_ns_v1.cpp.cpp"
 
 #line 103 "cpp_ns_v1.cpp"
 HOT_NODEBUG static hot::Instance Watcher__make_0([[maybe_unused]] void** __a)
@@ -1919,7 +1931,7 @@ HOT_NODEBUG static hot::Instance Watcher__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 103 "cpp_ns_v1.cpp"
 }
-#line 1923 "cpp_ns_v1.cpp.cpp"
+#line 1935 "cpp_ns_v1.cpp.cpp"
 
 static const hot::CtorEntry Watcher__constructors[] = {
     {hot::ctor_key<>(), &Watcher__make_0, hot::ctor_write_mask<>()},
@@ -1934,7 +1946,7 @@ static const hot::CtorEntry Watcher__constructors[] = {
     return state_of(__self)->ctor();
 #line 103 "cpp_ns_v1.cpp"
 }
-#line 1938 "cpp_ns_v1.cpp.cpp"
+#line 1950 "cpp_ns_v1.cpp.cpp"
 #line 103 "cpp_ns_v1.cpp"
 void WatcherState_g1::ctor()
 #line 103 "cpp_ns_v1.cpp"
@@ -1959,16 +1971,25 @@ void WatcherState_g1::ctor()
 
 #line 103 "cpp_ns_v1.cpp"
 }
-#line 1963 "cpp_ns_v1.cpp.cpp"
+#line 1975 "cpp_ns_v1.cpp.cpp"
 
 #line 105 "cpp_ns_v1.cpp"
-void WatcherState_g1::Tick(float dt)
+[[maybe_unused]] HOT_HIDDEN static void Watcher__dtor(Watcher_Shell* __self)
+#line 105 "cpp_ns_v1.cpp"
+{
+#line 105 "cpp_ns_v1.cpp"
+    return state_of(__self)->dtor();
+#line 105 "cpp_ns_v1.cpp"
+}
+#line 1985 "cpp_ns_v1.cpp.cpp"
+#line 105 "cpp_ns_v1.cpp"
+void WatcherState_g1::dtor()
 #line 105 "cpp_ns_v1.cpp"
 {
 #line 105 "cpp_ns_v1.cpp"
     if (HOT_UNLIKELY(!hot_live)) {
 #line 105 "cpp_ns_v1.cpp"
-        hot::stale_call("Watcher::Tick(float)");
+        hot::stale_call("Watcher::~Watcher");
 #line 105 "cpp_ns_v1.cpp"
         return;
 #line 105 "cpp_ns_v1.cpp"
@@ -1978,10 +1999,37 @@ void WatcherState_g1::Tick(float dt)
 #line 105 "cpp_ns_v1.cpp"
     HOT_NODEBUG_LOCAL auto* __st = this;
 #line 105 "cpp_ns_v1.cpp"
-    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
-#line 105 "cpp_ns_v1.cpp"
-    HOT_TRACE_FRAME("Watcher.Tick", "cpp_ns_v1.cpp");
+    HOT_TRACE_FRAME("Watcher.~Watcher", "cpp_ns_v1.cpp");
 #line 106 "cpp_ns_v1.cpp"
+
+        delete hot_mod()->brain;
+        hot_mod()->brain = nullptr;
+    
+#line 109 "cpp_ns_v1.cpp"
+}
+#line 2011 "cpp_ns_v1.cpp.cpp"
+
+#line 111 "cpp_ns_v1.cpp"
+void WatcherState_g1::Tick(float dt)
+#line 111 "cpp_ns_v1.cpp"
+{
+#line 111 "cpp_ns_v1.cpp"
+    if (HOT_UNLIKELY(!hot_live)) {
+#line 111 "cpp_ns_v1.cpp"
+        hot::stale_call("Watcher::Tick(float)");
+#line 111 "cpp_ns_v1.cpp"
+        return;
+#line 111 "cpp_ns_v1.cpp"
+    }
+#line 111 "cpp_ns_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __self = static_cast<Watcher_Shell*>(this->__hot_owner);
+#line 111 "cpp_ns_v1.cpp"
+    HOT_NODEBUG_LOCAL auto* __st = this;
+#line 111 "cpp_ns_v1.cpp"
+    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
+#line 111 "cpp_ns_v1.cpp"
+    HOT_TRACE_FRAME("Watcher.Tick", "cpp_ns_v1.cpp");
+#line 112 "cpp_ns_v1.cpp"
 
         if (!hot_mod()->brain)
             hot_mod()->brain = game__ai__Brain__new();
@@ -1992,9 +2040,9 @@ void WatcherState_g1::Tick(float dt)
         points_seen = state_of(parent)->points;
         thought_seen = state_of(same)->thought;
     
-#line 115 "cpp_ns_v1.cpp"
+#line 121 "cpp_ns_v1.cpp"
 }
-#line 1998 "cpp_ns_v1.cpp.cpp"
+#line 2046 "cpp_ns_v1.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
