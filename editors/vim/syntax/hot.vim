@@ -26,7 +26,7 @@ syn region  hotBlockComment start="/\*" end="\*/" contains=hotTodo,@Spell
 " Keywords
 syn keyword hotConditional if else switch case default
 syn keyword hotRepeat while do for foreach in
-syn keyword hotStatement return break continue
+syn keyword hotStatement return break continue static_assert
 syn keyword hotException try catch finally throw await
 syn keyword hotOperatorWord new delete is as
 syn keyword hotStorage public private protected override virtual abstract async const get set ref out

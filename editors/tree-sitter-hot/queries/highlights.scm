@@ -22,7 +22,7 @@
 [
   "if" "else" "switch" "case" "default"
   "while" "do" "for" "foreach" "in"
-  "return" "break" "continue"
+  "return" "break" "continue" "static_assert"
   "try" "catch" "finally" "throw" "await"
   "new" "delete" "is" "as"
 ] @keyword

@@ -145,7 +145,7 @@
       "patterns": [
         {
           "name": "keyword.control.flow.hot",
-          "match": "\\b(?:if|else|while|do|for|foreach|in|return|break|continue|switch|case|default|await)\\b"
+          "match": "\\b(?:if|else|while|do|for|foreach|in|return|break|continue|switch|case|default|await|static_assert)\\b"
         },
         {
           "name": "keyword.control.exception.hot",

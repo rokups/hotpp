@@ -14,7 +14,7 @@ const KEYWORDS = [
   'switch', 'case', 'default', 'await', 'try', 'catch', 'finally', 'throw',
   'public', 'private', 'protected', 'override', 'virtual', 'abstract', 'async', 'const',
   'get', 'set', 'ref', 'out', 'var', 'void', 'new', 'delete', 'is', 'as', 'this', 'base',
-  'true', 'false', 'null', 'class', 'struct', 'enum', 'interface', 'using',
+  'true', 'false', 'null', 'class', 'struct', 'enum', 'interface', 'using', 'static_assert',
 ];
 
 const TYPES = [
