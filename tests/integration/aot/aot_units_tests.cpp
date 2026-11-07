@@ -12,6 +12,9 @@
 #ifdef AOT_UNITS_LOADER
 #include "hot/runtime/loader.h"
 #endif
+#if defined(AOT_UNITS_LOADER) && defined(AOT_UNITS_CHAIN)
+#include "hot/backend.h"
+#endif
 
 #include <gtest/gtest.h>
 
@@ -93,11 +96,25 @@ TEST(AotUnits, TableListsTheImportsWithTheInterfaceHashes)
         if (names.back() == "aot_unit_app")
             app = &hot::aot_table.scripts[i];
     }
+#ifdef AOT_UNITS_CHAIN
+    // The chain: UnitApp derives from UnitMid, and UnitMid derives from UnitBase. Each class is in
+    // its own unit. The importers include the interface headers of their imports.
+    if (!names.empty() && names.back() == "aot_unit_app_parent_chain")
+        app = &hot::aot_table.scripts[names.size() - 1];
+    EXPECT_EQ(names, (std::vector<std::string>{"aot_unit_base", "aot_unit_mid", "aot_unit_app_parent_chain"}));
+    ASSERT_NE(app, nullptr);
+    ASSERT_EQ(app->import_count, 2u);
+    EXPECT_STREQ(app->imports[0].unit, "aot_unit_base");
+    EXPECT_EQ(app->imports[0].hash, hot::aot_table.scripts[0].iface_hash);
+    EXPECT_STREQ(app->imports[1].unit, "aot_unit_mid");
+    EXPECT_EQ(app->imports[1].hash, hot::aot_table.scripts[1].iface_hash);
+#else
     EXPECT_EQ(names, (std::vector<std::string>{"aot_unit_base", "aot_unit_app"}));
     ASSERT_NE(app, nullptr);
     ASSERT_EQ(app->import_count, 1u);
     EXPECT_STREQ(app->imports[0].unit, "aot_unit_base");
     EXPECT_EQ(app->imports[0].hash, hot::aot_table.scripts[0].iface_hash);
+#endif
 }
 
 #ifndef AOT_UNITS_LOADER
@@ -105,7 +122,7 @@ TEST(AotUnits, TableListsTheImportsWithTheInterfaceHashes)
 TEST(AotUnits, RegistryLinksTheUnits)
 {
     hot::AotRegistry reg(hot::aot_table);
-    EXPECT_EQ(reg.script_count(), 2u);
+    EXPECT_EQ(reg.script_count(), hot::aot_table.count);
     World world;
     Actor* app = reg.create_as<Actor>("UnitApp");
     expect_one_tick(world, app);
@@ -162,7 +179,8 @@ TEST(AotUnits, LoadAotRejectsAStaleImport)
     const hot::ReloadResult r = loader.load_aot(stale);
     ASSERT_FALSE(r);
     EXPECT_EQ(r.reason, hot::ReloadReason::ImportMismatch);
-    EXPECT_EQ(r.units, (std::vector<std::string>{"aot_unit_app"}));
+    // The first importer of the base fails: "aot_unit_app", or "aot_unit_mid" in the chain.
+    EXPECT_EQ(r.units, (std::vector<std::string>{hot::aot_table.scripts[1].name}));
     EXPECT_EQ(loader.find("UnitBase"), nullptr); // nothing is loaded
 }
 
@@ -176,6 +194,31 @@ TEST(AotUnits, LoadAotRejectsAMissingImport)
     EXPECT_EQ(r.reason, hot::ReloadReason::ImportMismatch);
     EXPECT_NE(r.error.find("is not in the AOT table"), std::string::npos) << r.error;
 }
+
+#ifdef AOT_UNITS_CHAIN
+// A revert of the base unit keeps the chain: the children in the other units link to the new
+// record of UnitBase, and "base.Score()" and "base.Tick()" reach it.
+TEST(AotUnits, RevertOfTheBaseUnitKeepsTheChain)
+{
+    std::unique_ptr<hot::Backend> backend = hot::make_default_backend();
+    backend->seed_slots(hot::aot_table.slots);
+    hot::Loader loader;
+    const hot::ReloadResult r = loader.load_aot(hot::aot_table);
+    ASSERT_TRUE(r) << r.error;
+    const hot::ClassEntry* e = loader.find("UnitApp");
+    ASSERT_NE(e, nullptr);
+    World world;
+    Actor* app = static_cast<Actor*>(e->create().native);
+    expect_one_tick(world, app);
+    const hot::ReloadResult rv = loader.revert_unit("aot_unit_base", *backend);
+    ASSERT_TRUE(rv) << rv.error;
+    const hot::ReloadResult done = loader.commit_pending();
+    ASSERT_TRUE(done) << done.error;
+    loader.frame_boundary();
+    world.Tick(0.5f);
+    EXPECT_FLOAT_EQ(app->Position.x, kScore + 1.0f); // hp is 12 after the second tick
+}
+#endif
 
 #endif // AOT_UNITS_LOADER
 

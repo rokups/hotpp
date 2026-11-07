@@ -185,4 +185,30 @@ target_link_libraries(integration_aot_units_load_tests PRIVATE aot_units_scripts
 set_target_properties(integration_aot_units_load_tests PROPERTIES ENABLE_EXPORTS ON)
 hot_gtest(integration_aot_units_tests TEST_PREFIX units/ PROPERTIES LABELS aot)
 hot_gtest(integration_aot_units_load_tests TEST_PREFIX units_load/ PROPERTIES LABELS aot)
+
+# A script parent chain over three units: UnitApp derives from UnitMid, UnitMid from UnitBase.
+# The importers include the interface headers (<name>.iface.h) of their imports.
+set(_hot_chain_scripts
+    ${PROJECT_SOURCE_DIR}/tests/scripts/aot_units/aot_unit_base.hot
+    ${PROJECT_SOURCE_DIR}/tests/scripts/aot_units/aot_unit_mid.hot
+    ${PROJECT_SOURCE_DIR}/tests/scripts/aot_units/aot_unit_app_parent_chain.hot)
+hot_add_scripts(TARGET aot_units_chain_scripts AOT SCRIPTS ${_hot_chain_scripts}
+    INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
+    DEPENDS ${HOT_HEADERS})
+add_executable(integration_aot_units_chain_tests aot_units_tests.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+target_include_directories(integration_aot_units_chain_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests/engine)
+target_compile_definitions(integration_aot_units_chain_tests PRIVATE AOT_UNITS_CHAIN=1)
+target_link_libraries(integration_aot_units_chain_tests PRIVATE aot_units_chain_scripts hot::aot GTest::gtest_main)
+add_executable(integration_aot_units_chain_load_tests aot_units_tests.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+target_include_directories(integration_aot_units_chain_load_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests/engine)
+target_compile_definitions(integration_aot_units_chain_load_tests PRIVATE AOT_UNITS_LOADER=1 AOT_UNITS_CHAIN=1)
+target_link_libraries(integration_aot_units_chain_load_tests PRIVATE aot_units_chain_scripts hot_backend
+    GTest::gtest_main)
+set_target_properties(integration_aot_units_chain_load_tests PROPERTIES ENABLE_EXPORTS ON)
+hot_gtest(integration_aot_units_chain_tests TEST_PREFIX units_chain/ PROPERTIES LABELS aot)
+hot_gtest(integration_aot_units_chain_load_tests TEST_PREFIX units_chain_load/ PROPERTIES LABELS aot)
 endif()

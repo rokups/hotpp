@@ -241,9 +241,12 @@ function(hot_add_scripts)
             set(A_OUT_DIR ${CMAKE_BINARY_DIR}/hot_aot/${A_TARGET})
         endif()
         set(sources "")
+        set(iface_headers "")
         foreach(s ${A_SCRIPTS})
             get_filename_component(stem ${s} NAME_WLE)
             list(APPEND sources ${A_OUT_DIR}/${stem}.aot.cpp)
+            # The interface header of the script: the TUs of the importers include it.
+            list(APPEND iface_headers ${A_OUT_DIR}/${stem}.iface.h)
         endforeach()
         set(registry ${A_OUT_DIR}/hot_aot_registry.cpp)
         foreach(p ${A_PRELUDES})
@@ -260,7 +263,7 @@ function(hot_add_scripts)
             set(depfile_opts DEPFILE ${depfile})
         endif()
         add_custom_command(
-            OUTPUT ${sources} ${registry}
+            OUTPUT ${sources} ${registry} ${iface_headers}
             COMMAND ${CMAKE_COMMAND} -E make_directory ${A_OUT_DIR}
             COMMAND hot::hotc --aot ${optimized_args} ${scripts} --out-dir ${A_OUT_DIR} ${args} ${A_FLAGS} ${format_args} ${depfile_args} ${A_HOTC_ARGS}
             ${depfile_opts}

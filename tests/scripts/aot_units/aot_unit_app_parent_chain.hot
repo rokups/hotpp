@@ -1,0 +1,32 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// The leaf unit. It uses the two other units: a parent chain over three units, "new" of a class
+// of another unit, a method call and a field of that class, a module variable and an overload.
+using "Actor.h";
+using "aot_unit_base.hot";
+using "aot_unit_mid.hot";
+
+[attribute] class Attribute;
+
+class UnitApp : UnitMid {
+    $UnitBox box;
+    int total = 0;
+    [Attribute("Total", "AM_DEFAULT")] int Total { get { return total; } set { total = value * 2; } }
+
+    override int Score() { return base.Score() + 1000; }
+    override void Tick(float dt) {
+        base.Tick(dt);
+        $UnitBox b = this.box;
+        if (b == null) {
+            b = new $UnitBox(4);
+            this.box = b;
+        }
+        base_count = base_count + 1;
+        this.total = Score();
+        this.Position.x = this.total;
+        this.Position.y = Scale(5) + Scale(1.5f);
+        this.Position.z = b.area() * 100 + b.size * 10 + base_count;
+    }
+}

@@ -6324,6 +6324,7 @@ void translate_impl(
 
     // The errors of the bodies of one class do not stop the next class: all classes report their errors.
     // An error of an earlier step (a static function or a free function) also stops the run after the loop.
+    std::set<std::string> iface_units; // the units with an include of the interface header
     for (size_t si = 0; si < seq.size(); ++si)
     {
         if (sc.is_cpp && !texts[si].empty())
@@ -6344,6 +6345,12 @@ void translate_impl(
             emit_value(cd);
             continue;
         }
+        // Plain AOT code: the interface header of the owner unit gives the text of an imported class
+        // (the slot numbers, the record, the shell and the state struct). This TU has no copy of it.
+        // The include comes before the first class of the unit, after the structs that come first.
+        const bool from_header = opt.aot && !opt.aot_optimized && !cd.foreign_unit.empty();
+        if (from_header && iface_units.insert(cd.foreign_unit).second)
+            o.w("#include \"" + esc(cd.foreign_unit) + ".iface.h\"\n");
         // The block of a class in a namespace is in the nested namespace "hot_gen" of the namespace,
         // so the script text in the class finds the names of the namespace.
         if (!cd.ns.empty())
@@ -7234,7 +7241,9 @@ void translate_impl(
         // A public class of this script in AOT code: the interface header gets a copy of the text
         // from here to the end of the state struct (TranslateResult::iface_header).
         const bool exported = opt.aot && cd.foreign_unit.empty() && !cd.is_private && cn != kModuleName;
-        const size_t iface_begin = o.s.size();
+        const size_t iface_begin = o.s.size(), iface_segs = o.segs.size();
+        const int iface_lines = o.lines;
+        const size_t flag_mark = flag_regs.size();
         o.w("\n// ---------------------------------------------------------------- class " + cn + "\n");
         if (!opt.aot_optimized)
         {
@@ -7727,6 +7736,14 @@ void translate_impl(
         }
         o.w("};\n\n");
         }
+        // An interface parent from the header: the text from the slot numbers to here is in the header.
+        if (from_header && cd.iface_parent)
+        {
+            o.s.resize(iface_begin);
+            o.segs.resize(iface_segs);
+            o.lines = iface_lines;
+            reset();
+        }
         if (exported)
         {
             const std::string gen = cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns);
@@ -7871,6 +7888,7 @@ void translate_impl(
         }
         if (prop_count)
             o.w("static const hot::PropertyInfo " + cn + "_props[] = {\n" + prop_rows + "};\n");
+        if (!from_header) // the owner unit has the layout of an interface parent
         o.w(std::string(exported ? "" : "static ") + "const hot::StateLayout " + cn + "_layout = {\n    \"" + S
             + "\", sizeof(" + S + "), alignof(" + S + "), " + std::to_string(info.rows.size()) + ", " + cn + "_fields, true"
             + (prop_count ? ", " + cn + "_props, " + std::to_string(prop_count) : std::string()) + ",\n};\n\n");
@@ -7919,9 +7937,9 @@ void translate_impl(
         const size_t thunk_mark = thunk_regs.size();
         if (!cd.foreign_unit.empty() && !cd.iface_parent)
         {
-            o.s.resize(foreign_mark);
-            o.segs.resize(foreign_segs);
-            o.lines = foreign_lines;
+            o.s.resize(from_header ? iface_begin : foreign_mark);
+            o.segs.resize(from_header ? iface_segs : foreign_segs);
+            o.lines = from_header ? iface_lines : foreign_lines;
             reset();
             o.w("// ---------------------------------------------------------------- interface of " + cn + " (unit "
                 + esc(cd.foreign_unit) + ")\n");
@@ -8480,13 +8498,27 @@ void translate_impl(
                         + "\"), __site, \"" + cd.key_name() + "::" + member + "(" + types_text + ")\", this->__hot_owner" + fwd
                         + ");\n";
                 else
-                    iface_text = "    return hot::call_parent<" + ret + "(" + types_text + ")>(hot::class_ref(\"" + cd.key_name()
-                        + "\").record, this, "
-                        + (!m.vslot_owner.empty() && m.vslot_owner != cn
-                                  ? (multi ? m.vslot_owner + "_" : std::string()) + "SLOT_" + member
-                                  : slot_id(member))
-                        + fwd + ");\n";
+                {
+                    const std::string call = "    return hot::call_parent<" + ret + "(" + types_text
+                        + ")>(hot::class_ref(\"" + cd.key_name() + "\").record, ";
+                    const std::string slot = (!m.vslot_owner.empty() && m.vslot_owner != cn
+                                                     ? (multi ? m.vslot_owner + "_" : std::string()) + "SLOT_" + member
+                                                     : slot_id(member));
+                    iface_text = call + "this, " + slot + fwd + ");\n";
+                    // Plain AOT code: the owner unit defines the members of the state struct. The
+                    // wrapper calls the slot of the canonical record itself.
+                    if (from_header && is_fn)
+                    {
+                        std::string wfwd;
+                        for (const Param& p : m.params)
+                            wfwd += ", \x01std::forward<" + (p.body_type.empty() ? p.type : p.body_type) + ">(" + p.name + ")";
+                        wbody = "{\n" + call + "state_of(__self), " + slot + wfwd + ");\n}\n";
+                    }
+                }
             }
+            // An interface parent of plain AOT code: the header declares the members of the state
+            // struct and the owner unit defines them. This TU writes only the wrapper.
+            const bool owner_members = from_header && cd.iface_parent;
             const std::string abstract_text = !iface_text.empty() ? iface_text
                 : m.is_abstract
                 ? "    hot::abstract_called(\"" + cd.key_name() + "\", \"" + m.name + "\");\n"
@@ -8502,7 +8534,8 @@ void translate_impl(
             bodies.push_back({cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns),
                 [&o, &all_text, &mapped, &reset, &write_stmts, h = body_head(m), em, file, end_line, first_line,
                     is_fn, sym, whead, wbody, bmember, mhead, mconst, mhead_from, what, shell, body_locals, tname, stale_ret,
-                    is_async, is_coroutine, is_dtor, co_head, co_call, abstract_text, aot_optimized = opt.aot_optimized]
+                    is_async, is_coroutine, is_dtor, co_head, co_call, abstract_text, owner_members,
+                    aot_optimized = opt.aot_optimized]
                 {
                     const Method& m = *h;
                     auto line_at = [&](int l) { return "#line " + std::to_string(l) + " \"" + file + "\"\n"; };
@@ -8513,6 +8546,8 @@ void translate_impl(
                         o.w(whead + ")\n");
                         mapped(wbody, m.line, m.pos);
                     }
+                    if (owner_members)
+                        return;
                     if (is_async)
                     { // the coroutine comes before the member that calls it
                         o.w(line_at(m.line));
@@ -8796,7 +8831,7 @@ void translate_impl(
         // A shell with script children always gets it: a child cannot add it to the parent.
         const std::string shared_storage = types.cpp_storage("$" + cn, hotc::TypeModel::StorageUse::Local);
         const bool shared_placeholder = shared_storage.rfind("\x01std::shared_ptr<", 0) == 0;
-        if ((handle_this || parent_shell) && !par && !cd.base.empty()
+        if ((handle_this || parent_shell) && !par && !cd.base.empty() && !from_header
             && (shared_placeholder || shared_storage.rfind("std::shared_ptr<", 0) == 0))
         {
             o.insert(shell_head_end,
@@ -8817,6 +8852,9 @@ void translate_impl(
         }
 
         // ---- record and entry
+        // The owner unit has the slot table, the record and the constructors of an interface parent.
+        const size_t record_mark = o.s.size(), record_segs = o.segs.size();
+        const int record_lines = o.lines;
         o.w("// ------------------------------------------------------ record and entry\n");
         // ISO C++ has no array of size zero. A class without slots gets one null entry.
         if (opt.aot_optimized)
@@ -9053,6 +9091,14 @@ void translate_impl(
             }
             o.w("\n" + table + "    {nullptr, nullptr, 0}};\n\n");
             flag_regs.push_back("    " + cn + "_record.ctors = " + P + "constructors;\n");
+        }
+        if (from_header && cd.iface_parent)
+        {
+            o.s.resize(record_mark);
+            o.segs.resize(record_segs);
+            o.lines = record_lines;
+            reset();
+            flag_regs.resize(flag_mark); // the record is the one of the owner unit
         }
         if (cd.is_abstract)
             flag_regs.push_back("    " + cn + "_record.is_abstract = true;\n");
