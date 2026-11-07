@@ -22,7 +22,7 @@ This list shows what version 1 does not support.
   - After a call of a `ref` method, a shape change of any reshapeable field ends the `ref`, even a field that the method does not touch. This is a false error.
   - The message for a replaced owner says "elements of" the owner, also when the owner is a handle or a `T?`.
   - It does not see mutation by another method of the same class, `std.swap(a, b)`, or a free function that takes the container.
-  - A native `T&` getter cannot bind to a `ref`. Copy the value, or use an index.
+  - A native call on a native receiver (`ref m = o.GetMotion();`) gives a place that is an element of the receiver. The checker does not know the real owner of the reference. A receiver of an unknown type (a `var` local, a longer chain) counts as native. When the method returns a value, the C++ compile fails.
   - A `ref` call on an object of another class counts as a temporary.
   - `ref r = xs[await Idx()]` is allowed, because the ref starts after its own statement. Another live ref gives the error about that ref.
   - The check of `foreach (var x in c)` (see [Runtime errors](statements-errors.html#change-of-a-container-in-a-foreach)) sees only a range that is a local or a field of `this`, such as `xs` or `this.xs`. It compares the name of the root and does no alias analysis. A change through another name, a call of a script method, a free function or a lambda is not checked. A local that hides the field name can give a false error.

@@ -43,7 +43,7 @@ A borrowed value is valid for the whole call. Every call form takes it as an arg
 
 `var p = c ? &a : &b;` and `var q = (Vec3*)&a;` are borrowed locals, like `var p = &a;`.
 
-A call can return a pointer or a reference to its argument. The translator does not follow this alias. A `var` that takes a native pointer from a call is borrowed. A `var` that takes a reference from a call is a copy. Do not store the result of such a call.
+A call can return a pointer or a reference to its argument. The translator does not follow this alias. A `var` that takes a native pointer from a call is borrowed. A `var` that takes a reference from a call is a copy. Do not store the result of such a call. A `ref` local can take a native `T&` result: see "Lifetime of a ref" in [Type design](type-design.html#lifetime-of-a-ref).
 
 ```hot
 using "Actor.h"; using "Util.h";

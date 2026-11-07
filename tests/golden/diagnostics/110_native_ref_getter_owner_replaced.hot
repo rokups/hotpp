@@ -1,0 +1,25 @@
+using "Motion.h";
+
+[native, handle("std::shared_ptr<$T>")] class Animator;
+
+class Rig {
+    Animator anim = null;
+    [weak]
+    Animator seen = null;
+
+    void Replace() {
+        ref m = this.anim.GetMotion();
+        this.anim = new Animator();
+        m.x = 1;
+    }
+
+    void Weak() {
+        ref m = this.seen.GetMotion();
+        m.x = 1;
+    }
+
+    void WeakParam([weak] Animator w) {
+        ref m = w.GetMotion();
+        m.x = 1;
+    }
+}

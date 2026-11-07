@@ -1,0 +1,28 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// A native "T&" getter binds to a "ref" local. The place is an element of the receiver.
+using "Motion.h";
+
+[native, handle("std::shared_ptr<$T>")] class Animator;
+
+class Rig {
+    Animator anim = null;
+    int frames = 0;
+
+    void Step() {
+        if (this.anim == null) this.anim = new Animator(1);
+        ref m = this.anim.GetMotion();
+        m.x = m.x + 1;
+        ref k = this.anim.MotionAt(1);
+        k.frame = this.frames;
+    }
+
+    void Local(Animator a) {
+        ref m = a.GetMotion();
+        m.frame = 2;
+        ref s = Animator.Shared();
+        s.frame = 3;
+    }
+}

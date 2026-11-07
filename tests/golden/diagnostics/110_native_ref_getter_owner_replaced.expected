@@ -1,0 +1,7 @@
+110_native_ref_getter_owner_replaced.hot:12:9: error: assignment to 'anim' can move or remove the elements of 'anim' while the 'ref' 'm' points to one. Copy the value with 'var', or end the ref before the call
+   12 |         this.anim = new Animator();
+110_native_ref_getter_owner_replaced.hot:17:9: error: 'ref m' binds to a temporary value: it ends at the end of the statement. Use 'var m' to copy the value
+   17 |         ref m = this.seen.GetMotion();
+110_native_ref_getter_owner_replaced.hot:22:9: error: 'ref m' binds to a temporary value: it ends at the end of the statement. Use 'var m' to copy the value
+   22 |         ref m = w.GetMotion();
+3 errors generated.

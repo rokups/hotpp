@@ -120,6 +120,12 @@ TEST(GoldenTranslation, RefReturn)
     golden_one("ref_return_v1");
 }
 
+// A native "T&" getter binds to a "ref" local: "auto& m = anim.GetMotion();".
+TEST(GoldenTranslation, NativeRefGetter)
+{
+    golden_one("native_ref_getter_v1");
+}
+
 // The script exception types: a struct with the base ScriptError, and a struct with such a parent.
 TEST(GoldenTranslation, Exceptions)
 {

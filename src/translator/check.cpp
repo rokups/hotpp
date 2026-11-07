@@ -573,6 +573,8 @@ struct Checker
     std::map<const VarDeclStmt*, std::vector<std::pair<std::string, RefInfo>>> pending_refs;
     std::set<std::string> copy_params; // the plain, "in" and "[byval]" parameters of the body in progress
     bool method_ret_ref = false; // true while the body of a method with a "ref T" return is in progress
+    std::set<std::string> weak_fields; // the "[weak]" fields of the class
+    std::set<std::string> weak_locals; // the "[weak]" parameters and locals of the body in progress
 
     // True when the method returns "ref T". The checker runs before and after the lowering of the return type.
     static bool is_ref_ret(const Method& m) { return m.ret_ref || is_ref_return_text(m.ret); }
@@ -659,6 +661,56 @@ struct Checker
             if (t == b.script || (b.alias && t == b.alias) || t == b.cpp)
                 return false;
         return true;
+    }
+
+    // True when the type is a type of the prelude of std or eastl: "std.vector<int>", "eastl::string".
+    // A lowered type starts with the mark of the namespace "std" (std_ns.h).
+    static bool is_prelude_container(const std::string& type)
+    {
+        const std::string t = !type.empty() && type[0] == '\x01' ? type.substr(1) : type;
+        for (const char* p : {"std.", "std::", "eastl.", "eastl::"})
+            if (t.rfind(p, 0) == 0)
+                return true;
+        return false;
+    }
+
+    // True when a call on a receiver of this type can give a reference into the receiver: a native class,
+    // a handle or a pointer to one, or a type that is not known. A script class, a builtin scalar, a view,
+    // an array and a type of the prelude give a temporary.
+    bool is_native_receiver(const std::string& type) const
+    {
+        std::string t = trim(type);
+        if (t.rfind("const ", 0) == 0)
+            t = trim(t.substr(6));
+        while (!t.empty() && (t.back() == '&' || t.back() == '*' || t.back() == '?'))
+            t = trim(t.substr(0, t.size() - 1));
+        if (!t.empty() && t[0] == '$')
+            t = trim(t.substr(1));
+        if (t.empty())
+            return true;
+        if (t.find('[') != std::string::npos || is_prelude_container(t) || types.is_script_class(t))
+            return false;
+        return can_reshape(t); // false for a builtin scalar
+    }
+
+    // True when the chain of the expression starts at a "[weak]" handle. Each read of a weak handle locks it
+    // and gives a temporary strong handle.
+    bool starts_weak(const Expr& e) const
+    {
+        if (const auto* n = std::get_if<NameExpr>(&e.v))
+            return !n->parts.empty() && (locals.count(n->parts[0]) ? weak_locals.count(n->parts[0]) != 0
+                                                                   : weak_fields.count(n->parts[0]) != 0);
+        if (const auto* m = std::get_if<MemberExpr>(&e.v))
+        {
+            if (!m->obj)
+                return false;
+            if (std::holds_alternative<ThisExpr>(m->obj->v))
+                return weak_fields.count(m->name) != 0;
+            return starts_weak(*m->obj);
+        }
+        if (const auto* p = std::get_if<ParenExpr>(&e.v))
+            return p->inner && starts_weak(*p->inner);
+        return false;
     }
 
     // The place of a plain name that starts a chain. "stepped" is true when the chain goes on with ".member".
@@ -808,6 +860,20 @@ struct Checker
                     }
                     return call_place(*c, *om, obj, out);
                 }
+                // A native call "o.G()" on a native receiver "o": the place is an element of "o". The checker
+                // does not know the real owner of the reference. A value return fails in the C++ compile.
+                if (cn->parts.size() >= 2 && !starts_weak(*c->callee))
+                {
+                    const std::string& first = cn->parts[0];
+                    const bool is_var = locals.count(first) || field_names.count(first) || refs.count(first);
+                    const std::string t = cn->parts.size() == 2 && is_var ? name_type(first) : std::string();
+                    if ((is_var || !types.is_script_class(first)) && (cn->parts.size() > 2 || is_native_receiver(t)))
+                    {
+                        name_place(first, true, out);
+                        out.element = true;
+                        return true;
+                    }
+                }
                 return temp();
             }
             if (const auto* cm = std::get_if<MemberExpr>(&c->callee->v))
@@ -823,6 +889,14 @@ struct Checker
                     if (!is_own_static(om) && !place_of(*cm->obj, obj))
                         return temp();
                     return call_place(*c, *om, obj, out);
+                }
+                // A native call on a native receiver: see the NameExpr form above.
+                if (!cm->safe && cm->obj && !std::holds_alternative<ThisExpr>(cm->obj->v)
+                    && !std::holds_alternative<BaseExpr>(cm->obj->v) && !starts_weak(*cm->obj)
+                    && is_native_receiver(expr_type(*cm->obj)) && place_of(*cm->obj, out))
+                {
+                    out.element = true;
+                    return true;
                 }
                 return temp();
             }
@@ -1144,7 +1218,7 @@ struct Checker
                 ref_params.insert(p.name);
             else
                 copy_params.insert(p.name);
-            record_local(p.name, p.type);
+            record_local(p.name, p.type, p.weak);
             if (!p.weak && !p.value && is_owning_container(p.type))
                 owning_locals.insert(p.name); // a parameter by value owns its copy
             if (is_borrowed_type(p.type))
@@ -1306,10 +1380,14 @@ struct Checker
         return false;
     }
 
-    void record_local(const std::string& name, const std::string& type)
+    void record_local(const std::string& name, const std::string& type, bool weak = false)
     {
         locals.insert(name);
         local_types[name] = type;
+        if (weak)
+            weak_locals.insert(name);
+        else
+            weak_locals.erase(name);
     }
 
     // The name of the handle that the operand of "&" is, else an empty string. A handle is a
@@ -1529,7 +1607,7 @@ struct Checker
                     track_ref(*d);
                 return;
             }
-            record_local(d->name, d->type);
+            record_local(d->name, d->type, d->weak);
             forget_ref(d->name);
             if (!d->type.empty())
             {
@@ -1888,7 +1966,7 @@ struct Checker
         scopes.push_back({locals, local_types, borrowed, pointers});
         for (const Param& p : l.params)
         {
-            record_local(p.name, p.type);
+            record_local(p.name, p.type, p.weak);
             if (is_borrowed_type(p.type))
                 add_borrowed(p.name, p.type);
         }
@@ -2049,6 +2127,8 @@ struct Checker
         {
             field_names.insert(f.name);
             field_types[f.name] = f.type;
+            if (f.weak)
+                weak_fields.insert(f.name);
         }
 
         for (const Field& f : cd.fields)
