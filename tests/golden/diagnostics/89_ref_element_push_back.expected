@@ -1,5 +1,0 @@
-89_ref_element_push_back.hot:8:9: error: 'xs.push_back()' can move or remove the elements of 'xs' while the 'ref' 'r' points to one. Copy the value with 'var', or end the ref before the call
-    8 |         this.xs.push_back(1);
-89_ref_element_push_back.hot:9:9: error: 'xs.emplace_back()' can move or remove the elements of 'xs' while the 'ref' 'r' points to one. Copy the value with 'var', or end the ref before the call
-    9 |         xs.emplace_back(2);
-2 errors generated.

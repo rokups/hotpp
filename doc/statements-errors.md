@@ -138,7 +138,8 @@ Each row shows how HotScript stops one cause of a crash. The mechanism is a comp
 | Index out of range: vector, array, span, string | Runtime | `IndexOutOfRange` | `IndexOutOfRangeCaughtInScript`; `ViewParameterConvertsAndChecksIndex`; `RuntimeChecks.*IndexOutOfRangeThrows` |
 | Missing key in a map | Runtime, `at` only | `IndexOutOfRange` or `NativeError` | `EmptyContainerOperationsAndNativeExceptionsAreCatchable`; `RuntimeChecks.IndexOfMapUsesItsOperator` |
 | Empty `front`, `back`, `pop` | Runtime, always on | `IndexOutOfRange` | `EmptyContainerOperationsAndNativeExceptionsAreCatchable`; `container_ops_tests.cpp` |
-| Dangling `ref` | Compile error | None | golden `27`, `28`, `82`-`91`, `94`-`103`, `108` |
+| Dangling `ref` to a temporary, a local or a `ref` call result | Compile error | None | golden `27`, `28`, `82`-`88`, `94`-`100`, `108` |
+| `ref` to an element or behind an owner after a shape change | Runtime: a checked path | `IndexOutOfRange` or `NullReference` | `RefCheckedPathsGiveANewElementOrAScriptError` |
 | Dangling view | Compile error | None | golden `105`-`107` |
 | Container change in `foreach` | Runtime, always on | `ContainerChanged` | `ForeachContainerChangeThrowsContainerChanged`; `foreach_tests.cpp` |
 | Use after reload | A handle stays valid. A task of the old code is cancelled. | `TaskReloadCancelled` | `AsyncHost.ReloadCancelsTheSuspendedTask`; `TaskReload.*`; `CheckedPtrFieldKeepsItsTargetAcrossReload` |

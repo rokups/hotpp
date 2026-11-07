@@ -1,9 +1,0 @@
-101_ref_owner_replaced.hot:12:9: error: assignment to 'part' can move or remove the elements of 'part' while the 'ref' 'r' points to one. Copy the value with 'var', or end the ref before the call
-   12 |         this.part = new Part();
-101_ref_owner_replaced.hot:18:9: error: assignment to 'shared' can move or remove the elements of 'shared' while the 'ref' 'r' points to one. Copy the value with 'var', or end the ref before the call
-   18 |         this.shared = new $Part();
-101_ref_owner_replaced.hot:25:9: error: assignment to 'h' can move or remove the elements of 'h' while the 'ref' 'v' points to one. Copy the value with 'var', or end the ref before the call
-   25 |         h = null;
-101_ref_owner_replaced.hot:31:9: error: assignment to 'opt' can move or remove the elements of 'opt' while the 'ref' 'v' points to one. Copy the value with 'var', or end the ref before the call
-   31 |         this.opt = null;
-4 errors generated.

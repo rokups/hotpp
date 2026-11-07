@@ -166,6 +166,13 @@ struct ExprPrinter
             e.put(n.emit_as, n.pos);
             return;
         }
+        if (n.emit_path)
+        { // a "ref" local that is a checked path: the path again (VarDeclStmt::path)
+            e.put("(", n.pos);
+            emit_expr(*n.emit_path, e);
+            e.put(")");
+            return;
+        }
         std::string t;
         // A scope "std.x" is the placeholder "\x01std::x" (see std_ns.h).
         const bool std_scope = n.parts.size() >= 2 && n.parts[0] == "std";
@@ -502,6 +509,18 @@ struct StmtPrinter
     }
     void operator()(const VarDeclStmt& n) const
     {
+        if (n.path)
+        { // "ref r = xs[i]": the index caches, then a check of the path (VarDeclStmt::path)
+            for (const auto& c : n.path_caches)
+            {
+                emit_stmt(*c, e);
+                e.space();
+            }
+            e.put("(void)(", n.pos);
+            emit_expr(*n.init, e);
+            e.put(");");
+            return;
+        }
         decl(n, e);
         e.put(";");
     }

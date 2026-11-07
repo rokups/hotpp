@@ -1192,6 +1192,7 @@ struct Lowerer
     {
         cx.locals.insert(name);
         cx.path_names.erase(name); // a new local hides a "foreach" variable
+        cx.path_exprs.erase(name); // and a "ref" path
         cx.weak_locals.erase(name); // a "[weak]" local adds the name again after this call
         cx.value_locals.erase(name); // a box local adds the name again after this call
         cx.cell_locals.erase(name); // a shared local adds the name again after this call
@@ -3073,11 +3074,18 @@ struct Lowerer
         // A read of a "[weak]" name locks it. The node of the name can change below, so the
         // flag comes first.
         if (n.parts.size() == 1 && n.template_args.empty())
+        {
             if (auto it = cx.path_names.find(n.parts[0]); it != cx.path_names.end())
             {
                 n.emit_as = it->second;
                 return;
             }
+            if (auto it = cx.path_exprs.find(n.parts[0]); it != cx.path_exprs.end())
+            {
+                n.emit_path = it->second;
+                return;
+            }
+        }
         const bool weak = !target && n.parts.size() == 1 && n.template_args.empty() && weak_bare(n.parts[0]);
         name_inner(e, n);
         if (weak && e)
@@ -3847,6 +3855,129 @@ struct Lowerer
 
     // "foreach (ref x in enumerate(xs))": the range gives temporary values, so a reference
     // cannot bind to them.
+    // B3 (doc/type-design.md): a "ref" local with a root that can move is a checked path. A simple
+    // root is a local, a parameter, a module variable, or "this" through fields of script structs.
+    // A call of a "ref" method gives a C++ reference (B5), but "front", "back" and "at" are steps.
+    static bool step_call(const CallExpr& c)
+    {
+        auto step = [](const std::string& n) { return n == "front" || n == "back" || n == "at"; };
+        if (const auto* n = c.callee ? std::get_if<NameExpr>(&c.callee->v) : nullptr)
+            return n->parts.size() >= 2 && step(n->parts.back());
+        const auto* m = c.callee ? std::get_if<MemberExpr>(&c.callee->v) : nullptr;
+        return m && step(m->name);
+    }
+    bool other_call(const Expr& e) const
+    {
+        if (const auto* p = std::get_if<ParenExpr>(&e.v))
+            return p->inner && other_call(*p->inner);
+        if (const auto* m = std::get_if<MemberExpr>(&e.v))
+            return m->obj && other_call(*m->obj);
+        if (const auto* ix = std::get_if<IndexExpr>(&e.v))
+            return ix->obj && other_call(*ix->obj);
+        if (const auto* u = std::get_if<UnaryExpr>(&e.v))
+            return u->operand && other_call(*u->operand);
+        if (const auto* c = std::get_if<CallExpr>(&e.v))
+        {
+            if (!step_call(*c))
+                return true;
+            const auto* m = std::get_if<MemberExpr>(&c->callee->v);
+            return m && m->obj && other_call(*m->obj);
+        }
+        return false;
+    }
+    bool value_holder(const Expr& obj) const
+    {
+        if (std::holds_alternative<ThisExpr>(obj.v))
+            return true;
+        if (ref_path(obj))
+            return false;
+        const ClassDef* c = class_named(object_type(type_of(obj)));
+        return c && c->is_value && !is_value_ref(obj);
+    }
+    bool ref_path(const Expr& e) const
+    {
+        if (const auto* p = std::get_if<ParenExpr>(&e.v))
+            return p->inner && ref_path(*p->inner);
+        if (const auto* n = std::get_if<NameExpr>(&e.v))
+            return n->parts.size() != 1 || cx.path_names.count(n->parts[0]) || cx.path_exprs.count(n->parts[0]);
+        if (std::holds_alternative<ThisExpr>(e.v))
+            return false;
+        if (const auto* m = std::get_if<MemberExpr>(&e.v))
+            return !m->obj || m->safe || !value_holder(*m->obj);
+        return true;
+    }
+
+    // "ref r = xs[i]": the indices go in "const auto __rN_k" locals. Each use of "r" writes the path.
+    void cache_indices(ExprP& e, VarDeclStmt& d, int& k, const std::string& stem)
+    {
+        if (!e)
+            return;
+        auto cache = [&](ExprP& idx)
+        {
+            if (!idx || std::holds_alternative<NumberExpr>(idx->v))
+                return;
+            const std::string name = stem + "_" + std::to_string(k++);
+            const std::string t = type_of(*idx);
+            auto st = std::make_unique<Stmt>();
+            VarDeclStmt c;
+            c.name = name;
+            c.is_const = true;
+            c.init = std::move(idx);
+            c.pos = d.pos;
+            expr(c.init);
+            st->v = std::move(c);
+            d.path_caches.push_back(std::move(st));
+            declare(name, t);
+            NameExpr n;
+            n.parts.push_back(name);
+            n.pos = d.pos;
+            idx = make_expr(std::move(n));
+        };
+        if (auto* p = std::get_if<ParenExpr>(&e->v))
+            cache_indices(p->inner, d, k, stem);
+        else if (auto* m = std::get_if<MemberExpr>(&e->v))
+            cache_indices(m->obj, d, k, stem);
+        else if (auto* u = std::get_if<UnaryExpr>(&e->v))
+            cache_indices(u->operand, d, k, stem);
+        else if (auto* ix = std::get_if<IndexExpr>(&e->v))
+        {
+            cache_indices(ix->obj, d, k, stem);
+            cache(ix->index);
+        }
+        else if (auto* c = std::get_if<CallExpr>(&e->v); c && step_call(*c))
+        {
+            if (auto* m = std::get_if<MemberExpr>(&c->callee->v))
+                cache_indices(m->obj, d, k, stem);
+            for (ExprP& a : c->args)
+                cache(a);
+        }
+    }
+
+    bool path_ref(VarDeclStmt& d)
+    {
+        if (!d.is_ref || !d.init || is_value_ref(*d.init) || !ref_path(*d.init) || other_call(*d.init))
+            return false;
+        if (!d.names.empty())
+        {
+            error(d.pos, "'ref (a, b)' cannot bind an element or a place behind an owner; copy with 'var', or take "
+                         "'ref p = ...' first");
+            return true;
+        }
+        if (const std::string w = weak_root(*d.init); !w.empty())
+        {
+            weak_ref_error(d.pos, w);
+            return true;
+        }
+        const std::string t = type_of(*d.init);
+        int k = 0;
+        cache_indices(d.init, d, k, "__r" + std::to_string(safe_count++));
+        expr(d.init);
+        d.path = true;
+        declare(d.name, t);
+        cx.path_exprs[d.name] = d.init.get();
+        return true;
+    }
+
     // "enumerate" or "range" for a call of the global helper, else empty.
     std::string range_helper(const Expr& r) const
     {
@@ -4086,6 +4217,7 @@ struct Lowerer
         RCtx& cx;
         std::set<std::string> locals, weak_locals, value_locals, cell_locals;
         std::map<std::string, std::string> local_type, path_names;
+        std::map<std::string, const Expr*> path_exprs;
         explicit ScopeSave(RCtx& c)
             : cx(c)
             , locals(c.locals)
@@ -4094,6 +4226,7 @@ struct Lowerer
             , cell_locals(c.cell_locals)
             , local_type(c.local_type)
             , path_names(c.path_names)
+            , path_exprs(c.path_exprs)
         {
         }
         ~ScopeSave()
@@ -4104,6 +4237,7 @@ struct Lowerer
             cx.cell_locals = std::move(cell_locals);
             cx.local_type = std::move(local_type);
             cx.path_names = std::move(path_names);
+            cx.path_exprs = std::move(path_exprs);
         }
     };
 
@@ -4207,6 +4341,8 @@ struct Lowerer
         }
         else if (auto* d = std::get_if<VarDeclStmt>(&x.v))
         {
+            if (path_ref(*d))
+                return;
             if (!d->names.empty())
             { // a structured binding: the names are plain locals
                 for (const std::string& n : d->names)

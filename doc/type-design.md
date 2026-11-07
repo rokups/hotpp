@@ -105,11 +105,14 @@ A `ref` names a place. A place has a root. The checker finds the root in the ini
 Rules:
 
 - R1 Bind. A `ref` local or `ref` loop variable needs a root with a lifetime. A temporary is an error.
-- R2 Element. When the root is an element of `c`, `c` must not change shape while the `ref` lives. A `ref` lives to the end of its block. `foreach (ref x in c)` follows the same rule for the loop body.
-  - A shape change is a call of one of these methods on `c`: push_back, emplace_back, pop_back, push_front, pop_front, emplace_front, emplace, emplace_hint, insert, insert_or_assign, try_emplace, erase, clear, resize, reserve, shrink_to_fit, assign, swap, rehash, merge, extract, append, replace, remove, remove_if or splice.
-  - An assignment to `c` is a shape change.
-  - Use of `c` as a `ref` or `out` argument is a shape change. This includes a call such as `F(c)`, `this.F(c)` or `Class.F(c)` of an own method.
-  - The owner of a place can be replaced: a handle `$T`, a pointer `T*`, a `T?` or a script class value. An assignment to the owner is a shape change for a `ref` that goes through it (`ref r = this.p.hp; this.p = new P();`). A struct value field is not replaceable, so `ref r = this.pos.x; this.pos = Vec3();` is allowed.
+- R2 Element. A `ref` local with an element or a replaceable owner on its path is a checked path.
+  - An element is `c[i]`, `c.front()`, `c.back()` or `c.at(k)`. A replaceable owner is a handle `$T`, a pointer `T*`, a `T?` or a script class value.
+  - The translator writes the path again at each use of the `ref`. It evaluates each index one time, at the `ref` statement. Thus `ref r = xs[i]; i = 1;` keeps the element 0.
+  - A shape change of `c` or a new owner is safe. A later use reads the element of the new buffer or the field of the new owner.
+  - A removed element gives `IndexOutOfRange`, or `std::out_of_range` from `at`. A `null` owner gives `NullReference`. The index check needs `HOT_RUNTIME_CHECKS`.
+  - `ref (a, b) = c[0];` is an error. Copy with `var`, or take `ref p = c[0];` first.
+  - `foreach (ref x in c)` has a run-time guard. See [Change of a container in a foreach](statements-errors.html).
+  - A `ref` that takes the result of a `ref` call (rule R5) is a C++ reference. For it, a shape change of a root while the `ref` lives is an error. The list of shape changes is in rule R5.
 - R3 Escape. A `ref` cannot leave its block. It cannot go into a field, module variable, container element, `T?`, tuple, handle or lambda. It cannot cross an `await`. A type with `ref` inside is an error.
 - R4 Return. A method with a `ref T` return type returns a place.
   - Each root of the place is `this`, a field, a module variable, a `ref` or `out` parameter, or a `ref` local with such roots.
@@ -117,7 +120,9 @@ Rules:
   - `T` is a builtin, struct or native value type. A class type or a handle type is an error: return the handle `$T` by value.
   - An `async` method cannot return `ref`.
 - R4p was removed. The prefix `&` does not exist, so a method cannot return `&place`. A method returns `ref T` (rule R4) or `T?` for a value struct. A `T*` return of a value struct can give `null` or a pointer that the method got from its caller. A caller `var p = c.Find(0);` is a borrowed pointer. It cannot go into a field, a container element or a lambda.
-- R5 Call. The result of a `ref` call is a place (see the table). Rules R2 and R3 apply to each of its roots.
+- R5 Call. The result of a `ref` call is a place (see the table). Rule R3 applies to each of its roots. A shape change of a root while the `ref` lives is an error:
+  - A call on the root of one of these methods: push_back, emplace_back, pop_back, push_front, pop_front, emplace_front, emplace, emplace_hint, insert, insert_or_assign, try_emplace, erase, clear, resize, reserve, shrink_to_fit, assign, swap, rehash, merge, extract, append, replace, remove, remove_if or splice.
+  - An assignment to the root, or the root as a `ref` or `out` argument. This includes `F(c)`, `this.F(c)` and `Class.F(c)`.
   - The result of `this.F(...)` can be an element of any field of the object. A shape change of any container, string, array or replaceable field of the object (`this.xs.push_back(2)`, `this.xs = other`, `xs.clear()`) ends the `ref`. A change of a scalar field does not.
 
 Fix: copy the value (`var r = ...`), or keep the owner alive with a handle (`$T`).

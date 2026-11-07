@@ -552,8 +552,8 @@ TEST(ReferenceTranslation, ARefCallIsValidWhileNoFieldChangesItsShape)
     }
 }
 
-// A place behind a handle, a pointer, a "T?" or a "*" ends when the owner is replaced.
-TEST(ReferenceTranslation, ReplacingTheOwnerOfARefIsAnError)
+// B3 and B4: a "ref" behind an owner is a checked path. The lowering writes the path at each use.
+TEST(ReferenceTranslation, ReplacingTheOwnerOfARefGivesACheckedPath)
 {
     const char* const prelude = "class P {\n    int hp = 0;\n}\nclass A {\n    P p;\n    $P hp;\n    int? o;\n";
     for (const char* body : {"ref r = this.p.hp; this.p = new P(); r = 1;", "ref r = this.hp.hp; this.hp = new $P(); r = 1;",
@@ -562,8 +562,11 @@ TEST(ReferenceTranslation, ReplacingTheOwnerOfARefIsAnError)
              "var u = this.o; ref v = *u; u = null; v = 1;", "ref u = this.p; ref h = u.hp; this.p = new P(); h = 1;"})
     {
         const hotc::TranslateResult r = translate_text(std::string(prelude) + "    void T() { " + body + " }\n}\n");
-        EXPECT_FALSE(r.ok) << body;
-        EXPECT_TRUE(has(r.diagnostics, "can move or remove the elements of")) << body << r.diagnostics;
+        // A use after "= null" is a null error of the static null check, also a defined failure.
+        if (has(r.diagnostics, "can be null here"))
+            continue;
+        EXPECT_TRUE(r.ok) << body << r.diagnostics;
+        EXPECT_TRUE(has(r.cpp, "(void)(")) << body << r.cpp;
     }
 }
 
@@ -596,11 +599,12 @@ TEST(ReferenceTranslation, ForeachVariableThatHidesARefGivesItBack)
     const hotc::TranslateResult r = translate_text(
         "using <vector>;\nclass A {\n    std.vector<int> xs;\n    std.vector<int> ys;\n"
         "    void T() { ref r = xs[0]; foreach (var r in ys) { } xs.push_back(1); r = 2; }\n}\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "can move or remove the elements of 'xs'")) << r.diagnostics;
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "(hot::index(xs, 0)) = 2;")) << r.cpp;
 }
 
 // A "ref" argument of a call through "this" or the class name can change the shape of the container.
+// The "ref" is a checked path, so the call is allowed.
 TEST(ReferenceTranslation, RefArgumentOfAMemberOrStaticCallChangesTheShape)
 {
     const char* const prelude = "using <vector>;\nclass A {\n    std.vector<int> xs;\n"
@@ -609,8 +613,7 @@ TEST(ReferenceTranslation, RefArgumentOfAMemberOrStaticCallChangesTheShape)
     for (const char* body : {"ref r = xs[0]; this.Fill(xs); r = 1;", "ref r = xs[0]; A.SFill(this.xs); r = 1;"})
     {
         const hotc::TranslateResult r = translate_text(std::string(prelude) + "    void T() { " + body + " }\n}\n");
-        EXPECT_FALSE(r.ok) << body;
-        EXPECT_TRUE(has(r.diagnostics, "passed by 'ref'")) << body << r.diagnostics;
+        EXPECT_TRUE(r.ok) << body << r.diagnostics; // a checked path
     }
 }
 
@@ -661,5 +664,5 @@ TEST(ReferenceTranslation, RefInALambdaOfAFieldInitializerIsChecked)
         "using <vector>;\nclass A {\n    std.vector<int> xs;\n"
         "    std.function<void()> f = () => { ref r = xs[0]; xs.push_back(1); r = 1; };\n}\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "can move or remove the elements of")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "a lambda is not allowed in a field initializer")) << r.diagnostics;
 }

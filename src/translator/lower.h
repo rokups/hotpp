@@ -80,6 +80,8 @@ struct RCtx
     std::set<std::string> cell_locals;
     // The "foreach" variables that the guard gives at each use: the name and the C++ text.
     std::map<std::string, std::string> path_names;
+    // The "ref" locals that are checked paths: the name and the lowered path (VarDeclStmt::path).
+    std::map<std::string, const ast::Expr*> path_exprs;
     // True when the function that the pass lowers returns a "C" (a bare script class).
     bool ret_value = false;
     bool allow_this = true;

@@ -1693,3 +1693,85 @@ class Player : Actor {
     EXPECT_EQ(*s.field("sum"), 9.0f);
     EXPECT_TRUE(types.empty());
 }
+
+// B3 and B4: a "ref" to an element or behind an owner is a checked path. A shape change gives the
+// new element or a ScriptError. No case crashes.
+TEST_P(BackendTests, RefCheckedPathsGiveANewElementOrAScriptError)
+{
+    const hot::ScriptSource src = {"ref_paths.hot", R"(
+using "Actor.h";
+using <unordered_map>;
+using <vector>;
+
+class Q {
+    int hp = 0;
+}
+
+class Player : Actor {
+    std.vector<int> v;
+    std.unordered_map<int, int> m;
+    float after_push = 0.0;
+    float n_clear = 0.0;
+    float n_null = 0.0;
+    float other_hp = 0.0;
+    float n_back = 0.0;
+    float after_rehash = 0.0;
+    float index_cached = 0.0;
+
+    override void Tick(float dt) {
+        this.v.push_back(1);
+        this.v.push_back(2);
+        ref r = this.v[0];
+        for (int k = 0; k < 100; k++) { this.v.push_back(k); }
+        r = 7;
+        this.after_push = this.v[0];
+        ref e = this.v[101];
+        this.v.clear();
+        try { e = 1; } catch (IndexOutOfRange x) { this.n_clear = 1.0; }
+        $Q h = new $Q();
+        ref hp = h.hp;
+        $Q o = new $Q();
+        o.hp = 5;
+        h = o;
+        this.other_hp = hp;
+        h = null;
+        try { hp = 1; } catch (NullReference x) { this.n_null = 1.0; }
+        this.v.push_back(3);
+        ref b = this.v.back();
+        this.v.pop_back();
+        try { b = 1; } catch (IndexOutOfRange x) { this.n_back = 1.0; }
+        this.m[1] = 10;
+        ref at = this.m.at(1);
+        this.m.rehash(1024);
+        at = 11;
+        this.after_rehash = this.m[1];
+        this.v.push_back(4);
+        this.v.push_back(5);
+        int i = 0;
+        ref c = this.v[i];
+        i = 1;
+        this.index_cached = c;
+    }
+
+    override void TakeDamage(float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
+}
+)"};
+    hot::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module), "Player"));
+    s.commit_at_frame_boundary();
+    HandlerGuard guard;
+    std::vector<std::string> types;
+    hot::set_script_error_handler([&](const hot::ScriptErrorReport& e) { types.push_back(e.type); });
+    s.world.Tick(kDt);
+    EXPECT_EQ(*s.field("after_push"), 7.0f);
+    EXPECT_EQ(*s.field("n_clear"), 1.0f);
+    EXPECT_EQ(*s.field("other_hp"), 5.0f);
+    EXPECT_EQ(*s.field("n_null"), 1.0f);
+    EXPECT_EQ(*s.field("n_back"), 1.0f);
+    EXPECT_EQ(*s.field("after_rehash"), 11.0f);
+    EXPECT_EQ(*s.field("index_cached"), 4.0f);
+    EXPECT_TRUE(types.empty());
+}

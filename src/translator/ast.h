@@ -137,6 +137,9 @@ struct NameExpr
     // The lowering: the C++ text of a "foreach" variable that the guard gives at each use, for
     // example "__it0.ref()" (foreach.h). Empty: the normal name.
     std::string emit_as{};
+    // The lowering: a "ref" local that is a checked path (VarDeclStmt::path). The emitter writes
+    // this expression at each use. Null: the normal name.
+    const Expr* emit_path = nullptr;
 };
 struct ThisExpr
 {
@@ -319,6 +322,12 @@ struct VarDeclStmt
     // text is "auto [a, b]". "type" is empty. "ref" sets "is_ref".
     std::vector<std::string> names{};
     std::vector<uint32_t> name_poss{}; // the byte offset of each name in "names"
+    // The lowering: "ref r = xs[i]" is a checked path (doc/type-design.md, "Lifetime of a ref").
+    // "init" is the path. Each use of the name writes the path again. "path_caches" are the
+    // "const auto __rN_k = i;" locals of the indices. The emitter writes the caches and
+    // "(void)(path);" for the check at the declaration.
+    bool path = false;
+    std::vector<StmtP> path_caches{};
     // "[weak] T x = e": the local holds a weak handle (task 38). The storage is a weak_ptr.
     bool weak = false;
     uint32_t weak_pos = 0; // the byte offset of "weak" (0: not known)

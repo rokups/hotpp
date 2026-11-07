@@ -513,6 +513,9 @@ struct RefInfo
     uint32_t pos = 0;
     bool loop = false;
     std::string type; // the declared type of the initializer, or empty when not known
+    // The initializer has a call of a "ref" method (B5): the lowering gives a C++ reference, not a checked
+    // path. Only such a ref gets the shape change rule. "front", "back" and "at" are path steps.
+    bool call = false;
 };
 
 struct Checker
@@ -1006,12 +1009,36 @@ struct Checker
             return;
         }
         // The ref starts after its own statement, so the call in its initializer does not hit it.
-        RefInfo info{pl, d.pos, false, d.type.empty() ? expr_type(*d.init) : d.type};
+        RefInfo info{pl, d.pos, false, d.type.empty() ? expr_type(*d.init) : d.type, has_ref_call(*d.init)};
         auto& pending = pending_refs[&d];
         if (!d.name.empty())
             pending.emplace_back(d.name, info);
         for (const std::string& n : d.names)
             pending.emplace_back(n, info);
+    }
+
+    // True when the place has a call that is not "front", "back" or "at" (the same test as the lowering).
+    static bool has_ref_call(const Expr& e)
+    {
+        if (const auto* p = std::get_if<ParenExpr>(&e.v))
+            return p->inner && has_ref_call(*p->inner);
+        if (const auto* m = std::get_if<MemberExpr>(&e.v))
+            return m->obj && has_ref_call(*m->obj);
+        if (const auto* ix = std::get_if<IndexExpr>(&e.v))
+            return ix->obj && has_ref_call(*ix->obj);
+        if (const auto* u = std::get_if<UnaryExpr>(&e.v))
+            return u->operand && has_ref_call(*u->operand);
+        if (const auto* c = std::get_if<CallExpr>(&e.v))
+        {
+            auto step = [](const std::string& n) { return n == "front" || n == "back" || n == "at"; };
+            if (const auto* n = c->callee ? std::get_if<NameExpr>(&c->callee->v) : nullptr)
+                return !(n->parts.size() >= 2 && step(n->parts.back()));
+            const auto* m = c->callee ? std::get_if<MemberExpr>(&c->callee->v) : nullptr;
+            if (!m || !step(m->name))
+                return true;
+            return m->obj && has_ref_call(*m->obj);
+        }
+        return false;
     }
 
     // The name text of a declaration for a message: "r", or "(a, b)" for a structured binding.
@@ -1638,9 +1665,10 @@ struct Checker
             for (const auto& [n, src] : view_src)
                 if (src == r && !stale_views.count(n))
                     pending_stale.emplace(n, what + " changes '" + t + "'");
+        // A "ref" of a checked path reads the place again at each use (the lowering): it needs no rule.
         for (const auto& [n, info] : refs)
         {
-            if (!info.place.element)
+            if (!info.place.element || !info.call)
                 continue;
             // The result of a call of a "ref" method can be inside any field of the object that can change.
             bool hit = info.place.shape_root(r);

@@ -13,11 +13,13 @@ This list shows what version 1 does not support.
 - An exception struct (a struct with the base `ScriptError`) as the type of a field, a module variable or an element of a container. Use it only for `throw` and `catch`. A `.cpp` script has no exception struct. The only base of an exception struct is `ScriptError` (or another exception struct). See [Script exception types](statements-errors.html#script-exception-types).
 - Reload while a worker thread runs script code, in the default `StopTheWorld` mode. The commit waits for the frame boundary. The `EntryCounters` mode allows it (see [Internals](internals.html)).
 - A stored `ref` parameter, `ref` local or `T*`. A borrowed value cannot go to a field. The option `--no-strict-borrowed` makes this a warning for `T*`. A stored `ref` is always an error. See [Borrowing](borrowing.html).
-- The check of a `ref` (see "Lifetime of a ref" in [Type design](type-design.html#lifetime-of-a-ref)) has these limits:
+- A `ref` with an element or an owner on its path is a checked path (rule R2 in [Type design](type-design.html#lifetime-of-a-ref)). It has these limits:
+  - With `HOT_RUNTIME_CHECKS` off, the index of the path is not checked. A use after `clear()` is undefined behavior.
+  - The path is evaluated at each use. A use costs one index check or one null check for each step.
+- The static check of a `ref` call result (rule R5 in [Type design](type-design.html#lifetime-of-a-ref)) has these limits:
   - It sees direct mutation only: a call of a method name from the shape list, an assignment, and a bare name passed to a `ref` or `out` parameter.
   - It does not check a callee with 3 or more name parts, such as `p.items.push_back(x)`.
   - A `ref` into a field of another object with 3 or more name parts, such as `ref r = a.b.c`, uses the root `a` only.
-  - A `var` local or a `ref` local of an unknown type counts as a handle. `var v = Vec3(); ref r = v.x; v = Vec3();` is a false error.
   - A field of a type that is not a builtin scalar (a struct, an enum, a native type) counts as able to change shape after a `ref` call. This can give a false error.
   - After a call of a `ref` method, a shape change of any reshapeable field ends the `ref`, even a field that the method does not touch. This is a false error.
   - The message for a replaced owner says "elements of" the owner, also when the owner is a handle or a `T?`.

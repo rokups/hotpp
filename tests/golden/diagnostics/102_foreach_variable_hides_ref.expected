@@ -1,3 +1,0 @@
-102_foreach_variable_hides_ref.hot:11:9: error: 'xs.push_back()' can move or remove the elements of 'xs' while the 'ref' 'r' points to one. Copy the value with 'var', or end the ref before the call
-   11 |         xs.push_back(1);
-1 error generated.
