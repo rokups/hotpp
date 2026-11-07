@@ -142,6 +142,15 @@ a pointer to the script class 'Hero' is not allowed: use '$Hero' (a handle)
 
 A field or a module variable of type `T*` is allowed when `T` is a native class with a weak source. The translator stores it as `hot::CheckedPtr<T>`. The pointer is weak: it does not keep the object alive. It reads null after the object dies. It keeps its target across a reload.
 
+A class with a raw pointer field needs a destructor that uses the field. A field of type `std.vector<T*>` or `std.map<K, T*>` is also a raw pointer field. The destructor must name the field: it can delete the object, set the field to `null`, pass it on, or read it. This way the user decides who frees the object. A class with no destructor, or a destructor that does not name the field, is an error at the field. A handle, a `std.shared_ptr`, a `std.unique_ptr`, an intrusive handle and a `const char*` are not raw pointer fields. A script class in an import has this check only in the module that owns it. A `[weak]` tag does not turn the check off.
+
+```
+class Tool : Widget {
+    Mesh* mesh;
+    ~Tool() { mesh = null; }
+}
+```
+
 A weak source is one of these:
 
 - The class derives from `std::enable_shared_from_this`.
@@ -156,6 +165,7 @@ class Hero : Actor {
     override void Tick(float dt) {
         target?.Bump(1);   // a dead target reads as null: the call does nothing
     }
+    ~Hero() { target = null; }
 }
 ```
 

@@ -22,6 +22,8 @@ class Prober : Actor, Vault {
     int via_lambda = -1;
     int via_module = -1;
 
+    ~Prober() { other = null; }
+
     override void Tick(float dt) {
         if (this.phase == 1) {
             this.other = this.Best();

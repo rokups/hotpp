@@ -1907,6 +1907,132 @@ struct Checker
         scopes.pop_back();
     }
 
+    // True when the type holds a raw native pointer: "T*", or a template argument "T*" at any depth
+    // ("std::vector<T*>", "std::map<K, T*>"). A "const char*" is the text of a literal. An intrusive
+    // handle is a counted handle. A function type is not a stored pointer.
+    bool holds_raw_pointer(const std::string& type) const
+    {
+        const std::string t = trim(type);
+        if (t.empty() || t.find('(') != std::string::npos || t.find("::*") != std::string::npos)
+            return false;
+        std::string base;
+        if (t.back() == '*' && is_borrowed_form(t, base))
+        {
+            if (base == "char")
+                return false;
+            const TypeRule rule = types.lookup(base);
+            if (rule.kind == Kind::Handle && !rule.intrusive_add.empty() && !types.is_script_class(base))
+                return false;
+            return true;
+        }
+        for (const std::string& arg : template_args(t))
+            if (holds_raw_pointer(arg))
+                return true;
+        return false;
+    }
+
+    // True when the text has the identifier "name". A comment and a string literal do not count.
+    static bool text_uses_name(const std::string& text, const std::string& name)
+    {
+        const auto word = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
+        for (size_t i = 0; i < text.size();)
+        {
+            const char c = text[i];
+            if (c == '/' && i + 1 < text.size() && text[i + 1] == '/')
+            {
+                while (i < text.size() && text[i] != '\n')
+                    ++i;
+            }
+            else if (c == '/' && i + 1 < text.size() && text[i + 1] == '*')
+            {
+                const size_t e = text.find("*/", i + 2);
+                i = e == std::string::npos ? text.size() : e + 2;
+            }
+            else if (c == '"' || c == '\'')
+            {
+                for (++i; i < text.size() && text[i] != c; ++i)
+                    if (text[i] == '\\')
+                        ++i;
+                ++i;
+            }
+            else if (word(c))
+            {
+                size_t e = i;
+                while (e < text.size() && word(text[e]))
+                    ++e;
+                if (text.compare(i, e - i, name) == 0 && e - i == name.size())
+                    return true;
+                i = e;
+            }
+            else
+            {
+                ++i;
+            }
+        }
+        return false;
+    }
+
+    // True when the destructor body uses the field: "name" or "this.name".
+    static bool dtor_uses(const Method& d, const std::string& name)
+    {
+        if (d.raw)
+            return text_uses_name(d.raw_body, name);
+        bool used = false;
+        auto fe = [&](const Expr& e)
+        {
+            if (const auto* n = std::get_if<NameExpr>(&e.v))
+            {
+                if (!n->parts.empty() && n->parts[0] == name)
+                    used = true;
+                if (n->parts.size() > 1 && n->parts[0] == "this" && n->parts[1] == name)
+                    used = true;
+            }
+            else if (const auto* m = std::get_if<MemberExpr>(&e.v))
+            {
+                if (m->name == name && m->obj && std::holds_alternative<ThisExpr>(m->obj->v))
+                    used = true;
+            }
+        };
+        auto fs = [&](const Stmt&) {};
+        make_walker(fe, fs).block(d.body);
+        return used;
+    }
+
+    // A field with a raw pointer, or a template with a raw pointer argument, needs a destructor that
+    // uses the field. So the user handles the pointer and frees it when needed.
+    void check_pointer_fields_in_dtor()
+    {
+        if (!cd.foreign_unit.empty() || cd.iface_parent)
+            return;
+        if (cd.is_value && cd.dtors.empty())
+            return;
+        for (const Field& f : cd.fields)
+        {
+            // A pointer to a value type is an error of the storage rule already.
+            if (!holds_raw_pointer(f.type) || types.is_value_pointer(f.type))
+                continue;
+            // The hidden field of an auto property "T P { get; set; }" has the name "__p_P".
+            const std::string name = f.name.rfind("__p_", 0) == 0 ? f.name.substr(4) : f.name;
+            const std::string kind = cd.is_value ? "struct" : "class";
+            if (cd.dtors.empty())
+            {
+                error(f.pos,
+                    "the field '" + name + "' holds a raw pointer, but the " + kind + " '" + cd.key_name()
+                        + "' has no destructor. Add a destructor that deletes the pointer, sets it to null or "
+                          "passes it on");
+                continue;
+            }
+            bool used = false;
+            for (const Method& d : cd.dtors)
+                used = used || dtor_uses(d, name);
+            if (!used)
+                error(f.pos,
+                    "the field '" + name + "' holds a raw pointer, but the destructor of the " + kind + " '"
+                        + cd.key_name()
+                        + "' does not use it. Delete the pointer, set it to null or pass it on in the destructor");
+        }
+    }
+
     void run()
     {
         // A field and a method with one name collide in the state struct (a ".hot" script only).
@@ -1992,6 +2118,7 @@ struct Checker
         }
         for (const Method& d : cd.dtors)
             body(d);
+        check_pointer_fields_in_dtor();
     }
 };
 

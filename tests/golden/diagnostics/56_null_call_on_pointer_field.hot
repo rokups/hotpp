@@ -6,4 +6,6 @@ class Hero : Actor {
     override void Tick(float dt) {
         target.Bump(1);
     }
+
+    ~Hero() { target = null; }
 }

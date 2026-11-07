@@ -14,6 +14,8 @@ class BenchNodeCpp : public BenchBase
 public:
     int v = 0;
     BenchNodeCpp* next = nullptr;
+
+    ~BenchNodeCpp() { next = nullptr; }
 };
 
 class BenchHandlesCpp : public BenchBase

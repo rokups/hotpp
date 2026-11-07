@@ -205,7 +205,7 @@ TEST(ReferenceMessages, TypeTextUsesScriptNames)
 TEST(ReferenceHole, RawPointerOfANativeHandleFieldIsAFinding)
 {
     const hotc::TranslateResult r = check_translate_test::check_translate(
-        "[native, handle(\"std::shared_ptr<$T>\")] class Weapon;\n", "    Weapon** wp2;\n");
+        "[native, handle(\"std::shared_ptr<$T>\")] class Weapon;\n", "    Weapon** wp2;\n    ~Foo() { wp2 = null; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "a field cannot hold a borrowed pointer or reference to 'Weapon'")) << r.diagnostics;
 }
@@ -213,7 +213,7 @@ TEST(ReferenceHole, RawPointerOfANativeHandleFieldIsAFinding)
 TEST(ReferenceHole, RawPointerOfANativeHandleIsAWarningByDefault)
 {
     const hotc::TranslateResult r = check_translate_test::check_translate(
-        "[native, handle(\"std::shared_ptr<$T>\")] class Weapon;\n", "    Weapon** wp2;\n", {}, false);
+        "[native, handle(\"std::shared_ptr<$T>\")] class Weapon;\n", "    Weapon** wp2;\n    ~Foo() { wp2 = null; }\n", {}, false);
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.warnings, "warning: a field cannot hold a borrowed pointer")) << r.warnings;
 }

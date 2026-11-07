@@ -61,4 +61,6 @@ public:
     int via_pass = -1;
     int via_lambda = -1;
     int via_module = -1;
+
+    ~Prober() { other = nullptr; }
 };

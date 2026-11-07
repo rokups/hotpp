@@ -29,7 +29,7 @@ TEST(BorrowedStorage, RawPointerFieldIsAnErrorInStrictMode)
 
 TEST(BorrowedStorage, RawPointerFieldIsAWarningByDefault)
 {
-    const hotc::TranslateResult r = check_translate("", "    Weapon** w;\n", {}, false);
+    const hotc::TranslateResult r = check_translate("", "    Weapon** w;\n    ~Foo() { w = null; }\n", {}, false);
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(r.diagnostics.empty()) << r.diagnostics;
     EXPECT_TRUE(has(r.warnings, "t.hot:3:14: warning: a field cannot hold a borrowed pointer")) << r.warnings;
@@ -147,7 +147,7 @@ TEST(BorrowedStorage, RefInACallArgumentIsAllowed)
 TEST(ErrorRows, StoredRefInAnAssignmentIsAnError)
 {
     const hotc::TranslateResult r =
-        check_translate("", "    Vec3 pos;\n    Vec3* p;\n    void Move() { this.p = &this.pos; }\n");
+        check_translate("", "    Vec3 pos;\n    Vec3* p;\n    ~Foo() { p = null; }\n    void Move() { this.p = &this.pos; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "error: a '&' value cannot be stored in an assignment")) << r.diagnostics;
 }
@@ -162,7 +162,7 @@ TEST(ErrorRows, StoredRefInAReturnIsAnError)
 TEST(ErrorRows, StoredRefIsAWarningByDefault)
 {
     const hotc::TranslateResult r =
-        check_translate("", "    Vec3 pos;\n    Vec3* p;\n    void Move() { this.p = &this.pos; }\n", {}, false);
+        check_translate("", "    Vec3 pos;\n    Vec3* p;\n    ~Foo() { p = null; }\n    void Move() { this.p = &this.pos; }\n", {}, false);
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.warnings, "warning: a '&' value cannot be stored")) << r.warnings;
 }

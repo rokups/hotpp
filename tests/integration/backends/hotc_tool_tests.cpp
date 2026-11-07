@@ -279,7 +279,7 @@ TEST(HotcTool, StrictBorrowedIsTheDefault)
     {
         std::FILE* f = std::fopen(script.c_str(), "w");
         ASSERT_NE(f, nullptr);
-        std::fputs("using \"Actor.h\";\nclass P : Actor {\n    Actor** target = null;\n}\n", f);
+        std::fputs("using \"Actor.h\";\nclass P : Actor {\n    Actor** target = null;\n    ~P() { target = null; }\n}\n", f);
         std::fclose(f);
     }
     std::string strict, relaxed;

@@ -62,7 +62,7 @@ std::string value_pointer_message(const std::string& type)
 
 TEST(NativePointerField, HotPointerIsStoredAsCheckedPtr)
 {
-    const hotc::TranslateResult r = hot_field("", "Shared* m;");
+    const hotc::TranslateResult r = hot_field("", "Shared* m;\n    ~Foo() { m = null; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::CheckedPtr<Shared> m")) << r.cpp;
 }
@@ -76,21 +76,21 @@ TEST(NativePointerField, HotConstPointerFieldIsAnError)
 
 TEST(NativePointerField, HotPointerOfAHandleStubWithAWeakSourceIsStoredAsCheckedPtr)
 {
-    const hotc::TranslateResult r = hot_field(kSharedStub, "Shared* w;");
+    const hotc::TranslateResult r = hot_field(kSharedStub, "Shared* w;\n    ~Foo() { w = null; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::CheckedPtr<Shared> w")) << r.cpp;
 }
 
 TEST(NativePointerField, HotNullInitializerStaysValid)
 {
-    const hotc::TranslateResult r = hot_field("", "Shared* m = null;");
+    const hotc::TranslateResult r = hot_field("", "Shared* m = null;\n    ~Foo() { m = null; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::CheckedPtr<Shared> m")) << r.cpp;
 }
 
 TEST(NativePointerField, HotIntrusivePointerStaysTheHandle)
 {
-    const hotc::TranslateResult r = hot_field(kIntrusiveStub, "Counted* c;");
+    const hotc::TranslateResult r = hot_field(kIntrusiveStub, "Counted* c;\n    ~Foo() { c = null; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_FALSE(has(r.cpp, "CheckedPtr<Counted>")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "Counted* c")) << r.cpp;
@@ -98,14 +98,14 @@ TEST(NativePointerField, HotIntrusivePointerStaysTheHandle)
 
 TEST(NativePointerField, CppPointerIsStoredAsCheckedPtr)
 {
-    const hotc::TranslateResult r = cpp_field("Shared* m = nullptr;");
+    const hotc::TranslateResult r = cpp_field("Shared* m = nullptr; ~A() { m = nullptr; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::CheckedPtr<Shared> m")) << r.cpp;
 }
 
 TEST(NativePointerField, CppConstPointerIsStoredAsCheckedPtrOfConst)
 {
-    const hotc::TranslateResult r = cpp_field("const Shared* m = nullptr;");
+    const hotc::TranslateResult r = cpp_field("const Shared* m = nullptr; ~A() { m = nullptr; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::CheckedPtr<const Shared> m")) << r.cpp;
 }
@@ -233,11 +233,11 @@ TEST(NativePointerField, HotPointerToAClassWithoutAWeakSourceKeepsTheBorrowedMes
 {
     for (const char* stubs : {"", "[native] class Mesh;\n"})
     {
-        const hotc::TranslateResult strict = hot_field(stubs, "Mesh* m;");
+        const hotc::TranslateResult strict = hot_field(stubs, "Mesh* m;\n    ~Foo() { m = null; }");
         EXPECT_FALSE(strict.ok) << stubs;
         EXPECT_TRUE(has(strict.diagnostics, "error: a field cannot hold a borrowed pointer or reference to 'Mesh'"))
             << strict.diagnostics;
-        const hotc::TranslateResult relaxed = check_translate(stubs, "    Mesh* m;\n", {}, false);
+        const hotc::TranslateResult relaxed = check_translate(stubs, "    Mesh* m;\n    ~Foo() { m = null; }\n", {}, false);
         EXPECT_TRUE(relaxed.ok) << relaxed.diagnostics;
         EXPECT_TRUE(has(relaxed.warnings, "warning: a field cannot hold a borrowed pointer or reference to 'Mesh'"))
             << relaxed.warnings;
@@ -295,7 +295,7 @@ TEST(NativePointerField, HotWeakOnAPointerWithoutAWeakSourceKeepsTheOldMessage)
 
 TEST(NativePointerField, HotPointerOfASharedPtrStubIsStoredAsCheckedPtr)
 {
-    const hotc::TranslateResult r = hot_field("[native, handle(\"std::shared_ptr<$T>\")] class Mesh;\n", "Mesh* m;");
+    const hotc::TranslateResult r = hot_field("[native, handle(\"std::shared_ptr<$T>\")] class Mesh;\n", "Mesh* m;\n    ~Foo() { m = null; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::CheckedPtr<Mesh> m")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "struct weak_ref_traits<U, std::enable_if_t<std::is_same_v<U, ::Mesh> && "
@@ -306,7 +306,7 @@ TEST(NativePointerField, HotPointerOfASharedPtrStubIsStoredAsCheckedPtr)
 TEST(NativePointerField, HotPointerOfAWeakHandleStubIsStoredAsCheckedPtr)
 {
     const hotc::TranslateResult r = hot_field(
-        "[native, handle(\"Strong<$T>\"), weak_handle(\"Weak<$T>\")] class Mesh;\n", "Mesh* m;");
+        "[native, handle(\"Strong<$T>\"), weak_handle(\"Weak<$T>\")] class Mesh;\n", "Mesh* m;\n    ~Foo() { m = null; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::CheckedPtr<Mesh> m")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, ": hot::custom_weak_ref<U, Strong<U>, Weak<U>> {};")) << r.cpp;
@@ -315,7 +315,7 @@ TEST(NativePointerField, HotPointerOfAWeakHandleStubIsStoredAsCheckedPtr)
 TEST(NativePointerField, HotPointerOfAStubWithWeakFromThisKeepsTheClassTraits)
 {
     // Shared has enable_shared_from_this: the emitted traits are guarded and never apply to it.
-    const hotc::TranslateResult r = hot_field(kSharedStub, "Shared* m;");
+    const hotc::TranslateResult r = hot_field(kSharedStub, "Shared* m;\n    ~Foo() { m = null; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::CheckedPtr<Shared> m")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "!detail::has_weak_from_this<U>::value")) << r.cpp;
@@ -325,7 +325,7 @@ TEST(NativePointerField, HotPointerOfAStubWithWeakFromThisKeepsTheClassTraits)
 
 TEST(NativePointerField, HotCheckedPointerIsValidWithStrictOff)
 {
-    const hotc::TranslateResult r = check_translate("", "    Shared* m;\n", {}, false);
+    const hotc::TranslateResult r = check_translate("", "    Shared* m;\n    ~Foo() { m = null; }\n", {}, false);
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(r.warnings.empty()) << r.warnings;
     EXPECT_TRUE(has(r.cpp, "hot::CheckedPtr<Shared> m")) << r.cpp;
@@ -333,7 +333,7 @@ TEST(NativePointerField, HotCheckedPointerIsValidWithStrictOff)
 
 TEST(NativePointerField, HotPointerToADerivedClassOfAWeakSourceIsStoredAsCheckedPtr)
 {
-    const hotc::TranslateResult r = hot_field("", "SharedKid* m;");
+    const hotc::TranslateResult r = hot_field("", "SharedKid* m;\n    ~Foo() { m = null; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::CheckedPtr<SharedKid> m")) << r.cpp;
 }
@@ -343,7 +343,7 @@ TEST(NativePointerField, HotPointerToADerivedClassOfAWeakSourceIsStoredAsChecked
 TEST(NativePointerField, HotConstructorAssignsNullToTheCheckedPointer)
 {
     const hotc::TranslateResult r =
-        hot_field("", "Shared* m = null;\n    Foo() { this.m = null; }");
+        hot_field("", "Shared* m = null;\n    Foo() { this.m = null; }\n    ~Foo() { m = null; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::CheckedPtr<Shared> m")) << r.cpp;
 }
@@ -475,4 +475,150 @@ TEST(NativePointerField, CppFrontendWarningsReachTheResult)
     EXPECT_TRUE(has(r.warnings, "t.cpp:4:27: warning: the static local variable 'n' resets")) << r.warnings;
     EXPECT_TRUE(has(r.warnings, "t.cpp:2:")) << r.warnings;
     EXPECT_TRUE(has(r.warnings, "warning: the class template 'Crate' has a base class")) << r.warnings;
+}
+
+// ---- the destructor must use each raw pointer field
+
+namespace
+{
+
+std::string no_dtor_message(const std::string& name, const std::string& cls = "Foo")
+{
+    return "the field '" + name + "' holds a raw pointer, but the class '" + cls + "' has no destructor.";
+}
+
+std::string unused_message(const std::string& name, const std::string& cls = "Foo")
+{
+    return "the field '" + name + "' holds a raw pointer, but the destructor of the class '" + cls
+        + "' does not use it.";
+}
+
+} // namespace
+
+TEST(PointerFieldDestructor, HotPointerWithNoDestructorIsAnError)
+{
+    const hotc::TranslateResult r = hot_field("", "Shared* m;");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "error: " + no_dtor_message("m"))) << r.diagnostics;
+}
+
+TEST(PointerFieldDestructor, HotDestructorThatIgnoresTheFieldIsAnError)
+{
+    const hotc::TranslateResult r = hot_field("", "Shared* m;\n    int n;\n    ~Foo() { n = 1; }");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "error: " + unused_message("m"))) << r.diagnostics;
+}
+
+TEST(PointerFieldDestructor, HotVectorOfPointersWithNoDestructorIsAnError)
+{
+    for (const char* type : {"std.vector<Shared*> v;", "std.map<int, Shared*> v;"})
+    {
+        const hotc::TranslateResult r = hot_field("", type);
+        EXPECT_FALSE(r.ok) << type;
+        EXPECT_TRUE(has(r.diagnostics, "error: " + no_dtor_message("v"))) << type << "\n" << r.diagnostics;
+    }
+}
+
+TEST(PointerFieldDestructor, HotVectorOfPointersIgnoredByTheDestructorIsAnError)
+{
+    const hotc::TranslateResult r = hot_field("", "std.vector<Shared*> v;\n    ~Foo() { }");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "error: " + unused_message("v"))) << r.diagnostics;
+}
+
+TEST(PointerFieldDestructor, HotDestructorThatUsesTheFieldPasses)
+{
+    for (const char* dtor : {"~Foo() { m = null; }", "~Foo() { this.m = null; }", "~Foo() { if (m != null) { m = null; } }"})
+    {
+        const hotc::TranslateResult r = hot_field("", std::string("Shared* m;\n    ") + dtor);
+        EXPECT_TRUE(r.ok) << dtor << "\n" << r.diagnostics;
+    }
+}
+
+// A vector of pointers is a warning with the strict mode off. The destructor rule stays an error.
+TEST(PointerFieldDestructor, HotDestructorThatUsesTheVectorPasses)
+{
+    const hotc::TranslateResult ok =
+        check_translate("", "    std.vector<Shared*> v;\n    ~Foo() { v.clear(); }\n", {}, false);
+    EXPECT_TRUE(ok.ok) << ok.diagnostics;
+    const hotc::TranslateResult bad = check_translate("", "    std.vector<Shared*> v;\n", {}, false);
+    EXPECT_FALSE(bad.ok);
+    EXPECT_TRUE(has(bad.diagnostics, "error: " + no_dtor_message("v"))) << bad.diagnostics;
+}
+
+TEST(PointerFieldDestructor, HotFieldsThatAreNotRawPointersNeedNoDestructor)
+{
+    const hotc::TranslateResult r = hot_field(kSharedStub,
+        "$Foo self;\n    Shared sh;\n    std.shared_ptr<Weapon> w;\n"
+        "    std.vector<$Foo> kids;\n    int n;\n    float f;\n    std.string s;\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_FALSE(has(r.diagnostics, "raw pointer")) << r.diagnostics;
+}
+
+TEST(PointerFieldDestructor, CppPointerWithNoDestructorIsAnError)
+{
+    const hotc::TranslateResult r = cpp_field("Shared* m = nullptr;");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "error: " + no_dtor_message("m", "A"))) << r.diagnostics;
+}
+
+TEST(PointerFieldDestructor, CppVectorOfPointersWithNoDestructorIsAnError)
+{
+    const hotc::TranslateResult r = cpp_field("std::vector<Shared*> v;");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "error: " + no_dtor_message("v", "A"))) << r.diagnostics;
+}
+
+TEST(PointerFieldDestructor, CppDestructorThatIgnoresTheFieldIsAnError)
+{
+    const hotc::TranslateResult r = cpp_field("Shared* m = nullptr; int n = 0; ~A() { n = 1; }");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "error: " + unused_message("m", "A"))) << r.diagnostics;
+}
+
+TEST(PointerFieldDestructor, CppDestructorThatUsesTheFieldPasses)
+{
+    for (const char* dtor : {"~A() { delete m; }", "~A() { m = nullptr; }", "~A() { this->m = nullptr; }"})
+    {
+        const hotc::TranslateResult r = cpp_field(std::string("Shared* m = nullptr; ") + dtor);
+        EXPECT_TRUE(r.ok) << dtor << "\n" << r.diagnostics;
+    }
+}
+
+TEST(PointerFieldDestructor, CppACommentOrAStringDoesNotUseTheField)
+{
+    const hotc::TranslateResult r = cpp_field("Shared* m = nullptr; ~A() { /* m */ const char* s = \"m\"; }");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "error: " + unused_message("m", "A"))) << r.diagnostics;
+}
+
+TEST(PointerFieldDestructor, CppFieldsThatAreNotRawPointersNeedNoDestructor)
+{
+    const hotc::TranslateResult r = cpp_field(
+        "std::shared_ptr<Shared> sh; std::unique_ptr<Weapon> u; std::vector<std::shared_ptr<Shared>> v; "
+        "const char* text = \"x\"; int n = 0;");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+TEST(PointerFieldDestructor, IntrusiveHandleFieldNeedsNoDestructor)
+{
+    const hotc::TranslateResult r = hot_field(kIntrusiveStub, "Counted* c;");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+// The owner module reports the field. The importer of the module does not report it again.
+TEST(PointerFieldDestructor, ImportedClassIsCheckedInTheOwnerModuleOnly)
+{
+    TempDir dir;
+    write_file(dir.path() / "c.h", kCheckHeader);
+    const std::string parent = "using \"c.h\";\nclass Base : Widget {\n    Shared* m;\n    int hp = 1;\n}\n";
+    const hotc::TranslateResult owner = hotc::translate(temp_options(dir, parent));
+    EXPECT_FALSE(owner.ok);
+    EXPECT_TRUE(has(owner.diagnostics, "error: " + no_dtor_message("m", "Base"))) << owner.diagnostics;
+
+    hotc::TranslateOptions o =
+        temp_options(dir, "using \"base.hot\";\nclass Kid : Base {\n    int n = 0;\n}\n");
+    o.modules.emplace_back("base.hot", parent);
+    const hotc::TranslateResult importer = hotc::translate(o);
+    EXPECT_FALSE(has(importer.diagnostics, "raw pointer")) << importer.diagnostics;
 }

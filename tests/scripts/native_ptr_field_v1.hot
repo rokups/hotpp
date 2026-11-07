@@ -14,4 +14,6 @@ class Holder : Actor {
     override void Tick(float dt) {
         this.ticks = this.ticks + 1;
     }
+
+    ~Holder() { target = null; }
 }
