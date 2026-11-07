@@ -358,6 +358,87 @@ TEST_P(FamilyTests, StaticMembersOverTwoUnits)
     EXPECT_EQ(*fld<int>(s, "ticks"), 6);
 }
 
+// G17: overloads over two units. "ovlib.hot" has overloads of a free function, of a static method
+// and of a virtual method. The importer calls each one, and "base." calls the parent overload.
+const char* kOvLib1 = R"(
+using "Actor.h";
+
+int Half(int v) { return v / 2; }
+int Half(std.string s) { return 70; }
+
+class Calc {
+    static int Twice(int v) { return v * 2; }
+    static int Twice(float v) { return 500; }
+}
+
+class OvParent : Actor {
+    virtual int Pick(int x) { return 1; }
+    virtual int Pick(std.string s) { return 2; }
+}
+)";
+
+// Generation 2: new bodies. The interface stays, so the importer stays.
+const char* kOvLib2 = R"(
+using "Actor.h";
+
+int Half(int v) { return v / 2 + 1; }
+int Half(std.string s) { return 80; }
+
+class Calc {
+    static int Twice(int v) { return v * 3; }
+    static int Twice(float v) { return 600; }
+}
+
+class OvParent : Actor {
+    virtual int Pick(int x) { return 3; }
+    virtual int Pick(std.string s) { return 4; }
+}
+)";
+
+const char* kOvApp = R"(
+using "Actor.h";
+using "ovlib.hot";
+
+class OvUser : OvParent {
+    int free = 0;
+    int stat = 0;
+    int based = 0;
+    int ticks = 0;
+
+    override int Pick(int x) { return base.Pick(x) + 10; }
+    override int Pick(std.string s) { return base.Pick(s) + 20; }
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+        float f = 0.5;
+        this.free = Half(8) + Half("ab");
+        this.stat = Calc.Twice(3) + Calc.Twice(f);
+        this.based = this.Pick(1) + this.Pick("a");
+    }
+}
+)";
+
+TEST_P(FamilyTests, OverloadsOverTwoUnits)
+{
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(start(s,
+        batch_of(build("app.hot", kOvApp, {{"ovlib.hot", kOvLib1}}, 1), build("ovlib.hot", kOvLib1, {}, 1)),
+        "OvUser"));
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "free"), 4 + 70);
+    EXPECT_EQ(*fld<int>(s, "stat"), 6 + 500);
+    EXPECT_EQ(*fld<int>(s, "based"), (1 + 10) + (2 + 20));
+
+    std::vector<hot::LoadResult> v2;
+    v2.push_back(build("ovlib.hot", kOvLib2, {}, 2));
+    ASSERT_NO_FATAL_FAILURE(reload(s, std::move(v2)));
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "ticks"), 3) << "the live object keeps its state";
+    EXPECT_EQ(*fld<int>(s, "free"), 5 + 80);
+    EXPECT_EQ(*fld<int>(s, "stat"), 9 + 600);
+    EXPECT_EQ(*fld<int>(s, "based"), (3 + 10) + (4 + 20));
+}
+
 // A missing parent module is a translation error at the "using" line.
 TEST_P(BackendTests, FamilyOverTwoModulesMissingParent)
 {

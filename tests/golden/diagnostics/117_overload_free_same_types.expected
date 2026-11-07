@@ -1,0 +1,3 @@
+117_overload_free_same_types.hot:5:1: error: function 'Half' is declared twice with the same parameter types
+    5 | int Half(ref int v) {
+1 error generated.

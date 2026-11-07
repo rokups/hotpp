@@ -1,0 +1,88 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Generation 1 of the overloads that are not instance methods of a class (gap G17): static
+// methods, free functions, struct methods, constructors, and a "base." call of a parent overload.
+using "Actor.h";
+
+struct Pt {
+    int x = 0;
+
+    int Add(int v) {
+        return this.x + v;
+    }
+
+    int Add(float v) {
+        return this.x + 100;
+    }
+}
+
+int Half(int v) {
+    return v / 2;
+}
+
+int Half(std.string s) {
+    return 70;
+}
+
+class FnOvBase : Actor {
+    virtual int Pick(int x) {
+        return 1;
+    }
+
+    virtual int Pick(std.string s) {
+        return 2;
+    }
+}
+
+class FnOvMade {
+    int seed = 0;
+
+    FnOvMade(int s) {
+        this.seed = s;
+    }
+
+    FnOvMade(std.string s) {
+        this.seed = 300;
+    }
+}
+
+class FnOv : FnOvBase {
+    int ticks = 0;
+    int stat = 0;
+    int free = 0;
+    int strct = 0;
+    int based = 0;
+    int made = 0;
+
+    static int Twice(int v) {
+        return v * 2;
+    }
+
+    static int Twice(float v) {
+        return 500;
+    }
+
+    override int Pick(int x) {
+        return base.Pick(x) + 10;
+    }
+
+    override int Pick(std.string s) {
+        return base.Pick(s) + 20;
+    }
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+        float f = 0.5;
+        this.stat = Twice(3) + FnOv.Twice(f);
+        this.free = Half(8) + Half("ab");
+        Pt p;
+        p.x = 1;
+        this.strct = p.Add(2) + p.Add(f);
+        this.based = this.Pick(1) + this.Pick("a");
+        $FnOvMade a = new $FnOvMade(4);
+        $FnOvMade b = new $FnOvMade("b");
+        this.made = a.seed + b.seed;
+    }
+}

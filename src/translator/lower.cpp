@@ -359,11 +359,17 @@ struct Lowerer
     // the arguments get no coercion.
     static const Method* overload_for(const ClassDef& owner, const Method* m, size_t argc)
     {
+        return overload_in(owner.methods, m, argc);
+    }
+
+    // The same for a list of methods: the static methods of a class or the free functions.
+    static const Method* overload_in(const std::vector<Method>& list, const Method* m, size_t argc)
+    {
         if (!m || m->src_name.empty())
             return m;
         const Method* hit = nullptr;
         int n = 0;
-        for (const Method& o : owner.methods)
+        for (const Method& o : list)
         {
             if (o.src_name != m->src_name)
                 continue;
@@ -386,7 +392,7 @@ struct Lowerer
         int depth = 0;
         for (const ClassDef* d = &c; d && depth < 64; d = parent_of(*d), ++depth)
             for (const Method& m : d->statics)
-                if (m.name == n)
+                if (m.written_name() == n)
                 {
                     if (owner)
                         *owner = d;
@@ -412,7 +418,7 @@ struct Lowerer
             return nullptr;
         if (cx.free_fns)
             for (const Method& m : *cx.free_fns)
-                if (m.name == n)
+                if (m.written_name() == n)
                     return &m;
         return nullptr;
     }
@@ -477,8 +483,11 @@ struct Lowerer
                     + "': the prototype of the function comes after the declaration");
         if (owner)
             check_member(fn.access, *owner, name, pos);
-        c.callee = raw_named("", static_symbol(owner, name), pos, 0);
-        coerce_args(c, fn.params, 0);
+        // An overload group has C++ forwarders of the written name (see the emitter). The
+        // arguments get the coercion of the one overload that fits their number.
+        c.callee = raw_named("", static_symbol(owner, fn.written_name()), pos, 0);
+        const std::vector<Method>* group = owner ? &owner->statics : cx.free_fns;
+        coerce_args(c, group ? overload_in(*group, &fn, c.args.size()) : &fn, 0);
         exprs(c.args);
     }
 
@@ -2313,7 +2322,11 @@ struct Lowerer
                     return;
                 }
                 std::string callee;
-                if (fn)
+                // An overload group: the "base." forwarders of the parent select the overload
+                // (gap G17). The forwarder of the written name reads the slot, so it is not usable here.
+                if (fn && !fn->src_name.empty())
+                    callee = par->name + "__" + sm->name + "__ovbase";
+                else if (fn)
                     callee = owner->name + "__" + sm->name;
                 else if (cx.native_virtuals.count(sm->name))
                     callee = par->name + "__base_" + sm->name;
@@ -2322,7 +2335,7 @@ struct Lowerer
                     c.callee = raw(callee, pos_of(*sm->obj));
                     c.args.insert(c.args.begin(), raw("__self", 0));
                     if (fn)
-                        coerce_args(c, fn, 1);
+                        coerce_args(c, overload_for(*owner, fn, c.args.size() - 1), 1);
                     for (size_t i = 1; i < c.args.size(); ++i)
                         expr(c.args[i]);
                     return;

@@ -1,0 +1,5 @@
+120_overload_free_ambiguous_call.hot:14:18: error: the call of 'Half' fits more than one overload. Convert the argument to the parameter type of one overload
+   14 |         this.n = Half(big);
+120_overload_free_ambiguous_call.hot:14:18: note: candidate function
+120_overload_free_ambiguous_call.hot:14:18: note: candidate function
+1 error generated.

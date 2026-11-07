@@ -62,24 +62,25 @@ TEST(StaticFunctionTranslation, ValidFreeFunctionAndStaticAreAccepted)
               "}\n");
 }
 
+// Two overloads with the same parameter types (gap G17). The pass mode does not count.
 TEST(StaticFunctionTranslation, FreeFunctionTwiceIsAnError)
 {
-    expect_error("int F() { return 1; }\nint F(int x) { return x; }\nclass A : Unit { }\n",
-        "function 'F' is declared twice (overloads are not supported)");
+    expect_error("int F(int y) { return 1; }\nint F(int x) { return x; }\nclass A : Unit { }\n",
+        "function 'F' is declared twice with the same parameter types");
 }
 
 TEST(StaticFunctionTranslation, StaticTwiceIsAnError)
 {
-    expect_error("class A : Unit {\n    static int F() { return 1; }\n    static int F(int x) { return x; }\n}\n",
-        "function 'F' is declared twice (overloads are not supported)");
+    expect_error("class A : Unit {\n    static int F(int y) { return 1; }\n    static int F(ref int x) { return x; }\n}\n",
+        "function 'F' is declared twice with the same parameter types");
 }
 
 TEST(StaticFunctionTranslation, StaticAndInstanceMethodWithOneNameIsAnError)
 {
     expect_error("class A : Unit {\n    static int F() { return 1; }\n    int F(int x) { return x; }\n}\n",
-        "function 'F' is declared twice (overloads are not supported)");
+        "function 'F' is declared twice (a static method and a method)");
     expect_error("class A : Unit {\n    int F(int x) { return x; }\n    static int F() { return 1; }\n}\n",
-        "function 'F' is declared twice (overloads are not supported)");
+        "function 'F' is declared twice (a static method and a method)");
 }
 
 TEST(StaticFunctionTranslation, StaticAndFieldWithOneNameIsAnError)

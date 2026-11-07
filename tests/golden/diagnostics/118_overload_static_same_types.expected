@@ -1,0 +1,3 @@
+118_overload_static_same_types.hot:6:12: error: function 'Twice' is declared twice with the same parameter types
+    6 |     static int Twice(int w) {
+1 error generated.

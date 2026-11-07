@@ -1,0 +1,16 @@
+class Scorer {
+    virtual int Score(int x) {
+        return x;
+    }
+
+    virtual int Score(float x) {
+        return 0;
+    }
+}
+
+class Child : Scorer {
+    override int Score(int x) {
+        uint64_t big = 7;
+        return base.Score(big);
+    }
+}

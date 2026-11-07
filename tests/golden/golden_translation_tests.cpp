@@ -377,6 +377,10 @@ TEST(GoldenTranslation, ClassOperatorUse)
 // Method overloads (gap G17): the keys of the slots and the C++ forwarders of the written name.
 TEST(GoldenTranslation, MethodOverload) { golden_pair("method_overload"); }
 
+// Overloads of static methods, free functions, struct methods and constructors, and the "base."
+// forwarders of a parent overload (gap G17).
+TEST(GoldenTranslation, FnOverload) { golden_pair("fn_overload"); }
+
 TEST(GoldenTranslation, StaticFunctions)
 {
     golden_pair("functions");

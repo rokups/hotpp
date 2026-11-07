@@ -1,0 +1,21 @@
+struct Pt {
+    int x = 0;
+
+    int Add(int v) {
+        return this.x + v;
+    }
+
+    int Add(float v) {
+        return 0;
+    }
+}
+
+class User {
+    int n = 0;
+
+    void Use() {
+        uint64_t big = 7;
+        Pt p;
+        this.n = p.Add(big);
+    }
+}

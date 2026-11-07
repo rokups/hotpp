@@ -1,0 +1,9 @@
+class Calc {
+    static int Twice(int v) {
+        return v * 2;
+    }
+
+    static int Twice(int w) {
+        return w;
+    }
+}

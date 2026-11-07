@@ -1,0 +1,5 @@
+121_overload_static_ambiguous_call.hot:16:18: error: the call of 'Calc.Twice' fits more than one overload. Convert the argument to the parameter type of one overload
+   16 |         this.n = Calc.Twice(big);
+121_overload_static_ambiguous_call.hot:16:18: note: candidate function
+121_overload_static_ambiguous_call.hot:16:18: note: candidate function
+1 error generated.

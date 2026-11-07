@@ -1,0 +1,11 @@
+struct Pt {
+    int x = 0;
+
+    int Add(int v) {
+        return this.x + v;
+    }
+
+    int Add(int w) {
+        return w;
+    }
+}

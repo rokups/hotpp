@@ -76,4 +76,31 @@ TEST_P(BackendTests, MethodOverloadsReloadWhenAnOverloadIsAddedRemovedOrChanged)
     EXPECT_EQ(fld(child.shell, "kinds"), 10 + 2);
 }
 
+// The overloads that are not instance methods of a class: static methods, free functions, struct
+// methods and constructors. A "base." call goes to the parent overload of the argument types.
+// Generation 2 adds an overload to each group and changes some bodies. The live object keeps its fields.
+TEST_P(BackendTests, FunctionOverloadsReloadWithLiveState)
+{
+    Session s;
+    hot::LoadResult v1 = backend->load(source("fn_overload_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "FnOv"));
+    s.commit_at_frame_boundary();
+    s.world.Tick(kDt);
+    EXPECT_EQ(fld(s.inst.shell, "ticks"), 1);
+    EXPECT_EQ(fld(s.inst.shell, "stat"), 6 + 500);           // Twice(int) + Twice(float)
+    EXPECT_EQ(fld(s.inst.shell, "free"), 4 + 70);            // Half(int) + Half(string)
+    EXPECT_EQ(fld(s.inst.shell, "strct"), 3 + 101);          // Pt.Add(int) + Pt.Add(float)
+    EXPECT_EQ(fld(s.inst.shell, "based"), (1 + 10) + (2 + 20)); // base.Pick of each overload
+    EXPECT_EQ(fld(s.inst.shell, "made"), 4 + 300);           // two constructors
+
+    ASSERT_NO_FATAL_FAILURE(reload(*backend, s, "fn_overload_v2.hot", 2));
+    EXPECT_EQ(fld(s.inst.shell, "ticks"), 3); // the live object keeps its state
+    EXPECT_EQ(fld(s.inst.shell, "stat"), 9 + 500 + 3);
+    EXPECT_EQ(fld(s.inst.shell, "free"), 5 + 70 + 3);
+    EXPECT_EQ(fld(s.inst.shell, "strct"), 3 + 101 + 3);
+    EXPECT_EQ(fld(s.inst.shell, "based"), (1 + 100) + (2 + 200));
+    EXPECT_EQ(fld(s.inst.shell, "made"), 4 + 300 + 6);
+}
+
 } // namespace

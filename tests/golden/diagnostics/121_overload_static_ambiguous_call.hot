@@ -1,0 +1,18 @@
+class Calc {
+    static int Twice(int v) {
+        return v * 2;
+    }
+
+    static int Twice(float v) {
+        return 0;
+    }
+}
+
+class User {
+    int n = 0;
+
+    void Use() {
+        uint64_t big = 7;
+        this.n = Calc.Twice(big);
+    }
+}

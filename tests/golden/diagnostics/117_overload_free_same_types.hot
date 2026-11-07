@@ -1,0 +1,7 @@
+int Half(int v) {
+    return v / 2;
+}
+
+int Half(ref int v) {
+    return v;
+}

@@ -1,0 +1,105 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Generation 2 of fn_overload: each group gets a new overload with two parameters. Some bodies
+// change. The "base." calls keep their targets.
+using "Actor.h";
+
+struct Pt {
+    int x = 0;
+
+    int Add(int v) {
+        return this.x + v;
+    }
+
+    int Add(float v) {
+        return this.x + 100;
+    }
+
+    int Add(int a, int b) {
+        return this.x + a + b;
+    }
+}
+
+int Half(int v) {
+    return v / 2 + 1;
+}
+
+int Half(int a, int b) {
+    return a + b;
+}
+
+int Half(std.string s) {
+    return 70;
+}
+
+class FnOvBase : Actor {
+    virtual int Pick(int x) {
+        return 1;
+    }
+
+    virtual int Pick(std.string s) {
+        return 2;
+    }
+}
+
+class FnOvMade {
+    int seed = 0;
+
+    FnOvMade(int s) {
+        this.seed = s;
+    }
+
+    FnOvMade(std.string s) {
+        this.seed = 300;
+    }
+
+    FnOvMade(int a, int b) {
+        this.seed = a * b;
+    }
+}
+
+class FnOv : FnOvBase {
+    int ticks = 0;
+    int stat = 0;
+    int free = 0;
+    int strct = 0;
+    int based = 0;
+    int made = 0;
+
+    static int Twice(int v) {
+        return v * 3;
+    }
+
+    static int Twice(int a, int b) {
+        return a + b;
+    }
+
+    static int Twice(float v) {
+        return 500;
+    }
+
+    override int Pick(int x) {
+        return base.Pick(x) + 100;
+    }
+
+    override int Pick(std.string s) {
+        return base.Pick(s) + 200;
+    }
+
+    override void Tick(float dt) {
+        this.ticks = this.ticks + 1;
+        float f = 0.5;
+        this.stat = Twice(3) + FnOv.Twice(f) + Twice(1, 2);
+        this.free = Half(8) + Half("ab") + Half(1, 2);
+        Pt p;
+        p.x = 1;
+        this.strct = p.Add(2) + p.Add(f) + p.Add(1, 1);
+        this.based = this.Pick(1) + this.Pick("a");
+        $FnOvMade a = new $FnOvMade(4);
+        $FnOvMade b = new $FnOvMade("b");
+        $FnOvMade c = new $FnOvMade(2, 3);
+        this.made = a.seed + b.seed + c.seed;
+    }
+}

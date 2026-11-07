@@ -1,0 +1,7 @@
+122_overload_struct_ambiguous_call.hot:19:20: error: the call of 'Add' fits more than one overload. Convert the argument to the parameter type of one overload
+   19 |         this.n = p.Add(big);
+122_overload_struct_ambiguous_call.hot:4:1: note: candidate function
+    4 |     int Add(int v) {
+122_overload_struct_ambiguous_call.hot:8:1: note: candidate function
+    8 |     int Add(float v) {
+1 error generated.

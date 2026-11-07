@@ -4020,6 +4020,47 @@ void translate_impl(
         for (ClassDef& c : sc.classes)
             group(c);
     }
+    // ---- overloads of static methods and free functions (gap G17). The keys are as for the
+    // methods. A name with one function keeps its name, so its key in the function table of the
+    // unit does not change. An imported function gets the key of its own module: the signature is
+    // the same text. "main" has no overloads.
+    {
+        auto group_fns = [&](const std::vector<Method*>& list)
+        {
+            std::map<std::string, std::vector<Method*>> by;
+            for (Method* m : list)
+                if (m->op.empty() && m->name != "main")
+                    by[m->name].push_back(m);
+            for (auto& [n, ms] : by)
+            {
+                if (ms.size() < 2)
+                    continue;
+                std::set<std::string> keys;
+                for (Method* m : ms)
+                {
+                    const std::string key = overload_key(n, method_sig(*m));
+                    if (!keys.insert(key).second)
+                        fail_at(map, m->pos, "function '" + n + "' is declared twice with the same parameter types");
+                    m->src_name = n;
+                    m->name = key;
+                }
+            }
+        };
+        for (ClassDef& c : sc.classes)
+        {
+            std::vector<Method*> v;
+            for (Method& m : c.statics)
+                v.push_back(&m);
+            group_fns(v);
+        }
+        std::map<std::string, std::vector<Method*>> by_unit;
+        for (Method& f : sc.fns)
+            by_unit[std::string()].push_back(&f);
+        for (Method& f : foreign_fns)
+            by_unit[f.foreign_unit].push_back(&f);
+        for (const auto& [unit, v] : by_unit)
+            group_fns(v);
+    }
     // ---- static methods and free functions. One function has one name: there are no overloads.
     // The free functions live in a synthetic class "HotFns" (the member "statics"). It is not in
     // "sc.classes", so no code is made for it as a class.
@@ -4033,18 +4074,19 @@ void translate_impl(
         {
             if (!fn_names.insert(f.name).second)
                 fail_at(map, f.pos, "function '" + f.name + "' is declared twice (overloads are not supported)");
+            const std::string& fname = f.written_name();
             auto clash = [&](const std::string& what)
-            { fail_at(map, f.pos, "'" + f.name + "' is declared twice (a function and " + what + ")"); };
-            if (module_vars.count(f.name))
+            { fail_at(map, f.pos, "'" + fname + "' is declared twice (a function and " + what + ")"); };
+            if (module_vars.count(fname))
                 clash("a module variable");
             for (const ClassDef& cd : sc.classes)
-                if (cd.name == f.name && cd.name != kModuleName)
+                if (cd.name == fname && cd.name != kModuleName)
                     clash(cd.is_value ? "a struct" : "a class");
             for (const hotc::ast::EnumDef& e : sc.enums)
-                if (e.name == f.name)
+                if (e.name == fname)
                     clash("an enum");
             for (const hotc::ast::InterfaceDef& d : sc.interfaces)
-                if (d.name == f.name)
+                if (d.name == fname)
                     clash("an interface");
             for (const hotc::ast::Param& p : f.params)
                 if (p.name.compare(0, 2, "__") == 0)
@@ -4067,21 +4109,22 @@ void translate_impl(
                 if (!statics.insert(st.name).second)
                     fail_at(map, st.pos,
                         "function '" + st.name + "' is declared twice (overloads are not supported)");
+                const std::string& sname = st.written_name();
                 for (const Method& m : cd.methods)
                 {
-                    if (m.op.empty() && m.name == st.name)
+                    if (m.op.empty() && m.written_name() == sname)
                         fail_at(map, std::max(m.pos, st.pos),
-                            "function '" + st.name + "' is declared twice (overloads are not supported)");
+                            "function '" + sname + "' is declared twice (a static method and a method)");
                     // The static method "F" is "C__s_F" in the C++ code. The method "s_F" is "C__s_F" too.
-                    if (m.op.empty() && m.name == "s_" + st.name)
+                    if (m.op.empty() && m.written_name() == "s_" + sname)
                         fail_at(map, std::max(m.pos, st.pos),
-                            "the static method '" + cd.name + "." + st.name + "' and the method '" + cd.name + "."
-                                + m.name + "' have the same generated name '" + cd.name + "__s_" + st.name
+                            "the static method '" + cd.name + "." + sname + "' and the method '" + cd.name + "."
+                                + m.written_name() + "' have the same generated name '" + cd.name + "__s_" + sname
                                 + "'. Rename one of them");
                 }
                 for (const Field& f : cd.fields)
-                    if (f.name == st.name)
-                        fail_at(map, std::max(f.pos, st.pos), "'" + st.name + "' is a field and a function");
+                    if (f.name == sname)
+                        fail_at(map, std::max(f.pos, st.pos), "'" + sname + "' is a field and a function");
             }
         }
     }
@@ -5445,12 +5488,14 @@ void translate_impl(
         for (const Field& f : cd.fields)
             if (!field_names.insert(f.name).second)
                 fail_at(map, f.pos, "field '" + f.name + "' is declared twice");
+        // A struct method is a C++ member of the struct: C++ selects an overload by the argument
+        // types (gap G17). Two overloads with the same parameter types are an error.
         for (Method& m : cd.methods)
         {
             reserved(m.pos, m.params);
-            if (!fn_names.insert(m.name).second)
+            if (!fn_names.insert(m.op.empty() ? overload_key(m.name, method_sig(m)) : m.name).second)
                 fail_at(map, m.pos,
-                    m.op.empty() ? "function '" + m.name + "' is declared twice (overloads are not supported)"
+                    m.op.empty() ? "function '" + m.name + "' is declared twice with the same parameter types"
                                  : "operator '" + m.op + "' is declared twice (overloads are not supported)");
             if (field_names.count(m.name))
                 fail_at(map, m.pos, "'" + m.name + "' is a field and a function");
@@ -6185,9 +6230,10 @@ void translate_impl(
         for (Method& f : foreign_fns)
         {
             for (const Method& own : fn_cls.statics)
-                if (own.name == f.name)
+                if (own.foreign_unit != f.foreign_unit && own.written_name() == f.written_name())
                     fail_at(map, own.pos,
-                        "function '" + f.name + "' is declared in '" + f.foreign_unit + "' and in '" + opt.input + "'");
+                        "function '" + f.written_name() + "' is declared in '" + f.foreign_unit + "' and in '" + opt.input
+                            + "'");
             fn_cls.statics.push_back(std::move(f));
         }
         foreign_fns.clear();
@@ -7841,6 +7887,19 @@ void translate_impl(
                     o.w("[[maybe_unused]] HOT_HIDDEN static " + fn_ret(m) + " " + P + m.src_name + "(" + shell
                         + "* __self" + param_decl_def(m) + ")\n{\n    return " + P + m.name + "(__self"
                         + fwd_args(m.params) + ");\n}\n");
+            // The "base." forwarders of an overload group (gap G17): "<C>__<name>__ovbase". They
+            // call the implementation that C sees, with a direct call. They cover the overloads
+            // of C and of its script parents.
+            {
+                std::set<std::string> seen;
+                for (const ClassDef* a = &cd; a; a = script_parent(*a))
+                    for (const Method& m : a->methods)
+                        if (!m.src_name.empty() && !m.overrides_virtual && hook_of(m) == Hook::None
+                            && seen.insert(m.name).second)
+                            o.w("[[maybe_unused]] HOT_HIDDEN static " + fn_ret(m) + " " + P + m.src_name + "__ovbase("
+                                + shell + "* __self" + param_decl_def(m) + ")\n{\n    return " + a->name + "__" + m.name
+                                + "(__self" + fwd_args(m.params) + ");\n}\n");
+            }
             for (const Field& f : cd.fields)
             {
                 const std::string t = types.cpp_storage(f.type, hotc::TypeModel::StorageUse::Field);
@@ -7928,6 +7987,24 @@ void translate_impl(
             o.w("[[maybe_unused]] HOT_HIDDEN static " + fn_ret(m) + " " + P + m.src_name + "(" + shell + "* __self"
                 + param_decl_def(m) + ")\n{\n    return " + P + m.name + (m.vslot_owner == cn ? "_virt" : "")
                 + "(__self" + as + ");\n}\n\n");
+        }
+        // The "base." forwarders of an overload group (gap G17): "<C>__<name>__ovbase". They
+        // call the implementation that C sees, with a direct call. They cover the overloads
+        // of C and of its script parents.
+        {
+            std::set<std::string> seen;
+            for (const ClassDef* a = &cd; a; a = script_parent(*a))
+                for (const Method& m : a->methods)
+                {
+                    if (m.src_name.empty() || m.overrides_virtual || hook_of(m) != Hook::None || !seen.insert(m.name).second)
+                        continue;
+                    std::string as;
+                    for (const Param& p : m.params)
+                        as += ", std::forward<decltype(" + p.name + ")>(" + p.name + ")";
+                    o.w("[[maybe_unused]] HOT_HIDDEN static " + fn_ret(m) + " " + P + m.src_name + "__ovbase(" + shell
+                        + "* __self" + param_decl_def(m) + ")\n{\n    return " + a->name + "__" + m.name + "(__self" + as
+                        + ");\n}\n\n");
+                }
         }
 
         // The constructors (design 7.3). A constructor body is not a slot. A "new" function
@@ -9045,6 +9122,17 @@ void translate_impl(
                 + ");\n";
             o.head_segments(decl, ls.symbol, *ls.method, all_text);
             o.w(decl);
+            // The forwarder of an overload group (gap G17): one C++ overload of the written name
+            // for each member. C++ selects the member by the argument types.
+            if (!ls.method->src_name.empty())
+            {
+                std::string as;
+                for (const hotc::ast::Param& p : ls.method->params)
+                    as += std::string(as.empty() ? "" : ", ") + "std::forward<decltype(" + p.name + ")>(" + p.name + ")";
+                o.w("[[maybe_unused]] HOT_HIDDEN static " + ls.ret + " "
+                    + hotc::static_fn_symbol(ls.owner, ls.method->src_name) + "(" + ls.params_def + ")\n{\n    return "
+                    + ls.symbol + "(" + as + ");\n}\n");
+            }
         }
         if (!proto_ns.empty())
             o.w("} // namespace " + proto_ns + "\n");

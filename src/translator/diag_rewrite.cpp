@@ -209,12 +209,26 @@ std::string script_name(const std::string& t)
     std::string cls;
     if (class_of_generated(t, cls))
         return cls;
+    // A free function: "hot_fn_F" -> "F". An overload key: "F__ov_int32_t" -> "F" (gap G17).
+    if (t.rfind("hot_fn_", 0) == 0 && t.size() > 7)
+    {
+        const std::string f = t.substr(7);
+        return f.substr(0, f.find("__ov_"));
+    }
     const size_t us = t.find("__");
     if (us != std::string::npos && us > 0 && us + 2 < t.size())
     {
         std::string member = t.substr(us + 2);
         if (member.size() > 5 && ends_with(member, "_virt"))
             member.resize(member.size() - 5);
+        // The overload key, the "base." forwarder of an overload group and the prefix of a static
+        // method (gap G17): "C__s_F__ov_int32_t" and "C__F__ovbase" give "C.F".
+        if (ends_with(member, "__ovbase"))
+            member.resize(member.size() - 8);
+        if (const size_t ov = member.find("__ov_"); ov != std::string::npos && ov > 0)
+            member.resize(ov);
+        if (member.size() > 2 && member.rfind("s_", 0) == 0)
+            member.erase(0, 2);
         if (const std::string sym = hotc::cpp_op_symbol(member); !sym.empty())
             member = "operator" + sym;
         return t.substr(0, us) + "." + member;
@@ -469,7 +483,7 @@ const std::vector<Rule>& mistakes()
         {std::regex(R"(^no matching (?:member )?function for call to '([^']+)')"),
             "no method or function '$1' fits these arguments"},
         // 8a. More than one overload fits the call (gap G17).
-        {std::regex(R"(^call to '([^']+)' is ambiguous)"),
+        {std::regex(R"(^call to (?:member function )?'([^']+)' is ambiguous)"),
             "the call of '$1' fits more than one overload. Convert the argument to the parameter type of one overload"},
         {std::regex(R"(^no matching constructor for initialization of '([^']+)')"),
             "no constructor of '$1' fits these arguments"},

@@ -1,0 +1,16 @@
+int Half(int v) {
+    return v / 2;
+}
+
+int Half(float v) {
+    return 0;
+}
+
+class User {
+    int n = 0;
+
+    void Use() {
+        uint64_t big = 7;
+        this.n = Half(big);
+    }
+}
