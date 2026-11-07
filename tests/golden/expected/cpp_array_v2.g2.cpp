@@ -370,6 +370,11 @@ HOT_NODEBUG static hot::ShellCore* Buf__new_default()
 {
     Buf__ctor(static_cast<Buf_Shell*>(__s));
 }
+static void* Buf___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<Actor*>(static_cast<Buf_Shell*>(__s));
+}
+
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Buf_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&BufState_g2::Tick),
@@ -411,7 +416,7 @@ HOT_NODEBUG static hot::Instance Buf_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "cpp_array_v2.cpp"
 }
-#line 415 "cpp_array_v2.cpp.cpp"
+#line 420 "cpp_array_v2.cpp.cpp"
 
 #line 13 "cpp_array_v2.cpp"
 HOT_NODEBUG static hot::Instance Buf__make_0([[maybe_unused]] void** __a)
@@ -425,7 +430,7 @@ HOT_NODEBUG static hot::Instance Buf__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 13 "cpp_array_v2.cpp"
 }
-#line 429 "cpp_array_v2.cpp.cpp"
+#line 434 "cpp_array_v2.cpp.cpp"
 
 static const hot::CtorEntry Buf__constructors[] = {
     {hot::ctor_key<>(), &Buf__make_0, hot::ctor_write_mask<>()},
@@ -440,7 +445,7 @@ static const hot::CtorEntry Buf__constructors[] = {
     return state_of(__self)->ctor();
 #line 13 "cpp_array_v2.cpp"
 }
-#line 444 "cpp_array_v2.cpp.cpp"
+#line 449 "cpp_array_v2.cpp.cpp"
 #line 13 "cpp_array_v2.cpp"
 void BufState_g2::ctor()
 #line 13 "cpp_array_v2.cpp"
@@ -465,7 +470,7 @@ void BufState_g2::ctor()
  names[0] = "first"; 
 #line 13 "cpp_array_v2.cpp"
 }
-#line 469 "cpp_array_v2.cpp.cpp"
+#line 474 "cpp_array_v2.cpp.cpp"
 
 #line 15 "cpp_array_v2.cpp"
 void BufState_g2::Tick(float dt)
@@ -499,7 +504,7 @@ void BufState_g2::Tick(float dt)
     
 #line 24 "cpp_array_v2.cpp"
 }
-#line 503 "cpp_array_v2.cpp.cpp"
+#line 508 "cpp_array_v2.cpp.cpp"
 
 #line 26 "cpp_array_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Buf__sum(Buf_Shell* __self)
@@ -509,7 +514,7 @@ void BufState_g2::Tick(float dt)
     return state_of(__self)->sum();
 #line 26 "cpp_array_v2.cpp"
 }
-#line 513 "cpp_array_v2.cpp.cpp"
+#line 518 "cpp_array_v2.cpp.cpp"
 #line 26 "cpp_array_v2.cpp"
 int BufState_g2::sum()
 #line 26 "cpp_array_v2.cpp"
@@ -539,7 +544,7 @@ int BufState_g2::sum()
     
 #line 32 "cpp_array_v2.cpp"
 }
-#line 543 "cpp_array_v2.cpp.cpp"
+#line 548 "cpp_array_v2.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -549,4 +554,5 @@ extern "C" void script_register(hot::Registry& reg)
     Buf_record.construct_keys = Buf__construct_keys;
     reg.add_fn("Buf::ctor()", typeid(void(hot::ShellBase*)).name(), reinterpret_cast<void*>(&Buf__ctor_export0));
     Buf_record.ctors = Buf__constructors;
+    reg.add_thunk("Buf::__native", reinterpret_cast<void*>(&Buf___native__thunk));
 }

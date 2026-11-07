@@ -349,6 +349,11 @@ static int Counter__Peek__thunk(Actor* __a)
 }
 #line 351 "cpp_freefn.cpp.cpp"
 
+static void* Counter___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<Actor*>(static_cast<Counter_Shell*>(__s));
+}
+
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Counter_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&CounterState_g1::Tick),
@@ -390,7 +395,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return {static_cast<Actor*>(p), p};
 #line 26 "cpp_freefn.cpp"
 }
-#line 394 "cpp_freefn.cpp.cpp"
+#line 399 "cpp_freefn.cpp.cpp"
 
 #line 31 "cpp_freefn.cpp"
 HOT_NODEBUG static hot::Instance Counter__make_0([[maybe_unused]] void** __a)
@@ -404,7 +409,7 @@ HOT_NODEBUG static hot::Instance Counter__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 31 "cpp_freefn.cpp"
 }
-#line 408 "cpp_freefn.cpp.cpp"
+#line 413 "cpp_freefn.cpp.cpp"
 
 static const hot::CtorEntry Counter__constructors[] = {
     {hot::ctor_key<>(), &Counter__make_0, hot::ctor_write_mask<>()},
@@ -419,7 +424,7 @@ static const hot::CtorEntry Counter__constructors[] = {
     return state_of(__self)->ctor();
 #line 31 "cpp_freefn.cpp"
 }
-#line 423 "cpp_freefn.cpp.cpp"
+#line 428 "cpp_freefn.cpp.cpp"
 #line 31 "cpp_freefn.cpp"
 void CounterState_g1::ctor()
 #line 31 "cpp_freefn.cpp"
@@ -444,7 +449,7 @@ void CounterState_g1::ctor()
 
 #line 31 "cpp_freefn.cpp"
 }
-#line 448 "cpp_freefn.cpp.cpp"
+#line 453 "cpp_freefn.cpp.cpp"
 
 #line 33 "cpp_freefn.cpp"
 void CounterState_g1::Tick(float dt)
@@ -474,7 +479,7 @@ void CounterState_g1::Tick(float dt)
     
 #line 38 "cpp_freefn.cpp"
 }
-#line 478 "cpp_freefn.cpp.cpp"
+#line 483 "cpp_freefn.cpp.cpp"
 
 #line 41 "cpp_freefn.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Counter__Peek(Counter_Shell* __self)
@@ -484,7 +489,7 @@ void CounterState_g1::Tick(float dt)
     return state_of(__self)->Peek();
 #line 41 "cpp_freefn.cpp"
 }
-#line 488 "cpp_freefn.cpp.cpp"
+#line 493 "cpp_freefn.cpp.cpp"
 #line 41 "cpp_freefn.cpp"
 int CounterState_g1::Peek()
 #line 41 "cpp_freefn.cpp"
@@ -509,7 +514,7 @@ int CounterState_g1::Peek()
  return read_total(); 
 #line 41 "cpp_freefn.cpp"
 }
-#line 513 "cpp_freefn.cpp.cpp"
+#line 518 "cpp_freefn.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -520,4 +525,5 @@ extern "C" void script_register(hot::Registry& reg)
     reg.add_fn("Counter::ctor()", typeid(void(hot::ShellBase*)).name(), reinterpret_cast<void*>(&Counter__ctor_export0));
     Counter_record.ctors = Counter__constructors;
     reg.add_thunk("Counter::Peek", reinterpret_cast<void*>(&Counter__Peek__thunk));
+    reg.add_thunk("Counter::__native", reinterpret_cast<void*>(&Counter___native__thunk));
 }

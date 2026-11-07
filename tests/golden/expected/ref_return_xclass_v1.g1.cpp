@@ -232,6 +232,11 @@ static Info& Catalog__Find__thunk(hot::PlainObject* __a, int32_t i)
 }
 #line 234 "ref_return_xclass_v1.hot.cpp"
 
+static void* Catalog___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<hot::PlainObject*>(static_cast<Catalog_Shell*>(__s));
+}
+
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Catalog_slots[Catalog_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&CatalogState_g1::Find),
@@ -256,7 +261,7 @@ HOT_NODEBUG static hot::Instance Catalog_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 13 "ref_return_xclass_v1.hot"
 }
-#line 260 "ref_return_xclass_v1.hot.cpp"
+#line 265 "ref_return_xclass_v1.hot.cpp"
 
 #line 13 "ref_return_xclass_v1.hot"
 HOT_NODEBUG static hot::Instance Catalog__make_0([[maybe_unused]] void** __a)
@@ -266,7 +271,7 @@ HOT_NODEBUG static hot::Instance Catalog__make_0([[maybe_unused]] void** __a)
     return Catalog_create();
 #line 13 "ref_return_xclass_v1.hot"
 }
-#line 270 "ref_return_xclass_v1.hot.cpp"
+#line 275 "ref_return_xclass_v1.hot.cpp"
 
 static const hot::CtorEntry Catalog__constructors[] = {
     {hot::ctor_key<>(), &Catalog__make_0, hot::ctor_write_mask<>()},
@@ -298,7 +303,7 @@ struct User_Shell final : hot::PlainObject, hot::ShellBase {
     }
 #line 25 "ref_return_xclass_v1.hot"
     ~User_Shell() override { hot::destroy_state(this); }
-#line 302 "ref_return_xclass_v1.hot.cpp"
+#line 307 "ref_return_xclass_v1.hot.cpp"
 #line 25 "ref_return_xclass_v1.hot"
     explicit User_Shell(hot::CloneFrom, const hot::ShellBase* src)
 #line 25 "ref_return_xclass_v1.hot"
@@ -307,7 +312,7 @@ struct User_Shell final : hot::PlainObject, hot::ShellBase {
         hot::clone_state(this, &User_record, src);
 #line 25 "ref_return_xclass_v1.hot"
     }
-#line 311 "ref_return_xclass_v1.hot.cpp"
+#line 316 "ref_return_xclass_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -323,10 +328,10 @@ struct UserState_g1 {
 
 #line 26 "ref_return_xclass_v1.hot"
 static void User__init_cat(void*, void* f) { using T = hot::Value<Catalog>; new (f) T(hot::Value<Catalog>(std::shared_ptr<Catalog>(Catalog__new_shared()))); }
-#line 327 "ref_return_xclass_v1.hot.cpp"
+#line 332 "ref_return_xclass_v1.hot.cpp"
 #line 27 "ref_return_xclass_v1.hot"
 static void User__init_mine(void*, void* f) { using T = Info; new (f) T(); }
-#line 330 "ref_return_xclass_v1.hot.cpp"
+#line 335 "ref_return_xclass_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -373,7 +378,7 @@ HOT_HIDDEN static auto User__plan()
     return std::make_pair(User__super_args(), std::tuple<>());
 #line 25 "ref_return_xclass_v1.hot"
 }
-#line 377 "ref_return_xclass_v1.hot.cpp"
+#line 382 "ref_return_xclass_v1.hot.cpp"
 using User_SuperArgs = decltype(User__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -406,7 +411,7 @@ HOT_NODEBUG static hot::ShellBase* User__construct(void* mem, const char* key, c
     return nullptr;
 #line 25 "ref_return_xclass_v1.hot"
 }
-#line 410 "ref_return_xclass_v1.hot.cpp"
+#line 415 "ref_return_xclass_v1.hot.cpp"
 
 static const char* const User__construct_keys[] = {typeid(User_SuperArgs).name(), hot::kCloneKey, nullptr};
 
@@ -422,7 +427,7 @@ HOT_HIDDEN static User_Shell* User__build([[maybe_unused]] bool __note)
     return __self;
 #line 25 "ref_return_xclass_v1.hot"
 }
-#line 426 "ref_return_xclass_v1.hot.cpp"
+#line 431 "ref_return_xclass_v1.hot.cpp"
 #line 25 "ref_return_xclass_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static User_Shell* User__new()
 #line 25 "ref_return_xclass_v1.hot"
@@ -431,7 +436,7 @@ HOT_HIDDEN static User_Shell* User__build([[maybe_unused]] bool __note)
     return User__build(true);
 #line 25 "ref_return_xclass_v1.hot"
 }
-#line 435 "ref_return_xclass_v1.hot.cpp"
+#line 440 "ref_return_xclass_v1.hot.cpp"
 #line 25 "ref_return_xclass_v1.hot"
 template <int = 0>
 #line 25 "ref_return_xclass_v1.hot"
@@ -446,7 +451,7 @@ template <int = 0>
     return __h;
 #line 25 "ref_return_xclass_v1.hot"
 }
-#line 450 "ref_return_xclass_v1.hot.cpp"
+#line 455 "ref_return_xclass_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -460,7 +465,7 @@ static void User__Field__thunk(hot::PlainObject* __a)
     return hot::call<void(hot::PlainObject*)>(__self, User_SLOT_Field);
 #line 29 "ref_return_xclass_v1.hot"
 }
-#line 464 "ref_return_xclass_v1.hot.cpp"
+#line 469 "ref_return_xclass_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -474,7 +479,7 @@ static void User__Param__thunk(hot::PlainObject* __a, std::shared_ptr<Catalog>& 
     return hot::call<void(hot::PlainObject*, std::shared_ptr<Catalog>&)>(__self, User_SLOT_Param, c);
 #line 34 "ref_return_xclass_v1.hot"
 }
-#line 478 "ref_return_xclass_v1.hot.cpp"
+#line 483 "ref_return_xclass_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -488,7 +493,12 @@ static void User__Static__thunk(hot::PlainObject* __a)
     return hot::call<void(hot::PlainObject*)>(__self, User_SLOT_Static);
 #line 40 "ref_return_xclass_v1.hot"
 }
-#line 492 "ref_return_xclass_v1.hot.cpp"
+#line 497 "ref_return_xclass_v1.hot.cpp"
+
+static void* User___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<hot::PlainObject*>(static_cast<User_Shell*>(__s));
+}
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn User_slots[User_SLOT_COUNT] = {
@@ -516,7 +526,7 @@ HOT_NODEBUG static hot::Instance User_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 25 "ref_return_xclass_v1.hot"
 }
-#line 520 "ref_return_xclass_v1.hot.cpp"
+#line 530 "ref_return_xclass_v1.hot.cpp"
 
 #line 25 "ref_return_xclass_v1.hot"
 HOT_NODEBUG static hot::Instance User__make_0([[maybe_unused]] void** __a)
@@ -526,7 +536,7 @@ HOT_NODEBUG static hot::Instance User__make_0([[maybe_unused]] void** __a)
     return User_create();
 #line 25 "ref_return_xclass_v1.hot"
 }
-#line 530 "ref_return_xclass_v1.hot.cpp"
+#line 540 "ref_return_xclass_v1.hot.cpp"
 
 static const hot::CtorEntry User__constructors[] = {
     {hot::ctor_key<>(), &User__make_0, hot::ctor_write_mask<>()},
@@ -535,7 +545,7 @@ static const hot::CtorEntry User__constructors[] = {
 // ---------------------------------------------------------------- static methods and free functions
 [[maybe_unused]] HOT_HIDDEN static Info& Catalog__s_Pick(Info& a);
 
-#line 539 "ref_return_xclass_v1.hot.cpp"
+#line 549 "ref_return_xclass_v1.hot.cpp"
 // ---------------------------------------------------------------- function bodies
 #line 16 "ref_return_xclass_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Info& Catalog__Find(Catalog_Shell* __self, int32_t i)
@@ -545,7 +555,7 @@ static const hot::CtorEntry User__constructors[] = {
     return state_of(__self)->Find(std::forward<int32_t>(i));
 #line 16 "ref_return_xclass_v1.hot"
 }
-#line 549 "ref_return_xclass_v1.hot.cpp"
+#line 559 "ref_return_xclass_v1.hot.cpp"
 #line 16 "ref_return_xclass_v1.hot"
 Info& CatalogState_g1::Find(int32_t const i)
 #line 16 "ref_return_xclass_v1.hot"
@@ -570,7 +580,7 @@ Info& CatalogState_g1::Find(int32_t const i)
     HOT_TRACE_LINE(); return hot::index(__st->items, i);
 #line 18 "ref_return_xclass_v1.hot"
 }
-#line 574 "ref_return_xclass_v1.hot.cpp"
+#line 584 "ref_return_xclass_v1.hot.cpp"
 
 #line 29 "ref_return_xclass_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void User__Field(User_Shell* __self)
@@ -580,7 +590,7 @@ Info& CatalogState_g1::Find(int32_t const i)
     return state_of(__self)->Field();
 #line 29 "ref_return_xclass_v1.hot"
 }
-#line 584 "ref_return_xclass_v1.hot.cpp"
+#line 594 "ref_return_xclass_v1.hot.cpp"
 #line 29 "ref_return_xclass_v1.hot"
 void UserState_g1::Field()
 #line 29 "ref_return_xclass_v1.hot"
@@ -607,7 +617,7 @@ void UserState_g1::Field()
     HOT_TRACE_LINE(); hot::deref(r).x = 1;
 #line 32 "ref_return_xclass_v1.hot"
 }
-#line 611 "ref_return_xclass_v1.hot.cpp"
+#line 621 "ref_return_xclass_v1.hot.cpp"
 
 #line 34 "ref_return_xclass_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void User__Param(User_Shell* __self, std::shared_ptr<Catalog>& c)
@@ -617,7 +627,7 @@ void UserState_g1::Field()
     return state_of(__self)->Param(std::forward<std::shared_ptr<Catalog>&>(c));
 #line 34 "ref_return_xclass_v1.hot"
 }
-#line 621 "ref_return_xclass_v1.hot.cpp"
+#line 631 "ref_return_xclass_v1.hot.cpp"
 #line 34 "ref_return_xclass_v1.hot"
 void UserState_g1::Param(std::shared_ptr<Catalog>& c)
 #line 34 "ref_return_xclass_v1.hot"
@@ -646,7 +656,7 @@ void UserState_g1::Param(std::shared_ptr<Catalog>& c)
     HOT_TRACE_LINE(); hot::deref(r).x = 2;
 #line 38 "ref_return_xclass_v1.hot"
 }
-#line 650 "ref_return_xclass_v1.hot.cpp"
+#line 660 "ref_return_xclass_v1.hot.cpp"
 
 #line 40 "ref_return_xclass_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void User__Static(User_Shell* __self)
@@ -656,7 +666,7 @@ void UserState_g1::Param(std::shared_ptr<Catalog>& c)
     return state_of(__self)->Static();
 #line 40 "ref_return_xclass_v1.hot"
 }
-#line 660 "ref_return_xclass_v1.hot.cpp"
+#line 670 "ref_return_xclass_v1.hot.cpp"
 #line 40 "ref_return_xclass_v1.hot"
 void UserState_g1::Static()
 #line 40 "ref_return_xclass_v1.hot"
@@ -683,7 +693,7 @@ void UserState_g1::Static()
     HOT_TRACE_LINE(); hot::deref(p).x = 3;
 #line 43 "ref_return_xclass_v1.hot"
 }
-#line 687 "ref_return_xclass_v1.hot.cpp"
+#line 697 "ref_return_xclass_v1.hot.cpp"
 
 #line 20 "ref_return_xclass_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Info& Catalog__s_Pick(Info& a)
@@ -697,7 +707,7 @@ void UserState_g1::Static()
     HOT_TRACE_LINE(); return a;
 #line 22 "ref_return_xclass_v1.hot"
 }
-#line 701 "ref_return_xclass_v1.hot.cpp"
+#line 711 "ref_return_xclass_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -711,7 +721,9 @@ extern "C" void script_register(hot::Registry& reg)
     User_record.construct_keys = User__construct_keys;
     User_record.ctors = User__constructors;
     reg.add_thunk("Catalog::Find", reinterpret_cast<void*>(&Catalog__Find__thunk));
+    reg.add_thunk("Catalog::__native", reinterpret_cast<void*>(&Catalog___native__thunk));
     reg.add_thunk("User::Field", reinterpret_cast<void*>(&User__Field__thunk));
     reg.add_thunk("User::Param", reinterpret_cast<void*>(&User__Param__thunk));
     reg.add_thunk("User::Static", reinterpret_cast<void*>(&User__Static__thunk));
+    reg.add_thunk("User::__native", reinterpret_cast<void*>(&User___native__thunk));
 }

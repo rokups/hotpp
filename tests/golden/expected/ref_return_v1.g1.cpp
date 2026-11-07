@@ -279,6 +279,11 @@ static void Unit__Run__thunk(hot::PlainObject* __a)
 }
 #line 281 "ref_return_v1.hot.cpp"
 
+static void* Unit___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<hot::PlainObject*>(static_cast<Unit_Shell*>(__s));
+}
+
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Unit_slots[Unit_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&UnitState_g1::Hp),
@@ -305,7 +310,7 @@ HOT_NODEBUG static hot::Instance Unit_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 15 "ref_return_v1.hot"
 }
-#line 309 "ref_return_v1.hot.cpp"
+#line 314 "ref_return_v1.hot.cpp"
 
 #line 15 "ref_return_v1.hot"
 HOT_NODEBUG static hot::Instance Unit__make_0([[maybe_unused]] void** __a)
@@ -315,7 +320,7 @@ HOT_NODEBUG static hot::Instance Unit__make_0([[maybe_unused]] void** __a)
     return Unit_create();
 #line 15 "ref_return_v1.hot"
 }
-#line 319 "ref_return_v1.hot.cpp"
+#line 324 "ref_return_v1.hot.cpp"
 
 static const hot::CtorEntry Unit__constructors[] = {
     {hot::ctor_key<>(), &Unit__make_0, hot::ctor_write_mask<>()},
@@ -324,7 +329,7 @@ static const hot::CtorEntry Unit__constructors[] = {
 // ---------------------------------------------------------------- static methods and free functions
 [[maybe_unused]] HOT_HIDDEN static int32_t& Unit__s_Pick(int32_t& a, int32_t& b);
 
-#line 328 "ref_return_v1.hot.cpp"
+#line 333 "ref_return_v1.hot.cpp"
 // ---------------------------------------------------------------- function bodies
 #line 5 "ref_return_v1.hot"
 static float& Vec3__At(Vec3* __self, int32_t i)
@@ -336,7 +341,7 @@ static float& Vec3__At(Vec3* __self, int32_t i)
     return hot::index(__st->data, i);
 #line 7 "ref_return_v1.hot"
 }
-#line 340 "ref_return_v1.hot.cpp"
+#line 345 "ref_return_v1.hot.cpp"
 
 #line 9 "ref_return_v1.hot"
 static void Vec3__Fill(Vec3* __self)
@@ -350,7 +355,7 @@ static void Vec3__Fill(Vec3* __self)
     r = 1;
 #line 12 "ref_return_v1.hot"
 }
-#line 354 "ref_return_v1.hot.cpp"
+#line 359 "ref_return_v1.hot.cpp"
 
 #line 19 "ref_return_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t& Unit__Hp(Unit_Shell* __self)
@@ -360,7 +365,7 @@ static void Vec3__Fill(Vec3* __self)
     return state_of(__self)->Hp();
 #line 19 "ref_return_v1.hot"
 }
-#line 364 "ref_return_v1.hot.cpp"
+#line 369 "ref_return_v1.hot.cpp"
 #line 19 "ref_return_v1.hot"
 int32_t& UnitState_g1::Hp()
 #line 19 "ref_return_v1.hot"
@@ -385,7 +390,7 @@ int32_t& UnitState_g1::Hp()
     HOT_TRACE_LINE(); return __st->hp;
 #line 21 "ref_return_v1.hot"
 }
-#line 389 "ref_return_v1.hot.cpp"
+#line 394 "ref_return_v1.hot.cpp"
 
 #line 27 "ref_return_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t& Unit__Choose(Unit_Shell* __self, int32_t& a)
@@ -395,7 +400,7 @@ int32_t& UnitState_g1::Hp()
     return state_of(__self)->Choose(std::forward<int32_t&>(a));
 #line 27 "ref_return_v1.hot"
 }
-#line 399 "ref_return_v1.hot.cpp"
+#line 404 "ref_return_v1.hot.cpp"
 #line 27 "ref_return_v1.hot"
 int32_t& UnitState_g1::Choose(int32_t& a)
 #line 27 "ref_return_v1.hot"
@@ -420,7 +425,7 @@ int32_t& UnitState_g1::Choose(int32_t& a)
     HOT_TRACE_LINE(); return Unit__s_Pick(a, __st->hp);
 #line 29 "ref_return_v1.hot"
 }
-#line 424 "ref_return_v1.hot.cpp"
+#line 429 "ref_return_v1.hot.cpp"
 
 #line 31 "ref_return_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Unit__Run(Unit_Shell* __self)
@@ -430,7 +435,7 @@ int32_t& UnitState_g1::Choose(int32_t& a)
     return state_of(__self)->Run();
 #line 31 "ref_return_v1.hot"
 }
-#line 434 "ref_return_v1.hot.cpp"
+#line 439 "ref_return_v1.hot.cpp"
 #line 31 "ref_return_v1.hot"
 void UnitState_g1::Run()
 #line 31 "ref_return_v1.hot"
@@ -461,7 +466,7 @@ void UnitState_g1::Run()
     HOT_TRACE_LINE(); k = 3;
 #line 36 "ref_return_v1.hot"
 }
-#line 465 "ref_return_v1.hot.cpp"
+#line 470 "ref_return_v1.hot.cpp"
 
 #line 23 "ref_return_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t& Unit__s_Pick(int32_t& a, int32_t& b)
@@ -475,7 +480,7 @@ void UnitState_g1::Run()
     HOT_TRACE_LINE(); return a > 0 ? a : b;
 #line 25 "ref_return_v1.hot"
 }
-#line 479 "ref_return_v1.hot.cpp"
+#line 484 "ref_return_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -487,4 +492,5 @@ extern "C" void script_register(hot::Registry& reg)
     reg.add_thunk("Unit::Hp", reinterpret_cast<void*>(&Unit__Hp__thunk));
     reg.add_thunk("Unit::Choose", reinterpret_cast<void*>(&Unit__Choose__thunk));
     reg.add_thunk("Unit::Run", reinterpret_cast<void*>(&Unit__Run__thunk));
+    reg.add_thunk("Unit::__native", reinterpret_cast<void*>(&Unit___native__thunk));
 }

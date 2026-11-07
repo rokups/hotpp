@@ -297,6 +297,11 @@ static void Catalog__Use__thunk(hot::PlainObject* __a)
 }
 #line 299 "ptr_return_v1.hot.cpp"
 
+static void* Catalog___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<hot::PlainObject*>(static_cast<Catalog_Shell*>(__s));
+}
+
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Catalog_slots[Catalog_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&CatalogState_g1::Find),
@@ -324,7 +329,7 @@ HOT_NODEBUG static hot::Instance Catalog_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 15 "ptr_return_v1.hot"
 }
-#line 328 "ptr_return_v1.hot.cpp"
+#line 333 "ptr_return_v1.hot.cpp"
 
 #line 15 "ptr_return_v1.hot"
 HOT_NODEBUG static hot::Instance Catalog__make_0([[maybe_unused]] void** __a)
@@ -334,7 +339,7 @@ HOT_NODEBUG static hot::Instance Catalog__make_0([[maybe_unused]] void** __a)
     return Catalog_create();
 #line 15 "ptr_return_v1.hot"
 }
-#line 338 "ptr_return_v1.hot.cpp"
+#line 343 "ptr_return_v1.hot.cpp"
 
 static const hot::CtorEntry Catalog__constructors[] = {
     {hot::ctor_key<>(), &Catalog__make_0, hot::ctor_write_mask<>()},
@@ -343,7 +348,7 @@ static const hot::CtorEntry Catalog__constructors[] = {
 // ---------------------------------------------------------------- static methods and free functions
 [[maybe_unused]] HOT_HIDDEN static Info* Catalog__s_Pick(Info& a);
 
-#line 347 "ptr_return_v1.hot.cpp"
+#line 352 "ptr_return_v1.hot.cpp"
 // ---------------------------------------------------------------- function bodies
 #line 19 "ptr_return_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Info* Catalog__Find(Catalog_Shell* __self, int32_t id)
@@ -353,7 +358,7 @@ static const hot::CtorEntry Catalog__constructors[] = {
     return state_of(__self)->Find(std::forward<int32_t>(id));
 #line 19 "ptr_return_v1.hot"
 }
-#line 357 "ptr_return_v1.hot.cpp"
+#line 362 "ptr_return_v1.hot.cpp"
 #line 19 "ptr_return_v1.hot"
 Info* CatalogState_g1::Find(int32_t const id)
 #line 19 "ptr_return_v1.hot"
@@ -384,7 +389,7 @@ Info* CatalogState_g1::Find(int32_t const id)
     HOT_TRACE_LINE(); return nullptr;
 #line 24 "ptr_return_v1.hot"
 }
-#line 388 "ptr_return_v1.hot.cpp"
+#line 393 "ptr_return_v1.hot.cpp"
 
 #line 26 "ptr_return_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Info* Catalog__First(Catalog_Shell* __self)
@@ -394,7 +399,7 @@ Info* CatalogState_g1::Find(int32_t const id)
     return state_of(__self)->First();
 #line 26 "ptr_return_v1.hot"
 }
-#line 398 "ptr_return_v1.hot.cpp"
+#line 403 "ptr_return_v1.hot.cpp"
 #line 26 "ptr_return_v1.hot"
 Info* CatalogState_g1::First()
 #line 26 "ptr_return_v1.hot"
@@ -419,7 +424,7 @@ Info* CatalogState_g1::First()
     HOT_TRACE_LINE(); return hot::deref(__st->items).size() > 0 ? &hot::index(__st->items, 0) : nullptr;
 #line 28 "ptr_return_v1.hot"
 }
-#line 423 "ptr_return_v1.hot.cpp"
+#line 428 "ptr_return_v1.hot.cpp"
 
 #line 30 "ptr_return_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Vec3* Catalog__Pos(Catalog_Shell* __self)
@@ -429,7 +434,7 @@ Info* CatalogState_g1::First()
     return state_of(__self)->Pos();
 #line 30 "ptr_return_v1.hot"
 }
-#line 433 "ptr_return_v1.hot.cpp"
+#line 438 "ptr_return_v1.hot.cpp"
 #line 30 "ptr_return_v1.hot"
 Vec3* CatalogState_g1::Pos()
 #line 30 "ptr_return_v1.hot"
@@ -454,7 +459,7 @@ Vec3* CatalogState_g1::Pos()
     HOT_TRACE_LINE(); return &__st->pos;
 #line 32 "ptr_return_v1.hot"
 }
-#line 458 "ptr_return_v1.hot.cpp"
+#line 463 "ptr_return_v1.hot.cpp"
 
 #line 38 "ptr_return_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Catalog__Use(Catalog_Shell* __self)
@@ -464,7 +469,7 @@ Vec3* CatalogState_g1::Pos()
     return state_of(__self)->Use();
 #line 38 "ptr_return_v1.hot"
 }
-#line 468 "ptr_return_v1.hot.cpp"
+#line 473 "ptr_return_v1.hot.cpp"
 #line 38 "ptr_return_v1.hot"
 void CatalogState_g1::Use()
 #line 38 "ptr_return_v1.hot"
@@ -501,7 +506,7 @@ void CatalogState_g1::Use()
     HOT_TRACE_LINE(); if (v != nullptr) hot::deref(v).x = 3.0f;
 #line 46 "ptr_return_v1.hot"
 }
-#line 505 "ptr_return_v1.hot.cpp"
+#line 510 "ptr_return_v1.hot.cpp"
 
 #line 34 "ptr_return_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Info* Catalog__s_Pick(Info& a)
@@ -515,7 +520,7 @@ void CatalogState_g1::Use()
     HOT_TRACE_LINE(); return &a;
 #line 36 "ptr_return_v1.hot"
 }
-#line 519 "ptr_return_v1.hot.cpp"
+#line 524 "ptr_return_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -528,4 +533,5 @@ extern "C" void script_register(hot::Registry& reg)
     reg.add_thunk("Catalog::First", reinterpret_cast<void*>(&Catalog__First__thunk));
     reg.add_thunk("Catalog::Pos", reinterpret_cast<void*>(&Catalog__Pos__thunk));
     reg.add_thunk("Catalog::Use", reinterpret_cast<void*>(&Catalog__Use__thunk));
+    reg.add_thunk("Catalog::__native", reinterpret_cast<void*>(&Catalog___native__thunk));
 }

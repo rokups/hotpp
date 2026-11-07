@@ -274,6 +274,11 @@ template <int = 0>
 }
 #line 276 "native_std_v1.hot.cpp"
 
+static void* Tracker___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<Actor*>(static_cast<Tracker_Shell*>(__s));
+}
+
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Tracker_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&TrackerState_g1::Tick),
@@ -300,7 +305,7 @@ HOT_NODEBUG static hot::Instance Tracker_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "native_std_v1.hot"
 }
-#line 304 "native_std_v1.hot.cpp"
+#line 309 "native_std_v1.hot.cpp"
 
 #line 10 "native_std_v1.hot"
 HOT_NODEBUG static hot::Instance Tracker__make_0([[maybe_unused]] void** __a)
@@ -310,7 +315,7 @@ HOT_NODEBUG static hot::Instance Tracker__make_0([[maybe_unused]] void** __a)
     return Tracker_create();
 #line 10 "native_std_v1.hot"
 }
-#line 314 "native_std_v1.hot.cpp"
+#line 319 "native_std_v1.hot.cpp"
 
 static const hot::CtorEntry Tracker__constructors[] = {
     {hot::ctor_key<>(), &Tracker__make_0, hot::ctor_write_mask<>()},
@@ -365,7 +370,7 @@ void TrackerState_g1::Tick(float dt)
     HOT_TRACE_LINE(); hot::deref(__st->history).push_back(hot::float_to_int<int32_t>(hot::deref(__st->history).size()) * 10);
 #line 32 "native_std_v1.hot"
 }
-#line 369 "native_std_v1.hot.cpp"
+#line 374 "native_std_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -373,4 +378,5 @@ extern "C" void script_register(hot::Registry& reg)
     reg.add(&Tracker_record, &Tracker_create);
     Tracker_record.construct_keys = Tracker__construct_keys;
     Tracker_record.ctors = Tracker__constructors;
+    reg.add_thunk("Tracker::__native", reinterpret_cast<void*>(&Tracker___native__thunk));
 }

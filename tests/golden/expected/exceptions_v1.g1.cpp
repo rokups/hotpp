@@ -365,6 +365,11 @@ static void Thrower__escape__thunk(Actor* __a)
 }
 #line 367 "exceptions_v1.hot.cpp"
 
+static void* Thrower___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<Actor*>(static_cast<Thrower_Shell*>(__s));
+}
+
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Thrower_slots[Thrower_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&ThrowerState_g1::__fwd_Tick),
@@ -393,7 +398,7 @@ HOT_NODEBUG static hot::Instance Thrower_create()
     return {static_cast<Actor*>(p), p};
 #line 22 "exceptions_v1.hot"
 }
-#line 397 "exceptions_v1.hot.cpp"
+#line 402 "exceptions_v1.hot.cpp"
 
 #line 22 "exceptions_v1.hot"
 HOT_NODEBUG static hot::Instance Thrower__make_0([[maybe_unused]] void** __a)
@@ -403,7 +408,7 @@ HOT_NODEBUG static hot::Instance Thrower__make_0([[maybe_unused]] void** __a)
     return Thrower_create();
 #line 22 "exceptions_v1.hot"
 }
-#line 407 "exceptions_v1.hot.cpp"
+#line 412 "exceptions_v1.hot.cpp"
 
 static const hot::CtorEntry Thrower__constructors[] = {
     {hot::ctor_key<>(), &Thrower__make_0, hot::ctor_write_mask<>()},
@@ -420,7 +425,7 @@ static void AppError__ctor(AppError* __self, hot::In<std::string> message)
     __st->code = 7;
 #line 11 "exceptions_v1.hot"
 }
-#line 424 "exceptions_v1.hot.cpp"
+#line 429 "exceptions_v1.hot.cpp"
 
 #line 17 "exceptions_v1.hot"
 static void NetError__ctor(NetError* __self, int32_t p)
@@ -432,7 +437,7 @@ static void NetError__ctor(NetError* __self, int32_t p)
     __st->port = p;
 #line 19 "exceptions_v1.hot"
 }
-#line 436 "exceptions_v1.hot.cpp"
+#line 441 "exceptions_v1.hot.cpp"
 
 #line 23 "exceptions_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Thrower__caught(Thrower_Shell* __self)
@@ -442,7 +447,7 @@ static void NetError__ctor(NetError* __self, int32_t p)
     return state_of(__self)->caught();
 #line 23 "exceptions_v1.hot"
 }
-#line 446 "exceptions_v1.hot.cpp"
+#line 451 "exceptions_v1.hot.cpp"
 #line 23 "exceptions_v1.hot"
 int32_t ThrowerState_g1::caught()
 #line 23 "exceptions_v1.hot"
@@ -477,7 +482,7 @@ int32_t ThrowerState_g1::caught()
     HOT_TRACE_LINE(); return 0;
 #line 30 "exceptions_v1.hot"
 }
-#line 481 "exceptions_v1.hot.cpp"
+#line 486 "exceptions_v1.hot.cpp"
 
 #line 32 "exceptions_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Thrower__escape(Thrower_Shell* __self)
@@ -487,7 +492,7 @@ int32_t ThrowerState_g1::caught()
     return state_of(__self)->escape();
 #line 32 "exceptions_v1.hot"
 }
-#line 491 "exceptions_v1.hot.cpp"
+#line 496 "exceptions_v1.hot.cpp"
 #line 32 "exceptions_v1.hot"
 void ThrowerState_g1::escape()
 #line 32 "exceptions_v1.hot"
@@ -512,7 +517,7 @@ void ThrowerState_g1::escape()
     HOT_TRACE_LINE(); throw AppError("app down");
 #line 34 "exceptions_v1.hot"
 }
-#line 516 "exceptions_v1.hot.cpp"
+#line 521 "exceptions_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -522,4 +527,5 @@ extern "C" void script_register(hot::Registry& reg)
     Thrower_record.ctors = Thrower__constructors;
     reg.add_thunk("Thrower::caught", reinterpret_cast<void*>(&Thrower__caught__thunk));
     reg.add_thunk("Thrower::escape", reinterpret_cast<void*>(&Thrower__escape__thunk));
+    reg.add_thunk("Thrower::__native", reinterpret_cast<void*>(&Thrower___native__thunk));
 }

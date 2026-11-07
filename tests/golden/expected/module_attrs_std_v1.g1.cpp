@@ -231,6 +231,11 @@ HOT_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note)
 }
 #line 233 "module_attrs_std_v1.hot.cpp"
 
+static void* Counter___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<Actor*>(static_cast<Counter_Shell*>(__s));
+}
+
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Counter_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&CounterState_g1::Tick),
@@ -257,7 +262,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return {static_cast<Actor*>(p), p};
 #line 7 "module_attrs_std_v1.hot"
 }
-#line 261 "module_attrs_std_v1.hot.cpp"
+#line 266 "module_attrs_std_v1.hot.cpp"
 
 #line 7 "module_attrs_std_v1.hot"
 HOT_NODEBUG static hot::Instance Counter__make_0([[maybe_unused]] void** __a)
@@ -267,7 +272,7 @@ HOT_NODEBUG static hot::Instance Counter__make_0([[maybe_unused]] void** __a)
     return Counter_create();
 #line 7 "module_attrs_std_v1.hot"
 }
-#line 271 "module_attrs_std_v1.hot.cpp"
+#line 276 "module_attrs_std_v1.hot.cpp"
 
 static const hot::CtorEntry Counter__constructors[] = {
     {hot::ctor_key<>(), &Counter__make_0, hot::ctor_write_mask<>()},
@@ -300,7 +305,7 @@ void CounterState_g1::Tick(float dt)
     HOT_TRACE_LINE(); __st->label = mystd::to_string(hot::deref(__st->history).size());
 #line 14 "module_attrs_std_v1.hot"
 }
-#line 304 "module_attrs_std_v1.hot.cpp"
+#line 309 "module_attrs_std_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -308,4 +313,5 @@ extern "C" void script_register(hot::Registry& reg)
     reg.add(&Counter_record, &Counter_create);
     Counter_record.construct_keys = Counter__construct_keys;
     Counter_record.ctors = Counter__constructors;
+    reg.add_thunk("Counter::__native", reinterpret_cast<void*>(&Counter___native__thunk));
 }

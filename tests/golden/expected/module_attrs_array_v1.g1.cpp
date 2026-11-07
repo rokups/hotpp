@@ -244,6 +244,11 @@ template <int = 0>
 }
 #line 246 "module_attrs_array_v1.hot.cpp"
 
+static void* Grid___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<Actor*>(static_cast<Grid_Shell*>(__s));
+}
+
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Grid_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&GridState_g1::Tick),
@@ -270,7 +275,7 @@ HOT_NODEBUG static hot::Instance Grid_create()
     return {static_cast<Actor*>(p), p};
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 274 "module_attrs_array_v1.hot.cpp"
+#line 279 "module_attrs_array_v1.hot.cpp"
 
 #line 7 "module_attrs_array_v1.hot"
 HOT_NODEBUG static hot::Instance Grid__make_0([[maybe_unused]] void** __a)
@@ -280,7 +285,7 @@ HOT_NODEBUG static hot::Instance Grid__make_0([[maybe_unused]] void** __a)
     return Grid_create();
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 284 "module_attrs_array_v1.hot.cpp"
+#line 289 "module_attrs_array_v1.hot.cpp"
 
 static const hot::CtorEntry Grid__constructors[] = {
     {hot::ctor_key<>(), &Grid__make_0, hot::ctor_write_mask<>()},
@@ -313,7 +318,7 @@ void GridState_g1::Tick(float dt)
     HOT_TRACE_LINE(); hot::index(hot::index(__st->weights, 1), 2) = dt;
 #line 14 "module_attrs_array_v1.hot"
 }
-#line 317 "module_attrs_array_v1.hot.cpp"
+#line 322 "module_attrs_array_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -321,4 +326,5 @@ extern "C" void script_register(hot::Registry& reg)
     reg.add(&Grid_record, &Grid_create);
     Grid_record.construct_keys = Grid__construct_keys;
     Grid_record.ctors = Grid__constructors;
+    reg.add_thunk("Grid::__native", reinterpret_cast<void*>(&Grid___native__thunk));
 }

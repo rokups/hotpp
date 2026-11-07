@@ -368,6 +368,11 @@ HOT_NODEBUG static hot::ShellCore* Player__new_default()
 {
     Player__ctor(static_cast<Player_Shell*>(__s));
 }
+static void* Player___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<Actor*>(static_cast<Player_Shell*>(__s));
+}
+
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Player_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&PlayerState_g2::Tick),
@@ -384,7 +389,7 @@ static void Player__onReload_hook(hot::ShellBase* s, const hot::OldState& old)
     Player__onReload(static_cast<Player_Shell*>(s), old);
 #line 68 "cpp_player_v2.cpp"
 }
-#line 388 "cpp_player_v2.cpp.cpp"
+#line 393 "cpp_player_v2.cpp.cpp"
 
 hot::ClassRecord Player_record = {
     "Player", GEN, Player_slots, SLOT_COUNT, &Player_layout, nullptr,
@@ -419,7 +424,7 @@ HOT_NODEBUG static hot::Instance Player_create()
     return {static_cast<Actor*>(p), p};
 #line 31 "cpp_player_v2.cpp"
 }
-#line 423 "cpp_player_v2.cpp.cpp"
+#line 428 "cpp_player_v2.cpp.cpp"
 
 #line 34 "cpp_player_v2.cpp"
 HOT_NODEBUG static hot::Instance Player__make_0([[maybe_unused]] void** __a)
@@ -433,7 +438,7 @@ HOT_NODEBUG static hot::Instance Player__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 34 "cpp_player_v2.cpp"
 }
-#line 437 "cpp_player_v2.cpp.cpp"
+#line 442 "cpp_player_v2.cpp.cpp"
 
 static const hot::CtorEntry Player__constructors[] = {
     {hot::ctor_key<>(), &Player__make_0, hot::ctor_write_mask<>()},
@@ -448,7 +453,7 @@ static const hot::CtorEntry Player__constructors[] = {
     return state_of(__self)->ctor();
 #line 34 "cpp_player_v2.cpp"
 }
-#line 452 "cpp_player_v2.cpp.cpp"
+#line 457 "cpp_player_v2.cpp.cpp"
 #line 34 "cpp_player_v2.cpp"
 void PlayerState_g2::ctor()
 #line 34 "cpp_player_v2.cpp"
@@ -473,7 +478,7 @@ void PlayerState_g2::ctor()
 
 #line 34 "cpp_player_v2.cpp"
 }
-#line 477 "cpp_player_v2.cpp.cpp"
+#line 482 "cpp_player_v2.cpp.cpp"
 
 #line 36 "cpp_player_v2.cpp"
 void PlayerState_g2::Tick(float dt)
@@ -506,7 +511,7 @@ void PlayerState_g2::Tick(float dt)
     
 #line 44 "cpp_player_v2.cpp"
 }
-#line 510 "cpp_player_v2.cpp.cpp"
+#line 515 "cpp_player_v2.cpp.cpp"
 
 #line 46 "cpp_player_v2.cpp"
 void PlayerState_g2::TakeDamage_f(float amount)
@@ -535,7 +540,7 @@ void PlayerState_g2::TakeDamage_f(float amount)
     
 #line 50 "cpp_player_v2.cpp"
 }
-#line 539 "cpp_player_v2.cpp.cpp"
+#line 544 "cpp_player_v2.cpp.cpp"
 
 #line 52 "cpp_player_v2.cpp"
 void PlayerState_g2::TakeDamage_Af(Actor & source, float amount)
@@ -565,7 +570,7 @@ void PlayerState_g2::TakeDamage_Af(Actor & source, float amount)
     
 #line 57 "cpp_player_v2.cpp"
 }
-#line 569 "cpp_player_v2.cpp.cpp"
+#line 574 "cpp_player_v2.cpp.cpp"
 
 #line 59 "cpp_player_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Player__heal(Player_Shell* __self, float a)
@@ -575,7 +580,7 @@ void PlayerState_g2::TakeDamage_Af(Actor & source, float amount)
     return state_of(__self)->heal(std::forward<float>(a));
 #line 59 "cpp_player_v2.cpp"
 }
-#line 579 "cpp_player_v2.cpp.cpp"
+#line 584 "cpp_player_v2.cpp.cpp"
 #line 59 "cpp_player_v2.cpp"
 void PlayerState_g2::heal(float a)
 #line 59 "cpp_player_v2.cpp"
@@ -603,7 +608,7 @@ void PlayerState_g2::heal(float a)
     
 #line 63 "cpp_player_v2.cpp"
 }
-#line 607 "cpp_player_v2.cpp.cpp"
+#line 612 "cpp_player_v2.cpp.cpp"
 
 #line 66 "cpp_player_v2.cpp"
 static float Player__convert_level(int old)
@@ -613,7 +618,7 @@ static float Player__convert_level(int old)
  return old * 10.0f; 
 #line 66 "cpp_player_v2.cpp"
 }
-#line 617 "cpp_player_v2.cpp.cpp"
+#line 622 "cpp_player_v2.cpp.cpp"
 
 #line 68 "cpp_player_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Player__onReload(Player_Shell* __self, const hot::OldState& old)
@@ -623,7 +628,7 @@ static float Player__convert_level(int old)
     return state_of(__self)->onReload(std::forward<const hot::OldState&>(old));
 #line 68 "cpp_player_v2.cpp"
 }
-#line 627 "cpp_player_v2.cpp.cpp"
+#line 632 "cpp_player_v2.cpp.cpp"
 #line 68 "cpp_player_v2.cpp"
 void PlayerState_g2::onReload(const hot::OldState& old)
 #line 68 "cpp_player_v2.cpp"
@@ -651,7 +656,7 @@ void PlayerState_g2::onReload(const hot::OldState& old)
     
 #line 72 "cpp_player_v2.cpp"
 }
-#line 655 "cpp_player_v2.cpp.cpp"
+#line 660 "cpp_player_v2.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -661,4 +666,5 @@ extern "C" void script_register(hot::Registry& reg)
     Player_record.construct_keys = Player__construct_keys;
     reg.add_fn("Player::ctor()", typeid(void(hot::ShellBase*)).name(), reinterpret_cast<void*>(&Player__ctor_export0));
     Player_record.ctors = Player__constructors;
+    reg.add_thunk("Player::__native", reinterpret_cast<void*>(&Player___native__thunk));
 }

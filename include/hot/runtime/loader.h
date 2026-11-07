@@ -280,6 +280,9 @@ public:
         return it == mod_blocks_.end() ? ModuleStateInfo{} : ModuleStateInfo{it->second.layout, it->second.slot};
     }
     void* thunk(const std::string& name) const { return registry_.thunk(name); }
+    // The key of the latest thunk of "name": "name" for the first signature, "name#sig" for a
+    // changed signature or an AOT thunk (Registry::thunk_key). Empty: no thunk.
+    std::string thunk_key(const std::string& name) const { return registry_.current_thunk_key(name); }
     // The copy of the record of a class as load_aot registered it (before any reload changed the
     // canonical record), or null. A revert to the AOT code uses it.
     // Stages the AOT code of a unit as a new generation (a revert of a run-time override). Like

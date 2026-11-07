@@ -257,6 +257,11 @@ static void Beeper__arm__thunk(Actor* __a, World& w, float delay)
 }
 #line 259 "timer_v1.hot.cpp"
 
+static void* Beeper___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<Actor*>(static_cast<Beeper_Shell*>(__s));
+}
+
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Beeper_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&BeeperState_g1::Tick),
@@ -284,7 +289,7 @@ HOT_NODEBUG static hot::Instance Beeper_create()
     return {static_cast<Actor*>(p), p};
 #line 5 "timer_v1.hot"
 }
-#line 288 "timer_v1.hot.cpp"
+#line 293 "timer_v1.hot.cpp"
 
 #line 5 "timer_v1.hot"
 HOT_NODEBUG static hot::Instance Beeper__make_0([[maybe_unused]] void** __a)
@@ -294,7 +299,7 @@ HOT_NODEBUG static hot::Instance Beeper__make_0([[maybe_unused]] void** __a)
     return Beeper_create();
 #line 5 "timer_v1.hot"
 }
-#line 298 "timer_v1.hot.cpp"
+#line 303 "timer_v1.hot.cpp"
 
 static const hot::CtorEntry Beeper__constructors[] = {
     {hot::ctor_key<>(), &Beeper__make_0, hot::ctor_write_mask<>()},
@@ -325,7 +330,7 @@ void BeeperState_g1::Tick(float dt)
     HOT_TRACE_LINE(); __st->ticks = __st->ticks + 1;
 #line 11 "timer_v1.hot"
 }
-#line 329 "timer_v1.hot.cpp"
+#line 334 "timer_v1.hot.cpp"
 
 #line 13 "timer_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Beeper__arm(Beeper_Shell* __self, World& w, float delay)
@@ -335,7 +340,7 @@ void BeeperState_g1::Tick(float dt)
     return state_of(__self)->arm(std::forward<World&>(w), std::forward<float>(delay));
 #line 13 "timer_v1.hot"
 }
-#line 339 "timer_v1.hot.cpp"
+#line 344 "timer_v1.hot.cpp"
 #line 13 "timer_v1.hot"
 void BeeperState_g1::arm(World& w, float delay)
 #line 13 "timer_v1.hot"
@@ -366,7 +371,7 @@ void BeeperState_g1::arm(World& w, float delay)
     }));
 #line 18 "timer_v1.hot"
 }
-#line 370 "timer_v1.hot.cpp"
+#line 375 "timer_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -375,4 +380,5 @@ extern "C" void script_register(hot::Registry& reg)
     Beeper_record.construct_keys = Beeper__construct_keys;
     Beeper_record.ctors = Beeper__constructors;
     reg.add_thunk("Beeper::arm", reinterpret_cast<void*>(&Beeper__arm__thunk));
+    reg.add_thunk("Beeper::__native", reinterpret_cast<void*>(&Beeper___native__thunk));
 }

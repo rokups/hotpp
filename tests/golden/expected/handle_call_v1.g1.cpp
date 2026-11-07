@@ -461,6 +461,11 @@ template <int = 0>
 }
 #line 463 "handle_call_v1.hot.cpp"
 
+static void* Caller___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<Actor*>(static_cast<Caller_Shell*>(__s));
+}
+
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Caller_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&CallerState_g1::__fwd_Tick),
@@ -495,7 +500,7 @@ HOT_NODEBUG static hot::Instance Caller_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "handle_call_v1.hot"
 }
-#line 499 "handle_call_v1.hot.cpp"
+#line 504 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
 HOT_NODEBUG static hot::Instance Caller__make_0([[maybe_unused]] void** __a)
@@ -505,7 +510,7 @@ HOT_NODEBUG static hot::Instance Caller__make_0([[maybe_unused]] void** __a)
     return Caller_create();
 #line 10 "handle_call_v1.hot"
 }
-#line 509 "handle_call_v1.hot.cpp"
+#line 514 "handle_call_v1.hot.cpp"
 
 static const hot::CtorEntry Caller__constructors[] = {
     {hot::ctor_key<>(), &Caller__make_0, hot::ctor_write_mask<>()},
@@ -540,7 +545,7 @@ int CallerState_g1::WearRaw(Charm* __c)
     HOT_TRACE_LINE(); return 1;
 #line 16 "handle_call_v1.hot"
 }
-#line 544 "handle_call_v1.hot.cpp"
+#line 549 "handle_call_v1.hot.cpp"
 
 #line 19 "handle_call_v1.hot"
 int CallerState_g1::WearBlade(Blade* __b)
@@ -608,7 +613,7 @@ int CallerState_g1::WearBlade(Blade* __b)
     HOT_TRACE_LINE(); return Mixed(hot::star(local));
 #line 41 "handle_call_v1.hot"
 }
-#line 612 "handle_call_v1.hot.cpp"
+#line 617 "handle_call_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -616,4 +621,5 @@ extern "C" void script_register(hot::Registry& reg)
     reg.add(&Caller_record, &Caller_create);
     Caller_record.construct_keys = Caller__construct_keys;
     Caller_record.ctors = Caller__constructors;
+    reg.add_thunk("Caller::__native", reinterpret_cast<void*>(&Caller___native__thunk));
 }

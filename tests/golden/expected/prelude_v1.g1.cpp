@@ -250,6 +250,11 @@ template <int = 0>
 }
 #line 252 "prelude_v1.hot.cpp"
 
+static void* Smith___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<Actor*>(static_cast<Smith_Shell*>(__s));
+}
+
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Smith_slots[Smith_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&SmithState_g1::Tick),
@@ -276,7 +281,7 @@ HOT_NODEBUG static hot::Instance Smith_create()
     return {static_cast<Actor*>(p), p};
 #line 9 "prelude_v1.hot"
 }
-#line 280 "prelude_v1.hot.cpp"
+#line 285 "prelude_v1.hot.cpp"
 
 #line 9 "prelude_v1.hot"
 HOT_NODEBUG static hot::Instance Smith__make_0([[maybe_unused]] void** __a)
@@ -286,7 +291,7 @@ HOT_NODEBUG static hot::Instance Smith__make_0([[maybe_unused]] void** __a)
     return Smith_create();
 #line 9 "prelude_v1.hot"
 }
-#line 290 "prelude_v1.hot.cpp"
+#line 295 "prelude_v1.hot.cpp"
 
 static const hot::CtorEntry Smith__constructors[] = {
     {hot::ctor_key<>(), &Smith__make_0, hot::ctor_write_mask<>()},
@@ -318,7 +323,7 @@ struct Tool_Shell final : Object, hot::ShellBase {
     }
 #line 19 "prelude_v1.hot"
     ~Tool_Shell() override { hot::destroy_state(this); }
-#line 322 "prelude_v1.hot.cpp"
+#line 327 "prelude_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -331,7 +336,7 @@ struct ToolState_g1 {
 
 #line 21 "prelude_v1.hot"
 static void Tool__init_uses(void*, void* f) { using T = int32_t; new (f) T(); }
-#line 335 "prelude_v1.hot.cpp"
+#line 340 "prelude_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -374,7 +379,7 @@ HOT_HIDDEN static auto Tool__plan()
     return std::make_pair(Tool__super_args(), std::tuple<>());
 #line 19 "prelude_v1.hot"
 }
-#line 378 "prelude_v1.hot.cpp"
+#line 383 "prelude_v1.hot.cpp"
 using Tool_SuperArgs = decltype(Tool__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -399,7 +404,7 @@ HOT_NODEBUG static hot::ShellBase* Tool__construct(void* mem, const char* key, c
     return nullptr;
 #line 19 "prelude_v1.hot"
 }
-#line 403 "prelude_v1.hot.cpp"
+#line 408 "prelude_v1.hot.cpp"
 
 static const char* const Tool__construct_keys[] = {typeid(Tool_SuperArgs).name(), nullptr};
 
@@ -415,7 +420,7 @@ HOT_HIDDEN static Tool_Shell* Tool__build([[maybe_unused]] bool __note)
     return __self;
 #line 19 "prelude_v1.hot"
 }
-#line 419 "prelude_v1.hot.cpp"
+#line 424 "prelude_v1.hot.cpp"
 #line 19 "prelude_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Tool_Shell* Tool__new()
 #line 19 "prelude_v1.hot"
@@ -424,7 +429,7 @@ HOT_HIDDEN static Tool_Shell* Tool__build([[maybe_unused]] bool __note)
     return Tool__build(true);
 #line 19 "prelude_v1.hot"
 }
-#line 428 "prelude_v1.hot.cpp"
+#line 433 "prelude_v1.hot.cpp"
 #line 19 "prelude_v1.hot"
 template <int = 0>
 #line 19 "prelude_v1.hot"
@@ -439,7 +444,7 @@ template <int = 0>
     return __h;
 #line 19 "prelude_v1.hot"
 }
-#line 443 "prelude_v1.hot.cpp"
+#line 448 "prelude_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -453,7 +458,12 @@ static void Tool__Use__thunk(Object* __a)
     return hot::call<void(Object*)>(__self, Tool_SLOT_Use);
 #line 23 "prelude_v1.hot"
 }
-#line 457 "prelude_v1.hot.cpp"
+#line 462 "prelude_v1.hot.cpp"
+
+static void* Tool___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<Object*>(static_cast<Tool_Shell*>(__s));
+}
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Tool_slots[Tool_SLOT_COUNT] = {
@@ -479,7 +489,7 @@ HOT_NODEBUG static hot::Instance Tool_create()
     return {static_cast<Object*>(p), p};
 #line 19 "prelude_v1.hot"
 }
-#line 483 "prelude_v1.hot.cpp"
+#line 493 "prelude_v1.hot.cpp"
 
 #line 19 "prelude_v1.hot"
 HOT_NODEBUG static hot::Instance Tool__make_0([[maybe_unused]] void** __a)
@@ -489,7 +499,7 @@ HOT_NODEBUG static hot::Instance Tool__make_0([[maybe_unused]] void** __a)
     return Tool_create();
 #line 19 "prelude_v1.hot"
 }
-#line 493 "prelude_v1.hot.cpp"
+#line 503 "prelude_v1.hot.cpp"
 
 static const hot::CtorEntry Tool__constructors[] = {
     {hot::ctor_key<>(), &Tool__make_0, hot::ctor_write_mask<>()},
@@ -520,7 +530,7 @@ void SmithState_g1::Tick(float dt)
     HOT_TRACE_LINE(); __st->ticks = __st->ticks + 1;
 #line 16 "prelude_v1.hot"
 }
-#line 524 "prelude_v1.hot.cpp"
+#line 534 "prelude_v1.hot.cpp"
 
 #line 23 "prelude_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Tool__Use(Tool_Shell* __self)
@@ -530,7 +540,7 @@ void SmithState_g1::Tick(float dt)
     return state_of(__self)->Use();
 #line 23 "prelude_v1.hot"
 }
-#line 534 "prelude_v1.hot.cpp"
+#line 544 "prelude_v1.hot.cpp"
 #line 23 "prelude_v1.hot"
 void ToolState_g1::Use()
 #line 23 "prelude_v1.hot"
@@ -555,7 +565,7 @@ void ToolState_g1::Use()
     HOT_TRACE_LINE(); __st->uses = __st->uses + 1;
 #line 25 "prelude_v1.hot"
 }
-#line 559 "prelude_v1.hot.cpp"
+#line 569 "prelude_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -566,5 +576,7 @@ extern "C" void script_register(hot::Registry& reg)
     Smith_record.ctors = Smith__constructors;
     Tool_record.construct_keys = Tool__construct_keys;
     Tool_record.ctors = Tool__constructors;
+    reg.add_thunk("Smith::__native", reinterpret_cast<void*>(&Smith___native__thunk));
     reg.add_thunk("Tool::Use", reinterpret_cast<void*>(&Tool__Use__thunk));
+    reg.add_thunk("Tool::__native", reinterpret_cast<void*>(&Tool___native__thunk));
 }

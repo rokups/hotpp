@@ -337,6 +337,11 @@ static void Checks__first_member__thunk(Actor* __a, Actor* other)
 }
 #line 339 "checks_v1.hot.cpp"
 
+static void* Checks___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<Actor*>(static_cast<Checks_Shell*>(__s));
+}
+
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Checks_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&ChecksState_g1::__fwd_Tick),
@@ -368,7 +373,7 @@ HOT_NODEBUG static hot::Instance Checks_create()
     return {static_cast<Actor*>(p), p};
 #line 4 "checks_v1.hot"
 }
-#line 372 "checks_v1.hot.cpp"
+#line 377 "checks_v1.hot.cpp"
 
 #line 4 "checks_v1.hot"
 HOT_NODEBUG static hot::Instance Checks__make_0([[maybe_unused]] void** __a)
@@ -378,7 +383,7 @@ HOT_NODEBUG static hot::Instance Checks__make_0([[maybe_unused]] void** __a)
     return Checks_create();
 #line 4 "checks_v1.hot"
 }
-#line 382 "checks_v1.hot.cpp"
+#line 387 "checks_v1.hot.cpp"
 
 static const hot::CtorEntry Checks__constructors[] = {
     {hot::ctor_key<>(), &Checks__make_0, hot::ctor_write_mask<>()},
@@ -393,7 +398,7 @@ static const hot::CtorEntry Checks__constructors[] = {
     return state_of(__self)->at(std::forward<int32_t>(i));
 #line 7 "checks_v1.hot"
 }
-#line 397 "checks_v1.hot.cpp"
+#line 402 "checks_v1.hot.cpp"
 #line 7 "checks_v1.hot"
 int32_t ChecksState_g1::at(int32_t const i)
 #line 7 "checks_v1.hot"
@@ -418,7 +423,7 @@ int32_t ChecksState_g1::at(int32_t const i)
     HOT_TRACE_LINE(); return hot::index(__st->vals, i);
 #line 9 "checks_v1.hot"
 }
-#line 422 "checks_v1.hot.cpp"
+#line 427 "checks_v1.hot.cpp"
 
 #line 11 "checks_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Checks__load(Checks_Shell* __self, int32_t* p)
@@ -428,7 +433,7 @@ int32_t ChecksState_g1::at(int32_t const i)
     return state_of(__self)->load(std::forward<int32_t*>(p));
 #line 11 "checks_v1.hot"
 }
-#line 432 "checks_v1.hot.cpp"
+#line 437 "checks_v1.hot.cpp"
 #line 11 "checks_v1.hot"
 int32_t ChecksState_g1::load(int32_t* const p)
 #line 11 "checks_v1.hot"
@@ -453,7 +458,7 @@ int32_t ChecksState_g1::load(int32_t* const p)
     HOT_TRACE_LINE(); return hot::star(hot::cast_ptr<int32_t*>(p));
 #line 13 "checks_v1.hot"
 }
-#line 457 "checks_v1.hot.cpp"
+#line 462 "checks_v1.hot.cpp"
 
 #line 15 "checks_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Checks__safe_at(Checks_Shell* __self, int32_t i)
@@ -463,7 +468,7 @@ int32_t ChecksState_g1::load(int32_t* const p)
     return state_of(__self)->safe_at(std::forward<int32_t>(i));
 #line 15 "checks_v1.hot"
 }
-#line 467 "checks_v1.hot.cpp"
+#line 472 "checks_v1.hot.cpp"
 #line 15 "checks_v1.hot"
 int32_t ChecksState_g1::safe_at(int32_t const i)
 #line 15 "checks_v1.hot"
@@ -496,7 +501,7 @@ int32_t ChecksState_g1::safe_at(int32_t const i)
     }
 #line 21 "checks_v1.hot"
 }
-#line 500 "checks_v1.hot.cpp"
+#line 505 "checks_v1.hot.cpp"
 
 #line 23 "checks_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Checks__safe_load(Checks_Shell* __self, int32_t* p)
@@ -506,7 +511,7 @@ int32_t ChecksState_g1::safe_at(int32_t const i)
     return state_of(__self)->safe_load(std::forward<int32_t*>(p));
 #line 23 "checks_v1.hot"
 }
-#line 510 "checks_v1.hot.cpp"
+#line 515 "checks_v1.hot.cpp"
 #line 23 "checks_v1.hot"
 int32_t ChecksState_g1::safe_load(int32_t* const p)
 #line 23 "checks_v1.hot"
@@ -547,7 +552,7 @@ int32_t ChecksState_g1::safe_load(int32_t* const p)
     }
 #line 33 "checks_v1.hot"
 }
-#line 551 "checks_v1.hot.cpp"
+#line 556 "checks_v1.hot.cpp"
 
 #line 35 "checks_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Checks__first_member(Checks_Shell* __self, Actor* other)
@@ -557,7 +562,7 @@ int32_t ChecksState_g1::safe_load(int32_t* const p)
     return state_of(__self)->first_member(std::forward<Actor*>(other));
 #line 35 "checks_v1.hot"
 }
-#line 561 "checks_v1.hot.cpp"
+#line 566 "checks_v1.hot.cpp"
 #line 35 "checks_v1.hot"
 void ChecksState_g1::first_member(Actor* const other)
 #line 35 "checks_v1.hot"
@@ -582,7 +587,7 @@ void ChecksState_g1::first_member(Actor* const other)
     HOT_TRACE_LINE(); hot::deref((hot::cast_ptr<Actor*>(other))).Move(Vec3());
 #line 37 "checks_v1.hot"
 }
-#line 586 "checks_v1.hot.cpp"
+#line 591 "checks_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -595,4 +600,5 @@ extern "C" void script_register(hot::Registry& reg)
     reg.add_thunk("Checks::safe_at", reinterpret_cast<void*>(&Checks__safe_at__thunk));
     reg.add_thunk("Checks::safe_load", reinterpret_cast<void*>(&Checks__safe_load__thunk));
     reg.add_thunk("Checks::first_member", reinterpret_cast<void*>(&Checks__first_member__thunk));
+    reg.add_thunk("Checks::__native", reinterpret_cast<void*>(&Checks___native__thunk));
 }

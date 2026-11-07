@@ -507,6 +507,11 @@ static int Vec__op_sub__thunk(Actor* __a, const Vec & o)
 }
 #line 509 "cpp_operators_v1.cpp.cpp"
 
+static void* Vec___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<Actor*>(static_cast<Vec_Shell*>(__s));
+}
+
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Vec_slots[Vec_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&VecState_g1::__fwd_Tick),
@@ -555,7 +560,7 @@ HOT_NODEBUG static hot::Instance Vec_create()
     return {static_cast<Actor*>(p), p};
 #line 7 "cpp_operators_v1.cpp"
 }
-#line 559 "cpp_operators_v1.cpp.cpp"
+#line 564 "cpp_operators_v1.cpp.cpp"
 
 #line 10 "cpp_operators_v1.cpp"
 HOT_NODEBUG static hot::Instance Vec__make_0([[maybe_unused]] void** __a)
@@ -569,7 +574,7 @@ HOT_NODEBUG static hot::Instance Vec__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 10 "cpp_operators_v1.cpp"
 }
-#line 573 "cpp_operators_v1.cpp.cpp"
+#line 578 "cpp_operators_v1.cpp.cpp"
 
 static const hot::CtorEntry Vec__constructors[] = {
     {hot::ctor_key<>(), &Vec__make_0, hot::ctor_write_mask<>()},
@@ -584,10 +589,10 @@ struct HotModule {
 
 #line 29 "cpp_operators_v1.cpp"
 static void HotModule__init_a(void*, void* f) { using T = Vec *; new (f) T(nullptr); }
-#line 588 "cpp_operators_v1.cpp.cpp"
+#line 593 "cpp_operators_v1.cpp.cpp"
 #line 30 "cpp_operators_v1.cpp"
 static void HotModule__init_b(void*, void* f) { using T = Vec *; new (f) T(nullptr); }
-#line 591 "cpp_operators_v1.cpp.cpp"
+#line 596 "cpp_operators_v1.cpp.cpp"
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
@@ -631,7 +636,7 @@ struct Driver_Shell final : Actor, hot::ShellBase {
     }
 #line 32 "cpp_operators_v1.cpp"
     ~Driver_Shell() override { hot::destroy_state(this); }
-#line 635 "cpp_operators_v1.cpp.cpp"
+#line 640 "cpp_operators_v1.cpp.cpp"
 #line 32 "cpp_operators_v1.cpp"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 32 "cpp_operators_v1.cpp"
@@ -640,7 +645,7 @@ struct Driver_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0);
 #line 32 "cpp_operators_v1.cpp"
     }
-#line 644 "cpp_operators_v1.cpp.cpp"
+#line 649 "cpp_operators_v1.cpp.cpp"
 #line 32 "cpp_operators_v1.cpp"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 32 "cpp_operators_v1.cpp"
@@ -649,7 +654,7 @@ struct Driver_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0, a1);
 #line 32 "cpp_operators_v1.cpp"
     }
-#line 653 "cpp_operators_v1.cpp.cpp"
+#line 658 "cpp_operators_v1.cpp.cpp"
 
 #line 32 "cpp_operators_v1.cpp"
     void Tick(float a0) override
@@ -659,7 +664,7 @@ struct Driver_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Driver_SLOT_Tick, a0);
 #line 32 "cpp_operators_v1.cpp"
     }
-#line 663 "cpp_operators_v1.cpp.cpp"
+#line 668 "cpp_operators_v1.cpp.cpp"
 
 #line 32 "cpp_operators_v1.cpp"
     void TakeDamage(float a0) override
@@ -669,7 +674,7 @@ struct Driver_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Driver_SLOT_TakeDamage_f, a0);
 #line 32 "cpp_operators_v1.cpp"
     }
-#line 673 "cpp_operators_v1.cpp.cpp"
+#line 678 "cpp_operators_v1.cpp.cpp"
 
 #line 32 "cpp_operators_v1.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -679,7 +684,7 @@ struct Driver_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, Driver_SLOT_TakeDamage_Af, a0, a1);
 #line 32 "cpp_operators_v1.cpp"
     }
-#line 683 "cpp_operators_v1.cpp.cpp"
+#line 688 "cpp_operators_v1.cpp.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -698,7 +703,7 @@ struct DriverState_g1 {
         return static_cast<Driver_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 32 "cpp_operators_v1.cpp"
     }
-#line 702 "cpp_operators_v1.cpp.cpp"
+#line 707 "cpp_operators_v1.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 32 "cpp_operators_v1.cpp"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -708,7 +713,7 @@ struct DriverState_g1 {
         return static_cast<Driver_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 32 "cpp_operators_v1.cpp"
     }
-#line 712 "cpp_operators_v1.cpp.cpp"
+#line 717 "cpp_operators_v1.cpp.cpp"
 };
 
 
@@ -761,7 +766,7 @@ HOT_HIDDEN static void Driver__ctor_chain(Driver_Shell* __self, [[maybe_unused]]
     Driver__ctor(__self);
 #line 35 "cpp_operators_v1.cpp"
 }
-#line 765 "cpp_operators_v1.cpp.cpp"
+#line 770 "cpp_operators_v1.cpp.cpp"
 using Driver_SuperArgs = decltype(Driver__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -786,7 +791,7 @@ HOT_NODEBUG static hot::ShellBase* Driver__construct(void* mem, const char* key,
     return nullptr;
 #line 32 "cpp_operators_v1.cpp"
 }
-#line 790 "cpp_operators_v1.cpp.cpp"
+#line 795 "cpp_operators_v1.cpp.cpp"
 
 static const char* const Driver__construct_keys[] = {typeid(Driver_SuperArgs).name(), nullptr};
 
@@ -814,7 +819,7 @@ HOT_HIDDEN static Driver_Shell* Driver__build([[maybe_unused]] bool __note)
     return __self;
 #line 35 "cpp_operators_v1.cpp"
 }
-#line 818 "cpp_operators_v1.cpp.cpp"
+#line 823 "cpp_operators_v1.cpp.cpp"
 #line 35 "cpp_operators_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static Driver_Shell* Driver__new()
 #line 35 "cpp_operators_v1.cpp"
@@ -823,7 +828,7 @@ HOT_HIDDEN static Driver_Shell* Driver__build([[maybe_unused]] bool __note)
     return Driver__build(true);
 #line 35 "cpp_operators_v1.cpp"
 }
-#line 827 "cpp_operators_v1.cpp.cpp"
+#line 832 "cpp_operators_v1.cpp.cpp"
 #line 35 "cpp_operators_v1.cpp"
 template <int = 0>
 #line 35 "cpp_operators_v1.cpp"
@@ -840,7 +845,7 @@ template <int = 0>
     return __h;
 #line 35 "cpp_operators_v1.cpp"
 }
-#line 844 "cpp_operators_v1.cpp.cpp"
+#line 849 "cpp_operators_v1.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -852,7 +857,7 @@ HOT_NODEBUG static hot::ShellCore* Driver__new_default()
     return Driver__build(false);
 #line 35 "cpp_operators_v1.cpp"
 }
-#line 856 "cpp_operators_v1.cpp.cpp"
+#line 861 "cpp_operators_v1.cpp.cpp"
 
 #line 37 "cpp_operators_v1.cpp"
 static void Driver__dtor_slot(hot::ShellCore* s)
@@ -862,7 +867,7 @@ static void Driver__dtor_slot(hot::ShellCore* s)
     Driver__dtor(static_cast<Driver_Shell*>(s));
 #line 37 "cpp_operators_v1.cpp"
 }
-#line 866 "cpp_operators_v1.cpp.cpp"
+#line 871 "cpp_operators_v1.cpp.cpp"
 
 [[maybe_unused]] HOT_HIDDEN static void Driver__ctor_export0(hot::ShellBase* __s)
 {
@@ -872,6 +877,11 @@ static void Driver__dtor_slot(hot::ShellCore* s)
 {
     Driver__dtor(static_cast<Driver_Shell*>(__s));
 }
+static void* Driver___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<Actor*>(static_cast<Driver_Shell*>(__s));
+}
+
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Driver_slots[Driver_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&DriverState_g1::Tick),
@@ -912,7 +922,7 @@ HOT_NODEBUG static hot::Instance Driver_create()
     return {static_cast<Actor*>(p), p};
 #line 32 "cpp_operators_v1.cpp"
 }
-#line 916 "cpp_operators_v1.cpp.cpp"
+#line 926 "cpp_operators_v1.cpp.cpp"
 
 #line 35 "cpp_operators_v1.cpp"
 HOT_NODEBUG static hot::Instance Driver__make_0([[maybe_unused]] void** __a)
@@ -926,7 +936,7 @@ HOT_NODEBUG static hot::Instance Driver__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 35 "cpp_operators_v1.cpp"
 }
-#line 930 "cpp_operators_v1.cpp.cpp"
+#line 940 "cpp_operators_v1.cpp.cpp"
 
 static const hot::CtorEntry Driver__constructors[] = {
     {hot::ctor_key<>(), &Driver__make_0, hot::ctor_write_mask<>()},
@@ -941,7 +951,7 @@ static const hot::CtorEntry Driver__constructors[] = {
     return state_of(__self)->ctor();
 #line 10 "cpp_operators_v1.cpp"
 }
-#line 945 "cpp_operators_v1.cpp.cpp"
+#line 955 "cpp_operators_v1.cpp.cpp"
 #line 10 "cpp_operators_v1.cpp"
 void VecState_g1::ctor()
 #line 10 "cpp_operators_v1.cpp"
@@ -966,7 +976,7 @@ void VecState_g1::ctor()
 
 #line 10 "cpp_operators_v1.cpp"
 }
-#line 970 "cpp_operators_v1.cpp.cpp"
+#line 980 "cpp_operators_v1.cpp.cpp"
 
 #line 12 "cpp_operators_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static Vec & Vec__op_add_assign(Vec_Shell* __self, int v)
@@ -976,7 +986,7 @@ void VecState_g1::ctor()
     return state_of(__self)->op_add_assign(std::forward<int>(v));
 #line 12 "cpp_operators_v1.cpp"
 }
-#line 980 "cpp_operators_v1.cpp.cpp"
+#line 990 "cpp_operators_v1.cpp.cpp"
 #line 12 "cpp_operators_v1.cpp"
 Vec & VecState_g1::op_add_assign(int v)
 #line 12 "cpp_operators_v1.cpp"
@@ -1004,7 +1014,7 @@ Vec & VecState_g1::op_add_assign(int v)
     
 #line 16 "cpp_operators_v1.cpp"
 }
-#line 1008 "cpp_operators_v1.cpp.cpp"
+#line 1018 "cpp_operators_v1.cpp.cpp"
 
 #line 17 "cpp_operators_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static bool Vec__op_eq(Vec_Shell* __self, const Vec & o)
@@ -1014,7 +1024,7 @@ Vec & VecState_g1::op_add_assign(int v)
     return state_of(__self)->op_eq(std::forward<const Vec &>(o));
 #line 17 "cpp_operators_v1.cpp"
 }
-#line 1018 "cpp_operators_v1.cpp.cpp"
+#line 1028 "cpp_operators_v1.cpp.cpp"
 #line 17 "cpp_operators_v1.cpp"
 bool VecState_g1::op_eq(const Vec & o)
 #line 17 "cpp_operators_v1.cpp"
@@ -1039,7 +1049,7 @@ bool VecState_g1::op_eq(const Vec & o)
  return n == state_of(const_cast<Vec_Shell*>(&(o)))->n; 
 #line 17 "cpp_operators_v1.cpp"
 }
-#line 1043 "cpp_operators_v1.cpp.cpp"
+#line 1053 "cpp_operators_v1.cpp.cpp"
 
 #line 18 "cpp_operators_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static bool Vec__op_ne(Vec_Shell* __self, const Vec & o)
@@ -1049,7 +1059,7 @@ bool VecState_g1::op_eq(const Vec & o)
     return state_of(__self)->op_ne(std::forward<const Vec &>(o));
 #line 18 "cpp_operators_v1.cpp"
 }
-#line 1053 "cpp_operators_v1.cpp.cpp"
+#line 1063 "cpp_operators_v1.cpp.cpp"
 #line 18 "cpp_operators_v1.cpp"
 bool VecState_g1::op_ne(const Vec & o)
 #line 18 "cpp_operators_v1.cpp"
@@ -1074,7 +1084,7 @@ bool VecState_g1::op_ne(const Vec & o)
  return n != state_of(const_cast<Vec_Shell*>(&(o)))->n; 
 #line 18 "cpp_operators_v1.cpp"
 }
-#line 1078 "cpp_operators_v1.cpp.cpp"
+#line 1088 "cpp_operators_v1.cpp.cpp"
 
 #line 19 "cpp_operators_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static bool Vec__op_lt(Vec_Shell* __self, const Vec & o)
@@ -1084,7 +1094,7 @@ bool VecState_g1::op_ne(const Vec & o)
     return state_of(__self)->op_lt(std::forward<const Vec &>(o));
 #line 19 "cpp_operators_v1.cpp"
 }
-#line 1088 "cpp_operators_v1.cpp.cpp"
+#line 1098 "cpp_operators_v1.cpp.cpp"
 #line 19 "cpp_operators_v1.cpp"
 bool VecState_g1::op_lt(const Vec & o)
 #line 19 "cpp_operators_v1.cpp"
@@ -1109,7 +1119,7 @@ bool VecState_g1::op_lt(const Vec & o)
  return n < state_of(const_cast<Vec_Shell*>(&(o)))->n; 
 #line 19 "cpp_operators_v1.cpp"
 }
-#line 1113 "cpp_operators_v1.cpp.cpp"
+#line 1123 "cpp_operators_v1.cpp.cpp"
 
 #line 20 "cpp_operators_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Vec__op_call(Vec_Shell* __self, int k)
@@ -1119,7 +1129,7 @@ bool VecState_g1::op_lt(const Vec & o)
     return state_of(__self)->op_call(std::forward<int>(k));
 #line 20 "cpp_operators_v1.cpp"
 }
-#line 1123 "cpp_operators_v1.cpp.cpp"
+#line 1133 "cpp_operators_v1.cpp.cpp"
 #line 20 "cpp_operators_v1.cpp"
 int VecState_g1::op_call(int k)
 #line 20 "cpp_operators_v1.cpp"
@@ -1144,7 +1154,7 @@ int VecState_g1::op_call(int k)
  return n + k; 
 #line 20 "cpp_operators_v1.cpp"
 }
-#line 1148 "cpp_operators_v1.cpp.cpp"
+#line 1158 "cpp_operators_v1.cpp.cpp"
 
 #line 21 "cpp_operators_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Vec__op_index(Vec_Shell* __self, int i)
@@ -1154,7 +1164,7 @@ int VecState_g1::op_call(int k)
     return state_of(__self)->op_index(std::forward<int>(i));
 #line 21 "cpp_operators_v1.cpp"
 }
-#line 1158 "cpp_operators_v1.cpp.cpp"
+#line 1168 "cpp_operators_v1.cpp.cpp"
 #line 21 "cpp_operators_v1.cpp"
 int VecState_g1::op_index(int i)
 #line 21 "cpp_operators_v1.cpp"
@@ -1179,7 +1189,7 @@ int VecState_g1::op_index(int i)
  return n * 10 + i; 
 #line 21 "cpp_operators_v1.cpp"
 }
-#line 1183 "cpp_operators_v1.cpp.cpp"
+#line 1193 "cpp_operators_v1.cpp.cpp"
 
 #line 22 "cpp_operators_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Vec__op_neg(Vec_Shell* __self)
@@ -1189,7 +1199,7 @@ int VecState_g1::op_index(int i)
     return state_of(__self)->op_neg();
 #line 22 "cpp_operators_v1.cpp"
 }
-#line 1193 "cpp_operators_v1.cpp.cpp"
+#line 1203 "cpp_operators_v1.cpp.cpp"
 #line 22 "cpp_operators_v1.cpp"
 int VecState_g1::op_neg()
 #line 22 "cpp_operators_v1.cpp"
@@ -1214,7 +1224,7 @@ int VecState_g1::op_neg()
  return -n; 
 #line 22 "cpp_operators_v1.cpp"
 }
-#line 1218 "cpp_operators_v1.cpp.cpp"
+#line 1228 "cpp_operators_v1.cpp.cpp"
 
 #line 23 "cpp_operators_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Vec__op_sub(Vec_Shell* __self, const Vec & o)
@@ -1224,7 +1234,7 @@ int VecState_g1::op_neg()
     return state_of(__self)->op_sub(std::forward<const Vec &>(o));
 #line 23 "cpp_operators_v1.cpp"
 }
-#line 1228 "cpp_operators_v1.cpp.cpp"
+#line 1238 "cpp_operators_v1.cpp.cpp"
 #line 23 "cpp_operators_v1.cpp"
 int VecState_g1::op_sub(const Vec & o)
 #line 23 "cpp_operators_v1.cpp"
@@ -1249,7 +1259,7 @@ int VecState_g1::op_sub(const Vec & o)
  return n - state_of(const_cast<Vec_Shell*>(&(o)))->n; 
 #line 23 "cpp_operators_v1.cpp"
 }
-#line 1253 "cpp_operators_v1.cpp.cpp"
+#line 1263 "cpp_operators_v1.cpp.cpp"
 
 #line 35 "cpp_operators_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Driver__ctor(Driver_Shell* __self)
@@ -1259,7 +1269,7 @@ int VecState_g1::op_sub(const Vec & o)
     return state_of(__self)->ctor();
 #line 35 "cpp_operators_v1.cpp"
 }
-#line 1263 "cpp_operators_v1.cpp.cpp"
+#line 1273 "cpp_operators_v1.cpp.cpp"
 #line 35 "cpp_operators_v1.cpp"
 void DriverState_g1::ctor()
 #line 35 "cpp_operators_v1.cpp"
@@ -1284,7 +1294,7 @@ void DriverState_g1::ctor()
 
 #line 35 "cpp_operators_v1.cpp"
 }
-#line 1288 "cpp_operators_v1.cpp.cpp"
+#line 1298 "cpp_operators_v1.cpp.cpp"
 
 #line 37 "cpp_operators_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Driver__dtor(Driver_Shell* __self)
@@ -1294,7 +1304,7 @@ void DriverState_g1::ctor()
     return state_of(__self)->dtor();
 #line 37 "cpp_operators_v1.cpp"
 }
-#line 1298 "cpp_operators_v1.cpp.cpp"
+#line 1308 "cpp_operators_v1.cpp.cpp"
 #line 37 "cpp_operators_v1.cpp"
 void DriverState_g1::dtor()
 #line 37 "cpp_operators_v1.cpp"
@@ -1322,7 +1332,7 @@ void DriverState_g1::dtor()
     
 #line 43 "cpp_operators_v1.cpp"
 }
-#line 1326 "cpp_operators_v1.cpp.cpp"
+#line 1336 "cpp_operators_v1.cpp.cpp"
 
 #line 45 "cpp_operators_v1.cpp"
 void DriverState_g1::Tick(float dt)
@@ -1362,7 +1372,7 @@ void DriverState_g1::Tick(float dt)
     
 #line 60 "cpp_operators_v1.cpp"
 }
-#line 1366 "cpp_operators_v1.cpp.cpp"
+#line 1376 "cpp_operators_v1.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -1385,4 +1395,6 @@ extern "C" void script_register(hot::Registry& reg)
     reg.add_thunk("Vec::op_index", reinterpret_cast<void*>(&Vec__op_index__thunk));
     reg.add_thunk("Vec::op_neg", reinterpret_cast<void*>(&Vec__op_neg__thunk));
     reg.add_thunk("Vec::op_sub", reinterpret_cast<void*>(&Vec__op_sub__thunk));
+    reg.add_thunk("Vec::__native", reinterpret_cast<void*>(&Vec___native__thunk));
+    reg.add_thunk("Driver::__native", reinterpret_cast<void*>(&Driver___native__thunk));
 }

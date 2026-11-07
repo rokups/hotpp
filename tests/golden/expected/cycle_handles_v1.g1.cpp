@@ -215,6 +215,11 @@ static int32_t Child__ParentHp__thunk(hot::PlainObject* __a)
 }
 #line 217 "cycle_handles_v1.hot.cpp"
 
+static void* Child___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<hot::PlainObject*>(static_cast<Child_Shell*>(__s));
+}
+
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Child_slots[Child_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&ChildState_g1::ParentHp),
@@ -239,7 +244,7 @@ HOT_NODEBUG static hot::Instance Child_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 22 "cycle_handles_v1.hot"
 }
-#line 243 "cycle_handles_v1.hot.cpp"
+#line 248 "cycle_handles_v1.hot.cpp"
 
 #line 22 "cycle_handles_v1.hot"
 HOT_NODEBUG static hot::Instance Child__make_0([[maybe_unused]] void** __a)
@@ -249,7 +254,7 @@ HOT_NODEBUG static hot::Instance Child__make_0([[maybe_unused]] void** __a)
     return Child_create();
 #line 22 "cycle_handles_v1.hot"
 }
-#line 253 "cycle_handles_v1.hot.cpp"
+#line 258 "cycle_handles_v1.hot.cpp"
 
 static const hot::CtorEntry Child__constructors[] = {
     {hot::ctor_key<>(), &Child__make_0, hot::ctor_write_mask<>()},
@@ -280,7 +285,7 @@ struct Parent_Shell final : hot::PlainObject, hot::ShellBase {
     }
 #line 9 "cycle_handles_v1.hot"
     ~Parent_Shell() override { hot::destroy_state(this); }
-#line 284 "cycle_handles_v1.hot.cpp"
+#line 289 "cycle_handles_v1.hot.cpp"
 #line 9 "cycle_handles_v1.hot"
     explicit Parent_Shell(hot::CloneFrom, const hot::ShellBase* src)
 #line 9 "cycle_handles_v1.hot"
@@ -289,7 +294,7 @@ struct Parent_Shell final : hot::PlainObject, hot::ShellBase {
         hot::clone_state(this, &Parent_record, src);
 #line 9 "cycle_handles_v1.hot"
     }
-#line 293 "cycle_handles_v1.hot.cpp"
+#line 298 "cycle_handles_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -304,10 +309,10 @@ struct ParentState_g1 {
 
 #line 10 "cycle_handles_v1.hot"
 static void Parent__init_kid(void*, void* f) { using T = std::shared_ptr<Child>; new (f) T(nullptr); }
-#line 308 "cycle_handles_v1.hot.cpp"
+#line 313 "cycle_handles_v1.hot.cpp"
 #line 11 "cycle_handles_v1.hot"
 static void Parent__init_hp(void*, void* f) { using T = int32_t; new (f) T(7); }
-#line 311 "cycle_handles_v1.hot.cpp"
+#line 316 "cycle_handles_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -353,7 +358,7 @@ HOT_HIDDEN static auto Parent__plan()
     return std::make_pair(Parent__super_args(), std::tuple<>());
 #line 9 "cycle_handles_v1.hot"
 }
-#line 357 "cycle_handles_v1.hot.cpp"
+#line 362 "cycle_handles_v1.hot.cpp"
 using Parent_SuperArgs = decltype(Parent__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -386,7 +391,7 @@ HOT_NODEBUG static hot::ShellBase* Parent__construct(void* mem, const char* key,
     return nullptr;
 #line 9 "cycle_handles_v1.hot"
 }
-#line 390 "cycle_handles_v1.hot.cpp"
+#line 395 "cycle_handles_v1.hot.cpp"
 
 static const char* const Parent__construct_keys[] = {typeid(Parent_SuperArgs).name(), hot::kCloneKey, nullptr};
 
@@ -402,7 +407,7 @@ HOT_HIDDEN static Parent_Shell* Parent__build([[maybe_unused]] bool __note)
     return __self;
 #line 9 "cycle_handles_v1.hot"
 }
-#line 406 "cycle_handles_v1.hot.cpp"
+#line 411 "cycle_handles_v1.hot.cpp"
 #line 9 "cycle_handles_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Parent_Shell* Parent__new()
 #line 9 "cycle_handles_v1.hot"
@@ -411,7 +416,7 @@ HOT_HIDDEN static Parent_Shell* Parent__build([[maybe_unused]] bool __note)
     return Parent__build(true);
 #line 9 "cycle_handles_v1.hot"
 }
-#line 415 "cycle_handles_v1.hot.cpp"
+#line 420 "cycle_handles_v1.hot.cpp"
 #line 9 "cycle_handles_v1.hot"
 template <int = 0>
 #line 9 "cycle_handles_v1.hot"
@@ -426,7 +431,7 @@ template <int = 0>
     return __h;
 #line 9 "cycle_handles_v1.hot"
 }
-#line 430 "cycle_handles_v1.hot.cpp"
+#line 435 "cycle_handles_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -440,7 +445,7 @@ static void Parent__Adopt__thunk(hot::PlainObject* __a)
     return hot::call<void(hot::PlainObject*)>(__self, Parent_SLOT_Adopt);
 #line 13 "cycle_handles_v1.hot"
 }
-#line 444 "cycle_handles_v1.hot.cpp"
+#line 449 "cycle_handles_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -454,7 +459,12 @@ static int32_t Parent__KidAge__thunk(hot::PlainObject* __a)
     return hot::call<int32_t(hot::PlainObject*)>(__self, Parent_SLOT_KidAge);
 #line 19 "cycle_handles_v1.hot"
 }
-#line 458 "cycle_handles_v1.hot.cpp"
+#line 463 "cycle_handles_v1.hot.cpp"
+
+static void* Parent___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<hot::PlainObject*>(static_cast<Parent_Shell*>(__s));
+}
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Parent_slots[Parent_SLOT_COUNT] = {
@@ -481,7 +491,7 @@ HOT_NODEBUG static hot::Instance Parent_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 9 "cycle_handles_v1.hot"
 }
-#line 485 "cycle_handles_v1.hot.cpp"
+#line 495 "cycle_handles_v1.hot.cpp"
 
 #line 9 "cycle_handles_v1.hot"
 HOT_NODEBUG static hot::Instance Parent__make_0([[maybe_unused]] void** __a)
@@ -491,7 +501,7 @@ HOT_NODEBUG static hot::Instance Parent__make_0([[maybe_unused]] void** __a)
     return Parent_create();
 #line 9 "cycle_handles_v1.hot"
 }
-#line 495 "cycle_handles_v1.hot.cpp"
+#line 505 "cycle_handles_v1.hot.cpp"
 
 static const hot::CtorEntry Parent__constructors[] = {
     {hot::ctor_key<>(), &Parent__make_0, hot::ctor_write_mask<>()},
@@ -522,7 +532,7 @@ struct Pong_Shell final : hot::PlainObject, hot::ShellBase {
     }
 #line 40 "cycle_handles_v1.hot"
     ~Pong_Shell() override { hot::destroy_state(this); }
-#line 526 "cycle_handles_v1.hot.cpp"
+#line 536 "cycle_handles_v1.hot.cpp"
 #line 40 "cycle_handles_v1.hot"
     explicit Pong_Shell(hot::CloneFrom, const hot::ShellBase* src)
 #line 40 "cycle_handles_v1.hot"
@@ -531,7 +541,7 @@ struct Pong_Shell final : hot::PlainObject, hot::ShellBase {
         hot::clone_state(this, &Pong_record, src);
 #line 40 "cycle_handles_v1.hot"
     }
-#line 535 "cycle_handles_v1.hot.cpp"
+#line 545 "cycle_handles_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -546,10 +556,10 @@ struct PongState_g1 {
 
 #line 41 "cycle_handles_v1.hot"
 static void Pong__init_other(void*, void* f) { using T = std::shared_ptr<Ping>; new (f) T(nullptr); }
-#line 550 "cycle_handles_v1.hot.cpp"
+#line 560 "cycle_handles_v1.hot.cpp"
 #line 42 "cycle_handles_v1.hot"
 static void Pong__init_n(void*, void* f) { using T = int32_t; new (f) T(2); }
-#line 553 "cycle_handles_v1.hot.cpp"
+#line 563 "cycle_handles_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -595,7 +605,7 @@ HOT_HIDDEN static auto Pong__plan()
     return std::make_pair(Pong__super_args(), std::tuple<>());
 #line 40 "cycle_handles_v1.hot"
 }
-#line 599 "cycle_handles_v1.hot.cpp"
+#line 609 "cycle_handles_v1.hot.cpp"
 using Pong_SuperArgs = decltype(Pong__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -628,7 +638,7 @@ HOT_NODEBUG static hot::ShellBase* Pong__construct(void* mem, const char* key, c
     return nullptr;
 #line 40 "cycle_handles_v1.hot"
 }
-#line 632 "cycle_handles_v1.hot.cpp"
+#line 642 "cycle_handles_v1.hot.cpp"
 
 static const char* const Pong__construct_keys[] = {typeid(Pong_SuperArgs).name(), hot::kCloneKey, nullptr};
 
@@ -644,7 +654,7 @@ HOT_HIDDEN static Pong_Shell* Pong__build([[maybe_unused]] bool __note)
     return __self;
 #line 40 "cycle_handles_v1.hot"
 }
-#line 648 "cycle_handles_v1.hot.cpp"
+#line 658 "cycle_handles_v1.hot.cpp"
 #line 40 "cycle_handles_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Pong_Shell* Pong__new()
 #line 40 "cycle_handles_v1.hot"
@@ -653,7 +663,7 @@ HOT_HIDDEN static Pong_Shell* Pong__build([[maybe_unused]] bool __note)
     return Pong__build(true);
 #line 40 "cycle_handles_v1.hot"
 }
-#line 657 "cycle_handles_v1.hot.cpp"
+#line 667 "cycle_handles_v1.hot.cpp"
 #line 40 "cycle_handles_v1.hot"
 template <int = 0>
 #line 40 "cycle_handles_v1.hot"
@@ -668,7 +678,7 @@ template <int = 0>
     return __h;
 #line 40 "cycle_handles_v1.hot"
 }
-#line 672 "cycle_handles_v1.hot.cpp"
+#line 682 "cycle_handles_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -682,7 +692,7 @@ static void Pong__Link__thunk(hot::PlainObject* __a, const std::shared_ptr<Ping>
     return hot::call<void(hot::PlainObject*, const std::shared_ptr<Ping>&)>(__self, Pong_SLOT_Link, p);
 #line 44 "cycle_handles_v1.hot"
 }
-#line 686 "cycle_handles_v1.hot.cpp"
+#line 696 "cycle_handles_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -696,7 +706,12 @@ static void Pong__Unlink__thunk(hot::PlainObject* __a)
     return hot::call<void(hot::PlainObject*)>(__self, Pong_SLOT_Unlink);
 #line 50 "cycle_handles_v1.hot"
 }
-#line 700 "cycle_handles_v1.hot.cpp"
+#line 710 "cycle_handles_v1.hot.cpp"
+
+static void* Pong___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<hot::PlainObject*>(static_cast<Pong_Shell*>(__s));
+}
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Pong_slots[Pong_SLOT_COUNT] = {
@@ -723,7 +738,7 @@ HOT_NODEBUG static hot::Instance Pong_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 40 "cycle_handles_v1.hot"
 }
-#line 727 "cycle_handles_v1.hot.cpp"
+#line 742 "cycle_handles_v1.hot.cpp"
 
 #line 40 "cycle_handles_v1.hot"
 HOT_NODEBUG static hot::Instance Pong__make_0([[maybe_unused]] void** __a)
@@ -733,7 +748,7 @@ HOT_NODEBUG static hot::Instance Pong__make_0([[maybe_unused]] void** __a)
     return Pong_create();
 #line 40 "cycle_handles_v1.hot"
 }
-#line 737 "cycle_handles_v1.hot.cpp"
+#line 752 "cycle_handles_v1.hot.cpp"
 
 static const hot::CtorEntry Pong__constructors[] = {
     {hot::ctor_key<>(), &Pong__make_0, hot::ctor_write_mask<>()},
@@ -763,7 +778,7 @@ struct Ping_Shell final : hot::PlainObject, hot::ShellBase {
     }
 #line 34 "cycle_handles_v1.hot"
     ~Ping_Shell() override { hot::destroy_state(this); }
-#line 767 "cycle_handles_v1.hot.cpp"
+#line 782 "cycle_handles_v1.hot.cpp"
 #line 34 "cycle_handles_v1.hot"
     explicit Ping_Shell(hot::CloneFrom, const hot::ShellBase* src)
 #line 34 "cycle_handles_v1.hot"
@@ -772,7 +787,7 @@ struct Ping_Shell final : hot::PlainObject, hot::ShellBase {
         hot::clone_state(this, &Ping_record, src);
 #line 34 "cycle_handles_v1.hot"
     }
-#line 776 "cycle_handles_v1.hot.cpp"
+#line 791 "cycle_handles_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -785,7 +800,7 @@ struct PingState_g1 {
 
 #line 35 "cycle_handles_v1.hot"
 static void Ping__init_other(void*, void* f) { using T = std::shared_ptr<Pong>; new (f) T(nullptr); }
-#line 789 "cycle_handles_v1.hot.cpp"
+#line 804 "cycle_handles_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -828,7 +843,7 @@ HOT_HIDDEN static auto Ping__plan()
     return std::make_pair(Ping__super_args(), std::tuple<>());
 #line 34 "cycle_handles_v1.hot"
 }
-#line 832 "cycle_handles_v1.hot.cpp"
+#line 847 "cycle_handles_v1.hot.cpp"
 using Ping_SuperArgs = decltype(Ping__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -861,7 +876,7 @@ HOT_NODEBUG static hot::ShellBase* Ping__construct(void* mem, const char* key, c
     return nullptr;
 #line 34 "cycle_handles_v1.hot"
 }
-#line 865 "cycle_handles_v1.hot.cpp"
+#line 880 "cycle_handles_v1.hot.cpp"
 
 static const char* const Ping__construct_keys[] = {typeid(Ping_SuperArgs).name(), hot::kCloneKey, nullptr};
 
@@ -877,7 +892,7 @@ HOT_HIDDEN static Ping_Shell* Ping__build([[maybe_unused]] bool __note)
     return __self;
 #line 34 "cycle_handles_v1.hot"
 }
-#line 881 "cycle_handles_v1.hot.cpp"
+#line 896 "cycle_handles_v1.hot.cpp"
 #line 34 "cycle_handles_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Ping_Shell* Ping__new()
 #line 34 "cycle_handles_v1.hot"
@@ -886,7 +901,7 @@ HOT_HIDDEN static Ping_Shell* Ping__build([[maybe_unused]] bool __note)
     return Ping__build(true);
 #line 34 "cycle_handles_v1.hot"
 }
-#line 890 "cycle_handles_v1.hot.cpp"
+#line 905 "cycle_handles_v1.hot.cpp"
 #line 34 "cycle_handles_v1.hot"
 template <int = 0>
 #line 34 "cycle_handles_v1.hot"
@@ -901,7 +916,7 @@ template <int = 0>
     return __h;
 #line 34 "cycle_handles_v1.hot"
 }
-#line 905 "cycle_handles_v1.hot.cpp"
+#line 920 "cycle_handles_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -915,7 +930,12 @@ static int32_t Ping__Count__thunk(hot::PlainObject* __a)
     return hot::call<int32_t(hot::PlainObject*)>(__self, Ping_SLOT_Count);
 #line 37 "cycle_handles_v1.hot"
 }
-#line 919 "cycle_handles_v1.hot.cpp"
+#line 934 "cycle_handles_v1.hot.cpp"
+
+static void* Ping___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<hot::PlainObject*>(static_cast<Ping_Shell*>(__s));
+}
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Ping_slots[Ping_SLOT_COUNT] = {
@@ -941,7 +961,7 @@ HOT_NODEBUG static hot::Instance Ping_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 34 "cycle_handles_v1.hot"
 }
-#line 945 "cycle_handles_v1.hot.cpp"
+#line 965 "cycle_handles_v1.hot.cpp"
 
 #line 34 "cycle_handles_v1.hot"
 HOT_NODEBUG static hot::Instance Ping__make_0([[maybe_unused]] void** __a)
@@ -951,7 +971,7 @@ HOT_NODEBUG static hot::Instance Ping__make_0([[maybe_unused]] void** __a)
     return Ping_create();
 #line 34 "cycle_handles_v1.hot"
 }
-#line 955 "cycle_handles_v1.hot.cpp"
+#line 975 "cycle_handles_v1.hot.cpp"
 
 static const hot::CtorEntry Ping__constructors[] = {
     {hot::ctor_key<>(), &Ping__make_0, hot::ctor_write_mask<>()},
@@ -981,7 +1001,7 @@ struct Node_Shell final : hot::PlainObject, hot::ShellBase {
     }
 #line 54 "cycle_handles_v1.hot"
     ~Node_Shell() override { hot::destroy_state(this); }
-#line 985 "cycle_handles_v1.hot.cpp"
+#line 1005 "cycle_handles_v1.hot.cpp"
 #line 54 "cycle_handles_v1.hot"
     explicit Node_Shell(hot::CloneFrom, const hot::ShellBase* src)
 #line 54 "cycle_handles_v1.hot"
@@ -990,7 +1010,7 @@ struct Node_Shell final : hot::PlainObject, hot::ShellBase {
         hot::clone_state(this, &Node_record, src);
 #line 54 "cycle_handles_v1.hot"
     }
-#line 994 "cycle_handles_v1.hot.cpp"
+#line 1014 "cycle_handles_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -1003,7 +1023,7 @@ struct NodeState_g1 {
 
 #line 55 "cycle_handles_v1.hot"
 static void Node__init_next(void*, void* f) { using T = std::shared_ptr<Node>; new (f) T(nullptr); }
-#line 1007 "cycle_handles_v1.hot.cpp"
+#line 1027 "cycle_handles_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -1046,7 +1066,7 @@ HOT_HIDDEN static auto Node__plan()
     return std::make_pair(Node__super_args(), std::tuple<>());
 #line 54 "cycle_handles_v1.hot"
 }
-#line 1050 "cycle_handles_v1.hot.cpp"
+#line 1070 "cycle_handles_v1.hot.cpp"
 using Node_SuperArgs = decltype(Node__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -1079,7 +1099,7 @@ HOT_NODEBUG static hot::ShellBase* Node__construct(void* mem, const char* key, c
     return nullptr;
 #line 54 "cycle_handles_v1.hot"
 }
-#line 1083 "cycle_handles_v1.hot.cpp"
+#line 1103 "cycle_handles_v1.hot.cpp"
 
 static const char* const Node__construct_keys[] = {typeid(Node_SuperArgs).name(), hot::kCloneKey, nullptr};
 
@@ -1095,7 +1115,7 @@ HOT_HIDDEN static Node_Shell* Node__build([[maybe_unused]] bool __note)
     return __self;
 #line 54 "cycle_handles_v1.hot"
 }
-#line 1099 "cycle_handles_v1.hot.cpp"
+#line 1119 "cycle_handles_v1.hot.cpp"
 #line 54 "cycle_handles_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Node_Shell* Node__new()
 #line 54 "cycle_handles_v1.hot"
@@ -1104,7 +1124,7 @@ HOT_HIDDEN static Node_Shell* Node__build([[maybe_unused]] bool __note)
     return Node__build(true);
 #line 54 "cycle_handles_v1.hot"
 }
-#line 1108 "cycle_handles_v1.hot.cpp"
+#line 1128 "cycle_handles_v1.hot.cpp"
 #line 54 "cycle_handles_v1.hot"
 template <int = 0>
 #line 54 "cycle_handles_v1.hot"
@@ -1119,7 +1139,7 @@ template <int = 0>
     return __h;
 #line 54 "cycle_handles_v1.hot"
 }
-#line 1123 "cycle_handles_v1.hot.cpp"
+#line 1143 "cycle_handles_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -1133,7 +1153,12 @@ static int32_t Node__Length__thunk(hot::PlainObject* __a)
     return hot::call<int32_t(hot::PlainObject*)>(__self, Node_SLOT_Length);
 #line 57 "cycle_handles_v1.hot"
 }
-#line 1137 "cycle_handles_v1.hot.cpp"
+#line 1157 "cycle_handles_v1.hot.cpp"
+
+static void* Node___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<hot::PlainObject*>(static_cast<Node_Shell*>(__s));
+}
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Node_slots[Node_SLOT_COUNT] = {
@@ -1159,7 +1184,7 @@ HOT_NODEBUG static hot::Instance Node_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 54 "cycle_handles_v1.hot"
 }
-#line 1163 "cycle_handles_v1.hot.cpp"
+#line 1188 "cycle_handles_v1.hot.cpp"
 
 #line 54 "cycle_handles_v1.hot"
 HOT_NODEBUG static hot::Instance Node__make_0([[maybe_unused]] void** __a)
@@ -1169,7 +1194,7 @@ HOT_NODEBUG static hot::Instance Node__make_0([[maybe_unused]] void** __a)
     return Node_create();
 #line 54 "cycle_handles_v1.hot"
 }
-#line 1173 "cycle_handles_v1.hot.cpp"
+#line 1198 "cycle_handles_v1.hot.cpp"
 
 static const hot::CtorEntry Node__constructors[] = {
     {hot::ctor_key<>(), &Node__make_0, hot::ctor_write_mask<>()},
@@ -1199,7 +1224,7 @@ struct Part_Shell final : Object, hot::ShellBase {
     }
 #line 67 "cycle_handles_v1.hot"
     ~Part_Shell() override { hot::destroy_state(this); }
-#line 1203 "cycle_handles_v1.hot.cpp"
+#line 1228 "cycle_handles_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -1213,10 +1238,10 @@ struct PartState_g1 {
 
 #line 68 "cycle_handles_v1.hot"
 static void Part__init_owner(void*, void* f) { using T = hot::Intrusive<Owner, &Object::AddRef, &Object::Release>; new (f) T(); }
-#line 1217 "cycle_handles_v1.hot.cpp"
+#line 1242 "cycle_handles_v1.hot.cpp"
 #line 69 "cycle_handles_v1.hot"
 static void Part__init_v(void*, void* f) { using T = int32_t; new (f) T(4); }
-#line 1220 "cycle_handles_v1.hot.cpp"
+#line 1245 "cycle_handles_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -1261,7 +1286,7 @@ HOT_HIDDEN static auto Part__plan()
     return std::make_pair(Part__super_args(), std::tuple<>());
 #line 67 "cycle_handles_v1.hot"
 }
-#line 1265 "cycle_handles_v1.hot.cpp"
+#line 1290 "cycle_handles_v1.hot.cpp"
 using Part_SuperArgs = decltype(Part__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -1286,7 +1311,7 @@ HOT_NODEBUG static hot::ShellBase* Part__construct(void* mem, const char* key, c
     return nullptr;
 #line 67 "cycle_handles_v1.hot"
 }
-#line 1290 "cycle_handles_v1.hot.cpp"
+#line 1315 "cycle_handles_v1.hot.cpp"
 
 static const char* const Part__construct_keys[] = {typeid(Part_SuperArgs).name(), nullptr};
 
@@ -1302,7 +1327,7 @@ HOT_HIDDEN static Part_Shell* Part__build([[maybe_unused]] bool __note)
     return __self;
 #line 67 "cycle_handles_v1.hot"
 }
-#line 1306 "cycle_handles_v1.hot.cpp"
+#line 1331 "cycle_handles_v1.hot.cpp"
 #line 67 "cycle_handles_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Part_Shell* Part__new()
 #line 67 "cycle_handles_v1.hot"
@@ -1311,7 +1336,7 @@ HOT_HIDDEN static Part_Shell* Part__build([[maybe_unused]] bool __note)
     return Part__build(true);
 #line 67 "cycle_handles_v1.hot"
 }
-#line 1315 "cycle_handles_v1.hot.cpp"
+#line 1340 "cycle_handles_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -1325,7 +1350,12 @@ static int32_t Part__OwnerBack__thunk(Object* __a)
     return hot::call<int32_t(Object*)>(__self, Part_SLOT_OwnerBack);
 #line 71 "cycle_handles_v1.hot"
 }
-#line 1329 "cycle_handles_v1.hot.cpp"
+#line 1354 "cycle_handles_v1.hot.cpp"
+
+static void* Part___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<Object*>(static_cast<Part_Shell*>(__s));
+}
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Part_slots[Part_SLOT_COUNT] = {
@@ -1351,7 +1381,7 @@ HOT_NODEBUG static hot::Instance Part_create()
     return {static_cast<Object*>(p), p};
 #line 67 "cycle_handles_v1.hot"
 }
-#line 1355 "cycle_handles_v1.hot.cpp"
+#line 1385 "cycle_handles_v1.hot.cpp"
 
 #line 67 "cycle_handles_v1.hot"
 HOT_NODEBUG static hot::Instance Part__make_0([[maybe_unused]] void** __a)
@@ -1361,7 +1391,7 @@ HOT_NODEBUG static hot::Instance Part__make_0([[maybe_unused]] void** __a)
     return Part_create();
 #line 67 "cycle_handles_v1.hot"
 }
-#line 1365 "cycle_handles_v1.hot.cpp"
+#line 1395 "cycle_handles_v1.hot.cpp"
 
 static const hot::CtorEntry Part__constructors[] = {
     {hot::ctor_key<>(), &Part__make_0, hot::ctor_write_mask<>()},
@@ -1391,7 +1421,7 @@ struct Owner_Shell final : Object, hot::ShellBase {
     }
 #line 61 "cycle_handles_v1.hot"
     ~Owner_Shell() override { hot::destroy_state(this); }
-#line 1395 "cycle_handles_v1.hot.cpp"
+#line 1425 "cycle_handles_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -1404,7 +1434,7 @@ struct OwnerState_g1 {
 
 #line 62 "cycle_handles_v1.hot"
 static void Owner__init_part(void*, void* f) { using T = hot::Intrusive<Part, &Object::AddRef, &Object::Release>; new (f) T(); }
-#line 1408 "cycle_handles_v1.hot.cpp"
+#line 1438 "cycle_handles_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -1447,7 +1477,7 @@ HOT_HIDDEN static auto Owner__plan()
     return std::make_pair(Owner__super_args(), std::tuple<>());
 #line 61 "cycle_handles_v1.hot"
 }
-#line 1451 "cycle_handles_v1.hot.cpp"
+#line 1481 "cycle_handles_v1.hot.cpp"
 using Owner_SuperArgs = decltype(Owner__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -1472,7 +1502,7 @@ HOT_NODEBUG static hot::ShellBase* Owner__construct(void* mem, const char* key, 
     return nullptr;
 #line 61 "cycle_handles_v1.hot"
 }
-#line 1476 "cycle_handles_v1.hot.cpp"
+#line 1506 "cycle_handles_v1.hot.cpp"
 
 static const char* const Owner__construct_keys[] = {typeid(Owner_SuperArgs).name(), nullptr};
 
@@ -1488,7 +1518,7 @@ HOT_HIDDEN static Owner_Shell* Owner__build([[maybe_unused]] bool __note)
     return __self;
 #line 61 "cycle_handles_v1.hot"
 }
-#line 1492 "cycle_handles_v1.hot.cpp"
+#line 1522 "cycle_handles_v1.hot.cpp"
 #line 61 "cycle_handles_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Owner_Shell* Owner__new()
 #line 61 "cycle_handles_v1.hot"
@@ -1497,7 +1527,7 @@ HOT_HIDDEN static Owner_Shell* Owner__build([[maybe_unused]] bool __note)
     return Owner__build(true);
 #line 61 "cycle_handles_v1.hot"
 }
-#line 1501 "cycle_handles_v1.hot.cpp"
+#line 1531 "cycle_handles_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -1511,7 +1541,12 @@ static int32_t Owner__Value__thunk(Object* __a)
     return hot::call<int32_t(Object*)>(__self, Owner_SLOT_Value);
 #line 64 "cycle_handles_v1.hot"
 }
-#line 1515 "cycle_handles_v1.hot.cpp"
+#line 1545 "cycle_handles_v1.hot.cpp"
+
+static void* Owner___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<Object*>(static_cast<Owner_Shell*>(__s));
+}
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Owner_slots[Owner_SLOT_COUNT] = {
@@ -1537,7 +1572,7 @@ HOT_NODEBUG static hot::Instance Owner_create()
     return {static_cast<Object*>(p), p};
 #line 61 "cycle_handles_v1.hot"
 }
-#line 1541 "cycle_handles_v1.hot.cpp"
+#line 1576 "cycle_handles_v1.hot.cpp"
 
 #line 61 "cycle_handles_v1.hot"
 HOT_NODEBUG static hot::Instance Owner__make_0([[maybe_unused]] void** __a)
@@ -1547,7 +1582,7 @@ HOT_NODEBUG static hot::Instance Owner__make_0([[maybe_unused]] void** __a)
     return Owner_create();
 #line 61 "cycle_handles_v1.hot"
 }
-#line 1551 "cycle_handles_v1.hot.cpp"
+#line 1586 "cycle_handles_v1.hot.cpp"
 
 static const hot::CtorEntry Owner__constructors[] = {
     {hot::ctor_key<>(), &Owner__make_0, hot::ctor_write_mask<>()},
@@ -1562,7 +1597,7 @@ static const hot::CtorEntry Owner__constructors[] = {
     return state_of(__self)->ParentHp();
 #line 27 "cycle_handles_v1.hot"
 }
-#line 1566 "cycle_handles_v1.hot.cpp"
+#line 1601 "cycle_handles_v1.hot.cpp"
 #line 27 "cycle_handles_v1.hot"
 int32_t ChildState_g1::ParentHp()
 #line 27 "cycle_handles_v1.hot"
@@ -1589,7 +1624,7 @@ int32_t ChildState_g1::ParentHp()
     HOT_TRACE_LINE(); return p != nullptr ? state_of(hot::shell_of<Parent_Shell>(p, "Parent"))->hp + Parent__KidAge(hot::shell_of<Parent_Shell>(p, "Parent")) : -1;
 #line 30 "cycle_handles_v1.hot"
 }
-#line 1593 "cycle_handles_v1.hot.cpp"
+#line 1628 "cycle_handles_v1.hot.cpp"
 
 #line 13 "cycle_handles_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Parent__Adopt(Parent_Shell* __self)
@@ -1599,7 +1634,7 @@ int32_t ChildState_g1::ParentHp()
     return state_of(__self)->Adopt();
 #line 13 "cycle_handles_v1.hot"
 }
-#line 1603 "cycle_handles_v1.hot.cpp"
+#line 1638 "cycle_handles_v1.hot.cpp"
 #line 13 "cycle_handles_v1.hot"
 void ParentState_g1::Adopt()
 #line 13 "cycle_handles_v1.hot"
@@ -1628,7 +1663,7 @@ void ParentState_g1::Adopt()
     HOT_TRACE_LINE(); state_of(hot::shell_of<Child_Shell>(child, "Child"))->parent = hot::handle_from_this<std::shared_ptr<Parent>>(__self);
 #line 17 "cycle_handles_v1.hot"
 }
-#line 1632 "cycle_handles_v1.hot.cpp"
+#line 1667 "cycle_handles_v1.hot.cpp"
 
 #line 19 "cycle_handles_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Parent__KidAge(Parent_Shell* __self)
@@ -1638,7 +1673,7 @@ void ParentState_g1::Adopt()
     return state_of(__self)->KidAge();
 #line 19 "cycle_handles_v1.hot"
 }
-#line 1642 "cycle_handles_v1.hot.cpp"
+#line 1677 "cycle_handles_v1.hot.cpp"
 #line 19 "cycle_handles_v1.hot"
 int32_t ParentState_g1::KidAge()
 #line 19 "cycle_handles_v1.hot"
@@ -1663,7 +1698,7 @@ int32_t ParentState_g1::KidAge()
     HOT_TRACE_LINE(); return hot::coalesce(hot::safe_access(kid, [&](auto&& __safe0) { return (state_of(hot::shell_of<Child_Shell>(__safe0, "Child"))->age); }), [&]() -> auto { return (-1); });
 #line 19 "cycle_handles_v1.hot"
 }
-#line 1667 "cycle_handles_v1.hot.cpp"
+#line 1702 "cycle_handles_v1.hot.cpp"
 
 #line 44 "cycle_handles_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Pong__Link(Pong_Shell* __self, std::shared_ptr<Ping> p)
@@ -1673,7 +1708,7 @@ int32_t ParentState_g1::KidAge()
     return state_of(__self)->Link(std::forward<std::shared_ptr<Ping>>(p));
 #line 44 "cycle_handles_v1.hot"
 }
-#line 1677 "cycle_handles_v1.hot.cpp"
+#line 1712 "cycle_handles_v1.hot.cpp"
 #line 44 "cycle_handles_v1.hot"
 void PongState_g1::Link(const std::shared_ptr<Ping>& __p)
 #line 44 "cycle_handles_v1.hot"
@@ -1704,7 +1739,7 @@ void PongState_g1::Link(const std::shared_ptr<Ping>& __p)
     HOT_TRACE_LINE(); state_of(hot::shell_of<Ping_Shell>(p, "Ping"))->other = hot::handle_from_this<std::shared_ptr<Pong>>(__self);
 #line 48 "cycle_handles_v1.hot"
 }
-#line 1708 "cycle_handles_v1.hot.cpp"
+#line 1743 "cycle_handles_v1.hot.cpp"
 
 #line 50 "cycle_handles_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Pong__Unlink(Pong_Shell* __self)
@@ -1714,7 +1749,7 @@ void PongState_g1::Link(const std::shared_ptr<Ping>& __p)
     return state_of(__self)->Unlink();
 #line 50 "cycle_handles_v1.hot"
 }
-#line 1718 "cycle_handles_v1.hot.cpp"
+#line 1753 "cycle_handles_v1.hot.cpp"
 #line 50 "cycle_handles_v1.hot"
 void PongState_g1::Unlink()
 #line 50 "cycle_handles_v1.hot"
@@ -1739,7 +1774,7 @@ void PongState_g1::Unlink()
     HOT_TRACE_LINE(); other = nullptr;
 #line 50 "cycle_handles_v1.hot"
 }
-#line 1743 "cycle_handles_v1.hot.cpp"
+#line 1778 "cycle_handles_v1.hot.cpp"
 
 #line 37 "cycle_handles_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Ping__Count(Ping_Shell* __self)
@@ -1749,7 +1784,7 @@ void PongState_g1::Unlink()
     return state_of(__self)->Count();
 #line 37 "cycle_handles_v1.hot"
 }
-#line 1753 "cycle_handles_v1.hot.cpp"
+#line 1788 "cycle_handles_v1.hot.cpp"
 #line 37 "cycle_handles_v1.hot"
 int32_t PingState_g1::Count()
 #line 37 "cycle_handles_v1.hot"
@@ -1774,7 +1809,7 @@ int32_t PingState_g1::Count()
     HOT_TRACE_LINE(); return hot::coalesce(hot::safe_access(other, [&](auto&& __safe0) { return (state_of(hot::shell_of<Pong_Shell>(__safe0, "Pong"))->n); }), [&]() -> auto { return (0); });
 #line 37 "cycle_handles_v1.hot"
 }
-#line 1778 "cycle_handles_v1.hot.cpp"
+#line 1813 "cycle_handles_v1.hot.cpp"
 
 #line 57 "cycle_handles_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Node__Length(Node_Shell* __self)
@@ -1784,7 +1819,7 @@ int32_t PingState_g1::Count()
     return state_of(__self)->Length();
 #line 57 "cycle_handles_v1.hot"
 }
-#line 1788 "cycle_handles_v1.hot.cpp"
+#line 1823 "cycle_handles_v1.hot.cpp"
 #line 57 "cycle_handles_v1.hot"
 int32_t NodeState_g1::Length()
 #line 57 "cycle_handles_v1.hot"
@@ -1809,7 +1844,7 @@ int32_t NodeState_g1::Length()
     HOT_TRACE_LINE(); return 1 + (hot::coalesce(hot::safe_access(next, [&](auto&& __safe0) { return (Node__Length(hot::shell_of<Node_Shell>(__safe0, "Node"))); }), [&]() -> auto { return (0); }));
 #line 57 "cycle_handles_v1.hot"
 }
-#line 1813 "cycle_handles_v1.hot.cpp"
+#line 1848 "cycle_handles_v1.hot.cpp"
 
 #line 71 "cycle_handles_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Part__OwnerBack(Part_Shell* __self)
@@ -1819,7 +1854,7 @@ int32_t NodeState_g1::Length()
     return state_of(__self)->OwnerBack();
 #line 71 "cycle_handles_v1.hot"
 }
-#line 1823 "cycle_handles_v1.hot.cpp"
+#line 1858 "cycle_handles_v1.hot.cpp"
 #line 71 "cycle_handles_v1.hot"
 int32_t PartState_g1::OwnerBack()
 #line 71 "cycle_handles_v1.hot"
@@ -1844,7 +1879,7 @@ int32_t PartState_g1::OwnerBack()
     HOT_TRACE_LINE(); return owner != nullptr ? 1 : 0;
 #line 71 "cycle_handles_v1.hot"
 }
-#line 1848 "cycle_handles_v1.hot.cpp"
+#line 1883 "cycle_handles_v1.hot.cpp"
 
 #line 64 "cycle_handles_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Owner__Value(Owner_Shell* __self)
@@ -1854,7 +1889,7 @@ int32_t PartState_g1::OwnerBack()
     return state_of(__self)->Value();
 #line 64 "cycle_handles_v1.hot"
 }
-#line 1858 "cycle_handles_v1.hot.cpp"
+#line 1893 "cycle_handles_v1.hot.cpp"
 #line 64 "cycle_handles_v1.hot"
 int32_t OwnerState_g1::Value()
 #line 64 "cycle_handles_v1.hot"
@@ -1879,7 +1914,7 @@ int32_t OwnerState_g1::Value()
     HOT_TRACE_LINE(); return (hot::coalesce(hot::safe_access(part, [&](auto&& __safe0) { return (state_of(hot::shell_of<Part_Shell>(__safe0, "Part"))->v); }), [&]() -> auto { return (0); })) + (hot::coalesce(hot::safe_access(part, [&](auto&& __safe1) { return (Part__OwnerBack(hot::shell_of<Part_Shell>(__safe1, "Part"))); }), [&]() -> auto { return (0); }));
 #line 64 "cycle_handles_v1.hot"
 }
-#line 1883 "cycle_handles_v1.hot.cpp"
+#line 1918 "cycle_handles_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -1906,12 +1941,19 @@ extern "C" void script_register(hot::Registry& reg)
     Owner_record.construct_keys = Owner__construct_keys;
     Owner_record.ctors = Owner__constructors;
     reg.add_thunk("Child::ParentHp", reinterpret_cast<void*>(&Child__ParentHp__thunk));
+    reg.add_thunk("Child::__native", reinterpret_cast<void*>(&Child___native__thunk));
     reg.add_thunk("Parent::Adopt", reinterpret_cast<void*>(&Parent__Adopt__thunk));
     reg.add_thunk("Parent::KidAge", reinterpret_cast<void*>(&Parent__KidAge__thunk));
+    reg.add_thunk("Parent::__native", reinterpret_cast<void*>(&Parent___native__thunk));
     reg.add_thunk("Pong::Link", reinterpret_cast<void*>(&Pong__Link__thunk));
     reg.add_thunk("Pong::Unlink", reinterpret_cast<void*>(&Pong__Unlink__thunk));
+    reg.add_thunk("Pong::__native", reinterpret_cast<void*>(&Pong___native__thunk));
     reg.add_thunk("Ping::Count", reinterpret_cast<void*>(&Ping__Count__thunk));
+    reg.add_thunk("Ping::__native", reinterpret_cast<void*>(&Ping___native__thunk));
     reg.add_thunk("Node::Length", reinterpret_cast<void*>(&Node__Length__thunk));
+    reg.add_thunk("Node::__native", reinterpret_cast<void*>(&Node___native__thunk));
     reg.add_thunk("Part::OwnerBack", reinterpret_cast<void*>(&Part__OwnerBack__thunk));
+    reg.add_thunk("Part::__native", reinterpret_cast<void*>(&Part___native__thunk));
     reg.add_thunk("Owner::Value", reinterpret_cast<void*>(&Owner__Value__thunk));
+    reg.add_thunk("Owner::__native", reinterpret_cast<void*>(&Owner___native__thunk));
 }

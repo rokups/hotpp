@@ -107,7 +107,8 @@ TEST_P(BackendTests, EachObjectVisitsLiveObjectsAfterCommit)
     s.commit_at_frame_boundary();
     const hot::ClassEntry* entry = s.loader.find("Hero");
     ASSERT_NE(entry, nullptr);
-    s.world.Add(static_cast<Actor*>(entry->create().native));
+    Actor* second = static_cast<Actor*>(entry->create().native);
+    s.world.Add(second);
     s.world.Tick(kDt);
 
     ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
@@ -117,6 +118,11 @@ TEST_P(BackendTests, EachObjectVisitsLiveObjectsAfterCommit)
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(hot::active_generation, 2u);
 
+    // The thunk "Cls::__native" gives the native base of an object from its shell.
+    using NativeOf = void* (*)(hot::ShellCore*);
+    const auto native_of = reinterpret_cast<NativeOf>(s.loader.thunk("Hero::__native"));
+    ASSERT_NE(native_of, nullptr);
+    std::set<void*> natives;
     int heroes = 0;
     int others = 0;
     std::set<hot::ShellBase*> seen;
@@ -125,7 +131,9 @@ TEST_P(BackendTests, EachObjectVisitsLiveObjectsAfterCommit)
         const hot::ClassRecord* rec = self->cls->canonical ? self->cls->canonical : self->cls;
         (rec->name == std::string("Hero") ? heroes : others)++;
         seen.insert(self);
+        natives.insert(native_of(self));
     });
+    EXPECT_EQ(natives, (std::set<void*>{s.actor, second}));
     EXPECT_EQ(heroes, 2);
     EXPECT_EQ(others, 0);
     EXPECT_EQ(seen.size(), 2u);

@@ -8647,6 +8647,17 @@ void translate_impl(
                 + (opt.aot ? ", typeid(" + sig + ").name(), " + slot_id(m.name) : std::string()) + ");\n");
         }
 
+        // The native base of an object from its shell (Loader::each_object gives the shell). The
+        // host finds it by the name "Cls::__native". The core module registers it first, so the
+        // address stays. It takes a ShellCore, so the shell of optimized AOT code has it too.
+        if (!cd.iface_parent)
+        {
+            o.w("static void* " + P + "_native__thunk(hot::ShellCore* __s)\n{\n    return static_cast<" + B
+                + "*>(static_cast<" + shell + "*>(__s));\n}\n\n");
+            thunk_regs.push_back("    reg.add_thunk(\"" + cd.key_name() + "::__native\", reinterpret_cast<void*>(&" + P
+                + "_native__thunk));\n");
+        }
+
         // A bare "this" used as a handle in a native-base class needs shared_from_this in the
         // shell. The insert stays in one line, so the line numbers do not change.
         // A shell with script children always gets it: a child cannot add it to the parent.

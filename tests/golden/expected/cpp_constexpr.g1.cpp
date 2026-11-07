@@ -320,6 +320,11 @@ HOT_NODEBUG static hot::ShellCore* Limiter__new_default()
 {
     Limiter__ctor(static_cast<Limiter_Shell*>(__s));
 }
+static void* Limiter___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<Actor*>(static_cast<Limiter_Shell*>(__s));
+}
+
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Limiter_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&LimiterState_g1::Tick),
@@ -360,7 +365,7 @@ HOT_NODEBUG static hot::Instance Limiter_create()
     return {static_cast<Actor*>(p), p};
 #line 16 "cpp_constexpr.cpp"
 }
-#line 364 "cpp_constexpr.cpp.cpp"
+#line 369 "cpp_constexpr.cpp.cpp"
 
 #line 21 "cpp_constexpr.cpp"
 HOT_NODEBUG static hot::Instance Limiter__make_0([[maybe_unused]] void** __a)
@@ -374,7 +379,7 @@ HOT_NODEBUG static hot::Instance Limiter__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 21 "cpp_constexpr.cpp"
 }
-#line 378 "cpp_constexpr.cpp.cpp"
+#line 383 "cpp_constexpr.cpp.cpp"
 
 static const hot::CtorEntry Limiter__constructors[] = {
     {hot::ctor_key<>(), &Limiter__make_0, hot::ctor_write_mask<>()},
@@ -389,7 +394,7 @@ static const hot::CtorEntry Limiter__constructors[] = {
     return state_of(__self)->ctor();
 #line 21 "cpp_constexpr.cpp"
 }
-#line 393 "cpp_constexpr.cpp.cpp"
+#line 398 "cpp_constexpr.cpp.cpp"
 #line 21 "cpp_constexpr.cpp"
 void LimiterState_g1::ctor()
 #line 21 "cpp_constexpr.cpp"
@@ -414,7 +419,7 @@ void LimiterState_g1::ctor()
 
 #line 21 "cpp_constexpr.cpp"
 }
-#line 418 "cpp_constexpr.cpp.cpp"
+#line 423 "cpp_constexpr.cpp.cpp"
 
 #line 23 "cpp_constexpr.cpp"
 void LimiterState_g1::Tick(float dt)
@@ -444,7 +449,7 @@ void LimiterState_g1::Tick(float dt)
     
 #line 28 "cpp_constexpr.cpp"
 }
-#line 448 "cpp_constexpr.cpp.cpp"
+#line 453 "cpp_constexpr.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -454,4 +459,5 @@ extern "C" void script_register(hot::Registry& reg)
     Limiter_record.construct_keys = Limiter__construct_keys;
     reg.add_fn("Limiter::ctor()", typeid(void(hot::ShellBase*)).name(), reinterpret_cast<void*>(&Limiter__ctor_export0));
     Limiter_record.ctors = Limiter__constructors;
+    reg.add_thunk("Limiter::__native", reinterpret_cast<void*>(&Limiter___native__thunk));
 }

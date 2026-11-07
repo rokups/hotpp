@@ -317,6 +317,11 @@ static int Counter__Add__thunk(Actor* __a, int a, int b, int c)
 }
 #line 319 "cpp_defaults.cpp.cpp"
 
+static void* Counter___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<Actor*>(static_cast<Counter_Shell*>(__s));
+}
+
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Counter_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&CounterState_g1::Tick),
@@ -358,7 +363,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "cpp_defaults.cpp"
 }
-#line 362 "cpp_defaults.cpp.cpp"
+#line 367 "cpp_defaults.cpp.cpp"
 
 #line 17 "cpp_defaults.cpp"
 HOT_NODEBUG static hot::Instance Counter__make_0([[maybe_unused]] void** __a)
@@ -372,7 +377,7 @@ HOT_NODEBUG static hot::Instance Counter__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 17 "cpp_defaults.cpp"
 }
-#line 376 "cpp_defaults.cpp.cpp"
+#line 381 "cpp_defaults.cpp.cpp"
 
 static const hot::CtorEntry Counter__constructors[] = {
     {hot::ctor_key<int>(), &Counter__make_0, hot::ctor_write_mask<int>()},
@@ -387,7 +392,7 @@ static const hot::CtorEntry Counter__constructors[] = {
     return state_of(__self)->ctor(std::forward<int>(start));
 #line 17 "cpp_defaults.cpp"
 }
-#line 391 "cpp_defaults.cpp.cpp"
+#line 396 "cpp_defaults.cpp.cpp"
 #line 17 "cpp_defaults.cpp"
 void CounterState_g1::ctor(int start)
 #line 17 "cpp_defaults.cpp"
@@ -414,7 +419,7 @@ void CounterState_g1::ctor(int start)
     
 #line 20 "cpp_defaults.cpp"
 }
-#line 418 "cpp_defaults.cpp.cpp"
+#line 423 "cpp_defaults.cpp.cpp"
 
 #line 23 "cpp_defaults.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Counter__Add(Counter_Shell* __self, int a, int b, int c)
@@ -424,7 +429,7 @@ void CounterState_g1::ctor(int start)
     return state_of(__self)->Add(std::forward<int>(a), std::forward<int>(b), std::forward<int>(c));
 #line 23 "cpp_defaults.cpp"
 }
-#line 428 "cpp_defaults.cpp.cpp"
+#line 433 "cpp_defaults.cpp.cpp"
 #line 23 "cpp_defaults.cpp"
 int CounterState_g1::Add(int a, int b, int c)
 #line 23 "cpp_defaults.cpp"
@@ -452,7 +457,7 @@ int CounterState_g1::Add(int a, int b, int c)
     
 #line 27 "cpp_defaults.cpp"
 }
-#line 456 "cpp_defaults.cpp.cpp"
+#line 461 "cpp_defaults.cpp.cpp"
 
 #line 29 "cpp_defaults.cpp"
 void CounterState_g1::Tick(float dt)
@@ -482,7 +487,7 @@ void CounterState_g1::Tick(float dt)
     
 #line 34 "cpp_defaults.cpp"
 }
-#line 486 "cpp_defaults.cpp.cpp"
+#line 491 "cpp_defaults.cpp.cpp"
 
 #line 37 "cpp_defaults.cpp"
 void CounterState_g1::TakeDamage_f(float amount)
@@ -510,7 +515,7 @@ void CounterState_g1::TakeDamage_f(float amount)
     
 #line 40 "cpp_defaults.cpp"
 }
-#line 514 "cpp_defaults.cpp.cpp"
+#line 519 "cpp_defaults.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -521,4 +526,5 @@ extern "C" void script_register(hot::Registry& reg)
     reg.add_fn("Counter::ctor(int)", typeid(void(hot::ShellBase*, int)).name(), reinterpret_cast<void*>(&Counter__ctor_export0));
     Counter_record.ctors = Counter__constructors;
     reg.add_thunk("Counter::Add", reinterpret_cast<void*>(&Counter__Add__thunk));
+    reg.add_thunk("Counter::__native", reinterpret_cast<void*>(&Counter___native__thunk));
 }

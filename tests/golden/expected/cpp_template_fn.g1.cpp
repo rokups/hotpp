@@ -316,6 +316,11 @@ HOT_NODEBUG static hot::ShellCore* Scaler__new_default()
 {
     Scaler__ctor(static_cast<Scaler_Shell*>(__s));
 }
+static void* Scaler___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<Actor*>(static_cast<Scaler_Shell*>(__s));
+}
+
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Scaler_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&ScalerState_g1::Tick),
@@ -356,7 +361,7 @@ HOT_NODEBUG static hot::Instance Scaler_create()
     return {static_cast<Actor*>(p), p};
 #line 15 "cpp_template_fn.cpp"
 }
-#line 360 "cpp_template_fn.cpp.cpp"
+#line 365 "cpp_template_fn.cpp.cpp"
 
 #line 20 "cpp_template_fn.cpp"
 HOT_NODEBUG static hot::Instance Scaler__make_0([[maybe_unused]] void** __a)
@@ -370,7 +375,7 @@ HOT_NODEBUG static hot::Instance Scaler__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 20 "cpp_template_fn.cpp"
 }
-#line 374 "cpp_template_fn.cpp.cpp"
+#line 379 "cpp_template_fn.cpp.cpp"
 
 static const hot::CtorEntry Scaler__constructors[] = {
     {hot::ctor_key<>(), &Scaler__make_0, hot::ctor_write_mask<>()},
@@ -385,7 +390,7 @@ static const hot::CtorEntry Scaler__constructors[] = {
     return state_of(__self)->ctor();
 #line 20 "cpp_template_fn.cpp"
 }
-#line 389 "cpp_template_fn.cpp.cpp"
+#line 394 "cpp_template_fn.cpp.cpp"
 #line 20 "cpp_template_fn.cpp"
 void ScalerState_g1::ctor()
 #line 20 "cpp_template_fn.cpp"
@@ -410,7 +415,7 @@ void ScalerState_g1::ctor()
 
 #line 20 "cpp_template_fn.cpp"
 }
-#line 414 "cpp_template_fn.cpp.cpp"
+#line 419 "cpp_template_fn.cpp.cpp"
 
 #line 22 "cpp_template_fn.cpp"
 void ScalerState_g1::Tick(float dt)
@@ -440,7 +445,7 @@ void ScalerState_g1::Tick(float dt)
     
 #line 27 "cpp_template_fn.cpp"
 }
-#line 444 "cpp_template_fn.cpp.cpp"
+#line 449 "cpp_template_fn.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -450,4 +455,5 @@ extern "C" void script_register(hot::Registry& reg)
     Scaler_record.construct_keys = Scaler__construct_keys;
     reg.add_fn("Scaler::ctor()", typeid(void(hot::ShellBase*)).name(), reinterpret_cast<void*>(&Scaler__ctor_export0));
     Scaler_record.ctors = Scaler__constructors;
+    reg.add_thunk("Scaler::__native", reinterpret_cast<void*>(&Scaler___native__thunk));
 }

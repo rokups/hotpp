@@ -443,6 +443,11 @@ template <int = 0>
 }
 #line 445 "operators_struct.hot.cpp"
 
+static void* Holder___native__thunk(hot::ShellCore* __s)
+{
+    return static_cast<Actor*>(static_cast<Holder_Shell*>(__s));
+}
+
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Holder_slots[Holder_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&HolderState_g1::Tick),
@@ -469,7 +474,7 @@ HOT_NODEBUG static hot::Instance Holder_create()
     return {static_cast<Actor*>(p), p};
 #line 32 "operators_struct.hot"
 }
-#line 473 "operators_struct.hot.cpp"
+#line 478 "operators_struct.hot.cpp"
 
 #line 32 "operators_struct.hot"
 HOT_NODEBUG static hot::Instance Holder__make_0([[maybe_unused]] void** __a)
@@ -479,7 +484,7 @@ HOT_NODEBUG static hot::Instance Holder__make_0([[maybe_unused]] void** __a)
     return Holder_create();
 #line 32 "operators_struct.hot"
 }
-#line 483 "operators_struct.hot.cpp"
+#line 488 "operators_struct.hot.cpp"
 
 static const hot::CtorEntry Holder__constructors[] = {
     {hot::ctor_key<>(), &Holder__make_0, hot::ctor_write_mask<>()},
@@ -498,7 +503,7 @@ static void Vec2__ctor(Vec2* __self, float ax, float ay)
     __st->y = ay;
 #line 15 "operators_struct.hot"
 }
-#line 502 "operators_struct.hot.cpp"
+#line 507 "operators_struct.hot.cpp"
 
 #line 16 "operators_struct.hot"
 static Vec2 Vec2__op_add(Vec2* __self, const Vec2& o)
@@ -510,7 +515,7 @@ static Vec2 Vec2__op_add(Vec2* __self, const Vec2& o)
     return Vec2(__st->x + hot::deref(o).x, __st->y + hot::deref(o).y);
 #line 16 "operators_struct.hot"
 }
-#line 514 "operators_struct.hot.cpp"
+#line 519 "operators_struct.hot.cpp"
 
 #line 17 "operators_struct.hot"
 static Vec2 Vec2__op_neg(Vec2* __self)
@@ -522,7 +527,7 @@ static Vec2 Vec2__op_neg(Vec2* __self)
     return Vec2(-__st->x, -__st->y);
 #line 17 "operators_struct.hot"
 }
-#line 526 "operators_struct.hot.cpp"
+#line 531 "operators_struct.hot.cpp"
 
 #line 18 "operators_struct.hot"
 static Vec2 Vec2__op_mul(Vec2* __self, float f)
@@ -534,7 +539,7 @@ static Vec2 Vec2__op_mul(Vec2* __self, float f)
     return Vec2(__st->x * f, __st->y * f);
 #line 18 "operators_struct.hot"
 }
-#line 538 "operators_struct.hot.cpp"
+#line 543 "operators_struct.hot.cpp"
 
 #line 19 "operators_struct.hot"
 static bool Vec2__op_lt(Vec2* __self, const Vec2& o)
@@ -546,7 +551,7 @@ static bool Vec2__op_lt(Vec2* __self, const Vec2& o)
     return __st->x < hot::deref(o).x;
 #line 19 "operators_struct.hot"
 }
-#line 550 "operators_struct.hot.cpp"
+#line 555 "operators_struct.hot.cpp"
 
 #line 20 "operators_struct.hot"
 static bool Vec2__op_gt(Vec2* __self, const Vec2& o)
@@ -558,7 +563,7 @@ static bool Vec2__op_gt(Vec2* __self, const Vec2& o)
     return __st->x > hot::deref(o).x;
 #line 20 "operators_struct.hot"
 }
-#line 562 "operators_struct.hot.cpp"
+#line 567 "operators_struct.hot.cpp"
 
 #line 21 "operators_struct.hot"
 static float& Vec2__op_index(Vec2* __self, int32_t i)
@@ -570,7 +575,7 @@ static float& Vec2__op_index(Vec2* __self, int32_t i)
     return hot::index(__st->data, i);
 #line 21 "operators_struct.hot"
 }
-#line 574 "operators_struct.hot.cpp"
+#line 579 "operators_struct.hot.cpp"
 
 #line 47 "operators_struct.hot"
 void HolderState_g1::Tick(float dt)
@@ -662,7 +667,7 @@ void HolderState_g1::Tick(float dt)
     HOT_TRACE_LINE(); __st->r_sorted = (hot::deref(hot::index(list, 0)).x == 1.0f && hot::deref(hot::index(list, 1)).x == 3.0f && hot::deref(hot::index(list, 2)).x == 4.0f) ? 1 : 0;
 #line 82 "operators_struct.hot"
 }
-#line 666 "operators_struct.hot.cpp"
+#line 671 "operators_struct.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
@@ -670,4 +675,5 @@ extern "C" void script_register(hot::Registry& reg)
     reg.add(&Holder_record, &Holder_create);
     Holder_record.construct_keys = Holder__construct_keys;
     Holder_record.ctors = Holder__constructors;
+    reg.add_thunk("Holder::__native", reinterpret_cast<void*>(&Holder___native__thunk));
 }
