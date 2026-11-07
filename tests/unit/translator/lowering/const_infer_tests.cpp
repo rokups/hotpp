@@ -123,13 +123,13 @@ TEST(ConstInfer, MethodAndFieldAreNeverConst)
     EXPECT_FALSE(has(r.cpp, "const int32_t n;")) << r.cpp;
 }
 
-TEST(ConstInfer, ForeachRefThatIsNotWrittenIsConstRef)
+TEST(ConstInfer, ForeachRefThatIsNotWrittenReadsTheGuard)
 {
     const hotc::TranslateResult r = translate_text(
         "using <vector>;\nclass A {\n    std.vector<int> xs;\n    int n = 0;\n"
         "    void Run() { foreach (ref x in this.xs) { this.n = x; } }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "for (const auto& x : ")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "__st->n = __it0.ref();")) << r.cpp;
 }
 
 TEST(ConstInfer, WrittenConstOnALocalIsAnError)

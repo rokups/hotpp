@@ -78,6 +78,8 @@ struct RCtx
     // The shared cells (G06): the locals with "VarDeclStmt::shared". A lambda that uses such a
     // name binds "auto& x = *__cell_x;" at the start of its body.
     std::set<std::string> cell_locals;
+    // The "foreach" variables that the guard gives at each use: the name and the C++ text.
+    std::map<std::string, std::string> path_names;
     // True when the function that the pass lowers returns a "C" (a bare script class).
     bool ret_value = false;
     bool allow_this = true;

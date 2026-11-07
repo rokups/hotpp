@@ -26,7 +26,6 @@ This list shows what version 1 does not support.
   - A `var p` from a `T*` return of a value struct is a borrowed pointer. A later shape change of the owner is not seen: `var p = c.Find(0); c.items.push_back(x); p.x = 1;` can use a freed element. A typed local `Info* p` of a script struct is not allowed: use `var`.
   - After `ref r = o.F();` on an object `o` of another script class, an assignment to `o` or a use of `o` as a `ref` or `out` argument ends the ref. A call of another method on `o` is not seen.
   - `ref r = xs[await Idx()]` is allowed, because the ref starts after its own statement. Another live ref gives the error about that ref.
-  - The check of `foreach (var x in c)` (see [Runtime errors](statements-errors.html#change-of-a-container-in-a-foreach)) sees only a range that is a local or a field of `this`, such as `xs` or `this.xs`. It compares the name of the root and does no alias analysis. A change through another name, a call of a script method, a free function or a lambda is not checked. A local that hides the field name can give a false error.
   - A `.cpp` script keeps C++ semantics and has no `ref` lifetime rules.
 - The check of a view (`T[]` and `std.string_view`, see [Views](types.html#views)) has these limits:
   - It tracks a view local with a declared type and a source that is a name or a field of `this`. A `var` view, a view from a call (`var s = v.subspan(1)`) and a view of an element are not tracked.
@@ -42,6 +41,7 @@ This list shows what version 1 does not support.
 - A namespace block in a `.hot` script. Use `using ns;` for a native namespace.
 - A call of a free function by name from the host through `Loader::thunk`. Call a method of a class.
 - A function as a value, such as `var f = Add;`. Call it, or write a lambda.
+- A `foreach` over a named `std.list`, `std.multimap` or another container with no index and no unique key: a compile error. Copy the elements to a `std.vector` first.
 - A lambda that assigns a `foreach` variable, a structured binding, a `catch` variable, a parameter of an outer lambda or a `for` init local. Only a local or a plain parameter can be a shared cell (see doc/lambdas.md). Copy the value into a local first.
 - An `async` free function or an `async` static method. An async function needs an object.
 - A collection literal without a declared type: `var x = [1, 2];` is an error.
@@ -86,7 +86,7 @@ A HotScript program does not crash the process through an invalid access, with t
 
 - A raw `T*` in a local or a parameter, after a native free. This includes a frame that an `await` suspends.
 - A native function that stores a `ref`, a `T&` or a view. A view that a lambda or an `async` method keeps.
-- A change of a container through an alias, another method or a free function, while a `ref`, a view or a `foreach` uses it.
+- A change of a container through an alias, another method or a free function, while a `ref` or a view uses it. A `foreach` has a run-time guard (`ContainerChanged`).
 - A `.cpp` script. It has no null, bounds, shift, float cast or `ref` lifetime checks.
 - A null native pointer from a native call, when you build with `HOT_RUNTIME_CHECKS=0`.
 - A container with no bounds check, `a?.back()`, `begin()`, `end()` and `*it`.

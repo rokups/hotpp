@@ -134,6 +134,9 @@ struct NameExpr
     uint32_t last_pos = 0;
     // The script offset of each part, in the order of parts. Empty when unknown.
     std::vector<uint32_t> part_pos;
+    // The lowering: the C++ text of a "foreach" variable that the guard gives at each use, for
+    // example "__it0.ref()" (foreach.h). Empty: the normal name.
+    std::string emit_as{};
 };
 struct ThisExpr
 {
@@ -368,6 +371,10 @@ struct ForOfStmt
     uint32_t name_pos = 0; // the byte offset of the name (0: not known)
     // "foreach (var (k, v) in c)": a structured binding. "name" is empty. See VarDeclStmt.
     std::vector<std::string> names{};
+    // The lowering: the name of the run-time guard (foreach.h). Empty: a plain range-for.
+    std::string guard{};
+    bool guard_path = false; // the range is a checked path: "hot::iter_path" evaluates it again
+    bool guard_enum = false; // "enumerate(c)": the range is "c", the binding is (index, element)
     std::vector<uint32_t> name_poss{};
 };
 struct ReturnStmt

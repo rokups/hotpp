@@ -380,11 +380,11 @@ int32_t GridState_g2::total()
 #line 20 "array_v2.hot"
     HOT_TRACE_LINE(); int32_t sum = 0;
 #line 21 "array_v2.hot"
-    HOT_TRACE_LINE(); for (auto x : __st->a) {
+    HOT_TRACE_LINE(); for (auto __it0 = hot::iter(__st->a); __it0.next();) { auto x = __it0.ref(); {
 #line 22 "array_v2.hot"
-        HOT_TRACE_LINE(); sum += x;
+            HOT_TRACE_LINE(); sum += x;
 #line 23 "array_v2.hot"
-    }
+        } }
 #line 24 "array_v2.hot"
     HOT_TRACE_LINE(); return sum + hot::deref(__st->a).size() + __st->extra;
 #line 25 "array_v2.hot"

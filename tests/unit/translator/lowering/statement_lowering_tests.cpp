@@ -49,8 +49,8 @@ TEST(StatementLowering, VarOfNullHasNoType)
 TEST(StatementLowering, ForOf)
 {
     Fixture f;
-    EXPECT_EQ(f.body("foreach (var x in xs) { this.n = x; }"), "for (auto x : xs) { __st->n = x; }");
-    EXPECT_EQ(f.body("foreach (var y in ys) { }"), "for (auto y : ys) {}");
+    EXPECT_EQ(f.body("foreach (var x in xs) { this.n = x; }"), "for (auto __it0 = hot::iter(xs); __it0.next();) { auto x = __it0.ref(); { __st->n = x; } }");
+    EXPECT_EQ(f.body("foreach (var y in ys) { }"), "for (auto __it0 = hot::iter(ys); __it0.next();) { auto y = __it0.ref(); {} }");
 }
 
 TEST(StatementLowering, ForAndControl)

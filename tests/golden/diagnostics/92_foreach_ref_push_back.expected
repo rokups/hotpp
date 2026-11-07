@@ -1,3 +1,0 @@
-92_foreach_ref_push_back.hot:8:13: error: 'xs.push_back()' changes 'xs' inside 'foreach (ref x in xs)': the loop variable can dangle. Collect the changes in a new list, and apply them after the loop
-    8 |             xs.push_back(x);
-1 error generated.

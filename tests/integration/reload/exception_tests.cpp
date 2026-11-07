@@ -1618,3 +1618,78 @@ class Boss : Actor, IGuarded {
 #endif // HOT_RUNTIME_CHECKS
 
 } // namespace
+
+// The run-time guard of "foreach" (foreach.h): a change of the shape of the container in the loop
+// body throws hot::ContainerChanged. A write to an element is allowed. No case crashes.
+TEST_P(BackendTests, ForeachContainerChangeThrowsContainerChanged)
+{
+    const hot::ScriptSource src = {"foreach_guard.hot", R"(
+using "Actor.h";
+using <map>;
+using <string>;
+using <vector>;
+
+class Player : Actor {
+    std.vector<int> v = [1, 2, 3];
+    std.vector<std.vector<int>> rows = [[1, 2], [3]];
+    std.map<std.string, int> m = ["a": 1, "b": 2];
+    float n_push = 0.0;
+    float n_ref_write = 0.0;
+    float n_map_same_size = 0.0;
+    float n_local_clear = 0.0;
+    float n_path = 0.0;
+    float n_enumerate = 0.0;
+    float n_base = 0.0;
+    float sum = 0.0;
+
+    void Reset() {
+        this.v.clear();
+        this.v.push_back(1);
+        this.v.push_back(2);
+        this.v.push_back(3);
+    }
+
+    override void Tick(float dt) {
+        try { foreach (var x in this.v) { this.v.push_back(x); } } catch (ContainerChanged e) { this.n_push = 1.0; }
+        this.Reset();
+        try { foreach (ref x in this.v) { this.v.push_back(1); x = 2; } } catch (ContainerChanged e) { this.n_ref_write = 1.0; }
+        this.Reset();
+        try {
+            foreach (var (k, val) in this.m) { this.m.erase(k); this.m[k + "z"] = val; }
+        } catch (ContainerChanged e) { this.n_map_same_size = 1.0; }
+        var xs = std.vector<int>();
+        xs.push_back(1);
+        xs.push_back(2);
+        try { foreach (var x in xs) { xs.clear(); } } catch (ContainerChanged e) { this.n_local_clear = 1.0; }
+        try {
+            foreach (var x in this.rows[0]) { this.rows.push_back(std.vector<int>()); }
+        } catch (ContainerChanged e) { this.n_path = 1.0; }
+        try {
+            foreach (var (i, x) in enumerate(this.v)) { this.v.push_back(1); x = 3; }
+        } catch (ContainerChanged e) { this.n_enumerate = 1.0; }
+        this.Reset();
+        try { foreach (var x in this.v) { this.v.erase(this.v.begin()); } } catch (ScriptError e) { this.n_base = 1.0; }
+        this.Reset();
+        foreach (ref x in this.v) { x = x + 1; }
+        foreach (var x in this.v) { this.sum = this.sum + x; }
+    }
+
+    override void TakeDamage(float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
+}
+)"};
+    hot::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module), "Player"));
+    s.commit_at_frame_boundary();
+    HandlerGuard guard;
+    std::vector<std::string> types;
+    hot::set_script_error_handler([&](const hot::ScriptErrorReport& e) { types.push_back(e.type); });
+    s.world.Tick(kDt);
+    for (const char* name :
+        {"n_push", "n_ref_write", "n_map_same_size", "n_local_clear", "n_path", "n_enumerate", "n_base"})
+        EXPECT_EQ(*s.field(name), 1.0f) << name;
+    EXPECT_EQ(*s.field("sum"), 9.0f);
+    EXPECT_TRUE(types.empty());
+}

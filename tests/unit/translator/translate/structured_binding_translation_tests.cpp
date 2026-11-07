@@ -59,9 +59,9 @@ TEST(StructuredBindingTranslation, ForeachForms)
                " foreach (var (i, x) in enumerate(this.m)) s += x; foreach (int i in range(3)) s += i;"
                " foreach (int i in range(1, 3)) s += i;"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "for (auto [k, v] : __st->m)")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "for (auto& [k, v] : __st->m)")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "for (auto [i, x] : hot::enumerate(__st->m))")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "for (auto __it0 = hot::iter(__st->m); __it0.next();) { auto [k, v] = __it0.ref();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "std::get<1>(__it1.ref()) += 1")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "for (auto __it2 = hot::iter(__st->m); __it2.next();) { auto i = __it2.index();")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "for (int32_t i : hot::range(3))")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "for (int32_t i : hot::range(1, 3))")) << r.cpp;
 }

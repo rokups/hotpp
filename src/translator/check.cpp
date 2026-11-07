@@ -555,14 +555,6 @@ struct Checker
     std::map<std::string, std::string> field_types; // the declared type of each field
     std::set<const Expr*> callee_names; // names in the callee place of a call
     std::map<std::string, RefInfo> refs; // the "ref" locals that are live in the body in progress
-    // The "foreach (var x in c)" loops in progress. "c" is a local or a field of this. The body must not change
-    // the shape of "c". A "foreach (ref ...)" loop uses "refs" instead.
-    struct IterLoop
-    {
-        const Stmt* stmt;
-        std::string root;
-    };
-    std::vector<IterLoop> iterating;
     std::vector<std::map<std::string, RefInfo>> refs_stack; // "refs" at the start of each open block
     std::set<std::string> ref_params; // the "ref" and "out" parameters of the body in progress
     // The live "ref" entries that the variable of a "foreach" hides. The end of the loop gives them back.
@@ -1022,21 +1014,6 @@ struct Checker
             pending.emplace_back(n, info);
     }
 
-    // The loop variable of "foreach (ref x in c)" names an element of the range. A temporary range lives
-    // as long as the loop, so it gets no entry.
-    void track_loop_ref(const ForOfStmt& fo)
-    {
-        Place pl;
-        if (is_cpp || !fo.range || !place_of(*fo.range, pl))
-            return;
-        pl.element = true;
-        RefInfo info{pl, fo.pos, true};
-        if (!fo.name.empty())
-            refs[fo.name] = info;
-        for (const std::string& n : fo.names)
-            refs[n] = info;
-    }
-
     // The name text of a declaration for a message: "r", or "(a, b)" for a structured binding.
     static std::string ref_names_text(const std::string& name, const std::vector<std::string>& names)
     {
@@ -1356,8 +1333,6 @@ struct Checker
                         refs[n] = std::move(info);
                     pending_refs.erase(it);
                 }
-            if (!iterating.empty() && iterating.back().stmt == &st)
-                iterating.pop_back();
             if (const auto* fo = std::get_if<ForOfStmt>(&st.v))
             {
                 refs.erase(fo->name);
@@ -1610,11 +1585,14 @@ struct Checker
                     hidden_refs[&s].emplace_back(n, it->second);
                 forget_ref(n);
             }
-            if (fo->is_ref)
-                track_loop_ref(*fo);
-            else if (!is_cpp && scopes.empty() && fo->range)
-                if (std::string r = root_name(*fo->range); !r.empty())
-                    iterating.push_back({&s, r});
+            if (fo->is_ref && !is_cpp && fo->range && !std::holds_alternative<CallExpr>(fo->range->v))
+            { // The "await" rule sees the variable. The run-time guard checks the shape (foreach.h).
+                const RefInfo info{Place{}, fo->pos, true};
+                if (!fo->name.empty())
+                    refs[fo->name] = info;
+                for (const std::string& n : fo->names)
+                    refs[n] = info;
+            }
             if (!fo->type.empty())
             {
                 script_pointer(fo->type, fo->pos);
@@ -1651,17 +1629,11 @@ struct Checker
     // The name of a root in a message: the field "this.xs" is written "xs".
     static std::string root_text(const std::string& r) { return r.rfind("this.", 0) == 0 ? r.substr(5) : r; }
 
-    // R2 and the foreach rule: an operation that can change the shape of the container "r" while a "ref"
+    // R2: an operation that can change the shape of the container "r" while a "ref"
     // points to an element of it. "what" starts the message.
     void report_shape_change(uint32_t pos, const std::string& r, const std::string& what)
     {
         const std::string t = root_text(r);
-        // A change of the container that a "foreach (var ...)" loop walks invalidates its iterators.
-        if (scopes.empty())
-            for (const IterLoop& it : iterating)
-                if (it.root == r)
-                    error(pos, what + " changes '" + t + "' inside the 'foreach' over '" + t
-                                   + "': the loop can crash. Collect the changes in a new list, and apply them after the loop");
         if (scopes.empty())
             for (const auto& [n, src] : view_src)
                 if (src == r && !stale_views.count(n))
@@ -1809,7 +1781,7 @@ struct Checker
 
     void on_expr(const Expr& e)
     {
-        if (!is_cpp && (!refs.empty() || !iterating.empty() || !view_src.empty()))
+        if (!is_cpp && (!refs.empty() || !view_src.empty()))
             check_invalidation(e);
         if (!stale_views.empty() && scopes.empty())
             check_stale_view(e);

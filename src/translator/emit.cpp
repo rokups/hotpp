@@ -161,6 +161,11 @@ struct ExprPrinter
 
     void operator()(const NameExpr& n) const
     {
+        if (!n.emit_as.empty())
+        { // a "foreach" variable that the guard gives at each use (foreach.h)
+            e.put(n.emit_as, n.pos);
+            return;
+        }
         std::string t;
         // A scope "std.x" is the placeholder "\x01std::x" (see std_ns.h).
         const bool std_scope = n.parts.size() >= 2 && n.parts[0] == "std";
@@ -565,6 +570,11 @@ struct StmtPrinter
     }
     void operator()(const ForOfStmt& n) const
     {
+        if (!n.guard.empty())
+        {
+            guarded(n);
+            return;
+        }
         e.put("for", n.pos);
         open_paren(e);
         put_local_type(e, n.type, n.is_ref, n.is_const, 0);
@@ -579,6 +589,55 @@ struct StmtPrinter
         emit_expr(*n.range, e);
         close_paren(e);
         emit_stmt(*n.body, e);
+    }
+    // "for (auto __it0 = hot::iter(c); __it0.next();) { auto x = __it0.ref(); body }" (foreach.h).
+    // A "ref" variable has no declaration: each use is "__it0.ref()" (NameExpr::emit_as).
+    void guarded(const ForOfStmt& n) const
+    {
+        e.put("for", n.pos);
+        open_paren(e);
+        e.put("auto " + n.guard + " = ");
+        if (n.guard_path)
+        {
+            e.put("hot::iter_path([&]() -> decltype(auto) { return (");
+            emit_expr(*n.range, e);
+            e.put("); })");
+        }
+        else
+        {
+            e.put("hot::iter(");
+            emit_expr(*n.range, e);
+            e.put(")");
+        }
+        e.put("; " + n.guard + ".next();");
+        close_paren(e);
+        e.put("{");
+        e.space();
+        if (n.guard_enum)
+        {
+            if (n.names.size() == 2)
+            {
+                e.put("auto");
+                e.space();
+                e.put_mapped(n.names[0], n.name_poss.empty() ? 0 : n.name_poss[0]);
+                e.put(" = " + n.guard + ".index();");
+                e.space();
+            }
+        }
+        else if (!n.is_ref)
+        {
+            put_local_type(e, n.type, false, false, 0);
+            e.space();
+            if (!n.names.empty())
+                binding_names(n.names, n.name_poss, e);
+            else
+                e.put_mapped(n.name, n.name_pos);
+            e.put(" = " + n.guard + ".ref();");
+            e.space();
+        }
+        emit_stmt(*n.body, e);
+        e.space();
+        e.put("}");
     }
     void operator()(const ReturnStmt& n) const
     {

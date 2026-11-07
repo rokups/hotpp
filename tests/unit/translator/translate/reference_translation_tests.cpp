@@ -129,22 +129,22 @@ TEST(ReferenceTranslation, PlainVarStillCopies)
     EXPECT_FALSE(has(r.cpp, "auto& r")) << r.cpp;
 }
 
-TEST(ReferenceTranslation, ForeachVarRefEmitsAutoRef)
+TEST(ReferenceTranslation, ForeachRefUsesTheGuard)
 {
     const hotc::TranslateResult r = translate_text(
         "using <vector>;\nclass A {\n    std.vector<int> xs;\n"
         "    void Run() { foreach (ref x in this.xs) { x = 1; } }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "for (auto& x : ")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "__it0.next();) { { HOT_TRACE_LINE(); __it0.ref() = 1; } }")) << r.cpp;
 }
 
-TEST(ReferenceTranslation, ForeachRefThatIsNotWrittenEmitsConstAutoRef)
+TEST(ReferenceTranslation, ForeachRefThatIsNotWrittenReadsTheGuard)
 {
     const hotc::TranslateResult r = translate_text(
         "using <vector>;\nclass A {\n    std.vector<int> xs;\n    int n = 0;\n"
         "    void Run() { foreach (ref x in this.xs) { this.n = x; } }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "for (const auto& x : ")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "__st->n = __it0.ref();")) << r.cpp;
 }
 
 TEST(ReferenceTranslation, ForeachPlainVarCopies)
@@ -153,7 +153,7 @@ TEST(ReferenceTranslation, ForeachPlainVarCopies)
         "using <vector>;\nclass A {\n    std.vector<int> xs;\n"
         "    void Run() { foreach (var x in this.xs) { } }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "for (auto x : ")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "auto x = __it0.ref();")) << r.cpp;
 }
 
 TEST(ReferenceTranslation, VarRefLocalIsABorrowedLocalForALambda)

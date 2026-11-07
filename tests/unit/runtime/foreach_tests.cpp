@@ -215,16 +215,16 @@ TEST(Foreach, EnumerateGivesIndexAndElement)
 {
     std::vector<int> xs{5, 6};
     std::vector<std::size_t> idx;
-    for (auto i = hot::iter<true>(xs); i.next();)
+    for (auto i = hot::iter(xs); i.next();)
     {
-        idx.push_back(i.ref().first);
-        i.ref().second += 1;
+        idx.push_back(i.index());
+        i.item().second += 1;
     }
     EXPECT_EQ(idx, (std::vector<std::size_t>{0, 1}));
     EXPECT_EQ(xs, (std::vector<int>{6, 7}));
     EXPECT_THROW(
         {
-            for (auto i = hot::iter<true>(xs); i.next();)
+            for (auto i = hot::iter(xs); i.next();)
                 xs.push_back(0);
         },
         hot::ContainerChanged);

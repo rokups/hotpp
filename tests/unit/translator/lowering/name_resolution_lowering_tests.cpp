@@ -94,7 +94,7 @@ TEST(NameResolutionLowering, LambdaParameterEndsWithTheLambda)
 TEST(NameResolutionLowering, ForOfVariableIsLocal)
 {
     Fixture f;
-    EXPECT_EQ(f.body("foreach (var Foo in xs) { Foo.a(); }"), "for (auto Foo : xs) { hot::deref(Foo).a(); }");
+    EXPECT_EQ(f.body("foreach (var Foo in xs) { Foo.a(); }"), "for (auto __it0 = hot::iter(xs); __it0.next();) { auto Foo = __it0.ref(); { hot::deref(Foo).a(); } }");
 }
 
 TEST(NameResolutionLowering, ErrorScriptFnMustBeCalled)

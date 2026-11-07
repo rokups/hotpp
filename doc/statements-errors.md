@@ -108,7 +108,22 @@ An exception struct is for `throw` and `catch` only. It cannot be the type of a 
 
 ## Change of a container in a foreach
 
-A change of the shape of a container while `foreach (var x in c)` walks it is undefined behavior in C++. The translator reports a compile error for such a change in the loop body. The shape changes are `c = ...`, and a call of `push_back`, `insert`, `erase`, `clear`, `resize`, `emplace`, `pop_back` and the other methods that can move or remove elements. Collect the changes in a new list, and apply them after the loop. A write to an element (`c[i] = v`, `x.field = v`) and a change of a different container are allowed. The check has limits. See [Limits](limits.html).
+A `foreach` loop has a run-time guard. A change of the shape of the container in the loop body throws `ContainerChanged` (a `ScriptError`). The text is `container changed during foreach`. The guard works through any name, any method and any free function. A shape change is a change of the size, a new buffer, or a removed key. A write to an element (`c[i] = v`, `x.field = v`) is allowed.
+
+```
+foreach (var x in xs) { xs.push_back(x); }          // ContainerChanged at the next step
+foreach (ref x in xs) { xs.push_back(1); x = 2; }   // ContainerChanged at "x = 2"
+foreach (ref x in xs) { x = x + 1; }                // allowed
+```
+
+The guard has these forms:
+
+- An indexed container (an array, `std.vector`, `std.string`, a span): the guard walks an index. Each step and each use of a `ref` variable compare the size and the address of the buffer with the values at the loop start.
+- A container with unique keys (`std.map`, `std.unordered_map`, `std.set`): the guard keeps a copy of the current key. Each step and each use of a `ref` variable find the key again. A removed key or a rehash throws.
+- A temporary range (the result of a call): the body cannot change it. The guard walks it with a plain iterator.
+- `range(a, b)` keeps the plain loop.
+
+A range with a root that can move is evaluated again at each step: an element of a container (`this.rows[0]`), or a field behind a handle (`h.items`). A named range of a different kind (`std.list`, `std.multimap`) is a compile error: copy the elements to a `std.vector` first. A `ref` variable of a `foreach` is not a C++ reference: each use reads the element through the guard.
 
 ## Checks against crashes
 
@@ -125,7 +140,7 @@ Each row shows how HotScript stops one cause of a crash. The mechanism is a comp
 | Empty `front`, `back`, `pop` | Runtime, always on | `IndexOutOfRange` | `EmptyContainerOperationsAndNativeExceptionsAreCatchable`; `container_ops_tests.cpp` |
 | Dangling `ref` | Compile error | None | golden `27`, `28`, `82`-`91`, `94`-`103`, `108` |
 | Dangling view | Compile error | None | golden `105`-`107` |
-| Container change in `foreach` | Compile error | None | golden `92`, `93`, `104` |
+| Container change in `foreach` | Runtime, always on | `ContainerChanged` | `ForeachContainerChangeThrowsContainerChanged`; `foreach_tests.cpp` |
 | Use after reload | A handle stays valid. A task of the old code is cancelled. | `TaskReloadCancelled` | `AsyncHost.ReloadCancelsTheSuspendedTask`; `TaskReload.*`; `CheckedPtrFieldKeepsItsTargetAcrossReload` |
 | Use after a native free | `CheckedPtr` and handles are checked. A raw `T*` is unchecked. | `NullReference` | `CheckedPtrFieldReadsNullAfterTheTargetDies` |
 | Integer divide or modulo by zero | Runtime, always on | `ArithmeticError` | `IntegerDivideAndModuloAreChecked`; `arith_tests.cpp` |

@@ -84,8 +84,8 @@ TEST(SpanTranslation, ForeachAndIndexAndSizeAndEmpty)
         "        return t + s[0] + s.size();\n"
         "    }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "for (auto x : s)")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "for (auto& y : s)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "for (auto __it0 = hot::iter(s); __it0.next();) { auto x = __it0.ref();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "__it1.ref() += 1")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "hot::index(s, 0)")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "(s).empty()")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "(s).size()")) << r.cpp;

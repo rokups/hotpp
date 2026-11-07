@@ -143,7 +143,7 @@ void normalize_runtime_catch_type(std::string& type)
         }
     }
     if (t == "NullReference" || t == "IndexOutOfRange" || t == "ScriptError" || t == "TaskCancelled"
-        || t == "TaskReloadCancelled" || t == "ArithmeticError" || t == "NativeError")
+        || t == "TaskReloadCancelled" || t == "ArithmeticError" || t == "NativeError" || t == "ContainerChanged")
         type = "const hot::" + t + "&";
     else if (!type.empty() && type.find_first_of("&*") == std::string::npos)
         type = "const " + type + "&";
@@ -1191,6 +1191,7 @@ struct Lowerer
     void declare(const std::string& name, const std::string& type)
     {
         cx.locals.insert(name);
+        cx.path_names.erase(name); // a new local hides a "foreach" variable
         cx.weak_locals.erase(name); // a "[weak]" local adds the name again after this call
         cx.value_locals.erase(name); // a box local adds the name again after this call
         cx.cell_locals.erase(name); // a shared local adds the name again after this call
@@ -3071,6 +3072,12 @@ struct Lowerer
         const bool target = std::exchange(weak_target, false);
         // A read of a "[weak]" name locks it. The node of the name can change below, so the
         // flag comes first.
+        if (n.parts.size() == 1 && n.template_args.empty())
+            if (auto it = cx.path_names.find(n.parts[0]); it != cx.path_names.end())
+            {
+                n.emit_as = it->second;
+                return;
+            }
         const bool weak = !target && n.parts.size() == 1 && n.template_args.empty() && weak_bare(n.parts[0]);
         name_inner(e, n);
         if (weak && e)
@@ -3840,20 +3847,97 @@ struct Lowerer
 
     // "foreach (ref x in enumerate(xs))": the range gives temporary values, so a reference
     // cannot bind to them.
+    // "enumerate" or "range" for a call of the global helper, else empty.
+    std::string range_helper(const Expr& r) const
+    {
+        const auto* call = std::get_if<CallExpr>(&r.v);
+        const auto* callee = call ? std::get_if<NameExpr>(&call->callee->v) : nullptr;
+        if (!callee || !callee->template_args.empty())
+            return std::string();
+        const bool bare = callee->parts.size() == 1 && is_helper_name(callee->parts[0]);
+        const bool scoped = callee->parts.size() == 2 && callee->parts[0] == "hot";
+        if (!bare && !scoped)
+            return std::string();
+        const std::string& helper = callee->parts.back();
+        return helper == "enumerate" || helper == "range" ? helper : std::string();
+    }
+
+    // A range with a simple root cannot move during the loop: a local, a parameter, a field of
+    // "this". Other ranges are checked paths (foreach.h). A range with a call at the root is
+    // evaluated one time: a path would use the temporary after its end.
+    static bool simple_range(const Expr& r)
+    {
+        if (const auto* p = std::get_if<ParenExpr>(&r.v))
+            return p->inner && simple_range(*p->inner);
+        if (const auto* n = std::get_if<NameExpr>(&r.v))
+            return n->parts.size() == 1;
+        if (const auto* m = std::get_if<MemberExpr>(&r.v))
+            return m->obj && (std::holds_alternative<ThisExpr>(m->obj->v) || call_root(*m->obj));
+        return call_root(r);
+    }
+    static bool call_root(const Expr& r)
+    {
+        if (const auto* p = std::get_if<ParenExpr>(&r.v))
+            return p->inner && call_root(*p->inner);
+        if (const auto* m = std::get_if<MemberExpr>(&r.v))
+            return m->obj && call_root(*m->obj);
+        if (const auto* ix = std::get_if<IndexExpr>(&r.v))
+            return ix->obj && call_root(*ix->obj);
+        return std::holds_alternative<CallExpr>(r.v);
+    }
+
+    // The run-time guard of a "foreach" (foreach.h). "range(a, b)" gives values: it keeps the
+    // plain loop. "enumerate(c)" walks "c" with an index.
+    void guard_foreach(ForOfStmt& fo)
+    {
+        if (!fo.range)
+            return;
+        const std::string helper = range_helper(*fo.range);
+        if (helper == "range" || (helper == "enumerate" && fo.is_ref))
+            return;
+        if (helper == "enumerate")
+        {
+            auto& call = std::get<CallExpr>(fo.range->v);
+            if (call.args.size() != 1 || fo.names.size() > 2 || fo.names.size() == 1)
+                return;
+            ExprP inner = std::move(call.args[0]);
+            fo.range = std::move(inner);
+            fo.guard_enum = true;
+        }
+        fo.guard = "__it" + std::to_string(safe_count++);
+        fo.guard_path = !simple_range(*fo.range);
+    }
+
+    // The names that the guard gives at each use. They are set after the range is lowered.
+    void guard_names(const ForOfStmt& fo)
+    {
+        if (fo.guard.empty())
+            return;
+        const std::string ref = fo.guard + ".ref()";
+        if (fo.guard_enum)
+        {
+            if (fo.names.size() == 2)
+                cx.path_names[fo.names[1]] = ref;
+            else if (!fo.name.empty())
+                cx.path_names[fo.name] = fo.guard + ".item()";
+            return;
+        }
+        if (!fo.is_ref)
+            return;
+        if (fo.names.empty())
+            cx.path_names[fo.name] = ref;
+        for (size_t i = 0; i < fo.names.size(); ++i)
+            cx.path_names[fo.names[i]] = "std::get<" + std::to_string(i) + ">(" + ref + ")";
+    }
+
     void check_ref_range(const ForOfStmt& fo)
     {
         if (!fo.is_ref || !fo.range)
             return;
         const auto* call = std::get_if<CallExpr>(&fo.range->v);
         const auto* callee = call ? std::get_if<NameExpr>(&call->callee->v) : nullptr;
-        if (!callee || !callee->template_args.empty())
-            return;
-        const bool bare = callee->parts.size() == 1 && is_helper_name(callee->parts[0]);
-        const bool scoped = callee->parts.size() == 2 && callee->parts[0] == "hot";
-        if (!bare && !scoped)
-            return;
-        const std::string& helper = callee->parts.back();
-        if (helper != "enumerate" && helper != "range")
+        const std::string helper = range_helper(*fo.range);
+        if (helper.empty())
             return;
         std::string use = "var ";
         if (fo.names.empty())
@@ -4001,7 +4085,7 @@ struct Lowerer
     {
         RCtx& cx;
         std::set<std::string> locals, weak_locals, value_locals, cell_locals;
-        std::map<std::string, std::string> local_type;
+        std::map<std::string, std::string> local_type, path_names;
         explicit ScopeSave(RCtx& c)
             : cx(c)
             , locals(c.locals)
@@ -4009,6 +4093,7 @@ struct Lowerer
             , value_locals(c.value_locals)
             , cell_locals(c.cell_locals)
             , local_type(c.local_type)
+            , path_names(c.path_names)
         {
         }
         ~ScopeSave()
@@ -4018,6 +4103,7 @@ struct Lowerer
             cx.value_locals = std::move(value_locals);
             cx.cell_locals = std::move(cell_locals);
             cx.local_type = std::move(local_type);
+            cx.path_names = std::move(path_names);
         }
     };
 
@@ -4277,7 +4363,9 @@ struct Lowerer
             if (cx.types && !fo->type.empty())
                 fo->type = cpp_type(fo->type, TypeModel::StorageUse::Local, fo->pos);
             check_ref_range(*fo);
+            guard_foreach(*fo);
             expr(fo->range);
+            guard_names(*fo);
             const size_t mark = bindings.size();
             bindings.insert(bindings.end(), fo->names.begin(), fo->names.end());
             loop_body(fo->body);

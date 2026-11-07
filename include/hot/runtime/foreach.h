@@ -15,7 +15,8 @@
 //    with a plain iterator.
 // A named range of a different kind (std::list, std::multimap) is a compile error.
 // "hot::iter_path(getter)" evaluates the range again at each step: the range is a checked path
-// (an element of a container, a field behind a handle). "Enum" is the form of "enumerate(c)".
+// (an element of a container, a field behind a handle). "index()" and "item()" are the forms of
+// "enumerate(c)".
 #pragma once
 #include "hot/runtime/errors.h"
 #include "hot/runtime/hidden.h"
@@ -108,7 +109,7 @@ template <class T> struct dependent_false : std::false_type
 
 } // namespace detail
 
-template <class S, bool Enum = false> class Iter
+template <class S> class Iter
 {
     using C = std::remove_reference_t<decltype(std::declval<S&>().get())>;
     using P = std::remove_const_t<C>;
@@ -191,26 +192,25 @@ public:
     {
         C& c = checked();
         if constexpr (kIndexed)
-            return item(c[n_]);
+            return c[n_];
         else if constexpr (kKeyed)
         {
             auto it = c.find(*key_);
             if (it == std::end(c))
                 throw ContainerChanged();
-            return item(*it);
+            return *it;
         }
         else
-            return item(*it_);
+            return *it_;
     }
 
+    // The index of the current element: the "i" of "foreach (var (i, x) in enumerate(c))".
+    HOT_HIDDEN std::size_t index() const { return n_; }
+
+    // The item of "enumerate(c)": the index and a reference to the element.
+    HOT_HIDDEN auto item() { return std::pair<std::size_t, decltype(ref())>(n_, ref()); }
+
 private:
-    template <class T> HOT_HIDDEN decltype(auto) item(T&& x)
-    {
-        if constexpr (Enum)
-            return std::pair<std::size_t, T&&>(n_, std::forward<T>(x));
-        else
-            return std::forward<T>(x);
-    }
 
     HOT_HIDDEN C& checked()
     {
@@ -238,23 +238,23 @@ private:
 
 // A range with a simple root (a local, a parameter, a field of "this"): it cannot move during the
 // loop. An lvalue binds by reference. A temporary is kept in the guard.
-template <bool Enum = false, class R> HOT_HIDDEN auto iter(R&& r)
+template <class R> HOT_HIDDEN auto iter(R&& r)
 {
     if constexpr (std::is_lvalue_reference_v<R>)
-        return Iter<detail::RefSource<std::remove_reference_t<R>>, Enum>(
+        return Iter<detail::RefSource<std::remove_reference_t<R>>>(
             detail::RefSource<std::remove_reference_t<R>>{r});
     else
-        return Iter<detail::OwnSource<std::remove_cv_t<R>>, Enum>(detail::OwnSource<std::remove_cv_t<R>>{std::move(r)});
+        return Iter<detail::OwnSource<std::remove_cv_t<R>>>(detail::OwnSource<std::remove_cv_t<R>>{std::move(r)});
 }
 
 // A range that is a checked path: "get()" evaluates the path again at each step.
-template <bool Enum = false, class G> HOT_HIDDEN auto iter_path(G g)
+template <class G> HOT_HIDDEN auto iter_path(G g)
 {
     using R = decltype(g());
     if constexpr (std::is_lvalue_reference_v<R>)
-        return Iter<detail::PathSource<G>, Enum>(detail::PathSource<G>{std::move(g)});
+        return Iter<detail::PathSource<G>>(detail::PathSource<G>{std::move(g)});
     else
-        return Iter<detail::OwnSource<std::remove_cv_t<std::remove_reference_t<R>>>, Enum>(
+        return Iter<detail::OwnSource<std::remove_cv_t<std::remove_reference_t<R>>>>(
             detail::OwnSource<std::remove_cv_t<std::remove_reference_t<R>>>{g()});
 }
 
