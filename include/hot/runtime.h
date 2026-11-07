@@ -8,6 +8,7 @@
 #pragma once
 #include "hot/module.h"
 #include "hot/runtime/arith.h"
+#include "hot/runtime/cell.h"
 #include "hot/runtime/checked_ptr.h"
 #include "hot/runtime/closure.h"
 #include "hot/runtime/container_ops.h"
