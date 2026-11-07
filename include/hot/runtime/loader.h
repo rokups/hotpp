@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -249,6 +250,13 @@ public:
     SyncMode sync_mode() const;
 
     LoaderStats stats() const;
+    // Calls "visit" once for each live script object, in no fixed order. The record of the
+    // object is self->cls. Its canonical record is self->cls->canonical, or self->cls when that
+    // is null. Call it on the main thread only, for example after commit_pending. The walk holds
+    // the lock of the list of live objects (HOT_THREAD_SAFE=1). Thus "visit" must not run script
+    // code, and it must not create or destroy a script object. To run script code on each
+    // object, collect the objects first, then call the code after the walk.
+    void each_object(const std::function<void(ShellBase*)>& visit) const;
     std::string stats_text() const { return format_stats(stats()); }
 
     const ClassEntry* find(const std::string& name) const { return registry_.find(name); }

@@ -12,6 +12,7 @@
 
 #include <gtest/gtest.h>
 
+#include <set>
 #include <string>
 
 namespace
@@ -91,6 +92,44 @@ TEST_P(BackendTests, ThrowingOnReloadHookIsCaught)
     EXPECT_EQ(*fld<float>(s, "hp"), 100.0f); // the field health moved by [alias]
     s.world.Tick(kDt); // the object still runs
     EXPECT_EQ(*fld<int>(s, "ticks"), 3);
+}
+
+// Loader::each_object visits each live object after a commit. A host uses it to call a hook of
+// each object again, for example to subscribe again after a reload (rbfx-script OnSubscribe).
+TEST_P(BackendTests, EachObjectVisitsLiveObjectsAfterCommit)
+{
+    hot::LoadResult v1 = backend->load(source("hooks_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    hot::LoadResult v2 = backend->load(source("hooks_v2.hot"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Hero"));
+    s.commit_at_frame_boundary();
+    const hot::ClassEntry* entry = s.loader.find("Hero");
+    ASSERT_NE(entry, nullptr);
+    s.world.Add(static_cast<Actor*>(entry->create().native));
+    s.world.Tick(kDt);
+
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    testing::internal::CaptureStderr();
+    s.world.Tick(kDt);
+    testing::internal::GetCapturedStderr();
+    ASSERT_FALSE(s.commit_failed);
+    EXPECT_EQ(hot::active_generation, 2u);
+
+    int heroes = 0;
+    int others = 0;
+    std::set<hot::ShellBase*> seen;
+    s.loader.each_object([&](hot::ShellBase* self)
+    {
+        const hot::ClassRecord* rec = self->cls->canonical ? self->cls->canonical : self->cls;
+        (rec->name == std::string("Hero") ? heroes : others)++;
+        seen.insert(self);
+    });
+    EXPECT_EQ(heroes, 2);
+    EXPECT_EQ(others, 0);
+    EXPECT_EQ(seen.size(), 2u);
+    EXPECT_TRUE(seen.count(static_cast<hot::ShellBase*>(s.inst.shell)));
 }
 
 } // namespace

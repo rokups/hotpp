@@ -745,6 +745,13 @@ bool layout_holds_code(const StateLayout* l, int depth = 0)
 }
 } // namespace
 
+void Loader::each_object(const std::function<void(ShellBase*)>& visit) const
+{
+    const LiveObjects::Guard guard(g_live);
+    for (const auto& [s, creator] : g_live)
+        visit(s);
+}
+
 bool Loader::state_holds_code() const
 {
     for (const auto& [unit, mb] : mod_blocks_)

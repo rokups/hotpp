@@ -42,6 +42,14 @@ The result converts to `true` for `Applied` and `Pending`. The reason is one of 
 
 **Sample:** [hot-reload](https://github.com/rokups/hotpp/tree/master/samples/hot-reload). See also [Hot reload](hot-reload.html) for the changes that a reload accepts.
 
+### Visit the live objects
+
+`Loader::each_object(visit)` calls `visit` once for each live script object. The argument is the `hot::ShellBase*` of the object. The record of the object is `self->cls`. Its canonical record is `self->cls->canonical`, or `self->cls` when that is null. The order is not fixed.
+
+Call it on the main thread only, for example after `commit_pending`. The walk holds the lock of the list of live objects. Thus `visit` must not run script code, and it must not create or destroy a script object. To run script code on each object, collect the objects first. Then call the code after the walk.
+
+A host uses it after a reload, for example to subscribe each object of a changed class again. The test `EachObjectVisitsLiveObjectsAfterCommit` (`tests/integration/reload/hook_tests.cpp`) shows the use.
+
 ### Full reload
 
 For `FullReloadRequired`, the host does these steps:
