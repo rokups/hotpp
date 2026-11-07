@@ -135,6 +135,12 @@ class Parent {
 - `std.shared_ptr<Child>` already is a handle type. The translator does not change it.
 - A `.cpp` script keeps its own C++ types.
 
+A native function template can get a script class as an explicit argument (G09). Examples are `node.GetComponent<PlayerStance>()`, `node.CreateComponent<PlayerStance>()` and `MakeShared<PlayerStance>()`.
+
+- `C` and `$C` are the same here. The native template gets the plain class `C`.
+- The result becomes a handle: `$PlayerStance s = node.GetComponent<PlayerStance>();`.
+- A class that is not the target or a script child of it is an error. The error is `'GetComponent<User>' gives a 'User', and 'User' is not 'PlayerStance' or a script child of it`.
+
 ## Collection literals
 
 `[a, b]` builds a list. `[k: v]` builds a map. `[]` is empty. The C++ type comes from the declaration, so a literal needs a typed local, a typed field initializer or a place inside another literal. `var x = [1, 2];` is an error.

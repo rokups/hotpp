@@ -1636,6 +1636,24 @@ struct Lowerer
         const ClassDef* d = cls.empty() ? nullptr : class_named(cls);
         if (!d || d->is_value)
             return;
+        // "$C x = obj.F<D>()" (gap G09): a native template gives "D*". D must be C or a script child of C.
+        if (const auto* call = std::get_if<CallExpr>(&e->v))
+            if (const auto* cn = call->callee ? std::get_if<NameExpr>(&call->callee->v) : nullptr;
+                cn && cn->template_args.size() > 2 && cn->template_args.find(',') == std::string::npos)
+            {
+                std::string arg = cn->template_args.substr(1, cn->template_args.size() - 2);
+                if (!arg.empty() && arg[0] == '$')
+                    arg.erase(0, 1);
+                const ClassDef* src = class_named(arg);
+                bool related = false;
+                for (const ClassDef* c = src; c && !related; c = c->base.empty() ? nullptr : class_named(c->base))
+                    related = c == d || c->name == d->name;
+                if (src && !src->is_value && !related)
+                    error(pos_of(*e),
+                        "'" + cn->parts.back() + "<" + arg + ">' gives a '" + arg + "', and '" + arg
+                            + "' is not '" + d->name + "' or a script child of it: the value cannot become '$"
+                            + d->name + "'");
+            }
         const auto* tt = std::get_if<TypeTestExpr>(&e->v);
         const bool as_cast = tt && tt->is_as;
         const std::string src = type_of(*e);
@@ -2753,6 +2771,30 @@ struct Lowerer
             n.template_args = "<" + canonical_type(after) + ">";
     }
 
+    // The explicit template arguments of a native function template (gap G09): "obj.F<C>()",
+    // "MakeShared<C>()". A script class "C" or "$C" there is the plain class "C". The native code
+    // gives "C*" (or its smart pointer), and hot::handle_from_raw makes the handle "$C" of it.
+    void plain_class_targs(NameExpr& n) const
+    {
+        if (n.template_args.find('$') == std::string::npos || !cx.types)
+            return;
+        std::string out;
+        const std::string& t = n.template_args;
+        for (size_t i = 0; i < t.size(); ++i)
+        {
+            if (t[i] == '$' && (i == 0 || !(std::isalnum(static_cast<unsigned char>(t[i - 1])) || t[i - 1] == '_')))
+            {
+                size_t j = i + 1;
+                while (j < t.size() && (std::isalnum(static_cast<unsigned char>(t[j])) || t[j] == '_'))
+                    ++j;
+                if (j > i + 1 && cx.types->is_script_class(t.substr(i + 1, j - i - 1)))
+                    continue; // drop the "$"
+            }
+            out += t[i];
+        }
+        n.template_args = out;
+    }
+
     // A script class in the template arguments of a type name is a handle (task 48): the text
     // "std.vector<Child>" becomes "std::vector<H>", where H is the storage of Child. A function
     // template that takes a type (a cast, "make_shared") keeps its argument.
@@ -2763,10 +2805,15 @@ struct Lowerer
         static const std::set<std::string> kKeep = {"make_shared", "make_unique", "allocate_shared",
             "static_pointer_cast", "dynamic_pointer_cast", "const_pointer_cast", "reinterpret_pointer_cast",
             "static_cast", "dynamic_cast", "const_cast", "reinterpret_cast", "sizeof", "alignof", "typeid", "declval",
-            "as", "is", "is_same", "is_same_v"};
+            "as", "is", "is_same", "is_same_v", "MakeShared"};
         const std::string& last = n.parts.back();
-        if (kKeep.count(last) || n.parts[0] == "hot")
+        if (n.parts[0] == "hot")
             return;
+        if (kKeep.count(last))
+        {
+            plain_class_targs(n);
+            return;
+        }
         n.template_args = cpp_type(last + n.template_args, TypeModel::StorageUse::Local, n.pos).substr(last.size());
     }
 
@@ -2932,6 +2979,7 @@ struct Lowerer
             return;
         NameExpr& n = *np;
         targs(n);
+        plain_class_targs(n);
         const uint32_t pos = n.pos;
         NameExpr head;
         head.parts = {n.parts[0]};

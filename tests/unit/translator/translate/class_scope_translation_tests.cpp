@@ -3,7 +3,8 @@
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
 // Translation tests of class-scoped declarations that a game port needs: a class constant
-// ("static const T Name = value;" in a class or a struct).
+// ("static const T Name = value;" in a class or a struct), a script class as the argument of a
+// native template, and a module variable that holds a script class handle.
 #include "hot/hotc_lib.h"
 #include "support/translator_test_support.h"
 
@@ -18,7 +19,23 @@ using namespace translator_test;
 
 const char* kHeader =
     "#include <limits>\n"
-    "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n";
+    "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n"
+    "class RefCounted { public: virtual ~RefCounted() {} void AddRef() {} void ReleaseRef() {} };\n"
+    "template <class T> class SharedPtr { public: SharedPtr() {} explicit SharedPtr(T* p) : p_(p) {}\n"
+    "    template <class U> SharedPtr(const SharedPtr<U>& o) : p_(o.Get()) {}\n"
+    "    T* Get() const { return p_; } T* operator->() const { return p_; } T& operator*() const { return *p_; }\n"
+    "    explicit operator bool() const { return p_ != nullptr; } T* p_ = nullptr; };\n"
+    "template <class T, class... A> SharedPtr<T> MakeShared(A&&... a) { return SharedPtr<T>(new T(a...)); }\n"
+    "class Component : public RefCounted { public: virtual void Start() {} };\n"
+    "class Node : public RefCounted { public:\n"
+    "    template <class T> T* GetComponent() const { return nullptr; }\n"
+    "    template <class T> T* CreateComponent() { return nullptr; }\n"
+    "    int GetId() const { return 0; } };\n"
+    "template <class T> class Signal;\n"
+    "template <class... A> class Signal<void(A...)> { public: void operator()(A... a) const {} };\n";
+
+const char* kStubs = "[native, handle(\"$T*\"), intrusive(\"AddRef\", \"ReleaseRef\")] class Component;\n"
+                     "[native, handle(\"$T*\"), intrusive(\"AddRef\", \"ReleaseRef\")] class Node;\n";
 
 hotc::TranslateOptions opts(const TempDir& dir, const std::string& script)
 {
@@ -154,4 +171,60 @@ TEST(ClassScopeTranslation, ImportedClassConstant)
     EXPECT_EQ(a.iface_hash, c.iface_hash) << "a private constant is not in the interface";
 }
 
-} // namespace
+// G09: a script class as the template argument of a native template. "GetComponent<C>()" gives a
+// raw "C*". The raw pointer becomes the handle "$C" (the intrusive handle takes a reference).
+// "MakeShared<C>()" gives the handle type of C. "$C" as the argument is the same as "C".
+TEST(ClassScopeTranslation, ScriptClassAsNativeTemplateArgument)
+{
+    TempDir dir;
+    const hotc::TranslateResult r = translate_script(dir, std::string(kStubs) +
+        "class PlayerStance : Component { int hp = 1; }\n"
+        "class User : Component {\n"
+        "    $PlayerStance kept;\n"
+        "    int Run(Node* n) {\n"
+        "        if (n == null) return 0;\n"
+        "        $PlayerStance a = n.GetComponent<PlayerStance>();\n"
+        "        $PlayerStance b = n.CreateComponent<PlayerStance>();\n"
+        "        $PlayerStance c = MakeShared<PlayerStance>();\n"
+        "        $PlayerStance d = n.GetComponent<$PlayerStance>();\n"
+        "        this.kept = n.GetComponent<PlayerStance>();\n"
+        "        var e = n.GetComponent<PlayerStance>();\n"
+        "        if (a == null || b == null || c == null || d == null) return 0;\n"
+        "        return a.hp + b.hp + c.hp + d.hp + n.GetId();\n"
+        "    }\n"
+        "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    const std::string h = "hot::Intrusive<PlayerStance, &Component::AddRef, &Component::ReleaseRef>";
+    EXPECT_TRUE(has(r.cpp, (h + " a = hot::handle_from_raw<" + h + ">(hot::deref(n).GetComponent<PlayerStance>());").c_str()))
+        << r.cpp;
+    EXPECT_TRUE(has(r.cpp, (h + " b = hot::handle_from_raw<" + h + ">(hot::deref(n).CreateComponent<PlayerStance>());").c_str()))
+        << r.cpp;
+    EXPECT_TRUE(has(r.cpp, (h + " c = hot::handle_from_raw<" + h + ">(MakeShared<PlayerStance>());").c_str())) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, (h + " d = hot::handle_from_raw<" + h + ">(hot::deref(n).GetComponent<PlayerStance>());").c_str()))
+        << r.cpp;
+    EXPECT_TRUE(has(r.cpp, ("__st->kept = hot::handle_from_raw<" + h + ">(").c_str())) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "const auto e = hot::deref(n).GetComponent<PlayerStance>();")) << "a raw pointer local" << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "$PlayerStance")) << r.cpp;
+}
+
+// G09: a native template call that gives another script class cannot become the handle.
+TEST(ClassScopeTranslation, ScriptClassTemplateArgumentOfAnotherClassIsAnError)
+{
+    TempDir dir;
+    const hotc::TranslateResult r = translate_script(dir, std::string(kStubs) +
+        "class PlayerStance : Component { int hp = 1; }\n"
+        "class Fast : PlayerStance { }\n"
+        "class User : Component {\n"
+        "    void Run(Node* n) {\n"
+        "        if (n == null) return;\n"
+        "        $PlayerStance ok = n.GetComponent<Fast>();\n"
+        "        $PlayerStance bad = n.GetComponent<User>();\n"
+        "    }\n"
+        "}\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics,
+        "'GetComponent<User>' gives a 'User', and 'User' is not 'PlayerStance' or a script child of it: the value "
+        "cannot become '$PlayerStance'"))
+        << r.diagnostics;
+    EXPECT_FALSE(has(r.diagnostics, "Fast")) << r.diagnostics;
+}
