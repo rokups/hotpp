@@ -28,6 +28,18 @@ Yes. The current closure design does not allow it. A new design that treats a la
 - The runtime does not unregister or rebind native callbacks. Only `ClearTimers` drops timers.
 - A named method already reloads. Native code holds a thunk. The thunk calls through the slot table. Slot numbers do not change.
 
+## Host re-subscribe (in use)
+
+A host can drop the old lambdas and subscribe again after a reload. It needs no change of the closure design.
+rbfx-script does this: see "Subscriptions after a reload" in its `docs/Architecture.md`.
+
+- The script puts each subscription of an object in one method, for example `void OnSubscribe()`.
+- After `commit_pending`, the host walks the live objects with `Loader::each_object`. It filters them by the class name.
+- The thunk `Cls::__native` gives the native base of an object from its shell. Each script class has it.
+- The host drops the recorded subscriptions of the object. Then it calls the method again through its thunk `Cls::OnSubscribe`.
+- `Loader::thunk_key` gives the signature key of a thunk. The host checks it before the cast of the thunk.
+- A lambda that the script gives to native code outside this method keeps the stale-guard rule above.
+
 ## Proposed design
 
 Give each lambda the same treatment as a method.

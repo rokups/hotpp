@@ -48,7 +48,7 @@ The result converts to `true` for `Applied` and `Pending`. The reason is one of 
 
 Call it on the main thread only, for example after `commit_pending`. The walk holds the lock of the list of live objects. Thus `visit` must not run script code, and it must not create or destroy a script object. To run script code on each object, collect the objects first. Then call the code after the walk.
 
-A host uses it after a reload, for example to subscribe each object of a changed class again. The test `EachObjectVisitsLiveObjectsAfterCommit` (`tests/integration/reload/hook_tests.cpp`) shows the use.
+A host uses it after a reload, for example to subscribe each object of a changed class again. The thunk `Cls::__native` (`void* (*)(hot::ShellCore*)`, from `Loader::thunk`) gives the native base of the object from its shell. Each script class has it. The test `EachObjectVisitsLiveObjectsAfterCommit` (`tests/integration/reload/hook_tests.cpp`) shows the use.
 
 ### Full reload
 
