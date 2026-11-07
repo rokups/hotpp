@@ -1813,6 +1813,7 @@ struct Options
     std::string resource_dir; // the Clang resource directory (builtin headers)
     std::string target, sysroot; // the target triple and the sysroot of the parse
     std::string std_version; // the C++ standard of the parse, for example "c++17"
+    std::vector<std::string> defines; // the "-D" and "-U" flags of the parse (TranslateOptions::defines)
     bool aot = false; // AOT code: each thunk carries its signature key (see TranslateOptions::aot)
     bool aot_optimized = false; // optimized AOT code (see TranslateOptions::aot_optimized)
 };
@@ -3276,6 +3277,9 @@ std::vector<std::string> clang_args(const Options& opt)
     // a declaration from hotc with "#ifndef __HOTSCRIPT__". The normal C++ build does not define it.
     if (opt.input.size() > 4 && opt.input.compare(opt.input.size() - 4, 4, ".cpp") == 0)
         args.push_back("-D__HOTSCRIPT__=1");
+    for (const std::string& d : opt.defines)
+        if (d.rfind("-D", 0) == 0 || d.rfind("-U", 0) == 0)
+            args.push_back(d);
     const std::string input_dir = dir_of(opt.input);
     args.push_back("-I" + (input_dir == "." ? input_dir : hotc::clang_path(input_dir)));
     for (const auto& d : opt.includes)
@@ -3314,6 +3318,7 @@ void translate_impl(
     opt.target = in.target;
     opt.sysroot = in.sysroot;
     opt.std_version = in.std_version.empty() ? hot::cxx_std_name() : in.std_version;
+    opt.defines = in.defines;
 #ifdef HOT_RESOURCE_DIR
     if (opt.resource_dir.empty())
         opt.resource_dir = HOT_RESOURCE_DIR;
@@ -3479,7 +3484,11 @@ void translate_impl(
         { return im.path.size() > 4 && im.path.compare(im.path.size() - 4, 4, ".hot") == 0; };
         // "file" is the name for "#line" and the diagnostics: the name in TranslateOptions::modules,
         // or the path of the file on disk.
-        auto read_import = [&](const std::string& path, std::string& text, std::string& file)
+        auto normal_path = [](const std::string& path)
+        { return std::filesystem::path(path).lexically_normal().generic_string(); };
+        // "from_dir" is the directory of the script that has the import. The search starts there.
+        auto read_import = [&](const std::string& path, const std::string& from_dir, std::string& text,
+                               std::string& file)
         {
             for (const auto& [name, t] : in.modules)
                 if (name == path)
@@ -3489,7 +3498,9 @@ void translate_impl(
                     return true;
                 }
             std::vector<std::string> dirs;
-            dirs.push_back(dir_of(opt.input));
+            dirs.push_back(from_dir);
+            if (from_dir != dir_of(opt.input))
+                dirs.push_back(dir_of(opt.input));
             for (const std::string& d : in.include_dirs)
                 dirs.push_back(d);
             // For each directory: the file system of the host first, then the disk.
@@ -3505,7 +3516,7 @@ void translate_impl(
             return false;
         };
         // The main script is in the set: an import cycle back to it does not read it again.
-        std::set<std::string> seen{opt.input};
+        std::set<std::string> seen{opt.input, normal_path(opt.input)};
         // An import path that names the main script (relative to its folder) is the main script too.
         auto is_main_script = [&](const std::string& path)
         {
@@ -3530,7 +3541,8 @@ void translate_impl(
         std::vector<Stub> stubs;
         uint32_t next_base = static_cast<uint32_t>(in.script_text.size()) + 1;
         // Depth first: the imports of an imported script come before its own classes.
-        std::function<void(std::vector<Import>&)> visit_imports = [&](std::vector<Import>& ims)
+        std::function<void(std::vector<Import>&, const std::string&)> visit_imports =
+            [&](std::vector<Import>& ims, const std::string& from_dir)
         {
             std::vector<Import> keep;
             for (Import& im : ims)
@@ -3540,12 +3552,13 @@ void translate_impl(
                     keep.push_back(std::move(im));
                     continue;
                 }
-                if (is_main_script(im.path) || !seen.insert(im.path).second)
+                if (is_main_script(im.path))
                     continue;
                 std::string text, file;
-                if (!read_import(im.path, text, file))
+                if (!read_import(im.path, from_dir, text, file))
                     fail_at(map, im.pos, "the script '" + im.path + "' is not found");
-                if (file == opt.input)
+                // The set has the lexically normal name: two relative paths to one file give one visit.
+                if (!seen.insert(normal_path(file)).second)
                     continue;
                 const uint32_t base = next_base;
                 next_base += static_cast<uint32_t>(text.size()) + 1;
@@ -3606,7 +3619,7 @@ void translate_impl(
                     if (c.is_private)
                         private_classes.emplace(c.name, file);
                 ++depth;
-                visit_imports(is.imports);
+                visit_imports(is.imports, dir_of(file));
                 --depth;
                 for (Import& n : is.imports)
                     if (native_paths.insert(n.path).second)
@@ -3639,7 +3652,7 @@ void translate_impl(
             }
             ims = std::move(keep);
         };
-        visit_imports(sc.imports);
+        visit_imports(sc.imports, dir_of(opt.input));
         if (!seen.empty())
         {
             for (const Import& im : sc.imports)

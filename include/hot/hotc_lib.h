@@ -39,6 +39,9 @@ struct TranslateOptions
     // The C++ standard for the parse of the native headers, for example "c++17". Empty: the
     // standard of the host (HOT_CXX_STANDARD in hot/config.h).
     std::string std_version;
+    // The macro flags of the parse of the native headers ("-DNAME", "-DNAME=value", "-UNAME").
+    // A backend gives the "-D" and "-U" flags of its compile, so the parse sees the same macros.
+    std::vector<std::string> defines;
     std::vector<std::pair<std::string, std::string>> preludes; // name, text
     // The texts of the imported scripts ("using "parent.hot";"), as name and text. The name is
     // the path in the "using" line. A name that is not here is read from the directory of the

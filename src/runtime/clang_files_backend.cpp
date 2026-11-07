@@ -380,6 +380,10 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     // The translator needs the resource dir for the native headers. A portable build finds it at run time.
     to.resource_dir = opt_.resource_dir.empty() ? default_paths().resource_dir : opt_.resource_dir;
     to.std_version = opt_.std_version.empty() ? cxx_std_name() : opt_.std_version;
+    // The parse of the native headers sees the macros of the compile.
+    for (const std::string& f : opt_.extra_flags)
+        if (f.rfind("-D", 0) == 0 || f.rfind("-U", 0) == 0)
+            to.defines.push_back(f);
     // The parse uses the target of the modules, so the native headers match the compile.
     to.target = opt_.target_triple;
     to.sysroot = opt_.sysroot;

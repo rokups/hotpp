@@ -162,6 +162,40 @@ TEST(ScriptImportTranslation, ImportFromDisk)
     EXPECT_TRUE(found) << base.generic_string() << "\n" << r.cpp.substr(0, 2000);
 }
 
+// An import of an import is read from the directory of the script that imports it.
+// One file through two relative paths is one module.
+TEST(ScriptImportTranslation, NestedImportIsRelativeToItsImporter)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    std::filesystem::create_directories(dir.path() / "lib");
+    std::filesystem::create_directories(dir.path() / "app");
+    write_file(dir.path() / "lib" / "base.hot", kParent);
+    write_file(dir.path() / "lib" / "mid.hot", "using \"base.hot\";\nclass Mid : Base { }\n");
+    hotc::TranslateOptions o = temp_options(dir,
+        "using \"../lib/mid.hot\";\n"
+        "using \"../lib/base.hot\";\n"
+        "class Kid : Mid {\n"
+        "    override int Power() { return 2; }\n"
+        "}\n");
+    o.script_name = (dir.path() / "app" / "t.hot").string();
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_EQ(r.imports.size(), 2u);
+}
+
+// The "-D" flags of TranslateOptions::defines reach the parse of the native headers.
+TEST(ScriptImportTranslation, DefinesReachTheHeaderParse)
+{
+    TempDir dir;
+    write_file(dir.path() / "plat.h", "#ifndef HOT_TEST_PLATFORM\n#error no platform\n#endif\n" + std::string(kHeaderV1));
+    hotc::TranslateOptions o = temp_options(dir, "using \"plat.h\";\nclass Kid : Widget { }\n");
+    EXPECT_FALSE(hotc::translate(o).ok);
+    o.defines = {"-DHOT_TEST_PLATFORM=1"};
+    const hotc::TranslateResult r = hotc::translate(o);
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
 // An imported script uses the namespace of the main script. Another value is an error.
 TEST(ScriptImportTranslation, ImportWithAnotherStdNamespaceIsAnError)
 {
