@@ -30,6 +30,8 @@ class Calc : Actor {
 }
 ```
 
+A `std.function` value tests against `null`. `f == null` gives `!f` and `f != null` gives `static_cast<bool>(f)`. `f = null` clears it.
+
 ## Captures
 
 A lambda copies the locals that it uses. It also reaches the members of `this`. A later change of the local does not change the copy.

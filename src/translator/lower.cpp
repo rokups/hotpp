@@ -211,6 +211,21 @@ struct Lowerer
     }
 
     // True when the script type text is "T?": an optional. A "const" prefix and a "&" suffix do not count.
+    // "std.function<R(A)>" (or "std::function<...>"), a reference or a const form too. The null test
+    // of such a value is a test of its bool conversion.
+    static bool is_function_type(const std::string& type)
+    {
+        std::string t;
+        for (char ch : type)
+            if (ch > ' ')
+                t += ch;
+        if (t.compare(0, 5, "const") == 0)
+            t.erase(0, 5);
+        while (!t.empty() && t.back() == '&')
+            t.pop_back();
+        return t.compare(0, 13, "std.function<") == 0 || t.compare(0, 14, "std::function<") == 0;
+    }
+
     static bool is_optional(const std::string& type)
     {
         std::string t = type;
@@ -2577,6 +2592,12 @@ struct Lowerer
                 return;
             }
             auto iv = cx.interface_virtuals.find(m.name);
+            // A protected native virtual: only the shell can call it. The shell has a public forwarder.
+            if (cx.protected_natives.count(m.name) && iv == cx.interface_virtuals.end())
+            {
+                e = raw("__self->__hot_base_" + m.name, obj_pos);
+                return;
+            }
             e = raw(
                 "__self->" + (iv == cx.interface_virtuals.end() ? cx.cls->base : iv->second) + "::" + m.name, obj_pos);
             return;
@@ -3133,6 +3154,27 @@ struct Lowerer
                     coerce(b->rhs, type_of(*b->lhs));
                 else if (std::holds_alternative<NullExpr>(b->lhs->v) && is_optional(type_of(*b->rhs)))
                     coerce(b->lhs, type_of(*b->rhs));
+            }
+            // "f == null" and "f != null" on a std.function: "!f" and "static_cast<bool>(f)".
+            if ((b->op == "==" || b->op == "!=") && b->lhs && b->rhs)
+            {
+                ExprP* fn = nullptr;
+                if (std::holds_alternative<NullExpr>(b->rhs->v) && is_function_type(type_of(*b->lhs)))
+                    fn = &b->lhs;
+                else if (std::holds_alternative<NullExpr>(b->lhs->v) && is_function_type(type_of(*b->rhs)))
+                    fn = &b->rhs;
+                if (fn)
+                {
+                    const uint32_t pos = pos_of(**fn);
+                    expr(*fn);
+                    const std::string text = print(**fn);
+                    const bool plain = text.find_first_not_of(
+                                           "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.:->")
+                        == std::string::npos;
+                    e = raw(b->op == "==" ? "!" + (plain ? text : "(" + text + ")") : "static_cast<bool>(" + text + ")",
+                        pos);
+                    return;
+                }
             }
             if (b->lhs && b->rhs && op_on_handle(*b->lhs, b->op, 1, b->pos != 0 ? b->pos : pos_of(*b->lhs)))
                 return;

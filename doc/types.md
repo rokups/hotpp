@@ -56,6 +56,7 @@ The implicit conversion from a float to an integer is not checked. Use a cast (s
 ## Variables
 
 A variable can have no initializer. It then gets the default value (zero, `false`, `null`). `var` takes the type from the initializer. Do not write `const` on a variable. The translator infers it: a local that the body never assigns is const. The error `const is inferred; remove it` shows when you write it.
+ A field can use `var` too, for example `protected var logger = Urho3D.Log.GetLogger();`. The field type is the type of the initializer without a reference.
 
 ```hot
 class Demo {

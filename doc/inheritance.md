@@ -41,6 +41,8 @@ class Boss : Actor, IDamageable {
 }
 ```
 
+A script class can override a protected native virtual method: `protected override void OnX() { base.OnX(); }`. The shell calls the native code for `base.OnX()`.
+
 These rules apply to the bases:
 
 - The first base gets the constructor arguments.

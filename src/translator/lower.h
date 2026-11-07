@@ -136,6 +136,9 @@ struct RCtx
     // "P__base_M(self, args)": the implementation that P sees.
     std::string native_base;
     std::set<std::string> native_virtuals;
+    // The names of the protected native virtual methods. "base.M(args)" in a root class calls the
+    // public forwarder "__hot_base_M" of the shell: the state struct cannot call a protected member.
+    std::set<std::string> protected_natives;
     // The pure native virtual methods that no script class of the parent chain implements: the
     // name to the parameter counts. "base.M(args)" of such a method is an error: it has no body.
     // "concrete_natives" has the other native virtuals (they have a body). The pass has no

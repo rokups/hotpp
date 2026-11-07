@@ -561,6 +561,7 @@ struct NativeVirtual
     std::vector<std::string> canon;
     bool is_const = false, pure = false, final_ = false, no_except = false;
     bool host = false; // a cpp_prelude text of the host overrides it in the shell (cpp_overrides)
+    bool prot = false; // a protected member: only the shell can call the native implementation
     std::string key() const
     {
         std::string k = name + "(";
@@ -946,6 +947,7 @@ void collect_virtuals(CXCursor cls, BaseInfo& info, const Subst& sub = {})
             }
             v.is_const = clang_CXXMethod_isConst(c);
             v.pure = clang_CXXMethod_isPureVirtual(c);
+            v.prot = clang_getCXXAccessSpecifier(c) == CX_CXXProtected;
             auto es = clang_getCursorExceptionSpecificationType(c);
             v.no_except = es == CXCursor_ExceptionSpecificationKind_BasicNoexcept
                 || es == CXCursor_ExceptionSpecificationKind_DynamicNone
@@ -5086,6 +5088,9 @@ void translate_impl(
                     throw TranslateAbort{};
                 init = hotc::ast::print(*f.init);
             }
+            // "var" on a field: the type is the type of the initializer, as "auto" deduces it.
+            if (f.type == "var" && !init.empty())
+                f.type = "std::remove_cv_t<std::remove_reference_t<decltype(" + init + ")>>";
             inits.push_back(init);
             earlier.insert(f.name);
         }
@@ -6595,6 +6600,9 @@ void translate_impl(
         }
         // A pure native method that the parent chain does not implement has no body for "base.M()".
         for (const auto& nv : bi.virtuals)
+            if (nv.prot)
+                base_cx.protected_natives.insert(nv.name);
+        for (const auto& nv : bi.virtuals)
             if (nv.pure && !nv.host && !(pinfo && pinfo->overridden_natives.count(nv.key())))
                 base_cx.abstract_natives[nv.name].insert(nv.ptypes.size());
             else
@@ -6775,9 +6783,10 @@ void translate_impl(
         // Base calls: a native virtual that the script does not override. The root shell derives from
         // the native base, so it can call a protected implementation. The forwarder of the state
         // struct and the "base_" function of a parent shell call this public member.
+        // A protected virtual that the script overrides has the member too: "base.M()" calls it.
         for (size_t i = 0; i < native_count && !par; ++i)
         {
-            if (slots[i].impl)
+            if (slots[i].impl && !slots[i].nv->prot)
                 continue;
             const NativeVirtual& nv = *slots[i].nv;
             std::string ps, as;
@@ -6995,6 +7004,24 @@ void translate_impl(
             return r;
         };
         auto fn_ret = [](const Method& m) { return m.ret.empty() ? std::string("void") : m.ret; };
+        // "var" on a field takes the type of the initializer, as "auto" does. The state struct
+        // needs the type before the initializers are lowered, so the lowered text is kept here.
+        std::map<std::string, std::string> var_field_inits;
+        for (Field& f : cd.fields)
+        {
+            if (f.type != "var" || f.raw || f.value || !f.has_init || !f.init)
+                continue;
+            RCtx fc = base_cx;
+            fc.allow_this = false;
+            fc.typed_init = true;
+            fc.in_field_init = true;
+            hotc::lower_expr(f.init, fc, g_diag, f.script_type);
+            if (!g_diag.items.empty())
+                throw TranslateAbort{};
+            const std::string init = hotc::ast::print(*f.init);
+            f.type = "std::remove_cv_t<std::remove_reference_t<decltype(" + init + ")>>";
+            var_field_inits[f.name] = init;
+        }
         if (!opt.aot_optimized)
         {
         o.w("struct " + S + (pinfo ? " : " + pinfo->S : std::string()) + " {\n");
@@ -7099,6 +7126,8 @@ void translate_impl(
                     throw TranslateAbort{};
                 init = hotc::ast::print(*f.init);
             }
+            else if (var_field_inits.count(f.name))
+                init = var_field_inits[f.name];
             else if (f.has_init && f.init)
             {
                 if (f.weak)
