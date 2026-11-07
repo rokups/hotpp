@@ -55,6 +55,36 @@ class Calc {
 
 A default value is an error on a `virtual` or `override` method. A struct constructor cannot have a default for every parameter. Calls from script code and the engine factory use the default value. It is not part of the reload key, so a change of a default value does not need a new key.
 
+## Method overloads
+
+A class can have two or more methods with one name and different parameter types. C++ selects the overload by the argument types of the call.
+
+```hot
+class Scorer {
+    int Score(int x) => x * 2;
+    int Score(float x) => 1000;
+    virtual int Kind(int x) => 1;
+    virtual int Kind(std.string s) => 2;
+}
+
+class Child : Scorer {
+    override int Kind(int x) => 10;   // replaces Kind(int) only
+}
+```
+
+- Each overload has its own slot. The key of the slot is the name and the parameter types, for example `Score__ov_int32_t`. A name with one method keeps the plain key, so its slot does not change.
+- A reload can add an overload, remove one or change a parameter type. A live object keeps its fields.
+- When a name gets a second overload, the first overload gets a new key. Its old slot becomes a removed function. Code of an older generation that calls the old slot gets the error of a removed function.
+- An `override` replaces the parent overload with the same parameter types.
+- The pass mode (`ref`, `in`) does not make two overloads. `$C` (a handle) and `C` (a value) are two types.
+- Only a class has method overloads. A struct, a static method and a free function have one method for each name.
+
+| Mistake | Error |
+|---|---|
+| Two overloads with the same parameter types | `function '<name>' is declared twice with the same parameter types` |
+| A child class adds an overload to a name of the parent | `function '<name>' adds an overload to the overloads of '<parent>'; declare all overloads of a name in one class` |
+| More than one overload fits the call | `the call of '<Class>.<name>' fits more than one overload. Convert the argument to the parameter type of one overload` |
+
 ## Constructors and destructors
 
 The constructor has the class name. The destructor starts with `~`. `new` calls a constructor. `new $Helper()` gives a handle, and `new Helper()` gives a value. `Helper()` without `new` is an error.
