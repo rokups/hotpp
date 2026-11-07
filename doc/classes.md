@@ -77,13 +77,20 @@ class Child : Scorer {
 - When a name gets a second overload, the first overload gets a new key. Its old slot becomes a removed function. Code of an older generation that calls the old slot gets the error of a removed function.
 - An `override` replaces the parent overload with the same parameter types.
 - The pass mode (`ref`, `in`) does not make two overloads. `$C` (a handle) and `C` (a value) are two types.
-- Only a class has method overloads. A struct, a static method and a free function have one method for each name.
+- A static method can have overloads. Its key is `<Class>::<name>__ov_<sig>` in the function table of the unit. An importer calls each overload.
+- A free function can have overloads too (see [Free functions](module-level.html)).
+- A struct method can have overloads. A struct method is a C++ member of the struct, so it has no key.
+- A constructor can have overloads (see [Constructors and destructors](#constructors-and-destructors)).
+- `base.Name(args)` calls the parent overload that the argument types select. The forwarder `<Parent>__<name>__ovbase` makes a direct call, also to a parent in an imported unit.
+- An operator has no overloads.
 
 | Mistake | Error |
 |---|---|
 | Two overloads with the same parameter types | `function '<name>' is declared twice with the same parameter types` |
 | A child class adds an overload to a name of the parent | `function '<name>' adds an overload to the overloads of '<parent>'; declare all overloads of a name in one class` |
 | More than one overload fits the call | `the call of '<Class>.<name>' fits more than one overload. Convert the argument to the parameter type of one overload` |
+
+The errors are the same for a static method, a free function and a struct method. The call of a struct method has only the method name in the error.
 
 ## Constructors and destructors
 
@@ -230,11 +237,12 @@ float F() => Weapon.MaxRange;
 | `static virtual` or `static override` | `'static' and 'virtual' cannot combine` (the same for `override`) |
 | A `static` constructor | `a constructor cannot be 'static'` |
 | A `static` member of an interface | `an interface member cannot have the modifier 'static'` |
-| Two static methods with one name | `function '<name>' is declared twice (overloads are not supported)` |
+| Two static methods with the same parameter types | `function '<name>' is declared twice with the same parameter types` |
+| A static method and a method with one name | `function '<name>' is declared twice (a static method and a method)` |
 | A call of a function in a field initializer | `a field initializer cannot call the function '<name>': the prototype of the function comes after the class` |
 | A call of a function in a default argument | `a default argument cannot call the function '<name>': the prototype of the function comes after the declaration` |
 
-A static method has no overloads. Use one name for one function.
+A static method can have overloads (see [Method overloads](#method-overloads)).
 
 ### Static fields
 
