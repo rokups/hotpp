@@ -192,6 +192,7 @@ Note: the check sees direct mutation only. See doc/limits.md.
 - An assignment clears the narrowing.
 - A field never narrows. Copy it to a local.
 - A lambda body starts with no narrowing.
+- A lambda that writes a local or a plain parameter makes it a shared cell (`hot::make_cell`, G06). The const inference finds the writes. The function reads the cell through a `T&` local, so the type of the name does not change.
 - A `ref` to a nullable name disables the narrowing of both names.
 - A `ref` to a nullable field is an error.
 - `?.` works on any expression. It gives a nullable result: a pointer or a handle member stays that type. A value member gives `T?`. The lowering is `hot::safe_access`.

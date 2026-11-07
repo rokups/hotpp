@@ -34,7 +34,7 @@ A `std.function` value tests against `null`. `f == null` gives `!f` and `f != nu
 
 ## Captures
 
-A lambda copies the locals that it uses. It also reaches the members of `this`. A later change of the local does not change the copy.
+A lambda copies the locals that it uses. It also reaches the members of `this`. A later change of the local does not change the copy. A lambda that writes a local makes the local a shared cell (see below).
 
 ```hot
 using "Actor.h";
@@ -51,6 +51,30 @@ class Beeper : Actor {
     }
 }
 ```
+
+### A lambda that writes a captured variable
+
+A lambda can write a local or a plain parameter of its function. The variable is then a shared cell, as in C#. No keyword is necessary. The variable lives on the heap. The function and each lambda use the same cell, so all of them see each write. The cell lives while a lambda or the function holds it.
+
+```hot
+using "Actor.h";
+
+class Counter : Actor {
+    int counted = 0;
+
+    void count() {
+        int n = 0;
+        var inc = () => { n++; };
+        inc();
+        inc();
+        counted = n; // 2
+    }
+}
+```
+
+The translator writes `auto __cell_n = hot::make_cell<int32_t>(0); int32_t& n = *__cell_n;` (`include/hot/runtime/cell.h`). The lambda copies `__cell_n` and binds `n` to it again. A parameter gets a cell with its value at the start of the body. A write is an assignment, `++`, `--`, a `ref` or `out` argument, or a call of a member function on a value. A lambda that only reads a cell also uses the cell.
+
+Only a local or a plain parameter can be a cell. A lambda that assigns a `foreach` variable, a structured binding, a `catch` variable, a parameter of an outer lambda or a local in the init part of a `for` is an error. Copy the value into a local before the lambda. A `ref`, `in` or `out` parameter cannot go into a lambda (see [Captures](#captures)).
 
 ## Lambdas and reload
 

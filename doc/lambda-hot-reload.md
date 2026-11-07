@@ -41,6 +41,7 @@ Give each lambda the same treatment as a method.
 ## Costs and open questions
 
 - **Copy semantics.** Copies of a closure would share one capture block. This is correct for lambdas that capture only `this` or immutable values. A `mutable` lambda that native code copies changes behavior. Either forbid it or copy the block on a closure copy.
+- **Shared cells.** A captured variable that a lambda writes is a `hot::Cell<T>` (a `std::shared_ptr<T>`). Copies of the closure share the cell. A runtime capture block must keep the cell handle and must not copy the value.
 - **New captures.** A capture that did not exist in the old version has no value. Default-initialize it, or mark the closure stale.
 - **Common case.** A lambda that captures only the state handle needs no capture block. It is a handle plus a slot, like a delegate.
 - **Thunk lifetime.** `include/hot/runtime/loader.h:102-103` says a thunk keeps the address of its first registration. Confirm that this code does not live in a script library that must stay loaded.

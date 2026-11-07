@@ -42,6 +42,7 @@ This list shows what version 1 does not support.
 - A namespace block in a `.hot` script. Use `using ns;` for a native namespace.
 - A call of a free function by name from the host through `Loader::thunk`. Call a method of a class.
 - A function as a value, such as `var f = Add;`. Call it, or write a lambda.
+- A lambda that assigns a `foreach` variable, a structured binding, a `catch` variable, a parameter of an outer lambda or a `for` init local. Only a local or a plain parameter can be a shared cell (see doc/lambdas.md). Copy the value into a local first.
 - An `async` free function or an `async` static method. An async function needs an object.
 - A collection literal without a declared type: `var x = [1, 2];` is an error.
 - A `.cpp` script has no null or bounds checks. The translator keeps a `.cpp` body as C++ text and does not parse expressions. The checks cover `.hot` scripts only.
