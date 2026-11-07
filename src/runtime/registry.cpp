@@ -25,7 +25,7 @@ std::atomic<uint64_t> g_removed_calls{0};
 std::mutex g_detached_mutex;
 std::set<std::pair<std::string, unsigned>> g_detached_logged;
 std::set<std::pair<std::string, unsigned>> g_removed_fn_logged; // under g_detached_mutex
-std::atomic<bool> g_removed_logged{false};
+std::atomic<bool> g_removed_logged{false}; // a commit that removes a class clears it
 
 // This reference keeps errors.cpp in the link. The host must export the symbols of errors.cpp
 // to the script modules, but no host code names them. The linker would drop errors.o.
@@ -50,6 +50,11 @@ void note_removed_call()
         std::fprintf(stderr,
             "[script] call of a method of a removed script class or function ignored (it is no "
             "longer in the source); later calls are counted only\n");
+}
+
+void rearm_removed_call_log()
+{
+    g_removed_logged.store(false, std::memory_order_relaxed);
 }
 
 void removed_function_called(const ClassRecord* cls, unsigned slot)

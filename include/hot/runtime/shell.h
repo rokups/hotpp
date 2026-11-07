@@ -77,8 +77,11 @@ HOT_HIDDEN bool record_is(const ClassRecord* r, const char* name)
 // calls (loader.cpp). The call does not run.
 HOT_NODEBUG HOT_EXPORT void detached_call(const ClassRecord* cls, unsigned slot);
 uint64_t detached_call_count();
-// The call of a slot of a removed class (key kRemovedSlotKey): it counts the call and logs the first one.
+// The call of a slot of a removed class (key kRemovedSlotKey): it counts the call. It logs the first
+// call after each commit that removes a class.
 void note_removed_call();
+// The commit that removes a class calls this. The next call of a removed slot logs again.
+void rearm_removed_call_log();
 uint64_t removed_call_count();
 // The call of a defunct slot of a live class (key kDefunctSlotKey): the function is removed from the
 // source. The call counts, logs the first call of the slot and throws ScriptError "call of removed

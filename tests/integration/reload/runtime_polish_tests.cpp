@@ -82,6 +82,48 @@ TEST_P(BackendTests, RemovedClassKeepsItsObjectsValid)
     EXPECT_FALSE(find_class(st, "Hero")->removed);
 }
 
+// Two reloads remove two classes in one process. The first call after each removal logs a
+// line. An earlier removal does not stop the log of a later removal.
+TEST_P(BackendTests, EachRemovalLogsTheFirstIgnoredCall)
+{
+    hot::LoadResult v1 = backend->load(source("removed_twice_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    hot::LoadResult v2 = backend->load(source("removed_twice_v2.hot"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    hot::LoadResult v3 = backend->load(source("removed_twice_v3.hot"), 3);
+    ASSERT_TRUE(v3) << v3.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Hero"));
+    s.commit_at_frame_boundary();
+    hot::Instance ghost = s.loader.find("Ghost")->create();
+    hot::Instance wraith = s.loader.find("Wraith")->create();
+    s.world.Add(static_cast<Actor*>(ghost.native));
+    s.world.Add(static_cast<Actor*>(wraith.native));
+    const char* const ignored = "call of a method of a removed script class or function ignored";
+
+    std::string error;
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    testing::internal::CaptureStderr();
+    s.world.Tick(kDt); // the commit removes Ghost at the end of this frame
+    s.world.Tick(kDt); // the Ghost Tick goes to the handler
+    s.world.Tick(kDt); // a second ignored call does not log
+    std::string log = testing::internal::GetCapturedStderr();
+    ASSERT_FALSE(s.commit_failed);
+    ASSERT_TRUE(find_class(s.loader.stats(), "Ghost")->removed);
+    EXPECT_NE(log.find(ignored), std::string::npos) << log;
+    EXPECT_EQ(log.find(ignored), log.rfind(ignored)) << log; // one line for the removal
+
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v3.module)));
+    testing::internal::CaptureStderr();
+    s.world.Tick(kDt); // the commit removes Wraith at the end of this frame
+    s.world.Tick(kDt); // the Ghost and Wraith Ticks go to the handler
+    log = testing::internal::GetCapturedStderr();
+    ASSERT_FALSE(s.commit_failed);
+    ASSERT_TRUE(find_class(s.loader.stats(), "Wraith")->removed);
+    EXPECT_NE(log.find(ignored), std::string::npos) << log;
+    EXPECT_EQ(log.find(ignored), log.rfind(ignored)) << log;
+}
+
 // Backend::load runs on a worker thread. The main thread runs the old code during the compile and
 // commits the finished module at the frame boundary. The object keeps its state.
 TEST_P(BackendTests, LoadOnAWorkerThreadWhileTheOldCodeRuns)

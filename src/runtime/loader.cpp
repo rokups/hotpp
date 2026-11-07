@@ -1585,6 +1585,7 @@ ReloadResult Loader::commit_locked()
                 "[script] WARNING: class %s is removed from the source; %zu live object(s) keep "
                 "their state, and calls of its methods are ignored\n",
                 name.c_str(), live);
+            rearm_removed_call_log(); // the first ignored call of this removal logs
         }
     // A new class with a script parent: "super" points to the record of the parent in the
     // registry, so a walk of the records sees the canonical records (design 4.5).
