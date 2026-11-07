@@ -313,18 +313,38 @@ const std::string kModuleName = hotc::kModuleClassName;
 // "C.Name" anywhere, and a bare "Name" in C or in a script child of C. A parameter or a local with
 // the name hides the constant in its function. A private constant is for C only. A protected
 // constant is for C and its children.
-void resolve_class_consts(hotc::ast::Script& sc, const hotc::LineMap& map)
+// The same step resolves the static fields and the static properties (gap G23). A static field is
+// a module variable "C__Name" of the owner module ("foreign_vars": the ones of the imports). A
+// static property read is a call "C.get_Name()". A write statement ("C.Name = e", "C.Name op= e",
+// "C.Name++") is a call "C.set_Name(...)". Another write of a static property is an error.
+void resolve_class_consts(hotc::ast::Script& sc, const std::vector<const hotc::ast::Field*>& foreign_vars,
+    const hotc::LineMap& map)
 {
     using namespace hotc::ast;
     struct ConstRef
     {
         std::string owner, full;
         Access access = Access::Public;
+        const Property* prop = nullptr; // a static property, else a constant or a static field
     };
     std::map<std::string, std::map<std::string, ConstRef>> by_class; // class -> short name -> constant
+    auto add = [&](const std::string& owner, const std::string& n, ConstRef ref, uint32_t pos)
+    {
+        if (!by_class[owner].emplace(n, std::move(ref)).second)
+            fail_at(map, pos, "'" + n + "' is declared twice in '" + owner + "'");
+    };
     for (const Field& f : sc.consts)
         if (!f.owner.empty())
-            by_class[f.owner][f.name.substr(f.owner.size() + 2)] = {f.owner, f.name, f.access};
+            add(f.owner, f.name.substr(f.owner.size() + 2), {f.owner, f.name, f.access}, f.pos);
+    for (const Field& f : sc.vars)
+        if (!f.owner.empty())
+            add(f.owner, f.name.substr(f.owner.size() + 2), {f.owner, f.name, f.access}, f.pos);
+    for (const Field* f : foreign_vars)
+        if (!f->owner.empty())
+            add(f->owner, f->name.substr(f->owner.size() + 2), {f->owner, f->name, f->access}, f->pos);
+    for (const ClassDef& c : sc.classes)
+        for (const Property& p : c.sprops)
+            add(c.name, p.name, {c.name, c.name + "__" + p.name, p.access, &p}, p.pos);
     if (by_class.empty())
         return;
     std::map<std::string, const ClassDef*> classes;
@@ -346,10 +366,13 @@ void resolve_class_consts(hotc::ast::Script& sc, const hotc::LineMap& map)
                 dup = dup || m.name == n;
             for (const Property& p : c.props)
                 dup = dup || p.name == n;
+            if (dup && ref.prop)
+                fail_at(map, ref.prop->pos, "'" + n + "' is declared twice in '" + c.name + "'");
             if (dup)
-                for (const Field& f : sc.consts)
-                    if (f.name == ref.full)
-                        fail_at(map, f.pos, "'" + n + "' is declared twice in '" + c.name + "'");
+                for (const std::vector<Field>* list : {&sc.consts, &sc.vars})
+                    for (const Field& f : *list)
+                        if (f.name == ref.full)
+                            fail_at(map, f.pos, "'" + n + "' is declared twice in '" + c.name + "'");
         }
     }
     // True when "cls" is "owner" or a script child of it.
@@ -399,14 +422,14 @@ void resolve_class_consts(hotc::ast::Script& sc, const hotc::LineMap& map)
             }
         };
         visit_all(collect_e, collect_s);
-        auto on_e = [&](const Expr& ce)
+        // The constant, the static field or the static property that the name "n" gives, or null.
+        // "used" is the count of the parts that the reference takes.
+        auto lookup = [&](NameExpr* n, size_t& used) -> const ConstRef*
         {
-            // The walk is read-only. The name node belongs to the script AST, which this step edits.
-            auto* n = const_cast<NameExpr*>(std::get_if<NameExpr>(&ce.v));
             if (!n || n->parts.empty())
-                return;
+                return nullptr;
             const ConstRef* ref = nullptr;
-            size_t used = 1;
+            used = 1;
             if (n->parts.size() >= 2 && classes.count(n->parts[0]))
             {
                 ref = find_const(n->parts[0], n->parts[1]);
@@ -426,19 +449,112 @@ void resolve_class_consts(hotc::ast::Script& sc, const hotc::LineMap& map)
                 }
             }
             if (!ref)
-                return;
+                return nullptr;
             const std::string what = "'" + ref->owner + "." + ref->full.substr(ref->owner.size() + 2) + "'";
             if (ref->access == Access::Private && !(cls && cls->name == ref->owner))
                 fail_at(map, n->pos, what + " is private");
             if (ref->access == Access::Protected && !derives(cls, ref->owner))
                 fail_at(map, n->pos, what + " is protected");
+            return ref;
+        };
+        auto what_of = [](const ConstRef& r) { return "'" + r.owner + "." + r.prop->name + "'"; };
+        // "C.accessor(args)", then the rest of the parts of "n" as a member chain.
+        auto accessor_call = [&](const ConstRef& r, bool is_get, std::vector<ExprP> args, const NameExpr& n, size_t used)
+        {
+            if (is_get ? !r.prop->has_get : !r.prop->has_set)
+                fail_at(map, n.pos, what_of(r) + (is_get ? " has no 'get'" : " has no 'set'"));
+            CallExpr call;
+            call.callee = make_expr(NameExpr{{r.owner, (is_get ? "get_" : "set_") + r.prop->name}, "", {}, false, n.pos});
+            call.args = std::move(args);
+            call.pos = n.pos;
+            ExprP e = make_expr(std::move(call));
+            for (size_t i = used; i < n.parts.size(); ++i)
+                e = make_expr(MemberExpr{std::move(e), n.parts[i], n.pos});
+            return e;
+        };
+        // The static property that the target of a write gives, or null.
+        auto write_target = [&](const Expr& e, ExprP*& target, std::string& op, bool& inc) -> const ConstRef*
+        {
+            static const std::set<std::string> ops = {"=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>="};
+            target = nullptr;
+            if (auto* b = std::get_if<BinaryExpr>(&e.v); b && ops.count(b->op))
+            {
+                target = const_cast<ExprP*>(&b->lhs);
+                op = b->op.substr(0, b->op.size() - 1);
+                inc = false;
+            }
+            else if (auto* u = std::get_if<UnaryExpr>(&e.v); u && (u->op == "++" || u->op == "--"))
+            {
+                target = const_cast<ExprP*>(&u->operand);
+                op = u->op.substr(0, 1);
+                inc = true;
+            }
+            if (!target || !*target)
+                return nullptr;
+            size_t used = 0;
+            auto* n = std::get_if<NameExpr>(&(*target)->v);
+            NameExpr probe = n ? NameExpr{n->parts, "", {}, false, n->pos} : NameExpr{};
+            const ConstRef* r = n ? lookup(&probe, used) : nullptr;
+            return r && r->prop && used == n->parts.size() ? r : nullptr;
+        };
+        auto on_s = [&](const Stmt& cs)
+        {
+            auto* es = std::get_if<ExprStmt>(&cs.v);
+            if (!es || !es->expr)
+                return;
+            ExprP* target = nullptr;
+            std::string op;
+            bool inc = false;
+            const ConstRef* r = write_target(*es->expr, target, op, inc);
+            if (!r)
+                return;
+            Expr& e = const_cast<Expr&>(*es->expr);
+            const NameExpr& tn = std::get<NameExpr>((*target)->v);
+            const NameExpr n{tn.parts, "", {}, false, tn.pos};
+            ExprP value;
+            if (inc)
+                value = make_expr(NumberExpr{"1", n.pos});
+            else
+                value = std::move(const_cast<ExprP&>(std::get<BinaryExpr>(e.v).rhs));
+            if (!op.empty())
+            {
+                BinaryExpr b;
+                b.op = op;
+                b.lhs = accessor_call(*r, true, {}, n, n.parts.size());
+                b.rhs = inc ? std::move(value) : make_expr(ParenExpr{std::move(value), n.pos});
+                b.pos = n.pos;
+                value = make_expr(std::move(b));
+            }
+            std::vector<ExprP> args;
+            args.push_back(std::move(value));
+            ExprP call = accessor_call(*r, false, std::move(args), n, n.parts.size());
+            e.v = std::move(call->v);
+        };
+        auto on_e = [&](const Expr& ce)
+        {
+            ExprP* target = nullptr;
+            std::string op;
+            bool inc = false;
+            if (const ConstRef* r = write_target(ce, target, op, inc))
+                fail_at(map, pos_of(**target), "a write of the static property " + what_of(*r) + " must be a statement");
+            // The walk is read-only. The name node belongs to the script AST, which this step edits.
+            auto* n = const_cast<NameExpr*>(std::get_if<NameExpr>(&ce.v));
+            size_t used = 1;
+            const ConstRef* ref = lookup(n, used);
+            if (!ref)
+                return;
+            if (ref->prop)
+            {
+                ExprP call = accessor_call(*ref, true, {}, *n, used);
+                const_cast<Expr&>(ce).v = std::move(call->v);
+                return;
+            }
             n->parts.erase(n->parts.begin(), n->parts.begin() + used);
             n->parts.insert(n->parts.begin(), ref->full);
             if (n->part_pos.size() >= used)
                 n->part_pos.erase(n->part_pos.begin() + 1, n->part_pos.begin() + used);
         };
-        auto no_s = [](const Stmt&) {};
-        visit_all(on_e, no_s);
+        visit_all(on_e, on_s);
     };
     auto run_block = [&](const ClassDef* cls, const std::vector<Param>* params, std::vector<const BlockStmt*> blocks,
                          std::vector<const ExprP*> exprs)
@@ -3594,7 +3710,12 @@ void translate_impl(
                     check_alias_name(a);
         }
     }
-    resolve_class_consts(sc, map);
+    {
+        std::vector<const hotc::ast::Field*> fvars;
+        for (const ForeignVar& v : foreign_vars)
+            fvars.push_back(&v.field);
+        resolve_class_consts(sc, fvars, map);
+    }
 
     // The main script and the imported scripts at the offsets of the map. The positions of the
     // AST point into this text, so the emitter finds the names of an imported script in it.

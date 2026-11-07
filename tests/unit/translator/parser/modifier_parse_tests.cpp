@@ -196,13 +196,13 @@ TEST(ModifierParse, StaticMethodGoesToStatics)
 TEST(ModifierParse, StaticErrors)
 {
     {
+        // A static field and a static property are valid (gap G23).
         ModParsed p(member_class("static int count = 0;"));
-        EXPECT_EQ(p.errors(), (std::vector<std::string>{"2:5: a static field is not supported; use a module "
-                                                         "variable (a variable at file level)"}));
+        EXPECT_TRUE(p.errors().empty());
     }
     {
         ModParsed p(member_class("static int N { get; set; }"));
-        EXPECT_EQ(p.errors(), (std::vector<std::string>{"2:5: a property cannot be 'static'"}));
+        EXPECT_TRUE(p.errors().empty());
     }
     {
         ModParsed p(member_class("static A() { }"));

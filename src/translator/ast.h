@@ -498,8 +498,9 @@ struct Field
     // module block is at file scope, so the translator declares the type in the namespace.
     std::string ns;
     // A class constant ("static const T Name = value;" in a class body): the name of the class.
-    // The parser moves the constant to Script::consts. "name" is then "Class__Name". Empty: a
-    // module constant or a field.
+    // The parser moves the constant to Script::consts. "name" is then "Class__Name". A static
+    // field ("static T Name;", gap G23) has an owner too: the parser moves it to Script::vars.
+    // Empty: a module constant, a module variable or a field.
     std::string owner;
 };
 
@@ -609,6 +610,7 @@ struct Property
     bool has_init = false;
     int line = 0;
     uint32_t pos = 0, get_pos = 0, set_pos = 0; // the name, the "get" word, the "set" word
+    bool is_static = false; // "static T Name { get; set; }" (gap G23): see ClassDef::sprops
     bool is_auto() const { return !get_body && !set_body; }
 };
 
@@ -648,8 +650,14 @@ struct ClassDef
     // The class constants ("static const T Name = value;"). The parse step moves them to
     // Script::consts (see Field::owner), so the list is empty after the parse.
     std::vector<Field> consts;
+    // The static fields ("static T Name;", gap G23). The parse step moves them to Script::vars
+    // (see Field::owner), so the list is empty after the parse.
+    std::vector<Field> svars;
     std::vector<Method> methods;
     std::vector<Method> statics; // the "static" methods, in source order
+    // The static properties (gap G23), without bodies. The parse step adds the accessors to
+    // "statics" as "get_Name" and "set_Name".
+    std::vector<Property> sprops;
     std::vector<Ctor> ctors; // the overloads; C++ picks one by the argument types
     std::vector<Method> dtors; // "~Name() { }": the name is "~Name"; the translator allows one
     std::vector<Property> props; // in source order

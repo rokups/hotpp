@@ -122,7 +122,6 @@ TEST(ClassScopeTranslation, ClassConstantErrors)
     EXPECT_TRUE(has(diag("class Foo : Widget { const int Max = 1; }\n"),
         "a class member cannot be 'const'; for a class constant, write 'static const' before the type of 'Max'"));
     EXPECT_TRUE(has(diag("class Foo : Widget { static const int Max; }\n"), "the constant 'Max' needs a value"));
-    EXPECT_TRUE(has(diag("class Foo : Widget { static int count = 0; }\n"), "a static field is not supported"));
     EXPECT_TRUE(has(diag("class Foo : Widget { static const int Max = 1; int Max = 2; }\n"),
         "'Max' is declared twice in 'Foo'"));
     EXPECT_TRUE(has(diag("class Foo : Widget { private static const int Max = 1; }\n"
@@ -169,6 +168,188 @@ TEST(ClassScopeTranslation, ImportedClassConstant)
     const hotc::TranslateResult c = translate_script(dir, secret.substr(std::string("using \"w.h\";\n").size()));
     ASSERT_TRUE(c.ok) << c.diagnostics;
     EXPECT_EQ(a.iface_hash, c.iface_hash) << "a private constant is not in the interface";
+}
+
+// G23: a static field is a module variable of the owner with the name "Class__Name". "Class.Name"
+// and a bare name in the class (also in a static method and a lambda) give it. A struct can have one.
+TEST(ClassScopeTranslation, StaticFieldInClassAndStruct)
+{
+    TempDir dir;
+    const hotc::TranslateResult r = translate_script(dir,
+        "struct P { static int made = 0; static int Next() { made++; return made; } }\n"
+        "class Foo : Widget {\n"
+        "    static int count_;\n"
+        "    public static float scale = 0.5f;\n"
+        "    private static int hidden_ = 3;\n"
+        "    override void Update(float dt) {\n"
+        "        count_++;\n"
+        "        Foo.count_ += 2;\n"
+        "        hidden_ = count_ + P.made;\n"
+        "        std.function<void()> f = () => { count_ = 9; };\n"
+        "        f();\n"
+        "    }\n"
+        "    static int Get() => count_ + hidden_;\n"
+        "    int Hide(int count_) => count_ + 1;\n"
+        "}\n"
+        "int Total() => Foo.count_ + P.Next();\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "int32_t Foo__count_;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "float Foo__scale;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "int32_t P__made;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot_mod()->Foo__count_++")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot_mod()->Foo__count_ += 2")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot_mod()->Foo__count_ = 9")) << "a lambda body" << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot_mod()->Foo__hidden_ = hot_mod()->Foo__count_ + hot_mod()->P__made")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "return hot_mod()->Foo__count_ + hot_mod()->Foo__hidden_;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "return count_ + 1;")) << "a parameter hides the static field" << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "Foo.count_")) << r.cpp;
+}
+
+// G23: the errors of a static field. The interface hash changes when a public static field is
+// added, removed or retyped. A private static field is not in the interface.
+TEST(ClassScopeTranslation, StaticFieldErrorsAndInterface)
+{
+    TempDir dir;
+    auto diag = [&](const std::string& script)
+    {
+        const hotc::TranslateResult r = translate_script(dir, script);
+        EXPECT_FALSE(r.ok) << script;
+        return r.diagnostics;
+    };
+    EXPECT_TRUE(has(diag("class Foo : Widget { static int n = 0; int n = 1; }\n"), "'n' is declared twice in 'Foo'"));
+    EXPECT_TRUE(has(diag("class Foo : Widget { private static int n = 0; }\n"
+                         "class Bar : Widget { int M() => Foo.n; }\n"),
+        "'Foo.n' is private"));
+    EXPECT_TRUE(has(diag("class Foo : Widget { protected static int n = 0; }\n"
+                         "int F() => Foo.n;\n"),
+        "'Foo.n' is protected"));
+    auto hash = [&](const std::string& script)
+    {
+        const hotc::TranslateResult r = translate_script(dir, script);
+        EXPECT_TRUE(r.ok) << r.diagnostics;
+        return r.iface_hash;
+    };
+    const auto base = hash("class Foo : Widget { int k = 0; }\n");
+    const auto added = hash("class Foo : Widget { int k = 0; static int n = 0; }\n");
+    const auto retyped = hash("class Foo : Widget { int k = 0; static float n = 0.0f; }\n");
+    const auto priv = hash("class Foo : Widget { int k = 0; private static int n = 0; }\n");
+    const auto prop = hash("class Foo : Widget { int k = 0; static int N { get; set; } }\n");
+    EXPECT_NE(base, added);
+    EXPECT_NE(added, retyped);
+    EXPECT_NE(base, prop);
+    EXPECT_EQ(base, priv) << "a private static field is not in the interface";
+}
+
+// G23: "static" at file level. A module variable and a free function are the static forms there.
+TEST(ClassScopeTranslation, StaticAtFileLevelGivesTheForm)
+{
+    TempDir dir;
+    auto diag = [&](const std::string& script)
+    {
+        const hotc::TranslateResult r = translate_script(dir, script);
+        EXPECT_FALSE(r.ok) << script;
+        return r.diagnostics;
+    };
+    EXPECT_TRUE(has(diag("static int total = 0;\n"), "a module variable is static"));
+    EXPECT_TRUE(has(diag("static int F() => 1;\n"), "a free function cannot be 'static'"));
+}
+
+// G23: a static property. The parser makes static methods "get_Name" and "set_Name". A read is a
+// call of the getter. A write statement is a call of the setter. "get; set;" has a hidden static field.
+TEST(ClassScopeTranslation, StaticProperty)
+{
+    TempDir dir;
+    const hotc::TranslateResult r = translate_script(dir,
+        "class Foo : Widget {\n"
+        "    static int count_ = 0;\n"
+        "    static int Count { get { return count_; } set { count_ = value; } }\n"
+        "    static int Auto { get; private set; } = 4;\n"
+        "    static int Twice => count_ * 2;\n"
+        "    override void Update(float dt) {\n"
+        "        Count = 3;\n"
+        "        Count += 2;\n"
+        "        Foo.Count++;\n"
+        "        int a = Count + Foo.Twice;\n"
+        "        Auto = a;\n"
+        "        std.function<void()> f = () => { Foo.Count = Auto; };\n"
+        "        f();\n"
+        "    }\n"
+        "}\n"
+        "int F() { Foo.Count = 7; return Foo.Count + Foo.Auto; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "Foo__s_set_Count(3)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "Foo__s_set_Count(Foo__s_get_Count() + (2))")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "Foo__s_set_Count(Foo__s_get_Count() + 1)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "Foo__s_get_Count() + Foo__s_get_Twice()")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "Foo__s_set_Auto(a)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "Foo__s_set_Count(Foo__s_get_Auto())")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "Foo____p_Auto")) << "the hidden field of 'get; set;'" << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "Foo.Count")) << r.cpp;
+}
+
+// G23: the errors of a static property.
+TEST(ClassScopeTranslation, StaticPropertyErrors)
+{
+    TempDir dir;
+    auto diag = [&](const std::string& script)
+    {
+        const hotc::TranslateResult r = translate_script(dir, script);
+        EXPECT_FALSE(r.ok) << script;
+        return r.diagnostics;
+    };
+    const std::string foo = "class Foo : Widget { static int n = 0; static int N { get { return n; } private set { n = value; } }"
+                            " static int R => n; }\n";
+    EXPECT_TRUE(has(diag(foo + "int F() { Foo.R = 1; return 0; }\n"), "'Foo.R' has no 'set'"));
+    EXPECT_TRUE(has(diag(foo + "int F() { int a = (Foo.N = 1); return a; }\n"),
+        "a write of the static property 'Foo.N' must be a statement"));
+    EXPECT_TRUE(has(diag(foo + "int F() { Foo.N = 1; return 0; }\n"), "private"));
+    EXPECT_TRUE(has(diag("class Foo : Widget { static int N { get; set; } int N = 1; }\n"),
+        "'N' is declared twice in 'Foo'"));
+}
+
+// G23: a static field, a static property and a static method of an imported class. The owner
+// module holds the storage: the importer uses hot::mod_var and hot::call_fn.
+TEST(ClassScopeTranslation, ImportedStaticMembers)
+{
+    TempDir dir;
+    const std::string lib = "class Counter {\n"
+                            "    static int count_ = 0;\n"
+                            "    private static int secret_ = 1;\n"
+                            "    static int Count { get { return count_ + secret_; } set { count_ = value; } }\n"
+                            "    static int Bump(int by) { count_ += by; return count_; }\n"
+                            "}\n";
+    hotc::TranslateOptions o = opts(dir,
+        "using \"lib.hot\";\nclass User : Widget {\n"
+        "    override void Update(float dt) { Counter.count_ += 1; Counter.Count = Counter.Count + Counter.Bump(2); }\n"
+        "}\n");
+    o.modules.emplace_back("lib.hot", lib);
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "hot_mv_Counter__count_() += 1")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::mod_var<int32_t>(hot::unit_ref(\"lib.hot\"), __site, \"Counter__count_\")")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "Counter__s_set_Count(Counter__s_get_Count() + Counter__s_Bump(2))")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "\"Counter::get_Count\"")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "secret_")) << "a private static field stays in its module" << r.cpp;
+}
+
+// G23: a static field of an imported struct. The owner module holds it, as for a class.
+TEST(ClassScopeTranslation, ImportedStructStaticField)
+{
+    TempDir dir;
+    const std::string lib = "struct Tally {\n"
+                            "    static int n = 0;\n"
+                            "    private static int step_ = 1;\n"
+                            "    static int Next() { n += step_; return n; }\n"
+                            "}\n";
+    hotc::TranslateOptions o = opts(dir,
+        "using \"lib.hot\";\nclass User : Widget {\n"
+        "    override void Update(float dt) { Tally.n += Tally.Next(); }\n"
+        "}\n");
+    o.modules.emplace_back("lib.hot", lib);
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "hot_mv_Tally__n() += Tally__s_Next()")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "Tally__step_")) << r.cpp;
 }
 
 // G09: a script class as the template argument of a native template. "GetComponent<C>()" gives a

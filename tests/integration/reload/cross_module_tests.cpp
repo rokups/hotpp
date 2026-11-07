@@ -257,6 +257,107 @@ TEST_P(FamilyTests, ChainOverThreeUnitsAndBodyReloadOfTheRoot)
     EXPECT_EQ(*fld<int>(s, "total"), 115 + 6000 + 10);
 }
 
+// G23: the owner unit "lib.hot" holds the static fields of "Counter" in its module block.
+const char* kStaticLib1 = R"(
+class Counter {
+    static int count_ = 0;
+    private static int mark_ = 7;
+    static int Count { get { return count_; } set { count_ = value; } }
+    static int Bump(int by) { count_ += by; return count_; }
+    static int Mark() { mark_ += 1; return mark_; }
+}
+)";
+
+// Generation 2: a new body of "Bump". The interface stays.
+const char* kStaticLib2 = R"(
+class Counter {
+    static int count_ = 0;
+    private static int mark_ = 7;
+    static int Count { get { return count_; } set { count_ = value; } }
+    static int Bump(int by) { count_ += by * 2; return count_; }
+    static int Mark() { mark_ += 1; return mark_; }
+}
+)";
+
+// Generation 3: the private static field "mark_" changes its type. A reload resets it to the
+// initializer. The interface stays, because a private static field is not in it.
+const char* kStaticLib3 = R"(
+class Counter {
+    static int count_ = 0;
+    private static float mark_ = 2.5f;
+    static int Count { get { return count_; } set { count_ = value; } }
+    static int Bump(int by) { count_ += by * 2; return count_; }
+    static int Mark() { mark_ += 1.0f; return mark_ < 4.0f ? 1 : 0; }
+}
+)";
+
+// The importer: a static field, a static property and a static method of "Counter" (also from a
+// lambda), and a static method and a static property of its own class.
+const char* kStaticApp = R"(
+using "Actor.h";
+using "lib.hot";
+
+class Hero : Actor {
+    static int Ticks { get; set; } = 0;
+    int seen = 0;
+    int got = 0;
+    int mark = 0;
+    int twice = 0;
+    int ticks = 0;
+
+    static int Twice(int v) => v * 2;
+
+    override void Tick(float dt) {
+        Counter.count_ += 1;
+        Counter.Count = Counter.Count + 10;
+        std.function<int()> f = () => Counter.Bump(100);
+        this.got = f();
+        this.seen = Counter.count_;
+        this.mark = Counter.Mark();
+        this.twice = Twice(3) + Hero.Twice(1);
+        Ticks++;
+        this.ticks = Hero.Ticks;
+    }
+}
+)";
+
+// G23: static members over two units. A reload of the owner keeps the values of the static fields
+// and runs the new body of a static method. A new type of a static field resets it to the initializer.
+TEST_P(FamilyTests, StaticMembersOverTwoUnits)
+{
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(start(s,
+        batch_of(build("app.hot", kStaticApp, {{"lib.hot", kStaticLib1}}, 1), build("lib.hot", kStaticLib1, {}, 1)),
+        "Hero"));
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "got"), 111);
+    EXPECT_EQ(*fld<int>(s, "seen"), 111);
+    EXPECT_EQ(*fld<int>(s, "mark"), 8);
+    EXPECT_EQ(*fld<int>(s, "twice"), 8);
+    EXPECT_EQ(*fld<int>(s, "ticks"), 1);
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "seen"), 222);
+    EXPECT_EQ(*fld<int>(s, "mark"), 9);
+
+    std::vector<hot::LoadResult> v2;
+    v2.push_back(build("lib.hot", kStaticLib2, {}, 2));
+    ASSERT_NO_FATAL_FAILURE(reload(s, std::move(v2))); // the commit frame runs the old code
+    EXPECT_EQ(*fld<int>(s, "seen"), 333);
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "seen"), 333 + 11 + 200) << "the value survives and the new body runs";
+    EXPECT_EQ(*fld<int>(s, "mark"), 11);
+    EXPECT_EQ(*fld<int>(s, "ticks"), 4);
+
+    std::vector<hot::LoadResult> v3;
+    v3.push_back(build("lib.hot", kStaticLib3, {}, 3));
+    ASSERT_NO_FATAL_FAILURE(reload(s, std::move(v3)));
+    EXPECT_EQ(*fld<int>(s, "mark"), 12);
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "mark"), 1) << "the new type resets 'mark_' to 2.5";
+    EXPECT_EQ(*fld<int>(s, "seen"), 544 + 211 + 211);
+    EXPECT_EQ(*fld<int>(s, "ticks"), 6);
+}
+
 // A missing parent module is a translation error at the "using" line.
 TEST_P(BackendTests, FamilyOverTwoModulesMissingParent)
 {

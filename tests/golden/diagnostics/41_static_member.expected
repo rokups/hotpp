@@ -1,3 +1,3 @@
-41_static_member.hot:4:5: error: a static field is not supported; use a module variable (a variable at file level)
-    4 |     static int count = 0;
+41_static_member.hot:5:1: error: a module variable is static already; remove 'static'
+    5 | static int count = 0;
 1 error generated.

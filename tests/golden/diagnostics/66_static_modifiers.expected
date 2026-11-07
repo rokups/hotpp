@@ -1,7 +1,3 @@
-66_static_modifiers.hot:4:5: error: a static field is not supported; use a module variable (a variable at file level)
-    4 |     static int count = 0;
-66_static_modifiers.hot:5:5: error: a property cannot be 'static'
-    5 |     static int Level { get; set; }
 66_static_modifiers.hot:6:5: error: a constructor cannot be 'static'
     6 |     static Player() { }
 66_static_modifiers.hot:7:12: error: 'static' and 'virtual' cannot combine
@@ -12,4 +8,4 @@
     9 |     static async void Load() { }
 66_static_modifiers.hot:13:5: error: an interface member cannot have the modifier 'static'
    13 |     static int Area();
-7 errors generated.
+5 errors generated.

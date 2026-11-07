@@ -105,6 +105,8 @@ An initializer can use only a variable that is above it. A later variable, or th
 
 `[alias("old")]` before a variable keeps the value of the old name.
 
+A module variable is static: it has one instance for the program. The word `static` before a module variable is the error `a module variable is static already; remove 'static'`. The same is true for a module constant. A static field of a class is a module variable with the name `<Class>__<Name>`. See [Static fields](classes.html#static-fields).
+
 ```hot
 [alias("total")] int sum = 0;
 ```
@@ -190,7 +192,7 @@ Rules:
 
 - A function name is unique. There are no overloads. The error is `function '<name>' is declared twice (overloads are not supported)`.
 - A function cannot have the name of a module variable, a class, an enum, a struct or an interface. The error is `'<name>' is declared twice (a function and a module variable)`, with the kind in the brackets.
-- A free function has no access word. It cannot be `static` or `async`.
+- A free function has no access word. It cannot be `static` or `async`. A free function is the static function of a module: the error for `static` is `a free function cannot be 'static'`.
 - A function is not a value. `var f = Add;` is the error `'Add' is a function; call it, or write a lambda`.
 - A module variable initializer and a convert hook cannot call a function. The error of a hook is `a convert hook cannot call the function '<name>': the new module state is not complete yet`.
 - A field initializer cannot call a function. The error is `a field initializer cannot call the function '<name>': the prototype of the function comes after the class`.

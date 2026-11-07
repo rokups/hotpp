@@ -1,5 +1,5 @@
 using "Actor.h";
 
 class Player : Actor {
-    static int count = 0;
 }
+static int count = 0;

@@ -155,18 +155,20 @@ class Spawner : Actor {
 }
 ```
 
-The body has no `this` and cannot use a field of the class. It can call other static methods and free functions, and it can read a module variable. The word `static` combines with access words (`public`, `private`) only.
+The body has no `this` and cannot use a field of the class. It can call other static methods and free functions. It can read and write a module variable and a static field. The word `static` combines with access words (`public`, `private`) only.
 
 Call forms:
 
 - `C.F(x)` works everywhere.
 - A bare `F(x)` works inside the class `C` and inside its script subclasses.
 - `D.F(x)` works when `D` is a script subclass of `C` and `C` has the static method `F`.
+- `C.F(x)` works in another module that imports `C`. The call goes through `hot::call_fn` to the owner module.
+- A lambda in the class can call `F(x)` and `C.F(x)`.
 - `obj.F(x)` is an error.
 
 The translator writes a static method as a plain C++ `static` function. The name is `<Class>__s_<name>`. For `Clamp` in `Hero`, the name is `Hero__s_Clamp`. The function has no slot, no thunk and no manifest entry. The host cannot call it through `Loader::thunk`. Put the call in an instance method if the host must start it.
 
-A static field is not supported. Use a module variable (see [Module variables](module-level.html#module-variables)).
+A class or a struct can have static fields and static properties. See [Static fields](#static-fields) and [Static properties](#static-properties).
 
 ### Class constants
 
@@ -192,12 +194,11 @@ float F() => Weapon.MaxRange;
 
 | Code | Error |
 |---|---|
-| `static int count = 0;` in a class | `a static field is not supported; use a module variable (a variable at file level)` |
 | `obj.F(x)` | `'F' is a static method; call it as 'C.F(...)'` |
 | `var f = C.F;` or `var f = F;` | `'F' is a function; call it, or write a lambda` |
 | `static async void F()` | `an async function needs an object; remove 'static'` |
 | `static virtual` or `static override` | `'static' and 'virtual' cannot combine` (the same for `override`) |
-| A `static` property or constructor | `a property cannot be 'static'`, `a constructor cannot be 'static'` |
+| A `static` constructor | `a constructor cannot be 'static'` |
 | A `static` member of an interface | `an interface member cannot have the modifier 'static'` |
 | Two static methods with one name | `function '<name>' is declared twice (overloads are not supported)` |
 | A call of a function in a field initializer | `a field initializer cannot call the function '<name>': the prototype of the function comes after the class` |
@@ -205,9 +206,55 @@ float F() => Weapon.MaxRange;
 
 A static method has no overloads. Use one name for one function.
 
+### Static fields
+
+`static T Name;` or `static T Name = value;` in a class or a struct is a static field (gap G23). It has one instance for the program.
+
+```hot
+class Spawner : Actor {
+    static int count_ = 0;
+    private static float scale_ = 1.0f;
+    override void Tick(float dt) { count_++; Spawner.count_ += 2; }
+    static int Count() => count_;
+}
+int F() => Spawner.count_;
+```
+
+- A static field is a module variable of the owner module with the name `<Class>__<Name>`. The module block holds it.
+- The types, the initializer rules and the errors are the ones of a [module variable](module-level.html#module-variables).
+- Write `C.Name` anywhere. In `C` and in a script child of `C`, the bare `Name` also works. A lambda and a static method can use it.
+- A parameter or a local with the same name hides the field in its function.
+- `private` keeps the field in `C`. `protected` keeps it in `C` and its script children.
+- An importer reads and writes a public or protected static field through `hot::mod_var`. The owner module keeps the storage.
+- The interface hash changes when a public or protected static field is added, removed or retyped. A private one is not in the interface.
+- Native code has no access to a static field.
+
+### Static properties
+
+A static property has the syntax of a [property](#properties) with `static` before the type.
+
+```hot
+class Spawner : Actor {
+    static int count_ = 0;
+    static int Count { get { return count_; } set { count_ = value; } }
+    static int Made { get; private set; } = 0;    // automatic
+    static int Twice => count_ * 2;               // read only
+}
+void F() { Spawner.Count = 5; Spawner.Count += 1; int t = Spawner.Twice; }
+```
+
+- The translator makes the static methods `get_<Name>` and `set_<Name>`. `get; set;` adds a hidden static field `<Class>____p_<Name>`.
+- A read is a call of `get_<Name>`. A write statement is a call of `set_<Name>`: `C.P = e`, `C.P op= e`, `C.P++` and `C.P--`.
+- Another write is an error, for example `int a = (C.P = 1);`. The error is `a write of the static property 'C.P' must be a statement`.
+- A write without a `set` gives `'C.P' has no 'set'`. A read without a `get` gives `'C.P' has no 'get'`.
+- The access of each accessor is the access of its static method. An importer calls the accessors through `hot::call_fn`.
+- The interface hash changes when a static property is added, removed or retyped.
+
 ### Static methods and reload
 
 A static method has no slot. A reload replaces the code of the whole module. The next call of `C.F(x)` runs the new body. A change of the signature is a normal code change, because a caller in the same module changes with it. A static method of an imported class follows the class (see [Imports](module-level.html#imports)).
+
+A reload keeps the value of a static field when its name and its type stay. A new type resets the field to its initializer. A static property follows its accessors and its field.
 
 ## Operators
 

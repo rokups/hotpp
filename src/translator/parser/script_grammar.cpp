@@ -413,12 +413,9 @@ Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in,
     }
     if (mods.is_static)
     {
-        // "static const T Name = value;" is a class constant. A static field without "const" is an error.
-        const char* what = m.kind == Member::IsField && m.const_pos ? nullptr
-            : m.kind == Member::IsField
-            ? "a static field is not supported; use a module variable (a variable at file level)"
-            : m.kind == Member::IsProp ? "a property cannot be 'static'"
-            : m.kind == Member::IsCtor ? "a constructor cannot be 'static'"
+        // "static const T Name = value;" is a class constant. "static T Name;" is a static field
+        // (gap G23). A static property has static accessors.
+        const char* what = m.kind == Member::IsCtor ? "a constructor cannot be 'static'"
             : m.kind == Member::IsDtor ? "a destructor cannot be 'static'"
                                        : nullptr;
         if (what)
@@ -450,6 +447,7 @@ Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in,
         }
         else
         {
+            m.prop.is_static = mods.is_static;
             // An accessor without its own access word has the access of the property.
             m.prop.access = mods.access;
             if (!m.get_has_access)
@@ -1646,6 +1644,12 @@ void add_members(const ParseState& st, ast::ClassDef& c, std::vector<Member>&& m
                 c.consts.push_back(std::move(m.field));
                 continue;
             }
+            if (m.static_pos)
+            {
+                // A static field (gap G23). The parse step moves it to the module variables.
+                c.svars.push_back(std::move(m.field));
+                continue;
+            }
             c.fields.push_back(std::move(m.field));
         }
         else if (m.kind == Member::IsProp)
@@ -2133,6 +2137,9 @@ struct class_p
         }
         t.kind = m.const_pos ? TopItem::IsConst : TopItem::IsVar;
         t.var = std::move(m.field);
+        if (m.static_pos)
+            st.error(m.static_pos, m.const_pos ? "a module constant is static already; remove 'static'"
+                                               : "a module variable is static already; remove 'static'");
         if (m.const_pos && !t.var.has_init)
             st.error(m.const_pos, "the constant '" + t.var.name + "' needs a value");
         if (a && m.const_pos)
@@ -2450,6 +2457,75 @@ struct AliasRewriter
 
 } // namespace
 
+// A static property (gap G23) becomes the static methods "get_Name" and "set_Name" of the class.
+// "get; set;" adds a hidden static field "Class____p_Name" (a module variable). The translator
+// makes a read a call of the getter and a write statement a call of the setter (ClassDef::sprops).
+void static_props(ast::ClassDef& c, ast::Script& script)
+{
+    using namespace ast;
+    for (auto it = c.props.begin(); it != c.props.end();)
+    {
+        if (!it->is_static)
+        {
+            ++it;
+            continue;
+        }
+        Property p = std::move(*it);
+        it = c.props.erase(it);
+        const std::string hidden = "__p_" + p.name;
+        if (p.is_auto())
+        {
+            Field f;
+            f.name = c.name + "__" + hidden;
+            f.owner = c.name;
+            f.type = p.type;
+            f.init = std::move(p.init);
+            f.init_span = p.init_span;
+            f.has_init = p.has_init;
+            f.access = Access::Private;
+            f.line = p.line;
+            f.pos = p.pos;
+            script.vars.push_back(std::move(f));
+        }
+        auto accessor = [&](bool is_get)
+        {
+            Method m;
+            m.is_static = true;
+            m.access = is_get ? p.get_access : p.set_access;
+            m.name = (is_get ? "get_" : "set_") + p.name;
+            m.ret = is_get ? p.type : std::string(); // an empty "ret" is "void"
+            if (!is_get)
+                m.params.push_back({"value", p.type});
+            m.pos = is_get ? p.get_pos : p.set_pos;
+            m.line = m.end_line = p.line;
+            m.end_pos = m.pos;
+            std::optional<BlockStmt>& body = is_get ? p.get_body : p.set_body;
+            if (body)
+                m.body = std::move(*body);
+            else if (is_get)
+                m.body.stmts.push_back(make_stmt(ReturnStmt{make_expr(NameExpr{{hidden}, "", {}, false, m.pos}), m.pos}));
+            else
+            {
+                BinaryExpr b;
+                b.op = "=";
+                b.lhs = make_expr(NameExpr{{hidden}, "", {}, false, m.pos});
+                b.rhs = make_expr(NameExpr{{"value"}, "", {}, false, m.pos});
+                b.pos = m.pos;
+                m.body.stmts.push_back(make_stmt(ExprStmt{make_expr(std::move(b)), m.pos}));
+            }
+            c.statics.push_back(std::move(m));
+        };
+        if (p.has_get)
+            accessor(true);
+        if (p.has_set)
+            accessor(false);
+        p.get_body.reset();
+        p.set_body.reset();
+        p.init.reset();
+        c.sprops.push_back(std::move(p));
+    }
+}
+
 ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics& diag, std::string_view array_tpl)
 {
     ast::Script script;
@@ -2534,6 +2610,16 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
             script.consts.push_back(std::move(f));
         }
         c.consts.clear();
+        // A static field (gap G23) is a module variable of the owner module with the name
+        // "Class__Name" and the owner "Class". The module block holds it, so a reload keeps it.
+        for (ast::Field& f : c.svars)
+        {
+            AliasRewriter{class_aliases.back()}.type(f.type);
+            f.owner = c.name;
+            f.name = c.name + "__" + f.name;
+            script.vars.push_back(std::move(f));
+        }
+        c.svars.clear();
     }
     if (!module_aliases.empty())
     {
@@ -2623,6 +2709,7 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
             if (p.has_init && !only_blank(span_text(st, p.init_span)))
                 p.init = parse_expression(in, p.init_span, diag);
         }
+        static_props(c, script);
     }
     // An unterminated comment or literal reads to the end of the file. The "unexpected end of
     // file" errors from this place on are not new faults. Drop them.
