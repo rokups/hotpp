@@ -168,6 +168,28 @@ The translator writes a static method as a plain C++ `static` function. The name
 
 A static field is not supported. Use a module variable (see [Module variables](module-level.html#module-variables)).
 
+### Class constants
+
+`static const T Name = value;` in a class or a struct is a class constant. The types are the types of a [module constant](module-level.html#module-constants): a number, `bool`, an enum, `const char*`, a native class, or a native constexpr call.
+
+```hot
+class Weapon : Actor {
+    public static const float MaxRange = 50.0f;
+    private static const int Ammo = 30;
+    int Pick(int v = Ammo) { switch (v) { case Ammo: return 1; default: return 0; } }
+}
+float F() => Weapon.MaxRange;
+```
+
+- Write `C.Name` anywhere. In `C` and in a script child of `C`, the bare `Name` also works.
+- A parameter or a local with the same name hides the constant in its function. `C.Name` still works there.
+- A `case` label, a default value and another constant can use a class constant.
+- `private` keeps the constant in `C`. `protected` keeps it in `C` and its script children.
+- An importer sees a public or protected constant. A new value changes the interface hash.
+- The translator writes `static constexpr` at file scope with the name `<Class>__<Name>`. A type that is not a literal type (a string class, a vector) gets `static const`.
+- A reload gives the new value, as for a module constant.
+- `const T Name` without `static` in a class is an error.
+
 | Code | Error |
 |---|---|
 | `static int count = 0;` in a class | `a static field is not supported; use a module variable (a variable at file level)` |

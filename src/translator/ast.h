@@ -497,6 +497,10 @@ struct Field
     // A module variable of a ".cpp" script in a namespace: the namespace path ("game::ai"). The
     // module block is at file scope, so the translator declares the type in the namespace.
     std::string ns;
+    // A class constant ("static const T Name = value;" in a class body): the name of the class.
+    // The parser moves the constant to Script::consts. "name" is then "Class__Name". Empty: a
+    // module constant or a field.
+    std::string owner;
 };
 
 // A line of raw C++ text with the script line where it starts.
@@ -641,6 +645,9 @@ struct ClassDef
     // parser leaves it empty.
     std::vector<std::string> script_ifaces;
     std::vector<Field> fields;
+    // The class constants ("static const T Name = value;"). The parse step moves them to
+    // Script::consts (see Field::owner), so the list is empty after the parse.
+    std::vector<Field> consts;
     std::vector<Method> methods;
     std::vector<Method> statics; // the "static" methods, in source order
     std::vector<Ctor> ctors; // the overloads; C++ picks one by the argument types

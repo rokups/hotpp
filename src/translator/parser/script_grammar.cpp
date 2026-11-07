@@ -413,7 +413,9 @@ Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in,
     }
     if (mods.is_static)
     {
-        const char* what = m.kind == Member::IsField
+        // "static const T Name = value;" is a class constant. A static field without "const" is an error.
+        const char* what = m.kind == Member::IsField && m.const_pos ? nullptr
+            : m.kind == Member::IsField
             ? "a static field is not supported; use a module variable (a variable at file level)"
             : m.kind == Member::IsProp ? "a property cannot be 'static'"
             : m.kind == Member::IsCtor ? "a constructor cannot be 'static'"
@@ -444,6 +446,7 @@ Member finish_member(const ParseState& st, const Ann& ann, const ModsT& mods_in,
         if (m.kind == Member::IsField)
         {
             m.field.access = mods.access;
+            m.static_pos = mods.static_pos;
         }
         else
         {
@@ -1631,8 +1634,18 @@ void add_members(const ParseState& st, ast::ClassDef& c, std::vector<Member>&& m
         }
         else if (m.kind == Member::IsField)
         {
-            if (m.const_pos)
-                st.error(m.const_pos, "a class member cannot be 'const'; write the constant at file level");
+            if (m.const_pos && !m.static_pos)
+                st.error(m.const_pos,
+                    "a class member cannot be 'const'; for a class constant, write 'static const' before the type of '" + m.field.name
+                        + "'");
+            else if (m.const_pos)
+            {
+                // A class constant. The parse step moves it to the module constants (Field::owner).
+                if (!m.field.has_init)
+                    st.error(m.const_pos, "the constant '" + m.field.name + "' needs a value");
+                c.consts.push_back(std::move(m.field));
+                continue;
+            }
             c.fields.push_back(std::move(m.field));
         }
         else if (m.kind == Member::IsProp)
@@ -2511,6 +2524,16 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
         class_aliases.push_back(module_aliases);
         resolve_aliases(st, c.aliases, class_names, class_aliases.back());
         AliasRewriter{class_aliases.back()}.cls(c);
+        // A class constant is a module constant with the name "Class__Name" and the owner "Class".
+        // The translator gives "Class.Name" and a bare "Name" in the class this name.
+        for (ast::Field& f : c.consts)
+        {
+            AliasRewriter{class_aliases.back()}.type(f.type);
+            f.owner = c.name;
+            f.name = c.name + "__" + f.name;
+            script.consts.push_back(std::move(f));
+        }
+        c.consts.clear();
     }
     if (!module_aliases.empty())
     {

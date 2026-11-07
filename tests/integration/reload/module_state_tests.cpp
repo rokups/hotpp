@@ -147,4 +147,28 @@ TEST_P(BackendTests, ModuleVariableOrderAndConvertHook)
     EXPECT_EQ(*fld<int>(s.inst.shell, "seen"), 12);
 }
 
+// A class constant (gap G01) is a C++ constant of the generation. A reload gives the new value.
+// A case label and "Class.Name" use it.
+TEST_P(BackendTests, ReloadGivesNewClassConstant)
+{
+    hot::LoadResult v1 = backend->load(source("class_const_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    hot::LoadResult v2 = backend->load(source("class_const_v2.hot"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Hero"));
+    s.commit_at_frame_boundary();
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "ticks"), 2);
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "ticks"), 4);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "last"), 1); // case Step (2): Rule.Bonus of generation 1
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    s.world.Tick(kDt); // the commit happens at the end of this frame
+    ASSERT_FALSE(s.commit_failed);
+    ASSERT_EQ(hot::active_generation, 2u);
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s.inst.shell, "ticks"), 11); // 6 + Step (5)
+}
+
 } // namespace

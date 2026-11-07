@@ -146,7 +146,7 @@ class Wall : Actor {
 - An imported script can have constants. A script that imports the file can use them.
 - Two imported scripts can import each other. Their classes can use each other by a handle or by a call. A struct that holds a struct of the cycle by value is an error.
 - An integral or an enum constant is a C++ constant expression: a `case` label can use it.
-- A class member cannot be `const`. Write the constant at file level.
+- A class or a struct can have a class constant: `static const T Name = value;`. See [Class constants](classes.html#class-constants).
 - The value can be a native constexpr call, for example `std.numeric_limits<float>.infinity()` or `eastl.string()`.
 - A reload translates the code again. A changed value is in the next generation.
 

@@ -325,7 +325,7 @@ TEST(ScriptImportTranslation, ConstantErrors)
     hotc::TranslateOptions o = options(dir, kParent);
     o.script_text = "using \"base.hot\";\nclass Kid : Base {\n    const int Max = 1;\n}\n";
     const hotc::TranslateResult member = hotc::translate(o);
-    EXPECT_NE(member.diagnostics.find("a class member cannot be 'const'; write the constant at file level"),
+    EXPECT_NE(member.diagnostics.find("a class member cannot be 'const'; for a class constant, write 'static const' before the type of 'Max'"),
         std::string::npos)
         << member.diagnostics;
     o.script_text = "using \"base.hot\";\nconst int Max;\n";

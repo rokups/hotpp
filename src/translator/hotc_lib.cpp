@@ -27,6 +27,7 @@
 #include "hot/hotc_lib.h"
 
 #include "ast.h"
+#include "ast_walk.h"
 #include "builtin_types.h"
 #include "check.h"
 #include "const_infer.h"
@@ -305,6 +306,192 @@ const std::string kModuleName = hotc::kModuleClassName;
 {
     g_diag.add(pos, map, msg);
     throw TranslateAbort{};
+}
+
+// ---- class constants (gap G01). The parser moves "static const T Name = v;" of class C to the
+// module constants as "C__Name" with the owner C. This step gives each use that name:
+// "C.Name" anywhere, and a bare "Name" in C or in a script child of C. A parameter or a local with
+// the name hides the constant in its function. A private constant is for C only. A protected
+// constant is for C and its children.
+void resolve_class_consts(hotc::ast::Script& sc, const hotc::LineMap& map)
+{
+    using namespace hotc::ast;
+    struct ConstRef
+    {
+        std::string owner, full;
+        Access access = Access::Public;
+    };
+    std::map<std::string, std::map<std::string, ConstRef>> by_class; // class -> short name -> constant
+    for (const Field& f : sc.consts)
+        if (!f.owner.empty())
+            by_class[f.owner][f.name.substr(f.owner.size() + 2)] = {f.owner, f.name, f.access};
+    if (by_class.empty())
+        return;
+    std::map<std::string, const ClassDef*> classes;
+    for (const ClassDef& c : sc.classes)
+        classes.emplace(c.name, &c);
+    for (const ClassDef& c : sc.classes)
+    {
+        auto it = by_class.find(c.name);
+        if (it == by_class.end() || !c.foreign_unit.empty())
+            continue;
+        for (const auto& [n, ref] : it->second)
+        {
+            bool dup = false;
+            for (const Field& f : c.fields)
+                dup = dup || f.name == n;
+            for (const Method& m : c.methods)
+                dup = dup || m.name == n;
+            for (const Method& m : c.statics)
+                dup = dup || m.name == n;
+            for (const Property& p : c.props)
+                dup = dup || p.name == n;
+            if (dup)
+                for (const Field& f : sc.consts)
+                    if (f.name == ref.full)
+                        fail_at(map, f.pos, "'" + n + "' is declared twice in '" + c.name + "'");
+        }
+    }
+    // True when "cls" is "owner" or a script child of it.
+    auto derives = [&](const ClassDef* cls, const std::string& owner)
+    {
+        for (int guard = 0; cls && guard < 64; ++guard)
+        {
+            if (cls->name == owner)
+                return true;
+            auto it = classes.find(cls->base);
+            cls = it == classes.end() ? nullptr : it->second;
+        }
+        return false;
+    };
+    auto find_const = [&](const std::string& cls, const std::string& n) -> const ConstRef*
+    {
+        auto it = by_class.find(cls);
+        if (it == by_class.end())
+            return nullptr;
+        auto jt = it->second.find(n);
+        return jt == it->second.end() ? nullptr : &jt->second;
+    };
+    // The rewrite of the names in one function. "cls" is the class of the function, or null.
+    auto rewrite = [&](const ClassDef* cls, const std::vector<Param>* params, auto&& visit_all)
+    {
+        std::set<std::string> hidden; // the parameters and the locals of the function
+        if (params)
+            for (const Param& p : *params)
+                hidden.insert(p.name);
+        auto collect_e = [&](const Expr& e)
+        {
+            if (auto* l = std::get_if<LambdaExpr>(&e.v))
+                for (const Param& p : l->params)
+                    hidden.insert(p.name);
+        };
+        auto collect_s = [&](const Stmt& s)
+        {
+            if (auto* d = std::get_if<VarDeclStmt>(&s.v))
+            {
+                hidden.insert(d->name);
+                hidden.insert(d->names.begin(), d->names.end());
+            }
+            else if (auto* fo = std::get_if<ForOfStmt>(&s.v))
+            {
+                hidden.insert(fo->name);
+                hidden.insert(fo->names.begin(), fo->names.end());
+            }
+        };
+        visit_all(collect_e, collect_s);
+        auto on_e = [&](const Expr& ce)
+        {
+            // The walk is read-only. The name node belongs to the script AST, which this step edits.
+            auto* n = const_cast<NameExpr*>(std::get_if<NameExpr>(&ce.v));
+            if (!n || n->parts.empty())
+                return;
+            const ConstRef* ref = nullptr;
+            size_t used = 1;
+            if (n->parts.size() >= 2 && classes.count(n->parts[0]))
+            {
+                ref = find_const(n->parts[0], n->parts[1]);
+                used = 2;
+            }
+            if (!ref && cls && !hidden.count(n->parts[0]))
+            {
+                used = 1;
+                const ClassDef* c = cls;
+                for (int guard = 0; c && !ref && guard < 64; ++guard)
+                {
+                    ref = find_const(c->name, n->parts[0]);
+                    if (ref && ref->access == Access::Private && c != cls)
+                        ref = nullptr;
+                    auto it = classes.find(c->base);
+                    c = it == classes.end() ? nullptr : it->second;
+                }
+            }
+            if (!ref)
+                return;
+            const std::string what = "'" + ref->owner + "." + ref->full.substr(ref->owner.size() + 2) + "'";
+            if (ref->access == Access::Private && !(cls && cls->name == ref->owner))
+                fail_at(map, n->pos, what + " is private");
+            if (ref->access == Access::Protected && !derives(cls, ref->owner))
+                fail_at(map, n->pos, what + " is protected");
+            n->parts.erase(n->parts.begin(), n->parts.begin() + used);
+            n->parts.insert(n->parts.begin(), ref->full);
+            if (n->part_pos.size() >= used)
+                n->part_pos.erase(n->part_pos.begin() + 1, n->part_pos.begin() + used);
+        };
+        auto no_s = [](const Stmt&) {};
+        visit_all(on_e, no_s);
+    };
+    auto run_block = [&](const ClassDef* cls, const std::vector<Param>* params, std::vector<const BlockStmt*> blocks,
+                         std::vector<const ExprP*> exprs)
+    {
+        if (params)
+            for (const Param& p : *params)
+                if (p.def)
+                    exprs.push_back(&p.def->expr);
+        rewrite(cls, params,
+            [&](auto& fe, auto& fs)
+            {
+                auto w = hotc::walk::make_walker(fe, fs);
+                for (const BlockStmt* b : blocks)
+                    w.block(*b);
+                for (const ExprP* e : exprs)
+                    w.expr(*e);
+            });
+    };
+    for (Field& f : sc.consts)
+    {
+        auto it = classes.find(f.owner);
+        run_block(it == classes.end() ? nullptr : it->second, nullptr, {}, {&f.init});
+    }
+    for (const Field& f : sc.vars)
+        run_block(nullptr, nullptr, {}, {&f.init});
+    for (const Method& m : sc.fns)
+        run_block(nullptr, &m.params, {&m.body}, {});
+    for (const Method& m : sc.var_hooks)
+        run_block(nullptr, &m.params, {&m.body}, {});
+    for (const ClassDef& c : sc.classes)
+    {
+        for (const Field& f : c.fields)
+            run_block(&c, nullptr, {}, {&f.init});
+        for (const Property& p : c.props)
+        {
+            std::vector<const BlockStmt*> bs;
+            if (p.get_body)
+                bs.push_back(&*p.get_body);
+            if (p.set_body)
+                bs.push_back(&*p.set_body);
+            run_block(&c, nullptr, bs, {&p.init});
+        }
+        for (const std::vector<Method>* list : {&c.methods, &c.statics, &c.dtors})
+            for (const Method& m : *list)
+                run_block(&c, &m.params, {&m.body}, {});
+        for (const Ctor& k : c.ctors)
+        {
+            std::vector<const ExprP*> es;
+            for (const ExprP& a : k.base_args)
+                es.push_back(&a);
+            run_block(&c, &k.params, {&k.body}, es);
+        }
+    }
 }
 
 // The C++ storage of a "[weak] T" field or parameter (task 38): a weak_ptr of the shared handle.
@@ -3407,6 +3594,8 @@ void translate_impl(
                     check_alias_name(a);
         }
     }
+    resolve_class_consts(sc, map);
+
     // The main script and the imported scripts at the offsets of the map. The positions of the
     // AST point into this text, so the emitter finds the names of an imported script in it.
     std::string all_text = in.script_text;
@@ -4723,8 +4912,21 @@ void translate_impl(
             if (!g_diag.items.empty())
                 throw TranslateAbort{};
             o.w("\n#line " + std::to_string(f.line) + " \"" + esc(file_at(f.pos)) + "\"\n");
-            o.w("[[maybe_unused]] static const " + types.cpp_storage(f.type, hotc::TypeModel::StorageUse::Local) + " "
-                + f.name + " = " + hotc::ast::print(*f.init) + ";\n");
+            std::string ct = types.cpp_storage(f.type, hotc::TypeModel::StorageUse::Local);
+            // A class constant of a literal type (a number, bool, an enum or a pointer) is
+            // "static constexpr". Another type (a string class, a vector) is "static const".
+            static const std::set<std::string> literal = {"bool", "char", "float", "double", "int8_t", "uint8_t",
+                "int16_t", "uint16_t", "int32_t", "uint32_t", "int64_t", "uint64_t", "int", "unsigned", "long",
+                "size_t", "char16_t", "char32_t"};
+            bool is_enum = false;
+            for (const auto& e : sc.enums)
+                is_enum = is_enum || e.name == ct;
+            const bool cx = !f.owner.empty() && (literal.count(ct) || is_enum || (!ct.empty() && ct.back() == '*'));
+            // "static const char* Name" is a pointer to const text, as the module constant gives it.
+            if (cx && (ct == "char*" || ct == "char *"))
+                ct = "const char*";
+            o.w(std::string("[[maybe_unused]] static ") + (cx ? "constexpr " : "const ") + ct + " " + f.name + " = "
+                + hotc::ast::print(*f.init) + ";\n");
             reset();
         }
     }
