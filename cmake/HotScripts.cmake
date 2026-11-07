@@ -270,7 +270,8 @@ function(hot_add_scripts)
             DEPENDS hot::hotc ${scripts} ${A_PRELUDES} ${A_DEPENDS}
             COMMENT "hotc --aot: ${A_SCRIPTS}"
             VERBATIM)
-        add_library(${A_TARGET} STATIC ${sources} ${registry})
+        # The interface headers are sources too, so the library depends on them.
+        add_library(${A_TARGET} STATIC ${sources} ${registry} ${iface_headers})
         # The library needs only the core. The program picks hot::aot (no loader) or the loader
         # (hot::backend; Loader::load_aot takes hot::aot_table). It never links both.
         target_link_libraries(${A_TARGET} PUBLIC hot::runtime_core)

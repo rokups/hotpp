@@ -7,7 +7,7 @@ The C++ is part of the program. The program has no loader and no compiler at run
 
 The sample has one program (`main.cpp`) and two variants of the same script:
 
-- `script/wolf.hot`: the script in the Hot++ syntax. `Tick` uses string interpolation.
+- `script/wolf.hot`: the script in the Hot++ syntax. `Tick` uses string interpolation. The script imports `script/den.hot` (`using "den.hot";`), so the build has two units. `Wolf` makes a `Den`, and `Tick` calls the free function `Bite` of `den.hot`.
 - `script/wolf.cpp`: the script as plain C++. See [C++ scripts](../../doc/cpp-scripts.md). A `.cpp` script has no string interpolation, so `Tick` uses `snprintf`.
 
 The build makes one AOT library and one program for each variant (and, see below, one more pair for each variant with `OPTIMIZED`):
@@ -45,6 +45,7 @@ The program does not call `dlopen`. It has no `ENABLE_EXPORTS`. A script change 
 
 - `Creature.h`: the host class. It is header-only.
 - `script/wolf.hot` and `script/wolf.cpp`: the script in two variants. The class `Wolf` derives from `Creature` and overrides `Tick`. The `.hot` `Tick` uses string interpolation (`"${...}"`), so the build checks the format library and the C++ standard of the AOT library.
+- `script/den.hot`: the second unit of the `.hot` variant. It has the free function `Bite`, the module variable `den_bites` and the class `Den`. The importer `wolf.hot` uses them.
 - `main.cpp`: the program. It makes a `Wolf` with `hot::AotRegistry` and calls `Tick` three times.
 - `CMakeLists.txt`: the build. It works in the Hot++ tree and as a separate project.
 

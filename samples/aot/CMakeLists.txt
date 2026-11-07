@@ -24,11 +24,11 @@ endif()
 
 # One program source, two script variants, and two builds of each variant. The extension picks the
 # script. Both variants are in the folder script. Each build has its own AOT library and its own program.
-#   sample_aot_hot has the C++ that hotc makes from script/wolf.hot.
+#   sample_aot_hot has the C++ that hotc makes from script/den.hot and script/wolf.hot.
 #   sample_aot_cpp has the C++ that hotc makes from script/wolf.cpp.
 #   sample_aot_hot_opt and sample_aot_cpp_opt are the same scripts as optimized AOT code (OPTIMIZED).
 #   An optimized build is faster. It cannot override or reload a script.
-# A call of hot_add_host takes scripts with one stem only, so each build has its own call.
+# The scripts of one hot_add_host call must have different stems, so each variant has its own call.
 # The library sample_aot_<name>_scripts has the result. The program links hot::aot.
 enable_testing()
 foreach(variant hot cpp)
@@ -38,8 +38,12 @@ foreach(variant hot cpp)
             set(optimized OPTIMIZED)
         endif()
         set(target sample_aot_${variant}${suffix})
+        set(scripts script/wolf.${variant})
+        if(variant STREQUAL "hot")
+            set(scripts script/den.hot script/wolf.hot) # two units: wolf.hot imports den.hot
+        endif()
         add_executable(${target} main.cpp)
-        hot_add_host(TARGET ${target} MODE AOT ${optimized} SCRIPTS script/wolf.${variant}
+        hot_add_host(TARGET ${target} MODE AOT ${optimized} SCRIPTS ${scripts}
                      INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} DEPENDS Creature.h)
         add_test(NAME ${target} COMMAND ${target})
     endforeach()

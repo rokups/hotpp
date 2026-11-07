@@ -1,0 +1,18 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// The second unit of the sample. wolf.hot imports it with 'using "den.hot";'.
+// The importer sees the free function, the module variable and the class of this unit.
+
+int den_bites = 0;
+
+int Bite(int bites) {
+    den_bites = den_bites + 1;
+    return bites + 1;
+}
+
+class Den {
+    int wolves = 0;
+    void Enter() { this.wolves = this.wolves + 1; }
+}

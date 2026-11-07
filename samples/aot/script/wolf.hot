@@ -4,17 +4,23 @@
 
 // The script of the sample. Wolf derives from the host class Creature and overrides Tick.
 // Tick uses string interpolation, so the sample also checks the format library of the build.
+// The script imports den.hot, the second unit: it calls Bite and makes a Den.
 using "Creature.h";
 using <string>;
+using "den.hot";
 
 class Wolf : Creature {
     int bites = 0;
+    $Den den;
 
     Wolf() : base(std.string("wolf")) {
+        $Den d = new $Den();
+        d.Enter();
+        this.den = d;
     }
 
     override void Tick(float dt) {
-        bites = bites + 1;
+        bites = Bite(bites);
         Hp = Hp - 1;
         // String interpolation: the build of the script needs std::format (C++20) or fmt.
         std.string line = "${Name}: bites=${bites} hp=${Hp:03d}";

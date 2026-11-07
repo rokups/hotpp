@@ -6453,7 +6453,10 @@ void translate_impl(
         const bool gen_new = true;
         const std::string P = cn + "__";
         const std::string PP = par ? par->name + "__" : std::string();
-        auto slot_id = [&](const std::string& n) { return (multi ? cn + "_" : std::string()) + "SLOT_" + n; };
+        // An imported class uses the names with the class prefix. The owner unit has them also when it
+        // has one class (see the slot numbers).
+        auto slot_id = [&](const std::string& n)
+        { return (multi || !cd.foreign_unit.empty() ? cn + "_" : std::string()) + "SLOT_" + n; };
 
         // ---- base class information from libclang
         // A class without a base derives from hot::PlainObject (design 7.10.1).
@@ -7339,7 +7342,13 @@ void translate_impl(
             for (size_t i = 0; i < slots.size(); ++i)
                 o.w("    " + slot_id(slots[i].id) + " = "
                     + std::to_string(slots[i].index >= 0 ? size_t(slots[i].index) : i) + ",\n");
-            o.w("    " + slot_id("COUNT") + " = " + std::to_string(table_size) + ",\n};\n\n");
+            o.w("    " + slot_id("COUNT") + " = " + std::to_string(table_size) + ",\n");
+            // A unit with one class: the interface header also has the names with the class prefix.
+            // An importer uses them.
+            if (exported && !multi)
+                for (size_t i = 0; i < slots.size(); ++i)
+                    o.w("    " + cn + "_SLOT_" + slots[i].id + " = " + slot_id(slots[i].id) + ",\n");
+            o.w("};\n\n");
         }
         o.w("extern hot::ClassRecord " + cn + "_record;\n\n");
         // An importer of the header and the record of this TU use the one layout of the class.
