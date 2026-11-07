@@ -100,6 +100,15 @@ private:
     std::size_t size_;
 };
 
+// A "foreach" loop saw a change of the shape of its container (foreach.h). The text is
+// "container changed during foreach".
+class HOT_EXPORT ContainerChanged : public ScriptError
+{
+public:
+    ContainerChanged();
+    ~ContainerChanged() override;
+};
+
 // The data of an unhandled exception. The pointers are valid only during the handler call.
 struct ScriptErrorReport
 {

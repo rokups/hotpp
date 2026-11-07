@@ -16,6 +16,7 @@
 #include "hot/runtime/deref.h"
 #include "hot/runtime/enumerate.h"
 #include "hot/runtime/errors.h"
+#include "hot/runtime/foreach.h"
 #include "hot/runtime/handles.h"
 #include "hot/runtime/hashing.h"
 #include "hot/runtime/iface.h"

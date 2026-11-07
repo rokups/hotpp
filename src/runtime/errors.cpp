@@ -51,6 +51,12 @@ IndexOutOfRange::IndexOutOfRange(std::size_t index, std::size_t size)
 }
 IndexOutOfRange::~IndexOutOfRange() = default;
 
+ContainerChanged::ContainerChanged()
+    : ScriptError("container changed during foreach")
+{
+}
+ContainerChanged::~ContainerChanged() = default;
+
 namespace
 {
 

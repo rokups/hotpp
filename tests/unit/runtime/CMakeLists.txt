@@ -37,6 +37,7 @@ add_executable(unit_runtime_tests
     scheduler_tests.cpp
     arith_tests.cpp
     span_tests.cpp
+    foreach_tests.cpp
     process_tests.cpp
     view_type_tests.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Object.cpp)
