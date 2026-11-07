@@ -1,0 +1,9 @@
+using "Actor.h";
+using "Util.h";
+
+class Summer {
+    float Run() {
+        float x = 1.0;
+        return SumData(x, 1);
+    }
+}

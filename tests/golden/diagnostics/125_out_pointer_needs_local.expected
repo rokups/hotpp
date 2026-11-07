@@ -1,0 +1,3 @@
+125_out_pointer_needs_local.hot:8:34: error: a native out-pointer parameter 'char**' needs a local variable of type 'char*'. Declare 'T* p = null;' and pass 'p'
+    8 |         return ParseFloat("1.5", kept);
+1 error generated.

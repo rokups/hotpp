@@ -40,7 +40,7 @@ A borrowed value is valid for the whole call. Every call form takes it as an arg
 | Parts | `f(a.field)`, `f(arr[i])`, `f(*p)` |
 | Borrowed names | `f(p)`, `f(r)`, a `foreach` variable, a `catch` variable |
 
-A value lvalue goes to a native `T*` or `const T*` parameter in the plain form: `Nudge(a)` for `void Nudge(Vec3* v)`. The translator writes `hot::as_ptr(a)`. A temporary does not bind: the C++ compiler reports an error. A script function does not take a value for a `T*` parameter. A `T*` parameter of a script function takes `null` or a native pointer. For a script caller, write `ref T x`.
+A value lvalue goes to a native `T*` or `const T*` parameter in the plain form: `Nudge(a)` for `void Nudge(Vec3* v)`. The translator writes `hot::as_ptr(a)`. A scalar goes only to a `T*` that is not `const`. A temporary does not bind: the C++ compiler reports an error. A local `char* end = null` goes to a native `char**` parameter as `F(s, end)`; the local is a borrowed pointer. A script function does not take a value for a `T*` parameter. A `T*` parameter of a script function takes `null` or a native pointer. For a script caller, write `ref T x`.
 
 A call can return a pointer or a reference to its argument. The translator does not follow this alias. A `var` that takes a native pointer from a call is borrowed. A `var` that takes a reference from a call is a copy. Do not store the result of such a call. A `ref` local can take a native `T&` result: see "Lifetime of a ref" in [Type design](type-design.html#lifetime-of-a-ref).
 

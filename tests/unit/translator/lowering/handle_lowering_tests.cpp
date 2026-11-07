@@ -142,6 +142,18 @@ TEST(HandleLowering, ValueLvalueToNativeValuePointer)
     EXPECT_EQ(f.body("Weapon w = null; Nudge(w);"), "std::shared_ptr<Weapon> w = nullptr; Nudge(w);");
 }
 
+// A local "T*" goes to a native "T**" out-pointer parameter: "hot::as_out_ptr(p)".
+TEST(HandleLowering, LocalPointerToNativeOutPointer)
+{
+    const TypeModel types = stub_model("Weapon", "std::shared_ptr<$T>");
+    Fixture f;
+    f.cx.types = &types;
+    f.cx.native_key = [](const ast::CallExpr&) { return std::string("Parse"); };
+    f.cx.native_carrier = [](const std::string&, size_t arg, size_t) { return arg == 0 ? std::string("o:char*") : std::string(); };
+
+    EXPECT_EQ(f.body("char* end = null; Parse(end);"), "char* end = nullptr; Parse(hot::as_out_ptr(end));");
+}
+
 TEST(HandleLowering, HandleToNativeNeedsTheHooks)
 {
     const TypeModel types = stub_model("Weapon", "std::shared_ptr<$T>");

@@ -1,0 +1,14 @@
+// A native "T**" out-pointer parameter takes a local "T*" (the pointer-local rule), and a native
+// scalar "T*" out-parameter takes a local value. "strtof(s, &end)" is "ParseFloat(s, end)".
+using "Actor.h";
+using "Util.h";
+
+class Parser {
+    int Run() {
+        char* end = null;
+        float v = ParseFloat("12.5xyz", end);
+        int n = 5;
+        Bump(n, 2);
+        return Consumed("12.5xyz", end) + n + (int)v;
+    }
+}

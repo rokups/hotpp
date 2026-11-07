@@ -246,6 +246,14 @@ template <class P, std::enable_if_t<is_checked_ptr_v<P>, int> = 0> HOT_HIDDEN au
 {
     return p.get();
 }
+// The script passes a local pointer "T* p" to a native out-pointer parameter "T**". The
+// translator writes "hot::as_out_ptr(p)". The native code writes the pointer. A temporary does
+// not bind: the C++ compiler reports an error. (The name differs from as_ptr: "as_ptr(T*&)"
+// is ambiguous with "as_ptr(T*)".)
+template <class T> HOT_HIDDEN T** as_out_ptr(T*& p)
+{
+    return std::addressof(p);
+}
 
 // The script passes a handle "h" to a native parameter "T&" or "const T&". The translator
 // writes "hot::as_ref(h)". A null handle or a null pointer throws hot::NullReference. The test

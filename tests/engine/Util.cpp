@@ -7,6 +7,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 
 float Distance(const Vec3& a, const Vec3& b)
 {
@@ -23,6 +24,30 @@ void Nudge(Vec3* v, float dx)
 float Peek(const Vec3* v)
 {
     return v ? v->x : -1.0f;
+}
+
+void Bump(int* v, int by)
+{
+    if (v)
+        *v += by;
+}
+
+float SumData(const float* data, int n)
+{
+    float sum = 0.0f;
+    for (int i = 0; i < n; ++i)
+        sum += data[i];
+    return sum;
+}
+
+float ParseFloat(const char* s, char** end)
+{
+    return std::strtof(s, end);
+}
+
+int Consumed(const char* s, const char* end)
+{
+    return static_cast<int>(end - s);
 }
 
 std::string FormatVec(const Vec3& v)

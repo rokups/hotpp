@@ -539,6 +539,7 @@ TEST_P(BackendTests, IntegerDivideAndModuloAreChecked)
 // compiler cannot fold them.
 const char* const kShiftSource = R"(
 using "Actor.h";
+using "Util.h";
 
 class Boss : Actor {
     int imax = 2147483647;
@@ -579,8 +580,10 @@ class Boss : Actor {
     int Sc2I(double d) { return static_cast<int>(d); }
     long D2L(double d) { return (long)d; }
     uint D2U(double d) { return (uint)d; }
-    int PointerBits(int* p) { nuint a = (nuint)p; if (a != 0) { return 1; } return 0; }
-    int NullIsZero() { return this.PointerBits(null); }
+    // A local goes to a native "int*" out-parameter as a real address: Bump writes through it.
+    int BumpLocal() { int n = 5; Bump(n, 2); Bump(n, 3); return n; }
+    // A local "char*" goes to a native "char**" out-parameter. Consumed counts the parsed characters.
+    int OutPointer() { char* end = null; float v = ParseFloat("12.5xyz", end); return Consumed("12.5xyz", end) * 100 + (int)v; }
     byte D2B(double d) { return (byte)d; }
     sbyte D2SB(double d) { return (sbyte)d; }
 
@@ -659,7 +662,8 @@ class Boss : Actor {
         this.Check(this.D2L(1e30) == 9223372036854775807);
         this.Check(this.D2L(-1e30) == -9223372036854775807 - 1);
         this.Check(this.D2L(this.fz / this.fz) == 0);
-        this.Check(this.NullIsZero() == 0);
+        this.Check(this.BumpLocal() == 10);
+        this.Check(this.OutPointer() == 412);
         this.Check(this.D2U(1e20) == 4294967295);
         this.Check(this.D2U(-5.0) == 0);
         this.Check(this.D2B(300.0) == 255);
@@ -685,7 +689,7 @@ void run_shift_script(hot::Backend& be)
     hot::set_script_error_handler([&reports](const hot::ScriptErrorReport&) { ++reports; });
     s.world.Tick(kDt);
     EXPECT_EQ(*s.field("bad"), 0.0f);
-    EXPECT_EQ(*s.field("ok"), 72.0f);
+    EXPECT_EQ(*s.field("ok"), 73.0f);
     EXPECT_EQ(*s.field("msg_ok"), 1.0f);
     EXPECT_EQ(*s.field("after"), 1.0f);
     EXPECT_EQ(reports, 0);

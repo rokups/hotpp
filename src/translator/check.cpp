@@ -714,24 +714,6 @@ struct Checker
         return {};
     }
 
-    // The method or the static "name" of the script class of the type, else null.
-    const Method* method_of(const std::string& type, const std::string& name) const
-    {
-        const std::string t = bare_type(type);
-        if (!classes || t.empty())
-            return nullptr;
-        for (const ClassDef& c : *classes)
-            if (c.name == t || c.key_name() == t)
-            {
-                for (const std::vector<Method>* list : {&c.methods, &c.statics})
-                    for (const Method& m : *list)
-                        if (m.written_name() == name)
-                            return &m;
-                return nullptr;
-            }
-        return nullptr;
-    }
-
     // True when the method returns "T*" where "T" is a value struct: a script struct or a native value
     // that is not a builtin scalar (a ".hot" script only).
     bool is_ptr_ret(const Method& m) const
@@ -745,37 +727,6 @@ struct Checker
         if (types.is_script_class(base))
             return types.is_script_value(base);
         return types.lookup(base).kind == Kind::Value;
-    }
-
-    // The script method that a call calls: an own method or static, or a method of the class of the
-    // receiver. Null when it is not known.
-    const Method* called_method(const Expr& e) const
-    {
-        const auto* c = std::get_if<CallExpr>(&e.v);
-        if (!c || !c->callee)
-            return nullptr;
-        auto own = [&](const std::string& name) -> const Method*
-        {
-            for (const std::vector<Method>* list : {&cd.methods, &cd.statics})
-                for (const Method& m : *list)
-                    if (m.written_name() == name)
-                        return &m;
-            return nullptr;
-        };
-        if (const auto* cn = std::get_if<NameExpr>(&c->callee->v))
-        {
-            if (cn->parts.size() == 1)
-                return locals.count(cn->parts[0]) ? nullptr : own(cn->parts[0]);
-            if (cn->parts.size() != 2)
-                return nullptr;
-            const std::string& first = cn->parts[0];
-            const bool is_var = locals.count(first) || field_names.count(first) || refs.count(first);
-            return method_of(is_var ? name_type(first) : first, cn->parts[1]);
-        }
-        if (const auto* cm = std::get_if<MemberExpr>(&c->callee->v); cm && cm->obj)
-            return std::holds_alternative<ThisExpr>(cm->obj->v) ? own(cm->name)
-                                                                : method_of(expr_type(*cm->obj), cm->name);
-        return nullptr;
     }
 
     // True when a call on a receiver of this type can give a reference into the receiver: a native class,
@@ -1272,6 +1223,16 @@ struct Checker
         return is_borrowed_form(type, base) && base != "char";
     }
 
+    // True for the declared type "char*" with no "const". A native "char**" parameter writes a pointer
+    // into the text that the call reads, so the local borrows from that text. A "const char*" is a
+    // plain text and is not borrowed.
+    static bool is_out_char_pointer(const std::string& type)
+    {
+        std::string base;
+        const std::string t = trim(type);
+        return !starts_with(t, "const ") && is_single_pointer(t) && is_borrowed_form(t, base) && base == "char";
+    }
+
     // True when libclang gives a "T*" of a type that is not a handle for a "var" local (S20b).
     // A handle type is a full owner, for example an intrusive "Actor*".
     bool is_borrowed_native(const std::string& type) const
@@ -1632,10 +1593,9 @@ struct Checker
             {
                 add_borrowed(d->name); // "var w = a.GetWeapon()" with a native "Weapon*" (S20b)
             }
-            else if (const Method* cm = d->type.empty() && d->init ? called_method(*d->init) : nullptr;
-                cm && is_ptr_ret(*cm))
+            else if (is_out_char_pointer(d->type))
             {
-                add_borrowed(d->name); // "var p = c.Find(1)": a "T*" return of a value struct
+                add_borrowed(d->name); // "char* end = null": the out-pointer of a native "char**" (S20b)
             }
         }
         else if (auto* fo = std::get_if<ForOfStmt>(&s.v))

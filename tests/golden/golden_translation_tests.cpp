@@ -184,6 +184,13 @@ TEST(GoldenTranslation, BorrowedArgs)
     golden_one("borrowed_args_v1");
 }
 
+// A local "T*" goes to a native "T**" out-pointer parameter ("hot::as_out_ptr"). A local value goes to
+// a native scalar "T*" out-parameter ("hot::as_ptr").
+TEST(GoldenTranslation, OutPointer)
+{
+    golden_one("out_ptr_v1");
+}
+
 TEST(GoldenTranslation, Props)
 {
     golden_one("props_v1");

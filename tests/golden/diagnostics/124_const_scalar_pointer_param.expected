@@ -1,0 +1,3 @@
+124_const_scalar_pointer_param.hot:7:24: error: a native parameter 'const float*' takes a data pointer: native code can read past one 'float'. Use an array type such as 'float[]' or a C++ helper that takes the value
+    7 |         return SumData(x, 1);
+1 error generated.

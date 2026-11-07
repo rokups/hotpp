@@ -2426,7 +2426,11 @@ struct Lowerer
             const uint32_t pos = pos_of(*c.args[i]);
             CallExpr w;
             w.pos = pos;
-            w.callee = raw(forms[i] == 's' ? "hot::span_as" : forms[i] == 'p' ? "hot::as_ptr" : "hot::as_ref", pos);
+            w.callee = raw(forms[i] == 's' ? "hot::span_as"
+                    : forms[i] == 'p'      ? "hot::as_ptr"
+                    : forms[i] == 'o'      ? "hot::as_out_ptr"
+                                           : "hot::as_ref",
+                pos);
             w.args.push_back(std::move(c.args[i]));
             c.args[i] = make_expr(std::move(w));
         }
@@ -2435,10 +2439,12 @@ struct Lowerer
     // For each argument of the native call: 'p' (hot::as_ptr), 'r' (hot::as_ref) or 0 (keep). An
     // argument converts when its script type is a handle type T, the form of the parameter is
     // "T*" or "T&" and all overloads of the native function agree (hook "native_carrier").
-    // A value lvalue of type T converts with 'p' when the parameter is "T*" or "const T*".
+    // A value lvalue of type T converts with 'p' when the parameter is "T*" or "const T*" (not
+    // "const S*" of a scalar S: native code can read past one element, so that is an error).
+    // A local of type "T*" converts with 'o' when the parameter is "T**" (an out-pointer).
     // Only an argument with a known type that is a name, a member access or (for a value) an
     // index converts.
-    std::vector<char> native_arg_forms(const CallExpr& c) const
+    std::vector<char> native_arg_forms(const CallExpr& c)
     {
         std::vector<char> forms(c.args.size(), 0);
         if (!cx.native_key || !cx.native_carrier || !cx.types)
@@ -2459,7 +2465,7 @@ struct Lowerer
                 continue;
             const std::string r = cx.native_carrier(key, i, c.args.size());
             // A value lvalue to a native "T*" or "const T*" parameter of the same type: "hot::as_ptr(x)".
-            if (r.size() > 2 && r[0] == 'v' && r[1] == ':')
+            if (r.size() > 2 && (r[0] == 'v' || r[0] == 'x') && r[1] == ':')
             {
                 std::string core;
                 for (char ch : canonical_type(t))
@@ -2470,7 +2476,32 @@ struct Lowerer
                     && (core == want || (core.find("::") == std::string::npos && want.size() > core.size() + 2
                         && want.compare(want.size() - core.size(), core.size(), core) == 0
                         && want.compare(want.size() - core.size() - 2, 2, "::") == 0)))
-                    forms[i] = 'p';
+                {
+                    if (r[0] == 'x')
+                        error(pos_of(*a),
+                            "a native parameter 'const " + want + "*' takes a data pointer: native code can read past one '"
+                                + want + "'. Use an array type such as '" + want
+                                + "[]' or a C++ helper that takes the value");
+                    else
+                        forms[i] = 'p';
+                }
+                continue;
+            }
+            // A local of type "T*" to a native "T**" parameter: "hot::as_out_ptr(x)".
+            if (r.size() > 2 && r[0] == 'o' && r[1] == ':')
+            {
+                std::string core;
+                for (char ch : canonical_type(t))
+                    if (ch != ' ' && ch != '\t')
+                        core += ch;
+                const std::string want = r.substr(2);
+                const std::string* local = simple_name(*a);
+                if (core == want && local && cx.locals.count(*local))
+                    forms[i] = 'o';
+                else if (!core.empty() && core.find('*') != std::string::npos)
+                    error(pos_of(*a),
+                        "a native out-pointer parameter '" + want + "*' needs a local variable of type '" + want
+                            + "'. Declare 'T* p = null;' and pass 'p'");
                 continue;
             }
             if (value_form)

@@ -1,0 +1,10 @@
+using "Actor.h";
+using "Util.h";
+
+class Parser {
+    char* kept;
+
+    float Run() {
+        return ParseFloat("1.5", kept);
+    }
+}

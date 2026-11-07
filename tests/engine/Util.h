@@ -18,6 +18,17 @@ HOT_EXPORT float Distance(const Vec3& a, const Vec3& b);
 HOT_EXPORT void Nudge(Vec3* v, float dx);
 HOT_EXPORT float Peek(const Vec3* v);
 
+// Native functions with a scalar pointer parameter. "Bump" adds "by" to "*v" (an out-parameter:
+// the script passes a local, "Bump(n, 2)"). "SumData" reads "n" floats from "data". A script
+// cannot pass one float to it: the translator refuses a "const float*" parameter.
+HOT_EXPORT void Bump(int* v, int by);
+HOT_EXPORT float SumData(const float* data, int n);
+
+// Like strtof. "*end" gets the pointer behind the number. The script passes a local "char* end".
+// "Consumed" gives the number of characters between "s" and "end".
+HOT_EXPORT float ParseFloat(const char* s, char** end);
+HOT_EXPORT int Consumed(const char* s, const char* end);
+
 // A text such as "(1.5, 2, 3)".
 HOT_EXPORT std::string FormatVec(const Vec3& v);
 

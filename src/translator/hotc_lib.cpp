@@ -4757,8 +4757,12 @@ void translate_impl(
             auto it = native_q.calls.find(&c);
             return it == native_q.calls.end() ? std::string() : it->second.native;
         };
-        // The pointee T of the parameter type "T*" or "const T*" with no other mark, in the canonical
-        // text with no space. Empty for any other type.
+        // The carrier of the parameter type "T*", "const T*" or "T**" with no other mark. The text has no
+        // space. Empty for any other type. Rules (memory safety): a scalar T passes one element only,
+        // so "const float*" (a data pointer that native code reads past) is refused ("x:T"); a scalar
+        // "T*" is an out-parameter and is accepted. A value struct is accepted with or without const.
+        // "v:T" is the value form ("hot::as_ptr(x)"). "o:T*" is the out-pointer form for "T**"
+        // ("hot::as_out_ptr(p)").
         auto value_pointee = [](std::string p) -> std::string
         {
             while (!p.empty() && (static_cast<unsigned char>(p[0]) < 0x20 || p[0] == ' '))
@@ -4770,15 +4774,38 @@ void translate_impl(
             p.pop_back();
             while (!p.empty() && p.back() == ' ')
                 p.pop_back();
+            bool out_ptr = false;
+            if (!p.empty() && p.back() == '*')
+            { // "T**": exactly one more "*"
+                out_ptr = true;
+                p.pop_back();
+                while (!p.empty() && p.back() == ' ')
+                    p.pop_back();
+            }
+            bool is_const = false;
             if (p.rfind("const ", 0) == 0)
+            {
+                is_const = true;
                 p.erase(0, 6);
+            }
             if (p.empty() || p.find_first_of("*&") != std::string::npos)
                 return {};
             std::string core;
             for (char c : hotc::canonical_type(p, nullptr, true))
                 if (c != ' ' && c != '\t')
                     core += c;
-            return core == "void" ? std::string() : core;
+            if (core == "void")
+                return {};
+            if (out_ptr)
+                return is_const ? std::string() : "o:" + core + "*";
+            static const std::set<std::string> scalars = {"int", "unsigned", "unsignedint", "long", "short", "float",
+                "double", "bool", "char", "int8_t", "int16_t", "int32_t", "int64_t", "uint8_t", "uint16_t", "uint32_t",
+                "uint64_t", "size_t", "ptrdiff_t", "intptr_t", "uintptr_t", "longlong", "unsignedlong",
+                "unsignedlonglong", "unsignedchar", "unsignedshort", "signedchar", "wchar_t", "char8_t", "char16_t",
+                "char32_t"};
+            if (is_const && scalars.count(core))
+                return "x:" + core; // refused: the lowering reports it for a matching argument
+            return "v:" + core;
         };
         cx.native_carrier = [&query_answers, &types, value_pointee](const std::string& key, size_t arg, size_t argc) -> std::string
         {
@@ -4823,10 +4850,14 @@ void translate_impl(
                 {
                     // A "T*" or "const T*" of a value type: the script passes the lvalue "x" and
                     // the call writes "hot::as_ptr(x)". The form is 'v' and the text is the type.
-                    t = value_pointee(ps[arg]);
-                    if (t.empty())
+                    const std::string vp = value_pointee(ps[arg]);
+                    if (vp.empty())
                         return {};
-                    form = 'v';
+                    if (any && vp != result)
+                        return {};
+                    result = vp;
+                    any = true;
+                    continue;
                 }
                 const std::string r = std::string(1, form) + ":" + t;
                 if (any && r != result)
