@@ -9,7 +9,7 @@ group: Hot script
 
 A local is borrowed when it is `ref r = x;`, `var p = &x;`, a typed `T*` or a `ref T r` local, or a `var` that takes a native pointer from a call. A native pointer to a handle type is not borrowed. A pointer field of a native class with a weak source is a checked pointer, not a borrowed value (see "Pointer fields" in `borrowing.md`). A lambda that uses a borrowed local gives the capture error.
 
-A `ref` local has more rules about its lifetime. A `ref` cannot bind to a temporary. A `ref` to a container element must not live over a shape change of the container, such as `push_back`. A `ref` cannot cross an `await`. A `ref` return must return a place that outlives the call. These rules are always errors. See "Lifetime of a ref" in [Type design](type-design.html#lifetime-of-a-ref).
+A `ref` local has more rules about its lifetime. A `ref` cannot bind to a temporary. A `ref` to a container element must not live over a shape change of the container, such as `push_back`. A `ref` cannot cross an `await`. A `ref` return must return a place that outlives the call. A `T*` return of a value struct must return `null` or `&place` of such a place. These rules are always errors. See "Lifetime of a ref" in [Type design](type-design.html#lifetime-of-a-ref).
 
 ```hot
 using "Actor.h"; using "Armory.h";

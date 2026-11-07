@@ -71,7 +71,7 @@ Notes on `hot::Value<T>`:
 - A constructor parameter that the body writes is a by-value parameter.
 - A C++ error message shows `T` for `hot::In<T>`.
 - An `override` or an interface method copies the base signature. The default rule applies to new methods only.
-- A return type is by value, unless `ref` is written. A `ref T` return type gives `T&`. See "Lifetime of a ref".
+- A return type is by value, unless `ref` is written. A `ref T` return type gives `T&`. See "Lifetime of a ref". A `T*` return of a value struct follows rule R4p.
 
 ## Locals and ref
 
@@ -116,6 +116,11 @@ Rules:
   - A local, a plain/`in`/`[byval]` parameter and a temporary are errors.
   - `T` is a builtin, struct or native value type. A class type or a handle type is an error: return the handle `$T` by value.
   - An `async` method cannot return `ref`.
+- R4p Pointer return. A method can return `T*`, where `T` is a script struct or a native value type (not a builtin scalar).
+  - Each `return` gives `null`, `&place`, or a choice `c ? &a : null` of these.
+  - The place of `&` follows rule R4. `&local` and `&param` of a copy are errors.
+  - Another form, such as `return p;` or `return Find(0);`, is an error.
+  - A caller `var p = c.Find(0);` is a borrowed pointer. It cannot go into a field, a container element or a lambda. The checker does not follow a shape change of the owner: a `push_back` can make `p` dangle.
 - R5 Call. The result of a `ref` call is a place (see the table). Rules R2 and R3 apply to each of its roots.
   - The result of `this.F(...)` can be an element of any field of the object. A shape change of any container, string, array or replaceable field of the object (`this.xs.push_back(2)`, `this.xs = other`, `xs.clear()`) ends the `ref`. A change of a scalar field does not.
 

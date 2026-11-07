@@ -59,7 +59,7 @@ class Hero {
 
 ## Where borrowing is rejected
 
-A field, a return value, a collection element, a lambda capture and a stored `&x` are errors. A field of the move-only type `std.unique_ptr<T>` is also an error, because a reload copies each field. A pointer field of a native class with a weak source is the exception (see "Pointer fields").
+A field, a return value, a collection element, a lambda capture and a stored `&x` are errors. A `T*` return of a value struct (`Info* Find(int i) { return &this.items[i]; }`) is the exception: see rule R4p in [Type design](type-design.html#lifetime-of-a-ref). A field of the move-only type `std.unique_ptr<T>` is also an error, because a reload copies each field. A pointer field of a native class with a weak source is the exception (see "Pointer fields").
 
 ```hot
 // error
@@ -69,7 +69,7 @@ class Bad {
     Vec3* ptr;                          // pointer to a value type
     std.vector<Vec3*> all;              // collection element
     std.unique_ptr<Vec3> own;           // move-only field
-    Vec3* Addr() { return &last; } // return value, return &x
+    Vec3* Addr() { Vec3 v = last; return &v; } // return &local
     void Run(ref Vec3 v) {
         last = &v;                 // assignment of &x
         var f = () => { v.x = 1; };     // capture
@@ -81,7 +81,7 @@ class Bad {
 a field cannot hold a pointer to the value type 'Vec3': nothing owns it, so the pointer can dangle. Use a value, or a pointer to the object that owns it
 a collection element cannot hold a borrowed pointer or reference to 'Vec3'. Declare a stub ...
 field of move-only type 'std::unique_ptr<Vec3>' is not supported: a reload copies each field. Use a handle
-a return value cannot hold a borrowed pointer or reference to 'Vec3'. Declare a stub ...
+'return' of a pointer to the local 'v': it ends at the return. Return a value, or a pointer to a field or a 'ref' parameter
 a '&' value cannot be stored in an assignment, a 'return' or a field initializer. Use '&' only for a call argument or a local
 the lambda captures 'v', a borrowed pointer or reference. A closure cannot keep it. Copy the value or use a handle
 ```
