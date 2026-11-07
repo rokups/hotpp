@@ -573,6 +573,7 @@ struct Checker
     std::map<const VarDeclStmt*, std::vector<std::pair<std::string, RefInfo>>> pending_refs;
     std::set<std::string> copy_params; // the plain, "in" and "[byval]" parameters of the body in progress
     bool method_ret_ref = false; // true while the body of a method with a "ref T" return is in progress
+    bool method_ret_ptr = false; // true while the body of a method with a "T*" return of a value struct is in progress
     std::set<std::string> weak_fields; // the "[weak]" fields of the class
     std::set<std::string> weak_locals; // the "[weak]" parameters and locals of the body in progress
     const std::vector<ClassDef>* classes = nullptr; // the script classes of the unit, with the imported classes
@@ -714,6 +715,70 @@ struct Checker
             return {};
         }
         return {};
+    }
+
+    // The method or the static "name" of the script class of the type, else null.
+    const Method* method_of(const std::string& type, const std::string& name) const
+    {
+        const std::string t = bare_type(type);
+        if (!classes || t.empty())
+            return nullptr;
+        for (const ClassDef& c : *classes)
+            if (c.name == t || c.key_name() == t)
+            {
+                for (const std::vector<Method>* list : {&c.methods, &c.statics})
+                    for (const Method& m : *list)
+                        if (m.name == name)
+                            return &m;
+                return nullptr;
+            }
+        return nullptr;
+    }
+
+    // True when the method returns "T*" where "T" is a value struct: a script struct or a native value
+    // that is not a builtin scalar. The body returns "null" or "&place" (a ".hot" script only).
+    bool is_ptr_ret(const Method& m) const
+    {
+        std::string base;
+        if (is_cpp || is_ref_ret(m) || !is_single_pointer(m.ret) || !is_borrowed_form(m.ret, base))
+            return false;
+        base = bare_type(base);
+        if (base.empty() || is_prelude_container(base) || !can_reshape(base))
+            return false;
+        if (types.is_script_class(base))
+            return types.is_script_value(base);
+        return types.lookup(base).kind == Kind::Value;
+    }
+
+    // The script method that a call calls: an own method or static, or a method of the class of the
+    // receiver. Null when it is not known.
+    const Method* called_method(const Expr& e) const
+    {
+        const auto* c = std::get_if<CallExpr>(&e.v);
+        if (!c || !c->callee)
+            return nullptr;
+        auto own = [&](const std::string& name) -> const Method*
+        {
+            for (const std::vector<Method>* list : {&cd.methods, &cd.statics})
+                for (const Method& m : *list)
+                    if (m.name == name)
+                        return &m;
+            return nullptr;
+        };
+        if (const auto* cn = std::get_if<NameExpr>(&c->callee->v))
+        {
+            if (cn->parts.size() == 1)
+                return locals.count(cn->parts[0]) ? nullptr : own(cn->parts[0]);
+            if (cn->parts.size() != 2)
+                return nullptr;
+            const std::string& first = cn->parts[0];
+            const bool is_var = locals.count(first) || field_names.count(first) || refs.count(first);
+            return method_of(is_var ? name_type(first) : first, cn->parts[1]);
+        }
+        if (const auto* cm = std::get_if<MemberExpr>(&c->callee->v); cm && cm->obj)
+            return std::holds_alternative<ThisExpr>(cm->obj->v) ? own(cm->name)
+                                                                : method_of(expr_type(*cm->obj), cm->name);
+        return nullptr;
     }
 
     // True when a call on a receiver of this type can give a reference into the receiver: a native class,
@@ -1227,9 +1292,11 @@ struct Checker
         in_async_void = in_async && (m.ret.empty() || m.ret == "void");
         method_ret = trim(m.ret);
         method_ret_ref = !is_cpp && is_ref_ret(m);
+        method_ret_ptr = is_ptr_ret(m);
         body(m.params, m.body);
         method_ret.clear();
         method_ret_ref = false;
+        method_ret_ptr = false;
         if (!is_cpp && !m.is_abstract)
             check_out_params(m.params, m.body, m.body.end_pos ? m.body.end_pos : m.pos,
                 [&](uint32_t pos, const std::string& msg) { error(pos, msg); });
@@ -1561,12 +1628,19 @@ struct Checker
     }
 
     // R4: "return e;" in a method with a "ref T" return. Every root of the place must outlive the call.
-    void check_ref_return(const ReturnStmt& r)
+    void check_ref_return(const ReturnStmt& r) { check_return_place(*r.expr, r.pos, false); }
+
+    // The place of a "ref" return, or the operand of "&" in a "T*" return ("ptr"). Every root of the place
+    // must outlive the call.
+    void check_return_place(const Expr& e, uint32_t pos, bool ptr)
     {
+        const std::string what = ptr ? "a pointer" : "a 'ref'";
         Place pl;
-        if (!place_of(*r.expr, pl))
+        if (!place_of(e, pl))
         {
-            error(r.pos, "'return' of a temporary from a 'ref' method: the value ends at the return. Return 'T' by value");
+            error(pos, ptr ? "'return' of a pointer to a temporary: the value ends at the return. Return 'T' by value"
+                           : "'return' of a temporary from a 'ref' method: the value ends at the return. Return 'T' by "
+                             "value");
             return;
         }
         for (const std::string& root : pl.roots)
@@ -1574,13 +1648,42 @@ struct Checker
             if (root == "this" || root.rfind("this.", 0) == 0 || ref_params.count(root))
                 continue;
             if (copy_params.count(root))
-                error(r.pos, "'return' of a 'ref' to the parameter '" + root
-                                 + "': the parameter is a copy and ends at the return. Return a value, or take the "
-                                   "parameter by 'ref'");
+                error(pos, "'return' of " + what + " to the parameter '" + root
+                               + "': the parameter is a copy and ends at the return. Return a value, or take the "
+                                 "parameter by 'ref'");
             else if (locals.count(root))
-                error(r.pos, "'return' of a 'ref' to the local '" + root
-                                 + "': it ends at the return. Return a value, or a ref to a field or a 'ref' parameter");
+                error(pos, "'return' of " + what + " to the local '" + root + "': it ends at the return. Return a value, or "
+                               + (ptr ? "a pointer" : "a ref") + " to a field or a 'ref' parameter");
         }
+    }
+
+    // "return e;" in a method with a "T*" return of a value struct. "e" is "null", "&place" or a choice of
+    // these. The place of "&" follows the rules of a "ref" return.
+    void check_ptr_return(const Expr& e, uint32_t pos)
+    {
+        if (const auto* p = std::get_if<ParenExpr>(&e.v))
+        {
+            if (p->inner)
+                check_ptr_return(*p->inner, pos);
+            return;
+        }
+        if (const auto* t = std::get_if<TernaryExpr>(&e.v))
+        {
+            for (const ExprP* side : {&t->a, &t->b})
+                if (*side)
+                    check_ptr_return(**side, pos);
+            return;
+        }
+        if (std::holds_alternative<NullExpr>(e.v))
+            return;
+        if (const UnaryExpr* u = as_address_of(e); u && u->operand)
+        {
+            allowed_refs.insert(&e);
+            check_return_place(*u->operand, pos, true);
+            return;
+        }
+        error(pos, "a 'T*' return of a value struct must be 'null' or '&place', such as '&this.items[i]'. Return "
+                   "the place, or a value");
     }
 
     // The rules of the declaration of a method with a "ref T" return (a ".hot" script only).
@@ -1608,6 +1711,8 @@ struct Checker
                 error(r->pos, "an 'async void' method cannot return a value");
             if (method_ret_ref && scopes.empty() && r->expr)
                 check_ref_return(*r);
+            if (method_ret_ptr && scopes.empty() && r->expr)
+                check_ptr_return(*r->expr, r->pos);
             // "return v;" in a method of the type "T[]": the view points into the local "v". The same holds
             // for a view local over such a local ("T[] s = v; return s;").
             if (scopes.empty() && r->expr && !is_cpp && is_view_type(method_ret))
@@ -1697,6 +1802,11 @@ struct Checker
             else if (d->type.empty() && d->init && copies_borrowed_pointer(*d->init))
             {
                 add_borrowed(d->name, "*"); // "var q = p": the copy of a borrowed pointer
+            }
+            else if (const Method* cm = d->type.empty() && d->init ? called_method(*d->init) : nullptr;
+                cm && is_ptr_ret(*cm))
+            {
+                add_borrowed(d->name, "*"); // "var p = c.Find(1)": a "T*" return of a value struct
             }
         }
         else if (auto* fo = std::get_if<ForOfStmt>(&s.v))
@@ -2241,7 +2351,7 @@ struct Checker
                 {
                     // The hidden field of an auto property reports the type, so skip the getter.
                     const bool getter = m.name.rfind("get_", 0) == 0 && field_names.count("__p_" + m.name.substr(4));
-                    if (!getter && !(is_ref_ret(m) && !is_cpp))
+                    if (!getter && !(is_ref_ret(m) && !is_cpp) && !is_ptr_ret(m))
                         check_storage(m.ret, m.pos, "a return value");
                 }
                 check_ref_return_decl(m);

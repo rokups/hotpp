@@ -132,6 +132,12 @@ TEST(GoldenTranslation, RefReturnOtherClass)
     golden_one("ref_return_xclass_v1");
 }
 
+// A "T*" return of a value struct: "null" or "&place". A caller "var p" is a borrowed pointer.
+TEST(GoldenTranslation, PtrReturn)
+{
+    golden_one("ptr_return_v1");
+}
+
 // The script exception types: a struct with the base ScriptError, and a struct with such a parent.
 TEST(GoldenTranslation, Exceptions)
 {

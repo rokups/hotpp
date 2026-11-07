@@ -62,9 +62,10 @@ TEST(BorrowedStorage, CollectionElementIsAnError)
         << r.diagnostics;
 }
 
+// A "T*" return of a value struct is valid (rule R4p). A "T**" return stays an error.
 TEST(BorrowedStorage, ReturnValueIsAnError)
 {
-    const hotc::TranslateResult r = check_translate("", "    Weapon* Find() { return null; }\n");
+    const hotc::TranslateResult r = check_translate("", "    Weapon** Find() { return null; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "a return value cannot hold a borrowed pointer or reference to 'Weapon'"))
         << r.diagnostics;
@@ -232,7 +233,7 @@ TEST(RefLocal, AVarRefLocalCannotBeReturned)
     const hotc::TranslateResult r =
         check_translate("", "    Vec3 pos;\n    Vec3* Get() { ref Vec3 r = this.pos; return r; }\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "a return value cannot hold a borrowed pointer")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "a 'T*' return of a value struct must be 'null' or '&place'")) << r.diagnostics;
 }
 
 TEST(RefLocal, AVarRefLocalCannotInitializeAField)
@@ -499,7 +500,7 @@ TEST(BorrowedArgs, ResultOfACallWithABorrowedArgumentStaysBorrowed)
     const hotc::TranslateResult r = check_translate("",
         "    Weapon* Pick(Weapon* w) { return w; }\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "a return value cannot hold a borrowed pointer")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "a 'T*' return of a value struct must be 'null' or '&place'")) << r.diagnostics;
     const hotc::TranslateResult s = check_translate("",
         "    void Run(Weapon* w) { var q = Echo(w); var f = () => { q.dmg = 1; }; }\n");
     EXPECT_FALSE(s.ok);

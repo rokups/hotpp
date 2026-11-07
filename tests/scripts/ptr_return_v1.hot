@@ -1,0 +1,47 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// A "T*" return of a value struct: the method returns "null" or "&place". The place must outlive the call.
+// A caller "var p" is a borrowed pointer.
+using <vector>;
+using "Actor.h";
+
+struct Info {
+    int id = 0;
+    int x = 0;
+}
+
+class Catalog {
+    std.vector<Info> items;
+    Vec3 pos;
+
+    Info* Find(int id) {
+        foreach (ref it in this.items) {
+            if (it.id == id) return &it;
+        }
+        return null;
+    }
+
+    Info* First() {
+        return this.items.size() > 0 ? &this.items[0] : null;
+    }
+
+    Vec3* Pos() {
+        return &this.pos;
+    }
+
+    static Info* Pick(ref Info a) {
+        return &a;
+    }
+
+    void Use() {
+        var p = this.Find(2);
+        if (p == null) return;
+        p.x = 1;
+        var q = First();
+        if (q != null) q.x = 2;
+        var v = Pos();
+        if (v != null) v.x = 3.0;
+    }
+}
