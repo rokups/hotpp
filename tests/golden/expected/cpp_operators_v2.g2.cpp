@@ -1327,7 +1327,7 @@ void DriverState_g2::Tick(float dt)
         }
         *hot_mod()->a += 2;
         *hot_mod()->b += 5;
-        auto f = [&] { *hot_mod()->a += 1; };
+        auto f = hot::cpp_lambda(&hot_live, "Driver lambda", [&] { *hot_mod()->a += 1; });
         f();
         std::printf("[v2] %d %d %d %d %d %d %d %d\n", (*hot_mod()->a)(3, 2), (*hot_mod()->a)[1], int(*hot_mod()->a == *hot_mod()->b), int(*hot_mod()->a != *hot_mod()->b), int(*hot_mod()->a < *hot_mod()->b), -*hot_mod()->a,
             *hot_mod()->b - *hot_mod()->a, *hot_mod()->a * 4);

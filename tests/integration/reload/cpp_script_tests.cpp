@@ -708,7 +708,7 @@ TEST_P(BackendTests, CppScriptChainReload)
 
 // Lambdas in the methods and in the constructor. A lambda reaches the fields through the shell,
 // not through a pointer to the state. A reload moves the state to a new block. The lambda in the
-// field "stored" is from generation 1. It still works after the reload and reads the new state.
+// field "stored" is from generation 1. After the reload its code is stale: the guard skips it.
 // The old generation stays loaded, because a live field can hold code.
 TEST_P(BackendTests, CppScriptLambdasUseTheShell)
 {
@@ -750,12 +750,15 @@ TEST_P(BackendTests, CppScriptLambdasUseTheShell)
     EXPECT_EQ(*fld<int>(s.inst.shell, "gen"), 136);
     EXPECT_EQ(*fld<int>(s.inst.shell, "nested"), 36 * 2 + 6);
     EXPECT_EQ(*modvar<int>(s, "calls"), 2);
-    // The stored lambda is the one of generation 1 (+1000), not the one of generation 2 (+2000).
-    EXPECT_EQ(*fld<int>(s.inst.shell, "stored_result"), 1036);
+    // The stored lambda is the one of generation 1. Its code is stale, so the guard skips it and
+    // the call gives 0. Generation 2 does not set the field again.
+    EXPECT_EQ(*fld<int>(s.inst.shell, "stored_result"), 0);
 
-    EXPECT_EQ((*fld<Fn>(s.inst.shell, "kept_ref"))(), 36 * 3);
-    EXPECT_EQ((*fld<Fn>(s.inst.shell, "kept_init"))(), 36 + 5);
-    EXPECT_EQ((*fld<Fn>(s.inst.shell, "from_init"))(), 36 + 6);
+    const uint64_t stale0 = hot::stale_call_count();
+    EXPECT_EQ((*fld<Fn>(s.inst.shell, "kept_ref"))(), 0);
+    EXPECT_EQ((*fld<Fn>(s.inst.shell, "kept_init"))(), 0);
+    EXPECT_EQ((*fld<Fn>(s.inst.shell, "from_init"))(), 0);
+    EXPECT_EQ(hot::stale_call_count(), stale0 + 3);
 
     // The stored lambda holds code of generation 1: the generation does not unload.
     s.loader.frame_boundary();
@@ -763,6 +766,69 @@ TEST_P(BackendTests, CppScriptLambdasUseTheShell)
     ASSERT_EQ(s.loader.stats().generations.size(), 2u);
     EXPECT_NE(s.loader.stats().generations[0].state, hot::GenState::Unloaded);
     EXPECT_TRUE(s.loader.stats().state_holds_code);
+}
+
+// A lambda of generation 1 in a field reads the fields with the old offsets and the old module
+// block. Generation 2 removes a large field, so the old offsets are past the end of the new state
+// block, and the old module block is free. Each call after the reload must skip the old code:
+// no read of freed or foreign memory (ASan), a 0 or empty result, one stale call each.
+TEST_P(BackendTests, CppStoredLambdaOfAnOldGenerationIsSkipped)
+{
+    hot::LoadResult v1 = backend->load(source("cpp_stale_lambda_v1.cpp"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    hot::LoadResult v2 = backend->load(source("cpp_stale_lambda_v2.cpp"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Keeper"));
+    s.actor->Tick(kDt);
+    using Fn = std::function<int()>;
+    using Peek = std::function<int(Actor*)>;
+    hot::ShellCore* const shell = s.inst.shell;
+    Actor* const self = s.actor;
+    auto call_all = [&](int& a, int& b, std::string& c, int& d, int& e)
+    {
+        a = (*fld<Fn>(shell, "read_count"))();
+        b = (*fld<Fn>(shell, "touch_module"))();
+        c = (*fld<std::function<std::string()>>(shell, "read_label"))();
+        d = (*fld<Peek>(shell, "peek"))(self);
+        (*fld<std::function<void(int)>>(shell, "poke"))(3);
+        e = (*fld<Fn>(shell, "pure"))();
+    };
+    int a = 0, b = 0, d = 0, e = 0;
+    std::string c;
+    call_all(a, b, c, d, e);
+    EXPECT_EQ(a, 8);
+    EXPECT_EQ(b, 8);
+    EXPECT_EQ(c, "keeper!");
+    EXPECT_EQ(d, 14);
+    EXPECT_EQ(*fld<int>(shell, "count"), 10);
+    EXPECT_EQ(e, 50);
+
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    const hot::ReloadResult res = s.loader.commit_pending();
+    ASSERT_TRUE(res) << res.error;
+    EXPECT_EQ(*fld<int>(shell, "count"), 10); // kept
+
+    const uint64_t stale0 = hot::stale_call_count();
+    testing::internal::CaptureStderr();
+    call_all(a, b, c, d, e);
+    const std::string log = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(a, 0);
+    EXPECT_EQ(b, 0);
+    EXPECT_EQ(c, "");
+    EXPECT_EQ(d, 0);
+    EXPECT_EQ(*fld<int>(shell, "count"), 10); // "poke" did not run
+    EXPECT_EQ(e, 50); // a lambda with no field and no module variable has no guard
+    EXPECT_EQ(hot::stale_call_count(), stale0 + 5);
+    EXPECT_NE(log.find("stale call ignored: Keeper lambda"), std::string::npos) << log;
+}
+
+// A lambda with the stale guard cannot become a function pointer. The compile error says so.
+TEST_P(BackendTests, CppGuardedLambdaAsAFunctionPointerIsAnError)
+{
+    hot::LoadResult r = backend->load(source("cpp_lambda_fnptr_bad.cpp"), 1);
+    ASSERT_FALSE(r);
+    EXPECT_NE(r.error.find("cannot become a function pointer"), std::string::npos) << r.error;
 }
 
 // Classes and module variables in namespaces. The names of the state have the namespace:

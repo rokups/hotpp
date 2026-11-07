@@ -207,7 +207,7 @@ static void Lamp__init_kept_init(void*, void* f) { using T = std::function<int (
 #line 208 "cpp_lambda_v1.cpp.cpp"
 #line 66 "cpp_lambda_v1.cpp"
 HOT_HIDDEN LampState_g1* state_of(Lamp_Shell* __self);
-static void Lamp__init_from_init(void* st, void* f) { [[maybe_unused]] auto* __self = static_cast<Lamp_Shell*>(static_cast<LampState_g1*>(st)->__hot_owner); using T = std::function<int ()>; new (f) T([__self] { return state_of(__self)->count + state_of(__self)->level; }); }
+static void Lamp__init_from_init(void* st, void* f) { [[maybe_unused]] auto* __self = static_cast<Lamp_Shell*>(static_cast<LampState_g1*>(st)->__hot_owner); using T = std::function<int ()>; new (f) T(hot::cpp_lambda(&hot_live, "Lamp lambda", [__self] { return state_of(__self)->count + state_of(__self)->level; })); }
 #line 212 "cpp_lambda_v1.cpp.cpp"
 
 #if defined(__clang__)
@@ -509,7 +509,7 @@ void LampState_g1::ctor()
     HOT_TRACE_FRAME("Lamp.Lamp", "cpp_lambda_v1.cpp");
 #line 14 "cpp_lambda_v1.cpp"
 
-        auto init = [=] { return state_of(__self)->base_level * 2; };
+        auto init = hot::cpp_lambda(&hot_live, "Lamp lambda", [=] { return state_of(__self)->base_level * 2; });
         level = init();
     
 #line 17 "cpp_lambda_v1.cpp"
@@ -539,33 +539,33 @@ void LampState_g1::Tick(float dt)
 #line 20 "cpp_lambda_v1.cpp"
 
         // The capture [this] with a field, a script method and a native base member.
-        auto by_this = [__self, dt] { state_of(__self)->bump(1); __self->Move(Vec3(dt, 0, 0)); return state_of(__self)->count; };
+        auto by_this = hot::cpp_lambda(&hot_live, "Lamp lambda", [__self, dt] { state_of(__self)->bump(1); __self->Move(Vec3(dt, 0, 0)); return state_of(__self)->count; });
         by_this();
         // The capture [=] with a field.
-        auto by_copy = [=] { return state_of(__self)->count + state_of(__self)->level; };
+        auto by_copy = hot::cpp_lambda(&hot_live, "Lamp lambda", [=] { return state_of(__self)->count + state_of(__self)->level; });
         sum = by_copy();
         // The capture [&] with a field and a method call.
-        auto by_ref = [&, __self] { state_of(__self)->count += 10; state_of(__self)->bump(2); __self->Move(Vec3(0, dt, 0)); };
+        auto by_ref = hot::cpp_lambda(&hot_live, "Lamp lambda", [&, __self] { state_of(__self)->count += 10; state_of(__self)->bump(2); __self->Move(Vec3(0, dt, 0)); });
         by_ref();
         // A generic lambda.
-        auto generic = [__self](auto v) { return state_of(__self)->count + v; };
+        auto generic = hot::cpp_lambda(&hot_live, "Lamp lambda", [__self](auto v) { return state_of(__self)->count + v; });
         gen = generic(100);
         // A nested lambda.
-        auto outer = [__self] { auto inner = [__self] { return state_of(__self)->count * 2; }; return inner() + state_of(__self)->level; };
+        auto outer = hot::cpp_lambda(&hot_live, "Lamp lambda", [__self] { auto inner = hot::cpp_lambda(&hot_live, "Lamp lambda", [__self] { return state_of(__self)->count * 2; }); return inner() + state_of(__self)->level; });
         nested = outer();
         // A lambda that uses a module variable and "this" as a value.
-        auto module_use = [__self] { hot_mod()->calls += 1; return state_of(__self)->self_is_set(__self); };
+        auto module_use = hot::cpp_lambda(&hot_live, "Lamp lambda", [__self] { hot_mod()->calls += 1; return state_of(__self)->self_is_set(__self); });
         flag = module_use();
         // A lambda in a field. A reload copies the field, and the old lambda stays.
         if (!stored)
-            stored = [__self] { return state_of(__self)->count + 1000; };
+            stored = hot::cpp_lambda(&hot_live, "Lamp lambda", [__self] { return state_of(__self)->count + 1000; });
         stored_result = stored();
         // A lambda with [&] and a lambda with an init-capture of "this". The method returns before
         // the host calls them. They keep the object, not a local of the method.
         if (!kept_ref)
-            kept_ref = [&, __self] { return state_of(__self)->count * 3; };
+            kept_ref = hot::cpp_lambda(&hot_live, "Lamp lambda", [&, __self] { return state_of(__self)->count * 3; });
         if (!kept_init)
-            kept_init = [self = __self] { return state_of(self)->count + 5; };
+            kept_init = hot::cpp_lambda(&hot_live, "Lamp lambda", [self = __self] { return state_of(self)->count + 5; });
     
 #line 49 "cpp_lambda_v1.cpp"
 }

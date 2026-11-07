@@ -47,10 +47,10 @@ An operator that a script class cannot define is an error. See [Limits](cpp-limi
 
 A lambda in a method, in a constructor or in a field initializer can use the fields, the methods and the native base members of the object. Use any capture: `[this]`, `[=]`, `[&]`, `[=, this]`, `[&, this]` or an init-capture such as `[self = this]`. A generic lambda and a nested lambda work too.
 
-A reload moves the fields of an object to a new place. So a lambda must not keep the address of the fields. `hotc` makes the lambda keep the object instead. The object keeps its address for all its life. Each use of a field in the lambda finds the fields at the time of the call. A lambda that a field holds sees the new values after a reload.
+A reload moves the fields of an object to a new place. So a lambda must not keep the address of the fields. `hotc` makes the lambda keep the object instead. The object keeps its address for all its life. Each use of a field in the lambda finds the fields at the time of the call.
 
 - `[this]` becomes a capture of the object. `[=, this]` becomes `[=]`.
-- `[&]` keeps the object by copy. A lambda that you store and call after the method returns is safe if it uses only fields and methods. It still holds a reference to each local that it uses, so do not store a lambda that uses a local.
+- `[&]` keeps the object by copy. A lambda that you store and call after the method returns is safe if it uses only fields and methods. It still holds a reference to each local that it uses. An assignment of such a lambda to a field or a module variable is an error: capture the local by copy, for example `[&, x]` or `[x]`.
 - In `[self = this]`, the name `self` is the object. `self->count` reads the field of the object.
 
 ```cpp
@@ -64,6 +64,12 @@ void Tick(float dt) override
 ```
 
 The lambda in a field has the code of the version that made it. A reload does not replace the body. The old version stays loaded while a live field can hold code. The next reload does not unload the old version. A lambda that you make again after the reload has the new code. To get the new code, set the field again.
+
+The old code knows the old layout of the fields and the old block of the module variables. After a reload, both are wrong: the fields have a new layout, and the old module block is free. So `hotc` puts a guard on each lambda that uses the object or a module variable: `hot::cpp_lambda(&hot_live, "Lamp lambda", [...] { ... })`. A call of the lambda after its version is replaced does not run the body. It logs `stale call ignored: Lamp lambda` and gives the default value (`0`, an empty string, nothing for `void`). A lambda that gives a reference, or a type with no default value, throws `hot::ScriptError` with the text `stale lambda: ...`. A lambda that uses no field, no method and no module variable has no guard and runs as before.
+
+Set each lambda field again after a reload. A host can call a method again after a reload for this, for example `OnSubscribe` (see [Hot reload of lambdas that native code holds](lambda-hot-reload.html)).
+
+A lambda with the guard cannot become a function pointer. The C++ compiler gives the error `a lambda in a .cpp script that uses a field or a module variable cannot become a function pointer`. Use `std::function`.
 
 A lambda cannot capture `*this`. A copy of the object has no meaning in a script. `hotc` gives an error. Capture a copy of the fields, for example `[n = count]`.
 

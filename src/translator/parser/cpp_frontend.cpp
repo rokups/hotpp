@@ -21,6 +21,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <tuple>
 #include <utility>
 
 namespace hotc
@@ -384,6 +385,11 @@ struct WalkState
     // that stays can use the local "__self" only by copy, so apply_slices adds the capture "__self".
     std::vector<std::pair<Range, uint32_t>> ref_lambdas;
     std::vector<Range> lambdas; // the lambdas of the walk so far. A cursor inside one of them is in a lambda.
+    std::vector<std::string> lambda_owner; // the class of each lambda, for the stale call log ("" outside a class)
+    // The start of each lambda that an assignment puts into a field or a module variable.
+    std::set<uint32_t> stored_lambdas;
+    // The locals of an enclosing function that each lambda uses (start of the lambda, name, place of the use).
+    std::vector<std::tuple<uint32_t, std::string, uint32_t>> outer_locals;
     std::vector<std::optional<CppFail>> fails; // the first error of the walk in each slice
 };
 
@@ -1471,6 +1477,19 @@ void Frontend::examine(CXCursor k, WalkState& st)
             add(e.begin, e.end - e.begin, "hot_mod()->" + en->name);
             return;
         }
+        // A local of an enclosing function in a lambda (see the check of stored lambdas).
+        const CXCursorKind rk = clang_getCursorKind(ref);
+        if (in_lambda && (rk == CXCursor_VarDecl || rk == CXCursor_ParmDecl))
+        {
+            const CXCursorKind pk = clang_getCursorKind(clang_getCursorSemanticParent(ref));
+            const bool local = pk == CXCursor_FunctionDecl || pk == CXCursor_CXXMethod || pk == CXCursor_Constructor ||
+                pk == CXCursor_Destructor || pk == CXCursor_FunctionTemplate || pk == CXCursor_LambdaExpr;
+            const uint32_t at = extent_of(ref).begin;
+            // Each lambda around the use that does not hold the declaration captures the local.
+            for (const Range& r : st.lambdas)
+                if (local && r.has(e.begin) && !r.has(at))
+                    st.outer_locals.emplace_back(r.begin, spelling(ref), e.begin);
+        }
         if (t.find("::") == std::string::npos && !qualified(e.begin) && base_scoped(ref))
             add(e.begin, 0, st.cls->native + "::");
         return;
@@ -1553,7 +1572,42 @@ void Frontend::examine(CXCursor k, WalkState& st)
         // So the body reaches a field through the shell (see in_lambda), and the capture "this"
         // becomes the capture "__self". The shell keeps its address.
         st.lambdas.push_back(e);
+        st.lambda_owner.push_back(st.cls ? st.cls->display : std::string());
         rewrite_this_capture(t);
+        return;
+    }
+    case CXCursor_CallExpr:
+    {
+        // "field = [&] { ... }": the lambda goes into a field or a module variable and lives after
+        // the method. apply_slices checks that it holds no reference to a local.
+        if (spelling(k) != "operator=")
+            return;
+        const std::vector<CXCursor> kids = children(k);
+        if (kids.size() < 2)
+            return;
+        CXCursor lhs = kids[0];
+        while (clang_getCursorKind(lhs) == CXCursor_UnexposedExpr && children(lhs).size() == 1)
+            lhs = children(lhs)[0];
+        const CXCursor target = clang_getCursorReferenced(lhs);
+        const CXCursorKind tk = clang_getCursorKind(target);
+        const CXCursorKind tp = clang_getCursorKind(clang_getCursorSemanticParent(target));
+        const bool lasting = tk == CXCursor_FieldDecl ||
+            (tk == CXCursor_VarDecl && (tp == CXCursor_TranslationUnit || tp == CXCursor_Namespace)) ||
+            (tk == CXCursor_VarDecl && clang_Cursor_getStorageClass(target) == CX_SC_Static);
+        if (!lasting)
+            return;
+        // The first lambda of the right side (a std::function takes it through a conversion).
+        std::vector<CXCursor> todo(kids.begin() + 1, kids.end());
+        for (size_t i = 0; i < todo.size() && i < 64; ++i)
+        {
+            if (clang_getCursorKind(todo[i]) == CXCursor_LambdaExpr)
+            {
+                st.stored_lambdas.insert(extent_of(todo[i]).begin);
+                break;
+            }
+            for (CXCursor c : children(todo[i]))
+                todo.push_back(c);
+        }
         return;
     }
     default:
@@ -1651,11 +1705,88 @@ void Frontend::apply_slices()
         if (uses_self)
             edits_.push_back(Edit{close, 0, ", __self", false});
     }
+    // A stored lambda must not hold a reference to a local: the method returns, and the local is
+    // gone. The capture default "&" or an item "&x" with a use of a local of an enclosing function
+    // is an error.
+    auto report = [&](uint32_t pos, const std::string& msg)
+    {
+        size_t si = 0;
+        if (!slice_at(pos, si) || st.fails[si])
+            return;
+        try
+        {
+            fail(pos, msg);
+        }
+        catch (CppFail& f)
+        {
+            st.fails[si] = std::move(f);
+        }
+    };
+    for (const auto& [begin, name, at] : st.outer_locals)
+    {
+        if (!st.stored_lambdas.count(begin))
+            continue;
+        const size_t close = text_.find(']', begin);
+        if (close == std::string::npos)
+            continue;
+        // The items of the capture list, without spaces.
+        std::vector<std::string> items;
+        std::string cur;
+        for (size_t i = begin + 1; i < close; ++i)
+        {
+            if (text_[i] == ',')
+            {
+                items.push_back(cur);
+                cur.clear();
+            }
+            else if (!is_space(text_[i]))
+                cur += text_[i];
+        }
+        items.push_back(cur);
+        bool by_ref = false;
+        bool by_copy = false;
+        for (const std::string& it : items)
+        {
+            by_ref = by_ref || it == "&" + name;
+            by_copy = by_copy || it == name;
+        }
+        if (!items.empty() && items[0] == "&" && !by_copy)
+            by_ref = true;
+        if (by_ref)
+            report(at,
+                "the lambda goes into a field or a module variable and keeps a reference to the local '" + name +
+                    "': the local ends when the function returns; capture it by copy, for example [" + name + "]");
+    }
+    // A lambda that uses the object or a module variable gets the guard hot::cpp_lambda. After a
+    // reload its code reads an old layout and a free module block, so the guard skips the call.
+    if (!aot_optimized_)
+    {
+        const size_t n = edits_.size();
+        for (size_t li = 0; li < st.lambdas.size(); ++li)
+        {
+            const Range& r = st.lambdas[li];
+            bool uses_state = false;
+            for (size_t i = 0; i < n && !uses_state; ++i)
+            {
+                const Edit& ed = edits_[i];
+                uses_state = r.has(ed.pos) && (ed.text.find("__self") != std::string::npos ||
+                                                  ed.text.find("state_of(") != std::string::npos ||
+                                                  ed.text.find("hot_mod()") != std::string::npos);
+            }
+            if (!uses_state)
+                continue;
+            const std::string& owner = st.lambda_owner[li];
+            const std::string what = (owner.empty() ? std::string() : owner + " ") + "lambda";
+            edits_.push_back(Edit{r.begin, 0, "hot::cpp_lambda(&hot_live, \"" + what + "\", ", true});
+            edits_.push_back(Edit{r.end, 0, ")", true});
+        }
+    }
     std::vector<std::vector<const Edit*>> edits(slices_.size()); // the edits of each slice, in walk order
     for (const Edit& ed : edits_)
     {
         size_t si = 0;
-        if (!slice_at(ed.pos, si))
+        // An insertion at the end of a slice (the ")" of a lambda guard) belongs to that slice.
+        if (!slice_at(ed.pos, si) && !(ed.len == 0 && ed.pos > 0 && slice_at(ed.pos - 1, si)))
             fail(ed.pos, "internal error: an edit is outside every slice");
         edits[si].push_back(&ed);
     }

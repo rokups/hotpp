@@ -506,7 +506,7 @@ void PlayerState_g2::Tick(float dt)
         std::printf("[v2] %s: Tick dt=%.4f pos.x=%.4f health=%.1f level=%.1f\n", __self->Name.c_str(), dt,
             __self->Position.x, health, level);
         hot_mod()->total++;
-        auto step = [&, __self] { __self->Move(Vec3(0, 1, 0)); };
+        auto step = hot::cpp_lambda(&hot_live, "Player lambda", [&, __self] { __self->Move(Vec3(0, 1, 0)); });
         step();
     
 #line 44 "cpp_player_v2.cpp"

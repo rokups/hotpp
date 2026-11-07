@@ -1,6 +1,6 @@
 # Hot reload of lambdas that native code holds
 
-Status: evaluation only. No code changed.
+Status: decided (2026-11-08). The `.hot` closures keep the guard and the host re-subscribe below. The slot design is not built. A `.cpp` lambda gets the same guard (see [Lambdas](cpp-translation.html#lambdas)).
 Date: 2026-10-29.
 
 The facts below come from a read-only code survey. The survey did not verify every reference.
@@ -69,6 +69,12 @@ Give each lambda the same treatment as a method.
 - `include/hot/runtime/shell.h:77-94`: `hot::call` and the slot key check.
 - `tests/scripts/timer_v1.hot`, `timer_v2.hot`: lambda in a `World` timer.
 
-## Next step
+## Decision
 
-Run a planning pass. It must check the thunk-lifetime question and the capture-migration design against the code. Then it produces a step plan.
+The slot design is not built. The reasons:
+
+- The guard already makes each stale call safe. No old lambda body runs after a reload. The call logs a stale call and returns `R()`.
+- The host re-subscribe gives the new code to each subscription. It needs no change of the closure design.
+- A rebind needs a stable key for each lambda and a migration of each capture block. A wrong key calls a different lambda with old captures. The guard has no such risk.
+
+A `.cpp` lambda has the same rule. `hotc` puts the guard `hot::cpp_lambda` on each lambda that uses the object or a module variable. A stale call logs the stale call and gives the default value. The test `CppStoredLambdaOfAnOldGenerationIsSkipped` checks it under ASan with a smaller state layout in the new version.

@@ -70,6 +70,8 @@ The first version gives an error for each form in this list. The text in the sec
 | `Minion::` before a member that is not static, on another object or outside a child class, for example `p->Minion::boost(1)` | `the script class '<name>' can qualify only a static member, or a member that a child class uses on itself, in a .cpp script` (outside a script class the end of the message is `can qualify only a static member in a .cpp script`) |
 | A forward declaration of a script class | `a forward declaration of the script class '<name>' is not supported in a .cpp script; define the class before its first use` |
 | A lambda that captures `*this` | `a lambda cannot capture '*this' in a .cpp script: it would copy the object; capture a copy of the fields` |
+| An assignment to a field or a module variable of a lambda that keeps a reference to a local (the default `&` or an item `&x`), for example `f = [&] { return x; };` | `the lambda goes into a field or a module variable and keeps a reference to the local 'x': the local ends when the function returns; capture it by copy, for example [x]` |
+| A lambda that uses a field, a method or a module variable, as a function pointer (C++ compile error) | `a lambda in a .cpp script that uses a field or a module variable cannot become a function pointer: a reload can make its code stale; use std::function` |
 | A module variable that uses a type of the file that comes after the first module variable | `the type '<type>' must come before the first module variable '<name>': the module block is there and needs the complete type` |
 | A module variable whose initializer uses a function of the file that comes after the first module variable | `'<function>' must come before the first module variable '<name>': the module block is there and holds the initializers` |
 | A variable that is not a module variable and uses a module variable in its initializer | `the variable '<variable>' cannot use the module variable '<name>' in a .cpp script: it gets its value before the module state exists` |
@@ -90,6 +92,9 @@ A warning does not stop the translation. These forms give a warning.
 An explicit constructor, for example `explicit Player(int hp)`, is allowed. It is a normal constructor.
 
 ## Known limits
+
+- A lambda of an old version that uses the object or a module variable does not run after a reload (see [Lambdas](cpp-translation.html#lambdas)). The call logs a stale call and gives the default value. Set the lambda again after the reload.
+- A lambda that keeps a reference to a local and goes to native code (`Subscribe(..., [&] { ... })`) or into a container is not checked. This is the rule of C++: the local ends when the function returns. The translator cannot tell a stored lambda from a lambda that native code calls at once (a sort comparator). Capture the local by copy.
 
 - A field of a native struct type that has a function pointer can point into the code of an old version. `hotc` finds such a struct in an included header, wherever the `#include` is. Then the old version stays loaded while a live object has the field. `hotc` does not find a struct that you define in the script file itself.
 - A field type that has no copy and no move constructor, for example `std::atomic<int>`, is built in place. A reload cannot carry its value. The new object runs the initializer of the field again. A move-only field, for example `std::unique_ptr`, of the old object is moved-from after a failed migration.

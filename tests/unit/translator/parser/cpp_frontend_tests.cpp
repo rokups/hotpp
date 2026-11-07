@@ -146,7 +146,7 @@ TEST(CppFrontend, MethodBodyEdits)
         "__self->TakeDamage(dt); Jump(); hot_mod()->total += 1; __self->Position.x = 1; ");
     // A call of an override goes through the shell. A [&] lambda can use a base member.
     EXPECT_EQ(p.method("Again").raw_body,
-        " __self->Tick(0.5f); __self->Tick(1); auto f = [&, __self] { __self->Move(Vec3()); }; f(); ");
+        " __self->Tick(0.5f); __self->Tick(1); auto f = hot::cpp_lambda(&hot_live, \"Player lambda\", [&, __self] { __self->Move(Vec3()); }); f(); ");
     // An explicit other object stays.
     EXPECT_EQ(p.method("Peek").raw_body, " other.Move(Vec3()); ");
 }
@@ -954,6 +954,47 @@ TEST(CppFrontend, EditErrors)
         "the script class 'S' by value is not supported in a .cpp script; use a pointer or a reference");
 }
 
+// A lambda that goes into a field or a module variable lives after the method. A reference to a
+// local of the method dangles then. The capture default "&" and an item "&x" are errors there.
+TEST(CppFrontend, StoredLambdaWithAReferenceToALocalIsAnError)
+{
+    const std::string head = "#include <functional>\nstd::function<int()> g;\nclass S : public Actor { public: ";
+    const std::string tail = " std::function<int()> f; int n = 0; };";
+    expect_error(head + "void A(int x) { f = [&] { return x; }; }" + tail,
+        "the lambda goes into a field or a module variable and keeps a reference to the local 'x': the local ends "
+        "when the function returns; capture it by copy, for example [x]");
+    expect_error(head + "void A() { int y = 2; this->f = [&y, this] { return y + n; }; }" + tail,
+        "keeps a reference to the local 'y'");
+    expect_error(head + "void A() { int z = 3; g = [&] { return z; }; }" + tail, "keeps a reference to the local 'z'");
+    expect_error(head + "void A() { int w = 3; f = [&] { auto h = [&] { return w; }; return h(); }; }" + tail,
+        "keeps a reference to the local 'w'");
+    // A copy of the local, a local lambda and a lambda of the field itself are valid.
+    Parsed ok("#include \"Actor.h\"\n" + head +
+        "void A(int x) { f = [&, x] { return x + n; }; int y = 1; auto h = [&] { return y; }; h();"
+        " f = [=] { return x; }; f = [&] { int k = 1; return k + n; }; }" + tail);
+    EXPECT_TRUE(ok.diag.items.empty()) << ok.errors();
+}
+
+// A lambda that uses the object or a module variable gets the guard hot::cpp_lambda: after a reload
+// its code is stale. A lambda that uses neither keeps its form.
+TEST(CppFrontend, LambdaThatUsesTheObjectGetsTheGuard)
+{
+    Parsed p(R"(#include "Actor.h"
+int total = 0;
+class S : public Actor
+{
+public:
+    void A() { auto f = [this] { return n; }; auto g = [] { return 1; }; auto h = [] { return total; }; f(); g(); h(); }
+    int n = 0;
+};
+)");
+    ASSERT_TRUE(p.diag.items.empty()) << p.errors();
+    EXPECT_EQ(p.method("A").raw_body,
+        " auto f = hot::cpp_lambda(&hot_live, \"S lambda\", [__self] { return state_of(__self)->n; }); auto g = [] "
+        "{ return 1; }; auto h = hot::cpp_lambda(&hot_live, \"S lambda\", [] { return hot_mod()->total; }); f(); g(); "
+        "h(); ");
+}
+
 // A lambda must not keep the pointer to the state, because a reload moves the state. A capture of
 // "this" becomes a capture of "__self". A field or a script method reads through the shell.
 TEST(CppFrontend, LambdaCapturesShell)
@@ -989,38 +1030,38 @@ public:
 )");
     ASSERT_TRUE(p.diag.items.empty()) << p.errors();
     EXPECT_EQ(p.script.classes.at(0).ctors.at(0).raw_body,
-        " auto f = [=] { return state_of(__self)->n; }; n = f(); ");
+        " auto f = hot::cpp_lambda(&hot_live, \"S lambda\", [=] { return state_of(__self)->n; }); n = f(); ");
     EXPECT_EQ(p.method("A").raw_body,
-        " auto f = [__self] { state_of(__self)->bump(1); __self->Move(Vec3()); return state_of(__self)->n; }; f(); ");
-    EXPECT_EQ(p.method("B").raw_body, " auto f = [=] { return state_of(__self)->n + state_of(__self)->k; }; f(); ");
+        " auto f = hot::cpp_lambda(&hot_live, \"S lambda\", [__self] { state_of(__self)->bump(1); __self->Move(Vec3()); return state_of(__self)->n; }); f(); ");
+    EXPECT_EQ(p.method("B").raw_body, " auto f = hot::cpp_lambda(&hot_live, \"S lambda\", [=] { return state_of(__self)->n + state_of(__self)->k; }); f(); ");
     EXPECT_EQ(p.method("C").raw_body,
-        " auto f = [&, __self] { state_of(__self)->n += 1; state_of(__self)->bump(2); __self->Move(Vec3()); }; f(); ");
-    EXPECT_EQ(p.method("D").raw_body, " auto f = [__self](auto v) { return state_of(__self)->n + v; }; f(1); ");
+        " auto f = hot::cpp_lambda(&hot_live, \"S lambda\", [&, __self] { state_of(__self)->n += 1; state_of(__self)->bump(2); __self->Move(Vec3()); }); f(); ");
+    EXPECT_EQ(p.method("D").raw_body, " auto f = hot::cpp_lambda(&hot_live, \"S lambda\", [__self](auto v) { return state_of(__self)->n + v; }); f(1); ");
     EXPECT_EQ(p.method("E").raw_body,
-        " auto f = [__self] { auto g = [__self] { return state_of(__self)->n; }; return g(); }; f(); ");
+        " auto f = hot::cpp_lambda(&hot_live, \"S lambda\", [__self] { auto g = hot::cpp_lambda(&hot_live, \"S lambda\", [__self] { return state_of(__self)->n; }); return g(); }); f(); ");
     // The default "=" makes the item "this" useless, so it goes away. "[&, this]" keeps the shell by copy.
     EXPECT_EQ(p.method("F").raw_body,
-        " auto f = [=] { state_of(__self)->Use(__self); hot_mod()->total += 1; return state_of(__self)->n; }; f(); ");
-    EXPECT_EQ(p.method("G").raw_body, " auto f = [&, __self] { return state_of(__self)->n; }; f(); ");
-    EXPECT_EQ(p.method("H").raw_body, " auto f = [__self, x, y = state_of(__self)->n] { return x + y; }; f(); ");
+        " auto f = hot::cpp_lambda(&hot_live, \"S lambda\", [=] { state_of(__self)->Use(__self); hot_mod()->total += 1; return state_of(__self)->n; }); f(); ");
+    EXPECT_EQ(p.method("G").raw_body, " auto f = hot::cpp_lambda(&hot_live, \"S lambda\", [&, __self] { return state_of(__self)->n; }); f(); ");
+    EXPECT_EQ(p.method("H").raw_body, " auto f = hot::cpp_lambda(&hot_live, \"S lambda\", [__self, x, y = state_of(__self)->n] { return x + y; }); f(); ");
     // A lambda with no capture and a field outside a lambda stay as they are.
     EXPECT_EQ(p.method("I").raw_body, " auto f = [] { return 1; }; f(); n = 2; ");
     // A lambda with "[&]" keeps the shell by copy, so it can live longer than the method.
-    EXPECT_EQ(p.method("J").raw_body, " auto f = [&, __self] { return state_of(__self)->n; }; f(); ");
-    EXPECT_EQ(p.method("K").raw_body, " auto f = [&, x, __self] { return x + state_of(__self)->n; }; f(); ");
+    EXPECT_EQ(p.method("J").raw_body, " auto f = hot::cpp_lambda(&hot_live, \"S lambda\", [&, __self] { return state_of(__self)->n; }); f(); ");
+    EXPECT_EQ(p.method("K").raw_body, " auto f = hot::cpp_lambda(&hot_live, \"S lambda\", [&, x, __self] { return x + state_of(__self)->n; }); f(); ");
     EXPECT_EQ(p.method("L").raw_body, " auto f = [&] { return 1; }; f(); ");
     // An init-capture of "this" is the shell.
-    EXPECT_EQ(p.method("M").raw_body, " auto f = [x = __self] { return state_of(x)->n; }; f(); ");
+    EXPECT_EQ(p.method("M").raw_body, " auto f = hot::cpp_lambda(&hot_live, \"S lambda\", [x = __self] { return state_of(x)->n; }); f(); ");
     EXPECT_EQ(p.method("N").raw_body,
-        " auto f = [&, __self] { auto g = [__self] { return state_of(__self)->n; }; return g(); }; f(); ");
+        " auto f = hot::cpp_lambda(&hot_live, \"S lambda\", [&, __self] { auto g = hot::cpp_lambda(&hot_live, \"S lambda\", [__self] { return state_of(__self)->n; }); return g(); }); f(); ");
     // A lambda in a field initializer has the same rules.
     const ast::ClassDef& c = p.script.classes.at(0);
     for (const auto& f : c.fields)
     {
         if (f.name == "stored")
-            EXPECT_EQ(f.raw_init, "[__self] { return state_of(__self)->n; }");
+            EXPECT_EQ(f.raw_init, "hot::cpp_lambda(&hot_live, \"S lambda\", [__self] { return state_of(__self)->n; })");
         if (f.name == "by_ref")
-            EXPECT_EQ(f.raw_init, "[&, __self] { return state_of(__self)->k; }");
+            EXPECT_EQ(f.raw_init, "hot::cpp_lambda(&hot_live, \"S lambda\", [&, __self] { return state_of(__self)->k; })");
     }
 }
 

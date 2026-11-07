@@ -5,11 +5,14 @@
 // The closure that leaves script code and the guard of a script "finally" block.
 #pragma once
 #include "hot/runtime/compat.h"
+#include "hot/runtime/errors.h"
 #include "hot/runtime/hidden.h"
 #include "hot/runtime/threads.h"
 
 #include <cstdint>
 #include <functional>
+#include <string>
+#include <type_traits>
 #include <utility>
 
 // A hint that a condition is rarely true.
@@ -229,6 +232,65 @@ template <class F> HOT_HIDDEN auto make_closure(uint32_t generation, const uint3
 {
     using Sig = typename detail::SigOf<decltype(&F::operator())>::type;
     return Closure<Sig>(generation, live, what, std::move(fn));
+}
+
+// The guard of a lambda in a .cpp script (cpp_frontend.cpp). The lambda body is code of one
+// generation. It reads the fields with the layout of that generation, and it reads the module
+// block of that generation. After a reload, the state has a new layout and the old module block
+// is free. So the call checks the live flag of the module first. When the flag is 0, the call
+// logs a stale call and returns R() (nothing for void). It does not run the body. A reference
+// result, or a type with no default value, throws ScriptError: no value is available.
+namespace detail
+{
+[[noreturn]] HOT_HIDDEN void throw_stale_lambda(const char* what)
+{
+    throw ScriptError(std::string("stale lambda: ") + what +
+        " is code of an old generation and has no value to give; make the lambda again after the reload");
+}
+
+template <class F> struct CppLambda
+{
+    const uint32_t* live;
+    const char* what;
+    mutable F fn;
+
+    template <class... A> HOT_HIDDEN static decltype(auto) run(const CppLambda& self, A&&... a)
+    {
+        using R = decltype(self.fn(std::forward<A>(a)...));
+        if (HOT_UNLIKELY(!*self.live))
+        {
+            stale_call(self.what);
+            if constexpr (std::is_void_v<R>)
+                return;
+            else if constexpr (!std::is_reference_v<R> && std::is_default_constructible_v<R>)
+                return R();
+            else
+                throw_stale_lambda(self.what);
+        }
+        return self.fn(std::forward<A>(a)...);
+    }
+    template <class... A> HOT_HIDDEN decltype(auto) operator()(A&&... a) const
+    {
+        return run(*this, std::forward<A>(a)...);
+    }
+
+    // A function pointer cannot check the live flag. So the conversion is an error with a clear
+    // text. A lambda that uses no field and no module variable has no guard and converts.
+    template <class P, std::enable_if_t<std::is_pointer_v<P> && std::is_function_v<std::remove_pointer_t<P>>, int> = 0>
+    operator P() const
+    {
+        static_assert(sizeof(P) == 0,
+            "a lambda in a .cpp script that uses a field or a module variable cannot become a function pointer: "
+            "a reload can make its code stale; use std::function");
+        return nullptr;
+    }
+};
+} // namespace detail
+
+// The translator wraps each .cpp lambda that uses the object or a module variable in this call.
+template <class F> HOT_HIDDEN detail::CppLambda<F> cpp_lambda(const uint32_t* live, const char* what, F fn)
+{
+    return detail::CppLambda<F>{live, what, std::move(fn)};
 }
 
 } // namespace hot
