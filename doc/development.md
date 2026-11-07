@@ -144,5 +144,5 @@ Command line of the AOT mode. The tool translates generation 1 of each script. I
          [--format=std|fmt] [--resource-dir dir]
 
 - For each script `hotc` writes `DIR/<name>.aot.cpp`. The register function has the name `hot_script_register_<name>`, so many scripts link into one program.
-- `hotc` also writes `DIR/hot_aot_registry.cpp`. It defines the constant table `hot::aot_table` (`include/hot/aot.h`).
+- `hotc` also writes `DIR/hot_aot_registry.cpp`. It defines the constant table `hot::aot_table` (`include/hot/aot.h`). The table gives the interface hash and the imports of each script (`hot::AotScript`). In AOT code the unit of an import is the file name of the imported script without the extension.
 - The script names must be different. The class names must be different over all the scripts of a program. An AOT script has no slot file and no later generation.

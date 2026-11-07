@@ -202,6 +202,7 @@ Rules:
 - A field initializer cannot call a function. The error is `a field initializer cannot call the function '<name>': the prototype of the function comes after the class`.
 - A default argument cannot call a function. The error is `a default argument cannot call the function '<name>': the prototype of the function comes after the declaration`.
 - An imported script can have free functions and module variables. The importer gets the declarations of the public ones. The body and the storage stay in the owner module. The importer calls a function through `hot::call_fn` and uses a variable through `hot::mod_var`. A `private` name is hidden from the importer. The import is not transitive.
+- AOT code (`hotc --aot`): each script is one unit. The unit name is the file name of the script without the extension. The AOT table lists the interface hash and the imports of each script. `Loader::load_aot` and `hot::AotRegistry` check the import hashes, load an imported unit first and link the units. A stale or missing import is the error `ImportMismatch`. Optimized AOT code (`OPTIMIZED`) and a script parent in another unit do not work with AOT code yet (see [Limits](limits.html)).
 - There is no namespace block. Use `using ns;` for a native namespace.
 - The host cannot call a free function by name through `Loader::thunk`. Call a method of a class.
 
