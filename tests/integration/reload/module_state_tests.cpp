@@ -171,4 +171,28 @@ TEST_P(BackendTests, ReloadGivesNewClassConstant)
     EXPECT_EQ(*fld<int>(s.inst.shell, "ticks"), 11); // 6 + Step (5)
 }
 
+// A module variable can hold handles of script objects (gap G11). The reload keeps the vector.
+// The object in it migrates like an object that a field holds.
+TEST_P(BackendTests, ModuleVariableHoldsScriptObjectsOverReload)
+{
+    hot::LoadResult v1 = backend->load(source("module_handle_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    hot::LoadResult v2 = backend->load(source("module_handle_v2.hot"), 2);
+    ASSERT_TRUE(v2) << v2.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Hero"));
+    s.commit_at_frame_boundary();
+    s.world.Tick(kDt);
+    s.world.Tick(kDt);
+    ASSERT_NE(modvar<int>(s, "seen"), nullptr);
+    EXPECT_EQ(*modvar<int>(s, "seen"), 2);
+    ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+    s.world.Tick(kDt); // the commit happens at the end of this frame: points is 3
+    ASSERT_FALSE(s.commit_failed);
+    ASSERT_EQ(hot::active_generation, 2u);
+    s.world.Tick(kDt);
+    EXPECT_EQ(*modvar<int>(s, "seen"), 20); // 3 + 10, and the new field bonus (7)
+    EXPECT_EQ(*modvar<int>(s, "left"), 100); // the vector is empty: the object is deleted
+}
+
 } // namespace

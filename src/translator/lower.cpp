@@ -991,7 +991,11 @@ struct Lowerer
             if (!cx.locals.count(*n))
             { // a field of the class (S20b)
                 const Field* f = cx.allow_this && cx.cls ? find_field(*cx.cls, *n) : nullptr;
-                return f ? type_text(*f) : std::string();
+                if (f)
+                    return type_text(*f);
+                // A module variable (G11): its script type can hold a script class handle.
+                auto mv = cx.module_vars.find(*n);
+                return mv != cx.module_vars.end() ? mv->second : std::string();
             }
             auto it = cx.local_type.find(*n);
             return it == cx.local_type.end() ? std::string() : it->second;

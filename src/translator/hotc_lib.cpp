@@ -5658,10 +5658,41 @@ void translate_impl(
                     continue;
                 // A ".cpp" script holds a pointer to a script object. The module block is at the
                 // first module variable, and the frontend checks that the class comes before it.
+                // A module variable can hold a handle "$C" of a script class (gap G11), also in a
+                // native template: "std.vector<$C>". The reload keeps the handle, as for a field.
+                // A "C*" parameter of a function type ("Signal<void(C*)>") is valid too.
+                // A bare "C" (a box) and a "new" in the initializer of a module variable are errors.
                 if (cd.name == kModuleName && !sc.is_cpp && !types.is_script_value(u))
-                    fail_at(map, cd.pos,
-                        "a module variable can use only native types, enums and structs: '" + u + "' is not");
-                if (cd.is_value && !(cd.name == kModuleName && sc.is_cpp) && !types.is_script_value(u))
+                {
+                    if (hotc::block_new_targets(cd).count(u))
+                        fail_at(map, cd.pos,
+                            "a module variable initializer cannot create the script object '" + u
+                                + "'; create it in a function");
+                    bool handle_only = true, in_type = false;
+                    for (const Field& f : cd.fields)
+                    {
+                        const std::string& t = f.script_type.empty() ? f.type : f.script_type;
+                        for (size_t at = t.find(u); at != std::string::npos; at = t.find(u, at + 1))
+                        {
+                            const auto word = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
+                            if ((at > 0 && word(t[at - 1])) || (at + u.size() < t.size() && word(t[at + u.size()])))
+                                continue;
+                            in_type = true;
+                            // "C*" in a function type ("Signal<void(C*)>") is a parameter, not storage.
+                            const bool in_signature = std::count(t.begin(), t.begin() + at, '(')
+                                    > std::count(t.begin(), t.begin() + at, ')')
+                                && t.compare(at + u.size(), 1, "*") == 0;
+                            handle_only = handle_only && ((at > 0 && t[at - 1] == '$') || in_signature);
+                        }
+                    }
+                    if (!in_type)
+                        fail_at(map, cd.pos,
+                            "a module variable can use only native types, enums and structs: '" + u + "' is not");
+                    if (!handle_only)
+                        fail_at(map, cd.pos,
+                            "a module variable can hold a script class only as a handle: write '$" + u + "'");
+                }
+                if (cd.is_value && cd.name != kModuleName && !types.is_script_value(u))
                     fail_at(map, cd.pos, "a struct can use only native types and structs: '" + u + "' is not");
                 (types.is_script_value(u) ? hard : soft)[cd.name].insert(u);
             }

@@ -1,0 +1,23 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Generation 1 of a module variable that holds script objects (gap G11).
+using "Actor.h";
+using <vector>;
+
+class Score {
+    int points = 0;
+}
+
+std.vector<$Score> scores;
+int seen = 0;
+int left = 0;
+
+class Hero : Actor {
+    override void Tick(float dt) {
+        if (scores.size() == 0) { scores.push_back(new $Score()); }
+        scores[0].points += 1;
+        seen = scores[0].points;
+    }
+}

@@ -124,10 +124,11 @@ TEST(ModuleDeclTranslation, ErrorEnumUnderlyingType)
     expect_error("enum E : float { A }\nclass C : Unit { }\n", "the type of an enum must be");
 }
 
+// A module variable can hold a handle of a script class (G11), but not a value of it.
 TEST(ModuleDeclTranslation, ErrorModuleVariableOfAScriptHandleClass)
 {
-    expect_error("class H { int n; }\n$H h;\nclass C : Unit { }\n",
-        "a module variable can use only native types, enums and structs");
+    expect_error("class H { int n; }\nH h;\nclass C : Unit { }\n",
+        "a module variable cannot hold a value of a script class");
 }
 
 // An initializer can read a module variable declared before it (S16). The loader runs the

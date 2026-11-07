@@ -228,3 +228,43 @@ TEST(ClassScopeTranslation, ScriptClassTemplateArgumentOfAnotherClassIsAnError)
         << r.diagnostics;
     EXPECT_FALSE(has(r.diagnostics, "Fast")) << r.diagnostics;
 }
+
+// G11: a module variable can hold handles of script classes: "$C", "std.vector<$C>" and a native
+// signal with a "$C" parameter. "$C" in the native template is the handle type of C.
+TEST(ClassScopeTranslation, ModuleVariableHoldsScriptClassHandles)
+{
+    TempDir dir;
+    const hotc::TranslateResult r = translate_script(dir,
+        "using <vector>;\n"
+        "class PlayerScore { int points = 0; }\n"
+        "std.vector<$PlayerScore> scores;\n"
+        "$PlayerScore best;\n"
+        "Signal<void($PlayerScore)> changed;\n"
+        "Signal<void(PlayerScore*)> seen;\n"
+        "class Board : Widget {\n"
+        "    void Add() { var s = new $PlayerScore(); scores.push_back(s); best = s; changed(s); }\n"
+        "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "std::vector<std::shared_ptr<PlayerScore>> scores")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "Signal<void(std::shared_ptr<PlayerScore>)> changed")) << r.cpp;
+}
+
+// G11: the errors. A bare script class is a value box, and a raw pointer has no owner: a module
+// variable cannot hold them. A module variable initializer cannot create a script object.
+TEST(ClassScopeTranslation, ModuleVariableScriptClassErrors)
+{
+    TempDir dir;
+    auto diag = [&](const std::string& script)
+    {
+        const hotc::TranslateResult r = translate_script(dir, "class PlayerScore { int points = 0; }\n" + script);
+        EXPECT_FALSE(r.ok) << script;
+        return r.diagnostics;
+    };
+    EXPECT_TRUE(has(diag("PlayerScore one;\n"), "a module variable cannot hold a value of a script class"));
+    EXPECT_TRUE(has(diag("using <vector>;\nstd.vector<PlayerScore*> raw;\n"),
+        "a module variable can hold a script class only as a handle: write '$PlayerScore'"));
+    EXPECT_TRUE(has(diag("$PlayerScore best = new $PlayerScore();\n"),
+        "a module variable initializer cannot create the script object 'PlayerScore'"));
+}
+
+} // namespace

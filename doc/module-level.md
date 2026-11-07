@@ -109,6 +109,14 @@ An initializer can use only a variable that is above it. A later variable, or th
 [alias("total")] int sum = 0;
 ```
 
+A module variable can hold handles of script classes (G11). Write `$C`, also in a template: `std.vector<$Score> scores;`. A function signature can use `C*`: `Signal<void(Score*)> changed;`.
+
+- A reload keeps the handles. The objects migrate as the objects in a field do.
+- The module variable keeps its objects alive until the module unloads. Clear it to delete them earlier.
+- A bare `C` gives the error `a module variable cannot hold a value of a script class`.
+- A raw `C*` in a storage type gives the error `a module variable can hold a script class only as a handle: write '$C'`.
+- An initializer cannot use `new` on a script class. Create the object in a function.
+
 A module variable `T*` of a native class with a weak source is a `hot::CheckedPtr<T>`, as a pointer field is. It is weak, it reads `null` after the object dies, and it keeps its target across a reload. The same errors apply as for a field. See "Pointer fields" in [Borrowing](borrowing.html).
 
 ```hot
