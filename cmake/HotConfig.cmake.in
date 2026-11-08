@@ -107,8 +107,23 @@ if(HOT_SDK_JIT)
     if(NOT "C" IN_LIST _hot_languages)
         enable_language(C)
     endif()
+    # LLVMConfig.cmake of the LLVM release for Windows sets CMAKE_MSVC_RUNTIME_LIBRARY to
+    # MultiThreaded (/MT) in the directory of the consumer. The SDK libraries are /MD, so keep the
+    # value of the consumer (LNK2038 else).
+    set(_hot_had_msvc_runtime OFF)
+    if(DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
+        set(_hot_had_msvc_runtime ON)
+        set(_hot_msvc_runtime "${CMAKE_MSVC_RUNTIME_LIBRARY}")
+    endif()
     find_dependency(LLVM CONFIG)
     find_dependency(Clang CONFIG ${_hot_clang_hints})
+    if(_hot_had_msvc_runtime)
+        set(CMAKE_MSVC_RUNTIME_LIBRARY "${_hot_msvc_runtime}")
+    else()
+        unset(CMAKE_MSVC_RUNTIME_LIBRARY)
+    endif()
+    unset(_hot_had_msvc_runtime)
+    unset(_hot_msvc_runtime)
 endif()
 
 # HotScripts.cmake keeps this value (it sets the variable only when it is not defined).

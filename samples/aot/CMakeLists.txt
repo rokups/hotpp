@@ -7,6 +7,11 @@
 cmake_minimum_required(VERSION 3.20)
 project(hot_sample_aot CXX)
 
+# The SDK libraries use the DLL runtime (/MD) on MSVC. The program must use it too (LNK2038 else).
+if(NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
+endif()
+
 # The Hot++ source tree. A separate build uses it. The Hot++ build already has the targets.
 # An empty HOT_ROOT means: use the installed SDK (find_package(Hot), CMAKE_PREFIX_PATH).
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../CMakeLists.txt")
