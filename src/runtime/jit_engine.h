@@ -58,6 +58,11 @@ HOT_JIT_ENGINE_API int hot_jit_make_pch(
 HOT_JIT_ENGINE_API hot_jit_ir* hot_jit_ir_clone(const hot_jit_ir* ir);
 HOT_JIT_ENGINE_API void hot_jit_ir_free(hot_jit_ir* ir);
 
+// For the tests: the IR text of a copy of "ir" after the link preparation of hot_jit_add. For a
+// COFF target, the preparation makes the data declarations dllimport. Release the text with
+// hot_jit_string_free.
+HOT_JIT_ENGINE_API char* hot_jit_ir_link_text(const hot_jit_ir* ir);
+
 // Makes a JIT. With "debugger_support" the debugger sees the JIT code (GDB JIT interface). A
 // failure of the debugger support is not fatal: "*out_debugger_error" gets the reason. Returns
 // null and sets "*out_error" when the JIT cannot start.

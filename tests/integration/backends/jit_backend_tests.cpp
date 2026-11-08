@@ -9,12 +9,15 @@
 //
 // CMake defines these macros: HOT_SOURCE_DIR, HOT_SCRATCH_DIR, HOT_CXX and HOT_RESOURCE_DIR.
 #include "hot/backend.h"
+#include "hot/command_line.h"
 #include "hot/config.h"
 #include "hot/jit_backend.h"
 #include "support/dwarf_lines.h"
 #include "support/f1_scenario.h"
 #include "support/scratch_dir.h"
 #include "support/script_files.h"
+
+#include "jit_engine.h"
 
 #include <gtest/gtest.h>
 
@@ -468,6 +471,64 @@ TEST(JitTests, CppScriptWarningSpeaksScriptText)
     EXPECT_EQ(r.error.find("warn.cpp:11:1:"), std::string::npos) << r.error;
     for (const char* generated : {".g1.cpp", "_Shell", "State_g", "__self", "state_of"})
         EXPECT_EQ(r.error.find(generated), std::string::npos) << generated << "\n" << r.error;
+}
+
+// The JIT engine compiles "text" for "target" and gives the IR text of the link preparation.
+std::string link_ir_text(const std::string& target, const std::string& text)
+{
+    const std::string path = hot::jit_virtual_path("/hot-jit-test", "link.cpp", fs::current_path().string());
+    const std::string target_arg = "--target=" + target;
+    std::vector<const char*> args = {"clang++", "-std=c++17"};
+    if (!target.empty())
+        args.push_back(target_arg.c_str());
+    args.push_back(path.c_str());
+    const char* paths[] = {path.c_str()};
+    const char* texts[] = {text.c_str()};
+    hot_jit_ir* ir = nullptr;
+    char* diagnostics = nullptr;
+    const int ok = hot_jit_compile(args.data(), args.size(), paths, texts, 1, &ir, &diagnostics);
+    const std::string messages = diagnostics ? diagnostics : "";
+    hot_jit_string_free(diagnostics);
+    EXPECT_EQ(ok, 1) << messages;
+    if (!ok)
+        return std::string();
+    char* ir_text = hot_jit_ir_link_text(ir);
+    std::string out = ir_text ? ir_text : "";
+    hot_jit_string_free(ir_text);
+    hot_jit_ir_free(ir);
+    return out;
+}
+
+// RuntimeDyld gives a jump stub to a REL32 reference to an external symbol, also to data. On a
+// COFF target the engine makes each data declaration dllimport, so the code reads the address
+// from a pointer cell. The control record of a thread variable (emulated TLS) is dllimport too.
+// A function keeps its jump stub.
+TEST(JitTests, CoffDataDeclarationsAreDllimport)
+{
+    const std::string ir = link_ir_text("x86_64-pc-windows-msvc",
+        "extern \"C\" int g;\n"
+        "extern \"C\" __declspec(thread) int e;\n"
+        "extern \"C\" int k();\n"
+        "int* f() { return &g; }\n"
+        "int* h() { return &e; }\n"
+        "int c() { return k(); }\n");
+    EXPECT_NE(ir.find("@g = external dllimport global i32"), std::string::npos) << ir;
+    EXPECT_NE(ir.find("@__emutls_v.e = external dllimport global { i64, i64, ptr, ptr }"), std::string::npos) << ir;
+    EXPECT_EQ(ir.find("@e = external dllimport"), std::string::npos) << ir;
+    EXPECT_NE(ir.find("declare dso_local i32 @k()"), std::string::npos) << ir;
+}
+
+// An ELF or Mach-O target keeps its declarations: the JIT links them through the GOT.
+TEST(JitTests, NonCoffDeclarationsStay)
+{
+    const std::string ir = link_ir_text("x86_64-unknown-linux-gnu",
+        "extern \"C\" int g;\n"
+        "extern \"C\" thread_local int e;\n"
+        "int* f() { return &g; }\n"
+        "int* h() { return &e; }\n");
+    EXPECT_NE(ir.find("@g = external global i32"), std::string::npos) << ir;
+    EXPECT_EQ(ir.find("dllimport"), std::string::npos) << ir;
+    EXPECT_EQ(ir.find("__emutls_v"), std::string::npos) << ir;
 }
 
 } // namespace

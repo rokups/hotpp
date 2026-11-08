@@ -18,6 +18,8 @@
 #include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
+#include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Support/Error.h>
@@ -128,6 +130,49 @@ bool run_action(CompileSetup& s, clang::FrontendAction& action, std::string& dia
     return ok && !ci.getDiagnostics().hasErrorOccurred();
 }
 
+// RuntimeDyld links the COFF code of the JIT. It gives each REL32 reference to an external symbol
+// a jump stub, also a reference to data. The data reference then gets the stub address, not the
+// address of the data. A dllimport declaration reads the address from a pointer cell
+// ("__imp_" + name). RuntimeDyld makes the cell and writes the address of "name" into it. So the
+// host symbols keep their names without the prefix. A function keeps its jump stub.
+void import_coff_data(llvm::Module& m)
+{
+    if (!m.getTargetTriple().isOSBinFormatCOFF())
+        return;
+    std::vector<const llvm::GlobalVariable*> thread_vars;
+    for (llvm::GlobalVariable& g : m.globals())
+    {
+        if (!g.isDeclaration() || g.getDLLStorageClass() != llvm::GlobalValue::DefaultStorageClass)
+            continue;
+        if (g.getName().starts_with("__imp_") || g.getName().starts_with("llvm."))
+            continue;
+        if (g.isThreadLocal())
+        {
+            thread_vars.push_back(&g);
+            continue;
+        }
+        // A dllimport symbol must not be dso_local. Clang makes each COFF declaration dso_local.
+        g.setDLLStorageClass(llvm::GlobalValue::DLLImportStorageClass);
+        g.setDSOLocal(false);
+    }
+    // The JIT uses emulated TLS. The backend replaces a thread variable X with its control record
+    // "__emutls_v.X" and keeps a declaration of the record that is already in the module. A
+    // dllimport declaration here makes the record also go through the pointer cell.
+    llvm::LLVMContext& c = m.getContext();
+    llvm::Type* word = m.getDataLayout().getIntPtrType(c);
+    llvm::Type* ptr = llvm::PointerType::getUnqual(c);
+    llvm::StructType* control = llvm::StructType::get(c, {word, word, ptr, ptr});
+    for (const llvm::GlobalVariable* g : thread_vars)
+    {
+        const std::string name = ("__emutls_v." + g->getName()).str();
+        if (m.getNamedGlobal(name))
+            continue;
+        auto* record = new llvm::GlobalVariable(
+            m, control, false, llvm::GlobalValue::ExternalLinkage, nullptr, name);
+        record->setDLLStorageClass(llvm::GlobalValue::DLLImportStorageClass);
+    }
+}
+
 } // namespace
 
 extern "C"
@@ -197,6 +242,19 @@ hot_jit_ir* hot_jit_ir_clone(const hot_jit_ir* ir)
 void hot_jit_ir_free(hot_jit_ir* ir)
 {
     delete ir;
+}
+
+char* hot_jit_ir_link_text(const hot_jit_ir* ir)
+{
+    std::unique_ptr<llvm::Module> copy = llvm::CloneModule(*ir->module);
+    import_coff_data(*copy);
+    std::string text;
+    llvm::raw_string_ostream os(text);
+    copy->print(os, nullptr);
+    os.flush();
+    char* out = nullptr;
+    put(&out, text);
+    return out;
 }
 
 hot_jit_engine* hot_jit_engine_create(
@@ -270,6 +328,7 @@ hot_jit_dylib* hot_jit_add(hot_jit_engine* engine, const char* id, hot_jit_ir* i
             return nullptr;
         }
     }
+    import_coff_data(*owned->module);
     holder->tracker = holder->dylib->createResourceTracker();
     if (llvm::Error e = jit.addIRModule(
             holder->tracker, llvm::orc::ThreadSafeModule(std::move(owned->module), owned->context)))

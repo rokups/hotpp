@@ -24,6 +24,10 @@ add_executable(integration_backend_tests ${BACKEND_TEST_SOURCES}
     ${PROJECT_SOURCE_DIR}/tests/engine/Object.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
 target_include_directories(integration_backend_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
+if(HOT_JIT_ENABLED)
+    # The JIT tests call the C interface of the JIT engine (src/runtime/jit_engine.h).
+    target_include_directories(integration_backend_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/runtime)
+endif()
 target_link_libraries(integration_backend_tests PRIVATE hot_backend hot_clang_backend GTest::gtest_main)
 set_target_properties(integration_backend_tests PROPERTIES ENABLE_EXPORTS ON)
 # Windows: the precompiled libraries link the import library of this test, so they build after it.
