@@ -712,7 +712,7 @@ void UserState_g1::Static()
 extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_live_flag(&hot_live);
-    hot::set_value_caller(&Catalog_record);
+    hot::set_value_generation(GEN);
     reg.add(&Catalog_record, &Catalog_create);
     reg.add(&User_record, &User_create);
     reg.add_fn("Catalog::Pick", typeid(decltype(Catalog__s_Pick)).name(), reinterpret_cast<void*>(&Catalog__s_Pick));

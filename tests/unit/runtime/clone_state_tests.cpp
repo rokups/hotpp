@@ -401,4 +401,15 @@ TEST(ValueBox, CopyNotesTheCreatorOfTheCallerRecord)
     EXPECT_EQ(c->creator, 5u);
 }
 
+// A module with no script class has no record: it names the generation.
+TEST(ValueBox, CopyNotesTheCreatorOfTheCallerGeneration)
+{
+    hot::Value<Cell_Shell> a(make_cell());
+    hot::set_value_generation(9);
+    hot::Value<Cell_Shell> b = a;
+    hot::set_value_generation(0);
+    EXPECT_EQ(b->creator, 9u);
+    EXPECT_EQ(hot::Value<Cell_Shell>(a)->creator, 0u);
+}
+
 } // namespace

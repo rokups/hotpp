@@ -1196,7 +1196,7 @@ void HolderState_g1::Tick(float dt)
 extern "C" void script_register(hot::Registry& reg)
 {
     reg.set_live_flag(&hot_live);
-    hot::set_value_caller(&Money_record);
+    hot::set_value_generation(GEN);
     reg.add(&Money_record, &Money_create);
     reg.add(&Holder_record, &Holder_create);
     Money_record.construct_keys = Money__construct_keys;

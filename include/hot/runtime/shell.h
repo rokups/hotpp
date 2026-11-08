@@ -407,8 +407,10 @@ HOT_NODEBUG inline std::shared_ptr<Shell> make_shared_shell(const ClassRecord* r
 // A class with no clone constructor throws std::runtime_error. This happens for a class with a
 // native base, and for a module built before kCloneKey. A restart makes the new module load.
 // "S" must derive from ShellBase.
+// "generation" is the generation of the calling module, or 0 for none. A module with no script
+// class has no record, so it names its generation with this form (see set_value_generation).
 template <class S>
-HOT_NODEBUG inline std::shared_ptr<S> clone_shell(const S& src, const ClassRecord* caller = nullptr)
+HOT_NODEBUG inline std::shared_ptr<S> clone_shell_in(const S& src, uint32_t generation)
 {
     const ShellBase* p = &src;
     const ClassRecord* canon = src.cls->canonical ? src.cls->canonical : src.cls;
@@ -417,9 +419,15 @@ HOT_NODEBUG inline std::shared_ptr<S> clone_shell(const S& src, const ClassRecor
         throw std::runtime_error(std::string("class ") + src.cls->name
             + " is not copyable: it has no clone constructor; restart the program");
     std::shared_ptr<S> h(static_cast<S*>(s)); // an exception here deletes the new object
-    if (caller)
-        note_creator(s, caller->generation);
+    if (generation != 0)
+        note_creator(s, generation);
     return h;
+}
+
+template <class S>
+HOT_NODEBUG inline std::shared_ptr<S> clone_shell(const S& src, const ClassRecord* caller = nullptr)
+{
+    return clone_shell_in(src, caller ? caller->generation : 0u);
 }
 
 // The "new" of a script class with a std::shared_ptr handle in optimized AOT code. The code has

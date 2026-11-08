@@ -235,10 +235,39 @@ TEST(ValueUseLowering, ModuleSetsTheCallerRecordOnlyWhenItUsesValue)
     const hotc::TranslateResult with = translate_value("class H {\n    Pt a;\n}\n");
     ASSERT_TRUE(with.ok) << with.diagnostics;
     // The copies of the box note the generation of this module (V7).
-    EXPECT_TRUE(emits(with, "hot::set_value_caller(&")) << with.cpp;
+    EXPECT_TRUE(emits(with, "hot::set_value_generation(GEN);")) << with.cpp;
     const hotc::TranslateResult without = translate_value("class H {\n    $Pt a;\n}\n");
     ASSERT_TRUE(without.ok) << without.diagnostics;
-    EXPECT_FALSE(emits(without, "set_value_caller"));
+    EXPECT_FALSE(emits(without, "set_value_generation"));
+}
+
+// A free function has no class: a call of it still gives a box (the rules of the type pass).
+TEST(ValueUseTranslation, BoxFromAFreeFunctionHasNoIdentity)
+{
+    expect_error("Pt Make() { return new $Pt(); }\n"
+                 "bool Same() { var x = Make(); var y = Make(); return x == y; }\n",
+        "'==' is not valid for a value of a script class");
+}
+
+// A static method call gives a box too.
+TEST(ValueUseTranslation, BoxFromAStaticMethodHasNoIdentity)
+{
+    expect_error("class H {\n    static Pt Make() { return new $Pt(); }\n}\n"
+                 "bool Same() { var x = H.Make(); var y = H.Make(); return x == y; }\n",
+        "'==' is not valid for a value of a script class");
+}
+
+// A module with only free functions has no class record, but its copies of a box must still name
+// the generation of the module. The call uses the generation constant.
+TEST(ValueUseLowering, FreeFunctionModuleSetsTheValueGeneration)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kWeaponHeader);
+    hotc::TranslateOptions o = temp_options(dir, "using \"base.hot\";\nint F(Pt a) { var b = a; return b.x; }\n");
+    o.modules.emplace_back("base.hot", "class Pt { int x = 1; }\n");
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(emits(r, "hot::set_value_generation(GEN);")) << r.cpp;
 }
 
 TEST(ValueUseLowering, BoxToHandleIsAnError)

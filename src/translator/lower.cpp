@@ -1371,7 +1371,14 @@ struct Lowerer
         if (!c.callee)
             return nullptr;
         if (const std::string* n = simple_name(*c.callee))
-            return cx.locals.count(*n) || !cx.cls ? nullptr : find_fn(*cx.cls, *n);
+        {
+            if (cx.locals.count(*n))
+                return nullptr;
+            // A free function and a static method have no class to search (the rules of type_of).
+            if (const Method* st = bare_function(*n))
+                return st;
+            return cx.cls ? find_fn(*cx.cls, *n) : nullptr;
+        }
         if (auto* m = std::get_if<MemberExpr>(&c.callee->v))
         {
             if (!m->obj || std::holds_alternative<BaseExpr>(m->obj->v))
@@ -1383,6 +1390,8 @@ struct Lowerer
         {
             if (nm->parts.size() < 2)
                 return nullptr;
+            if (const Method* st = scope_static(*nm))
+                return st;
             const ClassDef* d = class_named(type_of(NameExprView(*nm, nm->parts.size() - 1)));
             return d ? find_fn(*d, nm->parts.back()) : nullptr;
         }

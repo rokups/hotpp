@@ -9675,8 +9675,9 @@ void translate_impl(
     if (has_module)
         o.w("    reg.set_module_state(&" + kModuleName + "_layout, &" + kModuleName + "_slot);\n");
     // A copy of a hot::Value must keep this generation alive (V7). The record names the generation.
-    if (!registers.empty() && o.s.find("hot::Value<") != std::string::npos)
-        o.w("    hot::set_value_caller(&" + registers.front().first + "_record);\n");
+    // A module with free functions only has no record, so the call names the generation.
+    if (o.s.find("hot::Value<") != std::string::npos)
+        o.w("    hot::set_value_generation(GEN);\n");
     for (const auto& r : registers)
         o.w("    reg.add(&" + r.first + "_record, &" + r.first + "_create);\n");
     // The function table of the unit: an importer calls a public free function through it
