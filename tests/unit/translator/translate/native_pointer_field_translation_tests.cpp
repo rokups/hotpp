@@ -345,7 +345,7 @@ TEST(NativePointerField, HotPointerOfAWeakHandleStubIsStoredAsCheckedPtr)
         "[native, handle(\"Strong<$T>\"), weak_handle(\"Weak<$T>\")] class Mesh;\n", "Mesh* m;\n    ~Foo() { m = null; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::CheckedPtr<Mesh> m")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, ": hot::custom_weak_ref<U, Strong<U>, Weak<U>> {};")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, ": hot::custom_weak_ref<U, ::Strong<U>, ::Weak<U>> {};")) << r.cpp;
 }
 
 TEST(NativePointerField, HotPointerOfAStubWithWeakFromThisKeepsTheClassTraits)
@@ -355,6 +355,41 @@ TEST(NativePointerField, HotPointerOfAStubWithWeakFromThisKeepsTheClassTraits)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::CheckedPtr<Shared> m")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "!detail::has_weak_from_this<U>::value")) << r.cpp;
+}
+
+// A stub weak source gets its traits only when the headers declare the stub name as written. A
+// class in a namespace with an unqualified stub name has no traits, so the field keeps the old
+// borrowed finding (no C++ error from a missing specialization). A qualified name works.
+hotc::TranslateResult ns_field(const std::string& stub_name, const std::string& line)
+{
+    static TempDir* dir = nullptr;
+    if (!dir)
+    {
+        dir = new TempDir();
+        write_file(dir->path() / "n.h",
+            std::string("#include <memory>\nnamespace gfx { struct Gear { int teeth = 0; virtual ~Gear() {} }; }\n")
+                + "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n");
+    }
+    hotc::TranslateOptions o = temp_options(*dir,
+        "using \"n.h\";\nusing gfx;\n[native, handle(\"std::shared_ptr<$T>\")] class " + stub_name
+            + ";\nclass Foo : Widget {\n    " + line + "\n}\n");
+    return hotc::translate(o);
+}
+
+TEST(NativePointerField, HotUnqualifiedStubOfANamespaceClassKeepsTheBorrowedFinding)
+{
+    const hotc::TranslateResult r = ns_field("Gear", "Gear* g;\n    ~Foo() { g = null; }");
+    EXPECT_FALSE(r.ok);
+    EXPECT_FALSE(has(r.cpp, "hot::CheckedPtr<Gear>")) << r.cpp;
+    EXPECT_TRUE(has(r.diagnostics, "Gear")) << r.diagnostics;
+}
+
+TEST(NativePointerField, HotQualifiedStubOfANamespaceClassIsStoredAsCheckedPtr)
+{
+    const hotc::TranslateResult r = ns_field("gfx.Gear", "gfx.Gear* g;\n    ~Foo() { g = null; }");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "hot::CheckedPtr<gfx::Gear> g")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "std::is_same_v<U, ::gfx::Gear>")) << r.cpp;
 }
 
 // ---- a valid checked pointer in non-strict mode, and a derived class

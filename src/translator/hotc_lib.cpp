@@ -4765,6 +4765,16 @@ void translate_impl(
             std::map<std::string, std::string>& qa)
     { parse_bases(probe, args, base_names, import_paths, out, files, h, reqs, fm, query_texts, qa, res.virtual_files, fs); },
         hier, facts, query_answers, fs, &res.dependencies);
+    // A stub weak source gets its traits only when the headers declare the stub name as written.
+    // Else a pointer field of the class is not a CheckedPtr (the borrowed finding applies).
+    if (!sc.is_cpp)
+    {
+        std::set<std::string> declared;
+        for (const hotc::TypeModel::StubWeakSource& w : types.stub_weak_sources())
+            if (query_answers[kDeclQuery + hotc::expand_std(w.name, std_ns)] == "1")
+                declared.insert(w.name);
+        types.set_declared_weak_sources(std::move(declared));
+    }
     // The imported scripts, and for a .cpp script the headers of the host file system.
     for (const auto& im : res.imports)
         res.dependencies.push_back(im.first);

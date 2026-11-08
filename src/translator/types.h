@@ -228,6 +228,13 @@ public:
     // Any other type gives an empty string.
     std::string checked_ptr_storage(const std::string& type) const;
 
+    // The names of the stub weak sources (stub_weak_sources) that the headers declare with that
+    // qualified name. The module header writes the traits only for them. Until this is called,
+    // every stub weak source counts. After it, a stub name that the headers do not declare (for
+    // example an unqualified name of a class in a namespace) gives no CheckedPtr: the borrowed
+    // pointer finding applies.
+    void set_declared_weak_sources(std::set<std::string> names);
+
     // True when the type is "T*" or "const T*" (one star) and T is a builtin type or a native
     // enumeration. Nothing owns such a pointee, so a field cannot point to it.
     bool is_value_pointer(const std::string& type) const;
@@ -314,6 +321,8 @@ public:
     std::string return_carrier_of(const std::string& native_return_type) const;
 
 private:
+    bool declared_weak_known_ = false;
+    std::set<std::string> declared_weak_;
     // The error of the marks "?" in a type text, else an empty string.
     std::string marks_error(const std::string& type) const;
     // True when the type (a template argument, no "&") is nullable: a handle, a pointer, an interface.

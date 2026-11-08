@@ -8,6 +8,7 @@
 #include "builtin_types.h"
 #include "std_ns.h"
 
+#include <cctype>
 #include <algorithm>
 #include <deque>
 #include <functional>
@@ -1027,8 +1028,17 @@ std::string TypeModel::checked_ptr_storage(const std::string& type) const
                 stub_source = true;
         if (!stub_source)
             return {};
+        // The traits exist only when the headers declare the stub name as written.
+        if (declared_weak_known_ && !declared_weak_.count(base))
+            return {};
     }
     return "hot::CheckedPtr<" + std::string(is_const ? "const " : "") + base + ">";
+}
+
+void TypeModel::set_declared_weak_sources(std::set<std::string> names)
+{
+    declared_weak_known_ = true;
+    declared_weak_ = std::move(names);
 }
 
 bool TypeModel::is_value_pointer(const std::string& type) const
@@ -1104,6 +1114,18 @@ std::vector<std::string> TypeModel::custom_handle_templates() const
     return {out.begin(), out.end()};
 }
 
+namespace
+{
+// The module header writes the traits inside "namespace hot". A template name of a stub that
+// starts with a plain identifier gets "::", so that a name of namespace hot cannot hide it.
+std::string global_scope(const std::string& tpl)
+{
+    if (!tpl.empty() && (std::isalpha(static_cast<unsigned char>(tpl[0])) || tpl[0] == '_'))
+        return "::" + tpl;
+    return tpl;
+}
+} // namespace
+
 std::vector<TypeModel::StubWeakSource> TypeModel::stub_weak_sources() const
 {
     std::vector<StubWeakSource> out;
@@ -1130,7 +1152,7 @@ std::vector<TypeModel::StubWeakSource> TypeModel::stub_weak_sources() const
         if (rule.weak_tpl.empty() && (pre == "std::" || (pre == "\x01std::" && std_ns_ == "std")))
             text = "hot::shared_weak_ref<$T>";
         else
-            text = "hot::custom_weak_ref<$T, " + rule.handle_tpl + ", " + weak + ">";
+            text = "hot::custom_weak_ref<$T, " + global_scope(rule.handle_tpl) + ", " + global_scope(weak) + ">";
         // The text has "U" for the class: the module header writes the template parameter there.
         out.push_back({name, replace_all(text, "$T", "U")});
     }
