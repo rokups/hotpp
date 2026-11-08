@@ -778,6 +778,52 @@ TEST(TaskTests, ThreadDoesNotTouchTheFrameAfterAHostAwaitableHoldsIt)
     thread.join();
 }
 
+// A host awaitable that stops in await_suspend until "open" is true. Then it does not suspend.
+struct LatchAwaitable
+{
+    std::atomic<bool>* entered;
+    std::atomic<bool>* open;
+    bool await_ready() const noexcept { return false; }
+    bool await_suspend(std::coroutine_handle<>) const noexcept
+    {
+        entered->store(true);
+        while (!open->load())
+            std::this_thread::yield();
+        return false;
+    }
+    int await_resume() const noexcept { return 5; }
+};
+
+Task<int> latch_body(std::atomic<bool>* entered, std::atomic<bool>* open)
+{
+    co_return co_await LatchAwaitable{entered, open};
+}
+
+// Rule: a destroy on another thread waits while a host await_suspend runs on the frame. The
+// frame does not run then, but the suspending thread still uses it after the call.
+TEST(TaskTests, DestroyWaitsForAHostAwaitSuspend)
+{
+    std::atomic<bool> entered{false}, open{false}, destroyed{false};
+    auto t = std::make_unique<Task<int>>(latch_body(&entered, &open));
+    Task<int>* task = t.get();
+    std::thread runner([task] { task->resume(); });
+    while (!entered.load())
+        std::this_thread::yield();
+    std::thread destroyer([&] {
+        t.reset();
+        destroyed.store(true);
+    });
+    // The destroy must wait on task_cv(). Without the wait, it frees the frame at once.
+    const auto end = std::chrono::steady_clock::now() + std::chrono::milliseconds(300);
+    while (!destroyed.load() && hot::detail::task_waiters().load() == 0 && std::chrono::steady_clock::now() < end)
+        std::this_thread::yield();
+    EXPECT_FALSE(destroyed.load());
+    open.store(true); // the awaitable does not suspend: the frame goes on and ends
+    runner.join();
+    destroyer.join();
+    EXPECT_TRUE(destroyed.load());
+}
+
 // ---------------------------------------------------------------------------- cancellation
 
 Task<int> cancelled_body()

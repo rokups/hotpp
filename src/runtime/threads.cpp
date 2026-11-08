@@ -36,6 +36,13 @@ HOT_EXPORT std::atomic<int>& task_waiters()
     static std::atomic<int> n{0};
     return n;
 }
+// The list of the host await_suspend calls that run now (HostSuspend in task.h), under task_mutex().
+struct HostSuspend;
+HOT_EXPORT HostSuspend*& host_suspends()
+{
+    static HostSuspend* head = nullptr;
+    return head;
+}
 // The process-wide task scheduler (include/hot/runtime/scheduler.h). The static initialization
 // is thread-safe. When "make" throws, the next call tries again.
 HOT_EXPORT void* default_scheduler(void* (*make)())

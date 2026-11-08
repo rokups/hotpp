@@ -54,7 +54,8 @@
 //   - A stale handler (stale_call) must not destroy a task that it cancels.
 //   - The owner must not destroy a task while a host awaitable still holds its frame (for
 //     example on another thread): the host awaitable resumes a frame that does not exist then.
-//     The frame counts as not running from the start of a host co_await.
+//     The frame counts as not running from the start of a host co_await. A destroy on another
+//     thread waits until the await_suspend of the host awaitable returns.
 //
 // Scheduler rules (hot/runtime/scheduler.h):
 //   - hot::yield() and hot::sleep(d) park the frame: the frame puts one entry into a scheduler
@@ -128,6 +129,43 @@ HOT_EXPORT std::condition_variable& task_cv();
 HOT_EXPORT std::atomic<int>& task_waiters();
 
 struct TaskPromiseBase;
+// A host await_suspend that runs on a frame (Wrapped::suspend_host). The frame does not run then,
+// but the suspending thread still uses it after the call. A destroy on another thread waits until
+// the record goes. The record is on the stack of the suspending thread, not in the frame: so its
+// removal does not touch the frame.
+struct HostSuspend
+{
+    const TaskPromiseBase* frame;
+    std::thread::id thread;
+    HostSuspend* next;
+};
+// The list of the records, under task_mutex() (src/runtime/threads.cpp).
+HOT_EXPORT HostSuspend*& host_suspends();
+// True when a thread other than the calling thread runs a host await_suspend on "p". The caller
+// holds task_mutex(). The calling thread cannot wait for itself: a host awaitable that resumes the
+// frame inline can destroy it, as before.
+inline bool host_suspend_elsewhere(const TaskPromiseBase* p) noexcept
+{
+    const std::thread::id self = std::this_thread::get_id();
+    for (const HostSuspend* r = host_suspends(); r; r = r->next)
+        if (r->frame == p && r->thread != self)
+            return true;
+    return false;
+}
+// Removes the record of a host await_suspend that returned, and wakes the threads that wait for
+// it. The function does not touch the frame.
+inline void end_host_suspend(HostSuspend& record) noexcept
+{
+    std::lock_guard<std::mutex> lock(task_mutex());
+    for (HostSuspend** r = &host_suspends(); *r; r = &(*r)->next)
+        if (*r == &record)
+        {
+            *r = record.next;
+            break;
+        }
+    if (task_waiters().load() > 0)
+        task_cv().notify_all();
+}
 inline std::coroutine_handle<> complete(TaskPromiseBase& p) noexcept;
 inline std::coroutine_handle<> detach_frame(TaskPromiseBase& p, bool own_run) noexcept;
 inline std::coroutine_handle<> retire_frame(TaskPromiseBase& p, std::coroutine_handle<> h, bool own_run) noexcept;
@@ -346,29 +384,35 @@ struct TaskPromiseBase
             Wrapped& w = *static_cast<Wrapped*>(ctx);
             TaskPromiseBase* s = w.self;
             const auto h = std::coroutine_handle<P>::from_address(frame.address());
-            s->end_run(false); // the frame is suspended from here
+            // A destroy on another thread waits while the record is in the list, so "w" stays
+            // valid until the host await_suspend returns.
+            HostSuspend record{s, std::this_thread::get_id(), nullptr};
+            {
+                std::lock_guard<std::mutex> lock(task_mutex());
+                record.next = host_suspends();
+                host_suspends() = &record;
+                s->end_run(true); // the frame is suspended from here
+            }
+            std::coroutine_handle<> next;
             try
             {
                 // The host awaitable can publish the frame: after it, do not touch "w".
                 using R = decltype(w.inner.await_suspend(h));
                 if constexpr (std::is_void_v<R>)
-                {
                     w.inner.await_suspend(h);
-                    return {};
-                }
                 else if constexpr (std::is_same_v<R, bool>)
                 {
-                    if (w.inner.await_suspend(h))
-                        return {};
-                    s->begin_run(); // the coroutine goes on
-                    return frame;
+                    if (!w.inner.await_suspend(h))
+                    {
+                        s->begin_run(); // the coroutine goes on
+                        next = frame;
+                    }
                 }
                 else
                 {
-                    std::coroutine_handle<> r = w.inner.await_suspend(h);
-                    if (r == frame)
+                    next = w.inner.await_suspend(h);
+                    if (next == frame)
                         s->begin_run();
-                    return r;
                 }
             }
             catch (...)
@@ -376,8 +420,10 @@ struct TaskPromiseBase
                 // The host awaitable did not take the frame: it is mine again.
                 s->begin_run();
                 w.thrown = std::current_exception(); // the exception comes out of the co_await
-                return frame;
+                next = frame;
             }
+            end_host_suspend(record); // after it, touch the frame only if it runs
+            return next;
         }
         decltype(auto) await_resume()
         {
@@ -500,11 +546,12 @@ inline std::coroutine_handle<> detach_frame(TaskPromiseBase& p, bool own_run) no
         std::unique_lock<std::mutex> lock(task_mutex());
         if (own_run)
             p.end_run(true);
-        else if (p.running.load())
+        else if (p.running.load() || host_suspend_elsewhere(&p))
         {
-            // Another thread runs the frame. Wait until it suspends or finishes.
+            // Another thread runs the frame, or a host await_suspend on it. Wait until the frame
+            // suspends or finishes, and the call returns.
             task_waiters().fetch_add(1);
-            task_cv().wait(lock, [&] { return !p.running.load(); });
+            task_cv().wait(lock, [&] { return !p.running.load() && !host_suspend_elsewhere(&p); });
             task_waiters().fetch_sub(1);
         }
         // A scheduler must not resume the frame from here. The frame parks only while it runs,
