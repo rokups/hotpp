@@ -14,6 +14,10 @@
 
 #include <gtest/gtest.h>
 
+#ifdef __APPLE__
+    #include <mach-o/dyld.h> // _NSGetExecutablePath
+#endif
+
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -205,6 +209,16 @@ std::string self_exe_path()
     char buf[MAX_PATH * 4];
     const DWORD n = GetModuleFileNameA(nullptr, buf, static_cast<DWORD>(sizeof buf));
     return std::string(buf, n);
+#elif defined(__APPLE__)
+    // macOS has no /proc. dyld gives the path, as in exe_path() of src/runtime/paths.cpp.
+    uint32_t size = 0;
+    _NSGetExecutablePath(nullptr, &size);
+    std::vector<char> buf(size + 1, '\0');
+    if (_NSGetExecutablePath(buf.data(), &size) != 0)
+        return {};
+    std::error_code ec;
+    const std::filesystem::path p = std::filesystem::weakly_canonical(buf.data(), ec);
+    return ec ? std::string(buf.data()) : p.string();
 #else
     return std::filesystem::read_symlink("/proc/self/exe").string();
 #endif

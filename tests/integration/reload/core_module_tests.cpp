@@ -25,6 +25,9 @@
 #include <fstream>
 #include <set>
 #include <string>
+#ifdef __APPLE__
+    #include <mach-o/dyld.h> // _dyld_image_count, _dyld_get_image_name
+#endif
 #ifdef _WIN32
     #include <windows.h>
     // clang-format off
@@ -64,7 +67,7 @@ size_t loaded_modules(const hot::LoaderStats& st)
 }
 
 // The count of different mapped files whose path has "needle". Linux reads /proc/self/maps.
-// Windows lists the modules of the process.
+// Windows lists the modules of the process. macOS lists the images of dyld.
 size_t mapped_files(const std::string& needle)
 {
     std::set<std::string> paths;
@@ -86,6 +89,11 @@ size_t mapped_files(const std::string& needle)
             paths.insert(path);
     }
     CloseHandle(snap);
+#elif defined(__APPLE__)
+    // macOS has no /proc. dyld lists the mapped images. dlclose removes an unmapped image.
+    for (uint32_t i = 0, n = _dyld_image_count(); i < n; ++i)
+        if (const char* name = _dyld_get_image_name(i); name && std::string(name).find(needle) != std::string::npos)
+            paths.insert(name);
 #else
     std::ifstream maps("/proc/self/maps");
     for (std::string line; std::getline(maps, line);)
