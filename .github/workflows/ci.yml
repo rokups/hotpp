@@ -458,7 +458,12 @@ jobs:
       # the release link them into the DLL hot_jit_engine (/MT).
       - name: Install zlib and zstd
         run: |
-          "$VCPKG_INSTALLATION_ROOT/vcpkg.exe" install zlib zstd --triplet x64-windows-static
+          # A download from GitHub can fail with HTTP 504: try again.
+          for attempt in 1 2 3 4; do
+            "$VCPKG_INSTALLATION_ROOT/vcpkg.exe" install zlib zstd --triplet x64-windows-static && break
+            [ "$attempt" = 4 ] && exit 1
+            sleep $((attempt * 20))
+          done
           DEPS_PREFIX="$(cygpath -m "$VCPKG_INSTALLATION_ROOT")/installed/x64-windows-static"
           echo "DEPS_PREFIX=$DEPS_PREFIX" >> "$GITHUB_ENV"
           ls "$DEPS_PREFIX/lib"
