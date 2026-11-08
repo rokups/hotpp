@@ -190,6 +190,9 @@ CPMAddPackage(
     GIT_TAG v2025.05.0
     VERSION 2025.05.0
     OPTIONS "LEXY_FORCE_CPP17 ${HOT_LEXY_FORCE_CPP17}" "LEXY_BUILD_EXAMPLES OFF" "LEXY_BUILD_TESTS OFF" "LEXY_BUILD_PACKAGE OFF" "LEXY_ENABLE_INSTALL OFF"
+    # Lexy builds lexy_file with its own -Werror flags. The target is not used, so skip it.
+    EXCLUDE_FROM_ALL YES
+    SYSTEM YES
 )
 
 # nlohmann_json: the language server in src/ls uses it.
