@@ -108,3 +108,5 @@ Each folder in [samples/](samples/) shows one way to host Hot++: [aot](samples/a
 ## License
 
 Hot++ uses the MIT license. See [`LICENSE`](LICENSE).
+
+The `LICENSE` file covers all files of the repository. The pinned test inputs have no copyright header. These are the files in `tests/scripts`, `tests/golden`, `tests/engine/Actor.h` and the grammar samples in `editors`. The tests compare the line numbers of these files with expected texts, and a header shifts the lines.
