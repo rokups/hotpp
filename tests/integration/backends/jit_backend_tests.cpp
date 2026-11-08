@@ -20,6 +20,7 @@
 #include "jit_engine.h"
 #include "jit_host_allocators.h"
 #include "jit_msvc_symbols.h"
+#include "jit_search_order.h"
 
 #ifdef _MSC_VER
     #include "hot/paths.h"
@@ -896,24 +897,56 @@ TEST(JitTests, JitCodeSeesTheHostRuntime)
 }
 
 // The engine searches the C runtime DLLs of the host first. The host gives one address in each of
-// them: ucrtbase, vcruntime and msvcp (debug: ucrtbased, vcruntime140d, msvcp140d). Other compilers
-// give no address, because the process search has only one C runtime there.
+// them: ucrtbase, vcruntime and msvcp (debug: ucrtbased, vcruntime140d, msvcp140d), then the
+// other loaded parts (vcruntime140_1, for example). Other compilers give no address, because the
+// process search has only one C runtime there.
 TEST(JitTests, HostGivesEachRuntimeDll)
 {
     const std::vector<const void*> addresses = hot::jit::host_runtime_addresses();
 #ifndef _MSC_VER
     EXPECT_TRUE(addresses.empty());
 #else
-    ASSERT_EQ(addresses.size(), 3u);
+    // The first three are always there. The other parts of the runtime follow when they are loaded.
+    ASSERT_GE(addresses.size(), 3u);
     const char* const dlls[] = {"ucrtbase", "vcruntime", "msvcp"};
     for (size_t i = 0; i < addresses.size(); ++i)
     {
         std::string name = module_of(addresses[i]);
         for (char& c : name)
             c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        EXPECT_NE(name.find(dlls[i]), std::string::npos) << name;
+        if (i < 3)
+            EXPECT_NE(name.find(dlls[i]), std::string::npos) << name;
+        EXPECT_TRUE(hot::jit::is_c_runtime_dll(name)) << name;
     }
 #endif
+}
+
+// The search of the JIT code knows the DLLs of each C or C++ runtime by the file name.
+TEST(JitTests, CRuntimeDllNames)
+{
+    for (const char* dll : {"C:\\Windows\\System32\\msvcrt.dll", "C:/Windows/System32/MSVCP_WIN.dll", "ucrtbase.dll",
+             "ucrtbased.dll", "VCRUNTIME140_1.dll", "msvcp140d.dll", "msvcr120.dll", "api-ms-win-crt-stdio-l1-1-0.dll",
+             "concrt140.dll"})
+        EXPECT_TRUE(hot::jit::is_c_runtime_dll(dll)) << dll;
+    for (const char* other : {"C:\\Windows\\System32\\ntdll.dll", "KERNEL32.DLL", "integration_reload_tests.exe",
+             "hot_jit_engine.dll", "msvcrt.lib", "api-ms-win-core-synch-l1-2-0.dll", ""})
+        EXPECT_FALSE(hot::jit::is_c_runtime_dll(other)) << other;
+}
+
+// The runtime DLLs of the host come first, in the order of the host. The other modules follow in
+// the load order. Another C runtime (msvcrt.dll, msvcp_win.dll) is not in the search.
+TEST(JitTests, SymbolSearchOrderPutsTheHostRuntimeFirst)
+{
+    const std::vector<std::string> modules = {"D:\\a\\tests.exe", "C:\\Windows\\SYSTEM32\\ntdll.dll",
+        "C:\\Windows\\System32\\KERNEL32.DLL", "C:\\Windows\\System32\\msvcrt.dll",
+        "C:\\Windows\\System32\\ucrtbase.dll", "C:\\Windows\\SYSTEM32\\VCRUNTIME140.dll",
+        "C:\\Windows\\System32\\msvcp_win.dll", "C:\\Windows\\SYSTEM32\\MSVCP140.dll",
+        "C:\\Windows\\System32\\USER32.dll", "C:\\Windows\\SYSTEM32\\ucrtbased.dll"};
+    // A host index can come two times or be out of range: the result has it one time or not.
+    const std::vector<std::size_t> order = hot::jit::symbol_search_order(modules, {4, 5, 7, 4, 99});
+    EXPECT_EQ(order, (std::vector<std::size_t>{4, 5, 7, 0, 1, 2, 8}));
+    // Without a host list, no C runtime DLL is in the search.
+    EXPECT_EQ(hot::jit::symbol_search_order(modules, {}), (std::vector<std::size_t>{0, 1, 2, 8}));
 }
 
 // The host gives each name of the allocator family that this platform has, one time, with an

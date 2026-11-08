@@ -10,6 +10,7 @@
 #include "jit_coff_check.h"
 #include "jit_coff_memory.h"
 #include "jit_host_allocators.h"
+#include "jit_search_order.h"
 
 #include <clang/Basic/Diagnostic.h>
 #include <clang/CodeGen/CodeGenAction.h>
@@ -55,6 +56,8 @@
         #define WIN32_LEAN_AND_MEAN
     #endif
     #include <windows.h>
+
+    #include <psapi.h>
 #elif defined(_MSC_VER)
     #ifndef NOMINMAX
         #define NOMINMAX
@@ -63,6 +66,8 @@
         #define WIN32_LEAN_AND_MEAN
     #endif
     #include <windows.h>
+
+    #include <psapi.h>
 #endif
 
 struct hot_jit_ir
@@ -261,6 +266,98 @@ void import_coff_data(llvm::Module& m)
     }
 }
 
+#ifdef _MSC_VER
+// The search of the process symbols for JIT code on Windows. The process search of LLVM takes
+// the first loaded module with the name. That can be another C runtime: msvcrt.dll ("fflush") or
+// msvcp_win.dll ("std::cout"). Their state is not the state of the host: a FILE of msvcrt.dll has
+// another layout than a FILE of ucrtbase.dll. This generator searches the C runtime DLLs of the
+// host first. Then it searches the other loaded modules in the load order, without another C
+// runtime DLL (symbol_search_order). It gives no name of the allocator family: only the absolute
+// symbols of the host (hot_jit_add) give these names.
+class HostProcessGenerator : public llvm::orc::DefinitionGenerator
+{
+public:
+    HostProcessGenerator(std::vector<HMODULE> host, char global_prefix)
+        : host_(std::move(host))
+        , prefix_(global_prefix)
+    {
+    }
+
+    llvm::Error tryToGenerate(llvm::orc::LookupState&, llvm::orc::LookupKind, llvm::orc::JITDylib& jd,
+        llvm::orc::JITDylibLookupFlags, const llvm::orc::SymbolLookupSet& symbols) override
+    {
+        const std::vector<HMODULE> order = search_order();
+        llvm::orc::SymbolMap found;
+        for (const auto& item : symbols)
+        {
+            llvm::StringRef name = *item.first;
+            if (prefix_ != 0)
+            {
+                if (name.empty() || name.front() != prefix_)
+                    continue;
+                name = name.drop_front();
+            }
+            if (name.empty() || hot::jit::is_host_allocator_name(name.data(), name.size()))
+                continue;
+            const std::string text = name.str();
+            for (HMODULE module : order)
+                if (FARPROC address = GetProcAddress(module, text.c_str()))
+                {
+                    found[item.first] = llvm::orc::ExecutorSymbolDef(
+                        llvm::orc::ExecutorAddr(reinterpret_cast<uint64_t>(address)), llvm::JITSymbolFlags::Exported);
+                    break;
+                }
+        }
+        if (found.empty())
+            return llvm::Error::success();
+        return jd.define(llvm::orc::absoluteSymbols(std::move(found)));
+    }
+
+private:
+    // The loaded modules now: a module can load after the start of the JIT.
+    std::vector<HMODULE> search_order() const
+    {
+        std::vector<HMODULE> modules(256);
+        DWORD needed = 0;
+        for (;;)
+        {
+            const DWORD bytes = static_cast<DWORD>(modules.size() * sizeof(HMODULE));
+            if (!K32EnumProcessModules(GetCurrentProcess(), modules.data(), bytes, &needed))
+                return host_;
+            if (needed <= bytes)
+                break;
+            modules.resize(needed / sizeof(HMODULE) + 16);
+        }
+        modules.resize(needed / sizeof(HMODULE));
+        std::vector<std::string> paths;
+        for (HMODULE module : modules)
+        {
+            wchar_t wide[MAX_PATH] = {};
+            const DWORD n = GetModuleFileNameW(module, wide, MAX_PATH);
+            std::string path(n, '?');
+            for (DWORD k = 0; k < n; ++k)
+                if (wide[k] < 0x80)
+                    path[k] = static_cast<char>(wide[k]);
+            paths.push_back(std::move(path));
+        }
+        std::vector<size_t> host;
+        for (HMODULE h : host_)
+        {
+            const auto it = std::find(modules.begin(), modules.end(), h);
+            if (it != modules.end())
+                host.push_back(static_cast<size_t>(it - modules.begin()));
+        }
+        std::vector<HMODULE> out;
+        for (size_t i : hot::jit::symbol_search_order(paths, host))
+            out.push_back(modules[i]);
+        return out;
+    }
+
+    std::vector<HMODULE> host_;
+    char prefix_;
+};
+#endif
+
 } // namespace
 
 extern "C"
@@ -374,6 +471,31 @@ hot_jit_engine* hot_jit_engine_create(int debugger_support, const void* const* h
             return std::unique_ptr<llvm::orc::ObjectLayer>(std::move(layer));
         });
 #endif
+#ifdef _MSC_VER
+    // The modules of the host addresses: the C runtime DLLs of the host, in the order of the list.
+    std::vector<HMODULE> host_modules;
+    for (size_t i = 0; i < n_host_runtime; ++i)
+    {
+        HMODULE module = nullptr;
+        if (host_runtime[i]
+            && GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                static_cast<LPCWSTR>(host_runtime[i]), &module))
+            host_modules.push_back(module);
+    }
+    // The JITDylib of each module links to "<Platform>" and to "<Process Symbols>" (LLJIT), not to
+    // the main JITDylib. So the process symbols JITDylib must have the search of the host: it has
+    // only one generator (HostProcessGenerator).
+    builder.setProcessSymbolsJITDylibSetup(
+        [host_modules](llvm::orc::LLJIT& j) -> llvm::Expected<llvm::orc::JITDylibSP>
+        {
+            auto& jd = j.getExecutionSession().createBareJITDylib("<Process Symbols>");
+            jd.addGenerator(std::make_unique<HostProcessGenerator>(host_modules, j.getDataLayout().getGlobalPrefix()));
+            return &jd;
+        });
+#else
+    (void)host_runtime;
+    (void)n_host_runtime;
+#endif
     auto jit = builder.create();
     if (!jit)
     {
@@ -392,46 +514,17 @@ hot_jit_engine* hot_jit_engine_create(int debugger_support, const void* const* h
         else if (out_debugger_on)
             *out_debugger_on = 1;
     }
+#ifndef _MSC_VER
     // The executable links with -rdynamic: the engine, the runtime and libstdc++ resolve here.
-    // On Windows the search reads the exports of each loaded module, for example the host and
-    // the DLL C runtime. The static runtime of this DLL has no exports.
-#ifdef _MSC_VER
-    // The allocator family comes only from the absolute symbols of the host (hot_jit_add). The
-    // search must not take these names from another module, for example another C runtime: that
-    // one has another heap. A name that the host does not give then fails at the link.
-    auto allow = [](const llvm::orc::SymbolStringPtr& name)
-    { return !hot::jit::is_host_allocator_name((*name).data(), (*name).size()); };
-    // The C runtime DLLs of the host come first. Other loaded modules export the same names, for
-    // example msvcrt.dll ("fflush", "fwrite") and msvcp_win.dll. Those have another state: a FILE
-    // of msvcrt.dll has another layout than a FILE of ucrtbase.dll. The process search takes the
-    // first module in the load order with the name. That can be the wrong module.
-    std::vector<HMODULE> first;
-    for (size_t i = 0; i < n_host_runtime; ++i)
-    {
-        HMODULE module = nullptr;
-        if (host_runtime[i]
-            && GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                static_cast<LPCWSTR>(host_runtime[i]), &module)
-            && std::find(first.begin(), first.end(), module) == first.end())
-            first.push_back(module);
-    }
-    for (HMODULE module : first)
-        engine->jit->getMainJITDylib().addGenerator(std::make_unique<llvm::orc::DynamicLibrarySearchGenerator>(
-            llvm::sys::DynamicLibrary(module), engine->jit->getDataLayout().getGlobalPrefix(), allow));
-    auto gen = llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
-        engine->jit->getDataLayout().getGlobalPrefix(), std::move(allow));
-#else
-    (void)host_runtime;
-    (void)n_host_runtime;
     auto gen = llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
         engine->jit->getDataLayout().getGlobalPrefix());
-#endif
     if (!gen)
     {
         put(out_error, "cannot search the process symbols: " + error_text(gen.takeError()) + "\n");
         return nullptr;
     }
     engine->jit->getMainJITDylib().addGenerator(std::move(*gen));
+#endif
     return engine.release();
 }
 

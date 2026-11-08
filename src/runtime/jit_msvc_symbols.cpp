@@ -175,8 +175,21 @@ std::vector<const void*> host_runtime_addresses()
 #else
     const HMODULE vcruntime = GetModuleHandleW(L"vcruntime140.dll");
 #endif
-    return {reinterpret_cast<const void*>(&std::fflush), static_cast<const void*>(vcruntime),
+    std::vector<const void*> out = {reinterpret_cast<const void*>(&std::fflush), static_cast<const void*>(vcruntime),
         static_cast<const void*>(&std::cout)};
+    // The other parts of the runtime of the host, when they are loaded. The search of the JIT code
+    // takes no name from a C runtime DLL that is not in this list (jit_search_order.h).
+#ifdef _DEBUG
+    const wchar_t* const parts[] = {L"vcruntime140_1d.dll", L"msvcp140_1d.dll", L"msvcp140_2d.dll",
+        L"msvcp140d_atomic_wait.dll", L"msvcp140d_codecvt_ids.dll", L"concrt140d.dll"};
+#else
+    const wchar_t* const parts[] = {L"vcruntime140_1.dll", L"msvcp140_1.dll", L"msvcp140_2.dll",
+        L"msvcp140_atomic_wait.dll", L"msvcp140_codecvt_ids.dll", L"concrt140.dll"};
+#endif
+    for (const wchar_t* part : parts)
+        if (const HMODULE module = GetModuleHandleW(part))
+            out.push_back(static_cast<const void*>(module));
+    return out;
 }
 
 } // namespace hot::jit
