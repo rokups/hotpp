@@ -129,13 +129,12 @@
     },
     {
       "name": "vs-both",
-      "description": "Experimental: both backends on MSVC. The LLVM release has Release libraries with the static runtime (/MT) only, so only RelWithDebInfo works and the build uses /MT. The JIT needs zlib and zstd (/MT) in CMAKE_PREFIX_PATH.",
+      "description": "Experimental: both backends on MSVC. The LLVM release has Release libraries with the static runtime (/MT) only, so only RelWithDebInfo works. Only the DLL hot_jit_engine uses /MT. The JIT needs zlib and zstd (/MT) in CMAKE_PREFIX_PATH.",
       "binaryDir": "${sourceDir}/cmake-build/${presetName}",
       "installDir": "${sourceDir}/cmake-build/${presetName}/install",
       "architecture": "x64",
       "cacheVariables": {
         "CMAKE_CONFIGURATION_TYPES": "RelWithDebInfo",
-        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded",
         "HOT_ENABLE_CLANG_FILES": "ON",
         "HOT_ENABLE_JIT": "ON",
         "HOT_DOWNLOAD_LLVM": "ON"

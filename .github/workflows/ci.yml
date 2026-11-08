@@ -418,7 +418,7 @@ jobs:
   # test jobs unpack the tree to the same path: the checkout of the same repository on the same
   # runner image. The JIT backend needs zlib and zstd. The component libraries of the LLVM release
   # link them (the release has no clang-cpp). The release has Release libraries with the static
-  # runtime (/MT) only, so only RelWithDebInfo builds and the preset sets /MT for all targets.
+  # runtime (/MT) only, so only RelWithDebInfo builds. Only the DLL hot_jit_engine uses /MT.
   build-windows:
     runs-on: windows-2022
     timeout-minutes: 90
@@ -455,7 +455,7 @@ jobs:
           zstd -d --long=31 -c "$archive" | tar -x -C cmake-build
 
       # The static libraries zlib and zstd with the static C++ runtime (/MT). The LLVM libraries of
-      # the release link them.
+      # the release link them into the DLL hot_jit_engine (/MT).
       - name: Install zlib and zstd
         run: |
           "$VCPKG_INSTALLATION_ROOT/vcpkg.exe" install zlib zstd --triplet x64-windows-static

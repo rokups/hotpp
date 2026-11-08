@@ -133,7 +133,7 @@ The script modules need `link.exe`, the UCRT and the MSVC STL. Run CMake from a 
 ## Limits
 
 - The JIT backend is off for MinGW and for MSVC. The preset `vs-files` uses the clang files backend. The JIT tests do not run on Windows.
-- The experimental preset `vs-both` has the JIT on MSVC. The LLVM release has static libraries with the static runtime (`/MT`). So this build uses `/MT` for all targets, and zlib and zstd must use `/MT` too.
+- The experimental preset `vs-both` has the JIT on MSVC. The LLVM release has static libraries with the static runtime (`/MT`). Only the DLL `hot_jit_engine` links them, and it uses `/MT`. Its interface is C (`src/runtime/jit_engine.h`), so no C++ object goes across it. The other targets and the script modules use the DLL runtime (`/MD`): they share one heap. zlib and zstd go into the engine DLL, so they must use `/MT`.
 - On MSVC the lldb tests and the `DebugInfo` tests do not run. The `DebugInfo` tests run on MinGW. The check of the symbols with `llvm-pdbutil` is untested.
 - The SDK is a Release build (`/MD`). A Debug consumer (`/MDd`) cannot link its static libraries.
 - The static libraries of the SDK need the MSVC toolset of the SDK build or a newer one. The release notes give this version.

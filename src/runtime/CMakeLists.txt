@@ -95,37 +95,49 @@ endif()
 # JitBackend: hotc_lib in memory, the Clang library compiles in memory, LLVM ORC loads.
 # LLVM and Clang come from the system. CPM does not fetch them. The root file finds them.
 if(HOT_JIT_ENABLED)
-    add_library(hot_jit_backend STATIC jit_backend.cpp)
-    # Only jit_backend.cpp includes the LLVM and Clang headers. The public header does not.
-    # So these dirs are PRIVATE and the export holds no system path.
-    target_include_directories(hot_jit_backend PUBLIC
-        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-    target_include_directories(hot_jit_backend SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
+    # hot_jit_engine is the only code with the LLVM and Clang C++ API (jit_engine.h). Its
+    # interface is C. On MSVC it is a DLL with the static runtime (/MT) of the LLVM release, so
+    # the rest of the project keeps the DLL runtime (/MD) of the script modules.
+    if(MSVC AND NOT TARGET clang-cpp)
+        add_library(hot_jit_engine SHARED jit_engine.cpp)
+        set_target_properties(hot_jit_engine PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded")
+        target_compile_definitions(hot_jit_engine PRIVATE HOT_JIT_ENGINE_BUILD PUBLIC HOT_JIT_ENGINE_SHARED)
+    else()
+        add_library(hot_jit_engine STATIC jit_engine.cpp)
+        set_target_properties(hot_jit_engine PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    endif()
+    target_include_directories(hot_jit_engine SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
     if(MSVC)
         # The LLVM release for MSVC sets LLVM_DEFINITIONS as one string with spaces. UNICODE and
         # _UNICODE are only for the LLVM sources. They would change the Windows API macros of the host.
         separate_arguments(_hot_llvm_defs WINDOWS_COMMAND "${LLVM_DEFINITIONS}")
         list(FILTER _hot_llvm_defs EXCLUDE REGEX "^-D_?UNICODE$")
-        target_compile_definitions(hot_jit_backend PRIVATE ${_hot_llvm_defs})
+        target_compile_definitions(hot_jit_engine PRIVATE ${_hot_llvm_defs})
     else()
-        target_compile_definitions(hot_jit_backend PRIVATE ${LLVM_DEFINITIONS})
+        target_compile_definitions(hot_jit_engine PRIVATE ${LLVM_DEFINITIONS})
     endif()
     if(TARGET clang-cpp)
-        target_link_libraries(hot_jit_backend PUBLIC hot_runtime hotc_lib clang-cpp LLVM)
+        target_link_libraries(hot_jit_engine PRIVATE clang-cpp LLVM)
     else()
         # Experimental (MSVC). The LLVM release for MSVC has no clang-cpp and no LLVM library. It
         # has static component libraries. The imported targets bring their own dependencies.
         # LLVM_NATIVE_ARCH is X86 there.
-        target_link_libraries(hot_jit_backend PUBLIC hot_runtime hotc_lib
+        target_link_libraries(hot_jit_engine PRIVATE
             clangFrontend clangCodeGen clangDriver LLVMOrcJIT LLVMOrcDebugging
             LLVM${LLVM_NATIVE_ARCH}CodeGen LLVM${LLVM_NATIVE_ARCH}AsmParser
             LLVM${LLVM_NATIVE_ARCH}Desc LLVM${LLVM_NATIVE_ARCH}Info)
     endif()
     if(MSVC AND NOT LLVM_ENABLE_RTTI)
         # The LLVM libraries have no RTTI. The code that uses their classes must have none too.
-        target_compile_options(hot_jit_backend PRIVATE /GR-)
+        target_compile_options(hot_jit_engine PRIVATE /GR-)
     endif()
+
+    add_library(hot_jit_backend STATIC jit_backend.cpp)
+    # The public header has no LLVM type, and jit_backend.cpp uses only the C interface.
+    target_include_directories(hot_jit_backend PUBLIC
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+    target_link_libraries(hot_jit_backend PUBLIC hot_runtime hotc_lib hot_jit_engine)
 endif()
 
 # make_default_backend() returns the backend that the program chooses at run time. The target

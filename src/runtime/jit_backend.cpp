@@ -10,31 +10,16 @@
 #include "hot/paths.h"
 #include "hot/runtime/errors.h"
 
-#include <clang/Basic/Diagnostic.h>
-#include <clang/CodeGen/CodeGenAction.h>
-#include <clang/Driver/CreateInvocationFromArgs.h>
-#include <clang/Frontend/CompilerInstance.h>
-#include <clang/Frontend/CompilerInvocation.h>
-#include <clang/Frontend/FrontendActions.h>
-#include <clang/Frontend/TextDiagnosticPrinter.h>
-#include <llvm/ExecutionEngine/Orc/Debugging/DebuggerSupport.h>
-#include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
-#include <llvm/ExecutionEngine/Orc/LLJIT.h>
-#include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
-#include <llvm/IR/LLVMContext.h>
-#include <llvm/IR/Module.h>
-#include <llvm/Support/Error.h>
-#include <llvm/Support/MemoryBuffer.h>
-#include <llvm/Support/TargetSelect.h>
-#include <llvm/Support/VirtualFileSystem.h>
-#include <llvm/Support/raw_ostream.h>
-#include <llvm/Transforms/Utils/Cloning.h>
+#include "jit_engine.h"
+
 
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <memory>
 #include <mutex>
+#include <vector>
 
 namespace hot
 {
@@ -87,92 +72,88 @@ std::string with_platform_hint(std::string text)
     return text;
 }
 
-std::string error_text(llvm::Error e)
+// The text of an engine string. The engine allocated it, so the engine releases it.
+std::string take(char* text)
 {
-    return llvm::toString(std::move(e));
+    std::string out = text ? text : "";
+    hot_jit_string_free(text);
+    return out;
 }
 
-void init_llvm_once()
+// The pointers of the strings, for the C interface of the engine.
+std::vector<const char*> c_strings(const std::vector<std::string>& v)
 {
-    static std::once_flag flag;
-    std::call_once(flag, []
-    {
-        llvm::InitializeNativeTarget();
-        llvm::InitializeNativeTargetAsmPrinter();
-    });
+    std::vector<const char*> out;
+    for (const std::string& x : v)
+        out.push_back(x.c_str());
+    return out;
 }
 
 } // namespace
 
-// The LLJIT of the session. The Modules keep a copy of the pointer to this object.
+// The JIT engine of the session. The Modules keep a copy of the pointer to this object.
 struct JitState
 {
-    std::unique_ptr<llvm::orc::LLJIT> jit;
+    hot_jit_engine* engine = nullptr;
+    ~JitState() { hot_jit_engine_free(engine); }
 };
 
 namespace
 {
 
 // What one generation owns in the JIT. The destructor runs the static
-// destructors and removes the code (ResourceTracker::remove).
+// destructors and removes the code.
 struct Generation
 {
     std::shared_ptr<JitState> impl;
-    llvm::orc::JITDylib* dylib = nullptr;
-    llvm::orc::ResourceTrackerSP tracker;
-    bool initialized = false;
+    hot_jit_dylib* dylib = nullptr;
 
-    ~Generation()
-    {
-        if (initialized)
-            llvm::consumeError(impl->jit->deinitialize(*dylib));
-        if (tracker)
-            llvm::consumeError(tracker->remove());
-        if (dylib)
-            llvm::consumeError(impl->jit->getExecutionSession().removeJITDylib(*dylib));
-    }
+    ~Generation() { hot_jit_remove(dylib); }
+};
+
+// The engine owns the IR. Use only with the mutex of the backend or with one owner.
+struct IrHandle
+{
+    hot_jit_ir* ir = nullptr;
+    ~IrHandle() { hot_jit_ir_free(ir); }
 };
 
 struct Compiled
 {
-    std::unique_ptr<llvm::Module> module;
-    std::unique_ptr<llvm::LLVMContext> context;
+    std::unique_ptr<IrHandle> ir;
     std::string diagnostics;
 };
 
-// Builds the compile command like the driver does and parses it into a
-// CompilerInvocation. "path" is the only input file. With a non-null "text" the
-// file exists only in memory.
-struct CompileSetup
+// The compile command like the driver has it, and the files of the memory file system.
+// "path" is the only input file and the last argument.
+struct CompileArgs
 {
-    // The invocation keeps pointers into the arguments (for example for the
-    // debug flags), so the strings must live as long as the invocation.
     std::vector<std::string> args;
-    llvm::IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> vfs;
-    std::unique_ptr<clang::CompilerInvocation> invocation;
+    std::vector<std::string> paths;
+    std::vector<std::string> texts;
 };
 
 // "virtual_files" (path, text) are the headers that only the file system of the host holds. They
-// go into the memory file system under their exact paths.
-CompileSetup make_invocation(const JitOptions& opt, const std::string& path, const std::string* text, bool as_pch,
-    std::string& diagnostics, const std::vector<std::pair<std::string, std::string>>* virtual_files = nullptr,
+// go into the memory file system under their absolute normal paths.
+CompileArgs make_args(const JitOptions& opt, const std::string& path, const std::string* text, bool as_pch,
+    const std::vector<std::pair<std::string, std::string>>* virtual_files = nullptr,
     const std::string& script_dir = std::string())
 {
-    CompileSetup s;
-    auto memory = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
+    CompileArgs s;
     if (text)
-        memory->addFile(path, 0, llvm::MemoryBuffer::getMemBufferCopy(*text, path));
+    {
+        s.paths.push_back(path);
+        s.texts.push_back(*text);
+    }
     // The memory file system needs absolute normal paths, so the paths of the files and the paths
     // of the "-I" dirs are made absolute and normal when a host file system is set.
     auto normal = [](const std::string& p) { return std::filesystem::absolute(p).lexically_normal().string(); };
     if (virtual_files)
         for (const auto& [vpath, vtext] : *virtual_files)
         {
-            const std::string full = normal(vpath);
-            memory->addFile(full, 0, llvm::MemoryBuffer::getMemBufferCopy(vtext, full));
+            s.paths.push_back(normal(vpath));
+            s.texts.push_back(vtext);
         }
-    s.vfs = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(llvm::vfs::getRealFileSystem());
-    s.vfs->pushOverlay(memory);
 
     std::vector<std::string>& args = s.args;
     args = {opt.compiler, "-std=" + (opt.std_version.empty() ? std::string(cxx_std_name()) : opt.std_version), "-O1",
@@ -239,19 +220,6 @@ CompileSetup make_invocation(const JitOptions& opt, const std::string& path, con
         args.push_back(opt.pch_path);
     }
     args.push_back(path);
-    std::vector<const char*> cargs;
-    for (const std::string& a : args)
-        cargs.push_back(a.c_str());
-
-    llvm::raw_string_ostream os(diagnostics);
-    clang::DiagnosticOptions diag_opts;
-    clang::TextDiagnosticPrinter printer(os, diag_opts);
-    llvm::IntrusiveRefCntPtr<clang::DiagnosticsEngine> diags =
-        clang::CompilerInstance::createDiagnostics(*s.vfs, diag_opts, &printer, false);
-    clang::CreateInvocationOptions cio;
-    cio.Diags = diags;
-    cio.VFS = s.vfs;
-    s.invocation = clang::createInvocation(cargs, cio);
     return s;
 }
 
@@ -259,29 +227,20 @@ Compiled compile(const JitOptions& opt, const std::string& path, const std::stri
     const std::vector<std::pair<std::string, std::string>>& virtual_files, const std::string& script_dir)
 {
     Compiled out;
-    CompileSetup s = make_invocation(opt, path, &text, false, out.diagnostics, &virtual_files, script_dir);
-    if (!s.invocation)
+    const CompileArgs s = make_args(opt, path, &text, false, &virtual_files, script_dir);
+    const std::vector<const char*> args = c_strings(s.args);
+    const std::vector<const char*> paths = c_strings(s.paths);
+    const std::vector<const char*> texts = c_strings(s.texts);
+    hot_jit_ir* ir = nullptr;
+    char* diagnostics = nullptr;
+    const int ok =
+        hot_jit_compile(args.data(), args.size(), paths.data(), texts.data(), paths.size(), &ir, &diagnostics);
+    out.diagnostics = take(diagnostics);
+    if (ok)
     {
-        out.diagnostics += "cannot build the compile command\n";
-        return out;
+        out.ir = std::make_unique<IrHandle>();
+        out.ir->ir = ir;
     }
-    llvm::raw_string_ostream os(out.diagnostics);
-    clang::DiagnosticOptions print_opts = s.invocation->getDiagnosticOpts();
-    // ExecuteAction writes "N errors generated." to stderr when ShowCarets is on.
-    s.invocation->getDiagnosticOpts().ShowCarets = false;
-    clang::TextDiagnosticPrinter printer(os, print_opts);
-    clang::CompilerInstance ci(std::shared_ptr<clang::CompilerInvocation>(std::move(s.invocation)));
-    ci.setVirtualFileSystem(s.vfs);
-    ci.createDiagnostics(&printer, false);
-    clang::EmitLLVMOnlyAction action;
-    const bool ok = ci.ExecuteAction(action);
-    os.flush();
-    if (!ok || ci.getDiagnostics().hasErrorOccurred())
-        return out;
-    out.module = action.takeModule();
-    out.context.reset(action.takeLLVMContext());
-    if (!out.module)
-        out.diagnostics += "the compile made no module\n";
     return out;
 }
 
@@ -292,61 +251,41 @@ namespace
 
 // Adds the module to a new JITDylib "id", runs the static initializers and finds
 // script_register. The Module owns the JITDylib.
-LoadResult add_to_jit(const std::shared_ptr<JitState>& impl, const std::string& id, llvm::orc::ThreadSafeModule tsm)
+LoadResult add_to_jit(const std::shared_ptr<JitState>& impl, const std::string& id, hot_jit_ir* ir)
 {
     LoadResult r;
     auto holder = std::make_unique<Generation>();
     holder->impl = impl;
-    llvm::orc::LLJIT& jit = *impl->jit;
-    auto dylib = jit.createJITDylib(id);
-    if (!dylib)
-    {
-        r.error = "cannot make a JITDylib: " + error_text(dylib.takeError()) + "\n";
-        return r;
-    }
-    holder->dylib = &*dylib;
+    std::vector<const char*> abs_names;
+    std::vector<uint64_t> abs_values;
 #if HOT_ELF_TLS_DEPTH
     // The JIT code reads the call depth with the thread pointer and this offset (errors.h). The
     // address of the absolute symbol is the offset. The offset is the same in each thread.
-    llvm::orc::SymbolMap tls;
-    tls[jit.mangleAndIntern("hot_call_depth_tp_offset")] = llvm::orc::ExecutorSymbolDef(
-        llvm::orc::ExecutorAddr(static_cast<uint64_t>(detail::call_depth_tp_offset())),
-        llvm::JITSymbolFlags::Exported | llvm::JITSymbolFlags::Absolute);
-    if (llvm::Error e = holder->dylib->define(llvm::orc::absoluteSymbols(std::move(tls))))
-    {
-        r.error = "cannot define the call depth offset: " + error_text(std::move(e)) + "\n";
-        return r;
-    }
+    abs_names.push_back("hot_call_depth_tp_offset");
+    abs_values.push_back(static_cast<uint64_t>(detail::call_depth_tp_offset()));
 #endif
-    holder->tracker = holder->dylib->createResourceTracker();
-    if (llvm::Error e = jit.addIRModule(holder->tracker, std::move(tsm)))
+    char* error = nullptr;
+    holder->dylib =
+        hot_jit_add(impl->engine, id.c_str(), ir, abs_names.data(), abs_values.data(), abs_names.size(), &error);
+    if (!holder->dylib)
     {
-        r.error = with_platform_hint("cannot add the module: " + error_text(std::move(e)) + "\n");
-        return r; // "holder" removes the dylib
-    }
-    // Static initializers run here: for example the dynamic initializer of the class record.
-    if (llvm::Error e = jit.initialize(*holder->dylib))
-    {
-        r.error = with_platform_hint("cannot run the static initializers: " + error_text(std::move(e)) + "\n");
+        r.error = with_platform_hint(take(error));
         return r;
     }
-    holder->initialized = true;
-    auto addr = jit.lookup(*holder->dylib, "script_register");
-    if (!addr)
+    void* reg = hot_jit_lookup(holder->dylib, "script_register", &error);
+    if (!reg)
     {
-        r.error =
-            with_platform_hint("script_register not found or not linkable: " + error_text(addr.takeError()) + "\n");
+        r.error = with_platform_hint("script_register not found or not linkable: " + take(error) + "\n");
         return r;
     }
+    void* entry = hot_jit_lookup(holder->dylib, "hot_main", &error);
+    take(error); // a missing "hot_main" is not an error: the module has no entry point
     Module m;
-    m.register_fn = addr->toPtr<Module::RegisterFn>();
+    m.register_fn = reinterpret_cast<Module::RegisterFn>(reg);
     m.keep_alive = std::shared_ptr<void>(holder.release(), [](void* p) { delete static_cast<Generation*>(p); });
     m.origin = "jit:" + id;
-    // A missing "hot_main" is not an error: the module has no entry point.
-    if (auto entry = jit.lookup(*dylib, "hot_main"))
-        m.entry_main = entry->toPtr<Module::EntryMainFn>();
-    else
-        llvm::consumeError(entry.takeError());
+    if (entry)
+        m.entry_main = reinterpret_cast<Module::EntryMainFn>(entry);
     r.module = std::move(m);
     return r;
 }
@@ -379,7 +318,6 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
 {
     std::lock_guard<std::mutex> lock(mutex_);
     LoadResult r;
-    init_llvm_once();
     namespace fs = std::filesystem;
     std::string stem = fs::path(source.name).stem().string();
     if (stem.empty())
@@ -444,7 +382,7 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
         script_slash == std::string::npos ? std::string(".") : source.name.substr(0, script_slash);
     Compiled c = compile(opt_, cpp_path, tr.cpp, tr.virtual_files, script_dir);
     timings_.compile_ms = ms_since(t0);
-    if (!c.module)
+    if (!c.ir)
     {
         if (!opt_.raw_diagnostics)
             c.diagnostics = hotc::rewrite_diagnostic(
@@ -458,40 +396,27 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
     if (!impl_)
     {
         auto impl = std::make_shared<JitState>();
-        auto jit = llvm::orc::LLJITBuilder().create();
-        if (!jit)
+        char* error = nullptr;
+        char* debugger_error = nullptr;
+        int debugger_on = 0;
+        impl->engine = hot_jit_engine_create(opt_.debugger_support ? 1 : 0, &debugger_on, &error, &debugger_error);
+        debugger_error_ = take(debugger_error);
+        debugger_support_ = debugger_on != 0;
+        if (!impl->engine)
         {
-            r.error = "cannot make the JIT: " + error_text(jit.takeError()) + "\n";
+            r.error = take(error);
             return r;
         }
-        impl->jit = std::move(*jit);
-        // The debugger sees the JIT code: the plugin registers each linked object through the
-        // GDB JIT interface (__jit_debug_descriptor). GDB and LLDB read it. The object has the
-        // line table of "-gline-tables-only", so the debugger shows the .hot files and lines.
-        // A failure is not fatal: the code runs, only without debugger support.
-        if (opt_.debugger_support)
-        {
-            if (llvm::Error e = llvm::orc::enableDebuggerSupport(*impl->jit))
-                debugger_error_ = error_text(std::move(e));
-            else
-                debugger_support_ = true;
-        }
-        // The executable links with -rdynamic: the engine, the runtime and libstdc++ resolve here.
-        auto gen = llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
-            impl->jit->getDataLayout().getGlobalPrefix());
-        if (!gen)
-        {
-            r.error = "cannot search the process symbols: " + error_text(gen.takeError()) + "\n";
-            return r;
-        }
-        impl->jit->getMainJITDylib().addGenerator(std::move(*gen));
+        take(error);
         impl_ = std::move(impl);
     }
 
     // The core instance (module.h) needs a copy of the IR: the JIT consumes the module.
-    auto tsc = llvm::orc::ThreadSafeContext(std::move(c.context));
-    auto core_ir = std::make_shared<llvm::orc::ThreadSafeModule>(llvm::CloneModule(*c.module), tsc);
-    LoadResult added = add_to_jit(impl_, id, llvm::orc::ThreadSafeModule(std::move(c.module), tsc));
+    auto core_ir = std::make_shared<IrHandle>();
+    core_ir->ir = hot_jit_ir_clone(c.ir->ir);
+    hot_jit_ir* main_ir = c.ir->ir;
+    c.ir->ir = nullptr;
+    LoadResult added = add_to_jit(impl_, id, main_ir);
     if (!added)
     {
         r.error = added.error;
@@ -510,13 +435,15 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
     std::shared_ptr<JitState> impl = impl_;
     added.module->make_core = [impl, id, core_ir]()
     {
-        if (!*core_ir)
+        if (!core_ir->ir)
         {
             LoadResult e;
             e.error = "the core instance of jit:" + id + " is made already";
             return e;
         }
-        return add_to_jit(impl, id + ".core", std::move(*core_ir));
+        hot_jit_ir* ir = core_ir->ir;
+        core_ir->ir = nullptr;
+        return add_to_jit(impl, id + ".core", ir);
     };
     added.dependencies = std::move(r.dependencies);
     added.iface_hash = r.iface_hash;
@@ -531,26 +458,12 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
 bool JitBackend::make_pch(const std::string& header_path, const std::string& out_pch, std::string& error)
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    init_llvm_once();
-    error.clear();
-    CompileSetup s = make_invocation(opt_, header_path, nullptr, true, error);
-    if (!s.invocation)
-    {
-        error += "cannot build the compile command\n";
-        return false;
-    }
-    s.invocation->getFrontendOpts().OutputFile = out_pch;
-    llvm::raw_string_ostream os(error);
-    clang::DiagnosticOptions print_opts = s.invocation->getDiagnosticOpts();
-    s.invocation->getDiagnosticOpts().ShowCarets = false;
-    clang::TextDiagnosticPrinter printer(os, print_opts);
-    clang::CompilerInstance ci(std::shared_ptr<clang::CompilerInvocation>(std::move(s.invocation)));
-    ci.setVirtualFileSystem(s.vfs);
-    ci.createDiagnostics(&printer, false);
-    clang::GeneratePCHAction action;
-    const bool ok = ci.ExecuteAction(action);
-    os.flush();
-    return ok && !ci.getDiagnostics().hasErrorOccurred();
+    const CompileArgs s = make_args(opt_, header_path, nullptr, true);
+    const std::vector<const char*> args = c_strings(s.args);
+    char* diagnostics = nullptr;
+    const int ok = hot_jit_make_pch(args.data(), args.size(), out_pch.c_str(), &diagnostics);
+    error = take(diagnostics);
+    return ok != 0;
 }
 
 } // namespace hot

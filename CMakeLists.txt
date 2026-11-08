@@ -261,14 +261,6 @@ if(NOT HOT_JIT_MODE STREQUAL "OFF")
     if(LLVM_FOUND)
         find_package(Clang CONFIG QUIET)
     endif()
-    # The static component libraries of the LLVM release (no clang-cpp) have the /MT runtime. All
-    # objects in a program that links them must have /MT too. A /MD project cannot link the JIT.
-    set(_hot_llvm_crt_conflict OFF)
-    if(MSVC AND LLVM_FOUND AND Clang_FOUND AND NOT TARGET clang-cpp
-       AND CMAKE_MSVC_RUNTIME_LIBRARY MATCHES "^MultiThreaded(Debug)?$"
-       AND (NOT _hot_had_msvc_runtime OR _hot_msvc_runtime MATCHES "DLL"))
-        set(_hot_llvm_crt_conflict ON)
-    endif()
     if(_hot_had_msvc_runtime)
         set(CMAKE_MSVC_RUNTIME_LIBRARY "${_hot_msvc_runtime}")
     else()
@@ -293,19 +285,6 @@ if(NOT HOT_JIT_MODE STREQUAL "OFF")
             set(HOT_JIT_ENABLED OFF)
             message(STATUS "JIT backend: off (HOT_ENABLE_JIT=AUTO, AppleClang): ${_hot_apple_jit_text}")
             unset(_hot_apple_jit_text)
-        endif()
-        # MSVC: the LLVM libraries have /MT, the project has /MD. ON stops, AUTO turns the JIT off.
-        if(_hot_llvm_crt_conflict)
-            set(_hot_crt_text "the LLVM libraries use the static runtime (/MT), but the project uses "
-                "the DLL runtime (/MD). Set CMAKE_MSVC_RUNTIME_LIBRARY to MultiThreaded (the preset "
-                "vs-both does this). All static libraries of the build must then use /MT.")
-            string(CONCAT _hot_crt_text ${_hot_crt_text})
-            if(HOT_JIT_MODE STREQUAL "ON")
-                message(FATAL_ERROR "HOT_ENABLE_JIT=ON on MSVC: ${_hot_crt_text}")
-            endif()
-            set(HOT_JIT_ENABLED OFF)
-            message(STATUS "JIT backend: off (HOT_ENABLE_JIT=AUTO, MSVC): ${_hot_crt_text}")
-            unset(_hot_crt_text)
         endif()
     elseif(HOT_JIT_MODE STREQUAL "ON")
         message(FATAL_ERROR "HOT_ENABLE_JIT=ON needs the LLVM and Clang CMake packages. CMake does not "
@@ -489,7 +468,8 @@ if(HOT_INSTALL)
     endif()
     if(TARGET hot_jit_backend)
         set_target_properties(hot_jit_backend PROPERTIES EXPORT_NAME jit_backend)
-        list(APPEND HOT_INSTALL_TARGETS hot_jit_backend)
+        set_target_properties(hot_jit_engine PROPERTIES EXPORT_NAME jit_engine)
+        list(APPEND HOT_INSTALL_TARGETS hot_jit_backend hot_jit_engine)
     endif()
 
     install(TARGETS ${HOT_INSTALL_TARGETS} EXPORT HotTargets
