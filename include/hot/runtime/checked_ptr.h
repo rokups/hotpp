@@ -6,6 +6,13 @@
 // The pointer never dangles. A read of an expired object gives null.
 // The operators "->" and "*" throw hot::NullReference on a null or an expired object.
 // The traits weak_ref_traits<T> tell how to make and to read the weak reference of T.
+// Declare (or include) the specialization of weak_ref_traits<T> before the first use of
+// CheckedPtr<T>. A later specialization is an ODR violation.
+// A CheckedPtr belongs to one thread, like the raw pointer that it replaces: get(), "*" and "->"
+// lock the weak reference, but the object that they give is not safe against a release on
+// another thread.
+// Note: "operator T*()" lets "delete p" compile for a CheckedPtr. The delete frees an object that
+// a handle owns. Do not write it. A native call that takes ownership of a raw pointer is not valid.
 #pragma once
 #include "hot/runtime/errors.h"
 #include "hot/runtime/handles.h"
@@ -100,6 +107,8 @@ template <class T> inline constexpr bool has_weak_ref_v = detail::has_weak_ref<s
 // A weak pointer to a native object of type T.
 template <class T> class CheckedPtr
 {
+    template <class V> friend class CheckedPtr;
+
     static_assert(has_weak_ref_v<T>,
         "CheckedPtr<T> needs a weak source: a std::enable_shared_from_this base or a weak_ref_traits specialization");
 
@@ -168,6 +177,19 @@ public:
     HOT_HIDDEN CheckedPtr(const std::shared_ptr<const U>& s) : weak_(Traits::to_weak(std::const_pointer_cast<U>(s)))
     {
     }
+    // A pointer to T converts to a pointer to const T (never the other way).
+    template <class V,
+        class = std::enable_if_t<std::is_const_v<T> && !std::is_const_v<V> && std::is_same_v<std::remove_const_t<T>, V>>>
+    HOT_HIDDEN CheckedPtr(const CheckedPtr<V>& o) : weak_(o.weak_)
+    {
+    }
+    template <class V,
+        class = std::enable_if_t<std::is_const_v<T> && !std::is_const_v<V> && std::is_same_v<std::remove_const_t<T>, V>>>
+    HOT_HIDDEN CheckedPtr& operator=(const CheckedPtr<V>& o)
+    {
+        weak_ = o.weak_;
+        return *this;
+    }
     HOT_HIDDEN CheckedPtr(const CheckedPtr&) = default;
     HOT_HIDDEN CheckedPtr(CheckedPtr&&) = default;
     HOT_HIDDEN CheckedPtr& operator=(const CheckedPtr&) = default;
@@ -190,7 +212,7 @@ public:
     }
 
     // The borrowed pointer, or nullptr when the pointer is empty or the object is gone.
-    // The object can die after the call: do not keep the result.
+    // The object can die after the call: do not keep the result. Use it in one thread only.
     HOT_HIDDEN T* get() const
     {
         return pointer_of(lock_strong());

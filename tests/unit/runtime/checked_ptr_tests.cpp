@@ -13,6 +13,19 @@
 #include <string>
 #include <type_traits>
 
+// A class with no enable_shared_from_this base. The weak source is the helper shared_weak_ref.
+struct Gem
+{
+    int cut = 0;
+};
+
+namespace hot
+{
+template <> struct weak_ref_traits<Gem> : shared_weak_ref<Gem>
+{
+};
+} // namespace hot
+
 namespace
 {
 
@@ -255,6 +268,122 @@ TEST(CheckedPtr, HelpersTreatItAsAPointer)
     strong.reset();
     EXPECT_THROW({ (void)hot::deref(p); }, hot::NullReference);
     EXPECT_EQ(hot::as_ptr(p), nullptr);
+}
+
+// The helper base shared_weak_ref gives a weak source to a class with no shared_from_this. It has
+// no from_raw, so a handle is the only source.
+TEST(CheckedPtr, SharedWeakRefHelperGivesAWeakSource)
+{
+    static_assert(hot::has_weak_ref_v<Gem>);
+    auto strong = std::make_shared<Gem>();
+    strong->cut = 8;
+    hot::CheckedPtr<Gem> p = strong;
+    EXPECT_EQ(p->cut, 8);
+    hot::CheckedPtr<Gem> q;
+    q = strong;
+    EXPECT_EQ(q.get(), strong.get());
+    strong.reset();
+    EXPECT_EQ(p.get(), nullptr);
+    EXPECT_THROW((void)p->cut, hot::NullReference);
+}
+
+// A custom handle pair goes through custom_weak_ref (the stub of a handle type does the same).
+struct Pearl
+{
+    int size = 0;
+};
+} // namespace
+
+namespace hot
+{
+template <> struct weak_ref_traits<Pearl> : custom_weak_ref<Pearl, std::shared_ptr<Pearl>, std::weak_ptr<Pearl>>
+{
+};
+} // namespace hot
+
+namespace
+{
+TEST(CheckedPtr, CustomWeakRefHelperGivesAWeakSource)
+{
+    auto strong = std::make_shared<Pearl>();
+    strong->size = 3;
+    hot::CheckedPtr<Pearl> p = strong;
+    EXPECT_EQ(p->size, 3);
+    strong.reset();
+    EXPECT_EQ(p.lock(), nullptr);
+}
+
+// The reference of "*" on a const pointer has the const type of the pointee.
+TEST(CheckedPtr, DerefOfAConstPointerIsConst)
+{
+    auto strong = std::make_shared<Charm>();
+    hot::CheckedPtr<const Charm> p = strong;
+    static_assert(std::is_same_v<decltype(*p), const Charm&>);
+    hot::CheckedPtr<Charm> m = strong;
+    static_assert(std::is_same_v<decltype(*m), Charm&>);
+    EXPECT_EQ(&*p, strong.get());
+}
+
+TEST(CheckedPtr, SelfAssignKeepsTheTarget)
+{
+    auto strong = std::make_shared<Charm>();
+    hot::CheckedPtr<Charm> p = strong;
+    hot::CheckedPtr<Charm>& alias = p;
+    p = alias;
+    EXPECT_EQ(p.get(), strong.get());
+    p = std::move(alias);
+    EXPECT_EQ(p.get(), strong.get());
+    p = strong;
+    EXPECT_EQ(p.get(), strong.get());
+}
+
+// An expired pointer compares equal to null and to another expired or empty pointer.
+TEST(CheckedPtr, ExpiredPointerComparesAsNull)
+{
+    hot::CheckedPtr<Charm> p, empty;
+    hot::CheckedPtr<Charm> other;
+    {
+        auto one = std::make_shared<Charm>();
+        auto two = std::make_shared<Charm>();
+        p = one;
+        other = two;
+        EXPECT_TRUE(p != other);
+    }
+    EXPECT_TRUE(p == nullptr);
+    EXPECT_TRUE(nullptr == p);
+    EXPECT_FALSE(p != nullptr);
+    EXPECT_TRUE(p == empty);
+    EXPECT_TRUE(p == other);
+    Charm* none = nullptr;
+    EXPECT_TRUE(p == none);
+}
+
+// A pointer to T converts to a pointer to const T. It shares the weak reference.
+TEST(CheckedPtr, ConvertsToAPointerToConst)
+{
+    auto strong = std::make_shared<Charm>();
+    strong->power = 6;
+    hot::CheckedPtr<Charm> p = strong;
+    hot::CheckedPtr<const Charm> c = p;
+    EXPECT_EQ(c->power, 6);
+    c = p;
+    EXPECT_EQ(c.get(), strong.get());
+    static_assert(!std::is_convertible_v<hot::CheckedPtr<const Charm>, hot::CheckedPtr<Charm>>);
+    hot::CheckedPtr<Charm> empty;
+    hot::CheckedPtr<const Charm> ce = empty;
+    EXPECT_EQ(ce.get(), nullptr);
+    strong.reset();
+    EXPECT_EQ(c.get(), nullptr);
+}
+
+// The raw pointer conversion lets "delete p" compile (the object belongs to a handle): the test
+// only records that the conversion gives the raw pointer. No test deletes through it.
+TEST(CheckedPtr, ConversionToTheRawPointerIsBorrowed)
+{
+    auto strong = std::make_shared<Charm>();
+    hot::CheckedPtr<Charm> p = strong;
+    Charm* raw = p;
+    EXPECT_EQ(raw, strong.get());
 }
 
 } // namespace

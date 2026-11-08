@@ -131,6 +131,8 @@ template <> struct hot::weak_ref_traits<MyType> {
 
 `hot::custom_weak_ref<T, Strong, Weak>` and `hot::shared_weak_ref<T>` are ready bases. They give `to_weak` and `lock`, and no `from_raw`. Without `from_raw`, a pointer field takes a handle only, not a raw `T*`.
 
+A host writes the `weak_ref_traits` specialization before the first use of `hot::CheckedPtr<T>`. A pointer belongs to one thread, as a raw pointer does. `delete p` compiles on a `hot::CheckedPtr`, because it converts to `T*`, but the pointer does not own the object. Do not write it. A `hot::CheckedPtr<T>` converts to `hot::CheckedPtr<const T>`.
+
 All modules must use the same handle stub for one class. Each module header has its own `weak_ref_traits` for the class. Two different stubs for one class break the one-definition rule.
 
 With a module attribute `std` other than `std`, a script class without a native base uses `$std::shared_ptr`. Then `new` makes the object and the control block in two blocks. `this` as a handle in such a class is not supported: `hot::PlainObject` has `std::enable_shared_from_this`.
