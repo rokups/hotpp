@@ -56,6 +56,25 @@ std::string readable_type(const char* type_key)
     return plain; // no demangler: the raw name
 #endif
 #if defined(HOT_HAVE_CXXABI) || defined(_MSC_VER)
+    // An inline ABI namespace of the standard library is not part of the name that a user
+    // writes: libc++ "std::__1::" (Apple, Android "std::__ndk1::") and libstdc++ "std::__cxx11::".
+    // The text is then the same on each platform.
+    for (size_t at = 0; (at = out.find("std::__", at)) != std::string::npos;)
+    {
+        size_t end = at + 7;
+        if (out.compare(end, 3, "ndk") == 0)
+            end += 3;
+        else if (out.compare(end, 5, "cxx11") == 0)
+            end += 5;
+        const size_t digits = end;
+        while (end < out.size() && out[end] >= '0' && out[end] <= '9')
+            ++end;
+        const bool abi = (end > digits || out.compare(at + 7, 5, "cxx11") == 0) && out.compare(end, 2, "::") == 0;
+        if (abi)
+            out.erase(at + 5, end + 2 - (at + 5));
+        else
+            at += 7;
+    }
     // The long names of the standard string types get their short names.
     static const std::pair<const char*, const char*> kShort[] = {
         {"std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >", "std::string"},
