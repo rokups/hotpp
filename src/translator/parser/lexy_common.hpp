@@ -16,6 +16,7 @@
 #include "../ast.h"
 #include "../builtin_types.h"
 #include "../diag.h"
+#include "generics.h"
 #include "span.h"
 
 #include <cstdint>
@@ -483,7 +484,8 @@ inline std::string type_text(std::string_view s, std::size_t* colons = nullptr)
 // of the map are free of aliases, so one pass is enough.
 inline std::string apply_aliases(const AliasMap& aliases, const std::string& t)
 {
-    if (aliases.empty())
+    GenericContext* gen = generic_context();
+    if (aliases.empty() && !gen)
         return t;
     std::string out;
     std::size_t i = 0;
@@ -507,6 +509,35 @@ inline std::string apply_aliases(const AliasMap& aliases, const std::string& t)
         const std::string word = t.substr(b, i - b);
         const bool member = (out.size() >= 2 && out.compare(out.size() - 2, 2, "::") == 0)
             || (!out.empty() && out.back() == '\x01');
+        // A use of a generic: "Box<int>" becomes the generated name (generics.h). The alias map
+        // wins for a bare name: in an instantiation, the own name is an alias of the generated name.
+        if (!member && gen && gen->find(word))
+        {
+            std::size_t k = i;
+            while (k < n && t[k] == ' ')
+                ++k;
+            if (k < n && t[k] == '<')
+            {
+                int depth = 0;
+                std::size_t e = k;
+                for (; e < n; ++e)
+                {
+                    if (t[e] == '<')
+                        ++depth;
+                    else if (t[e] == '>' && --depth == 0)
+                        break;
+                }
+                if (e < n)
+                {
+                    const std::string inner = apply_aliases(aliases, t.substr(k + 1, e - k - 1));
+                    out += gen->use(word, inner, gen->at);
+                    i = e + 1;
+                    continue;
+                }
+            }
+            else if (!aliases.count(word))
+                gen->bare(word, gen->at);
+        }
         const auto it = member ? aliases.end() : aliases.find(word);
         out += it == aliases.end() ? word : it->second;
     }
@@ -522,6 +553,8 @@ inline std::string canonical_type_at(const ParseState& st, const char* pos, cons
     std::string r = canonical_type(t, &error);
     if (!error.empty())
         st.error(pos, error);
+    if (GenericContext* gen = generic_context())
+        gen->at = static_cast<uint32_t>(pos - st.base);
     if (st.aliases)
         r = apply_aliases(*st.aliases, r);
     return r;

@@ -136,6 +136,17 @@ ast::NameExpr split_name(const ParseState& st, std::string_view t, uint32_t pos)
                 canonical_type_at(st, st.base + pos + i, scope_text(st, st.base + pos + i, t.substr(i, e - i))), false);
             const std::size_t targs_at = i;
             i = e;
+            // "Box<int>" or "first<int>" at the start of a name: the generated name (generics.h).
+            GenericContext* gen = generic_context();
+            if (gen && n.parts.empty() && gen->find(part) && targs.size() >= 2 && targs.front() == '<' && targs.back() == '>')
+            {
+                part = gen->use(part, targs.substr(1, targs.size() - 2), pos + static_cast<uint32_t>(b));
+                n.parts.push_back(std::move(part));
+                if (i >= t.size() || t[i] != '.')
+                    break;
+                ++i;
+                continue;
+            }
             if (i >= t.size())
             {
                 n.template_args = targs;
@@ -157,6 +168,9 @@ ast::NameExpr split_name(const ParseState& st, std::string_view t, uint32_t pos)
             else
                 part += targs;
         }
+        else if (GenericContext* gen = generic_context(); gen && n.parts.empty() && gen->find(part)
+                 && !(st.aliases && st.aliases->count(part)))
+            gen->bare(part, pos + static_cast<uint32_t>(b));
         n.parts.push_back(std::move(part));
         if (i >= t.size() || t[i] != '.')
             break;

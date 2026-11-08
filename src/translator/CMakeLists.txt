@@ -66,7 +66,7 @@ set(HOT_LIBCLANG_VERSION_MAJOR "${_hot_build_major}" CACHE INTERNAL "The major v
 # The root file reads these for the SDK package config (HotConfig.cmake).
 set(HOT_LIBCLANG_FILE "${_hot_libclang_file}" CACHE INTERNAL "The libclang file of this build")
 add_library(hotc_lib STATIC hotc_lib.cpp vfs.cpp file_time.cpp emit.cpp lower.cpp types.cpp check.cpp const_infer.cpp nullcheck.cpp lint.cpp diag_rewrite.cpp
-    parser/script_grammar.cpp parser/cpp_frontend.cpp
+    parser/script_grammar.cpp parser/cpp_frontend.cpp parser/generics.cpp
     parser/expression_grammar.cpp parser/statement_grammar.cpp)
 target_include_directories(hotc_lib PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>

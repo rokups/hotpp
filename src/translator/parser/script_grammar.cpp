@@ -2387,7 +2387,13 @@ namespace
 // True when the type text names "name" (a name after "::" is a member name and does not count).
 bool mentions_name(const std::string& type, const std::string& name)
 {
-    return apply_aliases(AliasMap{{name, "\x02"}}, type) != type;
+    // The test does not instantiate a generic (generics.h).
+    GenericContext*& gen = generic_context();
+    GenericContext* const saved = gen;
+    gen = nullptr;
+    const bool r = apply_aliases(AliasMap{{name, "\x02"}}, type) != type;
+    gen = saved;
+    return r;
 }
 
 // True when the name is a C++ keyword. A keyword is not a valid alias name in the output.
@@ -2590,10 +2596,24 @@ void static_props(ast::ClassDef& c, ast::Script& script)
     }
 }
 
-ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics& diag, std::string_view array_tpl)
+ast::Script parse_script(std::string_view text_in, const LineMap& map, Diagnostics& diag, std::string_view array_tpl)
 {
     ast::Script script;
     const size_t first_item = diag.items.size();
+    // Generics (generics.h): the scan blanks the parameter list of each generic declaration. The
+    // offsets stay, so each position of the parse is a position of the script.
+    GenericContext gen;
+    gen.diag = &diag;
+    gen.map = &map;
+    std::string generic_text;
+    std::string_view text = text_in;
+    if (text_in.find('<') != std::string_view::npos)
+    {
+        generic_text.assign(text_in);
+        gen.decls = scan_generics(generic_text, map, diag);
+        if (!gen.decls.empty())
+            text = generic_text;
+    }
     const ParseState st{text.data(), &map, &diag, text.size(), array_tpl};
     const auto input = lexy::string_input<Encoding>(text.data(), text.size());
     auto result = parse_with_diag<file_p>(input, st);
@@ -2645,10 +2665,58 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
                 script.module_attrs.push_back(std::move(t.module_attrs));
         }
     }
+    // A generic declaration is not a plain declaration. Its instantiations are (see below).
+    auto in_decl = [&](const GenericDecl* d, uint32_t pos) { return pos >= d->item_begin && pos < d->item_end; };
+    for (const GenericDecl& d : gen.decls)
+    {
+        const GenericDecl* dp = &d;
+        if (d.kind == GenericDecl::Kind::Fn)
+            script.fns.erase(std::remove_if(script.fns.begin(), script.fns.end(),
+                                 [&](const ast::Method& m) { return m.name == d.name && in_decl(dp, m.pos); }),
+                script.fns.end());
+        else
+            script.classes.erase(std::remove_if(script.classes.begin(), script.classes.end(),
+                                     [&](const ast::ClassDef& c) { return c.name == d.name && in_decl(dp, c.pos); }),
+                script.classes.end());
+    }
+    if (!gen.decls.empty())
+    {
+        auto add = [&](const std::string& n) { gen.names.insert(n); };
+        for (const ast::ClassDef& c : script.classes)
+            add(c.name);
+        for (const ast::EnumDef& e : script.enums)
+            add(e.name);
+        for (const ast::InterfaceDef& d : script.interfaces)
+            add(d.name);
+        for (const ast::Stub& s : script.stubs)
+            add(s.name);
+        for (const ast::Method& m : script.fns)
+            add(m.name);
+        for (const ast::TypeAlias& a : script.aliases)
+            add(a.name);
+        std::set<std::string> seen;
+        for (const GenericDecl& d : gen.decls)
+        {
+            if (!seen.insert(d.name).second)
+                gen.error(d.name_pos, "duplicate generic '" + d.name + "'");
+            else if (gen.names.count(d.name))
+                gen.error(d.name_pos, "the generic '" + d.name + "' has the name of another declaration of the module");
+            script.generic_names.push_back(d.name);
+        }
+    }
+    struct GenericScope
+    {
+        GenericContext*& cur = generic_context();
+        GenericContext* prev = cur;
+        GenericScope(GenericContext* g) { cur = g; }
+        ~GenericScope() { cur = prev; }
+    } generic_scope(gen.decls.empty() ? nullptr : &gen);
     // The type aliases. They replace the alias name in each type of the scope: the types of the
     // structure now, the types in the bodies when the parser reads the bodies (ParseInput::aliases).
     AliasMap module_aliases;
     std::set<std::string> class_names;
+    for (const GenericDecl& d : gen.decls)
+        class_names.insert(d.name);
     for (const ast::ClassDef& c : script.classes)
         class_names.insert(c.name);
     for (const ast::EnumDef& e : script.enums)
@@ -2661,16 +2729,18 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
         class_names.insert(s.name);
     resolve_aliases(st, script.aliases, class_names, module_aliases);
     std::vector<AliasMap> class_aliases;
-    for (ast::ClassDef& c : script.classes)
+    // The structure of one class: the class aliases, the types, and the members that move to the
+    // module lists. "scope" starts with the aliases of the outer scope.
+    auto class_structure = [&](ast::ClassDef& c, AliasMap& scope)
     {
-        class_aliases.push_back(module_aliases);
-        resolve_aliases(st, c.aliases, class_names, class_aliases.back());
-        AliasRewriter{class_aliases.back()}.cls(c);
+        gen.at = c.pos;
+        resolve_aliases(st, c.aliases, class_names, scope);
+        AliasRewriter{scope}.cls(c);
         // A class constant is a module constant with the name "Class__Name" and the owner "Class".
         // The translator gives "Class.Name" and a bare "Name" in the class this name.
         for (ast::Field& f : c.consts)
         {
-            AliasRewriter{class_aliases.back()}.type(f.type);
+            AliasRewriter{scope}.type(f.type);
             f.owner = c.name;
             f.name = c.name + "__" + f.name;
             script.consts.push_back(std::move(f));
@@ -2686,14 +2756,19 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
         // "Class__Name" and the owner "Class". The module block holds it, so a reload keeps it.
         for (ast::Field& f : c.svars)
         {
-            AliasRewriter{class_aliases.back()}.type(f.type);
+            AliasRewriter{scope}.type(f.type);
             f.owner = c.name;
             f.name = c.name + "__" + f.name;
             script.vars.push_back(std::move(f));
         }
         c.svars.clear();
+    };
+    for (ast::ClassDef& c : script.classes)
+    {
+        class_aliases.push_back(module_aliases);
+        class_structure(c, class_aliases.back());
     }
-    if (!module_aliases.empty())
+    if (!module_aliases.empty() || !gen.decls.empty())
     {
         const AliasRewriter rw{module_aliases};
         for (ast::EnumDef& e : script.enums)
@@ -2754,10 +2829,9 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
         method_body(m);
     for (ast::Method& m : script.fns)
         method_body(m);
-    for (size_t ci = 0; ci < script.classes.size(); ++ci)
+    auto class_bodies = [&](ast::ClassDef& c, const AliasMap& scope)
     {
-        ast::ClassDef& c = script.classes[ci];
-        in.aliases = &class_aliases[ci];
+        in.aliases = &scope;
         for (ast::Method& m : c.methods)
             method_body(m);
         for (ast::Method& m : c.statics)
@@ -2784,6 +2858,80 @@ ast::Script parse_script(std::string_view text, const LineMap& map, Diagnostics&
                 p.init = parse_expression(in, p.init_span, diag);
         }
         static_props(c, script);
+        in.aliases = &module_aliases;
+    };
+    for (size_t ci = 0; ci < script.classes.size(); ++ci)
+        class_bodies(script.classes[ci], class_aliases[ci]);
+    // The generics. The parser reads each declaration again for each instantiation: a copy of the
+    // text that has only the declaration. A pass with no instantiation first checks the syntax of
+    // each declaration (gen.record is false). Then the list of instantiations grows while the
+    // parser reads the instantiations, up to kMaxGenericDepth.
+    auto instantiate = [&](size_t di, const std::vector<std::string>* args, const std::string& name, int depth)
+    {
+        const GenericDecl& d = gen.decls[di];
+        if (d.item_end <= d.item_begin || d.item_end > text.size())
+            return;
+        std::string buf(text.size(), ' ');
+        buf.replace(d.item_begin, d.item_end - d.item_begin, text.substr(d.item_begin, d.item_end - d.item_begin));
+        Diagnostics scratch;
+        const ParseState st2{buf.data(), &map, &scratch, buf.size(), array_tpl};
+        auto r = parse_with_diag<file_p>(lexy::string_input<Encoding>(buf.data(), buf.size()), st2);
+        for (Diag& e : scratch.items)
+            gen.error(e.pos, std::move(e.msg));
+        if (!r.has_value())
+            return;
+        AliasMap scope = module_aliases;
+        if (args)
+            for (size_t i = 0; i < d.params.size() && i < args->size(); ++i)
+                scope[d.params[i]] = (*args)[i];
+        scope[d.name] = name;
+        gen.depth = depth;
+        gen.record = args != nullptr;
+        for (TopItem& t : std::move(r).value())
+        {
+            if (t.kind == TopItem::IsClass && d.kind != GenericDecl::Kind::Fn && t.cls.name == d.name)
+            {
+                ast::ClassDef c = std::move(t.cls);
+                c.is_private = t.is_private;
+                c.name = name;
+                for (ast::Method& m : c.dtors)
+                    m.name = "~" + name;
+                const size_t consts_before = script.consts.size(), vars_size = script.vars.size(),
+                             asserts_before = script.static_asserts.size();
+                class_structure(c, scope);
+                class_bodies(c, scope);
+                if (args)
+                    script.classes.push_back(std::move(c));
+                else
+                {
+                    script.consts.resize(consts_before);
+                    script.static_asserts.resize(asserts_before);
+                    script.vars.erase(script.vars.begin() + static_cast<std::ptrdiff_t>(vars_size), script.vars.end());
+                }
+            }
+            else if (t.kind == TopItem::IsFn && d.kind == GenericDecl::Kind::Fn && t.fn.name == d.name)
+            {
+                ast::Method m = std::move(t.fn);
+                m.name = name;
+                gen.at = d.name_pos;
+                AliasRewriter{scope}.method(m);
+                in.aliases = &scope;
+                method_body(m);
+                in.aliases = &module_aliases;
+                if (args)
+                    script.fns.push_back(std::move(m));
+            }
+        }
+        gen.depth = 0;
+        gen.record = true;
+    };
+    for (size_t di = 0; di < gen.decls.size(); ++di)
+        instantiate(di, nullptr, gen.decls[di].name, 0);
+    for (size_t gi = 0; gi < gen.insts.size(); ++gi)
+    {
+        const GenericInst g = gen.insts[gi];
+        instantiate(g.decl, &g.args, g.mangled, g.depth);
+        script.generic_display.emplace_back(g.mangled, g.display);
     }
     // An unterminated comment or literal reads to the end of the file. The "unexpected end of
     // file" errors from this place on are not new faults. Drop them.

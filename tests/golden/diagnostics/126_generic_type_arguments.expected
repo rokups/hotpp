@@ -1,0 +1,7 @@
+126_generic_type_arguments.hot:8:5: error: the generic type 'Box' needs type arguments: write 'Box<...>'
+    8 |     Box b;
+126_generic_type_arguments.hot:9:5: error: the generic 'Box' has 1 type parameter, not 2
+    9 |     Box<int, float> c;
+126_generic_type_arguments.hot:10:12: error: the generic function 'First' needs explicit type arguments: write 'First<...>(...)'
+   10 |     return First(1, 2);
+3 errors generated.

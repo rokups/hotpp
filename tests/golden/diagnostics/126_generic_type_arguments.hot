@@ -1,0 +1,11 @@
+struct Box<T> {
+    T value;
+}
+
+T First<T>(T a, T b) => a;
+
+int Use() {
+    Box b;
+    Box<int, float> c;
+    return First(1, 2);
+}

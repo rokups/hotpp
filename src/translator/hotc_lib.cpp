@@ -40,6 +40,7 @@
 #include "lower.h"
 #include "parser/cpp_frontend.h"
 #include "parser/parser.h"
+#include "parser/generics.h"
 #include "std_ns.h"
 #include "hot/command_line.h"
 #include "hot/config.h"
@@ -202,6 +203,8 @@ std::string field_declarator(const std::string& t, const std::string& name)
 // State of the call in progress. Each thread has its own copy.
 thread_local std::string g_script; // the script name, as given by the caller
 thread_local hotc::Diagnostics g_diag; // the diagnostics of the call
+// The instantiations of the generics of the call: the generated name and the name for messages.
+thread_local std::vector<std::pair<std::string, std::string>> g_generic_display;
 
 struct TranslateAbort
 {
@@ -776,6 +779,7 @@ bool has_bare_this(const ClassDef& c, const std::string& text)
 Script parse_structure(const std::string& text, const hotc::LineMap& map, std::string_view host_array_tpl)
 {
     Script sc = hotc::parse_script_array(text, map, g_diag, host_array_tpl);
+    g_generic_display.insert(g_generic_display.end(), sc.generic_display.begin(), sc.generic_display.end());
     if (!g_diag.items.empty())
         throw TranslateAbort{};
     for (ClassDef& c : sc.classes)
@@ -3746,6 +3750,17 @@ void translate_impl(
                 for (const Method& f : is.fns)
                     if (f.name == "main")
                         fail_at(map, f.pos, hotc::ast::kMainSignatureError);
+                // A generic is local to its unit (doc/generics.md): the importer cannot instantiate it.
+                for (const std::string& g : is.generic_names)
+                {
+                    if (std::find(sc.generic_names.begin(), sc.generic_names.end(), g) != sc.generic_names.end())
+                        continue;
+                    const std::vector<uint32_t> uses = hotc::find_generic_uses(in.script_text, g);
+                    if (!uses.empty())
+                        fail_at(map, uses.front(),
+                            "the generic '" + g + "' of the unit '" + unit
+                                + "' is local to its unit. An importer cannot use it. Declare the generic in this script, or use a function of the unit");
+                }
                 // The interface hash of the import is the hash that its own translation gives. The
                 // unit name is the same in AOT code and in other code.
                 if (depth == 0)
@@ -9933,6 +9948,7 @@ TranslateResult translate(const TranslateOptions& in, TranslatorSession& session
 {
     TranslateResult res;
     g_diag.clear();
+    g_generic_display.clear();
     g_script = in.script_name;
     try
     {
@@ -9947,6 +9963,25 @@ TranslateResult translate(const TranslateOptions& in, TranslatorSession& session
         res.sigs_out.clear();
     }
     res.slots_removed = false;
+    // A message names an instantiation of a generic as the script writes it: "Box<int>".
+    std::sort(g_generic_display.begin(), g_generic_display.end(),
+        [](const auto& a, const auto& b) { return a.first.size() > b.first.size(); });
+    for (std::vector<hotc::Diag>* list : {&g_diag.items, &g_diag.warnings})
+        for (hotc::Diag& d : *list)
+            for (const auto& [mangled, shown] : g_generic_display)
+                for (size_t at = d.msg.find(mangled); at != std::string::npos; at = d.msg.find(mangled, at))
+                {
+                    const size_t end = at + mangled.size();
+                    auto idc = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
+                    if ((at > 0 && idc(d.msg[at - 1])) || (end < d.msg.size() && idc(d.msg[end])))
+                    {
+                        at = end;
+                        continue;
+                    }
+                    d.msg.replace(at, mangled.size(), shown);
+                    at += shown.size();
+                }
+    g_generic_display.clear();
     res.diagnostics = g_diag.format(g_script);
     res.warnings = g_diag.format_warnings(g_script);
     return res;

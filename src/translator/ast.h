@@ -863,6 +863,11 @@ struct Script
     std::vector<Method> var_hooks;
     // Free functions: "T name(args) { }" at file level. A convert hook is not one of them.
     std::vector<Method> fns;
+    // The generic declarations of the file (doc/generics.md). Their instantiations are plain
+    // items of the lists above. An importer cannot use these names.
+    std::vector<std::string> generic_names;
+    // Each instantiation: the generated name and the name for messages ("Box_G_int", "Box<int>").
+    std::vector<std::pair<std::string, std::string>> generic_display;
     // True when the script is a ".cpp" file. The bodies are then raw C++ text.
     bool is_cpp = false;
     // One part of the output of a ".cpp" script. The translator writes the chunks in source order.

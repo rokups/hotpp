@@ -11,7 +11,8 @@ set(BACKEND_TEST_SOURCES
     protected_base_compile_tests.cpp
     vfs_backend_tests.cpp
     backend_selection_tests.cpp
-    entry_main_module_tests.cpp)
+    entry_main_module_tests.cpp
+    generics_tests.cpp)
 # The hotc tool tests run hotc and the script compiler from an argument list (support/process.h).
 # On Windows, process.h needs hot::windows_command_line. The target gets it from hot_runtime.
 list(APPEND BACKEND_TEST_SOURCES hotc_tool_tests.cpp)
