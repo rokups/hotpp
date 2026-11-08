@@ -44,9 +44,13 @@ inline std::string run_capture(const std::vector<std::string>& argv)
 // The file that has the DWARF of a library. On macOS the linker does not copy the DWARF into
 // the image. The DWARF is in the bundle "<file>.dSYM". The clang driver makes it with dsymutil
 // for "-g" when one command compiles and links. Else the helper runs dsymutil.
+// An object file ".o" has no debug map, so its dSYM is empty. The DWARF of an object is in the
+// object itself, and the helper returns the object.
 inline std::string dwarf_file(const std::string& file)
 {
 #ifdef __APPLE__
+    if (file.size() > 2 && file.compare(file.size() - 2, 2, ".o") == 0)
+        return file;
     const std::string dsym = file + ".dSYM";
     std::error_code ec;
     if (!std::filesystem::exists(dsym, ec))
