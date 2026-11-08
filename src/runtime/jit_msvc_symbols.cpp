@@ -6,9 +6,11 @@
 
 #ifdef _MSC_VER
 
+#include <atomic>
 #include <climits>
 #include <cstring>
 #include <cstdlib>
+#include <intrin.h>
 #include <malloc.h>
 #include <memory>
 #include <new>
@@ -53,14 +55,33 @@ struct AlignedFree
     void operator()(void* p) const { _aligned_free(p); }
 };
 
+// The key of a control record. The record of a removed module is free memory, and a record of a
+// new module can get the same address. So the key is not the address. The first call gives the
+// record a unique number in its "index" field, as compiler-rt does. The number of a new record is
+// 0, because the JIT writes the record from the object.
+uintptr_t emutls_key(EmutlsControl* c)
+{
+    static_assert(sizeof(c->index) == sizeof(long long), "the index is one 64-bit word");
+    auto* slot = reinterpret_cast<volatile long long*>(&c->index);
+    const long long known = _InterlockedCompareExchange64(slot, 0, 0);
+    if (known != 0)
+        return static_cast<uintptr_t>(known);
+    static std::atomic<long long> next{0};
+    const long long fresh = ++next;
+    const long long old = _InterlockedCompareExchange64(slot, fresh, 0);
+    return static_cast<uintptr_t>(old != 0 ? old : fresh);
+}
+
 // The address of the thread variable of a control record. Other thread_local variables of the
-// JIT code get a block for each thread. The block lives until the thread ends.
+// JIT code get a block for each thread. The block lives until the thread ends. The block of a
+// removed module stays until then too: its key does not come again.
 void* __cdecl emutls_get_address(EmutlsControl* c)
 {
     if (c == &g_epoch_control)
         return &_Init_thread_epoch;
-    thread_local std::unordered_map<EmutlsControl*, std::unique_ptr<void, AlignedFree>> blocks;
-    auto it = blocks.find(c);
+    thread_local std::unordered_map<uintptr_t, std::unique_ptr<void, AlignedFree>> blocks;
+    const uintptr_t key = emutls_key(c);
+    auto it = blocks.find(key);
     if (it == blocks.end())
     {
         void* p = _aligned_malloc(c->size, c->align);
@@ -70,7 +91,7 @@ void* __cdecl emutls_get_address(EmutlsControl* c)
             std::memcpy(p, c->value, c->size);
         else
             std::memset(p, 0, c->size);
-        it = blocks.emplace(c, std::unique_ptr<void, AlignedFree>(p)).first;
+        it = blocks.emplace(key, std::unique_ptr<void, AlignedFree>(p)).first;
     }
     return it->second.get();
 }
