@@ -73,14 +73,14 @@ bool is_host_file(const fs::path& p)
 // On Windows a drive letter is upper case ("c:\\x" and "C:/x" are the same path). The host files
 // and the editor can give either separator, so both sides of a compare use this form. On Windows
 // the 8.3 short names become long names ("RUNNER~1" is "runneradmin"), as in the editor URIs.
+// On macOS the path becomes the real path ("/var/x" is "/private/var/x"), as the server makes
+// the document paths with long_path. Linux keeps the path.
 std::string path_key(const fs::path& p)
 {
-#ifdef _WIN32
     // The callers make p with utf8_path, so the UTF-8 text of p is the text of the caller.
     std::string out = long_path(path_utf8(p.lexically_normal()));
+#ifdef _WIN32
     std::replace(out.begin(), out.end(), '\\', '/');
-#else
-    std::string out = p.lexically_normal().generic_string();
 #endif
 #ifdef _WIN32
     if (out.size() > 1 && out[1] == ':')
