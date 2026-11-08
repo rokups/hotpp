@@ -205,7 +205,8 @@ struct TranslateResult
     std::string iface;
     // The FNV-1a hash of "iface". It is valid when ok is true.
     uint64_t iface_hash = 0;
-    // The direct script imports as unit name and interface hash. The unit name of an import follows
+    // The script imports as unit name and interface hash: the direct imports and their imports
+    // (the importer copies their classes and structs). Each unit is in the list one time. The unit name of an import follows
     // the rule in doc/module-level.md. The hash is the "iface_hash" of the imported script.
     std::vector<std::pair<std::string, uint64_t>> import_hashes;
     // The unit name of the script: TranslateOptions::unit_name, or the stem of the script name.

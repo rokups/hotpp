@@ -54,7 +54,8 @@ struct Module
     EntryMainFn entry_main = nullptr;
     // The interface hash of the module (hotc::TranslateResult::iface_hash). Zero: not known.
     uint64_t iface_hash = 0;
-    // The direct script imports of the module as unit name and interface hash.
+    // The script imports of the module as unit name and interface hash, also the imports of the
+    // imports (hotc::TranslateResult::import_hashes).
     std::vector<std::pair<std::string, uint64_t>> imports;
 };
 

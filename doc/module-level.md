@@ -44,6 +44,7 @@ Each unit has an interface hash (`Module::iface_hash`). Each importer records th
 - The interface also has each class and each struct, also a `private` one, because an importer copies it. The interface of a class has its parent, its fields and the signatures of its members.
 - A body change of a class method or a free function keeps the hash. The importer calls the code of the owner unit.
 - The interface of a struct also has the bodies of its methods, constructors and accessors, because an importer copies them. A body change of a struct changes the hash.
+- An importer records the hash of each direct import and of each import of an import. It copies their classes and structs, so a struct change two imports away makes it stale too.
 - A live unit outside the batch that imports a changed interface is the error `DependentsStale`. Compile the unit into the batch.
 - The loader also compares the state layout of a script parent in the batch with the layout that each live child compiled against. A child outside the batch with another parent layout is the error `DependentsStale`, also when the hash stays the same.
 - rbfx-script gives the path of the script relative to the resource root, without `.hot`, for example `Scripts/Hero`. The launcher gives the absolute path without `.hot`.

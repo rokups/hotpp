@@ -712,6 +712,47 @@ class User : Actor {
     ASSERT_NO_FATAL_FAILURE(expect_stale(s, build("pt.hot", pt2, {}, 2), "user"));
 }
 
+// A struct of an import of an import. "num_user.hot" imports "num_fn.hot", which imports "num.hot"
+// with the struct. Each importer copies the struct, so "num_user" depends on "num.hot" too.
+const char* const kNumPt = "struct Pt {\n    int v = 3;\n}\n";
+const char* const kNumFn = "using \"num.hot\";\nint Twice(Pt p) { return p.v * 2; }\n";
+const char* const kNumUser = R"(
+using "Actor.h";
+using "num_fn.hot";
+class NumUser : Actor {
+    Pt p;
+    int g = 0;
+    override void Tick(float dt) { this.g = Twice(this.p); }
+}
+)";
+
+// A new field of the struct changes the layout that "Twice" reads. The unit "num_fn" keeps its
+// own text, but the live user copied the old struct: the batch without the user is rejected.
+TEST_P(FamilyTests, StructChangeOfAnImportOfAnImportNeedsTheImporterInTheBatch)
+{
+    Session s;
+    std::vector<hot::LoadResult> first;
+    first.push_back(build("num_user.hot", kNumUser, {{"num_fn.hot", kNumFn}, {"num.hot", kNumPt}}, 1));
+    first.push_back(build("num_fn.hot", kNumFn, {{"num.hot", kNumPt}}, 1));
+    first.push_back(build("num.hot", kNumPt, {}, 1));
+    ASSERT_NO_FATAL_FAILURE(start(s, std::move(first), "NumUser"));
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "g"), 6);
+    std::string pt2 = kNumPt;
+    pt2.replace(pt2.find("int v"), 5, "int w = 0;\n    int v");
+    std::vector<hot::LoadResult> batch;
+    batch.push_back(build("num.hot", pt2, {}, 2));
+    batch.push_back(build("num_fn.hot", kNumFn, {{"num.hot", pt2}}, 2));
+    for (const hot::LoadResult& r : batch)
+        ASSERT_TRUE(r) << r.error;
+    const hot::ReloadResult stale = s.loader.request_reload(std::move(batch));
+    EXPECT_EQ(stale.status, hot::ReloadStatus::Failed);
+    EXPECT_EQ(stale.reason, hot::ReloadReason::DependentsStale) << stale.error;
+    EXPECT_EQ(stale.units, std::vector<std::string>{"num_user"});
+    EXPECT_FALSE(s.loader.reload_pending());
+    EXPECT_EQ(*fld<int>(s, "g"), 6);
+}
+
 std::string kind_name(const ::testing::TestParamInfo<hot::BackendKind>& info)
 {
     return info.param == hot::BackendKind::Jit ? "Jit" : "ClangFiles";

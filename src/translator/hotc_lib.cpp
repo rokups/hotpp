@@ -3804,9 +3804,10 @@ void translate_impl(
                                 + "' is local to its unit. An importer cannot use it. Declare the generic in this script, or use a function of the unit");
                 }
                 // The interface hash of the import is the hash that its own translation gives. The
-                // unit name is the same in AOT code and in other code.
-                if (depth == 0)
-                    res.import_hashes.emplace_back(unit, hash_text(module_interface(is, import_texts.back())));
+                // unit name is the same in AOT code and in other code. An import of an import is in
+                // the list too: the importer copies its classes and structs, so a change of them
+                // makes the importer stale.
+                res.import_hashes.emplace_back(unit, hash_text(module_interface(is, import_texts.back())));
                 // The module variables, the convert hooks and the free functions of the import stay in
                 // their own module: the importer gets no copy of them. A direct import gives the
                 // declarations of the public ones. The import is not transitive.
