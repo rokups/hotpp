@@ -567,7 +567,9 @@ struct NativeSession
     std::unique_ptr<LsClient> client;
     // "token_wait_ms" is the wait of a semantic tokens request for clangd. The tests give a long wait
     // so that the first answer has the native tokens.
-    explicit NativeSession(const char* script = kNativeScript, int token_wait_ms = 10000, bool native_tokens = true)
+    // "clangd" replaces the clangd program when it is not empty.
+    explicit NativeSession(const char* script = kNativeScript, int token_wait_ms = 10000, bool native_tokens = true,
+        const std::string& clangd = "")
     {
         write_file((dir.path() / "natives.h").string(), kNativeHeader);
         path = (dir.path() / "hero.hot").string();
@@ -577,6 +579,8 @@ struct NativeSession
         o.include_dirs.push_back(dir.path().string());
         o.native_token_wait_ms = token_wait_ms;
         o.native_semantic_tokens = native_tokens;
+        if (!clangd.empty())
+            o.clangd = clangd;
         client = std::make_unique<LsClient>(o);
         client->initialize(uri_of(dir.path().string()));
         client->open(uri, script);
@@ -905,6 +909,49 @@ TEST(LanguageServerNative, HoverOfAFunction)
     expect_native_hover(s, "limit = Clamp100(", "Clamp100", "int Clamp100(int v)");
     expect_native_hover(s, "after = Clamp100(2)", "Clamp100", "int Clamp100(int v)");
 }
+
+#ifndef _WIN32
+// A slow machine builds the first preamble of a document in more time than the budget of a hover.
+// The proxy below gives the first didOpen to clangd 4.5 s late, and all later messages wait
+// behind it. The first native hover must wait for the preamble and give the native answer.
+TEST(LanguageServerNative, HoverBeforeTheFirstPreambleGivesTheNativeAnswer)
+{
+    REQUIRE_CLANGD();
+    if (std::system("python3 -c \"\" >/dev/null 2>&1") != 0)
+        GTEST_SKIP() << "python3 is not installed";
+    TempDir tools;
+    const std::string proxy = (tools.path() / "slow_clangd.py").string();
+    write_file(proxy,
+        "import subprocess, sys, time\n"
+        "p = subprocess.Popen(sys.argv[1:], stdin=subprocess.PIPE)\n"
+        "src = sys.stdin.buffer\n"
+        "late = True\n"
+        "while True:\n"
+        "    head = b''\n"
+        "    while not head.endswith(b'\\r\\n\\r\\n'):\n"
+        "        c = src.read(1)\n"
+        "        if not c:\n"
+        "            p.stdin.close()\n"
+        "            p.wait()\n"
+        "            sys.exit(0)\n"
+        "        head += c\n"
+        "    size = 0\n"
+        "    for line in head.split(b'\\r\\n'):\n"
+        "        if line.lower().startswith(b'content-length:'):\n"
+        "            size = int(line.split(b':')[1])\n"
+        "    body = src.read(size)\n"
+        "    if late and b'\"textDocument/didOpen\"' in body:\n"
+        "        late = False\n"
+        "        time.sleep(4.5)\n"
+        "    p.stdin.write(head + body)\n"
+        "    p.stdin.flush()\n");
+    const std::string clangd = (tools.path() / "slow_clangd").string();
+    write_file(clangd, "#!/bin/sh\nexec python3 '" + proxy + "' '" HOT_CLANGD_PATH "' \"$@\"\n");
+    std::filesystem::permissions(clangd, std::filesystem::perms::owner_all, std::filesystem::perm_options::add);
+    NativeSession s(kNativeScript, 10000, true, clangd);
+    expect_native_hover(s, "Clamp100(MAX_HP)", "Clamp100", "int Clamp100(int v)");
+}
+#endif
 
 TEST(LanguageServerNative, HoverOfAClass)
 {

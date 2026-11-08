@@ -625,6 +625,29 @@ private:
         }
     }
 
+    // The short time budget of the clangd requests of one editor request (hover, F12, inlay hints,
+    // call hierarchy, semantic tokens). A slow clangd then does not hold the editor.
+    static constexpr int kNativeBudgetMs = 3000;
+    // The wait for the first preamble of a generated document.
+    static constexpr int kPreambleWaitMs = 60000;
+
+    // Before its first preamble, clangd answers a request that needs the AST only after the
+    // preamble. On a slow machine the first preamble takes longer than kNativeBudgetMs. So the first
+    // native request of a generated document waits for the preamble and the index, outside the
+    // budget, the same as completion. Each document waits one time: an edit that makes a new
+    // preamble does not stop the answers, because clangd uses the old preamble until the new one
+    // is ready. A new open of the document in clangd removes the mark (preamble_ready_), so the
+    // next request waits again.
+    void wait_for_native_ready(const Doc& d)
+    {
+        if (!clangd_ || !clangd_->running() || !d.in_clangd)
+            return;
+        if (!preamble_ready_.insert(d.gen_uri).second)
+            return;
+        clangd_result("textDocument/documentSymbol", {{"textDocument", {{"uri", d.gen_uri}}}}, kPreambleWaitMs);
+        wait_for_preamble_index();
+    }
+
     std::optional<json> clangd_result(const std::string& method, json params, int timeout_ms = 60000)
     {
         if (!clangd_ || !clangd_->running())
@@ -1795,11 +1818,7 @@ json Server::on_completion(const Doc& d, const json& p)
                 send_generated(md, facts.cpp);
                 // Before its first preamble, clangd gives only "fallback" words of the file. A
                 // request that needs the AST waits for the preamble.
-                if (preamble_ready_.insert(d.gen_uri).second)
-                {
-                    clangd_result("textDocument/documentSymbol", {{"textDocument", {{"uri", d.gen_uri}}}});
-                    wait_for_preamble_index();
-                }
+                wait_for_native_ready(d);
                 r = clangd_result("textDocument/completion",
                     {{"textDocument", {{"uri", d.gen_uri}}},
                         {"position",
@@ -1887,9 +1906,10 @@ json Server::on_hover(const Doc& d, const json& p)
     }
     bool by_word = false;
     const std::vector<Pos> asks = gen_asks(d, here, by_word);
+    if (!asks.empty())
+        wait_for_native_ready(d);
     // The asks of a word share a short time budget (see on_locations).
-    constexpr int kWordBudgetMs = 3000;
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kWordBudgetMs);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kNativeBudgetMs);
     for (const Pos& g : asks)
     {
         int timeout_ms = 60000;
@@ -2382,10 +2402,11 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
     // of its script line. The first place that gives an answer wins.
     bool by_word = false;
     const std::vector<Pos> asks = gen_asks(d, here, by_word);
+    if (!asks.empty())
+        wait_for_native_ready(d);
     // The asks of a word share a short time budget: a place that clangd does not answer in time
     // does not hold the editor.
-    constexpr int kWordBudgetMs = 3000;
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kWordBudgetMs);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kNativeBudgetMs);
     std::set<std::string> seen;
     for (const Pos& g : asks)
     {
@@ -2442,7 +2463,7 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
             // place is already there. The two calls share a short budget.
             const bool have_native = std::any_of(out.begin(), out.end(),
                 [&](const json& l) { return l.value("uri", std::string()) != d.uri; });
-            const auto extra_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kWordBudgetMs);
+            const auto extra_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kNativeBudgetMs);
             if (is_ref && !have_native)
                 for (const char* kind : {"textDocument/declaration", "textDocument/definition"})
                 {
@@ -3140,7 +3161,8 @@ json Server::on_document_symbol(const Doc& d)
 
 void Server::start_token_worker(const std::string& gen_uri, int version, uint64_t nonce)
 {
-    constexpr int kBudgetMs = 3000;
+    // The worker has its own late answer, so it does not wait for the preamble.
+    constexpr int kBudgetMs = kNativeBudgetMs;
     token_workers_.erase(std::remove_if(token_workers_.begin(), token_workers_.end(),
                              [](TokenWorker& w)
                              {
@@ -3363,8 +3385,9 @@ json Server::on_inlay_hint(const Doc& d, const json& p)
     }
     // The calls of native functions, methods and constructors: clangd gives the parameter names.
     // The calls share a short time budget, so a slow clangd does not hold the editor.
-    constexpr int kHintBudgetMs = 3000, kMaxNativeCalls = 64;
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kHintBudgetMs);
+    // The budget starts at the first native call, after the wait for the preamble.
+    constexpr int kMaxNativeCalls = 64;
+    auto deadline = std::chrono::steady_clock::time_point::max();
     int asked = 0;
     for (const CallSite& site : script_unknown_calls(d.text.s, d.facts))
     {
@@ -3373,6 +3396,11 @@ json Server::on_inlay_hint(const Doc& d, const json& p)
             continue;
         if (site.args.empty() || !is_symbol_word(site.name) || asked >= kMaxNativeCalls)
             continue;
+        if (asked == 0)
+        {
+            wait_for_native_ready(d);
+            deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kNativeBudgetMs);
+        }
         const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
             deadline - std::chrono::steady_clock::now()).count();
         if (left <= 0)
@@ -3606,7 +3634,7 @@ json Server::on_prepare_call_hierarchy(const Doc& d, const json& p)
     if (!out.empty())
         return out;
     // A native function, method or constructor: clangd gives the item.
-    constexpr int kNativeBudgetMs = 3000;
+    wait_for_native_ready(d);
     out = native_call_items(d, here, kNativeBudgetMs);
     return out.empty() ? json(nullptr) : out;
 }
@@ -3675,9 +3703,8 @@ json Server::on_native_call_hierarchy(bool incoming, const json& data)
                 out.push_back(std::move(e));
         }
     }
-    constexpr int kClangdMs = 3000;
     const auto r = clangd_result(incoming ? "callHierarchy/incomingCalls" : "callHierarchy/outgoingCalls",
-        {{"item", native}}, kClangdMs);
+        {{"item", native}}, kNativeBudgetMs);
     if (!r || !r->is_array())
         return out;
     const char* key = incoming ? "from" : "to";
@@ -3774,8 +3801,9 @@ json Server::on_call_hierarchy(const std::string& method, const json& p)
     for (const Callable* c : order)
         out.push_back({{"to", call_item(d, *c)}, {"fromRanges", groups[c]}});
     // clangd gives the item of each native name. The names share a short time budget.
-    constexpr int kNativeBudgetMs = 3000;
     constexpr size_t kMaxNativeNames = 16;
+    if (!native_order.empty())
+        wait_for_native_ready(d);
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kNativeBudgetMs);
     for (size_t i = 0; i < native_order.size() && i < kMaxNativeNames; ++i)
     {
@@ -4163,6 +4191,7 @@ void Server::handle(const json& msg)
             return;
         if (clangd_ && d->in_clangd)
             clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", d->gen_uri}}}});
+        preamble_ready_.erase(d->gen_uri);
         store_closed_shard(*d);
         {
             std::lock_guard<std::mutex> lock(docs_mutex_);
