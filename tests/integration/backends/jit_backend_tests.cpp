@@ -499,6 +499,37 @@ TEST(JitTests, CppScriptWarningSpeaksScriptText)
         EXPECT_EQ(r.error.find(generated), std::string::npos) << generated << "\n" << r.error;
 }
 
+// The JIT code has NDEBUG when the host has it, so an inline function of a runtime header has one
+// body. The JIT code stays optimized. A header that each file of the script includes first
+// stops the compile when a value differs.
+TEST(JitTests, JitCodeHasTheNdebugOfTheHost)
+{
+    test_support::TestScratch scratch;
+    const std::string header = scratch.file("check_ndebug.h");
+    {
+        std::ofstream out(header);
+        out << "#if defined(NDEBUG) != HOT_TEST_HOST_NDEBUG\n"
+               "#error the JIT code and the host differ in NDEBUG\n"
+               "#endif\n"
+               "#ifndef __OPTIMIZE__\n"
+               "#error the JIT code is not optimized\n"
+               "#endif\n";
+    }
+#ifdef NDEBUG
+    const char* host_ndebug = "-DHOT_TEST_HOST_NDEBUG=1";
+#else
+    const char* host_ndebug = "-DHOT_TEST_HOST_NDEBUG=0";
+#endif
+    hot::JitOptions o;
+    o.compiler = HOT_CXX;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/include", std::string(HOT_SOURCE_DIR) + "/tests/engine"};
+    o.resource_dir = HOT_RESOURCE_DIR;
+    o.extra_flags = {host_ndebug, "-include", header};
+    hot::JitBackend backend(o);
+    hot::LoadResult r = backend.load(source("player_v1.hot"), 1);
+    EXPECT_TRUE(r) << r.error;
+}
+
 // The JIT engine compiles "text" for "target" (empty: the host). Null on failure.
 hot_jit_ir* compile_ir(const std::string& target, const std::string& text)
 {

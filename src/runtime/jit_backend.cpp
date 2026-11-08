@@ -190,6 +190,12 @@ CompileArgs make_args(const JitOptions& opt, const std::string& path, const std:
     // JIT target is the host, so the triple is empty. The precompiled header gets the same flag.
     for (const std::string& f : host_ms_runtime_lib_flags(std::string()))
         args.push_back(f);
+#ifdef NDEBUG
+    // The host has NDEBUG, so the JIT code has it too. Else an inline function of a runtime header
+    // has another body in the JIT code, for example in_script_tick() (threads.h). The optimization
+    // level does not change.
+    args.push_back("-DNDEBUG");
+#endif
     if (!opt.debug_flag.empty())
         args.push_back(opt.debug_flag);
     if (!opt.resource_dir.empty())
