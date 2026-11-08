@@ -70,9 +70,11 @@ HOT_JIT_ENGINE_API char* hot_jit_ir_link_text(const hot_jit_ir* ir);
 
 // Makes a JIT. With "debugger_support" the debugger sees the JIT code (GDB JIT interface). A
 // failure of the debugger support is not fatal: "*out_debugger_error" gets the reason. Returns
-// null and sets "*out_error" when the JIT cannot start.
-HOT_JIT_ENGINE_API hot_jit_engine* hot_jit_engine_create(
-    int debugger_support, int* out_debugger_on, char** out_error, char** out_debugger_error);
+// null and sets "*out_error" when the JIT cannot start. Windows: "host_runtime" has one address in
+// each C runtime DLL of the host (jit::host_runtime_addresses). The JIT code takes a name from
+// these DLLs first and only then from the other loaded modules. Other platforms ignore the list.
+HOT_JIT_ENGINE_API hot_jit_engine* hot_jit_engine_create(int debugger_support, const void* const* host_runtime,
+    size_t n_host_runtime, int* out_debugger_on, char** out_error, char** out_debugger_error);
 // Call this only after hot_jit_remove of each dylib of the engine.
 HOT_JIT_ENGINE_API void hot_jit_engine_free(hot_jit_engine* engine);
 

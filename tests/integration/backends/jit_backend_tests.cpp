@@ -46,6 +46,7 @@ extern "C" __declspec(thread) int _Init_thread_epoch;
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -663,6 +664,11 @@ using ProbeMap = std::map<int, int>;
     X(hot::ShellBase) X(hot::StateLayout) X(hot::FieldInfo) X(std::string) X(std::vector<int>)      \
         X(std::shared_ptr<int>) X(ProbeMap) X(std::function<void()>)
 
+// The stdio state and functions that the JIT code and the host must share. Another C runtime has
+// another FILE layout: its fflush on a FILE of the host breaks that FILE. Each item names a function
+// or an object of the C runtime or of the C++ library.
+#define HOT_PROBE_STDIO(X) X(fflush) X(fputs) X(fwrite) X(__acrt_iob_func) X(__stdio_common_vfprintf) X(std::cout)
+
 // The file name of the module that contains "address", for a message.
 std::string module_of(const void* address)
 {
@@ -684,8 +690,18 @@ const char* probe_source()
 {
 #define HOT_PROBE_ADDRESS(n, e) "    (const void*)" #e ",\n"
 #define HOT_PROBE_LAYOUT(t) "    sizeof(" #t "), alignof(" #t "),\n"
-    return "#include <cstdlib>\n#include <functional>\n#include <malloc.h>\n#include <map>\n#include <memory>\n"
-           "#include <new>\n#include <string>\n#include <typeinfo>\n#include <vector>\n"
+#define HOT_PROBE_STDIO_ADDRESS(n) "    (const void*)&" #n ",\n"
+    return "#include <cstdio>\n#include <cstdlib>\n#include <functional>\n#include <iostream>\n#include <malloc.h>\n"
+           "#include <map>\n#include <memory>\n#include <new>\n#include <string>\n#include <typeinfo>\n"
+           "#include <vector>\n"
+           "static const void* const probe_stdio_table[] = {\n" HOT_PROBE_STDIO(HOT_PROBE_STDIO_ADDRESS) "};\n"
+           "extern \"C\" const void* probe_stdio(int i) { return probe_stdio_table[i]; }\n"
+           "extern \"C\" const void* probe_stdout() { return stdout; }\n"
+           "extern \"C\" void probe_write(int x)\n{\n"
+           "    std::printf(\"probe printf %d\\n\", x);\n"
+           "    std::fputs(\"probe fputs\\n\", stdout);\n"
+           "    std::fflush(stdout);\n"
+           "    std::cout << \"probe cout \" << x << std::endl;\n}\n"
            "#include \"hot/runtime/records.h\"\n"
            "#include \"hot/runtime/shell.h\"\n"
            "using ProbeMap = std::map<int, int>;\n"
@@ -703,6 +719,7 @@ const char* probe_source()
            "extern \"C\" void* probe_aligned_malloc() { return _aligned_malloc(64, 64); }\n";
 #undef HOT_PROBE_ADDRESS
 #undef HOT_PROBE_LAYOUT
+#undef HOT_PROBE_STDIO_ADDRESS
 }
 
 // A probe in JIT code gives the addresses of the allocator family and of runtime state, and the
@@ -741,7 +758,9 @@ std::string probe_host_runtime()
     char* error = nullptr;
     char* debugger_error = nullptr;
     int debugger_on = 0;
-    hot_jit_engine* engine = hot_jit_engine_create(0, &debugger_on, &error, &debugger_error);
+    const std::vector<const void*> host_runtime = hot::jit::host_runtime_addresses();
+    hot_jit_engine* engine =
+        hot_jit_engine_create(0, host_runtime.data(), host_runtime.size(), &debugger_on, &error, &debugger_error);
     take(debugger_error);
     if (!engine)
     {
@@ -813,6 +832,30 @@ std::string probe_host_runtime()
             }
     }
 
+    // The JIT code writes to the stdout of the host. Another C runtime has another stdio state.
+    const std::size_t before_stdio = differ.size();
+#define HOT_PROBE_HOST_STDIO(n) {#n, reinterpret_cast<const void*>(&n)},
+    const HostValue host_stdio[] = {HOT_PROBE_STDIO(HOT_PROBE_HOST_STDIO)};
+#undef HOT_PROBE_HOST_STDIO
+    if (void* f = look("probe_stdio"))
+        for (int i = 0; i < static_cast<int>(std::size(host_stdio)); ++i)
+            compare(host_stdio[i].name, reinterpret_cast<const void* (*)(int)>(f)(i), host_stdio[i].address);
+    if (void* f = look("probe_stdout"))
+        compare("stdout (__acrt_iob_func(1))", reinterpret_cast<const void* (*)()>(f)(), stdout);
+    // A write through a FILE of another C runtime can break the stdout of the host, so the write
+    // runs only when each stdio address is the host address.
+    void* jit_write = look("probe_write");
+    if (jit_write && differ.size() == before_stdio)
+    {
+        testing::internal::CaptureStdout();
+        reinterpret_cast<void (*)(int)>(jit_write)(5);
+        const std::string out = testing::internal::GetCapturedStdout();
+        for (const char* line : {"probe printf 5\n", "probe fputs\n", "probe cout 5\n"})
+            if (out.find(line) == std::string::npos)
+                differ += "the host capture of stdout has no \"" + std::string(line, std::strlen(line) - 1)
+                    + "\" (it has \"" + out + "\") ";
+    }
+
     // A block from another heap can stop the process, so the cross checks run only when each
     // address is the host address.
     if (differ.empty())
@@ -849,6 +892,27 @@ TEST(JitTests, JitCodeSeesTheHostRuntime)
     GTEST_SKIP() << "Windows only";
 #else
     EXPECT_EQ(probe_host_runtime(), "");
+#endif
+}
+
+// The engine searches the C runtime DLLs of the host first. The host gives one address in each of
+// them: ucrtbase, vcruntime and msvcp (debug: ucrtbased, vcruntime140d, msvcp140d). Other compilers
+// give no address, because the process search has only one C runtime there.
+TEST(JitTests, HostGivesEachRuntimeDll)
+{
+    const std::vector<const void*> addresses = hot::jit::host_runtime_addresses();
+#ifndef _MSC_VER
+    EXPECT_TRUE(addresses.empty());
+#else
+    ASSERT_EQ(addresses.size(), 3u);
+    const char* const dlls[] = {"ucrtbase", "vcruntime", "msvcp"};
+    for (size_t i = 0; i < addresses.size(); ++i)
+    {
+        std::string name = module_of(addresses[i]);
+        for (char& c : name)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        EXPECT_NE(name.find(dlls[i]), std::string::npos) << name;
+    }
 #endif
 }
 

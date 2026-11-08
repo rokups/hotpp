@@ -55,6 +55,14 @@
         #define WIN32_LEAN_AND_MEAN
     #endif
     #include <windows.h>
+#elif defined(_MSC_VER)
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    #include <windows.h>
 #endif
 
 struct hot_jit_ir
@@ -346,8 +354,8 @@ char* hot_jit_ir_link_text(const hot_jit_ir* ir)
     return out;
 }
 
-hot_jit_engine* hot_jit_engine_create(
-    int debugger_support, int* out_debugger_on, char** out_error, char** out_debugger_error)
+hot_jit_engine* hot_jit_engine_create(int debugger_support, const void* const* host_runtime, size_t n_host_runtime,
+    int* out_debugger_on, char** out_error, char** out_debugger_error)
 {
     init_llvm_once();
     if (out_debugger_on)
@@ -393,9 +401,28 @@ hot_jit_engine* hot_jit_engine_create(
     // one has another heap. A name that the host does not give then fails at the link.
     auto allow = [](const llvm::orc::SymbolStringPtr& name)
     { return !hot::jit::is_host_allocator_name((*name).data(), (*name).size()); };
+    // The C runtime DLLs of the host come first. Other loaded modules export the same names, for
+    // example msvcrt.dll ("fflush", "fwrite") and msvcp_win.dll. Those have another state: a FILE
+    // of msvcrt.dll has another layout than a FILE of ucrtbase.dll. The process search takes the
+    // first module in the load order with the name. That can be the wrong module.
+    std::vector<HMODULE> first;
+    for (size_t i = 0; i < n_host_runtime; ++i)
+    {
+        HMODULE module = nullptr;
+        if (host_runtime[i]
+            && GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                static_cast<LPCWSTR>(host_runtime[i]), &module)
+            && std::find(first.begin(), first.end(), module) == first.end())
+            first.push_back(module);
+    }
+    for (HMODULE module : first)
+        engine->jit->getMainJITDylib().addGenerator(std::make_unique<llvm::orc::DynamicLibrarySearchGenerator>(
+            llvm::sys::DynamicLibrary(module), engine->jit->getDataLayout().getGlobalPrefix(), allow));
     auto gen = llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
         engine->jit->getDataLayout().getGlobalPrefix(), std::move(allow));
 #else
+    (void)host_runtime;
+    (void)n_host_runtime;
     auto gen = llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
         engine->jit->getDataLayout().getGlobalPrefix());
 #endif

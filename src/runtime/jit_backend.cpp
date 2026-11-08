@@ -412,7 +412,9 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
         char* error = nullptr;
         char* debugger_error = nullptr;
         int debugger_on = 0;
-        impl->engine = hot_jit_engine_create(opt_.debugger_support ? 1 : 0, &debugger_on, &error, &debugger_error);
+        const std::vector<const void*> host_runtime = jit::host_runtime_addresses();
+        impl->engine = hot_jit_engine_create(opt_.debugger_support ? 1 : 0, host_runtime.data(), host_runtime.size(),
+            &debugger_on, &error, &debugger_error);
         debugger_error_ = take(debugger_error);
         debugger_support_ = debugger_on != 0;
         if (!impl->engine)

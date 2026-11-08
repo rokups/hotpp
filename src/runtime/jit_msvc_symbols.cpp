@@ -36,15 +36,25 @@ void add_host_allocator_symbols(std::vector<const char*>& names, std::vector<uin
 
 #include <atomic>
 #include <climits>
+#include <cstdio>
 #include <cstring>
 #include <cstdlib>
 #include <intrin.h>
+#include <iostream>
 #include <malloc.h>
 #include <memory>
 #include <new>
 #include <typeinfo>
 #include <unordered_map>
 #include <xthreads.h>
+
+#ifndef NOMINMAX
+    #define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
 
 // The engine DLL (hot_jit_engine) is /MT and the host is /MD. The process search of the engine
 // reads only the exports of the loaded DLLs. These symbols are in the static part of the C
@@ -152,12 +162,36 @@ void add_msvc_host_symbols(std::vector<const char*>& names, std::vector<uint64_t
 
 } // namespace hot::jit
 
+namespace hot::jit
+{
+
+std::vector<const void*> host_runtime_addresses()
+{
+    // A /MD build imports "fflush" (ucrtbase) and "std::cout" (msvcp) with dllimport, so each
+    // address is in the DLL. The headers do not declare the vcruntime functions with dllimport: their
+    // address is a jump stub in the host. So the base address of the loaded DLL stands for vcruntime.
+#ifdef _DEBUG
+    const HMODULE vcruntime = GetModuleHandleW(L"vcruntime140d.dll");
+#else
+    const HMODULE vcruntime = GetModuleHandleW(L"vcruntime140.dll");
+#endif
+    return {reinterpret_cast<const void*>(&std::fflush), static_cast<const void*>(vcruntime),
+        static_cast<const void*>(&std::cout)};
+}
+
+} // namespace hot::jit
+
 #else
 
 namespace hot::jit
 {
 
 void add_msvc_host_symbols(std::vector<const char*>&, std::vector<uint64_t>&) {}
+
+std::vector<const void*> host_runtime_addresses()
+{
+    return {};
+}
 
 } // namespace hot::jit
 

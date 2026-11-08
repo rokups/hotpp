@@ -21,4 +21,9 @@ void add_msvc_host_symbols(std::vector<const char*>& names, std::vector<uint64_t
 // addresses are the functions of the host C runtime. add_msvc_host_symbols calls it.
 void add_host_allocator_symbols(std::vector<const char*>& names, std::vector<uint64_t>& values);
 
+// One address in each C runtime DLL of the host: the C runtime (ucrtbase), the compiler runtime
+// (vcruntime) and the C++ library (msvcp). The engine searches these DLLs first
+// (hot_jit_engine_create). The calling code must be host code. The list is empty on other compilers.
+std::vector<const void*> host_runtime_addresses();
+
 } // namespace hot::jit
