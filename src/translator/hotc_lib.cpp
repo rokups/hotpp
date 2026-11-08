@@ -788,7 +788,7 @@ Script parse_structure(const std::string& text, const hotc::LineMap& map, std::s
 }
 
 // The interface text of one module (modules step 1): the declarations that importers see or copy.
-// A class has no body, so a body change of a class keeps the text. The order is the source order:
+// A class has no body, so a body change of a class keeps the text. A struct has its bodies. The order is the source order:
 // a field order change changes the layout and the text. An importer copies the module aliases, the
 // namespaces and each class and struct, also a private one. So the text has them too. A private
 // enum, constant, variable or function is not in it. "text" is the parsed text of the module: the
@@ -805,7 +805,10 @@ std::string module_interface(const Script& sc, const std::string& text)
     };
     auto access = [](hotc::ast::Access a)
     { return a == hotc::ast::Access::Private ? "private " : a == hotc::ast::Access::Protected ? "protected " : ""; };
-    auto method = [&](const char* kind, const Method& m)
+    // An importer copies a struct with the bodies of its members (see the import of a struct), so
+    // the interface of a struct has the bodies. A class keeps them in its own module.
+    auto body = [&](bool copied, Span sp) { return copied ? " { " + span(sp) + " }" : std::string(); };
+    auto method = [&](const char* kind, const Method& m, bool copied)
     {
         std::string o = std::string("  ") + access(m.access) + kind;
         if (m.is_virtual || m.is_abstract || !m.vslot_owner.empty())
@@ -816,7 +819,8 @@ std::string module_interface(const Script& sc, const std::string& text)
             o += "abstract ";
         if (m.is_async)
             o += "async ";
-        return o + m.ret + " " + m.name + "(" + params(m.params) + ")" + (m.is_const ? " const" : "") + "\n";
+        return o + m.ret + " " + m.name + "(" + params(m.params) + ")" + (m.is_const ? " const" : "")
+            + body(copied, m.body_span) + "\n";
     };
     std::string o;
     for (const hotc::ast::UsingNs& u : sc.using_ns)
@@ -847,7 +851,7 @@ std::string module_interface(const Script& sc, const std::string& text)
             o += std::string("  ") + access(f.access) + "field " + (f.weak ? "weak " : "") + f.type + " " + f.name
                 + (span(f.init_span).empty() ? std::string() : " = " + span(f.init_span)) + "\n";
         for (const hotc::ast::Property& pr : c.props)
-            o += "  prop " + pr.type + " " + pr.name + "\n";
+            o += "  prop " + pr.type + " " + pr.name + body(c.is_value, pr.get_span) + body(c.is_value, pr.set_span) + "\n";
         for (const hotc::ast::Ctor& k : c.ctors)
         {
             // The "base(...)" arguments are part of the interface: a child in another module runs them.
@@ -861,12 +865,13 @@ std::string module_interface(const Script& sc, const std::string& text)
                     base += (i ? ", " : "") + hotc::ast::print(*k.base_args[i]);
                 base += ")";
             }
-            o += std::string("  ") + access(k.access) + "ctor(" + params(k.params) + ")" + base + "\n";
+            o += std::string("  ") + access(k.access) + "ctor(" + params(k.params) + ")" + base
+                + body(c.is_value, k.body_span) + "\n";
         }
         for (const Method& m : c.methods)
-            o += method("", m);
+            o += method("", m, c.is_value);
         for (const Method& m : c.statics)
-            o += method("static ", m);
+            o += method("static ", m, c.is_value);
         o += "}\n";
     }
     for (const Field& f : sc.consts)

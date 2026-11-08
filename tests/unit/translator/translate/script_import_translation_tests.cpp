@@ -582,4 +582,16 @@ TEST(ScriptImportTranslation, InterfaceHashCoversAliasesAndPrivateTypes)
     expect_new_hash(dir, hidden, "int x = 0;", "int x = 0; int Get() { return this.x; }");
 }
 
+// An importer copies a struct with the bodies of its methods and constructors. A body change of a
+// struct changes the interface hash. A body change of a class keeps it (InterfaceHashIsStableForABodyChange).
+TEST(ScriptImportTranslation, InterfaceHashCoversStructBodies)
+{
+    TempDir dir;
+    const std::string pt = "struct Pt {\n    int v = 1;\n    Pt() { this.v = 2; }\n"
+                           "    int Get() { return this.v + 1; }\n    static int Make() { return 4; }\n}\n";
+    expect_new_hash(dir, pt, "+ 1", "+ 5");
+    expect_new_hash(dir, pt, "this.v = 2", "this.v = 3");
+    expect_new_hash(dir, pt, "return 4", "return 6");
+}
+
 } // namespace

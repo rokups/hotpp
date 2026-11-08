@@ -689,6 +689,29 @@ TEST_P(FamilyTests, ParentLayoutChangeWithTheSameHashNeedsTheChildInTheBatch)
     EXPECT_EQ(*fld<int>(s, "z"), 7);
 }
 
+// An importer has a copy of each struct with the method bodies. A body change of a struct changes
+// the interface: a reload of the owner unit alone is rejected.
+TEST_P(FamilyTests, StructBodyChangeNeedsTheImporterInTheBatch)
+{
+    const std::string pt1 = "struct Pt {\n    int v = 1;\n    int Get() { return this.v + 1; }\n}\n";
+    const std::string user = R"(
+using "Actor.h";
+using "pt.hot";
+class User : Actor {
+    Pt p;
+    int g = 0;
+    override void Tick(float dt) { this.g = this.p.Get(); }
+}
+)";
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(start(s, batch_of(build("user.hot", user, {{"pt.hot", pt1}}, 1), build("pt.hot", pt1, {}, 1)), "User"));
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "g"), 2);
+    std::string pt2 = pt1;
+    pt2.replace(pt2.find("+ 1"), 3, "+ 5");
+    ASSERT_NO_FATAL_FAILURE(expect_stale(s, build("pt.hot", pt2, {}, 2), "user"));
+}
+
 std::string kind_name(const ::testing::TestParamInfo<hot::BackendKind>& info)
 {
     return info.param == hot::BackendKind::Jit ? "Jit" : "ClangFiles";
