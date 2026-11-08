@@ -417,8 +417,8 @@ jobs:
   # build tree has absolute paths (the CMake cache and the LLVM release folder cmake-build), so the
   # test jobs unpack the tree to the same path: the checkout of the same repository on the same
   # runner image. The JIT backend needs zlib and zstd. The component libraries of the LLVM release
-  # link them (the release has no clang-cpp). The release has /MD Release libraries only, so only
-  # RelWithDebInfo builds.
+  # link them (the release has no clang-cpp). The release has Release libraries with the static
+  # runtime (/MT) only, so only RelWithDebInfo builds and the preset sets /MT for all targets.
   build-windows:
     runs-on: windows-2022
     timeout-minutes: 90
@@ -454,12 +454,12 @@ jobs:
           mkdir -p cmake-build
           zstd -d --long=31 -c "$archive" | tar -x -C cmake-build
 
-      # The static libraries zlib and zstd with the DLL C++ runtime (/MD). The LLVM libraries of
+      # The static libraries zlib and zstd with the static C++ runtime (/MT). The LLVM libraries of
       # the release link them.
       - name: Install zlib and zstd
         run: |
-          "$VCPKG_INSTALLATION_ROOT/vcpkg.exe" install zlib zstd --triplet x64-windows-static-md
-          DEPS_PREFIX="$(cygpath -m "$VCPKG_INSTALLATION_ROOT")/installed/x64-windows-static-md"
+          "$VCPKG_INSTALLATION_ROOT/vcpkg.exe" install zlib zstd --triplet x64-windows-static
+          DEPS_PREFIX="$(cygpath -m "$VCPKG_INSTALLATION_ROOT")/installed/x64-windows-static"
           echo "DEPS_PREFIX=$DEPS_PREFIX" >> "$GITHUB_ENV"
           ls "$DEPS_PREFIX/lib"
 
