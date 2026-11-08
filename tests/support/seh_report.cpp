@@ -6,7 +6,8 @@
 // catches an SEH exception, but it writes only the code. This vectored handler writes the code,
 // the address, the module and offset of the address, and the stack, to stderr. Then the normal
 // handling continues. The handler sees first-chance exceptions, so a report does not always
-// mean a failure. A test that has no SEH exception writes nothing.
+// mean a failure. A test that has no SEH exception writes nothing. An unhandled exception filter
+// writes the same report for the exception that ends the process.
 #if defined(_WIN32) && defined(_MSC_VER)
 
 // clang-format off
@@ -28,7 +29,55 @@ bool is_crash(DWORD code)
 {
     return code == EXCEPTION_ACCESS_VIOLATION || code == EXCEPTION_STACK_OVERFLOW || code == 0xC0000374
         || code == EXCEPTION_ILLEGAL_INSTRUCTION || code == EXCEPTION_INT_DIVIDE_BY_ZERO
-        || code == EXCEPTION_PRIV_INSTRUCTION || code == EXCEPTION_IN_PAGE_ERROR;
+        || code == EXCEPTION_PRIV_INSTRUCTION || code == EXCEPTION_IN_PAGE_ERROR
+        || code == 0xC0000421; // STATUS_BAD_FUNCTION_TABLE: the unwind found a bad function table
+}
+
+void print_address(const char* label, void* address);
+
+// The registered function table entry that covers "address" (also an entry of JIT code).
+void print_function_entry(DWORD64 address)
+{
+    DWORD64 base = 0;
+    const PRUNTIME_FUNCTION f = RtlLookupFunctionEntry(address, &base, nullptr);
+    if (!f)
+    {
+        std::fprintf(stderr, "[seh] no function table entry covers %p\n", reinterpret_cast<void*>(address));
+        return;
+    }
+    std::fprintf(stderr, "[seh] function entry: base 0x%llx begin +0x%lx end +0x%lx unwind +0x%lx\n",
+        static_cast<unsigned long long>(base), static_cast<unsigned long>(f->BeginAddress),
+        static_cast<unsigned long>(f->EndAddress), static_cast<unsigned long>(f->UnwindData));
+}
+
+// True when "p" points into executable memory.
+bool is_executable(ULONG_PTR p)
+{
+    MEMORY_BASIC_INFORMATION m = {};
+    if (p < 0x10000 || !VirtualQuery(reinterpret_cast<LPCVOID>(p), &m, sizeof(m)) || m.State != MEM_COMMIT)
+        return false;
+    const DWORD exec = PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY;
+    return (m.Protect & exec) != 0;
+}
+
+// A raw stack walk: the values on the stack that point into executable memory. It does not use
+// the unwind data, so it also works when a function table is bad.
+void print_raw_stack(const CONTEXT* context)
+{
+    const NT_TIB* tib = reinterpret_cast<const NT_TIB*>(NtCurrentTeb());
+    auto sp = static_cast<ULONG_PTR>(context->Rsp);
+    const auto top = reinterpret_cast<ULONG_PTR>(tib->StackBase);
+    unsigned found = 0;
+    for (unsigned i = 0; i < 2048 && sp + sizeof(ULONG_PTR) <= top && found < 16; ++i, sp += sizeof(ULONG_PTR))
+    {
+        const ULONG_PTR value = *reinterpret_cast<const ULONG_PTR*>(sp);
+        if (!is_executable(value))
+            continue;
+        char label[32];
+        std::snprintf(label, sizeof(label), "raw rsp+0x%x", i * 8);
+        print_address(label, reinterpret_cast<void*>(value));
+        ++found;
+    }
 }
 
 // One line for an address: the module, the offset and, with symbols, the function and line.
@@ -65,15 +114,10 @@ void print_address(const char* label, void* address)
     std::fprintf(stderr, "\n");
 }
 
-LONG CALLBACK report(EXCEPTION_POINTERS* info)
+void write_report(EXCEPTION_POINTERS* info, const char* kind)
 {
     const EXCEPTION_RECORD* record = info->ExceptionRecord;
-    if (!is_crash(record->ExceptionCode))
-        return EXCEPTION_CONTINUE_SEARCH;
-    // Some reports per process only: a crash can repeat in a loop.
-    if (InterlockedIncrement(&g_reports) > 3)
-        return EXCEPTION_CONTINUE_SEARCH;
-    std::fprintf(stderr, "[seh] first-chance exception 0x%08lx in thread %lu\n",
+    std::fprintf(stderr, "[seh] %s exception 0x%08lx in thread %lu\n", kind,
         static_cast<unsigned long>(record->ExceptionCode), GetCurrentThreadId());
     // A fixture DLL can load after SymInitialize.
     if (g_symbols)
@@ -85,6 +129,11 @@ LONG CALLBACK report(EXCEPTION_POINTERS* info)
         std::fprintf(stderr, "[seh] %s of address 0x%llx\n", kind == 0 ? "read" : kind == 1 ? "write" : "execute",
             static_cast<unsigned long long>(record->ExceptionInformation[1]));
     }
+    std::fprintf(stderr, "[seh] rip %p rsp %p\n", reinterpret_cast<void*>(info->ContextRecord->Rip),
+        reinterpret_cast<void*>(info->ContextRecord->Rsp));
+    print_function_entry(reinterpret_cast<DWORD64>(record->ExceptionAddress));
+    if (record->ExceptionCode != EXCEPTION_STACK_OVERFLOW)
+        print_raw_stack(info->ContextRecord);
     // The handler runs on the stack of the fault, so the stack has the frames of the fault. The
     // stack overflow has no room for a stack walk.
     if (record->ExceptionCode != EXCEPTION_STACK_OVERFLOW)
@@ -99,6 +148,23 @@ LONG CALLBACK report(EXCEPTION_POINTERS* info)
         }
     }
     std::fflush(stderr);
+}
+
+LONG CALLBACK report(EXCEPTION_POINTERS* info)
+{
+    if (!is_crash(info->ExceptionRecord->ExceptionCode))
+        return EXCEPTION_CONTINUE_SEARCH;
+    // Some reports per process only: a crash can repeat in a loop.
+    if (InterlockedIncrement(&g_reports) > 3)
+        return EXCEPTION_CONTINUE_SEARCH;
+    write_report(info, "first-chance");
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
+// The exception that nobody handles: each code, because the process ends now.
+LONG WINAPI report_unhandled(EXCEPTION_POINTERS* info)
+{
+    write_report(info, "unhandled");
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
@@ -109,6 +175,7 @@ struct Install
         SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS | SYMOPT_LOAD_LINES);
         g_symbols = SymInitialize(GetCurrentProcess(), nullptr, TRUE) != FALSE;
         AddVectoredExceptionHandler(1, report);
+        SetUnhandledExceptionFilter(report_unhandled);
     }
 };
 

@@ -526,9 +526,9 @@ jobs:
         shell: bash
     env:
       HOT_BACKEND: ${{ matrix.backend }}
-      # Diagnostic: the full page heap finds the first bad heap write in the JIT tests. Set 0 to
-      # remove it. The page heap makes the tests slow, so the timeouts are long.
-      HOT_CI_PAGEHEAP: ${{ matrix.backend == 'jit' && '1' || '0' }}
+      # Diagnostic: the full page heap finds the first bad heap write in the tests of both
+      # backends. Set 0 to remove it. The page heap makes the tests slow, so the timeouts are long.
+      HOT_CI_PAGEHEAP: '1'
     steps:
       - uses: actions/checkout@v7
 
