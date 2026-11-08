@@ -11,6 +11,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <string>
 
@@ -152,8 +153,17 @@ TEST(TranslateDiagnostics, BacktickInATypeIsAnError)
 TEST(TranslateDiagnostics, TruncatedInputsTerminate)
 {
     // The parser runs on every prefix (cut at each byte). A prefix that parses runs the whole
-    // translator and libclang (about 15 ms), so the full translation uses each 16th cut only.
-    const auto start = Clock::now();
+    // translator, so the full translation uses each 16th cut only. The session keeps the parse of
+    // the headers (libclang), and a translation parses again only for a new name.
+    // The sums are in microseconds: one parse of a prefix needs less than 1 ms.
+    using Us = std::chrono::microseconds;
+    auto us_since = [](Clock::time_point t) { return std::chrono::duration_cast<Us>(Clock::now() - t).count(); };
+    long long parser_us = 0;  // parse_script on all cuts
+    long long cached_us = 0;  // the translations without a libclang parse
+    long long clang_us = 0;   // the translations with a libclang parse
+    long long slowest_us = 0; // the slowest translation without a libclang parse
+    int clang_parses = 0;
+    int most_parses = 0; // the most libclang parses of one file
     size_t first = 0;
     for (const char* base : {"player", "native_std", "timer"})
     {
@@ -165,25 +175,48 @@ TEST(TranslateDiagnostics, TruncatedInputsTerminate)
             for (size_t cut = 0; cut <= full.script_text.size(); ++cut)
             {
                 const std::string text = full.script_text.substr(0, cut);
+                const auto parse_start = Clock::now();
                 const hotc::LineMap map(text);
                 hotc::Diagnostics diag;
                 (void)hotc::parse_script(text, map, diag);
+                parser_us += us_since(parse_start);
                 if (cut % 16 != first * 3 % 16)
                     continue;
                 hotc::TranslateOptions o = full;
                 o.script_text = text;
+                const int parses = session.parse_count();
+                const auto translate_start = Clock::now();
                 const hotc::TranslateResult r = hotc::translate(o, session);
+                const long long us = us_since(translate_start);
+                if (session.parse_count() != parses)
+                    clang_us += us;
+                else
+                {
+                    cached_us += us;
+                    slowest_us = std::max(slowest_us, us);
+                }
                 if (!r.ok)
                 {
                     ASSERT_FALSE(r.diagnostics.empty()) << file << " cut at " << cut;
                 }
             }
+            clang_parses += session.parse_count();
+            most_parses = std::max(most_parses, session.parse_count());
         }
     }
-    // The bound finds a hang, not a slow run. A normal build needs about 1.5 s. A sanitizer build
-    // under a parallel ctest load needs up to 5 times more, so the bound is 15 s.
-    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start);
-    EXPECT_LT(ms.count(), 15000);
+    // The bounds find a hang or work that grows too fast, not a slow run. The time of a libclang
+    // parse depends on the machine and on the load: on a Windows CI runner the same test took
+    // 3.8 s and 11.6 s in one run. So the number of libclang parses has a bound, and their time
+    // has no bound. The parser and the cached translations are the code of the translator. A normal
+    // build needs less than 0.5 s for them. A sanitizer build under a parallel ctest load needs up
+    // to 5 times more, so the bound of each part is 15 s.
+    const std::string times = "parser " + std::to_string(parser_us / 1000) + " ms, cached translations "
+        + std::to_string(cached_us / 1000) + " ms (slowest " + std::to_string(slowest_us / 1000) + " ms), "
+        + std::to_string(clang_parses) + " libclang parses " + std::to_string(clang_us / 1000) + " ms";
+    RecordProperty("times", times);
+    EXPECT_LE(most_parses, 2) << times;
+    EXPECT_LT(parser_us, 15000000) << times;
+    EXPECT_LT(cached_us, 15000000) << times;
 }
 
 // A non-string attribute argument on a native stub gives one error and no second error.
