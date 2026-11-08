@@ -79,6 +79,28 @@ std::vector<std::string> darwin_target_flags(bool darwin)
     return {"-Wl,-undefined,dynamic_lookup"};
 }
 
+std::vector<std::string> ms_runtime_lib_flags(bool msvc_target, bool debug_runtime)
+{
+    if (!msvc_target)
+        return {};
+    return {debug_runtime ? "-fms-runtime-lib=dll_dbg" : "-fms-runtime-lib=dll"};
+}
+
+std::vector<std::string> host_ms_runtime_lib_flags(const std::string& target_triple)
+{
+#if defined(_MSC_VER)
+    #ifdef _DEBUG
+    constexpr bool debug_runtime = true;
+    #else
+    constexpr bool debug_runtime = false;
+    #endif
+    return ms_runtime_lib_flags(!is_mingw_triple(target_triple), debug_runtime);
+#else
+    (void)target_triple;
+    return {};
+#endif
+}
+
 std::vector<std::string> darwin_sysroot_flags(const std::vector<std::string>& args, const std::string& sdk)
 {
     if (sdk.empty())

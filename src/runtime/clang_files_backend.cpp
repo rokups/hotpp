@@ -268,18 +268,10 @@ std::vector<std::string> compile_command(const ClangFilesOptions& opt, const std
         cmd.push_back(f);
     for (const std::string& f : darwin_target_flags(darwin))
         cmd.push_back(f);
-#if defined(_MSC_VER)
     // An MSVC host: the module uses the same C runtime DLL as the host (/MD or /MDd). The
     // default of clang++ is the static runtime. Two runtimes do not share the STL debug levels.
-    if (!mingw)
-    {
-    #ifdef _DEBUG
-        cmd.push_back("-fms-runtime-lib=dll_dbg");
-    #else
-        cmd.push_back("-fms-runtime-lib=dll");
-    #endif
-    }
-#endif
+    for (const std::string& f : host_ms_runtime_lib_flags(opt.target_triple))
+        cmd.push_back(f);
     if (!opt.resource_dir.empty())
         cmd.push_back("-resource-dir=" + opt.resource_dir);
     for (const std::string& f : opt.extra_flags)

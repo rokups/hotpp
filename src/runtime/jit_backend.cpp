@@ -186,6 +186,10 @@ CompileArgs make_args(const JitOptions& opt, const std::string& path, const std:
     // hot::detail::call_depth_slot().
     args.push_back("-DHOT_JIT_TLS_OFFSET");
 #endif
+    // An MSVC host: the JIT code uses the C runtime DLL of the host, as in the files backend. The
+    // JIT target is the host, so the triple is empty. The precompiled header gets the same flag.
+    for (const std::string& f : host_ms_runtime_lib_flags(std::string()))
+        args.push_back(f);
     if (!opt.debug_flag.empty())
         args.push_back(opt.debug_flag);
     if (!opt.resource_dir.empty())

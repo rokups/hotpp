@@ -51,6 +51,17 @@ bool is_darwin_triple(const std::string& target_triple);
 // symbols by default, so the flags are "-Wl,-undefined,dynamic_lookup". Empty when "darwin" is false.
 std::vector<std::string> darwin_target_flags(bool darwin);
 
+// The C runtime flag of a compile for an MSVC target. The script code must use the C runtime DLL
+// of the host (/MD or /MDd). The default of clang is the static runtime. The flag is
+// "-fms-runtime-lib=dll", or "-fms-runtime-lib=dll_dbg" when "debug_runtime" is true. Empty when
+// "msvc_target" is false.
+std::vector<std::string> ms_runtime_lib_flags(bool msvc_target, bool debug_runtime);
+
+// The C runtime flag of this host for a compile to "target_triple" (ms_runtime_lib_flags). An MSVC
+// host gives the flag of its own runtime (_DEBUG gives dll_dbg). A MinGW triple and other hosts
+// give no flag. The JIT backend and the files backend both use this function.
+std::vector<std::string> host_ms_runtime_lib_flags(const std::string& target_triple);
+
 // The sysroot flags of the JIT compile on macOS. The JIT has no xcrun and no clang
 // configuration file, so it can miss the SDK. The flags are "-isysroot <sdk>". They are empty
 // when "sdk" is empty or "args" already has -isysroot or --sysroot.

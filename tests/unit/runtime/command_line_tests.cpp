@@ -164,3 +164,26 @@ TEST(CommandLine, JitVirtualPath)
     EXPECT_EQ(hot::jit_virtual_path("/hot-jit-virtual", "a.cpp", ""), "/hot-jit-virtual/a.cpp");
     EXPECT_EQ(hot::jit_virtual_path("/hot-jit-virtual", "a.cpp", "1:/x"), "/hot-jit-virtual/a.cpp");
 }
+
+// The JIT backend and the files backend take the C runtime flag from one function. An MSVC target
+// gets the DLL runtime of the host. Other targets get no flag.
+TEST(CommandLine, MsRuntimeLibFlags)
+{
+    using Args = std::vector<std::string>;
+    EXPECT_EQ(hot::ms_runtime_lib_flags(true, false), Args{"-fms-runtime-lib=dll"});
+    EXPECT_EQ(hot::ms_runtime_lib_flags(true, true), Args{"-fms-runtime-lib=dll_dbg"});
+    EXPECT_TRUE(hot::ms_runtime_lib_flags(false, false).empty());
+    EXPECT_TRUE(hot::host_ms_runtime_lib_flags("x86_64-w64-mingw32").empty());
+#if defined(_MSC_VER)
+    #ifdef _DEBUG
+    const Args host = {"-fms-runtime-lib=dll_dbg"};
+    #else
+    const Args host = {"-fms-runtime-lib=dll"};
+    #endif
+#else
+    const Args host;
+#endif
+    // The JIT compile has no triple. The files backend has the triple of the options.
+    EXPECT_EQ(hot::host_ms_runtime_lib_flags(""), host);
+    EXPECT_EQ(hot::host_ms_runtime_lib_flags("x86_64-pc-windows-msvc"), host);
+}
