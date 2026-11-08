@@ -170,22 +170,41 @@ struct SleepAwaiter
 
     Duration delay{};
     bool next_tick = false; // hot::yield(): the next tick resumes the frame
+    std::exception_ptr thrown; // the throw of the park: the co_await throws it
 
     bool await_ready() const noexcept { return false; }
-    template <class P> std::coroutine_handle<> await_suspend(std::coroutine_handle<P> h)
+    template <class P> std::coroutine_handle<> await_suspend(std::coroutine_handle<P> h) noexcept
     {
         static_assert(std::is_base_of_v<detail::TaskPromiseBase, P>,
             "hot::yield() and hot::sleep() work only inside a task (an async method)");
-        Scheduler& fallback = scheduler();
-        const Clock::time_point when = next_tick ? Clock::time_point::min() : detail::time_after(Clock::now(), delay);
-        detail::TaskPromiseBase& p = h.promise();
-        std::lock_guard<std::mutex> lock(detail::task_mutex());
-        Scheduler& s = p.sched ? *p.sched : fallback;
-        s.park_locked(p, h, when); // a throw leaves the frame running: the co_await throws
-        // From here another thread can resume or destroy the frame: do not touch "this".
-        return std::noop_coroutine();
+        return detail::after_suspend(&SleepAwaiter::park<P>, this, h); // see detail::after_suspend
     }
-    void await_resume() const noexcept {}
+    // The work of the co_await. It runs in the trampoline.
+    template <class P> static std::coroutine_handle<> park(void* ctx, std::coroutine_handle<> h) noexcept
+    {
+        SleepAwaiter& a = *static_cast<SleepAwaiter*>(ctx);
+        detail::TaskPromiseBase& p = std::coroutine_handle<P>::from_address(h.address()).promise();
+        try
+        {
+            Scheduler& fallback = scheduler();
+            const Clock::time_point when = a.next_tick ? Clock::time_point::min() : detail::time_after(Clock::now(), a.delay);
+            std::lock_guard<std::mutex> lock(detail::task_mutex());
+            Scheduler& s = p.sched ? *p.sched : fallback;
+            s.park_locked(p, h, when); // a throw leaves the frame running: the co_await throws
+            // From here another thread can resume or destroy the frame: do not touch "a".
+        }
+        catch (...)
+        {
+            a.thrown = std::current_exception();
+            return h;
+        }
+        return {};
+    }
+    void await_resume()
+    {
+        if (HOT_UNLIKELY(thrown))
+            std::rethrow_exception(std::exchange(thrown, nullptr));
+    }
 };
 
 // The frame waits until the next tick.

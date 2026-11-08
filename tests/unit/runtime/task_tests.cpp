@@ -629,6 +629,155 @@ TEST(TaskTests, ParentDestroyedWhileItLinksASecondChildOnAThread)
     }
 }
 
+// ---------------------------------------------------------------------------- the frame after the suspend
+
+// The probe stands for the MSVC ABI: after await_suspend returns, the coroutine writes the
+// returned handle into its frame. The probe runs once for the target frame. It waits until the
+// test destroyed the frame, or until the destroy waits for the frame. Then it reads the frame:
+// ASan reports a read of a dead frame. The wait ends after a short time in all cases.
+struct SuspendProbe
+{
+    static inline std::atomic<void*> target{nullptr};
+    static inline std::atomic<bool> hit{false};
+    static inline std::atomic<bool> destroyed{false};
+
+    static void probe(void* frame)
+    {
+        void* expected = frame;
+        if (!target.compare_exchange_strong(expected, nullptr))
+            return;
+        hit.store(true);
+        const auto end = std::chrono::steady_clock::now() + std::chrono::milliseconds(300);
+        while (!destroyed.load() && hot::detail::task_waiters().load() == 0 && std::chrono::steady_clock::now() < end)
+            std::this_thread::yield();
+        (void)*static_cast<volatile unsigned char*>(frame);
+    }
+    explicit SuspendProbe(void* frame)
+    {
+        hit.store(false);
+        destroyed.store(false);
+        target.store(frame);
+        hot::detail::suspend_probe().store(&probe);
+    }
+    SuspendProbe(const SuspendProbe&) = delete;
+    SuspendProbe& operator=(const SuspendProbe&) = delete;
+    ~SuspendProbe()
+    {
+        hot::detail::suspend_probe().store(nullptr);
+        target.store(nullptr);
+    }
+    static void wait_hit()
+    {
+        while (!hit.load())
+            std::this_thread::yield();
+    }
+};
+
+template <class T> void* frame_of(Task<T>& t)
+{
+    auto& p = static_cast<hot::detail::TaskPromise<T>&>(t.base());
+    return std::coroutine_handle<hot::detail::TaskPromise<T>>::from_promise(p).address();
+}
+
+// A gate that also sets a flag when it holds the frame.
+struct FlagGate
+{
+    std::function<void()>* slot;
+    std::atomic<bool>* held;
+    bool await_ready() const noexcept { return false; }
+    template <class P> void await_suspend(std::coroutine_handle<P> h) const
+    {
+        *slot = [h] { hot::detail::resume_frame(h); };
+        held->store(true);
+    }
+    void await_resume() const noexcept {}
+};
+
+Task<int> two_gates(std::function<void()>* slot1, std::function<void()>* slot2, std::atomic<bool>* held2)
+{
+    co_await Gate{slot1};
+    co_await FlagGate{slot2, held2};
+    co_return 3;
+}
+
+Task<int> gate_then_yield(std::function<void()>* slot)
+{
+    co_await Gate{slot};
+    co_await hot::yield();
+    co_return 4;
+}
+
+// Rule: after the link of a child, the thread that suspends the parent does not touch the
+// parent frame. The test destroys the parent while the thread is at the end of its suspend.
+TEST(TaskTests, ThreadDoesNotTouchTheParentAfterItLinksAChild)
+{
+    std::function<void()> slot1, slot2;
+    std::atomic<bool> between{false};
+    Task<int> c1 = gate_task(&slot1, 1);
+    c1.resume();
+    Task<int> c2 = gate_task(&slot2, 2);
+    auto parent = std::make_unique<Task<int>>(await_two(&c1, &c2, &between));
+    parent->resume(); // the parent awaits c1
+    SuspendProbe probe(frame_of(*parent));
+    std::thread thread([&slot1] { slot1(); }); // the parent links c2 on the thread
+    SuspendProbe::wait_hit();
+    parent.reset();
+    SuspendProbe::destroyed.store(true);
+    thread.join();
+    ASSERT_TRUE(static_cast<bool>(slot2)); // c2 started on the thread
+    slot2();
+    EXPECT_TRUE(c2.done());
+}
+
+// Rule: after the completion, the thread that ends the frame does not touch it.
+TEST(TaskTests, ThreadDoesNotTouchTheFrameAfterItEnds)
+{
+    std::function<void()> slot;
+    auto t = std::make_unique<Task<int>>(gate_task(&slot, 7));
+    t->resume();
+    SuspendProbe probe(frame_of(*t));
+    std::thread thread([&slot] { slot(); }); // the frame ends on the thread
+    SuspendProbe::wait_hit();
+    t.reset();
+    SuspendProbe::destroyed.store(true);
+    thread.join();
+}
+
+// Rule: after the park, the thread that suspends the frame does not touch it.
+TEST(TaskTests, ThreadDoesNotTouchTheFrameAfterItParks)
+{
+    std::function<void()> slot;
+    auto t = std::make_unique<Task<int>>(gate_then_yield(&slot));
+    t->resume();
+    SuspendProbe probe(frame_of(*t));
+    std::thread thread([&slot] { slot(); }); // the frame parks on the thread
+    SuspendProbe::wait_hit();
+    t.reset();
+    SuspendProbe::destroyed.store(true);
+    thread.join();
+    EXPECT_EQ(hot::scheduler().size(), 0u);
+}
+
+// Rule: after a host awaitable holds the frame, the thread that suspends the frame does not
+// touch it. The test resumes the frame from the second gate, and it destroys the task.
+TEST(TaskTests, ThreadDoesNotTouchTheFrameAfterAHostAwaitableHoldsIt)
+{
+    std::function<void()> slot1, slot2;
+    std::atomic<bool> held2{false};
+    auto t = std::make_unique<Task<int>>(two_gates(&slot1, &slot2, &held2));
+    t->resume();
+    SuspendProbe probe(frame_of(*t));
+    std::thread thread([&slot1] { slot1(); }); // the second gate holds the frame on the thread
+    SuspendProbe::wait_hit();
+    while (!held2.load())
+        std::this_thread::yield();
+    slot2(); // the frame ends here
+    EXPECT_EQ(hot::sync_wait(*t), 3);
+    t.reset();
+    SuspendProbe::destroyed.store(true);
+    thread.join();
+}
+
 // ---------------------------------------------------------------------------- cancellation
 
 Task<int> cancelled_body()

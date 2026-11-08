@@ -44,7 +44,7 @@ HOT_EXPORT void* default_scheduler(void* (*make)())
     return s;
 }
 // The runtime is a static library. The linker takes a member only when the host refers to it.
-// The script modules call end_frame_after_suspend (frame_reaper.cpp), but the host can have no
+// The script modules call after_suspend (frame_reaper.cpp), but the host can have no
 // reference to it. This exported pointer keeps the member in each host that links this file.
 void* frame_reaper_link() noexcept;
 HOT_EXPORT void* (*frame_reaper_ref)() noexcept = &frame_reaper_link;

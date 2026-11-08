@@ -133,11 +133,23 @@ inline std::coroutine_handle<> detach_frame(TaskPromiseBase& p, bool own_run) no
 inline std::coroutine_handle<> retire_frame(TaskPromiseBase& p, std::coroutine_handle<> h, bool own_run) noexcept;
 inline void report_discarded(TaskPromiseBase& p) noexcept;
 inline void discard_frame(TaskPromiseBase& p, std::coroutine_handle<> h) noexcept;
-// Returns a coroutine that destroys "dead" and then transfers to "next" (a null "next": nothing runs).
-// An awaiter of a frame returns it to end its own frame. It must not destroy the frame itself: the
-// MSVC ABI writes the returned handle into the frame after await_suspend returns. The coroutine
-// is one for each thread (src/runtime/frame_reaper.cpp).
-HOT_EXPORT std::coroutine_handle<> end_frame_after_suspend(std::coroutine_handle<> dead, std::coroutine_handle<> next) noexcept;
+inline std::coroutine_handle<> retire_own_frame(void* p, std::coroutine_handle<> h) noexcept;
+inline std::coroutine_handle<> finish_frame(void* p, std::coroutine_handle<> h) noexcept;
+// The rule of the suspension. A publication lets another thread resume or destroy a frame: the
+// release of task_mutex() after a link or a park, end_run, the finished flag, or a host awaitable
+// that holds the handle. After a publication, the thread must not touch the frame: not the
+// promise, not the awaiter, and not the handle that await_suspend returns. The MSVC ABI writes
+// that handle into the frame after await_suspend returns. So the await_suspend of a task frame
+// does not publish. It returns after_suspend(work, ctx, frame): a trampoline coroutine, which
+// lives outside the frame. The trampoline runs work(ctx, frame) when the frame is suspended. The
+// work publishes, then it touches only its own copies. Before the publication, it can use "ctx"
+// (an object in the frame). The work returns the coroutine that runs next (a null handle: nothing
+// runs). The handle goes into the frame of the trampoline. Each thread has its own trampolines
+// (src/runtime/frame_reaper.cpp).
+using SuspendWork = std::coroutine_handle<> (*)(void* ctx, std::coroutine_handle<> frame) noexcept;
+HOT_EXPORT std::coroutine_handle<> after_suspend(SuspendWork work, void* ctx, std::coroutine_handle<> frame) noexcept;
+// A test hook. When it is set, after_suspend calls it with the frame address before it returns.
+HOT_EXPORT std::atomic<void (*)(void*)>& suspend_probe() noexcept;
 // Removes the entries of a parked frame from its scheduler (hot/runtime/scheduler.h). The caller
 // holds task_mutex(). The function takes the lock of the scheduler.
 inline void detach_parked(TaskPromiseBase& p) noexcept;
@@ -303,7 +315,8 @@ struct TaskPromiseBase
     FinalAwaiter final_suspend() const noexcept { return {}; }
 
     // The wrapper of each co_await in a task body. The frame stops running when it suspends,
-    // so the owner can destroy it. Task awaiters do this under the lock by themselves.
+    // so the owner can destroy it. Task awaiters do this under the lock by themselves. All
+    // paths publish from a trampoline (after_suspend).
     template <class Inner> struct Wrapped
     {
         template <class A>
@@ -314,54 +327,64 @@ struct TaskPromiseBase
         }
         Inner inner;
         TaskPromiseBase* self;
+        std::exception_ptr thrown; // the throw of a host await_suspend: the co_await throws it
 
         bool await_ready() { return inner.await_ready(); }
         template <class P> std::coroutine_handle<> await_suspend(std::coroutine_handle<P> h)
         {
-            // The owner destroyed the task from its own run: the frame ends here.
+            // The owner destroyed the task from its own run: the frame ends in the trampoline.
             if (HOT_UNLIKELY(self->destroy_requested))
-            {
-                // The frame lives until this function returns: see end_frame_after_suspend.
-                std::coroutine_handle<> next = detach_frame(*self, true);
-                report_discarded(*self);
-                return end_frame_after_suspend(h, next);
-            }
+                return after_suspend(&retire_own_frame, self, h);
             if constexpr (TaskAwaiter<Inner>)
-                return inner.await_suspend(h);
+                return inner.await_suspend(h); // a task awaiter uses after_suspend by itself
             else
+                return after_suspend(&suspend_host<P>, this, h);
+        }
+        // The work of a host co_await. It runs in the trampoline.
+        template <class P> static std::coroutine_handle<> suspend_host(void* ctx, std::coroutine_handle<> frame) noexcept
+        {
+            Wrapped& w = *static_cast<Wrapped*>(ctx);
+            TaskPromiseBase* s = w.self;
+            const auto h = std::coroutine_handle<P>::from_address(frame.address());
+            s->end_run(false); // the frame is suspended from here
+            try
             {
-                self->end_run(false); // the frame is suspended from here
-                try
+                // The host awaitable can publish the frame: after it, do not touch "w".
+                using R = decltype(w.inner.await_suspend(h));
+                if constexpr (std::is_void_v<R>)
                 {
-                    using R = decltype(inner.await_suspend(h));
-                    if constexpr (std::is_void_v<R>)
-                    {
-                        inner.await_suspend(h);
-                        return std::noop_coroutine();
-                    }
-                    else if constexpr (std::is_same_v<R, bool>)
-                    {
-                        if (inner.await_suspend(h))
-                            return std::noop_coroutine();
-                        self->begin_run(); // the coroutine goes on
-                        return h;
-                    }
-                    else
-                    {
-                        std::coroutine_handle<> r = inner.await_suspend(h);
-                        if (r == std::coroutine_handle<>(h))
-                            self->begin_run();
-                        return r;
-                    }
+                    w.inner.await_suspend(h);
+                    return {};
                 }
-                catch (...)
+                else if constexpr (std::is_same_v<R, bool>)
                 {
-                    self->begin_run(); // the exception comes out of the co_await in the body
-                    throw;
+                    if (w.inner.await_suspend(h))
+                        return {};
+                    s->begin_run(); // the coroutine goes on
+                    return frame;
                 }
+                else
+                {
+                    std::coroutine_handle<> r = w.inner.await_suspend(h);
+                    if (r == frame)
+                        s->begin_run();
+                    return r;
+                }
+            }
+            catch (...)
+            {
+                // The host awaitable did not take the frame: it is mine again.
+                s->begin_run();
+                w.thrown = std::current_exception(); // the exception comes out of the co_await
+                return frame;
             }
         }
-        decltype(auto) await_resume() { return inner.await_resume(); }
+        decltype(auto) await_resume()
+        {
+            if (HOT_UNLIKELY(thrown))
+                std::rethrow_exception(std::exchange(thrown, nullptr));
+            return inner.await_resume();
+        }
     };
 
     template <class A> auto await_transform(A&& a)
@@ -524,6 +547,25 @@ inline std::coroutine_handle<> retire_frame(TaskPromiseBase& p, std::coroutine_h
     return next;
 }
 
+// The work of a frame that suspends after its owner destroyed the task from its own run. It runs
+// in the trampoline (after_suspend). Nobody else destroys the frame.
+inline std::coroutine_handle<> retire_own_frame(void* p, std::coroutine_handle<> h) noexcept
+{
+    return retire_frame(*static_cast<TaskPromiseBase*>(p), h, true);
+}
+
+// The work of the end of a frame. It runs in the trampoline (after_suspend). After complete()
+// another thread can destroy the frame. Only the own request is safe to read, and it is read first.
+inline std::coroutine_handle<> finish_frame(void* ctx, std::coroutine_handle<> h) noexcept
+{
+    TaskPromiseBase& p = *static_cast<TaskPromiseBase*>(ctx);
+    const bool own_destroy = p.destroy_requested;
+    std::coroutine_handle<> next = complete(p);
+    if (own_destroy) // the owner destroyed the task from its own run: nobody else does
+        discard_frame(p, h);
+    return next;
+}
+
 // Starts the frame "h" when it did not start. For a started frame it does nothing.
 inline void start_frame(TaskPromiseBase& p, std::coroutine_handle<> h) noexcept
 {
@@ -558,16 +600,8 @@ inline void destroy_frame(TaskPromiseBase& p, std::coroutine_handle<> h) noexcep
 template <class P>
 inline std::coroutine_handle<> TaskPromiseBase::FinalAwaiter::await_suspend(std::coroutine_handle<P> h) const noexcept
 {
-    // After complete() another thread can destroy the frame. Only the own request is safe to read.
-    TaskPromiseBase& p = h.promise();
-    const bool own_destroy = p.destroy_requested;
-    std::coroutine_handle<> next = complete(p);
-    if (own_destroy) // the owner destroyed the task from its own run: nobody else does
-    {
-        report_discarded(p);
-        return end_frame_after_suspend(h, next); // the frame lives until this function returns
-    }
-    return next ? next : std::noop_coroutine();
+    // The frame completes in the trampoline: see after_suspend.
+    return after_suspend(&finish_frame, static_cast<TaskPromiseBase*>(&h.promise()), h);
 }
 
 // The result type part of the promise.
@@ -714,21 +748,29 @@ public:
 
         bool await_ready() const noexcept { return !p_ || p_->is_finished(); }
 
-        // After the lock drops, this function does not touch the awaiter: the owner can
-        // destroy the parent frame (and so the awaiter) when the parent is not running.
+        // The link runs in the trampoline: see detail::after_suspend.
         template <class P> std::coroutine_handle<> await_suspend(std::coroutine_handle<P> parent) noexcept
         {
-            promise_type* cp = p_;
+            return detail::after_suspend(&Awaiter::link<P>, this, parent);
+        }
+
+    private:
+        // The work of the co_await. After the lock drops, it does not touch the awaiter: the
+        // owner can destroy the parent frame (and so the awaiter) when the parent is not running.
+        template <class P> static std::coroutine_handle<> link(void* ctx, std::coroutine_handle<> parent) noexcept
+        {
+            Awaiter& a = *static_cast<Awaiter*>(ctx);
+            promise_type* cp = a.p_;
             detail::TaskPromiseBase* par = nullptr;
             if constexpr (std::is_base_of_v<detail::TaskPromiseBase, P>)
-                par = &parent.promise();
+                par = &std::coroutine_handle<P>::from_address(parent.address()).promise();
             {
                 std::lock_guard<std::mutex> lock(detail::task_mutex());
                 if (cp->finished)
                     return parent; // the task finished after await_ready
                 if (cp->awaited || cp->on_done)
                 {
-                    fail_ = "task is already awaited"; // await_resume throws it
+                    a.fail_ = "task is already awaited"; // await_resume throws it
                     return parent;
                 }
                 if (par) // the parent must not be in the chain of tasks that "cp" awaits
@@ -737,7 +779,7 @@ public:
                     {
                         if (x == par)
                         {
-                            fail_ = cp == par ? "task awaits itself" : "task await cycle";
+                            a.fail_ = cp == par ? "task awaits itself" : "task await cycle";
                             return parent;
                         }
                     }
@@ -746,16 +788,16 @@ public:
                 cp->observed = true;
                 cp->continuation = parent;
                 cp->parent = par;
-                link_ = cp;
-                registered_ = true;
-                cp->awaiter_slot = &link_;
+                a.link_ = cp;
+                a.registered_ = true;
+                cp->awaiter_slot = &a.link_;
                 if (par)
                 {
                     par->awaiting = cp;
                     par->end_run(true); // the parent is suspended from here
                 }
                 if (cp->started)
-                    return std::noop_coroutine(); // it runs or waits already: only its end resumes the parent
+                    return {}; // it runs or waits already: only its end resumes the parent
                 cp->started = true;
                 cp->begin_run(); // the child runs on this thread by the transfer below
             }
@@ -767,11 +809,12 @@ public:
                     std::lock_guard<std::mutex> lock(detail::task_mutex());
                     cp->fail = detail::TaskFail::Reload;
                 }
-                std::coroutine_handle<> next = detail::complete(*cp);
-                return next ? next : std::noop_coroutine();
+                return detail::complete(*cp);
             }
             return Handle::from_promise(*cp); // symmetric transfer: the child runs now
         }
+
+    public:
 
         T await_resume()
         {
