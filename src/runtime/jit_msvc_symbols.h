@@ -16,4 +16,9 @@ namespace hot::jit
 // on other compilers.
 void add_msvc_host_symbols(std::vector<const char*>& names, std::vector<uint64_t>& values);
 
+// Adds the host addresses of the allocator family (jit_host_allocators.h) to the two lists: the
+// names of kHostAllocatorNames that this platform has. The calling code must be host code, so the
+// addresses are the functions of the host C runtime. add_msvc_host_symbols calls it.
+void add_host_allocator_symbols(std::vector<const char*>& names, std::vector<uint64_t>& values);
+
 } // namespace hot::jit

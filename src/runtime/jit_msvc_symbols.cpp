@@ -4,6 +4,34 @@
 
 #include "jit_msvc_symbols.h"
 
+#include "jit_host_allocators.h"
+
+#include <cstddef>
+#include <cstdlib>
+#include <new>
+#ifdef _MSC_VER
+    #include <malloc.h>
+#endif
+
+namespace hot::jit
+{
+
+void add_host_allocator_symbols(std::vector<const char*>& names, std::vector<uint64_t>& values)
+{
+    // The address of the function of the host: this file is in hot_jit_backend (host code).
+#define HOT_JIT_ADD(n, e)                                                                                           \
+    names.push_back(n);                                                                                             \
+    values.push_back(static_cast<uint64_t>(reinterpret_cast<uintptr_t>(reinterpret_cast<const void*>(e))));
+    HOT_JIT_HOST_OPERATORS(HOT_JIT_ADD)
+    HOT_JIT_HOST_C_HEAP(HOT_JIT_ADD)
+#ifdef _MSC_VER
+    HOT_JIT_HOST_MSVC_HEAP(HOT_JIT_ADD)
+#endif
+#undef HOT_JIT_ADD
+}
+
+} // namespace hot::jit
+
 #ifdef _MSC_VER
 
 #include <atomic>
@@ -96,12 +124,6 @@ void* __cdecl emutls_get_address(EmutlsControl* c)
     return it->second.get();
 }
 
-// "??3@YAXPEAX_K@Z": the sized operator delete. The size is not needed.
-void __cdecl sized_delete(void* p, size_t)
-{
-    ::operator delete(p);
-}
-
 uint64_t address(const void* p)
 {
     return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(p));
@@ -118,12 +140,14 @@ void add_msvc_host_symbols(std::vector<const char*>& names, std::vector<uint64_t
     // The first word of an object of std::type_info is the pointer to its virtual table.
     add("??_7type_info@@6B@", *reinterpret_cast<void* const*>(&typeid(int)));
     add("?__type_info_root_node@@3U__type_info_node@@A", &__type_info_root_node);
-    add("??3@YAXPEAX_K@Z", reinterpret_cast<const void*>(&sized_delete));
     add("_Init_thread_header", reinterpret_cast<const void*>(&_Init_thread_header));
     add("_Init_thread_footer", reinterpret_cast<const void*>(&_Init_thread_footer));
     add("__emutls_v._Init_thread_epoch", &g_epoch_control);
     add("__emutls_get_address", reinterpret_cast<const void*>(&emutls_get_address));
     add("_Cnd_timedwait_for_unchecked", reinterpret_cast<const void*>(&_Cnd_timedwait_for_unchecked));
+    // The allocator family: the process search finds some of these names in other modules (an
+    // export of another C runtime). Those use another heap than the host.
+    add_host_allocator_symbols(names, values);
 }
 
 } // namespace hot::jit

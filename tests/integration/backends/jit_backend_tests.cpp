@@ -18,6 +18,7 @@
 #include "support/script_files.h"
 
 #include "jit_engine.h"
+#include "jit_host_allocators.h"
 #include "jit_msvc_symbols.h"
 
 #ifdef _MSC_VER
@@ -33,6 +34,7 @@ extern "C" __declspec(thread) int _Init_thread_epoch;
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -40,6 +42,7 @@ extern "C" __declspec(thread) int _Init_thread_epoch;
 #include <sstream>
 #include <string>
 #include <thread>
+#include <vector>
 
 #ifdef _WIN32
 #include <process.h>
@@ -694,6 +697,42 @@ TEST(JitTests, JitCodeSeesTheHostRuntime)
 #else
     EXPECT_EQ(probe_host_symbols(), "");
 #endif
+}
+
+// The host gives each name of the allocator family that this platform has, one time, with an
+// address. The engine filter knows the same names, and only these names.
+TEST(JitTests, HostGivesTheWholeAllocatorFamily)
+{
+    std::vector<const char*> names;
+    std::vector<uint64_t> values;
+    hot::jit::add_host_allocator_symbols(names, values);
+    ASSERT_EQ(names.size(), values.size());
+#ifdef _MSC_VER
+    const bool msvc = true;
+#else
+    const bool msvc = false;
+#endif
+    size_t expected = 0;
+    for (const hot::jit::HostAllocatorName& a : hot::jit::kHostAllocatorNames)
+    {
+        if (a.msvc_only && !msvc)
+            continue;
+        ++expected;
+        size_t found = 0;
+        for (size_t i = 0; i < names.size(); ++i)
+            if (std::string(names[i]) == a.name)
+            {
+                ++found;
+                EXPECT_NE(values[i], 0u) << a.name;
+            }
+        EXPECT_EQ(found, 1u) << a.name;
+        EXPECT_TRUE(hot::jit::is_host_allocator_name(a.name, std::strlen(a.name))) << a.name;
+    }
+    EXPECT_EQ(names.size(), expected);
+    EXPECT_GE(expected, 24u);
+    EXPECT_FALSE(hot::jit::is_host_allocator_name("mallo", 5));
+    EXPECT_FALSE(hot::jit::is_host_allocator_name("malloc_usable_size", 18));
+    EXPECT_FALSE(hot::jit::is_host_allocator_name("strdup", 6));
 }
 
 } // namespace

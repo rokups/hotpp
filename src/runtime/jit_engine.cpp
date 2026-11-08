@@ -9,6 +9,7 @@
 
 #include "jit_coff_check.h"
 #include "jit_coff_memory.h"
+#include "jit_host_allocators.h"
 
 #include <clang/Basic/Diagnostic.h>
 #include <clang/CodeGen/CodeGenAction.h>
@@ -386,8 +387,18 @@ hot_jit_engine* hot_jit_engine_create(
     // The executable links with -rdynamic: the engine, the runtime and libstdc++ resolve here.
     // On Windows the search reads the exports of each loaded module, for example the host and
     // the DLL C runtime. The static runtime of this DLL has no exports.
+#ifdef _WIN32
+    // The allocator family comes only from the absolute symbols of the host (hot_jit_add). The
+    // search must not take these names from another module, for example another C runtime: that
+    // one has another heap. A name that the host does not give then fails at the link.
+    auto allow = [](const llvm::orc::SymbolStringPtr& name)
+    { return !hot::jit::is_host_allocator_name((*name).data(), (*name).size()); };
+    auto gen = llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
+        engine->jit->getDataLayout().getGlobalPrefix(), std::move(allow));
+#else
     auto gen = llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
         engine->jit->getDataLayout().getGlobalPrefix());
+#endif
     if (!gen)
     {
         put(out_error, "cannot search the process symbols: " + error_text(gen.takeError()) + "\n");
