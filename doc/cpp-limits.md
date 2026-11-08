@@ -77,6 +77,12 @@ The first version gives an error for each form in this list. The text in the sec
 | A variable that is not a module variable and uses a module variable in its initializer | `the variable '<variable>' cannot use the module variable '<name>' in a .cpp script: it gets its value before the module state exists` |
 | A base member hidden by a macro | `a macro hides a member of the base class; write the member in the script text` |
 | An include of a `.hot` script | `a .cpp script cannot include a .hot script` |
+| An include of a `.cpp` file, for example `#include "other.cpp"` | `a .cpp script cannot include a .cpp file: its classes would be plain copies with no hot reload; put the shared code in a header` |
+| In a `.hot` script, an import of a `.cpp` file, for example `using "other.cpp";` | `a .hot script cannot import a .cpp script; put the shared code in a header` |
+| A default member initializer that uses a field, a method or `this` of the object outside a lambda, for example `int b = a + 1;` | `the default member initializer of the field 'b' cannot use 'a' in a .cpp script: the initializer runs outside the object; set 'b' in the constructor` (a module variable, a static member and a lambda with `[this]` are valid) |
+| An assignment of a script object, for example `*a = *b` | `an assignment of an object of the script class '<name>' is not supported in a .cpp script; assign the fields one by one` |
+| `HOT_ALIAS` on a class, for example `class HOT_ALIAS("Old") P` | `'HOT_ALIAS' on the class 'P' is not supported in a .cpp script; use it on a field or a module variable` |
+| A module variable initializer that calls a static method of a script class, for example `int g = P::Make();` | `the initializer of a module variable cannot call the static method 'Make' in a .cpp script: the code of a static method comes after the module block; assign the value in a method or a function` |
 
 For a `const` field or a reference field, use a default member initializer in the class body. For a delegating constructor, write the shared code in a method.
 
@@ -91,6 +97,10 @@ A warning does not stop the translation. These forms give a warning.
 
 An explicit constructor, for example `explicit Player(int hp)`, is allowed. It is a normal constructor.
 
+A written copy constructor `Player(const Player& o)` and a written move constructor `Player(Player&& o)` are allowed. They are normal constructors: `new Player(*p)` calls the copy constructor. With no written copy or move constructor, `new Player(*p)` gives a C++ error in the generated code: `no matching function for call to 'Player__new'`.
+
+A script class can have one native base and more native interface bases, for example `class Player : public Actor, public IDamageable`. The interface must come from a header. A class of the script file is not a valid base.
+
 ## Known limits
 
 - A lambda of an old version that uses the object or a module variable does not run after a reload (see [Lambdas](cpp-translation.html#lambdas)). The call logs a stale call and gives the default value. Set the lambda again after the reload.
@@ -98,7 +108,8 @@ An explicit constructor, for example `explicit Player(int hp)`, is allowed. It i
 
 - A field of a native struct type that has a function pointer can point into the code of an old version. `hotc` finds such a struct in an included header, wherever the `#include` is. Then the old version stays loaded while a live object has the field. `hotc` does not find a struct that you define in the script file itself.
 - A field type that has no copy and no move constructor, for example `std::atomic<int>`, is built in place. A reload cannot carry its value. The new object runs the initializer of the field again. A move-only field, for example `std::unique_ptr`, of the old object is moved-from after a failed migration.
-- An in-class brace initializer of a class-type field is not visited by `libclang`. A module variable inside such an initializer is not rewritten.
+- A default member initializer runs in a function of the state block. The text of the initializer gives the edits, also for a brace initializer of a class-type field. A module variable and a static member in it are valid.
+- `dynamic_cast<P&>(x)` of a script class uses the class records. An object of another class throws `std::bad_cast`, as in C++.
 - A `.cpp` translation does one more `libclang` parse than a `.hot` translation. A reload is slower. One parse of the engine headers takes about 400 ms.
 - A `.cpp` script has no null or bounds checks. The translator keeps a `.cpp` body as C++ text and does not parse expressions. See [Limits](limits.html).
 - A `.cpp` script has no script interfaces. The `interface` type is a feature of `.hot` scripts (see [Interfaces](inheritance.html#interfaces)). A `.cpp` class can still list a native interface base, and it can have pure virtual methods.
