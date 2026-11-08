@@ -71,6 +71,7 @@ class Platoon {
 }
 ```
 
+- A call of an alias builds the target: `Ints()` is `std::vector<int32_t>()`, `Num(3)` is `int32_t(3)`.
 - The translator replaces the alias name by its target when it reads the script. An alias is the type that it names: `$Recruit` is a handle and `Recruit` is a value.
 - A target can use an alias that the script declares before it. A later alias and a cycle (`using A = B; using B = A;`) are errors.
 - An alias in a class body hides a module alias with the same name, in that class.

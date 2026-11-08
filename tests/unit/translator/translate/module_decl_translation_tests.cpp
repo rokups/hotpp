@@ -227,6 +227,45 @@ TEST(ModuleDeclTranslation, AliasOfANativeTypeIsThatType)
     EXPECT_TRUE(has(r.cpp, "using Ints = std::vector<int32_t>;\n")) << r.cpp;
 }
 
+// A call of an alias builds the target type. The C++ alias comes after the code, so the call
+// names the target.
+TEST(ModuleDeclTranslation, AliasAsAConstructorCall)
+{
+    const auto r = translate_alias(
+        "using Thing = ns.Thing;\n"
+        "using Ints = std.vector<int>;\n"
+        "using Num = int;\n"
+        "class A : Unit {\n"
+        "    Ints list;\n"
+        "    void F() {\n"
+        "        var a = Ints();\n"
+        "        list = Ints();\n"
+        "        var t = Thing();\n"
+        "        var n = Num(3);\n"
+        "        a.push_back(t.x + n);\n"
+        "    }\n"
+        "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "auto a = std::vector<int32_t>();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "list = std::vector<int32_t>();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "auto t = ns::Thing();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "int32_t(3)")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "= Ints()")) << r.cpp;
+}
+
+// The translator does not know the names of the C++ code. An unknown name in a body passes, and
+// the C++ compiler reports it in the build (doc/development.md, "Translator"). An unknown base
+// class is an error of the translator.
+TEST(ModuleDeclTranslation, UnknownNameInABodyPassesTheTranslator)
+{
+    const auto r = translate_alias("class A : Unit { void F() { int y = Missing(1); } }\n");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "Missing(1)")) << r.cpp;
+    const auto b = translate_alias("class B : NoSuchBase { }\n");
+    EXPECT_FALSE(b.ok);
+    EXPECT_TRUE(has(b.diagnostics, "base class 'NoSuchBase' is not found")) << b.diagnostics;
+}
+
 // An alias of a script class has the handle storage of the class: field, template argument, "new", null.
 TEST(ModuleDeclTranslation, AliasOfAScriptClassIsAHandle)
 {

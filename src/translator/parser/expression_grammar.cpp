@@ -21,6 +21,7 @@
 #include "lexy_common.hpp"
 #include "statement.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstddef>
 #include <string>
@@ -190,6 +191,47 @@ ast::NameExpr split_name(const ParseState& st, std::string_view t, uint32_t pos)
     return n;
 }
 
+
+// "Alias(args)": the callee is a type alias of a plain name ("using Ints = std.vector<int>;").
+// The module text has the alias after the code that uses it, so the call names the target. The
+// target splits into scope parts and the template arguments of the last part.
+void expand_alias_callee(const ParseState& st, ast::Expr& callee)
+{
+    auto* n = std::get_if<ast::NameExpr>(&callee.v);
+    if (!st.aliases || !n || n->parts.size() != 1 || !n->template_args.empty())
+        return;
+    const auto it = st.aliases->find(n->parts[0]);
+    if (it == st.aliases->end())
+        return;
+    std::string target = it->second;
+    std::string targs;
+    const std::size_t lt = target.find('<');
+    if (lt != std::string::npos)
+    {
+        if (target.back() != '>')
+            return;
+        targs = target.substr(lt);
+        target.erase(lt);
+    }
+    const auto plain = [](char ch) { return is_id(ch) || ch == ':' || ch == '\x01'; };
+    if (target.empty() || !std::all_of(target.begin(), target.end(), plain))
+        return;
+    std::vector<std::string> head;
+    for (std::size_t b = 0; b <= target.size();)
+    {
+        const std::size_t e = std::min(target.find("::", b), target.size());
+        std::string seg = target.substr(b, e - b);
+        if (!seg.empty() && seg.front() == '\x01')
+            seg.erase(0, 1);
+        head.push_back(std::move(seg));
+        b = e + 2;
+    }
+    const uint32_t at = n->part_pos.empty() ? n->pos : n->part_pos[0];
+    n->parts = std::move(head);
+    n->part_pos.assign(n->parts.size(), at);
+    n->template_args = std::move(targs);
+}
+
 // ---------------------------------------------------------------- operator tags
 // An operator name as template arguments: up to 3 chars. The macro HOT_CH3 splits a literal.
 // A class type as a template argument needs C++20, so the name is a list of chars.
@@ -307,9 +349,10 @@ struct Builder
         const uint32_t pos = ast::pos_of(*c);
         return ast::make_expr(ast::TernaryExpr{std::move(c), std::move(a), std::move(b), pos});
     }
-    ExprP operator()(const ParseState&, ExprP f, CallTag, std::vector<ExprP> args) const
+    ExprP operator()(const ParseState& st, ExprP f, CallTag, std::vector<ExprP> args) const
     {
         const uint32_t pos = ast::pos_of(*f);
+        expand_alias_callee(st, *f);
         return ast::make_expr(ast::CallExpr{std::move(f), std::move(args), pos});
     }
     ExprP operator()(const ParseState&, ExprP o, IndexTag, ExprP i) const

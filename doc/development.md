@@ -110,7 +110,7 @@ The tool `hotc` compiles scripts ahead of time. This is not a backend. Any build
     hotc player_v1.hot --gen 1 -I include -I tests/engine --out-dir out/
     hotc player_v2.hot --gen 2 -I include -I tests/engine --out-dir out/
 
-The tool `hotc` has two modes. The default mode builds a `.so`. The mode `--emit-cpp` only translates (see "Translator").
+The tool `hotc` has two modes. The default mode builds a `.so`. The mode `--emit-cpp` only translates (see "Translator"). The mode `--emit-cpp` does not run the C++ compiler: an unknown name in a function body (`Missing(1)`) passes, and the compiler reports it in the build. An unknown base class is an error of the translator.
 
 Command line of the build mode:
 
