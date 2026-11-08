@@ -536,6 +536,20 @@ TEST(JitTests, CoffDataDeclarationsAreDllimport)
     EXPECT_NE(ir.find("declare dso_local i32 @k()"), std::string::npos) << ir;
 }
 
+// The JIT code has no native TLS directory. On the MSVC target an access to a thread variable
+// must not read the TLS guard of the host or call its on-demand TLS init (jit_engine.cpp).
+TEST(JitTests, MsvcThreadVariablesHaveNoTlsGuard)
+{
+    const std::string ir = link_ir_text("x86_64-pc-windows-msvc",
+        "extern \"C\" __declspec(thread) int e;\n"
+        "extern thread_local int t;\n"
+        "int* h() { return &e; }\n"
+        "int* u() { return &t; }\n");
+    EXPECT_NE(ir.find("@__emutls_v.e"), std::string::npos) << ir;
+    EXPECT_EQ(ir.find("__tls_guard"), std::string::npos) << ir;
+    EXPECT_EQ(ir.find("__dyn_tls_on_demand_init"), std::string::npos) << ir;
+}
+
 // An ELF or Mach-O target keeps its declarations: the JIT links them through the GOT.
 TEST(JitTests, NonCoffDeclarationsStay)
 {

@@ -263,6 +263,20 @@ struct CompileSetup
     std::unique_ptr<clang::CompilerInvocation> invocation;
 };
 
+// On the MSVC target clang guards each access to a thread variable with dynamic
+// initialization (also an extern "__declspec(thread)" variable): it reads the TLS
+// variable "__tls_guard" and calls "__dyn_tls_on_demand_init". Both belong to the native TLS
+// directory of the host image, and the CRT of the host runs only the TLS initializers of
+// that image. The JIT code uses emulated TLS and has no TLS directory. So the guard is a
+// symbol that the JIT cannot resolve, and the init call cannot run JIT initializers. The
+// JIT compile turns the guards off (-fno-ms-tls-guards), the same as before MSVC 2019 16.5.
+void no_ms_tls_guards(clang::CompilerInvocation& ci)
+{
+    const llvm::Triple triple(ci.getTargetOpts().Triple);
+    if (triple.isWindowsMSVCEnvironment())
+        ci.getCodeGenOpts().TlsGuards = false;
+}
+
 // Parses the command line like the driver does. The files go into a memory file system.
 CompileSetup make_invocation(const char* const* args, size_t n_args, const char* const* paths,
     const char* const* texts, size_t n_files, std::string& diagnostics)
@@ -284,6 +298,8 @@ CompileSetup make_invocation(const char* const* args, size_t n_args, const char*
     cio.Diags = diags;
     cio.VFS = s.vfs;
     s.invocation = clang::createInvocation(cargs, cio);
+    if (s.invocation)
+        no_ms_tls_guards(*s.invocation);
     return s;
 }
 
