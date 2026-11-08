@@ -29,12 +29,31 @@
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 
+#include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
+
+// The JIT links COFF code with RuntimeDyld. On Windows x64 the engine registers the unwind data
+// of the code (.pdata) with the system, so an exception can pass a JIT frame.
+#if defined(_WIN32) && (defined(_M_X64) || defined(__x86_64__))
+    #define HOT_JIT_COFF_UNWIND 1
+    #include <llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h>
+    #include <llvm/ExecutionEngine/SectionMemoryManager.h>
+
+    #include <map>
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    #include <windows.h>
+#endif
 
 struct hot_jit_ir
 {
@@ -72,6 +91,160 @@ std::string error_text(llvm::Error e)
 {
     return llvm::toString(std::move(e));
 }
+
+#ifdef HOT_JIT_COFF_UNWIND
+
+// The address ranges of the loaded JIT objects: the first address to the end. Each object is
+// one image for the unwind data and for the throw records. The map is never destroyed, because
+// a module can go away after the static destructors of this DLL.
+struct ImageRanges
+{
+    std::mutex mutex;
+    std::map<uintptr_t, uintptr_t> ranges;
+};
+
+ImageRanges& image_ranges()
+{
+    static ImageRanges* ranges = new ImageRanges;
+    return *ranges;
+}
+
+// The image base of the JIT object that holds "p". Zero when "p" is not in JIT memory.
+uintptr_t jit_image_base(const void* p)
+{
+    const auto a = reinterpret_cast<uintptr_t>(p);
+    ImageRanges& r = image_ranges();
+    std::lock_guard<std::mutex> lock(r.mutex);
+    auto it = r.ranges.upper_bound(a);
+    if (it == r.ranges.begin())
+        return 0;
+    --it;
+    return a < it->second ? it->first : 0;
+}
+
+// The memory manager of one COFF object. RuntimeDyld resolves an image-relative relocation
+// (ADDR32NB, for example in .pdata and .xdata) against the lowest section address of the object
+// (RuntimeDyldCOFFX86_64::getImageBase). The unwind table of the system uses the same base.
+// - One reserved block holds all sections. So each REL32 and each ADDR32NB offset fits.
+// - The block has code first, then read-only data, then data. The first code section is the lowest
+//   address. RuntimeDyld computes the base early (a stub of .xdata), after the code sections.
+// - .xdata goes into the code memory. RuntimeDyld puts the jump stub of an external symbol (the
+//   personality routine, a copy constructor of a throw record) into the section of the
+//   relocation. The stub must be executable.
+class CoffMemoryManager : public llvm::SectionMemoryManager
+{
+public:
+    CoffMemoryManager() : llvm::SectionMemoryManager(nullptr, true) {}
+    ~CoffMemoryManager() override { release(); }
+
+    void reserveAllocationSpace(uintptr_t code_size, llvm::Align code_align, uintptr_t ro_size,
+        llvm::Align ro_align, uintptr_t rw_size, llvm::Align rw_align) override
+    {
+        if (code_size == 0 && ro_size == 0 && rw_size == 0)
+            return;
+        // A section takes one alignment more than its size (SectionMemoryManager::allocateSection),
+        // and each section is at least one alignment. Two times the size is enough for each part.
+        const llvm::Align align = std::max(code_align, ro_align);
+        const uintptr_t slack = 4096;
+        llvm::SectionMemoryManager::reserveAllocationSpace(2 * (code_size + ro_size) + slack, align,
+            2 * ro_size + slack, ro_align, 2 * rw_size + slack, rw_align);
+    }
+
+    uint8_t* allocateCodeSection(
+        uintptr_t size, unsigned alignment, unsigned section_id, llvm::StringRef name) override
+    {
+        return note(llvm::SectionMemoryManager::allocateCodeSection(size, alignment, section_id, name), size);
+    }
+
+    uint8_t* allocateDataSection(uintptr_t size, unsigned alignment, unsigned section_id,
+        llvm::StringRef name, bool read_only) override
+    {
+        if (name == ".xdata")
+            return allocateCodeSection(size, alignment, section_id, name);
+        return note(
+            llvm::SectionMemoryManager::allocateDataSection(size, alignment, section_id, name, read_only), size);
+    }
+
+    // RuntimeDyldCOFFX86_64 gives each .pdata section here. The entries are RUNTIME_FUNCTION
+    // records with offsets from the image base.
+    void registerEHFrames(uint8_t* addr, uint64_t, size_t size) override
+    {
+        auto* table = reinterpret_cast<PRUNTIME_FUNCTION>(addr);
+        const auto count = static_cast<DWORD>(size / sizeof(RUNTIME_FUNCTION));
+        if (count > 0 && RtlAddFunctionTable(table, count, static_cast<DWORD64>(low_)))
+            tables_.push_back(table);
+    }
+
+    void deregisterEHFrames() override { release(); }
+
+    bool finalizeMemory(std::string* error) override
+    {
+        if (!registered_ && low_ < high_)
+        {
+            ImageRanges& r = image_ranges();
+            std::lock_guard<std::mutex> lock(r.mutex);
+            r.ranges[low_] = high_;
+            registered_ = true;
+        }
+        return llvm::SectionMemoryManager::finalizeMemory(error);
+    }
+
+private:
+    uint8_t* note(uint8_t* p, uintptr_t size)
+    {
+        if (p)
+        {
+            const auto a = reinterpret_cast<uintptr_t>(p);
+            low_ = std::min(low_, a);
+            high_ = std::max(high_, a + size);
+        }
+        return p;
+    }
+
+    void release()
+    {
+        for (PRUNTIME_FUNCTION table : tables_)
+            RtlDeleteFunctionTable(table);
+        tables_.clear();
+        if (registered_)
+        {
+            ImageRanges& r = image_ranges();
+            std::lock_guard<std::mutex> lock(r.mutex);
+            r.ranges.erase(low_);
+            registered_ = false;
+        }
+    }
+
+    uintptr_t low_ = UINTPTR_MAX;
+    uintptr_t high_ = 0;
+    bool registered_ = false;
+    std::vector<PRUNTIME_FUNCTION> tables_;
+};
+
+    #ifdef _MSC_VER
+// The throw of the MSVC C++ ABI. The throw record (ThrowInfo) has offsets from the image base
+// of its module. The C runtime gets the base with RtlPcToFileHeader, which knows no JIT memory.
+// This function gives the base of the JIT object. The parameters are those of vcruntime (x64).
+void __stdcall jit_cxx_throw_exception(void* object, void* throw_info)
+{
+    constexpr DWORD cxx_exception_code = 0xE06D7363;
+    constexpr ULONG_PTR magic = 0x19930520;
+    constexpr ULONG_PTR pure_magic = 0x01994000;
+    constexpr unsigned pure_attribute = 0x8;
+    uintptr_t base = jit_image_base(throw_info);
+    if (!base && throw_info)
+    {
+        void* image = nullptr;
+        base = reinterpret_cast<uintptr_t>(RtlPcToFileHeader(throw_info, &image));
+    }
+    const unsigned attributes = throw_info ? *static_cast<const unsigned*>(throw_info) : 0;
+    const ULONG_PTR parameters[4] = {(attributes & pure_attribute) ? pure_magic : magic,
+        reinterpret_cast<ULONG_PTR>(object), reinterpret_cast<ULONG_PTR>(throw_info), base};
+    RaiseException(cxx_exception_code, EXCEPTION_NONCONTINUABLE, 4, parameters);
+}
+    #endif
+
+#endif // HOT_JIT_COFF_UNWIND
 
 void init_llvm_once()
 {
@@ -263,7 +436,21 @@ hot_jit_engine* hot_jit_engine_create(
     init_llvm_once();
     if (out_debugger_on)
         *out_debugger_on = 0;
-    auto jit = llvm::orc::LLJITBuilder().create();
+    llvm::orc::LLJITBuilder builder;
+#ifdef HOT_JIT_COFF_UNWIND
+    // The same layer as the LLJIT default for COFF, with the memory manager of the unwind data.
+    builder.setObjectLinkingLayerCreator(
+        [](llvm::orc::ExecutionSession& es,
+            llvm::jitlink::JITLinkMemoryManager&) -> llvm::Expected<std::unique_ptr<llvm::orc::ObjectLayer>>
+        {
+            auto layer = std::make_unique<llvm::orc::RTDyldObjectLinkingLayer>(
+                es, [](const llvm::MemoryBuffer&) { return std::make_unique<CoffMemoryManager>(); });
+            layer->setOverrideObjectFlagsWithResponsibilityFlags(true);
+            layer->setAutoClaimResponsibilityForObjectSymbols(true);
+            return std::unique_ptr<llvm::orc::ObjectLayer>(std::move(layer));
+        });
+#endif
+    auto jit = builder.create();
     if (!jit)
     {
         put(out_error, "cannot make the JIT: " + error_text(jit.takeError()) + "\n");
@@ -314,13 +501,19 @@ hot_jit_dylib* hot_jit_add(hot_jit_engine* engine, const char* id, hot_jit_ir* i
         return nullptr;
     }
     holder->dylib = &*dylib;
-    if (n_abs > 0)
+    llvm::orc::SymbolMap symbols;
+    for (size_t i = 0; i < n_abs; ++i)
+        symbols[jit.mangleAndIntern(abs_names[i])] =
+            llvm::orc::ExecutorSymbolDef(llvm::orc::ExecutorAddr(abs_values[i]),
+                llvm::JITSymbolFlags::Exported | llvm::JITSymbolFlags::Absolute);
+#if defined(HOT_JIT_COFF_UNWIND) && defined(_MSC_VER)
+    // A throw in the JIT code gives the image base of the JIT object (jit_cxx_throw_exception).
+    symbols.try_emplace(jit.mangleAndIntern("_CxxThrowException"),
+        llvm::orc::ExecutorAddr(reinterpret_cast<uint64_t>(&jit_cxx_throw_exception)),
+        llvm::JITSymbolFlags::Exported | llvm::JITSymbolFlags::Absolute);
+#endif
+    if (!symbols.empty())
     {
-        llvm::orc::SymbolMap symbols;
-        for (size_t i = 0; i < n_abs; ++i)
-            symbols[jit.mangleAndIntern(abs_names[i])] =
-                llvm::orc::ExecutorSymbolDef(llvm::orc::ExecutorAddr(abs_values[i]),
-                    llvm::JITSymbolFlags::Exported | llvm::JITSymbolFlags::Absolute);
         if (llvm::Error e = holder->dylib->define(llvm::orc::absoluteSymbols(std::move(symbols))))
         {
             put(out_error, "cannot define the absolute symbols: " + error_text(std::move(e)) + "\n");
