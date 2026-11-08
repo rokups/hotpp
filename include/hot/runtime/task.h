@@ -136,7 +136,7 @@ inline void discard_frame(TaskPromiseBase& p, std::coroutine_handle<> h) noexcep
 // Returns a coroutine that destroys "dead" and then transfers to "next" (a null "next": nothing runs).
 // An awaiter of a frame returns it to end its own frame. It must not destroy the frame itself: the
 // MSVC ABI writes the returned handle into the frame after await_suspend returns. The coroutine
-// is one for each thread (src/runtime/threads.cpp).
+// is one for each thread (src/runtime/frame_reaper.cpp).
 HOT_EXPORT std::coroutine_handle<> end_frame_after_suspend(std::coroutine_handle<> dead, std::coroutine_handle<> next) noexcept;
 // Removes the entries of a parked frame from its scheduler (hot/runtime/scheduler.h). The caller
 // holds task_mutex(). The function takes the lock of the scheduler.
