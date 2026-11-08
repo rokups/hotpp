@@ -30,7 +30,28 @@ bool is_crash(DWORD code)
     return code == EXCEPTION_ACCESS_VIOLATION || code == EXCEPTION_STACK_OVERFLOW || code == 0xC0000374
         || code == EXCEPTION_ILLEGAL_INSTRUCTION || code == EXCEPTION_INT_DIVIDE_BY_ZERO
         || code == EXCEPTION_PRIV_INSTRUCTION || code == EXCEPTION_IN_PAGE_ERROR
-        || code == 0xC0000421; // STATUS_BAD_FUNCTION_TABLE: the unwind found a bad function table
+        || code == 0xC0000421  // STATUS_VERIFIER_STOP: verifier stop (page heap)
+        || code == 0xC00000FF; // STATUS_BAD_FUNCTION_TABLE: the unwind found a bad function table
+}
+
+// The text of an exception code, for the report line.
+const char* code_text(DWORD code)
+{
+    switch (code)
+    {
+    case EXCEPTION_ACCESS_VIOLATION: return "access violation";
+    case EXCEPTION_STACK_OVERFLOW: return "stack overflow";
+    case EXCEPTION_ILLEGAL_INSTRUCTION: return "illegal instruction";
+    case EXCEPTION_INT_DIVIDE_BY_ZERO: return "integer divide by zero";
+    case EXCEPTION_PRIV_INSTRUCTION: return "privileged instruction";
+    case EXCEPTION_IN_PAGE_ERROR: return "in-page error";
+    case 0xC0000374: return "heap corruption";
+    // The page heap verifier ends the process with this code. It does that without an exception,
+    // so this handler does not run for it: run the test under tools/win-debug-run for the text.
+    case 0xC0000421: return "verifier stop (page heap)";
+    case 0xC00000FF: return "bad function table";
+    default: return "other";
+    }
 }
 
 void print_address(const char* label, void* address);
@@ -117,8 +138,8 @@ void print_address(const char* label, void* address)
 void write_report(EXCEPTION_POINTERS* info, const char* kind)
 {
     const EXCEPTION_RECORD* record = info->ExceptionRecord;
-    std::fprintf(stderr, "[seh] %s exception 0x%08lx in thread %lu\n", kind,
-        static_cast<unsigned long>(record->ExceptionCode), GetCurrentThreadId());
+    std::fprintf(stderr, "[seh] %s exception 0x%08lx (%s) in thread %lu\n", kind,
+        static_cast<unsigned long>(record->ExceptionCode), code_text(record->ExceptionCode), GetCurrentThreadId());
     // A fixture DLL can load after SymInitialize.
     if (g_symbols)
         SymRefreshModuleList(GetCurrentProcess());

@@ -604,6 +604,24 @@ jobs:
             ctest --preset vs-both-rel -j "$NUMBER_OF_PROCESSORS"
           fi
 
+      # Diagnostic: under the page heap, JIT tests end with 0xC0000421 (a verifier stop) and the
+      # handlers of the process do not run. Three of them run again under a small debugger. It
+      # prints the verifier text and the stack of the thread (tools/win-debug-run).
+      - name: Run JIT tests under a debugger
+        if: always() && matrix.backend == 'jit'
+        continue-on-error: true
+        timeout-minutes: 45
+        shell: pwsh
+        run: |
+          $cdb = "${env:ProgramFiles(x86)}\Windows Kits\10\Debuggers\x64\cdb.exe"
+          Write-Output "cdb.exe exists: $(Test-Path $cdb) ($cdb)"
+          $out = "$env:RUNNER_TEMP\debug_run"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          cl /nologo /EHsc /O1 /Zi tools\win-debug-run\debug_run.cpp /Fe"$out\debug_run.exe" /Fo"$out\\" /Fd"$out\\" dbghelp.lib
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          python tools\win-debug-run\run_tests.py --preset vs-both-rel --harness "$out\debug_run.exe" --timeout 600 --cdb $cdb `
+            'Launcher.LoopRunsFrames' 'JitTests.PrecompiledHeaderWorks' 'Backends/FamilyTests.*/Jit'
+
   # The AOT test builds on Windows. The job builds and runs the whole suite in a separate AOT
   # build (the preset vs-aot or vs-aot-opt). The two presets inherit vs-files: they need no JIT,
   # no zlib and no zstd. The steps are the steps of windows-msvc without the SDK.
