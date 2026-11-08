@@ -225,4 +225,14 @@ std::string cxx_driver(const std::string& compiler)
     return compiler;
 }
 
+std::string jit_virtual_path(const std::string& dir, const std::string& file, const std::string& cwd)
+{
+    std::string drive;
+    const bool has_drive = cwd.size() >= 2 && cwd[1] == ':' &&
+        ((cwd[0] >= 'A' && cwd[0] <= 'Z') || (cwd[0] >= 'a' && cwd[0] <= 'z'));
+    if (has_drive && !dir.empty() && dir[0] == '/')
+        drive = cwd.substr(0, 2);
+    return drive + dir + "/" + file;
+}
+
 } // namespace hot

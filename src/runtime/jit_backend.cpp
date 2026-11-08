@@ -42,7 +42,8 @@ namespace hot
 namespace
 {
 
-// A path that does not exist on disk. The compile reads the file from memory.
+// A path that does not exist on disk. The compile reads the file from memory. Use
+// jit_virtual_path() for a path in this dir: on Windows the path needs a drive.
 constexpr const char* kVirtualDir = "/hot-jit-virtual";
 
 using Clock = std::chrono::steady_clock;
@@ -389,7 +390,10 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
         ++epoch_;
     const std::string id =
         stem + ".g" + std::to_string(generation) + ".e" + std::to_string(epoch_) + "." + std::to_string(sequence_++);
-    const std::string cpp_path = std::string(kVirtualDir) + "/" + id + ".cpp";
+    // On Windows the path gets the drive of the working directory, as Clang reads it.
+    std::error_code cwd_ec;
+    const std::string cpp_path =
+        jit_virtual_path(kVirtualDir, id + ".cpp", std::filesystem::current_path(cwd_ec).string());
 
     timings_ = {};
     Clock::time_point t0 = Clock::now();

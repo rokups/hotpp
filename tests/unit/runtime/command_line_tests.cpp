@@ -153,3 +153,14 @@ TEST(CommandLine, MacosEntitlementHint)
         std::string::npos);
     EXPECT_EQ(hot::macos_entitlement_hint("Symbols not found: [ _foo ]"), "");
 }
+
+// A virtual path of the JIT gets the drive of the working directory on Windows. Clang reads "/x"
+// as "D:/x" there, so the memory file system must hold the file under "D:/x".
+TEST(CommandLine, JitVirtualPath)
+{
+    EXPECT_EQ(hot::jit_virtual_path("/hot-jit-virtual", "a.g1.e0.0.cpp", "/home/u"), "/hot-jit-virtual/a.g1.e0.0.cpp");
+    EXPECT_EQ(hot::jit_virtual_path("/hot-jit-virtual", "a.cpp", "D:\\a\\hotpp"), "D:/hot-jit-virtual/a.cpp");
+    EXPECT_EQ(hot::jit_virtual_path("/hot-jit-virtual", "a.cpp", "c:/w"), "c:/hot-jit-virtual/a.cpp");
+    EXPECT_EQ(hot::jit_virtual_path("/hot-jit-virtual", "a.cpp", ""), "/hot-jit-virtual/a.cpp");
+    EXPECT_EQ(hot::jit_virtual_path("/hot-jit-virtual", "a.cpp", "1:/x"), "/hot-jit-virtual/a.cpp");
+}

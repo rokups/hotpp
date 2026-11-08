@@ -66,4 +66,10 @@ std::string macos_entitlement_hint(const std::string& error);
 // names do not change.
 std::string cxx_driver(const std::string& compiler);
 
+// The path of a virtual file of the JIT compile: "<dir>/<file>". "dir" starts with "/". On
+// Windows, "/x" has no drive, and Clang adds the drive of the working directory ("D:/x"). Thus
+// the path gets the drive of "cwd" when "cwd" starts with a drive ("D:"). The memory file system
+// and the compiler then see the same absolute path. Other paths do not change.
+std::string jit_virtual_path(const std::string& dir, const std::string& file, const std::string& cwd);
+
 } // namespace hot
