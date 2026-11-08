@@ -41,3 +41,14 @@ target_compile_definitions(integration_async_tests PRIVATE
     HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
     ASYNC_INCLUDE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 hot_gtest(integration_async_tests)
+
+# A C++17 host that does not use hot::Task in its own code. It loads an async script with the
+# backends. The test fails when the runtime does not export the Task helpers to such a host.
+add_executable(integration_async_plain_host_tests plain_host_tests.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+target_include_directories(integration_async_plain_host_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
+target_link_libraries(integration_async_plain_host_tests PRIVATE hot_backend GTest::gtest_main)
+set_target_properties(integration_async_plain_host_tests PROPERTIES ENABLE_EXPORTS ON CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+target_compile_definitions(integration_async_plain_host_tests PRIVATE HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+hot_gtest(integration_async_plain_host_tests)

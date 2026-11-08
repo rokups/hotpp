@@ -73,5 +73,12 @@ HOT_EXPORT std::coroutine_handle<> end_frame_after_suspend(std::coroutine_handle
     return reaper.loop;
 }
 
+// The C++17 part of the runtime (threads.cpp) refers to this function. Thus a host that does not
+// use Task in its own code also links this file, and a script with async methods finds the export.
+void* frame_reaper_link() noexcept
+{
+    return reinterpret_cast<void*>(&end_frame_after_suspend);
+}
+
 } // namespace detail
 } // namespace hot
