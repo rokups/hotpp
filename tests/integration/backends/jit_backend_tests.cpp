@@ -18,6 +18,14 @@
 #include "support/script_files.h"
 
 #include "jit_engine.h"
+#include "jit_msvc_symbols.h"
+
+#ifdef _MSC_VER
+    #include <malloc.h>
+    #include <typeinfo>
+// The epoch of the local statics of the thread (jit_msvc_symbols.cpp).
+extern "C" __declspec(thread) int _Init_thread_epoch;
+#endif
 
 #include <gtest/gtest.h>
 
@@ -473,14 +481,17 @@ TEST(JitTests, CppScriptWarningSpeaksScriptText)
         EXPECT_EQ(r.error.find(generated), std::string::npos) << generated << "\n" << r.error;
 }
 
-// The JIT engine compiles "text" for "target" and gives the IR text of the link preparation.
-std::string link_ir_text(const std::string& target, const std::string& text)
+// The JIT engine compiles "text" for "target" (empty: the host). Null on failure.
+hot_jit_ir* compile_ir(const std::string& target, const std::string& text)
 {
     const std::string path = hot::jit_virtual_path("/hot-jit-test", "link.cpp", fs::current_path().string());
     const std::string target_arg = "--target=" + target;
+    std::vector<std::string> flags = hot::host_ms_runtime_lib_flags(target);
     std::vector<const char*> args = {"clang++", "-std=c++17"};
     if (!target.empty())
         args.push_back(target_arg.c_str());
+    for (const std::string& f : flags)
+        args.push_back(f.c_str());
     args.push_back(path.c_str());
     const char* paths[] = {path.c_str()};
     const char* texts[] = {text.c_str()};
@@ -490,7 +501,14 @@ std::string link_ir_text(const std::string& target, const std::string& text)
     const std::string messages = diagnostics ? diagnostics : "";
     hot_jit_string_free(diagnostics);
     EXPECT_EQ(ok, 1) << messages;
-    if (!ok)
+    return ok ? ir : nullptr;
+}
+
+// The IR text of the link preparation of hot_jit_add for "text" compiled for "target".
+std::string link_ir_text(const std::string& target, const std::string& text)
+{
+    hot_jit_ir* ir = compile_ir(target, text);
+    if (!ir)
         return std::string();
     char* ir_text = hot_jit_ir_link_text(ir);
     std::string out = ir_text ? ir_text : "";
@@ -529,6 +547,99 @@ TEST(JitTests, NonCoffDeclarationsStay)
     EXPECT_NE(ir.find("@g = external global i32"), std::string::npos) << ir;
     EXPECT_EQ(ir.find("dllimport"), std::string::npos) << ir;
     EXPECT_EQ(ir.find("__emutls_v"), std::string::npos) << ir;
+}
+
+#ifdef _MSC_VER
+// A probe in JIT code gives the address of a C runtime symbol and of runtime state as the JIT
+// code sees it. These must be the addresses of the host: else the JIT code uses another heap or
+// another state. The text names each symbol that differs.
+std::string probe_host_symbols()
+{
+    const std::string source = "typedef decltype(sizeof(0)) size_t;\n"
+                               "extern \"C\" __declspec(dllimport) void* malloc(size_t);\n"
+                               "extern \"C\" __declspec(dllimport) void free(void*);\n"
+                               "extern \"C\" __declspec(dllimport) void* _aligned_malloc(size_t, size_t);\n"
+                               "extern \"C\" __declspec(dllimport) void _aligned_free(void*);\n"
+                               "extern \"C\" __declspec(thread) int _Init_thread_epoch;\n"
+                               "struct __type_info_node;\n"
+                               "extern __type_info_node __type_info_root_node;\n"
+                               "extern \"C\" const void* probe_malloc() { return (const void*)&malloc; }\n"
+                               "extern \"C\" const void* probe_free() { return (const void*)&free; }\n"
+                               "extern \"C\" const void* probe_aligned_malloc() { return (const void*)&_aligned_malloc; }\n"
+                               "extern \"C\" const void* probe_aligned_free() { return (const void*)&_aligned_free; }\n"
+                               "extern \"C\" const void* probe_epoch() { return &_Init_thread_epoch; }\n"
+                               "extern \"C\" const void* probe_type_info_root() { return &__type_info_root_node; }\n";
+    hot_jit_ir* ir = compile_ir("", source);
+    if (!ir)
+        return "the probe does not compile";
+    auto take = [](char* text) {
+        std::string out = text ? text : "";
+        hot_jit_string_free(text);
+        return out;
+    };
+    char* error = nullptr;
+    char* debugger_error = nullptr;
+    int debugger_on = 0;
+    hot_jit_engine* engine = hot_jit_engine_create(0, &debugger_on, &error, &debugger_error);
+    take(debugger_error);
+    if (!engine)
+    {
+        hot_jit_ir_free(ir);
+        return "no JIT: " + take(error);
+    }
+    std::vector<const char*> names;
+    std::vector<uint64_t> values;
+    hot::jit::add_msvc_host_symbols(names, values);
+    hot_jit_dylib* dylib = hot_jit_add(engine, "probe", ir, names.data(), values.data(), names.size(), &error);
+    if (!dylib)
+    {
+        hot_jit_engine_free(engine);
+        return "the probe does not link: " + take(error);
+    }
+    struct Probe
+    {
+        const char* function;
+        const void* host;
+    };
+    const Probe probes[] = {
+        {"probe_malloc", reinterpret_cast<const void*>(&malloc)},
+        {"probe_free", reinterpret_cast<const void*>(&free)},
+        {"probe_aligned_malloc", reinterpret_cast<const void*>(&_aligned_malloc)},
+        {"probe_aligned_free", reinterpret_cast<const void*>(&_aligned_free)},
+        {"probe_epoch", &_Init_thread_epoch},
+        {"probe_type_info_root", &__type_info_root_node},
+    };
+    std::string differ;
+    for (const Probe& p : probes)
+    {
+        void* f = hot_jit_lookup(dylib, p.function, &error);
+        if (!f)
+        {
+            differ += std::string(p.function) + " (" + take(error) + ") ";
+            continue;
+        }
+        const void* jit = reinterpret_cast<const void* (*)()>(f)();
+        if (jit != p.host)
+        {
+            std::ostringstream os;
+            os << p.function << " (JIT " << jit << ", host " << p.host << ") ";
+            differ += os.str();
+        }
+    }
+    hot_jit_remove(dylib);
+    hot_jit_engine_free(engine);
+    return differ;
+}
+#endif
+
+// Windows: the JIT code sees the C runtime functions and the runtime state of the host.
+TEST(JitTests, JitCodeSeesTheHostRuntime)
+{
+#ifndef _MSC_VER
+    GTEST_SKIP() << "Windows only";
+#else
+    EXPECT_EQ(probe_host_symbols(), "");
+#endif
 }
 
 } // namespace

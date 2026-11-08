@@ -511,7 +511,7 @@ jobs:
     name: test-windows (${{ matrix.backend }})
     needs: build-windows
     runs-on: windows-2022
-    timeout-minutes: 60
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -521,6 +521,9 @@ jobs:
         shell: bash
     env:
       HOT_BACKEND: ${{ matrix.backend }}
+      # Diagnostic: the full page heap finds the first bad heap write in the JIT tests. Set 0 to
+      # remove it. The page heap makes the tests slow, so the timeouts are long.
+      HOT_CI_PAGEHEAP: ${{ matrix.backend == 'jit' && '1' || '0' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -573,9 +576,28 @@ jobs:
           mkdir -p cmake-build
           tar -C cmake-build -I 'zstd -d' -xf "$archive"
 
+      # Image File Execution Options: GlobalFlag 0x02000000 is the page heap, PageHeapFlags 3 is the
+      # full page heap. Each test executable of the build tree gets the two values.
+      - name: Enable the full page heap for the test executables
+        if: env.HOT_CI_PAGEHEAP == '1'
+        shell: pwsh
+        run: |
+          $ifeo = 'HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options'
+          $names = Get-ChildItem -Path cmake-build/vs-both -Recurse -Filter '*_tests.exe' | Select-Object -ExpandProperty Name -Unique
+          foreach ($exe in $names) {
+            reg add "$ifeo\$exe" /v GlobalFlag /t REG_DWORD /d 0x02000000 /f | Out-Null
+            reg add "$ifeo\$exe" /v PageHeapFlags /t REG_DWORD /d 3 /f | Out-Null
+            Write-Output "page heap: $exe"
+          }
+
       - name: Test
-        timeout-minutes: 40
-        run: ctest --preset vs-both-rel -j "$NUMBER_OF_PROCESSORS"
+        timeout-minutes: ${{ env.HOT_CI_PAGEHEAP == '1' && 100 || 40 }}
+        run: |
+          if [ "$HOT_CI_PAGEHEAP" = "1" ]; then
+            ctest --preset vs-both-rel -j "$NUMBER_OF_PROCESSORS" --timeout 3000
+          else
+            ctest --preset vs-both-rel -j "$NUMBER_OF_PROCESSORS"
+          fi
 
   # The AOT test builds on Windows. The job builds and runs the whole suite in a separate AOT
   # build (the preset vs-aot or vs-aot-opt). The two presets inherit vs-files: they need no JIT,
