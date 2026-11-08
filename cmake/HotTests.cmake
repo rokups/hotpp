@@ -36,6 +36,10 @@ function(hot_gtest target)
     if(_hot_exports)
         hot_export_host(${target})
     endif()
+    # MSVC: a crash report with the module, the offset and the stack of an SEH exception.
+    if(MSVC AND EXISTS "${HOT_CMAKE_DIR}/../tests/support/seh_report.cpp")
+        target_sources(${target} PRIVATE "${HOT_CMAKE_DIR}/../tests/support/seh_report.cpp")
+    endif()
     gtest_discover_tests(${target}
         ${_hot_discovery}
         ${A_UNPARSED_ARGUMENTS}
