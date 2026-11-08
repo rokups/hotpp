@@ -19,6 +19,9 @@ endif()
 # Only HOT_EXPORT exports a symbol. The test fails when a CMake file exports all symbols.
 add_test(NAME no_export_all_symbols
     COMMAND ${CMAKE_COMMAND} -DROOT=${PROJECT_SOURCE_DIR} -P ${CMAKE_CURRENT_SOURCE_DIR}/check_no_export_all.cmake)
+# A script library that hotc does not build allows undefined symbols on macOS only.
+add_test(NAME module_link_options
+    COMMAND ${CMAKE_COMMAND} -DROOT=${PROJECT_SOURCE_DIR} -P ${CMAKE_CURRENT_SOURCE_DIR}/check_module_link.cmake)
 # The tests. Each folder has its own CMakeLists.txt.
 add_subdirectory(engine)
 # The scripts need hotc (hot::hotc). A cross build has it only with HOT_HOST_HOTC.

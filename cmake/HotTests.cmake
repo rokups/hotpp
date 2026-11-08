@@ -11,6 +11,7 @@
 # before the tests start. Use PROPERTIES to give more test properties. Callers must not set
 # FIXTURES_REQUIRED in PROPERTIES. The wrapper sets it, and a second value would replace it.
 include(GoogleTest)
+include(${CMAKE_CURRENT_LIST_DIR}/HotModuleLink.cmake)
 
 # The dir of this file. CMAKE_CURRENT_LIST_DIR is not valid inside add_test arguments.
 set(HOT_CMAKE_DIR ${CMAKE_CURRENT_LIST_DIR})

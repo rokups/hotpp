@@ -14,6 +14,8 @@ function(hot_test_fixture name source host)
     add_library(${name} SHARED ${source})
     target_include_directories(${name} PRIVATE ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/tests/engine)
     set_target_properties(${name} PROPERTIES PREFIX "")
+    # The host provides the hot:: symbols at run time. The Mach-O linker needs a flag for this.
+    hot_allow_undefined_symbols(${name})
     if(WIN32)
         target_compile_definitions(${name} PRIVATE HOT_MODULE_BUILD=1)
         target_link_libraries(${name} PRIVATE ${host})
