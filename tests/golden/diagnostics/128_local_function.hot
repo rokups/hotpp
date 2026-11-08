@@ -1,0 +1,7 @@
+// A local function is an error. Use a lambda or a method.
+class Calc {
+    int F(int v) {
+        int Sq(int k) { return k * k; }
+        return v;
+    }
+}

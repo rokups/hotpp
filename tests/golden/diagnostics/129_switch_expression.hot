@@ -1,0 +1,7 @@
+// A switch expression is an error. Use a switch statement or the operator ?:.
+class Calc {
+    int F(int v) {
+        var r = v switch { 1 => 10, _ => 0 };
+        return r;
+    }
+}

@@ -1,0 +1,3 @@
+130_virtual_default_argument.hot:3:13: error: default values are not allowed on virtual or override methods
+    3 |     virtual int Sides(int n = 3) { return n; }
+1 error generated.

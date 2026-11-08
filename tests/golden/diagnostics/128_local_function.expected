@@ -1,0 +1,3 @@
+128_local_function.hot:4:9: error: a local function is not supported; use a lambda (var f = (int x) => x * 2;) or a method
+    4 |         int Sq(int k) { return k * k; }
+1 error generated.

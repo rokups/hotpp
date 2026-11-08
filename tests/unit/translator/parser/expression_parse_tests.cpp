@@ -284,7 +284,7 @@ TEST(ExpressionParse, ParenthesizedTextIsNotACast)
     EXPECT_EQ(round_trip("(x) => { }"), "[=](auto x) {}");
     EXPECT_EQ(round_trip("(int x) => { }"), "[=](int32_t x) {}");
     // A name without a mark is not sure to be a type: it is no cast. Use static_cast.
-    EXPECT_EQ(one_error("(Foo)x"), "1:6: expected end of expression");
+    EXPECT_EQ(one_error("(Foo)x"), "1:6: a C style cast is only for a builtin type or 'T*'; use static_cast<T>(e)");
 }
 
 // A "[" in the position of an operand starts a collection literal. A postfix "[" is an index.

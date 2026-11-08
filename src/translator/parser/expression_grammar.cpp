@@ -366,6 +366,10 @@ struct Builder
     ExprP operator()(const ParseState& st, ExprP f, CallTag, std::vector<ExprP> args) const
     {
         const uint32_t pos = ast::pos_of(*f);
+        // "nameof(x)" is a C# form. The script has no such operator: the name is a plain string.
+        if (const auto* n = std::get_if<ast::NameExpr>(&f->v);
+            n != nullptr && n->parts.size() == 1 && n->parts[0] == "nameof" && n->template_args.empty())
+            st.diag->add(pos, *st.map, "'nameof' is not supported; write the name as a string literal");
         expand_alias_callee(st, *f);
         return ast::make_expr(ast::CallExpr{std::move(f), std::move(args), pos});
     }
@@ -1198,6 +1202,58 @@ struct list_entry
     }, [](std::vector<ExprP>&& v, const char* end) { return ListResult{std::move(v), end}; });
 };
 
+// The message of an "expected end of expression" error. Some text after an expression is a
+// C++ or C# form that the script does not have. The message then names the form and the fix.
+std::string end_of_expr_message(std::string_view text, uint32_t at)
+{
+    auto id_char = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_'; };
+    const std::size_t n = text.size();
+    std::size_t w = at;
+    while (w < n && id_char(text[w]))
+        ++w;
+    if (text.compare(at, w - at, "switch") == 0 && w - at == 6)
+        return "a switch expression is not supported; use a switch statement or '?:'";
+    if (at < n && (text[at] == '"' || text[at] == '\''))
+    {
+        std::size_t b = at;
+        while (b > 0 && id_char(text[b - 1]))
+            --b;
+        const std::string_view prefix = text.substr(b, at - b);
+        if (prefix == "R" || prefix == "LR" || prefix == "uR" || prefix == "UR" || prefix == "u8R")
+            return "a raw string literal is not supported; use a string with escapes";
+    }
+    // "(Type)e" with a type that is not a builtin type: the parse reads "(Type)" as an expression.
+    std::size_t c = at;
+    while (c > 0 && std::isspace(static_cast<unsigned char>(text[c - 1])) != 0)
+        --c;
+    const bool operand_next = at < n && (id_char(text[at]) || text[at] == '(' || text[at] == '"');
+    if (operand_next && c > 0 && text[c - 1] == ')')
+    {
+        std::size_t o = c - 1;
+        bool type_like = true;
+        while (o > 0 && text[o - 1] != '(')
+        {
+            const char ch = text[o - 1];
+            if (!(id_char(ch) || ch == '.' || ch == '<' || ch == '>' || ch == ',' || ch == '*' || ch == ' '))
+                type_like = false;
+            --o;
+        }
+        // The "(" must not end a call: no name, ")" or "]" before it.
+        std::size_t q = o > 0 ? o - 1 : 0;
+        while (q > 0 && std::isspace(static_cast<unsigned char>(text[q - 1])) != 0)
+            --q;
+        std::size_t wb = q;
+        while (wb > 0 && id_char(text[wb - 1]))
+            --wb;
+        const std::string_view word = text.substr(wb, q - wb);
+        const bool keyword = word == "return" || word == "await" || word == "throw" || word == "case" || word == "in";
+        const bool call = q > 0 && !keyword && (id_char(text[q - 1]) || text[q - 1] == ')' || text[q - 1] == ']');
+        if (o > 0 && type_like && !call && o + 1 < c)
+            return "a C style cast is only for a builtin type or 'T*'; use static_cast<T>(e)";
+    }
+    return e_end_of_expr::name;
+}
+
 // The result of a parse and the count of the errors that lexy found.
 template <typename Entry, typename Result>
 bool run(ParseInput in, Span span, Diagnostics& diag, Result& out, uint32_t& end_offset)
@@ -1208,9 +1264,28 @@ bool run(ParseInput in, Span span, Diagnostics& diag, Result& out, uint32_t& end
     const ParseState st{in.text.data(), in.map, &diag, size, in.array_tpl, in.aliases};
     const auto input = lexy::string_input<Encoding>(in.text.data() + begin, end - begin);
     int syntax_errors = 0;
+    bool spaceship = false;
     auto sink = lexy::callback<void>([&](const auto&, const auto& e)
     {
         ++syntax_errors;
+        // "a <=> b": the parse reads "<=" and then fails at ">". One error names the operator.
+        const char* p = e.position();
+        if (p - in.text.data() >= 2 && p[0] == '>' && p[-1] == '=' && p[-2] == '<')
+        {
+            if (!spaceship)
+                diag.add(st.offset(p - 2), *in.map, "the operator '<=>' is not supported; use '<', '==' and '>'");
+            spaceship = true;
+            return;
+        }
+        // "(a, b)": a "," in parentheses is a tuple expression, which the script does not have.
+        if constexpr (std::is_same_v<std::decay_t<decltype(e)>, lexy::error<lexy::input_reader<decltype(input)>, lexy::expected_literal>>)
+        {
+            if (p[0] == ',' && e.length() == 1 && e.string()[0] == ')')
+            {
+                diag.add(st.offset(p), *in.map, "a tuple expression '(a, b)' is not supported; use std.make_tuple(a, b)");
+                return;
+            }
+        }
         detail::report(st, e);
     });
     auto result = lexy::parse<Entry>(input, st, sink);
@@ -1221,7 +1296,7 @@ bool run(ParseInput in, Span span, Diagnostics& diag, Result& out, uint32_t& end
     // The end of the parse must be the end of the span.
     if (end_offset != end)
     {
-        diag.add(end_offset, *in.map, e_end_of_expr::name);
+        diag.add(end_offset, *in.map, end_of_expr_message(in.text, end_offset));
         return false;
     }
     return true;

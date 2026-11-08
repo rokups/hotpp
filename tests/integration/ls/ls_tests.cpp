@@ -1654,7 +1654,7 @@ std::set<std::string> parser_keywords()
 {
     // C++ words that the parser accepts to give a clear error, and "extern", which is reserved.
     const std::set<std::string> not_highlighted = {
-        "static", "thread_local", "friend", "mutable", "volatile", "operator", "extern"};
+        "static", "thread_local", "friend", "mutable", "volatile", "operator", "extern", "goto"};
     // Keywords that the parser reads without LEXY_KEYWORD.
     const std::set<std::string> other_parser_words = {"delete"};
 

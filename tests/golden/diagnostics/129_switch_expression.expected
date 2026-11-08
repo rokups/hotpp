@@ -1,0 +1,3 @@
+129_switch_expression.hot:4:19: error: a switch expression is not supported; use a switch statement or '?:'
+    4 |         var r = v switch { 1 => 10, _ => 0 };
+1 error generated.

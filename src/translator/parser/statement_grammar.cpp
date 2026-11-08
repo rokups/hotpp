@@ -86,6 +86,7 @@ constexpr auto kw_default = LEXY_KEYWORD("default", id);
 constexpr auto kw_try = LEXY_KEYWORD("try", id);
 constexpr auto kw_catch = LEXY_KEYWORD("catch", id);
 constexpr auto kw_throw = LEXY_KEYWORD("throw", id);
+constexpr auto kw_goto = LEXY_KEYWORD("goto", id);
 constexpr auto kw_true = LEXY_KEYWORD("true", id);
 constexpr auto kw_false = LEXY_KEYWORD("false", id);
 
@@ -386,10 +387,13 @@ struct for_init_cfg
 // the list means: not a declaration. So "a < b > c;" declares "c" with the type "a<b>", as
 // in C++. "a < b;" has no ">", so it stays an expression. Write "(a < b) > c;" to compare.
 // In the head of a foreach statement, the keyword "in" follows the name, not "=" or ";".
+// A local function has the form "Type name(" at the start of a statement. No expression
+// has this form, so the look-ahead with DeclEnd::LocalFn finds it and gives an error.
 enum class DeclEnd
 {
     Stmt,
-    ForEach
+    ForEach,
+    LocalFn
 };
 
 // A cursor over a copy of a lexy reader. A char is a value 0..255. The end of the text is -1.
@@ -581,6 +585,10 @@ template <DeclEnd E, typename Reader> bool find_decl_type(DeclCursor<Reader> c, 
                 {
                     end = n == ';' || (n == '=' && next.get(1) != '=');
                 }
+                else if constexpr (E == DeclEnd::LocalFn)
+                {
+                    end = n == '(';
+                }
                 else
                 {
                     end = next.at_id0() && next.word() == "in";
@@ -639,7 +647,16 @@ struct probe_decl_foreach
         return find_decl_type<DeclEnd::ForEach>(DeclCursor<Reader>(r), name);
     }
 };
+struct probe_local_fn
+{
+    template <typename Reader> static bool run(Reader r, typename Reader::marker* name)
+    {
+        return find_decl_type<DeclEnd::LocalFn>(DeclCursor<Reader>(r), name);
+    }
+};
 HOT_ERROR_TAG(e_decl_type, "expected a declaration");
+HOT_ERROR_TAG(e_local_fn, "a local function is not supported; use a lambda (var f = (int x) => x * 2;) or a method");
+HOT_ERROR_TAG(e_goto, "'goto' is not supported; use a loop with 'break' or 'continue', or a method with 'return'");
 
 // A branch rule over a plain C++ look-ahead. Probe::run decides the branch.
 // Consume false: the rule is a peek. It consumes no text and produces no value.
@@ -695,6 +712,8 @@ template <typename Probe, bool Consume> struct probe_rule : dsl::branch_base
 
 // The peek of "Type name" in a statement and in the init of a for statement.
 constexpr auto decl_ahead = probe_rule<probe_decl_stmt, false>{};
+// The peek of "Type name(" (a local function, an error).
+constexpr auto local_fn_ahead = probe_rule<probe_local_fn, false>{};
 // The type of "Type name". It produces the begin of the type and the begin of the name.
 template <DeclEnd E>
 constexpr auto decl_type =
@@ -1434,7 +1453,9 @@ struct stmt
         | dsl::peek(kw_throw) >> dsl::p<throw_stmt> | dsl::peek(kw_try) >> dsl::p<try_stmt>
         | dsl::peek(dsl::lit_c<';'>) >> dsl::p<empty_stmt> | dsl::peek(dsl::eof | dsl::lit_c<'}'>) >> dsl::error<e_stmt>
         | dsl::peek(kw_extern) >> dsl::error<e_extern_reserved> | dsl::peek(kw_ref) >> dsl::p<decl_stmt>
+        | dsl::peek(kw_goto) >> dsl::error<e_goto> | dsl::peek(kw_void) >> dsl::error<e_local_fn>
         | dsl::peek(dsl::lit_c<'['>) >> dsl::p<attr_decl_stmt> | decl_ahead >> dsl::p<decl_stmt>
+        | local_fn_ahead >> dsl::error<e_local_fn>
         | dsl::else_ >> dsl::p<expr_stmt>;
     static constexpr auto value = lexy::forward<StmtP>;
 };

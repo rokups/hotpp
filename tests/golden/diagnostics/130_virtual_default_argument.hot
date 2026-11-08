@@ -1,0 +1,4 @@
+// A default value on a virtual method is an error. An override cannot change it.
+class Shape {
+    virtual int Sides(int n = 3) { return n; }
+}

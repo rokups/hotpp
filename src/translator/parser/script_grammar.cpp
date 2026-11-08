@@ -35,6 +35,7 @@ HOT_ERROR_TAG(e_top, "expected 'using', 'class', 'struct', 'interface', 'enum' o
 HOT_ERROR_TAG(e_enum_name, "expected an enum name");
 HOT_ERROR_TAG(e_enumerator, "expected an enumerator name");
 HOT_ERROR_TAG(e_member, "expected a member: 'Type name;' or 'Ret name(...)'");
+HOT_ERROR_TAG(e_tuple_type, "a tuple type '(A, B)' is not supported; use std.tuple<A, B>");
 HOT_ERROR_TAG(e_member_name, "expected a member name");
 HOT_ERROR_TAG(e_op_symbol, "expected an operator symbol after 'operator'");
 HOT_ERROR_TAG(e_op_params, "an operator needs a parameter list");
@@ -51,7 +52,7 @@ HOT_ERROR_TAG(e_import_name, "using needs a header name");
 HOT_ERROR_TAG(e_import_arg, "using needs a string or <header>");
 HOT_ERROR_TAG(e_import_close, "using <...> needs a closing '>'");
 HOT_ERROR_TAG(e_accessor, "expected 'get' or 'set'");
-HOT_ERROR_TAG(e_base, "expected 'base(...)' after ':' of a constructor");
+HOT_ERROR_TAG(e_base, "expected 'base(...)' after ':' of a constructor; a field initializer list is not supported: set the field in the body (this.x = v;)");
 
 // The text of a span.
 std::string_view span_text(const ParseState& st, Span sp)
@@ -132,6 +133,7 @@ struct AccessorItem
     const char* pos = nullptr; // the "get" or "set" word
     bool is_get = false;
     bool has_body = false;
+    bool is_expr = false; // "get => e;" or "set => e;": the body is the span of "e"
     Span body;
     bool has_access = false;
     ast::Access access = ast::Access::Public;
@@ -996,7 +998,7 @@ struct field_tail
     });
 };
 
-// One accessor of a property: [access] ("get" | "set") (";" | "{ body }").
+// One accessor of a property: [access] ("get" | "set") (";" | "{ body }" | "=> e;").
 constexpr auto access_set = dsl::literal_set(kw_public, kw_private, kw_protected);
 
 struct mod_item_access : lexy::token_production
@@ -1010,7 +1012,8 @@ struct accessor_p
 {
     static constexpr auto rule = dsl::opt(dsl::peek(access_set) >> dsl::p<mod_item_access>) + dsl::position
         + dsl::must(dsl::literal_set(kw_get, kw_set)).error<e_accessor>
-        + (dsl::peek(dsl::lit_c<'{'>) >> dsl::p<scan_balanced> | dsl::else_ >> dsl::lit_c<';'>);
+        + (dsl::peek(dsl::lit_c<'{'>) >> dsl::p<scan_balanced> | dsl::peek(LEXY_LIT("=>")) >> dsl::p<arrow_body_p>
+            | dsl::else_ >> dsl::lit_c<';'>);
     static constexpr auto value = lexy::callback<AccessorItem>([](auto&& acc, const char* pos, auto&&... body)
     {
         AccessorItem a;
@@ -1026,7 +1029,19 @@ struct accessor_p
         if constexpr (sizeof...(body) == 1)
         {
             a.has_body = true;
-            ((a.body = body), ...);
+            auto set_body = [&a](const auto& b)
+            {
+                if constexpr (std::is_same_v<std::decay_t<decltype(b)>, ArrowBody>)
+                {
+                    a.is_expr = true;
+                    a.body = b.span;
+                }
+                else
+                {
+                    a.body = b;
+                }
+            };
+            (set_body(body), ...);
         }
         return a;
     });
@@ -1165,6 +1180,9 @@ struct typed_member
             {
                 (a.is_get ? p.get_body : p.set_body).emplace();
                 (a.is_get ? p.get_span : p.set_span) = a.body;
+                (a.is_get ? p.get_is_expr : p.set_is_expr) = a.is_expr;
+                if (a.is_expr && only_blank(span_text(st, a.body)))
+                    st.error(st.base + a.body.begin, "expected an expression");
             }
         }
         if (rest.arrow)
@@ -1374,7 +1392,8 @@ struct member_p
         + (dsl::eof >> dsl::error<e_unexpected_eof> | dsl::peek(dsl::lit_c<'~'>) >> dsl::p<dtor_p>
             | dsl::peek(kw_using) >> dsl::p<using_member_p>
             | dsl::peek(kw_static_assert) >> dsl::p<static_assert_member_p> | dsl::peek(id) >> dsl::p<typed_member>
-            | dsl::peek(dsl::lit_c<'$'>) >> dsl::p<typed_member> | dsl::else_ >> dsl::error<e_member>(junk));
+            | dsl::peek(dsl::lit_c<'$'>) >> dsl::p<typed_member>
+            | dsl::peek(dsl::lit_c<'('>) >> dsl::error<e_tuple_type>(junk) | dsl::else_ >> dsl::error<e_member>(junk));
     static constexpr auto value = lexy::bind(
         lexy::callback<Member>([](const ParseState& st, const char*, const auto& ann, const auto& mods, Member&& m)
     { return finish_member(st, ann, mods, std::move(m)); }),
@@ -1945,7 +1964,8 @@ struct iface_member_p
         + dsl::opt(dsl::peek(modifier_set) >> dsl::p<mods_p>)
         + (dsl::eof >> dsl::error<e_unexpected_eof> | dsl::peek(dsl::lit_c<'~'>) >> dsl::p<dtor_p>
             | dsl::peek(id) >> dsl::p<typed_member>
-            | dsl::peek(dsl::lit_c<'$'>) >> dsl::p<typed_member> | dsl::else_ >> dsl::error<e_member>(junk));
+            | dsl::peek(dsl::lit_c<'$'>) >> dsl::p<typed_member>
+            | dsl::peek(dsl::lit_c<'('>) >> dsl::error<e_tuple_type>(junk) | dsl::else_ >> dsl::error<e_member>(junk));
     static constexpr auto value = lexy::bind(
         lexy::callback<Member>([](const ParseState& st, const char*, const auto& ann, const auto& mods, Member&& m)
     {
@@ -2854,7 +2874,7 @@ ast::Script parse_script(std::string_view text_in, const LineMap& map, Diagnosti
             if (p.get_body)
                 p.get_body = p.get_is_expr ? arrow_block(p.get_span, false) : parse_block(in, p.get_span, diag);
             if (p.set_body)
-                p.set_body = parse_block(in, p.set_span, diag);
+                p.set_body = p.set_is_expr ? arrow_block(p.set_span, true) : parse_block(in, p.set_span, diag);
             if (p.has_init && !only_blank(span_text(st, p.init_span)))
                 p.init = parse_expression(in, p.init_span, diag);
         }

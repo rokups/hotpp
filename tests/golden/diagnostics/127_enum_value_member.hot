@@ -1,0 +1,3 @@
+// An enum value has no members. Use a switch to get a name string.
+enum Color { Red, Green }
+class I { int F(Color c) { return c.Length(); } }

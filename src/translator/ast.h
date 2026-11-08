@@ -651,7 +651,8 @@ struct Property
     // A custom accessor has a body. The parser fills the body from the span.
     std::optional<BlockStmt> get_body, set_body;
     Span get_span, set_span; // the raw text between the braces of a custom accessor
-    bool get_is_expr = false; // "T Name => e;": get_span is the text of "e"
+    bool get_is_expr = false; // "T Name => e;" or "get => e;": get_span is the text of "e"
+    bool set_is_expr = false; // "set => e;": set_span is the text of "e"
     ExprP init; // null when the property has no initializer, or the parse failed
     Span init_span; // the raw text after "=", up to the ";"
     bool has_init = false;
