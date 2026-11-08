@@ -243,14 +243,25 @@ std::string default_arg(const hotc::ast::Param& p, const std::vector<hotc::ast::
     return p.def->cpp.empty() ? std::string() : " = " + p.def->cpp;
 }
 
-// The part of a C++ name for a unit: each character that is not a letter or a digit becomes "_".
-// Optimized AOT code names the exported forwarders of a unit with it ("hot_fn_<unit>__<symbol>").
-std::string unit_symbol(std::string unit)
+// The part of a C++ name for a unit. Optimized AOT code names the exported forwarders of a unit
+// with it ("hot_fn_<unit>__<symbol>", "hot_mv_<unit>__<name>"). The form is injective: a letter or
+// a digit stays, "_" becomes "_U" and another byte becomes "_" and two hex digits ("/" is "_2F").
+// So two unit names give two C++ names, and the part has no "__".
+std::string unit_symbol(const std::string& unit)
 {
-    for (char& c : unit)
-        if (!std::isalnum(static_cast<unsigned char>(c)))
-            c = '_';
-    return unit;
+    static const char* const kHex = "0123456789ABCDEF";
+    std::string r;
+    for (const char ch : unit)
+    {
+        const unsigned char c = static_cast<unsigned char>(ch);
+        if (std::isalnum(c))
+            r += ch;
+        else if (c == '_')
+            r += "_U";
+        else
+            r += std::string("_") + kHex[c >> 4] + kHex[c & 15];
+    }
+    return r;
 }
 
 // A static method or a free function after the lowering. The lowering runs one time (for the

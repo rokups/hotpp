@@ -219,11 +219,11 @@ template <int = 0>
 #line 17 "aot_demo.hot"
 }
 #line 222 "aot_demo.hot.cpp"
-Fighter_Shell* hot_fn_aot_demo__Fighter__new(int32_t start)
+Fighter_Shell* hot_fn_aot_Udemo__Fighter__new(int32_t start)
 {
     return Fighter__new(start);
 }
-std::shared_ptr<Fighter_Shell> hot_fn_aot_demo__Fighter__new_shared(int32_t start)
+std::shared_ptr<Fighter_Shell> hot_fn_aot_Udemo__Fighter__new_shared(int32_t start)
 {
     return Fighter__new_shared(start);
 }
@@ -535,11 +535,11 @@ template <int = 0>
 #line 47 "aot_demo.hot"
 }
 #line 538 "aot_demo.hot.cpp"
-Veteran_Shell* hot_fn_aot_demo__Veteran__new(int32_t start, int32_t r)
+Veteran_Shell* hot_fn_aot_Udemo__Veteran__new(int32_t start, int32_t r)
 {
     return Veteran__new(start, r);
 }
-std::shared_ptr<Veteran_Shell> hot_fn_aot_demo__Veteran__new_shared(int32_t start, int32_t r)
+std::shared_ptr<Veteran_Shell> hot_fn_aot_Udemo__Veteran__new_shared(int32_t start, int32_t r)
 {
     return Veteran__new_shared(start, r);
 }
@@ -764,11 +764,11 @@ template <int = 0>
 #line 66 "aot_demo.hot"
 }
 #line 767 "aot_demo.hot.cpp"
-Spawner_Shell* hot_fn_aot_demo__Spawner__new()
+Spawner_Shell* hot_fn_aot_Udemo__Spawner__new()
 {
     return Spawner__new();
 }
-std::shared_ptr<Spawner_Shell> hot_fn_aot_demo__Spawner__new_shared()
+std::shared_ptr<Spawner_Shell> hot_fn_aot_Udemo__Spawner__new_shared()
 {
     return Spawner__new_shared();
 }

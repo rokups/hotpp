@@ -32,7 +32,8 @@ Each script is one unit. The loader knows a unit by its unit name (`Module::unit
 - The unit name of an import comes from the unit name of the importer. Take the directory of the importer unit name. Add the path in the `using` line. Make the path lexically normal with `/` separators. Remove the extension `.hot`.
 - An import that the translator finds in the folder of the main script uses the directory of the main unit name. An import from an include directory (`-I`) has the `using` path as its name, without `.hot`. An import from `TranslateOptions::modules` has the module name as its name, without `.hot`.
 - Example: the unit `game/app/hero` has the line `using "../lib/base.hot";`. The unit name of the import is `game/lib/base`. Without a host name, the unit is `hero` and the import is `../lib/base`.
-- AOT code names its C++ symbols with the unit name. Each character that is not a letter or a digit becomes `_` (`hot_fn_<unit>__<symbol>`). `hotc --aot` refuses two units with the same C++ name.
+- Optimized AOT code names the forwarders of a unit with the unit name (`hot_fn_<unit>__<symbol>`, `hot_mv_<unit>__<name>`). A letter or a digit stays. `_` becomes `_U`. Each other character becomes `_` and two hex digits, for example `game/hero` gives `game_2Fhero`. So two unit names give two C++ names.
+- The register function of AOT code has the name `hot_script_register_<id>`. In the id, each character that is not a letter or a digit becomes `_`. `hotc --aot` refuses two scripts with the same id or the same stem.
 - The file names of AOT code stay the stem of the script: `<stem>.aot.cpp` and `<stem>.iface.h`.
 
 ### Interface hash and reload

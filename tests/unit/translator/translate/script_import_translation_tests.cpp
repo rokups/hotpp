@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <set>
 #include <string>
 
 namespace
@@ -592,6 +593,27 @@ TEST(ScriptImportTranslation, InterfaceHashCoversStructBodies)
     expect_new_hash(dir, pt, "+ 1", "+ 5");
     expect_new_hash(dir, pt, "this.v = 2", "this.v = 3");
     expect_new_hash(dir, pt, "return 4", "return 6");
+}
+
+// Optimized AOT code names the forwarders of a unit with the unit name. Each unit name gives
+// another C++ name: "a/b", "a_b" and "a.b" do not collide.
+TEST(ScriptImportTranslation, UnitSymbolsOfOtherUnitNamesDiffer)
+{
+    TempDir dir;
+    std::set<std::string> seen;
+    for (const char* unit : {"a/b", "a_b", "a.b", "a__b"})
+    {
+        hotc::TranslateOptions o = temp_options(dir, "int Twice(int v) { return v * 2; }\n");
+        o.unit_name = unit;
+        o.aot = true;
+        o.aot_optimized = true;
+        const hotc::TranslateResult r = hotc::translate(o);
+        ASSERT_TRUE(r.ok) << r.diagnostics;
+        const size_t at = r.cpp.find("hot_fn_a");
+        ASSERT_NE(at, std::string::npos) << r.cpp;
+        const std::string sym = r.cpp.substr(at, r.cpp.find('(', at) - at);
+        EXPECT_TRUE(seen.insert(sym).second) << unit << ": " << sym;
+    }
 }
 
 } // namespace
