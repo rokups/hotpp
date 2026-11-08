@@ -258,6 +258,9 @@ int main(int argc, char** argv)
     bool initial_break = false;
     unsigned reports = 0;
     DWORD exit_code = 1;
+    // The first crash. A later fault (for example a stack overflow in a handler of the program) can
+    // end the process, so the last line repeats the first crash.
+    std::string first_crash;
     for (;;)
     {
         DEBUG_EVENT e = {};
@@ -315,6 +318,21 @@ int main(int argc, char** argv)
                 initial_break = true; // the loader breaks once at the start
                 break;
             }
+            if (first_crash.empty() && is_crash(code))
+            {
+                char text[256];
+                std::snprintf(text, sizeof(text), "0x%08lx (%s) at %p in thread %lu", static_cast<unsigned long>(code),
+                    code_text(code), r.ExceptionAddress, e.dwThreadId);
+                first_crash = text;
+                if (code == EXCEPTION_ACCESS_VIOLATION && r.NumberParameters >= 2)
+                {
+                    const ULONG_PTR kind = r.ExceptionInformation[0];
+                    std::snprintf(text, sizeof(text), ", %s of address 0x%llx",
+                        kind == 0 ? "read" : kind == 1 ? "write" : "execute",
+                        static_cast<unsigned long long>(r.ExceptionInformation[1]));
+                    first_crash += text;
+                }
+            }
             const bool report = code == EXCEPTION_BREAKPOINT || is_crash(code) || !first_chance;
             if (report && reports < kMaxReports)
             {
@@ -341,6 +359,8 @@ int main(int argc, char** argv)
         case EXIT_PROCESS_DEBUG_EVENT:
             exit_code = e.u.ExitProcess.dwExitCode;
             std::printf("[dbg] exit code 0x%08lx (%s)\n", static_cast<unsigned long>(exit_code), code_text(exit_code));
+            if (!first_crash.empty())
+                std::printf("[dbg] first crash: %s\n", first_crash.c_str());
             std::fflush(stdout);
             ContinueDebugEvent(e.dwProcessId, e.dwThreadId, DBG_CONTINUE);
             if (g_symbols)

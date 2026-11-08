@@ -15,6 +15,7 @@
 #include <dbghelp.h>
 // clang-format on
 
+#include <cstdarg>
 #include <cstdio>
 
 #pragma comment(lib, "dbghelp.lib")
@@ -23,6 +24,26 @@ namespace
 {
 
 volatile LONG g_reports = 0;
+// The thread that writes a report now, or 0. A fault in the report (for example in a broken C
+// runtime) must not start a second report: that recursion ends in a stack overflow and hides the
+// first fault.
+volatile LONG g_writer = 0;
+
+// Writes one formatted text to the standard error handle. It uses WriteFile and no FILE stream: the
+// fault can be in the stream code of the C runtime, and a stream can be broken or locked.
+void say(const char* format, ...)
+{
+    char text[1024];
+    va_list args;
+    va_start(args, format);
+    const int n = std::vsnprintf(text, sizeof(text), format, args);
+    va_end(args);
+    if (n <= 0)
+        return;
+    const DWORD size = static_cast<DWORD>(n < static_cast<int>(sizeof(text)) ? n : sizeof(text) - 1);
+    DWORD written = 0;
+    WriteFile(GetStdHandle(STD_ERROR_HANDLE), text, size, &written, nullptr);
+}
 bool g_symbols = false;
 
 bool is_crash(DWORD code)
@@ -63,10 +84,10 @@ void print_function_entry(DWORD64 address)
     const PRUNTIME_FUNCTION f = RtlLookupFunctionEntry(address, &base, nullptr);
     if (!f)
     {
-        std::fprintf(stderr, "[seh] no function table entry covers %p\n", reinterpret_cast<void*>(address));
+        say("[seh] no function table entry covers %p\n", reinterpret_cast<void*>(address));
         return;
     }
-    std::fprintf(stderr, "[seh] function entry: base 0x%llx begin +0x%lx end +0x%lx unwind +0x%lx\n",
+    say("[seh] function entry: base 0x%llx begin +0x%lx end +0x%lx unwind +0x%lx\n",
         static_cast<unsigned long long>(base), static_cast<unsigned long>(f->BeginAddress),
         static_cast<unsigned long>(f->EndAddress), static_cast<unsigned long>(f->UnwindData));
 }
@@ -116,7 +137,7 @@ void print_address(const char* label, void* address)
     const unsigned long long offset =
         module ? static_cast<unsigned long long>(reinterpret_cast<char*>(address) - reinterpret_cast<char*>(module))
                : 0ull;
-    std::fprintf(stderr, "[seh] %s %p %s+0x%llx", label, address, module ? base : "(no module, JIT code?)", offset);
+    say("[seh] %s %p %s+0x%llx", label, address, module ? base : "(no module, JIT code?)", offset);
     if (g_symbols && module)
     {
         alignas(SYMBOL_INFO) char buffer[sizeof(SYMBOL_INFO) + 256] = {};
@@ -125,20 +146,20 @@ void print_address(const char* label, void* address)
         symbol->MaxNameLen = 255;
         DWORD64 displacement = 0;
         if (SymFromAddr(GetCurrentProcess(), reinterpret_cast<DWORD64>(address), &displacement, symbol))
-            std::fprintf(stderr, " %s+0x%llx", symbol->Name, static_cast<unsigned long long>(displacement));
+            say(" %s+0x%llx", symbol->Name, static_cast<unsigned long long>(displacement));
         IMAGEHLP_LINE64 line = {};
         line.SizeOfStruct = sizeof(line);
         DWORD line_displacement = 0;
         if (SymGetLineFromAddr64(GetCurrentProcess(), reinterpret_cast<DWORD64>(address), &line_displacement, &line))
-            std::fprintf(stderr, " (%s:%lu)", line.FileName, line.LineNumber);
+            say(" (%s:%lu)", line.FileName, line.LineNumber);
     }
-    std::fprintf(stderr, "\n");
+    say("\n");
 }
 
 void write_report(EXCEPTION_POINTERS* info, const char* kind)
 {
     const EXCEPTION_RECORD* record = info->ExceptionRecord;
-    std::fprintf(stderr, "[seh] %s exception 0x%08lx (%s) in thread %lu\n", kind,
+    say("[seh] %s exception 0x%08lx (%s) in thread %lu\n", kind,
         static_cast<unsigned long>(record->ExceptionCode), code_text(record->ExceptionCode), GetCurrentThreadId());
     // A fixture DLL can load after SymInitialize.
     if (g_symbols)
@@ -147,10 +168,10 @@ void write_report(EXCEPTION_POINTERS* info, const char* kind)
     if (record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && record->NumberParameters >= 2)
     {
         const ULONG_PTR kind = record->ExceptionInformation[0];
-        std::fprintf(stderr, "[seh] %s of address 0x%llx\n", kind == 0 ? "read" : kind == 1 ? "write" : "execute",
+        say("[seh] %s of address 0x%llx\n", kind == 0 ? "read" : kind == 1 ? "write" : "execute",
             static_cast<unsigned long long>(record->ExceptionInformation[1]));
     }
-    std::fprintf(stderr, "[seh] rip %p rsp %p\n", reinterpret_cast<void*>(info->ContextRecord->Rip),
+    say("[seh] rip %p rsp %p\n", reinterpret_cast<void*>(info->ContextRecord->Rip),
         reinterpret_cast<void*>(info->ContextRecord->Rsp));
     print_function_entry(reinterpret_cast<DWORD64>(record->ExceptionAddress));
     if (record->ExceptionCode != EXCEPTION_STACK_OVERFLOW)
@@ -168,7 +189,17 @@ void write_report(EXCEPTION_POINTERS* info, const char* kind)
             print_address(label, frames[i]);
         }
     }
-    std::fflush(stderr);
+}
+
+// Writes one report, when no report of this thread is in progress. Another thread waits for no
+// report: it writes its report at the same time.
+void guarded_report(EXCEPTION_POINTERS* info, const char* kind)
+{
+    const LONG self = static_cast<LONG>(GetCurrentThreadId());
+    if (InterlockedCompareExchange(&g_writer, self, 0) == self)
+        return; // a fault in the report of this thread
+    write_report(info, kind);
+    InterlockedCompareExchange(&g_writer, 0, self);
 }
 
 LONG CALLBACK report(EXCEPTION_POINTERS* info)
@@ -178,14 +209,17 @@ LONG CALLBACK report(EXCEPTION_POINTERS* info)
     // Some reports per process only: a crash can repeat in a loop.
     if (InterlockedIncrement(&g_reports) > 3)
         return EXCEPTION_CONTINUE_SEARCH;
-    write_report(info, "first-chance");
+    guarded_report(info, "first-chance");
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
-// The exception that nobody handles: each code, because the process ends now.
+// The exception that nobody handles: each code, because the process ends now. Only the first
+// call writes: a fault in the report also comes here.
 LONG WINAPI report_unhandled(EXCEPTION_POINTERS* info)
 {
-    write_report(info, "unhandled");
+    static volatile LONG calls = 0;
+    if (InterlockedIncrement(&calls) == 1)
+        guarded_report(info, "unhandled");
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
