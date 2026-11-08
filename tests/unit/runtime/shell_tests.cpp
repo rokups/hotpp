@@ -216,6 +216,9 @@ struct RuntimeCallBoundary : testing::Test
 // for all threads (errors.h).
 TEST_F(RuntimeCallBoundary, DepthFunctionAndReferenceAgree)
 {
+    // Take the address of this thread first. A lazy thread_local (Mach-O) gets its block when
+    // the thread first uses it. The block of an ended thread can then come back to this thread.
+    uint32_t* const here_address = &hot::detail::call_depth();
     uint32_t* other_address = nullptr;
 #if HOT_ELF_TLS_DEPTH
     auto offset_here = [] {
@@ -234,7 +237,8 @@ TEST_F(RuntimeCallBoundary, DepthFunctionAndReferenceAgree)
     std::thread t([&] { other_address = &hot::detail::call_depth(); });
     t.join();
 #endif
-    EXPECT_NE(other_address, &hot::detail::call_depth());
+    EXPECT_NE(other_address, here_address);
+    EXPECT_EQ(here_address, &hot::detail::call_depth());
     EXPECT_EQ(hot::detail::call_depth(), 0u);
 }
 
