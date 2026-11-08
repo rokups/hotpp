@@ -229,6 +229,12 @@ std::vector<std::string> compile_command(const ClangFilesOptions& opt, const std
     const std::string& out_so, const std::string& script_dir)
 {
     const bool mingw = is_mingw_triple(opt.target_triple);
+    // A Darwin target: the triple says so, or no triple on a macOS host.
+#ifdef __APPLE__
+    const bool darwin = opt.target_triple.empty() || is_darwin_triple(opt.target_triple);
+#else
+    const bool darwin = is_darwin_triple(opt.target_triple);
+#endif
     // A MinGW link must use the C++ driver, so it links libstdc++ (hot/command_line.h).
     std::vector<std::string> cmd = {mingw ? cxx_driver(opt.compiler) : opt.compiler,
         "-std=" + (opt.std_version.empty() ? std::string(cxx_std_name()) : opt.std_version),
@@ -245,17 +251,22 @@ std::vector<std::string> compile_command(const ClangFilesOptions& opt, const std
 #ifdef _WIN32
         // HOT_EXPORT becomes dllimport: the module takes the runtime symbols from the host.
         "-DHOT_MODULE_BUILD=1",
-#else
-        // A call to the host (a native method, the runtime) reads the address from the GOT. A PLT
-        // stub adds one jump to each call. The module loads with RTLD_NOW, so no symbol is lazy.
-        "-fno-plt",
 #endif
     };
+#ifndef _WIN32
+    // A call to the host (a native method, the runtime) reads the address from the GOT. A PLT
+    // stub adds one jump to each call. The module loads with RTLD_NOW, so no symbol is lazy.
+    // The flag is for ELF only. Mach-O has no PLT.
+    if (!darwin)
+        cmd.push_back("-fno-plt");
+#endif
     if (!opt.target_triple.empty())
         cmd.push_back("--target=" + opt.target_triple);
     if (!opt.sysroot.empty())
         cmd.push_back("--sysroot=" + opt.sysroot);
     for (const std::string& f : mingw_target_flags(opt.target_triple, opt.sysroot))
+        cmd.push_back(f);
+    for (const std::string& f : darwin_target_flags(darwin))
         cmd.push_back(f);
 #if defined(_MSC_VER)
     // An MSVC host: the module uses the same C runtime DLL as the host (/MD or /MDd). The

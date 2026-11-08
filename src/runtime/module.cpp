@@ -18,6 +18,9 @@
     #include <dlfcn.h>
     #include <unistd.h>
 #endif
+#ifdef __APPLE__
+    #include "hot/command_line.h"
+#endif
 
 #include <atomic>
 #include <filesystem>
@@ -64,6 +67,10 @@ LoadResult open_library(const std::string& path, const std::string& origin, bool
 #else
         const char* e = dlerror();
         r.error = e ? e : "dlopen failed";
+#ifdef __APPLE__
+        if (const std::string hint = macos_entitlement_hint(r.error); !hint.empty())
+            r.error += "\n" + hint;
+#endif
 #endif
         if (owned_copy)
         {

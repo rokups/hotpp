@@ -42,6 +42,25 @@ std::vector<std::string> mingw_target_flags(const std::string& target_triple, co
 // layout, mingw_target_flags gives no "-isystem".
 std::string mingw_sysroot_error(const std::string& target_triple, const std::string& sysroot);
 
+// True when the target triple is a Darwin (macOS) target: "apple", "darwin" or "macos" in the
+// triple. An empty triple gives false. The caller decides for the host (__APPLE__).
+bool is_darwin_triple(const std::string& target_triple);
+
+// The extra link flags of a script module for a Darwin target. The module takes the runtime
+// and the native symbols from the host when it loads. The Apple linker refuses undefined
+// symbols by default, so the flags are "-Wl,-undefined,dynamic_lookup". Empty when "darwin" is false.
+std::vector<std::string> darwin_target_flags(bool darwin);
+
+// The sysroot flags of the JIT compile on macOS. The JIT has no xcrun and no clang
+// configuration file, so it can miss the SDK. The flags are "-isysroot <sdk>". They are empty
+// when "sdk" is empty or "args" already has -isysroot or --sysroot.
+std::vector<std::string> darwin_sysroot_flags(const std::vector<std::string>& args, const std::string& sdk);
+
+// A hint for a load error on macOS. A host with the hardened runtime refuses an ad-hoc signed
+// module (library validation) and refuses executable JIT memory. The hint names the entitlement.
+// Empty when the error text has no sign of these causes.
+std::string macos_entitlement_hint(const std::string& error);
+
 // The C++ driver for a compiler: "clang" becomes "clang++" and "clang.exe" becomes "clang++.exe",
 // in the same directory. A MinGW link must use the C++ driver, so it links libstdc++. Other
 // names do not change.

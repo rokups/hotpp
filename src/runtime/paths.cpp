@@ -24,6 +24,10 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #endif
+#ifdef __APPLE__
+#include <cstdint>
+#include <mach-o/dyld.h>
+#endif
 #include <vector>
 
 namespace hot
@@ -65,6 +69,17 @@ const char* const k_cxxflags = "";
     const ssize_t n = readlink("/proc/self/exe", buf.data(), buf.size() - 1);
     if (n > 0)
         return fs::path(std::string(buf.data(), static_cast<size_t>(n)));
+#elif defined(__APPLE__)
+    // macOS has no /proc. dyld gives the path, which can have a symbolic link or "..".
+    uint32_t size = 0;
+    _NSGetExecutablePath(nullptr, &size);
+    std::vector<char> buf(size + 1, '\0');
+    if (_NSGetExecutablePath(buf.data(), &size) == 0)
+    {
+        std::error_code ec;
+        fs::path p = fs::weakly_canonical(fs::path(buf.data()), ec);
+        return ec ? fs::path(buf.data()) : p;
+    }
 #endif
     return {};
 }

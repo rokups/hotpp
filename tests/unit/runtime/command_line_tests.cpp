@@ -108,3 +108,48 @@ TEST(CommandLine, CxxDriver)
     EXPECT_EQ(hot::cxx_driver("/usr/bin/clang-19"), "/usr/bin/clang-19");
     EXPECT_EQ(hot::cxx_driver("x86_64-w64-mingw32-g++"), "x86_64-w64-mingw32-g++");
 }
+
+// A Darwin triple has "apple", "darwin" or "macos" in it. An empty triple is not a Darwin
+// triple: the caller decides for the host.
+TEST(CommandLine, DarwinTriples)
+{
+    EXPECT_TRUE(hot::is_darwin_triple("arm64-apple-macosx13.0"));
+    EXPECT_TRUE(hot::is_darwin_triple("x86_64-apple-darwin23.1.0"));
+    EXPECT_TRUE(hot::is_darwin_triple("aarch64-unknown-macos"));
+    EXPECT_FALSE(hot::is_darwin_triple(""));
+    EXPECT_FALSE(hot::is_darwin_triple("x86_64-pc-linux-gnu"));
+    EXPECT_FALSE(hot::is_darwin_triple("x86_64-w64-mingw32"));
+}
+
+// A Darwin module takes the host symbols when it loads, so the link must allow undefined symbols.
+TEST(CommandLine, DarwinTargetFlags)
+{
+    EXPECT_EQ(hot::darwin_target_flags(true), std::vector<std::string>{"-Wl,-undefined,dynamic_lookup"});
+    EXPECT_TRUE(hot::darwin_target_flags(false).empty());
+}
+
+// The JIT on macOS gets "-isysroot <sdk>" only when no flag sets a sysroot and the SDK is known.
+TEST(CommandLine, DarwinSysrootFlags)
+{
+    const std::vector<std::string> sdk = {"-isysroot", "/sdk"};
+    EXPECT_EQ(hot::darwin_sysroot_flags({"clang++", "-O1"}, "/sdk"), sdk);
+    EXPECT_TRUE(hot::darwin_sysroot_flags({"clang++"}, "").empty());
+    EXPECT_TRUE(hot::darwin_sysroot_flags({"clang++", "-isysroot", "/x"}, "/sdk").empty());
+    EXPECT_TRUE(hot::darwin_sysroot_flags({"clang++", "-isysroot/x"}, "/sdk").empty());
+    EXPECT_TRUE(hot::darwin_sysroot_flags({"clang++", "--sysroot=/x"}, "/sdk").empty());
+    EXPECT_TRUE(hot::darwin_sysroot_flags({"clang++", "--sysroot", "/x"}, "/sdk").empty());
+}
+
+// A load error on macOS that comes from code signing or memory protection gets a hint with the
+// entitlement. Other errors get no hint.
+TEST(CommandLine, MacosEntitlementHint)
+{
+    const std::string dyld = "dlopen(/w/a.g1.so, 0x0006): tried: '/w/a.g1.so' (code signature in <...> "
+                             "'/w/a.g1.so' not valid for use in process: mapped file has no Team ID)";
+    EXPECT_NE(hot::macos_entitlement_hint(dyld).find("com.apple.security.cs.disable-library-validation"),
+        std::string::npos);
+    EXPECT_NE(hot::macos_entitlement_hint("cannot protect memory: Permission denied")
+                  .find("com.apple.security.cs.allow-unsigned-executable-memory"),
+        std::string::npos);
+    EXPECT_EQ(hot::macos_entitlement_hint("Symbols not found: [ _foo ]"), "");
+}

@@ -78,7 +78,7 @@ This list shows what version 1 does not support.
 - A user `operator<<` or `operator>>` must be findable by argument-dependent lookup from the namespace `hot`, because `<<` becomes `hot::shl`. Put the operator in the namespace of its argument type.
 - The frame count has gaps. A closure body, a coroutine body, and a free function or static method of a `.cpp` script do not count their frames, so a recursion only through them can still overflow the stack. A destructor does not count its own frame and cannot throw. While an exception unwinds the stack, a script function that a destructor calls can go 15 frames over the limit.
 - More than 64 nested statements, 15 nested lambdas or 256 operators in one expression. Each level uses parser stack, so the limits are fixed. The parser reports `maximum nesting depth exceeded`.
-- macOS. It is untested. Windows works with MSVC, and the CI tests it on Windows (see [Windows](windows.html)).
+- macOS. It is experimental: a CI job builds and tests it, and no maintainer runs it (see [macOS](macos.html)). Windows works with MSVC, and the CI tests it on Windows (see [Windows](windows.html)).
 - A real Visual Studio or gdb debugger session. It is untested. An lldb session and an lldb-dap session run in the tests on Linux when lldb is installed.
 
 A `.cpp` script (see [C++ scripts](cpp-scripts.html)) has more limits. It has no properties, no script virtual methods without `override`, no script-class handles and no `new`, and no script inheritance.

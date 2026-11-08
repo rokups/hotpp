@@ -1356,10 +1356,13 @@ TEST(HotcTool, CompileCommandUsesTheBackendFlags)
         "-shared", "-g", "-Werror=return-type", "-fwrapv", "-fvisibility=hidden", "-fvisibility-inlines-hidden",
 #ifdef _WIN32
         "-DHOT_MODULE_BUILD=1",
-#else
+#elif !defined(__APPLE__)
         "-fno-plt"
 #endif
     };
+#ifdef __APPLE__
+    expected.push_back("-Wl,-undefined,dynamic_lookup");
+#endif
     for (const std::string& f : ms_runtime_flags())
         expected.push_back(f); // MSVC host only
     for (const char* f : {"-resource-dir=/res", "-O2", "-I/i1", "-I/i2"})
@@ -1375,6 +1378,20 @@ TEST(HotcTool, CompileCommandUsesTheBackendFlags)
     for (const char* f : {"/x.cpp", "-o", "/x.so"})
         expected.push_back(f);
     EXPECT_EQ(hot::compile_command(o, "/x.cpp", "/x.so"), expected);
+}
+
+// A Darwin target links with "-undefined dynamic_lookup" and has no "-fno-plt" (an ELF flag).
+// The test runs on each host, because the target triple selects the flags.
+TEST(HotcTool, CompileCommandForDarwinTarget)
+{
+    hot::ClangFilesOptions o;
+    o.compiler = "clang++";
+    o.target_triple = "arm64-apple-macosx13.0";
+    const std::vector<std::string> cmd = hot::compile_command(o, "/x.cpp", "/x.so");
+    auto has = [&](const char* f) { return std::find(cmd.begin(), cmd.end(), f) != cmd.end(); };
+    EXPECT_TRUE(has("--target=arm64-apple-macosx13.0"));
+    EXPECT_TRUE(has("-Wl,-undefined,dynamic_lookup"));
+    EXPECT_FALSE(has("-fno-plt"));
 }
 
 // The option std_version replaces the standard of the host in the compile command.

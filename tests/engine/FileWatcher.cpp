@@ -100,7 +100,12 @@ bool FileWatcher::poll_stamp()
     struct stat st{};
     if (stat(path_.c_str(), &st) == 0)
     {
-        cns = static_cast<long long>(st.st_ctim.tv_sec) * 1000000000LL + st.st_ctim.tv_nsec;
+#ifdef __APPLE__
+        const struct timespec ct = st.st_ctimespec; // the Darwin name of the field
+#else
+        const struct timespec ct = st.st_ctim;
+#endif
+        cns = static_cast<long long>(ct.tv_sec) * 1000000000LL + ct.tv_nsec;
         ino = static_cast<unsigned long long>(st.st_ino);
     }
 #endif

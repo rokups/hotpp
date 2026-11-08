@@ -126,6 +126,20 @@ endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+if(APPLE)
+    # macOS is experimental: CI builds and tests it, no user runs it (doc/macos.md).
+    message(STATUS "Hot++: macOS support is experimental (doc/macos.md)")
+    # The script compiler is Clang with libc++. A GCC host has libstdc++: the two do not agree.
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "Hot++ on macOS needs Clang (AppleClang or LLVM clang++). The C++ compiler "
+                "is ${CMAKE_CXX_COMPILER_ID}. Set CMAKE_CXX_COMPILER to a clang++.")
+    endif()
+    # The script modules use the SDK of the host build. An LLVM clang++ from a package manager can
+    # have no default SDK. CMake 4 leaves CMAKE_OSX_SYSROOT empty: then the compiler (or SDKROOT) decides.
+    if(NOT HOT_SCRIPT_SYSROOT AND IS_ABSOLUTE "${CMAKE_OSX_SYSROOT}" AND EXISTS "${CMAKE_OSX_SYSROOT}")
+        set(HOT_SCRIPT_SYSROOT "${CMAKE_OSX_SYSROOT}" CACHE PATH "The sysroot of the script modules (--sysroot)" FORCE)
+    endif()
+endif()
 if(MSVC)
     # /utf-8: the sources are UTF-8. /bigobj: the translator and the tests have large objects.
     # /permissive- and /Zc:__cplusplus: standard C++ rules and a correct value of __cplusplus.
@@ -254,6 +268,21 @@ if(NOT HOT_JIT_MODE STREQUAL "OFF")
     if(LLVM_FOUND AND Clang_FOUND)
         set(HOT_JIT_ENABLED ON)
         message(STATUS "JIT backend: on (LLVM ${LLVM_PACKAGE_VERSION}, Clang ${Clang_VERSION})")
+        # macOS: the JIT is the Clang library of the LLVM package. AppleClang has an other version
+        # and its resource directory (the builtin headers) does not agree with that library.
+        # HOT_ENABLE_JIT=ON stops with an error. AUTO turns the JIT off and says why.
+        if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" AND NOT HOT_CLANG_RESOURCE_DIR)
+            set(_hot_apple_jit_text "the resource directory of AppleClang does not agree with Clang "
+                "${Clang_VERSION} of the JIT. Set CMAKE_CXX_COMPILER to the clang++ of the LLVM package "
+                "(preset macos-clang-both), or set HOT_CLANG_RESOURCE_DIR.")
+            string(CONCAT _hot_apple_jit_text ${_hot_apple_jit_text})
+            if(HOT_JIT_MODE STREQUAL "ON")
+                message(FATAL_ERROR "HOT_ENABLE_JIT=ON on macOS with AppleClang: ${_hot_apple_jit_text}")
+            endif()
+            set(HOT_JIT_ENABLED OFF)
+            message(STATUS "JIT backend: off (HOT_ENABLE_JIT=AUTO, AppleClang): ${_hot_apple_jit_text}")
+            unset(_hot_apple_jit_text)
+        endif()
     elseif(HOT_JIT_MODE STREQUAL "ON")
         message(FATAL_ERROR "HOT_ENABLE_JIT=ON needs the LLVM and Clang CMake packages. CMake does not "
                 "find them. Install the LLVM and Clang development packages, or add their folders to "

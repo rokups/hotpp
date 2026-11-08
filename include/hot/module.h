@@ -58,7 +58,8 @@ struct Module
     std::vector<std::pair<std::string, uint64_t>> imports;
 };
 
-// The file suffix of a module library on this platform.
+// The file suffix of a module library on this platform. macOS uses ".so" too: it is the CMake
+// suffix of a MODULE library there (CMAKE_SHARED_MODULE_SUFFIX), and dlopen takes any name.
 inline constexpr const char* module_suffix()
 {
 #ifdef _WIN32

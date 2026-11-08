@@ -4,6 +4,7 @@
 
 #include "hot/jit_backend.h"
 
+#include "hot/command_line.h"
 #include "hot/config.h"
 #include "hot/hotc_lib.h"
 #include "hot/paths.h"
@@ -30,6 +31,8 @@
 #include <llvm/Transforms/Utils/Cloning.h>
 
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <mutex>
 
@@ -47,6 +50,40 @@ using Clock = std::chrono::steady_clock;
 double ms_since(Clock::time_point t)
 {
     return std::chrono::duration<double, std::milli>(Clock::now() - t).count();
+}
+
+#ifdef __APPLE__
+// The path of the macOS SDK: $SDKROOT, else the output of "xcrun --show-sdk-path". Empty when
+// both fail: then the Clang driver uses its default sysroot. The query runs one time.
+const std::string& apple_sdk_path()
+{
+    static const std::string path = [] {
+        if (const char* env = std::getenv("SDKROOT"); env && *env)
+            return std::string(env);
+        std::string out;
+        if (FILE* pipe = popen("xcrun --show-sdk-path 2>/dev/null", "r"))
+        {
+            char buf[1024];
+            while (std::fgets(buf, sizeof buf, pipe))
+                out += buf;
+            if (pclose(pipe) != 0)
+                out.clear();
+        }
+        while (!out.empty() && (out.back() == '\n' || out.back() == '\r' || out.back() == ' '))
+            out.pop_back();
+        return out;
+    }();
+    return path;
+}
+#endif
+
+// The error text with a hint for a refused signature or refused executable memory (macOS only).
+std::string with_platform_hint(std::string text)
+{
+#ifdef __APPLE__
+    text += macos_entitlement_hint(text);
+#endif
+    return text;
 }
 
 std::string error_text(llvm::Error e)
@@ -148,6 +185,12 @@ CompileSetup make_invocation(const JitOptions& opt, const std::string& path, con
         // Experimental. HOT_EXPORT becomes dllimport: the code takes the runtime symbols from the host.
         // A Windows target has no -fPIC and no ELF visibility.
         "-DHOT_MODULE_BUILD=1"
+#elif defined(__APPLE__)
+        "-fvisibility=hidden", "-fvisibility-inlines-hidden",
+        // Mach-O has no PLT, so no -fno-plt. JITLink registers the DWARF unwind data (__eh_frame)
+        // of the code, not the compact unwind data. Without DWARF unwind data for each function,
+        // an exception cannot pass a JIT frame. Untested (doc/macos.md).
+        "-femit-dwarf-unwind=always"
 #else
         "-fvisibility=hidden", "-fvisibility-inlines-hidden",
         // A call to the host reads the address from the GOT. A stub would add one jump to each call.
@@ -166,6 +209,12 @@ CompileSetup make_invocation(const JitOptions& opt, const std::string& path, con
         args.push_back("-resource-dir=" + opt.resource_dir);
     for (const std::string& f : opt.extra_flags)
         args.push_back(f);
+#ifdef __APPLE__
+    // The Clang library has no xcrun and reads no clang configuration file, so it can miss the
+    // macOS SDK (the C and C++ headers).
+    for (const std::string& f : darwin_sysroot_flags(args, apple_sdk_path()))
+        args.push_back(f);
+#endif
     // With a host file system, a header in the directory of the script is a virtual file there.
     if (opt.fs && !script_dir.empty())
         args.push_back("-I" + normal(script_dir));
@@ -271,20 +320,21 @@ LoadResult add_to_jit(const std::shared_ptr<JitState>& impl, const std::string& 
     holder->tracker = holder->dylib->createResourceTracker();
     if (llvm::Error e = jit.addIRModule(holder->tracker, std::move(tsm)))
     {
-        r.error = "cannot add the module: " + error_text(std::move(e)) + "\n";
+        r.error = with_platform_hint("cannot add the module: " + error_text(std::move(e)) + "\n");
         return r; // "holder" removes the dylib
     }
     // Static initializers run here: for example the dynamic initializer of the class record.
     if (llvm::Error e = jit.initialize(*holder->dylib))
     {
-        r.error = "cannot run the static initializers: " + error_text(std::move(e)) + "\n";
+        r.error = with_platform_hint("cannot run the static initializers: " + error_text(std::move(e)) + "\n");
         return r;
     }
     holder->initialized = true;
     auto addr = jit.lookup(*holder->dylib, "script_register");
     if (!addr)
     {
-        r.error = "script_register not found or not linkable: " + error_text(addr.takeError()) + "\n";
+        r.error =
+            with_platform_hint("script_register not found or not linkable: " + error_text(addr.takeError()) + "\n");
         return r;
     }
     Module m;

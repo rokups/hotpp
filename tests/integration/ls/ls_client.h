@@ -23,6 +23,8 @@
 #ifdef _WIN32
     #include <io.h>
 #else
+    #include "hot/runtime/process.h"
+
     #include <unistd.h>
 #endif
 
@@ -42,13 +44,13 @@ namespace ls_test
 using json = nlohmann::json;
 
 // A pipe whose ends a child process (clangd) does not get. Else the end of the input never comes.
-// POSIX: O_CLOEXEC. Windows: a C runtime pipe in binary mode that a child does not inherit.
+// POSIX: FD_CLOEXEC (hot/runtime/process.h). Windows: a C runtime pipe in binary mode that a child does not inherit.
 inline int make_pipe(int fds[2])
 {
 #ifdef _WIN32
     return _pipe(fds, 1 << 16, _O_BINARY | _O_NOINHERIT);
 #else
-    return pipe2(fds, O_CLOEXEC);
+    return hot::detail::pipe_cloexec(fds);
 #endif
 }
 

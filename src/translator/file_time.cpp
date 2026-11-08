@@ -164,8 +164,14 @@ FileTimes file_times(const std::string& path)
     if (::stat(path.c_str(), &st) != 0)
         return r;
     r.exists = true;
+#ifdef __APPLE__
+    // Darwin names the time fields st_mtimespec and st_ctimespec.
+    r.mtime_ns = ns_of(st.st_mtimespec);
+    r.ctime_ns = ns_of(st.st_ctimespec);
+#else
     r.mtime_ns = ns_of(st.st_mtim);
     r.ctime_ns = ns_of(st.st_ctim);
+#endif
     r.size = static_cast<uint64_t>(st.st_size);
     r.ino = static_cast<uint64_t>(st.st_ino);
     return r;

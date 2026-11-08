@@ -64,6 +64,43 @@ bool is_mingw_triple(const std::string& target_triple)
     return target_triple.find("mingw") != std::string::npos || target_triple.find("windows-gnu") != std::string::npos;
 }
 
+bool is_darwin_triple(const std::string& target_triple)
+{
+    for (const char* key : {"apple", "darwin", "macos"})
+        if (target_triple.find(key) != std::string::npos)
+            return true;
+    return false;
+}
+
+std::vector<std::string> darwin_target_flags(bool darwin)
+{
+    if (!darwin)
+        return {};
+    return {"-Wl,-undefined,dynamic_lookup"};
+}
+
+std::vector<std::string> darwin_sysroot_flags(const std::vector<std::string>& args, const std::string& sdk)
+{
+    if (sdk.empty())
+        return {};
+    for (const std::string& a : args)
+        if (a.rfind("-isysroot", 0) == 0 || a.rfind("--sysroot", 0) == 0)
+            return {};
+    return {"-isysroot", sdk};
+}
+
+std::string macos_entitlement_hint(const std::string& error)
+{
+    auto has = [&](const char* text) { return error.find(text) != std::string::npos; };
+    if (has("code signature") || has("library validation") || has("Team ID"))
+        return "hot: macOS refused the signature of the module. A host with the hardened runtime needs the "
+               "entitlement com.apple.security.cs.disable-library-validation (doc/macos.md).\n";
+    if (has("Permission denied") || has("protect") || has("Operation not permitted"))
+        return "hot: macOS refused executable memory. A host with the hardened runtime needs the entitlement "
+               "com.apple.security.cs.allow-unsigned-executable-memory for the JIT (doc/macos.md).\n";
+    return {};
+}
+
 namespace
 {
 

@@ -161,6 +161,31 @@
     {
       "name": "linux-clang-jit-tsan",
       "inherits": ["base-clang", "base-tsan", "base-jit"]
+    },
+    {
+      "name": "base-macos",
+      "hidden": true,
+      "description": "Experimental. The clang++ and the LLVM package of Homebrew (Apple silicon path). For another LLVM, set CMAKE_CXX_COMPILER, CMAKE_C_COMPILER and CMAKE_PREFIX_PATH.",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "/opt/homebrew/opt/llvm/bin/clang",
+        "CMAKE_CXX_COMPILER": "/opt/homebrew/opt/llvm/bin/clang++",
+        "CMAKE_PREFIX_PATH": "/opt/homebrew/opt/llvm"
+      },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" }
+    },
+    {
+      "name": "macos-clang-files",
+      "inherits": ["base-macos", "base-files"]
+    },
+    {
+      "name": "macos-clang-both",
+      "inherits": ["base-macos", "base-both"]
+    },
+    {
+      "name": "macos-clang-aot",
+      "description": "HOT_SCRIPT_MODE=AOT with the macos-clang-both settings.",
+      "inherits": "macos-clang-both",
+      "cacheVariables": { "HOT_SCRIPT_MODE": "AOT" }
     }
   ],
   "buildPresets": [
@@ -183,7 +208,10 @@
     { "name": "linux-clang-aot-rel", "configurePreset": "linux-clang-aot", "configuration": "RelWithDebInfo" },
     { "name": "linux-clang-aot-opt-rel", "configurePreset": "linux-clang-aot-opt", "configuration": "RelWithDebInfo" },
     { "name": "vs-aot-rel", "configurePreset": "vs-aot", "configuration": "RelWithDebInfo" },
-    { "name": "vs-aot-opt-rel", "configurePreset": "vs-aot-opt", "configuration": "RelWithDebInfo" }
+    { "name": "vs-aot-opt-rel", "configurePreset": "vs-aot-opt", "configuration": "RelWithDebInfo" },
+    { "name": "macos-clang-files-rel", "configurePreset": "macos-clang-files", "configuration": "RelWithDebInfo" },
+    { "name": "macos-clang-both-rel", "configurePreset": "macos-clang-both", "configuration": "RelWithDebInfo" },
+    { "name": "macos-clang-aot-rel", "configurePreset": "macos-clang-aot", "configuration": "RelWithDebInfo" }
   ],
   "testPresets": [
     {
@@ -211,6 +239,9 @@
     { "name": "linux-clang-aot-rel", "inherits": "base-test", "configurePreset": "linux-clang-aot", "configuration": "RelWithDebInfo" },
     { "name": "linux-clang-aot-opt-rel", "inherits": "base-test", "configurePreset": "linux-clang-aot-opt", "configuration": "RelWithDebInfo" },
     { "name": "vs-aot-rel", "inherits": "base-test", "configurePreset": "vs-aot", "configuration": "RelWithDebInfo" },
-    { "name": "vs-aot-opt-rel", "inherits": "base-test", "configurePreset": "vs-aot-opt", "configuration": "RelWithDebInfo" }
+    { "name": "vs-aot-opt-rel", "inherits": "base-test", "configurePreset": "vs-aot-opt", "configuration": "RelWithDebInfo" },
+    { "name": "macos-clang-files-rel", "inherits": "base-test", "configurePreset": "macos-clang-files", "configuration": "RelWithDebInfo" },
+    { "name": "macos-clang-both-rel", "inherits": "base-test", "configurePreset": "macos-clang-both", "configuration": "RelWithDebInfo" },
+    { "name": "macos-clang-aot-rel", "inherits": "base-test", "configurePreset": "macos-clang-aot", "configuration": "RelWithDebInfo" }
   ]
 }

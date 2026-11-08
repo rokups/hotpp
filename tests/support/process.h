@@ -20,6 +20,8 @@
 
     #include <windows.h>
 #else
+    #include "hot/runtime/process.h"
+
     #include <fcntl.h>
     #include <spawn.h>
     #include <sys/wait.h>
@@ -111,9 +113,9 @@ inline RunResult run_process(const std::vector<std::string>& argv)
 #else
     // O_CLOEXEC: the child gets only the end that dup2 gives it.
     int out[2];
-    if (pipe2(out, O_CLOEXEC) != 0)
+    if (hot::detail::pipe_cloexec(out) != 0)
     {
-        result.output = std::string("run_process: pipe2 failed: ") + std::strerror(errno);
+        result.output = std::string("run_process: pipe failed: ") + std::strerror(errno);
         return result;
     }
     posix_spawn_file_actions_t fa;

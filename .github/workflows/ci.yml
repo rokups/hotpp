@@ -2,7 +2,7 @@
 # This work is licensed under the terms of the MIT license.
 # For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
-# The CI of Hot++. It builds and tests on Linux, it makes the SDKs for Linux and Windows, and it
+# The CI of Hot++. It builds and tests on Linux (and on macOS, experimental), it makes the SDKs for Linux and Windows, and it
 # tests each SDK on a clean runner. A push to master then puts the SDKs in the release "latest".
 #
 # Jobs:
@@ -18,6 +18,8 @@
 #   test-windows       Download the build tree. Two jobs run in parallel: files, jit.
 #   aot-windows        Build and test the whole suite in an AOT build with MSVC. Two jobs run in
 #                      parallel: aot, aot-optimized.
+#   macos              Experimental. Build and test on macOS (Apple silicon) with both backends and
+#                      the LLVM of Homebrew. The release does not wait for it. No SDK for macOS.
 #   sdk-smoke-linux    Unpack the Linux SDK on a clean Ubuntu 24.04 runner. Run tests/sdk_smoke/run.cmake.
 #   sdk-smoke-windows  Unpack the Windows SDK on a clean Windows runner. Run the same script with MSVC.
 #   release            Push to master only. Move the tag "latest" and replace the release assets.
@@ -648,6 +650,55 @@ jobs:
 
   # The smoke tests run without the source tree and without the build. The sparse checkout
   # gives only tests/sdk_smoke.
+  # Experimental (doc/platforms.md). This job is the only test of macOS: no maintainer runs macOS.
+  # The release does not need it, so a failure here does not stop a release. The LLVM major
+  # version must be LLVM_VERSION: Homebrew has it as llvm@N or, for the newest version, as llvm.
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install LLVM, Clang and Ninja
+        run: |
+          brew install ninja
+          if brew install "llvm@${LLVM_VERSION}"; then
+            prefix="$(brew --prefix "llvm@${LLVM_VERSION}")"
+          else
+            brew install llvm
+            prefix="$(brew --prefix llvm)"
+          fi
+          major="$("$prefix/bin/llvm-config" --version | cut -d. -f1)"
+          if [ "$major" != "${LLVM_VERSION}" ]; then
+            echo "::error::Homebrew gives LLVM $major, the build needs LLVM ${LLVM_VERSION}"
+            exit 1
+          fi
+          echo "HOT_LLVM_PREFIX=$prefix" >> "$GITHUB_ENV"
+          echo "$prefix/bin" >> "$GITHUB_PATH"
+          # The clang++ of Homebrew and the JIT find the SDK through SDKROOT.
+          echo "SDKROOT=$(xcrun --show-sdk-path)" >> "$GITHUB_ENV"
+          echo "CPM_SOURCE_CACHE=$HOME/.cache/cpm" >> "$GITHUB_ENV"
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/cpm
+          key: cpm-macos-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+          restore-keys: cpm-macos-
+
+      # The preset has the Homebrew path of "llvm". These values select the installed version.
+      - name: Configure
+        run: >-
+          cmake --preset macos-clang-both
+          -DCMAKE_C_COMPILER="$HOT_LLVM_PREFIX/bin/clang"
+          -DCMAKE_CXX_COMPILER="$HOT_LLVM_PREFIX/bin/clang++"
+          -DCMAKE_PREFIX_PATH="$HOT_LLVM_PREFIX"
+
+      - name: Build
+        run: cmake --build --preset macos-clang-both-rel
+
+      - name: Test
+        run: ctest --preset macos-clang-both-rel -j "$(sysctl -n hw.ncpu)"
+
   sdk-smoke-linux:
     needs: linux
     runs-on: ubuntu-24.04

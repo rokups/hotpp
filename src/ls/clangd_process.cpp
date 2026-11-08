@@ -15,6 +15,8 @@
     #include <io.h>
     #include <windows.h>
 #else
+    #include "hot/runtime/process.h"
+
     #include <sys/wait.h>
 
     #include <signal.h>
@@ -131,9 +133,9 @@ bool ClangdProcess::start(
     on_notification_ = std::move(on_notification);
     // O_CLOEXEC: the child gets only the two ends that dup2 gives it.
     int in[2], out[2];
-    if (pipe2(in, O_CLOEXEC) != 0)
+    if (hot::detail::pipe_cloexec(in) != 0)
         return false;
-    if (pipe2(out, O_CLOEXEC) != 0)
+    if (hot::detail::pipe_cloexec(out) != 0)
     {
         close(in[0]);
         close(in[1]);
