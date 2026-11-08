@@ -11,6 +11,8 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
+#include <system_error>
 #include <map>
 #include <set>
 #include <sstream>
@@ -39,9 +41,25 @@ inline std::string run_capture(const std::vector<std::string>& argv)
 }
 
 // The text of "llvm-dwarfdump --debug-line file".
+// The file that has the DWARF of a library. On macOS the linker does not copy the DWARF into
+// the image. The DWARF is in the bundle "<file>.dSYM". The clang driver makes it with dsymutil
+// for "-g" when one command compiles and links. Else the helper runs dsymutil.
+inline std::string dwarf_file(const std::string& file)
+{
+#ifdef __APPLE__
+    const std::string dsym = file + ".dSYM";
+    std::error_code ec;
+    if (!std::filesystem::exists(dsym, ec))
+        run_capture({llvm_tool("dsymutil"), file, "-o", dsym});
+    if (std::filesystem::exists(dsym, ec))
+        return dsym;
+#endif
+    return file;
+}
+
 inline std::string dump_line_table(const std::string& file)
 {
-    return run_capture({llvm_tool("llvm-dwarfdump"), "--debug-line", file});
+    return run_capture({llvm_tool("llvm-dwarfdump"), "--debug-line", dwarf_file(file)});
 }
 
 // One row of the line table. The file is the name from the file table of the row.
@@ -121,7 +139,7 @@ inline std::set<int> lines_of_file(const std::string& dump, const std::string& b
 // The text of "llvm-dwarfdump --debug-info file".
 inline std::string dump_debug_info(const std::string& file)
 {
-    return run_capture({llvm_tool("llvm-dwarfdump"), "--debug-info", file});
+    return run_capture({llvm_tool("llvm-dwarfdump"), "--debug-info", dwarf_file(file)});
 }
 
 // A variable or a parameter of a function.

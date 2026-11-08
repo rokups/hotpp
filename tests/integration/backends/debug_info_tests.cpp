@@ -111,6 +111,11 @@ const Compiled& compile_with_debug_info(const std::string& script, const std::st
                                 std::string(HOT_SOURCE_DIR) + "/tests/engine", to.output_name});
     if (!host_import_library().empty())
         argv.push_back(host_import_library());
+#ifdef __APPLE__
+    // The module takes the runtime symbols from the host at load time (clang_files_backend.cpp).
+    for (const std::string& f : hot::darwin_target_flags(true))
+        argv.push_back(f);
+#endif
     argv.insert(argv.end(), {"-o", library});
     const std::string compile_output = test_support::run_capture(argv);
     EXPECT_TRUE(fs::exists(library)) << compile_output;
