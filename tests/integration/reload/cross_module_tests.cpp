@@ -624,6 +624,71 @@ TEST_P(BackendTests, ConstructorOverloadWithANewKeyTypeInALaterGeneration)
     EXPECT_EQ(s.loader.stats().core_modules, cores1 + 1);
 }
 
+// The parent unit "priv.hot": the public class "Shown" derives from a private class.
+const char* const kPriv1 = R"(
+using "Actor.h";
+private class Hidden : Actor {
+    int a = 1;
+}
+class Shown : Hidden {
+    int b = 2;
+}
+)";
+
+// The child unit "kid.hot": it derives from "Shown" and adds a field after the parent state.
+const char* const kPrivKid = R"(
+using "Actor.h";
+using "priv.hot";
+class Kid : Shown {
+    int z = 7;
+}
+)";
+
+// Requests a reload of "unit" alone and expects the rejection DependentsStale for "dependent".
+void expect_stale(Session& s, hot::LoadResult r, const std::string& dependent)
+{
+    ASSERT_TRUE(r) << r.error;
+    std::vector<hot::LoadResult> alone;
+    alone.push_back(std::move(r));
+    const hot::ReloadResult stale = s.loader.request_reload(std::move(alone));
+    EXPECT_EQ(stale.status, hot::ReloadStatus::Failed);
+    EXPECT_EQ(stale.reason, hot::ReloadReason::DependentsStale) << stale.error;
+    EXPECT_EQ(stale.units, std::vector<std::string>{dependent});
+    EXPECT_FALSE(s.loader.reload_pending());
+}
+
+// A new field of a private parent changes the state layout of the public class. The live child
+// in another unit compiled against the old layout: a reload of the parent unit alone is rejected.
+TEST_P(FamilyTests, PrivateParentChangeNeedsTheChildInTheBatch)
+{
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(start(s,
+        batch_of(build("kid.hot", kPrivKid, {{"priv.hot", kPriv1}}, 1), build("priv.hot", kPriv1, {}, 1)), "Kid"));
+    std::string p2 = kPriv1;
+    p2.replace(p2.find("int a = 1;"), 10, "int a = 1;\n    int c = 3;");
+    ASSERT_NO_FATAL_FAILURE(expect_stale(s, build("priv.hot", p2, {}, 2), "kid"));
+    EXPECT_EQ(*fld<int>(s, "z"), 7);
+}
+
+// The loader checks the parent layout of a live child outside the batch, also when the interface
+// hash of the parent unit stays the same. The test gives the new module the old hash.
+TEST_P(FamilyTests, ParentLayoutChangeWithTheSameHashNeedsTheChildInTheBatch)
+{
+    Session s;
+    hot::LoadResult p1 = build("priv.hot", kPriv1, {}, 1);
+    ASSERT_TRUE(p1) << p1.error;
+    const uint64_t hash = p1.iface_hash;
+    ASSERT_NO_FATAL_FAILURE(start(s, batch_of(build("kid.hot", kPrivKid, {{"priv.hot", kPriv1}}, 1), std::move(p1)), "Kid"));
+    std::string text = kPriv1;
+    text.replace(text.find("int b = 2;"), 10, "int b = 2;\n    int d = 4;");
+    hot::LoadResult p2 = build("priv.hot", text, {}, 2);
+    ASSERT_TRUE(p2) << p2.error;
+    p2.iface_hash = hash;
+    p2.module->iface_hash = hash;
+    ASSERT_NO_FATAL_FAILURE(expect_stale(s, std::move(p2), "kid"));
+    EXPECT_EQ(*fld<int>(s, "z"), 7);
+}
+
 std::string kind_name(const ::testing::TestParamInfo<hot::BackendKind>& info)
 {
     return info.param == hot::BackendKind::Jit ? "Jit" : "ClangFiles";

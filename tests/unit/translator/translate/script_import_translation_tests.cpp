@@ -534,7 +534,8 @@ TEST(ScriptImportTranslation, ImportWithModuleVariableAndFreeFunction)
     EXPECT_NE(own.iface.find("fn int32_t Twice(int32_t x)"), std::string::npos) << own.iface;
 }
 
-// "private" at file level hides a name from the importers. The interface does not have it.
+// "private" at file level hides a name from the importers. The interface does not have a private
+// enum, constant, variable or function.
 TEST(ScriptImportTranslation, PrivateHidesANameFromImporters)
 {
     TempDir dir;
@@ -544,11 +545,41 @@ TEST(ScriptImportTranslation, PrivateHidesANameFromImporters)
     const hotc::TranslateResult own = translate_alone(dir, lib);
     ASSERT_TRUE(own.ok) << own.diagnostics;
     EXPECT_NE(own.iface.find("fn int32_t G()"), std::string::npos) << own.iface;
-    for (const char* hidden : {"Base", "P", "E", "K", "count", "F("})
+    for (const char* hidden : {"E", "K", "count", "F("})
         EXPECT_EQ(own.iface.find(std::string(" ") + hidden), std::string::npos) << hidden << ": " << own.iface;
+    // An importer copies a private class and a private struct, so the interface has them.
+    EXPECT_NE(own.iface.find("private class Base"), std::string::npos) << own.iface;
+    EXPECT_NE(own.iface.find("private struct P"), std::string::npos) << own.iface;
     const hotc::TranslateResult r = hotc::translate(options(dir, lib));
     ASSERT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("class 'Base' is private in 'base.hot'"), std::string::npos) << r.diagnostics;
+}
+
+// The interface hash of "text" with "from" replaced by "to" is not the hash of "text".
+void expect_new_hash(const TempDir& dir, const std::string& text, const std::string& from, const std::string& to)
+{
+    const hotc::TranslateResult a = translate_alone(dir, text);
+    ASSERT_TRUE(a.ok) << a.diagnostics;
+    std::string changed = text;
+    ASSERT_NE(changed.find(from), std::string::npos) << from;
+    changed.replace(changed.find(from), from.size(), to);
+    const hotc::TranslateResult b = translate_alone(dir, changed);
+    ASSERT_TRUE(b.ok) << b.diagnostics;
+    EXPECT_NE(a.iface_hash, b.iface_hash) << from << " -> " << to << "\n" << a.iface;
+}
+
+// An importer copies the module aliases and the private classes and structs. A change of them
+// changes the code of the importer, so it changes the interface hash.
+TEST(ScriptImportTranslation, InterfaceHashCoversAliasesAndPrivateTypes)
+{
+    TempDir dir;
+    const std::string alias = "using \"w.h\";\nusing Num = int;\nclass C : Widget { Num a = 1; Num b = 2; }\n"
+                              "Num Twice(Num v) { return v * 2; }\n";
+    expect_new_hash(dir, alias, "Num = int", "Num = double");
+    const std::string hidden = "using \"w.h\";\nprivate class Hidden : Widget { int a = 1; }\n"
+                               "class Shown : Hidden { int b = 2; }\nprivate struct P { int x = 0; }\n";
+    expect_new_hash(dir, hidden, "int a = 1;", "int a = 1; int c = 3;");
+    expect_new_hash(dir, hidden, "int x = 0;", "int x = 0; int Get() { return this.x; }");
 }
 
 } // namespace

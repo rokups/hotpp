@@ -34,6 +34,16 @@ Each script is one unit. The loader knows a unit by its unit name (`Module::unit
 - Example: the unit `game/app/hero` has the line `using "../lib/base.hot";`. The unit name of the import is `game/lib/base`. Without a host name, the unit is `hero` and the import is `../lib/base`.
 - AOT code names its C++ symbols with the unit name. Each character that is not a letter or a digit becomes `_` (`hot_fn_<unit>__<symbol>`). `hotc --aot` refuses two units with the same C++ name.
 - The file names of AOT code stay the stem of the script: `<stem>.aot.cpp` and `<stem>.iface.h`.
+
+### Interface hash and reload
+
+Each unit has an interface hash (`Module::iface_hash`). Each importer records the hash of each import that it compiled against. A reload of a unit alone keeps the importers when the hash stays the same.
+
+- The interface has the declarations that an importer sees or copies. These are the namespaces, the module aliases, the public enums and constants, and the signatures of the public functions and variables.
+- The interface also has each class and each struct, also a `private` one, because an importer copies it. The interface of a class has its parent, its fields and the signatures of its members.
+- A body change of a class method or a free function keeps the hash. The importer calls the code of the owner unit.
+- A live unit outside the batch that imports a changed interface is the error `DependentsStale`. Compile the unit into the batch.
+- The loader also compares the state layout of a script parent in the batch with the layout that each live child compiled against. A child outside the batch with another parent layout is the error `DependentsStale`, also when the hash stays the same.
 - rbfx-script gives the path of the script relative to the resource root, without `.hot`, for example `Scripts/Hero`. The launcher gives the absolute path without `.hot`.
 
 These headers are always included, so they need no `using`:

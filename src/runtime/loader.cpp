@@ -1265,14 +1265,35 @@ ReloadResult Loader::check_links(const Pending& p) const
                 break;
             }
     }
+    // A live class outside the batch with a script parent in the batch: the new parent layout must
+    // be the layout that the class compiled against. The interface hash does not tell all of the
+    // layout, so the loader compares the layout hash too. A class without a unit gives its name.
+    for (const auto& [name, e] : registry_.entries())
+    {
+        const ClassRecord* r = e.record;
+        if (!r || !r->super_name || owner.count(name) || removed_.count(name))
+            continue;
+        const auto uo = unit_of_.find(name);
+        if (uo != unit_of_.end() && batch.count(uo->second))
+            continue;
+        for (const PendingUnit& pu : p.units)
+            if (const ClassEntry* pe = pu.staged.find(r->super_name);
+                pe && pe->record->layout && layout_hash(pe->record->layout) != r->super_layout_hash)
+            {
+                stale.push_back(uo != unit_of_.end() ? uo->second : name);
+                break;
+            }
+    }
     if (!stale.empty())
     {
         std::sort(stale.begin(), stale.end());
+        stale.erase(std::unique(stale.begin(), stale.end()), stale.end());
         std::string list;
         for (const std::string& u : stale)
             list += (list.empty() ? "'" : ", '") + u + "'";
         ReloadResult r = failed(ReloadReason::DependentsStale,
-            "the live units " + list + " import a changed interface of the batch; compile them into the batch");
+            "the live units " + list
+                + " import a changed interface or derive from a changed parent layout of the batch; compile them into the batch");
         r.units = std::move(stale);
         return r;
     }

@@ -787,10 +787,12 @@ Script parse_structure(const std::string& text, const hotc::LineMap& map, std::s
     return sc;
 }
 
-// The interface text of one module (modules step 1): the declarations that importers see. It has
-// no body, so a body change keeps the text. The order is the source order: a field order change
-// changes the layout and the text. A name with "private" is not in it. "text" is the parsed text
-// of the module: the spans of the constant values point into it.
+// The interface text of one module (modules step 1): the declarations that importers see or copy.
+// A class has no body, so a body change of a class keeps the text. The order is the source order:
+// a field order change changes the layout and the text. An importer copies the module aliases, the
+// namespaces and each class and struct, also a private one. So the text has them too. A private
+// enum, constant, variable or function is not in it. "text" is the parsed text of the module: the
+// spans of the constant values point into it.
 std::string module_interface(const Script& sc, const std::string& text)
 {
     auto span = [&](Span sp) { return sp.end > sp.begin && sp.end <= text.size() ? text.substr(sp.begin, sp.end - sp.begin) : std::string(); };
@@ -817,6 +819,10 @@ std::string module_interface(const Script& sc, const std::string& text)
         return o + m.ret + " " + m.name + "(" + params(m.params) + ")" + (m.is_const ? " const" : "") + "\n";
     };
     std::string o;
+    for (const hotc::ast::UsingNs& u : sc.using_ns)
+        o += "using namespace " + u.name + "\n";
+    for (const hotc::ast::TypeAlias& a : sc.aliases)
+        o += "using " + a.name + " = " + a.resolved + "\n";
     for (const hotc::ast::EnumDef& e : sc.enums)
     {
         if (e.is_private)
@@ -828,10 +834,9 @@ std::string module_interface(const Script& sc, const std::string& text)
     }
     for (const ClassDef& c : sc.classes)
     {
-        if (c.is_private)
-            continue;
         // The parent link, the fields and the virtual slots: a child in another module needs them.
-        o += std::string(c.is_value ? "struct " : c.is_abstract ? "abstract class " : "class ") + c.name + " : " + c.base;
+        o += std::string(c.is_private ? "private " : "")
+            + (c.is_value ? "struct " : c.is_abstract ? "abstract class " : "class ") + c.name + " : " + c.base;
         for (const std::string& i : c.interfaces)
             o += ", " + i;
         o += " {\n";
