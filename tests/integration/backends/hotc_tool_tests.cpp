@@ -1453,10 +1453,21 @@ TEST(HotcTool, CompileCommandsOptionWritesTheDatabase)
         fmt_args += "\"" + f + "\", "; // HOT_THREAD_SAFE=OFF build only
     for (const std::string& f : hot::traceback_compile_flags())
         fmt_args += "\"" + f + "\", "; // HOT_TRACEBACK=ON build only
+    // The target flags: ELF gets -fno-plt. macOS gets the SDK of the build and the
+    // dynamic_lookup link flag (clang_files_backend.cpp).
+#ifdef __APPLE__
+    std::string target_args;
+    if (const std::string sdk = hot::default_paths().sysroot; !sdk.empty())
+        target_args += "\"--sysroot=" + sdk + "\", ";
+    for (const std::string& f : hot::darwin_target_flags(true))
+        target_args += "\"" + f + "\", ";
+#else
+    const std::string target_args = "\"-fno-plt\", ";
+#endif
     const std::string expected =
         "[\n  {\n    \"directory\": \"" + fs::current_path().string() + "\",\n    \"file\": \"" + cpp +
         "\",\n    \"arguments\": [\"" + cxx + "\", \"-std=" + std::string(hot::cxx_std_name()) + "\", \"-fPIC\", \"-shared\", \"-g\", "
-        "\"-Werror=return-type\", \"-fwrapv\", \"-fvisibility=hidden\", \"-fvisibility-inlines-hidden\", \"-fno-plt\", \"-O1\", \"-I" + engine + "\", \"-I" + inc + "\", " + fmt_args + "\"" + cpp +
+        "\"-Werror=return-type\", \"-fwrapv\", \"-fvisibility=hidden\", \"-fvisibility-inlines-hidden\", " + target_args + "\"-O1\", \"-I" + engine + "\", \"-I" + inc + "\", " + fmt_args + "\"" + cpp +
         "\", \"-o\", \"" + so + "\"],\n    \"output\": \"" + so + "\"\n  }\n]\n";
     EXPECT_EQ(read_file(cdb_dir + "/compile_commands.json"), expected);
 }
