@@ -57,6 +57,9 @@ These rules are different from Linux:
 - **Executable path.** A portable build finds its folder with `_NSGetExecutablePath`, because macOS has no `/proc`.
 - **Pipes.** macOS has no `pipe2`. `hot::detail::pipe_cloexec` uses `pipe` and `fcntl`.
 - **File times.** The `stat` fields are `st_mtimespec` and `st_ctimespec`.
+- **RTTI across images.** On Apple arm64, libc++abi compares the address of a hidden type info, not its name. A module builds with `-fvisibility=hidden`, so its copy of the type info of an inline-only class does not match the copy of the host. Mark each native class that a `dynamic_cast`, a `typeid` or a `catch` must find across the host and a module with `HOT_EXPORT` or `HOT_RTTI` (`hot/runtime/export.h`). The runtime shells have `HOT_RTTI`.
+- **Real paths.** The temporary folder `/var/folders/...` is `/private/var/folders/...`. clangd writes the real path, so hot-ls uses the real path in each URI (`src/ls/long_path.h`).
+- **Debug info.** The linker does not copy the DWARF into a library. The DWARF is in the `.dSYM` bundle next to it.
 - **Folders.** The cache and the work folder follow the Linux rules (`$XDG_CACHE_HOME` or `~/.cache`, `$TMPDIR`). macOS sets `TMPDIR` to a folder of the user.
 
 ## Code signing
