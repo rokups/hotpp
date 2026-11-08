@@ -153,7 +153,14 @@ public:
     const std::vector<SourceSegment>& segments() const { return segments_; } // in generated order
     bool empty() const { return segments_.empty(); }
 
+    // The instantiations of the script generics: the C++ name and the script name, for example
+    // "Box_G_int" and "Box<int>". rewrite_diagnostic() shows the script name in a message.
+    using GenericNames = std::vector<std::pair<std::string, std::string>>;
+    void set_generic_names(GenericNames names) { generic_names_ = std::move(names); }
+    const GenericNames& generic_names() const { return generic_names_; }
+
 private:
+    GenericNames generic_names_;
     std::vector<SourceSegment> segments_;
     std::vector<SourceFile> files_;
     std::vector<uint32_t> by_script_; // indexes into segments_, sorted by file and script_begin
@@ -324,6 +331,10 @@ std::string rewrite_diagnostic(const std::string& text, const ScriptTexts& scrip
 // and gives the real script column. Pass the raw text on when the user asks for it
 // (--raw-diagnostics).
 std::string rewrite_translator_diagnostic(const std::string& text, const ScriptTexts& scripts);
+
+// Changes each C++ name of a generic instantiation in "text" to its script name: "Box_G_int"
+// becomes "Box<int>". Only a full name changes: "Box_G_int2" and "Box_G_int__Get" stay.
+std::string show_generic_names(std::string text, const SourceMap::GenericNames& names);
 
 // Changes the generated names in one text to script names, as rewrite_diagnostic() does for a
 // message: "Player__heal" -> "Player.heal", "int32_t" -> "int", "std::string" -> "std.string".

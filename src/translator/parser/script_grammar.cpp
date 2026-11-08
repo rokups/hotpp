@@ -2611,7 +2611,8 @@ ast::Script parse_script(std::string_view text_in, const LineMap& map, Diagnosti
     {
         generic_text.assign(text_in);
         gen.decls = scan_generics(generic_text, map, diag);
-        if (!gen.decls.empty())
+        // The scan also blanks the parts that it reports (a generic method, a constraint).
+        if (!gen.decls.empty() || generic_text != text_in)
             text = generic_text;
     }
     const ParseState st{text.data(), &map, &diag, text.size(), array_tpl};

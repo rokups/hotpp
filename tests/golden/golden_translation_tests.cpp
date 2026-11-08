@@ -177,6 +177,12 @@ TEST(GoldenTranslation, WeakHandle)
     golden_one("weak_handle_v1");
 }
 
+// Script generics (doc/generics.md): one plain class, struct and function for each instantiation.
+TEST(GoldenTranslation, Generics)
+{
+    golden_one("generics_v1");
+}
+
 // Classes that use each other through handles: a weak back handle, a strong pair, a self
 // reference and an intrusive pair. The forward block declares each class first.
 TEST(GoldenTranslation, CycleHandles)

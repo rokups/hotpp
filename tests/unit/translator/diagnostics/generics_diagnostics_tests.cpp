@@ -142,4 +142,71 @@ TEST(GenericsDiagnostics, NativeStubTemplateIsNotAGeneric)
     EXPECT_EQ(r.diagnostics.find("generic"), std::string::npos) << r.diagnostics;
 }
 
+// The number of errors in the text of the diagnostics.
+size_t error_count(const std::string& diagnostics)
+{
+    size_t n = 0;
+    for (size_t at = diagnostics.find(": error: "); at != std::string::npos; at = diagnostics.find(": error: ", at + 1))
+        ++n;
+    return n;
+}
+
+TEST(GenericsDiagnostics, ConstraintsAreErrors)
+{
+    const std::string what = "a constraint on a type parameter is not supported";
+    const struct
+    {
+        const char* script;
+        const char* where;
+    } cases[] = {
+        {"struct Box<T> where T : Shape { T v; }\nint F() { Box<int> b; return 0; }\n", "t.hot:1:15"},
+        {"class Bag<T : Shape> { T v; }\nint F() => 1;\n", "t.hot:1:10"},
+        {"T Pick<T : Shape>(T x) => x;\nint F() => Pick<int>(1);\n", "t.hot:1:7"},
+        {"T Pick<T>(T x) where T : Shape => x;\nint F() => Pick<int>(1);\n", "t.hot:1:16"},
+    };
+    for (const auto& c : cases)
+    {
+        SCOPED_TRACE(c.script);
+        expect_error(c.script, what, c.where);
+        // The scan blanks the constraint: the parse gives no second error.
+        EXPECT_EQ(error_count(translate_text(c.script).diagnostics), 1u);
+    }
+    // A generic method gives one error. A constraint after it gives one more error, and no parse error.
+    const std::string method = "class C { int Get<T>() where T : Shape => 1; }\nint F() => 1;\n";
+    EXPECT_EQ(error_count(translate_text(method).diagnostics), 2u) << translate_text(method).diagnostics;
+    EXPECT_EQ(error_count(translate_text("class C { int Get<T>() => 1; }\nint F() => 1;\n").diagnostics), 1u);
+}
+
+TEST(GenericsNames, RunTimeFramesShowTheScriptName)
+{
+    const hotc::TranslateResult r = translate_text(
+        "class Node<T> { T v; T Get() => v; }\n"
+        "T First<T>(T x) => x;\n"
+        "int Use() { var n = new $Node<int>(); return First<int>(n.Get()); }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    // The traceback frames and the stale call text have the script name.
+    EXPECT_NE(r.cpp.find("HOT_TRACE_FRAME(\"Node<int>.Get\""), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("HOT_TRACE_FRAME(\"First<int>\""), std::string::npos);
+    EXPECT_NE(r.cpp.find("hot::stale_call(\"Node<int>::Get\")"), std::string::npos);
+    // The registry keys keep the C++ name.
+    EXPECT_NE(r.cpp.find("\"Node_G_int::Get\""), std::string::npos);
+}
+
+TEST(GenericsNames, CompilerMessagesShowTheScriptName)
+{
+    const hotc::TranslateResult r = translate_text("struct Box<T> { T value; }\nint Use() { Box<int> b; return b.value; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    const hotc::SourceMap::GenericNames& names = r.source_map.generic_names();
+    ASSERT_EQ(names.size(), 1u);
+    EXPECT_EQ(names[0].first, "Box_G_int");
+    EXPECT_EQ(names[0].second, "Box<int>");
+    // A Clang message that names the instantiation gets the script name. A longer name stays.
+    const std::string out = hotc::rewrite_diagnostic(
+        "x.cpp:3:1: error: no member named 'size' in 'Box_G_int'\nnote: 'Box_G_int2' and 'Box_G_int'\n", {}, {},
+        &r.source_map);
+    EXPECT_NE(out.find("'Box<int>' has no member 'size'"), std::string::npos) << out;
+    EXPECT_NE(out.find("'Box_G_int2' and 'Box<int>'"), std::string::npos) << out;
+    EXPECT_EQ(hotc::show_generic_names("Box_G_int__Get Box_G_int", names), "Box_G_int__Get Box<int>");
+}
+
 } // namespace

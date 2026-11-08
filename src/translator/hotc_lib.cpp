@@ -8779,7 +8779,8 @@ void translate_impl(
             // An operator of a ".cpp" script keeps the "const" of the C++ method (optimized AOT code).
             const std::string mconst = opt.aot_optimized && m.raw && !m.op.empty() && m.is_const ? " const" : "";
             // The frame of the traceback (hot/runtime/trace.h). The macro is empty when HOT_TRACEBACK is 0.
-            std::string tname = what.substr(0, what.find('('));
+            // A generic instantiation shows its script name: "Box<int>.Get".
+            std::string tname = hotc::show_generic_names(what.substr(0, what.find('(')), g_generic_display);
             for (size_t c; (c = tname.find("::")) != std::string::npos;)
                 tname.replace(c, 2, ".");
             // A ".cpp" coroutine cannot "return". Its task is lazy, and the guard of the task checks the
@@ -8904,7 +8905,7 @@ void translate_impl(
                         o.w(line_at(m.line));
                         o.w("    if (HOT_UNLIKELY(!hot_live)) {\n");
                         o.w(line_at(m.line));
-                        o.w("        hot::stale_call(\"" + what + "\");\n");
+                        o.w("        hot::stale_call(\"" + hotc::show_generic_names(what, g_generic_display) + "\");\n");
                         o.w(line_at(m.line));
                         o.w(stale_ret);
                         o.w(line_at(m.line));
@@ -9645,7 +9646,7 @@ void translate_impl(
                     o.w(line_at(first_line));
                     o.w("    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;\n");
                     o.w(line_at(first_line));
-                    o.w("    HOT_TRACE_FRAME(\"" + ls.where + "\", \"" + file + "\");\n");
+                    o.w("    HOT_TRACE_FRAME(\"" + hotc::show_generic_names(ls.where, g_generic_display) + "\", \"" + file + "\");\n");
                     write_stmts(*h, ls.body.get());
                     o.w(line_at(end_line));
                     o.w("}\n");
@@ -9964,23 +9965,11 @@ TranslateResult translate(const TranslateOptions& in, TranslatorSession& session
     }
     res.slots_removed = false;
     // A message names an instantiation of a generic as the script writes it: "Box<int>".
-    std::sort(g_generic_display.begin(), g_generic_display.end(),
-        [](const auto& a, const auto& b) { return a.first.size() > b.first.size(); });
     for (std::vector<hotc::Diag>* list : {&g_diag.items, &g_diag.warnings})
         for (hotc::Diag& d : *list)
-            for (const auto& [mangled, shown] : g_generic_display)
-                for (size_t at = d.msg.find(mangled); at != std::string::npos; at = d.msg.find(mangled, at))
-                {
-                    const size_t end = at + mangled.size();
-                    auto idc = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
-                    if ((at > 0 && idc(d.msg[at - 1])) || (end < d.msg.size() && idc(d.msg[end])))
-                    {
-                        at = end;
-                        continue;
-                    }
-                    d.msg.replace(at, mangled.size(), shown);
-                    at += shown.size();
-                }
+            d.msg = show_generic_names(std::move(d.msg), g_generic_display);
+    // The C++ compiler messages get the same names (rewrite_diagnostic()).
+    res.source_map.set_generic_names(std::move(g_generic_display));
     g_generic_display.clear();
     res.diagnostics = g_diag.format(g_script);
     res.warnings = g_diag.format_warnings(g_script);

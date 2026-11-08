@@ -65,6 +65,7 @@ Each item gives an error:
 - A generic method in a class or a struct. Use a generic free function or a generic class.
 - A generic interface and a generic enum.
 - A type argument that the translator must find from the call arguments: `Larger(1, 2)`.
+- A constraint: `struct Box<T> where T : Shape`, `T Pick<T : Shape>(T x)`. The check of each instantiation finds a wrong use of `T`.
 - A generic with no type arguments: `Box b;`.
 - A wrong count of type arguments.
 - A type parameter that is not a plain name (`<int N>`), a duplicate type parameter, or a type parameter with the name of a builtin type.
@@ -82,5 +83,10 @@ Status: version 1 (2026-11-08).
 - Instantiation model: the parser makes the instantiations (monomorphization at translate time). The scan in `src/translator/parser/generics.cpp` finds each generic declaration and blanks its parameter list, so each position stays. The parser then reads the declaration again for each set of type arguments. The type parameters are type aliases of the type arguments for that read (`ParseInput::aliases`). The later passes (checks, lowering, the emitter, the interface text, the backends) see only plain declarations. So JIT, files, AOT and optimized AOT code are the same.
 - Uses: `apply_aliases` replaces each `Name<args>` in a type by the generated name, and `split_name` does the same in an expression. The list of instantiations grows while the parser reads the instantiations. The depth limit stops an endless chain.
 - Names: `Name_G_arg1_G_arg2`. A character that is not a letter or a digit becomes `_`, and `$` becomes `H`. The name has no `__`, because the error rewrite splits generated names at `__`. Two different instantiations with the same name are an error, never a merge.
-- Messages: the translator writes `Box<int>` for `Box_G_int` in its own messages. A message of the C++ compiler and a run-time message keep the generated name.
+- Messages: the translator writes `Box<int>` for `Box_G_int` in its own messages. `TranslateResult::source_map` keeps the pairs (`SourceMap::generic_names()`), so `rewrite_diagnostic()` writes `Box<int>` in a C++ compiler message too. The traceback frames and the stale call text have the script name: `Box<int>.Get`. The registry keys keep the C++ name. A run-time message with the class name of a handle check (`hot::shell_of`) keeps the C++ name: the runtime uses that name to find the class.
+- Decisions on the other forms (2026-11-08):
+  - Type argument inference: not supported. The parser makes the instantiations, before the type check. The argument types are known only after the check (`types.cpp`). Inference needs a second parse and check of the script. The error tells the user to write `Name<...>(...)`.
+  - Generic methods: not supported. The class body is read in one pass. A generic method needs a worklist for each class and slot keys for each instantiation of the method. A generic free function or a generic class does the same work.
+  - Constraints: not supported. Each instantiation has a full check, so a wrong use of `T` gives an error at the instantiation. A constraint gives a clear error, and the scan blanks it, so the parse gives no second error.
+  - Instantiation by an importer: not supported. Two importers would make two copies of one type in two modules, and `iface_hash` would not cover the generic body. A unit can export a function that uses an instantiation.
 - Modules: the generic is not in the interface text. Instantiation by the importer is an error, so two units never have two copies of one type.

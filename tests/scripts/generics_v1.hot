@@ -1,0 +1,44 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Generation 1 of the generics reload test (doc/generics.md). The class Keeper keeps a live
+// object of the instantiation Counter<int>. Generation 2 changes the generic bodies.
+using "Actor.h";
+
+class Counter<T> {
+    T total;
+
+    void Add(T v) { this.total = this.total + v; }
+    T Get() => this.total;
+}
+
+struct Pair<A, B> {
+    A a;
+    B b;
+
+    A First() => this.a;
+}
+
+T Twice<T>(T x) => x + x;
+
+class Keeper : Actor {
+    $Counter<int> ints;
+    int got = 0;
+    int pair = 0;
+    int twice = 0;
+
+    override void Tick(float dt) {
+        $Counter<int> c = this.ints;
+        if (c == null) {
+            c = new $Counter<int>();
+            this.ints = c;
+        }
+        c.Add(2);
+        this.got = c.Get();
+        Pair<int, float> p;
+        p.a = 7;
+        this.pair = p.First();
+        this.twice = Twice<int>(3);
+    }
+}

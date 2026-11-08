@@ -157,6 +157,61 @@ size_t param_list(const std::vector<Tok>& ts, size_t k, std::vector<std::string>
     }
 }
 
+// The list "<T : Shape, U>" at "k" (a constraint in the list). Gives the index after the ">" and
+// the parameter names, or 0 if the list is not a parameter list with a ":".
+size_t constrained_list(const std::vector<Tok>& ts, size_t k, std::vector<std::string>* names = nullptr)
+{
+    if (k >= ts.size() || ts[k].text != "<")
+        return 0;
+    bool colon = false;
+    std::vector<std::string> found;
+    for (int depth = 0; k < ts.size(); ++k)
+    {
+        const std::string& x = ts[k].text;
+        if (x == "<")
+            ++depth;
+        else if (x == ">" && --depth == 0)
+        {
+            if (colon && names)
+                *names = std::move(found);
+            return colon ? k + 1 : 0;
+        }
+        else if (x == ":")
+            colon = true;
+        else if (x == "(" || x == ")" || x == "{" || x == "}" || x == ";" || x == "=")
+            return 0;
+        else if (depth == 1 && ts[k].word && (ts[k - 1].text == "<" || ts[k - 1].text == ","))
+            found.push_back(x);
+    }
+    return 0;
+}
+
+// A "where" clause after the head of a generic, from "k" up to the body ("{", "=>" or ";"). Gives
+// the index of "where" and sets "body" to the index of the body token, or gives 0.
+size_t where_clause(const std::vector<Tok>& ts, size_t k, size_t& body)
+{
+    size_t w = 0;
+    for (int parens = 0; k < ts.size(); ++k)
+    {
+        const std::string& x = ts[k].text;
+        if (x == "(")
+            ++parens;
+        else if (x == ")")
+            --parens;
+        else if (parens == 0 && (x == "{" || x == "=>" || x == ";"))
+        {
+            body = k;
+            return w;
+        }
+        else if (parens == 0 && x == "where" && ts[k].word && w == 0)
+            w = k;
+    }
+    return 0;
+}
+
+const char* const kNoConstraints =
+    "a constraint on a type parameter is not supported. Remove it: the check of each instantiation finds a wrong use";
+
 bool is_keyword_before_call(const std::string& w)
 {
     static const std::set<std::string> kw = {"return", "new", "await", "throw", "in", "is", "as", "case", "else", "operator"};
@@ -393,6 +448,16 @@ std::vector<GenericDecl> scan_generics(std::string& text, const LineMap& map, Di
         in_init = false;
         item_begin = end;
     };
+    // A "where" clause gives an error. The scan blanks it, so the parse goes on without a second error.
+    auto blank_where = [&](size_t from)
+    {
+        size_t body = 0;
+        if (const size_t w = where_clause(ts, from, body))
+        {
+            err.error(ts[w].pos, kNoConstraints);
+            blank(text, ts[w].pos, ts[body].pos);
+        }
+    };
     for (size_t k = 0; k < ts.size(); ++k)
     {
         const Tok& t = ts[k];
@@ -447,7 +512,10 @@ std::vector<GenericDecl> scan_generics(std::string& text, const LineMap& map, Di
                 continue; // a stub "class Name<*>;"
             const Tok& name = ts[k + 1];
             std::vector<std::string> params;
-            const size_t after = param_list(ts, k + 2, &params);
+            size_t after = param_list(ts, k + 2, &params);
+            if (after == 0 && is_type_kw)
+                if ((after = constrained_list(ts, k + 2, &params)) != 0)
+                    err.error(ts[k + 2].pos, kNoConstraints);
             if (!is_type_kw)
             {
                 err.error(name.pos, std::string("a generic ") + t.text + " is not supported. Only a struct, a class and a free function can be generic");
@@ -460,6 +528,7 @@ std::vector<GenericDecl> scan_generics(std::string& text, const LineMap& map, Di
                 err.error(ts[k + 2].pos, "a type parameter of a generic is a plain name: 'struct Box<T>'");
                 continue;
             }
+            blank_where(after);
             if (after < ts.size() && ts[after].text == ";")
             {
                 err.error(name.pos, "a generic class needs a body");
@@ -481,9 +550,17 @@ std::vector<GenericDecl> scan_generics(std::string& text, const LineMap& map, Di
         if (k == 0 || !ends_type(ts[k - 1]) || k + 1 >= ts.size() || ts[k + 1].text != "<")
             continue;
         std::vector<std::string> params;
-        const size_t after = param_list(ts, k + 1, &params);
-        if (after == 0 || after >= ts.size() || ts[after].text != "(")
+        size_t after = param_list(ts, k + 1, &params);
+        if (after == 0)
+        {
+            after = constrained_list(ts, k + 1, &params);
+            if (after == 0 || after >= ts.size() || ts[after].text != "(")
+                continue;
+            err.error(ts[k + 1].pos, kNoConstraints);
+        }
+        if (after >= ts.size() || ts[after].text != "(")
             continue;
+        blank_where(after);
         if (braces == 1)
         {
             err.error(t.pos, "a generic method is not supported. Use a generic free function or a generic class");

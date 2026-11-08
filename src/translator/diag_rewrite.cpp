@@ -1064,7 +1064,32 @@ std::string rewrite_diagnostic(
         if (i + 1 < out.size() || final_newline)
             result += '\n';
     }
+    if (map)
+        result = show_generic_names(std::move(result), map->generic_names());
     return result;
+}
+
+std::string show_generic_names(std::string text, const SourceMap::GenericNames& names)
+{
+    if (names.empty())
+        return text;
+    // The longest name first: "Box_G_Box_G_int" before "Box_G_int".
+    SourceMap::GenericNames sorted = names;
+    std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) { return a.first.size() > b.first.size(); });
+    auto idc = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
+    for (const auto& [mangled, shown] : sorted)
+        for (size_t at = text.find(mangled); at != std::string::npos; at = text.find(mangled, at))
+        {
+            const size_t end = at + mangled.size();
+            if ((at > 0 && idc(text[at - 1])) || (end < text.size() && idc(text[end])))
+            {
+                at = end;
+                continue;
+            }
+            text.replace(at, mangled.size(), shown);
+            at += shown.size();
+        }
+    return text;
 }
 
 std::string rewrite_translator_diagnostic(const std::string& text, const ScriptTexts& scripts)
