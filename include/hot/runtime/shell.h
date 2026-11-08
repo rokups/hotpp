@@ -24,7 +24,7 @@ namespace hot
 
 // The minimal base of each generated shell: only the record of the class. The shell of
 // optimized AOT code derives from it directly. The shell also derives from the native class.
-struct ShellCore
+struct HOT_RTTI ShellCore
 {
     ClassRecord* cls = nullptr;
     HOT_HIDDEN ShellCore() noexcept {}
@@ -32,7 +32,7 @@ struct ShellCore
 
 // Base of each generated shell of the other modes. It adds the state block and the list of
 // live objects.
-struct ShellBase : ShellCore
+struct HOT_RTTI ShellBase : ShellCore
 {
     void* state = nullptr;
     // The list of live objects (state.cpp). Only the runtime uses these members. A list in the
@@ -54,7 +54,7 @@ struct ShellBase : ShellCore
 
 // The base of the shell of a script class that has no native base (design 7.10.1). It gives
 // the shell a virtual destructor, so a handle can destroy it through the base.
-struct PlainObject : std::enable_shared_from_this<PlainObject>
+struct HOT_RTTI PlainObject : std::enable_shared_from_this<PlainObject>
 {
     HOT_HIDDEN PlainObject() {}
     PlainObject(const PlainObject&) = delete;

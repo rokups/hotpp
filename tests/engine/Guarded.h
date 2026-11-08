@@ -5,8 +5,9 @@
 // A native interface with a noexcept virtual function (the runtime checks tests).
 // The shell override of a noexcept function must not let an exception leave.
 #pragma once
+#include "hot/runtime/export.h" // HOT_RTTI
 
-class IGuarded
+class HOT_RTTI IGuarded
 {
 public:
     virtual ~IGuarded() = default;
@@ -14,7 +15,7 @@ public:
 };
 
 // A native interface with a noexcept pure virtual function. An abstract script class leaves it open.
-class IStrict
+class HOT_RTTI IStrict
 {
 public:
     virtual ~IStrict() = default;

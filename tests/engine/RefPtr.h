@@ -7,11 +7,13 @@
 // WeakRef<T> does not keep the object alive. "Lock()" (not "lock()") gives a RefPtr<T>.
 // The pointers convert to "T*", as the pointers of some engines do.
 #pragma once
+#include "hot/runtime/export.h" // HOT_RTTI
+
 #include <cstddef>
 #include <type_traits>
 #include <utility>
 
-struct RefBase
+struct HOT_RTTI RefBase
 {
     struct Block
     {

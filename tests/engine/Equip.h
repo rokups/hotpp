@@ -18,7 +18,7 @@ struct Charm : std::enable_shared_from_this<Charm>
 };
 
 // A native base that owns a Charm. Best() gives a raw pointer. Held() gives the owning handle.
-class Vault
+class HOT_RTTI Vault
 {
 public:
     virtual ~Vault() = default;
@@ -38,7 +38,7 @@ struct Rune
     int power = 0;
 };
 
-class Wearer
+class HOT_RTTI Wearer
 {
 public:
     virtual ~Wearer() = default;

@@ -13,7 +13,7 @@ struct TypeTag
     const TypeTag* base;
 };
 
-class TypedActor : public Actor
+class HOT_RTTI TypedActor : public Actor
 {
 public:
     TypedActor()

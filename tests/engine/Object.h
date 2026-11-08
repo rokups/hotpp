@@ -19,7 +19,7 @@ struct HOT_EXPORT Object
     void Release();
 };
 
-struct Item : Object
+struct HOT_RTTI Item : Object
 {
     int value = 0;
     explicit Item(int v)

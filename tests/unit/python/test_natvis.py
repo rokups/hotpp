@@ -60,7 +60,7 @@ class Natvis(unittest.TestCase):
 
     def test_cast_is_a_base(self):
         # The expansion of a shell casts "this" to hot::ShellCore: a shell must derive from it.
-        self.assertRegex(self.headers, r"struct\s+ShellBase\s*:\s*ShellCore\b")
+        self.assertRegex(self.headers, r"struct\s+(?:HOT_RTTI\s+)?ShellBase\s*:\s*ShellCore\b")
         self.assertRegex(self.translator, r"hot::ShellBase\b")
 
     def test_generated_names(self):

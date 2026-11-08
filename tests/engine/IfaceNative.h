@@ -7,7 +7,7 @@
 #pragma once
 #include "Actor.h"
 
-class IfaceNative : public Actor
+class HOT_RTTI IfaceNative : public Actor
 {
 public:
     virtual int Foo(int x) { return x; }

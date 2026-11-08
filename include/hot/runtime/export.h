@@ -39,6 +39,22 @@
     #define HOT_MODULE_EXPORT
 #endif
 
+// HOT_RTTI marks a type whose RTTI must match across the host and a script module, but that
+// the host does not export. A dynamic_cast, a typeid and a catch compare the type info.
+// - Each image has its own copy of the type info of an inline-only class, for example an
+//   interface with only inline virtual functions or a struct without virtual functions.
+// - A module builds with -fvisibility=hidden. A hidden copy is "unique" for libc++ on Apple
+//   arm64, so libc++abi compares only the address, and the copies of two images do not match.
+// - A copy with default visibility gets the "not unique" mark, so libc++abi compares the names.
+// - libstdc++ and the MSVC runtime always compare the names, thus the macro is empty on Windows.
+#if defined(_WIN32)
+    #define HOT_RTTI
+#elif defined(__clang__) || defined(__GNUC__)
+    #define HOT_RTTI [[gnu::visibility("default")]]
+#else
+    #define HOT_RTTI
+#endif
+
 // HOT_EXPORT_STD_BEGIN and HOT_EXPORT_STD_END go around the HOT_EXPORT classes that have a
 // standard library base or member, for example a std::string field. MSVC then writes C4251
 // and C4275: the std type has no dll export. The host and each script module use the same

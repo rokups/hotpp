@@ -6,8 +6,9 @@
 // A script class names them after its primary base: "class Boss : Actor, IDamageable".
 // The shell derives from all bases. It has one slot for each virtual of each base.
 #pragma once
+#include "hot/runtime/export.h" // HOT_RTTI
 
-class IDamageable
+class HOT_RTTI IDamageable
 {
 public:
     virtual ~IDamageable() = default;
@@ -17,7 +18,7 @@ public:
     virtual int Armor() const { return 2; }
 };
 
-class ITagged
+class HOT_RTTI ITagged
 {
 public:
     virtual ~ITagged() = default;
