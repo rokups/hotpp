@@ -1,0 +1,13 @@
+// Generation 1 of a class with move-only fields. A reload moves these fields.
+using <memory>;
+using "Actor.h";
+
+class Holder : Actor {
+    std.unique_ptr<int> one = std.make_unique<int>(7);
+    std.vector<std.unique_ptr<int>> many;
+    std.unique_ptr<int> level = std.make_unique<int>(2);
+
+    override void Tick(float dt)  {
+        this.many.push_back(std.make_unique<int>(3));
+    }
+}

@@ -899,8 +899,9 @@ TEST(HotcTool, HandleAddressOfDereferenceAndThisCompile)
     EXPECT_EQ(run_cxx(cat({{"-std=c++20", "-fsyntax-only"}, include_args(), {out}}), cc), 0) << cc;
 }
 
-// A std.unique_ptr field is an error: a reload copies each field.
-TEST(HotcTool, MoveOnlyFieldIsAnError)
+// A std.unique_ptr field of a class compiles: a reload moves it. A struct field of that type is
+// an error: a copy of a struct copies each field.
+TEST(HotcTool, MoveOnlyFieldOfAClassCompilesAndOfAStructIsAnError)
 {
     TestScratch scratch;
     const std::string script = scratch.file("hotc_unique_field.hot");
@@ -908,13 +909,27 @@ TEST(HotcTool, MoveOnlyFieldIsAnError)
     ASSERT_NE(f, nullptr);
     std::fputs(
         "using <memory>;\nusing \"Actor.h\";\nusing \"Weapon.h\";\n"
-        "class Holder : Actor {\n    std.unique_ptr<Weapon> w;\n}\n",
+        "class Holder : Actor {\n    std.unique_ptr<Weapon> w;\n    std.vector<std.unique_ptr<Weapon>> all;\n"
+        "    void Arm() { this.w = std.make_unique<Weapon>(5, \"axe\"); }\n}\n",
         f);
     std::fclose(f);
     const std::string out = scratch.file("hotc_unique_field.cpp");
     std::string log;
-    EXPECT_NE(run_hotc(cat({{"--emit-cpp", "-o", out, script}, engine_args()}), log), 0);
-    EXPECT_NE(log.find("field of move-only type 'std::unique_ptr<Weapon>' is not supported"), std::string::npos) << log;
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp", "-o", out, script}, engine_args()}), log), 0) << log;
+    std::string cc;
+    EXPECT_EQ(run_cxx(cat({{"-std=c++20", "-fsyntax-only"}, include_args(), {out}}), cc), 0) << cc;
+
+    const std::string bad = scratch.file("hotc_unique_struct.hot");
+    f = std::fopen(bad.c_str(), "w");
+    ASSERT_NE(f, nullptr);
+    std::fputs("using <memory>;\nusing \"Weapon.h\";\nstruct Kit {\n    std.unique_ptr<Weapon> w;\n}\n", f);
+    std::fclose(f);
+    log.clear();
+    EXPECT_NE(run_hotc(cat({{"--emit-cpp", "-o", scratch.file("hotc_unique_struct.cpp"), bad}, engine_args()}), log), 0);
+    EXPECT_NE(log.find("a struct field of move-only type 'std::unique_ptr<Weapon>' is not supported: a copy of a "
+                       "struct copies each field. Use a class"),
+        std::string::npos)
+        << log;
 }
 
 // --format=fmt only changes the text. The default is std::format.

@@ -1153,8 +1153,9 @@ struct Checker
             check_storage(arg, pos, "a collection element");
     }
 
-    // A reload copies each field into the new state block (design 4.7). A field type must be
-    // copyable. "std::unique_ptr" is the move-only type that a script can name.
+    // A struct is a value: a copy of the struct copies each field. A struct field type must be
+    // copyable. "std::unique_ptr" is the move-only type that a script can name. A class field can
+    // be move-only: a reload moves it into the new state block (design 4.7).
     void check_copyable(const std::string& type, uint32_t pos)
     {
         std::string t = trim(type);
@@ -1165,8 +1166,8 @@ struct Checker
             const size_t n = std::string(q).size();
             if (t.compare(0, n, q) == 0 && (t.size() == n || t[n] == '<' || t[n] == ' '))
             {
-                error(pos, "field of move-only type '" + t + "' is not supported: a reload copies each field. "
-                               "Use a handle");
+                error(pos, "a struct field of move-only type '" + t + "' is not supported: a copy of a struct "
+                               "copies each field. Use a class");
                 return;
             }
         }
@@ -2003,10 +2004,11 @@ struct Checker
                 error(f.pos, "a pointer field is already a weak reference: remove '[weak]'");
             else
                 check_storage(f.type, f.pos, "a field");
-            // A reload copies the fields, and a task is move-only.
+            // A reload cancels a suspended task of the old code, so a field keeps a dead task (async.md).
             if (!is_cpp && (mentions_task_type(f.type) || mentions_task_type(f.script_type)))
                 error(f.pos, "a 'Task' field is not supported: hold the task in a local variable or in a host object");
-            if (!is_cpp) // a ".cpp" field is the C++ of the user; the reload moves a field that does not copy
+            // A reload moves a field that does not copy. A ".cpp" field is the C++ of the user.
+            if (!is_cpp && cd.is_value)
                 check_copyable(f.type, f.pos);
             if (!is_cpp && has_view_word(f.type) && !(f.init && std::holds_alternative<StringExpr>(f.init->v)))
                 error(f.pos, "a view ('T[]' or 'std.string_view') cannot be stored in a field or a container: it can "

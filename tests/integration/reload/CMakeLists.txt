@@ -30,6 +30,7 @@ add_executable(integration_reload_tests
     using_alias_tests.cpp
     module_state_tests.cpp
     cpp_script_tests.cpp
+    move_only_field_tests.cpp
     property_tests.cpp
     exception_tests.cpp
     collection_switch_tests.cpp

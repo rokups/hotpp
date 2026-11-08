@@ -170,7 +170,7 @@ TEST(AsyncDiagnostics, NonAsyncOverrideOfAnAsyncBaseIsAnError)
     EXPECT_TRUE(has(r, "'async' of 'g' differs from the base method")) << r.diagnostics;
 }
 
-// A reload copies the fields, and a task is move-only. A class and a struct cannot hold a task.
+// A reload cancels a suspended task of the old code. A class and a struct cannot hold a task.
 TEST(AsyncDiagnostics, TaskFieldIsAnError)
 {
     const char* msg = "a 'Task' field is not supported: hold the task in a local variable or in a host object";

@@ -1,0 +1,20 @@
+// Generation 2 of a class with move-only fields. It adds the field "ticks". The field "level"
+// changes its type. The convert hook takes the old value by a move.
+using <memory>;
+using "Actor.h";
+
+class Holder : Actor {
+    std.unique_ptr<int> one = std.make_unique<int>(70);
+    std.vector<std.unique_ptr<int>> many;
+    int ticks = 0;
+    std.shared_ptr<int> level;
+
+    std.shared_ptr<int> convert_level(std.unique_ptr<int> old)  {
+        return std.shared_ptr<int>(std.move(old));
+    }
+
+    override void Tick(float dt)  {
+        this.ticks += 1;
+        this.many.push_back(std.make_unique<int>(4));
+    }
+}

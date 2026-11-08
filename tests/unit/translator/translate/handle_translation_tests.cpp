@@ -221,13 +221,14 @@ TEST(HandleTranslation, ThisCannotBindToAScriptClassReferenceParameter)
     EXPECT_TRUE(ok.ok) << ok.diagnostics;
 }
 
-// A reload copies each field, so a move-only field type is an error.
-TEST(HandleTranslation, UniquePtrFieldIsAnError)
+// A reload moves a move-only field of a class. The field record uses hot::move_field.
+TEST(HandleTranslation, UniquePtrFieldOfAClassMoves)
 {
-    const hotc::TranslateResult r = weapon_translate("    std.unique_ptr<Weapon> u;\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "field of move-only type 'std::unique_ptr<Weapon>' is not supported"))
-        << r.diagnostics;
+    const hotc::TranslateResult r =
+        weapon_translate("    std.unique_ptr<Weapon> u;\n    std.vector<std.unique_ptr<Weapon>> all;\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "hot::move_field<std::unique_ptr<Weapon>>")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::move_field<std::vector<std::unique_ptr<Weapon>>>")) << r.cpp;
     const hotc::TranslateResult loc =
         weapon_translate("    void Run(ref std.unique_ptr<Weapon> p) { std.unique_ptr<Weapon> q; }\n");
     EXPECT_TRUE(loc.ok) << loc.diagnostics;
