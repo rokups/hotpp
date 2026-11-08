@@ -36,6 +36,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -300,13 +301,17 @@ public:
             if (name.empty() || hot::jit::is_host_allocator_name(name.data(), name.size()))
                 continue;
             const std::string text = name.str();
+            HMODULE from = nullptr;
             for (HMODULE module : order)
                 if (FARPROC address = GetProcAddress(module, text.c_str()))
                 {
                     found[item.first] = llvm::orc::ExecutorSymbolDef(
                         llvm::orc::ExecutorAddr(reinterpret_cast<uint64_t>(address)), llvm::JITSymbolFlags::Exported);
+                    from = module;
                     break;
                 }
+            if (trace_)
+                trace(text, from);
         }
         if (found.empty())
             return llvm::Error::success();
@@ -314,6 +319,22 @@ public:
     }
 
 private:
+    // HOT_JIT_TRACE_SYMBOLS=1 writes each name and the module that gives it to stderr.
+    static bool trace_on()
+    {
+        const char* v = std::getenv("HOT_JIT_TRACE_SYMBOLS");
+        return v && *v && *v != '0';
+    }
+
+    static void trace(const std::string& name, HMODULE module)
+    {
+        char path[MAX_PATH] = "(not found)";
+        if (module)
+            GetModuleFileNameA(module, path, MAX_PATH);
+        std::fprintf(stderr, "[jit-sym] %s -> %s\n", name.c_str(), path);
+        std::fflush(stderr);
+    }
+
     // The loaded modules now: a module can load after the start of the JIT.
     std::vector<HMODULE> search_order() const
     {
@@ -323,7 +344,12 @@ private:
         {
             const DWORD bytes = static_cast<DWORD>(modules.size() * sizeof(HMODULE));
             if (!K32EnumProcessModules(GetCurrentProcess(), modules.data(), bytes, &needed))
-                return host_;
+            {
+                // Without the list of the process, only the host runtime DLLs, in the same rank order.
+                modules = host_;
+                needed = static_cast<DWORD>(modules.size() * sizeof(HMODULE));
+                break;
+            }
             if (needed <= bytes)
                 break;
             modules.resize(needed / sizeof(HMODULE) + 16);
@@ -355,6 +381,7 @@ private:
 
     std::vector<HMODULE> host_;
     char prefix_;
+    bool trace_ = trace_on();
 };
 #endif
 

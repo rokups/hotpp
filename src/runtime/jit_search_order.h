@@ -55,21 +55,41 @@ inline bool is_c_runtime_dll(std::string_view path)
     return false;
 }
 
+// The rank of a host runtime DLL in the search: vcruntime (0), msvcp and concrt (1), ucrtbase
+// (2), other (3). ucrtbase also exports the C++ exception names of vcruntime (__CxxFrameHandler3,
+// __current_exception, __processing_throw and more), with its own exception state for each
+// thread. The host code uses the state of vcruntime: for example std::current_exception() of
+// msvcp reads it. A JIT catch with the frame handler of ucrtbase writes the other state, and then
+// std::current_exception() gives null. So vcruntime comes before ucrtbase.
+inline int host_runtime_rank(std::string_view path)
+{
+    const std::string name = detail::lower_file_name(path);
+    if (detail::starts_with(name, "vcruntime"))
+        return 0;
+    if (detail::starts_with(name, "msvcp") || detail::starts_with(name, "concrt"))
+        return 1;
+    if (detail::starts_with(name, "ucrtbase"))
+        return 2;
+    return 3;
+}
+
 // The search order of the loaded modules. "modules" has the paths of the modules in the load
-// order. "host" has the indexes of the runtime DLLs of the host, in the preferred order. The
-// result starts with the host indexes (each one time). The other modules follow in the load
-// order. A C runtime DLL that is not a host DLL is not in the result.
+// order. "host" has the indexes of the runtime DLLs of the host. The result starts with the host
+// indexes (each one time), in the order of host_runtime_rank. Host indexes with the same rank keep
+// the order of "host". The other modules follow in the load order. A C runtime DLL that is not a
+// host DLL is not in the result.
 inline std::vector<std::size_t> symbol_search_order(
     const std::vector<std::string>& modules, const std::vector<std::size_t>& host)
 {
     std::vector<std::size_t> order;
     std::vector<bool> used(modules.size(), false);
-    for (std::size_t i : host)
-        if (i < modules.size() && !used[i])
-        {
-            used[i] = true;
-            order.push_back(i);
-        }
+    for (int rank = 0; rank <= 3; ++rank)
+        for (std::size_t i : host)
+            if (i < modules.size() && !used[i] && host_runtime_rank(modules[i]) == rank)
+            {
+                used[i] = true;
+                order.push_back(i);
+            }
     for (std::size_t i = 0; i < modules.size(); ++i)
         if (!used[i] && !is_c_runtime_dll(modules[i]))
             order.push_back(i);

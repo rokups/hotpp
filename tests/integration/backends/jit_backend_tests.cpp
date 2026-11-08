@@ -37,11 +37,29 @@
     #include <iterator>
     #include <malloc.h>
     #include <map>
+    #include <stdexcept>
     #include <typeinfo>
     #include <vector>
     #include <windows.h>
 // The epoch of the local statics of the thread (jit_msvc_symbols.cpp).
 extern "C" __declspec(thread) int _Init_thread_epoch;
+
+// The exception types of the exception probe. The host and the JIT code have the same text, so the
+// two definitions have the same decorated name. A catch matches a type by this name.
+    #define HOT_EH_PROBE_TYPES                                                                              \
+        struct ProbeHostError                                                                               \
+        {                                                                                                   \
+            explicit ProbeHostError(int c) : code(c) {}                                                     \
+            virtual ~ProbeHostError() = default;                                                            \
+            int code;                                                                                       \
+        };                                                                                                  \
+        struct ProbeJitError                                                                                \
+        {                                                                                                   \
+            int code;                                                                                       \
+        };
+    #define HOT_EH_TEXT_(...) #__VA_ARGS__
+    #define HOT_EH_TEXT(...) HOT_EH_TEXT_(__VA_ARGS__)
+HOT_EH_PROBE_TYPES
 #endif
 
 #include <gtest/gtest.h>
@@ -727,12 +745,39 @@ const char* probe_source()
 // layout of runtime and library types, as the JIT code sees them. These must be the values of the
 // host: else the JIT code uses another heap, another state or another type. Then blocks go from
 // one side to the other side and back. The text names each value that differs.
-std::string probe_host_runtime()
+// Takes a text of the engine and frees it.
+std::string take_text(char* text)
+{
+    std::string out = text ? text : "";
+    hot_jit_string_free(text);
+    return out;
+}
+
+// One probe module in its own engine. The destructor removes the module, then the engine.
+struct JitProbe
+{
+    hot_jit_engine* engine = nullptr;
+    hot_jit_dylib* dylib = nullptr;
+    JitProbe() = default;
+    JitProbe(const JitProbe&) = delete;
+    JitProbe& operator=(const JitProbe&) = delete;
+    ~JitProbe()
+    {
+        if (dylib)
+            hot_jit_remove(dylib);
+        if (engine)
+            hot_jit_engine_free(engine);
+    }
+};
+
+// Compiles "source" with the runtime flags of the host and links it in a new engine, the same as
+// the backend. Returns an empty text, or the reason of the failure.
+std::string make_probe(const char* file, const char* source, JitProbe& probe)
 {
     const hot::DefaultPaths paths = hot::default_paths();
-    const std::string path = hot::jit_virtual_path("/hot-jit-test", "probe.cpp", fs::current_path().string());
+    const std::string path = hot::jit_virtual_path("/hot-jit-test", file, fs::current_path().string());
     std::vector<std::string> flags = {"clang++", "-std=" + std::string(hot::cxx_std_name()), "-DHOT_MODULE_BUILD=1",
-        "-I" HOT_SOURCE_DIR "/include"};
+        "-fexceptions", "-fcxx-exceptions", "-I" HOT_SOURCE_DIR "/include"};
     for (const std::string& f : hot::host_ms_runtime_lib_flags(std::string()))
         flags.push_back(f);
     for (const std::string& d : paths.include_dirs)
@@ -744,39 +789,42 @@ std::string probe_host_runtime()
     for (const std::string& f : flags)
         args.push_back(f.c_str());
     const char* file_paths[] = {path.c_str()};
-    const char* texts[] = {probe_source()};
+    const char* texts[] = {source};
     hot_jit_ir* ir = nullptr;
     char* diagnostics = nullptr;
     const int compiled = hot_jit_compile(args.data(), args.size(), file_paths, texts, 1, &ir, &diagnostics);
-    auto take = [](char* text) {
-        std::string out = text ? text : "";
-        hot_jit_string_free(text);
-        return out;
-    };
-    const std::string messages = take(diagnostics);
+    const std::string messages = take_text(diagnostics);
     if (!compiled)
-        return "the probe does not compile: " + messages;
+        return std::string(file) + " does not compile: " + messages;
     char* error = nullptr;
     char* debugger_error = nullptr;
     int debugger_on = 0;
     const std::vector<const void*> host_runtime = hot::jit::host_runtime_addresses();
-    hot_jit_engine* engine =
+    probe.engine =
         hot_jit_engine_create(0, host_runtime.data(), host_runtime.size(), &debugger_on, &error, &debugger_error);
-    take(debugger_error);
-    if (!engine)
+    take_text(debugger_error);
+    if (!probe.engine)
     {
         hot_jit_ir_free(ir);
-        return "no JIT: " + take(error);
+        return "no JIT: " + take_text(error);
     }
     std::vector<const char*> names;
     std::vector<uint64_t> values;
     hot::jit::add_msvc_host_symbols(names, values);
-    hot_jit_dylib* dylib = hot_jit_add(engine, "probe", ir, names.data(), values.data(), names.size(), &error);
-    if (!dylib)
-    {
-        hot_jit_engine_free(engine);
-        return "the probe does not link: " + take(error);
-    }
+    probe.dylib = hot_jit_add(probe.engine, file, ir, names.data(), values.data(), names.size(), &error);
+    if (!probe.dylib)
+        return std::string(file) + " does not link: " + take_text(error);
+    return "";
+}
+
+std::string probe_host_runtime()
+{
+    JitProbe probe;
+    if (std::string error = make_probe("probe.cpp", probe_source(), probe); !error.empty())
+        return error;
+    hot_jit_dylib* dylib = probe.dylib;
+    char* error = nullptr;
+    auto take = take_text;
     std::string differ;
     auto look = [&](const char* function) -> void* {
         void* f = hot_jit_lookup(dylib, function, &error);
@@ -879,9 +927,201 @@ std::string probe_host_runtime()
             _aligned_free(b);
         }
     }
-    hot_jit_remove(dylib);
-    hot_jit_engine_free(engine);
     return differ;
+}
+
+// The exception probe: the JIT code throws and catches C++ exceptions in the JIT code, from the host
+// and to the host. Each function gives 1 when its case works.
+const char* eh_probe_source()
+{
+    return "#include <cstring>\n#include <exception>\n#include <stdexcept>\n" HOT_EH_TEXT(HOT_EH_PROBE_TYPES) R"(
+extern "C" int eh_local(int k)
+{
+    try
+    {
+        switch (k)
+        {
+        case 0: throw 7;
+        case 1: throw std::runtime_error("jit runtime_error");
+        case 2: throw ProbeJitError{3};
+        case 3:
+            try { throw ProbeJitError{4}; }
+            catch (...) { throw; }
+        case 4:
+            try { throw 5; }
+            catch (int) { throw std::logic_error("nested"); }
+        case 5: throw ProbeHostError(6);
+        }
+    }
+    catch (int v) { return k == 0 && v == 7; }
+    catch (const std::runtime_error& e) { return k == 1 && std::strcmp(e.what(), "jit runtime_error") == 0; }
+    catch (const std::logic_error& e) { return k == 4 && std::strcmp(e.what(), "nested") == 0; }
+    catch (const ProbeJitError& e) { return (k == 2 && e.code == 3) || (k == 3 && e.code == 4); }
+    catch (const ProbeHostError& e) { return k == 5 && e.code == 6; }
+    catch (...) { return 0; }
+    return 0;
+}
+extern "C" int eh_current()
+{
+    try { throw std::runtime_error("current"); }
+    catch (...)
+    {
+        std::exception_ptr p = std::current_exception();
+        if (!p)
+            return 0;
+        try { std::rethrow_exception(p); }
+        catch (const std::runtime_error& e) { return std::strcmp(e.what(), "current") == 0; }
+        catch (...) { return 0; }
+    }
+    return 0;
+}
+extern "C" int eh_uncaught()
+{
+    struct Check { int* out; ~Check() { *out = std::uncaught_exceptions(); } };
+    int seen = -1;
+    try { Check c{&seen}; throw 1; }
+    catch (...) {}
+    return seen == 1;
+}
+extern "C" int eh_catch_host(void (*host_throw)(int), int k)
+{
+    try { host_throw(k); }
+    catch (int v) { return k == 0 && v == 11; }
+    catch (const std::runtime_error& e) { return k == 1 && std::strcmp(e.what(), "host runtime_error") == 0; }
+    catch (const ProbeHostError& e) { return k == 2 && e.code == 12; }
+    catch (...) { return 0; }
+    return 0;
+}
+extern "C" int eh_current_from_host(void (*host_throw)(int))
+{
+    try { host_throw(1); }
+    catch (...) { return std::current_exception() != nullptr; }
+    return 0;
+}
+extern "C" void eh_throw(int k)
+{
+    switch (k)
+    {
+    case 0: throw 21;
+    case 1: throw std::runtime_error("jit to host");
+    case 2: throw ProbeHostError(22);
+    case 3: throw ProbeJitError{23};
+    case 4:
+        try { throw std::runtime_error("rethrow to host"); }
+        catch (...) { throw; }
+    case 5:
+        try { throw 24; }
+        catch (...) { std::rethrow_exception(std::current_exception()); }
+    }
+}
+struct Mark { int* p; ~Mark() { ++*p; } };
+extern "C" void eh_pass(void (*host_throw)(int), int* destructors)
+{
+    Mark m{destructors};
+    host_throw(1);
+}
+)";
+}
+
+void eh_host_throw(int k)
+{
+    switch (k)
+    {
+    case 0: throw 11;
+    case 1: throw std::runtime_error("host runtime_error");
+    case 2: throw ProbeHostError(12);
+    }
+}
+
+// Runs each case of the exception probe and gives the names of the cases that fail. Each case
+// writes its name before it runs: a case that stops the process is then the last name in the log.
+std::string probe_exceptions()
+{
+    JitProbe probe;
+    if (std::string error = make_probe("eh_probe.cpp", eh_probe_source(), probe); !error.empty())
+        return error;
+    std::string failed;
+    char* error = nullptr;
+    auto look = [&](const char* function) -> void* {
+        void* f = hot_jit_lookup(probe.dylib, function, &error);
+        if (!f)
+            failed += std::string(function) + " (" + take_text(error) + ") ";
+        return f;
+    };
+    auto check = [&](const std::string& name, auto&& run) {
+        std::fprintf(stderr, "[eh-probe] %s\n", name.c_str());
+        std::fflush(stderr);
+        bool ok = false;
+        try
+        {
+            ok = run();
+        }
+        catch (...)
+        {
+            ok = false;
+        }
+        if (!ok)
+            failed += name + " ";
+    };
+    using HostThrow = void (*)(int);
+    if (auto f = reinterpret_cast<int (*)(int)>(look("eh_local")))
+        for (int k : {0, 1, 2, 3, 4, 5})
+            check("jit-throw-jit-catch-" + std::to_string(k), [&] { return f(k) == 1; });
+    if (auto f = reinterpret_cast<int (*)()>(look("eh_current")))
+        check("jit-current-exception", [&] { return f() == 1; });
+    if (auto f = reinterpret_cast<int (*)()>(look("eh_uncaught")))
+        check("jit-uncaught-exceptions", [&] { return f() == 1; });
+    if (auto f = reinterpret_cast<int (*)(HostThrow, int)>(look("eh_catch_host")))
+        for (int k : {0, 1, 2})
+            check("host-throw-jit-catch-" + std::to_string(k), [&] { return f(&eh_host_throw, k) == 1; });
+    if (auto f = reinterpret_cast<int (*)(HostThrow)>(look("eh_current_from_host")))
+        check("host-throw-jit-current-exception", [&] { return f(&eh_host_throw) == 1; });
+    if (auto f = reinterpret_cast<void (*)(int)>(look("eh_throw")))
+    {
+        check("jit-throw-host-catch-int", [&] {
+            try { f(0); }
+            catch (int v) { return v == 21; }
+            return false;
+        });
+        check("jit-throw-host-catch-runtime-error", [&] {
+            try { f(1); }
+            catch (const std::runtime_error& e) { return std::string(e.what()) == "jit to host"; }
+            return false;
+        });
+        check("jit-throw-host-catch-host-class", [&] {
+            try { f(2); }
+            catch (const ProbeHostError& e) { return e.code == 22; }
+            return false;
+        });
+        check("jit-throw-host-catch-jit-class", [&] {
+            try { f(3); }
+            catch (const ProbeJitError& e) { return e.code == 23; }
+            return false;
+        });
+        check("jit-rethrow-host-catch", [&] {
+            try { f(4); }
+            catch (const std::runtime_error& e) { return std::string(e.what()) == "rethrow to host"; }
+            return false;
+        });
+        check("jit-rethrow-exception-host-catch", [&] {
+            try { f(5); }
+            catch (int v) { return v == 24; }
+            return false;
+        });
+        check("jit-throw-host-current-exception", [&] {
+            try { f(1); }
+            catch (...) { return std::current_exception() != nullptr; }
+            return false;
+        });
+    }
+    if (auto f = reinterpret_cast<void (*)(HostThrow, int*)>(look("eh_pass")))
+        check("host-throw-through-jit-frame", [&] {
+            int destructors = 0;
+            try { f(&eh_host_throw, &destructors); }
+            catch (const std::runtime_error&) { return destructors == 1; }
+            return false;
+        });
+    return failed;
 }
 #endif
 
@@ -893,6 +1133,17 @@ TEST(JitTests, JitCodeSeesTheHostRuntime)
     GTEST_SKIP() << "Windows only";
 #else
     EXPECT_EQ(probe_host_runtime(), "");
+#endif
+}
+
+// Windows: C++ exceptions work in the JIT code, from the host to the JIT code and from the JIT code
+// to the host. The text names each case that fails.
+TEST(JitTests, JitCodeThrowsAndCatchesCxxExceptions)
+{
+#ifndef _MSC_VER
+    GTEST_SKIP() << "Windows only";
+#else
+    EXPECT_EQ(probe_exceptions(), "");
 #endif
 }
 
@@ -943,10 +1194,32 @@ TEST(JitTests, SymbolSearchOrderPutsTheHostRuntimeFirst)
         "C:\\Windows\\System32\\msvcp_win.dll", "C:\\Windows\\SYSTEM32\\MSVCP140.dll",
         "C:\\Windows\\System32\\USER32.dll", "C:\\Windows\\SYSTEM32\\ucrtbased.dll"};
     // A host index can come two times or be out of range: the result has it one time or not.
+    // vcruntime comes before msvcp, and msvcp before ucrtbase, in each order of the host list.
     const std::vector<std::size_t> order = hot::jit::symbol_search_order(modules, {4, 5, 7, 4, 99});
-    EXPECT_EQ(order, (std::vector<std::size_t>{4, 5, 7, 0, 1, 2, 8}));
+    EXPECT_EQ(order, (std::vector<std::size_t>{5, 7, 4, 0, 1, 2, 8}));
+    EXPECT_EQ(hot::jit::symbol_search_order(modules, {7, 4, 5}), order);
     // Without a host list, no C runtime DLL is in the search.
     EXPECT_EQ(hot::jit::symbol_search_order(modules, {}), (std::vector<std::size_t>{0, 1, 2, 8}));
+}
+
+// ucrtbase also exports the C++ exception names of vcruntime (__CxxFrameHandler3,
+// __current_exception), with another exception state. The JIT code must get these names from
+// vcruntime, the same as the host: else std::current_exception() in a JIT catch gives null.
+TEST(JitTests, SymbolSearchOrderPutsVcruntimeBeforeUcrtbase)
+{
+    const std::vector<std::string> modules = {"C:\\Windows\\System32\\ucrtbase.dll",
+        "C:\\Windows\\SYSTEM32\\MSVCP140.dll", "C:\\Windows\\SYSTEM32\\concrt140.dll",
+        "C:\\Windows\\SYSTEM32\\VCRUNTIME140_1.dll", "C:\\Windows\\SYSTEM32\\VCRUNTIME140.dll",
+        "C:\\Windows\\SYSTEM32\\msvcp140_1.dll", "D:\\a\\engine.dll"};
+    EXPECT_EQ(hot::jit::host_runtime_rank(modules[4]), 0);
+    EXPECT_EQ(hot::jit::host_runtime_rank(modules[3]), 0);
+    EXPECT_EQ(hot::jit::host_runtime_rank(modules[1]), 1);
+    EXPECT_EQ(hot::jit::host_runtime_rank(modules[2]), 1);
+    EXPECT_EQ(hot::jit::host_runtime_rank(modules[0]), 2);
+    EXPECT_EQ(hot::jit::host_runtime_rank(modules[6]), 3);
+    // The host list of jit::host_runtime_addresses: ucrtbase, vcruntime, msvcp, then the others.
+    EXPECT_EQ(hot::jit::symbol_search_order(modules, {0, 4, 1, 3, 5, 2}),
+        (std::vector<std::size_t>{4, 3, 1, 5, 2, 0, 6}));
 }
 
 // The host gives each name of the allocator family that this platform has, one time, with an
