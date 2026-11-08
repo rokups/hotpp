@@ -132,7 +132,7 @@ if(HOT_JIT_ENABLED)
         target_compile_options(hot_jit_engine PRIVATE /GR-)
     endif()
 
-    add_library(hot_jit_backend STATIC jit_backend.cpp)
+    add_library(hot_jit_backend STATIC jit_backend.cpp jit_msvc_symbols.cpp)
     # The public header has no LLVM type, and jit_backend.cpp uses only the C interface.
     target_include_directories(hot_jit_backend PUBLIC
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>

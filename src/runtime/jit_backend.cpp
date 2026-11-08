@@ -11,6 +11,7 @@
 #include "hot/runtime/errors.h"
 
 #include "jit_engine.h"
+#include "jit_msvc_symbols.h"
 
 
 #include <chrono>
@@ -264,6 +265,8 @@ LoadResult add_to_jit(const std::shared_ptr<JitState>& impl, const std::string& 
     abs_names.push_back("hot_call_depth_tp_offset");
     abs_values.push_back(static_cast<uint64_t>(detail::call_depth_tp_offset()));
 #endif
+    // MSVC: the engine DLL (/MT) cannot find the static part of the host C runtime.
+    jit::add_msvc_host_symbols(abs_names, abs_values);
     char* error = nullptr;
     holder->dylib =
         hot_jit_add(impl->engine, id.c_str(), ir, abs_names.data(), abs_values.data(), abs_names.size(), &error);
