@@ -58,7 +58,7 @@ class Hero {
 
 ## Where borrowing is rejected
 
-A field, a return value, a collection element and a lambda capture are errors. The prefix `&` does not exist in `.hot`. A method that gives access to a value struct returns `ref T` or `T?`, not `T*`: see [Type design](type-design.html#lifetime-of-a-ref). A field of the move-only type `std.unique_ptr<T>` is also an error, because a reload copies each field. A pointer field of a native class with a weak source is the exception (see "Pointer fields").
+A field, a return value, a collection element and a lambda capture are errors. The prefix `&` does not exist in `.hot`. A method that gives access to a value struct returns `ref T` or `T?`, not `T*`: see [Type design](type-design.html#lifetime-of-a-ref). A `struct` field of the move-only type `std.unique_ptr<T>` is also an error, because a copy of a struct copies each field. A class field of that type is valid (see [Move-only fields](hot-reload.html#move-only-fields)). A pointer field of a native class with a weak source is the exception (see "Pointer fields").
 
 ```hot
 // error
@@ -67,18 +67,20 @@ class Bad {
     Vec3 last;
     Vec3* ptr;                          // pointer to a value type
     std.vector<Vec3*> all;              // collection element
-    std.unique_ptr<Vec3> own;           // move-only field
     void Run(ref Vec3 v) {
         var f = () => { v.x = 1; };     // capture
     }
+}
+struct Kit {
+    std.unique_ptr<Vec3> own;           // move-only struct field
 }
 ```
 
 ```
 a field cannot hold a pointer to the value type 'Vec3': nothing owns it, so the pointer can dangle. Use a value, or a pointer to the object that owns it
 a collection element cannot hold a borrowed pointer or reference to 'Vec3'. Declare a stub ...
-field of move-only type 'std::unique_ptr<Vec3>' is not supported: a reload copies each field. Use a handle
 the lambda captures 'v', a borrowed pointer or reference. A closure cannot keep it. Copy the value or use a handle
+a struct field of move-only type 'std::unique_ptr<Vec3>' is not supported: a copy of a struct copies each field. Use a class
 ```
 
 ## Handles and borrowing

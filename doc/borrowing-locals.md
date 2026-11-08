@@ -79,6 +79,6 @@ class Probe {
 | `can move or remove the elements` | `var r = ...;`, or end the ref before the call |
 | `is live across 'await'` | Copy the value before the `await` |
 | `the lambda captures` | Copy first: `var c = r;`, then use `c` |
-| `field of move-only type` | A handle: a stub with `handle` |
+| `a struct field of move-only type` | A class: a class field of a move-only type moves across a reload |
 | `a pointer to the script class` | `$Hero` |
 | `'this' cannot bind` | `$Hero me = this;` |

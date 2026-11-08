@@ -21,6 +21,7 @@ The host compiles the new script as a new generation. The commit runs at the fra
 | Rename a field with `[alias]` | LIVE. The value moves. |
 | Rename a field without `[alias]` | LIVE. The value is lost and the runtime warns. |
 | Change a field type | LIVE. A `convert_` hook converts the value. Else the default value and a warning. |
+| A field of a move-only type, for example `std.unique_ptr<T>` | LIVE. The value moves (see [Move-only fields](#move-only-fields)). |
 | Change a script struct, enum or module variable | LIVE |
 | Change the native base class or a native interface base | Full reload |
 | Change the script parent class | Full reload |
@@ -113,6 +114,17 @@ class Hero : Actor {
     }
 }
 ```
+
+## Move-only fields
+
+A class field can have a move-only type, for example `std.unique_ptr<T>` or `std.vector<std.unique_ptr<T>>`. A `.cpp` class has the same rule. The migration copies a field that can copy. It moves a field that cannot copy. The new object then owns the same heap objects. The old object keeps an empty value, and its destruction frees nothing.
+
+- A `convert_` hook gets the old value of a move-only type by a move: `std.shared_ptr<int> convert_level(std.unique_ptr<int> old) { return std.shared_ptr<int>(std.move(old)); }`.
+- In `onReload`, `old.get<T>(name)` of a moved field gives the empty value. Read the new field.
+- A failed migration (a move constructor or an initializer throws) keeps the old objects. A moved field of an old object is then empty.
+- A clone of an object with a move-only field throws `std::runtime_error` ("class C is not copyable: field 'f'").
+- A `struct` field cannot have a move-only type, because a copy of a struct copies each field. The error is `a struct field of move-only type '...' is not supported`. Use a class.
+- A `Task` field stays an error: a reload cancels a suspended task of the old code (see [Async](async.html#reload)).
 
 ## `onReload`
 
