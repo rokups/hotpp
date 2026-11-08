@@ -133,8 +133,14 @@ class Gauge : Actor {
         get { return raw; }
         set { raw = value < 0.0 ? 0.0 : value; }
     }
+    float Armor {                           // expression bodies
+        get => raw * 2.0;
+        set => raw = value / 2.0;
+    }
 }
 ```
+
+An accessor body can be an expression: `get => e;` is `get { return e; }`, and `set => e;` is `set { e; }`.
 
 ## Structs
 

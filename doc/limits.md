@@ -65,8 +65,15 @@ This list shows what version 1 does not support.
 - Two classes whose field initializers build each other with `new`. No order of the classes works, so `hotc` reports `class '<name>' must come before the class that builds it with 'new'`. Use a constructor or a method for one of the two. A field initializer can use a class that comes later in the file when there is no such cycle.
 - Brace initializers. Write `T(args)`.
 - `::` and `->`. Write `.`.
-- A C style cast to a type other than a builtin type or `T*`. Use `static_cast<T>(e)`.
-- Member access with `.` on an iterator, a `std.optional` or a `std.unique_ptr`. Write `(*p).x`.
+- A C style cast to a type other than a builtin type or `T*`. Use `static_cast<T>(e)`. The error is `a C style cast is only for a builtin type or 'T*'`.
+- Member access with `.` on an iterator or a `std.unique_ptr`. Write `(*p).x`. A `.` on a `std.optional` works: an empty optional throws `NullReference`.
+- A constructor field initializer list (`A(int v) : x(v)`). Only `: base(...)` can follow the parameters. Set the field in the body: `this.x = v;`.
+- A local function. Use a lambda (`var f = (int x) => x * 2;`) or a method.
+- A switch expression (`v switch { 1 => a, _ => b }`) and patterns in `case` labels. Use a `switch` statement or `?:`. A type test is `is $C` or `as $C`.
+- A tuple type `(A, B)` and a tuple expression `(a, b)`. Use `std.tuple<A, B>` and `std.make_tuple(a, b)`. `var (a, b) = e;` reads the parts.
+- A default value on a `virtual` or `override` method. An override cannot change the default, so use an overload.
+- A raw string literal (`R"(...)"`), the operator `<=>`, `goto` and `nameof(x)`. Each one is an error with its own message.
+- A script reflection API and a name string of an enum value. An enum value has no members, so `c.ToString()` is a C++ error. Use a `switch` that returns the name. Custom attributes are for the host (see [Attributes](native-interop-attributes.html)).
 - A field of a move-only type, such as `std.unique_ptr<T>`. A reload copies each field. Use a handle.
 - Recursion deeper than 10000 script calls (1000 on Windows). The call throws `ScriptError("stack overflow")`, which a `catch` handles. The check is always on, also with `HOT_RUNTIME_CHECKS=0`. Every script member function, static method and free function counts one frame. Change the limit with `hot::set_max_call_depth(n)` (65519 at most). The macro `HOT_MAX_CALL_DEPTH` sets the default, but only when you compile the runtime library. The Windows default is lower because the main thread has a 1 MB stack. A script function frame uses about 100 to 400 bytes of stack in a Debug build, and more with many locals. A thread with a small stack (for example 512 KB on macOS) needs a lower limit.
 - Integer `/`, `%`, `/=` and `%=` throw `ArithmeticError` for a zero divisor (see [Runtime errors](statements-errors.html#runtime-errors)). The check is always on, also with `HOT_RUNTIME_CHECKS=0`. The translator skips it when the divisor is a nonzero integer literal other than `-1`, or when an operand has a float type or a script class type. `INT_MIN / -1` wraps and does not trap.
