@@ -956,34 +956,55 @@ std::string key_norm(const std::string& s)
 
 // The parameter signature of a method in identifier form (gap G17). Two overloads have two
 // signatures. The pass mode ("ref", "in") is not a part: C++ cannot select an overload by it.
-// "$C" (the handle) and "C" (the value) are two types: "$" gives "H".
+// The form is injective: a letter or a digit stays, and "_" starts an escape of two characters
+// with an upper-case code ("_U" for "_", "_S" for "::", "_L" "<", "_G" ">", "_C" ",", "_P" "*",
+// "_H" "$", "_A" "[", "_B" "]"). Another character is "_X" and two hex digits. The std marker
+// byte of std_ns.h is not a part: the program has one std namespace. "_N" separates
+// two parameters, and "_V" is the empty list. So no two lists of types give one signature, and a
+// signature has no "__" and no "_" before a lower-case letter (the suffixes "_virt", "__thunk").
 std::string method_sig(const hotc::ast::Method& m)
 {
+    static const char* const kHex = "0123456789ABCDEF";
     std::string r;
     for (const hotc::ast::Param& p : m.params)
     {
         std::string t = key_norm(p.script_type.empty() ? p.type : p.script_type);
+        if (t.rfind("const", 0) == 0 && t.size() > 5 && !std::isalnum(static_cast<unsigned char>(t[5])) && t[5] != '_')
+            t = t.substr(5);
         std::string id;
-        for (char c : t)
+        for (size_t i = 0; i < t.size(); ++i)
         {
-            if (std::isalnum(static_cast<unsigned char>(c)))
-                id += c;
-            else if (c == '$')
-                id += 'H';
-            else if (c == '*')
-                id += 'P';
-            else if (c != '&' && (id.empty() || id.back() != '_'))
-                id += '_';
+            const unsigned char c = static_cast<unsigned char>(t[i]);
+            if (std::isalnum(c))
+                id += static_cast<char>(c);
+            else if (c == '&' || c == 0x01)
+                continue; // a reference is a pass mode; 0x01 marks the std namespace (std_ns.h)
+            else if (c == ':' && i + 1 < t.size() && t[i + 1] == ':')
+            {
+                id += "_S";
+                ++i;
+            }
+            else
+            {
+                char code = 0;
+                switch (c)
+                {
+                case '_': code = 'U'; break;
+                case '<': code = 'L'; break;
+                case '>': code = 'G'; break;
+                case ',': code = 'C'; break;
+                case '*': code = 'P'; break;
+                case '$': code = 'H'; break;
+                case '[': code = 'A'; break;
+                case ']': code = 'B'; break;
+                default: break;
+                }
+                id += code ? std::string("_") + code : std::string("_X") + kHex[c >> 4] + kHex[c & 15];
+            }
         }
-        if (t.rfind("const", 0) == 0 && t.size() > 5 && !std::isalnum(static_cast<unsigned char>(t[5])))
-            id = id.substr(5);
-        while (!id.empty() && id.back() == '_')
-            id.pop_back();
-        while (!id.empty() && id.front() == '_')
-            id.erase(0, 1);
-        r += (r.empty() ? "" : "_") + (id.empty() ? std::string("x") : id);
+        r += (r.empty() ? "" : "_N") + id;
     }
-    return r.empty() ? "v" : r;
+    return m.params.empty() ? "_V" : r;
 }
 
 // The unique key of an overload "name" with the signature "sig" (see Method::src_name).

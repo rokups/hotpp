@@ -209,7 +209,7 @@ std::string script_name(const std::string& t)
     std::string cls;
     if (class_of_generated(t, cls))
         return cls;
-    // A free function: "hot_fn_F" -> "F". An overload key: "F__ov_int32_t" -> "F" (gap G17).
+    // A free function: "hot_fn_F" -> "F". An overload key: "F__ov_int32_Ut" -> "F" (gap G17).
     if (t.rfind("hot_fn_", 0) == 0 && t.size() > 7)
     {
         const std::string f = t.substr(7);
@@ -222,7 +222,7 @@ std::string script_name(const std::string& t)
         if (member.size() > 5 && ends_with(member, "_virt"))
             member.resize(member.size() - 5);
         // The overload key, the "base." forwarder of an overload group and the prefix of a static
-        // method (gap G17): "C__s_F__ov_int32_t" and "C__F__ovbase" give "C.F".
+        // method (gap G17): "C__s_F__ov_int32_Ut" and "C__F__ovbase" give "C.F".
         if (ends_with(member, "__ovbase"))
             member.resize(member.size() - 8);
         if (const size_t ov = member.find("__ov_"); ov != std::string::npos && ov > 0)

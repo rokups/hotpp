@@ -28,11 +28,11 @@ enum : unsigned {
     Ov_SLOT_Tick = 0,
     Ov_SLOT_TakeDamage_f = 1,
     Ov_SLOT_TakeDamage_Af = 2,
-    Ov_SLOT_Score__ov_int32_t = 3,
+    Ov_SLOT_Score__ov_int32_Ut = 3,
     Ov_SLOT_Score__ov_float = 4,
-    Ov_SLOT_Kind__ov_int32_t = 5,
-    Ov_SLOT_Kind__ov_std_string = 6,
-    Ov_SLOT_Score__ov_int32_t_int32_t = 7,
+    Ov_SLOT_Kind__ov_int32_Ut = 5,
+    Ov_SLOT_Kind__ov_std_Sstring = 6,
+    Ov_SLOT_Score__ov_int32_Ut_Nint32_Ut = 7,
     Ov_SLOT_COUNT = 8,
 };
 
@@ -119,11 +119,11 @@ struct OvState_g2 {
     int32_t ticks;
     int32_t kinds;
 
-    int32_t Score__ov_int32_t(int32_t x);
+    int32_t Score__ov_int32_Ut(int32_t x);
     int32_t Score__ov_float(float x);
-    int32_t Score__ov_int32_t_int32_t(int32_t a, int32_t b);
-    int32_t Kind__ov_int32_t(int32_t x);
-    int32_t Kind__ov_std_string(hot::In<std::string> s);
+    int32_t Score__ov_int32_Ut_Nint32_Ut(int32_t a, int32_t b);
+    int32_t Kind__ov_int32_Ut(int32_t x);
+    int32_t Kind__ov_std_Sstring(hot::In<std::string> s);
     void Tick(float dt);
     // Not overridden: call the implementation of Actor.
 #line 8 "method_overload_v2.hot"
@@ -184,25 +184,25 @@ HOT_HIDDEN OvState_g2* state_of(Ov_Shell* __self)
     return static_cast<OvState_g2*>(__self->state);
 }
 
-[[maybe_unused]] HOT_HIDDEN static int32_t Ov__Score__ov_int32_t(Ov_Shell* __self, int32_t x);
+[[maybe_unused]] HOT_HIDDEN static int32_t Ov__Score__ov_int32_Ut(Ov_Shell* __self, int32_t x);
 [[maybe_unused]] HOT_HIDDEN static int32_t Ov__Score__ov_float(Ov_Shell* __self, float x);
-[[maybe_unused]] HOT_HIDDEN static int32_t Ov__Score__ov_int32_t_int32_t(Ov_Shell* __self, int32_t a, int32_t b);
-[[maybe_unused]] HOT_HIDDEN static int32_t Ov__Kind__ov_int32_t(Ov_Shell* __self, int32_t x);
-[[maybe_unused]] HOT_HIDDEN static int32_t Ov__Kind__ov_std_string(Ov_Shell* __self, hot::In<std::string> s);
+[[maybe_unused]] HOT_HIDDEN static int32_t Ov__Score__ov_int32_Ut_Nint32_Ut(Ov_Shell* __self, int32_t a, int32_t b);
+[[maybe_unused]] HOT_HIDDEN static int32_t Ov__Kind__ov_int32_Ut(Ov_Shell* __self, int32_t x);
+[[maybe_unused]] HOT_HIDDEN static int32_t Ov__Kind__ov_std_Sstring(Ov_Shell* __self, hot::In<std::string> s);
 
-[[maybe_unused]] HOT_HIDDEN static int32_t Ov__Kind__ov_int32_t_virt(Ov_Shell* __self, int32_t x)
+[[maybe_unused]] HOT_HIDDEN static int32_t Ov__Kind__ov_int32_Ut_virt(Ov_Shell* __self, int32_t x)
 {
-    return hot::call_script<int32_t(Actor*, int32_t)>(__self, Ov_SLOT_Kind__ov_int32_t, x);
+    return hot::call_script<int32_t(Actor*, int32_t)>(__self, Ov_SLOT_Kind__ov_int32_Ut, x);
 }
 
-[[maybe_unused]] HOT_HIDDEN static int32_t Ov__Kind__ov_std_string_virt(Ov_Shell* __self, hot::In<std::string> s)
+[[maybe_unused]] HOT_HIDDEN static int32_t Ov__Kind__ov_std_Sstring_virt(Ov_Shell* __self, hot::In<std::string> s)
 {
-    return hot::call_script<int32_t(Actor*, hot::In<std::string>)>(__self, Ov_SLOT_Kind__ov_std_string, s);
+    return hot::call_script<int32_t(Actor*, hot::In<std::string>)>(__self, Ov_SLOT_Kind__ov_std_Sstring, s);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Ov__Score(Ov_Shell* __self, int32_t x)
 {
-    return Ov__Score__ov_int32_t(__self, std::forward<decltype(x)>(x));
+    return Ov__Score__ov_int32_Ut(__self, std::forward<decltype(x)>(x));
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Ov__Score(Ov_Shell* __self, float x)
@@ -212,22 +212,22 @@ HOT_HIDDEN OvState_g2* state_of(Ov_Shell* __self)
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Ov__Score(Ov_Shell* __self, int32_t a, int32_t b)
 {
-    return Ov__Score__ov_int32_t_int32_t(__self, std::forward<decltype(a)>(a), std::forward<decltype(b)>(b));
+    return Ov__Score__ov_int32_Ut_Nint32_Ut(__self, std::forward<decltype(a)>(a), std::forward<decltype(b)>(b));
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Ov__Kind(Ov_Shell* __self, int32_t x)
 {
-    return Ov__Kind__ov_int32_t_virt(__self, std::forward<decltype(x)>(x));
+    return Ov__Kind__ov_int32_Ut_virt(__self, std::forward<decltype(x)>(x));
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Ov__Kind(Ov_Shell* __self, hot::In<std::string> s)
 {
-    return Ov__Kind__ov_std_string_virt(__self, std::forward<decltype(s)>(s));
+    return Ov__Kind__ov_std_Sstring_virt(__self, std::forward<decltype(s)>(s));
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Ov__Score__ovbase(Ov_Shell* __self, int32_t x)
 {
-    return Ov__Score__ov_int32_t(__self, std::forward<decltype(x)>(x));
+    return Ov__Score__ov_int32_Ut(__self, std::forward<decltype(x)>(x));
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Ov__Score__ovbase(Ov_Shell* __self, float x)
@@ -237,17 +237,17 @@ HOT_HIDDEN OvState_g2* state_of(Ov_Shell* __self)
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Ov__Score__ovbase(Ov_Shell* __self, int32_t a, int32_t b)
 {
-    return Ov__Score__ov_int32_t_int32_t(__self, std::forward<decltype(a)>(a), std::forward<decltype(b)>(b));
+    return Ov__Score__ov_int32_Ut_Nint32_Ut(__self, std::forward<decltype(a)>(a), std::forward<decltype(b)>(b));
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Ov__Kind__ovbase(Ov_Shell* __self, int32_t x)
 {
-    return Ov__Kind__ov_int32_t(__self, std::forward<decltype(x)>(x));
+    return Ov__Kind__ov_int32_Ut(__self, std::forward<decltype(x)>(x));
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Ov__Kind__ovbase(Ov_Shell* __self, hot::In<std::string> s)
 {
-    return Ov__Kind__ov_std_string(__self, std::forward<decltype(s)>(s));
+    return Ov__Kind__ov_std_Sstring(__self, std::forward<decltype(s)>(s));
 }
 
 #line 8 "method_overload_v2.hot"
@@ -351,13 +351,13 @@ template <int = 0>
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
 #line 21 "method_overload_v2.hot"
-static int32_t Ov__Score__ov_int32_t_int32_t__thunk(Actor* __a, int32_t a, int32_t b)
+static int32_t Ov__Score__ov_int32_Ut_Nint32_Ut__thunk(Actor* __a, int32_t a, int32_t b)
 #line 21 "method_overload_v2.hot"
 {
 #line 21 "method_overload_v2.hot"
     HOT_NODEBUG_LOCAL auto* __self = static_cast<Ov_Shell*>(__a);
 #line 21 "method_overload_v2.hot"
-    return hot::call<int32_t(Actor*, int32_t, int32_t)>(__self, Ov_SLOT_Score__ov_int32_t_int32_t, a, b);
+    return hot::call<int32_t(Actor*, int32_t, int32_t)>(__self, Ov_SLOT_Score__ov_int32_Ut_Nint32_Ut, a, b);
 #line 21 "method_overload_v2.hot"
 }
 #line 364 "method_overload_v2.hot.cpp"
@@ -372,11 +372,11 @@ static const hot::SlotFn Ov_slots[Ov_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&OvState_g2::Tick),
     reinterpret_cast<hot::SlotFn>(&OvState_g2::__fwd_TakeDamage_f),
     reinterpret_cast<hot::SlotFn>(&OvState_g2::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&OvState_g2::Score__ov_int32_t),
+    reinterpret_cast<hot::SlotFn>(&OvState_g2::Score__ov_int32_Ut),
     reinterpret_cast<hot::SlotFn>(&OvState_g2::Score__ov_float),
-    reinterpret_cast<hot::SlotFn>(&OvState_g2::Kind__ov_int32_t),
-    reinterpret_cast<hot::SlotFn>(&OvState_g2::Kind__ov_std_string),
-    reinterpret_cast<hot::SlotFn>(&OvState_g2::Score__ov_int32_t_int32_t),
+    reinterpret_cast<hot::SlotFn>(&OvState_g2::Kind__ov_int32_Ut),
+    reinterpret_cast<hot::SlotFn>(&OvState_g2::Kind__ov_std_Sstring),
+    reinterpret_cast<hot::SlotFn>(&OvState_g2::Score__ov_int32_Ut_Nint32_Ut),
 };
 
 hot::ClassRecord Ov_record = {
@@ -446,7 +446,7 @@ struct OvChild_Shell final : Ov_Shell {
 // ---------------------------------------------------------------- state
 struct OvChildState_g2 : OvState_g2 {
 
-    int32_t Kind__ov_int32_t(int32_t x);
+    int32_t Kind__ov_int32_Ut(int32_t x);
 };
 
 
@@ -477,16 +477,16 @@ HOT_HIDDEN OvChildState_g2* state_of(OvChild_Shell* __self)
     return static_cast<OvChildState_g2*>(__self->state);
 }
 
-[[maybe_unused]] HOT_HIDDEN static int32_t OvChild__Kind__ov_int32_t(OvChild_Shell* __self, int32_t x);
+[[maybe_unused]] HOT_HIDDEN static int32_t OvChild__Kind__ov_int32_Ut(OvChild_Shell* __self, int32_t x);
 
 [[maybe_unused]] HOT_HIDDEN static int32_t OvChild__Kind__ovbase(OvChild_Shell* __self, int32_t x)
 {
-    return OvChild__Kind__ov_int32_t(__self, std::forward<decltype(x)>(x));
+    return OvChild__Kind__ov_int32_Ut(__self, std::forward<decltype(x)>(x));
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t OvChild__Score__ovbase(OvChild_Shell* __self, int32_t x)
 {
-    return Ov__Score__ov_int32_t(__self, std::forward<decltype(x)>(x));
+    return Ov__Score__ov_int32_Ut(__self, std::forward<decltype(x)>(x));
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t OvChild__Score__ovbase(OvChild_Shell* __self, float x)
@@ -496,12 +496,12 @@ HOT_HIDDEN OvChildState_g2* state_of(OvChild_Shell* __self)
 
 [[maybe_unused]] HOT_HIDDEN static int32_t OvChild__Score__ovbase(OvChild_Shell* __self, int32_t a, int32_t b)
 {
-    return Ov__Score__ov_int32_t_int32_t(__self, std::forward<decltype(a)>(a), std::forward<decltype(b)>(b));
+    return Ov__Score__ov_int32_Ut_Nint32_Ut(__self, std::forward<decltype(a)>(a), std::forward<decltype(b)>(b));
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t OvChild__Kind__ovbase(OvChild_Shell* __self, hot::In<std::string> s)
 {
-    return Ov__Kind__ov_std_string(__self, std::forward<decltype(s)>(s));
+    return Ov__Kind__ov_std_Sstring(__self, std::forward<decltype(s)>(s));
 }
 
 #line 41 "method_overload_v2.hot"
@@ -593,11 +593,11 @@ static const hot::SlotFn OvChild_slots[OvChild_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&OvState_g2::Tick),
     reinterpret_cast<hot::SlotFn>(&OvState_g2::__fwd_TakeDamage_f),
     reinterpret_cast<hot::SlotFn>(&OvState_g2::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&OvState_g2::Score__ov_int32_t),
+    reinterpret_cast<hot::SlotFn>(&OvState_g2::Score__ov_int32_Ut),
     reinterpret_cast<hot::SlotFn>(&OvState_g2::Score__ov_float),
-    reinterpret_cast<hot::SlotFn>(&OvChildState_g2::Kind__ov_int32_t),
-    reinterpret_cast<hot::SlotFn>(&OvState_g2::Kind__ov_std_string),
-    reinterpret_cast<hot::SlotFn>(&OvState_g2::Score__ov_int32_t_int32_t),
+    reinterpret_cast<hot::SlotFn>(&OvChildState_g2::Kind__ov_int32_Ut),
+    reinterpret_cast<hot::SlotFn>(&OvState_g2::Kind__ov_std_Sstring),
+    reinterpret_cast<hot::SlotFn>(&OvState_g2::Score__ov_int32_Ut_Nint32_Ut),
 };
 
 hot::ClassRecord OvChild_record = {
@@ -637,22 +637,22 @@ static const hot::CtorEntry OvChild__constructors[] = {
 
 // ---------------------------------------------------------------- function bodies
 #line 13 "method_overload_v2.hot"
-[[maybe_unused]] HOT_HIDDEN static int32_t Ov__Score__ov_int32_t(Ov_Shell* __self, int32_t x)
+[[maybe_unused]] HOT_HIDDEN static int32_t Ov__Score__ov_int32_Ut(Ov_Shell* __self, int32_t x)
 #line 13 "method_overload_v2.hot"
 {
 #line 13 "method_overload_v2.hot"
-    return state_of(__self)->Score__ov_int32_t(std::forward<int32_t>(x));
+    return state_of(__self)->Score__ov_int32_Ut(std::forward<int32_t>(x));
 #line 13 "method_overload_v2.hot"
 }
 #line 648 "method_overload_v2.hot.cpp"
 #line 13 "method_overload_v2.hot"
-int32_t OvState_g2::Score__ov_int32_t(int32_t const x)
+int32_t OvState_g2::Score__ov_int32_Ut(int32_t const x)
 #line 13 "method_overload_v2.hot"
 {
 #line 13 "method_overload_v2.hot"
     if (HOT_UNLIKELY(!hot_live)) {
 #line 13 "method_overload_v2.hot"
-        hot::stale_call("Ov::Score__ov_int32_t");
+        hot::stale_call("Ov::Score__ov_int32_Ut");
 #line 13 "method_overload_v2.hot"
         return int32_t();
 #line 13 "method_overload_v2.hot"
@@ -664,7 +664,7 @@ int32_t OvState_g2::Score__ov_int32_t(int32_t const x)
 #line 14 "method_overload_v2.hot"
     HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
 #line 14 "method_overload_v2.hot"
-    HOT_TRACE_FRAME("Ov.Score__ov_int32_t", "method_overload_v2.hot");
+    HOT_TRACE_FRAME("Ov.Score__ov_int32_Ut", "method_overload_v2.hot");
 #line 14 "method_overload_v2.hot"
     HOT_TRACE_LINE(); return x * 3;
 #line 15 "method_overload_v2.hot"
@@ -707,22 +707,22 @@ int32_t OvState_g2::Score__ov_float(float const x)
 #line 708 "method_overload_v2.hot.cpp"
 
 #line 21 "method_overload_v2.hot"
-[[maybe_unused]] HOT_HIDDEN static int32_t Ov__Score__ov_int32_t_int32_t(Ov_Shell* __self, int32_t a, int32_t b)
+[[maybe_unused]] HOT_HIDDEN static int32_t Ov__Score__ov_int32_Ut_Nint32_Ut(Ov_Shell* __self, int32_t a, int32_t b)
 #line 21 "method_overload_v2.hot"
 {
 #line 21 "method_overload_v2.hot"
-    return state_of(__self)->Score__ov_int32_t_int32_t(std::forward<int32_t>(a), std::forward<int32_t>(b));
+    return state_of(__self)->Score__ov_int32_Ut_Nint32_Ut(std::forward<int32_t>(a), std::forward<int32_t>(b));
 #line 21 "method_overload_v2.hot"
 }
 #line 718 "method_overload_v2.hot.cpp"
 #line 21 "method_overload_v2.hot"
-int32_t OvState_g2::Score__ov_int32_t_int32_t(int32_t const a, int32_t const b)
+int32_t OvState_g2::Score__ov_int32_Ut_Nint32_Ut(int32_t const a, int32_t const b)
 #line 21 "method_overload_v2.hot"
 {
 #line 21 "method_overload_v2.hot"
     if (HOT_UNLIKELY(!hot_live)) {
 #line 21 "method_overload_v2.hot"
-        hot::stale_call("Ov::Score__ov_int32_t_int32_t");
+        hot::stale_call("Ov::Score__ov_int32_Ut_Nint32_Ut");
 #line 21 "method_overload_v2.hot"
         return int32_t();
 #line 21 "method_overload_v2.hot"
@@ -734,7 +734,7 @@ int32_t OvState_g2::Score__ov_int32_t_int32_t(int32_t const a, int32_t const b)
 #line 22 "method_overload_v2.hot"
     HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
 #line 22 "method_overload_v2.hot"
-    HOT_TRACE_FRAME("Ov.Score__ov_int32_t_int32_t", "method_overload_v2.hot");
+    HOT_TRACE_FRAME("Ov.Score__ov_int32_Ut_Nint32_Ut", "method_overload_v2.hot");
 #line 22 "method_overload_v2.hot"
     HOT_TRACE_LINE(); return a + b;
 #line 23 "method_overload_v2.hot"
@@ -742,22 +742,22 @@ int32_t OvState_g2::Score__ov_int32_t_int32_t(int32_t const a, int32_t const b)
 #line 743 "method_overload_v2.hot.cpp"
 
 #line 25 "method_overload_v2.hot"
-[[maybe_unused]] HOT_HIDDEN static int32_t Ov__Kind__ov_int32_t(Ov_Shell* __self, int32_t x)
+[[maybe_unused]] HOT_HIDDEN static int32_t Ov__Kind__ov_int32_Ut(Ov_Shell* __self, int32_t x)
 #line 25 "method_overload_v2.hot"
 {
 #line 25 "method_overload_v2.hot"
-    return state_of(__self)->Kind__ov_int32_t(std::forward<int32_t>(x));
+    return state_of(__self)->Kind__ov_int32_Ut(std::forward<int32_t>(x));
 #line 25 "method_overload_v2.hot"
 }
 #line 753 "method_overload_v2.hot.cpp"
 #line 25 "method_overload_v2.hot"
-int32_t OvState_g2::Kind__ov_int32_t(int32_t x)
+int32_t OvState_g2::Kind__ov_int32_Ut(int32_t x)
 #line 25 "method_overload_v2.hot"
 {
 #line 25 "method_overload_v2.hot"
     if (HOT_UNLIKELY(!hot_live)) {
 #line 25 "method_overload_v2.hot"
-        hot::stale_call("Ov::Kind__ov_int32_t");
+        hot::stale_call("Ov::Kind__ov_int32_Ut");
 #line 25 "method_overload_v2.hot"
         return int32_t();
 #line 25 "method_overload_v2.hot"
@@ -769,7 +769,7 @@ int32_t OvState_g2::Kind__ov_int32_t(int32_t x)
 #line 26 "method_overload_v2.hot"
     HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
 #line 26 "method_overload_v2.hot"
-    HOT_TRACE_FRAME("Ov.Kind__ov_int32_t", "method_overload_v2.hot");
+    HOT_TRACE_FRAME("Ov.Kind__ov_int32_Ut", "method_overload_v2.hot");
 #line 26 "method_overload_v2.hot"
     HOT_TRACE_LINE(); return 1;
 #line 27 "method_overload_v2.hot"
@@ -777,22 +777,22 @@ int32_t OvState_g2::Kind__ov_int32_t(int32_t x)
 #line 778 "method_overload_v2.hot.cpp"
 
 #line 29 "method_overload_v2.hot"
-[[maybe_unused]] HOT_HIDDEN static int32_t Ov__Kind__ov_std_string(Ov_Shell* __self, hot::In<std::string> s)
+[[maybe_unused]] HOT_HIDDEN static int32_t Ov__Kind__ov_std_Sstring(Ov_Shell* __self, hot::In<std::string> s)
 #line 29 "method_overload_v2.hot"
 {
 #line 29 "method_overload_v2.hot"
-    return state_of(__self)->Kind__ov_std_string(std::forward<hot::In<std::string>>(s));
+    return state_of(__self)->Kind__ov_std_Sstring(std::forward<hot::In<std::string>>(s));
 #line 29 "method_overload_v2.hot"
 }
 #line 788 "method_overload_v2.hot.cpp"
 #line 29 "method_overload_v2.hot"
-int32_t OvState_g2::Kind__ov_std_string(hot::In<std::string> s)
+int32_t OvState_g2::Kind__ov_std_Sstring(hot::In<std::string> s)
 #line 29 "method_overload_v2.hot"
 {
 #line 29 "method_overload_v2.hot"
     if (HOT_UNLIKELY(!hot_live)) {
 #line 29 "method_overload_v2.hot"
-        hot::stale_call("Ov::Kind__ov_std_string");
+        hot::stale_call("Ov::Kind__ov_std_Sstring");
 #line 29 "method_overload_v2.hot"
         return int32_t();
 #line 29 "method_overload_v2.hot"
@@ -804,7 +804,7 @@ int32_t OvState_g2::Kind__ov_std_string(hot::In<std::string> s)
 #line 30 "method_overload_v2.hot"
     HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
 #line 30 "method_overload_v2.hot"
-    HOT_TRACE_FRAME("Ov.Kind__ov_std_string", "method_overload_v2.hot");
+    HOT_TRACE_FRAME("Ov.Kind__ov_std_Sstring", "method_overload_v2.hot");
 #line 30 "method_overload_v2.hot"
     HOT_TRACE_LINE(); return 2;
 #line 31 "method_overload_v2.hot"
@@ -844,22 +844,22 @@ void OvState_g2::Tick(float dt)
 #line 845 "method_overload_v2.hot.cpp"
 
 #line 42 "method_overload_v2.hot"
-[[maybe_unused]] HOT_HIDDEN static int32_t OvChild__Kind__ov_int32_t(OvChild_Shell* __self, int32_t x)
+[[maybe_unused]] HOT_HIDDEN static int32_t OvChild__Kind__ov_int32_Ut(OvChild_Shell* __self, int32_t x)
 #line 42 "method_overload_v2.hot"
 {
 #line 42 "method_overload_v2.hot"
-    return state_of(__self)->Kind__ov_int32_t(std::forward<int32_t>(x));
+    return state_of(__self)->Kind__ov_int32_Ut(std::forward<int32_t>(x));
 #line 42 "method_overload_v2.hot"
 }
 #line 855 "method_overload_v2.hot.cpp"
 #line 42 "method_overload_v2.hot"
-int32_t OvChildState_g2::Kind__ov_int32_t(int32_t x)
+int32_t OvChildState_g2::Kind__ov_int32_Ut(int32_t x)
 #line 42 "method_overload_v2.hot"
 {
 #line 42 "method_overload_v2.hot"
     if (HOT_UNLIKELY(!hot_live)) {
 #line 42 "method_overload_v2.hot"
-        hot::stale_call("OvChild::Kind__ov_int32_t");
+        hot::stale_call("OvChild::Kind__ov_int32_Ut");
 #line 42 "method_overload_v2.hot"
         return int32_t();
 #line 42 "method_overload_v2.hot"
@@ -871,7 +871,7 @@ int32_t OvChildState_g2::Kind__ov_int32_t(int32_t x)
 #line 43 "method_overload_v2.hot"
     HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
 #line 43 "method_overload_v2.hot"
-    HOT_TRACE_FRAME("OvChild.Kind__ov_int32_t", "method_overload_v2.hot");
+    HOT_TRACE_FRAME("OvChild.Kind__ov_int32_Ut", "method_overload_v2.hot");
 #line 43 "method_overload_v2.hot"
     HOT_TRACE_LINE(); return 10;
 #line 44 "method_overload_v2.hot"
@@ -888,7 +888,7 @@ extern "C" void script_register(hot::Registry& reg)
     Ov_record.ctors = Ov__constructors;
     OvChild_record.construct_keys = OvChild__construct_keys;
     OvChild_record.ctors = OvChild__constructors;
-    reg.add_thunk("Ov::Score__ov_int32_t_int32_t", reinterpret_cast<void*>(&Ov__Score__ov_int32_t_int32_t__thunk));
+    reg.add_thunk("Ov::Score__ov_int32_Ut_Nint32_Ut", reinterpret_cast<void*>(&Ov__Score__ov_int32_Ut_Nint32_Ut__thunk));
     reg.add_thunk("Ov::__native", reinterpret_cast<void*>(&Ov___native__thunk));
     reg.add_thunk("OvChild::__native", reinterpret_cast<void*>(&OvChild___native__thunk));
 }

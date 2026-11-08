@@ -9,6 +9,8 @@
 
 #include <gtest/gtest.h>
 
+#include <regex>
+#include <set>
 #include <string>
 
 using namespace translator_test;
@@ -42,6 +44,41 @@ void expect_ok(const std::string& body)
 {
     const hotc::TranslateResult r = translate_script(body);
     EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+// The overload keys of "name" in the text "cpp": "<name>__ov_<sig>".
+std::set<std::string> overload_keys(const std::string& cpp, const std::string& name)
+{
+    std::set<std::string> keys;
+    const std::regex re("\\b" + name + "__ov_[A-Za-z0-9_]*");
+    for (auto it = std::sregex_iterator(cpp.begin(), cpp.end(), re); it != std::sregex_iterator(); ++it)
+    {
+        std::string k = it->str();
+        // The suffixes of the virtual slot and of the thunk are not a part of the key.
+        for (const char* suffix : {"__thunk", "_virt"})
+            if (const size_t at = k.find(suffix, name.size() + 5); at != std::string::npos)
+                k.erase(at);
+        keys.insert(k);
+    }
+    return keys;
+}
+
+// Two overloads with other parameter types have two keys. "_" in a type name, the "_" between
+// two parameters and the handle "$" do not give one key for two signatures.
+TEST(StaticFunctionTranslation, OverloadKeysOfOtherSignaturesDiffer)
+{
+    const hotc::TranslateResult r = translate_script(
+        "struct Foo_Bar { int a = 0; }\nstruct Foo { int a = 0; }\nstruct Bar { int a = 0; }\n"
+        "class Kid : Unit { }\nstruct KidH { int a = 0; }\n"
+        "int f(Foo_Bar x) { return 1; }\nint f(Foo x, Bar y) { return 2; }\n"
+        "class K : Unit {\n"
+        "    virtual int g(Foo_Bar x) { return 1; }\n    virtual int g(Foo x, Bar y) { return 2; }\n"
+        "    int h($Kid k) { return 1; }\n    int h(KidH k) { return 2; }\n"
+        "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_EQ(overload_keys(r.cpp, "f").size(), 2u) << r.cpp;
+    EXPECT_EQ(overload_keys(r.cpp, "g").size(), 2u) << r.cpp;
+    EXPECT_EQ(overload_keys(r.cpp, "h").size(), 2u) << r.cpp;
 }
 
 } // namespace

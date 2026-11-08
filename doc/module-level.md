@@ -216,7 +216,7 @@ The translator writes a free function as a plain C++ `static` function with the 
 Rules:
 
 - Two or more functions with one name and different parameter types are overloads. C++ selects the overload by the argument types. See [Method overloads](classes.html#method-overloads) for the rules of the types.
-- Each overload has the C++ name `hot_fn_<name>__ov_<sig>`, for example `hot_fn_Half__ov_int32_t`. A forwarder `hot_fn_<name>` for each overload selects it. A name with one function keeps the name `hot_fn_<name>`.
+- Each overload has the C++ name `hot_fn_<name>__ov_<sig>`, for example `hot_fn_Half__ov_int32_Ut` (see [Method overloads](classes.html#method-overloads) for the signature part). A forwarder `hot_fn_<name>` for each overload selects it. A name with one function keeps the name `hot_fn_<name>`.
 - An importer calls an overload through the function table of the unit. The key of the table is `<name>__ov_<sig>`. A name with one function keeps the key `<name>`.
 - `main` has no overloads. The error is `function 'main' is declared twice (overloads are not supported)`.
 - Two overloads with the same parameter types are the error `function '<name>' is declared twice with the same parameter types`. A call that fits more than one overload is the error `the call of '<name>' fits more than one overload. Convert the argument to the parameter type of one overload`.

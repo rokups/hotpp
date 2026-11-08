@@ -70,8 +70,8 @@ enum : unsigned {
     FnOvBase_SLOT_Tick = 0,
     FnOvBase_SLOT_TakeDamage_f = 1,
     FnOvBase_SLOT_TakeDamage_Af = 2,
-    FnOvBase_SLOT_Pick__ov_int32_t = 3,
-    FnOvBase_SLOT_Pick__ov_std_string = 4,
+    FnOvBase_SLOT_Pick__ov_int32_Ut = 3,
+    FnOvBase_SLOT_Pick__ov_std_Sstring = 4,
     FnOvBase_SLOT_COUNT = 5,
 };
 
@@ -164,8 +164,8 @@ struct FnOvBase_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<FnOv
 struct FnOvBaseState_g1 {
     hot::ShellBase* __hot_owner;
 
-    int32_t Pick__ov_int32_t(int32_t x);
-    int32_t Pick__ov_std_string(hot::In<std::string> s);
+    int32_t Pick__ov_int32_Ut(int32_t x);
+    int32_t Pick__ov_std_Sstring(hot::In<std::string> s);
     // Not overridden: call the implementation of Actor.
 #line 29 "fn_overload_v1.hot"
     HOT_NODEBUG void __fwd_Tick(float a0)
@@ -219,37 +219,37 @@ HOT_HIDDEN FnOvBaseState_g1* state_of(FnOvBase_Shell* __self)
     return static_cast<FnOvBaseState_g1*>(__self->state);
 }
 
-[[maybe_unused]] HOT_HIDDEN static int32_t FnOvBase__Pick__ov_int32_t(FnOvBase_Shell* __self, int32_t x);
-[[maybe_unused]] HOT_HIDDEN static int32_t FnOvBase__Pick__ov_std_string(FnOvBase_Shell* __self, hot::In<std::string> s);
+[[maybe_unused]] HOT_HIDDEN static int32_t FnOvBase__Pick__ov_int32_Ut(FnOvBase_Shell* __self, int32_t x);
+[[maybe_unused]] HOT_HIDDEN static int32_t FnOvBase__Pick__ov_std_Sstring(FnOvBase_Shell* __self, hot::In<std::string> s);
 
-[[maybe_unused]] HOT_HIDDEN static int32_t FnOvBase__Pick__ov_int32_t_virt(FnOvBase_Shell* __self, int32_t x)
+[[maybe_unused]] HOT_HIDDEN static int32_t FnOvBase__Pick__ov_int32_Ut_virt(FnOvBase_Shell* __self, int32_t x)
 {
-    return hot::call_script<int32_t(Actor*, int32_t)>(__self, FnOvBase_SLOT_Pick__ov_int32_t, x);
+    return hot::call_script<int32_t(Actor*, int32_t)>(__self, FnOvBase_SLOT_Pick__ov_int32_Ut, x);
 }
 
-[[maybe_unused]] HOT_HIDDEN static int32_t FnOvBase__Pick__ov_std_string_virt(FnOvBase_Shell* __self, hot::In<std::string> s)
+[[maybe_unused]] HOT_HIDDEN static int32_t FnOvBase__Pick__ov_std_Sstring_virt(FnOvBase_Shell* __self, hot::In<std::string> s)
 {
-    return hot::call_script<int32_t(Actor*, hot::In<std::string>)>(__self, FnOvBase_SLOT_Pick__ov_std_string, s);
+    return hot::call_script<int32_t(Actor*, hot::In<std::string>)>(__self, FnOvBase_SLOT_Pick__ov_std_Sstring, s);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t FnOvBase__Pick(FnOvBase_Shell* __self, int32_t x)
 {
-    return FnOvBase__Pick__ov_int32_t_virt(__self, std::forward<decltype(x)>(x));
+    return FnOvBase__Pick__ov_int32_Ut_virt(__self, std::forward<decltype(x)>(x));
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t FnOvBase__Pick(FnOvBase_Shell* __self, hot::In<std::string> s)
 {
-    return FnOvBase__Pick__ov_std_string_virt(__self, std::forward<decltype(s)>(s));
+    return FnOvBase__Pick__ov_std_Sstring_virt(__self, std::forward<decltype(s)>(s));
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t FnOvBase__Pick__ovbase(FnOvBase_Shell* __self, int32_t x)
 {
-    return FnOvBase__Pick__ov_int32_t(__self, std::forward<decltype(x)>(x));
+    return FnOvBase__Pick__ov_int32_Ut(__self, std::forward<decltype(x)>(x));
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t FnOvBase__Pick__ovbase(FnOvBase_Shell* __self, hot::In<std::string> s)
 {
-    return FnOvBase__Pick__ov_std_string(__self, std::forward<decltype(s)>(s));
+    return FnOvBase__Pick__ov_std_Sstring(__self, std::forward<decltype(s)>(s));
 }
 
 #line 29 "fn_overload_v1.hot"
@@ -353,13 +353,13 @@ template <int = 0>
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
 #line 30 "fn_overload_v1.hot"
-static int32_t FnOvBase__Pick__ov_int32_t__thunk(Actor* __a, int32_t x)
+static int32_t FnOvBase__Pick__ov_int32_Ut__thunk(Actor* __a, int32_t x)
 #line 30 "fn_overload_v1.hot"
 {
 #line 30 "fn_overload_v1.hot"
     HOT_NODEBUG_LOCAL auto* __self = static_cast<FnOvBase_Shell*>(__a);
 #line 30 "fn_overload_v1.hot"
-    return hot::call<int32_t(Actor*, int32_t)>(__self, FnOvBase_SLOT_Pick__ov_int32_t, x);
+    return hot::call<int32_t(Actor*, int32_t)>(__self, FnOvBase_SLOT_Pick__ov_int32_Ut, x);
 #line 30 "fn_overload_v1.hot"
 }
 #line 366 "fn_overload_v1.hot.cpp"
@@ -367,13 +367,13 @@ static int32_t FnOvBase__Pick__ov_int32_t__thunk(Actor* __a, int32_t x)
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
 #line 34 "fn_overload_v1.hot"
-static int32_t FnOvBase__Pick__ov_std_string__thunk(Actor* __a, hot::In<std::string> s)
+static int32_t FnOvBase__Pick__ov_std_Sstring__thunk(Actor* __a, hot::In<std::string> s)
 #line 34 "fn_overload_v1.hot"
 {
 #line 34 "fn_overload_v1.hot"
     HOT_NODEBUG_LOCAL auto* __self = static_cast<FnOvBase_Shell*>(__a);
 #line 34 "fn_overload_v1.hot"
-    return hot::call<int32_t(Actor*, hot::In<std::string>)>(__self, FnOvBase_SLOT_Pick__ov_std_string, s);
+    return hot::call<int32_t(Actor*, hot::In<std::string>)>(__self, FnOvBase_SLOT_Pick__ov_std_Sstring, s);
 #line 34 "fn_overload_v1.hot"
 }
 #line 380 "fn_overload_v1.hot.cpp"
@@ -388,8 +388,8 @@ static const hot::SlotFn FnOvBase_slots[FnOvBase_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&FnOvBaseState_g1::__fwd_Tick),
     reinterpret_cast<hot::SlotFn>(&FnOvBaseState_g1::__fwd_TakeDamage_f),
     reinterpret_cast<hot::SlotFn>(&FnOvBaseState_g1::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&FnOvBaseState_g1::Pick__ov_int32_t),
-    reinterpret_cast<hot::SlotFn>(&FnOvBaseState_g1::Pick__ov_std_string),
+    reinterpret_cast<hot::SlotFn>(&FnOvBaseState_g1::Pick__ov_int32_Ut),
+    reinterpret_cast<hot::SlotFn>(&FnOvBaseState_g1::Pick__ov_std_Sstring),
 };
 
 hot::ClassRecord FnOvBase_record = {
@@ -841,8 +841,8 @@ struct FnOvState_g1 : FnOvBaseState_g1 {
     int32_t based;
     int32_t made;
 
-    int32_t Pick__ov_int32_t(int32_t x);
-    int32_t Pick__ov_std_string(hot::In<std::string> s);
+    int32_t Pick__ov_int32_Ut(int32_t x);
+    int32_t Pick__ov_std_Sstring(hot::In<std::string> s);
     void Tick(float dt);
 };
 
@@ -898,17 +898,17 @@ HOT_HIDDEN FnOvState_g1* state_of(FnOv_Shell* __self)
     return static_cast<FnOvState_g1*>(__self->state);
 }
 
-[[maybe_unused]] HOT_HIDDEN static int32_t FnOv__Pick__ov_int32_t(FnOv_Shell* __self, int32_t x);
-[[maybe_unused]] HOT_HIDDEN static int32_t FnOv__Pick__ov_std_string(FnOv_Shell* __self, hot::In<std::string> s);
+[[maybe_unused]] HOT_HIDDEN static int32_t FnOv__Pick__ov_int32_Ut(FnOv_Shell* __self, int32_t x);
+[[maybe_unused]] HOT_HIDDEN static int32_t FnOv__Pick__ov_std_Sstring(FnOv_Shell* __self, hot::In<std::string> s);
 
 [[maybe_unused]] HOT_HIDDEN static int32_t FnOv__Pick__ovbase(FnOv_Shell* __self, int32_t x)
 {
-    return FnOv__Pick__ov_int32_t(__self, std::forward<decltype(x)>(x));
+    return FnOv__Pick__ov_int32_Ut(__self, std::forward<decltype(x)>(x));
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t FnOv__Pick__ovbase(FnOv_Shell* __self, hot::In<std::string> s)
 {
-    return FnOv__Pick__ov_std_string(__self, std::forward<decltype(s)>(s));
+    return FnOv__Pick__ov_std_Sstring(__self, std::forward<decltype(s)>(s));
 }
 
 #line 51 "fn_overload_v1.hot"
@@ -1000,8 +1000,8 @@ static const hot::SlotFn FnOv_slots[FnOv_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&FnOvState_g1::Tick),
     reinterpret_cast<hot::SlotFn>(&FnOvBaseState_g1::__fwd_TakeDamage_f),
     reinterpret_cast<hot::SlotFn>(&FnOvBaseState_g1::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&FnOvState_g1::Pick__ov_int32_t),
-    reinterpret_cast<hot::SlotFn>(&FnOvState_g1::Pick__ov_std_string),
+    reinterpret_cast<hot::SlotFn>(&FnOvState_g1::Pick__ov_int32_Ut),
+    reinterpret_cast<hot::SlotFn>(&FnOvState_g1::Pick__ov_std_Sstring),
 };
 
 hot::ClassRecord FnOv_record = {
@@ -1040,25 +1040,25 @@ static const hot::CtorEntry FnOv__constructors[] = {
     {nullptr, nullptr, 0}};
 
 // ---------------------------------------------------------------- static methods and free functions
-[[maybe_unused]] HOT_HIDDEN static int32_t FnOv__s_Twice__ov_int32_t(int32_t v);
+[[maybe_unused]] HOT_HIDDEN static int32_t FnOv__s_Twice__ov_int32_Ut(int32_t v);
 [[maybe_unused]] HOT_HIDDEN static int32_t FnOv__s_Twice(int32_t v)
 {
-    return FnOv__s_Twice__ov_int32_t(std::forward<decltype(v)>(v));
+    return FnOv__s_Twice__ov_int32_Ut(std::forward<decltype(v)>(v));
 }
 [[maybe_unused]] HOT_HIDDEN static int32_t FnOv__s_Twice__ov_float(float v);
 [[maybe_unused]] HOT_HIDDEN static int32_t FnOv__s_Twice(float v)
 {
     return FnOv__s_Twice__ov_float(std::forward<decltype(v)>(v));
 }
-[[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Half__ov_int32_t(int32_t v);
+[[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Half__ov_int32_Ut(int32_t v);
 [[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Half(int32_t v)
 {
-    return hot_fn_Half__ov_int32_t(std::forward<decltype(v)>(v));
+    return hot_fn_Half__ov_int32_Ut(std::forward<decltype(v)>(v));
 }
-[[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Half__ov_std_string(hot::In<std::string> s);
+[[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Half__ov_std_Sstring(hot::In<std::string> s);
 [[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Half(hot::In<std::string> s)
 {
-    return hot_fn_Half__ov_std_string(std::forward<decltype(s)>(s));
+    return hot_fn_Half__ov_std_Sstring(std::forward<decltype(s)>(s));
 }
 
 #line 1065 "fn_overload_v1.hot.cpp"
@@ -1088,22 +1088,22 @@ static int32_t Pt__Add(Pt* __self, float v)
 #line 1089 "fn_overload_v1.hot.cpp"
 
 #line 30 "fn_overload_v1.hot"
-[[maybe_unused]] HOT_HIDDEN static int32_t FnOvBase__Pick__ov_int32_t(FnOvBase_Shell* __self, int32_t x)
+[[maybe_unused]] HOT_HIDDEN static int32_t FnOvBase__Pick__ov_int32_Ut(FnOvBase_Shell* __self, int32_t x)
 #line 30 "fn_overload_v1.hot"
 {
 #line 30 "fn_overload_v1.hot"
-    return state_of(__self)->Pick__ov_int32_t(std::forward<int32_t>(x));
+    return state_of(__self)->Pick__ov_int32_Ut(std::forward<int32_t>(x));
 #line 30 "fn_overload_v1.hot"
 }
 #line 1099 "fn_overload_v1.hot.cpp"
 #line 30 "fn_overload_v1.hot"
-int32_t FnOvBaseState_g1::Pick__ov_int32_t(int32_t x)
+int32_t FnOvBaseState_g1::Pick__ov_int32_Ut(int32_t x)
 #line 30 "fn_overload_v1.hot"
 {
 #line 30 "fn_overload_v1.hot"
     if (HOT_UNLIKELY(!hot_live)) {
 #line 30 "fn_overload_v1.hot"
-        hot::stale_call("FnOvBase::Pick__ov_int32_t");
+        hot::stale_call("FnOvBase::Pick__ov_int32_Ut");
 #line 30 "fn_overload_v1.hot"
         return int32_t();
 #line 30 "fn_overload_v1.hot"
@@ -1115,7 +1115,7 @@ int32_t FnOvBaseState_g1::Pick__ov_int32_t(int32_t x)
 #line 31 "fn_overload_v1.hot"
     HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
 #line 31 "fn_overload_v1.hot"
-    HOT_TRACE_FRAME("FnOvBase.Pick__ov_int32_t", "fn_overload_v1.hot");
+    HOT_TRACE_FRAME("FnOvBase.Pick__ov_int32_Ut", "fn_overload_v1.hot");
 #line 31 "fn_overload_v1.hot"
     HOT_TRACE_LINE(); return 1;
 #line 32 "fn_overload_v1.hot"
@@ -1123,22 +1123,22 @@ int32_t FnOvBaseState_g1::Pick__ov_int32_t(int32_t x)
 #line 1124 "fn_overload_v1.hot.cpp"
 
 #line 34 "fn_overload_v1.hot"
-[[maybe_unused]] HOT_HIDDEN static int32_t FnOvBase__Pick__ov_std_string(FnOvBase_Shell* __self, hot::In<std::string> s)
+[[maybe_unused]] HOT_HIDDEN static int32_t FnOvBase__Pick__ov_std_Sstring(FnOvBase_Shell* __self, hot::In<std::string> s)
 #line 34 "fn_overload_v1.hot"
 {
 #line 34 "fn_overload_v1.hot"
-    return state_of(__self)->Pick__ov_std_string(std::forward<hot::In<std::string>>(s));
+    return state_of(__self)->Pick__ov_std_Sstring(std::forward<hot::In<std::string>>(s));
 #line 34 "fn_overload_v1.hot"
 }
 #line 1134 "fn_overload_v1.hot.cpp"
 #line 34 "fn_overload_v1.hot"
-int32_t FnOvBaseState_g1::Pick__ov_std_string(hot::In<std::string> s)
+int32_t FnOvBaseState_g1::Pick__ov_std_Sstring(hot::In<std::string> s)
 #line 34 "fn_overload_v1.hot"
 {
 #line 34 "fn_overload_v1.hot"
     if (HOT_UNLIKELY(!hot_live)) {
 #line 34 "fn_overload_v1.hot"
-        hot::stale_call("FnOvBase::Pick__ov_std_string");
+        hot::stale_call("FnOvBase::Pick__ov_std_Sstring");
 #line 34 "fn_overload_v1.hot"
         return int32_t();
 #line 34 "fn_overload_v1.hot"
@@ -1150,7 +1150,7 @@ int32_t FnOvBaseState_g1::Pick__ov_std_string(hot::In<std::string> s)
 #line 35 "fn_overload_v1.hot"
     HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
 #line 35 "fn_overload_v1.hot"
-    HOT_TRACE_FRAME("FnOvBase.Pick__ov_std_string", "fn_overload_v1.hot");
+    HOT_TRACE_FRAME("FnOvBase.Pick__ov_std_Sstring", "fn_overload_v1.hot");
 #line 35 "fn_overload_v1.hot"
     HOT_TRACE_LINE(); return 2;
 #line 36 "fn_overload_v1.hot"
@@ -1228,22 +1228,22 @@ void FnOvMadeState_g1::ctor(hot::In<std::string> s)
 #line 1229 "fn_overload_v1.hot.cpp"
 
 #line 67 "fn_overload_v1.hot"
-[[maybe_unused]] HOT_HIDDEN static int32_t FnOv__Pick__ov_int32_t(FnOv_Shell* __self, int32_t x)
+[[maybe_unused]] HOT_HIDDEN static int32_t FnOv__Pick__ov_int32_Ut(FnOv_Shell* __self, int32_t x)
 #line 67 "fn_overload_v1.hot"
 {
 #line 67 "fn_overload_v1.hot"
-    return state_of(__self)->Pick__ov_int32_t(std::forward<int32_t>(x));
+    return state_of(__self)->Pick__ov_int32_Ut(std::forward<int32_t>(x));
 #line 67 "fn_overload_v1.hot"
 }
 #line 1239 "fn_overload_v1.hot.cpp"
 #line 67 "fn_overload_v1.hot"
-int32_t FnOvState_g1::Pick__ov_int32_t(int32_t x)
+int32_t FnOvState_g1::Pick__ov_int32_Ut(int32_t x)
 #line 67 "fn_overload_v1.hot"
 {
 #line 67 "fn_overload_v1.hot"
     if (HOT_UNLIKELY(!hot_live)) {
 #line 67 "fn_overload_v1.hot"
-        hot::stale_call("FnOv::Pick__ov_int32_t");
+        hot::stale_call("FnOv::Pick__ov_int32_Ut");
 #line 67 "fn_overload_v1.hot"
         return int32_t();
 #line 67 "fn_overload_v1.hot"
@@ -1255,7 +1255,7 @@ int32_t FnOvState_g1::Pick__ov_int32_t(int32_t x)
 #line 68 "fn_overload_v1.hot"
     HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
 #line 68 "fn_overload_v1.hot"
-    HOT_TRACE_FRAME("FnOv.Pick__ov_int32_t", "fn_overload_v1.hot");
+    HOT_TRACE_FRAME("FnOv.Pick__ov_int32_Ut", "fn_overload_v1.hot");
 #line 68 "fn_overload_v1.hot"
     HOT_TRACE_LINE(); return FnOvBase__Pick__ovbase(__self, x) + 10;
 #line 69 "fn_overload_v1.hot"
@@ -1263,22 +1263,22 @@ int32_t FnOvState_g1::Pick__ov_int32_t(int32_t x)
 #line 1264 "fn_overload_v1.hot.cpp"
 
 #line 71 "fn_overload_v1.hot"
-[[maybe_unused]] HOT_HIDDEN static int32_t FnOv__Pick__ov_std_string(FnOv_Shell* __self, hot::In<std::string> s)
+[[maybe_unused]] HOT_HIDDEN static int32_t FnOv__Pick__ov_std_Sstring(FnOv_Shell* __self, hot::In<std::string> s)
 #line 71 "fn_overload_v1.hot"
 {
 #line 71 "fn_overload_v1.hot"
-    return state_of(__self)->Pick__ov_std_string(std::forward<hot::In<std::string>>(s));
+    return state_of(__self)->Pick__ov_std_Sstring(std::forward<hot::In<std::string>>(s));
 #line 71 "fn_overload_v1.hot"
 }
 #line 1274 "fn_overload_v1.hot.cpp"
 #line 71 "fn_overload_v1.hot"
-int32_t FnOvState_g1::Pick__ov_std_string(hot::In<std::string> s)
+int32_t FnOvState_g1::Pick__ov_std_Sstring(hot::In<std::string> s)
 #line 71 "fn_overload_v1.hot"
 {
 #line 71 "fn_overload_v1.hot"
     if (HOT_UNLIKELY(!hot_live)) {
 #line 71 "fn_overload_v1.hot"
-        hot::stale_call("FnOv::Pick__ov_std_string");
+        hot::stale_call("FnOv::Pick__ov_std_Sstring");
 #line 71 "fn_overload_v1.hot"
         return int32_t();
 #line 71 "fn_overload_v1.hot"
@@ -1290,7 +1290,7 @@ int32_t FnOvState_g1::Pick__ov_std_string(hot::In<std::string> s)
 #line 72 "fn_overload_v1.hot"
     HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
 #line 72 "fn_overload_v1.hot"
-    HOT_TRACE_FRAME("FnOv.Pick__ov_std_string", "fn_overload_v1.hot");
+    HOT_TRACE_FRAME("FnOv.Pick__ov_std_Sstring", "fn_overload_v1.hot");
 #line 72 "fn_overload_v1.hot"
     HOT_TRACE_LINE(); return FnOvBase__Pick__ovbase(__self, s) + 20;
 #line 73 "fn_overload_v1.hot"
@@ -1344,13 +1344,13 @@ void FnOvState_g1::Tick(float dt)
 #line 1345 "fn_overload_v1.hot.cpp"
 
 #line 59 "fn_overload_v1.hot"
-[[maybe_unused]] HOT_HIDDEN static int32_t FnOv__s_Twice__ov_int32_t(int32_t v)
+[[maybe_unused]] HOT_HIDDEN static int32_t FnOv__s_Twice__ov_int32_Ut(int32_t v)
 #line 59 "fn_overload_v1.hot"
 {
 #line 60 "fn_overload_v1.hot"
     HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
 #line 60 "fn_overload_v1.hot"
-    HOT_TRACE_FRAME("FnOv.Twice__ov_int32_t", "fn_overload_v1.hot");
+    HOT_TRACE_FRAME("FnOv.Twice__ov_int32_Ut", "fn_overload_v1.hot");
 #line 60 "fn_overload_v1.hot"
     HOT_TRACE_LINE(); return v * 2;
 #line 61 "fn_overload_v1.hot"
@@ -1372,13 +1372,13 @@ void FnOvState_g1::Tick(float dt)
 #line 1373 "fn_overload_v1.hot.cpp"
 
 #line 21 "fn_overload_v1.hot"
-[[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Half__ov_int32_t(int32_t v)
+[[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Half__ov_int32_Ut(int32_t v)
 #line 21 "fn_overload_v1.hot"
 {
 #line 22 "fn_overload_v1.hot"
     HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
 #line 22 "fn_overload_v1.hot"
-    HOT_TRACE_FRAME("Half__ov_int32_t", "fn_overload_v1.hot");
+    HOT_TRACE_FRAME("Half__ov_int32_Ut", "fn_overload_v1.hot");
 #line 22 "fn_overload_v1.hot"
     HOT_TRACE_LINE(); return v / 2;
 #line 23 "fn_overload_v1.hot"
@@ -1386,13 +1386,13 @@ void FnOvState_g1::Tick(float dt)
 #line 1387 "fn_overload_v1.hot.cpp"
 
 #line 25 "fn_overload_v1.hot"
-[[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Half__ov_std_string(hot::In<std::string> s)
+[[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Half__ov_std_Sstring(hot::In<std::string> s)
 #line 25 "fn_overload_v1.hot"
 {
 #line 26 "fn_overload_v1.hot"
     HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;
 #line 26 "fn_overload_v1.hot"
-    HOT_TRACE_FRAME("Half__ov_std_string", "fn_overload_v1.hot");
+    HOT_TRACE_FRAME("Half__ov_std_Sstring", "fn_overload_v1.hot");
 #line 26 "fn_overload_v1.hot"
     HOT_TRACE_LINE(); return 70;
 #line 27 "fn_overload_v1.hot"
@@ -1405,10 +1405,10 @@ extern "C" void script_register(hot::Registry& reg)
     reg.add(&FnOvBase_record, &FnOvBase_create);
     reg.add(&FnOvMade_record, &FnOvMade_create);
     reg.add(&FnOv_record, &FnOv_create);
-    reg.add_fn("FnOv::Twice__ov_int32_t", typeid(decltype(FnOv__s_Twice__ov_int32_t)).name(), reinterpret_cast<void*>(&FnOv__s_Twice__ov_int32_t));
+    reg.add_fn("FnOv::Twice__ov_int32_Ut", typeid(decltype(FnOv__s_Twice__ov_int32_Ut)).name(), reinterpret_cast<void*>(&FnOv__s_Twice__ov_int32_Ut));
     reg.add_fn("FnOv::Twice__ov_float", typeid(decltype(FnOv__s_Twice__ov_float)).name(), reinterpret_cast<void*>(&FnOv__s_Twice__ov_float));
-    reg.add_fn("Half__ov_int32_t", typeid(decltype(hot_fn_Half__ov_int32_t)).name(), reinterpret_cast<void*>(&hot_fn_Half__ov_int32_t));
-    reg.add_fn("Half__ov_std_string", typeid(decltype(hot_fn_Half__ov_std_string)).name(), reinterpret_cast<void*>(&hot_fn_Half__ov_std_string));
+    reg.add_fn("Half__ov_int32_Ut", typeid(decltype(hot_fn_Half__ov_int32_Ut)).name(), reinterpret_cast<void*>(&hot_fn_Half__ov_int32_Ut));
+    reg.add_fn("Half__ov_std_Sstring", typeid(decltype(hot_fn_Half__ov_std_Sstring)).name(), reinterpret_cast<void*>(&hot_fn_Half__ov_std_Sstring));
     FnOvBase_record.construct_keys = FnOvBase__construct_keys;
     FnOvBase_record.shares_this = true;
     FnOvBase_record.ctors = FnOvBase__constructors;
@@ -1418,8 +1418,8 @@ extern "C" void script_register(hot::Registry& reg)
     FnOvMade_record.ctors = FnOvMade__constructors;
     FnOv_record.construct_keys = FnOv__construct_keys;
     FnOv_record.ctors = FnOv__constructors;
-    reg.add_thunk("FnOvBase::Pick__ov_int32_t", reinterpret_cast<void*>(&FnOvBase__Pick__ov_int32_t__thunk));
-    reg.add_thunk("FnOvBase::Pick__ov_std_string", reinterpret_cast<void*>(&FnOvBase__Pick__ov_std_string__thunk));
+    reg.add_thunk("FnOvBase::Pick__ov_int32_Ut", reinterpret_cast<void*>(&FnOvBase__Pick__ov_int32_Ut__thunk));
+    reg.add_thunk("FnOvBase::Pick__ov_std_Sstring", reinterpret_cast<void*>(&FnOvBase__Pick__ov_std_Sstring__thunk));
     reg.add_thunk("FnOvBase::__native", reinterpret_cast<void*>(&FnOvBase___native__thunk));
     reg.add_thunk("FnOvMade::__native", reinterpret_cast<void*>(&FnOvMade___native__thunk));
     reg.add_thunk("FnOv::__native", reinterpret_cast<void*>(&FnOv___native__thunk));

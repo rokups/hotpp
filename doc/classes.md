@@ -72,7 +72,8 @@ class Child : Scorer {
 }
 ```
 
-- Each overload has its own slot. The key of the slot is the name and the parameter types, for example `Score__ov_int32_t`. A name with one method keeps the plain key, so its slot does not change.
+- Each overload has its own slot. The key of the slot is the name and the parameter types, for example `Score__ov_int32_Ut`. A name with one method keeps the plain key, so its slot does not change.
+- The signature part of the key is injective. A letter or a digit stays. `_` becomes `_U`, `::` becomes `_S`, and `<`, `>`, `,`, `*`, `$`, `[`, `]` become `_L`, `_G`, `_C`, `_P`, `_H`, `_A`, `_B`. Another character becomes `_X` and two hex digits. `_N` separates two parameters, and `_V` is no parameter. So `f(Foo_Bar)` (`f__ov_Foo_UBar`) and `f(Foo, Bar)` (`f__ov_Foo_NBar`) have two keys.
 - A reload can add an overload, remove one or change a parameter type. A live object keeps its fields.
 - When a name gets a second overload, the first overload gets a new key. Its old slot becomes a removed function. Code of an older generation that calls the old slot gets the error of a removed function.
 - An `override` replaces the parent overload with the same parameter types.
