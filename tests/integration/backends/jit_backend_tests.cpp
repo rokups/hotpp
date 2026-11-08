@@ -550,6 +550,44 @@ TEST(JitTests, MsvcThreadVariablesHaveNoTlsGuard)
     EXPECT_EQ(ir.find("__dyn_tls_on_demand_init"), std::string::npos) << ir;
 }
 
+// The unwind tables of COFF x64 JIT code: each RUNTIME_FUNCTION, its UNWIND_INFO, the handler
+// and the C++ FuncInfo must be valid for the image base of the table (hot_jit_coff_unwind_check).
+// The code has try and catch, destructors, a noexcept function, a throw with an external copy
+// constructor, COMDAT functions and a second code section.
+TEST(JitTests, CoffUnwindTablesAreValid)
+{
+    hot_jit_ir* ir = compile_ir("x86_64-pc-windows-msvc",
+        "struct D { int* p; ~D(); };\n"
+        "struct E { int v; E(int x) : v(x) {} E(const E&); };\n"
+        "void ext(int);\n"
+        "int f(int x) { D d{&x}; try { ext(x); } catch (int v) { return v; } catch (E& e) { return e.v; }\n"
+        "  catch (...) { return -1; } return 0; }\n"
+        "void g(int x) noexcept { D d{&x}; ext(x); }\n"
+        "void h(int x) { if (x) throw E(x); ext(x); }\n"
+        "inline int k(int x) { try { ext(x); } catch (int v) { return v; } return 1; }\n"
+        "template <class T> T tt(T x) { D d{nullptr}; ext(x); return x; }\n"
+        "int use() { return k(1) + tt(2); }\n"
+        "__declspec(code_seg(\".text$mn\")) int m(int x) { D d{&x}; try { ext(x); } catch (E&) { return 2; }\n"
+        "  return x; }\n");
+    ASSERT_NE(ir, nullptr);
+    char* text = hot_jit_coff_unwind_check(ir);
+    hot_jit_ir_free(ir);
+    const std::string report = text ? text : "";
+    hot_jit_string_free(text);
+    const size_t eol = report.find('\n');
+    ASSERT_NE(eol, std::string::npos) << report;
+    EXPECT_EQ(report.substr(eol + 1), "") << report;
+    unsigned tables = 0, entries = 0, named = 0, handlers = 0, tries = 0, types = 0;
+    ASSERT_EQ(std::sscanf(report.c_str(), "tables %u entries %u named %u handlers %u try %u catch_types %u",
+                  &tables, &entries, &named, &handlers, &tries, &types),
+        6)
+        << report;
+    EXPECT_GE(tables, 3u) << report; // COMDAT functions and the second code section have own tables
+    EXPECT_GE(handlers, 4u) << report;
+    EXPECT_GE(tries, 3u) << report;
+    EXPECT_GE(types, 3u) << report;
+}
+
 // An ELF or Mach-O target keeps its declarations: the JIT links them through the GOT.
 TEST(JitTests, NonCoffDeclarationsStay)
 {

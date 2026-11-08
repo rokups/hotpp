@@ -112,11 +112,11 @@ if(HOT_JIT_ENABLED)
     # interface is C. On MSVC it is a DLL with the static runtime (/MT) of the LLVM release, so
     # the rest of the project keeps the DLL runtime (/MD) of the script modules.
     if(MSVC AND NOT TARGET clang-cpp)
-        add_library(hot_jit_engine SHARED jit_engine.cpp)
+        add_library(hot_jit_engine SHARED jit_engine.cpp jit_coff_check.cpp)
         set_target_properties(hot_jit_engine PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded")
         target_compile_definitions(hot_jit_engine PRIVATE HOT_JIT_ENGINE_BUILD PUBLIC HOT_JIT_ENGINE_SHARED)
     else()
-        add_library(hot_jit_engine STATIC jit_engine.cpp)
+        add_library(hot_jit_engine STATIC jit_engine.cpp jit_coff_check.cpp)
         set_target_properties(hot_jit_engine PROPERTIES POSITION_INDEPENDENT_CODE ON)
     endif()
     target_include_directories(hot_jit_engine SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})

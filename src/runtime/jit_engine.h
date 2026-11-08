@@ -58,6 +58,11 @@ HOT_JIT_ENGINE_API int hot_jit_make_pch(
 HOT_JIT_ENGINE_API hot_jit_ir* hot_jit_ir_clone(const hot_jit_ir* ir);
 HOT_JIT_ENGINE_API void hot_jit_ir_free(hot_jit_ir* ir);
 
+// For the tests: compiles a copy of "ir" (a COFF x86_64 target) to an object and loads it with the
+// memory manager of the Windows JIT. A hook records the unwind tables. The text gives the counts
+// on the first line and one error on each other line. Release it with hot_jit_string_free.
+HOT_JIT_ENGINE_API char* hot_jit_coff_unwind_check(const hot_jit_ir* ir);
+
 // For the tests: the IR text of a copy of "ir" after the link preparation of hot_jit_add. For a
 // COFF target, the preparation makes the data declarations dllimport. Release the text with
 // hot_jit_string_free.
