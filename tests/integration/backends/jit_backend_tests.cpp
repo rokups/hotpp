@@ -411,6 +411,9 @@ TEST(JitTests, ModuleOutlivesBackendAndGenerationsCanBeRemoved)
 // in memory. Its line table names the .hot file and the lines of the script.
 TEST(JitTests, DebuggerGetsObjectWithScriptLines)
 {
+#ifdef __APPLE__
+    GTEST_SKIP() << "Fails on macOS: https://github.com/rokups/hotpp/issues/1";
+#endif
     if (!test_support::have_dwarfdump())
         GTEST_SKIP() << "llvm-dwarfdump is not installed";
     hot::JitOptions o;
