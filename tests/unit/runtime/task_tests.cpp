@@ -750,6 +750,53 @@ TEST(TaskTests, TheBodyDestroysItsOwnTaskAndEndsWithoutSuspension)
     EXPECT_FALSE(o.task.valid());
 }
 
+Task<int> counted_gate(int* frames, std::function<void()>* slot)
+{
+    Counter c(frames);
+    co_await Gate{slot};
+    co_return 1;
+}
+
+// Gives a frame that is suspended at a Gate and marked as running, with a deferred destroy.
+// This is the state of a body that destroyed its own task and now suspends.
+Task<int>::Handle self_destroyed_frame(int* frames, std::function<void()>* slot)
+{
+    Task<int> t = counted_gate(frames, slot);
+    t.resume();
+    Task<int>::Handle h = t.release();
+    std::lock_guard<std::mutex> lock(hot::detail::task_mutex());
+    h.promise().begin_run();
+    h.promise().destroy_requested = true;
+    return h;
+}
+
+// The MSVC ABI returns the handle of await_suspend through a pointer into the frame. So the frame
+// must live when await_suspend returns. The handle that it returns ends the frame.
+TEST(TaskTests, ADeferredDestroyKeepsTheFrameUntilTheAwaiterReturns)
+{
+    Watchdog dog;
+    int frames = 0;
+    std::function<void()> slot;
+    Task<int>::Handle h = self_destroyed_frame(&frames, &slot);
+    auto w = h.promise().await_transform(std::suspend_always{});
+    std::coroutine_handle<> next = w.await_suspend(h);
+    EXPECT_EQ(frames, 0);
+    next.resume();
+    EXPECT_EQ(frames, 1);
+}
+
+TEST(TaskTests, ADeferredDestroyAtTheEndKeepsTheFrameUntilTheAwaiterReturns)
+{
+    Watchdog dog;
+    int frames = 0;
+    std::function<void()> slot;
+    Task<int>::Handle h = self_destroyed_frame(&frames, &slot);
+    std::coroutine_handle<> next = hot::detail::TaskPromiseBase::FinalAwaiter{}.await_suspend(h);
+    EXPECT_EQ(frames, 0);
+    next.resume();
+    EXPECT_EQ(frames, 1);
+}
+
 Task<void> catch_cancel(Task<int>* t, int* out)
 {
     try

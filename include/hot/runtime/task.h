@@ -129,8 +129,15 @@ HOT_EXPORT std::atomic<int>& task_waiters();
 
 struct TaskPromiseBase;
 inline std::coroutine_handle<> complete(TaskPromiseBase& p) noexcept;
+inline std::coroutine_handle<> detach_frame(TaskPromiseBase& p, bool own_run) noexcept;
 inline std::coroutine_handle<> retire_frame(TaskPromiseBase& p, std::coroutine_handle<> h, bool own_run) noexcept;
+inline void report_discarded(TaskPromiseBase& p) noexcept;
 inline void discard_frame(TaskPromiseBase& p, std::coroutine_handle<> h) noexcept;
+// Returns a coroutine that destroys "dead" and then transfers to "next" (a null "next": nothing runs).
+// An awaiter of a frame returns it to end its own frame. It must not destroy the frame itself: the
+// MSVC ABI writes the returned handle into the frame after await_suspend returns. The coroutine
+// is one for each thread (src/runtime/threads.cpp).
+HOT_EXPORT std::coroutine_handle<> end_frame_after_suspend(std::coroutine_handle<> dead, std::coroutine_handle<> next) noexcept;
 // Removes the entries of a parked frame from its scheduler (hot/runtime/scheduler.h). The caller
 // holds task_mutex(). The function takes the lock of the scheduler.
 inline void detach_parked(TaskPromiseBase& p) noexcept;
@@ -314,8 +321,10 @@ struct TaskPromiseBase
             // The owner destroyed the task from its own run: the frame ends here.
             if (HOT_UNLIKELY(self->destroy_requested))
             {
-                std::coroutine_handle<> next = retire_frame(*self, h, true);
-                return next ? next : std::noop_coroutine();
+                // The frame lives until this function returns: see end_frame_after_suspend.
+                std::coroutine_handle<> next = detach_frame(*self, true);
+                report_discarded(*self);
+                return end_frame_after_suspend(h, next);
             }
             if constexpr (TaskAwaiter<Inner>)
                 return inner.await_suspend(h);
@@ -441,21 +450,27 @@ template <class P> inline void resume_frame(std::coroutine_handle<P> h) noexcept
     resume_frame(static_cast<TaskPromiseBase&>(h.promise()), std::coroutine_handle<>(h));
 }
 
+// Reports the error of a task that nobody read. The frame is finished or is about to be destroyed.
+inline void report_discarded(TaskPromiseBase& p) noexcept
+{
+    if (p.is_finished() && p.error && !p.observed && !is_cancellation(p.error))
+        report_unhandled(nullptr, p.error);
+}
+
 // Reports the error of a task that nobody read, then destroys the frame. The frame is finished
 // and no thread uses it.
 inline void discard_frame(TaskPromiseBase& p, std::coroutine_handle<> h) noexcept
 {
-    if (p.is_finished() && p.error && !p.observed && !is_cancellation(p.error))
-        report_unhandled(nullptr, p.error);
+    report_discarded(p);
     h.destroy();
 }
 
-// Ends the life of the frame "h" for its owner. "own_run" is true when the calling thread runs
-// the frame and it is suspended at this point (a deferred destroy). Otherwise the function waits
-// for the thread that runs the frame. A coroutine that awaits the task gets TaskCancelled. The
-// function returns the coroutine that must run next, or a null handle. The frame is destroyed
-// when it returns: the caller must not use "p" or "h" after it.
-inline std::coroutine_handle<> retire_frame(TaskPromiseBase& p, std::coroutine_handle<> h, bool own_run) noexcept
+// Removes all links of the frame of "p" before its destroy. "own_run" is true when the calling
+// thread runs the frame and it is suspended at this point (a deferred destroy). Otherwise the
+// function waits for the thread that runs the frame. A coroutine that awaits the task gets
+// TaskCancelled. The function returns the coroutine that must run next, or a null handle. Only
+// the caller can destroy the frame after it.
+inline std::coroutine_handle<> detach_frame(TaskPromiseBase& p, bool own_run) noexcept
 {
     bool cancel = false;
     {
@@ -496,6 +511,15 @@ inline std::coroutine_handle<> retire_frame(TaskPromiseBase& p, std::coroutine_h
     std::coroutine_handle<> next;
     if (cancel) // a coroutine awaits the task: it gets an error and goes on
         next = complete(p);
+    return next;
+}
+
+// Ends the life of the frame "h" for its owner: detach_frame, then the destroy. The function
+// returns the coroutine that must run next, or a null handle. The frame is destroyed when it
+// returns: the caller must not use "p" or "h" after it.
+inline std::coroutine_handle<> retire_frame(TaskPromiseBase& p, std::coroutine_handle<> h, bool own_run) noexcept
+{
+    std::coroutine_handle<> next = detach_frame(p, own_run);
     discard_frame(p, h);
     return next;
 }
@@ -539,7 +563,10 @@ inline std::coroutine_handle<> TaskPromiseBase::FinalAwaiter::await_suspend(std:
     const bool own_destroy = p.destroy_requested;
     std::coroutine_handle<> next = complete(p);
     if (own_destroy) // the owner destroyed the task from its own run: nobody else does
-        discard_frame(p, h);
+    {
+        report_discarded(p);
+        return end_frame_after_suspend(h, next); // the frame lives until this function returns
+    }
     return next ? next : std::noop_coroutine();
 }
 

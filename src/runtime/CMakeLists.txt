@@ -45,6 +45,19 @@ endif()
 # the scripts and for the parse of the native headers. The target hotc_lib gets the same value.
 hot_effective_cxx_standard(HOT_HOST_CXX_STANDARD hot_runtime_core)
 target_compile_definitions(hot_runtime_core PUBLIC HOT_CXX_STANDARD=${HOT_HOST_CXX_STANDARD})
+# The reaper of task frames is a coroutine: its file is C++20 also in a C++17 host. An object
+# library gives it the standard. It has the include paths and the defines of the core.
+if(HOT_HOST_CXX_STANDARD GREATER_EQUAL 20)
+    target_sources(hot_runtime_core PRIVATE frame_reaper.cpp)
+else()
+    add_library(hot_frame_reaper OBJECT frame_reaper.cpp)
+    set_target_properties(hot_frame_reaper PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+    target_include_directories(hot_frame_reaper PRIVATE
+        $<TARGET_PROPERTY:hot_runtime_core,INTERFACE_INCLUDE_DIRECTORIES>)
+    target_compile_definitions(hot_frame_reaper PRIVATE
+        $<TARGET_PROPERTY:hot_runtime_core,INTERFACE_COMPILE_DEFINITIONS>)
+    target_sources(hot_runtime_core PRIVATE $<TARGET_OBJECTS:hot_frame_reaper>)
+endif()
 add_library(hot_runtime STATIC
     state.cpp migration.cpp loader.cpp module.cpp
     scratch.cpp paths.cpp command_line.cpp)
