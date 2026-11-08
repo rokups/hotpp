@@ -56,7 +56,12 @@ std::string long_path(const std::string& path)
 
 std::string long_path(const std::string& path)
 {
-    return path;
+    if (path.empty() || path[0] != '/')
+        return path; // only an absolute path has a real path
+    // The part of the path that exists has no symbolic links: macOS "/var" is "/private/var".
+    std::error_code ec;
+    const std::filesystem::path p = std::filesystem::weakly_canonical(utf8_path(path), ec);
+    return ec || p.empty() ? path : path_utf8(p);
 }
 
 #endif

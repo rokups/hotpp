@@ -103,7 +103,8 @@ std::string uri_of(const std::string& path)
     std::replace(p.begin(), p.end(), '\\', '/');
     return (p.size() > 1 && p[1] == ':' ? "file:///" : "file://") + p;
 #else
-    return "file://" + path;
+    // The real path without symbolic links (macOS "/private/var"), as hot-ls and clangd write it.
+    return "file://" + hot::ls::long_path(path);
 #endif
 }
 

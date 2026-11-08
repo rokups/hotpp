@@ -2,9 +2,12 @@
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
-// The canonical form of a Windows path. A Windows path can have short 8.3 names
-// ("C:\Users\RUNNER~1"), and clangd writes the long names ("C:\Users\runneradmin"). hot-ls
-// compares the paths of clangd with its own paths, so both use the long names.
+// The canonical form of a path. hot-ls compares the paths of clangd with its own paths, so both
+// use the form that clangd writes.
+// - Windows: a path can have short 8.3 names ("C:\Users\RUNNER~1"), and clangd writes the long
+//   names ("C:\Users\runneradmin").
+// - Other systems: clangd writes the real path without symbolic links. On macOS the temporary
+//   folder "/var/folders/..." is "/private/var/folders/...". A part that does not exist stays.
 #pragma once
 
 #include <filesystem>

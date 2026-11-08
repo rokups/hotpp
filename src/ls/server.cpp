@@ -94,8 +94,9 @@ std::string uri_to_path(const std::string& uri)
     if (r.size() > 2 && r[0] == '/' && r[2] == ':')
         r.erase(0, 1);
     std::replace(r.begin(), r.end(), '/', '\\');
-    r = long_path(r); // clangd writes the long names, not the short 8.3 names
 #endif
+    // clangd writes the canonical form: the long names on Windows, no symbolic links elsewhere.
+    r = long_path(r);
     return r;
 }
 
@@ -122,7 +123,8 @@ std::string path_to_uri(const std::string& path)
         const unsigned char c = static_cast<unsigned char>(ch);
         if (is_id_char(ch) || c == '/' || c == '-' || c == '.' || c == '~' || c == ':')
 #else
-    for (char ch : path)
+    // The real path without symbolic links, as clangd writes it (long_path.h).
+    for (char ch : long_path(path))
     {
         const unsigned char c = static_cast<unsigned char>(ch);
         if (is_id_char(ch) || c == '/' || c == '-' || c == '.' || c == '~')
