@@ -6,9 +6,12 @@
 
 For each pattern, the script runs the first test whose name matches it (fnmatch). It uses the
 command, the working directory and the environment of the test from ctest. The output goes into
-the job log. With --cdb, the first test also runs under cdb.exe.
+the job log. With --cdb, the first test also runs under cdb.exe. A test that matches a pattern of
+--cdb-also runs under cdb.exe too. The symbol path of cdb.exe has the Microsoft symbol server, so
+the stack shows the functions of the system DLLs (ucrtbase.dll, for example).
 
-Usage: run_tests.py --preset <ctest preset> --harness <debug_run.exe> [--timeout s] [--cdb path] pattern...
+Usage: run_tests.py --preset <ctest preset> --harness <debug_run.exe> [--timeout s] [--cdb path]
+       [--cdb-also pattern]... pattern...
 """
 
 import argparse
@@ -40,6 +43,7 @@ def main():
     ap.add_argument("--harness", required=True)
     ap.add_argument("--timeout", type=int, default=900)
     ap.add_argument("--cdb", default="")
+    ap.add_argument("--cdb-also", action="append", default=[])
     ap.add_argument("patterns", nargs="+")
     args = ap.parse_args()
 
@@ -58,10 +62,13 @@ def main():
         cwd = props.get("WORKING_DIRECTORY")
         cmd = test["command"]
         run(f"debug_run {test['name']}", [args.harness] + cmd, cwd, env, args.timeout)
-        if first and args.cdb and os.path.isfile(args.cdb):
-            # At the first break after the start: the last event, the stack and the verifier state.
-            script = "g; .lastevent; kv 40; !avrf; q"
-            sym = os.path.dirname(cmd[0])
+        also = any(fnmatch.fnmatchcase(test["name"], p) for p in args.cdb_also)
+        if (first or also) and args.cdb and os.path.isfile(args.cdb):
+            # At the first break after the start: the last event, the exception record, the registers,
+            # the stack and the verifier state.
+            script = "g; .lastevent; .exr -1; r; kv 40; !avrf; q"
+            cache = os.path.join(os.environ.get("RUNNER_TEMP", os.getcwd()), "symbols")
+            sym = f"{os.path.dirname(cmd[0])};srv*{cache}*https://msdl.microsoft.com/download/symbols"
             run(f"cdb {test['name']}", [args.cdb, "-lines", "-y", sym, "-c", script] + cmd, cwd, env, args.timeout)
         first = False
     return 0

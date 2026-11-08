@@ -605,8 +605,10 @@ jobs:
           fi
 
       # Diagnostic: under the page heap, JIT tests end with 0xC0000421 (a verifier stop) and the
-      # handlers of the process do not run. Three of them run again under a small debugger. It
+      # handlers of the process do not run. Some of them run again under a small debugger. It
       # prints the verifier text and the stack of the thread (tools/win-debug-run).
+      # BackendTests.CppOperators also runs under cdb.exe: the stack of its access violation in
+      # ucrtbase.dll then has the symbols of the system DLLs.
       - name: Run JIT tests under a debugger
         if: always() && matrix.backend == 'jit'
         continue-on-error: true
@@ -620,7 +622,9 @@ jobs:
           cl /nologo /EHsc /O1 /Zi tools\win-debug-run\debug_run.cpp /Fe"$out\debug_run.exe" /Fo"$out\\" /Fd"$out\\" dbghelp.lib
           if ($LASTEXITCODE -ne 0) { exit 1 }
           python tools\win-debug-run\run_tests.py --preset vs-both-rel --harness "$out\debug_run.exe" --timeout 600 --cdb $cdb `
-            'Launcher.LoopRunsFrames' 'JitTests.PrecompiledHeaderWorks' 'Backends/FamilyTests.*/Jit'
+            --cdb-also 'Selected/BackendTests.CppOperators/*' `
+            'Launcher.LoopRunsFrames' 'JitTests.PrecompiledHeaderWorks' 'Backends/FamilyTests.*/Jit' `
+            'Selected/BackendTests.CppOperators/*' 'JitTests.JitCodeSeesTheHostRuntime'
 
   # The AOT test builds on Windows. The job builds and runs the whole suite in a separate AOT
   # build (the preset vs-aot or vs-aot-opt). The two presets inherit vs-files: they need no JIT,
