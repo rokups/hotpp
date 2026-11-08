@@ -491,8 +491,9 @@ TEST(CppFrontend, MemberInitializerDefaultReadsListedField)
     expect_error("class S : public Actor { S() : a(5) {} int a; int b = a + 1; };",
         "the default member initializer of the field 'b' reads the field 'a', which this constructor sets in its "
         "initializer list");
-    // No error: the default reads a field that has no entry, or the field has an entry itself.
-    Parsed ok("#include \"Actor.h\"\nclass S : public Actor { S() : a(5), b(2) {} int a; int b = a + 1; int c = 3; int d = c + 1; };\n");
+    // No error: a default with no read of a field. A default that reads a field is an error
+    // (ConstructsWithAClearError): its init function has no object.
+    Parsed ok("#include \"Actor.h\"\nclass S : public Actor { S() : a(5), b(2) {} int a; int b = 1; int c = 3; };\n");
     EXPECT_TRUE(ok.diag.items.empty()) << ok.errors();
 }
 
@@ -706,7 +707,7 @@ TEST(CppFrontend, StaticMemberErrors)
     expect_error("class S : public Actor { static void F(); };", "define the static method inside the class");
     expect_error("class S : public Actor { static const int k; };", "a static const member needs an initializer");
     expect_error("int a = 1;\nclass S : public Actor { public: static int f() { return 1; } static int n; };\nint b = S::f();",
-        "'f' must come before the first module variable 'a'");
+        "the initializer of a module variable cannot call the static method 'f' in a .cpp script");
 }
 
 // A static const member gets its value at load. It cannot use a module variable or a static method.
@@ -1142,14 +1143,14 @@ TEST(CppFrontend, ScriptClassTypeEdits)
         "state_of(S__peer(r))->v = (int)sizeof(S_Shell); (void)static_cast<S_Shell*>(a); (void)(S_Shell*)a; ");
     EXPECT_EQ(method_of(p, "T", "B").raw_body,
         " S_Shell* d = hot::as_script<S_Shell>(a, \"S\"); "
-        "S_Shell& e = (*hot::shell_of<S_Shell>(*a, \"S\")); "
+        "S_Shell& e = hot::cast_ref<S_Shell>(*a, \"S\"); "
         "S__set(&(s), state_of(d)->v + state_of(&(e))->v); d->Tick(1); delete d; ");
     // A module variable and a field access edit the same place: the field access is outside.
     EXPECT_EQ(method_of(p, "T", "C").raw_body,
         " state_of(hot_mod()->first)->v = 1; S__set(hot_mod()->first, S__get(hot_mod()->first)); ");
     // A const object: the field access keeps the C++ check of the source.
     EXPECT_EQ(method_of(p, "T", "D").raw_body,
-        " const S_Shell& r = (*hot::shell_of<S_Shell>(*a, \"S\")); return state_of(const_cast<S_Shell*>(&(r)))->v; ");
+        " const S_Shell& r = hot::cast_ref<S_Shell>(*a, \"S\"); return state_of(const_cast<S_Shell*>(&(r)))->v; ");
 }
 
 TEST(CppFrontend, ScriptClassTypeErrors)
@@ -1778,6 +1779,99 @@ TEST(CppFrontend, UnsupportedMembersAreNamed)
     for (const auto& [member, what] : cases)
         expect_error(std::string("class S : public Actor { ") + member + " };",
             std::string(": error: ") + what + " is not supported in a .cpp script class");
+}
+
+// The forms of the review "Cpp constructs" that give an error: each one compiled to wrong code or
+// gave an error in the generated code before.
+TEST(CppFrontend, ConstructsWithAClearError)
+{
+    const std::string head = "#include \"Actor.h\"\n#include <hot/script.h>\n";
+    // 65o: the init function of a field has no object.
+    expect_error(head + "class S : public Actor { public: int a = 1; int b = a + 1; };",
+        "the default member initializer of the field 'b' cannot use 'a' in a .cpp script: the initializer runs "
+        "outside the object; set 'b' in the constructor");
+    expect_error(head + "struct Pr { Pr(int x, int y) : x(x), y(y) {} int x, y; };\n"
+                        "class S : public Actor { public: int a = 1; Pr p{this->a, 2}; };",
+        "the default member initializer of the field 'p' cannot use 'a'");
+    expect_error(head + "class S : public Actor { public: int Mk() { return 1; } int c{Mk()}; };",
+        "the default member initializer of the field 'c' cannot use 'Mk'");
+    expect_error(head + "class S : public Actor { public: bool d = this != nullptr; };",
+        "the default member initializer of the field 'd' cannot use 'this'");
+    // (c): the implicit assignment copies the shell, so two shells share one state.
+    expect_error(head + "class S : public Actor { public: int v = 0; };\nvoid cp(S* a, S* b) { *a = *b; }",
+        "an assignment of an object of the script class 'S' is not supported in a .cpp script; assign the "
+        "fields one by one");
+    // 65i: the record key of a class is its name.
+    expect_error(head + "class HOT_ALIAS(\"Old\") S : public Actor {};",
+        "'HOT_ALIAS' on the class 'S' is not supported in a .cpp script; use it on a field or a module variable");
+    // 65l: the code of a static method comes after the module block.
+    expect_error(head + "class S : public Actor { public: static int Make() { return 7; } };\nint gv = S::Make();",
+        "the initializer of a module variable cannot call the static method 'Make' in a .cpp script");
+}
+
+// The forms of the review "Cpp constructs" that work: a copy and a move constructor (a constructor
+// overload with a reference of the class), a native interface base after the native base, a field
+// initializer that uses a module variable or a lambda with "this", and a member of another object.
+TEST(CppFrontend, ConstructsThatWork)
+{
+    hotc::TranslateOptions o;
+    o.script_name = "t.cpp";
+    o.script_text = R"(#include "Actor.h"
+#include "Damageable.h"
+#include <functional>
+#include <utility>
+int total = 4;
+struct Pr { Pr(int x, int y) : x(x), y(y) {} int x, y; };
+class S : public Actor, public IDamageable
+{
+public:
+    S() : Actor("s") {}
+    S(const S& o) : Actor("s") { v = o.v; }
+    S(S&& o) : Actor("s") { v = o.v; }
+    int Absorb(int d) override { v -= d; return v; }
+    int v = 1;
+    Pr p{total, 2};
+    std::function<int()> f{[this] { return v + total; }};
+};
+S* gs = nullptr;
+S* copy(S* a) { return new S(*a); }
+S* move(S* a) { return new S(std::move(*a)); }
+int hit(S* a) { IDamageable* d = a; return d->Absorb(1) + d->Armor(); }
+)";
+    o.generation = 1;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
+    o.resource_dir = HOT_RESOURCE_DIR;
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("return S__new(*a);"), std::string::npos);
+    EXPECT_NE(r.cpp.find("return S__new(std::move(*a));"), std::string::npos);
+    EXPECT_NE(r.cpp.find("new (f) T{hot_mod()->total, 2};"), std::string::npos);
+}
+
+// (f), (g): an include or an import of a script fails before the parse with a clear text.
+TEST(CppFrontend, ScriptIncludesAreErrors)
+{
+    auto run = [](const std::string& name, const std::string& text) {
+        hotc::TranslateOptions o;
+        o.script_name = name;
+        o.script_text = text;
+        o.generation = 1;
+        o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
+        o.resource_dir = HOT_RESOURCE_DIR;
+        const hotc::TranslateResult r = hotc::translate(o);
+        EXPECT_FALSE(r.ok);
+        return r.diagnostics;
+    };
+    EXPECT_NE(run("t.cpp", "#include \"Actor.h\"\n#include \"x.hot\"\n").find(
+                  "t.cpp:2:10: error: a .cpp script cannot include a .hot script"),
+        std::string::npos);
+    EXPECT_NE(run("t.cpp", "#include \"Actor.h\"\n  #  include \"other.cpp\"\n").find(
+                  "a .cpp script cannot include a .cpp file: its classes would be plain copies with no hot reload; "
+                  "put the shared code in a header"),
+        std::string::npos);
+    EXPECT_NE(run("t.hot", "using \"other.cpp\";\nint f() { return 1; }\n").find(
+                  "a .hot script cannot import a .cpp script; put the shared code in a header"),
+        std::string::npos);
 }
 
 // The names of the operators of a .cpp script class.

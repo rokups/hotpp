@@ -1038,7 +1038,7 @@ void SpawnerState_g2::Tick(float dt)
         Actor* as_actor = hot_mod()->minion;
         if (find_minion(as_actor) == hot_mod()->minion && hot::as_script<Minion_Shell>(static_cast<Actor*>(__self), "Minion") == nullptr)
             hot_mod()->cast_hits++;
-        Minion_Shell& ref = (*hot::shell_of<Minion_Shell>(*as_actor, "Minion"));
+        Minion_Shell& ref = hot::cast_ref<Minion_Shell>(*as_actor, "Minion");
         last = state_of(&(ref))->power + Minion__total(static_cast<Minion_Shell*>(as_actor)) + static_cast<int>(sizeof(Minion_Shell) > 0);
     
 #line 63 "cpp_objects_v2.cpp"

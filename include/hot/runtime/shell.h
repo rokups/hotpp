@@ -599,6 +599,16 @@ HOT_HIDDEN Shell* as_script(T& v, const char* cls)
     return as_script<Shell>(&v, cls);
 }
 
+// A ".cpp" "dynamic_cast<C&>(v)" of a script class C. The class records give the answer. An
+// object of another class throws std::bad_cast, as the C++ cast does.
+template <class Shell, class T> HOT_HIDDEN Shell& cast_ref(T& v, const char* cls)
+{
+    Shell* s = as_script<Shell>(const_cast<std::remove_const_t<T>*>(&v), cls);
+    if (!s)
+        throw std::bad_cast();
+    return *s;
+}
+
 // "obj is T" and "obj as T" of a native class T: dynamic_cast, as in C++.
 template <class T, class U> HOT_HIDDEN bool is_native(U* p)
 {

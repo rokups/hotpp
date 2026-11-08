@@ -476,6 +476,7 @@ TEST_P(BackendTests, CppScriptObjectsSurviveReload)
     EXPECT_EQ(*fld<int>(shell, "power"), 7);
     EXPECT_EQ(*fld<int>(shell, "hits"), 2);
     EXPECT_EQ(*modvar<int>(s, "cast_hits"), 2);
+    EXPECT_EQ(*modvar<int>(s, "bad_casts"), 2); // std::bad_cast, as in C++
     EXPECT_EQ(*fld<int>(s.inst.shell, "last"), 7 + 9 + 1); // power + total() + 1
     // The static method "spawn" made a second object. The static data member holds it.
     Actor** made = modvar<Actor*>(s, "Minion__s_first_made");

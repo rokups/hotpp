@@ -1,6 +1,7 @@
 // Generation 1 of two script classes. Script code uses a script class as a type.
 // A normal C++ build compiles this file. The tool hotc also translates it.
 #include "Actor.h"
+#include <typeinfo>
 
 class Minion : public Actor
 {
@@ -26,6 +27,7 @@ public:
 // Module variables keep their values across a reload. "minion" points to a script object.
 Minion* minion = nullptr;
 int cast_hits = 0;
+int bad_casts = 0; // a dynamic_cast to a reference of another class throws std::bad_cast
 
 // A free function uses the script class as a type.
 static Minion* find_minion(Actor* a)
@@ -57,6 +59,14 @@ public:
         if (find_minion(as_actor) == minion && dynamic_cast<Minion*>(static_cast<Actor*>(this)) == nullptr)
             cast_hits++;
         Minion& ref = dynamic_cast<Minion&>(*as_actor);
+        try
+        {
+            (void)dynamic_cast<Minion&>(*static_cast<Actor*>(this));
+        }
+        catch (const std::bad_cast&)
+        {
+            bad_casts++;
+        }
         last = ref.power + static_cast<Minion*>(as_actor)->total() + static_cast<int>(sizeof(Minion) > 0);
     }
 

@@ -3536,6 +3536,34 @@ void translate_impl(
         for (const std::string& d : in.include_dirs)
             dirs.push_back(d);
         res.virtual_files = collect_virtual_includes(in.fs.get(), in.script_text, dirs.front(), dirs);
+        // An include of a script comes before the parse: the text of a .hot script is not C++, and
+        // the classes of another .cpp script would be plain copies with no hot reload.
+        for (size_t at = 0; at < in.script_text.size();)
+        {
+            const std::string& t = in.script_text;
+            const size_t eol = std::min(t.find('\n', at), t.size());
+            size_t i = t.find_first_not_of(" \t", at);
+            if (i < eol && t[i] == '#')
+            {
+                i = t.find_first_not_of(" \t", i + 1);
+                if (i < eol && t.compare(i, 7, "include") == 0)
+                {
+                    const size_t open = t.find_first_not_of(" \t", i + 7);
+                    const size_t close = open < eol ? t.find(t[open] == '<' ? '>' : '"', open + 1) : std::string::npos;
+                    const std::string path = close < eol ? t.substr(open + 1, close - open - 1) : std::string();
+                    auto ends = [&](const char* ext) {
+                        return path.size() > 4 && path.compare(path.size() - 4, 4, ext) == 0;
+                    };
+                    if (ends(".hot"))
+                        fail_at(map, static_cast<uint32_t>(open), "a .cpp script cannot include a .hot script");
+                    if (ends(".cpp"))
+                        fail_at(map, static_cast<uint32_t>(open),
+                            "a .cpp script cannot include a .cpp file: its classes would be plain copies with no hot "
+                            "reload; put the shared code in a header");
+                }
+            }
+            at = eol + 1;
+        }
         sc = hotc::parse_cpp_script(in.script_text, opt.input, clang_args(opt), map, g_diag, res.virtual_files,
             opt.aot_optimized);
         if (!g_diag.items.empty())
@@ -3545,7 +3573,13 @@ void translate_impl(
                 fail_at(map, im.pos, "a .cpp script cannot include a .hot script");
     }
     else
+    {
         sc = parse_structure(in.script_text, map, array_tpl);
+        // The header import would copy the C++ text of the script: plain classes with no hot reload.
+        for (const Import& im : sc.imports)
+            if (im.path.size() > 4 && im.path.compare(im.path.size() - 4, 4, ".cpp") == 0)
+                fail_at(map, im.pos, "a .hot script cannot import a .cpp script; put the shared code in a header");
+    }
     // The module attributes of the script override the defaults of the preludes.
     {
         std::set<std::string> seen;

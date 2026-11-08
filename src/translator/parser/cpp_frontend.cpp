@@ -485,6 +485,7 @@ private:
         Range extent;
         const ClassInfo* cls;
         std::function<void(std::string&&)> store;
+        std::string field; // the field of a default member initializer of a script class, else empty
     };
 
     // The shell macros of the script classes. A class gets them from the annotations of its header
@@ -1069,6 +1070,11 @@ void Frontend::check_late_refs(CXCursor var)
                         fail(pos_of(k),
                             "the type '" + spelling(ref) + "' must come before " + first +
                                 ": the module block is there and needs the complete type");
+                    if (en && en->kind == Kind::ScriptStaticFn)
+                        fail(pos_of(k),
+                            "the initializer of a module variable cannot call the static method '" + en->shown() +
+                                "' in a .cpp script: the code of a static method comes after the module block; "
+                                "assign the value in a method or a function");
                     fail(pos_of(k),
                         "'" + spelling(ref) + "' must come before " + first +
                             ": the module block is there and holds the initializers");
@@ -1127,6 +1133,38 @@ void Frontend::examine(CXCursor k, WalkState& st)
             fail(e.begin, kMacroMsg);
         edits_.push_back(Edit{pos, len, std::move(rep), keep});
     };
+    // A default member initializer runs in a function of the state block, outside the object. Outside
+    // a lambda it cannot use "this", a field or a method of the object.
+    if (st.cls && !slices_[st.slice].field.empty() &&
+        std::none_of(st.lambdas.begin(), st.lambdas.end(), [&](const Range& r) { return r.has(e.begin); }))
+    {
+        std::string used;
+        if (kind == CXCursor_CXXThisExpr && word_at(text_, e.begin, "this"))
+            used = "this";
+        else if (kind == CXCursor_MemberRefExpr)
+        {
+            const CXCursor r = clang_getCursorReferenced(k);
+            const CXCursorKind rk = clang_getCursorKind(r);
+            const std::string name = spelling(r);
+            // The object is implicit ("a") or "this->a"; a member of another object is valid.
+            const bool own = word_at(text_, e.begin, "this") || text_.compare(e.begin, name.size(), name) == 0;
+            if (own && (rk == CXCursor_FieldDecl || (rk == CXCursor_CXXMethod && !clang_CXXMethod_isStatic(r))))
+                used = name;
+        }
+        if (!used.empty())
+            fail(e.begin, "the default member initializer of the field '" + slices_[st.slice].field +
+                    "' cannot use '" + used + "' in a .cpp script: the initializer runs outside the object; set '" +
+                    slices_[st.slice].field + "' in the constructor");
+    }
+    // The implicit "operator=" of a script class copies the shell, so two shells share one state.
+    if (kind == CXCursor_CallExpr)
+    {
+        const CXCursor r = clang_getCursorReferenced(k);
+        if (clang_getCursorKind(r) == CXCursor_CXXMethod && spelling(r) == "operator=")
+            if (const Entry* en = class_entry(clang_getCursorType(clang_getCursorSemanticParent(r))))
+                fail(e.begin, "an assignment of an object of the script class '" + en->shown() +
+                        "' is not supported in a .cpp script; assign the fields one by one");
+    }
     // True when the text before "pos" ends with "::" (a qualified name).
     auto qualified = [&](uint32_t pos)
     {
@@ -1559,9 +1597,9 @@ void Frontend::examine(CXCursor k, WalkState& st)
             add(e.end - 1, 1, ", " + quoted + ")");
         }
         else
-        { // a reference: the object must be of the class, else std::runtime_error
-            add(e.begin, head, "(*hot::shell_of<" + shell + ">(");
-            add(e.end - 1, 1, ", " + quoted + "))");
+        { // a reference: an object of another class throws std::bad_cast, as in C++
+            add(e.begin, head, "hot::cast_ref<" + shell + ">(");
+            add(e.end - 1, 1, ", " + quoted + ")");
         }
         st.skip_end = std::max(st.skip_end, static_cast<uint32_t>(open + 1));
         return;
@@ -1911,6 +1949,8 @@ void Frontend::read_init(CXCursor c, const ClassInfo* cls, const Where<ast::Fiel
             }
             fd.raw_brace_init = open != '(' && !fd.raw_init.empty() && fd.raw_init.front() == '{';
         });
+        if (cls)
+            slices_.back().field = f.name;
     }
 }
 
@@ -2781,6 +2821,9 @@ void Frontend::process_class(CXCursor c)
         if (clang_getCursorKind(k) == CXCursor_AnnotateAttr)
         {
             const std::string a = spelling(k);
+            if (a.rfind("hot.alias=", 0) == 0) // a class has no previous name: the record key is the name
+                fail(pos_of(c), "'HOT_ALIAS' on the class '" + spelling(c) +
+                        "' is not supported in a .cpp script; use it on a field or a module variable");
             if (a.rfind("hot.attribute=", 0) == 0)
             {
                 std::string name = a.substr(std::strlen("hot.attribute="));
