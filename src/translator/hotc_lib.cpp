@@ -8361,11 +8361,11 @@ void translate_impl(
             // Optimized AOT code has no layout, so it has no property table and no thunks.
             if (pr.attributes.empty() || pr.is_static || !pr.has_get || !pr.has_set || opt.aot_optimized)
                 continue;
-            o.w("static void " + P + "pget_" + pr.name + "(hot::ShellBase* __s, void* __out)\n{\n    *static_cast<"
-                + pr.type + "*>(__out) = " + P + "get_" + pr.name + "(static_cast<" + shell + "*>(__s));\n}\n");
-            o.w("static void " + P + "pset_" + pr.name + "(hot::ShellBase* __s, const void* __in)\n{\n    " + P
+            o.w("static void " + P + "pget_" + pr.name + "(hot::ShellBase* __s, void* hot_out)\n{\n    *static_cast<"
+                + pr.type + "*>(hot_out) = " + P + "get_" + pr.name + "(static_cast<" + shell + "*>(__s));\n}\n");
+            o.w("static void " + P + "pset_" + pr.name + "(hot::ShellBase* __s, const void* hot_in)\n{\n    " + P
                 + "set_" + pr.name + "(static_cast<" + shell + "*>(__s), *static_cast<const " + pr.type
-                + "*>(__in));\n}\n\n");
+                + "*>(hot_in));\n}\n\n");
         }
         // A script virtual function (design 7.6). A call reads the slot of the class of the object.
         for (const Method& m : cd.methods)

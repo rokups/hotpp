@@ -9,6 +9,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cctype>
+#include <cstddef>
 #include <string>
 #include <utility>
 #include <vector>
@@ -179,6 +181,30 @@ TEST(ScriptAttributeTranslation, PropertyTagGoesToThePropertyTable)
     EXPECT_TRUE(has(r.cpp, "\"Max Health\", \"AM_DEFAULT\", nullptr")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "Foo__pget_Health(")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "Foo__pset_Health(")) << r.cpp;
+}
+
+// MSVC sal.h defines these names as macros. A generated parameter with one of these names does not compile.
+TEST(ScriptAttributeTranslation, PropertyThunksUseNoSalMacroName)
+{
+    const hotc::TranslateResult r = attr_translate(
+        "[attribute] class Attribute;\n"
+        "class Foo : Widget {\n"
+        "    [Attribute] float Speed { get; set; }\n"
+        "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "Foo__pget_Speed(")) << r.cpp;
+    const std::string& cpp = r.cpp;
+    for (const char* name : {"__in", "__out", "__inout", "__deref", "__in_opt", "__out_opt"})
+    {
+        const std::string n = name;
+        for (std::size_t at = cpp.find(n); at != std::string::npos; at = cpp.find(n, at + 1))
+        {
+            const auto word = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
+            const bool left = at > 0 && word(cpp[at - 1]);
+            const bool right = at + n.size() < cpp.size() && word(cpp[at + n.size()]);
+            EXPECT_TRUE(left || right) << "the SAL macro name " << n << " is in the output:\n" << cpp;
+        }
+    }
 }
 
 TEST(ScriptAttributeTranslation, ClassWithoutPropertyTagHasNoPropertyTable)
