@@ -1062,7 +1062,11 @@ void Frontend::check_late_refs(CXCursor var)
                 if (en && en->kind == Kind::ScriptStaticConst)
                     dpos = en->cpos;
                 else if (en && en->kind == Kind::ScriptStaticFn)
-                    dpos = UINT32_MAX;
+                { // the prototype comes before the class: valid when the class is before the module block
+                    dpos = extent_of(clang_getCursorSemanticParent(d)).begin;
+                    if (dpos >= first_var_pos_)
+                        dpos = UINT32_MAX;
+                }
                 if (!module_var && from_main(d) && dpos > first_var_pos_ && !own.has(dpos))
                 {
                     const std::string first = "the first module variable '" + first_var_name_ + "'";
@@ -1563,6 +1567,22 @@ void Frontend::examine(CXCursor k, WalkState& st)
             }
         if (tr.end <= e.begin || tr.end > e.end)
             fail(e.begin, "cannot read this 'new' of the script class '" + en->shown() + "'");
+        // An implicit copy or move constructor: the factory has no overload for it. libclang does not
+        // visit an implicit constructor as a child of the class.
+        for (CXCursor c : children(k))
+        {
+            const CXCursor r = clang_getCursorReferenced(c);
+            if (clang_getCursorKind(c) != CXCursor_CallExpr || clang_getCursorKind(r) != CXCursor_Constructor ||
+                (!clang_CXXConstructor_isCopyConstructor(r) && !clang_CXXConstructor_isMoveConstructor(r)))
+                continue;
+            bool written = false;
+            for (CXCursor m : children(clang_getCursorSemanticParent(r)))
+                written = written || usr(m) == usr(r);
+            if (!written)
+                fail(e.begin, "the script class '" + en->shown() + "' has no written copy or move constructor in "
+                        "a .cpp script: the implicit one is not supported; write '" + en->shown() + "(const " +
+                        en->shown() + "&)' or '" + en->shown() + "(" + en->shown() + "&&)'");
+        }
         add(e.begin, tr.end - e.begin, en->name + "__new");
         const size_t i = skip_ws(text_, tr.end, e.end);
         if (i >= e.end)

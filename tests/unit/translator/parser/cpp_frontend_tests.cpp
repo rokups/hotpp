@@ -1804,9 +1804,18 @@ TEST(CppFrontend, ConstructsWithAClearError)
     // 65i: the record key of a class is its name.
     expect_error(head + "class HOT_ALIAS(\"Old\") S : public Actor {};",
         "'HOT_ALIAS' on the class 'S' is not supported in a .cpp script; use it on a field or a module variable");
-    // 65l: the code of a static method comes after the module block.
-    expect_error(head + "class S : public Actor { public: static int Make() { return 7; } };\nint gv = S::Make();",
+    // 65l: the module block starts at a class with a static data member, so the static method
+    // code comes after it.
+    expect_error(head + "class S : public Actor { public: static int n; static int Make() { return 7; } };\n"
+                        "int S::n = 0;\nint gv = S::Make();",
         "the initializer of a module variable cannot call the static method 'Make' in a .cpp script");
+    // (c): the factory has no overload for the implicit copy or move constructor.
+    const std::string plain = head + "#include <utility>\nclass S : public Actor { public: S() : Actor(\"s\") {} int v = 0; };\n";
+    expect_error(plain + "S* g(S* a) { return new S(*a); }",
+        "the script class 'S' has no written copy or move constructor in a .cpp script: the implicit one is not "
+        "supported; write 'S(const S&)' or 'S(S&&)'");
+    expect_error(plain + "S* g(S* a) { return new S(std::move(*a)); }",
+        "the script class 'S' has no written copy or move constructor");
 }
 
 // The forms of the review "Cpp constructs" that work: a copy and a move constructor (a constructor
@@ -1846,6 +1855,30 @@ int hit(S* a) { IDamageable* d = a; return d->Absorb(1) + d->Armor(); }
     EXPECT_NE(r.cpp.find("return S__new(*a);"), std::string::npos);
     EXPECT_NE(r.cpp.find("return S__new(std::move(*a));"), std::string::npos);
     EXPECT_NE(r.cpp.find("new (f) T{hot_mod()->total, 2};"), std::string::npos);
+}
+
+// 65l: a module variable initializer can call a static method of a class that comes before the module
+// block. The prototype of the static method comes before the class, so before the module block.
+TEST(CppFrontend, ModuleVariableCallsAStaticMethod)
+{
+    hotc::TranslateOptions o;
+    o.script_name = "t.cpp";
+    o.script_text = R"(#include "Actor.h"
+class S : public Actor
+{
+public:
+    static int Make(int a = 2) { return 5 + a; }
+};
+int made = S::Make();
+)";
+    o.generation = 1;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
+    o.resource_dir = HOT_RESOURCE_DIR;
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    const size_t proto = r.cpp.find("int S__s_Make(int a = 2);"), init = r.cpp.find("new (f) T(S__s_Make());");
+    ASSERT_NE(init, std::string::npos) << r.cpp;
+    EXPECT_LT(proto, init);
 }
 
 // (f), (g): an include or an import of a script fails before the parse with a clear text.
