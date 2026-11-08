@@ -6,8 +6,9 @@
 // use the form that clangd writes.
 // - Windows: a path can have short 8.3 names ("C:\Users\RUNNER~1"), and clangd writes the long
 //   names ("C:\Users\runneradmin").
-// - Other systems: clangd writes the real path without symbolic links. On macOS the temporary
+// - macOS: clangd writes the real path without symbolic links. The temporary
 //   folder "/var/folders/..." is "/private/var/folders/...". A part that does not exist stays.
+// - Linux: the path stays as it is.
 #pragma once
 
 #include <filesystem>
