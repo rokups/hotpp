@@ -81,8 +81,9 @@ The first version gives an error for each form in this list. The text in the sec
 | In a `.hot` script, an import of a `.cpp` file, for example `using "other.cpp";` | `a .hot script cannot import a .cpp script; put the shared code in a header` |
 | A default member initializer that uses a field, a method or `this` of the object outside a lambda, for example `int b = a + 1;` | `the default member initializer of the field 'b' cannot use 'a' in a .cpp script: the initializer runs outside the object; set 'b' in the constructor` (a module variable, a static member and a lambda with `[this]` are valid) |
 | An assignment of a script object, for example `*a = *b` | `an assignment of an object of the script class '<name>' is not supported in a .cpp script; assign the fields one by one` |
+| A copy or a move of a script object with no written copy or move constructor, for example `new P(*a)` | `the script class 'P' has no written copy or move constructor in a .cpp script: the implicit one is not supported; write 'P(const P&)' or 'P(P&&)'` |
 | `HOT_ALIAS` on a class, for example `class HOT_ALIAS("Old") P` | `'HOT_ALIAS' on the class 'P' is not supported in a .cpp script; use it on a field or a module variable` |
-| A module variable initializer that calls a static method of a script class, for example `int g = P::Make();` | `the initializer of a module variable cannot call the static method 'Make' in a .cpp script: the code of a static method comes after the module block; assign the value in a method or a function` |
+| A module variable initializer that calls a static method of a script class that comes at or after the start of the module block (the first module variable or the first class with a static data member), for example `int g = P::Make();` | `the initializer of a module variable cannot call the static method 'Make' in a .cpp script: the code of a static method comes after the module block; assign the value in a method or a function` |
 
 For a `const` field or a reference field, use a default member initializer in the class body. For a delegating constructor, write the shared code in a method.
 
@@ -97,7 +98,9 @@ A warning does not stop the translation. These forms give a warning.
 
 An explicit constructor, for example `explicit Player(int hp)`, is allowed. It is a normal constructor.
 
-A written copy constructor `Player(const Player& o)` and a written move constructor `Player(Player&& o)` are allowed. They are normal constructors: `new Player(*p)` calls the copy constructor. With no written copy or move constructor, `new Player(*p)` gives a C++ error in the generated code: `no matching function for call to 'Player__new'`.
+A written copy constructor `Player(const Player& o)` and a written move constructor `Player(Player&& o)` are allowed. They are normal constructors: `new Player(*p)` calls the copy constructor.
+
+A module variable initializer can call a static method of a script class that comes before the first module variable, for example `int made = Player::Make();`.
 
 A script class can have one native base and more native interface bases, for example `class Player : public Actor, public IDamageable`. The interface must come from a header. A class of the script file is not a valid base.
 
