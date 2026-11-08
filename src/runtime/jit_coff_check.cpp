@@ -253,6 +253,27 @@ private:
     uint32_t last_begin_ = 0;
 };
 
+#if defined(HOT_JIT_HAS_X86_TARGET)
+extern "C" void LLVMInitializeX86TargetInfo();
+extern "C" void LLVMInitializeX86Target();
+extern "C" void LLVMInitializeX86TargetMC();
+extern "C" void LLVMInitializeX86AsmPrinter();
+
+// The JIT registers only the native target. On other hosts (for example arm64) the check
+// registers the X86 target itself. A second registration has no effect.
+void register_x86_target()
+{
+    static const bool done = [] {
+        LLVMInitializeX86TargetInfo();
+        LLVMInitializeX86Target();
+        LLVMInitializeX86TargetMC();
+        LLVMInitializeX86AsmPrinter();
+        return true;
+    }();
+    (void)done;
+}
+#endif
+
 } // namespace
 
 std::string check_coff_unwind(llvm::Module& m)
@@ -260,6 +281,11 @@ std::string check_coff_unwind(llvm::Module& m)
     const llvm::Triple triple(m.getTargetTriple());
     if (!triple.isOSBinFormatCOFF() || triple.getArch() != llvm::Triple::x86_64)
         return "error: the target is not COFF x86_64\n";
+#if defined(HOT_JIT_HAS_X86_TARGET)
+    register_x86_target();
+#else
+    return "skip: the LLVM libraries have no X86 target\n";
+#endif
     std::string error;
     const llvm::Target* target = llvm::TargetRegistry::lookupTarget(triple, error);
     if (!target)

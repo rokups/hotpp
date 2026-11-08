@@ -129,8 +129,12 @@ if(HOT_JIT_ENABLED)
     else()
         target_compile_definitions(hot_jit_engine PRIVATE ${LLVM_DEFINITIONS})
     endif()
+    # The COFF unwind check (jit_coff_check.cpp) needs the X86 target also on other hosts.
     if(TARGET clang-cpp)
         target_link_libraries(hot_jit_engine PRIVATE clang-cpp LLVM)
+        if("X86" IN_LIST LLVM_TARGETS_TO_BUILD)
+            target_compile_definitions(hot_jit_engine PRIVATE HOT_JIT_HAS_X86_TARGET=1)
+        endif()
     else()
         # Experimental (MSVC). The LLVM release for MSVC has no clang-cpp and no LLVM library. It
         # has static component libraries. The imported targets bring their own dependencies.
@@ -139,6 +143,9 @@ if(HOT_JIT_ENABLED)
             clangFrontend clangCodeGen clangDriver LLVMOrcJIT LLVMOrcDebugging
             LLVM${LLVM_NATIVE_ARCH}CodeGen LLVM${LLVM_NATIVE_ARCH}AsmParser
             LLVM${LLVM_NATIVE_ARCH}Desc LLVM${LLVM_NATIVE_ARCH}Info)
+        if(LLVM_NATIVE_ARCH STREQUAL "X86")
+            target_compile_definitions(hot_jit_engine PRIVATE HOT_JIT_HAS_X86_TARGET=1)
+        endif()
     endif()
     if(MSVC AND NOT LLVM_ENABLE_RTTI)
         # The LLVM libraries have no RTTI. The code that uses their classes must have none too.

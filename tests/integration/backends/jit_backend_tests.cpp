@@ -574,6 +574,8 @@ TEST(JitTests, CoffUnwindTablesAreValid)
     hot_jit_ir_free(ir);
     const std::string report = text ? text : "";
     hot_jit_string_free(text);
+    if (report.rfind("skip: ", 0) == 0)
+        GTEST_SKIP() << report; // the LLVM build cannot make x86_64 COFF code
     const size_t eol = report.find('\n');
     ASSERT_NE(eol, std::string::npos) << report;
     EXPECT_EQ(report.substr(eol + 1), "") << report;
