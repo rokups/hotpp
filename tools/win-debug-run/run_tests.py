@@ -8,10 +8,13 @@ For each pattern, the script runs the first test whose name matches it (fnmatch)
 command, the working directory and the environment of the test from ctest. The output goes into
 the job log. With --cdb, the first test also runs under cdb.exe. A test that matches a pattern of
 --cdb-also runs under cdb.exe too. The symbol path of cdb.exe has the Microsoft symbol server, so
-the stack shows the functions of the system DLLs (ucrtbase.dll, for example).
+the stack shows the functions of the system DLLs (ucrtbase.dll, for example). A test that matches a
+pattern of --cdb-eh runs under cdb.exe with a log of each first-chance C++ exception (0xE06D7363)
+and access violation: the exception record (with its parameters: magic, object, throw info and
+image base) and the stack. Then the test continues.
 
 Usage: run_tests.py --preset <ctest preset> --harness <debug_run.exe> [--timeout s] [--cdb path]
-       [--cdb-also pattern]... pattern...
+       [--cdb-also pattern]... [--cdb-eh pattern]... pattern...
 """
 
 import argparse
@@ -44,6 +47,7 @@ def main():
     ap.add_argument("--timeout", type=int, default=900)
     ap.add_argument("--cdb", default="")
     ap.add_argument("--cdb-also", action="append", default=[])
+    ap.add_argument("--cdb-eh", action="append", default=[])
     ap.add_argument("patterns", nargs="+")
     args = ap.parse_args()
 
@@ -63,10 +67,17 @@ def main():
         cmd = test["command"]
         run(f"debug_run {test['name']}", [args.harness] + cmd, cwd, env, args.timeout)
         also = any(fnmatch.fnmatchcase(test["name"], p) for p in args.cdb_also)
-        if (first or also) and args.cdb and os.path.isfile(args.cdb):
+        eh = any(fnmatch.fnmatchcase(test["name"], p) for p in args.cdb_eh)
+        if (first or also or eh) and args.cdb and os.path.isfile(args.cdb):
             # At the first break after the start: the last event, the exception record, the registers,
             # the stack and the verifier state.
             script = "g; .lastevent; .exr -1; r; kv 40; !avrf; q"
+            if eh:
+                # Each first-chance C++ exception and access violation writes its record and stack,
+                # and the process continues. The stop at the end is a second-chance exception or
+                # the exit of the process.
+                script = ('sxe -c ".echo [cdb-eh] C++ exception;.exr -1;kc 25;gc" eh; '
+                          'sxe -c ".echo [cdb-eh] access violation;.exr -1;r;kv 30;gc" av; ' + script)
             cache = os.path.join(os.environ.get("RUNNER_TEMP", os.getcwd()), "symbols")
             sym = f"{os.path.dirname(cmd[0])};srv*{cache}*https://msdl.microsoft.com/download/symbols"
             run(f"cdb {test['name']}", [args.cdb, "-lines", "-y", sym, "-c", script] + cmd, cwd, env, args.timeout)

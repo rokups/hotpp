@@ -261,6 +261,9 @@ int main(int argc, char** argv)
     // The first crash. A later fault (for example a stack overflow in a handler of the program) can
     // end the process, so the last line repeats the first crash.
     std::string first_crash;
+    // The first-chance C++ exceptions (0xE06D7363) that get a line: the throw address and the
+    // parameters (magic, object, throw info, image base).
+    unsigned cxx_lines = 0;
     for (;;)
     {
         DEBUG_EVENT e = {};
@@ -317,6 +320,19 @@ int main(int argc, char** argv)
             {
                 initial_break = true; // the loader breaks once at the start
                 break;
+            }
+            if (code == 0xE06D7363 && first_chance && cxx_lines < 40)
+            {
+                ++cxx_lines;
+                std::printf("[dbg] C++ exception in thread %lu, %lu parameters:", e.dwThreadId,
+                    static_cast<unsigned long>(r.NumberParameters));
+                for (DWORD i = 0; i < r.NumberParameters && i < 4; ++i)
+                    std::printf(" 0x%llx", static_cast<unsigned long long>(r.ExceptionInformation[i]));
+                std::printf("\n");
+                print_address("C++ exception raised at", reinterpret_cast<DWORD64>(r.ExceptionAddress));
+                if (r.NumberParameters >= 3)
+                    std::printf("[dbg] C++ throw info in %s\n", module_name(r.ExceptionInformation[2]).c_str());
+                std::fflush(stdout);
             }
             if (first_crash.empty() && is_crash(code))
             {
