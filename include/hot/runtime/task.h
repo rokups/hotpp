@@ -417,7 +417,7 @@ struct TaskPromiseBase
             }
             catch (...)
             {
-                // The host awaitable did not take the frame: it is mine again.
+                // The host awaitable did not take the frame: the frame belongs to this thread again.
                 s->begin_run();
                 w.thrown = std::current_exception(); // the exception comes out of the co_await
                 next = frame;
