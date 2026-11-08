@@ -29,7 +29,7 @@ Hot++ uses `CPM.cmake` (`cmake/CPM.cmake`, in the repository, so CPM itself need
 | `lexy` | v2025.05.0 | Always. |
 | `nlohmann_json` | 3.12.0 (a release archive) | Always. The language server uses it. |
 | GoogleTest | v1.17.0 | Only when `HOT_BUILD_TESTS` is `ON`. |
-| fmt | 11.2.0 | Only when the build uses fmt and no fmt is installed (see `HOT_FMT_PROVIDER`). |
+| fmt | 12.2.0 | Only when the build uses fmt and no fmt is installed (see `HOT_FMT_PROVIDER`). |
 | Dear ImGui | v1.92.9b | Only in the sample `samples/imgui`, and only when `find_package(SDL3)` succeeds (see `README.md`). |
 
 `libclang`, the Clang compiler, Threads, LLVM and Clang (for JIT) come from the system. CPM never fetches them.

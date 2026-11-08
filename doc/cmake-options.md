@@ -122,7 +122,7 @@ The cache variable `HOT_FMT_PROVIDER` says where fmt comes from:
 |---|---|
 | `AUTO` (default) | `find_package(fmt)`. If fmt is not installed, `CPM.cmake` fetches fmt. |
 | `SYSTEM` | `find_package(fmt REQUIRED)`. The build never fetches. |
-| `CPM` | `CPM.cmake` always fetches fmt (version 11.2.0). |
+| `CPM` | `CPM.cmake` always fetches fmt (version 12.2.0). |
 | `NONE` | Your project makes the target `fmt::fmt-header-only` or `fmt::fmt`. Hot++ only links to it. The configure step fails if the target does not exist. |
 
 A target `fmt::fmt-header-only` or `fmt::fmt` that exists already is always used. Then the build does not search and does not fetch. The configure step prints the choice, for example `String interpolation uses: fmt`, and the source of fmt.

@@ -22,7 +22,7 @@ set(HOT_FMT_PROVIDER AUTO CACHE STRING "Where fmt comes from: AUTO, SYSTEM, CPM 
 set_property(CACHE HOT_FMT_PROVIDER PROPERTY STRINGS AUTO SYSTEM CPM NONE)
 
 set(_HOT_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}")
-set(HOT_FMT_VERSION 11.2.0)
+set(HOT_FMT_VERSION 12.2.0)
 
 # hot_format_library(<out> <cxx standard>): set <out> to "fmt" or "std".
 #
