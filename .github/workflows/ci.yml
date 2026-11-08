@@ -594,7 +594,7 @@ jobs:
         timeout-minutes: ${{ env.HOT_CI_PAGEHEAP == '1' && 100 || 40 }}
         run: |
           if [ "$HOT_CI_PAGEHEAP" = "1" ]; then
-            ctest --preset vs-both-rel -j "$NUMBER_OF_PROCESSORS" --timeout 3000
+            ctest --preset vs-both-rel -j 4 --timeout 3000
           else
             ctest --preset vs-both-rel -j "$NUMBER_OF_PROCESSORS"
           fi
