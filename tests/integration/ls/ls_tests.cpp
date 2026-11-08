@@ -993,6 +993,21 @@ json native_calls(NativeSession& s, const char* method, const json& item)
     return r.contains("result") ? r["result"] : json();
 }
 
+// The answer of "method" for "item". clangd can answer before its index or its AST of the
+// native header is ready, so the answer can miss the native items. The request repeats until
+// the answer has "want" items or 30 seconds pass.
+json native_calls_until(NativeSession& s, const char* method, const json& item, size_t want)
+{
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    for (;;)
+    {
+        const json r = native_calls(s, method, item);
+        if ((r.is_array() && r.size() >= want) || std::chrono::steady_clock::now() >= deadline)
+            return r;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+}
+
 // The names of the callers or callees of an answer.
 std::vector<std::string> call_names(const json& calls, const char* key)
 {
@@ -1171,7 +1186,8 @@ TEST(LanguageServerNative, OutgoingCallsOfAScriptMethodIncludeTheNativeCallees)
     const std::string text = kNativeCalls;
     const json run = prepare_at(s, pos_in(text, "int Run(", "Run"));
     ASSERT_TRUE(run.is_array() && run.size() == 1) << run.dump();
-    const json out = native_calls(s, "callHierarchy/outgoingCalls", run[0]);
+    // The native callees come from clangd. They can come later than the script callee.
+    const json out = native_calls_until(s, "callHierarchy/outgoingCalls", run[0], 4);
     ASSERT_TRUE(out.is_array()) << out.dump();
     // The script callee first, then the native callees in source order.
     EXPECT_EQ(call_names(out, "to"), (std::vector<std::string>{"Helper", "Clamp100", "Bump", "Tag"})) << out.dump();
