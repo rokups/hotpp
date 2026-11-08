@@ -595,14 +595,38 @@ jobs:
             Write-Output "page heap: $exe"
           }
 
+      # Diagnostic: on the files leg, each language server test keeps its clangd log (HOT_LS_CLANGD_LOG).
       - name: Test
         timeout-minutes: ${{ env.HOT_CI_PAGEHEAP == '1' && 100 || 40 }}
         run: |
+          if [ "$HOT_BACKEND" = "files" ]; then
+            mkdir -p "$(cygpath -u "$RUNNER_TEMP")/clangd-logs"
+            export HOT_LS_CLANGD_LOG="$RUNNER_TEMP\\clangd-logs"
+          fi
           if [ "$HOT_CI_PAGEHEAP" = "1" ]; then
             ctest --preset vs-both-rel -j 4 --timeout 3000
           else
             ctest --preset vs-both-rel -j "$NUMBER_OF_PROCESSORS"
           fi
+
+      # The slowest first preambles of the clangd logs: a slow preamble delays the native answers.
+      - name: Print the slowest clangd preambles
+        if: always() && matrix.backend == 'files'
+        continue-on-error: true
+        run: |
+          logs="$(cygpath -u "$RUNNER_TEMP")/clangd-logs"
+          [ -d "$logs" ] || exit 0
+          echo "clangd logs: $(ls "$logs" | wc -l)"
+          grep -H -o 'Built preamble .* in [0-9.]* seconds' "$logs"/*.log \
+            | sed -E 's/^(.*\/)?([^/:]*)\.log:.* in ([0-9.]+) seconds$/\3 \2/' | sort -rn | head -20
+
+      - uses: actions/upload-artifact@v7
+        if: always() && matrix.backend == 'files'
+        with:
+          name: clangd-logs-windows-files
+          path: ${{ runner.temp }}/clangd-logs
+          retention-days: 7
+          if-no-files-found: ignore
 
       # Diagnostic: under the page heap, JIT tests end with 0xC0000421 (a verifier stop) and the
       # handlers of the process do not run. Some of them run again under a small debugger. It
