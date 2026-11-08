@@ -56,7 +56,7 @@ static void HotModule__convert_total_hook(void* dst, const void* src)
 #line 26 "cpp_player_v2.cpp"
 {
 #line 26 "cpp_player_v2.cpp"
-    new (dst) float(HotModule__convert_total(*static_cast<const int*>(src)));
+    new (dst) float(HotModule__convert_total(hot::convert_source<int>(src)));
 #line 26 "cpp_player_v2.cpp"
 }
 #line 63 "cpp_player_v2.cpp.cpp"
@@ -203,7 +203,7 @@ static void Player__convert_level_hook(void* dst, const void* src)
 #line 66 "cpp_player_v2.cpp"
 {
 #line 66 "cpp_player_v2.cpp"
-    new (dst) float(Player__convert_level(*static_cast<const int*>(src)));
+    new (dst) float(Player__convert_level(hot::convert_source<int>(src)));
 #line 66 "cpp_player_v2.cpp"
 }
 #line 210 "cpp_player_v2.cpp.cpp"

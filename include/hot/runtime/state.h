@@ -417,6 +417,18 @@ template <class T> HOT_NODEBUG inline void move_field(void* dst, const void* src
         new (dst) T(std::move(*const_cast<T*>(static_cast<const T*>(src))));
 }
 
+// The old value that a convert hook gets (design 4.7). A copyable type gives a copy, so a failed
+// migration keeps the old object as it is. A move-only type moves: the old field keeps an empty
+// value. "T" is the parameter type of the hook.
+template <class T> HOT_NODEBUG inline decltype(auto) convert_source(const void* src)
+{
+    using U = std::remove_cv_t<std::remove_reference_t<T>>;
+    if constexpr (deep_copyable_v<U>)
+        return *static_cast<const U*>(src);
+    else
+        return std::move(*const_cast<U*>(static_cast<const U*>(src)));
+}
+
 template <class T> HOT_NODEBUG inline void destroy_field(void* field)
 {
     destroy_in<T>(field);

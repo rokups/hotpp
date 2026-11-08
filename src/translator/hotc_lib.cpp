@@ -6107,7 +6107,7 @@ void translate_impl(
         {
             o.w("static " + m->ret + " " + P + m->name + "(" + m->params[0].type + " " + m->params[0].name + ");\n");
             mapped("static void " + P + m->name + "_hook(void* dst, const void* src)\n{\n    new (dst) " + m->ret + "("
-                    + P + m->name + "(*static_cast<const " + m->params[0].type + "*>(src)));\n}\n",
+                    + P + m->name + "(hot::convert_source<" + m->params[0].type + ">(src)));\n}\n",
                 m->line, m->pos);
         }
 
@@ -8048,7 +8048,7 @@ void translate_impl(
             if (opt.aot_optimized)
                 continue; // no reload: no hook wrapper
             mapped("static void " + P + m->name + "_hook(void* dst, const void* src)\n{\n    new (dst) " + m->ret + "("
-                    + P + m->name + "(*static_cast<const " + m->params[0].type + "*>(src)));\n}\n",
+                    + P + m->name + "(hot::convert_source<" + m->params[0].type + ">(src)));\n}\n",
                 m->line, m->pos);
         }
         if (opt.aot_optimized)

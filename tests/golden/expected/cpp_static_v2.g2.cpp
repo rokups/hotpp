@@ -50,7 +50,7 @@ static void HotModule__convert_Counter__s_count_hook(void* dst, const void* src)
 #line 36 "cpp_static_v2.cpp"
 {
 #line 36 "cpp_static_v2.cpp"
-    new (dst) float(HotModule__convert_Counter__s_count(*static_cast<const int*>(src)));
+    new (dst) float(HotModule__convert_Counter__s_count(hot::convert_source<int>(src)));
 #line 36 "cpp_static_v2.cpp"
 }
 #line 57 "cpp_static_v2.cpp.cpp"

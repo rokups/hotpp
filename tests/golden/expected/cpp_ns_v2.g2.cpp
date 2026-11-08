@@ -717,7 +717,7 @@ static void HotModule__convert_game__score_hook(void* dst, const void* src)
 #line 70 "cpp_ns_v2.cpp"
 {
 #line 70 "cpp_ns_v2.cpp"
-    new (dst) long long(HotModule__convert_game__score(*static_cast<const int*>(src)));
+    new (dst) long long(HotModule__convert_game__score(hot::convert_source<int>(src)));
 #line 70 "cpp_ns_v2.cpp"
 }
 #line 724 "cpp_ns_v2.cpp.cpp"
