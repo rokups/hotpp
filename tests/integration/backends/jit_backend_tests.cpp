@@ -22,8 +22,23 @@
 #include "jit_msvc_symbols.h"
 
 #ifdef _MSC_VER
+    #include "hot/paths.h"
+    #include "hot/runtime/records.h"
+    #include "hot/runtime/shell.h"
+
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    #include <functional>
+    #include <iterator>
     #include <malloc.h>
+    #include <map>
     #include <typeinfo>
+    #include <vector>
+    #include <windows.h>
 // The epoch of the local statics of the thread (jit_msvc_symbols.cpp).
 extern "C" __declspec(thread) int _Init_thread_epoch;
 #endif
@@ -607,33 +622,88 @@ TEST(JitTests, NonCoffDeclarationsStay)
 }
 
 #ifdef _MSC_VER
-// A probe in JIT code gives the address of a C runtime symbol and of runtime state as the JIT
-// code sees it. These must be the addresses of the host: else the JIT code uses another heap or
-// another state. The text names each symbol that differs.
-std::string probe_host_symbols()
+// The types that the JIT code and the host must see with one layout. The alias has no comma, so
+// it can be a macro argument.
+using ProbeMap = std::map<int, int>;
+#define HOT_PROBE_TYPES(X)                                                                          \
+    X(hot::ShellBase) X(hot::StateLayout) X(hot::FieldInfo) X(std::string) X(std::vector<int>)      \
+        X(std::shared_ptr<int>) X(ProbeMap) X(std::function<void()>)
+
+// The file name of the module that contains "address", for a message.
+std::string module_of(const void* address)
 {
-    const std::string source = "typedef decltype(sizeof(0)) size_t;\n"
-                               "extern \"C\" __declspec(dllimport) void* malloc(size_t);\n"
-                               "extern \"C\" __declspec(dllimport) void free(void*);\n"
-                               "extern \"C\" __declspec(dllimport) void* _aligned_malloc(size_t, size_t);\n"
-                               "extern \"C\" __declspec(dllimport) void _aligned_free(void*);\n"
-                               "extern \"C\" __declspec(thread) int _Init_thread_epoch;\n"
-                               "struct __type_info_node;\n"
-                               "extern __type_info_node __type_info_root_node;\n"
-                               "extern \"C\" const void* probe_malloc() { return (const void*)&malloc; }\n"
-                               "extern \"C\" const void* probe_free() { return (const void*)&free; }\n"
-                               "extern \"C\" const void* probe_aligned_malloc() { return (const void*)&_aligned_malloc; }\n"
-                               "extern \"C\" const void* probe_aligned_free() { return (const void*)&_aligned_free; }\n"
-                               "extern \"C\" const void* probe_epoch() { return &_Init_thread_epoch; }\n"
-                               "extern \"C\" const void* probe_type_info_root() { return &__type_info_root_node; }\n";
-    hot_jit_ir* ir = compile_ir("", source);
-    if (!ir)
-        return "the probe does not compile";
+    HMODULE module = nullptr;
+    if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            static_cast<LPCSTR>(address), &module))
+        return "no module";
+    char name[MAX_PATH] = {};
+    if (!GetModuleFileNameA(module, name, MAX_PATH))
+        return "a module without a name";
+    return name;
+}
+
+// The probe module. probe_symbol(i) gives the address of item i of the allocator family
+// (jit_host_allocators.h) as the JIT code sees it. probe_layout(2 * i) and probe_layout(2 * i + 1)
+// give the size and the alignment of type i of HOT_PROBE_TYPES. The other functions allocate or
+// free a block for the cross checks.
+const char* probe_source()
+{
+#define HOT_PROBE_ADDRESS(n, e) "    (const void*)" #e ",\n"
+#define HOT_PROBE_LAYOUT(t) "    sizeof(" #t "), alignof(" #t "),\n"
+    return "#include <cstdlib>\n#include <functional>\n#include <malloc.h>\n#include <map>\n#include <memory>\n"
+           "#include <new>\n#include <string>\n#include <typeinfo>\n#include <vector>\n"
+           "#include \"hot/runtime/records.h\"\n"
+           "#include \"hot/runtime/shell.h\"\n"
+           "using ProbeMap = std::map<int, int>;\n"
+           "extern \"C\" __declspec(thread) int _Init_thread_epoch;\n"
+           "static const void* const probe_table[] = {\n" HOT_JIT_HOST_OPERATORS(HOT_PROBE_ADDRESS)
+               HOT_JIT_HOST_C_HEAP(HOT_PROBE_ADDRESS) HOT_JIT_HOST_MSVC_HEAP(HOT_PROBE_ADDRESS) "};\n"
+           "static const std::size_t probe_layouts[] = {\n" HOT_PROBE_TYPES(HOT_PROBE_LAYOUT) "};\n"
+           "extern \"C\" const void* probe_symbol(int i) { return probe_table[i]; }\n"
+           "extern \"C\" std::size_t probe_layout(int i) { return probe_layouts[i]; }\n"
+           "extern \"C\" const void* probe_epoch() { return &_Init_thread_epoch; }\n"
+           "extern \"C\" const void* probe_type_info_root() { return &__type_info_root_node; }\n"
+           "extern \"C\" void* probe_new() { return new int(7); }\n"
+           "extern \"C\" void probe_delete(void* p) { delete static_cast<int*>(p); }\n"
+           "extern \"C\" void* probe_malloc() { return std::malloc(64); }\n"
+           "extern \"C\" void* probe_aligned_malloc() { return _aligned_malloc(64, 64); }\n";
+#undef HOT_PROBE_ADDRESS
+#undef HOT_PROBE_LAYOUT
+}
+
+// A probe in JIT code gives the addresses of the allocator family and of runtime state, and the
+// layout of runtime and library types, as the JIT code sees them. These must be the values of the
+// host: else the JIT code uses another heap, another state or another type. Then blocks go from
+// one side to the other side and back. The text names each value that differs.
+std::string probe_host_runtime()
+{
+    const hot::DefaultPaths paths = hot::default_paths();
+    const std::string path = hot::jit_virtual_path("/hot-jit-test", "probe.cpp", fs::current_path().string());
+    std::vector<std::string> flags = {"clang++", "-std=" + std::string(hot::cxx_std_name()), "-DHOT_MODULE_BUILD=1",
+        "-I" HOT_SOURCE_DIR "/include"};
+    for (const std::string& f : hot::host_ms_runtime_lib_flags(std::string()))
+        flags.push_back(f);
+    for (const std::string& d : paths.include_dirs)
+        flags.push_back("-I" + d);
+    if (!paths.resource_dir.empty())
+        flags.push_back("-resource-dir=" + paths.resource_dir);
+    flags.push_back(path);
+    std::vector<const char*> args;
+    for (const std::string& f : flags)
+        args.push_back(f.c_str());
+    const char* file_paths[] = {path.c_str()};
+    const char* texts[] = {probe_source()};
+    hot_jit_ir* ir = nullptr;
+    char* diagnostics = nullptr;
+    const int compiled = hot_jit_compile(args.data(), args.size(), file_paths, texts, 1, &ir, &diagnostics);
     auto take = [](char* text) {
         std::string out = text ? text : "";
         hot_jit_string_free(text);
         return out;
     };
+    const std::string messages = take(diagnostics);
+    if (!compiled)
+        return "the probe does not compile: " + messages;
     char* error = nullptr;
     char* debugger_error = nullptr;
     int debugger_on = 0;
@@ -653,34 +723,82 @@ std::string probe_host_symbols()
         hot_jit_engine_free(engine);
         return "the probe does not link: " + take(error);
     }
-    struct Probe
-    {
-        const char* function;
-        const void* host;
-    };
-    const Probe probes[] = {
-        {"probe_malloc", reinterpret_cast<const void*>(&malloc)},
-        {"probe_free", reinterpret_cast<const void*>(&free)},
-        {"probe_aligned_malloc", reinterpret_cast<const void*>(&_aligned_malloc)},
-        {"probe_aligned_free", reinterpret_cast<const void*>(&_aligned_free)},
-        {"probe_epoch", &_Init_thread_epoch},
-        {"probe_type_info_root", &__type_info_root_node},
-    };
     std::string differ;
-    for (const Probe& p : probes)
-    {
-        void* f = hot_jit_lookup(dylib, p.function, &error);
+    auto look = [&](const char* function) -> void* {
+        void* f = hot_jit_lookup(dylib, function, &error);
         if (!f)
+            differ += std::string(function) + " (" + take(error) + ") ";
+        return f;
+    };
+    auto compare = [&](const std::string& what, const void* jit, const void* host) {
+        if (jit == host)
+            return;
+        std::ostringstream os;
+        os << what << " (JIT " << jit << " in " << module_of(jit) << ", host " << host << " in " << module_of(host)
+           << ") ";
+        differ += os.str();
+    };
+
+    struct HostValue
+    {
+        const char* name;
+        const void* address;
+    };
+#define HOT_PROBE_HOST(n, e) {n, reinterpret_cast<const void*>(e)},
+    const HostValue host_values[] = {HOT_JIT_HOST_OPERATORS(HOT_PROBE_HOST) HOT_JIT_HOST_C_HEAP(HOT_PROBE_HOST)
+            HOT_JIT_HOST_MSVC_HEAP(HOT_PROBE_HOST)};
+#undef HOT_PROBE_HOST
+    static_assert(std::size(host_values) == std::size(hot::jit::kHostAllocatorNames));
+    if (void* f = look("probe_symbol"))
+        for (int i = 0; i < static_cast<int>(std::size(host_values)); ++i)
+            compare(host_values[i].name, reinterpret_cast<const void* (*)(int)>(f)(i), host_values[i].address);
+    if (void* f = look("probe_epoch"))
+        compare("_Init_thread_epoch", reinterpret_cast<const void* (*)()>(f)(), &_Init_thread_epoch);
+    if (void* f = look("probe_type_info_root"))
+        compare("__type_info_root_node", reinterpret_cast<const void* (*)()>(f)(), &__type_info_root_node);
+
+    struct HostLayout
+    {
+        const char* type;
+        std::size_t size;
+        std::size_t align;
+    };
+#define HOT_PROBE_HOST_LAYOUT(t) {#t, sizeof(t), alignof(t)},
+    const HostLayout layouts[] = {HOT_PROBE_TYPES(HOT_PROBE_HOST_LAYOUT)};
+#undef HOT_PROBE_HOST_LAYOUT
+    if (void* f = look("probe_layout"))
+    {
+        auto layout = reinterpret_cast<std::size_t (*)(int)>(f);
+        for (int i = 0; i < static_cast<int>(std::size(layouts)); ++i)
+            if (layout(2 * i) != layouts[i].size || layout(2 * i + 1) != layouts[i].align)
+            {
+                std::ostringstream os;
+                os << layouts[i].type << " (JIT size " << layout(2 * i) << " align " << layout(2 * i + 1)
+                   << ", host size " << layouts[i].size << " align " << layouts[i].align << ") ";
+                differ += os.str();
+            }
+    }
+
+    // A block from another heap can stop the process, so the cross checks run only when each
+    // address is the host address.
+    if (differ.empty())
+    {
+        void* jit_new = look("probe_new");
+        void* jit_delete = look("probe_delete");
+        void* jit_malloc = look("probe_malloc");
+        void* jit_aligned_malloc = look("probe_aligned_malloc");
+        if (jit_new && jit_delete && jit_malloc && jit_aligned_malloc)
         {
-            differ += std::string(p.function) + " (" + take(error) + ") ";
-            continue;
-        }
-        const void* jit = reinterpret_cast<const void* (*)()>(f)();
-        if (jit != p.host)
-        {
-            std::ostringstream os;
-            os << p.function << " (JIT " << jit << ", host " << p.host << ") ";
-            differ += os.str();
+            int* a = static_cast<int*>(reinterpret_cast<void* (*)()>(jit_new)());
+            if (!a || *a != 7)
+                differ += "the JIT new gives a bad block ";
+            delete a;
+            reinterpret_cast<void (*)(void*)>(jit_delete)(new int(9));
+            std::free(reinterpret_cast<void* (*)()>(jit_malloc)());
+            void* b = reinterpret_cast<void* (*)()>(jit_aligned_malloc)();
+            if (reinterpret_cast<std::uintptr_t>(b) % 64 != 0)
+                differ += "the JIT _aligned_malloc gives a bad block ";
+            _aligned_free(b);
         }
     }
     hot_jit_remove(dylib);
@@ -689,13 +807,14 @@ std::string probe_host_symbols()
 }
 #endif
 
-// Windows: the JIT code sees the C runtime functions and the runtime state of the host.
+// Windows: the JIT code sees the allocator family, the runtime state and the type layouts of the
+// host. A block can go from the JIT code to the host and back.
 TEST(JitTests, JitCodeSeesTheHostRuntime)
 {
 #ifndef _MSC_VER
     GTEST_SKIP() << "Windows only";
 #else
-    EXPECT_EQ(probe_host_symbols(), "");
+    EXPECT_EQ(probe_host_runtime(), "");
 #endif
 }
 
