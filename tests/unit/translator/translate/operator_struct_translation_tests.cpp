@@ -185,3 +185,16 @@ TEST(OperatorStructTranslation, WritingMethodIsNotConst)
         EXPECT_TRUE(has(r.cpp, m)) << m << "\n" << r.cpp;
     EXPECT_FALSE(has(r.cpp, "Box__Bump(const_cast<Box*>(this))")) << r.cpp;
 }
+
+// A bare "this" in a struct method is the value, so "var p = this;" and "return this;" copy the struct.
+TEST(OperatorStructTranslation, BareThisIsTheStructValue)
+{
+    const hotc::TranslateResult r = translate_structs(
+        "struct Pose {\n"
+        "    int a = 0;\n"
+        "    Pose WithA(int v) { Pose p = this; p.a = v; return p; }\n"
+        "    Pose Copy() { var p = this; return p; }\n"
+        "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "(*__self)")) << r.cpp;
+}

@@ -3238,6 +3238,8 @@ struct Lowerer
                 error(n->pos, kDefaultBan);
             else if (!cx.allow_this)
                 no_this_error(n->pos);
+            else if (cx.cls && cx.cls->is_value)
+                e = raw("(*__self)", n->pos); // the object of a struct is a value, "__self" is its pointer
             else
                 e = raw("__self", n->pos);
         }
