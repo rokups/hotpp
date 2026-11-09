@@ -1674,7 +1674,7 @@ struct Lowerer
         error(pos_of(*e), kRawToSharedError);
     }
 
-    // "$C x = node.GetComponent<C>()" and "$C x = p as $C" of a script class C: the source is a raw
+    // "$C x = node.GetComponent<C>()" and "$C x = p as $C" of a script class or a native class C: the source is a raw
     // pointer of C (a native call, or "as" on a raw pointer or on a non-std handle). The raw pointer
     // cannot initialize the handle in C++, so "hot::handle_from_raw<H>(...)" makes the handle at run time.
     // A source of an unknown type is wrapped too: the helper passes a value that converts to H through.
@@ -1685,11 +1685,13 @@ struct Lowerer
         if (std::holds_alternative<ThisExpr>(e->v) || std::holds_alternative<NullExpr>(e->v))
             return;
         const std::string cls = handle_class(type);
-        const ClassDef* d = cls.empty() ? nullptr : class_named(cls);
-        if (!d || d->is_value)
+        if (cls.empty())
+            return;
+        const ClassDef* d = class_named(cls);
+        if (d && d->is_value)
             return;
         // "$C x = obj.F<D>()" (gap G09): a native template gives "D*". D must be C or a script child of C.
-        if (const auto* call = std::get_if<CallExpr>(&e->v))
+        if (const auto* call = d ? std::get_if<CallExpr>(&e->v) : nullptr)
             if (const auto* cn = call->callee ? std::get_if<NameExpr>(&call->callee->v) : nullptr;
                 cn && cn->template_args.size() > 2 && cn->template_args.find(',') == std::string::npos)
             {
@@ -2924,10 +2926,12 @@ struct Lowerer
         cx.ret_value = outer_ret_value;
         // The lambda captures by value. "self" is a pointer to the shell. The state pointer
         // is read again inside, so a lambda never keeps the pointer to a block.
-        l.body.stmts.insert(
-            l.body.stmts.begin(), make_stmt(RawStmt{cx.aot_optimized ? "HOT_NODEBUG_LOCAL auto* __st = __self;"
-                                           : "HOT_NODEBUG_LOCAL auto* __st = state_of(__self);",
-                0}));
+        // A static method has no "__self", so its lambda has no state pointer.
+        if (cx.allow_this && cx.cls)
+            l.body.stmts.insert(
+                l.body.stmts.begin(), make_stmt(RawStmt{cx.aot_optimized ? "HOT_NODEBUG_LOCAL auto* __st = __self;"
+                                               : "HOT_NODEBUG_LOCAL auto* __st = state_of(__self);",
+                    0}));
         const uint32_t pos = l.pos;
         CallExpr c;
         c.pos = pos;

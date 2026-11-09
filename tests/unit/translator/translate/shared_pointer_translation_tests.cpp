@@ -205,3 +205,15 @@ TEST(SharedPointerRules, ScriptHandleToScriptHandleIsNotWrapped)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_FALSE(has(r.cpp, "hot::handle_from_raw")) << r.cpp;
 }
+
+// A raw pointer of a native class from a native call becomes the handle at run time.
+TEST(SharedPointerRules, NativeCallResultToANativeHandle)
+{
+    const hotc::TranslateResult r = shape_translate(
+        "    void Run(Host* h) { if (h == null) return; $Pt p = h.Get<Pt>(); $Pt q = p; }\n",
+        "[native, handle(\"std::shared_ptr<$T>\")] class Widget;\n"
+        "[native, handle(\"std::shared_ptr<$T>\")] class Pt;\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "std::shared_ptr<Pt> p = hot::handle_from_raw<std::shared_ptr<Pt>>(")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "std::shared_ptr<Pt> q = p;")) << r.cpp;
+}

@@ -45,3 +45,16 @@ TEST(LambdaTranslation, ParameterWithoutTypeIsAuto)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("[=](auto x, int32_t y)"), std::string::npos) << r.cpp;
 }
+
+// A static method has no "__self". Its lambda has no state pointer.
+TEST(LambdaTranslation, LambdaInAStaticMethodHasNoSelf)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    const hotc::TranslateResult r = hotc::translate(temp_options(dir,
+        "using \"w.h\";\nclass Foo : Widget {\n    int n = 0;\n"
+        "    static int run(int k) {\n        var f = () => { return k + 1; };\n        return f();\n    }\n}\n"));
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("Foo.run lambda"), std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find("state_of(__self)"), std::string::npos) << r.cpp;
+}
