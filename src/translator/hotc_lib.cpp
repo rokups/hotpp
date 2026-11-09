@@ -1534,6 +1534,36 @@ std::string qualified_name(CXCursor c)
     return r;
 }
 
+// The names of the direct bases of a class. The base that is an instance of a class template
+// ("Tmpl<int>") has the name of the instance. The bases of its pattern go to "out" under that name,
+// so a walk of the bases goes on through the template.
+void collect_bases(CXCursor decl, Hierarchy& out, std::vector<std::string>& bases, int depth = 0)
+{
+    visit(decl, [&](CXCursor bs)
+    {
+        if (clang_getCursorKind(bs) == CXCursor_CXXBaseSpecifier)
+        {
+            CXCursor def = base_definition(bs);
+            if (CXCursor pat = implicit_pattern(def); !clang_Cursor_isNull(pat)) // an instance: "Tmpl<int>"
+            {
+                const std::string name = tidy(cxs(clang_getTypeSpelling(clang_getCursorType(bs))));
+                bases.push_back(name);
+                if (depth < 16 && out.find(name) == out.end())
+                {
+                    std::vector<std::string> found;
+                    collect_bases(pat, out, found, depth + 1);
+                    out[name] = std::move(found);
+                }
+            }
+            else if (!clang_Cursor_isNull(def) && clang_getCursorKind(def) != CXCursor_NoDeclFound)
+                bases.push_back(qualified_name(def));
+            else
+                bases.push_back(tidy(cxs(clang_getTypeSpelling(clang_getCursorType(bs)))));
+        }
+        return CXChildVisit_Continue;
+    });
+}
+
 // Collects the direct bases of the classes that are defined in the user headers.
 void collect_hierarchy(CXCursor root, Hierarchy& out)
 {
@@ -1546,20 +1576,7 @@ void collect_hierarchy(CXCursor root, Hierarchy& out)
             && !clang_Location_isInSystemHeader(clang_getCursorLocation(c)))
         {
             std::vector<std::string> bases;
-            visit(c, [&](CXCursor bs)
-            {
-                if (clang_getCursorKind(bs) == CXCursor_CXXBaseSpecifier)
-                {
-                    CXCursor def = base_definition(bs);
-                    if (!clang_Cursor_isNull(implicit_pattern(def))) // an instance: "Tmpl<int>"
-                        bases.push_back(tidy(cxs(clang_getTypeSpelling(clang_getCursorType(bs)))));
-                    else if (!clang_Cursor_isNull(def) && clang_getCursorKind(def) != CXCursor_NoDeclFound)
-                        bases.push_back(qualified_name(def));
-                    else
-                        bases.push_back(tidy(cxs(clang_getTypeSpelling(clang_getCursorType(bs)))));
-                }
-                return CXChildVisit_Continue;
-            });
+            collect_bases(c, out, bases);
             out[qualified_name(c)] = std::move(bases);
         }
         return CXChildVisit_Continue;

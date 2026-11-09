@@ -54,7 +54,9 @@ inline const char* kHierHeader =
     "struct Gadget : Item { using Item::Item; };\n"
     "namespace eng { struct Base : Object {}; struct Thing : Base {}; }\n"
     "struct Flat { int a = 0; };\n"
-    "struct FlatKid : Flat { int b = 0; };\n";
+    "struct FlatKid : Flat { int b = 0; };\n"
+    "template <class T> class Fb : public Object { T t; };\n"
+    "class TplKid : public Fb<int> {};\n";
 
 inline const char* kIntrusiveStub = "[native, handle(\"$T*\"), intrusive(\"AddRef\", \"Release\")] class Object;\n";
 

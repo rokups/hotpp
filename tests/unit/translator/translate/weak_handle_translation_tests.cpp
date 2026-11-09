@@ -151,6 +151,14 @@ TEST(WeakHandleTranslation, IntrusiveHandleIsAnError)
         << r.diagnostics;
 }
 
+// The base of a class is an instance of a class template. The handle rule of the base of the template applies.
+TEST(WeakHandleTranslation, ClassWithATemplateBaseUsesTheHandleOfTheTemplateBase)
+{
+    const hotc::TranslateResult r = hier_translate(kSharedStub, "    [weak]\n    TplKid k;\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "std::weak_ptr<TplKid> k;")) << r.cpp;
+}
+
 TEST(WeakHandleTranslation, UnsupportedForms)
 {
     const std::string field = kWeakField + "    int k;\n";
