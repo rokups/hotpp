@@ -328,6 +328,23 @@ TEST(ScriptImportTranslation, NestedImports)
     EXPECT_LT(r.cpp.find("struct Base_Shell"), r.cpp.find("struct Kid_Shell"));
 }
 
+// A script that an imported script also imports is a direct import too. The module variable and the
+// function of it are visible in the importer, whatever the order of the imports.
+TEST(ScriptImportTranslation, DirectImportOfAScriptThatAnImportAlsoImports)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    write_file(dir.path() / "layers.hot", "uint Layers_Mask = 2;\nuint Layers_Get() { return Layers_Mask; }\n");
+    write_file(dir.path() / "mid.hot", "using \"layers.hot\";\nuint Mid_Get() { return Layers_Mask; }\n");
+    hotc::TranslateOptions o = temp_options(dir,
+        "using \"mid.hot\";\n"
+        "using \"layers.hot\";\n"
+        "uint Main_Get() { return Layers_Mask + Layers_Get(); }\n");
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("hot_mv_Layers_Mask()"), std::string::npos);
+}
+
 // An alias is at file scope in the output. Its name must not be the name of a class of another script.
 TEST(ScriptImportTranslation, AliasOfAnImportWithTheNameOfAClassOfTheMainScript)
 {

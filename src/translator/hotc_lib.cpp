@@ -3746,6 +3746,9 @@ void translate_impl(
         int depth = 0;
         std::set<std::string> native_paths;
         std::vector<Import> natives;
+        // The scripts that an import imports: the normal path and the index in import_texts. A direct
+        // import of the same script later parses the text again for its functions and variables.
+        std::map<std::string, size_t> indirect_texts;
         std::vector<ClassDef> classes;
         std::vector<hotc::ast::EnumDef> enums;
         std::vector<Field> consts; // the module constants of the imported scripts
@@ -3772,7 +3775,30 @@ void translate_impl(
                     fail_at(map, im.pos, "the script '" + im.path + "' is not found");
                 // The set has the lexically normal name: two relative paths to one file give one visit.
                 if (!seen.insert(normal_path(file)).second)
+                {
+                    // The first visit was an import of an import. The script is also a direct import
+                    // now: the importer gets the declarations that a direct import gives.
+                    if (depth == 0)
+                    {
+                        auto it = indirect_texts.find(normal_path(file));
+                        if (it != indirect_texts.end())
+                        {
+                            Script again = parse_structure(import_texts[it->second], map, array_tpl);
+                            for (Method& f : again.fns)
+                                if (f.access != hotc::ast::Access::Private)
+                                {
+                                    f.foreign_unit = unit;
+                                    f.body.stmts.clear();
+                                    foreign_fns.push_back(std::move(f));
+                                }
+                            for (Field& v : again.vars)
+                                if (v.access != hotc::ast::Access::Private)
+                                    foreign_vars.push_back({std::move(v), unit});
+                            indirect_texts.erase(it);
+                        }
+                    }
                     continue;
+                }
                 const uint32_t base = next_base;
                 next_base += static_cast<uint32_t>(text.size()) + 1;
                 // The byte 0x01 is the internal placeholder of the standard namespace (std_ns.h).
@@ -3841,6 +3867,8 @@ void translate_impl(
                         if (v.access != hotc::ast::Access::Private)
                             foreign_vars.push_back({std::move(v), unit});
                 }
+                else
+                    indirect_texts[normal_path(file)] = import_texts.size() - 1;
                 for (ClassDef& c : is.classes)
                     if (c.is_private)
                         private_classes.emplace(c.name, file);
