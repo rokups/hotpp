@@ -345,6 +345,20 @@ TEST(ScriptImportTranslation, DirectImportOfAScriptThatAnImportAlsoImports)
     EXPECT_NE(r.cpp.find("hot_mv_Layers_Mask()"), std::string::npos);
 }
 
+// A member call on the cast "($C)h" of a script class is a script call, as a call on a local is.
+TEST(ScriptImportTranslation, MemberCallOnAHandleCastIsAScriptCall)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    write_file(dir.path() / "holder.hot", "class Holder {\n    bool Has(int n) { return n > 0; }\n}\n");
+    hotc::TranslateOptions o = temp_options(dir,
+        "using \"holder.hot\";\n"
+        "bool Main_Get() { $Holder h = new $Holder(); return (($Holder)h).Has(1); }\n");
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("Holder__Has(hot::shell_of<Holder_Shell>("), std::string::npos);
+}
+
 // An alias is at file scope in the output. Its name must not be the name of a class of another script.
 TEST(ScriptImportTranslation, AliasOfAnImportWithTheNameOfAClassOfTheMainScript)
 {

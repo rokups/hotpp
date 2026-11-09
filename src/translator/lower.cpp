@@ -1052,7 +1052,15 @@ struct Lowerer
             return !ta.empty() && ta == type_of(*tn->b) ? ta : std::string();
         }
         if (auto* u = std::get_if<UnaryExpr>(&e.v))
-            return u->postfix ? std::string() : op_result_type(e);
+        {
+            if (u->postfix)
+                return {};
+            // "($C)h" has the class "C" when "C" is a script class: a member call on it is a script call.
+            if (u->op.size() > 3 && u->op[0] == '(' && u->op[1] == '$' && u->op.back() == ')')
+                if (const std::string to = u->op.substr(2, u->op.size() - 3); class_named(to))
+                    return to;
+            return op_result_type(e);
+        }
         if (auto* b = std::get_if<BinaryExpr>(&e.v))
         {
             if (b->op != "??" && b->lhs && b->rhs)
