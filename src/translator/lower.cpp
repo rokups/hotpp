@@ -3152,7 +3152,9 @@ struct Lowerer
             // A bare member of the native base: the member of the shell.
             if (is_native_member(n.parts[0]))
             {
-                e = raw_named("__self->", n.parts[0], n.pos, n.pos);
+                // The explicit template arguments of a native member template ("GetSubsystem<T>()") stay.
+                plain_class_targs(n);
+                e = raw_named("__self->", n.parts[0] + n.template_args, n.pos, n.pos);
                 return;
             }
         }

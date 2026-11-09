@@ -255,4 +255,34 @@ TEST(NativeGapTranslation, GenericCallOnACallResultOrAMemberChain)
     EXPECT_TRUE(has(r.cpp, ".f() < c")) << r.cpp;
 }
 
+// An unqualified native template member call ("GetSubsystem<T>()") as the argument of a call
+// to a static method of another script class must reach the object, as the form "this.GetSubsystem<T>()".
+const char* kSubsystemHeader =
+    "class Cache {};\n"
+    "class Comp2 {\n"
+    "public:\n"
+    "    virtual ~Comp2() {}\n"
+    "    template <class T> T* GetSubsystem() const { return nullptr; }\n"
+    "};\n";
+
+TEST(NativeGapTranslation, UnqualifiedNativeTemplateCallAsArgumentOfAStaticCall)
+{
+    TempDir dir;
+    write_file(dir.path() / "s.h", kSubsystemHeader);
+    const hotc::TranslateResult r = hotc::translate(temp_options(dir,
+        "using \"s.h\";\n"
+        "class Maker {\n"
+        "    static int Make(Cache* cache, int n) { return n; }\n"
+        "}\n"
+        "class Foo : Comp2 {\n"
+        "    int M() {\n"
+        "        Cache* a = GetSubsystem<Cache>();\n"
+        "        return Maker.Make(GetSubsystem<Cache>(), 3);\n"
+        "    }\n"
+        "}\n"));
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "Make(__self->GetSubsystem<Cache>(), 3)") || has(r.cpp, "Make(__self.GetSubsystem<Cache>(), 3)"))
+        << r.cpp;
+}
+
 } // namespace
