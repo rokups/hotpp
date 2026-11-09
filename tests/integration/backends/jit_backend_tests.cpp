@@ -1154,7 +1154,8 @@ TEST(JitTests, JitCodeThrowsAndCatchesCxxExceptions)
 TEST(JitTests, HostGivesEachRuntimeDll)
 {
     const std::vector<const void*> addresses = hot::jit::host_runtime_addresses();
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) || !defined(_DLL)
+    // A /MT host has no runtime DLL.
     EXPECT_TRUE(addresses.empty());
 #else
     // The first three are always there. The other parts of the runtime follow when they are loaded.

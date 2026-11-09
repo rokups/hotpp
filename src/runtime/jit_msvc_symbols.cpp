@@ -34,6 +34,8 @@ void add_host_allocator_symbols(std::vector<const char*>& names, std::vector<uin
 
 #ifdef _MSC_VER
 
+#include <vcruntime.h>
+
 #include <atomic>
 #include <climits>
 #include <cstdio>
@@ -167,29 +169,41 @@ namespace hot::jit
 
 std::vector<const void*> host_runtime_addresses()
 {
+#ifndef _DLL
+    // A /MT host has the runtime inside its own image. No runtime DLL belongs to the host.
+    return {};
+#else
+    // The compiler defines choose the names of the runtime DLLs: _DLL (dynamic runtime), _DEBUG
+    // (suffix "d") and _VC_CRT_MAJOR_VERSION (the "140" in the name). They are the flags of the host.
+    #define HOT_JIT_WSTR2(x) L"" #x
+    #define HOT_JIT_WSTR(x) HOT_JIT_WSTR2(x)
+    #define HOT_JIT_CRT_VER HOT_JIT_WSTR(_VC_CRT_MAJOR_VERSION) L"0"
+    #ifdef _DEBUG
+        #define HOT_JIT_CRT_D L"d"
+    #else
+        #define HOT_JIT_CRT_D L""
+    #endif
     // A /MD build imports "fflush" (ucrtbase) and "std::cout" (msvcp) with dllimport, so each
     // address is in the DLL. The headers do not declare the vcruntime functions with dllimport: their
     // address is a jump stub in the host. So the base address of the loaded DLL stands for vcruntime.
-#ifdef _DEBUG
-    const HMODULE vcruntime = GetModuleHandleW(L"vcruntime140d.dll");
-#else
-    const HMODULE vcruntime = GetModuleHandleW(L"vcruntime140.dll");
-#endif
+    const HMODULE vcruntime = GetModuleHandleW(L"vcruntime" HOT_JIT_CRT_VER HOT_JIT_CRT_D L".dll");
     std::vector<const void*> out = {reinterpret_cast<const void*>(&std::fflush), static_cast<const void*>(vcruntime),
         static_cast<const void*>(&std::cout)};
     // The other parts of the runtime of the host, when they are loaded. The search of the JIT code
     // takes no name from a C runtime DLL that is not in this list (jit_search_order.h).
-#ifdef _DEBUG
-    const wchar_t* const parts[] = {L"vcruntime140_1d.dll", L"msvcp140_1d.dll", L"msvcp140_2d.dll",
-        L"msvcp140d_atomic_wait.dll", L"msvcp140d_codecvt_ids.dll", L"concrt140d.dll"};
-#else
-    const wchar_t* const parts[] = {L"vcruntime140_1.dll", L"msvcp140_1.dll", L"msvcp140_2.dll",
-        L"msvcp140_atomic_wait.dll", L"msvcp140_codecvt_ids.dll", L"concrt140.dll"};
-#endif
+    const wchar_t* const parts[] = {L"vcruntime" HOT_JIT_CRT_VER L"_1" HOT_JIT_CRT_D L".dll",
+        L"msvcp" HOT_JIT_CRT_VER L"_1" HOT_JIT_CRT_D L".dll", L"msvcp" HOT_JIT_CRT_VER L"_2" HOT_JIT_CRT_D L".dll",
+        L"msvcp" HOT_JIT_CRT_VER HOT_JIT_CRT_D L"_atomic_wait.dll",
+        L"msvcp" HOT_JIT_CRT_VER HOT_JIT_CRT_D L"_codecvt_ids.dll", L"concrt" HOT_JIT_CRT_VER HOT_JIT_CRT_D L".dll"};
+    #undef HOT_JIT_CRT_D
+    #undef HOT_JIT_CRT_VER
+    #undef HOT_JIT_WSTR
+    #undef HOT_JIT_WSTR2
     for (const wchar_t* part : parts)
         if (const HMODULE module = GetModuleHandleW(part))
             out.push_back(static_cast<const void*>(module));
     return out;
+#endif
 }
 
 } // namespace hot::jit
