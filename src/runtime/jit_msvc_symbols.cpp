@@ -34,8 +34,6 @@ void add_host_allocator_symbols(std::vector<const char*>& names, std::vector<uin
 
 #ifdef _MSC_VER
 
-#include <vcruntime.h>
-
 #include <atomic>
 #include <climits>
 #include <cstdio>
@@ -173,11 +171,9 @@ std::vector<const void*> host_runtime_addresses()
     // A /MT host has the runtime inside its own image. No runtime DLL belongs to the host.
     return {};
 #else
-    // The compiler defines choose the names of the runtime DLLs: _DLL (dynamic runtime), _DEBUG
-    // (suffix "d") and _VC_CRT_MAJOR_VERSION (the "140" in the name). They are the flags of the host.
-    #define HOT_JIT_WSTR2(x) L"" #x
-    #define HOT_JIT_WSTR(x) HOT_JIT_WSTR2(x)
-    #define HOT_JIT_CRT_VER HOT_JIT_WSTR(_VC_CRT_MAJOR_VERSION) L"0"
+    // The compiler defines choose the names of the runtime DLLs: _DLL (dynamic runtime) and _DEBUG
+    // (suffix "d"). They are the flags of the host. All toolsets of VS2015 to VS2022 use "140".
+    #define HOT_JIT_CRT_VER L"140"
     #ifdef _DEBUG
         #define HOT_JIT_CRT_D L"d"
     #else
@@ -197,8 +193,6 @@ std::vector<const void*> host_runtime_addresses()
         L"msvcp" HOT_JIT_CRT_VER HOT_JIT_CRT_D L"_codecvt_ids.dll", L"concrt" HOT_JIT_CRT_VER HOT_JIT_CRT_D L".dll"};
     #undef HOT_JIT_CRT_D
     #undef HOT_JIT_CRT_VER
-    #undef HOT_JIT_WSTR
-    #undef HOT_JIT_WSTR2
     for (const wchar_t* part : parts)
         if (const HMODULE module = GetModuleHandleW(part))
             out.push_back(static_cast<const void*>(module));
