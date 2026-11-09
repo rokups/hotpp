@@ -172,6 +172,14 @@ TEST(NullCheck, LoopBackEdgeDropsTheNarrowingOfRefArguments)
     EXPECT_EQ(warns("if (p == null) return; if (q == null) return; foreach (var x in p.hp) { p.hp = 1; reset(q); }", members), 0);
 }
 
+// A call of a static method of the class knows the modes of its parameters.
+TEST(NullCheck, StaticCallKeepsTheNarrowingOfAPlainArgument)
+{
+    const std::string members = "    static void touch($Node r) { }\n    static void reset(ref $Node r) { r = null; }\n";
+    EXPECT_EQ(warns("if (p == null) return; touch(p); p.hp = 1;", members), 0);
+    EXPECT_EQ(warns("if (p == null) return; reset(p); p.hp = 1;", members), 1);
+}
+
 TEST(NullCheck, LoopKeepsTheNarrowingOfNamesThatTheBodyDoesNotAssign)
 {
     EXPECT_EQ(warns("if (p == null) return; if (q == null) return; while (p.hp < 3) { p.hp = 1; q = null; }"), 0);
