@@ -3122,7 +3122,12 @@ struct Lowerer
             return;
         }
         targs(n);
-        handle_targs(n);
+        // A bare member template of the native base ("GetSubsystem<C>()") takes the plain class C,
+        // as the form "this.GetSubsystem<C>()" does.
+        if (n.parts.size() == 1 && is_native_member(n.parts[0]))
+            plain_class_targs(n);
+        else
+            handle_targs(n);
         const bool bare = n.parts.size() == 1 && !cx.locals.count(n.parts[0]);
         // A function name that is not a call. A script function has no address (a reload replaces it).
         if ((bare && !is_this_member(n.parts[0]) && !is_module_var(n.parts[0]) && bare_function(n.parts[0]))

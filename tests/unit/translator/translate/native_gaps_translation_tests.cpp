@@ -286,3 +286,29 @@ TEST(NativeGapTranslation, UnqualifiedNativeTemplateCallAsArgumentOfAStaticCall)
 }
 
 } // namespace
+
+namespace
+{
+
+// "GetSubsystem<Opts>()" with a script class as the template argument must ask for the class, not
+// for its handle. The result is the handle of the script class.
+TEST(NativeGapTranslation, NativeTemplateCallWithAScriptClassArgument)
+{
+    TempDir dir;
+    write_file(dir.path() / "s.h", kSubsystemHeader);
+    const hotc::TranslateResult r = hotc::translate(temp_options(dir,
+        "using \"s.h\";\n"
+        "class Opts : Comp2 {\n"
+        "    int value = 1;\n"
+        "}\n"
+        "class Foo : Comp2 {\n"
+        "    int M() {\n"
+        "        $Opts o = GetSubsystem<Opts>();\n"
+        "        return o != null ? o.value : 0;\n"
+        "    }\n"
+        "}\n"));
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "GetSubsystem<Opts>()")) << r.cpp;
+}
+
+} // namespace
