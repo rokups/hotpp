@@ -71,15 +71,66 @@ template <class F, class R, class... A> struct GuardedFn
         return fn(std::forward<A>(a)...);
     }
 };
+
+// The operations of a closure box. The box has a type-erased lambda, so the closure itself is
+// two words. These are plain function pointers, one table for each lambda type.
+template <class R, class... A> struct GuardedOps
+{
+    R (*invoke)(void*, A...);
+    void* (*clone)(const void*);
+    void (*destroy)(void*);
+    // A std::function that holds a copy of the guarded lambda, or (move) the lambda itself.
+    std::function<R(A...)> (*to_function)(void*, bool move);
+};
+
+// The header of a box. The closure holds a pointer to it.
+template <class R, class... A> struct GuardedBox
+{
+    const GuardedOps<R, A...>* ops;
+};
+
+// The box of one lambda type. "fn" is the GuardedFn that a std::function can hold too.
+// The ops functions are not HOT_HIDDEN: the table holds their addresses.
+template <class F, class R, class... A> struct GuardedBoxOf : GuardedBox<R, A...>
+{
+    GuardedFn<F, R, A...> fn;
+
+    explicit GuardedBoxOf(GuardedFn<F, R, A...>&& f)
+        : GuardedBox<R, A...>{ops()}
+        , fn(std::move(f))
+    {
+    }
+
+    static R invoke(void* p, A... a) { return static_cast<GuardedBoxOf*>(p)->fn(std::forward<A>(a)...); }
+    static void* clone(const void* p) { return new GuardedBoxOf(*static_cast<const GuardedBoxOf*>(p)); }
+    static void destroy(void* p) { delete static_cast<GuardedBoxOf*>(p); }
+    static std::function<R(A...)> to_function(void* p, bool move)
+    {
+        GuardedBoxOf* box = static_cast<GuardedBoxOf*>(p);
+        if (move)
+            return std::function<R(A...)>(std::move(box->fn));
+        return std::function<R(A...)>(box->fn);
+    }
+    static const GuardedOps<R, A...>* ops()
+    {
+        static const GuardedOps<R, A...> table = {&invoke, &clone, &destroy, &to_function};
+        return &table;
+    }
+};
 } // namespace detail
 
 // A closure that leaves script code (section 4.11). It holds one pin of its
 // generation for its whole life. Each call checks the generation guard: when the
 // generation is not live, the call logs a stale call and returns R(). The lambda
-// body does not run. A copy of the closure holds its own pin.
+// body does not run.
+//
+// The closure is two words: a pointer to one heap box and the generation. The box holds the
+// guarded lambda (the pin, the guard and the lambda). A copy of the closure clones the box, so
+// it holds its own pin. A move gives the box to the new closure. The small size lets a lambda that
+// captures a closure fit in the small buffer of a native Signal::Subscribe.
 //
 // The closure converts to std::function and to an engine delegate type D that has
-// Bind(std::function<Sig>). The std::function holds the guarded lambda, not the closure,
+// Bind(std::function<Sig>). The std::function holds a copy of the guarded lambda, not the closure,
 // so its call has one indirect call and not two.
 // The closure code lives in the generation module. Destroy the last copy on the
 // main thread, before the frame boundary at which the generation can unload.
@@ -102,39 +153,48 @@ public:
     // "live" is the live flag of the module (Registry::set_live_flag). The guard reads it.
     template <class F>
     HOT_HIDDEN Closure(uint32_t generation, const uint32_t* live, const char* what, F fn)
-        : fn_(detail::GuardedFn<F, R, A...>{detail::GenerationPin(generation), live, what, std::move(fn)})
+        : box_(new detail::GuardedBoxOf<F, R, A...>(
+              detail::GuardedFn<F, R, A...>{detail::GenerationPin(generation), live, what, std::move(fn)}))
         , gen_(generation)
     {
     }
 
-    // A copy copies the guarded lambda, and so its pin.
-    HOT_HIDDEN Closure(const Closure& o) = default;
-
-    HOT_HIDDEN Closure(Closure&& o) noexcept
-        : fn_(std::move(o.fn_))
+    // A copy clones the box, and so the pin.
+    HOT_HIDDEN Closure(const Closure& o)
+        : box_(o.box_ ? static_cast<detail::GuardedBox<R, A...>*>(o.box_->ops->clone(o.box_)) : nullptr)
         , gen_(o.gen_)
     {
-        o.fn_ = nullptr;
+    }
+
+    HOT_HIDDEN Closure(Closure&& o) noexcept
+        : box_(o.box_)
+        , gen_(o.gen_)
+    {
+        o.box_ = nullptr;
         o.gen_ = 0;
     }
 
     HOT_HIDDEN Closure& operator=(Closure o) noexcept
     {
-        std::swap(fn_, o.fn_);
+        std::swap(box_, o.box_);
         std::swap(gen_, o.gen_);
         return *this;
     }
 
-    HOT_HIDDEN ~Closure() = default;
+    HOT_HIDDEN ~Closure()
+    {
+        if (box_)
+            box_->ops->destroy(box_);
+    }
 
     HOT_HIDDEN R operator()(A... a) const
     {
-        if (HOT_UNLIKELY(!fn_))
+        if (HOT_UNLIKELY(!box_))
         {
             stale_call("closure");
             return R();
         }
-        return fn_(std::forward<A>(a)...);
+        return box_->ops->invoke(box_, std::forward<A>(a)...);
     }
 
     HOT_HIDDEN explicit operator bool() const { return gen_ != 0; }
@@ -142,8 +202,8 @@ public:
 
     // A std::function that holds a copy of the guarded lambda (and so one more pin). An
     // empty closure gives a std::function that logs a stale call.
-    HOT_HIDDEN Function to_function() const& { return fn_ ? fn_ : Function(Closure()); }
-    HOT_HIDDEN Function to_function() && { return fn_ ? take() : Function(Closure()); }
+    HOT_HIDDEN Function to_function() const& { return box_ ? box_->ops->to_function(box_, false) : Function(Closure()); }
+    HOT_HIDDEN Function to_function() && { return box_ ? take() : Function(Closure()); }
 
     // The conversion to std::function. The three forms match the reference binding of the
     // constructor template of std::function. So "std::function<Sig> f = closure" selects this
@@ -161,15 +221,18 @@ public:
     }
 
 private:
+    // Moves the guarded lambda out of the box and frees the box. The moved pin has generation 0,
+    // so the pin count does not change.
     HOT_HIDDEN Function take()
     {
-        Function f = std::move(fn_);
-        fn_ = nullptr;
+        Function f = box_->ops->to_function(box_, true);
+        box_->ops->destroy(box_);
+        box_ = nullptr;
         gen_ = 0;
         return f;
     }
 
-    Function fn_; // a detail::GuardedFn, or empty
+    detail::GuardedBox<R, A...>* box_ = nullptr; // a detail::GuardedBoxOf, or null
     uint32_t gen_ = 0;
 };
 

@@ -109,6 +109,26 @@ TEST_F(Closure, StdFunctionHoldsTheGuardedLambda)
     EXPECT_EQ(hot::stale_call_count(), stale0 + 3);
 }
 
+// A native Signal::Subscribe keeps the callback in a small buffer (4 words). A lambda that
+// captures one closure must fit. So the closure is two words: a box pointer and a generation.
+TEST_F(Closure, FitsASmallFunctionBuffer)
+{
+    static_assert(sizeof(hot::Closure<void(int)>) <= 2 * sizeof(void*));
+    int seen = 0;
+    auto c = hot::make_closure(9001, "s", [&seen](int x) { seen = x; });
+    auto wrapped = [c](int x) mutable { c(x); };
+    static_assert(sizeof(wrapped) <= 4 * sizeof(void*));
+    EXPECT_EQ(hot::pin_count(9001), 2u);
+    wrapped(7);
+    EXPECT_EQ(seen, 7);
+    const uint64_t stale0 = hot::stale_call_count();
+    hot::active_generation = 9002;
+    wrapped(8);
+    EXPECT_EQ(seen, 7);
+    EXPECT_EQ(hot::stale_call_count(), stale0 + 1);
+    hot::active_generation = 9001;
+}
+
 TEST_F(Closure, PinCountIsAtomic)
 {
     // Not a proof, but a thread sanitizer or a lost update shows here.
