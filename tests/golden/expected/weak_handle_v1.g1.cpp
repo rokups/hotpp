@@ -652,7 +652,7 @@ void NodeState_g1::See(std::weak_ptr<Weapon> w)
 #line 48 "weak_handle_v1.hot"
     hp = hp + hot::deref(strong).dmg;
 #line 49 "weak_handle_v1.hot"
-    HOT_TRACE_LINE(); local.reset();
+    HOT_TRACE_LINE(); hot::reset_weak(local);
 #line 50 "weak_handle_v1.hot"
 }
 #line 659 "weak_handle_v1.hot.cpp"
@@ -769,7 +769,7 @@ int32_t NodeState_g1::Racks(const std::shared_ptr<Weapon>& __w)
 #line 64 "weak_handle_v1.hot"
     HOT_TRACE_LINE(); const int32_t n = hot::lock(hot::deref(r).held) != nullptr ? hot::deref(hot::lock(hot::deref(r).held)).dmg : 0;
 #line 65 "weak_handle_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(r).held.reset();
+    HOT_TRACE_LINE(); hot::reset_weak(hot::deref(r).held);
 #line 66 "weak_handle_v1.hot"
     HOT_TRACE_LINE(); return n + Node__Try(__self, std::weak_ptr<Weapon>()) + Node__Try(__self) + Node__Try(__self, h);
 #line 67 "weak_handle_v1.hot"
@@ -806,9 +806,9 @@ void NodeState_g1::Forget()
 #line 70 "weak_handle_v1.hot"
     HOT_TRACE_FRAME("Node.Forget", "weak_handle_v1.hot");
 #line 70 "weak_handle_v1.hot"
-    HOT_TRACE_LINE(); parent.reset();
+    HOT_TRACE_LINE(); hot::reset_weak(parent);
 #line 71 "weak_handle_v1.hot"
-    HOT_TRACE_LINE(); __st->seen.reset();
+    HOT_TRACE_LINE(); hot::reset_weak(__st->seen);
 #line 72 "weak_handle_v1.hot"
 }
 #line 815 "weak_handle_v1.hot.cpp"

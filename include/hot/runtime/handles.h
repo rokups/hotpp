@@ -223,6 +223,25 @@ template <class W> HOT_HIDDEN auto lock_weak(const W& w, long) -> decltype(w.Loc
 }
 } // namespace detail
 
+namespace detail
+{
+template <class W> HOT_HIDDEN auto reset_weak_impl(W& w, int) -> decltype(w.reset(), void())
+{
+    w.reset();
+}
+template <class W> HOT_HIDDEN auto reset_weak_impl(W& w, long) -> decltype(w.Reset(), void())
+{
+    w.Reset();
+}
+} // namespace detail
+
+// Clears a weak handle ("w = null"). The template takes any weak pointer type with "reset()" or
+// "Reset()", like Urho3D::WeakPtr.
+template <class W> HOT_HIDDEN void reset_weak(W& w)
+{
+    detail::reset_weak_impl(w, 0);
+}
+
 // Reads a weak handle ("[weak] T x"). The result is the strong handle, or a null handle when
 // the object is gone. The template takes any weak pointer type with "lock()" or "Lock()". So a
 // custom standard namespace (the module attribute "std") and a "weak_handle" template work too.

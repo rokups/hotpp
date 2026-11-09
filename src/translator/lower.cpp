@@ -3491,7 +3491,10 @@ struct Lowerer
             expr(b->lhs);
             if (reset)
             {
-                e = make_expr(UnaryExpr{".reset()", std::move(b->lhs), true, b->pos});
+                const uint32_t reset_pos = b->pos;
+                std::vector<ExprP> reset_args;
+                reset_args.push_back(std::move(b->lhs));
+                e = call_of("hot::reset_weak", std::move(reset_args), reset_pos);
                 return;
             }
             // The right side of "??" is in a lambda: it cannot hold an "await".

@@ -64,8 +64,8 @@ TEST(WeakHandleTranslation, AssignmentWritesTheWeakHandle)
     EXPECT_TRUE(has(r.cpp, "w = s;")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "__st->w = s;")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "hot::lock(w) =")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "w.reset();")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "__st->w.reset();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::reset_weak(w);")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::reset_weak(__st->w);")) << r.cpp;
 }
 
 TEST(WeakHandleTranslation, Parameter)
@@ -93,7 +93,7 @@ TEST(WeakHandleTranslation, Locals)
     EXPECT_TRUE(has(r.cpp, "std::weak_ptr<Weapon> y = hot::lock(x);")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "std::weak_ptr<Weapon> z = std::weak_ptr<Weapon>();")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "auto v = hot::lock(x);")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "x.reset();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::reset_weak(x);")) << r.cpp;
 }
 
 TEST(WeakHandleTranslation, NonWeakLocalHidesWeakName)
@@ -206,7 +206,7 @@ TEST(WeakHandleTranslation, FieldOfAScriptStruct)
     EXPECT_TRUE(has(r.cpp,
         "int32_t d = hot::lock(hot::deref(s).n) != nullptr ? hot::deref(hot::lock(hot::deref(s).n)).dmg : 0;"))
         << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "hot::deref(s).n.reset();")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::reset_weak(hot::deref(s).n);")) << r.cpp;
 }
 
 TEST(WeakHandleTranslation, NullArgumentAndDefault)
