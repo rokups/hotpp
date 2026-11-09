@@ -38,11 +38,11 @@ struct Pt {
 #line 9 "fn_overload_v2.hot"
  {}
 #line 12 "fn_overload_v2.hot"
-    int32_t Add(int32_t v) { return Pt__Add(this, v); }
+    int32_t Add(int32_t v) const { return Pt__Add(const_cast<Pt*>(this), v); }
 #line 16 "fn_overload_v2.hot"
-    int32_t Add(float v) { return Pt__Add(this, v); }
+    int32_t Add(float v) const { return Pt__Add(const_cast<Pt*>(this), v); }
 #line 20 "fn_overload_v2.hot"
-    int32_t Add(int32_t a, int32_t b) { return Pt__Add(this, a, b); }
+    int32_t Add(int32_t a, int32_t b) const { return Pt__Add(const_cast<Pt*>(this), a, b); }
     template <class S_ = Pt> bool operator==(const Pt& o) const { const auto& __o = static_cast<const S_&>(o); return this->x == __o.x; }
     template <class S_ = Pt> bool operator!=(const Pt& o) const { return !(*this == static_cast<const S_&>(o)); }
 #line 49 "fn_overload_v2.hot.cpp"

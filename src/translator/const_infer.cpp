@@ -37,6 +37,10 @@ struct Root
 
 Root root_of(const Expr& e, bool this_paths = false)
 {
+    // "this": with "this_paths" the root is the name "this".
+    static const std::string kThis = "this";
+    if (this_paths && std::holds_alternative<ThisExpr>(e.v))
+        return {&kThis, true};
     if (auto* n = std::get_if<NameExpr>(&e.v))
     {
         if (n->parts.empty())
@@ -125,6 +129,36 @@ struct BodyInfo
     std::set<std::string> assigned;
     // False for a lambda body (G06): "return x;" in a lambda does not need a shared cell.
     bool return_writes = true;
+    // The check of "Method::self_const". "this.f" has the root "f" and "this" has the root "this".
+    // "self_methods" holds the names of the plain methods of the struct. A call of such a method on
+    // the object goes to "self_calls" and not to "written".
+    bool self_mode = false;
+    const std::set<std::string>* self_methods = nullptr;
+    std::set<std::string> self_calls;
+
+    Root root(const Expr& e) const { return root_of(e, self_mode); }
+
+    // True for a call "M()" or "this.M()" of a plain method of the struct.
+    bool self_call(const CallExpr& c)
+    {
+        if (!self_mode || !self_methods || !c.callee)
+            return false;
+        const std::string* name = nullptr;
+        if (auto* n = std::get_if<NameExpr>(&c.callee->v))
+        {
+            if (n->parts.size() == 1 && n->template_args.empty() && !declared.count(n->parts[0]))
+                name = &n->parts[0];
+        }
+        else if (auto* m = std::get_if<MemberExpr>(&c.callee->v))
+        {
+            if (m->obj && std::holds_alternative<ThisExpr>(m->obj->v))
+                name = &m->name;
+        }
+        if (!name || !self_methods->count(*name))
+            return false;
+        self_calls.insert(*name);
+        return true;
+    }
 
     void declare(const std::string& name, bool is_handle, bool is_copy_ok)
     {
@@ -249,33 +283,36 @@ struct BodyInfo
             if (auto* b = std::get_if<BinaryExpr>(&e.v))
             {
                 if (is_assign_op(b->op) && b->lhs)
-                    assign_through(root_of(*b->lhs));
+                    assign_through(root(*b->lhs));
                 // "s << x" and "s >> x" can be stream operators: they change the left operand, and ">>" the
                 // right operand. A number does not change.
                 else if ((b->op == "<<" || b->op == ">>") && b->lhs && b->rhs)
                 {
-                    const Root l = root_of(*b->lhs);
+                    const Root l = root(*b->lhs);
                     if (is_scalar_name(l) || is_literal_scalar(*b->lhs))
                         return; // a shift of numbers
                     write_through(l);
                     if (b->op == ">>")
-                        write_through(root_of(*b->rhs));
+                        write_through(root(*b->rhs));
                 }
             }
             else if (auto* u = std::get_if<UnaryExpr>(&e.v))
             {
                 if (u->operand && (u->op == "++" || u->op == "--"))
-                    assign_through(root_of(*u->operand));
+                    assign_through(root(*u->operand));
                 // "await t": the members of an awaiter are not const.
                 else if (u->operand && u->op == "await" && !u->postfix)
-                    write_through(root_of(*u->operand));
+                    write_through(root(*u->operand));
+                // "&f" makes a pointer that can write the field.
+                else if (self_mode && u->operand && u->op == "&" && !u->postfix)
+                    write_through(root(*u->operand));
             }
             else if (auto* ix = std::get_if<IndexExpr>(&e.v))
             {
                 // "x[i]" can call a non-const operator[] (std::map inserts a missing key).
                 if (ix->obj)
                 {
-                    Root r = root_of(*ix->obj);
+                    Root r = root(*ix->obj);
                     r.exact = false;
                     write_through(r);
                 }
@@ -284,8 +321,13 @@ struct BodyInfo
             {
                 if (!c->callee)
                     return;
+                // "M()" and "this.M()" of a plain method of the struct: the pass checks "M" later.
+                const bool own = self_call(*c);
                 // "x.M()": the member function can change the object.
-                if (auto* n = std::get_if<NameExpr>(&c->callee->v))
+                if (own)
+                {
+                }
+                else if (auto* n = std::get_if<NameExpr>(&c->callee->v))
                 {
                     if (n->parts.size() >= 2)
                         write_through({&n->parts[0], false});
@@ -295,14 +337,14 @@ struct BodyInfo
                 else if (auto* m = std::get_if<MemberExpr>(&c->callee->v))
                 {
                     if (m->obj)
-                        write_through({root_of(*m->obj).name, false});
+                        write_through({root(*m->obj).name, false});
                 }
                 const Method* callee = script_callee(*c);
                 for (size_t i = 0; i < c->args.size(); ++i)
                 {
                     if (!c->args[i])
                         continue;
-                    const Root r = root_of(*c->args[i]);
+                    const Root r = root(*c->args[i]);
                     if (!r.name)
                         continue;
                     if (callee && i < callee->params.size())
@@ -322,7 +364,7 @@ struct BodyInfo
                 // The constructor is not known here: an argument can go to a reference.
                 for (const ExprP& a : nw->args)
                     if (a)
-                        write_through(root_of(*a));
+                        write_through(root(*a));
             }
         };
         auto fs = [&](const Stmt& s)
@@ -332,23 +374,25 @@ struct BodyInfo
                 // "ref r = x;" and "T& r = x;" bind a writable alias.
                 // A local "T[] s = x;" is a view that can write "x".
                 if (d->init && (d->is_ref || is_ref_type(d->type) || is_mutable_view(d->type)))
-                    write_through(root_of(*d->init));
+                    write_through(root(*d->init));
             }
             else if (auto* fo = std::get_if<ForOfStmt>(&s.v))
             {
                 if (fo->is_ref && fo->range)
-                    write_through(root_of(*fo->range));
+                    write_through(root(*fo->range));
             }
             else if (auto* r = std::get_if<ReturnStmt>(&s.v))
             {
                 if (r->expr && return_writes)
                 {
-                    const Root root = root_of(*r->expr);
-                    if (root.name && root.exact)
+                    const Root rt = root(*r->expr);
+                    // A return of a field or of "this" by value is a copy. A reference return is
+                    // not const (see "infer_self_const").
+                    if (rt.name && rt.exact && !(self_mode && !declared.count(*rt.name)))
                     {
-                        auto it = copy_ok.find(*root.name);
+                        auto it = copy_ok.find(*rt.name);
                         if (it == copy_ok.end() || !it->second)
-                            written.insert(*root.name);
+                            written.insert(*rt.name);
                     }
                 }
             }
@@ -472,6 +516,78 @@ bool params_default_ok(const Method& m)
     return !m.is_virtual && !m.is_override && !m.overrides_virtual && !m.is_abstract && !m.is_async && !m.raw;
 }
 
+// True when the return type can give a writable access to the object: a reference, a pointer or a
+// "T[]" view.
+bool returns_access(const Method& m)
+{
+    for (const std::string* t : {&m.ret, &m.script_ret})
+        if (is_ref_type(*t) || is_ref_return_text(*t) || is_mutable_view(*t) || t->find('*') != std::string::npos)
+            return true;
+    return m.ret_ref;
+}
+
+// Sets "Method::self_const" on each plain method of a struct that never changes the object. The
+// pass is conservative: a use that is not surely a read changes the object.
+void infer_self_const(ClassDef& cd, const ConstContext& ctx)
+{
+    std::set<std::string> names; // the plain methods of the struct
+    for (const Method& m : cd.methods)
+        if (m.op.empty())
+            names.insert(m.name);
+    std::set<std::string> own; // the fields and "this"
+    own.insert("this");
+    for (const Field& f : cd.fields)
+        own.insert(f.name);
+    // The direct result of each method, and the methods of the struct that it calls.
+    std::map<const Method*, bool> writes;
+    std::map<const Method*, std::set<std::string>> calls;
+    for (Method& m : cd.methods)
+    {
+        m.self_const = false;
+        if (!m.op.empty())
+            continue;
+        if (m.raw || m.is_async || m.is_coroutine || m.is_static || returns_access(m))
+        {
+            writes[&m] = true;
+            continue;
+        }
+        BodyInfo info{ctx, {}, {}, {}, {}};
+        info.self_mode = true;
+        info.self_methods = &names;
+        // The facts of the fields: a handle field keeps its value when the code changes its
+        // target. A local with the same name joins the facts (see "declare").
+        for (const Field& f : cd.fields)
+        {
+            const std::string& t = f.script_type.empty() ? f.type : f.script_type;
+            info.handle[f.name] = !f.weak && info.handle_type(t, false);
+            info.scalar[f.name] = is_builtin_scalar(t);
+        }
+        info.run(m.params, m.body);
+        bool w = false;
+        for (const std::string& n : info.written)
+            w = w || own.count(n);
+        writes[&m] = w;
+        calls[&m] = std::move(info.self_calls);
+    }
+    // A call of a method that changes the object changes the object. An overload counts too.
+    for (bool changed = true; changed;)
+    {
+        changed = false;
+        for (Method& m : cd.methods)
+        {
+            if (!m.op.empty() || writes[&m])
+                continue;
+            for (const std::string& c : calls[&m])
+                for (const Method& o : cd.methods)
+                    if (o.op.empty() && o.name == c && writes[&o] && !writes[&m])
+                        writes[&m] = changed = true;
+        }
+    }
+    for (Method& m : cd.methods)
+        if (m.op.empty())
+            m.self_const = !writes[&m];
+}
+
 } // namespace
 
 DirectWrites direct_writes(const ast::Method& m)
@@ -526,6 +642,8 @@ DirectWrites direct_writes(const ast::Method& m)
 
 void infer_const(ClassDef& cd, const ConstContext& ctx)
 {
+    if (ctx.self_const)
+        infer_self_const(cd, ctx);
     for (std::vector<Method>* list : {&cd.methods, &cd.statics})
         for (Method& m : *list)
         {

@@ -5326,9 +5326,10 @@ void translate_impl(
     // "script_fn" finds a script function of the class by name. "params" says if the parameters
     // of the method can get "const" in the body.
     auto infer_const_in = [&](ClassDef& cd, std::function<const Method*(const std::string&)> script_fn,
-                              std::function<bool(const Method&)> params)
+                              std::function<bool(const Method&)> params, bool self_const = false)
     {
         hotc::ConstContext cc;
+        cc.self_const = self_const;
         cc.script_fn = std::move(script_fn);
         cc.params_ok = std::move(params);
         cc.is_handle = [&types](const std::string& t)
@@ -5845,7 +5846,8 @@ void translate_impl(
                         return &m;
                 return nullptr;
             },
-            [](const Method&) { return false; }); // a struct method has no body form of the parameters
+            [](const Method&) { return false; }, // a struct method has no body form of the parameters
+            true); // a plain method that never changes the object is a const member
         null_check_in(cd);
         for (Field& f : cd.fields)
         {
@@ -6099,6 +6101,7 @@ void translate_impl(
                             + ") : " + init_call + " { " + P + "ctor(this, " + arg_names(c.params) + "); }\n");
             }
             // A member of an operator calls the free function with the identifier of the operator.
+            // A plain method is const when it never changes the object ("self_const").
             // The free function takes a non-const self: a body can call the other functions of the
             // struct. So a const member passes "const_cast<S*>(this)". The checker does not report
             // a field write in the body of a const operator.
@@ -6116,7 +6119,7 @@ void translate_impl(
             {
                 if (m.op.empty())
                 {
-                    forward(m, fn_ret(m), false);
+                    forward(m, fn_ret(m), m.self_const);
                     continue;
                 }
                 const bool ref_ret = hotc::ast::is_ref_type(fn_ret(m));

@@ -48,3 +48,48 @@ TEST(GeneratedNameCompile, UserNamesLambdaExpressionAndCastCompile)
 }
 
 } // namespace
+
+namespace
+{
+const char* kStructScript = R"(struct Team {
+    int slot = 0;
+    bool IsT() { return slot % 2 == 0; }
+    bool IsCt() { return !IsT(); }
+    void Next() { slot += 1; }
+}
+
+int Count(in Team t) {
+    return t.IsT() || t.IsCt() ? 1 : 0;
+}
+)";
+
+const char* kStructWriteScript = R"(struct Team {
+    int slot = 0;
+    void Next() { slot += 1; }
+}
+
+int Count(in Team t) {
+    t.Next();
+    return t.slot;
+}
+)";
+
+// A read-only struct method is const: a call on an "in" value compiles.
+TEST(GeneratedNameCompile, ReadOnlyStructMethodOnInValueCompiles)
+{
+    auto backend = hot::make_default_backend();
+    const hot::ScriptSource source{"struct_const_method.hot", kStructScript, {}};
+    const hot::LoadResult r = backend->load(source, 1);
+    ASSERT_TRUE(r) << r.error;
+}
+
+// A writing struct method is not const: a call on an "in" value is an error.
+TEST(GeneratedNameCompile, WritingStructMethodOnInValueFails)
+{
+    auto backend = hot::make_default_backend();
+    const hot::ScriptSource source{"struct_write_method.hot", kStructWriteScript, {}};
+    const hot::LoadResult r = backend->load(source, 1);
+    ASSERT_FALSE(r);
+    EXPECT_NE(r.error.find("'Next' changes the object, but the object is const"), std::string::npos) << r.error;
+}
+} // namespace

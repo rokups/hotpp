@@ -36,7 +36,7 @@ struct Pair_G_int_G_float {
 #line 16 "generics_v1.hot"
  {}
 #line 20 "generics_v1.hot"
-    int32_t First() { return Pair_G_int_G_float__First(this); }
+    int32_t First() const { return Pair_G_int_G_float__First(const_cast<Pair_G_int_G_float*>(this)); }
     template <class S_ = Pair_G_int_G_float> bool operator==(const Pair_G_int_G_float& o) const { const auto& __o = static_cast<const S_&>(o); return this->a == __o.a && this->b == __o.b; }
     template <class S_ = Pair_G_int_G_float> bool operator!=(const Pair_G_int_G_float& o) const { return !(*this == static_cast<const S_&>(o)); }
 #line 43 "generics_v1.hot.cpp"

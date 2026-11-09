@@ -34,7 +34,7 @@ struct Rack {
 #line 8 "weak_handle_v1.hot"
  {}
 #line 11 "weak_handle_v1.hot"
-    int32_t Dmg() { return Rack__Dmg(this); }
+    int32_t Dmg() const { return Rack__Dmg(const_cast<Rack*>(this)); }
     template <class S_ = Rack> bool operator==(const Rack& o) const { const auto& __o = static_cast<const S_&>(o); return this->held == __o.held; }
     template <class S_ = Rack> bool operator!=(const Rack& o) const { return !(*this == static_cast<const S_&>(o)); }
 #line 41 "weak_handle_v1.hot.cpp"

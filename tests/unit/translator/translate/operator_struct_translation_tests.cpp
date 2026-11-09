@@ -140,3 +140,48 @@ TEST(OperatorStructTranslation, NoCompoundOperatorWhenTheResultIsNotTheStruct)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_FALSE(has(r.cpp, "operator*=")) << r.cpp;
 }
+
+// A plain method that does not change the object is a const member. A call on an "in" value compiles.
+TEST(OperatorStructTranslation, ReadOnlyMethodIsConst)
+{
+    const hotc::TranslateResult r = translate_structs("struct Team {\n"
+                                                      "    int slot;\n"
+                                                      "    int[4] cells;\n"
+                                                      "    bool IsT() { return slot % 2 == 0; }\n"
+                                                      "    bool IsCt() { return !IsT(); }\n"
+                                                      "    bool Same(in Team o) { return this.IsT() == o.IsT(); }\n"
+                                                      "    int Get() { int s = slot; return s; }\n"
+                                                      "    Team Copy() { Team t; t.slot = this.slot; return t; }\n"
+                                                      "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "bool IsT() const { return Team__IsT(const_cast<Team*>(this)); }")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "bool IsCt() const { return Team__IsCt(const_cast<Team*>(this)); }")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "o) const { return Team__Same(const_cast<Team*>(this), o); }")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "int32_t Get() const {")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "Team Copy() const {")) << r.cpp;
+}
+
+// A method that writes the object, or that is not surely a read, stays a non-const member.
+TEST(OperatorStructTranslation, WritingMethodIsNotConst)
+{
+    const hotc::TranslateResult r = translate_structs("struct Box {\n"
+                                                      "    int n;\n"
+                                                      "    int[4] cells;\n"
+                                                      "    std.vector<int> v;\n"
+                                                      "    void Set(int x) { n = x; }\n"
+                                                      "    void Bump() { this.n++; }\n"
+                                                      "    void Cell(int i) { this.cells[i] += 1; }\n"
+                                                      "    void Push() { v.push_back(1); }\n"
+                                                      "    void Twice() { Set(1); }\n"
+                                                      "    void Twice2() { this.Bump(); }\n"
+                                                      "    void Inc(ref int x) { x += 1; }\n"
+                                                      "    void Pass() { Inc(n); }\n"
+                                                      "    void Alias() { ref int a = n; a = 2; }\n"
+                                                      "    ref int Slot() { return n; }\n"
+                                                      "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    for (const char* m : {"void Set(int32_t x) {", "void Bump() {", "void Cell(int32_t i) {", "void Push() {",
+             "void Twice() {", "void Twice2() {", "void Pass() {", "void Alias() {", "int32_t& Slot() {"})
+        EXPECT_TRUE(has(r.cpp, m)) << m << "\n" << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "Box__Bump(const_cast<Box*>(this))")) << r.cpp;
+}

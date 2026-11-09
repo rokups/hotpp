@@ -563,6 +563,9 @@ struct Method
     bool is_override = false, is_virtual = false, is_new = false;
     // True for a const method of a ".cpp" script class.
     bool is_const = false;
+    // True for a plain method of a script struct that never changes the object (const_infer.h). The
+    // member of the struct is then const. The parser leaves it false.
+    bool self_const = false;
     // True when the script writes "abstract" before the method. The method has no body and it
     // implies "virtual". The parser leaves "is_virtual" false. Only a class with "is_abstract" has it.
     bool is_abstract = false;

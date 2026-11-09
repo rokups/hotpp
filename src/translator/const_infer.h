@@ -9,7 +9,13 @@
 //  - "ForOfStmt::is_const": a "ref" target that the body never writes.
 //  - "Param::body_const": a parameter of a plain method that the body never writes. The signature
 //    does not change. Only the body form has "const".
-// A method and a field never get "const".
+//  - "Method::self_const": a plain method of a struct that never changes the object (only with
+//    "ConstContext::self_const"). The member of the struct is then a const member.
+// A field never gets "const". A method of a class never gets "const".
+// The check of "self_const" uses the rules below with "this.f" as the field "f" and with "this" as a
+// name. A write of a field (a handle field: a new value only) or of "this" changes the object. A call
+// of a plain method of the struct changes the object when that method changes it. A method that
+// returns a reference, a pointer or a "T[]" view, a raw method and an async method change it.
 //
 // The pass sees names only (the lowering has not run). It is conservative: when the pass is not
 // sure that a use is a read, the use is a write. A write of a name is:
@@ -52,6 +58,8 @@ struct ConstContext
     // True when the parameters of the method can get "const" in the body. Null: all methods
     // that are not virtual, not override, not abstract and not async.
     std::function<bool(const ast::Method&)> params_ok;
+    // True for a struct: the pass sets "Method::self_const" on the plain methods.
+    bool self_const = false;
 };
 
 // The direct writes of a function body, for the checks of the operators. "roots" holds the names
