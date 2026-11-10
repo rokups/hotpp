@@ -62,6 +62,7 @@ struct ClangFilesOptions
     // The build id of the translator for the key of the translate cache (hot/translate_cache.h).
     // Empty: hotc::translator_build_id(). A test gives an other id. The translate cache is on
     // with the object cache. HOT_TRANSLATE_CACHE=0 turns only the translate cache off.
+    // The cache also keeps the linked modules. HOT_LINK_CACHE=0 turns only that level off.
     std::string translator_id;
     // The directory of "compile_commands.json" for the IDE plugins (clangd, hot-ls). Empty: the
     // backend writes no database. The environment variable HOT_COMPILE_COMMANDS_DIR overrides it in
@@ -128,6 +129,8 @@ public:
             return {};
         const ObjectCache::Stats stats = cache_->stats();
         CacheStats r{stats.hits, stats.misses};
+        r.module_hits = stats.module_hits;
+        r.module_misses = stats.module_misses;
         if (tr_cache_)
         {
             const TranslateCache::Stats t = tr_cache_->stats();
@@ -147,7 +150,11 @@ public:
 private:
     bool build_impl(const ScriptSource& source, uint32_t generation, LoadMode mode, const std::string& out_so,
         std::string& error, std::string* deferred_slots, std::vector<std::string>* dependencies,
-        LoadResult* hashes = nullptr);
+        LoadResult* hashes = nullptr, std::optional<ObjectCache::Key>* cached_module = nullptr,
+        bool use_module_cache = true);
+    // The load. "use_module_cache" false: link again, do not read the module cache (the retry
+    // after a cached .so that does not load).
+    LoadResult load_impl(const ScriptSource& source, uint32_t generation, LoadMode mode, bool use_module_cache);
     // Finds the compiler id for the cache key once. On a failure it turns the cache off.
     bool prepare_cache();
     // Reads the old database at creation. A read error gives an empty list.
@@ -161,6 +168,7 @@ private:
     std::unique_ptr<TranslateCache> tr_cache_; // null: no translate cache
     std::string compiler_id_;
     bool compiler_id_done_ = false;
+    bool link_cache_ = false; // the module cache (cache_ is on and HOT_LINK_CACHE is not 0)
     std::map<std::string, CompileCommandEntry> commands_; // by "file"
     std::string commands_text_; // the text of the database file (read or written)
     std::mutex mutex_; // one build at a time: the slot file is shared

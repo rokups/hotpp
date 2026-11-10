@@ -462,6 +462,12 @@ bool ObjectCache::enabled_by_env()
     return !(env && std::string(env) == "0");
 }
 
+bool ObjectCache::module_cache_enabled_by_env()
+{
+    const char* env = std::getenv("HOT_LINK_CACHE");
+    return enabled_by_env() && !(env && std::string(env) == "0");
+}
+
 // ------------------------------------------------------------ Depfile
 
 bool ObjectCache::parse_depfile(const std::string& text, std::vector<std::string>& deps)
@@ -573,6 +579,8 @@ ObjectCache::Stats ObjectCache::stats() const
     Stats s;
     s.hits = hits_.load();
     s.misses = misses_.load();
+    s.module_hits = module_hits_.load();
+    s.module_misses = module_misses_.load();
     return s;
 }
 
@@ -740,6 +748,114 @@ void ObjectCache::remove(const Key& key)
     fs::remove(entry_file(key, ".json"), ec);
     fs::remove(entry_file(key, ".o"), ec);
     fs::remove(entry_file(key, ".d"), ec);
+}
+
+ObjectCache::Key ObjectCache::make_module_key(const Key& object_key, const std::vector<std::string>& link_args,
+    const std::string& compiler_id, const std::string& library_stamp)
+{
+    Hash64 h1;
+    Hash64 h2(second_seed);
+    for (Hash64* h : {&h1, &h2})
+    {
+        h->add_text("hot-module-cache-1");
+        h->add_u64(object_key.a);
+        h->add_u64(object_key.b);
+        h->add_u64(link_args.size());
+        for (const std::string& arg : link_args)
+            h->add_text(arg);
+        h->add_text(compiler_id);
+        h->add_text(library_stamp);
+    }
+    return Key{h1.value(), h2.value()};
+}
+
+std::optional<fs::path> ObjectCache::lookup_module(const Key& key)
+{
+    std::optional<fs::path> hit;
+    try
+    {
+        const fs::path manifest = entry_file(key, ".json");
+        const fs::path module = entry_file(key, ".so");
+        std::string text;
+        Json root;
+        bool ok = read_file(manifest, text) && parse_json(text, root) && root.type == Json::Type::Object;
+        if (ok)
+        {
+            const Json* version = root.find("version");
+            const Json* hex = root.find("key");
+            const Json* size = root.find("size");
+            std::error_code ec;
+            const uintmax_t have = fs::file_size(module, ec);
+            ok = !ec && version && version->type == Json::Type::Number && version->number == manifest_version &&
+                hex && hex->type == Json::Type::String && hex->text == key.hex() && size &&
+                size->type == Json::Type::Number && static_cast<int64_t>(have) == size->number;
+        }
+        if (ok)
+        {
+            std::error_code touch_ec;
+            fs::last_write_time(manifest, fs::file_time_type::clock::now(), touch_ec);
+            hit = module;
+        }
+    }
+    catch (...)
+    {
+        hit.reset();
+    }
+    if (hit)
+        ++module_hits_;
+    else
+        ++module_misses_;
+    return hit;
+}
+
+bool ObjectCache::store_module(const Key& key, const fs::path& so_path, std::string& error)
+{
+    try
+    {
+        std::error_code ec;
+        fs::create_directories(obj_dir(), ec);
+        if (ec)
+        {
+            error = "cannot create " + obj_dir().string() + ": " + ec.message();
+            return false;
+        }
+        // The old manifest goes first, so a reader never pairs it with a new .so.
+        fs::remove(entry_file(key, ".json"), ec);
+        const fs::path module = entry_file(key, ".so");
+        const fs::path copy = temp_name(module);
+        fs::copy_file(so_path, copy, fs::copy_options::overwrite_existing, ec);
+        if (!ec)
+            fs::rename(copy, module, ec);
+        if (ec)
+        {
+            std::error_code ec2;
+            fs::remove(copy, ec2);
+            error = "cannot copy " + so_path.string() + ": " + ec.message();
+            return false;
+        }
+        const uintmax_t size = fs::file_size(module, ec);
+        if (ec)
+        {
+            error = "cannot stat " + module.string() + ": " + ec.message();
+            return false;
+        }
+        std::string json = "{\"version\":" + std::to_string(manifest_version) + ",\"key\":";
+        append_json_string(json, key.hex());
+        json += ",\"size\":" + std::to_string(size) + "}\n";
+        return write_file_atomic(entry_file(key, ".json"), json, error);
+    }
+    catch (const std::exception& e)
+    {
+        error = e.what();
+        return false;
+    }
+}
+
+void ObjectCache::remove_module(const Key& key)
+{
+    std::error_code ec;
+    fs::remove(entry_file(key, ".json"), ec);
+    fs::remove(entry_file(key, ".so"), ec);
 }
 
 void ObjectCache::trim()

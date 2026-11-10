@@ -57,6 +57,8 @@ struct CacheStats
     uint64_t misses = 0;
     uint64_t translate_hits = 0;
     uint64_t translate_misses = 0;
+    uint64_t module_hits = 0; // the linked modules
+    uint64_t module_misses = 0;
 };
 
 class Backend

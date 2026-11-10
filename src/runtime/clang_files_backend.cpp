@@ -10,6 +10,7 @@
 #include "hot/paths.h"
 #include "hot/runtime/process.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <chrono>
 #include <cstdio>
@@ -249,6 +250,7 @@ ClangFilesBackend::ClangFilesBackend(ClangFilesOptions options)
         }
         cache_ = std::make_unique<ObjectCache>(opt_.cache_dir, max_bytes);
         cache_->trim();
+        link_cache_ = ObjectCache::module_cache_enabled_by_env();
         // The translate cache works with the object cache (prepare_cache gives its compiler id).
         if (TranslateCache::enabled_by_env())
             tr_cache_ = std::make_unique<TranslateCache>(opt_.cache_dir, opt_.translator_id);
@@ -832,6 +834,25 @@ std::string find_program(const std::string& name)
 
 } // namespace
 
+namespace
+{
+
+// The stamp of a library file for the module key: the path, the time and the size.
+std::string library_stamp(const std::string& path)
+{
+    if (path.empty())
+        return std::string();
+    std::error_code ec1;
+    std::error_code ec2;
+    const auto mtime = fs::last_write_time(path, ec1).time_since_epoch().count();
+    const uintmax_t size = fs::file_size(path, ec2);
+    if (ec1 || ec2)
+        return path + "|missing";
+    return path + "|" + std::to_string(static_cast<long long>(mtime)) + "|" + std::to_string(size);
+}
+
+} // namespace
+
 bool ClangFilesBackend::prepare_cache()
 {
     if (!cache_)
@@ -877,9 +898,12 @@ bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation, c
 // Else give the new content of the slots file back, and leave the file as it is.
 bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generation, LoadMode mode,
     const std::string& out_so, std::string& error, std::string* deferred_slots,
-    std::vector<std::string>* dependencies, LoadResult* hashes)
+    std::vector<std::string>* dependencies, LoadResult* hashes, std::optional<ObjectCache::Key>* cached_module,
+    bool use_module_cache)
 {
     std::lock_guard<std::mutex> lock(mutex_);
+    if (cached_module)
+        cached_module->reset();
     error.clear();
     if (dependencies)
         dependencies->clear();
@@ -1072,8 +1096,38 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
         const ObjectCache::Key key = ObjectCache::make_key(inputs);
         std::optional<ObjectCache::Hit> hit = cache_->lookup(key);
         cache_note = hit ? ", cache hit" : ", cache miss";
+        // The key of the linked module: the object key, the link command and the host library.
+        std::optional<ObjectCache::Key> module_key;
+        if (link_cache_)
+            module_key = ObjectCache::make_module_key(key,
+                ObjectCache::normalize_args(link_module_command(opt_, "@obj@", "@so@"), opt_.work_dir),
+                compiler_id_, library_stamp(opt_.host_import_library));
+        bool module_cached = false;
+        if (module_key && use_module_cache)
+        {
+            // A copy: the loader can remove the file, and a trim can remove the cache file.
+            if (const std::optional<fs::path> cached = cache_->lookup_module(*module_key))
+            {
+                std::error_code copy_ec;
+                fs::copy_file(*cached, so_path, fs::copy_options::overwrite_existing, copy_ec);
+                if (!copy_ec)
+                {
+                    module_cached = true;
+                    cache_note = ", link cached";
+                    built_object = cache_->object_path(key).string();
+                    t2 = std::chrono::steady_clock::now();
+                    if (cached_module)
+                        *cached_module = module_key;
+                }
+                else
+                {
+                    fs::remove(so_path, copy_ec);
+                    cache_->remove_module(*module_key);
+                }
+            }
+        }
         bool retried = false;
-        for (;;)
+        while (!module_cached)
         {
             std::string object; // the object file to link
             std::string temp_object; // an object that the cache did not take: delete it after the link
@@ -1113,7 +1167,16 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
             if (!temp_object.empty())
                 fs::remove(temp_object, ec);
             if (link_rc == 0)
+            {
+                if (module_key)
+                {
+                    std::string store_error;
+                    if (!cache_->store_module(*module_key, so_path, store_error))
+                        std::fprintf(stderr, "hot: cannot store %s in the module cache: %s\n", unit.c_str(),
+                            store_error.c_str());
+                }
                 break;
+            }
             cache_->remove(key); // a bad object must not stay in the cache
             if (!hit || retried)
                 break;
@@ -1151,6 +1214,12 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
 
 LoadResult ClangFilesBackend::load(const ScriptSource& source, uint32_t generation, LoadMode mode)
 {
+    return load_impl(source, generation, mode, true);
+}
+
+LoadResult ClangFilesBackend::load_impl(
+    const ScriptSource& source, uint32_t generation, LoadMode mode, bool use_module_cache)
+{
     std::string stem = fs::path(source.name).stem().string();
     if (stem.empty())
         stem = "script";
@@ -1161,7 +1230,9 @@ LoadResult ClangFilesBackend::load(const ScriptSource& source, uint32_t generati
         + "." + std::to_string(sequence_++) + module_suffix();
     LoadResult r;
     std::string slots;
-    if (!build_impl(source, generation, mode, so, r.error, &slots, &r.dependencies, &r))
+    std::optional<ObjectCache::Key> cached_module;
+    if (!build_impl(source, generation, mode, so, r.error, &slots, &r.dependencies, &r, &cached_module,
+            use_module_cache))
     {
         r.reason = ReloadReason::CompileError;
         return r;
@@ -1189,6 +1260,15 @@ LoadResult ClangFilesBackend::load(const ScriptSource& source, uint32_t generati
     const uint64_t iface_hash = r.iface_hash;
     std::vector<std::pair<std::string, uint64_t>> import_hashes = std::move(r.import_hashes);
     r = module_from_library(so);
+    if (!r.module && cached_module && cache_)
+    {
+        // The cached .so does not load (a damaged file). Remove the entry and link once more.
+        // The second call never reads the module cache, so there is no loop.
+        cache_->remove_module(*cached_module);
+        std::error_code rm_ec;
+        fs::remove(so, rm_ec);
+        return load_impl(source, generation, mode, false);
+    }
     r.dependencies = std::move(dependencies);
     r.iface_hash = iface_hash;
     r.import_hashes = std::move(import_hashes);

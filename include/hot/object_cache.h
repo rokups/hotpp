@@ -9,6 +9,8 @@
 //   <dir>/obj/<hex>.o     the object file
 //   <dir>/obj/<hex>.d     the list of the headers, one path in each line
 //   <dir>/obj/<hex>.json  the manifest: the stamp (path, mtime, size) of each header
+// A linked module has the entries <hex>.so and <hex>.json in the same directory. Its manifest has
+// the size of the .so. The key of a module is not the key of an object.
 // A store writes the manifest last. An entry without a manifest is a miss.
 // A process can use the same directory as other processes. No lock is necessary.
 #pragma once
@@ -101,6 +103,8 @@ public:
     {
         uint64_t hits = 0;
         uint64_t misses = 0;
+        uint64_t module_hits = 0;
+        uint64_t module_misses = 0;
     };
 
     // "max_bytes" is the size limit of trim(). The value 0 means no limit.
@@ -126,6 +130,22 @@ public:
 
     void remove(const Key& key);
 
+    // The key of a linked module. It has the key of the object, the normalized link arguments,
+    // the compiler id and a stamp of the libraries that the link reads (for example the path,
+    // the time and the size of the host import library).
+    static Key make_module_key(const Key& object_key, const std::vector<std::string>& link_args,
+        const std::string& compiler_id, const std::string& library_stamp);
+
+    // The path of the cached module. A hit needs the manifest and a .so of the size in the
+    // manifest. A hit sets the manifest time to now. Any error is a miss. It never throws.
+    std::optional<std::filesystem::path> lookup_module(const Key& key);
+
+    // Adds a module. The call copies "so_path" (the loader can still map it). The manifest goes
+    // last. On a failure it returns false and sets "error".
+    bool store_module(const Key& key, const std::filesystem::path& so_path, std::string& error);
+
+    void remove_module(const Key& key);
+
     // The path of the object file of an entry. It does not check that the entry exists.
     std::filesystem::path object_path(const Key& key) const;
 
@@ -137,6 +157,9 @@ public:
 
     // False when the environment variable HOT_CACHE is "0". Else true.
     static bool enabled_by_env();
+    // False when the environment variable HOT_LINK_CACHE is "0". Else true. The module entries
+    // use it. The environment variable HOT_CACHE=0 turns them off too.
+    static bool module_cache_enabled_by_env();
 
     // The header list of a depfile in Make syntax. It returns false on a syntax error.
     // Public for the tests.
@@ -150,6 +173,8 @@ private:
     uint64_t max_bytes_;
     std::atomic<uint64_t> hits_{0};
     std::atomic<uint64_t> misses_{0};
+    std::atomic<uint64_t> module_hits_{0};
+    std::atomic<uint64_t> module_misses_{0};
 };
 
 } // namespace hot

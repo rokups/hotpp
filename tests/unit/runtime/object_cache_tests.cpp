@@ -414,3 +414,69 @@ TEST_F(ObjectCacheStore, TrimRemovesOnlyOldTemporaryFiles)
     EXPECT_FALSE(fs::exists(old));
     EXPECT_TRUE(cache.lookup(key).has_value());
 }
+
+// ------------------------------------------------------------ Module entries
+
+TEST(ObjectCacheModuleKey, EachInputChangesTheKey)
+{
+    const ObjectCache::Key object{1, 2};
+    const std::vector<std::string> args = {"clang++", "-shared", "@obj@", "-o", "@so@"};
+    const auto base = ObjectCache::make_module_key(object, args, "clang 18", "lib|1|2");
+    EXPECT_EQ(base, ObjectCache::make_module_key(object, args, "clang 18", "lib|1|2"));
+    EXPECT_NE(base, ObjectCache::make_module_key({1, 3}, args, "clang 18", "lib|1|2"));
+    EXPECT_NE(base, ObjectCache::make_module_key(object, {"clang++", "-shared", "-g", "@obj@"}, "clang 18", "lib|1|2"));
+    EXPECT_NE(base, ObjectCache::make_module_key(object, args, "clang 19", "lib|1|2"));
+    EXPECT_NE(base, ObjectCache::make_module_key(object, args, "clang 18", "lib|9|2"));
+    EXPECT_NE(base, ObjectCache::make_key(base_inputs())); // not the key of an object
+}
+
+TEST_F(ObjectCacheStore, ModuleStoreCopiesAndLookupHits)
+{
+    const ObjectCache::Key mk{5, 6};
+    const fs::path so = root.path / "mod.so";
+    write_text(so, "MODULE-BYTES");
+    std::string error;
+    ASSERT_TRUE(cache.store_module(mk, so, error)) << error;
+    EXPECT_TRUE(fs::exists(so)); // a copy: the caller can still map the file
+    const auto hit = cache.lookup_module(mk);
+    ASSERT_TRUE(hit.has_value());
+    EXPECT_EQ(read_text(*hit), "MODULE-BYTES");
+    EXPECT_EQ(cache.stats().module_hits, 1u);
+    EXPECT_FALSE(cache.lookup_module({7, 8}).has_value());
+    EXPECT_EQ(cache.stats().module_misses, 1u);
+    EXPECT_EQ(count_files(root.path / "cache" / "obj"), 2u); // .so and .json
+}
+
+TEST_F(ObjectCacheStore, ModuleWithWrongSizeIsAMiss)
+{
+    const ObjectCache::Key mk{5, 6};
+    const fs::path so = root.path / "mod.so";
+    write_text(so, "MODULE-BYTES");
+    std::string error;
+    ASSERT_TRUE(cache.store_module(mk, so, error)) << error;
+    fs::resize_file(root.path / "cache" / "obj" / (mk.hex() + ".so"), 3);
+    EXPECT_FALSE(cache.lookup_module(mk).has_value());
+    cache.remove_module(mk);
+    EXPECT_EQ(count_files(root.path / "cache" / "obj"), 0u);
+}
+
+TEST_F(ObjectCacheStore, TrimRemovesAnOldModuleEntry)
+{
+    ObjectCache small(root.path / "cache", 2000);
+    const ObjectCache::Key older{10, 20};
+    const ObjectCache::Key newer{30, 40};
+    const fs::path so = root.path / "mod.so";
+    std::string error;
+    for (const ObjectCache::Key& k : {older, newer})
+    {
+        write_text(so, std::string(1000, 'x'));
+        ASSERT_TRUE(small.store_module(k, so, error)) << error;
+    }
+    const fs::path obj = root.path / "cache" / "obj";
+    const auto now = fs::file_time_type::clock::now();
+    fs::last_write_time(obj / (older.hex() + ".json"), now - std::chrono::hours(3));
+    fs::last_write_time(obj / (newer.hex() + ".json"), now - std::chrono::hours(1));
+    small.trim();
+    EXPECT_FALSE(fs::exists(obj / (older.hex() + ".so")));
+    EXPECT_TRUE(small.lookup_module(newer).has_value());
+}

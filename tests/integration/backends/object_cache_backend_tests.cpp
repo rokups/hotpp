@@ -22,6 +22,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace
 {
@@ -67,11 +68,13 @@ struct CleanEnv
 {
     CleanEnv()
         : cache("HOT_CACHE", "1")
+        , link_cache("HOT_LINK_CACHE", "1")
         , max_mb("HOT_CACHE_MAX_MB", "")
     {
         test_support::unset_env("HOT_CACHE_MAX_MB");
     }
     EnvGuard cache;
+    EnvGuard link_cache;
     EnvGuard max_mb;
 };
 
@@ -198,6 +201,7 @@ TEST(ObjectCacheBackend, EnvironmentTurnsTheCacheOff)
 TEST(ObjectCacheBackend, DamagedObjectRecovers)
 {
     CleanEnv env;
+    EnvGuard no_link_cache("HOT_LINK_CACHE", "0"); // else the module hit skips the link
     TestScratch scratch;
     const std::string cache = scratch.file("cache");
     {
@@ -448,6 +452,154 @@ TEST(ObjectCacheBackend, CompileCommandsEnvironmentOverridesTheOption)
         ASSERT_TRUE(r) << r.error;
     }
     EXPECT_TRUE(fs::exists(fs::path(option_dir) / "compile_commands.json"));
+}
+
+// ---- the module cache ----
+
+size_t count_modules(const fs::path& cache_dir)
+{
+    size_t n = 0;
+    std::error_code ec;
+    for (const auto& e : fs::directory_iterator(cache_dir / "obj", ec))
+        if (e.path().extension() == ".so")
+            ++n;
+    return n;
+}
+
+#ifndef _WIN32
+// A compiler wrapper. It appends its arguments to a log and runs the real compiler.
+std::string make_wrapper(const TestScratch& scratch, const std::string& log)
+{
+    const std::string path = scratch.file("cxx.sh");
+    std::ofstream(path, std::ios::binary) << "#!/bin/sh\necho \"$*\" >> '" << log << "'\nexec " << HOT_CXX << " \"$@\"\n";
+    fs::permissions(path, fs::perms::owner_all);
+    return path;
+}
+
+std::unique_ptr<hot::ClangFilesBackend> make_wrapped_backend(const TestScratch& scratch, const std::string& work_name,
+    const std::string& cache_dir, const std::string& compiler, const std::vector<std::string>& extra_flags = {})
+{
+    hot::ClangFilesOptions o;
+    o.compiler = compiler;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
+    o.work_dir = scratch.file(work_name);
+    o.cache_dir = cache_dir;
+    o.extra_flags = extra_flags;
+    return std::make_unique<hot::ClangFilesBackend>(std::move(o));
+}
+
+size_t count_runs(const std::string& log, const std::string& what)
+{
+    return count_text(read_file(log), what);
+}
+
+// A new backend on the same cache directory copies the linked module: no compile and no link
+// process runs. The wrapper log shows only the "--version" runs.
+TEST(ObjectCacheBackend, ModuleHitRunsNoLinkProcess)
+{
+    CleanEnv env;
+    TestScratch scratch;
+    const std::string cache = scratch.file("cache");
+    const std::string log = scratch.file("runs.log");
+    const std::string cxx = make_wrapper(scratch, log);
+    {
+        auto backend = make_wrapped_backend(scratch, "work_a", cache, cxx);
+        EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
+        EXPECT_EQ(backend->cache_stats().module_misses, 1u);
+        EXPECT_EQ(count_modules(cache), 1u);
+    }
+    EXPECT_EQ(count_runs(log, "-shared"), 1u);
+    EXPECT_EQ(count_runs(log, " -c "), 1u);
+    auto backend = make_wrapped_backend(scratch, "work_b", cache, cxx);
+    EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
+    EXPECT_EQ(backend->cache_stats().module_hits, 1u);
+    EXPECT_EQ(backend->cache_stats().module_misses, 0u);
+    EXPECT_EQ(count_runs(log, "-shared"), 1u); // no new link
+    EXPECT_EQ(count_runs(log, " -c "), 1u); // no new compile
+    EXPECT_EQ(count_modules(cache), 1u);
+}
+
+// A changed link input is a module miss. A change of the flags changes the object too, so the
+// test checks the whole chain: the new build compiles and links, and a third run hits.
+TEST(ObjectCacheBackend, ChangedFlagIsAModuleMiss)
+{
+    CleanEnv env;
+    TestScratch scratch;
+    const std::string cache = scratch.file("cache");
+    const std::string log = scratch.file("runs.log");
+    const std::string cxx = make_wrapper(scratch, log);
+    {
+        auto backend = make_wrapped_backend(scratch, "work_a", cache, cxx);
+        EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
+    }
+    {
+        auto backend = make_wrapped_backend(scratch, "work_b", cache, cxx, {"-Wno-unused-variable"});
+        EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
+        EXPECT_EQ(backend->cache_stats().module_hits, 0u);
+        EXPECT_EQ(backend->cache_stats().module_misses, 1u);
+    }
+    EXPECT_EQ(count_runs(log, "-shared"), 2u);
+    EXPECT_EQ(count_modules(cache), 2u);
+    auto backend = make_wrapped_backend(scratch, "work_c", cache, cxx, {"-Wno-unused-variable"});
+    EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
+    EXPECT_EQ(backend->cache_stats().module_hits, 1u);
+    EXPECT_EQ(count_runs(log, "-shared"), 2u);
+}
+
+// HOT_LINK_CACHE=0 turns only the module cache off: the object cache works, the link runs.
+TEST(ObjectCacheBackend, LinkCacheEnvironmentTurnsOnlyThatLevelOff)
+{
+    CleanEnv env;
+    EnvGuard off("HOT_LINK_CACHE", "0");
+    TestScratch scratch;
+    const std::string cache = scratch.file("cache");
+    const std::string log = scratch.file("runs.log");
+    const std::string cxx = make_wrapper(scratch, log);
+    {
+        auto backend = make_wrapped_backend(scratch, "work_a", cache, cxx);
+        EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
+    }
+    auto backend = make_wrapped_backend(scratch, "work_b", cache, cxx);
+    EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
+    EXPECT_EQ(backend->cache_stats().hits, 1u); // the object cache works
+    EXPECT_EQ(backend->cache_stats().module_hits, 0u);
+    EXPECT_EQ(backend->cache_stats().module_misses, 0u);
+    EXPECT_EQ(count_modules(cache), 0u);
+    EXPECT_EQ(count_runs(log, "-shared"), 2u);
+    EXPECT_EQ(count_runs(log, " -c "), 1u);
+}
+#endif
+
+// A cached .so of the right size with bad bytes does not load. The backend removes the entry,
+// links again and stores a good module. A later backend hits that module.
+TEST(ObjectCacheBackend, CorruptModuleRecovers)
+{
+    CleanEnv env;
+    TestScratch scratch;
+    const std::string cache = scratch.file("cache");
+    {
+        auto backend = make_backend(scratch, "work_a", cache);
+        EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
+    }
+    fs::path module;
+    for (const auto& e : fs::directory_iterator(fs::path(cache) / "obj"))
+        if (e.path().extension() == ".so")
+            module = e.path();
+    ASSERT_FALSE(module.empty());
+    const uintmax_t size = fs::file_size(module);
+    std::ofstream(module, std::ios::binary | std::ios::trunc) << std::string(size, 'x');
+    {
+        auto backend = make_backend(scratch, "work_b", cache);
+        EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
+        EXPECT_EQ(backend->cache_stats().module_hits, 1u); // the bad file was a hit, then the load failed
+        EXPECT_EQ(backend->cache_stats().module_misses, 0u); // the retry does not read the cache
+    }
+    ASSERT_TRUE(fs::exists(module));
+    EXPECT_NE(fs::file_size(module), 0u);
+    auto again = make_backend(scratch, "work_c", cache);
+    EXPECT_EQ(load_and_run(*again, kCalc7), 7.0f);
+    EXPECT_EQ(again->cache_stats().module_hits, 1u);
+    EXPECT_EQ(again->cache_stats().module_misses, 0u);
 }
 
 } // namespace
