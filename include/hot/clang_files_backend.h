@@ -116,7 +116,13 @@ public:
     }
 
     // The hits and the misses of the object cache of this backend. All zero when the cache is off.
-    ObjectCache::Stats cache_stats() const { return cache_ ? cache_->stats() : ObjectCache::Stats{}; }
+    CacheStats cache_stats() const override
+    {
+        if (!cache_)
+            return {};
+        const ObjectCache::Stats stats = cache_->stats();
+        return {stats.hits, stats.misses};
+    }
 
     // Translates, compiles and links one script into "out_so". It writes the .cpp next to the .so
     // (or into generated_dir), and the .o and .d next to the .so. It does not load the library. The slot file changes only

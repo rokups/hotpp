@@ -49,6 +49,13 @@ enum class LoadMode
     Fresh
 };
 
+// The hits and the misses of the object cache of a backend (counted since the backend started).
+struct CacheStats
+{
+    uint64_t hits = 0;
+    uint64_t misses = 0;
+};
+
 class Backend
 {
 public:
@@ -87,6 +94,10 @@ public:
         (void)preludes;
         return false;
     }
+
+    // The statistics of the object cache. All zero when the backend has no cache or the cache is
+    // off. A thread can call it during a load. The default returns zeros.
+    virtual CacheStats cache_stats() const { return {}; }
 };
 
 // Replaces each line "sig Cls::fn Sig" of "state" with the line of "aot" for the same function.

@@ -143,6 +143,26 @@ TEST(ObjectCacheBackend, SecondBackendHitsAndRuns)
     EXPECT_EQ(count_objects(cache), 1u);
 }
 
+// The statistics are available through the Backend interface, and the default is zero.
+TEST(ObjectCacheBackend, StatsThroughTheBackendInterface)
+{
+    CleanEnv env;
+    TestScratch scratch;
+    const std::string cache = scratch.file("cache");
+    {
+        auto files = make_backend(scratch, "work_a", cache);
+        hot::Backend& backend = *files;
+        EXPECT_EQ(backend.cache_stats().hits, 0u);
+        EXPECT_EQ(load_and_run(backend, kCalc7), 7.0f);
+        EXPECT_EQ(backend.cache_stats().misses, 1u);
+    }
+    auto files = make_backend(scratch, "work_b", cache);
+    hot::Backend& backend = *files;
+    EXPECT_EQ(load_and_run(backend, kCalc7), 7.0f);
+    EXPECT_EQ(backend.cache_stats().hits, 1u);
+    EXPECT_EQ(backend.cache_stats().misses, 0u);
+}
+
 // A new script text is a miss and a new entry. The result is the new value.
 TEST(ObjectCacheBackend, EditedScriptMisses)
 {
