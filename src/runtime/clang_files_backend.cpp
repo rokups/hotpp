@@ -27,6 +27,7 @@
 #else
     #include <fcntl.h>
     #include <spawn.h>
+    #include <sys/stat.h>
     #include <sys/wait.h>
     #include <unistd.h>
 
@@ -274,6 +275,29 @@ std::string include_prefix(const std::string& cpp)
     return r;
 }
 
+// The text of the PCH header: the "#include" lines of the include prefix only. The first line
+// of the prefix names the script and the generation, and each "#line" line names the script.
+// Without them, the text and the PCH key depend only on the include set: all the units with the
+// same include set share one PCH. The .cpp keeps its own "#line" lines, so the diagnostics of
+// the unit do not change. The PCH header has no code, so it has no line for the diagnostics.
+std::string pch_header_text(const std::string& prefix)
+{
+    std::string r;
+    for (size_t pos = 0; pos < prefix.size();)
+    {
+        const size_t nl = prefix.find('\n', pos);
+        const size_t next = nl == std::string::npos ? prefix.size() : nl + 1;
+        if (prefix.compare(pos, 8, "#include") == 0)
+        {
+            r.append(prefix, pos, next - pos);
+            if (r.back() != '\n')
+                r += '\n';
+        }
+        pos = next;
+    }
+    return r;
+}
+
 // The PCH build: the compile command of the unit without "-c", with the header as a C++ header.
 // The flags are the same as the flags of the unit, so clang accepts the PCH for the unit.
 // "-fpch-instantiate-templates" does the template instantiations of the headers in the PCH.
@@ -313,23 +337,57 @@ std::string depfile_rule(const std::vector<std::string>& headers)
     return r + "\n";
 }
 
-// Writes the file once. A file with the same text stays as it is: clang checks the time and
-// the size of each input of the PCH. The time is one day old, so the store rule for young
-// headers accepts it. A hard link does not replace the file of another process.
+// Sets the time of the file to a fixed old time (2020-01-01 00:00:00 UTC). Each writer of a PCH
+// header gives it the same time and the same size, so a replaced file has the stamp of the old
+// file. The time is old, so the store rule for young headers accepts it.
+bool set_fixed_pch_time(const fs::path& path)
+{
+#ifdef _WIN32
+    std::error_code ec; // no PCH on a Windows host
+    fs::last_write_time(path, fs::file_time_type::clock::now() - std::chrono::hours(24), ec);
+    return !ec;
+#else
+    struct timespec times[2];
+    times[0].tv_sec = times[1].tv_sec = 1577836800;
+    times[0].tv_nsec = times[1].tv_nsec = 0;
+    return utimensat(AT_FDCWD, path.c_str(), times, 0) == 0;
+#endif
+}
+
+// Writes the file once. A file with the same text stays as it is: clang checks the time and the
+// size of each input of the PCH. The temp file has a name for each call: two backends of one
+// process do not share it. A hard link does not replace the file of another writer. The fixed
+// time makes a race of two writers safe: each file has the same stamp. A file system without
+// hard links gets a copy.
 bool write_pch_header(const fs::path& path, const std::string& text)
 {
+    static std::atomic<unsigned> counter{0};
     std::error_code ec;
     std::string have;
     if (read_text(path.string(), have) && have == text)
         return true;
     fs::create_directories(path.parent_path(), ec);
-    const fs::path tmp = path.string() + ".tmp" + std::to_string(hot::detail::process_id());
-    if (!write_text(tmp.string(), text))
+    const fs::path tmp = path.string() + ".tmp" + std::to_string(hot::detail::process_id()) + "." +
+        std::to_string(counter++);
+    if (!write_text(tmp.string(), text) || !set_fixed_pch_time(tmp))
+    {
+        fs::remove(tmp, ec);
         return false;
-    fs::last_write_time(tmp, fs::file_time_type::clock::now() - std::chrono::hours(24), ec);
-    if (fs::exists(path, ec))
-        fs::remove(path, ec); // a damaged file: the text is different
+    }
+    if (read_text(path.string(), have) && have != text)
+        fs::remove(path, ec); // a damaged file
     fs::create_hard_link(tmp, path, ec);
+    if (ec && !(read_text(path.string(), have) && have == text))
+    {
+        static std::atomic<bool> told{false};
+        if (!told.exchange(true))
+            std::fprintf(stderr, "hot: cannot make a hard link %s (%s); the PCH header is a copy\n",
+                path.string().c_str(), ec.message().c_str());
+        std::error_code cec;
+        fs::copy_file(tmp, path, fs::copy_options::overwrite_existing, cec);
+        if (!cec)
+            set_fixed_pch_time(path);
+    }
     fs::remove(tmp, ec);
     return read_text(path.string(), have) && have == text;
 }
@@ -379,7 +437,7 @@ ClangFilesBackend::ClangFilesBackend(ClangFilesOptions options)
         if (pch_target_supported(opt_))
         {
             pch_cache_ = std::make_unique<ObjectCache>(fs::path(opt_.cache_dir) / "pch", max_bytes / 2);
-            pch_cache_->trim();
+            trim_pch();
         }
         link_cache_ = ObjectCache::module_cache_enabled_by_env();
         // The translate cache works with the object cache (prepare_cache gives its compiler id).
@@ -392,6 +450,7 @@ ClangFilesBackend::ClangFilesBackend(ClangFilesOptions options)
 
 ClangFilesBackend::~ClangFilesBackend()
 {
+    wait_for_pch(); // the PCH thread uses the backend and the work directory
     if (opt_.remove_work_dir_at_exit)
         remove_scratch(opt_.work_dir);
 }
@@ -1109,7 +1168,7 @@ std::string ClangFilesBackend::pch_marker(const ObjectCache::Key& key, const cha
 // no extra cost. A later miss builds the PCH next to its compile, and the miss after that uses
 // the PCH. A PCH that did not work has a "bad" marker: no PCH for one day.
 std::optional<ClangFilesBackend::PchPlan> ClangFilesBackend::plan_pch(
-    const std::string& cpp, const std::string& script_dir, bool mirror_files)
+    const std::string& cpp, const std::string& script_dir, bool mirror_files, uint64_t shadow_hash)
 {
     // A mirror header of the host file system is in the work directory. Each load writes it
     // again, and it has no stamp. So a compile with mirror files uses no PCH.
@@ -1118,15 +1177,18 @@ std::optional<ClangFilesBackend::PchPlan> ClangFilesBackend::plan_pch(
     // The version line of the driver must name clang ("-include-pch" is a clang flag).
     if (!pch_cache_ || !pch_enabled_by_env() || compiler_id_.find("clang") == std::string::npos)
         return std::nullopt;
-    const std::string prefix = include_prefix(cpp);
+    const std::string prefix = pch_header_text(include_prefix(cpp));
     if (prefix.empty())
         return std::nullopt;
-    // The key has the prefix text, the normalized build flags and the compiler id.
+    // The key has the header text, the normalized build flags, the compiler id and the shadow
+    // hash. The header stamps of the manifest do not see a new header earlier in the include
+    // path: with the same include guard, the old PCH would hide it. The shadow hash sees it.
     ObjectCache::KeyInputs inputs;
     inputs.cpp_text = "pch\n" + prefix;
     inputs.args = ObjectCache::normalize_args(
         pch_build_command(opt_, "@hdr@", "@pch@", "@dep@", script_dir), opt_.work_dir);
     inputs.compiler_id = compiler_id_;
+    inputs.shadow_hash = shadow_hash;
     PchPlan plan;
     plan.key = ObjectCache::make_key(inputs);
     plan.prefix = prefix;
@@ -1159,6 +1221,8 @@ std::optional<ClangFilesBackend::PchPlan> ClangFilesBackend::plan_pch(
 bool ClangFilesBackend::build_pch(const PchPlan& plan, const std::string& script_dir, std::string& error)
 {
     const fs::file_time_type started = fs::file_time_type::clock::now();
+    // A new time of the "seen" marker: the trim of a process does not remove the header now.
+    write_text(pch_marker(plan.key, ".seen"), std::string());
     if (!write_pch_header(plan.header, plan.prefix))
     {
         error = "cannot write " + plan.header;
@@ -1201,7 +1265,95 @@ bool ClangFilesBackend::build_pch(const PchPlan& plan, const std::string& script
     // young header) does not.
     if (bad)
         write_text(pch_marker(plan.key, ".bad"), error);
+    // A PCH is 10 to 100 MB: a new one can put the PCH entries above the limit.
+    if (ok)
+        trim_pch();
     return ok;
+}
+
+namespace
+{
+
+// The time that a marker file of a PCH stays after its PCH is gone.
+constexpr auto kPchMarkerRetention = std::chrono::hours(24 * 7);
+
+} // namespace
+
+// The size trim of the PCH entries. Then the marker files in "<cache_dir>/pch" of a PCH that is
+// not in the cache:
+// - a "<hex>.seen" or "<hex>.bad" file older than the retention (7 days) goes;
+// - a "<hex>.h" file goes when its "seen" marker is gone. Its time is a fixed old time, so the
+//   age of the "seen" marker is its age. A PCH build writes the "seen" marker again first.
+// The files of a PCH in the cache stay. The temp files of the headers stay: their time is old.
+void ClangFilesBackend::trim_pch()
+{
+    if (!pch_cache_)
+        return;
+    pch_cache_->trim();
+    try
+    {
+        const fs::path dir = fs::path(opt_.cache_dir) / "pch";
+        const fs::path obj = dir / "obj";
+        const auto now = fs::file_time_type::clock::now();
+        std::vector<fs::path> headers;
+        std::error_code ec;
+        for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec))
+        {
+            std::error_code fec;
+            if (!it->is_regular_file(fec))
+                continue;
+            const fs::path p = it->path();
+            const std::string ext = p.extension().string();
+            if (ext != ".seen" && ext != ".bad" && ext != ".h")
+                continue;
+            if (fs::exists(obj / (p.stem().string() + ".json"), fec))
+                continue; // the PCH is in the cache
+            if (ext == ".h")
+            {
+                headers.push_back(p);
+                continue;
+            }
+            const auto t = fs::last_write_time(p, fec);
+            if (!fec && now - t > kPchMarkerRetention)
+                fs::remove(p, fec);
+        }
+        for (const fs::path& h : headers)
+        {
+            std::error_code fec;
+            if (!fs::exists(fs::path(h).replace_extension(".seen"), fec) && !fec)
+                fs::remove(h, fec);
+        }
+    }
+    catch (...)
+    {
+    }
+}
+
+void ClangFilesBackend::start_pch_build(
+    const PchPlan& plan, const std::string& script_dir, const std::string& unit, bool timing)
+{
+    pch_done_ = false;
+    pch_thread_ = std::thread(
+        [this, plan, script_dir, unit, timing]
+        {
+            const auto s = std::chrono::steady_clock::now();
+            std::string error;
+            const bool ok = build_pch(plan, script_dir, error);
+            const long long ms = static_cast<long long>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - s).count());
+            if (!ok)
+                std::fprintf(stderr, "hot: %s has no PCH: %s\n", unit.c_str(), error.c_str());
+            else if (timing)
+                std::fprintf(stderr, "hot: %s pch build %lld ms\n", unit.c_str(), ms);
+            pch_done_ = true;
+        });
+}
+
+void ClangFilesBackend::wait_for_pch()
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (pch_thread_.joinable())
+        pch_thread_.join();
 }
 
 bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation, const std::string& out_so,
@@ -1465,22 +1617,17 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
                 fs::remove(tmp, ec);
                 fs::remove(dep, ec);
                 const std::vector<std::string> plain = compile_object_command(opt_, cpp_path, tmp, dep, script_dir);
-                const std::optional<PchPlan> pch = plan_pch(tr.cpp, script_dir, opt_.fs && !tr.virtual_files.empty());
-                // The PCH build runs next to the compile, so the compile does not wait for it.
-                std::thread pch_thread;
-                bool pch_ok = false;
-                std::string pch_error;
-                long long pch_ms = 0;
+                std::optional<PchPlan> pch =
+                    plan_pch(tr.cpp, script_dir, opt_.fs && !tr.virtual_files.empty(), inputs.shadow_hash);
+                // The PCH build runs next to the compile and after the end of this call: the
+                // compile, the link and the load do not wait for it. One PCH build at a time: a
+                // plan to build while the last build runs uses no PCH.
+                if (pch_thread_.joinable() && pch_done_)
+                    pch_thread_.join();
+                if (pch && pch->build && pch_thread_.joinable())
+                    pch.reset();
                 if (pch && pch->build)
-                    pch_thread = std::thread(
-                        [&]
-                        {
-                            const auto s = std::chrono::steady_clock::now();
-                            pch_ok = build_pch(*pch, script_dir, pch_error);
-                            pch_ms = static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
-                                std::chrono::steady_clock::now() - s)
-                                    .count());
-                        });
+                    start_pch_build(*pch, script_dir, unit, timing);
                 int rc = 0;
                 bool used_pch = false;
                 if (pch && !pch->pch.empty())
@@ -1507,15 +1654,6 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
                 }
                 else
                     rc = run_command(plain, output);
-                if (pch_thread.joinable())
-                    pch_thread.join();
-                if (pch && pch->build)
-                {
-                    if (!pch_ok)
-                        std::fprintf(stderr, "hot: %s has no PCH: %s\n", unit.c_str(), pch_error.c_str());
-                    else if (timing)
-                        std::fprintf(stderr, "hot: %s pch build %lld ms\n", unit.c_str(), pch_ms);
-                }
                 if (used_pch)
                     pch_note = ", pch";
                 t2 = std::chrono::steady_clock::now();
@@ -1523,7 +1661,9 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
                 if (rc == 0)
                     read_text(dep, dep_text);
                 fs::remove(dep, ec);
-                // The object depends on the headers of the PCH too.
+                // The object depends on the headers of the PCH too. Clang lists them in the
+                // depfile of a compile with "-include-pch". The rule keeps them for a clang
+                // that does not. parse_depfile reads each rule.
                 if (used_pch)
                     dep_text += "\n" + depfile_rule(pch_cache_->headers(pch->key));
                 if (rc != 0)

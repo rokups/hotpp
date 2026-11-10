@@ -17,6 +17,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -147,6 +148,10 @@ public:
     bool build(const ScriptSource& source, uint32_t generation, const std::string& out_so, std::string& error,
         std::vector<std::string>* dependencies = nullptr);
 
+    // Waits for the PCH build that a build call started. A build call does not wait for it: the
+    // load of the module does not wait for the PCH. The destructor waits too.
+    void wait_for_pch();
+
 private:
     bool build_impl(const ScriptSource& source, uint32_t generation, LoadMode mode, const std::string& out_so,
         std::string& error, std::string* deferred_slots, std::vector<std::string>* dependencies,
@@ -179,15 +184,25 @@ private:
     };
     // The PCH plan for the translated text. No value: the compile does not use a PCH.
     // "mirror_files": the compile reads mirror files of the host file system.
-    std::optional<PchPlan> plan_pch(const std::string& cpp, const std::string& script_dir, bool mirror_files);
+    // "shadow_hash": the shadow hash of the object key (ObjectCache::KeyInputs::shadow_hash).
+    std::optional<PchPlan> plan_pch(
+        const std::string& cpp, const std::string& script_dir, bool mirror_files, uint64_t shadow_hash);
     // Builds the PCH of the plan and stores it in pch_cache_. Gives false on a failure.
     bool build_pch(const PchPlan& plan, const std::string& script_dir, std::string& error);
+    // Starts build_pch in pch_thread_. "unit" and "timing" are for the messages.
+    void start_pch_build(const PchPlan& plan, const std::string& script_dir, const std::string& unit, bool timing);
+    // The size trim of pch_cache_ and the removal of old marker files (see the .cpp file).
+    void trim_pch();
     // The path of a marker file of the PCH entry ("seen" or "bad").
     std::string pch_marker(const ObjectCache::Key& key, const char* ext) const;
 
     ClangFilesOptions opt_;
     std::unique_ptr<ObjectCache> cache_; // null: no cache
     std::unique_ptr<ObjectCache> pch_cache_; // the PCH entries in "<cache_dir>/pch"; null: no PCH
+    // The PCH build of the last build call. It runs after the build call ends. "pch_done_" true:
+    // the thread ended (or no thread runs), so a join does not wait.
+    std::thread pch_thread_;
+    std::atomic<bool> pch_done_{true};
     std::unique_ptr<TranslateCache> tr_cache_; // null: no translate cache
     std::string compiler_id_;
     bool compiler_id_done_ = false;

@@ -113,36 +113,48 @@ public:
     hot::VfsStat stat(const std::string&) override { return {}; }
 };
 
+// "incs": the include directories after the engine directories, in this order.
+// "max_bytes": the size limit of the cache (0: no limit).
 std::unique_ptr<hot::ClangFilesBackend> make_backend(const TestScratch& scratch, const std::string& work_name,
-    const std::string& cache_dir, const std::string& compiler, const std::string& inc = std::string(),
-    const std::string& commands_dir = std::string(), std::shared_ptr<hot::FileSystem> fs = nullptr)
+    const std::string& cache_dir, const std::string& compiler, const std::vector<std::string>& incs = {},
+    const std::string& commands_dir = std::string(), std::shared_ptr<hot::FileSystem> fs = nullptr,
+    uint64_t max_bytes = 0)
 {
     hot::ClangFilesOptions o;
     o.fs = std::move(fs);
     o.compiler = compiler;
     o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
-    if (!inc.empty())
-        o.include_dirs.push_back(inc);
+    o.include_dirs.insert(o.include_dirs.end(), incs.begin(), incs.end());
     o.work_dir = scratch.file(work_name);
     o.cache_dir = cache_dir;
     o.compile_commands_dir = commands_dir;
+    o.cache_max_bytes = max_bytes;
     return std::make_unique<hot::ClangFilesBackend>(std::move(o));
 }
 
-// A header with a struct. The script gives the size of the struct plus a constant.
-void write_layout_header(const fs::path& path, int pad, std::chrono::minutes age)
+// An old time: the cache does not store an entry whose header is younger than the compile.
+void set_age(const fs::path& path, std::chrono::minutes age)
 {
-    std::ofstream(path, std::ios::binary)
-        << "#pragma once\nstruct LayoutProbe { char pad[" << pad << "]; };\n"
-        << "inline float layout_size() { return static_cast<float>(sizeof(LayoutProbe)); }\n";
-    // An old time: the cache does not store an entry whose header is younger than the compile.
     fs::last_write_time(path, fs::file_time_type::clock::now() - age);
 }
 
-// The include set is the same for each value, so all the scripts share one PCH.
-hot::ScriptSource layout_script(int add)
+// A header with a struct. The script gives the size of the struct plus a constant. "guard" true:
+// an include guard LAYOUT_H in place of "#pragma once".
+void write_layout_header(const fs::path& path, int pad, std::chrono::minutes age, bool guard = false)
 {
-    return {"calc.hot",
+    std::ofstream(path, std::ios::binary)
+        << (guard ? "#ifndef LAYOUT_H\n#define LAYOUT_H\n" : "#pragma once\n") << "struct LayoutProbe { char pad["
+        << pad << "]; };\n"
+        << "inline float layout_size() { return static_cast<float>(sizeof(LayoutProbe)); }\n"
+        << (guard ? "#endif\n" : "");
+    set_age(path, age);
+}
+
+// The include set is the same for each value, so all the scripts share one PCH. The PCH does not
+// depend on the script name either.
+hot::ScriptSource layout_script(int add, const std::string& name = "calc.hot")
+{
+    return {name,
         "using \"Actor.h\";\nusing \"layout.h\";\nclass Calc : Actor {\n    float result = 0.0;\n"
         "    override void Tick(float dt) { this.result = layout_size() + " +
             std::to_string(add) + ".0; }\n}\n",
@@ -150,9 +162,9 @@ hot::ScriptSource layout_script(int add)
 }
 
 // Loads the script, makes a Calc object, runs one tick and gives the result field.
-float load_and_run(hot::Backend& backend, const hot::ScriptSource& source)
+float load_and_run(hot::Backend& backend, const hot::ScriptSource& source, uint32_t generation = 1)
 {
-    hot::LoadResult r = backend.load(source, 1);
+    hot::LoadResult r = backend.load(source, generation);
     if (!r)
     {
         ADD_FAILURE() << r.error;
@@ -185,6 +197,7 @@ struct Fixture
     std::string log = scratch.file("runs.log");
     std::string cxx = make_wrapper(scratch, log);
     fs::path inc = scratch.file("inc");
+    std::vector<std::string> before; // include directories before "inc"
     int work = 0;
     std::shared_ptr<hot::FileSystem> fs;
 
@@ -193,11 +206,19 @@ struct Fixture
         fs::create_directories(inc);
         write_layout_header(inc / "layout.h", 4, std::chrono::minutes(60));
     }
-    // Each load uses a new backend, so the module cache of a backend does not hide a compile.
-    float run(int add, const std::string& commands_dir = std::string())
+    std::vector<std::string> incs() const
     {
-        auto backend = make_backend(scratch, "work" + std::to_string(work++), cache, cxx, inc.string(), commands_dir, fs);
-        return load_and_run(*backend, layout_script(add));
+        std::vector<std::string> r = before;
+        r.push_back(inc.string());
+        return r;
+    }
+    // Each load uses a new backend, so the module cache of a backend does not hide a compile. The
+    // destructor of the backend waits for its PCH build.
+    float run(int add, const std::string& commands_dir = std::string(), const std::string& name = "calc.hot",
+        uint32_t generation = 1)
+    {
+        auto backend = make_backend(scratch, "work" + std::to_string(work++), cache, cxx, incs(), commands_dir, fs);
+        return load_and_run(*backend, layout_script(add, name), generation);
     }
     size_t pch_builds() const { return count_text(read_file(log), "c++-header"); }
     size_t pch_compiles() const { return count_text(read_file(log), "-include-pch"); }
@@ -297,20 +318,170 @@ TEST(PchBackend, TwoBackendsRaceOnThePch)
 {
     Fixture f;
     EXPECT_EQ(f.run(1), 5.0f);
-    auto a = make_backend(f.scratch, "race_a", f.cache, f.cxx, f.inc.string());
-    auto b = make_backend(f.scratch, "race_b", f.cache, f.cxx, f.inc.string());
+    auto a = make_backend(f.scratch, "race_a", f.cache, f.cxx, f.incs());
+    auto b = make_backend(f.scratch, "race_b", f.cache, f.cxx, f.incs());
     float ra = 0.0f;
     float rb = 0.0f;
     std::thread ta([&] { ra = load_and_run(*a, layout_script(2)); });
     std::thread tb([&] { rb = load_and_run(*b, layout_script(3)); });
     ta.join();
     tb.join();
+    a.reset(); // the destructors wait for the PCH builds
+    b.reset();
     EXPECT_EQ(ra, 6.0f);
     EXPECT_EQ(rb, 7.0f);
     EXPECT_GE(f.pch_builds(), 1u);
     EXPECT_EQ(pch_files(f.cache).size(), 1u);
     EXPECT_EQ(f.run(4), 8.0f);
     EXPECT_EQ(f.pch_compiles(), 1u);
+}
+
+// Many backends in one process write the PCH header and build the PCH at the same time. The
+// header of one writer must not replace the header of another: clang keeps the time of the
+// header in the PCH. So a later miss uses the PCH, and no "bad" marker comes.
+TEST(PchBackend, ManyBackendsRaceOnThePchHeader)
+{
+    Fixture f;
+    EXPECT_EQ(f.run(1), 5.0f);
+    const int n = 8;
+    std::vector<std::unique_ptr<hot::ClangFilesBackend>> backends;
+    for (int i = 0; i < n; ++i)
+        backends.push_back(make_backend(f.scratch, "stress" + std::to_string(i), f.cache, f.cxx, f.incs()));
+    std::vector<float> results(n, 0.0f);
+    std::vector<std::thread> threads;
+    for (int i = 0; i < n; ++i)
+        threads.emplace_back([&, i] { results[i] = load_and_run(*backends[i], layout_script(10 + i)); });
+    for (std::thread& t : threads)
+        t.join();
+    backends.clear();
+    for (int i = 0; i < n; ++i)
+        EXPECT_EQ(results[i], static_cast<float>(14 + i));
+    std::error_code ec;
+    for (const auto& e : fs::directory_iterator(fs::path(f.cache) / "pch", ec))
+        EXPECT_NE(e.path().extension(), ".bad") << read_file(e.path());
+    EXPECT_EQ(f.run(30), 34.0f);
+    EXPECT_EQ(f.pch_compiles(), 1u);
+}
+
+// A new header earlier in the include path hides the header of the PCH. Both copies have the
+// same include guard, so a stale PCH would hide the new header without an error. The PCH key has
+// the shadow paths, so the compile does not use the old PCH.
+TEST(PchBackend, ShadowHeaderDoesNotUseTheOldPch)
+{
+    Fixture f;
+    const fs::path inc0 = f.scratch.file("inc0");
+    fs::create_directories(inc0);
+    f.before = {inc0.string()};
+    write_layout_header(f.inc / "layout.h", 4, std::chrono::minutes(60), true);
+    EXPECT_EQ(f.run(1), 5.0f);
+    EXPECT_EQ(f.run(2), 6.0f);
+    EXPECT_EQ(f.run(3), 7.0f);
+    EXPECT_EQ(f.pch_compiles(), 1u);
+    write_layout_header(inc0 / "layout.h", 16, std::chrono::minutes(60), true);
+    EXPECT_EQ(f.run(3), 19.0f);
+    EXPECT_EQ(f.pch_compiles(), 1u);
+}
+
+// Two units with other script names and generations have the same include set. They share one
+// PCH: the second miss builds it and the third miss uses it.
+TEST(PchBackend, UnitsWithTheSameIncludesShareOnePch)
+{
+    Fixture f;
+    EXPECT_EQ(f.run(1, "", "calc.hot", 1), 5.0f);
+    EXPECT_EQ(f.run(2, "", "other.hot", 2), 6.0f);
+    EXPECT_EQ(f.pch_builds(), 1u);
+    EXPECT_EQ(f.run(3, "", "third.hot", 5), 7.0f);
+    EXPECT_EQ(f.pch_compiles(), 1u);
+    EXPECT_EQ(pch_files(f.cache).size(), 1u);
+}
+
+// A compile error in the script code names the right script line when the PCH is on. The error
+// does not turn the PCH off.
+TEST(PchBackend, ScriptErrorKeepsItsLineWithThePch)
+{
+    Fixture f;
+    EXPECT_EQ(f.run(1), 5.0f);
+    EXPECT_EQ(f.run(2), 6.0f);
+    {
+        auto backend = make_backend(f.scratch, "bad", f.cache, f.cxx, f.incs());
+        const hot::ScriptSource bad = {"calc.hot",
+            "using \"Actor.h\";\nusing \"layout.h\";\nclass Calc : Actor {\n    float result = 0.0;\n"
+            "    override void Tick(float dt) { this.result = \"fast\"; }\n}\n",
+            {}, "Calc"};
+        hot::LoadResult r = backend->load(bad, 1);
+        ASSERT_FALSE(r);
+        EXPECT_NE(r.error.find("calc.hot:5:"), std::string::npos) << r.error;
+    }
+    EXPECT_EQ(f.pch_compiles(), 1u);
+    EXPECT_EQ(f.run(3), 7.0f);
+    EXPECT_EQ(f.pch_compiles(), 2u);
+}
+
+// The script includes "layout.h" only, and "layout.h" includes "layout_b.h". The object of a
+// compile with the PCH depends on "layout_b.h" too: a change of it makes the object miss.
+TEST(PchBackend, NestedPchHeaderInvalidatesTheObject)
+{
+    Fixture f;
+    std::ofstream(f.inc / "layout.h", std::ios::binary)
+        << "#pragma once\n#include \"layout_b.h\"\n"
+        << "inline float layout_size() { return static_cast<float>(sizeof(LayoutProbe)); }\n";
+    set_age(f.inc / "layout.h", std::chrono::minutes(60));
+    const auto write_b = [&](int pad, std::chrono::minutes age)
+    {
+        std::ofstream(f.inc / "layout_b.h", std::ios::binary)
+            << "#pragma once\nstruct LayoutProbe { char pad[" << pad << "]; };\n";
+        set_age(f.inc / "layout_b.h", age);
+    };
+    write_b(4, std::chrono::minutes(60));
+    EXPECT_EQ(f.run(1), 5.0f);
+    EXPECT_EQ(f.run(2), 6.0f);
+    EXPECT_EQ(f.run(3), 7.0f);
+    EXPECT_EQ(f.pch_compiles(), 1u);
+    write_b(16, std::chrono::minutes(30));
+    EXPECT_EQ(f.run(3), 19.0f);
+}
+
+// A PCH larger than the size limit goes at once: the trim runs after each new PCH, not only when
+// a backend starts.
+TEST(PchBackend, NewPchIsTrimmedToTheLimit)
+{
+    Fixture f;
+    auto backend = make_backend(f.scratch, "small", f.cache, f.cxx, f.incs(), "", nullptr, 2);
+    EXPECT_EQ(load_and_run(*backend, layout_script(1)), 5.0f);
+    EXPECT_EQ(load_and_run(*backend, layout_script(2)), 6.0f);
+    EXPECT_EQ(f.pch_builds(), 1u);
+    backend.reset(); // waits for the PCH build
+    EXPECT_TRUE(pch_files(f.cache).empty());
+}
+
+// The trim removes the old marker files of a PCH that is gone. The files of a PCH that is in the
+// cache stay, so the PCH still works.
+TEST(PchBackend, TrimRemovesOldMarkersWithoutPch)
+{
+    Fixture f;
+    EXPECT_EQ(f.run(1), 5.0f);
+    EXPECT_EQ(f.run(2), 6.0f);
+    ASSERT_EQ(pch_files(f.cache).size(), 1u);
+    const fs::path pch_dir = fs::path(f.cache) / "pch";
+    const std::string live = pch_files(f.cache)[0].stem().string();
+    const auto days = [](int n) { return std::chrono::minutes(60 * 24 * n); };
+    for (const char* ext : {".seen", ".h", ".bad"})
+    {
+        std::ofstream(pch_dir / (std::string("0123456789abcdef") + ext)) << "x";
+        set_age(pch_dir / (std::string("0123456789abcdef") + ext), days(8));
+        std::ofstream(pch_dir / (std::string("fedcba9876543210") + ext)) << "x";
+        set_age(pch_dir / (std::string("fedcba9876543210") + ext), std::chrono::minutes(10));
+    }
+    set_age(pch_dir / (live + ".seen"), days(8));
+    EXPECT_EQ(f.run(3), 7.0f); // the new backend trims
+    EXPECT_EQ(f.pch_compiles(), 1u);
+    for (const char* ext : {".seen", ".h", ".bad"})
+    {
+        EXPECT_FALSE(fs::exists(pch_dir / (std::string("0123456789abcdef") + ext))) << ext;
+        EXPECT_TRUE(fs::exists(pch_dir / (std::string("fedcba9876543210") + ext))) << ext;
+    }
+    EXPECT_TRUE(fs::exists(pch_dir / (live + ".h")));
+    EXPECT_TRUE(fs::exists(pch_dir / (live + ".seen")));
 }
 
 #endif
