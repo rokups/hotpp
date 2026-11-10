@@ -663,6 +663,32 @@ TEST(ObjectCacheBackend, ChangedHeaderLayoutMissesTheModule)
     EXPECT_EQ(backend->cache_stats().module_hits, 1u);
 }
 
+// The compiler reads CPATH and other variables. A changed variable changes the key: a miss.
+TEST(ObjectCacheBackend, CompilerEnvironmentIsPartOfTheKey)
+{
+    CleanEnv env;
+    EnvGuard cpath("CPATH", "");
+    test_support::unset_env("CPATH");
+    TestScratch scratch;
+    const std::string cache = scratch.file("cache");
+    const fs::path extra = scratch.file("extra_inc");
+    fs::create_directories(extra);
+    {
+        auto backend = make_backend(scratch, "work_a", cache);
+        EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
+    }
+    {
+        EnvGuard changed("CPATH", extra.string().c_str());
+        auto backend = make_backend(scratch, "work_b", cache);
+        EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
+        EXPECT_EQ(backend->cache_stats().hits, 0u);
+        EXPECT_EQ(backend->cache_stats().misses, 1u);
+    }
+    auto backend = make_backend(scratch, "work_c", cache);
+    EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
+    EXPECT_EQ(backend->cache_stats().hits, 1u);
+}
+
 // A header that is younger than the start of the compile can change during the compile. The
 // build works, but the cache has no object entry and no module entry for it.
 TEST(ObjectCacheBackend, YoungHeaderIsNotCached)

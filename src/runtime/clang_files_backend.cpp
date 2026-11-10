@@ -857,6 +857,26 @@ std::string library_stamp(const std::string& path)
     return path + "|" + std::to_string(static_cast<long long>(mtime)) + "|" + std::to_string(size);
 }
 
+// The environment variables that the compiler driver reads. They can change the include path or
+// the target, so they are part of the compiler id. "name=value" for a set variable, "name!" else.
+std::string compiler_environment()
+{
+    static const char* const names[] = {"CPATH", "CPLUS_INCLUDE_PATH", "C_INCLUDE_PATH", "OBJC_INCLUDE_PATH",
+        "SDKROOT", "MACOSX_DEPLOYMENT_TARGET", "CCC_OVERRIDE_OPTIONS", "LIBRARY_PATH", "COMPILER_PATH"};
+    std::string text;
+    for (const char* name : names)
+    {
+        const char* value = std::getenv(name);
+        text += '|';
+        text += name;
+        if (value)
+            text += std::string("=") + std::to_string(std::char_traits<char>::length(value)) + ":" + value;
+        else
+            text += '!';
+    }
+    return text;
+}
+
 } // namespace
 
 bool ClangFilesBackend::prepare_cache()
@@ -886,7 +906,8 @@ bool ClangFilesBackend::prepare_cache()
         cache_.reset();
         return false;
     }
-    compiler_id_ = program + "|" + version + "|" + std::to_string(mtime) + "|" + std::to_string(size);
+    compiler_id_ = program + "|" + version + "|" + std::to_string(mtime) + "|" + std::to_string(size) +
+        compiler_environment();
     // The compiler id is in the key of the translate cache too: a new compiler often comes with
     // new system headers, and the dependency list of a translate has no system header.
     if (tr_cache_)
