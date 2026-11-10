@@ -2086,7 +2086,8 @@ TEST(LanguageServer, BackgroundIndexFindsAScriptSymbolInAGeneratedFile)
     const std::string so = (dir.path() / "player.g1.so").string();
     write_file(dir.path() / "compile_commands.json",
         hot::compile_commands_json({{hot::ls::long_path(dir.path().string()), hot::ls::long_path(cpp),
-            hot::compile_command(co, hot::ls::long_path(cpp), hot::ls::long_path(so)), hot::ls::long_path(so)}}));
+            hot::compile_object_command(co, hot::ls::long_path(cpp), hot::ls::long_path(so), std::string()),
+            hot::ls::long_path(so)}}));
 
     hot::ls::ServerOptions opt = options(dir, true);
     opt.include_dirs.clear(); // the server reads them from compile_commands.json
@@ -2211,8 +2212,8 @@ struct SharedProject
         hot::ClangFilesOptions co;
         co.include_dirs = {HOT_SOURCE_DIR "/include", HOT_SOURCE_DIR "/tests/engine"};
         write_file(root / "compile_commands.json",
-            hot::compile_commands_json({{root.string(), gen, hot::compile_command(co, gen, gen + ".so"), gen + ".so"},
-                {root.string(), cpp, hot::compile_command(co, cpp, cpp + ".so"), cpp + ".so"}}));
+            hot::compile_commands_json({{root.string(), gen, hot::compile_object_command(co, gen, gen + ".o", std::string()), gen + ".o"},
+                {root.string(), cpp, hot::compile_object_command(co, cpp, cpp + ".o", std::string()), cpp + ".o"}}));
     }
 
     std::filesystem::path index_dir() const { return root / ".cache" / "clangd" / "index"; }

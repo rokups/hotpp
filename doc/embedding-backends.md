@@ -45,7 +45,7 @@ hot::Loader loader;
 hot::LoadResult built = backend.load({"player.hot", text}, 1);
 ```
 
-**Run time:** the backend translates in memory, writes a `.cpp` in `work_dir`, runs the compiler (without a shell) to make a `.so`, and loads it. Each call makes a new `.so`. The compile command is `<compiler> -std=<standard> -fPIC -shared -g -Werror=return-type`, then `-resource-dir`, `extra_flags`, the `-I` folders and the format flags (`compile_command` in `include/hot/clang_files_backend.h`).
+**Run time:** the backend translates in memory, writes a `.cpp` in `work_dir` (or in `generated_dir`, with a stable name), compiles it (without a shell) to a `.o`, links the `.o` to a `.so`, and loads it. Each call makes a new `.so`. The compile command is `<compiler> -std=<standard> -fPIC -c -g -Werror=return-type`, then `-resource-dir`, `extra_flags`, the `-I` folders, the format flags and `-MD -MF <depfile>` (`compile_object_command` in `include/hot/clang_files_backend.h`). The link command is `<compiler> -shared -fPIC -g`, then the target link flags, `extra_flags`, the `.o` and the host import library (`link_module_command`).
 
 **Requires:** the compiler at run time. A work folder that the program can write.
 

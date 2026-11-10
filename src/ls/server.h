@@ -7,7 +7,7 @@
 // The server is a proxy. It owns the text of each .hot document. It runs hotc::analyze() on the
 // text and gets the generated C++ and the source map. It gives the generated C++ to a stock
 // clangd child process as a virtual file "<script>.cpp" with the compile command of the backend
-// (hot::compile_command). It maps the positions of each request and each answer between the
+// (hot::compile_object_command). It maps the positions of each request and each answer between the
 // script and the generated C++. The diag rewriter changes generated names to script names.
 #pragma once
 

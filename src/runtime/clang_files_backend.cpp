@@ -18,6 +18,7 @@
 #include <fstream>
 #include <optional>
 #include <sstream>
+#include <thread>
 
 #ifdef _WIN32
     #include <windows.h>
@@ -174,6 +175,38 @@ bool write_text(const std::string& path, const std::string& text)
     return static_cast<bool>(f);
 }
 
+// Writes the file through a temp file and a rename, so a reader never sees a part of the text.
+// The temp name has the process id: two processes do not write the same temp file. Windows
+// refuses the rename while an other process has the target open, so it tries 3 times.
+bool write_text_replace(const std::string& path, const std::string& text)
+{
+    static std::atomic<unsigned> counter{0};
+#ifdef _WIN32
+    const unsigned long pid = GetCurrentProcessId();
+#else
+    const unsigned long pid = static_cast<unsigned long>(getpid());
+#endif
+    const std::string tmp = path + "." + std::to_string(pid) + "." + std::to_string(counter++) + ".tmp";
+    if (!write_text(tmp, text))
+        return false;
+    std::error_code ec;
+#ifdef _WIN32
+    const int tries = 3;
+#else
+    const int tries = 1;
+#endif
+    for (int i = 0; i < tries; ++i)
+    {
+        if (i > 0)
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        fs::rename(tmp, path, ec);
+        if (!ec)
+            return true;
+    }
+    fs::remove(tmp, ec);
+    return false;
+}
+
 } // namespace
 
 void ClangFilesBackend::seed_slots(const std::string& text)
@@ -227,24 +260,61 @@ std::optional<std::string> vfs_relative(const std::string& path)
 
 } // namespace
 
-std::vector<std::string> compile_command(const ClangFilesOptions& opt, const std::string& cpp_path,
-    const std::string& out_so, const std::string& script_dir)
+namespace
+{
+
+// A Darwin target: the triple says so, or no triple on a macOS host.
+bool darwin_target(const ClangFilesOptions& opt)
+{
+#ifdef __APPLE__
+    return opt.target_triple.empty() || is_darwin_triple(opt.target_triple);
+#else
+    return is_darwin_triple(opt.target_triple);
+#endif
+}
+
+// The MinGW flags of the compile or of the link. The compile gets "-nostdinc++" and the
+// "-isystem <dir>" pairs (the libstdc++ headers). The link gets the other flags (the linker,
+// the static runtime and the "-L" of libgcc).
+std::vector<std::string> mingw_flags(const ClangFilesOptions& opt, bool compile)
+{
+    std::vector<std::string> r;
+    const std::vector<std::string> all = mingw_target_flags(opt.target_triple, opt.sysroot);
+    for (size_t i = 0; i < all.size(); ++i)
+    {
+        const bool header = all[i] == "-nostdinc++" || all[i] == "-isystem";
+        if (header == compile)
+            r.push_back(all[i]);
+        if (all[i] == "-isystem" && i + 1 < all.size())
+        {
+            ++i;
+            if (compile)
+                r.push_back(all[i]);
+        }
+    }
+    return r;
+}
+
+} // namespace
+
+// The split of the flags between the compile and the link, for each target:
+// - ELF: the compile has the code flags (-fPIC, -fno-plt, -fvisibility). The link has -shared and -fPIC.
+// - MinGW: the compile has the libstdc++ headers. The link has lld, the static runtime and -L.
+// - Darwin: "-undefined dynamic_lookup" is for the link only. MSVC: the runtime flag goes to both.
+// Target, sysroot, resource dir and extra flags go to both, so the driver finds the same libraries.
+std::vector<std::string> compile_object_command(const ClangFilesOptions& opt, const std::string& cpp_path,
+    const std::string& obj_path, const std::string& depfile_path, const std::string& script_dir)
 {
     const bool mingw = is_mingw_triple(opt.target_triple);
-    // A Darwin target: the triple says so, or no triple on a macOS host.
-#ifdef __APPLE__
-    const bool darwin = opt.target_triple.empty() || is_darwin_triple(opt.target_triple);
-#else
-    const bool darwin = is_darwin_triple(opt.target_triple);
-#endif
-    // A MinGW link must use the C++ driver, so it links libstdc++ (hot/command_line.h).
+    const bool darwin = darwin_target(opt);
+    // A MinGW build must use the C++ driver, so it links libstdc++ (hot/command_line.h).
     std::vector<std::string> cmd = {mingw ? cxx_driver(opt.compiler) : opt.compiler,
         "-std=" + (opt.std_version.empty() ? std::string(cxx_std_name()) : opt.std_version),
 #ifndef _WIN32
         // The shared library needs position independent code. A Windows DLL does not.
         "-fPIC",
 #endif
-        "-shared", "-g", "-Werror=return-type",
+        "-c", "-g", "-Werror=return-type",
         // A signed overflow wraps in a script. The compiler must not use it as undefined behavior.
         "-fwrapv",
         // A module symbol must not bind to a host symbol with the same mangled name. The entry
@@ -266,9 +336,7 @@ std::vector<std::string> compile_command(const ClangFilesOptions& opt, const std
         cmd.push_back("--target=" + opt.target_triple);
     if (!opt.sysroot.empty())
         cmd.push_back("--sysroot=" + opt.sysroot);
-    for (const std::string& f : mingw_target_flags(opt.target_triple, opt.sysroot))
-        cmd.push_back(f);
-    for (const std::string& f : darwin_target_flags(darwin))
+    for (const std::string& f : mingw_flags(opt, true))
         cmd.push_back(f);
     // An MSVC host: the module uses the same C runtime DLL as the host (/MD or /MDd). The
     // default of clang++ is the static runtime. Two runtimes do not share the STL debug levels.
@@ -295,8 +363,46 @@ std::vector<std::string> compile_command(const ClangFilesOptions& opt, const std
         cmd.push_back(f);
     for (const std::string& f : traceback_compile_flags())
         cmd.push_back(f);
+    // The depfile names the headers of the compile (the input of an object cache).
+    if (!depfile_path.empty())
+    {
+        cmd.push_back("-MD");
+        cmd.push_back("-MF");
+        cmd.push_back(depfile_path);
+    }
     cmd.push_back(cpp_path);
-    // The library goes after the source, so the link resolves the module's host references.
+    cmd.push_back("-o");
+    cmd.push_back(obj_path);
+    return cmd;
+}
+
+std::vector<std::string> link_module_command(
+    const ClangFilesOptions& opt, const std::string& obj_path, const std::string& out_so)
+{
+    const bool mingw = is_mingw_triple(opt.target_triple);
+    std::vector<std::string> cmd = {mingw ? cxx_driver(opt.compiler) : opt.compiler, "-shared",
+#ifndef _WIN32
+        "-fPIC",
+#endif
+        "-g"};
+    if (!opt.target_triple.empty())
+        cmd.push_back("--target=" + opt.target_triple);
+    if (!opt.sysroot.empty())
+        cmd.push_back("--sysroot=" + opt.sysroot);
+    for (const std::string& f : mingw_flags(opt, false))
+        cmd.push_back(f);
+    for (const std::string& f : darwin_target_flags(darwin_target(opt)))
+        cmd.push_back(f);
+    for (const std::string& f : host_ms_runtime_lib_flags(opt.target_triple))
+        cmd.push_back(f);
+    if (!opt.resource_dir.empty())
+        cmd.push_back("-resource-dir=" + opt.resource_dir);
+    for (const std::string& f : opt.extra_flags)
+        cmd.push_back(f);
+    // The extra flags can have compile flags (-D, -O2). The link does not use them.
+    cmd.push_back("-Wno-unused-command-line-argument");
+    cmd.push_back(obj_path);
+    // The library goes after the object, so the link resolves the module's host references.
     if (!opt.host_import_library.empty())
         cmd.push_back(opt.host_import_library);
     cmd.push_back("-o");
@@ -373,14 +479,27 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
         fs::create_directories(so_path.parent_path(), ec);
     fs::create_directories(
         fs::path(opt_.slots_file).parent_path().empty() ? fs::path(".") : fs::path(opt_.slots_file).parent_path(), ec);
-    const std::string cpp_path = fs::path(so_path).replace_extension(".cpp").string();
+    // The .o and the depfile go next to the .so.
+    const std::string obj_path = fs::path(so_path).replace_extension(".o").string();
+    const std::string dep_path = fs::path(so_path).replace_extension(".d").string();
+    std::string unit = source.unit.empty() ? fs::path(source.name).stem().string() : source.unit;
+    if (unit.empty())
+        unit = "script";
+    // With a generated_dir the .cpp has a stable name. It is also the "#line" name, so the text
+    // of the .cpp has no part of the .so name (no process id, generation, epoch or sequence).
+    const bool stable_cpp = !opt_.generated_dir.empty();
+    if (stable_cpp)
+        fs::create_directories(opt_.generated_dir, ec);
+    const std::string line_name = stable_cpp ? (fs::path(opt_.generated_dir) / (unit + ".cpp")).string()
+                                             : fs::path(so_path).replace_extension(".cpp").string();
+    std::string cpp_path = line_name;
 
     hotc::TranslateOptions to;
     to.script_text = source.text;
     to.modules = source.modules;
     to.script_name = source.name;
     to.unit_name = source.unit;
-    to.output_name = cpp_path;
+    to.output_name = line_name;
     to.generation = static_cast<int>(generation);
     to.include_dirs = opt_.include_dirs;
     // The translator needs the resource dir for the native headers. A portable build finds it at run time.
@@ -421,7 +540,18 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
             : hotc::rewrite_translator_diagnostic(tr.diagnostics, hotc::script_texts(source.name, source.text, tr));
         return false;
     }
-    if (!write_text(cpp_path, tr.cpp))
+    if (stable_cpp && !write_text_replace(cpp_path, tr.cpp))
+    {
+        // The rename can fail on Windows while an other process reads the file. This build then
+        // uses the work dir path. The "#line" name stays the same.
+        cpp_path = fs::path(so_path).replace_extension(".cpp").string();
+        if (!write_text(cpp_path, tr.cpp))
+        {
+            error = "cannot write " + cpp_path;
+            return false;
+        }
+    }
+    else if (!stable_cpp && !write_text(cpp_path, tr.cpp))
     {
         error = "cannot write " + cpp_path;
         return false;
@@ -459,27 +589,36 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
         error = sysroot_error + "\n";
         return false;
     }
-    const std::vector<std::string> cmd = compile_command(opt_, cpp_path, out_so, script_dir);
     fs::remove(so_path, ec);
+    fs::remove(obj_path, ec);
     std::string output;
-    const int rc = run_command(cmd, output);
+    const int rc = run_command(compile_object_command(opt_, cpp_path, obj_path, dep_path, script_dir), output);
+    const auto t2 = std::chrono::steady_clock::now();
+    // The diagnostics can name the "#line" name or the path of the file (before the first "#line").
+    hotc::ScriptTexts generated = {{line_name, tr.cpp}};
+    if (cpp_path != line_name)
+        generated.push_back({cpp_path, tr.cpp});
+    const auto fail = [&](const char* what, int code)
+    {
+        if (!opt_.raw_diagnostics)
+            output = hotc::rewrite_diagnostic(output, {{source.name, source.text}}, generated, &tr.source_map);
+        error = output + "the " + what + " of " + source.name + " failed (exit code " + std::to_string(code) + ")\n";
+        return false;
+    };
+    if (rc != 0)
+        return fail("compile", rc);
+    const int link_rc = run_command(link_module_command(opt_, obj_path, out_so), output);
     if (timing)
     {
-        const auto t2 = std::chrono::steady_clock::now();
+        const auto t3 = std::chrono::steady_clock::now();
         const auto ms = [](auto a, auto b) {
             return static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(b - a).count());
         };
-        std::fprintf(stderr, "hot: %s translate %lld ms, clang %lld ms\n",
-            (source.unit.empty() ? fs::path(source.name).stem().string() : source.unit).c_str(), ms(t0, t1), ms(t1, t2));
+        std::fprintf(stderr, "hot: %s translate %lld ms, compile %lld ms, link %lld ms\n", unit.c_str(), ms(t0, t1),
+            ms(t1, t2), ms(t2, t3));
     }
-    if (rc != 0)
-    {
-        if (!opt_.raw_diagnostics)
-            output =
-                hotc::rewrite_diagnostic(output, {{source.name, source.text}}, {{cpp_path, tr.cpp}}, &tr.source_map);
-        error = output + "the compile of " + source.name + " failed (exit code " + std::to_string(rc) + ")\n";
-        return false;
-    }
+    if (link_rc != 0)
+        return fail("link", link_rc);
     if (deferred_slots)
     {
         *deferred_slots = tr.slots_out + tr.sigs_out;

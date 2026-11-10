@@ -685,14 +685,15 @@ int run_build(const Args& args)
         }
     }
 
-    // The tool writes the .so and the .cpp next to it. Neither may be an input file.
+    // The tool writes the .so and the .cpp, .o and .d next to it. None may be an input file.
     for (const std::string& s : args.inputs)
     {
         const std::string so = single_so
             ? args.output
             : out_dir + "/" + fs::path(s).stem().string() + ".g" + std::to_string(args.gen) + hot::module_suffix();
-        if (!check_not_input(args, so) || !check_not_input(args, fs::path(so).replace_extension(".cpp").string()))
-            return 1;
+        for (const char* ext : {"", ".cpp", ".o", ".d"})
+            if (!check_not_input(args, *ext ? fs::path(so).replace_extension(ext).string() : so))
+                return 1;
     }
 
     hot::ClangFilesBackend backend(opt);
@@ -728,8 +729,10 @@ int run_build(const Args& args)
         if (!args.compile_commands.empty() && fs::exists(cpp))
         {
             const std::string abs_cpp = fs::absolute(cpp).string();
-            const std::string abs_so = fs::absolute(so).string();
-            db.push_back({fs::current_path().string(), abs_cpp, hot::compile_command(opt, abs_cpp, abs_so), abs_so});
+            const std::string abs_obj = fs::absolute(fs::path(so).replace_extension(".o")).string();
+            const std::string abs_dep = fs::absolute(fs::path(so).replace_extension(".d")).string();
+            db.push_back({fs::current_path().string(), abs_cpp,
+                hot::compile_object_command(opt, abs_cpp, abs_obj, abs_dep), abs_obj});
         }
     }
     if (!args.compile_commands.empty())

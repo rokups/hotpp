@@ -1368,16 +1368,13 @@ TEST(HotcTool, CompileCommandUsesTheBackendFlags)
 #ifndef _WIN32
         "-fPIC",
 #endif
-        "-shared", "-g", "-Werror=return-type", "-fwrapv", "-fvisibility=hidden", "-fvisibility-inlines-hidden",
+        "-c", "-g", "-Werror=return-type", "-fwrapv", "-fvisibility=hidden", "-fvisibility-inlines-hidden",
 #ifdef _WIN32
         "-DHOT_MODULE_BUILD=1",
 #elif !defined(__APPLE__)
         "-fno-plt"
 #endif
     };
-#ifdef __APPLE__
-    expected.push_back("-Wl,-undefined,dynamic_lookup");
-#endif
     for (const std::string& f : ms_runtime_flags())
         expected.push_back(f); // MSVC host only
     for (const char* f : {"-resource-dir=/res", "-O2", "-I/i1", "-I/i2"})
@@ -1390,23 +1387,86 @@ TEST(HotcTool, CompileCommandUsesTheBackendFlags)
         expected.push_back(f); // HOT_THREAD_SAFE=OFF build only
     for (const std::string& f : hot::traceback_compile_flags())
         expected.push_back(f); // HOT_TRACEBACK=ON build only
-    for (const char* f : {"/x.cpp", "-o", "/x.so"})
+    for (const char* f : {"-MD", "-MF", "/x.d", "/x.cpp", "-o", "/x.o"})
         expected.push_back(f);
-    EXPECT_EQ(hot::compile_command(o, "/x.cpp", "/x.so"), expected);
+    EXPECT_EQ(hot::compile_object_command(o, "/x.cpp", "/x.o", "/x.d"), expected);
+}
+
+// The compile makes an object file and a depfile. It does not link. An empty depfile path
+// gives no depfile flags (the language server).
+TEST(HotcTool, CompileObjectCommandDoesNotLink)
+{
+    hot::ClangFilesOptions o;
+    o.host_import_library = "/host.lib";
+    const std::vector<std::string> cmd = hot::compile_object_command(o, "/x.cpp", "/x.o", "/x.d");
+    auto has = [&](const char* f) { return std::find(cmd.begin(), cmd.end(), f) != cmd.end(); };
+    EXPECT_TRUE(has("-c"));
+    EXPECT_TRUE(has("-MD"));
+    EXPECT_TRUE(has("-MF"));
+    EXPECT_FALSE(has("-shared"));
+    EXPECT_FALSE(has("/host.lib"));
+    const std::vector<std::string> no_dep = hot::compile_object_command(o, "/x.cpp", "/x.o", std::string());
+    EXPECT_EQ(std::find(no_dep.begin(), no_dep.end(), "-MD"), no_dep.end());
+}
+
+// The link takes the object file and the import library of the host. It does not compile.
+TEST(HotcTool, LinkModuleCommandUsesTheObjectFile)
+{
+    hot::ClangFilesOptions o;
+    o.compiler = "cc";
+    o.extra_flags = {"-O2"};
+    o.host_import_library = "/host.lib";
+    std::vector<std::string> expected = {"cc", "-shared",
+#ifndef _WIN32
+        "-fPIC",
+#endif
+        "-g"};
+#ifdef __APPLE__
+    expected.push_back("-Wl,-undefined,dynamic_lookup");
+#endif
+    for (const std::string& f : ms_runtime_flags())
+        expected.push_back(f); // MSVC host only
+    for (const char* f : {"-O2", "-Wno-unused-command-line-argument", "/x.o", "/host.lib", "-o", "/x.so"})
+        expected.push_back(f);
+    EXPECT_EQ(hot::link_module_command(o, "/x.o", "/x.so"), expected);
+}
+
+// A MinGW target: the compile gets the libstdc++ headers and the link gets lld and the static
+// runtime. The test runs on each host, because the target triple selects the flags.
+TEST(HotcTool, MingwFlagsSplitBetweenCompileAndLink)
+{
+    hot::ClangFilesOptions o;
+    o.compiler = "clang";
+    o.target_triple = "x86_64-w64-mingw32";
+    const std::vector<std::string> c = hot::compile_object_command(o, "/x.cpp", "/x.o", "/x.d");
+    const std::vector<std::string> l = hot::link_module_command(o, "/x.o", "/x.dll");
+    auto has = [](const std::vector<std::string>& v, const char* f) { return std::find(v.begin(), v.end(), f) != v.end(); };
+    EXPECT_EQ(c[0], hot::cxx_driver("clang"));
+    EXPECT_EQ(l[0], hot::cxx_driver("clang"));
+    EXPECT_FALSE(has(c, "-fuse-ld=lld"));
+    EXPECT_FALSE(has(c, "-static-libstdc++"));
+    EXPECT_TRUE(has(l, "-fuse-ld=lld"));
+    EXPECT_TRUE(has(l, "-static-libstdc++"));
+    EXPECT_TRUE(has(l, "-lwinpthread"));
+    EXPECT_FALSE(has(l, "-c"));
 }
 
 // A Darwin target links with "-undefined dynamic_lookup" and has no "-fno-plt" (an ELF flag).
+// The link flag is not in the compile.
 // The test runs on each host, because the target triple selects the flags.
 TEST(HotcTool, CompileCommandForDarwinTarget)
 {
     hot::ClangFilesOptions o;
     o.compiler = "clang++";
     o.target_triple = "arm64-apple-macosx13.0";
-    const std::vector<std::string> cmd = hot::compile_command(o, "/x.cpp", "/x.so");
-    auto has = [&](const char* f) { return std::find(cmd.begin(), cmd.end(), f) != cmd.end(); };
-    EXPECT_TRUE(has("--target=arm64-apple-macosx13.0"));
-    EXPECT_TRUE(has("-Wl,-undefined,dynamic_lookup"));
-    EXPECT_FALSE(has("-fno-plt"));
+    const std::vector<std::string> cmd = hot::compile_object_command(o, "/x.cpp", "/x.o", "/x.d");
+    const std::vector<std::string> link = hot::link_module_command(o, "/x.o", "/x.so");
+    auto has = [](const std::vector<std::string>& v, const char* f) { return std::find(v.begin(), v.end(), f) != v.end(); };
+    EXPECT_TRUE(has(cmd, "--target=arm64-apple-macosx13.0"));
+    EXPECT_TRUE(has(link, "--target=arm64-apple-macosx13.0"));
+    EXPECT_FALSE(has(cmd, "-Wl,-undefined,dynamic_lookup"));
+    EXPECT_TRUE(has(link, "-Wl,-undefined,dynamic_lookup"));
+    EXPECT_FALSE(has(cmd, "-fno-plt"));
 }
 
 // The option std_version replaces the standard of the host in the compile command.
@@ -1415,9 +1475,9 @@ TEST(HotcTool, CompileCommandStdVersionOverridesTheHostStandard)
     hot::ClangFilesOptions o;
     o.compiler = "cc";
     o.std_version = "c++17";
-    EXPECT_EQ(hot::compile_command(o, "/x.cpp", "/x.so")[1], "-std=c++17");
+    EXPECT_EQ(hot::compile_object_command(o, "/x.cpp", "/x.o", "/x.d")[1], "-std=c++17");
     o.std_version = "c++23";
-    EXPECT_EQ(hot::compile_command(o, "/x.cpp", "/x.so")[1], "-std=c++23");
+    EXPECT_EQ(hot::compile_object_command(o, "/x.cpp", "/x.o", "/x.d")[1], "-std=c++23");
 }
 
 // hotc --compile-commands writes one entry for each generated .cpp.
@@ -1442,7 +1502,8 @@ TEST(HotcTool, CompileCommandsOptionWritesTheDatabase)
         << text;
 
     const std::string cpp = fs::absolute(out_dir + "/boss_v1.g1.cpp").string();
-    const std::string so = fs::absolute(module_file(out_dir, "boss_v1.g1")).string();
+    const std::string obj = fs::absolute(out_dir + "/boss_v1.g1.o").string();
+    const std::string dep = fs::absolute(out_dir + "/boss_v1.g1.d").string();
     const std::string cxx = HOT_CXX;
     std::string fmt_args; // fmt build only
     for (const std::string& f : hot::format_compile_flags())
@@ -1453,23 +1514,69 @@ TEST(HotcTool, CompileCommandsOptionWritesTheDatabase)
         fmt_args += "\"" + f + "\", "; // HOT_THREAD_SAFE=OFF build only
     for (const std::string& f : hot::traceback_compile_flags())
         fmt_args += "\"" + f + "\", "; // HOT_TRACEBACK=ON build only
-    // The target flags: ELF gets -fno-plt. macOS gets the SDK of the build and the
-    // dynamic_lookup link flag (clang_files_backend.cpp).
+    // The target flags: ELF gets -fno-plt. macOS gets the SDK of the build. The dynamic_lookup
+    // flag is for the link, so it is not in the compile (clang_files_backend.cpp).
 #ifdef __APPLE__
     std::string target_args;
     if (const std::string sdk = hot::default_paths().sysroot; !sdk.empty())
         target_args += "\"--sysroot=" + sdk + "\", ";
-    for (const std::string& f : hot::darwin_target_flags(true))
-        target_args += "\"" + f + "\", ";
 #else
     const std::string target_args = "\"-fno-plt\", ";
 #endif
     const std::string expected =
         "[\n  {\n    \"directory\": \"" + fs::current_path().string() + "\",\n    \"file\": \"" + cpp +
-        "\",\n    \"arguments\": [\"" + cxx + "\", \"-std=" + std::string(hot::cxx_std_name()) + "\", \"-fPIC\", \"-shared\", \"-g\", "
-        "\"-Werror=return-type\", \"-fwrapv\", \"-fvisibility=hidden\", \"-fvisibility-inlines-hidden\", " + target_args + "\"-O1\", \"-I" + engine + "\", \"-I" + inc + "\", " + fmt_args + "\"" + cpp +
-        "\", \"-o\", \"" + so + "\"],\n    \"output\": \"" + so + "\"\n  }\n]\n";
+        "\",\n    \"arguments\": [\"" + cxx + "\", \"-std=" + std::string(hot::cxx_std_name()) + "\", \"-fPIC\", \"-c\", \"-g\", "
+        "\"-Werror=return-type\", \"-fwrapv\", \"-fvisibility=hidden\", \"-fvisibility-inlines-hidden\", " + target_args + "\"-O1\", \"-I" + engine + "\", \"-I" + inc + "\", " + fmt_args + "\"-MD\", \"-MF\", \"" + dep + "\", \"" + cpp +
+        "\", \"-o\", \"" + obj + "\"],\n    \"output\": \"" + obj + "\"\n  }\n]\n";
     EXPECT_EQ(read_file(cdb_dir + "/compile_commands.json"), expected);
+}
+
+// With a generated_dir, the .cpp has the unit name and its "#line" name has no part of the work
+// dir or of the .so name. Two backends (two runs of the game) write the same text. The build
+// makes the .o, the depfile and the .so next to the .so.
+TEST(HotcTool, GeneratedDirGivesAStableCpp)
+{
+    namespace fs = std::filesystem;
+    TestScratch scratch;
+    const std::string gen_dir = scratch.file("gen");
+    const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/boss_v1.hot";
+    const std::string text = read_file(script);
+    const std::string stable = (fs::path(gen_dir) / "boss_v1.cpp").string();
+    std::string first;
+    for (int run = 0; run < 2; ++run)
+    {
+        hot::ClangFilesOptions o;
+        o.compiler = HOT_CXX;
+        o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
+        o.work_dir = scratch.file("work_p4242" + std::to_string(run));
+        o.generated_dir = gen_dir;
+        hot::ClangFilesBackend backend(o);
+        const std::string so = o.work_dir + "/boss_v1.g1.e" + std::to_string(run) + ".7" + hot::module_suffix();
+        std::string error;
+        ASSERT_TRUE(backend.build({script, text, {}}, 1, so, error)) << error;
+        EXPECT_TRUE(fs::exists(so));
+        EXPECT_TRUE(fs::exists(fs::path(so).replace_extension(".o")));
+        EXPECT_TRUE(fs::exists(fs::path(so).replace_extension(".d")));
+        EXPECT_FALSE(fs::exists(fs::path(so).replace_extension(".cpp")));
+        const std::string cpp = read_file(stable);
+        ASSERT_FALSE(cpp.empty());
+        EXPECT_EQ(cpp.find("p4242"), std::string::npos);
+        EXPECT_EQ(cpp.find(".g1.e"), std::string::npos);
+        size_t line_names = 0;
+        for (size_t at = cpp.find("#line "); at != std::string::npos; at = cpp.find("#line ", at + 1))
+        {
+            const std::string line = cpp.substr(at, cpp.find('\n', at) - at);
+            if (line.find(".cpp\"") == std::string::npos)
+                continue; // a "#line" to the script
+            ++line_names;
+            EXPECT_NE(line.find(stable), std::string::npos) << line;
+        }
+        EXPECT_GT(line_names, 0u);
+        if (run == 0)
+            first = cpp;
+        else
+            EXPECT_TRUE(cpp == first) << "the .cpp text changed between two backends";
+    }
 }
 
 // hotc --emit-cpp translates a plain C++ script (a ".cpp" file) to a generation file.

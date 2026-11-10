@@ -434,7 +434,7 @@ The cost does not grow with the number of reloads. A new object, made after the 
 
 ## Script start-up cost (BiteSizedWar, files backend)
 
-The environment variable `HOT_TIMING` makes the files backend print one line to `stderr` for each unit build: `hot: <unit> translate <ms> ms, clang <ms> ms`.
+The environment variable `HOT_TIMING` makes the files backend print one line to `stderr` for each unit build: `hot: <unit> translate <ms> ms, compile <ms> ms, link <ms> ms`. The numbers below come from the earlier single clang run (compile and link in one command).
 
 The numbers come from this machine (32 hardware threads, clang 23.1.3, Debug build of the game, cold start with no cache).
 

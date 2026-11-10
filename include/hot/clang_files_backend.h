@@ -32,7 +32,12 @@ struct ClangFilesOptions
     // cache between backends.
     std::shared_ptr<hotc::TranslatorSession> session;
     std::vector<std::string> extra_flags; // added to the compile command
-    std::string work_dir = "hot_work"; // the .cpp and .so files go here
+    std::string work_dir = "hot_work"; // the .cpp, .o and .so files go here
+    // The directory of the generated .cpp files. Empty: the work dir, with a name from the .so.
+    // Non-empty: the .cpp is "<generated_dir>/<unit>.cpp" (the unit of the source, else the stem
+    // of its name). The "#line" name is then the same in each run, so the .cpp text is stable.
+    // Two backends that build the same unit at the same time must not share the directory.
+    std::string generated_dir;
     std::string slots_file; // empty: <work_dir>/slots.txt
     // True: the destructor of the backend removes work_dir (remove_scratch). The owner must give
     // a directory that no other backend uses.
@@ -84,8 +89,8 @@ public:
         return true;
     }
 
-    // Translates and compiles one script into "out_so". It writes the .cpp
-    // next to the .so. It does not load the library. The slot file changes only
+    // Translates, compiles and links one script into "out_so". It writes the .cpp next to the .so
+    // (or into generated_dir), and the .o and .d next to the .so. It does not load the library. The slot file changes only
     // when the compile succeeds. On failure, "error" has the diagnostics. "dependencies" (when not
     // null) gets the files that the translation read (TranslateResult::dependencies), also on failure.
     bool build(const ScriptSource& source, uint32_t generation, const std::string& out_so, std::string& error,
@@ -102,13 +107,19 @@ private:
     std::atomic<unsigned> epoch_{0}; // counts the fresh loads; it is in the name of the library
 };
 
-// The compile command of the backend for one generated .cpp and its .so. The backend and
-// the compile database (hotc --compile-commands) both use it, so the flags are the same.
+// The compile command of the backend for one generated .cpp and its object file. The backend
+// and the compile database (hotc --compile-commands) both use it, so the flags are the same.
+// The command has "-c" and, for a non-empty "depfile_path", "-MD -MF <depfile_path>".
 // With a host file system ("options.fs"), the files of the host go to "<work_dir>/vfs/<path>".
 // The command then adds "-I<work_dir>/vfs/<dir>" before each "-I<dir>", and one for
 // "script_dir" (the directory of the script; empty: none).
-std::vector<std::string> compile_command(const ClangFilesOptions& options, const std::string& cpp_path,
-    const std::string& out_so, const std::string& script_dir = std::string());
+std::vector<std::string> compile_object_command(const ClangFilesOptions& options, const std::string& cpp_path,
+    const std::string& obj_path, const std::string& depfile_path, const std::string& script_dir = std::string());
+
+// The link command of the backend: it makes the module "out_so" from the object file "obj_path".
+// It adds the import library of the host (host_import_library) after the object file.
+std::vector<std::string> link_module_command(
+    const ClangFilesOptions& options, const std::string& obj_path, const std::string& out_so);
 
 // One entry of a compile database (the format of clangd and CMake's compile_commands.json).
 struct CompileCommandEntry

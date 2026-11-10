@@ -1220,7 +1220,7 @@ void Server::send_generated(Doc& d, const std::string& cpp)
         co.resource_dir = e.resource_dir;
         co.std_version = e.std_version;
         co.extra_flags = e.extra_flags;
-        const std::vector<std::string> cmd = hot::compile_command(co, d.gen_path, d.gen_path + ".so");
+        const std::vector<std::string> cmd = hot::compile_object_command(co, d.gen_path, d.gen_path + ".o", std::string());
         clangd_->notify("workspace/didChangeConfiguration",
             {{"settings",
                 {{"compilationDatabaseChanges",

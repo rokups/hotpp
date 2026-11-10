@@ -61,7 +61,7 @@ hot_script_host(NAME engine TARGET engine
 How it works:
 
 - The server owns the text of each open `.hot` document. On each change it runs `hotc::analyze()`. It gets the parse errors, the facts (classes, members), the generated C++ and the source map.
-- It starts a stock `clangd` as a child process. It gives the generated C++ to `clangd` as the virtual file `<script>.hot.cpp`. The compile command comes from `hot::compile_command`, through `workspace/didChangeConfiguration`.
+- It starts a stock `clangd` as a child process. It gives the generated C++ to `clangd` as the virtual file `<script>.hot.cpp`. The compile command comes from `hot::compile_object_command`, through `workspace/didChangeConfiguration`.
 - It maps each position between the script and the generated C++ with the source map. A line without a segment uses the `#line` directives.
 - `hotc::rewrite_generated_names` and `hotc::rewrite_clang_message` change generated names to script names in hover text, diagnostics and completion labels.
 - JSON comes from `nlohmann_json` (CPM).
