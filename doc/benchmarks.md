@@ -473,3 +473,83 @@ The compile of the biggest unit (`Game/Game`: 50244 lines, 3.1 MB of C++) by han
 - The link is 2% of the build. The compile is the cost.
 - The headers alone take 6.0 s of the 14.9 s. The rest is the code of the unit.
 - A cache of the object file or of the `.so` can skip all of this for a unit that did not change.
+
+## Translate cost (BiteSizedWar)
+
+This section says where the translate time of the start-up goes. The translate sum is 154.2 s for 75 units. `Game/Game` takes 28.1 s of it.
+
+### Is the session shared?
+
+Yes. One `hotc::TranslatorSession` serves all units of a run. `ClangFilesBackend` creates it in its constructor (`src/runtime/clang_files_backend.cpp:236`). `translate()` passes it at `src/runtime/clang_files_backend.cpp:528`. `ScriptSystem::EnsureBackend` makes one backend (`rbfx-script/Plugins/Rbfx.Script.Core/ScriptSystem.cpp:535`).
+
+But the session does not help between units. The cache key is the flags, the directory and the native `using` lines of the unit (`src/translator/hotc_lib.cpp`, `session_bases`). A unit with other native imports has another key. It parses the native headers again. One `hotc` process with one session shows this (RelWithDebInfo `hotc`, same flags as the game, warm disk cache):
+
+| Call in one session | Time | `parse_count` |
+|---|---|---|
+| `Game/Game` (first) | 7674 ms | 1 |
+| `Game/WorldLayers` | 510 ms | 2 |
+| `Player/PlayerSettings` | 1541 ms | 3 |
+| `Game/Combatant` | 1495 ms | 4 |
+| `Game/WorldLayers` again | 1 ms | 4 |
+| a script with only the 43 native `using` lines of `Game/Game` | 2884 ms | 5 |
+
+Each new import set adds one libclang parse. A call with a known key takes 1 ms. The first unit is not much slower than the others. In the game log the cost is per unit: the 16 units below 50 lines take 0.9 s on average (median 0.93 s), the units of 50 to 150 lines take 1.6 s.
+
+### The game is built without optimization
+
+`libhotc_lib` is built with `g++ -g` and no `-O` in the game build (`compile_commands.json` of `BiteSizedWar/cmake-build/linux-gcc-x64-dll`). Only libclang is optimized. The same translate of `Game/Game` with the `hotc` of this repository:
+
+| Build of the translator | First call | Second call (warm session) |
+|---|---|---|
+| `-O2 -g` (clang) | 7.1 to 7.6 s | 3.1 to 3.2 s |
+| `-g` (clang, no `-O`) | 21.9 s | 17.7 s |
+| `-g` (g++, no `-O`), in the game | 28.1 s | not measured |
+
+So 21 s of the 28 s are the missing optimization. The time of libclang does not change (4.2 s).
+
+### Phases of `Game/Game`
+
+Temporary timers around the calls in `translate_impl` gave this split. The `-g` column is the no-`-O` build, which is close to the game.
+
+| Phase | `-O2` | `-g`, no `-O` | Share of 22.3 s |
+|---|---|---|---|
+| `analyze_param_use` (parameter analysis, `check.cpp`) | 2.5 s | 10.3 s | 46% |
+| of that, `ctx.for_class` in `ParamAnalysis::receiver_call` (4808 calls) | 2.0 s | 9.1 s | 41% |
+| `parse_structure` (96 calls: the prelude, the 53 imported scripts and the script) | 0.29 s | 5.7 s | 26% |
+| libclang parse of the native headers (`session_bases`) | 4.2 s | 4.4 s | 20% |
+| `lower_block` | 0.02 s | 0.14 s | 0.6% |
+| `check_nulls` and `lint_class` | 0.01 s | 0.04 s | 0.2% |
+| `check_class` | 0.005 s | 0.03 s | 0.1% |
+| `infer_const` | 0.006 s | 0.03 s | 0.1% |
+| `collect_native_queries` | 0.003 s | 0.02 s | 0.1% |
+| the rest (emit, the merge of imports, the types) | 0.8 s | 1.9 s | 8% |
+
+The no-`-O` run is 22.3 s, and the game takes 28.1 s with g++. Apply the shares to the 28 s.
+
+- The parameter analysis is the top cost. `ParamAnalysis::fields_written` runs for each parameter (639 top calls). For each call `o.F()` on another object it calls `ctx.for_class(cd)` for each script class that has a function `F`. This builds a `ParamContext` again every time (0.4 ms at `-O2`). The result does not depend on the parameter. Nothing caches it.
+- `nullcheck.cpp`, `const_infer.cpp`, `lower.cpp` and the other checks are below 1% together.
+
+### Growth with size
+
+The translate time of the 74 other units against the lines of the script (`HOT_TIMING` log, the `-g` g++ build):
+
+| Lines of the script | Units | Mean translate | Median |
+|---|---|---|---|
+| below 50 | 16 | 915 ms | 934 ms |
+| 50 to 149 | 20 | 1584 ms | 1612 ms |
+| 150 to 399 | 22 | 1487 ms | 1702 ms |
+| 400 to 899 | 11 | 2569 ms | 2720 ms |
+| 900 and more | 5 | 3750 ms | 3112 ms |
+
+A fit over these 74 units gives about 780 ms + 0.49 ms for each line + 80 ms for each native `using`. The floor is the libclang parse. The correlation with the number of `using` lines (0.83) is better than with the lines (0.72). `Game/Game` is far above the fit (about 2.7 s expected, 28.1 s measured). It has 53 imported scripts. The parse of the imports and the parameter analysis grow faster than the line count. The growth is probably more than linear in the number of script classes with the same function name.
+
+### The libclang part
+
+A script with only the 43 native `using` lines of `Game/Game` (no `.hot` imports) takes 2.9 to 3.7 s for the libclang parse. The full `Game/Game` takes 4.2 s, because its 53 imported scripts add native headers (137 `#include` in the probe, 87 Urho3D). The figure of about 400 ms in `doc/internals.md` is for a small header set. For the engine headers one parse costs 1.5 to 4 s. It is 20% of `Game/Game`. For the small units it is the main cost, and it runs again for each unit.
+
+### Recommendation
+
+1. Cache the `for_class` result in `ParamAnalysis` (`src/translator/check.cpp`, `receiver_call`). One `ParamContext` for each class per translate, or the set of fields that each function writes, each memoized. Expected gain: about 40% of the translate of `Game/Game` (about 11 s of 28 s), and most of the translate time of the big units.
+2. Build `hotc_lib` with `-O2` in the game build (the files backend, for the `Release` and `Debug` configs of the host). Expected gain: 3 to 4 times on all translate time (about 120 s of the 154 s, before change 1).
+3. Next: share the libclang parse between units (one parse of the union of the native headers, or a key of the flags only). Expected gain: 1 to 3 s for each unit, about 80 s of the 154 s.
+4. Last: cache the parse of an imported script by the hash of its text.
