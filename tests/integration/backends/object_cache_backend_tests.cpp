@@ -349,6 +349,29 @@ TEST(ObjectCacheBackend, CompileCommandsKeepsOldEntries)
     EXPECT_NE(json.find("UnitB.cpp"), std::string::npos);
 }
 
+// Two backends (two processes) run at the same time and add different units. Each write reads
+// the file again and merges it, so the file has the entries of both.
+TEST(ObjectCacheBackend, CompileCommandsMergesTwoLiveBackends)
+{
+    CleanEnv env;
+    TestScratch scratch;
+    const std::string cache = scratch.file("cache");
+    const std::string db = scratch.file("db");
+    const hot::ScriptSource a = {"calc.hot", script_text("7.0"), {}, "UnitA"};
+    const hot::ScriptSource b = {"calc.hot", script_text("8.0"), {}, "UnitB"};
+    const hot::ScriptSource c = {"calc.hot", script_text("9.0"), {}, "UnitC"};
+    auto first = make_backend(scratch, "work_a", cache, db);
+    auto second = make_backend(scratch, "work_b", cache, db);
+    EXPECT_EQ(load_and_run(*first, a), 7.0f);
+    EXPECT_EQ(load_and_run(*second, b), 8.0f);
+    EXPECT_EQ(load_and_run(*first, c), 9.0f);
+    const std::string json = read_file(fs::path(db) / "compile_commands.json");
+    EXPECT_EQ(count_text(json, "\"file\":"), 3u) << json;
+    EXPECT_NE(json.find("UnitA.cpp"), std::string::npos);
+    EXPECT_NE(json.find("UnitB.cpp"), std::string::npos);
+    EXPECT_NE(json.find("UnitC.cpp"), std::string::npos);
+}
+
 // An entry whose file is gone does not stay. A damaged database file gives an empty start.
 TEST(ObjectCacheBackend, CompileCommandsDropsMissingFiles)
 {

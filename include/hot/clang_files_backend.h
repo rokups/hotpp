@@ -157,10 +157,13 @@ private:
     LoadResult load_impl(const ScriptSource& source, uint32_t generation, LoadMode mode, bool use_module_cache);
     // Finds the compiler id for the cache key once. On a failure it turns the cache off.
     bool prepare_cache();
-    // Reads the old database at creation. A read error gives an empty list.
-    void load_compile_commands();
-    // Sets the entry of a unit and writes the database when its text changes. The caller holds
-    // "mutex_". "object" is the object file of the compile.
+    // Reads the database file. It gives the entries whose file exists and sets "text" to the text
+    // of the file. A read error or a damaged file gives an empty list.
+    std::map<std::string, CompileCommandEntry> read_compile_commands(std::string& text) const;
+    // Sets the entry of a unit. Then it reads the file again, merges the entries of the file (the
+    // entries of this backend win) and writes the result when its text changes. So two processes
+    // keep the entries of each other. The caller holds "mutex_". "object" is the object file.
+
     void record_compile_command(const std::string& unit, const std::string& script_dir, const std::string& object);
 
     ClangFilesOptions opt_;
@@ -169,8 +172,7 @@ private:
     std::string compiler_id_;
     bool compiler_id_done_ = false;
     bool link_cache_ = false; // the module cache (cache_ is on and HOT_LINK_CACHE is not 0)
-    std::map<std::string, CompileCommandEntry> commands_; // by "file"
-    std::string commands_text_; // the text of the database file (read or written)
+    std::map<std::string, CompileCommandEntry> commands_; // the entries of this backend, by "file"
     std::mutex mutex_; // one build at a time: the slot file is shared
     std::atomic<unsigned> sequence_{0};
     std::atomic<unsigned> epoch_{0}; // counts the fresh loads; it is in the name of the library

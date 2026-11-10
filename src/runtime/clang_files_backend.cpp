@@ -257,7 +257,6 @@ ClangFilesBackend::ClangFilesBackend(ClangFilesOptions options)
         if (opt_.generated_dir.empty())
             opt_.generated_dir = (fs::path(opt_.cache_dir) / "src").string();
     }
-    load_compile_commands();
 }
 
 ClangFilesBackend::~ClangFilesBackend()
@@ -745,22 +744,21 @@ fs::path absolute_path(const std::string& path)
 
 } // namespace
 
-void ClangFilesBackend::load_compile_commands()
+std::map<std::string, CompileCommandEntry> ClangFilesBackend::read_compile_commands(std::string& text) const
 {
-    if (opt_.compile_commands_dir.empty())
-        return;
+    std::map<std::string, CompileCommandEntry> result;
+    text.clear();
     const std::string path = (fs::path(opt_.compile_commands_dir) / "compile_commands.json").string();
-    std::string text;
     if (!read_text(path, text))
-        return;
-    commands_text_ = text; // the text on disk: an equal new text needs no write
+        return result;
     std::vector<CompileCommandEntry> old;
     if (!JsonReader(text).parse_entries(old))
-        return; // a damaged file: start empty
+        return result; // a damaged file: start empty
     std::error_code ec;
     for (CompileCommandEntry& e : old)
         if (!e.file.empty() && fs::exists(e.file, ec))
-            commands_[e.file] = std::move(e);
+            result[e.file] = std::move(e);
+    return result;
 }
 
 void ClangFilesBackend::record_compile_command(
@@ -785,18 +783,26 @@ void ClangFilesBackend::record_compile_command(
                           [&](const std::string& a) { return a.compare(0, mirror_arg.size(), mirror_arg) == 0; }),
         e.arguments.end());
     commands_[e.file] = std::move(e);
+    // An entry whose generated file is gone (a removed unit) goes.
+    for (auto it = commands_.begin(); it != commands_.end();)
+        it = fs::exists(it->first, ec) ? std::next(it) : commands_.erase(it);
+    // Another process can write the file after the last read. The merge keeps its entries. The
+    // window between the read and the rename is short; a lost entry comes back at its next build.
+    std::string old_text;
+    std::map<std::string, CompileCommandEntry> merged = read_compile_commands(old_text);
+    for (const auto& [file, entry] : commands_)
+        merged[file] = entry;
     std::vector<CompileCommandEntry> list;
-    for (const auto& [file, entry] : commands_) // the map order is the order of "file"
+    for (const auto& [file, entry] : merged) // the map order is the order of "file"
         list.push_back(entry);
     const std::string text = compile_commands_json(list);
-    if (text == commands_text_)
+    if (text == old_text)
         return;
     const fs::path dir(opt_.compile_commands_dir);
     fs::create_directories(dir, ec);
-    // A write failure has no effect on the build. The next build tries again.
-    if (write_text_replace((dir / "compile_commands.json").string(), text))
-        commands_text_ = text;
-    else
+    // A write failure has no effect on the build. The next build tries again. The write is atomic
+    // (a temporary file and a rename).
+    if (!write_text_replace((dir / "compile_commands.json").string(), text))
         std::fprintf(stderr, "[script] WARNING: cannot write %s\n", (dir / "compile_commands.json").string().c_str());
 }
 
