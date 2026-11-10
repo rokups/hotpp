@@ -3293,7 +3293,7 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
     const std::function<void(std::map<std::string, BaseInfo>&, std::vector<FileStamp>&, Hierarchy&, FactMap&,
         std::map<std::string, std::string>&)>& parse,
     Hierarchy& hierarchy, FactMap& facts_out, std::map<std::string, std::string>& answers_out, hot::FileSystem* fs,
-    std::vector<std::string>* deps)
+    std::vector<std::string>* deps, std::vector<std::string>* shadows)
 {
     std::lock_guard<std::mutex> lock(S.mutex);
     auto& e = S.entries[key];
@@ -3337,11 +3337,17 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
         e.facts = std::move(facts);
         e.queries = std::move(answers);
     }
-    if (deps)
-        for (const FileStamp& f : e.files)
-            // A stamp of a missing file (a shadow header) or of a system header is no dependency.
-            if (!f.system && (f.virt || f.mtime_ns >= 0))
-                deps->push_back(f.path); // the same on a cache hit and a miss
+    for (const FileStamp& f : e.files)
+    {
+        if (f.system)
+            continue; // a system header is no dependency
+        // A stamp of a missing file is a shadow path, not a dependency.
+        const bool exists = f.virt || f.mtime_ns >= 0;
+        if (deps && exists)
+            deps->push_back(f.path); // the same on a cache hit and a miss
+        if (shadows && !exists)
+            shadows->push_back(f.path);
+    }
     hierarchy = e.hierarchy;
     for (const FactReq& r : reqs)
         facts_out[r.type] = e.facts[r.type];
@@ -4911,7 +4917,7 @@ void translate_impl(
         [&](std::map<std::string, BaseInfo>& out, std::vector<FileStamp>& files, Hierarchy& h, FactMap& fm,
             std::map<std::string, std::string>& qa)
     { parse_bases(probe, args, base_names, import_paths, out, files, h, reqs, fm, query_texts, qa, res.virtual_files, fs); },
-        hier, facts, query_answers, fs, &res.dependencies);
+        hier, facts, query_answers, fs, &res.dependencies, &res.shadow_paths);
     // A stub weak source gets its traits only when the headers declare the stub name as written.
     // Else a pointer field of the class is not a CheckedPtr (the borrowed finding applies).
     if (!sc.is_cpp)
@@ -10394,6 +10400,11 @@ bool find_import(const TranslateOptions& in, const std::string& path, const std:
         }
     }
     return false;
+}
+
+bool shadow_exists(hot::FileSystem* fs, const std::string& path)
+{
+    return (fs && host_stat(*fs, path).exists) || file_times(path).exists;
 }
 
 uint64_t text_hash(const std::string& text)

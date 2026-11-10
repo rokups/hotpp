@@ -7,6 +7,7 @@
 #include "hot/backend.h"
 #include "hot/clang_files_backend.h"
 #include "hot/translate_cache.h"
+#include "hot/vfs.h"
 #include "support/scratch_dir.h"
 #include "support/test_env.h"
 
@@ -16,7 +17,9 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 
 namespace
@@ -356,4 +359,192 @@ TEST(TranslateCacheBackend, EnvironmentTurnsOnlyTheTranslateCacheOff)
     EXPECT_EQ(backend->cache_stats().translate_hits, 0u);
     EXPECT_EQ(backend->cache_stats().translate_misses, 0u);
     EXPECT_FALSE(fs::exists(fs::path(cache) / "tr"));
+}
+
+// The compiler id is in the key of the translate cache. The compiler id has the variables that
+// change the include path of the compiler and of libclang. A changed variable is a miss.
+TEST(TranslateCacheBackend, IncludePathVariablesArePartOfTheKey)
+{
+    EnvGuard on("HOT_CACHE", "1");
+    EnvGuard tr_on("HOT_TRANSLATE_CACHE", nullptr);
+    EnvGuard cpath("CPATH", nullptr);
+    EnvGuard cplus("CPLUS_INCLUDE_PATH", nullptr);
+    TestScratch scratch;
+    const std::string cache = scratch.file("cache");
+    const std::string extra = scratch.file("extra_inc");
+    fs::create_directories(extra);
+    const hot::ScriptSource source = {"calc.hot", kActorScript};
+    ASSERT_TRUE(make_backend(scratch, "w1", cache)->load(source, 1));
+    int n = 2;
+    for (const char* name : {"CPATH", "CPLUS_INCLUDE_PATH"})
+    {
+        EnvGuard changed(name, extra.c_str());
+        auto backend = make_backend(scratch, "w" + std::to_string(n++), cache);
+        ASSERT_TRUE(backend->load(source, 1)) << name;
+        EXPECT_EQ(backend->cache_stats().translate_hits, 0u) << name;
+        EXPECT_EQ(backend->cache_stats().translate_misses, 1u) << name;
+    }
+    auto backend = make_backend(scratch, "w9", cache);
+    ASSERT_TRUE(backend->load(source, 1));
+    EXPECT_EQ(backend->cache_stats().translate_hits, 1u);
+}
+
+namespace
+{
+
+const char* kFooHeader = "#pragma once\nstruct Foo\n{\n    virtual ~Foo() = default;\n"
+                         "    virtual int Power() { return 0; }\n};\n";
+const char* kOtherFoo = "#pragma once\nstruct Foo\n{\n    virtual ~Foo() = default;\n"
+                        "    virtual float Power() { return 0.0f; }\n};\n";
+const char* kFooScript = "using \"Foo.h\";\nclass Kid : Foo {\n    override int Power() { return 2; }\n}\n";
+
+// A script in "src" and the include dirs "a" and "b". Only "b" has the header "Foo.h".
+struct ShadowFixture
+{
+    TestScratch scratch;
+    std::string src, a, b, cache;
+    hotc::TranslateOptions options;
+
+    ShadowFixture()
+    {
+        src = scratch.file("src");
+        a = scratch.file("a");
+        b = scratch.file("b");
+        cache = scratch.file("cache");
+        for (const std::string& d : {src, a, b})
+            fs::create_directories(d);
+        write_file(b + "/Foo.h", kFooHeader);
+        make_old(b + "/Foo.h");
+        options.script_text = kFooScript;
+        options.script_name = src + "/main.hot";
+        options.generation = 1;
+        options.include_dirs = {a, b};
+    }
+
+    void fill(hot::TranslateCache& c, const hotc::TranslateOptions& o) const
+    {
+        const auto started = fs::file_time_type::clock::now();
+        const hotc::TranslateResult r = hotc::translate(o);
+        ASSERT_TRUE(r.ok) << r.diagnostics;
+        std::string error;
+        ASSERT_TRUE(c.store(o, r, started, error)) << error;
+        ASSERT_TRUE(c.lookup(o).has_value());
+    }
+};
+
+// A file system in memory. A mutex makes it thread safe, as the interface requires.
+class MemoryFs final : public hot::FileSystem
+{
+public:
+    bool read(const std::string& path, std::string& out) override
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const auto it = files_.find(path);
+        if (it == files_.end())
+            return false;
+        out = it->second;
+        return true;
+    }
+    hot::VfsStat stat(const std::string& path) override
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return {files_.count(path) != 0, 1};
+    }
+    void set(const std::string& path, const std::string& text)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        files_[path] = text;
+    }
+
+private:
+    std::mutex mutex_;
+    std::map<std::string, std::string> files_;
+};
+
+} // namespace
+
+// A new header earlier in the include path hides the header that the parse used: a miss.
+TEST(TranslateCache, NewShadowHeaderInAnEarlierIncludeDirMisses)
+{
+    ShadowFixture f;
+    hot::TranslateCache c(f.cache);
+    f.fill(c, f.options);
+    write_file(f.a + "/Foo.h", kOtherFoo);
+    make_old(f.a + "/Foo.h");
+    EXPECT_FALSE(c.lookup(f.options).has_value());
+}
+
+// The directory of the script comes first in the include path.
+TEST(TranslateCache, NewShadowHeaderInTheScriptDirMisses)
+{
+    ShadowFixture f;
+    hot::TranslateCache c(f.cache);
+    f.fill(c, f.options);
+    write_file(f.src + "/Foo.h", kOtherFoo);
+    make_old(f.src + "/Foo.h");
+    EXPECT_FALSE(c.lookup(f.options).has_value());
+}
+
+// A new file of the host file system also hides the disk header.
+TEST(TranslateCache, NewShadowHeaderInTheHostFileSystemMisses)
+{
+    ShadowFixture f;
+    auto memory = std::make_shared<MemoryFs>();
+    hotc::TranslateOptions o = f.options;
+    o.fs = memory;
+    hot::TranslateCache c(f.cache);
+    f.fill(c, o);
+    memory->set(f.a + "/Foo.h", kOtherFoo);
+    EXPECT_FALSE(c.lookup(o).has_value());
+}
+
+// A header that a header includes has shadow paths too. "Foo.h" in "b" includes "Bar.h" in
+// "c". A search for "Bar.h" tries "b", then the include path: "src", "a", "c".
+TEST(TranslateCache, NewShadowOfANestedHeaderMisses)
+{
+    ShadowFixture f;
+    const std::string c_dir = f.scratch.file("c");
+    fs::create_directories(c_dir);
+    write_file(f.b + "/Foo.h", "#pragma once\n#include \"Bar.h\"\nstruct Foo : Bar\n{\n};\n");
+    write_file(c_dir + "/Bar.h", "#pragma once\nstruct Bar\n{\n    virtual ~Bar() = default;\n"
+                                 "    virtual int Power() { return 0; }\n};\n");
+    make_old(f.b + "/Foo.h");
+    make_old(c_dir + "/Bar.h");
+    hotc::TranslateOptions o = f.options;
+    o.include_dirs = {f.a, f.b, c_dir};
+    hot::TranslateCache c(f.cache);
+    f.fill(c, o);
+    write_file(f.a + "/Bar.h", "#pragma once\nstruct Bar\n{\n    virtual ~Bar() = default;\n"
+                               "    virtual float Power() { return 0.0f; }\n};\n");
+    make_old(f.a + "/Bar.h");
+    EXPECT_FALSE(c.lookup(o).has_value());
+}
+
+// A new script earlier in the search path hides the imported script: a miss.
+TEST(TranslateCache, NewShadowImportMisses)
+{
+    ShadowFixture f;
+    write_file(f.b + "/base.hot", "using \"Foo.h\";\nclass Base : Foo {\n    override int Power() { return 1; }\n}\n");
+    hotc::TranslateOptions o = f.options;
+    o.script_text = "using \"Foo.h\";\nusing \"base.hot\";\nclass Kid : Base {\n    override int Power() { return 2; }\n}\n";
+    hot::TranslateCache c(f.cache);
+    f.fill(c, o);
+    write_file(f.a + "/base.hot", "using \"Foo.h\";\nclass Base : Foo {\n    override int Power() { return 3; }\n}\n");
+    EXPECT_FALSE(c.lookup(o).has_value());
+}
+
+// The script imports "b1.hot", "b1.hot" imports "c1.hot". An edit of "c1.hot" is a miss.
+TEST(TranslateCache, EditedTransitiveImportMisses)
+{
+    ShadowFixture f;
+    const std::string c1 = f.b + "/c1.hot";
+    write_file(c1, "using \"Foo.h\";\nclass C1 : Foo {\n    override int Power() { return 1; }\n}\n");
+    write_file(f.b + "/b1.hot", "using \"Foo.h\";\nusing \"c1.hot\";\nclass B1 : C1 {\n"
+                                "    override int Power() { return 2; }\n}\n");
+    hotc::TranslateOptions o = f.options;
+    o.script_text = "using \"Foo.h\";\nusing \"b1.hot\";\nclass Kid : B1 {\n    override int Power() { return 3; }\n}\n";
+    hot::TranslateCache c(f.cache);
+    f.fill(c, o);
+    write_file(c1, "using \"Foo.h\";\nclass C1 : Foo {\n    override int Power() { return 4; }\n}\n");
+    EXPECT_FALSE(c.lookup(o).has_value());
 }

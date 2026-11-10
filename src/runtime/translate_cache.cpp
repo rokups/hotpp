@@ -25,7 +25,7 @@ using namespace cache_io;
 namespace
 {
 
-constexpr int entry_version = 1;
+constexpr int entry_version = 2;
 constexpr uint64_t second_seed = 0x9e3779b97f4a7c15ULL;
 
 // ------------------------------------------------------------ The fields of TranslateOptions
@@ -408,6 +408,14 @@ std::optional<hotc::TranslateResult> TranslateCache::lookup_entry(const hotc::Tr
             return std::nullopt;
     }
 
+    // No file is at a shadow path: the header search finds the same headers.
+    std::vector<std::string> shadows;
+    if (!get_list(m, "shadows", shadows))
+        return std::nullopt;
+    for (const std::string& s : shadows)
+        if (hotc::shadow_exists(o.fs.get(), s))
+            return std::nullopt;
+
     // The payload files have the hashes of the store.
     std::string cpp, data_text;
     Json data;
@@ -491,6 +499,7 @@ std::optional<hotc::TranslateResult> TranslateCache::lookup_entry(const hotc::Tr
     r.import_lookups = std::move(lookups);
     r.slot_classes = std::move(classes);
     r.slot_keys = std::move(keys);
+    r.shadow_paths = std::move(shadows);
 
     // The time of the manifest is the age of the entry for ObjectCache::trim.
     std::error_code touch_ec;
@@ -582,7 +591,7 @@ bool TranslateCache::store(const hotc::TranslateOptions& o, const hotc::Translat
         man.end(']');
         // A header that changed after the start of the translate (or near it, with a coarse file
         // time) can differ from the text of the parse.
-        const fs::file_time_type newest = started - std::chrono::seconds(2);
+        const int64_t newest = to_ns(started) - int64_t(2000000000);
         man.key("deps");
         man.begin('[');
         for (const std::string& d : r.dependencies)
@@ -606,7 +615,7 @@ bool TranslateCache::store(const hotc::TranslateOptions& o, const hotc::Translat
                     error = "cannot stat '" + d + "'";
                     return false;
                 }
-                if (mtime > to_ns(newest))
+                if (mtime > newest)
                 {
                     error = "the header '" + d + "' changed during the translate";
                     return false;
@@ -618,6 +627,14 @@ bool TranslateCache::store(const hotc::TranslateOptions& o, const hotc::Translat
             man.end('}');
         }
         man.end(']');
+        // A file at a shadow path now hides a header of the parse.
+        for (const std::string& s : r.shadow_paths)
+            if (hotc::shadow_exists(o.fs.get(), s))
+            {
+                error = "the file '" + s + "' hides a header of the parse";
+                return false;
+            }
+        man.list("shadows", r.shadow_paths);
 
         Writer data;
         data.begin('{');

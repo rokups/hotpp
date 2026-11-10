@@ -11,8 +11,10 @@
 //   <dir>/tr/<hex>.json  the manifest: the checks of a lookup and the hashes of the two files
 // The key (the hex name) has the translator build id and the translate options, but not the slot
 // text. The manifest has the rest: the imported scripts (the search and the hash of the text),
-// the stamps of the native headers, the files of the host file system and the digest of the slot
-// lines of the classes. A lookup does each check again. A check that cannot run is a miss.
+// the stamps of the native headers, the files of the host file system, the shadow paths and the
+// digest of the slot lines of the classes. A shadow path is a path that a header search tried
+// before it found the header. A file at a shadow path is a miss: it hides a header of the parse.
+// A lookup does each check again. A check that cannot run is a miss.
 // A store writes the manifest last. ObjectCache::trim also trims these entries.
 #pragma once
 

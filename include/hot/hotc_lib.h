@@ -209,6 +209,10 @@ struct TranslateResult
     // system or a host uses them to know when to translate again. There is no duplicate. The
     // order is stable. The list is valid when ok is true.
     std::vector<std::string> dependencies;
+    // The shadow paths: the paths that a header search tried before it found the header. These
+    // files did not exist at the parse. A new file at one of these paths hides the header that
+    // the parse used. There is no duplicate. The list is valid when ok is true.
+    std::vector<std::string> shadow_paths;
     // The interface of the module (the script): the text of the declarations that importers
     // see. The names with "private" are not in it. A body change does not change it.
     std::string iface;
@@ -392,6 +396,10 @@ const char* translator_build_id();
 // the unit name. It returns false when no file has the name.
 bool find_import(const TranslateOptions& options, const std::string& path, const std::string& from_dir,
     const std::string& from_unit_dir, std::string& text, std::string& file, std::string& unit);
+
+// True when a file is at a shadow path (TranslateResult::shadow_paths). The test is the same as
+// the header search of the parse: "fs" (can be null) with the normal spellings, then the disk.
+bool shadow_exists(hot::FileSystem* fs, const std::string& path);
 
 // The 64-bit hash of a text that ImportLookup::text_hash holds.
 uint64_t text_hash(const std::string& text);
