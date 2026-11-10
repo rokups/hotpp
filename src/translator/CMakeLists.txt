@@ -91,6 +91,20 @@ else()
     target_compile_definitions(hotc_lib PRIVATE HOT_PARSE_TARGET="${HOT_HOTC_TARGET}"
         HOT_PARSE_SYSROOT="${HOT_SCRIPT_SYSROOT}")
 endif()
+# HOT_TRANSLATOR_OPTIMIZE: a Debug build compiles the translator with optimization and keeps the
+# debug information. An unoptimized translator is about 4 times slower, and each script translate
+# runs in it. Other configurations are not changed. Set the option OFF for a sanitizer run, for
+# coverage or to step through the translator in a debugger.
+option(HOT_TRANSLATOR_OPTIMIZE "Compile the translator with optimization in Debug builds" ON)
+if(HOT_TRANSLATOR_OPTIMIZE)
+    if(MSVC)
+        # The run-time checks of the Debug flags do not work with /O2.
+        string(REGEX REPLACE "/RTC[1csu]+" "" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
+        target_compile_options(hotc_lib PRIVATE "$<$<CONFIG:Debug>:/O2>")
+    else()
+        target_compile_options(hotc_lib PRIVATE "$<$<CONFIG:Debug>:-O2>")
+    endif()
+endif()
 add_library(hot::hotc_lib ALIAS hotc_lib)
 
 # The DLL of libclang (Windows, HOT_LIBCLANG_DLL from cmake/HotDownloadLlvm.cmake). The loader finds it
