@@ -905,6 +905,158 @@ std::string module_interface(const Script& sc, const std::string& text)
     return o;
 }
 
+// The import view of a parsed imported script (hotc::import_view). "text" is the parsed text: the
+// file text starts at the byte offset "base". The view has these parts:
+//   - the file text with the masked bodies removed: each other byte, each comment and each
+//     declaration of the file is in it;
+//   - the interface text: it has the facts that the parse gets from a body (ClassDef::bare_this);
+//   - the module attributes, the generic names and the array template of the parse;
+//   - the offset, the line and the column of each item that keeps its position in the importer
+//     output, or in its warnings: the structs, the enums, the constants, the aliases, the
+//     static_asserts, the chunks, the stubs, the interfaces and the module attribute lists.
+// A masked range is a body that the importer drops: a method, a constructor, a destructor or an
+// accessor of a class, or a free function. A pinned position in a range keeps the range.
+hotc::ImportView import_view_of(
+    const Script& sc, const std::string& text, uint32_t base, const hotc::LineMap& map, std::string_view array_tpl)
+{
+    std::vector<std::pair<uint32_t, uint32_t>> spans;
+    auto mask = [&](Span sp)
+    {
+        // An absent body has the span 0..0. A real body starts after its "{".
+        if (!(sp.begin > base && sp.end >= sp.begin && sp.end <= text.size()))
+            return;
+        // The range also has the "{" and the white space before it and before the body: an
+        // edit can put the "{" on its own line.
+        size_t b = sp.begin;
+        auto blank = [&](char ch) { return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r'; };
+        while (b > base && blank(text[b - 1]))
+            --b;
+        if (b > base && text[b - 1] == '{')
+        {
+            --b;
+            while (b > base && blank(text[b - 1]))
+                --b;
+        }
+        spans.emplace_back(static_cast<uint32_t>(b), static_cast<uint32_t>(sp.end));
+    };
+    for (const ClassDef& c : sc.classes)
+    {
+        if (c.is_value)
+            continue;
+        for (const Method& m : c.methods)
+            mask(m.body_span);
+        for (const Method& m : c.statics)
+            mask(m.body_span);
+        for (const Method& m : c.dtors)
+            mask(m.body_span);
+        for (const hotc::ast::Ctor& k : c.ctors)
+            mask(k.body_span);
+        for (const hotc::ast::Property& pr : c.props)
+        {
+            mask(pr.get_span);
+            mask(pr.set_span);
+        }
+    }
+    for (const Method& f : sc.fns)
+        mask(f.body_span);
+
+    std::string pins;
+    std::vector<uint32_t> pinned;
+    auto pin = [&](const char* tag, uint32_t pos, int line)
+    {
+        pinned.push_back(pos);
+        const uint32_t rel = pos >= base ? pos - base : 0;
+        pins += std::string(tag) + " " + std::to_string(rel) + " " + std::to_string(map.line(pos)) + ":"
+            + std::to_string(map.col(pos)) + " " + std::to_string(line) + "\n";
+    };
+    for (const ClassDef& c : sc.classes)
+    {
+        if (c.is_value)
+            pin("struct", c.pos, c.line);
+        for (const Field& f : c.consts)
+            pin("class-const", f.pos, f.line);
+        for (const Field& f : c.svars)
+            pin("class-var", f.pos, f.line);
+        for (const hotc::ast::TypeAlias& a : c.aliases)
+            pin("class-alias", a.pos, a.line);
+        for (const hotc::ast::StaticAssert& a : c.static_asserts)
+            pin("class-assert", a.pos, a.line);
+    }
+    for (const hotc::ast::EnumDef& e : sc.enums)
+        pin("enum", e.pos, e.line);
+    for (const Field& f : sc.consts)
+        pin("const", f.pos, f.line);
+    for (const hotc::ast::TypeAlias& a : sc.aliases)
+        pin("alias", a.pos, a.line);
+    for (const hotc::ast::StaticAssert& a : sc.static_asserts)
+        pin("assert", a.pos, a.line);
+    for (const Script::Chunk& ch : sc.chunks)
+        pin("chunk", ch.pos, ch.line);
+    for (const Stub& st : sc.stubs)
+        pin("stub", st.pos, st.line);
+    for (const Stub& st : sc.attribute_classes)
+        pin("attribute-class", st.pos, st.line);
+    for (const hotc::ast::InterfaceDef& d : sc.interfaces)
+        pin("interface", d.pos, d.line);
+    for (const hotc::ast::ModuleAttrs& m : sc.module_attrs)
+        pin("attrs", m.pos, m.line);
+
+    // The ranges in text order. Two instantiations of one generic have the same range. A range in
+    // a range joins it. A range with a pinned position is not masked.
+    std::sort(spans.begin(), spans.end());
+    std::vector<std::pair<uint32_t, uint32_t>> merged;
+    for (const auto& s : spans)
+    {
+        if (!merged.empty() && s.first < merged.back().second)
+            merged.back().second = std::max(merged.back().second, s.second);
+        else if (!merged.empty() && s == merged.back())
+            continue;
+        else
+            merged.push_back(s);
+    }
+    merged.erase(std::remove_if(merged.begin(), merged.end(),
+                     [&](const std::pair<uint32_t, uint32_t>& s)
+                     {
+                         return std::any_of(pinned.begin(), pinned.end(),
+                             [&](uint32_t p) { return p >= s.first && p < s.second; });
+                     }),
+        merged.end());
+
+    std::string v = "hot-import-view 1\n";
+    hotc::ImportView out;
+    size_t at = base;
+    auto chunk = [&](size_t end)
+    {
+        v += std::to_string(end - at) + ":" + text.substr(at, end - at) + "\n";
+    };
+    for (const auto& [b, e] : merged)
+    {
+        chunk(b);
+        v += "<masked>\n";
+        out.masked.push_back(b - base);
+        out.masked.push_back(e - base);
+        at = e;
+    }
+    chunk(text.size());
+    v += "interface\n" + module_interface(sc, text);
+    v += "pins\n" + pins;
+    v += "array " + std::string(array_tpl) + "\n";
+    for (const hotc::ast::ModuleAttrs& m : sc.module_attrs)
+    {
+        v += "attrs " + std::to_string(m.has_std) + " " + m.std_ns + " " + std::to_string(m.has_array) + " "
+            + m.array_tpl;
+        for (const std::string& l : m.libs)
+            v += " lib " + l;
+        v += "\n";
+    }
+    for (const std::string& g : sc.generic_names)
+        v += "generic " + g + "\n";
+    for (const auto& [a, b] : sc.generic_display)
+        v += "instance " + a + " " + b + "\n";
+    out.hash = hotc::text_hash(v);
+    return out;
+}
+
 // ----------------------------------------------------------------- libclang
 std::string cxs(CXString s)
 {
@@ -3793,11 +3945,18 @@ void translate_impl(
         {
             if (!hotc::find_import(in, path, from_dir, from_unit_dir, text, file, unit))
                 return false;
-            res.import_lookups.push_back({path, from_dir, from_unit_dir, file, hotc::text_hash(text)});
+            hotc::ImportLookup l;
+            l.path = path;
+            l.from_dir = from_dir;
+            l.from_unit_dir = from_unit_dir;
+            l.file = file;
+            l.text_hash = hotc::text_hash(text);
+            res.import_lookups.push_back(std::move(l));
             return true;
         };
         // The main script is in the set: an import cycle back to it does not read it again.
         std::set<std::string> seen{opt.input, normal_path(opt.input)};
+        std::map<std::string, hotc::ImportView> views; // by the normal path of the file
         // An import path that names the main script (relative to its folder) is the main script too.
         auto is_main_script = [&](const std::string& path)
         {
@@ -3919,6 +4078,8 @@ void translate_impl(
                 // the list too: the importer copies its classes and structs, so a change of them
                 // makes the importer stale.
                 res.import_hashes.emplace_back(unit, hash_text(module_interface(is, import_texts.back())));
+                // The import view: a translation cache keeps its entry when the view stays the same.
+                views[normal_path(file)] = import_view_of(is, import_texts.back(), base, map, array_tpl);
                 // The module variables, the convert hooks and the free functions of the import stay in
                 // their own module: the importer gets no copy of them. A direct import gives the
                 // declarations of the public ones. The import is not transitive.
@@ -3978,6 +4139,14 @@ void translate_impl(
             ims = std::move(keep);
         };
         visit_imports(sc.imports, dir_of(opt.input), dir_of(opt.unit));
+        // Each search that found a parsed import gets its view. A search of the main script gets none.
+        for (hotc::ImportLookup& l : res.import_lookups)
+            if (const auto it = views.find(normal_path(l.file)); it != views.end())
+            {
+                l.view_hash = it->second.hash;
+                l.view_masked = it->second.masked;
+                l.array_tpl = array_tpl;
+            }
         if (!seen.empty())
         {
             for (const Import& im : sc.imports)
@@ -10465,6 +10634,41 @@ bool find_import(const TranslateOptions& in, const std::string& path, const std:
 bool shadow_exists(hot::FileSystem* fs, const std::string& path, bool disk)
 {
     return (fs && host_stat(*fs, path).exists) || (disk && file_times(path).exists);
+}
+
+std::optional<ImportView> import_view(const std::string& text, const std::string& array_tpl)
+{
+    // The parse writes the state of the thread. A translate can be in progress on it.
+    hotc::Diagnostics diag;
+    std::vector<std::pair<std::string, std::string>> generic_display;
+    std::swap(diag, g_diag);
+    std::swap(generic_display, g_generic_display);
+    std::optional<ImportView> out;
+    try
+    {
+        const hotc::LineMap map(text);
+        const Script sc = parse_structure(text, map, array_tpl);
+        out = import_view_of(sc, text, 0, map, array_tpl);
+    }
+    catch (const TranslateAbort&)
+    {
+        out.reset();
+    }
+    catch (const std::exception&)
+    {
+        out.reset();
+    }
+    std::swap(diag, g_diag);
+    std::swap(generic_display, g_generic_display);
+    return out;
+}
+
+std::optional<uint64_t> import_view_hash(const std::string& text, const std::string& array_tpl)
+{
+    const std::optional<ImportView> v = import_view(text, array_tpl);
+    if (!v)
+        return std::nullopt;
+    return v->hash;
 }
 
 uint64_t text_hash(const std::string& text)

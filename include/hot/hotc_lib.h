@@ -176,7 +176,29 @@ struct ImportLookup
     std::string path, from_dir, from_unit_dir;
     std::string file;
     uint64_t text_hash = 0;
+    // The import view of the text (hotc::import_view): no value when the translation did not parse
+    // the file as an import. "array_tpl" is the array template of the parse. "view_masked" has
+    // the masked byte ranges of the text as begin and end pairs.
+    std::optional<uint64_t> view_hash;
+    std::string array_tpl;
+    std::vector<uint32_t> view_masked;
 };
+
+// The import view of an imported script: all the parts of its text that the output of an
+// importer can use. The bodies of the class methods, constructors, destructors, accessors and
+// free functions are masked: an importer gets no copy of them. Each part that keeps a position
+// of the import in the importer output also has its position in the view. A translation cache
+// can thus use an entry after a body edit of an import when the view hash stays the same.
+struct ImportView
+{
+    uint64_t hash = 0;
+    std::vector<uint32_t> masked; // the masked byte ranges: begin and end pairs, in text order
+};
+
+// The view of "text", parsed with the array template "array_tpl" of the importer. No value when
+// the parse fails. The diagnostics of the parse are not kept.
+std::optional<ImportView> import_view(const std::string& text, const std::string& array_tpl);
+std::optional<uint64_t> import_view_hash(const std::string& text, const std::string& array_tpl);
 
 struct TranslateResult
 {
