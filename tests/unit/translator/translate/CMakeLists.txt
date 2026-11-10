@@ -34,6 +34,7 @@ add_executable(unit_translator_translate_tests
     script_attribute_translation_tests.cpp
     import_translation_tests.cpp
     script_import_translation_tests.cpp
+    import_stable_text_translation_tests.cpp
     inherited_handle_translation_tests.cpp
     lambda_translation_tests.cpp
     generated_name_translation_tests.cpp

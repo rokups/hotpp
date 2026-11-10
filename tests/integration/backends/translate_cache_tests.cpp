@@ -196,6 +196,40 @@ TEST(TranslateCache, EditedImportMisses)
     EXPECT_FALSE(c.lookup(f.options).has_value());
 }
 
+// An importer stays a hit after a body edit of its import, and the hit has the text of a new
+// translation. "edited" is the new text of the import. A4 enables the two tests below: the
+// lookup must check the interface of the import, not its text.
+void expect_importer_hit(const std::string& edited)
+{
+    Fixture f;
+    hot::TranslateCache c(f.cache);
+    f.fill(c, f.options);
+    write_file(f.base, edited);
+    const hotc::TranslateResult real = f.translate(f.options);
+    const std::optional<hotc::TranslateResult> hit = c.lookup(f.options);
+    ASSERT_TRUE(hit.has_value());
+    EXPECT_EQ(hit->cpp, real.cpp);
+    EXPECT_EQ(hit->warnings, real.warnings);
+    EXPECT_EQ(hit->slots_out, real.slots_out);
+    EXPECT_EQ(hit->iface_hash, real.iface_hash);
+}
+
+// The edit keeps the size of the body: no line of the import moves.
+TEST(TranslateCache, DISABLED_ImporterHitsAfterABodyEditOfAnImport)
+{
+    std::string edited = kBase;
+    edited.replace(edited.find("return 1; }\n}"), 9, "return 7;");
+    expect_importer_hit(edited);
+}
+
+// The edit adds lines to the first body: the later method moves.
+TEST(TranslateCache, DISABLED_ImporterHitsAfterABodyEditThatAddsLines)
+{
+    std::string edited = kBase;
+    edited.replace(edited.find("{ return 1; }"), 13, "\n    {\n        int t = 1;\n        return t;\n    }");
+    expect_importer_hit(edited);
+}
+
 TEST(TranslateCache, TouchedHeaderMisses)
 {
     Fixture f;

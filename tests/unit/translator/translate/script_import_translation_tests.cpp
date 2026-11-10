@@ -39,7 +39,8 @@ hotc::TranslateOptions options(const TempDir& dir, const std::string& parent)
     return o;
 }
 
-// The child derives from the class of the imported module. The parent code names its own file.
+// The child derives from the class of the imported module. The copied declarations of the parent
+// name the generated file: a body edit of the parent does not change the text of the child.
 TEST(ScriptImportTranslation, ChildDerivesFromAClassOfAnotherModule)
 {
     TempDir dir;
@@ -47,7 +48,8 @@ TEST(ScriptImportTranslation, ChildDerivesFromAClassOfAnotherModule)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("struct Kid_Shell"), std::string::npos);
     EXPECT_NE(r.cpp.find("&Base_record"), std::string::npos) << "the child record points to the parent record";
-    EXPECT_NE(r.cpp.find("#line 4 \"base.hot\""), std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find("#line 4 \"base.hot\""), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("#line 1 \"base.hot\"\n#include \"w.h\""), std::string::npos) << "an include keeps its line";
     EXPECT_NE(r.cpp.find("#line 3 \"t.hot\""), std::string::npos) << r.cpp;
     EXPECT_EQ(r.cpp.find("#include \"base.hot\""), std::string::npos) << "a script import is not a C++ include";
     EXPECT_NE(r.slots_out.find("Base::Power"), std::string::npos) << r.slots_out;

@@ -5307,11 +5307,31 @@ void translate_impl(
     const size_t format_include_pos = o.s.size();
     o.w("\n#include \"hot/runtime.h\"\n\n");
     auto reset = [&] { o.w("#line " + std::to_string(o.lines + 2) + " \"" + esc(opt.output) + "\"\n"); };
+    // The "#line" of a declaration. "gen" is true for a declaration of an import that holds no user
+    // expression: it gets the line of the generated file. A body edit of the import moves the
+    // declaration in its file, but the text of the importer stays the same.
+    auto line_of = [&](int line, const std::string& file, bool gen)
+    {
+        return gen ? "#line " + std::to_string(o.lines + 2) + " \"" + esc(opt.output) + "\"\n"
+                   : "#line " + std::to_string(line) + " \"" + file + "\"\n";
+    };
+    // True for a position in an imported script.
+    auto imported = [&](uint32_t pos) { return !map.file(pos).empty(); };
+    // The "#line" of a declaration without a user expression (see line_of).
+    auto shell_line = [&](int line, uint32_t pos) { return line_of(line, esc(file_at(pos)), imported(pos)); };
     // Writes generated code that can run at runtime. A "#line" directive names the script line
     // before each line of the text, so the line table has no row in the generated file. Then the
     // generated file is the current file again. A debugger never stops in generated code.
-    auto mapped = [&](const std::string& text, int line, uint32_t pos)
+    // "pinned": the text holds a user expression of an import, so it keeps the line of the import.
+    auto mapped = [&](const std::string& text, int line, uint32_t pos, bool pinned = false)
     {
+        if (!pinned && imported(pos))
+        {
+            reset();
+            o.w(text);
+            reset();
+            return;
+        }
         const std::string directive = "#line " + std::to_string(line) + " \"" + esc(file_at(pos)) + "\"\n";
         for (size_t b = 0; b < text.size();)
         {
@@ -6249,7 +6269,7 @@ void translate_impl(
             o.w("static " + m->ret + " " + P + m->name + "(" + m->params[0].type + " " + m->params[0].name + ");\n");
             mapped("static void " + P + m->name + "_hook(void* dst, const void* src)\n{\n    new (dst) " + m->ret + "("
                     + P + m->name + "(hot::convert_source<" + m->params[0].type + ">(src)));\n}\n",
-                m->line, m->pos);
+                m->line, m->pos, true);
         }
 
         // The field table of the struct: the migration recurses into it.
@@ -7949,7 +7969,7 @@ void translate_impl(
                 else
                     value = field_value(f);
                 const std::string decl = "    " + declarator + " = " + value + ";\n";
-                o.w("#line " + std::to_string(f.line) + " \"" + esc(file_at(f.pos)) + "\"\n");
+                o.w(shell_line(f.line, f.pos));
                 if (f.pos != 0)
                     o.name_segment(decl, 4 + (c_array ? split_c_array(f.type).first.size() : f.type.size()), f.name,
                         all_text, f.pos, f.name);
@@ -8177,7 +8197,7 @@ void translate_impl(
                 init = hotc::ast::print(*f.init);
             }
             declare_foreign_accessors(init);
-            o.w("#line " + std::to_string(f.line) + " \"" + esc(file_at(f.pos)) + "\"\n");
+            o.w(shell_line(f.line, f.pos));
             // A ".cpp" initializer can have a lambda that captures the shell ("[__self]"). The state block
             // starts with the owner, so the function finds the shell there. The lambda reads the state
             // at the time of the call, so the pointer "state" of the shell can be null now.
@@ -8856,6 +8876,8 @@ void translate_impl(
             cx.async_body = m.is_async;
             hotc::add_params(cx, m.params);
             const std::string file = esc(file_at(m.pos));
+            // A method of an imported class has no body here: its lines are the lines of the generated file.
+            const bool gen = imported(m.pos) && !cd.foreign_unit.empty();
             const int end_line = m.end_line > 0 ? m.end_line : m.line;
             int first_line = m.line;
             if (!m.body.stmts.empty() && hotc::ast::pos_of(*m.body.stmts.front()) != 0)
@@ -9011,13 +9033,13 @@ void translate_impl(
                     : !ret.empty() && ret.back() == '*' ? std::string("        return nullptr;\n")
                     : "        return" + (ret == "void" ? std::string() : " " + ret + "()") + ";\n";
             bodies.push_back({cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns),
-                [&o, &all_text, &mapped, &reset, &write_stmts, h = body_head(m), em, file, end_line, first_line,
+                [&o, &all_text, &mapped, &reset, &line_of, gen, &write_stmts, h = body_head(m), em, file, end_line, first_line,
                     is_fn, sym, whead, wbody, bmember, mhead, mconst, mhead_from, what, shell, body_locals, tname, stale_ret,
                     is_async, is_coroutine, is_dtor, co_head, co_call, abstract_text, owner_members,
                     aot_optimized = opt.aot_optimized]
                 {
                     const Method& m = *h;
-                    auto line_at = [&](int l) { return "#line " + std::to_string(l) + " \"" + file + "\"\n"; };
+                    auto line_at = [&](int l) { return line_of(l, file, gen); };
                     if (is_fn)
                     {
                         o.w(line_at(m.line));
@@ -9755,6 +9777,8 @@ void translate_impl(
         {
             const LoweredStatic ls = *r.ls;
             const std::string file = esc(file_at(ls.method->pos));
+            // A function of an import has no body here: its lines are the lines of the generated file.
+            const bool gen = imported(ls.method->pos) && !ls.method->foreign_unit.empty();
             const Method& m = *ls.method;
             const int end_line = m.end_line > 0 ? m.end_line : m.line;
             int first_line = m.line;
@@ -9765,9 +9789,9 @@ void translate_impl(
                 : "hot_fn_" + unit_symbol(m.foreign_unit.empty() ? opt.unit
                                                                    : m.foreign_unit) + "__" + ls.symbol;
             bodies.push_back({r.ns,
-                [&o, &all_text, &reset, &write_stmts, h = body_head(m), ls, file, end_line, first_line, fwd_fn]
+                [&o, &all_text, &reset, &line_of, gen, &write_stmts, h = body_head(m), ls, file, end_line, first_line, fwd_fn]
                 {
-                    auto line_at = [&](int l) { return "#line " + std::to_string(l) + " \"" + file + "\"\n"; };
+                    auto line_at = [&](int l) { return line_of(l, file, gen); };
                     const std::string head = "[[maybe_unused]] HOT_HIDDEN static " + ls.ret + " " + ls.symbol + "(" + ls.params;
                     o.w(line_at(h->line));
                     o.head_segments(head, ls.symbol, *h, all_text);
