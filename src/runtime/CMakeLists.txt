@@ -60,7 +60,7 @@ else()
 endif()
 add_library(hot_runtime STATIC
     state.cpp migration.cpp loader.cpp module.cpp
-    scratch.cpp paths.cpp command_line.cpp)
+    scratch.cpp paths.cpp command_line.cpp object_cache.cpp)
 # scratch.cpp reads the option as the default of keep_temp().
 target_compile_definitions(hot_runtime PRIVATE HOT_KEEP_TEMP_DEFAULT=$<BOOL:${HOT_KEEP_TEMP}>)
 target_link_libraries(hot_runtime PUBLIC hot_runtime_core ${CMAKE_DL_LIBS} Threads::Threads)
