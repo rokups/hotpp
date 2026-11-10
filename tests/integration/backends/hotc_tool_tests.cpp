@@ -12,6 +12,8 @@
 #include "hot/config.h"
 #include "hot/module.h"
 #include "hot/paths.h"
+#include "hot/runtime/loader.h"
+#include "hot/runtime/shell.h"
 #include "support/process.h"
 #include "support/scratch_dir.h"
 #include "support/script_files.h"
@@ -152,6 +154,67 @@ TEST(HotcTool, HotcReportsErrorAtTheScriptLine)
         << text;
     expect_errors_at_script(text, line_with(read_file(script), "\"fast\""));
     EXPECT_FALSE(std::filesystem::exists(module_file(out_dir, "bad.g1")));
+}
+
+// A module that the tool hotc builds with "--gen N" names its generation. A reload of an older
+// generation fails, as the documentation says.
+TEST(HotcTool, PrebuiltModuleKeepsTheGenerationOfTheBuild)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_prebuilt_gen");
+    std::filesystem::create_directories(dir);
+    const std::string script = dir + "/genprobe.hot";
+    std::ofstream(script) << "class GenProbe {\n    int n = 1;\n}\n";
+    std::string text;
+    for (const char* gen : {"1", "2"})
+        ASSERT_EQ(run_hotc(cat({{script, "--gen", gen, "--out-dir", dir}, include_args(), {"--cxx", HOT_CXX}}), text), 0)
+            << text;
+    hot::LoadResult g2 = hot::module_from_library(module_file(dir, "genprobe.g2"));
+    hot::LoadResult g1 = hot::module_from_library(module_file(dir, "genprobe.g1"));
+    ASSERT_TRUE(g2) << g2.error;
+    ASSERT_TRUE(g1) << g1.error;
+    EXPECT_EQ(g2.module->generation, 2u);
+    EXPECT_EQ(g1.module->generation, 1u);
+    hot::Loader loader;
+    ASSERT_TRUE(loader.load(std::move(*g2.module)));
+    EXPECT_EQ(hot::active_generation, 2u);
+    const hot::ReloadResult older = loader.request_reload(std::move(*g1.module));
+    EXPECT_EQ(older.reason, hot::ReloadReason::GenerationNotNewer) << older.error;
+    EXPECT_EQ(hot::active_generation, 2u);
+}
+
+// A second module_from_library of a loaded library gives the same image (dlopen gives the same
+// handle). A reload with it fails before script_register runs, so the live module keeps its
+// generation.
+TEST(HotcTool, ReloadOfTheLiveLibraryFailsAndKeepsTheGeneration)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_same_image");
+    std::filesystem::create_directories(dir);
+    const std::string script = dir + "/sameimage.hot";
+    std::ofstream(script) << "class SameImage {\n    int n = 1;\n}\n";
+    std::string text;
+    ASSERT_EQ(run_hotc(cat({{script, "--gen", "1", "--out-dir", dir}, include_args(), {"--cxx", HOT_CXX}}), text), 0)
+        << text;
+    const std::string so = module_file(dir, "sameimage.g1");
+    hot::LoadResult first = hot::module_from_library(so);
+    ASSERT_TRUE(first) << first.error;
+    hot::Loader loader;
+    ASSERT_TRUE(loader.load(std::move(*first.module)));
+    ASSERT_EQ(hot::active_generation, 1u);
+    for (int i = 0; i < 2; ++i)
+    {
+        hot::LoadResult again = hot::module_from_library(so);
+        ASSERT_TRUE(again) << again.error;
+        again.module->generation = 0; // the loader picks the next number
+        const hot::ReloadResult r = loader.request_reload(std::move(*again.module));
+        EXPECT_EQ(r.reason, hot::ReloadReason::BadModule) << r.error;
+        EXPECT_FALSE(loader.reload_pending());
+        EXPECT_EQ(hot::active_generation, 1u);
+        const hot::ClassRecord* rec = hot::detail::resolve_class("SameImage");
+        ASSERT_NE(rec, nullptr);
+        EXPECT_EQ(rec->generation, 1u);
+    }
 }
 
 // The error text speaks script names. --raw-diagnostics gives the text of the compiler.

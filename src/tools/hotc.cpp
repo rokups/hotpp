@@ -554,6 +554,7 @@ int run_emit(const Args& args)
         usage();
     hotc::TranslateOptions opt;
     opt.generation = args.gen;
+    opt.export_generation = true; // "--gen N" is explicit: the module names its generation
     opt.strict_borrowed = args.strict_borrowed;
     opt.null_warnings = args.null_warnings;
     opt.format_lib = args.format_lib;

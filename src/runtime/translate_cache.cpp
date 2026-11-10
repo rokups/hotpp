@@ -56,7 +56,7 @@ constexpr auto field_count(int) -> decltype(T{std::declval<A>()..., std::declval
 // the output, or tell here why not. Then change the number.
 //   - slots_in: not in the key. The manifest has the digest of the lines that the output reads.
 //   - fs: only "is there a file system" is in the key. The manifest checks the files.
-static_assert(field_count<hotc::TranslateOptions>(0) == 21,
+static_assert(field_count<hotc::TranslateOptions>(0) == 22,
     "TranslateOptions has a new field: decide if it goes into the key of the translate cache");
 
 void add_list(Hash64& h, const std::vector<std::string>& v)
@@ -106,6 +106,7 @@ void add_options(Hash64& h, const hotc::TranslateOptions& o, const std::string& 
     h.add_u64(o.fs != nullptr);
     h.add_u64(o.aot);
     h.add_u64(o.aot_optimized);
+    h.add_u64(o.export_generation);
 }
 
 // ------------------------------------------------------------ JSON

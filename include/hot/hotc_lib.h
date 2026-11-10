@@ -31,6 +31,11 @@ struct TranslateOptions
     std::string unit_name;
     std::string output_name; // the name of the generated .cpp for "#line" (default: script_name + ".cpp")
     int generation = 0; // 1 or more
+    // The module exports its generation as the symbol "hot_module_generation" (module_from_library
+    // reads it). Only the tool hotc sets it, for a module with an explicit "--gen N". The backends
+    // leave it false: then the text has no generation and a later generation hits the object cache.
+    // AOT code ignores it.
+    bool export_generation = false;
     std::string slots_in; // the content of the slot file (empty: no earlier generation)
     std::vector<std::string> include_dirs; // for the imports of the script
     std::string resource_dir; // the Clang resource directory (empty: the built-in default)

@@ -1423,6 +1423,9 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     to.unit_name = source.unit;
     to.output_name = line_name;
     to.generation = static_cast<int>(generation);
+    // A build of a named .so (the tool hotc, "deferred_slots" null) names its generation. A load
+    // does not: its text stays free of the generation.
+    to.export_generation = deferred_slots == nullptr;
     to.include_dirs = opt_.include_dirs;
     // The translator needs the resource dir for the native headers. A portable build finds it at run time.
     to.resource_dir = opt_.resource_dir.empty() ? default_paths().resource_dir : opt_.resource_dir;

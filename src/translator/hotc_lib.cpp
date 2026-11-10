@@ -2137,6 +2137,7 @@ struct Options
     std::vector<std::string> defines; // the "-D" and "-U" flags of the parse (TranslateOptions::defines)
     bool aot = false; // AOT code: each thunk carries its signature key (see TranslateOptions::aot)
     bool aot_optimized = false; // optimized AOT code (see TranslateOptions::aot_optimized)
+    bool export_generation = false; // see TranslateOptions::export_generation
 };
 
 struct ManifestEntry
@@ -3728,6 +3729,7 @@ void translate_impl(
     opt.gen = in.generation;
     opt.aot = in.aot;
     opt.aot_optimized = in.aot_optimized;
+    opt.export_generation = in.export_generation;
     opt.includes = in.include_dirs;
     opt.resource_dir = in.resource_dir;
     opt.target = in.target;
@@ -10083,6 +10085,9 @@ void translate_impl(
         o.w("}\n\n");
     }
 
+    if (opt.export_generation && !opt.aot && !opt.aot_optimized)
+        o.w("extern \"C\" HOT_MODULE_EXPORT const uint32_t hot_module_generation = "
+            + std::to_string(opt.gen) + ";\n\n");
     o.w("extern \"C\" void script_register(hot::Registry& reg)\n{\n");
     o.w("    GEN = reg.generation();\n");
     for (const auto& t : gen_regs)

@@ -65,7 +65,7 @@ The target does not build automatically. Your host target must depend on it: `ad
 
 ### Generation numbers
 
-The generation `n` in the file name is 1. The option `--gen n` in `HOTC_ARGS` sets another number. The function reads the number for the output names, and `hotc` gets the option. A reload needs a new generation that is newer than the active one. A module with the same number gives `GenerationNotNewer`.
+The generation `n` in the file name is 1. The option `--gen n` in `HOTC_ARGS` sets another number. The function reads the number for the output names, and `hotc` gets the option. A reload needs a new generation that is newer than the active one. A module with the same number gives `GenerationNotNewer`. The module exports the number as the symbol `hot_module_generation`, and `module_from_library` reads it. A module of a backend has no such symbol: the loader gives it the next number. A second `module_from_library` of a loaded library gives the same code, so a reload with it fails with `BadModule`.
 
 The generations of one class share the slot file `OUT_DIR/slots.txt`. This file keeps the slot order between generations, also the defunct slots of removed functions. So build generation 2 after generation 1 and use the same `OUT_DIR`. Give `AFTER` the target of generation 1. `AFTER` only orders the targets. It adds a dependency of the target, not of the files.
 

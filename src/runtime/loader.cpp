@@ -1090,6 +1090,18 @@ ReloadResult Loader::request_reload(std::vector<Module> modules)
         if (pending_)
             return failed(ReloadReason::Busy, "a reload is already pending");
         next_generation = active_generation + 1;
+        // A library that is already loaded gives the same image (dlopen gives the same handle).
+        // Its script_register must not run again: it changes "GEN" and the records of live code.
+        std::set<Module::RegisterFn> images;
+        for (const Gen& g : gens_)
+            if (g.module.register_fn)
+                images.insert(g.module.register_fn);
+        for (const auto& [unit, au] : aot_units_)
+            images.insert(au.register_fn);
+        for (const Module& m : modules)
+            if (m.register_fn && !images.insert(m.register_fn).second)
+                return failed(ReloadReason::BadModule,
+                    "the module " + m.origin + " is already loaded: a reload needs a new library");
     }
     if (modules.empty())
         return failed(ReloadReason::BadModule, "the batch has no module");

@@ -110,8 +110,17 @@ LoadResult open_library(const std::string& path, const std::string& origin, bool
 #else
     auto entry = reinterpret_cast<Module::EntryMainFn>(dlsym(h, "hot_main"));
 #endif
+    // A module that the tool hotc built with "--gen N" names its generation. Without the symbol
+    // the loader picks the number.
+#ifdef _WIN32
+    auto gen = reinterpret_cast<const uint32_t*>(
+        reinterpret_cast<void*>(GetProcAddress(reinterpret_cast<HMODULE>(h), "hot_module_generation")));
+#else
+    auto gen = reinterpret_cast<const uint32_t*>(dlsym(h, "hot_module_generation"));
+#endif
     r.module = Module{fn, std::move(owner), origin, {}, {}};
     r.module->entry_main = entry;
+    r.module->generation = gen ? *gen : 0u;
     return r;
 }
 
