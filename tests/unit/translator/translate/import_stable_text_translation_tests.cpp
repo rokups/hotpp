@@ -66,6 +66,7 @@ std::string replaced(std::string text, const std::string& from, const std::strin
 hotc::TranslateResult translate_with(const TempDir& dir, const std::string& lib, const std::string& importer)
 {
     write_file(dir.path() / "w.h", kHeaderV1);
+    write_file(dir.path() / "ns.h", "#pragma once\nnamespace foo { struct Q { int a = 0; }; }\n");
     hotc::TranslateOptions o = temp_options(dir, importer);
     o.modules.emplace_back("lib.hot", lib);
     return hotc::translate(o);
@@ -112,6 +113,53 @@ TEST(ImportStableTextTranslation, ImporterTextIsStableForABodyEditAboveAFunction
         replaced(kLib, "int First() { return 1; }", "int First()\n{\n    int t = 1;\n\n    return t;\n}"));
     // A body edit of the last class removes lines of nothing that the importer uses.
     expect_same_text(kLib, replaced(kLib, "void Run() { }", "void Run()\n    {\n        this.z = 3;\n    }"));
+}
+
+// The "using" items of an import can come after a body. A body edit above them moves them, but
+// the include and the "using namespace" in the importer keep their text.
+TEST(ImportStableTextTranslation, ImporterTextIsStableForABodyEditAboveTheUsingItemsOfAnImport)
+{
+    const std::string lib = "int F() { return 1; }\nusing \"w.h\";\nusing \"ns.h\";\nusing foo;\n"
+                            "class Base : Widget {\n    int hp = 1;\n    virtual int Power() { return 1; }\n"
+                            "    int Twice() { return this.hp * 2; }\n}\n"
+                            "int Helper(int a = 1) { return a; }\n";
+    const std::string importer = "using \"w.h\";\nusing \"lib.hot\";\nclass Kid : Base {\n"
+                                 "    override int Power() { return Helper() + F(); }\n}\n";
+    expect_same_text(lib, replaced(lib, "int F() { return 1; }", "int F()\n{\n    int t = 1;\n\n    return t;\n}"),
+        importer);
+}
+
+// An imported base class has a convert hook and a constructor with base arguments. A body edit
+// above them moves them. The importer derives from the class, and its text does not change.
+TEST(ImportStableTextTranslation, ImporterTextIsStableForABodyEditAboveAHookAndAConstructor)
+{
+    const std::string lib = "using \"w.h\";\nint F() { return 1; }\n"
+                            "class Root : Widget {\n    int r = 0;\n    Root(int v) { this.r = v; }\n}\n"
+                            "class Base : Root {\n    float level = 1.0;\n    int hp = 1;\n"
+                            "    Base(int v = 2) : base(v + 1) { this.hp = v; }\n"
+                            "    float convert_level(int old) { return old * 2.0; }\n"
+                            "    virtual int Power() { return 1; }\n}\n";
+    const std::string importer = "using \"w.h\";\nusing \"lib.hot\";\nclass Kid : Base {\n"
+                                 "    Kid() : base(5) { }\n    override int Power() { return 2; }\n}\n";
+    expect_same_text(lib, replaced(lib, "int F() { return 1; }", "int F()\n{\n    int t = 1;\n\n    return t;\n}"),
+        importer);
+}
+
+// An imported base class has constructors with base arguments and no hook. A body edit above
+// it moves it. The importer derives from the class, and its text does not change.
+TEST(ImportStableTextTranslation, ImporterTextIsStableForABodyEditAboveAnInterfaceParentWithBaseArguments)
+{
+    // The constant keeps the line of the import, so it is above the edit.
+    const std::string lib = "using \"w.h\";\nconst int K = 3;\nint F() { return 1; }\n"
+                            "class Root : Widget {\n    int r = 0;\n    Root(int v) { this.r = v; }\n}\n"
+                            "class Base : Root {\n    int hp = K + 1;\n"
+                            "    Base(int v = 2) : base(v + K) { this.hp = v; }\n"
+                            "    Base(float f, int v) : base(v) { }\n"
+                            "    virtual int Power() { return 1; }\n}\n";
+    const std::string importer = "using \"w.h\";\nusing \"lib.hot\";\nclass Kid : Base {\n"
+                                 "    Kid() : base(5) { }\n    override int Power() { return 2; }\n}\n";
+    expect_same_text(lib, replaced(lib, "int F() { return 1; }", "int F()\n{\n    int t = 1;\n\n    return t;\n}"),
+        importer);
 }
 
 // A struct of an import is copied with its members and bodies. A body edit of a struct is an

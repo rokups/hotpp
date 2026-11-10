@@ -49,7 +49,7 @@ TEST(ScriptImportTranslation, ChildDerivesFromAClassOfAnotherModule)
     EXPECT_NE(r.cpp.find("struct Kid_Shell"), std::string::npos);
     EXPECT_NE(r.cpp.find("&Base_record"), std::string::npos) << "the child record points to the parent record";
     EXPECT_EQ(r.cpp.find("#line 4 \"base.hot\""), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("#line 1 \"base.hot\"\n#include \"w.h\""), std::string::npos) << "an include keeps its line";
+    EXPECT_EQ(r.cpp.find("\"base.hot\""), std::string::npos) << "an include of the import names the generated file";
     EXPECT_NE(r.cpp.find("#line 3 \"t.hot\""), std::string::npos) << r.cpp;
     EXPECT_EQ(r.cpp.find("#include \"base.hot\""), std::string::npos) << "a script import is not a C++ include";
     EXPECT_NE(r.slots_out.find("Base::Power"), std::string::npos) << r.slots_out;
@@ -141,12 +141,13 @@ TEST(ScriptImportTranslation, ImportFromDisk)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", kHeaderV1);
-    write_file(dir.path() / "base.hot", kParent);
+    // A copied struct keeps the lines of the import. The copied class names the generated file.
+    write_file(dir.path() / "base.hot", std::string(kParent) + "struct Pt {\n    int v = 1;\n}\n");
     hotc::TranslateOptions o = temp_options(dir, kChild);
     o.script_name = (dir.path() / "t.hot").string();
     const hotc::TranslateResult r = hotc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    // The "#line" directive has the path of the import. On Windows the path can have "/" or
+    // The "#line" directive of the struct has the path of the import. On Windows the path can have "/" or
     // "\\" (a C string) for each "\". The test changes both to "/" before the search.
     const std::filesystem::path base = dir.path() / "base.hot";
     std::string cpp;

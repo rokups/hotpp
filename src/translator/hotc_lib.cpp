@@ -5344,17 +5344,18 @@ void translate_impl(
         }
         reset();
     };
-    // A ".cpp" script writes its includes in source order, with the other text of the file.
+    // A ".cpp" script writes its includes in source order, with the other text of the file. An
+    // include or a "using" of an import can come after a body, so it gets the generated line.
     for (const auto& im : sc.is_cpp ? std::vector<hotc::ast::Import>() : sc.imports)
     {
-        o.w("#line " + std::to_string(im.line) + " \"" + esc(file_at(im.pos)) + "\"\n");
+        o.w(shell_line(im.line, im.pos));
         o.w("#include " + im.target() + "\n");
     }
     // "using ns;" is "using namespace ns;" at file scope, after all the includes. The generated
     // classes are at file scope too (a ".cpp" script has its own text), so the names are visible there.
     for (const auto& u : sc.using_ns)
     {
-        o.w("#line " + std::to_string(u.line) + " \"" + esc(file_at(u.pos)) + "\"\n");
+        o.w(shell_line(u.line, u.pos));
         o.w("using namespace " + using_ns_text(u.name, std_ns) + ";\n");
     }
     if (opt.aot)
@@ -9167,18 +9168,20 @@ void translate_impl(
             if (!g_diag.items.empty())
                 return;
             const std::string file = esc(file_at(m.pos));
+            // A hook of an imported class has no body here: its lines are the lines of the generated file.
+            const bool gen = imported(m.pos) && !cd.foreign_unit.empty();
             const int end_line = m.end_line > 0 ? m.end_line : m.line;
             const std::string head =
                 (opt.aot_optimized ? "[[maybe_unused]] static " : "static ") + m.ret + " " + P + m.name + "(" + m.params[0].type + " "
                 + m.params[0].name + ")\n";
             bodies.push_back({cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns),
-                [&o, &reset, &write_stmts, h = body_head(m), em, file, end_line, head]
+                [&o, &reset, &line_of, gen, &write_stmts, h = body_head(m), em, file, end_line, head]
                 {
-                    o.w("#line " + std::to_string(h->line) + " \"" + file + "\"\n");
+                    o.w(line_of(h->line, file, gen));
                     o.w(head);
-                    o.w("#line " + std::to_string(h->line) + " \"" + file + "\"\n{\n");
+                    o.w(line_of(h->line, file, gen) + "{\n");
                     write_stmts(*h, em.get());
-                    o.w("#line " + std::to_string(end_line) + " \"" + file + "\"\n}\n");
+                    o.w(line_of(end_line, file, gen) + "}\n");
                     reset();
                     o.w("\n");
                 }});
