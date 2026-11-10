@@ -106,6 +106,11 @@ public:
         return sig.empty() ? name : name + "#" + sig;
     }
     uint32_t max_generation() const { return max_generation_; }
+    // The generation of the load that fills this registry. The loader sets it before it calls
+    // script_register. The generated script_register reads it first: the generation is not in
+    // the text of the module, so equal script text gives equal text at each generation.
+    void set_generation(uint32_t generation) { generation_ = generation; }
+    uint32_t generation() const { return generation_; }
     const std::unordered_map<std::string, ClassEntry>& entries() const { return entries_; }
     const std::unordered_map<std::string, ThunkEntry>& thunks() const { return thunks_; }
 
@@ -114,6 +119,7 @@ private:
     std::unordered_map<std::string, ThunkEntry> thunks_; // by key
     std::unordered_map<std::string, std::string> current_; // the name to the latest key
     uint32_t max_generation_ = 0;
+    uint32_t generation_ = 0;
     FnTable fns_;
     ModuleStateInfo module_state_;
     uint32_t* live_flag_ = nullptr;

@@ -127,6 +127,7 @@ bool open_core(Module& m, const Registry& code, Module& core, Registry& reg)
     {
         try
         {
+            reg.set_generation(code.generation()); // the core is a copy of the same generation
             r.module->register_fn(reg);
         }
         catch (...)
@@ -637,6 +638,7 @@ ReloadResult Loader::load_unit(Module module, Registry* code_out)
     if (!module.register_fn)
         return failed(ReloadReason::BadModule, "the module has no script_register function");
     Registry code;
+    code.set_generation(module.generation != 0 ? module.generation : 1u);
     module.register_fn(code);
     // The core instance gives the canonical records, the factories and the thunks (module.h).
     Module core;
@@ -1079,12 +1081,15 @@ ReloadResult Loader::request_reload(Module module)
 
 ReloadResult Loader::request_reload(std::vector<Module> modules)
 {
+    // A module with no generation number gets the next number after the active generation.
+    uint32_t next_generation = 0;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (aot_optimized_)
             return failed(ReloadReason::BadModule, kOptimizedLocked);
         if (pending_)
             return failed(ReloadReason::Busy, "a reload is already pending");
+        next_generation = active_generation + 1;
     }
     if (modules.empty())
         return failed(ReloadReason::BadModule, "the batch has no module");
@@ -1096,6 +1101,7 @@ ReloadResult Loader::request_reload(std::vector<Module> modules)
         if (!modules[i].register_fn)
             return failed(ReloadReason::BadModule, "the module has no script_register function");
         u.module = std::move(modules[i]);
+        u.staged.set_generation(u.module.generation != 0 ? u.module.generation : next_generation);
         try
         {
             u.module.register_fn(u.staged);

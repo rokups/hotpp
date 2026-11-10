@@ -57,6 +57,10 @@ struct Module
     // The script imports of the module as unit name and interface hash, also the imports of the
     // imports (hotc::TranslateResult::import_hashes).
     std::vector<std::pair<std::string, uint64_t>> imports;
+    // The generation of the load. The backend sets the number that it got in Backend::load. The
+    // loader gives it to script_register (Registry::generation). Zero: the loader picks the
+    // number, 1 for a load and the active generation plus 1 for a reload.
+    uint32_t generation = 0;
 };
 
 // The file suffix of a module library on this platform. macOS uses ".so" too: it is the CMake

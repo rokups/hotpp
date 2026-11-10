@@ -157,6 +157,48 @@ struct Chain
     hot::Module m1, m2, m3;
 };
 
+// The generation is runtime data of a load. Generations 2 and 3 have the same text, so they have
+// the same type names. They are two modules: a closure names the generation of its load. A field
+// keeps its value across the two reloads. Generation 2 unloads when its closure goes.
+TEST_F(GenerationUnload, SameTextAtTwoGenerationsKeepsTwoModules)
+{
+    Chain c(*this);
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(c.m1), "Beeper"));
+    s.commit_at_frame_boundary();
+    for (int i = 0; i < 3; ++i)
+        s.world.Tick(kDt);
+    ASSERT_NE(int_field(s, "ticks"), nullptr);
+    const int ticks0 = *int_field(s, "ticks");
+    EXPECT_GT(ticks0, 0);
+
+    ASSERT_NO_FATAL_FAILURE(reload(s, std::move(c.m2)));
+    ASSERT_NO_FATAL_FAILURE(arm(s, 1.0f)); // a closure of generation 2
+    EXPECT_EQ(hot::pin_count(2), 1u);
+    ASSERT_NO_FATAL_FAILURE(reload(s, std::move(c.m3)));
+    EXPECT_EQ(hot::active_generation, 3u);
+    EXPECT_GE(*int_field(s, "ticks"), ticks0); // the field kept its value over two reloads
+    ASSERT_NO_FATAL_FAILURE(arm(s, 0.5f)); // a closure of generation 3
+    EXPECT_EQ(hot::pin_count(2), 1u);
+    EXPECT_EQ(hot::pin_count(3), 1u);
+    EXPECT_EQ(find_gen(s.loader.stats(), 2)->state, GenState::Retired);
+
+    const uint64_t stale0 = hot::stale_call_count();
+    testing::internal::CaptureStdout();
+    testing::internal::CaptureStderr();
+    s.world.Tick(1.0f); // both timers fire
+    s.world.Tick(kDt);
+    testing::internal::GetCapturedStderr();
+    testing::internal::GetCapturedStdout();
+    EXPECT_EQ(hot::stale_call_count(), stale0 + 1); // only the closure of generation 2 is stale
+    EXPECT_EQ(*int_field(s, "fired"), 10);          // the closure of generation 3 ran
+    EXPECT_EQ(hot::pin_count(2), 0u);
+    EXPECT_EQ(hot::pin_count(3), 0u);
+    const hot::LoaderStats st = s.loader.stats();
+    EXPECT_EQ(find_gen(st, 2)->state, GenState::Unloaded);
+    EXPECT_EQ(find_gen(st, 3)->state, GenState::Active);
+}
+
 // Unload: the closure fired and was dropped. One frame later generation 2 is unloaded.
 // Later ticks are clean. The object keeps its address.
 TEST_F(GenerationUnload, GenerationUnloadsAfterTheClosureIsDropped)

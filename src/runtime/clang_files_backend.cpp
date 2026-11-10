@@ -1397,18 +1397,24 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     std::string unit = source.unit.empty() ? fs::path(source.name).stem().string() : source.unit;
     if (unit.empty())
         unit = "script";
-    // With a generated_dir the .cpp has a stable name. It is also the "#line" name, so the text
-    // of the .cpp has no part of the .so name (no process id, generation, epoch or sequence).
-    // A unit name can have directories ("Player/Health"). They become directories of generated_dir.
+    // A load gives the .cpp a stable name: "<generated_dir>/<unit>.cpp", else "<work_dir>/<unit>.cpp".
+    // It is also the "#line" name, so the text of the .cpp has no part of the .so name (no process
+    // id, generation, epoch or sequence). Equal script text then gives equal text at each generation.
+    // A build of a named .so (the tool hotc, "deferred_slots" null) without a generated_dir puts
+    // the .cpp next to the .so: the caller chose that name.
+    // A unit name can have directories ("Player/Health"). They become directories of the .cpp.
+    // A unit name can be an absolute path (the launcher). Its root goes away, so the .cpp stays
+    // in the directory and never replaces a file next to the script.
+    const fs::path unit_cpp = fs::path(unit + ".cpp").relative_path();
     const bool stable_cpp = !opt_.generated_dir.empty();
-    const std::string line_name = stable_cpp ? (fs::path(opt_.generated_dir) / (unit + ".cpp")).string()
-                                             : fs::path(so_path).replace_extension(".cpp").string();
-    if (stable_cpp)
-        fs::create_directories(fs::path(line_name).parent_path(), ec);
+    const std::string line_name = stable_cpp ? (fs::path(opt_.generated_dir) / unit_cpp).string()
+        : deferred_slots ? (fs::path(opt_.work_dir) / unit_cpp).string()
+                         : fs::path(so_path).replace_extension(".cpp").string();
+    fs::create_directories(fs::path(line_name).parent_path(), ec);
     // With the cache the compile reads a private copy "<work_dir>/<unit>.cpp". Two processes then
     // never change the input of a compile of the other. The stable file is for the IDE only.
     const bool use_cache = prepare_cache();
-    std::string cpp_path = use_cache ? (fs::path(opt_.work_dir) / (unit + ".cpp")).string() : line_name;
+    std::string cpp_path = use_cache ? (fs::path(opt_.work_dir) / unit_cpp).string() : line_name;
 
     hotc::TranslateOptions to;
     to.script_text = source.text;
@@ -1811,6 +1817,7 @@ LoadResult ClangFilesBackend::load_impl(
     r.import_hashes = std::move(import_hashes);
     if (r.module)
     {
+        r.module->generation = generation;
         r.module->iface_hash = iface_hash;
         r.module->imports = r.import_hashes;
         if (!source.unit.empty())

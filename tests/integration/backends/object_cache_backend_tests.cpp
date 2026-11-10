@@ -176,6 +176,32 @@ TEST(ObjectCacheBackend, StatsThroughTheBackendInterface)
     EXPECT_EQ(backend.cache_stats().misses, 0u);
 }
 
+// The generation is not in the text. A build of the same script at a later generation is a hit.
+TEST(ObjectCacheBackend, LaterGenerationHitsTheObjectCache)
+{
+    CleanEnv env;
+    TestScratch scratch;
+    const std::string cache = scratch.file("cache");
+    {
+        auto backend = make_backend(scratch, "work_a", cache);
+        hot::LoadResult r = backend->load(kCalc7, 1);
+        ASSERT_TRUE(r) << r.error;
+        EXPECT_EQ(backend->cache_stats().misses, 1u);
+    }
+    auto backend = make_backend(scratch, "work_b", cache);
+    hot::LoadResult r = backend->load(kCalc7, 2);
+    ASSERT_TRUE(r) << r.error;
+    EXPECT_EQ(backend->cache_stats().hits, 1u);
+    EXPECT_EQ(backend->cache_stats().misses, 0u);
+    EXPECT_EQ(count_objects(cache), 1u);
+    Session s;
+    s.start(std::move(*r.module), "Calc");
+    ASSERT_TRUE(s.actor);
+    s.world.Tick(kDt);
+    EXPECT_EQ(*s.field("result"), 7.0f);
+    EXPECT_EQ(s.loader.stats().active_generation, 2u);
+}
+
 // A new script text is a miss and a new entry. The result is the new value.
 TEST(ObjectCacheBackend, EditedScriptMisses)
 {

@@ -90,6 +90,23 @@ TEST(Launcher, MainReturnsExitCode)
     }
 }
 
+// The unit name of the launcher is an absolute path. The generated .cpp goes into the work
+// directory, never next to the script.
+TEST(Launcher, LoadWritesNoFileNextToTheScript)
+{
+    for (const std::string& backend : backends())
+    {
+        SCOPED_TRACE(backend);
+        const fs::path dir = make_temp_dir();
+        const std::string script = write_file(dir, "entry.hot", "int main() { return 3; }\n");
+        std::string error;
+        auto program = launcher::load(options_for(backend, dir, nullptr), script, error);
+        ASSERT_NE(program, nullptr) << error;
+        EXPECT_EQ(launcher::run_main(*program, {}), 3);
+        EXPECT_FALSE(fs::exists(dir / "entry.cpp"));
+    }
+}
+
 TEST(Launcher, ProgramMoves)
 {
     const fs::path dir = make_temp_dir();

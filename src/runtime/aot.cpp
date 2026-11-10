@@ -115,6 +115,7 @@ AotRegistry::AotRegistry(const AotTable& table)
         {
             const AotScript& script = table.scripts[i];
             Registry reg;
+            reg.set_generation(1); // AOT code is generation 1
             script.register_fn(reg);
             if (reg.live_flag())
                 *reg.live_flag() = 1; // all AOT code is live
