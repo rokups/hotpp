@@ -487,11 +487,12 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
         unit = "script";
     // With a generated_dir the .cpp has a stable name. It is also the "#line" name, so the text
     // of the .cpp has no part of the .so name (no process id, generation, epoch or sequence).
+    // A unit name can have directories ("Player/Health"). They become directories of generated_dir.
     const bool stable_cpp = !opt_.generated_dir.empty();
-    if (stable_cpp)
-        fs::create_directories(opt_.generated_dir, ec);
     const std::string line_name = stable_cpp ? (fs::path(opt_.generated_dir) / (unit + ".cpp")).string()
                                              : fs::path(so_path).replace_extension(".cpp").string();
+    if (stable_cpp)
+        fs::create_directories(fs::path(line_name).parent_path(), ec);
     std::string cpp_path = line_name;
 
     hotc::TranslateOptions to;

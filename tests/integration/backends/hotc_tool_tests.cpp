@@ -1541,7 +1541,8 @@ TEST(HotcTool, GeneratedDirGivesAStableCpp)
     const std::string gen_dir = scratch.file("gen");
     const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/boss_v1.hot";
     const std::string text = read_file(script);
-    const std::string stable = (fs::path(gen_dir) / "boss_v1.cpp").string();
+    // A unit name with a directory, as the game gives it.
+    const std::string stable = (fs::path(gen_dir) / "Bosses" / "boss_v1.cpp").string();
     std::string first;
     for (int run = 0; run < 2; ++run)
     {
@@ -1553,7 +1554,7 @@ TEST(HotcTool, GeneratedDirGivesAStableCpp)
         hot::ClangFilesBackend backend(o);
         const std::string so = o.work_dir + "/boss_v1.g1.e" + std::to_string(run) + ".7" + hot::module_suffix();
         std::string error;
-        ASSERT_TRUE(backend.build({script, text, {}}, 1, so, error)) << error;
+        ASSERT_TRUE(backend.build({script, text, {}, "Bosses/boss_v1"}, 1, so, error)) << error;
         EXPECT_TRUE(fs::exists(so));
         EXPECT_TRUE(fs::exists(fs::path(so).replace_extension(".o")));
         EXPECT_TRUE(fs::exists(fs::path(so).replace_extension(".d")));
