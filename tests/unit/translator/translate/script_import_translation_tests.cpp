@@ -511,6 +511,59 @@ TEST(ScriptImportTranslation, InterfaceHashIsStableForABodyChange)
     EXPECT_NE(a.iface_hash, c.iface_hash) << c.iface;
 }
 
+// Translate "a" and "b" alone. The two interface hashes must differ.
+void expect_other_hash(const std::string& a, const std::string& b)
+{
+    TempDir dir;
+    const hotc::TranslateResult ra = translate_alone(dir, a);
+    ASSERT_TRUE(ra.ok) << ra.diagnostics << "\n" << a;
+    const hotc::TranslateResult rb = translate_alone(dir, b);
+    ASSERT_TRUE(rb.ok) << rb.diagnostics << "\n" << b;
+    EXPECT_NE(ra.iface_hash, rb.iface_hash) << ra.iface << "\n" << rb.iface;
+}
+
+// An importer copies a free function and calls it with the default. A default change changes the hash.
+TEST(ScriptImportTranslation, InterfaceHashChangesForAParameterDefault)
+{
+    expect_other_hash("int F(int a = 1) { return a; }\n", "int F(int a = 2) { return a; }\n");
+    const std::string cls = "class K {\n    int M(int a = 1) { return a; }\n    static int S(int a = 1) { return a; }\n"
+                            "    K(int a = 1) { }\n}\n";
+    for (const char* what : {"int M(int a = 1)", "static int S(int a = 1)", "K(int a = 1)"})
+    {
+        std::string other = cls;
+        const size_t at = other.find(what);
+        ASSERT_NE(at, std::string::npos);
+        other.replace(other.find("= 1", at), 3, "= 2");
+        expect_other_hash(cls, other);
+    }
+}
+
+// A mode change of a parameter changes the hash. "ref" and "out" have the same C++ type.
+TEST(ScriptImportTranslation, InterfaceHashChangesForAParameterMode)
+{
+    expect_other_hash("void F(ref int a) { a = 1; }\n", "void F(out int a) { a = 1; }\n");
+    const std::string cls = "class K {\n    void M(ref int a) { a = 1; }\n    static void S(ref int a) { a = 1; }\n"
+                            "    K(ref int a) { a = 1; }\n}\n";
+    for (const char* what : {"void M(ref", "static void S(ref", "K(ref"})
+    {
+        std::string other = cls;
+        const size_t at = other.find(what);
+        ASSERT_NE(at, std::string::npos);
+        other.replace(other.find("ref", at), 3, "out");
+        expect_other_hash(cls, other);
+    }
+}
+
+// A script type change changes the hash. The parser keeps no other spelling of one C++ type in the
+// interface text: the translator sets "script_type" after the interface text.
+TEST(ScriptImportTranslation, InterfaceHashChangesForAParameterScriptType)
+{
+    expect_other_hash("int F(int a) { return 1; }\n", "int F(float a) { return 1; }\n");
+    expect_other_hash("class K {\n    int M(int a) { return 1; }\n}\n", "class K {\n    int M(float a) { return 1; }\n}\n");
+    expect_other_hash("class K {\n    static int S(int a) { return 1; }\n}\n", "class K {\n    static int S(float a) { return 1; }\n}\n");
+    expect_other_hash("class K {\n    K(int a) { }\n}\n", "class K {\n    K(float a) { }\n}\n");
+}
+
 // The importer sees the same hash of an import as the owner of the import.
 TEST(ScriptImportTranslation, ImportHashIsTheHashOfTheOwner)
 {
@@ -563,7 +616,7 @@ TEST(ScriptImportTranslation, ImportWithModuleVariableAndFreeFunction)
     const hotc::TranslateResult own = translate_alone(dir, "int count = 0;\nint Twice(int x) { return x * 2; }\n");
     ASSERT_TRUE(own.ok) << own.diagnostics;
     EXPECT_NE(own.iface.find("var int32_t count"), std::string::npos) << own.iface;
-    EXPECT_NE(own.iface.find("fn int32_t Twice(int32_t x)"), std::string::npos) << own.iface;
+    EXPECT_NE(own.iface.find("fn int32_t Twice(0 int32_t x)"), std::string::npos) << own.iface;
 }
 
 // A field initializer of the importer reads a module variable of the imported script.

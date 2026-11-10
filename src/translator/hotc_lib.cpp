@@ -807,11 +807,19 @@ Script parse_structure(const std::string& text, const hotc::LineMap& map, std::s
 std::string module_interface(const Script& sc, const std::string& text)
 {
     auto span = [&](Span sp) { return sp.end > sp.begin && sp.end <= text.size() ? text.substr(sp.begin, sp.end - sp.begin) : std::string(); };
-    auto params = [](const std::vector<hotc::ast::Param>& ps)
+    // A parameter has its mode, its script type and its default text: an importer copies the
+    // function and calls it with the default.
+    auto params = [&](const std::vector<hotc::ast::Param>& ps)
     {
         std::string o;
         for (const hotc::ast::Param& p : ps)
-            o += (o.empty() ? "" : ", ") + p.type + " " + p.name;
+        {
+            o += (o.empty() ? "" : ", ") + std::to_string(static_cast<int>(p.mode)) + " " + p.type + " " + p.name;
+            if (!p.script_type.empty())
+                o += " [" + p.script_type + "]";
+            if (p.def)
+                o += " = " + span(p.def->span);
+        }
         return o;
     };
     auto access = [](hotc::ast::Access a)
