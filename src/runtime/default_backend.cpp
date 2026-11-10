@@ -92,11 +92,11 @@ bool process_is_gone(long long pid)
     return ::kill(static_cast<pid_t>(pid), 0) != 0 && errno == ESRCH;
 }
 
-bool older_than_one_hour(const std::filesystem::path& p)
+bool older_than(const std::filesystem::path& p, std::chrono::hours age)
 {
     std::error_code ec;
     const auto t = std::filesystem::last_write_time(p, ec);
-    return !ec && std::filesystem::file_time_type::clock::now() - t > std::chrono::hours(1);
+    return !ec && std::filesystem::file_time_type::clock::now() - t > age;
 }
 #endif
 
@@ -129,8 +129,9 @@ std::string read_owner(const std::filesystem::path& dir, bool& found)
 
 // Removes the directories "p<pid>" of "base" whose process does not run any more. The other
 // names stay. A running process is not a candidate. The process test is only valid for the same
-// owner (work_dir_owner): a directory of another owner stays. A directory without an owner file
-// (an old version, or a crash before the write) goes only when it is older than one hour.
+// owner (work_dir_owner). A directory of another owner goes only when it is older than one day.
+// A directory without an owner file (an old version, or a crash before the write) goes only when
+// it is older than one hour.
 // Windows: no cleanup.
 void remove_stale_work_dirs(const std::filesystem::path& base)
 {
@@ -150,11 +151,21 @@ void remove_stale_work_dirs(const std::filesystem::path& base)
         if (!std::all_of(name.begin() + 1, name.end(), [](unsigned char c) { return std::isdigit(c) != 0; }))
             continue;
         const long long pid = std::stoll(name.substr(1));
-        if (pid == own || !process_is_gone(pid))
+        if (pid == own)
             continue;
         bool has_owner = false;
         const std::string owner = read_owner(it->path(), has_owner);
-        if (has_owner ? owner == own_owner : older_than_one_hour(it->path()))
+        // The pid of another owner says nothing about the processes here. Its directory goes
+        // only when it is older than one day.
+        if (has_owner && owner != own_owner)
+        {
+            if (older_than(it->path(), std::chrono::hours(24)))
+                stale.push_back(it->path());
+            continue;
+        }
+        if (!process_is_gone(pid))
+            continue;
+        if (has_owner || older_than(it->path(), std::chrono::hours(1)))
             stale.push_back(it->path());
     }
     for (const std::filesystem::path& dir : stale)

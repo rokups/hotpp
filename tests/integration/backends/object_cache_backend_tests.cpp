@@ -836,8 +836,8 @@ TEST(ObjectCacheBackend, CompileCommandsHasNoMirrorDirectory)
 // The directories "p<pid>" of dead processes go at the creation of a backend. A directory has
 // the file "owner" (the host and the pid namespace). Only a directory of the same owner goes: the
 // pid of another host or namespace says nothing. A directory without an owner file goes only when
-// it is older than one hour. The directory of a running process (pid 1 here), a name that is not
-// "p<digits>" and a file stay.
+// it is older than one hour. A directory of another owner goes when it is older than one day. The
+// directory of a running process (pid 1 here), a name that is not "p<digits>" and a file stay.
 TEST(ObjectCacheBackend, StaleWorkDirectoriesGoAndLiveOnesStay)
 {
 #ifdef _WIN32
@@ -853,8 +853,8 @@ TEST(ObjectCacheBackend, StaleWorkDirectoriesGoAndLiveOnesStay)
     ASSERT_TRUE(fs::exists(own_owner));
     const std::string owner = read_file(own_owner);
     EXPECT_FALSE(owner.empty());
-    for (const char* name : {"p2000000000", "p2000000003", "p2000000004", "p2000000005", "p1", "pabc",
-             "q2000000001", "p"})
+    for (const char* name : {"p2000000000", "p2000000003", "p2000000004", "p2000000005", "p2000000006", "p1",
+             "pabc", "q2000000001", "p"})
     {
         fs::create_directories(base / name / "vfs");
         std::ofstream(base / name / "x.txt") << "x";
@@ -862,13 +862,17 @@ TEST(ObjectCacheBackend, StaleWorkDirectoriesGoAndLiveOnesStay)
     for (const char* name : {"p2000000000", "p1"})
         std::ofstream(base / name / "owner", std::ios::binary) << owner;
     std::ofstream(base / "p2000000003" / "owner", std::ios::binary) << "another-host\npid:[1]\n";
+    std::ofstream(base / "p2000000006" / "owner", std::ios::binary) << "another-host\npid:[1]\n";
+    fs::last_write_time(base / "p2000000003", fs::file_time_type::clock::now() - std::chrono::hours(2));
     fs::last_write_time(base / "p2000000005", fs::file_time_type::clock::now() - std::chrono::hours(2));
+    fs::last_write_time(base / "p2000000006", fs::file_time_type::clock::now() - std::chrono::hours(25));
     std::ofstream(base / "p2000000002") << "a file";
     {
         auto backend = hot::make_default_backend(default_options(scratch, std::string()));
         ASSERT_TRUE(backend);
         EXPECT_FALSE(fs::exists(base / "p2000000000")); // dead, the same owner
-        EXPECT_TRUE(fs::exists(base / "p2000000003" / "x.txt")); // another owner
+        EXPECT_TRUE(fs::exists(base / "p2000000003" / "x.txt")); // another owner, young
+        EXPECT_FALSE(fs::exists(base / "p2000000006")); // another owner, old
         EXPECT_TRUE(fs::exists(base / "p2000000004" / "x.txt")); // no owner, young
         EXPECT_FALSE(fs::exists(base / "p2000000005")); // no owner, old
         EXPECT_TRUE(fs::exists(base / "p1" / "x.txt")); // running (init)

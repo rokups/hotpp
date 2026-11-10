@@ -67,7 +67,7 @@ These variables are not options but they matter:
 | `HOT_INCLUDE_DIR` | An `INTERNAL` cache variable. It is the `include` folder of Hot++. `hot_add_scripts` puts it first in the `-I` list. (At run time, a portable host reads an environment variable with the same name. See [Portable binaries](cmake-sdk.html#portable-binaries).) |
 | `HOT_SCRATCH_DIR` | `${CMAKE_BINARY_DIR}/tmp`. The scratch root. `HOT_KEEP_TEMP` keeps it. |
 
-The default backend writes its files to `${HOT_SCRATCH_DIR}/hot_work/p<pid>`. It removes this folder at exit, unless `HOT_KEEP_TEMP` keeps it. The folder has the file `owner` (the host name and the pid namespace). At start the backend removes the folders of dead processes of the same owner. A folder without an `owner` file goes only when it is older than one hour.
+The default backend writes its files to `${HOT_SCRATCH_DIR}/hot_work/p<pid>`. It removes this folder at exit, unless `HOT_KEEP_TEMP` keeps it. The folder has the file `owner` (the host name and the pid namespace). At start the backend removes the folders of dead processes of the same owner. A folder of another owner goes only when it is older than one day. A folder without an `owner` file goes only when it is older than one hour.
 
 The presets `linux-clang-files` and `linux-clang-jit` select the backend in this repository. See [Presets](cmake-presets.html#presets).
 
