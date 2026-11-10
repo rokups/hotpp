@@ -169,6 +169,15 @@ private:
     std::vector<uint32_t> gen_lines_;
 };
 
+// One search for an imported script (hotc::find_import): the arguments, the file that the search
+// found and the hash of its text (hotc::text_hash). A translation cache repeats the search.
+struct ImportLookup
+{
+    std::string path, from_dir, from_unit_dir;
+    std::string file;
+    uint64_t text_hash = 0;
+};
+
 struct TranslateResult
 {
     bool ok = false;
@@ -215,6 +224,11 @@ struct TranslateResult
     // and the state struct of each public class, as copies of the text in "cpp". The importers
     // include it. The TU in "cpp" does not include it, so each TU has one definition of a class.
     std::string iface_header;
+    // The searches for the imported scripts, in the order of the translation. Valid when ok.
+    std::vector<ImportLookup> import_lookups;
+    // The classes of the script and of its imports: the names and the key names (the names in
+    // the slot file). The slot lines of these classes can change the output (carry_slots).
+    std::vector<std::string> slot_classes, slot_keys;
 };
 
 // The main script and the imported scripts of a translation, as input for the rewriters.
@@ -371,6 +385,29 @@ TranslateResult translate(const TranslateOptions& options, TranslatorSession& se
 // its public headers. The build makes it (cmake/HotTranslatorBuildId.cmake). A cache of the
 // translate output has it in its key.
 const char* translator_build_id();
+
+// Finds an imported script ("using "x.hot";") as translate() does: the name in options.modules,
+// else "from_dir" and the directory of the script, then the include directories. In each
+// directory options.fs comes first, then the disk. "file" gets the name for "#line" and "unit"
+// the unit name. It returns false when no file has the name.
+bool find_import(const TranslateOptions& options, const std::string& path, const std::string& from_dir,
+    const std::string& from_unit_dir, std::string& text, std::string& file, std::string& unit);
+
+// The 64-bit hash of a text that ImportLookup::text_hash holds.
+uint64_t text_hash(const std::string& text);
+
+// The parts of a slot text that translate() copies to its output without a change, for the
+// classes of a script (TranslateResult::slot_classes and slot_keys) and a generation:
+//   - slots_out starts with "manifest". The lines of the new generation follow.
+//   - sigs_out is "sigs", the own "sig" lines, "fields", and then the own "field" lines.
+// "read" has the lines that can change the output: the lines of the classes and of the keys.
+// A translation cache compares "read", and then makes the output from the parts.
+struct SlotCarry
+{
+    std::string manifest, sigs, fields, read;
+};
+SlotCarry carry_slots(const std::string& slots_in, const std::vector<std::string>& classes,
+    const std::vector<std::string>& keys, int generation);
 
 // Reads "text" with the tolerant parser and returns the facts. The text replaces
 // options.script_text. The function does not change the result of translate(): a script

@@ -2005,6 +2005,71 @@ std::vector<ManifestEntry> read_manifest(const std::string& text)
     return v;
 }
 
+// The slot state of the last generation, as translate_impl reads it from slots_in. "mine" has the
+// class names of the script. The lines of the other classes go to the new slot file unchanged.
+struct SlotsIn
+{
+    std::vector<ManifestEntry> old_manifest; // the earlier generations and the other classes
+    std::map<std::string, std::string> old_sigs; // "Cls::fn" to the signature, for the own classes
+    std::map<std::string, std::vector<std::string>> old_fields; // the field names by class
+    std::vector<std::string> sig_lines; // the "sig" lines of the other classes
+    std::vector<std::string> field_lines; // the "field" lines of the other classes, no duplicate
+};
+
+SlotsIn read_slots_in(const std::string& slots_in, const std::set<std::string>& mine, int gen)
+{
+    SlotsIn r;
+    for (auto& e : read_manifest(slots_in))
+        if (e.gen < gen || !mine.count(e.cls))
+            r.old_manifest.push_back(e);
+    // The signature lines "sig Cls::fn Sig" (design 5.3). read_manifest skips them.
+    std::istringstream f(slots_in);
+    std::string line;
+    while (std::getline(f, line))
+    {
+        if (line.rfind("field ", 0) == 0)
+        {
+            // "field Cls::name type" (the rename check). The class name can hold "::".
+            const size_t fsp = line.find(' ', 6);
+            const std::string fname = line.substr(6, fsp == std::string::npos ? std::string::npos : fsp - 6);
+            const size_t fp = fname.rfind("::");
+            if (fp == std::string::npos)
+                continue;
+            const std::string fcls = fname.substr(0, fp);
+            auto& names = r.old_fields[fcls];
+            const std::string fn = fname.substr(fp + 2);
+            if (std::find(names.begin(), names.end(), fn) == names.end())
+                names.push_back(fn);
+            // A class of another script keeps its lines.
+            if (!mine.count(fcls) && std::find(r.field_lines.begin(), r.field_lines.end(), line + "\n") == r.field_lines.end())
+                r.field_lines.push_back(line + "\n");
+            continue;
+        }
+        if (line.rfind("sig ", 0) != 0)
+            continue;
+        const size_t sp = line.find(' ', 4);
+        if (sp == std::string::npos)
+            continue;
+        const std::string name = line.substr(4, sp - 4);
+        const size_t p = name.find("::");
+        if (p == std::string::npos)
+            continue;
+        if (mine.count(name.substr(0, p)))
+            r.old_sigs[name] = line.substr(sp + 1);
+        else
+            r.sig_lines.push_back(line + "\n"); // a class of another script
+    }
+    return r;
+}
+
+std::string manifest_text(const std::vector<ManifestEntry>& entries)
+{
+    std::ostringstream mf;
+    for (const auto& e : entries)
+        mf << e.cls << "::" << e.fn << " " << e.gen << "\n";
+    return mf.str();
+}
+
 // A guard for the libclang handles. It releases them on every exit path.
 struct ClangHandles
 {
@@ -3697,36 +3762,15 @@ void translate_impl(
         // "from_dir" is the directory of the script that has the import, and "from_unit_dir" is the
         // directory of its unit name. The search starts there. "unit" gets the unit name of the
         // import: the same rule on each backend (doc/module-level.md, "Unit names").
+        // hotc::find_import is the rule. A translation cache repeats the same lookups to check
+        // its entry, so each lookup goes into "import_lookups" with the hash of the text.
         auto read_import = [&](const std::string& path, const std::string& from_dir, const std::string& from_unit_dir,
                                std::string& text, std::string& file, std::string& unit)
         {
-            for (const auto& [name, t] : in.modules)
-                if (name == path)
-                {
-                    text = t;
-                    file = name;
-                    unit = unit_name_of(std::string(), name);
-                    return true;
-                }
-            // The directories with the unit directory that each one gives.
-            std::vector<std::pair<std::string, std::string>> dirs;
-            dirs.emplace_back(from_dir, from_unit_dir);
-            if (from_dir != dir_of(opt.input))
-                dirs.emplace_back(dir_of(opt.input), dir_of(opt.unit));
-            for (const std::string& d : in.include_dirs)
-                dirs.emplace_back(d, std::string());
-            // For each directory: the file system of the host first, then the disk.
-            for (const auto& [d, unit_dir] : dirs)
-            {
-                const std::string full = d + "/" + path;
-                if ((in.fs && in.fs->read(full, text)) || hot::disk_file_system()->read(full, text))
-                {
-                    file = full;
-                    unit = unit_name_of(unit_dir, path);
-                    return true;
-                }
-            }
-            return false;
+            if (!hotc::find_import(in, path, from_dir, from_unit_dir, text, file, unit))
+                return false;
+            res.import_lookups.push_back({path, from_dir, from_unit_dir, file, hotc::text_hash(text)});
+            return true;
         };
         // The main script is in the set: an import cycle back to it does not read it again.
         std::set<std::string> seen{opt.input, normal_path(opt.input)};
@@ -5169,60 +5213,26 @@ void translate_impl(
     if (!g_diag.items.empty())
         throw TranslateAbort{};
 
-    std::vector<ManifestEntry> old_manifest;
-    std::map<std::string, std::string> old_sigs; // "Cls::fn" to the signature of the last generation
-    std::vector<std::string> sig_lines; // the signature lines of the new slot file
+    // The slot state of the last generation (slots_in). It keeps the entries of the earlier
+    // generations, and the lines of the classes that this script does not define (an other
+    // script owns them). read_slots_in is also the base of hotc::carry_slots.
+    std::set<std::string> mine;
+    for (const auto& cd : sc.classes)
+    {
+        mine.insert(cd.name);
+        res.slot_classes.push_back(cd.name);
+        res.slot_keys.push_back(cd.key_name());
+    }
+    SlotsIn slots_read = read_slots_in(in.slots_in, mine, opt.gen);
+    std::vector<ManifestEntry> old_manifest = std::move(slots_read.old_manifest);
+    // "Cls::fn" to the signature of the last generation
+    std::map<std::string, std::string> old_sigs = std::move(slots_read.old_sigs);
+    // the signature lines of the new slot file
+    std::vector<std::string> sig_lines = std::move(slots_read.sig_lines);
     // The field names of the last generation by class, and the "field Cls::name type" lines of
     // the new slot file (the rename check). A slot file from an old version has no such line.
-    std::map<std::string, std::vector<std::string>> old_fields;
-    std::vector<std::string> field_lines;
-    {
-        // Keep the entries of the earlier generations. Keep also the entries of
-        // the classes that this script does not define (an other script owns them).
-        std::set<std::string> mine;
-        for (const auto& cd : sc.classes)
-            mine.insert(cd.name);
-        for (auto& e : read_manifest(in.slots_in))
-            if (e.gen < opt.gen || !mine.count(e.cls))
-                old_manifest.push_back(e);
-        // The signature lines "sig Cls::fn Sig" (design 5.3). read_manifest skips them.
-        std::istringstream f(in.slots_in);
-        std::string line;
-        while (std::getline(f, line))
-        {
-            if (line.rfind("field ", 0) == 0)
-            {
-                // "field Cls::name type" (the rename check). The class name can hold "::".
-                const size_t fsp = line.find(' ', 6);
-                const std::string fname = line.substr(6, fsp == std::string::npos ? std::string::npos : fsp - 6);
-                const size_t fp = fname.rfind("::");
-                if (fp == std::string::npos)
-                    continue;
-                const std::string fcls = fname.substr(0, fp);
-                auto& names = old_fields[fcls];
-                const std::string fn = fname.substr(fp + 2);
-                if (std::find(names.begin(), names.end(), fn) == names.end())
-                    names.push_back(fn);
-                // A class of another script keeps its lines.
-                if (!mine.count(fcls) && std::find(field_lines.begin(), field_lines.end(), line + "\n") == field_lines.end())
-                    field_lines.push_back(line + "\n");
-                continue;
-            }
-            if (line.rfind("sig ", 0) != 0)
-                continue;
-            const size_t sp = line.find(' ', 4);
-            if (sp == std::string::npos)
-                continue;
-            const std::string name = line.substr(4, sp - 4);
-            const size_t p = name.find("::");
-            if (p == std::string::npos)
-                continue;
-            if (mine.count(name.substr(0, p)))
-                old_sigs[name] = line.substr(sp + 1);
-            else
-                sig_lines.push_back(line + "\n"); // a class of another script
-        }
-    }
+    std::map<std::string, std::vector<std::string>> old_fields = std::move(slots_read.old_fields);
+    std::vector<std::string> field_lines = std::move(slots_read.field_lines);
     // The field lines of this script, and the rename check: a removed field and an added field of
     // a class look like a rename. The value is lost at reload, unless the new field has [alias].
     for (const auto& cd : sc.classes)
@@ -9888,10 +9898,7 @@ void translate_impl(
         res.source_map.add(g);
     }
     res.source_map.build(in.script_text, res.cpp);
-    std::ostringstream mf;
-    for (const auto& e : new_manifest)
-        mf << e.cls << "::" << e.fn << " " << e.gen << "\n";
-    res.slots_out = mf.str();
+    res.slots_out = manifest_text(new_manifest);
     for (const auto& l : sig_lines)
         res.sigs_out += l;
     for (const auto& l : field_lines)
@@ -10352,6 +10359,95 @@ AnalyzeResult analyze_cpp(
         res.errors.push_back({{line, col}, offset, rest.substr(is_note ? note_tag.size() : tag.size()), is_note});
     }
     return res;
+}
+
+bool find_import(const TranslateOptions& in, const std::string& path, const std::string& from_dir,
+    const std::string& from_unit_dir, std::string& text, std::string& file, std::string& unit)
+{
+    for (const auto& [name, t] : in.modules)
+        if (name == path)
+        {
+            text = t;
+            file = name;
+            unit = unit_name_of(std::string(), name);
+            return true;
+        }
+    const std::string input = in.script_name;
+    const std::string input_unit =
+        in.unit_name.empty() ? std::filesystem::path(in.script_name).stem().string() : in.unit_name;
+    // The directories with the unit directory that each one gives.
+    std::vector<std::pair<std::string, std::string>> dirs;
+    dirs.emplace_back(from_dir, from_unit_dir);
+    if (from_dir != dir_of(input))
+        dirs.emplace_back(dir_of(input), dir_of(input_unit));
+    for (const std::string& d : in.include_dirs)
+        dirs.emplace_back(d, std::string());
+    // For each directory: the file system of the host first, then the disk.
+    for (const auto& [d, unit_dir] : dirs)
+    {
+        const std::string full = d + "/" + path;
+        if ((in.fs && in.fs->read(full, text)) || hot::disk_file_system()->read(full, text))
+        {
+            file = full;
+            unit = unit_name_of(unit_dir, path);
+            return true;
+        }
+    }
+    return false;
+}
+
+uint64_t text_hash(const std::string& text)
+{
+    // FNV-1a over the length and the bytes, then the SplitMix64 finalizer.
+    uint64_t h = 14695981039346656037ULL;
+    auto add = [&h](unsigned char c)
+    {
+        h ^= c;
+        h *= 1099511628211ULL;
+    };
+    for (int i = 0; i < 8; ++i)
+        add(static_cast<unsigned char>(static_cast<uint64_t>(text.size()) >> (8 * i)));
+    for (const char c : text)
+        add(static_cast<unsigned char>(c));
+    h = (h ^ (h >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    h = (h ^ (h >> 27)) * 0x94d049bb133111ebULL;
+    return h ^ (h >> 31);
+}
+
+SlotCarry carry_slots(const std::string& slots_in, const std::vector<std::string>& classes,
+    const std::vector<std::string>& keys, int generation)
+{
+    const std::set<std::string> mine(classes.begin(), classes.end());
+    SlotsIn r = read_slots_in(slots_in, mine, generation);
+    SlotCarry c;
+    c.manifest = manifest_text(r.old_manifest);
+    for (const std::string& l : r.sig_lines)
+        c.sigs += l;
+    for (const std::string& l : r.field_lines)
+        c.fields += l;
+    // The lines that the translation can read: the class part of the name (before the first or
+    // the last "::") is a class name or a key name of the script. This is more than
+    // read_slots_in reads, so a change that it reads is always in "read".
+    std::set<std::string> all(classes.begin(), classes.end());
+    all.insert(keys.begin(), keys.end());
+    std::istringstream f(slots_in);
+    std::string line;
+    while (std::getline(f, line))
+    {
+        size_t b = 0;
+        if (line.rfind("sig ", 0) == 0)
+            b = 4;
+        else if (line.rfind("field ", 0) == 0)
+            b = 6;
+        const size_t e = line.find(' ', b);
+        const std::string name = line.substr(b, e == std::string::npos ? std::string::npos : e - b);
+        const size_t first = name.find("::");
+        if (first == std::string::npos)
+            continue;
+        if (all.count(name.substr(0, first)) || all.count(name.substr(0, name.rfind("::"))))
+            c.read += line + "\n";
+    }
+    return c;
 }
 
 } // namespace hotc
