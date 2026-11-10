@@ -454,6 +454,78 @@ TEST(PchBackend, NewPchIsTrimmedToTheLimit)
     EXPECT_TRUE(pch_files(f.cache).empty());
 }
 
+// A limit smaller than one PCH removes each new PCH. The first rebuild writes the "bad" marker,
+// so the next misses start no new PCH build.
+TEST(PchBackend, PchLargerThanTheLimitIsBuiltOnce)
+{
+    Fixture f;
+    auto backend = make_backend(f.scratch, "small", f.cache, f.cxx, f.incs(), "", nullptr, 2);
+    EXPECT_EQ(load_and_run(*backend, layout_script(1)), 5.0f);
+    for (int i = 2; i <= 6; ++i)
+    {
+        EXPECT_EQ(load_and_run(*backend, layout_script(i)), 4.0f + static_cast<float>(i));
+        backend->wait_for_pch();
+    }
+    EXPECT_EQ(f.pch_builds(), 1u);
+    EXPECT_TRUE(pch_files(f.cache).empty());
+    size_t bad = 0;
+    for (const auto& e : fs::directory_iterator(fs::path(f.cache) / "pch"))
+        bad += e.path().extension() == ".bad" ? 1 : 0;
+    EXPECT_EQ(bad, 1u);
+}
+
+// A compiler wrapper that removes the PCH file when it sees "-include-pch". It models a trim
+// during the compile. The compile with the missing PCH fails and the plain compile works.
+TEST(PchBackend, MissingPchDoesNotWriteTheBadMarker)
+{
+    Fixture f;
+    // The wrapper does not change: the compiler id of the PCH key has its stamp. The trigger
+    // file turns the removal on. The wrapper uses "mv": "rm" can be a shim in the PATH.
+    const std::string trigger = f.scratch.file("trigger");
+    const std::string wrapper = f.scratch.file("remove_pch.sh");
+    std::ofstream(wrapper, std::ios::binary)
+        << "#!/bin/sh\necho \"$*\" >> '" << f.log << "'\nprev=''\nfor a in \"$@\"; do\n"
+           "  if [ \"$prev\" = '-include-pch' ] && [ -e '"
+        << trigger << "' ]; then mv \"$a\" \"$a.gone\"; fi\n  prev=\"$a\"\ndone\nexec " << HOT_CXX
+        << " \"$@\"\n";
+    fs::permissions(wrapper, fs::perms::owner_all);
+    for (int i = 1; i <= 2; ++i)
+    {
+        auto b = make_backend(f.scratch, "work" + std::to_string(i), f.cache, wrapper, f.incs());
+        EXPECT_EQ(load_and_run(*b, layout_script(i)), 4.0f + static_cast<float>(i));
+    }
+    ASSERT_EQ(pch_files(f.cache).size(), 1u);
+    std::ofstream(trigger) << "x";
+    auto backend = make_backend(f.scratch, "work_rm", f.cache, wrapper, f.incs());
+    EXPECT_EQ(load_and_run(*backend, layout_script(3)), 7.0f);
+    backend->wait_for_pch();
+    EXPECT_EQ(f.pch_compiles(), 1u); // the attempt with the missing PCH
+    EXPECT_TRUE(pch_files(f.cache).empty());
+    for (const auto& e : fs::directory_iterator(fs::path(f.cache) / "pch"))
+        EXPECT_NE(e.path().extension(), ".bad");
+}
+
+// A load while the PCH thread runs uses no PCH and starts no second build. After wait_for_pch,
+// the next load uses the PCH.
+TEST(PchBackend, LoadWhileThePchBuildRunsUsesNoPch)
+{
+    Fixture f;
+    const std::string path = f.scratch.file("slow_pch.sh");
+    std::ofstream(path, std::ios::binary)
+        << "#!/bin/sh\ncase \"$*\" in *c++-header*) sleep 2;; esac\nexec " << f.cxx << " \"$@\"\n";
+    fs::permissions(path, fs::perms::owner_all);
+    auto backend = make_backend(f.scratch, "work_slow", f.cache, path, f.incs());
+    EXPECT_EQ(load_and_run(*backend, layout_script(1)), 5.0f); // the "seen" marker
+    EXPECT_EQ(load_and_run(*backend, layout_script(2)), 6.0f); // starts the PCH thread
+    EXPECT_EQ(load_and_run(*backend, layout_script(3)), 7.0f); // the PCH thread still runs
+    EXPECT_EQ(f.pch_compiles(), 0u);
+    backend->wait_for_pch();
+    EXPECT_EQ(pch_files(f.cache).size(), 1u);
+    EXPECT_EQ(load_and_run(*backend, layout_script(4)), 8.0f);
+    EXPECT_EQ(f.pch_compiles(), 1u);
+    EXPECT_EQ(f.pch_builds(), 1u);
+}
+
 // The trim removes the old marker files of a PCH that is gone. The files of a PCH that is in the
 // cache stay, so the PCH still works.
 TEST(PchBackend, TrimRemovesOldMarkersWithoutPch)

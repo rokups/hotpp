@@ -1267,7 +1267,17 @@ bool ClangFilesBackend::build_pch(const PchPlan& plan, const std::string& script
         write_text(pch_marker(plan.key, ".bad"), error);
     // A PCH is 10 to 100 MB: a new one can put the PCH entries above the limit.
     if (ok)
+    {
         trim_pch();
+        // The trim removes the oldest entries first. A new PCH that is gone alone is larger than
+        // the limit: a rebuild is useless, so it gets the "bad" marker.
+        if (!fs::exists(pch_cache_->object_path(plan.key), ec))
+        {
+            error = "the PCH is larger than the size limit of the cache";
+            write_text(pch_marker(plan.key, ".bad"), error);
+            return false;
+        }
+    }
     return ok;
 }
 
@@ -1639,16 +1649,21 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
                         // The PCH must never fail a build: compile again without it. When that
                         // compile works, the PCH is bad (damaged, or a header without a guard).
                         const std::string pch_output = output;
+                        // A trim can remove the PCH during the compile: that is no bad PCH.
+                        const bool pch_exists = fs::exists(pch->pch, ec);
                         fs::remove(tmp, ec);
                         fs::remove(dep, ec);
                         rc = run_command(plain, output);
                         if (rc == 0)
                         {
                             pch_cache_->remove(pch->key);
-                            write_text(pch_marker(pch->key, ".bad"), pch_output);
-                            pch_note = ", pch failed";
-                            std::fprintf(stderr, "hot: %s does not compile with its PCH; the PCH is off for one day\n",
-                                unit.c_str());
+                            if (pch_exists)
+                            {
+                                write_text(pch_marker(pch->key, ".bad"), pch_output);
+                                pch_note = ", pch failed";
+                                std::fprintf(stderr,
+                                    "hot: %s does not compile with its PCH; the PCH is off for one day\n", unit.c_str());
+                            }
                         }
                     }
                 }
