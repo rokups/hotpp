@@ -778,6 +778,12 @@ void ClangFilesBackend::record_compile_command(
     e.output = absolute_path(object).string();
     // No depfile: the IDE needs no "-MD -MF".
     e.arguments = compile_object_command(opt_, e.file, e.output, std::string(), script_dir);
+    // The mirror directory "<work_dir>/vfs" belongs to this process and is gone after the exit.
+    // The IDE reads the real directories ("-I<dir>") that follow.
+    const std::string mirror_arg = "-I" + opt_.work_dir + "/vfs/";
+    e.arguments.erase(std::remove_if(e.arguments.begin(), e.arguments.end(),
+                          [&](const std::string& a) { return a.compare(0, mirror_arg.size(), mirror_arg) == 0; }),
+        e.arguments.end());
     commands_[e.file] = std::move(e);
     std::vector<CompileCommandEntry> list;
     for (const auto& [file, entry] : commands_) // the map order is the order of "file"

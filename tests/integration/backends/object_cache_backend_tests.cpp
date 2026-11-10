@@ -8,6 +8,7 @@
 // CMake defines the macros HOT_SOURCE_DIR and HOT_CXX.
 #include "hot/backend.h"
 #include "hot/clang_files_backend.h"
+#include "hot/vfs.h"
 #include "support/scratch_dir.h"
 #include "support/test_env.h"
 #include "support/test_support.h"
@@ -600,6 +601,36 @@ TEST(ObjectCacheBackend, CorruptModuleRecovers)
     EXPECT_EQ(load_and_run(*again, kCalc7), 7.0f);
     EXPECT_EQ(again->cache_stats().module_hits, 1u);
     EXPECT_EQ(again->cache_stats().module_misses, 0u);
+}
+
+// A file system that has no file. It turns on the mirror directory "<work_dir>/vfs".
+class EmptyFs final : public hot::FileSystem
+{
+public:
+    bool read(const std::string&, std::string&) override { return false; }
+    hot::VfsStat stat(const std::string&) override { return {}; }
+};
+
+// The mirror directory belongs to the process. The database has no "-I" argument under it.
+TEST(ObjectCacheBackend, CompileCommandsHasNoMirrorDirectory)
+{
+    CleanEnv env;
+    TestScratch scratch;
+    const std::string cache = scratch.file("cache");
+    const std::string db = scratch.file("db");
+    hot::ClangFilesOptions o;
+    o.compiler = HOT_CXX;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
+    o.work_dir = scratch.file("work_a");
+    o.cache_dir = cache;
+    o.compile_commands_dir = db;
+    o.fs = std::make_shared<EmptyFs>();
+    hot::ClangFilesBackend backend(std::move(o));
+    EXPECT_EQ(load_and_run(backend, kCalc7), 7.0f);
+    const std::string json = read_file(fs::path(db) / "compile_commands.json");
+    EXPECT_EQ(json.find("/vfs/"), std::string::npos) << json;
+    EXPECT_EQ(json.find(scratch.file("work_a")), std::string::npos) << json;
+    EXPECT_NE(json.find("-I" + std::string(HOT_SOURCE_DIR) + "/tests/engine"), std::string::npos) << json;
 }
 
 } // namespace
