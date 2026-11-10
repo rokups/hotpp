@@ -474,6 +474,22 @@ The compile of the biggest unit (`Game/Game`: 50244 lines, 3.1 MB of C++) by han
 - The headers alone take 6.0 s of the 14.9 s. The rest is the code of the unit.
 - A cache of the object file or of the `.so` can skip all of this for a unit that did not change.
 
+### With the object cache
+
+The game sets the cache folder (`ScriptSystem::SetCacheDir`). The translator is now built with `-O2` in Debug. This is why the cold translate sum is lower than in the table above. The numbers come from `HOT_TIMING=1 ./BiteSizedWarHot --offline --headless`, same machine.
+
+| Run | Wall time | Units | Hits | Misses | Translate sum | Compile sum | Link sum |
+|---|---|---|---|---|---|---|---|
+| Cold (empty cache) | 372 s | 75 | 0 | 75 | 101.0 s | 258.3 s | 8.9 s |
+| Warm (same command) | 114 s | 75 | 75 | 0 | 99.8 s | 0.0 s | 8.5 s |
+| Edit of `World/SpawnPoint.hot` | 126 s | 75 | 73 | 2 | 96.5 s | 16.3 s | 8.2 s |
+
+- The wall time is the time from the first log line to `loaded N scripts`. The log time stamps have a 1 s step.
+- The warm run misses nothing. A restart starts at generation 1, so the generated text is the same.
+- The warm run still translates all units. The translate cache is a later step. The translate sum is now 88% of the warm wall time.
+- The edit adds one method to a leaf script. Two units miss: the edited unit and `Game/Game`, which imports it.
+- The cache folder is 128 MB for 75 units.
+
 ## Translate cost (BiteSizedWar)
 
 This section says where the translate time of the start-up goes. The translate sum is 154.2 s for 75 units. `Game/Game` takes 28.1 s of it.
