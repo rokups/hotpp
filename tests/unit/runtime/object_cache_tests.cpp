@@ -227,6 +227,23 @@ TEST(ObjectCacheDepfile, ParsesWindowsPaths)
     EXPECT_EQ(deps[2], "C:\\src\\c.h");
 }
 
+// The headers of each rule go into the list: the backend adds a rule with the headers of the
+// PCH. A rule without headers (a "-MP" rule) adds nothing.
+TEST(ObjectCacheDepfile, ReadsAllRules)
+{
+    std::vector<std::string> deps;
+    const std::string text =
+        "out/unit.o: src/unit.cpp /inc/a.h\n"
+        "/inc/a.h:\n"
+        "\n"
+        "pch: /inc/a.h /inc/b\\ c.h\n";
+    ASSERT_TRUE(ObjectCache::parse_depfile(text, deps));
+    ASSERT_EQ(deps.size(), 3u);
+    EXPECT_EQ(deps[0], "src/unit.cpp");
+    EXPECT_EQ(deps[1], "/inc/a.h");
+    EXPECT_EQ(deps[2], "/inc/b c.h");
+}
+
 TEST(ObjectCacheDepfile, RejectsTextWithoutTarget)
 {
     std::vector<std::string> deps;

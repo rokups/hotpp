@@ -573,22 +573,31 @@ bool ObjectCache::parse_depfile(const std::string& text, std::vector<std::string
     }
     flush();
 
-    // The first rule has the target. The headers follow the token that ends with ":".
-    const std::vector<std::string>& rule = lines.front();
-    size_t colon = rule.size();
-    for (size_t i = 0; i < rule.size(); ++i)
+    // The headers of a rule follow the token that ends with ":". The first rule has the target
+    // and must have a ":". The headers of each later rule go into the list too: a "-MP" rule
+    // adds none, and the rule of the backend with the headers of a PCH adds them.
+    for (size_t r = 0; r < lines.size(); ++r)
     {
-        if (!rule[i].empty() && rule[i].back() == ':')
+        const std::vector<std::string>& rule = lines[r];
+        size_t colon = rule.size();
+        for (size_t i = 0; i < rule.size(); ++i)
         {
-            colon = i;
-            break;
+            if (!rule[i].empty() && rule[i].back() == ':')
+            {
+                colon = i;
+                break;
+            }
         }
+        if (colon == rule.size())
+        {
+            if (r == 0)
+                return false;
+            continue;
+        }
+        for (size_t i = colon + 1; i < rule.size(); ++i)
+            if (std::find(deps.begin(), deps.end(), rule[i]) == deps.end())
+                deps.push_back(rule[i]);
     }
-    if (colon == rule.size())
-        return false;
-    for (size_t i = colon + 1; i < rule.size(); ++i)
-        if (std::find(deps.begin(), deps.end(), rule[i]) == deps.end())
-            deps.push_back(rule[i]);
     return true;
 }
 
