@@ -569,3 +569,15 @@ A script with only the 43 native `using` lines of `Game/Game` (no `.hot` imports
 2. Build `hotc_lib` with `-O2` in the game build (the files backend, for the `Release` and `Debug` configs of the host). Expected gain: 3 to 4 times on all translate time (about 120 s of the 154 s, before change 1).
 3. Next: share the libclang parse between units (one parse of the union of the native headers, or a key of the flags only). Expected gain: 1 to 3 s for each unit, about 80 s of the 154 s.
 4. Last: cache the parse of an imported script by the hash of its text.
+
+## The precompiled header of the files backend
+
+The numbers come from BiteSizedWarHot (`HOT_TIMING=1 ./BiteSizedWarHot --offline --headless --quit-after 60`), clang 23, `-g`, same machine. The small unit `Game/GameDevCommands` compiles in 5.0 s. With `-ftime-trace`, the frontend takes 4.8 s of 5.4 s, and the backend (codegen and optimization) 0.6 s. A file with only the 59 include lines of the unit takes 3.5 s (`-fsyntax-only`). So the parse of the native headers is about 70% of the compile. The 87 units have 78 different include sets and one flag set.
+
+| Unit | Compile without PCH | PCH build (in a thread, once) | Compile with PCH |
+| --- | --- | --- | --- |
+| `Game/GameDevCommands` (manual run) | 5.0 s | 4.5 s | 1.7 s |
+| `Game/GameServerSide` (464 lines) | 7.6 s | 5.5 s | 3.2 s |
+| `Game/Game` (2144 lines) | 13.4 s | 6.0 s | 9.1 s |
+
+A cold build is the same: the first miss of an include set builds no PCH. The warm batch stays at 8.0 s (87 hits). The batch of one edit of `Game/GameServerSide` goes from 24.0 s to 19.5 s, and of `Game/Game` from 26.1 s to 21.8 s. A PCH is 50 to 70 MB.
