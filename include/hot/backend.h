@@ -49,11 +49,14 @@ enum class LoadMode
     Fresh
 };
 
-// The hits and the misses of the object cache of a backend (counted since the backend started).
+// The hits and the misses of the object cache of a backend (counted since the backend started),
+// and the same for the translate cache.
 struct CacheStats
 {
     uint64_t hits = 0;
     uint64_t misses = 0;
+    uint64_t translate_hits = 0;
+    uint64_t translate_misses = 0;
 };
 
 class Backend

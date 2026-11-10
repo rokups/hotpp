@@ -249,6 +249,9 @@ ClangFilesBackend::ClangFilesBackend(ClangFilesOptions options)
         }
         cache_ = std::make_unique<ObjectCache>(opt_.cache_dir, max_bytes);
         cache_->trim();
+        // The translate cache works with the object cache (prepare_cache gives its compiler id).
+        if (TranslateCache::enabled_by_env())
+            tr_cache_ = std::make_unique<TranslateCache>(opt_.cache_dir, opt_.translator_id);
         if (opt_.generated_dir.empty())
             opt_.generated_dir = (fs::path(opt_.cache_dir) / "src").string();
     }
@@ -857,6 +860,10 @@ bool ClangFilesBackend::prepare_cache()
         return false;
     }
     compiler_id_ = program + "|" + version + "|" + std::to_string(mtime) + "|" + std::to_string(size);
+    // The compiler id is in the key of the translate cache too: a new compiler often comes with
+    // new system headers, and the dependency list of a translate has no system header.
+    if (tr_cache_)
+        tr_cache_->set_extra(compiler_id_);
     return true;
 }
 
@@ -931,7 +938,22 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     // HOT_TIMING prints the time of the translate and of the clang run of each unit.
     const bool timing = std::getenv("HOT_TIMING") != nullptr;
     const auto t0 = std::chrono::steady_clock::now();
-    hotc::TranslateResult tr = hotc::translate(to, *opt_.session);
+    // The translate cache gives the result of an earlier translate with the same inputs. A hit
+    // continues as a translate: also when the object cache then misses, the compile uses the
+    // cached text. Its "#line" lines and the source map give the script places of the errors.
+    std::optional<hotc::TranslateResult> cached;
+    TranslateCache* const tr_cache = use_cache ? tr_cache_.get() : nullptr;
+    if (tr_cache)
+        cached = tr_cache->lookup(to);
+    const bool translate_hit = cached.has_value();
+    const fs::file_time_type translate_start = fs::file_time_type::clock::now();
+    hotc::TranslateResult tr = translate_hit ? std::move(*cached) : hotc::translate(to, *opt_.session);
+    if (tr_cache && !translate_hit && tr.ok && tr.diagnostics.empty())
+    {
+        std::string store_error;
+        if (!tr_cache->store(to, tr, translate_start, store_error) && timing)
+            std::fprintf(stderr, "hot: %s has no translate cache entry: %s\n", unit.c_str(), store_error.c_str());
+    }
     const auto t1 = std::chrono::steady_clock::now();
     if (dependencies)
         *dependencies = tr.dependencies; // also after a failure
@@ -1106,8 +1128,10 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
         const auto ms = [](auto a, auto b) {
             return static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(b - a).count());
         };
-        std::fprintf(stderr, "hot: %s translate %lld ms, compile %lld ms, link %lld ms%s\n", unit.c_str(),
-            ms(t0, t1), ms(t1, t2), ms(t2, t3), cache_note);
+        const std::string translate_note =
+            translate_hit ? std::string("cached") : std::to_string(ms(t0, t1)) + " ms";
+        std::fprintf(stderr, "hot: %s translate %s, compile %lld ms, link %lld ms%s\n", unit.c_str(),
+            translate_note.c_str(), ms(t1, t2), ms(t2, t3), cache_note);
     }
     if (link_rc != 0)
         return fail("link", link_rc);

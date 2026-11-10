@@ -10,6 +10,7 @@
 #include "hot/command_line.h"
 #include "hot/hotc_lib.h"
 #include "hot/object_cache.h"
+#include "hot/translate_cache.h"
 
 #include <atomic>
 #include <map>
@@ -58,6 +59,10 @@ struct ClangFilesOptions
     // The size limit of the cache. The backend trims the cache once at its creation. The
     // environment variable HOT_CACHE_MAX_MB (in MiB) overrides it. The value 0 means no limit.
     uint64_t cache_max_bytes = 4ULL << 30;
+    // The build id of the translator for the key of the translate cache (hot/translate_cache.h).
+    // Empty: hotc::translator_build_id(). A test gives an other id. The translate cache is on
+    // with the object cache. HOT_TRANSLATE_CACHE=0 turns only the translate cache off.
+    std::string translator_id;
     // The directory of "compile_commands.json" for the IDE plugins (clangd, hot-ls). Empty: the
     // backend writes no database. The environment variable HOT_COMPILE_COMMANDS_DIR overrides it in
     // make_default_backend. After each good build the backend sets the entry of the unit: the
@@ -115,13 +120,21 @@ public:
         return true;
     }
 
-    // The hits and the misses of the object cache of this backend. All zero when the cache is off.
+    // The hits and the misses of the object cache and of the translate cache of this backend.
+    // All zero when the cache is off.
     CacheStats cache_stats() const override
     {
         if (!cache_)
             return {};
         const ObjectCache::Stats stats = cache_->stats();
-        return {stats.hits, stats.misses};
+        CacheStats r{stats.hits, stats.misses};
+        if (tr_cache_)
+        {
+            const TranslateCache::Stats t = tr_cache_->stats();
+            r.translate_hits = t.hits;
+            r.translate_misses = t.misses;
+        }
+        return r;
     }
 
     // Translates, compiles and links one script into "out_so". It writes the .cpp next to the .so
@@ -145,6 +158,7 @@ private:
 
     ClangFilesOptions opt_;
     std::unique_ptr<ObjectCache> cache_; // null: no cache
+    std::unique_ptr<TranslateCache> tr_cache_; // null: no translate cache
     std::string compiler_id_;
     bool compiler_id_done_ = false;
     std::map<std::string, CompileCommandEntry> commands_; // by "file"

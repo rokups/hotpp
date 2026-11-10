@@ -6,6 +6,8 @@
 
 #include "hot/runtime/process.h"
 
+#include "cache_io.h"
+
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
@@ -20,39 +22,8 @@ namespace hot
 
 namespace fs = std::filesystem;
 
-namespace
+namespace cache_io
 {
-
-constexpr const char* work_marker = "@work@";
-constexpr int manifest_version = 1;
-constexpr uint64_t second_seed = 0x9e3779b97f4a7c15ULL;
-
-// ------------------------------------------------------------ Paths
-
-std::string slashes(std::string s)
-{
-    std::replace(s.begin(), s.end(), '\\', '/');
-    return s;
-}
-
-// The work directory without the separator at the end.
-std::string trim_dir(std::string dir)
-{
-    while (dir.size() > 1 && (dir.back() == '/' || dir.back() == '\\'))
-        dir.pop_back();
-    return dir;
-}
-
-// True when "path" is "dir" or is below it. The two separators are the same. "dir" has no
-// separator at the end.
-bool is_under(const std::string& path, const std::string& dir)
-{
-    if (dir.empty() || path.size() < dir.size())
-        return false;
-    if (slashes(path.substr(0, dir.size())) != slashes(dir))
-        return false;
-    return path.size() == dir.size() || path[dir.size()] == '/' || path[dir.size()] == '\\';
-}
 
 // ------------------------------------------------------------ Files
 
@@ -112,32 +83,6 @@ bool read_file(const fs::path& path, std::string& content)
 }
 
 // ------------------------------------------------------------ Small JSON
-
-// A JSON value. The manifest needs only text, integers, arrays and objects.
-struct Json
-{
-    enum class Type
-    {
-        Null,
-        Number,
-        String,
-        Array,
-        Object
-    };
-    Type type = Type::Null;
-    int64_t number = 0;
-    std::string text;
-    std::vector<Json> items;                         // an array
-    std::vector<std::pair<std::string, Json>> members; // an object
-
-    const Json* find(const std::string& name) const
-    {
-        for (const auto& m : members)
-            if (m.first == name)
-                return &m.second;
-        return nullptr;
-    }
-};
 
 class JsonParser
 {
@@ -369,6 +314,49 @@ void append_json_string(std::string& out, const std::string& s)
     out.push_back('"');
 }
 
+bool parse_json(const std::string& text, Json& out)
+{
+    return JsonParser(text).parse(out);
+}
+
+} // namespace cache_io
+
+namespace
+{
+
+using namespace cache_io;
+
+constexpr const char* work_marker = "@work@";
+constexpr int manifest_version = 1;
+constexpr uint64_t second_seed = 0x9e3779b97f4a7c15ULL;
+
+// ------------------------------------------------------------ Paths
+
+std::string slashes(std::string s)
+{
+    std::replace(s.begin(), s.end(), '\\', '/');
+    return s;
+}
+
+// The work directory without the separator at the end.
+std::string trim_dir(std::string dir)
+{
+    while (dir.size() > 1 && (dir.back() == '/' || dir.back() == '\\'))
+        dir.pop_back();
+    return dir;
+}
+
+// True when "path" is "dir" or is below it. The two separators are the same. "dir" has no
+// separator at the end.
+bool is_under(const std::string& path, const std::string& dir)
+{
+    if (dir.empty() || path.size() < dir.size())
+        return false;
+    if (slashes(path.substr(0, dir.size())) != slashes(dir))
+        return false;
+    return path.size() == dir.size() || path[dir.size()] == '/' || path[dir.size()] == '\\';
+}
+
 // ------------------------------------------------------------ Entries
 
 struct Stamp
@@ -597,7 +585,7 @@ std::optional<ObjectCache::Hit> ObjectCache::lookup(const Key& key)
         const fs::path object = entry_file(key, ".o");
         std::string text;
         Json root;
-        bool ok = read_file(manifest, text) && JsonParser(text).parse(root) && root.type == Json::Type::Object;
+        bool ok = read_file(manifest, text) && parse_json(text, root) && root.type == Json::Type::Object;
         if (ok)
         {
             const Json* version = root.find("version");
@@ -767,8 +755,12 @@ void ObjectCache::trim()
             std::vector<fs::path> files;
         };
         std::map<std::string, Entry> entries;
+        // The object entries and the translate entries (TranslateCache, "<dir>/tr") share the limit.
         std::error_code ec;
-        for (fs::directory_iterator it(obj_dir(), ec), end; !ec && it != end; it.increment(ec))
+        for (const fs::path& sub : {obj_dir(), dir_ / "tr"})
+        {
+        std::error_code dec;
+        for (fs::directory_iterator it(sub, dec), end; !dec && it != end; it.increment(dec))
         {
             std::error_code fec;
             if (!it->is_regular_file(fec))
@@ -782,7 +774,7 @@ void ObjectCache::trim()
                     fs::remove(p, fec);
                 continue;
             }
-            Entry& e = entries[p.stem().string()];
+            Entry& e = entries[(sub.filename() / p.stem()).string()];
             e.stem = p.stem().string();
             e.files.push_back(p);
             const uintmax_t size = fs::file_size(p, fec);
@@ -793,6 +785,7 @@ void ObjectCache::trim()
                 e.has_manifest = true;
                 e.mtime = fs::last_write_time(p, fec);
             }
+        }
         }
 
         std::vector<Entry> complete;
