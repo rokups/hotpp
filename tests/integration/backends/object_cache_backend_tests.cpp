@@ -633,4 +633,34 @@ TEST(ObjectCacheBackend, CompileCommandsHasNoMirrorDirectory)
     EXPECT_NE(json.find("-I" + std::string(HOT_SOURCE_DIR) + "/tests/engine"), std::string::npos) << json;
 }
 
+// The directories "p<pid>" of dead processes go at the creation of a backend. The directory of a
+// running process (pid 1 here), a name that is not "p<digits>" and a file stay.
+TEST(ObjectCacheBackend, StaleWorkDirectoriesGoAndLiveOnesStay)
+{
+#ifdef _WIN32
+    GTEST_SKIP() << "no cleanup on Windows";
+#else
+    CleanEnv env;
+    EnvGuard keep("HOT_KEEP_TEMP", "");
+    TestScratch scratch;
+    const fs::path base = scratch.file("default_work");
+    for (const char* name : {"p2000000000", "p1", "pabc", "q2000000001", "p"})
+    {
+        fs::create_directories(base / name / "vfs");
+        std::ofstream(base / name / "x.txt") << "x";
+    }
+    std::ofstream(base / "p2000000002") << "a file";
+    {
+        auto backend = hot::make_default_backend(default_options(scratch, std::string()));
+        ASSERT_TRUE(backend);
+        EXPECT_FALSE(fs::exists(base / "p2000000000")); // dead
+        EXPECT_TRUE(fs::exists(base / "p1" / "x.txt")); // running (init)
+        EXPECT_TRUE(fs::exists(base / "pabc"));
+        EXPECT_TRUE(fs::exists(base / "q2000000001"));
+        EXPECT_TRUE(fs::exists(base / "p"));
+        EXPECT_TRUE(fs::exists(base / "p2000000002")); // not a directory
+    }
+#endif
+}
+
 } // namespace

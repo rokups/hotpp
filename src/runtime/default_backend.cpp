@@ -12,12 +12,18 @@
 #include "hot/runtime/process.h"
 #include "hot/scratch.h"
 
+#include <algorithm>
 #include <cctype>
+#include <cerrno>
 #include <cstdlib>
 #include <filesystem>
 #include <stdexcept>
 #include <string>
 #include <vector>
+#ifndef _WIN32
+    #include <signal.h>
+    #include <sys/types.h>
+#endif
 #if defined(HOT_WITH_CLANG_FILES)
     #include "hot/clang_files_backend.h"
 #endif
@@ -71,6 +77,46 @@ BackendKind resolve_kind(BackendKind kind)
 }
 
 #if defined(HOT_WITH_CLANG_FILES)
+#ifndef _WIN32
+// True when a process with this id does not exist. The call kill(pid, 0) sends no signal: it is
+// only a test. Any other result (also EPERM) means the process can exist.
+bool process_is_gone(long long pid)
+{
+    if (pid <= 0 || pid > 2147483647LL)
+        return false;
+    return ::kill(static_cast<pid_t>(pid), 0) != 0 && errno == ESRCH;
+}
+#endif
+
+// Removes the directories "p<pid>" of "base" whose process does not run any more. The other
+// names stay. A running process is not a candidate. Windows: no cleanup.
+void remove_stale_work_dirs(const std::filesystem::path& base)
+{
+#ifndef _WIN32
+    std::error_code ec;
+    const long long own = static_cast<long long>(hot::detail::process_id());
+    std::vector<std::filesystem::path> stale;
+    for (std::filesystem::directory_iterator it(base, ec), end; !ec && it != end; it.increment(ec))
+    {
+        std::error_code type_ec;
+        if (!it->is_directory(type_ec))
+            continue;
+        const std::string name = it->path().filename().string();
+        if (name.size() < 2 || name.size() > 11 || name[0] != 'p')
+            continue;
+        if (!std::all_of(name.begin() + 1, name.end(), [](unsigned char c) { return std::isdigit(c) != 0; }))
+            continue;
+        const long long pid = std::stoll(name.substr(1));
+        if (pid != own && process_is_gone(pid))
+            stale.push_back(it->path());
+    }
+    for (const std::filesystem::path& dir : stale)
+        std::filesystem::remove_all(dir, ec);
+#else
+    (void)base;
+#endif
+}
+
 std::unique_ptr<Backend> make_clang_files(const DefaultBackendOptions& options)
 {
     ClangFilesOptions o;
@@ -95,8 +141,12 @@ std::unique_ptr<Backend> make_clang_files(const DefaultBackendOptions& options)
         throw std::runtime_error(work_error);
 #endif
     // One work directory for each process, so parallel test processes do not share files.
-    o.work_dir = (options.work_dir.empty() ? paths.work_dir : options.work_dir) + "/p" +
-                 std::to_string(hot::detail::process_id());
+    const std::string work_base = options.work_dir.empty() ? paths.work_dir : options.work_dir;
+    o.work_dir = work_base + "/p" + std::to_string(hot::detail::process_id());
+    // The directories of the dead processes stay otherwise (a crash, or a kill, skips the cleanup).
+    // The environment variable HOT_KEEP_TEMP keeps them on purpose.
+    if (!keep_temp())
+        remove_stale_work_dirs(work_base);
     std::error_code ec;
     std::filesystem::remove_all(o.work_dir, ec);
     // Only this p<pid> directory goes. The parent directory is shared with other processes.
