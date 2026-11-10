@@ -2774,6 +2774,21 @@ bool can_alias(const std::string& param, const std::string& field)
     return false;
 }
 
+// The member that an access path writes through an object that is not "this": "a.m", "a.b.m",
+// "a.m[1]". Gives the name of the member or null.
+const std::string* foreign_member(const Expr& e)
+{
+    if (auto* n = std::get_if<NameExpr>(&e.v))
+        return n->parts.size() >= 2 ? &n->parts.back() : nullptr;
+    if (auto* m = std::get_if<MemberExpr>(&e.v))
+        return std::holds_alternative<ThisExpr>(m->obj->v) ? nullptr : &m->name;
+    if (auto* ix = std::get_if<IndexExpr>(&e.v))
+        return foreign_member(*ix->obj);
+    if (auto* p = std::get_if<ParenExpr>(&e.v))
+        return foreign_member(*p->inner);
+    return nullptr;
+}
+
 struct ParamAnalysis
 {
     const ParamContext& ctx;
@@ -2783,7 +2798,18 @@ struct ParamAnalysis
     // calls. "seen" visits each function one time.
     void fields_written(const Method& m, std::set<const Method*>& seen, std::set<std::string>& out)
     {
-        if (!seen.insert(&m).second || ctx.fields.empty())
+        std::set<std::string> foreign;
+        fields_written(m, seen, out, foreign);
+        // A field of another object has a type that the parameter can alias: report its name
+        // with the prefix "." so that the caller checks the types of all script classes.
+        for (const std::string& f : foreign)
+            out.insert("." + f);
+    }
+
+    void fields_written(
+        const Method& m, std::set<const Method*>& seen, std::set<std::string>& out, std::set<std::string>& foreign)
+    {
+        if (!seen.insert(&m).second || (ctx.fields.empty() && ctx.member_types.empty()))
             return;
         const std::set<std::string> locals = declared_names(m);
         auto mark = [&](const ExprP& e)
@@ -2792,6 +2818,9 @@ struct ParamAnalysis
                 return;
             if (const std::string* f = field_root(*e, locals, ctx.fields))
                 out.insert(*f);
+            // A write through another object, e.g. "slot.lead = null": the member name.
+            if (const std::string* g = foreign_member(*e))
+                foreign.insert(*g);
         };
         auto fe = [&](const Expr& e)
         {
@@ -2821,7 +2850,7 @@ struct ParamAnalysis
                 const std::string g = script_callee(*c, locals);
                 if (!g.empty() && ctx.script_fn)
                     if (const Method* gm = ctx.script_fn(g))
-                        fields_written(*gm, seen, out);
+                        fields_written(*gm, seen, out, foreign);
             }
         };
         auto fs = [](const Stmt&) {};
@@ -3044,13 +3073,22 @@ struct ParamAnalysis
         };
         make_walker(fe, fs).block(body);
         // A "const T&" can alias a field that the function writes (S20b): then take a copy.
-        if (m && !ptype.empty() && !ctx.fields.empty())
+        if (m && !ptype.empty() && (!ctx.fields.empty() || !ctx.member_types.empty()))
         {
             std::set<const Method*> seen;
             std::set<std::string> written;
             fields_written(*m, seen, written);
             for (const std::string& f : written)
             {
+                if (!f.empty() && f[0] == '.')
+                {
+                    auto mt = ctx.member_types.find(f.substr(1));
+                    if (mt != ctx.member_types.end())
+                        for (const std::string& t : mt->second)
+                            if (can_alias(ptype, t))
+                                use.aliased = true;
+                    continue;
+                }
                 auto it = ctx.fields.find(f);
                 if (it != ctx.fields.end() && can_alias(ptype, it->second))
                     use.aliased = true;

@@ -137,6 +137,9 @@ struct ParamContext
     ParamMemo* memo = nullptr;
     std::function<const ast::Method*(const std::string&)> script_fn;
     std::map<std::string, std::string> fields;
+    // The types of the fields of all script classes by field name. A write through another
+    // object ("slot.lead = null") changes a field with one of these types.
+    std::map<std::string, std::vector<std::string>> member_types;
     std::function<bool(const std::string& type, const std::string& method)> const_method;
     std::function<const CallTarget*(const ast::CallExpr&)> call_target;
     std::function<char(const std::string& key, size_t arg, size_t argc)> native_arg;

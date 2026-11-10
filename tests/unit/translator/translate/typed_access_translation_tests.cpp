@@ -221,6 +221,23 @@ TEST(ParamAnalysis, HandleParamThatCanAliasAWrittenFieldIsACopy)
 }
 
 // S20b: "obj.P" on a known native type is the native member, not a property of the class.
+// A handle parameter can alias a field of another object. The call "F(slot, slot.lead)" binds the
+// parameter to the field. A write to such a field in the function must not change the parameter.
+TEST(ParamAnalysis, HandleParamThatCanAliasAFieldOfAnotherObjectIsACopy)
+{
+    const hotc::TranslateResult r = translate_script(
+        "class Squad : Unit {\n    int size = 3;\n}\nclass Slot : Unit {\n    $Squad lead;\n    int n = 0;\n}\n"
+        "class Box : Unit {\n"
+        "    int Clear($Slot slot, $Squad s) { if (slot == null || s == null) return 0; slot.lead = null; return s.size; }\n"
+        "    int Count($Slot slot, $Squad s) { if (slot == null || s == null) return 0; slot.n = 2; return s.size; }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "std::shared_ptr<Squad> s)")) << r.cpp;
+    EXPECT_TRUE(has(r, "static int32_t Box__Count(Box_Shell* __self, const std::shared_ptr<Slot>& slot, const std::shared_ptr<Squad>& s)"))
+        << r.cpp;
+    EXPECT_TRUE(has(r, "static int32_t Box__Clear(Box_Shell* __self, const std::shared_ptr<Slot>& slot, std::shared_ptr<Squad> s)"))
+        << r.cpp;
+}
+
 TEST(TypedAccess, PropertyNameOnAKnownNativeTypeIsTheNativeMember)
 {
     const hotc::TranslateResult r = translate_script(
