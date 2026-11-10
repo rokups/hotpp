@@ -52,9 +52,11 @@ public:
     // The slot parts that belong to other classes come from options.slots_in (hotc::carry_slots).
     std::optional<hotc::TranslateResult> lookup(const hotc::TranslateOptions& options);
 
-    // Adds an entry for a translate with no error. "started" is the time before the translate:
-    // a header with a later change time cannot get a stamp (it can have changed during the
-    // parse), so there is no entry. It gives false and sets "error" when it writes no entry.
+    // Adds an entry for a translate with no error. "started" is the time before the translate.
+    // A session entry can come from a parse of an earlier translate
+    // (TranslateResult::parse_start_ns). The earlier of the two times is the parse start. A header
+    // with a change time after the parse start minus 2 seconds can have changed during the
+    // parse, so there is no entry. It gives false and sets "error" when it writes no entry.
     bool store(const hotc::TranslateOptions& options, const hotc::TranslateResult& result,
         std::filesystem::file_time_type started, std::string& error);
 

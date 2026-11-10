@@ -548,3 +548,27 @@ TEST(TranslateCache, EditedTransitiveImportMisses)
     write_file(c1, "using \"Foo.h\";\nclass C1 : Foo {\n    override int Power() { return 4; }\n}\n");
     EXPECT_FALSE(c.lookup(o).has_value());
 }
+
+// Translate 1 starts at T. The header changes during the libclang parse, so the session entry
+// has the new stamp and maybe the old facts. Store 1 refuses. Translate 2 starts at T + 10 s
+// and uses the same session entry. Store 2 must refuse too: the facts come from the old parse.
+TEST(TranslateCache, ReusedSessionParseOfAYoungHeaderIsNotStored)
+{
+    ShadowFixture f;
+    const std::string header = f.b + "/Foo.h";
+    hotc::TranslatorSession session;
+    hot::TranslateCache c(f.cache);
+    const auto t = fs::file_time_type::clock::now();
+    fs::last_write_time(header, t + std::chrono::milliseconds(200));
+    const hotc::TranslateResult r1 = hotc::translate(f.options, session);
+    ASSERT_TRUE(r1.ok) << r1.diagnostics;
+    std::string error;
+    EXPECT_FALSE(c.store(f.options, r1, t, error));
+    ASSERT_EQ(session.parse_count(), 1);
+
+    const hotc::TranslateResult r2 = hotc::translate(f.options, session);
+    ASSERT_TRUE(r2.ok) << r2.diagnostics;
+    ASSERT_EQ(session.parse_count(), 1); // the same session entry
+    EXPECT_FALSE(c.store(f.options, r2, t + std::chrono::seconds(10), error));
+    EXPECT_FALSE(c.lookup(f.options).has_value());
+}

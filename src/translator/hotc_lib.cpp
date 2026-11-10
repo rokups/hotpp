@@ -3257,6 +3257,8 @@ struct TranslatorSession::Impl
         Hierarchy hierarchy;
         FactMap facts;
         std::map<std::string, std::string> queries; // the type queries (S20b); empty: not known
+        // The start of the earliest parse that gave facts to the entry (TranslateResult::parse_start_ns).
+        int64_t parse_start_ns = 0;
     };
     std::mutex mutex;
     std::map<std::string, Entry> entries;
@@ -3293,7 +3295,7 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
     const std::function<void(std::map<std::string, BaseInfo>&, std::vector<FileStamp>&, Hierarchy&, FactMap&,
         std::map<std::string, std::string>&)>& parse,
     Hierarchy& hierarchy, FactMap& facts_out, std::map<std::string, std::string>& answers_out, hot::FileSystem* fs,
-    std::vector<std::string>* deps, std::vector<std::string>* shadows)
+    std::vector<std::string>* deps, std::vector<std::string>* shadows, int64_t* parse_start_ns)
 {
     std::lock_guard<std::mutex> lock(S.mutex);
     auto& e = S.entries[key];
@@ -3322,6 +3324,10 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
         std::vector<FileStamp> files;
         Hierarchy hier;
         ++S.parses;
+        // A file can change during the parse. The facts are then from the old text or the new text.
+        const int64_t start = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::filesystem::file_time_type::clock::now().time_since_epoch())
+                                  .count();
         try
         {
             parse(out, files, hier, facts, answers);
@@ -3336,6 +3342,8 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
         e.hierarchy = std::move(hier);
         e.facts = std::move(facts);
         e.queries = std::move(answers);
+        // The facts of a fresh entry stay. They come from the earlier parse.
+        e.parse_start_ns = e.parse_start_ns != 0 ? std::min(e.parse_start_ns, start) : start;
     }
     for (const FileStamp& f : e.files)
     {
@@ -3348,6 +3356,8 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
         if (shadows && !exists)
             shadows->push_back(f.path);
     }
+    if (parse_start_ns)
+        *parse_start_ns = e.parse_start_ns;
     hierarchy = e.hierarchy;
     for (const FactReq& r : reqs)
         facts_out[r.type] = e.facts[r.type];
@@ -4917,7 +4927,7 @@ void translate_impl(
         [&](std::map<std::string, BaseInfo>& out, std::vector<FileStamp>& files, Hierarchy& h, FactMap& fm,
             std::map<std::string, std::string>& qa)
     { parse_bases(probe, args, base_names, import_paths, out, files, h, reqs, fm, query_texts, qa, res.virtual_files, fs); },
-        hier, facts, query_answers, fs, &res.dependencies, &res.shadow_paths);
+        hier, facts, query_answers, fs, &res.dependencies, &res.shadow_paths, &res.parse_start_ns);
     // A stub weak source gets its traits only when the headers declare the stub name as written.
     // Else a pointer field of the class is not a CheckedPtr (the borrowed finding applies).
     if (!sc.is_cpp)

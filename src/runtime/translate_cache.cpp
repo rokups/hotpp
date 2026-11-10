@@ -6,6 +6,7 @@
 
 #include "cache_io.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -589,9 +590,13 @@ bool TranslateCache::store(const hotc::TranslateOptions& o, const hotc::Translat
             man.end('}');
         }
         man.end(']');
-        // A header that changed after the start of the translate (or near it, with a coarse file
-        // time) can differ from the text of the parse.
-        const int64_t newest = to_ns(started) - int64_t(2000000000);
+        // A header that changed after the start of the parse (or near it, with a coarse file
+        // time) can differ from the text of the parse. A session entry can come from a parse of
+        // an earlier translate, so the earlier time of the two starts applies.
+        int64_t start_ns = to_ns(started);
+        if (r.parse_start_ns != 0)
+            start_ns = std::min(start_ns, r.parse_start_ns);
+        const int64_t newest = start_ns - int64_t(2000000000);
         man.key("deps");
         man.begin('[');
         for (const std::string& d : r.dependencies)

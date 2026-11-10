@@ -213,6 +213,10 @@ struct TranslateResult
     // files did not exist at the parse. A new file at one of these paths hides the header that
     // the parse used. There is no duplicate. The list is valid when ok is true.
     std::vector<std::string> shadow_paths;
+    // The start time of the earliest libclang parse that gave facts to this translate, in
+    // nanoseconds of std::filesystem::file_time_type::clock. A session entry can come from an
+    // earlier translate, so this time can be before the start of this translate. 0: not known.
+    int64_t parse_start_ns = 0;
     // The interface of the module (the script): the text of the declarations that importers
     // see. The names with "private" are not in it. A body change does not change it.
     std::string iface;
