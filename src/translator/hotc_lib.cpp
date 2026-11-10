@@ -7183,6 +7183,10 @@ void translate_impl(
         // ---- the context of the parameter analysis (S20b): the script functions and the fields
         // of the class and of its script parents, and the const member functions of native types.
         // The context of another class is the same with its own fields and functions (S25).
+        // The context of another class is built one time for this class: "class_ctx" keeps it.
+        // The fields of the other classes do not change during the analysis of this class.
+        std::map<const ClassDef*, hotc::ParamContext> class_ctx;
+        std::function<const hotc::ParamContext&(const ClassDef&)> ctx_of_class;
         std::function<hotc::ParamContext(const ClassDef&)> make_ctx = [&](const ClassDef& c0)
         {
             hotc::ParamContext ctx;
@@ -7240,8 +7244,15 @@ void translate_impl(
                 }
                 return worst < 0 ? 's' : rank[worst];
             };
-            ctx.for_class = make_ctx;
+            ctx.for_class = ctx_of_class;
             return ctx;
+        };
+        ctx_of_class = [&](const ClassDef& c0) -> const hotc::ParamContext&
+        {
+            auto it = class_ctx.find(&c0);
+            if (it == class_ctx.end())
+                it = class_ctx.emplace(&c0, make_ctx(c0)).first;
+            return it->second;
         };
         const hotc::ParamContext param_ctx = make_ctx(cd);
         infer_const_in(cd, param_ctx.script_fn,

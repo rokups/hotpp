@@ -123,7 +123,8 @@ struct ParamUse
 //    "const T&" (no change, no store), 'm' a "T&", "T&&" or "T*" (a change, may store), 's' a
 //    value or any other form (may store). 's' also means: not known (the conservative answer).
 //  - "for_class" gives the context of another script class. A call on a handle uses it, so a
-//    bare call in the body of the callee finds the functions of the callee class.
+//    bare call in the body of the callee finds the functions of the callee class. The result
+//    stays valid while the caller owns the context. The provider can cache it.
 struct CallTarget
 {
     const ast::ClassDef* script = nullptr; // the static class of the receiver, with "name"
@@ -146,7 +147,7 @@ struct ParamContext
     std::function<bool(const std::string& type, const std::string& method)> const_method;
     std::function<const CallTarget*(const ast::CallExpr&)> call_target;
     std::function<char(const std::string& key, size_t arg, size_t argc)> native_arg;
-    std::function<ParamContext(const ast::ClassDef&)> for_class;
+    std::function<const ParamContext&(const ast::ClassDef&)> for_class;
 };
 ParamUse analyze_param_use(const ast::Method& m, const std::string& name, const ParamContext& ctx = {});
 

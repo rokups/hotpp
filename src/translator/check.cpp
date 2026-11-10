@@ -2834,7 +2834,7 @@ struct ParamAnalysis
                 return;
             for (const ClassDef* cd : it->second)
             {
-                ParamContext c2 = ctx.for_class(*cd);
+                const ParamContext& c2 = ctx.for_class(*cd);
                 const Method* gm = c2.script_fn ? c2.script_fn(name) : nullptr;
                 if (!gm || !via->insert(gm).second)
                     continue;
@@ -2926,7 +2926,7 @@ struct ParamAnalysis
         if (t && t->script && ctx.for_class)
         {
             // A call on a script handle: the declared method gives the mode and the body.
-            ParamContext other = ctx.for_class(*t->script);
+            const ParamContext& other = ctx.for_class(*t->script);
             const Method* tm = other.script_fn ? other.script_fn(t->name) : nullptr;
             if (tm)
             {
