@@ -566,6 +566,28 @@ TEST(ScriptImportTranslation, ImportWithModuleVariableAndFreeFunction)
     EXPECT_NE(own.iface.find("fn int32_t Twice(int32_t x)"), std::string::npos) << own.iface;
 }
 
+// A field initializer of the importer reads a module variable of the imported script.
+TEST(ScriptImportTranslation, FieldInitializerReadsAnImportedModuleVariable)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    hotc::TranslateOptions o = temp_options(dir,
+        "using \"w.h\";\n"
+        "using \"base.hot\";\n"
+        "class Kid : Widget {\n"
+        "    int port = DefaultPort;\n"
+        "}\n");
+    o.modules.emplace_back("base.hot", "int DefaultPort = 5;\n");
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    // The accessor is declared before the initializer uses it.
+    const size_t declared = r.cpp.find("static int32_t& hot_mv_DefaultPort()");
+    const size_t used = r.cpp.find("T(hot_mv_DefaultPort())");
+    ASSERT_NE(declared, std::string::npos) << r.cpp;
+    ASSERT_NE(used, std::string::npos) << r.cpp;
+    EXPECT_LT(declared, used) << r.cpp;
+}
+
 // "private" at file level hides a name from the importers. The interface does not have a private
 // enum, constant, variable or function.
 TEST(ScriptImportTranslation, PrivateHidesANameFromImporters)

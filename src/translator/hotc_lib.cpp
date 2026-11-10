@@ -5679,6 +5679,18 @@ void translate_impl(
     std::vector<std::string> thunk_regs;
     std::vector<std::string> flag_regs; // the record flags that script_register sets
     std::set<std::string> new_ready; // the classes with a "new" function that are emitted so far
+    // A field initializer can read a module variable of an import. The accessor is declared before the
+    // first initializer, and defined in the block of the module variables of the imports.
+    bool foreign_accessors_declared = false;
+    auto declare_foreign_accessors = [&]
+    {
+        if (foreign_accessors_declared || !g_diag.items.empty())
+            return;
+        foreign_accessors_declared = true;
+        for (const ForeignVar& v : foreign_vars)
+            o.w("[[maybe_unused]] HOT_HIDDEN static " + types.cpp_storage(v.field.type, hotc::TypeModel::StorageUse::Field)
+                + "& hot_mv_" + v.field.name + "();\n");
+    };
 
     // ---- structs (design 7.10.1). A value class is a C++ struct with real
     // copy semantics. Its member functions are inline in the generation module, so a reload
@@ -5953,6 +5965,7 @@ void translate_impl(
         base_cx.free_fns = &fn_cls.statics;
         lower_statics(cd, base_cx, false);
 
+        declare_foreign_accessors();
         o.w("\n// ---------------------------------------------------------------- struct " + cn + "\n");
         // The field initializers: the text is the same in the constructor and in the field table.
         std::vector<std::string> inits;
@@ -8108,6 +8121,7 @@ void translate_impl(
                     throw TranslateAbort{};
                 init = hotc::ast::print(*f.init);
             }
+            declare_foreign_accessors();
             o.w("#line " + std::to_string(f.line) + " \"" + esc(file_at(f.pos)) + "\"\n");
             // A ".cpp" initializer can have a lambda that captures the shell ("[__self]"). The state block
             // starts with the owner, so the function finds the shell there. The lambda reads the state
