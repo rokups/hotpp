@@ -2793,11 +2793,14 @@ struct ParamAnalysis
 {
     const ParamContext& ctx;
     std::set<std::pair<const void*, std::string>> visiting; // stops a cycle of calls
+    // The functions that a call on another object visits. It stops a cycle of such calls.
+    std::shared_ptr<std::set<const Method*>> via = std::make_shared<std::set<const Method*>>();
 
     // Adds the fields that the function writes, also through the script functions that it
     // calls. "seen" visits each function one time.
     void fields_written(const Method& m, std::set<const Method*>& seen, std::set<std::string>& out)
     {
+        via->clear();
         std::set<std::string> foreign;
         fields_written(m, seen, out, foreign);
         // A field of another object has a type that the parameter can alias: report its name
@@ -2822,6 +2825,26 @@ struct ParamAnalysis
             if (const std::string* g = foreign_member(*e))
                 foreign.insert(*g);
         };
+        // A call "o.F()" on another object. The class of "o" is not known: the fields that F
+        // writes in each script class with a function F can change.
+        auto receiver_call = [&](const std::string& name)
+        {
+            auto it = ctx.script_methods.find(name);
+            if (it == ctx.script_methods.end() || !ctx.for_class)
+                return;
+            for (const ClassDef* cd : it->second)
+            {
+                ParamContext c2 = ctx.for_class(*cd);
+                const Method* gm = c2.script_fn ? c2.script_fn(name) : nullptr;
+                if (!gm || !via->insert(gm).second)
+                    continue;
+                ParamAnalysis sub{c2, {}, via};
+                std::set<const Method*> seen2;
+                std::set<std::string> out2;
+                sub.fields_written(*gm, seen2, out2, foreign);
+                foreign.insert(out2.begin(), out2.end());
+            }
+        };
         auto fe = [&](const Expr& e)
         {
             if (auto* b = std::get_if<BinaryExpr>(&e.v))
@@ -2841,11 +2864,20 @@ struct ParamAnalysis
                 {
                     if (n->parts.size() >= 2 && !locals.count(n->parts[0]) && ctx.fields.count(n->parts[0]))
                         out.insert(n->parts[0]);
+                    // "squad.units.Clear()": the call can change the field "units" of another object.
+                    if (n->parts.size() >= 3)
+                        foreign.insert(n->parts[n->parts.size() - 2]);
+                    // "slot.ClearLead()": a script function of another object writes its fields.
+                    if (n->parts.size() >= 2)
+                        receiver_call(n->parts.back());
                 }
                 else if (auto* mm = std::get_if<MemberExpr>(&c->callee->v))
                 {
                     if (!std::holds_alternative<ThisExpr>(mm->obj->v))
+                    {
                         mark(mm->obj);
+                        receiver_call(mm->name);
+                    }
                 }
                 const std::string g = script_callee(*c, locals);
                 if (!g.empty() && ctx.script_fn)

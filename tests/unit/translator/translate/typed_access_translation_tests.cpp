@@ -238,6 +238,31 @@ TEST(ParamAnalysis, HandleParamThatCanAliasAFieldOfAnotherObjectIsACopy)
         << r.cpp;
 }
 
+// A mutating call through a member chain of another object can change a field that the parameter
+// aliases. The function takes a copy.
+TEST(ParamAnalysis, HandleParamThatCanAliasAFieldChangedByAMemberCallIsACopy)
+{
+    const hotc::TranslateResult r = translate_script(
+        "class Unit2 : Unit {\n    int size = 3;\n}\nclass Squad : Unit {\n    array<$Unit2> units;\n}\n"
+        "class Box : Unit {\n"
+        "    int Clear($Squad squad, $Unit2 u) { if (squad == null || u == null) return 0; squad.units.Clear(); return u.size; }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "std::shared_ptr<Unit2> u)")) << r.cpp;
+}
+
+// A call to a script function of another object can write a field of that object. The function
+// takes a copy of a parameter that can alias the field.
+TEST(ParamAnalysis, HandleParamThatCanAliasAFieldWrittenByAScriptCallIsACopy)
+{
+    const hotc::TranslateResult r = translate_script(
+        "class Squad : Unit {\n    int size = 3;\n}\nclass Slot : Unit {\n    $Squad lead;\n"
+        "    void ClearLead() { lead = null; }\n}\n"
+        "class Box : Unit {\n"
+        "    int Clear($Slot slot, $Squad s) { if (slot == null || s == null) return 0; slot.ClearLead(); return s.size; }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r, "std::shared_ptr<Squad> s)")) << r.cpp;
+}
+
 TEST(TypedAccess, PropertyNameOnAKnownNativeTypeIsTheNativeMember)
 {
     const hotc::TranslateResult r = translate_script(

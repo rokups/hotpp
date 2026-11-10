@@ -7194,6 +7194,9 @@ void translate_impl(
             for (const ClassDef& oc : sc.classes)
                 for (const Field& f : oc.fields)
                     ctx.member_types[f.name].push_back(f.script_type.empty() ? f.type : f.script_type);
+            for (const ClassDef& oc : sc.classes)
+                for (const Method& om : oc.methods)
+                    ctx.script_methods[om.name].push_back(&oc);
             ctx.script_fn = [&script_parent, &hook_of, &c0](const std::string& n) -> const Method*
             {
                 int depth = 0;
