@@ -757,3 +757,43 @@ TEST(ScriptImportTranslation, ImportHoldsAChainOfThreeClasses)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("struct C_Shell"), std::string::npos) << r.cpp;
 }
+
+namespace
+{
+
+// The classes in one script and the same classes in an import give the same result.
+void expect_same_as_single_script(const std::string& classes)
+{
+    TempDir single_dir;
+    write_file(single_dir.path() / "w.h", kHeaderV1);
+    const hotc::TranslateResult single =
+        hotc::translate(temp_options(single_dir, "using \"w.h\";\n" + classes + "class Kid : Widget {\n    int q = 1;\n}\n"));
+
+    TempDir import_dir;
+    write_file(import_dir.path() / "w.h", kHeaderV1);
+    hotc::TranslateOptions o = temp_options(
+        import_dir, "using \"w.h\";\nusing \"lib.hot\";\nclass Kid : Widget {\n    int q = 1;\n}\n");
+    o.modules.emplace_back("lib.hot", "using \"w.h\";\n" + classes);
+    const hotc::TranslateResult imported = hotc::translate(o);
+
+    EXPECT_EQ(single.ok, imported.ok) << single.diagnostics << "\n---\n" << imported.diagnostics;
+    EXPECT_EQ(single.diagnostics.empty(), imported.diagnostics.empty())
+        << single.diagnostics << "\n---\n" << imported.diagnostics;
+}
+
+} // namespace
+
+TEST(ScriptImportTranslation, ImportedChainGivesTheResultOfASingleScript)
+{
+    // Two levels, parent without constructor.
+    expect_same_as_single_script("class A : Widget {\n    int a = 1;\n}\nclass B : A {\n    int b = 2;\n}\n");
+    // Three levels, no constructor.
+    expect_same_as_single_script(
+        "class A : Widget {\n    int a = 1;\n}\nclass B : A {\n    int b = 2;\n}\nclass C : B {\n    int c = 3;\n}\n");
+    // Parent with a constructor parameter, the child calls base.
+    expect_same_as_single_script(
+        "class A : Widget {\n    A(int v) { }\n}\nclass B : A {\n    B() : base(1) { }\n}\n"
+        "class C : B {\n    C() { }\n}\n");
+    // Parent with a constructor parameter, the child does not call base: both give the same error.
+    expect_same_as_single_script("class A : Widget {\n    A(int v) { }\n}\nclass B : A {\n    int b = 2;\n}\n");
+}
