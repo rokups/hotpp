@@ -6,16 +6,19 @@
 // finds the output of an unchanged script and skips libclang.
 //
 // Layout of the cache directory (the same directory as ObjectCache):
-//   <dir>/tr/<hex>.cpp   the generated C++ text
-//   <dir>/tr/<hex>.data  the other parts of the result (JSON)
-//   <dir>/tr/<hex>.json  the manifest: the checks of a lookup and the hashes of the two files
-// The key (the hex name) has the translator build id and the translate options, but not the slot
-// text. The manifest has the rest: the imported scripts (the search and the hash of the text),
+//   <dir>/tr/<name>.cpp   the generated C++ text
+//   <dir>/tr/<name>.data  the other parts of the result (JSON)
+//   <dir>/tr/<name>.json  the manifest: the checks of a lookup and the hashes of the two files
+// The key (the hex) has the translator build id and the translate options, but not the slot text
+// and not the imported scripts. A key has a maximum of four entries: <name> is "<hex>" or
+// "<hex>-<n>". An edit of an imported script thus keeps the entry of the earlier text, and a
+// revert of the edit is a hit. The manifest has the rest: the imported scripts (the search and the hash of the text),
 // the stamps of the native headers, the files of the host file system, the shadow paths and the
 // digest of the slot lines of the classes. A shadow path is a path that a header search tried
 // before it found the header. A file at a shadow path is a miss: it hides a header of the parse.
-// A lookup does each check again. A check that cannot run is a miss.
-// A store writes the manifest last. ObjectCache::trim also trims these entries.
+// A lookup does each check again on each entry of the key. A check that cannot run is a miss.
+// A store replaces the entry with the same imported texts and slot digest, else a free entry,
+// else the entry with the oldest use. A store writes the manifest last. ObjectCache::trim also trims these entries.
 #pragma once
 
 #include "hot/hotc_lib.h"
@@ -71,8 +74,9 @@ public:
     static bool enabled_by_env();
 
 private:
-    std::filesystem::path entry_file(const ObjectCache::Key& key, const char* ext) const;
-    std::optional<hotc::TranslateResult> lookup_entry(const hotc::TranslateOptions& options);
+    std::filesystem::path entry_file(const ObjectCache::Key& key, int entry, const char* ext) const;
+    std::optional<hotc::TranslateResult> lookup_entry(
+        const hotc::TranslateOptions& options, const ObjectCache::Key& key, int entry);
 
     std::filesystem::path dir_;
     std::string build_id_;

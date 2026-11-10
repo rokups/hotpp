@@ -27,6 +27,8 @@ namespace
 {
 
 constexpr int entry_version = 3;
+// The maximum number of entries of a key. Each entry has other imported texts or slot lines.
+constexpr int entry_count = 4;
 constexpr uint64_t second_seed = 0x9e3779b97f4a7c15ULL;
 
 // ------------------------------------------------------------ The fields of TranslateOptions
@@ -373,17 +375,21 @@ ObjectCache::Key TranslateCache::make_key(const hotc::TranslateOptions& options)
     return {a.value(), b.value()};
 }
 
-fs::path TranslateCache::entry_file(const ObjectCache::Key& key, const char* ext) const
+fs::path TranslateCache::entry_file(const ObjectCache::Key& key, int entry, const char* ext) const
 {
-    return dir_ / "tr" / (key.hex() + ext);
+    const std::string suffix = entry == 0 ? std::string() : "-" + std::to_string(entry);
+    return dir_ / "tr" / (key.hex() + suffix + ext);
 }
 
 void TranslateCache::remove(const ObjectCache::Key& key)
 {
     std::error_code ec;
-    fs::remove(entry_file(key, ".json"), ec);
-    fs::remove(entry_file(key, ".cpp"), ec);
-    fs::remove(entry_file(key, ".data"), ec);
+    for (int i = 0; i < entry_count; ++i)
+    {
+        fs::remove(entry_file(key, i, ".json"), ec);
+        fs::remove(entry_file(key, i, ".cpp"), ec);
+        fs::remove(entry_file(key, i, ".data"), ec);
+    }
 }
 
 std::optional<hotc::TranslateResult> TranslateCache::lookup(const hotc::TranslateOptions& options)
@@ -391,7 +397,9 @@ std::optional<hotc::TranslateResult> TranslateCache::lookup(const hotc::Translat
     std::optional<hotc::TranslateResult> r;
     try
     {
-        r = lookup_entry(options);
+        const ObjectCache::Key key = make_key(options);
+        for (int i = 0; i < entry_count && !r; ++i)
+            r = lookup_entry(options, key, i);
     }
     catch (...)
     {
@@ -404,10 +412,10 @@ std::optional<hotc::TranslateResult> TranslateCache::lookup(const hotc::Translat
     return r;
 }
 
-std::optional<hotc::TranslateResult> TranslateCache::lookup_entry(const hotc::TranslateOptions& o)
+std::optional<hotc::TranslateResult> TranslateCache::lookup_entry(
+    const hotc::TranslateOptions& o, const ObjectCache::Key& key, int entry)
 {
-    const ObjectCache::Key key = make_key(o);
-    const fs::path manifest = entry_file(key, ".json");
+    const fs::path manifest = entry_file(key, entry, ".json");
     std::string text;
     Json m;
     if (!read_file(manifest, text) || !parse_json(text, m) || m.type != Json::Type::Object)
@@ -513,8 +521,8 @@ std::optional<hotc::TranslateResult> TranslateCache::lookup_entry(const hotc::Tr
     Json data;
     const std::string* cpp_hash = get_str(m, "cpp_hash");
     const std::string* data_hash = get_str(m, "data_hash");
-    if (!cpp_hash || !data_hash || !read_file(entry_file(key, ".cpp"), cpp) || hash_hex(cpp) != *cpp_hash
-        || !read_file(entry_file(key, ".data"), data_text) || hash_hex(data_text) != *data_hash
+    if (!cpp_hash || !data_hash || !read_file(entry_file(key, entry, ".cpp"), cpp) || hash_hex(cpp) != *cpp_hash
+        || !read_file(entry_file(key, entry, ".data"), data_text) || hash_hex(data_text) != *data_hash
         || !parse_json(data_text, data) || data.type != Json::Type::Object)
         return std::nullopt;
 
@@ -658,6 +666,13 @@ bool TranslateCache::store(const hotc::TranslateOptions& o, const hotc::Translat
         man.list("classes", r.slot_classes);
         man.list("keys", r.slot_keys);
         man.field("slots", hash_hex(carry.read));
+        // The variant: the slot digest and the imported texts. A store replaces the entry of the
+        // same variant, because that entry is not valid now (a lookup of it missed).
+        std::string variant_text = hash_hex(carry.read);
+        for (const hotc::ImportLookup& l : r.import_lookups)
+            variant_text += "\n" + l.file + "\n" + hex64(l.text_hash);
+        const std::string variant = hash_hex(variant_text);
+        man.field("variant", variant);
         man.key("imports");
         man.begin('[');
         for (const hotc::ImportLookup& l : r.import_lookups)
@@ -787,10 +802,42 @@ bool TranslateCache::store(const hotc::TranslateOptions& o, const hotc::Translat
             error = "cannot create " + (dir_ / "tr").string() + ": " + ec.message();
             return false;
         }
+        // The entry of the store: the entry of the same variant, else a free entry, else the entry
+        // with the oldest use (a hit sets the time of the manifest).
+        int entry = -1;
+        int free_entry = -1;
+        int oldest = 0;
+        fs::file_time_type oldest_time = fs::file_time_type::max();
+        for (int i = 0; i < entry_count && entry < 0; ++i)
+        {
+            const fs::path old = entry_file(key, i, ".json");
+            std::string old_text;
+            Json old_m;
+            int64_t old_version = 0;
+            std::error_code tec;
+            const fs::file_time_type time = fs::last_write_time(old, tec);
+            if (tec || !read_file(old, old_text) || !parse_json(old_text, old_m) || old_m.type != Json::Type::Object
+                || !get_num(old_m, "version", old_version) || old_version != entry_version)
+            {
+                if (free_entry < 0)
+                    free_entry = i;
+                continue;
+            }
+            const std::string* old_variant = get_str(old_m, "variant");
+            if (old_variant && *old_variant == variant)
+                entry = i;
+            else if (time < oldest_time)
+            {
+                oldest_time = time;
+                oldest = i;
+            }
+        }
+        if (entry < 0)
+            entry = free_entry >= 0 ? free_entry : oldest;
         // The manifest comes last: an entry without it is a miss.
-        if (!write_file_atomic(entry_file(key, ".cpp"), r.cpp, error)
-            || !write_file_atomic(entry_file(key, ".data"), data.out, error)
-            || !write_file_atomic(entry_file(key, ".json"), man.out, error))
+        if (!write_file_atomic(entry_file(key, entry, ".cpp"), r.cpp, error)
+            || !write_file_atomic(entry_file(key, entry, ".data"), data.out, error)
+            || !write_file_atomic(entry_file(key, entry, ".json"), man.out, error))
             return false;
         return true;
     }

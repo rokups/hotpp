@@ -651,3 +651,95 @@ TEST(TranslateCache, NewShadowHeaderInAnExistingDirMisses)
     make_old(dir + "/All.h");
     EXPECT_FALSE(c.lookup(f.options).has_value());
 }
+
+namespace
+{
+
+const char* kActorBase = "using \"Actor.h\";\nclass Base : Actor {\n    float v = 0.0;\n"
+                         "    override void Tick(float dt) { this.v = 1.0; }\n}\n";
+const char* kActorBaseEdited = "using \"Actor.h\";\nclass Base : Actor {\n    float v = 0.0;\n"
+                               "    override void Tick(float dt) { this.v = 2.0; }\n}\n";
+const char* kActorMain = "using \"Actor.h\";\nusing \"base.hot\";\nclass Calc : Base {\n"
+                         "    float r = 0.0;\n    override void Tick(float dt) { this.r = 3.0; }\n}\n";
+
+size_t manifest_count(const std::string& cache)
+{
+    size_t n = 0;
+    std::error_code ec;
+    for (fs::directory_iterator it(fs::path(cache) / "tr", ec), end; !ec && it != end; it.increment(ec))
+        if (it->path().extension() == ".json")
+            ++n;
+    return n;
+}
+
+} // namespace
+
+// Script A imports script B. A body edit of B is a miss for A, and the next start is a hit. A revert
+// of B finds the entry of the first text: an import edit does not remove the earlier entry of A.
+TEST(TranslateCacheBackend, ImporterHitsAfterAnImportEditAndARevert)
+{
+    EnvGuard on("HOT_CACHE", "1");
+    EnvGuard tr_on("HOT_TRANSLATE_CACHE", nullptr);
+    TestScratch scratch;
+    const std::string cache = scratch.file("cache");
+    const std::string dir = scratch.file("src");
+    fs::create_directories(dir);
+    const std::string base = dir + "/base.hot";
+    const hot::ScriptSource source = {dir + "/main.hot", kActorMain};
+    int n = 0;
+    const auto load = [&](uint64_t& hits, uint64_t& misses)
+    {
+        auto backend = make_backend(scratch, "w" + std::to_string(n++), cache);
+        hot::LoadResult r = backend->load(source, 1);
+        ASSERT_TRUE(r) << r.error;
+        hits = backend->cache_stats().translate_hits;
+        misses = backend->cache_stats().translate_misses;
+    };
+    uint64_t hits = 0, misses = 0;
+    write_file(base, kActorBase);
+    load(hits, misses);
+    EXPECT_EQ(misses, 1u) << "first text";
+    write_file(base, kActorBaseEdited);
+    load(hits, misses);
+    EXPECT_EQ(misses, 1u) << "edited import";
+    load(hits, misses);
+    EXPECT_EQ(hits, 1u) << "the start after the edit";
+    write_file(base, kActorBase);
+    load(hits, misses);
+    EXPECT_EQ(hits, 1u) << "reverted import";
+    write_file(base, kActorBaseEdited);
+    load(hits, misses);
+    EXPECT_EQ(hits, 1u) << "edited import again";
+}
+
+// A key keeps a small number of entries. A store after the last one removes the oldest entry. A
+// store of a known import text replaces its old entry, and the number of entries stays the same.
+TEST(TranslateCache, KeyKeepsTheNewestEntries)
+{
+    Fixture f;
+    hot::TranslateCache c(f.cache);
+    const auto base_text = [](int i)
+    { return "using \"Widget.h\";\nclass Base : Widget {\n    override int Power() { return " + std::to_string(i) + "; }\n}\n"; };
+    for (int i = 0; i < 5; ++i)
+    {
+        write_file(f.base, base_text(i));
+        f.fill(c, f.options);
+    }
+    EXPECT_EQ(manifest_count(f.cache), 4u);
+    write_file(f.base, base_text(0));
+    EXPECT_FALSE(c.lookup(f.options).has_value()) << "the oldest entry is gone";
+    for (int i = 1; i < 5; ++i)
+    {
+        write_file(f.base, base_text(i));
+        EXPECT_TRUE(c.lookup(f.options).has_value()) << i;
+    }
+    // A store of a stale entry of a known text (a touched header) replaces that entry.
+    write_file(f.base, base_text(2));
+    f.fill(c, f.options);
+    EXPECT_EQ(manifest_count(f.cache), 4u);
+    for (int i = 1; i < 5; ++i)
+    {
+        write_file(f.base, base_text(i));
+        EXPECT_TRUE(c.lookup(f.options).has_value()) << i;
+    }
+}
