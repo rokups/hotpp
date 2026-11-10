@@ -208,3 +208,37 @@ TEST(ImportViewTranslation, BadTextHasNoView)
 }
 
 } // namespace
+
+// The importer can get a warning with a place in the import: a borrowed pointer field or property
+// of an imported class. A body edit above it keeps the view and moves the place. So the view alone
+// does not give the warnings; the translate cache keeps no view for an entry with such a warning.
+TEST(ImportViewTranslation, WarningOfAnImportedFieldMovesWithAnEqualView)
+{
+    const std::string lib = "using \"w.h\";\nclass Base : Widget {\n    void f() { }\n"
+                            "    Item* p;\n    Item* Q { get; set; }\n}\n";
+    const std::string edited = replaced(lib, "void f() { }", "void f()\n    {\n    }");
+    const std::string imp = "using \"w.h\";\nusing \"lib.hot\";\nclass Kid : Base {\n    int Use() { return 1; }\n}\n";
+    auto run = [&](const std::string& text)
+    {
+        TempDir dir;
+        write_file(dir.path() / "w.h", std::string(kHeaderV1) + "struct Item { int v; };\n");
+        hotc::TranslateOptions o = temp_options(dir, imp);
+        o.strict_borrowed = false;
+        o.modules.emplace_back("lib.hot", text);
+        return hotc::translate(o);
+    };
+    const hotc::TranslateResult a = run(lib);
+    ASSERT_TRUE(a.ok) << a.diagnostics;
+    const hotc::TranslateResult b = run(edited);
+    ASSERT_TRUE(b.ok) << b.diagnostics;
+    EXPECT_NE(a.warnings.find("lib.hot:4:"), std::string::npos) << a.warnings;
+    EXPECT_NE(a.warnings.find("lib.hot:5:"), std::string::npos) << a.warnings;
+    EXPECT_NE(b.warnings.find("lib.hot:6:"), std::string::npos) << b.warnings;
+    EXPECT_EQ(view_of(a, lib), view_of(b, edited));
+}
+
+// A comment edit in a method body keeps the view.
+TEST(ImportViewTranslation, CommentEditInABodyKeepsTheView)
+{
+    expect_same_view(kLib, replaced(kLib, "return this.hp * 2;", "// twice\n        return this.hp * 2; /* x */"));
+}

@@ -283,6 +283,82 @@ TEST(TranslateCache, ImporterHitsAfterABodyEditThatAddsLines)
 
 // The check of a view hit finds an entry that differs from a new translate. The test changes a
 // line of the stored C++ text and the hash in the manifest. The hit is then an error result.
+// A warning of the importer can have a place in an import: here the borrowed pointer field of a
+// class of the import. A body edit above the field keeps the view and moves the warning. So an
+// entry with such a warning has no view hit: the lookup is a miss, not an old warning line.
+TEST(TranslateCache, WarningInAnImportPreventsAViewHit)
+{
+    Fixture f;
+    write_file(f.header, std::string(kHeader) + "struct Item { int v; };\n");
+    make_old(f.header);
+    const std::string base = "using \"Widget.h\";\nclass Base : Widget {\n    int Level() { return 1; }\n"
+                             "    Item* p;\n}\n";
+    write_file(f.base, base);
+    hotc::TranslateOptions o = f.options;
+    o.strict_borrowed = false;
+    hot::TranslateCache c(f.cache);
+    c.set_verify_hits(true);
+    const hotc::TranslateResult before = f.fill(c, o);
+    ASSERT_NE(before.warnings.find("base.hot:4:"), std::string::npos) << before.warnings;
+    std::string edited = base;
+    edited.replace(edited.find("{ return 1; }"), 13, "{\n        return 1;\n    }");
+    write_file(f.base, edited);
+    const hotc::TranslateResult real = f.translate(o);
+    ASSERT_NE(real.warnings.find("base.hot:6:"), std::string::npos) << real.warnings;
+    const std::optional<hotc::TranslateResult> hit = c.lookup(o);
+    EXPECT_FALSE(hit.has_value()) << (hit ? hit->diagnostics + hit->warnings : std::string());
+    EXPECT_EQ(c.stats().view_hits, 0u);
+}
+
+// Writes the files, fills the cache, writes the edit, and expects a view hit that is equal to a
+// new translate.
+void expect_view_hit(Fixture& f, const hotc::TranslateOptions& o, const std::string& path, const std::string& edited)
+{
+    hot::TranslateCache c(f.cache);
+    c.set_verify_hits(true);
+    const hotc::TranslateResult before = f.fill(c, o);
+    write_file(path, edited);
+    const hotc::TranslateResult real = f.translate(o);
+    ASSERT_NE(before.imports, real.imports) << "the import text changes";
+    const std::optional<hotc::TranslateResult> hit = c.lookup(o);
+    ASSERT_TRUE(hit.has_value());
+    ASSERT_TRUE(hit->ok) << hit->diagnostics;
+    EXPECT_EQ(c.stats().view_hits, 1u);
+    expect_same(*hit, real);
+}
+
+// A body edit of the first import changes its size. The places of the second import come after it
+// in the parse, so they move too. The hit must have the segments of a new translate.
+TEST(TranslateCache, ImporterHitsWhenAnEarlierImportChangesItsSize)
+{
+    Fixture f;
+    const std::string other = f.dir + "/other.hot";
+    write_file(other, "using \"Widget.h\";\nclass Other : Widget {\n    int Get() { return 4; }\n"
+                      "    int More() { return this.Get() + 1; }\n}\n");
+    hotc::TranslateOptions o = f.options;
+    o.script_text = "using \"Widget.h\";\nusing \"base.hot\";\nusing \"other.hot\";\n"
+                    "class Kid : Base {\n    override int Power() { return 2; }\n"
+                    "    int Speed($Other x) { if (x == null) return 0; return x.More() + this.Level(); }\n}\n";
+    std::string edited = kBase;
+    edited.replace(edited.find("{ return 1; }\n    int Level"), 13, "{\n        int t = 1;\n\n        return t;\n    }");
+    expect_view_hit(f, o, f.base, edited);
+}
+
+// A body edit of an import of an import keeps the importer a hit.
+TEST(TranslateCache, ImporterHitsAfterABodyEditOfATransitiveImport)
+{
+    Fixture f;
+    const std::string c1 = f.dir + "/c1.hot";
+    const std::string c1_text = "using \"Widget.h\";\nclass C1 : Widget {\n    int Twice() { return 2; }\n"
+                                "    override int Power() { return 1; }\n}\n";
+    write_file(c1, c1_text);
+    write_file(f.base, "using \"Widget.h\";\nusing \"c1.hot\";\nclass Base : C1 {\n"
+                       "    int Level() { return this.Twice(); }\n}\n");
+    std::string edited = c1_text;
+    edited.replace(edited.find("{ return 2; }"), 13, "{\n        int t = 2;\n        return t;\n    }");
+    expect_view_hit(f, f.options, c1, edited);
+}
+
 TEST(TranslateCache, VerifiedViewHitFindsAWrongEntry)
 {
     Fixture f;

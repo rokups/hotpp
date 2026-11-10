@@ -26,7 +26,7 @@ using namespace cache_io;
 namespace
 {
 
-constexpr int entry_version = 4;
+constexpr int entry_version = 5;
 // The maximum number of entries of a key. Each entry has other imported texts or slot lines.
 constexpr int entry_count = 4;
 constexpr uint64_t second_seed = 0x9e3779b97f4a7c15ULL;
@@ -388,11 +388,28 @@ std::string first_difference(const hotc::TranslateResult& hit, const hotc::Trans
         return "the new translate has errors";
     for (const std::string& d : {text("cpp", hit.cpp, real.cpp), text("warnings", hit.warnings, real.warnings),
              text("slots_out", hit.slots_out, real.slots_out), text("sigs_out", hit.sigs_out, real.sigs_out),
-             text("iface", hit.iface, real.iface)})
+             text("iface", hit.iface, real.iface), text("iface_header", hit.iface_header, real.iface_header)})
         if (!d.empty())
             return d;
+    if (hit.iface_hash != real.iface_hash)
+        return "iface_hash";
+    if (hit.unit != real.unit)
+        return "unit";
     if (hit.import_hashes != real.import_hashes)
         return "import_hashes";
+    if (hit.slot_classes != real.slot_classes || hit.slot_keys != real.slot_keys)
+        return "slot_keys";
+    if (hit.import_lookups.size() != real.import_lookups.size())
+        return "import_lookups";
+    for (size_t i = 0; i < real.import_lookups.size(); ++i)
+    {
+        const hotc::ImportLookup& a = hit.import_lookups[i];
+        const hotc::ImportLookup& b = real.import_lookups[i];
+        if (a.path != b.path || a.from_dir != b.from_dir || a.from_unit_dir != b.from_unit_dir || a.file != b.file
+            || a.text_hash != b.text_hash || a.view_hash != b.view_hash || a.array_tpl != b.array_tpl
+            || a.view_masked != b.view_masked)
+            return "import lookup " + std::to_string(i);
+    }
     const auto& sa = hit.source_map.segments();
     const auto& sb = real.source_map.segments();
     for (size_t i = 0; i < sa.size() || i < sb.size(); ++i)
@@ -570,6 +587,9 @@ std::optional<hotc::TranslateResult> TranslateCache::lookup_entry(
         const std::string* view = get_str(i, "view");
         const std::string* array_tpl = get_str(i, "array_tpl");
         const Json* masked = get_array(i, "masked");
+        int64_t view_hit = 0;
+        if (!get_num(i, "view_hit", view_hit))
+            return std::nullopt;
         if (!path || !from_dir || !from_unit_dir || !file || !hash || !parse_hex64(*hash, l.text_hash) || !view
             || !array_tpl || !masked)
             return std::nullopt;
@@ -596,8 +616,9 @@ std::optional<hotc::TranslateResult> TranslateCache::lookup_entry(
         const uint64_t found_hash = hotc::text_hash(found_text);
         if (found_hash != l.text_hash)
         {
-            // Another text: the view must be the same. No stored view is a miss.
-            if (view->empty())
+            // Another text: the view must be the same. No stored view is a miss. An entry with a
+            // warning in the file has no view hit (the store tells why).
+            if (view->empty() || view_hit != 1)
                 return std::nullopt;
             const std::optional<hotc::ImportView> now = hotc::import_view(found_text, *array_tpl);
             if (!now || now->hash != *l.view_hash || now->masked.size() != before.size())
@@ -848,8 +869,15 @@ bool TranslateCache::store(const hotc::TranslateOptions& o, const hotc::Translat
             man.field("from_unit_dir", l.from_unit_dir);
             man.field("file", l.file);
             man.field("hash", hex64(l.text_hash));
-            // The import view: a lookup takes another text with the same view.
+            // The import view: a lookup takes another text with the same view. A warning can have a
+            // place in the import, for example a field of an imported class. A body edit can move that
+            // place, and the view does not see it. So the entry keeps no view when a warning names the file.
+            const size_t slash = l.file.find_last_of("/\\");
+            const std::string base_name = slash == std::string::npos ? l.file : l.file.substr(slash + 1);
+            const bool warned = !base_name.empty() && r.warnings.find(base_name) != std::string::npos;
             man.field("view", l.view_hash ? hex64(*l.view_hash) : std::string());
+            man.key("view_hit");
+            man.num(warned ? 0 : 1);
             man.field("array_tpl", l.array_tpl);
             man.key("masked");
             man.begin('[');
