@@ -10,7 +10,9 @@
 #include "hot/paths.h"
 
 #include <cerrno>
+#include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -400,7 +402,11 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     // A missing file means the first generation. A fresh generation starts with no slots.
     if (mode == LoadMode::Reload)
         read_text(opt_.slots_file, to.slots_in);
+    // HOT_TIMING prints the time of the translate and of the clang run of each unit.
+    const bool timing = std::getenv("HOT_TIMING") != nullptr;
+    const auto t0 = std::chrono::steady_clock::now();
     hotc::TranslateResult tr = hotc::translate(to, *opt_.session);
+    const auto t1 = std::chrono::steady_clock::now();
     if (dependencies)
         *dependencies = tr.dependencies; // also after a failure
     if (hashes)
@@ -457,6 +463,15 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     fs::remove(so_path, ec);
     std::string output;
     const int rc = run_command(cmd, output);
+    if (timing)
+    {
+        const auto t2 = std::chrono::steady_clock::now();
+        const auto ms = [](auto a, auto b) {
+            return static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(b - a).count());
+        };
+        std::fprintf(stderr, "hot: %s translate %lld ms, clang %lld ms\n",
+            (source.unit.empty() ? fs::path(source.name).stem().string() : source.unit).c_str(), ms(t0, t1), ms(t1, t2));
+    }
     if (rc != 0)
     {
         if (!opt_.raw_diagnostics)

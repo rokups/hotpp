@@ -431,3 +431,45 @@ The cost does not grow with the number of reloads. A new object, made after the 
 - The `aot-opt` backend has no reload and no override. The loader refuses both. A program that needs a reload uses `aot` (`MODE AOT_RELOAD`).
 - `bench_backends_opt` is a separate program, so its native twin is a separate copy of the code. The native times of the two programs differ by up to 0.1 ns. The tables of the comparison use the ratio of each program.
 - One machine and one compiler. Measure again on your own machine and with your own headers.
+
+## Script start-up cost (BiteSizedWar, files backend)
+
+The environment variable `HOT_TIMING` makes the files backend print one line to `stderr` for each unit build: `hot: <unit> translate <ms> ms, clang <ms> ms`.
+
+The numbers come from this machine (32 hardware threads, clang 23.1.3, Debug build of the game, cold start with no cache).
+
+Cold start of `BiteSizedWarHot --offline --headless`:
+
+| Value | Result |
+|---|---|
+| Units built | 75 |
+| Wall time, process start to `loaded N scripts` | 424.7 s |
+| Sum of the translate times | 154.2 s |
+| Sum of the clang times | 269.3 s |
+
+- The units build one after the other. The sum of the two times (423.5 s) is 99.7% of the wall time.
+- The compile has no `-O` flag, so clang uses `-O0`. The command has `-g`, `-fPIC`, `-fwrapv` and `-fno-plt`.
+
+The five biggest units by clang time:
+
+| Unit | Translate | Clang |
+|---|---|---|
+| `Game/Game` | 28149 ms | 14660 ms |
+| `Carve/CarveCheck` | 5712 ms | 9180 ms |
+| `Carve/Destruction` | 2822 ms | 6635 ms |
+| `Effects/ProjectileEffects` | 4791 ms | 6437 ms |
+| `Weapons/ShotResolver` | 3643 ms | 6039 ms |
+
+The compile of the biggest unit (`Game/Game`: 50244 lines, 3.1 MB of C++) by hand, with the same flags:
+
+| Step | Time |
+|---|---|
+| `-fsyntax-only` (parse and checks, no code) | 10.5 s |
+| `-c -o x.o` (compile) | 14.9 s |
+| `clang++ -shared x.o -o x.so` (link) | 0.29 s |
+| `-shared` in one command | 15.2 s |
+| `-fsyntax-only` of only the 137 `#include` lines of the unit (87 Urho3D headers) | 6.0 s |
+
+- The link is 2% of the build. The compile is the cost.
+- The headers alone take 6.0 s of the 14.9 s. The rest is the code of the unit.
+- A cache of the object file or of the `.so` can skip all of this for a unit that did not change.
