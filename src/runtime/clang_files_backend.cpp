@@ -906,21 +906,27 @@ std::string library_stamp(const std::string& path)
 }
 
 // The environment variables that the compiler driver reads. They can change the include path or
-// the target, so they are part of the compiler id. "name=value" for a set variable, "name!" else.
+// the target, so they are part of the compiler id: "|name=length:value" for each set variable.
 std::string compiler_environment()
 {
     static const char* const names[] = {"CPATH", "CPLUS_INCLUDE_PATH", "C_INCLUDE_PATH", "OBJC_INCLUDE_PATH",
-        "SDKROOT", "MACOSX_DEPLOYMENT_TARGET", "CCC_OVERRIDE_OPTIONS", "LIBRARY_PATH", "COMPILER_PATH"};
+        "SDKROOT", "MACOSX_DEPLOYMENT_TARGET", "CCC_OVERRIDE_OPTIONS", "LIBRARY_PATH", "COMPILER_PATH",
+        // The MSVC tools and the Windows SDK.
+        "INCLUDE", "EXTERNAL_INCLUDE", "LIB", "VCToolsInstallDir", "VCINSTALLDIR", "WindowsSdkDir",
+        "WindowsSDKVersion",
+        // The Apple targets other than macOS.
+        "IPHONEOS_DEPLOYMENT_TARGET", "TVOS_DEPLOYMENT_TARGET", "WATCHOS_DEPLOYMENT_TARGET",
+        "XROS_DEPLOYMENT_TARGET"};
     std::string text;
     for (const char* name : names)
     {
+        // An unset variable adds no text, so a new name in the list keeps the old keys.
         const char* value = std::getenv(name);
+        if (!value)
+            continue;
         text += '|';
         text += name;
-        if (value)
-            text += std::string("=") + std::to_string(std::char_traits<char>::length(value)) + ":" + value;
-        else
-            text += '!';
+        text += std::string("=") + std::to_string(std::char_traits<char>::length(value)) + ":" + value;
     }
     return text;
 }

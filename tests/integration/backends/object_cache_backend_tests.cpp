@@ -713,6 +713,35 @@ TEST(ObjectCacheBackend, CompilerEnvironmentIsPartOfTheKey)
     EXPECT_EQ(backend->cache_stats().hits, 1u);
 }
 
+// The MSVC tools and the Apple targets read more variables. Each one changes the object key.
+TEST(ObjectCacheBackend, ToolchainVariablesArePartOfTheObjectKey)
+{
+    CleanEnv env;
+    const char* const names[] = {"INCLUDE", "EXTERNAL_INCLUDE", "LIB", "VCToolsInstallDir", "VCINSTALLDIR",
+        "WindowsSdkDir", "WindowsSDKVersion", "IPHONEOS_DEPLOYMENT_TARGET", "TVOS_DEPLOYMENT_TARGET",
+        "WATCHOS_DEPLOYMENT_TARGET", "XROS_DEPLOYMENT_TARGET"};
+    std::vector<std::unique_ptr<EnvGuard>> saved;
+    for (const char* name : names)
+    {
+        saved.push_back(std::make_unique<EnvGuard>(name, ""));
+        test_support::unset_env(name);
+    }
+    TestScratch scratch;
+    const std::string cache = scratch.file("cache");
+    {
+        auto backend = make_backend(scratch, "work_base", cache);
+        EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
+    }
+    for (const char* name : names)
+    {
+        EnvGuard changed(name, "hot-test-value");
+        auto backend = make_backend(scratch, std::string("work_") + name, cache);
+        EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
+        EXPECT_EQ(backend->cache_stats().hits, 0u) << name;
+        EXPECT_EQ(backend->cache_stats().misses, 1u) << name;
+    }
+}
+
 // A header that is younger than the start of the compile can change during the compile. The
 // build works, but the cache has no object entry and no module entry for it.
 TEST(ObjectCacheBackend, YoungHeaderIsNotCached)
