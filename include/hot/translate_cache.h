@@ -17,6 +17,11 @@
 // digest of the slot lines of the classes. A shadow path is a path that a header search tried
 // before it found the header. A file at a shadow path is a miss: it hides a header of the parse.
 // A lookup does each check again on each entry of the key. A check that cannot run is a miss.
+// An imported script is valid when the search finds the same file and the text has the same hash
+// or the same import view (hotc::import_view). After a body edit of an import, the view stays the
+// same, so the importer is a hit. The hit has the current text of the import. The source map
+// segments of that file move by the size change of the masked bodies before them. A segment in a
+// masked body is a miss.
 // A store replaces the entry with the same imported texts and slot digest, else a free entry,
 // else the entry with the oldest use. A store writes the manifest last. ObjectCache::trim also trims these entries.
 #pragma once
@@ -41,6 +46,7 @@ public:
     {
         uint64_t hits = 0;
         uint64_t misses = 0;
+        uint64_t view_hits = 0; // the hits with an import that has another text and the same view
     };
 
     // "build_id" empty: hotc::translator_build_id(). A test gives an other id. "extra" is more
@@ -68,7 +74,14 @@ public:
     // Sets "extra" (see the constructor). Call it before the first lookup or store.
     void set_extra(std::string extra) { extra_ = std::move(extra); }
 
-    Stats stats() const { return {hits_.load(), misses_.load()}; }
+    Stats stats() const { return {hits_.load(), misses_.load(), view_hits_.load()}; }
+
+    // With "verify_hits" on, a hit with an import that has another text (a view hit) translates
+    // again and compares the two results: the C++ text, the warnings, the source map, the import
+    // hashes and the slot output. A difference gives an error result (ok is false) that names the
+    // first different line. The constructor turns it on when HOT_TRANSLATE_VERIFY is "1".
+    void set_verify_hits(bool on) { verify_hits_ = on; }
+    bool verify_hits() const { return verify_hits_; }
 
     // False when HOT_TRANSLATE_CACHE or HOT_CACHE is "0". Else true.
     static bool enabled_by_env();
@@ -76,13 +89,15 @@ public:
 private:
     std::filesystem::path entry_file(const ObjectCache::Key& key, int entry, const char* ext) const;
     std::optional<hotc::TranslateResult> lookup_entry(
-        const hotc::TranslateOptions& options, const ObjectCache::Key& key, int entry);
+        const hotc::TranslateOptions& options, const ObjectCache::Key& key, int entry, bool& by_view);
 
     std::filesystem::path dir_;
     std::string build_id_;
     std::string extra_;
     std::atomic<uint64_t> hits_{0};
     std::atomic<uint64_t> misses_{0};
+    std::atomic<uint64_t> view_hits_{0};
+    bool verify_hits_ = false;
 };
 
 } // namespace hot

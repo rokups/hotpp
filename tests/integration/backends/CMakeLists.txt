@@ -65,4 +65,5 @@ if(HOT_LIBCLANG_DLL)
     get_filename_component(_hot_llvm_tools_dir "${HOT_LIBCLANG_DLL}" DIRECTORY)
     target_compile_definitions(integration_backend_tests PRIVATE HOT_LLVM_TOOLS_DIR="${_hot_llvm_tools_dir}")
 endif()
-hot_gtest(integration_backend_tests)
+# A view hit of the translate cache translates again and compares (HOT_TRANSLATE_VERIFY).
+hot_gtest(integration_backend_tests PROPERTIES ENVIRONMENT "HOT_TRANSLATE_VERIFY=1")

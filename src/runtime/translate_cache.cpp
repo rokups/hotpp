@@ -26,7 +26,7 @@ using namespace cache_io;
 namespace
 {
 
-constexpr int entry_version = 3;
+constexpr int entry_version = 4;
 // The maximum number of entries of a key. Each entry has other imported texts or slot lines.
 constexpr int entry_count = 4;
 constexpr uint64_t second_seed = 0x9e3779b97f4a7c15ULL;
@@ -341,6 +341,93 @@ bool split_slots(const hotc::SlotCarry& carry, const hotc::TranslateResult& r, O
         && carry.sigs + own.sigs + carry.fields + own.fields == r.sigs_out;
 }
 
+// The masked ranges of an import with a view hit: the ranges of the stored text and of the current
+// text. The chunks between the ranges are equal (the views are equal).
+struct MovedFile
+{
+    std::vector<uint32_t> before, now;
+};
+
+// The offset in the current text of a source map segment of the stored text. No value when the
+// segment touches a masked range: the text there is not known to be the same.
+std::optional<uint32_t> moved_offset(const MovedFile& m, uint32_t begin, uint32_t len)
+{
+    const size_t n = m.before.size() / 2;
+    if (m.now.size() != m.before.size())
+        return std::nullopt;
+    // The first range that ends after "begin".
+    size_t k = 0;
+    while (k < n && m.before[2 * k + 1] <= begin)
+        ++k;
+    if (k < n && static_cast<uint64_t>(begin) + std::max<uint32_t>(len, 1) > m.before[2 * k])
+        return std::nullopt;
+    if (k == 0)
+        return begin;
+    const int64_t moved = static_cast<int64_t>(begin) - m.before[2 * k - 1] + m.now[2 * k - 1];
+    if (moved < 0 || moved > 0xffffffffLL)
+        return std::nullopt;
+    return static_cast<uint32_t>(moved);
+}
+
+// The number of the first line that differs in two texts (1 is the first line).
+size_t first_other_line(const std::string& a, const std::string& b)
+{
+    size_t line = 1;
+    for (size_t i = 0; i < a.size() && i < b.size() && a[i] == b[i]; ++i)
+        if (a[i] == '\n')
+            ++line;
+    return line;
+}
+
+// The first part of "hit" that differs from "real", or an empty text.
+std::string first_difference(const hotc::TranslateResult& hit, const hotc::TranslateResult& real)
+{
+    auto text = [](const char* what, const std::string& a, const std::string& b)
+    { return a == b ? std::string() : std::string(what) + " line " + std::to_string(first_other_line(a, b)); };
+    if (!real.ok)
+        return "the new translate has errors";
+    for (const std::string& d : {text("cpp", hit.cpp, real.cpp), text("warnings", hit.warnings, real.warnings),
+             text("slots_out", hit.slots_out, real.slots_out), text("sigs_out", hit.sigs_out, real.sigs_out),
+             text("iface", hit.iface, real.iface)})
+        if (!d.empty())
+            return d;
+    if (hit.import_hashes != real.import_hashes)
+        return "import_hashes";
+    const auto& sa = hit.source_map.segments();
+    const auto& sb = real.source_map.segments();
+    for (size_t i = 0; i < sa.size() || i < sb.size(); ++i)
+    {
+        if (i >= sa.size() || i >= sb.size() || sa[i].script_begin != sb[i].script_begin
+            || sa[i].script_len != sb[i].script_len || sa[i].gen_begin != sb[i].gen_begin
+            || sa[i].gen_len != sb[i].gen_len || sa[i].file != sb[i].file)
+            return "source map segment " + std::to_string(i);
+    }
+    const auto& fa = hit.source_map.files();
+    const auto& fb = real.source_map.files();
+    if (fa.size() != fb.size())
+        return "source map files";
+    for (size_t i = 0; i < fa.size(); ++i)
+        if (fa[i].name != fb[i].name || fa[i].text != fb[i].text)
+            return "source map file " + fa[i].name;
+    if (hit.source_map.generic_names() != real.source_map.generic_names())
+        return "source map generic names";
+    // The lookups of each generated line give the same places.
+    const int lines = static_cast<int>(std::count(real.cpp.begin(), real.cpp.end(), '\n')) + 1;
+    for (int line = 1; line <= lines; ++line)
+    {
+        const std::optional<hotc::SourceLocation> la = hit.source_map.locate(line, 1);
+        const std::optional<hotc::SourceLocation> lb = real.source_map.locate(line, 1);
+        if (la.has_value() != lb.has_value()
+            || (la && (la->file != lb->file || la->pos.line != lb->pos.line || la->pos.col != lb->pos.col)))
+            return "source map lookup of cpp line " + std::to_string(line);
+    }
+    if (hit.imports != real.imports)
+        return "imports";
+    if (hit.dependencies != real.dependencies)
+        return "dependencies";
+    return std::string();
+}
+
 bool ends_with(const std::string& s, const char* tail)
 {
     const size_t n = std::strlen(tail);
@@ -354,6 +441,8 @@ TranslateCache::TranslateCache(fs::path dir, std::string build_id, std::string e
     , build_id_(build_id.empty() ? std::string(hotc::translator_build_id()) : std::move(build_id))
     , extra_(std::move(extra))
 {
+    if (const char* v = std::getenv("HOT_TRANSLATE_VERIFY"); v && std::strcmp(v, "1") == 0)
+        verify_hits_ = true;
 }
 
 bool TranslateCache::enabled_by_env()
@@ -395,25 +484,53 @@ void TranslateCache::remove(const ObjectCache::Key& key)
 std::optional<hotc::TranslateResult> TranslateCache::lookup(const hotc::TranslateOptions& options)
 {
     std::optional<hotc::TranslateResult> r;
+    bool by_view = false;
     try
     {
         const ObjectCache::Key key = make_key(options);
         for (int i = 0; i < entry_count && !r; ++i)
-            r = lookup_entry(options, key, i);
+        {
+            by_view = false;
+            r = lookup_entry(options, key, i, by_view);
+        }
     }
     catch (...)
     {
         r.reset();
     }
-    if (r)
-        ++hits_;
-    else
+    if (!r)
+    {
         ++misses_;
-    return r;
+        return r;
+    }
+    ++hits_;
+    if (!by_view)
+        return r;
+    ++view_hits_;
+    if (!verify_hits_)
+        return r;
+    // The check of a view hit: a new translate must give the same result.
+    std::string diff;
+    try
+    {
+        diff = first_difference(*r, hotc::translate(options));
+    }
+    catch (...)
+    {
+        diff = "the new translate throws";
+    }
+    if (diff.empty())
+        return r;
+    hotc::TranslateResult e;
+    e.ok = false;
+    e.imports = std::move(r->imports);
+    e.diagnostics = options.script_name + ":1:1: error: the translate cache hit differs from a new translate: " + diff
+        + " (HOT_TRANSLATE_VERIFY)\n";
+    return e;
 }
 
 std::optional<hotc::TranslateResult> TranslateCache::lookup_entry(
-    const hotc::TranslateOptions& o, const ObjectCache::Key& key, int entry)
+    const hotc::TranslateOptions& o, const ObjectCache::Key& key, int entry, bool& by_view)
 {
     const fs::path manifest = entry_file(key, entry, ".json");
     std::string text;
@@ -434,8 +551,10 @@ std::optional<hotc::TranslateResult> TranslateCache::lookup_entry(
     if (hash_hex(carry.read) != *slots)
         return std::nullopt;
 
-    // Each search for an imported script finds the same file with the same text.
+    // Each search for an imported script finds the same file with the same text, or with a text
+    // that has the same import view. A view hit moves the source map segments of the file.
     std::map<std::string, std::string> import_text;
+    std::map<std::string, MovedFile> moved;
     std::vector<hotc::ImportLookup> lookups;
     const Json* imports = get_array(m, "imports");
     if (!imports)
@@ -448,12 +567,47 @@ std::optional<hotc::TranslateResult> TranslateCache::lookup_entry(
         const std::string* from_unit_dir = get_str(i, "from_unit_dir");
         const std::string* file = get_str(i, "file");
         const std::string* hash = get_str(i, "hash");
-        if (!path || !from_dir || !from_unit_dir || !file || !hash || !parse_hex64(*hash, l.text_hash))
+        const std::string* view = get_str(i, "view");
+        const std::string* array_tpl = get_str(i, "array_tpl");
+        const Json* masked = get_array(i, "masked");
+        if (!path || !from_dir || !from_unit_dir || !file || !hash || !parse_hex64(*hash, l.text_hash) || !view
+            || !array_tpl || !masked)
             return std::nullopt;
+        std::vector<uint32_t> before;
+        for (const Json& n : masked->items)
+        {
+            if (n.type != Json::Type::Number || n.number < 0 || n.number > 0xffffffffLL)
+                return std::nullopt;
+            before.push_back(static_cast<uint32_t>(n.number));
+        }
         std::string found_text, found_file, unit;
         if (!hotc::find_import(o, *path, *from_dir, *from_unit_dir, found_text, found_file, unit)
-            || found_file != *file || hotc::text_hash(found_text) != l.text_hash)
+            || found_file != *file)
             return std::nullopt;
+        if (!view->empty())
+        {
+            l.array_tpl = *array_tpl;
+            l.view_masked = before;
+            uint64_t v = 0;
+            if (!parse_hex64(*view, v))
+                return std::nullopt;
+            l.view_hash = v;
+        }
+        const uint64_t found_hash = hotc::text_hash(found_text);
+        if (found_hash != l.text_hash)
+        {
+            // Another text: the view must be the same. No stored view is a miss.
+            if (view->empty())
+                return std::nullopt;
+            const std::optional<hotc::ImportView> now = hotc::import_view(found_text, *array_tpl);
+            if (!now || now->hash != *l.view_hash || now->masked.size() != before.size())
+                return std::nullopt;
+            // Two searches of one file have the same text and the same ranges.
+            moved[*file] = {before, now->masked};
+            l.text_hash = found_hash;
+            l.view_masked = now->masked;
+            by_view = true;
+        }
         l.path = *path;
         l.from_dir = *from_dir;
         l.from_unit_dir = *from_unit_dir;
@@ -555,6 +709,7 @@ std::optional<hotc::TranslateResult> TranslateCache::lookup_entry(
             return std::nullopt;
         r.import_hashes.emplace_back(*u, value);
     }
+    std::vector<const MovedFile*> moved_of_file{nullptr}; // by the file number of the source map
     for (const std::string& f : import_files)
     {
         auto it = import_text.find(f);
@@ -562,6 +717,8 @@ std::optional<hotc::TranslateResult> TranslateCache::lookup_entry(
             return std::nullopt;
         r.imports.emplace_back(f, it->second);
         r.source_map.add_file(f, it->second);
+        const auto m = moved.find(f);
+        moved_of_file.push_back(m == moved.end() ? nullptr : &m->second);
     }
     for (size_t i = 0; i < segments->items.size(); i += 5)
     {
@@ -572,6 +729,14 @@ std::optional<hotc::TranslateResult> TranslateCache::lookup_entry(
             if (n.type != Json::Type::Number || n.number < 0 || n.number > 0xffffffffLL)
                 return std::nullopt;
             v[k] = static_cast<uint32_t>(n.number);
+        }
+        // A segment of an import with a view hit: the masked bodies before it can have another size.
+        if (v[4] != 0 && v[4] < moved_of_file.size() && moved_of_file[v[4]])
+        {
+            const std::optional<uint32_t> at = moved_offset(*moved_of_file[v[4]], v[0], v[1]);
+            if (!at)
+                return std::nullopt;
+            v[0] = *at;
         }
         r.source_map.add({v[0], v[1], v[2], v[3], v[4]});
     }
@@ -683,6 +848,14 @@ bool TranslateCache::store(const hotc::TranslateOptions& o, const hotc::Translat
             man.field("from_unit_dir", l.from_unit_dir);
             man.field("file", l.file);
             man.field("hash", hex64(l.text_hash));
+            // The import view: a lookup takes another text with the same view.
+            man.field("view", l.view_hash ? hex64(*l.view_hash) : std::string());
+            man.field("array_tpl", l.array_tpl);
+            man.key("masked");
+            man.begin('[');
+            for (const uint32_t v : l.view_masked)
+                man.num(v);
+            man.end(']');
             man.end('}');
         }
         man.end(']');

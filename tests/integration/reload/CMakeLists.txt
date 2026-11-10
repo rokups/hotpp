@@ -62,4 +62,5 @@ target_compile_definitions(integration_reload_tests PRIVATE
     GEN4_BASE_SO="$<TARGET_FILE:gen4_base>"
     STRESS_SO="$<TARGET_FILE:stress_generation>"
     GEN3_MISSING_SO="${CMAKE_BINARY_DIR}/gen3_missing.so")
-hot_gtest(integration_reload_tests)
+# A view hit of the translate cache translates again and compares (HOT_TRANSLATE_VERIFY).
+hot_gtest(integration_reload_tests PROPERTIES ENVIRONMENT "HOT_TRANSLATE_VERIFY=1")

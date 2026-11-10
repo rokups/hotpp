@@ -13,10 +13,13 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -187,7 +190,20 @@ TEST(TranslateCache, EditedScriptMisses)
     EXPECT_EQ(c.stats().misses, 1u);
 }
 
+// An interface edit of the import (a new method) is a miss.
 TEST(TranslateCache, EditedImportMisses)
+{
+    Fixture f;
+    hot::TranslateCache c(f.cache);
+    f.fill(c, f.options);
+    std::string edited = kBase;
+    edited.insert(edited.rfind("}"), "    int Extra() { return 3; }\n");
+    write_file(f.base, edited);
+    EXPECT_FALSE(c.lookup(f.options).has_value());
+}
+
+// A white space edit outside a body of the import is a miss: the view has the text.
+TEST(TranslateCache, WhiteSpaceEditOfAnImportMisses)
 {
     Fixture f;
     hot::TranslateCache c(f.cache);
@@ -196,38 +212,125 @@ TEST(TranslateCache, EditedImportMisses)
     EXPECT_FALSE(c.lookup(f.options).has_value());
 }
 
-// An importer stays a hit after a body edit of its import, and the hit has the text of a new
-// translation. "edited" is the new text of the import. A4 enables the two tests below: the
-// lookup must check the interface of the import, not its text.
-void expect_importer_hit(const std::string& edited)
+// An importer stays a hit after a body edit of its import, and the hit is the result of a new
+// translation: the C++ text, the warnings, the slots, the imports and the source map.
+// "edited" is the new text of the import.
+// With "moves" true, the edit moves a segment of the import: the hit must move it too.
+void expect_importer_hit(const std::string& edited, bool moves)
+{
+    Fixture f;
+    hot::TranslateCache c(f.cache);
+    c.set_verify_hits(true);
+    const hotc::TranslateResult before = f.fill(c, f.options);
+    write_file(f.base, edited);
+    const hotc::TranslateResult real = f.translate(f.options);
+    ASSERT_NE(before.imports, real.imports) << "the import text changes";
+    const std::optional<hotc::TranslateResult> hit = c.lookup(f.options);
+    ASSERT_TRUE(hit.has_value());
+    ASSERT_TRUE(hit->ok) << hit->diagnostics;
+    EXPECT_EQ(c.stats().view_hits, 1u);
+    expect_same(*hit, real);
+    size_t moved = 0;
+    ASSERT_EQ(before.source_map.segments().size(), real.source_map.segments().size());
+    for (size_t i = 0; i < real.source_map.segments().size(); ++i)
+        moved += before.source_map.segments()[i].script_begin != real.source_map.segments()[i].script_begin;
+    EXPECT_EQ(moved != 0, moves) << moved;
+    // The hit has the searches of the current text.
+    ASSERT_EQ(hit->import_lookups.size(), real.import_lookups.size());
+    for (size_t i = 0; i < real.import_lookups.size(); ++i)
+    {
+        EXPECT_EQ(hit->import_lookups[i].view_hash, real.import_lookups[i].view_hash);
+        EXPECT_EQ(hit->import_lookups[i].view_masked, real.import_lookups[i].view_masked);
+    }
+    // Each generated line maps to the same place, also a line that maps into the import.
+    bool into_import = false;
+    const int lines = static_cast<int>(std::count(real.cpp.begin(), real.cpp.end(), '\n'));
+    for (int line = 1; line <= lines; ++line)
+        for (int col : {1, 5, 9, 13, 20})
+        {
+            const std::optional<hotc::SourceLocation> a = hit->source_map.locate(line, col);
+            const std::optional<hotc::SourceLocation> b = real.source_map.locate(line, col);
+            ASSERT_EQ(a.has_value(), b.has_value()) << line << ":" << col;
+            if (!a)
+                continue;
+            EXPECT_EQ(a->file, b->file);
+            EXPECT_EQ(a->pos, b->pos) << line << ":" << col;
+            into_import = into_import || a->file != 0;
+        }
+    EXPECT_TRUE(into_import) << "no generated place maps into the import";
+    // A place of the import maps to the same generated place.
+    for (int line = 1; line <= 12; ++line)
+        for (int col = 1; col < 40; col += 3)
+            EXPECT_EQ(hit->source_map.map_to_generated(1, line, col), real.source_map.map_to_generated(1, line, col))
+                << line << ":" << col;
+}
+
+// The edit keeps the size of the body: no line of the import moves.
+TEST(TranslateCache, ImporterHitsAfterABodyEditOfAnImport)
+{
+    std::string edited = kBase;
+    edited.replace(edited.find("return 1; }\n}"), 9, "return 7;");
+    expect_importer_hit(edited, false);
+}
+
+// The edit adds lines to the first body: the later method moves.
+TEST(TranslateCache, ImporterHitsAfterABodyEditThatAddsLines)
+{
+    std::string edited = kBase;
+    edited.replace(edited.find("{ return 1; }"), 13, "\n    {\n        int t = 1;\n        return t;\n    }");
+    expect_importer_hit(edited, true);
+}
+
+// The check of a view hit finds an entry that differs from a new translate. The test changes a
+// line of the stored C++ text and the hash in the manifest. The hit is then an error result.
+TEST(TranslateCache, VerifiedViewHitFindsAWrongEntry)
 {
     Fixture f;
     hot::TranslateCache c(f.cache);
     f.fill(c, f.options);
-    write_file(f.base, edited);
-    const hotc::TranslateResult real = f.translate(f.options);
-    const std::optional<hotc::TranslateResult> hit = c.lookup(f.options);
-    ASSERT_TRUE(hit.has_value());
-    EXPECT_EQ(hit->cpp, real.cpp);
-    EXPECT_EQ(hit->warnings, real.warnings);
-    EXPECT_EQ(hit->slots_out, real.slots_out);
-    EXPECT_EQ(hit->iface_hash, real.iface_hash);
-}
-
-// The edit keeps the size of the body: no line of the import moves.
-TEST(TranslateCache, DISABLED_ImporterHitsAfterABodyEditOfAnImport)
-{
+    fs::path cpp, json;
+    for (const auto& e : fs::directory_iterator(fs::path(f.cache) / "tr"))
+    {
+        if (e.path().extension() == ".cpp")
+            cpp = e.path();
+        else if (e.path().extension() == ".json")
+            json = e.path();
+    }
+    ASSERT_FALSE(cpp.empty());
+    ASSERT_FALSE(json.empty());
+    std::string text, man;
+    {
+        std::ifstream a(cpp, std::ios::binary), b(json, std::ios::binary);
+        text.assign(std::istreambuf_iterator<char>(a), {});
+        man.assign(std::istreambuf_iterator<char>(b), {});
+    }
+    const auto hex = [](const std::string& t)
+    {
+        char buf[17];
+        std::snprintf(buf, sizeof(buf), "%016llx", static_cast<unsigned long long>(hotc::text_hash(t)));
+        return std::string(buf);
+    };
+    const size_t at = man.find(hex(text));
+    ASSERT_NE(at, std::string::npos);
+    const size_t line2 = text.find('\n') + 1;
+    std::string wrong = text;
+    wrong.insert(line2, "// wrong\n");
+    man.replace(at, 16, hex(wrong));
+    write_file(cpp.string(), wrong);
+    write_file(json.string(), man);
     std::string edited = kBase;
     edited.replace(edited.find("return 1; }\n}"), 9, "return 7;");
-    expect_importer_hit(edited);
-}
+    write_file(f.base, edited);
 
-// The edit adds lines to the first body: the later method moves.
-TEST(TranslateCache, DISABLED_ImporterHitsAfterABodyEditThatAddsLines)
-{
-    std::string edited = kBase;
-    edited.replace(edited.find("{ return 1; }"), 13, "\n    {\n        int t = 1;\n        return t;\n    }");
-    expect_importer_hit(edited);
+    c.set_verify_hits(false);
+    const std::optional<hotc::TranslateResult> unchecked = c.lookup(f.options);
+    ASSERT_TRUE(unchecked.has_value());
+    EXPECT_TRUE(unchecked->ok);
+    c.set_verify_hits(true);
+    const std::optional<hotc::TranslateResult> checked = c.lookup(f.options);
+    ASSERT_TRUE(checked.has_value());
+    EXPECT_FALSE(checked->ok);
+    EXPECT_NE(checked->diagnostics.find("cpp line 2"), std::string::npos) << checked->diagnostics;
 }
 
 TEST(TranslateCache, TouchedHeaderMisses)
@@ -579,7 +682,7 @@ TEST(TranslateCache, EditedTransitiveImportMisses)
     o.script_text = "using \"Foo.h\";\nusing \"b1.hot\";\nclass Kid : B1 {\n    override int Power() { return 3; }\n}\n";
     hot::TranslateCache c(f.cache);
     f.fill(c, o);
-    write_file(c1, "using \"Foo.h\";\nclass C1 : Foo {\n    override int Power() { return 4; }\n}\n");
+    write_file(c1, "using \"Foo.h\";\nclass C1 : Foo {\n    int extra = 4;\n    override int Power() { return 1; }\n}\n");
     EXPECT_FALSE(c.lookup(o).has_value());
 }
 
@@ -691,8 +794,12 @@ namespace
 
 const char* kActorBase = "using \"Actor.h\";\nclass Base : Actor {\n    float v = 0.0;\n"
                          "    override void Tick(float dt) { this.v = 1.0; }\n}\n";
-const char* kActorBaseEdited = "using \"Actor.h\";\nclass Base : Actor {\n    float v = 0.0;\n"
-                               "    override void Tick(float dt) { this.v = 2.0; }\n}\n";
+// An interface edit: the field initializer of a class is in the importer output.
+const char* kActorBaseEdited = "using \"Actor.h\";\nclass Base : Actor {\n    float v = 0.5;\n"
+                               "    override void Tick(float dt) { this.v = 1.0; }\n}\n";
+// A body edit: the importer output stays the same.
+const char* kActorBaseBodyEdited = "using \"Actor.h\";\nclass Base : Actor {\n    float v = 0.0;\n"
+                                   "    override void Tick(float dt)\n    {\n        this.v = 2.0;\n    }\n}\n";
 const char* kActorMain = "using \"Actor.h\";\nusing \"base.hot\";\nclass Calc : Base {\n"
                          "    float r = 0.0;\n    override void Tick(float dt) { this.r = 3.0; }\n}\n";
 
@@ -746,6 +853,38 @@ TEST(TranslateCacheBackend, ImporterHitsAfterAnImportEditAndARevert)
     EXPECT_EQ(hits, 1u) << "edited import again";
 }
 
+// The backend translates the importer of a body-edited import from the cache. The check of the
+// view hit runs (HOT_TRANSLATE_VERIFY), so a wrong hit fails the load.
+TEST(TranslateCacheBackend, ImporterHitsAfterABodyEditOfAnImport)
+{
+    EnvGuard on("HOT_CACHE", "1");
+    EnvGuard tr_on("HOT_TRANSLATE_CACHE", nullptr);
+    EnvGuard verify("HOT_TRANSLATE_VERIFY", "1");
+    TestScratch scratch;
+    const std::string cache = scratch.file("cache");
+    const std::string dir = scratch.file("src");
+    fs::create_directories(dir);
+    const std::string base = dir + "/base.hot";
+    const hot::ScriptSource source = {dir + "/main.hot", kActorMain};
+    int n = 0;
+    const auto load = [&](uint64_t& hits, uint64_t& misses)
+    {
+        auto backend = make_backend(scratch, "b" + std::to_string(n++), cache);
+        hot::LoadResult r = backend->load(source, 1);
+        ASSERT_TRUE(r) << r.error;
+        hits = backend->cache_stats().translate_hits;
+        misses = backend->cache_stats().translate_misses;
+    };
+    uint64_t hits = 0, misses = 0;
+    write_file(base, kActorBase);
+    load(hits, misses);
+    EXPECT_EQ(misses, 1u) << "first text";
+    write_file(base, kActorBaseBodyEdited);
+    load(hits, misses);
+    EXPECT_EQ(hits, 1u) << "body edit of the import";
+    EXPECT_EQ(misses, 0u);
+}
+
 // A key keeps a small number of entries. A store after the last one removes the oldest entry. A
 // store of a known import text replaces its old entry, and the number of entries stays the same.
 TEST(TranslateCache, KeyKeepsTheNewestEntries)
@@ -753,7 +892,10 @@ TEST(TranslateCache, KeyKeepsTheNewestEntries)
     Fixture f;
     hot::TranslateCache c(f.cache);
     const auto base_text = [](int i)
-    { return "using \"Widget.h\";\nclass Base : Widget {\n    override int Power() { return " + std::to_string(i) + "; }\n}\n"; };
+    {
+        return "using \"Widget.h\";\nclass Base : Widget {\n    int n = " + std::to_string(i)
+            + ";\n    override int Power() { return 1; }\n}\n";
+    };
     for (int i = 0; i < 5; ++i)
     {
         write_file(f.base, base_text(i));
