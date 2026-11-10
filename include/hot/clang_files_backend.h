@@ -173,6 +173,12 @@ private:
     bool compiler_id_done_ = false;
     bool link_cache_ = false; // the module cache (cache_ is on and HOT_LINK_CACHE is not 0)
     std::map<std::string, CompileCommandEntry> commands_; // the entries of this backend, by "file"
+    // The entries of the compile database file at the last read or write, and the stamp of the
+    // file then. With the same stamp, a build reads the file again only for a change.
+    std::map<std::string, CompileCommandEntry> disk_commands_;
+    bool disk_known_ = false;
+    int64_t disk_mtime_ = 0;
+    uintmax_t disk_size_ = 0;
     std::mutex mutex_; // one build at a time: the slot file is shared
     std::atomic<unsigned> sequence_{0};
     std::atomic<unsigned> epoch_{0}; // counts the fresh loads; it is in the name of the library

@@ -786,6 +786,39 @@ void ClangFilesBackend::record_compile_command(
     // An entry whose generated file is gone (a removed unit) goes.
     for (auto it = commands_.begin(); it != commands_.end();)
         it = fs::exists(it->first, ec) ? std::next(it) : commands_.erase(it);
+    const fs::path dir(opt_.compile_commands_dir);
+    const fs::path db = dir / "compile_commands.json";
+    // The stamp of the file. A different stamp means a write of another process.
+    const auto stamp = [&db](int64_t& mtime, uintmax_t& size)
+    {
+        std::error_code e1, e2;
+        const fs::file_time_type t = fs::last_write_time(db, e1);
+        size = fs::file_size(db, e2);
+        mtime = static_cast<int64_t>(t.time_since_epoch().count());
+        return !e1 && !e2;
+    };
+    const auto same_entry = [](const CompileCommandEntry& a, const CompileCommandEntry& b)
+    {
+        return a.directory == b.directory && a.file == b.file && a.arguments == b.arguments && a.output == b.output;
+    };
+    int64_t mtime = 0;
+    uintmax_t size = 0;
+    // The file is the same as at the last read or write, and it has the entries of this backend:
+    // no work. A warm start of many units otherwise reads and writes the file for each unit.
+    if (disk_known_ && stamp(mtime, size) && mtime == disk_mtime_ && size == disk_size_)
+    {
+        bool same = true;
+        for (auto it = commands_.begin(); same && it != commands_.end(); ++it)
+        {
+            const auto d = disk_commands_.find(it->first);
+            same = d != disk_commands_.end() && same_entry(d->second, it->second);
+        }
+        for (auto it = disk_commands_.begin(); same && it != disk_commands_.end(); ++it)
+            same = fs::exists(it->first, ec);
+        if (same)
+            return;
+    }
+    disk_known_ = false;
     // Another process can write the file after the last read. The merge keeps its entries. The
     // window between the read and the rename is short; a lost entry comes back at its next build.
     std::string old_text;
@@ -796,14 +829,23 @@ void ClangFilesBackend::record_compile_command(
     for (const auto& [file, entry] : merged) // the map order is the order of "file"
         list.push_back(entry);
     const std::string text = compile_commands_json(list);
-    if (text == old_text)
-        return;
-    const fs::path dir(opt_.compile_commands_dir);
-    fs::create_directories(dir, ec);
-    // A write failure has no effect on the build. The next build tries again. The write is atomic
-    // (a temporary file and a rename).
-    if (!write_text_replace((dir / "compile_commands.json").string(), text))
-        std::fprintf(stderr, "[script] WARNING: cannot write %s\n", (dir / "compile_commands.json").string().c_str());
+    if (text != old_text)
+    {
+        fs::create_directories(dir, ec);
+        // A write failure has no effect on the build. The next build tries again. The write is
+        // atomic (a temporary file and a rename).
+        if (!write_text_replace(db.string(), text))
+        {
+            std::fprintf(stderr, "[script] WARNING: cannot write %s\n", db.string().c_str());
+            return;
+        }
+    }
+    // The file now has the text of "merged".
+    if (stamp(disk_mtime_, disk_size_))
+    {
+        disk_commands_ = std::move(merged);
+        disk_known_ = true;
+    }
 }
 
 namespace
