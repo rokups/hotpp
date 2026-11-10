@@ -115,6 +115,14 @@ float load_and_run(hot::Backend& backend, const hot::ScriptSource& source)
     return *s.field("result");
 }
 
+std::string read_file(const fs::path& path)
+{
+    std::ifstream f(path, std::ios::binary);
+    std::stringstream ss;
+    ss << f.rdbuf();
+    return ss.str();
+}
+
 size_t count_objects(const fs::path& cache_dir)
 {
     size_t n = 0;
@@ -198,7 +206,8 @@ TEST(ObjectCacheBackend, EnvironmentTurnsTheCacheOff)
     EXPECT_FALSE(fs::exists(fs::path(cache) / "obj"));
 }
 
-// A truncated object file does not link. The backend removes the entry, compiles again and links.
+// An object file with bad bytes does not link. The backend removes the entry, compiles again and
+// links. The bad file has the size and the time of the good file, so the lookup is a hit.
 TEST(ObjectCacheBackend, DamagedObjectRecovers)
 {
     CleanEnv env;
@@ -214,12 +223,15 @@ TEST(ObjectCacheBackend, DamagedObjectRecovers)
         if (e.path().extension() == ".o")
             object = e.path();
     ASSERT_FALSE(object.empty());
-    fs::resize_file(object, 16);
+    const uintmax_t object_size = fs::file_size(object);
+    const auto object_time = fs::last_write_time(object);
+    std::ofstream(object, std::ios::binary | std::ios::trunc) << std::string(object_size, 'x');
+    fs::last_write_time(object, object_time);
     auto backend = make_backend(scratch, "work_b", cache);
     EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
     EXPECT_EQ(backend->cache_stats().hits, 1u); // the lookup found the entry
     ASSERT_TRUE(fs::exists(object)); // the compile stored the entry again
-    EXPECT_GT(fs::file_size(object), 16u);
+    EXPECT_NE(read_file(object), std::string(object_size, 'x'));
     auto again = make_backend(scratch, "work_c", cache);
     EXPECT_EQ(load_and_run(*again, kCalc7), 7.0f);
     EXPECT_EQ(again->cache_stats().hits, 1u);
@@ -282,14 +294,6 @@ TEST(ObjectCacheBackend, SharedGeneratedDirIsSafe)
 }
 
 // ---- compile_commands.json ----
-
-std::string read_file(const fs::path& path)
-{
-    std::ifstream f(path, std::ios::binary);
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 size_t count_text(const std::string& text, const std::string& part)
 {
@@ -571,7 +575,7 @@ TEST(ObjectCacheBackend, LinkCacheEnvironmentTurnsOnlyThatLevelOff)
 }
 #endif
 
-// A cached .so of the right size with bad bytes does not load. The backend removes the entry,
+// A cached .so of the right size and time with bad bytes does not load. The backend removes the entry,
 // links again and stores a good module. A later backend hits that module.
 TEST(ObjectCacheBackend, CorruptModuleRecovers)
 {
@@ -588,7 +592,9 @@ TEST(ObjectCacheBackend, CorruptModuleRecovers)
             module = e.path();
     ASSERT_FALSE(module.empty());
     const uintmax_t size = fs::file_size(module);
+    const auto module_time = fs::last_write_time(module);
     std::ofstream(module, std::ios::binary | std::ios::trunc) << std::string(size, 'x');
+    fs::last_write_time(module, module_time);
     {
         auto backend = make_backend(scratch, "work_b", cache);
         EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
@@ -655,6 +661,28 @@ TEST(ObjectCacheBackend, ChangedHeaderLayoutMissesTheModule)
     EXPECT_EQ(load_and_run(*backend, kLayout), 16.0f);
     EXPECT_EQ(backend->cache_stats().hits, 1u);
     EXPECT_EQ(backend->cache_stats().module_hits, 1u);
+}
+
+// A header that is younger than the start of the compile can change during the compile. The
+// build works, but the cache has no object entry and no module entry for it.
+TEST(ObjectCacheBackend, YoungHeaderIsNotCached)
+{
+    CleanEnv env;
+    TestScratch scratch;
+    const std::string cache = scratch.file("cache");
+    const fs::path inc = scratch.file("inc");
+    fs::create_directories(inc);
+    write_layout_header(inc / "layout.h", 8, std::chrono::minutes(0));
+    {
+        auto backend = make_layout_backend(scratch, "work_a", cache, inc.string());
+        EXPECT_EQ(load_and_run(*backend, kLayout), 8.0f);
+    }
+    EXPECT_EQ(count_objects(cache), 0u);
+    EXPECT_EQ(count_modules(cache), 0u);
+    auto backend = make_layout_backend(scratch, "work_b", cache, inc.string());
+    EXPECT_EQ(load_and_run(*backend, kLayout), 8.0f);
+    EXPECT_EQ(backend->cache_stats().hits, 0u);
+    EXPECT_EQ(backend->cache_stats().module_hits, 0u);
 }
 
 // A file system that has no file. It turns on the mirror directory "<work_dir>/vfs".

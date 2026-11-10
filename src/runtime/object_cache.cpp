@@ -327,7 +327,11 @@ namespace
 using namespace cache_io;
 
 constexpr const char* work_marker = "@work@";
-constexpr int manifest_version = 1;
+// Version 2: the manifest has the stamp of the object file or of the module.
+constexpr int manifest_version = 2;
+// A header with a time after (start - margin) can be newer than the object: a coarse file time
+// (some file systems have 1 or 2 seconds) can hide a change near the start.
+constexpr std::chrono::seconds start_margin(2);
 constexpr uint64_t second_seed = 0x9e3779b97f4a7c15ULL;
 
 // ------------------------------------------------------------ Paths
@@ -369,6 +373,38 @@ struct Stamp
 bool is_temp_file(const std::string& name)
 {
     return name.find(".tmp") != std::string::npos;
+}
+
+// The time (in ns) and the size of a file. False on an error.
+bool file_stamp(const fs::path& p, int64_t& mtime_ns, int64_t& size)
+{
+    std::error_code ec;
+    const fs::file_time_type t = fs::last_write_time(p, ec);
+    if (ec)
+        return false;
+    const uintmax_t s = fs::file_size(p, ec);
+    if (ec)
+        return false;
+    mtime_ns = to_ns(t);
+    size = static_cast<int64_t>(s);
+    return true;
+}
+
+// True when the manifest object "stamp" ({"mtime", "size"}) is the stamp of the file "p".
+bool stamp_matches(const Json* stamp, const fs::path& p)
+{
+    if (!stamp || stamp->type != Json::Type::Object)
+        return false;
+    const Json* m = stamp->find("mtime");
+    const Json* s = stamp->find("size");
+    int64_t mtime = 0, size = 0;
+    return m && s && m->type == Json::Type::Number && s->type == Json::Type::Number && file_stamp(p, mtime, size) &&
+        m->number == mtime && s->number == size;
+}
+
+std::string stamp_json(int64_t mtime_ns, int64_t size)
+{
+    return "{\"mtime\":" + std::to_string(mtime_ns) + ",\"size\":" + std::to_string(size) + "}";
 }
 
 bool older_than_one_hour(const fs::path& p)
@@ -628,8 +664,8 @@ std::optional<ObjectCache::Hit> ObjectCache::lookup(const Key& key)
                 }
             }
         }
-        std::error_code ec;
-        if (ok && fs::is_regular_file(object, ec))
+        // The object file of another store does not pair with this manifest.
+        if (ok && stamp_matches(root.find("object"), object))
         {
             std::error_code touch_ec;
             fs::last_write_time(manifest, fs::file_time_type::clock::now(), touch_ec);
@@ -648,7 +684,7 @@ std::optional<ObjectCache::Hit> ObjectCache::lookup(const Key& key)
 }
 
 bool ObjectCache::store(const Key& key, const fs::path& obj_tmp, const std::string& depfile_text,
-    const std::string& work_dir, std::string& error)
+    const std::string& work_dir, fs::file_time_type started, std::string& error)
 {
     try
     {
@@ -675,6 +711,11 @@ bool ObjectCache::store(const Key& key, const fs::path& obj_tmp, const std::stri
                 if (ec)
                 {
                     error = "cannot stat " + dep + ": " + ec.message();
+                    return false;
+                }
+                if (t > started - start_margin)
+                {
+                    error = "the header '" + dep + "' changed during the compile";
                     return false;
                 }
                 st.mtime_ns = to_ns(t);
@@ -720,8 +761,17 @@ bool ObjectCache::store(const Key& key, const fs::path& obj_tmp, const std::stri
             fs::remove(obj_tmp, ec4);
         }
 
+        // The stamp of the object file: a later store of the same key (another process) replaces
+        // the object file. Then this manifest does not match it.
+        int64_t obj_mtime = 0, obj_size = 0;
+        if (!file_stamp(object, obj_mtime, obj_size))
+        {
+            error = "cannot stat " + object.string();
+            return false;
+        }
         std::string json = "{\"version\":" + std::to_string(manifest_version) + ",\"key\":";
         append_json_string(json, key.hex());
+        json += ",\"object\":" + stamp_json(obj_mtime, obj_size);
         json += ",\"headers\":[";
         for (size_t i = 0; i < stamps.size(); ++i)
         {
@@ -783,12 +833,8 @@ std::optional<fs::path> ObjectCache::lookup_module(const Key& key)
         {
             const Json* version = root.find("version");
             const Json* hex = root.find("key");
-            const Json* size = root.find("size");
-            std::error_code ec;
-            const uintmax_t have = fs::file_size(module, ec);
-            ok = !ec && version && version->type == Json::Type::Number && version->number == manifest_version &&
-                hex && hex->type == Json::Type::String && hex->text == key.hex() && size &&
-                size->type == Json::Type::Number && static_cast<int64_t>(have) == size->number;
+            ok = version && version->type == Json::Type::Number && version->number == manifest_version && hex &&
+                hex->type == Json::Type::String && hex->text == key.hex() && stamp_matches(root.find("module"), module);
         }
         if (ok)
         {
@@ -833,15 +879,15 @@ bool ObjectCache::store_module(const Key& key, const fs::path& so_path, std::str
             error = "cannot copy " + so_path.string() + ": " + ec.message();
             return false;
         }
-        const uintmax_t size = fs::file_size(module, ec);
-        if (ec)
+        int64_t mtime = 0, size = 0;
+        if (!file_stamp(module, mtime, size))
         {
-            error = "cannot stat " + module.string() + ": " + ec.message();
+            error = "cannot stat " + module.string();
             return false;
         }
         std::string json = "{\"version\":" + std::to_string(manifest_version) + ",\"key\":";
         append_json_string(json, key.hex());
-        json += ",\"size\":" + std::to_string(size) + "}\n";
+        json += ",\"module\":" + stamp_json(mtime, size) + "}\n";
         return write_file_atomic(entry_file(key, ".json"), json, error);
     }
     catch (const std::exception& e)

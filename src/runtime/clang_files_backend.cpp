@@ -1162,7 +1162,8 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
                     return fail("compile", rc);
                 }
                 std::string store_error;
-                if (cache_->store(key, tmp, dep_text, opt_.work_dir, store_error))
+                // The start of the translate: the translated text depends on the headers too.
+                if (cache_->store(key, tmp, dep_text, opt_.work_dir, translate_start, store_error))
                     object = cache_->object_path(key).string();
                 else
                 {

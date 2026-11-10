@@ -85,15 +85,19 @@ struct ObjectCacheStore : ::testing::Test
     std::string work_dir = (root.path / "work").string();
     ObjectCache cache{root.path / "cache", 1000000};
     ObjectCache::Key key = ObjectCache::make_key(base_inputs());
+    fs::file_time_type started; // the start of the compile
 
     void SetUp() override
     {
         fs::create_directories(work_dir);
         write_text(header, "#define X 1\n");
+        // An old header: a header younger than the start of the compile gives no entry.
+        fs::last_write_time(header, fs::file_time_type::clock::now() - std::chrono::hours(1));
         write_text(obj_tmp, "OBJECT-BYTES");
+        started = fs::file_time_type::clock::now();
     }
     std::string depfile() const { return "unit.o: " + (root.path / "work" / "unit.cpp").string() + " " + header.string() + "\n"; }
-    bool store(std::string& error) { return cache.store(key, obj_tmp, depfile(), work_dir, error); }
+    bool store(std::string& error) { return cache.store(key, obj_tmp, depfile(), work_dir, started, error); }
     fs::path entry(const char* ext) const { return root.path / "cache" / "obj" / (key.hex() + ext); }
 };
 
@@ -293,6 +297,43 @@ TEST_F(ObjectCacheStore, StoreFailsForMissingHeader)
     EXPECT_FALSE(cache.lookup(key).has_value());
 }
 
+// A header that changed after the start of the compile (or less than 2 seconds before it, for a
+// coarse file time) can be newer than the object. The store writes no entry.
+TEST_F(ObjectCacheStore, StoreRefusesHeaderNewerThanTheStart)
+{
+    for (const auto offset : {std::chrono::seconds(5), std::chrono::seconds(0), std::chrono::seconds(-1)})
+    {
+        fs::last_write_time(header, started + offset);
+        write_text(obj_tmp, "OBJECT-BYTES");
+        std::string error;
+        EXPECT_FALSE(store(error));
+        EXPECT_NE(error.find("changed during the compile"), std::string::npos) << error;
+        EXPECT_FALSE(fs::exists(entry(".json")));
+        EXPECT_FALSE(fs::exists(entry(".o")));
+        EXPECT_FALSE(cache.lookup(key).has_value());
+    }
+    fs::last_write_time(header, started - std::chrono::seconds(3));
+    std::string error;
+    EXPECT_TRUE(store(error)) << error;
+    EXPECT_TRUE(cache.lookup(key).has_value());
+}
+
+// The manifest has the stamp of its object file. An object file of another store (another
+// process) does not pair with the manifest.
+TEST_F(ObjectCacheStore, ObjectOfAnotherStoreMisses)
+{
+    std::string error;
+    ASSERT_TRUE(store(error)) << error;
+    ASSERT_TRUE(cache.lookup(key).has_value());
+    const auto t = fs::last_write_time(entry(".o"));
+    write_text(entry(".o"), "OTHER-OBJECT-BYTES");
+    fs::last_write_time(entry(".o"), t); // the same time: the size alone must decide
+    EXPECT_FALSE(cache.lookup(key).has_value());
+    write_text(entry(".o"), "OBJECT-BYTES"); // the same size, a new time
+    fs::last_write_time(entry(".o"), t + std::chrono::seconds(1));
+    EXPECT_FALSE(cache.lookup(key).has_value());
+}
+
 TEST_F(ObjectCacheStore, EntryWithoutManifestMisses)
 {
     std::string error;
@@ -378,7 +419,7 @@ TEST_F(ObjectCacheStore, TrimRemovesOldestEntryOverTheCap)
     for (const ObjectCache::Key& k : {older, newer})
     {
         write_text(obj_tmp, std::string(1000, 'x'));
-        ASSERT_TRUE(small.store(k, obj_tmp, depfile(), work_dir, error)) << error;
+        ASSERT_TRUE(small.store(k, obj_tmp, depfile(), work_dir, started, error)) << error;
     }
     const fs::path obj = root.path / "cache" / "obj";
     const auto now = fs::file_time_type::clock::now();
@@ -458,6 +499,20 @@ TEST_F(ObjectCacheStore, ModuleWithWrongSizeIsAMiss)
     EXPECT_FALSE(cache.lookup_module(mk).has_value());
     cache.remove_module(mk);
     EXPECT_EQ(count_files(root.path / "cache" / "obj"), 0u);
+}
+
+TEST_F(ObjectCacheStore, ModuleOfAnotherStoreMisses)
+{
+    const ObjectCache::Key mk{5, 6};
+    const fs::path so = root.path / "mod.so";
+    write_text(so, "MODULE-BYTES");
+    std::string error;
+    ASSERT_TRUE(cache.store_module(mk, so, error)) << error;
+    const fs::path cached = root.path / "cache" / "obj" / (mk.hex() + ".so");
+    ASSERT_TRUE(cache.lookup_module(mk).has_value());
+    write_text(cached, "MODULE-BYTEZ"); // the same size, a new time
+    fs::last_write_time(cached, fs::last_write_time(cached) + std::chrono::seconds(1));
+    EXPECT_FALSE(cache.lookup_module(mk).has_value());
 }
 
 TEST_F(ObjectCacheStore, TrimRemovesAnOldModuleEntry)

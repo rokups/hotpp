@@ -8,11 +8,12 @@
 // Layout of the cache directory:
 //   <dir>/obj/<hex>.o     the object file
 //   <dir>/obj/<hex>.d     the list of the headers, one path in each line
-//   <dir>/obj/<hex>.json  the manifest: the stamp (path, mtime, size) of each header
+//   <dir>/obj/<hex>.json  the manifest: the stamp (path, mtime, size) of each header and of the .o
 // A linked module has the entries <hex>.so and <hex>.json in the same directory. Its manifest has
-// the size of the .so. The key of a module is not the key of an object.
+// the stamp (mtime, size) of the .so. The key of a module is not the key of an object.
 // A store writes the manifest last. An entry without a manifest is a miss.
-// A process can use the same directory as other processes. No lock is necessary.
+// A process can use the same directory as other processes. No lock is necessary: a manifest
+// that does not match the stamp of its .o or .so (the file of another store) is a miss.
 #pragma once
 
 #include <atomic>
@@ -123,10 +124,12 @@ public:
 
     // Adds an entry. "obj_tmp" is the finished object file: the call moves it into the cache.
     // "depfile_text" is the text of the depfile (Make syntax). Files under "work_dir" have no
-    // stamp. On a failure it returns false and sets "error". Two processes can store the same
+    // stamp. "started" is the time before the compile (and the translate) started. A header with
+    // a time after "started" minus 2 seconds can be newer than the object: then the call writes
+    // no entry. On a failure it returns false and sets "error". Two processes can store the same
     // key at the same time.
     bool store(const Key& key, const std::filesystem::path& obj_tmp, const std::string& depfile_text,
-        const std::string& work_dir, std::string& error);
+        const std::string& work_dir, std::filesystem::file_time_type started, std::string& error);
 
     void remove(const Key& key);
 
@@ -136,8 +139,8 @@ public:
     static Key make_module_key(const Key& object_key, const std::vector<std::string>& link_args,
         const std::string& compiler_id, const std::string& library_stamp);
 
-    // The path of the cached module. A hit needs the manifest and a .so of the size in the
-    // manifest. A hit sets the manifest time to now. Any error is a miss. It never throws.
+    // The path of the cached module. A hit needs the manifest and a .so of the stamp in the
+    // manifest. The caller must have an object hit first: the module key has no header data. A hit sets the manifest time to now. Any error is a miss. It never throws.
     std::optional<std::filesystem::path> lookup_module(const Key& key);
 
     // Adds a module. The call copies "so_path" (the loader can still map it). The manifest goes
