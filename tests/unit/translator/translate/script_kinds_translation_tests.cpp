@@ -202,7 +202,7 @@ TEST(ScriptKindsTranslation, ClassesCanUseEachOtherThroughHandles)
         "class A : Unit { $B b; int F() { $B x = b; if (x == null) return 0; return x.G(); } }\nclass B : Unit { $A a; int G() { return a != null ? 1 : 0; } }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_LT(r.cpp.find("struct B_Shell;"), r.cpp.find("struct A_Shell final")) << r.cpp;
-    EXPECT_LT(r.cpp.find("struct B_Shell final"), r.cpp.find("int32_t AState::F(")) << r.cpp;
+    EXPECT_LT(r.cpp.find("struct B_Shell final"), r.cpp.find("int32_t hot_state_A::F(")) << r.cpp;
 }
 
 TEST(ScriptKindsTranslation, FieldInitializerNewOrdersTheCycle)
@@ -252,7 +252,7 @@ TEST(ScriptKindsTranslation, CppBodyDoesNotSeeLaterDeclarations)
     o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
     const hotc::TranslateResult r = hotc::translate(o);
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    const size_t body = r.cpp.find("void AState::Tick(");
+    const size_t body = r.cpp.find("void hot_state_A::Tick(");
     ASSERT_NE(body, std::string::npos) << r.cpp;
     EXPECT_LT(r.cpp.find("static int pick(long)"), body) << r.cpp;
     EXPECT_LT(body, r.cpp.find("static int pick(int)")) << r.cpp;

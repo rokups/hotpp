@@ -113,7 +113,7 @@ struct Ov_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<Ov_Shell> 
 };
 
 // ---------------------------------------------------------------- state
-struct OvState {
+struct hot_state_Ov {
     hot::ShellBase* __hot_owner;
     int32_t total;
     int32_t ticks;
@@ -160,13 +160,13 @@ static void Ov__init_kinds(void*, void* f) { using T = int32_t; new (f) T(0); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(OvState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Ov, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Ov_fields[] = {
-    {"total", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(OvState, total), sizeof(int32_t),
+    {"total", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Ov, total), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Ov__init_total, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"ticks", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(OvState, ticks), sizeof(int32_t),
+    {"ticks", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Ov, ticks), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Ov__init_ticks, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"kinds", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(OvState, kinds), sizeof(int32_t),
+    {"kinds", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Ov, kinds), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Ov__init_kinds, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -174,13 +174,13 @@ static const hot::FieldInfo Ov_fields[] = {
 #endif
 
 static const hot::StateLayout Ov_layout = {
-    "OvState", sizeof(OvState), alignof(OvState), 3, Ov_fields, true,
+    "hot_state_Ov", sizeof(hot_state_Ov), alignof(hot_state_Ov), 3, Ov_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN OvState* state_of(Ov_Shell* __self)
+HOT_HIDDEN hot_state_Ov* state_of(Ov_Shell* __self)
 {
-    return static_cast<OvState*>(__self->state);
+    return static_cast<hot_state_Ov*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Ov__Score__ov_int32_Ut(Ov_Shell* __self, int32_t x);
@@ -323,17 +323,17 @@ template <int = 0>
 
 [[maybe_unused]] HOT_HIDDEN static void Ov__base_Tick(Actor* a, float a0)
 {
-    return state_of(static_cast<Ov_Shell*>(a))->OvState::Tick(a0);
+    return state_of(static_cast<Ov_Shell*>(a))->hot_state_Ov::Tick(a0);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void Ov__base_TakeDamage(Actor* a, float a0)
 {
-    return state_of(static_cast<Ov_Shell*>(a))->OvState::__fwd_TakeDamage_f(a0);
+    return state_of(static_cast<Ov_Shell*>(a))->hot_state_Ov::__fwd_TakeDamage_f(a0);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void Ov__base_TakeDamage(Actor* a, Actor& a0, float a1)
 {
-    return state_of(static_cast<Ov_Shell*>(a))->OvState::__fwd_TakeDamage_Af(a0, a1);
+    return state_of(static_cast<Ov_Shell*>(a))->hot_state_Ov::__fwd_TakeDamage_Af(a0, a1);
 }
 
 // The thunk has the same address in each generation (section 4.11). The
@@ -399,13 +399,13 @@ static void* Ov___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Ov_slots[Ov_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&OvState::Tick),
-    reinterpret_cast<hot::SlotFn>(&OvState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&OvState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&OvState::Score__ov_int32_Ut),
-    reinterpret_cast<hot::SlotFn>(&OvState::Score__ov_float),
-    reinterpret_cast<hot::SlotFn>(&OvState::Kind__ov_int32_Ut),
-    reinterpret_cast<hot::SlotFn>(&OvState::Kind__ov_std_Sstring),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Ov::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Ov::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Ov::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Ov::Score__ov_int32_Ut),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Ov::Score__ov_float),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Ov::Kind__ov_int32_Ut),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Ov::Kind__ov_std_Sstring),
 };
 
 hot::ClassRecord Ov_record = {
@@ -473,7 +473,7 @@ struct OvChild_Shell final : Ov_Shell {
 };
 
 // ---------------------------------------------------------------- state
-struct OvChildState : OvState {
+struct hot_state_OvChild : hot_state_Ov {
 
     int32_t Kind__ov_int32_Ut(int32_t x);
 };
@@ -483,13 +483,13 @@ struct OvChildState : OvState {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(OvChildState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_OvChild, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo OvChild_fields[] = {
-    {"total", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(OvChildState, total), sizeof(int32_t),
+    {"total", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_OvChild, total), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Ov__init_total, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"ticks", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(OvChildState, ticks), sizeof(int32_t),
+    {"ticks", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_OvChild, ticks), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Ov__init_ticks, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"kinds", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(OvChildState, kinds), sizeof(int32_t),
+    {"kinds", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_OvChild, kinds), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Ov__init_kinds, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -497,13 +497,13 @@ static const hot::FieldInfo OvChild_fields[] = {
 #endif
 
 static const hot::StateLayout OvChild_layout = {
-    "OvChildState", sizeof(OvChildState), alignof(OvChildState), 3, OvChild_fields, true,
+    "hot_state_OvChild", sizeof(hot_state_OvChild), alignof(hot_state_OvChild), 3, OvChild_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN OvChildState* state_of(OvChild_Shell* __self)
+HOT_HIDDEN hot_state_OvChild* state_of(OvChild_Shell* __self)
 {
-    return static_cast<OvChildState*>(__self->state);
+    return static_cast<hot_state_OvChild*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t OvChild__Kind__ov_int32_Ut(OvChild_Shell* __self, int32_t x);
@@ -614,13 +614,13 @@ static void* OvChild___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn OvChild_slots[OvChild_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&OvState::Tick),
-    reinterpret_cast<hot::SlotFn>(&OvState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&OvState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&OvState::Score__ov_int32_Ut),
-    reinterpret_cast<hot::SlotFn>(&OvState::Score__ov_float),
-    reinterpret_cast<hot::SlotFn>(&OvChildState::Kind__ov_int32_Ut),
-    reinterpret_cast<hot::SlotFn>(&OvState::Kind__ov_std_Sstring),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Ov::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Ov::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Ov::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Ov::Score__ov_int32_Ut),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Ov::Score__ov_float),
+    reinterpret_cast<hot::SlotFn>(&hot_state_OvChild::Kind__ov_int32_Ut),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Ov::Kind__ov_std_Sstring),
 };
 
 hot::ClassRecord OvChild_record = {
@@ -669,7 +669,7 @@ static const hot::CtorEntry OvChild__constructors[] = {
 }
 #line 671 "method_overload_v1.hot.cpp"
 #line 14 "method_overload_v1.hot"
-int32_t OvState::Score__ov_int32_Ut(int32_t const x)
+int32_t hot_state_Ov::Score__ov_int32_Ut(int32_t const x)
 #line 14 "method_overload_v1.hot"
 {
 #line 14 "method_overload_v1.hot"
@@ -704,7 +704,7 @@ int32_t OvState::Score__ov_int32_Ut(int32_t const x)
 }
 #line 706 "method_overload_v1.hot.cpp"
 #line 18 "method_overload_v1.hot"
-int32_t OvState::Score__ov_float(float const x)
+int32_t hot_state_Ov::Score__ov_float(float const x)
 #line 18 "method_overload_v1.hot"
 {
 #line 18 "method_overload_v1.hot"
@@ -739,7 +739,7 @@ int32_t OvState::Score__ov_float(float const x)
 }
 #line 741 "method_overload_v1.hot.cpp"
 #line 22 "method_overload_v1.hot"
-int32_t OvState::Kind__ov_int32_Ut(int32_t x)
+int32_t hot_state_Ov::Kind__ov_int32_Ut(int32_t x)
 #line 22 "method_overload_v1.hot"
 {
 #line 22 "method_overload_v1.hot"
@@ -774,7 +774,7 @@ int32_t OvState::Kind__ov_int32_Ut(int32_t x)
 }
 #line 776 "method_overload_v1.hot.cpp"
 #line 26 "method_overload_v1.hot"
-int32_t OvState::Kind__ov_std_Sstring(hot::In<std::string> s)
+int32_t hot_state_Ov::Kind__ov_std_Sstring(hot::In<std::string> s)
 #line 26 "method_overload_v1.hot"
 {
 #line 26 "method_overload_v1.hot"
@@ -800,7 +800,7 @@ int32_t OvState::Kind__ov_std_Sstring(hot::In<std::string> s)
 #line 801 "method_overload_v1.hot.cpp"
 
 #line 30 "method_overload_v1.hot"
-void OvState::Tick(float dt)
+void hot_state_Ov::Tick(float dt)
 #line 30 "method_overload_v1.hot"
 {
 #line 30 "method_overload_v1.hot"
@@ -841,7 +841,7 @@ void OvState::Tick(float dt)
 }
 #line 843 "method_overload_v1.hot.cpp"
 #line 39 "method_overload_v1.hot"
-int32_t OvChildState::Kind__ov_int32_Ut(int32_t x)
+int32_t hot_state_OvChild::Kind__ov_int32_Ut(int32_t x)
 #line 39 "method_overload_v1.hot"
 {
 #line 39 "method_overload_v1.hot"

@@ -21,8 +21,8 @@ TEST(OverrideTranslation, ExplicitOverrideUsesTheVirtualSlot)
     // An override gets no entry in the slot file. A plain function gets one.
     EXPECT_EQ(r.slots_out.find("Foo::Update"), std::string::npos) << r.slots_out;
     // The state member is the slot. No wrapper frame exists.
-    EXPECT_NE(r.cpp.find("void FooState::Update(float dt)"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("reinterpret_cast<hot::SlotFn>(&FooState::Update)"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("void hot_state_Foo::Update(float dt)"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("reinterpret_cast<hot::SlotFn>(&hot_state_Foo::Update)"), std::string::npos) << r.cpp;
     EXPECT_EQ(r.cpp.find("Foo__Update"), std::string::npos) << r.cpp;
 }
 

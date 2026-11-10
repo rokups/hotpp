@@ -138,7 +138,7 @@ The C++ dialect keeps the C++ spelling. It keeps `::`, `(aka ...)`, `const char[
 
 | Clang text | Shown as |
 |---|---|
-| `Player_Shell`, `PlayerState` | `Player` |
+| `Player_Shell`, `hot_state_Player` | `Player` |
 | `Player__heal` | `Player::heal` |
 | `Player__ctor` | `Player::Player` |
 | `Player__dtor` | `Player::~Player` |

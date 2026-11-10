@@ -8,6 +8,9 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <string>
 
 namespace
@@ -91,5 +94,52 @@ TEST(GeneratedNameCompile, WritingStructMethodOnInValueFails)
     const hot::LoadResult r = backend->load(source, 1);
     ASSERT_FALSE(r);
     EXPECT_NE(r.error.find("'Next' changes the object, but the object is const"), std::string::npos) << r.error;
+}
+} // namespace
+
+namespace
+{
+// The script class "GameState" and the state struct of the script class "Game" have different
+// C++ names.
+const char* kStateNameScript = R"(class GameState {
+    int score = 1;
+}
+class Game {
+    GameState state;
+    int Get() { return state.score; }
+}
+)";
+
+// The native header has "WolfState". The state struct of the script class "Wolf" has another name.
+const char* kNativeStateHeader = "#pragma once\nstruct WolfState { int mood = 0; };\n"
+                                 "struct Creature { virtual ~Creature() = default; virtual void Tick(float) {} };\n";
+const char* kNativeStateScript = R"(using "wolf_world.h";
+class Wolf : Creature {
+    int bites = 0;
+    WolfState st;
+    override void Tick(float dt) { bites = bites + st.mood + 1; }
+}
+)";
+
+TEST(GeneratedNameCompile, ScriptClassWithTheStateNameOfAnotherClassCompiles)
+{
+    auto backend = hot::make_default_backend();
+    const hot::LoadResult r = backend->load({"game_state_name.hot", kStateNameScript, {}}, 1);
+    ASSERT_TRUE(r) << r.error;
+}
+
+TEST(GeneratedNameCompile, NativeTypeWithTheStateNameOfAScriptClassCompiles)
+{
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / ("hot_state_name_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()) + "_" + std::to_string(reinterpret_cast<uintptr_t>(&dir)));
+    fs::create_directories(dir);
+    std::ofstream(dir / "wolf_world.h") << kNativeStateHeader;
+    hot::DefaultBackendOptions o;
+    o.include_dirs = {dir.string()};
+    auto backend = hot::make_default_backend(o);
+    const hot::LoadResult r = backend->load({(dir / "wolf.hot").string(), kNativeStateScript, {}}, 1);
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    ASSERT_TRUE(r) << r.error;
 }
 } // namespace

@@ -52,6 +52,21 @@ TEST(GeneratedNameTranslation, NamesOfTheOldGeneratedCodeAreLegal)
     EXPECT_NE(r.cpp.find("__st->n"), std::string::npos) << r.cpp;
 }
 
+// The state struct of "Game" is "hot_state_Game". A script class "GameState" keeps its name and
+// a class name with the prefix "hot_" is an error.
+TEST(GeneratedNameTranslation, StateStructNameNeverIsAScriptClassName)
+{
+    static TempDir dir;
+    const hotc::TranslateResult r = hotc::translate(temp_options(dir,
+        "class GameState {\n    int score = 1;\n}\nclass Game {\n    GameState state;\n    int Get() { return 1; }\n}\n"));
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("struct hot_state_Game {"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("struct hot_state_GameState {"), std::string::npos) << r.cpp;
+    const hotc::TranslateResult bad = hotc::translate(temp_options(dir, "class hot_state_Game {\n    int n = 0;\n}\n"));
+    EXPECT_FALSE(bad.ok);
+    EXPECT_NE(bad.diagnostics.find("the class name 'hot_state_Game' is reserved"), std::string::npos) << bad.diagnostics;
+}
+
 TEST(GeneratedNameTranslation, DoubleUnderscoreNamesStayReserved)
 {
     const hotc::TranslateResult r = translate_widget("    void f(int __a) { }\n");

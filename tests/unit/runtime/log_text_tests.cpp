@@ -25,9 +25,10 @@ TEST(LogText, ReadableTypeDemangles)
 
 TEST(LogText, ReadableLayoutGivesTheClassName)
 {
-    EXPECT_EQ(hot::readable_layout("HeroState"), "Hero");
-    EXPECT_EQ(hot::readable_layout("GameStateState"), "GameState");
-    EXPECT_EQ(hot::readable_layout("State"), "State"); // no class name before the suffix
+    EXPECT_EQ(hot::readable_layout("hot_state_Hero"), "Hero");
+    EXPECT_EQ(hot::readable_layout("hot_state_GameState"), "GameState");
+    EXPECT_EQ(hot::readable_layout("hot_state_"), "hot_state_"); // no class name after the prefix
+    EXPECT_EQ(hot::readable_layout("WolfState"), "WolfState");   // a native name stays
     EXPECT_EQ(hot::readable_layout("HeroState_g2"), "Hero");
     EXPECT_EQ(hot::readable_layout("HeroState_g12"), "Hero");
     EXPECT_EQ(hot::readable_layout("State2"), "State2");
@@ -51,13 +52,13 @@ TEST(LogText, TypeChangeWarningIsReadable)
     hot::FieldInfo f2[] = {{"title", nullptr, hot::type_key<std::string>(), 0, sizeof(std::string),
         alignof(std::string), 0, nullptr, nullptr, nullptr}};
     // Two generations of a generated layout have the same name. The plan finds the type change.
-    const hot::StateLayout l1{"HeroState", sizeof(S1), alignof(S1), 1, f1};
-    const hot::StateLayout l2{"HeroState", sizeof(S2), alignof(S2), 1, f2};
+    const hot::StateLayout l1{"hot_state_Hero", sizeof(S1), alignof(S1), 1, f1};
+    const hot::StateLayout l2{"hot_state_Hero", sizeof(S2), alignof(S2), 1, f2};
     const hot::MigrationPlan plan = hot::build_plan(l1, l2);
     ASSERT_EQ(plan.warnings.size(), 1u);
     const std::string& w = plan.warnings[0];
     EXPECT_NE(w.find("Hero: field title changed its type (int -> std::string)"), std::string::npos) << w;
-    EXPECT_EQ(w.find("HeroState"), std::string::npos) << w;
+    EXPECT_EQ(w.find("hot_state_Hero"), std::string::npos) << w;
     EXPECT_EQ(w.find("__cxx11"), std::string::npos) << w;
 }
 

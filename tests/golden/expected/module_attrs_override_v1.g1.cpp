@@ -103,7 +103,7 @@ struct Counter_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct CounterState {
+struct hot_state_Counter {
     hot::ShellBase* __hot_owner;
     other_std::string label;
     other_std::vector<int32_t> history;
@@ -142,11 +142,11 @@ static void Counter__init_history(void*, void* f) { using T = other_std::vector<
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(CounterState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Counter, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Counter_fields[] = {
-    {"label", nullptr, typeid(hot::typekey_t<other_std::string>).name(), offsetof(CounterState, label), sizeof(other_std::string),
+    {"label", nullptr, typeid(hot::typekey_t<other_std::string>).name(), offsetof(hot_state_Counter, label), sizeof(other_std::string),
      alignof(other_std::string), hot::field_flags<other_std::string>(), Counter__init_label, hot::move_field<other_std::string>, hot::field_destroyer<other_std::string>(), nullptr, nullptr, nullptr, hot::field_copy<other_std::string>()},
-    {"history", nullptr, typeid(hot::typekey_t<other_std::vector<int32_t>>).name(), offsetof(CounterState, history), sizeof(other_std::vector<int32_t>),
+    {"history", nullptr, typeid(hot::typekey_t<other_std::vector<int32_t>>).name(), offsetof(hot_state_Counter, history), sizeof(other_std::vector<int32_t>),
      alignof(other_std::vector<int32_t>), hot::field_flags<other_std::vector<int32_t>>(), Counter__init_history, hot::move_field<other_std::vector<int32_t>>, hot::field_destroyer<other_std::vector<int32_t>>(), nullptr, nullptr, nullptr, hot::field_copy<other_std::vector<int32_t>>()},
 };
 #if defined(__clang__)
@@ -154,13 +154,13 @@ static const hot::FieldInfo Counter_fields[] = {
 #endif
 
 static const hot::StateLayout Counter_layout = {
-    "CounterState", sizeof(CounterState), alignof(CounterState), 2, Counter_fields, true,
+    "hot_state_Counter", sizeof(hot_state_Counter), alignof(hot_state_Counter), 2, Counter_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN CounterState* state_of(Counter_Shell* __self)
+HOT_HIDDEN hot_state_Counter* state_of(Counter_Shell* __self)
 {
-    return static_cast<CounterState*>(__self->state);
+    return static_cast<hot_state_Counter*>(__self->state);
 }
 
 
@@ -239,9 +239,9 @@ static void* Counter___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Counter_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&CounterState::Tick),
-    reinterpret_cast<hot::SlotFn>(&CounterState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&CounterState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Counter::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Counter::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Counter::__fwd_TakeDamage_Af),
 };
 
 hot::ClassRecord Counter_record = {
@@ -281,7 +281,7 @@ static const hot::CtorEntry Counter__constructors[] = {
 
 // ---------------------------------------------------------------- function bodies
 #line 13 "module_attrs_override_v1.hot"
-void CounterState::Tick(float dt)
+void hot_state_Counter::Tick(float dt)
 #line 13 "module_attrs_override_v1.hot"
 {
 #line 13 "module_attrs_override_v1.hot"

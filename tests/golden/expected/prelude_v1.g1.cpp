@@ -101,7 +101,7 @@ struct Smith_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct SmithState {
+struct hot_state_Smith {
     hot::ShellBase* __hot_owner;
     hot::Intrusive<Object, &Object::AddRef, &Object::Release> root;
     std::shared_ptr<Item> item;
@@ -144,13 +144,13 @@ static void Smith__init_ticks(void*, void* f) { using T = int32_t; new (f) T(); 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(SmithState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Smith, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Smith_fields[] = {
-    {"root", nullptr, typeid(hot::typekey_t<hot::Intrusive<Object, &Object::AddRef, &Object::Release>>).name(), offsetof(SmithState, root), sizeof(hot::Intrusive<Object, &Object::AddRef, &Object::Release>),
+    {"root", nullptr, typeid(hot::typekey_t<hot::Intrusive<Object, &Object::AddRef, &Object::Release>>).name(), offsetof(hot_state_Smith, root), sizeof(hot::Intrusive<Object, &Object::AddRef, &Object::Release>),
      alignof(hot::Intrusive<Object, &Object::AddRef, &Object::Release>), hot::field_flags<hot::Intrusive<Object, &Object::AddRef, &Object::Release>>(), Smith__init_root, hot::move_field<hot::Intrusive<Object, &Object::AddRef, &Object::Release>>, hot::field_destroyer<hot::Intrusive<Object, &Object::AddRef, &Object::Release>>(), nullptr, nullptr, nullptr, hot::field_copy<hot::Intrusive<Object, &Object::AddRef, &Object::Release>>()},
-    {"item", nullptr, typeid(hot::typekey_t<std::shared_ptr<Item>>).name(), offsetof(SmithState, item), sizeof(std::shared_ptr<Item>),
+    {"item", nullptr, typeid(hot::typekey_t<std::shared_ptr<Item>>).name(), offsetof(hot_state_Smith, item), sizeof(std::shared_ptr<Item>),
      alignof(std::shared_ptr<Item>), hot::field_flags<std::shared_ptr<Item>>(), Smith__init_item, hot::move_field<std::shared_ptr<Item>>, hot::field_destroyer<std::shared_ptr<Item>>(), nullptr, nullptr, nullptr, hot::field_copy<std::shared_ptr<Item>>()},
-    {"ticks", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(SmithState, ticks), sizeof(int32_t),
+    {"ticks", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Smith, ticks), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Smith__init_ticks, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -158,13 +158,13 @@ static const hot::FieldInfo Smith_fields[] = {
 #endif
 
 static const hot::StateLayout Smith_layout = {
-    "SmithState", sizeof(SmithState), alignof(SmithState), 3, Smith_fields, true,
+    "hot_state_Smith", sizeof(hot_state_Smith), alignof(hot_state_Smith), 3, Smith_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN SmithState* state_of(Smith_Shell* __self)
+HOT_HIDDEN hot_state_Smith* state_of(Smith_Shell* __self)
 {
-    return static_cast<SmithState*>(__self->state);
+    return static_cast<hot_state_Smith*>(__self->state);
 }
 
 
@@ -258,9 +258,9 @@ static void* Smith___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Smith_slots[Smith_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&SmithState::Tick),
-    reinterpret_cast<hot::SlotFn>(&SmithState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&SmithState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Smith::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Smith::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Smith::__fwd_TakeDamage_Af),
 };
 
 hot::ClassRecord Smith_record = {
@@ -328,7 +328,7 @@ struct Tool_Shell final : Object, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct ToolState {
+struct hot_state_Tool {
     hot::ShellBase* __hot_owner;
     int32_t uses;
 
@@ -343,9 +343,9 @@ static void Tool__init_uses(void*, void* f) { using T = int32_t; new (f) T(); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(ToolState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Tool, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Tool_fields[] = {
-    {"uses", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(ToolState, uses), sizeof(int32_t),
+    {"uses", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Tool, uses), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Tool__init_uses, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -353,13 +353,13 @@ static const hot::FieldInfo Tool_fields[] = {
 #endif
 
 static const hot::StateLayout Tool_layout = {
-    "ToolState", sizeof(ToolState), alignof(ToolState), 1, Tool_fields, true,
+    "hot_state_Tool", sizeof(hot_state_Tool), alignof(hot_state_Tool), 1, Tool_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN ToolState* state_of(Tool_Shell* __self)
+HOT_HIDDEN hot_state_Tool* state_of(Tool_Shell* __self)
 {
-    return static_cast<ToolState*>(__self->state);
+    return static_cast<hot_state_Tool*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void Tool__Use(Tool_Shell* __self);
@@ -468,7 +468,7 @@ static void* Tool___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Tool_slots[Tool_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&ToolState::Use),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Tool::Use),
 };
 
 hot::ClassRecord Tool_record = {
@@ -508,7 +508,7 @@ static const hot::CtorEntry Tool__constructors[] = {
 
 // ---------------------------------------------------------------- function bodies
 #line 14 "prelude_v1.hot"
-void SmithState::Tick(float dt)
+void hot_state_Smith::Tick(float dt)
 #line 14 "prelude_v1.hot"
 {
 #line 14 "prelude_v1.hot"
@@ -543,7 +543,7 @@ void SmithState::Tick(float dt)
 }
 #line 545 "prelude_v1.hot.cpp"
 #line 23 "prelude_v1.hot"
-void ToolState::Use()
+void hot_state_Tool::Use()
 #line 23 "prelude_v1.hot"
 {
 #line 23 "prelude_v1.hot"

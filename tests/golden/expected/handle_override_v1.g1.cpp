@@ -208,7 +208,7 @@ struct Holder_Shell final : Actor, Wearer, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct HolderState {
+struct hot_state_Holder {
     hot::ShellBase* __hot_owner;
     std::shared_ptr<Charm> last;
     hot::Intrusive<Item, &Item::AddRef, &Item::Release> kept;
@@ -281,15 +281,15 @@ static void Holder__init_worn(void*, void* f) { using T = int32_t; new (f) T(); 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(HolderState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Holder, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Holder_fields[] = {
-    {"last", nullptr, typeid(hot::typekey_t<std::shared_ptr<Charm>>).name(), offsetof(HolderState, last), sizeof(std::shared_ptr<Charm>),
+    {"last", nullptr, typeid(hot::typekey_t<std::shared_ptr<Charm>>).name(), offsetof(hot_state_Holder, last), sizeof(std::shared_ptr<Charm>),
      alignof(std::shared_ptr<Charm>), hot::field_flags<std::shared_ptr<Charm>>(), Holder__init_last, hot::move_field<std::shared_ptr<Charm>>, hot::field_destroyer<std::shared_ptr<Charm>>(), nullptr, nullptr, nullptr, hot::field_copy<std::shared_ptr<Charm>>()},
-    {"kept", nullptr, typeid(hot::typekey_t<hot::Intrusive<Item, &Item::AddRef, &Item::Release>>).name(), offsetof(HolderState, kept), sizeof(hot::Intrusive<Item, &Item::AddRef, &Item::Release>),
+    {"kept", nullptr, typeid(hot::typekey_t<hot::Intrusive<Item, &Item::AddRef, &Item::Release>>).name(), offsetof(hot_state_Holder, kept), sizeof(hot::Intrusive<Item, &Item::AddRef, &Item::Release>),
      alignof(hot::Intrusive<Item, &Item::AddRef, &Item::Release>), hot::field_flags<hot::Intrusive<Item, &Item::AddRef, &Item::Release>>(), Holder__init_kept, hot::move_field<hot::Intrusive<Item, &Item::AddRef, &Item::Release>>, hot::field_destroyer<hot::Intrusive<Item, &Item::AddRef, &Item::Release>>(), nullptr, nullptr, nullptr, hot::field_copy<hot::Intrusive<Item, &Item::AddRef, &Item::Release>>()},
-    {"blade", nullptr, typeid(hot::typekey_t<std::shared_ptr<Blade>>).name(), offsetof(HolderState, blade), sizeof(std::shared_ptr<Blade>),
+    {"blade", nullptr, typeid(hot::typekey_t<std::shared_ptr<Blade>>).name(), offsetof(hot_state_Holder, blade), sizeof(std::shared_ptr<Blade>),
      alignof(std::shared_ptr<Blade>), hot::field_flags<std::shared_ptr<Blade>>(), Holder__init_blade, hot::move_field<std::shared_ptr<Blade>>, hot::field_destroyer<std::shared_ptr<Blade>>(), nullptr, nullptr, nullptr, hot::field_copy<std::shared_ptr<Blade>>()},
-    {"worn", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(HolderState, worn), sizeof(int32_t),
+    {"worn", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Holder, worn), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Holder__init_worn, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -297,13 +297,13 @@ static const hot::FieldInfo Holder_fields[] = {
 #endif
 
 static const hot::StateLayout Holder_layout = {
-    "HolderState", sizeof(HolderState), alignof(HolderState), 4, Holder_fields, true,
+    "hot_state_Holder", sizeof(hot_state_Holder), alignof(hot_state_Holder), 4, Holder_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN HolderState* state_of(Holder_Shell* __self)
+HOT_HIDDEN hot_state_Holder* state_of(Holder_Shell* __self)
 {
-    return static_cast<HolderState*>(__self->state);
+    return static_cast<hot_state_Holder*>(__self->state);
 }
 
 
@@ -397,17 +397,17 @@ static void* Holder___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Holder_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&HolderState::__fwd_Tick),
-    reinterpret_cast<hot::SlotFn>(&HolderState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&HolderState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&HolderState::WearRaw),
-    reinterpret_cast<hot::SlotFn>(&HolderState::WearRef),
-    reinterpret_cast<hot::SlotFn>(&HolderState::WearShared),
-    reinterpret_cast<hot::SlotFn>(&HolderState::WearItem),
-    reinterpret_cast<hot::SlotFn>(&HolderState::WearBlade),
-    reinterpret_cast<hot::SlotFn>(&HolderState::Spawn),
-    reinterpret_cast<hot::SlotFn>(&HolderState::Make),
-    reinterpret_cast<hot::SlotFn>(&HolderState::__fwd_Borrow),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Holder::__fwd_Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Holder::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Holder::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Holder::WearRaw),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Holder::WearRef),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Holder::WearShared),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Holder::WearItem),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Holder::WearBlade),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Holder::Spawn),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Holder::Make),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Holder::__fwd_Borrow),
 };
 
 hot::ClassRecord Holder_record = {
@@ -447,7 +447,7 @@ static const hot::CtorEntry Holder__constructors[] = {
 
 // ---------------------------------------------------------------- function bodies
 #line 17 "handle_override_v1.hot"
-int HolderState::WearRaw(Charm* __c)
+int hot_state_Holder::WearRaw(Charm* __c)
 #line 17 "handle_override_v1.hot"
 {
 #line 17 "handle_override_v1.hot"
@@ -479,7 +479,7 @@ int HolderState::WearRaw(Charm* __c)
 #line 480 "handle_override_v1.hot.cpp"
 
 #line 23 "handle_override_v1.hot"
-int HolderState::WearRef(const Charm& __c)
+int hot_state_Holder::WearRef(const Charm& __c)
 #line 23 "handle_override_v1.hot"
 {
 #line 23 "handle_override_v1.hot"
@@ -509,7 +509,7 @@ int HolderState::WearRef(const Charm& __c)
 #line 510 "handle_override_v1.hot.cpp"
 
 #line 28 "handle_override_v1.hot"
-int HolderState::WearShared(std::shared_ptr<Charm> __c)
+int hot_state_Holder::WearShared(std::shared_ptr<Charm> __c)
 #line 28 "handle_override_v1.hot"
 {
 #line 28 "handle_override_v1.hot"
@@ -539,7 +539,7 @@ int HolderState::WearShared(std::shared_ptr<Charm> __c)
 #line 540 "handle_override_v1.hot.cpp"
 
 #line 33 "handle_override_v1.hot"
-int HolderState::WearBlade(Blade* __b)
+int hot_state_Holder::WearBlade(Blade* __b)
 #line 33 "handle_override_v1.hot"
 {
 #line 33 "handle_override_v1.hot"
@@ -569,7 +569,7 @@ int HolderState::WearBlade(Blade* __b)
 #line 570 "handle_override_v1.hot.cpp"
 
 #line 39 "handle_override_v1.hot"
-std::shared_ptr<Charm> HolderState::Spawn()
+std::shared_ptr<Charm> hot_state_Holder::Spawn()
 #line 39 "handle_override_v1.hot"
 {
 #line 39 "handle_override_v1.hot"
@@ -595,7 +595,7 @@ std::shared_ptr<Charm> HolderState::Spawn()
 #line 596 "handle_override_v1.hot.cpp"
 
 #line 43 "handle_override_v1.hot"
-std::shared_ptr<Charm> HolderState::Make(int32_t power)
+std::shared_ptr<Charm> hot_state_Holder::Make(int32_t power)
 #line 43 "handle_override_v1.hot"
 {
 #line 43 "handle_override_v1.hot"
@@ -625,7 +625,7 @@ std::shared_ptr<Charm> HolderState::Make(int32_t power)
 #line 626 "handle_override_v1.hot.cpp"
 
 #line 49 "handle_override_v1.hot"
-int HolderState::WearItem(Item* __i)
+int hot_state_Holder::WearItem(Item* __i)
 #line 49 "handle_override_v1.hot"
 {
 #line 49 "handle_override_v1.hot"

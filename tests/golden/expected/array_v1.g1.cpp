@@ -101,7 +101,7 @@ struct Grid_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct GridState {
+struct hot_state_Grid {
     hot::ShellBase* __hot_owner;
     std::array<int32_t, 3> a;
     std::array<float, 3> v;
@@ -150,15 +150,15 @@ static void Grid__init_rows(void*, void* f) { using T = std::vector<std::array<i
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(GridState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Grid, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Grid_fields[] = {
-    {"a", nullptr, typeid(hot::typekey_t<std::array<int32_t, 3>>).name(), offsetof(GridState, a), sizeof(std::array<int32_t, 3>),
+    {"a", nullptr, typeid(hot::typekey_t<std::array<int32_t, 3>>).name(), offsetof(hot_state_Grid, a), sizeof(std::array<int32_t, 3>),
      alignof(std::array<int32_t, 3>), hot::field_flags<std::array<int32_t, 3>>(), Grid__init_a, hot::move_field<std::array<int32_t, 3>>, hot::field_destroyer<std::array<int32_t, 3>>(), nullptr, nullptr, nullptr, hot::field_copy<std::array<int32_t, 3>>()},
-    {"v", nullptr, typeid(hot::typekey_t<std::array<float, 3>>).name(), offsetof(GridState, v), sizeof(std::array<float, 3>),
+    {"v", nullptr, typeid(hot::typekey_t<std::array<float, 3>>).name(), offsetof(hot_state_Grid, v), sizeof(std::array<float, 3>),
      alignof(std::array<float, 3>), hot::field_flags<std::array<float, 3>>(), Grid__init_v, hot::move_field<std::array<float, 3>>, hot::field_destroyer<std::array<float, 3>>(), nullptr, nullptr, nullptr, hot::field_copy<std::array<float, 3>>()},
-    {"m", nullptr, typeid(hot::typekey_t<std::array<std::array<int32_t, 3>, 2>>).name(), offsetof(GridState, m), sizeof(std::array<std::array<int32_t, 3>, 2>),
+    {"m", nullptr, typeid(hot::typekey_t<std::array<std::array<int32_t, 3>, 2>>).name(), offsetof(hot_state_Grid, m), sizeof(std::array<std::array<int32_t, 3>, 2>),
      alignof(std::array<std::array<int32_t, 3>, 2>), hot::field_flags<std::array<std::array<int32_t, 3>, 2>>(), Grid__init_m, hot::move_field<std::array<std::array<int32_t, 3>, 2>>, hot::field_destroyer<std::array<std::array<int32_t, 3>, 2>>(), nullptr, nullptr, nullptr, hot::field_copy<std::array<std::array<int32_t, 3>, 2>>()},
-    {"rows", nullptr, typeid(hot::typekey_t<std::vector<std::array<int32_t, 3>>>).name(), offsetof(GridState, rows), sizeof(std::vector<std::array<int32_t, 3>>),
+    {"rows", nullptr, typeid(hot::typekey_t<std::vector<std::array<int32_t, 3>>>).name(), offsetof(hot_state_Grid, rows), sizeof(std::vector<std::array<int32_t, 3>>),
      alignof(std::vector<std::array<int32_t, 3>>), hot::field_flags<std::vector<std::array<int32_t, 3>>>(), Grid__init_rows, hot::move_field<std::vector<std::array<int32_t, 3>>>, hot::field_destroyer<std::vector<std::array<int32_t, 3>>>(), nullptr, nullptr, nullptr, hot::field_copy<std::vector<std::array<int32_t, 3>>>()},
 };
 #if defined(__clang__)
@@ -166,13 +166,13 @@ static const hot::FieldInfo Grid_fields[] = {
 #endif
 
 static const hot::StateLayout Grid_layout = {
-    "GridState", sizeof(GridState), alignof(GridState), 4, Grid_fields, true,
+    "hot_state_Grid", sizeof(hot_state_Grid), alignof(hot_state_Grid), 4, Grid_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN GridState* state_of(Grid_Shell* __self)
+HOT_HIDDEN hot_state_Grid* state_of(Grid_Shell* __self)
 {
-    return static_cast<GridState*>(__self->state);
+    return static_cast<hot_state_Grid*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Grid__total(Grid_Shell* __self);
@@ -296,11 +296,11 @@ static void* Grid___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Grid_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&GridState::Tick),
-    reinterpret_cast<hot::SlotFn>(&GridState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&GridState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&GridState::total),
-    reinterpret_cast<hot::SlotFn>(&GridState::make),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Grid::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Grid::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Grid::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Grid::total),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Grid::make),
 };
 
 hot::ClassRecord Grid_record = {
@@ -340,7 +340,7 @@ static const hot::CtorEntry Grid__constructors[] = {
 
 // ---------------------------------------------------------------- function bodies
 #line 11 "array_v1.hot"
-void GridState::Tick(float dt)
+void hot_state_Grid::Tick(float dt)
 #line 11 "array_v1.hot"
 {
 #line 11 "array_v1.hot"
@@ -381,7 +381,7 @@ void GridState::Tick(float dt)
 }
 #line 383 "array_v1.hot.cpp"
 #line 18 "array_v1.hot"
-int32_t GridState::total()
+int32_t hot_state_Grid::total()
 #line 18 "array_v1.hot"
 {
 #line 18 "array_v1.hot"
@@ -424,7 +424,7 @@ int32_t GridState::total()
 }
 #line 426 "array_v1.hot.cpp"
 #line 26 "array_v1.hot"
-std::array<int32_t, 4> GridState::make(hot::In<std::array<int32_t, 2>> p)
+std::array<int32_t, 4> hot_state_Grid::make(hot::In<std::array<int32_t, 2>> p)
 #line 26 "array_v1.hot"
 {
 #line 26 "array_v1.hot"

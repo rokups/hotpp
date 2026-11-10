@@ -141,7 +141,7 @@ struct Buf_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct BufState {
+struct hot_state_Buf {
     hot::ShellBase* __hot_owner;
     int data[6];
     int grid[2][3];
@@ -210,25 +210,25 @@ static void Buf__init_extra(void*, void* f) { using T = int[8]; new (f) T{1, 2, 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(BufState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Buf, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Buf_fields[] = {
-    {"data", nullptr, hot::type_key<int[6]>(), offsetof(BufState, data), sizeof(int[6]),
+    {"data", nullptr, hot::type_key<int[6]>(), offsetof(hot_state_Buf, data), sizeof(int[6]),
      alignof(int[6]), hot::field_flags<int[6]>(), Buf__init_data, hot::move_field<int[6]>, hot::field_destroyer<int[6]>(), nullptr, nullptr, nullptr, hot::field_copy<int[6]>()},
-    {"grid", nullptr, hot::type_key<int[2][3]>(), offsetof(BufState, grid), sizeof(int[2][3]),
+    {"grid", nullptr, hot::type_key<int[2][3]>(), offsetof(hot_state_Buf, grid), sizeof(int[2][3]),
      alignof(int[2][3]), hot::field_flags<int[2][3]>(), Buf__init_grid, hot::move_field<int[2][3]>, hot::field_destroyer<int[2][3]>(), nullptr, nullptr, nullptr, hot::field_copy<int[2][3]>()},
-    {"names", nullptr, hot::type_key<std::string[2]>(), offsetof(BufState, names), sizeof(std::string[2]),
+    {"names", nullptr, hot::type_key<std::string[2]>(), offsetof(hot_state_Buf, names), sizeof(std::string[2]),
      alignof(std::string[2]), hot::field_flags<std::string[2]>(), Buf__init_names, hot::move_field<std::string[2]>, hot::field_destroyer<std::string[2]>(), nullptr, nullptr, nullptr, hot::field_copy<std::string[2]>()},
-    {"total", nullptr, hot::type_key<int>(), offsetof(BufState, total), sizeof(int),
+    {"total", nullptr, hot::type_key<int>(), offsetof(hot_state_Buf, total), sizeof(int),
      alignof(int), hot::field_flags<int>(), Buf__init_total, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"lut", nullptr, hot::type_key<const int[3]>(), offsetof(BufState, lut), sizeof(const int[3]),
+    {"lut", nullptr, hot::type_key<const int[3]>(), offsetof(hot_state_Buf, lut), sizeof(const int[3]),
      alignof(const int[3]), hot::field_flags<const int[3]>(), Buf__init_lut, hot::move_field<const int[3]>, hot::field_destroyer<const int[3]>(), nullptr, nullptr, nullptr, hot::field_copy<const int[3]>()},
-    {"tags", nullptr, hot::type_key<const std::string[2]>(), offsetof(BufState, tags), sizeof(const std::string[2]),
+    {"tags", nullptr, hot::type_key<const std::string[2]>(), offsetof(hot_state_Buf, tags), sizeof(const std::string[2]),
      alignof(const std::string[2]), hot::field_flags<const std::string[2]>(), Buf__init_tags, hot::move_field<const std::string[2]>, hot::field_destroyer<const std::string[2]>(), nullptr, nullptr, nullptr, hot::field_copy<const std::string[2]>()},
-    {"handlers", nullptr, hot::type_key<std::function<void ()>[2]>(), offsetof(BufState, handlers), sizeof(std::function<void ()>[2]),
+    {"handlers", nullptr, hot::type_key<std::function<void ()>[2]>(), offsetof(hot_state_Buf, handlers), sizeof(std::function<void ()>[2]),
      alignof(std::function<void ()>[2]), hot::field_flags<std::function<void ()>[2]>(), Buf__init_handlers, hot::move_field<std::function<void ()>[2]>, hot::field_destroyer<std::function<void ()>[2]>(), nullptr, nullptr, nullptr, hot::field_copy<std::function<void ()>[2]>()},
-    {"rows", nullptr, hot::type_key<std::vector<int>[2]>(), offsetof(BufState, rows), sizeof(std::vector<int>[2]),
+    {"rows", nullptr, hot::type_key<std::vector<int>[2]>(), offsetof(hot_state_Buf, rows), sizeof(std::vector<int>[2]),
      alignof(std::vector<int>[2]), hot::field_flags<std::vector<int>[2]>(), Buf__init_rows, hot::move_field<std::vector<int>[2]>, hot::field_destroyer<std::vector<int>[2]>(), nullptr, nullptr, nullptr, hot::field_copy<std::vector<int>[2]>()},
-    {"extra", nullptr, hot::type_key<int[8]>(), offsetof(BufState, extra), sizeof(int[8]),
+    {"extra", nullptr, hot::type_key<int[8]>(), offsetof(hot_state_Buf, extra), sizeof(int[8]),
      alignof(int[8]), hot::field_flags<int[8]>(), Buf__init_extra, hot::move_field<int[8]>, hot::field_destroyer<int[8]>(), nullptr, nullptr, nullptr, hot::field_copy<int[8]>()},
 };
 #if defined(__clang__)
@@ -236,13 +236,13 @@ static const hot::FieldInfo Buf_fields[] = {
 #endif
 
 static const hot::StateLayout Buf_layout = {
-    "BufState", sizeof(BufState), alignof(BufState), 9, Buf_fields, true,
+    "hot_state_Buf", sizeof(hot_state_Buf), alignof(hot_state_Buf), 9, Buf_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN BufState* state_of(Buf_Shell* __self)
+HOT_HIDDEN hot_state_Buf* state_of(Buf_Shell* __self)
 {
-    return static_cast<BufState*>(__self->state);
+    return static_cast<hot_state_Buf*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int Buf__sum(Buf_Shell* __self);
@@ -378,10 +378,10 @@ static void* Buf___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Buf_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&BufState::Tick),
-    reinterpret_cast<hot::SlotFn>(&BufState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&BufState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&BufState::sum),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Buf::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Buf::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Buf::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Buf::sum),
 };
 
 hot::ClassRecord Buf_record = {
@@ -448,7 +448,7 @@ static const hot::CtorEntry Buf__constructors[] = {
 }
 #line 450 "cpp_array_v2.cpp.cpp"
 #line 13 "cpp_array_v2.cpp"
-void BufState::ctor()
+void hot_state_Buf::ctor()
 #line 13 "cpp_array_v2.cpp"
 {
 #line 13 "cpp_array_v2.cpp"
@@ -474,7 +474,7 @@ void BufState::ctor()
 #line 475 "cpp_array_v2.cpp.cpp"
 
 #line 15 "cpp_array_v2.cpp"
-void BufState::Tick(float dt)
+void hot_state_Buf::Tick(float dt)
 #line 15 "cpp_array_v2.cpp"
 {
 #line 15 "cpp_array_v2.cpp"
@@ -517,7 +517,7 @@ void BufState::Tick(float dt)
 }
 #line 519 "cpp_array_v2.cpp.cpp"
 #line 26 "cpp_array_v2.cpp"
-int BufState::sum()
+int hot_state_Buf::sum()
 #line 26 "cpp_array_v2.cpp"
 {
 #line 26 "cpp_array_v2.cpp"

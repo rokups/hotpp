@@ -58,7 +58,7 @@ struct Parser_Shell final : hot::PlainObject, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct ParserState {
+struct hot_state_Parser {
     hot::ShellBase* __hot_owner;
 
     int32_t Run();
@@ -69,20 +69,20 @@ struct ParserState {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(ParserState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Parser, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo* const Parser_fields = nullptr;
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
 
 static const hot::StateLayout Parser_layout = {
-    "ParserState", sizeof(ParserState), alignof(ParserState), 0, Parser_fields, true,
+    "hot_state_Parser", sizeof(hot_state_Parser), alignof(hot_state_Parser), 0, Parser_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN ParserState* state_of(Parser_Shell* __self)
+HOT_HIDDEN hot_state_Parser* state_of(Parser_Shell* __self)
 {
-    return static_cast<ParserState*>(__self->state);
+    return static_cast<hot_state_Parser*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Parser__Run(Parser_Shell* __self);
@@ -199,7 +199,7 @@ static void* Parser___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Parser_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&ParserState::Run),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Parser::Run),
 };
 
 hot::ClassRecord Parser_record = {
@@ -248,7 +248,7 @@ static const hot::CtorEntry Parser__constructors[] = {
 }
 #line 250 "out_ptr_v1.hot.cpp"
 #line 7 "out_ptr_v1.hot"
-int32_t ParserState::Run()
+int32_t hot_state_Parser::Run()
 #line 7 "out_ptr_v1.hot"
 {
 #line 7 "out_ptr_v1.hot"

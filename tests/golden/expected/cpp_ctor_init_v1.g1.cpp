@@ -110,7 +110,7 @@ struct Unit_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct UnitState {
+struct hot_state_Unit {
     hot::ShellBase* __hot_owner;
     int hp;
     int tag;
@@ -170,21 +170,21 @@ static void Unit__init_kept(void*, void* f) { using T = int; new (f) T(7); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(UnitState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Unit, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Unit_fields[] = {
-    {"hp", nullptr, hot::type_key<int>(), offsetof(UnitState, hp), sizeof(int),
+    {"hp", nullptr, hot::type_key<int>(), offsetof(hot_state_Unit, hp), sizeof(int),
      alignof(int), hot::field_flags<int>(), Unit__init_hp, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"tag", nullptr, hot::type_key<int>(), offsetof(UnitState, tag), sizeof(int),
+    {"tag", nullptr, hot::type_key<int>(), offsetof(hot_state_Unit, tag), sizeof(int),
      alignof(int), hot::field_flags<int>(), Unit__init_tag, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"name", nullptr, hot::type_key<std::string>(), offsetof(UnitState, name), sizeof(std::string),
+    {"name", nullptr, hot::type_key<std::string>(), offsetof(hot_state_Unit, name), sizeof(std::string),
      alignof(std::string), hot::field_flags<std::string>(), Unit__init_name, hot::move_field<std::string>, hot::field_destroyer<std::string>(), nullptr, nullptr, nullptr, hot::field_copy<std::string>()},
-    {"twice", nullptr, hot::type_key<int>(), offsetof(UnitState, twice), sizeof(int),
+    {"twice", nullptr, hot::type_key<int>(), offsetof(hot_state_Unit, twice), sizeof(int),
      alignof(int), hot::field_flags<int>(), Unit__init_twice, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"len", nullptr, hot::type_key<int>(), offsetof(UnitState, len), sizeof(int),
+    {"len", nullptr, hot::type_key<int>(), offsetof(hot_state_Unit, len), sizeof(int),
      alignof(int), hot::field_flags<int>(), Unit__init_len, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"stamp", nullptr, hot::type_key<int>(), offsetof(UnitState, stamp), sizeof(int),
+    {"stamp", nullptr, hot::type_key<int>(), offsetof(hot_state_Unit, stamp), sizeof(int),
      alignof(int), hot::field_flags<int>(), Unit__init_stamp, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"kept", nullptr, hot::type_key<int>(), offsetof(UnitState, kept), sizeof(int),
+    {"kept", nullptr, hot::type_key<int>(), offsetof(hot_state_Unit, kept), sizeof(int),
      alignof(int), hot::field_flags<int>(), Unit__init_kept, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
@@ -192,13 +192,13 @@ static const hot::FieldInfo Unit_fields[] = {
 #endif
 
 static const hot::StateLayout Unit_layout = {
-    "UnitState", sizeof(UnitState), alignof(UnitState), 7, Unit_fields, true,
+    "hot_state_Unit", sizeof(hot_state_Unit), alignof(hot_state_Unit), 7, Unit_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN UnitState* state_of(Unit_Shell* __self)
+HOT_HIDDEN hot_state_Unit* state_of(Unit_Shell* __self)
 {
-    return static_cast<UnitState*>(__self->state);
+    return static_cast<hot_state_Unit*>(__self->state);
 }
 
 
@@ -333,9 +333,9 @@ static void* Unit___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Unit_slots[Unit_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&UnitState::Tick),
-    reinterpret_cast<hot::SlotFn>(&UnitState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&UnitState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Unit::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Unit::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Unit::__fwd_TakeDamage_Af),
 };
 
 hot::ClassRecord Unit_record = {
@@ -493,7 +493,7 @@ struct Spawner_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct SpawnerState {
+struct hot_state_Spawner {
     hot::ShellBase* __hot_owner;
 
     void ctor();
@@ -526,20 +526,20 @@ struct SpawnerState {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(SpawnerState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Spawner, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo* const Spawner_fields = nullptr;
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
 
 static const hot::StateLayout Spawner_layout = {
-    "SpawnerState", sizeof(SpawnerState), alignof(SpawnerState), 0, Spawner_fields, true,
+    "hot_state_Spawner", sizeof(hot_state_Spawner), alignof(hot_state_Spawner), 0, Spawner_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN SpawnerState* state_of(Spawner_Shell* __self)
+HOT_HIDDEN hot_state_Spawner* state_of(Spawner_Shell* __self)
 {
-    return static_cast<SpawnerState*>(__self->state);
+    return static_cast<hot_state_Spawner*>(__self->state);
 }
 
 
@@ -689,9 +689,9 @@ static void* Spawner___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Spawner_slots[Spawner_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&SpawnerState::Tick),
-    reinterpret_cast<hot::SlotFn>(&SpawnerState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&SpawnerState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Spawner::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Spawner::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Spawner::__fwd_TakeDamage_Af),
 };
 
 hot::ClassRecord Spawner_record = {
@@ -758,7 +758,7 @@ static const hot::CtorEntry Spawner__constructors[] = {
 }
 #line 760 "cpp_ctor_init_v1.cpp.cpp"
 #line 12 "cpp_ctor_init_v1.cpp"
-void UnitState::ctor(int hp_, std::string n, int bonus)
+void hot_state_Unit::ctor(int hp_, std::string n, int bonus)
 #line 12 "cpp_ctor_init_v1.cpp"
 {
 #line 12 "cpp_ctor_init_v1.cpp"
@@ -796,7 +796,7 @@ void UnitState::ctor(int hp_, std::string n, int bonus)
 #line 797 "cpp_ctor_init_v1.cpp.cpp"
 
 #line 23 "cpp_ctor_init_v1.cpp"
-void UnitState::Tick(float dt)
+void hot_state_Unit::Tick(float dt)
 #line 23 "cpp_ctor_init_v1.cpp"
 {
 #line 23 "cpp_ctor_init_v1.cpp"
@@ -831,7 +831,7 @@ void UnitState::Tick(float dt)
 }
 #line 833 "cpp_ctor_init_v1.cpp.cpp"
 #line 39 "cpp_ctor_init_v1.cpp"
-void SpawnerState::ctor()
+void hot_state_Spawner::ctor()
 #line 39 "cpp_ctor_init_v1.cpp"
 {
 #line 39 "cpp_ctor_init_v1.cpp"
@@ -866,7 +866,7 @@ void SpawnerState::ctor()
 }
 #line 868 "cpp_ctor_init_v1.cpp.cpp"
 #line 41 "cpp_ctor_init_v1.cpp"
-void SpawnerState::dtor()
+void hot_state_Spawner::dtor()
 #line 41 "cpp_ctor_init_v1.cpp"
 {
 #line 41 "cpp_ctor_init_v1.cpp"
@@ -893,7 +893,7 @@ void SpawnerState::dtor()
 #line 894 "cpp_ctor_init_v1.cpp.cpp"
 
 #line 47 "cpp_ctor_init_v1.cpp"
-void SpawnerState::Tick(float )
+void hot_state_Spawner::Tick(float )
 #line 47 "cpp_ctor_init_v1.cpp"
 {
 #line 47 "cpp_ctor_init_v1.cpp"

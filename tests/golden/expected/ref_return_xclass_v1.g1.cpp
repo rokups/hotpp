@@ -92,7 +92,7 @@ struct Catalog_Shell final : hot::PlainObject, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct CatalogState {
+struct hot_state_Catalog {
     hot::ShellBase* __hot_owner;
     std::vector<Info> items;
 
@@ -107,9 +107,9 @@ static void Catalog__init_items(void*, void* f) { using T = std::vector<Info>; n
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(CatalogState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Catalog, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Catalog_fields[] = {
-    {"items", nullptr, hot::layout_keyed(typeid(hot::typekey_t<std::vector<Info>>).name(), "fdeeb9edf63f05af"), offsetof(CatalogState, items), sizeof(std::vector<Info>),
+    {"items", nullptr, hot::layout_keyed(typeid(hot::typekey_t<std::vector<Info>>).name(), "fdeeb9edf63f05af"), offsetof(hot_state_Catalog, items), sizeof(std::vector<Info>),
      alignof(std::vector<Info>), hot::field_flags<std::vector<Info>>(), Catalog__init_items, hot::move_field<std::vector<Info>>, hot::field_destroyer<std::vector<Info>>(), nullptr, nullptr, nullptr, hot::field_copy<std::vector<Info>>()},
 };
 #if defined(__clang__)
@@ -117,13 +117,13 @@ static const hot::FieldInfo Catalog_fields[] = {
 #endif
 
 static const hot::StateLayout Catalog_layout = {
-    "CatalogState", sizeof(CatalogState), alignof(CatalogState), 1, Catalog_fields, true,
+    "hot_state_Catalog", sizeof(hot_state_Catalog), alignof(hot_state_Catalog), 1, Catalog_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN CatalogState* state_of(Catalog_Shell* __self)
+HOT_HIDDEN hot_state_Catalog* state_of(Catalog_Shell* __self)
 {
-    return static_cast<CatalogState*>(__self->state);
+    return static_cast<hot_state_Catalog*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static Info& Catalog__Find(Catalog_Shell* __self, int32_t i);
@@ -240,7 +240,7 @@ static void* Catalog___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Catalog_slots[Catalog_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&CatalogState::Find),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Catalog::Find),
 };
 
 hot::ClassRecord Catalog_record = {
@@ -317,7 +317,7 @@ struct User_Shell final : hot::PlainObject, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct UserState {
+struct hot_state_User {
     hot::ShellBase* __hot_owner;
     hot::Value<Catalog> cat;
     Info mine;
@@ -338,11 +338,11 @@ static void User__init_mine(void*, void* f) { using T = Info; new (f) T(); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(UserState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_User, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo User_fields[] = {
-    {"cat", nullptr, typeid(hot::typekey_t<hot::Value<Catalog>>).name(), offsetof(UserState, cat), sizeof(hot::Value<Catalog>),
+    {"cat", nullptr, typeid(hot::typekey_t<hot::Value<Catalog>>).name(), offsetof(hot_state_User, cat), sizeof(hot::Value<Catalog>),
      alignof(hot::Value<Catalog>), hot::field_flags<hot::Value<Catalog>>(), User__init_cat, hot::move_field<hot::Value<Catalog>>, hot::field_destroyer<hot::Value<Catalog>>(), nullptr, nullptr, nullptr, hot::field_copy<hot::Value<Catalog>>()},
-    {"mine", nullptr, typeid(hot::typekey_t<Info>).name(), offsetof(UserState, mine), sizeof(Info),
+    {"mine", nullptr, typeid(hot::typekey_t<Info>).name(), offsetof(hot_state_User, mine), sizeof(Info),
      alignof(Info), hot::value_field_flags<Info>(), User__init_mine, hot::move_field<Info>, hot::field_destroyer<Info>(), nullptr, nullptr, &Info_layout, hot::field_copy<Info>()},
 };
 #if defined(__clang__)
@@ -350,13 +350,13 @@ static const hot::FieldInfo User_fields[] = {
 #endif
 
 static const hot::StateLayout User_layout = {
-    "UserState", sizeof(UserState), alignof(UserState), 2, User_fields, true,
+    "hot_state_User", sizeof(hot_state_User), alignof(hot_state_User), 2, User_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN UserState* state_of(User_Shell* __self)
+HOT_HIDDEN hot_state_User* state_of(User_Shell* __self)
 {
-    return static_cast<UserState*>(__self->state);
+    return static_cast<hot_state_User*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void User__Field(User_Shell* __self);
@@ -503,9 +503,9 @@ static void* User___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn User_slots[User_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&UserState::Field),
-    reinterpret_cast<hot::SlotFn>(&UserState::Param),
-    reinterpret_cast<hot::SlotFn>(&UserState::Static),
+    reinterpret_cast<hot::SlotFn>(&hot_state_User::Field),
+    reinterpret_cast<hot::SlotFn>(&hot_state_User::Param),
+    reinterpret_cast<hot::SlotFn>(&hot_state_User::Static),
 };
 
 hot::ClassRecord User_record = {
@@ -558,7 +558,7 @@ static const hot::CtorEntry User__constructors[] = {
 }
 #line 560 "ref_return_xclass_v1.hot.cpp"
 #line 16 "ref_return_xclass_v1.hot"
-Info& CatalogState::Find(int32_t const i)
+Info& hot_state_Catalog::Find(int32_t const i)
 #line 16 "ref_return_xclass_v1.hot"
 {
 #line 16 "ref_return_xclass_v1.hot"
@@ -593,7 +593,7 @@ Info& CatalogState::Find(int32_t const i)
 }
 #line 595 "ref_return_xclass_v1.hot.cpp"
 #line 29 "ref_return_xclass_v1.hot"
-void UserState::Field()
+void hot_state_User::Field()
 #line 29 "ref_return_xclass_v1.hot"
 {
 #line 29 "ref_return_xclass_v1.hot"
@@ -630,7 +630,7 @@ void UserState::Field()
 }
 #line 632 "ref_return_xclass_v1.hot.cpp"
 #line 34 "ref_return_xclass_v1.hot"
-void UserState::Param(std::shared_ptr<Catalog>& c)
+void hot_state_User::Param(std::shared_ptr<Catalog>& c)
 #line 34 "ref_return_xclass_v1.hot"
 {
 #line 34 "ref_return_xclass_v1.hot"
@@ -669,7 +669,7 @@ void UserState::Param(std::shared_ptr<Catalog>& c)
 }
 #line 671 "ref_return_xclass_v1.hot.cpp"
 #line 40 "ref_return_xclass_v1.hot"
-void UserState::Static()
+void hot_state_User::Static()
 #line 40 "ref_return_xclass_v1.hot"
 {
 #line 40 "ref_return_xclass_v1.hot"

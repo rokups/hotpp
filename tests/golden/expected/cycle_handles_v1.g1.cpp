@@ -69,7 +69,7 @@ struct Child_Shell final : hot::PlainObject, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct ChildState {
+struct hot_state_Child {
     hot::ShellBase* __hot_owner;
     std::weak_ptr<Parent> parent;
     int32_t age;
@@ -88,11 +88,11 @@ static void Child__init_age(void*, void* f) { using T = int32_t; new (f) T(3); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(ChildState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Child, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Child_fields[] = {
-    {"parent", nullptr, typeid(hot::typekey_t<std::weak_ptr<Parent>>).name(), offsetof(ChildState, parent), sizeof(std::weak_ptr<Parent>),
+    {"parent", nullptr, typeid(hot::typekey_t<std::weak_ptr<Parent>>).name(), offsetof(hot_state_Child, parent), sizeof(std::weak_ptr<Parent>),
      alignof(std::weak_ptr<Parent>), hot::field_flags<std::weak_ptr<Parent>>(), Child__init_parent, hot::move_field<std::weak_ptr<Parent>>, hot::field_destroyer<std::weak_ptr<Parent>>(), nullptr, nullptr, nullptr, hot::field_copy<std::weak_ptr<Parent>>()},
-    {"age", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(ChildState, age), sizeof(int32_t),
+    {"age", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Child, age), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Child__init_age, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -100,13 +100,13 @@ static const hot::FieldInfo Child_fields[] = {
 #endif
 
 static const hot::StateLayout Child_layout = {
-    "ChildState", sizeof(ChildState), alignof(ChildState), 2, Child_fields, true,
+    "hot_state_Child", sizeof(hot_state_Child), alignof(hot_state_Child), 2, Child_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN ChildState* state_of(Child_Shell* __self)
+HOT_HIDDEN hot_state_Child* state_of(Child_Shell* __self)
 {
-    return static_cast<ChildState*>(__self->state);
+    return static_cast<hot_state_Child*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Child__ParentHp(Child_Shell* __self);
@@ -223,7 +223,7 @@ static void* Child___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Child_slots[Child_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&ChildState::ParentHp),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Child::ParentHp),
 };
 
 hot::ClassRecord Child_record = {
@@ -299,7 +299,7 @@ struct Parent_Shell final : hot::PlainObject, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct ParentState {
+struct hot_state_Parent {
     hot::ShellBase* __hot_owner;
     std::shared_ptr<Child> kid;
     int32_t hp;
@@ -319,11 +319,11 @@ static void Parent__init_hp(void*, void* f) { using T = int32_t; new (f) T(7); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(ParentState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Parent, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Parent_fields[] = {
-    {"kid", nullptr, typeid(hot::typekey_t<std::shared_ptr<Child>>).name(), offsetof(ParentState, kid), sizeof(std::shared_ptr<Child>),
+    {"kid", nullptr, typeid(hot::typekey_t<std::shared_ptr<Child>>).name(), offsetof(hot_state_Parent, kid), sizeof(std::shared_ptr<Child>),
      alignof(std::shared_ptr<Child>), hot::field_flags<std::shared_ptr<Child>>(), Parent__init_kid, hot::move_field<std::shared_ptr<Child>>, hot::field_destroyer<std::shared_ptr<Child>>(), nullptr, nullptr, nullptr, hot::field_copy<std::shared_ptr<Child>>()},
-    {"hp", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(ParentState, hp), sizeof(int32_t),
+    {"hp", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Parent, hp), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Parent__init_hp, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -331,13 +331,13 @@ static const hot::FieldInfo Parent_fields[] = {
 #endif
 
 static const hot::StateLayout Parent_layout = {
-    "ParentState", sizeof(ParentState), alignof(ParentState), 2, Parent_fields, true,
+    "hot_state_Parent", sizeof(hot_state_Parent), alignof(hot_state_Parent), 2, Parent_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN ParentState* state_of(Parent_Shell* __self)
+HOT_HIDDEN hot_state_Parent* state_of(Parent_Shell* __self)
 {
-    return static_cast<ParentState*>(__self->state);
+    return static_cast<hot_state_Parent*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void Parent__Adopt(Parent_Shell* __self);
@@ -469,8 +469,8 @@ static void* Parent___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Parent_slots[Parent_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&ParentState::Adopt),
-    reinterpret_cast<hot::SlotFn>(&ParentState::KidAge),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Parent::Adopt),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Parent::KidAge),
 };
 
 hot::ClassRecord Parent_record = {
@@ -546,7 +546,7 @@ struct Pong_Shell final : hot::PlainObject, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct PongState {
+struct hot_state_Pong {
     hot::ShellBase* __hot_owner;
     std::shared_ptr<Ping> other;
     int32_t n;
@@ -566,11 +566,11 @@ static void Pong__init_n(void*, void* f) { using T = int32_t; new (f) T(2); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(PongState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Pong, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Pong_fields[] = {
-    {"other", nullptr, typeid(hot::typekey_t<std::shared_ptr<Ping>>).name(), offsetof(PongState, other), sizeof(std::shared_ptr<Ping>),
+    {"other", nullptr, typeid(hot::typekey_t<std::shared_ptr<Ping>>).name(), offsetof(hot_state_Pong, other), sizeof(std::shared_ptr<Ping>),
      alignof(std::shared_ptr<Ping>), hot::field_flags<std::shared_ptr<Ping>>(), Pong__init_other, hot::move_field<std::shared_ptr<Ping>>, hot::field_destroyer<std::shared_ptr<Ping>>(), nullptr, nullptr, nullptr, hot::field_copy<std::shared_ptr<Ping>>()},
-    {"n", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(PongState, n), sizeof(int32_t),
+    {"n", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Pong, n), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Pong__init_n, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -578,13 +578,13 @@ static const hot::FieldInfo Pong_fields[] = {
 #endif
 
 static const hot::StateLayout Pong_layout = {
-    "PongState", sizeof(PongState), alignof(PongState), 2, Pong_fields, true,
+    "hot_state_Pong", sizeof(hot_state_Pong), alignof(hot_state_Pong), 2, Pong_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN PongState* state_of(Pong_Shell* __self)
+HOT_HIDDEN hot_state_Pong* state_of(Pong_Shell* __self)
 {
-    return static_cast<PongState*>(__self->state);
+    return static_cast<hot_state_Pong*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void Pong__Link(Pong_Shell* __self, std::shared_ptr<Ping> p);
@@ -716,8 +716,8 @@ static void* Pong___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Pong_slots[Pong_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&PongState::Link),
-    reinterpret_cast<hot::SlotFn>(&PongState::Unlink),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Pong::Link),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Pong::Unlink),
 };
 
 hot::ClassRecord Pong_record = {
@@ -792,7 +792,7 @@ struct Ping_Shell final : hot::PlainObject, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct PingState {
+struct hot_state_Ping {
     hot::ShellBase* __hot_owner;
     std::shared_ptr<Pong> other;
 
@@ -807,9 +807,9 @@ static void Ping__init_other(void*, void* f) { using T = std::shared_ptr<Pong>; 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(PingState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Ping, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Ping_fields[] = {
-    {"other", nullptr, typeid(hot::typekey_t<std::shared_ptr<Pong>>).name(), offsetof(PingState, other), sizeof(std::shared_ptr<Pong>),
+    {"other", nullptr, typeid(hot::typekey_t<std::shared_ptr<Pong>>).name(), offsetof(hot_state_Ping, other), sizeof(std::shared_ptr<Pong>),
      alignof(std::shared_ptr<Pong>), hot::field_flags<std::shared_ptr<Pong>>(), Ping__init_other, hot::move_field<std::shared_ptr<Pong>>, hot::field_destroyer<std::shared_ptr<Pong>>(), nullptr, nullptr, nullptr, hot::field_copy<std::shared_ptr<Pong>>()},
 };
 #if defined(__clang__)
@@ -817,13 +817,13 @@ static const hot::FieldInfo Ping_fields[] = {
 #endif
 
 static const hot::StateLayout Ping_layout = {
-    "PingState", sizeof(PingState), alignof(PingState), 1, Ping_fields, true,
+    "hot_state_Ping", sizeof(hot_state_Ping), alignof(hot_state_Ping), 1, Ping_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN PingState* state_of(Ping_Shell* __self)
+HOT_HIDDEN hot_state_Ping* state_of(Ping_Shell* __self)
 {
-    return static_cast<PingState*>(__self->state);
+    return static_cast<hot_state_Ping*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Ping__Count(Ping_Shell* __self);
@@ -940,7 +940,7 @@ static void* Ping___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Ping_slots[Ping_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&PingState::Count),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Ping::Count),
 };
 
 hot::ClassRecord Ping_record = {
@@ -1015,7 +1015,7 @@ struct Node_Shell final : hot::PlainObject, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct NodeState {
+struct hot_state_Node {
     hot::ShellBase* __hot_owner;
     std::shared_ptr<Node> next;
 
@@ -1030,9 +1030,9 @@ static void Node__init_next(void*, void* f) { using T = std::shared_ptr<Node>; n
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(NodeState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Node, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Node_fields[] = {
-    {"next", nullptr, typeid(hot::typekey_t<std::shared_ptr<Node>>).name(), offsetof(NodeState, next), sizeof(std::shared_ptr<Node>),
+    {"next", nullptr, typeid(hot::typekey_t<std::shared_ptr<Node>>).name(), offsetof(hot_state_Node, next), sizeof(std::shared_ptr<Node>),
      alignof(std::shared_ptr<Node>), hot::field_flags<std::shared_ptr<Node>>(), Node__init_next, hot::move_field<std::shared_ptr<Node>>, hot::field_destroyer<std::shared_ptr<Node>>(), nullptr, nullptr, nullptr, hot::field_copy<std::shared_ptr<Node>>()},
 };
 #if defined(__clang__)
@@ -1040,13 +1040,13 @@ static const hot::FieldInfo Node_fields[] = {
 #endif
 
 static const hot::StateLayout Node_layout = {
-    "NodeState", sizeof(NodeState), alignof(NodeState), 1, Node_fields, true,
+    "hot_state_Node", sizeof(hot_state_Node), alignof(hot_state_Node), 1, Node_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN NodeState* state_of(Node_Shell* __self)
+HOT_HIDDEN hot_state_Node* state_of(Node_Shell* __self)
 {
-    return static_cast<NodeState*>(__self->state);
+    return static_cast<hot_state_Node*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Node__Length(Node_Shell* __self);
@@ -1163,7 +1163,7 @@ static void* Node___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Node_slots[Node_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&NodeState::Length),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Node::Length),
 };
 
 hot::ClassRecord Node_record = {
@@ -1229,7 +1229,7 @@ struct Part_Shell final : Object, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct PartState {
+struct hot_state_Part {
     hot::ShellBase* __hot_owner;
     hot::Intrusive<Owner, &Object::AddRef, &Object::Release> owner;
     int32_t v;
@@ -1248,11 +1248,11 @@ static void Part__init_v(void*, void* f) { using T = int32_t; new (f) T(4); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(PartState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Part, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Part_fields[] = {
-    {"owner", nullptr, typeid(hot::typekey_t<hot::Intrusive<Owner, &Object::AddRef, &Object::Release>>).name(), offsetof(PartState, owner), sizeof(hot::Intrusive<Owner, &Object::AddRef, &Object::Release>),
+    {"owner", nullptr, typeid(hot::typekey_t<hot::Intrusive<Owner, &Object::AddRef, &Object::Release>>).name(), offsetof(hot_state_Part, owner), sizeof(hot::Intrusive<Owner, &Object::AddRef, &Object::Release>),
      alignof(hot::Intrusive<Owner, &Object::AddRef, &Object::Release>), hot::field_flags<hot::Intrusive<Owner, &Object::AddRef, &Object::Release>>(), Part__init_owner, hot::move_field<hot::Intrusive<Owner, &Object::AddRef, &Object::Release>>, hot::field_destroyer<hot::Intrusive<Owner, &Object::AddRef, &Object::Release>>(), nullptr, nullptr, nullptr, hot::field_copy<hot::Intrusive<Owner, &Object::AddRef, &Object::Release>>()},
-    {"v", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(PartState, v), sizeof(int32_t),
+    {"v", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Part, v), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Part__init_v, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -1260,13 +1260,13 @@ static const hot::FieldInfo Part_fields[] = {
 #endif
 
 static const hot::StateLayout Part_layout = {
-    "PartState", sizeof(PartState), alignof(PartState), 2, Part_fields, true,
+    "hot_state_Part", sizeof(hot_state_Part), alignof(hot_state_Part), 2, Part_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN PartState* state_of(Part_Shell* __self)
+HOT_HIDDEN hot_state_Part* state_of(Part_Shell* __self)
 {
-    return static_cast<PartState*>(__self->state);
+    return static_cast<hot_state_Part*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Part__OwnerBack(Part_Shell* __self);
@@ -1360,7 +1360,7 @@ static void* Part___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Part_slots[Part_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&PartState::OwnerBack),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Part::OwnerBack),
 };
 
 hot::ClassRecord Part_record = {
@@ -1426,7 +1426,7 @@ struct Owner_Shell final : Object, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct OwnerState {
+struct hot_state_Owner {
     hot::ShellBase* __hot_owner;
     hot::Intrusive<Part, &Object::AddRef, &Object::Release> part;
 
@@ -1441,9 +1441,9 @@ static void Owner__init_part(void*, void* f) { using T = hot::Intrusive<Part, &O
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(OwnerState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Owner, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Owner_fields[] = {
-    {"part", nullptr, typeid(hot::typekey_t<hot::Intrusive<Part, &Object::AddRef, &Object::Release>>).name(), offsetof(OwnerState, part), sizeof(hot::Intrusive<Part, &Object::AddRef, &Object::Release>),
+    {"part", nullptr, typeid(hot::typekey_t<hot::Intrusive<Part, &Object::AddRef, &Object::Release>>).name(), offsetof(hot_state_Owner, part), sizeof(hot::Intrusive<Part, &Object::AddRef, &Object::Release>),
      alignof(hot::Intrusive<Part, &Object::AddRef, &Object::Release>), hot::field_flags<hot::Intrusive<Part, &Object::AddRef, &Object::Release>>(), Owner__init_part, hot::move_field<hot::Intrusive<Part, &Object::AddRef, &Object::Release>>, hot::field_destroyer<hot::Intrusive<Part, &Object::AddRef, &Object::Release>>(), nullptr, nullptr, nullptr, hot::field_copy<hot::Intrusive<Part, &Object::AddRef, &Object::Release>>()},
 };
 #if defined(__clang__)
@@ -1451,13 +1451,13 @@ static const hot::FieldInfo Owner_fields[] = {
 #endif
 
 static const hot::StateLayout Owner_layout = {
-    "OwnerState", sizeof(OwnerState), alignof(OwnerState), 1, Owner_fields, true,
+    "hot_state_Owner", sizeof(hot_state_Owner), alignof(hot_state_Owner), 1, Owner_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN OwnerState* state_of(Owner_Shell* __self)
+HOT_HIDDEN hot_state_Owner* state_of(Owner_Shell* __self)
 {
-    return static_cast<OwnerState*>(__self->state);
+    return static_cast<hot_state_Owner*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Owner__Value(Owner_Shell* __self);
@@ -1551,7 +1551,7 @@ static void* Owner___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Owner_slots[Owner_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&OwnerState::Value),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Owner::Value),
 };
 
 hot::ClassRecord Owner_record = {
@@ -1600,7 +1600,7 @@ static const hot::CtorEntry Owner__constructors[] = {
 }
 #line 1602 "cycle_handles_v1.hot.cpp"
 #line 27 "cycle_handles_v1.hot"
-int32_t ChildState::ParentHp()
+int32_t hot_state_Child::ParentHp()
 #line 27 "cycle_handles_v1.hot"
 {
 #line 27 "cycle_handles_v1.hot"
@@ -1637,7 +1637,7 @@ int32_t ChildState::ParentHp()
 }
 #line 1639 "cycle_handles_v1.hot.cpp"
 #line 13 "cycle_handles_v1.hot"
-void ParentState::Adopt()
+void hot_state_Parent::Adopt()
 #line 13 "cycle_handles_v1.hot"
 {
 #line 13 "cycle_handles_v1.hot"
@@ -1676,7 +1676,7 @@ void ParentState::Adopt()
 }
 #line 1678 "cycle_handles_v1.hot.cpp"
 #line 19 "cycle_handles_v1.hot"
-int32_t ParentState::KidAge()
+int32_t hot_state_Parent::KidAge()
 #line 19 "cycle_handles_v1.hot"
 {
 #line 19 "cycle_handles_v1.hot"
@@ -1711,7 +1711,7 @@ int32_t ParentState::KidAge()
 }
 #line 1713 "cycle_handles_v1.hot.cpp"
 #line 44 "cycle_handles_v1.hot"
-void PongState::Link(const std::shared_ptr<Ping>& __p)
+void hot_state_Pong::Link(const std::shared_ptr<Ping>& __p)
 #line 44 "cycle_handles_v1.hot"
 {
 #line 44 "cycle_handles_v1.hot"
@@ -1752,7 +1752,7 @@ void PongState::Link(const std::shared_ptr<Ping>& __p)
 }
 #line 1754 "cycle_handles_v1.hot.cpp"
 #line 50 "cycle_handles_v1.hot"
-void PongState::Unlink()
+void hot_state_Pong::Unlink()
 #line 50 "cycle_handles_v1.hot"
 {
 #line 50 "cycle_handles_v1.hot"
@@ -1787,7 +1787,7 @@ void PongState::Unlink()
 }
 #line 1789 "cycle_handles_v1.hot.cpp"
 #line 37 "cycle_handles_v1.hot"
-int32_t PingState::Count()
+int32_t hot_state_Ping::Count()
 #line 37 "cycle_handles_v1.hot"
 {
 #line 37 "cycle_handles_v1.hot"
@@ -1822,7 +1822,7 @@ int32_t PingState::Count()
 }
 #line 1824 "cycle_handles_v1.hot.cpp"
 #line 57 "cycle_handles_v1.hot"
-int32_t NodeState::Length()
+int32_t hot_state_Node::Length()
 #line 57 "cycle_handles_v1.hot"
 {
 #line 57 "cycle_handles_v1.hot"
@@ -1857,7 +1857,7 @@ int32_t NodeState::Length()
 }
 #line 1859 "cycle_handles_v1.hot.cpp"
 #line 71 "cycle_handles_v1.hot"
-int32_t PartState::OwnerBack()
+int32_t hot_state_Part::OwnerBack()
 #line 71 "cycle_handles_v1.hot"
 {
 #line 71 "cycle_handles_v1.hot"
@@ -1892,7 +1892,7 @@ int32_t PartState::OwnerBack()
 }
 #line 1894 "cycle_handles_v1.hot.cpp"
 #line 64 "cycle_handles_v1.hot"
-int32_t OwnerState::Value()
+int32_t hot_state_Owner::Value()
 #line 64 "cycle_handles_v1.hot"
 {
 #line 64 "cycle_handles_v1.hot"

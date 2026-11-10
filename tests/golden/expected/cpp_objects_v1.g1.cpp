@@ -158,7 +158,7 @@ struct Minion_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct MinionState {
+struct hot_state_Minion {
     hot::ShellBase* __hot_owner;
     int power;
     int hits;
@@ -201,11 +201,11 @@ static void Minion__init_hits(void*, void* f) { using T = int; new (f) T(0); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(MinionState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Minion, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Minion_fields[] = {
-    {"power", nullptr, hot::type_key<int>(), offsetof(MinionState, power), sizeof(int),
+    {"power", nullptr, hot::type_key<int>(), offsetof(hot_state_Minion, power), sizeof(int),
      alignof(int), hot::field_flags<int>(), Minion__init_power, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"hits", nullptr, hot::type_key<int>(), offsetof(MinionState, hits), sizeof(int),
+    {"hits", nullptr, hot::type_key<int>(), offsetof(hot_state_Minion, hits), sizeof(int),
      alignof(int), hot::field_flags<int>(), Minion__init_hits, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
@@ -213,13 +213,13 @@ static const hot::FieldInfo Minion_fields[] = {
 #endif
 
 static const hot::StateLayout Minion_layout = {
-    "MinionState", sizeof(MinionState), alignof(MinionState), 2, Minion_fields, true,
+    "hot_state_Minion", sizeof(hot_state_Minion), alignof(hot_state_Minion), 2, Minion_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN MinionState* state_of(Minion_Shell* __self)
+HOT_HIDDEN hot_state_Minion* state_of(Minion_Shell* __self)
 {
-    return static_cast<MinionState*>(__self->state);
+    return static_cast<hot_state_Minion*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void Minion__boost(Minion_Shell* __self, int v);
@@ -399,12 +399,12 @@ static void* Minion___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Minion_slots[Minion_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&MinionState::Tick),
-    reinterpret_cast<hot::SlotFn>(&MinionState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&MinionState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&MinionState::boost),
-    reinterpret_cast<hot::SlotFn>(&MinionState::total),
-    reinterpret_cast<hot::SlotFn>(&MinionState::copy_from),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Minion::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Minion::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Minion::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Minion::boost),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Minion::total),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Minion::copy_from),
 };
 
 hot::ClassRecord Minion_record = {
@@ -471,7 +471,7 @@ static const hot::CtorEntry Minion__constructors[] = {
 }
 #line 473 "cpp_objects_v1.cpp.cpp"
 #line 9 "cpp_objects_v1.cpp"
-void MinionState::ctor(int p)
+void hot_state_Minion::ctor(int p)
 #line 9 "cpp_objects_v1.cpp"
 {
 #line 9 "cpp_objects_v1.cpp"
@@ -497,7 +497,7 @@ void MinionState::ctor(int p)
 #line 498 "cpp_objects_v1.cpp.cpp"
 
 #line 11 "cpp_objects_v1.cpp"
-void MinionState::Tick(float dt)
+void hot_state_Minion::Tick(float dt)
 #line 11 "cpp_objects_v1.cpp"
 {
 #line 11 "cpp_objects_v1.cpp"
@@ -532,7 +532,7 @@ void MinionState::Tick(float dt)
 }
 #line 534 "cpp_objects_v1.cpp.cpp"
 #line 13 "cpp_objects_v1.cpp"
-void MinionState::boost(int v)
+void hot_state_Minion::boost(int v)
 #line 13 "cpp_objects_v1.cpp"
 {
 #line 13 "cpp_objects_v1.cpp"
@@ -567,7 +567,7 @@ void MinionState::boost(int v)
 }
 #line 569 "cpp_objects_v1.cpp.cpp"
 #line 14 "cpp_objects_v1.cpp"
-int MinionState::total()
+int hot_state_Minion::total()
 #line 14 "cpp_objects_v1.cpp"
 {
 #line 14 "cpp_objects_v1.cpp"
@@ -602,7 +602,7 @@ int MinionState::total()
 }
 #line 604 "cpp_objects_v1.cpp.cpp"
 #line 17 "cpp_objects_v1.cpp"
-void MinionState::copy_from(const Minion & other)
+void hot_state_Minion::copy_from(const Minion & other)
 #line 17 "cpp_objects_v1.cpp"
 {
 #line 17 "cpp_objects_v1.cpp"
@@ -718,7 +718,7 @@ struct Spawner_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct SpawnerState {
+struct hot_state_Spawner {
     hot::ShellBase* __hot_owner;
     int last;
 
@@ -755,9 +755,9 @@ static void Spawner__init_last(void*, void* f) { using T = int; new (f) T(0); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(SpawnerState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Spawner, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Spawner_fields[] = {
-    {"last", nullptr, hot::type_key<int>(), offsetof(SpawnerState, last), sizeof(int),
+    {"last", nullptr, hot::type_key<int>(), offsetof(hot_state_Spawner, last), sizeof(int),
      alignof(int), hot::field_flags<int>(), Spawner__init_last, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
@@ -765,13 +765,13 @@ static const hot::FieldInfo Spawner_fields[] = {
 #endif
 
 static const hot::StateLayout Spawner_layout = {
-    "SpawnerState", sizeof(SpawnerState), alignof(SpawnerState), 1, Spawner_fields, true,
+    "hot_state_Spawner", sizeof(hot_state_Spawner), alignof(hot_state_Spawner), 1, Spawner_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN SpawnerState* state_of(Spawner_Shell* __self)
+HOT_HIDDEN hot_state_Spawner* state_of(Spawner_Shell* __self)
 {
-    return static_cast<SpawnerState*>(__self->state);
+    return static_cast<hot_state_Spawner*>(__self->state);
 }
 
 
@@ -921,9 +921,9 @@ static void* Spawner___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Spawner_slots[Spawner_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&SpawnerState::Tick),
-    reinterpret_cast<hot::SlotFn>(&SpawnerState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&SpawnerState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Spawner::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Spawner::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Spawner::__fwd_TakeDamage_Af),
 };
 
 hot::ClassRecord Spawner_record = {
@@ -990,7 +990,7 @@ static const hot::CtorEntry Spawner__constructors[] = {
 }
 #line 992 "cpp_objects_v1.cpp.cpp"
 #line 41 "cpp_objects_v1.cpp"
-void SpawnerState::ctor()
+void hot_state_Spawner::ctor()
 #line 41 "cpp_objects_v1.cpp"
 {
 #line 41 "cpp_objects_v1.cpp"
@@ -1025,7 +1025,7 @@ void SpawnerState::ctor()
 }
 #line 1027 "cpp_objects_v1.cpp.cpp"
 #line 43 "cpp_objects_v1.cpp"
-void SpawnerState::dtor()
+void hot_state_Spawner::dtor()
 #line 43 "cpp_objects_v1.cpp"
 {
 #line 43 "cpp_objects_v1.cpp"
@@ -1052,7 +1052,7 @@ void SpawnerState::dtor()
 #line 1053 "cpp_objects_v1.cpp.cpp"
 
 #line 49 "cpp_objects_v1.cpp"
-void SpawnerState::Tick(float dt)
+void hot_state_Spawner::Tick(float dt)
 #line 49 "cpp_objects_v1.cpp"
 {
 #line 49 "cpp_objects_v1.cpp"

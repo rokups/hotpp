@@ -111,7 +111,7 @@ struct Checks_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct ChecksState {
+struct hot_state_Checks {
     hot::ShellBase* __hot_owner;
     std::array<int32_t, 4> vals;
 
@@ -160,9 +160,9 @@ static void Checks__init_vals(void*, void* f) { using T = std::array<int32_t, 4>
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(ChecksState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Checks, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Checks_fields[] = {
-    {"vals", nullptr, typeid(hot::typekey_t<std::array<int32_t, 4>>).name(), offsetof(ChecksState, vals), sizeof(std::array<int32_t, 4>),
+    {"vals", nullptr, typeid(hot::typekey_t<std::array<int32_t, 4>>).name(), offsetof(hot_state_Checks, vals), sizeof(std::array<int32_t, 4>),
      alignof(std::array<int32_t, 4>), hot::field_flags<std::array<int32_t, 4>>(), Checks__init_vals, hot::move_field<std::array<int32_t, 4>>, hot::field_destroyer<std::array<int32_t, 4>>(), nullptr, nullptr, nullptr, hot::field_copy<std::array<int32_t, 4>>()},
 };
 #if defined(__clang__)
@@ -170,13 +170,13 @@ static const hot::FieldInfo Checks_fields[] = {
 #endif
 
 static const hot::StateLayout Checks_layout = {
-    "ChecksState", sizeof(ChecksState), alignof(ChecksState), 1, Checks_fields, true,
+    "hot_state_Checks", sizeof(hot_state_Checks), alignof(hot_state_Checks), 1, Checks_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN ChecksState* state_of(Checks_Shell* __self)
+HOT_HIDDEN hot_state_Checks* state_of(Checks_Shell* __self)
 {
-    return static_cast<ChecksState*>(__self->state);
+    return static_cast<hot_state_Checks*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Checks__at(Checks_Shell* __self, int32_t i);
@@ -345,14 +345,14 @@ static void* Checks___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Checks_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&ChecksState::__fwd_Tick),
-    reinterpret_cast<hot::SlotFn>(&ChecksState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&ChecksState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&ChecksState::at),
-    reinterpret_cast<hot::SlotFn>(&ChecksState::load),
-    reinterpret_cast<hot::SlotFn>(&ChecksState::safe_at),
-    reinterpret_cast<hot::SlotFn>(&ChecksState::safe_load),
-    reinterpret_cast<hot::SlotFn>(&ChecksState::first_member),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Checks::__fwd_Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Checks::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Checks::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Checks::at),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Checks::load),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Checks::safe_at),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Checks::safe_load),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Checks::first_member),
 };
 
 hot::ClassRecord Checks_record = {
@@ -401,7 +401,7 @@ static const hot::CtorEntry Checks__constructors[] = {
 }
 #line 403 "checks_v1.hot.cpp"
 #line 7 "checks_v1.hot"
-int32_t ChecksState::at(int32_t const i)
+int32_t hot_state_Checks::at(int32_t const i)
 #line 7 "checks_v1.hot"
 {
 #line 7 "checks_v1.hot"
@@ -436,7 +436,7 @@ int32_t ChecksState::at(int32_t const i)
 }
 #line 438 "checks_v1.hot.cpp"
 #line 11 "checks_v1.hot"
-int32_t ChecksState::load(int32_t* const p)
+int32_t hot_state_Checks::load(int32_t* const p)
 #line 11 "checks_v1.hot"
 {
 #line 11 "checks_v1.hot"
@@ -471,7 +471,7 @@ int32_t ChecksState::load(int32_t* const p)
 }
 #line 473 "checks_v1.hot.cpp"
 #line 15 "checks_v1.hot"
-int32_t ChecksState::safe_at(int32_t const i)
+int32_t hot_state_Checks::safe_at(int32_t const i)
 #line 15 "checks_v1.hot"
 {
 #line 15 "checks_v1.hot"
@@ -514,7 +514,7 @@ int32_t ChecksState::safe_at(int32_t const i)
 }
 #line 516 "checks_v1.hot.cpp"
 #line 23 "checks_v1.hot"
-int32_t ChecksState::safe_load(int32_t* const p)
+int32_t hot_state_Checks::safe_load(int32_t* const p)
 #line 23 "checks_v1.hot"
 {
 #line 23 "checks_v1.hot"
@@ -565,7 +565,7 @@ int32_t ChecksState::safe_load(int32_t* const p)
 }
 #line 567 "checks_v1.hot.cpp"
 #line 35 "checks_v1.hot"
-void ChecksState::first_member(Actor* const other)
+void hot_state_Checks::first_member(Actor* const other)
 #line 35 "checks_v1.hot"
 {
 #line 35 "checks_v1.hot"

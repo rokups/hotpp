@@ -108,7 +108,7 @@ struct Fighter_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<Fight
 };
 
 // ---------------------------------------------------------------- state
-struct FighterState {
+struct hot_state_Fighter {
     hot::ShellBase* __hot_owner;
     int32_t hp;
     int32_t ticks;
@@ -179,7 +179,7 @@ struct Veteran_Shell : Fighter_Shell {
 };
 
 // ---------------------------------------------------------------- state
-struct VeteranState : FighterState {
+struct hot_state_Veteran : hot_state_Fighter {
     int32_t rage;
     int32_t parent_power;
 
@@ -279,7 +279,7 @@ struct Spawner_Shell : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct SpawnerState {
+struct hot_state_Spawner {
     hot::ShellBase* __hot_owner;
     std::shared_ptr<Fighter> kid;
     int32_t power;

@@ -608,9 +608,9 @@ TEST(ContainerOfValueType, SameLayoutMovesOtherLayoutResets)
     };
     const hot::FieldInfo f1[] = {row(k1)}, f1b[] = {row(k1b)}, f2[] = {row(k2)};
     // The layouts of all generations have the same name: the text has no generation number.
-    const hot::StateLayout l1{"BagState", sizeof(V), alignof(V), 1, f1};
-    const hot::StateLayout l1b{"BagState", sizeof(V), alignof(V), 1, f1b};
-    const hot::StateLayout l2{"BagState", sizeof(V), alignof(V), 1, f2};
+    const hot::StateLayout l1{"hot_state_Bag", sizeof(V), alignof(V), 1, f1};
+    const hot::StateLayout l1b{"hot_state_Bag", sizeof(V), alignof(V), 1, f1b};
+    const hot::StateLayout l2{"hot_state_Bag", sizeof(V), alignof(V), 1, f2};
     const hot::MigrationPlan same = hot::build_plan(l1, l1b);
     EXPECT_EQ(same.steps[0].action, hot::FieldAction::Move);
     EXPECT_TRUE(same.warnings.empty());

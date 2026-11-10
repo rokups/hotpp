@@ -236,7 +236,7 @@ The design removes no project keyword. These keywords stay: `struct`, `enum`, `i
 - `[weak]` stays an attribute.
 - The `std.` prefix names the std types.
 - A `.cpp` script keeps `hot::CheckedPtr` for `T*` fields.
-- The C++ shape of a script class stays: `C_Shell`, `CState` and the factories `C__new` and `C__new_shared`.
+- The C++ shape of a script class stays: `C_Shell`, `hot_state_C` and the factories `C__new` and `C__new_shared`.
 - `interface`, `enum`, `using`, `async`, `await` and properties stay.
 
 ## Migration table

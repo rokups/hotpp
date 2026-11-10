@@ -36,10 +36,10 @@ TEST(InheritanceTranslation, ChildShellAndStateDeriveFromTheParent)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "struct A_Shell : hot::PlainObject, hot::ShellBase {")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "struct B_Shell final : A_Shell {")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "struct BState : AState {")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "struct hot_state_B : hot_state_A {")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "&B_layout, &A_record,")) << r.cpp;
     // The field table of B has the parent field first.
-    EXPECT_TRUE(has(r.cpp, "{\"hp\", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(BState, hp)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "{\"hp\", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_B, hp)")) << r.cpp;
 }
 
 TEST(InheritanceTranslation, VirtualCallUsesTheSlotOfTheObject)
@@ -48,10 +48,10 @@ TEST(InheritanceTranslation, VirtualCallUsesTheSlotOfTheObject)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "return A__f_virt(__self) + 1;")) << r.cpp;
     // The override fills the slot of A.f in the table of B. It adds no manifest entry.
-    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<hot::SlotFn>(&BState::f),")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<hot::SlotFn>(&hot_state_B::f),")) << r.cpp;
     EXPECT_FALSE(has(r.slots_out, "B::f")) << r.slots_out;
     // B inherits A.g: the slot of A.g in the table of B is the one of A.
-    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<hot::SlotFn>(&AState::g),")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<hot::SlotFn>(&hot_state_A::g),")) << r.cpp;
 }
 
 TEST(InheritanceTranslation, SuperCallsTheParentImplementation)

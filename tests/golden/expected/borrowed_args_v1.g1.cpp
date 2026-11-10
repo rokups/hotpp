@@ -62,7 +62,7 @@ struct Probe_Shell final : hot::PlainObject, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct ProbeState {
+struct hot_state_Probe {
     hot::ShellBase* __hot_owner;
     float last;
 
@@ -81,9 +81,9 @@ static void Probe__init_last(void*, void* f) { using T = float; new (f) T(0); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(ProbeState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Probe, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Probe_fields[] = {
-    {"last", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(ProbeState, last), sizeof(float),
+    {"last", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(hot_state_Probe, last), sizeof(float),
      alignof(float), hot::field_flags<float>(), Probe__init_last, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
 };
 #if defined(__clang__)
@@ -91,13 +91,13 @@ static const hot::FieldInfo Probe_fields[] = {
 #endif
 
 static const hot::StateLayout Probe_layout = {
-    "ProbeState", sizeof(ProbeState), alignof(ProbeState), 1, Probe_fields, true,
+    "hot_state_Probe", sizeof(hot_state_Probe), alignof(hot_state_Probe), 1, Probe_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN ProbeState* state_of(Probe_Shell* __self)
+HOT_HIDDEN hot_state_Probe* state_of(Probe_Shell* __self)
 {
-    return static_cast<ProbeState*>(__self->state);
+    return static_cast<hot_state_Probe*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void Probe__Look(Probe_Shell* __self, Vec3& v);
@@ -382,9 +382,9 @@ static void* Probe___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Probe_slots[Probe_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&ProbeState::Look),
-    reinterpret_cast<hot::SlotFn>(&ProbeState::Take),
-    reinterpret_cast<hot::SlotFn>(&ProbeState::Pass),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Probe::Look),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Probe::Take),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Probe::Pass),
 };
 
 hot::ClassRecord Probe_record = {
@@ -542,7 +542,7 @@ struct Caller_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct CallerState {
+struct hot_state_Caller {
     hot::ShellBase* __hot_owner;
     std::shared_ptr<Probe> probe;
     Vec3 spot;
@@ -591,11 +591,11 @@ static void Caller__init_spot(void*, void* f) { using T = Vec3; new (f) T(); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(CallerState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Caller, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Caller_fields[] = {
-    {"probe", nullptr, typeid(hot::typekey_t<std::shared_ptr<Probe>>).name(), offsetof(CallerState, probe), sizeof(std::shared_ptr<Probe>),
+    {"probe", nullptr, typeid(hot::typekey_t<std::shared_ptr<Probe>>).name(), offsetof(hot_state_Caller, probe), sizeof(std::shared_ptr<Probe>),
      alignof(std::shared_ptr<Probe>), hot::field_flags<std::shared_ptr<Probe>>(), Caller__init_probe, hot::move_field<std::shared_ptr<Probe>>, hot::field_destroyer<std::shared_ptr<Probe>>(), nullptr, nullptr, nullptr, hot::field_copy<std::shared_ptr<Probe>>()},
-    {"spot", nullptr, typeid(hot::typekey_t<Vec3>).name(), offsetof(CallerState, spot), sizeof(Vec3),
+    {"spot", nullptr, typeid(hot::typekey_t<Vec3>).name(), offsetof(hot_state_Caller, spot), sizeof(Vec3),
      alignof(Vec3), hot::field_flags<Vec3>(), Caller__init_spot, hot::move_field<Vec3>, hot::field_destroyer<Vec3>(), nullptr, nullptr, nullptr, hot::field_copy<Vec3>()},
 };
 #if defined(__clang__)
@@ -603,13 +603,13 @@ static const hot::FieldInfo Caller_fields[] = {
 #endif
 
 static const hot::StateLayout Caller_layout = {
-    "CallerState", sizeof(CallerState), alignof(CallerState), 2, Caller_fields, true,
+    "hot_state_Caller", sizeof(hot_state_Caller), alignof(hot_state_Caller), 2, Caller_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN CallerState* state_of(Caller_Shell* __self)
+HOT_HIDDEN hot_state_Caller* state_of(Caller_Shell* __self)
 {
-    return static_cast<CallerState*>(__self->state);
+    return static_cast<hot_state_Caller*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static float Caller__Run(Caller_Shell* __self, Vec3& v, Vec3* p, bool c);
@@ -718,10 +718,10 @@ static void* Caller___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Caller_slots[Caller_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&CallerState::__fwd_Tick),
-    reinterpret_cast<hot::SlotFn>(&CallerState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&CallerState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&CallerState::Run),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Caller::__fwd_Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Caller::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Caller::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Caller::Run),
 };
 
 hot::ClassRecord Caller_record = {
@@ -770,7 +770,7 @@ static const hot::CtorEntry Caller__constructors[] = {
 }
 #line 772 "borrowed_args_v1.hot.cpp"
 #line 9 "borrowed_args_v1.hot"
-void ProbeState::ctor()
+void hot_state_Probe::ctor()
 #line 9 "borrowed_args_v1.hot"
 {
 #line 9 "borrowed_args_v1.hot"
@@ -803,7 +803,7 @@ void ProbeState::ctor()
 }
 #line 805 "borrowed_args_v1.hot.cpp"
 #line 10 "borrowed_args_v1.hot"
-void ProbeState::ctor(Vec3* p)
+void hot_state_Probe::ctor(Vec3* p)
 #line 10 "borrowed_args_v1.hot"
 {
 #line 10 "borrowed_args_v1.hot"
@@ -840,7 +840,7 @@ void ProbeState::ctor(Vec3* p)
 }
 #line 842 "borrowed_args_v1.hot.cpp"
 #line 14 "borrowed_args_v1.hot"
-void ProbeState::Look(Vec3& v)
+void hot_state_Probe::Look(Vec3& v)
 #line 14 "borrowed_args_v1.hot"
 {
 #line 14 "borrowed_args_v1.hot"
@@ -875,7 +875,7 @@ void ProbeState::Look(Vec3& v)
 }
 #line 877 "borrowed_args_v1.hot.cpp"
 #line 15 "borrowed_args_v1.hot"
-void ProbeState::Take(Vec3* const p)
+void hot_state_Probe::Take(Vec3* const p)
 #line 15 "borrowed_args_v1.hot"
 {
 #line 15 "borrowed_args_v1.hot"
@@ -912,7 +912,7 @@ void ProbeState::Take(Vec3* const p)
 }
 #line 914 "borrowed_args_v1.hot.cpp"
 #line 20 "borrowed_args_v1.hot"
-float ProbeState::Pass(Vec3& v, Vec3* const p)
+float hot_state_Probe::Pass(Vec3& v, Vec3* const p)
 #line 20 "borrowed_args_v1.hot"
 {
 #line 20 "borrowed_args_v1.hot"
@@ -953,7 +953,7 @@ float ProbeState::Pass(Vec3& v, Vec3* const p)
 }
 #line 955 "borrowed_args_v1.hot.cpp"
 #line 32 "borrowed_args_v1.hot"
-float CallerState::Run(Vec3& v, Vec3* p, bool const c)
+float hot_state_Caller::Run(Vec3& v, Vec3* p, bool const c)
 #line 32 "borrowed_args_v1.hot"
 {
 #line 32 "borrowed_args_v1.hot"

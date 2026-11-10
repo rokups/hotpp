@@ -74,7 +74,7 @@ TEST(InterfaceTranslation, OverrideAndSuperCallOfAnInterfaceVirtual)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "__self->IName::Id()")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "__self->Widget::Size()")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<hot::SlotFn>(&FooState::Id)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "reinterpret_cast<hot::SlotFn>(&hot_state_Foo::Id)")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "__fwd_Id")) << r.cpp;
 }
 

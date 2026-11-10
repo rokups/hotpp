@@ -132,7 +132,7 @@ struct Lamp_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct LampState {
+struct hot_state_Lamp {
     hot::ShellBase* __hot_owner;
     int base_level;
     int level;
@@ -207,39 +207,39 @@ static void Lamp__init_kept_ref(void*, void* f) { using T = std::function<int ()
 static void Lamp__init_kept_init(void*, void* f) { using T = std::function<int ()>; new (f) T(); }
 #line 209 "cpp_lambda_v2.cpp.cpp"
 #line 60 "cpp_lambda_v2.cpp"
-HOT_HIDDEN LampState* state_of(Lamp_Shell* __self);
-static void Lamp__init_from_init(void* st, void* f) { [[maybe_unused]] auto* __self = static_cast<Lamp_Shell*>(static_cast<LampState*>(st)->__hot_owner); using T = std::function<int ()>; new (f) T(hot::cpp_lambda(&hot_live, "Lamp lambda", [__self] { return state_of(__self)->count + state_of(__self)->level; })); }
+HOT_HIDDEN hot_state_Lamp* state_of(Lamp_Shell* __self);
+static void Lamp__init_from_init(void* st, void* f) { [[maybe_unused]] auto* __self = static_cast<Lamp_Shell*>(static_cast<hot_state_Lamp*>(st)->__hot_owner); using T = std::function<int ()>; new (f) T(hot::cpp_lambda(&hot_live, "Lamp lambda", [__self] { return state_of(__self)->count + state_of(__self)->level; })); }
 #line 213 "cpp_lambda_v2.cpp.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(LampState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Lamp, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Lamp_fields[] = {
-    {"base_level", nullptr, hot::type_key<int>(), offsetof(LampState, base_level), sizeof(int),
+    {"base_level", nullptr, hot::type_key<int>(), offsetof(hot_state_Lamp, base_level), sizeof(int),
      alignof(int), hot::field_flags<int>(), Lamp__init_base_level, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"level", nullptr, hot::type_key<int>(), offsetof(LampState, level), sizeof(int),
+    {"level", nullptr, hot::type_key<int>(), offsetof(hot_state_Lamp, level), sizeof(int),
      alignof(int), hot::field_flags<int>(), Lamp__init_level, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"count", nullptr, hot::type_key<int>(), offsetof(LampState, count), sizeof(int),
+    {"count", nullptr, hot::type_key<int>(), offsetof(hot_state_Lamp, count), sizeof(int),
      alignof(int), hot::field_flags<int>(), Lamp__init_count, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"sum", nullptr, hot::type_key<int>(), offsetof(LampState, sum), sizeof(int),
+    {"sum", nullptr, hot::type_key<int>(), offsetof(hot_state_Lamp, sum), sizeof(int),
      alignof(int), hot::field_flags<int>(), Lamp__init_sum, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"gen", nullptr, hot::type_key<int>(), offsetof(LampState, gen), sizeof(int),
+    {"gen", nullptr, hot::type_key<int>(), offsetof(hot_state_Lamp, gen), sizeof(int),
      alignof(int), hot::field_flags<int>(), Lamp__init_gen, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"nested", nullptr, hot::type_key<int>(), offsetof(LampState, nested), sizeof(int),
+    {"nested", nullptr, hot::type_key<int>(), offsetof(hot_state_Lamp, nested), sizeof(int),
      alignof(int), hot::field_flags<int>(), Lamp__init_nested, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"flag", nullptr, hot::type_key<bool>(), offsetof(LampState, flag), sizeof(bool),
+    {"flag", nullptr, hot::type_key<bool>(), offsetof(hot_state_Lamp, flag), sizeof(bool),
      alignof(bool), hot::field_flags<bool>(), Lamp__init_flag, hot::move_field<bool>, hot::field_destroyer<bool>(), nullptr, nullptr, nullptr, hot::field_copy<bool>()},
-    {"stored_result", nullptr, hot::type_key<int>(), offsetof(LampState, stored_result), sizeof(int),
+    {"stored_result", nullptr, hot::type_key<int>(), offsetof(hot_state_Lamp, stored_result), sizeof(int),
      alignof(int), hot::field_flags<int>(), Lamp__init_stored_result, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"stored", nullptr, hot::type_key<std::function<int ()>>(), offsetof(LampState, stored), sizeof(std::function<int ()>),
+    {"stored", nullptr, hot::type_key<std::function<int ()>>(), offsetof(hot_state_Lamp, stored), sizeof(std::function<int ()>),
      alignof(std::function<int ()>), hot::field_flags<std::function<int ()>>(), Lamp__init_stored, hot::move_field<std::function<int ()>>, hot::field_destroyer<std::function<int ()>>(), nullptr, nullptr, nullptr, hot::field_copy<std::function<int ()>>()},
-    {"kept_ref", nullptr, hot::type_key<std::function<int ()>>(), offsetof(LampState, kept_ref), sizeof(std::function<int ()>),
+    {"kept_ref", nullptr, hot::type_key<std::function<int ()>>(), offsetof(hot_state_Lamp, kept_ref), sizeof(std::function<int ()>),
      alignof(std::function<int ()>), hot::field_flags<std::function<int ()>>(), Lamp__init_kept_ref, hot::move_field<std::function<int ()>>, hot::field_destroyer<std::function<int ()>>(), nullptr, nullptr, nullptr, hot::field_copy<std::function<int ()>>()},
-    {"kept_init", nullptr, hot::type_key<std::function<int ()>>(), offsetof(LampState, kept_init), sizeof(std::function<int ()>),
+    {"kept_init", nullptr, hot::type_key<std::function<int ()>>(), offsetof(hot_state_Lamp, kept_init), sizeof(std::function<int ()>),
      alignof(std::function<int ()>), hot::field_flags<std::function<int ()>>(), Lamp__init_kept_init, hot::move_field<std::function<int ()>>, hot::field_destroyer<std::function<int ()>>(), nullptr, nullptr, nullptr, hot::field_copy<std::function<int ()>>()},
-    {"from_init", nullptr, hot::type_key<std::function<int ()>>(), offsetof(LampState, from_init), sizeof(std::function<int ()>),
+    {"from_init", nullptr, hot::type_key<std::function<int ()>>(), offsetof(hot_state_Lamp, from_init), sizeof(std::function<int ()>),
      alignof(std::function<int ()>), hot::field_flags<std::function<int ()>>(), Lamp__init_from_init, hot::move_field<std::function<int ()>>, hot::field_destroyer<std::function<int ()>>(), nullptr, nullptr, nullptr, hot::field_copy<std::function<int ()>>()},
 };
 #if defined(__clang__)
@@ -247,13 +247,13 @@ static const hot::FieldInfo Lamp_fields[] = {
 #endif
 
 static const hot::StateLayout Lamp_layout = {
-    "LampState", sizeof(LampState), alignof(LampState), 12, Lamp_fields, true,
+    "hot_state_Lamp", sizeof(hot_state_Lamp), alignof(hot_state_Lamp), 12, Lamp_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN LampState* state_of(Lamp_Shell* __self)
+HOT_HIDDEN hot_state_Lamp* state_of(Lamp_Shell* __self)
 {
-    return static_cast<LampState*>(__self->state);
+    return static_cast<hot_state_Lamp*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void Lamp__bump(Lamp_Shell* __self, int n);
@@ -390,11 +390,11 @@ static void* Lamp___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Lamp_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&LampState::Tick),
-    reinterpret_cast<hot::SlotFn>(&LampState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&LampState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&LampState::bump),
-    reinterpret_cast<hot::SlotFn>(&LampState::self_is_set),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Lamp::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Lamp::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Lamp::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Lamp::bump),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Lamp::self_is_set),
 };
 
 hot::ClassRecord Lamp_record = {
@@ -461,7 +461,7 @@ static const hot::CtorEntry Lamp__constructors[] = {
 }
 #line 463 "cpp_lambda_v2.cpp.cpp"
 #line 13 "cpp_lambda_v2.cpp"
-void LampState::ctor()
+void hot_state_Lamp::ctor()
 #line 13 "cpp_lambda_v2.cpp"
 {
 #line 13 "cpp_lambda_v2.cpp"
@@ -490,7 +490,7 @@ void LampState::ctor()
 #line 491 "cpp_lambda_v2.cpp.cpp"
 
 #line 19 "cpp_lambda_v2.cpp"
-void LampState::Tick(float dt)
+void hot_state_Lamp::Tick(float dt)
 #line 19 "cpp_lambda_v2.cpp"
 {
 #line 19 "cpp_lambda_v2.cpp"
@@ -548,7 +548,7 @@ void LampState::Tick(float dt)
 }
 #line 550 "cpp_lambda_v2.cpp.cpp"
 #line 45 "cpp_lambda_v2.cpp"
-void LampState::bump(int n)
+void hot_state_Lamp::bump(int n)
 #line 45 "cpp_lambda_v2.cpp"
 {
 #line 45 "cpp_lambda_v2.cpp"
@@ -583,7 +583,7 @@ void LampState::bump(int n)
 }
 #line 585 "cpp_lambda_v2.cpp.cpp"
 #line 46 "cpp_lambda_v2.cpp"
-bool LampState::self_is_set(Actor * a)
+bool hot_state_Lamp::self_is_set(Actor * a)
 #line 46 "cpp_lambda_v2.cpp"
 {
 #line 46 "cpp_lambda_v2.cpp"

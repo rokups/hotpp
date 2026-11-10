@@ -119,7 +119,7 @@ struct red__Unit_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct red__UnitState {
+struct hot_state_red__Unit {
     hot::ShellBase* __hot_owner;
     int hits;
 
@@ -155,9 +155,9 @@ static void red__Unit__init_hits(void*, void* f) { using T = int; new (f) T(0); 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(red__UnitState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_red__Unit, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo red__Unit_fields[] = {
-    {"hits", nullptr, hot::type_key<int>(), offsetof(red__UnitState, hits), sizeof(int),
+    {"hits", nullptr, hot::type_key<int>(), offsetof(hot_state_red__Unit, hits), sizeof(int),
      alignof(int), hot::field_flags<int>(), red__Unit__init_hits, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
@@ -165,13 +165,13 @@ static const hot::FieldInfo red__Unit_fields[] = {
 #endif
 
 static const hot::StateLayout red__Unit_layout = {
-    "red__UnitState", sizeof(red__UnitState), alignof(red__UnitState), 1, red__Unit_fields, true,
+    "hot_state_red__Unit", sizeof(hot_state_red__Unit), alignof(hot_state_red__Unit), 1, red__Unit_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN red__UnitState* state_of(red__Unit_Shell* __self)
+HOT_HIDDEN hot_state_red__Unit* state_of(red__Unit_Shell* __self)
 {
-    return static_cast<red__UnitState*>(__self->state);
+    return static_cast<hot_state_red__Unit*>(__self->state);
 }
 
 
@@ -306,9 +306,9 @@ static void* red__Unit___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn red__Unit_slots[red__Unit_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&red__UnitState::Tick),
-    reinterpret_cast<hot::SlotFn>(&red__UnitState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&red__UnitState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_red__Unit::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_red__Unit::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_red__Unit::__fwd_TakeDamage_Af),
 };
 
 hot::ClassRecord red__Unit_record = {
@@ -444,7 +444,7 @@ struct blue__Unit_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct blue__UnitState {
+struct hot_state_blue__Unit {
     hot::ShellBase* __hot_owner;
     int hits;
     int armor;
@@ -488,13 +488,13 @@ static void blue__Unit__init_shield(void*, void* f) { using T = int; new (f) T(9
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(blue__UnitState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_blue__Unit, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo blue__Unit_fields[] = {
-    {"hits", nullptr, hot::type_key<int>(), offsetof(blue__UnitState, hits), sizeof(int),
+    {"hits", nullptr, hot::type_key<int>(), offsetof(hot_state_blue__Unit, hits), sizeof(int),
      alignof(int), hot::field_flags<int>(), blue__Unit__init_hits, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"armor", nullptr, hot::type_key<int>(), offsetof(blue__UnitState, armor), sizeof(int),
+    {"armor", nullptr, hot::type_key<int>(), offsetof(hot_state_blue__Unit, armor), sizeof(int),
      alignof(int), hot::field_flags<int>(), blue__Unit__init_armor, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"shield", nullptr, hot::type_key<int>(), offsetof(blue__UnitState, shield), sizeof(int),
+    {"shield", nullptr, hot::type_key<int>(), offsetof(hot_state_blue__Unit, shield), sizeof(int),
      alignof(int), hot::field_flags<int>(), blue__Unit__init_shield, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
@@ -502,13 +502,13 @@ static const hot::FieldInfo blue__Unit_fields[] = {
 #endif
 
 static const hot::StateLayout blue__Unit_layout = {
-    "blue__UnitState", sizeof(blue__UnitState), alignof(blue__UnitState), 3, blue__Unit_fields, true,
+    "hot_state_blue__Unit", sizeof(hot_state_blue__Unit), alignof(hot_state_blue__Unit), 3, blue__Unit_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN blue__UnitState* state_of(blue__Unit_Shell* __self)
+HOT_HIDDEN hot_state_blue__Unit* state_of(blue__Unit_Shell* __self)
 {
-    return static_cast<blue__UnitState*>(__self->state);
+    return static_cast<hot_state_blue__Unit*>(__self->state);
 }
 
 
@@ -643,9 +643,9 @@ static void* blue__Unit___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn blue__Unit_slots[blue__Unit_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&blue__UnitState::Tick),
-    reinterpret_cast<hot::SlotFn>(&blue__UnitState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&blue__UnitState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_blue__Unit::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_blue__Unit::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_blue__Unit::__fwd_TakeDamage_Af),
 };
 
 hot::ClassRecord blue__Unit_record = {
@@ -766,7 +766,7 @@ namespace red::hot_gen {
 }
 #line 768 "cpp_ns_v2.cpp.cpp"
 #line 15 "cpp_ns_v2.cpp"
-void red__UnitState::ctor()
+void hot_state_red__Unit::ctor()
 #line 15 "cpp_ns_v2.cpp"
 {
 #line 15 "cpp_ns_v2.cpp"
@@ -792,7 +792,7 @@ void red__UnitState::ctor()
 #line 793 "cpp_ns_v2.cpp.cpp"
 
 #line 17 "cpp_ns_v2.cpp"
-void red__UnitState::Tick(float )
+void hot_state_red__Unit::Tick(float )
 #line 17 "cpp_ns_v2.cpp"
 {
 #line 17 "cpp_ns_v2.cpp"
@@ -829,7 +829,7 @@ namespace blue::hot_gen {
 }
 #line 831 "cpp_ns_v2.cpp.cpp"
 #line 28 "cpp_ns_v2.cpp"
-void blue__UnitState::ctor()
+void hot_state_blue__Unit::ctor()
 #line 28 "cpp_ns_v2.cpp"
 {
 #line 28 "cpp_ns_v2.cpp"
@@ -855,7 +855,7 @@ void blue__UnitState::ctor()
 #line 856 "cpp_ns_v2.cpp.cpp"
 
 #line 30 "cpp_ns_v2.cpp"
-void blue__UnitState::Tick(float dt)
+void hot_state_blue__Unit::Tick(float dt)
 #line 30 "cpp_ns_v2.cpp"
 {
 #line 30 "cpp_ns_v2.cpp"
@@ -991,7 +991,7 @@ struct game__Player_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<
 };
 
 // ---------------------------------------------------------------- state
-struct game__PlayerState {
+struct hot_state_game__Player {
     hot::ShellBase* __hot_owner;
     int points;
     int level;
@@ -1031,11 +1031,11 @@ static void game__Player__init_level(void*, void* f) { using T = int; new (f) T(
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(game__PlayerState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_game__Player, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo game__Player_fields[] = {
-    {"points", nullptr, hot::type_key<int>(), offsetof(game__PlayerState, points), sizeof(int),
+    {"points", nullptr, hot::type_key<int>(), offsetof(hot_state_game__Player, points), sizeof(int),
      alignof(int), hot::field_flags<int>(), game__Player__init_points, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"level", nullptr, hot::type_key<int>(), offsetof(game__PlayerState, level), sizeof(int),
+    {"level", nullptr, hot::type_key<int>(), offsetof(hot_state_game__Player, level), sizeof(int),
      alignof(int), hot::field_flags<int>(), game__Player__init_level, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
@@ -1043,13 +1043,13 @@ static const hot::FieldInfo game__Player_fields[] = {
 #endif
 
 static const hot::StateLayout game__Player_layout = {
-    "game__PlayerState", sizeof(game__PlayerState), alignof(game__PlayerState), 2, game__Player_fields, true,
+    "hot_state_game__Player", sizeof(hot_state_game__Player), alignof(hot_state_game__Player), 2, game__Player_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN game__PlayerState* state_of(game__Player_Shell* __self)
+HOT_HIDDEN hot_state_game__Player* state_of(game__Player_Shell* __self)
 {
-    return static_cast<game__PlayerState*>(__self->state);
+    return static_cast<hot_state_game__Player*>(__self->state);
 }
 
 
@@ -1179,17 +1179,17 @@ HOT_NODEBUG static hot::ShellCore* game__Player__new_default()
 }
 [[maybe_unused]] HOT_HIDDEN static void game__Player__base_Tick(Actor* a, float a0)
 {
-    return state_of(static_cast<game__Player_Shell*>(a))->game__PlayerState::Tick(a0);
+    return state_of(static_cast<game__Player_Shell*>(a))->hot_state_game__Player::Tick(a0);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void game__Player__base_TakeDamage(Actor* a, float a0)
 {
-    return state_of(static_cast<game__Player_Shell*>(a))->game__PlayerState::__fwd_TakeDamage_f(a0);
+    return state_of(static_cast<game__Player_Shell*>(a))->hot_state_game__Player::__fwd_TakeDamage_f(a0);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void game__Player__base_TakeDamage(Actor* a, Actor& a0, float a1)
 {
-    return state_of(static_cast<game__Player_Shell*>(a))->game__PlayerState::__fwd_TakeDamage_Af(a0, a1);
+    return state_of(static_cast<game__Player_Shell*>(a))->hot_state_game__Player::__fwd_TakeDamage_Af(a0, a1);
 }
 
 static void* game__Player___native__thunk(hot::ShellCore* __s)
@@ -1199,9 +1199,9 @@ static void* game__Player___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn game__Player_slots[game__Player_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&game__PlayerState::Tick),
-    reinterpret_cast<hot::SlotFn>(&game__PlayerState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&game__PlayerState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_game__Player::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_game__Player::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_game__Player::__fwd_TakeDamage_Af),
 };
 
 hot::ClassRecord game__Player_record = {
@@ -1289,7 +1289,7 @@ struct game__ai__Brain_Shell final : game__Player_Shell {
 };
 
 // ---------------------------------------------------------------- state
-struct game__ai__BrainState : game__PlayerState {
+struct hot_state_game__ai__Brain : hot_state_game__Player {
     int thought;
 
     void ctor();
@@ -1304,13 +1304,13 @@ static void game__ai__Brain__init_thought(void*, void* f) { using T = int; new (
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(game__ai__BrainState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_game__ai__Brain, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo game__ai__Brain_fields[] = {
-    {"points", nullptr, hot::type_key<int>(), offsetof(game__ai__BrainState, points), sizeof(int),
+    {"points", nullptr, hot::type_key<int>(), offsetof(hot_state_game__ai__Brain, points), sizeof(int),
      alignof(int), hot::field_flags<int>(), game__Player__init_points, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"level", nullptr, hot::type_key<int>(), offsetof(game__ai__BrainState, level), sizeof(int),
+    {"level", nullptr, hot::type_key<int>(), offsetof(hot_state_game__ai__Brain, level), sizeof(int),
      alignof(int), hot::field_flags<int>(), game__Player__init_level, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"thought", nullptr, hot::type_key<int>(), offsetof(game__ai__BrainState, thought), sizeof(int),
+    {"thought", nullptr, hot::type_key<int>(), offsetof(hot_state_game__ai__Brain, thought), sizeof(int),
      alignof(int), hot::field_flags<int>(), game__ai__Brain__init_thought, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
@@ -1318,13 +1318,13 @@ static const hot::FieldInfo game__ai__Brain_fields[] = {
 #endif
 
 static const hot::StateLayout game__ai__Brain_layout = {
-    "game__ai__BrainState", sizeof(game__ai__BrainState), alignof(game__ai__BrainState), 3, game__ai__Brain_fields, true,
+    "hot_state_game__ai__Brain", sizeof(hot_state_game__ai__Brain), alignof(hot_state_game__ai__Brain), 3, game__ai__Brain_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN game__ai__BrainState* state_of(game__ai__Brain_Shell* __self)
+HOT_HIDDEN hot_state_game__ai__Brain* state_of(game__ai__Brain_Shell* __self)
 {
-    return static_cast<game__ai__BrainState*>(__self->state);
+    return static_cast<hot_state_game__ai__Brain*>(__self->state);
 }
 
 
@@ -1457,9 +1457,9 @@ static void* game__ai__Brain___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn game__ai__Brain_slots[game__ai__Brain_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&game__ai__BrainState::Tick),
-    reinterpret_cast<hot::SlotFn>(&game__PlayerState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&game__PlayerState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_game__ai__Brain::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_game__Player::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_game__Player::__fwd_TakeDamage_Af),
 };
 
 hot::ClassRecord game__ai__Brain_record = {
@@ -1528,7 +1528,7 @@ namespace game::hot_gen {
 }
 #line 1530 "cpp_ns_v2.cpp.cpp"
 #line 55 "cpp_ns_v2.cpp"
-void game__PlayerState::ctor()
+void hot_state_game__Player::ctor()
 #line 55 "cpp_ns_v2.cpp"
 {
 #line 55 "cpp_ns_v2.cpp"
@@ -1554,7 +1554,7 @@ void game__PlayerState::ctor()
 #line 1555 "cpp_ns_v2.cpp.cpp"
 
 #line 57 "cpp_ns_v2.cpp"
-void game__PlayerState::Tick(float dt)
+void hot_state_game__Player::Tick(float dt)
 #line 57 "cpp_ns_v2.cpp"
 {
 #line 57 "cpp_ns_v2.cpp"
@@ -1595,7 +1595,7 @@ namespace game::ai::hot_gen {
 }
 #line 1597 "cpp_ns_v2.cpp.cpp"
 #line 83 "cpp_ns_v2.cpp"
-void game__ai__BrainState::ctor()
+void hot_state_game__ai__Brain::ctor()
 #line 83 "cpp_ns_v2.cpp"
 {
 #line 83 "cpp_ns_v2.cpp"
@@ -1621,7 +1621,7 @@ void game__ai__BrainState::ctor()
 #line 1622 "cpp_ns_v2.cpp.cpp"
 
 #line 85 "cpp_ns_v2.cpp"
-void game__ai__BrainState::Tick(float dt)
+void hot_state_game__ai__Brain::Tick(float dt)
 #line 85 "cpp_ns_v2.cpp"
 {
 #line 85 "cpp_ns_v2.cpp"
@@ -1747,7 +1747,7 @@ struct Watcher_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct WatcherState {
+struct hot_state_Watcher {
     hot::ShellBase* __hot_owner;
     int seen;
     int points_seen;
@@ -1792,13 +1792,13 @@ static void Watcher__init_thought_seen(void*, void* f) { using T = int; new (f) 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(WatcherState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Watcher, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Watcher_fields[] = {
-    {"seen", nullptr, hot::type_key<int>(), offsetof(WatcherState, seen), sizeof(int),
+    {"seen", nullptr, hot::type_key<int>(), offsetof(hot_state_Watcher, seen), sizeof(int),
      alignof(int), hot::field_flags<int>(), Watcher__init_seen, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"points_seen", nullptr, hot::type_key<int>(), offsetof(WatcherState, points_seen), sizeof(int),
+    {"points_seen", nullptr, hot::type_key<int>(), offsetof(hot_state_Watcher, points_seen), sizeof(int),
      alignof(int), hot::field_flags<int>(), Watcher__init_points_seen, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"thought_seen", nullptr, hot::type_key<int>(), offsetof(WatcherState, thought_seen), sizeof(int),
+    {"thought_seen", nullptr, hot::type_key<int>(), offsetof(hot_state_Watcher, thought_seen), sizeof(int),
      alignof(int), hot::field_flags<int>(), Watcher__init_thought_seen, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
@@ -1806,13 +1806,13 @@ static const hot::FieldInfo Watcher_fields[] = {
 #endif
 
 static const hot::StateLayout Watcher_layout = {
-    "WatcherState", sizeof(WatcherState), alignof(WatcherState), 3, Watcher_fields, true,
+    "hot_state_Watcher", sizeof(hot_state_Watcher), alignof(hot_state_Watcher), 3, Watcher_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN WatcherState* state_of(Watcher_Shell* __self)
+HOT_HIDDEN hot_state_Watcher* state_of(Watcher_Shell* __self)
 {
-    return static_cast<WatcherState*>(__self->state);
+    return static_cast<hot_state_Watcher*>(__self->state);
 }
 
 
@@ -1962,9 +1962,9 @@ static void* Watcher___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Watcher_slots[Watcher_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&WatcherState::Tick),
-    reinterpret_cast<hot::SlotFn>(&WatcherState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&WatcherState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Watcher::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Watcher::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Watcher::__fwd_TakeDamage_Af),
 };
 
 hot::ClassRecord Watcher_record = {
@@ -2031,7 +2031,7 @@ static const hot::CtorEntry Watcher__constructors[] = {
 }
 #line 2033 "cpp_ns_v2.cpp.cpp"
 #line 113 "cpp_ns_v2.cpp"
-void WatcherState::ctor()
+void hot_state_Watcher::ctor()
 #line 113 "cpp_ns_v2.cpp"
 {
 #line 113 "cpp_ns_v2.cpp"
@@ -2066,7 +2066,7 @@ void WatcherState::ctor()
 }
 #line 2068 "cpp_ns_v2.cpp.cpp"
 #line 115 "cpp_ns_v2.cpp"
-void WatcherState::dtor()
+void hot_state_Watcher::dtor()
 #line 115 "cpp_ns_v2.cpp"
 {
 #line 115 "cpp_ns_v2.cpp"
@@ -2093,7 +2093,7 @@ void WatcherState::dtor()
 #line 2094 "cpp_ns_v2.cpp.cpp"
 
 #line 121 "cpp_ns_v2.cpp"
-void WatcherState::Tick(float dt)
+void hot_state_Watcher::Tick(float dt)
 #line 121 "cpp_ns_v2.cpp"
 {
 #line 121 "cpp_ns_v2.cpp"

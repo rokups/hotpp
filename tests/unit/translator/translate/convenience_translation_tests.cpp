@@ -64,7 +64,7 @@ TEST(DefaultValueTranslation, DefaultIsOnTheFirstDeclarationOnly)
     // The slot, the thunk and the definition have no default text.
     EXPECT_TRUE(has(r.cpp, "static void Foo__Heal(Foo_Shell* __self, float amount, int32_t times)\n")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "Foo__Heal__thunk(Widget* __a, float amount, int32_t times)")) << r.cpp;
-    for (const char* part : {"__thunk", "hot::call<", "FooState::Heal", "void Heal(", "add_thunk"})
+    for (const char* part : {"__thunk", "hot::call<", "hot_state_Foo::Heal", "void Heal(", "add_thunk"})
         EXPECT_FALSE(has(lines_with(r.cpp, part), " = ")) << part << "\n" << lines_with(r.cpp, part);
     // A call without the argument is a call with the default of the declaration.
     EXPECT_TRUE(has(r.cpp, "Foo__Heal(__self); Foo__Heal(__self, 2.0f);")) << r.cpp;

@@ -1,14 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Hot++ natvis for Visual Studio (design 4.12). Visual Studio never loaded it (no Windows here).
      tests/unit/python/test_natvis.py checks the XML and the type names.
-     A state block "XState" and a shell "X_Shell" show as the script class X. The type name of a
-     state block has no generation: the display reads it from the record of the object.
+     A state block "hot_state_X" (generated) or "XState_gN" (hand-written) and a shell "X_Shell"
+     show as the script class X.
      The generated names follow the translator: see tools/lldb/hot_formatters.py. -->
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
-  <!-- Any state block of any generation. Visual Studio shows the fields with their names. A
-       native type that ends with "State" has no member "__hot_owner": the condition then fails. -->
-  <Type Name="*State">
-    <DisplayString Condition="__hot_owner != nullptr">script state block [gen {__hot_owner-&gt;cls-&gt;generation}]</DisplayString>
+  <!-- A generated state block. Visual Studio shows the fields with their names. -->
+  <Type Name="hot_state_*">
+    <DisplayString>script state block</DisplayString>
+    <Expand>
+      <ExpandedItem>this,nd</ExpandedItem>
+    </Expand>
+  </Type>
+  <!-- A state block of a hand-written module with a generation in the name. -->
+  <Type Name="*State_g*">
+    <DisplayString>script state block</DisplayString>
     <Expand>
       <ExpandedItem>this,nd</ExpandedItem>
     </Expand>

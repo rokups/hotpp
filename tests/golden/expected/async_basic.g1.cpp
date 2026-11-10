@@ -61,7 +61,7 @@ struct Worker_Shell final : hot::PlainObject, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct WorkerState {
+struct hot_state_Worker {
     hot::ShellBase* __hot_owner;
     int32_t total;
 
@@ -81,9 +81,9 @@ static void Worker__init_total(void*, void* f) { using T = int32_t; new (f) T(0)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(WorkerState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Worker, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Worker_fields[] = {
-    {"total", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(WorkerState, total), sizeof(int32_t),
+    {"total", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Worker, total), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Worker__init_total, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -91,13 +91,13 @@ static const hot::FieldInfo Worker_fields[] = {
 #endif
 
 static const hot::StateLayout Worker_layout = {
-    "WorkerState", sizeof(WorkerState), alignof(WorkerState), 1, Worker_fields, true,
+    "hot_state_Worker", sizeof(hot_state_Worker), alignof(hot_state_Worker), 1, Worker_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN WorkerState* state_of(Worker_Shell* __self)
+HOT_HIDDEN hot_state_Worker* state_of(Worker_Shell* __self)
 {
-    return static_cast<WorkerState*>(__self->state);
+    return static_cast<hot_state_Worker*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static hot::Task<int32_t> Worker__Double(Worker_Shell* __self, int32_t x);
@@ -289,12 +289,12 @@ static void* Worker___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Worker_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&WorkerState::Double),
-    reinterpret_cast<hot::SlotFn>(&WorkerState::Sum),
-    reinterpret_cast<hot::SlotFn>(&WorkerState::Bump),
-    reinterpret_cast<hot::SlotFn>(&WorkerState::Early),
-    reinterpret_cast<hot::SlotFn>(&WorkerState::Guarded),
-    reinterpret_cast<hot::SlotFn>(&WorkerState::Chain),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Worker::Double),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Worker::Sum),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Worker::Bump),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Worker::Early),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Worker::Guarded),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Worker::Chain),
 };
 
 hot::ClassRecord Worker_record = {
@@ -355,7 +355,7 @@ static const hot::CtorEntry Worker__constructors[] = {
 #line 356 "async_basic.hot.cpp"
 
 #line 8 "async_basic.hot"
-hot::Task<int32_t> WorkerState::Double(int32_t x)
+hot::Task<int32_t> hot_state_Worker::Double(int32_t x)
 #line 8 "async_basic.hot"
 {
 #line 8 "async_basic.hot"
@@ -408,7 +408,7 @@ hot::Task<int32_t> WorkerState::Double(int32_t x)
 #line 409 "async_basic.hot.cpp"
 
 #line 12 "async_basic.hot"
-hot::Task<int32_t> WorkerState::Sum(int32_t a, int32_t b)
+hot::Task<int32_t> hot_state_Worker::Sum(int32_t a, int32_t b)
 #line 12 "async_basic.hot"
 {
 #line 12 "async_basic.hot"
@@ -455,7 +455,7 @@ hot::Task<int32_t> WorkerState::Sum(int32_t a, int32_t b)
 #line 456 "async_basic.hot.cpp"
 
 #line 19 "async_basic.hot"
-hot::Task<void> WorkerState::Bump()
+hot::Task<void> hot_state_Worker::Bump()
 #line 19 "async_basic.hot"
 {
 #line 19 "async_basic.hot"
@@ -508,7 +508,7 @@ hot::Task<void> WorkerState::Bump()
 #line 509 "async_basic.hot.cpp"
 
 #line 23 "async_basic.hot"
-hot::Task<void> WorkerState::Early(bool stop)
+hot::Task<void> hot_state_Worker::Early(bool stop)
 #line 23 "async_basic.hot"
 {
 #line 23 "async_basic.hot"
@@ -565,7 +565,7 @@ hot::Task<void> WorkerState::Early(bool stop)
 #line 566 "async_basic.hot.cpp"
 
 #line 30 "async_basic.hot"
-hot::Task<int32_t> WorkerState::Guarded(int32_t x)
+hot::Task<int32_t> hot_state_Worker::Guarded(int32_t x)
 #line 30 "async_basic.hot"
 {
 #line 30 "async_basic.hot"
@@ -616,7 +616,7 @@ hot::Task<int32_t> WorkerState::Guarded(int32_t x)
 #line 617 "async_basic.hot.cpp"
 
 #line 39 "async_basic.hot"
-hot::Task<void> WorkerState::Chain()
+hot::Task<void> hot_state_Worker::Chain()
 #line 39 "async_basic.hot"
 {
 #line 39 "async_basic.hot"

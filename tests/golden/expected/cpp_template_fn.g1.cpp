@@ -137,7 +137,7 @@ struct Scaler_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct ScalerState {
+struct hot_state_Scaler {
     hot::ShellBase* __hot_owner;
     int last;
 
@@ -173,9 +173,9 @@ static void Scaler__init_last(void*, void* f) { using T = int; new (f) T(0); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(ScalerState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Scaler, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Scaler_fields[] = {
-    {"last", nullptr, hot::type_key<int>(), offsetof(ScalerState, last), sizeof(int),
+    {"last", nullptr, hot::type_key<int>(), offsetof(hot_state_Scaler, last), sizeof(int),
      alignof(int), hot::field_flags<int>(), Scaler__init_last, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
@@ -183,13 +183,13 @@ static const hot::FieldInfo Scaler_fields[] = {
 #endif
 
 static const hot::StateLayout Scaler_layout = {
-    "ScalerState", sizeof(ScalerState), alignof(ScalerState), 1, Scaler_fields, true,
+    "hot_state_Scaler", sizeof(hot_state_Scaler), alignof(hot_state_Scaler), 1, Scaler_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN ScalerState* state_of(Scaler_Shell* __self)
+HOT_HIDDEN hot_state_Scaler* state_of(Scaler_Shell* __self)
 {
-    return static_cast<ScalerState*>(__self->state);
+    return static_cast<hot_state_Scaler*>(__self->state);
 }
 
 
@@ -324,9 +324,9 @@ static void* Scaler___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Scaler_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&ScalerState::Tick),
-    reinterpret_cast<hot::SlotFn>(&ScalerState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&ScalerState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Scaler::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Scaler::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Scaler::__fwd_TakeDamage_Af),
 };
 
 hot::ClassRecord Scaler_record = {
@@ -393,7 +393,7 @@ static const hot::CtorEntry Scaler__constructors[] = {
 }
 #line 395 "cpp_template_fn.cpp.cpp"
 #line 20 "cpp_template_fn.cpp"
-void ScalerState::ctor()
+void hot_state_Scaler::ctor()
 #line 20 "cpp_template_fn.cpp"
 {
 #line 20 "cpp_template_fn.cpp"
@@ -419,7 +419,7 @@ void ScalerState::ctor()
 #line 420 "cpp_template_fn.cpp.cpp"
 
 #line 22 "cpp_template_fn.cpp"
-void ScalerState::Tick(float dt)
+void hot_state_Scaler::Tick(float dt)
 #line 22 "cpp_template_fn.cpp"
 {
 #line 22 "cpp_template_fn.cpp"

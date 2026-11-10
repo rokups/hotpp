@@ -136,7 +136,7 @@ struct Fighter_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct FighterState {
+struct hot_state_Fighter {
     hot::ShellBase* __hot_owner;
     int hp;
     int last;
@@ -178,11 +178,11 @@ static void Fighter__init_last(void*, void* f) { using T = int; new (f) T(0); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(FighterState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Fighter, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Fighter_fields[] = {
-    {"hp", nullptr, hot::type_key<int>(), offsetof(FighterState, hp), sizeof(int),
+    {"hp", nullptr, hot::type_key<int>(), offsetof(hot_state_Fighter, hp), sizeof(int),
      alignof(int), hot::field_flags<int>(), Fighter__init_hp, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"last", nullptr, hot::type_key<int>(), offsetof(FighterState, last), sizeof(int),
+    {"last", nullptr, hot::type_key<int>(), offsetof(hot_state_Fighter, last), sizeof(int),
      alignof(int), hot::field_flags<int>(), Fighter__init_last, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
@@ -190,13 +190,13 @@ static const hot::FieldInfo Fighter_fields[] = {
 #endif
 
 static const hot::StateLayout Fighter_layout = {
-    "FighterState", sizeof(FighterState), alignof(FighterState), 2, Fighter_fields, true,
+    "hot_state_Fighter", sizeof(hot_state_Fighter), alignof(hot_state_Fighter), 2, Fighter_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN FighterState* state_of(Fighter_Shell* __self)
+HOT_HIDDEN hot_state_Fighter* state_of(Fighter_Shell* __self)
 {
-    return static_cast<FighterState*>(__self->state);
+    return static_cast<hot_state_Fighter*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int Fighter__hit(Fighter_Shell* __self, int d, int scale = hot_mod()->step);
@@ -361,11 +361,11 @@ static void* Fighter___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Fighter_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&FighterState::Tick),
-    reinterpret_cast<hot::SlotFn>(&FighterState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&FighterState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&FighterState::hit),
-    reinterpret_cast<hot::SlotFn>(&FighterState::get),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::hit),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::get),
 };
 
 hot::ClassRecord Fighter_record = {
@@ -432,7 +432,7 @@ static const hot::CtorEntry Fighter__constructors[] = {
 }
 #line 434 "cpp_outofclass_v1.cpp.cpp"
 #line 11 "cpp_outofclass_v1.cpp"
-void FighterState::ctor()
+void hot_state_Fighter::ctor()
 #line 11 "cpp_outofclass_v1.cpp"
 {
 #line 11 "cpp_outofclass_v1.cpp"
@@ -458,7 +458,7 @@ void FighterState::ctor()
 #line 459 "cpp_outofclass_v1.cpp.cpp"
 
 #line 13 "cpp_outofclass_v1.cpp"
-void FighterState::Tick(float dt)
+void hot_state_Fighter::Tick(float dt)
 #line 13 "cpp_outofclass_v1.cpp"
 {
 #line 13 "cpp_outofclass_v1.cpp"
@@ -498,7 +498,7 @@ void FighterState::Tick(float dt)
 }
 #line 500 "cpp_outofclass_v1.cpp.cpp"
 #line 21 "cpp_outofclass_v1.cpp"
-int FighterState::hit(int d, int scale)
+int hot_state_Fighter::hit(int d, int scale)
 #line 21 "cpp_outofclass_v1.cpp"
 {
 #line 21 "cpp_outofclass_v1.cpp"
@@ -536,7 +536,7 @@ int FighterState::hit(int d, int scale)
 }
 #line 538 "cpp_outofclass_v1.cpp.cpp"
 #line 27 "cpp_outofclass_v1.cpp"
-int FighterState::get()
+int hot_state_Fighter::get()
 #line 27 "cpp_outofclass_v1.cpp"
 {
 #line 27 "cpp_outofclass_v1.cpp"

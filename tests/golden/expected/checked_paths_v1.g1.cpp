@@ -65,7 +65,7 @@ struct Shared_Shell final : hot::PlainObject, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct SharedState {
+struct hot_state_Shared {
     hot::ShellBase* __hot_owner;
     int32_t hp;
 };
@@ -78,9 +78,9 @@ static void Shared__init_hp(void*, void* f) { using T = int32_t; new (f) T(0); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(SharedState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Shared, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Shared_fields[] = {
-    {"hp", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(SharedState, hp), sizeof(int32_t),
+    {"hp", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Shared, hp), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Shared__init_hp, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -88,13 +88,13 @@ static const hot::FieldInfo Shared_fields[] = {
 #endif
 
 static const hot::StateLayout Shared_layout = {
-    "SharedState", sizeof(SharedState), alignof(SharedState), 1, Shared_fields, true,
+    "hot_state_Shared", sizeof(hot_state_Shared), alignof(hot_state_Shared), 1, Shared_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN SharedState* state_of(Shared_Shell* __self)
+HOT_HIDDEN hot_state_Shared* state_of(Shared_Shell* __self)
 {
-    return static_cast<SharedState*>(__self->state);
+    return static_cast<hot_state_Shared*>(__self->state);
 }
 
 
@@ -268,7 +268,7 @@ struct Q_Shell final : hot::PlainObject, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct QState {
+struct hot_state_Q {
     hot::ShellBase* __hot_owner;
     std::vector<int32_t> items;
 };
@@ -281,9 +281,9 @@ static void Q__init_items(void*, void* f) { using T = std::vector<int32_t>; new 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(QState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Q, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Q_fields[] = {
-    {"items", nullptr, typeid(hot::typekey_t<std::vector<int32_t>>).name(), offsetof(QState, items), sizeof(std::vector<int32_t>),
+    {"items", nullptr, typeid(hot::typekey_t<std::vector<int32_t>>).name(), offsetof(hot_state_Q, items), sizeof(std::vector<int32_t>),
      alignof(std::vector<int32_t>), hot::field_flags<std::vector<int32_t>>(), Q__init_items, hot::move_field<std::vector<int32_t>>, hot::field_destroyer<std::vector<int32_t>>(), nullptr, nullptr, nullptr, hot::field_copy<std::vector<int32_t>>()},
 };
 #if defined(__clang__)
@@ -291,13 +291,13 @@ static const hot::FieldInfo Q_fields[] = {
 #endif
 
 static const hot::StateLayout Q_layout = {
-    "QState", sizeof(QState), alignof(QState), 1, Q_fields, true,
+    "hot_state_Q", sizeof(hot_state_Q), alignof(hot_state_Q), 1, Q_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN QState* state_of(Q_Shell* __self)
+HOT_HIDDEN hot_state_Q* state_of(Q_Shell* __self)
 {
-    return static_cast<QState*>(__self->state);
+    return static_cast<hot_state_Q*>(__self->state);
 }
 
 
@@ -501,7 +501,7 @@ struct Player_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct PlayerState {
+struct hot_state_Player {
     hot::ShellBase* __hot_owner;
     std::vector<int32_t> xs;
     std::map<int32_t, int32_t> m;
@@ -536,15 +536,15 @@ static void Player__init_shared(void*, void* f) { using T = std::shared_ptr<Shar
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(PlayerState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Player, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Player_fields[] = {
-    {"xs", nullptr, typeid(hot::typekey_t<std::vector<int32_t>>).name(), offsetof(PlayerState, xs), sizeof(std::vector<int32_t>),
+    {"xs", nullptr, typeid(hot::typekey_t<std::vector<int32_t>>).name(), offsetof(hot_state_Player, xs), sizeof(std::vector<int32_t>),
      alignof(std::vector<int32_t>), hot::field_flags<std::vector<int32_t>>(), Player__init_xs, hot::move_field<std::vector<int32_t>>, hot::field_destroyer<std::vector<int32_t>>(), nullptr, nullptr, nullptr, hot::field_copy<std::vector<int32_t>>()},
-    {"m", nullptr, typeid(hot::typekey_t<std::map<int32_t, int32_t>>).name(), offsetof(PlayerState, m), sizeof(std::map<int32_t, int32_t>),
+    {"m", nullptr, typeid(hot::typekey_t<std::map<int32_t, int32_t>>).name(), offsetof(hot_state_Player, m), sizeof(std::map<int32_t, int32_t>),
      alignof(std::map<int32_t, int32_t>), hot::field_flags<std::map<int32_t, int32_t>>(), Player__init_m, hot::move_field<std::map<int32_t, int32_t>>, hot::field_destroyer<std::map<int32_t, int32_t>>(), nullptr, nullptr, nullptr, hot::field_copy<std::map<int32_t, int32_t>>()},
-    {"label", nullptr, typeid(hot::typekey_t<std::string>).name(), offsetof(PlayerState, label), sizeof(std::string),
+    {"label", nullptr, typeid(hot::typekey_t<std::string>).name(), offsetof(hot_state_Player, label), sizeof(std::string),
      alignof(std::string), hot::field_flags<std::string>(), Player__init_label, hot::move_field<std::string>, hot::field_destroyer<std::string>(), nullptr, nullptr, nullptr, hot::field_copy<std::string>()},
-    {"shared", nullptr, typeid(hot::typekey_t<std::shared_ptr<Shared>>).name(), offsetof(PlayerState, shared), sizeof(std::shared_ptr<Shared>),
+    {"shared", nullptr, typeid(hot::typekey_t<std::shared_ptr<Shared>>).name(), offsetof(hot_state_Player, shared), sizeof(std::shared_ptr<Shared>),
      alignof(std::shared_ptr<Shared>), hot::field_flags<std::shared_ptr<Shared>>(), Player__init_shared, hot::move_field<std::shared_ptr<Shared>>, hot::field_destroyer<std::shared_ptr<Shared>>(), nullptr, nullptr, nullptr, hot::field_copy<std::shared_ptr<Shared>>()},
 };
 #if defined(__clang__)
@@ -552,13 +552,13 @@ static const hot::FieldInfo Player_fields[] = {
 #endif
 
 static const hot::StateLayout Player_layout = {
-    "PlayerState", sizeof(PlayerState), alignof(PlayerState), 4, Player_fields, true,
+    "hot_state_Player", sizeof(hot_state_Player), alignof(hot_state_Player), 4, Player_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN PlayerState* state_of(Player_Shell* __self)
+HOT_HIDDEN hot_state_Player* state_of(Player_Shell* __self)
 {
-    return static_cast<PlayerState*>(__self->state);
+    return static_cast<hot_state_Player*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Player__Local(Player_Shell* __self);
@@ -742,15 +742,15 @@ static void* Player___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Player_slots[Player_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&PlayerState::Tick),
-    reinterpret_cast<hot::SlotFn>(&PlayerState::TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&PlayerState::TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&PlayerState::Local),
-    reinterpret_cast<hot::SlotFn>(&PlayerState::Element),
-    reinterpret_cast<hot::SlotFn>(&PlayerState::Owner),
-    reinterpret_cast<hot::SlotFn>(&PlayerState::View),
-    reinterpret_cast<hot::SlotFn>(&PlayerState::Loops),
-    reinterpret_cast<hot::SlotFn>(&PlayerState::PathLoops),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Player::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Player::TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Player::TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Player::Local),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Player::Element),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Player::Owner),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Player::View),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Player::Loops),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Player::PathLoops),
 };
 
 hot::ClassRecord Player_record = {
@@ -799,7 +799,7 @@ static const hot::CtorEntry Player__constructors[] = {
 }
 #line 801 "checked_paths_v1.hot.cpp"
 #line 23 "checked_paths_v1.hot"
-int32_t PlayerState::Local()
+int32_t hot_state_Player::Local()
 #line 23 "checked_paths_v1.hot"
 {
 #line 23 "checked_paths_v1.hot"
@@ -840,7 +840,7 @@ int32_t PlayerState::Local()
 }
 #line 842 "checked_paths_v1.hot.cpp"
 #line 30 "checked_paths_v1.hot"
-void PlayerState::Element(int32_t const i)
+void hot_state_Player::Element(int32_t const i)
 #line 30 "checked_paths_v1.hot"
 {
 #line 30 "checked_paths_v1.hot"
@@ -877,7 +877,7 @@ void PlayerState::Element(int32_t const i)
 }
 #line 879 "checked_paths_v1.hot.cpp"
 #line 35 "checked_paths_v1.hot"
-void PlayerState::Owner(const std::shared_ptr<Shared>& s)
+void hot_state_Player::Owner(const std::shared_ptr<Shared>& s)
 #line 35 "checked_paths_v1.hot"
 {
 #line 35 "checked_paths_v1.hot"
@@ -916,7 +916,7 @@ void PlayerState::Owner(const std::shared_ptr<Shared>& s)
 }
 #line 918 "checked_paths_v1.hot.cpp"
 #line 41 "checked_paths_v1.hot"
-int32_t PlayerState::View()
+int32_t hot_state_Player::View()
 #line 41 "checked_paths_v1.hot"
 {
 #line 41 "checked_paths_v1.hot"
@@ -955,7 +955,7 @@ int32_t PlayerState::View()
 }
 #line 957 "checked_paths_v1.hot.cpp"
 #line 47 "checked_paths_v1.hot"
-int32_t PlayerState::Loops()
+int32_t hot_state_Player::Loops()
 #line 47 "checked_paths_v1.hot"
 {
 #line 47 "checked_paths_v1.hot"
@@ -996,7 +996,7 @@ int32_t PlayerState::Loops()
 }
 #line 998 "checked_paths_v1.hot.cpp"
 #line 55 "checked_paths_v1.hot"
-int32_t PlayerState::PathLoops(hot::In<std::vector<std::vector<int32_t>>> __rows)
+int32_t hot_state_Player::PathLoops(hot::In<std::vector<std::vector<int32_t>>> __rows)
 #line 55 "checked_paths_v1.hot"
 {
 #line 55 "checked_paths_v1.hot"
@@ -1038,7 +1038,7 @@ int32_t PlayerState::PathLoops(hot::In<std::vector<std::vector<int32_t>>> __rows
 #line 1039 "checked_paths_v1.hot.cpp"
 
 #line 66 "checked_paths_v1.hot"
-void PlayerState::Tick(float dt)
+void hot_state_Player::Tick(float dt)
 #line 66 "checked_paths_v1.hot"
 {
 #line 66 "checked_paths_v1.hot"
@@ -1062,7 +1062,7 @@ void PlayerState::Tick(float dt)
 #line 1063 "checked_paths_v1.hot.cpp"
 
 #line 67 "checked_paths_v1.hot"
-void PlayerState::TakeDamage_f(float amount)
+void hot_state_Player::TakeDamage_f(float amount)
 #line 67 "checked_paths_v1.hot"
 {
 #line 67 "checked_paths_v1.hot"
@@ -1086,7 +1086,7 @@ void PlayerState::TakeDamage_f(float amount)
 #line 1087 "checked_paths_v1.hot.cpp"
 
 #line 68 "checked_paths_v1.hot"
-void PlayerState::TakeDamage_Af(Actor& source, float amount)
+void hot_state_Player::TakeDamage_Af(Actor& source, float amount)
 #line 68 "checked_paths_v1.hot"
 {
 #line 68 "checked_paths_v1.hot"

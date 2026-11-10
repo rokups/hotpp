@@ -920,7 +920,7 @@ public:
     // The body calls the member directly, so the member declaration has the defaults too.
     EXPECT_NE(r.cpp.find("    int F(int x, int y = 2, int z = hot_mod()->level);"), std::string::npos) << r.cpp;
     // The definitions have no default.
-    EXPECT_NE(r.cpp.find("SState::F(int x, int y, int z)"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("hot_state_S::F(int x, int y, int z)"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("S__F(S_Shell* __self, int x, int y, int z)\n"), std::string::npos) << r.cpp;
 }
 

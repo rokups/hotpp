@@ -141,7 +141,7 @@ struct Bumper_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct BumperState {
+struct hot_state_Bumper {
     hot::ShellBase* __hot_owner;
     int last;
 
@@ -177,9 +177,9 @@ static void Bumper__init_last(void*, void* f) { using T = int; new (f) T(0); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(BumperState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Bumper, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Bumper_fields[] = {
-    {"last", nullptr, hot::type_key<int>(), offsetof(BumperState, last), sizeof(int),
+    {"last", nullptr, hot::type_key<int>(), offsetof(hot_state_Bumper, last), sizeof(int),
      alignof(int), hot::field_flags<int>(), Bumper__init_last, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
@@ -187,13 +187,13 @@ static const hot::FieldInfo Bumper_fields[] = {
 #endif
 
 static const hot::StateLayout Bumper_layout = {
-    "BumperState", sizeof(BumperState), alignof(BumperState), 1, Bumper_fields, true,
+    "hot_state_Bumper", sizeof(hot_state_Bumper), alignof(hot_state_Bumper), 1, Bumper_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN BumperState* state_of(Bumper_Shell* __self)
+HOT_HIDDEN hot_state_Bumper* state_of(Bumper_Shell* __self)
 {
-    return static_cast<BumperState*>(__self->state);
+    return static_cast<hot_state_Bumper*>(__self->state);
 }
 
 
@@ -328,9 +328,9 @@ static void* Bumper___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Bumper_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&BumperState::Tick),
-    reinterpret_cast<hot::SlotFn>(&BumperState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&BumperState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Bumper::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Bumper::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Bumper::__fwd_TakeDamage_Af),
 };
 
 hot::ClassRecord Bumper_record = {
@@ -397,7 +397,7 @@ static const hot::CtorEntry Bumper__constructors[] = {
 }
 #line 399 "cpp_namespace_fn.cpp.cpp"
 #line 23 "cpp_namespace_fn.cpp"
-void BumperState::ctor()
+void hot_state_Bumper::ctor()
 #line 23 "cpp_namespace_fn.cpp"
 {
 #line 23 "cpp_namespace_fn.cpp"
@@ -423,7 +423,7 @@ void BumperState::ctor()
 #line 424 "cpp_namespace_fn.cpp.cpp"
 
 #line 25 "cpp_namespace_fn.cpp"
-void BumperState::Tick(float dt)
+void hot_state_Bumper::Tick(float dt)
 #line 25 "cpp_namespace_fn.cpp"
 {
 #line 25 "cpp_namespace_fn.cpp"

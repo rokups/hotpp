@@ -93,9 +93,9 @@ std::string readable_type(const char* type_key)
 std::string readable_layout(const char* layout_name)
 {
     std::string n = layout_name ? layout_name : "?";
-    // A generated layout: "<Class>State". The text has no generation number.
-    if (n.size() > 5 && n.compare(n.size() - 5, 5, "State") == 0)
-        return n.substr(0, n.size() - 5);
+    // A generated layout: "hot_state_<Class>". The text has no generation number.
+    if (n.size() > 10 && n.compare(0, 10, "hot_state_") == 0)
+        return n.substr(10);
     // A hand-written module can name the generation: "<Class>State_g<N>".
     const size_t at = n.rfind("State_g");
     if (at == std::string::npos || at == 0 || at + 7 >= n.size())

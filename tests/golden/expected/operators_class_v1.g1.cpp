@@ -107,7 +107,7 @@ struct Money_Shell final : hot::PlainObject, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct MoneyState {
+struct hot_state_Money {
     hot::ShellBase* __hot_owner;
     int32_t cents;
 
@@ -126,9 +126,9 @@ static void Money__init_cents(void*, void* f) { using T = int32_t; new (f) T(0);
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(MoneyState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Money, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Money_fields[] = {
-    {"cents", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(MoneyState, cents), sizeof(int32_t),
+    {"cents", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Money, cents), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Money__init_cents, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -136,13 +136,13 @@ static const hot::FieldInfo Money_fields[] = {
 #endif
 
 static const hot::StateLayout Money_layout = {
-    "MoneyState", sizeof(MoneyState), alignof(MoneyState), 1, Money_fields, true,
+    "hot_state_Money", sizeof(hot_state_Money), alignof(hot_state_Money), 1, Money_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN MoneyState* state_of(Money_Shell* __self)
+HOT_HIDDEN hot_state_Money* state_of(Money_Shell* __self)
 {
-    return static_cast<MoneyState*>(__self->state);
+    return static_cast<hot_state_Money*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static hot::Value<Money> Money__op_add(Money_Shell* __self, hot::In<hot::Value<Money>> o);
@@ -345,10 +345,10 @@ static void* Money___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Money_slots[Money_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&MoneyState::op_add),
-    reinterpret_cast<hot::SlotFn>(&MoneyState::op_eq),
-    reinterpret_cast<hot::SlotFn>(&MoneyState::op_lt),
-    reinterpret_cast<hot::SlotFn>(&MoneyState::op_gt),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Money::op_add),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Money::op_eq),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Money::op_lt),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Money::op_gt),
 };
 
 hot::ClassRecord Money_record = {
@@ -482,7 +482,7 @@ struct Holder_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct HolderState {
+struct hot_state_Holder {
     hot::ShellBase* __hot_owner;
     hot::Value<Money> a;
     hot::Value<Money> b;
@@ -529,15 +529,15 @@ static void Holder__init_ticks(void*, void* f) { using T = int32_t; new (f) T(0)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(HolderState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Holder, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Holder_fields[] = {
-    {"a", nullptr, typeid(hot::typekey_t<hot::Value<Money>>).name(), offsetof(HolderState, a), sizeof(hot::Value<Money>),
+    {"a", nullptr, typeid(hot::typekey_t<hot::Value<Money>>).name(), offsetof(hot_state_Holder, a), sizeof(hot::Value<Money>),
      alignof(hot::Value<Money>), hot::field_flags<hot::Value<Money>>(), Holder__init_a, hot::move_field<hot::Value<Money>>, hot::field_destroyer<hot::Value<Money>>(), nullptr, nullptr, nullptr, hot::field_copy<hot::Value<Money>>()},
-    {"b", nullptr, typeid(hot::typekey_t<hot::Value<Money>>).name(), offsetof(HolderState, b), sizeof(hot::Value<Money>),
+    {"b", nullptr, typeid(hot::typekey_t<hot::Value<Money>>).name(), offsetof(hot_state_Holder, b), sizeof(hot::Value<Money>),
      alignof(hot::Value<Money>), hot::field_flags<hot::Value<Money>>(), Holder__init_b, hot::move_field<hot::Value<Money>>, hot::field_destroyer<hot::Value<Money>>(), nullptr, nullptr, nullptr, hot::field_copy<hot::Value<Money>>()},
-    {"c", nullptr, typeid(hot::typekey_t<hot::Value<Money>>).name(), offsetof(HolderState, c), sizeof(hot::Value<Money>),
+    {"c", nullptr, typeid(hot::typekey_t<hot::Value<Money>>).name(), offsetof(hot_state_Holder, c), sizeof(hot::Value<Money>),
      alignof(hot::Value<Money>), hot::field_flags<hot::Value<Money>>(), Holder__init_c, hot::move_field<hot::Value<Money>>, hot::field_destroyer<hot::Value<Money>>(), nullptr, nullptr, nullptr, hot::field_copy<hot::Value<Money>>()},
-    {"ticks", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(HolderState, ticks), sizeof(int32_t),
+    {"ticks", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Holder, ticks), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Holder__init_ticks, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -545,13 +545,13 @@ static const hot::FieldInfo Holder_fields[] = {
 #endif
 
 static const hot::StateLayout Holder_layout = {
-    "HolderState", sizeof(HolderState), alignof(HolderState), 4, Holder_fields, true,
+    "hot_state_Holder", sizeof(hot_state_Holder), alignof(hot_state_Holder), 4, Holder_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN HolderState* state_of(Holder_Shell* __self)
+HOT_HIDDEN hot_state_Holder* state_of(Holder_Shell* __self)
 {
-    return static_cast<HolderState*>(__self->state);
+    return static_cast<hot_state_Holder*>(__self->state);
 }
 
 
@@ -645,9 +645,9 @@ static void* Holder___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Holder_slots[Holder_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&HolderState::Tick),
-    reinterpret_cast<hot::SlotFn>(&HolderState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&HolderState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Holder::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Holder::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Holder::__fwd_TakeDamage_Af),
 };
 
 hot::ClassRecord Holder_record = {
@@ -696,7 +696,7 @@ static const hot::CtorEntry Holder__constructors[] = {
 }
 #line 698 "operators_class_v1.hot.cpp"
 #line 12 "operators_class_v1.hot"
-void MoneyState::ctor(int32_t c)
+void hot_state_Money::ctor(int32_t c)
 #line 12 "operators_class_v1.hot"
 {
 #line 12 "operators_class_v1.hot"
@@ -731,7 +731,7 @@ void MoneyState::ctor(int32_t c)
 }
 #line 733 "operators_class_v1.hot.cpp"
 #line 16 "operators_class_v1.hot"
-hot::Value<Money> MoneyState::op_add(hot::In<hot::Value<Money>> o)
+hot::Value<Money> hot_state_Money::op_add(hot::In<hot::Value<Money>> o)
 #line 16 "operators_class_v1.hot"
 {
 #line 16 "operators_class_v1.hot"
@@ -766,7 +766,7 @@ hot::Value<Money> MoneyState::op_add(hot::In<hot::Value<Money>> o)
 }
 #line 768 "operators_class_v1.hot.cpp"
 #line 20 "operators_class_v1.hot"
-bool MoneyState::op_eq(hot::In<hot::Value<Money>> o)
+bool hot_state_Money::op_eq(hot::In<hot::Value<Money>> o)
 #line 20 "operators_class_v1.hot"
 {
 #line 20 "operators_class_v1.hot"
@@ -801,7 +801,7 @@ bool MoneyState::op_eq(hot::In<hot::Value<Money>> o)
 }
 #line 803 "operators_class_v1.hot.cpp"
 #line 24 "operators_class_v1.hot"
-bool MoneyState::op_lt(hot::In<hot::Value<Money>> o)
+bool hot_state_Money::op_lt(hot::In<hot::Value<Money>> o)
 #line 24 "operators_class_v1.hot"
 {
 #line 24 "operators_class_v1.hot"
@@ -836,7 +836,7 @@ bool MoneyState::op_lt(hot::In<hot::Value<Money>> o)
 }
 #line 838 "operators_class_v1.hot.cpp"
 #line 28 "operators_class_v1.hot"
-bool MoneyState::op_gt(hot::In<hot::Value<Money>> o)
+bool hot_state_Money::op_gt(hot::In<hot::Value<Money>> o)
 #line 28 "operators_class_v1.hot"
 {
 #line 28 "operators_class_v1.hot"
@@ -862,7 +862,7 @@ bool MoneyState::op_gt(hot::In<hot::Value<Money>> o)
 #line 863 "operators_class_v1.hot.cpp"
 
 #line 40 "operators_class_v1.hot"
-void HolderState::Tick(float dt)
+void hot_state_Holder::Tick(float dt)
 #line 40 "operators_class_v1.hot"
 {
 #line 40 "operators_class_v1.hot"

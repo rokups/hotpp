@@ -107,7 +107,7 @@ struct Tracker_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct TrackerState {
+struct hot_state_Tracker {
     hot::ShellBase* __hot_owner;
     std::string title;
     std::vector<int32_t> history;
@@ -166,21 +166,21 @@ static void Tracker__init_note(void*, void* f) { using T = std::string; new (f) 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(TrackerState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Tracker, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Tracker_fields[] = {
-    {"title", "label", typeid(hot::typekey_t<std::string>).name(), offsetof(TrackerState, title), sizeof(std::string),
+    {"title", "label", typeid(hot::typekey_t<std::string>).name(), offsetof(hot_state_Tracker, title), sizeof(std::string),
      alignof(std::string), hot::field_flags<std::string>(), Tracker__init_title, hot::move_field<std::string>, hot::field_destroyer<std::string>(), nullptr, nullptr, nullptr, hot::field_copy<std::string>()},
-    {"history", nullptr, typeid(hot::typekey_t<std::vector<int32_t>>).name(), offsetof(TrackerState, history), sizeof(std::vector<int32_t>),
+    {"history", nullptr, typeid(hot::typekey_t<std::vector<int32_t>>).name(), offsetof(hot_state_Tracker, history), sizeof(std::vector<int32_t>),
      alignof(std::vector<int32_t>), hot::field_flags<std::vector<int32_t>>(), Tracker__init_history, hot::move_field<std::vector<int32_t>>, hot::field_destroyer<std::vector<int32_t>>(), nullptr, nullptr, nullptr, hot::field_copy<std::vector<int32_t>>()},
-    {"dist", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(TrackerState, dist), sizeof(float),
+    {"dist", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(hot_state_Tracker, dist), sizeof(float),
      alignof(float), hot::field_flags<float>(), Tracker__init_dist, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
-    {"lowest", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(TrackerState, lowest), sizeof(float),
+    {"lowest", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(hot_state_Tracker, lowest), sizeof(float),
      alignof(float), hot::field_flags<float>(), Tracker__init_lowest, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
-    {"sum", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(TrackerState, sum), sizeof(float),
+    {"sum", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(hot_state_Tracker, sum), sizeof(float),
      alignof(float), hot::field_flags<float>(), Tracker__init_sum, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
-    {"described", nullptr, typeid(hot::typekey_t<std::string>).name(), offsetof(TrackerState, described), sizeof(std::string),
+    {"described", nullptr, typeid(hot::typekey_t<std::string>).name(), offsetof(hot_state_Tracker, described), sizeof(std::string),
      alignof(std::string), hot::field_flags<std::string>(), Tracker__init_described, hot::move_field<std::string>, hot::field_destroyer<std::string>(), nullptr, nullptr, nullptr, hot::field_copy<std::string>()},
-    {"note", nullptr, typeid(hot::typekey_t<std::string>).name(), offsetof(TrackerState, note), sizeof(std::string),
+    {"note", nullptr, typeid(hot::typekey_t<std::string>).name(), offsetof(hot_state_Tracker, note), sizeof(std::string),
      alignof(std::string), hot::field_flags<std::string>(), Tracker__init_note, hot::move_field<std::string>, hot::field_destroyer<std::string>(), nullptr, nullptr, nullptr, hot::field_copy<std::string>()},
 };
 #if defined(__clang__)
@@ -188,13 +188,13 @@ static const hot::FieldInfo Tracker_fields[] = {
 #endif
 
 static const hot::StateLayout Tracker_layout = {
-    "TrackerState", sizeof(TrackerState), alignof(TrackerState), 7, Tracker_fields, true,
+    "hot_state_Tracker", sizeof(hot_state_Tracker), alignof(hot_state_Tracker), 7, Tracker_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN TrackerState* state_of(Tracker_Shell* __self)
+HOT_HIDDEN hot_state_Tracker* state_of(Tracker_Shell* __self)
 {
-    return static_cast<TrackerState*>(__self->state);
+    return static_cast<hot_state_Tracker*>(__self->state);
 }
 
 
@@ -288,9 +288,9 @@ static void* Tracker___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Tracker_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&TrackerState::Tick),
-    reinterpret_cast<hot::SlotFn>(&TrackerState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&TrackerState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Tracker::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Tracker::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Tracker::__fwd_TakeDamage_Af),
 };
 
 hot::ClassRecord Tracker_record = {
@@ -330,7 +330,7 @@ static const hot::CtorEntry Tracker__constructors[] = {
 
 // ---------------------------------------------------------------- function bodies
 #line 19 "native_std_v2.hot"
-void TrackerState::Tick(float dt)
+void hot_state_Tracker::Tick(float dt)
 #line 19 "native_std_v2.hot"
 {
 #line 19 "native_std_v2.hot"

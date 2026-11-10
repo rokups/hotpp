@@ -82,7 +82,7 @@ struct Player_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct PlayerState {
+struct hot_state_Player {
     hot::ShellBase* __hot_owner;
     float health;
     float speed;
@@ -112,15 +112,15 @@ static void Player__init_shield(void*, void* f) { using T = float; new (f) T(25.
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(PlayerState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Player, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Player_fields[] = {
-    {"health", "hp", typeid(hot::typekey_t<float>).name(), offsetof(PlayerState, health), sizeof(float),
+    {"health", "hp", typeid(hot::typekey_t<float>).name(), offsetof(hot_state_Player, health), sizeof(float),
      alignof(float), hot::field_flags<float>(), Player__init_health, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
-    {"speed", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(PlayerState, speed), sizeof(float),
+    {"speed", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(hot_state_Player, speed), sizeof(float),
      alignof(float), hot::field_flags<float>(), Player__init_speed, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
-    {"target", nullptr, typeid(hot::typekey_t<std::string>).name(), offsetof(PlayerState, target), sizeof(std::string),
+    {"target", nullptr, typeid(hot::typekey_t<std::string>).name(), offsetof(hot_state_Player, target), sizeof(std::string),
      alignof(std::string), hot::field_flags<std::string>(), Player__init_target, hot::move_field<std::string>, hot::field_destroyer<std::string>(), nullptr, nullptr, nullptr, hot::field_copy<std::string>()},
-    {"shield", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(PlayerState, shield), sizeof(float),
+    {"shield", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(hot_state_Player, shield), sizeof(float),
      alignof(float), hot::field_flags<float>(), Player__init_shield, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
 };
 #if defined(__clang__)
@@ -128,13 +128,13 @@ static const hot::FieldInfo Player_fields[] = {
 #endif
 
 static const hot::StateLayout Player_layout = {
-    "PlayerState", sizeof(PlayerState), alignof(PlayerState), 4, Player_fields, true,
+    "hot_state_Player", sizeof(hot_state_Player), alignof(hot_state_Player), 4, Player_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN PlayerState* state_of(Player_Shell* __self)
+HOT_HIDDEN hot_state_Player* state_of(Player_Shell* __self)
 {
-    return static_cast<PlayerState*>(__self->state);
+    return static_cast<hot_state_Player*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void Player__heal(Player_Shell* __self, float amount);
@@ -229,10 +229,10 @@ static void* Player___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Player_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&PlayerState::Tick),
-    reinterpret_cast<hot::SlotFn>(&PlayerState::TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&PlayerState::TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&PlayerState::heal),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Player::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Player::TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Player::TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Player::heal),
 };
 
 hot::ClassRecord Player_record = {
@@ -272,7 +272,7 @@ static const hot::CtorEntry Player__constructors[] = {
 
 // ---------------------------------------------------------------- function bodies
 #line 12 "player_v2.hot"
-void PlayerState::Tick(float dt)
+void hot_state_Player::Tick(float dt)
 #line 12 "player_v2.hot"
 {
 #line 12 "player_v2.hot"
@@ -302,7 +302,7 @@ void PlayerState::Tick(float dt)
 #line 303 "player_v2.hot.cpp"
 
 #line 18 "player_v2.hot"
-void PlayerState::TakeDamage_f(float amount)
+void hot_state_Player::TakeDamage_f(float amount)
 #line 18 "player_v2.hot"
 {
 #line 18 "player_v2.hot"
@@ -332,7 +332,7 @@ void PlayerState::TakeDamage_f(float amount)
 #line 333 "player_v2.hot.cpp"
 
 #line 24 "player_v2.hot"
-void PlayerState::TakeDamage_Af(Actor& source, float amount)
+void hot_state_Player::TakeDamage_Af(Actor& source, float amount)
 #line 24 "player_v2.hot"
 {
 #line 24 "player_v2.hot"
@@ -371,7 +371,7 @@ void PlayerState::TakeDamage_Af(Actor& source, float amount)
 }
 #line 373 "player_v2.hot.cpp"
 #line 30 "player_v2.hot"
-void PlayerState::heal(float amount)
+void hot_state_Player::heal(float amount)
 #line 30 "player_v2.hot"
 {
 #line 30 "player_v2.hot"

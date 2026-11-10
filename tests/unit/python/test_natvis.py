@@ -8,7 +8,7 @@ The test checks four things:
   - the file is well formed XML with the natvis root element;
   - each Type has a name and a DisplayString or an Expand element;
   - each "hot::Name" in the file is a struct or a class in include/hot;
-  - the type name patterns match the names that the translator makes ("_Shell", "State").
+  - the type name patterns match the names that the translator makes ("_Shell", "hot_state_").
 """
 
 import os
@@ -66,7 +66,7 @@ class Natvis(unittest.TestCase):
     def test_generated_names(self):
         for t in self.root.findall(NS + "Type"):
             name = t.get("Name")
-            for part in ("State", "_Shell"):
+            for part in ("hot_state_", "_Shell"):
                 if part in name:
                     self.assertIn(part, self.translator, "the translator makes no name with " + part)
 

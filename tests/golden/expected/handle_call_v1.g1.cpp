@@ -253,7 +253,7 @@ struct Caller_Shell final : Actor, Wearer, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct CallerState {
+struct hot_state_Caller {
     hot::ShellBase* __hot_owner;
     std::shared_ptr<Charm> last;
 
@@ -359,9 +359,9 @@ static void Caller__init_last(void*, void* f) { using T = std::shared_ptr<Charm>
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(CallerState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Caller, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Caller_fields[] = {
-    {"last", nullptr, typeid(hot::typekey_t<std::shared_ptr<Charm>>).name(), offsetof(CallerState, last), sizeof(std::shared_ptr<Charm>),
+    {"last", nullptr, typeid(hot::typekey_t<std::shared_ptr<Charm>>).name(), offsetof(hot_state_Caller, last), sizeof(std::shared_ptr<Charm>),
      alignof(std::shared_ptr<Charm>), hot::field_flags<std::shared_ptr<Charm>>(), Caller__init_last, hot::move_field<std::shared_ptr<Charm>>, hot::field_destroyer<std::shared_ptr<Charm>>(), nullptr, nullptr, nullptr, hot::field_copy<std::shared_ptr<Charm>>()},
 };
 #if defined(__clang__)
@@ -369,13 +369,13 @@ static const hot::FieldInfo Caller_fields[] = {
 #endif
 
 static const hot::StateLayout Caller_layout = {
-    "CallerState", sizeof(CallerState), alignof(CallerState), 1, Caller_fields, true,
+    "hot_state_Caller", sizeof(hot_state_Caller), alignof(hot_state_Caller), 1, Caller_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN CallerState* state_of(Caller_Shell* __self)
+HOT_HIDDEN hot_state_Caller* state_of(Caller_Shell* __self)
 {
-    return static_cast<CallerState*>(__self->state);
+    return static_cast<hot_state_Caller*>(__self->state);
 }
 
 
@@ -469,17 +469,17 @@ static void* Caller___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Caller_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&CallerState::__fwd_Tick),
-    reinterpret_cast<hot::SlotFn>(&CallerState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&CallerState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&CallerState::WearRaw),
-    reinterpret_cast<hot::SlotFn>(&CallerState::__fwd_WearRef),
-    reinterpret_cast<hot::SlotFn>(&CallerState::__fwd_WearShared),
-    reinterpret_cast<hot::SlotFn>(&CallerState::__fwd_WearItem),
-    reinterpret_cast<hot::SlotFn>(&CallerState::WearBlade),
-    reinterpret_cast<hot::SlotFn>(&CallerState::__fwd_Spawn),
-    reinterpret_cast<hot::SlotFn>(&CallerState::__fwd_Make),
-    reinterpret_cast<hot::SlotFn>(&CallerState::__fwd_Borrow),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Caller::__fwd_Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Caller::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Caller::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Caller::WearRaw),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Caller::__fwd_WearRef),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Caller::__fwd_WearShared),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Caller::__fwd_WearItem),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Caller::WearBlade),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Caller::__fwd_Spawn),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Caller::__fwd_Make),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Caller::__fwd_Borrow),
 };
 
 hot::ClassRecord Caller_record = {
@@ -519,7 +519,7 @@ static const hot::CtorEntry Caller__constructors[] = {
 
 // ---------------------------------------------------------------- function bodies
 #line 13 "handle_call_v1.hot"
-int CallerState::WearRaw(Charm* __c)
+int hot_state_Caller::WearRaw(Charm* __c)
 #line 13 "handle_call_v1.hot"
 {
 #line 13 "handle_call_v1.hot"
@@ -549,7 +549,7 @@ int CallerState::WearRaw(Charm* __c)
 #line 550 "handle_call_v1.hot.cpp"
 
 #line 19 "handle_call_v1.hot"
-int CallerState::WearBlade(Blade* __b)
+int hot_state_Caller::WearBlade(Blade* __b)
 #line 19 "handle_call_v1.hot"
 {
 #line 19 "handle_call_v1.hot"

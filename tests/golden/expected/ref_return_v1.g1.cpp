@@ -96,7 +96,7 @@ struct Unit_Shell final : hot::PlainObject, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct UnitState {
+struct hot_state_Unit {
     hot::ShellBase* __hot_owner;
     int32_t hp;
     Vec3 pos;
@@ -117,11 +117,11 @@ static void Unit__init_pos(void*, void* f) { using T = Vec3; new (f) T(); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(UnitState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Unit, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Unit_fields[] = {
-    {"hp", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(UnitState, hp), sizeof(int32_t),
+    {"hp", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Unit, hp), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Unit__init_hp, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"pos", nullptr, typeid(hot::typekey_t<Vec3>).name(), offsetof(UnitState, pos), sizeof(Vec3),
+    {"pos", nullptr, typeid(hot::typekey_t<Vec3>).name(), offsetof(hot_state_Unit, pos), sizeof(Vec3),
      alignof(Vec3), hot::value_field_flags<Vec3>(), Unit__init_pos, hot::move_field<Vec3>, hot::field_destroyer<Vec3>(), nullptr, nullptr, &Vec3_layout, hot::field_copy<Vec3>()},
 };
 #if defined(__clang__)
@@ -129,13 +129,13 @@ static const hot::FieldInfo Unit_fields[] = {
 #endif
 
 static const hot::StateLayout Unit_layout = {
-    "UnitState", sizeof(UnitState), alignof(UnitState), 2, Unit_fields, true,
+    "hot_state_Unit", sizeof(hot_state_Unit), alignof(hot_state_Unit), 2, Unit_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN UnitState* state_of(Unit_Shell* __self)
+HOT_HIDDEN hot_state_Unit* state_of(Unit_Shell* __self)
 {
-    return static_cast<UnitState*>(__self->state);
+    return static_cast<hot_state_Unit*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t& Unit__Hp(Unit_Shell* __self);
@@ -287,9 +287,9 @@ static void* Unit___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Unit_slots[Unit_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&UnitState::Hp),
-    reinterpret_cast<hot::SlotFn>(&UnitState::Choose),
-    reinterpret_cast<hot::SlotFn>(&UnitState::Run),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Unit::Hp),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Unit::Choose),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Unit::Run),
 };
 
 hot::ClassRecord Unit_record = {
@@ -368,7 +368,7 @@ static void Vec3__Fill(Vec3* __self)
 }
 #line 370 "ref_return_v1.hot.cpp"
 #line 19 "ref_return_v1.hot"
-int32_t& UnitState::Hp()
+int32_t& hot_state_Unit::Hp()
 #line 19 "ref_return_v1.hot"
 {
 #line 19 "ref_return_v1.hot"
@@ -403,7 +403,7 @@ int32_t& UnitState::Hp()
 }
 #line 405 "ref_return_v1.hot.cpp"
 #line 27 "ref_return_v1.hot"
-int32_t& UnitState::Choose(int32_t& a)
+int32_t& hot_state_Unit::Choose(int32_t& a)
 #line 27 "ref_return_v1.hot"
 {
 #line 27 "ref_return_v1.hot"
@@ -438,7 +438,7 @@ int32_t& UnitState::Choose(int32_t& a)
 }
 #line 440 "ref_return_v1.hot.cpp"
 #line 31 "ref_return_v1.hot"
-void UnitState::Run()
+void hot_state_Unit::Run()
 #line 31 "ref_return_v1.hot"
 {
 #line 31 "ref_return_v1.hot"

@@ -69,7 +69,7 @@ struct Base_Shell : hot::PlainObject, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct BaseState {
+struct hot_state_Base {
     hot::ShellBase* __hot_owner;
 
     hot::Task<int32_t> Compute(int32_t x);
@@ -81,20 +81,20 @@ struct BaseState {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(BaseState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Base, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo* const Base_fields = nullptr;
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
 
 static const hot::StateLayout Base_layout = {
-    "BaseState", sizeof(BaseState), alignof(BaseState), 0, Base_fields, true,
+    "hot_state_Base", sizeof(hot_state_Base), alignof(hot_state_Base), 0, Base_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN BaseState* state_of(Base_Shell* __self)
+HOT_HIDDEN hot_state_Base* state_of(Base_Shell* __self)
 {
-    return static_cast<BaseState*>(__self->state);
+    return static_cast<hot_state_Base*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static hot::Task<int32_t> Base__Compute(Base_Shell* __self, int32_t x);
@@ -231,8 +231,8 @@ static void* Base___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Base_slots[Base_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&BaseState::Compute),
-    reinterpret_cast<hot::SlotFn>(&BaseState::Run),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Base::Compute),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Base::Run),
 };
 
 hot::ClassRecord Base_record = {
@@ -306,7 +306,7 @@ struct Derived_Shell final : Base_Shell {
 };
 
 // ---------------------------------------------------------------- state
-struct DerivedState : BaseState {
+struct hot_state_Derived : hot_state_Base {
 
     hot::Task<int32_t> Compute(int32_t x);
 };
@@ -316,20 +316,20 @@ struct DerivedState : BaseState {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(DerivedState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Derived, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo* const Derived_fields = nullptr;
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
 
 static const hot::StateLayout Derived_layout = {
-    "DerivedState", sizeof(DerivedState), alignof(DerivedState), 0, Derived_fields, true,
+    "hot_state_Derived", sizeof(hot_state_Derived), alignof(hot_state_Derived), 0, Derived_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN DerivedState* state_of(Derived_Shell* __self)
+HOT_HIDDEN hot_state_Derived* state_of(Derived_Shell* __self)
 {
-    return static_cast<DerivedState*>(__self->state);
+    return static_cast<hot_state_Derived*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static hot::Task<int32_t> Derived__Compute(Derived_Shell* __self, int32_t x);
@@ -428,8 +428,8 @@ static void* Derived___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Derived_slots[Derived_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&DerivedState::Compute),
-    reinterpret_cast<hot::SlotFn>(&BaseState::Run),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Derived::Compute),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Base::Run),
 };
 
 hot::ClassRecord Derived_record = {
@@ -490,7 +490,7 @@ static const hot::CtorEntry Derived__constructors[] = {
 #line 491 "async_virtual.hot.cpp"
 
 #line 5 "async_virtual.hot"
-hot::Task<int32_t> BaseState::Compute(int32_t x)
+hot::Task<int32_t> hot_state_Base::Compute(int32_t x)
 #line 5 "async_virtual.hot"
 {
 #line 5 "async_virtual.hot"
@@ -537,7 +537,7 @@ hot::Task<int32_t> BaseState::Compute(int32_t x)
 #line 538 "async_virtual.hot.cpp"
 
 #line 9 "async_virtual.hot"
-hot::Task<int32_t> BaseState::Run(int32_t x)
+hot::Task<int32_t> hot_state_Base::Run(int32_t x)
 #line 9 "async_virtual.hot"
 {
 #line 9 "async_virtual.hot"
@@ -586,7 +586,7 @@ hot::Task<int32_t> BaseState::Run(int32_t x)
 #line 587 "async_virtual.hot.cpp"
 
 #line 15 "async_virtual.hot"
-hot::Task<int32_t> DerivedState::Compute(int32_t x)
+hot::Task<int32_t> hot_state_Derived::Compute(int32_t x)
 #line 15 "async_virtual.hot"
 {
 #line 15 "async_virtual.hot"

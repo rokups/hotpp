@@ -132,7 +132,7 @@ struct Hero_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct HeroState {
+struct hot_state_Hero {
     hot::ShellBase* __hot_owner;
     int32_t sum;
     int32_t weight;
@@ -187,19 +187,19 @@ static void Hero__init_twice(void*, void* f) { using T = int32_t; new (f) T(0); 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(HeroState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Hero, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Hero_fields[] = {
-    {"sum", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(HeroState, sum), sizeof(int32_t),
+    {"sum", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Hero, sum), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Hero__init_sum, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"weight", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(HeroState, weight), sizeof(int32_t),
+    {"weight", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Hero, weight), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Hero__init_weight, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"fact", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(HeroState, fact), sizeof(int32_t),
+    {"fact", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Hero, fact), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Hero__init_fact, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"scaled", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(HeroState, scaled), sizeof(int32_t),
+    {"scaled", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Hero, scaled), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Hero__init_scaled, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"scaled2", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(HeroState, scaled2), sizeof(int32_t),
+    {"scaled2", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Hero, scaled2), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Hero__init_scaled2, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"twice", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(HeroState, twice), sizeof(int32_t),
+    {"twice", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Hero, twice), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Hero__init_twice, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -207,13 +207,13 @@ static const hot::FieldInfo Hero_fields[] = {
 #endif
 
 static const hot::StateLayout Hero_layout = {
-    "HeroState", sizeof(HeroState), alignof(HeroState), 6, Hero_fields, true,
+    "hot_state_Hero", sizeof(hot_state_Hero), alignof(hot_state_Hero), 6, Hero_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN HeroState* state_of(Hero_Shell* __self)
+HOT_HIDDEN hot_state_Hero* state_of(Hero_Shell* __self)
 {
-    return static_cast<HeroState*>(__self->state);
+    return static_cast<hot_state_Hero*>(__self->state);
 }
 
 
@@ -307,9 +307,9 @@ static void* Hero___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Hero_slots[Hero_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&HeroState::Tick),
-    reinterpret_cast<hot::SlotFn>(&HeroState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&HeroState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Hero::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Hero::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Hero::__fwd_TakeDamage_Af),
 };
 
 hot::ClassRecord Hero_record = {
@@ -425,7 +425,7 @@ struct Helper_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct HelperState {
+struct hot_state_Helper {
     hot::ShellBase* __hot_owner;
     int32_t seen;
 
@@ -460,9 +460,9 @@ static void Helper__init_seen(void*, void* f) { using T = int32_t; new (f) T(0);
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(HelperState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Helper, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Helper_fields[] = {
-    {"seen", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(HelperState, seen), sizeof(int32_t),
+    {"seen", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Helper, seen), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Helper__init_seen, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -470,13 +470,13 @@ static const hot::FieldInfo Helper_fields[] = {
 #endif
 
 static const hot::StateLayout Helper_layout = {
-    "HelperState", sizeof(HelperState), alignof(HelperState), 1, Helper_fields, true,
+    "hot_state_Helper", sizeof(hot_state_Helper), alignof(hot_state_Helper), 1, Helper_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN HelperState* state_of(Helper_Shell* __self)
+HOT_HIDDEN hot_state_Helper* state_of(Helper_Shell* __self)
 {
-    return static_cast<HelperState*>(__self->state);
+    return static_cast<hot_state_Helper*>(__self->state);
 }
 
 
@@ -570,9 +570,9 @@ static void* Helper___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Helper_slots[Helper_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&HelperState::Tick),
-    reinterpret_cast<hot::SlotFn>(&HelperState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&HelperState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Helper::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Helper::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Helper::__fwd_TakeDamage_Af),
 };
 
 hot::ClassRecord Helper_record = {
@@ -620,7 +620,7 @@ static const hot::CtorEntry Helper__constructors[] = {
 #line 621 "functions_v2.hot.cpp"
 // ---------------------------------------------------------------- function bodies
 #line 44 "functions_v2.hot"
-void HeroState::Tick(float dt)
+void hot_state_Hero::Tick(float dt)
 #line 44 "functions_v2.hot"
 {
 #line 44 "functions_v2.hot"
@@ -656,7 +656,7 @@ void HeroState::Tick(float dt)
 #line 657 "functions_v2.hot.cpp"
 
 #line 58 "functions_v2.hot"
-void HelperState::Tick(float dt)
+void hot_state_Helper::Tick(float dt)
 #line 58 "functions_v2.hot"
 {
 #line 58 "functions_v2.hot"

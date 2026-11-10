@@ -110,7 +110,7 @@ struct Counter_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct CounterState {
+struct hot_state_Counter {
     hot::ShellBase* __hot_owner;
     int32_t counted;
     int32_t shared;
@@ -170,15 +170,15 @@ static void Counter__init_fired(void*, void* f) { using T = int32_t; new (f) T(0
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(CounterState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Counter, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Counter_fields[] = {
-    {"counted", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(CounterState, counted), sizeof(int32_t),
+    {"counted", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Counter, counted), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Counter__init_counted, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"shared", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(CounterState, shared), sizeof(int32_t),
+    {"shared", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Counter, shared), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Counter__init_shared, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"param", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(CounterState, param), sizeof(int32_t),
+    {"param", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Counter, param), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Counter__init_param, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"fired", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(CounterState, fired), sizeof(int32_t),
+    {"fired", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Counter, fired), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Counter__init_fired, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -186,13 +186,13 @@ static const hot::FieldInfo Counter_fields[] = {
 #endif
 
 static const hot::StateLayout Counter_layout = {
-    "CounterState", sizeof(CounterState), alignof(CounterState), 4, Counter_fields, true,
+    "hot_state_Counter", sizeof(hot_state_Counter), alignof(hot_state_Counter), 4, Counter_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN CounterState* state_of(Counter_Shell* __self)
+HOT_HIDDEN hot_state_Counter* state_of(Counter_Shell* __self)
 {
-    return static_cast<CounterState*>(__self->state);
+    return static_cast<hot_state_Counter*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void Counter__count(Counter_Shell* __self);
@@ -346,13 +346,13 @@ static void* Counter___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Counter_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&CounterState::__fwd_Tick),
-    reinterpret_cast<hot::SlotFn>(&CounterState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&CounterState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&CounterState::count),
-    reinterpret_cast<hot::SlotFn>(&CounterState::share),
-    reinterpret_cast<hot::SlotFn>(&CounterState::bump),
-    reinterpret_cast<hot::SlotFn>(&CounterState::arm),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Counter::__fwd_Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Counter::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Counter::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Counter::count),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Counter::share),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Counter::bump),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Counter::arm),
 };
 
 hot::ClassRecord Counter_record = {
@@ -401,7 +401,7 @@ static const hot::CtorEntry Counter__constructors[] = {
 }
 #line 403 "shared_cell_v1.hot.cpp"
 #line 12 "shared_cell_v1.hot"
-void CounterState::count()
+void hot_state_Counter::count()
 #line 12 "shared_cell_v1.hot"
 {
 #line 12 "shared_cell_v1.hot"
@@ -446,7 +446,7 @@ void CounterState::count()
 }
 #line 448 "shared_cell_v1.hot.cpp"
 #line 22 "shared_cell_v1.hot"
-void CounterState::share()
+void hot_state_Counter::share()
 #line 22 "shared_cell_v1.hot"
 {
 #line 22 "shared_cell_v1.hot"
@@ -491,7 +491,7 @@ void CounterState::share()
 }
 #line 493 "shared_cell_v1.hot.cpp"
 #line 32 "shared_cell_v1.hot"
-void CounterState::bump(int32_t p)
+void hot_state_Counter::bump(int32_t p)
 #line 32 "shared_cell_v1.hot"
 {
 #line 32 "shared_cell_v1.hot"
@@ -536,7 +536,7 @@ void CounterState::bump(int32_t p)
 }
 #line 538 "shared_cell_v1.hot.cpp"
 #line 40 "shared_cell_v1.hot"
-void CounterState::arm(World& w)
+void hot_state_Counter::arm(World& w)
 #line 40 "shared_cell_v1.hot"
 {
 #line 40 "shared_cell_v1.hot"

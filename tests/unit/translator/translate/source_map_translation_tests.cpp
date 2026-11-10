@@ -242,9 +242,9 @@ TEST(SourceMapTranslation, FunctionHeadAndStateFieldNamesMapToTheScript)
     EXPECT_EQ(r.source_map.map_to_script(f, 13), (SourcePos{3, 9}));
     EXPECT_EQ(r.source_map.map_to_generated(3, 10), (SourcePos{f, 14}));
     // The head of the member "Update" (script line 4: name col 19, "dt" col 32).
-    const int h = line_of(r.cpp, "void FooState::Update(");
+    const int h = line_of(r.cpp, "void hot_state_Foo::Update(");
     ASSERT_GT(h, 0) << r.cpp;
-    const std::string head = r.cpp.substr(r.cpp.find("void FooState::Update("));
+    const std::string head = r.cpp.substr(r.cpp.find("void hot_state_Foo::Update("));
     const int name_col = 1 + static_cast<int>(head.find("Update("));
     EXPECT_EQ(r.source_map.map_to_script(h, name_col), (SourcePos{4, 19}));
     EXPECT_EQ(r.source_map.map_to_script(h, name_col + 3), (SourcePos{4, 22}));

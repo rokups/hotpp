@@ -194,7 +194,7 @@ struct Thrower_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct ThrowerState {
+struct hot_state_Thrower {
     hot::ShellBase* __hot_owner;
 
     int32_t caught();
@@ -236,20 +236,20 @@ struct ThrowerState {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(ThrowerState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Thrower, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo* const Thrower_fields = nullptr;
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
 
 static const hot::StateLayout Thrower_layout = {
-    "ThrowerState", sizeof(ThrowerState), alignof(ThrowerState), 0, Thrower_fields, true,
+    "hot_state_Thrower", sizeof(hot_state_Thrower), alignof(hot_state_Thrower), 0, Thrower_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN ThrowerState* state_of(Thrower_Shell* __self)
+HOT_HIDDEN hot_state_Thrower* state_of(Thrower_Shell* __self)
 {
-    return static_cast<ThrowerState*>(__self->state);
+    return static_cast<hot_state_Thrower*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Thrower__caught(Thrower_Shell* __self);
@@ -373,11 +373,11 @@ static void* Thrower___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Thrower_slots[Thrower_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&ThrowerState::__fwd_Tick),
-    reinterpret_cast<hot::SlotFn>(&ThrowerState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&ThrowerState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&ThrowerState::caught),
-    reinterpret_cast<hot::SlotFn>(&ThrowerState::escape),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Thrower::__fwd_Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Thrower::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Thrower::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Thrower::caught),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Thrower::escape),
 };
 
 hot::ClassRecord Thrower_record = {
@@ -450,7 +450,7 @@ static void NetError__ctor(NetError* __self, int32_t p)
 }
 #line 452 "exceptions_v1.hot.cpp"
 #line 23 "exceptions_v1.hot"
-int32_t ThrowerState::caught()
+int32_t hot_state_Thrower::caught()
 #line 23 "exceptions_v1.hot"
 {
 #line 23 "exceptions_v1.hot"
@@ -495,7 +495,7 @@ int32_t ThrowerState::caught()
 }
 #line 497 "exceptions_v1.hot.cpp"
 #line 32 "exceptions_v1.hot"
-void ThrowerState::escape()
+void hot_state_Thrower::escape()
 #line 32 "exceptions_v1.hot"
 {
 #line 32 "exceptions_v1.hot"

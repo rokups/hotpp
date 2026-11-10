@@ -4401,6 +4401,10 @@ void translate_impl(
                     fail_at(map, m.pos, "enumerator '" + m.name + "' is declared twice in enum '" + e.name + "'");
         }
     }
+    // The prefix "hot_" is for the generated names, for example the state struct "hot_state_Player".
+    for (const ClassDef& cd : sc.classes)
+        if (cd.name.compare(0, 4, "hot_") == 0)
+            fail_at(map, cd.pos, "the class name '" + cd.name + "' is reserved: the prefix 'hot_' is for the generated code");
     // ---- module variables (design 5.3, 7.3). They live in the module state block, which is
     // the state of a synthetic struct. The block migrates like the fields of a class.
     const bool has_module = !sc.vars.empty();
@@ -7734,7 +7738,10 @@ void translate_impl(
         // The function of each slot. A class with a script parent starts from the table of the
         // parent: the inherited functions and the overrides of the parent stay.
         // An entry names a member of a state struct: the state member is the slot function.
-        const std::string S = cn + "State";
+        // The prefix "hot_" is for the generated code (a script class name cannot have it). Thus
+        // the name of the state struct never is a script class or the state struct of another class.
+        // A native type name with the prefix is also improbable, unlike a native name such as "WolfState".
+        const std::string S = hotc::state_struct_name(cn);
         const std::string shell = cn + "_Shell";
         std::vector<std::string> table(table_size);
         // Optimized AOT code: the entry is the text of a qualified member call. The members of the
@@ -9578,7 +9585,7 @@ void translate_impl(
             auto inherited = [&](const std::string& fn)
             {
                 for (const ClassDef& c : sc.classes)
-                    if (c.iface_parent && !cd.iface_parent && fn.rfind(c.name + "State::", 0) == 0)
+                    if (c.iface_parent && !cd.iface_parent && fn.rfind(hotc::state_struct_name(c.name) + "::", 0) == 0)
                         return true;
                 return false;
             };

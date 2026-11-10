@@ -111,7 +111,7 @@ struct Fighter_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<Fight
 };
 
 // ---------------------------------------------------------------- state
-struct FighterState {
+struct hot_state_Fighter {
     hot::ShellBase* __hot_owner;
     int32_t hp;
     int32_t ticks;
@@ -157,15 +157,15 @@ static void Fighter__init___p_Level(void*, void* f) { using T = int32_t; new (f)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(FighterState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Fighter, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Fighter_fields[] = {
-    {"hp", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(FighterState, hp), sizeof(int32_t),
+    {"hp", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Fighter, hp), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Fighter__init_hp, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"ticks", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(FighterState, ticks), sizeof(int32_t),
+    {"ticks", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Fighter, ticks), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Fighter__init_ticks, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"shield_raw", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(FighterState, shield_raw), sizeof(float),
+    {"shield_raw", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(hot_state_Fighter, shield_raw), sizeof(float),
      alignof(float), hot::field_flags<float>(), Fighter__init_shield_raw, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
-    {"__p_Level", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(FighterState, __p_Level), sizeof(int32_t),
+    {"__p_Level", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Fighter, __p_Level), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Fighter__init___p_Level, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -173,13 +173,13 @@ static const hot::FieldInfo Fighter_fields[] = {
 #endif
 
 const hot::StateLayout Fighter_layout = {
-    "FighterState", sizeof(FighterState), alignof(FighterState), 4, Fighter_fields, true,
+    "hot_state_Fighter", sizeof(hot_state_Fighter), alignof(hot_state_Fighter), 4, Fighter_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN FighterState* state_of(Fighter_Shell* __self)
+HOT_HIDDEN hot_state_Fighter* state_of(Fighter_Shell* __self)
 {
-    return static_cast<FighterState*>(__self->state);
+    return static_cast<hot_state_Fighter*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Fighter__Power(Fighter_Shell* __self);
@@ -335,17 +335,17 @@ static void Fighter__dtor_slot(hot::ShellCore* s)
 }
 [[maybe_unused]] HOT_HIDDEN static void Fighter__base_Tick(Actor* a, float a0)
 {
-    return state_of(static_cast<Fighter_Shell*>(a))->FighterState::Tick(a0);
+    return state_of(static_cast<Fighter_Shell*>(a))->hot_state_Fighter::Tick(a0);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void Fighter__base_TakeDamage(Actor* a, float a0)
 {
-    return state_of(static_cast<Fighter_Shell*>(a))->FighterState::TakeDamage_f(a0);
+    return state_of(static_cast<Fighter_Shell*>(a))->hot_state_Fighter::TakeDamage_f(a0);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void Fighter__base_TakeDamage(Actor* a, Actor& a0, float a1)
 {
-    return state_of(static_cast<Fighter_Shell*>(a))->FighterState::__fwd_TakeDamage_Af(a0, a1);
+    return state_of(static_cast<Fighter_Shell*>(a))->hot_state_Fighter::__fwd_TakeDamage_Af(a0, a1);
 }
 
 // The thunk has the same address in each generation (section 4.11). The
@@ -439,15 +439,15 @@ static void* Fighter___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Fighter_slots[Fighter_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&FighterState::Tick),
-    reinterpret_cast<hot::SlotFn>(&FighterState::TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&FighterState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&FighterState::Power),
-    reinterpret_cast<hot::SlotFn>(&FighterState::Attack),
-    reinterpret_cast<hot::SlotFn>(&FighterState::get_Level),
-    reinterpret_cast<hot::SlotFn>(&FighterState::set_Level),
-    reinterpret_cast<hot::SlotFn>(&FighterState::get_Shield),
-    reinterpret_cast<hot::SlotFn>(&FighterState::set_Shield),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::Power),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::Attack),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::get_Level),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::set_Level),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::get_Shield),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::set_Shield),
 };
 
 hot::ClassRecord Fighter_record = {
@@ -545,7 +545,7 @@ struct Veteran_Shell : Fighter_Shell {
 };
 
 // ---------------------------------------------------------------- state
-struct VeteranState : FighterState {
+struct hot_state_Veteran : hot_state_Fighter {
     int32_t rage;
     int32_t parent_power;
 
@@ -567,19 +567,19 @@ static void Veteran__init_parent_power(void*, void* f) { using T = int32_t; new 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(VeteranState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Veteran, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Veteran_fields[] = {
-    {"hp", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(VeteranState, hp), sizeof(int32_t),
+    {"hp", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Veteran, hp), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Fighter__init_hp, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"ticks", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(VeteranState, ticks), sizeof(int32_t),
+    {"ticks", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Veteran, ticks), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Fighter__init_ticks, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"shield_raw", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(VeteranState, shield_raw), sizeof(float),
+    {"shield_raw", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(hot_state_Veteran, shield_raw), sizeof(float),
      alignof(float), hot::field_flags<float>(), Fighter__init_shield_raw, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
-    {"__p_Level", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(VeteranState, __p_Level), sizeof(int32_t),
+    {"__p_Level", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Veteran, __p_Level), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Fighter__init___p_Level, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"rage", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(VeteranState, rage), sizeof(int32_t),
+    {"rage", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Veteran, rage), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Veteran__init_rage, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"parent_power", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(VeteranState, parent_power), sizeof(int32_t),
+    {"parent_power", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Veteran, parent_power), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Veteran__init_parent_power, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -587,13 +587,13 @@ static const hot::FieldInfo Veteran_fields[] = {
 #endif
 
 const hot::StateLayout Veteran_layout = {
-    "VeteranState", sizeof(VeteranState), alignof(VeteranState), 6, Veteran_fields, true,
+    "hot_state_Veteran", sizeof(hot_state_Veteran), alignof(hot_state_Veteran), 6, Veteran_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN VeteranState* state_of(Veteran_Shell* __self)
+HOT_HIDDEN hot_state_Veteran* state_of(Veteran_Shell* __self)
 {
-    return static_cast<VeteranState*>(__self->state);
+    return static_cast<hot_state_Veteran*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Veteran__Power(Veteran_Shell* __self);
@@ -759,16 +759,16 @@ static void* Veteran___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Veteran_slots[Veteran_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&VeteranState::Tick),
-    reinterpret_cast<hot::SlotFn>(&FighterState::TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&FighterState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&VeteranState::Power),
-    reinterpret_cast<hot::SlotFn>(&FighterState::Attack),
-    reinterpret_cast<hot::SlotFn>(&FighterState::get_Level),
-    reinterpret_cast<hot::SlotFn>(&FighterState::set_Level),
-    reinterpret_cast<hot::SlotFn>(&FighterState::get_Shield),
-    reinterpret_cast<hot::SlotFn>(&FighterState::set_Shield),
-    reinterpret_cast<hot::SlotFn>(&VeteranState::Attack),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Veteran::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Veteran::Power),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::Attack),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::get_Level),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::set_Level),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::get_Shield),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::set_Shield),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Veteran::Attack),
 };
 
 hot::ClassRecord Veteran_record = {
@@ -913,7 +913,7 @@ struct Spawner_Shell : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct SpawnerState {
+struct hot_state_Spawner {
     hot::ShellBase* __hot_owner;
     std::shared_ptr<Fighter> kid;
     int32_t power;
@@ -961,15 +961,15 @@ static void Spawner__init_is_veteran(void*, void* f) { using T = bool; new (f) T
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(SpawnerState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Spawner, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Spawner_fields[] = {
-    {"kid", nullptr, typeid(hot::typekey_t<std::shared_ptr<Fighter>>).name(), offsetof(SpawnerState, kid), sizeof(std::shared_ptr<Fighter>),
+    {"kid", nullptr, typeid(hot::typekey_t<std::shared_ptr<Fighter>>).name(), offsetof(hot_state_Spawner, kid), sizeof(std::shared_ptr<Fighter>),
      alignof(std::shared_ptr<Fighter>), hot::field_flags<std::shared_ptr<Fighter>>(), Spawner__init_kid, hot::move_field<std::shared_ptr<Fighter>>, hot::field_destroyer<std::shared_ptr<Fighter>>(), nullptr, nullptr, nullptr, hot::field_copy<std::shared_ptr<Fighter>>()},
-    {"power", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(SpawnerState, power), sizeof(int32_t),
+    {"power", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Spawner, power), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Spawner__init_power, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"attack", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(SpawnerState, attack), sizeof(int32_t),
+    {"attack", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Spawner, attack), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Spawner__init_attack, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"is_veteran", nullptr, typeid(hot::typekey_t<bool>).name(), offsetof(SpawnerState, is_veteran), sizeof(bool),
+    {"is_veteran", nullptr, typeid(hot::typekey_t<bool>).name(), offsetof(hot_state_Spawner, is_veteran), sizeof(bool),
      alignof(bool), hot::field_flags<bool>(), Spawner__init_is_veteran, hot::move_field<bool>, hot::field_destroyer<bool>(), nullptr, nullptr, nullptr, hot::field_copy<bool>()},
 };
 #if defined(__clang__)
@@ -977,13 +977,13 @@ static const hot::FieldInfo Spawner_fields[] = {
 #endif
 
 const hot::StateLayout Spawner_layout = {
-    "SpawnerState", sizeof(SpawnerState), alignof(SpawnerState), 4, Spawner_fields, true,
+    "hot_state_Spawner", sizeof(hot_state_Spawner), alignof(hot_state_Spawner), 4, Spawner_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN SpawnerState* state_of(Spawner_Shell* __self)
+HOT_HIDDEN hot_state_Spawner* state_of(Spawner_Shell* __self)
 {
-    return static_cast<SpawnerState*>(__self->state);
+    return static_cast<hot_state_Spawner*>(__self->state);
 }
 
 
@@ -1092,9 +1092,9 @@ static void* Spawner___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Spawner_slots[Spawner_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&SpawnerState::Tick),
-    reinterpret_cast<hot::SlotFn>(&SpawnerState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&SpawnerState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Spawner::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Spawner::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Spawner::__fwd_TakeDamage_Af),
 };
 
 hot::ClassRecord Spawner_record = {
@@ -1143,7 +1143,7 @@ static const hot::CtorEntry Spawner__constructors[] = {
 }
 #line 1145 "aot_demo.hot.cpp"
 #line 17 "aot_demo.hot"
-void FighterState::ctor(int32_t start)
+void hot_state_Fighter::ctor(int32_t start)
 #line 17 "aot_demo.hot"
 {
 #line 17 "aot_demo.hot"
@@ -1178,7 +1178,7 @@ void FighterState::ctor(int32_t start)
 }
 #line 1180 "aot_demo.hot.cpp"
 #line 21 "aot_demo.hot"
-void FighterState::dtor()
+void hot_state_Fighter::dtor()
 #line 21 "aot_demo.hot"
 {
 #line 21 "aot_demo.hot"
@@ -1213,7 +1213,7 @@ void FighterState::dtor()
 }
 #line 1215 "aot_demo.hot.cpp"
 #line 26 "aot_demo.hot"
-int32_t FighterState::Power()
+int32_t hot_state_Fighter::Power()
 #line 26 "aot_demo.hot"
 {
 #line 26 "aot_demo.hot"
@@ -1248,7 +1248,7 @@ int32_t FighterState::Power()
 }
 #line 1250 "aot_demo.hot.cpp"
 #line 28 "aot_demo.hot"
-int32_t FighterState::Attack()
+int32_t hot_state_Fighter::Attack()
 #line 28 "aot_demo.hot"
 {
 #line 28 "aot_demo.hot"
@@ -1274,7 +1274,7 @@ int32_t FighterState::Attack()
 #line 1275 "aot_demo.hot.cpp"
 
 #line 30 "aot_demo.hot"
-void FighterState::Tick(float dt)
+void hot_state_Fighter::Tick(float dt)
 #line 30 "aot_demo.hot"
 {
 #line 30 "aot_demo.hot"
@@ -1306,7 +1306,7 @@ void FighterState::Tick(float dt)
 #line 1307 "aot_demo.hot.cpp"
 
 #line 37 "aot_demo.hot"
-void FighterState::TakeDamage_f(float amount)
+void hot_state_Fighter::TakeDamage_f(float amount)
 #line 37 "aot_demo.hot"
 {
 #line 37 "aot_demo.hot"
@@ -1343,7 +1343,7 @@ void FighterState::TakeDamage_f(float amount)
 }
 #line 1345 "aot_demo.hot.cpp"
 #line 10 "aot_demo.hot"
-int32_t FighterState::get_Level()
+int32_t hot_state_Fighter::get_Level()
 #line 10 "aot_demo.hot"
 {
 #line 10 "aot_demo.hot"
@@ -1378,7 +1378,7 @@ int32_t FighterState::get_Level()
 }
 #line 1380 "aot_demo.hot.cpp"
 #line 10 "aot_demo.hot"
-void FighterState::set_Level(int32_t const value)
+void hot_state_Fighter::set_Level(int32_t const value)
 #line 10 "aot_demo.hot"
 {
 #line 10 "aot_demo.hot"
@@ -1413,7 +1413,7 @@ void FighterState::set_Level(int32_t const value)
 }
 #line 1415 "aot_demo.hot.cpp"
 #line 13 "aot_demo.hot"
-float FighterState::get_Shield()
+float hot_state_Fighter::get_Shield()
 #line 13 "aot_demo.hot"
 {
 #line 13 "aot_demo.hot"
@@ -1448,7 +1448,7 @@ float FighterState::get_Shield()
 }
 #line 1450 "aot_demo.hot.cpp"
 #line 14 "aot_demo.hot"
-void FighterState::set_Shield(float const value)
+void hot_state_Fighter::set_Shield(float const value)
 #line 14 "aot_demo.hot"
 {
 #line 14 "aot_demo.hot"
@@ -1483,7 +1483,7 @@ void FighterState::set_Shield(float const value)
 }
 #line 1485 "aot_demo.hot.cpp"
 #line 47 "aot_demo.hot"
-void VeteranState::ctor(int32_t start, int32_t r)
+void hot_state_Veteran::ctor(int32_t start, int32_t r)
 #line 47 "aot_demo.hot"
 {
 #line 47 "aot_demo.hot"
@@ -1518,7 +1518,7 @@ void VeteranState::ctor(int32_t start, int32_t r)
 }
 #line 1520 "aot_demo.hot.cpp"
 #line 51 "aot_demo.hot"
-void VeteranState::dtor()
+void hot_state_Veteran::dtor()
 #line 51 "aot_demo.hot"
 {
 #line 51 "aot_demo.hot"
@@ -1551,7 +1551,7 @@ void VeteranState::dtor()
 }
 #line 1553 "aot_demo.hot.cpp"
 #line 55 "aot_demo.hot"
-int32_t VeteranState::Power()
+int32_t hot_state_Veteran::Power()
 #line 55 "aot_demo.hot"
 {
 #line 55 "aot_demo.hot"
@@ -1586,7 +1586,7 @@ int32_t VeteranState::Power()
 }
 #line 1588 "aot_demo.hot.cpp"
 #line 57 "aot_demo.hot"
-int32_t VeteranState::Attack()
+int32_t hot_state_Veteran::Attack()
 #line 57 "aot_demo.hot"
 {
 #line 57 "aot_demo.hot"
@@ -1612,7 +1612,7 @@ int32_t VeteranState::Attack()
 #line 1613 "aot_demo.hot.cpp"
 
 #line 59 "aot_demo.hot"
-void VeteranState::Tick(float dt)
+void hot_state_Veteran::Tick(float dt)
 #line 59 "aot_demo.hot"
 {
 #line 59 "aot_demo.hot"
@@ -1651,7 +1651,7 @@ void VeteranState::Tick(float dt)
 }
 #line 1653 "aot_demo.hot.cpp"
 #line 72 "aot_demo.hot"
-void SpawnerState::dtor()
+void hot_state_Spawner::dtor()
 #line 72 "aot_demo.hot"
 {
 #line 72 "aot_demo.hot"
@@ -1677,7 +1677,7 @@ void SpawnerState::dtor()
 #line 1678 "aot_demo.hot.cpp"
 
 #line 77 "aot_demo.hot"
-void SpawnerState::Tick(float dt)
+void hot_state_Spawner::Tick(float dt)
 #line 77 "aot_demo.hot"
 {
 #line 77 "aot_demo.hot"

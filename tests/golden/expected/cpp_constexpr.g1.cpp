@@ -141,7 +141,7 @@ struct Limiter_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct LimiterState {
+struct hot_state_Limiter {
     hot::ShellBase* __hot_owner;
     int last;
 
@@ -177,9 +177,9 @@ static void Limiter__init_last(void*, void* f) { using T = int; new (f) T(0); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(LimiterState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Limiter, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Limiter_fields[] = {
-    {"last", nullptr, hot::type_key<int>(), offsetof(LimiterState, last), sizeof(int),
+    {"last", nullptr, hot::type_key<int>(), offsetof(hot_state_Limiter, last), sizeof(int),
      alignof(int), hot::field_flags<int>(), Limiter__init_last, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
@@ -187,13 +187,13 @@ static const hot::FieldInfo Limiter_fields[] = {
 #endif
 
 static const hot::StateLayout Limiter_layout = {
-    "LimiterState", sizeof(LimiterState), alignof(LimiterState), 1, Limiter_fields, true,
+    "hot_state_Limiter", sizeof(hot_state_Limiter), alignof(hot_state_Limiter), 1, Limiter_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN LimiterState* state_of(Limiter_Shell* __self)
+HOT_HIDDEN hot_state_Limiter* state_of(Limiter_Shell* __self)
 {
-    return static_cast<LimiterState*>(__self->state);
+    return static_cast<hot_state_Limiter*>(__self->state);
 }
 
 
@@ -328,9 +328,9 @@ static void* Limiter___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Limiter_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&LimiterState::Tick),
-    reinterpret_cast<hot::SlotFn>(&LimiterState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&LimiterState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Limiter::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Limiter::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Limiter::__fwd_TakeDamage_Af),
 };
 
 hot::ClassRecord Limiter_record = {
@@ -397,7 +397,7 @@ static const hot::CtorEntry Limiter__constructors[] = {
 }
 #line 399 "cpp_constexpr.cpp.cpp"
 #line 21 "cpp_constexpr.cpp"
-void LimiterState::ctor()
+void hot_state_Limiter::ctor()
 #line 21 "cpp_constexpr.cpp"
 {
 #line 21 "cpp_constexpr.cpp"
@@ -423,7 +423,7 @@ void LimiterState::ctor()
 #line 424 "cpp_constexpr.cpp.cpp"
 
 #line 23 "cpp_constexpr.cpp"
-void LimiterState::Tick(float dt)
+void hot_state_Limiter::Tick(float dt)
 #line 23 "cpp_constexpr.cpp"
 {
 #line 23 "cpp_constexpr.cpp"

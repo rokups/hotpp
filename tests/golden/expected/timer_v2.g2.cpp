@@ -98,7 +98,7 @@ struct Beeper_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct BeeperState {
+struct hot_state_Beeper {
     hot::ShellBase* __hot_owner;
     int32_t ticks;
     int32_t fired;
@@ -138,11 +138,11 @@ static void Beeper__init_fired(void*, void* f) { using T = int32_t; new (f) T(0)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(BeeperState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Beeper, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Beeper_fields[] = {
-    {"ticks", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(BeeperState, ticks), sizeof(int32_t),
+    {"ticks", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Beeper, ticks), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Beeper__init_ticks, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"fired", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(BeeperState, fired), sizeof(int32_t),
+    {"fired", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Beeper, fired), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Beeper__init_fired, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -150,13 +150,13 @@ static const hot::FieldInfo Beeper_fields[] = {
 #endif
 
 static const hot::StateLayout Beeper_layout = {
-    "BeeperState", sizeof(BeeperState), alignof(BeeperState), 2, Beeper_fields, true,
+    "hot_state_Beeper", sizeof(hot_state_Beeper), alignof(hot_state_Beeper), 2, Beeper_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN BeeperState* state_of(Beeper_Shell* __self)
+HOT_HIDDEN hot_state_Beeper* state_of(Beeper_Shell* __self)
 {
-    return static_cast<BeeperState*>(__self->state);
+    return static_cast<hot_state_Beeper*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void Beeper__arm(Beeper_Shell* __self, World& w, float delay);
@@ -251,10 +251,10 @@ static void* Beeper___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Beeper_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&BeeperState::Tick),
-    reinterpret_cast<hot::SlotFn>(&BeeperState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&BeeperState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&BeeperState::arm),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Beeper::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Beeper::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Beeper::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Beeper::arm),
 };
 
 hot::ClassRecord Beeper_record = {
@@ -294,7 +294,7 @@ static const hot::CtorEntry Beeper__constructors[] = {
 
 // ---------------------------------------------------------------- function bodies
 #line 8 "timer_v2.hot"
-void BeeperState::Tick(float dt)
+void hot_state_Beeper::Tick(float dt)
 #line 8 "timer_v2.hot"
 {
 #line 8 "timer_v2.hot"
@@ -329,7 +329,7 @@ void BeeperState::Tick(float dt)
 }
 #line 331 "timer_v2.hot.cpp"
 #line 12 "timer_v2.hot"
-void BeeperState::arm(World& w, float delay)
+void hot_state_Beeper::arm(World& w, float delay)
 #line 12 "timer_v2.hot"
 {
 #line 12 "timer_v2.hot"

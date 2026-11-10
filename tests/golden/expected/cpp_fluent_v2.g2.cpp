@@ -118,7 +118,7 @@ struct Counter_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct CounterState {
+struct hot_state_Counter {
     hot::ShellBase* __hot_owner;
     int n;
 
@@ -166,9 +166,9 @@ static void Counter__init_n(void*, void* f) { using T = int; new (f) T(0); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(CounterState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Counter, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Counter_fields[] = {
-    {"n", nullptr, hot::type_key<int>(), offsetof(CounterState, n), sizeof(int),
+    {"n", nullptr, hot::type_key<int>(), offsetof(hot_state_Counter, n), sizeof(int),
      alignof(int), hot::field_flags<int>(), Counter__init_n, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
@@ -176,13 +176,13 @@ static const hot::FieldInfo Counter_fields[] = {
 #endif
 
 static const hot::StateLayout Counter_layout = {
-    "CounterState", sizeof(CounterState), alignof(CounterState), 1, Counter_fields, true,
+    "hot_state_Counter", sizeof(hot_state_Counter), alignof(hot_state_Counter), 1, Counter_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN CounterState* state_of(Counter_Shell* __self)
+HOT_HIDDEN hot_state_Counter* state_of(Counter_Shell* __self)
 {
-    return static_cast<CounterState*>(__self->state);
+    return static_cast<hot_state_Counter*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static Counter & Counter__add(Counter_Shell* __self, int v);
@@ -320,12 +320,12 @@ static void* Counter___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Counter_slots[Counter_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&CounterState::__fwd_Tick),
-    reinterpret_cast<hot::SlotFn>(&CounterState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&CounterState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&CounterState::add),
-    reinterpret_cast<hot::SlotFn>(&CounterState::peek),
-    reinterpret_cast<hot::SlotFn>(&CounterState::self),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Counter::__fwd_Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Counter::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Counter::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Counter::add),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Counter::peek),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Counter::self),
 };
 
 hot::ClassRecord Counter_record = {
@@ -483,7 +483,7 @@ struct Builder_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct BuilderState {
+struct hot_state_Builder {
     hot::ShellBase* __hot_owner;
     int same_ref;
     int same_ptr;
@@ -528,13 +528,13 @@ static void Builder__init_total(void*, void* f) { using T = int; new (f) T(0); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(BuilderState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Builder, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Builder_fields[] = {
-    {"same_ref", nullptr, hot::type_key<int>(), offsetof(BuilderState, same_ref), sizeof(int),
+    {"same_ref", nullptr, hot::type_key<int>(), offsetof(hot_state_Builder, same_ref), sizeof(int),
      alignof(int), hot::field_flags<int>(), Builder__init_same_ref, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"same_ptr", nullptr, hot::type_key<int>(), offsetof(BuilderState, same_ptr), sizeof(int),
+    {"same_ptr", nullptr, hot::type_key<int>(), offsetof(hot_state_Builder, same_ptr), sizeof(int),
      alignof(int), hot::field_flags<int>(), Builder__init_same_ptr, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"total", nullptr, hot::type_key<int>(), offsetof(BuilderState, total), sizeof(int),
+    {"total", nullptr, hot::type_key<int>(), offsetof(hot_state_Builder, total), sizeof(int),
      alignof(int), hot::field_flags<int>(), Builder__init_total, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
@@ -542,13 +542,13 @@ static const hot::FieldInfo Builder_fields[] = {
 #endif
 
 static const hot::StateLayout Builder_layout = {
-    "BuilderState", sizeof(BuilderState), alignof(BuilderState), 3, Builder_fields, true,
+    "hot_state_Builder", sizeof(hot_state_Builder), alignof(hot_state_Builder), 3, Builder_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN BuilderState* state_of(Builder_Shell* __self)
+HOT_HIDDEN hot_state_Builder* state_of(Builder_Shell* __self)
 {
-    return static_cast<BuilderState*>(__self->state);
+    return static_cast<hot_state_Builder*>(__self->state);
 }
 
 
@@ -698,9 +698,9 @@ static void* Builder___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Builder_slots[Builder_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&BuilderState::Tick),
-    reinterpret_cast<hot::SlotFn>(&BuilderState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&BuilderState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Builder::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Builder::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Builder::__fwd_TakeDamage_Af),
 };
 
 hot::ClassRecord Builder_record = {
@@ -767,7 +767,7 @@ static const hot::CtorEntry Builder__constructors[] = {
 }
 #line 769 "cpp_fluent_v2.cpp.cpp"
 #line 9 "cpp_fluent_v2.cpp"
-void CounterState::ctor()
+void hot_state_Counter::ctor()
 #line 9 "cpp_fluent_v2.cpp"
 {
 #line 9 "cpp_fluent_v2.cpp"
@@ -802,7 +802,7 @@ void CounterState::ctor()
 }
 #line 804 "cpp_fluent_v2.cpp.cpp"
 #line 12 "cpp_fluent_v2.cpp"
-Counter & CounterState::add(int v)
+Counter & hot_state_Counter::add(int v)
 #line 12 "cpp_fluent_v2.cpp"
 {
 #line 12 "cpp_fluent_v2.cpp"
@@ -840,7 +840,7 @@ Counter & CounterState::add(int v)
 }
 #line 842 "cpp_fluent_v2.cpp.cpp"
 #line 18 "cpp_fluent_v2.cpp"
-const Counter & CounterState::peek()
+const Counter & hot_state_Counter::peek()
 #line 18 "cpp_fluent_v2.cpp"
 {
 #line 18 "cpp_fluent_v2.cpp"
@@ -875,7 +875,7 @@ const Counter & CounterState::peek()
 }
 #line 877 "cpp_fluent_v2.cpp.cpp"
 #line 19 "cpp_fluent_v2.cpp"
-Counter * CounterState::self()
+Counter * hot_state_Counter::self()
 #line 19 "cpp_fluent_v2.cpp"
 {
 #line 19 "cpp_fluent_v2.cpp"
@@ -910,7 +910,7 @@ Counter * CounterState::self()
 }
 #line 912 "cpp_fluent_v2.cpp.cpp"
 #line 30 "cpp_fluent_v2.cpp"
-void BuilderState::ctor()
+void hot_state_Builder::ctor()
 #line 30 "cpp_fluent_v2.cpp"
 {
 #line 30 "cpp_fluent_v2.cpp"
@@ -945,7 +945,7 @@ void BuilderState::ctor()
 }
 #line 947 "cpp_fluent_v2.cpp.cpp"
 #line 32 "cpp_fluent_v2.cpp"
-void BuilderState::dtor()
+void hot_state_Builder::dtor()
 #line 32 "cpp_fluent_v2.cpp"
 {
 #line 32 "cpp_fluent_v2.cpp"
@@ -972,7 +972,7 @@ void BuilderState::dtor()
 #line 973 "cpp_fluent_v2.cpp.cpp"
 
 #line 38 "cpp_fluent_v2.cpp"
-void BuilderState::Tick(float dt)
+void hot_state_Builder::Tick(float dt)
 #line 38 "cpp_fluent_v2.cpp"
 {
 #line 38 "cpp_fluent_v2.cpp"

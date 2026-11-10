@@ -198,7 +198,7 @@ TEST(DebugInfo, LineTablesOnlyKeepsTheScriptLines)
     EXPECT_GT(lines.size(), 10u);
 }
 
-// The state function of Player.Tick. The shape is "void PlayerState::Tick(float dt)". The locals
+// The state function of Player.Tick. The shape is "void hot_state_Player::Tick(float dt)". The locals
 // "self" and "st" are [[gnu::nodebug]]. Only "this" and "dt" stay.
 TEST(DebugInfo, MemberFunctionHasOnlyThisAndItsParameters)
 {
@@ -208,12 +208,12 @@ TEST(DebugInfo, MemberFunctionHasOnlyThisAndItsParameters)
     {
         SCOPED_TRACE(opt);
         const Compiled& c = compile_with_debug_info("player_v1", opt);
-        const auto* tick = find_by_linkage(c, "_ZN11PlayerState4TickEf");
-        ASSERT_NE(tick, nullptr) << "no code for PlayerState::Tick";
+        const auto* tick = find_by_linkage(c, "_ZN16hot_state_Player4TickEf");
+        ASSERT_NE(tick, nullptr) << "no code for hot_state_Player::Tick";
         EXPECT_EQ(tick->all_names(), (std::vector<std::string>{"this", "dt"}));
         EXPECT_TRUE(tick->names("DW_TAG_variable").empty());
         // Another member has a local variable of the script. It must not show "self" or "st" either.
-        const auto* heal = find_by_linkage(c, "_ZN11PlayerState4healEf");
+        const auto* heal = find_by_linkage(c, "_ZN16hot_state_Player4healEf");
         if (heal != nullptr)
         {
             const auto names = heal->all_names();
@@ -224,7 +224,7 @@ TEST(DebugInfo, MemberFunctionHasOnlyThisAndItsParameters)
 }
 
 // The slot is the state member itself, so no wrapper frame exists for a slot call. The member
-// "PlayerState::Tick" has "this" and "dt" and no "a". No subprogram "Player__Tick" has code.
+// "hot_state_Player::Tick" has "this" and "dt" and no "a". No subprogram "Player__Tick" has code.
 TEST(DebugInfo, SlotIsTheStateMemberWithoutWrapper)
 {
     if (!have_dwarfdump())
@@ -233,8 +233,8 @@ TEST(DebugInfo, SlotIsTheStateMemberWithoutWrapper)
     {
         SCOPED_TRACE(opt);
         const Compiled& c = compile_with_debug_info("player_v1", opt);
-        const auto* tick = find_by_linkage(c, "_ZN11PlayerState4TickEf");
-        ASSERT_NE(tick, nullptr) << "no code for PlayerState::Tick";
+        const auto* tick = find_by_linkage(c, "_ZN16hot_state_Player4TickEf");
+        ASSERT_NE(tick, nullptr) << "no code for hot_state_Player::Tick";
         const auto names = tick->all_names();
         EXPECT_EQ(tick->names("DW_TAG_formal_parameter"), (std::vector<std::string>{"this", "dt"}));
         EXPECT_EQ(std::count(names.begin(), names.end(), "a"), 0);
@@ -256,8 +256,8 @@ TEST(DebugInfo, MemberLineTableHasFirstBodyLineAfterFnLine)
     {
         SCOPED_TRACE(opt);
         const Compiled& c = compile_with_debug_info("player_v1", opt);
-        const auto* tick = find_by_linkage(c, "_ZN11PlayerState4TickEf");
-        ASSERT_NE(tick, nullptr) << "no code for PlayerState::Tick";
+        const auto* tick = find_by_linkage(c, "_ZN16hot_state_Player4TickEf");
+        ASSERT_NE(tick, nullptr) << "no code for hot_state_Player::Tick";
         std::vector<int> lines;
         for (const auto& r : test_support::line_rows(c.lines))
         {

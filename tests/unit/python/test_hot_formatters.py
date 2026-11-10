@@ -17,13 +17,15 @@ class Names(unittest.TestCase):
     def test_class_of_type(self):
         self.assertEqual(f.class_of_type("Player_Shell"), "Player")
         self.assertEqual(f.class_of_type("const PlayerState_g2 *"), "Player")
-        self.assertEqual(f.class_of_type("const PlayerState *"), "Player")
+        self.assertEqual(f.class_of_type("const hot_state_Player *"), "Player")
+        self.assertEqual(f.class_of_type("hot_state_GameState"), "GameState")
+        self.assertIsNone(f.class_of_type("WolfState"))  # a native name
         self.assertEqual(f.class_of_type("ns::Player_Shell &"), "Player")
         self.assertIsNone(f.class_of_type("std::string"))
 
     def test_generation(self):
         self.assertEqual(f.generation_of_type("PlayerState_g12"), 12)
-        self.assertIsNone(f.generation_of_type("PlayerState"))  # the generated name has no number
+        self.assertIsNone(f.generation_of_type("hot_state_Player"))  # the generated name has no number
         self.assertIsNone(f.generation_of_type("Player_Shell"))
 
     def test_handle(self):
@@ -92,9 +94,9 @@ class Text(unittest.TestCase):
         text = f.state_summary("PlayerState_g2", [("health", "80.0"), ("shield", "25.0")])
         self.assertEqual(text, "Player {health=80.0, shield=25.0} [gen 2]")
         # The generated name: the generation comes from the record of the object.
-        text = f.state_summary("PlayerState", [("health", "80.0")], 3)
+        text = f.state_summary("hot_state_Player", [("health", "80.0")], 3)
         self.assertEqual(text, "Player {health=80.0} [gen 3]")
-        self.assertEqual(f.state_summary("PlayerState", []), "Player {}")
+        self.assertEqual(f.state_summary("hot_state_Player", []), "Player {}")
 
     def test_many_fields(self):
         fields = [("f%d" % i, str(i)) for i in range(10)]

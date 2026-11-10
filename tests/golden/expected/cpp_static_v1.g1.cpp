@@ -156,7 +156,7 @@ struct Counter_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct CounterState {
+struct hot_state_Counter {
     hot::ShellBase* __hot_owner;
     int last;
     int via_free;
@@ -197,11 +197,11 @@ static void Counter__init_via_free(void*, void* f) { using T = int; new (f) T(0)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(CounterState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Counter, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Counter_fields[] = {
-    {"last", nullptr, hot::type_key<int>(), offsetof(CounterState, last), sizeof(int),
+    {"last", nullptr, hot::type_key<int>(), offsetof(hot_state_Counter, last), sizeof(int),
      alignof(int), hot::field_flags<int>(), Counter__init_last, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
-    {"via_free", nullptr, hot::type_key<int>(), offsetof(CounterState, via_free), sizeof(int),
+    {"via_free", nullptr, hot::type_key<int>(), offsetof(hot_state_Counter, via_free), sizeof(int),
      alignof(int), hot::field_flags<int>(), Counter__init_via_free, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
@@ -209,13 +209,13 @@ static const hot::FieldInfo Counter_fields[] = {
 #endif
 
 static const hot::StateLayout Counter_layout = {
-    "CounterState", sizeof(CounterState), alignof(CounterState), 2, Counter_fields, true,
+    "hot_state_Counter", sizeof(hot_state_Counter), alignof(hot_state_Counter), 2, Counter_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN CounterState* state_of(Counter_Shell* __self)
+HOT_HIDDEN hot_state_Counter* state_of(Counter_Shell* __self)
 {
-    return static_cast<CounterState*>(__self->state);
+    return static_cast<hot_state_Counter*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int Counter__Peek(Counter_Shell* __self);
@@ -365,10 +365,10 @@ static void* Counter___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Counter_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&CounterState::Tick),
-    reinterpret_cast<hot::SlotFn>(&CounterState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&CounterState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&CounterState::Peek),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Counter::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Counter::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Counter::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Counter::Peek),
 };
 
 hot::ClassRecord Counter_record = {
@@ -435,7 +435,7 @@ static const hot::CtorEntry Counter__constructors[] = {
 }
 #line 437 "cpp_static_v1.cpp.cpp"
 #line 11 "cpp_static_v1.cpp"
-void CounterState::ctor()
+void hot_state_Counter::ctor()
 #line 11 "cpp_static_v1.cpp"
 {
 #line 11 "cpp_static_v1.cpp"
@@ -461,7 +461,7 @@ void CounterState::ctor()
 #line 462 "cpp_static_v1.cpp.cpp"
 
 #line 13 "cpp_static_v1.cpp"
-void CounterState::Tick(float dt)
+void hot_state_Counter::Tick(float dt)
 #line 13 "cpp_static_v1.cpp"
 {
 #line 13 "cpp_static_v1.cpp"
@@ -502,7 +502,7 @@ void CounterState::Tick(float dt)
 }
 #line 504 "cpp_static_v1.cpp.cpp"
 #line 23 "cpp_static_v1.cpp"
-int CounterState::Peek()
+int hot_state_Counter::Peek()
 #line 23 "cpp_static_v1.cpp"
 {
 #line 23 "cpp_static_v1.cpp"

@@ -184,7 +184,7 @@ struct User_Shell final : hot::PlainObject, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct UserState {
+struct hot_state_User {
     hot::ShellBase* __hot_owner;
     std::shared_ptr<Box> box;
 
@@ -200,9 +200,9 @@ static void User__init_box(void*, void* f) { using T = std::shared_ptr<Box>; new
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(UserState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_User, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo User_fields[] = {
-    {"box", nullptr, typeid(hot::typekey_t<std::shared_ptr<Box>>).name(), offsetof(UserState, box), sizeof(std::shared_ptr<Box>),
+    {"box", nullptr, typeid(hot::typekey_t<std::shared_ptr<Box>>).name(), offsetof(hot_state_User, box), sizeof(std::shared_ptr<Box>),
      alignof(std::shared_ptr<Box>), hot::field_flags<std::shared_ptr<Box>>(), User__init_box, hot::move_field<std::shared_ptr<Box>>, hot::field_destroyer<std::shared_ptr<Box>>(), nullptr, nullptr, nullptr, hot::field_copy<std::shared_ptr<Box>>()},
 };
 #if defined(__clang__)
@@ -210,13 +210,13 @@ static const hot::FieldInfo User_fields[] = {
 #endif
 
 static const hot::StateLayout User_layout = {
-    "UserState", sizeof(UserState), alignof(UserState), 1, User_fields, true,
+    "hot_state_User", sizeof(hot_state_User), alignof(hot_state_User), 1, User_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN UserState* state_of(User_Shell* __self)
+HOT_HIDDEN hot_state_User* state_of(User_Shell* __self)
 {
-    return static_cast<UserState*>(__self->state);
+    return static_cast<hot_state_User*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t User__run(User_Shell* __self);
@@ -374,7 +374,7 @@ static void* User___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn User_slots[User_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&UserState::run),
+    reinterpret_cast<hot::SlotFn>(&hot_state_User::run),
 };
 
 hot::ClassRecord User_record = {
@@ -454,7 +454,7 @@ static const hot::CtorEntry User__constructors[] = {
 }
 #line 456 "xmod_use.hot.cpp"
 #line 8 "xmod_use.hot"
-void UserState::ctor()
+void hot_state_User::ctor()
 #line 8 "xmod_use.hot"
 {
 #line 8 "xmod_use.hot"
@@ -489,7 +489,7 @@ void UserState::ctor()
 }
 #line 491 "xmod_use.hot.cpp"
 #line 12 "xmod_use.hot"
-int32_t UserState::run()
+int32_t hot_state_User::run()
 #line 12 "xmod_use.hot"
 {
 #line 12 "xmod_use.hot"

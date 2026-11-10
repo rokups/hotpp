@@ -234,7 +234,7 @@ struct Holder_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct HolderState {
+struct hot_state_Holder {
     hot::ShellBase* __hot_owner;
     int32_t ticks;
     int32_t r_add;
@@ -317,33 +317,33 @@ static void Holder__init_r_sorted(void*, void* f) { using T = int32_t; new (f) T
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(HolderState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Holder, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Holder_fields[] = {
-    {"ticks", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(HolderState, ticks), sizeof(int32_t),
+    {"ticks", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Holder, ticks), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Holder__init_ticks, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"r_add", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(HolderState, r_add), sizeof(int32_t),
+    {"r_add", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Holder, r_add), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Holder__init_r_add, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"r_neg", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(HolderState, r_neg), sizeof(int32_t),
+    {"r_neg", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Holder, r_neg), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Holder__init_r_neg, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"r_mul", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(HolderState, r_mul), sizeof(int32_t),
+    {"r_mul", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Holder, r_mul), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Holder__init_r_mul, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"r_lt", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(HolderState, r_lt), sizeof(int32_t),
+    {"r_lt", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Holder, r_lt), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Holder__init_r_lt, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"r_gt", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(HolderState, r_gt), sizeof(int32_t),
+    {"r_gt", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Holder, r_gt), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Holder__init_r_gt, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"r_index", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(HolderState, r_index), sizeof(int32_t),
+    {"r_index", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Holder, r_index), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Holder__init_r_index, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"r_compound", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(HolderState, r_compound), sizeof(int32_t),
+    {"r_compound", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Holder, r_compound), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Holder__init_r_compound, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"r_eq", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(HolderState, r_eq), sizeof(int32_t),
+    {"r_eq", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Holder, r_eq), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Holder__init_r_eq, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"r_ne", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(HolderState, r_ne), sizeof(int32_t),
+    {"r_ne", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Holder, r_ne), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Holder__init_r_ne, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"r_pair_eq", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(HolderState, r_pair_eq), sizeof(int32_t),
+    {"r_pair_eq", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Holder, r_pair_eq), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Holder__init_r_pair_eq, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"r_pair_ne", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(HolderState, r_pair_ne), sizeof(int32_t),
+    {"r_pair_ne", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Holder, r_pair_ne), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Holder__init_r_pair_ne, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"r_sorted", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(HolderState, r_sorted), sizeof(int32_t),
+    {"r_sorted", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Holder, r_sorted), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Holder__init_r_sorted, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -351,13 +351,13 @@ static const hot::FieldInfo Holder_fields[] = {
 #endif
 
 static const hot::StateLayout Holder_layout = {
-    "HolderState", sizeof(HolderState), alignof(HolderState), 13, Holder_fields, true,
+    "hot_state_Holder", sizeof(hot_state_Holder), alignof(hot_state_Holder), 13, Holder_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN HolderState* state_of(Holder_Shell* __self)
+HOT_HIDDEN hot_state_Holder* state_of(Holder_Shell* __self)
 {
-    return static_cast<HolderState*>(__self->state);
+    return static_cast<hot_state_Holder*>(__self->state);
 }
 
 
@@ -451,9 +451,9 @@ static void* Holder___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Holder_slots[Holder_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&HolderState::Tick),
-    reinterpret_cast<hot::SlotFn>(&HolderState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&HolderState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Holder::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Holder::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Holder::__fwd_TakeDamage_Af),
 };
 
 hot::ClassRecord Holder_record = {
@@ -579,7 +579,7 @@ static float& Vec2__op_index(Vec2* __self, int32_t i)
 #line 580 "operators_struct.hot.cpp"
 
 #line 47 "operators_struct.hot"
-void HolderState::Tick(float dt)
+void hot_state_Holder::Tick(float dt)
 #line 47 "operators_struct.hot"
 {
 #line 47 "operators_struct.hot"

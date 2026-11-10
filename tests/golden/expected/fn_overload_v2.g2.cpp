@@ -165,7 +165,7 @@ struct FnOvBase_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<FnOv
 };
 
 // ---------------------------------------------------------------- state
-struct FnOvBaseState {
+struct hot_state_FnOvBase {
     hot::ShellBase* __hot_owner;
 
     int32_t Pick__ov_int32_Ut(int32_t x);
@@ -207,20 +207,20 @@ struct FnOvBaseState {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(FnOvBaseState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_FnOvBase, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo* const FnOvBase_fields = nullptr;
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
 
 static const hot::StateLayout FnOvBase_layout = {
-    "FnOvBaseState", sizeof(FnOvBaseState), alignof(FnOvBaseState), 0, FnOvBase_fields, true,
+    "hot_state_FnOvBase", sizeof(hot_state_FnOvBase), alignof(hot_state_FnOvBase), 0, FnOvBase_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN FnOvBaseState* state_of(FnOvBase_Shell* __self)
+HOT_HIDDEN hot_state_FnOvBase* state_of(FnOvBase_Shell* __self)
 {
-    return static_cast<FnOvBaseState*>(__self->state);
+    return static_cast<hot_state_FnOvBase*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t FnOvBase__Pick__ov_int32_Ut(FnOvBase_Shell* __self, int32_t x);
@@ -341,17 +341,17 @@ template <int = 0>
 
 [[maybe_unused]] HOT_HIDDEN static void FnOvBase__base_Tick(Actor* a, float a0)
 {
-    return state_of(static_cast<FnOvBase_Shell*>(a))->FnOvBaseState::__fwd_Tick(a0);
+    return state_of(static_cast<FnOvBase_Shell*>(a))->hot_state_FnOvBase::__fwd_Tick(a0);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void FnOvBase__base_TakeDamage(Actor* a, float a0)
 {
-    return state_of(static_cast<FnOvBase_Shell*>(a))->FnOvBaseState::__fwd_TakeDamage_f(a0);
+    return state_of(static_cast<FnOvBase_Shell*>(a))->hot_state_FnOvBase::__fwd_TakeDamage_f(a0);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void FnOvBase__base_TakeDamage(Actor* a, Actor& a0, float a1)
 {
-    return state_of(static_cast<FnOvBase_Shell*>(a))->FnOvBaseState::__fwd_TakeDamage_Af(a0, a1);
+    return state_of(static_cast<FnOvBase_Shell*>(a))->hot_state_FnOvBase::__fwd_TakeDamage_Af(a0, a1);
 }
 
 static void* FnOvBase___native__thunk(hot::ShellCore* __s)
@@ -361,11 +361,11 @@ static void* FnOvBase___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn FnOvBase_slots[FnOvBase_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&FnOvBaseState::__fwd_Tick),
-    reinterpret_cast<hot::SlotFn>(&FnOvBaseState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&FnOvBaseState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&FnOvBaseState::Pick__ov_int32_Ut),
-    reinterpret_cast<hot::SlotFn>(&FnOvBaseState::Pick__ov_std_Sstring),
+    reinterpret_cast<hot::SlotFn>(&hot_state_FnOvBase::__fwd_Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_FnOvBase::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_FnOvBase::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_FnOvBase::Pick__ov_int32_Ut),
+    reinterpret_cast<hot::SlotFn>(&hot_state_FnOvBase::Pick__ov_std_Sstring),
 };
 
 hot::ClassRecord FnOvBase_record = {
@@ -439,7 +439,7 @@ struct FnOvMade_Shell final : hot::PlainObject, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct FnOvMadeState {
+struct hot_state_FnOvMade {
     hot::ShellBase* __hot_owner;
     int32_t seed;
 
@@ -456,9 +456,9 @@ static void FnOvMade__init_seed(void*, void* f) { using T = int32_t; new (f) T(0
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(FnOvMadeState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_FnOvMade, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo FnOvMade_fields[] = {
-    {"seed", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(FnOvMadeState, seed), sizeof(int32_t),
+    {"seed", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_FnOvMade, seed), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), FnOvMade__init_seed, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -466,13 +466,13 @@ static const hot::FieldInfo FnOvMade_fields[] = {
 #endif
 
 static const hot::StateLayout FnOvMade_layout = {
-    "FnOvMadeState", sizeof(FnOvMadeState), alignof(FnOvMadeState), 1, FnOvMade_fields, true,
+    "hot_state_FnOvMade", sizeof(hot_state_FnOvMade), alignof(hot_state_FnOvMade), 1, FnOvMade_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN FnOvMadeState* state_of(FnOvMade_Shell* __self)
+HOT_HIDDEN hot_state_FnOvMade* state_of(FnOvMade_Shell* __self)
 {
-    return static_cast<FnOvMadeState*>(__self->state);
+    return static_cast<hot_state_FnOvMade*>(__self->state);
 }
 
 
@@ -921,7 +921,7 @@ struct FnOv_Shell final : FnOvBase_Shell {
 };
 
 // ---------------------------------------------------------------- state
-struct FnOvState : FnOvBaseState {
+struct hot_state_FnOv : hot_state_FnOvBase {
     int32_t ticks;
     int32_t stat;
     int32_t free;
@@ -957,19 +957,19 @@ static void FnOv__init_made(void*, void* f) { using T = int32_t; new (f) T(0); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(FnOvState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_FnOv, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo FnOv_fields[] = {
-    {"ticks", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(FnOvState, ticks), sizeof(int32_t),
+    {"ticks", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_FnOv, ticks), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), FnOv__init_ticks, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"stat", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(FnOvState, stat), sizeof(int32_t),
+    {"stat", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_FnOv, stat), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), FnOv__init_stat, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"free", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(FnOvState, free), sizeof(int32_t),
+    {"free", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_FnOv, free), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), FnOv__init_free, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"strct", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(FnOvState, strct), sizeof(int32_t),
+    {"strct", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_FnOv, strct), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), FnOv__init_strct, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"based", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(FnOvState, based), sizeof(int32_t),
+    {"based", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_FnOv, based), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), FnOv__init_based, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"made", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(FnOvState, made), sizeof(int32_t),
+    {"made", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_FnOv, made), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), FnOv__init_made, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -977,13 +977,13 @@ static const hot::FieldInfo FnOv_fields[] = {
 #endif
 
 static const hot::StateLayout FnOv_layout = {
-    "FnOvState", sizeof(FnOvState), alignof(FnOvState), 6, FnOv_fields, true,
+    "hot_state_FnOv", sizeof(hot_state_FnOv), alignof(hot_state_FnOv), 6, FnOv_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN FnOvState* state_of(FnOv_Shell* __self)
+HOT_HIDDEN hot_state_FnOv* state_of(FnOv_Shell* __self)
 {
-    return static_cast<FnOvState*>(__self->state);
+    return static_cast<hot_state_FnOv*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t FnOv__Pick__ov_int32_Ut(FnOv_Shell* __self, int32_t x);
@@ -1085,11 +1085,11 @@ static void* FnOv___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn FnOv_slots[FnOv_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&FnOvState::Tick),
-    reinterpret_cast<hot::SlotFn>(&FnOvBaseState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&FnOvBaseState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&FnOvState::Pick__ov_int32_Ut),
-    reinterpret_cast<hot::SlotFn>(&FnOvState::Pick__ov_std_Sstring),
+    reinterpret_cast<hot::SlotFn>(&hot_state_FnOv::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_FnOvBase::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_FnOvBase::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_FnOv::Pick__ov_int32_Ut),
+    reinterpret_cast<hot::SlotFn>(&hot_state_FnOv::Pick__ov_std_Sstring),
 };
 
 hot::ClassRecord FnOv_record = {
@@ -1207,7 +1207,7 @@ static int32_t Pt__Add(Pt* __self, int32_t a, int32_t b)
 }
 #line 1209 "fn_overload_v2.hot.cpp"
 #line 38 "fn_overload_v2.hot"
-int32_t FnOvBaseState::Pick__ov_int32_Ut(int32_t x)
+int32_t hot_state_FnOvBase::Pick__ov_int32_Ut(int32_t x)
 #line 38 "fn_overload_v2.hot"
 {
 #line 38 "fn_overload_v2.hot"
@@ -1242,7 +1242,7 @@ int32_t FnOvBaseState::Pick__ov_int32_Ut(int32_t x)
 }
 #line 1244 "fn_overload_v2.hot.cpp"
 #line 42 "fn_overload_v2.hot"
-int32_t FnOvBaseState::Pick__ov_std_Sstring(hot::In<std::string> s)
+int32_t hot_state_FnOvBase::Pick__ov_std_Sstring(hot::In<std::string> s)
 #line 42 "fn_overload_v2.hot"
 {
 #line 42 "fn_overload_v2.hot"
@@ -1277,7 +1277,7 @@ int32_t FnOvBaseState::Pick__ov_std_Sstring(hot::In<std::string> s)
 }
 #line 1279 "fn_overload_v2.hot.cpp"
 #line 50 "fn_overload_v2.hot"
-void FnOvMadeState::ctor(int32_t s)
+void hot_state_FnOvMade::ctor(int32_t s)
 #line 50 "fn_overload_v2.hot"
 {
 #line 50 "fn_overload_v2.hot"
@@ -1312,7 +1312,7 @@ void FnOvMadeState::ctor(int32_t s)
 }
 #line 1314 "fn_overload_v2.hot.cpp"
 #line 54 "fn_overload_v2.hot"
-void FnOvMadeState::ctor(hot::In<std::string> s)
+void hot_state_FnOvMade::ctor(hot::In<std::string> s)
 #line 54 "fn_overload_v2.hot"
 {
 #line 54 "fn_overload_v2.hot"
@@ -1347,7 +1347,7 @@ void FnOvMadeState::ctor(hot::In<std::string> s)
 }
 #line 1349 "fn_overload_v2.hot.cpp"
 #line 58 "fn_overload_v2.hot"
-void FnOvMadeState::ctor(int32_t a, int32_t b)
+void hot_state_FnOvMade::ctor(int32_t a, int32_t b)
 #line 58 "fn_overload_v2.hot"
 {
 #line 58 "fn_overload_v2.hot"
@@ -1382,7 +1382,7 @@ void FnOvMadeState::ctor(int32_t a, int32_t b)
 }
 #line 1384 "fn_overload_v2.hot.cpp"
 #line 83 "fn_overload_v2.hot"
-int32_t FnOvState::Pick__ov_int32_Ut(int32_t x)
+int32_t hot_state_FnOv::Pick__ov_int32_Ut(int32_t x)
 #line 83 "fn_overload_v2.hot"
 {
 #line 83 "fn_overload_v2.hot"
@@ -1417,7 +1417,7 @@ int32_t FnOvState::Pick__ov_int32_Ut(int32_t x)
 }
 #line 1419 "fn_overload_v2.hot.cpp"
 #line 87 "fn_overload_v2.hot"
-int32_t FnOvState::Pick__ov_std_Sstring(hot::In<std::string> s)
+int32_t hot_state_FnOv::Pick__ov_std_Sstring(hot::In<std::string> s)
 #line 87 "fn_overload_v2.hot"
 {
 #line 87 "fn_overload_v2.hot"
@@ -1443,7 +1443,7 @@ int32_t FnOvState::Pick__ov_std_Sstring(hot::In<std::string> s)
 #line 1444 "fn_overload_v2.hot.cpp"
 
 #line 91 "fn_overload_v2.hot"
-void FnOvState::Tick(float dt)
+void hot_state_FnOv::Tick(float dt)
 #line 91 "fn_overload_v2.hot"
 {
 #line 91 "fn_overload_v2.hot"

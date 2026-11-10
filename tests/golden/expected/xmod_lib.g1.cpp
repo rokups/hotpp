@@ -140,7 +140,7 @@ struct Box_Shell final : hot::PlainObject, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct BoxState {
+struct hot_state_Box {
     hot::ShellBase* __hot_owner;
     int32_t size;
     Pt corner;
@@ -163,11 +163,11 @@ static void Box__init_corner(void*, void* f) { using T = Pt; new (f) T(); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(BoxState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Box, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Box_fields[] = {
-    {"size", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(BoxState, size), sizeof(int32_t),
+    {"size", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Box, size), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Box__init_size, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"corner", nullptr, typeid(hot::typekey_t<Pt>).name(), offsetof(BoxState, corner), sizeof(Pt),
+    {"corner", nullptr, typeid(hot::typekey_t<Pt>).name(), offsetof(hot_state_Box, corner), sizeof(Pt),
      alignof(Pt), hot::value_field_flags<Pt>(), Box__init_corner, hot::move_field<Pt>, hot::field_destroyer<Pt>(), nullptr, nullptr, &Pt_layout, hot::field_copy<Pt>()},
 };
 #if defined(__clang__)
@@ -175,13 +175,13 @@ static const hot::FieldInfo Box_fields[] = {
 #endif
 
 static const hot::StateLayout Box_layout = {
-    "BoxState", sizeof(BoxState), alignof(BoxState), 2, Box_fields, true,
+    "hot_state_Box", sizeof(hot_state_Box), alignof(hot_state_Box), 2, Box_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN BoxState* state_of(Box_Shell* __self)
+HOT_HIDDEN hot_state_Box* state_of(Box_Shell* __self)
 {
-    return static_cast<BoxState*>(__self->state);
+    return static_cast<hot_state_Box*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Box__area(Box_Shell* __self);
@@ -466,9 +466,9 @@ static void* Box___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Box_slots[Box_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&BoxState::area),
-    reinterpret_cast<hot::SlotFn>(&BoxState::grow),
-    reinterpret_cast<hot::SlotFn>(&BoxState::get_Doubled),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Box::area),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Box::grow),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Box::get_Doubled),
 };
 
 hot::ClassRecord Box_record = {
@@ -554,7 +554,7 @@ static const hot::CtorEntry Box__constructors[] = {
 }
 #line 556 "xmod_lib.hot.cpp"
 #line 22 "xmod_lib.hot"
-void BoxState::ctor()
+void hot_state_Box::ctor()
 #line 22 "xmod_lib.hot"
 {
 #line 22 "xmod_lib.hot"
@@ -587,7 +587,7 @@ void BoxState::ctor()
 }
 #line 589 "xmod_lib.hot.cpp"
 #line 23 "xmod_lib.hot"
-void BoxState::ctor(int32_t s)
+void hot_state_Box::ctor(int32_t s)
 #line 23 "xmod_lib.hot"
 {
 #line 23 "xmod_lib.hot"
@@ -622,7 +622,7 @@ void BoxState::ctor(int32_t s)
 }
 #line 624 "xmod_lib.hot.cpp"
 #line 31 "xmod_lib.hot"
-int32_t BoxState::area()
+int32_t hot_state_Box::area()
 #line 31 "xmod_lib.hot"
 {
 #line 31 "xmod_lib.hot"
@@ -657,7 +657,7 @@ int32_t BoxState::area()
 }
 #line 659 "xmod_lib.hot.cpp"
 #line 35 "xmod_lib.hot"
-void BoxState::grow(int32_t const by)
+void hot_state_Box::grow(int32_t const by)
 #line 35 "xmod_lib.hot"
 {
 #line 35 "xmod_lib.hot"
@@ -692,7 +692,7 @@ void BoxState::grow(int32_t const by)
 }
 #line 694 "xmod_lib.hot.cpp"
 #line 25 "xmod_lib.hot"
-int32_t BoxState::get_Doubled()
+int32_t hot_state_Box::get_Doubled()
 #line 25 "xmod_lib.hot"
 {
 #line 25 "xmod_lib.hot"

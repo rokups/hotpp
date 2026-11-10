@@ -103,7 +103,7 @@ struct Grid_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct GridState {
+struct hot_state_Grid {
     hot::ShellBase* __hot_owner;
     hostns2::Fixed<int32_t, 4> cells;
     hostns2::Ring<int32_t> ring;
@@ -146,13 +146,13 @@ static void Grid__init_plain(void*, void* f) { using T = hostns2::Plain; new (f)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(GridState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Grid, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Grid_fields[] = {
-    {"cells", nullptr, typeid(hot::typekey_t<hostns2::Fixed<int32_t, 4>>).name(), offsetof(GridState, cells), sizeof(hostns2::Fixed<int32_t, 4>),
+    {"cells", nullptr, typeid(hot::typekey_t<hostns2::Fixed<int32_t, 4>>).name(), offsetof(hot_state_Grid, cells), sizeof(hostns2::Fixed<int32_t, 4>),
      alignof(hostns2::Fixed<int32_t, 4>), hot::field_flags<hostns2::Fixed<int32_t, 4>>(), Grid__init_cells, hot::move_field<hostns2::Fixed<int32_t, 4>>, hot::field_destroyer<hostns2::Fixed<int32_t, 4>>(), nullptr, nullptr, nullptr, hot::field_copy<hostns2::Fixed<int32_t, 4>>()},
-    {"ring", nullptr, typeid(hot::typekey_t<hostns2::Ring<int32_t>>).name(), offsetof(GridState, ring), sizeof(hostns2::Ring<int32_t>),
+    {"ring", nullptr, typeid(hot::typekey_t<hostns2::Ring<int32_t>>).name(), offsetof(hot_state_Grid, ring), sizeof(hostns2::Ring<int32_t>),
      alignof(hostns2::Ring<int32_t>), hot::field_flags<hostns2::Ring<int32_t>>(), Grid__init_ring, hot::move_field<hostns2::Ring<int32_t>>, hot::field_destroyer<hostns2::Ring<int32_t>>(), nullptr, nullptr, nullptr, hot::field_copy<hostns2::Ring<int32_t>>()},
-    {"plain", nullptr, typeid(hot::typekey_t<hostns2::Plain>).name(), offsetof(GridState, plain), sizeof(hostns2::Plain),
+    {"plain", nullptr, typeid(hot::typekey_t<hostns2::Plain>).name(), offsetof(hot_state_Grid, plain), sizeof(hostns2::Plain),
      alignof(hostns2::Plain), hot::field_flags<hostns2::Plain>(), Grid__init_plain, hot::move_field<hostns2::Plain>, hot::field_destroyer<hostns2::Plain>(), nullptr, nullptr, nullptr, hot::field_copy<hostns2::Plain>()},
 };
 #if defined(__clang__)
@@ -160,13 +160,13 @@ static const hot::FieldInfo Grid_fields[] = {
 #endif
 
 static const hot::StateLayout Grid_layout = {
-    "GridState", sizeof(GridState), alignof(GridState), 3, Grid_fields, true,
+    "hot_state_Grid", sizeof(hot_state_Grid), alignof(hot_state_Grid), 3, Grid_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN GridState* state_of(Grid_Shell* __self)
+HOT_HIDDEN hot_state_Grid* state_of(Grid_Shell* __self)
 {
-    return static_cast<GridState*>(__self->state);
+    return static_cast<hot_state_Grid*>(__self->state);
 }
 
 
@@ -260,9 +260,9 @@ static void* Grid___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Grid_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&GridState::Tick),
-    reinterpret_cast<hot::SlotFn>(&GridState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&GridState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Grid::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Grid::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Grid::__fwd_TakeDamage_Af),
 };
 
 hot::ClassRecord Grid_record = {
@@ -302,7 +302,7 @@ static const hot::CtorEntry Grid__constructors[] = {
 
 // ---------------------------------------------------------------- function bodies
 #line 16 "checked_index_v1.hot"
-void GridState::Tick(float dt)
+void hot_state_Grid::Tick(float dt)
 #line 16 "checked_index_v1.hot"
 {
 #line 16 "checked_index_v1.hot"

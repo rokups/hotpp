@@ -45,6 +45,12 @@ void check_class(const ast::ClassDef& cd, const TypeModel& types, const LineMap&
 
 // The name of the synthetic struct that holds the module variables.
 inline constexpr const char* kModuleClassName = "HotModule";
+// The C++ name of the state struct of a script class: "Player" gives "hot_state_Player".
+// A script class name cannot start with "hot_", so this name never is the name of a script class.
+inline std::string state_struct_name(const std::string& cls)
+{
+    return "hot_state_" + cls;
+}
 
 // Sets the flags of the box uses. A bare script class is a box (hot::Value<C>): a field, a
 // parameter, a return type or a local of that type gets the flag "value". "$C" is a handle and gets

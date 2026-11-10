@@ -191,7 +191,7 @@ struct Vec_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct VecState {
+struct hot_state_Vec {
     hot::ShellBase* __hot_owner;
     int n;
 
@@ -244,9 +244,9 @@ static void Vec__init_n(void*, void* f) { using T = int; new (f) T(0); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(VecState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Vec, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Vec_fields[] = {
-    {"n", nullptr, hot::type_key<int>(), offsetof(VecState, n), sizeof(int),
+    {"n", nullptr, hot::type_key<int>(), offsetof(hot_state_Vec, n), sizeof(int),
      alignof(int), hot::field_flags<int>(), Vec__init_n, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
@@ -254,13 +254,13 @@ static const hot::FieldInfo Vec_fields[] = {
 #endif
 
 static const hot::StateLayout Vec_layout = {
-    "VecState", sizeof(VecState), alignof(VecState), 1, Vec_fields, true,
+    "hot_state_Vec", sizeof(hot_state_Vec), alignof(hot_state_Vec), 1, Vec_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN VecState* state_of(Vec_Shell* __self)
+HOT_HIDDEN hot_state_Vec* state_of(Vec_Shell* __self)
 {
-    return static_cast<VecState*>(__self->state);
+    return static_cast<hot_state_Vec*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static Vec & Vec__op_add_assign(Vec_Shell* __self, int v);
@@ -515,17 +515,17 @@ static void* Vec___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Vec_slots[Vec_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&VecState::__fwd_Tick),
-    reinterpret_cast<hot::SlotFn>(&VecState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&VecState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&VecState::op_add_assign),
-    reinterpret_cast<hot::SlotFn>(&VecState::op_eq),
-    reinterpret_cast<hot::SlotFn>(&VecState::op_ne),
-    reinterpret_cast<hot::SlotFn>(&VecState::op_lt),
-    reinterpret_cast<hot::SlotFn>(&VecState::op_call),
-    reinterpret_cast<hot::SlotFn>(&VecState::op_index),
-    reinterpret_cast<hot::SlotFn>(&VecState::op_neg),
-    reinterpret_cast<hot::SlotFn>(&VecState::op_sub),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Vec::__fwd_Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Vec::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Vec::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Vec::op_add_assign),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Vec::op_eq),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Vec::op_ne),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Vec::op_lt),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Vec::op_call),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Vec::op_index),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Vec::op_neg),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Vec::op_sub),
 };
 
 hot::ClassRecord Vec_record = {
@@ -689,7 +689,7 @@ struct Driver_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct DriverState {
+struct hot_state_Driver {
     hot::ShellBase* __hot_owner;
 
     void ctor();
@@ -722,20 +722,20 @@ struct DriverState {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(DriverState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Driver, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo* const Driver_fields = nullptr;
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
 
 static const hot::StateLayout Driver_layout = {
-    "DriverState", sizeof(DriverState), alignof(DriverState), 0, Driver_fields, true,
+    "hot_state_Driver", sizeof(hot_state_Driver), alignof(hot_state_Driver), 0, Driver_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN DriverState* state_of(Driver_Shell* __self)
+HOT_HIDDEN hot_state_Driver* state_of(Driver_Shell* __self)
 {
-    return static_cast<DriverState*>(__self->state);
+    return static_cast<hot_state_Driver*>(__self->state);
 }
 
 
@@ -885,9 +885,9 @@ static void* Driver___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Driver_slots[Driver_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&DriverState::Tick),
-    reinterpret_cast<hot::SlotFn>(&DriverState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&DriverState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Driver::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Driver::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Driver::__fwd_TakeDamage_Af),
 };
 
 hot::ClassRecord Driver_record = {
@@ -954,7 +954,7 @@ static const hot::CtorEntry Driver__constructors[] = {
 }
 #line 956 "cpp_operators_v1.cpp.cpp"
 #line 10 "cpp_operators_v1.cpp"
-void VecState::ctor()
+void hot_state_Vec::ctor()
 #line 10 "cpp_operators_v1.cpp"
 {
 #line 10 "cpp_operators_v1.cpp"
@@ -989,7 +989,7 @@ void VecState::ctor()
 }
 #line 991 "cpp_operators_v1.cpp.cpp"
 #line 12 "cpp_operators_v1.cpp"
-Vec & VecState::op_add_assign(int v)
+Vec & hot_state_Vec::op_add_assign(int v)
 #line 12 "cpp_operators_v1.cpp"
 {
 #line 12 "cpp_operators_v1.cpp"
@@ -1027,7 +1027,7 @@ Vec & VecState::op_add_assign(int v)
 }
 #line 1029 "cpp_operators_v1.cpp.cpp"
 #line 17 "cpp_operators_v1.cpp"
-bool VecState::op_eq(const Vec & o)
+bool hot_state_Vec::op_eq(const Vec & o)
 #line 17 "cpp_operators_v1.cpp"
 {
 #line 17 "cpp_operators_v1.cpp"
@@ -1062,7 +1062,7 @@ bool VecState::op_eq(const Vec & o)
 }
 #line 1064 "cpp_operators_v1.cpp.cpp"
 #line 18 "cpp_operators_v1.cpp"
-bool VecState::op_ne(const Vec & o)
+bool hot_state_Vec::op_ne(const Vec & o)
 #line 18 "cpp_operators_v1.cpp"
 {
 #line 18 "cpp_operators_v1.cpp"
@@ -1097,7 +1097,7 @@ bool VecState::op_ne(const Vec & o)
 }
 #line 1099 "cpp_operators_v1.cpp.cpp"
 #line 19 "cpp_operators_v1.cpp"
-bool VecState::op_lt(const Vec & o)
+bool hot_state_Vec::op_lt(const Vec & o)
 #line 19 "cpp_operators_v1.cpp"
 {
 #line 19 "cpp_operators_v1.cpp"
@@ -1132,7 +1132,7 @@ bool VecState::op_lt(const Vec & o)
 }
 #line 1134 "cpp_operators_v1.cpp.cpp"
 #line 20 "cpp_operators_v1.cpp"
-int VecState::op_call(int k)
+int hot_state_Vec::op_call(int k)
 #line 20 "cpp_operators_v1.cpp"
 {
 #line 20 "cpp_operators_v1.cpp"
@@ -1167,7 +1167,7 @@ int VecState::op_call(int k)
 }
 #line 1169 "cpp_operators_v1.cpp.cpp"
 #line 21 "cpp_operators_v1.cpp"
-int VecState::op_index(int i)
+int hot_state_Vec::op_index(int i)
 #line 21 "cpp_operators_v1.cpp"
 {
 #line 21 "cpp_operators_v1.cpp"
@@ -1202,7 +1202,7 @@ int VecState::op_index(int i)
 }
 #line 1204 "cpp_operators_v1.cpp.cpp"
 #line 22 "cpp_operators_v1.cpp"
-int VecState::op_neg()
+int hot_state_Vec::op_neg()
 #line 22 "cpp_operators_v1.cpp"
 {
 #line 22 "cpp_operators_v1.cpp"
@@ -1237,7 +1237,7 @@ int VecState::op_neg()
 }
 #line 1239 "cpp_operators_v1.cpp.cpp"
 #line 23 "cpp_operators_v1.cpp"
-int VecState::op_sub(const Vec & o)
+int hot_state_Vec::op_sub(const Vec & o)
 #line 23 "cpp_operators_v1.cpp"
 {
 #line 23 "cpp_operators_v1.cpp"
@@ -1272,7 +1272,7 @@ int VecState::op_sub(const Vec & o)
 }
 #line 1274 "cpp_operators_v1.cpp.cpp"
 #line 35 "cpp_operators_v1.cpp"
-void DriverState::ctor()
+void hot_state_Driver::ctor()
 #line 35 "cpp_operators_v1.cpp"
 {
 #line 35 "cpp_operators_v1.cpp"
@@ -1307,7 +1307,7 @@ void DriverState::ctor()
 }
 #line 1309 "cpp_operators_v1.cpp.cpp"
 #line 37 "cpp_operators_v1.cpp"
-void DriverState::dtor()
+void hot_state_Driver::dtor()
 #line 37 "cpp_operators_v1.cpp"
 {
 #line 37 "cpp_operators_v1.cpp"
@@ -1336,7 +1336,7 @@ void DriverState::dtor()
 #line 1337 "cpp_operators_v1.cpp.cpp"
 
 #line 45 "cpp_operators_v1.cpp"
-void DriverState::Tick(float dt)
+void hot_state_Driver::Tick(float dt)
 #line 45 "cpp_operators_v1.cpp"
 {
 #line 45 "cpp_operators_v1.cpp"

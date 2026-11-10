@@ -104,7 +104,7 @@ struct Counter_G_int_Shell final : hot::PlainObject, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct Counter_G_intState {
+struct hot_state_Counter_G_int {
     hot::ShellBase* __hot_owner;
     int32_t total;
 
@@ -120,9 +120,9 @@ static void Counter_G_int__init_total(void*, void* f) { using T = int32_t; new (
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(Counter_G_intState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Counter_G_int, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Counter_G_int_fields[] = {
-    {"total", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(Counter_G_intState, total), sizeof(int32_t),
+    {"total", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Counter_G_int, total), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Counter_G_int__init_total, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -130,13 +130,13 @@ static const hot::FieldInfo Counter_G_int_fields[] = {
 #endif
 
 static const hot::StateLayout Counter_G_int_layout = {
-    "Counter_G_intState", sizeof(Counter_G_intState), alignof(Counter_G_intState), 1, Counter_G_int_fields, true,
+    "hot_state_Counter_G_int", sizeof(hot_state_Counter_G_int), alignof(hot_state_Counter_G_int), 1, Counter_G_int_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN Counter_G_intState* state_of(Counter_G_int_Shell* __self)
+HOT_HIDDEN hot_state_Counter_G_int* state_of(Counter_G_int_Shell* __self)
 {
-    return static_cast<Counter_G_intState*>(__self->state);
+    return static_cast<hot_state_Counter_G_int*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void Counter_G_int__Add(Counter_G_int_Shell* __self, int32_t v);
@@ -268,8 +268,8 @@ static void* Counter_G_int___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Counter_G_int_slots[Counter_G_int_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&Counter_G_intState::Add),
-    reinterpret_cast<hot::SlotFn>(&Counter_G_intState::Get),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Counter_G_int::Add),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Counter_G_int::Get),
 };
 
 hot::ClassRecord Counter_G_int_record = {
@@ -385,7 +385,7 @@ struct Keeper_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct KeeperState {
+struct hot_state_Keeper {
     hot::ShellBase* __hot_owner;
     std::shared_ptr<Counter_G_int> ints;
     int32_t got;
@@ -432,15 +432,15 @@ static void Keeper__init_twice(void*, void* f) { using T = int32_t; new (f) T(0)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(KeeperState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Keeper, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Keeper_fields[] = {
-    {"ints", nullptr, typeid(hot::typekey_t<std::shared_ptr<Counter_G_int>>).name(), offsetof(KeeperState, ints), sizeof(std::shared_ptr<Counter_G_int>),
+    {"ints", nullptr, typeid(hot::typekey_t<std::shared_ptr<Counter_G_int>>).name(), offsetof(hot_state_Keeper, ints), sizeof(std::shared_ptr<Counter_G_int>),
      alignof(std::shared_ptr<Counter_G_int>), hot::field_flags<std::shared_ptr<Counter_G_int>>(), Keeper__init_ints, hot::move_field<std::shared_ptr<Counter_G_int>>, hot::field_destroyer<std::shared_ptr<Counter_G_int>>(), nullptr, nullptr, nullptr, hot::field_copy<std::shared_ptr<Counter_G_int>>()},
-    {"got", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(KeeperState, got), sizeof(int32_t),
+    {"got", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Keeper, got), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Keeper__init_got, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"pair", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(KeeperState, pair), sizeof(int32_t),
+    {"pair", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Keeper, pair), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Keeper__init_pair, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"twice", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(KeeperState, twice), sizeof(int32_t),
+    {"twice", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Keeper, twice), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Keeper__init_twice, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -448,13 +448,13 @@ static const hot::FieldInfo Keeper_fields[] = {
 #endif
 
 static const hot::StateLayout Keeper_layout = {
-    "KeeperState", sizeof(KeeperState), alignof(KeeperState), 4, Keeper_fields, true,
+    "hot_state_Keeper", sizeof(hot_state_Keeper), alignof(hot_state_Keeper), 4, Keeper_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN KeeperState* state_of(Keeper_Shell* __self)
+HOT_HIDDEN hot_state_Keeper* state_of(Keeper_Shell* __self)
 {
-    return static_cast<KeeperState*>(__self->state);
+    return static_cast<hot_state_Keeper*>(__self->state);
 }
 
 
@@ -548,9 +548,9 @@ static void* Keeper___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Keeper_slots[Keeper_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&KeeperState::Tick),
-    reinterpret_cast<hot::SlotFn>(&KeeperState::__fwd_TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&KeeperState::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Keeper::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Keeper::__fwd_TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Keeper::__fwd_TakeDamage_Af),
 };
 
 hot::ClassRecord Keeper_record = {
@@ -615,7 +615,7 @@ static int32_t Pair_G_int_G_float__First(Pair_G_int_G_float* __self)
 }
 #line 617 "generics_v1.hot.cpp"
 #line 12 "generics_v1.hot"
-void Counter_G_intState::Add(int32_t const v)
+void hot_state_Counter_G_int::Add(int32_t const v)
 #line 12 "generics_v1.hot"
 {
 #line 12 "generics_v1.hot"
@@ -650,7 +650,7 @@ void Counter_G_intState::Add(int32_t const v)
 }
 #line 652 "generics_v1.hot.cpp"
 #line 13 "generics_v1.hot"
-int32_t Counter_G_intState::Get()
+int32_t hot_state_Counter_G_int::Get()
 #line 13 "generics_v1.hot"
 {
 #line 13 "generics_v1.hot"
@@ -676,7 +676,7 @@ int32_t Counter_G_intState::Get()
 #line 677 "generics_v1.hot.cpp"
 
 #line 31 "generics_v1.hot"
-void KeeperState::Tick(float dt)
+void hot_state_Keeper::Tick(float dt)
 #line 31 "generics_v1.hot"
 {
 #line 31 "generics_v1.hot"

@@ -114,7 +114,7 @@ struct Base_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<Base_She
 };
 
 // ---------------------------------------------------------------- state
-struct BaseState {
+struct hot_state_Base {
     hot::ShellBase* __hot_owner;
     float hp;
     int32_t hits;
@@ -160,13 +160,13 @@ static void Base__init_twice(void*, void* f) { using T = int32_t; new (f) T(0); 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(BaseState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Base, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Base_fields[] = {
-    {"hp", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(BaseState, hp), sizeof(float),
+    {"hp", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(hot_state_Base, hp), sizeof(float),
      alignof(float), hot::field_flags<float>(), Base__init_hp, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
-    {"hits", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(BaseState, hits), sizeof(int32_t),
+    {"hits", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Base, hits), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Base__init_hits, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"twice", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(BaseState, twice), sizeof(int32_t),
+    {"twice", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Base, twice), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Base__init_twice, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -174,13 +174,13 @@ static const hot::FieldInfo Base_fields[] = {
 #endif
 
 static const hot::StateLayout Base_layout = {
-    "BaseState", sizeof(BaseState), alignof(BaseState), 3, Base_fields, true,
+    "hot_state_Base", sizeof(hot_state_Base), alignof(hot_state_Base), 3, Base_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN BaseState* state_of(Base_Shell* __self)
+HOT_HIDDEN hot_state_Base* state_of(Base_Shell* __self)
 {
-    return static_cast<BaseState*>(__self->state);
+    return static_cast<hot_state_Base*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Base__Power(Base_Shell* __self);
@@ -277,17 +277,17 @@ template <int = 0>
 
 [[maybe_unused]] HOT_HIDDEN static void Base__base_Tick(Actor* a, float a0)
 {
-    return state_of(static_cast<Base_Shell*>(a))->BaseState::__fwd_Tick(a0);
+    return state_of(static_cast<Base_Shell*>(a))->hot_state_Base::__fwd_Tick(a0);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void Base__base_TakeDamage(Actor* a, float a0)
 {
-    return state_of(static_cast<Base_Shell*>(a))->BaseState::TakeDamage_f(a0);
+    return state_of(static_cast<Base_Shell*>(a))->hot_state_Base::TakeDamage_f(a0);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void Base__base_TakeDamage(Actor* a, Actor& a0, float a1)
 {
-    return state_of(static_cast<Base_Shell*>(a))->BaseState::__fwd_TakeDamage_Af(a0, a1);
+    return state_of(static_cast<Base_Shell*>(a))->hot_state_Base::__fwd_TakeDamage_Af(a0, a1);
 }
 
 // The thunk has the same address in each generation (section 4.11). The
@@ -339,12 +339,12 @@ static void* Base___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Base_slots[Base_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&BaseState::__fwd_Tick),
-    reinterpret_cast<hot::SlotFn>(&BaseState::TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&BaseState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&BaseState::Power),
-    reinterpret_cast<hot::SlotFn>(&BaseState::Twice),
-    reinterpret_cast<hot::SlotFn>(&BaseState::Bump),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Base::__fwd_Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Base::TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Base::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Base::Power),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Base::Twice),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Base::Bump),
 };
 
 hot::ClassRecord Base_record = {
@@ -412,7 +412,7 @@ struct Kid_Shell final : Base_Shell {
 };
 
 // ---------------------------------------------------------------- state
-struct KidState : BaseState {
+struct hot_state_Kid : hot_state_Base {
     int32_t kid_hits;
     float moved;
     int32_t super_power;
@@ -436,19 +436,19 @@ static void Kid__init_super_power(void*, void* f) { using T = int32_t; new (f) T
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(KidState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Kid, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Kid_fields[] = {
-    {"hp", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(KidState, hp), sizeof(float),
+    {"hp", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(hot_state_Kid, hp), sizeof(float),
      alignof(float), hot::field_flags<float>(), Base__init_hp, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
-    {"hits", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(KidState, hits), sizeof(int32_t),
+    {"hits", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Kid, hits), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Base__init_hits, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"twice", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(KidState, twice), sizeof(int32_t),
+    {"twice", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Kid, twice), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Base__init_twice, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"kid_hits", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(KidState, kid_hits), sizeof(int32_t),
+    {"kid_hits", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Kid, kid_hits), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Kid__init_kid_hits, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
-    {"moved", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(KidState, moved), sizeof(float),
+    {"moved", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(hot_state_Kid, moved), sizeof(float),
      alignof(float), hot::field_flags<float>(), Kid__init_moved, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
-    {"super_power", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(KidState, super_power), sizeof(int32_t),
+    {"super_power", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Kid, super_power), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Kid__init_super_power, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -456,13 +456,13 @@ static const hot::FieldInfo Kid_fields[] = {
 #endif
 
 static const hot::StateLayout Kid_layout = {
-    "KidState", sizeof(KidState), alignof(KidState), 6, Kid_fields, true,
+    "hot_state_Kid", sizeof(hot_state_Kid), alignof(hot_state_Kid), 6, Kid_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN KidState* state_of(Kid_Shell* __self)
+HOT_HIDDEN hot_state_Kid* state_of(Kid_Shell* __self)
 {
-    return static_cast<KidState*>(__self->state);
+    return static_cast<hot_state_Kid*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static int32_t Kid__Power(Kid_Shell* __self);
@@ -553,12 +553,12 @@ static void* Kid___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Kid_slots[Kid_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&KidState::Tick),
-    reinterpret_cast<hot::SlotFn>(&KidState::TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&BaseState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&KidState::Power),
-    reinterpret_cast<hot::SlotFn>(&BaseState::Twice),
-    reinterpret_cast<hot::SlotFn>(&BaseState::Bump),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Kid::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Kid::TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Base::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Kid::Power),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Base::Twice),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Base::Bump),
 };
 
 hot::ClassRecord Kid_record = {
@@ -607,7 +607,7 @@ static const hot::CtorEntry Kid__constructors[] = {
 }
 #line 609 "abi_child_v1.hot.cpp"
 #line 12 "abi_child_v1.hot"
-int32_t BaseState::Power()
+int32_t hot_state_Base::Power()
 #line 12 "abi_child_v1.hot"
 {
 #line 12 "abi_child_v1.hot"
@@ -642,7 +642,7 @@ int32_t BaseState::Power()
 }
 #line 644 "abi_child_v1.hot.cpp"
 #line 14 "abi_child_v1.hot"
-int32_t BaseState::Twice()
+int32_t hot_state_Base::Twice()
 #line 14 "abi_child_v1.hot"
 {
 #line 14 "abi_child_v1.hot"
@@ -677,7 +677,7 @@ int32_t BaseState::Twice()
 }
 #line 679 "abi_child_v1.hot.cpp"
 #line 16 "abi_child_v1.hot"
-void BaseState::Bump()
+void hot_state_Base::Bump()
 #line 16 "abi_child_v1.hot"
 {
 #line 16 "abi_child_v1.hot"
@@ -703,7 +703,7 @@ void BaseState::Bump()
 #line 704 "abi_child_v1.hot.cpp"
 
 #line 18 "abi_child_v1.hot"
-void BaseState::TakeDamage_f(float amount)
+void hot_state_Base::TakeDamage_f(float amount)
 #line 18 "abi_child_v1.hot"
 {
 #line 18 "abi_child_v1.hot"
@@ -740,7 +740,7 @@ void BaseState::TakeDamage_f(float amount)
 }
 #line 742 "abi_child_v1.hot.cpp"
 #line 29 "abi_child_v1.hot"
-int32_t KidState::Power()
+int32_t hot_state_Kid::Power()
 #line 29 "abi_child_v1.hot"
 {
 #line 29 "abi_child_v1.hot"
@@ -766,7 +766,7 @@ int32_t KidState::Power()
 #line 767 "abi_child_v1.hot.cpp"
 
 #line 31 "abi_child_v1.hot"
-void KidState::TakeDamage_f(float amount)
+void hot_state_Kid::TakeDamage_f(float amount)
 #line 31 "abi_child_v1.hot"
 {
 #line 31 "abi_child_v1.hot"
@@ -794,7 +794,7 @@ void KidState::TakeDamage_f(float amount)
 #line 795 "abi_child_v1.hot.cpp"
 
 #line 36 "abi_child_v1.hot"
-void KidState::Tick(float dt)
+void hot_state_Kid::Tick(float dt)
 #line 36 "abi_child_v1.hot"
 {
 #line 36 "abi_child_v1.hot"

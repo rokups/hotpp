@@ -5,7 +5,7 @@
 """LLDB formatters for Hot++ (design 4.12, experiment F3).
 
 The translator makes C++ with generated names. These formatters show the script names:
-  - a state block "PlayerState" is shown as "Player". The type name has no generation: the
+  - a state block "hot_state_Player" is shown as "Player". The type name has no generation: the
     summary reads the variable "GEN" of the module of the frame. The hand-written name
     "PlayerState_g2" is also known.
   - a shell "Player_Shell" and a handle to it are shown as "Player"
@@ -24,7 +24,7 @@ import re
 # ---------------------------------------------------------------------------- pure helpers
 
 _SHELL = re.compile(r"^(\w+?)_Shell$")
-_STATE = re.compile(r"^(\w+?)State(?:_g(\d+))?$")
+_STATE = re.compile(r"^(?:hot_state_(\w+)|(\w+?)State_g(\d+))$")
 # "Cls__f", "Cls__f_virt", "Cls__get_P", "Cls__set_P". The class name has no "__".
 _METHOD = re.compile(r"^(\w+?)__(\w+?)(?:_virt)?$")
 _ACCESSOR = re.compile(r"^(get|set)_(\w+)$")
@@ -40,17 +40,17 @@ def class_of_type(type_name):
         return m.group(1)
     m = _STATE.match(name)
     if m:
-        return m.group(1)
+        return m.group(1) or m.group(2)
     return None
 
 
 def generation_of_type(type_name):
     """Return the generation number in a hand-written state block type name, or None.
 
-    A generated name ("PlayerState") has no generation number: then the result is None.
+    A generated name ("hot_state_Player") has no generation number: then the result is None.
     """
     m = _STATE.match(type_name.split("::")[-1])
-    return int(m.group(2)) if m and m.group(2) else None
+    return int(m.group(3)) if m and m.group(3) else None
 
 
 def class_of_handle(type_name):
@@ -164,8 +164,8 @@ def _generation_of(valobj):
 
 
 def state_summary_provider(valobj, internal_dict):  # pragma: no cover
-    # A native type can also end with "State". A state block has the member "__hot_owner". The
-    # synthetic children hide it, so the check reads the raw value.
+    # A state block has the member "__hot_owner". The synthetic children hide it, so the check
+    # reads the raw value.
     raw = valobj.GetNonSyntheticValue()
     if not raw.GetChildMemberWithName(OWNER_MEMBER).IsValid():
         return None
@@ -268,7 +268,7 @@ def __lldb_init_module(debugger, internal_dict):  # pragma: no cover
     module = __name__
     # The regex of lldb has no "\w" (it is not a Python regex): use a character class.
     w = "[A-Za-z0-9_]"
-    state = "^(%s+::)*%s+State(_g[0-9]+)?$" % (w, w)
+    state = "^(%s+::)*(hot_state_%s+|%s+State_g[0-9]+)$" % (w, w, w)
     shell = "^(%s+::)*%s+_Shell$" % (w, w)
     handle = "^(std::(__1::|__cxx11::)?shared_ptr|hot::Intrusive)<(%s+::)*%s+_Shell.*>$" % (w, w)
     add = "type summary add --regex --python-function %s.%%s \"%%s\"" % module

@@ -59,7 +59,7 @@ struct Rig_Shell final : hot::PlainObject, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct RigState {
+struct hot_state_Rig {
     hot::ShellBase* __hot_owner;
     std::shared_ptr<Animator> anim;
     int32_t frames;
@@ -79,11 +79,11 @@ static void Rig__init_frames(void*, void* f) { using T = int32_t; new (f) T(0); 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(RigState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Rig, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Rig_fields[] = {
-    {"anim", nullptr, typeid(hot::typekey_t<std::shared_ptr<Animator>>).name(), offsetof(RigState, anim), sizeof(std::shared_ptr<Animator>),
+    {"anim", nullptr, typeid(hot::typekey_t<std::shared_ptr<Animator>>).name(), offsetof(hot_state_Rig, anim), sizeof(std::shared_ptr<Animator>),
      alignof(std::shared_ptr<Animator>), hot::field_flags<std::shared_ptr<Animator>>(), Rig__init_anim, hot::move_field<std::shared_ptr<Animator>>, hot::field_destroyer<std::shared_ptr<Animator>>(), nullptr, nullptr, nullptr, hot::field_copy<std::shared_ptr<Animator>>()},
-    {"frames", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(RigState, frames), sizeof(int32_t),
+    {"frames", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Rig, frames), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Rig__init_frames, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -91,13 +91,13 @@ static const hot::FieldInfo Rig_fields[] = {
 #endif
 
 static const hot::StateLayout Rig_layout = {
-    "RigState", sizeof(RigState), alignof(RigState), 2, Rig_fields, true,
+    "hot_state_Rig", sizeof(hot_state_Rig), alignof(hot_state_Rig), 2, Rig_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN RigState* state_of(Rig_Shell* __self)
+HOT_HIDDEN hot_state_Rig* state_of(Rig_Shell* __self)
 {
-    return static_cast<RigState*>(__self->state);
+    return static_cast<hot_state_Rig*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void Rig__Step(Rig_Shell* __self);
@@ -229,8 +229,8 @@ static void* Rig___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Rig_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&RigState::Step),
-    reinterpret_cast<hot::SlotFn>(&RigState::Local),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Rig::Step),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Rig::Local),
 };
 
 hot::ClassRecord Rig_record = {
@@ -279,7 +279,7 @@ static const hot::CtorEntry Rig__constructors[] = {
 }
 #line 281 "native_ref_getter_v1.hot.cpp"
 #line 14 "native_ref_getter_v1.hot"
-void RigState::Step()
+void hot_state_Rig::Step()
 #line 14 "native_ref_getter_v1.hot"
 {
 #line 14 "native_ref_getter_v1.hot"
@@ -322,7 +322,7 @@ void RigState::Step()
 }
 #line 324 "native_ref_getter_v1.hot.cpp"
 #line 22 "native_ref_getter_v1.hot"
-void RigState::Local(const std::shared_ptr<Animator>& a)
+void hot_state_Rig::Local(const std::shared_ptr<Animator>& a)
 #line 22 "native_ref_getter_v1.hot"
 {
 #line 22 "native_ref_getter_v1.hot"

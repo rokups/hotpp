@@ -143,7 +143,7 @@ struct Player_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct PlayerState {
+struct hot_state_Player {
     hot::ShellBase* __hot_owner;
     float hp;
     float speed;
@@ -182,19 +182,19 @@ static void Player__init_level(void*, void* f) { using T = int; new (f) T(1); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(PlayerState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Player, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Player_fields[] = {
-    {"hp", nullptr, hot::type_key<float>(), offsetof(PlayerState, hp), sizeof(float),
+    {"hp", nullptr, hot::type_key<float>(), offsetof(hot_state_Player, hp), sizeof(float),
      alignof(float), hot::field_flags<float>(), Player__init_hp, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
-    {"speed", nullptr, hot::type_key<float>(), offsetof(PlayerState, speed), sizeof(float),
+    {"speed", nullptr, hot::type_key<float>(), offsetof(hot_state_Player, speed), sizeof(float),
      alignof(float), hot::field_flags<float>(), Player__init_speed, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
-    {"target", nullptr, hot::type_key<std::string>(), offsetof(PlayerState, target), sizeof(std::string),
+    {"target", nullptr, hot::type_key<std::string>(), offsetof(hot_state_Player, target), sizeof(std::string),
      alignof(std::string), hot::field_flags<std::string>(), Player__init_target, hot::move_field<std::string>, hot::field_destroyer<std::string>(), nullptr, nullptr, nullptr, hot::field_copy<std::string>()},
-    {"p", nullptr, hot::type_key<Point>(), offsetof(PlayerState, p), sizeof(Point),
+    {"p", nullptr, hot::type_key<Point>(), offsetof(hot_state_Player, p), sizeof(Point),
      alignof(Point), hot::field_flags<Point>(), Player__init_p, hot::move_field<Point>, hot::field_destroyer<Point>(), nullptr, nullptr, nullptr, hot::field_copy<Point>()},
-    {"mode", nullptr, hot::type_key<Mode>(), offsetof(PlayerState, mode), sizeof(Mode),
+    {"mode", nullptr, hot::type_key<Mode>(), offsetof(hot_state_Player, mode), sizeof(Mode),
      alignof(Mode), hot::field_flags<Mode>(), Player__init_mode, hot::move_field<Mode>, hot::field_destroyer<Mode>(), nullptr, nullptr, nullptr, hot::field_copy<Mode>()},
-    {"level", nullptr, hot::type_key<int>(), offsetof(PlayerState, level), sizeof(int),
+    {"level", nullptr, hot::type_key<int>(), offsetof(hot_state_Player, level), sizeof(int),
      alignof(int), hot::field_flags<int>(), Player__init_level, hot::move_field<int>, hot::field_destroyer<int>(), nullptr, nullptr, nullptr, hot::field_copy<int>()},
 };
 #if defined(__clang__)
@@ -202,13 +202,13 @@ static const hot::FieldInfo Player_fields[] = {
 #endif
 
 static const hot::StateLayout Player_layout = {
-    "PlayerState", sizeof(PlayerState), alignof(PlayerState), 6, Player_fields, true,
+    "hot_state_Player", sizeof(hot_state_Player), alignof(hot_state_Player), 6, Player_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN PlayerState* state_of(Player_Shell* __self)
+HOT_HIDDEN hot_state_Player* state_of(Player_Shell* __self)
 {
-    return static_cast<PlayerState*>(__self->state);
+    return static_cast<hot_state_Player*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void Player__heal(Player_Shell* __self, float a);
@@ -358,10 +358,10 @@ static void* Player___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Player_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&PlayerState::Tick),
-    reinterpret_cast<hot::SlotFn>(&PlayerState::TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&PlayerState::TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&PlayerState::heal),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Player::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Player::TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Player::TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Player::heal),
 };
 
 hot::ClassRecord Player_record = {
@@ -428,7 +428,7 @@ static const hot::CtorEntry Player__constructors[] = {
 }
 #line 430 "cpp_player_v1.cpp.cpp"
 #line 28 "cpp_player_v1.cpp"
-void PlayerState::ctor()
+void hot_state_Player::ctor()
 #line 28 "cpp_player_v1.cpp"
 {
 #line 28 "cpp_player_v1.cpp"
@@ -454,7 +454,7 @@ void PlayerState::ctor()
 #line 455 "cpp_player_v1.cpp.cpp"
 
 #line 30 "cpp_player_v1.cpp"
-void PlayerState::Tick(float dt)
+void hot_state_Player::Tick(float dt)
 #line 30 "cpp_player_v1.cpp"
 {
 #line 30 "cpp_player_v1.cpp"
@@ -487,7 +487,7 @@ void PlayerState::Tick(float dt)
 #line 488 "cpp_player_v1.cpp.cpp"
 
 #line 40 "cpp_player_v1.cpp"
-void PlayerState::TakeDamage_f(float amount)
+void hot_state_Player::TakeDamage_f(float amount)
 #line 40 "cpp_player_v1.cpp"
 {
 #line 40 "cpp_player_v1.cpp"
@@ -516,7 +516,7 @@ void PlayerState::TakeDamage_f(float amount)
 #line 517 "cpp_player_v1.cpp.cpp"
 
 #line 46 "cpp_player_v1.cpp"
-void PlayerState::TakeDamage_Af(Actor & source, float amount)
+void hot_state_Player::TakeDamage_Af(Actor & source, float amount)
 #line 46 "cpp_player_v1.cpp"
 {
 #line 46 "cpp_player_v1.cpp"
@@ -555,7 +555,7 @@ void PlayerState::TakeDamage_Af(Actor & source, float amount)
 }
 #line 557 "cpp_player_v1.cpp.cpp"
 #line 53 "cpp_player_v1.cpp"
-void PlayerState::heal(float a)
+void hot_state_Player::heal(float a)
 #line 53 "cpp_player_v1.cpp"
 {
 #line 53 "cpp_player_v1.cpp"

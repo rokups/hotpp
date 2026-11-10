@@ -96,7 +96,7 @@ struct Gauge_Shell final : Actor, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct GaugeState {
+struct hot_state_Gauge {
     hot::ShellBase* __hot_owner;
     float shield_raw;
     float __p_Hp;
@@ -142,15 +142,15 @@ static void Gauge__init___p_Level(void*, void* f) { using T = int32_t; new (f) T
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(GaugeState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Gauge, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Gauge_fields[] = {
-    {"shield_raw", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(GaugeState, shield_raw), sizeof(float),
+    {"shield_raw", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(hot_state_Gauge, shield_raw), sizeof(float),
      alignof(float), hot::field_flags<float>(), Gauge__init_shield_raw, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
-    {"__p_Hp", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(GaugeState, __p_Hp), sizeof(float),
+    {"__p_Hp", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(hot_state_Gauge, __p_Hp), sizeof(float),
      alignof(float), hot::field_flags<float>(), Gauge__init___p_Hp, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
-    {"__p_MaxHp", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(GaugeState, __p_MaxHp), sizeof(float),
+    {"__p_MaxHp", nullptr, typeid(hot::typekey_t<float>).name(), offsetof(hot_state_Gauge, __p_MaxHp), sizeof(float),
      alignof(float), hot::field_flags<float>(), Gauge__init___p_MaxHp, hot::move_field<float>, hot::field_destroyer<float>(), nullptr, nullptr, nullptr, hot::field_copy<float>()},
-    {"__p_Level", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(GaugeState, __p_Level), sizeof(int32_t),
+    {"__p_Level", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Gauge, __p_Level), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Gauge__init___p_Level, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -158,13 +158,13 @@ static const hot::FieldInfo Gauge_fields[] = {
 #endif
 
 static const hot::StateLayout Gauge_layout = {
-    "GaugeState", sizeof(GaugeState), alignof(GaugeState), 4, Gauge_fields, true,
+    "hot_state_Gauge", sizeof(hot_state_Gauge), alignof(hot_state_Gauge), 4, Gauge_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN GaugeState* state_of(Gauge_Shell* __self)
+HOT_HIDDEN hot_state_Gauge* state_of(Gauge_Shell* __self)
 {
-    return static_cast<GaugeState*>(__self->state);
+    return static_cast<hot_state_Gauge*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static float Gauge__total(Gauge_Shell* __self);
@@ -378,17 +378,17 @@ static void* Gauge___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Gauge_slots[SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&GaugeState::Tick),
-    reinterpret_cast<hot::SlotFn>(&GaugeState::TakeDamage_f),
-    reinterpret_cast<hot::SlotFn>(&GaugeState::__fwd_TakeDamage_Af),
-    reinterpret_cast<hot::SlotFn>(&GaugeState::total),
-    reinterpret_cast<hot::SlotFn>(&GaugeState::get_Hp),
-    reinterpret_cast<hot::SlotFn>(&GaugeState::set_Hp),
-    reinterpret_cast<hot::SlotFn>(&GaugeState::get_MaxHp),
-    reinterpret_cast<hot::SlotFn>(&GaugeState::get_Level),
-    reinterpret_cast<hot::SlotFn>(&GaugeState::set_Level),
-    reinterpret_cast<hot::SlotFn>(&GaugeState::get_Shield),
-    reinterpret_cast<hot::SlotFn>(&GaugeState::set_Shield),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Gauge::Tick),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Gauge::TakeDamage_f),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Gauge::__fwd_TakeDamage_Af),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Gauge::total),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Gauge::get_Hp),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Gauge::set_Hp),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Gauge::get_MaxHp),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Gauge::get_Level),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Gauge::set_Level),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Gauge::get_Shield),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Gauge::set_Shield),
 };
 
 hot::ClassRecord Gauge_record = {
@@ -428,7 +428,7 @@ static const hot::CtorEntry Gauge__constructors[] = {
 
 // ---------------------------------------------------------------- function bodies
 #line 16 "props_v1.hot"
-void GaugeState::Tick(float dt)
+void hot_state_Gauge::Tick(float dt)
 #line 16 "props_v1.hot"
 {
 #line 16 "props_v1.hot"
@@ -458,7 +458,7 @@ void GaugeState::Tick(float dt)
 #line 459 "props_v1.hot.cpp"
 
 #line 22 "props_v1.hot"
-void GaugeState::TakeDamage_f(float amount)
+void hot_state_Gauge::TakeDamage_f(float amount)
 #line 22 "props_v1.hot"
 {
 #line 22 "props_v1.hot"
@@ -495,7 +495,7 @@ void GaugeState::TakeDamage_f(float amount)
 }
 #line 497 "props_v1.hot.cpp"
 #line 27 "props_v1.hot"
-float GaugeState::total()
+float hot_state_Gauge::total()
 #line 27 "props_v1.hot"
 {
 #line 27 "props_v1.hot"
@@ -530,7 +530,7 @@ float GaugeState::total()
 }
 #line 532 "props_v1.hot.cpp"
 #line 7 "props_v1.hot"
-float GaugeState::get_Hp()
+float hot_state_Gauge::get_Hp()
 #line 7 "props_v1.hot"
 {
 #line 7 "props_v1.hot"
@@ -565,7 +565,7 @@ float GaugeState::get_Hp()
 }
 #line 567 "props_v1.hot.cpp"
 #line 7 "props_v1.hot"
-void GaugeState::set_Hp(float const value)
+void hot_state_Gauge::set_Hp(float const value)
 #line 7 "props_v1.hot"
 {
 #line 7 "props_v1.hot"
@@ -600,7 +600,7 @@ void GaugeState::set_Hp(float const value)
 }
 #line 602 "props_v1.hot.cpp"
 #line 8 "props_v1.hot"
-float GaugeState::get_MaxHp()
+float hot_state_Gauge::get_MaxHp()
 #line 8 "props_v1.hot"
 {
 #line 8 "props_v1.hot"
@@ -635,7 +635,7 @@ float GaugeState::get_MaxHp()
 }
 #line 637 "props_v1.hot.cpp"
 #line 9 "props_v1.hot"
-int32_t GaugeState::get_Level()
+int32_t hot_state_Gauge::get_Level()
 #line 9 "props_v1.hot"
 {
 #line 9 "props_v1.hot"
@@ -670,7 +670,7 @@ int32_t GaugeState::get_Level()
 }
 #line 672 "props_v1.hot.cpp"
 #line 9 "props_v1.hot"
-void GaugeState::set_Level(int32_t const value)
+void hot_state_Gauge::set_Level(int32_t const value)
 #line 9 "props_v1.hot"
 {
 #line 9 "props_v1.hot"
@@ -705,7 +705,7 @@ void GaugeState::set_Level(int32_t const value)
 }
 #line 707 "props_v1.hot.cpp"
 #line 12 "props_v1.hot"
-float GaugeState::get_Shield()
+float hot_state_Gauge::get_Shield()
 #line 12 "props_v1.hot"
 {
 #line 12 "props_v1.hot"
@@ -740,7 +740,7 @@ float GaugeState::get_Shield()
 }
 #line 742 "props_v1.hot.cpp"
 #line 13 "props_v1.hot"
-void GaugeState::set_Shield(float const value)
+void hot_state_Gauge::set_Shield(float const value)
 #line 13 "props_v1.hot"
 {
 #line 13 "props_v1.hot"

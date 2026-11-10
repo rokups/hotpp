@@ -106,7 +106,7 @@ def main():
     expect(r"target\.hot:%d" % line)  # the breakpoint is in the .hot file
     # A state block: the script class name, the fields, the generation. The owner is hidden.
     # The text of the string and of the array comes from lldb: the pattern is loose there.
-    expect(r"\(HeroState\) \*this = Hero \{hp=80, shield=25\.5, title=\"knight\", bag=[^,]+, "
+    expect(r"\(hot_state_Hero\) \*this = Hero \{hp=80, shield=25\.5, title=\"knight\", bag=[^,]+, "
            r"buddy=Mate handle \(use_count=2\), empty=Mate null\} \[gen 1\]")
     # A handle: local and buddy share the object.
     expect(r"local = Mate handle \(use_count=2\)")
@@ -117,7 +117,7 @@ def main():
     # A shell object, one frame up.
     expect(r"\(Hero_Shell \*\) this = 0x[0-9a-f]+ Hero object")
     # The command hot-bt.
-    expect(r"#0 HeroState::Tick\(\) at target\.hot:%d" % line)
+    expect(r"#0 hot_state_Hero::Tick\(\) at target\.hot:%d" % line)
     expect(r"#1 Hero_Shell::Tick\(\) at target\.hot:")
     if "__hot_owner" in out:
         errors.append("__hot_owner is visible")

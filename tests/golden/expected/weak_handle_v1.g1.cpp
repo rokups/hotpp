@@ -104,7 +104,7 @@ struct Node_Shell final : hot::PlainObject, hot::ShellBase {
 };
 
 // ---------------------------------------------------------------- state
-struct NodeState {
+struct hot_state_Node {
     hot::ShellBase* __hot_owner;
     std::shared_ptr<Node> child;
     std::weak_ptr<Node> parent;
@@ -139,15 +139,15 @@ static void Node__init_hp(void*, void* f) { using T = int32_t; new (f) T(5); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
-static_assert(offsetof(NodeState, __hot_owner) == 0, "the owner pointer must be the first member");
+static_assert(offsetof(hot_state_Node, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Node_fields[] = {
-    {"child", nullptr, typeid(hot::typekey_t<std::shared_ptr<Node>>).name(), offsetof(NodeState, child), sizeof(std::shared_ptr<Node>),
+    {"child", nullptr, typeid(hot::typekey_t<std::shared_ptr<Node>>).name(), offsetof(hot_state_Node, child), sizeof(std::shared_ptr<Node>),
      alignof(std::shared_ptr<Node>), hot::field_flags<std::shared_ptr<Node>>(), Node__init_child, hot::move_field<std::shared_ptr<Node>>, hot::field_destroyer<std::shared_ptr<Node>>(), nullptr, nullptr, nullptr, hot::field_copy<std::shared_ptr<Node>>()},
-    {"parent", nullptr, typeid(hot::typekey_t<std::weak_ptr<Node>>).name(), offsetof(NodeState, parent), sizeof(std::weak_ptr<Node>),
+    {"parent", nullptr, typeid(hot::typekey_t<std::weak_ptr<Node>>).name(), offsetof(hot_state_Node, parent), sizeof(std::weak_ptr<Node>),
      alignof(std::weak_ptr<Node>), hot::field_flags<std::weak_ptr<Node>>(), Node__init_parent, hot::move_field<std::weak_ptr<Node>>, hot::field_destroyer<std::weak_ptr<Node>>(), nullptr, nullptr, nullptr, hot::field_copy<std::weak_ptr<Node>>()},
-    {"seen", nullptr, typeid(hot::typekey_t<std::weak_ptr<Weapon>>).name(), offsetof(NodeState, seen), sizeof(std::weak_ptr<Weapon>),
+    {"seen", nullptr, typeid(hot::typekey_t<std::weak_ptr<Weapon>>).name(), offsetof(hot_state_Node, seen), sizeof(std::weak_ptr<Weapon>),
      alignof(std::weak_ptr<Weapon>), hot::field_flags<std::weak_ptr<Weapon>>(), Node__init_seen, hot::move_field<std::weak_ptr<Weapon>>, hot::field_destroyer<std::weak_ptr<Weapon>>(), nullptr, nullptr, nullptr, hot::field_copy<std::weak_ptr<Weapon>>()},
-    {"hp", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(NodeState, hp), sizeof(int32_t),
+    {"hp", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(hot_state_Node, hp), sizeof(int32_t),
      alignof(int32_t), hot::field_flags<int32_t>(), Node__init_hp, hot::move_field<int32_t>, hot::field_destroyer<int32_t>(), nullptr, nullptr, nullptr, hot::field_copy<int32_t>()},
 };
 #if defined(__clang__)
@@ -155,13 +155,13 @@ static const hot::FieldInfo Node_fields[] = {
 #endif
 
 static const hot::StateLayout Node_layout = {
-    "NodeState", sizeof(NodeState), alignof(NodeState), 4, Node_fields, true,
+    "hot_state_Node", sizeof(hot_state_Node), alignof(hot_state_Node), 4, Node_fields, true,
 };
 
 // ------------------------------------------------- generation functions
-HOT_HIDDEN NodeState* state_of(Node_Shell* __self)
+HOT_HIDDEN hot_state_Node* state_of(Node_Shell* __self)
 {
-    return static_cast<NodeState*>(__self->state);
+    return static_cast<hot_state_Node*>(__self->state);
 }
 
 [[maybe_unused]] HOT_HIDDEN static void Node__Adopt(Node_Shell* __self, std::shared_ptr<Node> kid);
@@ -398,15 +398,15 @@ static void* Node___native__thunk(hot::ShellCore* __s)
 
 // ------------------------------------------------------ record and entry
 static const hot::SlotFn Node_slots[Node_SLOT_COUNT] = {
-    reinterpret_cast<hot::SlotFn>(&NodeState::Adopt),
-    reinterpret_cast<hot::SlotFn>(&NodeState::SetParent),
-    reinterpret_cast<hot::SlotFn>(&NodeState::AdoptBySet),
-    reinterpret_cast<hot::SlotFn>(&NodeState::ParentHp),
-    reinterpret_cast<hot::SlotFn>(&NodeState::See),
-    reinterpret_cast<hot::SlotFn>(&NodeState::Watch),
-    reinterpret_cast<hot::SlotFn>(&NodeState::Try),
-    reinterpret_cast<hot::SlotFn>(&NodeState::Racks),
-    reinterpret_cast<hot::SlotFn>(&NodeState::Forget),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Node::Adopt),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Node::SetParent),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Node::AdoptBySet),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Node::ParentHp),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Node::See),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Node::Watch),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Node::Try),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Node::Racks),
+    reinterpret_cast<hot::SlotFn>(&hot_state_Node::Forget),
 };
 
 hot::ClassRecord Node_record = {
@@ -467,7 +467,7 @@ static int32_t Rack__Dmg(Rack* __self)
 }
 #line 469 "weak_handle_v1.hot.cpp"
 #line 22 "weak_handle_v1.hot"
-void NodeState::Adopt(const std::shared_ptr<Node>& __kid)
+void hot_state_Node::Adopt(const std::shared_ptr<Node>& __kid)
 #line 22 "weak_handle_v1.hot"
 {
 #line 22 "weak_handle_v1.hot"
@@ -508,7 +508,7 @@ void NodeState::Adopt(const std::shared_ptr<Node>& __kid)
 }
 #line 510 "weak_handle_v1.hot.cpp"
 #line 29 "weak_handle_v1.hot"
-void NodeState::SetParent(std::weak_ptr<Node> p)
+void hot_state_Node::SetParent(std::weak_ptr<Node> p)
 #line 29 "weak_handle_v1.hot"
 {
 #line 29 "weak_handle_v1.hot"
@@ -543,7 +543,7 @@ void NodeState::SetParent(std::weak_ptr<Node> p)
 }
 #line 545 "weak_handle_v1.hot.cpp"
 #line 31 "weak_handle_v1.hot"
-void NodeState::AdoptBySet(const std::shared_ptr<Node>& __kid)
+void hot_state_Node::AdoptBySet(const std::shared_ptr<Node>& __kid)
 #line 31 "weak_handle_v1.hot"
 {
 #line 31 "weak_handle_v1.hot"
@@ -584,7 +584,7 @@ void NodeState::AdoptBySet(const std::shared_ptr<Node>& __kid)
 }
 #line 586 "weak_handle_v1.hot.cpp"
 #line 37 "weak_handle_v1.hot"
-int32_t NodeState::ParentHp()
+int32_t hot_state_Node::ParentHp()
 #line 37 "weak_handle_v1.hot"
 {
 #line 37 "weak_handle_v1.hot"
@@ -623,7 +623,7 @@ int32_t NodeState::ParentHp()
 }
 #line 625 "weak_handle_v1.hot.cpp"
 #line 43 "weak_handle_v1.hot"
-void NodeState::See(std::weak_ptr<Weapon> w)
+void hot_state_Node::See(std::weak_ptr<Weapon> w)
 #line 43 "weak_handle_v1.hot"
 {
 #line 43 "weak_handle_v1.hot"
@@ -668,7 +668,7 @@ void NodeState::See(std::weak_ptr<Weapon> w)
 }
 #line 670 "weak_handle_v1.hot.cpp"
 #line 52 "weak_handle_v1.hot"
-int32_t NodeState::Watch()
+int32_t hot_state_Node::Watch()
 #line 52 "weak_handle_v1.hot"
 {
 #line 52 "weak_handle_v1.hot"
@@ -705,7 +705,7 @@ int32_t NodeState::Watch()
 }
 #line 707 "weak_handle_v1.hot.cpp"
 #line 58 "weak_handle_v1.hot"
-int32_t NodeState::Try(std::weak_ptr<Weapon> w)
+int32_t hot_state_Node::Try(std::weak_ptr<Weapon> w)
 #line 58 "weak_handle_v1.hot"
 {
 #line 58 "weak_handle_v1.hot"
@@ -740,7 +740,7 @@ int32_t NodeState::Try(std::weak_ptr<Weapon> w)
 }
 #line 742 "weak_handle_v1.hot.cpp"
 #line 60 "weak_handle_v1.hot"
-int32_t NodeState::Racks(const std::shared_ptr<Weapon>& __w)
+int32_t hot_state_Node::Racks(const std::shared_ptr<Weapon>& __w)
 #line 60 "weak_handle_v1.hot"
 {
 #line 60 "weak_handle_v1.hot"
@@ -787,7 +787,7 @@ int32_t NodeState::Racks(const std::shared_ptr<Weapon>& __w)
 }
 #line 789 "weak_handle_v1.hot.cpp"
 #line 69 "weak_handle_v1.hot"
-void NodeState::Forget()
+void hot_state_Node::Forget()
 #line 69 "weak_handle_v1.hot"
 {
 #line 69 "weak_handle_v1.hot"

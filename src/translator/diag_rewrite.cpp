@@ -180,14 +180,13 @@ const char* script_type_name(const std::string& t)
     return it == kTypes.end() ? nullptr : it->second;
 }
 
-// "Player_Shell" -> "Player". "PlayerState" -> "Player" when "Player" is in "classes" (a native
-// type can also end with "State"). "PlayerState_g3" (a hand-written module) -> "Player". Gives
-// false for any other name.
-bool class_of_generated(const std::string& t, std::string& cls, const std::set<std::string>& classes)
+// "Player_Shell" -> "Player". "hot_state_Player" (the state struct) -> "Player". "PlayerState_g3"
+// (a hand-written module) -> "Player". Gives false for any other name.
+bool class_of_generated(const std::string& t, std::string& cls)
 {
-    if (t.size() > 5 && ends_with(t, "State") && classes.count(t.substr(0, t.size() - 5)))
+    if (t.size() > 10 && t.compare(0, 10, "hot_state_") == 0)
     {
-        cls = t.substr(0, t.size() - 5);
+        cls = t.substr(10);
         return true;
     }
     if (t.size() > 6 && ends_with(t, "_Shell"))
@@ -206,15 +205,15 @@ bool class_of_generated(const std::string& t, std::string& cls, const std::set<s
     return false;
 }
 
-// "Player_Shell" -> "Player". "PlayerState" -> "Player". "Player__heal" -> "Player.heal".
-std::string script_name(const std::string& t, const std::set<std::string>& classes)
+// "Player_Shell" -> "Player". "hot_state_Player" -> "Player". "Player__heal" -> "Player.heal".
+std::string script_name(const std::string& t)
 {
     if (const char* s = script_type_name(t))
         return s;
     if (t.empty() || !std::isalpha(static_cast<unsigned char>(t[0])))
         return t;
     std::string cls;
-    if (class_of_generated(t, cls, classes))
+    if (class_of_generated(t, cls))
         return cls;
     // A free function: "hot_fn_F" -> "F". An overload key: "F__ov_int32_Ut" -> "F" (gap G17).
     if (t.rfind("hot_fn_", 0) == 0 && t.size() > 7)
@@ -325,7 +324,7 @@ std::string cpp_script_name(const std::string& t, const std::set<std::string>& c
     if (t.empty() || !std::isalpha(static_cast<unsigned char>(t[0])))
         return t;
     std::string cls;
-    if (class_of_generated(t, cls, classes))
+    if (class_of_generated(t, cls))
         return classes.count(cls) ? cls : t;
     const size_t us = t.find("__");
     if (us == std::string::npos || us == 0 || us + 2 >= t.size())
@@ -380,7 +379,7 @@ std::string rename_generated(std::string s, bool cpp, const std::set<std::string
         if (std::isdigit(c)) // a number or "1st" stays
             out += token;
         else
-            out += cpp ? cpp_script_name(token, classes) : script_name(token, classes);
+            out += cpp ? cpp_script_name(token, classes) : script_name(token);
         i = e;
     }
     if (!cpp)
@@ -573,10 +572,10 @@ std::string rewrite_message(
     if (msg.size() <= kMaxRegexMessage)
     {
         msg = fix_counts(msg, script_function);
-        // A typo in a member of the state struct of a script class: the class must be a script class.
-        static const std::regex state_member(R"(^no member named '([^']+)' in '(\w+)State')");
+        // A typo in a member of the state struct of a script class.
+        static const std::regex state_member(R"(^no member named '([^']+)' in 'hot_state_(\w+)')");
         std::smatch m;
-        if (std::regex_search(msg, m, state_member) && classes.count(m[2].str()))
+        if (std::regex_search(msg, m, state_member))
             return rename_generated(m.prefix().str() + "script class '" + m[2].str() + "' has no member '"
                     + m[1].str() + "'" + m.suffix().str(),
                 false, classes);
