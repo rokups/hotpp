@@ -725,3 +725,35 @@ TEST(ScriptImportTranslation, UnitSymbolsOfOtherUnitNamesDiffer)
 }
 
 } // namespace
+
+// An import holds a class that derives from another class of the same import. The main script
+// derives from a header class and does not use the chain.
+TEST(ScriptImportTranslation, ImportHoldsAClassThatDerivesFromAnotherClassOfTheImport)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    hotc::TranslateOptions o = temp_options(
+        dir, "using \"w.h\";\nusing \"lib.hot\";\nclass Kid : Widget {\n    int q = 1;\n}\n");
+    o.modules.emplace_back(
+        "lib.hot",
+        "using \"w.h\";\nclass Other : Widget {\n    int z = 2;\n}\nclass Elite : Other {\n    int rank = 1;\n}\n");
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("struct Elite_Shell"), std::string::npos) << r.cpp;
+}
+
+// A chain of three classes in one import: A, B derives from A, C derives from B.
+TEST(ScriptImportTranslation, ImportHoldsAChainOfThreeClasses)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    hotc::TranslateOptions o = temp_options(
+        dir, "using \"w.h\";\nusing \"lib.hot\";\nclass Kid : Widget {\n    int q = 1;\n}\n");
+    o.modules.emplace_back(
+        "lib.hot",
+        "using \"w.h\";\nclass A : Widget {\n    int a = 1;\n}\nclass B : A {\n    int b = 2;\n}\n"
+        "class C : B {\n    int c = 3;\n}\n");
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("struct C_Shell"), std::string::npos) << r.cpp;
+}

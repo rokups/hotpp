@@ -8479,6 +8479,21 @@ void translate_impl(
             if (!cd.ns.empty())
                 o.w("} // namespace " + hotc::ast::gen_namespace(cd.ns) + "\n");
             reset();
+            // A child in the same import needs the data of this class for its own parent link.
+            // The later steps of the loop fill the same data. This branch does not reach them.
+            info.ctor_entry = has_ctor || (pinfo && !pinfo->ctor_entry.empty()) ? P + "ctor_chain" : std::string();
+            if (has_ctor)
+                for (const hotc::ast::Ctor& k : cd.ctors)
+                    info.ctor_arities.insert(k.params.size());
+            else
+                info.ctor_arities.insert(0);
+            info.dtor_chain = has_dtor || (pinfo && pinfo->dtor_chain);
+            for (const Method& m : cd.methods)
+                if (!opt.aot_optimized && hook_of(m) == Hook::OnReload)
+                    info.on_reload = P + "onReload_hook";
+            if (info.on_reload.empty() && pinfo)
+                info.on_reload = pinfo->on_reload;
+            infos[cn] = std::move(info);
             continue;
         }
 
