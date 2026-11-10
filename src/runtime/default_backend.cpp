@@ -20,9 +20,14 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <chrono>
+#include <fstream>
+#include <iterator>
 #ifndef _WIN32
+    #include <limits.h>
     #include <signal.h>
     #include <sys/types.h>
+    #include <unistd.h>
 #endif
 #if defined(HOT_WITH_CLANG_FILES)
     #include "hot/clang_files_backend.h"
@@ -86,14 +91,52 @@ bool process_is_gone(long long pid)
         return false;
     return ::kill(static_cast<pid_t>(pid), 0) != 0 && errno == ESRCH;
 }
+
+bool older_than_one_hour(const std::filesystem::path& p)
+{
+    std::error_code ec;
+    const auto t = std::filesystem::last_write_time(p, ec);
+    return !ec && std::filesystem::file_time_type::clock::now() - t > std::chrono::hours(1);
+}
+#endif
+
+#ifndef _WIN32
+// The text of the file "owner" in a work directory: the host name and the pid namespace. A pid is
+// only valid in its namespace on its host. Two containers (or two hosts on a shared disk) can use
+// the same work base.
+std::string work_dir_owner()
+{
+    char host[256] = {};
+    if (::gethostname(host, sizeof host - 1) != 0)
+        host[0] = 0;
+    std::string text = std::string(host) + "\n";
+#if defined(__linux__)
+    char ns[PATH_MAX] = {};
+    const ssize_t n = ::readlink("/proc/self/ns/pid", ns, sizeof ns - 1);
+    if (n > 0)
+        text.append(ns, static_cast<size_t>(n));
+#endif
+    return text + "\n";
+}
+
+std::string read_owner(const std::filesystem::path& dir, bool& found)
+{
+    std::ifstream in(dir / "owner", std::ios::binary);
+    found = static_cast<bool>(in);
+    return found ? std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()) : std::string();
+}
 #endif
 
 // Removes the directories "p<pid>" of "base" whose process does not run any more. The other
-// names stay. A running process is not a candidate. Windows: no cleanup.
+// names stay. A running process is not a candidate. The process test is only valid for the same
+// owner (work_dir_owner): a directory of another owner stays. A directory without an owner file
+// (an old version, or a crash before the write) goes only when it is older than one hour.
+// Windows: no cleanup.
 void remove_stale_work_dirs(const std::filesystem::path& base)
 {
 #ifndef _WIN32
     std::error_code ec;
+    const std::string own_owner = work_dir_owner();
     const long long own = static_cast<long long>(hot::detail::process_id());
     std::vector<std::filesystem::path> stale;
     for (std::filesystem::directory_iterator it(base, ec), end; !ec && it != end; it.increment(ec))
@@ -107,7 +150,11 @@ void remove_stale_work_dirs(const std::filesystem::path& base)
         if (!std::all_of(name.begin() + 1, name.end(), [](unsigned char c) { return std::isdigit(c) != 0; }))
             continue;
         const long long pid = std::stoll(name.substr(1));
-        if (pid != own && process_is_gone(pid))
+        if (pid == own || !process_is_gone(pid))
+            continue;
+        bool has_owner = false;
+        const std::string owner = read_owner(it->path(), has_owner);
+        if (has_owner ? owner == own_owner : older_than_one_hour(it->path()))
             stale.push_back(it->path());
     }
     for (const std::filesystem::path& dir : stale)
@@ -149,6 +196,11 @@ std::unique_ptr<Backend> make_clang_files(const DefaultBackendOptions& options)
         remove_stale_work_dirs(work_base);
     std::error_code ec;
     std::filesystem::remove_all(o.work_dir, ec);
+#ifndef _WIN32
+    // The owner file tells the cleanup of other processes which process namespace has the pid.
+    std::filesystem::create_directories(o.work_dir, ec);
+    std::ofstream(std::filesystem::path(o.work_dir) / "owner", std::ios::binary) << work_dir_owner();
+#endif
     // Only this p<pid> directory goes. The parent directory is shared with other processes.
     o.remove_work_dir_at_exit = !keep_temp();
     // The environment decides over the option. The backend makes "<cache_dir>/src" the generated_dir.

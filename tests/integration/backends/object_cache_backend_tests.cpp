@@ -8,6 +8,7 @@
 // CMake defines the macros HOT_SOURCE_DIR and HOT_CXX.
 #include "hot/backend.h"
 #include "hot/clang_files_backend.h"
+#include "hot/runtime/process.h"
 #include "hot/vfs.h"
 #include "support/scratch_dir.h"
 #include "support/test_env.h"
@@ -764,8 +765,11 @@ TEST(ObjectCacheBackend, CompileCommandsHasNoMirrorDirectory)
     EXPECT_NE(json.find("-I" + std::string(HOT_SOURCE_DIR) + "/tests/engine"), std::string::npos) << json;
 }
 
-// The directories "p<pid>" of dead processes go at the creation of a backend. The directory of a
-// running process (pid 1 here), a name that is not "p<digits>" and a file stay.
+// The directories "p<pid>" of dead processes go at the creation of a backend. A directory has
+// the file "owner" (the host and the pid namespace). Only a directory of the same owner goes: the
+// pid of another host or namespace says nothing. A directory without an owner file goes only when
+// it is older than one hour. The directory of a running process (pid 1 here), a name that is not
+// "p<digits>" and a file stay.
 TEST(ObjectCacheBackend, StaleWorkDirectoriesGoAndLiveOnesStay)
 {
 #ifdef _WIN32
@@ -775,16 +779,30 @@ TEST(ObjectCacheBackend, StaleWorkDirectoriesGoAndLiveOnesStay)
     EnvGuard keep("HOT_KEEP_TEMP", "");
     TestScratch scratch;
     const fs::path base = scratch.file("default_work");
-    for (const char* name : {"p2000000000", "p1", "pabc", "q2000000001", "p"})
+    auto first = hot::make_default_backend(default_options(scratch, std::string()));
+    ASSERT_TRUE(first);
+    const fs::path own_owner = base / ("p" + std::to_string(hot::detail::process_id())) / "owner";
+    ASSERT_TRUE(fs::exists(own_owner));
+    const std::string owner = read_file(own_owner);
+    EXPECT_FALSE(owner.empty());
+    for (const char* name : {"p2000000000", "p2000000003", "p2000000004", "p2000000005", "p1", "pabc",
+             "q2000000001", "p"})
     {
         fs::create_directories(base / name / "vfs");
         std::ofstream(base / name / "x.txt") << "x";
     }
+    for (const char* name : {"p2000000000", "p1"})
+        std::ofstream(base / name / "owner", std::ios::binary) << owner;
+    std::ofstream(base / "p2000000003" / "owner", std::ios::binary) << "another-host\npid:[1]\n";
+    fs::last_write_time(base / "p2000000005", fs::file_time_type::clock::now() - std::chrono::hours(2));
     std::ofstream(base / "p2000000002") << "a file";
     {
         auto backend = hot::make_default_backend(default_options(scratch, std::string()));
         ASSERT_TRUE(backend);
-        EXPECT_FALSE(fs::exists(base / "p2000000000")); // dead
+        EXPECT_FALSE(fs::exists(base / "p2000000000")); // dead, the same owner
+        EXPECT_TRUE(fs::exists(base / "p2000000003" / "x.txt")); // another owner
+        EXPECT_TRUE(fs::exists(base / "p2000000004" / "x.txt")); // no owner, young
+        EXPECT_FALSE(fs::exists(base / "p2000000005")); // no owner, old
         EXPECT_TRUE(fs::exists(base / "p1" / "x.txt")); // running (init)
         EXPECT_TRUE(fs::exists(base / "pabc"));
         EXPECT_TRUE(fs::exists(base / "q2000000001"));
