@@ -403,7 +403,8 @@ bool find_import(const TranslateOptions& options, const std::string& path, const
 
 // True when a file is at a shadow path (TranslateResult::shadow_paths). The test is the same as
 // the header search of the parse: "fs" (can be null) with the normal spellings, then the disk.
-bool shadow_exists(hot::FileSystem* fs, const std::string& path);
+// With "disk" false, the test skips the disk (the caller knows that the folder is not there).
+bool shadow_exists(hot::FileSystem* fs, const std::string& path, bool disk = true);
 
 // The 64-bit hash of a text that ImportLookup::text_hash holds.
 uint64_t text_hash(const std::string& text);

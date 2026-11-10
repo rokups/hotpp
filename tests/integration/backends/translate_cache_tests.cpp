@@ -572,3 +572,82 @@ TEST(TranslateCache, ReusedSessionParseOfAYoungHeaderIsNotStored)
     EXPECT_FALSE(c.store(f.options, r2, t + std::chrono::seconds(10), error));
     EXPECT_FALSE(c.lookup(f.options).has_value());
 }
+
+namespace
+{
+
+// Include dirs like the dirs of a game: many dirs before the dir of the engine headers. Some
+// dirs exist, some do not. "eng/Eng/All.h" includes 30 headers in "eng/Eng/Core".
+struct ManyDirsFixture : ShadowFixture
+{
+    std::string eng;
+    std::vector<std::string> early;
+
+    ManyDirsFixture()
+    {
+        for (int i = 0; i < 24; ++i)
+        {
+            early.push_back(scratch.file("inc" + std::to_string(i)));
+            if (i % 2 == 0)
+                fs::create_directories(early.back());
+        }
+        eng = scratch.file("eng");
+        std::string all = "#pragma once\n";
+        for (int i = 0; i < 30; ++i)
+        {
+            const std::string h = eng + "/Eng/Core/Header" + std::to_string(i) + ".h";
+            fs::create_directories(fs::path(h).parent_path());
+            write_file(h, "#pragma once\nstruct Part" + std::to_string(i) + " {};\n");
+            make_old(h);
+            all += "#include \"Eng/Core/Header" + std::to_string(i) + ".h\"\n";
+        }
+        write_file(eng + "/Eng/All.h", all + kFooHeader);
+        make_old(eng + "/Eng/All.h");
+        options.script_text = "using \"Eng/All.h\";\nclass Kid : Foo {\n    override int Power() { return 2; }\n}\n";
+        options.include_dirs = early;
+        options.include_dirs.push_back(eng);
+    }
+};
+
+} // namespace
+
+// The manifest keeps the shadow paths in a short form. Each lookup reads the manifest, so its
+// size is a cost of each warm start.
+TEST(TranslateCache, ShadowPathsOfManyIncludeDirsHaveAShortForm)
+{
+    ManyDirsFixture f;
+    hot::TranslateCache c(f.cache);
+    f.fill(c, f.options);
+    uintmax_t manifest_size = 0;
+    for (const auto& e : fs::directory_iterator(f.cache + "/tr"))
+        if (e.path().extension() == ".json")
+            manifest_size += e.file_size();
+    EXPECT_GT(manifest_size, 0u);
+    EXPECT_LT(manifest_size, 16u * 1024u);
+}
+
+// A new header in a dir that did not exist at the store hides an engine header: a miss.
+TEST(TranslateCache, NewShadowHeaderInANewDirMisses)
+{
+    ManyDirsFixture f;
+    hot::TranslateCache c(f.cache);
+    f.fill(c, f.options);
+    const std::string h = f.early[5] + "/Eng/Core/Header7.h";
+    fs::create_directories(fs::path(h).parent_path());
+    write_file(h, "#pragma once\nstruct Part7 { int x; };\n");
+    make_old(h);
+    EXPECT_FALSE(c.lookup(f.options).has_value());
+}
+
+// A new header in a dir that existed at the store hides an engine header: a miss.
+TEST(TranslateCache, NewShadowHeaderInAnExistingDirMisses)
+{
+    ManyDirsFixture f;
+    const std::string dir = f.early[4] + "/Eng";
+    fs::create_directories(dir);
+    hot::TranslateCache c(f.cache);
+    f.fill(c, f.options);
+    write_file(dir + "/All.h", std::string("#pragma once\n") + kOtherFoo);
+    make_old(dir + "/All.h");
+    EXPECT_FALSE(c.lookup(f.options).has_value());
+}

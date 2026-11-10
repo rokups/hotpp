@@ -10412,9 +10412,9 @@ bool find_import(const TranslateOptions& in, const std::string& path, const std:
     return false;
 }
 
-bool shadow_exists(hot::FileSystem* fs, const std::string& path)
+bool shadow_exists(hot::FileSystem* fs, const std::string& path, bool disk)
 {
-    return (fs && host_stat(*fs, path).exists) || file_times(path).exists;
+    return (fs && host_stat(*fs, path).exists) || (disk && file_times(path).exists);
 }
 
 uint64_t text_hash(const std::string& text)

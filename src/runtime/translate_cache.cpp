@@ -26,7 +26,7 @@ using namespace cache_io;
 namespace
 {
 
-constexpr int entry_version = 2;
+constexpr int entry_version = 3;
 constexpr uint64_t second_seed = 0x9e3779b97f4a7c15ULL;
 
 // ------------------------------------------------------------ The fields of TranslateOptions
@@ -190,6 +190,100 @@ bool get_list(const Json& j, const char* name, std::vector<std::string>& out)
         out.push_back(i.text);
     }
     return true;
+}
+
+// The shadow paths in a short form. The paths with the same folder part (the text up to the
+// last '/') are one group. Groups with the same names share one name list. A game has many
+// include folders, so the full list has thousands of paths.
+void write_shadows(Writer& man, const std::vector<std::string>& paths)
+{
+    std::vector<std::string> prefixes;
+    std::map<std::string, std::vector<std::string>> names;
+    for (const std::string& p : paths)
+    {
+        const size_t slash = p.rfind('/');
+        const std::string prefix = slash == std::string::npos ? std::string() : p.substr(0, slash + 1);
+        const auto [it, added] = names.try_emplace(prefix);
+        if (added)
+            prefixes.push_back(prefix);
+        it->second.push_back(p.substr(prefix.size()));
+    }
+    std::map<std::vector<std::string>, int64_t> set_index;
+    std::vector<const std::vector<std::string>*> sets;
+    man.key("shadow_dirs");
+    man.begin('[');
+    for (const std::string& prefix : prefixes)
+    {
+        const auto [it, added] = set_index.try_emplace(names[prefix], static_cast<int64_t>(sets.size()));
+        if (added)
+            sets.push_back(&it->first);
+        man.begin('[');
+        man.str(prefix);
+        man.num(it->second);
+        man.end(']');
+    }
+    man.end(']');
+    man.key("shadow_sets");
+    man.begin('[');
+    for (const std::vector<std::string>* set : sets)
+    {
+        man.begin('[');
+        for (const std::string& n : *set)
+            man.str(n);
+        man.end(']');
+    }
+    man.end(']');
+}
+
+struct ShadowGroups
+{
+    std::vector<std::pair<std::string, size_t>> dirs; // the folder part and the index of its names
+    std::vector<std::vector<std::string>> sets;
+};
+
+bool read_shadows(const Json& m, ShadowGroups& out)
+{
+    const Json* dirs = get_array(m, "shadow_dirs");
+    const Json* sets = get_array(m, "shadow_sets");
+    if (!dirs || !sets)
+        return false;
+    for (const Json& s : sets->items)
+    {
+        if (s.type != Json::Type::Array)
+            return false;
+        std::vector<std::string>& names = out.sets.emplace_back();
+        for (const Json& n : s.items)
+        {
+            if (n.type != Json::Type::String)
+                return false;
+            names.push_back(n.text);
+        }
+    }
+    for (const Json& d : dirs->items)
+    {
+        if (d.type != Json::Type::Array || d.items.size() != 2 || d.items[0].type != Json::Type::String
+            || d.items[1].type != Json::Type::Number || d.items[1].number < 0
+            || static_cast<uint64_t>(d.items[1].number) >= out.sets.size())
+            return false;
+        out.dirs.emplace_back(d.items[0].text, static_cast<size_t>(d.items[1].number));
+    }
+    return true;
+}
+
+// True when a file is at a shadow path. A folder that is not on the disk has no disk file, so
+// one test of the folder replaces the disk tests of its names. The host file system has no
+// folders, so each name gets its test there.
+bool any_shadow(hot::FileSystem* host, const ShadowGroups& g)
+{
+    for (const auto& [prefix, set] : g.dirs)
+    {
+        std::error_code ec;
+        const bool disk = prefix.empty() || fs::is_directory(prefix, ec);
+        for (const std::string& name : g.sets[set])
+            if (hotc::shadow_exists(host, prefix + name, disk))
+                return true;
+    }
+    return false;
 }
 
 bool parse_hex64(const std::string& s, uint64_t& out)
@@ -410,12 +504,9 @@ std::optional<hotc::TranslateResult> TranslateCache::lookup_entry(const hotc::Tr
     }
 
     // No file is at a shadow path: the header search finds the same headers.
-    std::vector<std::string> shadows;
-    if (!get_list(m, "shadows", shadows))
+    ShadowGroups shadows;
+    if (!read_shadows(m, shadows) || any_shadow(o.fs.get(), shadows))
         return std::nullopt;
-    for (const std::string& s : shadows)
-        if (hotc::shadow_exists(o.fs.get(), s))
-            return std::nullopt;
 
     // The payload files have the hashes of the store.
     std::string cpp, data_text;
@@ -500,7 +591,9 @@ std::optional<hotc::TranslateResult> TranslateCache::lookup_entry(const hotc::Tr
     r.import_lookups = std::move(lookups);
     r.slot_classes = std::move(classes);
     r.slot_keys = std::move(keys);
-    r.shadow_paths = std::move(shadows);
+    for (const auto& [prefix, set] : shadows.dirs)
+        for (const std::string& name : shadows.sets[set])
+            r.shadow_paths.push_back(prefix + name);
 
     // The time of the manifest is the age of the entry for ObjectCache::trim.
     std::error_code touch_ec;
@@ -633,13 +726,13 @@ bool TranslateCache::store(const hotc::TranslateOptions& o, const hotc::Translat
         }
         man.end(']');
         // A file at a shadow path now hides a header of the parse.
+        write_shadows(man, r.shadow_paths);
         for (const std::string& s : r.shadow_paths)
             if (hotc::shadow_exists(o.fs.get(), s))
             {
                 error = "the file '" + s + "' hides a header of the parse";
                 return false;
             }
-        man.list("shadows", r.shadow_paths);
 
         Writer data;
         data.begin('{');
