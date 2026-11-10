@@ -6,7 +6,7 @@
 //
 // Build mode (default): compile .hot files ahead of time into one shared library for each file.
 //   hotc <file.hot>... --gen N --out-dir DIR [-I dir]... [--resource-dir dir]
-//        [--cxx command] [--cxxflag flag]... [--slots file] [--raw-diagnostics]
+//        [--cxx command] [--cxxflag flag]... [--slots file] [--raw-diagnostics] [--cache-dir dir]
 //   hotc <file.hot> --gen N -o x.so [-I dir]... [--resource-dir dir]
 //        [--cxx command] [--cxxflag flag]... [--slots file]
 // For each file the tool writes DIR/<name>.g<N>.cpp and DIR/<name>.g<N>.so.
@@ -98,7 +98,8 @@ namespace
         "  --depfile <path>     write the headers and imported scripts that the translation read (Make format)\n"
         "  --target <triple>    the target triple of the parse and of the modules (-target)\n"
         "  --sysroot <dir>      the sysroot of the parse and of the modules (--sysroot=)\n"
-        "  --host-implib <path> the import library of the host for the link of a module DLL (build mode)\n");
+        "  --host-implib <path> the import library of the host for the link of a module DLL (build mode)\n"
+        "  --cache-dir <dir>    (build mode) reuse the object files of the directory; HOT_CACHE=0 turns it off\n");
     std::exit(2);
 }
 
@@ -124,6 +125,7 @@ struct Args
     std::string out_dir, output, slots, resource_dir;
     std::string target, sysroot; // --target, --sysroot: empty means the default of the build
     std::string host_implib; // --host-implib: the import library of the host (build mode)
+    std::string cache_dir; // --cache-dir: the object cache (build mode)
     std::string std_version; // --std=: empty means the standard of the host
     std::vector<std::string> include_dirs, preludes, cxxflags;
     std::string cxx;
@@ -186,6 +188,11 @@ Args parse_args(int argc, char** argv)
         else if (a == "--host-implib")
         {
             r.host_implib = next();
+            r.has_build_only = true;
+        }
+        else if (a == "--cache-dir")
+        {
+            r.cache_dir = next();
             r.has_build_only = true;
         }
         else if (a == "--out-dir")
@@ -674,6 +681,7 @@ int run_build(const Args& args)
             out_dir = ".";
     }
     opt.work_dir = out_dir;
+    opt.cache_dir = args.cache_dir;
 
     std::set<std::string> seen;
     for (const std::string& s : args.inputs)
@@ -694,6 +702,9 @@ int run_build(const Args& args)
         for (const char* ext : {"", ".cpp", ".o", ".d"})
             if (!check_not_input(args, *ext ? fs::path(so).replace_extension(ext).string() : so))
                 return 1;
+        // The cache compiles a private copy "<out_dir>/<unit>.cpp".
+        if (!args.cache_dir.empty() && !check_not_input(args, out_dir + "/" + fs::path(s).stem().string() + ".cpp"))
+            return 1;
     }
 
     hot::ClangFilesBackend backend(opt);
