@@ -603,6 +603,60 @@ TEST(ObjectCacheBackend, CorruptModuleRecovers)
     EXPECT_EQ(again->cache_stats().module_misses, 0u);
 }
 
+// A header with a struct. The script gives the size of the struct.
+void write_layout_header(const fs::path& path, int pad, std::chrono::minutes age)
+{
+    std::ofstream(path, std::ios::binary)
+        << "struct LayoutProbe { char pad[" << pad << "]; };\n"
+        << "inline float layout_size() { return static_cast<float>(sizeof(LayoutProbe)); }\n";
+    // An old time: the cache does not store an object whose header is younger than the compile.
+    fs::last_write_time(path, fs::file_time_type::clock::now() - age);
+}
+
+std::unique_ptr<hot::ClangFilesBackend> make_layout_backend(
+    const TestScratch& scratch, const std::string& work_name, const std::string& cache_dir, const std::string& inc)
+{
+    hot::ClangFilesOptions o;
+    o.compiler = HOT_CXX;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include", inc};
+    o.work_dir = scratch.file(work_name);
+    o.cache_dir = cache_dir;
+    return std::make_unique<hot::ClangFilesBackend>(std::move(o));
+}
+
+const hot::ScriptSource kLayout = {"calc.hot",
+    "using \"Actor.h\";\nusing \"layout.h\";\nclass Calc : Actor {\n    float result = 0.0;\n"
+    "    override void Tick(float dt) { this.result = layout_size(); }\n}\n",
+    {}, "Calc"};
+
+// The link cache is on. A changed struct in a header is a miss of the object and of the module:
+// the module key has no header data, so a module hit needs a valid object entry.
+TEST(ObjectCacheBackend, ChangedHeaderLayoutMissesTheModule)
+{
+    CleanEnv env;
+    TestScratch scratch;
+    const std::string cache = scratch.file("cache");
+    const fs::path inc = scratch.file("inc");
+    fs::create_directories(inc);
+    write_layout_header(inc / "layout.h", 4, std::chrono::minutes(60));
+    {
+        auto backend = make_layout_backend(scratch, "work_a", cache, inc.string());
+        EXPECT_EQ(load_and_run(*backend, kLayout), 4.0f);
+        EXPECT_EQ(count_modules(cache), 1u);
+    }
+    write_layout_header(inc / "layout.h", 16, std::chrono::minutes(30));
+    {
+        auto backend = make_layout_backend(scratch, "work_b", cache, inc.string());
+        EXPECT_EQ(load_and_run(*backend, kLayout), 16.0f);
+        EXPECT_EQ(backend->cache_stats().hits, 0u);
+        EXPECT_EQ(backend->cache_stats().module_hits, 0u);
+    }
+    auto backend = make_layout_backend(scratch, "work_c", cache, inc.string());
+    EXPECT_EQ(load_and_run(*backend, kLayout), 16.0f);
+    EXPECT_EQ(backend->cache_stats().hits, 1u);
+    EXPECT_EQ(backend->cache_stats().module_hits, 1u);
+}
+
 // A file system that has no file. It turns on the mirror directory "<work_dir>/vfs".
 class EmptyFs final : public hot::FileSystem
 {

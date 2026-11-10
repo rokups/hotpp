@@ -1109,7 +1109,11 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
                 ObjectCache::normalize_args(link_module_command(opt_, "@obj@", "@so@"), opt_.work_dir),
                 compiler_id_, library_stamp(opt_.host_import_library));
         bool module_cached = false;
-        if (module_key && use_module_cache)
+        // The module key has no header data. Only the object lookup checks the header stamps, so
+        // a module hit needs an object hit. Else a changed header can load an old module.
+        if (module_key && use_module_cache && !hit)
+            cache_->count_module_miss();
+        if (module_key && use_module_cache && hit)
         {
             // A copy: the loader can remove the file, and a trim can remove the cache file.
             if (const std::optional<fs::path> cached = cache_->lookup_module(*module_key))
@@ -1174,7 +1178,8 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
                 fs::remove(temp_object, ec);
             if (link_rc == 0)
             {
-                if (module_key)
+                // A module entry needs a valid object entry (see the module lookup above).
+                if (module_key && temp_object.empty())
                 {
                     std::string store_error;
                     if (!cache_->store_module(*module_key, so_path, store_error))

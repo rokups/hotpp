@@ -146,6 +146,10 @@ public:
 
     void remove_module(const Key& key);
 
+    // Counts a module miss without a lookup. The caller does no module lookup after an object
+    // miss: the module entry is not valid then.
+    void count_module_miss() { ++module_misses_; }
+
     // The path of the object file of an entry. It does not check that the entry exists.
     std::filesystem::path object_path(const Key& key) const;
 
