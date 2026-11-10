@@ -12,6 +12,7 @@
 #include "hot/object_cache.h"
 
 #include <atomic>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -20,6 +21,15 @@
 
 namespace hot
 {
+
+// One entry of a compile database (the format of clangd and CMake's compile_commands.json).
+struct CompileCommandEntry
+{
+    std::string directory; // the working directory of the command
+    std::string file; // the source file
+    std::vector<std::string> arguments;
+    std::string output;
+};
 
 struct ClangFilesOptions
 {
@@ -48,6 +58,12 @@ struct ClangFilesOptions
     // The size limit of the cache. The backend trims the cache once at its creation. The
     // environment variable HOT_CACHE_MAX_MB (in MiB) overrides it. The value 0 means no limit.
     uint64_t cache_max_bytes = 4ULL << 30;
+    // The directory of "compile_commands.json" for the IDE plugins (clangd, hot-ls). Empty: the
+    // backend writes no database. The environment variable HOT_COMPILE_COMMANDS_DIR overrides it in
+    // make_default_backend. After each good build the backend sets the entry of the unit: the
+    // file is the stable "<generated_dir>/<unit>.cpp". The backend writes nothing without a
+    // generated_dir. At creation it keeps the old entries whose file still exists.
+    std::string compile_commands_dir;
     std::string slots_file; // empty: <work_dir>/slots.txt
     // True: the destructor of the backend removes work_dir (remove_scratch). The owner must give
     // a directory that no other backend uses.
@@ -115,11 +131,18 @@ private:
         LoadResult* hashes = nullptr);
     // Finds the compiler id for the cache key once. On a failure it turns the cache off.
     bool prepare_cache();
+    // Reads the old database at creation. A read error gives an empty list.
+    void load_compile_commands();
+    // Sets the entry of a unit and writes the database when its text changes. The caller holds
+    // "mutex_". "object" is the object file of the compile.
+    void record_compile_command(const std::string& unit, const std::string& script_dir, const std::string& object);
 
     ClangFilesOptions opt_;
     std::unique_ptr<ObjectCache> cache_; // null: no cache
     std::string compiler_id_;
     bool compiler_id_done_ = false;
+    std::map<std::string, CompileCommandEntry> commands_; // by "file"
+    std::string commands_text_; // the text of the database file (read or written)
     std::mutex mutex_; // one build at a time: the slot file is shared
     std::atomic<unsigned> sequence_{0};
     std::atomic<unsigned> epoch_{0}; // counts the fresh loads; it is in the name of the library
@@ -138,15 +161,6 @@ std::vector<std::string> compile_object_command(const ClangFilesOptions& options
 // It adds the import library of the host (host_import_library) after the object file.
 std::vector<std::string> link_module_command(
     const ClangFilesOptions& options, const std::string& obj_path, const std::string& out_so);
-
-// One entry of a compile database (the format of clangd and CMake's compile_commands.json).
-struct CompileCommandEntry
-{
-    std::string directory; // the working directory of the command
-    std::string file; // the source file
-    std::vector<std::string> arguments;
-    std::string output;
-};
 
 // The text of compile_commands.json. One entry takes 6 lines. The strings are escaped.
 std::string compile_commands_json(const std::vector<CompileCommandEntry>& entries);

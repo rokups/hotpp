@@ -107,6 +107,11 @@ std::unique_ptr<Backend> make_clang_files(const DefaultBackendOptions& options)
         o.cache_dir = env;
     if (!ObjectCache::enabled_by_env())
         o.cache_dir.clear();
+    // The variable decides over the option, also when it is empty (empty: no database).
+    if (const char* env = std::getenv("HOT_COMPILE_COMMANDS_DIR"))
+        o.compile_commands_dir = env;
+    else
+        o.compile_commands_dir = options.compile_commands_dir;
     return std::make_unique<ClangFilesBackend>(std::move(o));
 }
 #endif

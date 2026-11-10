@@ -203,6 +203,11 @@ struct DefaultBackendOptions
     // the object files of the unchanged scripts. Empty: no cache. The environment variable
     // HOT_CACHE_DIR overrides it. HOT_CACHE=0 turns the cache off. The JIT backend ignores it.
     std::string cache_dir;
+    // The directory where the clang files backend writes "compile_commands.json" for the IDE
+    // plugins (hot-ls, clangd). The entries name the generated .cpp files in the cache. It needs
+    // cache_dir. Empty: no database. The environment variable HOT_COMPILE_COMMANDS_DIR overrides
+    // it. An empty value of the variable turns the database off. The JIT backend ignores it.
+    std::string compile_commands_dir;
 };
 std::unique_ptr<Backend> make_default_backend(const DefaultBackendOptions& options);
 

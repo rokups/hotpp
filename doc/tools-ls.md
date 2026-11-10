@@ -20,7 +20,8 @@ Steps:
 1. Install the `clangd` extension (`llvm-vs-code-extensions.vscode-clangd`) and `clangd`. Set it up for the C++ build as usual.
 2. Build `hot-ls` and install the extension in `editors/vscode/`. Put the `hot-ls` arguments in `hot.server.args`. The include dirs come from the script hosts (next subsection). The flags `-I` and `--cxxflag` still work as overrides.
 3. Optional, for workspace symbols and the background index of scripts: run `hotc <file.hot>... --gen N --out-dir DIR --compile-commands CDIR`. Give `--compile-commands-dir CDIR` to `hot-ls`.
-4. Add `.cache/` to the ignore list of the project (for example in `.gitignore`).
+4. Alternative to step 3: let the program write the database. Set the option `compile_commands_dir` of the backend, or the environment variable `HOT_COMPILE_COMMANDS_DIR=<dir>`. The runtime then writes `<dir>/compile_commands.json` after each good build. Give `--compile-commands-dir <dir>` to `hot-ls`. Each entry points to the generated `.cpp` in the object cache (`<cache_dir>/src/<unit>.cpp`). So the IDE features (`clangd`, workspace symbols) work on the scripts. The entries of the old runs stay while their `.cpp` exists. The runtime needs a cache dir (`HOT_CACHE_DIR`).
+5. Add `.cache/` to the ignore list of the project (for example in `.gitignore`).
 
 Both servers can use the same project and the same `.cache/` directory. They do not disturb each other:
 

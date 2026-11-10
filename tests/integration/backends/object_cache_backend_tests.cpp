@@ -6,6 +6,7 @@
 // same cache directory finds the object file of an unchanged script and skips the compiler.
 //
 // CMake defines the macros HOT_SOURCE_DIR and HOT_CXX.
+#include "hot/backend.h"
 #include "hot/clang_files_backend.h"
 #include "support/scratch_dir.h"
 #include "support/test_env.h"
@@ -13,9 +14,12 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <thread>
 
@@ -79,13 +83,14 @@ std::string script_text(const char* value)
 }
 
 std::unique_ptr<hot::ClangFilesBackend> make_backend(const TestScratch& scratch, const std::string& work_name,
-    const std::string& cache_dir)
+    const std::string& cache_dir, const std::string& commands_dir = std::string())
 {
     hot::ClangFilesOptions o;
     o.compiler = HOT_CXX;
     o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
     o.work_dir = scratch.file(work_name);
     o.cache_dir = cache_dir;
+    o.compile_commands_dir = commands_dir;
     return std::make_unique<hot::ClangFilesBackend>(std::move(o));
 }
 
@@ -249,6 +254,180 @@ TEST(ObjectCacheBackend, SharedGeneratedDirIsSafe)
     EXPECT_TRUE(fs::exists(fs::path(cache) / "src" / "Calc.cpp"));
     EXPECT_TRUE(fs::exists(fs::path(scratch.file("work_a")) / "Calc.cpp"));
     EXPECT_TRUE(fs::exists(fs::path(scratch.file("work_b")) / "Calc.cpp"));
+}
+
+// ---- compile_commands.json ----
+
+std::string read_file(const fs::path& path)
+{
+    std::ifstream f(path, std::ios::binary);
+    std::stringstream ss;
+    ss << f.rdbuf();
+    return ss.str();
+}
+
+size_t count_text(const std::string& text, const std::string& part)
+{
+    size_t n = 0;
+    for (size_t at = text.find(part); at != std::string::npos; at = text.find(part, at + part.size()))
+        ++n;
+    return n;
+}
+
+// The JSON file has one entry for each unit. The array "arguments" has the compile command.
+TEST(ObjectCacheBackend, CompileCommandsHasTheUnitEntry)
+{
+    CleanEnv env;
+    TestScratch scratch;
+    const std::string cache = scratch.file("cache");
+    const std::string db = scratch.file("db");
+    auto backend = make_backend(scratch, "work_a", cache, db);
+    EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
+    const std::string json = read_file(fs::path(db) / "compile_commands.json");
+    EXPECT_EQ(count_text(json, "\"file\":"), 1u);
+    const fs::path stable = fs::absolute(fs::path(cache) / "src" / "Calc.cpp").lexically_normal();
+    EXPECT_TRUE(fs::exists(stable));
+    EXPECT_NE(json.find("\"file\": \"" + stable.string() + "\""), std::string::npos) << json;
+    EXPECT_NE(json.find("\"directory\": \"" + fs::absolute(cache).lexically_normal().string() + "\""),
+        std::string::npos)
+        << json;
+    EXPECT_NE(json.find("\"-c\""), std::string::npos);
+    EXPECT_EQ(count_text(json, "\"" + stable.string() + "\""), 2u); // "file" and the argument
+    EXPECT_EQ(json.find("-MD"), std::string::npos);
+    EXPECT_NE(json.find("\"output\": \"" + fs::absolute(cache).lexically_normal().string() + "/obj/"),
+        std::string::npos)
+        << json;
+}
+
+// A new backend (a new run) keeps the entries of the old run that it does not touch.
+TEST(ObjectCacheBackend, CompileCommandsKeepsOldEntries)
+{
+    CleanEnv env;
+    TestScratch scratch;
+    const std::string cache = scratch.file("cache");
+    const std::string db = scratch.file("db");
+    const hot::ScriptSource a = {"calc.hot", script_text("7.0"), {}, "UnitA"};
+    const hot::ScriptSource b = {"calc.hot", script_text("8.0"), {}, "UnitB"};
+    {
+        auto backend = make_backend(scratch, "work_a", cache, db);
+        EXPECT_EQ(load_and_run(*backend, a), 7.0f);
+    }
+    auto backend = make_backend(scratch, "work_b", cache, db);
+    EXPECT_EQ(load_and_run(*backend, b), 8.0f);
+    const std::string json = read_file(fs::path(db) / "compile_commands.json");
+    EXPECT_EQ(count_text(json, "\"file\":"), 2u) << json;
+    EXPECT_NE(json.find("UnitA.cpp"), std::string::npos);
+    EXPECT_NE(json.find("UnitB.cpp"), std::string::npos);
+}
+
+// An entry whose file is gone does not stay. A damaged database file gives an empty start.
+TEST(ObjectCacheBackend, CompileCommandsDropsMissingFiles)
+{
+    CleanEnv env;
+    TestScratch scratch;
+    const std::string cache = scratch.file("cache");
+    const std::string db = scratch.file("db");
+    const hot::ScriptSource a = {"calc.hot", script_text("7.0"), {}, "UnitA"};
+    const hot::ScriptSource b = {"calc.hot", script_text("8.0"), {}, "UnitB"};
+    {
+        auto backend = make_backend(scratch, "work_a", cache, db);
+        EXPECT_EQ(load_and_run(*backend, a), 7.0f);
+        EXPECT_EQ(load_and_run(*backend, b), 8.0f);
+    }
+    EXPECT_EQ(count_text(read_file(fs::path(db) / "compile_commands.json"), "\"file\":"), 2u);
+    fs::remove(fs::path(cache) / "src" / "UnitA.cpp");
+    {
+        auto backend = make_backend(scratch, "work_b", cache, db);
+        EXPECT_EQ(load_and_run(*backend, {"calc.hot", script_text("9.0"), {}, "UnitC"}), 9.0f);
+    }
+    const std::string json = read_file(fs::path(db) / "compile_commands.json");
+    EXPECT_EQ(count_text(json, "\"file\":"), 2u) << json;
+    EXPECT_EQ(json.find("UnitA.cpp"), std::string::npos);
+    {
+        std::ofstream(fs::path(db) / "compile_commands.json", std::ios::binary) << "[ {\"file\": ";
+    }
+    auto backend = make_backend(scratch, "work_c", cache, db);
+    EXPECT_EQ(load_and_run(*backend, b), 8.0f);
+    EXPECT_EQ(count_text(read_file(fs::path(db) / "compile_commands.json"), "\"file\":"), 1u);
+}
+
+// The text does not change on a hit: the file keeps its time stamp.
+TEST(ObjectCacheBackend, CompileCommandsIsNotRewrittenWhenSame)
+{
+    CleanEnv env;
+    TestScratch scratch;
+    const std::string cache = scratch.file("cache");
+    const std::string db = scratch.file("db");
+    auto backend = make_backend(scratch, "work_a", cache, db);
+    EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
+    const fs::path json = fs::path(db) / "compile_commands.json";
+    const auto before = fs::last_write_time(json);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
+    EXPECT_EQ(backend->cache_stats().hits, 1u);
+    EXPECT_EQ(fs::last_write_time(json), before);
+    // A new backend that builds the same unit does not write the file either.
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    auto second = make_backend(scratch, "work_b", cache, db);
+    EXPECT_EQ(load_and_run(*second, kCalc7), 7.0f);
+    EXPECT_EQ(fs::last_write_time(json), before);
+}
+
+// An empty option writes nothing.
+TEST(ObjectCacheBackend, CompileCommandsOffByDefault)
+{
+    CleanEnv env;
+    TestScratch scratch;
+    const std::string cache = scratch.file("cache");
+    auto backend = make_backend(scratch, "work_a", cache);
+    EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
+    EXPECT_FALSE(fs::exists(fs::path(cache) / "compile_commands.json"));
+}
+
+hot::DefaultBackendOptions default_options(const TestScratch& scratch, const std::string& commands_dir)
+{
+    hot::DefaultBackendOptions o;
+    o.kind = hot::BackendKind::ClangFiles;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine"};
+    o.work_dir = scratch.file("default_work");
+    o.cache_dir = scratch.file("default_cache");
+    o.compile_commands_dir = commands_dir;
+    return o;
+}
+
+// The variable HOT_COMPILE_COMMANDS_DIR decides over the option. An empty value turns it off.
+TEST(ObjectCacheBackend, CompileCommandsEnvironmentOverridesTheOption)
+{
+    if (!hot::backend_available(hot::BackendKind::ClangFiles))
+        GTEST_SKIP();
+    CleanEnv env;
+    EnvGuard cache_dir("HOT_CACHE_DIR", "");
+    test_support::unset_env("HOT_CACHE_DIR");
+    TestScratch scratch;
+    const std::string option_dir = scratch.file("option_db");
+    const std::string env_dir = scratch.file("env_db");
+    {
+        EnvGuard guard("HOT_COMPILE_COMMANDS_DIR", env_dir.c_str());
+        auto backend = hot::make_default_backend(default_options(scratch, option_dir));
+        hot::LoadResult r = backend->load(kCalc7, 1);
+        ASSERT_TRUE(r) << r.error;
+    }
+    EXPECT_TRUE(fs::exists(fs::path(env_dir) / "compile_commands.json"));
+    EXPECT_FALSE(fs::exists(fs::path(option_dir) / "compile_commands.json"));
+    {
+        EnvGuard guard("HOT_COMPILE_COMMANDS_DIR", "");
+        auto backend = hot::make_default_backend(default_options(scratch, option_dir));
+        hot::LoadResult r = backend->load(kCalc7, 1);
+        ASSERT_TRUE(r) << r.error;
+    }
+    EXPECT_FALSE(fs::exists(fs::path(option_dir) / "compile_commands.json"));
+    {
+        test_support::unset_env("HOT_COMPILE_COMMANDS_DIR");
+        auto backend = hot::make_default_backend(default_options(scratch, option_dir));
+        hot::LoadResult r = backend->load(kCalc7, 1);
+        ASSERT_TRUE(r) << r.error;
+    }
+    EXPECT_TRUE(fs::exists(fs::path(option_dir) / "compile_commands.json"));
 }
 
 } // namespace

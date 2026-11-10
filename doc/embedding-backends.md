@@ -47,6 +47,8 @@ hot::LoadResult built = backend.load({"player.hot", text}, 1);
 
 **Run time:** the backend translates in memory, writes a `.cpp` in `work_dir` (or in `generated_dir`, with a stable name), compiles it (without a shell) to a `.o`, links the `.o` to a `.so`, and loads it. Each call makes a new `.so`. The compile command is `<compiler> -std=<standard> -fPIC -c -g -Werror=return-type`, then `-resource-dir`, `extra_flags`, the `-I` folders, the format flags and `-MD -MF <depfile>` (`compile_object_command` in `include/hot/clang_files_backend.h`). The link command is `<compiler> -shared -fPIC -g`, then the target link flags, `extra_flags`, the `.o` and the host import library (`link_module_command`).
 
+**Compile database:** set `ClangFilesOptions::compile_commands_dir` (`DefaultBackendOptions::compile_commands_dir` for `make_default_backend`). Then the backend writes `<dir>/compile_commands.json` for IDE plugins (`clangd`, `hot-ls`). The environment variable `HOT_COMPILE_COMMANDS_DIR` overrides the option. An empty value turns the database off. The backend needs a `generated_dir` (with `cache_dir` it is `<cache_dir>/src`). Each entry has `file`, the stable generated `.cpp`, and the compile command without `-MD -MF`. Its `output` is the object file in the cache, and `directory` is the cache dir. The backend updates the entry after each good build. It writes the file through a temp file and a rename, and only when the text changes. At start it keeps the old entries whose `file` still exists. A damaged file is ignored.
+
 **Requires:** the compiler at run time. A work folder that the program can write.
 
 **Failure:** `LoadResult::error` has the diagnostics and `the compile of <script> failed (exit code N)`, or `cannot write <path>`.

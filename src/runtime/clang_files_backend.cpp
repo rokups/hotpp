@@ -252,6 +252,7 @@ ClangFilesBackend::ClangFilesBackend(ClangFilesOptions options)
         if (opt_.generated_dir.empty())
             opt_.generated_dir = (fs::path(opt_.cache_dir) / "src").string();
     }
+    load_compile_commands();
 }
 
 ClangFilesBackend::~ClangFilesBackend()
@@ -471,6 +472,321 @@ std::string compile_commands_json(const std::vector<CompileCommandEntry>& entrie
         r += "],\n    \"output\": " + json_string(e.output) + "\n  }" + (i + 1 < entries.size() ? "," : "") + "\n";
     }
     return r + "]\n";
+}
+
+namespace
+{
+
+// A small tolerant reader for compile_commands.json. It reads an array of objects with the string
+// fields "directory", "file" and "output" and the string array "arguments". It skips each other
+// value. Any syntax error makes the parse fail.
+class JsonReader
+{
+public:
+    explicit JsonReader(const std::string& text)
+        : s_(text)
+    {
+    }
+
+    bool parse_entries(std::vector<CompileCommandEntry>& out)
+    {
+        if (!expect('['))
+            return false;
+        if (peek() == ']')
+            return true;
+        for (;;)
+        {
+            CompileCommandEntry e;
+            bool has_arguments = false;
+            if (!parse_object(e, has_arguments))
+                return false;
+            if (has_arguments)
+                out.push_back(std::move(e));
+            if (peek() == ',')
+            {
+                ++i_;
+                continue;
+            }
+            return expect(']');
+        }
+    }
+
+private:
+    void skip_space()
+    {
+        while (i_ < s_.size() && (s_[i_] == ' ' || s_[i_] == '\n' || s_[i_] == '\r' || s_[i_] == '\t'))
+            ++i_;
+    }
+    char peek()
+    {
+        skip_space();
+        return i_ < s_.size() ? s_[i_] : '\0';
+    }
+    bool expect(char c)
+    {
+        if (peek() != c)
+            return false;
+        ++i_;
+        return true;
+    }
+    static void append_utf8(std::string& r, unsigned cp)
+    {
+        if (cp < 0x80)
+            r += static_cast<char>(cp);
+        else if (cp < 0x800)
+        {
+            r += static_cast<char>(0xC0 | (cp >> 6));
+            r += static_cast<char>(0x80 | (cp & 0x3F));
+        }
+        else if (cp < 0x10000)
+        {
+            r += static_cast<char>(0xE0 | (cp >> 12));
+            r += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+            r += static_cast<char>(0x80 | (cp & 0x3F));
+        }
+        else
+        {
+            r += static_cast<char>(0xF0 | (cp >> 18));
+            r += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+            r += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+            r += static_cast<char>(0x80 | (cp & 0x3F));
+        }
+    }
+    bool hex4(unsigned& v)
+    {
+        if (i_ + 4 > s_.size())
+            return false;
+        v = 0;
+        for (int k = 0; k < 4; ++k)
+        {
+            const char c = s_[i_++];
+            v <<= 4;
+            if (c >= '0' && c <= '9')
+                v |= static_cast<unsigned>(c - '0');
+            else if (c >= 'a' && c <= 'f')
+                v |= static_cast<unsigned>(c - 'a' + 10);
+            else if (c >= 'A' && c <= 'F')
+                v |= static_cast<unsigned>(c - 'A' + 10);
+            else
+                return false;
+        }
+        return true;
+    }
+    bool parse_string(std::string& r)
+    {
+        if (!expect('"'))
+            return false;
+        r.clear();
+        while (i_ < s_.size())
+        {
+            const char c = s_[i_++];
+            if (c == '"')
+                return true;
+            if (c != '\\')
+            {
+                r += c;
+                continue;
+            }
+            if (i_ >= s_.size())
+                return false;
+            const char e = s_[i_++];
+            switch (e)
+            {
+            case '"': r += '"'; break;
+            case '\\': r += '\\'; break;
+            case '/': r += '/'; break;
+            case 'b': r += '\b'; break;
+            case 'f': r += '\f'; break;
+            case 'n': r += '\n'; break;
+            case 'r': r += '\r'; break;
+            case 't': r += '\t'; break;
+            case 'u':
+            {
+                unsigned cp = 0;
+                if (!hex4(cp))
+                    return false;
+                if (cp >= 0xD800 && cp < 0xDC00 && i_ + 1 < s_.size() && s_[i_] == '\\' && s_[i_ + 1] == 'u')
+                {
+                    i_ += 2;
+                    unsigned lo = 0;
+                    if (!hex4(lo) || lo < 0xDC00 || lo > 0xDFFF)
+                        return false;
+                    cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
+                }
+                append_utf8(r, cp);
+                break;
+            }
+            default: return false;
+            }
+        }
+        return false;
+    }
+    bool parse_string_array(std::vector<std::string>& r)
+    {
+        r.clear();
+        if (!expect('['))
+            return false;
+        if (peek() == ']')
+        {
+            ++i_;
+            return true;
+        }
+        for (;;)
+        {
+            std::string item;
+            if (!parse_string(item))
+                return false;
+            r.push_back(std::move(item));
+            if (peek() == ',')
+            {
+                ++i_;
+                continue;
+            }
+            return expect(']');
+        }
+    }
+    // Skips one value of any type. "depth" limits the nesting.
+    bool skip_value(int depth)
+    {
+        if (depth > 32)
+            return false;
+        const char c = peek();
+        if (c == '"')
+        {
+            std::string ignore;
+            return parse_string(ignore);
+        }
+        if (c == '[' || c == '{')
+        {
+            const char close = c == '[' ? ']' : '}';
+            ++i_;
+            if (peek() == close)
+            {
+                ++i_;
+                return true;
+            }
+            for (;;)
+            {
+                if (c == '{')
+                {
+                    std::string key;
+                    if (!parse_string(key) || !expect(':'))
+                        return false;
+                }
+                if (!skip_value(depth + 1))
+                    return false;
+                if (peek() == ',')
+                {
+                    ++i_;
+                    continue;
+                }
+                return expect(close);
+            }
+        }
+        const size_t start = i_;
+        while (i_ < s_.size() && s_[i_] != '\0' && std::strchr("-+.eE0123456789abcdefghijklmnopqrstuvwxyz", s_[i_]))
+            ++i_;
+        return i_ > start;
+    }
+    bool parse_object(CompileCommandEntry& e, bool& has_arguments)
+    {
+        if (!expect('{'))
+            return false;
+        if (peek() == '}')
+        {
+            ++i_;
+            return true;
+        }
+        for (;;)
+        {
+            std::string key;
+            if (!parse_string(key) || !expect(':'))
+                return false;
+            bool ok;
+            if (key == "directory")
+                ok = peek() == '"' && parse_string(e.directory);
+            else if (key == "file")
+                ok = peek() == '"' && parse_string(e.file);
+            else if (key == "output")
+                ok = peek() == '"' && parse_string(e.output);
+            else if (key == "arguments")
+            {
+                ok = parse_string_array(e.arguments);
+                has_arguments = ok;
+            }
+            else
+                ok = skip_value(0);
+            if (!ok)
+                return false;
+            if (peek() == ',')
+            {
+                ++i_;
+                continue;
+            }
+            return expect('}');
+        }
+    }
+
+    const std::string& s_;
+    size_t i_ = 0;
+};
+
+fs::path absolute_path(const std::string& path)
+{
+    std::error_code ec;
+    fs::path p = fs::absolute(path, ec);
+    return ec ? fs::path(path) : p.lexically_normal();
+}
+
+} // namespace
+
+void ClangFilesBackend::load_compile_commands()
+{
+    if (opt_.compile_commands_dir.empty())
+        return;
+    const std::string path = (fs::path(opt_.compile_commands_dir) / "compile_commands.json").string();
+    std::string text;
+    if (!read_text(path, text))
+        return;
+    commands_text_ = text; // the text on disk: an equal new text needs no write
+    std::vector<CompileCommandEntry> old;
+    if (!JsonReader(text).parse_entries(old))
+        return; // a damaged file: start empty
+    std::error_code ec;
+    for (CompileCommandEntry& e : old)
+        if (!e.file.empty() && fs::exists(e.file, ec))
+            commands_[e.file] = std::move(e);
+}
+
+void ClangFilesBackend::record_compile_command(
+    const std::string& unit, const std::string& script_dir, const std::string& object)
+{
+    if (opt_.compile_commands_dir.empty() || opt_.generated_dir.empty())
+        return;
+    const fs::path stable = absolute_path((fs::path(opt_.generated_dir) / (unit + ".cpp")).string());
+    std::error_code ec;
+    if (!fs::exists(stable, ec))
+        return; // the publish failed: the IDE has no file to read
+    CompileCommandEntry e;
+    e.directory = absolute_path(cache_ ? opt_.cache_dir : opt_.work_dir).string();
+    e.file = stable.string();
+    e.output = absolute_path(object).string();
+    // No depfile: the IDE needs no "-MD -MF".
+    e.arguments = compile_object_command(opt_, e.file, e.output, std::string(), script_dir);
+    commands_[e.file] = std::move(e);
+    std::vector<CompileCommandEntry> list;
+    for (const auto& [file, entry] : commands_) // the map order is the order of "file"
+        list.push_back(entry);
+    const std::string text = compile_commands_json(list);
+    if (text == commands_text_)
+        return;
+    const fs::path dir(opt_.compile_commands_dir);
+    fs::create_directories(dir, ec);
+    // A write failure has no effect on the build. The next build tries again.
+    if (write_text_replace((dir / "compile_commands.json").string(), text))
+        commands_text_ = text;
+    else
+        std::fprintf(stderr, "[script] WARNING: cannot write %s\n", (dir / "compile_commands.json").string().c_str());
 }
 
 namespace
@@ -708,6 +1024,7 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
         return false;
     };
     int link_rc = 0;
+    std::string built_object = obj_path; // the object file of the compile, for the compile database
     const char* cache_note = "";
     auto t2 = std::chrono::steady_clock::now();
     if (!use_cache)
@@ -770,6 +1087,7 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
                 }
             }
             link_rc = run_command(link_module_command(opt_, object, out_so), output);
+            built_object = temp_object.empty() ? object : obj_path;
             if (!temp_object.empty())
                 fs::remove(temp_object, ec);
             if (link_rc == 0)
@@ -793,6 +1111,7 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     }
     if (link_rc != 0)
         return fail("link", link_rc);
+    record_compile_command(unit, script_dir, built_object);
     if (deferred_slots)
     {
         *deferred_slots = tr.slots_out + tr.sigs_out;
