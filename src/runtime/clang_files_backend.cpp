@@ -8,6 +8,7 @@
 #include "hot/scratch.h"
 #include "hot/hotc_lib.h"
 #include "hot/paths.h"
+#include "hot/runtime/process.h"
 
 #include <cerrno>
 #include <chrono>
@@ -236,6 +237,21 @@ ClangFilesBackend::ClangFilesBackend(ClangFilesOptions options)
         opt_.session = std::make_shared<hotc::TranslatorSession>();
     if (opt_.slots_file.empty())
         opt_.slots_file = opt_.work_dir + "/slots.txt";
+    if (!opt_.cache_dir.empty() && ObjectCache::enabled_by_env())
+    {
+        uint64_t max_bytes = opt_.cache_max_bytes;
+        if (const char* env = std::getenv("HOT_CACHE_MAX_MB"); env && *env)
+        {
+            char* end = nullptr;
+            const unsigned long long mb = std::strtoull(env, &end, 10);
+            if (end && *end == '\0')
+                max_bytes = static_cast<uint64_t>(mb) << 20;
+        }
+        cache_ = std::make_unique<ObjectCache>(opt_.cache_dir, max_bytes);
+        cache_->trim();
+        if (opt_.generated_dir.empty())
+            opt_.generated_dir = (fs::path(opt_.cache_dir) / "src").string();
+    }
 }
 
 ClangFilesBackend::~ClangFilesBackend()
@@ -457,6 +473,77 @@ std::string compile_commands_json(const std::vector<CompileCommandEntry>& entrie
     return r + "]\n";
 }
 
+namespace
+{
+
+// The path of the compiler program: a name with a directory, or a search of PATH.
+std::string find_program(const std::string& name)
+{
+    std::error_code ec;
+    if (name.find('/') != std::string::npos || name.find('\\') != std::string::npos)
+        return fs::exists(name, ec) ? name : std::string();
+    const char* path_env = std::getenv("PATH");
+    if (!path_env)
+        return std::string();
+#ifdef _WIN32
+    const char sep = ';';
+    const std::vector<std::string> names = {name, name + ".exe"};
+#else
+    const char sep = ':';
+    const std::vector<std::string> names = {name};
+#endif
+    const std::string path = path_env;
+    size_t start = 0;
+    while (start <= path.size())
+    {
+        size_t end = path.find(sep, start);
+        if (end == std::string::npos)
+            end = path.size();
+        const std::string dir = path.substr(start, end - start);
+        for (const std::string& n : names)
+        {
+            const fs::path candidate = (dir.empty() ? fs::path(".") : fs::path(dir)) / n;
+            if (fs::is_regular_file(candidate, ec))
+                return candidate.string();
+        }
+        start = end + 1;
+    }
+    return std::string();
+}
+
+} // namespace
+
+bool ClangFilesBackend::prepare_cache()
+{
+    if (!cache_)
+        return false;
+    if (compiler_id_done_)
+        return !compiler_id_.empty();
+    compiler_id_done_ = true;
+    std::string output;
+    const int rc = run_command({opt_.compiler, "--version"}, output);
+    const std::string program = find_program(opt_.compiler);
+    std::error_code ec1;
+    std::error_code ec2;
+    uint64_t size = 0;
+    long long mtime = 0;
+    if (!program.empty())
+    {
+        size = static_cast<uint64_t>(fs::file_size(program, ec1));
+        mtime = static_cast<long long>(fs::last_write_time(program, ec2).time_since_epoch().count());
+    }
+    const std::string version = output.substr(0, output.find('\n'));
+    if (rc != 0 || version.empty() || program.empty() || ec1 || ec2)
+    {
+        std::fprintf(stderr, "hot: the object cache is off: cannot identify the compiler '%s'\n",
+            opt_.compiler.c_str());
+        cache_.reset();
+        return false;
+    }
+    compiler_id_ = program + "|" + version + "|" + std::to_string(mtime) + "|" + std::to_string(size);
+    return true;
+}
+
 bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation, const std::string& out_so,
     std::string& error, std::vector<std::string>* dependencies)
 {
@@ -493,7 +580,10 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
                                              : fs::path(so_path).replace_extension(".cpp").string();
     if (stable_cpp)
         fs::create_directories(fs::path(line_name).parent_path(), ec);
-    std::string cpp_path = line_name;
+    // With the cache the compile reads a private copy "<work_dir>/<unit>.cpp". Two processes then
+    // never change the input of a compile of the other. The stable file is for the IDE only.
+    const bool use_cache = prepare_cache();
+    std::string cpp_path = use_cache ? (fs::path(opt_.work_dir) / (unit + ".cpp")).string() : line_name;
 
     hotc::TranslateOptions to;
     to.script_text = source.text;
@@ -541,7 +631,21 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
             : hotc::rewrite_translator_diagnostic(tr.diagnostics, hotc::script_texts(source.name, source.text, tr));
         return false;
     }
-    if (stable_cpp && !write_text_replace(cpp_path, tr.cpp))
+    if (use_cache)
+    {
+        fs::create_directories(fs::path(cpp_path).parent_path(), ec);
+        if (!write_text(cpp_path, tr.cpp))
+        {
+            error = "cannot write " + cpp_path;
+            return false;
+        }
+        // A failure here has no effect on the build. Skip the write when the text is the same, so
+        // a file watcher of the IDE does not see a change.
+        std::string have;
+        if (!(read_text(line_name, have) && have == tr.cpp))
+            write_text_replace(line_name, tr.cpp);
+    }
+    else if (stable_cpp && !write_text_replace(cpp_path, tr.cpp))
     {
         // The rename can fail on Windows while an other process reads the file. This build then
         // uses the work dir path. The "#line" name stays the same.
@@ -591,10 +695,7 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
         return false;
     }
     fs::remove(so_path, ec);
-    fs::remove(obj_path, ec);
     std::string output;
-    const int rc = run_command(compile_object_command(opt_, cpp_path, obj_path, dep_path, script_dir), output);
-    const auto t2 = std::chrono::steady_clock::now();
     // The diagnostics can name the "#line" name or the path of the file (before the first "#line").
     hotc::ScriptTexts generated = {{line_name, tr.cpp}};
     if (cpp_path != line_name)
@@ -606,17 +707,89 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
         error = output + "the " + what + " of " + source.name + " failed (exit code " + std::to_string(code) + ")\n";
         return false;
     };
-    if (rc != 0)
-        return fail("compile", rc);
-    const int link_rc = run_command(link_module_command(opt_, obj_path, out_so), output);
+    int link_rc = 0;
+    const char* cache_note = "";
+    auto t2 = std::chrono::steady_clock::now();
+    if (!use_cache)
+    {
+        fs::remove(obj_path, ec);
+        const int rc = run_command(compile_object_command(opt_, cpp_path, obj_path, dep_path, script_dir), output);
+        t2 = std::chrono::steady_clock::now();
+        if (rc != 0)
+            return fail("compile", rc);
+        link_rc = run_command(link_module_command(opt_, obj_path, out_so), output);
+    }
+    else
+    {
+        // The key has the translated text, the compile arguments (the paths of this build are
+        // fixed names), the compiler and the mirror files that the compile can read.
+        ObjectCache::KeyInputs inputs;
+        inputs.cpp_text = tr.cpp;
+        inputs.args = ObjectCache::normalize_args(
+            compile_object_command(opt_, "@cpp@", "@obj@", "@dep@", script_dir), opt_.work_dir);
+        inputs.compiler_id = compiler_id_;
+        if (opt_.fs)
+            inputs.virtual_files = tr.virtual_files;
+        const ObjectCache::Key key = ObjectCache::make_key(inputs);
+        std::optional<ObjectCache::Hit> hit = cache_->lookup(key);
+        cache_note = hit ? ", cache hit" : ", cache miss";
+        bool retried = false;
+        for (;;)
+        {
+            std::string object; // the object file to link
+            std::string temp_object; // an object that the cache did not take: delete it after the link
+            if (hit)
+                object = hit->object.string();
+            else
+            {
+                const std::string base = (fs::path(opt_.work_dir) / key.hex()).string();
+                const std::string tmp = base + ".o.tmp" + std::to_string(hot::detail::process_id());
+                const std::string dep = base + ".d.tmp" + std::to_string(hot::detail::process_id());
+                fs::remove(tmp, ec);
+                fs::remove(dep, ec);
+                const int rc = run_command(compile_object_command(opt_, cpp_path, tmp, dep, script_dir), output);
+                t2 = std::chrono::steady_clock::now();
+                std::string dep_text;
+                if (rc == 0)
+                    read_text(dep, dep_text);
+                fs::remove(dep, ec);
+                if (rc != 0)
+                {
+                    fs::remove(tmp, ec);
+                    return fail("compile", rc);
+                }
+                std::string store_error;
+                if (cache_->store(key, tmp, dep_text, opt_.work_dir, store_error))
+                    object = cache_->object_path(key).string();
+                else
+                {
+                    std::fprintf(stderr, "hot: cannot store %s in the object cache: %s\n", unit.c_str(),
+                        store_error.c_str());
+                    object = tmp;
+                    temp_object = tmp;
+                }
+            }
+            link_rc = run_command(link_module_command(opt_, object, out_so), output);
+            if (!temp_object.empty())
+                fs::remove(temp_object, ec);
+            if (link_rc == 0)
+                break;
+            cache_->remove(key); // a bad object must not stay in the cache
+            if (!hit || retried)
+                break;
+            // The cached object does not link (a damaged file). Compile it once more.
+            hit.reset();
+            retried = true;
+        }
+    }
     if (timing)
     {
         const auto t3 = std::chrono::steady_clock::now();
         const auto ms = [](auto a, auto b) {
             return static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(b - a).count());
         };
-        std::fprintf(stderr, "hot: %s translate %lld ms, compile %lld ms, link %lld ms\n", unit.c_str(), ms(t0, t1),
-            ms(t1, t2), ms(t2, t3));
+        std::fprintf(stderr, "hot: %s translate %lld ms, compile %lld ms, link %lld ms%s\n", unit.c_str(),
+            ms(t0, t1), ms(t1, t2), ms(t2, t3), cache_note);
     }
     if (link_rc != 0)
         return fail("link", link_rc);

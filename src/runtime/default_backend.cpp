@@ -101,6 +101,12 @@ std::unique_ptr<Backend> make_clang_files(const DefaultBackendOptions& options)
     std::filesystem::remove_all(o.work_dir, ec);
     // Only this p<pid> directory goes. The parent directory is shared with other processes.
     o.remove_work_dir_at_exit = !keep_temp();
+    // The environment decides over the option. The backend makes "<cache_dir>/src" the generated_dir.
+    o.cache_dir = options.cache_dir;
+    if (const char* env = std::getenv("HOT_CACHE_DIR"); env && *env)
+        o.cache_dir = env;
+    if (!ObjectCache::enabled_by_env())
+        o.cache_dir.clear();
     return std::make_unique<ClangFilesBackend>(std::move(o));
 }
 #endif

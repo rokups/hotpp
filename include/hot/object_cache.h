@@ -126,6 +126,9 @@ public:
 
     void remove(const Key& key);
 
+    // The path of the object file of an entry. It does not check that the entry exists.
+    std::filesystem::path object_path(const Key& key) const;
+
     // When the entries are larger than the limit, removes the oldest entries (by the time of the
     // manifest) until the size is below 75% of the limit. Removes the old temporary files.
     void trim();

@@ -575,6 +575,11 @@ fs::path ObjectCache::entry_file(const Key& key, const char* ext) const
     return obj_dir() / (key.hex() + ext);
 }
 
+fs::path ObjectCache::object_path(const Key& key) const
+{
+    return entry_file(key, ".o");
+}
+
 ObjectCache::Stats ObjectCache::stats() const
 {
     Stats s;

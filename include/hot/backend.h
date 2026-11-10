@@ -199,6 +199,10 @@ struct DefaultBackendOptions
     // start and at exit, so do not keep files there. A crash can leave stale "p<pid>" directories.
     // The JIT backend ignores it.
     std::string work_dir;
+    // The directory of the object cache of the clang files backend: a restart of the host reuses
+    // the object files of the unchanged scripts. Empty: no cache. The environment variable
+    // HOT_CACHE_DIR overrides it. HOT_CACHE=0 turns the cache off. The JIT backend ignores it.
+    std::string cache_dir;
 };
 std::unique_ptr<Backend> make_default_backend(const DefaultBackendOptions& options);
 

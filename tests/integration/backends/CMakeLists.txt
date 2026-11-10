@@ -10,6 +10,7 @@ set(BACKEND_TEST_SOURCES
     generated_name_compile_tests.cpp
     protected_base_compile_tests.cpp
     vfs_backend_tests.cpp
+    object_cache_backend_tests.cpp
     backend_selection_tests.cpp
     entry_main_module_tests.cpp
     generics_tests.cpp)

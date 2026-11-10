@@ -9,6 +9,7 @@
 #include "hot/backend.h"
 #include "hot/command_line.h"
 #include "hot/hotc_lib.h"
+#include "hot/object_cache.h"
 
 #include <atomic>
 #include <memory>
@@ -36,8 +37,17 @@ struct ClangFilesOptions
     // The directory of the generated .cpp files. Empty: the work dir, with a name from the .so.
     // Non-empty: the .cpp is "<generated_dir>/<unit>.cpp" (the unit of the source, else the stem
     // of its name). The "#line" name is then the same in each run, so the .cpp text is stable.
-    // Two backends that build the same unit at the same time must not share the directory.
+    // Two backends that build the same unit at the same time must not share the directory, unless
+    // the object cache is on (cache_dir). The cache makes the compile read a private copy.
     std::string generated_dir;
+    // The directory of the object cache (hot/object_cache.h). Empty: no cache. The environment
+    // variable HOT_CACHE=0 turns the cache off. With a cache and an empty generated_dir, the
+    // generated_dir is "<cache_dir>/src". The cache is off for a backend whose compiler does not
+    // run "--version". Many processes can share one cache directory.
+    std::string cache_dir;
+    // The size limit of the cache. The backend trims the cache once at its creation. The
+    // environment variable HOT_CACHE_MAX_MB (in MiB) overrides it. The value 0 means no limit.
+    uint64_t cache_max_bytes = 4ULL << 30;
     std::string slots_file; // empty: <work_dir>/slots.txt
     // True: the destructor of the backend removes work_dir (remove_scratch). The owner must give
     // a directory that no other backend uses.
@@ -89,6 +99,9 @@ public:
         return true;
     }
 
+    // The hits and the misses of the object cache of this backend. All zero when the cache is off.
+    ObjectCache::Stats cache_stats() const { return cache_ ? cache_->stats() : ObjectCache::Stats{}; }
+
     // Translates, compiles and links one script into "out_so". It writes the .cpp next to the .so
     // (or into generated_dir), and the .o and .d next to the .so. It does not load the library. The slot file changes only
     // when the compile succeeds. On failure, "error" has the diagnostics. "dependencies" (when not
@@ -100,8 +113,13 @@ private:
     bool build_impl(const ScriptSource& source, uint32_t generation, LoadMode mode, const std::string& out_so,
         std::string& error, std::string* deferred_slots, std::vector<std::string>* dependencies,
         LoadResult* hashes = nullptr);
+    // Finds the compiler id for the cache key once. On a failure it turns the cache off.
+    bool prepare_cache();
 
     ClangFilesOptions opt_;
+    std::unique_ptr<ObjectCache> cache_; // null: no cache
+    std::string compiler_id_;
+    bool compiler_id_done_ = false;
     std::mutex mutex_; // one build at a time: the slot file is shared
     std::atomic<unsigned> sequence_{0};
     std::atomic<unsigned> epoch_{0}; // counts the fresh loads; it is in the name of the library
