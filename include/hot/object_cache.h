@@ -93,6 +93,10 @@ public:
         std::vector<std::string> args;                                  // the normalized compiler arguments
         std::string compiler_id;                                        // the compiler path and version
         std::vector<std::pair<std::string, std::string>> virtual_files; // (path, content) of generated files
+        // The hash of the shadow paths (TranslateResult::shadow_paths). A new header earlier in
+        // the include path can give the same translate text but another object. The header
+        // search then has other shadow paths, so the key is different.
+        uint64_t shadow_hash = 0;
     };
 
     struct Hit

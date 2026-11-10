@@ -448,6 +448,7 @@ ObjectCache::Key ObjectCache::make_key(const KeyInputs& inputs)
             h->add_text(f.first);
             h->add_text(f.second);
         }
+        h->add_u64(inputs.shadow_hash);
     }
     return Key{h1.value(), h2.value()};
 }

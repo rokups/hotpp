@@ -1174,6 +1174,9 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
         inputs.compiler_id = compiler_id_;
         if (opt_.fs)
             inputs.virtual_files = tr.virtual_files;
+        // A sum of the path hashes: the order of the paths is different after a translate cache hit.
+        for (const std::string& p : tr.shadow_paths)
+            inputs.shadow_hash += hotc::text_hash(p);
         const ObjectCache::Key key = ObjectCache::make_key(inputs);
         std::optional<ObjectCache::Hit> hit = cache_->lookup(key);
         cache_note = hit ? ", cache hit" : ", cache miss";

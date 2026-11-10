@@ -687,6 +687,45 @@ TEST(ObjectCacheBackend, ChangedHeaderLayoutMissesTheModule)
     EXPECT_EQ(backend->cache_stats().module_hits, 1u);
 }
 
+// A new "layout.h" in an earlier include dir has the same declarations, so the translate gives
+// the same text. The inline body is different, so the object entry of the old header is wrong.
+TEST(ObjectCacheBackend, NewShadowHeaderMissesTheObject)
+{
+    CleanEnv env;
+    TestScratch scratch;
+    const std::string cache = scratch.file("cache");
+    const fs::path early = scratch.file("early");
+    const fs::path inc = scratch.file("inc");
+    fs::create_directories(early);
+    fs::create_directories(inc);
+    write_layout_header(inc / "layout.h", 4, std::chrono::minutes(60));
+    const auto make = [&](const std::string& work)
+    {
+        hot::ClangFilesOptions o;
+        o.compiler = HOT_CXX;
+        o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include",
+            early.string(), inc.string()};
+        o.work_dir = scratch.file(work);
+        o.cache_dir = cache;
+        return std::make_unique<hot::ClangFilesBackend>(std::move(o));
+    };
+    {
+        auto backend = make("work_a");
+        EXPECT_EQ(load_and_run(*backend, kLayout), 4.0f);
+    }
+    write_layout_header(early / "layout.h", 16, std::chrono::minutes(30));
+    {
+        auto backend = make("work_b");
+        EXPECT_EQ(load_and_run(*backend, kLayout), 16.0f);
+        EXPECT_EQ(backend->cache_stats().hits, 0u);
+        EXPECT_EQ(backend->cache_stats().module_hits, 0u);
+    }
+    auto backend = make("work_c");
+    EXPECT_EQ(load_and_run(*backend, kLayout), 16.0f);
+    EXPECT_EQ(backend->cache_stats().hits, 1u);
+    EXPECT_EQ(backend->cache_stats().translate_hits, 1u);
+}
+
 // The compiler reads CPATH and other variables. A changed variable changes the key: a miss.
 TEST(ObjectCacheBackend, CompilerEnvironmentIsPartOfTheKey)
 {
