@@ -68,6 +68,27 @@ set(HOT_LIBCLANG_FILE "${_hot_libclang_file}" CACHE INTERNAL "The libclang file 
 add_library(hotc_lib STATIC hotc_lib.cpp vfs.cpp file_time.cpp emit.cpp lower.cpp types.cpp check.cpp const_infer.cpp nullcheck.cpp lint.cpp diag_rewrite.cpp
     parser/script_grammar.cpp parser/cpp_frontend.cpp parser/generics.cpp
     parser/expression_grammar.cpp parser/statement_grammar.cpp)
+# The build id of the translator (hotc::translator_build_id): a hash of the translator sources
+# and of the public headers. A custom command makes it again when one of these files changes.
+file(GLOB_RECURSE _hot_id_sources CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/*.h" "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp"
+    "${PROJECT_SOURCE_DIR}/include/hot/*.h")
+list(REMOVE_ITEM _hot_id_sources "${CMAKE_CURRENT_SOURCE_DIR}/build_id.cpp")
+list(JOIN _hot_id_sources "\n" _hot_id_list)
+file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/translator_sources.txt" CONTENT "${_hot_id_list}\n")
+set(_hot_id_header "${CMAKE_CURRENT_BINARY_DIR}/generated/translator_build_id.h")
+add_custom_command(OUTPUT "${_hot_id_header}"
+    COMMAND ${CMAKE_COMMAND} -DLIST=${CMAKE_CURRENT_BINARY_DIR}/translator_sources.txt
+        -DROOT=${PROJECT_SOURCE_DIR} -DOUT=${_hot_id_header} -P ${PROJECT_SOURCE_DIR}/cmake/HotTranslatorBuildId.cmake
+    DEPENDS ${_hot_id_sources} "${PROJECT_SOURCE_DIR}/cmake/HotTranslatorBuildId.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/translator_sources.txt"
+    COMMENT "Computing the translator build id" VERBATIM)
+target_sources(hotc_lib PRIVATE build_id.cpp "${_hot_id_header}")
+set_source_files_properties(build_id.cpp PROPERTIES OBJECT_DEPENDS "${_hot_id_header}")
+target_include_directories(hotc_lib PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+# A new libclang changes the parse, so the id also has the path of the library. build_id.cpp
+# adds the change time and the size of the file at run time.
+target_compile_definitions(hotc_lib PRIVATE HOT_LIBCLANG_FILE_PATH="${HOT_LIBCLANG_FILE}")
 target_include_directories(hotc_lib PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)

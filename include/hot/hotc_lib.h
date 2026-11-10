@@ -367,6 +367,11 @@ std::string target_parse_error(const std::string& target, const std::string& sys
 // Uses the cache of the session.
 TranslateResult translate(const TranslateOptions& options, TranslatorSession& session);
 
+// A text that changes when the translator changes: a hash of the translator sources and of
+// its public headers. The build makes it (cmake/HotTranslatorBuildId.cmake). A cache of the
+// translate output has it in its key.
+const char* translator_build_id();
+
 // Reads "text" with the tolerant parser and returns the facts. The text replaces
 // options.script_text. The function does not change the result of translate(): a script
 // with a syntax error still gives ok = false and no C++ there.
