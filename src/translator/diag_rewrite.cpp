@@ -180,9 +180,16 @@ const char* script_type_name(const std::string& t)
     return it == kTypes.end() ? nullptr : it->second;
 }
 
-// "Player_Shell" -> "Player". "PlayerState_g3" -> "Player". Gives false for any other name.
-bool class_of_generated(const std::string& t, std::string& cls)
+// "Player_Shell" -> "Player". "PlayerState" -> "Player" when "Player" is in "classes" (a native
+// type can also end with "State"). "PlayerState_g3" (a hand-written module) -> "Player". Gives
+// false for any other name.
+bool class_of_generated(const std::string& t, std::string& cls, const std::set<std::string>& classes)
 {
+    if (t.size() > 5 && ends_with(t, "State") && classes.count(t.substr(0, t.size() - 5)))
+    {
+        cls = t.substr(0, t.size() - 5);
+        return true;
+    }
     if (t.size() > 6 && ends_with(t, "_Shell"))
     {
         cls = t.substr(0, t.size() - 6);
@@ -199,15 +206,15 @@ bool class_of_generated(const std::string& t, std::string& cls)
     return false;
 }
 
-// "Player_Shell" -> "Player". "PlayerState_g3" -> "Player". "Player__heal" -> "Player.heal".
-std::string script_name(const std::string& t)
+// "Player_Shell" -> "Player". "PlayerState" -> "Player". "Player__heal" -> "Player.heal".
+std::string script_name(const std::string& t, const std::set<std::string>& classes)
 {
     if (const char* s = script_type_name(t))
         return s;
     if (t.empty() || !std::isalpha(static_cast<unsigned char>(t[0])))
         return t;
     std::string cls;
-    if (class_of_generated(t, cls))
+    if (class_of_generated(t, cls, classes))
         return cls;
     // A free function: "hot_fn_F" -> "F". An overload key: "F__ov_int32_Ut" -> "F" (gap G17).
     if (t.rfind("hot_fn_", 0) == 0 && t.size() > 7)
@@ -278,7 +285,7 @@ void drop_in(std::string& s)
     }
 }
 
-// The names of the classes that the C++ scripts declare ("class X" or "struct X"). A generated
+// The names of the classes that the scripts declare ("class X" or "struct X"). A generated
 // name is a script name only when its class is in this set. A name of the user is then safe.
 std::set<std::string> declared_classes(const std::map<std::string, std::vector<std::string>>& script_lines)
 {
@@ -286,8 +293,6 @@ std::set<std::string> declared_classes(const std::map<std::string, std::vector<s
     auto is_word = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
     for (const auto& script : script_lines)
     {
-        if (!ends_with(script.first, ".cpp"))
-            continue;
         for (const std::string& line : script.second)
             for (const char* keyword : {"class", "struct"})
             {
@@ -320,7 +325,7 @@ std::string cpp_script_name(const std::string& t, const std::set<std::string>& c
     if (t.empty() || !std::isalpha(static_cast<unsigned char>(t[0])))
         return t;
     std::string cls;
-    if (class_of_generated(t, cls))
+    if (class_of_generated(t, cls, classes))
         return classes.count(cls) ? cls : t;
     const size_t us = t.find("__");
     if (us == std::string::npos || us == 0 || us + 2 >= t.size())
@@ -375,7 +380,7 @@ std::string rename_generated(std::string s, bool cpp, const std::set<std::string
         if (std::isdigit(c)) // a number or "1st" stays
             out += token;
         else
-            out += cpp ? cpp_script_name(token, classes) : script_name(token);
+            out += cpp ? cpp_script_name(token, classes) : script_name(token, classes);
         i = e;
     }
     if (!cpp)
@@ -568,6 +573,13 @@ std::string rewrite_message(
     if (msg.size() <= kMaxRegexMessage)
     {
         msg = fix_counts(msg, script_function);
+        // A typo in a member of the state struct of a script class: the class must be a script class.
+        static const std::regex state_member(R"(^no member named '([^']+)' in '(\w+)State')");
+        std::smatch m;
+        if (std::regex_search(msg, m, state_member) && classes.count(m[2].str()))
+            return rename_generated(m.prefix().str() + "script class '" + m[2].str() + "' has no member '"
+                    + m[1].str() + "'" + m.suffix().str(),
+                false, classes);
         for (const Rule& r : mistakes())
         {
             if (!std::regex_search(msg, r.re))
@@ -576,7 +588,7 @@ std::string rewrite_message(
             break;
         }
     }
-    return rename_generated(msg);
+    return rename_generated(msg, false, classes);
 }
 
 // ------------------------------------------------------------------ unformattable values
@@ -886,7 +898,7 @@ std::string rewrite_diagnostic(
     bool cur_cpp = any_cpp
         && std::all_of(scripts.begin(), scripts.end(),
             [](const std::pair<std::string, std::string>& s) { return ends_with(s.first, ".cpp"); });
-    const std::set<std::string> classes = any_cpp ? declared_classes(script_lines) : std::set<std::string>();
+    const std::set<std::string> classes = declared_classes(script_lines);
 
     LineIndex line_index;
     const std::vector<std::string>* front_gen = nullptr; // the first generated text

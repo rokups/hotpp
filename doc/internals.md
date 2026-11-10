@@ -84,7 +84,7 @@ A class that a new generation drops is removed (design 6.1). Its record stays. I
 
 The sample `samples/hot-reload` shows the reload path. The test host `tests/engine/Harness` ticks a world and reloads a script when the file changes (`FileWatcher`: `inotify` on Linux, polling else). The tests in `tests/integration/reload/` (`integration_reload_tests`) test this.
 
-The warnings of a reload use readable names: C++ type names (`int`, `std::string`) and class names (`Hero`, not `HeroState_g2`).
+The warnings of a reload use readable names: C++ type names (`int`, `std::string`) and class names (`Hero`, not `HeroState`).
 
 Rules for threads:
 
@@ -167,10 +167,11 @@ Debug information:
 
 What the debugger shows:
 
-- Each script class has a state struct, for example `PlayerState_g1`. Its first member is `hot::ShellBase* __hot_owner` (offset 0, with a `static_assert`).
+- Each script class has a state struct, for example `PlayerState`. Its first member is `hot::ShellBase* __hot_owner` (offset 0, with a `static_assert`).
+- The generated text has no generation number. The loader calls `Registry::set_generation` before `script_register`. `script_register` copies the value into the module variable `GEN` and into each class record. Thus a unit with equal text at a later generation hits the object cache.
 - Each shell derives from `hot::ShellBase`, which derives from `hot::ShellCore`. `ShellCore` holds only the class record (`cls`). `ShellBase` adds the state pointer and the list of live objects. A shell of optimized AOT derives from `ShellCore` only.
 - Script methods are members of the state struct. A frame shows `this` (the script fields) and the parameters. The locals `__self` and `__st` have the attribute `HOT_NODEBUG_LOCAL` (`[[gnu::nodebug]]` on Clang and GCC).
-- A slot holds a pointer to the state member (`hot::SlotFn`, for example `PlayerState_g1::Tick`). `hot::call<Sig>(__self, slot, args...)` calls the member. No `Player__Tick` wrapper exists. A script function, a constructor and a destructor keep a hidden `HOT_HIDDEN` wrapper for direct script calls.
+- A slot holds a pointer to the state member (`hot::SlotFn`, for example `PlayerState::Tick`). `hot::call<Sig>(__self, slot, args...)` calls the member. No `Player__Tick` wrapper exists. A script function, a constructor and a destructor keep a hidden `HOT_HIDDEN` wrapper for direct script calls.
 - The member prologue has the stale-generation check. A parameter with a body type has the name `__<name>` in the member. The first body line copies it to `<name>`.
 - A line breakpoint on a `fn` line hits once. Step-in from the engine reaches the member after the frame of the shell override. The shell override maps to the class line.
 - Every generated line that makes code has a `#line N "script.hot"` before it. Breakpoints and stepping use the `.hot` lines.

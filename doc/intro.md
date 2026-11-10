@@ -172,7 +172,7 @@ struct HotModule { int ticks; };
 HotModule* hot_mod();                // the loader points it at the current block
 
 // 2. State of generation 1. The fields and the script code live here.
-struct PlayerState_g1 {
+struct PlayerState {
     hot::ShellBase* owner;           // the shell that this state belongs to
     float hp, speed;
     void Tick(float dt) {
@@ -191,14 +191,14 @@ struct Player_Shell final : Actor, hot::ShellBase {
 
 // 4. Slot table of generation 1. A reload makes a new table.
 static const hot::SlotFn slots[] = {
-    (hot::SlotFn)&PlayerState_g1::Tick,
-    (hot::SlotFn)&PlayerState_g1::heal,
+    (hot::SlotFn)&PlayerState::Tick,
+    (hot::SlotFn)&PlayerState::heal,
 };
 
 // 5. Field list. The loader uses it to move the values to a new generation.
 static const hot::FieldInfo fields[] = {
-    {"hp",    typeid(float).name(), offsetof(PlayerState_g1, hp),    sizeof(float)},
-    {"speed", typeid(float).name(), offsetof(PlayerState_g1, speed), sizeof(float)},
+    {"hp",    typeid(float).name(), offsetof(PlayerState, hp),    sizeof(float)},
+    {"speed", typeid(float).name(), offsetof(PlayerState, speed), sizeof(float)},
 };
 
 // 6. Entry point. The loader calls it when it loads the library.
@@ -207,7 +207,7 @@ extern "C" void script_register(hot::Registry& reg) { reg.add(&Player_record, &P
 
 This design gives the features above:
 
-- **A reload keeps state.** The fields are in `PlayerState_gN`, not in the shell. A new generation has a new state struct. The loader moves each field from the old state to the new state when the name and the type are the same. A new field gets its default value.
+- **A reload keeps state.** The fields are in `PlayerState`, not in the shell. A new generation has a new state struct in a new module. The struct name has no generation. The loader moves each field from the old state to the new state when the name and the type are the same. A new field gets its default value.
 - **The code changes, the object does not.** The shell keeps its address. The engine keeps its pointer. A call goes through the slot table, so it reaches the code of the newest generation.
 - **Native base classes work.** The shell derives from `Actor`. The engine sees a real `Actor`. A call to `Move` in the script is a plain C++ call.
 - **Module variables survive too.** The block `hot_mod()` moves between generations in the same way as the fields.

@@ -226,7 +226,7 @@ TEST(HotcTool, CppScriptWarningSpeaksScriptText)
     EXPECT_EQ(text.find("warn.cpp:10:1:"), std::string::npos) << text; // the column is not 1
     EXPECT_EQ(text.find("warn.cpp:11:1:"), std::string::npos) << text;
     EXPECT_NE(text.find("[-Werror,-Wparentheses]"), std::string::npos) << text;
-    for (const char* generated : {".g1.cpp", "_Shell", "State_g", "__self", "state_of"})
+    for (const char* generated : {".g1.cpp", "_Shell", "State'", "State::", "__self", "state_of"})
         EXPECT_EQ(text.find(generated), std::string::npos) << generated << "\n" << text;
 }
 

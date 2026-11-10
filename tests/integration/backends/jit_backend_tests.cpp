@@ -518,7 +518,7 @@ TEST(JitTests, CppScriptWarningSpeaksScriptText)
     EXPECT_NE(r.error.find("warn.cpp:11:16: error: "), std::string::npos) << r.error;
     EXPECT_EQ(r.error.find("warn.cpp:10:1:"), std::string::npos) << r.error; // the column is not 1
     EXPECT_EQ(r.error.find("warn.cpp:11:1:"), std::string::npos) << r.error;
-    for (const char* generated : {".g1.cpp", "_Shell", "State_g", "__self", "state_of"})
+    for (const char* generated : {".g1.cpp", "_Shell", "State'", "State::", "__self", "state_of"})
         EXPECT_EQ(r.error.find(generated), std::string::npos) << generated << "\n" << r.error;
 }
 

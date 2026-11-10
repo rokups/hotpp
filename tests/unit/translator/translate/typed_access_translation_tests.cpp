@@ -169,8 +169,8 @@ TEST(ParamAnalysis, SlotHasTheFormOfTheRule)
         translate_script("[native, value] class Blob;\nclass Box : Unit {\n    int Peek(Blob b) { return 1; }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     // The slot is the state member. It has the form of the rule, and the body reads it as it is.
-    EXPECT_TRUE(has(r, "int32_t BoxState_g1::Peek(hot::In<Blob> b)")) << r.cpp;
-    EXPECT_TRUE(has(r, "reinterpret_cast<hot::SlotFn>(&BoxState_g1::Peek)")) << r.cpp;
+    EXPECT_TRUE(has(r, "int32_t BoxState::Peek(hot::In<Blob> b)")) << r.cpp;
+    EXPECT_TRUE(has(r, "reinterpret_cast<hot::SlotFn>(&BoxState::Peek)")) << r.cpp;
 }
 
 // S20b: the analysis follows a parameter into the script functions that get it by value.

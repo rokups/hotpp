@@ -5,7 +5,9 @@
 """LLDB formatters for Hot++ (design 4.12, experiment F3).
 
 The translator makes C++ with generated names. These formatters show the script names:
-  - a state block "Player_State_g2" or "PlayerState_g2" is shown as "Player"
+  - a state block "PlayerState" is shown as "Player". The type name has no generation: the
+    summary reads the variable "GEN" of the module of the frame. The hand-written name
+    "PlayerState_g2" is also known.
   - a shell "Player_Shell" and a handle to it are shown as "Player"
   - a frame "Player__heal" is shown as "Player.heal at player.hot:12"
   - the internal member "__hot_owner" of a state block is hidden from the children
@@ -22,7 +24,7 @@ import re
 # ---------------------------------------------------------------------------- pure helpers
 
 _SHELL = re.compile(r"^(\w+?)_Shell$")
-_STATE = re.compile(r"^(\w+?)State_g(\d+)$")
+_STATE = re.compile(r"^(\w+?)State(?:_g(\d+))?$")
 # "Cls__f", "Cls__f_virt", "Cls__get_P", "Cls__set_P". The class name has no "__".
 _METHOD = re.compile(r"^(\w+?)__(\w+?)(?:_virt)?$")
 _ACCESSOR = re.compile(r"^(get|set)_(\w+)$")
@@ -43,9 +45,12 @@ def class_of_type(type_name):
 
 
 def generation_of_type(type_name):
-    """Return the generation number of a state block type, or None."""
+    """Return the generation number in a hand-written state block type name, or None.
+
+    A generated name ("PlayerState") has no generation number: then the result is None.
+    """
     m = _STATE.match(type_name.split("::")[-1])
-    return int(m.group(2)) if m else None
+    return int(m.group(2)) if m and m.group(2) else None
 
 
 def class_of_handle(type_name):
@@ -102,10 +107,10 @@ def format_fields(class_name, fields, limit=8):
     return "%s {%s}" % (class_name, ", ".join(shown))
 
 
-def state_summary(type_name, fields):
-    """The summary of a state block value."""
+def state_summary(type_name, fields, generation=None):
+    """The summary of a state block value. "generation" is the generation of the object."""
     cls = class_of_type(type_name) or type_name
-    gen = generation_of_type(type_name)
+    gen = generation if generation is not None else generation_of_type(type_name)
     text = format_fields(cls, fields)
     return text + (" [gen %d]" % gen if gen is not None else "")
 
@@ -140,8 +145,31 @@ def _fields_of(value):
     return out
 
 
+def _generation_of(valobj):
+    """The generation of the module of the frame, or None.
+
+    The type name of a state block has no generation. Each generation module has the static
+    variable "GEN" that script_register sets. The frame of a script function is in its module.
+    A frame of the host has no "GEN": then there is no generation.
+    """
+    frame = valobj.GetFrame()
+    if not frame.IsValid():
+        return None
+    gen = frame.FindValue("GEN", lldb.eValueTypeVariableStatic)
+    if not gen.IsValid():
+        gen = frame.GetModule().FindFirstGlobalVariable(valobj.GetTarget(), "GEN")
+    if gen.IsValid() and gen.GetValue() is not None:
+        return gen.GetValueAsUnsigned()
+    return None
+
+
 def state_summary_provider(valobj, internal_dict):  # pragma: no cover
-    return state_summary(valobj.GetType().GetName(), _fields_of(valobj))
+    # A native type can also end with "State". A state block has the member "__hot_owner". The
+    # synthetic children hide it, so the check reads the raw value.
+    raw = valobj.GetNonSyntheticValue()
+    if not raw.GetChildMemberWithName(OWNER_MEMBER).IsValid():
+        return None
+    return state_summary(valobj.GetType().GetName(), _fields_of(valobj), _generation_of(raw))
 
 
 def shell_summary_provider(valobj, internal_dict):  # pragma: no cover
@@ -240,7 +268,7 @@ def __lldb_init_module(debugger, internal_dict):  # pragma: no cover
     module = __name__
     # The regex of lldb has no "\w" (it is not a Python regex): use a character class.
     w = "[A-Za-z0-9_]"
-    state = "^(%s+::)*%s+State_g[0-9]+$" % (w, w)
+    state = "^(%s+::)*%s+State(_g[0-9]+)?$" % (w, w)
     shell = "^(%s+::)*%s+_Shell$" % (w, w)
     handle = "^(std::(__1::|__cxx11::)?shared_ptr|hot::Intrusive)<(%s+::)*%s+_Shell.*>$" % (w, w)
     add = "type summary add --regex --python-function %s.%%s \"%%s\"" % module

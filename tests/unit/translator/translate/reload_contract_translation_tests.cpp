@@ -325,4 +325,32 @@ TEST(DefunctSlots, RemovedFamilyFunctionKeepsItsNumber)
     EXPECT_TRUE(has(g2.cpp, "__removed")) << g2.cpp;
 }
 
+// The generation is runtime data of a load. It is not in the text: the same script and the same
+// slot input give byte-equal text at two generations. So a later generation hits the object cache.
+TEST(GenerationFreeText, TextIsTheSameForTwoGenerations)
+{
+    const std::string script = "class Counter {\n    int n = 0;\n    int Get() { return this.n; }\n"
+                               "    void add(int x1) { var f = () => this.n + x1; this.n = f(); }\n}\n";
+    hotc::TranslateResult g1 = gen(script, 1, "");
+    hotc::TranslateResult g5 = gen(script, 5, "");
+    ASSERT_TRUE(g1.ok) << g1.diagnostics;
+    ASSERT_TRUE(g5.ok) << g5.diagnostics;
+    EXPECT_EQ(g1.cpp, g5.cpp);
+    EXPECT_FALSE(has(g5.cpp, "generation 5")) << g5.cpp;
+    EXPECT_FALSE(has(g5.cpp, "State_g")) << g5.cpp;
+    // With the slot input of an earlier generation.
+    const std::string slots = g1.slots_out + g1.sigs_out;
+    hotc::TranslateResult g2 = gen(script, 2, slots);
+    hotc::TranslateResult g6 = gen(script, 6, slots);
+    ASSERT_TRUE(g2.ok) << g2.diagnostics;
+    ASSERT_TRUE(g6.ok) << g6.diagnostics;
+    EXPECT_EQ(g2.cpp, g6.cpp);
+    EXPECT_EQ(g2.slots_out, g6.slots_out);
+    // The engine script with a lambda and a native base.
+    hotc::TranslateResult t1 = hotc::translate(engine_options("timer_v1.hot", 1));
+    hotc::TranslateResult t5 = hotc::translate(engine_options("timer_v1.hot", 5));
+    ASSERT_TRUE(t1.ok) << t1.diagnostics;
+    EXPECT_EQ(t1.cpp, t5.cpp);
+}
+
 } // namespace

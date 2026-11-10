@@ -37,7 +37,7 @@ TEST(ReferenceTranslation, ScriptClassRefParameterIsAReferenceToTheHandle)
     const hotc::TranslateResult r = translate_text(hero("    void Make(ref $Weapon w) { w = new $Weapon(); }\n"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "static void Hero__Make(Hero_Shell* __self, std::shared_ptr<Weapon>& w);")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "void HeroState_g1::Make(std::shared_ptr<Weapon>& w)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "void HeroState::Make(std::shared_ptr<Weapon>& w)")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "std::shared_ptr<Weapon>& w)")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "Weapon& w")) << r.cpp;
 }
@@ -54,7 +54,7 @@ TEST(ReferenceTranslation, ConstScriptClassRefParameterIsAConstHandleReference)
 {
     const hotc::TranslateResult r = translate_text(hero("    void Look(in $Weapon w) { }\n"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "void HeroState_g1::Look(const std::shared_ptr<Weapon>& w)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "void HeroState::Look(const std::shared_ptr<Weapon>& w)")) << r.cpp;
 }
 
 TEST(ReferenceTranslation, MemberAccessThroughAScriptClassReferenceUsesTheClass)
@@ -462,8 +462,8 @@ TEST(ReferenceTranslation, RefReturnOfAFieldEmitsAReferenceReturn)
         "    ref int N() { return this.n; }\n    virtual ref int V() => this.n;\n"
         "    void Run() { ref a = this.N(); a = 1; ref b = this.V(); b = 2; }\n"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "int32_t& HeroState_g1::N()")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "int32_t& HeroState_g1::V()")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "int32_t& HeroState::N()")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "int32_t& HeroState::V()")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "return __st->n;")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "auto& a = ")) << r.cpp;
 }

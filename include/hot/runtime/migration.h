@@ -123,7 +123,8 @@ struct MigrationPlan
 // Readable text for the log (design 6.6). "type_key" is a mangled type name from typeid, for
 // example "i". The result is the C++ name, for example "int". Unknown text stays as it is.
 std::string readable_type(const char* type_key);
-// The class name of a state layout name. The generated name "HeroState_g2" gives "Hero".
+// The class name of a state layout name. The generated name "HeroState" gives "Hero". The
+// hand-written name "HeroState_g2" also gives "Hero".
 std::string readable_layout(const char* layout_name);
 
 // Compares the old and the new field tables. It has no side effects. A type change never

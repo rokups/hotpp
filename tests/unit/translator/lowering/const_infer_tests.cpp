@@ -103,7 +103,7 @@ TEST(ConstInfer, ParameterThatIsNeverWrittenIsConstInTheBody)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     // The signature does not change. The body form of "a" is const.
     EXPECT_TRUE(has(r.cpp, "static int32_t Hero__Run(Hero_Shell* __self, int32_t a, int32_t b);")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "int32_t HeroState_g1::Run(int32_t const a, int32_t b)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "int32_t HeroState::Run(int32_t const a, int32_t b)")) << r.cpp;
 }
 
 TEST(ConstInfer, VirtualMethodParameterKeepsTheBaseForm)

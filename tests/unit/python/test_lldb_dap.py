@@ -136,7 +136,7 @@ def main():
     if not verified or not verified.get("verified") or verified.get("line") != line:
         errors.append("the breakpoint is not verified on line %d: %s" % (line, verified))
     top = frames[0] if frames else {}
-    if top.get("name") != "HeroState_g1::Tick()" or top.get("line") != line \
+    if top.get("name") != "HeroState::Tick()" or top.get("line") != line \
             or not top.get("source", {}).get("path", "").endswith("target.hot"):
         errors.append("wrong top frame: %s" % top)
     if errors:

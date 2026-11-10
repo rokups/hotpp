@@ -102,7 +102,7 @@ TEST_P(DiagnosticMistakes, ErrorSpeaksScriptNames)
     const bool script_has_dunder = source.text.find("__") != std::string::npos;
     // The script name of a .cpp case ends with ".cpp", so only the generated file name ".g1.cpp"
     // is forbidden for it.
-    for (const char* generated : {"_Shell", "State_g", "__", "self->", "hot::deref", "state_of", is_cpp ? ".g1.cpp" : ".cpp"})
+    for (const char* generated : {"_Shell", "State'", "State::", "__", "self->", "hot::deref", "state_of", is_cpp ? ".g1.cpp" : ".cpp"})
     {
         if (script_has_dunder && std::string(generated) == "__")
             continue;

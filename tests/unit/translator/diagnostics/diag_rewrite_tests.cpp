@@ -28,10 +28,23 @@ TEST(DiagRewrite, ShellAndStateNamesBecomeScriptNames)
 {
     const std::string in =
         "a.hot:3:5: error: no member named 'x' in 'Boss_Shell'\n"
-        "a.hot:4:5: error: no member named 'y' in 'BossState_g12'\n";
+        "a.hot:4:5: error: no member named 'y' in 'BossState_g1'\n";
     EXPECT_EQ(rewrite_diagnostic(in),
         "a.hot:3:1: error: script class 'Boss' has no member 'x'\n"
         "a.hot:4:1: error: script class 'Boss' has no member 'y'\n");
+}
+
+// The generated state struct has no generation number: "BossState". It is a script name only
+// when the script declares the class "Boss". A native type "GameState" keeps its name.
+TEST(DiagRewrite, StateNameOfAScriptClassBecomesTheScriptName)
+{
+    const std::string in = "a.hot:2:5: error: no member named 'y' in 'BossState'\n"
+                           "a.hot:2:5: error: no member named 'z' in 'GameState'\n"
+                           "a.hot:2:5: error: cannot convert 'BossState' to 'GameState'\n";
+    EXPECT_EQ(rewrite_diagnostic(in, {{"a.hot", "class Boss {\n    int x = 0;\n}\n"}}),
+        "a.hot:2:1: error: script class 'Boss' has no member 'y'\n"
+        "a.hot:2:1: error: 'GameState' has no member 'z'\n"
+        "a.hot:2:1: error: cannot convert 'Boss' to 'GameState'\n");
 }
 
 TEST(DiagRewrite, TypoSuggestionStaysInTheMessage)
@@ -544,7 +557,7 @@ TEST(DiagRewrite, CppScriptKeepsCppSpelling)
     auto message = [](const std::string& m) { return "warn.cpp:10:1: error: " + m + "\n"; };
     const std::pair<const char*, const char*> cases[] = {
         {"no member named 'x' in 'Player_Shell'", "no member named 'x' in 'Player'"},
-        {"no member named 'x' in 'PlayerState_g1'", "no member named 'x' in 'Player'"},
+        {"no member named 'x' in 'PlayerState'", "no member named 'x' in 'Player'"},
         {"no matching function for call to 'Player__heal'", "no matching function for call to 'Player::heal'"},
         {"no matching function for call to 'Player__heal_virt'", "no matching function for call to 'Player::heal'"},
         {"no matching function for call to 'Player__op_add_assign'",
@@ -567,7 +580,7 @@ TEST(DiagRewrite, CppScriptKeepsCppSpelling)
         {"use of undeclared identifier 'My_Class__m'", "use of undeclared identifier 'My_Class::m'"},
         {"use of undeclared identifier 'My__Class__m'", "use of undeclared identifier 'My__Class__m'"},
         {"unknown type name 'Foo_Shell'", "unknown type name 'Foo_Shell'"},
-        {"unknown type name 'FooState_g3'", "unknown type name 'FooState_g3'"},
+        {"unknown type name 'FooState'", "unknown type name 'FooState'"},
         {"use of undeclared identifier 'foo_virt'", "use of undeclared identifier 'foo_virt'"},
     };
     for (const auto& c : cases)

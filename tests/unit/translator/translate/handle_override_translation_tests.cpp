@@ -50,7 +50,7 @@ TEST(HandleOverrideTranslation, RawPointerParameter)
     const hotc::TranslateResult r = gun_translate("    override void HitP(Weapon w) { w.dmg = 1; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     // The slot keeps the native type. The body binds the handle on the first line.
-    EXPECT_TRUE(has(r.cpp, "void FooState_g1::HitP(Weapon* __w)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "void FooState::HitP(Weapon* __w)")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, " w = hot::bind<std::shared_ptr<Weapon>>(std::forward<Weapon*>(__w));")) << r.cpp;
 }
 
@@ -58,7 +58,7 @@ TEST(HandleOverrideTranslation, ConstReferenceParameter)
 {
     const hotc::TranslateResult r = gun_translate("    override void HitR(Weapon w) { }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "void FooState_g1::HitR(const Weapon& __w)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "void FooState::HitR(const Weapon& __w)")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, " w = hot::bind<std::shared_ptr<Weapon>>(std::forward<const Weapon&>(__w));")) << r.cpp;
 }
 
@@ -66,7 +66,7 @@ TEST(HandleOverrideTranslation, SharedPtrParameter)
 {
     const hotc::TranslateResult r = gun_translate("    override void HitS(Weapon w) { }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "void FooState_g1::HitS(std::shared_ptr<Weapon> __w)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "void FooState::HitS(std::shared_ptr<Weapon> __w)")) << r.cpp;
     EXPECT_TRUE(
         has(r.cpp, " w = hot::bind<std::shared_ptr<Weapon>>(std::forward<std::shared_ptr<Weapon>>(__w));"))
         << r.cpp;
@@ -76,7 +76,7 @@ TEST(HandleOverrideTranslation, MixedParameters)
 {
     const hotc::TranslateResult r = gun_translate("    override void HitC(Weapon w, int n) { }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "void FooState_g1::HitC(const std::shared_ptr<Weapon>& __w, int32_t n)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "void FooState::HitC(const std::shared_ptr<Weapon>& __w, int32_t n)")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "std::forward<int32_t>")) << r.cpp;
 }
 
@@ -85,7 +85,7 @@ TEST(HandleOverrideTranslation, ExactSpellingWins)
     // "Exact" has two native overloads. The exact spelling picks one without an error and without bind.
     const hotc::TranslateResult r = gun_translate("    override void Exact(Weapon* w) { }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "void FooState_g1::Exact_WP(Weapon* w)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "void FooState::Exact_WP(Weapon* w)")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "hot::bind")) << r.cpp;
 }
 
@@ -111,7 +111,7 @@ TEST(HandleOverrideTranslation, PlainHandleReturn)
     const hotc::TranslateResult r = gun_translate("    Weapon w;\n    override Weapon Spawn() { return this.w; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     // The slot keeps the native return type.
-    EXPECT_TRUE(has(r.cpp, "std::shared_ptr<Weapon> FooState_g1::Spawn()")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "std::shared_ptr<Weapon> FooState::Spawn()")) << r.cpp;
 }
 
 TEST(HandleOverrideTranslation, RawPointerReturnIsNotRelaxed)

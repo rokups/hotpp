@@ -50,7 +50,7 @@ TEST(AbstractTranslation, AbstractMethodGetsASlotAndATrapBody)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::abstract_called(\"Shape\", \"Area\");")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "Shape__Area_virt")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "ShapeState_g1::Area")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "ShapeState::Area")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "Shape_record.is_abstract = true;")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "Sq_record.is_abstract")) << r.cpp;
 }
