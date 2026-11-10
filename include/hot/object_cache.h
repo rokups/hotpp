@@ -137,6 +137,10 @@ public:
 
     void remove(const Key& key);
 
+    // The header list of an entry, as the store wrote it. A header under the work directory has
+    // the "@work@" prefix. An error gives an empty list.
+    std::vector<std::string> headers(const Key& key) const;
+
     // The key of a linked module. It has the key of the object, the normalized link arguments,
     // the compiler id and a stamp of the libraries that the link reads (for example the path,
     // the time and the size of the host import library).

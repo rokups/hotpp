@@ -166,8 +166,27 @@ private:
 
     void record_compile_command(const std::string& unit, const std::string& script_dir, const std::string& object);
 
+    // The precompiled header (PCH) of one compile. "key" is the key of the PCH entry. "header" is
+    // the header file of the include prefix. "pch" is the valid PCH file, or empty when there is
+    // none. "build" true: build the PCH next to the compile.
+    struct PchPlan
+    {
+        ObjectCache::Key key;
+        std::string prefix; // the include lines at the start of the translated text
+        std::string header;
+        std::string pch;
+        bool build = false;
+    };
+    // The PCH plan for the translated text. No value: the compile does not use a PCH.
+    std::optional<PchPlan> plan_pch(const std::string& cpp, const std::string& script_dir);
+    // Builds the PCH of the plan and stores it in pch_cache_. Gives false on a failure.
+    bool build_pch(const PchPlan& plan, const std::string& script_dir, std::string& error);
+    // The path of a marker file of the PCH entry ("seen" or "bad").
+    std::string pch_marker(const ObjectCache::Key& key, const char* ext) const;
+
     ClangFilesOptions opt_;
     std::unique_ptr<ObjectCache> cache_; // null: no cache
+    std::unique_ptr<ObjectCache> pch_cache_; // the PCH entries in "<cache_dir>/pch"; null: no PCH
     std::unique_ptr<TranslateCache> tr_cache_; // null: no translate cache
     std::string compiler_id_;
     bool compiler_id_done_ = false;

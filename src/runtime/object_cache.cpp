@@ -793,6 +793,32 @@ bool ObjectCache::store(const Key& key, const fs::path& obj_tmp, const std::stri
     }
 }
 
+std::vector<std::string> ObjectCache::headers(const Key& key) const
+{
+    std::vector<std::string> r;
+    std::string text;
+    try
+    {
+        if (!read_file(entry_file(key, ".d"), text))
+            return r;
+    }
+    catch (...)
+    {
+        return r;
+    }
+    size_t pos = 0;
+    while (pos < text.size())
+    {
+        size_t nl = text.find('\n', pos);
+        if (nl == std::string::npos)
+            nl = text.size();
+        if (nl > pos)
+            r.push_back(text.substr(pos, nl - pos));
+        pos = nl + 1;
+    }
+    return r;
+}
+
 void ObjectCache::remove(const Key& key)
 {
     std::error_code ec;
