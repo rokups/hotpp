@@ -246,7 +246,8 @@ void expect_importer_hit(const std::string& edited, bool moves)
     bool into_import = false;
     const int lines = static_cast<int>(std::count(real.cpp.begin(), real.cpp.end(), '\n'));
     for (int line = 1; line <= lines; ++line)
-        for (int col : {1, 5, 9, 13, 20})
+        // The columns reach past a long generated name, for example "hot_state_Base::Power".
+        for (int col = 1; col <= 120; col += 3)
         {
             const std::optional<hotc::SourceLocation> a = hit->source_map.locate(line, col);
             const std::optional<hotc::SourceLocation> b = real.source_map.locate(line, col);
