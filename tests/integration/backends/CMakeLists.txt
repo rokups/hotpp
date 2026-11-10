@@ -11,6 +11,7 @@ set(BACKEND_TEST_SOURCES
     protected_base_compile_tests.cpp
     vfs_backend_tests.cpp
     object_cache_backend_tests.cpp
+    run_command_tests.cpp
     translate_cache_tests.cpp
     backend_selection_tests.cpp
     entry_main_module_tests.cpp

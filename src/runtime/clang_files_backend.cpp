@@ -25,6 +25,7 @@
 #ifdef _WIN32
     #include <windows.h>
 #else
+    #include <fcntl.h>
     #include <spawn.h>
     #include <sys/wait.h>
     #include <unistd.h>
@@ -111,9 +112,18 @@ int run_command(const std::vector<std::string>& argv, std::string& output)
     output.clear();
     if (argv.empty())
         return -1;
+    // Close-on-exec: a command of another thread must not get the write end. Else this read loop
+    // waits for the end of that command too. The dup2 to 1 and 2 in the child clears the flag.
     int fds[2];
+#ifdef __linux__
+    if (pipe2(fds, O_CLOEXEC) != 0)
+        return -1;
+#else
     if (pipe(fds) != 0)
         return -1;
+    fcntl(fds[0], F_SETFD, FD_CLOEXEC);
+    fcntl(fds[1], F_SETFD, FD_CLOEXEC);
+#endif
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
     posix_spawn_file_actions_adddup2(&fa, fds[1], 1);
