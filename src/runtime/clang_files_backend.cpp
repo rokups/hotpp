@@ -225,8 +225,7 @@ namespace
 {
 
 // The PCH needs the clang driver of a POSIX host and a target with the same driver rules. It
-// is off for a Windows host, a MinGW or MSVC target and a host file system (the mirror headers
-// are in the work directory and have no stamps).
+// is off for a Windows host and a MinGW or MSVC target.
 bool pch_target_supported(const ClangFilesOptions& opt)
 {
 #ifdef _WIN32
@@ -237,7 +236,7 @@ bool pch_target_supported(const ClangFilesOptions& opt)
     if (is_mingw_triple(t) || t.find("windows") != std::string::npos || t.find("msvc") != std::string::npos ||
         t.find("win32") != std::string::npos)
         return false;
-    return !opt.fs;
+    return true;
 #endif
 }
 
@@ -1110,8 +1109,12 @@ std::string ClangFilesBackend::pch_marker(const ObjectCache::Key& key, const cha
 // no extra cost. A later miss builds the PCH next to its compile, and the miss after that uses
 // the PCH. A PCH that did not work has a "bad" marker: no PCH for one day.
 std::optional<ClangFilesBackend::PchPlan> ClangFilesBackend::plan_pch(
-    const std::string& cpp, const std::string& script_dir)
+    const std::string& cpp, const std::string& script_dir, bool mirror_files)
 {
+    // A mirror header of the host file system is in the work directory. Each load writes it
+    // again, and it has no stamp. So a compile with mirror files uses no PCH.
+    if (mirror_files)
+        return std::nullopt;
     // The version line of the driver must name clang ("-include-pch" is a clang flag).
     if (!pch_cache_ || !pch_enabled_by_env() || compiler_id_.find("clang") == std::string::npos)
         return std::nullopt;
@@ -1172,6 +1175,7 @@ bool ClangFilesBackend::build_pch(const PchPlan& plan, const std::string& script
         read_text(dep, dep_text);
     fs::remove(dep, ec);
     bool ok = rc == 0;
+    bool bad = !ok; // the PCH of this key can never work
     if (!ok)
         error = "the PCH build failed (exit code " + std::to_string(rc) + "): " + output.substr(0, 400);
     // A header in the work directory has no stamp: a PCH of it can be stale. No such PCH.
@@ -1179,6 +1183,7 @@ bool ClangFilesBackend::build_pch(const PchPlan& plan, const std::string& script
     if (ok && !ObjectCache::parse_depfile(dep_text, deps))
     {
         ok = false;
+        bad = true;
         error = "cannot parse the depfile of the PCH";
     }
     const std::string work = fs::path(opt_.work_dir).lexically_normal().string();
@@ -1186,13 +1191,15 @@ bool ClangFilesBackend::build_pch(const PchPlan& plan, const std::string& script
         if (ok && fs::path(d).lexically_normal().string().rfind(work, 0) == 0)
         {
             ok = false;
+            bad = true;
             error = "the PCH reads the file '" + d + "' of the work directory";
         }
     if (ok && !pch_cache_->store(plan.key, tmp, dep_text, opt_.work_dir, started, error))
         ok = false;
     fs::remove(tmp, ec);
-    // A PCH that does not build gets the "bad" marker. A store failure (a young header) does not.
-    if (!ok && rc != 0)
+    // A PCH that does not build or reads a work file gets the "bad" marker. A store failure (a
+    // young header) does not.
+    if (bad)
         write_text(pch_marker(plan.key, ".bad"), error);
     return ok;
 }
@@ -1458,7 +1465,7 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
                 fs::remove(tmp, ec);
                 fs::remove(dep, ec);
                 const std::vector<std::string> plain = compile_object_command(opt_, cpp_path, tmp, dep, script_dir);
-                const std::optional<PchPlan> pch = plan_pch(tr.cpp, script_dir);
+                const std::optional<PchPlan> pch = plan_pch(tr.cpp, script_dir, opt_.fs && !tr.virtual_files.empty());
                 // The PCH build runs next to the compile, so the compile does not wait for it.
                 std::thread pch_thread;
                 bool pch_ok = false;

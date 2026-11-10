@@ -9,6 +9,7 @@
 // CMake defines the macros HOT_SOURCE_DIR and HOT_CXX.
 #include "hot/backend.h"
 #include "hot/clang_files_backend.h"
+#include "hot/vfs.h"
 #include "support/scratch_dir.h"
 #include "support/test_env.h"
 #include "support/test_support.h"
@@ -104,11 +105,20 @@ std::string make_wrapper(const TestScratch& scratch, const std::string& log)
     return path;
 }
 
+// A host file system without files. The scripts and the headers come from the disk.
+class EmptyFs final : public hot::FileSystem
+{
+public:
+    bool read(const std::string&, std::string&) override { return false; }
+    hot::VfsStat stat(const std::string&) override { return {}; }
+};
+
 std::unique_ptr<hot::ClangFilesBackend> make_backend(const TestScratch& scratch, const std::string& work_name,
     const std::string& cache_dir, const std::string& compiler, const std::string& inc = std::string(),
-    const std::string& commands_dir = std::string())
+    const std::string& commands_dir = std::string(), std::shared_ptr<hot::FileSystem> fs = nullptr)
 {
     hot::ClangFilesOptions o;
+    o.fs = std::move(fs);
     o.compiler = compiler;
     o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
     if (!inc.empty())
@@ -176,6 +186,7 @@ struct Fixture
     std::string cxx = make_wrapper(scratch, log);
     fs::path inc = scratch.file("inc");
     int work = 0;
+    std::shared_ptr<hot::FileSystem> fs;
 
     Fixture()
     {
@@ -185,7 +196,7 @@ struct Fixture
     // Each load uses a new backend, so the module cache of a backend does not hide a compile.
     float run(int add, const std::string& commands_dir = std::string())
     {
-        auto backend = make_backend(scratch, "work" + std::to_string(work++), cache, cxx, inc.string(), commands_dir);
+        auto backend = make_backend(scratch, "work" + std::to_string(work++), cache, cxx, inc.string(), commands_dir, fs);
         return load_and_run(*backend, layout_script(add));
     }
     size_t pch_builds() const { return count_text(read_file(log), "c++-header"); }
@@ -252,6 +263,18 @@ TEST(PchBackend, CorruptPchFallsBack)
     EXPECT_EQ(f.pch_compiles(), 1u); // the attempt with the damaged PCH
     EXPECT_TRUE(pch_files(f.cache).empty());
     EXPECT_EQ(f.run(4), 8.0f); // no new attempt with a bad PCH
+    EXPECT_EQ(f.pch_compiles(), 1u);
+}
+
+// A host file system with no file for the compile (no mirror header) does not turn the PCH off.
+TEST(PchBackend, HostFileSystemWithoutMirrorFilesUsesThePch)
+{
+    Fixture f;
+    f.fs = std::make_shared<EmptyFs>();
+    EXPECT_EQ(f.run(1), 5.0f);
+    EXPECT_EQ(f.run(2), 6.0f);
+    EXPECT_EQ(f.pch_builds(), 1u);
+    EXPECT_EQ(f.run(3), 7.0f);
     EXPECT_EQ(f.pch_compiles(), 1u);
 }
 

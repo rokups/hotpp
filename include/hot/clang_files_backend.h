@@ -178,7 +178,8 @@ private:
         bool build = false;
     };
     // The PCH plan for the translated text. No value: the compile does not use a PCH.
-    std::optional<PchPlan> plan_pch(const std::string& cpp, const std::string& script_dir);
+    // "mirror_files": the compile reads mirror files of the host file system.
+    std::optional<PchPlan> plan_pch(const std::string& cpp, const std::string& script_dir, bool mirror_files);
     // Builds the PCH of the plan and stores it in pch_cache_. Gives false on a failure.
     bool build_pch(const PchPlan& plan, const std::string& script_dir, std::string& error);
     // The path of a marker file of the PCH entry ("seen" or "bad").
