@@ -10744,8 +10744,19 @@ SlotCarry carry_slots(const std::string& slots_in, const std::vector<std::string
         const size_t first = name.find("::");
         if (first == std::string::npos)
             continue;
-        if (all.count(name.substr(0, first)) || all.count(name.substr(0, name.rfind("::"))))
-            c.read += line + "\n";
+        if (!all.count(name.substr(0, first)) && !all.count(name.substr(0, name.rfind("::"))))
+            continue;
+        c.read += line + "\n";
+        // A manifest line as read_manifest reads it: the name and the generation. The rest of
+        // the line has no effect. A "sig" or "field" line, or a line that read_manifest skips,
+        // stays the same.
+        std::istringstream ss(line);
+        std::string mname;
+        int mgen = 0;
+        if (b == 0 && (ss >> mname >> mgen) && mname.find("::") != std::string::npos)
+            c.relative += mname + (mgen < generation ? " <\n" : mgen == generation ? " =\n" : " >\n");
+        else
+            c.relative += "\x01" + line + "\n";
     }
     return c;
 }

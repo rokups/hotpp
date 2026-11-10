@@ -441,10 +441,14 @@ uint64_t text_hash(const std::string& text);
 //   - slots_out starts with "manifest". The lines of the new generation follow.
 //   - sigs_out is "sigs", the own "sig" lines, "fields", and then the own "field" lines.
 // "read" has the lines that can change the output: the lines of the classes and of the keys.
-// A translation cache compares "read", and then makes the output from the parts.
+// A translation cache compares "relative", and then makes the output from the parts.
+// "relative" is "read" with the generation of each manifest line relative to "generation":
+// "<" (older), "=" (this generation) or ">" (later). The translation uses a generation of the slot
+// text only in a compare with its own generation. Thus two generations with the same "relative"
+// give the same C++ text. The new manifest lines of slots_out have the number of the generation.
 struct SlotCarry
 {
-    std::string manifest, sigs, fields, read;
+    std::string manifest, sigs, fields, read, relative;
 };
 SlotCarry carry_slots(const std::string& slots_in, const std::vector<std::string>& classes,
     const std::vector<std::string>& keys, int generation);

@@ -2838,6 +2838,8 @@ TEST(LanguageServer, CompletionHidesTheGeneratedHelpers)
             {"__", "_Shell", "SLOT_", "thunk", "hot_mod", "hot_gen", "_slot", "_layout", "_fields", "HotModule", "_g1"})
             EXPECT_EQ(n.find(bad), std::string::npos) << n << " has " << bad;
         EXPECT_NE(n[0], '_') << n;
+        // A script class name cannot start with "hot_", for example the state struct "hot_state_Counter".
+        EXPECT_NE(n.compare(0, 4, "hot_"), 0) << n;
     }
     for (const char* n : {"self", "st", "a"})
         EXPECT_FALSE(c.has(n)) << n;

@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <map>
 #include <set>
 #include <system_error>
@@ -26,7 +27,7 @@ using namespace cache_io;
 namespace
 {
 
-constexpr int entry_version = 5;
+constexpr int entry_version = 6;
 // The maximum number of entries of a key. Each entry has other imported texts or slot lines.
 constexpr int entry_count = 4;
 constexpr uint64_t second_seed = 0x9e3779b97f4a7c15ULL;
@@ -54,7 +55,9 @@ constexpr auto field_count(int) -> decltype(T{std::declval<A>()..., std::declval
 
 // A new field of TranslateOptions needs a decision: add it to add_options() when it can change
 // the output, or tell here why not. Then change the number.
-//   - slots_in: not in the key. The manifest has the digest of the lines that the output reads.
+//   - slots_in: not in the key. The manifest has the digest of the lines that the output reads,
+//     with each generation relative to the generation of the translate.
+//   - generation: in the key only when the text has the number (export_generation). See add_options.
 //   - fs: only "is there a file system" is in the key. The manifest checks the files.
 static_assert(field_count<hotc::TranslateOptions>(0) == 22,
     "TranslateOptions has a new field: decide if it goes into the key of the translate cache");
@@ -88,7 +91,11 @@ void add_options(Hash64& h, const hotc::TranslateOptions& o, const std::string& 
     h.add_text(o.script_name);
     h.add_text(o.unit_name);
     h.add_text(o.output_name);
-    h.add_u64(static_cast<uint64_t>(static_cast<int64_t>(o.generation)));
+    // The generation is in the text only with the exported generation number. Else the entry
+    // keeps its generation, and the slot check compares the generations of the slot lines
+    // relative to the generation of the lookup (hotc::SlotCarry::relative).
+    if (o.export_generation && !o.aot && !o.aot_optimized)
+        h.add_u64(static_cast<uint64_t>(static_cast<int64_t>(o.generation)));
     add_list(h, o.include_dirs);
     h.add_text(o.resource_dir);
     h.add_text(o.target);
@@ -342,6 +349,30 @@ bool split_slots(const hotc::SlotCarry& carry, const hotc::TranslateResult& r, O
         && carry.sigs + own.sigs + carry.fields + own.fields == r.sigs_out;
 }
 
+// The own manifest lines of a translate at generation "from" with the number "to". Each line of
+// the new generation is "Cls::fn <from>". Another line gives no value: the rewrite is not known
+// to give the output of a translate at "to".
+std::optional<std::string> move_manifest(const std::string& own, int from, int to)
+{
+    const std::string tail = " " + std::to_string(from);
+    std::string out;
+    size_t pos = 0;
+    while (pos < own.size())
+    {
+        const size_t nl = own.find('\n', pos);
+        if (nl == std::string::npos)
+            return std::nullopt;
+        const std::string line = own.substr(pos, nl - pos);
+        const size_t sp = line.find(' ');
+        if (sp == std::string::npos || sp == 0 || line.compare(sp, std::string::npos, tail) != 0
+            || line.find("::") == std::string::npos || line.find("::") > sp)
+            return std::nullopt;
+        out += line.substr(0, sp) + " " + std::to_string(to) + "\n";
+        pos = nl + 1;
+    }
+    return out;
+}
+
 // The masked ranges of an import with a view hit: the ranges of the stored text and of the current
 // text. The chunks between the ranges are equal (the views are equal).
 struct MovedFile
@@ -503,13 +534,15 @@ std::optional<hotc::TranslateResult> TranslateCache::lookup(const hotc::Translat
 {
     std::optional<hotc::TranslateResult> r;
     bool by_view = false;
+    bool by_generation = false;
     try
     {
         const ObjectCache::Key key = make_key(options);
         for (int i = 0; i < entry_count && !r; ++i)
         {
             by_view = false;
-            r = lookup_entry(options, key, i, by_view);
+            by_generation = false;
+            r = lookup_entry(options, key, i, by_view, by_generation);
         }
     }
     catch (...)
@@ -522,12 +555,14 @@ std::optional<hotc::TranslateResult> TranslateCache::lookup(const hotc::Translat
         return r;
     }
     ++hits_;
-    if (!by_view)
+    if (by_view)
+        ++view_hits_;
+    if (!by_view && !by_generation)
         return r;
-    ++view_hits_;
     if (!verify_hits_)
         return r;
-    // The check of a view hit: a new translate must give the same result.
+    // The check of a view hit or of a hit at another generation: a new translate must give the
+    // same result.
     std::string diff;
     try
     {
@@ -548,7 +583,7 @@ std::optional<hotc::TranslateResult> TranslateCache::lookup(const hotc::Translat
 }
 
 std::optional<hotc::TranslateResult> TranslateCache::lookup_entry(
-    const hotc::TranslateOptions& o, const ObjectCache::Key& key, int entry, bool& by_view)
+    const hotc::TranslateOptions& o, const ObjectCache::Key& key, int entry, bool& by_view, bool& by_generation)
 {
     const fs::path manifest = entry_file(key, entry, ".json");
     std::string text;
@@ -560,13 +595,17 @@ std::optional<hotc::TranslateResult> TranslateCache::lookup_entry(
     if (!get_num(m, "version", version) || version != entry_version || !hex || *hex != key.hex())
         return std::nullopt;
 
-    // The slot lines of the classes: the same lines give the same output.
+    // The slot lines of the classes: the same lines give the same output. Each generation of a
+    // line is relative to the generation of the translate, so an entry hits at another generation.
+    // A translate at a generation less than 1 fails, so it has no hit.
     std::vector<std::string> classes, keys;
     const std::string* slots = get_str(m, "slots");
-    if (!get_list(m, "classes", classes) || !get_list(m, "keys", keys) || !slots)
+    int64_t made_at = 0;
+    if (!get_list(m, "classes", classes) || !get_list(m, "keys", keys) || !slots || !get_num(m, "generation", made_at)
+        || made_at < 1 || made_at > std::numeric_limits<int>::max() || o.generation < 1)
         return std::nullopt;
     const hotc::SlotCarry carry = hotc::carry_slots(o.slots_in, classes, keys, o.generation);
-    if (hash_hex(carry.read) != *slots)
+    if (hash_hex(carry.relative) != *slots)
         return std::nullopt;
 
     // Each search for an imported script finds the same file with the same text, or with a text
@@ -776,7 +815,18 @@ std::optional<hotc::TranslateResult> TranslateCache::lookup_entry(
 
     r.ok = true;
     r.cpp = std::move(cpp);
-    r.slots_out = carry.manifest + *own_manifest;
+    // The new manifest lines of another generation have the number of this generation.
+    if (made_at != o.generation)
+    {
+        const std::optional<std::string> moved_manifest =
+            move_manifest(*own_manifest, static_cast<int>(made_at), o.generation);
+        if (!moved_manifest)
+            return std::nullopt;
+        r.slots_out = carry.manifest + *moved_manifest;
+        by_generation = true;
+    }
+    else
+        r.slots_out = carry.manifest + *own_manifest;
     r.sigs_out = carry.sigs + *own_sigs + carry.fields + *own_fields;
     r.warnings = *warnings;
     r.virtual_files = std::move(virtual_files);
@@ -820,6 +870,13 @@ bool TranslateCache::store(const hotc::TranslateOptions& o, const hotc::Translat
             error = "the slot output does not split";
             return false;
         }
+        // A lookup at another generation changes the numbers of the new manifest lines. Each
+        // line must have the generation of the translate.
+        if (o.generation < 1 || move_manifest(own.manifest, o.generation, o.generation) != own.manifest)
+        {
+            error = "the new slot lines have another generation";
+            return false;
+        }
         // Each imported script has a search with the hash of its text.
         std::map<std::string, uint64_t> lookup_hash;
         for (const hotc::ImportLookup& l : r.import_lookups)
@@ -852,10 +909,11 @@ bool TranslateCache::store(const hotc::TranslateOptions& o, const hotc::Translat
         man.field("key", make_key(o).hex());
         man.list("classes", r.slot_classes);
         man.list("keys", r.slot_keys);
-        man.field("slots", hash_hex(carry.read));
+        man.field("slots", hash_hex(carry.relative));
+        man.field("generation", o.generation);
         // The variant: the slot digest and the imported texts. A store replaces the entry of the
         // same variant, because that entry is not valid now (a lookup of it missed).
-        std::string variant_text = hash_hex(carry.read);
+        std::string variant_text = hash_hex(carry.relative);
         for (const hotc::ImportLookup& l : r.import_lookups)
             variant_text += "\n" + l.file + "\n" + hex64(l.text_hash);
         const std::string variant = hash_hex(variant_text);

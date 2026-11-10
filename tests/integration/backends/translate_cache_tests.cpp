@@ -483,6 +483,127 @@ TEST(TranslateCache, HitKeepsTheWarnings)
     EXPECT_EQ(hit->warnings, real.warnings);
 }
 
+// The generation is not in the key. An entry of generation 1 hits at generation 3. The hit has
+// the slot output of a new translate at generation 3: the new lines have the number 3.
+TEST(TranslateCache, LaterGenerationHitsTheTranslateCache)
+{
+    Fixture f;
+    hot::TranslateCache c(f.cache);
+    c.set_verify_hits(true);
+    const hotc::TranslateResult gen1 = f.fill(c, f.options);
+    hotc::TranslateOptions o = f.options;
+    o.generation = 3;
+    const hotc::TranslateResult real = f.translate(o);
+    ASSERT_NE(gen1.slots_out, real.slots_out) << "the slot lines have the generation";
+    const std::optional<hotc::TranslateResult> hit = c.lookup(o);
+    ASSERT_TRUE(hit.has_value());
+    ASSERT_TRUE(hit->ok) << hit->diagnostics;
+    EXPECT_EQ(hit->cpp, gen1.cpp);
+    expect_same(*hit, real);
+    EXPECT_EQ(c.stats().hits, 1u);
+    // A translate at generation 0 fails, so the lookup misses.
+    hotc::TranslateOptions zero = f.options;
+    zero.generation = 0;
+    EXPECT_FALSE(c.lookup(zero).has_value());
+}
+
+namespace
+{
+
+// The main script without the function Speed: the slot of Speed is defunct.
+std::string main_without_speed()
+{
+    std::string s = kMain;
+    const size_t at = s.find("    int Speed()");
+    return s.erase(at, s.find('\n', at) + 1 - at);
+}
+
+// The main script with another signature of Speed.
+std::string main_with_new_speed()
+{
+    std::string s = kMain;
+    const std::string old = "int Speed() { return this.a; }";
+    return s.replace(s.find(old), old.size(), "int Speed(int k) { return this.a + k; }");
+}
+
+// Stores "script" at generation 2 with the slot history of generation 1. A lookup at generation 3
+// with the same history hits, and the hit is a new translate at generation 3 with that history.
+void expect_history_hit(const std::string& script)
+{
+    Fixture f;
+    hot::TranslateCache c(f.cache);
+    c.set_verify_hits(true);
+    const hotc::TranslateResult gen1 = f.translate(f.options);
+    hotc::TranslateOptions o = f.options;
+    o.script_text = script;
+    o.slots_in = gen1.slots_out + gen1.sigs_out;
+    o.generation = 2;
+    f.fill(c, o);
+    o.generation = 3;
+    const hotc::TranslateResult real = f.translate(o);
+    const std::optional<hotc::TranslateResult> hit = c.lookup(o);
+    ASSERT_TRUE(hit.has_value());
+    ASSERT_TRUE(hit->ok) << hit->diagnostics;
+    expect_same(*hit, real);
+}
+
+} // namespace
+
+TEST(TranslateCache, LaterGenerationHitsWithADefunctSlot)
+{
+    expect_history_hit(main_without_speed());
+}
+
+TEST(TranslateCache, LaterGenerationHitsWithASignatureChange)
+{
+    expect_history_hit(main_with_new_speed());
+}
+
+// A slot history that changes the text is a miss: an entry without history (the functions are
+// new, so they get thunks) and a lookup with the history of an earlier generation (no thunks).
+TEST(TranslateCache, OtherSlotHistoryMissesAtALaterGeneration)
+{
+    Fixture f;
+    hot::TranslateCache c(f.cache);
+    c.set_verify_hits(true);
+    const hotc::TranslateResult gen1 = f.fill(c, f.options);
+    hotc::TranslateOptions o = f.options;
+    o.slots_in = gen1.slots_out + gen1.sigs_out;
+    o.generation = 3;
+    ASSERT_NE(f.translate(o).cpp, gen1.cpp) << "the history changes the text";
+    EXPECT_FALSE(c.lookup(o).has_value());
+
+    // An entry with the history of generation 1, made at generation 2. At generation 1 the same
+    // lines are of this generation, not older: a miss. Without the history (a restart): a miss.
+    hot::TranslateCache d(f.scratch.file("cache2"));
+    d.set_verify_hits(true);
+    hotc::TranslateOptions o2 = o;
+    o2.generation = 2;
+    o2.script_text = main_without_speed();
+    f.fill(d, o2);
+    hotc::TranslateOptions same_gen = o2;
+    same_gen.generation = 1;
+    EXPECT_FALSE(d.lookup(same_gen).has_value());
+    hotc::TranslateOptions restart = o2;
+    restart.generation = 1;
+    restart.slots_in.clear();
+    EXPECT_FALSE(d.lookup(restart).has_value());
+    EXPECT_EQ(d.stats().hits, 0u);
+}
+
+// The exported generation number is in the text, so another generation misses.
+TEST(TranslateCache, ExportedGenerationMissesAtAnotherGeneration)
+{
+    Fixture f;
+    hot::TranslateCache c(f.cache);
+    hotc::TranslateOptions o = f.options;
+    o.export_generation = true;
+    f.fill(c, o);
+    EXPECT_TRUE(c.lookup(o).has_value());
+    o.generation = 3;
+    EXPECT_FALSE(c.lookup(o).has_value());
+}
+
 TEST(TranslateCache, CorruptEntryMisses)
 {
     Fixture f;

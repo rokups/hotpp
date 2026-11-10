@@ -54,7 +54,11 @@ public:
     TranslateCache(std::filesystem::path dir, std::string build_id = std::string(), std::string extra = std::string());
 
     // The key: the build id, "extra", the current directory and each option that can change the
-    // output. The slot text is not in it (the manifest has its digest).
+    // output. The slot text is not in it (the manifest has its digest). The generation is not in
+    // it, unless the text has the number (TranslateOptions::export_generation). An entry keeps its
+    // generation. The slot digest has the generations of the slot lines relative to the
+    // generation of the translate (hotc::SlotCarry::relative). A hit at another generation has
+    // the new manifest lines with the number of the lookup generation.
     ObjectCache::Key make_key(const hotc::TranslateOptions& options) const;
 
     // The result of an earlier translate with the same inputs, or no value. It never throws.
@@ -76,10 +80,11 @@ public:
 
     Stats stats() const { return {hits_.load(), misses_.load(), view_hits_.load()}; }
 
-    // With "verify_hits" on, a hit with an import that has another text (a view hit) translates
-    // again and compares the two results: the C++ text, the warnings, the source map, the import
-    // hashes and the slot output. A difference gives an error result (ok is false) that names the
-    // first different line. The constructor turns it on when HOT_TRANSLATE_VERIFY is "1".
+    // With "verify_hits" on, a hit with an import that has another text (a view hit) or a hit of
+    // an entry of another generation translates again and compares the two results: the C++
+    // text, the warnings, the source map, the import hashes and the slot output. A difference
+    // gives an error result (ok is false) that names the first different line. The constructor
+    // turns it on when HOT_TRANSLATE_VERIFY is "1".
     void set_verify_hits(bool on) { verify_hits_ = on; }
     bool verify_hits() const { return verify_hits_; }
 
@@ -88,8 +93,8 @@ public:
 
 private:
     std::filesystem::path entry_file(const ObjectCache::Key& key, int entry, const char* ext) const;
-    std::optional<hotc::TranslateResult> lookup_entry(
-        const hotc::TranslateOptions& options, const ObjectCache::Key& key, int entry, bool& by_view);
+    std::optional<hotc::TranslateResult> lookup_entry(const hotc::TranslateOptions& options,
+        const ObjectCache::Key& key, int entry, bool& by_view, bool& by_generation);
 
     std::filesystem::path dir_;
     std::string build_id_;

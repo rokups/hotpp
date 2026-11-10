@@ -1637,8 +1637,8 @@ static bool is_generated_name(const std::string& n)
     for (const char* x : parts)
         if (n.find(x) != std::string::npos)
             return true;
-    return n[0] == '_' || n.compare(0, 7, "hot_mod") == 0 || n.compare(0, 7, "hot_gen") == 0 ||
-           n.compare(0, 9, "HotModule") == 0 || n == "hot";
+    // A script class name cannot start with "hot_" (the prefix of the generated code).
+    return n.empty() || n[0] == '_' || n.compare(0, 4, "hot_") == 0 || n.compare(0, 9, "HotModule") == 0 || n == "hot";
 }
 
 static bool has_prefix(const std::string& name, const std::string& prefix)
