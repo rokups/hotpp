@@ -66,9 +66,15 @@ struct CacheStats
 // slow build. The last phase (finish) opens the library and makes the Module.
 //
 // Thread contract:
-//  - begin_load and finish run one at a time, on one thread.
+//  - begin_load, begin_load_many and finish run one at a time, on one thread.
+//  - begin_load_many can translate on build_jobs() threads. It returns when all are done.
+//  - The unit names of one begin_load_many call are different. The backend does not check the
+//    import order: an import can be in the same call as its importer.
+//  - A host hot::FileSystem must permit parallel read calls. A TranslatorSession permits parallel
+//    translate calls.
 //  - compile runs on any thread. Many compile calls can run at the same time.
-//  - Do not call Loader::commit_pending between the first begin_load and the last finish.
+//  - Do not call Loader::commit_pending, seed_slots, revert_slots or set_preludes between the
+//    first begin_load (or begin_load_many) and the last finish.
 //  - A PendingLoad does not outlive its backend.
 class PendingLoad
 {
@@ -93,6 +99,12 @@ public:
     // finish returns it.
     virtual std::unique_ptr<PendingLoad> begin_load(
         const ScriptSource& source, uint32_t generation, LoadMode mode = LoadMode::Reload);
+    // Starts the loads of many scripts. It gives one entry for each source, in the order of the
+    // sources, and no entry is null. The default calls begin_load in a loop on the calling thread.
+    // A unit that throws gives a failed entry (ok false, head.error, reason CompileError). A backend
+    // can translate the units in parallel (ClangFilesBackend). The thread contract is at PendingLoad.
+    virtual std::vector<std::unique_ptr<PendingLoad>> begin_load_many(
+        const std::vector<ScriptSource>& sources, uint32_t generation, LoadMode mode = LoadMode::Reload);
     // Makes the Module of one script for one generation. On failure the result has
     // an error text with the compiler diagnostics and a "reason". It does not touch the live
     // generation. It does not write the slot state: the Module has an "on_accept" callback that

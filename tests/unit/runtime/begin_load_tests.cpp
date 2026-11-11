@@ -6,6 +6,7 @@
 #include "hot/backend.h"
 #include "support/test_env.h"
 
+#include <stdexcept>
 #include <thread>
 
 #include <gtest/gtest.h>
@@ -33,7 +34,37 @@ public:
     const char* name() const override { return "fake"; }
 };
 
+// T11: a backend whose load throws for one unit.
+class ThrowingBackend : public hot::Backend
+{
+public:
+    hot::LoadResult load(const hot::ScriptSource& s, uint32_t, hot::LoadMode) override
+    {
+        if (s.name == "bad")
+            throw std::runtime_error("boom");
+        hot::LoadResult r;
+        r.iface_hash = 5;
+        return r;
+    }
+    const char* name() const override { return "throwing"; }
+};
+
 } // namespace
+
+TEST(BeginLoadMany, DefaultTurnsAnExceptionIntoAFailedEntry)
+{
+    ThrowingBackend b;
+    auto many = b.begin_load_many({{"a", "", {}, ""}, {"bad", "", {}, ""}, {"c", "", {}, ""}}, 1);
+    ASSERT_EQ(many.size(), 3u);
+    for (auto& p : many)
+        ASSERT_NE(p, nullptr);
+    EXPECT_TRUE(many[0]->ok);
+    EXPECT_FALSE(many[1]->ok);
+    EXPECT_EQ(many[1]->head.error, "boom");
+    EXPECT_EQ(many[1]->head.reason, hot::ReloadReason::CompileError);
+    EXPECT_TRUE(many[2]->ok);
+    EXPECT_EQ(many[2]->head.iface_hash, 5u);
+}
 
 TEST(BeginLoad, DefaultMatchesLoadOnError)
 {

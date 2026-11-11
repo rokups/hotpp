@@ -195,6 +195,28 @@ std::unique_ptr<PendingLoad> Backend::begin_load(const ScriptSource& source, uin
     return std::make_unique<ImmediateLoad>(load(source, generation, mode));
 }
 
+std::vector<std::unique_ptr<PendingLoad>> Backend::begin_load_many(
+    const std::vector<ScriptSource>& sources, uint32_t generation, LoadMode mode)
+{
+    std::vector<std::unique_ptr<PendingLoad>> result;
+    result.reserve(sources.size());
+    for (const ScriptSource& source : sources)
+    {
+        try
+        {
+            result.push_back(begin_load(source, generation, mode));
+        }
+        catch (const std::exception& e)
+        {
+            LoadResult failed;
+            failed.error = e.what()[0] ? e.what() : "the load failed";
+            failed.reason = ReloadReason::CompileError;
+            result.push_back(std::make_unique<ImmediateLoad>(std::move(failed)));
+        }
+    }
+    return result;
+}
+
 unsigned build_jobs()
 {
 #ifdef _WIN32

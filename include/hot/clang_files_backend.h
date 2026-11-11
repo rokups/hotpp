@@ -116,6 +116,13 @@ public:
     // a parallel compile: each job has its own mirror directory. On Windows it uses the serial default.
     std::unique_ptr<PendingLoad> begin_load(
         const ScriptSource& source, uint32_t generation, LoadMode mode = LoadMode::Reload) override;
+    // The first phase of many scripts. It translates the units on min(build_jobs(), count) threads,
+    // the calling thread included, and returns when all are done. The caller thread holds "mutex_"
+    // for the whole call. The entries are in the order of the sources. A unit that fails (also by
+    // an exception) gives a failed entry. The unit names must differ: a later unit with a used
+    // name fails. Windows uses the serial default.
+    std::vector<std::unique_ptr<PendingLoad>> begin_load_many(
+        const std::vector<ScriptSource>& sources, uint32_t generation, LoadMode mode = LoadMode::Reload) override;
     const char* name() const override { return "CLANG_FILES"; }
     // The path of the slots file. The file changes only when the Loader accepts a module.
     const std::string& slots_file() const { return opt_.slots_file; }
@@ -194,10 +201,22 @@ private:
     };
     // Removes the mirror directory of the job (if it has one) and clears the two fields.
     static void remove_mirror(BuildJob& job);
-    // Stage 1: reads the slots, translates and writes the .cpp files. The caller holds "mutex_".
+    // The inputs that all units of one wave share. The serial part makes them, so translate_stage
+    // calls no prepare_cache and reads no slots file. The caller holds "mutex_".
+    struct TranslateInputs
+    {
+        bool use_cache = false;
+        bool timing = false;
+        std::string slots_in; // the text of the slots file (empty for a fresh load)
+    };
+    TranslateInputs make_translate_inputs(LoadMode mode);
+    // The unit name of a source (the name of its .cpp file).
+    static std::string unit_name_of(const ScriptSource& source);
+    // Stage 1: translates and writes the .cpp files. It writes no member of the backend except the
+    // atomics, so units of one wave can run it on many threads. Each unit needs its own "job".
     // "deferred" true: a load (the .cpp is not next to the .so, the text has no generation).
-    bool translate_stage(BuildJob& job, const ScriptSource& source, uint32_t generation, LoadMode mode,
-        const std::string& out_so, bool deferred);
+    bool translate_stage(BuildJob& job, const ScriptSource& source, uint32_t generation, const std::string& out_so,
+        bool deferred, const TranslateInputs& in);
     // Stage 2: runs the compiler and the linker. It does not lock "mutex_" and it is safe on many
     // threads for different jobs. It reads only "opt_", "cache_", "pch_cache_", "compiler_id_",
     // "link_cache_" and the PCH state under "pch_mutex_".

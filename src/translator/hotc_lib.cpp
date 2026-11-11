@@ -3422,6 +3422,16 @@ struct TranslatorSession::Impl
         std::map<std::string, std::string> queries; // the type queries (S20b); empty: not known
         // The start of the earliest parse that gave facts to the entry (TranslateResult::parse_start_ns).
         int64_t parse_start_ns = 0;
+        // Clears all data fields. The caller holds "mutex". If you add a field, add it here.
+        void reset()
+        {
+            files.clear();
+            bases.clear();
+            hierarchy = {};
+            facts.clear();
+            queries.clear();
+            parse_start_ns = 0;
+        }
     };
     // "mutex" guards only the map. Lock order: an entry first, then the map. Never lock an
     // entry while the map is locked. An entry stays alive while a call holds its pointer.
@@ -3484,14 +3494,7 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
     for (size_t i = 0; fresh && i < e.files.size(); ++i)
         fresh = stamp_fresh(fs, e.files[i]);
     if (!fresh)
-    {
-        e.files.clear();
-        e.bases.clear();
-        e.hierarchy = {};
-        e.facts.clear();
-        e.queries.clear();
-        e.parse_start_ns = 0;
-    }
+        e.reset();
     bool complete = fresh;
     for (const auto& n : names)
         complete = complete && e.bases.count(n);
@@ -3533,6 +3536,9 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
         catch (...)
         {
             count_parse();
+            // The moves above left the entry members in an unknown state. A waiter that already
+            // holds the entry must not read them: clear them under the entry lock before the erase.
+            e.reset();
             {
                 std::lock_guard<std::mutex> map_lock(S.mutex);
                 const auto it = S.entries.find(key);

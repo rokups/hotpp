@@ -11,6 +11,7 @@
 #include "hot/runtime/process.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <chrono>
 #include <cstdio>
@@ -20,6 +21,7 @@
 #include <fstream>
 #include <optional>
 #include <sstream>
+#include <set>
 #include <thread>
 
 #ifdef _WIN32
@@ -1399,7 +1401,8 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
         ~MirrorCleanup() { remove_mirror(job); }
     } mirror_cleanup{job};
     job.use_module_cache = use_module_cache;
-    const bool translated = translate_stage(job, source, generation, mode, out_so, deferred_slots != nullptr);
+    const bool translated =
+        translate_stage(job, source, generation, out_so, deferred_slots != nullptr, make_translate_inputs(mode));
     if (dependencies)
         *dependencies = job.tr.dependencies; // also after a failure
     if (hashes)
@@ -1439,8 +1442,16 @@ void ClangFilesBackend::remove_mirror(BuildJob& job)
     job.mirror_root.clear();
 }
 
+std::string ClangFilesBackend::unit_name_of(const ScriptSource& source)
+{
+    std::string unit = source.unit.empty() ? fs::path(source.name).stem().string() : source.unit;
+    if (unit.empty())
+        unit = "script";
+    return unit;
+}
+
 bool ClangFilesBackend::translate_stage(BuildJob& job, const ScriptSource& source, uint32_t generation,
-    LoadMode mode, const std::string& out_so, bool deferred)
+    const std::string& out_so, bool deferred, const TranslateInputs& in)
 {
     job.seq = job_seq_++;
     job.source_name = source.name;
@@ -1456,9 +1467,7 @@ bool ClangFilesBackend::translate_stage(BuildJob& job, const ScriptSource& sourc
     job.obj_path = fs::path(so_path).replace_extension(".o").string();
     job.dep_path = fs::path(so_path).replace_extension(".d").string();
     std::string& unit = job.unit;
-    unit = source.unit.empty() ? fs::path(source.name).stem().string() : source.unit;
-    if (unit.empty())
-        unit = "script";
+    unit = unit_name_of(source);
     // A load gives the .cpp a stable name: "<generated_dir>/<unit>.cpp", else "<work_dir>/<unit>.cpp".
     // It is also the "#line" name, so the text of the .cpp has no part of the .so name (no process
     // id, generation, epoch or sequence). Equal script text then gives equal text at each generation.
@@ -1476,7 +1485,7 @@ bool ClangFilesBackend::translate_stage(BuildJob& job, const ScriptSource& sourc
     fs::create_directories(fs::path(line_name).parent_path(), ec);
     // With the cache the compile reads a private copy "<work_dir>/<unit>.cpp". Two processes then
     // never change the input of a compile of the other. The stable file is for the IDE only.
-    job.use_cache = prepare_cache();
+    job.use_cache = in.use_cache;
     const bool use_cache = job.use_cache;
     std::string& cpp_path = job.cpp_path;
     cpp_path = use_cache ? (fs::path(opt_.work_dir) / unit_cpp).string() : line_name;
@@ -1508,11 +1517,10 @@ bool ClangFilesBackend::translate_stage(BuildJob& job, const ScriptSource& sourc
     to.view_type = view_type_name();
     to.fs = opt_.fs;
     to.preludes = opt_.preludes;
-    // A missing file means the first generation. A fresh generation starts with no slots.
-    if (mode == LoadMode::Reload)
-        read_text(opt_.slots_file, to.slots_in);
+    // The slots text is empty for the first generation and for a fresh load.
+    to.slots_in = in.slots_in;
     // HOT_TIMING prints the time of the translate and of the clang run of each unit.
-    job.timing = std::getenv("HOT_TIMING") != nullptr;
+    job.timing = in.timing;
     job.t0 = std::chrono::steady_clock::now();
     // The translate cache gives the result of an earlier translate with the same inputs. A hit
     // continues as a translate: also when the object cache then misses, the compile uses the
@@ -2008,10 +2016,33 @@ public:
             job_.cached_module, std::move(r));
     }
 
-    // The first phase. The caller holds "mutex_".
-    void start(const std::string& so)
+    // Marks the first phase as failed, without a translate.
+    void fail(std::string error)
     {
-        const bool translated = backend_.translate_stage(job_, source_, generation_, mode_, so, true);
+        job_.error = error;
+        head.error = std::move(error);
+        head.reason = ReloadReason::CompileError;
+        ok = false;
+    }
+    void set_so(std::string so) { so_ = std::move(so); }
+
+    // The first phase. The caller holds "mutex_" (or gave the work to threads that it waits for).
+    // It runs on any thread: it writes only this object and the files of its unit.
+    void start(const TranslateInputs& in)
+    {
+        bool translated = false;
+        try
+        {
+            translated = backend_.translate_stage(job_, source_, generation_, so_, true, in);
+        }
+        catch (const std::exception& e)
+        {
+            job_.error = e.what()[0] ? e.what() : "the translate failed";
+        }
+        catch (...)
+        {
+            job_.error = "the translate failed";
+        }
         head.dependencies = job_.tr.dependencies; // also after a failure
         head.iface_hash = job_.tr.iface_hash;
         head.import_hashes = job_.tr.import_hashes;
@@ -2028,10 +2059,22 @@ private:
     ScriptSource source_;
     uint32_t generation_;
     LoadMode mode_;
+    std::string so_;
     BuildJob job_;
     bool compiled_ = false;
     bool finished_ = false;
 };
+
+ClangFilesBackend::TranslateInputs ClangFilesBackend::make_translate_inputs(LoadMode mode)
+{
+    TranslateInputs in;
+    in.use_cache = prepare_cache();
+    // A missing file means the first generation. A fresh generation starts with no slots.
+    if (mode == LoadMode::Reload)
+        read_text(opt_.slots_file, in.slots_in);
+    in.timing = std::getenv("HOT_TIMING") != nullptr;
+    return in;
+}
 
 std::unique_ptr<PendingLoad> ClangFilesBackend::begin_load(
     const ScriptSource& source, uint32_t generation, LoadMode mode)
@@ -2039,11 +2082,63 @@ std::unique_ptr<PendingLoad> ClangFilesBackend::begin_load(
 #ifdef _WIN32
     return Backend::begin_load(source, generation, mode);
 #else
-    auto pending = std::make_unique<TwoPhaseLoad>(*this, source, generation, mode);
+    // One code path: a wave of one unit. It starts no thread.
+    std::vector<std::unique_ptr<PendingLoad>> many = begin_load_many({source}, generation, mode);
+    return std::move(many.front());
+#endif
+}
+
+std::vector<std::unique_ptr<PendingLoad>> ClangFilesBackend::begin_load_many(
+    const std::vector<ScriptSource>& sources, uint32_t generation, LoadMode mode)
+{
+#ifdef _WIN32
+    return Backend::begin_load_many(sources, generation, mode);
+#else
     std::lock_guard<std::mutex> lock(mutex_);
-    const std::string so = library_path(source, generation, mode);
-    pending->start(so);
-    return pending;
+    std::vector<std::unique_ptr<PendingLoad>> result;
+    std::vector<TwoPhaseLoad*> loads;
+    result.reserve(sources.size());
+    // The serial part: the names of the libraries, the cache setup and the slots file.
+    const TranslateInputs in = make_translate_inputs(mode);
+    std::set<std::string> units;
+    for (const ScriptSource& source : sources)
+    {
+        auto pending = std::make_unique<TwoPhaseLoad>(*this, source, generation, mode);
+        pending->set_so(library_path(source, generation, mode));
+        if (!units.insert(unit_name_of(source)).second)
+        {
+            // Two units with one name would write one .cpp file.
+            pending->fail("the unit name '" + unit_name_of(source) + "' is the same unit name as an earlier source");
+        }
+        else
+            loads.push_back(pending.get());
+        result.push_back(std::move(pending));
+    }
+    // The parallel part: the same thread pattern as run_compiles. HOT_JOBS=N gives N threads in total.
+    std::atomic<size_t> next{0};
+    const auto work = [&]
+    {
+        for (size_t i = next.fetch_add(1); i < loads.size(); i = next.fetch_add(1))
+            loads[i]->start(in); // catches each exception
+    };
+    const size_t count = std::min<size_t>(build_jobs(), loads.size());
+    std::vector<std::thread> threads;
+    if (count > 1)
+    {
+        try
+        {
+            for (size_t i = 1; i < count; ++i)
+                threads.emplace_back(work);
+        }
+        catch (...)
+        {
+            // A thread did not start: the started threads and this thread do the work.
+        }
+    }
+    work();
+    for (std::thread& t : threads)
+        t.join();
+    return result;
 #endif
 }
 

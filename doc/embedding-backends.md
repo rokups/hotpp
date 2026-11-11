@@ -61,7 +61,7 @@ A batch has three phases:
 2. Compile and link run in parallel (`PendingLoad::compile`).
 3. The library opens in name order (`PendingLoad::finish`).
 
-Thread contract for embedders: `begin_load` and `finish` run one at a time, on one thread. `compile` runs on any thread, and many calls can run together. Do not call `Loader::commit_pending` between the first `begin_load` and the last `finish`. A `PendingLoad` does not outlive its backend.
+Thread contract for embedders: `begin_load`, `begin_load_many` and `finish` run one at a time, on one thread. `compile` runs on any thread, and many calls can run together. `begin_load_many` takes a list of sources and gives one `PendingLoad` for each, in order. `ClangFilesBackend` translates them on `build_jobs()` threads and returns when all are done. The default calls `begin_load` in a loop. The unit names of one call must differ. The backend does not check the import order, so an import and its importer can be in one call. A host `hot::FileSystem` must permit parallel read calls. Do not call `Loader::commit_pending`, `seed_slots`, `revert_slots` or `set_preludes` between the first `begin_load` and the last `finish`. A `PendingLoad` does not outlive its backend.
 
 A batch stays serial in these cases: the host is Windows, or the backend is the JIT. A host file system (`opt.fs`) does not make a batch serial: each job writes its mirror files to its own directory `<work_dir>/vfs.job/<process id>.<job number>`, and the job removes it after the compile. The JIT uses the default `begin_load`, which calls `load`. `JitBackend::load` holds its mutex for the full build. A parallel JIT needs a split of translate and code generation.
 

@@ -24,6 +24,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -1115,5 +1116,35 @@ TEST(TranslateCache, KeyKeepsTheNewestEntries)
     {
         write_file(f.base, base_text(i));
         EXPECT_TRUE(c.lookup(f.options).has_value()) << i;
+    }
+}
+
+// T9: a parallel wave stores one entry for each unit. A second wave hits all and parses none.
+TEST(TranslateCacheBackend, ParallelWaveStoresAndHits)
+{
+    EnvGuard on("HOT_CACHE", "1");
+    EnvGuard tr_on("HOT_TRANSLATE_CACHE", nullptr);
+    EnvGuard jobs("HOT_JOBS", "4");
+    TestScratch scratch;
+    const std::string cache = scratch.file("cache");
+    constexpr size_t kUnits = 6;
+    std::vector<hot::ScriptSource> sources;
+    for (size_t i = 0; i < kUnits; ++i)
+    {
+        const std::string cls = "Calc" + std::to_string(i);
+        sources.push_back({"calc" + std::to_string(i) + ".hot",
+            "using \"Actor.h\";\nclass " + cls + " : Actor {\n    float result = 0.0;\n"
+            "    override void Tick(float dt) { this.result = " + std::to_string(i) + ".0; }\n}\n",
+            {}, cls});
+    }
+    for (int wave = 0; wave < 2; ++wave)
+    {
+        auto backend = make_backend(scratch, "w" + std::to_string(wave), cache);
+        auto pending = backend->begin_load_many(sources, 1);
+        ASSERT_EQ(pending.size(), kUnits);
+        for (auto& p : pending)
+            ASSERT_TRUE(p->ok) << p->head.error;
+        EXPECT_EQ(backend->cache_stats().translate_hits, wave == 0 ? 0u : kUnits);
+        EXPECT_EQ(backend->cache_stats().translate_misses, wave == 0 ? kUnits : 0u);
     }
 }

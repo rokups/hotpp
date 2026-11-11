@@ -136,6 +136,7 @@ The tests are in `tests/unit/runtime/entry_counter_tests.cpp` and `tests/integra
 A batch of units loads in three phases. The launcher (`build_batch` in `src/launcher/launcher.cpp`) runs them.
 
 - `begin_load` runs for each unit, one at a time. It translates and finds the imports.
+- `begin_load_many` does the same for a list of units. The serial part makes the library paths, prepares the cache and reads the slots file one time. Then `translate_stage` of each unit runs on `min(build_jobs(), count)` threads. The `import_hashes` come from the import text and `iface_hash` from the unit text, so the translate order does not matter. `begin_load` is a call with one unit.
 - `PendingLoad::compile` runs in parallel. It compiles and links. `ClangFilesBackend::compile_stage` takes no `mutex_`. `pch_mutex_` guards the PCH thread and plan. Temporary names have the job number.
 - `PendingLoad::finish` runs in name order. It opens the library and makes the module.
 
