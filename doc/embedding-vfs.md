@@ -87,7 +87,7 @@ To reload, call `fs->set` with a new text and a new version. Then call `load` ag
 - `hot::disk_file_system()` gives the default file system. You can use it as a base for your own.
 - System headers (`using <vector>;`) stay on the disk. The header `hot/script.h` stays on the disk.
 - The `.so` files, the generated `.cpp` files and the slots file stay on the disk.
-- The `CLANG_FILES` backend writes your virtual files to `<work_dir>/vfs.job/<job number>/` at each load, because the compiler reads the disk. The backend makes each path absolute and removes the `..` parts first, so a file never goes outside that directory. The directory goes away after the compile, so jobs can compile at the same time.
+- The `CLANG_FILES` backend writes your virtual files to `<work_dir>/vfs.job/<process id>.<job number>/` at each load, because the compiler reads the disk. The backend makes each path absolute and removes the `..` parts first, so a file never goes outside that directory. The directory goes away after the compile, so jobs can compile at the same time.
 - The `JIT` backend gives the files to the compiler in memory. It writes nothing.
 - A folder in `include_dirs` does not need to exist on the disk. A relative folder or a folder with `..` is allowed.
 - Give the host file system the path as the search builds it. For a header with `..` in the path, the file system gets the path with `..` first, then the normal path.

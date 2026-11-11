@@ -141,7 +141,7 @@ A batch of units loads in three phases. The launcher (`build_batch` in `src/laun
 
 `HOT_JOBS` sets the limit (see `doc/embedding-backends.md`). The caller thread also works, so the launcher starts `jobs - 1` threads. No thread starts for one unit.
 
-Serial cases: Windows and the JIT backend. A host file system (`opt.fs`) also compiles in parallel. Each job has its own mirror directory `<work_dir>/vfs.job/<job number>`. The compile removes it. The object key uses the fixed root `<work_dir>/vfs/`, so the job number is not in the key. The JIT uses the default `begin_load`. `JitBackend::load` holds its mutex for the full build.
+Serial cases: Windows and the JIT backend. A host file system (`opt.fs`) also compiles in parallel. Each job has its own mirror directory `<work_dir>/vfs.job/<process id>.<job number>`. The compile removes it. The object key uses the fixed root `<work_dir>/vfs/`, so the job number is not in the key. The JIT uses the default `begin_load`. `JitBackend::load` holds its mutex for the full build.
 
 After a compile error the other jobs finish and cache their objects. The first failed unit in name order is the reported error. The old code stays live.
 

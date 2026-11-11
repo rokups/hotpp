@@ -10,6 +10,7 @@
 // CMake defines the macros HOT_SOURCE_DIR and HOT_CXX.
 #include "hot/backend.h"
 #include "hot/clang_files_backend.h"
+#include "hot/runtime/process.h"
 #include "hot/vfs.h"
 #include "support/compiler_wrapper.h"
 #include "support/scratch_dir.h"
@@ -374,6 +375,15 @@ TEST(ParallelBuild, VfsBeginLoadIsTwoPhase)
         ASSERT_TRUE(pending.back()->ok) << pending.back()->head.error;
     }
     EXPECT_EQ(count_mirror_headers(scratch.file("work") + "/vfs.job"), 4u);
+    // The name of each job directory starts with the process id.
+    const std::string pid_prefix = std::to_string(hot::detail::process_id()) + ".";
+    size_t named = 0;
+    for (const auto& e : fs::directory_iterator(scratch.file("work") + "/vfs.job"))
+    {
+        EXPECT_EQ(e.path().filename().string().rfind(pid_prefix, 0), 0u) << e.path();
+        ++named;
+    }
+    EXPECT_EQ(named, 4u);
     EXPECT_EQ(wrapper.compile_calls(), 0u) << "begin_load must not compile";
 }
 

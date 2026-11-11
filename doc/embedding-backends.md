@@ -63,7 +63,7 @@ A batch has three phases:
 
 Thread contract for embedders: `begin_load` and `finish` run one at a time, on one thread. `compile` runs on any thread, and many calls can run together. Do not call `Loader::commit_pending` between the first `begin_load` and the last `finish`. A `PendingLoad` does not outlive its backend.
 
-A batch stays serial in these cases: the host is Windows, or the backend is the JIT. A host file system (`opt.fs`) does not make a batch serial: each job writes its mirror files to its own directory `<work_dir>/vfs.job/<job number>`, and the job removes it after the compile. The JIT uses the default `begin_load`, which calls `load`. `JitBackend::load` holds its mutex for the full build. A parallel JIT needs a split of translate and code generation.
+A batch stays serial in these cases: the host is Windows, or the backend is the JIT. A host file system (`opt.fs`) does not make a batch serial: each job writes its mirror files to its own directory `<work_dir>/vfs.job/<process id>.<job number>`, and the job removes it after the compile. The JIT uses the default `begin_load`, which calls `load`. `JitBackend::load` holds its mutex for the full build. A parallel JIT needs a split of translate and code generation.
 
 Effect on the PCH: a cold batch starts all jobs before the PCH build ends. So the first cold batch uses the PCH less. The PCH build can use one more core than `HOT_JOBS`.
 

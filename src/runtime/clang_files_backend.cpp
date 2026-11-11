@@ -1392,6 +1392,12 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     if (dependencies)
         dependencies->clear();
     BuildJob job;
+    // An exception in translate_stage must not leave the mirror directory.
+    struct MirrorCleanup
+    {
+        BuildJob& job;
+        ~MirrorCleanup() { remove_mirror(job); }
+    } mirror_cleanup{job};
     job.use_module_cache = use_module_cache;
     const bool translated = translate_stage(job, source, generation, mode, out_so, deferred_slots != nullptr);
     if (dependencies)
@@ -1565,11 +1571,13 @@ bool ClangFilesBackend::translate_stage(BuildJob& job, const ScriptSource& sourc
     }
 
     // The headers of the host file system go to disk files, because the external compiler reads
-    // the disk. Each job writes them to its own directory "<work_dir>/vfs.job/<seq>". So jobs
+    // the disk. Each job writes them to its own directory "<work_dir>/vfs.job/<pid>.<seq>". So jobs
     // that compile at the same time do not share files. compile_stage removes the directory.
     if (opt_.fs && !tr.virtual_files.empty())
     {
-        job.mirror_dir = (fs::path(opt_.work_dir) / "vfs.job" / std::to_string(job.seq)).string();
+        job.mirror_dir = (fs::path(opt_.work_dir) / "vfs.job" /
+                           (std::to_string(hot::detail::process_id()) + "." + std::to_string(job.seq)))
+                              .string();
         job.mirror_root = job.mirror_dir + "/";
         fs::remove_all(job.mirror_dir, ec);
         for (const auto& [vpath, vtext] : tr.virtual_files)

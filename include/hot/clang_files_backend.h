@@ -182,7 +182,7 @@ private:
         bool timing = false;
         bool translate_hit = false;
         unsigned seq = 0; // the number of the job, for the names of the temporary files
-        // The mirror of the host files of this job: "<work_dir>/vfs.job/<seq>". Empty: no mirror.
+        // The mirror of the host files of this job: "<work_dir>/vfs.job/<pid>.<seq>". Empty: no mirror.
         // The root has a "/" at the end. compile_stage and the destructor of the load remove it.
         std::string mirror_dir;
         std::string mirror_root;
