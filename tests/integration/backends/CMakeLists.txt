@@ -4,6 +4,7 @@
 
 # Backend tests: scripts that hotc compiled ahead of time, the tool hotc, and the JIT backend.
 set(BACKEND_TEST_SOURCES
+    parallel_build_tests.cpp
     precompiled_script_tests.cpp
     diagnostic_mistake_tests.cpp
     debug_info_tests.cpp

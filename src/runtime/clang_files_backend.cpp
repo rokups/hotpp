@@ -1361,9 +1361,13 @@ void ClangFilesBackend::start_pch_build(
 
 void ClangFilesBackend::wait_for_pch()
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (pch_thread_.joinable())
-        pch_thread_.join();
+    std::thread thread;
+    {
+        std::lock_guard<std::mutex> lock(pch_mutex_);
+        thread = std::move(pch_thread_);
+    }
+    if (thread.joinable())
+        thread.join();
 }
 
 bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation, const std::string& out_so,
@@ -1374,6 +1378,7 @@ bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation, c
 
 // "deferred_slots" null: write the slots file when the compile succeeds (the tool hotc).
 // Else give the new content of the slots file back, and leave the file as it is.
+// The serial build holds "mutex_" for the three stages.
 bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generation, LoadMode mode,
     const std::string& out_so, std::string& error, std::string* deferred_slots,
     std::vector<std::string>* dependencies, LoadResult* hashes, std::optional<ObjectCache::Key>* cached_module,
@@ -1385,6 +1390,44 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     error.clear();
     if (dependencies)
         dependencies->clear();
+    BuildJob job;
+    job.use_module_cache = use_module_cache;
+    const bool translated = translate_stage(job, source, generation, mode, out_so, deferred_slots != nullptr);
+    if (dependencies)
+        *dependencies = job.tr.dependencies; // also after a failure
+    if (hashes)
+    {
+        hashes->iface_hash = job.tr.iface_hash;
+        hashes->import_hashes = job.tr.import_hashes;
+    }
+    if (!translated || !compile_stage(job))
+    {
+        error = std::move(job.error);
+        return false;
+    }
+    if (cached_module)
+        *cached_module = job.cached_module;
+    record_stage(job);
+    if (deferred_slots)
+    {
+        *deferred_slots = job.tr.slots_out + job.tr.sigs_out;
+        return true;
+    }
+    if (!write_text(opt_.slots_file, job.tr.slots_out + job.tr.sigs_out))
+    {
+        error = "cannot write " + opt_.slots_file;
+        return false;
+    }
+    return true;
+}
+
+bool ClangFilesBackend::translate_stage(BuildJob& job, const ScriptSource& source, uint32_t generation,
+    LoadMode mode, const std::string& out_so, bool deferred)
+{
+    job.seq = job_seq_++;
+    job.source_name = source.name;
+    job.source_text = source.text;
+    job.out_so = out_so;
     std::error_code ec;
     const fs::path so_path(out_so);
     if (so_path.has_parent_path())
@@ -1392,29 +1435,33 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     fs::create_directories(
         fs::path(opt_.slots_file).parent_path().empty() ? fs::path(".") : fs::path(opt_.slots_file).parent_path(), ec);
     // The .o and the depfile go next to the .so.
-    const std::string obj_path = fs::path(so_path).replace_extension(".o").string();
-    const std::string dep_path = fs::path(so_path).replace_extension(".d").string();
-    std::string unit = source.unit.empty() ? fs::path(source.name).stem().string() : source.unit;
+    job.obj_path = fs::path(so_path).replace_extension(".o").string();
+    job.dep_path = fs::path(so_path).replace_extension(".d").string();
+    std::string& unit = job.unit;
+    unit = source.unit.empty() ? fs::path(source.name).stem().string() : source.unit;
     if (unit.empty())
         unit = "script";
     // A load gives the .cpp a stable name: "<generated_dir>/<unit>.cpp", else "<work_dir>/<unit>.cpp".
     // It is also the "#line" name, so the text of the .cpp has no part of the .so name (no process
     // id, generation, epoch or sequence). Equal script text then gives equal text at each generation.
-    // A build of a named .so (the tool hotc, "deferred_slots" null) without a generated_dir puts
+    // A build of a named .so (the tool hotc, "deferred" false) without a generated_dir puts
     // the .cpp next to the .so: the caller chose that name.
     // A unit name can have directories ("Player/Health"). They become directories of the .cpp.
     // A unit name can be an absolute path (the launcher). Its root goes away, so the .cpp stays
     // in the directory and never replaces a file next to the script.
     const fs::path unit_cpp = fs::path(unit + ".cpp").relative_path();
     const bool stable_cpp = !opt_.generated_dir.empty();
-    const std::string line_name = stable_cpp ? (fs::path(opt_.generated_dir) / unit_cpp).string()
-        : deferred_slots ? (fs::path(opt_.work_dir) / unit_cpp).string()
-                         : fs::path(so_path).replace_extension(".cpp").string();
+    job.line_name = stable_cpp ? (fs::path(opt_.generated_dir) / unit_cpp).string()
+        : deferred ? (fs::path(opt_.work_dir) / unit_cpp).string()
+                   : fs::path(so_path).replace_extension(".cpp").string();
+    const std::string& line_name = job.line_name;
     fs::create_directories(fs::path(line_name).parent_path(), ec);
     // With the cache the compile reads a private copy "<work_dir>/<unit>.cpp". Two processes then
     // never change the input of a compile of the other. The stable file is for the IDE only.
-    const bool use_cache = prepare_cache();
-    std::string cpp_path = use_cache ? (fs::path(opt_.work_dir) / unit_cpp).string() : line_name;
+    job.use_cache = prepare_cache();
+    const bool use_cache = job.use_cache;
+    std::string& cpp_path = job.cpp_path;
+    cpp_path = use_cache ? (fs::path(opt_.work_dir) / unit_cpp).string() : line_name;
 
     hotc::TranslateOptions to;
     to.script_text = source.text;
@@ -1423,9 +1470,9 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     to.unit_name = source.unit;
     to.output_name = line_name;
     to.generation = static_cast<int>(generation);
-    // A build of a named .so (the tool hotc, "deferred_slots" null) names its generation. A load
+    // A build of a named .so (the tool hotc, "deferred" false) names its generation. A load
     // does not: its text stays free of the generation.
-    to.export_generation = deferred_slots == nullptr;
+    to.export_generation = !deferred;
     to.include_dirs = opt_.include_dirs;
     // The translator needs the resource dir for the native headers. A portable build finds it at run time.
     to.resource_dir = opt_.resource_dir.empty() ? default_paths().resource_dir : opt_.resource_dir;
@@ -1447,8 +1494,8 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     if (mode == LoadMode::Reload)
         read_text(opt_.slots_file, to.slots_in);
     // HOT_TIMING prints the time of the translate and of the clang run of each unit.
-    const bool timing = std::getenv("HOT_TIMING") != nullptr;
-    const auto t0 = std::chrono::steady_clock::now();
+    job.timing = std::getenv("HOT_TIMING") != nullptr;
+    job.t0 = std::chrono::steady_clock::now();
     // The translate cache gives the result of an earlier translate with the same inputs. A hit
     // continues as a translate: also when the object cache then misses, the compile uses the
     // cached text. Its "#line" lines and the source map give the script places of the errors.
@@ -1456,26 +1503,20 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     TranslateCache* const tr_cache = use_cache ? tr_cache_.get() : nullptr;
     if (tr_cache)
         cached = tr_cache->lookup(to);
-    const bool translate_hit = cached.has_value();
-    const fs::file_time_type translate_start = fs::file_time_type::clock::now();
-    hotc::TranslateResult tr = translate_hit ? std::move(*cached) : hotc::translate(to, *opt_.session);
-    if (tr_cache && !translate_hit && tr.ok && tr.diagnostics.empty())
+    job.translate_hit = cached.has_value();
+    job.translate_start = fs::file_time_type::clock::now();
+    hotc::TranslateResult& tr = job.tr;
+    tr = job.translate_hit ? std::move(*cached) : hotc::translate(to, *opt_.session);
+    if (tr_cache && !job.translate_hit && tr.ok && tr.diagnostics.empty())
     {
         std::string store_error;
-        if (!tr_cache->store(to, tr, translate_start, store_error) && timing)
+        if (!tr_cache->store(to, tr, job.translate_start, store_error) && job.timing)
             std::fprintf(stderr, "hot: %s has no translate cache entry: %s\n", unit.c_str(), store_error.c_str());
     }
-    const auto t1 = std::chrono::steady_clock::now();
-    if (dependencies)
-        *dependencies = tr.dependencies; // also after a failure
-    if (hashes)
-    {
-        hashes->iface_hash = tr.iface_hash;
-        hashes->import_hashes = tr.import_hashes;
-    }
+    job.t1 = std::chrono::steady_clock::now();
     if (!tr.ok)
     {
-        error = opt_.raw_diagnostics
+        job.error = opt_.raw_diagnostics
             ? tr.diagnostics
             : hotc::rewrite_translator_diagnostic(tr.diagnostics, hotc::script_texts(source.name, source.text, tr));
         return false;
@@ -1485,7 +1526,7 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
         fs::create_directories(fs::path(cpp_path).parent_path(), ec);
         if (!write_text(cpp_path, tr.cpp))
         {
-            error = "cannot write " + cpp_path;
+            job.error = "cannot write " + cpp_path;
             return false;
         }
         // A failure here has no effect on the build. Skip the write when the text is the same, so
@@ -1501,13 +1542,13 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
         cpp_path = fs::path(so_path).replace_extension(".cpp").string();
         if (!write_text(cpp_path, tr.cpp))
         {
-            error = "cannot write " + cpp_path;
+            job.error = "cannot write " + cpp_path;
             return false;
         }
     }
     else if (!stable_cpp && !write_text(cpp_path, tr.cpp))
     {
-        error = "cannot write " + cpp_path;
+        job.error = "cannot write " + cpp_path;
         return false;
     }
 
@@ -1522,27 +1563,43 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
             const std::optional<std::string> rel = vfs_relative(vpath);
             if (!rel)
             {
-                error = "the virtual file '" + vpath + "' is outside the mirror directory\n";
+                job.error = "the virtual file '" + vpath + "' is outside the mirror directory\n";
                 return false;
             }
             const fs::path target = mirror / *rel;
             fs::create_directories(target.parent_path(), ec);
             if (!write_text(target.string(), vtext))
             {
-                error = "cannot write " + target.string();
+                job.error = "cannot write " + target.string();
                 return false;
             }
         }
     }
     const size_t script_slash = source.name.rfind('/');
-    const std::string script_dir =
-        script_slash == std::string::npos ? std::string(".") : source.name.substr(0, script_slash);
+    job.script_dir = script_slash == std::string::npos ? std::string(".") : source.name.substr(0, script_slash);
     const std::string sysroot_error = mingw_sysroot_error(opt_.target_triple, opt_.sysroot);
     if (!sysroot_error.empty())
     {
-        error = sysroot_error + "\n";
+        job.error = sysroot_error + "\n";
         return false;
     }
+    return true;
+}
+
+bool ClangFilesBackend::compile_stage(BuildJob& job)
+{
+    std::error_code ec;
+    const fs::path so_path(job.out_so);
+    const std::string& out_so = job.out_so;
+    const std::string& unit = job.unit;
+    const std::string& line_name = job.line_name;
+    const std::string& cpp_path = job.cpp_path;
+    const std::string& obj_path = job.obj_path;
+    const std::string& dep_path = job.dep_path;
+    const std::string& script_dir = job.script_dir;
+    const hotc::TranslateResult& tr = job.tr;
+    const bool timing = job.timing;
+    const auto translate_start = job.translate_start;
     fs::remove(so_path, ec);
     std::string output;
     // The diagnostics can name the "#line" name or the path of the file (before the first "#line").
@@ -1552,16 +1609,19 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     const auto fail = [&](const char* what, int code)
     {
         if (!opt_.raw_diagnostics)
-            output = hotc::rewrite_diagnostic(output, {{source.name, source.text}}, generated, &tr.source_map);
-        error = output + "the " + what + " of " + source.name + " failed (exit code " + std::to_string(code) + ")\n";
+            output = hotc::rewrite_diagnostic(
+                output, {{job.source_name, job.source_text}}, generated, &tr.source_map);
+        job.error = output + "the " + what + " of " + job.source_name + " failed (exit code " + std::to_string(code)
+            + ")\n";
         return false;
     };
     int link_rc = 0;
-    std::string built_object = obj_path; // the object file of the compile, for the compile database
+    job.built_object = obj_path; // the object file of the compile, for the compile database
+    job.cached_module.reset();
     const char* cache_note = "";
     std::string pch_note; // ", pch" when the compile used the PCH
     auto t2 = std::chrono::steady_clock::now();
-    if (!use_cache)
+    if (!job.use_cache)
     {
         fs::remove(obj_path, ec);
         const int rc = run_command(compile_object_command(opt_, cpp_path, obj_path, dep_path, script_dir), output);
@@ -1596,9 +1656,9 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
         bool module_cached = false;
         // The module key has no header data. Only the object lookup checks the header stamps, so
         // a module hit needs an object hit. Else a changed header can load an old module.
-        if (module_key && use_module_cache && !hit)
+        if (module_key && job.use_module_cache && !hit)
             cache_->count_module_miss();
-        if (module_key && use_module_cache && hit)
+        if (module_key && job.use_module_cache && hit)
         {
             // A copy: the loader can remove the file, and a trim can remove the cache file.
             if (const std::optional<fs::path> cached = cache_->lookup_module(*module_key))
@@ -1609,10 +1669,9 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
                 {
                     module_cached = true;
                     cache_note = ", link cached";
-                    built_object = cache_->object_path(key).string();
+                    job.built_object = cache_->object_path(key).string();
                     t2 = std::chrono::steady_clock::now();
-                    if (cached_module)
-                        *cached_module = module_key;
+                    job.cached_module = module_key;
                 }
                 else
                 {
@@ -1630,23 +1689,28 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
                 object = hit->object.string();
             else
             {
+                // The number of the job is in the names: parallel jobs with the same key do not collide.
                 const std::string base = (fs::path(opt_.work_dir) / key.hex()).string();
-                const std::string tmp = base + ".o.tmp" + std::to_string(hot::detail::process_id());
-                const std::string dep = base + ".d.tmp" + std::to_string(hot::detail::process_id());
+                const std::string suffix = std::to_string(hot::detail::process_id()) + "." + std::to_string(job.seq);
+                const std::string tmp = base + ".o.tmp" + suffix;
+                const std::string dep = base + ".d.tmp" + suffix;
                 fs::remove(tmp, ec);
                 fs::remove(dep, ec);
                 const std::vector<std::string> plain = compile_object_command(opt_, cpp_path, tmp, dep, script_dir);
-                std::optional<PchPlan> pch =
-                    plan_pch(tr.cpp, script_dir, opt_.fs && !tr.virtual_files.empty(), inputs.shadow_hash);
-                // The PCH build runs next to the compile and after the end of this call: the
-                // compile, the link and the load do not wait for it. One PCH build at a time: a
-                // plan to build while the last build runs uses no PCH.
-                if (pch_thread_.joinable() && pch_done_)
-                    pch_thread_.join();
-                if (pch && pch->build && pch_thread_.joinable())
-                    pch.reset();
-                if (pch && pch->build)
-                    start_pch_build(*pch, script_dir, unit, timing);
+                std::optional<PchPlan> pch;
+                {
+                    std::lock_guard<std::mutex> pch_lock(pch_mutex_);
+                    pch = plan_pch(tr.cpp, script_dir, opt_.fs && !tr.virtual_files.empty(), inputs.shadow_hash);
+                    // The PCH build runs next to the compile and after the end of this call: the
+                    // compile, the link and the load do not wait for it. One PCH build at a time: a
+                    // plan to build while the last build runs uses no PCH.
+                    if (pch_thread_.joinable() && pch_done_)
+                        pch_thread_.join();
+                    if (pch && pch->build && pch_thread_.joinable())
+                        pch.reset();
+                    if (pch && pch->build)
+                        start_pch_build(*pch, script_dir, unit, timing);
+                }
                 int rc = 0;
                 bool used_pch = false;
                 if (pch && !pch->pch.empty())
@@ -1668,7 +1732,10 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
                             pch_cache_->remove(pch->key);
                             if (pch_exists)
                             {
-                                write_text(pch_marker(pch->key, ".bad"), pch_output);
+                                {
+                                    std::lock_guard<std::mutex> pch_lock(pch_mutex_);
+                                    write_text(pch_marker(pch->key, ".bad"), pch_output);
+                                }
                                 pch_note = ", pch failed";
                                 std::fprintf(stderr,
                                     "hot: %s does not compile with its PCH; the PCH is off for one day\n", unit.c_str());
@@ -1708,7 +1775,7 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
                 }
             }
             link_rc = run_command(link_module_command(opt_, object, out_so), output);
-            built_object = temp_object.empty() ? object : obj_path;
+            job.built_object = temp_object.empty() ? object : obj_path;
             if (!temp_object.empty())
                 fs::remove(temp_object, ec);
             if (link_rc == 0)
@@ -1738,24 +1805,18 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
             return static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(b - a).count());
         };
         const std::string translate_note =
-            translate_hit ? std::string("cached") : std::to_string(ms(t0, t1)) + " ms";
+            job.translate_hit ? std::string("cached") : std::to_string(ms(job.t0, job.t1)) + " ms";
         std::fprintf(stderr, "hot: %s translate %s, compile %lld ms, link %lld ms%s%s\n", unit.c_str(),
-            translate_note.c_str(), ms(t1, t2), ms(t2, t3), cache_note, pch_note.c_str());
+            translate_note.c_str(), ms(job.t1, t2), ms(t2, t3), cache_note, pch_note.c_str());
     }
     if (link_rc != 0)
         return fail("link", link_rc);
-    record_compile_command(unit, script_dir, built_object);
-    if (deferred_slots)
-    {
-        *deferred_slots = tr.slots_out + tr.sigs_out;
-        return true;
-    }
-    if (!write_text(opt_.slots_file, tr.slots_out + tr.sigs_out))
-    {
-        error = "cannot write " + opt_.slots_file;
-        return false;
-    }
     return true;
+}
+
+void ClangFilesBackend::record_stage(const BuildJob& job)
+{
+    record_compile_command(job.unit, job.script_dir, job.built_object);
 }
 
 LoadResult ClangFilesBackend::load(const ScriptSource& source, uint32_t generation, LoadMode mode)
@@ -1763,8 +1824,7 @@ LoadResult ClangFilesBackend::load(const ScriptSource& source, uint32_t generati
     return load_impl(source, generation, mode, true);
 }
 
-LoadResult ClangFilesBackend::load_impl(
-    const ScriptSource& source, uint32_t generation, LoadMode mode, bool use_module_cache)
+std::string ClangFilesBackend::library_path(const ScriptSource& source, uint32_t generation, LoadMode mode)
 {
     std::string stem = fs::path(source.name).stem().string();
     if (stem.empty())
@@ -1772,8 +1832,14 @@ LoadResult ClangFilesBackend::load_impl(
     // A fresh load starts a new epoch. The epoch is in the name, so a fresh library never has
     // the path of a library that the process still maps.
     const unsigned epoch = mode == LoadMode::Fresh ? ++epoch_ : epoch_.load();
-    const std::string so = opt_.work_dir + "/" + stem + ".g" + std::to_string(generation) + ".e" + std::to_string(epoch)
-        + "." + std::to_string(sequence_++) + module_suffix();
+    return opt_.work_dir + "/" + stem + ".g" + std::to_string(generation) + ".e" + std::to_string(epoch) + "."
+        + std::to_string(sequence_++) + module_suffix();
+}
+
+LoadResult ClangFilesBackend::load_impl(
+    const ScriptSource& source, uint32_t generation, LoadMode mode, bool use_module_cache)
+{
+    const std::string so = library_path(source, generation, mode);
     LoadResult r;
     std::string slots;
     std::optional<ObjectCache::Key> cached_module;
@@ -1783,6 +1849,12 @@ LoadResult ClangFilesBackend::load_impl(
         r.reason = ReloadReason::CompileError;
         return r;
     }
+    return complete_load(source, generation, mode, so, std::move(slots), std::move(cached_module), std::move(r));
+}
+
+LoadResult ClangFilesBackend::complete_load(const ScriptSource& source, uint32_t generation, LoadMode mode,
+    const std::string& so, std::string slots, std::optional<ObjectCache::Key> cached_module, LoadResult r)
+{
     // Check now that the slots file is writable: the write at on_accept time then rarely fails.
     // The open for append does not change a file that exists. A new empty file is removed again.
     {
@@ -1840,6 +1912,96 @@ LoadResult ClangFilesBackend::load_impl(
             std::fprintf(stderr, "[script] WARNING: cannot write %s\n", path.c_str());
     };
     return r;
+}
+
+// A load in two phases. The constructor side (begin_load) ran the translate stage.
+class ClangFilesBackend::TwoPhaseLoad : public PendingLoad
+{
+public:
+    TwoPhaseLoad(ClangFilesBackend& backend, ScriptSource source, uint32_t generation, LoadMode mode)
+        : backend_(backend)
+        , source_(std::move(source))
+        , generation_(generation)
+        , mode_(mode)
+    {
+    }
+
+    ~TwoPhaseLoad() override
+    {
+        // The first phase failed or finish did not run: the library file is not in use.
+        if (!finished_ && !job_.out_so.empty())
+        {
+            std::error_code ec;
+            fs::remove(job_.out_so, ec);
+        }
+    }
+
+    void compile() override
+    {
+        if (!ok)
+            return;
+        compiled_ = backend_.compile_stage(job_);
+    }
+
+    LoadResult finish() override
+    {
+        finished_ = true;
+        if (!ok)
+            return std::move(head);
+        LoadResult r = std::move(head);
+        if (!compiled_)
+        {
+            r.error = job_.error;
+            r.reason = ReloadReason::CompileError;
+            return r;
+        }
+        {
+            std::lock_guard<std::mutex> lock(backend_.mutex_);
+            backend_.record_stage(job_);
+        }
+        return backend_.complete_load(source_, generation_, mode_, job_.out_so, job_.tr.slots_out + job_.tr.sigs_out,
+            job_.cached_module, std::move(r));
+    }
+
+    // The first phase. The caller holds "mutex_".
+    void start(const std::string& so)
+    {
+        const bool translated = backend_.translate_stage(job_, source_, generation_, mode_, so, true);
+        head.dependencies = job_.tr.dependencies; // also after a failure
+        head.iface_hash = job_.tr.iface_hash;
+        head.import_hashes = job_.tr.import_hashes;
+        if (!translated)
+        {
+            head.error = job_.error;
+            head.reason = ReloadReason::CompileError;
+            ok = false;
+        }
+    }
+
+private:
+    ClangFilesBackend& backend_;
+    ScriptSource source_;
+    uint32_t generation_;
+    LoadMode mode_;
+    BuildJob job_;
+    bool compiled_ = false;
+    bool finished_ = false;
+};
+
+std::unique_ptr<PendingLoad> ClangFilesBackend::begin_load(
+    const ScriptSource& source, uint32_t generation, LoadMode mode)
+{
+#ifdef _WIN32
+    return Backend::begin_load(source, generation, mode);
+#else
+    if (opt_.fs)
+        return Backend::begin_load(source, generation, mode);
+    auto pending = std::make_unique<TwoPhaseLoad>(*this, source, generation, mode);
+    std::lock_guard<std::mutex> lock(mutex_);
+    const std::string so = library_path(source, generation, mode);
+    pending->start(so);
+    return pending;
+#endif
 }
 
 } // namespace hot

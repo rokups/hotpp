@@ -12,5 +12,6 @@ set_target_properties(integration_launcher_tests PROPERTIES ENABLE_EXPORTS ON)
 target_include_directories(integration_launcher_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
 target_compile_definitions(integration_launcher_tests PRIVATE
     HOT_SCRATCH_DIR="${HOT_SCRATCH_DIR}/tests/launcher"
+    HOT_CXX="${HOT_SCRIPT_COMPILER}"
     HOT_LAUNCHER_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 hot_gtest(integration_launcher_tests)

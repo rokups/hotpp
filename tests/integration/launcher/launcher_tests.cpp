@@ -9,6 +9,7 @@
 #include "TestHost.h"
 #include "hot/backend.h"
 #include "hot/runtime/threads.h"
+#include "support/compiler_wrapper.h"
 #include "support/test_env.h"
 
 #include <gtest/gtest.h>
@@ -1015,6 +1016,201 @@ TEST(Launcher, DefaultCacheDirUsesTheCacheHomeVariable)
     EXPECT_EQ(a, launcher::default_cache_dir((dir / "a.hot").string()));
     EXPECT_EQ(fs::path(a).parent_path(), dir / "hot");
     EXPECT_TRUE(fs::is_directory(a));
+}
+
+// ---- The parallel build. The tests use a compiler wrapper (support/compiler_wrapper.h), a POSIX
+// shell script. They run for the files backend only. Wait mode holds each "-c" call of an import
+// until another compile runs, at most 5 seconds.
+
+constexpr unsigned kWaitSeconds = 5;
+
+#ifdef _WIN32
+#define SKIP_PARALLEL_TESTS() GTEST_SKIP() << "the compiler wrapper is a POSIX shell script"
+#else
+#define SKIP_PARALLEL_TESTS() \
+    if (!hot::backend_available(hot::BackendKind::ClangFiles)) \
+        GTEST_SKIP() << "no files backend"; \
+    else \
+        (void)0
+#endif
+
+// The directory of the wrapper. It is not inside the directory of the test fixture, because the
+// fixture clears its directory when it opens.
+fs::path wrapper_dir()
+{
+    const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+    return fs::path(HOT_SCRATCH_DIR) / (std::string(info->test_suite_name()) + "_" + info->name() + "_wrap");
+}
+
+// The environment of a parallel build test: the wrapper is the compiler, the object cache is off,
+// and HOT_JOBS has the number of jobs.
+struct ParallelEnv
+{
+    ParallelEnv(const char* jobs, const std::string& real_compiler)
+        : wrapper(wrapper_dir(), real_compiler)
+        , cxx("HOT_CXX", wrapper.path().c_str())
+        , cache("HOT_CACHE", "0")
+        , jobs("HOT_JOBS", jobs)
+    {
+    }
+    test_support::CompilerWrapper wrapper;
+    test_support::ScopedEnv cxx;
+    test_support::ScopedEnv cache;
+    test_support::ScopedEnv jobs;
+};
+
+// The text of an import: the class "name" with the static function V that returns "value".
+std::string import_text(const std::string& name, int value, const std::string& uses = "")
+{
+    return uses + "class " + name + " { static int V() { return " + std::to_string(value) + "; } }\n";
+}
+
+// The imports imp_a, imp_b and imp_c.
+std::vector<std::pair<std::string, std::string>> three_imports()
+{
+    return {{"imp_a.hot", import_text("ImpA", 1)}, {"imp_b.hot", import_text("ImpB", 2)},
+            {"imp_c.hot", import_text("ImpC", 3)}};
+}
+
+const char* const kThreeUsings = "using \"imp_a.hot\";\nusing \"imp_b.hot\";\nusing \"imp_c.hot\";\n";
+const char* const kSumOfThree = "return ImpA.V() + ImpB.V() + ImpC.V();";
+
+// A cold start: the entry script has three imports. With four jobs the three imports compile at the
+// same time.
+TEST(Launcher, ColdStartCompilesImportsInParallel)
+{
+    SKIP_PARALLEL_TESTS();
+    ParallelEnv env("4", HOT_CXX);
+    env.wrapper.set_wait(kWaitSeconds, "imp_");
+    const fs::path dir = make_temp_dir();
+    for (const auto& [name, text] : three_imports())
+        write_file(dir, name, text);
+    const std::string script = write_file(dir, "entry.hot",
+        std::string(kThreeUsings) + "int main() { return ImpA.V() + ImpB.V() * 10 + ImpC.V() * 100; }\n");
+    launcher::Options options = options_for("files", dir, nullptr);
+    options.include_dirs.push_back(dir.string());
+    std::string error;
+    auto program = launcher::load(options, script, error);
+    ASSERT_NE(program, nullptr) << error;
+    EXPECT_TRUE(env.wrapper.overlap()) << "the imports must compile at the same time";
+    EXPECT_GE(env.wrapper.compile_calls(), 4u);
+    EXPECT_EQ(launcher::run_main(*program, {}), 321);
+}
+
+// HOT_JOBS=1 starts no thread. The compiles run one after the other.
+TEST(Launcher, JobsOneCompilesSerial)
+{
+    SKIP_PARALLEL_TESTS();
+    ParallelEnv env("1", HOT_CXX);
+    const fs::path dir = make_temp_dir();
+    for (const auto& [name, text] : three_imports())
+        write_file(dir, name, text);
+    const std::string script = write_file(dir, "entry.hot",
+        std::string(kThreeUsings) + "int main() { return ImpA.V() + ImpB.V() * 10 + ImpC.V() * 100; }\n");
+    launcher::Options options = options_for("files", dir, nullptr);
+    options.include_dirs.push_back(dir.string());
+    std::string error;
+    auto program = launcher::load(options, script, error);
+    ASSERT_NE(program, nullptr) << error;
+    EXPECT_GE(env.wrapper.compile_calls(), 4u) << "the wrapper must be the compiler";
+    EXPECT_FALSE(env.wrapper.overlap());
+    EXPECT_EQ(launcher::run_main(*program, {}), 321);
+}
+
+// After a warm start, an edit of the body of one import builds one unit. It starts no second compile.
+TEST(Launcher, SingleUnitEditStaysSerial)
+{
+    SKIP_PARALLEL_TESTS();
+    ParallelEnv env("4", HOT_CXX);
+    ReloadFixture f;
+    ASSERT_TRUE(f.open("files", kSumOfThree, kThreeUsings, three_imports())) << f.logs.back();
+    ASSERT_GE(env.wrapper.compile_calls(), 4u) << "the wrapper must be the compiler";
+    env.wrapper.reset();
+    std::vector<launcher::PollStatus> statuses;
+    // Frames 1 and 2 give 6. Frames 3 and 4 give 16: 10 + 2 + 3 + 1.
+    const int total = f.run(4, [&](int frame)
+    {
+        if (frame == 3)
+            edit_file(f.dir / "imp_a.hot", import_text("ImpA", 11));
+        statuses.push_back(poll_until_settled(*f.program));
+    });
+    ASSERT_EQ(statuses.size(), 4u);
+    EXPECT_EQ(statuses[2], launcher::PollStatus::Applied);
+    EXPECT_EQ(total, 2 * 6 + 2 * 16);
+    EXPECT_EQ(env.wrapper.compile_calls(), 1u);
+    EXPECT_FALSE(env.wrapper.overlap());
+}
+
+// Two imports have a compiler error that only clang finds. The error names the first unit in name
+// order, each time. The old code stays live.
+TEST(Launcher, ParallelCompileErrorIsStable)
+{
+    SKIP_PARALLEL_TESTS();
+    ParallelEnv env("4", HOT_CXX);
+    for (int run = 0; run < 5; ++run)
+    {
+        SCOPED_TRACE("run " + std::to_string(run));
+        ReloadFixture f;
+        ASSERT_TRUE(f.open("files", kSumOfThree, kThreeUsings, three_imports())) << f.logs.back();
+        launcher::PollStatus status = launcher::PollStatus::Idle;
+        // The old code runs for all 4 frames: 4 * 6.
+        const int total = f.run(4, [&](int frame)
+        {
+            if (frame == 2)
+            {
+                env.wrapper.reset();
+                env.wrapper.set_wait(kWaitSeconds, "imp_");
+                edit_file(f.dir / "imp_a.hot", "class ImpA { static int V() { return missing_a; } }\n");
+                edit_file(f.dir / "imp_b.hot", "class ImpB { static int V() { return missing_b; } }\n");
+                status = poll_until_settled(*f.program);
+                env.wrapper.set_wait(0);
+            }
+            else
+                poll_until_settled(*f.program);
+        });
+        EXPECT_EQ(status, launcher::PollStatus::Failed);
+        EXPECT_EQ(total, 4 * 6);
+        EXPECT_EQ(f.program->generation(), 1u);
+        EXPECT_TRUE(env.wrapper.overlap()) << "the two broken imports must compile at the same time";
+        std::string failure;
+        for (const std::string& line : f.logs)
+            if (line.find("[hot] reload failed: ") == 0)
+                failure = line;
+        ASSERT_FALSE(failure.empty());
+        EXPECT_NE(failure.find("imp_a"), std::string::npos) << failure;
+        EXPECT_EQ(failure.find("imp_b"), std::string::npos) << failure;
+    }
+}
+
+// A changed interface of one import rebuilds its three importers. All four units build, and the
+// program gives the new result.
+TEST(Launcher, InterfaceChangeRebuildsImporters)
+{
+    SKIP_PARALLEL_TESTS();
+    ParallelEnv env("4", HOT_CXX);
+    const std::string util = "class Util { static int Bonus() { return 1; } }\n";
+    const std::string uses = "using \"util.hot\";\n";
+    ReloadFixture f;
+    ASSERT_TRUE(f.open("files", kSumOfThree, kThreeUsings,
+                       {{"util.hot", util},
+                        {"imp_a.hot", uses + "class ImpA { static int V() { return Util.Bonus(); } }\n"},
+                        {"imp_b.hot", uses + "class ImpB { static int V() { return Util.Bonus(); } }\n"},
+                        {"imp_c.hot", uses + "class ImpC { static int V() { return Util.Bonus(); } }\n"}}))
+        << f.logs.back();
+    env.wrapper.reset();
+    std::vector<launcher::PollStatus> statuses;
+    // Frames 1 and 2 give 3. Frames 3 and 4 give 15. The new Util has one more function.
+    const int total = f.run(4, [&](int frame)
+    {
+        if (frame == 3)
+            edit_file(f.dir / "util.hot",
+                      "class Util { static int Bonus() { return 5; } static int Extra() { return 9; } }\n");
+        statuses.push_back(poll_until_settled(*f.program));
+    });
+    ASSERT_EQ(statuses.size(), 4u);
+    EXPECT_EQ(statuses[2], launcher::PollStatus::Applied);
+    EXPECT_EQ(total, 2 * 3 + 2 * 15);
+    EXPECT_GE(env.wrapper.compile_calls(), 4u) << "util and its three importers";
 }
 
 } // namespace

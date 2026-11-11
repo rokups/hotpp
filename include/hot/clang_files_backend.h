@@ -13,6 +13,9 @@
 #include "hot/translate_cache.h"
 
 #include <atomic>
+#include <chrono>
+#include <filesystem>
+#include <optional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -107,6 +110,12 @@ public:
     // it, and the Loader calls it when the module is live. A rejected module leaves the file
     // as it is. The load fails when the slots file is not writable. Fresh mode: see backend.h.
     LoadResult load(const ScriptSource& source, uint32_t generation, LoadMode mode = LoadMode::Reload) override;
+    // The two phase load. The first phase translates (one at a time). compile() runs the compiler
+    // and the linker without a lock, so many PendingLoads of this backend can compile at the same
+    // time. finish() opens the library on the calling thread. With a host file system (opt.fs) or
+    // on Windows it uses the serial default.
+    std::unique_ptr<PendingLoad> begin_load(
+        const ScriptSource& source, uint32_t generation, LoadMode mode = LoadMode::Reload) override;
     const char* name() const override { return "CLANG_FILES"; }
     // The path of the slots file. The file changes only when the Loader accepts a module.
     const std::string& slots_file() const { return opt_.slots_file; }
@@ -153,6 +162,47 @@ public:
     void wait_for_pch();
 
 private:
+    class TwoPhaseLoad;
+    // The data of one build that crosses the three stages (translate_stage, compile_stage,
+    // record_stage).
+    struct BuildJob
+    {
+        std::string source_name;
+        std::string source_text;
+        std::string unit;
+        std::string line_name;
+        std::string cpp_path;
+        std::string out_so;
+        std::string obj_path;
+        std::string dep_path;
+        std::string script_dir;
+        hotc::TranslateResult tr;
+        bool use_cache = false;
+        bool use_module_cache = true;
+        bool timing = false;
+        bool translate_hit = false;
+        unsigned seq = 0; // the number of the job, for the names of the temporary files
+        std::chrono::steady_clock::time_point t0, t1;
+        std::filesystem::file_time_type translate_start;
+        std::string built_object; // the object file of the compile, for the compile database
+        std::optional<ObjectCache::Key> cached_module;
+        std::string error;
+    };
+    // Stage 1: reads the slots, translates and writes the .cpp files. The caller holds "mutex_".
+    // "deferred" true: a load (the .cpp is not next to the .so, the text has no generation).
+    bool translate_stage(BuildJob& job, const ScriptSource& source, uint32_t generation, LoadMode mode,
+        const std::string& out_so, bool deferred);
+    // Stage 2: runs the compiler and the linker. It does not lock "mutex_" and it is safe on many
+    // threads for different jobs. It reads only "opt_", "cache_", "pch_cache_", "compiler_id_",
+    // "link_cache_" and the PCH state under "pch_mutex_".
+    bool compile_stage(BuildJob& job);
+    // Stage 3: writes the compile database. The caller holds "mutex_".
+    void record_stage(const BuildJob& job);
+    // The path of the next library: stem, generation, epoch and sequence number.
+    std::string library_path(const ScriptSource& source, uint32_t generation, LoadMode mode);
+    // The end of a load: the slots probe and the library. "r" has the head of the first phase.
+    LoadResult complete_load(const ScriptSource& source, uint32_t generation, LoadMode mode, const std::string& so,
+        std::string slots, std::optional<ObjectCache::Key> cached_module, LoadResult r);
     bool build_impl(const ScriptSource& source, uint32_t generation, LoadMode mode, const std::string& out_so,
         std::string& error, std::string* deferred_slots, std::vector<std::string>* dependencies,
         LoadResult* hashes = nullptr, std::optional<ObjectCache::Key>* cached_module = nullptr,
@@ -201,6 +251,9 @@ private:
     std::unique_ptr<ObjectCache> pch_cache_; // the PCH entries in "<cache_dir>/pch"; null: no PCH
     // The PCH build of the last build call. It runs after the build call ends. "pch_done_" true:
     // the thread ended (or no thread runs), so a join does not wait.
+    // "pch_mutex_" guards "pch_thread_", the PCH plan and its marker files. Never hold it, or
+    // "mutex_", during run_command.
+    std::mutex pch_mutex_;
     std::thread pch_thread_;
     std::atomic<bool> pch_done_{true};
     std::unique_ptr<TranslateCache> tr_cache_; // null: no translate cache
@@ -214,7 +267,11 @@ private:
     bool disk_known_ = false;
     int64_t disk_mtime_ = 0;
     uintmax_t disk_size_ = 0;
-    std::mutex mutex_; // one build at a time: the slot file is shared
+    // Guards the slot state, the translate, the compile database and the cache setup. The serial
+    // build holds it for the whole build. The two phase load holds it only in the first phase
+    // and in record_stage. compile_stage never takes it.
+    std::mutex mutex_;
+    std::atomic<unsigned> job_seq_{0};
     std::atomic<unsigned> sequence_{0};
     std::atomic<unsigned> epoch_{0}; // counts the fresh loads; it is in the name of the library
 };
