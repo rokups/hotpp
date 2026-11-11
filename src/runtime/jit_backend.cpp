@@ -263,6 +263,8 @@ struct CompileArgs
     std::vector<std::string> args;
     std::vector<std::string> paths;
     std::vector<std::string> texts;
+    // More text for the object cache key only: the absolute "-I" dirs.
+    std::vector<std::string> key_args;
 };
 
 // "virtual_files" (path, text) are the headers that only the file system of the host holds. They
@@ -347,6 +349,9 @@ CompileArgs make_args(const JitOptions& opt, const std::string& path, const std:
         if (opt.fs)
             args.push_back("-I" + normal(d));
         args.push_back("-I" + d);
+        // The cache key needs the place of a relative dir: another working directory can have
+        // another header with the same name.
+        s.key_args.push_back("-I" + normal(d));
     }
     for (const std::string& f : format_compile_flags())
         args.push_back(f);
@@ -403,9 +408,11 @@ namespace
 // Adds the module to a new JITDylib "id", runs the static initializers and finds
 // script_register. The Module owns the JITDylib. The code is "ir" or, when "ir" is null, the
 // cached object "object". With "captured", the call copies the object that ORC made from "ir"
-// into it (empty when the engine has none) and releases the copy of the engine.
+// into it (empty when the engine has none). The call always releases the copy of the engine.
+// "add_failed" is true when the add itself fails. Then no static initializer ran.
 LoadResult add_to_jit(const std::shared_ptr<JitState>& impl, const std::string& id, hot_jit_ir* ir,
-    const std::string* object, JitTimings* timings = nullptr, std::string* captured = nullptr)
+    const std::string* object, JitTimings* timings = nullptr, std::string* captured = nullptr,
+    bool* add_failed = nullptr)
 {
     LoadResult r;
     auto holder = std::make_unique<Generation>();
@@ -427,6 +434,8 @@ LoadResult add_to_jit(const std::shared_ptr<JitState>& impl, const std::string& 
               abs_values.data(), abs_names.size(), &error);
     if (!holder->dylib)
     {
+        if (add_failed)
+            *add_failed = true;
         r.error = with_platform_hint(take(error));
         return r;
     }
@@ -451,8 +460,10 @@ LoadResult add_to_jit(const std::shared_ptr<JitState>& impl, const std::string& 
         captured->clear();
         if (hot_jit_dylib_object(holder->dylib, &data, &size))
             captured->assign(static_cast<const char*>(data), size);
-        hot_jit_dylib_release_object(holder->dylib);
     }
+    // The engine captures each object. Nobody else needs the copy, so it does not stay for the
+    // life of the module.
+    hot_jit_dylib_release_object(holder->dylib);
     Module m;
     m.register_fn = reinterpret_cast<Module::RegisterFn>(reg);
     m.keep_alive = std::shared_ptr<void>(holder.release(), [](void* p) { delete static_cast<Generation*>(p); });
@@ -602,6 +613,7 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
         ObjectCache::KeyInputs inputs;
         inputs.cpp_text = tr.cpp;
         inputs.args = args.args;
+        inputs.args.insert(inputs.args.end(), args.key_args.begin(), args.key_args.end());
         inputs.compiler_id = compiler_id_;
         if (opt_.fs)
             inputs.virtual_files = tr.virtual_files;
@@ -657,8 +669,9 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
         t0 = Clock::now();
         if (!start_engine())
             return r;
-        added = add_to_jit(impl_, id, nullptr, object.get(), &jt);
-        if (!added)
+        bool add_failed = false;
+        added = add_to_jit(impl_, id, nullptr, object.get(), &jt, nullptr, &add_failed);
+        if (!added && add_failed)
         {
             // An error of hot_jit_add_object comes before the first static initializer
             // (jit_engine.h), so a compile and a second load are safe.
@@ -666,6 +679,13 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
                 unit_label.c_str(), added.error.c_str());
             obj_cache_->remove(*key);
             object.reset();
+        }
+        else if (!added)
+        {
+            // The initializers ran already: a second load would run them again.
+            r.error = added.error;
+            r.reason = ReloadReason::BadModule;
+            return r;
         }
     }
     std::shared_ptr<IrHandle> core_ir;

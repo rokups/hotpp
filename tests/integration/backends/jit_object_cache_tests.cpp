@@ -7,6 +7,7 @@
 // module of a compile: the static initializers run one time, an exception passes the JIT code,
 // the static destructors run at the unload and the debugger sees the code.
 #include "hot/jit_backend.h"
+#include "jit_engine.h"
 #include "support/dwarf_lines.h"
 #include "support/scratch_dir.h"
 #include "support/script_files.h"
@@ -460,6 +461,68 @@ TEST(JitObjectCache, TwoBackendsShareTheDirectory)
     for (const std::string& text : texts)
         ASSERT_TRUE(backend->load(f.script(text), 1));
     EXPECT_EQ(backend->compiles(), 0u);
+}
+
+// The layout of Generation in jit_backend.cpp: the module keeps it in "keep_alive".
+struct GenerationLayout
+{
+    std::shared_ptr<void> impl;
+    hot_jit_dylib* dylib;
+};
+
+bool holds_object(const hot::LoadResult& r)
+{
+    const auto* g = static_cast<const GenerationLayout*>(r.module->keep_alive.get());
+    return hot_jit_dylib_object(g->dylib, nullptr, nullptr) != 0;
+}
+
+TEST(JitObjectCache, MissKeepsNoObjectCopyInTheCoreDylib)
+{
+    Fixture f;
+    auto backend = f.make(f.cache);
+    hot::LoadResult r = backend->load(f.script(), 1);
+    ASSERT_TRUE(r) << r.error;
+    EXPECT_EQ(f.entries(".o").size(), 1u); // the main object is in the cache
+    EXPECT_FALSE(holds_object(r));
+    ASSERT_TRUE(r.module->make_core);
+    hot::LoadResult core = r.module->make_core();
+    ASSERT_TRUE(core) << core.error;
+    EXPECT_FALSE(holds_object(core));
+}
+
+// The same relative include dir, another current directory and another header of the same name.
+TEST(JitObjectCache, RelativeIncludeDirOfAnotherWorkingDirectoryMisses)
+{
+    Fixture f;
+    const std::string script_dir = f.scratch.file("script");
+    fs::create_directories(script_dir);
+    const std::string roots[2] = {f.scratch.file("a"), f.scratch.file("b")};
+    for (int i = 0; i < 2; ++i)
+    {
+        fs::create_directories(roots[i] + "/inc");
+        const std::string path = roots[i] + "/inc/Widget.h";
+        std::ofstream(path, std::ios::binary) << kProbeHeader << (i ? "// other header\n" : "");
+        fs::last_write_time(path, fs::file_time_type::clock::now() - std::chrono::hours(1));
+    }
+    struct CwdGuard
+    {
+        fs::path old = fs::current_path();
+        ~CwdGuard() { fs::current_path(old); }
+    } guard;
+    for (int i = 0; i < 2; ++i)
+    {
+        fs::current_path(roots[i]);
+        hot::JitOptions o;
+        o.compiler = HOT_CXX;
+        o.include_dirs = {"inc", std::string(HOT_SOURCE_DIR) + "/include"};
+        o.resource_dir = HOT_RESOURCE_DIR;
+        o.cache_dir = f.cache;
+        hot::JitBackend backend(std::move(o));
+        hot::LoadResult r = backend.load({script_dir + "/kid.hot", kScript}, 1);
+        ASSERT_TRUE(r) << r.error;
+        EXPECT_EQ(backend.compiles(), 1u) << "run " << i;
+        EXPECT_EQ(backend.cache_stats().hits, 0u) << "run " << i;
+    }
 }
 
 } // namespace
