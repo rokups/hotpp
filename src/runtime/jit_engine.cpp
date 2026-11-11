@@ -441,6 +441,11 @@ void hot_jit_string_free(char* text)
     std::free(text);
 }
 
+void hot_jit_init(void)
+{
+    init_llvm_once();
+}
+
 int hot_jit_compile(const char* const* args, size_t n_args, const char* const* paths, const char* const* texts,
     size_t n_files, hot_jit_ir** out_ir, char** out_diagnostics, char** out_deps)
 {

@@ -6,6 +6,7 @@
 // ast::Script. The bodies are raw text. The edits change only the references that the
 // generated code cannot resolve. An edit never adds a newline, so the line numbers stay.
 #include "cpp_frontend.h"
+#include "hot/hotc_lib.h"
 #include "../file_time.h"
 #include "../operator_names.h"
 
@@ -3407,6 +3408,7 @@ ast::Script parse_cpp_script(const std::string& text, const std::string& name,
     for (const auto& a : clang_args)
         cargs.push_back(a.c_str());
     Handles h;
+    register_llvm_targets();
     h.idx = clang_createIndex(0, 0);
     std::vector<CXUnsavedFile> unsaved;
     unsaved.push_back({name.c_str(), text.c_str(), static_cast<unsigned long>(text.size())});

@@ -42,6 +42,10 @@ typedef struct hot_jit_dylib hot_jit_dylib;
 
 HOT_JIT_ENGINE_API void hot_jit_string_free(char* text);
 
+// Registers the native LLVM target one time. Each call of the engine does it too. A host calls it
+// before it starts other threads that use LLVM: the registration writes the target data.
+HOT_JIT_ENGINE_API void hot_jit_init(void);
+
 // Compiles the C++ file "args[n_args - 1]" to IR. "args" is the command line of the driver,
 // "args[0]" is the compiler. The files ("paths", "texts") go into a memory file system. Their
 // paths must be absolute and normal. Returns 1 and sets "*out_ir", else returns 0.

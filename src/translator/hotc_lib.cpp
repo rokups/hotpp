@@ -3135,6 +3135,7 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
     for (const auto& a : args)
         cargs.push_back(a.c_str());
     ClangHandles ch;
+    hotc::register_llvm_targets();
     CXIndex idx = ch.idx = clang_createIndex(0, 0);
     // The probe and the headers that exist only in memory. libclang reads the texts of
     // "virtual_files" until the parse ends, so the caller keeps them alive.
@@ -10401,6 +10402,12 @@ std::vector<std::string> target_parse_args(const std::string& target_in, const s
         }
     }
     return args;
+}
+
+void register_llvm_targets()
+{
+    static std::once_flag flag;
+    std::call_once(flag, [] { clang_disposeIndex(clang_createIndex(0, 0)); });
 }
 
 TranslateResult translate(const TranslateOptions& in)

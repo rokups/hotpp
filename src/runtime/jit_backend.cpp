@@ -22,9 +22,10 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
-#include <set>
 #include <mutex>
 #include <optional>
+#include <set>
+#include <thread>
 #include <vector>
 
 namespace hot
@@ -370,8 +371,29 @@ CompileArgs make_args(const JitOptions& opt, const std::string& path, const std:
     return s;
 }
 
-Compiled compile(const CompileArgs& s)
+// The compiles that run now and the most that ran at the same time (peak_parallel_compiles).
+std::atomic<unsigned> g_active_compiles{0};
+std::atomic<unsigned> g_peak_compiles{0};
+
+// Counts one compile for peak_parallel_compiles.
+struct CompileCount
 {
+    CompileCount()
+    {
+        const unsigned now = g_active_compiles.fetch_add(1) + 1;
+        unsigned peak = g_peak_compiles.load();
+        while (now > peak && !g_peak_compiles.compare_exchange_weak(peak, now))
+        {
+        }
+    }
+    ~CompileCount() { g_active_compiles.fetch_sub(1); }
+};
+
+// The Clang compile to IR. It is self-contained (hot_jit_compile), so many calls can run at the
+// same time.
+Compiled clang_compile(const CompileArgs& s)
+{
+    const CompileCount count;
     Compiled out;
     const std::vector<const char*> args = c_strings(s.args);
     const std::vector<const char*> paths = c_strings(s.paths);
@@ -479,6 +501,10 @@ LoadResult add_to_jit(const std::shared_ptr<JitState>& impl, const std::string& 
 JitBackend::JitBackend(JitOptions options)
     : opt_(std::move(options))
 {
+    // The registration of the LLVM targets writes global data with no lock. It runs here, before
+    // the parallel translates and compiles of the loads: libclang first, then the engine.
+    hotc::register_llvm_targets();
+    hot_jit_init();
     if (!opt_.session)
         opt_.session = std::make_shared<hotc::TranslatorSession>();
     if (!opt_.cache_dir.empty() && TranslateCache::enabled_by_env())
@@ -521,283 +547,486 @@ void JitBackend::revert_slots(const std::string& text)
     slots_->text = slots_revert(slots_->text, text);
 }
 
-LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, LoadMode mode)
+// A load in three phases (PendingLoad). The phases that touch the backend run on the caller
+// thread with "mutex_". compile touches only this object, so many compiles run at the same time.
+class JitBackend::Pending final : public PendingLoad
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-    LoadResult r;
-    namespace fs = std::filesystem;
-    std::string stem = fs::path(source.name).stem().string();
-    if (stem.empty())
-        stem = "script";
-    // A fresh load starts a new epoch. The epoch is in the name of the JITDylib, so a fresh
-    // generation never has the name of a JITDylib that the process still uses.
-    if (mode == LoadMode::Fresh)
-        ++epoch_;
-    const std::string id =
-        stem + ".g" + std::to_string(generation) + ".e" + std::to_string(epoch_) + "." + std::to_string(sequence_++);
-    // The virtual .cpp has the name of the unit, not the id: the "#line" name is in the text, and
-    // equal script text must give equal text at each generation.
-    // On Windows the path gets the drive of the working directory, as Clang reads it.
-    std::error_code cwd_ec;
-    const std::string cpp_path = jit_virtual_path(kVirtualDir, (source.unit.empty() ? stem : source.unit) + ".cpp",
-        std::filesystem::current_path(cwd_ec).string());
-
-    timings_ = {};
-    const Clock::time_point load_start = Clock::now();
-    Clock::time_point t0 = load_start;
-    hotc::TranslateOptions to;
-    to.script_text = source.text;
-    to.modules = source.modules;
-    to.script_name = source.name;
-    to.unit_name = source.unit;
-    to.output_name = cpp_path;
-    to.generation = static_cast<int>(generation);
-    to.include_dirs = opt_.include_dirs;
-    // The translator needs the resource dir for the native headers. A portable build finds it at run time.
-    to.resource_dir = opt_.resource_dir.empty() ? default_paths().resource_dir : opt_.resource_dir;
-    to.std_version = opt_.std_version.empty() ? cxx_std_name() : opt_.std_version;
-    // The parse of the native headers sees the macros of the compile.
-    for (const std::string& f : opt_.extra_flags)
-        if (f.rfind("-D", 0) == 0 || f.rfind("-U", 0) == 0)
-            to.defines.push_back(f);
-    to.strict_borrowed = opt_.strict_borrowed;
-    to.null_warnings = opt_.null_warnings;
-    to.format_lib = format_lib_name();
-    to.view_type = view_type_name();
-    to.fs = opt_.fs;
-    to.preludes = opt_.preludes;
-    // A fresh load ignores the slot state of the earlier generations.
-    if (mode == LoadMode::Reload)
+public:
+    Pending(JitBackend& backend, const ScriptSource& source, uint32_t generation, LoadMode mode)
+        : backend_(backend)
+        , source_(source)
+        , generation_(generation)
+        , mode_(mode)
     {
-        std::lock_guard<std::mutex> slock(slots_->mutex);
-        to.slots_in = slots_->text;
-    }
-    // The translate cache gives the result of an earlier translate with the same inputs.
-    std::optional<hotc::TranslateResult> cached;
-    if (tr_cache_)
-        cached = tr_cache_->lookup(to);
-    const std::filesystem::file_time_type translate_start = std::filesystem::file_time_type::clock::now();
-    const bool translate_hit = cached.has_value();
-    hotc::TranslateResult tr = translate_hit ? std::move(*cached) : hotc::translate(to, *opt_.session);
-    if (tr_cache_ && !translate_hit && tr.ok && tr.diagnostics.empty())
-    {
-        std::string store_error;
-        if (!tr_cache_->store(to, tr, translate_start, store_error))
-            std::fprintf(stderr, "hot: %s has no translate cache entry: %s\n", source.name.c_str(), store_error.c_str());
-    }
-    timings_.translate_ms = ms_since(t0);
-    r.dependencies = tr.dependencies; // also after a failure
-    r.iface_hash = tr.iface_hash;
-    r.import_hashes = tr.import_hashes;
-    if (!tr.ok)
-    {
-        r.error = opt_.raw_diagnostics
-            ? tr.diagnostics
-            : hotc::rewrite_translator_diagnostic(tr.diagnostics, hotc::script_texts(source.name, source.text, tr));
-        r.reason = ReloadReason::CompileError;
-        return r;
     }
 
-    const size_t script_slash = source.name.rfind('/');
-    const std::string script_dir =
-        script_slash == std::string::npos ? std::string(".") : source.name.substr(0, script_slash);
-    const CompileArgs args = make_args(opt_, cpp_path, &tr.cpp, false, &tr.virtual_files, script_dir);
-    const std::string unit_label = source.unit.empty() ? stem : source.unit;
-
-    // The key of the object has all the inputs of the compile and of the code generation, but no
-    // name of this load (generation, epoch, sequence): each load gives the dylib a new name.
-    std::optional<ObjectCache::Key> key;
-    std::shared_ptr<const std::string> object; // the object of a cache hit
-    if (obj_cache_)
+    // Phase 1, serial, with "mutex_": the name of the JITDylib, the epoch and the slot text.
+    void prepare()
     {
-        ObjectCache::KeyInputs inputs;
-        inputs.cpp_text = tr.cpp;
-        inputs.args = args.args;
-        inputs.args.insert(inputs.args.end(), args.key_args.begin(), args.key_args.end());
-        inputs.compiler_id = compiler_id_;
-        if (opt_.fs)
-            inputs.virtual_files = tr.virtual_files;
-        // A sum of the path hashes: the order of the paths is different after a translate cache hit.
-        for (const std::string& p : tr.shadow_paths)
-            inputs.shadow_hash += hotc::text_hash(p);
-        key = ObjectCache::make_key(inputs);
-        if (std::optional<ObjectCache::Hit> hit = obj_cache_->lookup(*key))
+        namespace fs = std::filesystem;
+        const JitOptions& opt = backend_.opt_;
+        stem_ = fs::path(source_.name).stem().string();
+        if (stem_.empty())
+            stem_ = "script";
+        unit_label_ = source_.unit.empty() ? stem_ : source_.unit;
+        // A fresh load starts a new epoch. The epoch is in the name of the JITDylib, so a fresh
+        // generation never has the name of a JITDylib that the process still uses.
+        if (mode_ == LoadMode::Fresh)
+            ++backend_.epoch_;
+        id_ = stem_ + ".g" + std::to_string(generation_) + ".e" + std::to_string(backend_.epoch_) + "." +
+            std::to_string(backend_.sequence_++);
+        // The virtual .cpp has the name of the unit, not the id: the "#line" name is in the text,
+        // and equal script text must give equal text at each generation.
+        // On Windows the path gets the drive of the working directory, as Clang reads it.
+        std::error_code cwd_ec;
+        cpp_path_ = jit_virtual_path(kVirtualDir, unit_label_ + ".cpp", fs::current_path(cwd_ec).string());
+
+        to_.script_text = source_.text;
+        to_.modules = source_.modules;
+        to_.script_name = source_.name;
+        to_.unit_name = source_.unit;
+        to_.output_name = cpp_path_;
+        to_.generation = static_cast<int>(generation_);
+        to_.include_dirs = opt.include_dirs;
+        // The translator needs the resource dir for the native headers. A portable build finds it at run time.
+        to_.resource_dir = opt.resource_dir.empty() ? default_paths().resource_dir : opt.resource_dir;
+        to_.std_version = opt.std_version.empty() ? cxx_std_name() : opt.std_version;
+        // The parse of the native headers sees the macros of the compile.
+        for (const std::string& f : opt.extra_flags)
+            if (f.rfind("-D", 0) == 0 || f.rfind("-U", 0) == 0)
+                to_.defines.push_back(f);
+        to_.strict_borrowed = opt.strict_borrowed;
+        to_.null_warnings = opt.null_warnings;
+        to_.format_lib = format_lib_name();
+        to_.view_type = view_type_name();
+        to_.fs = opt.fs;
+        to_.preludes = opt.preludes;
+        // A fresh load ignores the slot state of the earlier generations.
+        if (mode_ == LoadMode::Reload)
         {
-            auto bytes = std::make_shared<std::string>();
-            std::string why;
-            if (read_object_file(hit->object, *bytes, why))
-                object = std::move(bytes);
-            else
-            {
-                std::fprintf(stderr, "hot: %s: the cached object is not valid (%s), so it compiles again\n",
-                    unit_label.c_str(), why.c_str());
-                obj_cache_->remove(*key);
-            }
+            std::lock_guard<std::mutex> slock(backend_.slots_->mutex);
+            to_.slots_in = backend_.slots_->text;
         }
     }
 
-    // The engine starts at the first load that has code to add.
-    const auto start_engine = [&]() -> bool
+    // Phase 1, on any thread: the translate (with the translate cache), the compile command and
+    // the key of the object. It writes only this object. The session and the translate cache are
+    // thread safe. It catches each exception: the entry fails.
+    void translate()
     {
-        if (impl_)
+        try
+        {
+            translate_unit();
+        }
+        catch (const std::exception& e)
+        {
+            fail(e.what()[0] ? e.what() : "the translate failed");
+        }
+        catch (...)
+        {
+            fail("the translate failed");
+        }
+    }
+
+    // Phase 1, serial, with "mutex_": the lookup in the object cache.
+    void lookup()
+    {
+        if (!ok || !key_)
+            return;
+        if (std::optional<ObjectCache::Hit> hit = backend_.obj_cache_->lookup(*key_))
+            hit_path_ = hit->object;
+    }
+
+    // Phase 2, on any thread, with no lock: the read of the cached object, or the Clang compile.
+    void compile() override
+    {
+        if (!ok)
+            return;
+        if (hit_path_)
+        {
+            auto bytes = std::make_shared<std::string>();
+            std::string why;
+            if (read_object_file(*hit_path_, *bytes, why))
+            {
+                object_ = std::move(bytes);
+                return;
+            }
+            std::fprintf(stderr, "hot: %s: the cached object is not valid (%s), so it compiles again\n",
+                unit_label_.c_str(), why.c_str());
+            remove_entry_ = true; // finish removes the entry: the cache is not thread safe
+        }
+        run_compile();
+    }
+
+    // Phase 3, serial, with "mutex_", on the caller thread: the add to ORC, the static
+    // initializers, the store in the object cache and the timings.
+    LoadResult finish() override
+    {
+        std::lock_guard<std::mutex> lock(backend_.mutex_);
+        // The destructor runs before the lock goes: the timings of the backend have this load.
+        struct KeepTimings
+        {
+            JitBackend& backend;
+            const JitTimings& timings;
+            ~KeepTimings() { backend.timings_ = timings; }
+        } keep{backend_, timings_};
+        if (!ok)
+            return std::move(head);
+        LoadResult r = std::move(head);
+        if (remove_entry_)
+            backend_.obj_cache_->remove(*key_);
+
+        JitTimings jt;
+        LoadResult added;
+        if (object_)
+        {
+            if (!start_engine(r))
+                return r;
+            bool add_failed = false;
+            added = add_to_jit(backend_.impl_, id_, nullptr, object_.get(), &jt, nullptr, &add_failed);
+            if (!added && add_failed)
+            {
+                // An error of hot_jit_add_object comes before the first static initializer
+                // (jit_engine.h), so a compile and a second load are safe. The compile runs here,
+                // on the caller thread.
+                std::fprintf(stderr, "hot: %s: the cached object does not load, so it compiles again: %s\n",
+                    unit_label_.c_str(), added.error.c_str());
+                backend_.obj_cache_->remove(*key_);
+                object_.reset();
+            }
+            else if (!added)
+            {
+                // The initializers ran already: a second load would run them again.
+                r.error = added.error;
+                r.reason = ReloadReason::BadModule;
+                return r;
+            }
+        }
+        std::shared_ptr<IrHandle> core_ir;
+        if (object_)
+            ++backend_.object_hits_;
+        else
+        {
+            if (backend_.obj_cache_)
+                ++backend_.object_misses_;
+            if (!compiled_done_)
+                run_compile();
+            if (!compiled_.ir)
+            {
+                if (!backend_.opt_.raw_diagnostics)
+                    compiled_.diagnostics = hotc::rewrite_diagnostic(
+                        compiled_.diagnostics, {{source_.name, source_.text}}, {{cpp_path_, tr_.cpp}}, &tr_.source_map);
+                r.error = compiled_.diagnostics + "the compile of " + source_.name + " failed\n";
+                r.reason = ReloadReason::CompileError;
+                return r;
+            }
+            if (!start_engine(r))
+                return r;
+            // The core instance (module.h) needs a copy of the IR: the JIT consumes the module.
+            core_ir = std::make_shared<IrHandle>();
+            core_ir->ir = hot_jit_ir_clone(compiled_.ir->ir);
+            hot_jit_ir* main_ir = compiled_.ir->ir;
+            compiled_.ir->ir = nullptr;
+            std::string captured;
+            added = add_to_jit(backend_.impl_, id_, main_ir, nullptr, &jt, key_ ? &captured : nullptr);
+            if (!added)
+            {
+                r.error = added.error;
+                r.reason = ReloadReason::BadModule;
+                return r;
+            }
+            if (key_ && captured.empty())
+                std::fprintf(
+                    stderr, "hot: %s has no object cache entry: the engine kept no object\n", unit_label_.c_str());
+            else if (key_)
+                store(captured);
+        }
+        timings_.orc_ms = jt.orc_ms;
+        timings_.init_ms = jt.init_ms;
+        timings_.lookup_ms = jt.lookup_ms;
+        timings_.jit_ms = jt.orc_ms + jt.init_ms + jt.lookup_ms;
+        // "total" is the sum of the phases: in a batch, a load also waits for the other units.
+        if (std::getenv("HOT_TIMING"))
+            std::fprintf(stderr,
+                "hot: %s jit translate %.0f ms, compile %.0f ms, orc %.0f ms, init %.0f ms, lookup %.0f ms, total "
+                "%.0f ms%s\n",
+                unit_label_.c_str(), timings_.translate_ms, timings_.compile_ms, timings_.orc_ms, timings_.init_ms,
+                timings_.lookup_ms, timings_.translate_ms + timings_.compile_ms + timings_.jit_ms,
+                !backend_.obj_cache_ ? "" : (object_ ? ", object cache hit" : ", object cache miss"));
+        added.module->generation = generation_;
+        // The slot order changes only when the Loader accepts the module. The callback holds the
+        // shared slot state, not the backend: the module can outlive the backend.
+        added.module->on_accept = [state = backend_.slots_, text = tr_.slots_out + tr_.sigs_out]
+        {
+            std::lock_guard<std::mutex> slock(state->mutex);
+            state->text = text;
+        };
+        // The core gets its own JITDylib. The loader calls make_core at most one time. After a
+        // cache hit there is no IR: the core gets the same object a second time.
+        std::shared_ptr<JitState> impl = backend_.impl_;
+        added.module->make_core = [impl, id = id_, core_ir, object = object_]() mutable
+        {
+            if (object)
+            {
+                const std::shared_ptr<const std::string> bytes = std::move(object);
+                return add_to_jit(impl, id + ".core", nullptr, bytes.get());
+            }
+            if (!core_ir || !core_ir->ir)
+            {
+                LoadResult e;
+                e.error = "the core instance of jit:" + id + " is made already";
+                return e;
+            }
+            hot_jit_ir* ir = core_ir->ir;
+            core_ir->ir = nullptr;
+            return add_to_jit(impl, id + ".core", ir, nullptr);
+        };
+        added.dependencies = std::move(r.dependencies);
+        added.iface_hash = r.iface_hash;
+        added.import_hashes = r.import_hashes;
+        added.module->iface_hash = r.iface_hash;
+        added.module->imports = std::move(r.import_hashes);
+        if (!source_.unit.empty())
+            added.module->unit = source_.unit;
+        return added;
+    }
+
+    // Marks the entry as failed.
+    void fail(std::string error)
+    {
+        head.error = std::move(error);
+        head.reason = ReloadReason::CompileError;
+        ok = false;
+    }
+
+private:
+    void translate_unit()
+    {
+        const JitOptions& opt = backend_.opt_;
+        const Clock::time_point t0 = Clock::now();
+        // The translate cache gives the result of an earlier translate with the same inputs.
+        std::optional<hotc::TranslateResult> cached;
+        if (backend_.tr_cache_)
+            cached = backend_.tr_cache_->lookup(to_);
+        translate_start_ = std::filesystem::file_time_type::clock::now();
+        const bool translate_hit = cached.has_value();
+        tr_ = translate_hit ? std::move(*cached) : hotc::translate(to_, *opt.session);
+        if (backend_.tr_cache_ && !translate_hit && tr_.ok && tr_.diagnostics.empty())
+        {
+            std::string store_error;
+            if (!backend_.tr_cache_->store(to_, tr_, translate_start_, store_error))
+                std::fprintf(
+                    stderr, "hot: %s has no translate cache entry: %s\n", source_.name.c_str(), store_error.c_str());
+        }
+        timings_.translate_ms = ms_since(t0);
+        head.dependencies = tr_.dependencies; // also after a failure
+        head.iface_hash = tr_.iface_hash;
+        head.import_hashes = tr_.import_hashes;
+        if (!tr_.ok)
+        {
+            fail(opt.raw_diagnostics ? tr_.diagnostics
+                                     : hotc::rewrite_translator_diagnostic(
+                                           tr_.diagnostics, hotc::script_texts(source_.name, source_.text, tr_)));
+            return;
+        }
+        const size_t script_slash = source_.name.rfind('/');
+        const std::string script_dir =
+            script_slash == std::string::npos ? std::string(".") : source_.name.substr(0, script_slash);
+        args_ = make_args(opt, cpp_path_, &tr_.cpp, false, &tr_.virtual_files, script_dir);
+        // The key of the object has all the inputs of the compile and of the code generation, but
+        // no name of this load (generation, epoch, sequence): each load gives the dylib a new name.
+        if (backend_.obj_cache_)
+        {
+            ObjectCache::KeyInputs inputs;
+            inputs.cpp_text = tr_.cpp;
+            inputs.args = args_.args;
+            inputs.args.insert(inputs.args.end(), args_.key_args.begin(), args_.key_args.end());
+            inputs.compiler_id = backend_.compiler_id_;
+            if (opt.fs)
+                inputs.virtual_files = tr_.virtual_files;
+            // A sum of the path hashes: the order of the paths is different after a translate cache hit.
+            for (const std::string& p : tr_.shadow_paths)
+                inputs.shadow_hash += hotc::text_hash(p);
+            key_ = ObjectCache::make_key(inputs);
+        }
+    }
+
+    void run_compile()
+    {
+        const Clock::time_point t0 = Clock::now();
+        ++backend_.compiles_;
+        compiled_ = clang_compile(args_);
+        timings_.compile_ms = ms_since(t0);
+        compiled_done_ = true;
+    }
+
+    // The engine starts at the first load that has code to add.
+    bool start_engine(LoadResult& r)
+    {
+        if (backend_.impl_)
             return true;
         auto impl = std::make_shared<JitState>();
         char* error = nullptr;
         char* debugger_error = nullptr;
         int debugger_on = 0;
         const std::vector<const void*> host_runtime = jit::host_runtime_addresses();
-        impl->engine = hot_jit_engine_create(opt_.debugger_support ? 1 : 0, host_runtime.data(), host_runtime.size(),
-            &debugger_on, &error, &debugger_error);
-        debugger_error_ = take(debugger_error);
-        debugger_support_ = debugger_on != 0;
+        impl->engine = hot_jit_engine_create(backend_.opt_.debugger_support ? 1 : 0, host_runtime.data(),
+            host_runtime.size(), &debugger_on, &error, &debugger_error);
+        backend_.debugger_error_ = take(debugger_error);
+        backend_.debugger_support_ = debugger_on != 0;
         if (!impl->engine)
         {
             r.error = take(error);
             return false;
         }
         take(error);
-        if (obj_cache_)
+        if (backend_.obj_cache_)
             hot_jit_capture_objects(impl->engine, 1);
-        impl_ = std::move(impl);
+        backend_.impl_ = std::move(impl);
         return true;
-    };
+    }
 
-    JitTimings jt;
-    LoadResult added;
-    if (object)
+    // Adds the captured object to the cache. The manifest has the files on disk. The files of the
+    // memory file system are in the key.
+    void store(const std::string& captured)
     {
-        t0 = Clock::now();
-        if (!start_engine())
-            return r;
-        bool add_failed = false;
-        added = add_to_jit(impl_, id, nullptr, object.get(), &jt, nullptr, &add_failed);
-        if (!added && add_failed)
+        namespace fs = std::filesystem;
+        const std::set<std::string> in_memory(args_.paths.begin(), args_.paths.end());
+        std::set<std::string> seen;
+        std::vector<std::string> deps;
+        const auto add_dep = [&](const std::string& d)
         {
-            // An error of hot_jit_add_object comes before the first static initializer
-            // (jit_engine.h), so a compile and a second load are safe.
-            std::fprintf(stderr, "hot: %s: the cached object does not load, so it compiles again: %s\n",
-                unit_label.c_str(), added.error.c_str());
-            obj_cache_->remove(*key);
-            object.reset();
+            std::error_code ec;
+            const std::string p = fs::absolute(d, ec).lexically_normal().string();
+            if (!ec && !in_memory.count(p) && p.rfind(kVirtualDir, 0) != 0 && seen.insert(p).second)
+                deps.push_back(p);
+        };
+        for (const std::string& d : compiled_.deps)
+            add_dep(d);
+        if (!backend_.opt_.pch_path.empty())
+            add_dep(backend_.opt_.pch_path);
+        std::string store_error;
+        if (!store_object(*backend_.obj_cache_, *key_, captured, deps, translate_start_, store_error))
+            std::fprintf(stderr, "hot: %s has no object cache entry: %s\n", unit_label_.c_str(), store_error.c_str());
+    }
+
+    JitBackend& backend_;
+    ScriptSource source_;
+    uint32_t generation_;
+    LoadMode mode_;
+    std::string stem_;
+    std::string unit_label_;
+    std::string id_;
+    std::string cpp_path_;
+    hotc::TranslateOptions to_;
+    hotc::TranslateResult tr_;
+    std::filesystem::file_time_type translate_start_{};
+    CompileArgs args_;
+    std::optional<ObjectCache::Key> key_;
+    std::optional<std::filesystem::path> hit_path_; // the file of an object cache hit
+    std::shared_ptr<const std::string> object_; // the object of a cache hit
+    bool remove_entry_ = false; // the cached object is not valid
+    Compiled compiled_;
+    bool compiled_done_ = false;
+    JitTimings timings_;
+};
+
+LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, LoadMode mode)
+{
+    // The same phases as a wave of one unit, all on this thread.
+    Pending p(*this, source, generation, mode);
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        p.prepare();
+        p.translate();
+        p.lookup();
+    }
+    p.compile();
+    return p.finish();
+}
+
+std::unique_ptr<PendingLoad> JitBackend::begin_load(const ScriptSource& source, uint32_t generation, LoadMode mode)
+{
+#ifdef _WIN32
+    // The JIT on Windows links with RuntimeDyld. It keeps the serial load of the default.
+    return Backend::begin_load(source, generation, mode);
+#else
+    // One code path: a wave of one unit. It starts no thread.
+    std::vector<std::unique_ptr<PendingLoad>> many = begin_load_many({source}, generation, mode);
+    return std::move(many.front());
+#endif
+}
+
+std::vector<std::unique_ptr<PendingLoad>> JitBackend::begin_load_many(
+    const std::vector<ScriptSource>& sources, uint32_t generation, LoadMode mode)
+{
+#ifdef _WIN32
+    return Backend::begin_load_many(sources, generation, mode);
+#else
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::vector<std::unique_ptr<PendingLoad>> result;
+    std::vector<Pending*> loads;
+    result.reserve(sources.size());
+    // The serial part: the names, the epochs and the slot text, in the order of the sources.
+    for (const ScriptSource& source : sources)
+    {
+        auto pending = std::make_unique<Pending>(*this, source, generation, mode);
+        try
+        {
+            pending->prepare();
+            loads.push_back(pending.get());
         }
-        else if (!added)
+        catch (const std::exception& e)
         {
-            // The initializers ran already: a second load would run them again.
-            r.error = added.error;
-            r.reason = ReloadReason::BadModule;
-            return r;
+            pending->fail(e.what()[0] ? e.what() : "the load failed");
+        }
+        result.push_back(std::move(pending));
+    }
+    // The parallel part: the same thread pattern as run_compiles. HOT_JOBS=N gives N threads in total.
+    std::atomic<size_t> next{0};
+    const auto work = [&]
+    {
+        for (size_t i = next.fetch_add(1); i < loads.size(); i = next.fetch_add(1))
+            loads[i]->translate(); // catches each exception
+    };
+    const size_t count = std::min<size_t>(build_jobs(), loads.size());
+    std::vector<std::thread> threads;
+    if (count > 1)
+    {
+        try
+        {
+            for (size_t i = 1; i < count; ++i)
+                threads.emplace_back(work);
+        }
+        catch (...)
+        {
+            // A thread did not start: the started threads and this thread do the work.
         }
     }
-    std::shared_ptr<IrHandle> core_ir;
-    if (object)
-        ++object_hits_;
-    else
     {
-        if (obj_cache_)
-            ++object_misses_;
-        t0 = Clock::now();
-        ++compiles_;
-        Compiled c = compile(args);
-        timings_.compile_ms = ms_since(t0);
-        if (!c.ir)
+        // The guard joins every started thread, also when "work" throws on this thread.
+        struct Joiner
         {
-            if (!opt_.raw_diagnostics)
-                c.diagnostics = hotc::rewrite_diagnostic(
-                    c.diagnostics, {{source.name, source.text}}, {{cpp_path, tr.cpp}}, &tr.source_map);
-            r.error = c.diagnostics + "the compile of " + source.name + " failed\n";
-            r.reason = ReloadReason::CompileError;
-            return r;
-        }
-
-        t0 = Clock::now();
-        if (!start_engine())
-            return r;
-        // The core instance (module.h) needs a copy of the IR: the JIT consumes the module.
-        core_ir = std::make_shared<IrHandle>();
-        core_ir->ir = hot_jit_ir_clone(c.ir->ir);
-        hot_jit_ir* main_ir = c.ir->ir;
-        c.ir->ir = nullptr;
-        std::string captured;
-        added = add_to_jit(impl_, id, main_ir, nullptr, &jt, key ? &captured : nullptr);
-        if (!added)
-        {
-            r.error = added.error;
-            r.reason = ReloadReason::BadModule;
-            return r;
-        }
-        if (key && captured.empty())
-            std::fprintf(stderr, "hot: %s has no object cache entry: the engine kept no object\n", unit_label.c_str());
-        else if (key)
-        {
-            // The manifest has the files on disk. The files of the memory file system are in the key.
-            namespace fs = std::filesystem;
-            const std::set<std::string> in_memory(args.paths.begin(), args.paths.end());
-            std::set<std::string> seen;
-            std::vector<std::string> deps;
-            const auto add_dep = [&](const std::string& d)
+            std::vector<std::thread>& threads;
+            ~Joiner()
             {
-                std::error_code ec;
-                const std::string p = fs::absolute(d, ec).lexically_normal().string();
-                if (!ec && !in_memory.count(p) && p.rfind(kVirtualDir, 0) != 0 && seen.insert(p).second)
-                    deps.push_back(p);
-            };
-            for (const std::string& d : c.deps)
-                add_dep(d);
-            if (!opt_.pch_path.empty())
-                add_dep(opt_.pch_path);
-            std::string store_error;
-            if (!store_object(*obj_cache_, *key, captured, deps, translate_start, store_error))
-                std::fprintf(
-                    stderr, "hot: %s has no object cache entry: %s\n", unit_label.c_str(), store_error.c_str());
-        }
+                for (std::thread& t : threads)
+                    if (t.joinable())
+                        t.join();
+            }
+        } joiner{threads};
+        work();
     }
-    timings_.orc_ms = jt.orc_ms;
-    timings_.init_ms = jt.init_ms;
-    timings_.lookup_ms = jt.lookup_ms;
-    timings_.jit_ms = jt.orc_ms + jt.init_ms + jt.lookup_ms;
-    if (std::getenv("HOT_TIMING"))
-        std::fprintf(stderr,
-            "hot: %s jit translate %.0f ms, compile %.0f ms, orc %.0f ms, init %.0f ms, lookup %.0f ms, total %.0f "
-            "ms%s\n",
-            unit_label.c_str(), timings_.translate_ms, timings_.compile_ms, timings_.orc_ms, timings_.init_ms,
-            timings_.lookup_ms, ms_since(load_start),
-            !obj_cache_ ? "" : (object ? ", object cache hit" : ", object cache miss"));
-    added.module->generation = generation;
-    // The slot order changes only when the Loader accepts the module. The callback holds the
-    // shared slot state, not the backend: the module can outlive the backend.
-    added.module->on_accept = [state = slots_, text = tr.slots_out + tr.sigs_out]
-    {
-        std::lock_guard<std::mutex> slock(state->mutex);
-        state->text = text;
-    };
-    // The core gets its own JITDylib. The loader calls make_core at most one time. After a cache
-    // hit there is no IR: the core gets the same object a second time.
-    std::shared_ptr<JitState> impl = impl_;
-    added.module->make_core = [impl, id, core_ir, object]() mutable
-    {
-        if (object)
-        {
-            const std::shared_ptr<const std::string> bytes = std::move(object);
-            return add_to_jit(impl, id + ".core", nullptr, bytes.get());
-        }
-        if (!core_ir || !core_ir->ir)
-        {
-            LoadResult e;
-            e.error = "the core instance of jit:" + id + " is made already";
-            return e;
-        }
-        hot_jit_ir* ir = core_ir->ir;
-        core_ir->ir = nullptr;
-        return add_to_jit(impl, id + ".core", ir, nullptr);
-    };
-    added.dependencies = std::move(r.dependencies);
-    added.iface_hash = r.iface_hash;
-    added.import_hashes = r.import_hashes;
-    added.module->iface_hash = r.iface_hash;
-    added.module->imports = std::move(r.import_hashes);
-    if (!source.unit.empty())
-        added.module->unit = source.unit;
-    return added;
+    // The serial part: the object cache is not thread safe.
+    for (Pending* p : loads)
+        p->lookup();
+    return result;
+#endif
+}
+
+unsigned JitBackend::peak_parallel_compiles(bool reset)
+{
+    return reset ? g_peak_compiles.exchange(0) : g_peak_compiles.load();
 }
 
 bool JitBackend::make_pch(const std::string& header_path, const std::string& out_pch, std::string& error)

@@ -93,6 +93,15 @@ public:
     // the module is live (the "on_accept" callback of the Module). Fresh mode: see
     // backend.h.
     LoadResult load(const ScriptSource& source, uint32_t generation, LoadMode mode = LoadMode::Reload) override;
+    // The load in three phases (PendingLoad). begin_load translates and finds the cached object.
+    // PendingLoad::compile runs the Clang compile, or reads the cached object, with no lock. finish
+    // adds the code to ORC and runs the static initializers on the caller thread. ORC stays on one
+    // thread. On Windows the default of Backend runs the whole load in begin_load.
+    std::unique_ptr<PendingLoad> begin_load(
+        const ScriptSource& source, uint32_t generation, LoadMode mode = LoadMode::Reload) override;
+    // Translates the units on build_jobs() threads (Backend::begin_load_many). Windows: the default.
+    std::vector<std::unique_ptr<PendingLoad>> begin_load_many(
+        const std::vector<ScriptSource>& sources, uint32_t generation, LoadMode mode = LoadMode::Reload) override;
     const char* name() const override { return "JIT"; }
     // Sets the slot text in memory when it is empty or when the text covers it (backend.h).
     void seed_slots(const std::string& text) override;
@@ -108,6 +117,9 @@ public:
     JitTimings last_timings() const { return timings_; }
     // The number of Clang compiles of the loads (not of make_pch) since the start.
     uint64_t compiles() const { return compiles_; }
+    // For tests: the most Clang compiles of the loads that ran at the same time in the process,
+    // since the last reset. "reset" sets the count to zero after the read.
+    static unsigned peak_parallel_compiles(bool reset = false);
 
     // The hits and the misses of the object cache (hits, misses) and of the translate cache. All
     // zero when the cache is off. A cached object that does not load is a miss.
@@ -137,9 +149,13 @@ public:
     bool make_pch(const std::string& header_path, const std::string& out_pch, std::string& error);
 
 private:
+    class Pending; // the PendingLoad of this backend (jit_backend.cpp)
+
     std::shared_ptr<JitState> impl_; // a Module keeps a copy: the JIT must outlive the code
     JitOptions opt_;
-    std::mutex mutex_; // one build at a time: the slot text is shared
+    // The phases of a load that touch the backend (begin_load, finish) hold it. The slot text, the
+    // engine, the names and the caches are shared. PendingLoad::compile does not take it.
+    std::mutex mutex_;
     // The slot text. A Module keeps a copy of the pointer, so the callback is safe after the backend.
     struct SlotState
     {
@@ -149,7 +165,7 @@ private:
     std::shared_ptr<SlotState> slots_ = std::make_shared<SlotState>();
     unsigned sequence_ = 0;
     unsigned epoch_ = 0; // counts the fresh loads; it is in the name of the JITDylib
-    JitTimings timings_;
+    JitTimings timings_; // the timings of the last finish
     std::unique_ptr<TranslateCache> tr_cache_; // null: no translate cache
     std::unique_ptr<ObjectCache> obj_cache_; // "<cache_dir>/jit"; null: no object cache
     std::string compiler_id_; // the compiler id of the object keys (hot_jit_target_id)

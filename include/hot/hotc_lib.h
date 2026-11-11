@@ -490,4 +490,10 @@ AnalyzeResult analyze_cpp(const std::string& text, const std::string& path, cons
 AnalyzeResult analyze_cpp(
     const std::string& text, const std::string& path, const TranslateOptions& options, TranslatorSession& session);
 
+// Registers the LLVM targets of libclang one time in the process. clang_createIndex registers
+// all targets with no lock, and a parallel first registration of one target makes a loop in
+// the target list. Each translate calls it. A host that runs the Clang library on other threads
+// (the JIT) calls it before its first parallel work. It is thread safe.
+void register_llvm_targets();
+
 } // namespace hotc
