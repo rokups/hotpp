@@ -597,7 +597,7 @@ hot_jit_ir* compile_ir(const std::string& target, const std::string& text)
     const char* texts[] = {text.c_str()};
     hot_jit_ir* ir = nullptr;
     char* diagnostics = nullptr;
-    const int ok = hot_jit_compile(args.data(), args.size(), paths, texts, 1, &ir, &diagnostics);
+    const int ok = hot_jit_compile(args.data(), args.size(), paths, texts, 1, &ir, &diagnostics, nullptr);
     const std::string messages = diagnostics ? diagnostics : "";
     hot_jit_string_free(diagnostics);
     EXPECT_EQ(ok, 1) << messages;
@@ -820,7 +820,7 @@ std::string make_probe(const char* file, const char* source, JitProbe& probe)
     const char* texts[] = {source};
     hot_jit_ir* ir = nullptr;
     char* diagnostics = nullptr;
-    const int compiled = hot_jit_compile(args.data(), args.size(), file_paths, texts, 1, &ir, &diagnostics);
+    const int compiled = hot_jit_compile(args.data(), args.size(), file_paths, texts, 1, &ir, &diagnostics, nullptr);
     const std::string messages = take_text(diagnostics);
     if (!compiled)
         return std::string(file) + " does not compile: " + messages;

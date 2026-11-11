@@ -13,14 +13,18 @@
 #include "jit_search_order.h"
 
 #include <clang/Basic/Diagnostic.h>
+#include <clang/Basic/Version.h>
 #include <clang/CodeGen/CodeGenAction.h>
 #include <clang/Driver/CreateInvocationFromArgs.h>
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Frontend/CompilerInvocation.h>
 #include <clang/Frontend/FrontendActions.h>
 #include <clang/Frontend/TextDiagnosticPrinter.h>
+#include <clang/Frontend/Utils.h>
+#include <llvm/Config/llvm-config.h>
 #include <llvm/ExecutionEngine/Orc/Debugging/DebuggerSupport.h>
 #include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
+#include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/ExecutionEngine/Orc/ObjectTransformLayer.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
@@ -224,8 +228,17 @@ CompileSetup make_invocation(const char* const* args, size_t n_args, const char*
     return s;
 }
 
-// Runs "action" on the invocation. The messages go to "diagnostics" without carets.
-bool run_action(CompileSetup& s, clang::FrontendAction& action, std::string& diagnostics)
+// Collects each file that the compile reads, also the system headers.
+class AllDependencies : public clang::DependencyCollector
+{
+public:
+    bool needSystemDependencies() override { return true; }
+};
+
+// Runs "action" on the invocation. The messages go to "diagnostics" without carets. With "deps",
+// the call adds the paths of the files that the compile read.
+bool run_action(CompileSetup& s, clang::FrontendAction& action, std::string& diagnostics,
+    std::vector<std::string>* deps = nullptr)
 {
     llvm::raw_string_ostream os(diagnostics);
     clang::DiagnosticOptions print_opts = s.invocation->getDiagnosticOpts();
@@ -235,8 +248,17 @@ bool run_action(CompileSetup& s, clang::FrontendAction& action, std::string& dia
     clang::CompilerInstance ci(std::shared_ptr<clang::CompilerInvocation>(std::move(s.invocation)));
     ci.setVirtualFileSystem(s.vfs);
     ci.createDiagnostics(&printer, false);
+    std::shared_ptr<AllDependencies> collector;
+    if (deps)
+    {
+        collector = std::make_shared<AllDependencies>();
+        ci.addDependencyCollector(collector);
+    }
     const bool ok = ci.ExecuteAction(action);
     os.flush();
+    if (collector)
+        for (const std::string& d : collector->getDependencies())
+            deps->push_back(d);
     return ok && !ci.getDiagnostics().hasErrorOccurred();
 }
 
@@ -420,10 +442,11 @@ void hot_jit_string_free(char* text)
 }
 
 int hot_jit_compile(const char* const* args, size_t n_args, const char* const* paths, const char* const* texts,
-    size_t n_files, hot_jit_ir** out_ir, char** out_diagnostics)
+    size_t n_files, hot_jit_ir** out_ir, char** out_diagnostics, char** out_deps)
 {
     init_llvm_once();
     std::string diagnostics;
+    std::vector<std::string> deps;
     CompileSetup s = make_invocation(args, n_args, paths, texts, n_files, diagnostics);
     int ok = 0;
     if (!s.invocation)
@@ -431,7 +454,7 @@ int hot_jit_compile(const char* const* args, size_t n_args, const char* const* p
     else
     {
         clang::EmitLLVMOnlyAction action;
-        if (run_action(s, action, diagnostics))
+        if (run_action(s, action, diagnostics, out_deps ? &deps : nullptr))
         {
             std::unique_ptr<llvm::Module> module = action.takeModule();
             std::unique_ptr<llvm::LLVMContext> context(action.takeLLVMContext());
@@ -449,7 +472,40 @@ int hot_jit_compile(const char* const* args, size_t n_args, const char* const* p
         }
     }
     put(out_diagnostics, diagnostics);
+    if (ok && out_deps)
+    {
+        std::string list;
+        for (const std::string& d : deps)
+            list += d + "\n";
+        put(out_deps, list);
+    }
     return ok;
+}
+
+char* hot_jit_target_id(void)
+{
+    init_llvm_once();
+    // Change the format number when the engine changes the objects that it makes, for example
+    // the init transform or the link preparation of hot_jit_add.
+    std::string id = "hot-jit-object 1; clang " + clang::getClangFullVersion() + "; llvm " LLVM_VERSION_STRING;
+    // LLJIT makes its target machine with detectHost too. It changes only the code model and the
+    // relocation model, and these follow from the triple and the LLVM version.
+    auto jtmb = llvm::orc::JITTargetMachineBuilder::detectHost();
+    if (!jtmb)
+        id += "; no host: " + error_text(jtmb.takeError());
+    else
+    {
+        id += "; triple " + jtmb->getTargetTriple().str() + "; cpu " + jtmb->getCPU() + "; features "
+            + jtmb->getFeatures().getString();
+        // The builder has no getter of the code generation level. The target machine has it.
+        if (auto tm = jtmb->createTargetMachine())
+            id += "; opt " + std::to_string(static_cast<int>((*tm)->getOptLevel()));
+        else
+            id += "; no target machine: " + error_text(tm.takeError());
+    }
+    char* out = nullptr;
+    put(&out, id);
+    return out;
 }
 
 int hot_jit_make_pch(const char* const* args, size_t n_args, const char* out_pch, char** out_diagnostics)
@@ -672,6 +728,15 @@ int hot_jit_dylib_object(const hot_jit_dylib* dylib, const void** out_data, size
     if (out_size)
         *out_size = dylib->object.size();
     return 1;
+}
+
+void hot_jit_dylib_release_object(hot_jit_dylib* dylib)
+{
+    if (!dylib)
+        return;
+    std::lock_guard<std::mutex> lock(dylib->engine->capture_mutex);
+    dylib->has_object = false;
+    std::vector<char>().swap(dylib->object);
 }
 
 void hot_jit_add_timing(const hot_jit_dylib* dylib, double* add_ms, double* init_ms)

@@ -4,13 +4,15 @@
 
 // JitBackend: translate in memory, compile in memory with the Clang library,
 // load the code with LLVM ORC. No process starts. The backend writes no file, except the
-// translate cache when JitOptions::cache_dir is set.
+// translate cache and the object cache when JitOptions::cache_dir is set.
 #pragma once
 
 #include "hot/backend.h"
 #include "hot/hotc_lib.h"
+#include "hot/object_cache.h"
 #include "hot/translate_cache.h"
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -53,10 +55,18 @@ struct JitOptions
     // before each script, in this order (hotc::TranslateOptions::preludes).
     std::vector<std::pair<std::string, std::string>> preludes;
     // The cache directory (the same directory as ObjectCache). The backend keeps the translate
-    // cache in "<cache_dir>/tr" (hot/translate_cache.h). "<cache_dir>/jit" is for files that the
-    // JIT backend owns. Empty (the default): the backend writes no file. HOT_CACHE=0 and
-    // HOT_TRANSLATE_CACHE=0 turn the translate cache off.
+    // cache in "<cache_dir>/tr" (hot/translate_cache.h) and the machine code of the loads in
+    // "<cache_dir>/jit" (an ObjectCache). A load with an object cache hit does no Clang compile
+    // and no code generation. Empty (the default): the backend writes no file. HOT_CACHE=0
+    // turns both caches off. HOT_TRANSLATE_CACHE=0 turns the translate cache off. The object
+    // cache is on Linux only.
     std::string cache_dir;
+    // The size limit of the object cache in bytes. The environment variable HOT_CACHE_MAX_MB (in
+    // MiB) overrides it. The value 0 means no limit.
+    uint64_t cache_max_bytes = 4ULL << 30;
+    // Added to the compiler id in the key of the object cache. The tests use it to act as another
+    // compiler.
+    std::string cache_id_extra;
 };
 
 struct JitState; // the LLJIT of the session
@@ -96,11 +106,16 @@ public:
     }
 
     JitTimings last_timings() const { return timings_; }
+    // The number of Clang compiles of the loads (not of make_pch) since the start.
+    uint64_t compiles() const { return compiles_; }
 
-    // The hits and the misses of the translate cache. All zero when the cache is off.
+    // The hits and the misses of the object cache (hits, misses) and of the translate cache. All
+    // zero when the cache is off. A cached object that does not load is a miss.
     CacheStats cache_stats() const override
     {
         CacheStats r;
+        r.hits = object_hits_;
+        r.misses = object_misses_;
         if (tr_cache_)
         {
             const TranslateCache::Stats t = tr_cache_->stats();
@@ -136,6 +151,11 @@ private:
     unsigned epoch_ = 0; // counts the fresh loads; it is in the name of the JITDylib
     JitTimings timings_;
     std::unique_ptr<TranslateCache> tr_cache_; // null: no translate cache
+    std::unique_ptr<ObjectCache> obj_cache_; // "<cache_dir>/jit"; null: no object cache
+    std::string compiler_id_; // the compiler id of the object keys (hot_jit_target_id)
+    std::atomic<uint64_t> compiles_{0};
+    std::atomic<uint64_t> object_hits_{0};
+    std::atomic<uint64_t> object_misses_{0};
     bool debugger_support_ = false;
     std::string debugger_error_;
 };

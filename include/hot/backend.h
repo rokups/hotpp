@@ -269,7 +269,8 @@ struct DefaultBackendOptions
     // The directory of the cache: a restart of the host reuses the object files of the unchanged
     // scripts (clang files backend) and the translate output (both backends). Empty: no cache. The
     // environment variable HOT_CACHE_DIR overrides it. HOT_CACHE=0 turns the cache off. The JIT
-    // backend has only the translate cache, in "<cache_dir>/tr".
+    // backend has the translate cache in "<cache_dir>/tr" and the JIT objects in
+    // "<cache_dir>/jit" (Linux only).
     std::string cache_dir;
     // The directory where the clang files backend writes "compile_commands.json" for the IDE
     // plugins (hot-ls, clangd). The entries name the generated .cpp files in the cache. It needs

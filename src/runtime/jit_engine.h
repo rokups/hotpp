@@ -45,9 +45,17 @@ HOT_JIT_ENGINE_API void hot_jit_string_free(char* text);
 // Compiles the C++ file "args[n_args - 1]" to IR. "args" is the command line of the driver,
 // "args[0]" is the compiler. The files ("paths", "texts") go into a memory file system. Their
 // paths must be absolute and normal. Returns 1 and sets "*out_ir", else returns 0.
-// "*out_diagnostics" gets the compiler messages in both cases.
+// "*out_diagnostics" gets the compiler messages in both cases. On success "*out_deps" gets the
+// files that the compile read (also the system headers and the files of the memory file
+// system), one path in each line.
 HOT_JIT_ENGINE_API int hot_jit_compile(const char* const* args, size_t n_args, const char* const* paths,
-    const char* const* texts, size_t n_files, hot_jit_ir** out_ir, char** out_diagnostics);
+    const char* const* texts, size_t n_files, hot_jit_ir** out_ir, char** out_diagnostics, char** out_deps);
+
+// The text that identifies the machine code of the engine: the format number of a captured
+// object, the Clang and LLVM versions, the target triple, the host CPU, its features and the
+// code generation level. An object of hot_jit_dylib_object is valid for an engine with the same
+// text. Release it with hot_jit_string_free.
+HOT_JIT_ENGINE_API char* hot_jit_target_id(void);
 
 // Writes the precompiled header of the header "args[n_args - 1]" to "out_pch". Returns 1 on
 // success, else 0. "*out_diagnostics" gets the compiler messages.
@@ -88,7 +96,9 @@ HOT_JIT_ENGINE_API hot_jit_dylib* hot_jit_add(hot_jit_engine* engine, const char
 // Adds the relocatable object "data" (an object of hot_jit_dylib_object, also from another engine
 // or process) to a new JITDylib "id" and runs its static initializers. The object must come from
 // the same compiler and target. The absolute symbols are defined first, as in hot_jit_add. Returns
-// null and sets "*out_error" on failure.
+// null and sets "*out_error" on failure. After a failure no static initializer of the object
+// ran: the generic platform of LLJIT links the object (and returns a link error) before it calls
+// the first initializer. So the caller can compile the source and load it again.
 HOT_JIT_ENGINE_API hot_jit_dylib* hot_jit_add_object(hot_jit_engine* engine, const char* id, const void* data,
     size_t size, const char* const* abs_names, const uint64_t* abs_values, size_t n_abs, char** out_error);
 
@@ -101,14 +111,18 @@ HOT_JIT_ENGINE_API void hot_jit_capture_objects(hot_jit_engine* engine, int on);
 // no object, for example for a dylib of hot_jit_add_object.
 HOT_JIT_ENGINE_API int hot_jit_dylib_object(const hot_jit_dylib* dylib, const void** out_data, size_t* out_size);
 
+// Releases the copy of the object of the dylib. Then hot_jit_dylib_object returns 0. The code
+// of the dylib stays.
+HOT_JIT_ENGINE_API void hot_jit_dylib_release_object(hot_jit_dylib* dylib);
+
 // The address of the symbol "name" in the dylib. Null and "*out_error" when it is not there.
 HOT_JIT_ENGINE_API void* hot_jit_lookup(hot_jit_dylib* dylib, const char* name, char** out_error);
 
-// Runs the static destructors of the dylib and removes its code.
 // The time of the last hot_jit_add of the dylib, in milliseconds: the module add, and the
 // static initializers (ORC makes the machine code and links it there).
 HOT_JIT_ENGINE_API void hot_jit_add_timing(const hot_jit_dylib* dylib, double* add_ms, double* init_ms);
 
+// Runs the static destructors of the dylib and removes its code.
 HOT_JIT_ENGINE_API void hot_jit_remove(hot_jit_dylib* dylib);
 
 #ifdef __cplusplus

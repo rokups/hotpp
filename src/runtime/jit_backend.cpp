@@ -9,16 +9,20 @@
 #include "hot/hotc_lib.h"
 #include "hot/paths.h"
 #include "hot/runtime/errors.h"
+#include "hot/runtime/process.h"
 
 #include "jit_engine.h"
 #include "jit_msvc_symbols.h"
 
 
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <memory>
+#include <set>
 #include <mutex>
 #include <optional>
 #include <vector>
@@ -91,6 +95,131 @@ std::vector<const char*> c_strings(const std::vector<std::string>& v)
     return out;
 }
 
+#if !defined(_WIN32) && !defined(__APPLE__)
+// The object cache is on Linux only. The capture and the load of an object are proved for ELF
+// only (jit_object_tests.cpp). On Windows a COFF object goes through RuntimeDyld and the memory
+// manager of the unwind tables. The macOS JIT is untested (doc/macos.md).
+constexpr bool kObjectCacheSupported = true;
+#else
+constexpr bool kObjectCacheSupported = false;
+#endif
+
+// The file of a cached object: this magic, the size and the hash (Hash64) of the object, both
+// as 8 bytes little endian, and then the object. The cache holds machine code that the process
+// runs, so a load checks the hash: a damaged file is a miss, not a crash.
+constexpr char kObjectMagic[8] = {'H', 'O', 'T', 'J', 'I', 'T', 'O', '1'};
+constexpr size_t kObjectHeaderSize = 24;
+
+void put_u64(std::string& out, uint64_t v)
+{
+    for (int i = 0; i < 8; ++i)
+        out.push_back(static_cast<char>((v >> (8 * i)) & 0xff));
+}
+
+uint64_t get_u64(const char* p)
+{
+    uint64_t v = 0;
+    for (int i = 0; i < 8; ++i)
+        v |= static_cast<uint64_t>(static_cast<unsigned char>(p[i])) << (8 * i);
+    return v;
+}
+
+uint64_t object_hash(const char* data, size_t size)
+{
+    Hash64 h;
+    h.add_bytes(data, size);
+    return h.value();
+}
+
+// Reads a cached object and checks its header. On a failure it returns false and sets "error".
+bool read_object_file(const std::filesystem::path& path, std::string& object, std::string& error)
+{
+    std::ifstream in(path, std::ios::binary);
+    std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    if (!in.good() && !in.eof())
+    {
+        error = "cannot read " + path.string();
+        return false;
+    }
+    if (text.size() < kObjectHeaderSize || text.compare(0, 8, kObjectMagic, 8) != 0)
+    {
+        error = "no object header";
+        return false;
+    }
+    const uint64_t size = get_u64(text.data() + 8);
+    if (size != text.size() - kObjectHeaderSize)
+    {
+        error = "the size is not correct";
+        return false;
+    }
+    if (object_hash(text.data() + kObjectHeaderSize, size) != get_u64(text.data() + 16))
+    {
+        error = "the hash is not correct";
+        return false;
+    }
+    object = text.substr(kObjectHeaderSize);
+    return true;
+}
+
+// A path in a depfile (Make syntax, ObjectCache::parse_depfile).
+std::string make_escape(const std::string& path)
+{
+    std::string out;
+    for (const char c : path)
+    {
+        if (c == ' ' || c == '#' || c == '\\')
+            out.push_back('\\');
+        if (c == '$')
+            out.push_back('$');
+        out.push_back(c);
+    }
+    return out;
+}
+
+// Adds the object to the cache. "deps" are the files on disk that the compile read. On a
+// failure it returns false and sets "error".
+bool store_object(ObjectCache& cache, const ObjectCache::Key& key, const std::string& object,
+    const std::vector<std::string>& deps, std::filesystem::file_time_type started, std::string& error)
+{
+    namespace fs = std::filesystem;
+    const fs::path path = cache.object_path(key);
+    std::error_code ec;
+    fs::create_directories(path.parent_path(), ec);
+    if (ec)
+    {
+        error = "cannot create " + path.parent_path().string() + ": " + ec.message();
+        return false;
+    }
+    // The name has ".tmp": ObjectCache::trim removes an old one. ".jit" keeps it apart from the
+    // temporary files of ObjectCache.
+    static std::atomic<unsigned> counter{0};
+    const fs::path tmp = path.string() + ".tmp" + std::to_string(detail::process_id()) + "." +
+        std::to_string(counter.fetch_add(1)) + ".jit";
+    {
+        std::string header(kObjectMagic, 8);
+        put_u64(header, object.size());
+        put_u64(header, object_hash(object.data(), object.size()));
+        std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+        out.write(header.data(), static_cast<std::streamsize>(header.size()));
+        out.write(object.data(), static_cast<std::streamsize>(object.size()));
+        out.close();
+        if (!out)
+        {
+            fs::remove(tmp, ec);
+            error = "cannot write " + tmp.string();
+            return false;
+        }
+    }
+    std::string depfile = make_escape(path.string()) + ":";
+    for (const std::string& d : deps)
+        depfile += " \\\n " + make_escape(d);
+    depfile += "\n";
+    if (cache.store(key, tmp, depfile, std::string(), started, error))
+        return true;
+    fs::remove(tmp, ec);
+    return false;
+}
+
 } // namespace
 
 // The JIT engine of the session. The Modules keep a copy of the pointer to this object.
@@ -124,6 +253,7 @@ struct Compiled
 {
     std::unique_ptr<IrHandle> ir;
     std::string diagnostics;
+    std::vector<std::string> deps; // the files that the compile read, one path in each item
 };
 
 // The compile command like the driver has it, and the files of the memory file system.
@@ -235,19 +365,28 @@ CompileArgs make_args(const JitOptions& opt, const std::string& path, const std:
     return s;
 }
 
-Compiled compile(const JitOptions& opt, const std::string& path, const std::string& text,
-    const std::vector<std::pair<std::string, std::string>>& virtual_files, const std::string& script_dir)
+Compiled compile(const CompileArgs& s)
 {
     Compiled out;
-    const CompileArgs s = make_args(opt, path, &text, false, &virtual_files, script_dir);
     const std::vector<const char*> args = c_strings(s.args);
     const std::vector<const char*> paths = c_strings(s.paths);
     const std::vector<const char*> texts = c_strings(s.texts);
     hot_jit_ir* ir = nullptr;
     char* diagnostics = nullptr;
-    const int ok =
-        hot_jit_compile(args.data(), args.size(), paths.data(), texts.data(), paths.size(), &ir, &diagnostics);
+    char* deps = nullptr;
+    const int ok = hot_jit_compile(
+        args.data(), args.size(), paths.data(), texts.data(), paths.size(), &ir, &diagnostics, &deps);
     out.diagnostics = take(diagnostics);
+    const std::string dep_text = take(deps);
+    for (size_t start = 0; start < dep_text.size();)
+    {
+        size_t end = dep_text.find('\n', start);
+        if (end == std::string::npos)
+            end = dep_text.size();
+        if (end > start)
+            out.deps.push_back(dep_text.substr(start, end - start));
+        start = end + 1;
+    }
     if (ok)
     {
         out.ir = std::make_unique<IrHandle>();
@@ -262,9 +401,11 @@ namespace
 {
 
 // Adds the module to a new JITDylib "id", runs the static initializers and finds
-// script_register. The Module owns the JITDylib.
-LoadResult add_to_jit(
-    const std::shared_ptr<JitState>& impl, const std::string& id, hot_jit_ir* ir, JitTimings* timings = nullptr)
+// script_register. The Module owns the JITDylib. The code is "ir" or, when "ir" is null, the
+// cached object "object". With "captured", the call copies the object that ORC made from "ir"
+// into it (empty when the engine has none) and releases the copy of the engine.
+LoadResult add_to_jit(const std::shared_ptr<JitState>& impl, const std::string& id, hot_jit_ir* ir,
+    const std::string* object, JitTimings* timings = nullptr, std::string* captured = nullptr)
 {
     LoadResult r;
     auto holder = std::make_unique<Generation>();
@@ -280,8 +421,10 @@ LoadResult add_to_jit(
     // MSVC: the engine DLL (/MT) cannot find the static part of the host C runtime.
     jit::add_msvc_host_symbols(abs_names, abs_values);
     char* error = nullptr;
-    holder->dylib =
-        hot_jit_add(impl->engine, id.c_str(), ir, abs_names.data(), abs_values.data(), abs_names.size(), &error);
+    holder->dylib = ir
+        ? hot_jit_add(impl->engine, id.c_str(), ir, abs_names.data(), abs_values.data(), abs_names.size(), &error)
+        : hot_jit_add_object(impl->engine, id.c_str(), object->data(), object->size(), abs_names.data(),
+              abs_values.data(), abs_names.size(), &error);
     if (!holder->dylib)
     {
         r.error = with_platform_hint(take(error));
@@ -300,6 +443,16 @@ LoadResult add_to_jit(
     take(error); // a missing "hot_main" is not an error: the module has no entry point
     if (timings)
         timings->lookup_ms = ms_since(t_lookup);
+    // The static initializers ran and the lookups found the code: ORC made the whole object.
+    if (captured)
+    {
+        const void* data = nullptr;
+        size_t size = 0;
+        captured->clear();
+        if (hot_jit_dylib_object(holder->dylib, &data, &size))
+            captured->assign(static_cast<const char*>(data), size);
+        hot_jit_dylib_release_object(holder->dylib);
+    }
     Module m;
     m.register_fn = reinterpret_cast<Module::RegisterFn>(reg);
     m.keep_alive = std::shared_ptr<void>(holder.release(), [](void* p) { delete static_cast<Generation*>(p); });
@@ -323,6 +476,22 @@ JitBackend::JitBackend(JitOptions options)
         // text can differ from the text of the files backend, so "extra" keeps the entries apart.
         tr_cache_ = std::make_unique<TranslateCache>(opt_.cache_dir);
         tr_cache_->set_extra("jit");
+    }
+    // The object cache follows the rules of the files backend: HOT_CACHE=0 turns it off and
+    // HOT_CACHE_MAX_MB gives the size limit.
+    if (kObjectCacheSupported && !opt_.cache_dir.empty() && ObjectCache::enabled_by_env())
+    {
+        uint64_t max_bytes = opt_.cache_max_bytes;
+        if (const char* env = std::getenv("HOT_CACHE_MAX_MB"); env && *env)
+        {
+            char* end = nullptr;
+            const unsigned long long mb = std::strtoull(env, &end, 10);
+            if (end && *end == '\0')
+                max_bytes = static_cast<uint64_t>(mb) << 20;
+        }
+        obj_cache_ = std::make_unique<ObjectCache>(std::filesystem::path(opt_.cache_dir) / "jit", max_bytes);
+        obj_cache_->trim();
+        compiler_id_ = take(hot_jit_target_id()) + opt_.cache_id_extra;
     }
 }
 
@@ -418,25 +587,48 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
         return r;
     }
 
-    t0 = Clock::now();
     const size_t script_slash = source.name.rfind('/');
     const std::string script_dir =
         script_slash == std::string::npos ? std::string(".") : source.name.substr(0, script_slash);
-    Compiled c = compile(opt_, cpp_path, tr.cpp, tr.virtual_files, script_dir);
-    timings_.compile_ms = ms_since(t0);
-    if (!c.ir)
+    const CompileArgs args = make_args(opt_, cpp_path, &tr.cpp, false, &tr.virtual_files, script_dir);
+    const std::string unit_label = source.unit.empty() ? stem : source.unit;
+
+    // The key of the object has all the inputs of the compile and of the code generation, but no
+    // name of this load (generation, epoch, sequence): each load gives the dylib a new name.
+    std::optional<ObjectCache::Key> key;
+    std::shared_ptr<const std::string> object; // the object of a cache hit
+    if (obj_cache_)
     {
-        if (!opt_.raw_diagnostics)
-            c.diagnostics = hotc::rewrite_diagnostic(
-                c.diagnostics, {{source.name, source.text}}, {{cpp_path, tr.cpp}}, &tr.source_map);
-        r.error = c.diagnostics + "the compile of " + source.name + " failed\n";
-        r.reason = ReloadReason::CompileError;
-        return r;
+        ObjectCache::KeyInputs inputs;
+        inputs.cpp_text = tr.cpp;
+        inputs.args = args.args;
+        inputs.compiler_id = compiler_id_;
+        if (opt_.fs)
+            inputs.virtual_files = tr.virtual_files;
+        // A sum of the path hashes: the order of the paths is different after a translate cache hit.
+        for (const std::string& p : tr.shadow_paths)
+            inputs.shadow_hash += hotc::text_hash(p);
+        key = ObjectCache::make_key(inputs);
+        if (std::optional<ObjectCache::Hit> hit = obj_cache_->lookup(*key))
+        {
+            auto bytes = std::make_shared<std::string>();
+            std::string why;
+            if (read_object_file(hit->object, *bytes, why))
+                object = std::move(bytes);
+            else
+            {
+                std::fprintf(stderr, "hot: %s: the cached object is not valid (%s), so it compiles again\n",
+                    unit_label.c_str(), why.c_str());
+                obj_cache_->remove(*key);
+            }
+        }
     }
 
-    t0 = Clock::now();
-    if (!impl_)
+    // The engine starts at the first load that has code to add.
+    const auto start_engine = [&]() -> bool
     {
+        if (impl_)
+            return true;
         auto impl = std::make_shared<JitState>();
         char* error = nullptr;
         char* debugger_error = nullptr;
@@ -449,24 +641,95 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
         if (!impl->engine)
         {
             r.error = take(error);
-            return r;
+            return false;
         }
         take(error);
+        if (obj_cache_)
+            hot_jit_capture_objects(impl->engine, 1);
         impl_ = std::move(impl);
-    }
+        return true;
+    };
 
-    // The core instance (module.h) needs a copy of the IR: the JIT consumes the module.
-    auto core_ir = std::make_shared<IrHandle>();
-    core_ir->ir = hot_jit_ir_clone(c.ir->ir);
-    hot_jit_ir* main_ir = c.ir->ir;
-    c.ir->ir = nullptr;
     JitTimings jt;
-    LoadResult added = add_to_jit(impl_, id, main_ir, &jt);
-    if (!added)
+    LoadResult added;
+    if (object)
     {
-        r.error = added.error;
-        r.reason = ReloadReason::BadModule;
-        return r;
+        t0 = Clock::now();
+        if (!start_engine())
+            return r;
+        added = add_to_jit(impl_, id, nullptr, object.get(), &jt);
+        if (!added)
+        {
+            // An error of hot_jit_add_object comes before the first static initializer
+            // (jit_engine.h), so a compile and a second load are safe.
+            std::fprintf(stderr, "hot: %s: the cached object does not load, so it compiles again: %s\n",
+                unit_label.c_str(), added.error.c_str());
+            obj_cache_->remove(*key);
+            object.reset();
+        }
+    }
+    std::shared_ptr<IrHandle> core_ir;
+    if (object)
+        ++object_hits_;
+    else
+    {
+        if (obj_cache_)
+            ++object_misses_;
+        t0 = Clock::now();
+        ++compiles_;
+        Compiled c = compile(args);
+        timings_.compile_ms = ms_since(t0);
+        if (!c.ir)
+        {
+            if (!opt_.raw_diagnostics)
+                c.diagnostics = hotc::rewrite_diagnostic(
+                    c.diagnostics, {{source.name, source.text}}, {{cpp_path, tr.cpp}}, &tr.source_map);
+            r.error = c.diagnostics + "the compile of " + source.name + " failed\n";
+            r.reason = ReloadReason::CompileError;
+            return r;
+        }
+
+        t0 = Clock::now();
+        if (!start_engine())
+            return r;
+        // The core instance (module.h) needs a copy of the IR: the JIT consumes the module.
+        core_ir = std::make_shared<IrHandle>();
+        core_ir->ir = hot_jit_ir_clone(c.ir->ir);
+        hot_jit_ir* main_ir = c.ir->ir;
+        c.ir->ir = nullptr;
+        std::string captured;
+        added = add_to_jit(impl_, id, main_ir, nullptr, &jt, key ? &captured : nullptr);
+        if (!added)
+        {
+            r.error = added.error;
+            r.reason = ReloadReason::BadModule;
+            return r;
+        }
+        if (key && captured.empty())
+            std::fprintf(stderr, "hot: %s has no object cache entry: the engine kept no object\n", unit_label.c_str());
+        else if (key)
+        {
+            // The manifest has the files on disk. The files of the memory file system are in the key.
+            namespace fs = std::filesystem;
+            const std::set<std::string> in_memory(args.paths.begin(), args.paths.end());
+            std::set<std::string> seen;
+            std::vector<std::string> deps;
+            const auto add_dep = [&](const std::string& d)
+            {
+                std::error_code ec;
+                const std::string p = fs::absolute(d, ec).lexically_normal().string();
+                if (!ec && !in_memory.count(p) && p.rfind(kVirtualDir, 0) != 0 && seen.insert(p).second)
+                    deps.push_back(p);
+            };
+            for (const std::string& d : c.deps)
+                add_dep(d);
+            if (!opt_.pch_path.empty())
+                add_dep(opt_.pch_path);
+            std::string store_error;
+            if (!store_object(*obj_cache_, *key, captured, deps, translate_start, store_error))
+                std::fprintf(
+                    stderr, "hot: %s has no object cache entry: %s\n", unit_label.c_str(), store_error.c_str());
+        }
     }
     timings_.orc_ms = jt.orc_ms;
     timings_.init_ms = jt.init_ms;
@@ -475,9 +738,10 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
     if (std::getenv("HOT_TIMING"))
         std::fprintf(stderr,
             "hot: %s jit translate %.0f ms, compile %.0f ms, orc %.0f ms, init %.0f ms, lookup %.0f ms, total %.0f "
-            "ms\n",
-            (source.unit.empty() ? stem : source.unit).c_str(), timings_.translate_ms, timings_.compile_ms,
-            timings_.orc_ms, timings_.init_ms, timings_.lookup_ms, ms_since(load_start));
+            "ms%s\n",
+            unit_label.c_str(), timings_.translate_ms, timings_.compile_ms, timings_.orc_ms, timings_.init_ms,
+            timings_.lookup_ms, ms_since(load_start),
+            !obj_cache_ ? "" : (object ? ", object cache hit" : ", object cache miss"));
     added.module->generation = generation;
     // The slot order changes only when the Loader accepts the module. The callback holds the
     // shared slot state, not the backend: the module can outlive the backend.
@@ -486,11 +750,17 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
         std::lock_guard<std::mutex> slock(state->mutex);
         state->text = text;
     };
-    // The core gets its own JITDylib. The loader calls make_core at most one time.
+    // The core gets its own JITDylib. The loader calls make_core at most one time. After a cache
+    // hit there is no IR: the core gets the same object a second time.
     std::shared_ptr<JitState> impl = impl_;
-    added.module->make_core = [impl, id, core_ir]()
+    added.module->make_core = [impl, id, core_ir, object]() mutable
     {
-        if (!core_ir->ir)
+        if (object)
+        {
+            const std::shared_ptr<const std::string> bytes = std::move(object);
+            return add_to_jit(impl, id + ".core", nullptr, bytes.get());
+        }
+        if (!core_ir || !core_ir->ir)
         {
             LoadResult e;
             e.error = "the core instance of jit:" + id + " is made already";
@@ -498,7 +768,7 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
         }
         hot_jit_ir* ir = core_ir->ir;
         core_ir->ir = nullptr;
-        return add_to_jit(impl, id + ".core", ir);
+        return add_to_jit(impl, id + ".core", ir, nullptr);
     };
     added.dependencies = std::move(r.dependencies);
     added.iface_hash = r.iface_hash;

@@ -153,7 +153,7 @@ hot_jit_ir* compile_s1()
     const char* texts[] = {s1_source};
     hot_jit_ir* ir = nullptr;
     char* diagnostics = nullptr;
-    const int ok = hot_jit_compile(args.data(), args.size(), paths, texts, 1, &ir, &diagnostics);
+    const int ok = hot_jit_compile(args.data(), args.size(), paths, texts, 1, &ir, &diagnostics, nullptr);
     const std::string messages = take_text(diagnostics);
     EXPECT_EQ(ok, 1) << messages;
     return ok ? ir : nullptr;
