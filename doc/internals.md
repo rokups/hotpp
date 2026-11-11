@@ -144,7 +144,27 @@ A batch of units loads in three phases. The launcher (`build_batch` in `src/laun
 
 `HOT_JOBS` sets the limit (see `doc/embedding-backends.md`). The caller thread also works, so the launcher starts `jobs - 1` threads. No thread starts for one unit.
 
-Serial cases: Windows and the JIT backend. A host file system (`opt.fs`) also compiles in parallel. Each job has its own mirror directory `<work_dir>/vfs.job/<process id>.<job number>`. The compile removes it. The object key uses the fixed root `<work_dir>/vfs/`, so the job number is not in the key. The JIT uses the default `begin_load`. `JitBackend::load` holds its mutex for the full build.
+Serial case: Windows. A host file system (`opt.fs`) also compiles in parallel. Each job has its own mirror directory `<work_dir>/vfs.job/<process id>.<job number>`. The compile removes it. The object key uses the fixed root `<work_dir>/vfs/`, so the job number is not in the key.
+
+### Parallel JIT loads
+
+`JitBackend` has the same three phases (`JitBackend::Pending` in `src/runtime/jit_backend.cpp`). `load` runs the three phases one after the other on the caller thread.
+
+- `begin_load_many` holds `mutex_`. The serial part gives each unit its `JITDylib` name, its epoch and the slot text, in the order of the sources. Then the translate (with the translate cache), the compile command and the object key of each unit run on `min(build_jobs(), count)` threads. Last, the serial part does the lookup in the object cache.
+- `PendingLoad::compile` takes no lock. After a cache hit it reads the cached object and checks its hash. Else it runs `hot_jit_compile`. A bad cached file also compiles here. `finish` then removes the entry.
+- `PendingLoad::finish` holds `mutex_` on the caller thread. It starts the engine, adds the code to ORC, runs the static initializers, looks up the entry points, stores the object and sets the timings. When `hot_jit_add_object` refuses a cached object, `finish` compiles the unit again on the caller thread.
+
+ORC stays on one thread: no ORC compile threads and no concurrent ORC compile. The static initializers run on the caller thread. `last_timings()` has the timings of the last `finish`. The `total` of `HOT_TIMING` is the sum of the phases, not the wall time: in a batch a unit also waits for the other units.
+
+Shared state of `hot_jit_compile`:
+
+- Each call has its own `CompilerInstance`, `LLVMContext`, diagnostics and memory file system. The memory file system overlays the real file system, and the real file system only reads.
+- The PCH file is only read. `make_pch` holds `mutex_`. Do not call it during a batch.
+- LLVM keeps the targets in a global list with no lock. `clang_createIndex` of the translator registers all targets at each call, and two first registrations of one target at the same time make a loop in the list: `TargetRegistry::lookupTarget` then does not stop. `hotc::register_llvm_targets` does the first registration one time. Each translate calls it. The `JitBackend` constructor calls it and then `hot_jit_init`, before any parallel work.
+- `JitOptions::extra_flags` must not have `-mllvm`: these options are global `cl::opt` values.
+- The object capture of the engine (`hot_jit_dylib_object`) runs in `finish`, under `capture_mutex`.
+
+ThreadSanitizer (`linux-clang-jit-tsan`) shows no report for `JitParallel.*` (eight threads with 20 compiles each, and the waves). Two engines in two threads (`JitObjectCache.TwoBackendsShareTheDirectory`) give reports in `llvm::StringMap` (a first use that TSan cannot see) and in `libgcc_s` (the frame registration in `initialize_dylib` and `hot_jit_remove`).
 
 After a compile error the other jobs finish and cache their objects. The first failed unit in name order is the reported error. The old code stays live.
 
