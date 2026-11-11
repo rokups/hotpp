@@ -104,6 +104,8 @@ class ClangFilesBackend : public Backend
 public:
     explicit ClangFilesBackend(ClangFilesOptions options);
     ~ClangFilesBackend() override;
+    // The number of writes of compile_commands.json by this backend. For tests.
+    size_t compile_commands_writes() const { return compile_db_writes_; }
 
     // Makes a new .so for each call, so a reload of the same generation is possible.
     // The slots file does not change here. The Module has an "on_accept" callback that writes
@@ -221,8 +223,11 @@ private:
     // threads for different jobs. It reads only "opt_", "cache_", "pch_cache_", "compiler_id_",
     // "link_cache_" and the PCH state under "pch_mutex_".
     bool compile_stage(BuildJob& job);
-    // Stage 3: writes the compile database. The caller holds "mutex_".
-    void record_stage(const BuildJob& job);
+    // Stage 3: records the compile command of the job. With "defer" the file write waits for
+    // flush_compile_commands. The caller holds "mutex_".
+    void record_stage(const BuildJob& job, bool defer = false);
+    // Writes the compile database when an entry changed. The caller holds "mutex_".
+    void flush_compile_commands();
     // The path of the next library: stem, generation, epoch and sequence number.
     std::string library_path(const ScriptSource& source, uint32_t generation, LoadMode mode);
     // The end of a load: the slots probe and the library. "r" has the head of the first phase.
@@ -244,7 +249,8 @@ private:
     // entries of this backend win) and writes the result when its text changes. So two processes
     // keep the entries of each other. The caller holds "mutex_". "object" is the object file.
 
-    void record_compile_command(const std::string& unit, const std::string& script_dir, const std::string& object);
+    void record_compile_command(
+        const std::string& unit, const std::string& script_dir, const std::string& object, bool defer);
 
     // The precompiled header (PCH) of one compile. "key" is the key of the PCH entry. "header" is
     // the header file of the include prefix. "pch" is the valid PCH file, or empty when there is
@@ -290,8 +296,14 @@ private:
     // file then. With the same stamp, a build reads the file again only for a change.
     std::map<std::string, CompileCommandEntry> disk_commands_;
     bool disk_known_ = false;
+    bool compile_db_dirty_ = false; // an entry in commands_ is not in the file yet
+    size_t compile_db_writes_ = 0; // the writes of the file, for tests
     int64_t disk_mtime_ = 0;
     uintmax_t disk_size_ = 0;
+    // HOT_TIMING sums of the finish phase, in microseconds. The caller thread writes them.
+    int64_t record_us_ = 0;
+    int64_t complete_us_ = 0;
+    int64_t open_us_ = 0;
     // Guards the slot state, the translate, the compile database and the cache setup. The serial
     // build holds it for the whole build. The two phase load holds it only in the first phase
     // and in record_stage. compile_stage never takes it.

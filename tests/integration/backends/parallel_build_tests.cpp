@@ -794,4 +794,94 @@ TEST(BeginLoadMany, VfsMirrorsDifferAndAreGoneAfterFinish)
     EXPECT_EQ(count_entries(jobs_dir), 0u);
 }
 
+// ---- compile_commands.json writes of a batch ----
+
+std::unique_ptr<hot::ClangFilesBackend> make_db_backend(
+    const TestScratch& scratch, const std::string& work, const std::string& db)
+{
+    hot::ClangFilesOptions o;
+    o.compiler = HOT_CXX;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
+    o.work_dir = scratch.file(work);
+    o.generated_dir = scratch.file("gen");
+    o.cache_dir = scratch.file("cache");
+    o.compile_commands_dir = db;
+    return std::make_unique<hot::ClangFilesBackend>(std::move(o));
+}
+
+std::string read_db(const std::string& db)
+{
+    std::ifstream in(fs::path(db) / "compile_commands.json", std::ios::binary);
+    return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+}
+
+size_t count_entries_of(const std::string& text)
+{
+    size_t n = 0;
+    for (size_t at = text.find("\"file\":"); at != std::string::npos; at = text.find("\"file\":", at + 1))
+        ++n;
+    return n;
+}
+
+// A batch writes the compile database once. The text equals the text of the serial loads.
+TEST(BeginLoadMany, BatchWritesTheCompileDatabaseOnce)
+{
+    SKIP_ON_WINDOWS();
+    CleanEnv env;
+    ScopedEnv jobs("HOT_JOBS", "4");
+    TestScratch scratch;
+    const std::string many_db = scratch.file("db_many");
+    const std::string serial_db = scratch.file("db_serial");
+    {
+        auto backend = make_db_backend(scratch, "work_many", many_db);
+        auto pending = backend->begin_load_many(many_sources(0, 6), 1);
+        finish_all(*backend, pending);
+        EXPECT_EQ(backend->compile_commands_writes(), 1u);
+        pending.clear();
+        EXPECT_EQ(backend->compile_commands_writes(), 1u);
+    }
+    {
+        auto backend = make_db_backend(scratch, "work_serial", serial_db);
+        for (const hot::ScriptSource& source : many_sources(0, 6))
+        {
+            auto one = backend->begin_load(source, 1);
+            std::vector<hot::PendingLoad*> raw{one.get()};
+            hot::run_compiles(raw, 1);
+            EXPECT_TRUE(one->finish());
+        }
+        EXPECT_EQ(backend->compile_commands_writes(), 6u); // a batch of one writes at once
+    }
+    const std::string many_text = read_db(many_db);
+    EXPECT_EQ(count_entries_of(many_text), 6u);
+    EXPECT_EQ(many_text, read_db(serial_db));
+}
+
+// A failed unit and a unit with no finish do not stop the write. It happens once.
+TEST(BeginLoadMany, PartialBatchWritesTheCompileDatabaseOnce)
+{
+    SKIP_ON_WINDOWS();
+    CleanEnv env;
+    ScopedEnv jobs("HOT_JOBS", "4");
+    TestScratch scratch;
+    const std::string db = scratch.file("db");
+    auto backend = make_db_backend(scratch, "work", db);
+    std::vector<hot::ScriptSource> sources = many_sources(0, 5);
+    sources[1].text = "using \"Actor.h\";\nclass Broken : Actor {\n    int = ;\n}\n";
+    auto pending = backend->begin_load_many(sources, 1);
+    std::vector<hot::PendingLoad*> raw;
+    for (auto& p : pending)
+        raw.push_back(p.get());
+    hot::run_compiles(raw, 4);
+    EXPECT_TRUE(pending[0]->finish());
+    EXPECT_FALSE(pending[1]->finish());
+    EXPECT_TRUE(pending[2]->finish());
+    EXPECT_EQ(backend->compile_commands_writes(), 0u);
+    pending[3].reset(); // no finish
+    EXPECT_EQ(backend->compile_commands_writes(), 0u);
+    pending[4].reset(); // the last unit of the batch
+    EXPECT_EQ(backend->compile_commands_writes(), 1u);
+    EXPECT_EQ(count_entries_of(read_db(db)), 2u);
+}
+
+
 } // namespace

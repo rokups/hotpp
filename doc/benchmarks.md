@@ -626,3 +626,21 @@ an empty cache, HOT_JOBS not set, 32 hardware threads, a Debug build of the game
 The sum of translate grows because the units share the processor. The translate phase time comes
 from the file times of the generated sources. The two units with a lock wait share one session
 entry with another unit.
+
+## Compile database write (cold start of the BiteSizedWar game)
+
+The files backend wrote `compile_commands.json` for each unit. The file has 957 entries and 13 MB.
+The cost grew with each unit. In a cold start of 87 units, the sum of `record_stage` was 74 s.
+The sums of `complete_load` and `dlopen` were 98 ms and 58 ms.
+HOT_TIMING prints the sums in the `hot: UNIT finish` line.
+
+Now a `begin_load_many` call writes the file once, when the last unit of the batch ends.
+The destructor of the backend writes the file if an entry is not written yet.
+
+| Start | Wall | Batch line |
+|-------|------|------------|
+| Cold, before | 117.5 s | 114609 ms |
+| Cold, after | 43.0 s | 40086 ms |
+| Warm, after | 4.0 s | 1881 ms |
+
+The sum of `record_stage` after the change is 68 ms.

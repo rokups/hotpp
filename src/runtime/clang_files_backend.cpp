@@ -453,6 +453,11 @@ ClangFilesBackend::ClangFilesBackend(ClangFilesOptions options)
 ClangFilesBackend::~ClangFilesBackend()
 {
     wait_for_pch(); // the PCH thread uses the backend and the work directory
+    {
+        // A batch that never finished leaves entries that are not in the file.
+        std::lock_guard<std::mutex> lock(mutex_);
+        flush_compile_commands();
+    }
     if (opt_.remove_work_dir_at_exit)
         remove_scratch(opt_.work_dir);
 }
@@ -955,7 +960,7 @@ std::map<std::string, CompileCommandEntry> ClangFilesBackend::read_compile_comma
 }
 
 void ClangFilesBackend::record_compile_command(
-    const std::string& unit, const std::string& script_dir, const std::string& object)
+    const std::string& unit, const std::string& script_dir, const std::string& object, bool defer)
 {
     if (opt_.compile_commands_dir.empty() || opt_.generated_dir.empty())
         return;
@@ -976,6 +981,17 @@ void ClangFilesBackend::record_compile_command(
                           [&](const std::string& a) { return a.compare(0, mirror_arg.size(), mirror_arg) == 0; }),
         e.arguments.end());
     commands_[e.file] = std::move(e);
+    compile_db_dirty_ = true;
+    if (!defer)
+        flush_compile_commands();
+}
+
+void ClangFilesBackend::flush_compile_commands()
+{
+    if (!compile_db_dirty_ || opt_.compile_commands_dir.empty() || opt_.generated_dir.empty())
+        return;
+    compile_db_dirty_ = false;
+    std::error_code ec;
     // An entry whose generated file is gone (a removed unit) goes.
     for (auto it = commands_.begin(); it != commands_.end();)
         it = fs::exists(it->first, ec) ? std::next(it) : commands_.erase(it);
@@ -1032,6 +1048,7 @@ void ClangFilesBackend::record_compile_command(
             std::fprintf(stderr, "[script] WARNING: cannot write %s\n", db.string().c_str());
             return;
         }
+        ++compile_db_writes_;
     }
     // The file now has the text of "merged".
     if (stamp(disk_mtime_, disk_size_))
@@ -1866,9 +1883,9 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
     return true;
 }
 
-void ClangFilesBackend::record_stage(const BuildJob& job)
+void ClangFilesBackend::record_stage(const BuildJob& job, bool defer)
 {
-    record_compile_command(job.unit, job.script_dir, job.built_object);
+    record_compile_command(job.unit, job.script_dir, job.built_object, defer);
 }
 
 LoadResult ClangFilesBackend::load(const ScriptSource& source, uint32_t generation, LoadMode mode)
@@ -1929,7 +1946,10 @@ LoadResult ClangFilesBackend::complete_load(const ScriptSource& source, uint32_t
     std::vector<std::string> dependencies = std::move(r.dependencies);
     const uint64_t iface_hash = r.iface_hash;
     std::vector<std::pair<std::string, uint64_t>> import_hashes = std::move(r.import_hashes);
+    const auto open_start = std::chrono::steady_clock::now();
     r = module_from_library(so);
+    open_us_ += std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - open_start)
+                    .count();
     if (!r.module && cached_module && cache_)
     {
         // The cached .so does not load (a damaged file). Remove the entry and link once more.
@@ -1987,7 +2007,11 @@ public:
             fs::remove(job_.out_so, ec);
         }
         remove_mirror(job_);
+        batch_done();
     }
+
+    // The batch of one begin_load_many call. A null pointer means no batch (not set yet).
+    void set_batch(std::shared_ptr<size_t> batch) { batch_ = std::move(batch); }
 
     void compile() override
     {
@@ -1999,6 +2023,12 @@ public:
     LoadResult finish() override
     {
         finished_ = true;
+        // The unit counts as done when this function ends (or at once for a failure).
+        struct Done
+        {
+            TwoPhaseLoad& self;
+            ~Done() { self.batch_done(); }
+        } done{*this};
         if (!ok)
             return std::move(head);
         LoadResult r = std::move(head);
@@ -2008,12 +2038,32 @@ public:
             r.reason = ReloadReason::CompileError;
             return r;
         }
+        using Clock = std::chrono::steady_clock;
+        const auto us = [](Clock::time_point a, Clock::time_point b)
+        { return std::chrono::duration_cast<std::chrono::microseconds>(b - a).count(); };
+        const auto t0 = Clock::now();
         {
             std::lock_guard<std::mutex> lock(backend_.mutex_);
-            backend_.record_stage(job_);
+            backend_.record_stage(job_, true);
         }
-        return backend_.complete_load(source_, generation_, mode_, job_.out_so, job_.tr.slots_out + job_.tr.sigs_out,
-            job_.cached_module, std::move(r));
+        const auto t1 = Clock::now();
+        const int64_t open_before = backend_.open_us_;
+        LoadResult out = backend_.complete_load(source_, generation_, mode_, job_.out_so,
+            job_.tr.slots_out + job_.tr.sigs_out, job_.cached_module, std::move(r));
+        const auto t2 = Clock::now();
+        if (job_.timing)
+        {
+            backend_.record_us_ += us(t0, t1);
+            backend_.complete_us_ += us(t1, t2);
+            std::fprintf(stderr,
+                "hot: %s finish record_stage %lld ms, complete_load %lld ms, dlopen %lld ms "
+                "[sum: record_stage %lld ms, complete_load %lld ms, dlopen %lld ms]\n",
+                job_.unit.c_str(), static_cast<long long>(us(t0, t1) / 1000),
+                static_cast<long long>(us(t1, t2) / 1000), static_cast<long long>((backend_.open_us_ - open_before) / 1000),
+                static_cast<long long>(backend_.record_us_ / 1000), static_cast<long long>(backend_.complete_us_ / 1000),
+                static_cast<long long>(backend_.open_us_ / 1000));
+        }
+        return out;
     }
 
     // Marks the first phase as failed, without a translate.
@@ -2057,7 +2107,20 @@ public:
     }
 
 private:
+    // The unit leaves the batch once. The last unit writes the compile database. This runs on
+    // the caller thread. It takes "mutex_".
+    void batch_done()
+    {
+        if (!batch_)
+            return;
+        std::shared_ptr<size_t> batch = std::move(batch_);
+        std::lock_guard<std::mutex> lock(backend_.mutex_);
+        if (--*batch == 0)
+            backend_.flush_compile_commands();
+    }
+
     ClangFilesBackend& backend_;
+    std::shared_ptr<size_t> batch_;
     ScriptSource source_;
     uint32_t generation_;
     LoadMode mode_;
@@ -2149,6 +2212,15 @@ std::vector<std::unique_ptr<PendingLoad>> ClangFilesBackend::begin_load_many(
         }
     } joiner{threads};
     work();
+    for (std::thread& t : threads)
+        if (t.joinable())
+            t.join();
+    // The batch starts after the threads end: a throw above leaves the loads with no batch.
+    // The units write the compile database once, when the last of them ends. The caller holds
+    // "mutex_" until the return, so no unit ends before then.
+    auto batch = std::make_shared<size_t>(result.size());
+    for (auto& p : result)
+        static_cast<TwoPhaseLoad*>(p.get())->set_batch(batch);
     return result;
 #endif
 }
