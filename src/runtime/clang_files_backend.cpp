@@ -514,7 +514,8 @@ std::vector<std::string> mingw_flags(const ClangFilesOptions& opt, bool compile)
 // - Darwin: "-undefined dynamic_lookup" is for the link only. MSVC: the runtime flag goes to both.
 // Target, sysroot, resource dir and extra flags go to both, so the driver finds the same libraries.
 std::vector<std::string> compile_object_command(const ClangFilesOptions& opt, const std::string& cpp_path,
-    const std::string& obj_path, const std::string& depfile_path, const std::string& script_dir)
+    const std::string& obj_path, const std::string& depfile_path, const std::string& script_dir,
+    const std::string& mirror_root)
 {
     const bool mingw = is_mingw_triple(opt.target_triple);
     const bool darwin = darwin_target(opt);
@@ -557,7 +558,7 @@ std::vector<std::string> compile_object_command(const ClangFilesOptions& opt, co
         cmd.push_back("-resource-dir=" + opt.resource_dir);
     for (const std::string& f : opt.extra_flags)
         cmd.push_back(f);
-    const std::string mirror = opt.work_dir + "/vfs/";
+    const std::string mirror = mirror_root.empty() ? opt.work_dir + "/vfs/" : mirror_root;
     if (opt.fs && !script_dir.empty())
         cmd.push_back("-I" + mirror + vfs_relative(script_dir).value_or(std::string()));
     for (const std::string& d : opt.include_dirs)
@@ -966,7 +967,7 @@ void ClangFilesBackend::record_compile_command(
     e.output = absolute_path(object).string();
     // No depfile: the IDE needs no "-MD -MF".
     e.arguments = compile_object_command(opt_, e.file, e.output, std::string(), script_dir);
-    // The mirror directory "<work_dir>/vfs" belongs to this process and is gone after the exit.
+    // The mirror directories "<work_dir>/vfs" and "<work_dir>/vfs.job" belong to this process.
     // The IDE reads the real directories ("-I<dir>") that follow.
     const std::string mirror_arg = "-I" + opt_.work_dir + "/vfs/";
     e.arguments.erase(std::remove_if(e.arguments.begin(), e.arguments.end(),
@@ -1170,7 +1171,7 @@ std::string ClangFilesBackend::pch_marker(const ObjectCache::Key& key, const cha
 std::optional<ClangFilesBackend::PchPlan> ClangFilesBackend::plan_pch(
     const std::string& cpp, const std::string& script_dir, bool mirror_files, uint64_t shadow_hash)
 {
-    // A mirror header of the host file system is in the work directory. Each load writes it
+    // A mirror header of the host file system is in the work directory. Each job writes it
     // again, and it has no stamp. So a compile with mirror files uses no PCH.
     if (mirror_files)
         return std::nullopt;
@@ -1421,6 +1422,17 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     return true;
 }
 
+void ClangFilesBackend::remove_mirror(BuildJob& job)
+{
+    if (!job.mirror_dir.empty())
+    {
+        std::error_code ec;
+        fs::remove_all(job.mirror_dir, ec);
+    }
+    job.mirror_dir.clear();
+    job.mirror_root.clear();
+}
+
 bool ClangFilesBackend::translate_stage(BuildJob& job, const ScriptSource& source, uint32_t generation,
     LoadMode mode, const std::string& out_so, bool deferred)
 {
@@ -1553,24 +1565,28 @@ bool ClangFilesBackend::translate_stage(BuildJob& job, const ScriptSource& sourc
     }
 
     // The headers of the host file system go to disk files, because the external compiler reads
-    // the disk. Each load writes them again under "<work_dir>/vfs".
-    if (opt_.fs)
+    // the disk. Each job writes them to its own directory "<work_dir>/vfs.job/<seq>". So jobs
+    // that compile at the same time do not share files. compile_stage removes the directory.
+    if (opt_.fs && !tr.virtual_files.empty())
     {
-        const fs::path mirror = fs::path(opt_.work_dir) / "vfs";
-        fs::remove_all(mirror, ec);
+        job.mirror_dir = (fs::path(opt_.work_dir) / "vfs.job" / std::to_string(job.seq)).string();
+        job.mirror_root = job.mirror_dir + "/";
+        fs::remove_all(job.mirror_dir, ec);
         for (const auto& [vpath, vtext] : tr.virtual_files)
         {
             const std::optional<std::string> rel = vfs_relative(vpath);
             if (!rel)
             {
                 job.error = "the virtual file '" + vpath + "' is outside the mirror directory\n";
+                remove_mirror(job);
                 return false;
             }
-            const fs::path target = mirror / *rel;
+            const fs::path target = fs::path(job.mirror_dir) / *rel;
             fs::create_directories(target.parent_path(), ec);
             if (!write_text(target.string(), vtext))
             {
                 job.error = "cannot write " + target.string();
+                remove_mirror(job);
                 return false;
             }
         }
@@ -1581,6 +1597,7 @@ bool ClangFilesBackend::translate_stage(BuildJob& job, const ScriptSource& sourc
     if (!sysroot_error.empty())
     {
         job.error = sysroot_error + "\n";
+        remove_mirror(job);
         return false;
     }
     return true;
@@ -1600,6 +1617,12 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
     const hotc::TranslateResult& tr = job.tr;
     const bool timing = job.timing;
     const auto translate_start = job.translate_start;
+    // The mirror of this job is not needed after the compile, on each return path.
+    struct MirrorGuard
+    {
+        BuildJob& job;
+        ~MirrorGuard() { remove_mirror(job); }
+    } mirror_guard{job};
     fs::remove(so_path, ec);
     std::string output;
     // The diagnostics can name the "#line" name or the path of the file (before the first "#line").
@@ -1624,7 +1647,7 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
     if (!job.use_cache)
     {
         fs::remove(obj_path, ec);
-        const int rc = run_command(compile_object_command(opt_, cpp_path, obj_path, dep_path, script_dir), output);
+        const int rc = run_command(compile_object_command(opt_, cpp_path, obj_path, dep_path, script_dir, job.mirror_root), output);
         t2 = std::chrono::steady_clock::now();
         if (rc != 0)
             return fail("compile", rc);
@@ -1633,7 +1656,7 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
     else
     {
         // The key has the translated text, the compile arguments (the paths of this build are
-        // fixed names), the compiler and the mirror files that the compile can read.
+        // fixed names, also the root of the mirror: the root of the job is not in the key), the compiler and the mirror files that the compile can read.
         ObjectCache::KeyInputs inputs;
         inputs.cpp_text = tr.cpp;
         inputs.args = ObjectCache::normalize_args(
@@ -1696,7 +1719,7 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
                 const std::string dep = base + ".d.tmp" + suffix;
                 fs::remove(tmp, ec);
                 fs::remove(dep, ec);
-                const std::vector<std::string> plain = compile_object_command(opt_, cpp_path, tmp, dep, script_dir);
+                const std::vector<std::string> plain = compile_object_command(opt_, cpp_path, tmp, dep, script_dir, job.mirror_root);
                 std::optional<PchPlan> pch;
                 {
                     std::lock_guard<std::mutex> pch_lock(pch_mutex_);
@@ -1934,6 +1957,7 @@ public:
             std::error_code ec;
             fs::remove(job_.out_so, ec);
         }
+        remove_mirror(job_);
     }
 
     void compile() override

@@ -182,12 +182,18 @@ private:
         bool timing = false;
         bool translate_hit = false;
         unsigned seq = 0; // the number of the job, for the names of the temporary files
+        // The mirror of the host files of this job: "<work_dir>/vfs.job/<seq>". Empty: no mirror.
+        // The root has a "/" at the end. compile_stage and the destructor of the load remove it.
+        std::string mirror_dir;
+        std::string mirror_root;
         std::chrono::steady_clock::time_point t0, t1;
         std::filesystem::file_time_type translate_start;
         std::string built_object; // the object file of the compile, for the compile database
         std::optional<ObjectCache::Key> cached_module;
         std::string error;
     };
+    // Removes the mirror directory of the job (if it has one) and clears the two fields.
+    static void remove_mirror(BuildJob& job);
     // Stage 1: reads the slots, translates and writes the .cpp files. The caller holds "mutex_".
     // "deferred" true: a load (the .cpp is not next to the .so, the text has no generation).
     bool translate_stage(BuildJob& job, const ScriptSource& source, uint32_t generation, LoadMode mode,
@@ -279,11 +285,13 @@ private:
 // The compile command of the backend for one generated .cpp and its object file. The backend
 // and the compile database (hotc --compile-commands) both use it, so the flags are the same.
 // The command has "-c" and, for a non-empty "depfile_path", "-MD -MF <depfile_path>".
-// With a host file system ("options.fs"), the files of the host go to "<work_dir>/vfs/<path>".
-// The command then adds "-I<work_dir>/vfs/<dir>" before each "-I<dir>", and one for
-// "script_dir" (the directory of the script; empty: none).
+// With a host file system ("options.fs"), the files of the host go to a mirror directory. The
+// command then adds "-I<mirror_root><dir>" before each "-I<dir>", and one for "script_dir" (the
+// directory of the script; empty: none). "mirror_root" empty: "<work_dir>/vfs/". A load that
+// compiles with the root of its own job gives the same arguments, but for this root.
 std::vector<std::string> compile_object_command(const ClangFilesOptions& options, const std::string& cpp_path,
-    const std::string& obj_path, const std::string& depfile_path, const std::string& script_dir = std::string());
+    const std::string& obj_path, const std::string& depfile_path, const std::string& script_dir = std::string(),
+    const std::string& mirror_root = std::string());
 
 // The link command of the backend: it makes the module "out_so" from the object file "obj_path".
 // It adds the import library of the host (host_import_library) after the object file.

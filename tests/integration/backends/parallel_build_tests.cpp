@@ -10,6 +10,7 @@
 // CMake defines the macros HOT_SOURCE_DIR and HOT_CXX.
 #include "hot/backend.h"
 #include "hot/clang_files_backend.h"
+#include "hot/vfs.h"
 #include "support/compiler_wrapper.h"
 #include "support/scratch_dir.h"
 #include "support/test_env.h"
@@ -19,7 +20,9 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -233,6 +236,221 @@ TEST(ParallelBuild, DroppedPendingRemovesItsLibrary)
         EXPECT_EQ(count_libraries(work), 1u) << "compile must make the library";
     }
     EXPECT_EQ(count_libraries(work), 0u) << "a dropped pending load must remove its library";
+}
+
+// A file system in memory. A mutex makes it thread safe, as the interface requires.
+class MemoryFs final : public hot::FileSystem
+{
+public:
+    bool read(const std::string& path, std::string& out) override
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const auto it = files_.find(path);
+        if (it == files_.end())
+            return false;
+        out = it->second;
+        return true;
+    }
+    hot::VfsStat stat(const std::string& path) override
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const auto it = files_.find(path);
+        if (it == files_.end())
+            return {};
+        return {true, 1};
+    }
+    void set(const std::string& path, const std::string& text)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        files_[path] = text;
+    }
+
+private:
+    std::mutex mutex_;
+    std::map<std::string, std::string> files_;
+};
+
+// The unit "i" of a host file system test: the header "v.h" has the same name in each script
+// directory, and a different text. The class "Calc<i>" has the result "10 * i + 7" from the header.
+std::string vfs_dir(int i)
+{
+    return "/hot_pb_vfs/u" + std::to_string(i);
+}
+
+hot::ScriptSource vfs_unit_source(int i)
+{
+    const std::string cls = class_name(i);
+    const std::string text = "using \"Actor.h\";\nusing \"v.h\";\nclass " + cls +
+                             " : Actor {\n    float result = 0.0;\n"
+                             "    override void Tick(float dt) { this.result = vfs_value(); }\n}\n";
+    return {vfs_dir(i) + "/calc" + std::to_string(i) + ".hot", text, {}, cls};
+}
+
+void set_vfs_headers(MemoryFs& fs)
+{
+    for (int i = 0; i < 4; ++i)
+        fs.set(vfs_dir(i) + "/v.h", "inline float vfs_value() { return " + std::to_string(10 * i + 7) + ".0f; }\n");
+}
+
+std::unique_ptr<hot::ClangFilesBackend> make_vfs_backend(const TestScratch& scratch, const std::string& work_name,
+    const std::string& cache_dir, const std::string& compiler, const std::shared_ptr<MemoryFs>& fs)
+{
+    hot::ClangFilesOptions o;
+    o.compiler = compiler;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
+    o.work_dir = scratch.file(work_name);
+    o.cache_dir = cache_dir;
+    o.fs = fs;
+    return std::make_unique<hot::ClangFilesBackend>(std::move(o));
+}
+
+// The count of the files and directories below a directory (0 when it does not exist).
+size_t count_entries(const std::string& dir)
+{
+    size_t n = 0;
+    std::error_code ec;
+    for (const auto& e : fs::recursive_directory_iterator(dir, ec))
+    {
+        (void)e;
+        ++n;
+    }
+    return n;
+}
+
+// The count of the mirror headers "v.h" below a directory.
+size_t count_mirror_headers(const std::string& dir)
+{
+    size_t n = 0;
+    std::error_code ec;
+    for (const auto& e : fs::recursive_directory_iterator(dir, ec))
+        if (e.is_regular_file() && e.path().filename() == "v.h")
+            ++n;
+    return n;
+}
+
+// With a host file system, four units compile at the same time. Each has its own header text.
+TEST(ParallelBuild, VfsCompilesRunAtTheSameTime)
+{
+    SKIP_ON_WINDOWS();
+    CleanEnv env;
+    TestScratch scratch;
+    CompilerWrapper wrapper(scratch.file("wrap"), HOT_CXX);
+    wrapper.set_wait(kWaitSeconds);
+    auto fs = std::make_shared<MemoryFs>();
+    set_vfs_headers(*fs);
+    auto backend = make_vfs_backend(scratch, "work", scratch.file("cache"), wrapper.path(), fs);
+    std::vector<std::unique_ptr<hot::PendingLoad>> pending;
+    for (int i = 0; i < 4; ++i)
+    {
+        pending.push_back(backend->begin_load(vfs_unit_source(i), 1));
+        ASSERT_NE(pending.back(), nullptr);
+        ASSERT_TRUE(pending.back()->ok) << pending.back()->head.error;
+    }
+    std::vector<std::thread> threads;
+    for (auto& p : pending)
+        threads.emplace_back([&p] { p->compile(); });
+    for (std::thread& t : threads)
+        t.join();
+    EXPECT_TRUE(wrapper.overlap()) << "two compiles must run at the same time";
+    for (int i = 0; i < 4; ++i)
+        EXPECT_EQ(run_module(pending[i]->finish(), i), expected_result(i)) << "unit " << i;
+}
+
+// After begin_load of four units, the four mirror headers exist at the same time.
+TEST(ParallelBuild, VfsBeginLoadIsTwoPhase)
+{
+    SKIP_ON_WINDOWS();
+    CleanEnv env;
+    TestScratch scratch;
+    CompilerWrapper wrapper(scratch.file("wrap"), HOT_CXX);
+    auto fs = std::make_shared<MemoryFs>();
+    set_vfs_headers(*fs);
+    auto backend = make_vfs_backend(scratch, "work", scratch.file("cache"), wrapper.path(), fs);
+    std::vector<std::unique_ptr<hot::PendingLoad>> pending;
+    for (int i = 0; i < 4; ++i)
+    {
+        pending.push_back(backend->begin_load(vfs_unit_source(i), 1));
+        ASSERT_NE(pending.back(), nullptr);
+        ASSERT_TRUE(pending.back()->ok) << pending.back()->head.error;
+    }
+    EXPECT_EQ(count_mirror_headers(scratch.file("work") + "/vfs.job"), 4u);
+    EXPECT_EQ(wrapper.compile_calls(), 0u) << "begin_load must not compile";
+}
+
+// The mirror of a job is gone after its compile. A dropped pending load leaves none too.
+TEST(ParallelBuild, VfsMirrorIsGoneAfterCompile)
+{
+    SKIP_ON_WINDOWS();
+    CleanEnv env;
+    TestScratch scratch;
+    CompilerWrapper wrapper(scratch.file("wrap"), HOT_CXX);
+    auto fs = std::make_shared<MemoryFs>();
+    set_vfs_headers(*fs);
+    auto backend = make_vfs_backend(scratch, "work", scratch.file("cache"), wrapper.path(), fs);
+    const std::string jobs = scratch.file("work") + "/vfs.job";
+    {
+        std::unique_ptr<hot::PendingLoad> pending = backend->begin_load(vfs_unit_source(1), 1);
+        ASSERT_NE(pending, nullptr);
+        ASSERT_TRUE(pending->ok) << pending->head.error;
+        EXPECT_EQ(count_mirror_headers(jobs), 1u);
+        pending->compile();
+        EXPECT_EQ(count_entries(jobs), 0u) << "compile must remove the mirror";
+        EXPECT_EQ(run_module(pending->finish(), 1), expected_result(1));
+        EXPECT_EQ(count_entries(jobs), 0u);
+    }
+    {
+        std::unique_ptr<hot::PendingLoad> pending = backend->begin_load(vfs_unit_source(2), 1);
+        ASSERT_NE(pending, nullptr);
+        ASSERT_TRUE(pending->ok) << pending->head.error;
+        EXPECT_EQ(count_mirror_headers(jobs), 1u);
+    }
+    EXPECT_EQ(count_entries(jobs), 0u) << "a dropped pending load must remove the mirror";
+}
+
+// The object key does not depend on the job: the same unit loaded twice gives a cache hit.
+TEST(ParallelBuild, VfsKeyIsStableAcrossJobs)
+{
+    SKIP_ON_WINDOWS();
+    CleanEnv env;
+    TestScratch scratch;
+    CompilerWrapper wrapper(scratch.file("wrap"), HOT_CXX);
+    auto fs = std::make_shared<MemoryFs>();
+    set_vfs_headers(*fs);
+    auto backend = make_vfs_backend(scratch, "work", scratch.file("cache"), wrapper.path(), fs);
+    for (int round = 0; round < 2; ++round)
+    {
+        std::unique_ptr<hot::PendingLoad> pending = backend->begin_load(vfs_unit_source(1), 1 + round);
+        ASSERT_NE(pending, nullptr);
+        ASSERT_TRUE(pending->ok) << pending->head.error;
+        pending->compile();
+        EXPECT_EQ(run_module(pending->finish(), 1), expected_result(1));
+    }
+    EXPECT_EQ(backend->cache_stats().misses, 1u);
+    EXPECT_EQ(backend->cache_stats().hits, 1u);
+}
+
+// The three phases give the same result as load, with a host file system.
+TEST(ParallelBuild, VfsTwoPhaseEqualsLoad)
+{
+    SKIP_ON_WINDOWS();
+    CleanEnv env;
+    TestScratch scratch;
+    CompilerWrapper wrapper(scratch.file("wrap"), HOT_CXX);
+    auto fs = std::make_shared<MemoryFs>();
+    set_vfs_headers(*fs);
+    {
+        auto backend = make_vfs_backend(scratch, "work_a", scratch.file("cache"), wrapper.path(), fs);
+        std::unique_ptr<hot::PendingLoad> pending = backend->begin_load(vfs_unit_source(3), 1);
+        ASSERT_NE(pending, nullptr);
+        ASSERT_TRUE(pending->ok) << pending->head.error;
+        pending->compile();
+        EXPECT_EQ(run_module(pending->finish(), 3), expected_result(3));
+        EXPECT_EQ(backend->cache_stats().misses, 1u);
+    }
+    auto backend = make_vfs_backend(scratch, "work_b", scratch.file("cache"), wrapper.path(), fs);
+    EXPECT_EQ(run_module(backend->load(vfs_unit_source(3), 1), 3), expected_result(3));
+    EXPECT_EQ(backend->cache_stats().hits, 1u);
+    EXPECT_EQ(backend->cache_stats().misses, 0u);
 }
 
 } // namespace
