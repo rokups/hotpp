@@ -2,6 +2,7 @@
 // This work is licensed under the terms of the MIT license.
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
+#include "hot/backend.h"
 #include "hot/module.h"
 
 #ifdef _WIN32
@@ -22,9 +23,12 @@
     #include "hot/command_line.h"
 #endif
 
+#include <algorithm>
 #include <atomic>
+#include <cstdlib>
 #include <filesystem>
 #include <system_error>
+#include <thread>
 
 namespace hot
 {
@@ -159,6 +163,52 @@ LoadResult module_from_library(const std::string& path)
     if (r)
         r.module->make_core = [path] { return open_core_copy(path); };
     return r;
+}
+
+
+namespace
+{
+
+// The default PendingLoad: the result of Backend::load, kept for finish.
+class ImmediateLoad final : public PendingLoad
+{
+public:
+    explicit ImmediateLoad(LoadResult result) : result_(std::move(result))
+    {
+        head.error = result_.error;
+        head.reason = result_.reason;
+        head.dependencies = result_.dependencies;
+        head.iface_hash = result_.iface_hash;
+        head.import_hashes = result_.import_hashes;
+        ok = result_.error.empty();
+    }
+    LoadResult finish() override { return std::move(result_); }
+
+private:
+    LoadResult result_;
+};
+
+} // namespace
+
+std::unique_ptr<PendingLoad> Backend::begin_load(const ScriptSource& source, uint32_t generation, LoadMode mode)
+{
+    return std::make_unique<ImmediateLoad>(load(source, generation, mode));
+}
+
+unsigned build_jobs()
+{
+#ifdef _WIN32
+    return 1;
+#else
+    if (const char* env = std::getenv("HOT_JOBS"))
+    {
+        char* end = nullptr;
+        const unsigned long value = std::strtoul(env, &end, 10);
+        if (end != env && *end == '\0' && value > 0 && value <= 4096)
+            return static_cast<unsigned>(value);
+    }
+    return std::max(1u, std::thread::hardware_concurrency());
+#endif
 }
 
 } // namespace hot

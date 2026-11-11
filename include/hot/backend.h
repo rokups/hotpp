@@ -61,10 +61,38 @@ struct CacheStats
     uint64_t module_misses = 0;
 };
 
+// A load in two phases. Backend::begin_load makes it. The first phase (begin_load) does the work
+// that must run in order: the translation and the slot state. The second phase (compile) is the
+// slow build. The last phase (finish) opens the library and makes the Module.
+//
+// Thread contract:
+//  - begin_load and finish run one at a time, on one thread.
+//  - compile runs on any thread. Many compile calls can run at the same time.
+//  - Do not call Loader::commit_pending between the first begin_load and the last finish.
+//  - A PendingLoad does not outlive its backend.
+class PendingLoad
+{
+public:
+    virtual ~PendingLoad() = default;
+    // The result of the first phase, without the module: error, reason, dependencies, iface_hash
+    // and import_hashes.
+    LoadResult head;
+    // False when the first phase failed (head.error is not empty).
+    bool ok = true;
+    // The slow build. The default does nothing.
+    virtual void compile() {}
+    // Makes the result. Call it after compile. The result has the module when the load succeeds.
+    virtual LoadResult finish() = 0;
+};
+
 class Backend
 {
 public:
     virtual ~Backend() = default;
+    // Starts a load in two phases (see PendingLoad). The default calls load, keeps the result, and
+    // finish returns it.
+    virtual std::unique_ptr<PendingLoad> begin_load(
+        const ScriptSource& source, uint32_t generation, LoadMode mode = LoadMode::Reload);
     // Makes the Module of one script for one generation. On failure the result has
     // an error text with the compiler diagnostics and a "reason". It does not touch the live
     // generation. It does not write the slot state: the Module has an "on_accept" callback that
@@ -104,6 +132,11 @@ public:
     // off. A thread can call it during a load. The default returns zeros.
     virtual CacheStats cache_stats() const { return {}; }
 };
+
+// The number of parallel build jobs. It reads the environment variable HOT_JOBS. A value that is
+// not set, not valid or 0 gives std::thread::hardware_concurrency(). The minimum is 1. On Windows
+// it returns 1.
+unsigned build_jobs();
 
 // Replaces each line "sig Cls::fn Sig" of "state" with the line of "aot" for the same function.
 // Other lines of "state" stay, so the slot numbers of the methods that an override added stay.
