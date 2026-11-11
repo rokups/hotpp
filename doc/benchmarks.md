@@ -585,3 +585,25 @@ A cold build is the same: the first miss of an include set builds no PCH. The wa
 ## Parallel compiles
 
 The launcher compiles a batch in parallel (`HOT_JOBS`). The measurement of the gain is pending. The numbers above come from the serial build.
+
+## Translate time by phase (cold start of the BiteSizedWar game)
+
+The `hot:` line of a translate miss shows the phases after the old fields. HOT_TIMING=1 enables it.
+One cold start: 87 units, an empty cache, HOT_JOBS not set. Each unit has one parse.
+
+| Item | Value |
+|---|---|
+| Sum of translate | 130825 ms |
+| Sum of parse (libclang) | 116606 ms (P = 89.1 %) |
+| Sum of lock wait | 0 ms |
+| Sum of front (before the session lookup) | 2854 ms (F = 2.2 %) |
+| Sum of lower (session lookup to first check) | 0 ms |
+| Sum of check (first check to emit start) | 3919 ms |
+| Sum of emit | 136 ms |
+| Parses for each unit | 1.0 |
+| Parse of the 5 smallest units (ms) | 216, 217, 218, 218, 223 |
+| 5 largest translate times (ms) | Game/Game 4477, Game/GameServerSide 3504, Game/GameClientMessages 3196, Game/GameMatch 3047, Game/GameCarveFlow 2764 |
+
+The phases cover 123515 ms of 130825 ms. The rest is the session lookup work outside the parse.
+The check phase includes the per-class lowering. The emit phase starts at the function bodies.
+The smallest parse is about 220 ms: this is the fixed cost of one parse.
