@@ -9,6 +9,8 @@
 #include "hot/runtime/scheduler.h"
 #include "hot/runtime/threads.h"
 
+#include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <chrono>
@@ -17,6 +19,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <set>
@@ -24,6 +27,7 @@
 #include <system_error>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace hot::launcher
 {
@@ -282,7 +286,7 @@ BuildOutput build_batch(hot::Backend& backend, const std::string& script_path, c
                         uint32_t generation, hot::LoadMode mode, const std::map<std::string, std::string>& texts = {})
 {
     BuildOutput out;
-    std::map<std::string, hot::LoadResult> built;
+    std::map<std::string, std::unique_ptr<hot::PendingLoad>> pending;
     const auto fail = [&](std::string error, const std::vector<std::string>& deps)
     {
         out.error = std::move(error);
@@ -292,11 +296,12 @@ BuildOutput build_batch(hot::Backend& backend, const std::string& script_path, c
             out.dependencies.push_back(d);
         return out;
     };
+    // Phase 1: the worklist. begin_load does the fast part and gives the imports.
     while (!todo.empty())
     {
         const std::string name = *todo.begin();
         todo.erase(todo.begin());
-        if (built.count(name))
+        if (pending.count(name))
             continue;
         out.attempted.insert(name);
         const auto old = known.find(name);
@@ -308,23 +313,91 @@ BuildOutput build_batch(hot::Backend& backend, const std::string& script_path, c
             text = t->second;
         else if (!read_file(path, text))
             return fail("cannot read the script '" + path + "'", {});
-        hot::LoadResult r = backend.load(hot::ScriptSource{path, std::move(text), {}, name}, generation, mode);
-        if (!r)
-            return fail(r.error.empty() ? "the script '" + path + "' did not compile" : r.error, r.dependencies);
-        const bool changed = old == known.end() || old->second.iface_hash != r.iface_hash;
-        known[name] = UnitState{path, r.iface_hash, r.import_hashes, r.dependencies};
-        for (const auto& [dep, hash] : r.import_hashes)
-            if (!known.count(dep) && !built.count(dep))
+        std::unique_ptr<hot::PendingLoad> p =
+            backend.begin_load(hot::ScriptSource{path, std::move(text), {}, name}, generation, mode);
+        const hot::LoadResult& head = p->head;
+        if (!p->ok)
+            return fail(head.error.empty() ? "the script '" + path + "' did not compile" : head.error, head.dependencies);
+        const bool changed = old == known.end() || old->second.iface_hash != head.iface_hash;
+        known[name] = UnitState{path, head.iface_hash, head.import_hashes, head.dependencies};
+        for (const auto& [dep, hash] : head.import_hashes)
+            if (!known.count(dep) && !pending.count(dep))
                 todo.insert(dep); // a new import
         if (changed)
             for (const auto& [unit, u] : known)
                 for (const auto& [dep, hash] : u.imports)
-                    if (dep == name && !built.count(unit) && unit != name)
+                    if (dep == name && !pending.count(unit) && unit != name)
                         todo.insert(unit); // an importer of the changed interface
-        built.emplace(name, std::move(r));
+        pending.emplace(name, std::move(p));
     }
-    for (auto& [name, r] : built)
-        out.results.push_back(std::move(r));
+    // Phase 2: the slow compiles, in parallel when build_jobs allows it.
+    std::vector<hot::PendingLoad*> units;
+    std::vector<std::string> names;
+    for (auto& [name, p] : pending)
+    {
+        units.push_back(p.get());
+        names.push_back(name);
+    }
+    std::vector<std::string> compile_errors(units.size());
+    std::atomic<size_t> next{0};
+    const auto work = [&]
+    {
+        for (size_t i = next.fetch_add(1); i < units.size(); i = next.fetch_add(1))
+        {
+            try
+            {
+                units[i]->compile();
+            }
+            catch (const std::exception& e)
+            {
+                compile_errors[i] = e.what()[0] ? e.what() : "the compile failed";
+            }
+            catch (...)
+            {
+                compile_errors[i] = "the compile failed";
+            }
+        }
+    };
+    const size_t jobs = std::min<size_t>(hot::build_jobs(), units.size());
+    if (jobs <= 1)
+        work();
+    else
+    {
+        std::vector<std::thread> threads;
+        try
+        {
+            for (size_t i = 0; i < jobs; ++i)
+                threads.emplace_back(work);
+        }
+        catch (const std::system_error&)
+        {
+            // A thread did not start: the started threads and this thread do the work.
+        }
+        catch (...)
+        {
+            for (std::thread& t : threads)
+                t.join();
+            throw;
+        }
+        work();
+        for (std::thread& t : threads)
+            t.join();
+    }
+    // Phase 3: the results, in name order. The first failure is the reported error.
+    std::vector<hot::LoadResult> results;
+    for (size_t i = 0; i < units.size(); ++i)
+    {
+        if (!compile_errors[i].empty())
+            return fail(compile_errors[i], units[i]->head.dependencies);
+        hot::LoadResult r = units[i]->finish();
+        if (!r)
+        {
+            const std::string path = known[names[i]].path;
+            return fail(r.error.empty() ? "the script '" + path + "' did not compile" : r.error, r.dependencies);
+        }
+        results.push_back(std::move(r));
+    }
+    out.results = std::move(results);
     out.units = std::move(known);
     out.dependencies = all_dependencies(out.units);
     out.ok = true;

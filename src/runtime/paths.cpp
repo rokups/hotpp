@@ -270,6 +270,8 @@ DefaultPaths compute_paths()
 {
     DefaultPaths p;
     p.compiler = HOT_DEFAULT_CXX;
+    if (const char* e = std::getenv("HOT_CXX"); e && *e)
+        p.compiler = e;
     p.include_dirs = split_list(HOT_DEFAULT_INCLUDES);
     p.resource_dir = HOT_DEFAULT_RESOURCE_DIR;
     p.work_dir = HOT_DEFAULT_WORK_DIR;
