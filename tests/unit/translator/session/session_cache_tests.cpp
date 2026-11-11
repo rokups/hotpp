@@ -8,14 +8,24 @@
 // the same output as a miss. A change of a header must invalidate the cache.
 // CMake defines HOT_SOURCE_DIR.
 #include "hot/hotc_lib.h"
+#include "hot/vfs.h"
 #include "support/stub_translate_test_support.h"
 #include "support/translator_test_support.h"
 
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <atomic>
+#include <condition_variable>
+#include <functional>
+#include <future>
 #include <iostream>
+#include <map>
+#include <mutex>
+#include <stdexcept>
 #include <string>
+#include <thread>
+#include <vector>
 
 using namespace translator_test;
 using namespace stub_translate_test;
@@ -307,4 +317,186 @@ TEST(SessionCache, NewHeaderEarlierInTheIncludePathInvalidatesTheCache)
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_EQ(session.parse_count(), 2);
     EXPECT_NE(r.slots_out.find("Foo::Update"), std::string::npos) << r.slots_out;
+}
+
+namespace
+{
+
+// A file system in memory with hooks. The files have version 0, so the stamp of a file reads it
+// again during the parse, under the lock of the entry. The hook runs on the second read of a
+// path by one thread. That read is part of the parse.
+class HookFs final : public hot::FileSystem
+{
+public:
+    std::function<void(const std::string&)> on_parse_read;
+    void set(const std::string& path, const std::string& text) { files_[path] = text; }
+
+    bool read(const std::string& path, std::string& out) override
+    {
+        const auto it = files_.find(path);
+        if (it == files_.end())
+            return false;
+        bool in_parse = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            in_parse = ++reads_[{std::this_thread::get_id(), path}] >= 2;
+        }
+        if (in_parse && on_parse_read)
+            on_parse_read(path);
+        out = it->second;
+        return true;
+    }
+    hot::VfsStat stat(const std::string& path) override
+    {
+        return files_.count(path) ? hot::VfsStat{true, 0} : hot::VfsStat{};
+    }
+
+private:
+    std::map<std::string, std::string> files_; // set before the threads start
+    std::mutex mutex_;
+    std::map<std::pair<std::thread::id, std::string>, int> reads_;
+};
+
+hotc::TranslateOptions hook_options(const TempDir& dir, const std::shared_ptr<HookFs>& fs)
+{
+    const std::string d = dir.path().string();
+    fs->set(d + "/w.h", kHeaderV1);
+    hotc::TranslateOptions o = temp_options(dir, widget_script("Update(float dt)", "override "));
+    o.fs = fs;
+    return o;
+}
+
+} // namespace
+
+// Two keys parse at the same time. Both parses must reach the hook before either one ends.
+TEST(SessionParallel, TwoKeysParseAtTheSameTime)
+{
+    TempDir dir;
+    std::mutex m;
+    std::condition_variable cv;
+    int arrived = 0;
+    bool overlap = true;
+    const auto hook = [&](const std::string&)
+    {
+        std::unique_lock<std::mutex> lock(m);
+        if (++arrived == 2)
+            cv.notify_all();
+        if (!cv.wait_for(lock, std::chrono::seconds(20), [&] { return arrived >= 2; }))
+            overlap = false;
+    };
+    hotc::TranslatorSession session;
+    std::vector<std::shared_ptr<HookFs>> fss;
+    std::vector<hotc::TranslateOptions> opts;
+    for (int i = 0; i < 2; ++i)
+    {
+        fss.push_back(std::make_shared<HookFs>()); // another file system is another key
+        opts.push_back(hook_options(dir, fss.back()));
+        fss.back()->on_parse_read = hook;
+    }
+    std::vector<hotc::TranslateResult> res(2);
+    std::vector<std::thread> threads;
+    for (int i = 0; i < 2; ++i)
+        threads.emplace_back([&, i] { res[i] = hotc::translate(opts[i], session); });
+    for (auto& t : threads)
+        t.join();
+    EXPECT_TRUE(overlap);
+    EXPECT_TRUE(res[0].ok) << res[0].diagnostics;
+    EXPECT_TRUE(res[1].ok) << res[1].diagnostics;
+    EXPECT_EQ(session.parse_count(), 2);
+}
+
+// Eight threads, one key: one parse, and equal results.
+TEST(SessionParallel, OneKeyParsesOnce)
+{
+    const hotc::TranslateOptions o = engine_options("player_v1.hot", 1);
+    hotc::TranslatorSession session;
+    std::vector<hotc::TranslateResult> res(8);
+    std::vector<std::thread> threads;
+    for (int i = 0; i < 8; ++i)
+        threads.emplace_back([&, i] { res[i] = hotc::translate(o, session); });
+    for (auto& t : threads)
+        t.join();
+    EXPECT_EQ(session.parse_count(), 1);
+    for (int i = 0; i < 8; ++i)
+    {
+        ASSERT_TRUE(res[i].ok) << res[i].diagnostics;
+        EXPECT_EQ(res[i].cpp, res[0].cpp);
+        EXPECT_EQ(res[i].slots_out, res[0].slots_out);
+    }
+}
+
+// clear() during a parse: no crash, and the next call parses again.
+TEST(SessionParallel, ClearDuringAParse)
+{
+    TempDir dir;
+    auto fs = std::make_shared<HookFs>();
+    const hotc::TranslateOptions o = hook_options(dir, fs);
+    std::promise<void> inside, go;
+    std::shared_future<void> go_f = go.get_future().share();
+    std::atomic<bool> once{false};
+    fs->on_parse_read = [&](const std::string&)
+    {
+        if (!once.exchange(true))
+        {
+            inside.set_value();
+            go_f.wait();
+        }
+    };
+    hotc::TranslatorSession session;
+    hotc::TranslateResult first;
+    std::thread t([&] { first = hotc::translate(o, session); });
+    inside.get_future().wait();
+    session.clear();
+    go.set_value();
+    t.join();
+    ASSERT_TRUE(first.ok) << first.diagnostics;
+    EXPECT_EQ(session.parse_count(), 1);
+    const hotc::TranslateResult second = hotc::translate(o, session);
+    ASSERT_TRUE(second.ok) << second.diagnostics;
+    EXPECT_EQ(session.parse_count(), 2); // the clear dropped the entry
+    EXPECT_EQ(second.cpp, first.cpp);
+}
+
+// A parse that throws on one thread. The thread that waits on the same key parses again.
+TEST(SessionParallel, ThrowingParseLetsTheWaiterParse)
+{
+    TempDir dir;
+    auto fs = std::make_shared<HookFs>();
+    const hotc::TranslateOptions o = hook_options(dir, fs);
+    std::promise<void> inside, go;
+    std::shared_future<void> go_f = go.get_future().share();
+    std::atomic<bool> once{false};
+    fs->on_parse_read = [&](const std::string&)
+    {
+        if (!once.exchange(true))
+        {
+            inside.set_value();
+            go_f.wait();
+            throw std::runtime_error("test failure in the parse");
+        }
+    };
+    hotc::TranslatorSession session;
+    bool threw = false;
+    std::thread a(
+        [&]
+        {
+            try
+            {
+                hotc::translate(o, session);
+            }
+            catch (const std::exception&)
+            {
+                threw = true;
+            }
+        });
+    inside.get_future().wait();
+    hotc::TranslateResult b_res;
+    std::thread b([&] { b_res = hotc::translate(o, session); });
+    std::this_thread::sleep_for(std::chrono::milliseconds(200)); // b waits for the entry
+    go.set_value();
+    a.join();
+    b.join();
+    EXPECT_TRUE(threw);
+    ASSERT_TRUE(b_res.ok) << b_res.diagnostics;
+    EXPECT_EQ(session.parse_count(), 2);
 }

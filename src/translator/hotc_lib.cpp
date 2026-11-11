@@ -59,6 +59,7 @@
 #include <fstream>
 #include <functional>
 #include <map>
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -3413,6 +3414,7 @@ struct TranslatorSession::Impl
 {
     struct Entry
     {
+        std::mutex mutex; // one parse at a time for the key; other keys parse at the same time
         std::vector<FileStamp> files;
         std::map<std::string, BaseInfo> bases;
         Hierarchy hierarchy;
@@ -3421,9 +3423,11 @@ struct TranslatorSession::Impl
         // The start of the earliest parse that gave facts to the entry (TranslateResult::parse_start_ns).
         int64_t parse_start_ns = 0;
     };
+    // "mutex" guards only the map. Lock order: an entry first, then the map. Never lock an
+    // entry while the map is locked. An entry stays alive while a call holds its pointer.
     std::mutex mutex;
-    std::map<std::string, Entry> entries;
-    int parses = 0;
+    std::map<std::string, std::shared_ptr<Entry>> entries;
+    std::atomic<int> parses{0};
 };
 
 TranslatorSession::TranslatorSession()
@@ -3434,14 +3438,17 @@ TranslatorSession::~TranslatorSession() = default;
 
 int TranslatorSession::parse_count() const
 {
-    std::lock_guard<std::mutex> lock(impl_->mutex);
-    return impl_->parses;
+    return impl_->parses.load();
 }
 
 void TranslatorSession::clear()
 {
-    std::lock_guard<std::mutex> lock(impl_->mutex);
-    impl_->entries.clear();
+    std::map<std::string, std::shared_ptr<Impl::Entry>> old;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mutex);
+        old.swap(impl_->entries);
+    }
+    // A parse in progress keeps its entry alive. The old entries die here, outside the lock.
 }
 
 } // namespace hotc
@@ -3459,17 +3466,32 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
     std::vector<std::string>* deps, std::vector<std::string>* shadows, int64_t* parse_start_ns,
     hotc::TranslateTiming* timing)
 {
+    std::shared_ptr<hotc::TranslatorSession::Impl::Entry> entry;
+    {
+        std::lock_guard<std::mutex> map_lock(S.mutex);
+        auto& slot = S.entries[key];
+        if (!slot)
+            slot = std::make_shared<hotc::TranslatorSession::Impl::Entry>();
+        entry = slot;
+    }
     const auto wait_start = std::chrono::steady_clock::now();
-    std::lock_guard<std::mutex> lock(S.mutex);
+    std::lock_guard<std::mutex> lock(entry->mutex);
     if (timing)
         timing->parse_wait_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now() - wait_start).count();
-    auto& e = S.entries[key];
+    auto& e = *entry;
     bool fresh = !e.files.empty();
     for (size_t i = 0; fresh && i < e.files.size(); ++i)
         fresh = stamp_fresh(fs, e.files[i]);
     if (!fresh)
-        e = {};
+    {
+        e.files.clear();
+        e.bases.clear();
+        e.hierarchy = {};
+        e.facts.clear();
+        e.queries.clear();
+        e.parse_start_ns = 0;
+    }
     bool complete = fresh;
     for (const auto& n : names)
         complete = complete && e.bases.count(n);
@@ -3511,7 +3533,12 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
         catch (...)
         {
             count_parse();
-            S.entries.erase(key);
+            {
+                std::lock_guard<std::mutex> map_lock(S.mutex);
+                const auto it = S.entries.find(key);
+                if (it != S.entries.end() && it->second == entry)
+                    S.entries.erase(it);
+            }
             throw;
         }
         count_parse();

@@ -210,7 +210,7 @@ std::optional<uint64_t> import_view_hash(const std::string& text, const std::str
 struct TranslateTiming
 {
     int64_t parse_ns = 0;      // the libclang parse (zero when the session cache hits)
-    int64_t parse_wait_ns = 0; // the wait for the lock of the session
+    int64_t parse_wait_ns = 0; // the wait for the lock of the entry
     int64_t parses = 0;        // the number of parses in this call
     int64_t front_ns = 0;      // the time before the session lookup
     int64_t lower_ns = 0;      // from the session lookup to the first check
@@ -346,7 +346,9 @@ struct AnalyzeResult
 // include flags, the current directory and the imports. The session also keeps the
 // path, the change time and the size of each file that the parse included. A call
 // checks them again. If one differs, the session parses again. A session is thread
-// safe. The calls that use the same session wait for each other during a parse.
+// safe. Calls with the same key wait for each other during a parse. Calls with different keys
+// parse at the same time. Parallel translate calls are permitted. clear() is safe during a
+// translate call: a parse in progress keeps its entry.
 class TranslatorSession
 {
 public:
