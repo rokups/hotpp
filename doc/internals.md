@@ -27,6 +27,8 @@ Facts that differ from the first design:
 - `CompilerInvocation` keeps pointers into the argument strings. The strings must live as long as the compile.
 - `LLVMConfig.cmake` probes C headers, so CMake calls `enable_language(C)` for the JIT build.
 - The global constructors of a script (the class record) are run by `LLJIT::initialize`. Without it, `Player_record` has no value.
+- The engine can keep the object of a module as bytes (`hot_jit_capture_objects`, `hot_jit_dylib_object`). A new engine loads the bytes with `hot_jit_add_object` (`LLJIT::addObjectFile`). The generic platform of `LLJIT` replaces `llvm.global_ctors` with the hidden function `__orc_init_func.<module id>`. It finds this name prefix in an added object, so `LLJIT::initialize` runs it one time. The static destructors go through the `__cxa_atexit` of the platform and run at `hot_jit_remove`. The host symbols and the absolute symbols (`hot_call_depth_tp_offset`) are relocations by name, so the object has no address of the first engine. The debugger plugin registers an added object the same as a compiled object. `tests/integration/backends/jit_object_tests.cpp` checks this.
+- LLVM puts a new GDB JIT entry at the head of `__jit_debug_descriptor` and keeps the entries of removed code.
 
 ### Load times
 

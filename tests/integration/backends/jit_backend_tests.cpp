@@ -461,24 +461,30 @@ TEST(JitTests, DebuggerGetsObjectWithScriptLines)
     o.resource_dir = HOT_RESOURCE_DIR;
     hot::JitBackend backend(o);
     const hot::ScriptSource src = source("player_v2.hot");
+    // LLVM puts a new entry at the head of the list and keeps the entries of removed code. So
+    // the test looks only at the entries of this load: the entries that are not in "before".
+    std::set<const jit_code_entry*> before;
+    for (const jit_code_entry* e = __jit_debug_descriptor.first_entry; e; e = e->next_entry)
+        before.insert(e);
     hot::LoadResult r = backend.load(src, 1);
     ASSERT_TRUE(r) << r.error;
     ASSERT_TRUE(backend.debugger_support()) << backend.debugger_error();
 
-    // The newest entry is the last in the list.
-    const jit_code_entry* last = __jit_debug_descriptor.first_entry;
-    ASSERT_NE(last, nullptr) << "no object was registered";
-    while (last->next_entry)
-        last = last->next_entry;
-    ASSERT_GT(last->symfile_size, 0u);
     test_support::TestScratch scratch;
     const std::string image = scratch.file("jit_debug_object.o");
+    const int line = test_support::line_with(src.text, "Math.Min");
+    bool found = false;
+    for (const jit_code_entry* e = __jit_debug_descriptor.first_entry; e && !found; e = e->next_entry)
     {
-        std::ofstream f(image, std::ios::binary);
-        f.write(last->symfile_addr, static_cast<std::streamsize>(last->symfile_size));
+        if (before.count(e) || e->symfile_size == 0)
+            continue;
+        {
+            std::ofstream f(image, std::ios::binary | std::ios::trunc);
+            f.write(e->symfile_addr, static_cast<std::streamsize>(e->symfile_size));
+        }
+        found = test_support::lines_of_file(test_support::dump_line_table(image), "player_v2.hot").count(line) != 0;
     }
-    const std::set<int> lines = test_support::lines_of_file(test_support::dump_line_table(image), "player_v2.hot");
-    EXPECT_TRUE(lines.count(test_support::line_with(src.text, "Math.Min")));
+    EXPECT_TRUE(found) << "no new object has the line " << line << " of player_v2.hot";
 }
 #endif
 

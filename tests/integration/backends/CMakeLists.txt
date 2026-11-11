@@ -22,7 +22,7 @@ set(BACKEND_TEST_SOURCES
 # On Windows, process.h needs hot::windows_command_line. The target gets it from hot_runtime.
 list(APPEND BACKEND_TEST_SOURCES hotc_tool_tests.cpp)
 if(HOT_JIT_ENABLED)
-    list(APPEND BACKEND_TEST_SOURCES jit_backend_tests.cpp)
+    list(APPEND BACKEND_TEST_SOURCES jit_backend_tests.cpp jit_object_tests.cpp)
 endif()
 add_executable(integration_backend_tests ${BACKEND_TEST_SOURCES}
     ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp

@@ -22,6 +22,7 @@
 #include <llvm/ExecutionEngine/Orc/Debugging/DebuggerSupport.h>
 #include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
+#include <llvm/ExecutionEngine/Orc/ObjectTransformLayer.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/GlobalVariable.h>
@@ -40,6 +41,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <chrono>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -81,6 +83,12 @@ struct hot_jit_ir
 struct hot_jit_engine
 {
     std::unique_ptr<llvm::orc::LLJIT> jit;
+    // The capture of the objects (hot_jit_capture_objects). The object transform runs when ORC
+    // makes the machine code of a module, so "pending" maps the name of the object buffer of a
+    // module ("<id>-jitted-objectbuffer") to its dylib until then.
+    std::mutex capture_mutex;
+    bool capture = false;
+    std::map<std::string, hot_jit_dylib*> pending;
 };
 
 struct hot_jit_dylib
@@ -91,6 +99,11 @@ struct hot_jit_dylib
     bool initialized = false;
     double add_ms = 0;
     double init_ms = 0;
+    // The key in hot_jit_engine::pending, or empty.
+    std::string pending_name;
+    // A copy of the object of the module, when the engine captures the objects.
+    std::vector<char> object;
+    bool has_object = false;
 };
 
 namespace
@@ -388,6 +401,14 @@ private:
 };
 #endif
 
+// Makes the dylib "id" with the absolute symbols. Null and "*out_error" on failure.
+std::unique_ptr<hot_jit_dylib> new_dylib(hot_jit_engine* engine, const char* id, const char* const* abs_names,
+    const uint64_t* abs_values, size_t n_abs, char** out_error);
+
+// Runs the static initializers of the dylib. Null and "*out_error" on failure.
+hot_jit_dylib* initialize_dylib(std::unique_ptr<hot_jit_dylib> holder,
+    std::chrono::steady_clock::time_point t_start, char** out_error);
+
 } // namespace
 
 extern "C"
@@ -534,6 +555,24 @@ hot_jit_engine* hot_jit_engine_create(int debugger_support, const void* const* h
     }
     auto engine = std::make_unique<hot_jit_engine>();
     engine->jit = std::move(*jit);
+    // The objects of the modules go through this transform (also the objects of
+    // hot_jit_add_object). It copies the object of a pending dylib and passes each object on.
+    hot_jit_engine* e = engine.get();
+    engine->jit->getObjTransformLayer().setTransform(
+        [e](std::unique_ptr<llvm::MemoryBuffer> object) -> llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>>
+        {
+            std::lock_guard<std::mutex> lock(e->capture_mutex);
+            const auto it = e->pending.find(object->getBufferIdentifier().str());
+            if (it != e->pending.end())
+            {
+                hot_jit_dylib* d = it->second;
+                d->object.assign(object->getBufferStart(), object->getBufferEnd());
+                d->has_object = true;
+                d->pending_name.clear();
+                e->pending.erase(it);
+            }
+            return std::move(object);
+        });
     // The debugger sees the JIT code: the plugin registers each linked object through the
     // GDB JIT interface (__jit_debug_descriptor). GDB and LLDB read it. The object has the
     // line table of "-gline-tables-only", so the debugger shows the .hot files and lines.
@@ -568,6 +607,117 @@ hot_jit_dylib* hot_jit_add(hot_jit_engine* engine, const char* id, hot_jit_ir* i
 {
     const auto t_start = std::chrono::steady_clock::now();
     std::unique_ptr<hot_jit_ir> owned(ir);
+    std::unique_ptr<hot_jit_dylib> holder = new_dylib(engine, id, abs_names, abs_values, n_abs, out_error);
+    if (!holder)
+        return nullptr;
+    llvm::orc::LLJIT& jit = *engine->jit;
+    import_coff_data(*owned->module);
+    // The name of the object buffer and of the initializer function (__orc_init_func.<id>)
+    // comes from the module identifier. The id of a live dylib is unique in the engine.
+    owned->module->setModuleIdentifier(id);
+    {
+        std::lock_guard<std::mutex> lock(engine->capture_mutex);
+        if (engine->capture)
+        {
+            holder->pending_name = std::string(id) + "-jitted-objectbuffer";
+            engine->pending[holder->pending_name] = holder.get();
+        }
+    }
+    if (llvm::Error e = jit.addIRModule(
+            holder->tracker, llvm::orc::ThreadSafeModule(std::move(owned->module), owned->context)))
+    {
+        put(out_error, "cannot add the module: " + error_text(std::move(e)) + "\n");
+        hot_jit_remove(holder.release());
+        return nullptr;
+    }
+    return initialize_dylib(std::move(holder), t_start, out_error);
+}
+
+hot_jit_dylib* hot_jit_add_object(hot_jit_engine* engine, const char* id, const void* data, size_t size,
+    const char* const* abs_names, const uint64_t* abs_values, size_t n_abs, char** out_error)
+{
+    const auto t_start = std::chrono::steady_clock::now();
+    std::unique_ptr<hot_jit_dylib> holder = new_dylib(engine, id, abs_names, abs_values, n_abs, out_error);
+    if (!holder)
+        return nullptr;
+    // The copy has the alignment that the object reader needs. The input can go after the call.
+    std::unique_ptr<llvm::MemoryBuffer> buffer = llvm::MemoryBuffer::getMemBufferCopy(
+        llvm::StringRef(static_cast<const char*>(data), size), std::string(id) + "-cached-objectbuffer");
+    // The generic platform of LLJIT finds the initializer function (__orc_init_func.) of the
+    // object by its name prefix, and the static destructors go through its __cxa_atexit.
+    if (llvm::Error e = engine->jit->addObjectFile(holder->tracker, std::move(buffer)))
+    {
+        put(out_error, "cannot add the object: " + error_text(std::move(e)) + "\n");
+        hot_jit_remove(holder.release());
+        return nullptr;
+    }
+    return initialize_dylib(std::move(holder), t_start, out_error);
+}
+
+void hot_jit_capture_objects(hot_jit_engine* engine, int on)
+{
+    std::lock_guard<std::mutex> lock(engine->capture_mutex);
+    engine->capture = on != 0;
+}
+
+int hot_jit_dylib_object(const hot_jit_dylib* dylib, const void** out_data, size_t* out_size)
+{
+    if (!dylib)
+        return 0;
+    std::lock_guard<std::mutex> lock(dylib->engine->capture_mutex);
+    if (!dylib->has_object)
+        return 0;
+    if (out_data)
+        *out_data = dylib->object.data();
+    if (out_size)
+        *out_size = dylib->object.size();
+    return 1;
+}
+
+void hot_jit_add_timing(const hot_jit_dylib* dylib, double* add_ms, double* init_ms)
+{
+    *add_ms = dylib ? dylib->add_ms : 0;
+    *init_ms = dylib ? dylib->init_ms : 0;
+}
+
+void* hot_jit_lookup(hot_jit_dylib* dylib, const char* name, char** out_error)
+{
+    auto addr = dylib->engine->jit->lookup(*dylib->dylib, name);
+    if (!addr)
+    {
+        put(out_error, error_text(addr.takeError()));
+        return nullptr;
+    }
+    return addr->toPtr<void*>();
+}
+
+void hot_jit_remove(hot_jit_dylib* dylib)
+{
+    if (!dylib)
+        return;
+    llvm::orc::LLJIT& jit = *dylib->engine->jit;
+    if (!dylib->pending_name.empty())
+    {
+        std::lock_guard<std::mutex> lock(dylib->engine->capture_mutex);
+        dylib->engine->pending.erase(dylib->pending_name);
+    }
+    if (dylib->initialized)
+        llvm::consumeError(jit.deinitialize(*dylib->dylib));
+    if (dylib->tracker)
+        llvm::consumeError(dylib->tracker->remove());
+    if (dylib->dylib)
+        llvm::consumeError(jit.getExecutionSession().removeJITDylib(*dylib->dylib));
+    delete dylib;
+}
+
+} // extern "C"
+
+namespace
+{
+
+std::unique_ptr<hot_jit_dylib> new_dylib(hot_jit_engine* engine, const char* id, const char* const* abs_names,
+    const uint64_t* abs_values, size_t n_abs, char** out_error)
+{
     auto holder = std::make_unique<hot_jit_dylib>();
     holder->engine = engine;
     llvm::orc::LLJIT& jit = *engine->jit;
@@ -598,15 +748,14 @@ hot_jit_dylib* hot_jit_add(hot_jit_engine* engine, const char* id, hot_jit_ir* i
             return nullptr;
         }
     }
-    import_coff_data(*owned->module);
     holder->tracker = holder->dylib->createResourceTracker();
-    if (llvm::Error e = jit.addIRModule(
-            holder->tracker, llvm::orc::ThreadSafeModule(std::move(owned->module), owned->context)))
-    {
-        put(out_error, "cannot add the module: " + error_text(std::move(e)) + "\n");
-        hot_jit_remove(holder.release());
-        return nullptr;
-    }
+    return holder;
+}
+
+hot_jit_dylib* initialize_dylib(std::unique_ptr<hot_jit_dylib> holder,
+    std::chrono::steady_clock::time_point t_start, char** out_error)
+{
+    llvm::orc::LLJIT& jit = *holder->engine->jit;
     const auto t_added = std::chrono::steady_clock::now();
     holder->add_ms = std::chrono::duration<double, std::milli>(t_added - t_start).count();
     // Static initializers run here: for example the dynamic initializer of the class record.
@@ -621,35 +770,4 @@ hot_jit_dylib* hot_jit_add(hot_jit_engine* engine, const char* id, hot_jit_ir* i
     return holder.release();
 }
 
-void hot_jit_add_timing(const hot_jit_dylib* dylib, double* add_ms, double* init_ms)
-{
-    *add_ms = dylib ? dylib->add_ms : 0;
-    *init_ms = dylib ? dylib->init_ms : 0;
-}
-
-void* hot_jit_lookup(hot_jit_dylib* dylib, const char* name, char** out_error)
-{
-    auto addr = dylib->engine->jit->lookup(*dylib->dylib, name);
-    if (!addr)
-    {
-        put(out_error, error_text(addr.takeError()));
-        return nullptr;
-    }
-    return addr->toPtr<void*>();
-}
-
-void hot_jit_remove(hot_jit_dylib* dylib)
-{
-    if (!dylib)
-        return;
-    llvm::orc::LLJIT& jit = *dylib->engine->jit;
-    if (dylib->initialized)
-        llvm::consumeError(jit.deinitialize(*dylib->dylib));
-    if (dylib->tracker)
-        llvm::consumeError(dylib->tracker->remove());
-    if (dylib->dylib)
-        llvm::consumeError(jit.getExecutionSession().removeJITDylib(*dylib->dylib));
-    delete dylib;
-}
-
-} // extern "C"
+} // namespace

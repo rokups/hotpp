@@ -85,6 +85,22 @@ HOT_JIT_ENGINE_API void hot_jit_engine_free(hot_jit_engine* engine);
 HOT_JIT_ENGINE_API hot_jit_dylib* hot_jit_add(hot_jit_engine* engine, const char* id, hot_jit_ir* ir,
     const char* const* abs_names, const uint64_t* abs_values, size_t n_abs, char** out_error);
 
+// Adds the relocatable object "data" (an object of hot_jit_dylib_object, also from another engine
+// or process) to a new JITDylib "id" and runs its static initializers. The object must come from
+// the same compiler and target. The absolute symbols are defined first, as in hot_jit_add. Returns
+// null and sets "*out_error" on failure.
+HOT_JIT_ENGINE_API hot_jit_dylib* hot_jit_add_object(hot_jit_engine* engine, const char* id, const void* data,
+    size_t size, const char* const* abs_names, const uint64_t* abs_values, size_t n_abs, char** out_error);
+
+// With "on", each later hot_jit_add of the engine keeps a copy of the object that ORC makes from
+// the IR. The object refers to the host symbols and the absolute symbols by name.
+HOT_JIT_ENGINE_API void hot_jit_capture_objects(hot_jit_engine* engine, int on);
+
+// The object of a dylib of hot_jit_add, when the engine captures the objects. Returns 1 and sets
+// "*out_data" and "*out_size". The bytes stay valid until hot_jit_remove. Returns 0 when there is
+// no object, for example for a dylib of hot_jit_add_object.
+HOT_JIT_ENGINE_API int hot_jit_dylib_object(const hot_jit_dylib* dylib, const void** out_data, size_t* out_size);
+
 // The address of the symbol "name" in the dylib. Null and "*out_error" when it is not there.
 HOT_JIT_ENGINE_API void* hot_jit_lookup(hot_jit_dylib* dylib, const char* name, char** out_error);
 
