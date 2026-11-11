@@ -138,6 +138,12 @@ public:
 // it returns 1.
 unsigned build_jobs();
 
+// Runs compile() of each entry. It uses min(jobs, count) jobs: the caller thread and jobs - 1
+// started threads. One entry or one job runs on the caller thread, with no new thread. It catches
+// each exception and joins all threads on every path. It returns one error text for each entry:
+// empty when the compile succeeds.
+std::vector<std::string> run_compiles(std::vector<PendingLoad*>& pending, unsigned jobs);
+
 // Replaces each line "sig Cls::fn Sig" of "state" with the line of "aot" for the same function.
 // Other lines of "state" stay, so the slot numbers of the methods that an override added stay.
 inline std::string slots_revert(const std::string& state, const std::string& aot)

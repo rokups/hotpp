@@ -211,4 +211,49 @@ unsigned build_jobs()
 #endif
 }
 
+std::vector<std::string> run_compiles(std::vector<PendingLoad*>& pending, unsigned jobs)
+{
+    std::vector<std::string> errors(pending.size());
+    std::atomic<size_t> next{0};
+    const auto work = [&]
+    {
+        for (size_t i = next.fetch_add(1); i < pending.size(); i = next.fetch_add(1))
+        {
+            try
+            {
+                pending[i]->compile();
+            }
+            catch (const std::exception& e)
+            {
+                errors[i] = e.what()[0] ? e.what() : "the compile failed";
+            }
+            catch (...)
+            {
+                errors[i] = "the compile failed";
+            }
+        }
+    };
+    const size_t count = std::min<size_t>(jobs, pending.size());
+    if (count <= 1)
+    {
+        work();
+        return errors;
+    }
+    std::vector<std::thread> threads;
+    try
+    {
+        // This thread is a job too: it starts count - 1 threads.
+        for (size_t i = 1; i < count; ++i)
+            threads.emplace_back(work);
+    }
+    catch (...)
+    {
+        // A thread did not start: the started threads and this thread do the work.
+    }
+    work();
+    for (std::thread& t : threads)
+        t.join();
+    return errors;
+}
+
 } // namespace hot

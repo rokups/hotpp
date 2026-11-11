@@ -338,52 +338,7 @@ BuildOutput build_batch(hot::Backend& backend, const std::string& script_path, c
         units.push_back(p.get());
         names.push_back(name);
     }
-    std::vector<std::string> compile_errors(units.size());
-    std::atomic<size_t> next{0};
-    const auto work = [&]
-    {
-        for (size_t i = next.fetch_add(1); i < units.size(); i = next.fetch_add(1))
-        {
-            try
-            {
-                units[i]->compile();
-            }
-            catch (const std::exception& e)
-            {
-                compile_errors[i] = e.what()[0] ? e.what() : "the compile failed";
-            }
-            catch (...)
-            {
-                compile_errors[i] = "the compile failed";
-            }
-        }
-    };
-    const size_t jobs = std::min<size_t>(hot::build_jobs(), units.size());
-    if (jobs <= 1)
-        work();
-    else
-    {
-        std::vector<std::thread> threads;
-        try
-        {
-            // This thread is a job too: it starts jobs - 1 threads.
-            for (size_t i = 1; i < jobs; ++i)
-                threads.emplace_back(work);
-        }
-        catch (const std::system_error&)
-        {
-            // A thread did not start: the started threads and this thread do the work.
-        }
-        catch (...)
-        {
-            for (std::thread& t : threads)
-                t.join();
-            throw;
-        }
-        work();
-        for (std::thread& t : threads)
-            t.join();
-    }
+    const std::vector<std::string> compile_errors = hot::run_compiles(units, hot::build_jobs());
     // Phase 3: the results, in name order. The first failure is the reported error.
     std::vector<hot::LoadResult> results;
     for (size_t i = 0; i < units.size(); ++i)
