@@ -9,11 +9,15 @@
 //
 // Wait mode: a "-c" call waits for the file "overlap" (at most the wait time, in seconds). With a
 // match text, only the "-c" calls that have this text in an argument wait.
+// Hold mode: a matching "-c" call sleeps for the hold time (a decimal number of seconds) after it
+// starts. This makes the overlaps visible. Each "-c" call appends the count of the markers to the
+// file "counts". The function peak() gives the highest count.
 // The script reads the directory, the wait time and the match text from the environment.
 #pragma once
 
 #include "support/test_env.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -62,6 +66,7 @@ public:
         , dir_env_("HOT_TEST_WRAP_DIR", "")
         , wait_env_("HOT_TEST_WRAP_WAIT", "")
         , match_env_("HOT_TEST_WRAP_MATCH", "")
+        , hold_env_("HOT_TEST_WRAP_HOLD", "")
     {
         std::error_code ec;
         std::filesystem::remove_all(dir_, ec);
@@ -80,7 +85,11 @@ public:
                "  echo \"$$\" >> \"$dir/calls\"\n"
                "  touch \"$dir/running.$$\"\n"
                "  n=$(ls \"$dir\" | grep -c '^running\\.')\n"
+               "  echo \"$n\" >> \"$dir/counts\"\n"
                "  [ \"$n\" -ge 2 ] && touch \"$dir/overlap\"\n"
+               "  if [ -n \"$HOT_TEST_WRAP_HOLD\" ] && [ $match = 1 ]; then\n"
+               "    sleep \"$HOT_TEST_WRAP_HOLD\"\n"
+               "  fi\n"
                "  if [ -n \"$HOT_TEST_WRAP_WAIT\" ] && [ \"$HOT_TEST_WRAP_WAIT\" -gt 0 ] && [ $match = 1 ]; then\n"
                "    i=0\n"
                "    while [ ! -e \"$dir/overlap\" ] && [ $i -lt $((HOT_TEST_WRAP_WAIT * 20)) ]; do\n"
@@ -108,6 +117,21 @@ public:
         set_env("HOT_TEST_WRAP_WAIT", std::to_string(seconds).c_str());
         set_env("HOT_TEST_WRAP_MATCH", match.c_str());
     }
+    // Hold mode: a matching "-c" call sleeps "seconds" (for example "0.3"). Empty: off.
+    void set_hold(const std::string& seconds, const std::string& match = "")
+    {
+        set_env("HOT_TEST_WRAP_HOLD", seconds.c_str());
+        set_env("HOT_TEST_WRAP_MATCH", match.c_str());
+    }
+    // The highest number of "-c" calls that ran at the same time since the start or the last reset.
+    size_t peak() const
+    {
+        std::ifstream f(dir_ / "counts");
+        size_t best = 0;
+        for (size_t n = 0; f >> n;)
+            best = std::max(best, n);
+        return best;
+    }
     // True when two "-c" calls ran at the same time.
     bool overlap() const { return std::filesystem::exists(dir_ / "overlap"); }
     // The number of the "-c" calls since the start or the last reset.
@@ -125,6 +149,7 @@ public:
         std::error_code ec;
         std::filesystem::remove(dir_ / "calls", ec);
         std::filesystem::remove(dir_ / "overlap", ec);
+        std::filesystem::remove(dir_ / "counts", ec);
     }
 
 private:
@@ -133,6 +158,7 @@ private:
     ScopedEnv dir_env_;
     ScopedEnv wait_env_;
     ScopedEnv match_env_;
+    ScopedEnv hold_env_;
 };
 
 } // namespace test_support

@@ -1097,6 +1097,37 @@ TEST(Launcher, ColdStartCompilesImportsInParallel)
     EXPECT_EQ(launcher::run_main(*program, {}), 321);
 }
 
+// HOT_JOBS limits the compiles that run at the same time. The caller thread counts as one job.
+TEST(Launcher, JobsLimitIsRespected)
+{
+    SKIP_PARALLEL_TESTS();
+    for (const auto& [jobs, expected] : {std::pair<const char*, size_t>{"2", 2}, {"3", 3}})
+    {
+        ParallelEnv env(jobs, HOT_CXX);
+        env.wrapper.set_hold("0.3", "imp_");
+        const fs::path dir = make_temp_dir();
+        std::string uses;
+        std::string sum;
+        int want = 0;
+        for (int i = 0; i < 5; ++i)
+        {
+            const std::string n = std::to_string(i);
+            write_file(dir, "imp_" + n + ".hot", import_text("Imp" + n, i + 1));
+            uses += "using \"imp_" + n + ".hot\";\n";
+            sum += std::string(i ? " + " : "") + "Imp" + n + ".V()";
+            want += i + 1;
+        }
+        const std::string script = write_file(dir, "entry.hot", uses + "int main() { return " + sum + "; }\n");
+        launcher::Options options = options_for("files", dir, nullptr);
+        options.include_dirs.push_back(dir.string());
+        std::string error;
+        auto program = launcher::load(options, script, error);
+        ASSERT_NE(program, nullptr) << error;
+        EXPECT_EQ(env.wrapper.peak(), expected) << "HOT_JOBS=" << jobs;
+        EXPECT_EQ(launcher::run_main(*program, {}), want);
+    }
+}
+
 // HOT_JOBS=1 starts no thread. The compiles run one after the other.
 TEST(Launcher, JobsOneCompilesSerial)
 {

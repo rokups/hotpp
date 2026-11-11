@@ -366,7 +366,8 @@ BuildOutput build_batch(hot::Backend& backend, const std::string& script_path, c
         std::vector<std::thread> threads;
         try
         {
-            for (size_t i = 0; i < jobs; ++i)
+            // This thread is a job too: it starts jobs - 1 threads.
+            for (size_t i = 1; i < jobs; ++i)
                 threads.emplace_back(work);
         }
         catch (const std::system_error&)
