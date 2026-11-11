@@ -205,6 +205,19 @@ struct ImportView
 std::optional<ImportView> import_view(const std::string& text, const std::string& array_tpl);
 std::optional<uint64_t> import_view_hash(const std::string& text, const std::string& array_tpl);
 
+// Where the time of one translate call goes, in nanoseconds of std::chrono::steady_clock. The
+// numbers are for the measurement only. A cache hit gives zeros. They are not in any cache key.
+struct TranslateTiming
+{
+    int64_t parse_ns = 0;      // the libclang parse (zero when the session cache hits)
+    int64_t parse_wait_ns = 0; // the wait for the lock of the session
+    int64_t parses = 0;        // the number of parses in this call
+    int64_t front_ns = 0;      // the time before the session lookup
+    int64_t lower_ns = 0;      // from the session lookup to the first check
+    int64_t check_ns = 0;      // from the first check to the start of the emit
+    int64_t emit_ns = 0;       // from the start of the emit to the end
+};
+
 struct TranslateResult
 {
     bool ok = false;
@@ -264,6 +277,8 @@ struct TranslateResult
     // The classes of the script and of its imports: the names and the key names (the names in
     // the slot file). The slot lines of these classes can change the output (carry_slots).
     std::vector<std::string> slot_classes, slot_keys;
+    // The time of this call. It is not part of the result: the translate cache does not keep it.
+    TranslateTiming timing;
 };
 
 // The main script and the imported scripts of a translation, as input for the rewriters.

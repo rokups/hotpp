@@ -1837,8 +1837,21 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
         };
         const std::string translate_note =
             job.translate_hit ? std::string("cached") : std::to_string(ms(job.t0, job.t1)) + " ms";
-        std::fprintf(stderr, "hot: %s translate %s, compile %lld ms, link %lld ms%s%s\n", unit.c_str(),
-            translate_note.c_str(), ms(job.t1, t2), ms(t2, t3), cache_note, pch_note.c_str());
+        // The detail of a translate miss comes after the old fields, so a reader of the old fields works.
+        std::string translate_detail;
+        if (!job.translate_hit)
+        {
+            const hotc::TranslateTiming& tt = job.tr.timing;
+            const auto tms = [](int64_t ns) { return static_cast<long long>(ns / 1000000); };
+            char buf[200];
+            std::snprintf(buf, sizeof buf, " [translate detail: parse %lld ms x%lld, wait %lld, front %lld, lower %lld, check %lld, emit %lld]",
+                tms(tt.parse_ns), static_cast<long long>(tt.parses), tms(tt.parse_wait_ns), tms(tt.front_ns),
+                tms(tt.lower_ns), tms(tt.check_ns), tms(tt.emit_ns));
+            translate_detail = buf;
+        }
+        std::fprintf(stderr, "hot: %s translate %s, compile %lld ms, link %lld ms%s%s%s\n", unit.c_str(),
+            translate_note.c_str(), ms(job.t1, t2), ms(t2, t3), cache_note, pch_note.c_str(),
+            translate_detail.c_str());
     }
     if (link_rc != 0)
         return fail("link", link_rc);

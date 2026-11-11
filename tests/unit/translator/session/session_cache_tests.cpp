@@ -47,6 +47,30 @@ TEST(SessionCache, HitGivesTheSameOutputAsMiss)
     EXPECT_EQ(hit2.slots_out, alone2.slots_out);
 }
 
+TEST(SessionCache, TimingCountsTheParse)
+{
+    const hotc::TranslateOptions o = engine_options("player_v1.hot", 1);
+    hotc::TranslatorSession session;
+    const auto sum = [](const hotc::TranslateTiming& t)
+    { return t.parse_ns + t.parse_wait_ns + t.front_ns + t.lower_ns + t.check_ns + t.emit_ns; };
+    Clock::time_point t = Clock::now();
+    const hotc::TranslateResult first = hotc::translate(o, session);
+    const int64_t wall1 = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - t).count();
+    ASSERT_TRUE(first.ok) << first.diagnostics;
+    EXPECT_EQ(first.timing.parses, 1);
+    EXPECT_GT(first.timing.parse_ns, 0);
+    EXPECT_GT(first.timing.emit_ns, 0);
+    EXPECT_LE(sum(first.timing), wall1);
+
+    t = Clock::now();
+    const hotc::TranslateResult second = hotc::translate(o, session);
+    const int64_t wall2 = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - t).count();
+    ASSERT_TRUE(second.ok) << second.diagnostics;
+    EXPECT_EQ(second.timing.parses, 0);
+    EXPECT_EQ(second.timing.parse_ns, 0);
+    EXPECT_LE(sum(second.timing), wall2);
+}
+
 TEST(SessionCache, ChangedHeaderInvalidatesTheCache)
 {
     TempDir dir;

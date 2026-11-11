@@ -3456,9 +3456,14 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
     const std::function<void(std::map<std::string, BaseInfo>&, std::vector<FileStamp>&, Hierarchy&, FactMap&,
         std::map<std::string, std::string>&)>& parse,
     Hierarchy& hierarchy, FactMap& facts_out, std::map<std::string, std::string>& answers_out, hot::FileSystem* fs,
-    std::vector<std::string>* deps, std::vector<std::string>* shadows, int64_t* parse_start_ns)
+    std::vector<std::string>* deps, std::vector<std::string>* shadows, int64_t* parse_start_ns,
+    hotc::TranslateTiming* timing)
 {
+    const auto wait_start = std::chrono::steady_clock::now();
     std::lock_guard<std::mutex> lock(S.mutex);
+    if (timing)
+        timing->parse_wait_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - wait_start).count();
     auto& e = S.entries[key];
     bool fresh = !e.files.empty();
     for (size_t i = 0; fresh && i < e.files.size(); ++i)
@@ -3489,15 +3494,27 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
         const int64_t start = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::filesystem::file_time_type::clock::now().time_since_epoch())
                                   .count();
+        const auto parse_start = std::chrono::steady_clock::now();
+        const auto count_parse = [&]
+        {
+            if (timing)
+            {
+                timing->parse_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::steady_clock::now() - parse_start).count();
+                ++timing->parses;
+            }
+        };
         try
         {
             parse(out, files, hier, facts, answers);
         }
         catch (...)
         {
+            count_parse();
             S.entries.erase(key);
             throw;
         }
+        count_parse();
         e.bases = std::move(out);
         e.files = std::move(files);
         e.hierarchy = std::move(hier);
@@ -3721,6 +3738,22 @@ std::vector<std::string> clang_args(const Options& opt)
 void translate_impl(
     const hotc::TranslateOptions& in, hotc::TranslatorSession::Impl& session, hotc::TranslateResult& res)
 {
+    // The phase clock: each next() ends the open phase and starts the next one. The destructor
+    // ends the last phase, also when the translate aborts.
+    struct PhaseTimer
+    {
+        int64_t* open;
+        std::chrono::steady_clock::time_point mark = std::chrono::steady_clock::now();
+        void next(int64_t* phase)
+        {
+            const auto now = std::chrono::steady_clock::now();
+            if (open)
+                *open += std::chrono::duration_cast<std::chrono::nanoseconds>(now - mark).count();
+            open = phase;
+            mark = now;
+        }
+        ~PhaseTimer() { next(nullptr); }
+    } phases{&res.timing.front_ns};
     Options opt;
     opt.input = in.script_name;
     opt.unit = in.unit_name.empty() ? std::filesystem::path(in.script_name).stem().string() : in.unit_name;
@@ -5106,11 +5139,14 @@ void translate_impl(
     FactMap facts;
     hotc::ParamMemo param_memo; // the parameter analysis of the classes that are done (S25)
     std::map<std::string, std::string> query_answers;
+    phases.next(nullptr); // the parse and the lock wait have their own fields
     const std::map<std::string, BaseInfo> bases = session_bases(session, key, base_names, reqs, query_texts,
         [&](std::map<std::string, BaseInfo>& out, std::vector<FileStamp>& files, Hierarchy& h, FactMap& fm,
             std::map<std::string, std::string>& qa)
     { parse_bases(probe, args, base_names, import_paths, out, files, h, reqs, fm, query_texts, qa, res.virtual_files, fs); },
-        hier, facts, query_answers, fs, &res.dependencies, &res.shadow_paths, &res.parse_start_ns);
+        hier, facts, query_answers, fs, &res.dependencies, &res.shadow_paths, &res.parse_start_ns,
+        &res.timing);
+    phases.next(&res.timing.lower_ns);
     // A stub weak source gets its traits only when the headers declare the stub name as written.
     // Else a pointer field of the class is not a CheckedPtr (the borrowed finding applies).
     if (!sc.is_cpp)
@@ -5406,6 +5442,7 @@ void translate_impl(
         throw TranslateAbort{};
 
     // ---- the rules of "C" (a bare script class) on fields, parameters, return types and locals
+    phases.next(&res.timing.check_ns);
     hotc::check_value_uses(sc.classes, types, map, g_diag);
     if (!sc.is_cpp)
         hotc::check_operator_vars(sc.vars, map, g_diag);
@@ -10048,6 +10085,7 @@ void translate_impl(
                 }});
         }
     }
+    phases.next(&res.timing.emit_ns); // the text of the bodies and the registration
     flush_bodies();
     write_texts(seq.size());
 
