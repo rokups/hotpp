@@ -145,24 +145,12 @@ public:
     virtual CacheStats cache_stats() const { return {}; }
 };
 
-// The memory that build_jobs() reserves for each job, in bytes. The measured peak of a cold JIT start
-// of the game (87 units) is about 3.4 GiB + 0.35 GiB for each job at 4 to 16 jobs. Each pending
-// load also keeps its IR until finish. So 1 GiB for each job leaves a margin.
-constexpr uint64_t kJobMemoryEstimate = 1ull << 30;
-
-// The default number of jobs: min(hardware, max(1, available_bytes / per_job_bytes)). The result is
-// never below 1. When available_bytes or per_job_bytes is 0, the memory is unknown or not limited,
-// and the result is max(1, hardware). This function is pure.
-unsigned jobs_for(unsigned hardware, uint64_t available_bytes, uint64_t per_job_bytes);
-
-// The memory that is free for new use, in bytes. Linux: MemAvailable of /proc/meminfo, else the
-// physical memory. macOS: hw.memsize. It returns 0 when the value is unknown, and on Windows.
-uint64_t available_memory_bytes();
+// The upper limit of the default number of jobs. HOT_JOBS can set a higher value.
+constexpr unsigned kDefaultMaxJobs = 16;
 
 // The number of parallel build jobs. It reads the environment variable HOT_JOBS. A valid value of
 // 1 or more wins. A value that is not set, not valid or 0 gives
-// jobs_for(hardware threads, available_memory_bytes(), kJobMemoryEstimate). The minimum is 1. On
-// Windows it returns 1.
+// min(max(1, hardware threads), kDefaultMaxJobs). The minimum is 1. On Windows it returns 1.
 unsigned build_jobs();
 
 // Runs compile() of each entry. It uses min(jobs, count) jobs: the caller thread and jobs - 1

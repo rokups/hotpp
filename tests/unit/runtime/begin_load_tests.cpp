@@ -99,43 +99,22 @@ TEST(BuildJobs, ReadsEnvironment)
 #ifdef _WIN32
     EXPECT_EQ(hot::build_jobs(), 1u);
 #else
+    const unsigned dflt = std::min(hw, hot::kDefaultMaxJobs);
     test_support::set_env("HOT_JOBS", "3");
     EXPECT_EQ(hot::build_jobs(), 3u);
-    test_support::set_env("HOT_JOBS", "4096");  // an explicit value wins, also above the hardware
+    test_support::set_env("HOT_JOBS", "32");  // an explicit value wins, also above the default limit
+    EXPECT_EQ(hot::build_jobs(), 32u);
+    test_support::set_env("HOT_JOBS", "4096");
     EXPECT_EQ(hot::build_jobs(), 4096u);
-    const unsigned dflt = hot::jobs_for(hw, hot::available_memory_bytes(), hot::kJobMemoryEstimate);
     test_support::set_env("HOT_JOBS", "0");
     EXPECT_EQ(hot::build_jobs(), dflt);
     test_support::set_env("HOT_JOBS", "abc");
     EXPECT_EQ(hot::build_jobs(), dflt);
+    test_support::set_env("HOT_JOBS", "5000");
+    EXPECT_EQ(hot::build_jobs(), dflt);
     test_support::unset_env("HOT_JOBS");
     EXPECT_EQ(hot::build_jobs(), dflt);
     EXPECT_GE(dflt, 1u);
-    EXPECT_LE(dflt, hw);
+    EXPECT_LE(dflt, hot::kDefaultMaxJobs);
 #endif
-}
-
-TEST(JobsFor, HugeMemoryGivesHardware)
-{
-    constexpr uint64_t gib = 1ull << 30;
-    EXPECT_EQ(hot::jobs_for(32, 1024 * gib, gib), 32u);
-}
-
-TEST(JobsFor, SmallMemoryGivesLess)
-{
-    constexpr uint64_t gib = 1ull << 30;
-    EXPECT_EQ(hot::jobs_for(32, 8 * gib, gib), 8u);
-    EXPECT_EQ(hot::jobs_for(32, 8 * gib + gib / 2, gib), 8u);  // rounds down
-}
-
-TEST(JobsFor, UnknownMemoryGivesHardware)
-{
-    EXPECT_EQ(hot::jobs_for(16, 0, 1ull << 30), 16u);
-    EXPECT_EQ(hot::jobs_for(16, 1ull << 40, 0), 16u);  // a zero estimate: no limit
-}
-
-TEST(JobsFor, NeverBelowOne)
-{
-    EXPECT_EQ(hot::jobs_for(16, 1, 1ull << 30), 1u);
-    EXPECT_EQ(hot::jobs_for(0, 1ull << 40, 1ull << 30), 1u);
 }

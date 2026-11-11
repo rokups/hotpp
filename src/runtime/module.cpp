@@ -17,10 +17,6 @@
     #include <windows.h>
 #else
     #include <dlfcn.h>
-    #ifdef __APPLE__
-        #include <sys/sysctl.h>
-        #include <sys/types.h>
-    #endif
     #include <unistd.h>
 #endif
 #ifdef __APPLE__
@@ -29,7 +25,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <cinttypes>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -223,44 +218,6 @@ std::vector<std::unique_ptr<PendingLoad>> Backend::begin_load_many(
     return result;
 }
 
-unsigned jobs_for(unsigned hardware, uint64_t available_bytes, uint64_t per_job_bytes)
-{
-    hardware = std::max(1u, hardware);
-    if (available_bytes == 0 || per_job_bytes == 0)
-        return hardware;
-    const uint64_t by_memory = std::max<uint64_t>(1, available_bytes / per_job_bytes);
-    return static_cast<unsigned>(std::min<uint64_t>(hardware, by_memory));
-}
-
-uint64_t available_memory_bytes()
-{
-#if defined(__linux__)
-    if (std::FILE* file = std::fopen("/proc/meminfo", "r"))
-    {
-        char line[256];
-        uint64_t kib = 0;
-        while (std::fgets(line, sizeof line, file))
-        {
-            if (std::sscanf(line, "MemAvailable: %" SCNu64 " kB", &kib) == 1)
-                break;
-            kib = 0;
-        }
-        std::fclose(file);
-        if (kib > 0)
-            return kib * 1024;
-    }
-    const long pages = sysconf(_SC_PHYS_PAGES);
-    const long page_size = sysconf(_SC_PAGE_SIZE);
-    return pages > 0 && page_size > 0 ? static_cast<uint64_t>(pages) * static_cast<uint64_t>(page_size) : 0;
-#elif defined(__APPLE__)
-    uint64_t bytes = 0;
-    size_t size = sizeof bytes;
-    return sysctlbyname("hw.memsize", &bytes, &size, nullptr, 0) == 0 ? bytes : 0;
-#else
-    return 0;
-#endif
-}
-
 unsigned build_jobs()
 {
 #ifdef _WIN32
@@ -273,7 +230,8 @@ unsigned build_jobs()
         if (end != env && *end == '\0' && value > 0 && value <= 4096)
             return static_cast<unsigned>(value);
     }
-    return jobs_for(std::thread::hardware_concurrency(), available_memory_bytes(), kJobMemoryEstimate);
+    // Peak memory grows with the job count and with the project. Set HOT_JOBS to change the count.
+    return std::min(std::max(1u, std::thread::hardware_concurrency()), kDefaultMaxJobs);
 #endif
 }
 
