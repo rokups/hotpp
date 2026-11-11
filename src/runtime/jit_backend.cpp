@@ -262,7 +262,8 @@ namespace
 
 // Adds the module to a new JITDylib "id", runs the static initializers and finds
 // script_register. The Module owns the JITDylib.
-LoadResult add_to_jit(const std::shared_ptr<JitState>& impl, const std::string& id, hot_jit_ir* ir)
+LoadResult add_to_jit(
+    const std::shared_ptr<JitState>& impl, const std::string& id, hot_jit_ir* ir, JitTimings* timings = nullptr)
 {
     LoadResult r;
     auto holder = std::make_unique<Generation>();
@@ -285,6 +286,9 @@ LoadResult add_to_jit(const std::shared_ptr<JitState>& impl, const std::string& 
         r.error = with_platform_hint(take(error));
         return r;
     }
+    if (timings)
+        hot_jit_add_timing(holder->dylib, &timings->orc_ms, &timings->init_ms);
+    const Clock::time_point t_lookup = Clock::now();
     void* reg = hot_jit_lookup(holder->dylib, "script_register", &error);
     if (!reg)
     {
@@ -293,6 +297,8 @@ LoadResult add_to_jit(const std::shared_ptr<JitState>& impl, const std::string& 
     }
     void* entry = hot_jit_lookup(holder->dylib, "hot_main", &error);
     take(error); // a missing "hot_main" is not an error: the module has no entry point
+    if (timings)
+        timings->lookup_ms = ms_since(t_lookup);
     Module m;
     m.register_fn = reinterpret_cast<Module::RegisterFn>(reg);
     m.keep_alive = std::shared_ptr<void>(holder.release(), [](void* p) { delete static_cast<Generation*>(p); });
@@ -349,7 +355,8 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
         std::filesystem::current_path(cwd_ec).string());
 
     timings_ = {};
-    Clock::time_point t0 = Clock::now();
+    const Clock::time_point load_start = Clock::now();
+    Clock::time_point t0 = load_start;
     hotc::TranslateOptions to;
     to.script_text = source.text;
     to.modules = source.modules;
@@ -433,14 +440,24 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
     core_ir->ir = hot_jit_ir_clone(c.ir->ir);
     hot_jit_ir* main_ir = c.ir->ir;
     c.ir->ir = nullptr;
-    LoadResult added = add_to_jit(impl_, id, main_ir);
+    JitTimings jt;
+    LoadResult added = add_to_jit(impl_, id, main_ir, &jt);
     if (!added)
     {
         r.error = added.error;
         r.reason = ReloadReason::BadModule;
         return r;
     }
-    timings_.jit_ms = ms_since(t0);
+    timings_.orc_ms = jt.orc_ms;
+    timings_.init_ms = jt.init_ms;
+    timings_.lookup_ms = jt.lookup_ms;
+    timings_.jit_ms = jt.orc_ms + jt.init_ms + jt.lookup_ms;
+    if (std::getenv("HOT_TIMING"))
+        std::fprintf(stderr,
+            "hot: %s jit translate %.0f ms, compile %.0f ms, orc %.0f ms, init %.0f ms, lookup %.0f ms, total %.0f "
+            "ms\n",
+            (source.unit.empty() ? stem : source.unit).c_str(), timings_.translate_ms, timings_.compile_ms,
+            timings_.orc_ms, timings_.init_ms, timings_.lookup_ms, ms_since(load_start));
     added.module->generation = generation;
     // The slot order changes only when the Loader accepts the module. The callback holds the
     // shared slot state, not the backend: the module can outlive the backend.

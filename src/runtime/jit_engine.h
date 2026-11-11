@@ -89,6 +89,10 @@ HOT_JIT_ENGINE_API hot_jit_dylib* hot_jit_add(hot_jit_engine* engine, const char
 HOT_JIT_ENGINE_API void* hot_jit_lookup(hot_jit_dylib* dylib, const char* name, char** out_error);
 
 // Runs the static destructors of the dylib and removes its code.
+// The time of the last hot_jit_add of the dylib, in milliseconds: the module add, and the
+// static initializers (ORC makes the machine code and links it there).
+HOT_JIT_ENGINE_API void hot_jit_add_timing(const hot_jit_dylib* dylib, double* add_ms, double* init_ms);
+
 HOT_JIT_ENGINE_API void hot_jit_remove(hot_jit_dylib* dylib);
 
 #ifdef __cplusplus

@@ -268,6 +268,25 @@ TEST(JitTests, ErrorTextNamesTheScript)
     EXPECT_NE(bad.error.find(" error: "), std::string::npos) << bad.error;
 }
 
+// A load fills the timings of each phase.
+TEST(JitTests, TimingsAreFilledAfterALoad)
+{
+    std::unique_ptr<hot::Backend> backend = hot::make_default_backend();
+    auto* jit = dynamic_cast<hot::JitBackend*>(backend.get());
+    if (!jit)
+        GTEST_SKIP() << "the test needs the JIT backend";
+    hot::LoadResult v1 = backend->load(source("player_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    const hot::JitTimings t = jit->last_timings();
+    EXPECT_GT(t.translate_ms, 0);
+    EXPECT_GT(t.compile_ms, 0);
+    EXPECT_GT(t.init_ms, 0);
+    EXPECT_GT(t.jit_ms, 0);
+    EXPECT_GE(t.orc_ms, 0);
+    EXPECT_GE(t.lookup_ms, 0);
+    EXPECT_DOUBLE_EQ(t.jit_ms, t.orc_ms + t.init_ms + t.lookup_ms);
+}
+
 // A precompiled header that the backend made works with the in-memory compile.
 TEST(JitTests, PrecompiledHeaderWorks)
 {

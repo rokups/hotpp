@@ -59,7 +59,10 @@ struct JitTimings
 {
     double translate_ms = 0; // hotc::translate (libclang parses the headers)
     double compile_ms = 0; // Clang: parse, Sema, IR generation, IR optimization
-    double jit_ms = 0; // ORC: code generation, link, static initializers, lookup
+    double jit_ms = 0; // ORC: orc_ms + init_ms + lookup_ms
+    double orc_ms = 0; // ORC: new JITDylib and module add (the code generation is lazy)
+    double init_ms = 0; // ORC: code generation, link and static initializers
+    double lookup_ms = 0; // ORC: the lookups of script_register and hot_main
 };
 
 class JitBackend : public Backend

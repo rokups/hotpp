@@ -39,6 +39,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -88,6 +89,8 @@ struct hot_jit_dylib
     llvm::orc::JITDylib* dylib = nullptr;
     llvm::orc::ResourceTrackerSP tracker;
     bool initialized = false;
+    double add_ms = 0;
+    double init_ms = 0;
 };
 
 namespace
@@ -563,6 +566,7 @@ void hot_jit_engine_free(hot_jit_engine* engine)
 hot_jit_dylib* hot_jit_add(hot_jit_engine* engine, const char* id, hot_jit_ir* ir, const char* const* abs_names,
     const uint64_t* abs_values, size_t n_abs, char** out_error)
 {
+    const auto t_start = std::chrono::steady_clock::now();
     std::unique_ptr<hot_jit_ir> owned(ir);
     auto holder = std::make_unique<hot_jit_dylib>();
     holder->engine = engine;
@@ -603,6 +607,8 @@ hot_jit_dylib* hot_jit_add(hot_jit_engine* engine, const char* id, hot_jit_ir* i
         hot_jit_remove(holder.release());
         return nullptr;
     }
+    const auto t_added = std::chrono::steady_clock::now();
+    holder->add_ms = std::chrono::duration<double, std::milli>(t_added - t_start).count();
     // Static initializers run here: for example the dynamic initializer of the class record.
     if (llvm::Error e = jit.initialize(*holder->dylib))
     {
@@ -611,7 +617,14 @@ hot_jit_dylib* hot_jit_add(hot_jit_engine* engine, const char* id, hot_jit_ir* i
         return nullptr;
     }
     holder->initialized = true;
+    holder->init_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t_added).count();
     return holder.release();
+}
+
+void hot_jit_add_timing(const hot_jit_dylib* dylib, double* add_ms, double* init_ms)
+{
+    *add_ms = dylib ? dylib->add_ms : 0;
+    *init_ms = dylib ? dylib->init_ms : 0;
 }
 
 void* hot_jit_lookup(hot_jit_dylib* dylib, const char* name, char** out_error)
