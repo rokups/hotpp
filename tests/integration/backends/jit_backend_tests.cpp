@@ -16,6 +16,7 @@
 #include "support/f1_scenario.h"
 #include "support/scratch_dir.h"
 #include "support/script_files.h"
+#include "support/test_env.h"
 
 #include "jit_engine.h"
 #include "jit_host_allocators.h"
@@ -64,7 +65,9 @@ HOT_EH_PROBE_TYPES
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -1282,6 +1285,182 @@ TEST(JitTests, HostGivesTheWholeAllocatorFamily)
     EXPECT_FALSE(hot::jit::is_host_allocator_name("mallo", 5));
     EXPECT_FALSE(hot::jit::is_host_allocator_name("malloc_usable_size", 18));
     EXPECT_FALSE(hot::jit::is_host_allocator_name("strdup", 6));
+}
+
+// ---- The translate cache of the JIT backend (JitOptions::cache_dir).
+
+class EnvGuard
+{
+public:
+    EnvGuard(const char* name, const char* value) : name_(name)
+    {
+        if (const char* old = std::getenv(name))
+        {
+            had_ = true;
+            old_ = old;
+        }
+        if (value)
+            test_support::set_env(name, value);
+        else
+            test_support::unset_env(name);
+    }
+    ~EnvGuard()
+    {
+        if (had_)
+            test_support::set_env(name_.c_str(), old_.c_str());
+        else
+            test_support::unset_env(name_.c_str());
+    }
+    EnvGuard(const EnvGuard&) = delete;
+    EnvGuard& operator=(const EnvGuard&) = delete;
+
+private:
+    std::string name_;
+    std::string old_;
+    bool had_ = false;
+};
+
+const char* kWidgetHeader = "#pragma once\nstruct Widget\n{\n    virtual ~Widget() = default;\n"
+                            "    virtual int Power() { return 0; }\n};\n";
+const char* kWidgetScript = "using \"Widget.h\";\nclass Kid : Widget {\n    override int Power() { return 2; }\n}\n";
+
+// The sorted paths of all files and directories under "root".
+std::vector<std::string> list_tree(const fs::path& root)
+{
+    std::vector<std::string> names;
+    for (const auto& e : fs::recursive_directory_iterator(root))
+        names.push_back(e.path().string());
+    std::sort(names.begin(), names.end());
+    return names;
+}
+
+struct JitCacheFixture
+{
+    test_support::TestScratch scratch;
+    std::string dir; // the script and the header
+    std::string cache;
+
+    JitCacheFixture()
+    {
+        dir = scratch.file("src");
+        fs::create_directories(dir);
+        cache = scratch.file("cache");
+        write_header(kWidgetHeader);
+    }
+
+    void write_header(const std::string& text) const
+    {
+        const std::string path = dir + "/Widget.h";
+        std::ofstream(path, std::ios::binary | std::ios::trunc) << text;
+        // The store does not take a header that changed near the translate.
+        fs::last_write_time(path, fs::file_time_type::clock::now() - std::chrono::hours(1));
+    }
+
+    std::unique_ptr<hot::JitBackend> make(const std::string& cache_dir) const
+    {
+        hot::JitOptions o;
+        o.compiler = HOT_CXX;
+        o.include_dirs = {dir, std::string(HOT_SOURCE_DIR) + "/include"};
+        o.resource_dir = HOT_RESOURCE_DIR;
+        o.cache_dir = cache_dir;
+        return std::make_unique<hot::JitBackend>(std::move(o));
+    }
+
+    static hot::ScriptSource script(const std::string& text = kWidgetScript) { return {"kid.hot", text}; }
+};
+
+TEST(JitTranslateCache, EmptyCacheDirWritesNoFile)
+{
+    EnvGuard dir_env("HOT_CACHE_DIR", nullptr);
+    EnvGuard on("HOT_CACHE", nullptr);
+    EnvGuard tr_on("HOT_TRANSLATE_CACHE", nullptr);
+    JitCacheFixture f;
+    EmptyWorkDir work;
+    const std::vector<std::string> before = list_tree(f.scratch.file(""));
+    {
+        auto backend = f.make("");
+        hot::LoadResult r = backend->load(JitCacheFixture::script(), 1);
+        ASSERT_TRUE(r) << r.error;
+        EXPECT_EQ(backend->cache_stats().translate_hits, 0u);
+        EXPECT_EQ(backend->cache_stats().translate_misses, 0u);
+    }
+    EXPECT_EQ(list_tree(f.scratch.file("")), before);
+    EXPECT_EQ(work.entries(), 0u);
+    EXPECT_FALSE(fs::exists(f.cache));
+}
+
+TEST(JitTranslateCache, SecondBackendHitsWithoutAParse)
+{
+    EnvGuard on("HOT_CACHE", nullptr);
+    EnvGuard tr_on("HOT_TRANSLATE_CACHE", nullptr);
+    JitCacheFixture f;
+    hot::LoadResult first;
+    {
+        auto backend = f.make(f.cache);
+        first = backend->load(JitCacheFixture::script(), 1);
+        ASSERT_TRUE(first) << first.error;
+        EXPECT_EQ(backend->cache_stats().translate_hits, 0u);
+        EXPECT_EQ(backend->cache_stats().translate_misses, 1u);
+    }
+    EXPECT_TRUE(fs::exists(fs::path(f.cache) / "tr"));
+    auto backend = f.make(f.cache);
+    hot::LoadResult second = backend->load(JitCacheFixture::script(), 1);
+    ASSERT_TRUE(second) << second.error;
+    EXPECT_EQ(backend->cache_stats().translate_hits, 1u);
+    EXPECT_EQ(backend->cache_stats().translate_misses, 0u);
+    EXPECT_EQ(first.dependencies, second.dependencies);
+    EXPECT_EQ(first.iface_hash, second.iface_hash);
+    EXPECT_EQ(first.import_hashes, second.import_hashes);
+    // A later generation hits the same entry: the text has no generation.
+    hot::LoadResult third = backend->load(JitCacheFixture::script(), 2);
+    ASSERT_TRUE(third) << third.error;
+    EXPECT_EQ(backend->cache_stats().translate_hits, 2u);
+    EXPECT_EQ(backend->cache_stats().translate_misses, 0u);
+}
+
+TEST(JitTranslateCache, ChangedScriptOrHeaderMisses)
+{
+    EnvGuard on("HOT_CACHE", nullptr);
+    EnvGuard tr_on("HOT_TRANSLATE_CACHE", nullptr);
+    JitCacheFixture f;
+    {
+        auto backend = f.make(f.cache);
+        ASSERT_TRUE(backend->load(JitCacheFixture::script(), 1));
+    }
+    {
+        const std::string edited = std::string(kWidgetScript) + "// an edit\n";
+        auto backend = f.make(f.cache);
+        hot::LoadResult r = backend->load(JitCacheFixture::script(edited), 1);
+        ASSERT_TRUE(r) << r.error;
+        EXPECT_EQ(backend->cache_stats().translate_hits, 0u);
+        EXPECT_EQ(backend->cache_stats().translate_misses, 1u);
+    }
+    f.write_header("#pragma once\nstruct Widget\n{\n    virtual ~Widget() = default;\n"
+                   "    virtual int Power() { return 0; }\n    virtual int Extra() { return 0; }\n};\n");
+    auto backend = f.make(f.cache);
+    hot::LoadResult r = backend->load(JitCacheFixture::script(), 1);
+    ASSERT_TRUE(r) << r.error;
+    EXPECT_EQ(backend->cache_stats().translate_hits, 0u);
+    EXPECT_EQ(backend->cache_stats().translate_misses, 1u);
+}
+
+TEST(JitTranslateCache, EnvironmentTurnsTheCacheOff)
+{
+    for (const char* name : {"HOT_TRANSLATE_CACHE", "HOT_CACHE"})
+    {
+        EnvGuard on("HOT_CACHE", nullptr);
+        EnvGuard tr_on("HOT_TRANSLATE_CACHE", nullptr);
+        EnvGuard off(name, "0");
+        JitCacheFixture f;
+        for (int i = 0; i < 2; ++i)
+        {
+            auto backend = f.make(f.cache);
+            ASSERT_TRUE(backend->load(JitCacheFixture::script(), 1)) << name;
+            EXPECT_EQ(backend->cache_stats().translate_hits, 0u) << name;
+            EXPECT_EQ(backend->cache_stats().translate_misses, 0u) << name;
+        }
+        EXPECT_FALSE(fs::exists(fs::path(f.cache) / "tr")) << name;
+    }
 }
 
 } // namespace

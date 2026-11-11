@@ -96,8 +96,10 @@ target_link_libraries(hot_aot PUBLIC hot_runtime_core Threads::Threads)
 # if hot_backend links it.
 # Only a build with the translator has it (HOT_BUILD_TRANSLATOR).
 if(HOT_BUILD_TRANSLATOR)
-    add_library(hot_clang_backend STATIC clang_files_backend.cpp translate_cache.cpp)
-    target_link_libraries(hot_clang_backend PUBLIC hot_runtime hotc_lib)
+    add_library(hot_translate_cache STATIC translate_cache.cpp)
+    target_link_libraries(hot_translate_cache PUBLIC hot_runtime hotc_lib)
+    add_library(hot_clang_backend STATIC clang_files_backend.cpp)
+    target_link_libraries(hot_clang_backend PUBLIC hot_runtime hotc_lib hot_translate_cache)
 elseif(CMAKE_CROSSCOMPILING)
     # A cross build has no translator. This target only compiles the backend source for the
     # target platform (for example the Windows run_command), so a cross build checks it.
@@ -157,7 +159,7 @@ if(HOT_JIT_ENABLED)
     target_include_directories(hot_jit_backend PUBLIC
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-    target_link_libraries(hot_jit_backend PUBLIC hot_runtime hotc_lib hot_jit_engine)
+    target_link_libraries(hot_jit_backend PUBLIC hot_runtime hotc_lib hot_translate_cache hot_jit_engine)
 endif()
 
 # make_default_backend() returns the backend that the program chooses at run time. The target

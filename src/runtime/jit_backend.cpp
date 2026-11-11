@@ -20,6 +20,7 @@
 #include <filesystem>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <vector>
 
 namespace hot
@@ -316,6 +317,13 @@ JitBackend::JitBackend(JitOptions options)
 {
     if (!opt_.session)
         opt_.session = std::make_shared<hotc::TranslatorSession>();
+    if (!opt_.cache_dir.empty() && TranslateCache::enabled_by_env())
+    {
+        // The JIT output has the virtual output name and the in-memory flags of this backend. The
+        // text can differ from the text of the files backend, so "extra" keeps the entries apart.
+        tr_cache_ = std::make_unique<TranslateCache>(opt_.cache_dir);
+        tr_cache_->set_extra("jit");
+    }
 }
 
 JitBackend::~JitBackend() = default;
@@ -384,7 +392,19 @@ LoadResult JitBackend::load(const ScriptSource& source, uint32_t generation, Loa
         std::lock_guard<std::mutex> slock(slots_->mutex);
         to.slots_in = slots_->text;
     }
-    hotc::TranslateResult tr = hotc::translate(to, *opt_.session);
+    // The translate cache gives the result of an earlier translate with the same inputs.
+    std::optional<hotc::TranslateResult> cached;
+    if (tr_cache_)
+        cached = tr_cache_->lookup(to);
+    const std::filesystem::file_time_type translate_start = std::filesystem::file_time_type::clock::now();
+    const bool translate_hit = cached.has_value();
+    hotc::TranslateResult tr = translate_hit ? std::move(*cached) : hotc::translate(to, *opt_.session);
+    if (tr_cache_ && !translate_hit && tr.ok && tr.diagnostics.empty())
+    {
+        std::string store_error;
+        if (!tr_cache_->store(to, tr, translate_start, store_error))
+            std::fprintf(stderr, "hot: %s has no translate cache entry: %s\n", source.name.c_str(), store_error.c_str());
+    }
     timings_.translate_ms = ms_since(t0);
     r.dependencies = tr.dependencies; // also after a failure
     r.iface_hash = tr.iface_hash;

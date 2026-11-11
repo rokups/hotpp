@@ -243,6 +243,12 @@ std::unique_ptr<Backend> make_jit(const DefaultBackendOptions& options)
     o.fs = options.fs;
     o.preludes = options.preludes;
     o.std_version = options.std_version;
+    // The same rules as the files backend: the variable decides over the option.
+    o.cache_dir = options.cache_dir;
+    if (const char* env = std::getenv("HOT_CACHE_DIR"); env && *env)
+        o.cache_dir = env;
+    if (!ObjectCache::enabled_by_env())
+        o.cache_dir.clear();
     return std::make_unique<JitBackend>(std::move(o));
 }
 #endif

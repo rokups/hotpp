@@ -3,11 +3,13 @@
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
 // JitBackend: translate in memory, compile in memory with the Clang library,
-// load the code with LLVM ORC. No file is written and no process starts.
+// load the code with LLVM ORC. No process starts. The backend writes no file, except the
+// translate cache when JitOptions::cache_dir is set.
 #pragma once
 
 #include "hot/backend.h"
 #include "hot/hotc_lib.h"
+#include "hot/translate_cache.h"
 
 #include <memory>
 #include <mutex>
@@ -50,6 +52,11 @@ struct JitOptions
     // The preludes of the host (stub-only scripts), as name and text. The translator reads them
     // before each script, in this order (hotc::TranslateOptions::preludes).
     std::vector<std::pair<std::string, std::string>> preludes;
+    // The cache directory (the same directory as ObjectCache). The backend keeps the translate
+    // cache in "<cache_dir>/tr" (hot/translate_cache.h). "<cache_dir>/jit" is for files that the
+    // JIT backend owns. Empty (the default): the backend writes no file. HOT_CACHE=0 and
+    // HOT_TRANSLATE_CACHE=0 turn the translate cache off.
+    std::string cache_dir;
 };
 
 struct JitState; // the LLJIT of the session
@@ -90,6 +97,19 @@ public:
 
     JitTimings last_timings() const { return timings_; }
 
+    // The hits and the misses of the translate cache. All zero when the cache is off.
+    CacheStats cache_stats() const override
+    {
+        CacheStats r;
+        if (tr_cache_)
+        {
+            const TranslateCache::Stats t = tr_cache_->stats();
+            r.translate_hits = t.hits;
+            r.translate_misses = t.misses;
+        }
+        return r;
+    }
+
     // True after the first load when the debugger plugin is on. When the plugin could not start,
     // debugger_error() has the reason. Both are empty or false before the first load.
     bool debugger_support() const { return debugger_support_; }
@@ -115,6 +135,7 @@ private:
     unsigned sequence_ = 0;
     unsigned epoch_ = 0; // counts the fresh loads; it is in the name of the JITDylib
     JitTimings timings_;
+    std::unique_ptr<TranslateCache> tr_cache_; // null: no translate cache
     bool debugger_support_ = false;
     std::string debugger_error_;
 };
