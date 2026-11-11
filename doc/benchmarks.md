@@ -581,3 +581,7 @@ The numbers come from BiteSizedWarHot (`HOT_TIMING=1 ./BiteSizedWarHot --offline
 | `Game/Game` (2144 lines) | 13.4 s | 6.0 s | 9.1 s |
 
 A cold build is the same: the first miss of an include set builds no PCH. The warm batch stays at 8.0 s (87 hits). The batch of one edit of `Game/GameServerSide` goes from 24.0 s to 19.5 s, and of `Game/Game` from 26.1 s to 21.8 s. A PCH is 50 to 70 MB.
+
+## Parallel compiles
+
+The launcher compiles a batch in parallel (`HOT_JOBS`). The measurement of the gain is pending. The numbers above come from the serial build.

@@ -131,6 +131,20 @@ Diagnostics: `hot::active_entries()`, `hot::entry_depth()`, `hot::commit_window_
 
 The tests are in `tests/unit/runtime/entry_counter_tests.cpp` and `tests/integration/threading/entry_counter_tests.cpp` (suite `EntryCounters`). In the integration test, 4 worker threads call `Tick` on 64 actors in a loop. Another thread commits 8 reloads at the same time. Each `Tick` calls the native `Util::Probe`, and the probe calls the script `TakeDamage`. The test checks that no call is lost, that no call runs on a half migrated object, and that a nested call during a waiting commit does not deadlock. The unit test opens 2000 commit windows while 4 threads enter.
 
+## Parallel compiles
+
+A batch of units loads in three phases. The launcher (`build_batch` in `src/launcher/launcher.cpp`) runs them.
+
+- `begin_load` runs for each unit, one at a time. It translates and finds the imports.
+- `PendingLoad::compile` runs in parallel. It compiles and links. `ClangFilesBackend::compile_stage` takes no `mutex_`. `pch_mutex_` guards the PCH thread and plan. Temporary names have the job number.
+- `PendingLoad::finish` runs in name order. It opens the library and makes the module.
+
+`HOT_JOBS` sets the limit (see `doc/embedding-backends.md`). The caller thread also works, so the launcher starts `jobs - 1` threads. No thread starts for one unit.
+
+Serial cases: `opt.fs` set, Windows, and the JIT backend. The JIT uses the default `begin_load`. `JitBackend::load` holds its mutex for the full build.
+
+After a compile error the other jobs finish and cache their objects. The first failed unit in name order is the reported error. The old code stays live.
+
 ## Closures and unload
 
 An arrow lambda becomes `hot::make_closure(GEN, "Class::fn lambda", [=](params) { ... })`. It captures by value. `this` is the pointer `__self`. The body reads the state pointer again, so a lambda never keeps a pointer to a state block. The result is a `hot::Closure<Sig>`. It holds one pin of its generation (`hot::pin`, `unpin`, `pin_count`; the counts are atomic). Each call checks the generation. When the generation is not live, the call logs a stale call, counts it (`hot::stale_call_count()`) and returns a default value. The body does not run. A `Closure` converts to `std::function` and to an engine delegate that has `Bind(std::function<Sig>)`. The `Closure` is two words: a pointer to one heap box and the generation. The box holds the guarded lambda (`hot::detail::GuardedFn`: the pin, the guard and the lambda). A copy clones the box and takes a pin. A move gives the box away. The small size lets a lambda that captures a closure fit in the small buffer of a native `Signal::Subscribe`. The `std::function` from a `Closure` holds a copy of the guarded lambda, not the `Closure`. So a call through it is one indirect call.
