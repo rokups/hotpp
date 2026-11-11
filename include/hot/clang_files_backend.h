@@ -112,8 +112,8 @@ public:
     LoadResult load(const ScriptSource& source, uint32_t generation, LoadMode mode = LoadMode::Reload) override;
     // The two phase load. The first phase translates (one at a time). compile() runs the compiler
     // and the linker without a lock, so many PendingLoads of this backend can compile at the same
-    // time. finish() opens the library on the calling thread. With a host file system (opt.fs) or
-    // on Windows it uses the serial default.
+    // time. finish() opens the library on the calling thread. A host file system (opt.fs) also gives
+    // a parallel compile: each job has its own mirror directory. On Windows it uses the serial default.
     std::unique_ptr<PendingLoad> begin_load(
         const ScriptSource& source, uint32_t generation, LoadMode mode = LoadMode::Reload) override;
     const char* name() const override { return "CLANG_FILES"; }

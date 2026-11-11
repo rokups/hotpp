@@ -2018,8 +2018,6 @@ std::unique_ptr<PendingLoad> ClangFilesBackend::begin_load(
 #ifdef _WIN32
     return Backend::begin_load(source, generation, mode);
 #else
-    if (opt_.fs)
-        return Backend::begin_load(source, generation, mode);
     auto pending = std::make_unique<TwoPhaseLoad>(*this, source, generation, mode);
     std::lock_guard<std::mutex> lock(mutex_);
     const std::string so = library_path(source, generation, mode);
