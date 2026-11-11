@@ -14,6 +14,7 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -1095,6 +1096,84 @@ TEST(Launcher, ColdStartCompilesImportsInParallel)
     EXPECT_TRUE(env.wrapper.overlap()) << "the imports must compile at the same time";
     EXPECT_GE(env.wrapper.compile_calls(), 4u);
     EXPECT_EQ(launcher::run_main(*program, {}), 321);
+}
+
+// A file system of the disk. A read of a "gate_" header holds 0.3 seconds, and the system counts
+// the reads that run at the same time. A serial translate gives the peak 1.
+class GateFileSystem final : public hot::FileSystem
+{
+public:
+    bool read(const std::string& path, std::string& out) override
+    {
+        const bool gate = path.find("gate_") != std::string::npos;
+        if (gate)
+        {
+            const size_t now = ++active_;
+            size_t peak = peak_.load();
+            while (now > peak && !peak_.compare_exchange_weak(peak, now))
+            {
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        }
+        const bool ok = hot::disk_file_system()->read(path, out);
+        if (gate)
+            --active_;
+        return ok;
+    }
+    hot::VfsStat stat(const std::string& path) override { return hot::disk_file_system()->stat(path); }
+    size_t peak() const { return peak_.load(); }
+
+private:
+    std::atomic<size_t> active_{0};
+    std::atomic<size_t> peak_{0};
+};
+
+// Each import has an own native header, so the translate of an import reads a header of its own.
+struct GateResult
+{
+    int result = 0;
+    size_t peak = 0;
+    std::vector<std::string> units;
+};
+
+GateResult cold_start_with_gates(const char* jobs)
+{
+    ParallelEnv env(jobs, HOT_CXX);
+    const fs::path dir = make_temp_dir();
+    std::string uses;
+    for (const char* n : {"a", "b", "c"})
+    {
+        write_file(dir, std::string("gate_") + n + ".h", "inline int gate_" + std::string(n) + "() { return 1; }\n");
+        write_file(dir, std::string("imp_") + n + ".hot",
+                   std::string("using \"gate_") + n + ".h\";\n" +
+                       import_text(std::string("Imp") + char(n[0] - 32), n[0] - 'a' + 1));
+    }
+    const std::string script = write_file(dir, "entry.hot",
+        std::string(kThreeUsings) + "int main() { return ImpA.V() + ImpB.V() * 10 + ImpC.V() * 100; }\n");
+    auto gate = std::make_shared<GateFileSystem>();
+    launcher::Options options = options_for("files", dir, nullptr);
+    options.include_dirs.push_back(dir.string());
+    options.fs = gate;
+    std::string error;
+    auto program = launcher::load(options, script, error);
+    GateResult r;
+    EXPECT_NE(program, nullptr) << error;
+    if (program)
+        r.result = launcher::run_main(*program, {});
+    r.peak = gate->peak();
+    return r;
+}
+
+// The translate of the units of one wave runs at the same time. The result equals HOT_JOBS=1.
+TEST(Launcher, ColdStartTranslatesImportsInParallel)
+{
+    SKIP_PARALLEL_TESTS();
+    const GateResult serial = cold_start_with_gates("1");
+    EXPECT_EQ(serial.peak, 1u) << "HOT_JOBS=1 translates one unit at a time";
+    EXPECT_EQ(serial.result, 321);
+    const GateResult parallel = cold_start_with_gates("4");
+    EXPECT_GE(parallel.peak, 2u) << "the imports must translate at the same time";
+    EXPECT_EQ(parallel.result, serial.result);
 }
 
 // HOT_JOBS limits the compiles that run at the same time. The caller thread counts as one job.

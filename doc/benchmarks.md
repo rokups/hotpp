@@ -607,3 +607,22 @@ One cold start: 87 units, an empty cache, HOT_JOBS not set. Each unit has one pa
 The phases cover 123515 ms of 130825 ms. The rest is the session lookup work outside the parse.
 The check phase includes the per-class lowering. The emit phase starts at the function bodies.
 The smallest parse is about 220 ms: this is the fixed cost of one parse.
+
+## Parallel translate (cold start of the BiteSizedWar game)
+
+The launcher and the script system start the loads of one wave with `Backend::begin_load_many`.
+The units of a wave translate on `build_jobs()` threads. The setup is the same as above: 87 units,
+an empty cache, HOT_JOBS not set, 32 hardware threads, a Debug build of the game.
+
+| Item | Serial translate | Parallel translate |
+|---|---|---|
+| Wall time of the cold start | 206 s | 100 s (second run 107 s) |
+| Sum of translate | 131 s | 256 s |
+| Translate phase (first to last translate output) | about 131 s | about 13 s |
+| Sum of lock wait (`wait`) | 0 s | 6.4 s (2 units) |
+| Peak memory (VmHWM of the game) | not measured | 4.7 GB |
+| Errors in the game log | 0 | 0 |
+
+The sum of translate grows because the units share the processor. The translate phase time comes
+from the file times of the generated sources. The two units with a lock wait share one session
+entry with another unit.

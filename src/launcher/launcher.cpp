@@ -296,39 +296,63 @@ BuildOutput build_batch(hot::Backend& backend, const std::string& script_path, c
             out.dependencies.push_back(d);
         return out;
     };
-    // Phase 1: the worklist. begin_load does the fast part and gives the imports.
+    // Phase 1: the worklist in waves. A wave is all the units that wait at that moment. The wave
+    // translates on build_jobs threads (begin_load_many). The heads are then processed in the index
+    // order of the wave, and the new units wait for the next wave.
     while (!todo.empty())
     {
-        const std::string name = *todo.begin();
-        todo.erase(todo.begin());
-        if (pending.count(name))
-            continue;
-        out.attempted.insert(name);
-        const auto old = known.find(name);
-        const std::string path = name == main_unit ? script_path
-                                 : old != known.end() ? old->second.path
-                                                      : resolve_path(script_path, include_dirs, name + ".hot");
-        std::string text;
-        if (const auto t = texts.find(path); t != texts.end())
-            text = t->second;
-        else if (!read_file(path, text))
-            return fail("cannot read the script '" + path + "'", {});
-        std::unique_ptr<hot::PendingLoad> p =
-            backend.begin_load(hot::ScriptSource{path, std::move(text), {}, name}, generation, mode);
-        const hot::LoadResult& head = p->head;
-        if (!p->ok)
-            return fail(head.error.empty() ? "the script '" + path + "' did not compile" : head.error, head.dependencies);
-        const bool changed = old == known.end() || old->second.iface_hash != head.iface_hash;
-        known[name] = UnitState{path, head.iface_hash, head.import_hashes, head.dependencies};
-        for (const auto& [dep, hash] : head.import_hashes)
-            if (!known.count(dep) && !pending.count(dep))
-                todo.insert(dep); // a new import
-        if (changed)
-            for (const auto& [unit, u] : known)
-                for (const auto& [dep, hash] : u.imports)
-                    if (dep == name && !pending.count(unit) && unit != name)
-                        todo.insert(unit); // an importer of the changed interface
-        pending.emplace(name, std::move(p));
+        std::vector<std::string> names;
+        for (const std::string& name : todo)
+            if (!pending.count(name))
+                names.push_back(name);
+        todo.clear();
+        std::vector<hot::ScriptSource> sources;
+        std::string read_error;
+        for (const std::string& name : names)
+        {
+            const auto old = known.find(name);
+            const std::string path = name == main_unit ? script_path
+                                     : old != known.end() ? old->second.path
+                                                          : resolve_path(script_path, include_dirs, name + ".hot");
+            std::string text;
+            if (const auto t = texts.find(path); t != texts.end())
+                text = t->second;
+            else if (!read_file(path, text))
+            {
+                // The units before this one still run, so that the first error is the serial one.
+                read_error = "cannot read the script '" + path + "'";
+                break;
+            }
+            sources.push_back(hot::ScriptSource{path, std::move(text), {}, name});
+        }
+        std::vector<std::unique_ptr<hot::PendingLoad>> wave = backend.begin_load_many(sources, generation, mode);
+        for (size_t i = 0; i < wave.size(); ++i)
+        {
+            const std::string& name = names[i];
+            const std::string& path = sources[i].name;
+            const auto old = known.find(name);
+            out.attempted.insert(name);
+            std::unique_ptr<hot::PendingLoad> p = std::move(wave[i]);
+            const hot::LoadResult& head = p->head;
+            if (!p->ok)
+                return fail(head.error.empty() ? "the script '" + path + "' did not compile" : head.error, head.dependencies);
+            const bool changed = old == known.end() || old->second.iface_hash != head.iface_hash;
+            known[name] = UnitState{path, head.iface_hash, head.import_hashes, head.dependencies};
+            for (const auto& [dep, hash] : head.import_hashes)
+                if (!known.count(dep) && !pending.count(dep))
+                    todo.insert(dep); // a new import
+            if (changed)
+                for (const auto& [unit, u] : known)
+                    for (const auto& [dep, hash] : u.imports)
+                        if (dep == name && !pending.count(unit) && unit != name)
+                            todo.insert(unit); // an importer of the changed interface
+            pending.emplace(name, std::move(p));
+        }
+        if (!read_error.empty())
+        {
+            out.attempted.insert(names[sources.size()]);
+            return fail(read_error, {});
+        }
     }
     // Phase 2: the slow compiles, in parallel when build_jobs allows it.
     std::vector<hot::PendingLoad*> units;
@@ -421,6 +445,7 @@ std::unique_ptr<Program> load(const Options& options, const std::string& script_
     backend_options.include_dirs = options.include_dirs;
     backend_options.extra_flags = options.extra_flags;
     backend_options.std_version = options.std_version;
+    backend_options.fs = options.fs;
     if (options.backend.empty())
         backend_options.kind = hot::BackendKind::Auto;
     else if (options.backend == "files")

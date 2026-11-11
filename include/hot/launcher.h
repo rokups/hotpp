@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+#include "hot/vfs.h"
+
 namespace hot::launcher
 {
 
@@ -45,6 +47,8 @@ struct Options
     std::string std_version;               // for example "c++20". Empty: the standard of the host
     std::string backend;                   // "" (the default choice), "files" or "jit"
     std::string work_dir;                  // empty: default_cache_dir(script_path)
+    // The file system of the translator (hot/vfs.h). It must permit parallel read calls. Null: the disk.
+    std::shared_ptr<hot::FileSystem> fs;
     // Receives the diagnostics and the exception messages. Empty: write to stderr.
     std::function<void(const std::string&)> log;
     // Program::poll scans the files at most once in this time.  0: scan on each call.
