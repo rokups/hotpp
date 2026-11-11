@@ -2034,18 +2034,20 @@ public:
         try
         {
             translated = backend_.translate_stage(job_, source_, generation_, so_, true, in);
+            head.dependencies = job_.tr.dependencies; // also after a failure
+            head.iface_hash = job_.tr.iface_hash;
+            head.import_hashes = job_.tr.import_hashes;
         }
         catch (const std::exception& e)
         {
+            translated = false;
             job_.error = e.what()[0] ? e.what() : "the translate failed";
         }
         catch (...)
         {
+            translated = false;
             job_.error = "the translate failed";
         }
-        head.dependencies = job_.tr.dependencies; // also after a failure
-        head.iface_hash = job_.tr.iface_hash;
-        head.import_hashes = job_.tr.import_hashes;
         if (!translated)
         {
             head.error = job_.error;
@@ -2135,9 +2137,18 @@ std::vector<std::unique_ptr<PendingLoad>> ClangFilesBackend::begin_load_many(
             // A thread did not start: the started threads and this thread do the work.
         }
     }
+    // The guard joins every started thread, also when "work" throws on this thread.
+    struct Joiner
+    {
+        std::vector<std::thread>& threads;
+        ~Joiner()
+        {
+            for (std::thread& t : threads)
+                if (t.joinable())
+                    t.join();
+        }
+    } joiner{threads};
     work();
-    for (std::thread& t : threads)
-        t.join();
     return result;
 #endif
 }

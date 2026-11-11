@@ -27,6 +27,8 @@
 #include <memory>
 #include <mutex>
 #include <set>
+#include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -647,6 +649,22 @@ TEST(BeginLoadMany, SameUnitNameFailsTheLaterEntry)
 }
 
 // T8: Reload mode with an existing slots file gives the slot numbers of the serial build.
+// The unit "i" with two script methods. "swapped" changes the order of the methods.
+hot::ScriptSource method_source(int i, bool swapped)
+{
+    const std::string cls = class_name(i);
+    const std::string n = std::to_string(i);
+    const std::string poke = "    void poke" + n + "(int amount) { this.result = amount; }\n";
+    const std::string peek = "    void peek" + n + "(int amount) { this.result = amount + 1; }\n";
+    const std::string text = "using \"Actor.h\";\nclass " + cls + " : Actor {\n    float result = 0.0;\n" +
+                             (swapped ? peek + poke : poke + peek) +
+                             "    override void Tick(float dt) { this.result = " + std::to_string(10 * i + 7) +
+                             ".0; }\n}\n";
+    return {"calc" + n + ".hot", text, {}, cls};
+}
+
+// The reload of units 0 and 1 must reuse their slot numbers. Unit 1 changes its method order.
+// The slots file of the first generation holds the last unit, which is unit 1.
 TEST(BeginLoadMany, ReloadKeepsTheSlotNumbersOfTheSerialBuild)
 {
     SKIP_ON_WINDOWS();
@@ -657,11 +675,14 @@ TEST(BeginLoadMany, ReloadKeepsTheSlotNumbersOfTheSerialBuild)
     {
         auto backend = make_many_backend(scratch, "first", scratch.file("cache"));
         std::vector<std::unique_ptr<hot::PendingLoad>> pending;
-        for (const hot::ScriptSource& s : many_sources(0, 2))
-            pending.push_back(backend->begin_load(s, 1));
+        for (int i = 0; i < 2; ++i)
+            pending.push_back(backend->begin_load(method_source(i, false), 1));
         old_slots = finish_all(*backend, pending);
     }
     ASSERT_FALSE(old_slots.empty());
+    std::vector<hot::ScriptSource> sources;
+    for (int i = 0; i < 4; ++i)
+        sources.push_back(method_source(i, i == 1));
     std::string slots[2];
     std::map<std::string, std::string> cpps[2];
     for (int k = 0; k < 2; ++k)
@@ -669,15 +690,18 @@ TEST(BeginLoadMany, ReloadKeepsTheSlotNumbersOfTheSerialBuild)
         const std::string name = k == 0 ? "serial" : "many";
         auto backend = make_many_backend(scratch, name, scratch.file("cache"));
         {
+            // The work directory does not exist yet: a write without it fails.
+            fs::create_directories(fs::path(backend->slots_file()).parent_path());
             std::ofstream out(backend->slots_file(), std::ios::binary);
             out << old_slots;
+            ASSERT_TRUE(out.good());
         }
         std::vector<std::unique_ptr<hot::PendingLoad>> pending;
         if (k == 0)
-            for (const hot::ScriptSource& s : many_sources(2, 4))
-                pending.push_back(backend->begin_load(s, 2));
+            for (const hot::ScriptSource& s : sources)
+                pending.push_back(backend->begin_load(s, 2, hot::LoadMode::Reload));
         else
-            pending = backend->begin_load_many(many_sources(2, 4), 2);
+            pending = backend->begin_load_many(sources, 2, hot::LoadMode::Reload);
         for (auto& p : pending)
             ASSERT_TRUE(p->ok) << p->head.error;
         slots[k] = finish_all(*backend, pending);
@@ -685,6 +709,62 @@ TEST(BeginLoadMany, ReloadKeepsTheSlotNumbersOfTheSerialBuild)
     }
     EXPECT_EQ(slots[0], slots[1]);
     EXPECT_EQ(cpps[0], cpps[1]);
+    // The first generation gave poke1 the slot 3 and peek1 the slot 4. The swap must not change them.
+    for (int k = 0; k < 2; ++k)
+    {
+        const std::string& cpp = cpps[k]["Calc1.cpp"];
+        EXPECT_NE(cpp.find("SLOT_poke1 = 3"), std::string::npos) << cpp;
+        EXPECT_NE(cpp.find("SLOT_peek1 = 4"), std::string::npos);
+    }
+}
+
+// A file system that fails to read one path.
+class ThrowingFs final : public hot::FileSystem
+{
+public:
+    explicit ThrowingFs(std::string bad) : bad_(std::move(bad)) {}
+    bool read(const std::string& path, std::string& out) override
+    {
+        if (path == bad_)
+            throw std::runtime_error("the read failed");
+        return inner.read(path, out);
+    }
+    hot::VfsStat stat(const std::string& path) override { return inner.stat(path); }
+    MemoryFs inner;
+
+private:
+    std::string bad_;
+};
+
+// A throw in the first phase of one unit: only that entry fails, and no mirror stays.
+TEST(BeginLoadMany, ThrowInOneUnitFailsOnlyThatEntry)
+{
+    SKIP_ON_WINDOWS();
+    CleanEnv env;
+    ScopedEnv jobs("HOT_JOBS", "4");
+    TestScratch scratch;
+    auto fs = std::make_shared<ThrowingFs>(vfs_dir(2) + "/v.h");
+    set_vfs_headers(fs->inner);
+    auto backend = make_many_backend(scratch, "work", scratch.file("cache"), fs);
+    const std::string jobs_dir = scratch.file("work") + "/vfs.job";
+    std::vector<hot::ScriptSource> sources;
+    for (int i = 0; i < 4; ++i)
+        sources.push_back(vfs_unit_source(i));
+    {
+        auto pending = backend->begin_load_many(sources, 1);
+        ASSERT_EQ(pending.size(), 4u);
+        for (int i = 0; i < 4; ++i)
+        {
+            if (i == 2)
+            {
+                EXPECT_FALSE(pending[i]->ok);
+                EXPECT_EQ(pending[i]->head.reason, hot::ReloadReason::CompileError);
+            }
+            else
+                EXPECT_TRUE(pending[i]->ok) << pending[i]->head.error;
+        }
+    }
+    EXPECT_EQ(count_entries(jobs_dir), 0u);
 }
 
 // T10: with a host file system each unit has its own mirror directory. None stays after finish.
