@@ -10174,6 +10174,9 @@ void translate_impl(
         o.w("    hot::set_value_generation(GEN);\n");
     for (const auto& r : registers)
         o.w("    reg.add(&" + r.first + "_record, &" + r.first + "_create);\n");
+    // A module with reloadable lambdas gives their records to the registry.
+    if (o.s.find("hot::make_lambda<") != std::string::npos)
+        o.w("    hot::flush_lambdas(reg);\n");
     // The function table of the unit: an importer calls a public free function through it
     // (hot::call_fn). The key is the C++ function type.
     if (!opt.aot_optimized)

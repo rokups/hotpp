@@ -280,6 +280,8 @@ public:
         return it == mod_blocks_.end() ? ModuleStateInfo{} : ModuleStateInfo{it->second.layout, it->second.slot};
     }
     void* thunk(const std::string& name) const { return registry_.thunk(name); }
+    // The record of a reloadable lambda by key, or null (lambda.h).
+    const LambdaRecord* find_lambda(const std::string& key) const { return registry_.find_lambda(key); }
     // The key of the latest thunk of "name": "name" for the first signature, "name#sig" for a
     // changed signature or an AOT thunk (Registry::thunk_key). Empty: no thunk.
     std::string thunk_key(const std::string& name) const { return registry_.current_thunk_key(name); }

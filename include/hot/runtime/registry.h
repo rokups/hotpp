@@ -5,6 +5,7 @@
 // The registry that a generation module fills in script_register.
 #pragma once
 #include "hot/runtime/hidden.h"
+#include "hot/runtime/lambda.h"
 #include "hot/runtime/migration.h"
 #include "hot/runtime/records.h"
 #include "hot/runtime/shell.h"
@@ -92,6 +93,10 @@ public:
     // A free function for other units. A second call with the same name replaces the entry.
     // "sig_key" is typeid(Sig).name() of the function type.
     HOT_NODEBUG HOT_EXPORT void add_fn(const std::string& name, const char* sig_key, void* fn);
+    // A reloadable lambda (lambda.h). A second call with the same key replaces the record.
+    HOT_NODEBUG HOT_EXPORT void add_lambda(const LambdaRecord& record);
+    const LambdaRecord* find_lambda(const std::string& key) const;
+    const std::unordered_map<std::string, LambdaRecord>& lambdas() const { return lambdas_; }
     const FnEntry* find_fn(const std::string& name) const { return fns_.find(name); }
     const FnTable& fn_table() const { return fns_; }
     const ClassEntry* find(const std::string& name) const;
@@ -121,6 +126,7 @@ private:
     uint32_t max_generation_ = 0;
     uint32_t generation_ = 0;
     FnTable fns_;
+    std::unordered_map<std::string, LambdaRecord> lambdas_; // by key
     ModuleStateInfo module_state_;
     uint32_t* live_flag_ = nullptr;
 };

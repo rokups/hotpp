@@ -120,6 +120,17 @@ void Registry::add_fn(const std::string& name, const char* sig_key, void* fn)
     fns_.entries.insert_or_assign(name, FnEntry{name, sig_key ? sig_key : "", fn});
 }
 
+void Registry::add_lambda(const LambdaRecord& record)
+{
+    lambdas_.insert_or_assign(record.key, record);
+}
+
+const LambdaRecord* Registry::find_lambda(const std::string& key) const
+{
+    auto it = lambdas_.find(key);
+    return it == lambdas_.end() ? nullptr : &it->second;
+}
+
 void Registry::add_thunk(const std::string& name, void* fn)
 {
     add_thunk(ThunkEntry{fn, name, {}, 0});

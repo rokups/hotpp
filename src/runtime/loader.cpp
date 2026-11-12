@@ -688,6 +688,8 @@ ReloadResult Loader::load_unit(Module module, Registry* code_out)
             adopt(ar, e.record);
             adopt_ifaces(ar, e.record);
         }
+    for (const auto& [key, l] : code.lambdas())
+        registry_.add_lambda(l);
     refresh_slot_keys();
     const uint32_t gen = registry_.max_generation();
     if (!have_core)
