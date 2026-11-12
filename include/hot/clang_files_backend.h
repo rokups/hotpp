@@ -15,6 +15,7 @@
 #include <atomic>
 #include <chrono>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <map>
 #include <memory>
@@ -173,6 +174,10 @@ public:
     // load of the module does not wait for the PCH. The destructor waits too.
     void wait_for_pch();
 
+    // For tests: "hook" runs in the PCH thread after the PCH header is written and before the
+    // compiler runs. A hook that throws models a failure in the PCH build. Set it before a build call.
+    void set_pch_build_hook(std::function<void()> hook) { pch_build_hook_ = std::move(hook); }
+
 private:
     class TwoPhaseLoad;
     // The data of one build that crosses the three stages (translate_stage, compile_stage,
@@ -289,7 +294,11 @@ private:
     // "mutex_", during run_command.
     std::mutex pch_mutex_;
     std::thread pch_thread_;
+    // True from the start of a PCH build until a join of its thread ends (under "pch_mutex_"). It
+    // stays true while wait_for_pch joins a thread that it moved out, so one build runs at a time.
+    bool pch_running_ = false;
     std::atomic<bool> pch_done_{true};
+    std::function<void()> pch_build_hook_; // see set_pch_build_hook
     std::unique_ptr<TranslateCache> tr_cache_; // null: no translate cache
     std::string compiler_id_;
     bool compiler_id_done_ = false;

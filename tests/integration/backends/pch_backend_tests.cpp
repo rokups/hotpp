@@ -19,10 +19,13 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
+#include <atomic>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -542,6 +545,91 @@ TEST(PchBackend, TrimRemovesOldMarkersWithoutPch)
     }
     EXPECT_TRUE(fs::exists(pch_dir / (live + ".h")));
     EXPECT_TRUE(fs::exists(pch_dir / (live + ".seen")));
+}
+
+// The number of ".bad" marker files of the PCH cache.
+size_t bad_markers(const fs::path& cache)
+{
+    size_t n = 0;
+    std::error_code ec;
+    for (const auto& e : fs::directory_iterator(cache / "pch", ec))
+        n += e.path().extension() == ".bad" ? 1 : 0;
+    return n;
+}
+
+// A compiler wrapper with a shell command for the PCH build. Other runs go to the real compiler.
+std::string make_pch_wrapper(const TestScratch& scratch, const std::string& name, const std::string& pch_command,
+    const std::string& cxx)
+{
+    const std::string path = scratch.file(name);
+    std::ofstream(path, std::ios::binary)
+        << "#!/bin/sh\ncase \"$*\" in *c++-header*) " << pch_command << ";; esac\nexec " << cxx << " \"$@\"\n";
+    fs::permissions(path, fs::perms::owner_all);
+    return path;
+}
+
+// An exception in the PCH build is a failed PCH build: the process stays alive, the load works,
+// the message appears once, and no "bad" marker stays for one day.
+TEST(PchBackend, ExceptionInThePchBuildMeansNoPch)
+{
+    Fixture f;
+    auto backend = make_backend(f.scratch, "work_throw", f.cache, f.cxx, f.incs());
+    backend->set_pch_build_hook([] { throw std::runtime_error("boom"); });
+    testing::internal::CaptureStderr();
+    EXPECT_EQ(load_and_run(*backend, layout_script(1)), 5.0f);
+    backend->wait_for_pch();
+    const std::string err = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(count_text(err, "has no PCH"), 1u) << err;
+    EXPECT_NE(err.find("boom"), std::string::npos) << err;
+    EXPECT_TRUE(pch_files(f.cache).empty());
+    EXPECT_EQ(bad_markers(f.cache), 0u);
+}
+
+// A compile error of the PCH header gets the "bad" marker. A compiler that a signal kills does not.
+TEST(PchBackend, BadMarkerOnlyForACompileErrorOfThePch)
+{
+    {
+        Fixture f;
+        const std::string cxx = make_pch_wrapper(f.scratch, "fail_pch.sh", "echo broken; exit 1", f.cxx);
+        auto backend = make_backend(f.scratch, "work_fail", f.cache, cxx, f.incs());
+        EXPECT_EQ(load_and_run(*backend, layout_script(1)), 5.0f);
+        backend->wait_for_pch();
+        EXPECT_EQ(bad_markers(f.cache), 1u);
+    }
+    {
+        Fixture f;
+        const std::string cxx = make_pch_wrapper(f.scratch, "kill_pch.sh", "kill -9 $$", f.cxx);
+        auto backend = make_backend(f.scratch, "work_kill", f.cache, cxx, f.incs());
+        EXPECT_EQ(load_and_run(*backend, layout_script(1)), 5.0f);
+        backend->wait_for_pch();
+        EXPECT_TRUE(pch_files(f.cache).empty());
+        EXPECT_EQ(bad_markers(f.cache), 0u);
+    }
+}
+
+// A load while wait_for_pch joins the PCH thread starts no second PCH build.
+TEST(PchBackend, NoSecondPchBuildWhileWaitForPchJoins)
+{
+    Fixture f;
+    auto backend = make_backend(f.scratch, "work_join", f.cache, f.cxx, f.incs());
+    std::promise<void> release;
+    std::shared_future<void> gate = release.get_future().share();
+    std::atomic<int> started{0};
+    backend->set_pch_build_hook(
+        [&]
+        {
+            if (started++ == 0)
+                gate.wait();
+        });
+    EXPECT_EQ(load_and_run(*backend, layout_script(1)), 5.0f); // starts the PCH thread
+    std::thread waiter([&] { backend->wait_for_pch(); });
+    std::this_thread::sleep_for(std::chrono::milliseconds(300)); // the waiter has the thread and joins
+    EXPECT_EQ(load_and_run(*backend, layout_script(2)), 6.0f); // must not start a second build
+    release.set_value();
+    waiter.join();
+    backend->wait_for_pch();
+    EXPECT_EQ(started.load(), 1);
+    EXPECT_EQ(f.pch_builds(), 1u);
 }
 
 #endif

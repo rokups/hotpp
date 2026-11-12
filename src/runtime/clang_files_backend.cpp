@@ -1240,12 +1240,20 @@ bool ClangFilesBackend::build_pch(const PchPlan& plan, const std::string& script
     std::error_code dir_ec;
     fs::create_directories(fs::path(pch_marker(plan.key, ".seen")).parent_path(), dir_ec);
     // A new time of the "seen" marker: the trim of a process does not remove the header now.
-    write_text(pch_marker(plan.key, ".seen"), std::string());
-    if (!write_pch_header(plan.header, plan.prefix))
+    // The marker files and the header are under "pch_mutex_". The lock ends before the compiler runs.
+    bool wrote = false;
+    {
+        std::lock_guard<std::mutex> lock(pch_mutex_);
+        write_text(pch_marker(plan.key, ".seen"), std::string());
+        wrote = write_pch_header(plan.header, plan.prefix);
+    }
+    if (!wrote)
     {
         error = "cannot write " + plan.header;
         return false;
     }
+    if (pch_build_hook_)
+        pch_build_hook_();
     const std::string base = (fs::path(opt_.work_dir) / plan.key.hex()).string();
     const std::string tmp = base + ".pch.tmp" + std::to_string(hot::detail::process_id());
     const std::string dep = base + ".pchd.tmp" + std::to_string(hot::detail::process_id());
@@ -1257,9 +1265,12 @@ bool ClangFilesBackend::build_pch(const PchPlan& plan, const std::string& script
         read_text(dep, dep_text);
     fs::remove(dep, ec);
     bool ok = rc == 0;
-    bool bad = !ok; // the PCH of this key can never work
+    // A compile error of the PCH header is final for this key. A compiler that did not start or that
+    // a signal ended (run_command gives -1) can work the next time: no "bad" marker for it.
+    bool bad = !ok && rc != -1;
     if (!ok)
-        error = "the PCH build failed (exit code " + std::to_string(rc) + "): " + output.substr(0, 400);
+        error = rc == -1 ? "the PCH build did not run or a signal ended it: " + output.substr(0, 400)
+                         : "the PCH build failed (exit code " + std::to_string(rc) + "): " + output.substr(0, 400);
     // A header in the work directory has no stamp: a PCH of it can be stale. No such PCH.
     std::vector<std::string> deps;
     if (ok && !ObjectCache::parse_depfile(dep_text, deps))
@@ -1282,7 +1293,10 @@ bool ClangFilesBackend::build_pch(const PchPlan& plan, const std::string& script
     // A PCH that does not build or reads a work file gets the "bad" marker. A store failure (a
     // young header) does not.
     if (bad)
+    {
+        std::lock_guard<std::mutex> lock(pch_mutex_);
         write_text(pch_marker(plan.key, ".bad"), error);
+    }
     // A PCH is 10 to 100 MB: a new one can put the PCH entries above the limit.
     if (ok)
     {
@@ -1292,6 +1306,7 @@ bool ClangFilesBackend::build_pch(const PchPlan& plan, const std::string& script
         if (!fs::exists(pch_cache_->object_path(plan.key), ec))
         {
             error = "the PCH is larger than the size limit of the cache";
+            std::lock_guard<std::mutex> lock(pch_mutex_);
             write_text(pch_marker(plan.key, ".bad"), error);
             return false;
         }
@@ -1320,6 +1335,7 @@ void ClangFilesBackend::trim_pch()
     pch_cache_->trim();
     try
     {
+        std::lock_guard<std::mutex> lock(pch_mutex_); // the marker files are under the mutex
         const fs::path dir = fs::path(opt_.cache_dir) / "pch";
         const fs::path obj = dir / "obj";
         const auto now = fs::file_time_type::clock::now();
@@ -1361,12 +1377,26 @@ void ClangFilesBackend::start_pch_build(
     const PchPlan& plan, const std::string& script_dir, const std::string& unit, bool timing)
 {
     pch_done_ = false;
+    pch_running_ = true; // the caller holds "pch_mutex_"
     pch_thread_ = std::thread(
         [this, plan, script_dir, unit, timing]
         {
             const auto s = std::chrono::steady_clock::now();
             std::string error;
-            const bool ok = build_pch(plan, script_dir, error);
+            bool ok = false;
+            // An exception must not end the process: it means no PCH.
+            try
+            {
+                ok = build_pch(plan, script_dir, error);
+            }
+            catch (const std::exception& e)
+            {
+                error = std::string("exception in the PCH build: ") + e.what();
+            }
+            catch (...)
+            {
+                error = "unknown exception in the PCH build";
+            }
             const long long ms = static_cast<long long>(
                 std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - s).count());
             if (!ok)
@@ -1385,7 +1415,12 @@ void ClangFilesBackend::wait_for_pch()
         thread = std::move(pch_thread_);
     }
     if (thread.joinable())
+    {
         thread.join();
+        // "pch_running_" stays true during the join: a build call starts no second PCH build.
+        std::lock_guard<std::mutex> lock(pch_mutex_);
+        pch_running_ = false;
+    }
 }
 
 bool ClangFilesBackend::build(const ScriptSource& source, uint32_t generation, const std::string& out_so,
@@ -1759,8 +1794,11 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
                     // compile, the link and the load do not wait for it. One PCH build at a time: a
                     // plan to build while the last build runs uses no PCH.
                     if (pch_thread_.joinable() && pch_done_)
+                    {
                         pch_thread_.join();
-                    if (pch && pch->build && pch_thread_.joinable())
+                        pch_running_ = false;
+                    }
+                    if (pch && pch->build && pch_running_)
                         pch.reset();
                     if (pch && pch->build)
                         start_pch_build(*pch, script_dir, unit, timing);
