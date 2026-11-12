@@ -948,4 +948,133 @@ TEST(PchBackend, EnvironmentTurnsTheSharedPchOff)
     EXPECT_FALSE(fs::exists(fs::path(f.cache) / "pch" / "shared.inc"));
 }
 
+// A body edit and an interface edit of a warm cache start no shared build. A new file at a probe
+// path (a shadow path) changes no shared key.
+TEST(PchBackend, EditBatchesOfAWarmCacheStartNoSharedBuild)
+{
+    Fixture f;
+    write_other_header(f.inc);
+    const fs::path inc0 = f.scratch.file("inc0");
+    fs::create_directories(inc0);
+    f.before = {inc0.string()};
+    auto backend = make_backend(f.scratch, "work_edit", f.cache, f.cxx, f.incs());
+    EXPECT_EQ(load_batch(*backend, {layout_script(1, "a.hot"), two_header_script(1, "b.hot")}), 2u);
+    backend->wait_for_pch();
+    EXPECT_EQ(f.pch_builds(), 1u);
+    // A body edit.
+    EXPECT_EQ(load_batch(*backend, {layout_script(2, "a.hot")}), 1u);
+    // An interface edit: a new field, the same includes.
+    hot::ScriptSource iface = layout_script(3, "a.hot");
+    iface.text.insert(iface.text.find("float result"), "int extra = 0;\n    ");
+    EXPECT_EQ(load_batch(*backend, {iface}), 1u);
+    // A new probe path: the file does not exist at the first parse, then it appears.
+    write_layout_header(inc0 / "layout.h", 4, std::chrono::minutes(60));
+    EXPECT_EQ(load_batch(*backend, {layout_script(4, "a.hot")}), 1u);
+    backend->wait_for_pch();
+    EXPECT_EQ(f.pch_builds(), 1u);
+}
+
+// A new include line in an edit batch gives one build. The build starts after the last unit of
+// the batch ends, not while the units compile.
+TEST(PchBackend, EditBatchPchBuildStartsAfterTheBatch)
+{
+    Fixture f;
+    write_other_header(f.inc);
+    auto backend = make_backend(f.scratch, "work_after", f.cache, f.cxx, f.incs());
+    EXPECT_EQ(load_batch(*backend, {layout_script(1, "a.hot")}), 1u);
+    backend->wait_for_pch();
+    EXPECT_EQ(f.pch_builds(), 1u);
+    std::atomic<int> started{0};
+    backend->set_pch_build_hook([&] { ++started; });
+    std::vector<hot::ScriptSource> sources = {two_header_script(2, "b.hot"), layout_script(2, "c.hot")};
+    for (hot::ScriptSource& s : sources)
+        s.unit.clear();
+    auto many = backend->begin_load_many(sources, 1, hot::LoadMode::Reload);
+    for (auto& p : many)
+        p->compile();
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    EXPECT_EQ(started.load(), 0); // the units compiled: no build yet
+    EXPECT_EQ(f.pch_builds(), 1u);
+    for (auto& p : many)
+        EXPECT_TRUE(static_cast<bool>(p->finish()));
+    many.clear();
+    backend->wait_for_pch();
+    EXPECT_EQ(started.load(), 1);
+    EXPECT_EQ(f.pch_builds(), 2u);
+}
+
+// A failed shared build removes shared.inc. A header that is gone does not poison the union.
+TEST(PchBackend, BadSharedPchRemovesTheUnion)
+{
+    Fixture f;
+    write_other_header(f.inc);
+    const std::string bad_cxx = make_pch_wrapper(f.scratch, "fail_shared2.sh",
+        "for a in \"$@\"; do if [ -f \"$a\" ] && grep -q other.h \"$a\" 2>/dev/null; then echo broken; exit 1; fi; done",
+        f.cxx);
+    const fs::path inc_file = fs::path(f.cache) / "pch" / "shared.inc";
+    {
+        auto backend = make_backend(f.scratch, "work_ru1", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(load_batch(*backend, {layout_script(1, "a.hot")}), 1u);
+        backend->wait_for_pch();
+    }
+    EXPECT_TRUE(fs::exists(inc_file));
+    {
+        auto backend = make_backend(f.scratch, "work_ru2", f.cache, bad_cxx, f.incs());
+        EXPECT_EQ(load_batch(*backend, {two_header_script(1, "b.hot")}), 1u);
+        backend->wait_for_pch();
+    }
+    EXPECT_GE(bad_markers(f.cache), 1u);
+    EXPECT_FALSE(fs::exists(inc_file));
+    // The compile of the unit can add its line to shared.extra after the failed build removed
+    // the file. That order is a race, so the test removes the file to test shared.inc only.
+    fs::remove(fs::path(f.cache) / "pch" / "shared.extra");
+    {
+        auto backend = make_backend(f.scratch, "work_ru3", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(load_batch(*backend, {layout_script(2, "a.hot")}), 1u);
+        backend->wait_for_pch();
+    }
+    ASSERT_TRUE(fs::exists(inc_file));
+    EXPECT_EQ(read_file(inc_file).find("other.h"), std::string::npos);
+}
+
+// A damaged shared PCH file: the entry goes, no ".noshared" marker stays, and the next batch
+// builds the shared PCH again.
+TEST(PchBackend, CorruptSharedPchIsRemovedAndRebuilt)
+{
+    Fixture f;
+    write_other_header(f.inc);
+    {
+        auto backend = make_backend(f.scratch, "work_cs1", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(load_batch(*backend, {layout_script(1, "a.hot"), two_header_script(1, "b.hot")}), 2u);
+        backend->wait_for_pch();
+    }
+    EXPECT_EQ(f.pch_builds(), 1u);
+    const std::vector<fs::path> files = pch_files(f.cache);
+    ASSERT_EQ(files.size(), 1u);
+    // Same size and time: the stamp of the manifest stays valid.
+    const auto time = fs::last_write_time(files[0]);
+    const std::string old = read_file(files[0]);
+    {
+        std::ofstream o(files[0], std::ios::binary | std::ios::trunc);
+        o << std::string(old.size(), 'x');
+    }
+    fs::last_write_time(files[0], time);
+    {
+        auto backend = make_backend(f.scratch, "work_cs2", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(load_and_run(*backend, layout_script(7, "c.hot")), 11.0f);
+        backend->wait_for_pch();
+    }
+    EXPECT_TRUE(pch_files(f.cache).empty());
+    size_t markers = 0;
+    for (const auto& e : fs::directory_iterator(fs::path(f.cache) / "pch"))
+        markers += e.path().extension() == ".noshared" ? 1 : 0;
+    EXPECT_EQ(markers, 0u);
+    {
+        auto backend = make_backend(f.scratch, "work_cs3", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(load_batch(*backend, {layout_script(8, "d.hot")}), 1u);
+        backend->wait_for_pch();
+    }
+    EXPECT_EQ(pch_files(f.cache).size(), 1u);
+}
+
 #endif

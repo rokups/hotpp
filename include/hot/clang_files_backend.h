@@ -277,21 +277,18 @@ private:
         bool build = false;
         // The key of the exact PCH of the unit. The per-unit marker "noshared" uses it.
         ObjectCache::Key unit_key;
-        // True for the shared PCH. "shadow_text" is then the text of shared.shadow. A good build
-        // writes shared.inc (the "prefix") and shared.shadow.
+        // True for the shared PCH. A good build writes shared.inc (the "prefix").
         bool shared = false;
-        std::string shadow_text;
         // The include lines of the unit that are not in the union. The caller adds them to
         // shared.extra after the unit compiled.
         std::string extra_add;
     };
     // The PCH plan for the translated text. No value: the compile does not use a PCH.
     // "mirror_files": the compile reads mirror files of the host file system.
-    // "shadow_hash": the shadow hash of the object key (ObjectCache::KeyInputs::shadow_hash).
-    // "shadow_paths": the paths of that hash. The shared PCH needs them.
+    // "shadow_hash": the shadow hash of the object key (ObjectCache::KeyInputs::shadow_hash). The
+    // exact PCH key has it. The shared PCH key has no shadow hash.
     std::optional<PchPlan> plan_pch(
-        const std::string& cpp, const std::string& script_dir, bool mirror_files, uint64_t shadow_hash,
-        const std::vector<std::string>& shadow_paths);
+        const std::string& cpp, const std::string& script_dir, bool mirror_files, uint64_t shadow_hash);
     // The plan of a PCH header text: the key, the header file and no build yet.
     PchPlan make_pch_plan(const std::string& text, const std::string& script_dir, uint64_t shadow_hash) const;
     // True when the plan has a "bad" marker that is younger than one day. Else it removes an old
@@ -302,6 +299,17 @@ private:
     void prewarm_pch(const std::vector<const BuildJob*>& jobs, bool timing);
     // Builds the PCH of the plan and stores it in pch_cache_. Gives false on a failure.
     bool build_pch(const PchPlan& plan, const std::string& script_dir, std::string& error);
+    // A PCH build that waits for the end of an edit batch (see "pch_pending_").
+    struct PendingPch
+    {
+        PchPlan plan;
+        std::string script_dir;
+        std::string unit;
+        bool timing = false;
+    };
+    // Starts the first pending PCH build, when no build runs. It drops the other pending plans:
+    // a later miss plans them again. The caller holds no lock.
+    void start_pending_pch();
     // Starts build_pch in pch_thread_. "unit" and "timing" are for the messages.
     void start_pch_build(const PchPlan& plan, const std::string& script_dir, const std::string& unit, bool timing);
     // The size trim of pch_cache_ and the removal of old marker files (see the .cpp file).
@@ -322,6 +330,13 @@ private:
     // stays true while wait_for_pch joins a thread that it moved out, so one build runs at a time.
     bool pch_running_ = false;
     std::atomic<bool> pch_done_{true};
+    // The first batch of the backend (the startup batch) starts its PCH builds at once. A later
+    // batch (an edit batch) only queues them in "pch_pending_". The last unit of the batch starts
+    // the first one, so a PCH build never competes with the compiles of the batch. Both are
+    // guarded by "pch_mutex_". "pch_defer_" is true from the prewarm of an edit batch until its end.
+    bool pch_startup_done_ = false;
+    bool pch_defer_ = false;
+    std::vector<PendingPch> pch_pending_;
     std::function<void()> pch_build_hook_; // see set_pch_build_hook
     std::unique_ptr<TranslateCache> tr_cache_; // null: no translate cache
     std::string compiler_id_;
