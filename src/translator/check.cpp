@@ -1751,7 +1751,7 @@ struct Checker
         if (types.is_script_class(base) || types.is_handle(base))
             error(u.pos,
                 "a cast to '" + type + "' of the script class or handle '" + base
-                    + "' is not allowed: use 'as' or static_cast<" + base + ">(...)");
+                    + "' is not allowed: use 'as' or '($" + base + ")e'");
     }
 
     // A ".hot" script has no named casts. A C style cast "(T)e" or "T(e)" does the same work, and "as"

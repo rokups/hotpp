@@ -1362,7 +1362,7 @@ std::string end_of_expr_message(std::string_view text, uint32_t at)
         const bool keyword = word == "return" || word == "await" || word == "throw" || word == "case" || word == "in";
         const bool call = q > 0 && !keyword && (id_char(text[q - 1]) || text[q - 1] == ')' || text[q - 1] == ']');
         if (o > 0 && type_like && !call && o + 1 < c)
-            return "a C style cast is only for a builtin type or 'T*'; use static_cast<T>(e)";
+            return "a C style cast is only for a builtin type or 'T*'; use T(e)";
     }
     return e_end_of_expr::name;
 }

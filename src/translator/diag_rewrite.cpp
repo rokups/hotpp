@@ -657,7 +657,7 @@ std::vector<std::string> promote_format_errors(
         const Header& at = headers[script_note];
         const std::string message = "'" + type
             + "' cannot be printed in a '${...}' string: it has no formatter. For an enum class, cast the "
-              "value to its integer type, for example 'static_cast<int>(value)'";
+              "value to its integer type, for example '(int)value'";
         const std::string head = at.file + ":" + std::to_string(at.line) + ":" + std::to_string(at.col) + ": error: ";
         const bool again = std::find(shown.begin(), shown.end(), head) != shown.end();
         shown.push_back(head);

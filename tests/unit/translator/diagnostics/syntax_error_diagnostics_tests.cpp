@@ -103,7 +103,7 @@ TEST(SyntaxErrorDiagnostics, TupleTypeAndTupleExpression)
 TEST(SyntaxErrorDiagnostics, CStyleCastToANonBuiltinType)
 {
     const std::string d = body_diag("var s = (std.string)v;");
-    EXPECT_NE(d.find("t.hot:4:29: error: a C style cast is only for a builtin type or 'T*'; use static_cast<T>(e)"),
+    EXPECT_NE(d.find("t.hot:4:29: error: a C style cast is only for a builtin type or 'T*'; use T(e)"),
         std::string::npos)
         << d;
     // A call before the parentheses keeps the plain message.

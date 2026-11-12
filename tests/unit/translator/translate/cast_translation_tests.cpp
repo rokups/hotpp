@@ -116,6 +116,13 @@ TEST(CastTranslation, AnEnumInAnInterpolatedStringStaysValid)
               "}\n");
 }
 
+TEST(CastTranslation, ANativeEnumClassValueInAnInterpolatedStringNeedsACStyleCast)
+{
+    expect_ok("class Foo : Widget {\n"
+              "    void F(NativeMode m) { std.string s = \"m ${(int)m}\"; }\n"
+              "}\n");
+}
+
 TEST(CastTranslation, ACppScriptKeepsTheNamedCasts)
 {
     TempDir dir;

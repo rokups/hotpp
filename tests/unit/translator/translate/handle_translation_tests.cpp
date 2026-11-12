@@ -246,7 +246,7 @@ TEST(HandleTranslation, LambdaParameterDoesNotLeakItsType)
 // A cast to "T&", "T**" or a script class pointer would reinterpret the handle. "(T*)h" of a handle is allowed.
 TEST(HandleTranslation, CastToAHandleReferenceOrDoublePointerIsAnError)
 {
-    const char* hint = "use 'as' or static_cast<";
+    const char* hint = "use 'as' or '($";
     for (const char* cast : {"(Weapon**)h", "(Foo*)f"})
     {
         const hotc::TranslateResult r =

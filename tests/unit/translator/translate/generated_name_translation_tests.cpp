@@ -121,7 +121,7 @@ TEST(GeneratedNameTranslation, CastToANameWithoutAMarkIsAnError)
 {
     const hotc::TranslateResult r = translate_widget("    void f(float v) { var i = (Foo)v; }\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_NE(r.diagnostics.find("a C style cast is only for a builtin type or 'T*'; use static_cast<T>(e)"),
+    EXPECT_NE(r.diagnostics.find("a C style cast is only for a builtin type or 'T*'; use T(e)"),
         std::string::npos)
         << r.diagnostics;
 }
