@@ -22,7 +22,7 @@ public:
     int Never(int a, int b)
     {
         auto c = hot::make_lambda<__LamTag_0, int(int)>(
-            hot::caps(a, b), [](auto& __c, int p) { return std::get<0>(__c) + std::get<1>(__c) + p; });
-        return std::get<0>(c);
+            hot::active_generation, hot::caps(a, b), [](auto& __c, int p) { return std::get<0>(__c) + std::get<1>(__c) + p; });
+        return c(0);
     }
 };
