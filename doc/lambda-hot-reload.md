@@ -66,6 +66,7 @@ The translator does not know the result type or the capture types. C++ knows the
 - These changes detach the box: the lambda is removed, the signature changed, a capture is added, or a capture changed its type.
 - A capture of a script struct type also detaches the box if the layout hash changed. The type key does not show a layout change.
 - The runtime logs one warning for each key: `lambda <key>: <cause>; <n> stored closures are detached`.
+- A bound method group is a lambda box with the key part `m:<object>.<Method>` (see [Method groups](lambdas.html#method-groups)). It uses the same rebind.
 - `__self` is a pointer to the shell object. The shell object stays at the same address over a reload. Thus the pointer moves as a value.
 
 The rules for safety:

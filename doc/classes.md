@@ -36,6 +36,8 @@ class Counter {
 }
 ```
 
+A method name without a call is a method group. A method group is valid only as a call argument, for example `Subscribe(this, HandleHit)`. See [Method groups](lambdas.html#method-groups).
+
 Do not write `const` on a field or on a method. A field is never const. A method has no `const` after the parameters. The translator infers the constness of a local variable and of a parameter in the body. A `virtual` or `override` method takes its constness from the native base. The error is `const is inferred; remove it`.
 
 ## Short bodies and default values
@@ -240,6 +242,7 @@ float F() => Weapon.MaxRange;
 |---|---|
 | `obj.F(x)` | `'F' is a static method; call it as 'C.F(...)'` |
 | `var f = C.F;` or `var f = F;` | `'F' is a function; call it, or write a lambda` |
+| `Take(C.F)` or `Take(F)` with a static `F` | `'F' is a function; call it, or write a lambda`. A static method is not a method group |
 | `static async void F()` | `an async function needs an object; remove 'static'` |
 | `static virtual` or `static override` | `'static' and 'virtual' cannot combine` (the same for `override`) |
 | A `static` constructor | `a constructor cannot be 'static'` |

@@ -100,12 +100,13 @@ The translator gives each lambda a key (`src/translator/lambda_key.h`). The gene
 - The ordinal counts the lambdas of the function that have no name and no variable, in source order.
 - Each `alias("old")` gives an alias key with the part `n:<old>`.
 - Two equal keys in one function are an error. For a variable, add `[name("...")]`.
+- A bound method group has the part `m:<object>.<Method>`. Two equal `m:` parts are not an error: they get an ordinal `#<n>`. See [Keys](#keys).
 - An `alias` without `name` is an error.
 - A lambda in a field initializer is an error, so it has no key.
 
 ## Lambdas and reload
 
-Native code can keep a lambda, for example a timer. A reload does not change the body of a kept lambda. A call after the reload does nothing and logs a stale call. A lambda that the script creates after the reload uses the new body.
+Native code can keep a lambda, for example a timer. The reload commit gives a kept lambda the new body when its key, its signature and its captures agree. Else the kept lambda detaches: a call does nothing and logs a stale call. See [Rebind at the commit](lambda-hot-reload.html#rebind-at-the-commit).
 
 ```hot
 using "Actor.h";
@@ -113,10 +114,70 @@ using "Actor.h";
 class Beeper : Actor {
     int fired = 0;
 
-    // The timer holds this lambda. After a reload, the old timer is stale.
-    // A new call of arm() makes a timer with the new body.
+    // The timer holds this lambda. After a reload, the timer runs the new body.
     void arm(ref World w, float delay) {
         w.AddTimer(delay, () => { fired = fired + 1; });
     }
 }
 ```
+
+## Method groups
+
+A method name without a call is a method group, as in C#. A method group is valid only as a call argument. It gives a handler to a native API.
+
+```hot
+using "Actor.h";
+using "Signal.h";
+
+class Ship : Actor {
+    int hits = 0;
+
+    void HandleHit(int n) { hits = hits + n; }
+
+    void Arm(ref Signal<int> onHit, ref EventHub hub, $Ship other) {
+        onHit.Subscribe(this, HandleHit);       // bound to this
+        onHit.Subscribe(this, this.HandleHit);  // the same
+        onHit.Subscribe(this, Ship.HandleHit);  // unbound: the signal gives the receiver
+        hub.SubscribeToEvent(7, HandleHit);
+        if (other != null) {
+            onHit.Subscribe(this, other.HandleHit); // bound to the local "other"
+        }
+    }
+}
+```
+
+### Name resolution
+
+- `M` and `this.M` are a bound group when `M` is an instance method of the class. A local, a parameter, a field or a property with the name `M` hides the method.
+- `o.M` is a bound group when `o` is a local or a parameter of a script class type, and `M` is a method of that class. A field or a property `M` of the class hides the method.
+- `C.M` is an unbound group when `C` is a script class and `M` is an instance method of `C`.
+- A static method and a free function are not method groups.
+- The callee of a call is a call, not a group.
+
+### Lowering
+
+- A bound group is the lambda `(P... a) => o.M(a...)`. The parameter types `P` are the types of the method. The body calls the method with the normal call lowering.
+- The lambda captures the object. `this` gives `__self`. A local gives a copy of its handle. The handle keeps the object alive.
+- The lambda is a lambda box (`make_lambda_deduced`). The closure has the signature of the method, so a native template parameter takes it directly. A `std::function` parameter and a delegate take it too.
+- A reload gives the box the new method body. A removed method or a changed signature detaches the box. The commit logs one warning for each key.
+- An unbound group `C.M` is a `hot::MethodRef` (`include/hot/runtime/method_ref.h`). Its call operator takes `(C_Shell*, P...)`, so an API with a receiver and a handler can call it. The call goes through the slot of `M` (`hot::call`). The object holds only a pin of its generation.
+- A call of an unbound group after a change of the signature detaches. After the removal of `M`, the call reports the script error of a removed function.
+- Optimized AOT code has no reload. There an unbound group is a plain C++ lambda.
+
+### Keys
+
+The key of a bound group has the part `m:<object>.<Method>`: `m:this.HandleHit` for `HandleHit` and `this.HandleHit`, and `m:other.HandleHit` for the local `other`. Two equal parts in one function are legal: two subscriptions of one method are valid. The second equal part gets the suffix `#1`, the third `#2`, and so on, in source order. In a lambda, the key of the lambda is the prefix. An unbound group has no key: the slot gives its identity.
+
+### Errors and limits
+
+| Code | Error |
+|---|---|
+| `var f = HandleHit;`, `f = this.HandleHit;`, `return o.HandleHit;` | `'HandleHit' is a method group. A method group is accepted only as a call argument; call it, or write a lambda` |
+| `Take(M)` where `M` has overloads | `ambiguous method group 'M': the method has overloads. Write a lambda` |
+| `Take(this.target.M)`, `Take(target.M)` with a field `target` | `the method group 'target.M' needs 'this' or a local as its object. Copy the object into a local` |
+| `Subscribe(this, Other.M)` in a method of another class | `the unbound method group 'Other.M' needs a method of the class '<Class>'` |
+
+- An overloaded method is always ambiguous in this version. The target parameter type does not select the overload. Write a lambda.
+- The object of a bound group is `this`, a local or a parameter. A field would give the value at the call time, not at the creation time.
+- An unbound group needs a method of the class of the function, not of a script parent.
+- `SubscribeToEvent(E, C.M)` does not compile. The engine form gives an `Object*` receiver, and a `MethodRef` takes the shell of `C`. Use the bound group `M`.

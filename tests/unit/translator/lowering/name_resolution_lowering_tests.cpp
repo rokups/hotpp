@@ -100,9 +100,9 @@ TEST(NameResolutionLowering, ForOfVariableIsLocal)
 TEST(NameResolutionLowering, ErrorScriptFnMustBeCalled)
 {
     Fixture f;
-    EXPECT_EQ(f.body("var a = 1;\nvar b = this.heal;"), "auto a = 1; auto b = Player__heal;");
+    EXPECT_EQ(f.body("var a = 1;\nvar b = this.heal;"), "auto a = 1; auto b = this.heal;");
     ASSERT_EQ(f.errors().size(), 1u);
-    EXPECT_EQ(f.errors()[0], "2:9: script function 'heal' must be called");
+    EXPECT_EQ(f.errors()[0], "2:9: 'heal' is a method group. A method group is accepted only as a call argument; call it, or write a lambda");
 }
 
 // A bare field before "." is the field (as "this.f"), not a scope.

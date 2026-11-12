@@ -149,23 +149,24 @@ TEST(ErrorRows, AddressOfAScriptFunctionIsAnError)
 {
     const hotc::TranslateResult r = check_translate("", "    void G() { }\n    void Run() { var f = G; }\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "error: script function 'G' must be called")) << r.diagnostics;
-    EXPECT_TRUE(has(r.diagnostics, "A script function has no address")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "error: 'G' is a method group. A method group is accepted only as a call argument")) << r.diagnostics;
 }
 
 TEST(ErrorRows, AddressOfAScriptFunctionIsAnErrorEvenWithoutStrictMode)
 {
     const hotc::TranslateResult r = check_translate("", "    void G() { }\n    void Run() { var f = G; }\n", {}, false);
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "script function 'G' must be called")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "'G' is a method group. A method group is accepted only as a call argument")) << r.diagnostics;
 }
 
-TEST(ErrorRows, AScriptFunctionPassedAsAnArgumentIsAnError)
+// A script method as a call argument is a method group (doc/lambdas.md, "Method groups"). The C++
+// compiler checks the parameter type.
+TEST(ErrorRows, AScriptMethodPassedAsAnArgumentIsAMethodGroup)
 {
     const hotc::TranslateResult r =
         check_translate("", "    void G() { }\n    void Use(int q1) { }\n    void Run() { this.Use(G); }\n");
-    EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "script function 'G' must be called")) << r.diagnostics;
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "/m:this.G\"")) << r.cpp;
 }
 
 TEST(ErrorRows, CallingAScriptFunctionIsAllowed)

@@ -7,6 +7,7 @@
 
 #include "builtin_types.h"
 #include "emit.h"
+#include "lambda_key.h"
 #include "operator_names.h"
 
 #include <algorithm>
@@ -1214,6 +1215,12 @@ struct Lowerer
     // True for the next name() or member() call when the node is the target of "=". A target
     // is not locked: the assignment writes the weak_ptr itself.
     bool weak_target = false;
+    // Method groups (doc/lambdas.md, "Method groups"). "key_stack" has the keys of the lambdas
+    // around the current expression. "group_seen" counts the equal "m:" parts of the function.
+    // "callees" has the callee of each call: a method name there is a call, not a group.
+    std::vector<std::string> key_stack;
+    std::map<std::string, int> group_seen;
+    std::set<const Expr*> callees;
     bool target_next = false; // the same for the next expr() call
 
     // A field of the class "c" (or of a script parent) that has "[weak]".
@@ -2257,6 +2264,8 @@ struct Lowerer
 
     void call(CallExpr& c)
     {
+        callees.insert(c.callee.get());
+        method_groups(c);
         check_reset(c);
         if (const std::string* n = simple_name(*c.callee))
         {
@@ -2712,6 +2721,8 @@ struct Lowerer
     void member(ExprP& e, MemberExpr& m)
     {
         const bool target = std::exchange(weak_target, false);
+        if (e && group_outside_call(*e, m.pos))
+            return;
         if (m.name.find('<') != std::string::npos)
             plain_class_marks(m.name);
         const uint32_t obj_pos = pos_of(*m.obj);
@@ -2896,11 +2907,11 @@ struct Lowerer
             // An empty type is "auto". Only a parameter without a name is an error.
             if (p.name.empty())
                 error(l.pos, "a lambda parameter needs a name");
-            declare(p.name, p.type);
+            declare(p.name, l.cpp_params && !p.script_type.empty() ? p.script_type : p.type);
             if (p.value)
                 cx.value_locals.insert(p.name); // a bare script class parameter holds a box
         }
-        if (cx.types)
+        if (cx.types && !l.cpp_params)
             for (Param& p : l.params)
                 if (!p.type.empty())
                     p.type = cpp_type(p.type, TypeModel::StorageUse::LambdaParam, l.pos);
@@ -2916,7 +2927,9 @@ struct Lowerer
                 error(l.pos, "the lambda writes '" + n + "', and '" + n + "' cannot be a shared cell. "
                              "Only a local or a plain parameter of a function can. Copy the value into a local before the lambda");
         const bool outer_lambda = std::exchange(in_lambda, true);
+        key_stack.push_back(l.key);
         block(l.body);
+        key_stack.pop_back();
         in_lambda = outer_lambda;
         std::set<std::string> param_names;
         for (const Param& p : l.params)
@@ -3034,6 +3047,226 @@ struct Lowerer
         for (size_t i = 0; i < names.size(); ++i)
             caps += (i ? ", " : "") + names[i];
         c.args.push_back(raw(caps + ")", 0));
+    }
+
+    // ---- method groups (doc/lambdas.md, "Method groups")
+    // A method group names a script method without a call. "object" is "this", the name of a
+    // local, or the class name of an unbound group. "obj" is the object expression of a bound
+    // group on a local. "bad_object" is true when the object is another expression.
+    struct Group
+    {
+        const Method* m = nullptr;
+        const ClassDef* owner = nullptr;
+        std::string object;
+        std::string text; // the script text: "Hit", "this.Hit", "o.Hit", "Foo.Hit"
+        bool unbound = false;
+        bool bad_object = false;
+    };
+
+    // The instance method "n" of the class of the pass, when no local, field or property hides it.
+    std::optional<Group> this_group(const std::string& n, const std::string& text) const
+    {
+        if (!cx.cls || cx.cls->is_value || cx.in_static || cx.locals.count(n) || !cx.fns.count(n)
+            || is_script_member(n) || find_field(*cx.cls, n) || find_prop(*cx.cls, n))
+            return std::nullopt;
+        Group g;
+        g.m = find_fn(*cx.cls, n, &g.owner);
+        if (!g.m || g.m->is_static)
+            return std::nullopt;
+        g.object = "this";
+        g.text = text;
+        return g;
+    }
+
+    // The instance method "n" of the script class of the type text "t", when no field or
+    // property of that name hides it.
+    std::optional<Group> class_group(const std::string& t, const std::string& n) const
+    {
+        std::string type = t;
+        while (!type.empty() && (type.back() == '?' || type.back() == '&'))
+            type.pop_back();
+        const ClassDef* d = class_named(type);
+        if (!d || d->is_value || find_field(*d, n) || find_prop(*d, n))
+            return std::nullopt;
+        Group g;
+        g.m = find_fn(*d, n, &g.owner);
+        if (!g.m || g.m->is_static)
+            return std::nullopt;
+        return g;
+    }
+
+    std::optional<Group> group_of(const Expr& e) const
+    {
+        if (const auto* n = std::get_if<NameExpr>(&e.v))
+        {
+            if (!n->template_args.empty() || n->parts.empty() || n->parts.size() > 2)
+                return std::nullopt;
+            if (n->parts.size() == 1)
+                return this_group(n->parts[0], n->parts[0]);
+            const std::string& head = n->parts[0];
+            const std::string& name = n->parts[1];
+            if (head == "this")
+                return this_group(name, "this." + name);
+            std::optional<Group> g;
+            if (cx.locals.count(head))
+            {
+                g = class_group(type_of(NameExprView(*n, 1)), name);
+                if (g)
+                    g->object = head;
+            }
+            else if (!is_module_var(head) && !is_this_member(head) && class_named(head)
+                && class_named(head)->name == head)
+            {
+                g = class_group(head, name);
+                if (g)
+                {
+                    g->object = head;
+                    g->unbound = true;
+                }
+            }
+            else if (is_script_member(head))
+            {
+                g = class_group(type_of(NameExprView(*n, 1)), name);
+                if (g)
+                    g->bad_object = true;
+            }
+            if (g)
+                g->text = head + "." + name;
+            return g;
+        }
+        if (const auto* m = std::get_if<MemberExpr>(&e.v))
+        {
+            if (!m->obj || m->safe || m->name.empty())
+                return std::nullopt;
+            if (std::holds_alternative<ThisExpr>(m->obj->v))
+                return this_group(m->name, "this." + m->name);
+            std::optional<Group> g = class_group(type_of(*m->obj), m->name);
+            if (!g)
+                return std::nullopt;
+            const auto* on = std::get_if<NameExpr>(&m->obj->v);
+            if (on && on->parts.size() == 1 && on->template_args.empty() && cx.locals.count(on->parts[0]))
+                g->object = on->parts[0];
+            else
+                g->bad_object = true;
+            g->text = (on ? print(*m->obj) : std::string("<object>")) + "." + m->name;
+            return g;
+        }
+        return std::nullopt;
+    }
+
+    // The error for a group outside a call argument. True when "e" is a group.
+    bool group_outside_call(const Expr& e, uint32_t pos)
+    {
+        if (callees.count(&e))
+            return false;
+        const std::optional<Group> g = group_of(e);
+        if (!g)
+            return false;
+        error(pos, method_group_error(g->m->written_name()));
+        return true;
+    }
+
+    // Each call argument that is a method group becomes its lowering form. A bound group
+    // ("M", "this.M", "o.M") becomes the lambda "(P... a) => o.M(a...)" with the key
+    // "m:<object>.<M>". An unbound group "C.M" of the class of the pass becomes a hot::MethodRef.
+    void method_groups(CallExpr& c)
+    {
+        for (ExprP& a : c.args)
+        {
+            if (!a)
+                continue;
+            const std::optional<Group> g = group_of(*a);
+            if (!g)
+                continue;
+            const uint32_t pos = pos_of(*a);
+            const std::string name = g->m->written_name();
+            if (!g->m->src_name.empty())
+            {
+                error(pos, "ambiguous method group '" + name + "': the method has overloads. Write a lambda");
+                continue;
+            }
+            if (g->bad_object)
+            {
+                error(pos, "the method group '" + g->text
+                               + "' needs 'this' or a local as its object. Copy the object into a local");
+                continue;
+            }
+            if (g->unbound)
+            {
+                if (!cx.cls || g->owner != cx.cls || g->object != cx.cls->name)
+                {
+                    error(pos, "the unbound method group '" + g->text + "' needs a method of the class '"
+                                   + (cx.cls ? cx.cls->name : std::string()) + "'");
+                    continue;
+                }
+                if (!cx.method_ref)
+                {
+                    error(pos, "the unbound method group '" + g->text + "' needs a class with a slot table");
+                    continue;
+                }
+                a = raw(cx.method_ref(*g->m), pos);
+                continue;
+            }
+            a = bound_group(*g, pos);
+        }
+    }
+
+    // The lambda of a bound group. The parameters have the C++ types of the method. The body
+    // calls the method with the normal lowering, so a virtual method dispatches.
+    ExprP bound_group(const Group& g, uint32_t pos)
+    {
+        LambdaExpr l;
+        l.pos = pos;
+        l.cpp_params = true;
+        CallExpr call;
+        call.pos = pos;
+        if (g.object == "this")
+        {
+            MemberExpr me;
+            me.obj = make_expr(ThisExpr{pos});
+            me.name = g.m->written_name();
+            me.pos = pos;
+            me.name_pos = pos;
+            call.callee = make_expr(std::move(me));
+        }
+        else
+        {
+            NameExpr ne;
+            ne.parts = {g.object, g.m->written_name()};
+            ne.pos = pos;
+            ne.last_pos = pos;
+            ne.part_pos = {pos, pos};
+            call.callee = make_expr(std::move(ne));
+        }
+        for (size_t i = 0; i < g.m->params.size(); ++i)
+        {
+            Param p = g.m->params[i];
+            p.name = "__mg" + std::to_string(i);
+            p.def = nullptr;
+            l.params.push_back(p);
+            NameExpr arg;
+            arg.parts = {p.name};
+            arg.pos = pos;
+            arg.last_pos = pos;
+            arg.part_pos = {pos};
+            call.args.push_back(make_expr(std::move(arg)));
+        }
+        const bool is_void = g.m->script_ret.empty() || g.m->script_ret == "void";
+        if (is_void)
+            l.body.stmts.push_back(make_stmt(ExprStmt{make_expr(std::move(call)), pos}));
+        else
+        {
+            ReturnStmt r;
+            r.expr = make_expr(std::move(call));
+            r.pos = pos;
+            l.body.stmts.push_back(make_stmt(std::move(r)));
+        }
+        l.body.pos = pos;
+        l.body.end_pos = pos;
+        const std::string prefix = !key_stack.empty() ? key_stack.back() : cx.lambda_base;
+        if (!prefix.empty())
+            l.key = method_group_key(prefix, g.object, g.m->written_name(), group_seen);
+        return make_expr(std::move(l));
     }
 
     // The template arguments that are expressions get the same lowering as other expressions.
@@ -3206,6 +3439,8 @@ struct Lowerer
             error(n.pos, kDefaultBan);
             return;
         }
+        if (e && group_outside_call(*e, n.pos))
+            return;
         targs(n);
         // A bare member template of the native base ("GetSubsystem<C>()") takes the plain class C,
         // as the form "this.GetSubsystem<C>()" does.

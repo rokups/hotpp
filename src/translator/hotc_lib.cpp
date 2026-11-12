@@ -7864,6 +7864,30 @@ void translate_impl(
         base_cx.map = &map;
         base_cx.types = &types;
         wire_native_hooks(base_cx);
+        // The unbound method group "C.M" (doc/lambdas.md, "Method groups"): a hot::MethodRef on
+        // the slot of M, with the signature of the thunk of M. Optimized AOT code has no slot
+        // table and no reload: a plain lambda calls the wrapper of M.
+        if (!cd.is_value && !cd.iface_parent)
+            base_cx.method_ref = [&](const Method& m) -> std::string
+            {
+                const std::string ret = m.ret.empty() ? std::string("void") : m.ret;
+                if (opt.aot_optimized)
+                {
+                    std::string decl, args;
+                    for (size_t i = 0; i < m.params.size(); ++i)
+                    {
+                        const std::string a = "__a" + std::to_string(i);
+                        decl += ", " + name_in_type(m.params[i].type, a);
+                        args += ", " + arg_expr(m.params[i].type, a);
+                    }
+                    return "[](" + shell + "* __r" + decl + ") -> " + ret + " { return " + P + m.name + "(__r" + args
+                        + "); }";
+                }
+                std::string types;
+                for (const Param& p : m.params)
+                    types += ", " + p.type;
+                return "hot::MethodRef<" + ret + "(" + B + "*" + types + "), " + shell + ", " + slot_id(m.name) + ">(GEN)";
+            };
         for (const auto& en : sc.enums)
             base_cx.script_enums[en.name] = en.underlying.empty() ? std::string("int32_t") : en.underlying;
         for (const auto& d : sc.interfaces)

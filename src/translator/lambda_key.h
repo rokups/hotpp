@@ -18,11 +18,18 @@
 // Each [alias("old")] gives an alias key: the same key with the part "n:old".
 //
 // A field initializer has no key: the lowering does not allow a lambda there.
+//
+// A bound method group (doc/lambdas.md, "Method groups") is a lambda of the lowering. Its part is
+// "m:<object>.<Method>": "m:this.Hit" for "Hit" and "this.Hit", "m:o.Hit" for the local "o".
+// Two subscriptions of one method are legal, so two equal "m:" parts are not an error. The
+// second equal part gets the suffix "#1", the third "#2", and so on, in source order. The parts
+// "m:" and "#<ordinal>" do not share a counter.
 #pragma once
 
 #include "ast.h"
 #include "diag.h"
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -36,5 +43,14 @@ namespace hotc
 void assign_lambda_keys(
     ast::BlockStmt& body, const std::string& base, const LineMap* map, Diagnostics& diag,
     std::vector<std::string>* all = nullptr);
+
+// The key of a bound method group: "<prefix>/m:<object>.<method>", with the ordinal suffix of an
+// equal part. "prefix" is the base of the function, or the key of the lambda around the group.
+// "seen" counts the equal parts of one function.
+std::string method_group_key(const std::string& prefix, const std::string& object, const std::string& method,
+    std::map<std::string, int>& seen);
+
+// The error for a method group outside a call argument.
+std::string method_group_error(const std::string& method);
 
 } // namespace hotc

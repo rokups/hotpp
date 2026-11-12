@@ -27,10 +27,11 @@ hot_add_scripts(TARGET lambda_reg_aot_scripts AOT
 add_executable(integration_lambda_reg_tests
     lambda_box_tests.cpp
     lambda_rebind_tests.cpp
+    method_group_tests.cpp
     lambda_reg_tests.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
-target_include_directories(integration_lambda_reg_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
+target_include_directories(integration_lambda_reg_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests ${PROJECT_SOURCE_DIR}/tests/engine)
 target_link_libraries(integration_lambda_reg_tests PRIVATE lambda_reg_aot_scripts hot_backend GTest::gtest_main)
 set_target_properties(integration_lambda_reg_tests PROPERTIES ENABLE_EXPORTS ON)
 target_compile_definitions(integration_lambda_reg_tests PRIVATE HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")

@@ -98,7 +98,7 @@ TEST(TypedAccess, ScriptFunctionUsedAsAValueIsAnError)
     const hotc::TranslateResult r = translate_script(std::string(kTwoClasses)
         + "class Boss : Unit {\n    $Squad s;\n    int Run() { $Squad t = this.s; if (t == null) return 0; var f = t.Count; return 0; }\n}\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_NE(r.diagnostics.find("script function 'Count' must be called"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("'Count' is a method group. A method group is accepted only as a call argument"), std::string::npos) << r.diagnostics;
 }
 
 TEST(TypedAccess, ReturnThisAsAHandleUsesSharedFromThis)

@@ -22,6 +22,7 @@
 #include "hot/runtime/iface.h"
 #include "hot/runtime/in.h"
 #include "hot/runtime/loader.h"
+#include "hot/runtime/method_ref.h"
 #include "hot/runtime/migration.h"
 #include "hot/runtime/old_state.h"
 #include "hot/runtime/properties.h"

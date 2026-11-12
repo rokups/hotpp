@@ -269,6 +269,9 @@ struct LambdaExpr
     // The lowering: true gives the body lambda of hot::make_lambda_deduced. It has no capture. The
     // first parameter "__c" is the capture tuple.
     bool boxed = false;
+    // True for the lambda of a bound method group (doc/lambdas.md, "Method groups"). The lowering
+    // makes it, so the parameter types are C++ types already.
+    bool cpp_params = false;
 };
 // A string with "${expr}" or "${expr:spec}" (design 7.3, DECISIONS item 10). The literal parts
 // keep the script text between the quotes (with escapes). "lits" has one more item than "args".

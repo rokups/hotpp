@@ -8,6 +8,7 @@
 #include "ast_walk.h"
 #include "builtin_types.h"
 #include "const_infer.h"
+#include "lambda_key.h"
 #include "mutating_methods.h"
 #include "operator_names.h"
 
@@ -552,6 +553,7 @@ struct Checker
     std::string method_ret; // the declared return type of the method in progress
     std::map<std::string, std::string> field_types; // the declared type of each field
     std::set<const Expr*> callee_names; // names in the callee place of a call
+    std::set<const Expr*> arg_names; // the arguments of a call: a method group is valid there
     std::map<std::string, RefInfo> refs; // the "ref" locals that are live in the body in progress
     std::vector<std::map<std::string, RefInfo>> refs_stack; // "refs" at the start of each open block
     std::set<std::string> ref_params; // the "ref" and "out" parameters of the body in progress
@@ -1775,15 +1777,16 @@ struct Checker
         if (auto* c = std::get_if<CallExpr>(&e.v))
         {
             callee_names.insert(c->callee.get());
+            for (const ExprP& a : c->args)
+                arg_names.insert(a.get());
         }
         else if (auto* nm = std::get_if<NameExpr>(&e.v))
         {
             // 5.3: the script takes the address of a script function.
             if (nm->parts.size() == 1 && nm->template_args.empty() && fn_names.count(nm->parts[0])
-                && !locals.count(nm->parts[0]) && !field_names.count(nm->parts[0]) && !callee_names.count(&e))
-                error(nm->pos, "script function '" + nm->parts[0] +
-                                   "' must be called. A script function has no address, because a reload "
-                                   "replaces it");
+                && !locals.count(nm->parts[0]) && !field_names.count(nm->parts[0]) && !callee_names.count(&e)
+                && !arg_names.count(&e))
+                error(nm->pos, method_group_error(nm->parts[0]));
         }
         else if (auto* l = std::get_if<LambdaExpr>(&e.v))
         {

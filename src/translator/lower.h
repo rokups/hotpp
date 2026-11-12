@@ -115,6 +115,10 @@ struct RCtx
     // adds one struct for each lambda. The translator writes them at namespace scope, after the
     // live flag. Null: a lambda becomes a hot::make_closure call (no tag, no box).
     std::vector<std::string>* lambda_tags = nullptr;
+    // The C++ value of the unbound method group "C.M" of the class C of the pass (doc/lambdas.md,
+    // "Method groups"): a hot::MethodRef on the slot of M. Empty: the class has no slot table, so
+    // the group is an error.
+    std::function<std::string(const ast::Method&)> method_ref;
     // The map gives the line and column of an error. Without a map an error has no line.
     const LineMap* map = nullptr;
     // The type model. With null, the pass keeps the types as the script writes them.

@@ -152,4 +152,18 @@ void assign_lambda_keys(
     walker.block(body);
 }
 
+std::string method_group_key(const std::string& prefix, const std::string& object, const std::string& method,
+    std::map<std::string, int>& seen)
+{
+    const std::string key = prefix + "/m:" + object + "." + method;
+    const int n = seen[key]++;
+    return n == 0 ? key : key + "#" + std::to_string(n);
+}
+
+std::string method_group_error(const std::string& method)
+{
+    return "'" + method + "' is a method group. A method group is accepted only as a call argument; call it, "
+           "or write a lambda";
+}
+
 } // namespace hotc
