@@ -298,7 +298,7 @@ private:
     // "shared": the key does not depend on "script_dir" (it is ignored) and has the reset salt.
     PchPlan make_pch_plan(
         const std::string& text, const std::string& script_dir, uint64_t shadow_hash, bool shared = false) const;
-    // The counter of "shared.salt" as text (empty: no file). Each reset of the shared PCH adds one.
+    // The text of "shared.salt" (empty: no file). Each reset of the shared PCH writes a new random value.
     std::string shared_pch_salt() const;
     // True when the plan has a "bad" marker that is younger than one day. Else it removes an old
     // marker. The caller holds "pch_mutex_".
@@ -312,6 +312,8 @@ private:
     // path has a file now (the shared PCH can hide it): the list restarts from the batch paths
     // that have no file ("batch_existing" has the others). Both calls need "pch_mutex_".
     void snapshot_pch_shadow(std::vector<std::string>& paths, uint64_t& generation);
+    // Writes "shared.shadow" from the list. The caller holds "pch_mutex_".
+    void write_pch_shadow();
     bool apply_pch_shadow(const std::vector<std::string>& batch, bool exists, const std::set<std::string>& batch_existing);
     // Builds the PCH of the plan and stores it in pch_cache_. Gives false on a failure.
     bool build_pch(const PchPlan& plan, const std::string& script_dir, std::string& error);

@@ -9,6 +9,7 @@
 // CMake defines the macros HOT_SOURCE_DIR and HOT_CXX.
 #include "hot/backend.h"
 #include "hot/clang_files_backend.h"
+#include "hot/runtime/process.h"
 #include "hot/vfs.h"
 #include "support/scratch_dir.h"
 #include "support/test_env.h"
@@ -1308,6 +1309,37 @@ TEST(PchBackend, ResetSaltKeepsOldSharedEntriesFromHitting)
         EXPECT_EQ(batch_and_run(*backend, layout_script(4, "e.hot")), 20.0f);
         backend->wait_for_pch();
     }
+}
+
+// The salt is a random nonce, not a counter: a deleted cache directory cannot reuse an old salt.
+// A crash before the write of the list (simulated: the temp file of the list is a directory) leaves
+// the new salt, no old entry and no shared.inc. The list is old, so the next batch resets again.
+TEST(PchBackend, ResetWritesTheRandomSaltBeforeTheListAndDropsTheEntry)
+{
+    Fixture f;
+    const fs::path inc0 = f.scratch.file("inc0");
+    fs::create_directories(inc0);
+    f.before = {inc0.string()};
+    write_layout_header(f.inc / "layout.h", 4, std::chrono::minutes(60), true);
+    {
+        auto backend = make_backend(f.scratch, "work_or1", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(load_batch(*backend, {layout_script(1, "a.hot")}), 1u);
+        backend->wait_for_pch();
+    }
+    const fs::path pch = fs::path(f.cache) / "pch";
+    const std::string shadow_before = read_file(pch / "shared.shadow");
+    EXPECT_FALSE(fs::exists(pch / "shared.salt"));
+    write_layout_header(inc0 / "layout.h", 16, std::chrono::minutes(60), true);
+    fs::create_directories(pch / ("shared.shadow.tmp" + std::to_string(hot::detail::process_id())));
+    {
+        auto backend = make_backend(f.scratch, "work_or2", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(batch_and_run(*backend, layout_script(3, "b.hot")), 19.0f);
+        backend->wait_for_pch();
+    }
+    const std::string salt = read_file(pch / "shared.salt");
+    EXPECT_GE(salt.size(), 16u);
+    EXPECT_NE(salt, "1");
+    EXPECT_EQ(read_file(pch / "shared.shadow"), shadow_before); // the list write failed: still old
 }
 
 // A failure of start_pending_pch (a thread that does not start) must not end the process. The

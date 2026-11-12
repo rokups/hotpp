@@ -20,6 +20,7 @@
 #include <filesystem>
 #include <fstream>
 #include <optional>
+#include <random>
 #include <sstream>
 #include <set>
 #include <thread>
@@ -1285,9 +1286,21 @@ std::string without_unit_dir_lines(const ClangFilesOptions& opt, const std::stri
 
 } // namespace
 
-// The salt of the shared PCH key: the counter in "shared.salt". Each reset of the shared PCH adds
-// one, so an old shared entry with the same union text does not hit again. The caller holds
-// "pch_mutex_" or reads only.
+// A new random salt: a random nonce and the time. A deleted cache directory cannot reuse an
+// old salt.
+static std::string new_shared_pch_salt()
+{
+    std::random_device rd;
+    const uint64_t a = (uint64_t(rd()) << 32) ^ rd();
+    const uint64_t t = uint64_t(std::chrono::system_clock::now().time_since_epoch().count());
+    char buf[64];
+    std::snprintf(buf, sizeof buf, "%016llx%016llx", (unsigned long long)a, (unsigned long long)t);
+    return buf;
+}
+
+// The salt of the shared PCH key: the text in "shared.salt". Each reset of the shared PCH writes a
+// new random value, so an old shared entry with the same union text does not hit again. The
+// caller holds "pch_mutex_" or reads only.
 std::string ClangFilesBackend::shared_pch_salt() const
 {
     std::string salt;
@@ -1523,15 +1536,21 @@ bool ClangFilesBackend::apply_pch_shadow(
     if (exists || pch_shadow_.size() != old_size)
     {
         ++pch_shadow_gen_;
-        std::string text;
-        for (const std::string& path : pch_shadow_)
-            text += path + "\n";
-        const fs::path file = fs::path(opt_.cache_dir) / "pch" / "shared.shadow";
-        std::error_code dir_ec;
-        fs::create_directories(file.parent_path(), dir_ec);
-        write_text_atomic(file, text);
+        if (!exists) // after a reset the caller writes the file last
+            write_pch_shadow();
     }
     return exists;
+}
+
+void ClangFilesBackend::write_pch_shadow()
+{
+    std::string text;
+    for (const std::string& path : pch_shadow_)
+        text += path + "\n";
+    const fs::path file = fs::path(opt_.cache_dir) / "pch" / "shared.shadow";
+    std::error_code dir_ec;
+    fs::create_directories(file.parent_path(), dir_ec);
+    write_text_atomic(file, text);
 }
 
 void ClangFilesBackend::prewarm_pch(const std::vector<const BuildJob*>& jobs, bool timing)
@@ -1593,19 +1612,20 @@ void ClangFilesBackend::prewarm_pch(const std::vector<const BuildJob*>& jobs, bo
         // A file is at a probe path of an old batch. The shared PCH can hide it. Drop the
         // union, its entry and the extra lines. A running shared build does not write shared.inc
         // (the epoch changed) and removes its entry.
+        // Order: the new salt first, then the entry, shared.inc and shared.extra, and the list
+        // last. A crash between two steps never leaves an old entry that can hit with the new
+        // state: the old key has the old salt.
         std::error_code ec;
+        std::optional<PchPlan> old_plan;
         if (!old_text.empty())
-            pch_cache_->remove(make_pch_plan(old_text, std::string(), 0, true).key);
+            old_plan = make_pch_plan(old_text, std::string(), 0, true);
+        fs::create_directories(dir, ec);
+        write_text_atomic(dir / "shared.salt", new_shared_pch_salt());
+        if (old_plan)
+            pch_cache_->remove(old_plan->key);
         fs::remove(dir / "shared.inc", ec);
         fs::remove(dir / "shared.extra", ec);
-        // A new salt: older shared entries with the same union text (they stay in the cache) do
-        // not hit again.
-        {
-            const std::string salt = shared_pch_salt();
-            const unsigned long long n = salt.empty() ? 0ull : std::strtoull(salt.c_str(), nullptr, 10);
-            fs::create_directories(dir, ec);
-            write_text_atomic(dir / "shared.salt", std::to_string(n + 1));
-        }
+        write_pch_shadow();
         ++pch_extra_epoch_;
         pch_pending_.erase(std::remove_if(pch_pending_.begin(), pch_pending_.end(),
                                [](const PendingPch& p) { return p.plan.shared; }),
