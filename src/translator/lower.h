@@ -213,7 +213,8 @@ RCtx make_class_ctx(const ast::ClassDef& cd);
 void add_params(RCtx& cx, const std::vector<ast::Param>& params);
 
 // The number text in C++: "1.5" becomes "1.5f", "3L" becomes "int64_t{3}".
-std::string rewrite_number(const std::string& n);
+// "1f" becomes "1.0f" and "1d" becomes "1.0". An invalid suffix sets "error" (when given).
+std::string rewrite_number(const std::string& n, std::string* error = nullptr);
 
 // Lowers the statements of a block. Each error goes to the diagnostics and the pass continues.
 void lower_block(ast::BlockStmt& b, RCtx& cx, Diagnostics& diag);

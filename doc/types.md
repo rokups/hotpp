@@ -27,8 +27,8 @@ This guide has 2 pages. This page covers builtin types, variables, C++ types, co
 | `long` | `int64` | `5L` |
 | `ulong` | `uint64` | |
 | `nint`, `nuint` | | pointer size |
-| `float` | | `5.0` |
-| `double` | | `5.0d` |
+| `float` | | `5.0`, `5.0f`, `5f` |
+| `double` | | `5.0d`, `5d` |
 | `char`, `wchar` | | 8 bit and 16 bit |
 | `void` | | no value |
 
@@ -62,7 +62,7 @@ A variable can have no initializer. It then gets the default value (zero, `false
 class Demo {
     int hp = 100;
     ulong id = 7;
-    float speed = 5.0;         // 5.0 is float, 5.0d is double
+    float speed = 5.0;         // 5.0 and 5.0f are float, 5.0d is double
     double ratio = 0.5d;
     long big = 5L;
     int count;                 // default value: 0
@@ -73,6 +73,12 @@ class Demo {
     }
 }
 ```
+
+A number with no suffix is a float: `5.0` is the same as `5.0f`.
+The suffix `f` makes a float. The suffix `d` makes a double.
+A number with digits only can have the suffix: `1f` is a float and `1d` is a double.
+A wrong suffix is a translator error, for example `1.5L` or `1.5ff`.
+A `.cpp` script keeps the C++ rules: there, `1.5` is a double.
 
 ## C++ types
 

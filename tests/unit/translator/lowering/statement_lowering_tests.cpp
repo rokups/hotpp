@@ -31,6 +31,46 @@ TEST(StatementLowering, Numbers)
     EXPECT_EQ(rewrite_number("0.5"), "0.5f");
 }
 
+TEST(StatementLowering, NumberSuffixes)
+{
+    Fixture f;
+    EXPECT_EQ(f.expr("1.5F"), "1.5F");
+    EXPECT_EQ(f.expr("1.5D"), "1.5");
+    EXPECT_EQ(f.expr("1f"), "1.0f");
+    EXPECT_EQ(f.expr("1F"), "1.0f");
+    EXPECT_EQ(f.expr("1d"), "1.0");
+    EXPECT_EQ(f.expr("1D"), "1.0");
+    EXPECT_EQ(f.expr("1e5"), "1e5f");
+    EXPECT_EQ(f.expr("1e5f"), "1e5f");
+    EXPECT_EQ(f.expr("1e5d"), "1e5");
+    EXPECT_EQ(f.expr("1E-3"), "1E-3f");
+    EXPECT_EQ(f.expr(".5"), ".5f");
+    EXPECT_EQ(f.expr(".5f"), ".5f");
+    EXPECT_EQ(f.expr(".5d"), ".5");
+    EXPECT_EQ(f.expr("5."), "5.f");
+    EXPECT_EQ(f.expr("5.f"), "5.f");
+    EXPECT_EQ(f.expr("5.d"), "5.");
+    EXPECT_EQ(f.expr("0x1f"), "0x1f");
+    EXPECT_EQ(f.expr("0x1d"), "0x1d");
+    EXPECT_EQ(f.expr("0x1e5"), "0x1e5");
+    EXPECT_EQ(f.expr("5L"), "int64_t{5}");
+    EXPECT_EQ(f.expr("5u"), "5u");
+    EXPECT_EQ(f.expr("5UL"), "5UL");
+    EXPECT_EQ(f.errors(), std::vector<std::string>{});
+}
+
+TEST(StatementLowering, BadNumberSuffix)
+{
+    for (const char* n : {"1.5L", "1.5ff", "1.5fd", "1fd", "1ff"})
+    {
+        Fixture f;
+        f.expr(n);
+        const std::string text = n;
+        EXPECT_EQ(f.errors(), (std::vector<std::string>{"1:1: '" + text + "' is not a valid number: a floating literal ends in 'f' or 'd' or has no suffix"}))
+            << n;
+    }
+}
+
 TEST(StatementLowering, NullAndDeclarations)
 {
     Fixture f;

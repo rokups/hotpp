@@ -20,20 +20,61 @@
 namespace hotc
 {
 
-std::string rewrite_number(const std::string& n)
+std::string rewrite_number(const std::string& n, std::string* error)
 {
     if (n.size() > 1 && n[0] == '0' && (n[1] == 'x' || n[1] == 'X'))
         return n;
-    bool fp = n.find_first_of(".eE") != std::string::npos;
-    char last = n.back();
-    if (fp && (last == 'd' || last == 'D'))
-        return n.substr(0, n.size() - 1);
-    if (fp && (last == 'f' || last == 'F'))
-        return n;
+    // Find the end of the digits: digits, a dot, and an exponent. The rest is the suffix.
+    size_t i = 0;
+    bool fp = false;
+    while (i < n.size() && (std::isdigit(static_cast<unsigned char>(n[i])) || n[i] == '.' || n[i] == '_'))
+    {
+        fp = fp || n[i] == '.';
+        ++i;
+    }
+    if (i < n.size() && (n[i] == 'e' || n[i] == 'E'))
+    {
+        size_t j = i + 1;
+        if (j < n.size() && (n[j] == '+' || n[j] == '-'))
+            ++j;
+        if (j < n.size() && std::isdigit(static_cast<unsigned char>(n[j])))
+        {
+            fp = true;
+            while (j < n.size() && std::isdigit(static_cast<unsigned char>(n[j])))
+                ++j;
+            i = j;
+        }
+    }
+    const std::string core = n.substr(0, i);
+    const std::string suffix = n.substr(i);
+    const bool is_f = suffix == "f" || suffix == "F";
+    const bool is_d = suffix == "d" || suffix == "D";
     if (fp)
-        return n + "f";
-    if (last == 'L')
-        return "int64_t{" + n.substr(0, n.size() - 1) + "}";
+    {
+        if (suffix.empty())
+            return n + "f";
+        if (is_f)
+            return n;
+        if (is_d)
+            return core;
+    }
+    else
+    {
+        if (suffix.empty())
+            return n;
+        if (is_f)
+            return core + ".0f";
+        if (is_d)
+            return core + ".0";
+        if (suffix.find_first_not_of("uUlL") == std::string::npos)
+        {
+            if (suffix == "L")
+                return "int64_t{" + core + "}";
+            return n;
+        }
+    }
+    if (error)
+        *error = "'" + n + "' is not a valid number: a floating literal ends in 'f' or 'd' or has no suffix";
     return n;
 }
 
@@ -3586,7 +3627,10 @@ struct Lowerer
         }
         else if (auto* num = std::get_if<NumberExpr>(&x.v))
         {
-            num->text = rewrite_number(num->text);
+            std::string bad;
+            num->text = rewrite_number(num->text, &bad);
+            if (!bad.empty())
+                error(num->pos, bad);
         }
         else if (auto* m = std::get_if<MemberExpr>(&x.v))
         {
