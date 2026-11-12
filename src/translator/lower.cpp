@@ -22,7 +22,7 @@ namespace hotc
 
 std::string rewrite_number(const std::string& n, std::string* error)
 {
-    if (n.size() > 1 && n[0] == '0' && (n[1] == 'x' || n[1] == 'X'))
+    if (n.size() > 1 && n[0] == '0' && (n[1] == 'x' || n[1] == 'X' || n[1] == 'b' || n[1] == 'B'))
         return n;
     // Find the end of the digits: digits, a dot, and an exponent. The rest is the suffix.
     size_t i = 0;
@@ -872,8 +872,8 @@ struct Lowerer
             return {};
         const std::string& t = n->text;
         const bool hex = t.size() > 2 && t[0] == '0' && (t[1] == 'x' || t[1] == 'X');
-        if (!hex && t.find_first_of(".eEfF") != std::string::npos)
-            return {};
+        if (!hex && t.find_first_of(".eEfFdD") != std::string::npos)
+            return {}; // "d" and "D" are float suffixes
         return t;
     }
 

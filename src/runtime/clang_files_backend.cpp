@@ -1377,7 +1377,8 @@ void ClangFilesBackend::start_pch_build(
     const PchPlan& plan, const std::string& script_dir, const std::string& unit, bool timing)
 {
     pch_done_ = false;
-    pch_running_ = true; // the caller holds "pch_mutex_"
+    // The caller holds "pch_mutex_". The flag is true only when the thread starts.
+    // If the thread constructor throws, the flag stays false and later PCH builds can start.
     pch_thread_ = std::thread(
         [this, plan, script_dir, unit, timing]
         {
@@ -1405,6 +1406,7 @@ void ClangFilesBackend::start_pch_build(
                 std::fprintf(stderr, "hot: %s pch build %lld ms\n", unit.c_str(), ms);
             pch_done_ = true;
         });
+    pch_running_ = true;
 }
 
 void ClangFilesBackend::wait_for_pch()

@@ -32,6 +32,16 @@ void add_numbers(Fixture& f)
 
 } // namespace
 
+TEST(ArithLowering, DoubleSuffixIsNotInteger)
+{
+    Fixture f;
+    add_numbers(f);
+    EXPECT_EQ(f.expr("1d / i"), "1.0 / i");
+    EXPECT_EQ(f.expr("1D / i"), "1.0 / i");
+    EXPECT_EQ(f.expr("i / 2d"), "i / 2.0");
+    EXPECT_EQ(f.expr("0xD / i"), "hot::div(0xD, i)");
+}
+
 TEST(ArithLowering, IntegerOperandsUseTheHelper)
 {
     Fixture f;

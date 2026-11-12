@@ -53,6 +53,8 @@ TEST(StatementLowering, NumberSuffixes)
     EXPECT_EQ(f.expr("0x1f"), "0x1f");
     EXPECT_EQ(f.expr("0x1d"), "0x1d");
     EXPECT_EQ(f.expr("0x1e5"), "0x1e5");
+    EXPECT_EQ(f.expr("0b101"), "0b101");
+    EXPECT_EQ(f.expr("0B11"), "0B11");
     EXPECT_EQ(f.expr("5L"), "int64_t{5}");
     EXPECT_EQ(f.expr("5u"), "5u");
     EXPECT_EQ(f.expr("5UL"), "5UL");
