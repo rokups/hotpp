@@ -692,6 +692,27 @@ struct Gate
     }
 };
 
+// Loads one script as a batch of one (begin_load_many, so the shared PCH logic runs), makes a
+// Calc object, runs one tick and gives the result field.
+float batch_and_run(hot::ClangFilesBackend& backend, hot::ScriptSource source, uint32_t generation = 1)
+{
+    source.unit.clear();
+    auto many = backend.begin_load_many({source}, generation, hot::LoadMode::Reload);
+    many[0]->compile();
+    hot::LoadResult r = many[0]->finish();
+    if (!r)
+    {
+        ADD_FAILURE() << r.error;
+        return -1.0f;
+    }
+    Session s;
+    s.start(std::move(*r.module), "Calc");
+    if (!s.actor)
+        return -1.0f;
+    s.world.Tick(kDt);
+    return *s.field("result");
+}
+
 } // namespace
 
 TEST(PchBackend, UnionPchHeaderKeepsFirstSeenOrder)
@@ -967,11 +988,12 @@ TEST(PchBackend, EditBatchesOfAWarmCacheStartNoSharedBuild)
     hot::ScriptSource iface = layout_script(3, "a.hot");
     iface.text.insert(iface.text.find("float result"), "int extra = 0;\n    ");
     EXPECT_EQ(load_batch(*backend, {iface}), 1u);
-    // A new probe path: the file does not exist at the first parse, then it appears.
+    // A new probe path: the file does not exist at the first parse, then it appears. The shared
+    // PCH is reset and built again (the file can hide behind the old PCH).
     write_layout_header(inc0 / "layout.h", 4, std::chrono::minutes(60));
     EXPECT_EQ(load_batch(*backend, {layout_script(4, "a.hot")}), 1u);
     backend->wait_for_pch();
-    EXPECT_EQ(f.pch_builds(), 1u);
+    EXPECT_EQ(f.pch_builds(), 2u);
 }
 
 // A new include line in an edit batch gives one build. The build starts after the last unit of
@@ -1076,5 +1098,126 @@ TEST(PchBackend, CorruptSharedPchIsRemovedAndRebuilt)
     }
     EXPECT_EQ(pch_files(f.cache).size(), 1u);
 }
+
+// A file that appears at a probe path after the shared PCH build is a new header earlier in the
+// include path. Both copies have the same include guard. The next batch sees the file, drops the
+// shared PCH and builds it again, so the unit sees the NEW header.
+TEST(PchBackend, NewFileAtAProbePathResetsTheSharedPch)
+{
+    Fixture f;
+    const fs::path inc0 = f.scratch.file("inc0");
+    fs::create_directories(inc0);
+    f.before = {inc0.string()};
+    write_layout_header(f.inc / "layout.h", 4, std::chrono::minutes(60), true);
+    {
+        auto backend = make_backend(f.scratch, "work_sh1", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(load_batch(*backend, {layout_script(1, "a.hot")}), 1u);
+        backend->wait_for_pch();
+    }
+    const fs::path shadow = fs::path(f.cache) / "pch" / "shared.shadow";
+    EXPECT_NE(read_file(shadow).find((inc0 / "layout.h").string()), std::string::npos);
+    const size_t builds = f.pch_builds();
+    {
+        // The batch has a new file name: the translate and the object cache miss. The shared PCH serves it.
+        auto backend = make_backend(f.scratch, "work_sh2", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(batch_and_run(*backend, layout_script(2, "b.hot")), 6.0f);
+        backend->wait_for_pch();
+    }
+    EXPECT_EQ(f.pch_builds(), builds);
+    write_layout_header(inc0 / "layout.h", 16, std::chrono::minutes(60), true);
+    {
+        auto backend = make_backend(f.scratch, "work_sh3", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(batch_and_run(*backend, layout_script(3, "c.hot")), 19.0f);
+        backend->wait_for_pch();
+    }
+    EXPECT_GT(f.pch_builds(), builds); // the shared PCH was built again
+    {
+        auto backend = make_backend(f.scratch, "work_sh4", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(batch_and_run(*backend, layout_script(4, "d.hot")), 20.0f);
+        backend->wait_for_pch();
+    }
+}
+
+// A bad shared build drops the union. A unit that planned before that must not add its lines to
+// shared.extra after it (the epoch of the union changed).
+TEST(PchBackend, StaleExtraAppendIsDiscardedAfterTheUnionDrops)
+{
+    Fixture f;
+    write_other_header(f.inc);
+    {
+        auto backend = make_backend(f.scratch, "work_ep1", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(load_batch(*backend, {layout_script(1, "a.hot")}), 1u);
+        backend->wait_for_pch();
+    }
+    const fs::path started = f.scratch.file("b_started");
+    const fs::path go = f.scratch.file("b_go");
+    const std::string cxx = f.scratch.file("epoch.sh");
+    std::ofstream(cxx, std::ios::binary)
+        << "#!/bin/sh\ncase \"$*\" in\n*c++-header*) for a in \"$@\"; do if [ -f \"$a\" ] && grep -q other.h \"$a\" "
+           "2>/dev/null; then echo broken; exit 1; fi; done;;\n*b.cpp*) touch '"
+        << started.string() << "'; i=0; while [ ! -f '" << go.string()
+        << "' ] && [ $i -lt 400 ]; do sleep 0.05; i=$((i+1)); done;;\nesac\nexec " << f.cxx << " \"$@\"\n";
+    fs::permissions(cxx, fs::perms::owner_all);
+    const fs::path inc_file = fs::path(f.cache) / "pch" / "shared.inc";
+    ASSERT_TRUE(fs::exists(inc_file));
+    auto backend = make_backend(f.scratch, "work_ep2", f.cache, cxx, f.incs());
+    Gate gate;
+    backend->set_pch_build_hook(gate.hook());
+    size_t ok = 0;
+    std::thread worker([&] { ok = load_batch(*backend, {layout_script(1, "a.hot"), two_header_script(1, "b.hot")}); });
+    const auto wait_for = [](const std::function<bool()>& cond)
+    {
+        for (int i = 0; i < 400 && !cond(); ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    };
+    wait_for([&] { return fs::exists(started); }); // the unit b planned: it has the extra line
+    EXPECT_TRUE(fs::exists(started));
+    gate.release.set_value(); // the shared build runs and fails
+    wait_for([&] { return !fs::exists(inc_file); });
+    EXPECT_FALSE(fs::exists(inc_file));
+    std::ofstream(go.string()) << "go";
+    worker.join();
+    backend->wait_for_pch();
+    EXPECT_EQ(ok, 2u);
+    const fs::path extra = fs::path(f.cache) / "pch" / "shared.extra";
+    EXPECT_EQ(read_file(extra).find("other.h"), std::string::npos);
+}
+
+// HOT_TIMING names the reason for each unit that compiles with no shared PCH.
+TEST(PchBackend, NoSharedPchReasonIsLoggedUnderTiming)
+{
+    Fixture f;
+    write_other_header(f.inc);
+    EnvGuard timing("HOT_TIMING", "1");
+    {
+        // A cold cache: the shared build runs, and the entry is not there yet.
+        auto backend = make_backend(f.scratch, "work_nr1", f.cache, f.cxx, f.incs());
+        Gate gate;
+        backend->set_pch_build_hook(gate.hook());
+        testing::internal::CaptureStderr();
+        EXPECT_EQ(batch_and_run(*backend, layout_script(1, "a.hot")), 5.0f);
+        const std::string err = testing::internal::GetCapturedStderr();
+        gate.release.set_value();
+        backend->wait_for_pch();
+        EXPECT_NE(err.find("hot: a no shared pch: shared pch building"), std::string::npos) << err;
+    }
+    {
+        // The union has no "other.h" line.
+        auto backend = make_backend(f.scratch, "work_nr2", f.cache, f.cxx, f.incs());
+        Gate gate;
+        backend->set_pch_build_hook(gate.hook());
+        testing::internal::CaptureStderr();
+        EXPECT_EQ(batch_and_run(*backend, two_header_script(1, "b.hot")), 15.0f);
+        const std::string err = testing::internal::GetCapturedStderr();
+        gate.release.set_value();
+        backend->wait_for_pch();
+        EXPECT_NE(err.find("no shared pch: "), std::string::npos) << err;
+        EXPECT_NE(err.find("union lacks 1 lines (first: #include \"other.h\")"), std::string::npos) << err;
+    }
+}
+
+// A failure of start_pending_pch (a thread that does not start) must not end the process. The
+// backend has no hook for a failure of the thread constructor, so a test of this path is not
+// possible here. The call in batch_done has a try/catch, and the build functions reset the state.
 
 #endif

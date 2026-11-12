@@ -19,6 +19,7 @@
 #include <optional>
 #include <map>
 #include <memory>
+#include <set>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -282,6 +283,10 @@ private:
         // The include lines of the unit that are not in the union. The caller adds them to
         // shared.extra after the unit compiled.
         std::string extra_add;
+        // The epoch of the union (see "pch_extra_epoch_") at the time of the plan.
+        uint64_t extra_epoch = 0;
+        // Why the plan has no shared PCH (for HOT_TIMING). Empty when it has one.
+        std::string why;
     };
     // The PCH plan for the translated text. No value: the compile does not use a PCH.
     // "mirror_files": the compile reads mirror files of the host file system.
@@ -297,6 +302,10 @@ private:
     // The shared startup PCH. After the translate of a batch, builds one PCH with the union of the
     // include lines of all units (see the .cpp file). "timing": print the build time.
     void prewarm_pch(const std::vector<const BuildJob*>& jobs, bool timing);
+    // Merges the probe (missing) paths of a batch into the grow-only list "shared.shadow" and
+    // tests the old paths. True when a listed path has a file now: the shared PCH can hide it. Then
+    // the list holds the paths of the batch only. The caller holds "pch_mutex_".
+    bool merge_pch_shadow(const std::vector<std::string>& batch);
     // Builds the PCH of the plan and stores it in pch_cache_. Gives false on a failure.
     bool build_pch(const PchPlan& plan, const std::string& script_dir, std::string& error);
     // A PCH build that waits for the end of an edit batch (see "pch_pending_").
@@ -337,6 +346,14 @@ private:
     bool pch_startup_done_ = false;
     bool pch_defer_ = false;
     std::vector<PendingPch> pch_pending_;
+    // The epoch of the union. It grows under "pch_mutex_" each time the union drops (a bad shared
+    // build, or a new file at a probe path). A unit copies it at plan time and adds its include
+    // lines to shared.extra only when it did not change. A shared build that started in an older
+    // epoch does not write shared.inc.
+    uint64_t pch_extra_epoch_ = 0;
+    // The probe paths of "shared.shadow" (under "pch_mutex_"). Loaded on the first use.
+    std::set<std::string> pch_shadow_;
+    bool pch_shadow_loaded_ = false;
     std::function<void()> pch_build_hook_; // see set_pch_build_hook
     std::unique_ptr<TranslateCache> tr_cache_; // null: no translate cache
     std::string compiler_id_;
