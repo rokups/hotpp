@@ -11,18 +11,22 @@
 // with flush_lambdas.
 //
 // The call also makes a LambdaBox on the heap. The box holds the capture block and the entry
-// function. The box is in a runtime list, so a later commit can find each box by its record and
-// detach it. LambdaClosure is the value of the lambda: a box pointer and a generation.
+// function. The box is in a runtime list, so a later commit can find each box by its record. The
+// commit gives the box the code of the new generation, or detaches it. LambdaClosure is the value
+// of the lambda: a box pointer and a generation.
 #pragma once
 #include "hot/runtime/closure.h"
 #include "hot/runtime/compat.h"
 #include "hot/runtime/hidden.h"
+#include "hot/runtime/records.h"
 #include "hot/runtime/threads.h"
 
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
+#include <string>
 #include <tuple>
 #include <type_traits>
 #include <typeinfo>
@@ -36,6 +40,12 @@ namespace hot
 // "sig" is typeid(Sig).name(). "names" has the names of the captures in the order of the capture
 // tuple. "aliases" has the old keys of the lambda. Each array ends with a null pointer. "live" is
 // the live flag of the module that holds the code (null: no flag).
+//
+// The capture layout: "count" captures, the type key of each capture (as FieldInfo::type_key),
+// and a flag for each capture. kCaptureLayoutBound marks a type that can hold a script struct by
+// value. "layout" is the hash of the script struct layouts of the unit. "field" gives the address
+// of a capture in a block. "build" makes a new block and move-constructs capture i from src[i].
+// A reload commit uses them to move the captures of a box to the layout of the new generation.
 struct LambdaRecord
 {
     const char* key = nullptr;
@@ -46,10 +56,25 @@ struct LambdaRecord
     const char* const* names = nullptr;
     const char* const* aliases = nullptr;
     const uint32_t* live = nullptr;
+    uint32_t count = 0;
+    const char* const* types = nullptr;
+    const uint8_t* flags = nullptr;
+    const char* layout = nullptr;
+    void* (*field)(void* caps, uint32_t i) = nullptr;
+    void* (*build)(void* const* src) = nullptr; // null: a capture type cannot move
+    LambdaRecord* self = nullptr;      // the record in the module that the boxes point to
 };
+
+// The flag of a capture whose type can hold a script struct by value (LambdaRecord::flags).
+inline constexpr uint8_t kCaptureLayoutBound = 1;
 
 // The heap block of one lambda value. The runtime owns it. Closures share it with a count.
 // "entry" is null when the box is detached: the captures are destroyed and a call is stale.
+//
+// The commit-window rule: only a reload commit changes "entry", "caps", "rec" and "destroy" of a
+// box that has a reference. The commit runs in the commit window, so no call of the box runs. A
+// call reads "entry" and "caps" inside a ScriptEntry. The last release also runs inside a
+// ScriptEntry, so it destroys the captures before the window or after it.
 struct LambdaBox
 {
     std::atomic<uint32_t> refs{1};
@@ -76,6 +101,25 @@ HOT_NODEBUG HOT_EXPORT void lambda_box_detach(LambdaBox* box);
 HOT_EXPORT size_t lambda_detach_module(const uint32_t* live);
 // The count of the boxes in the runtime list.
 HOT_EXPORT size_t lambda_box_count();
+
+// The result of lambda_rebind_module.
+struct LambdaRebind
+{
+    size_t rebound = 0; // the boxes that have the code of the new module now
+    size_t detached = 0;
+};
+// Finds the record of the new module for a key (or an alias key). Null: the lambda is removed.
+using LambdaFind = const LambdaRecord* (*)(const char* key, void* ctx);
+// Moves each box whose record has the live flag "live" to the record that "find" gives for its
+// key. The signature must be the same. Each capture of the new record must have a capture of
+// the same name and type key in the old record. The function moves these values into a new
+// capture block and destroys the old block. Then the box calls the new entry. A box that cannot
+// move detaches. The function logs one warning for each key with detached boxes.
+// The loader calls it in a reload commit, inside the commit window, before the old module can
+// unload. The old module and the new module are loaded.
+HOT_EXPORT LambdaRebind lambda_rebind_module(const uint32_t* live, LambdaFind find, void* ctx);
+
+template <class Sig> class LambdaClosure;
 
 namespace detail
 {
@@ -162,6 +206,70 @@ template <class T> struct tag_live<T, std::void_t<decltype(T::live())>>
 {
     static const uint32_t* get() { return T::live(); }
 };
+template <class T, class = void> struct tag_layout
+{
+    static const char* get() { return nullptr; }
+};
+template <class T> struct tag_layout<T, std::void_t<decltype(T::layout())>>
+{
+    static const char* get() { return T::layout(); }
+};
+
+// True for a capture type that cannot hold a script struct by value. A pointer is a value. A class
+// can hold a script struct, except the known wrappers of the lowering.
+template <class T> struct capture_layout_free : std::bool_constant<!std::is_class<T>::value>
+{
+};
+template <class T> struct capture_layout_free<std::shared_ptr<T>> : capture_layout_free<T> // hot::Cell
+{
+};
+template <class S> struct capture_layout_free<std::function<S>> : std::true_type
+{
+};
+template <class C, class T, class A> struct capture_layout_free<std::basic_string<C, T, A>> : std::true_type
+{
+};
+template <class S> struct capture_layout_free<LambdaClosure<S>> : std::true_type
+{
+};
+
+// The capture layout of a capture tuple (LambdaRecord).
+template <class Caps> struct CapsLayout;
+template <class... T> struct CapsLayout<std::tuple<T...>>
+{
+    using Caps = std::tuple<T...>;
+    static const char* const* types()
+    {
+        static const char* const t[] = {typeid(typekey_t<T>).name()..., nullptr};
+        return t;
+    }
+    static const uint8_t* flags()
+    {
+        static const uint8_t f[] = {static_cast<uint8_t>(capture_layout_free<T>::value ? 0 : kCaptureLayoutBound)..., 0};
+        return f;
+    }
+    template <size_t... I> static void* field_at(Caps& c, uint32_t i, std::index_sequence<I...>)
+    {
+        void* const a[] = {static_cast<void*>(&std::get<I>(c))..., nullptr};
+        return a[i];
+    }
+    static void* field(void* caps, uint32_t i)
+    {
+        return field_at(*static_cast<Caps*>(caps), i, std::index_sequence_for<T...>{});
+    }
+    template <size_t... I> static void* build_at(void* const* src, std::index_sequence<I...>)
+    {
+        return new Caps(std::move(*static_cast<T*>(src[I]))...);
+    }
+    static void* build(void* const* src) { return build_at(src, std::index_sequence_for<T...>{}); }
+    static constexpr auto build_fn()
+    {
+        if constexpr ((std::is_move_constructible<T>::value && ...))
+            return &build;
+        else
+            return static_cast<void* (*)(void* const*)>(nullptr);
+    }
+};
 
 template <class Caps> void lambda_destroy_caps(void* caps)
 {
@@ -171,8 +279,9 @@ template <class Caps> void lambda_destroy_caps(void* caps)
 template <class Tag, class Sig, class Caps, class F> struct LambdaReg;
 template <class Tag, class R, class... P, class Caps, class F> struct LambdaReg<Tag, R(P...), Caps, F>
 {
-    static LambdaRecord make()
+    static LambdaRecord make(LambdaRecord* self)
     {
+        using L = CapsLayout<Caps>;
         LambdaRecord r;
         r.key = Tag::key;
         r.sig = typeid(R(P...)).name();
@@ -182,17 +291,24 @@ template <class Tag, class R, class... P, class Caps, class F> struct LambdaReg<
         r.names = tag_names<Tag>::get();
         r.aliases = tag_aliases<Tag>::get();
         r.live = tag_live<Tag>::get();
+        r.count = static_cast<uint32_t>(std::tuple_size<Caps>::value);
+        r.types = L::types();
+        r.flags = L::flags();
+        r.layout = tag_layout<Tag>::get();
+        r.field = &L::field;
+        r.build = L::build_fn();
+        r.self = self;
         return r;
     }
     // The record of the module. The boxes point to it. It has static storage.
     static LambdaRecord& record()
     {
-        static LambdaRecord r = make();
+        static LambdaRecord r = make(&r);
         return r;
     }
     static bool add()
     {
-        pending_lambdas().push_back(make());
+        pending_lambdas().push_back(record());
         return true;
     }
     static const bool registered;

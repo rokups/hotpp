@@ -93,9 +93,13 @@ public:
     // A free function for other units. A second call with the same name replaces the entry.
     // "sig_key" is typeid(Sig).name() of the function type.
     HOT_NODEBUG HOT_EXPORT void add_fn(const std::string& name, const char* sig_key, void* fn);
-    // A reloadable lambda (lambda.h). A second call with the same key replaces the record.
+    // A reloadable lambda (lambda.h). A second call with the same key replaces the record. Each
+    // alias key of the record finds the record too.
     HOT_NODEBUG HOT_EXPORT void add_lambda(const LambdaRecord& record);
+    // The record of a key or of an alias key. A key comes before an alias key.
     const LambdaRecord* find_lambda(const std::string& key) const;
+    // Removes the records of the module with the live flag "live" (a retired module).
+    void drop_lambdas(const uint32_t* live);
     const std::unordered_map<std::string, LambdaRecord>& lambdas() const { return lambdas_; }
     const FnEntry* find_fn(const std::string& name) const { return fns_.find(name); }
     const FnTable& fn_table() const { return fns_; }
@@ -127,6 +131,7 @@ private:
     uint32_t generation_ = 0;
     FnTable fns_;
     std::unordered_map<std::string, LambdaRecord> lambdas_; // by key
+    std::unordered_map<std::string, std::string> lambda_aliases_; // an alias key to the key
     ModuleStateInfo module_state_;
     uint32_t* live_flag_ = nullptr;
 };

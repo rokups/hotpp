@@ -23,12 +23,15 @@ TEST(LambdaTranslation, ArrowLambdaBecomesABoxLambdaThatCapturesByValue)
         std::string::npos)
         << r.cpp;
     // The tag struct is in the line of the live flag, so the line numbers do not move.
-    EXPECT_NE(r.cpp.find("static uint32_t hot_live = 0; namespace { struct __LamTag_0 { "
+    // The hash of the script struct layouts comes first. The unit has no struct: the hash of "".
+    EXPECT_NE(r.cpp.find("static uint32_t hot_live = 0; namespace { "
+                         "constexpr const char* hot_lambda_layout = \"cbf29ce484222325\"; struct __LamTag_0 { "
                          "static constexpr const char* key = \"timer_v1:Beeper::arm/#0\"; "
                          "static constexpr const char* what = \"Beeper::arm lambda\"; "
                          "static constexpr const char* names[] = {\"__self\", nullptr}; "
                          "static constexpr const char* aliases[] = {nullptr}; "
-                         "static const uint32_t* live() { return &hot_live; } }; }\n"),
+                         "static const uint32_t* live() { return &hot_live; } "
+                         "static const char* layout() { return hot_lambda_layout; } }; }\n"),
         std::string::npos)
         << r.cpp;
     EXPECT_NE(r.cpp.find("hot::flush_lambdas(reg);"), std::string::npos) << r.cpp;

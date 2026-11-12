@@ -19,7 +19,7 @@
 // The generation of this module. The register function sets it from the registry.
 [[maybe_unused]] static uint32_t GEN = 0;
 // The live flag of this module. The loader sets it. The guard of each function reads it.
-static uint32_t hot_live = 0; namespace { struct __LamTag_0 { static constexpr const char* key = "borrowed_args_v1:Caller::Run/v:f"; static constexpr const char* what = "Caller::Run lambda"; static constexpr const char* names[] = {"__self", "pb", nullptr}; static constexpr const char* aliases[] = {nullptr}; static const uint32_t* live() { return &hot_live; } }; }
+static uint32_t hot_live = 0; namespace { constexpr const char* hot_lambda_layout = "cbf29ce484222325"; struct __LamTag_0 { static constexpr const char* key = "borrowed_args_v1:Caller::Run/v:f"; static constexpr const char* what = "Caller::Run lambda"; static constexpr const char* names[] = {"__self", "pb", nullptr}; static constexpr const char* aliases[] = {nullptr}; static const uint32_t* live() { return &hot_live; } static const char* layout() { return hot_lambda_layout; } }; }
 struct Probe_Shell;
 using Probe = Probe_Shell;
 struct Caller_Shell;

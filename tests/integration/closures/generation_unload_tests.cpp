@@ -88,9 +88,10 @@ public:
     std::unique_ptr<hot::Backend> backend;
 };
 
-// Escaped closure: a closure of generation 1 is in the world timer. After the reload to
-// generation 2 it fires. The guard logs a stale call. The body does not run.
-TEST_F(GenerationUnload, EscapedClosureIsStaleAfterReload)
+// Escaped closure of a removed lambda: a closure of generation 1 is in the world timer. The
+// script of generation 2 is another unit, so its lambda has another key. The commit detaches the
+// box. The timer fires: the guard logs a stale call, and the body does not run.
+TEST_F(GenerationUnload, EscapedClosureOfARemovedLambdaIsStaleAfterReload)
 {
     hot::Module m1 = build("timer_v1.hot", 1);
     hot::Module m2 = build("timer_v2.hot", 2);
@@ -144,6 +145,31 @@ TEST_F(GenerationUnload, ClosureOfTheLiveGenerationRuns)
     EXPECT_EQ(hot::pin_count(1), 0u);
 }
 
+// Escaped closure of the same lambda: the commit gives the box the code of generation 3. The timer
+// runs the new body. The closure keeps the pin of generation 2 (the glue code) until it goes.
+TEST_F(GenerationUnload, EscapedClosureRunsTheNewBodyAfterReload)
+{
+    Session s;
+    hot::Module m2 = build("timer_v2.hot", 2);
+    hot::Module m3 = build("timer_v2.hot", 3);
+    ASSERT_NO_FATAL_FAILURE(s.start(build("timer_v1.hot", 1), "Beeper"));
+    s.commit_at_frame_boundary();
+    ASSERT_NO_FATAL_FAILURE(reload(s, std::move(m2)));
+    ASSERT_NO_FATAL_FAILURE(arm(s, 1.0f));
+    ASSERT_NO_FATAL_FAILURE(reload(s, std::move(m3)));
+    EXPECT_EQ(hot::pin_count(2), 1u);
+    const uint64_t stale0 = hot::stale_call_count();
+    testing::internal::CaptureStdout();
+    s.world.Tick(1.0f);
+    const std::string out = testing::internal::GetCapturedStdout();
+    EXPECT_EQ(hot::stale_call_count(), stale0);
+    EXPECT_EQ(count_lines(out, "[timer v2]"), 1) << out;
+    EXPECT_EQ(*int_field(s, "fired"), 10);
+    EXPECT_EQ(hot::pin_count(2), 0u);
+    s.world.Tick(kDt);
+    EXPECT_EQ(find_gen(s.loader.stats(), 2)->state, GenState::Unloaded);
+}
+
 // The closure of generation 2 fires after generation 3 is live.
 // A chain keeps the test free of the first-generation anchor.
 struct Chain
@@ -190,8 +216,8 @@ TEST_F(GenerationUnload, SameTextAtTwoGenerationsKeepsTwoModules)
     s.world.Tick(kDt);
     testing::internal::GetCapturedStderr();
     testing::internal::GetCapturedStdout();
-    EXPECT_EQ(hot::stale_call_count(), stale0 + 1); // only the closure of generation 2 is stale
-    EXPECT_EQ(*int_field(s, "fired"), 10);          // the closure of generation 3 ran
+    EXPECT_EQ(hot::stale_call_count(), stale0); // the box of generation 2 has the code of generation 3
+    EXPECT_EQ(*int_field(s, "fired"), 20);      // both closures ran
     EXPECT_EQ(hot::pin_count(2), 0u);
     EXPECT_EQ(hot::pin_count(3), 0u);
     const hot::LoaderStats st = s.loader.stats();
@@ -223,9 +249,9 @@ TEST_F(GenerationUnload, GenerationUnloadsAfterTheClosureIsDropped)
     }
 
     testing::internal::CaptureStderr();
-    s.world.Tick(1.0f); // fires (stale), drops the closure, then the boundary unloads
+    s.world.Tick(1.0f); // fires (the code of generation 3), drops the closure, then the boundary unloads
     const std::string log = testing::internal::GetCapturedStderr();
-    EXPECT_EQ(count_lines(log, "stale call ignored: Beeper::arm lambda"), 1) << log;
+    EXPECT_EQ(count_lines(log, "stale call ignored: Beeper::arm lambda"), 0) << log;
     s.world.Tick(kDt); // one more frame
 
     const hot::LoaderStats st = s.loader.stats();
@@ -247,7 +273,7 @@ TEST_F(GenerationUnload, GenerationUnloadsAfterTheClosureIsDropped)
     s.world.Tick(1.0f);
     const std::string out2 = testing::internal::GetCapturedStdout();
     EXPECT_EQ(count_lines(out2, "[timer v2]"), 1) << out2;
-    EXPECT_EQ(*int_field(s, "fired"), 10);
+    EXPECT_EQ(*int_field(s, "fired"), 20); // the closure of generation 2 also ran
 }
 
 // A closure that stays alive keeps the generation loaded (pin count one).

@@ -17,7 +17,7 @@
 // The generation of this module. The register function sets it from the registry.
 [[maybe_unused]] static uint32_t GEN = 0;
 // The live flag of this module. The loader sets it. The guard of each function reads it.
-static uint32_t hot_live = 0; namespace { struct __LamTag_0 { static constexpr const char* key = "timer_v1:Beeper::arm/#0"; static constexpr const char* what = "Beeper::arm lambda"; static constexpr const char* names[] = {"__self", nullptr}; static constexpr const char* aliases[] = {nullptr}; static const uint32_t* live() { return &hot_live; } }; }
+static uint32_t hot_live = 0; namespace { constexpr const char* hot_lambda_layout = "cbf29ce484222325"; struct __LamTag_0 { static constexpr const char* key = "timer_v1:Beeper::arm/#0"; static constexpr const char* what = "Beeper::arm lambda"; static constexpr const char* names[] = {"__self", nullptr}; static constexpr const char* aliases[] = {nullptr}; static const uint32_t* live() { return &hot_live; } static const char* layout() { return hot_lambda_layout; } }; }
 struct Beeper_Shell;
 
 // ---------------------------------------------------------------- class Beeper

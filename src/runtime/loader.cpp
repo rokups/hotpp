@@ -713,7 +713,7 @@ ReloadResult Loader::load_unit(Module module, Registry* code_out)
     return make_result(ReloadStatus::Applied, ReloadReason::None);
 }
 
-void Loader::switch_live(const std::string& unit, const Registry& code, const Registry* core)
+void Loader::switch_live(const std::string& unit, const Registry& code, const Registry* core, bool rebind)
 {
     std::vector<uint32_t*>& flags = unit_live_[unit];
     std::vector<uint32_t*> retired;
@@ -726,11 +726,19 @@ void Loader::switch_live(const std::string& unit, const Registry& code, const Re
             *r->live_flag() = 1;
             flags.push_back(r->live_flag());
         }
-    // The lambda boxes of the retired module are stale now. Their captures go before the module
-    // unloads. A flag that the new module also uses (an AOT revert) keeps its boxes.
+    // The lambda boxes of the retired module get the code of the new module (a commit), or they
+    // detach. Each box is done before the retired module can unload. A flag that the new module
+    // also uses (an AOT revert) keeps its boxes and its records.
+    const auto find = [](const char* key, void* reg) { return static_cast<Registry*>(reg)->find_lambda(key); };
     for (uint32_t* f : retired)
         if (std::find(flags.begin(), flags.end(), f) == flags.end())
-            lambda_detach_module(f);
+        {
+            registry_.drop_lambdas(f);
+            if (rebind)
+                lambda_rebind_module(f, find, &registry_);
+            else
+                lambda_detach_module(f);
+        }
 }
 
 void Loader::detach_lambdas(const Gen& g)
@@ -1770,7 +1778,13 @@ ReloadResult Loader::commit_locked()
             mod_blocks_[unit] = {nms.layout, nms.slot, bw.new_mod};
         else
             mod_blocks_.erase(unit);
-        switch_live(unit, bw.u->staged, bw.u->have_core ? &bw.u->core_reg : nullptr);
+        // The lambdas of the new module, then the boxes of the old one. The commit window holds,
+        // and the old module is still loaded.
+        for (const Registry* r : {&bw.u->staged, bw.u->have_core ? &bw.u->core_reg : nullptr})
+            if (r)
+                for (const auto& [key, l] : r->lambdas())
+                    registry_.add_lambda(l);
+        switch_live(unit, bw.u->staged, bw.u->have_core ? &bw.u->core_reg : nullptr, true);
         set_link(bw.u->module, bw.u->staged);
     }
     ++link_epoch;

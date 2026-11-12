@@ -3022,7 +3022,8 @@ struct Lowerer
         for (const std::string& a : l.alias_keys)
             t += quote(a) + ", ";
         t += "nullptr}; ";
-        t += "static const uint32_t* live() { return &hot_live; } }; ";
+        t += "static const uint32_t* live() { return &hot_live; } ";
+        t += "static const char* layout() { return hot_lambda_layout; } }; ";
         cx.lambda_tags->push_back(std::move(t));
         bool deferred = false;
         for (const Param& p : l.params)

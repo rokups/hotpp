@@ -172,10 +172,10 @@ TEST_P(LambdaBoxScript, StoredLambdaRunsInTheLiveGeneration)
     EXPECT_EQ(hot::lambda_box_count(), boxes);
 }
 
-// The commit detaches the boxes of the retired module. The capture of the timer lambda holds the
-// closure "add", so the detach releases another box: this must not deadlock. The stale timer
-// drops the last reference, and then the retired generation unloads.
-TEST_P(LambdaBoxScript, StoredNestedLambdaIsDetachedAtTheCommitAndTheGenerationUnloads)
+// The commit gives the boxes of the retired module the code of the new module. The capture of
+// the timer lambda holds the closure "add": the move of the outer block keeps the inner box. The
+// timer runs the new code, drops the last reference, and then the retired generation unloads.
+TEST_P(LambdaBoxScript, StoredNestedLambdaRunsAfterTheCommitAndTheGenerationUnloads)
 {
     if (GetParam() == Mode::Aot)
         GTEST_SKIP() << "the AOT code has no reload";
@@ -190,25 +190,21 @@ TEST_P(LambdaBoxScript, StoredNestedLambdaIsDetachedAtTheCommitAndTheGenerationU
     s.world.Tick(kDt); // the commit
     ASSERT_FALSE(s.commit_failed);
     EXPECT_EQ(hot::active_generation, 2u);
-    // The detach destroyed the captures: the closure "add" is gone. The timer holds its box.
-    EXPECT_EQ(hot::lambda_box_count(), boxes + 1);
-    EXPECT_EQ(hot::pin_count(1), 1u);
+    // The two boxes moved to generation 2. The closures keep the pins of the glue code.
+    EXPECT_EQ(hot::lambda_box_count(), boxes + 2);
+    EXPECT_EQ(hot::pin_count(1), 2u);
 
     const uint64_t stale0 = hot::stale_call_count();
     testing::internal::CaptureStderr();
-    s.world.Tick(1.0f); // the stale timer fires
+    s.world.Tick(1.0f); // the timer fires
+    s.world.Tick(kDt); // a frame boundary after the last unpin unloads generation 1
     const std::string log = testing::internal::GetCapturedStderr();
-    EXPECT_EQ(hot::stale_call_count(), stale0 + 1);
-    EXPECT_NE(log.find("stale call ignored: Boxer::store lambda"), std::string::npos) << log;
-    EXPECT_EQ(field(s, "total"), 0);
+    EXPECT_EQ(hot::stale_call_count(), stale0);
+    EXPECT_EQ(field(s, "total"), 6);
     EXPECT_EQ(s.world.TimerCount(), 0u);
     EXPECT_EQ(hot::lambda_box_count(), boxes);
     EXPECT_EQ(hot::pin_count(1), 0u);
-
-    testing::internal::CaptureStderr();
-    s.world.Tick(kDt); // a frame boundary after the last unpin unloads generation 1
-    const std::string unload_log = log + testing::internal::GetCapturedStderr();
-    EXPECT_NE(unload_log.find("generation 1 unloaded"), std::string::npos) << unload_log;
+    EXPECT_NE(log.find("generation 1 unloaded"), std::string::npos) << log;
 
     // The new generation makes new boxes that run.
     ASSERT_NO_FATAL_FAILURE(store(s));

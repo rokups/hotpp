@@ -1,6 +1,6 @@
 # Hot reload of lambdas that native code holds
 
-Status: decided (2026-11-08). The `.hot` closures keep the guard and the host re-subscribe below. The slot design is not built. A `.cpp` lambda gets the same guard (see [Lambdas](cpp-translation.html#lambdas)).
+Status: decided (2026-11-08), updated (2026-11-12). A stored `.hot` closure runs the new body after a reload (see [Rebind at the commit](#rebind-at-the-commit)). The slot design is not built. A `.cpp` lambda gets the same guard (see [Lambdas](cpp-translation.html#lambdas)).
 Date: 2026-10-29.
 
 The facts below come from a read-only code survey. The survey did not verify every reference.
@@ -20,8 +20,9 @@ Yes. The current closure design does not allow it. A new design that treats a la
 - The closure holds a reference to a `LambdaBox` and a pin on its generation.
 - The box holds the entry, the captures, the `LambdaRecord` and the destroy function.
 - Native code stores the closure. Example: `Actor::AddTimer` in `tests/engine/Actor.h` (the test host).
+- The commit gives each box the code of the new generation, if the lambda key and the captures agree. Else it detaches the box.
 - A call through a detached box logs a stale call and returns `R()`. No lambda body runs.
-- The test `EscapedClosureIsStaleAfterReload` (`tests/integration/closures/generation_unload_tests.cpp`) checks this on purpose.
+- The tests `EscapedClosureRunsTheNewBodyAfterReload` and `EscapedClosureOfARemovedLambdaIsStaleAfterReload` (`tests/integration/closures/generation_unload_tests.cpp`) check the two cases.
 - The runtime does not unregister or rebind native callbacks. Only `ClearTimers` drops timers.
 - A named method already reloads. Native code holds a thunk. The thunk calls through the slot table. Slot numbers do not change.
 
@@ -52,16 +53,35 @@ The translator does not know the result type or the capture types. C++ knows the
 - `make_lambda_deferred` returns a `LambdaDeferred`. Its conversion to `LambdaClosure<R(A...)>` or `std::function<R(A...)>` gives the signature.
 - A `LambdaClosure` converts to a `std::function`, to a native handler and to a delegate with `Bind`.
 
-### Detach at the commit
+### Rebind at the commit
 
-- `Loader::switch_live` is the commit. It sets the live flags of the replaced generation to 0.
-- Then it calls `lambda_detach_module` for each replaced flag. Each box of that module gets `rec = nullptr`. The box destroys its captures.
-- The loader also detaches the boxes of a generation before it unloads the library, at `reset` and in `~Loader`.
-- Thus no box refers to code or a record of an unloaded library.
-- A stored closure keeps its pin. The generation unloads when the last closure is released.
-- `for_each_lambda_box` and `lambda_detach_module` take a reference to each box under the list lock. They call the function after the lock is released.
+- `Loader::commit_locked` adds the lambda records of the new generation to the registry. The registry also maps each alias key to its key.
+- Then `Loader::switch_live` sets the live flags of the replaced generation to 0. It calls `lambda_rebind_module` for each replaced flag.
+- This occurs after the state migration and before the `onReload` hooks.
+- For each box of the old module, the runtime finds the new record by the key or by an alias key.
+- The record holds the type key and a flag for each capture. It also holds a hash of the script struct layouts of the unit.
+- The runtime moves each capture with the same name and type key into a new block. It destroys a removed capture.
+- Then the box gets the new captures, entry, record and destroy function. The old block goes with the old destroy function.
+- The name of the box (`what`) stays. It is in the generation that the closure pins.
+- These changes detach the box: the lambda is removed, the signature changed, a capture is added, or a capture changed its type.
+- A capture of a script struct type also detaches the box if the layout hash changed. The type key does not show a layout change.
+- The runtime logs one warning for each key: `lambda <key>: <cause>; <n> stored closures are detached`.
+- `__self` is a pointer to the shell object. The shell object stays at the same address over a reload. Thus the pointer moves as a value.
+
+The rules for safety:
+
+- A live capture block always has the layout of the active generation.
+- The runtime changes a box only in the commit window. A worker release waits for the commit window before the last decrement.
+- The rebind takes a reference to each box under the list lock. It does the work after the lock is released.
+- The runtime does not read the record of a box after its module unloads. Each box gets a new record or a detach before its generation unloads.
+- The loader detaches the boxes of a generation in the load path, at `reset`, at the frame boundary unload and in `~Loader`.
+- A stored closure keeps its pin. The glue code of the closure is in the pinned generation. The generation unloads when the last closure is released.
 - A capture destructor can release another box. That release takes the list lock. So no deadlock occurs.
-- The migration of captures to a new generation is not built. A detached box stays stale.
+
+Limits:
+
+- A deferred lambda with two target signatures under one key has one record in the registry. A box with the other signature detaches.
+- The layout hash covers only the structs of the unit. A struct of another unit does not change the hash.
 
 ## Host re-subscribe (in use)
 
@@ -73,7 +93,7 @@ rbfx-script does this: see "Subscriptions after a reload" in its `docs/Architect
 - The thunk `Cls::__native` gives the native base of an object from its shell. Each script class has it.
 - The host drops the recorded subscriptions of the object. Then it calls the method again through its thunk `Cls::OnSubscribe`.
 - `Loader::thunk_key` gives the signature key of a thunk. The host checks it before the cast of the thunk.
-- A lambda that the script gives to native code outside this method keeps the stale-guard rule above.
+- A lambda that the script gives to native code outside this method follows the rebind rule above.
 
 ## Proposed design
 
@@ -98,7 +118,7 @@ Give each lambda the same treatment as a method.
 ## Related code
 
 - `include/hot/runtime/lambda.h`: `LambdaBox`, `LambdaClosure`, `make_lambda_deduced`, `make_lambda_deferred`.
-- `src/runtime/lambda.cpp`: the box list and `lambda_detach_module`.
+- `src/runtime/lambda.cpp`: the box list, `lambda_detach_module` and `lambda_rebind_module`.
 - `src/runtime/threads.cpp:98-116`: stale-call log and pin counters.
 - `src/runtime/loader.cpp:274-299`: `frame_boundary`, unload gate.
 - `include/hot/runtime/registry.h`: thunk entries.
@@ -109,8 +129,8 @@ Give each lambda the same treatment as a method.
 
 The slot design is not built. The reasons:
 
-- The guard already makes each stale call safe. No old lambda body runs after a reload. The call logs a stale call and returns `R()`.
+- The rebind at the commit gives the new body to a stored closure. The guard makes each detached call safe.
 - The host re-subscribe gives the new code to each subscription. It needs no change of the closure design.
-- A rebind needs a stable key for each lambda and a migration of each capture block. A wrong key calls a different lambda with old captures. The guard has no such risk.
+- The rebind uses the key, the signature and the type key of each capture. A mismatch detaches the box.
 
 A `.cpp` lambda has the same rule. `hotc` puts the guard `hot::cpp_lambda` on each lambda that uses the object or a module variable. A stale call logs the stale call and gives the default value. The test `CppStoredLambdaOfAnOldGenerationIsSkipped` checks it under ASan with a smaller state layout in the new version.

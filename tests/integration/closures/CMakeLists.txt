@@ -7,6 +7,7 @@ add_executable(integration_closure_tests
     closure_tests.cpp
     generation_unload_tests.cpp
     lambda_closure_tests.cpp
+    lambda_rebind_unit_tests.cpp
     shared_cell_tests.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
@@ -25,6 +26,7 @@ hot_add_scripts(TARGET lambda_reg_aot_scripts AOT
     DEPENDS ${HOT_HEADERS})
 add_executable(integration_lambda_reg_tests
     lambda_box_tests.cpp
+    lambda_rebind_tests.cpp
     lambda_reg_tests.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)

@@ -10192,7 +10192,21 @@ void translate_impl(
         for (const std::string& t : lambda_tags)
             tags += t;
         if (!tags.empty())
-            o.insert(lambda_tag_at, " namespace { " + tags + "}");
+        {
+            // The hash of the layouts of the script structs of the unit. A capture that can hold
+            // a struct by value moves at a reload only when the hash is the same (lambda.h).
+            std::string text;
+            for (const ClassDef& c : sc.classes)
+                if (types.is_script_value(c.name))
+                    text += value_layout(c.name, 0);
+            uint64_t h = 14695981039346656037ull;
+            for (unsigned char ch : text)
+                h = (h ^ ch) * 1099511628211ull;
+            char hex[17];
+            std::snprintf(hex, sizeof hex, "%016llx", static_cast<unsigned long long>(h));
+            o.insert(lambda_tag_at,
+                std::string(" namespace { constexpr const char* hot_lambda_layout = \"") + hex + "\"; " + tags + "}");
+        }
     }
     // A module with reloadable lambdas gives their records to the registry.
     if (!lambda_tags.empty() || o.s.find("hot::make_lambda") != std::string::npos)

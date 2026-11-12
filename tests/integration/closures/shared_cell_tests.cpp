@@ -116,8 +116,8 @@ TEST_F(SharedCell, CellOutlivesTheFunction)
     EXPECT_EQ(s.world.TimerCount(), 0u);
 }
 
-// After a reload the cells work in the new generation. The timers of the old generation hold
-// stale closures: they do not run, and the cells go away with them.
+// After a reload the cells work in the new generation. The commit gives the timers of the old
+// generation the new code. Both timers keep the one shared cell, so the sum is 11.
 TEST_F(SharedCell, SurvivesAReload)
 {
     Session s;
@@ -126,10 +126,10 @@ TEST_F(SharedCell, SurvivesAReload)
     ASSERT_NO_FATAL_FAILURE(arm(s));
     ASSERT_NO_FATAL_FAILURE(reload(s, build(2)));
     EXPECT_EQ(hot::active_generation, 2u);
-    testing::internal::CaptureStderr();
-    s.world.Tick(1.0f); // the stale timers fire here
-    testing::internal::GetCapturedStderr();
-    EXPECT_EQ(field(s, "fired"), 0);
+    const uint64_t stale0 = hot::stale_call_count();
+    s.world.Tick(1.0f); // the timers fire here with the code of generation 2
+    EXPECT_EQ(hot::stale_call_count(), stale0);
+    EXPECT_EQ(field(s, "fired"), 11);
     EXPECT_EQ(s.world.TimerCount(), 0u);
 
     ASSERT_NO_FATAL_FAILURE(call(s, "Counter::count"));

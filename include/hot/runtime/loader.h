@@ -356,7 +356,8 @@ private:
     bool state_holds_code() const;
     // Makes the module (and its core) of a unit live: the live flags of the older module of the
     // unit go to 0, the flags of the new module go to 1. A null flag (an old library) is skipped.
-    void switch_live(const std::string& unit, const Registry& code, const Registry* core);
+    // With "rebind" (a reload commit), the lambda boxes of the older module move to the new one.
+    void switch_live(const std::string& unit, const Registry& code, const Registry* core, bool rebind = false);
     // Stores the signature key of the slot of a keyed thunk (design 5.3) in "slot_keys_".
     void set_slot_key(const ThunkEntry& t);
     // Builds the key table of each class (ClassRecord::slot_keys) from "slot_keys_" and the slot

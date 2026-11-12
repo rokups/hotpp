@@ -123,12 +123,31 @@ void Registry::add_fn(const std::string& name, const char* sig_key, void* fn)
 void Registry::add_lambda(const LambdaRecord& record)
 {
     lambdas_.insert_or_assign(record.key, record);
+    if (record.aliases)
+        for (const char* const* a = record.aliases; *a; ++a)
+            lambda_aliases_.insert_or_assign(*a, record.key);
 }
 
 const LambdaRecord* Registry::find_lambda(const std::string& key) const
 {
     auto it = lambdas_.find(key);
+    if (it == lambdas_.end())
+    {
+        // An old key of a renamed lambda.
+        const auto al = lambda_aliases_.find(key);
+        if (al == lambda_aliases_.end())
+            return nullptr;
+        it = lambdas_.find(al->second);
+    }
     return it == lambdas_.end() ? nullptr : &it->second;
+}
+
+void Registry::drop_lambdas(const uint32_t* live)
+{
+    for (auto it = lambdas_.begin(); it != lambdas_.end();)
+        it = it->second.live == live ? lambdas_.erase(it) : std::next(it);
+    for (auto it = lambda_aliases_.begin(); it != lambda_aliases_.end();)
+        it = lambdas_.count(it->second) ? std::next(it) : lambda_aliases_.erase(it);
 }
 
 void Registry::add_thunk(const std::string& name, void* fn)
