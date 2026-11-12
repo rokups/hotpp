@@ -258,6 +258,11 @@ struct LambdaExpr
     // The names outside the lambda that the body assigns, increments or decrements (const_infer.h).
     // The lowering gives an error when such a name is not a shared cell.
     std::set<std::string> assigns{};
+    // The attribute [name("x")] before the lambda: the key of a reloadable lambda. Empty: no name.
+    std::string name{};
+    uint32_t name_pos = 0; // the offset of the "name" word of the attribute
+    // The attributes [alias("old")]: the old keys of a renamed lambda.
+    std::vector<std::string> aliases{};
 };
 // A string with "${expr}" or "${expr:spec}" (design 7.3, DECISIONS item 10). The literal parts
 // keep the script text between the quotes (with escapes). "lits" has one more item than "args".

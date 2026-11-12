@@ -47,6 +47,7 @@ HOT_ERROR_TAG(e_address_of, "the prefix '&' is not supported; pass the value to 
                             "write ref name = expr, or cast a handle with (T*)h");
 HOT_ERROR_TAG(e_new_paren, "expected '(' after the type of 'new'");
 HOT_ERROR_TAG(e_targs, "not a template argument list");
+HOT_ERROR_TAG(e_attr_lambda, "an attribute before '(' needs a lambda: write [name(\"x\")] (params) => body");
 
 // ---------------------------------------------------------------- limits
 // The nesting of the brackets in the text of template arguments.
@@ -914,6 +915,24 @@ template <int N> struct lambda_body : lexy::token_production
 // "(" ... ")" "=>" is a lambda. The "(" is already consumed.
 constexpr auto lambda_head = dsl::p<lambda_body<lambda_depth>> + dsl::whitespace(ws_rule) + LEXY_LIT("=>");
 
+// Builds the lambda node from the parts after "(".
+ExprP make_lambda(const ParseState& st, const char* pos, LambdaRest&& rest, ast::LambdaExpr l = {})
+{
+    l.params = std::move(rest.params);
+    l.pos = st.offset(pos);
+    if (rest.expr)
+    {
+        // "{ return e; }": the synthetic braces and "return" have no position.
+        ast::ReturnStmt r;
+        r.expr = std::move(rest.expr);
+        l.body.stmts.push_back(ast::make_stmt(std::move(r)));
+        return ast::make_expr(std::move(l));
+    }
+    const ParseInput in{std::string_view(st.base, st.size), st.map, st.array_tpl, st.aliases};
+    l.body = parse_block(in, rest.body, *st.diag);
+    return ast::make_expr(std::move(l));
+}
+
 // A parenthesized expression or an arrow lambda.
 struct paren_p
 {
@@ -923,23 +942,116 @@ struct paren_p
         lexy::bind(lexy::callback<ExprP>([](const ParseState& st, const char* pos, ExprP&& inner)
     { return ast::make_expr(ast::ParenExpr{std::move(inner), st.offset(pos)}); },
                        [](const ParseState& st, const char* pos, LambdaRest&& rest)
+    { return make_lambda(st, pos, std::move(rest)); }),
+            lexy::parse_state, lexy::values);
+};
+
+// ---------------------------------------------------------------- attributes of a lambda
+// "[name("onFire"), alias("old")] (params) => body". Each attribute has an argument list. The
+// text of the arguments is a span. The peek needs the "(" after the "]", so a list literal
+// like "[f(1)]" stays a list literal.
+constexpr auto attr_ws = dsl::whitespace(ws_rule);
+
+// The text after "(" up to the ")". Strings and comments are skipped.
+struct attr_arg_p : lexy::token_production
+{
+    static constexpr auto rule = dsl::position
+        + dsl::loop(dsl::peek(dsl::lit_c<')'>) >> dsl::break_ | dsl::eof >> dsl::error<e_targs>
+            | dsl::token(string_lit) | line_comment | block_comment | dsl::else_ >> any_unit)
+        + dsl::position;
+    static constexpr auto value = span_value;
+};
+
+struct LambdaAttr
+{
+    std::string name;
+    uint32_t pos = 0;
+    Span args;
+};
+
+struct lambda_attr_item
+{
+    static constexpr auto rule = attr_ws + dsl::position + dsl::capture(dsl::token(id)) + attr_ws
+        + dsl::lit_c<'('> + dsl::p<attr_arg_p> + dsl::lit_c<')'> + attr_ws;
+    static constexpr auto value = lexy::bind(
+        lexy::callback<LambdaAttr>([](const ParseState& st, const char* pos, auto lex, Span args)
+    { return LambdaAttr{std::string(lex.begin(), lex.end()), st.offset(pos), args}; }),
+        lexy::parse_state, lexy::values);
+};
+
+struct lambda_attr_list
+{
+    static constexpr auto rule =
+        dsl::terminator(dsl::lit_c<']'>).list(dsl::p<lambda_attr_item>, dsl::sep(dsl::lit_c<','>));
+    static constexpr auto value = lexy::as_list<std::vector<LambdaAttr>>;
+};
+
+// The lookahead: "[" attribute ("," attribute)* "]" "(".
+struct lambda_attr_skip : lexy::token_production
+{
+    static constexpr auto item = attr_ws + dsl::token(id) + attr_ws + dsl::lit_c<'('> + dsl::p<attr_arg_p>
+        + dsl::lit_c<')'> + attr_ws;
+    static constexpr auto rule =
+        dsl::lit_c<'['> + item + dsl::while_(dsl::lit_c<','> >> item) + dsl::lit_c<']'> + attr_ws + dsl::lit_c<'('>;
+    static constexpr auto value = lexy::noop;
+};
+
+// True when the text is one string literal. The text between the quotes goes to "out".
+bool attr_string(std::string_view t, std::string& out)
+{
+    while (!t.empty() && (t.front() == ' ' || t.front() == '\t' || t.front() == '\n' || t.front() == '\r'))
+        t.remove_prefix(1);
+    while (!t.empty() && (t.back() == ' ' || t.back() == '\t' || t.back() == '\n' || t.back() == '\r'))
+        t.remove_suffix(1);
+    if (t.size() < 2 || t.front() != '"' || t.back() != '"')
+        return false;
+    for (size_t i = 1; i + 1 < t.size(); ++i)
+    {
+        if (t[i] == '\\')
+            ++i;
+        else if (t[i] == '"')
+            return false;
+    }
+    out = std::string(t.substr(1, t.size() - 2));
+    return true;
+}
+
+struct attr_lambda_p
+{
+    static constexpr auto rule = dsl::lit_c<'['> + dsl::p<lambda_attr_list> + attr_ws + dsl::position
+        + dsl::lit_c<'('> + (dsl::peek(lambda_head) >> dsl::p<lambda_rest> | dsl::else_ >> dsl::error<e_attr_lambda>);
+    static constexpr auto value = lexy::bind(
+        lexy::callback<ExprP>([](const ParseState& st, std::vector<LambdaAttr>&& attrs, const char* pos,
+                                  LambdaRest&& rest)
     {
         ast::LambdaExpr l;
-        l.params = std::move(rest.params);
-        l.pos = st.offset(pos);
-        if (rest.expr)
+        for (const LambdaAttr& a : attrs)
         {
-            // "{ return e; }": the synthetic braces and "return" have no position.
-            ast::ReturnStmt r;
-            r.expr = std::move(rest.expr);
-            l.body.stmts.push_back(ast::make_stmt(std::move(r)));
-            return ast::make_expr(std::move(l));
+            const bool is_name = a.name == "name";
+            if (!is_name && a.name != "alias")
+            {
+                st.error(st.base + a.pos, "unknown attribute '" + a.name + "' on a lambda");
+                continue;
+            }
+            std::string text;
+            if (!attr_string(span_text(st, a.args), text))
+            {
+                st.error(st.base + a.pos, "[" + a.name + "(...)] needs a string argument");
+                continue;
+            }
+            if (!is_name)
+                l.aliases.push_back(std::move(text));
+            else if (!l.name.empty() || l.name_pos != 0)
+                st.error(st.base + a.pos, "duplicate attribute 'name'");
+            else
+            {
+                l.name = std::move(text);
+                l.name_pos = a.pos;
+            }
         }
-        const ParseInput in{std::string_view(st.base, st.size), st.map, st.array_tpl, st.aliases};
-        l.body = parse_block(in, rest.body, *st.diag);
-        return ast::make_expr(std::move(l));
+        return make_lambda(st, pos, std::move(rest), std::move(l));
     }),
-            lexy::parse_state, lexy::values);
+        lexy::parse_state, lexy::values);
 };
 
 // ---------------------------------------------------------------- operators with a rule
@@ -1043,7 +1155,8 @@ template <bool Full> struct expr_g : lexy::expression_production
         | dsl::peek(cast_b) >> dsl::p<cast_atom_p>
         | dsl::peek(cast_h) >> dsl::p<cast_atom_p> | dsl::peek(dsl::lit_c<'('>) >> dsl::p<paren_p>
         | dsl::peek(dsl::lit_c<'&'>) >> dsl::error<e_address_of>
-        | dsl::peek(dsl::lit_c<'{'>) >> dsl::error<e_brace_init> | dsl::peek(dsl::lit_c<'['>) >> dsl::p<coll_p>
+        | dsl::peek(dsl::lit_c<'{'>) >> dsl::error<e_brace_init> | dsl::peek(dsl::p<lambda_attr_skip>) >> dsl::p<attr_lambda_p>
+        | dsl::peek(dsl::lit_c<'['>) >> dsl::p<coll_p>
         | dsl::peek(kw_this) >> dsl::p<kw_p<ast::ThisExpr, std::remove_cv_t<decltype(kw_this)>>>
         | dsl::peek(kw_base) >> dsl::p<kw_p<ast::BaseExpr, std::remove_cv_t<decltype(kw_base)>>>
         | dsl::peek(kw_null) >> dsl::p<kw_p<ast::NullExpr, std::remove_cv_t<decltype(kw_null)>>>

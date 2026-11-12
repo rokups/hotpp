@@ -76,6 +76,23 @@ The translator writes `auto __cell_n = hot::make_cell<int32_t>(0); int32_t& n = 
 
 Only a local or a plain parameter can be a cell. A lambda that assigns a `foreach` variable, a structured binding, a `catch` variable, a parameter of an outer lambda or a local in the init part of a `for` is an error. Copy the value into a local before the lambda. A `ref`, `in` or `out` parameter cannot go into a lambda (see [Captures](#captures)).
 
+## Name a lambda
+
+An attribute before a lambda gives it a name. The name is the key of a reloadable lambda.
+
+```hot
+var h = [name("onFire")] (CarveRequest r) => { };
+var g = [name("onFire"), alias("onShoot")] (CarveRequest r) => { };
+```
+
+- `name("key")` sets the name. The argument is a string. A lambda has one `name`.
+- `alias("old")` gives an old key of a renamed lambda. A lambda can have many `alias` attributes.
+- Every attribute has an argument list. Another attribute name is an error.
+- The attribute needs a lambda after it. The text `[name("x")] (a + b)` is an error.
+- A list literal is still valid. The text `[name("x")]` alone is a list with one call.
+
+The translator only stores the name now. The generated C++ does not change.
+
 ## Lambdas and reload
 
 Native code can keep a lambda, for example a timer. A reload does not change the body of a kept lambda. A call after the reload does nothing and logs a stale call. A lambda that the script creates after the reload uses the new body.

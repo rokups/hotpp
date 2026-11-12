@@ -77,3 +77,86 @@ TEST(LambdaExpressionParse, ExpressionBodyIsAReturnBlock)
     // A block body is still a block.
     EXPECT_EQ(round_trip("() => { return 1; }"), "[=]() { return 1; }");
 }
+
+// ---------------------------------------------------------------- the attributes of a lambda
+TEST(LambdaAttributeParse, Name)
+{
+    Parsed p("[name(\"onFire\")] (CarveRequest r) => { }");
+    ASSERT_TRUE(p.expr);
+    EXPECT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
+    const auto* l = std::get_if<ast::LambdaExpr>(&p.expr->v);
+    ASSERT_TRUE(l);
+    EXPECT_EQ(l->name, "onFire");
+    EXPECT_EQ(l->name_pos, 1u);
+    EXPECT_TRUE(l->aliases.empty());
+    ASSERT_EQ(l->params.size(), 1u);
+    EXPECT_EQ(l->params[0].name, "r");
+    // The printer shows the same C++ as a lambda without the attribute.
+    EXPECT_EQ(ast::print(*p.expr), "[=](CarveRequest r) {}");
+}
+
+TEST(LambdaAttributeParse, NameAndAlias)
+{
+    Parsed p("[name(\"onFire\"), alias(\"old\")] () => 1");
+    ASSERT_TRUE(p.expr);
+    EXPECT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
+    const auto* l = std::get_if<ast::LambdaExpr>(&p.expr->v);
+    ASSERT_TRUE(l);
+    EXPECT_EQ(l->name, "onFire");
+    ASSERT_EQ(l->aliases.size(), 1u);
+    EXPECT_EQ(l->aliases[0], "old");
+    EXPECT_EQ(round_trip("[ name( \"a\" ) , alias(\"b\") ]\n(int x) => x"), "[=](int32_t x) { return x; }");
+}
+
+TEST(LambdaAttributeParse, AsArgument)
+{
+    EXPECT_EQ(round_trip("f([name(\"a)\")] () => { }, 2)"), "f([=]() {}, 2)");
+}
+
+TEST(LambdaAttributeParse, ListLiteralStaysValid)
+{
+    Parsed p("[name(\"x\")]");
+    ASSERT_TRUE(p.expr);
+    EXPECT_EQ(p.diag.items.size(), 0u) << p.diag.format("t");
+    EXPECT_TRUE(std::get_if<ast::CollectionExpr>(&p.expr->v));
+    EXPECT_TRUE(std::get_if<ast::CollectionExpr>(&Parsed("[f(1), 2]").expr->v));
+}
+
+namespace
+{
+// The text of the one error: "line:col: text". The lambda node stays in the tree.
+std::string attr_error(const std::string& text)
+{
+    Parsed p(text);
+    EXPECT_EQ(p.diag.items.size(), 1u) << text << "\n" << p.diag.format("t");
+    if (p.diag.items.empty())
+        return "<none>";
+    const Diag& d = p.diag.items[0];
+    return std::to_string(d.line) + ":" + std::to_string(d.col) + ": " + d.msg;
+}
+} // namespace
+
+TEST(LambdaAttributeParse, NotFollowedByLambda)
+{
+    Parsed p("[name(\"x\")] (a + b)");
+    EXPECT_FALSE(p.diag.items.empty());
+    if (!p.diag.items.empty())
+        EXPECT_NE(p.diag.items[0].msg.find("needs a lambda"), std::string::npos) << p.diag.format("t");
+}
+
+TEST(LambdaAttributeParse, UnknownAttribute)
+{
+    EXPECT_EQ(attr_error("[bogus(\"x\")] () => { }"), "1:2: unknown attribute 'bogus' on a lambda");
+}
+
+TEST(LambdaAttributeParse, NameNeedsString)
+{
+    EXPECT_EQ(attr_error("[name(5)] () => { }"), "1:2: [name(...)] needs a string argument");
+    EXPECT_EQ(attr_error("[name(a)] () => { }"), "1:2: [name(...)] needs a string argument");
+    EXPECT_EQ(attr_error("[alias(5)] () => { }"), "1:2: [alias(...)] needs a string argument");
+}
+
+TEST(LambdaAttributeParse, DuplicateName)
+{
+    EXPECT_EQ(attr_error("[name(\"a\"), name(\"b\")] () => { }"), "1:13: duplicate attribute 'name'");
+}
