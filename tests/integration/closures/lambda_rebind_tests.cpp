@@ -197,6 +197,34 @@ TEST_P(LambdaRebindScript, RemovedCaptureIsDestroyedAndTheBoxMoves)
     EXPECT_EQ(f(0), 1000);
 }
 
+// A host can run register_fn on a scratch registry to list the classes before it gives the module
+// to the loader. The module must still give its lambdas to the loader registry.
+TEST_P(LambdaRebindScript, ScratchRegistryBeforeTheLoadKeepsTheLambdas)
+{
+    Session s;
+    hot::Module m1 = build(1, 1);
+    {
+        hot::Registry scratch;
+        m1.register_fn(scratch);
+    }
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(m1), "Rb"));
+    s.commit_at_frame_boundary();
+    IntFn f;
+    ASSERT_NO_FATAL_FAILURE(call(s, "Rb::body", f));
+    hot::Module m2 = build(2, 2);
+    {
+        hot::Registry scratch;
+        m2.register_fn(scratch);
+    }
+    testing::internal::CaptureStderr();
+    const hot::ReloadResult r = s.loader.request_reload(std::move(m2));
+    s.world.Tick(kDt);
+    const std::string log = testing::internal::GetCapturedStderr();
+    EXPECT_TRUE(r) << r.error;
+    EXPECT_EQ(log.find("detached"), std::string::npos) << log;
+    EXPECT_EQ(f(1), 601);
+}
+
 // The detach cases: an added capture, a new capture type, a new signature, a removed lambda. A
 // call of a detached closure is a stale call. Each key logs one warning.
 TEST_P(LambdaRebindScript, IncompatibleChangesDetach)

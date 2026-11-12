@@ -163,8 +163,10 @@ template <class Fn> void for_each_lambda_box(Fn&& fn)
 
 namespace detail
 {
-// The lambdas that the module registered since the last flush. Each module has its own list: the
-// function is inline and the module is built with hidden visibility.
+// The lambdas of the module. The static initializers fill the list once. Each module has its own
+// list: the function is inline and the module is built with hidden visibility. Each flush gives
+// the whole list, so a host can run script_register more than once (for example on a scratch
+// registry first).
 inline std::vector<LambdaRecord>& pending_lambdas()
 {
     static std::vector<LambdaRecord> list;
@@ -503,9 +505,7 @@ template <class Tag, class Caps, class F> LambdaDeferred<Tag, Caps, F> make_lamb
 // script_register calls it. It gives the lambdas of the module to the registry.
 template <class Reg> void flush_lambdas(Reg& reg)
 {
-    std::vector<LambdaRecord> list;
-    list.swap(detail::pending_lambdas());
-    for (const LambdaRecord& r : list)
+    for (const LambdaRecord& r : detail::pending_lambdas())
         reg.add_lambda(r);
 }
 
