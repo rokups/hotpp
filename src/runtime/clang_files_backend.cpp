@@ -252,8 +252,9 @@ bool pch_enabled_by_env()
 
 // The start of the translated text up to the last "#include" line of the start. The start has
 // only "#include" and "#line" lines, empty lines and "//" comments. The PCH has this exact
-// text, so a compile with the PCH sees the same declarations and macros as a compile without
-// it. The include lines in the .cpp then find their include guards. Empty: no include.
+// text, so a compile with the exact PCH of the unit sees the same declarations and macros as a
+// compile without it. The shared PCH has more: it adds the declarations and macros of the headers
+// of other units. The include lines in the .cpp find their include guards. Empty: no include.
 std::string include_prefix(const std::string& cpp)
 {
     size_t pos = 0;
@@ -1255,10 +1256,10 @@ ClangFilesBackend::PchPlan ClangFilesBackend::make_pch_plan(
     return plan;
 }
 
-bool ClangFilesBackend::pch_is_bad(const PchPlan& plan) const
+bool ClangFilesBackend::pch_is_bad(const PchPlan& plan, const char* ext) const
 {
     std::error_code ec;
-    const fs::path bad = pch_marker(plan.key, ".bad");
+    const fs::path bad = pch_marker(plan.key, ext);
     if (!fs::exists(bad, ec))
         return false;
     const auto t = fs::last_write_time(bad, ec);
@@ -1273,7 +1274,9 @@ bool ClangFilesBackend::pch_is_bad(const PchPlan& plan) const
 // that did not work has a "bad" marker: no PCH for one day. The build writes the "seen" marker.
 // The shared PCH (prewarm_pch) comes second: when the exact PCH of the unit is missing and every
 // include line of the unit is in "<cache_dir>/pch/shared.inc", the shared PCH serves the unit.
-// A unit with a line outside the union adds the line to "shared.extra" for the next start.
+// A unit with a line outside the union gives the line to the caller (PchPlan::extra_add). The
+// caller adds it to "shared.extra" after the unit compiled. A unit that failed with the shared PCH
+// has a "<exact key>.noshared" marker: it does not use the shared PCH for one day.
 std::optional<ClangFilesBackend::PchPlan> ClangFilesBackend::plan_pch(
     const std::string& cpp, const std::string& script_dir, bool mirror_files, uint64_t shadow_hash,
     const std::vector<std::string>& shadow_paths)
@@ -1289,6 +1292,7 @@ std::optional<ClangFilesBackend::PchPlan> ClangFilesBackend::plan_pch(
     if (prefix.empty())
         return std::nullopt;
     PchPlan plan = make_pch_plan(prefix, script_dir, shadow_hash);
+    plan.unit_key = plan.key;
     const bool exact_bad = pch_is_bad(plan);
     if (!exact_bad)
     {
@@ -1320,7 +1324,9 @@ std::optional<ClangFilesBackend::PchPlan> ClangFilesBackend::plan_pch(
         if (outside.empty() && shadow_ok)
         {
             PchPlan sp = make_pch_plan(shared, script_dir, shared_hash);
-            if (!pch_is_bad(sp))
+            sp.unit_key = plan.key;
+            sp.shared = true;
+            if (!pch_is_bad(sp) && !pch_is_bad(plan, ".noshared"))
             {
                 if (const std::optional<ObjectCache::Hit> hit = pch_cache_->lookup(sp.key))
                 {
@@ -1331,50 +1337,89 @@ std::optional<ClangFilesBackend::PchPlan> ClangFilesBackend::plan_pch(
         }
         else if (!outside.empty())
         {
-            std::string extra;
-            const fs::path extra_path = fs::path(opt_.cache_dir) / "pch" / "shared.extra";
-            read_text(extra_path.string(), extra);
-            std::string add;
-            const std::set<std::string> known = pch_lines(extra);
             for (const std::string& line : outside)
-                if (!known.count(line))
-                    add += line;
-            if (!add.empty())
-                write_text_atomic(extra_path, extra + add);
+                plan.extra_add += line;
         }
     }
     if (exact_bad)
-        return std::nullopt;
+    {
+        // No PCH build. The plan only carries the extra lines.
+        if (plan.extra_add.empty())
+            return std::nullopt;
+        return plan;
+    }
     plan.build = true;
     return plan;
 }
 
+namespace
+{
+
+// Adds the lines to the file shared.extra, without duplicates. The caller holds "pch_mutex_".
+void append_shared_extra(const fs::path& dir, const std::string& lines)
+{
+    const fs::path path = dir / "shared.extra";
+    std::string extra;
+    read_text(path.string(), extra);
+    const std::set<std::string> known = pch_lines(extra);
+    std::string add;
+    for (size_t pos = 0; pos < lines.size();)
+    {
+        const size_t nl = lines.find('\n', pos);
+        const size_t next = nl == std::string::npos ? lines.size() : nl + 1;
+        const std::string line = lines.substr(pos, next - pos);
+        if (!known.count(line))
+            add += line;
+        pos = next;
+    }
+    if (add.empty())
+        return;
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    write_text_atomic(path, extra + add);
+}
+
+// The lines of a text without the new line, in order, without duplicates.
+std::vector<std::string> text_lines(const std::string& text)
+{
+    std::vector<std::string> r;
+    std::set<std::string> seen;
+    for (size_t pos = 0; pos < text.size();)
+    {
+        const size_t nl = text.find('\n', pos);
+        const size_t end = nl == std::string::npos ? text.size() : nl;
+        std::string line = text.substr(pos, end - pos);
+        pos = nl == std::string::npos ? text.size() : nl + 1;
+        if (!line.empty() && seen.insert(line).second)
+            r.push_back(std::move(line));
+    }
+    return r;
+}
+
+} // namespace
+
 // The shared startup PCH. The units of a batch have different include sets. The first edit
 // after the start can have an include set that no unit of the batch has. So one PCH has the
-// union of the include lines of the batch and of "shared.extra" (lines of earlier misses). The
-// text of the union is in "shared.inc" and the union of the shadow paths is in "shared.shadow":
-// plan_pch reads them. The shadow paths of each unit depend on its includes, so the shared key
-// has the hash of the union of the paths. No PCH when a build runs, when HOT_PCH is "0", or for
+// union of the include lines. The union only grows: it has the old "shared.inc", the lines of the
+// batch and the lines of "shared.extra" (lines of units that compiled), in first-seen order. The
+// union of the shadow paths is in "shared.shadow". plan_pch reads both files. The shared key has
+// the text of the union and the hash of the shadow paths.
+// A batch that the union covers writes nothing and builds nothing. A bigger union builds a new
+// PCH. A good build writes shared.inc and shared.shadow, so the old PCH serves until then. The old
+// PCH stays until trim_pch removes it. No PCH when a build runs, when HOT_PCH is "0", or for
 // mirror files.
 void ClangFilesBackend::prewarm_pch(const std::vector<const BuildJob*>& jobs, bool timing)
 {
     if (jobs.empty() || !pch_cache_ || !pch_enabled_by_env() || compiler_id_.find("clang") == std::string::npos)
         return;
     std::vector<std::string> prefixes;
-    std::set<std::string> shadow;
+    std::vector<std::string> batch_shadow;
     for (const BuildJob* job : jobs)
     {
         if (opt_.fs && !job->tr.virtual_files.empty())
             return;
-        shadow.insert(job->tr.shadow_paths.begin(), job->tr.shadow_paths.end());
+        batch_shadow.insert(batch_shadow.end(), job->tr.shadow_paths.begin(), job->tr.shadow_paths.end());
         prefixes.push_back(include_prefix(job->tr.cpp));
-    }
-    uint64_t shadow_hash = 0;
-    std::string shadow_text;
-    for (const std::string& p : shadow)
-    {
-        shadow_hash += hotc::text_hash(p);
-        shadow_text += p + "\n";
     }
     const fs::path dir = fs::path(opt_.cache_dir) / "pch";
     std::lock_guard<std::mutex> lock(pch_mutex_);
@@ -1385,19 +1430,46 @@ void ClangFilesBackend::prewarm_pch(const std::vector<const BuildJob*>& jobs, bo
     }
     if (pch_running_)
         return; // the running build owns the shared key: do nothing
+    std::string old_text;
+    std::string old_shadow;
     std::string extra;
+    read_text((dir / "shared.inc").string(), old_text);
+    read_text((dir / "shared.shadow").string(), old_shadow);
     read_text((dir / "shared.extra").string(), extra);
+    // Old lines first: the order of the union stays the same, so the key stays the same.
+    prefixes.insert(prefixes.begin(), old_text);
     prefixes.push_back(extra);
     const std::string text = union_pch_header(prefixes);
     if (text.empty())
         return;
-    std::error_code ec;
-    fs::create_directories(dir, ec);
-    write_text_atomic(dir / "shared.inc", text);
-    write_text_atomic(dir / "shared.shadow", shadow_text);
+    std::vector<std::string> shadow_paths = text_lines(old_shadow);
+    shadow_paths.insert(shadow_paths.end(), batch_shadow.begin(), batch_shadow.end());
+    std::set<std::string> seen;
+    uint64_t shadow_hash = 0;
+    std::string shadow_text;
+    for (const std::string& p : shadow_paths)
+        if (seen.insert(p).second)
+        {
+            shadow_hash += hotc::text_hash(p);
+            shadow_text += p + "\n";
+        }
     PchPlan plan = make_pch_plan(text, jobs.front()->script_dir, shadow_hash);
-    if (pch_is_bad(plan) || pch_cache_->lookup(plan.key))
+    plan.shared = true;
+    plan.shadow_text = shadow_text;
+    const bool same = text == old_text && shadow_text == old_shadow;
+    if (pch_is_bad(plan))
         return;
+    if (pch_cache_->lookup(plan.key))
+    {
+        if (!same)
+        {
+            std::error_code ec;
+            fs::create_directories(dir, ec);
+            write_text_atomic(dir / "shared.inc", text);
+            write_text_atomic(dir / "shared.shadow", shadow_text);
+        }
+        return;
+    }
     plan.build = true;
     start_pch_build(plan, jobs.front()->script_dir, "shared", timing);
 }
@@ -1497,6 +1569,8 @@ constexpr auto kPchMarkerRetention = std::chrono::hours(24 * 7);
 // - a "<hex>.h" file goes when its "seen" marker is gone. Its time is a fixed old time, so the
 //   age of the "seen" marker is its age. A PCH build writes the "seen" marker again first.
 // The files of a PCH in the cache stay. The temp files of the headers stay: their time is old.
+// A "<hex>.noshared" file is a marker of a unit: it goes after the retention like a ".bad" file.
+// A "shared.*.tmp<pid>" file older than the retention goes: a crash left it.
 void ClangFilesBackend::trim_pch()
 {
     if (!pch_cache_)
@@ -1517,7 +1591,14 @@ void ClangFilesBackend::trim_pch()
                 continue;
             const fs::path p = it->path();
             const std::string ext = p.extension().string();
-            if (ext != ".seen" && ext != ".bad" && ext != ".h")
+            if (p.filename().string().rfind("shared.", 0) == 0 && ext.rfind(".tmp", 0) == 0)
+            {
+                const auto t = fs::last_write_time(p, fec);
+                if (!fec && now - t > kPchMarkerRetention)
+                    fs::remove(p, fec);
+                continue;
+            }
+            if (ext != ".seen" && ext != ".bad" && ext != ".noshared" && ext != ".h")
                 continue;
             if (fs::exists(obj / (p.stem().string() + ".json"), fec))
                 continue; // the PCH is in the cache
@@ -1569,8 +1650,25 @@ void ClangFilesBackend::start_pch_build(
             }
             const long long ms = static_cast<long long>(
                 std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - s).count());
+            if (plan.shared)
+            {
+                const fs::path dir = fs::path(opt_.cache_dir) / "pch";
+                std::lock_guard<std::mutex> lock(pch_mutex_);
+                std::error_code ec;
+                if (ok)
+                {
+                    // The new union is now the saved union.
+                    write_text_atomic(dir / "shared.inc", plan.prefix);
+                    write_text_atomic(dir / "shared.shadow", plan.shadow_text);
+                }
+                else if (pch_is_bad(plan))
+                    fs::remove(dir / "shared.extra", ec); // a bad line must not kill the shared PCH
+            }
             if (!ok)
                 std::fprintf(stderr, "hot: %s has no PCH: %s\n", unit.c_str(), error.c_str());
+            else if (timing && plan.shared)
+                std::fprintf(stderr, "hot: %s pch build %lld ms (key %s, union %zu lines)\n", unit.c_str(), ms,
+                    plan.key.hex().substr(0, 8).c_str(), static_cast<size_t>(std::count(plan.prefix.begin(), plan.prefix.end(), '\n')));
             else if (timing)
                 std::fprintf(stderr, "hot: %s pch build %lld ms\n", unit.c_str(), ms);
             pch_done_ = true;
@@ -1958,10 +2056,13 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
                 fs::remove(dep, ec);
                 const std::vector<std::string> plain = compile_object_command(opt_, cpp_path, tmp, dep, script_dir, job.mirror_root);
                 std::optional<PchPlan> pch;
+                std::string extra_add; // include lines for shared.extra after a good compile
                 {
                     std::lock_guard<std::mutex> pch_lock(pch_mutex_);
                     pch = plan_pch(tr.cpp, script_dir, opt_.fs && !tr.virtual_files.empty(), inputs.shadow_hash,
                         tr.shadow_paths);
+                    if (pch)
+                        extra_add = pch->extra_add;
                     // The PCH build runs next to the compile and after the end of this call: the
                     // compile, the link and the load do not wait for it. One PCH build at a time: a
                     // plan to build while the last build runs uses no PCH.
@@ -1991,7 +2092,24 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
                         fs::remove(tmp, ec);
                         fs::remove(dep, ec);
                         rc = run_command(plain, output);
-                        if (rc == 0)
+                        if (rc == 0 && pch->shared)
+                        {
+                            // One unit fails with the shared PCH. The shared PCH stays for the
+                            // other units. Only this unit (its exact key) skips it.
+                            if (pch_exists)
+                            {
+                                {
+                                    std::lock_guard<std::mutex> pch_lock(pch_mutex_);
+                                    write_text(pch_marker(pch->unit_key, ".noshared"), pch_output);
+                                }
+                                pch_note = ", pch failed";
+                                std::fprintf(stderr,
+                                    "hot: %s does not compile with the shared PCH; the shared PCH is off for this unit "
+                                    "for one day\n",
+                                    unit.c_str());
+                            }
+                        }
+                        else if (rc == 0)
                         {
                             pch_cache_->remove(pch->key);
                             if (pch_exists)
@@ -2025,6 +2143,11 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
                 {
                     fs::remove(tmp, ec);
                     return fail("compile", rc);
+                }
+                if (!extra_add.empty())
+                {
+                    std::lock_guard<std::mutex> pch_lock(pch_mutex_);
+                    append_shared_extra(fs::path(opt_.cache_dir) / "pch", extra_add);
                 }
                 std::string store_error;
                 // The start of the translate: the translated text depends on the headers too.

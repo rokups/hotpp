@@ -817,6 +817,124 @@ TEST(PchBackend, PrewarmWhileBuildRuns)
     EXPECT_EQ(f.pch_builds(), 1u);
 }
 
+// A second batch that the union covers builds no new PCH, and the PCH still serves its unit.
+TEST(PchBackend, SharedPchSecondBatchNoRebuild)
+{
+    Fixture f;
+    write_other_header(f.inc);
+    {
+        auto backend = make_backend(f.scratch, "work_nb1", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(load_batch(*backend, {layout_script(1, "a.hot"), two_header_script(1, "b.hot")}), 2u);
+        backend->wait_for_pch();
+    }
+    EXPECT_EQ(f.pch_builds(), 1u);
+    const std::string inc = read_file(fs::path(f.cache) / "pch" / "shared.inc");
+    {
+        auto backend = make_backend(f.scratch, "work_nb2", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(load_batch(*backend, {layout_script(2, "c.hot")}), 1u);
+        backend->wait_for_pch();
+    }
+    EXPECT_EQ(f.pch_builds(), 1u);
+    EXPECT_EQ(f.pch_compiles(), 1u);
+    EXPECT_EQ(read_file(fs::path(f.cache) / "pch" / "shared.inc"), inc);
+}
+
+// A batch with a new header grows the union: one rebuild. The units of both batches use it.
+TEST(PchBackend, SharedPchGrowsOnNewInclude)
+{
+    Fixture f;
+    write_other_header(f.inc);
+    {
+        auto backend = make_backend(f.scratch, "work_gr1", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(load_batch(*backend, {layout_script(1, "a.hot")}), 1u);
+        backend->wait_for_pch();
+    }
+    EXPECT_EQ(f.pch_builds(), 1u);
+    {
+        auto backend = make_backend(f.scratch, "work_gr2", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(load_batch(*backend, {two_header_script(2, "b.hot")}), 1u);
+        backend->wait_for_pch();
+    }
+    EXPECT_EQ(f.pch_builds(), 2u);
+    EXPECT_EQ(f.pch_compiles(), 0u);
+    {
+        auto backend = make_backend(f.scratch, "work_gr3", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(load_batch(*backend, {layout_script(3, "c.hot"), two_header_script(3, "d.hot", true)}), 2u);
+        backend->wait_for_pch();
+    }
+    EXPECT_EQ(f.pch_builds(), 2u);
+    EXPECT_EQ(f.pch_compiles(), 2u);
+}
+
+// A unit that fails does not add its include lines to shared.extra. So the next prewarm builds
+// nothing new.
+TEST(PchBackend, SharedExtraNotAddedForFailingUnit)
+{
+    Fixture f;
+    write_other_header(f.inc);
+    // The wrapper fails each unit compile whose source has "failmark_field".
+    const std::string cxx = f.scratch.file("fail_all.sh");
+    std::ofstream(cxx, std::ios::binary)
+        << "#!/bin/sh\ncase \"$*\" in *c++-header*) ;; *) for a in \"$@\"; do if [ -f \"$a\" ] && grep -q failmark_field "
+           "\"$a\" 2>/dev/null; then echo broken; exit 1; fi; done;; esac\nexec "
+        << f.cxx << " \"$@\"\n";
+    fs::permissions(cxx, fs::perms::owner_all);
+    {
+        auto backend = make_backend(f.scratch, "work_ex1", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(load_batch(*backend, {layout_script(1, "a.hot")}), 1u);
+        backend->wait_for_pch();
+    }
+    EXPECT_EQ(f.pch_builds(), 1u);
+    {
+        auto backend = make_backend(f.scratch, "work_ex2", f.cache, cxx, f.incs());
+        hot::ScriptSource s{"x.hot",
+            "using \"Actor.h\";\nusing \"other.h\";\nclass Calc : Actor {\n    float failmark_field = 0.0;\n}\n", {}, "Calc"};
+        s.unit.clear();
+        hot::LoadResult r = backend->load(s, 1);
+        EXPECT_FALSE(static_cast<bool>(r));
+        backend->wait_for_pch();
+    }
+    const std::string extra = read_file(fs::path(f.cache) / "pch" / "shared.extra");
+    EXPECT_EQ(extra.find("other.h"), std::string::npos) << extra;
+    const size_t builds = f.pch_builds(); // the failing unit can start an exact build
+    {
+        auto backend = make_backend(f.scratch, "work_ex3", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(load_batch(*backend, {layout_script(2, "b.hot")}), 1u);
+        backend->wait_for_pch();
+    }
+    EXPECT_EQ(f.pch_builds(), builds);
+}
+
+// A unit that fails with the shared PCH and compiles without it does not disable the shared PCH
+// for another unit.
+TEST(PchBackend, FailingUnitDoesNotDisableSharedPch)
+{
+    Fixture f;
+    write_other_header(f.inc);
+    const std::string path = f.scratch.file("fail_unit.sh");
+    std::ofstream(path, std::ios::binary)
+        << "#!/bin/sh\ncase \"$*\" in *-include-pch*) for a in \"$@\"; do if [ -f \"$a\" ] && grep -q badmark_field \"$a\" "
+           "2>/dev/null; then echo broken; exit 1; fi; done;; esac\nexec "
+        << f.cxx << " \"$@\"\n";
+    fs::permissions(path, fs::perms::owner_all);
+    {
+        auto backend = make_backend(f.scratch, "work_fu1", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(load_batch(*backend, {layout_script(1, "a.hot"), two_header_script(1, "b.hot")}), 2u);
+        backend->wait_for_pch();
+    }
+    auto backend = make_backend(f.scratch, "work_fu2", f.cache, path, f.incs());
+    hot::ScriptSource u1{"u1.hot",
+        "using \"Actor.h\";\nusing \"layout.h\";\nclass Calc : Actor {\n    float badmark_field = 0.0;\n"
+        "    float result = 0.0;\n    override void Tick(float dt) { this.result = layout_size(); }\n}\n",
+        {}, "Calc"};
+    EXPECT_EQ(load_batch(*backend, {u1}), 1u);
+    EXPECT_EQ(bad_markers(f.cache), 0u);
+    const size_t before = f.pch_compiles();
+    EXPECT_EQ(load_batch(*backend, {two_header_script(5, "u2.hot")}), 1u);
+    backend->wait_for_pch();
+    EXPECT_EQ(f.pch_compiles(), before + 1u);
+}
+
 TEST(PchBackend, EnvironmentTurnsTheSharedPchOff)
 {
     Fixture f;

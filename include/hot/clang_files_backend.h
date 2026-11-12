@@ -275,6 +275,15 @@ private:
         std::string header;
         std::string pch;
         bool build = false;
+        // The key of the exact PCH of the unit. The per-unit marker "noshared" uses it.
+        ObjectCache::Key unit_key;
+        // True for the shared PCH. "shadow_text" is then the text of shared.shadow. A good build
+        // writes shared.inc (the "prefix") and shared.shadow.
+        bool shared = false;
+        std::string shadow_text;
+        // The include lines of the unit that are not in the union. The caller adds them to
+        // shared.extra after the unit compiled.
+        std::string extra_add;
     };
     // The PCH plan for the translated text. No value: the compile does not use a PCH.
     // "mirror_files": the compile reads mirror files of the host file system.
@@ -287,7 +296,7 @@ private:
     PchPlan make_pch_plan(const std::string& text, const std::string& script_dir, uint64_t shadow_hash) const;
     // True when the plan has a "bad" marker that is younger than one day. Else it removes an old
     // marker. The caller holds "pch_mutex_".
-    bool pch_is_bad(const PchPlan& plan) const;
+    bool pch_is_bad(const PchPlan& plan, const char* ext = ".bad") const;
     // The shared startup PCH. After the translate of a batch, builds one PCH with the union of the
     // include lines of all units (see the .cpp file). "timing": print the build time.
     void prewarm_pch(const std::vector<const BuildJob*>& jobs, bool timing);
