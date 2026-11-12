@@ -1216,6 +1216,100 @@ TEST(PchBackend, NoSharedPchReasonIsLoggedUnderTiming)
     }
 }
 
+// The shared key does not depend on the directory of the script. The shared PCH of a job in the
+// directory A serves a unit in the directory B (a host file system adds a per-directory include path).
+TEST(PchBackend, SharedPchKeyIsTheSameForAllScriptDirectories)
+{
+    Fixture f;
+    f.fs = std::make_shared<EmptyFs>();
+    const std::string dir_a = f.scratch.file("dir_a");
+    const std::string dir_b = f.scratch.file("dir_b");
+    {
+        auto backend = make_backend(f.scratch, "work_dk1", f.cache, f.cxx, f.incs(), std::string(), f.fs);
+        EXPECT_EQ(load_batch(*backend, {layout_script(1, dir_a + "/a.hot")}), 1u);
+        backend->wait_for_pch();
+    }
+    EXPECT_EQ(f.pch_builds(), 1u);
+    EnvGuard timing("HOT_TIMING", "1");
+    auto backend = make_backend(f.scratch, "work_dk2", f.cache, f.cxx, f.incs(), std::string(), f.fs);
+    testing::internal::CaptureStderr();
+    EXPECT_EQ(batch_and_run(*backend, layout_script(2, dir_b + "/b.hot")), 6.0f);
+    const std::string err = testing::internal::GetCapturedStderr();
+    backend->wait_for_pch();
+    EXPECT_EQ(err.find("shared entry missing"), std::string::npos) << err;
+    EXPECT_EQ(f.pch_builds(), 1u);
+    EXPECT_EQ(f.pch_compiles(), 1u);
+}
+
+// A header that only the directory A finds (a file in the per-directory mirror path) stays out of
+// the shared union. The unit in A compiles. A unit in B with the other lines uses the shared PCH.
+TEST(PchBackend, LineResolvedOnlyInOneScriptDirectoryStaysOutOfTheUnion)
+{
+    Fixture f;
+    f.fs = std::make_shared<EmptyFs>();
+    const std::string dir_a = f.scratch.file("dir_la");
+    const std::string dir_b = f.scratch.file("dir_lb");
+    const fs::path rel_a = fs::path(dir_a).relative_path();
+    const fs::path local = fs::path(f.scratch.file("work_lk1")) / "vfs" / rel_a;
+    fs::create_directories(local);
+    std::ofstream(local / "local.h", std::ios::binary) << "#pragma once\ninline float local_value() { return 100.0f; }\n";
+    set_age(local / "local.h", std::chrono::minutes(60));
+    // The translator finds the header next to the script. The compile finds the copy in the mirror path.
+    fs::create_directories(dir_a);
+    fs::copy_file(local / "local.h", fs::path(dir_a) / "local.h");
+    const hot::ScriptSource a = {dir_a + "/a.hot",
+        "using \"Actor.h\";\nusing \"layout.h\";\nusing \"local.h\";\nclass Calc : Actor {\n    float result = 0.0;\n"
+        "    override void Tick(float dt) { this.result = layout_size() + local_value(); }\n}\n",
+        {}, "Calc"};
+    {
+        auto backend = make_backend(f.scratch, "work_lk1", f.cache, f.cxx, f.incs(), std::string(), f.fs);
+        EXPECT_EQ(batch_and_run(*backend, a), 104.0f);
+        backend->wait_for_pch();
+    }
+    {
+        auto backend = make_backend(f.scratch, "work_lk2", f.cache, f.cxx, f.incs(), std::string(), f.fs);
+        EXPECT_EQ(batch_and_run(*backend, layout_script(2, dir_b + "/b.hot")), 6.0f);
+        backend->wait_for_pch();
+    }
+    EXPECT_EQ(f.pch_compiles(), 1u);
+}
+
+// An older shared entry with the same union text must not hit after a reset. The union grows
+// (two entries), then a file appears at a probe path. The reset restarts from the text of the first
+// entry: the key must differ, so the unit sees the NEW header.
+TEST(PchBackend, ResetSaltKeepsOldSharedEntriesFromHitting)
+{
+    Fixture f;
+    const fs::path inc0 = f.scratch.file("inc0");
+    fs::create_directories(inc0);
+    f.before = {inc0.string()};
+    write_other_header(f.inc);
+    write_layout_header(f.inc / "layout.h", 4, std::chrono::minutes(60), true);
+    {
+        auto backend = make_backend(f.scratch, "work_sa1", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(load_batch(*backend, {layout_script(1, "a.hot")}), 1u);
+        backend->wait_for_pch();
+    }
+    {
+        auto backend = make_backend(f.scratch, "work_sa2", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(load_batch(*backend, {layout_script(2, "b.hot"), two_header_script(1, "c.hot")}), 2u);
+        backend->wait_for_pch();
+    }
+    EXPECT_EQ(pch_files(f.cache).size(), 2u);
+    write_layout_header(inc0 / "layout.h", 16, std::chrono::minutes(60), true);
+    {
+        auto backend = make_backend(f.scratch, "work_sa3", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(batch_and_run(*backend, layout_script(3, "d.hot")), 19.0f);
+        backend->wait_for_pch();
+    }
+    EXPECT_TRUE(fs::exists(fs::path(f.cache) / "pch" / "shared.salt"));
+    {
+        auto backend = make_backend(f.scratch, "work_sa4", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(batch_and_run(*backend, layout_script(4, "e.hot")), 20.0f);
+        backend->wait_for_pch();
+    }
+}
+
 // A failure of start_pending_pch (a thread that does not start) must not end the process. The
 // backend has no hook for a failure of the thread constructor, so a test of this path is not
 // possible here. The call in batch_done has a try/catch, and the build functions reset the state.

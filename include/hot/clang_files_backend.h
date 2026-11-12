@@ -295,17 +295,24 @@ private:
     std::optional<PchPlan> plan_pch(
         const std::string& cpp, const std::string& script_dir, bool mirror_files, uint64_t shadow_hash);
     // The plan of a PCH header text: the key, the header file and no build yet.
-    PchPlan make_pch_plan(const std::string& text, const std::string& script_dir, uint64_t shadow_hash) const;
+    // "shared": the key does not depend on "script_dir" (it is ignored) and has the reset salt.
+    PchPlan make_pch_plan(
+        const std::string& text, const std::string& script_dir, uint64_t shadow_hash, bool shared = false) const;
+    // The counter of "shared.salt" as text (empty: no file). Each reset of the shared PCH adds one.
+    std::string shared_pch_salt() const;
     // True when the plan has a "bad" marker that is younger than one day. Else it removes an old
     // marker. The caller holds "pch_mutex_".
     bool pch_is_bad(const PchPlan& plan, const char* ext = ".bad") const;
     // The shared startup PCH. After the translate of a batch, builds one PCH with the union of the
     // include lines of all units (see the .cpp file). "timing": print the build time.
     void prewarm_pch(const std::vector<const BuildJob*>& jobs, bool timing);
-    // Merges the probe (missing) paths of a batch into the grow-only list "shared.shadow" and
-    // tests the old paths. True when a listed path has a file now: the shared PCH can hide it. Then
-    // the list holds the paths of the batch only. The caller holds "pch_mutex_".
-    bool merge_pch_shadow(const std::vector<std::string>& batch);
+    // The probe (missing) paths of "shared.shadow", in two steps. snapshot_pch_shadow gives a copy
+    // of the list and its generation. The caller tests the paths without the lock.
+    // apply_pch_shadow then adds the paths of the batch to the grow-only list. "exists": a listed
+    // path has a file now (the shared PCH can hide it): the list restarts from the batch paths
+    // that have no file ("batch_existing" has the others). Both calls need "pch_mutex_".
+    void snapshot_pch_shadow(std::vector<std::string>& paths, uint64_t& generation);
+    bool apply_pch_shadow(const std::vector<std::string>& batch, bool exists, const std::set<std::string>& batch_existing);
     // Builds the PCH of the plan and stores it in pch_cache_. Gives false on a failure.
     bool build_pch(const PchPlan& plan, const std::string& script_dir, std::string& error);
     // A PCH build that waits for the end of an edit batch (see "pch_pending_").
@@ -354,6 +361,8 @@ private:
     // The probe paths of "shared.shadow" (under "pch_mutex_"). Loaded on the first use.
     std::set<std::string> pch_shadow_;
     bool pch_shadow_loaded_ = false;
+    // Grows each time the list changes. A test of the paths without the lock uses it.
+    uint64_t pch_shadow_gen_ = 0;
     std::function<void()> pch_build_hook_; // see set_pch_build_hook
     std::unique_ptr<TranslateCache> tr_cache_; // null: no translate cache
     std::string compiler_id_;

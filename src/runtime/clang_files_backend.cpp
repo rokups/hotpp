@@ -1237,14 +1237,75 @@ std::string ClangFilesBackend::pch_marker(const ObjectCache::Key& key, const cha
     return (fs::path(opt_.cache_dir) / "pch" / (key.hex() + ext)).string();
 }
 
-ClangFilesBackend::PchPlan ClangFilesBackend::make_pch_plan(
-    const std::string& text, const std::string& script_dir, uint64_t shadow_hash) const
+namespace
 {
+
+// The file name of an include line ("#include \"x\"" or "#include <x>"). Empty: no name.
+std::string include_line_name(const std::string& line)
+{
+    const size_t open = line.find_first_of("\"<", 8);
+    if (open == std::string::npos)
+        return std::string();
+    const size_t close = line.find(line[open] == '<' ? '>' : '"', open + 1);
+    return close == std::string::npos ? std::string() : line.substr(open + 1, close - open - 1);
+}
+
+// True when the include line of a unit has a file in the per-directory mirror path of the unit
+// ("-I<work_dir>/vfs/<script_dir>", only with a host file system). The shared PCH build has no
+// such path, so such a line stays out of the shared union and the unit uses its exact PCH.
+bool resolves_in_unit_dir(const ClangFilesOptions& opt, const std::string& script_dir, const std::string& line)
+{
+    if (!opt.fs || script_dir.empty())
+        return false;
+    const std::string name = include_line_name(line);
+    const std::optional<std::string> rel = vfs_relative(script_dir);
+    if (name.empty() || !rel)
+        return false;
+    std::error_code ec;
+    return fs::exists(fs::path(opt.work_dir) / "vfs" / *rel / name, ec);
+}
+
+// The prefix without the include lines that resolve in the directory of the unit.
+std::string without_unit_dir_lines(const ClangFilesOptions& opt, const std::string& script_dir, const std::string& prefix)
+{
+    if (!opt.fs || script_dir.empty())
+        return prefix;
+    std::string r;
+    for (size_t pos = 0; pos < prefix.size();)
+    {
+        const size_t nl = prefix.find('\n', pos);
+        const size_t next = nl == std::string::npos ? prefix.size() : nl + 1;
+        const std::string line = prefix.substr(pos, next - pos);
+        if (line.compare(0, 8, "#include") != 0 || !resolves_in_unit_dir(opt, script_dir, line))
+            r += line;
+        pos = next;
+    }
+    return r;
+}
+
+} // namespace
+
+// The salt of the shared PCH key: the counter in "shared.salt". Each reset of the shared PCH adds
+// one, so an old shared entry with the same union text does not hit again. The caller holds
+// "pch_mutex_" or reads only.
+std::string ClangFilesBackend::shared_pch_salt() const
+{
+    std::string salt;
+    read_text((fs::path(opt_.cache_dir) / "pch" / "shared.salt").string(), salt);
+    return salt;
+}
+
+ClangFilesBackend::PchPlan ClangFilesBackend::make_pch_plan(
+    const std::string& text, const std::string& script_dir_in, uint64_t shadow_hash, bool shared) const
+{
+    // The shared key does not depend on the script directory: the shared build has no per-directory
+    // include path, so one shared PCH serves the units of all directories. It has a reset salt.
+    const std::string script_dir = shared ? std::string() : script_dir_in;
     // The key has the header text, the normalized build flags, the compiler id and the shadow
     // hash. The header stamps of the manifest do not see a new header earlier in the include
     // path: with the same include guard, the old PCH would hide it. The shadow hash sees it.
     ObjectCache::KeyInputs inputs;
-    inputs.cpp_text = "pch\n" + text;
+    inputs.cpp_text = "pch\n" + (shared ? "salt " + shared_pch_salt() + "\n" : std::string()) + text;
     inputs.args = ObjectCache::normalize_args(
         pch_build_command(opt_, "@hdr@", "@pch@", "@dep@", script_dir), opt_.work_dir);
     inputs.compiler_id = compiler_id_;
@@ -1310,12 +1371,22 @@ std::optional<ClangFilesBackend::PchPlan> ClangFilesBackend::plan_pch(
         // once for each batch (shared.shadow): a file at one of them drops the shared PCH. A
         // header that is gone changes a stamp of the manifest.
         std::vector<std::string> outside;
+        bool unit_dir = false;
         for (const std::string& line : pch_lines(prefix))
-            if (!have.count(line))
-                outside.push_back(line);
-        if (outside.empty())
         {
-            PchPlan sp = make_pch_plan(shared, script_dir, 0);
+            // A line that resolves in the directory of the unit stays out of the union.
+            if (resolves_in_unit_dir(opt_, script_dir, line))
+                unit_dir = true;
+            else if (!have.count(line))
+                outside.push_back(line);
+        }
+        if (outside.empty() && unit_dir)
+        {
+            plan.why = "include line resolves in the directory of the unit";
+        }
+        else if (outside.empty())
+        {
+            PchPlan sp = make_pch_plan(shared, std::string(), 0, true);
             sp.unit_key = plan.key;
             sp.shared = true;
             sp.extra_epoch = plan.extra_epoch;
@@ -1418,34 +1489,44 @@ std::vector<std::string> text_lines(const std::string& text)
 // build at once. A later call (an edit batch) queues the build in "pch_pending_". The last unit
 // of the batch starts it (start_pending_pch), so the build does not slow the compiles of the batch.
 // The probe paths of a batch are in a set, so the list has each path once.
-bool ClangFilesBackend::merge_pch_shadow(const std::vector<std::string>& batch)
+// Limit: only begin_load_many (prewarm_pch) tests the probe paths. A load() or build() call does
+// not test them. The rbfx-script host uses begin_load_many only. A file at a probe path then shows
+// at the next begin_load_many batch.
+// The shared key does not depend on the script directory (the shared build has no per-directory
+// include path). A line that resolves in the per-directory mirror path of a unit stays out of the
+// union. The unit with such a line uses its own exact PCH.
+// Each reset adds one to "shared.salt", and the shared key has the salt: an older shared entry
+// with the same union text does not hit again.
+void ClangFilesBackend::snapshot_pch_shadow(std::vector<std::string>& paths, uint64_t& generation)
 {
-    const fs::path file = fs::path(opt_.cache_dir) / "pch" / "shared.shadow";
     if (!pch_shadow_loaded_)
     {
         pch_shadow_loaded_ = true;
         std::string text;
-        read_text(file.string(), text);
+        read_text((fs::path(opt_.cache_dir) / "pch" / "shared.shadow").string(), text);
         for (const std::string& line : text_lines(text))
             pch_shadow_.insert(line);
     }
-    bool exists = false;
-    std::error_code ec;
-    for (const std::string& path : pch_shadow_)
-        if (fs::exists(path, ec))
-        {
-            exists = true;
-            break;
-        }
+    paths.assign(pch_shadow_.begin(), pch_shadow_.end());
+    generation = pch_shadow_gen_;
+}
+
+bool ClangFilesBackend::apply_pch_shadow(
+    const std::vector<std::string>& batch, bool exists, const std::set<std::string>& batch_existing)
+{
     const size_t old_size = pch_shadow_.size();
     if (exists)
         pch_shadow_.clear();
-    pch_shadow_.insert(batch.begin(), batch.end());
+    for (const std::string& path : batch)
+        if (!exists || !batch_existing.count(path)) // after a reset: a path with a file is no probe
+            pch_shadow_.insert(path);
     if (exists || pch_shadow_.size() != old_size)
     {
+        ++pch_shadow_gen_;
         std::string text;
         for (const std::string& path : pch_shadow_)
             text += path + "\n";
+        const fs::path file = fs::path(opt_.cache_dir) / "pch" / "shared.shadow";
         std::error_code dir_ec;
         fs::create_directories(file.parent_path(), dir_ec);
         write_text_atomic(file, text);
@@ -1463,11 +1544,38 @@ void ClangFilesBackend::prewarm_pch(const std::vector<const BuildJob*>& jobs, bo
     {
         if (opt_.fs && !job->tr.virtual_files.empty())
             return;
-        prefixes.push_back(include_prefix(job->tr.cpp));
+        prefixes.push_back(without_unit_dir_lines(opt_, job->script_dir, include_prefix(job->tr.cpp)));
         batch_shadow.insert(batch_shadow.end(), job->tr.shadow_paths.begin(), job->tr.shadow_paths.end());
     }
     const fs::path dir = fs::path(opt_.cache_dir) / "pch";
-    std::lock_guard<std::mutex> lock(pch_mutex_);
+    // The probe path test does the stat calls (many) without "pch_mutex_". A change of the list
+    // while they run (the generation) means a new test. The epoch changes only below, under the lock.
+    std::unique_lock<std::mutex> lock(pch_mutex_);
+    bool shadow_exists = false;
+    std::set<std::string> batch_existing;
+    for (;;)
+    {
+        std::vector<std::string> listed;
+        uint64_t generation = 0;
+        snapshot_pch_shadow(listed, generation);
+        lock.unlock();
+        std::error_code ec;
+        shadow_exists = false;
+        batch_existing.clear();
+        for (const std::string& path : listed)
+            if (fs::exists(path, ec))
+            {
+                shadow_exists = true;
+                break;
+            }
+        if (shadow_exists)
+            for (const std::string& path : batch_shadow)
+                if (fs::exists(path, ec))
+                    batch_existing.insert(path);
+        lock.lock();
+        if (generation == pch_shadow_gen_)
+            break;
+    }
     const bool startup = !pch_startup_done_;
     pch_startup_done_ = true;
     pch_defer_ = !startup;
@@ -1480,16 +1588,24 @@ void ClangFilesBackend::prewarm_pch(const std::vector<const BuildJob*>& jobs, bo
     std::string extra;
     read_text((dir / "shared.inc").string(), old_text);
     read_text((dir / "shared.extra").string(), extra);
-    if (merge_pch_shadow(batch_shadow))
+    if (apply_pch_shadow(batch_shadow, shadow_exists, batch_existing))
     {
         // A file is at a probe path of an old batch. The shared PCH can hide it. Drop the
         // union, its entry and the extra lines. A running shared build does not write shared.inc
         // (the epoch changed) and removes its entry.
         std::error_code ec;
         if (!old_text.empty())
-            pch_cache_->remove(make_pch_plan(old_text, jobs.front()->script_dir, 0).key);
+            pch_cache_->remove(make_pch_plan(old_text, std::string(), 0, true).key);
         fs::remove(dir / "shared.inc", ec);
         fs::remove(dir / "shared.extra", ec);
+        // A new salt: older shared entries with the same union text (they stay in the cache) do
+        // not hit again.
+        {
+            const std::string salt = shared_pch_salt();
+            const unsigned long long n = salt.empty() ? 0ull : std::strtoull(salt.c_str(), nullptr, 10);
+            fs::create_directories(dir, ec);
+            write_text_atomic(dir / "shared.salt", std::to_string(n + 1));
+        }
         ++pch_extra_epoch_;
         pch_pending_.erase(std::remove_if(pch_pending_.begin(), pch_pending_.end(),
                                [](const PendingPch& p) { return p.plan.shared; }),
@@ -1511,7 +1627,7 @@ void ClangFilesBackend::prewarm_pch(const std::vector<const BuildJob*>& jobs, bo
     const std::string text = union_pch_header(prefixes);
     if (text.empty())
         return;
-    PchPlan plan = make_pch_plan(text, jobs.front()->script_dir, 0);
+    PchPlan plan = make_pch_plan(text, std::string(), 0, true);
     plan.shared = true;
     const bool same = text == old_text;
     if (pch_is_bad(plan))
@@ -1529,14 +1645,14 @@ void ClangFilesBackend::prewarm_pch(const std::vector<const BuildJob*>& jobs, bo
     plan.build = true;
     if (startup)
     {
-        start_pch_build(plan, jobs.front()->script_dir, "shared", timing);
+        start_pch_build(plan, std::string(), "shared", timing);
         return;
     }
     // A newer shared plan replaces an older one: it has the old lines too.
     pch_pending_.erase(std::remove_if(pch_pending_.begin(), pch_pending_.end(),
                            [](const PendingPch& p) { return p.plan.shared; }),
         pch_pending_.end());
-    pch_pending_.insert(pch_pending_.begin(), PendingPch{plan, jobs.front()->script_dir, "shared", timing});
+    pch_pending_.insert(pch_pending_.begin(), PendingPch{plan, std::string(), "shared", timing});
 }
 
 void ClangFilesBackend::start_pending_pch()
