@@ -1186,9 +1186,9 @@ std::string ClangFilesBackend::pch_marker(const ObjectCache::Key& key, const cha
     return (fs::path(opt_.cache_dir) / "pch" / (key.hex() + ext)).string();
 }
 
-// The first miss of an include set writes the "seen" marker and uses no PCH: a cold build has
-// no extra cost. A later miss builds the PCH next to its compile, and the miss after that uses
-// the PCH. A PCH that did not work has a "bad" marker: no PCH for one day.
+// The first miss of an include set builds the PCH next to its compile, in a thread. The compile
+// does not use a PCH and does not wait for the build. The miss after that uses the PCH. A PCH
+// that did not work has a "bad" marker: no PCH for one day. The build writes the "seen" marker.
 std::optional<ClangFilesBackend::PchPlan> ClangFilesBackend::plan_pch(
     const std::string& cpp, const std::string& script_dir, bool mirror_files, uint64_t shadow_hash)
 {
@@ -1229,20 +1229,16 @@ std::optional<ClangFilesBackend::PchPlan> ClangFilesBackend::plan_pch(
         plan.pch = hit->object.string();
         return plan;
     }
-    const std::string seen = pch_marker(plan.key, ".seen");
-    if (fs::exists(seen, ec))
-    {
-        plan.build = true;
-        return plan;
-    }
-    fs::create_directories(fs::path(seen).parent_path(), ec);
-    write_text(seen, std::string());
-    return std::nullopt;
+    plan.build = true;
+    return plan;
 }
 
 bool ClangFilesBackend::build_pch(const PchPlan& plan, const std::string& script_dir, std::string& error)
 {
     const fs::file_time_type started = fs::file_time_type::clock::now();
+    // The first build of a cache has no "pch" directory yet.
+    std::error_code dir_ec;
+    fs::create_directories(fs::path(pch_marker(plan.key, ".seen")).parent_path(), dir_ec);
     // A new time of the "seen" marker: the trim of a process does not remove the header now.
     write_text(pch_marker(plan.key, ".seen"), std::string());
     if (!write_pch_header(plan.header, plan.prefix))

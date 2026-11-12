@@ -3,8 +3,8 @@
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
 // Tests of the precompiled header (PCH) of the clang files backend. The PCH has the include
-// lines at the start of the translated text. The second miss of an include set builds it, and
-// a later miss compiles with "-include-pch". The tests read a log of the compiler runs.
+// lines at the start of the translated text. The first miss of an include set builds it, and
+// the next miss compiles with "-include-pch". The tests read a log of the compiler runs.
 //
 // CMake defines the macros HOT_SOURCE_DIR and HOT_CXX.
 #include "hot/backend.h"
@@ -226,27 +226,25 @@ struct Fixture
 
 } // namespace
 
-// The first miss of an include set does not build a PCH. The second miss builds it next to the
-// normal compile. The third miss compiles with it and gives the same result. The compile
+// The first miss of an include set builds the PCH in a thread next to its compile. The compile
+// has no PCH. The second miss compiles with the PCH and gives the same result. The compile
 // database has no "-include-pch": an IDE cannot use the private PCH.
-TEST(PchBackend, ThirdMissCompilesWithThePch)
+TEST(PchBackend, SecondMissCompilesWithThePch)
 {
     Fixture f;
     const std::string commands = f.scratch.file("commands");
     EXPECT_EQ(f.run(1, commands), 5.0f);
-    EXPECT_EQ(f.pch_builds(), 0u);
-    EXPECT_EQ(f.run(2, commands), 6.0f);
-    EXPECT_EQ(f.pch_builds(), 1u);
+    EXPECT_EQ(f.pch_builds(), 1u); // the first miss builds the PCH, without a PCH compile
     EXPECT_EQ(f.pch_compiles(), 0u);
     EXPECT_EQ(pch_files(f.cache).size(), 1u);
-    EXPECT_EQ(f.run(3, commands), 7.0f);
+    EXPECT_EQ(f.run(2, commands), 6.0f);
     EXPECT_EQ(f.pch_builds(), 1u);
     EXPECT_EQ(f.pch_compiles(), 1u);
     const std::string db = read_file(fs::path(commands) / "compile_commands.json");
     EXPECT_NE(db.find("Calc.cpp"), std::string::npos);
     EXPECT_EQ(db.find("-include-pch"), std::string::npos);
     // An object hit runs no compile and does not touch the PCH.
-    EXPECT_EQ(f.run(3, commands), 7.0f);
+    EXPECT_EQ(f.run(2, commands), 6.0f);
     EXPECT_EQ(f.pch_compiles(), 1u);
 }
 
@@ -256,7 +254,6 @@ TEST(PchBackend, ChangedHeaderInvalidatesPchAndObject)
 {
     Fixture f;
     EXPECT_EQ(f.run(1), 5.0f);
-    EXPECT_EQ(f.run(2), 6.0f);
     EXPECT_EQ(f.run(3), 7.0f);
     EXPECT_EQ(f.pch_compiles(), 1u);
     write_layout_header(f.inc / "layout.h", 16, std::chrono::minutes(30));
@@ -273,7 +270,6 @@ TEST(PchBackend, CorruptPchFallsBack)
 {
     Fixture f;
     EXPECT_EQ(f.run(1), 5.0f);
-    EXPECT_EQ(f.run(2), 6.0f);
     const std::vector<fs::path> files = pch_files(f.cache);
     ASSERT_EQ(files.size(), 1u);
     const uintmax_t size = fs::file_size(files[0]);
@@ -293,7 +289,6 @@ TEST(PchBackend, HostFileSystemWithoutMirrorFilesUsesThePch)
     Fixture f;
     f.fs = std::make_shared<EmptyFs>();
     EXPECT_EQ(f.run(1), 5.0f);
-    EXPECT_EQ(f.run(2), 6.0f);
     EXPECT_EQ(f.pch_builds(), 1u);
     EXPECT_EQ(f.run(3), 7.0f);
     EXPECT_EQ(f.pch_compiles(), 1u);
@@ -317,7 +312,6 @@ TEST(PchBackend, EnvironmentTurnsThePchOff)
 TEST(PchBackend, TwoBackendsRaceOnThePch)
 {
     Fixture f;
-    EXPECT_EQ(f.run(1), 5.0f);
     auto a = make_backend(f.scratch, "race_a", f.cache, f.cxx, f.incs());
     auto b = make_backend(f.scratch, "race_b", f.cache, f.cxx, f.incs());
     float ra = 0.0f;
@@ -342,7 +336,6 @@ TEST(PchBackend, TwoBackendsRaceOnThePch)
 TEST(PchBackend, ManyBackendsRaceOnThePchHeader)
 {
     Fixture f;
-    EXPECT_EQ(f.run(1), 5.0f);
     const int n = 8;
     std::vector<std::unique_ptr<hot::ClangFilesBackend>> backends;
     for (int i = 0; i < n; ++i)
@@ -374,7 +367,6 @@ TEST(PchBackend, ShadowHeaderDoesNotUseTheOldPch)
     f.before = {inc0.string()};
     write_layout_header(f.inc / "layout.h", 4, std::chrono::minutes(60), true);
     EXPECT_EQ(f.run(1), 5.0f);
-    EXPECT_EQ(f.run(2), 6.0f);
     EXPECT_EQ(f.run(3), 7.0f);
     EXPECT_EQ(f.pch_compiles(), 1u);
     write_layout_header(inc0 / "layout.h", 16, std::chrono::minutes(60), true);
@@ -383,12 +375,11 @@ TEST(PchBackend, ShadowHeaderDoesNotUseTheOldPch)
 }
 
 // Two units with other script names and generations have the same include set. They share one
-// PCH: the second miss builds it and the third miss uses it.
+// PCH: the first miss builds it and the next miss uses it.
 TEST(PchBackend, UnitsWithTheSameIncludesShareOnePch)
 {
     Fixture f;
     EXPECT_EQ(f.run(1, "", "calc.hot", 1), 5.0f);
-    EXPECT_EQ(f.run(2, "", "other.hot", 2), 6.0f);
     EXPECT_EQ(f.pch_builds(), 1u);
     EXPECT_EQ(f.run(3, "", "third.hot", 5), 7.0f);
     EXPECT_EQ(f.pch_compiles(), 1u);
@@ -401,7 +392,6 @@ TEST(PchBackend, ScriptErrorKeepsItsLineWithThePch)
 {
     Fixture f;
     EXPECT_EQ(f.run(1), 5.0f);
-    EXPECT_EQ(f.run(2), 6.0f);
     {
         auto backend = make_backend(f.scratch, "bad", f.cache, f.cxx, f.incs());
         const hot::ScriptSource bad = {"calc.hot",
@@ -434,7 +424,6 @@ TEST(PchBackend, NestedPchHeaderInvalidatesTheObject)
     };
     write_b(4, std::chrono::minutes(60));
     EXPECT_EQ(f.run(1), 5.0f);
-    EXPECT_EQ(f.run(2), 6.0f);
     EXPECT_EQ(f.run(3), 7.0f);
     EXPECT_EQ(f.pch_compiles(), 1u);
     write_b(16, std::chrono::minutes(30));
@@ -489,7 +478,7 @@ TEST(PchBackend, MissingPchDoesNotWriteTheBadMarker)
         << trigger << "' ]; then mv \"$a\" \"$a.gone\"; fi\n  prev=\"$a\"\ndone\nexec " << HOT_CXX
         << " \"$@\"\n";
     fs::permissions(wrapper, fs::perms::owner_all);
-    for (int i = 1; i <= 2; ++i)
+    for (int i = 1; i <= 1; ++i)
     {
         auto b = make_backend(f.scratch, "work" + std::to_string(i), f.cache, wrapper, f.incs());
         EXPECT_EQ(load_and_run(*b, layout_script(i)), 4.0f + static_cast<float>(i));
@@ -515,8 +504,8 @@ TEST(PchBackend, LoadWhileThePchBuildRunsUsesNoPch)
         << "#!/bin/sh\ncase \"$*\" in *c++-header*) sleep 2;; esac\nexec " << f.cxx << " \"$@\"\n";
     fs::permissions(path, fs::perms::owner_all);
     auto backend = make_backend(f.scratch, "work_slow", f.cache, path, f.incs());
-    EXPECT_EQ(load_and_run(*backend, layout_script(1)), 5.0f); // the "seen" marker
-    EXPECT_EQ(load_and_run(*backend, layout_script(2)), 6.0f); // starts the PCH thread
+    EXPECT_EQ(load_and_run(*backend, layout_script(1)), 5.0f); // starts the PCH thread
+    EXPECT_EQ(load_and_run(*backend, layout_script(2)), 6.0f); // no PCH thread starts
     EXPECT_EQ(load_and_run(*backend, layout_script(3)), 7.0f); // the PCH thread still runs
     EXPECT_EQ(f.pch_compiles(), 0u);
     backend->wait_for_pch();
@@ -532,7 +521,6 @@ TEST(PchBackend, TrimRemovesOldMarkersWithoutPch)
 {
     Fixture f;
     EXPECT_EQ(f.run(1), 5.0f);
-    EXPECT_EQ(f.run(2), 6.0f);
     ASSERT_EQ(pch_files(f.cache).size(), 1u);
     const fs::path pch_dir = fs::path(f.cache) / "pch";
     const std::string live = pch_files(f.cache)[0].stem().string();
