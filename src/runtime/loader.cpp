@@ -1833,7 +1833,8 @@ ReloadResult Loader::commit_locked()
     }
 
     // Step 6b: destroy the old captures of the lambda boxes. The new generation is live, the old
-    // module is still loaded, and no lock is held. A destructor can run script code.
+    // module is still loaded. No list lock is held; Loader::mutex_ is held. A capture destructor
+    // must not call the Loader. A destructor can run script code.
     deferred.run();
 
     // The loader owns the modules. The old generations of the units are retired now. The live

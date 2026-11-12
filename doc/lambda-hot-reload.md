@@ -78,7 +78,7 @@ The rules for safety:
 - The loader detaches the boxes of a generation in the load path, at `reset`, at the frame boundary unload and in `~Loader`.
 - A stored closure keeps its pin. The glue code of the closure is in the pinned generation. The generation unloads when the last closure is released.
 - A capture destructor can release another box. That release takes the list lock. So no deadlock occurs.
-- The commit does not destroy the old capture blocks of a rebound or detached box at once. A destructor runs script code, and it can free an object that the commit migrates. The commit keeps the blocks in a `CaptureGraveyard`. It destroys them after the old fields are freed, while the old module is still loaded, and with no lock held. A detached box has a null entry at once, so a call is stale.
+- The commit does not destroy the old capture blocks of a rebound or detached box at once. A destructor runs script code, and it can free an object that the commit migrates. The commit keeps the blocks in a `CaptureGraveyard`. It destroys them after the old fields are freed, while the old module is still loaded. No list lock is held, but `Loader::mutex_` is held. A capture destructor must not call the Loader. A detached box has a null entry at once, so a call is stale.
 
 Limits:
 
