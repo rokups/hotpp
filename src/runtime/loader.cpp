@@ -238,6 +238,8 @@ Loader::~Loader()
         destroy_fields(mb.layout, mb.block);
         aligned_free(mb.block);
     }
+    for (const Gen& g : gens_) // the code of the capture destructors is still loaded
+        detach_lambdas(g);
 }
 
 bool Loader::reset(std::string& error)
@@ -319,6 +321,8 @@ bool Loader::reset(std::string& error)
         detail::set_class_resolver(&resolve_class_link); // clears the cache of class_ref
     ++link_epoch;
     registry_ = Registry{}; // the records point into the code that unloads next
+    for (const Gen& g : gens_)
+        detach_lambdas(g);
     gens_.clear(); // unloads the libraries of the generations
     cores_.clear(); // after "gens_", as in the destructor
     key_text_.clear();
@@ -712,15 +716,27 @@ ReloadResult Loader::load_unit(Module module, Registry* code_out)
 void Loader::switch_live(const std::string& unit, const Registry& code, const Registry* core)
 {
     std::vector<uint32_t*>& flags = unit_live_[unit];
-    for (uint32_t* f : flags) // the older module is retired, not unloaded: the memory is valid
+    std::vector<uint32_t*> retired;
+    retired.swap(flags);
+    for (uint32_t* f : retired) // the older module is retired, not unloaded: the memory is valid
         *f = 0;
-    flags.clear();
     for (const Registry* r : {&code, core})
         if (r && r->live_flag())
         {
             *r->live_flag() = 1;
             flags.push_back(r->live_flag());
         }
+    // The lambda boxes of the retired module are stale now. Their captures go before the module
+    // unloads. A flag that the new module also uses (an AOT revert) keeps its boxes.
+    for (uint32_t* f : retired)
+        if (std::find(flags.begin(), flags.end(), f) == flags.end())
+            lambda_detach_module(f);
+}
+
+void Loader::detach_lambdas(const Gen& g)
+{
+    for (const uint32_t* f : g.live_flags)
+        lambda_detach_module(f);
 }
 
 // Remembers which module holds each record of a registry.
@@ -734,6 +750,8 @@ void Loader::add_generation(Module module, uint32_t generation)
 {
     Gen g;
     g.generation = generation;
+    if (const auto it = unit_live_.find(module.unit); it != unit_live_.end())
+        g.live_flags.assign(it->second.begin(), it->second.end());
     g.module = std::move(module);
     gens_.push_back(std::move(g));
 }
@@ -862,6 +880,7 @@ unsigned Loader::frame_boundary()
             const bool mine = it->second == g.generation && cu != unit_of_.end() && cu->second == g.module.unit;
             it = mine ? record_gen_.erase(it) : std::next(it);
         }
+        detach_lambdas(g); // a box must not keep a pointer into the code
         g.module = Module{}; // the keep-alive object releases the code
         g.state = GenState::Unloaded;
         std::fprintf(stderr, "[script] generation %u unloaded\n", g.generation);

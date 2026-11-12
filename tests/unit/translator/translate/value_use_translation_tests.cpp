@@ -227,7 +227,7 @@ TEST(ValueUseLowering, LocalsAreBoxesAndVarCopies)
     EXPECT_TRUE(emits(r, "hot::Value<Pt> z = hot::Value<Pt>(")) << r.cpp;
     EXPECT_TRUE(emits(r, "hot::Value<Pt> l = hot::Value<Pt>("));
     EXPECT_TRUE(emits(r, "auto m = a;")); // the copy constructor of the box copies the object
-    EXPECT_TRUE(emits(r, "[=]()")); // the lambda captures the boxes by copy
+    EXPECT_TRUE(emits(r, "hot::caps(__self, l, m)")); // the capture tuple copies the boxes
 }
 
 TEST(ValueUseLowering, ModuleSetsTheCallerRecordOnlyWhenItUsesValue)

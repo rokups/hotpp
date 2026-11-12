@@ -343,11 +343,11 @@ struct ExprPrinter
     }
     void operator()(const LambdaExpr& n) const
     {
-        e.put("[=" + n.captures + "]", n.pos);
-        e.put("(");
+        e.put(n.boxed ? "[]" : "[=" + n.captures + "]", n.pos);
+        e.put(n.boxed ? "(auto& __c" : "(");
         for (size_t i = 0; i < n.params.size(); ++i)
         {
-            if (i)
+            if (i || n.boxed)
             {
                 e.put(",");
                 e.space();

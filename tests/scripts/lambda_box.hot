@@ -1,0 +1,63 @@
+// Box lambdas (hot/runtime/lambda.h). Each method runs one form of a lambda: declared parameter
+// types with a value result, a void result that uses "this", a shared cell, an "auto" parameter,
+// a nested lambda that captures a closure, and a timer lambda that holds a closure.
+using "Actor.h";
+
+class Boxer : Actor {
+    int hits = 0;
+    int total = 0;
+    int result = 0;
+
+    // Declared parameter types and a value result.
+    void typed(int a) {
+        int k = 3;
+        var f = (int x, int y) => x * y + k;
+        this.result = f(a, 2);
+    }
+
+    // A void result that writes the fields through "this".
+    void voids() {
+        var f = () => { this.hits = this.hits + 1; };
+        f();
+        f();
+    }
+
+    // A shared cell: the lambda writes the local.
+    void cell() {
+        int n = 0;
+        var inc = (int d) => { n += d; };
+        inc(2);
+        inc(3);
+        this.result = n;
+    }
+
+    // An "auto" parameter: the target type gives the signature.
+    void autos() {
+        std.function<int(int)> f = (x) => x + 1;
+        this.result = f(4);
+    }
+
+    // A lambda that captures a closure, and a lambda in a lambda.
+    void nested(int a) {
+        var add = (int x) => x + a;
+        var twice = (int y) => add(add(y));
+        var mk = (int b) => {
+            var g = (int c) => c + b + twice(0);
+            return g(1);
+        };
+        this.result = twice(1) * 100 + mk(2);
+    }
+
+    // The timer lambda holds the closure "add". The closure "add" holds the shared cell of "n".
+    void store(ref World w) {
+        int n = 0;
+        var add = (int x) => {
+            n += x;
+            this.total = n;
+        };
+        w.AddTimer(0.5, () => {
+            add(5);
+            add(1);
+        });
+    }
+}

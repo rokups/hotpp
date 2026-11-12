@@ -318,7 +318,10 @@ private:
         Module module; // empty after the unload
         uint64_t retired_frame = 0; // the frame counter at the retirement
         uint32_t registry_refs = 0; // classes and thunks that this module registered
+        std::vector<const uint32_t*> live_flags; // the live flags of the module and its core
     };
+    // Detaches the lambda boxes of the module of the generation (lambda_detach_module).
+    static void detach_lambdas(const Gen& g);
     // Puts the saved copies of the AOT records back into the canonical records.
     void restore_aot_records();
     // The body of load() for one unit. It does not check that the loader is empty.

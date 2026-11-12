@@ -266,6 +266,9 @@ struct LambdaExpr
     // The identity key and the alias keys (lambda_key.h). Empty: no key is set yet.
     std::string key{};
     std::vector<std::string> alias_keys{};
+    // The lowering: true gives the body lambda of hot::make_lambda_deduced. It has no capture. The
+    // first parameter "__c" is the capture tuple.
+    bool boxed = false;
 };
 // A string with "${expr}" or "${expr:spec}" (design 7.3, DECISIONS item 10). The literal parts
 // keep the script text between the quotes (with escapes). "lits" has one more item than "args".

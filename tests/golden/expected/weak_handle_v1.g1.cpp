@@ -19,7 +19,7 @@ namespace hot { template <class U> struct weak_ref_traits<U, std::enable_if_t<st
 // The generation of this module. The register function sets it from the registry.
 [[maybe_unused]] static uint32_t GEN = 0;
 // The live flag of this module. The loader sets it. The guard of each function reads it.
-static uint32_t hot_live = 0;
+static uint32_t hot_live = 0; namespace { struct __LamTag_0 { static constexpr const char* key = "weak_handle_v1:Node::Watch/v:f"; static constexpr const char* what = "Node::Watch lambda"; static constexpr const char* names[] = {"__self", nullptr}; static constexpr const char* aliases[] = {nullptr}; static const uint32_t* live() { return &hot_live; } }; }
 struct Node_Shell;
 using Node = Node_Shell;
 
@@ -688,7 +688,7 @@ int32_t hot_state_Node::Watch()
 #line 53 "weak_handle_v1.hot"
     HOT_TRACE_FRAME("Node.Watch", "weak_handle_v1.hot");
 #line 53 "weak_handle_v1.hot"
-    HOT_TRACE_LINE(); auto f = hot::make_closure(GEN, &hot_live, "Node::Watch lambda", [=]() { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); return hot::lock(__st->seen) != nullptr ? hot::deref(hot::lock(__st->seen)).dmg : 0; });
+    HOT_TRACE_LINE(); auto f = hot::make_lambda_deduced<__LamTag_0>(GEN, hot::caps(__self), [](auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); return hot::lock(__st->seen) != nullptr ? hot::deref(hot::lock(__st->seen)).dmg : 0; } });
 #line 54 "weak_handle_v1.hot"
     HOT_TRACE_LINE(); return f();
 #line 55 "weak_handle_v1.hot"
@@ -820,6 +820,7 @@ extern "C" void script_register(hot::Registry& reg)
     Node_record.generation = GEN;
     reg.set_live_flag(&hot_live);
     reg.add(&Node_record, &Node_create);
+    hot::flush_lambdas(reg);
     Node_record.construct_keys = Node__construct_keys;
     Node_record.ctors = Node__constructors;
     reg.add_thunk("Node::Adopt", reinterpret_cast<void*>(&Node__Adopt__thunk));

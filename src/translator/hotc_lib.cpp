@@ -5699,11 +5699,13 @@ void translate_impl(
         hotc::lint_class(cd, map, g_diag); // the warnings: dead code, unused locals, shadowing
     };
     // Lowers the statements of a body into an emitter. Returns null for a raw body or an error.
+    std::vector<std::string> lambda_tags; // the tag structs of the lambdas (RCtx::lambda_tags)
     auto lower_body = [&](Method& m, RCtx& cx, bool trace) -> std::shared_ptr<hotc::ast::Emitter>
     {
         if (m.raw)
             return nullptr;
         cx.co_keywords = 0;
+        cx.lambda_tags = &lambda_tags;
         if (!cx.lambda_base.empty())
             hotc::assign_lambda_keys(m.body, cx.lambda_base, &map, g_diag, &res.lambda_keys);
         hotc::lower_block(m.body, cx, g_diag);
@@ -5777,13 +5779,17 @@ void translate_impl(
     if (opt.aot_optimized)
     {
         o.w("// Optimized AOT code is always live: there is no override and no reload.\n");
-        o.w("[[maybe_unused]] static const uint32_t hot_live = 1;\n");
+        o.w("[[maybe_unused]] static const uint32_t hot_live = 1;");
     }
     else
     {
         o.w("// The live flag of this module. The loader sets it. The guard of each function reads it.\n");
-        o.w("static uint32_t hot_live = 0;\n");
+        o.w("static uint32_t hot_live = 0;");
     }
+    // The tag structs of the reloadable lambdas go at the end of this line. The lowering of the
+    // bodies makes them later. The insert has no line break, so the line numbers do not move.
+    const size_t lambda_tag_at = o.s.size();
+    o.w("\n");
     // The forward block of a ".cpp" script. The text of the file can call hot_mod() before the
     // module block: the static_cast of a "void*" to a pointer of an incomplete type is valid.
     if (sc.is_cpp && has_module)
@@ -10181,8 +10187,15 @@ void translate_impl(
         o.w("    hot::set_value_generation(GEN);\n");
     for (const auto& r : registers)
         o.w("    reg.add(&" + r.first + "_record, &" + r.first + "_create);\n");
+    {
+        std::string tags;
+        for (const std::string& t : lambda_tags)
+            tags += t;
+        if (!tags.empty())
+            o.insert(lambda_tag_at, " namespace { " + tags + "}");
+    }
     // A module with reloadable lambdas gives their records to the registry.
-    if (o.s.find("hot::make_lambda<") != std::string::npos)
+    if (!lambda_tags.empty() || o.s.find("hot::make_lambda") != std::string::npos)
         o.w("    hot::flush_lambdas(reg);\n");
     // The function table of the unit: an importer calls a public free function through it
     // (hot::call_fn). The key is the C++ function type.

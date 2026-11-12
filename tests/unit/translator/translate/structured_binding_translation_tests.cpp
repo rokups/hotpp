@@ -152,7 +152,7 @@ TEST(StructuredBindingTranslation, LambdaCapturesBindingsByInitCapture)
                " foreach (var (k, v) in this.m) { var g = (int a) => a + v + this.pr.first; s += g(1); }"
                " try { s += a; } finally { s += b; }"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "[=, a = a, b = b]()")) << r.cpp;
-    EXPECT_TRUE(has(r.cpp, "[=, v = v](int32_t a)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::caps(__self, a, b), [](auto& __c)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::caps(__self, v), [](auto& __c, int32_t a)")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "([&, &b = b] {")) << r.cpp;
 }

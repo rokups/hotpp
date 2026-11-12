@@ -242,8 +242,8 @@ TEST(WeakHandleTranslation, ShadowEndsWithItsScope)
                                                      "        return d + (parent?.hp ?? 0);\n"
                                                      "    }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "[=](const std::shared_ptr<Weapon>& x) { HOT_NODEBUG_LOCAL auto* __st = "
-                           "state_of(__self); return hot::deref(x).dmg; }"))
+    EXPECT_TRUE(has(r.cpp, "[](auto& __c, const std::shared_ptr<Weapon>& x) { [[maybe_unused]] auto& __self = std::get<0>(__c); "
+                           "{ HOT_NODEBUG_LOCAL auto* __st = state_of(__self); return hot::deref(x).dmg; } }"))
         << r.cpp;
     EXPECT_TRUE(has(r.cpp, "int32_t d = hot::deref(hot::lock(x)).dmg;")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "d = state_of(hot::shell_of<Node_Shell>(parent, \"Node\"))->hp;")) << r.cpp;

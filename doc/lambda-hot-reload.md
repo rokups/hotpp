@@ -16,17 +16,52 @@ Yes. The current closure design does not allow it. A new design that treats a la
 
 ## Current behavior
 
-- A script lambda becomes an `hot::Closure` (`include/hot/runtime/closure.h`).
-- The closure holds the lambda in a `std::function`, a pin on its generation, and a guard.
-- The translator emits `make_closure` for each arrow lambda (`src/translator/lower.cpp:655-692`).
-- The lambda body and its captures are compiled into the library of one generation.
+- A script lambda becomes a `hot::LambdaClosure<Sig>` (`include/hot/runtime/lambda.h`).
+- The closure holds a reference to a `LambdaBox` and a pin on its generation.
+- The box holds the entry, the captures, the `LambdaRecord` and the destroy function.
 - Native code stores the closure. Example: `Actor::AddTimer` in `tests/engine/Actor.h` (the test host).
-- After a reload, the guard compares the closure generation with `active_generation` (`closure.h:75`).
-- A mismatch logs a stale call and returns `R()`. No lambda body runs.
-- The pin keeps the old library loaded while native code holds the closure.
-- The test `EscapedClosureIsStaleAfterReload` (`tests/integration/closures/generation_unload_tests.cpp:83`) checks this on purpose.
+- A call through a detached box logs a stale call and returns `R()`. No lambda body runs.
+- The test `EscapedClosureIsStaleAfterReload` (`tests/integration/closures/generation_unload_tests.cpp`) checks this on purpose.
 - The runtime does not unregister or rebind native callbacks. Only `ClearTimers` drops timers.
 - A named method already reloads. Native code holds a thunk. The thunk calls through the slot table. Slot numbers do not change.
+
+## Box lowering
+
+The translator lowers each `.hot` lambda to this form:
+
+```cpp
+hot::make_lambda_deduced<__LamTag_N>(GEN, hot::caps(__self, a, __cell_b),
+    [](auto& __c, int p) { auto& a = std::get<1>(__c); /* body */ })
+```
+
+- The body lambda has no captures. The tuple holds the decayed captures. `__self` is first when the body uses `this`.
+- A shared mutable capture is a `hot::Cell<T>` in the tuple. Copies of the closure share the cell.
+- A nested lambda captures the names of the outer tuple. It captures a closure like any other value.
+- The tag struct `__LamTag_N` holds the key, the `aliases` array, the capture names and the live flag of the module.
+- The tags go into an anonymous namespace at namespace scope. A local class cannot have static data members.
+- The tags go on the line of `hot_live`. Thus the `#line` numbers of the output do not change.
+- `LambdaReg` makes the `LambdaRecord` from the tag. The record holds the key, the signature, the entry, the destroy function and the capture names.
+
+### The signature
+
+The translator does not know the result type or the capture types. C++ knows them. So C++ makes the signature.
+
+- `make_lambda_deduced` takes the address of `operator()<Caps>` of the body lambda. It removes the first `Caps&` parameter. The result is `Sig`.
+- This gives declared parameter types, `void` results and value results. It needs no type text from the translator.
+- A lambda with an `auto` parameter has no address before the parameter types are known. The translator emits `make_lambda_deferred` for it.
+- `make_lambda_deferred` returns a `LambdaDeferred`. Its conversion to `LambdaClosure<R(A...)>` or `std::function<R(A...)>` gives the signature.
+- A `LambdaClosure` converts to a `std::function`, to a native handler and to a delegate with `Bind`.
+
+### Detach at the commit
+
+- `Loader::switch_live` is the commit. It sets the live flags of the replaced generation to 0.
+- Then it calls `lambda_detach_module` for each replaced flag. Each box of that module gets `rec = nullptr`. The box destroys its captures.
+- The loader also detaches the boxes of a generation before it unloads the library, at `reset` and in `~Loader`.
+- Thus no box refers to code or a record of an unloaded library.
+- A stored closure keeps its pin. The generation unloads when the last closure is released.
+- `for_each_lambda_box` and `lambda_detach_module` take a reference to each box under the list lock. They call the function after the lock is released.
+- A capture destructor can release another box. That release takes the list lock. So no deadlock occurs.
+- The migration of captures to a new generation is not built. A detached box stays stale.
 
 ## Host re-subscribe (in use)
 
@@ -62,7 +97,8 @@ Give each lambda the same treatment as a method.
 
 ## Related code
 
-- `include/hot/runtime/closure.h`: `Closure`, `make_closure`, guard.
+- `include/hot/runtime/lambda.h`: `LambdaBox`, `LambdaClosure`, `make_lambda_deduced`, `make_lambda_deferred`.
+- `src/runtime/lambda.cpp`: the box list and `lambda_detach_module`.
 - `src/runtime/threads.cpp:98-116`: stale-call log and pin counters.
 - `src/runtime/loader.cpp:274-299`: `frame_boundary`, unload gate.
 - `include/hot/runtime/registry.h`: thunk entries.

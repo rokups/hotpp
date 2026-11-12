@@ -111,6 +111,10 @@ struct RCtx
     // The base of the lambda keys of the function ("<unit>:<Class>::<function id>"), see
     // lambda_key.h. Empty: the lambdas get no key.
     std::string lambda_base;
+    // The tag structs of the reloadable lambdas of the unit (hot/runtime/lambda.h). The lowering
+    // adds one struct for each lambda. The translator writes them at namespace scope, after the
+    // live flag. Null: a lambda becomes a hot::make_closure call (no tag, no box).
+    std::vector<std::string>* lambda_tags = nullptr;
     // The map gives the line and column of an error. Without a map an error has no line.
     const LineMap* map = nullptr;
     // The type model. With null, the pass keeps the types as the script writes them.

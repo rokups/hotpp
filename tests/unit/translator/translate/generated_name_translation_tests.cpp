@@ -85,7 +85,7 @@ TEST(GeneratedNameTranslation, LambdaExpressionBodyReturnsTheValue)
         "        var alive = () => this.n > 0;\n"
         "    }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_NE(r.cpp.find("[=](int32_t x)"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("[](auto& __c, int32_t x)"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("return x * 2;"), std::string::npos) << r.cpp;
     EXPECT_NE(r.cpp.find("return __st->n > 0;"), std::string::npos) << r.cpp;
 }

@@ -17,7 +17,7 @@
 // The generation of this module. The register function sets it from the registry.
 [[maybe_unused]] static uint32_t GEN = 0;
 // The live flag of this module. The loader sets it. The guard of each function reads it.
-static uint32_t hot_live = 0;
+static uint32_t hot_live = 0; namespace { struct __LamTag_0 { static constexpr const char* key = "shared_cell_v1:Counter::count/v:inc"; static constexpr const char* what = "Counter::count lambda"; static constexpr const char* names[] = {"__self", "__cell_n", nullptr}; static constexpr const char* aliases[] = {nullptr}; static const uint32_t* live() { return &hot_live; } }; struct __LamTag_1 { static constexpr const char* key = "shared_cell_v1:Counter::share/v:add"; static constexpr const char* what = "Counter::share lambda"; static constexpr const char* names[] = {"__self", "__cell_total", nullptr}; static constexpr const char* aliases[] = {nullptr}; static const uint32_t* live() { return &hot_live; } }; struct __LamTag_2 { static constexpr const char* key = "shared_cell_v1:Counter::share/v:read"; static constexpr const char* what = "Counter::share lambda"; static constexpr const char* names[] = {"__self", "__cell_total", nullptr}; static constexpr const char* aliases[] = {nullptr}; static const uint32_t* live() { return &hot_live; } }; struct __LamTag_3 { static constexpr const char* key = "shared_cell_v1:Counter::bump/v:f"; static constexpr const char* what = "Counter::bump lambda"; static constexpr const char* names[] = {"__self", "__cell_p", nullptr}; static constexpr const char* aliases[] = {nullptr}; static const uint32_t* live() { return &hot_live; } }; struct __LamTag_4 { static constexpr const char* key = "shared_cell_v1:Counter::arm/#0"; static constexpr const char* what = "Counter::arm lambda"; static constexpr const char* names[] = {"__self", "__cell_n", nullptr}; static constexpr const char* aliases[] = {nullptr}; static const uint32_t* live() { return &hot_live; } }; struct __LamTag_5 { static constexpr const char* key = "shared_cell_v1:Counter::arm/#1"; static constexpr const char* what = "Counter::arm lambda"; static constexpr const char* names[] = {"__self", "__cell_n", nullptr}; static constexpr const char* aliases[] = {nullptr}; static const uint32_t* live() { return &hot_live; } }; }
 struct Counter_Shell;
 
 // ---------------------------------------------------------------- class Counter
@@ -423,7 +423,7 @@ void hot_state_Counter::count()
 #line 13 "shared_cell_v1.hot"
     HOT_TRACE_LINE(); auto __cell_n = hot::make_cell<int32_t>(0); int32_t& n = *__cell_n;
 #line 14 "shared_cell_v1.hot"
-    HOT_TRACE_LINE(); auto inc = hot::make_closure(GEN, &hot_live, "Counter::count lambda", [=]() { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& n = *__cell_n; n++; });
+    HOT_TRACE_LINE(); auto inc = hot::make_lambda_deduced<__LamTag_0>(GEN, hot::caps(__self, __cell_n), [](auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& __cell_n = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& n = *__cell_n; n++; } });
 #line 15 "shared_cell_v1.hot"
     HOT_TRACE_LINE(); inc();
 #line 16 "shared_cell_v1.hot"
@@ -468,9 +468,9 @@ void hot_state_Counter::share()
 #line 23 "shared_cell_v1.hot"
     HOT_TRACE_LINE(); auto __cell_total = hot::make_cell(1); auto& total = *__cell_total;
 #line 24 "shared_cell_v1.hot"
-    HOT_TRACE_LINE(); auto add = hot::make_closure(GEN, &hot_live, "Counter::share lambda", [=](int32_t k) { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& total = *__cell_total; total += k; });
+    HOT_TRACE_LINE(); auto add = hot::make_lambda_deduced<__LamTag_1>(GEN, hot::caps(__self, __cell_total), [](auto& __c, int32_t k) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& __cell_total = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& total = *__cell_total; total += k; } });
 #line 25 "shared_cell_v1.hot"
-    HOT_TRACE_LINE(); auto read = hot::make_closure(GEN, &hot_live, "Counter::share lambda", [=]() { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& total = *__cell_total; return total; });
+    HOT_TRACE_LINE(); auto read = hot::make_lambda_deduced<__LamTag_2>(GEN, hot::caps(__self, __cell_total), [](auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& __cell_total = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& total = *__cell_total; return total; } });
 #line 26 "shared_cell_v1.hot"
     HOT_TRACE_LINE(); add(4);
 #line 27 "shared_cell_v1.hot"
@@ -513,7 +513,7 @@ void hot_state_Counter::bump(int32_t p)
 #line 32 "shared_cell_v1.hot"
     { HOT_TRACE_LINE(); auto __cell_p = hot::make_cell<int32_t>(p); int32_t& p = *__cell_p;
 #line 33 "shared_cell_v1.hot"
-        HOT_TRACE_LINE(); auto f = hot::make_closure(GEN, &hot_live, "Counter::bump lambda", [=]() { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& p = *__cell_p; p = p * 2; });
+        HOT_TRACE_LINE(); auto f = hot::make_lambda_deduced<__LamTag_3>(GEN, hot::caps(__self, __cell_p), [](auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& __cell_p = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& p = *__cell_p; p = p * 2; } });
 #line 34 "shared_cell_v1.hot"
         HOT_TRACE_LINE(); f();
 #line 35 "shared_cell_v1.hot"
@@ -558,21 +558,21 @@ void hot_state_Counter::arm(World& w)
 #line 41 "shared_cell_v1.hot"
     HOT_TRACE_LINE(); auto __cell_n = hot::make_cell<int32_t>(0); int32_t& n = *__cell_n;
 #line 42 "shared_cell_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(w).AddTimer(0.5f, hot::make_closure(GEN, &hot_live, "Counter::arm lambda", [=]() { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& n = *__cell_n;
+    HOT_TRACE_LINE(); hot::deref(w).AddTimer(0.5f, hot::make_lambda_deduced<__LamTag_4>(GEN, hot::caps(__self, __cell_n), [](auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& __cell_n = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& n = *__cell_n;
 #line 43 "shared_cell_v1.hot"
-        n += 1;
+            n += 1;
 #line 44 "shared_cell_v1.hot"
-        __st->fired = n;
+            __st->fired = n;
 #line 45 "shared_cell_v1.hot"
-    }));
+        } }));
 #line 46 "shared_cell_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(w).AddTimer(0.5f, hot::make_closure(GEN, &hot_live, "Counter::arm lambda", [=]() { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& n = *__cell_n;
+    HOT_TRACE_LINE(); hot::deref(w).AddTimer(0.5f, hot::make_lambda_deduced<__LamTag_5>(GEN, hot::caps(__self, __cell_n), [](auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& __cell_n = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& n = *__cell_n;
 #line 47 "shared_cell_v1.hot"
-        n += 10;
+            n += 10;
 #line 48 "shared_cell_v1.hot"
-        __st->fired = n;
+            __st->fired = n;
 #line 49 "shared_cell_v1.hot"
-    }));
+        } }));
 #line 50 "shared_cell_v1.hot"
 }
 #line 579 "shared_cell_v1.hot.cpp"
@@ -583,6 +583,7 @@ extern "C" void script_register(hot::Registry& reg)
     Counter_record.generation = GEN;
     reg.set_live_flag(&hot_live);
     reg.add(&Counter_record, &Counter_create);
+    hot::flush_lambdas(reg);
     Counter_record.construct_keys = Counter__construct_keys;
     Counter_record.ctors = Counter__constructors;
     reg.add_thunk("Counter::count", reinterpret_cast<void*>(&Counter__count__thunk));

@@ -2943,12 +2943,96 @@ struct Lowerer
         const uint32_t pos = l.pos;
         CallExpr c;
         c.pos = pos;
+        if (cx.lambda_tags)
+        {
+            box_lambda(c, l, param_names);
+            c.args.push_back(std::move(e));
+            e = make_expr(std::move(c));
+            return;
+        }
         c.callee = raw("hot::make_closure", pos);
         c.args.push_back(raw("GEN", 0));
         c.args.push_back(raw("&hot_live", 0));
         c.args.push_back(raw("\"" + cx.where + " lambda\"", 0));
         c.args.push_back(std::move(e));
         e = make_expr(std::move(c));
+    }
+
+    // The box form of a lambda (hot/runtime/lambda.h):
+    //   hot::make_lambda_deduced<__LamTag_N>(GEN, hot::caps(a, b), [](auto& __c, P p) { ... })
+    // The body lambda has no capture, so its code can change at a reload while the runtime keeps
+    // the capture tuple. The tuple holds a copy of each outer name that the body uses: a local, a
+    // parameter, a binding, the cell "__cell_x" of a shared local and "__self". The body binds
+    // each name to its tuple element, then runs the old body in an inner block. So a local of
+    // the body can hide a captured name. The tag struct holds the key, the alias keys and the
+    // capture names. A lambda with an "auto" parameter has no signature of its own:
+    // hot::make_lambda_deferred waits for the target type.
+    void box_lambda(CallExpr& c, LambdaExpr& l, const std::set<std::string>& param_names)
+    {
+        std::set<std::string> scope;
+        for (const std::string& n : cx.locals)
+            if (!cx.cell_locals.count(n))
+                scope.insert(n);
+        for (const std::string& n : bindings)
+            scope.insert(n);
+        for (const std::string& n : cx.cell_locals)
+            scope.insert("__cell_" + n);
+        const bool has_self = cx.allow_this && cx.cls;
+        std::vector<std::string> names;
+        const std::string text = text_of(l.body);
+        if (has_self && !binding_captures({"__self"}, text, false, param_names).empty())
+            names.push_back("__self");
+        for (const std::string& n : scope)
+            if (n != "__self" && !param_names.count(n) && !binding_captures({n}, text, false, param_names).empty())
+                names.push_back(n);
+        if (!names.empty())
+        {
+            BlockStmt inner = std::move(l.body);
+            l.body = BlockStmt{};
+            l.body.pos = inner.pos;
+            l.body.end_pos = inner.end_pos;
+            for (size_t i = 0; i < names.size(); ++i)
+                l.body.stmts.push_back(make_stmt(RawStmt{
+                    "[[maybe_unused]] auto& " + names[i] + " = std::get<" + std::to_string(i) + ">(__c);", 0}));
+            l.body.stmts.push_back(make_stmt(std::move(inner)));
+        }
+        l.boxed = true;
+        l.captures.clear();
+        auto quote = [](const std::string& t)
+        {
+            std::string r = "\"";
+            for (char ch : t)
+            {
+                if (ch == '\\' || ch == '"')
+                    r += '\\';
+                r += ch;
+            }
+            return r + "\"";
+        };
+        const std::string tag = "__LamTag_" + std::to_string(cx.lambda_tags->size());
+        const std::string what = cx.where + " lambda";
+        std::string t = "struct " + tag + " { ";
+        t += "static constexpr const char* key = " + quote(l.key.empty() ? what + "#" + tag.substr(9) : l.key) + "; ";
+        t += "static constexpr const char* what = " + quote(what) + "; ";
+        t += "static constexpr const char* names[] = {";
+        for (const std::string& n : names)
+            t += quote(n) + ", ";
+        t += "nullptr}; ";
+        t += "static constexpr const char* aliases[] = {";
+        for (const std::string& a : l.alias_keys)
+            t += quote(a) + ", ";
+        t += "nullptr}; ";
+        t += "static const uint32_t* live() { return &hot_live; } }; ";
+        cx.lambda_tags->push_back(std::move(t));
+        bool deferred = false;
+        for (const Param& p : l.params)
+            deferred = deferred || p.type.empty();
+        c.callee = raw(std::string(deferred ? "hot::make_lambda_deferred<" : "hot::make_lambda_deduced<") + tag + ">", c.pos);
+        c.args.push_back(raw("GEN", 0));
+        std::string caps = "hot::caps(";
+        for (size_t i = 0; i < names.size(); ++i)
+            caps += (i ? ", " : "") + names[i];
+        c.args.push_back(raw(caps + ")", 0));
     }
 
     // The template arguments that are expressions get the same lowering as other expressions.

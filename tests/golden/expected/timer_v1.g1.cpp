@@ -17,7 +17,7 @@
 // The generation of this module. The register function sets it from the registry.
 [[maybe_unused]] static uint32_t GEN = 0;
 // The live flag of this module. The loader sets it. The guard of each function reads it.
-static uint32_t hot_live = 0;
+static uint32_t hot_live = 0; namespace { struct __LamTag_0 { static constexpr const char* key = "timer_v1:Beeper::arm/#0"; static constexpr const char* what = "Beeper::arm lambda"; static constexpr const char* names[] = {"__self", nullptr}; static constexpr const char* aliases[] = {nullptr}; static const uint32_t* live() { return &hot_live; } }; }
 struct Beeper_Shell;
 
 // ---------------------------------------------------------------- class Beeper
@@ -363,13 +363,13 @@ void hot_state_Beeper::arm(World& w, float delay)
 #line 14 "timer_v1.hot"
     HOT_TRACE_FRAME("Beeper.arm", "timer_v1.hot");
 #line 14 "timer_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(w).AddTimer(delay, hot::make_closure(GEN, &hot_live, "Beeper::arm lambda", [=]() { HOT_NODEBUG_LOCAL auto* __st = state_of(__self);
+    HOT_TRACE_LINE(); hot::deref(w).AddTimer(delay, hot::make_lambda_deduced<__LamTag_0>(GEN, hot::caps(__self), [](auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self);
 #line 15 "timer_v1.hot"
-        __st->fired = __st->fired + 1;
+            __st->fired = __st->fired + 1;
 #line 16 "timer_v1.hot"
-        std::printf("[timer v1] %s: fired=%d\n", hot::deref(__self->Name).c_str(), __st->fired);
+            std::printf("[timer v1] %s: fired=%d\n", hot::deref(__self->Name).c_str(), __st->fired);
 #line 17 "timer_v1.hot"
-    }));
+        } }));
 #line 18 "timer_v1.hot"
 }
 #line 376 "timer_v1.hot.cpp"
@@ -380,6 +380,7 @@ extern "C" void script_register(hot::Registry& reg)
     Beeper_record.generation = GEN;
     reg.set_live_flag(&hot_live);
     reg.add(&Beeper_record, &Beeper_create);
+    hot::flush_lambdas(reg);
     Beeper_record.construct_keys = Beeper__construct_keys;
     Beeper_record.ctors = Beeper__constructors;
     reg.add_thunk("Beeper::arm", reinterpret_cast<void*>(&Beeper__arm__thunk));

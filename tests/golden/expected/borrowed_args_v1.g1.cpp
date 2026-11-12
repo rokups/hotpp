@@ -19,7 +19,7 @@
 // The generation of this module. The register function sets it from the registry.
 [[maybe_unused]] static uint32_t GEN = 0;
 // The live flag of this module. The loader sets it. The guard of each function reads it.
-static uint32_t hot_live = 0;
+static uint32_t hot_live = 0; namespace { struct __LamTag_0 { static constexpr const char* key = "borrowed_args_v1:Caller::Run/v:f"; static constexpr const char* what = "Caller::Run lambda"; static constexpr const char* names[] = {"__self", "pb", nullptr}; static constexpr const char* aliases[] = {nullptr}; static const uint32_t* live() { return &hot_live; } }; }
 struct Probe_Shell;
 using Probe = Probe_Shell;
 struct Caller_Shell;
@@ -1003,7 +1003,7 @@ float hot_state_Caller::Run(Vec3& v, Vec3* p, bool const c)
 #line 47 "borrowed_args_v1.hot"
     HOT_TRACE_LINE(); Probe__Take(hot::shell_of<Probe_Shell>(pb, "Probe"), hot::cast_ptr<Vec3*>(p));
 #line 48 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); auto f = hot::make_closure(GEN, &hot_live, "Caller::Run lambda", [=](Vec3& w) { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); { if (pb) Probe__Look(hot::shell_of<Probe_Shell>(pb, "Probe"), w); } });
+    HOT_TRACE_LINE(); auto f = hot::make_lambda_deduced<__LamTag_0>(GEN, hot::caps(__self, pb), [](auto& __c, Vec3& w) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& pb = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); { if (pb) Probe__Look(hot::shell_of<Probe_Shell>(pb, "Probe"), w); } } });
 #line 49 "borrowed_args_v1.hot"
     HOT_TRACE_LINE(); f(a);
 #line 50 "borrowed_args_v1.hot"
@@ -1036,6 +1036,7 @@ extern "C" void script_register(hot::Registry& reg)
     reg.set_live_flag(&hot_live);
     reg.add(&Probe_record, &Probe_create);
     reg.add(&Caller_record, &Caller_create);
+    hot::flush_lambdas(reg);
     Probe_record.construct_keys = Probe__construct_keys;
     reg.add_fn("Probe::ctor()", typeid(void(hot::ShellBase*)).name(), reinterpret_cast<void*>(&Probe__ctor_export0));
     reg.add_fn("Probe::ctor(Vec3*)", typeid(void(hot::ShellBase*, Vec3*)).name(), reinterpret_cast<void*>(&Probe__ctor_export1));

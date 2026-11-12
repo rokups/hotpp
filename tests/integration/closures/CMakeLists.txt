@@ -16,13 +16,15 @@ set_target_properties(integration_closure_tests PROPERTIES ENABLE_EXPORTS ON)
 target_compile_definitions(integration_closure_tests PRIVATE HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 hot_gtest(integration_closure_tests)
 
-# A lambda in a method that never runs registers its record at module load. The AOT code of the
-# script goes into the executable. The test loads it with Loader::load_aot.
+# A lambda in a method that never runs registers its record at module load. The box lambdas of a
+# .hot script run in each mode. The AOT code of the scripts goes into the executable. The tests
+# load it with Loader::load_aot.
 hot_add_scripts(TARGET lambda_reg_aot_scripts AOT
-    SCRIPTS ${PROJECT_SOURCE_DIR}/tests/scripts/lambda_reg.cpp
+    SCRIPTS ${PROJECT_SOURCE_DIR}/tests/scripts/lambda_reg.cpp ${PROJECT_SOURCE_DIR}/tests/scripts/lambda_box.hot
     INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
     DEPENDS ${HOT_HEADERS})
 add_executable(integration_lambda_reg_tests
+    lambda_box_tests.cpp
     lambda_reg_tests.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
