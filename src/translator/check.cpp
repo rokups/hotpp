@@ -1754,6 +1754,21 @@ struct Checker
                     + "' is not allowed: use 'as' or static_cast<" + base + ">(...)");
     }
 
+    // A ".hot" script has no named casts. A C style cast "(T)e" or "T(e)" does the same work, and "as"
+    // or "is" does the work of "dynamic_cast". The check sees only the parsed script: generated C++ text
+    // with a named cast does not come here.
+    void check_named_cast(const CallExpr& c)
+    {
+        const auto* nm = std::get_if<NameExpr>(&c.callee->v);
+        if (!nm || nm->parts.size() != 1)
+            return;
+        const std::string& n = nm->parts[0];
+        if (n == "dynamic_cast")
+            error(nm->pos, "'dynamic_cast' is not supported: use 'as' or 'is'");
+        else if (n == "static_cast" || n == "const_cast" || n == "reinterpret_cast")
+            error(nm->pos, "'" + n + "' is not supported: use a C style cast '(T)e' or 'T(e)'");
+    }
+
     void on_expr(const Expr& e)
     {
         if (!is_cpp && !refs.empty())
@@ -1776,6 +1791,8 @@ struct Checker
         }
         if (auto* c = std::get_if<CallExpr>(&e.v))
         {
+            if (!is_cpp)
+                check_named_cast(*c);
             callee_names.insert(c->callee.get());
             for (const ExprP& a : c->args)
                 arg_names.insert(a.get());

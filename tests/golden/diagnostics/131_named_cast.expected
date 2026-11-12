@@ -1,0 +1,5 @@
+131_named_cast.hot:5:26: error: 'static_cast' is not supported: use a C style cast '(T)e' or 'T(e)'
+    5 |     int Speed() { return static_cast<int>(this.speed); }
+131_named_cast.hot:7:34: error: 'dynamic_cast' is not supported: use 'as' or 'is'
+    7 |     $Unit Self($Unit u) { return dynamic_cast<$Unit>(u); }
+2 errors generated.

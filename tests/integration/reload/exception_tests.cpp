@@ -577,7 +577,7 @@ class Boss : Actor {
     int F2I(float f) { return (int)f; }
     int D2I(double d) { return (int)d; }
     int Fn2I(double d) { return int(d); }
-    int Sc2I(double d) { return static_cast<int>(d); }
+    int Sc2I(double d) { return (int)(d); }
     long D2L(double d) { return (long)d; }
     uint D2U(double d) { return (uint)d; }
     // A local goes to a native "int*" out-parameter as a real address: Bump writes through it.

@@ -1,0 +1,8 @@
+// A named cast is an error in a ".hot" script. A C style cast or "as" does the same work.
+class Unit {
+    float speed = 2.5;
+
+    int Speed() { return static_cast<int>(this.speed); }
+
+    $Unit Self($Unit u) { return dynamic_cast<$Unit>(u); }
+}
