@@ -2724,7 +2724,12 @@ struct Lowerer
         if (e && group_outside_call(*e, m.pos))
             return;
         if (m.name.find('<') != std::string::npos)
+        {
             plain_class_marks(m.name);
+            // The body of a lambda is a generic C++ lambda: the object is a dependent expression.
+            if (in_lambda)
+                m.name = "template " + m.name;
+        }
         const uint32_t obj_pos = pos_of(*m.obj);
         if (const InterfaceDef* idef = iface_named(type_of(*m.obj)))
         {
@@ -3491,7 +3496,9 @@ struct Lowerer
             {
                 // The explicit template arguments of a native member template ("GetSubsystem<T>()") stay.
                 plain_class_targs(n);
-                e = raw_named("__self->", n.parts[0] + n.template_args, n.pos, n.pos);
+                // In a lambda body "__self" is a dependent expression: the call needs "template".
+                const bool dependent = in_lambda && !n.template_args.empty();
+                e = raw_named(dependent ? "__self->template " : "__self->", n.parts[0] + n.template_args, n.pos, n.pos);
                 return;
             }
         }

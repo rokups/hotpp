@@ -225,6 +225,28 @@ TEST_P(LambdaRebindScript, ScratchRegistryBeforeTheLoadKeepsTheLambdas)
     EXPECT_EQ(f(1), 601);
 }
 
+// The body of a lambda is a generic C++ lambda. A call of a native member template on "this"
+// needs the "template" keyword there.
+TEST_P(LambdaRebindScript, NativeMemberTemplateCallInALambdaBody)
+{
+    const std::string text =
+        "using \"TemplateHost.h\";\n"
+        "class Th : TemplateHost {\n"
+        "    void make(ref std.function<int(int)> a, ref std.function<int(int)> b) {\n"
+        "        a = (int x) => { return x + Size<double>(); };\n"
+        "        b = (int x) => { return x + this.Size<char>(); };\n"
+        "    }\n"
+        "}\n";
+    hot::LoadResult r = backend->load({std::string(HOT_SOURCE_DIR) + "/tests/scripts/lambda_template.hot", text, {}}, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module), "Th"));
+    IntFn a, b;
+    ASSERT_NO_FATAL_FAILURE(call(s, "Th::make", a, b));
+    EXPECT_EQ(a(1), 9);
+    EXPECT_EQ(b(1), 2);
+}
+
 // The detach cases: an added capture, a new capture type, a new signature, a removed lambda. A
 // call of a detached closure is a stale call. Each key logs one warning.
 TEST_P(LambdaRebindScript, IncompatibleChangesDetach)

@@ -312,3 +312,29 @@ TEST(NativeGapTranslation, NativeTemplateCallWithAScriptClassArgument)
 }
 
 } // namespace
+
+namespace
+{
+
+// A lambda body is a generic C++ lambda. A native member template call on the object is a
+// dependent call there: it needs the "template" keyword.
+TEST(NativeGapTranslation, NativeTemplateCallInALambdaBodyUsesTheTemplateKeyword)
+{
+    TempDir dir;
+    write_file(dir.path() / "s.h", kSubsystemHeader);
+    const hotc::TranslateResult r = hotc::translate(temp_options(dir,
+        "using \"s.h\";\n"
+        "class Foo : Comp2 {\n"
+        "    std.function<Cache*()> M() {\n"
+        "        std.function<Cache*()> f = () => { return GetSubsystem<Cache>(); };\n"
+        "        std.function<Cache*()> g = () => { return this.GetSubsystem<Cache>(); };\n"
+        "        return f;\n"
+        "    }\n"
+        "}\n"));
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_FALSE(has(r.cpp, "__self->GetSubsystem<") || has(r.cpp, "__self.GetSubsystem<")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "->template GetSubsystem<Cache>()") || has(r.cpp, ".template GetSubsystem<Cache>()"))
+        << r.cpp;
+}
+
+} // namespace
