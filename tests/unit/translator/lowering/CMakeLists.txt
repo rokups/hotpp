@@ -9,6 +9,7 @@ add_executable(unit_translator_lowering_tests
     async_lowering_tests.cpp
     const_infer_tests.cpp
     handle_lowering_tests.cpp
+    lambda_key_tests.cpp
     lambda_lowering_tests.cpp
     lowering_error_tests.cpp
     member_access_lowering_tests.cpp

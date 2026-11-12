@@ -108,6 +108,9 @@ struct RCtx
     // declaration, before the prototypes of the script functions. It cannot call a function.
     bool in_field_init = false;
     std::string where; // the name of the function, for the stale call log of a lambda
+    // The base of the lambda keys of the function ("<unit>:<Class>::<function id>"), see
+    // lambda_key.h. Empty: the lambdas get no key.
+    std::string lambda_base;
     // The map gives the line and column of an error. Without a map an error has no line.
     const LineMap* map = nullptr;
     // The type model. With null, the pass keeps the types as the script writes them.

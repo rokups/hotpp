@@ -229,6 +229,9 @@ struct TranslateResult
     // lines come the lines "field Cls::name type", one for each field. The next translation
     // reads them to warn about a field rename. A reader of the slot text skips these lines.
     std::string sigs_out;
+    // The identity key of each lambda of the script (and its alias keys), in the order of the
+    // translation. See src/translator/lambda_key.h.
+    std::vector<std::string> lambda_keys;
     std::string diagnostics; // the errors, one line each: "name:line:col: error: text"
     // Always false. A removed function keeps a defunct slot. The field stays for API compatibility.
     bool slots_removed = false;

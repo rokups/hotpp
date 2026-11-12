@@ -263,6 +263,9 @@ struct LambdaExpr
     uint32_t name_pos = 0; // the offset of the "name" word of the attribute
     // The attributes [alias("old")]: the old keys of a renamed lambda.
     std::vector<std::string> aliases{};
+    // The identity key and the alias keys (lambda_key.h). Empty: no key is set yet.
+    std::string key{};
+    std::vector<std::string> alias_keys{};
 };
 // A string with "${expr}" or "${expr:spec}" (design 7.3, DECISIONS item 10). The literal parts
 // keep the script text between the quotes (with escapes). "lits" has one more item than "args".

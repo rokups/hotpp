@@ -32,6 +32,7 @@
 #include "check.h"
 #include "const_infer.h"
 #include "nullcheck.h"
+#include "lambda_key.h"
 #include "lint.h"
 #include "diag.h"
 #include "operator_names.h"
@@ -5703,6 +5704,8 @@ void translate_impl(
         if (m.raw)
             return nullptr;
         cx.co_keywords = 0;
+        if (!cx.lambda_base.empty())
+            hotc::assign_lambda_keys(m.body, cx.lambda_base, &map, g_diag, &res.lambda_keys);
         hotc::lower_block(m.body, cx, g_diag);
         if (!g_diag.items.empty()) // keep the lowering of the other bodies: report all errors
             return nullptr;
@@ -6046,6 +6049,7 @@ void translate_impl(
             ls.method = &m;
             RCtx cx = host_cx;
             cx.where = ls.where;
+            cx.lambda_base = opt.unit + ":" + (is_free ? std::string() : host.name + "::") + m.name;
             cx.ret_type = m.script_ret;
             cx.ret_value = m.ret_value;
             cx.new_classes = body_new;
@@ -6583,10 +6587,12 @@ void translate_impl(
 
         // The function bodies. "self" is the struct itself, so "st" is "self". The text comes
         // after the last block (see "bodies").
-        auto emit_vbody = [&](Method& m, const std::string& sym, const std::string& ret, const std::string& what)
+        auto emit_vbody = [&](Method& m, const std::string& sym, const std::string& ret, const std::string& what,
+                              bool is_ctor = false)
         {
             RCtx cx = base_cx;
             cx.where = what;
+            cx.lambda_base = opt.unit + ":" + cd.key_name() + "::" + (is_ctor ? overload_key("ctor", method_sig(m)) : m.name);
             cx.new_classes = body_new;
             hotc::add_params(cx, m.params);
             std::shared_ptr<hotc::ast::Emitter> em = lower_body(m, cx, false);
@@ -6622,7 +6628,7 @@ void translate_impl(
             cm.raw = c.raw;
             cm.raw_body = c.raw_body;
             cm.raw_line = c.raw_line;
-            emit_vbody(cm, P + "ctor", "void", cd.key_name() + "::" + last_component(cd.key_name()));
+            emit_vbody(cm, P + "ctor", "void", cd.key_name() + "::" + last_component(cd.key_name()), true);
         }
         for (Method& m : cd.methods)
             emit_vbody(m, P + m.name, fn_ret(m), body_what(cd.key_name(), m));
@@ -9141,6 +9147,7 @@ void translate_impl(
         {
             RCtx cx = base_cx;
             cx.where = what;
+            cx.lambda_base = opt.unit + ":" + cd.key_name() + "::" + (member == "ctor" ? overload_key("ctor", method_sig(m)) : member);
             cx.ret_type = m.script_ret;
             cx.ret_value = m.ret_value;
             cx.new_classes = body_new;

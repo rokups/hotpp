@@ -91,7 +91,17 @@ var g = [name("onFire"), alias("onShoot")] (CarveRequest r) => { };
 - The attribute needs a lambda after it. The text `[name("x")] (a + b)` is an error.
 - A list literal is still valid. The text `[name("x")]` alone is a list with one call.
 
-The translator only stores the name now. The generated C++ does not change.
+The translator gives each lambda a key (`src/translator/lambda_key.h`). The generated C++ does not change.
+
+- The key is `<unit>:<Class>::<function id>/<part>`. A free function has no `<Class>::`.
+- The function id is the id of the method slot: the overload key, or the id of a native slot for an override. A constructor uses `ctor__ov_<signature>`.
+- A nested lambda adds its own `/<part>` after the part of its parent.
+- The part is `n:<name>` for a named lambda. Else it is `v:<variable>` when the lambda is the direct initializer of a local, or the direct right side of an assignment to a local or a field. Else it is `#<ordinal>`.
+- The ordinal counts the lambdas of the function that have no name and no variable, in source order.
+- Each `alias("old")` gives an alias key with the part `n:<old>`.
+- Two equal keys in one function are an error. For a variable, add `[name("...")]`.
+- An `alias` without `name` is an error.
+- A lambda in a field initializer is an error, so it has no key.
 
 ## Lambdas and reload
 
