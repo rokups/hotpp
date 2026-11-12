@@ -42,6 +42,11 @@ struct HOT_EXPORT Util
     static int Count(int v);
     // The number of Count calls since the program start.
     static int Calls();
+    // Records "text" with the active generation and the link epoch of the call. A test reads the
+    // notes with Notes() and clears them with ClearNotes().
+    static void Note(const char* text);
+    static std::string Notes();
+    static void ClearNotes();
     // Native code between two script frames (design 6.3, S21). It calls the probe function of
     // a test (when one is set) and then a->TakeDamage(amount). So a script that calls it
     // runs script code again: script -> native -> script.

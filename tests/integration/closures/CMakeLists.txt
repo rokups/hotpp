@@ -26,6 +26,7 @@ hot_add_scripts(TARGET lambda_reg_aot_scripts AOT
     DEPENDS ${HOT_HEADERS})
 add_executable(integration_lambda_reg_tests
     lambda_box_tests.cpp
+    lambda_capture_destroy_tests.cpp
     lambda_rebind_tests.cpp
     method_group_tests.cpp
     lambda_reg_tests.cpp

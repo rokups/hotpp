@@ -78,8 +78,11 @@ The rules for safety:
 - The loader detaches the boxes of a generation in the load path, at `reset`, at the frame boundary unload and in `~Loader`.
 - A stored closure keeps its pin. The glue code of the closure is in the pinned generation. The generation unloads when the last closure is released.
 - A capture destructor can release another box. That release takes the list lock. So no deadlock occurs.
+- The commit does not destroy the old capture blocks of a rebound or detached box at once. A destructor runs script code, and it can free an object that the commit migrates. The commit keeps the blocks in a `CaptureGraveyard`. It destroys them after the old fields are freed, while the old module is still loaded, and with no lock held. A detached box has a null entry at once, so a call is stale.
 
 Limits:
+
+- A script cannot write the type `LambdaClosure<...>`. A lambda is not allowed in a field or module variable initializer, and a convert hook has no lambda. So no field has this type. A field holds a `std.function`. A lambda in a convert hook is an error, so each lambda has a key from its function.
 
 - A deferred lambda with two target signatures under one key has one record in the registry. A box with the other signature detaches.
 - The layout hash covers only the structs of the unit. A struct of another unit does not change the hash.

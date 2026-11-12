@@ -201,14 +201,40 @@ RebindPlan make_plan(const LambdaRecord& o, const LambdaRecord* found)
     return p;
 }
 
-void detach_box(LambdaBox* b)
+// The entry is null at once. The capture block goes to "defer", or it dies now.
+void detach_box(LambdaBox* b, CaptureGraveyard* defer)
 {
     b->rec = nullptr;
-    lambda_box_detach(b);
+    if (!defer)
+    {
+        lambda_box_detach(b);
+        return;
+    }
+    if (b->entry.exchange(nullptr, std::memory_order_acq_rel))
+    {
+        defer->add_caps(b->caps, b->destroy);
+        b->caps = nullptr;
+    }
 }
 } // namespace
 
-LambdaRebind lambda_rebind_module(const uint32_t* live, LambdaFind find, void* ctx)
+void CaptureGraveyard::run()
+{
+    // A destructor can add more work (a closure that releases another box).
+    while (!caps_.empty() || !boxes_.empty())
+    {
+        auto caps = std::move(caps_);
+        auto boxes = std::move(boxes_);
+        caps_.clear();
+        boxes_.clear();
+        for (const auto& [c, d] : caps)
+            d(c);
+        for (LambdaBox* b : boxes)
+            lambda_box_release(b);
+    }
+}
+
+LambdaRebind lambda_rebind_module(const uint32_t* live, LambdaFind find, void* ctx, CaptureGraveyard* defer)
 {
     LambdaRebind result;
     if (!live)
@@ -252,13 +278,17 @@ LambdaRebind lambda_rebind_module(const uint32_t* live, LambdaFind find, void* c
             b->destroy = p.to->destroy;
             b->rec = p.to;
             b->entry.store(p.to->entry, std::memory_order_release);
-            old_destroy(old); // the moved-from values and the removed captures
+            // The moved-from values and the removed captures.
+            if (defer)
+                defer->add_caps(old, old_destroy);
+            else
+                old_destroy(old);
             ++result.rebound;
         }
         else
         {
             const bool live_box = b->entry.load(std::memory_order_acquire) != nullptr;
-            detach_box(b);
+            detach_box(b, defer);
             if (live_box)
             {
                 ++result.detached;
@@ -266,7 +296,10 @@ LambdaRebind lambda_rebind_module(const uint32_t* live, LambdaFind find, void* c
                     order.emplace_back(o->key, cause);
             }
         }
-        lambda_box_release(b);
+        if (defer)
+            defer->add_box(b);
+        else
+            lambda_box_release(b);
     }
     for (const auto& [key, cause] : order)
         std::fprintf(stderr, "[script] WARNING: lambda %s: %s; %zu stored closures are detached\n", key.c_str(),

@@ -26,6 +26,8 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <utility>
+#include <vector>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -102,6 +104,27 @@ HOT_EXPORT size_t lambda_detach_module(const uint32_t* live);
 // The count of the boxes in the runtime list.
 HOT_EXPORT size_t lambda_box_count();
 
+// The capture blocks that a reload commit must destroy later. A capture destructor runs script
+// code, and it can free a migrated object. So the commit keeps the old blocks and the box
+// references here, and it calls run() after the new generation is live and before the old
+// module retires. run() must not hold a lock of the loader or of the box list.
+class CaptureGraveyard
+{
+public:
+    CaptureGraveyard() = default;
+    CaptureGraveyard(const CaptureGraveyard&) = delete;
+    CaptureGraveyard& operator=(const CaptureGraveyard&) = delete;
+    ~CaptureGraveyard() { run(); }
+    void add_caps(void* caps, void (*destroy)(void*)) { caps_.emplace_back(caps, destroy); }
+    void add_box(LambdaBox* box) { boxes_.push_back(box); }
+    // Destroys the blocks and releases the boxes. The list can grow while it runs.
+    HOT_EXPORT void run();
+
+private:
+    std::vector<std::pair<void*, void (*)(void*)>> caps_;
+    std::vector<LambdaBox*> boxes_;
+};
+
 // The result of lambda_rebind_module.
 struct LambdaRebind
 {
@@ -117,7 +140,10 @@ using LambdaFind = const LambdaRecord* (*)(const char* key, void* ctx);
 // move detaches. The function logs one warning for each key with detached boxes.
 // The loader calls it in a reload commit, inside the commit window, before the old module can
 // unload. The old module and the new module are loaded.
-HOT_EXPORT LambdaRebind lambda_rebind_module(const uint32_t* live, LambdaFind find, void* ctx);
+// With "defer", the function does not run a capture destructor: the old blocks and the box
+// references go to "defer". A detached box has a null entry at once.
+HOT_EXPORT LambdaRebind lambda_rebind_module(const uint32_t* live, LambdaFind find, void* ctx,
+    CaptureGraveyard* defer = nullptr);
 
 template <class Sig> class LambdaClosure;
 

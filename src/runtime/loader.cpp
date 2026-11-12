@@ -713,7 +713,8 @@ ReloadResult Loader::load_unit(Module module, Registry* code_out)
     return make_result(ReloadStatus::Applied, ReloadReason::None);
 }
 
-void Loader::switch_live(const std::string& unit, const Registry& code, const Registry* core, bool rebind)
+void Loader::switch_live(const std::string& unit, const Registry& code, const Registry* core, bool rebind,
+    CaptureGraveyard* defer)
 {
     std::vector<uint32_t*>& flags = unit_live_[unit];
     std::vector<uint32_t*> retired;
@@ -735,7 +736,7 @@ void Loader::switch_live(const std::string& unit, const Registry& code, const Re
         {
             registry_.drop_lambdas(f);
             if (rebind)
-                lambda_rebind_module(f, find, &registry_);
+                lambda_rebind_module(f, find, &registry_, defer);
             else
                 lambda_detach_module(f);
         }
@@ -1764,6 +1765,9 @@ ReloadResult Loader::commit_locked()
         if (u.have_core)
             cores_.push_back(std::move(u.core));
 
+    // The old capture blocks of the rebound and detached lambda boxes. They die after step 6.
+    CaptureGraveyard deferred;
+
     // Step 5: switch the generation and the links. The importers of a unit find the new module
     // block and the new function table by name. A new link epoch makes each access site resolve
     // again (FieldSite).
@@ -1784,7 +1788,8 @@ ReloadResult Loader::commit_locked()
             if (r)
                 for (const auto& [key, l] : r->lambdas())
                     registry_.add_lambda(l);
-        switch_live(unit, bw.u->staged, bw.u->have_core ? &bw.u->core_reg : nullptr, true);
+        switch_live(unit, bw.u->staged, bw.u->have_core ? &bw.u->core_reg : nullptr, true,
+            &deferred);
         set_link(bw.u->module, bw.u->staged);
     }
     ++link_epoch;
@@ -1826,6 +1831,10 @@ ReloadResult Loader::commit_locked()
         destroy_fields(bw.old.layout, bw.old.block);
         aligned_free(bw.old.block);
     }
+
+    // Step 6b: destroy the old captures of the lambda boxes. The new generation is live, the old
+    // module is still loaded, and no lock is held. A destructor can run script code.
+    deferred.run();
 
     // The loader owns the modules. The old generations of the units are retired now. The live
     // module of another unit keeps its code: its functions are still in use.

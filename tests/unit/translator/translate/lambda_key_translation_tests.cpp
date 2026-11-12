@@ -106,3 +106,16 @@ TEST(LambdaKeyTranslation, FieldInitializerHasNoKey)
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("a lambda is not allowed in a field initializer"), std::string::npos) << r.diagnostics;
 }
+
+// A convert hook has no self. A lambda there is an error. So each lambda has a key from its
+// function: the fallback key with a tag index is never in the output.
+TEST(LambdaKeyTranslation, LambdaInAConvertHookIsAnError)
+{
+    const auto a = run("class Foo : Widget {\n    float level = 1.0;\n"
+                       "    float convert_level(int old) {\n        var f = () => 1;\n        return old * f();\n    }\n}\n");
+    EXPECT_FALSE(a.ok);
+    EXPECT_NE(a.diagnostics.find("a lambda is not allowed in a field initializer"), std::string::npos) << a.diagnostics;
+    const auto b = run("float level = 1.0;\nfloat convert_level(int old) {\n    var f = () => 1;\n    return old * f();\n}\n");
+    EXPECT_FALSE(b.ok);
+    EXPECT_NE(b.diagnostics.find("a lambda is not allowed in a field initializer"), std::string::npos) << b.diagnostics;
+}

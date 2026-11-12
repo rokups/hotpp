@@ -3,6 +3,7 @@
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
 #include "Util.h"
+#include "hot/runtime/threads.h"
 
 #include <atomic>
 #include <cmath>
@@ -82,6 +83,27 @@ int Util::Count(int v)
 int Util::Calls()
 {
     return g_count_calls;
+}
+
+namespace
+{
+std::string g_notes;
+}
+
+void Util::Note(const char* text)
+{
+    g_notes += std::string(text) + "@g" + std::to_string(hot::active_generation) + "e" + std::to_string(hot::link_epoch)
+        + ";";
+}
+
+std::string Util::Notes()
+{
+    return g_notes;
+}
+
+void Util::ClearNotes()
+{
+    g_notes.clear();
 }
 
 static std::atomic<Util::ProbeFn> g_probe{nullptr};
