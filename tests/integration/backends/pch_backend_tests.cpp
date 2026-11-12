@@ -632,4 +632,202 @@ TEST(PchBackend, NoSecondPchBuildWhileWaitForPchJoins)
     EXPECT_EQ(f.pch_builds(), 1u);
 }
 
+// ---- The shared startup PCH ----
+
+namespace
+{
+
+// A script with an include set of its own: "layout.h" and "other.h", in the order of "swap".
+hot::ScriptSource two_header_script(int add, const std::string& name, bool swap = false)
+{
+    const std::string a = "using \"layout.h\";\n";
+    const std::string b = "using \"other.h\";\n";
+    return {name,
+        "using \"Actor.h\";\n" + (swap ? b + a : a + b) +
+            "class Calc : Actor {\n    float result = 0.0;\n"
+            "    override void Tick(float dt) { this.result = layout_size() + other_value() + " +
+            std::to_string(add) + ".0; }\n}\n",
+        {}, "Calc"};
+}
+
+void write_other_header(const fs::path& dir)
+{
+    std::ofstream(dir / "other.h", std::ios::binary) << "#pragma once\ninline float other_value() { return 10.0f; }\n";
+    set_age(dir / "other.h", std::chrono::minutes(60));
+}
+
+// Loads a batch with begin_load_many, compiles and finishes each unit. Gives the ok count.
+size_t load_batch(hot::ClangFilesBackend& backend, std::vector<hot::ScriptSource> sources)
+{
+    for (hot::ScriptSource& s : sources)
+        s.unit.clear(); // the unit name is the stem of the script name: the units of a batch differ
+    auto many = backend.begin_load_many(sources, 1, hot::LoadMode::Reload);
+    size_t ok = 0;
+    for (auto& p : many)
+        p->compile();
+    for (auto& p : many)
+    {
+        hot::LoadResult r = p->finish();
+        if (r)
+            ++ok;
+        else
+            ADD_FAILURE() << r.error;
+    }
+    return ok;
+}
+
+// A PCH build in the hook waits for the gate.
+struct Gate
+{
+    std::promise<void> release;
+    std::shared_future<void> gate = release.get_future().share();
+    std::atomic<int> started{0};
+    std::function<void()> hook()
+    {
+        return [this]
+        {
+            ++started;
+            gate.wait();
+        };
+    }
+};
+
+} // namespace
+
+TEST(PchBackend, UnionPchHeaderKeepsFirstSeenOrder)
+{
+    const std::string a = "// n\n#line 1 \"a\"\n#include <a>\n#include <b>\n";
+    const std::string b = "#line 1 \"b\"\n#include <b>\n#include <c>\n#include <a>\n";
+    EXPECT_EQ(hot::union_pch_header({a, b}), "#include <a>\n#include <b>\n#include <c>\n");
+    EXPECT_EQ(hot::union_pch_header({b, a}), "#include <b>\n#include <c>\n#include <a>\n");
+    EXPECT_EQ(hot::union_pch_header({}), "");
+}
+
+// One batch with two include sets starts one shared build. A later script with an include set
+// that is a subset of the union compiles with the PCH on its first miss.
+TEST(PchBackend, SharedPchServesFirstMiss)
+{
+    Fixture f;
+    write_other_header(f.inc);
+    auto backend = make_backend(f.scratch, "work_shared", f.cache, f.cxx, f.incs());
+    Gate gate;
+    backend->set_pch_build_hook(gate.hook());
+    std::thread releaser(
+        [&]
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            gate.release.set_value();
+        });
+    EXPECT_EQ(load_batch(*backend, {layout_script(1, "a.hot"), two_header_script(1, "b.hot")}), 2u);
+    releaser.join();
+    backend->wait_for_pch();
+    EXPECT_EQ(f.pch_builds(), 1u);
+    EXPECT_EQ(f.pch_compiles(), 0u);
+    EXPECT_EQ(pch_files(f.cache).size(), 1u);
+    EXPECT_EQ(load_and_run(*backend, layout_script(7, "c.hot")), 11.0f); // include set of a.hot only
+    EXPECT_EQ(f.pch_builds(), 1u);
+    EXPECT_EQ(f.pch_compiles(), 1u);
+}
+
+// A script with a line outside the union does not use the shared PCH. It builds an exact PCH as
+// before. The line goes to the extra file for the next start.
+TEST(PchBackend, SharedPchServesSubsetOnly)
+{
+    Fixture f;
+    write_other_header(f.inc);
+    {
+        auto backend = make_backend(f.scratch, "work_sub1", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(load_batch(*backend, {layout_script(1, "a.hot")}), 1u);
+        backend->wait_for_pch();
+    }
+    EXPECT_EQ(f.pch_builds(), 1u);
+    {
+        auto backend = make_backend(f.scratch, "work_sub2", f.cache, f.cxx, f.incs());
+        // A new object, but a subset of the union: the PCH serves it.
+        EXPECT_EQ(load_batch(*backend, {layout_script(2, "a.hot")}), 1u);
+        EXPECT_EQ(f.pch_compiles(), 1u);
+        // A line outside the union: no shared PCH, so an exact build starts.
+        EXPECT_EQ(load_and_run(*backend, two_header_script(3, "b.hot")), 0.0f + 4.0f + 10.0f + 3.0f);
+        backend->wait_for_pch();
+    }
+    EXPECT_EQ(f.pch_compiles(), 1u);
+    EXPECT_EQ(f.pch_builds(), 2u);
+    EXPECT_NE(read_file(fs::path(f.cache) / "pch" / "shared.extra").find("other.h"), std::string::npos);
+}
+
+// The order of the include lines of a unit does not matter for the shared PCH.
+TEST(PchBackend, SharedPchOrderIndependent)
+{
+    Fixture f;
+    write_other_header(f.inc);
+    auto backend = make_backend(f.scratch, "work_order", f.cache, f.cxx, f.incs());
+    EXPECT_EQ(load_batch(*backend, {two_header_script(1, "a.hot")}), 1u);
+    backend->wait_for_pch();
+    EXPECT_EQ(f.pch_builds(), 1u);
+    EXPECT_EQ(load_and_run(*backend, two_header_script(2, "b.hot", true)), 4.0f + 10.0f + 2.0f);
+    EXPECT_EQ(f.pch_builds(), 1u);
+    EXPECT_EQ(f.pch_compiles(), 1u);
+}
+
+// A failed shared build writes a "bad" marker for the shared key. The next start does not build
+// the shared PCH again, and a script still builds and uses its exact PCH. The wrapper fails each
+// PCH build whose header has "other.h": the shared PCH and the exact PCH of the second unit.
+TEST(PchBackend, BadSharedPchKeepsExactPch)
+{
+    Fixture f;
+    write_other_header(f.inc);
+    const std::string bad_cxx = make_pch_wrapper(f.scratch, "fail_shared.sh",
+        "for a in \"$@\"; do if [ -f \"$a\" ] && grep -q other.h \"$a\" 2>/dev/null; then echo broken; exit 1; fi; done",
+        f.cxx);
+    {
+        auto backend = make_backend(f.scratch, "work_bad1", f.cache, bad_cxx, f.incs());
+        EXPECT_EQ(load_batch(*backend, {layout_script(1, "a.hot"), two_header_script(1, "b.hot")}), 2u);
+        backend->wait_for_pch();
+    }
+    EXPECT_GE(bad_markers(f.cache), 1u);
+    const size_t builds = f.pch_builds();
+    {
+        auto backend = make_backend(f.scratch, "work_bad2", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(load_batch(*backend, {layout_script(2, "a.hot"), two_header_script(2, "b.hot")}), 2u);
+        backend->wait_for_pch();
+    }
+    EXPECT_GE(bad_markers(f.cache), 1u);
+    EXPECT_GE(pch_files(f.cache).size(), 1u); // the exact PCH of the first unit
+    EXPECT_LE(f.pch_builds(), builds + 1u);
+    {
+        auto backend = make_backend(f.scratch, "work_bad3", f.cache, f.cxx, f.incs());
+        EXPECT_EQ(load_and_run(*backend, layout_script(9, "a.hot")), 13.0f);
+    }
+    EXPECT_EQ(f.pch_compiles(), 1u);
+}
+
+// A second batch while the shared build runs starts no second build.
+TEST(PchBackend, PrewarmWhileBuildRuns)
+{
+    Fixture f;
+    write_other_header(f.inc);
+    auto backend = make_backend(f.scratch, "work_prewarm", f.cache, f.cxx, f.incs());
+    Gate gate;
+    backend->set_pch_build_hook(gate.hook());
+    EXPECT_EQ(load_batch(*backend, {layout_script(1, "a.hot")}), 1u);
+    EXPECT_EQ(load_batch(*backend, {two_header_script(1, "b.hot"), layout_script(2, "c.hot")}), 2u);
+    gate.release.set_value();
+    backend->wait_for_pch();
+    EXPECT_EQ(gate.started.load(), 1);
+    EXPECT_EQ(f.pch_builds(), 1u);
+}
+
+TEST(PchBackend, EnvironmentTurnsTheSharedPchOff)
+{
+    Fixture f;
+    write_other_header(f.inc);
+    EnvGuard off("HOT_PCH", "0");
+    auto backend = make_backend(f.scratch, "work_off", f.cache, f.cxx, f.incs());
+    EXPECT_EQ(load_batch(*backend, {layout_script(1, "a.hot"), two_header_script(1, "b.hot")}), 2u);
+    backend->wait_for_pch();
+    EXPECT_EQ(f.pch_builds(), 0u);
+    EXPECT_TRUE(pch_files(f.cache).empty());
+    EXPECT_FALSE(fs::exists(fs::path(f.cache) / "pch" / "shared.inc"));
+}
+
 #endif

@@ -37,6 +37,11 @@ struct CompileCommandEntry
     std::string output;
 };
 
+// The union of the "#include" lines of the prefixes (the include prefix of a translated unit, or
+// a PCH header). A line that is in many prefixes stays once, at its first place. The result is
+// the text of a shared PCH header.
+std::string union_pch_header(const std::vector<std::string>& prefixes);
+
 struct ClangFilesOptions
 {
     std::string compiler = "clang++"; // the compiler command
@@ -274,8 +279,18 @@ private:
     // The PCH plan for the translated text. No value: the compile does not use a PCH.
     // "mirror_files": the compile reads mirror files of the host file system.
     // "shadow_hash": the shadow hash of the object key (ObjectCache::KeyInputs::shadow_hash).
+    // "shadow_paths": the paths of that hash. The shared PCH needs them.
     std::optional<PchPlan> plan_pch(
-        const std::string& cpp, const std::string& script_dir, bool mirror_files, uint64_t shadow_hash);
+        const std::string& cpp, const std::string& script_dir, bool mirror_files, uint64_t shadow_hash,
+        const std::vector<std::string>& shadow_paths);
+    // The plan of a PCH header text: the key, the header file and no build yet.
+    PchPlan make_pch_plan(const std::string& text, const std::string& script_dir, uint64_t shadow_hash) const;
+    // True when the plan has a "bad" marker that is younger than one day. Else it removes an old
+    // marker. The caller holds "pch_mutex_".
+    bool pch_is_bad(const PchPlan& plan) const;
+    // The shared startup PCH. After the translate of a batch, builds one PCH with the union of the
+    // include lines of all units (see the .cpp file). "timing": print the build time.
+    void prewarm_pch(const std::vector<const BuildJob*>& jobs, bool timing);
     // Builds the PCH of the plan and stores it in pch_cache_. Gives false on a failure.
     bool build_pch(const PchPlan& plan, const std::string& script_dir, std::string& error);
     // Starts build_pch in pch_thread_. "unit" and "timing" are for the messages.

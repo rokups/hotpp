@@ -396,6 +396,56 @@ bool write_pch_header(const fs::path& path, const std::string& text)
 
 } // namespace
 
+std::string union_pch_header(const std::vector<std::string>& prefixes)
+{
+    std::set<std::string> seen;
+    std::string r;
+    for (const std::string& prefix : prefixes)
+    {
+        const std::string text = pch_header_text(prefix);
+        for (size_t pos = 0; pos < text.size();)
+        {
+            const size_t nl = text.find('\n', pos);
+            const size_t next = nl == std::string::npos ? text.size() : nl + 1;
+            const std::string line = text.substr(pos, next - pos);
+            if (seen.insert(line).second)
+                r += line;
+            pos = next;
+        }
+    }
+    return r;
+}
+
+namespace
+{
+
+// The lines of a PCH header text.
+std::set<std::string> pch_lines(const std::string& text)
+{
+    std::set<std::string> r;
+    for (size_t pos = 0; pos < text.size();)
+    {
+        const size_t nl = text.find('\n', pos);
+        const size_t next = nl == std::string::npos ? text.size() : nl + 1;
+        r.insert(text.substr(pos, next - pos));
+        pos = next;
+    }
+    return r;
+}
+
+// Writes a file in a way that a reader never sees half of it.
+void write_text_atomic(const fs::path& path, const std::string& text)
+{
+    const fs::path tmp = path.string() + ".tmp" + std::to_string(hot::detail::process_id());
+    std::error_code ec;
+    if (write_text(tmp.string(), text))
+        fs::rename(tmp, path, ec);
+    if (ec || !fs::exists(path, ec))
+        fs::remove(tmp, ec);
+}
+
+} // namespace
+
 void ClangFilesBackend::seed_slots(const std::string& text)
 {
     std::error_code ec; // the work dir can be new: the first load makes it
@@ -1186,11 +1236,47 @@ std::string ClangFilesBackend::pch_marker(const ObjectCache::Key& key, const cha
     return (fs::path(opt_.cache_dir) / "pch" / (key.hex() + ext)).string();
 }
 
+ClangFilesBackend::PchPlan ClangFilesBackend::make_pch_plan(
+    const std::string& text, const std::string& script_dir, uint64_t shadow_hash) const
+{
+    // The key has the header text, the normalized build flags, the compiler id and the shadow
+    // hash. The header stamps of the manifest do not see a new header earlier in the include
+    // path: with the same include guard, the old PCH would hide it. The shadow hash sees it.
+    ObjectCache::KeyInputs inputs;
+    inputs.cpp_text = "pch\n" + text;
+    inputs.args = ObjectCache::normalize_args(
+        pch_build_command(opt_, "@hdr@", "@pch@", "@dep@", script_dir), opt_.work_dir);
+    inputs.compiler_id = compiler_id_;
+    inputs.shadow_hash = shadow_hash;
+    PchPlan plan;
+    plan.key = ObjectCache::make_key(inputs);
+    plan.prefix = text;
+    plan.header = pch_marker(plan.key, ".h");
+    return plan;
+}
+
+bool ClangFilesBackend::pch_is_bad(const PchPlan& plan) const
+{
+    std::error_code ec;
+    const fs::path bad = pch_marker(plan.key, ".bad");
+    if (!fs::exists(bad, ec))
+        return false;
+    const auto t = fs::last_write_time(bad, ec);
+    if (!ec && fs::file_time_type::clock::now() - t < std::chrono::hours(24))
+        return true;
+    fs::remove(bad, ec);
+    return false;
+}
+
 // The first miss of an include set builds the PCH next to its compile, in a thread. The compile
 // does not use a PCH and does not wait for the build. The miss after that uses the PCH. A PCH
 // that did not work has a "bad" marker: no PCH for one day. The build writes the "seen" marker.
+// The shared PCH (prewarm_pch) comes second: when the exact PCH of the unit is missing and every
+// include line of the unit is in "<cache_dir>/pch/shared.inc", the shared PCH serves the unit.
+// A unit with a line outside the union adds the line to "shared.extra" for the next start.
 std::optional<ClangFilesBackend::PchPlan> ClangFilesBackend::plan_pch(
-    const std::string& cpp, const std::string& script_dir, bool mirror_files, uint64_t shadow_hash)
+    const std::string& cpp, const std::string& script_dir, bool mirror_files, uint64_t shadow_hash,
+    const std::vector<std::string>& shadow_paths)
 {
     // A mirror header of the host file system is in the work directory. Each job writes it
     // again, and it has no stamp. So a compile with mirror files uses no PCH.
@@ -1202,35 +1288,118 @@ std::optional<ClangFilesBackend::PchPlan> ClangFilesBackend::plan_pch(
     const std::string prefix = pch_header_text(include_prefix(cpp));
     if (prefix.empty())
         return std::nullopt;
-    // The key has the header text, the normalized build flags, the compiler id and the shadow
-    // hash. The header stamps of the manifest do not see a new header earlier in the include
-    // path: with the same include guard, the old PCH would hide it. The shadow hash sees it.
-    ObjectCache::KeyInputs inputs;
-    inputs.cpp_text = "pch\n" + prefix;
-    inputs.args = ObjectCache::normalize_args(
-        pch_build_command(opt_, "@hdr@", "@pch@", "@dep@", script_dir), opt_.work_dir);
-    inputs.compiler_id = compiler_id_;
-    inputs.shadow_hash = shadow_hash;
-    PchPlan plan;
-    plan.key = ObjectCache::make_key(inputs);
-    plan.prefix = prefix;
-    plan.header = pch_marker(plan.key, ".h");
-    std::error_code ec;
-    const fs::path bad = pch_marker(plan.key, ".bad");
-    if (fs::exists(bad, ec))
+    PchPlan plan = make_pch_plan(prefix, script_dir, shadow_hash);
+    const bool exact_bad = pch_is_bad(plan);
+    if (!exact_bad)
     {
-        const auto t = fs::last_write_time(bad, ec);
-        if (!ec && fs::file_time_type::clock::now() - t < std::chrono::hours(24))
-            return std::nullopt;
-        fs::remove(bad, ec);
+        if (const std::optional<ObjectCache::Hit> hit = pch_cache_->lookup(plan.key))
+        {
+            plan.pch = hit->object.string();
+            return plan;
+        }
     }
-    if (const std::optional<ObjectCache::Hit> hit = pch_cache_->lookup(plan.key))
+    std::string shared;
+    if (read_text((fs::path(opt_.cache_dir) / "pch" / "shared.inc").string(), shared) && !shared.empty())
     {
-        plan.pch = hit->object.string();
-        return plan;
+        const std::set<std::string> have = pch_lines(shared);
+        // The shadow paths of the unit must be in the shared set: a new header earlier in the
+        // include path adds a path. A header that is gone changes a stamp of the manifest.
+        std::string shadow_text;
+        read_text((fs::path(opt_.cache_dir) / "pch" / "shared.shadow").string(), shadow_text);
+        const std::set<std::string> shadow_have = pch_lines(shadow_text);
+        uint64_t shared_hash = 0;
+        for (const std::string& p : shadow_have)
+            shared_hash += hotc::text_hash(p.substr(0, p.size() - 1));
+        bool shadow_ok = true;
+        for (const std::string& p : shadow_paths)
+            shadow_ok = shadow_ok && shadow_have.count(p + "\n") != 0;
+        std::vector<std::string> outside;
+        for (const std::string& line : pch_lines(prefix))
+            if (!have.count(line))
+                outside.push_back(line);
+        if (outside.empty() && shadow_ok)
+        {
+            PchPlan sp = make_pch_plan(shared, script_dir, shared_hash);
+            if (!pch_is_bad(sp))
+            {
+                if (const std::optional<ObjectCache::Hit> hit = pch_cache_->lookup(sp.key))
+                {
+                    sp.pch = hit->object.string();
+                    return sp;
+                }
+            }
+        }
+        else if (!outside.empty())
+        {
+            std::string extra;
+            const fs::path extra_path = fs::path(opt_.cache_dir) / "pch" / "shared.extra";
+            read_text(extra_path.string(), extra);
+            std::string add;
+            const std::set<std::string> known = pch_lines(extra);
+            for (const std::string& line : outside)
+                if (!known.count(line))
+                    add += line;
+            if (!add.empty())
+                write_text_atomic(extra_path, extra + add);
+        }
     }
+    if (exact_bad)
+        return std::nullopt;
     plan.build = true;
     return plan;
+}
+
+// The shared startup PCH. The units of a batch have different include sets. The first edit
+// after the start can have an include set that no unit of the batch has. So one PCH has the
+// union of the include lines of the batch and of "shared.extra" (lines of earlier misses). The
+// text of the union is in "shared.inc" and the union of the shadow paths is in "shared.shadow":
+// plan_pch reads them. The shadow paths of each unit depend on its includes, so the shared key
+// has the hash of the union of the paths. No PCH when a build runs, when HOT_PCH is "0", or for
+// mirror files.
+void ClangFilesBackend::prewarm_pch(const std::vector<const BuildJob*>& jobs, bool timing)
+{
+    if (jobs.empty() || !pch_cache_ || !pch_enabled_by_env() || compiler_id_.find("clang") == std::string::npos)
+        return;
+    std::vector<std::string> prefixes;
+    std::set<std::string> shadow;
+    for (const BuildJob* job : jobs)
+    {
+        if (opt_.fs && !job->tr.virtual_files.empty())
+            return;
+        shadow.insert(job->tr.shadow_paths.begin(), job->tr.shadow_paths.end());
+        prefixes.push_back(include_prefix(job->tr.cpp));
+    }
+    uint64_t shadow_hash = 0;
+    std::string shadow_text;
+    for (const std::string& p : shadow)
+    {
+        shadow_hash += hotc::text_hash(p);
+        shadow_text += p + "\n";
+    }
+    const fs::path dir = fs::path(opt_.cache_dir) / "pch";
+    std::lock_guard<std::mutex> lock(pch_mutex_);
+    if (pch_thread_.joinable() && pch_done_)
+    {
+        pch_thread_.join();
+        pch_running_ = false;
+    }
+    if (pch_running_)
+        return; // the running build owns the shared key: do nothing
+    std::string extra;
+    read_text((dir / "shared.extra").string(), extra);
+    prefixes.push_back(extra);
+    const std::string text = union_pch_header(prefixes);
+    if (text.empty())
+        return;
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    write_text_atomic(dir / "shared.inc", text);
+    write_text_atomic(dir / "shared.shadow", shadow_text);
+    PchPlan plan = make_pch_plan(text, jobs.front()->script_dir, shadow_hash);
+    if (pch_is_bad(plan) || pch_cache_->lookup(plan.key))
+        return;
+    plan.build = true;
+    start_pch_build(plan, jobs.front()->script_dir, "shared", timing);
 }
 
 bool ClangFilesBackend::build_pch(const PchPlan& plan, const std::string& script_dir, std::string& error)
@@ -1791,7 +1960,8 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
                 std::optional<PchPlan> pch;
                 {
                     std::lock_guard<std::mutex> pch_lock(pch_mutex_);
-                    pch = plan_pch(tr.cpp, script_dir, opt_.fs && !tr.virtual_files.empty(), inputs.shadow_hash);
+                    pch = plan_pch(tr.cpp, script_dir, opt_.fs && !tr.virtual_files.empty(), inputs.shadow_hash,
+                        tr.shadow_paths);
                     // The PCH build runs next to the compile and after the end of this call: the
                     // compile, the link and the load do not wait for it. One PCH build at a time: a
                     // plan to build while the last build runs uses no PCH.
@@ -2113,6 +2283,7 @@ public:
         ok = false;
     }
     void set_so(std::string so) { so_ = std::move(so); }
+    const BuildJob& job() const { return job_; }
 
     // The first phase. The caller holds "mutex_" (or gave the work to threads that it waits for).
     // It runs on any thread: it writes only this object and the files of its unit.
@@ -2253,6 +2424,21 @@ std::vector<std::unique_ptr<PendingLoad>> ClangFilesBackend::begin_load_many(
     for (std::thread& t : threads)
         if (t.joinable())
             t.join();
+    // The shared startup PCH starts before the compile jobs. It never fails the load.
+    if (in.use_cache)
+    {
+        try
+        {
+            std::vector<const BuildJob*> jobs;
+            for (TwoPhaseLoad* load : loads)
+                if (load->ok)
+                    jobs.push_back(&load->job());
+            prewarm_pch(jobs, in.timing);
+        }
+        catch (...)
+        {
+        }
+    }
     // The batch starts after the threads end: a throw above leaves the loads with no batch.
     // The units write the compile database once, when the last of them ends. The caller holds
     // "mutex_" until the return, so no unit ends before then.
