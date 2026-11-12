@@ -48,6 +48,9 @@ struct ClangFilesOptions
     // cache between backends.
     std::shared_ptr<hotc::TranslatorSession> session;
     std::vector<std::string> extra_flags; // added to the compile command
+    // False: the compile has no "-g". The compile is faster. The default backend sets this from
+    // the environment variable HOT_DEBUG_INFO (see default_backend.cpp).
+    bool debug_info = true;
     std::string work_dir = "hot_work"; // the .cpp, .o and .so files go here
     // The directory of the generated .cpp files. Empty: the work dir, with a name from the .so.
     // Non-empty: the .cpp is "<generated_dir>/<unit>.cpp" (the unit of the source, else the stem

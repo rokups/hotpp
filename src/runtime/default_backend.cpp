@@ -16,6 +16,7 @@
 #include <cctype>
 #include <cerrno>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <stdexcept>
 #include <string>
@@ -182,6 +183,11 @@ std::unique_ptr<Backend> make_clang_files(const DefaultBackendOptions& options)
     o.compiler = paths.compiler;
     o.include_dirs = paths.include_dirs;
     o.extra_flags = paths.cxxflags;
+    // A script compile has no debug info by default. It is faster. HOT_DEBUG_INFO=1 turns it on.
+    {
+        const char* env = std::getenv("HOT_DEBUG_INFO");
+        o.debug_info = env && std::strcmp(env, "1") == 0;
+    }
     o.include_dirs.insert(o.include_dirs.end(), options.include_dirs.begin(), options.include_dirs.end());
     o.extra_flags.insert(o.extra_flags.end(), options.extra_flags.begin(), options.extra_flags.end());
     o.resource_dir = paths.resource_dir;

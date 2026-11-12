@@ -533,7 +533,7 @@ std::vector<std::string> compile_object_command(const ClangFilesOptions& opt, co
         // The shared library needs position independent code. A Windows DLL does not.
         "-fPIC",
 #endif
-        "-c", "-g", "-Werror=return-type",
+        "-c", "-Werror=return-type",
         // A signed overflow wraps in a script. The compiler must not use it as undefined behavior.
         "-fwrapv",
         // A module symbol must not bind to a host symbol with the same mangled name. The entry
@@ -551,6 +551,8 @@ std::vector<std::string> compile_object_command(const ClangFilesOptions& opt, co
     if (!darwin)
         cmd.push_back("-fno-plt");
 #endif
+    if (opt.debug_info)
+        cmd.insert(std::find(cmd.begin(), cmd.end(), "-c") + 1, "-g");
     if (!opt.target_triple.empty())
         cmd.push_back("--target=" + opt.target_triple);
     if (!opt.sysroot.empty())

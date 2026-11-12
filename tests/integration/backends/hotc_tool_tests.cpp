@@ -1455,6 +1455,19 @@ TEST(HotcTool, CompileCommandUsesTheBackendFlags)
     EXPECT_EQ(hot::compile_object_command(o, "/x.cpp", "/x.o", "/x.d"), expected);
 }
 
+// The option debug_info=false drops "-g" from the compile command. All other flags stay.
+TEST(HotcTool, CompileObjectCommandWithoutDebugInfo)
+{
+    hot::ClangFilesOptions o;
+    o.compiler = "cc";
+    const std::vector<std::string> with = hot::compile_object_command(o, "/x.cpp", "/x.o", "/x.d");
+    o.debug_info = false;
+    const std::vector<std::string> without = hot::compile_object_command(o, "/x.cpp", "/x.o", "/x.d");
+    EXPECT_NE(std::find(with.begin(), with.end(), "-g"), with.end());
+    EXPECT_EQ(std::find(without.begin(), without.end(), "-g"), without.end());
+    EXPECT_EQ(without.size() + 1, with.size());
+}
+
 // The compile makes an object file and a depfile. It does not link. An empty depfile path
 // gives no depfile flags (the language server).
 TEST(HotcTool, CompileObjectCommandDoesNotLink)
