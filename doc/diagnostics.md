@@ -36,7 +36,7 @@ Typos, wrong types and a missing `return` have plain messages.
 A value that has no formatter in a `${...}` string, for example a native `enum class`, gives one error at the script line:
 
 ```
-73_native_enum_in_interpolation.hot:6:16: error: 'Weather' cannot be printed in a '${...}' string: it has no formatter. For an enum class, cast the value to its integer type, for example 'static_cast<int>(value)'
+73_native_enum_in_interpolation.hot:6:16: error: 'Weather' cannot be printed in a '${...}' string: it has no formatter. For an enum class, cast the value to its integer type, for example '(int)value'
     6 |         return "weather: ${current_weather()}";
 ```
 

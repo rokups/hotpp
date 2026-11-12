@@ -23,18 +23,17 @@ class Hud : Actor {
 }
 ```
 
-The string must use double quotes. A backtick string is an error. Write `\${` to get a literal `${`. A `{` or `}` in the text of an interpolated string prints as one brace: the compiler doubles it for you. A string with no `${` stays a plain literal. A script enum prints as its underlying integer. A native `enum class` has no formatter. It is an error at the `${` string: cast the value to its integer type, for example `${static_cast<int>(value)}`.
+The string must use double quotes. A backtick string is an error. Write `\${` to get a literal `${`. A `{` or `}` in the text of an interpolated string prints as one brace: the compiler doubles it for you. A string with no `${` stays a plain literal. A script enum prints as its underlying integer. A native `enum class` has no formatter. It is an error at the `${` string: cast the value to its integer type, for example `${(int)value}`.
 
 ## Casts
 
-A C style cast `(T)e` works for a builtin type (`(int)f`) and for a name with `*` or `&` (`(Foo*)p`). For any other type, use `static_cast<T>(e)`.
+There are two forms of cast: `(T)e` and `T(e)`. A C style cast `(T)e` works for a builtin type (`(int)f`) and for a name with `*` or `&` (`(Foo*)p`). A plain type name uses `T(e)`. A named cast (`static_cast`, `dynamic_cast`, `const_cast`, `reinterpret_cast`) is an error in a `.hot` script.
 
 ```hot
 class Caster {
     void Run(float f) {
-        int i = static_cast<int>(f * 100.0);
-        float g = static_cast<float>(i);
-        var h = (float)i;                // C style cast
+        int i = (int)(f * 100.0);
+        float g = (float)i;              // C style cast
         var k = int(f);                  // function style
     }
 }

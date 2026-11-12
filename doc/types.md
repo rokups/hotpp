@@ -45,7 +45,7 @@ Integer operations have no undefined behavior in a script, except where this sec
 - `<<` and `>>` (and `<<=` and `>>=`) throw `ArithmeticError("shift count out of range")` when the count is negative or not less than the bit width of the promoted left operand. A `byte` or `short` operand promotes to `int`, so its width is 32.
 - A left shift keeps the low bits. A shift of a negative value, or into the sign bit, wraps: `1 << 31` is `INT_MIN`.
 - A right shift of a negative value is an arithmetic shift: `-8 >> 1` is `-4`.
-- A cast from `float` or `double` to an integer type cuts the fraction. A value out of range gives the nearest limit of the type. `NaN` gives `0`. This is true for `(int)f`, `int(f)` and `static_cast<int>(f)`.
+- A cast from `float` or `double` to an integer type cuts the fraction. A value out of range gives the nearest limit of the type. `NaN` gives `0`. This is true for `(int)f` and `int(f)`.
 
 The shift check and the divide check are always on, also with `HOT_RUNTIME_CHECKS=0`. The translator skips a check when it can see that the check is not needed: a shift by a literal count in range, or a float operand. A class with its own `<<` or `>>` operator (a stream, for example) keeps the operator.
 
