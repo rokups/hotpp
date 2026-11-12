@@ -519,6 +519,36 @@ struct RefInfo
     bool call = false;
 };
 
+// A ".hot" script has no named casts. Calls "report(pos, message)" when the call is a named cast.
+template <class Report>
+void named_cast_error(const CallExpr& c, Report&& report)
+{
+    const auto* nm = c.callee ? std::get_if<NameExpr>(&c.callee->v) : nullptr;
+    if (!nm || nm->parts.size() != 1)
+        return;
+    const std::string& n = nm->parts[0];
+    if (n == "dynamic_cast")
+        report(nm->pos, "'dynamic_cast' is not supported: use 'as' or 'is'");
+    else if (n == "static_cast" || n == "const_cast" || n == "reinterpret_cast")
+        report(nm->pos, "'" + n + "' is not supported: use a C style cast '(T)e' or 'T(e)'");
+}
+
+// Walks a whole expression of a ".hot" script for named casts. The
+// expression is a default argument or an other expression that no body walk reaches.
+template <class Report>
+void check_default_casts(const ExprP& root, Report&& report)
+{
+    if (!root)
+        return;
+    auto fe = [&](const Expr& e)
+    {
+        if (const auto* c = std::get_if<CallExpr>(&e.v))
+            named_cast_error(*c, report);
+    };
+    auto fs = [](const Stmt&) {};
+    make_walker(fe, fs).expr(*root);
+}
+
 struct Checker
 {
     const ClassDef& cd;
@@ -1759,14 +1789,7 @@ struct Checker
     // with a named cast does not come here.
     void check_named_cast(const CallExpr& c)
     {
-        const auto* nm = std::get_if<NameExpr>(&c.callee->v);
-        if (!nm || nm->parts.size() != 1)
-            return;
-        const std::string& n = nm->parts[0];
-        if (n == "dynamic_cast")
-            error(nm->pos, "'dynamic_cast' is not supported: use 'as' or 'is'");
-        else if (n == "static_cast" || n == "const_cast" || n == "reinterpret_cast")
-            error(nm->pos, "'" + n + "' is not supported: use a C style cast '(T)e' or 'T(e)'");
+        named_cast_error(c, [&](uint32_t pos, const std::string& m) { error(pos, m); });
     }
 
     void on_expr(const Expr& e)
@@ -2624,6 +2647,54 @@ void check_operators(const ClassDef& cd, const LineMap& map, Diagnostics& diag)
         if (p.set_body)
             w.block(*p.set_body);
     }
+}
+
+void check_named_casts_outside_bodies(const ast::Script& sc, const LineMap& map, Diagnostics& diag)
+{
+    if (sc.is_cpp)
+        return;
+    std::set<std::pair<uint32_t, std::string>> seen;
+    auto report = [&](uint32_t pos, const std::string& msg)
+    {
+        if (seen.insert({pos, msg}).second)
+            diag.add(pos, map, msg);
+    };
+    auto params = [&](const std::vector<Param>& ps)
+    {
+        for (const Param& p : ps)
+            if (p.def)
+                check_default_casts(p.def->expr, report);
+    };
+    auto methods = [&](const std::vector<Method>& ms)
+    {
+        for (const Method& m : ms)
+            params(m.params);
+    };
+    for (const ClassDef& cd : sc.classes)
+    {
+        methods(cd.methods);
+        methods(cd.statics);
+        for (const Ctor& c : cd.ctors)
+        {
+            params(c.params);
+            for (const ExprP& a : c.base_args)
+                check_default_casts(a, report);
+        }
+        for (const Field& f : cd.consts)
+            check_default_casts(f.init, report);
+    }
+    for (const InterfaceDef& i : sc.interfaces)
+        methods(i.methods);
+    methods(sc.fns);
+    methods(sc.var_hooks);
+    for (const Field& f : sc.consts)
+        check_default_casts(f.init, report);
+    for (const EnumDef& en : sc.enums)
+        for (const Enumerator& it : en.items)
+            check_default_casts(it.value, report);
+    for (const StaticAssert& a : sc.static_asserts)
+        for (const ExprP& e : a.args)
+            check_default_casts(e, report);
 }
 
 void check_operator_vars(const std::vector<ast::Field>& vars, const LineMap& map, Diagnostics& diag)

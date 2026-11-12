@@ -80,6 +80,9 @@ void check_ctors(const ast::ClassDef& cd, const LineMap& map, Diagnostics& diag)
 void check_operators(const ast::ClassDef& cd, const LineMap& map, Diagnostics& diag);
 // Reports a call by the identifier of an operator ("a.op_add(b)") in the initializers of the module variables.
 void check_operator_vars(const std::vector<ast::Field>& vars, const LineMap& map, Diagnostics& diag);
+// Reports the named casts of a ".hot" script in the places that no body walk reaches: the default
+// arguments, the arguments of "base(...)", the constants, the enum values and the static_assert items.
+void check_named_casts_outside_bodies(const ast::Script& sc, const LineMap& map, Diagnostics& diag);
 // A subclass calls a constructor of its script parent with "base(...)", or implicitly. A private
 // constructor of the parent is an error. A protected one is allowed.
 void check_base_ctor_access(

@@ -5480,7 +5480,10 @@ void translate_impl(
     phases.next(&res.timing.check_ns);
     hotc::check_value_uses(sc.classes, types, map, g_diag);
     if (!sc.is_cpp)
+    {
         hotc::check_operator_vars(sc.vars, map, g_diag);
+        hotc::check_named_casts_outside_bodies(sc, map, g_diag);
+    }
     if (!g_diag.items.empty())
         throw TranslateAbort{};
 

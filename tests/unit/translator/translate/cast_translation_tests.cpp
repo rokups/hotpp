@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <string>
 
 using namespace translator_test;
@@ -38,6 +39,17 @@ void expect_cast_error(const std::string& script, const std::string& pos, const 
     EXPECT_FALSE(r.ok) << script;
     const std::string text = "t.hot:" + pos + ": error: '" + name + "' " + hint;
     EXPECT_NE(r.diagnostics.find(text), std::string::npos) << "expected: " << text << "\n" << r.diagnostics;
+}
+
+// The same, with the position of the first "static_cast" in the script. The "using" line adds one line.
+void expect_static_cast_error(const std::string& script)
+{
+    const size_t at = script.find("static_cast");
+    ASSERT_NE(at, std::string::npos);
+    const size_t line_start = script.rfind('\n', at) == std::string::npos ? 0 : script.rfind('\n', at) + 1;
+    const size_t line = 2 + std::count(script.begin(), script.begin() + static_cast<std::ptrdiff_t>(at), '\n');
+    expect_cast_error(script, std::to_string(line) + ":" + std::to_string(at - line_start + 1), "static_cast",
+        kStaticHint);
 }
 
 void expect_ok(const std::string& script)
@@ -86,6 +98,71 @@ TEST(CastTranslation, ANamedCastInAnInterpolatedStringIsAnError)
 {
     expect_cast_error("class Foo : Widget {\n    float f = 1.5;\n    void F() { std.string s = \"v ${static_cast<int>(this.f)}\"; }\n}\n",
         "4:36", "static_cast", kStaticHint);
+}
+
+TEST(CastTranslation, ANamedCastInAMethodDefaultArgumentIsAnError)
+{
+    expect_static_cast_error("class Foo : Widget {\n    void F(int x = static_cast<int>(2.5)) { }\n}\n");
+}
+
+TEST(CastTranslation, ANamedCastInAStaticMethodDefaultArgumentIsAnError)
+{
+    expect_static_cast_error("class Foo : Widget {\n    static void F(int x = static_cast<int>(2.5)) { }\n}\n");
+}
+
+TEST(CastTranslation, ANamedCastInAConstructorDefaultArgumentIsAnError)
+{
+    expect_static_cast_error("class Foo : Widget {\n    Foo(int x = static_cast<int>(2.5)) { }\n}\n");
+}
+
+TEST(CastTranslation, ANamedCastInAModuleFunctionDefaultArgumentIsAnError)
+{
+    expect_static_cast_error("void F(int x = static_cast<int>(2.5)) { }\n");
+}
+
+TEST(CastTranslation, ANamedCastInABaseCallIsAnError)
+{
+    expect_static_cast_error("class A { A(int a) { } }\nclass B : A {\n    B(float f) : base(static_cast<int>(f)) { }\n}\n");
+}
+
+TEST(CastTranslation, ANamedCastInAModuleVariableIsAnError)
+{
+    expect_static_cast_error("int g = static_cast<int>(2.5);\n");
+}
+
+TEST(CastTranslation, ANamedCastInAModuleConstIsAnError)
+{
+    expect_static_cast_error("const int K = static_cast<int>(2.5);\n");
+}
+
+TEST(CastTranslation, ANamedCastInAClassConstIsAnError)
+{
+    expect_static_cast_error("class Foo : Widget {\n    static const int K = static_cast<int>(2.5);\n}\n");
+}
+
+TEST(CastTranslation, ANamedCastInAStaticFieldIsAnError)
+{
+    expect_static_cast_error("class Foo : Widget {\n    static int s = static_cast<int>(2.5);\n}\n");
+}
+
+TEST(CastTranslation, ANamedCastInAPropertyInitializerIsAnError)
+{
+    expect_static_cast_error("class Foo : Widget {\n    int P { get; set; } = static_cast<int>(2.5);\n}\n");
+}
+
+TEST(CastTranslation, ANamedCastInAPropertyAccessorIsAnError)
+{
+    expect_static_cast_error("class Foo : Widget {\n    int P { get { return static_cast<int>(2.5); } }\n}\n");
+}
+
+TEST(CastTranslation, ANamedCastInAnEnumValueIsAnError)
+{
+    expect_static_cast_error("enum E { A = static_cast<int>(2.5) }\n");
+}
+
+TEST(CastTranslation, ANamedCastInAStaticAssertIsAnError)
+{
+    expect_static_cast_error("static_assert(static_cast<int>(2.5) == 2, \"x\");\n");
 }
 
 TEST(CastTranslation, CStyleAndFunctionalCastsStayValid)
