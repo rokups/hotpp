@@ -15,7 +15,7 @@ class Ov : Actor {
     }
 
     int Score(int a, std.string b) {
-        return a + static_cast<int>(b.size());
+        return a + (int)b.size();
     }
 
     virtual int Kind(int x) {

@@ -21,6 +21,6 @@ class Bag : Actor {
 
     override void Tick(float dt) {
         this.items.push_back(Entry(9));
-        this.count = static_cast<int>(this.items.size());
+        this.count = (int)this.items.size();
     }
 }

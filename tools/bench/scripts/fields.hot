@@ -16,6 +16,6 @@ class BenchFields : BenchBase {
             b = b ^ a;
             f = f + 0.25;
         }
-        return a + b + static_cast<long>(f);
+        return a + b + (long)f;
     }
 }

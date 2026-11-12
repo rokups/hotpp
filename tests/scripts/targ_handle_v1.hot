@@ -32,8 +32,8 @@ class Platoon : Actor {
         this.recruits.push_back(r);
         this.groups[1].push_back(r);
         this.recruits[0].Bump();
-        this.count = static_cast<int>(this.recruits.size());
-        this.grouped = static_cast<int>(this.groups[1].size());
+        this.count = (int)this.recruits.size();
+        this.grouped = (int)this.groups[1].size();
         this.sum = this.Total(this.recruits);
     }
 }

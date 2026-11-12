@@ -13,6 +13,6 @@ class BenchArithFloat : BenchBase {
             x = x * 0.999 + 0.5;
             d = d + x * 0.25d;
         }
-        return static_cast<long>(d);
+        return (long)d;
     }
 }

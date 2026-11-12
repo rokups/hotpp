@@ -34,7 +34,7 @@ class Platoon : Actor {
         this.squad.push_back(s);
         this.nums.push_back(7);
         if (this.lead == null) { this.lead = s; }
-        this.count = static_cast<int>(this.squad.size());
+        this.count = (int)this.squad.size();
         this.sum = this.squad[0].hp + this.nums[0];
         if (this.lead != null) { this.has_lead = 1; }
     }

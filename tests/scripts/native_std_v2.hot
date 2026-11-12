@@ -27,6 +27,6 @@ class Tracker : Actor {
         this.sum = Util.Sum(this.Position) * 2.0;
         this.described = Util.Describe(*this);
         this.Name = FormatVec(this.Position);
-        this.history.push_back(static_cast<int>(this.history.size()) * 10);
+        this.history.push_back((int)this.history.size() * 10);
     }
 }
