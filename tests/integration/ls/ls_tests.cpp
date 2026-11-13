@@ -2949,6 +2949,25 @@ int completion_translations(LsClient& client)
     return client.request("hot/indexStats", json::object())["result"].value("completions", -1);
 }
 
+// The stats count each translation and the time of all of them.
+TEST(LanguageServer, IndexStatsCountTheTranslations)
+{
+    REQUIRE_CLANGD();
+    Session s(true, kCompleteScript);
+    auto stats = [&] { return s.client->request("hot/indexStats", json::object())["result"]; };
+    const json before = stats();
+    ASSERT_TRUE(before.contains("translations")) << before.dump();
+    ASSERT_TRUE(before.contains("translateMs")) << before.dump();
+    std::string text = kCompleteScript;
+    text.replace(text.find('@'), 1, "cou");
+    s.client->change(s.uri, 2, text);
+    const json r = s.client->request("textDocument/completion", doc_pos(s.uri, 19, 11));
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    const json after = stats();
+    EXPECT_GT(after.value("translations", 0), before.value("translations", 0)) << after.dump();
+    EXPECT_GE(after.value("translateMs", -1.0), before.value("translateMs", 0.0)) << after.dump();
+}
+
 TEST(LanguageServer, CompletionReusesTheAnswerWhileThePrefixGrows)
 {
     REQUIRE_CLANGD();

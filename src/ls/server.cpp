@@ -797,6 +797,17 @@ private:
     std::vector<TokenWorker> token_workers_;
     std::atomic<int> native_token_requests_{0}; // the requests of tokens to clangd (hot/indexStats)
     int completion_translations_ = 0; // the translations of a completion text (hot/indexStats)
+    // The translations of the server (all analyze calls) and their total time (hot/indexStats).
+    mutable std::atomic<int> translations_{0};
+    mutable std::atomic<long long> translate_us_{0};
+    template <class F> auto timed_translate(F&& f) const
+    {
+        const auto t0 = std::chrono::steady_clock::now();
+        auto r = f();
+        translate_us_ += std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count();
+        ++translations_;
+        return r;
+    }
     int closed_analyses_ = 0; // the analyze calls of for_other_scripts (hot/indexStats)
     hotc::TranslatorSession session_;
 };
@@ -1261,7 +1272,7 @@ void Server::update_cpp(Doc& d)
         }
         return;
     }
-    hotc::AnalyzeResult facts = hotc::analyze_cpp(d.text.s, d.path, translate_options(d), session_);
+    hotc::AnalyzeResult facts = timed_translate([&] { return hotc::analyze_cpp(d.text.s, d.path, translate_options(d), session_); });
     facts.diagnostics.clear(); // facts.errors has the errors of this file
     std::lock_guard<std::mutex> lock(docs_mutex_);
     d.facts = std::move(facts);
@@ -1273,7 +1284,8 @@ void Server::update(Doc& d)
 {
     if (d.cpp)
         return update_cpp(d);
-    hotc::AnalyzeResult facts = hotc::analyze(d.text.s, translate_options(d), session_);
+    hotc::AnalyzeResult facts =
+        timed_translate([&] { return hotc::analyze(d.text.s, translate_options(d), session_); });
     std::string cpp = facts.cpp;
     {
         std::lock_guard<std::mutex> lock(docs_mutex_);
@@ -1926,7 +1938,7 @@ json Server::on_completion(const Doc& d, const json& p)
                 // is null at this place must not stop the translation.
                 hotc::TranslateOptions to = translate_options(d);
                 to.null_warnings = true;
-                hotc::AnalyzeResult facts = hotc::analyze(patched, to, session_);
+                hotc::AnalyzeResult facts = timed_translate([&] { return hotc::analyze(patched, to, session_); });
                 std::optional<hotc::SourcePos> g = facts.cpp.empty()
                     ? std::nullopt
                     : facts.source_map.map_to_generated(hole.line + 1, hole.col + 1);
@@ -2870,7 +2882,7 @@ void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const st
         bool analyzed = false;
         auto analyze_tmp = [&]
         {
-            tmp.facts = hotc::analyze(tmp.text.s, translate_options(tmp), session_);
+            tmp.facts = timed_translate([&] { return hotc::analyze(tmp.text.s, translate_options(tmp), session_); });
             analyzed = true;
             ++closed_analyses_;
         };
@@ -4038,7 +4050,7 @@ json Server::script_member_location(const std::string& uri, const std::string& s
         {
             Doc tmp;
             tmp.path = path;
-            cached = {*t, hotc::analyze(*t, translate_options(tmp), session_)};
+            cached = {*t, timed_translate([&] { return hotc::analyze(*t, translate_options(tmp), session_); })};
         }
         facts = &cached.second;
         text = Text(*t);
@@ -4357,7 +4369,8 @@ void Server::handle(const json& msg)
         return reply(id,
             {{"analyzed", closed_analyses_}, {"loaded", index_.loads()}, {"stored", index_.stores()},
                 {"dir", index_.dir()}, {"completions", completion_translations_},
-                {"tokenRequests", native_token_requests_.load()}});
+                {"tokenRequests", native_token_requests_.load()}, {"translations", translations_.load()},
+                {"translateMs", static_cast<double>(translate_us_.load()) / 1000.0}});
     if (method == "hot/toScript")
         return reply(id, on_to_script(p));
 
