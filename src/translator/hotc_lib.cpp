@@ -10953,6 +10953,8 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
         auto add_static = [&](const char* kind, const std::string& name, uint32_t from)
         {
             const uint32_t b = find_word(text, from, name);
+            if (text.compare(b, name.size(), name) != 0)
+                return; // find_word gives "from" on a miss: no place, no entry
             ac.statics.push_back({kind, name, src_pos(map, b), src_pos(map, b + static_cast<uint32_t>(name.size())), ""});
         };
         const std::string prefix = c.name + "__";

@@ -2520,6 +2520,22 @@ std::optional<Server::StaticHit> Server::static_member_at(const Doc& d, Pos cur)
             out.push_back(c);
         return out;
     };
+    // The code of the whole script: a comment, a string and a character literal are spaces. The
+    // line "l" starts at "off[l]".
+    std::string code;
+    std::vector<size_t> off;
+    {
+        bool block = false;
+        for (int i = 0; i < static_cast<int>(d.text.starts.size()); ++i)
+        {
+            off.push_back(code.size());
+            code += blank_non_code(d.text.line(i), block);
+            code += '\n';
+        }
+    }
+    const size_t co = off[static_cast<size_t>(cur.line)] + static_cast<size_t>(wb);
+    if (co >= code.size() || code[co] == ' ')
+        return std::nullopt; // a word in a comment or in a string
     const hotc::AnalyzedClass* start = nullptr;
     int b = wb;
     while (b > 0 && (l[static_cast<size_t>(b) - 1] == ' ' || l[static_cast<size_t>(b) - 1] == '\t'))
@@ -2536,10 +2552,85 @@ std::optional<Server::StaticHit> Server::static_member_at(const Doc& d, Pos cur)
     }
     else
     {
-        // A bare name: the class that holds the line.
+        // A bare name: the class that holds the word. The range of a class ends at its closing brace.
+        const hotc::AnalyzedClass* near_class = nullptr;
         for (const hotc::AnalyzedClass& c : d.facts.classes)
             if (c.begin.line - 1 <= cur.line)
-                start = &c;
+                near_class = &c;
+        if (!near_class)
+            return std::nullopt;
+        const size_t cb = off[static_cast<size_t>(near_class->begin.line - 1)] + static_cast<size_t>(near_class->begin.col - 1);
+        const size_t open = code.find('{', cb);
+        if (open == std::string::npos || open > co)
+            return std::nullopt;
+        // Scan from the class brace to the word. "boundary" is the start of the member at depth 1.
+        int depth = 1, parens = 0;
+        size_t boundary = open + 1;
+        for (size_t i = open + 1; i < co; ++i)
+        {
+            const char ch = code[i];
+            if (ch == '{')
+            {
+                ++depth;
+            }
+            else if (ch == '}')
+            {
+                if (--depth == 0)
+                    return std::nullopt; // after the class
+                if (depth == 1)
+                    boundary = i + 1;
+            }
+            else if (depth == 1 && ch == '(')
+                ++parens;
+            else if (depth == 1 && ch == ')')
+                --parens;
+            else if (depth == 1 && ch == ';')
+                boundary = i + 1;
+        }
+        start = near_class;
+        // The scope of a function: a parameter, a lambda parameter or a local of the same name
+        // hides the static. The scope is the member from its start to the end of its body.
+        if (depth >= 2 || parens > 0)
+        {
+            size_t end = co;
+            int dd = depth;
+            for (; end < code.size(); ++end)
+            {
+                if (code[end] == '{')
+                    ++dd;
+                else if (code[end] == '}' && --dd <= 1)
+                    break;
+                else if (code[end] == ';' && dd == 1)
+                    break;
+            }
+            static const std::set<std::string> not_a_type = {"return", "case", "new", "delete", "await", "throw",
+                "else", "do", "in", "is", "as", "typeof", "default"};
+            for (size_t at = code.find(name, boundary); at != std::string::npos && at < end; at = code.find(name, at + 1))
+            {
+                if ((at > 0 && is_id_char(code[at - 1])) || is_id_char(code[at + name.size()]))
+                    continue;
+                size_t q = at;
+                while (q > boundary && (code[q - 1] == ' ' || code[q - 1] == '\t' || code[q - 1] == '\n'))
+                    --q;
+                if (q <= boundary)
+                    continue;
+                const char pc = code[q - 1];
+                bool decl = false;
+                if (is_id_char(pc))
+                {
+                    size_t w = q;
+                    while (w > boundary && is_id_char(code[w - 1]))
+                        --w;
+                    decl = !not_a_type.count(code.substr(w, q - w));
+                }
+                else if (pc == '>')
+                    decl = q < 2 || code[q - 2] != '=';
+                else if (pc == '&' || pc == '*')
+                    decl = q >= 2 && (is_id_char(code[q - 2]) || code[q - 2] == '>');
+                if (decl)
+                    return std::nullopt;
+            }
+        }
     }
     for (const hotc::AnalyzedClass* c : chain(start))
         for (const hotc::AnalyzedMember& m : c->statics)
@@ -3773,6 +3864,28 @@ std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
     // generated name ("Class__Name") has no map segment for the word.
     if (const auto hit = static_member_at(d, cur))
     {
+        // A script of the workspace that imports this script and uses the word can use the
+        // member too. This rename does not change that script: refuse.
+        const std::string base = fs::path(d.path).filename().string();
+        for (const std::string& path : workspace_scripts())
+        {
+            if (path == d.path)
+                continue;
+            std::string text;
+            for (const auto& [uri, doc] : docs_)
+                if (doc->path == path)
+                    text = doc->text.s;
+            if (text.empty())
+                text = read_file(path).value_or(std::string());
+            bool uses = false;
+            for (size_t at = text.find(old_name); at != std::string::npos && !uses; at = text.find(old_name, at + 1))
+                uses = (at == 0 || !is_id_char(text[at - 1]))
+                    && (at + old_name.size() >= text.size() || !is_id_char(text[at + old_name.size()]));
+            if (uses && text.find("\"" + base + "\"") != std::string::npos
+                && text.find("using") != std::string::npos)
+                return std::string("cannot rename " + old_name + ": the script " + fs::path(path).filename().string()
+                    + " imports this script and uses the same word");
+        }
         json edits = json::array();
         for (const Pos& s : static_places(d, *hit))
             edits.push_back({{"range", script_range(d, s, {s.line, s.col + static_cast<int>(old_name.size())})},

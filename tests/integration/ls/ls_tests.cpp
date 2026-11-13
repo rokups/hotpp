@@ -5871,3 +5871,134 @@ TEST(LanguageServerRename, FieldFromAUse)
 {
     expect_decl_rename("this.hp =", "hp", {5, 9});
 }
+
+// ------------------------------------------------------------------ scope rules of static members
+namespace
+{
+
+const char* const kShadowScript =
+    "using \"Actor.h\";\n"
+    "class A : Actor {\n"
+    "    static int count = 0;\n"
+    "    void f(int count) { count = 1; }\n"
+    "    void g() {\n"
+    "        // count in a comment\n"
+    "        string s = \"count\";\n"
+    "        count = 2;\n"
+    "    }\n"
+    "}\n"
+    "void h() { count = 3; }\n";
+
+json shadow_pos(const std::string& context, const std::string& word)
+{
+    const std::string text = kShadowScript;
+    const size_t at = text.find(context);
+    EXPECT_NE(at, std::string::npos) << context;
+    const size_t w = at + context.rfind(word);
+    return pos(static_cast<int>(std::count(text.begin(), text.begin() + static_cast<long>(w), '\n')),
+        static_cast<int>(w - (text.rfind('\n', w - 1) + 1)));
+}
+
+json shadow_request(Session& s, const char* method, const std::string& context, const std::string& word,
+    const char* new_name = nullptr)
+{
+    const json p = shadow_pos(context, word);
+    json params = doc_pos(s.uri, p["line"], p["character"]);
+    if (new_name)
+        params["newName"] = new_name;
+    return s.client->request(method, params);
+}
+
+std::vector<int> edit_lines(const json& r, const std::string& uri)
+{
+    std::vector<int> out;
+    if (r.contains("result") && r["result"].is_object() && r["result"].contains("changes"))
+        for (const json& e : r["result"]["changes"].value(uri, json::array()))
+            out.push_back(e["range"]["start"]["line"]);
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+} // namespace
+
+TEST(LanguageServerScope, ParameterShadowsAStaticForHoverAndDefinition)
+{
+    REQUIRE_CLANGD();
+    Session s(true, kShadowScript);
+    const json h = shadow_request(s, "textDocument/hover", "{ count = 1", "count");
+    EXPECT_EQ(h.dump().find("static"), std::string::npos) << h.dump();
+    const json d = shadow_request(s, "textDocument/definition", "{ count = 1", "count");
+    for (const json& loc : d.value("result", json::array()))
+        EXPECT_NE(loc["range"]["start"]["line"], 2) << d.dump();
+}
+
+TEST(LanguageServerScope, ParameterShadowsAStaticForRename)
+{
+    REQUIRE_CLANGD();
+    Session s(true, kShadowScript);
+    const json r = shadow_request(s, "textDocument/rename", "{ count = 1", "count", "Renamed");
+    for (int l : edit_lines(r, s.uri))
+        EXPECT_EQ(l, 3) << r.dump(); // only the parameter lines, never the static
+    const json r2 = shadow_request(s, "textDocument/rename", "(int count)", "count", "Renamed");
+    for (int l : edit_lines(r2, s.uri))
+        EXPECT_EQ(l, 3) << r2.dump();
+}
+
+TEST(LanguageServerScope, RenameOfAStaticSkipsTheShadowedFunction)
+{
+    REQUIRE_CLANGD();
+    Session s(true, kShadowScript);
+    const json r = shadow_request(s, "textDocument/rename", "        count = 2", "count", "Renamed");
+    EXPECT_EQ(edit_lines(r, s.uri), (std::vector<int>{2, 7})) << r.dump();
+}
+
+TEST(LanguageServerScope, WordAfterTheClassIsNotTheStatic)
+{
+    REQUIRE_CLANGD();
+    Session s(true, kShadowScript);
+    const json h = shadow_request(s, "textDocument/hover", "void h() { count", "count");
+    EXPECT_EQ(h.dump().find("static int count"), std::string::npos) << h.dump();
+    const json r = shadow_request(s, "textDocument/rename", "void h() { count", "count", "Renamed");
+    for (int l : edit_lines(r, s.uri))
+        EXPECT_EQ(l, 10) << r.dump();
+}
+
+TEST(LanguageServerScope, WordInACommentOrAStringIsNotTheStatic)
+{
+    REQUIRE_CLANGD();
+    Session s(true, kShadowScript);
+    for (const char* ctx : {"// count", "\"count\""})
+    {
+        const json h = shadow_request(s, "textDocument/hover", ctx, "count");
+        EXPECT_EQ(h.dump().find("static int count"), std::string::npos) << h.dump();
+        const json r = shadow_request(s, "textDocument/rename", ctx, "count", "Renamed");
+        EXPECT_TRUE(edit_lines(r, s.uri).empty()) << r.dump();
+        const json pr = shadow_request(s, "textDocument/prepareRename", ctx, "count");
+        EXPECT_TRUE(pr.contains("error")) << pr.dump();
+    }
+}
+
+TEST(LanguageServerScope, RenameOfAStaticRefusesWhenAnImporterUsesTheWord)
+{
+    REQUIRE_CLANGD();
+    Session s(true, kDeclScript);
+    write_file(s.dir.path() / "other.hot",
+        "using \"player.hot\";\nclass Kid : Player {\n    void Go() { int x = Player.MaxHp; }\n}\n");
+    const json p = decl_pos("= Player.MaxHp", "MaxHp");
+    json params = doc_pos(s.uri, p["line"], p["character"]);
+    params["newName"] = "Renamed";
+    const json r = s.client->request("textDocument/rename", params);
+    EXPECT_TRUE(r.contains("error")) << r.dump();
+}
+
+TEST(LanguageServerLinks, ColumnsCountUtf16UnitsAfterAMultiByteCharacter)
+{
+    REQUIRE_CLANGD();
+    // The path "\xC3\xA9.hot" has 5 UTF-16 units and 6 bytes.
+    Session s(true, std::string("using \"\xC3\xA9.hot\";\n") + kScript);
+    write_file(s.dir.path() / "\xC3\xA9.hot", kImported);
+    const json r = s.client->request("textDocument/documentLink", {{"textDocument", {{"uri", s.uri}}}});
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << r.dump();
+    EXPECT_EQ(r["result"][0]["range"]["start"], pos(0, 7)) << r.dump();
+    EXPECT_EQ(r["result"][0]["range"]["end"], pos(0, 12)) << r.dump();
+}
