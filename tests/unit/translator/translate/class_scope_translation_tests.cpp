@@ -269,8 +269,12 @@ TEST(ClassScopeTranslation, InterfaceHashIgnoresPrivateMembers)
     const auto pub = hash(cls("public int Pub(int a) { return a; }"));
     EXPECT_NE(pub, hash(cls("private int Hid(int a) { return a; } public int Pub(int a) { return a; }")))
         << "a private method before a public method";
-    EXPECT_EQ(pub, hash(cls("public int Pub(int a) { return a; } private int Hid(int a) { return a; }")))
-        << "a private method after the public methods";
+    EXPECT_NE(pub, hash(cls("public int Pub(int a) { return a; } private int Hid(int a) { return a; }")))
+        << "a private method after the public methods changes the slot count";
+    EXPECT_EQ(hash(cls("public int Pub(int a) { return a; } private int Hid(int a) { return a; }")),
+        hash(cls("public int Pub(int a) { return a; } private float Hid(float a, int b) { return a + b; }")))
+        << "a private method edit after the public methods";
+    EXPECT_EQ(pub, hash(cls("public int Pub(int a) { return a + 1; }"))) << "a public body of a class";
     EXPECT_NE(pub, hash(cls("private virtual int Hid() { return 1; } public int Pub(int a) { return a; }")))
         << "a private virtual method stays";
     EXPECT_NE(pub, hash(cls("public int Pub(int a) { return a; } private virtual int Hid() { return 1; }")))

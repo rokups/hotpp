@@ -921,6 +921,10 @@ std::string module_interface(const Script& sc, const std::string& text)
             if (slotted)
                 ++slot_index;
         }
+        // The total is the slot count of the class (COUNT in the header). A child class in
+        // another module numbers its own slots after it. A private method changes the count.
+        if (!c.is_value)
+            o += "  slots " + std::to_string(slot_index) + "\n";
         for (const Method& m : c.statics)
             if (!hidden(c, m.access))
                 o += method("static ", m, c.is_value);
