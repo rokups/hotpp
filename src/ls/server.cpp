@@ -783,9 +783,11 @@ private:
         Pos decl;
         const hotc::AnalyzedMember* member;
     };
-    std::optional<StaticHit> static_member_at(const Doc& d, Pos cur) const;
+    // "uncertain" (if given) is set when the bare word names a static but a same-name token of
+    // the function may declare a local. The answer is then empty: the caller must not guess.
+    std::optional<StaticHit> static_member_at(const Doc& d, Pos cur, bool* uncertain = nullptr) const;
     // The places of the word of a static member in the script (the declaration and the uses).
-    std::set<Pos> static_places(const Doc& d, const StaticHit& hit) const;
+    std::set<Pos> static_places(const Doc& d, const StaticHit& hit, bool& uncertain) const;
     std::vector<std::string> workspace_scripts() const;
     IndexShard shard_of_doc(const Doc& d) const;
     // Calls "fn" for each other .hot file of the workspace that declares the symbol "key".
@@ -2498,8 +2500,10 @@ json Server::on_completion(const Doc& d, const json& p)
 
 static std::string blank_non_code(std::string_view l, bool& in_block);
 
-std::optional<Server::StaticHit> Server::static_member_at(const Doc& d, Pos cur) const
+std::optional<Server::StaticHit> Server::static_member_at(const Doc& d, Pos cur, bool* uncertain) const
 {
+    if (cur.line < 0 || cur.line >= static_cast<int>(d.text.starts.size()))
+        return std::nullopt;
     const auto [wb, we] = word_at(d, cur);
     if (we <= wb)
         return std::nullopt;
@@ -2537,6 +2541,9 @@ std::optional<Server::StaticHit> Server::static_member_at(const Doc& d, Pos cur)
     if (co >= code.size() || code[co] == ' ')
         return std::nullopt; // a word in a comment or in a string
     const hotc::AnalyzedClass* start = nullptr;
+    bool bare = false;
+    size_t boundary = 0, scope_end = 0;
+    bool in_function = false;
     int b = wb;
     while (b > 0 && (l[static_cast<size_t>(b) - 1] == ' ' || l[static_cast<size_t>(b) - 1] == '\t'))
         --b;
@@ -2553,19 +2560,21 @@ std::optional<Server::StaticHit> Server::static_member_at(const Doc& d, Pos cur)
     else
     {
         // A bare name: the class that holds the word. The range of a class ends at its closing brace.
+        // The facts can be older than the text: a line outside the text gives no answer.
         const hotc::AnalyzedClass* near_class = nullptr;
         for (const hotc::AnalyzedClass& c : d.facts.classes)
             if (c.begin.line - 1 <= cur.line)
                 near_class = &c;
-        if (!near_class)
+        if (!near_class || near_class->begin.line < 1 || near_class->begin.line - 1 >= static_cast<int>(off.size())
+            || near_class->begin.col < 1)
             return std::nullopt;
         const size_t cb = off[static_cast<size_t>(near_class->begin.line - 1)] + static_cast<size_t>(near_class->begin.col - 1);
-        const size_t open = code.find('{', cb);
+        const size_t open = cb < code.size() ? code.find('{', cb) : std::string::npos;
         if (open == std::string::npos || open > co)
             return std::nullopt;
         // Scan from the class brace to the word. "boundary" is the start of the member at depth 1.
         int depth = 1, parens = 0;
-        size_t boundary = open + 1;
+        boundary = open + 1;
         for (size_t i = open + 1; i < co; ++i)
         {
             const char ch = code[i];
@@ -2588,58 +2597,159 @@ std::optional<Server::StaticHit> Server::static_member_at(const Doc& d, Pos cur)
                 boundary = i + 1;
         }
         start = near_class;
-        // The scope of a function: a parameter, a lambda parameter or a local of the same name
-        // hides the static. The scope is the member from its start to the end of its body.
-        if (depth >= 2 || parens > 0)
+        bare = true;
+        in_function = depth >= 2 || parens > 0;
+        if (in_function)
         {
-            size_t end = co;
+            scope_end = co;
             int dd = depth;
-            for (; end < code.size(); ++end)
+            for (; scope_end < code.size(); ++scope_end)
             {
-                if (code[end] == '{')
+                if (code[scope_end] == '{')
                     ++dd;
-                else if (code[end] == '}' && --dd <= 1)
+                else if (code[scope_end] == '}' && --dd <= 1)
                     break;
-                else if (code[end] == ';' && dd == 1)
+                else if (code[scope_end] == ';' && dd == 1)
                     break;
-            }
-            static const std::set<std::string> not_a_type = {"return", "case", "new", "delete", "await", "throw",
-                "else", "do", "in", "is", "as", "typeof", "default"};
-            for (size_t at = code.find(name, boundary); at != std::string::npos && at < end; at = code.find(name, at + 1))
-            {
-                if ((at > 0 && is_id_char(code[at - 1])) || is_id_char(code[at + name.size()]))
-                    continue;
-                size_t q = at;
-                while (q > boundary && (code[q - 1] == ' ' || code[q - 1] == '\t' || code[q - 1] == '\n'))
-                    --q;
-                if (q <= boundary)
-                    continue;
-                const char pc = code[q - 1];
-                bool decl = false;
-                if (is_id_char(pc))
-                {
-                    size_t w = q;
-                    while (w > boundary && is_id_char(code[w - 1]))
-                        --w;
-                    decl = !not_a_type.count(code.substr(w, q - w));
-                }
-                else if (pc == '>')
-                    decl = q < 2 || code[q - 2] != '=';
-                else if (pc == '&' || pc == '*')
-                    decl = q >= 2 && (is_id_char(code[q - 2]) || code[q - 2] == '>');
-                if (decl)
-                    return std::nullopt;
             }
         }
     }
+    const hotc::AnalyzedMember* found = nullptr;
     for (const hotc::AnalyzedClass* c : chain(start))
+    {
         for (const hotc::AnalyzedMember& m : c->statics)
-            if (m.name == name)
-                return StaticHit{{m.begin.line - 1, m.begin.col - 1}, &m};
-    return std::nullopt;
+            if (!found && m.name == name)
+                found = &m;
+        if (found)
+            break;
+    }
+    if (!found)
+        return std::nullopt;
+    if (bare && in_function)
+    {
+        // A same-name token that may declare a local or a parameter makes the word uncertain.
+        // The test is conservative on purpose: rename refuses on it, it never guesses.
+        static const std::set<std::string> not_a_type = {"return", "case", "new", "delete", "await", "throw",
+            "else", "do", "in", "is", "as", "typeof", "default"};
+        auto prev_word = [&](size_t q)
+        {
+            while (q > boundary && (code[q - 1] == ' ' || code[q - 1] == '\t' || code[q - 1] == '\n'))
+                --q;
+            size_t w = q;
+            while (w > boundary && is_id_char(code[w - 1]))
+                --w;
+            return code.substr(w, q - w);
+        };
+        for (size_t at = code.find(name, boundary); at != std::string::npos && at < scope_end; at = code.find(name, at + 1))
+        {
+            if ((at > 0 && is_id_char(code[at - 1])) || is_id_char(code[at + name.size()]))
+                continue;
+            size_t q = at;
+            while (q > boundary && (code[q - 1] == ' ' || code[q - 1] == '\t' || code[q - 1] == '\n'))
+                --q;
+            if (q <= boundary)
+                continue;
+            const char pc = code[q - 1];
+            bool may_declare = false;
+            if (is_id_char(pc))
+                may_declare = !not_a_type.count(prev_word(q));
+            else if (pc == '>')
+            {
+                // "->" and "=>" are not a type end. A ">" next to a name ends a template list.
+                size_t r = q - 1;
+                while (r > boundary && code[r - 1] == '>')
+                    --r;
+                may_declare = r > boundary && code[r - 1] != '-' && code[r - 1] != '=' && (is_id_char(code[r - 1]) || code[r - 1] == '>');
+            }
+            else if (pc == '&' || pc == '*')
+            {
+                size_t r = q - 1;
+                while (r > boundary && (code[r - 1] == ' ' || code[r - 1] == '\t'))
+                    --r;
+                may_declare = r > boundary && (is_id_char(code[r - 1]) || code[r - 1] == '>');
+            }
+            else if (pc == ',' || pc == '[')
+            {
+                // A declaration list ("int a = 0, count = 1;") or a binding ("auto [i, count]").
+                // A statement start: after the last ";", "{" or "}" before the word.
+                size_t st = at;
+                while (st > boundary && code[st - 1] != ';' && code[st - 1] != '{' && code[st - 1] != '}')
+                    --st;
+                int par = 0, sq = 0;
+                size_t open_sq = std::string::npos;
+                for (size_t i = st; i < at; ++i)
+                {
+                    if (code[i] == '(')
+                        ++par;
+                    else if (code[i] == ')')
+                        --par;
+                    else if (code[i] == '[')
+                    {
+                        ++sq;
+                        open_sq = i;
+                    }
+                    else if (code[i] == ']')
+                        --sq;
+                }
+                if (sq > 0 && open_sq != std::string::npos)
+                {
+                    const std::string w = prev_word(open_sq);
+                    may_declare = w == "auto" || w == "var" || w == "let";
+                }
+                else if (par == 0)
+                {
+                    // Two names in a row at the statement start: a type and a declarator.
+                    size_t i = st;
+                    while (i < at && std::isspace(static_cast<unsigned char>(code[i])))
+                        ++i;
+                    size_t j = i;
+                    while (j < at && (is_id_char(code[j]) || code[j] == '<' || code[j] == '>' || code[j] == ':' || code[j] == '*' || code[j] == '&'))
+                        ++j;
+                    size_t k = j;
+                    while (k < at && std::isspace(static_cast<unsigned char>(code[k])))
+                        ++k;
+                    may_declare = j > i && k > j && k < at && (std::isalpha(static_cast<unsigned char>(code[k])) || code[k] == '_');
+                }
+            }
+            if (!may_declare)
+            {
+                // A "for (" header can declare a name in any form.
+                size_t st = at;
+                int par = 0;
+                for (; st > boundary; --st)
+                {
+                    if (code[st - 1] == ')')
+                        ++par;
+                    else if (code[st - 1] == '(' && par-- == 0)
+                        break;
+                    else if (code[st - 1] == ';' && par == 0)
+                    {
+                        // "for (a; b; c)": a ";" inside the header: go on to the "(".
+                    }
+                    else if ((code[st - 1] == '{' || code[st - 1] == '}') && par == 0)
+                    {
+                        st = boundary;
+                        break;
+                    }
+                }
+                if (st > boundary)
+                {
+                    const std::string w = prev_word(st - 1);
+                    may_declare = w == "for" || w == "foreach";
+                }
+            }
+            if (may_declare)
+            {
+                if (uncertain)
+                    *uncertain = true;
+                return std::nullopt;
+            }
+        }
+    }
+    return StaticHit{{found->begin.line - 1, found->begin.col - 1}, found};
 }
 
-std::set<Pos> Server::static_places(const Doc& d, const StaticHit& hit) const
+std::set<Pos> Server::static_places(const Doc& d, const StaticHit& hit, bool& uncertain) const
 {
     std::set<Pos> out;
     const std::string& name = hit.member->name;
@@ -2652,7 +2762,10 @@ std::set<Pos> Server::static_places(const Doc& d, const StaticHit& hit) const
             if ((at > 0 && is_id_char(code[at - 1])) || (at + name.size() < code.size() && is_id_char(code[at + name.size()])))
                 continue;
             const Pos here = {l, static_cast<int>(at)};
-            const auto h = static_member_at(d, here);
+            bool maybe_local = false;
+            const auto h = static_member_at(d, here, &maybe_local);
+            if (maybe_local)
+                uncertain = true;
             if (h && h->member == hit.member)
                 out.insert(here);
         }
@@ -3143,7 +3256,14 @@ static std::string blank_non_code(std::string_view l, bool& in_block)
             break;
         }
         else if (l.compare(i, 2, "/*") == 0)
+        {
+            // Skip the "/*" before the search for "*/": "/*/" does not end the comment.
             in_block = true;
+            out[i] = out[i + 1] = ' ';
+            i += 2;
+        }
+        // A raw string and a digit separator are errors in a script (doc/limits.md), so a quote
+        // here always starts an ordinary string or character literal.
         else if (l[i] == '"' || l[i] == '\'')
         {
             size_t e = i + 1;
@@ -3864,30 +3984,63 @@ std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
     // generated name ("Class__Name") has no map segment for the word.
     if (const auto hit = static_member_at(d, cur))
     {
-        // A script of the workspace that imports this script and uses the word can use the
-        // member too. This rename does not change that script: refuse.
-        const std::string base = fs::path(d.path).filename().string();
-        for (const std::string& path : workspace_scripts())
+        // A script of the workspace that imports this script (directly or through other scripts)
+        // and uses the word can use the member too. This rename does not change that script: refuse.
         {
-            if (path == d.path)
-                continue;
-            std::string text;
-            for (const auto& [uri, doc] : docs_)
-                if (doc->path == path)
-                    text = doc->text.s;
-            if (text.empty())
-                text = read_file(path).value_or(std::string());
-            bool uses = false;
-            for (size_t at = text.find(old_name); at != std::string::npos && !uses; at = text.find(old_name, at + 1))
-                uses = (at == 0 || !is_id_char(text[at - 1]))
-                    && (at + old_name.size() >= text.size() || !is_id_char(text[at + old_name.size()]));
-            if (uses && text.find("\"" + base + "\"") != std::string::npos
-                && text.find("using") != std::string::npos)
-                return std::string("cannot rename " + old_name + ": the script " + fs::path(path).filename().string()
-                    + " imports this script and uses the same word");
+            auto last_segment = [](const std::string& path)
+            {
+                const size_t sl = path.find_last_of("/\\");
+                return sl == std::string::npos ? path : path.substr(sl + 1);
+            };
+            auto has_word = [&](const std::string& text)
+            {
+                for (size_t at = text.find(old_name); at != std::string::npos; at = text.find(old_name, at + 1))
+                    if ((at == 0 || !is_id_char(text[at - 1]))
+                        && (at + old_name.size() >= text.size() || !is_id_char(text[at + old_name.size()])))
+                        return true;
+                return false;
+            };
+            std::map<std::string, std::pair<std::string, std::vector<std::string>>> scripts; // path: text, imports
+            for (const std::string& path : workspace_scripts())
+            {
+                if (path == d.path)
+                    continue;
+                std::string text;
+                for (const auto& [uri, doc] : docs_)
+                    if (doc->path == path)
+                        text = doc->text.s;
+                if (text.empty())
+                    text = read_file(path).value_or(std::string());
+                std::vector<std::string> imports;
+                for (const std::string& u : using_paths(text))
+                    imports.push_back(last_segment(u));
+                scripts[path] = {std::move(text), std::move(imports)};
+            }
+            std::set<std::string> names = {last_segment(d.path)}, importers;
+            for (bool grew = true; grew;)
+            {
+                grew = false;
+                for (const auto& [path, ti] : scripts)
+                    if (!importers.count(path)
+                        && std::any_of(ti.second.begin(), ti.second.end(), [&](const std::string& n) { return names.count(n); }))
+                    {
+                        importers.insert(path);
+                        names.insert(last_segment(path));
+                        grew = true;
+                    }
+            }
+            for (const std::string& path : importers)
+                if (has_word(scripts[path].first))
+                    return std::string("cannot rename " + old_name + ": the script " + last_segment(path)
+                        + " imports this script and uses the same word");
         }
+        // A bare use that may be a local or a parameter: rename never skips a place silently.
+        bool uncertain = false;
+        const std::set<Pos> places = static_places(d, *hit, uncertain);
+        if (uncertain)
+            return std::string("cannot rename " + old_name + ": the name may also be a local or a parameter");
         json edits = json::array();
-        for (const Pos& s : static_places(d, *hit))
+        for (const Pos& s : places)
             edits.push_back({{"range", script_range(d, s, {s.line, s.col + static_cast<int>(old_name.size())})},
                 {"newText", new_name}});
         return json{{"changes", {{d.uri, edits}}}};

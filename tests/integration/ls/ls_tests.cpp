@@ -5944,12 +5944,14 @@ TEST(LanguageServerScope, ParameterShadowsAStaticForRename)
         EXPECT_EQ(l, 3) << r2.dump();
 }
 
-TEST(LanguageServerScope, RenameOfAStaticSkipsTheShadowedFunction)
+TEST(LanguageServerScope, RenameOfAStaticRefusesWhenAParameterMayHideIt)
 {
     REQUIRE_CLANGD();
     Session s(true, kShadowScript);
     const json r = shadow_request(s, "textDocument/rename", "        count = 2", "count", "Renamed");
-    EXPECT_EQ(edit_lines(r, s.uri), (std::vector<int>{2, 7})) << r.dump();
+    // The parameter of "f" may hide the static: the rename refuses and never skips the place.
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+    EXPECT_NE(r.dump().find("local or a parameter"), std::string::npos) << r.dump();
 }
 
 TEST(LanguageServerScope, WordAfterTheClassIsNotTheStatic)
@@ -6001,4 +6003,120 @@ TEST(LanguageServerLinks, ColumnsCountUtf16UnitsAfterAMultiByteCharacter)
     ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << r.dump();
     EXPECT_EQ(r["result"][0]["range"]["start"], pos(0, 7)) << r.dump();
     EXPECT_EQ(r["result"][0]["range"]["end"], pos(0, 12)) << r.dump();
+}
+
+// ------------------------------------------------------------------ uncertain names, importers, comments
+namespace
+{
+
+// Sends the request at the last "word" in the first "context" of "text".
+json text_request(Session& s, const std::string& text, const char* method, const std::string& context,
+    const std::string& word, const char* new_name = nullptr)
+{
+    const size_t at = text.find(context);
+    EXPECT_NE(at, std::string::npos) << context;
+    const size_t w = at + context.rfind(word);
+    json params = doc_pos(s.uri, static_cast<int>(std::count(text.begin(), text.begin() + static_cast<long>(w), '\n')),
+        static_cast<int>(w - (text.rfind('\n', w - 1) + 1)));
+    if (new_name)
+        params["newName"] = new_name;
+    return s.client->request(method, params);
+}
+
+std::string statics_script(const std::string& body)
+{
+    return "using \"Actor.h\";\nclass A : Actor {\n    static int count = 0;\n    void f(int x) {\n" + body
+        + "    }\n}\n";
+}
+
+} // namespace
+
+TEST(LanguageServerUncertain, ArrowAndComparisonDoNotHideAStatic)
+{
+    REQUIRE_CLANGD();
+    const std::string text = statics_script("        bool b = x > count;\n        bool c = x >= count;\n");
+    Session s(true, text);
+    const json r = text_request(s, text, "textDocument/rename", "x > count", "count", "Renamed");
+    EXPECT_EQ(edit_lines(r, s.uri), (std::vector<int>{2, 4, 5})) << r.dump();
+}
+
+TEST(LanguageServerUncertain, DeclarationListRefusesTheRename)
+{
+    REQUIRE_CLANGD();
+    const std::string text = statics_script("        int a = 0, count = 1;\n        a = count;\n");
+    Session s(true, text);
+    // The static is used at the line of the list: the name may be a local.
+    const json r = text_request(s, text, "textDocument/rename", "a = count", "count", "Renamed");
+    EXPECT_TRUE(r.contains("error") || edit_lines(r, s.uri) == (std::vector<int>{4, 5})) << r.dump();
+    EXPECT_EQ(r.dump().find("\"changes\":{\"" + s.uri + "\":[{\"range\":{\"end\":{\"character\":14,\"line\":2}"),
+        std::string::npos) << r.dump();
+    const json h = text_request(s, text, "textDocument/hover", "a = count", "count");
+    EXPECT_EQ(h.dump().find("static int count"), std::string::npos) << h.dump();
+}
+
+TEST(LanguageServerUncertain, UnspacedProductRefusesTheRename)
+{
+    REQUIRE_CLANGD();
+    const std::string text = statics_script("        int y = x*count;\n");
+    Session s(true, text);
+    const json r = text_request(s, text, "textDocument/rename", "static int count", "count", "Renamed");
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+    EXPECT_NE(r.dump().find("local or a parameter"), std::string::npos) << r.dump();
+}
+
+TEST(LanguageServerUncertain, ForHeaderRefusesTheRename)
+{
+    REQUIRE_CLANGD();
+    const std::string text = statics_script("        for (int i = 0, count = 0; i < 2; ++i) { }\n        x = count;\n");
+    Session s(true, text);
+    const json r = text_request(s, text, "textDocument/rename", "x = count", "count", "Renamed");
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+}
+
+TEST(LanguageServerUncertain, CommentOpenerBeforeASlashDoesNotEndTheComment)
+{
+    REQUIRE_CLANGD();
+    const std::string text = statics_script("        /*/ count */ x = count;\n");
+    Session s(true, text);
+    const json h1 = text_request(s, text, "textDocument/hover", "/*/ count", "count");
+    EXPECT_EQ(h1.dump().find("static int count"), std::string::npos) << h1.dump();
+    const json h2 = text_request(s, text, "textDocument/hover", "x = count", "count");
+    EXPECT_NE(h2.dump().find("static int count"), std::string::npos) << h2.dump();
+}
+
+TEST(LanguageServerUncertain, ImportersInFoldersAndChainsRefuseTheRename)
+{
+    REQUIRE_CLANGD();
+    for (const char* kind : {"sub", "chain"})
+    {
+        Session s(true, kDeclScript);
+        std::filesystem::create_directories(s.dir.path() / "sub");
+        if (std::string(kind) == "sub")
+            write_file(s.dir.path() / "sub" / "other.hot",
+                "using \"../player.hot\";\nclass Kid : Player {\n    void Go() { int x = Player.MaxHp; }\n}\n");
+        else
+        {
+            write_file(s.dir.path() / "mid.hot", "using \"player.hot\";\nclass Mid : Player {\n}\n");
+            write_file(s.dir.path() / "sub" / "far.hot",
+                "using \"../mid.hot\";\nclass Far : Mid {\n    void Go() { int x = Player.MaxHp; }\n}\n");
+        }
+        const json p = decl_pos("= Player.MaxHp", "MaxHp");
+        json params = doc_pos(s.uri, p["line"], p["character"]);
+        params["newName"] = "Renamed";
+        const json r = s.client->request("textDocument/rename", params);
+        EXPECT_TRUE(r.contains("error")) << kind << " " << r.dump();
+    }
+}
+
+TEST(LanguageServerUncertain, FactsOlderThanTheTextGiveNoCrash)
+{
+    REQUIRE_CLANGD();
+    Session s(true, kDeclScript);
+    s.client->change(s.uri, 2, "x\n");
+    const json p = decl_pos("int m = MaxHp", "MaxHp");
+    const json r = s.client->request("textDocument/hover", doc_pos(s.uri, p["line"], p["character"]));
+    EXPECT_TRUE(r.contains("result") || r.contains("error")) << r.dump();
+    const json r2 = s.client->request("textDocument/rename", {{"textDocument", {{"uri", s.uri}}},
+        {"position", p}, {"newName", "Renamed"}});
+    EXPECT_TRUE(r2.contains("result") || r2.contains("error")) << r2.dump();
 }
