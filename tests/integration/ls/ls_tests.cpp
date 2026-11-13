@@ -2843,25 +2843,64 @@ TEST(LanguageServer, CompletionWorksBeforeALineComment)
     EXPECT_TRUE(complete_at(true, text).has("vector"));
 }
 
+// The "using" exemption is for the path in the first string of a "using" line only.
+TEST(LanguageServer, CompletionUsingExemptionIsOnlyForThePathString)
+{
+    REQUIRE_CLANGD();
+    auto at = [](const std::string& code)
+    {
+        std::string text = kCompleteScript;
+        text.replace(text.find('@'), 1, code);
+        return complete_at(true, text);
+    };
+    EXPECT_TRUE(at("usingFoo = \"ret@\";").names.empty()); // no exemption: the word is not "using"
+    EXPECT_FALSE(at("usingFoo = ret@").names.empty()); // code: it completes
+    EXPECT_TRUE(at("using namespace x; // ret@").names.empty());
+    EXPECT_TRUE(at("/* a\nusing ret@").names.empty());
+    EXPECT_TRUE(at("using \"x.h\"; // ret@").names.empty());
+}
+
+// The names that look like generated names or like C library names stay when they are real.
+TEST(LanguageServer, CompletionKeepsRealNamesThatLookLikeGeneratedOrLibcNames)
+{
+    REQUIRE_CLANGD();
+    TempDir hd;
+    write_file((hd.path() / "Names.h").string(),
+        "#pragma once\ninline int rand(int a, int b) { return a + b; }\n"
+        "inline int button_create(int x) { return x; }\ninline int last_record = 1;\n");
+    // The local "div" is a script name. The others are native names of the host.
+    for (const std::string& name : {std::string("div"), std::string("rand"), std::string("button_create"),
+             std::string("last_record")})
+    {
+        const std::string prefix = name.substr(0, name.size() - 1);
+        const std::string text = "using \"Names.h\";\n\nclass Hero {\n    void run() {\n        int div = 1;\n        " + prefix
+            + "\n    }\n}\n";
+        TempDir sd;
+        hot::ls::ServerOptions o = options(sd, true);
+        o.include_dirs.push_back(hd.path().string());
+        Session s(true, text, &o);
+        const json r = s.client->request(
+            "textDocument/completion", doc_pos(s.uri, 5, 8 + static_cast<int>(prefix.size())));
+        bool found = false;
+        for (const json& i : r["result"].value("items", json::array()))
+            found = found || i.value("insertText", i.value("label", "")) == name;
+        EXPECT_TRUE(found) << name << " in " << r.dump();
+    }
+}
+
+// The generated names of a script class are not offered.
 TEST(LanguageServer, CompletionHidesRecordAndCreateHelpers)
 {
     REQUIRE_CLANGD();
     const Completion c = complete_at(true, kCompleteScript, "");
-    EXPECT_FALSE(c.names.empty());
-    std::string all;
-    for (const std::string& n : c.names)
-        all += n + " ";
-    // The names of the C library are not script names.
-    EXPECT_FALSE(c.has("strcmp")) << all;
-    EXPECT_FALSE(c.has("printf")) << all;
-    EXPECT_FALSE(c.has("pthread_attr_t")) << all;
-    EXPECT_FALSE(c.has("CPU_SET")) << all;
     EXPECT_TRUE(c.has("Hero"));
-    for (const std::string& n : c.names)
-    {
-        EXPECT_FALSE(n.size() > 7 && n.compare(n.size() - 7, 7, "_record") == 0) << n << " in " << all;
-        EXPECT_FALSE(n.size() > 7 && n.compare(n.size() - 7, 7, "_create") == 0) << n;
-    }
+    EXPECT_FALSE(c.has("Hero_record"));
+    EXPECT_FALSE(c.has("Hero_create"));
+    EXPECT_FALSE(c.has("Base_record"));
+    EXPECT_FALSE(c.has("Base_create"));
+    // The names of the C library are not script names.
+    EXPECT_FALSE(c.has("strcmp"));
+    EXPECT_FALSE(c.has("printf"));
 }
 
 TEST(LanguageServer, CompletionListsNativeTypesAndFreeFunctions)

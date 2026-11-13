@@ -1654,13 +1654,6 @@ static bool is_generated_name(const std::string& n)
     for (const char* x : parts)
         if (n.find(x) != std::string::npos)
             return true;
-    // The record and the create function of a script class: "Hero_record", "Hero_create".
-    for (const char* suffix : {"_record", "_create"})
-    {
-        const std::string_view x = suffix;
-        if (n.size() > x.size() && n.compare(n.size() - x.size(), x.size(), x) == 0)
-            return true;
-    }
     // A script class name cannot start with "hot_" (the prefix of the generated code).
     return n.empty() || n[0] == '_' || n.compare(0, 4, "hot_") == 0 || n.compare(0, 9, "HotModule") == 0 || n == "hot";
 }
@@ -1670,43 +1663,50 @@ static bool is_generated_name(const std::string& n)
 // native name of the host is never hidden.
 static bool is_libc_name(const std::string& n)
 {
-    static const std::set<std::string> names = {"a64l", "abort", "abs", "aligned_alloc", "asprintf", "assert",
-        "at_quick_exit", "atexit", "atof", "atoi", "atol", "atoll", "basename", "bsearch", "calloc", "clearenv",
-        "clearerr", "ctermid", "cuserid", "div", "dprintf", "drand48", "ecvt", "erand48", "exit", "explicit_bzero",
+    static const std::set<std::string> names = {"a64l", "aligned_alloc", "asprintf",
+        "at_quick_exit", "atexit", "atof", "atoi", "atol", "atoll", "bsearch", "calloc", "clearenv",
+        "clearerr", "ctermid", "cuserid", "dprintf", "drand48", "ecvt", "erand48", "explicit_bzero",
         "fclose", "fcloseall", "fcvt", "fdopen", "feof", "ferror", "fflush", "fgetc", "fgetpos", "fgets", "fileno",
-        "flockfile", "fmemopen", "fopen", "fopencookie", "fprintf", "fputc", "fputs", "fread", "free", "freopen",
+        "flockfile", "fmemopen", "fopen", "fopencookie", "fprintf", "fputc", "fputs", "fread", "freopen",
         "fscanf", "fseek", "fseeko", "fsetpos", "ftell", "ftello", "ftrylockfile", "funlockfile", "fwrite", "gcvt",
-        "getc", "getchar", "getdelim", "getenv", "getline", "getloadavg", "getpt", "getsubopt", "getw", "grantpt",
+        "getdelim", "getenv", "getloadavg", "getpt", "getsubopt", "getw", "grantpt",
         "initstate", "isalnum", "isalpha", "isascii", "isblank", "iscntrl", "isctype", "isdigit", "isgraph",
-        "islower", "isprint", "ispunct", "isspace", "isupper", "isxdigit", "jrand48", "l64a", "labs", "lcong48",
+        "islower", "isprint", "ispunct", "isspace", "isupper", "isxdigit", "jrand48", "l64a", "lcong48",
         "ldiv", "llabs", "lldiv", "localeconv", "lrand48", "malloc", "mblen", "mbstowcs", "mbtowc", "memalignment",
         "memccpy", "memchr", "memcmp", "memcpy", "memfrob", "memmem", "memmove", "mempcpy", "memrchr", "memset",
-        "memset_explicit", "mkdtemp", "mkostemp", "mkostemps", "mkstemp", "mkstemps", "mktemp", "mrand48", "newlocale",
-        "nrand48", "obstack", "obstack_printf", "obstack_vprintf", "offsetof", "on_exit", "open_memstream", "pclose",
-        "perror", "popen", "posix_memalign", "posix_openpt", "printf", "putc", "putchar", "puts", "putw", "qsort",
-        "rand", "random_data", "rand_r", "realloc", "reallocarray", "realpath",
-        "rewind", "scanf", "setbuf", "setbuffer", "setenv", "setlinebuf", "setvbuf", "snprintf", "sprintf", "srand",
+        "memset_explicit", "mkdtemp", "mkostemp", "mkostemps", "mkstemp", "mkstemps", "mrand48", "newlocale",
+        "nrand48", "obstack_printf", "obstack_vprintf", "on_exit", "open_memstream", "pclose",
+        "posix_memalign", "posix_openpt", "printf", "putc", "putchar", "putw", "qsort",
+        "rand_r", "realloc", "reallocarray", "realpath",
+        "scanf", "setbuffer", "setenv", "setlinebuf", "setvbuf", "snprintf", "sprintf",
         "srand48", "srandom", "sscanf", "strcasecmp", "strcat", "strchr", "strcmp", "strcoll", "strcpy", "strcspn",
         "strdup", "strdupa", "strerror", "strlen", "strncasecmp", "strncat", "strncmp", "strncpy", "strndup",
         "strndupa", "strnlen", "strpbrk", "strrchr", "strsep", "strspn", "strstr", "strtod", "strtof", "strtok",
         "strtol", "strtold", "strtoll", "strtoul", "strtoull", "WEXITSTATUS", "WIFCONTINUED",
-        "WIFEXITED", "WIFSIGNALED", "WIFSTOPPED", "WSTOPSIG", "WTERMSIG", "tmpfile", "tmpnam", "tolower", "toupper",
+        "WIFEXITED", "WIFSIGNALED", "WIFSTOPPED", "WSTOPSIG", "WTERMSIG", "tmpnam", 
         "ungetc", "unsetenv", "vasprintf", "vdprintf", "vfprintf", "vfscanf", "vprintf", "vscanf", "vsnprintf",
-        "vsprintf", "vsscanf", "wctomb", "wcstombs", "lconv", "drand48_data", "pthread_attr_t"};
-    static const char* const prefixes[] = {"pthread_", "CPU_"};
-    for (const char* x : prefixes)
-        if (n.compare(0, std::strlen(x), x) == 0)
-            return true;
-    static const char* const suffixes[] = {"_unlocked", "_np", "_l", "_r", "64"};
-    for (const char* x : suffixes)
-    {
-        const size_t k = std::strlen(x);
-        if (n.size() > k && n.compare(n.size() - k, k, x) == 0 && names.count(n.substr(0, n.size() - k)))
-            return true;
-    }
+        "vsprintf", "vsscanf", "wctomb", "wcstombs", "drand48_data", "pthread_attr_t"};
     // The macros of <stdint.h>, <endian.h> and <sys/wait.h>.
     static const std::regex macro("U?INT(8|16|32|64|MAX)_C|(be|le)(16|32|64)toh|hto(be|le)(16|32|64)");
     return names.count(n) != 0 || std::regex_match(n, macro);
+}
+
+// The record and the create function that the translator makes for a script class: the name is
+// "<ScriptClass>_record" or "<ScriptClass>_create". Other names with the suffix stay.
+static bool is_generated_class_name(const Doc& d, const std::string& n)
+{
+    for (const char* suffix : {"_record", "_create"})
+    {
+        const std::string x = suffix;
+        if (n.size() > x.size() && n.compare(n.size() - x.size(), x.size(), x) == 0)
+        {
+            const std::string cls = n.substr(0, n.size() - x.size());
+            for (const hotc::AnalyzedClass& c : d.facts.classes)
+                if (c.name == cls)
+                    return true;
+        }
+    }
+    return false;
 }
 
 static bool has_prefix(const std::string& name, const std::string& prefix)
@@ -1747,9 +1747,19 @@ json Server::on_completion(const Doc& d, const json& p)
         bool block = false;
         for (int l = 0; l < cur.line; ++l)
             blank_non_code(d.text.line(l), block);
+        const bool block_at_line_start = block;
         const std::string_view before = std::string_view(t).substr(line_begin, off - line_begin);
         const size_t first = before.find_first_not_of(" \t");
-        const bool using_line = first != std::string_view::npos && before.compare(first, 5, "using") == 0;
+        // The exemption: the line starts with the word "using" and the cursor is in the first string
+        // of the line. A block comment from an earlier line has no exemption.
+        bool using_line = false;
+        if (!block_at_line_start && first != std::string_view::npos && before.compare(first, 5, "using") == 0
+            && (first + 5 >= before.size() || !is_id_char(before[first + 5])))
+        {
+            const size_t q = before.find('"', first + 5);
+            using_line = q != std::string_view::npos && before.find('"', q + 1) == std::string_view::npos
+                && before.find_first_not_of(" \t", first + 5) == q;
+        }
         // A sentinel at the cursor shows whether the cursor is in text that the scan blanks.
         const std::string code = blank_non_code(std::string(before) + "x", block);
         if (!using_line && code.back() == ' ')
@@ -1989,7 +1999,7 @@ json Server::on_completion(const Doc& d, const json& p)
                 name = it.value("insertText", it.value("label", std::string()));
             const int kind = it.value("kind", 1);
             // The names of the generated code and of the shell are not script names.
-            if (name.empty() || name.find(kHole) != std::string::npos || is_generated_name(name)
+            if (name.empty() || name.find(kHole) != std::string::npos || is_generated_name(name) || is_generated_class_name(d, name)
                 || name.compare(0, 8, "operator") == 0 || name[0] == '~' || kind == 4
                 || name.find("::") != std::string::npos)
                 continue;
