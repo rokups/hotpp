@@ -5663,3 +5663,211 @@ TEST(LanguageServerNative, SemanticTokensSwitchInInitializationOptions)
     EXPECT_FALSE(r["result"]["data"].empty());
     EXPECT_EQ(client.request("hot/indexStats", json::object())["result"].value("tokenRequests", -1), 0);
 }
+
+// ------------------------------------------------------------------ definition and hover of script declarations
+namespace
+{
+
+const char* const kDeclScript =
+    "using \"Actor.h\";\n"
+    "\n"
+    "class Player : Actor {\n"
+    "    static const int MaxHp = 100;\n"
+    "    static int Count = 0;\n"
+    "    float hp = 100.0;\n"
+    "    static int Twice(int v) { return v * 2; }\n"
+    "    override void Tick(float dt) {\n"
+    "        base.Tick(dt);\n"
+    "        this.hp = Player.MaxHp;\n"
+    "        Player.Count = Player.Twice(3);\n"
+    "        int m = MaxHp;\n"
+    "    }\n"
+    "}\n";
+
+// The position of the last "word" in the first "context" of kDeclScript.
+json decl_pos(const std::string& context, const std::string& word)
+{
+    const std::string text = kDeclScript;
+    const size_t at = text.find(context);
+    EXPECT_NE(at, std::string::npos) << context;
+    const size_t w = at + context.rfind(word);
+    const size_t ls = text.rfind('\n', w - 1) + 1;
+    return pos(static_cast<int>(std::count(text.begin(), text.begin() + static_cast<long>(w), '\n')),
+        static_cast<int>(w - ls));
+}
+
+// The definition of the word is in the script at "decl_line", or (empty "decl_line") in a header.
+void expect_decl_definition(const std::string& context, const std::string& word, int decl_line, const std::string& header = "")
+{
+    REQUIRE_CLANGD();
+    Session s(true, kDeclScript);
+    const json p = decl_pos(context, word);
+    const json r = s.client->request("textDocument/definition", doc_pos(s.uri, p["line"], p["character"]));
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << context << " -> " << r.dump();
+    const json& loc = r["result"][0];
+    if (header.empty())
+    {
+        EXPECT_EQ(loc["uri"], s.uri) << r.dump();
+        EXPECT_EQ(loc["range"]["start"]["line"], decl_line) << r.dump();
+    }
+    else
+        EXPECT_NE(loc.value("uri", "").find(header), std::string::npos) << r.dump();
+}
+
+void expect_decl_hover(const std::string& context, const std::string& word, const std::string& want)
+{
+    REQUIRE_CLANGD();
+    Session s(true, kDeclScript);
+    const json p = decl_pos(context, word);
+    const json r = s.client->request("textDocument/hover", doc_pos(s.uri, p["line"], p["character"]));
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << context << " -> " << r.dump();
+    EXPECT_NE(r["result"].dump().find(want), std::string::npos) << context << " -> " << r.dump();
+}
+
+} // namespace
+
+TEST(LanguageServerDecl, DefinitionOfAClassConstantAfterTheClassName)
+{
+    expect_decl_definition("= Player.MaxHp", "MaxHp", 3);
+}
+
+TEST(LanguageServerDecl, DefinitionOfABareClassConstant)
+{
+    expect_decl_definition("int m = MaxHp", "MaxHp", 3);
+}
+
+TEST(LanguageServerDecl, DefinitionOfAStaticFieldAfterTheClassName)
+{
+    expect_decl_definition("Player.Count =", "Count", 4);
+}
+
+TEST(LanguageServerDecl, DefinitionOfAStaticMethodAfterTheClassName)
+{
+    expect_decl_definition("= Player.Twice(", "Twice", 6);
+}
+
+TEST(LanguageServerDecl, DefinitionOfTheClassNameBeforeTheDot)
+{
+    expect_decl_definition("= Player.MaxHp", "Player", 2);
+}
+
+TEST(LanguageServerDecl, DefinitionOfTheBaseClassName)
+{
+    expect_decl_definition("class Player : Actor", "Actor", 0, "Actor.h");
+}
+
+TEST(LanguageServerDecl, DefinitionOfABaseMember)
+{
+    expect_decl_definition("base.Tick(", "Tick", 0, "Actor.h");
+}
+
+TEST(LanguageServerDecl, DefinitionOfAnOverrideName)
+{
+    expect_decl_definition("override void Tick", "Tick", 0, "Actor.h");
+}
+
+TEST(LanguageServerDecl, HoverOfAClassConstantAfterTheClassName)
+{
+    expect_decl_hover("= Player.MaxHp", "MaxHp", "int");
+}
+
+TEST(LanguageServerDecl, HoverOfAStaticFieldAfterTheClassName)
+{
+    expect_decl_hover("Player.Count =", "Count", "int");
+}
+
+TEST(LanguageServerDecl, HoverOfAStaticMethodAfterTheClassName)
+{
+    expect_decl_hover("= Player.Twice(", "Twice", "int");
+}
+
+TEST(LanguageServerDecl, HoverOfTheBaseClassName)
+{
+    expect_decl_hover("class Player : Actor", "Actor", "Actor");
+}
+
+TEST(LanguageServerDecl, HoverOfABaseMember)
+{
+    expect_decl_hover("base.Tick(", "Tick", "Tick");
+}
+
+TEST(LanguageServerDecl, HoverOfAnOverrideName)
+{
+    expect_decl_hover("override void Tick", "Tick", "Tick");
+}
+
+// ------------------------------------------------------------------ document links of using lines
+TEST(LanguageServerLinks, UsingHeaderAndScriptGetLinks)
+{
+    REQUIRE_CLANGD();
+    Session s(true, std::string("using \"base.hot\";\nusing \"none.hot\";\n") + kScript);
+    write_file(s.dir.path() / "base.hot", kImported);
+    const json r = s.client->request("textDocument/documentLink", {{"textDocument", {{"uri", s.uri}}}});
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array()) << r.dump();
+    ASSERT_EQ(r["result"].size(), 2u) << r.dump();
+    const json& h = r["result"][1];
+    EXPECT_EQ(h["range"]["start"], pos(2, 7)) << r.dump();
+    EXPECT_EQ(h["range"]["end"], pos(2, 14)) << r.dump();
+    EXPECT_NE(h.value("target", "").find("Actor.h"), std::string::npos) << r.dump();
+    EXPECT_EQ(r["result"][0]["target"], uri_of((s.dir.path() / "base.hot").lexically_normal().string())) << r.dump();
+    EXPECT_EQ(r["result"][0]["range"]["start"], pos(0, 7)) << r.dump();
+}
+
+// ------------------------------------------------------------------ rename of static members and constants
+namespace
+{
+
+// Renames the word in the context. The edits must be at the lines "want" (sorted), with the word length.
+void expect_decl_rename(const std::string& context, const std::string& word, std::vector<int> want)
+{
+    REQUIRE_CLANGD();
+    Session s(true, kDeclScript);
+    const json p = decl_pos(context, word);
+    json params = doc_pos(s.uri, p["line"], p["character"]);
+    params["newName"] = "Renamed";
+    const json r = s.client->request("textDocument/rename", params);
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << context << " -> " << r.dump();
+    const json& edits = r["result"]["changes"][s.uri];
+    std::vector<int> got;
+    for (const json& e : edits)
+    {
+        got.push_back(e["range"]["start"]["line"]);
+        EXPECT_EQ(e["range"]["end"]["character"].get<int>() - e["range"]["start"]["character"].get<int>(),
+            static_cast<int>(word.size()))
+            << r.dump();
+    }
+    std::sort(got.begin(), got.end());
+    EXPECT_EQ(got, want) << context << " -> " << r.dump();
+}
+
+} // namespace
+
+TEST(LanguageServerRename, ClassConstantFromTheDeclaration)
+{
+    expect_decl_rename("const int MaxHp", "MaxHp", {3, 9, 11});
+}
+
+TEST(LanguageServerRename, ClassConstantFromAQualifiedUse)
+{
+    expect_decl_rename("= Player.MaxHp", "MaxHp", {3, 9, 11});
+}
+
+TEST(LanguageServerRename, ClassConstantFromABareUse)
+{
+    expect_decl_rename("int m = MaxHp", "MaxHp", {3, 9, 11});
+}
+
+TEST(LanguageServerRename, StaticFieldFromAQualifiedUse)
+{
+    expect_decl_rename("Player.Count =", "Count", {4, 10});
+}
+
+TEST(LanguageServerRename, StaticMethodFromAQualifiedUse)
+{
+    expect_decl_rename("= Player.Twice(", "Twice", {6, 10});
+}
+
+TEST(LanguageServerRename, FieldFromAUse)
+{
+    expect_decl_rename("this.hp =", "hp", {5, 9});
+}

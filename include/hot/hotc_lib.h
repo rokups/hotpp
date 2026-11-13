@@ -377,6 +377,10 @@ struct AnalyzedClass
     bool is_interface = false;
     SourcePos begin;
     std::vector<AnalyzedMember> members; // in source order
+    // The static members, in source order: kind "const" (a class constant), "static field" or
+    // "static method". The name is the script name, without the "Class__" prefix. They are not
+    // in "members": they have no state and no reload key.
+    std::vector<AnalyzedMember> statics;
 };
 
 struct AnalyzeError
