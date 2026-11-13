@@ -11251,6 +11251,100 @@ std::optional<uint64_t> import_view_hash(const std::string& text, const std::str
     return v->hash;
 }
 
+ImportFacts analyze_imports(const std::string& text, const std::string& array_tpl)
+{
+    ImportFacts out;
+    hotc::Diagnostics diag;
+    const hotc::LineMap map(text);
+    const Script sc = hotc::parse_script_array(text, map, diag, array_tpl);
+    std::string ns = "std";
+    for (const ast::ModuleAttrs& m : sc.module_attrs)
+        if (m.has_std)
+            ns = m.std_ns;
+    auto ty = [&](const std::string& script_type, const std::string& type)
+    { return expand_std(script_type.empty() ? type : script_type, ns); };
+    auto sig = [&](const std::vector<ast::Param>& ps)
+    {
+        std::string r = "(";
+        for (size_t i = 0; i < ps.size(); ++i)
+            r += (i ? ", " : "") + ty(ps[i].script_type, ps[i].type) + " " + ps[i].name;
+        return r + ")";
+    };
+    for (const ast::Import& i : sc.imports)
+        out.imports.push_back(i.path);
+    for (const ast::ClassDef& c : sc.classes)
+    {
+        if (c.is_private)
+            continue;
+        ImportClass ic;
+        ic.name = c.name;
+        ic.base = expand_std(c.base, ns);
+        ic.is_struct = c.is_value;
+        for (const ast::Field& f : c.fields)
+            if (f.access == ast::Access::Public)
+                ic.members.push_back({"field", f.name, ty(f.script_type, f.type), "", false, false});
+        for (const ast::Property& p : c.props)
+            if (p.access == ast::Access::Public)
+                ic.members.push_back({"property", p.name, ty(p.script_type, p.type), "", false, false});
+        for (const ast::Property& p : c.sprops)
+            if (p.access == ast::Access::Public)
+                ic.members.push_back({"property", p.name, ty(p.script_type, p.type), "", true, false});
+        for (const ast::Method& m : c.methods)
+            if (m.access == ast::Access::Public)
+                ic.members.push_back({"method", m.written_name(), ty(m.script_ret, m.ret), sig(m.params), false, false});
+        for (const ast::Method& m : c.statics)
+            if (m.access == ast::Access::Public && m.name.compare(0, 4, "get_") != 0 && m.name.compare(0, 4, "set_") != 0)
+                ic.members.push_back({"method", m.written_name(), ty(m.script_ret, m.ret), sig(m.params), true, false});
+        for (const ast::Ctor& k : c.ctors)
+            ic.members.push_back({"constructor", c.name, "", sig(k.params), false, false});
+        out.classes.push_back(std::move(ic));
+    }
+    for (const ast::InterfaceDef& i : sc.interfaces)
+    {
+        ImportClass ic;
+        ic.name = i.name;
+        ic.is_interface = true;
+        for (const ast::Method& m : i.methods)
+            ic.members.push_back({"method", m.written_name(), ty(m.script_ret, m.ret), sig(m.params), false, false});
+        out.classes.push_back(std::move(ic));
+    }
+    // The constants and the static fields of a class carry the class name in "owner".
+    auto add_var = [&](const ast::Field& f, bool is_const)
+    {
+        if (f.access != ast::Access::Public)
+            return;
+        if (f.owner.empty())
+        {
+            out.vars.push_back({f.name, ty(f.script_type, f.type), is_const});
+            return;
+        }
+        for (ImportClass& ic : out.classes)
+            if (ic.name == f.owner)
+            {
+                const std::string prefix = f.owner + "__";
+                ic.members.push_back({"field", f.name.compare(0, prefix.size(), prefix) == 0 ? f.name.substr(prefix.size()) : f.name,
+                    ty(f.script_type, f.type), "", true, is_const});
+            }
+    };
+    for (const ast::Field& f : sc.consts)
+        add_var(f, true);
+    for (const ast::Field& f : sc.vars)
+        add_var(f, false);
+    for (const ast::Method& m : sc.fns)
+        if (m.access == ast::Access::Public)
+            out.functions.push_back({m.written_name(), ty(m.script_ret, m.ret), sig(m.params)});
+    for (const ast::EnumDef& e : sc.enums)
+    {
+        if (e.is_private)
+            continue;
+        ImportEnum ie{e.name, {}};
+        for (const ast::Enumerator& it : e.items)
+            ie.enumerators.push_back(it.name);
+        out.enums.push_back(std::move(ie));
+    }
+    return out;
+}
+
 uint64_t text_hash(const std::string& text)
 {
     // FNV-1a over the length and the bytes, then the SplitMix64 finalizer.

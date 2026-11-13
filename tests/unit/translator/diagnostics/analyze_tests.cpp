@@ -406,3 +406,61 @@ TEST(Analyze, BaseTextHasNoPlaceholderByte)
     ASSERT_EQ(d.classes.size(), 1u);
     EXPECT_EQ(d.classes[0].base, "Wrap<std::string>");
 }
+
+TEST(AnalyzeImports, ReadsClassesStaticsFunctionsConstsVarsAndEnums)
+{
+    const hotc::ImportFacts f = hotc::analyze_imports(
+        "using \"other.hot\";\n"
+        "const int Limit = 3;\n"
+        "int counter = 0;\n"
+        "int Add(int a, float b) { return a; }\n"
+        "private int Hidden() { return 1; }\n"
+        "enum Color { Red, Green }\n"
+        "private enum Secret { A }\n"
+        "class Weapon : Base {\n"
+        "    static const int MaxAmmo = 9;\n"
+        "    static int made = 0;\n"
+        "    int ammo = 1;\n"
+        "    void fire(int n) { }\n"
+        "    static Weapon Make(int k) { return Weapon(); }\n"
+        "}\n"
+        "private class Hid { }\n",
+        "");
+    ASSERT_EQ(f.imports.size(), 1u);
+    EXPECT_EQ(f.imports[0], "other.hot");
+    ASSERT_EQ(f.classes.size(), 1u);
+    const hotc::ImportClass& c = f.classes[0];
+    EXPECT_EQ(c.name, "Weapon");
+    EXPECT_EQ(c.base, "Base");
+    auto find = [&](const std::string& n) -> const hotc::ImportMember*
+    {
+        for (const hotc::ImportMember& m : c.members)
+            if (m.name == n)
+                return &m;
+        return nullptr;
+    };
+    ASSERT_TRUE(find("MaxAmmo"));
+    EXPECT_TRUE(find("MaxAmmo")->is_static && find("MaxAmmo")->is_const);
+    ASSERT_TRUE(find("made"));
+    EXPECT_TRUE(find("made")->is_static && !find("made")->is_const);
+    ASSERT_TRUE(find("ammo"));
+    EXPECT_FALSE(find("ammo")->is_static);
+    ASSERT_TRUE(find("fire"));
+    EXPECT_EQ(find("fire")->signature, "(int32_t n)");
+    ASSERT_TRUE(find("Make"));
+    EXPECT_TRUE(find("Make")->is_static);
+    ASSERT_EQ(f.functions.size(), 1u);
+    EXPECT_EQ(f.functions[0].name, "Add");
+    ASSERT_EQ(f.vars.size(), 2u);
+    EXPECT_EQ(f.vars[0].name, "Limit");
+    EXPECT_TRUE(f.vars[0].is_const);
+    ASSERT_EQ(f.enums.size(), 1u);
+    EXPECT_EQ(f.enums[0].name, "Color");
+    EXPECT_EQ(f.enums[0].enumerators.size(), 2u);
+}
+
+TEST(AnalyzeImports, ToleratesASyntaxError)
+{
+    const hotc::ImportFacts f = hotc::analyze_imports("class A { int x = ; void f() { } }\nclass B { }\n", "");
+    EXPECT_GE(f.classes.size(), 1u);
+}

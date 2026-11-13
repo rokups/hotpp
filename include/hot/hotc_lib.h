@@ -205,6 +205,54 @@ struct ImportView
 std::optional<ImportView> import_view(const std::string& text, const std::string& array_tpl);
 std::optional<uint64_t> import_view_hash(const std::string& text, const std::string& array_tpl);
 
+// The declarations of an imported script that a language server offers in completion. The parse is
+// tolerant and nothing is translated. A private class, enum, function, constant or variable is not
+// in the facts. The constants and static fields of a class are members of the class (is_static).
+struct ImportMember
+{
+    std::string kind; // "field", "method", "property", "constructor"
+    std::string name;
+    std::string type; // the type of a field or a property, the return type of a method
+    std::string signature; // "(int a, float b)" for a method or a constructor, else empty
+    bool is_static = false, is_const = false;
+};
+
+struct ImportClass
+{
+    std::string name, base;
+    bool is_interface = false, is_struct = false;
+    std::vector<ImportMember> members; // the public members, in source order
+};
+
+struct ImportFunction
+{
+    std::string name, type, signature;
+};
+
+struct ImportVar
+{
+    std::string name, type;
+    bool is_const = false;
+};
+
+struct ImportEnum
+{
+    std::string name;
+    std::vector<std::string> enumerators;
+};
+
+struct ImportFacts
+{
+    std::vector<ImportClass> classes;
+    std::vector<ImportFunction> functions;
+    std::vector<ImportVar> vars; // the module constants and the module variables
+    std::vector<ImportEnum> enums;
+    std::vector<std::string> imports; // the paths of the "using" lines of the script
+};
+
+// The facts of the script "text", parsed with the array template "array_tpl" of the importer.
+ImportFacts analyze_imports(const std::string& text, const std::string& array_tpl);
+
 // Where the time of one translate call goes, in nanoseconds of std::chrono::steady_clock. The
 // numbers are for the measurement only. A cache hit gives zeros. They are not in any cache key.
 struct TranslateTiming
