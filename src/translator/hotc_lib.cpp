@@ -10721,6 +10721,34 @@ uint32_t find_word(const std::string& text, uint32_t from, const std::string& na
     return from;
 }
 
+// A path with "/" separators, without "." segments and with ".." segments folded. A leading ".."
+// goes away: the rest is compared at a separator boundary. The error text of libclang has the
+// spelling of the include, so both sides use this form.
+static std::string normalize_import_path(const std::string& path)
+{
+    std::vector<std::string> parts;
+    size_t i = 0;
+    while (i <= path.size())
+    {
+        size_t j = path.find_first_of("/\\", i);
+        if (j == std::string::npos)
+            j = path.size();
+        const std::string seg = path.substr(i, j - i);
+        if (seg == "..")
+        {
+            if (!parts.empty())
+                parts.pop_back();
+        }
+        else if (!seg.empty() && seg != ".")
+            parts.push_back(seg);
+        i = j + 1;
+    }
+    std::string out;
+    for (const std::string& seg : parts)
+        out += (out.empty() ? "" : "/") + seg;
+    return out;
+}
+
 AnalyzeResult analyze(const std::string& text, const TranslateOptions& options)
 {
     TranslatorSession session;
@@ -10764,6 +10792,7 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
     std::vector<std::pair<size_t, size_t>> ranges;
     // The same for all members, also the fields. The retry after a translation error uses it.
     std::vector<std::pair<size_t, size_t>> all_ranges;
+    std::set<size_t> tail_begins; // the members whose body is one brace block
     for (const ast::ClassDef& c : sc.classes)
     {
         AnalyzedClass ac;
@@ -10773,10 +10802,30 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
         auto add = [&](const char* kind, const std::string& name, uint32_t begin, uint32_t end, bool body,
                        const std::string& alias = std::string())
         {
-            const uint32_t e = std::max(end, begin + static_cast<uint32_t>(name.size()));
+            uint32_t e = std::max(end, begin + static_cast<uint32_t>(name.size()));
+            // The end of a property with accessor bodies is the end of the last accessor. The range
+            // includes the closing brace of the property too.
+            if (body && std::string_view(kind) == "property")
+            {
+                int depth = 0;
+                for (uint32_t i = begin; i < e && i < text.size(); ++i)
+                    depth += text[i] == '{' ? 1 : text[i] == '}' ? -1 : 0;
+                for (uint32_t i = e; depth > 0 && i < text.size(); ++i)
+                {
+                    if (text[i] == '}')
+                    {
+                        e = i + 1;
+                        --depth;
+                    }
+                    else if (text[i] != ' ' && text[i] != '\t' && text[i] != '\r' && text[i] != '\n')
+                        break;
+                }
+            }
             ac.members.push_back({kind, name, src_pos(map, begin), src_pos(map, e), alias});
             if (body)
                 ranges.emplace_back(begin, e);
+            if (body && std::string_view(kind) != "property")
+                tail_begins.insert(begin); // a method, a constructor or a destructor
             all_ranges.emplace_back(begin, e);
         };
         for (const ast::Field& f : c.fields)
@@ -10825,6 +10874,11 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
     // translation at this member blanks the whole member (the retry below).
     auto blank_tail = [&](size_t b, size_t e, size_t pos)
     {
+        if (!tail_begins.count(b))
+        {
+            blank(valid, line_begin(valid, b), e); // a property: the accessors have more blocks
+            return;
+        }
         size_t st = std::min(pos, e - 1);
         while (st > b && text[st - 1] != ';' && text[st - 1] != '{' && text[st - 1] != '}')
             --st;
@@ -10923,8 +10977,12 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
                     bool matched = false;
                     for (const ast::Import& im : sc.imports)
                     {
-                        const bool hit = !im.path.empty() && im.path.front() != '<' && file.size() >= im.path.size() &&
-                            file.compare(file.size() - im.path.size(), im.path.size(), im.path) == 0;
+                        const std::string want = normalize_import_path(im.path);
+                        const std::string have = normalize_import_path(file);
+                        const bool hit = !im.path.empty() && im.path.front() != '<' && !want.empty() &&
+                            have.size() >= want.size() &&
+                            have.compare(have.size() - want.size(), want.size(), want) == 0 &&
+                            (have.size() == want.size() || have[have.size() - want.size() - 1] == '/');
                         if (!hit)
                             continue;
                         matched = true;

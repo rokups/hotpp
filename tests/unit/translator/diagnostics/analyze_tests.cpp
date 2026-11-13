@@ -8,6 +8,7 @@
 
 #include <gtest/gtest.h>
 
+#include <filesystem>
 #include <string>
 
 using namespace translator_test;
@@ -279,6 +280,60 @@ TEST(Analyze, ParseErrorKeepsTheStatementsBeforeIt)
     EXPECT_TRUE(r.source_map.map_to_generated(10, 16));
     EXPECT_NE(r.cpp.find("n + 1"), std::string::npos);
     EXPECT_EQ(r.cpp.find("foo("), std::string::npos);
+}
+
+// A syntax error in a property accessor blanks the whole property. The class stays intact and the
+// later method keeps its map.
+TEST(Analyze, ParseErrorInAPropertySetterKeepsTheLaterMethod)
+{
+    const std::string text =
+        "using \"w.h\";\n"
+        "class Foo : Widget {\n"
+        "    int n = 0;\n"
+        "    int X { get { return n; } set { foo(; } }\n"
+        "    void c() { n = n + 8; }\n"
+        "}\n";
+    const hotc::AnalyzeResult r = analyze_text(text);
+    EXPECT_FALSE(r.errors.empty());
+    EXPECT_TRUE(r.source_map.map_to_generated(5, 16)) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("n + 8"), std::string::npos);
+}
+
+// The import match uses a path separator boundary: "w.h" is not the end of "neww.h".
+TEST(Analyze, BrokenImportMatchesOnAPathBoundary)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", "class Widget { public: virtual ~Widget() {} };\n");
+    write_file(dir.path() / "neww.h", "int broken( ;\n");
+    const std::string text =
+        "using \"w.h\";\n"
+        "using \"neww.h\";\n"
+        "class Foo : Widget {\n"
+        "    int n = 0;\n"
+        "    void b() { n = n + 6; }\n"
+        "}\n";
+    const hotc::AnalyzeResult r = hotc::analyze(text, temp_options(dir, ""));
+    EXPECT_NE(r.cpp.find("n + 6"), std::string::npos) << r.diagnostics;
+    EXPECT_TRUE(r.source_map.map_to_generated(5, 16));
+}
+
+// The import path has "." and ".." segments. They go before the compare.
+TEST(Analyze, BrokenImportMatchesAfterNormalizingTheImportPath)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", "class Widget { public: virtual ~Widget() {} };\n");
+    std::filesystem::create_directories(dir.path() / "sub");
+    write_file(dir.path() / "sub" / "bad.h", "int broken( ;\n");
+    const std::string text =
+        "using \"w.h\";\n"
+        "using \"sub/../sub/./bad.h\";\n"
+        "class Foo : Widget {\n"
+        "    int n = 0;\n"
+        "    void b() { n = n + 6; }\n"
+        "}\n";
+    const hotc::AnalyzeResult r = hotc::analyze(text, temp_options(dir, ""));
+    EXPECT_NE(r.cpp.find("n + 6"), std::string::npos) << r.diagnostics;
+    EXPECT_TRUE(r.source_map.map_to_generated(5, 16));
 }
 
 // The module attribute array gives the type of "T[N]". The type text of the analysis uses it.
