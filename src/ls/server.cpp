@@ -1906,10 +1906,30 @@ json Server::on_completion(const Doc& d, const json& p)
             --w;
         if (w < s && w >= 8 && t.compare(w - 8, 8, "override") == 0 && (w == 8 || !is_id_char(t[w - 9])))
         {
+            // The class whose body is at the cursor: the cursor is at brace depth 1, and the brace
+            // is the first one after the start of the class. A top-level word and a method body give none.
+            std::vector<size_t> braces;
+            {
+                bool block = false;
+                for (int l = 0; l <= cur.line; ++l)
+                {
+                    const std::string code = blank_non_code(d.text.line(l), block);
+                    const size_t lb = d.text.starts[static_cast<size_t>(l)];
+                    for (size_t i = 0; i < code.size() && lb + i < s; ++i)
+                        if (code[i] == '{')
+                            braces.push_back(lb + i);
+                        else if (code[i] == '}' && !braces.empty())
+                            braces.pop_back();
+                }
+            }
             const hotc::AnalyzedClass* cls = nullptr;
-            for (const hotc::AnalyzedClass& c : d.facts.classes)
-                if (Pos{c.begin.line - 1, c.begin.col - 1} < Pos{cur.line, cur.col + 1})
-                    cls = &c;
+            if (braces.size() == 1)
+                for (const hotc::AnalyzedClass& c : d.facts.classes)
+                {
+                    const size_t cb = d.text.starts[static_cast<size_t>(c.begin.line - 1)] + static_cast<size_t>(c.begin.col - 1);
+                    if (cb < braces[0] && t.find('{', cb) == braces[0])
+                        cls = &c;
+                }
             json list = json::array();
             if (cls)
                 for (const hotc::VirtualMethod& m : hotc::virtual_methods(t, translate_options(d), session_, cls->name))

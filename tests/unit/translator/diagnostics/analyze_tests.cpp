@@ -551,3 +551,16 @@ TEST(VirtualMethods, ScriptParentVirtualIsListedAndOverriddenIsHidden)
     EXPECT_TRUE(find_virtual(v, "Update")); // Mid overrides it: Leaf can override it again
     EXPECT_FALSE(find_virtual(v, "Draw")); // Leaf overrides it already
 }
+
+TEST(VirtualMethods, TemplateBaseAndPartlyWrittenOverrideGiveTheList)
+{
+    TempDir dir;
+    write_file(dir.path() / "t.h", "template <class T> class Box { public: virtual ~Box() {} virtual T Get(T fallback) { return fallback; } };\n");
+    hotc::TranslatorSession session;
+    const auto v = hotc::virtual_methods(
+        "using \"t.h\";\nclass A : Box<int> {\n    override \n}\n", temp_options(dir, ""), session, "A");
+    const hotc::VirtualMethod* g = find_virtual(v, "Get");
+    ASSERT_TRUE(g);
+    EXPECT_EQ(g->signature, "(int fallback)");
+    EXPECT_EQ(g->ret_script, "int");
+}

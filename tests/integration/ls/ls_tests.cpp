@@ -3329,6 +3329,15 @@ TEST(LanguageServer, ImportFactsAreCachedWhileTheTextStays)
     EXPECT_EQ(hot::ls::import_parse_count(), first);
 }
 
+TEST(LanguageServer, OverrideCompletionIsEmptyOutsideAClassBody)
+{
+    REQUIRE_CLANGD();
+    const std::string head = "using \"Actor.h\";\nclass A : Actor { }\n";
+    EXPECT_TRUE(complete_at(false, head + "override @\n", "").names.empty());
+    EXPECT_TRUE(complete_at(false, head + "class B : Actor {\n    void f() {\n        override @\n    }\n}\n", "").names.empty());
+    EXPECT_FALSE(complete_at(false, head + "class B : Actor {\n    override @\n}\n", "").names.empty());
+}
+
 TEST(LanguageServer, CompletionHidesTheGeneratedHelpers)
 {
     REQUIRE_CLANGD();
