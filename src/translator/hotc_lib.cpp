@@ -10721,6 +10721,45 @@ uint32_t find_word(const std::string& text, uint32_t from, const std::string& na
     return from;
 }
 
+// The depth of the braces in text[from, to): "{" counts 1, "}" counts -1. Strings, chars and comments
+// have no braces. "first_open" gets the offset of the first "{" (npos: none).
+static int brace_depth(const std::string& text, size_t from, size_t to, size_t* first_open = nullptr)
+{
+    int depth = 0;
+    if (first_open)
+        *first_open = std::string::npos;
+    to = std::min(to, text.size());
+    for (size_t i = from; i < to; ++i)
+    {
+        const char ch = text[i];
+        if (ch == '"' || ch == '\'')
+        {
+            for (++i; i < to && text[i] != ch && text[i] != '\n'; ++i)
+                if (text[i] == '\\')
+                    ++i;
+        }
+        else if (ch == '/' && i + 1 < to && text[i + 1] == '/')
+        {
+            while (i < to && text[i] != '\n')
+                ++i;
+        }
+        else if (ch == '/' && i + 1 < to && text[i + 1] == '*')
+        {
+            const size_t end = text.find("*/", i + 2);
+            i = end == std::string::npos ? to : end + 1;
+        }
+        else if (ch == '{')
+        {
+            if (first_open && *first_open == std::string::npos)
+                *first_open = i;
+            ++depth;
+        }
+        else if (ch == '}')
+            --depth;
+    }
+    return depth;
+}
+
 // A path with "/" separators, without "." segments and with ".." segments folded. A leading ".."
 // goes away: the rest is compared at a separator boundary. The error text of libclang has the
 // spelling of the include, so both sides use this form.
@@ -10807,9 +10846,7 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
             // includes the closing brace of the property too.
             if (body && std::string_view(kind) == "property")
             {
-                int depth = 0;
-                for (uint32_t i = begin; i < e && i < text.size(); ++i)
-                    depth += text[i] == '{' ? 1 : text[i] == '}' ? -1 : 0;
+                int depth = brace_depth(text, begin, e);
                 for (uint32_t i = e; depth > 0 && i < text.size(); ++i)
                 {
                     if (text[i] == '}')
@@ -10883,35 +10920,7 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
         while (st > b && text[st - 1] != ';' && text[st - 1] != '{' && text[st - 1] != '}')
             --st;
         size_t open = std::string::npos;
-        int depth = 0;
-        for (size_t i = b; i < st; ++i)
-        {
-            const char ch = text[i];
-            if (ch == '"' || ch == '\'')
-            {
-                for (++i; i < st && text[i] != ch && text[i] != '\n'; ++i)
-                    if (text[i] == '\\')
-                        ++i;
-            }
-            else if (ch == '/' && i + 1 < st && text[i + 1] == '/')
-            {
-                while (i < st && text[i] != '\n')
-                    ++i;
-            }
-            else if (ch == '/' && i + 1 < st && text[i + 1] == '*')
-            {
-                const size_t end = text.find("*/", i + 2);
-                i = end == std::string::npos ? st : end + 1;
-            }
-            else if (ch == '{')
-            {
-                if (open == std::string::npos)
-                    open = i;
-                ++depth;
-            }
-            else if (ch == '}')
-                --depth;
-        }
+        const int depth = brace_depth(text, b, st, &open);
         if (open == std::string::npos || depth < 1 || text[e - 1] != '}' || e - st <= static_cast<size_t>(depth))
         {
             blank(valid, line_begin(valid, b), e);

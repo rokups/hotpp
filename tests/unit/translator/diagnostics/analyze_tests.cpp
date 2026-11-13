@@ -299,6 +299,38 @@ TEST(Analyze, ParseErrorInAPropertySetterKeepsTheLaterMethod)
     EXPECT_NE(r.cpp.find("n + 8"), std::string::npos);
 }
 
+// A brace in a string of a property accessor is not a block brace. The later method keeps its map.
+TEST(Analyze, ParseErrorInAPropertySetterWithOpenBraceStringKeepsTheLaterMethod)
+{
+    const std::string text =
+        "using \"w.h\";\n"
+        "class Foo : Widget {\n"
+        "    int n = 0;\n"
+        "    int X { get { return n; } set { string s = \"{\"; foo(; } }\n"
+        "    void c() { n = n + 8; }\n"
+        "}\n";
+    const hotc::AnalyzeResult r = analyze_text(text);
+    EXPECT_FALSE(r.errors.empty());
+    EXPECT_TRUE(r.source_map.map_to_generated(5, 16)) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("n + 8"), std::string::npos);
+}
+
+// A brace in a string of a property accessor is not a block brace. The later method keeps its map.
+TEST(Analyze, ParseErrorInAPropertySetterWithCloseBraceStringKeepsTheLaterMethod)
+{
+    const std::string text =
+        "using \"w.h\";\n"
+        "class Foo : Widget {\n"
+        "    int n = 0;\n"
+        "    int X { get { return n; } set { string s = \"}\"; foo(; } }\n"
+        "    void c() { n = n + 8; }\n"
+        "}\n";
+    const hotc::AnalyzeResult r = analyze_text(text);
+    EXPECT_FALSE(r.errors.empty());
+    EXPECT_TRUE(r.source_map.map_to_generated(5, 16)) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("n + 8"), std::string::npos);
+}
+
 // The import match uses a path separator boundary: "w.h" is not the end of "neww.h".
 TEST(Analyze, BrokenImportMatchesOnAPathBoundary)
 {
