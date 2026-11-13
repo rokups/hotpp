@@ -3203,6 +3203,29 @@ TEST(LanguageServer, CompletionOffersTheEnumeratorsOfAnImportedEnum)
     EXPECT_TRUE(complete_at(false, text, "", kLibScript).has("Green"));
 }
 
+TEST(LanguageServer, OverrideCompletionOffersTheVirtualMethodsOfTheBases)
+{
+    REQUIRE_CLANGD();
+    const char* text = "using \"Actor.h\";\n"
+                       "class Mid : Actor {\n"
+                       "    virtual void Pulse(int n) { }\n"
+                       "}\n"
+                       "class Hero : Mid {\n"
+                       "    override Tick(float dt) { }\n"
+                       "    override @\n"
+                       "}\n";
+    const Completion c = complete_at(true, text, "");
+    EXPECT_TRUE(c.has("void TakeDamage(float amount) {\n\t$0\n}"));
+    EXPECT_TRUE(c.has("void Pulse(int n) {\n\t$0\n}"));
+    EXPECT_FALSE(c.has("Move")); // not virtual
+    bool snippet = false;
+    for (const json& i : c.result["items"])
+        snippet = snippet || i.value("insertTextFormat", 1) == 2;
+    EXPECT_TRUE(snippet);
+    const Completion pre = complete_at(true, text, "Tak");
+    EXPECT_FALSE(pre.names.empty());
+}
+
 TEST(LanguageServer, CompletionHidesTheGeneratedHelpers)
 {
     REQUIRE_CLANGD();

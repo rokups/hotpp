@@ -1844,6 +1844,35 @@ json Server::on_completion(const Doc& d, const json& p)
             return empty;
     }
 
+    // After the word "override" in a class body: the virtual methods that the class can override.
+    if (!after_dot && !after_scope)
+    {
+        size_t w = s;
+        while (w > 0 && std::isspace(static_cast<unsigned char>(t[w - 1])))
+            --w;
+        if (w < s && w >= 8 && t.compare(w - 8, 8, "override") == 0 && (w == 8 || !is_id_char(t[w - 9])))
+        {
+            const hotc::AnalyzedClass* cls = nullptr;
+            for (const hotc::AnalyzedClass& c : d.facts.classes)
+                if (Pos{c.begin.line - 1, c.begin.col - 1} < Pos{cur.line, cur.col + 1})
+                    cls = &c;
+            json list = json::array();
+            if (cls)
+                for (const hotc::VirtualMethod& m : hotc::virtual_methods(t, translate_options(d), session_, cls->name))
+                {
+                    if (!has_prefix(m.name, prefix))
+                        continue;
+                    std::string args;
+                    for (size_t i = 0; i < m.param_types.size(); ++i)
+                        args += (i ? ", " : "") + m.param_types[i] + " " + m.param_names[i];
+                    list.push_back({{"label", m.name}, {"kind", 2}, {"detail", m.ret_script + m.signature + " of " + m.owner},
+                        {"filterText", m.name}, {"sortText", "0" + m.name}, {"insertTextFormat", 2},
+                        {"insertText", m.ret_script + " " + m.name + "(" + args + ") {\n\t$0\n}"}});
+                }
+            return {{"isIncomplete", false}, {"items", list}};
+        }
+    }
+
     const bool member = after_dot || after_scope;
     json items = json::array();
     std::set<std::string> names;
