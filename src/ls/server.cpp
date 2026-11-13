@@ -1837,6 +1837,22 @@ json Server::on_completion(const Doc& d, const json& p)
             }
             const Pos hole = {cur.line, static_cast<int>(s - d.text.starts[static_cast<size_t>(cur.line)])};
             std::optional<json> r;
+            bool mapped = false; // a try had a place for the hole
+            bool sent = false; // the generated text of a try is in clangd
+            Doc& md = const_cast<Doc&>(d);
+            // The real generated text goes back once, also when a request throws.
+            struct Restore
+            {
+                std::function<void()> f;
+                ~Restore() { f(); }
+            } restore{[&]
+                {
+                    if (!sent)
+                        return;
+                    std::lock_guard<std::mutex> lock(docs_mutex_);
+                    md.gen_version = md.sent_version + 1; // before the send: the diagnostics can come at once
+                    send_generated(md, d.gen.s);
+                }};
             for (const std::string& patched : texts)
             {
                 // A completion needs no null check: the statement ends at the hole, so a local that
@@ -1860,8 +1876,9 @@ json Server::on_completion(const Doc& d, const json& p)
                 }
                 if (!g)
                     continue;
-                Doc& md = const_cast<Doc&>(d);
+                mapped = true;
                 const Text gen(facts.cpp);
+                sent = true;
                 send_generated(md, facts.cpp);
                 // Before its first preamble, clangd gives only "fallback" words of the file. A
                 // request that needs the AST waits for the preamble.
@@ -1870,15 +1887,12 @@ json Server::on_completion(const Doc& d, const json& p)
                     {{"textDocument", {{"uri", d.gen_uri}}},
                         {"position",
                             to_lsp(gen, {g->line - 1, g->col - 1 + static_cast<int>(prefix.size())}, clangd_utf8_)}});
-                {
-                    std::lock_guard<std::mutex> lock(docs_mutex_);
-                    md.gen_version = md.sent_version + 1; // before the send: the diagnostics can come at once
-                    send_generated(md, d.gen.s);
-                }
                 const bool got = r && (r->is_array() ? !r->empty() : !r->value("items", json::array()).empty());
                 if (got)
                     break;
             }
+            restore.f();
+            sent = false;
             cc.rest = rest;
             cc.prefix = prefix;
             cc.valid = true;
@@ -1886,7 +1900,7 @@ json Server::on_completion(const Doc& d, const json& p)
             // A translation that fails stays failed while the prefix grows. An empty answer is not
             // complete: clangd gives the names of the headers from its index, and it fills the index
             // after the preamble. An early answer can be empty, so the next request asks again.
-            cc.complete = !r || (r && !cc.list.empty() && !(r->is_object() && r->value("isIncomplete", false)));
+            cc.complete = !mapped || (r && !cc.list.empty() && !(r->is_object() && r->value("isIncomplete", false)));
         }
         incomplete = !cc.complete;
         for (const json& it : cc.list)
