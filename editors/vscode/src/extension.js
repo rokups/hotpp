@@ -13,6 +13,7 @@ const { onlyHot, DOCUMENT_SELECTOR } = require('./only_hot.js');
 let client;
 let watchers = [];  // the file watchers of the client
 let warned = false;
+const channels = new Map();  // the output channels by name, created once
 
 function warn(message) {
   if (warned) return;
@@ -77,6 +78,9 @@ function startServer() {
     // other features (completion, hover, tokens, formatting) on the "hot" documents: clangd owns
     // them for a ".cpp" file. A C++ header does not reach the server.
     documentSelector: DOCUMENT_SELECTOR,
+    // The channels live as long as the extension. A restart reuses them: no second section.
+    outputChannel: getChannel('Hot++ Language Server'),
+    traceOutputChannel: getChannel('Hot++ Language Server Trace'),
     middleware: onlyHot(),
     // The client sends workspace/didChangeWatchedFiles for these files. The code disposes the
     // watchers in deactivate(), so a restart does not leave old watchers.
@@ -108,7 +112,7 @@ function startServer() {
 // settings again, so a new "hot.server.path" or "hot.server.args" takes effect.
 async function restartServer() {
   warned = false;
-  await deactivate();
+  await stopServer();
   if (startServer()) vscode.window.showInformationMessage('Hot++: the language server restarted.');
   else vscode.window.showWarningMessage('Hot++: the language server is off or does not start.');
 }
@@ -117,15 +121,42 @@ function activate(context) {
   context.subscriptions.push(vscode.commands.registerCommand('hot.showScriptPosition', showScriptPosition));
   context.subscriptions.push(vscode.commands.registerCommand('hot.restartServer', restartServer));
   startServer();
-  context.subscriptions.push({ dispose: () => deactivate() });
+  context.subscriptions.push({ dispose: () => stopServer() });
 }
 
-function deactivate() {
+// Returns the output channel with this name. It creates the channel only once.
+function getChannel(name) {
+  let ch = channels.get(name);
+  if (!ch) {
+    ch = vscode.window.createOutputChannel(name);
+    channels.set(name, ch);
+  }
+  return ch;
+}
+
+// Stops and disposes the client and the watchers. The shared channels stay open.
+async function stopServer() {
   const c = client;
   client = undefined;
   for (const w of watchers) w.dispose();
   watchers = [];
-  return c ? c.stop().catch(() => undefined) : undefined;
+  if (!c) return;
+  try {
+    await c.stop();
+  } catch (e) {
+    // The server is already off.
+  }
+  try {
+    c.dispose();
+  } catch (e) {
+    // The client is already disposed.
+  }
+}
+
+async function deactivate() {
+  await stopServer();
+  for (const ch of channels.values()) ch.dispose();
+  channels.clear();
 }
 
 module.exports = { activate, deactivate };
