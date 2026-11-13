@@ -3084,6 +3084,66 @@ TEST(LanguageServer, ClassNameDotOffersAConstOfTheClass)
     EXPECT_TRUE(complete_at(true, kMembersScript, "Hero.").has("StepSize"));
 }
 
+TEST(LanguageServer, MemberCompletionOfAForeachVariableUsesItsType)
+{
+    REQUIRE_CLANGD();
+    const char* text = "class Hero {\n"
+                       "    int power = 1;\n"
+                       "    void boost() { }\n"
+                       "}\n"
+                       "class Team {\n"
+                       "    void run(std.vector<Hero> team) {\n"
+                       "        foreach (Hero h in team) {\n"
+                       "            h.@\n"
+                       "        }\n"
+                       "    }\n"
+                       "}\n";
+    const Completion c = complete_at(true, text, "bo");
+    EXPECT_TRUE(c.has("boost"));
+    EXPECT_FALSE(c.has("power"));
+    EXPECT_TRUE(complete_at(true, text, "po").has("power"));
+}
+
+TEST(LanguageServer, LambdaBodyHasTheFieldsAndLocalsOfTheOuterScope)
+{
+    REQUIRE_CLANGD();
+    const char* text = "class Hero {\n"
+                       "    int ticks = 0;\n"
+                       "    void run() {\n"
+                       "        int local_count = 1;\n"
+                       "        var f = (int x) => {\n"
+                       "            @\n"
+                       "        };\n"
+                       "    }\n"
+                       "}\n";
+    EXPECT_TRUE(complete_at(true, text, "tic").has("ticks"));
+    EXPECT_TRUE(complete_at(true, text, "local_c").has("local_count"));
+    EXPECT_TRUE(complete_at(true, text, "x").has("x"));
+}
+
+TEST(LanguageServer, NativeForeachVariableAndLambdaFieldOfAClassWithABase)
+{
+    REQUIRE_CLANGD();
+    const char* text = "using \"Actor.h\";\n"
+                       "class Hero : Actor {\n"
+                       "    int ticks = 0;\n"
+                       "    void run(std.vector<Actor*> team) {\n"
+                       "        foreach (var a in team) {\n"
+                       "            a.@\n"
+                       "        }\n"
+                       "        var f = (int x) => {\n"
+                       "            @\n"
+                       "        };\n"
+                       "    }\n"
+                       "}\n";
+    std::string first = text;
+    first.erase(first.rfind('@'), 1);
+    EXPECT_TRUE(complete_at(true, first, "Mo").has("Move"));
+    std::string second = text;
+    second.replace(second.find("a.@"), 3, "a.Tick(1.0);");
+    EXPECT_TRUE(complete_at(true, second, "tic").has("ticks"));
+}
+
 TEST(LanguageServer, CompletionHidesTheGeneratedHelpers)
 {
     REQUIRE_CLANGD();
