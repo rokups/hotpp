@@ -10890,18 +10890,37 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
                     const size_t open = text.find('{', c.pos);
                     if (open == std::string::npos || pos < c.pos)
                         continue;
+                    // The end of the class: the brace scan skips strings, chars and comments.
                     size_t close = open;
                     for (int depth = 0; close < text.size(); ++close)
                     {
-                        if (text[close] == '{')
+                        const char ch = text[close];
+                        if (ch == '"' || ch == '\'')
+                        {
+                            for (++close; close < text.size() && text[close] != ch && text[close] != '\n'; ++close)
+                                if (text[close] == '\\')
+                                    ++close;
+                        }
+                        else if (ch == '/' && close + 1 < text.size() && text[close + 1] == '/')
+                        {
+                            while (close < text.size() && text[close] != '\n')
+                                ++close;
+                        }
+                        else if (ch == '/' && close + 1 < text.size() && text[close + 1] == '*')
+                        {
+                            const size_t end = text.find("*/", close + 2);
+                            close = end == std::string::npos ? text.size() : end + 1;
+                        }
+                        else if (ch == '{')
                             ++depth;
-                        else if (text[close] == '}' && --depth == 0)
+                        else if (ch == '}' && --depth == 0)
                             break;
                     }
                     if (pos > close)
                         continue;
+                    // The base list only when the error is in it.
                     const size_t colon = text.find(':', c.pos);
-                    if (colon != std::string::npos && colon < open && add_region(colon, open))
+                    if (colon != std::string::npos && colon < open && pos >= colon && pos < open && add_region(colon, open))
                         break;
                     add_region(line_begin(valid, c.pos), std::min(close + 1, text.size()));
                     break;

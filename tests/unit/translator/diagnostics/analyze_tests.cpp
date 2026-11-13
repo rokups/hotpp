@@ -183,6 +183,60 @@ TEST(Analyze, TwoBadOverridesKeepTheMethodBetweenThem)
     EXPECT_EQ(r.cpp.find("n = 4"), std::string::npos);
 }
 
+// A "{" in a string or a comment must not move the end of the class. The other classes keep their map.
+TEST(Analyze, BraceInStringDoesNotExtendTheClassRegion)
+{
+    const std::string text =
+        "using \"w.h\";\n"
+        "class A : Widget {\n"
+        "    string s() { return \"{\"; } // {\n"
+        "    override void Missing(float dt) { }\n"
+        "}\n"
+        "class B : Widget {\n"
+        "    int n = 0;\n"
+        "    void b() { n = n + 7; }\n"
+        "}\n";
+    const hotc::AnalyzeResult r = analyze_text(text);
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.cpp.find("n + 7"), std::string::npos) << r.diagnostics;
+    EXPECT_TRUE(r.source_map.map_to_generated(8, 16));
+}
+
+// An error at the class header (position before the colon) must not blank only the base list.
+// Without the base, a later pass would blank the "override" member and the class would pass.
+TEST(Analyze, HeaderErrorBlanksTheWholeClassNotTheBaseList)
+{
+    const std::string text =
+        "using \"w.h\";\n"
+        "class A : NoSuchBase {\n"
+        "    override void Missing(float dt) { }\n"
+        "}\n"
+        "class B : Widget {\n"
+        "    int n = 0;\n"
+        "    void b() { n = n + 5; }\n"
+        "}\n";
+    const hotc::AnalyzeResult r = analyze_text(text);
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.cpp.find("A_record"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("n + 5"), std::string::npos) << r.diagnostics;
+}
+
+// A field of an unknown type next to a good method: the method stays in the text.
+TEST(Analyze, UnknownFieldTypeKeepsTheGoodMethod)
+{
+    const std::string text =
+        "using \"w.h\";\n"
+        "class A : Widget {\n"
+        "    Zork z;\n"
+        "    int n = 0;\n"
+        "    override void Missing(float dt) { }\n"
+        "    void b() { n = n + 9; }\n"
+        "}\n";
+    const hotc::AnalyzeResult r = analyze_text(text);
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.cpp.find("n + 9"), std::string::npos) << r.diagnostics;
+}
+
 // The module attribute array gives the type of "T[N]". The type text of the analysis uses it.
 TEST(Analyze, ArrayTemplateOfTheModuleAttributeApplies)
 {
