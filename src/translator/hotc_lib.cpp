@@ -1186,6 +1186,7 @@ std::string overload_key(const std::string& name, const std::string& sig) { retu
 struct NativeVirtual
 {
     std::string name, ret, owner;
+    std::vector<std::string> param_names; // from the declaration; "argN" when it has none
     std::string from; // the direct native base of the script class that gives the virtual
     std::vector<std::string> ptypes;
     // The canonical (fully qualified) parameter types. They match an override in a derived native
@@ -1574,6 +1575,8 @@ void collect_virtuals(CXCursor cls, BaseInfo& info, const Subst& sub = {})
             for (int i = 0; i < n; ++i)
             {
                 const CXType at = clang_getCursorType(clang_Cursor_getArgument(c, i));
+                std::string pn = cxs(clang_getCursorSpelling(clang_Cursor_getArgument(c, i)));
+                v.param_names.push_back(pn.empty() ? "arg" + std::to_string(i) : pn);
                 v.ptypes.push_back(subst_text(tidy(qualified_spelling(at, c)), sub));
                 v.canon.push_back(cxs(clang_getTypeSpelling(clang_getCanonicalType(at))));
             }
@@ -5278,6 +5281,26 @@ void translate_impl(
     { parse_bases(probe, args, base_names, import_paths, out, files, h, reqs, fm, query_texts, qa, res.virtual_files, fs); },
         hier, facts, query_answers, fs, &res.dependencies, &res.shadow_paths, &res.parse_start_ns,
         &res.timing);
+    for (const auto& [bname, bi] : bases)
+        for (const NativeVirtual& v : bi.virtuals)
+        {
+            hotc::VirtualMethod m;
+            m.name = v.name;
+            m.owner = v.owner;
+            m.ret_script = hotc::script_type_text(v.ret);
+            std::string sig = "(";
+            for (size_t i = 0; i < v.ptypes.size(); ++i)
+            {
+                m.param_types.push_back(hotc::script_type_text(v.ptypes[i]));
+                m.param_names.push_back(i < v.param_names.size() ? v.param_names[i] : "arg" + std::to_string(i));
+                sig += (i ? ", " : "") + m.param_types.back() + " " + m.param_names.back();
+            }
+            m.signature = sig + ")";
+            m.is_const = v.is_const;
+            m.pure = v.pure;
+            m.native = true;
+            res.base_virtuals[bname].push_back(std::move(m));
+        }
     phases.next(&res.timing.lower_ns);
     // The rewrite of the bare names (see bare_cands). A name that two namespaces declare is an error.
     if (!bare_cands.empty())
@@ -10949,6 +10972,8 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
     TranslateOptions o = options;
     o.script_text = valid;
     TranslateResult tr = translate(o, session);
+    if (!tr.base_virtuals.empty())
+        res.base_virtuals = tr.base_virtuals;
     if (diag.items.empty())
     {
         res.ok = tr.ok;
@@ -11088,6 +11113,8 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
             }
             o.script_text = valid;
             tr = translate(o, session);
+            if (!tr.base_virtuals.empty())
+                res.base_virtuals = tr.base_virtuals;
         }
     }
     // The blank text has the same offsets and the same lines as "text". So the map is valid for it.
@@ -11097,6 +11124,99 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
         res.cpp = std::move(tr.cpp);
     }
     return res;
+}
+
+std::vector<VirtualMethod> virtual_methods(const std::string& text, const TranslateOptions& options,
+    TranslatorSession& session, const std::string& class_name)
+{
+    std::vector<VirtualMethod> out;
+    Diagnostics diag;
+    const LineMap map(text);
+    const ast::Script sc = parse_script_array(text, map, diag, kDefaultArrayTpl);
+    // The body of the class can be partly written ("override " and nothing more). A text without
+    // that body translates, so the native bases get their facts.
+    std::string clean = text;
+    for (const ast::ClassDef& c : sc.classes)
+        if (c.name == class_name)
+        {
+            const size_t open = clean.find('{', c.pos);
+            int depth = 0;
+            for (size_t i = open; open != std::string::npos && i < clean.size(); ++i)
+            {
+                if (clean[i] == '{')
+                    ++depth;
+                else if (clean[i] == '}' && --depth == 0)
+                    break;
+                else if (clean[i] != '\n' && depth > 0)
+                    clean[i] = ' ';
+            }
+        }
+    const AnalyzeResult facts = analyze(clean, options, session);
+    auto find_class = [&](const std::string& n) -> const ast::ClassDef*
+    {
+        for (const ast::ClassDef& c : sc.classes)
+            if (c.name == n)
+                return &c;
+        return nullptr;
+    };
+    auto sig_of = [&](const ast::Method& m, VirtualMethod& v)
+    {
+        std::string sig = "(";
+        for (size_t i = 0; i < m.params.size(); ++i)
+        {
+            v.param_types.push_back(script_type_text(m.params[i].script_type.empty() ? m.params[i].type : m.params[i].script_type));
+            v.param_names.push_back(m.params[i].name);
+            sig += (i ? ", " : "") + v.param_types.back() + " " + v.param_names.back();
+        }
+        v.signature = sig + ")";
+    };
+    // The methods that the class and the parents that are done already declare: name and count.
+    std::set<std::pair<std::string, size_t>> done;
+    std::set<std::string> seen;
+    const ast::ClassDef* cls = find_class(class_name);
+    if (!cls)
+        return out;
+    for (const ast::Method& m : cls->methods)
+        done.insert({m.written_name(), m.params.size()});
+    std::vector<std::string> native_bases;
+    for (const ast::ClassDef* c = cls; c && seen.insert(c->name).second;)
+    {
+        for (const std::string& i : c->interfaces)
+            native_bases.push_back(i);
+        if (c->base.empty())
+            break;
+        const ast::ClassDef* parent = find_class(c->base);
+        if (!parent)
+        {
+            native_bases.insert(native_bases.begin(), c->base);
+            break;
+        }
+        for (const ast::Method& m : parent->methods)
+        {
+            if (m.access == ast::Access::Private || !(m.is_virtual || m.is_abstract || m.is_override))
+                continue;
+            if (!done.insert({m.written_name(), m.params.size()}).second)
+                continue;
+            VirtualMethod v;
+            v.name = m.written_name();
+            v.owner = parent->name;
+            v.ret_script = m.script_ret.empty() ? (m.ret.empty() ? "void" : script_type_text(m.ret)) : m.script_ret;
+            v.pure = m.is_abstract;
+            sig_of(m, v);
+            out.push_back(std::move(v));
+        }
+        c = parent;
+    }
+    for (const std::string& b : native_bases)
+    {
+        const auto it = facts.base_virtuals.find(b);
+        if (it == facts.base_virtuals.end())
+            continue;
+        for (const VirtualMethod& v : it->second)
+            if (done.insert({v.name, v.param_types.size()}).second)
+                out.push_back(v);
+    }
+    return out;
 }
 
 AnalyzeResult analyze_cpp(const std::string& text, const std::string& path, const TranslateOptions& options)

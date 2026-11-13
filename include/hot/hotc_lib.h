@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -266,9 +267,21 @@ struct TranslateTiming
     int64_t emit_ns = 0;       // from the start of the emit to the end
 };
 
+// A virtual method that a script class can override. The types have the script spelling.
+struct VirtualMethod
+{
+    std::string name, owner, ret_script;
+    std::string signature; // "(float dt)": the types and the names of the parameters
+    std::vector<std::string> param_types, param_names;
+    bool is_const = false, pure = false, native = false;
+};
+
 struct TranslateResult
 {
     bool ok = false;
+    // The public and protected virtual methods of each native base of the script, by the name of the
+    // base as the script writes it. The language server reads them for "override" completion.
+    std::map<std::string, std::vector<VirtualMethod>> base_virtuals;
     std::string cpp; // the generated C++ text (valid when ok)
     std::string slots_out; // the new slot file content (valid when ok)
     // The signature lines of the slot file (design 5.3): "sig Cls::fn Sig", one for each script
@@ -374,6 +387,7 @@ struct AnalyzeError
 
 struct AnalyzeResult
 {
+    std::map<std::string, std::vector<VirtualMethod>> base_virtuals; // see TranslateResult
     bool ok = false; // no syntax error, and the translation is ok
     std::vector<AnalyzedClass> classes; // the classes that the parser read
     std::vector<AnalyzeError> errors; // the syntax errors, in source order
@@ -526,6 +540,13 @@ SlotCarry carry_slots(const std::string& slots_in, const std::vector<std::string
 // with a syntax error still gives ok = false and no C++ there.
 AnalyzeResult analyze(const std::string& text, const TranslateOptions& options);
 AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, TranslatorSession& session);
+
+// The virtual methods that the script class "class_name" can override: the virtual, abstract and
+// override methods of its script parents and the virtual methods of its native bases. A method that
+// the class or a nearer parent overrides, a static method and a private method are not in the list.
+// The text can have errors. The class can be partly written.
+std::vector<VirtualMethod> virtual_methods(const std::string& text, const TranslateOptions& options,
+    TranslatorSession& session, const std::string& class_name);
 
 // Checks a ".cpp" script (see doc/cpp-scripts.md) and returns its errors. The function runs the
 // ".cpp" front end and all the checks of translate(). It writes no file. "path" is the script

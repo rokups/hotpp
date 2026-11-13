@@ -464,3 +464,79 @@ TEST(AnalyzeImports, ToleratesASyntaxError)
     const hotc::ImportFacts f = hotc::analyze_imports("class A { int x = ; void f() { } }\nclass B { }\n", "");
     EXPECT_GE(f.classes.size(), 1u);
 }
+
+namespace
+{
+
+std::vector<hotc::VirtualMethod> virtuals_of(const std::string& text, const std::string& cls)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h",
+        "#include <string>\n"
+        "class Widget { public: virtual ~Widget() {}\n"
+        "  virtual void Update(float dt) {}\n"
+        "  virtual std::string Describe(int level, bool full) const { return {}; }\n"
+        "  virtual void Draw() = 0;\n"
+        "  void Plain(int x) {}\n"
+        "private: virtual void Hidden() {} };\n");
+    hotc::TranslatorSession session;
+    return hotc::virtual_methods(text, temp_options(dir, ""), session, cls);
+}
+
+const hotc::VirtualMethod* find_virtual(const std::vector<hotc::VirtualMethod>& v, const std::string& n)
+{
+    for (const hotc::VirtualMethod& m : v)
+        if (m.name == n)
+            return &m;
+    return nullptr;
+}
+
+} // namespace
+
+TEST(VirtualMethods, NativeBaseVirtualsAreListedWithParameterNames)
+{
+    const auto v = virtuals_of("using \"w.h\";\nclass Foo : Widget {\n    override \n}\n", "Foo");
+    const hotc::VirtualMethod* u = find_virtual(v, "Update");
+    ASSERT_TRUE(u);
+    EXPECT_TRUE(u->native);
+    EXPECT_EQ(u->ret_script, "void");
+    EXPECT_EQ(u->signature, "(float dt)");
+    const hotc::VirtualMethod* d = find_virtual(v, "Describe");
+    ASSERT_TRUE(d);
+    EXPECT_TRUE(d->is_const);
+    EXPECT_EQ(d->param_names, (std::vector<std::string>{"level", "full"}));
+    const hotc::VirtualMethod* w = find_virtual(v, "Draw");
+    ASSERT_TRUE(w);
+    EXPECT_TRUE(w->pure);
+}
+
+TEST(VirtualMethods, NonVirtualAndPrivateMethodsAreHidden)
+{
+    const auto v = virtuals_of("using \"w.h\";\nclass Foo : Widget {\n}\n", "Foo");
+    EXPECT_FALSE(find_virtual(v, "Plain"));
+    EXPECT_FALSE(find_virtual(v, "Hidden"));
+}
+
+TEST(VirtualMethods, ScriptParentVirtualIsListedAndOverriddenIsHidden)
+{
+    const auto v = virtuals_of(
+        "using \"w.h\";\n"
+        "class Mid : Widget {\n"
+        "    virtual void Pulse(int n) { }\n"
+        "    void Quiet() { }\n"
+        "    override void Update(float dt) { }\n"
+        "}\n"
+        "class Leaf : Mid {\n"
+        "    override void Draw() { }\n"
+        "    override \n"
+        "}\n",
+        "Leaf");
+    const hotc::VirtualMethod* p = find_virtual(v, "Pulse");
+    ASSERT_TRUE(p);
+    EXPECT_FALSE(p->native);
+    EXPECT_EQ(p->owner, "Mid");
+    EXPECT_EQ(p->signature, "(int n)");
+    EXPECT_FALSE(find_virtual(v, "Quiet"));
+    EXPECT_TRUE(find_virtual(v, "Update")); // Mid overrides it: Leaf can override it again
+    EXPECT_FALSE(find_virtual(v, "Draw")); // Leaf overrides it already
+}
