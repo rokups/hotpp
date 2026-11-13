@@ -462,7 +462,18 @@ TEST(AnalyzeImports, ReadsClassesStaticsFunctionsConstsVarsAndEnums)
 TEST(AnalyzeImports, ToleratesASyntaxError)
 {
     const hotc::ImportFacts f = hotc::analyze_imports("class A { int x = ; void f() { } }\nclass B { }\n", "");
-    EXPECT_GE(f.classes.size(), 1u);
+    ASSERT_GE(f.classes.size(), 1u);
+    const hotc::ImportClass* b = nullptr;
+    for (const hotc::ImportClass& c : f.classes)
+        if (c.name == "B")
+            b = &c;
+    EXPECT_TRUE(b); // the class after the broken one
+    bool has_f = false;
+    for (const hotc::ImportClass& c : f.classes)
+        if (c.name == "A")
+            for (const hotc::ImportMember& m : c.members)
+                has_f = has_f || (m.name == "f" && m.kind == "method");
+    EXPECT_TRUE(has_f); // the member after the broken field
 }
 
 namespace

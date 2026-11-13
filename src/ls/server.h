@@ -60,6 +60,9 @@ struct ServerOptions
 // Returns 0 after a "shutdown" request, else 1 (the LSP rule for "exit").
 int run_server(int in_fd, int out_fd, const ServerOptions& options);
 
+// The number of parses of imported scripts for completion since the process start. Tests read it.
+int import_parse_count();
+
 // The script place of a 0-based line of a generated C++ text, from its "#line" directives.
 // "file" is the name in the directive. "line" is 0-based. Gives no value when no script
 // directive comes before the line. A line in text that the translator writes by itself (after

@@ -50,6 +50,13 @@ namespace fs = std::filesystem;
 namespace hot::ls
 {
 
+static std::atomic<int> g_import_parses{0};
+
+int import_parse_count()
+{
+    return g_import_parses;
+}
+
 using json = nlohmann::json;
 
 namespace
@@ -328,6 +335,8 @@ std::optional<Pos> Doc::gen_script_to_text(Pos p) const
     const auto [l, c] = text.pos(off);
     return Pos{l, c};
 }
+
+static std::string blank_non_code(std::string_view l, bool& in_block);
 
 class Server
 {
@@ -791,38 +800,81 @@ private:
     // The documents whose patched completion text has had an AST wait (see on_completion).
     std::set<std::string> completion_synced_;
     // The facts of the imported scripts ("using "x.hot";") by file. An entry is valid while the text
-    // hash of the file stays the same. "parses" counts the parses (tests read it).
+    // hash of the file stays the same. import_parse_count() counts the parses (tests read it).
     struct ImportEntry
     {
         uint64_t text_hash = 0;
         std::shared_ptr<const hotc::ImportFacts> facts;
     };
     std::map<std::string, ImportEntry> import_cache_;
-    int import_parses_ = 0;
+    // The file system of the import search: the text of an open document, not the disk. The disk
+    // is the fallback of the search itself. Only the thread of the requests uses it.
+    struct OpenDocsFs : hot::FileSystem
+    {
+        const Server* server = nullptr;
+        bool read(const std::string& path, std::string& out) override
+        {
+            const std::string norm = fs::path(path).lexically_normal().string();
+            for (const auto& [uri, doc] : server->docs_)
+                if (fs::path(doc->path).lexically_normal().string() == norm)
+                {
+                    out = doc->text.s;
+                    return true;
+                }
+            return false;
+        }
+        hot::VfsStat stat(const std::string& path) override { return hot::disk_file_system()->stat(path); }
+    };
+    std::shared_ptr<OpenDocsFs> open_docs_fs_;
+    // The paths of the "using "x.hot";" lines. A line in a comment, and a "using" in a string, do not count.
+    static std::vector<std::string> using_paths(const std::string& src)
+    {
+        std::vector<std::string> r;
+        static const std::regex re("^[ \\t]*using[ \\t]*\"([^\"\\n]+\\.hot)\"");
+        bool block = false;
+        for (size_t b = 0; b < src.size();)
+        {
+            size_t e = src.find('\n', b);
+            if (e == std::string::npos)
+                e = src.size();
+            const std::string line = src.substr(b, e - b);
+            const std::string code = blank_non_code(line, block);
+            const size_t first = line.find_first_not_of(" \t");
+            std::smatch m;
+            if (first != std::string::npos && code.compare(first, 5, "using") == 0 && std::regex_search(line, m, re))
+                r.push_back(m[1].str());
+            b = e + 1;
+        }
+        return r;
+    }
     // The facts of the scripts that "text" imports, and of the scripts that they import. A cycle
-    // and a missing file are skipped.
-    std::vector<std::shared_ptr<const hotc::ImportFacts>> imported_facts(const Doc& d, const std::string& text)
+    // and a missing file are skipped. "depths" gets the import depth of each entry: 0 for a direct
+    // import. The translator gives an importer the functions and the variables of the direct imports only.
+    std::vector<std::shared_ptr<const hotc::ImportFacts>> imported_facts(
+        const Doc& d, const std::string& text, std::vector<int>* depths = nullptr)
     {
         std::vector<std::shared_ptr<const hotc::ImportFacts>> out;
-        const hotc::TranslateOptions o = translate_options(d);
-        std::set<std::string> seen;
-        const std::string self = fs::path(d.path).lexically_normal().string();
-        seen.insert(self);
-        auto paths_of = [](const std::string& src)
+        if (!open_docs_fs_)
         {
-            std::vector<std::string> r;
-            static const std::regex re("(^|\\n)[ \\t]*using[ \\t]*\"([^\"\\n]+\\.hot)\"");
-            for (std::sregex_iterator it(src.begin(), src.end(), re), end; it != end; ++it)
-                r.push_back((*it)[2].str());
-            return r;
+            open_docs_fs_ = std::make_shared<OpenDocsFs>();
+            open_docs_fs_->server = this;
+        }
+        hotc::TranslateOptions o = translate_options(d);
+        o.fs = open_docs_fs_;
+        std::set<std::string> seen;
+        seen.insert(fs::path(d.path).lexically_normal().string());
+        struct Todo
+        {
+            std::string path, dir;
+            int depth;
         };
-        std::vector<std::pair<std::string, std::string>> todo; // path, directory of the importer
-        for (const std::string& pth : paths_of(text))
-            todo.emplace_back(pth, fs::path(d.path).parent_path().string());
+        std::vector<Todo> todo;
+        for (const std::string& pth : using_paths(text))
+            todo.push_back({pth, fs::path(d.path).parent_path().string(), 0});
         for (size_t i = 0; i < todo.size() && i < 64; ++i)
         {
             std::string itext, file, unit;
-            if (!hotc::find_import(o, todo[i].first, todo[i].second, std::string(), itext, file, unit))
+            if (!hotc::find_import(o, todo[i].path, todo[i].dir, std::string(), itext, file, unit))
                 continue;
             const std::string key = fs::path(file).lexically_normal().string();
             if (!seen.insert(key).second)
@@ -836,13 +888,15 @@ private:
             else
             {
                 facts = std::make_shared<const hotc::ImportFacts>(hotc::analyze_imports(itext, std::string()));
-                ++import_parses_;
+                ++g_import_parses;
                 import_cache_[key] = {h, facts};
             }
             out.push_back(facts);
+            if (depths)
+                depths->push_back(todo[i].depth);
             for (const std::string& pth : facts->imports)
                 if (pth.size() > 4 && pth.compare(pth.size() - 4, 4, ".hot") == 0)
-                    todo.emplace_back(pth, fs::path(file).parent_path().string());
+                    todo.push_back({pth, fs::path(file).parent_path().string(), todo[i].depth + 1});
         }
         return out;
     }
@@ -1890,7 +1944,8 @@ json Server::on_completion(const Doc& d, const json& p)
 
     // ---- the script facts (they work without clangd)
     const ScriptScope scope = scan_scope(t, s, s);
-    const auto imported = imported_facts(d, t);
+    std::vector<int> imported_depth;
+    const auto imported = imported_facts(d, t, &imported_depth);
     // The members of a script class and of its script bases. clangd does not see them on the shell.
     auto add_members = [&](const std::string& class_name)
     {
@@ -2039,17 +2094,20 @@ json Server::on_completion(const Doc& d, const json& p)
             add(n, 22, "script struct", "1");
         for (const std::string& n : scope.interfaces)
             add(n, 8, "script interface", "1");
-        for (const auto& f : imported)
+        for (size_t fi = 0; fi < imported.size(); ++fi)
         {
+            const auto& f = imported[fi];
             for (const hotc::ImportClass& c : f->classes)
                 add(c.name, c.is_interface ? 8 : c.is_struct ? 22 : 7,
                     c.is_interface ? "imported interface" : c.is_struct ? "imported struct" : "imported class", "1");
             for (const hotc::ImportEnum& e : f->enums)
                 add(e.name, 13, "imported enum", "1");
             for (const hotc::ImportVar& v : f->vars)
-                add(v.name, v.is_const ? 21 : 6, std::string(v.is_const ? "imported const" : "imported variable") + ": " + v.type, "0");
+                if (v.is_const || imported_depth[fi] == 0)
+                    add(v.name, v.is_const ? 21 : 6, std::string(v.is_const ? "imported const" : "imported variable") + ": " + v.type, "0");
             for (const hotc::ImportFunction& fn : f->functions)
-                add(fn.name, 3, fn.type + fn.signature + " (imported)", "0");
+                if (imported_depth[fi] == 0)
+                    add(fn.name, 3, fn.type + fn.signature + " (imported)", "0");
         }
     }
 

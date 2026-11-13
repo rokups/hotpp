@@ -3226,6 +3226,109 @@ TEST(LanguageServer, OverrideCompletionOffersTheVirtualMethodsOfTheBases)
     EXPECT_FALSE(pre.names.empty());
 }
 
+// The names that a completion gives at a place of an open script. The files go to the disk first.
+std::vector<std::string> names_at(Session& s, int line, int col)
+{
+    json r = s.client->request("textDocument/completion", doc_pos(s.uri, line, col));
+    std::vector<std::string> names;
+    for (const json& i : (r.contains("result") ? r["result"] : json::object()).value("items", json::array()))
+        names.push_back(i.value("insertText", i.value("label", "")));
+    return names;
+}
+
+bool has_name(const std::vector<std::string>& v, const std::string& n)
+{
+    return std::find(v.begin(), v.end(), n) != v.end();
+}
+
+// A main script with the cursor after "word" in a method body. "head" are the lines before the class.
+std::string main_with(const std::string& head, const std::string& word, const std::string& base = "")
+{
+    return head + "class Hero" + base + " {\n    void run() {\n        " + word + "\n    }\n}\n";
+}
+
+int word_line(const std::string& text) // the line of the cursor: the line of "run() {" plus 1
+{
+    return static_cast<int>(std::count(text.begin(), text.begin() + static_cast<long>(text.find("void run")), '\n')) + 1;
+}
+
+TEST(LanguageServer, ImportCompletionSeesTheUnsavedBufferOfAnImport)
+{
+    REQUIRE_CLANGD();
+    const std::string text = main_with("using \"lib.hot\";\n", "Ne");
+    Session s(false, text);
+    write_file(s.dir.path() / "lib.hot", "class Old { }\n");
+    const std::string lib_uri = uri_of((s.dir.path() / "lib.hot").string());
+    s.client->open(lib_uri, "class Old { }\n");
+    EXPECT_FALSE(has_name(names_at(s, word_line(text), 10), "New"));
+    s.client->change(lib_uri, 2, "class Old { }\nclass New { }\n");
+    EXPECT_TRUE(has_name(names_at(s, word_line(text), 10), "New"));
+}
+
+TEST(LanguageServer, ImportCompletionOffersFunctionsAndVarsOfDirectImportsOnly)
+{
+    REQUIRE_CLANGD();
+    const std::string text = main_with("using \"a.hot\";\n", "");
+    Session s(false, text);
+    write_file(s.dir.path() / "a.hot", "using \"b.hot\";\nint helperA() { return 1; }\nclass A { }\n");
+    write_file(s.dir.path() / "b.hot", "int helper() { return 1; }\nint b_var = 0;\nclass B { }\nconst int BConst = 1;\n");
+    const auto n = names_at(s, word_line(text), 8);
+    EXPECT_TRUE(has_name(n, "helperA"));
+    EXPECT_TRUE(has_name(n, "A"));
+    EXPECT_TRUE(has_name(n, "B"));
+    EXPECT_TRUE(has_name(n, "BConst"));
+    EXPECT_FALSE(has_name(n, "helper"));
+    EXPECT_FALSE(has_name(n, "b_var"));
+}
+
+TEST(LanguageServer, UsingLinesInCommentsAreNotImports)
+{
+    REQUIRE_CLANGD();
+    const std::string text = main_with("/* using \"x.hot\"; */\n// using \"x.hot\";\n", "XH");
+    Session s(false, text);
+    write_file(s.dir.path() / "x.hot", "class XHidden { }\n");
+    EXPECT_FALSE(has_name(names_at(s, word_line(text), 10), "XHidden"));
+}
+
+TEST(LanguageServer, ImportCycleAndMissingImportDoNotStopCompletion)
+{
+    REQUIRE_CLANGD();
+    const std::string text = main_with("using \"none.hot\";\nusing \"a.hot\";\n", "");
+    Session s(false, text);
+    write_file(s.dir.path() / "a.hot", "using \"b.hot\";\nclass A { }\n");
+    write_file(s.dir.path() / "b.hot", "using \"a.hot\";\nclass B { }\n");
+    const auto n = names_at(s, word_line(text), 8);
+    EXPECT_TRUE(has_name(n, "A"));
+    EXPECT_TRUE(has_name(n, "B"));
+}
+
+TEST(LanguageServer, BareCompletionFollowsTheBaseChainAcrossImports)
+{
+    REQUIRE_CLANGD();
+    const std::string text = main_with("using \"a.hot\";\n", "far", " : Mid");
+    Session s(false, text);
+    write_file(s.dir.path() / "a.hot", "using \"b.hot\";\nclass Mid : Far { void midGo() { } }\n");
+    write_file(s.dir.path() / "b.hot", "class Far { int farHp = 1; void farGo() { } }\n");
+    const auto n = names_at(s, word_line(text), 11);
+    EXPECT_TRUE(has_name(n, "farGo"));
+    EXPECT_TRUE(has_name(n, "farHp"));
+    EXPECT_FALSE(has_name(n, "midGo") && false);
+}
+
+TEST(LanguageServer, ImportFactsAreCachedWhileTheTextStays)
+{
+    REQUIRE_CLANGD();
+    const std::string text = main_with("using \"lib.hot\";\n", "Lib");
+    Session s(false, text);
+    write_file(s.dir.path() / "lib.hot", kLibScript);
+    const int before = hot::ls::import_parse_count();
+    EXPECT_TRUE(has_name(names_at(s, word_line(text), 11), "LibBase"));
+    const int first = hot::ls::import_parse_count();
+    EXPECT_TRUE(has_name(names_at(s, word_line(text), 11), "LibBase"));
+    EXPECT_EQ(first - before, 1);
+    EXPECT_EQ(hot::ls::import_parse_count(), first);
+}
+
 TEST(LanguageServer, CompletionHidesTheGeneratedHelpers)
 {
     REQUIRE_CLANGD();
