@@ -100,6 +100,9 @@ std::set<std::string> block_new_targets(const ast::ClassDef& cd);
 std::set<std::string> used_type_names(const ast::Script& sc);
 // The same for one class. The translator uses it to find the script classes that a class names.
 std::set<std::string> used_type_names(const ast::ClassDef& cd);
+// Calls "fn" for the type text of each declaration, "new", "is"/"as" and lambda parameter that
+// "used_type_names" reads, and also for the module variables and constants. "fn" can change the text.
+void edit_type_texts(ast::Script& sc, const std::function<void(std::string&)>& fn);
 
 // How the body of a script function uses one parameter (design 7.10.5). The pass sees the
 // names only, because the lowering has not run. It is conservative:

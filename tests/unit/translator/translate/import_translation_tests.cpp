@@ -127,3 +127,96 @@ TEST(ImportTranslation, UsingWithBadArgumentIsAnError)
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("using needs"), std::string::npos) << r.diagnostics;
 }
+
+namespace
+{
+
+const char* kBareHeader =
+    "#pragma once\n"
+    "#include <memory>\n"
+    "namespace eng {\n"
+    "struct Node : std::enable_shared_from_this<Node> { int x = 0; };\n"
+    "template <class T> struct Ptr { T* p = nullptr; T* operator->() const { return p; } T* get() const { return p; } };\n"
+    "struct Obj { void AddRef(); void Release(); virtual ~Obj() {} };\n"
+    "struct Two { int a = 0; };\n"
+    "}\n"
+    "namespace eng2 { struct Two { int b = 0; }; }\n"
+    "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n";
+
+const char* kBareStubs = "[native, handle(\"std::shared_ptr<$T>\")] class eng.Node;\n"
+                         "[native, handle(\"eng::Ptr<$T>\")] class eng.Obj;\n";
+
+// The script gets "using eng;" and the stubs. "NAME" in the body stands for the type name.
+hotc::TranslateResult translate_bare(const std::string& usings, const std::string& body, const std::string& name)
+{
+    TempDir dir;
+    write_file(dir.path() / "b.h", kBareHeader);
+    std::string text = body;
+    for (size_t at = text.find("NAME"); at != std::string::npos; at = text.find("NAME", at))
+    {
+        text.replace(at, 4, name);
+        at += name.size();
+    }
+    return hotc::translate(temp_options(dir, "using \"b.h\";\n" + usings + kBareStubs + text));
+}
+
+// The bare name and the qualified name give the same C++.
+void expect_same_as_qualified(const std::string& body, const std::string& bare, const std::string& qualified,
+    const char* expected_part = nullptr)
+{
+    const auto a = translate_bare("using eng;\n", body, bare);
+    const auto b = translate_bare("using eng;\n", body, qualified);
+    ASSERT_TRUE(b.ok) << b.diagnostics;
+    ASSERT_TRUE(a.ok) << a.diagnostics;
+    EXPECT_EQ(a.cpp, b.cpp);
+    if (expected_part)
+        EXPECT_NE(a.cpp.find(expected_part), std::string::npos) << a.cpp;
+}
+
+} // namespace
+
+// A bare handle "$Obj" has the handle template of the stub "eng.Obj".
+TEST(ImportTranslation, BareHandleUsesTheNamespacedStub)
+{
+    expect_same_as_qualified(
+        "class Foo : Widget {\n    $NAME o;\n    void f($NAME p) { o = p; }\n}\n", "Obj", "eng.Obj", "eng::Ptr<eng::Obj>");
+}
+
+// "[weak]" works with a bare name.
+TEST(ImportTranslation, BareWeakHandle)
+{
+    expect_same_as_qualified("class Foo : Widget {\n    [weak]\n    $NAME w;\n    void f([weak] $NAME p) { w = p; }\n}\n",
+        "Node", "eng.Node", "std::weak_ptr<eng::Node>");
+}
+
+// "new" with a bare name.
+TEST(ImportTranslation, BareNew)
+{
+    expect_same_as_qualified("class Foo : Widget {\n    void f() { $NAME o = new NAME(); }\n}\n", "Obj", "eng.Obj");
+}
+
+// A bare name in a template argument and in a local.
+TEST(ImportTranslation, BareNameInTemplateArgument)
+{
+    expect_same_as_qualified("class Foo : Widget {\n    void f() { std.vector<$NAME> v; }\n}\n", "Node", "eng.Node");
+}
+
+// Two namespaces with the same name: the script must write the prefix.
+TEST(ImportTranslation, BareNameInTwoNamespacesIsAnError)
+{
+    const std::string body = "class Foo : Widget {\n    NAME t;\n}\n";
+    const auto r = translate_bare("using eng;\nusing eng2;\n", body, "Two");
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("'Two'"), std::string::npos) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("prefix"), std::string::npos) << r.diagnostics;
+    const auto q = translate_bare("using eng;\nusing eng2;\n", body, "eng2.Two");
+    EXPECT_TRUE(q.ok) << q.diagnostics;
+}
+
+// A script class wins over a native name of a namespace.
+TEST(ImportTranslation, ScriptClassWinsOverBareNativeName)
+{
+    const auto r = translate_bare("using eng;\n", "class Node {\n    int x;\n}\nclass Foo : Widget {\n    $Node n;\n}\n", "");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_EQ(r.cpp.find("std::shared_ptr<eng::Node>"), std::string::npos) << r.cpp;
+}

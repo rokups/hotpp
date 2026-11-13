@@ -58,3 +58,24 @@ TEST(NamespacedBaseTranslation, GeneratedCodeQualifiesTheTypesOfTheBase)
     EXPECT_FALSE(has(r.cpp, "(Key ")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, " Key Get(")) << r.cpp;
 }
+
+// A bare base name under "using eng;" is the base "eng::Mid".
+TEST(NamespacedBaseTranslation, BareBaseNameUnderUsing)
+{
+    const hotc::TranslateResult a = run("using eng;\nclass Foo : Mid {\n    override void Tick(float dt) { }\n}\n");
+    const hotc::TranslateResult b = run("using eng;\nclass Foo : eng.Mid {\n    override void Tick(float dt) { }\n}\n");
+    ASSERT_TRUE(b.ok) << b.diagnostics;
+    ASSERT_TRUE(a.ok) << a.diagnostics;
+    EXPECT_EQ(a.cpp, b.cpp);
+}
+
+// A bare parameter type of an override is the type of the native virtual method.
+TEST(NamespacedBaseTranslation, BareOverrideParameterUnderUsing)
+{
+    const hotc::TranslateResult a = run("using eng;\nclass Foo : Mid {\n    override bool Is(Key k) { return true; }\n}\n");
+    const hotc::TranslateResult b = run("using eng;\nclass Foo : eng.Mid {\n    override bool Is(eng.Key k) { return true; }\n}\n");
+    ASSERT_TRUE(b.ok) << b.diagnostics;
+    ASSERT_TRUE(a.ok) << a.diagnostics;
+    EXPECT_EQ(a.cpp, b.cpp);
+    EXPECT_FALSE(has(a.diagnostics, "hides the virtual method")) << a.diagnostics;
+}

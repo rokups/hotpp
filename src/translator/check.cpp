@@ -3956,6 +3956,79 @@ std::set<std::string> used_type_names(const ClassDef& cd)
     return collect_type_names(&cd, nullptr);
 }
 
+void edit_type_texts(Script& sc, const std::function<void(std::string&)>& fn)
+{
+    auto fe = [&](const Expr& e)
+    {
+        // The walk is read-only. The edit changes the type text only, not the shape of the tree.
+        Expr& m = const_cast<Expr&>(e);
+        if (auto* n = std::get_if<NewExpr>(&m.v))
+            fn(n->type);
+        if (auto* tt = std::get_if<TypeTestExpr>(&m.v))
+            fn(tt->type);
+        if (auto* l = std::get_if<LambdaExpr>(&m.v))
+            for (Param& p : l->params)
+                fn(p.type);
+    };
+    auto fs = [&](const Stmt& s)
+    {
+        Stmt& m = const_cast<Stmt&>(s);
+        if (auto* d = std::get_if<VarDeclStmt>(&m.v))
+            fn(d->type);
+        if (auto* fo = std::get_if<ForOfStmt>(&m.v))
+            fn(fo->type);
+    };
+    auto w = make_walker(fe, fs);
+    auto method = [&](Method& m)
+    {
+        fn(m.ret);
+        for (Param& p : m.params)
+            fn(p.type);
+        w.block(m.body);
+    };
+    for (Field& f : sc.vars)
+    {
+        fn(f.type);
+        w.expr(f.init);
+    }
+    for (Field& f : sc.consts)
+    {
+        fn(f.type);
+        w.expr(f.init);
+    }
+    for (Method& m : sc.fns)
+        method(m);
+    for (ClassDef& cd : sc.classes)
+    {
+        for (Field& f : cd.fields)
+        {
+            fn(f.type);
+            w.expr(f.init);
+        }
+        for (Method& m : cd.methods)
+            method(m);
+        for (Method& m : cd.statics)
+            method(m);
+        for (Method& d : cd.dtors)
+            w.block(d.body);
+        for (Ctor& c : cd.ctors)
+        {
+            for (Param& p : c.params)
+                fn(p.type);
+            w.block(c.body);
+        }
+        for (Property& p : cd.props)
+        {
+            fn(p.type);
+            w.expr(p.init);
+            if (p.get_body)
+                w.block(*p.get_body);
+            if (p.set_body)
+                w.block(*p.set_body);
+        }
+    }
+}
+
 std::set<std::string> used_type_names(const Script& sc)
 {
     std::set<std::string> out = collect_type_names(nullptr, &sc.fns);

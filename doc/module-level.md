@@ -68,6 +68,13 @@ class Grunt : Unit {
 
 The name `std` follows the configured standard namespace, as `std.` does in a type.
 
+A bare native type name in a type position means the same as the name with its namespace. This holds for class bases and interfaces, fields, parameters, return types, locals, `new`, `is` and `as`, lambda parameters, template arguments, `$` handle types and `[weak]`. An `override` signature with bare parameter types also matches the native virtual method. The probe of the headers tells which namespace declares the name.
+
+- A script class, struct, interface, enum or alias with the same name wins over the native name.
+- A global native name wins, as in C++.
+- If two `using` namespaces declare the name, the translator gives an error. Write the namespace prefix.
+- The translator does not change the names in expressions. A script method `Update` and the native `Update.P_TIMESTEP` stay apart.
+
 ### Type aliases
 
 `using Name = type;` gives a new name to a type. It becomes `using Name = type;` in the C++ text. The name works everywhere a type name works: fields, parameters, return types, locals, template arguments, `new` and `as`. Before a `.` it is a scope, so an alias of an enum can name the values (`Color2.Red`).

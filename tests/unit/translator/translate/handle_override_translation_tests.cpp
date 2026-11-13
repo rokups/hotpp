@@ -120,3 +120,24 @@ TEST(HandleOverrideTranslation, RawPointerReturnIsNotRelaxed)
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "return type 'Weapon' differs from 'Weapon*'")) << r.diagnostics;
 }
+
+// An override with a bare parameter type under "using ns;" matches the native virtual method.
+TEST(HandleOverrideTranslation, BareParameterTypeUnderUsing)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h",
+        "#include <memory>\nnamespace eng {\nstruct Frame { int n = 0; };\n"
+        "class Gun { public: virtual ~Gun() {} virtual void Hit(Frame* f) {} virtual void Fire(const Frame& f) {} };\n}\n");
+    const auto run = [&](const std::string& prefix)
+    {
+        return hotc::translate(temp_options(dir,
+            "using \"w.h\";\nusing eng;\nclass Foo : " + prefix + "Gun {\n    override void Hit(" + prefix
+                + "Frame* f) { }\n    override void Fire(in " + prefix + "Frame f) { }\n}\n"));
+    };
+    const hotc::TranslateResult a = run("");
+    const hotc::TranslateResult b = run("eng.");
+    ASSERT_TRUE(b.ok) << b.diagnostics;
+    ASSERT_TRUE(a.ok) << a.diagnostics;
+    EXPECT_FALSE(has(a.diagnostics, "hides the virtual method")) << a.diagnostics;
+    EXPECT_EQ(a.cpp, b.cpp);
+}

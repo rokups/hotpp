@@ -2476,6 +2476,28 @@ std::string using_ns_text(const std::string& name, const std::string& std_ns)
 {
     return name == "std" ? std_ns : name;
 }
+// Calls "fn(identifier, begin, end)" for each identifier of a type text that is not the part of a
+// qualified name after "::" or ".". A bare name of "using ns;" is such an identifier.
+template <class F> void for_each_bare_ident(const std::string& t, F fn)
+{
+    const auto word = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
+    for (size_t i = 0; i < t.size();)
+    {
+        if (!word(t[i]))
+        {
+            ++i;
+            continue;
+        }
+        size_t e = i;
+        while (e < t.size() && word(t[e]))
+            ++e;
+        const bool after_scope = (i >= 2 && t[i - 1] == ':' && t[i - 2] == ':') || (i >= 1 && t[i - 1] == '.');
+        if (!after_scope && !std::isdigit(static_cast<unsigned char>(t[i])))
+            fn(t.substr(i, e - i), i, e);
+        i = e;
+    }
+}
+
 bool is_decl_query(const std::string& q)
 {
     return q.compare(0, 6, kDeclQuery) == 0;
@@ -4986,6 +5008,72 @@ void translate_impl(
             break;
         }
     }
+    // ---- a bare native type name under "using ns;" (doc/module-level.md). In a type position it
+    // means "ns::Name", as when the script writes the prefix. The probe tells which namespace
+    // declares the name. The rewrite comes after the probe.
+    std::map<std::string, std::vector<std::string>> bare_cands; // the name, the qualified candidates
+    if (!sc.is_cpp && !sc.using_ns.empty())
+    {
+        std::set<std::string> script_names;
+        for (const ClassDef& cd : sc.classes)
+        {
+            script_names.insert(cd.name);
+            for (const TypeAlias& al : cd.aliases)
+                script_names.insert(al.name);
+        }
+        for (const auto& i : sc.interfaces)
+            script_names.insert(i.name);
+        for (const auto& al : sc.aliases)
+            script_names.insert(al.name);
+        for (const auto& en : sc.enums)
+            script_names.insert(en.name);
+        for (const auto& g : sc.generic_names)
+            script_names.insert(g);
+        for (const auto& g : sc.generic_display)
+            script_names.insert(g.first);
+        static const std::set<std::string> words = {"const", "volatile", "void", "var", "auto", "string", "unsigned",
+            "signed", "struct", "class", "typename", "enum", "std", "hot", "decltype"};
+        auto note = [&](const std::string& t)
+        {
+            for_each_bare_ident(t, [&](const std::string& id, size_t, size_t)
+            {
+                if (bare_cands.count(id) || script_names.count(id) || words.count(id) || hotc::builtin_cpp_name(id)
+                    || !types.lookup(id).owner.empty())
+                    return;
+                std::vector<std::string>& quals = bare_cands[id];
+                for (const auto& u : sc.using_ns)
+                {
+                    const std::string q = u.name + "::" + id;
+                    if (std::find(quals.begin(), quals.end(), q) == quals.end())
+                        quals.push_back(q);
+                }
+            });
+        };
+        for (const std::string& t : hotc::used_type_names(sc))
+            note(t);
+        hotc::edit_type_texts(sc, [&](std::string& t) { note(t); });
+        for (const ClassDef& cd : sc.classes)
+        {
+            note(cd.base);
+            for (const std::string& i : cd.interfaces)
+                note(i);
+        }
+        std::set<std::string> uniq;
+        for (const auto& [n, quals] : bare_cands)
+        {
+            query_texts.push_back(kDeclQuery + n);
+            for (const std::string& q : quals)
+            {
+                if (uniq.insert(q).second)
+                    query_texts.push_back(kDeclQuery + hotc::expand_std(q, std_ns));
+                if (types.wants_facts(q))
+                    asked[q];
+                if (auto m = native_q.methods.find(n); m != native_q.methods.end())
+                    for (const std::string& name : m->second)
+                        asked[q].insert("const:" + name);
+            }
+        }
+    }
     // S26: the native structs that the script uses. A cursor walk checks them for a code pointer.
     {
         std::set<std::string> script_class_names;
@@ -5152,6 +5240,12 @@ void translate_impl(
             base_names.insert(cd.base);
         for (const std::string& i : cd.interfaces)
             base_names.insert(i);
+        for (const std::string& n : {cd.base}) // the qualified forms of a bare base name
+            if (auto bc = bare_cands.find(n); bc != bare_cands.end())
+                base_names.insert(bc->second.begin(), bc->second.end());
+        for (const std::string& i : cd.interfaces)
+            if (auto bc = bare_cands.find(i); bc != bare_cands.end())
+                base_names.insert(bc->second.begin(), bc->second.end());
     }
     // The key: the flags, the current directory and the imports (the order does not matter).
     std::string key = std::filesystem::current_path().string() + "\n";
@@ -5182,6 +5276,59 @@ void translate_impl(
         hier, facts, query_answers, fs, &res.dependencies, &res.shadow_paths, &res.parse_start_ns,
         &res.timing);
     phases.next(&res.timing.lower_ns);
+    // The rewrite of the bare names (see bare_cands). A name that two namespaces declare is an error.
+    if (!bare_cands.empty())
+    {
+        std::map<std::string, std::string> bare_map;
+        for (const auto& [n, quals] : bare_cands)
+        {
+            auto declared = [&](const std::string& q)
+            {
+                const std::string k = query_answers[kDeclQuery + q];
+                return !k.empty() && k != "0";
+            };
+            if (declared(n))
+                continue; // the global name wins, as in C++
+            std::vector<std::string> hits;
+            for (const std::string& q : quals)
+                if (declared(hotc::expand_std(q, std_ns)))
+                    hits.push_back(q);
+            if (hits.size() == 1)
+                bare_map[n] = hits[0];
+            else if (hits.size() > 1)
+                fail_at(map, sc.using_ns.front().pos,
+                    "the type name '" + n + "' is in the namespaces '" + hits[0] + "' and '" + hits[1]
+                        + "'. Write the namespace prefix");
+        }
+        auto fix = [&](std::string& t)
+        {
+            std::string out;
+            size_t last = 0;
+            for_each_bare_ident(t,
+                [&](const std::string& id, size_t b, size_t e)
+                {
+                    if (auto it = bare_map.find(id); it != bare_map.end())
+                    {
+                        out += t.substr(last, b - last) + it->second;
+                        last = e;
+                    }
+                });
+            if (last == 0 && out.empty())
+                return;
+            out += t.substr(last);
+            t = std::move(out);
+        };
+        if (!bare_map.empty())
+        {
+            hotc::edit_type_texts(sc, fix);
+            for (ClassDef& cd : sc.classes)
+            {
+                fix(cd.base);
+                for (std::string& i : cd.interfaces)
+                    fix(i);
+            }
+        }
+    }
     // A stub weak source gets its traits only when the headers declare the stub name as written.
     // Else a pointer field of the class is not a CheckedPtr (the borrowed finding applies).
     if (!sc.is_cpp)
