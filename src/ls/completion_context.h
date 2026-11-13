@@ -36,6 +36,10 @@ struct CompletionContext
     // The offset where the identifier under the cursor starts. It equals the offset when
     // the cursor is not after an identifier character.
     std::size_t prefixStart = 0;
+    // True when the position takes a type or an expression, for example a statement start
+    // ("No|" is a local declaration or a call) or a cast ("(No|"). "kind" is the first guess.
+    // The caller offers the names of both kinds.
+    bool exprAndType = false;
 };
 
 // Returns the context at "offset" (0 to text.size()). A bigger offset counts as text.size().

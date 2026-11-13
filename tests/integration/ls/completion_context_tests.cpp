@@ -146,6 +146,27 @@ const Case kCases[] = {
     {"class X { List<int> a; |", K::Type},
     {"class X { Dictionary<string, List<int>> a; |", K::Type},
     {"class X { void F(List<int> a, |", K::Type},
+    // review fixes
+    {"class X { void F() { x = 1; // see a.\n    |", K::Expr},
+    {"class X { void F() { x = 1; /* see a. */ |", K::Expr},
+    {"class X { void F() { x = a * |", K::Expr},
+    {"class X { void F() { x = a & |", K::Expr},
+    {"class X { void F() { x = c ? |", K::Expr},
+    {"class X { int a = b * |", K::Expr},
+    {"class X { int a = b & |", K::Expr},
+    {"class X { void F() { y = (a * |", K::Expr},
+    {"class X { void F() { y = (c ? |", K::Expr},
+    {"class X { void F() { y = f(a) * |", K::Expr},
+    {"class X { Foo* |", K::None},
+    {"class X { Foo<int>* |", K::None},
+    {"class X { void F() { foreach (Node n in |", K::Expr},
+    {"class X { void F() { for (|", K::Type},
+    {"class X { void F() { f = [&](No|", K::Type},
+    {"class X { void F() { f = [=](int a, No|", K::Type},
+    {"class X { void F() { a = b[|", K::Expr},
+    // A lowercase name before "<" in a function body is less-than. This is a known trade-off.
+    {"class X { void F() { vector<No|", K::Expr},
+    {"class X { void F() { a /|/ b", K::Expr},
 };
 
 class ClassifyTest : public ::testing::TestWithParam<Case>
@@ -163,6 +184,23 @@ INSTANTIATE_TEST_SUITE_P(Cases, ClassifyTest, ::testing::ValuesIn(kCases));
 TEST(Classify, OffsetPastEndIsClamped)
 {
     EXPECT_EQ(classify("using ", 100).kind, K::Using);
+}
+
+TEST(Classify, ExprAndTypeFlag)
+{
+    auto flag = [](const std::string& marked)
+    {
+        const auto bar = marked.find('|');
+        return classify(marked.substr(0, bar) + marked.substr(bar + 1), bar).exprAndType;
+    };
+    EXPECT_TRUE(flag("class X { void F() { No|"));
+    EXPECT_TRUE(flag("class X { void F() { |"));
+    EXPECT_TRUE(flag("class X { void F() { (fo|"));
+    EXPECT_TRUE(flag("class X { void F() { for (|"));
+    EXPECT_FALSE(flag("class X { void F() { a = foo(|"));
+    EXPECT_FALSE(flag("class X { Fo|"));
+    EXPECT_FALSE(flag("class X { void F() { a = No|"));
+    EXPECT_FALSE(flag("class X { void F() { a.No|"));
 }
 
 TEST(Classify, PrefixStart)

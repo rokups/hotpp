@@ -46,6 +46,7 @@ struct Frame
     Fr k;
     std::vector<Tok> toks; // the tokens of the current statement in this frame
     bool forDecl = true;
+    bool capture = false; // an Index frame that is the capture list of a lambda
 };
 
 bool isIdentStart(char c)
@@ -141,10 +142,49 @@ bool isOperator(const Tok& t)
     return t.t == Tok::Punct && !isTypeish(t) && !oneOf(t.s, {",", ")", "]", "$"});
 }
 
+// True when the last token ends a position that takes an expression. The tokens "*", "&" and "?"
+// are binary or ternary operators in an expression and a part of a type in a declaration. The
+// tokens before them decide: an operator, a call or a group before them means an expression.
+bool exprAfter(const std::vector<Tok>& toks, Fr k)
+{
+    if (toks.empty())
+        return false;
+    const Tok& last = toks.back();
+    if (isOperator(last))
+        return true;
+    if (last.t != Tok::Punct || !oneOf(last.s, {"*", "&", "?"}))
+        return false;
+    if (toks.size() == 1)
+        return k == Fr::Block;
+    const Tok& prev = toks[toks.size() - 2];
+    const bool nameLike = prev.t != Tok::Punct || oneOf(prev.s, {")", "]", "<>"});
+    if (!nameLike)
+        return true;
+    if (k == Fr::Group || k == Fr::ExprParen || k == Fr::Call)
+        return true;
+    if (toks[0].t == Tok::Ident && isStatementWord(toks[0].s))
+        return true;
+    for (std::size_t i = 0; i + 1 < toks.size(); ++i)
+    {
+        const Tok& t = toks[i];
+        if (isOperator(t) || t.t == Tok::Num || t.t == Tok::Str || isPunct(t, ")"))
+            return true;
+    }
+    return false;
+}
+
 struct Scanner
 {
     std::string_view text;
     std::vector<Frame> stack;
+    std::string_view lastSig; // the last token of any kind, also ";" "{" and ")"
+    std::string_view prevSig; // the token before lastSig
+
+    void sig(std::string_view s)
+    {
+        prevSig = lastSig;
+        lastSig = s;
+    }
 
     Frame& cur() { return stack.back(); }
 
@@ -211,6 +251,8 @@ struct Scanner
             return Fr::Catch;
         if (k == Fr::Attr)
             return Fr::AttrArg;
+        if (!toks.empty() && isPunct(toks.back(), "cap]"))
+            return Fr::Params; // the parameters of a lambda
         const bool prevName = !toks.empty() && toks.back().t == Tok::Ident;
         if (prevName && isStatementWord(toks.back().s) && k != Fr::Top)
         {
@@ -238,7 +280,7 @@ struct Scanner
         while (i < end)
         {
             const char c = text[i];
-            const char n = i + 1 < text.size() ? text[i + 1] : '\0';
+            const char n = i + 1 < end ? text[i + 1] : '\0';
             if (c == '/' && n == '/')
             {
                 while (i < end && text[i] != '\n')
@@ -250,7 +292,7 @@ struct Scanner
             if (c == '/' && n == '*')
             {
                 i += 2;
-                while (i < end && !(text[i] == '*' && i + 1 < text.size() && text[i + 1] == '/'))
+                while (i < end && !(text[i] == '*' && i + 1 < end && text[i + 1] == '/'))
                     ++i;
                 if (i >= end)
                     return false;
@@ -278,6 +320,7 @@ struct Scanner
                 }
                 ++i;
                 add(Tok::Str, text.substr(start, i - start), i);
+                sig(text.substr(start, i - start));
                 continue;
             }
             if (isIdentStart(c))
@@ -286,14 +329,16 @@ struct Scanner
                 while (i < end && isIdentChar(text[i]))
                     ++i;
                 add(Tok::Ident, text.substr(start, i - start), i);
+                sig(text.substr(start, i - start));
                 continue;
             }
             if (c >= '0' && c <= '9')
             {
                 const std::size_t start = i;
-                while (i < end && (isIdentChar(text[i]) || (text[i] == '.' && i + 1 < text.size() && text[i + 1] >= '0' && text[i + 1] <= '9')))
+                while (i < end && (isIdentChar(text[i]) || (text[i] == '.' && i + 1 < end && text[i + 1] >= '0' && text[i + 1] <= '9')))
                     ++i;
                 add(Tok::Num, text.substr(start, i - start), i);
+                sig(text.substr(start, i - start));
                 continue;
             }
             if (c == ' ' || c == '\t' || c == '\r' || c == '\n')
@@ -301,7 +346,9 @@ struct Scanner
                 ++i;
                 continue;
             }
+            const std::size_t punctStart = i;
             punct(i, end);
+            sig(text.substr(punctStart, i - punctStart));
         }
         return true;
     }
@@ -361,7 +408,11 @@ struct Scanner
         {
             const auto& toks = cur().toks;
             const bool declLike = isDecl(cur().k) || cur().k == Fr::Params;
+            const bool capture = !declLike
+                && (toks.empty() || isOperator(toks.back()) || isPunct(toks.back(), ",")
+                    || (toks.back().t == Tok::Ident && isStatementWord(toks.back().s)));
             push(declLike && (toks.empty() || allModifiers(toks)) ? Fr::Attr : Fr::Index);
+            cur().capture = capture;
             ++i;
             return;
         }
@@ -371,9 +422,10 @@ struct Scanner
             if (stack.size() > 1 && (cur().k == Fr::Attr || cur().k == Fr::Index))
             {
                 const bool attr = cur().k == Fr::Attr;
+                const bool capture = cur().capture;
                 stack.pop_back();
                 if (!attr)
-                    add(Tok::Punct, text.substr(i, 1), i + 1);
+                    add(Tok::Punct, capture ? std::string_view("cap]") : text.substr(i, 1), i + 1);
             }
             ++i;
             return;
@@ -434,12 +486,12 @@ Kind classifyDecl(const std::vector<Tok>& toks)
             return Kind::Base;
         return Kind::None;
     }
-    if (isOperator(last))
+    if (exprAfter(toks, Fr::Class))
         return Kind::Expr;
     return Kind::None;
 }
 
-Kind classifyTop(const Frame& f, bool partial)
+Kind classifyTop(const Frame& f, bool partial, bool& both)
 {
     const auto& toks = f.toks;
     switch (f.k)
@@ -459,25 +511,36 @@ Kind classifyTop(const Frame& f, bool partial)
     case Fr::ForParen:
         if (!f.forDecl)
             return Kind::Expr;
+        if (!toks.empty() && isWord(toks.back(), "in") && toks.size() >= 2)
+            return Kind::Expr;
         if (allModifiers(toks))
+        {
+            both = true;
             return Kind::Type;
-        return isOperator(toks.back()) ? Kind::Expr : Kind::None;
+        }
+        return exprAfter(toks, Fr::ForParen) ? Kind::Expr : Kind::None;
     case Fr::Group:
         if (toks.empty())
+        {
+            both = true;
             return partial ? Kind::Type : Kind::Expr;
-        return isOperator(toks.back()) ? Kind::Expr : Kind::None;
+        }
+        return exprAfter(toks, Fr::Group) ? Kind::Expr : Kind::None;
     case Fr::Enum:
         if (toks.empty())
             return Kind::EnumBody;
-        return isOperator(toks.back()) ? Kind::Expr : Kind::None;
+        return exprAfter(toks, Fr::Enum) ? Kind::Expr : Kind::None;
     case Fr::Block:
         if (toks.empty())
+        {
+            both = true;
             return Kind::Expr;
+        }
         if (toks.back().t == Tok::Ident)
             return oneOf(toks.back().s, {"return", "else", "case", "throw", "await", "do", "in", "yield"})
                 ? Kind::Expr
                 : Kind::None;
-        return isOperator(toks.back()) || isPunct(toks.back(), ",") || isPunct(toks.back(), ")") ? Kind::Expr
+        return exprAfter(toks, Fr::Block) || isPunct(toks.back(), ",") || isPunct(toks.back(), ")") ? Kind::Expr
                                                                                                     : Kind::None;
     case Fr::Top:
     case Fr::Namespace:
@@ -549,14 +612,10 @@ CompletionContext classify(std::string_view text, std::size_t offset)
         return result;
     }
 
-    // A member access: "." or "::" or "->" before the prefix. Spaces and new lines are allowed.
-    std::size_t p = result.prefixStart;
-    while (p > 0 && (text[p - 1] == ' ' || text[p - 1] == '\t' || text[p - 1] == '\n' || text[p - 1] == '\r'))
-        --p;
-    if (p > 0
-        && ((text[p - 1] == '.' && !(p > 1 && text[p - 2] == '.'))
-            || (p > 1 && text[p - 1] == ':' && text[p - 2] == ':')
-            || (p > 1 && text[p - 1] == '>' && text[p - 2] == '-')))
+    // A member access: the token before the prefix is "." or "::" or "->". A comment between
+    // them is not a token, so the scanner tells the real token.
+    const std::string_view before = partial ? sc.prevSig : sc.lastSig;
+    if (before == "." || before == "::" || before == "->")
     {
         result.kind = Kind::Member;
         return result;
@@ -576,7 +635,7 @@ CompletionContext classify(std::string_view text, std::size_t offset)
             return result;
         }
     }
-    result.kind = classifyTop(f, partial);
+    result.kind = classifyTop(f, partial, result.exprAndType);
     return result;
 }
 
