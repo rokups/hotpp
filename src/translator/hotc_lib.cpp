@@ -2940,7 +2940,7 @@ void answer_code_queries(
 // ("__1", "__cxx11") is not part of the name. Another namespace ("std::__detail") stays. The
 // answer is one letter:
 //   "0": the headers do not declare NAME.
-//   "1": a class, a typedef or an alias that is not a template.
+//   "1": a class, an enum, a typedef or an alias that is not a template.
 //   "t": a class template with type parameters only (a pack too).
 //   "o": another template: an alias template, or a template with a non-type parameter or a
 //        template template parameter.
@@ -2973,6 +2973,7 @@ void answer_decl_queries(
         case CXCursor_ClassTemplate:
         case CXCursor_TypeAliasTemplateDecl:
         case CXCursor_TypedefDecl:
+        case CXCursor_EnumDecl:
         case CXCursor_TypeAliasDecl:
         {
             std::string qn;

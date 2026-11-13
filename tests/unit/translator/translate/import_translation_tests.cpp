@@ -134,7 +134,15 @@ namespace
 const char* kBareHeader =
     "#pragma once\n"
     "#include <memory>\n"
+    "#include <exception>\n"
+    "struct Glob { int g = 0; };\n"
     "namespace eng {\n"
+    "struct Glob { int h = 0; };\n"
+    "struct Err : std::exception {};\n"
+    "enum class Mode { A, B };\n"
+    "template <class T> void Make() {}\n"
+    "struct string { int s = 0; };\n"
+    "struct uint { int u = 0; };\n"
     "struct Node : std::enable_shared_from_this<Node> { int x = 0; };\n"
     "template <class T> struct Ptr { T* p = nullptr; T* operator->() const { return p; } T* get() const { return p; } };\n"
     "struct Obj { void AddRef(); void Release(); virtual ~Obj() {} };\n"
@@ -219,4 +227,122 @@ TEST(ImportTranslation, ScriptClassWinsOverBareNativeName)
     const auto r = translate_bare("using eng;\n", "class Node {\n    int x;\n}\nclass Foo : Widget {\n    $Node n;\n}\n", "");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_EQ(r.cpp.find("std::shared_ptr<eng::Node>"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("struct Node_Shell;"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("std::shared_ptr<Node> n;"), std::string::npos) << r.cpp;
+}
+
+// The catch type, a static property and the explicit template arguments of a call.
+TEST(ImportTranslation, BareCatchType)
+{
+    expect_same_as_qualified(
+        "class Foo : Widget {\n    void f() { try { } catch (NAME e) { } }\n}\n", "Err", "eng.Err", "eng::Err");
+}
+
+TEST(ImportTranslation, BareStaticPropertyType)
+{
+    expect_same_as_qualified("class Foo : Widget {\n    static NAME P { get; set; }\n}\n", "Two", "eng.Two", "eng::Two");
+}
+
+TEST(ImportTranslation, BareTemplateArgumentOfACall)
+{
+    expect_same_as_qualified("class Foo : Widget {\n    void f() { Make<NAME>(); }\n}\n", "Node", "eng.Node",
+        "Make<eng::Node>");
+}
+
+// A native enum type.
+TEST(ImportTranslation, BareEnumType)
+{
+    expect_same_as_qualified("class Foo : Widget {\n    NAME m;\n}\n", "Mode", "eng.Mode", "eng::Mode m");
+}
+
+// A global native name wins, as in C++.
+TEST(ImportTranslation, GlobalNativeNameWinsOverTheNamespace)
+{
+    const auto r = translate_bare("using eng;\n", "class Foo : Widget {\n    Glob g;\n}\n", "");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_EQ(r.cpp.find("eng::Glob"), std::string::npos) << r.cpp;
+}
+
+// A builtin script name stays, also when a namespace declares the same name.
+TEST(ImportTranslation, BuiltinNameIsNotRewritten)
+{
+    const auto r = translate_bare("using eng;\n", "class Foo : Widget {\n    string s;\n    uint u;\n}\n", "");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_EQ(r.cpp.find("eng::string"), std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find("eng::uint"), std::string::npos) << r.cpp;
+}
+
+// A local variable or a method with the name of a type is an expression name: no rewrite.
+TEST(ImportTranslation, ExpressionNamesAreNotRewritten)
+{
+    const auto r = translate_bare("using eng;\n",
+        "class Foo : Widget {\n    void Obj() { }\n    void f() { int Node = 1; Node = 2; Obj(); }\n}\n", "");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("Node = 2"), std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find("eng::Node = 2"), std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find("eng::Obj("), std::string::npos) << r.cpp;
+}
+
+// A name with a stub keeps its meaning.
+TEST(ImportTranslation, StubNameIsNotRewritten)
+{
+    TempDir dir;
+    write_file(dir.path() / "b.h", kBareHeader);
+    const auto r = hotc::translate(temp_options(dir,
+        "using \"b.h\";\nusing eng;\n[native, handle(\"std::shared_ptr<$T>\")] class Node;\n"
+        "class Foo : Widget {\n    $Node n;\n}\n"));
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_EQ(r.cpp.find("std::shared_ptr<eng::Node> n"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("std::shared_ptr<Node> n"), std::string::npos) << r.cpp;
+}
+
+// An imported script class keeps its meaning.
+TEST(ImportTranslation, ImportedScriptClassIsNotRewritten)
+{
+    TempDir dir;
+    write_file(dir.path() / "b.h", kBareHeader);
+    hotc::TranslateOptions o = temp_options(dir,
+        "using \"b.h\";\nusing \"lib.hot\";\nusing eng;\nclass Foo : Widget {\n    $Node n;\n}\n");
+    o.modules.emplace_back("lib.hot", "using \"b.h\";\nclass Node : Widget {\n    int x;\n}\n");
+    const auto r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_EQ(r.cpp.find("eng::Node> n"), std::string::npos) << r.cpp;
+}
+
+// A ".cpp" script is plain C++: the translator rewrites nothing.
+TEST(ImportTranslation, CppScriptIsSkipped)
+{
+    TempDir dir;
+    write_file(dir.path() / "b.h", kBareHeader);
+    hotc::TranslateOptions o = temp_options(dir,
+        "#include \"b.h\"\nusing namespace eng;\nclass Foo : public Widget\n{\npublic:\n    Two n;\n};\n");
+    o.script_name = "t.cpp";
+    const auto r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("Two n;"), std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find("eng::Two n"), std::string::npos) << r.cpp;
+}
+
+// Without a "using" line a bare name stays as written.
+TEST(ImportTranslation, NoUsingLineNoRewrite)
+{
+    const auto r = translate_bare("", "class Foo : Widget {\n    int x;\n    Two t;\n}\n", "");
+    EXPECT_EQ(r.cpp.find("eng::Two"), std::string::npos) << r.cpp;
+}
+
+// A second translate with the same session needs no new parse: the questions of the bare names
+// are part of the cache.
+TEST(ImportTranslation, BareNamesUseTheSessionCache)
+{
+    TempDir dir;
+    write_file(dir.path() / "b.h", kBareHeader);
+    hotc::TranslatorSession session;
+    const std::string text =
+        "using \"b.h\";\nusing eng;\n" + std::string(kBareStubs) + "class Foo : Widget {\n    $Obj o;\n    Two t;\n}\n";
+    const auto a = hotc::translate(temp_options(dir, text), session);
+    ASSERT_TRUE(a.ok) << a.diagnostics;
+    const auto b = hotc::translate(temp_options(dir, text), session);
+    ASSERT_TRUE(b.ok) << b.diagnostics;
+    EXPECT_EQ(a.cpp, b.cpp);
+    EXPECT_EQ(session.parse_count(), 1);
 }

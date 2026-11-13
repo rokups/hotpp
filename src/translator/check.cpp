@@ -3958,6 +3958,13 @@ std::set<std::string> used_type_names(const ClassDef& cd)
 
 void edit_type_texts(Script& sc, const std::function<void(std::string&)>& fn)
 {
+    // A parameter, a field or a property keeps the type that the script wrote in "script_type".
+    // It is empty or the same text as "type" before the translator rewrites "type".
+    auto param = [&](Param& p)
+    {
+        fn(p.type);
+        fn(p.script_type);
+    };
     auto fe = [&](const Expr& e)
     {
         // The walk is read-only. The edit changes the type text only, not the shape of the tree.
@@ -3968,7 +3975,19 @@ void edit_type_texts(Script& sc, const std::function<void(std::string&)>& fn)
             fn(tt->type);
         if (auto* l = std::get_if<LambdaExpr>(&m.v))
             for (Param& p : l->params)
-                fn(p.type);
+                param(p);
+        // The explicit template arguments of "f<Node>()". A changed text drops the parsed nodes:
+        // the lowering would print them again with the old text.
+        if (auto* n = std::get_if<NameExpr>(&m.v); n && !n->template_args.empty())
+        {
+            const std::string before = n->template_args;
+            fn(n->template_args);
+            if (n->template_args != before)
+            {
+                n->targ_exprs.clear();
+                n->targ_parsed = false;
+            }
+        }
     };
     auto fs = [&](const Stmt& s)
     {
@@ -3977,34 +3996,45 @@ void edit_type_texts(Script& sc, const std::function<void(std::string&)>& fn)
             fn(d->type);
         if (auto* fo = std::get_if<ForOfStmt>(&m.v))
             fn(fo->type);
+        if (auto* t = std::get_if<TryStmt>(&m.v))
+            for (CatchClause& c : t->catches)
+                fn(c.type);
     };
     auto w = make_walker(fe, fs);
+    auto field = [&](Field& f)
+    {
+        fn(f.type);
+        fn(f.script_type);
+        w.expr(f.init);
+    };
     auto method = [&](Method& m)
     {
         fn(m.ret);
+        fn(m.script_ret);
         for (Param& p : m.params)
-            fn(p.type);
+            param(p);
         w.block(m.body);
     };
+    auto prop = [&](Property& p)
+    {
+        fn(p.type);
+        fn(p.script_type);
+        w.expr(p.init);
+        if (p.get_body)
+            w.block(*p.get_body);
+        if (p.set_body)
+            w.block(*p.set_body);
+    };
     for (Field& f : sc.vars)
-    {
-        fn(f.type);
-        w.expr(f.init);
-    }
+        field(f);
     for (Field& f : sc.consts)
-    {
-        fn(f.type);
-        w.expr(f.init);
-    }
+        field(f);
     for (Method& m : sc.fns)
         method(m);
     for (ClassDef& cd : sc.classes)
     {
         for (Field& f : cd.fields)
-        {
-            fn(f.type);
-            w.expr(f.init);
-        }
+            field(f);
         for (Method& m : cd.methods)
             method(m);
         for (Method& m : cd.statics)
@@ -4014,18 +4044,13 @@ void edit_type_texts(Script& sc, const std::function<void(std::string&)>& fn)
         for (Ctor& c : cd.ctors)
         {
             for (Param& p : c.params)
-                fn(p.type);
+                param(p);
             w.block(c.body);
         }
         for (Property& p : cd.props)
-        {
-            fn(p.type);
-            w.expr(p.init);
-            if (p.get_body)
-                w.block(*p.get_body);
-            if (p.set_body)
-                w.block(*p.set_body);
-        }
+            prop(p);
+        for (Property& p : cd.sprops)
+            prop(p);
     }
 }
 
