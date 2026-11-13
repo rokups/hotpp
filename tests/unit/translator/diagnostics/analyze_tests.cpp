@@ -237,6 +237,26 @@ TEST(Analyze, UnknownFieldTypeKeepsTheGoodMethod)
     EXPECT_NE(r.cpp.find("n + 9"), std::string::npos) << r.diagnostics;
 }
 
+// An error inside an imported header blanks the "using" line of that import. The importer keeps the
+// map of its own methods.
+TEST(Analyze, BrokenImportIsBlankedAndTheMethodsKeepTheirMap)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n");
+    write_file(dir.path() / "bad.h", "int broken( ;\nstruct Bad { int x = ; };\n");
+    const std::string text =
+        "using \"w.h\";\n"
+        "using \"bad.h\";\n"
+        "class Foo : Widget {\n"
+        "    int n = 0;\n"
+        "    void b() { n = n + 6; }\n"
+        "}\n";
+    const hotc::AnalyzeResult r = hotc::analyze(text, temp_options(dir, ""));
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.cpp.find("n + 6"), std::string::npos) << r.diagnostics;
+    EXPECT_TRUE(r.source_map.map_to_generated(5, 16));
+}
+
 // The module attribute array gives the type of "T[N]". The type text of the analysis uses it.
 TEST(Analyze, ArrayTemplateOfTheModuleAttributeApplies)
 {

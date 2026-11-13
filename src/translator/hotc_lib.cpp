@@ -10853,9 +10853,44 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
             std::istringstream lines(tr.diagnostics);
             for (std::string ln; std::getline(lines, ln);)
             {
-                // "name:line:col: error: text". Only an error in this script has a place here.
+                // "name:line:col: error: text". Only an error in this script has a place here. An
+                // error in another file blanks the "using" line of the import that holds it. If no
+                // import matches (a nested include), all the imports go.
                 if (ln.compare(0, script_name.size() + 1, script_name + ":") != 0)
+                {
+                    const size_t e = ln.find(": error: ");
+                    const size_t e2 = ln.find(": fatal error: ");
+                    const size_t at = std::min(e, e2);
+                    if (at == std::string::npos)
+                        continue;
+                    // Cut the ":line:col" after the file name.
+                    size_t cut = ln.rfind(':', at - 1);
+                    cut = cut == std::string::npos || cut == 0 ? cut : ln.rfind(':', cut - 1);
+                    if (cut == std::string::npos || cut == 0)
+                        continue;
+                    const std::string file = ln.substr(0, cut);
+                    bool matched = false;
+                    for (const ast::Import& im : sc.imports)
+                    {
+                        const bool hit = !im.path.empty() && im.path.front() != '<' && file.size() >= im.path.size() &&
+                            file.compare(file.size() - im.path.size(), im.path.size(), im.path) == 0;
+                        if (!hit)
+                            continue;
+                        matched = true;
+                        const size_t b = line_begin(valid, im.pos), le = line_end(valid, im.pos);
+                        if (!blanked.count({b, le}))
+                            regions.emplace_back(b, le);
+                    }
+                    if (!matched)
+                        for (const ast::Import& im : sc.imports)
+                        {
+                            const size_t b = line_begin(valid, im.pos), le = line_end(valid, im.pos);
+                            if (im.path.empty() || im.path.front() == '<' || blanked.count({b, le}))
+                                continue;
+                            regions.emplace_back(b, le);
+                        }
                     continue;
+                }
                 size_t line = 0, col = 0, used = 0;
                 if (std::sscanf(ln.c_str() + script_name.size() + 1, "%zu:%zu:%zn", &line, &col, &used) < 2 || line == 0)
                     continue;
