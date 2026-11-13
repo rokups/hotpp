@@ -909,8 +909,7 @@ std::string module_interface(const Script& sc, const std::string& text)
         for (const Method& m : c.methods)
         {
             const bool slotted = !m.is_override && !m.overrides_virtual && m.name != "onReload"
-                && !(m.name.rfind("convert_", 0) == 0 && std::any_of(c.fields.begin(), c.fields.end(),
-                       [&](const Field& f) { return f.name == m.name.substr(8); }));
+                && m.name.rfind("convert_", 0) != 0;
             const bool shown = !hidden(c, m.access) || m.is_virtual || m.is_abstract || m.is_override || !m.vslot_owner.empty();
             if (shown)
             {
