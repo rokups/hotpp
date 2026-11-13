@@ -4,6 +4,7 @@
 
 // Tests for hot-ls (S14b, design M12 to M14). One test for each feature. The tests that need
 // clangd are skipped when CMake did not find clangd.
+#include "attributes.h"
 #include "clangd_process.h"
 #include "integration/ls/ls_client.h"
 #include "long_path.h"
@@ -3404,8 +3405,80 @@ TEST(LanguageServer, EnumBodyAndAttributeGiveNoGenericList)
 {
     REQUIRE_CLANGD();
     EXPECT_TRUE(complete_at(false, "enum Color {\n    Red,\n    @\n}\n", "").names.empty());
-    EXPECT_TRUE(complete_at(false, "class A {\n    [@]\n    int x = 0;\n}\n", "").names.empty());
     EXPECT_TRUE(complete_at(false, "class A {\n    [Attr(@)]\n    int x = 0;\n}\n", "").names.empty());
+}
+
+// The attribute names that the parser compares in its sources: "it.name == "x"" in the attribute
+// lists and "a.name == "x"" in the lambda attributes, and the names of the class attribute table.
+TEST(LanguageServer, TheAttributeTableMatchesTheParser)
+{
+    std::set<std::string> parser;
+    for (const std::string& n : hotc::class_attribute_names())
+        parser.insert(n);
+    const std::regex re("\\b(?:it|a)\\.name == \"(\\w+)\"");
+    for (const char* f : {"/src/translator/parser/script_grammar.cpp", "/src/translator/parser/expression_grammar.cpp"})
+    {
+        std::ifstream in(std::string(HOT_SOURCE_DIR) + f);
+        const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        for (std::sregex_iterator it(text.begin(), text.end(), re), end; it != end; ++it)
+            parser.insert((*it)[1].str());
+    }
+    EXPECT_GT(parser.size(), 15u) << "the parser attributes were not found";
+    std::set<std::string> table;
+    for (const hot::ls::AttributeInfo& a : hot::ls::attribute_table())
+    {
+        EXPECT_TRUE(table.insert(a.name).second) << "duplicate row: " << a.name;
+        EXPECT_FALSE(a.doc.empty()) << a.name;
+    }
+    for (const std::string& n : parser)
+        EXPECT_EQ(table.count(n), 1u) << "parser attribute is not in attribute_table(): " << n;
+    for (const std::string& n : table)
+        EXPECT_EQ(parser.count(n), 1u) << "attribute_table() name is not a parser attribute: " << n;
+    // The argument count of a class attribute agrees with the parser: an "[x(...)]" with a wrong
+    // count is an error, so a row with arity 0 has no string argument.
+    for (const hot::ls::AttributeInfo& a : hot::ls::attribute_table())
+        EXPECT_GE(a.arity, 0) << a.name;
+}
+
+TEST(LanguageServer, AttributeNamesAreOfferedAfterABracket)
+{
+    REQUIRE_CLANGD();
+    // The prefix filters the names. The closing "]" is in the snippet when it is missing.
+    const auto c = complete_at(false, "class A {\n    [Refl@\n    int x = 0;\n}\n", "");
+    EXPECT_TRUE(c.names.empty()) << "no attribute starts with Refl";
+    const auto w = complete_at(false, "class A {\n    [we@\n    int x = 0;\n}\n", "");
+    ASSERT_EQ(w.names.size(), 3u) << w.result.dump();
+    EXPECT_EQ(w.names[0], "weak]$0");
+    EXPECT_EQ(w.names[1], "weak_handle(\"$1\")]$0");
+    // The "]" exists: the snippet does not add a second one.
+    const auto closed = complete_at(false, "class A {\n    [we@]\n    int x = 0;\n}\n", "");
+    EXPECT_TRUE(closed.has("weak$0")) << closed.result.dump();
+    EXPECT_FALSE(closed.has("weak]$0"));
+}
+
+TEST(LanguageServer, AttributeNamesOnAFieldAMethodAndAClass)
+{
+    REQUIRE_CLANGD();
+    const auto field = complete_at(false, "class A {\n    [@]\n    int x = 0;\n}\n", "");
+    EXPECT_TRUE(field.has("weak$0")) << field.result.dump().substr(0, 300);
+    EXPECT_TRUE(field.has("alias(\"$1\")$0"));
+    const auto method = complete_at(false, "class A {\n    [al@]\n    void f() { }\n}\n", "");
+    EXPECT_TRUE(method.has("alias(\"$1\")$0")) << method.result.dump();
+    const auto cls = complete_at(false, "[attribute] class Tag;\n[@]\nclass A { }\n", "");
+    EXPECT_TRUE(cls.has("Tag$0")) << cls.result.dump().substr(0, 300);
+    EXPECT_TRUE(cls.has("native$0"));
+    const auto none = complete_at(false, "[attribute] class Tag;\n[Ta@\nclass A { }\n", "");
+    ASSERT_EQ(none.names.size(), 1u);
+    EXPECT_EQ(none.names[0], "Tag]$0");
+}
+
+TEST(LanguageServer, AttributeArgumentsOfferNothingForFreeFormValues)
+{
+    REQUIRE_CLANGD();
+    EXPECT_TRUE(complete_at(false, "class A {\n    [ReflectedObject(@\n    int x = 0;\n}\n", "").names.empty());
+    EXPECT_TRUE(complete_at(false, "class A {\n    [alias(@)]\n    int x = 0;\n}\n", "").names.empty());
+    EXPECT_TRUE(complete_at(false, "class A {\n    [intrusive(\"a\", @)]\n    int x = 0;\n}\n", "").names.empty());
+    EXPECT_TRUE(complete_at(false, "class A {\n    [weak, alias(@)]\n    int x = 0;\n}\n", "").names.empty());
 }
 
 TEST(LanguageServer, TypeContextHasNoStatementKeywords)
