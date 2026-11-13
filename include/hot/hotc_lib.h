@@ -169,6 +169,8 @@ private:
     std::vector<SourceSegment> segments_;
     std::vector<SourceFile> files_;
     std::vector<uint32_t> by_script_; // indexes into segments_, sorted by file and script_begin
+    // For each entry of by_script_: the largest script end of the entries of the same file up to it.
+    std::vector<uint32_t> max_end_;
     // The byte offset of each line start: for the main script and for each imported script.
     std::vector<std::vector<uint32_t>> script_lines_;
     std::vector<uint32_t> gen_lines_;
