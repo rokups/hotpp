@@ -3587,6 +3587,9 @@ TEST(LanguageServer, SignatureHelpSkipsNestedCallsBracesAndTemplateLists)
     expect_sig(sig_reply("        this.init(Vec3(1, 2, |3), 2.0);"), "Vec3", 2);
     expect_sig(sig_reply("        this.vec(std.vector<std.pair<int, int>>(), |2.0);"), "vec", 1);
     expect_sig(sig_reply("        this.vec(std.vector<std.pair<int, int>>(), 2.0|);"), "vec", 1);
+    // An unspaced comparison is not a template list.
+    expect_sig(sig_reply("        two(Vec3(1, 2, 3).x<3, |2.0);"), "two", 1);
+    expect_sig(sig_reply("        float Mx = 1; two(Mx<3, |2.0);"), "two", 1);
     // The call is in a lambda body in braces, in the arguments of another call.
     expect_sig(sig_reply("        std.function<void()> g = () => { two(1, |2.0); };"), "two", 1);
     expect_sig(sig_reply("        std.function<void()> g = () => { two(1, 2.0); two(|1, 2.0); };"), "two", 0);
@@ -3598,6 +3601,8 @@ TEST(LanguageServer, SignatureHelpFindsTheCalleeOfATemplateCall)
     expect_sig(sig_reply("        std.make_pair<int, float>(|1, 2.0);"), "make_pair", 0);
     expect_sig(sig_reply("        std.make_pair<int, float>(1, |2.0);"), "make_pair", 1);
     expect_sig(sig_reply("        std.make_shared<Vec3>(1, |2, 3);"), "make_shared", 1);
+    // A nested list with a lowercase inner name.
+    expect_sig(sig_reply("        std.make_shared<std.vector<int>>(|);"), "make_shared", 0);
 }
 
 TEST(LanguageServer, SignatureHelpOfAnUnfinishedCallGivesTheSecondArgument)

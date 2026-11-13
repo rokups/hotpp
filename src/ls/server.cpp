@@ -2570,7 +2570,8 @@ static bool plausible_template(const std::string& code, size_t lt, size_t limit)
             while (++i < code.size() && (code[i] == ' ' || code[i] == '\t'))
             {
             }
-            return i < code.size() && code[i] == '(';
+            // A ">" or a "," after the list: this list is in an outer list.
+            return i < code.size() && (code[i] == '(' || code[i] == '>' || code[i] == ',');
         }
         else if (!is_id_char(c) && std::string_view(" \t\n:,*&").find(c) == std::string_view::npos)
             return false;
@@ -2673,6 +2674,14 @@ static std::optional<SigCall> find_call_at(const std::string& text, size_t curso
             if (!st.empty())
                 st.back().semi = true;
         }
+    }
+    // A "<" that no ">" closes is a comparison: its commas belong to the bracket around it.
+    while (!st.empty() && st.back().kind == '<')
+    {
+        const int commas = st.back().commas;
+        st.pop_back();
+        if (!st.empty())
+            st.back().commas += commas;
     }
     // The innermost "(" with a name: braces are transparent unless they hold a statement.
     size_t k = st.size();
