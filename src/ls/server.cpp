@@ -31,6 +31,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <cstring>
 #include <regex>
 #include <set>
 #include <signal.h>
@@ -1641,8 +1642,59 @@ static bool is_generated_name(const std::string& n)
     for (const char* x : parts)
         if (n.find(x) != std::string::npos)
             return true;
+    // The record and the create function of a script class: "Hero_record", "Hero_create".
+    for (const char* suffix : {"_record", "_create"})
+    {
+        const std::string_view x = suffix;
+        if (n.size() > x.size() && n.compare(n.size() - x.size(), x.size(), x) == 0)
+            return true;
+    }
     // A script class name cannot start with "hot_" (the prefix of the generated code).
     return n.empty() || n[0] == '_' || n.compare(0, 4, "hot_") == 0 || n.compare(0, 9, "HotModule") == 0 || n == "hot";
+}
+
+// A name of the C library that clangd offers in a bare completion because the generated code
+// includes the system headers. A script does not use these names. The list is short on purpose: a
+// native name of the host is never hidden.
+static bool is_libc_name(const std::string& n)
+{
+    static const std::set<std::string> names = {"a64l", "abort", "abs", "aligned_alloc", "asprintf", "assert",
+        "at_quick_exit", "atexit", "atof", "atoi", "atol", "atoll", "basename", "bsearch", "calloc", "clearenv",
+        "clearerr", "ctermid", "cuserid", "div", "dprintf", "drand48", "ecvt", "erand48", "exit", "explicit_bzero",
+        "fclose", "fcloseall", "fcvt", "fdopen", "feof", "ferror", "fflush", "fgetc", "fgetpos", "fgets", "fileno",
+        "flockfile", "fmemopen", "fopen", "fopencookie", "fprintf", "fputc", "fputs", "fread", "free", "freopen",
+        "fscanf", "fseek", "fseeko", "fsetpos", "ftell", "ftello", "ftrylockfile", "funlockfile", "fwrite", "gcvt",
+        "getc", "getchar", "getdelim", "getenv", "getline", "getloadavg", "getpt", "getsubopt", "getw", "grantpt",
+        "initstate", "isalnum", "isalpha", "isascii", "isblank", "iscntrl", "isctype", "isdigit", "isgraph",
+        "islower", "isprint", "ispunct", "isspace", "isupper", "isxdigit", "jrand48", "l64a", "labs", "lcong48",
+        "ldiv", "llabs", "lldiv", "localeconv", "lrand48", "malloc", "mblen", "mbstowcs", "mbtowc", "memalignment",
+        "memccpy", "memchr", "memcmp", "memcpy", "memfrob", "memmem", "memmove", "mempcpy", "memrchr", "memset",
+        "memset_explicit", "mkdtemp", "mkostemp", "mkostemps", "mkstemp", "mkstemps", "mktemp", "mrand48", "newlocale",
+        "nrand48", "obstack", "obstack_printf", "obstack_vprintf", "offsetof", "on_exit", "open_memstream", "pclose",
+        "perror", "popen", "posix_memalign", "posix_openpt", "printf", "putc", "putchar", "puts", "putw", "qsort",
+        "rand", "random_data", "rand_r", "realloc", "reallocarray", "realpath",
+        "rewind", "scanf", "setbuf", "setbuffer", "setenv", "setlinebuf", "setvbuf", "snprintf", "sprintf", "srand",
+        "srand48", "srandom", "sscanf", "strcasecmp", "strcat", "strchr", "strcmp", "strcoll", "strcpy", "strcspn",
+        "strdup", "strdupa", "strerror", "strlen", "strncasecmp", "strncat", "strncmp", "strncpy", "strndup",
+        "strndupa", "strnlen", "strpbrk", "strrchr", "strsep", "strspn", "strstr", "strtod", "strtof", "strtok",
+        "strtol", "strtold", "strtoll", "strtoul", "strtoull", "WEXITSTATUS", "WIFCONTINUED",
+        "WIFEXITED", "WIFSIGNALED", "WIFSTOPPED", "WSTOPSIG", "WTERMSIG", "tmpfile", "tmpnam", "tolower", "toupper",
+        "ungetc", "unsetenv", "vasprintf", "vdprintf", "vfprintf", "vfscanf", "vprintf", "vscanf", "vsnprintf",
+        "vsprintf", "vsscanf", "wctomb", "wcstombs", "lconv", "drand48_data", "pthread_attr_t"};
+    static const char* const prefixes[] = {"pthread_", "CPU_"};
+    for (const char* x : prefixes)
+        if (n.compare(0, std::strlen(x), x) == 0)
+            return true;
+    static const char* const suffixes[] = {"_unlocked", "_np", "_l", "_r", "64"};
+    for (const char* x : suffixes)
+    {
+        const size_t k = std::strlen(x);
+        if (n.size() > k && n.compare(n.size() - k, k, x) == 0 && names.count(n.substr(0, n.size() - k)))
+            return true;
+    }
+    // The macros of <stdint.h>, <endian.h> and <sys/wait.h>.
+    static const std::regex macro("U?INT(8|16|32|64|MAX)_C|(be|le)(16|32|64)toh|hto(be|le)(16|32|64)");
+    return names.count(n) != 0 || std::regex_match(n, macro);
 }
 
 static bool has_prefix(const std::string& name, const std::string& prefix)
@@ -1654,6 +1706,8 @@ static bool has_prefix(const std::string& name, const std::string& prefix)
             return false;
     return true;
 }
+
+static std::string blank_non_code(std::string_view l, bool& in_block);
 
 json Server::on_completion(const Doc& d, const json& p)
 {
@@ -1673,10 +1727,22 @@ json Server::on_completion(const Doc& d, const json& p)
     // A single ":" is a trigger character only for "::".
     if (p.value("/context/triggerCharacter"_json_pointer, std::string()) == ":" && !after_scope)
         return empty;
-    // No completion in a line comment.
+    // No completion in a comment or in a string. The scan starts at the file start, so a block
+    // comment from an earlier line counts. The path in a "using" line is text of a string, and it
+    // completes.
     const size_t line_begin = d.text.starts[static_cast<size_t>(cur.line)];
-    if (t.substr(line_begin, off - line_begin).find("//") != std::string::npos)
-        return empty;
+    {
+        bool block = false;
+        for (int l = 0; l < cur.line; ++l)
+            blank_non_code(d.text.line(l), block);
+        const std::string_view before = std::string_view(t).substr(line_begin, off - line_begin);
+        const size_t first = before.find_first_not_of(" \t");
+        const bool using_line = first != std::string_view::npos && before.compare(first, 5, "using") == 0;
+        // A sentinel at the cursor shows whether the cursor is in text that the scan blanks.
+        const std::string code = blank_non_code(std::string(before) + "x", block);
+        if (!using_line && code.back() == ' ')
+            return empty;
+    }
 
     const bool member = after_dot || after_scope;
     json items = json::array();
@@ -1788,8 +1854,9 @@ json Server::on_completion(const Doc& d, const json& p)
             size_t n = e;
             while (n < t.size() && (t[n] == ' ' || t[n] == '\t' || t[n] == '\r' || t[n] == '\n'))
                 ++n;
-            const bool end =
-                n < t.size() && std::string_view(";),]([+-*/%=<>!&|^?:.").find(t[n]) != std::string_view::npos;
+            const bool comment = n + 1 < t.size() && t[n] == '/' && (t[n + 1] == '/' || t[n + 1] == '*');
+            const bool end = !comment && n < t.size()
+                && std::string_view(";),]([+-*/%=<>!&|^?:.").find(t[n]) != std::string_view::npos;
             // The brackets that the statement before the word leaves open.
             std::string closers;
             if (!end)
@@ -1920,7 +1987,7 @@ json Server::on_completion(const Doc& d, const json& p)
             {
                 // A name in scope: a variable, a function, a type, an enumerator, a namespace.
                 static const std::set<int> kinds = {3, 6, 7, 9, 13, 20, 21, 22};
-                if (!kinds.count(kind) || name.compare(0, 2, "__") == 0)
+                if (!kinds.count(kind) || name.compare(0, 2, "__") == 0 || is_libc_name(name))
                     continue;
             }
             std::string label = it.value("label", name);

@@ -2815,6 +2815,55 @@ TEST(LanguageServer, CompletionAfterANamespaceInALocalTypeAndAnAlias)
     EXPECT_TRUE(a.has("vector")) << a.result.dump();
 }
 
+// The completion gives nothing in a comment or in a string. A "//" in a string does not start a
+// comment, and a comment after the cursor does not stop the completion.
+TEST(LanguageServer, CompletionGivesNothingInACommentOrAString)
+{
+    REQUIRE_CLANGD();
+    auto at = [](const std::string& code)
+    {
+        std::string text = kCompleteScript;
+        text.replace(text.find('@'), 1, code);
+        return complete_at(true, text);
+    };
+    EXPECT_TRUE(at("// ret@").names.empty());
+    EXPECT_TRUE(at("/* ret@ */").names.empty());
+    EXPECT_TRUE(at("string s = \"Wea@\";").names.empty());
+    // A block comment from an earlier line.
+    EXPECT_TRUE(at("/* a\n b ret@").names.empty());
+    // The text "//" in a string does not start a comment: the code after the string completes.
+    EXPECT_TRUE(at("string u = \"http://x\"; coun@").has("counter"));
+}
+
+TEST(LanguageServer, CompletionWorksBeforeALineComment)
+{
+    REQUIRE_CLANGD();
+    // The word is followed by a comment: "mocklib.// c" in a method.
+    std::string text = "using \"MockLib.h\";\n\nclass T {\n    void F() {\n        mocklib.@// c\n    }\n}\n";
+    EXPECT_TRUE(complete_at(true, text).has("vector"));
+}
+
+TEST(LanguageServer, CompletionHidesRecordAndCreateHelpers)
+{
+    REQUIRE_CLANGD();
+    const Completion c = complete_at(true, kCompleteScript, "");
+    EXPECT_FALSE(c.names.empty());
+    std::string all;
+    for (const std::string& n : c.names)
+        all += n + " ";
+    // The names of the C library are not script names.
+    EXPECT_FALSE(c.has("strcmp")) << all;
+    EXPECT_FALSE(c.has("printf")) << all;
+    EXPECT_FALSE(c.has("pthread_attr_t")) << all;
+    EXPECT_FALSE(c.has("CPU_SET")) << all;
+    EXPECT_TRUE(c.has("Hero"));
+    for (const std::string& n : c.names)
+    {
+        EXPECT_FALSE(n.size() > 7 && n.compare(n.size() - 7, 7, "_record") == 0) << n << " in " << all;
+        EXPECT_FALSE(n.size() > 7 && n.compare(n.size() - 7, 7, "_create") == 0) << n;
+    }
+}
+
 TEST(LanguageServer, CompletionListsNativeTypesAndFreeFunctions)
 {
     REQUIRE_CLANGD();
