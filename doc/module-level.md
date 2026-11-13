@@ -43,7 +43,6 @@ Each unit has an interface hash (`Module::iface_hash`). Each importer records th
 - The interface has the declarations that an importer sees or copies. These are the namespaces, the module aliases, the public enums and constants, and the signatures of the public functions and variables.
 - The interface also has each class and each struct, also a `private` one, because an importer copies it. The interface of a class has its parent, its fields and the signatures of its members.
 - A body change of a class method or a free function keeps the hash. The importer calls the code of the owner unit.
-- A private method or a private constructor of a class is not in the interface, because an importer cannot call it. A script class has no `friend`. The interface keeps the private fields, which set the layout, and the private virtual methods, which have a slot. The interface keeps only a mark that a private constructor exists.
 - The interface of a struct also has the bodies of its methods, constructors and accessors, because an importer copies them. A body change of a struct changes the hash.
 - An importer records the hash of each direct import and of each import of an import. It copies their classes and structs, so a struct change two imports away makes it stale too.
 - A live unit outside the batch that imports a changed interface is the error `DependentsStale`. Compile the unit into the batch.
