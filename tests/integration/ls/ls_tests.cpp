@@ -3009,7 +3009,10 @@ TEST(LanguageServer, ColdCompletionRepliesWithinTheBudgetAndIsIncomplete)
     bool vec = false;
     for (int k = 0; k < 600 && !vec; ++k)
     {
+        const auto t1 = std::chrono::steady_clock::now();
         json n = s.client->request("textDocument/completion", doc_pos(s.uri, 19, 11));
+        // Each reply is within the bound: the budget 50 ms plus 5 s for the patched text.
+        EXPECT_LT(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t1).count(), 9000);
         for (const json& i : n["result"].value("items", json::array()))
             if (i.value("insertText", "") == "Vec3")
                 vec = true;

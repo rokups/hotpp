@@ -636,7 +636,7 @@ private:
     // The wait for the first preamble of a generated document.
     static constexpr int kPreambleWaitMs = 60000;
     // The wait of a completion for the AST and the answer on the patched text, after the preamble.
-    static constexpr int kCompletionAstMs = 15000;
+    static constexpr int kCompletionAstMs = 5000;
 
     // Before its first preamble, clangd answers a request that needs the AST only after the
     // preamble. On a slow machine the first preamble takes longer than kNativeBudgetMs. So the first
@@ -668,10 +668,8 @@ private:
         if (left() <= 0 || !clangd_result("textDocument/documentSymbol", {{"textDocument", {{"uri", d.gen_uri}}}}, left()))
             return false;
         wait_for_preamble_index(std::max(0, left()));
-        if (left() <= 0)
-            return false;
-        preamble_ready_.insert(d.gen_uri);
-        return true;
+        preamble_ready_.insert(d.gen_uri); // the preamble is there, also when the time is over
+        return left() > 0;
     }
 
     std::optional<json> clangd_result(const std::string& method, json params, int timeout_ms = 60000)
@@ -1951,6 +1949,7 @@ json Server::on_completion(const Doc& d, const json& p)
             const Pos hole = {cur.line, static_cast<int>(s - d.text.starts[static_cast<size_t>(cur.line)])};
             std::optional<json> r;
             bool mapped = false; // a try had a place for the hole
+            std::optional<std::chrono::steady_clock::time_point> t0; // the start of the clangd waits
             bool sent = false; // the generated text of a try is in clangd
             Doc& md = const_cast<Doc&>(d);
             // The real generated text goes back once, also when a request throws.
@@ -1997,10 +1996,14 @@ json Server::on_completion(const Doc& d, const json& p)
                 // The wait has a budget. After it the reply has the script facts and "isIncomplete".
                 // The wait for the real text uses the budget of the options. Then clangd has its
                 // preamble, and the AST of the patched text needs kCompletionAstMs (std headers make it slow).
-                const auto ready_end = std::chrono::steady_clock::now() + std::chrono::milliseconds(opt_.completion_budget_ms);
-                if (!wait_for_native_ready_until(d, ready_end))
+                // One deadline for all the tries of the request: the budget of the options for the
+                // real text, then kCompletionAstMs more for the patched text.
+                if (!t0)
+                    t0 = std::chrono::steady_clock::now();
+                const auto ready_end = *t0 + std::chrono::milliseconds(opt_.completion_budget_ms);
+                const auto budget_end = ready_end + std::chrono::milliseconds(kCompletionAstMs);
+                if (std::chrono::steady_clock::now() >= budget_end || !wait_for_native_ready_until(d, ready_end))
                     break;
-                const auto budget_end = std::chrono::steady_clock::now() + std::chrono::milliseconds(kCompletionAstMs);
                 auto budget_left = [&]
                 {
                     return std::max(1, static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
