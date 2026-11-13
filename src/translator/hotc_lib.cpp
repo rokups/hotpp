@@ -10530,6 +10530,14 @@ void SourceMap::build(std::string_view script, std::string_view generated)
         return std::tie(segments_[a].file, segments_[a].script_begin)
             < std::tie(segments_[b].file, segments_[b].script_begin);
     });
+    max_end_.resize(by_script_.size());
+    for (size_t i = 0; i < by_script_.size(); ++i)
+    {
+        const SourceSegment& g = segments_[by_script_[i]];
+        const uint32_t end = g.script_begin + g.script_len;
+        const bool same_file = i > 0 && segments_[by_script_[i - 1]].file == g.file;
+        max_end_[i] = same_file ? std::max(max_end_[i - 1], end) : end;
+    }
     script_lines_.clear();
     script_lines_.push_back(line_starts(script));
     for (const SourceFile& f : files_)
@@ -10577,28 +10585,64 @@ std::optional<SourcePos> SourceMap::map_to_generated(uint32_t file, int script_l
     const auto off = offset_of(script_lines_[file], script_line, script_col);
     if (!off || by_script_.empty())
         return std::nullopt;
-    // The segments of the file that start at or before the offset: the nearest one that holds it.
+    // The segments of the file that start at or before the offset.
     auto it = std::upper_bound(by_script_.begin(), by_script_.end(), std::make_pair(file, *off),
         [&](const std::pair<uint32_t, uint32_t>& key, uint32_t i)
     { return key < std::make_pair(segments_[i].file, segments_[i].script_begin); });
-    for (int tries = 0; it != by_script_.begin() && tries < 16; ++tries)
+    if (it == by_script_.begin() || segments_[*(it - 1)].file != file)
+        return std::nullopt;
+    // First look at the nearest segments: the innermost one that holds the offset wins.
+    // Else a binary search on max_end_ (it never decreases) finds the outermost segment that holds
+    // the offset. A walk back from the last candidate then finds the innermost one.
+    auto hit = by_script_.end();
+    int tries = 0;
+    for (auto cur = it; cur != by_script_.begin() && tries < 16; ++tries)
     {
-        --it;
-        const SourceSegment& g = segments_[*it];
+        --cur;
+        const SourceSegment& g = segments_[*cur];
         if (g.file != file)
             break;
-        if (*off >= g.script_begin + g.script_len)
-            continue;
-        // Several segments can start at the same offset: take the first one in the generated text.
-        auto first = it;
-        while (first != by_script_.begin() && segments_[*(first - 1)].file == file
-            && segments_[*(first - 1)].script_begin == g.script_begin)
-            --first;
-        const SourceSegment& f = segments_[*first];
-        const uint32_t d = *off - f.script_begin;
-        return pos_of(gen_lines_, f.gen_begin + (f.script_len == f.gen_len ? d : 0));
+        if (*off < g.script_begin + g.script_len)
+        {
+            hit = cur;
+            break;
+        }
     }
-    return std::nullopt;
+    if (hit == by_script_.end())
+    {
+        const size_t last = static_cast<size_t>(it - by_script_.begin()) - 1;
+        const auto file_first = std::lower_bound(by_script_.begin(), by_script_.end(), file,
+            [&](uint32_t i, uint32_t f) { return segments_[i].file < f; });
+        const auto first = static_cast<size_t>(file_first - by_script_.begin());
+        // The first entry whose running maximum end is above the offset: it holds the offset.
+        // No entry before it ends above the offset, so the walk back below stops at it.
+        const auto m = std::upper_bound(max_end_.begin() + static_cast<std::ptrdiff_t>(first),
+            max_end_.begin() + static_cast<std::ptrdiff_t>(last) + 1, *off);
+        if (m == max_end_.begin() + static_cast<std::ptrdiff_t>(last) + 1)
+            return std::nullopt;
+        for (auto k = static_cast<std::ptrdiff_t>(last); k >= m - max_end_.begin(); --k)
+        {
+            const SourceSegment& c = segments_[by_script_[static_cast<size_t>(k)]];
+            if (*off < c.script_begin + c.script_len)
+            {
+                hit = by_script_.begin() + k;
+                break;
+            }
+        }
+    }
+    // Several segments can start at the same offset: take the first one in the generated text.
+    const SourceSegment& g = segments_[*hit];
+    auto first = hit;
+    // A tied segment must hold the offset too.
+    while (first != by_script_.begin() && segments_[*(first - 1)].file == file
+        && segments_[*(first - 1)].script_begin == g.script_begin
+        && *off < segments_[*(first - 1)].script_begin + segments_[*(first - 1)].script_len)
+        --first;
+    const SourceSegment& f = segments_[*first];
+    // A segment with script_len != gen_len has no safe 1:1 column map (the text differs).
+    // Such a segment maps only to its start. The same rule is in locate().
+    const uint32_t d = *off - f.script_begin;
+    return pos_of(gen_lines_, f.gen_begin + (f.script_len == f.gen_len ? d : 0));
 }
 
 namespace
