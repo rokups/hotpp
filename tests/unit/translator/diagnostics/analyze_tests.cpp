@@ -257,6 +257,30 @@ TEST(Analyze, BrokenImportIsBlankedAndTheMethodsKeepTheirMap)
     EXPECT_TRUE(r.source_map.map_to_generated(5, 16));
 }
 
+// A syntax error in a method blanks only the statements from the error statement to the end of the
+// body. The lines before it keep their map.
+TEST(Analyze, ParseErrorKeepsTheStatementsBeforeIt)
+{
+    const std::string text =
+        "using \"w.h\";\n"
+        "class Foo : Widget {\n"
+        "    int n = 0;\n"
+        "    void b() {\n"
+        "        n = n + 1;\n"
+        "        if (n > 0) {\n"
+        "            n = foo(;\n"
+        "        }\n"
+        "    }\n"
+        "    void c() { n = n + 8; }\n"
+        "}\n";
+    const hotc::AnalyzeResult r = analyze_text(text);
+    EXPECT_FALSE(r.errors.empty());
+    EXPECT_TRUE(r.source_map.map_to_generated(5, 9)) << r.diagnostics; // "n" on line 5
+    EXPECT_TRUE(r.source_map.map_to_generated(10, 16));
+    EXPECT_NE(r.cpp.find("n + 1"), std::string::npos);
+    EXPECT_EQ(r.cpp.find("foo("), std::string::npos);
+}
+
 // The module attribute array gives the type of "T[N]". The type text of the analysis uses it.
 TEST(Analyze, ArrayTemplateOfTheModuleAttributeApplies)
 {

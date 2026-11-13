@@ -10820,18 +10820,69 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
     // The text for the translation. A member that holds an error, or a line that holds an
     // error outside a member, is replaced by white space. The offsets stay the same.
     std::string valid = text;
+    // A syntax error in a method body blanks from the error statement to the end of the body, and
+    // the closing braces stay. If this is not possible, the whole member goes. A later error of the
+    // translation at this member blanks the whole member (the retry below).
+    auto blank_tail = [&](size_t b, size_t e, size_t pos)
+    {
+        size_t st = std::min(pos, e - 1);
+        while (st > b && text[st - 1] != ';' && text[st - 1] != '{' && text[st - 1] != '}')
+            --st;
+        size_t open = std::string::npos;
+        int depth = 0;
+        for (size_t i = b; i < st; ++i)
+        {
+            const char ch = text[i];
+            if (ch == '"' || ch == '\'')
+            {
+                for (++i; i < st && text[i] != ch && text[i] != '\n'; ++i)
+                    if (text[i] == '\\')
+                        ++i;
+            }
+            else if (ch == '/' && i + 1 < st && text[i + 1] == '/')
+            {
+                while (i < st && text[i] != '\n')
+                    ++i;
+            }
+            else if (ch == '/' && i + 1 < st && text[i + 1] == '*')
+            {
+                const size_t end = text.find("*/", i + 2);
+                i = end == std::string::npos ? st : end + 1;
+            }
+            else if (ch == '{')
+            {
+                if (open == std::string::npos)
+                    open = i;
+                ++depth;
+            }
+            else if (ch == '}')
+                --depth;
+        }
+        if (open == std::string::npos || depth < 1 || text[e - 1] != '}' || e - st <= static_cast<size_t>(depth))
+        {
+            blank(valid, line_begin(valid, b), e);
+            return;
+        }
+        blank(valid, st, e);
+        for (int k = 1; k <= depth; ++k)
+            valid[e - k] = '}';
+    };
+    std::map<size_t, std::pair<size_t, size_t>> first_error; // member begin: end, first error
     for (const Diag& d : diag.items)
     {
         bool in_member = false;
         for (const auto& [b, e] : ranges)
             if (d.pos >= b && d.pos < e)
             {
-                blank(valid, line_begin(valid, b), e);
+                auto it = first_error.emplace(b, std::make_pair(e, d.pos)).first;
+                it->second.second = std::min<size_t>(it->second.second, d.pos);
                 in_member = true;
             }
         if (!in_member)
             blank(valid, line_begin(valid, d.pos), line_end(valid, d.pos));
     }
+    for (const auto& [b, v] : first_error)
+        blank_tail(b, v.first, v.second);
     TranslateOptions o = options;
     o.script_text = valid;
     TranslateResult tr = translate(o, session);
