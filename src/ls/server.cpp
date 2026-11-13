@@ -1980,6 +1980,34 @@ json Server::on_completion(const Doc& d, const json& p)
                 if (got)
                     break;
             }
+            // No patched text translates (an error that the analysis cannot cut out). The last good
+            // generated text is in clangd. Ask at the nearest place of the old text that has a map:
+            // the hole, then the earlier positions of the line, then the earlier lines. A member
+            // completion asks only at the hole. No patched text goes to clangd here.
+            if (!mapped && d.map && !d.gen.s.empty())
+            {
+                std::optional<Pos> g = to_gen(d, hole);
+                // The start of a statement line has a map. The lines before the hole come first.
+                auto line_start = [&](int l) -> std::optional<Pos>
+                {
+                    const std::string_view ln = d.text.line(l);
+                    const size_t c = ln.find_first_not_of(" \t");
+                    return c == std::string_view::npos ? std::nullopt : to_gen(d, {l, static_cast<int>(c)});
+                };
+                const int last_line = std::min(static_cast<int>(d.text.starts.size()) - 1, cur.line + 30);
+                for (int l = cur.line - (g ? 99 : 0); !member && !g && l >= std::max(0, cur.line - 30); --l)
+                    g = line_start(l);
+                // The edit can cover the lines before the hole: then the next mapped lines.
+                for (int l = cur.line + 1; !member && !g && l <= last_line; ++l)
+                    g = line_start(l);
+                if (g)
+                {
+                    wait_for_native_ready(d);
+                    r = clangd_result("textDocument/completion",
+                        {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, *g)}});
+                    mapped = r.has_value();
+                }
+            }
             restore.f();
             sent = false;
             cc.rest = rest;

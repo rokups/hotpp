@@ -2965,6 +2965,29 @@ TEST(LanguageServer, CompletionFallsBackToTheScriptFactsWhenTheTranslationFails)
     EXPECT_TRUE(k.has("while")) << k.result.dump(); // a keyword
 }
 
+TEST(LanguageServer, CompletionUsesTheStaleTextWhenNoTextTranslates)
+{
+    REQUIRE_CLANGD();
+    // The first text is good. Then a "using" of a missing header fails the translation, also of
+    // every patched text. The completion asks clangd at the old place of the old text.
+    std::string good = kCompleteScript;
+    good.replace(good.find('@'), 1, "");
+    Session s(true, good);
+    json first = s.client->request("textDocument/completion", doc_pos(s.uri, 19, 8));
+    ASSERT_TRUE(first.contains("result"));
+    std::string bad = kCompleteScript;
+    bad.replace(bad.find('@'), 1, "");
+    bad.insert(0, "using \"nosuch_header.h\";\n");
+    s.client->change(s.uri, 2, bad);
+    json r = s.client->request("textDocument/completion", doc_pos(s.uri, 20, 8));
+    ASSERT_TRUE(r.contains("result"));
+    bool vec = false;
+    for (const json& i : r["result"].value("items", json::array()))
+        if (i.value("insertText", i.value("label", "")) == "Vec3" || (i.value("kind", 0) == 7 && i.value("detail", "").find("script") == std::string::npos))
+            vec = true;
+    EXPECT_TRUE(vec) << r["result"].dump();
+}
+
 TEST(LanguageServer, CompletionHidesTheGeneratedHelpers)
 {
     REQUIRE_CLANGD();
