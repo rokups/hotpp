@@ -5052,6 +5052,8 @@ void translate_impl(
         };
         for (const std::string& t : hotc::used_type_names(sc))
             note(t);
+        for (const ForeignVar& v : foreign_vars)
+            note(v.field.type);
         hotc::edit_type_texts(sc, [&](std::string& t) { note(t); }, {&foreign_fns, &mod_hooks});
         for (const ClassDef& cd : sc.classes)
         {
@@ -5330,6 +5332,14 @@ void translate_impl(
             }
             // The type model copied the bases before the rewrite. It needs the new texts.
             types.add_script_classes(sc.classes);
+            // The table of the module variables (the static fields too) holds the types of the script.
+            for (auto& [name, type] : module_vars)
+                fix(type);
+            for (ForeignVar& v : foreign_vars)
+            {
+                fix(v.field.type);
+                fix(v.field.script_type);
+            }
         }
     }
     // A stub weak source gets its traits only when the headers declare the stub name as written.

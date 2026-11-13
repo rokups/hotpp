@@ -412,3 +412,12 @@ TEST(ImportTranslation, BareBaseAndStaticFieldTogether)
                              "    private static $NAME n = MakeShared<NAME>();\n    void f() { var x = m; }\n}\n",
         "Node", "eng.Node", "int pre_text = 1;");
 }
+
+// A static handle field that a method assigns. The handle type of the assignment comes from the
+// type of the field.
+TEST(ImportTranslation, BareStaticHandleFieldAssignedInAMethod)
+{
+    expect_same_as_qualified("class Foo : Widget {\n    private static $NAME m = null;\n"
+                             "    void f() { m = MakeShared<NAME>(); }\n}\n",
+        "Obj", "eng.Obj", "eng::Ptr<eng::Obj>");
+}
