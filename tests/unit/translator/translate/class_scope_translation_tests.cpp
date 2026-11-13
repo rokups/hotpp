@@ -281,6 +281,37 @@ TEST(ClassScopeTranslation, InterfaceHashIgnoresPrivateMembers)
         << "a private virtual method after the public methods stays";
     EXPECT_NE(pub, hash(cls("protected int Pro(int a) { return a; } public int Pub(int a) { return a; }")))
         << "a protected method stays";
+    // A "convert_<f>" hook has no slot only when the class has the field "f". "onReload" has no slot.
+    const auto hooked = hash("class Foo : Widget { int k = 0; public int Pub(int a) { return a; } }\n");
+    EXPECT_NE(hooked, hash("class Foo : Widget { int k = 0; private void convert_x(int o) { k = o; }"
+                           " public int Pub(int a) { return a; } }\n"))
+        << "convert_x without a field x has a slot";
+    EXPECT_NE(hash("class Foo : Widget { int k = 0; public int Pub(int a) { return a; } }\n"),
+        hash("class Foo : Widget { int k = 0; public int Pub(int a) { return a; } private void Extra() {} }\n"));
+    auto iface = [&](const std::string& script)
+    {
+        const hotc::TranslateResult r = translate_script(dir, script);
+        EXPECT_TRUE(r.ok) << r.diagnostics;
+        return r.iface;
+    };
+    auto has_text = [](const std::string& t, const std::string& n) { return t.find(n) != std::string::npos; };
+    const std::string reload = iface("class Foo : Widget { int k = 0; void onReload(OldState old) { }"
+                                     " public int Pub(int a) { return a; } }\n");
+    EXPECT_TRUE(has_text(reload, "Pub(0 int32_t a) @0")) << "onReload has no slot: " << reload;
+    EXPECT_TRUE(has_text(reload, "slots 1")) << reload;
+    const std::string conv = iface("class Foo : Widget { int k = 0; int convert_k(int old) { return old; }"
+                                   " public int Pub(int a) { return a; } }\n");
+    EXPECT_TRUE(has_text(conv, "Pub(0 int32_t a) @0")) << "convert_k with a field k has no slot: " << conv;
+    const std::string nofield = iface("class Foo : Widget { int k = 0; private int convert_x(int old) { return old; }"
+                                      " public int Pub(int a) { return a; } }\n");
+    EXPECT_TRUE(has_text(nofield, "Pub(0 int32_t a) @1")) << "convert_x without a field has a slot: " << nofield;
+    {
+        // A struct has no slot index and no slot count.
+        const hotc::TranslateResult r = translate_script(dir, "struct S { int k = 0; int Get() { return k; } }\n");
+        ASSERT_TRUE(r.ok) << r.diagnostics;
+        EXPECT_EQ(r.iface.find(" @"), std::string::npos) << r.iface;
+        EXPECT_EQ(r.iface.find("slots"), std::string::npos) << r.iface;
+    }
     const auto noctor = hash(cls(""));
     EXPECT_EQ(hash(cls("private Foo(int a) { k = a; }")), hash(cls("private Foo(int a) { k = a + 1; }")))
         << "a private constructor body";
