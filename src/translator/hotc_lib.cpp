@@ -5052,7 +5052,7 @@ void translate_impl(
         };
         for (const std::string& t : hotc::used_type_names(sc))
             note(t);
-        hotc::edit_type_texts(sc, [&](std::string& t) { note(t); });
+        hotc::edit_type_texts(sc, [&](std::string& t) { note(t); }, {&foreign_fns, &mod_hooks});
         for (const ClassDef& cd : sc.classes)
         {
             note(cd.base);
@@ -5321,13 +5321,15 @@ void translate_impl(
         };
         if (!bare_map.empty())
         {
-            hotc::edit_type_texts(sc, fix);
+            hotc::edit_type_texts(sc, fix, {&foreign_fns, &mod_hooks});
             for (ClassDef& cd : sc.classes)
             {
                 fix(cd.base);
                 for (std::string& i : cd.interfaces)
                     fix(i);
             }
+            // The type model copied the bases before the rewrite. It needs the new texts.
+            types.add_script_classes(sc.classes);
         }
     }
     // A stub weak source gets its traits only when the headers declare the stub name as written.

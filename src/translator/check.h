@@ -102,7 +102,10 @@ std::set<std::string> used_type_names(const ast::Script& sc);
 std::set<std::string> used_type_names(const ast::ClassDef& cd);
 // Calls "fn" for the type text of each declaration, "new", "is"/"as" and lambda parameter that
 // "used_type_names" reads, and also for the module variables and constants. "fn" can change the text.
-void edit_type_texts(ast::Script& sc, const std::function<void(std::string&)>& fn);
+// "extra_fns" are more lists of functions that the translator holds apart from the script (the
+// declarations of the free functions of the imports and the convert hooks).
+void edit_type_texts(ast::Script& sc, const std::function<void(std::string&)>& fn,
+    const std::vector<std::vector<ast::Method>*>& extra_fns = {});
 
 // How the body of a script function uses one parameter (design 7.10.5). The pass sees the
 // names only, because the lowering has not run. It is conservative:

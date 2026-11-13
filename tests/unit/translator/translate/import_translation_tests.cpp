@@ -141,11 +141,16 @@ const char* kBareHeader =
     "struct Err : std::exception {};\n"
     "enum class Mode { A, B };\n"
     "template <class T> void Make() {}\n"
+    "template <class T> std::shared_ptr<T> MakeShared() { return std::make_shared<T>(); }\n"
+    "class Base { public: virtual ~Base() {} virtual void Tick(float dt) {} };\n"
+    "class Mid : public Base {};\n"
     "struct string { int s = 0; };\n"
     "struct uint { int u = 0; };\n"
     "struct Node : std::enable_shared_from_this<Node> { int x = 0; };\n"
     "template <class T> struct Ptr { T* p = nullptr; T* operator->() const { return p; } T* get() const { return p; } };\n"
+    "template <class T, class... A> Ptr<T> MakeObj(A... a) { return Ptr<T>(); }\n"
     "struct Obj { void AddRef(); void Release(); virtual ~Obj() {} };\n"
+    "struct Mat : Obj {};\n"
     "struct Two { int a = 0; };\n"
     "}\n"
     "namespace eng2 { struct Two { int b = 0; }; }\n"
@@ -345,4 +350,65 @@ TEST(ImportTranslation, BareNamesUseTheSessionCache)
     ASSERT_TRUE(b.ok) << b.diagnostics;
     EXPECT_EQ(a.cpp, b.cpp);
     EXPECT_EQ(session.parse_count(), 1);
+}
+
+// A bare class base gets the stubs of the base chain (the prelude of "class : eng.Base;").
+TEST(ImportTranslation, BareClassBaseGetsTheStubOfItsBase)
+{
+    expect_same_as_qualified("[native, cpp_prelude(\"int pre_text = 1;\")] class : eng.Base;\n"
+                             "class Foo : NAME {\n    int x;\n}\n",
+        "Mid", "eng.Mid", "int pre_text = 1;");
+}
+
+// The type of a cast.
+TEST(ImportTranslation, BareCastType)
+{
+    expect_same_as_qualified("class Foo : Widget {\n    void f($NAME a) { var b = ($NAME)a; }\n}\n", "Node", "eng.Node");
+}
+
+// A free function of an imported script keeps the bare handle type of that script. The "using"
+// line of the import counts for it.
+TEST(ImportTranslation, BareTypeInAFreeFunctionOfAnImport)
+{
+    const auto run = [](const std::string& type)
+    {
+        TempDir dir;
+        write_file(dir.path() / "b.h", kBareHeader);
+        hotc::TranslateOptions o = temp_options(dir,
+            "using \"b.h\";\nusing \"lib.hot\";\n" + std::string(kBareStubs)
+                + "class Foo : Widget {\n    void g($eng.Node n) { F(n); }\n}\n");
+        o.modules.emplace_back("lib.hot",
+            "using \"b.h\";\nusing eng;\n" + std::string(kBareStubs) + "void F($" + type + " n) { }\n");
+        return hotc::translate(o);
+    };
+    const auto a = run("Node");
+    const auto b = run("eng.Node");
+    ASSERT_TRUE(b.ok) << b.diagnostics;
+    ASSERT_TRUE(a.ok) << a.diagnostics;
+    EXPECT_EQ(a.cpp, b.cpp);
+}
+
+// A static handle field with "MakeShared<T>()" as the initializer.
+TEST(ImportTranslation, BareTypeInAStaticFieldWithMakeShared)
+{
+    expect_same_as_qualified(
+        "class Foo : Widget {\n    private static $NAME m = MakeShared<NAME>();\n    void f() { var x = m; }\n}\n",
+        "Node", "eng.Node");
+}
+
+// The same with a handle template that is not std::shared_ptr and a call with arguments.
+TEST(ImportTranslation, BareTypeInAStaticFieldWithAHandleTemplate)
+{
+    expect_same_as_qualified(
+        "class Foo : Widget {\n    private static $NAME m = MakeObj<NAME>(1);\n    void f() { var x = m; }\n}\n",
+        "Mat", "eng.Mat");
+}
+
+// A bare base, a bare static handle field and a bare "MakeShared<T>(...)" in one class.
+TEST(ImportTranslation, BareBaseAndStaticFieldTogether)
+{
+    expect_same_as_qualified("[native, cpp_prelude(\"int pre_text = 1;\")] class : eng.Base;\n"
+                             "class Foo : Mid {\n    private static $Mat m = MakeObj<Mat>(1);\n"
+                             "    private static $NAME n = MakeShared<NAME>();\n    void f() { var x = m; }\n}\n",
+        "Node", "eng.Node", "int pre_text = 1;");
 }

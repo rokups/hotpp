@@ -3898,6 +3898,9 @@ std::set<std::string> collect_type_names(const ClassDef* cdp, const std::vector<
             add(n->type);
         if (auto* tt = std::get_if<TypeTestExpr>(&e.v); tt && (tt->is_as || !tt->bind.empty()))
             add(tt->type);
+        if (auto* u = std::get_if<UnaryExpr>(&e.v); u && !u->postfix && u->op.size() > 2 && u->op[0] == '('
+            && u->op.back() == ')')
+            add(u->op.substr(1, u->op.size() - 2));
         if (auto* l = std::get_if<LambdaExpr>(&e.v))
             for (const Param& p : l->params)
                 add(p.type);
@@ -3956,7 +3959,17 @@ std::set<std::string> used_type_names(const ClassDef& cd)
     return collect_type_names(&cd, nullptr);
 }
 
-void edit_type_texts(Script& sc, const std::function<void(std::string&)>& fn)
+namespace
+{
+// The parser makes the op "(T)" for a cast only. A postfix operator is never a cast.
+bool is_cast_op(const UnaryExpr& u)
+{
+    return !u.postfix && u.op.size() > 2 && u.op[0] == '(' && u.op.back() == ')';
+}
+} // namespace
+
+void edit_type_texts(Script& sc, const std::function<void(std::string&)>& fn,
+    const std::vector<std::vector<Method>*>& extra_fns)
 {
     // A parameter, a field or a property keeps the type that the script wrote in "script_type".
     // It is empty or the same text as "type" before the translator rewrites "type".
@@ -3976,6 +3989,13 @@ void edit_type_texts(Script& sc, const std::function<void(std::string&)>& fn)
         if (auto* l = std::get_if<LambdaExpr>(&m.v))
             for (Param& p : l->params)
                 param(p);
+        // A cast "(T)x" is a prefix operator with the op "(T)". The type is the text in the parentheses.
+        if (auto* u = std::get_if<UnaryExpr>(&m.v); u && is_cast_op(*u))
+        {
+            std::string inner = u->op.substr(1, u->op.size() - 2);
+            fn(inner);
+            u->op = "(" + inner + ")";
+        }
         // The explicit template arguments of "f<Node>()". A changed text drops the parsed nodes:
         // the lowering would print them again with the old text.
         if (auto* n = std::get_if<NameExpr>(&m.v); n && !n->template_args.empty())
@@ -4031,6 +4051,9 @@ void edit_type_texts(Script& sc, const std::function<void(std::string&)>& fn)
         field(f);
     for (Method& m : sc.fns)
         method(m);
+    for (std::vector<Method>* list : extra_fns)
+        for (Method& m : *list)
+            method(m);
     for (ClassDef& cd : sc.classes)
     {
         for (Field& f : cd.fields)
