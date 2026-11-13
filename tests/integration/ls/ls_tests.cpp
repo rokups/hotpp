@@ -3417,6 +3417,22 @@ TEST(LanguageServer, TypeContextHasNoStatementKeywords)
     EXPECT_TRUE(c.has("int"));
 }
 
+TEST(LanguageServer, DeclarationStartKeepsDeclarationKeywords)
+{
+    REQUIRE_CLANGD();
+    const auto in_class = complete_at(false, "class A {\n    pu@\n}\n", "");
+    EXPECT_TRUE(in_class.has("public"));
+    EXPECT_FALSE(in_class.has("return"));
+    EXPECT_FALSE(in_class.has("while"));
+    const auto top = complete_at(false, "cl@\n", "");
+    EXPECT_TRUE(top.has("class"));
+    EXPECT_FALSE(top.has("if"));
+    const auto param = complete_at(false, "class A {\n    void f(re@) {}\n}\n", "");
+    EXPECT_TRUE(param.has("ref"));
+    EXPECT_FALSE(param.has("return"));
+    EXPECT_TRUE(complete_at(false, "class A {\n    void f(ou@) {}\n}\n", "").has("out"));
+}
+
 TEST(LanguageServer, CompletionHidesTheGeneratedHelpers)
 {
     REQUIRE_CLANGD();

@@ -40,6 +40,9 @@ struct CompletionContext
     // ("No|" is a local declaration or a call) or a cast ("(No|"). "kind" is the first guess.
     // The caller offers the names of both kinds.
     bool exprAndType = false;
+    // True when a declaration can start at the word: the statement is empty or has only modifiers,
+    // in a file, a namespace, a class or a parameter list. The caller offers declaration keywords.
+    bool declStart = false;
 };
 
 // Returns the context at "offset" (0 to text.size()). A bigger offset counts as text.size().

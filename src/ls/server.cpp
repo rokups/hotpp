@@ -2217,6 +2217,13 @@ json Server::on_completion(const Doc& d, const json& p)
                 typed.insert(typed.end(), texts.begin(), texts.end());
                 texts = std::move(typed);
             }
+            {
+                std::vector<std::string> unique;
+                for (std::string& x : texts)
+                    if (std::find(unique.begin(), unique.end(), x) == unique.end())
+                        unique.push_back(std::move(x));
+                texts = std::move(unique);
+            }
             // The last try of a type place: the word is a builtin type, so the text translates, and
             // a module variable at the file end holds the hole as a type. Its place has no map.
             const size_t probe_index = texts.size();
@@ -2276,7 +2283,7 @@ json Server::on_completion(const Doc& d, const json& p)
                     }
                 }
                 // A bare partial word of a type ("Nod" of a type position) has no "::" before it.
-                if (!g && !facts.cpp.empty())
+                if (!g && !facts.cpp.empty() && (type_only || is_probe))
                 {
                     for (size_t o = facts.cpp.find(prefix + kHole); o != std::string::npos;
                          o = facts.cpp.find(prefix + kHole, o + 1))
@@ -2456,8 +2463,14 @@ json Server::on_completion(const Doc& d, const json& p)
     if (!member && !base_only)
     {
         // "self" is a stub attribute. It is also the name of a generated helper, so it is not offered.
+        // A type place has no keyword. A declaration start has the declaration keywords, not the
+        // statement keywords: no statement starts in a file, a namespace, a class or a parameter list.
+        static const std::set<std::string> statement_keywords = {"if", "else", "while", "do", "for", "foreach",
+            "return", "break", "continue", "switch", "case", "default", "try", "catch", "finally", "throw", "await",
+            "delete", "static_assert"};
+        const bool decl_start = type_only && ctx.declStart;
         for (const std::string& k : script_keywords())
-            if (k != "self" && !type_only)
+            if (k != "self" && (!type_only || (decl_start && !statement_keywords.count(k))))
                 add(k, 14, "keyword", "3");
         // The global helpers of a script (include/hot/runtime/enumerate.h).
         for (const std::string& h : script_helpers())

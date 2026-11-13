@@ -203,6 +203,23 @@ TEST(Classify, ExprAndTypeFlag)
     EXPECT_FALSE(flag("class X { void F() { a.No|"));
 }
 
+TEST(Classify, DeclStartFlag)
+{
+    auto flag = [](const std::string& marked)
+    {
+        const auto bar = marked.find('|');
+        return classify(marked.substr(0, bar) + marked.substr(bar + 1), bar).declStart;
+    };
+    EXPECT_TRUE(flag("class X {\n    pu|"));
+    EXPECT_TRUE(flag("class X {\n    public st|"));
+    EXPECT_TRUE(flag("cl|"));
+    EXPECT_TRUE(flag("class X { void F(re|"));
+    EXPECT_TRUE(flag("class X { Fo|"));
+    EXPECT_FALSE(flag("class X { void F() { No|"));
+    EXPECT_FALSE(flag("class X { void F() { a = (No|"));
+    EXPECT_FALSE(flag("class X : No|"));
+}
+
 TEST(Classify, PrefixStart)
 {
     const std::string t = "class X { void F() { a.Fo";

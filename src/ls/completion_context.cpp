@@ -636,6 +636,9 @@ CompletionContext classify(std::string_view text, std::size_t offset)
         }
     }
     result.kind = classifyTop(f, partial, result.exprAndType);
+    result.declStart = result.kind == Kind::Type
+        && (f.k == Fr::Top || f.k == Fr::Namespace || f.k == Fr::Class || f.k == Fr::Params)
+        && allModifiers(f.toks);
     return result;
 }
 
