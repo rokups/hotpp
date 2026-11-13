@@ -31,3 +31,8 @@ target_include_directories(integration_ls_format_tests PRIVATE ${PROJECT_SOURCE_
 target_link_libraries(integration_ls_format_tests PRIVATE hot_ls_lib GTest::gtest_main)
 target_compile_definitions(integration_ls_format_tests PRIVATE HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 hot_gtest(integration_ls_format_tests DISCOVERY_TIMEOUT 30)
+
+# Unit test of the completion context (M5 step 16). It needs no clangd.
+add_executable(integration_ls_completion_context_tests completion_context_tests.cpp)
+target_link_libraries(integration_ls_completion_context_tests PRIVATE hot_ls_lib GTest::gtest_main)
+hot_gtest(integration_ls_completion_context_tests DISCOVERY_TIMEOUT 30)
