@@ -181,6 +181,9 @@ std::unique_ptr<Backend> make_clang_files(const DefaultBackendOptions& options)
     ClangFilesOptions o;
     const DefaultPaths paths = default_paths();
     o.compiler = paths.compiler;
+    // default_paths() reads HOT_CXX one time. A later value of the variable still decides.
+    if (const char* env = std::getenv("HOT_CXX"); env && *env)
+        o.compiler = env;
     o.include_dirs = paths.include_dirs;
     o.extra_flags = paths.cxxflags;
     // A script compile has no debug info by default. It is faster. HOT_DEBUG_INFO=1 turns it on.
