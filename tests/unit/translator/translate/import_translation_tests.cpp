@@ -421,3 +421,17 @@ TEST(ImportTranslation, BareStaticHandleFieldAssignedInAMethod)
                              "    void f() { m = MakeShared<NAME>(); }\n}\n",
         "Obj", "eng.Obj", "eng::Ptr<eng::Obj>");
 }
+
+// A type alias with a bare native type, at file scope and in a class body.
+TEST(ImportTranslation, BareTypeInATypeAlias)
+{
+    expect_same_as_qualified("using P = NAME;\nclass Foo : Widget {\n    using Q = NAME;\n    P x;\n    Q y;\n}\n",
+        "Two", "eng.Two", "using P = eng::Two;");
+}
+
+// A module constant with a bare native type.
+TEST(ImportTranslation, BareTypeInAModuleConstant)
+{
+    expect_same_as_qualified("const $NAME kC = null;\nclass Foo : Widget {\n    void f() { var a = kC; }\n}\n",
+        "Node", "eng.Node");
+}

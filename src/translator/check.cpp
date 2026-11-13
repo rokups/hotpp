@@ -4045,6 +4045,11 @@ void edit_type_texts(Script& sc, const std::function<void(std::string&)>& fn,
         if (p.set_body)
             w.block(*p.set_body);
     };
+    for (TypeAlias& al : sc.aliases)
+    {
+        fn(al.type);
+        fn(al.resolved);
+    }
     for (Field& f : sc.vars)
         field(f);
     for (Field& f : sc.consts)
@@ -4074,6 +4079,11 @@ void edit_type_texts(Script& sc, const std::function<void(std::string&)>& fn,
             prop(p);
         for (Property& p : cd.sprops)
             prop(p);
+        for (TypeAlias& al : cd.aliases)
+        {
+            fn(al.type);
+            fn(al.resolved);
+        }
     }
 }
 
