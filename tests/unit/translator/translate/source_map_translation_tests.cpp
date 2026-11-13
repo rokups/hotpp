@@ -393,3 +393,27 @@ TEST(SourceMapType, ImportedSegmentIsNotInTheMainScript)
     EXPECT_EQ(m.map_to_generated(f, 1, 6), (SourcePos{1, 23}));
     EXPECT_FALSE(m.map_to_generated(1, 20)); // main offset 19 is no segment
 }
+
+// The fallback search picks the innermost segment that holds the offset, not the outermost.
+TEST(SourceMapType, DeepFallbackPicksTheInnermostSegment)
+{
+    hotc::SourceMap m;
+    m.add({0, 300, 0, 10}); // A: other lengths
+    m.add({50, 200, 100, 200}); // B
+    for (uint32_t i = 0; i < 20; ++i)
+        m.add({60 + i, 1, 400 + i, 1});
+    m.build(std::string(300, 'a'), std::string(500, 'g'));
+    EXPECT_EQ(m.map_to_generated(1, 201), (SourcePos{1, 100 + 150 + 1}));
+}
+
+// A tied segment that does not hold the offset is not a candidate.
+TEST(SourceMapType, TiedSegmentThatDoesNotHoldTheOffsetIsSkipped)
+{
+    hotc::SourceMap m;
+    m.add({10, 1, 0, 1});
+    m.add({10, 50, 10, 50});
+    for (uint32_t i = 0; i < 20; ++i)
+        m.add({11 + i, 1, 100 + i, 1});
+    m.build(std::string(100, 'a'), std::string(200, 'g'));
+    EXPECT_EQ(m.map_to_generated(1, 41), (SourcePos{1, 41}));
+}
