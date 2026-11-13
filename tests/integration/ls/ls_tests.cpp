@@ -3608,6 +3608,103 @@ TEST(LanguageServer, SignatureHelpShowsTheScriptMethodAndTheActiveParameter)
     EXPECT_TRUE(c["result"].is_null()) << c.dump();
 }
 
+namespace
+{
+
+// A script with a method body "body". The "|" in "body" is the cursor; it is not in the text.
+// Gives the reply of signatureHelp and the text. "open_text" is the text that the session opens
+// first (a good text); the text with the cursor then comes as an edit.
+json sig_reply(const std::string& body, const std::string& open_body = "")
+{
+    const std::string head =
+        "using \"Actor.h\";\n"
+        "class P : Actor {\n"
+        "    void two(int a, float b) {}\n"
+        "    void vec(std.vector<std.pair<int, int>> a, float b) {}\n"
+        "    void init(Vec3 a, float b) {}\n"
+        "    void run() {\n";
+    const std::string tail = "\n    }\n}\n";
+    const size_t bar = body.find('|');
+    std::string text = head + body + tail;
+    const size_t at = head.size() + bar;
+    text.erase(at, 1);
+    int line = 0, col = 0;
+    for (size_t i = 0; i < at; ++i)
+    {
+        if (text[i] == '\n')
+            ++line, col = 0;
+        else
+            ++col;
+    }
+    if (open_body.empty())
+    {
+        Session s(true, text);
+        return s.client->request("textDocument/signatureHelp", doc_pos(s.uri, line, col));
+    }
+    Session s(true, head + open_body + tail);
+    s.client->change(s.uri, 2, text);
+    return s.client->request("textDocument/signatureHelp", doc_pos(s.uri, line, col));
+}
+
+void expect_sig(const json& r, const std::string& name, int active)
+{
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    ASSERT_FALSE(r["result"]["signatures"].empty()) << r.dump();
+    EXPECT_NE(r["result"]["signatures"][0].value("label", "").find(name), std::string::npos) << r.dump();
+    EXPECT_EQ(r["result"]["activeParameter"], active) << r.dump();
+}
+
+} // namespace
+
+TEST(LanguageServer, SignatureHelpIgnoresCommasAndParensInStringsAndComments)
+{
+    REQUIRE_CLANGD();
+    expect_sig(sig_reply("        two(1 /* a, b ) */, |2.0);"), "two", 1);
+    expect_sig(sig_reply("        two(1, 2.0 /* , ( */|);"), "two", 1);
+    // A string with commas and a paren is one argument. The string is not a call.
+    expect_sig(sig_reply("        std.string s = \"a, (b,\"; two(1, |2.0);"), "two", 1);
+    expect_sig(sig_reply("        two(\"x, (y\".size(), |2.0);"), "two", 1);
+    // A line comment with a paren before the call does not matter.
+    expect_sig(sig_reply("        // f(a, b,\n        two(|1, 2.0);"), "two", 0);
+}
+
+TEST(LanguageServer, SignatureHelpSkipsNestedCallsBracesAndTemplateLists)
+{
+    REQUIRE_CLANGD();
+    expect_sig(sig_reply("        two(Vec3(1, 2, 3).x, |2.0);"), "two", 1);
+    expect_sig(sig_reply("        this.init(Vec3(1, 2, 3), |2.0);"), "init", 1);
+    expect_sig(sig_reply("        this.init(Vec3(1, 2, |3), 2.0);"), "Vec3", 2);
+    expect_sig(sig_reply("        this.vec(std.vector<std.pair<int, int>>(), |2.0);"), "vec", 1);
+    expect_sig(sig_reply("        this.vec(std.vector<std.pair<int, int>>(), 2.0|);"), "vec", 1);
+    // An unspaced comparison is not a template list.
+    expect_sig(sig_reply("        two(Vec3(1, 2, 3).x<3, |2.0);"), "two", 1);
+    expect_sig(sig_reply("        float Mx = 1; two(Mx<3, |2.0);"), "two", 1);
+    // The call is in a lambda body in braces, in the arguments of another call.
+    expect_sig(sig_reply("        std.function<void()> g = () => { two(1, |2.0); };"), "two", 1);
+    expect_sig(sig_reply("        std.function<void()> g = () => { two(1, 2.0); two(|1, 2.0); };"), "two", 0);
+}
+
+TEST(LanguageServer, SignatureHelpFindsTheCalleeOfATemplateCall)
+{
+    REQUIRE_CLANGD();
+    expect_sig(sig_reply("        std.make_pair<int, float>(|1, 2.0);"), "make_pair", 0);
+    expect_sig(sig_reply("        std.make_pair<int, float>(1, |2.0);"), "make_pair", 1);
+    expect_sig(sig_reply("        std.make_shared<Vec3>(1, |2, 3);"), "make_shared", 1);
+    // A nested list with a lowercase inner name.
+    expect_sig(sig_reply("        std.make_shared<std.vector<int>>(|);"), "make_shared", 0);
+}
+
+TEST(LanguageServer, SignatureHelpOfAnUnfinishedCallGivesTheSecondArgument)
+{
+    REQUIRE_CLANGD();
+    // The edit makes the text fail to translate. The call is new in the edit.
+    expect_sig(sig_reply("        two(1, |", "        "), "two", 1);
+    expect_sig(sig_reply("        two(1, |\n        two(1, 2.0);", "        two(1, 2.0);"), "two", 1);
+    expect_sig(sig_reply("        this.init(Vec3(1, 2, 3), |", "        "), "init", 1);
+    // The same text as the first text of the session.
+    expect_sig(sig_reply("        two(1, |"), "two", 1);
+}
+
 TEST(LanguageServer, FormattingFixesTheIndentAndKeepsStringsAndComments)
 {
     const std::string messy =

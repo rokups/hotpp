@@ -2543,64 +2543,261 @@ json Server::on_hover(const Doc& d, const json& p)
     return nullptr;
 }
 
+// The call that holds the cursor. "open" is the "(" of the call, "name_begin" the first byte of
+// the callee name. "closers" are the closing brackets that complete the text up to the cursor.
+struct SigCall
+{
+    size_t open = 0, name_begin = 0;
+    int commas = 0;
+    std::string closers;
+};
+
+// The "<" at "lt" is a template list when it follows a name in a plausible place: the name has
+// a capital letter, or the name follows a ".", or a ">" and a "(" close the list on the same
+// statement with only type characters between.
+static bool plausible_template(const std::string& code, size_t lt, size_t limit)
+{
+    size_t e = lt;
+    while (e > 0 && (code[e - 1] == ' ' || code[e - 1] == '\t'))
+        --e;
+    size_t b = e;
+    while (b > 0 && is_id_char(code[b - 1]))
+        --b;
+    if (b == e || std::isdigit(static_cast<unsigned char>(code[b])))
+        return false;
+    if (e != lt)
+        return false;
+    if (std::isupper(static_cast<unsigned char>(code[b])))
+        return true;
+    size_t k = b;
+    while (k > 0 && (code[k - 1] == ' ' || code[k - 1] == '\t'))
+        --k;
+    if (k > 0 && code[k - 1] == '.')
+        return true;
+    int depth = 0;
+    for (size_t i = lt; i < code.size(); ++i)
+    {
+        const char c = code[i];
+        if (c == '<')
+            ++depth;
+        else if (c == '>' && --depth == 0)
+        {
+            while (++i < code.size() && (code[i] == ' ' || code[i] == '\t'))
+            {
+            }
+            // A ">" or a "," after the list: this list is in an outer list.
+            return i < code.size() && (code[i] == '(' || code[i] == '>' || code[i] == ',');
+        }
+        else if (!is_id_char(c) && std::string_view(" \t\n:,*&").find(c) == std::string_view::npos)
+            return false;
+    }
+    (void)limit;
+    return false;
+}
+
+// A scan of the script text from the start to the cursor. Strings and comments are blank. The
+// scan tracks "()", "[]", "{}" and the template lists "<>" in a plausible place. A comma counts
+// for the innermost bracket only. Braces do not hide the call around them. No value when the
+// cursor is not in the arguments of a call.
+static std::optional<SigCall> find_call_at(const std::string& text, size_t cursor)
+{
+    std::string code;
+    {
+        bool block = false;
+        size_t i = 0;
+        while (i < cursor)
+        {
+            size_t e = text.find('\n', i);
+            const size_t end = e == std::string::npos ? text.size() : e;
+            code += blank_non_code(std::string_view(text).substr(i, end - i), block);
+            if (e == std::string::npos)
+                break;
+            code += '\n';
+            i = e + 1;
+        }
+        code.resize(std::min(code.size(), cursor));
+    }
+    struct Frame
+    {
+        char kind;
+        size_t open, name_begin;
+        int commas;
+        bool semi;
+    };
+    std::vector<Frame> st;
+    // The name that starts the template list that ended with the ">" at "gt".
+    size_t last_gt = std::string::npos, last_gt_name = 0;
+    auto name_start = [&](size_t end)
+    {
+        size_t b = end;
+        while (b > 0 && is_id_char(code[b - 1]))
+            --b;
+        return b;
+    };
+    for (size_t i = 0; i < code.size(); ++i)
+    {
+        const char c = code[i];
+        if (c == '(' || c == '[' || c == '{')
+        {
+            size_t e = i;
+            while (e > 0 && (code[e - 1] == ' ' || code[e - 1] == '\t'))
+                --e;
+            size_t nb = e;
+            if (c == '(' && e > 0)
+            {
+                if (code[e - 1] == '>' && e - 1 == last_gt)
+                    nb = last_gt_name;
+                else
+                    nb = name_start(e);
+            }
+            st.push_back({c, i, nb == e ? std::string::npos : nb, 0, false});
+        }
+        else if (c == ')' || c == ']' || c == '}')
+        {
+            const char want = c == ')' ? '(' : c == ']' ? '[' : '{';
+            while (!st.empty() && st.back().kind == '<')
+                st.pop_back();
+            if (!st.empty() && st.back().kind == want)
+                st.pop_back();
+        }
+        else if (c == '<')
+        {
+            if (plausible_template(code, i, code.size()))
+            {
+                size_t e = i;
+                st.push_back({'<', i, name_start(e), 0, false});
+            }
+        }
+        else if (c == '>' && !(i > 0 && code[i - 1] == '-'))
+        {
+            if (!st.empty() && st.back().kind == '<')
+            {
+                last_gt = i;
+                last_gt_name = st.back().name_begin;
+                st.pop_back();
+            }
+        }
+        else if (c == ',')
+        {
+            if (!st.empty())
+                ++st.back().commas;
+        }
+        else if (c == ';')
+        {
+            while (!st.empty() && st.back().kind == '<')
+                st.pop_back();
+            if (!st.empty())
+                st.back().semi = true;
+        }
+    }
+    // A "<" that no ">" closes is a comparison: its commas belong to the bracket around it.
+    while (!st.empty() && st.back().kind == '<')
+    {
+        const int commas = st.back().commas;
+        st.pop_back();
+        if (!st.empty())
+            st.back().commas += commas;
+    }
+    // The innermost "(" with a name: braces are transparent unless they hold a statement.
+    size_t k = st.size();
+    while (k > 0)
+    {
+        const Frame& f = st[k - 1];
+        if (f.kind == '{' && !f.semi)
+            --k;
+        else
+            break;
+    }
+    if (k == 0 || st[k - 1].kind != '(' || st[k - 1].name_begin == std::string::npos)
+        return std::nullopt;
+    SigCall r;
+    r.open = st[k - 1].open;
+    r.name_begin = st[k - 1].name_begin;
+    r.commas = st[k - 1].commas;
+    for (size_t j = st.size(); j > k - 1; --j)
+    {
+        const char kind = st[j - 1].kind;
+        if (kind == '(')
+            r.closers += ')';
+        else if (kind == '[')
+            r.closers += ']';
+        else if (kind == '{')
+            r.closers += '}';
+    }
+    return r;
+}
+
 // The signature of the function that the cursor is in. The call is in the script. clangd gets the
 // place after the "(" of the generated call. The active parameter is the number of commas
-// between the "(" and the cursor, so it does not depend on the generated arguments.
+// between the "(" and the cursor, so it does not depend on the generated arguments. When the
+// text does not translate (an unfinished call), the text gets a hole name and the closing
+// brackets, as in a completion, and clangd gets the generated text of that patched text.
 json Server::on_signature_help(const Doc& d, const json& p)
 {
     const std::string& t = d.text.s;
     const Pos cur = from_lsp(d.text, p["position"], utf8_);
-    size_t i = d.text.offset(cur.line, cur.col), open = std::string::npos;
-    int depth = 0, commas = 0;
-    while (i > 0)
-    {
-        const char c = t[--i];
-        if (c == ')' || c == ']' || c == '}')
-        {
-            ++depth;
-        }
-        else if (c == '(' || c == '[' || c == '{')
-        {
-            if (depth == 0)
-            {
-                if (c == '(')
-                    open = i;
-                break;
-            }
-            --depth;
-        }
-        else if (depth == 0 && c == ',')
-        {
-            ++commas;
-        }
-        else if (depth == 0 && c == ';')
-        {
-            break;
-        }
-    }
-    if (open == std::string::npos)
-        return nullptr;
-    // The name of the function is before the "(".
-    size_t name_end = open;
-    while (name_end > 0 && (t[name_end - 1] == ' ' || t[name_end - 1] == '\t'))
-        --name_end;
-    size_t name_begin = name_end;
-    while (name_begin > 0 && is_id_char(t[name_begin - 1]))
-        --name_begin;
-    if (name_begin == name_end)
-        return nullptr;
-    const auto [nl, nc] = d.text.pos(name_begin);
-    const auto g = to_gen(d, {nl, nc});
-    if (!g)
+    const size_t cursor = d.text.offset(cur.line, cur.col);
+    const auto call = find_call_at(t, cursor);
+    if (!call)
         return nullptr;
     // The "(" of the generated call is the first one after the name.
-    const std::string_view gl = d.gen.line(g->line);
-    const size_t paren = gl.find('(', static_cast<size_t>(g->col));
-    if (paren == std::string_view::npos)
-        return nullptr;
-    auto r = clangd_result("textDocument/signatureHelp",
-        {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, {g->line, static_cast<int>(paren) + 1})}});
-    if (!r || !r->contains("signatures") || (*r)["signatures"].empty())
+    auto ask = [&](const Text& gen, Pos g) -> std::optional<json>
+    {
+        const std::string_view gl = gen.line(g.line);
+        const size_t paren = gl.find('(', static_cast<size_t>(g.col));
+        if (paren == std::string_view::npos)
+            return std::nullopt;
+        auto r = clangd_result("textDocument/signatureHelp",
+            {{"textDocument", {{"uri", d.gen_uri}}}, {"position", to_lsp(gen, {g.line, static_cast<int>(paren) + 1}, clangd_utf8_)}});
+        if (!r || !r->contains("signatures") || (*r)["signatures"].empty())
+            return std::nullopt;
+        return *r;
+    };
+    std::optional<json> r;
+    const auto [nl, nc] = d.text.pos(call->name_begin);
+    if (const auto g = to_gen(d, {nl, nc}))
+        r = ask(d.gen, *g);
+    if (!r && clangd_ && clangd_->running())
+    {
+        // The hole goes at the cursor. A try with the text after the cursor, then a try with the
+        // closing brackets and the end of the statement.
+        const std::string before = t.substr(0, cursor), after = t.substr(cursor);
+        const std::vector<std::string> texts = {
+            before + "hot_hole_" + call->closers + ";" + after, before + "hot_hole_" + after};
+        wait_for_native_ready(d);
+        Doc& md = const_cast<Doc&>(d);
+        bool sent = false;
+        struct Restore
+        {
+            std::function<void()> f;
+            ~Restore() { f(); }
+        } restore{[&]
+            {
+                if (!sent)
+                    return;
+                std::lock_guard<std::mutex> lock(docs_mutex_);
+                md.gen_version = md.sent_version + 1;
+                send_generated(md, d.gen.s);
+            }};
+        for (const std::string& patched : texts)
+        {
+            hotc::TranslateOptions to = translate_options(d);
+            to.null_warnings = true;
+            hotc::AnalyzeResult facts = timed_translate([&] { return hotc::analyze(patched, to, session_); });
+            if (facts.cpp.empty())
+                continue;
+            const auto g = facts.source_map.map_to_generated(nl + 1, nc + 1);
+            if (!g)
+                continue;
+            const Text gen(facts.cpp);
+            sent = true;
+            send_generated(md, facts.cpp);
+            r = ask(gen, {g->line - 1, g->col - 1});
+            if (r)
+                break;
+        }
+    }
+    if (!r)
         return nullptr;
     json out = *r;
     for (json& sig : out["signatures"])
@@ -2612,7 +2809,7 @@ json Server::on_signature_help(const Doc& d, const json& p)
                 if (prm.contains("label") && prm["label"].is_string())
                     prm["label"] = hotc::rewrite_generated_names(prm["label"].get<std::string>());
     }
-    out["activeParameter"] = commas;
+    out["activeParameter"] = call->commas;
     return out;
 }
 
