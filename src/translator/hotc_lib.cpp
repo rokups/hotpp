@@ -10948,6 +10948,24 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
                 p.get_body || p.set_body);
         std::stable_sort(ac.members.begin(), ac.members.end(), [](const AnalyzedMember& a, const AnalyzedMember& b)
         { return std::tie(a.begin.line, a.begin.col) < std::tie(b.begin.line, b.begin.col); });
+        // The static members. The parser moved a constant and a static field to the script lists,
+        // with the owner and the name "Class__Name".
+        auto add_static = [&](const char* kind, const std::string& name, uint32_t from)
+        {
+            const uint32_t b = find_word(text, from, name);
+            ac.statics.push_back({kind, name, src_pos(map, b), src_pos(map, b + static_cast<uint32_t>(name.size())), ""});
+        };
+        const std::string prefix = c.name + "__";
+        for (const ast::Field& f : sc.consts)
+            if (f.owner == c.name && f.name.compare(0, prefix.size(), prefix) == 0)
+                add_static("const", f.name.substr(prefix.size()), f.pos);
+        for (const ast::Field& f : sc.vars)
+            if (f.owner == c.name && f.name.compare(0, prefix.size(), prefix) == 0)
+                add_static("static field", f.name.substr(prefix.size()), f.pos);
+        for (const ast::Method& m : c.statics)
+            add_static("static method", m.name, m.pos);
+        std::stable_sort(ac.statics.begin(), ac.statics.end(), [](const AnalyzedMember& a, const AnalyzedMember& b)
+        { return std::tie(a.begin.line, a.begin.col) < std::tie(b.begin.line, b.begin.col); });
         res.classes.push_back(std::move(ac));
     }
     // The script interfaces are facts of the kind "interface". Their methods are members.

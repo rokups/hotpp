@@ -718,6 +718,7 @@ private:
     json on_semantic_tokens(const Doc& d);
     json on_inlay_hint(const Doc& d, const json& p);
     json on_code_lens(const Doc& d);
+    json on_document_link(const Doc& d);
     json on_prepare_call_hierarchy(const Doc& d, const json& p);
     json on_call_hierarchy(const std::string& method, const json& p);
     json call_item(const Doc& d, const Callable& c) const;
@@ -775,6 +776,17 @@ private:
     Pos class_name_pos(const Doc& d, const hotc::AnalyzedClass& c) const;
     std::set<Pos> class_places(const Doc& d, const std::string& name) const;
     bool is_script_class(const Doc& d, const std::string& name) const;
+    // A static member of a script class (a constant, a static field or a static method) at the
+    // position: the word after "Class." or a bare name inside the class. The answer holds the
+    // declaration and the member.
+    struct StaticHit
+    {
+        Pos decl;
+        const hotc::AnalyzedMember* member;
+    };
+    std::optional<StaticHit> static_member_at(const Doc& d, Pos cur) const;
+    // The places of the word of a static member in the script (the declaration and the uses).
+    std::set<Pos> static_places(const Doc& d, const StaticHit& hit) const;
     std::vector<std::string> workspace_scripts() const;
     IndexShard shard_of_doc(const Doc& d) const;
     // Calls "fn" for each other .hot file of the workspace that declares the symbol "key".
@@ -1340,7 +1352,7 @@ json Server::on_initialize(const json& p)
         {"capabilities",
             {{"positionEncoding", utf8_ ? "utf-8" : "utf-16"},
                 {"textDocumentSync", {{"openClose", true}, {"change", 1}}},
-                {"completionProvider", {{"triggerCharacters", {".", ":"}}}}, {"hoverProvider", true},
+                {"completionProvider", {{"triggerCharacters", {".", ":"}}}}, {"hoverProvider", true}, {"documentLinkProvider", {{"resolveProvider", false}}},
                 {"inlayHintProvider", true}, {"codeLensProvider", {{"resolveProvider", false}}},
                 {"callHierarchyProvider", true}, {"signatureHelpProvider", {{"triggerCharacters", {"(", ","}}}}, {"documentFormattingProvider", true},
                 {"documentRangeFormattingProvider", true},
@@ -2634,9 +2646,95 @@ json Server::on_completion(const Doc& d, const json& p)
 
 static std::string blank_non_code(std::string_view l, bool& in_block);
 
+std::optional<Server::StaticHit> Server::static_member_at(const Doc& d, Pos cur) const
+{
+    const auto [wb, we] = word_at(d, cur);
+    if (we <= wb)
+        return std::nullopt;
+    const std::string_view l = d.text.line(cur.line);
+    const std::string name(l.substr(static_cast<size_t>(wb), static_cast<size_t>(we - wb)));
+    auto find_class = [&](const std::string& n) -> const hotc::AnalyzedClass*
+    {
+        for (const hotc::AnalyzedClass& c : d.facts.classes)
+            if (c.name == n)
+                return &c;
+        return nullptr;
+    };
+    // The class and its script bases, nearest first.
+    auto chain = [&](const hotc::AnalyzedClass* c)
+    {
+        std::vector<const hotc::AnalyzedClass*> out;
+        for (; c && out.size() < 32; c = find_class(c->base))
+            out.push_back(c);
+        return out;
+    };
+    const hotc::AnalyzedClass* start = nullptr;
+    int b = wb;
+    while (b > 0 && (l[static_cast<size_t>(b) - 1] == ' ' || l[static_cast<size_t>(b) - 1] == '\t'))
+        --b;
+    if (b > 0 && l[static_cast<size_t>(b) - 1] == '.')
+    {
+        int e = b - 1;
+        int q = e;
+        while (q > 0 && is_id_char(l[static_cast<size_t>(q) - 1]))
+            --q;
+        start = find_class(std::string(l.substr(static_cast<size_t>(q), static_cast<size_t>(e - q))));
+        if (!start)
+            return std::nullopt;
+    }
+    else
+    {
+        // A bare name: the class that holds the line.
+        for (const hotc::AnalyzedClass& c : d.facts.classes)
+            if (c.begin.line - 1 <= cur.line)
+                start = &c;
+    }
+    for (const hotc::AnalyzedClass* c : chain(start))
+        for (const hotc::AnalyzedMember& m : c->statics)
+            if (m.name == name)
+                return StaticHit{{m.begin.line - 1, m.begin.col - 1}, &m};
+    return std::nullopt;
+}
+
+std::set<Pos> Server::static_places(const Doc& d, const StaticHit& hit) const
+{
+    std::set<Pos> out;
+    const std::string& name = hit.member->name;
+    bool block = false;
+    for (int l = 0; l < static_cast<int>(d.text.starts.size()); ++l)
+    {
+        const std::string code = blank_non_code(d.text.line(l), block);
+        for (size_t at = code.find(name); at != std::string::npos; at = code.find(name, at + 1))
+        {
+            if ((at > 0 && is_id_char(code[at - 1])) || (at + name.size() < code.size() && is_id_char(code[at + name.size()])))
+                continue;
+            const Pos here = {l, static_cast<int>(at)};
+            const auto h = static_member_at(d, here);
+            if (h && h->member == hit.member)
+                out.insert(here);
+        }
+    }
+    return out;
+}
+
 json Server::on_hover(const Doc& d, const json& p)
 {
     const Pos here = from_lsp(d.text, p["position"], utf8_);
+    // A static member of a script class has no map segment: the script gives the answer.
+    if (const auto hit = static_member_at(d, here))
+    {
+        std::string t(d.text.line(hit->decl.line));
+        const size_t cut = t.find(hit->member->kind == "static method" ? '{' : ';');
+        if (cut != std::string::npos)
+            t.resize(cut);
+        const size_t f = t.find_first_not_of(" \t");
+        t = f == std::string::npos ? std::string() : t.substr(f);
+        while (!t.empty() && (t.back() == ' ' || t.back() == '\r'))
+            t.pop_back();
+        const auto [wb, we] = word_at(d, here);
+        return {{"contents", {{"kind", "markdown"}, {"value", "```hot\n" + t + "\n```"}}},
+            {"range", script_range(d, {here.line, wb}, {here.line, we})}};
+    }
     // A word in a comment or in a string is not a symbol: no hover.
     {
         const auto [wb, we] = word_at(d, here);
@@ -3324,6 +3422,52 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
             for_other_scripts(d, {here_word, ""}, here_word, add);
         return out;
     }
+    // A static member or a class name of a script has no map segment that gives the place. The
+    // script index gives it.
+    if (!is_ref)
+    {
+        if (const auto hit = static_member_at(d, here))
+        {
+            out.push_back({{"uri", d.uri},
+                {"range", script_range(d, hit->decl, {hit->decl.line, hit->decl.col + static_cast<int>(hit->member->name.size())})}});
+            return out;
+        }
+        for (const hotc::AnalyzedClass& c : d.facts.classes)
+            if (!c.is_interface && c.name == here_word)
+            {
+                const Pos b = class_name_pos(d, c);
+                out.push_back({{"uri", d.uri},
+                    {"range", script_range(d, b, {b.line, b.col + static_cast<int>(c.name.size())})}});
+                return out;
+            }
+    }
+    // The name of an "override" method names the method of the native base. The workspace index
+    // of clangd gives the place of "Base::Name".
+    if (!is_ref && !here_word.empty() && clangd_)
+    {
+        const std::string_view l = d.text.line(here.line);
+        const auto [wb, we] = word_at(d, here);
+        const size_t ov = l.rfind("override", static_cast<size_t>(wb));
+        const hotc::AnalyzedClass* owner = nullptr;
+        for (const hotc::AnalyzedClass& c : d.facts.classes)
+            if (c.begin.line - 1 <= here.line)
+                owner = &c;
+        if (owner && !owner->base.empty() && we > wb && ov != std::string_view::npos && !is_id_char(ov > 0 ? l[ov - 1] : ' ')
+            && l.substr(ov + 8, static_cast<size_t>(wb) - ov - 8).find_first_of("(;{=") == std::string_view::npos)
+        {
+            wait_for_native_ready(d);
+            const auto r = clangd_result("workspace/symbol", {{"query", owner->base + "::" + here_word}}, kNativeBudgetMs);
+            for (const json& sym : r && r->is_array() ? *r : json::array())
+            {
+                const json loc = sym.value("location", json());
+                if (sym.value("name", std::string()) == here_word && sym.value("containerName", std::string()) == owner->base
+                    && loc.is_object() && !gen_docs_.count(loc.value("uri", std::string())))
+                    out.push_back(loc);
+            }
+            if (!out.empty())
+                return out;
+        }
+    }
     // A script interface has no place in the generated text that maps back. The facts give the
     // declaration, for example from the base list of a class.
     if (!is_ref && method == "textDocument/definition" && !here_word.empty())
@@ -3773,6 +3917,16 @@ std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
     if (new_name.empty() || !std::all_of(new_name.begin(), new_name.end(), is_id_char)
         || (new_name[0] >= '0' && new_name[0] <= '9'))
         return std::string("the new name is not an identifier: " + new_name);
+    // A class constant, a static field or a static method: the script gives the places. The
+    // generated name ("Class__Name") has no map segment for the word.
+    if (const auto hit = static_member_at(d, cur))
+    {
+        json edits = json::array();
+        for (const Pos& s : static_places(d, *hit))
+            edits.push_back({{"range", script_range(d, s, {s.line, s.col + static_cast<int>(old_name.size())})},
+                {"newText", new_name}});
+        return json{{"changes", {{d.uri, edits}}}};
+    }
     Pos decl;
     bool generated = false;
     const auto r = symbol_places(d, cur, old_name, &decl, &generated);
@@ -4047,6 +4201,11 @@ std::variant<json, std::string> Server::on_prepare_rename(const Doc& d, const js
     const std::string old_name = word(d, cur);
     if (old_name.empty())
         return std::string("no symbol at the position");
+    if (static_member_at(d, cur))
+    {
+        const auto [b, e] = word_at(d, cur);
+        return json{{"range", script_range(d, {cur.line, b}, {cur.line, e})}, {"placeholder", old_name}};
+    }
     Pos decl;
     bool generated = false;
     const auto r = symbol_places(d, cur, old_name, &decl, &generated);
@@ -4505,6 +4664,67 @@ std::vector<std::string> Server::native_param_names(const Doc& d, const CallSite
 // One lens for each script class and each method or constructor. The title has the number of
 // references. The count is a name scan of the document (see script_name_uses): it uses neither
 // clangd nor the other scripts, so the request is quick. The lens has no command: the title is all.
+// A link for the path of each `using "..."` line. A script path uses the import search of the
+// translator. A header path uses the directory of the script and the include directories. A path
+// that no file has gets no link.
+json Server::on_document_link(const Doc& d)
+{
+    json out = json::array();
+    if (!open_docs_fs_)
+    {
+        open_docs_fs_ = std::make_shared<OpenDocsFs>();
+        open_docs_fs_->server = this;
+    }
+    hotc::TranslateOptions o = translate_options(d);
+    o.fs = open_docs_fs_;
+    const std::string dir = fs::path(d.path).parent_path().string();
+    bool block = false;
+    for (int l = 0; l < static_cast<int>(d.text.starts.size()); ++l)
+    {
+        const std::string line(d.text.line(l));
+        const std::string code = blank_non_code(line, block);
+        const size_t first = code.find_first_not_of(" \t");
+        if (first == std::string::npos || code.compare(first, 5, "using") != 0)
+            continue;
+        size_t q1 = line.find_first_not_of(" \t", first + 5);
+        if (q1 == std::string::npos || line[q1] != '"')
+            continue;
+        const size_t q2 = line.find('"', q1 + 1);
+        if (q2 == std::string::npos)
+            continue;
+        const std::string path = line.substr(q1 + 1, q2 - q1 - 1);
+        std::string target;
+        if (path.size() > 4 && path.compare(path.size() - 4, 4, ".hot") == 0)
+        {
+            std::string text, file, unit;
+            if (hotc::find_import(o, path, dir, std::string(), text, file, unit))
+                target = file;
+        }
+        else
+        {
+            std::vector<std::string> dirs = {dir};
+            dirs.insert(dirs.end(), o.include_dirs.begin(), o.include_dirs.end());
+            for (const std::string& base : dirs)
+            {
+                std::error_code ec;
+                const fs::path cand = fs::path(base) / path;
+                if (fs::is_regular_file(cand, ec))
+                {
+                    target = cand.string();
+                    break;
+                }
+            }
+        }
+        if (target.empty())
+            continue;
+        std::error_code ec;
+        const fs::path abs = fs::absolute(fs::path(target), ec).lexically_normal();
+        out.push_back({{"range", script_range(d, {l, static_cast<int>(q1) + 1}, {l, static_cast<int>(q2)})},
+            {"target", path_to_uri(ec ? target : abs.string())}});
+    }
+    return out;
+}
+
 json Server::on_code_lens(const Doc& d)
 {
     json out = json::array();
@@ -5175,7 +5395,7 @@ void Server::handle(const json& msg)
     static const std::set<std::string> doc_methods = {"textDocument/completion", "textDocument/hover",
         "textDocument/definition", "textDocument/references", "textDocument/documentSymbol",
         "textDocument/semanticTokens/full", "textDocument/rename", "textDocument/prepareRename", "textDocument/signatureHelp",
-        "textDocument/formatting", "textDocument/rangeFormatting", "textDocument/codeAction", "textDocument/inlayHint", "textDocument/codeLens",
+        "textDocument/formatting", "textDocument/rangeFormatting", "textDocument/codeAction", "textDocument/inlayHint", "textDocument/codeLens", "textDocument/documentLink",
         "textDocument/prepareCallHierarchy"};
     if (!doc_methods.count(method))
         return reply_error(id, kMethodNotFound, "unknown method: " + method);
@@ -5199,6 +5419,8 @@ void Server::handle(const json& msg)
         return reply(id, on_inlay_hint(*d, p));
     if (method == "textDocument/codeLens")
         return reply(id, on_code_lens(*d));
+    if (method == "textDocument/documentLink")
+        return reply(id, on_document_link(*d));
     if (method == "textDocument/prepareCallHierarchy")
         return reply(id, on_prepare_call_hierarchy(*d, p));
     if (method == "textDocument/formatting")
