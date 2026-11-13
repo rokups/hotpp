@@ -4,6 +4,7 @@
 
 #include "server.h"
 
+#include "attributes.h"
 #include "clangd_process.h"
 #include "completion_context.h"
 #include "format.h"
@@ -1951,8 +1952,9 @@ json Server::on_completion(const Doc& d, const json& p)
     // The kind of the place. A place of a name that is new, an enum body and an attribute give no
     // generic list. A type place gives types only. A place of both kinds gives types and expressions.
     const CompletionContext ctx = classify(t, off);
-    if (ctx.kind == CompletionContext::Kind::EnumBody || ctx.kind == CompletionContext::Kind::Attribute
-        || ctx.kind == CompletionContext::Kind::AttributeArg)
+    if (ctx.kind == CompletionContext::Kind::Attribute || ctx.kind == CompletionContext::Kind::AttributeArg)
+        return attribute_completion(t, off, ctx.prefixStart, ctx.kind == CompletionContext::Kind::AttributeArg);
+    if (ctx.kind == CompletionContext::Kind::EnumBody)
         return empty;
     const bool type_only = (ctx.kind == CompletionContext::Kind::Type || ctx.kind == CompletionContext::Kind::Base)
         && !ctx.exprAndType && !after_dot && !after_scope;
