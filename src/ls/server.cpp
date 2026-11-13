@@ -1809,14 +1809,57 @@ json Server::on_completion(const Doc& d, const json& p)
                     }
                 }
             }
-            const std::string patched = t.substr(0, s) + prefix + kHole + closers + (end ? "" : ";") + t.substr(e);
-            hotc::AnalyzeResult facts = hotc::analyze(patched, translate_options(d), session_);
-            const Pos hole = {cur.line, static_cast<int>(s - d.text.starts[static_cast<size_t>(cur.line)])};
-            const auto g =
-                facts.cpp.empty() ? std::nullopt : facts.source_map.map_to_generated(hole.line + 1, hole.col + 1);
-            std::optional<json> r;
-            if (g)
+            // The angle brackets that the statement leaves open after a name, as in "a.b<c.".
+            std::string angles;
+            for (size_t i = s; i > 0 && t[i - 1] != ';' && t[i - 1] != '{' && t[i - 1] != '}'; --i)
             {
+                if (t[i - 1] == '>' && i > 1 && is_id_char(t[i - 2]))
+                    angles += '<';
+                else if (t[i - 1] == '<' && i > 1 && is_id_char(t[i - 2]))
+                {
+                    if (!angles.empty() && angles.back() == '<')
+                        angles.pop_back();
+                    else
+                        angles += '>';
+                }
+            }
+            // The first text is the plain hole. When it gives no answer, the hole can be in a type
+            // position (a field, a parameter, a generic argument), where a declaration needs a
+            // name. The next texts add a dummy name.
+            const std::string before = t.substr(0, s) + prefix + kHole;
+            std::vector<std::string> texts = {before + closers + (end ? "" : ";") + t.substr(e)};
+            if (!end)
+            {
+                texts.push_back(before + closers + t.substr(e)); // a name follows: "a.b F()"
+                texts.push_back(before + angles + " hot_hole_" + closers + ";" + t.substr(e));
+                if (!closers.empty())
+                    texts.push_back(before + angles + " hot_hole_" + closers + " {}" + t.substr(e));
+            }
+            const Pos hole = {cur.line, static_cast<int>(s - d.text.starts[static_cast<size_t>(cur.line)])};
+            std::optional<json> r;
+            for (const std::string& patched : texts)
+            {
+                // A completion needs no null check: the statement ends at the hole, so a local that
+                // is null at this place must not stop the translation.
+                hotc::TranslateOptions to = translate_options(d);
+                to.null_warnings = true;
+                hotc::AnalyzeResult facts = hotc::analyze(patched, to, session_);
+                std::optional<hotc::SourcePos> g = facts.cpp.empty()
+                    ? std::nullopt
+                    : facts.source_map.map_to_generated(hole.line + 1, hole.col + 1);
+                // A type text has no map of its own place (a field, a parameter, a return type). The
+                // generated code holds the hole name after "::" there.
+                if (!g && !facts.cpp.empty())
+                {
+                    const size_t o = facts.cpp.find("::" + prefix + kHole);
+                    if (o != std::string::npos)
+                    {
+                        const auto lc = Text(facts.cpp).pos(o + 2);
+                        g = hotc::SourcePos{lc.first + 1, lc.second + 1};
+                    }
+                }
+                if (!g)
+                    continue;
                 Doc& md = const_cast<Doc&>(d);
                 const Text gen(facts.cpp);
                 send_generated(md, facts.cpp);
@@ -1827,9 +1870,14 @@ json Server::on_completion(const Doc& d, const json& p)
                     {{"textDocument", {{"uri", d.gen_uri}}},
                         {"position",
                             to_lsp(gen, {g->line - 1, g->col - 1 + static_cast<int>(prefix.size())}, clangd_utf8_)}});
-                std::lock_guard<std::mutex> lock(docs_mutex_);
-                md.gen_version = md.sent_version + 1; // before the send: the diagnostics can come at once
-                send_generated(md, d.gen.s);
+                {
+                    std::lock_guard<std::mutex> lock(docs_mutex_);
+                    md.gen_version = md.sent_version + 1; // before the send: the diagnostics can come at once
+                    send_generated(md, d.gen.s);
+                }
+                const bool got = r && (r->is_array() ? !r->empty() : !r->value("items", json::array()).empty());
+                if (got)
+                    break;
             }
             cc.rest = rest;
             cc.prefix = prefix;
@@ -1838,7 +1886,7 @@ json Server::on_completion(const Doc& d, const json& p)
             // A translation that fails stays failed while the prefix grows. An empty answer is not
             // complete: clangd gives the names of the headers from its index, and it fills the index
             // after the preamble. An early answer can be empty, so the next request asks again.
-            cc.complete = !g || (r && !cc.list.empty() && !(r->is_object() && r->value("isIncomplete", false)));
+            cc.complete = !r || (r && !cc.list.empty() && !(r->is_object() && r->value("isIncomplete", false)));
         }
         incomplete = !cc.complete;
         for (const json& it : cc.list)

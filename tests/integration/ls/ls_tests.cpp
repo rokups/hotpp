@@ -2765,6 +2765,56 @@ TEST(LanguageServer, CompletionAfterADotOnALocalAndOnAFieldListsTheMembers)
     EXPECT_TRUE(fp.has("x")) << fp.result.dump();
 }
 
+TEST(LanguageServer, CompletionAfterADotOnAHandleLocalSetToNullListsTheMembers)
+{
+    REQUIRE_CLANGD();
+    std::string text = kCompleteScript;
+    text.replace(text.find("        int counter = 1;\n"), 25, "        int counter = 1;\n        $Base nb = null;\n");
+    const Completion c = complete_at(true, text, "nb.");
+    EXPECT_TRUE(c.has("baseField")) << c.result.dump();
+    EXPECT_TRUE(c.has("Move")) << c.result.dump();
+}
+
+namespace
+{
+// The completion after "mocklib." at a place of a class body. "@" marks the cursor.
+Completion complete_in_class(const std::string& body)
+{
+    return complete_at(true, "using \"MockLib.h\";\n\nclass T {\n" + body + "\n}\n", "mocklib.");
+}
+} // namespace
+
+TEST(LanguageServer, CompletionAfterANamespaceInAFieldType)
+{
+    REQUIRE_CLANGD();
+    const Completion c = complete_in_class("    private static @");
+    EXPECT_TRUE(c.has("vector")) << c.result.dump();
+    EXPECT_TRUE(complete_in_class("    int a = 0;\n    @").has("vector"));
+}
+
+TEST(LanguageServer, CompletionAfterANamespaceInAParameterAndAReturnType)
+{
+    REQUIRE_CLANGD();
+    EXPECT_TRUE(complete_in_class("    void F(@").has("vector"));
+    EXPECT_TRUE(complete_in_class("    void G(int a, @").has("vector"));
+    EXPECT_TRUE(complete_in_class("    @ F() { }").has("vector"));
+}
+
+TEST(LanguageServer, CompletionAfterANamespaceInATemplateArgument)
+{
+    REQUIRE_CLANGD();
+    EXPECT_TRUE(complete_in_class("    mocklib.vector<@").has("vector"));
+    EXPECT_TRUE(complete_in_class("    void F() {\n        mocklib.vector<@\n    }").has("vector"));
+}
+
+TEST(LanguageServer, CompletionAfterANamespaceInALocalTypeAndAnAlias)
+{
+    REQUIRE_CLANGD();
+    EXPECT_TRUE(complete_in_class("    void F() {\n        @\n    }").has("vector"));
+    const Completion a = complete_at(true, "using \"MockLib.h\";\nusing P = @\nclass T {\n}\n", "mocklib.");
+    EXPECT_TRUE(a.has("vector")) << a.result.dump();
+}
+
 TEST(LanguageServer, CompletionListsNativeTypesAndFreeFunctions)
 {
     REQUIRE_CLANGD();
