@@ -2674,7 +2674,7 @@ struct Completion
 };
 
 // Opens the script (without the "@") and completes at the "@".
-Completion complete_at(bool clangd, std::string text, const std::string& replace = "")
+Completion complete_at(bool clangd, std::string text, const std::string& replace = "", const std::string& lib = "")
 {
     const size_t at = text.find('@');
     text.replace(at, 1, replace);
@@ -2693,6 +2693,8 @@ Completion complete_at(bool clangd, std::string text, const std::string& replace
     }
     col += static_cast<int>(replace.size());
     Session s(clangd, text);
+    if (!lib.empty())
+        write_file(s.dir.path() / "lib.hot", lib);
     Completion c;
     json r = s.client->request("textDocument/completion", doc_pos(s.uri, line, col));
     c.result = r.contains("result") ? r["result"] : json::object();
@@ -3142,6 +3144,63 @@ TEST(LanguageServer, NativeForeachVariableAndLambdaFieldOfAClassWithABase)
     std::string second = text;
     second.replace(second.find("a.@"), 3, "a.Tick(1.0);");
     EXPECT_TRUE(complete_at(true, second, "tic").has("ticks"));
+}
+
+const char* const kLibScript = "const int LibLimit = 3;\n"
+                               "int lib_counter = 0;\n"
+                               "int LibAdd(int a, int b) { return a + b; }\n"
+                               "enum LibColor { Red, Green }\n"
+                               "private class LibHidden { }\n"
+                               "class LibBase {\n"
+                               "    int baseHp = 1;\n"
+                               "    void baseHeal() { }\n"
+                               "}\n"
+                               "class WeaponCatalog : LibBase {\n"
+                               "    static const int MaxAmmo = 9;\n"
+                               "    static int Made(int k) { return k; }\n"
+                               "    int ammo = 1;\n"
+                               "    void fire() { }\n"
+                               "}\n";
+
+TEST(LanguageServer, CompletionOffersTheStaticsAndConstsOfAnImportedClass)
+{
+    REQUIRE_CLANGD();
+    const char* text = "using \"lib.hot\";\nclass Hero {\n    void run() {\n        WeaponCatalog.@\n    }\n}\n";
+    const Completion c = complete_at(false, text, "", kLibScript);
+    EXPECT_TRUE(c.has("MaxAmmo"));
+    EXPECT_TRUE(c.has("Made"));
+    EXPECT_FALSE(c.has("ammo"));
+}
+
+TEST(LanguageServer, CompletionOffersTheMembersOfALocalOfAnImportedClass)
+{
+    REQUIRE_CLANGD();
+    const char* text = "using \"lib.hot\";\nclass Hero {\n    void run() {\n        WeaponCatalog c = WeaponCatalog();\n        c.@\n    }\n}\n";
+    const Completion c = complete_at(false, text, "", kLibScript);
+    EXPECT_TRUE(c.has("fire"));
+    EXPECT_TRUE(c.has("ammo"));
+    EXPECT_TRUE(c.has("baseHeal")); // the base chain goes on in the import
+    EXPECT_FALSE(c.has("MaxAmmo"));
+}
+
+TEST(LanguageServer, CompletionOffersTheNamesOfAnImportAndHidesAPrivateClass)
+{
+    REQUIRE_CLANGD();
+    const char* text = "using \"lib.hot\";\nclass Hero {\n    void run() {\n        Lib@\n    }\n}\n";
+    const Completion c = complete_at(false, text, "", kLibScript);
+    EXPECT_TRUE(c.has("LibLimit"));
+    EXPECT_TRUE(c.has("lib_counter") || complete_at(false, text, "lib_", kLibScript).has("lib_counter"));
+    EXPECT_TRUE(c.has("LibAdd"));
+    EXPECT_TRUE(c.has("LibColor"));
+    EXPECT_TRUE(c.has("LibBase"));
+    EXPECT_FALSE(c.has("LibHidden"));
+}
+
+TEST(LanguageServer, CompletionOffersTheEnumeratorsOfAnImportedEnum)
+{
+    REQUIRE_CLANGD();
+    const char* text = "using \"lib.hot\";\nclass Hero {\n    void run() {\n        LibColor.@\n    }\n}\n";
+    EXPECT_TRUE(complete_at(false, text, "", kLibScript).has("Green"));
 }
 
 TEST(LanguageServer, CompletionHidesTheGeneratedHelpers)

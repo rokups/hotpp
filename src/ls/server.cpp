@@ -790,6 +790,62 @@ private:
     std::set<std::string> preamble_ready_;
     // The documents whose patched completion text has had an AST wait (see on_completion).
     std::set<std::string> completion_synced_;
+    // The facts of the imported scripts ("using "x.hot";") by file. An entry is valid while the text
+    // hash of the file stays the same. "parses" counts the parses (tests read it).
+    struct ImportEntry
+    {
+        uint64_t text_hash = 0;
+        std::shared_ptr<const hotc::ImportFacts> facts;
+    };
+    std::map<std::string, ImportEntry> import_cache_;
+    int import_parses_ = 0;
+    // The facts of the scripts that "text" imports, and of the scripts that they import. A cycle
+    // and a missing file are skipped.
+    std::vector<std::shared_ptr<const hotc::ImportFacts>> imported_facts(const Doc& d, const std::string& text)
+    {
+        std::vector<std::shared_ptr<const hotc::ImportFacts>> out;
+        const hotc::TranslateOptions o = translate_options(d);
+        std::set<std::string> seen;
+        const std::string self = fs::path(d.path).lexically_normal().string();
+        seen.insert(self);
+        auto paths_of = [](const std::string& src)
+        {
+            std::vector<std::string> r;
+            static const std::regex re("(^|\\n)[ \\t]*using[ \\t]*\"([^\"\\n]+\\.hot)\"");
+            for (std::sregex_iterator it(src.begin(), src.end(), re), end; it != end; ++it)
+                r.push_back((*it)[2].str());
+            return r;
+        };
+        std::vector<std::pair<std::string, std::string>> todo; // path, directory of the importer
+        for (const std::string& pth : paths_of(text))
+            todo.emplace_back(pth, fs::path(d.path).parent_path().string());
+        for (size_t i = 0; i < todo.size() && i < 64; ++i)
+        {
+            std::string itext, file, unit;
+            if (!hotc::find_import(o, todo[i].first, todo[i].second, std::string(), itext, file, unit))
+                continue;
+            const std::string key = fs::path(file).lexically_normal().string();
+            if (!seen.insert(key).second)
+                continue;
+            const uint64_t h = hotc::text_hash(itext);
+            std::shared_ptr<const hotc::ImportFacts> facts;
+            if (const auto it = import_cache_.find(key); it != import_cache_.end() && it->second.text_hash == h)
+            {
+                facts = it->second.facts;
+            }
+            else
+            {
+                facts = std::make_shared<const hotc::ImportFacts>(hotc::analyze_imports(itext, std::string()));
+                ++import_parses_;
+                import_cache_[key] = {h, facts};
+            }
+            out.push_back(facts);
+            for (const std::string& pth : facts->imports)
+                if (pth.size() > 4 && pth.compare(pth.size() - 4, 4, ".hot") == 0)
+                    todo.emplace_back(pth, fs::path(file).parent_path().string());
+        }
+        return out;
+    }
     // The analyze facts of the scripts on disk that are not open (script_member_location).
     std::map<std::string, std::pair<std::string, hotc::AnalyzeResult>> disk_facts_;
     std::string index_seed_; // the first file of compile_commands.json (start_clangd)  // the generated files with a
@@ -1805,6 +1861,7 @@ json Server::on_completion(const Doc& d, const json& p)
 
     // ---- the script facts (they work without clangd)
     const ScriptScope scope = scan_scope(t, s, s);
+    const auto imported = imported_facts(d, t);
     // The members of a script class and of its script bases. clangd does not see them on the shell.
     auto add_members = [&](const std::string& class_name)
     {
@@ -1816,7 +1873,25 @@ json Server::on_completion(const Doc& d, const json& p)
                 if (c.name == n)
                     cls = &c;
             if (!cls)
-                break;
+            {
+                // A class of an import: its public members, then its base.
+                const hotc::ImportClass* ic = nullptr;
+                for (const auto& f : imported)
+                    for (const hotc::ImportClass& c : f->classes)
+                        if (!ic && c.name == n)
+                            ic = &c;
+                if (!ic)
+                    break;
+                for (const hotc::ImportMember& m : ic->members)
+                {
+                    if (m.is_static || m.kind == "constructor")
+                        continue;
+                    add(m.name, m.kind == "method" ? 2 : m.kind == "property" ? 10 : 5,
+                        (m.type.empty() ? m.kind : m.type) + m.signature + " of " + ic->name, "0");
+                }
+                n = ic->base;
+                continue;
+            }
             for (const hotc::AnalyzedMember& m : cls->members)
             {
                 int kind = 0;
@@ -1846,6 +1921,18 @@ json Server::on_completion(const Doc& d, const json& p)
             for (const hotc::AnalyzedClass& c : d.facts.classes)
                 if (c.name == n)
                     base = c.base;
+            for (const auto& f : imported)
+                for (const hotc::ImportClass& c : f->classes)
+                    if (c.name == n)
+                    {
+                        base = c.base;
+                        for (const hotc::ImportMember& m : c.members)
+                            if (m.is_static)
+                                add(m.name, m.kind == "method" ? 2 : m.is_const ? 21 : 5,
+                                    std::string(m.is_const ? "static const" : m.kind == "method" ? "static method" : "static field")
+                                        + " of " + n + (m.type.empty() ? "" : ": " + m.type) + m.signature,
+                                    "0");
+                    }
             n = base;
         }
     };
@@ -1869,9 +1956,20 @@ json Server::on_completion(const Doc& d, const json& p)
             if (const hotc::AnalyzedClass* cls = class_at(cur))
                 add_members(cls->name);
         }
-        else if (scope.class_statics.count(obj))
+        else if (scope.class_statics.count(obj)
+            || std::any_of(imported.begin(), imported.end(), [&](const auto& f)
+                { return std::any_of(f->classes.begin(), f->classes.end(), [&](const hotc::ImportClass& c) { return c.name == obj; }); }))
         {
             add_statics(obj);
+        }
+        else if (std::any_of(imported.begin(), imported.end(), [&](const auto& f)
+                     { return std::any_of(f->enums.begin(), f->enums.end(), [&](const hotc::ImportEnum& e) { return e.name == obj; }); }))
+        {
+            for (const auto& f : imported)
+                for (const hotc::ImportEnum& e : f->enums)
+                    if (e.name == obj)
+                        for (const std::string& m : e.enumerators)
+                            add(m, 20, "enumerator of " + obj, "0");
         }
         else if (const auto en = scope.enum_members.find(obj); en != scope.enum_members.end())
         {
@@ -1912,6 +2010,18 @@ json Server::on_completion(const Doc& d, const json& p)
             add(n, 22, "script struct", "1");
         for (const std::string& n : scope.interfaces)
             add(n, 8, "script interface", "1");
+        for (const auto& f : imported)
+        {
+            for (const hotc::ImportClass& c : f->classes)
+                add(c.name, c.is_interface ? 8 : c.is_struct ? 22 : 7,
+                    c.is_interface ? "imported interface" : c.is_struct ? "imported struct" : "imported class", "1");
+            for (const hotc::ImportEnum& e : f->enums)
+                add(e.name, 13, "imported enum", "1");
+            for (const hotc::ImportVar& v : f->vars)
+                add(v.name, v.is_const ? 21 : 6, std::string(v.is_const ? "imported const" : "imported variable") + ": " + v.type, "0");
+            for (const hotc::ImportFunction& fn : f->functions)
+                add(fn.name, 3, fn.type + fn.signature + " (imported)", "0");
+        }
     }
 
     // ---- the clangd part. The word at the cursor is replaced by the typed prefix and a placeholder
