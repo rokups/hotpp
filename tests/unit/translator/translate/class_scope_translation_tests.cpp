@@ -240,6 +240,40 @@ TEST(ClassScopeTranslation, StaticFieldErrorsAndInterface)
     EXPECT_EQ(base, priv) << "a private static field is not in the interface";
 }
 
+// A private method or a private constructor of a class is not in the interface hash: an importer cannot call it.
+// A private field, a public method and the body of a struct method stay in the hash.
+TEST(ClassScopeTranslation, InterfaceHashIgnoresPrivateMembers)
+{
+    TempDir dir;
+    auto hash = [&](const std::string& script)
+    {
+        const hotc::TranslateResult r = translate_script(dir, script);
+        EXPECT_TRUE(r.ok) << r.diagnostics;
+        return r.iface_hash;
+    };
+    auto cls = [](const std::string& members) { return "class Foo : Widget { int k = 0; " + members + " }\n"; };
+    const auto base = hash(cls("private int Hid(int a) { return a; } public int Pub(int a) { return a; }"));
+    EXPECT_EQ(base, hash(cls("private int Hid(int a) { return a + 1; } public int Pub(int a) { return a; }")))
+        << "a private method body";
+    EXPECT_EQ(base, hash(cls("private float Hid(float a, int b) { return a; } public int Pub(int a) { return a; }")))
+        << "a private method signature";
+    EXPECT_EQ(base, hash(cls("private static int Hid(int a) { return a; } public int Pub(int a) { return a; }")))
+        << "a private static method";
+    EXPECT_NE(base, hash(cls("private int Hid(int a) { return a; } public float Pub(int a) { return a; }")))
+        << "a public method signature";
+    EXPECT_NE(base, hash("class Foo : Widget { int k = 0; private int extra_ = 0; private int Hid(int a) { return a; }"
+                         " public int Pub(int a) { return a; } }\n"))
+        << "a private field";
+    const auto noctor = hash(cls(""));
+    EXPECT_EQ(hash(cls("private Foo(int a) { k = a; }")), hash(cls("private Foo(int a) { k = a + 1; }")))
+        << "a private constructor body";
+    EXPECT_EQ(hash(cls("private Foo(int a) { k = a; }")), hash(cls("private Foo(float a, int b) { k = b; }")))
+        << "a private constructor signature";
+    EXPECT_NE(noctor, hash(cls("private Foo(int a) { k = a; }"))) << "a private constructor exists";
+    auto st = [](const std::string& body) { return "struct S { int k = 0; private int Hid() { " + body + " } }\n"; };
+    EXPECT_NE(hash(st("return 1;")), hash(st("return 2;"))) << "a struct method body";
+}
+
 // G23: "static" at file level. A module variable and a free function are the static forms there.
 TEST(ClassScopeTranslation, StaticAtFileLevelGivesTheForm)
 {

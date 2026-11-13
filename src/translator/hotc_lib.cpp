@@ -801,7 +801,8 @@ Script parse_structure(const std::string& text, const hotc::LineMap& map, std::s
 }
 
 // The interface text of one module (modules step 1): the declarations that importers see or copy.
-// A class has no body, so a body change of a class keeps the text. A struct has its bodies. The order is the source order:
+// A class has no body, so a body change of a class keeps the text. A struct has its bodies.
+// A private method and a private constructor of a class are not in the text. The order is the source order:
 // a field order change changes the layout and the text. An importer copies the module aliases, the
 // namespaces and each class and struct, also a private one. So the text has them too. A private
 // enum, constant, variable or function is not in it. "text" is the parsed text of the module: the
@@ -843,6 +844,9 @@ std::string module_interface(const Script& sc, const std::string& text)
         return o + m.ret + " " + m.name + "(" + params(m.params) + ")" + (m.is_const ? " const" : "")
             + body(copied, m.body_span) + "\n";
     };
+    // A private member of a class has no use in an importer: a script class has no friend. A struct
+    // copies all its members. A private virtual member keeps its slot, so it stays in the text.
+    auto hidden = [](const ClassDef& c, hotc::ast::Access a) { return !c.is_value && a == hotc::ast::Access::Private; };
     std::string o;
     for (const hotc::ast::UsingNs& u : sc.using_ns)
         o += "using namespace " + u.name + "\n";
@@ -873,6 +877,7 @@ std::string module_interface(const Script& sc, const std::string& text)
                 + (span(f.init_span).empty() ? std::string() : " = " + span(f.init_span)) + "\n";
         for (const hotc::ast::Property& pr : c.props)
             o += "  prop " + pr.type + " " + pr.name + body(c.is_value, pr.get_span) + body(c.is_value, pr.set_span) + "\n";
+        bool private_ctor = false;
         for (const hotc::ast::Ctor& k : c.ctors)
         {
             // The "base(...)" arguments are part of the interface: a child in another module runs them.
@@ -886,13 +891,23 @@ std::string module_interface(const Script& sc, const std::string& text)
                     base += (i ? ", " : "") + hotc::ast::print(*k.base_args[i]);
                 base += ")";
             }
+            if (hidden(c, k.access))
+            {
+                // An importer cannot call it. The text keeps only that a private constructor exists.
+                if (!private_ctor)
+                    o += "  private ctor\n";
+                private_ctor = true;
+                continue;
+            }
             o += std::string("  ") + access(k.access) + "ctor(" + params(k.params) + ")" + base
                 + body(c.is_value, k.body_span) + "\n";
         }
         for (const Method& m : c.methods)
-            o += method("", m, c.is_value);
+            if (!hidden(c, m.access) || m.is_virtual || m.is_abstract || m.is_override || !m.vslot_owner.empty())
+                o += method("", m, c.is_value);
         for (const Method& m : c.statics)
-            o += method("static ", m, c.is_value);
+            if (!hidden(c, m.access))
+                o += method("static ", m, c.is_value);
         o += "}\n";
     }
     for (const Field& f : sc.consts)
