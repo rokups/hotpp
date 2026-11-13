@@ -3338,6 +3338,31 @@ struct HostDiagCase
 
 } // namespace
 
+// The header needs the define of the host. The translator parse of the header must see it, so
+// the script gets no error from the "#error" line.
+TEST(LanguageServerHosts, DefineOfTheHostApplies_ToTheTranslatorParse)
+{
+    REQUIRE_CLANGD();
+    HostDiagCase c;
+    const std::filesystem::path root = c.dir.path();
+    std::filesystem::create_directories(root / "inc");
+    write_file((root / "inc" / "need.h").string(),
+        "#pragma once\n#ifndef HOST_NEEDED\n#error \"host define missing\"\n#endif\nnamespace Thing { int Value(); }\n");
+    c.text = "using \"need.h\";\n\nclass A {\n    void f() {\n        Thing.Value();\n    }\n}\n";
+    write_file(c.path, c.text);
+    write_file((root / "hosts" / "h.json").string(),
+        R"({"version":1,"name":"h","binaryDir":")" + (root / "build").generic_string()
+            + R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":[")"
+            + (root / "scripts").generic_string() + R"("],"scripts":[],"includeDirs":[")" + (root / "inc").generic_string()
+            + R"(",")" + HOT_SOURCE_DIR + R"(/include"],"defines":["HOST_NEEDED=1"],"flags":[]})");
+    c.o.clangd = HOT_CLANGD_PATH;
+    LsClient client(c.o);
+    client.initialize(uri_of(root.string()));
+    client.open(c.uri, c.text);
+    const json n = c.next_diagnostics(client);
+    EXPECT_EQ(n["params"]["diagnostics"].dump().find("host define missing"), std::string::npos) << n.dump();
+}
+
 TEST(LanguageServerHosts, NoHostGivesAnInformationDiagnostic)
 {
     HostDiagCase c;

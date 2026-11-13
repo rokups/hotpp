@@ -442,6 +442,10 @@ private:
         o.include_dirs = e.include_dirs;
         o.resource_dir = e.resource_dir;
         o.std_version = e.std_version;
+        // The parse of the native headers sees the macros of the host, as the compile does.
+        for (const std::string& f : e.extra_flags)
+            if (f.rfind("-D", 0) == 0 || f.rfind("-U", 0) == 0)
+                o.defines.push_back(f);
         o.format_lib = hot::format_lib_name();
         o.view_type = hot::view_type_name();
         // The preludes of the host, as at run time. A prelude file that is open is analyzed
