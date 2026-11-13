@@ -5,6 +5,7 @@
 #include "server.h"
 
 #include "clangd_process.h"
+#include "completion_context.h"
 #include "format.h"
 #include "hosts.h"
 #include "jsonrpc.h"
@@ -1947,6 +1948,15 @@ json Server::on_completion(const Doc& d, const json& p)
         }
     }
 
+    // The kind of the place. A place of a name that is new, an enum body and an attribute give no
+    // generic list. A type place gives types only. A place of both kinds gives types and expressions.
+    const CompletionContext ctx = classify(t, off);
+    if (ctx.kind == CompletionContext::Kind::EnumBody || ctx.kind == CompletionContext::Kind::Attribute
+        || ctx.kind == CompletionContext::Kind::AttributeArg)
+        return empty;
+    const bool type_only = (ctx.kind == CompletionContext::Kind::Type || ctx.kind == CompletionContext::Kind::Base)
+        && !ctx.exprAndType && !after_dot && !after_scope;
+    const bool base_only = ctx.kind == CompletionContext::Kind::Base && !after_dot && !after_scope;
     const bool member = after_dot || after_scope;
     json items = json::array();
     std::set<std::string> names;
@@ -2097,15 +2107,17 @@ json Server::on_completion(const Doc& d, const json& p)
     {
         // Inside a method: the members of the class and of its script bases. The native members of
         // a base come from clangd below.
-        if (const hotc::AnalyzedClass* cls = class_at(cur))
+        if (const hotc::AnalyzedClass* cls = class_at(cur); cls && !type_only)
         {
             add_members(cls->name);
             add_statics(cls->name);
         }
         for (const ScopeName& n : scope.locals)
-            add(n.name, 6, n.detail + (n.type.empty() ? "" : ": " + n.type), "0");
+            if (!type_only)
+                add(n.name, 6, n.detail + (n.type.empty() ? "" : ": " + n.type), "0");
         for (const ScopeName& n : scope.module_vars)
-            add(n.name, 6, n.detail + (n.type.empty() ? "" : ": " + n.type), "0");
+            if (!type_only)
+                add(n.name, 6, n.detail + (n.type.empty() ? "" : ": " + n.type), "0");
         for (const std::string& n : scope.enums)
             add(n, 13, "script enum", "1");
         for (const std::string& n : scope.classes)
@@ -2123,10 +2135,10 @@ json Server::on_completion(const Doc& d, const json& p)
             for (const hotc::ImportEnum& e : f->enums)
                 add(e.name, 13, "imported enum", "1");
             for (const hotc::ImportVar& v : f->vars)
-                if (v.is_const || imported_depth[fi] == 0)
+                if (!type_only && (v.is_const || imported_depth[fi] == 0))
                     add(v.name, v.is_const ? 21 : 6, std::string(v.is_const ? "imported const" : "imported variable") + ": " + v.type, "0");
             for (const hotc::ImportFunction& fn : f->functions)
-                if (imported_depth[fi] == 0)
+                if (!type_only && imported_depth[fi] == 0)
                     add(fn.name, 3, fn.type + fn.signature + " (imported)", "0");
         }
     }
@@ -2196,6 +2208,31 @@ json Server::on_completion(const Doc& d, const json& p)
                 if (!closers.empty())
                     texts.push_back(before + angles + " hot_hole_" + closers + " {}" + t.substr(e));
             }
+            // A type place: the text with a dummy name comes first, the hole is a type in it.
+            if (type_only)
+            {
+                std::vector<std::string> typed = {before + angles + " hot_hole_" + closers + (end ? "" : ";") + t.substr(e)};
+                if (!end && !closers.empty())
+                    typed.push_back(before + angles + " hot_hole_" + closers + " {}" + t.substr(e));
+                typed.insert(typed.end(), texts.begin(), texts.end());
+                texts = std::move(typed);
+            }
+            // The last try of a type place: the word is a builtin type, so the text translates, and
+            // a module variable at the file end holds the hole as a type. Its place has no map.
+            const size_t probe_index = texts.size();
+            const bool probe = ctx.kind == CompletionContext::Kind::Type || ctx.kind == CompletionContext::Kind::Base;
+            if (probe && ctx.kind == CompletionContext::Kind::Type)
+                texts.push_back(t.substr(0, s) + "int" + closers + (end ? "" : ";") + t.substr(e) + "\n" + prefix + kHole
+                    + " hot_hole_;\n");
+            else if (probe)
+            {
+                // A base list: the list goes away, the text translates.
+                size_t colon = s;
+                while (colon > 0 && t[colon - 1] != ':' && t[colon - 1] != '{' && t[colon - 1] != ';' && t[colon - 1] != '}')
+                    --colon;
+                if (colon > 0 && t[colon - 1] == ':')
+                    texts.push_back(t.substr(0, colon - 1) + " " + t.substr(e) + "\n" + prefix + kHole + " hot_hole_;\n");
+            }
             const Pos hole = {cur.line, static_cast<int>(s - d.text.starts[static_cast<size_t>(cur.line)])};
             std::optional<json> r;
             bool mapped = false; // a try had a place for the hole
@@ -2215,14 +2252,16 @@ json Server::on_completion(const Doc& d, const json& p)
                     md.gen_version = md.sent_version + 1; // before the send: the diagnostics can come at once
                     send_generated(md, d.gen.s);
                 }};
-            for (const std::string& patched : texts)
+            for (size_t text_index = 0; text_index < texts.size(); ++text_index)
             {
+                const std::string& patched = texts[text_index];
                 // A completion needs no null check: the statement ends at the hole, so a local that
                 // is null at this place must not stop the translation.
                 hotc::TranslateOptions to = translate_options(d);
                 to.null_warnings = true;
                 hotc::AnalyzeResult facts = timed_translate([&] { return hotc::analyze(patched, to, session_); });
-                std::optional<hotc::SourcePos> g = facts.cpp.empty()
+                const bool is_probe = probe && text_index == probe_index;
+                std::optional<hotc::SourcePos> g = facts.cpp.empty() || is_probe
                     ? std::nullopt
                     : facts.source_map.map_to_generated(hole.line + 1, hole.col + 1);
                 // A type text has no map of its own place (a field, a parameter, a return type). The
@@ -2235,6 +2274,18 @@ json Server::on_completion(const Doc& d, const json& p)
                         const auto lc = Text(facts.cpp).pos(o + 2);
                         g = hotc::SourcePos{lc.first + 1, lc.second + 1};
                     }
+                }
+                // A bare partial word of a type ("Nod" of a type position) has no "::" before it.
+                if (!g && !facts.cpp.empty())
+                {
+                    for (size_t o = facts.cpp.find(prefix + kHole); o != std::string::npos;
+                         o = facts.cpp.find(prefix + kHole, o + 1))
+                        if (o == 0 || !is_id_char(facts.cpp[o - 1]))
+                        {
+                            const auto lc = Text(facts.cpp).pos(o);
+                            g = hotc::SourcePos{lc.first + 1, lc.second + 1};
+                            break;
+                        }
                 }
                 if (!g)
                     continue;
@@ -2282,7 +2333,7 @@ json Server::on_completion(const Doc& d, const json& p)
             }
             // The native members of the base are not names in the generated code of a method. A second
             // try with "this." gives them. Its items join the list.
-            if (!member && sent && r && class_at(cur))
+            if (!member && !type_only && sent && r && class_at(cur))
             {
                 const std::string with_this = t.substr(0, s) + "this." + prefix + kHole + closers + (end ? "" : ";") + t.substr(e);
                 hotc::TranslateOptions to = translate_options(d);
@@ -2372,6 +2423,9 @@ json Server::on_completion(const Doc& d, const json& p)
                 // A name in scope: a variable, a function, a type, an enumerator, a namespace.
                 // Also the members of the class and of its native bases: methods, fields, properties.
                 static const std::set<int> kinds = {2, 3, 5, 6, 7, 9, 10, 13, 20, 21, 22};
+                static const std::set<int> type_kinds = {7, 8, 9, 13, 22, 25};
+                if (type_only && !type_kinds.count(kind))
+                    continue;
                 if (!kinds.count(kind) || name.compare(0, 2, "__") == 0 || is_libc_name(name))
                     continue;
             }
@@ -2399,15 +2453,16 @@ json Server::on_completion(const Doc& d, const json& p)
     }
 
     // ---- the keywords and the builtin types
-    if (!member)
+    if (!member && !base_only)
     {
         // "self" is a stub attribute. It is also the name of a generated helper, so it is not offered.
         for (const std::string& k : script_keywords())
-            if (k != "self")
+            if (k != "self" && !type_only)
                 add(k, 14, "keyword", "3");
         // The global helpers of a script (include/hot/runtime/enumerate.h).
         for (const std::string& h : script_helpers())
-            add(h, 3, "global function", "3");
+            if (!type_only)
+                add(h, 3, "global function", "3");
         for (const std::string& k : builtin_type_names())
             add(k, 25, "builtin type", "3");
     }

@@ -3338,6 +3338,85 @@ TEST(LanguageServer, OverrideCompletionIsEmptyOutsideAClassBody)
     EXPECT_FALSE(complete_at(false, head + "class B : Actor {\n    override @\n}\n", "").names.empty());
 }
 
+// Type contexts: a partial word gives native types, and no statement keyword or local.
+std::string type_ctx(const std::string& body, const std::string& head = "")
+{
+    return "using \"Actor.h\";\n" + head + "class Hero : Actor {\n    int ticks = 0;\n" + body + "\n}\n";
+}
+
+TEST(LanguageServer, TypeContextsOfTheBodyGiveNativeTypes)
+{
+    REQUIRE_CLANGD();
+    const std::pair<const char*, const char*> cases[] = {
+        {"    void f() { Actor* p = (@);\n    }", "(Act"},
+        {"    void f() { var a = this as @;\n    }", "as Act"},
+        {"    void f() { var a = new @;\n    }", "new Act"},
+        {"    void f() { try { } catch (@) { }\n    }", "catch (Act"},
+        {"    void f(@) { }", "Act"},
+        {"    @ field;", "Act"},
+        {"    @ g() { }", "Act"},
+    };
+    for (const auto& [body, what] : cases)
+    {
+        std::string b = body;
+        const std::string typed = "Act";
+        const auto c = complete_at(true, type_ctx(b), typed);
+        EXPECT_TRUE(c.has("Actor")) << what << ": " << c.result.dump().substr(0, 300);
+    }
+}
+
+TEST(LanguageServer, BaseListGivesNativeTypes)
+{
+    REQUIRE_CLANGD();
+    const std::string text = "using \"Actor.h\";\nclass X : @ {\n}\n";
+    const auto c = complete_at(true, text, "Act");
+    EXPECT_TRUE(c.has("Actor"));
+    EXPECT_FALSE(c.has("return"));
+    const auto d = complete_at(true, "using \"Actor.h\";\nclass Y : Actor, @ {\n}\n", "Act");
+    EXPECT_TRUE(d.has("Actor"));
+}
+
+TEST(LanguageServer, HandleTypeAfterDollarGivesNativeTypes)
+{
+    REQUIRE_CLANGD();
+    const auto c = complete_at(true, type_ctx("    void f() { $@ }"), "Act");
+    EXPECT_TRUE(c.has("Actor"));
+}
+
+TEST(LanguageServer, TypeContextHidesStatementKeywordsAndLocals)
+{
+    REQUIRE_CLANGD();
+    const auto c = complete_at(true, type_ctx("    void f() { int local_a = 1;\n        var a = new @;\n    }"), "Ac");
+    EXPECT_TRUE(c.has("Actor"));
+    EXPECT_FALSE(c.has("return"));
+    EXPECT_FALSE(c.has("local_a"));
+}
+
+TEST(LanguageServer, StaticInitializerGivesConsts)
+{
+    REQUIRE_CLANGD();
+    const std::string head = "const int RingSize = 3;\n";
+    const auto c = complete_at(true, type_ctx("    static const int X = @;", head), "Rin");
+    EXPECT_TRUE(c.has("RingSize")) << c.result.dump().substr(0, 300);
+}
+
+TEST(LanguageServer, EnumBodyAndAttributeGiveNoGenericList)
+{
+    REQUIRE_CLANGD();
+    EXPECT_TRUE(complete_at(false, "enum Color {\n    Red,\n    @\n}\n", "").names.empty());
+    EXPECT_TRUE(complete_at(false, "class A {\n    [@]\n    int x = 0;\n}\n", "").names.empty());
+    EXPECT_TRUE(complete_at(false, "class A {\n    [Attr(@)]\n    int x = 0;\n}\n", "").names.empty());
+}
+
+TEST(LanguageServer, TypeContextHasNoStatementKeywords)
+{
+    REQUIRE_CLANGD();
+    const auto c = complete_at(false, "class A {\n    @ f;\n}\n", "");
+    EXPECT_FALSE(c.has("return"));
+    EXPECT_FALSE(c.has("while"));
+    EXPECT_TRUE(c.has("int"));
+}
+
 TEST(LanguageServer, CompletionHidesTheGeneratedHelpers)
 {
     REQUIRE_CLANGD();
