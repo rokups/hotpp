@@ -698,6 +698,7 @@ private:
     // The notification workspace/didChangeWorkspaceFolders.
     void on_workspace_folders(const json& p);
     json on_completion(const Doc& d, const json& p);
+    json using_completion(const Doc& d, Pos cur, size_t off, size_t line_begin);
     json on_hover(const Doc& d, const json& p);
     json on_signature_help(const Doc& d, const json& p);
     json on_formatting(const Doc& d, const json& p);
@@ -1855,6 +1856,143 @@ static bool has_prefix(const std::string& name, const std::string& prefix)
 
 static std::string blank_non_code(std::string_view l, bool& in_block);
 
+json Server::using_completion(const Doc& d, Pos cur, size_t off, size_t line_begin)
+{
+    const std::string& t = d.text.s;
+    const std::string_view before = std::string_view(t).substr(line_begin, off - line_begin);
+    const size_t first = before.find_first_not_of(" \t");
+    json items = json::array();
+    const json empty = {{"isIncomplete", false}, {"items", items}};
+    if (first == std::string_view::npos || before.compare(first, 5, "using") != 0)
+        return empty;
+    const size_t q = before.find('"', first + 5);
+    const std::string cur_file = fs::path(d.path).lexically_normal().string();
+    const Effective eff = effective_options(d.path);
+    std::vector<std::string> dirs = {fs::path(d.path).parent_path().string()};
+    dirs.insert(dirs.end(), eff.include_dirs.begin(), eff.include_dirs.end());
+    if (q != std::string_view::npos)
+    {
+        // A path: the text after the quote is the partial path. Only it is replaced.
+        const std::string partial(before.substr(q + 1));
+        if (partial.find('"') != std::string::npos)
+            return empty;
+        const size_t slash = partial.find_last_of('/');
+        const std::string dir_part = slash == std::string::npos ? std::string() : partial.substr(0, slash + 1);
+        const std::string name_part = slash == std::string::npos ? partial : partial.substr(slash + 1);
+        const Pos b = {cur.line, static_cast<int>(q + 1 + (line_begin - d.text.starts[static_cast<size_t>(cur.line)]))};
+        const json range = {{"start", to_lsp(d.text, b, utf8_)}, {"end", to_lsp(d.text, cur, utf8_)}};
+        std::set<std::string> seen;
+        for (const std::string& base : dirs)
+        {
+            std::error_code ec;
+            int n = 0;
+            for (fs::directory_iterator it(fs::path(base) / dir_part, ec), end; !ec && it != end && n < 500; it.increment(ec))
+            {
+                const std::string name = it->path().filename().string();
+                if (name.empty() || name[0] == '.' || name.compare(0, name_part.size(), name_part) != 0)
+                    continue;
+                const bool is_dir = it->is_directory(ec);
+                const std::string ext = it->path().extension().string();
+                static const std::set<std::string> kExt = {".hot", ".h", ".hpp", ".hxx", ".hh"};
+                if (!is_dir && !kExt.count(ext))
+                    continue;
+                if (!is_dir && fs::path(it->path()).lexically_normal().string() == cur_file)
+                    continue;
+                const std::string label = dir_part + name + (is_dir ? "/" : "");
+                if (!seen.insert(label).second)
+                    continue;
+                ++n;
+                items.push_back({{"label", label}, {"kind", is_dir ? 19 : 17}, {"filterText", label},
+                    {"sortText", (is_dir ? "1" : "0") + label}, {"textEdit", {{"range", range}, {"newText", label}}}});
+            }
+        }
+        return {{"isIncomplete", false}, {"items", items}};
+    }
+    // A namespace: the qualified name before the cursor, split at the last separator.
+    size_t ws = off;
+    while (ws > line_begin && (is_id_char(t[ws - 1]) || t[ws - 1] == '.'))
+        --ws;
+    const std::string qual = t.substr(ws, off - ws);
+    const size_t dot = qual.find_last_of('.');
+    const std::string parent = dot == std::string::npos ? std::string() : qual.substr(0, dot + 1);
+    const std::string name_part = dot == std::string::npos ? qual : qual.substr(dot + 1);
+    std::set<std::string> found;
+    if (parent.empty())
+        found.insert("std");
+    bool block = false;
+    for (int l = 0; l < static_cast<int>(d.text.starts.size()); ++l)
+    {
+        const std::string code = blank_non_code(d.text.line(l), block);
+        static const std::regex re("^[ \\t]*using[ \\t]*\"([^\"\\n]+)\"");
+        std::smatch m;
+        const std::string line(d.text.line(l));
+        if (code.find("using") == std::string::npos || !std::regex_search(line, m, re))
+            continue;
+        const std::string file = m[1].str();
+        if (file.size() < 2 || file.compare(file.size() - 4, 4, ".hot") == 0)
+            continue;
+        for (const std::string& base : dirs)
+        {
+            const auto h = read_file((fs::path(base) / file).string());
+            if (!h)
+                continue;
+            // The stack of the open namespaces: the depth of its brace and its qualified name.
+            std::vector<std::pair<int, std::string>> stack;
+            int depth = 0;
+            bool hb = false;
+            size_t b = 0;
+            while (b < h->size())
+            {
+                size_t e = h->find('\n', b);
+                if (e == std::string::npos)
+                    e = h->size();
+                const std::string hl = blank_non_code(std::string_view(*h).substr(b, e - b), hb);
+                static const std::regex ns_re("\\bnamespace[ \\t]+([A-Za-z_][A-Za-z0-9_]*(?:[ \\t]*::[ \\t]*[A-Za-z_][A-Za-z0-9_]*)*)[ \\t]*\\{");
+                std::smatch nm;
+                std::string rest = hl;
+                for (size_t i = 0; i < hl.size(); ++i)
+                {
+                    if (hl[i] == '{')
+                    {
+                        // A namespace brace is handled by the match below.
+                        if (!(std::regex_search(rest = hl.substr(0, i + 1), nm, ns_re) && static_cast<size_t>(nm.position(0) + nm.length(0)) == i + 1))
+                            ++depth;
+                        else
+                        {
+                            std::string n = nm[1].str();
+                            n.erase(std::remove_if(n.begin(), n.end(), [](char c) { return c == ' ' || c == '\t'; }), n.end());
+                            for (size_t k; (k = n.find("::")) != std::string::npos;)
+                                n.replace(k, 2, ".");
+                            const std::string full = stack.empty() ? n : stack.back().second + "." + n;
+                            ++depth;
+                            stack.push_back({depth, full});
+                            found.insert(full);
+                        }
+                    }
+                    else if (hl[i] == '}')
+                    {
+                        if (!stack.empty() && stack.back().first == depth)
+                            stack.pop_back();
+                        --depth;
+                    }
+                }
+                b = e + 1;
+            }
+            break;
+        }
+    }
+    for (const std::string& n : found)
+    {
+        if (n.compare(0, parent.size(), parent) != 0)
+            continue;
+        const std::string tail = n.substr(parent.size());
+        if (tail.find('.') != std::string::npos || tail.compare(0, name_part.size(), name_part) != 0)
+            continue;
+        items.push_back({{"label", tail}, {"kind", 9}, {"filterText", tail}, {"sortText", "0" + tail}});
+    }
+    return {{"isIncomplete", false}, {"items", items}};
+}
+
 json Server::on_completion(const Doc& d, const json& p)
 {
     const Pos cur = from_lsp(d.text, p["position"], utf8_);
@@ -1947,6 +2085,16 @@ json Server::on_completion(const Doc& d, const json& p)
                 }
             return {{"isIncomplete", false}, {"items", list}};
         }
+    }
+
+    // "using": a path in a string, or a namespace. A path comes from the directory of the file and
+    // the include dirs. A namespace comes from the headers that the file imports and from "std".
+    // The scan of a header is text only: it does not use clangd and it follows no include.
+    if (!after_scope)
+    {
+        const CompletionContext uctx = classify(t, off);
+        if (uctx.kind == CompletionContext::Kind::Using)
+            return using_completion(d, cur, off, line_begin);
     }
 
     // The kind of the place. A place of a name that is new, an enum body and an attribute give no

@@ -2706,6 +2706,106 @@ Completion complete_at(bool clangd, std::string text, const std::string& replace
 
 } // namespace
 
+// The items of "using" completion at the end of "head" (the cursor is at the end of the text).
+static json using_items(const std::string& head, const std::function<void(const TempDir&, const TempDir&)>& setup,
+    json* first = nullptr)
+{
+    TempDir hd;
+    TempDir wd;
+    setup(wd, hd);
+    hot::ls::ServerOptions o = options(wd, false);
+    o.include_dirs.push_back(hd.path().string());
+    const std::string text = head + "\nclass A { }\n";
+    const std::string path = (wd.path() / "player.hot").string();
+    write_file(path, text);
+    LsClient client(o);
+    client.initialize(uri_of(wd.path().string()));
+    client.open(uri_of(path), text);
+    int line = 0, col = 0;
+    for (char c : head)
+    {
+        if (c == '\n')
+        {
+            ++line;
+            col = 0;
+        }
+        else
+            ++col;
+    }
+    const json r = client.request("textDocument/completion", doc_pos(uri_of(path), line, col));
+    json items = r["result"].value("items", json::array());
+    if (first && !items.empty())
+        *first = items[0];
+    return items;
+}
+
+static bool has_label(const json& items, const std::string& l)
+{
+    return std::any_of(items.begin(), items.end(), [&](const json& i) { return i.value("label", "") == l; });
+}
+
+static void using_workspace(const TempDir& wd, const TempDir& hd)
+{
+    std::filesystem::create_directories(wd.path() / "sub");
+    write_file((wd.path() / "alpha.hot").string(), "class Alpha { }\n");
+    write_file((wd.path() / "sub" / "beta.hot").string(), "class Beta { }\n");
+    write_file((wd.path() / "notes.txt").string(), "x\n");
+    write_file((hd.path() / "Widgets.h").string(),
+        "#pragma once\nnamespace Gui {\nnamespace Inner { }\n}\nnamespace Plain { }\n");
+    write_file((hd.path() / "extra.hot").string(), "class Extra { }\n");
+}
+
+TEST(LanguageServer, UsingQuoteOffersScriptsAndHeaders)
+{
+    const json items = using_items("using \"", using_workspace);
+    EXPECT_TRUE(has_label(items, "alpha.hot")) << items.dump();
+    EXPECT_TRUE(has_label(items, "sub/"));
+    EXPECT_TRUE(has_label(items, "Widgets.h"));
+    EXPECT_TRUE(has_label(items, "extra.hot"));
+    EXPECT_FALSE(has_label(items, "notes.txt"));
+    EXPECT_FALSE(has_label(items, "player.hot"));
+}
+
+TEST(LanguageServer, UsingQuoteReplacesOnlyThePartialPath)
+{
+    json first;
+    const json items = using_items("// x\nusing \"sub/b", using_workspace, &first);
+    ASSERT_EQ(items.size(), 1u) << items.dump();
+    EXPECT_EQ(first["label"], "sub/beta.hot");
+    EXPECT_EQ(first["textEdit"]["newText"], "sub/beta.hot");
+    EXPECT_EQ(first["textEdit"]["range"]["start"]["line"], 1);
+    EXPECT_EQ(first["textEdit"]["range"]["start"]["character"], 7);
+    EXPECT_EQ(first["textEdit"]["range"]["end"]["character"], 12);
+    EXPECT_TRUE(has_label(using_items("using \"Wi", using_workspace), "Widgets.h"));
+    EXPECT_FALSE(has_label(using_items("using \"Wi", using_workspace), "alpha.hot"));
+}
+
+TEST(LanguageServer, UsingWordOffersNamespaces)
+{
+    const json items = using_items("using \"Widgets.h\";\nusing Gu", using_workspace);
+    EXPECT_TRUE(has_label(items, "Gui")) << items.dump();
+    EXPECT_FALSE(has_label(items, "Plain"));
+    EXPECT_FALSE(has_label(items, "if"));
+    EXPECT_FALSE(has_label(items, "return"));
+    // A header of the file gives its namespaces.
+    const json imp = using_items("using \"Widgets.h\";\nusing ", using_workspace);
+    EXPECT_TRUE(has_label(imp, "Gui")) << imp.dump();
+    EXPECT_TRUE(has_label(imp, "Plain"));
+    EXPECT_FALSE(has_label(imp, "Inner"));
+    const json dotted = using_items("using \"Widgets.h\";\nusing Gui.", using_workspace);
+    EXPECT_TRUE(has_label(dotted, "Inner")) << dotted.dump();
+    EXPECT_FALSE(has_label(dotted, "Plain"));
+}
+
+TEST(LanguageServer, UsingOffersNothingInCommentsOrOtherStrings)
+{
+    EXPECT_TRUE(using_items("// using \"", using_workspace).empty());
+    EXPECT_TRUE(using_items("// using Gu", using_workspace).empty());
+    EXPECT_TRUE(using_items("/* a\nusing \"", using_workspace).empty());
+    EXPECT_TRUE(using_items("string s = \"using x", using_workspace).empty());
+    EXPECT_TRUE(using_items("using \"alpha.hot\"; // using \"", using_workspace).empty());
+}
+
 TEST(LanguageServer, CompletionListsLocalsParametersAndModuleVariables)
 {
     REQUIRE_CLANGD();
