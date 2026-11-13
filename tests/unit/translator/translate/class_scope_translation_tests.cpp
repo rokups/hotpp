@@ -257,26 +257,13 @@ TEST(ClassScopeTranslation, InterfaceHashIgnoresPrivateMembers)
         << "a private method body";
     EXPECT_EQ(base, hash(cls("private float Hid(float a, int b) { return a; } public int Pub(int a) { return a; }")))
         << "a private method signature";
-    EXPECT_EQ(hash(cls("public int Pub(int a) { return a; }")),
-        hash(cls("private static int Hid(int a) { return a; } public int Pub(int a) { return a; }")))
-        << "a private static method has no slot";
+    EXPECT_EQ(base, hash(cls("private static int Hid(int a) { return a; } public int Pub(int a) { return a; }")))
+        << "a private static method";
     EXPECT_NE(base, hash(cls("private int Hid(int a) { return a; } public float Pub(int a) { return a; }")))
         << "a public method signature";
     EXPECT_NE(base, hash("class Foo : Widget { int k = 0; private int extra_ = 0; private int Hid(int a) { return a; }"
                          " public int Pub(int a) { return a; } }\n"))
         << "a private field";
-    // The slot number of a public method is baked into an importer: a private method before it moves the number.
-    const auto pub = hash(cls("public int Pub(int a) { return a; }"));
-    EXPECT_NE(pub, hash(cls("private int Hid(int a) { return a; } public int Pub(int a) { return a; }")))
-        << "a private method before a public method";
-    EXPECT_EQ(pub, hash(cls("public int Pub(int a) { return a; } private int Hid(int a) { return a; }")))
-        << "a private method after the public methods";
-    EXPECT_NE(pub, hash(cls("private virtual int Hid() { return 1; } public int Pub(int a) { return a; }")))
-        << "a private virtual method stays";
-    EXPECT_NE(pub, hash(cls("public int Pub(int a) { return a; } private virtual int Hid() { return 1; }")))
-        << "a private virtual method after the public methods stays";
-    EXPECT_NE(pub, hash(cls("protected int Pro(int a) { return a; } public int Pub(int a) { return a; }")))
-        << "a protected method stays";
     const auto noctor = hash(cls(""));
     EXPECT_EQ(hash(cls("private Foo(int a) { k = a; }")), hash(cls("private Foo(int a) { k = a + 1; }")))
         << "a private constructor body";

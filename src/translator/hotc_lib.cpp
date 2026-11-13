@@ -902,25 +902,9 @@ std::string module_interface(const Script& sc, const std::string& text)
             o += std::string("  ") + access(k.access) + "ctor(" + params(k.params) + ")" + base
                 + body(c.is_value, k.body_span) + "\n";
         }
-        // An importer bakes in the slot number of a method. Without a manifest the number is the
-        // count of the slotted methods before it, the private ones too. So a visible method keeps
-        // its index in the text. A hidden method adds nothing but its place in the count.
-        size_t slot_index = 0;
         for (const Method& m : c.methods)
-        {
-            const bool slotted = !m.is_override && !m.overrides_virtual && m.name != "onReload"
-                && m.name.rfind("convert_", 0) != 0;
-            const bool shown = !hidden(c, m.access) || m.is_virtual || m.is_abstract || m.is_override || !m.vslot_owner.empty();
-            if (shown)
-            {
-                std::string line = method("", m, c.is_value);
-                if (slotted && !c.is_value)
-                    line.insert(line.size() - 1, " @" + std::to_string(slot_index));
-                o += line;
-            }
-            if (slotted)
-                ++slot_index;
-        }
+            if (!hidden(c, m.access) || m.is_virtual || m.is_abstract || m.is_override || !m.vslot_owner.empty())
+                o += method("", m, c.is_value);
         for (const Method& m : c.statics)
             if (!hidden(c, m.access))
                 o += method("static ", m, c.is_value);
