@@ -69,6 +69,47 @@ std::set<std::string> used_named(std::string_view list)
 
 } // namespace
 
+// The text with the comments and the string literals replaced by spaces. The length and the
+// line breaks stay.
+static std::string blank_comments_and_strings(std::string_view l)
+{
+    std::string out(l);
+    const auto fill = [&](size_t b, size_t e)
+    {
+        for (size_t k = b; k < e; ++k)
+            if (out[k] != '\n')
+                out[k] = ' ';
+    };
+    for (size_t i = 0; i < l.size();)
+    {
+        if (l.compare(i, 2, "//") == 0)
+        {
+            const size_t e = std::min(l.find('\n', i), l.size());
+            fill(i, e);
+            i = e;
+        }
+        else if (l.compare(i, 2, "/*") == 0)
+        {
+            const size_t c = l.find("*/", i + 2);
+            const size_t e = c == std::string_view::npos ? l.size() : c + 2;
+            fill(i, e);
+            i = e;
+        }
+        else if (l[i] == '"' || l[i] == '\'')
+        {
+            size_t e = i + 1;
+            while (e < l.size() && l[e] != l[i] && l[e] != '\n')
+                e += l[e] == '\\' ? 2 : 1;
+            e = std::min(e + 1, l.size());
+            fill(i, e);
+            i = e;
+        }
+        else
+            ++i;
+    }
+    return out;
+}
+
 nlohmann::json attribute_completion(std::string_view text, std::size_t offset, std::size_t prefix_start, bool arg)
 {
     using nlohmann::json;
@@ -145,7 +186,7 @@ nlohmann::json attribute_completion(std::string_view text, std::size_t offset, s
         items.push_back(std::move(item));
     };
     // The attribute classes of the document first.
-    const std::string all(text);
+    const std::string all = blank_comments_and_strings(text);
     const std::regex re("\\[\\s*attribute\\s*\\]\\s*class\\s+(\\w+)");
     for (std::sregex_iterator it(all.begin(), all.end(), re), end; it != end; ++it)
         add((*it)[1].str(), "A script attribute class of this file.", "script attribute", 0, true);

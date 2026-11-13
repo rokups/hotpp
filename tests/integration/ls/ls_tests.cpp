@@ -3472,6 +3472,18 @@ TEST(LanguageServer, AttributeNamesOnAFieldAMethodAndAClass)
     EXPECT_EQ(none.names[0], "Tag]$0");
 }
 
+TEST(LanguageServer, AttributeClassInCommentOrStringIsNotOffered)
+{
+    REQUIRE_CLANGD();
+    const auto c = complete_at(false,
+        "// [attribute] class Ghost;\n/* [attribute] class Block; */\nstring s = \"[attribute] class Str;\";\n"
+        "[attribute] class Real;\n[@]\nclass A { }\n", "");
+    EXPECT_TRUE(c.has("Real$0")) << c.result.dump().substr(0, 300);
+    EXPECT_FALSE(c.has("Ghost$0"));
+    EXPECT_FALSE(c.has("Block$0"));
+    EXPECT_FALSE(c.has("Str$0"));
+}
+
 TEST(LanguageServer, AttributeArgumentsOfferNothingForFreeFormValues)
 {
     REQUIRE_CLANGD();
