@@ -10762,6 +10762,8 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
 
     // The ranges of the members, as (begin, end) byte offsets. The class facts and the map use them.
     std::vector<std::pair<size_t, size_t>> ranges;
+    // The same for all members, also the fields. The retry after a translation error uses it.
+    std::vector<std::pair<size_t, size_t>> all_ranges;
     for (const ast::ClassDef& c : sc.classes)
     {
         AnalyzedClass ac;
@@ -10775,6 +10777,7 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
             ac.members.push_back({kind, name, src_pos(map, begin), src_pos(map, e), alias});
             if (body)
                 ranges.emplace_back(begin, e);
+            all_ranges.emplace_back(begin, e);
         };
         for (const ast::Field& f : c.fields)
             add("field", f.name, f.pos, f.has_init ? f.init_span.end + 1 : 0, false, f.alias);
@@ -10836,6 +10839,84 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
     {
         res.ok = tr.ok;
         res.diagnostics = tr.diagnostics;
+    }
+    // A semantic error in one member must not remove the text of the other members. After a failed
+    // translation, the retry blanks the smallest region at each error position: the member, then
+    // the base list of the class, then the whole class. The retry stops after 4 passes, or when no
+    // new region is left. The result keeps "ok" and the diagnostics of the first translation.
+    {
+        std::set<std::pair<size_t, size_t>> blanked;
+        const std::string script_name = options.script_name.empty() ? std::string("script.hot") : options.script_name;
+        for (int pass = 0; pass < 4 && !tr.ok; ++pass)
+        {
+            std::vector<std::pair<size_t, size_t>> regions;
+            std::istringstream lines(tr.diagnostics);
+            for (std::string ln; std::getline(lines, ln);)
+            {
+                // "name:line:col: error: text". Only an error in this script has a place here.
+                if (ln.compare(0, script_name.size() + 1, script_name + ":") != 0)
+                    continue;
+                size_t line = 0, col = 0, used = 0;
+                if (std::sscanf(ln.c_str() + script_name.size() + 1, "%zu:%zu:%zn", &line, &col, &used) < 2 || line == 0)
+                    continue;
+                size_t at = 0;
+                for (size_t l = 1; l < line && at != std::string::npos; ++l)
+                {
+                    at = valid.find('\n', at);
+                    if (at != std::string::npos)
+                        ++at;
+                }
+                if (at == std::string::npos)
+                    continue;
+                const size_t pos = std::min(at + (col ? col - 1 : 0), valid.size());
+                auto add_region = [&](size_t b, size_t e)
+                {
+                    if (!blanked.count({b, e}))
+                    {
+                        regions.emplace_back(b, e);
+                        return true;
+                    }
+                    return false;
+                };
+                bool found = false;
+                for (const auto& [b, e] : all_ranges)
+                    if (!found && pos >= line_begin(valid, b) && pos < e) // the type before the name too
+                        found = add_region(line_begin(valid, b), e);
+                if (found)
+                    continue;
+                // The class that holds the position: the base list, then the whole class.
+                for (const ast::ClassDef& c : sc.classes)
+                {
+                    const size_t open = text.find('{', c.pos);
+                    if (open == std::string::npos || pos < c.pos)
+                        continue;
+                    size_t close = open;
+                    for (int depth = 0; close < text.size(); ++close)
+                    {
+                        if (text[close] == '{')
+                            ++depth;
+                        else if (text[close] == '}' && --depth == 0)
+                            break;
+                    }
+                    if (pos > close)
+                        continue;
+                    const size_t colon = text.find(':', c.pos);
+                    if (colon != std::string::npos && colon < open && add_region(colon, open))
+                        break;
+                    add_region(line_begin(valid, c.pos), std::min(close + 1, text.size()));
+                    break;
+                }
+            }
+            if (regions.empty())
+                break;
+            for (const auto& [b, e] : regions)
+            {
+                blank(valid, b, e);
+                blanked.insert({b, e});
+            }
+            o.script_text = valid;
+            tr = translate(o, session);
+        }
     }
     // The blank text has the same offsets and the same lines as "text". So the map is valid for it.
     if (tr.ok)

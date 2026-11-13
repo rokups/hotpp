@@ -143,6 +143,46 @@ TEST(Analyze, TranslateStillFailsForTheSameText)
     EXPECT_EQ(t.diagnostics, "t.hot:3:20: error: expected an expression\n");
 }
 
+// A semantic error (not a syntax error) in one method must not remove the generated text of the
+// other methods. The map of the valid method works.
+TEST(Analyze, BadOverrideInOneMethodKeepsTheMapOfTheOtherMethod)
+{
+    const std::string text =
+        "using \"w.h\";\n"
+        "class Foo : Widget {\n"
+        "    int n = 0;\n"
+        "    override void Missing(float dt) { n = 1; }\n"
+        "    void b() { n = n + 2; }\n"
+        "}\n";
+    const hotc::AnalyzeResult r = analyze_text(text);
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("error"), std::string::npos) << r.diagnostics;
+    EXPECT_FALSE(r.cpp.empty());
+    EXPECT_FALSE(r.source_map.empty());
+    EXPECT_TRUE(r.source_map.map_to_generated(5, 16)); // the first "n" in the body of "b"
+    EXPECT_NE(r.cpp.find("n + 2"), std::string::npos);
+    EXPECT_EQ(r.cpp.find("n = 1"), std::string::npos); // the bad method is left out
+}
+
+// Two bad overrides in one class: both members go in one pass or in two passes. The method
+// between them stays. The first diagnostics stay in the result.
+TEST(Analyze, TwoBadOverridesKeepTheMethodBetweenThem)
+{
+    const std::string text =
+        "using \"w.h\";\n"
+        "class Foo : Widget {\n"
+        "    int n = 0;\n"
+        "    override void Missing(float dt) { n = 1; }\n"
+        "    void b() { n = n + 3; }\n"
+        "    override void Other(int k) { n = 4; }\n"
+        "}\n";
+    const hotc::AnalyzeResult r = analyze_text(text);
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("t.hot:4:"), std::string::npos) << r.diagnostics; // the first pass
+    EXPECT_NE(r.cpp.find("n + 3"), std::string::npos);
+    EXPECT_EQ(r.cpp.find("n = 4"), std::string::npos);
+}
+
 // The module attribute array gives the type of "T[N]". The type text of the analysis uses it.
 TEST(Analyze, ArrayTemplateOfTheModuleAttributeApplies)
 {
