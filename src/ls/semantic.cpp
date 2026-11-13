@@ -340,7 +340,7 @@ enum class Block
 struct Scope
 {
     Block kind = Block::Body;
-    std::string enum_name;
+    std::string enum_name; // the name of an enum, or of a class or a struct (a Type block)
     std::vector<ScopeName> locals;
 };
 
@@ -418,6 +418,7 @@ ScriptScope scan_scope(const std::string& text, size_t at, size_t typed_begin)
                 else if (pending == "class" || pending == "struct" || pending == "interface")
                 {
                     sc.kind = Block::Type;
+                    sc.enum_name = pending_name;
                 }
                 else
                 {
@@ -464,6 +465,24 @@ ScriptScope scan_scope(const std::string& text, size_t at, size_t typed_begin)
         {
             if (is_name(t) && prev && (prev->s == "{" || prev->s == ","))
                 r.enum_members[stack.back().enum_name].push_back(t.s);
+            continue;
+        }
+        if (!at_module && here == Block::Type && t.s == "static")
+        {
+            // "static [const] Type Name =", "static Type Name;" or "static Type Name(": a static member.
+            bool is_const = false;
+            size_t k = i + 1;
+            for (; k < toks.size() && toks[k].s != "=" && toks[k].s != ";" && toks[k].s != "(" && toks[k].s != "{"
+                 && toks[k].s != "}";
+                 ++k)
+                is_const = is_const || toks[k].s == "const";
+            if (k < toks.size() && k > i + 1 && is_name(toks[k - 1]) && toks[k - 1].off != typed_begin)
+            {
+                const bool method = toks[k].s == "(";
+                r.class_statics[stack.back().enum_name].push_back({toks[k - 1].s,
+                    k >= i + 3 && toks[k - 2].id ? toks[k - 2].s : std::string(),
+                    method ? "static method" : is_const ? "static const" : "static field"});
+            }
             continue;
         }
         if (!at_module && here == Block::Body && (t.s == "var" || t.s == "ref") && next)

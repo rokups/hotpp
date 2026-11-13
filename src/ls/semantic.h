@@ -99,6 +99,9 @@ struct ScriptScope
     std::map<std::string, std::vector<std::string>> enum_members; // the enumerators of each enum
     std::vector<std::string> classes, structs; // the script classes and structs
     std::vector<std::string> interfaces; // the script interfaces
+    // The static members of each script class or struct (names only). The detail is "static const",
+    // "static field" or "static method". The facts of the analysis have no statics and no constants.
+    std::map<std::string, std::vector<ScopeName>> class_statics;
 };
 
 // Scans "text". The locals are the ones in scope at the byte offset "at". The word that starts at

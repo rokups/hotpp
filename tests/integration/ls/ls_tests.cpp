@@ -3022,6 +3022,68 @@ TEST(LanguageServer, ColdCompletionRepliesWithinTheBudgetAndIsIncomplete)
     EXPECT_TRUE(vec);
 }
 
+// A script class with every kind of member, for the bare completion inside a method.
+const char* const kMembersScript =
+    "using \"Actor.h\";\n"
+    "\n"
+    "class Hero : Actor {\n"
+    "    static const int StepSize = 2;\n"
+    "    static int shared = 0;\n"
+    "    int ticks = 0;\n"
+    "    void runAround() { }\n"
+    "    static int Twice(int v) { return v + v; }\n"
+    "    override void Tick(float dt) {\n"
+    "        @\n"
+    "    }\n"
+    "}\n";
+
+TEST(LanguageServer, BareCompletionInAMethodOffersAMethodOfTheClass)
+{
+    REQUIRE_CLANGD();
+    const Completion c = complete_at(true, kMembersScript, "runA");
+    EXPECT_TRUE(c.has("runAround")) << c.result.dump();
+}
+
+TEST(LanguageServer, BareCompletionInAMethodOffersAFieldOfTheClass)
+{
+    REQUIRE_CLANGD();
+    EXPECT_TRUE(complete_at(true, kMembersScript, "tic").has("ticks"));
+}
+
+TEST(LanguageServer, BareCompletionInAMethodOffersAConstOfTheClass)
+{
+    REQUIRE_CLANGD();
+    EXPECT_TRUE(complete_at(true, kMembersScript, "Step").has("StepSize"));
+}
+
+TEST(LanguageServer, BareCompletionInAMethodOffersAStaticOfTheClass)
+{
+    REQUIRE_CLANGD();
+    EXPECT_TRUE(complete_at(true, kMembersScript, "sha").has("shared"));
+    EXPECT_TRUE(complete_at(true, kMembersScript, "Twi").has("Twice"));
+}
+
+TEST(LanguageServer, BareCompletionInAMethodOffersAMemberOfTheBase)
+{
+    REQUIRE_CLANGD();
+    EXPECT_TRUE(complete_at(true, kMembersScript, "Mov").has("Move"));
+    EXPECT_TRUE(complete_at(true, kMembersScript, "Nam").has("Name"));
+}
+
+TEST(LanguageServer, ClassNameDotOffersAStaticOfTheClass)
+{
+    REQUIRE_CLANGD();
+    const Completion c = complete_at(true, kMembersScript, "Hero.");
+    EXPECT_TRUE(c.has("Twice")) << c.result.dump();
+    EXPECT_TRUE(c.has("shared")) << c.result.dump();
+}
+
+TEST(LanguageServer, ClassNameDotOffersAConstOfTheClass)
+{
+    REQUIRE_CLANGD();
+    EXPECT_TRUE(complete_at(true, kMembersScript, "Hero.").has("StepSize"));
+}
+
 TEST(LanguageServer, CompletionHidesTheGeneratedHelpers)
 {
     REQUIRE_CLANGD();

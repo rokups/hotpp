@@ -1832,6 +1832,32 @@ json Server::on_completion(const Doc& d, const json& p)
             n = cls->base;
         }
     };
+    // The statics and the constants of a script class and of its script bases.
+    auto add_statics = [&](const std::string& class_name)
+    {
+        std::set<std::string> seen;
+        for (std::string n = class_name; !n.empty() && seen.insert(n).second;)
+        {
+            if (const auto it = scope.class_statics.find(n); it != scope.class_statics.end())
+                for (const ScopeName& m : it->second)
+                    add(m.name, m.detail == "static method" ? 2 : m.detail == "static const" ? 21 : 5,
+                        m.detail + " of " + n + (m.type.empty() ? "" : ": " + m.type), "0");
+            std::string base;
+            for (const hotc::AnalyzedClass& c : d.facts.classes)
+                if (c.name == n)
+                    base = c.base;
+            n = base;
+        }
+    };
+    // The class whose body holds the position: the last class that starts before it.
+    auto class_at = [&](Pos at) -> const hotc::AnalyzedClass*
+    {
+        const hotc::AnalyzedClass* cls = nullptr;
+        for (const hotc::AnalyzedClass& c : d.facts.classes)
+            if (Pos{c.begin.line - 1, c.begin.col - 1} < Pos{at.line, at.col + 1})
+                cls = &c;
+        return cls;
+    };
     if (after_dot)
     {
         size_t ob = s - 1;
@@ -1840,12 +1866,12 @@ json Server::on_completion(const Doc& d, const json& p)
         const std::string obj = t.substr(ob, s - 1 - ob);
         if (obj == "this")
         {
-            const hotc::AnalyzedClass* cls = nullptr;
-            for (const hotc::AnalyzedClass& c : d.facts.classes)
-                if (Pos{c.begin.line - 1, c.begin.col - 1} < Pos{cur.line, cur.col + 1})
-                    cls = &c;
-            if (cls)
+            if (const hotc::AnalyzedClass* cls = class_at(cur))
                 add_members(cls->name);
+        }
+        else if (scope.class_statics.count(obj))
+        {
+            add_statics(obj);
         }
         else if (const auto en = scope.enum_members.find(obj); en != scope.enum_members.end())
         {
@@ -1867,6 +1893,13 @@ json Server::on_completion(const Doc& d, const json& p)
     }
     else if (!member)
     {
+        // Inside a method: the members of the class and of its script bases. The native members of
+        // a base come from clangd below.
+        if (const hotc::AnalyzedClass* cls = class_at(cur))
+        {
+            add_members(cls->name);
+            add_statics(cls->name);
+        }
         for (const ScopeName& n : scope.locals)
             add(n.name, 6, n.detail + (n.type.empty() ? "" : ": " + n.type), "0");
         for (const ScopeName& n : scope.module_vars)
@@ -2030,6 +2063,37 @@ json Server::on_completion(const Doc& d, const json& p)
                 if (got)
                     break;
             }
+            // The native members of the base are not names in the generated code of a method. A second
+            // try with "this." gives them. Its items join the list.
+            if (!member && sent && r && class_at(cur))
+            {
+                const std::string with_this = t.substr(0, s) + "this." + prefix + kHole + closers + (end ? "" : ";") + t.substr(e);
+                hotc::TranslateOptions to = translate_options(d);
+                to.null_warnings = true;
+                hotc::AnalyzeResult facts = timed_translate([&] { return hotc::analyze(with_this, to, session_); });
+                const auto g = facts.cpp.empty()
+                    ? std::nullopt
+                    : facts.source_map.map_to_generated(hole.line + 1, hole.col + 1 + 5);
+                const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    *t0 + std::chrono::milliseconds(opt_.completion_budget_ms + kCompletionAstMs) - std::chrono::steady_clock::now()).count();
+                if (g && left > 0)
+                {
+                    send_generated(md, facts.cpp);
+                    const Text gen(facts.cpp);
+                    auto r2 = clangd_result("textDocument/completion",
+                        {{"textDocument", {{"uri", d.gen_uri}}},
+                            {"position",
+                                to_lsp(gen, {g->line - 1, g->col - 1 + static_cast<int>(prefix.size())}, clangd_utf8_)}},
+                        static_cast<int>(left));
+                    if (r2)
+                    {
+                        json merged = r->is_array() ? *r : r->value("items", json::array());
+                        for (const json& it : r2->is_array() ? *r2 : r2->value("items", json::array()))
+                            merged.push_back(it);
+                        r = merged;
+                    }
+                }
+            }
             // No patched text translates (an error that the analysis cannot cut out). The last good
             // generated text is in clangd. Ask at the nearest place of the old text that has a map:
             // the hole, then the earlier positions of the line, then the earlier lines. A member
@@ -2084,12 +2148,13 @@ json Server::on_completion(const Doc& d, const json& p)
                 || name.compare(0, 8, "operator") == 0 || name[0] == '~' || kind == 4
                 || name.find("::") != std::string::npos)
                 continue;
-            if (after_dot && (name == "cls" || name == "state"))
+            if (name == "cls" || name == "state")
                 continue; // hot::ShellBase (runtime/shell.h)
             if (!member)
             {
                 // A name in scope: a variable, a function, a type, an enumerator, a namespace.
-                static const std::set<int> kinds = {3, 6, 7, 9, 13, 20, 21, 22};
+                // Also the members of the class and of its native bases: methods, fields, properties.
+                static const std::set<int> kinds = {2, 3, 5, 6, 7, 9, 10, 13, 20, 21, 22};
                 if (!kinds.count(kind) || name.compare(0, 2, "__") == 0 || is_libc_name(name))
                     continue;
             }
@@ -2098,11 +2163,16 @@ json Server::on_completion(const Doc& d, const json& p)
                 label.erase(0, 1);
             if (label.compare(0, 3, "\xE2\x80\xA2") == 0)
                 label.erase(0, 3); // the include bullet
-            if (!has_prefix(name, prefix) || !names.insert(name).second)
+            if (!has_prefix(name, prefix))
                 continue;
             // A name from a namespace comes as "std::string": the script form is "std.string".
             std::string insert = it.value("insertText", name);
             insert = insert.find("::") != std::string::npos ? hotc::rewrite_generated_names(insert) : name;
+            // The namespace hot is the runtime of the generated code. Its names do not hide a member.
+            if (!member && insert.compare(0, 4, "hot.") == 0)
+                continue;
+            if (!names.insert(name).second)
+                continue;
             json item = {{"label", hotc::rewrite_generated_names(label)}, {"kind", kind}, {"insertText", insert},
                 {"filterText", name}, {"sortText", "2" + it.value("sortText", name)}};
             if (it.contains("detail"))
