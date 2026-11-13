@@ -2988,6 +2988,37 @@ TEST(LanguageServer, CompletionUsesTheStaleTextWhenNoTextTranslates)
     EXPECT_TRUE(vec) << r["result"].dump();
 }
 
+TEST(LanguageServer, ColdCompletionRepliesWithinTheBudgetAndIsIncomplete)
+{
+    REQUIRE_CLANGD();
+    // A short budget makes the cold state sure: clangd has no preamble 50 ms after the open.
+    TempDir dir;
+    hot::ls::ServerOptions o = options(dir, true);
+    o.completion_budget_ms = 50;
+    std::string text = kCompleteScript;
+    const size_t at = text.find('@');
+    text.replace(at, 1, "Vec");
+    Session s(true, text, &o);
+    const auto t0 = std::chrono::steady_clock::now();
+    json r = s.client->request("textDocument/completion", doc_pos(s.uri, 19, 11));
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+    ASSERT_TRUE(r.contains("result"));
+    EXPECT_LT(ms, 4000);
+    EXPECT_TRUE(r["result"].value("isIncomplete", false)) << r["result"].dump();
+    // A later request gives the native names.
+    bool vec = false;
+    for (int k = 0; k < 600 && !vec; ++k)
+    {
+        json n = s.client->request("textDocument/completion", doc_pos(s.uri, 19, 11));
+        for (const json& i : n["result"].value("items", json::array()))
+            if (i.value("insertText", "") == "Vec3")
+                vec = true;
+        if (!vec)
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    EXPECT_TRUE(vec);
+}
+
 TEST(LanguageServer, CompletionHidesTheGeneratedHelpers)
 {
     REQUIRE_CLANGD();

@@ -48,6 +48,9 @@ struct ServerOptions
     // False: the semantic tokens of the script have no tokens of native (C++) names, and the server
     // does not ask clangd for them (initializationOptions "nativeSemanticTokens").
     bool native_semantic_tokens = true;
+    // The time in ms that a completion waits for clangd (the preamble and the answer). After it, the
+    // reply has the script facts and "isIncomplete": true.
+    int completion_budget_ms = 3000;
     // The time in ms that a semantic tokens request waits for the clangd answer. A late answer is
     // kept for the next request.
     int native_token_wait_ms = 300;

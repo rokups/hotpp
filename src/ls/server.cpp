@@ -610,10 +610,10 @@ private:
     // the index. Each generated file includes "hot/runtime.h" (hot::ShellBase).
     // Limit: an earlier preamble of an other document can give the symbol before this preamble.
     // The wait has a limit of 5 s in total. Each request gets only the time that remains.
-    void wait_for_preamble_index()
+    void wait_for_preamble_index(int limit_ms = 5000)
     {
         using clock = std::chrono::steady_clock;
-        const auto deadline = clock::now() + std::chrono::seconds(5);
+        const auto deadline = clock::now() + std::chrono::milliseconds(limit_ms);
         for (;;)
         {
             const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - clock::now());
@@ -635,6 +635,8 @@ private:
     static constexpr int kNativeBudgetMs = 3000;
     // The wait for the first preamble of a generated document.
     static constexpr int kPreambleWaitMs = 60000;
+    // The wait of a completion for the AST and the answer on the patched text, after the preamble.
+    static constexpr int kCompletionAstMs = 15000;
 
     // Before its first preamble, clangd answers a request that needs the AST only after the
     // preamble. On a slow machine the first preamble takes longer than kNativeBudgetMs. So the first
@@ -651,6 +653,25 @@ private:
             return;
         clangd_result("textDocument/documentSymbol", {{"textDocument", {{"uri", d.gen_uri}}}}, kPreambleWaitMs);
         wait_for_preamble_index();
+    }
+
+    // The same wait, but with a deadline. The mark is set only when the document is ready before
+    // the deadline, so a later request waits again. Gives true when the document is ready.
+    bool wait_for_native_ready_until(const Doc& d, std::chrono::steady_clock::time_point deadline)
+    {
+        using clock = std::chrono::steady_clock;
+        auto left = [&] { return static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(deadline - clock::now()).count()); };
+        if (!clangd_ || !clangd_->running() || !d.in_clangd)
+            return true;
+        if (preamble_ready_.count(d.gen_uri))
+            return true;
+        if (left() <= 0 || !clangd_result("textDocument/documentSymbol", {{"textDocument", {{"uri", d.gen_uri}}}}, left()))
+            return false;
+        wait_for_preamble_index(std::max(0, left()));
+        if (left() <= 0)
+            return false;
+        preamble_ready_.insert(d.gen_uri);
+        return true;
     }
 
     std::optional<json> clangd_result(const std::string& method, json params, int timeout_ms = 60000)
@@ -769,6 +790,8 @@ private:
     bool utf8_ = false, clangd_utf8_ = false, shutdown_ = false;
     std::vector<std::string> clangd_token_types_; // the legend of the semantic tokens of clangd
     std::set<std::string> preamble_ready_;
+    // The documents whose patched completion text has had an AST wait (see on_completion).
+    std::set<std::string> completion_synced_;
     // The analyze facts of the scripts on disk that are not open (script_member_location).
     std::map<std::string, std::pair<std::string, hotc::AnalyzeResult>> disk_facts_;
     std::string index_seed_; // the first file of compile_commands.json (start_clangd)  // the generated files with a
@@ -1060,6 +1083,7 @@ void Server::refresh_hosts(Doc* current, bool force)
             clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", d->gen_uri}}}});
         d->in_clangd = false;
         preamble_ready_.erase(d->gen_uri);
+        completion_synced_.erase(d->gen_uri);
         if (d.get() != current)
             redo.push_back(d);
     }
@@ -1967,15 +1991,38 @@ json Server::on_completion(const Doc& d, const json& p)
                     continue;
                 mapped = true;
                 const Text gen(facts.cpp);
+                // Before its first preamble, clangd gives only "fallback" words of the file. A
+                // request that needs the AST waits for the preamble. The wait is on the real text,
+                // before the patched text goes to clangd: a new text would restart the preamble.
+                // The wait has a budget. After it the reply has the script facts and "isIncomplete".
+                // The wait for the real text uses the budget of the options. Then clangd has its
+                // preamble, and the AST of the patched text needs kCompletionAstMs (std headers make it slow).
+                const auto ready_end = std::chrono::steady_clock::now() + std::chrono::milliseconds(opt_.completion_budget_ms);
+                if (!wait_for_native_ready_until(d, ready_end))
+                    break;
+                const auto budget_end = std::chrono::steady_clock::now() + std::chrono::milliseconds(kCompletionAstMs);
+                auto budget_left = [&]
+                {
+                    return std::max(1, static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                        budget_end - std::chrono::steady_clock::now()).count()));
+                };
                 sent = true;
                 send_generated(md, facts.cpp);
-                // Before its first preamble, clangd gives only "fallback" words of the file. A
-                // request that needs the AST waits for the preamble.
-                wait_for_native_ready(d);
+                // The first patched text of a document waits for its AST (the budget holds).
+                const bool first_sync = completion_synced_.insert(d.gen_uri).second;
+                if (first_sync
+                    && !clangd_result("textDocument/documentSymbol", {{"textDocument", {{"uri", d.gen_uri}}}}, budget_left()))
+                {
+                    completion_synced_.erase(d.gen_uri);
+                    break;
+                }
+                if (first_sync)
+                    wait_for_preamble_index(std::min(5000, budget_left()));
                 r = clangd_result("textDocument/completion",
                     {{"textDocument", {{"uri", d.gen_uri}}},
                         {"position",
-                            to_lsp(gen, {g->line - 1, g->col - 1 + static_cast<int>(prefix.size())}, clangd_utf8_)}});
+                            to_lsp(gen, {g->line - 1, g->col - 1 + static_cast<int>(prefix.size())}, clangd_utf8_)}},
+                    budget_left());
                 const bool got = r && (r->is_array() ? !r->empty() : !r->value("items", json::array()).empty());
                 if (got)
                     break;
@@ -2002,10 +2049,13 @@ json Server::on_completion(const Doc& d, const json& p)
                     g = line_start(l);
                 if (g)
                 {
-                    wait_for_native_ready(d);
-                    r = clangd_result("textDocument/completion",
-                        {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, *g)}});
-                    mapped = r.has_value();
+                    const auto stale_end = std::chrono::steady_clock::now() + std::chrono::milliseconds(opt_.completion_budget_ms);
+                    if (wait_for_native_ready_until(d, stale_end))
+                        r = clangd_result("textDocument/completion",
+                            {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, *g)}},
+                            std::max(1, static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                stale_end - std::chrono::steady_clock::now()).count())));
+                    mapped = true; // no answer in time: the reply is incomplete
                 }
             }
             restore.f();
@@ -4375,6 +4425,7 @@ void Server::handle(const json& msg)
         if (clangd_ && d->in_clangd)
             clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", d->gen_uri}}}});
         preamble_ready_.erase(d->gen_uri);
+        completion_synced_.erase(d->gen_uri);
         store_closed_shard(*d);
         {
             std::lock_guard<std::mutex> lock(docs_mutex_);
