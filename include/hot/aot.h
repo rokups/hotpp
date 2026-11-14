@@ -16,6 +16,7 @@
 // A program with a loader can use the same scripts: Loader::load_aot takes the table. The
 // library of the scripts then links only hot::runtime_core.
 #pragma once
+#include "hot/runtime/hashing.h"
 #include "hot/runtime/migration.h"
 #include "hot/runtime/records.h"
 #include "hot/runtime/registry.h"
@@ -47,6 +48,8 @@ struct AotScript
     uint64_t iface_hash = 0; // the interface hash of the script (Module::iface_hash)
     const AotImport* imports = nullptr; // the direct imports of the script
     size_t import_count = 0;
+    // The hash of the script text (hot::hash_text). 0: unknown, no check.
+    uint64_t source_hash = 0;
 };
 
 struct AotTable
@@ -60,6 +63,9 @@ struct AotTable
     // True for optimized AOT code (hotc --aot-optimized): the scripts have no slots, so the
     // loader cannot override or reload them.
     bool optimized = false;
+    // The hash of the build environment (hot::aot_env_hash): the preludes, the format library,
+    // the view type and the standard option. 0: unknown, no check.
+    uint64_t env_hash = 0;
 };
 
 // The table that the registration file of "hotc --aot" defines. A program that does not

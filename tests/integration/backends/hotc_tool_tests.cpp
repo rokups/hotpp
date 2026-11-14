@@ -12,6 +12,7 @@
 #include "hot/config.h"
 #include "hot/module.h"
 #include "hot/paths.h"
+#include "hot/runtime/hashing.h"
 #include "hot/runtime/loader.h"
 #include "hot/runtime/shell.h"
 #include "support/process.h"
@@ -1302,7 +1303,7 @@ TEST(HotcTool, AotModeWritesTheCppAndTheRegistrationFile)
     const std::string reg = read_file(out_dir + "/hot_aot_registry.cpp");
     EXPECT_NE(reg.find("{\"aot_demo\", &hot_script_register_aot_demo, "), std::string::npos) << reg;
     EXPECT_NE(reg.find("{\"props_v1\", &hot_script_register_props_v1, "), std::string::npos) << reg;
-    EXPECT_NE(reg.find("aot_table = {kAotScripts, 2, kAotSlots}"), std::string::npos) << reg;
+    EXPECT_NE(reg.find("aot_table = {kAotScripts, 2, kAotSlots, false, "), std::string::npos) << reg;
 }
 
 static void write_text(const std::string& path, const std::string& text)
@@ -1377,6 +1378,71 @@ TEST(HotcTool, AotModeKeepsTheTimeStampOfAnUnchangedOutput)
     EXPECT_NE(std::filesystem::last_write_time(out_dir + "/aot_demo.iface.h"), old);
 }
 
+// The text of the line of a script in the registration file (the "{"name", ..." entry).
+static std::string registry_row(const std::string& reg, const std::string& name)
+{
+    const size_t b = reg.find("    {\"" + name + "\", &");
+    if (b == std::string::npos)
+        return std::string();
+    return reg.substr(b, reg.find('\n', b) - b);
+}
+
+TEST(HotcTool, AotRegistryHasTheSourceHashAndTheEnvironmentHash)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_aot_hash");
+    std::filesystem::create_directories(dir);
+    write_text(dir + "/h.hot", "class H {\n    int a = 1;\n}\n");
+    write_text(dir + "/pre.hot", "// prelude one\n");
+    std::string text;
+    auto run = [&](const std::string& out) { return run_hotc(cat({{"--aot", dir + "/h.hot", "--out-dir", dir + "/" + out}, include_args()}), text); };
+    auto run_pre = [&](const std::string& out)
+    {
+        return run_hotc(cat({{"--aot", dir + "/h.hot", "--out-dir", dir + "/" + out, "--prelude", dir + "/pre.hot"}, include_args()}), text);
+    };
+    ASSERT_EQ(run("o1"), 0) << text;
+    const std::string reg1 = read_file(dir + "/o1/hot_aot_registry.cpp");
+    const std::string src = read_file(dir + "/h.hot");
+    const std::string want_src = std::to_string(hot::hash_text(src)) + "ull";
+    EXPECT_NE(registry_row(reg1, "h").find(want_src), std::string::npos) << registry_row(reg1, "h") << " " << want_src;
+    const std::string want_env = std::to_string(hot::aot_env_hash({}, "std", hot::view_type_name(), "")) + "ull";
+    EXPECT_NE(reg1.find(want_env + "};"), std::string::npos) << want_env << "\n" << reg1;
+    // A changed script changes the source hash, not the environment hash.
+    write_text(dir + "/h.hot", "class H {\n    int a = 2;\n}\n");
+    ASSERT_EQ(run("o2"), 0) << text;
+    const std::string reg2 = read_file(dir + "/o2/hot_aot_registry.cpp");
+    EXPECT_NE(registry_row(reg2, "h"), registry_row(reg1, "h"));
+    EXPECT_NE(reg2.find(want_env + "};"), std::string::npos);
+    // A prelude changes the environment hash. A changed prelude text changes it again.
+    ASSERT_EQ(run_pre("o3"), 0) << text;
+    const std::string reg3 = read_file(dir + "/o3/hot_aot_registry.cpp");
+    EXPECT_EQ(reg3.find(want_env + "};"), std::string::npos);
+    write_text(dir + "/pre.hot", "// prelude two\n");
+    ASSERT_EQ(run_pre("o4"), 0) << text;
+    const std::string reg4 = read_file(dir + "/o4/hot_aot_registry.cpp");
+    EXPECT_NE(reg4, reg3);
+    EXPECT_EQ(registry_row(reg4, "h"), registry_row(reg3, "h"));
+    // Another std option changes it.
+    ASSERT_EQ(run_hotc(cat({{"--aot", dir + "/h.hot", "--out-dir", dir + "/o5", "--std=c++17"}, include_args()}), text), 0) << text;
+    EXPECT_EQ(read_file(dir + "/o5/hot_aot_registry.cpp").find(want_env + "};"), std::string::npos);
+}
+
+TEST(HotcTool, AotModeFailsWhenAnImportIsNotAnInput)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_aot_import");
+    std::filesystem::create_directories(dir);
+    write_text(dir + "/base_lib.hot", "class BaseLib {\n    int a = 1;\n}\n");
+    write_text(dir + "/user.hot", "using \"base_lib.hot\";\n\nclass User {\n    int b = 2;\n}\n");
+    std::string text;
+    EXPECT_EQ(run_hotc(cat({{"--aot", dir + "/user.hot", "--out-dir", dir + "/out"}, include_args()}), text), 1);
+    EXPECT_NE(text.find("user"), std::string::npos) << text;
+    EXPECT_NE(text.find("base_lib"), std::string::npos) << text;
+    EXPECT_NE(text.find("not in the input list"), std::string::npos) << text;
+    EXPECT_EQ(run_hotc(cat({{"--aot", dir + "/user.hot", dir + "/base_lib.hot", "--out-dir", dir + "/out2"}, include_args()}), text), 0)
+        << text;
+}
+
 // --aot-optimized adds the define to each script and "true" to the table.
 TEST(HotcTool, AotOptimizedWritesTheDefineAndTheTableFlag)
 {
@@ -1389,7 +1455,7 @@ TEST(HotcTool, AotOptimizedWritesTheDefineAndTheTableFlag)
     const std::string demo = read_file(out_dir + "/aot_demo.aot.cpp");
     EXPECT_NE(demo.find("\n#define HOT_AOT_OPTIMIZED 1\n"), std::string::npos);
     const std::string reg = read_file(out_dir + "/hot_aot_registry.cpp");
-    EXPECT_NE(reg.find("aot_table = {kAotScripts, 1, kAotSlots, true}"), std::string::npos) << reg;
+    EXPECT_NE(reg.find("aot_table = {kAotScripts, 1, kAotSlots, true, "), std::string::npos) << reg;
 }
 
 // Optimized AOT code has no state_of, no ShellBase and no init_state: the shell has the fields.
