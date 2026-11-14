@@ -48,7 +48,7 @@ end
 lspconfig.hot_ls.setup({})
 ```
 
-Add flags to `cmd` when you need them. By default, `hot-ls` shares the index of `clangd` with the C++ `clangd` of the project. Add `--private-clangd-dir` to keep a private index. Add `--no-native-tokens` to remove the semantic tokens for C++ names.
+Add flags to `cmd` when you need them. By default, `hot-ls` shares the index of `clangd` with the C++ `clangd` of the project. Add `--private-clangd-dir` to keep a private index. Add `--no-native-tokens` to remove the semantic tokens for C++ names. Add `--no-rename-host-headers` to stop rename from editing a header of a host include dir outside the workspace folders.
 
 ## Language server (Vim)
 

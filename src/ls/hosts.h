@@ -18,6 +18,12 @@
 // A relative prelude path is relative to "sourceDir". hot-ls reads the files for each analysis.
 // "preludeSuffix" (optional) names the user preludes: the files in "scriptDirs" with this suffix.
 // hot-ls finds them at each analysis and gives them after "preludes", sorted by path.
+// "sourceRootsFile" (optional, one path on each line, "!" before a SYSTEM dir) and the inline arrays
+// "sourceRoots" and "systemDirs" give the source dirs of the build. "binaryDir" is the build dir.
+// host_header_refusal uses them to decide if a header that is outside the workspace may get an edit.
+// Vendored code in a source tree stays editable, unless its dir has the SYSTEM property in CMake.
+// A host file from an older CMake run has no source roots. It refuses each host header until the
+// next CMake run writes the ".roots" file.
 // HostSet loads these files. match() finds the best host for a script path.
 #pragma once
 
@@ -34,12 +40,27 @@ struct Host
 {
     std::string name, binary_dir, compiler, std_version, resource_dir;
     std::vector<std::string> script_dirs, scripts, include_dirs, defines, flags;
+    // The source dirs of the whole build (the file "sourceRootsFile" and "sourceRoots"), and the
+    // SYSTEM dirs ("!" lines of that file and "systemDirs"). They are absolute and normalized.
+    std::vector<std::string> source_roots, system_dirs;
+    // The top source dir of the build (CMAKE_SOURCE_DIR, the key "topSourceDir"). An old host file
+    // has none: the loader then takes the first source root of the ".roots" file. It can be empty.
+    std::string top_source_dir;
     std::vector<std::string> preludes; // the absolute paths of the prelude files of the host
     std::string prelude_suffix; // the suffix of the user preludes in the script dirs, or empty
 
     // The flags, then "-D<define>" for each define. The JSON file has no "-D" prefix.
     std::vector<std::string> cxx_flags() const;
 };
+
+// Tells why hot-ls must not edit the header at path for the host, or gives an empty string. The
+// header must be below an include dir of the host, below a source root, not below a SYSTEM dir
+// and not below the build dir. Each compare uses the real path (symlinks resolved) and a path
+// component border. The caller checks the workspace folders and the setting renameHostHeaders.
+std::string host_header_refusal(const Host& host, const std::string& path);
+
+// True when the real path of path is below the build dir of the host (binaryDir).
+bool host_in_build_dir(const Host& host, const std::string& path);
 
 class HostSet
 {
@@ -58,7 +79,7 @@ public:
     bool refresh();
 
     // Marks the set for a full reload at the next refresh(), when file is a "*.json", "*.defines", "*.options" or
-    // "*.includes" file in the directory of the set. The modification time of the directory does not change when a host
+    // "*.includes" or "*.roots" file in the directory of the set. The modification time of the directory does not change when a host
     // file changes in place. Returns true when the file belongs to the set.
     bool force_reload_for(const std::string& file);
 

@@ -62,11 +62,12 @@ std::vector<std::string> read_lines(const fs::path& dir, const std::string& name
     return out;
 }
 
-// True for a file that makes a host: the JSON file and its three side files.
+// True for a file that makes a host: the JSON file and its four side files.
 bool is_host_file(const fs::path& p)
 {
     const std::string ext = p.extension().string();
-    return ext == ".json" || ext == ".defines" || ext == ".options" || ext == ".includes";
+    return ext == ".json" || ext == ".defines" || ext == ".options" || ext == ".includes"
+        || ext == ".roots";
 }
 
 // The form of a path that the host set compares: lexically normal, with "/" as the separator.
@@ -168,6 +169,58 @@ std::vector<std::string> Host::cxx_flags() const
     return out;
 }
 
+namespace
+{
+
+// The real path of s (symlinks resolved), in the form of the host set.
+std::string real_key(const std::string& s)
+{
+    std::error_code ec;
+    const fs::path c = fs::weakly_canonical(utf8_path(s), ec);
+    return strip_slash(path_key(ec ? utf8_path(s) : c));
+}
+
+// True when the path is below one of the dirs (a path component border).
+bool below_any_dir(const std::vector<std::string>& dirs, const std::string& real_path)
+{
+    for (const std::string& d : dirs)
+        if (!d.empty() && contains(real_key(d), real_path))
+            return true;
+    return false;
+}
+
+// The build dir rule applies unless the build dir equals the top source dir or is above it (an
+// in-source build). Then the build dir holds the sources. Without a top source dir the rule stays on.
+bool build_dir_rule_applies(const Host& host)
+{
+    if (host.binary_dir.empty())
+        return false;
+    if (host.top_source_dir.empty())
+        return true;
+    return !contains(real_key(host.binary_dir), real_key(host.top_source_dir));
+}
+
+} // namespace
+
+bool host_in_build_dir(const Host& host, const std::string& path)
+{
+    return build_dir_rule_applies(host) && contains(real_key(host.binary_dir), real_key(path));
+}
+
+std::string host_header_refusal(const Host& host, const std::string& path)
+{
+    const std::string p = real_key(path);
+    if (!below_any_dir(host.include_dirs, p))
+        return "outside the workspace folders and the include dirs of the host";
+    if (host.source_roots.empty())
+        return "the host file has no source roots (run CMake again)";
+    if (!below_any_dir(host.source_roots, p) || below_any_dir(host.system_dirs, p))
+        return "outside the source dirs of the build of the host";
+    if (host_in_build_dir(host, path))
+        return "in the build dir of the host";
+    return {};
+}
+
 void HostSet::load(const std::string& dir, bool require_cache)
 {
     dir_ = dir;
@@ -215,6 +268,23 @@ void HostSet::load(const std::string& dir, bool require_cache)
         if (inc.size() > 1)
             ordered.insert(ordered.end(), inc.begin() + 1, inc.end());
         host->include_dirs = resolve_paths(source_dir, ordered, true);
+        // The source roots and the SYSTEM dirs. The side file has one path on each line. A line
+        // with the prefix "!" is a SYSTEM dir. The inline arrays have the same meaning.
+        std::vector<std::string> roots = get_strings(j, "sourceRoots");
+        std::vector<std::string> system = get_strings(j, "systemDirs");
+        std::string top = get_string(j, "topSourceDir");
+        for (std::string& l : read_lines(e.path().parent_path(), get_string(j, "sourceRootsFile")))
+        {
+            if (top.empty() && l[0] != '!')
+                top = l; // an old host file: the first root is the top source dir
+            if (l[0] == '!')
+                system.push_back(l.substr(1));
+            else
+                roots.push_back(std::move(l));
+        }
+        host->top_source_dir = resolve_path(source_dir, top);
+        host->source_roots = resolve_paths(source_dir, roots, true);
+        host->system_dirs = resolve_paths(source_dir, system, true);
         // The options of the target come first, then the explicit flags (the last flag wins).
         host->flags = read_lines(e.path().parent_path(), get_string(j, "optionsFile"));
         for (std::string& f : get_strings(j, "flags"))

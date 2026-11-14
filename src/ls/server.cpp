@@ -344,6 +344,41 @@ std::optional<Pos> Doc::gen_script_to_text(Pos p) const
 
 static std::string blank_non_code(std::string_view l, bool& in_block);
 
+// The state of one native rename. The helpers of Server::native_rename share it.
+// True for the name of a file that "hotc --compile-commands" writes: "<stem>.g<N>.cpp".
+bool is_hotc_output(const std::string& path)
+{
+    const std::string name = fs::path(path).filename().string();
+    const std::string tail = ".cpp";
+    if (name.size() < 8 || name.compare(name.size() - tail.size(), tail.size(), tail) != 0)
+        return false;
+    size_t end = name.size() - tail.size(), b = end;
+    while (b > 0 && std::isdigit(static_cast<unsigned char>(name[b - 1])))
+        --b;
+    return b < end && b >= 2 && name[b - 1] == 'g' && name[b - 2] == '.';
+}
+
+struct NativeRenameJob
+{
+    std::string old_name, new_name;
+    // The start of the refusal texts.
+    std::string what;
+    // The script where the rename starts.
+    const Doc* start = nullptr;
+    // All the clangd calls of one rename share this time.
+    std::chrono::steady_clock::time_point deadline;
+    // The edits by uri.
+    json changes = json::object();
+    // The text of the real C++ files. A file that is not readable has no text.
+    std::map<std::string, std::shared_ptr<Text>> cpp_texts;
+    // The lines of a script without the comments and the strings.
+    std::map<const Doc*, std::vector<std::string>> code_lines;
+    // The declaration places of the symbol: the uri, the line and the character.
+    std::vector<std::tuple<std::string, int, int>> target;
+    // The scripts of the generated files that an answer changes (phase 2).
+    std::vector<std::string> extra_script_paths;
+};
+
 class Server
 {
 public:
@@ -760,9 +795,25 @@ private:
     // place of the word "old_name" in the script. Gives the edit, or an error message. "no_symbol"
     // is the message when the word is not a symbol that clangd knows.
     std::variant<json, std::string> native_rename(
-        const Doc& d, Pos cur, const std::string& old_name, const std::string& new_name, const std::string& no_symbol);
+        const Doc& d, Pos cur, const std::string& old_name, const std::string& new_name, const std::string& no_symbol,
+        bool prepare);
+    // The helpers of native_rename. Each gives a refusal text, or an empty string when it is done.
+    // The edits of one script, mapped to script places and merged in the job.
+    std::string map_script_edits(NativeRenameJob& job, const Doc& o, const json& edits);
+    // The edits of a real C++ file: checked, then merged in the job.
+    std::string add_cpp_edits(NativeRenameJob& job, const Doc& d, const std::string& uri, const json& edits);
+    // The edits of one answer of clangd for the script "asked".
+    std::string add_answer(NativeRenameJob& job, const Doc& d, const Doc& asked, const json& result);
+    // True when the range of a real C++ file holds exactly the old name.
+    bool is_old_name(NativeRenameJob& job, const std::string& uri, const json& range);
+    std::string rename_other_scripts(NativeRenameJob& job, const Doc& d);
     // True when the file is in a workspace folder.
     bool in_workspace(const std::string& path) const;
+    // The host for the scope rule of a native edit: the host of the document path, else the
+    // nearest host when the document is in a workspace folder, else none.
+    std::shared_ptr<const Host> scope_host(const Doc& d) const;
+    // The reason why a native rename must not edit the file, or an empty string when it may.
+    std::string native_edit_refusal(const Doc& d, const std::string& path) const;
     // The tokens of the native names of a document: clangd classifies the generated text. The
     // names that the script tokens did not classify get a token.
     std::vector<SemanticToken> native_tokens(const Doc& d, const std::vector<SemanticToken>& known);
@@ -1435,6 +1486,8 @@ json Server::on_initialize(const json& p)
             opt_.private_clangd_dir = o["privateClangdDir"].get<bool>();
         if (o.contains("nativeSemanticTokens") && o["nativeSemanticTokens"].is_boolean())
             opt_.native_semantic_tokens = o["nativeSemanticTokens"].get<bool>();
+        if (o.contains("renameHostHeaders") && o["renameHostHeaders"].is_boolean())
+            opt_.rename_host_headers = o["renameHostHeaders"].get<bool>();
         if (o.contains("compileCommandsDir"))
         {
             opt_.compile_commands_dir = o.value("compileCommandsDir", std::string());
@@ -4920,7 +4973,7 @@ std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
     bool generated = false;
     const auto r = symbol_places(d, cur, old_name, &decl, &generated);
     if (const auto* e = std::get_if<std::string>(&r))
-        return generated ? *e : native_rename(d, cur, old_name, new_name, *e);
+        return generated ? *e : native_rename(d, cur, old_name, new_name, *e, false);
     return untabled_refusal(d, old_name);
 }
 
@@ -4937,8 +4990,204 @@ bool Server::in_workspace(const std::string& path) const
     return false;
 }
 
-std::variant<json, std::string> Server::native_rename(
-    const Doc& d, Pos cur, const std::string& old_name, const std::string& new_name, const std::string& no_symbol)
+// The host of a script for the scope rule: the matching host, else the nearest host when the
+// script is in a workspace folder. A script outside the workspace folders has no host then.
+std::shared_ptr<const Host> Server::scope_host(const Doc& d) const
+{
+    if (auto host = host_of(d.path))
+        return host;
+    return in_workspace(d.path) ? nearest_host(d.path) : nullptr;
+}
+
+std::string Server::native_edit_refusal(const Doc& d, const std::string& path) const
+{
+    const auto host = scope_host(d);
+    if (in_workspace(path))
+    {
+        // A generated file below the build dir of the host gets no edit, also inside the workspace.
+        if (host && host_in_build_dir(*host, path))
+            return "in the build dir of the host";
+        return {};
+    }
+    if (!host)
+        return "outside the workspace folders and the include dirs of the host";
+    if (std::string why = host_header_refusal(*host, path); !why.empty())
+        return why;
+    return opt_.rename_host_headers ? std::string()
+                                    : "outside the workspace folders (the setting renameHostHeaders is off)";
+}
+
+// The refusal text of a native rename starts with "what". The helpers of native_rename share this state.
+std::string Server::map_script_edits(NativeRenameJob& job, const Doc& o, const json& edits)
+{
+    const std::string& old_name = job.old_name;
+    const std::string& what = job.what;
+    if (&o != job.start && !in_workspace(o.path))
+        return what + ": the edit changes " + o.path + ", outside the workspace folders";
+    // The script places of the edits of this script.
+    std::set<Pos> places;
+    // The generated line, and the script place of each edit.
+    std::set<std::tuple<int, int, int>> seen;
+    auto code_of = [&](const Doc& doc, int line) -> const std::string&
+    {
+        auto& lines = job.code_lines[&doc];
+        if (lines.empty())
+        {
+            bool block = false;
+            for (int i = 0; i < static_cast<int>(doc.text.starts.size()); ++i)
+                lines.push_back(blank_non_code(doc.text.line(i), block));
+        }
+        return lines[static_cast<size_t>(line)];
+    };
+    const std::vector<int> script_lines = gen_script_lines(o);
+    for (const json& e : edits)
+    {
+        if (!e.contains("range"))
+            continue;
+        const Pos gb = from_lsp(o.gen, e["range"]["start"], clangd_utf8_);
+        const Pos ge = from_lsp(o.gen, e["range"]["end"], clangd_utf8_);
+        if (gb.line < 0 || gb.line >= static_cast<int>(o.gen.starts.size()))
+            return what + ": a changed range in the generated code is not the name";
+        const std::string_view gl = o.gen.line(gb.line);
+        if (gb.line != ge.line || gb.col < 0 || gb.col > ge.col || ge.col > static_cast<int>(gl.size())
+            || gl.substr(static_cast<size_t>(gb.col), static_cast<size_t>(ge.col - gb.col)) != old_name)
+            return what + ": a changed range in the generated code is not the name";
+        const int sl = gb.line < static_cast<int>(script_lines.size()) ? script_lines[static_cast<size_t>(gb.line)] : -1;
+        std::optional<Pos> at;
+        if (const auto s = to_script(o, e["range"]["start"]))
+        {
+            // The mapped start can be the start of the expression ("this" of "this.heal").
+            // Take the first whole word from there.
+            const std::string_view l = o.text.line(s->line);
+            for (size_t w = l.find(old_name, static_cast<size_t>(s->col)); w != std::string_view::npos && !at;
+                w = l.find(old_name, w + 1))
+                if ((w == 0 || !is_id_char(l[w - 1]))
+                    && (w + old_name.size() >= l.size() || !is_id_char(l[w + old_name.size()])))
+                    at = Pos{s->line, static_cast<int>(w)};
+        }
+        else if (sl < 0)
+            continue; // text of the translator: no script place
+        if (at && whole_word_cols(code_of(o, at->line), old_name).size() != 1)
+        {
+            // The line has another word of the same name (a local, a member). The first word
+            // from the segment start is the use only if the k-th use rule agrees.
+            const auto kth = script_use_of_gen_word(o, script_lines, gb.line, gb.col, old_name);
+            if (!kth || kth->line != at->line || kth->col != at->col)
+                return what + ": line " + std::to_string(at->line + 1) + " of " + o.path + " has another word "
+                    + old_name + " that is not clearly this symbol";
+        }
+        if (!at)
+            at = script_use_of_gen_word(o, script_lines, gb.line, gb.col, old_name);
+        if (!at)
+        {
+            // Code of the translator in the region of a script line (the copy of a
+            // parameter, for example) does not use the word in the script line.
+            const auto t = o.gen_script_to_text({sl, 0});
+            bool block = false;
+            if (t && t->line < static_cast<int>(o.text.starts.size())
+                && whole_word_cols(blank_non_code(o.text.line(t->line), block), old_name).empty())
+                continue;
+        }
+        if (!at)
+            return what + ": a use at line " + std::to_string(sl + 1) + " of " + o.path + " has no clear place in the script";
+        places.insert(*at);
+        // Two edits of one generated line for one place, in a script line with more than one
+        // word of the name: the map cannot tell the uses apart. No partial rename. The
+        // translator can write a use twice (a method declaration and definition, the type in
+        // "Counter local = Counter()"), so these duplicates are fine in a line with one word.
+        if (!seen.insert({gb.line, at->line, at->col}).second && whole_word_cols(code_of(o, at->line), old_name).size() != 1)
+            return what + ": two uses at line " + std::to_string(at->line + 1) + " of " + o.path
+                + " map to the same place in the script";
+    }
+    if (places.empty())
+        return {};
+    json out = json::array();
+    for (const Pos& s : places)
+        out.push_back({{"range", script_range(o, s, {s.line, s.col + static_cast<int>(old_name.size())})},
+            {"newText", job.new_name}});
+    if (merge_edits(job.changes, o.uri, out) > 0)
+        return what + ": two edits of " + o.path + " change the same range";
+    return {};
+}
+
+std::string Server::add_cpp_edits(NativeRenameJob& job, const Doc& d, const std::string& uri, const json& edits)
+{
+    // A real C++ file: the edit passes through. It must be in a workspace folder (or an include dir
+    // of the host), and it must change the old name.
+    const std::string path = uri_to_path(uri);
+    // A file that "hotc --compile-commands" writes ("<stem>.g<N>.cpp") is generated code. The next
+    // translation writes it again, so an edit of it is lost and the script does not change.
+    if (is_hotc_output(path))
+        return job.what + ": the edit changes the generated file " + path + ", the script of this file does not change";
+    if (const std::string why = native_edit_refusal(d, path); !why.empty())
+        return job.what + ": the edit changes " + path + ", " + why;
+    auto& text = job.cpp_texts[uri];
+    if (!text)
+        if (const auto content = read_file(path))
+            text = std::make_shared<Text>(*content);
+    for (const json& e : edits)
+        if (!e.contains("range") || !is_old_name(job, uri, e["range"]))
+            return job.what + ": an edit of " + path + " does not change the name " + job.old_name;
+    if (merge_edits(job.changes, uri, edits) > 0)
+        return job.what + ": two edits of " + path + " change the same range";
+    return {};
+}
+
+// True when the range of a real C++ file holds exactly the old name.
+bool Server::is_old_name(NativeRenameJob& job, const std::string& uri, const json& range)
+{
+    auto& t = job.cpp_texts[uri];
+    if (!t)
+        if (const auto content = read_file(uri_to_path(uri)))
+            t = std::make_shared<Text>(*content);
+    if (!t || !range.is_object() || !range.contains("start") || !range.contains("end"))
+        return false;
+    const int line = range["start"].value("line", -1);
+    if (line < 0 || line >= static_cast<int>(t->starts.size()) || range["end"].value("line", -2) != line)
+        return false;
+    const int b = from_lsp(*t, range["start"], clangd_utf8_).col, e = from_lsp(*t, range["end"], clangd_utf8_).col;
+    return b >= 0 && e > b && e <= static_cast<int>(t->line(line).size())
+        && t->line(line).substr(static_cast<size_t>(b), static_cast<size_t>(e - b)) == job.old_name;
+}
+
+std::string Server::add_answer(NativeRenameJob& job, const Doc& d, const Doc& asked, const json& result)
+{
+    // The edits by file. A client with "documentChanges" gets the other form; clangd gives
+    // "changes" to a client without it, and this server does not ask for it.
+    std::map<std::string, json> by_uri;
+    if (result.contains("changes") && result["changes"].is_object())
+        for (const auto& [uri, edits] : result["changes"].items())
+            by_uri[uri] = edits;
+    if (result.contains("documentChanges") && result["documentChanges"].is_array())
+        for (const json& dc : result["documentChanges"])
+            if (dc.contains("textDocument") && dc.contains("edits"))
+                by_uri[json_str(dc["textDocument"], "uri")] = dc["edits"];
+    for (const auto& [uri, edits] : by_uri)
+    {
+        if (!edits.is_array())
+            continue;
+        const auto gen_it = gen_docs_.find(uri);
+        std::string why;
+        if (uri == asked.gen_uri)
+            why = map_script_edits(job, asked, edits);
+        else if (gen_it != gen_docs_.end())
+            why = map_script_edits(job, *gen_it->second, edits);
+        else if (is_generated_uri(uri))
+        {
+            // The generated file of a closed script: no edit here. Phase 2 asks the script itself.
+            const std::string gen_path = uri_to_path(uri);
+            job.extra_script_paths.push_back(gen_path.substr(0, gen_path.size() - 4));
+        }
+        else
+            why = add_cpp_edits(job, d, uri, edits);
+        if (!why.empty())
+            return why;
+    }
+    return {};
+}
+
+std::variant<json, std::string> Server::native_rename(const Doc& d, Pos cur, const std::string& old_name,
+    const std::string& new_name, const std::string& no_symbol, bool prepare)
 {
     if (!clangd_ || !is_symbol_word(old_name))
         return no_symbol;
@@ -4946,18 +5195,23 @@ std::variant<json, std::string> Server::native_rename(
     const std::vector<Pos> asks = gen_asks(d, cur, by_word);
     if (asks.empty())
         return no_symbol;
-    const std::string what = "cannot rename the native symbol " + old_name;
+    NativeRenameJob job;
+    job.old_name = old_name;
+    job.new_name = new_name;
+    job.start = &d;
+    job.what = "cannot rename the native symbol " + old_name;
+    const std::string& what = job.what;
     // All the clangd calls of one rename share a time budget.
-    constexpr int kRenameBudgetMs = 10000;
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kRenameBudgetMs);
+    job.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(opt_.rename_budget_ms);
     auto left_ms = [&]
     {
         return static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
-            deadline - std::chrono::steady_clock::now()).count());
+            job.deadline - std::chrono::steady_clock::now()).count());
     };
     auto locations = [](const std::optional<json>& r)
     { return r ? (r->is_array() ? *r : json::array({*r})) : json::array(); };
     std::string last_error = "clangd gives no answer";
+    bool found = false;
     for (const Pos& g : asks)
     {
         if (left_ms() <= 0)
@@ -4968,6 +5222,7 @@ std::variant<json, std::string> Server::native_rename(
         // The places in the workspace are edits too: clangd can miss a header that no indexed
         // translation unit includes.
         std::vector<std::pair<std::string, json>> declared; // the uri and the range
+        job.target.clear();
         for (const char* kind : {"textDocument/declaration", "textDocument/definition"})
             for (const json& loc : locations(clangd_result(kind, tdp, std::max(left_ms(), 1))))
             {
@@ -4975,11 +5230,14 @@ std::variant<json, std::string> Server::native_rename(
                 if (uri.empty() || uri == d.gen_uri || gen_docs_.count(uri))
                     continue;
                 const std::string path = uri_to_path(uri);
-                if (!in_workspace(path))
-                    return what + ": it is declared in " + path + ", outside the workspace folders";
+                if (const std::string why = native_edit_refusal(d, path); !why.empty())
+                    return what + ": it is declared in " + path + ", " + why;
                 const json range = loc.contains("targetSelectionRange") ? loc["targetSelectionRange"] : loc.value("range", json());
                 if (range.is_object() && range.contains("start") && range.contains("end"))
+                {
+                    job.target.emplace_back(uri, range["start"].value("line", 0), range["start"].value("character", 0));
                     declared.emplace_back(uri, range);
+                }
             }
         json params = tdp;
         params["newName"] = new_name;
@@ -4993,145 +5251,16 @@ std::variant<json, std::string> Server::native_rename(
         }
         if (!resp.contains("result") || !resp["result"].is_object())
             continue;
-        // The edits by file. A client with "documentChanges" gets the other form; clangd gives
-        // "changes" to a client without it, and this server does not ask for it.
-        std::map<std::string, json> by_uri;
-        const json& edit = resp["result"];
-        if (edit.contains("changes") && edit["changes"].is_object())
-            for (const auto& [uri, edits] : edit["changes"].items())
-                by_uri[uri] = edits;
-        if (edit.contains("documentChanges") && edit["documentChanges"].is_array())
-            for (const json& dc : edit["documentChanges"])
-                if (dc.contains("textDocument") && dc.contains("edits"))
-                    by_uri[json_str(dc["textDocument"], "uri")] = dc["edits"];
-        json changes = json::object();
-        std::map<std::string, std::pair<const Doc*, std::set<Pos>>> places; // by the uri of the script
-        // The uri of a script, the generated line, and the script place of each edit.
-        std::set<std::tuple<std::string, int, int, int>> seen;
-        // The text of the real C++ files. A file that is not readable has no text.
-        std::map<std::string, std::shared_ptr<Text>> cpp_texts;
-        auto cpp_text = [&](const std::string& uri)
-        {
-            auto& t = cpp_texts[uri];
-            if (!t)
-                if (const auto content = read_file(uri_to_path(uri)))
-                    t = std::make_shared<Text>(*content);
-            return t;
-        };
-        // True when the range of a real C++ file holds exactly the old name.
-        auto is_old_name = [&](const std::string& uri, const json& range)
-        {
-            const auto t = cpp_text(uri);
-            if (!t || !range.is_object() || !range.contains("start") || !range.contains("end"))
-                return false;
-            const int line = range["start"].value("line", -1);
-            if (line < 0 || line >= static_cast<int>(t->starts.size()) || range["end"].value("line", -2) != line)
-                return false;
-            const int b = from_lsp(*t, range["start"], clangd_utf8_).col, e = from_lsp(*t, range["end"], clangd_utf8_).col;
-            return b >= 0 && e > b && e <= static_cast<int>(t->line(line).size())
-                && t->line(line).substr(static_cast<size_t>(b), static_cast<size_t>(e - b)) == old_name;
-        };
-        // The lines of a script without the comments and the strings.
-        std::map<const Doc*, std::vector<std::string>> code_lines;
-        auto code_of = [&](const Doc& doc, int line) -> const std::string&
-        {
-            auto& lines = code_lines[&doc];
-            if (lines.empty())
-            {
-                bool block = false;
-                for (int i = 0; i < static_cast<int>(doc.text.starts.size()); ++i)
-                    lines.push_back(blank_non_code(doc.text.line(i), block));
-            }
-            return lines[static_cast<size_t>(line)];
-        };
-        for (const auto& [uri, edits] : by_uri)
-        {
-            if (!edits.is_array())
-                continue;
-            const auto gen_it = gen_docs_.find(uri);
-            if (gen_it == gen_docs_.end())
-            {
-                // A real C++ file: the edit passes through. It must be in a workspace folder, and it
-                // must change the old name.
-                if (!in_workspace(uri_to_path(uri)))
-                    return what + ": the edit changes " + uri_to_path(uri) + ", outside the workspace folders";
-                for (const json& e : edits)
-                    if (!e.contains("range") || !is_old_name(uri, e["range"]))
-                        return what + ": an edit of " + uri_to_path(uri) + " does not change the name " + old_name;
-                changes[uri] = edits;
-                continue;
-            }
-            const Doc& o = *gen_it->second;
-            if (&o != &d && !in_workspace(o.path))
-                return what + ": the edit changes " + o.path + ", outside the workspace folders";
-            const std::vector<int> script_lines = gen_script_lines(o);
-            for (const json& e : edits)
-            {
-                if (!e.contains("range"))
-                    continue;
-                const Pos gb = from_lsp(o.gen, e["range"]["start"], clangd_utf8_);
-                const Pos ge = from_lsp(o.gen, e["range"]["end"], clangd_utf8_);
-                if (gb.line < 0 || gb.line >= static_cast<int>(o.gen.starts.size()))
-                    return what + ": a changed range in the generated code is not the name";
-                const std::string_view gl = o.gen.line(gb.line);
-                if (gb.line != ge.line || gb.col < 0 || gb.col > ge.col || ge.col > static_cast<int>(gl.size())
-                    || gl.substr(static_cast<size_t>(gb.col), static_cast<size_t>(ge.col - gb.col)) != old_name)
-                    return what + ": a changed range in the generated code is not the name";
-                const int sl = gb.line < static_cast<int>(script_lines.size()) ? script_lines[static_cast<size_t>(gb.line)] : -1;
-                std::optional<Pos> at;
-                if (const auto s = to_script(o, e["range"]["start"]))
-                {
-                    // The mapped start can be the start of the expression ("this" of "this.heal").
-                    // Take the first whole word from there.
-                    const std::string_view l = o.text.line(s->line);
-                    for (size_t w = l.find(old_name, static_cast<size_t>(s->col)); w != std::string_view::npos && !at;
-                        w = l.find(old_name, w + 1))
-                        if ((w == 0 || !is_id_char(l[w - 1]))
-                            && (w + old_name.size() >= l.size() || !is_id_char(l[w + old_name.size()])))
-                            at = Pos{s->line, static_cast<int>(w)};
-                }
-                else if (sl < 0)
-                    continue; // text of the translator: no script place
-                if (at && whole_word_cols(code_of(o, at->line), old_name).size() != 1)
-                {
-                    // The line has another word of the same name (a local, a member). The first word
-                    // from the segment start is the use only if the k-th use rule agrees.
-                    const auto kth = script_use_of_gen_word(o, script_lines, gb.line, gb.col, old_name);
-                    if (!kth || kth->line != at->line || kth->col != at->col)
-                        return what + ": line " + std::to_string(at->line + 1) + " of " + o.path + " has another word "
-                            + old_name + " that is not clearly this symbol";
-                }
-                if (!at)
-                    at = script_use_of_gen_word(o, script_lines, gb.line, gb.col, old_name);
-                if (!at)
-                {
-                    // Code of the translator in the region of a script line (the copy of a
-                    // parameter, for example) does not use the word in the script line.
-                    const auto t = o.gen_script_to_text({sl, 0});
-                    bool block = false;
-                    if (t && t->line < static_cast<int>(o.text.starts.size())
-                        && whole_word_cols(blank_non_code(o.text.line(t->line), block), old_name).empty())
-                        continue;
-                }
-                if (!at)
-                    return what + ": a use at line " + std::to_string(sl + 1) + " of " + o.path + " has no clear place in the script";
-                auto& entry = places[o.uri];
-                entry.first = &o;
-                // Two edits of one generated line for one place, in a script line with more than one
-                // word of the name: the map cannot tell the uses apart. No partial rename. The
-                // translator can write a use twice (a method declaration and definition, the type in
-                // "Counter local = Counter()"), so these duplicates are fine in a line with one word.
-                entry.second.insert(*at);
-                if (!seen.insert({o.uri, gb.line, at->line, at->col}).second
-                    && whole_word_cols(code_of(o, at->line), old_name).size() != 1)
-                    return what + ": two uses at line " + std::to_string(at->line + 1) + " of " + o.path
-                        + " map to the same place in the script";
-            }
-        }
+        // The state of one answer: the next answer starts with a new state.
+        job.changes = json::object();
+        job.cpp_texts.clear();
+        job.code_lines.clear();
+        if (const std::string why = add_answer(job, d, d, resp["result"]); !why.empty())
+            return why;
         for (const auto& [uri, range] : declared)
         {
             // The name at the place must be the old name, and the answer of clangd must not have it.
-            if (!is_old_name(uri, range))
+            if (!is_old_name(job, uri, range))
                 continue;
             // The range must not overlap a range of the answer of clangd.
             auto before = [](const json& a, const json& b)
@@ -5140,34 +5269,202 @@ std::variant<json, std::string> Server::native_rename(
                 return al < bl || (al == bl && a.value("character", 0) < b.value("character", 0));
             };
             bool have = false;
-            if (changes.contains(uri))
-                for (const json& e : changes[uri])
+            if (job.changes.contains(uri))
+                for (const json& e : job.changes[uri])
                     have = have
                         || (e.contains("range") && before(e["range"]["start"], range["end"])
                             && before(range["start"], e["range"]["end"]));
             if (have)
                 continue;
-            if (!changes.contains(uri))
-                changes[uri] = json::array();
-            changes[uri].push_back({{"range", range}, {"newText", new_name}});
+            if (!job.changes.contains(uri))
+                job.changes[uri] = json::array();
+            job.changes[uri].push_back({{"range", range}, {"newText", new_name}});
         }
-        for (const auto& [uri, entry] : places)
-        {
-            const Doc* doc = entry.first;
-            json edits = json::array();
-            for (const Pos& s : entry.second)
-                edits.push_back({{"range", script_range(*doc, s, {s.line, s.col + static_cast<int>(old_name.size())})},
-                    {"newText", new_name}});
-            changes[uri] = edits;
-        }
-        if (changes.empty())
+        if (job.changes.empty())
         {
             last_error = "the answer of clangd has no edit";
             continue;
         }
-        return json{{"changes", changes}};
+        found = true;
+        break;
     }
-    return what + ": " + last_error;
+    if (!found)
+        return what + ": " + last_error;
+    // prepareRename checks the start script and the declaration only.
+    if (prepare)
+        return json{{"changes", job.changes}};
+    if (const std::string why = rename_other_scripts(job, d); !why.empty())
+        return why;
+    return json{{"changes", job.changes}};
+}
+
+// Phase 2 of a native rename: one clangd rename for each other script that uses the symbol. The
+// answers merge into job.changes. A failure gives a refusal text and the caller drops job.changes.
+std::string Server::rename_other_scripts(NativeRenameJob& job, const Doc& d)
+{
+    const std::string& old_name = job.old_name;
+    const std::string& what = job.what;
+    auto left_ms = [&]
+    {
+        return static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
+            job.deadline - std::chrono::steady_clock::now()).count());
+    };
+    auto norm = [](const std::string& p) { return fs::path(p).lexically_normal().string(); };
+    struct Candidate
+    {
+        std::string path;
+        bool extra;
+    };
+    std::vector<Candidate> todo;
+    std::set<std::string> known = {norm(d.path)};
+    auto add_candidate = [&](const std::string& path, bool extra)
+    {
+        if (known.insert(norm(path)).second)
+            todo.push_back({path, extra});
+    };
+    for (const auto& [uri, doc] : docs_)
+        if (doc->path.size() > 4 && doc->path.compare(doc->path.size() - 4, 4, ".hot") == 0)
+            add_candidate(doc->path, false);
+    for (const std::string& path : workspace_scripts(true))
+        add_candidate(path, false);
+    size_t extras_taken = 0;
+    for (size_t i = 0; i < todo.size() || extras_taken < job.extra_script_paths.size(); ++i)
+    {
+        if (i >= todo.size())
+        {
+            add_candidate(job.extra_script_paths[extras_taken++], true);
+            --i;
+            continue;
+        }
+        const Candidate c = todo[i];
+        const std::shared_ptr<Doc> open = open_doc_at(c.path);
+        std::optional<std::string> closed_text;
+        if (!open)
+        {
+            closed_text = read_file(c.path);
+            if (!closed_text)
+                return c.extra ? what + ": an edit changes the generated file " + c.path
+                        + ".cpp, and its script is not found"
+                               : what + ": cannot read " + c.path;
+        }
+        // The code words of the script: no comment, no string.
+        const Text text = open ? open->text : Text(*closed_text);
+        std::vector<Pos> words;
+        bool block = false;
+        for (int line = 0; line < static_cast<int>(text.starts.size()); ++line)
+            for (const int col : whole_word_cols(blank_non_code(text.line(line), block), old_name))
+                words.push_back({line, col});
+        if (words.empty())
+            continue;
+        if (job.target.empty())
+            return what + ": clangd gives no declaration";
+        // The budget is in milliseconds when it is not a whole number of seconds.
+        const std::string budget = opt_.rename_budget_ms % 1000 == 0
+            ? std::to_string(opt_.rename_budget_ms / 1000) + " s"
+            : std::to_string(opt_.rename_budget_ms) + " ms";
+        const std::string over = what + ": the time budget of " + budget + " is over at " + c.path;
+        auto ask = [&](const std::string& method, const json& params, json& result) -> std::string
+        {
+            if (left_ms() <= 0)
+                return over;
+            const json resp = clangd_->request(method, params, left_ms());
+            if (!resp.is_object() || resp.contains("error"))
+                return what + ": clangd gives no answer for " + c.path;
+            result = resp.contains("result") ? resp["result"] : json();
+            return {};
+        };
+        auto work = [&](Doc& o) -> std::string
+        {
+            job.code_lines.erase(&o);
+            if (!wait_for_native_ready_until(o, job.deadline))
+                return over;
+            for (const Pos& p : words)
+            {
+                bool by_word = false;
+                for (const Pos& g : gen_asks(o, p, by_word))
+                {
+                    const json tdp = {{"textDocument", {{"uri", o.gen_uri}}}, {"position", gen_pos(o, g)}};
+                    bool any = false, same = false;
+                    std::string related;
+                    for (const char* kind : {"textDocument/declaration", "textDocument/definition"})
+                    {
+                        json result;
+                        if (const std::string why = ask(kind, tdp, result); !why.empty())
+                            return why;
+                        if (result.is_null())
+                            continue;
+                        for (const json& loc : result.is_array() ? result : json::array({result}))
+                        {
+                            const std::string uri = loc.contains("targetUri") ? json_str(loc, "targetUri") : json_str(loc, "uri");
+                            const json range = loc.contains("targetSelectionRange") ? loc["targetSelectionRange"] : loc.value("range", json());
+                            if (uri.empty() || !range.is_object() || !range.contains("start"))
+                                continue;
+                            any = true;
+                            const int line = range["start"].value("line", 0), col = range["start"].value("character", 0);
+                            const std::tuple<std::string, int, int> at = {uri, line, col};
+                            // The symbol of the first answer, or a place that the first answer
+                            // renames too (a constructor of a class, an override of a method).
+                            const bool is_generated = uri == o.gen_uri || is_generated_uri(uri);
+                            bool here = std::find(job.target.begin(), job.target.end(), at) != job.target.end();
+                            if (!here && !is_generated && job.changes.contains(uri))
+                                for (const json& e : job.changes[uri])
+                                    here = here
+                                        || (e["range"]["start"].value("line", -1) == line
+                                            && e["range"]["start"].value("character", -1) == col);
+                            same = same || here;
+                            if (!here && !is_generated && is_old_name(job, uri, range))
+                                related = related.empty() ? uri_to_path(uri) : related;
+                        }
+                    }
+                    if (!same)
+                    {
+                        // A place of a real C++ file with the old name that the first answer does
+                        // not change can be a related symbol (an override, a template
+                        // specialization). A partial rename is wrong, so the server refuses.
+                        if (!related.empty())
+                            return what + ": " + c.path + " uses a symbol with the name " + old_name
+                                + " in " + related + " that the rename of clangd does not change";
+                        if (any)
+                            break; // an other symbol: the next word
+                        continue;
+                    }
+                    json params = tdp;
+                    params["newName"] = job.new_name;
+                    json result;
+                    if (const std::string why = ask("textDocument/rename", params, result); !why.empty())
+                        return why;
+                    if (!result.is_object())
+                        return what + ": clangd gives no rename answer for " + c.path;
+                    if (const std::string why = add_answer(job, d, o, result); !why.empty())
+                        return why;
+                    if (!job.changes.contains(o.uri) || job.changes[o.uri].empty())
+                        return what + ": a use in " + c.path + " has no edit";
+                    return {};
+                }
+            }
+            return {};
+        };
+        std::string why;
+        if (open)
+        {
+            // The generated code of an open script must be the code of its editor text. Else the
+            // script has no answer of clangd for its uses of the name.
+            if (open->facts.cpp.empty() || open->gen_script.s != open->text.s)
+                return what + ": " + c.path + " does not translate";
+            why = work(*open);
+        }
+        else
+        {
+            Doc tmp = closed_doc(c.path, *closed_text);
+            tmp.facts = timed_translate([&] { return hotc::analyze(tmp.text.s, translate_options(tmp), session_); });
+            if (!with_temp_clangd(tmp, [&] { why = work(tmp); }))
+                return what + ": " + c.path + " does not translate";
+            job.code_lines.erase(&tmp);
+        }
+        if (!why.empty())
+            return why;
+    }
+    return {};
 }
 
 std::variant<json, std::string> Server::on_prepare_rename(const Doc& d, const json& p)
@@ -5188,7 +5485,7 @@ std::variant<json, std::string> Server::on_prepare_rename(const Doc& d, const js
         // native rename, so that prepareRename and rename give the same answer.
         if (generated)
             return *e;
-        const auto n = native_rename(d, cur, old_name, "hot_rename_probe", *e);
+        const auto n = native_rename(d, cur, old_name, "hot_rename_probe", *e, true);
         if (const auto* ne = std::get_if<std::string>(&n))
             return *ne;
         const auto [b, e2] = word_at(d, cur);
@@ -6516,6 +6813,7 @@ const char* usage_text()
     return "usage: hot-ls [--stdio] [--clangd path] [-I dir]... [--resource-dir dir] [--cxxflag flag]...\n"
            "              [--compile-commands-dir dir] [--private-clangd-dir] [--index-dir dir]\n"
            "              [--hosts-dir dir] [--clangd-log file] [--no-native-tokens]\n"
+           "              [--no-rename-host-headers]\n"
            "  --clangd path      the clangd binary (default: clangd from PATH). \"\" turns clangd off.\n"
            "  -I dir             an include dir for the script imports and for clangd.\n"
            "  --compile-commands-dir dir\n"
@@ -6530,7 +6828,9 @@ const char* usage_text()
            "  --hosts-dir dir    the directory of the host files from hot_script_host (default:\n"
            "                     .cache/hot/hosts in each workspace folder).\n"
            "  --no-native-tokens\n"
-           "                     the semantic tokens have no tokens for native (C++) names.\n";
+           "                     the semantic tokens have no tokens for native (C++) names.\n"
+           "  --no-rename-host-headers\n"
+           "                     a native rename does not edit a header in an include dir of the host.\n";
 }
 
 bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, std::string& error)
@@ -6589,6 +6889,10 @@ bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, s
         else if (a == "--no-native-tokens")
         {
             out.native_semantic_tokens = false;
+        }
+        else if (a == "--no-rename-host-headers")
+        {
+            out.rename_host_headers = false;
         }
         else if (a == "--index-dir")
         {

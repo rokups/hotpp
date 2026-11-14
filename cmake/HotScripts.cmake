@@ -675,6 +675,19 @@ endfunction()
 # The explicit INCLUDES, FLAGS, SCRIPT_DIRS and SCRIPTS go into the JSON file with a full JSON
 # escape. They must be plain values: a generator expression in them has no effect.
 #
+# The side file ${HOT_HOSTS_DIR}/<name>.roots has the source roots of the whole build. The JSON
+# file names it in "sourceRootsFile". Each line is an absolute path. A line with the prefix "!"
+# is a SYSTEM dir (a directory with the property SYSTEM). hot-ls edits a header outside the
+# workspace folders only when it is below a source root and not below a SYSTEM dir. The binary dir
+# is in the JSON file ("binaryDir"), and so is the top source dir ("topSourceDir", CMAKE_SOURCE_DIR).
+# hot-ls never edits a header below the binary dir, unless the binary dir equals the top source dir
+# or is above it.
+# The roots come from the source dirs that CMake read, starting at CMAKE_SOURCE_DIR (the property
+# SUBDIRECTORIES). A dir below CMAKE_BINARY_DIR is skipped, unless CMAKE_BINARY_DIR equals CMAKE_SOURCE_DIR or is above it (an in-source build skips nothing). A dir below an earlier root is not
+# written. A SYSTEM dir is written with "!" and CMake does not enter its subdirectories. The
+# function _hot_host_write_source_roots runs once, when CMake ends the top CMakeLists.txt
+# (cmake_language DEFER). It writes a file only when the text changes.
+#
 # Two limits remain. Both come from the line format and from the CMake lists:
 #  - A path with a newline cannot be written in a line. hot-ls reads it as two paths.
 #  - A path with a semicolon is a CMake list separator. CMake splits such a path in two
@@ -717,6 +730,67 @@ function(_hot_host_json_array out)
         set(sep ",")
     endforeach()
     set(${out} "[${text}]" PARENT_SCOPE)
+endfunction()
+
+# Writes the .roots file of each host. It runs once, deferred to the end of the top CMakeLists.txt.
+function(_hot_host_write_source_roots)
+    get_property(names GLOBAL PROPERTY HOT_HOST_NAMES)
+    if(NOT names)
+        return()
+    endif()
+    cmake_path(NORMAL_PATH CMAKE_BINARY_DIR OUTPUT_VARIABLE bin)
+    cmake_path(NORMAL_PATH CMAKE_SOURCE_DIR OUTPUT_VARIABLE top)
+    # A dir below the build dir is skipped, unless the build dir equals the top source dir or is
+    # above it (an in-source build). Then the sources are in the build dir and nothing is skipped.
+    cmake_path(IS_PREFIX bin "${top}" NORMALIZE bin_holds_top)
+    set(skip_bin TRUE)
+    if(bin_holds_top)
+        set(skip_bin FALSE)
+    endif()
+    set(roots "")
+    set(text "")
+    set(queue "${CMAKE_SOURCE_DIR}")
+    while(queue)
+        list(POP_FRONT queue dir)
+        cmake_path(NORMAL_PATH dir OUTPUT_VARIABLE norm)
+        set(in_bin FALSE)
+        if(skip_bin)
+            cmake_path(IS_PREFIX bin "${norm}" NORMALIZE in_bin)
+        endif()
+        if(in_bin)
+            continue()
+        endif()
+        set(system FALSE)
+        get_property(system DIRECTORY "${dir}" PROPERTY SYSTEM)
+        if(system)
+            string(APPEND text "!${norm}\n")
+        else()
+            set(covered FALSE)
+            foreach(r IN LISTS roots)
+                cmake_path(IS_PREFIX r "${norm}" NORMALIZE covered_by)
+                if(covered_by)
+                    set(covered TRUE)
+                    break()
+                endif()
+            endforeach()
+            if(NOT covered)
+                list(APPEND roots "${norm}")
+                string(APPEND text "${norm}\n")
+            endif()
+            get_property(subs DIRECTORY "${dir}" PROPERTY SUBDIRECTORIES)
+            list(APPEND queue ${subs})
+        endif()
+    endwhile()
+    foreach(n IN LISTS names)
+        set(file "${HOT_HOSTS_DIR}/${n}.roots")
+        set(old "")
+        if(EXISTS "${file}")
+            file(READ "${file}" old)
+        endif()
+        if(NOT old STREQUAL text)
+            file(WRITE "${file}" "${text}")
+        endif()
+    endforeach()
 endfunction()
 
 function(hot_script_host)
@@ -764,9 +838,18 @@ function(hot_script_host)
         file(GENERATE OUTPUT "${HOT_HOSTS_DIR}/${A_NAME}${lang}.includes" CONTENT "${side_includes}")
     endif()
 
+    # One deferred call writes the .roots files of all hosts.
+    set_property(GLOBAL APPEND PROPERTY HOT_HOST_NAMES "${A_NAME}")
+    get_property(roots_scheduled GLOBAL PROPERTY HOT_HOST_ROOTS_SCHEDULED)
+    if(NOT roots_scheduled)
+        set_property(GLOBAL PROPERTY HOT_HOST_ROOTS_SCHEDULED TRUE)
+        cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL _hot_host_write_source_roots)
+    endif()
+
     _hot_host_escape(e_name "${A_NAME}")
     _hot_host_escape(e_bin "${CMAKE_BINARY_DIR}")
     _hot_host_escape(e_src "${CMAKE_CURRENT_SOURCE_DIR}")
+    _hot_host_escape(e_top "${CMAKE_SOURCE_DIR}")
     _hot_host_escape(e_cxx "${CMAKE_CXX_COMPILER}")
     _hot_host_escape(e_suffix "${A_PRELUDE_SUFFIX}")
     set(res "")
@@ -780,6 +863,7 @@ function(hot_script_host)
     string(APPEND json "  \"name\": \"${e_name}\",\n")
     string(APPEND json "  \"binaryDir\": \"${e_bin}\",\n")
     string(APPEND json "  \"sourceDir\": \"${e_src}\",\n")
+    string(APPEND json "  \"topSourceDir\": \"${e_top}\",\n")
     string(APPEND json "  \"compiler\": \"${e_cxx}\",\n")
     # The language standard of the scripts. The generated code needs C++17 only, so the scripts
     # use the standard of the consuming target. Without a target, the effective standard
@@ -795,6 +879,7 @@ function(hot_script_host)
     string(APPEND json "  \"includeDirs\": ${j_includes},\n")
     string(APPEND json "  \"preludes\": ${j_preludes},\n")
     string(APPEND json "  \"preludeSuffix\": \"${e_suffix}\",\n")
+    string(APPEND json "  \"sourceRootsFile\": \"${e_name}.roots\",\n")
     string(APPEND json "  \"defines\": [],\n")
     if(use_target)
         string(APPEND json "  \"definesFile\": \"${e_name}.defines\",\n")
