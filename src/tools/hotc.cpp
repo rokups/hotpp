@@ -67,6 +67,7 @@
 #include "hot/hotc_lib.h"
 #include "hot/paths.h"
 #include "hot/runtime/hashing.h"
+#include "hot/runtime/process.h"
 
 #include <algorithm>
 #include <cctype>
@@ -355,8 +356,8 @@ bool write_file(const std::string& path, const std::string& text, bool only_if_c
         if (read_file(path, old) && old == text)
             return true;
     }
-    // The text goes to "path.tmp" first, then the rename replaces the file. A reader never sees half a file.
-    const std::string tmp = path + ".tmp";
+    // The text goes to "path.<pid>.tmp" first, then the rename replaces the file. A reader never sees half a file.
+    const std::string tmp = path + "." + std::to_string(hot::detail::process_id()) + ".tmp";
     {
         std::ofstream of(tmp, std::ios::binary); // binary: LF line ends on each platform
         if (of)

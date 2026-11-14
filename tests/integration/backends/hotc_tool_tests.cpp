@@ -1311,7 +1311,6 @@ static void write_text(const std::string& path, const std::string& text)
     std::ofstream(path, std::ios::binary) << text;
 }
 
-// A header that needs a macro of the command line. The script derives from the class of the header.
 // Two scripts that each define a class with the same method name, and a third script that
 // imports both: the slot names of the imported classes must not clash in the importer.
 TEST(HotcTool, AotImporterOfTwoClassesWithTheSameMethodNameCompiles)
@@ -1340,6 +1339,7 @@ TEST(HotcTool, AotImporterOfTwoClassesWithTheSameMethodNameCompiles)
     }
 }
 
+// A header that needs a macro of the command line. The script derives from the class of the header.
 static std::string aot_macro_script(const std::string& dir)
 {
     std::filesystem::create_directories(dir);
