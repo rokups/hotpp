@@ -7209,8 +7209,12 @@ void translate_impl(
         const std::string PP = par ? par->name + "__" : std::string();
         // An imported class uses the names with the class prefix. The owner unit has them also when it
         // has one class (see the slot numbers).
+        // A public class of AOT code has its slot names in the interface header. The names have the
+        // class prefix there, so the enums of two imported classes do not clash in an importer.
+        const bool prefix_slots = multi || !cd.foreign_unit.empty()
+            || (opt.aot && !cd.is_private && cn != kModuleName);
         auto slot_id = [&](const std::string& n)
-        { return (multi || !cd.foreign_unit.empty() ? cn + "_" : std::string()) + "SLOT_" + n; };
+        { return (prefix_slots ? cn + "_" : std::string()) + "SLOT_" + n; };
 
         // ---- base class information from libclang
         // A class without a base derives from hot::PlainObject (design 7.10.1).
@@ -8141,11 +8145,6 @@ void translate_impl(
                 o.w("    " + slot_id(slots[i].id) + " = "
                     + std::to_string(slots[i].index >= 0 ? size_t(slots[i].index) : i) + ",\n");
             o.w("    " + slot_id("COUNT") + " = " + std::to_string(table_size) + ",\n");
-            // A unit with one class: the interface header also has the names with the class prefix.
-            // An importer uses them.
-            if (exported && !multi)
-                for (size_t i = 0; i < slots.size(); ++i)
-                    o.w("    " + cn + "_SLOT_" + slots[i].id + " = " + slot_id(slots[i].id) + ",\n");
             o.w("};\n\n");
         }
         o.w("extern hot::ClassRecord " + cn + "_record;\n\n");
@@ -9497,7 +9496,7 @@ void translate_impl(
                     const std::string call = "    return hot::call_parent<" + ret + "(" + types_text
                         + ")>(hot::class_ref(\"" + cd.key_name() + "\").record, ";
                     const std::string slot = (!m.vslot_owner.empty() && m.vslot_owner != cn
-                                                     ? (multi ? m.vslot_owner + "_" : std::string()) + "SLOT_" + member
+                                                     ? m.vslot_owner + "_SLOT_" + member
                                                      : slot_id(member));
                     iface_text = call + "this, " + slot + fwd + ");\n";
                     // Plain AOT code: the owner unit defines the members of the state struct. The

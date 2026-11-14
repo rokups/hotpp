@@ -1312,6 +1312,34 @@ static void write_text(const std::string& path, const std::string& text)
 }
 
 // A header that needs a macro of the command line. The script derives from the class of the header.
+// Two scripts that each define a class with the same method name, and a third script that
+// imports both: the slot names of the imported classes must not clash in the importer.
+TEST(HotcTool, AotImporterOfTwoClassesWithTheSameMethodNameCompiles)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_aot_slots");
+    std::filesystem::create_directories(dir);
+    write_text(dir + "/a.hot", "class Alpha {\n    int Run() {\n        return 1;\n    }\n}\n");
+    write_text(dir + "/b.hot", "class Beta {\n    int Run() {\n        return 2;\n    }\n}\n");
+    write_text(dir + "/c.hot",
+        "using \"a.hot\";\nusing \"b.hot\";\n\nclass Gamma {\n    int Sum() {\n"
+        "        Alpha a = new Alpha();\n        Beta b = new Beta();\n        return a.Run() + b.Run();\n    }\n}\n");
+    std::string log;
+    const std::string out = dir + "/out";
+    EXPECT_EQ(run_hotc(cat({{"--aot", dir + "/a.hot", dir + "/b.hot", dir + "/c.hot", "--out-dir", out},
+                           include_args()}),
+                  log),
+        0)
+        << log;
+    for (const char* name : {"a", "b", "c"})
+    {
+        std::string cc;
+        EXPECT_EQ(run_cxx(cat({{"-std=c++17", "-fsyntax-only", "-I" + out}, include_args(), {out + "/" + name + ".aot.cpp"}}), cc), 0)
+            << name << "\n"
+            << cc;
+    }
+}
+
 static std::string aot_macro_script(const std::string& dir)
 {
     std::filesystem::create_directories(dir);
