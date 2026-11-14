@@ -220,6 +220,10 @@ struct Doc
     mutable bool no_host_told = false;
     Text text;
     hotc::AnalyzeResult facts;
+    int facts_version = 0; // grows at each new "facts"
+    // The table of the resolved names of "facts" (Server::file_refs) and its facts_version.
+    mutable std::shared_ptr<const FileRefs> table;
+    mutable int table_version = -1;
     // The field names of each class when the document opened, in declaration order. The rename
     // warning compares them with the current fields. A save does not refresh them.
     std::map<std::string, std::vector<std::string>> open_fields;
@@ -450,6 +454,7 @@ private:
         hotc::TranslateOptions o;
         o.script_name = d.path;
         o.generation = 1;
+        o.resolve_refs = true; // the table of the resolved names (ref_resolver.h)
         const Effective e = effective_options(d.path);
         o.include_dirs = e.include_dirs;
         o.resource_dir = e.resource_dir;
@@ -804,7 +809,66 @@ private:
     // The places of the word of a static member in the script (the declaration and the uses).
     std::set<Pos> static_places(const Doc& d, const StaticHit& hit, bool& uncertain) const;
     std::vector<std::string> workspace_scripts() const;
-    IndexShard shard_of_doc(const Doc& d) const;
+    // The hotc::ref_file_id of each direct script import of "text", the text of the script "d". The
+    // search is the search of the translator (hotc::find_import) with the open documents. A path
+    // that no file has is left out.
+    std::vector<std::string> script_imports(const Doc& d, const std::string& text);
+    // The table of the resolved names of "d", from its facts.
+    FileRefs table_of_doc(const Doc& d);
+    IndexShard shard_of_doc(const Doc& d);
+    // The open document of the script at "path", or null.
+    std::shared_ptr<Doc> open_doc_at(const std::string& path) const;
+    // A document for a closed script: the paths and the text, with no facts and no clangd state.
+    Doc closed_doc(const std::string& path, const std::string& text) const;
+    // The table of the resolved names of the script at "path". An open document gives the table
+    // of its facts. A closed file gives the table of the memory cache, of the index shard or of a
+    // new analyze (the shard of the analyze goes to the index). Null when the file is not readable.
+    std::shared_ptr<const FileRefs> file_refs(const std::string& path);
+    // The script imports of the workspace scripts (workspace_scripts()). The ids are
+    // hotc::ref_file_id. A closed file is read again when its size or its time changes, an open
+    // document when its facts change.
+    ImportGraph& import_graph();
+    // Drops the cached imports of the script at "path", or of all scripts when "path" is empty.
+    void drop_import_graph(const std::string& path);
+    // Gives the closed script "tmp" (with its facts) to clangd for the call of "fn". Then closes
+    // it in clangd. Gives false, and does not call "fn", when the facts have no C++.
+    bool with_temp_clangd(Doc& tmp, const std::function<void()>& fn);
+
+    // ---- the names through the tables of the resolved names (ref_resolver.h)
+    // A resolved name: the ref and the word of the name.
+    struct Resolved
+    {
+        hotc::ResolvedRef ref;
+        std::string name;
+    };
+    // The places of a symbol, by the URI of the script. The positions are the starts of the names.
+    using PlaceMap = std::map<std::string, std::set<Pos>>;
+    // What clangd tells about a name of the generated text: the script ref of its declaration, a
+    // declaration that is not a script ref (for example native), or no answer.
+    struct ClangdRef
+    {
+        enum Kind
+        {
+            Found,
+            Other,
+            Unknown,
+        } kind = Unknown;
+        hotc::ResolvedRef ref;
+    };
+    // Asks clangd for the declaration of the name at "at" in "d" (an open document, or a closed
+    // script in clangd through with_temp_clangd). Then finds the ref there (ref_at).
+    ClangdRef clangd_ref(const Doc& d, Pos at);
+    // The table of "d": file_refs for an open document, else the table of the facts of "d".
+    std::shared_ptr<const FileRefs> refs_of(const Doc& d);
+    // The symbol at "cur": the table first. A name of the table of unresolved names, or in a raw
+    // body, goes to clangd. No value: no script symbol (a native name or no name).
+    std::optional<Resolved> resolve_at(const Doc& d, Pos cur);
+    // The places of the symbol in the scripts. A local or a parameter: the file of the
+    // declaration only. Else the file of the declaration and its importers (import_graph). An
+    // unresolved name or a raw body word with the same name goes to clangd. "strict" (rename):
+    // a word that clangd cannot resolve gives an error with the file and the line. Not strict
+    // (references): the word is left out.
+    std::variant<PlaceMap, std::string> places_of(const Resolved& r, bool strict);
     // Calls "fn" for each other .hot file of the workspace that declares the symbol "key".
     // "places" are the places of the symbol in that file. An open document is used as it is.
     // A file on disk goes to clangd only for the call.
@@ -971,6 +1035,26 @@ private:
         return r;
     }
     int closed_analyses_ = 0; // the analyze calls of for_other_scripts (hot/indexStats)
+    // The tables of the closed scripts (file_refs), by path. "digest" is the shard digest.
+    struct TableEntry
+    {
+        std::string digest;
+        std::shared_ptr<const FileRefs> table;
+    };
+    std::map<std::string, TableEntry> table_cache_;
+    // The tables that file_refs gives from a cache or a shard, and the tables that it makes from
+    // an analyze result (hot/indexStats).
+    int table_hits_ = 0, table_analyses_ = 0;
+    // The direct imports of each workspace script (import_graph), by path.
+    struct GraphEntry
+    {
+        bool open = false; // the imports come from an open document
+        int version = -1; // the facts_version of the open document
+        uintmax_t size = 0;
+        fs::file_time_type mtime;
+    };
+    std::map<std::string, GraphEntry> graph_files_;
+    ImportGraph graph_;
     hotc::TranslatorSession session_;
 };
 
@@ -1207,6 +1291,7 @@ void Server::refresh_hosts(Doc* current, bool force)
     if (!changed)
         return;
     disk_facts_.clear();
+    drop_import_graph(std::string());
     std::vector<std::shared_ptr<Doc>> redo;
     for (const auto& [uri, d] : docs_)
     {
@@ -1249,6 +1334,9 @@ void Server::on_watched_files(const json& p)
             // An open document owns its text. For a closed file, the cache of the analysis goes.
             // A shard of a deleted file goes at the next index_.prune().
             disk_facts_.erase(path);
+            // A new or a deleted file can change the import search of all the scripts.
+            const int type = c["type"].is_number_integer() ? c["type"].get<int>() : 0;
+            drop_import_graph(type == 2 ? path : std::string());
         }
     }
     if (host_file)
@@ -1311,6 +1399,7 @@ void Server::on_workspace_folders(const json& p)
             return std::any_of(removed.begin(), removed.end(), in) && !std::any_of(roots_.begin(), roots_.end(), in);
         });
     disk_facts_.clear();
+    drop_import_graph(std::string());
     load_hosts();
     refresh_hosts(nullptr, true);
 }
@@ -1427,6 +1516,7 @@ void Server::update_cpp(Doc& d)
     {
         std::lock_guard<std::mutex> lock(docs_mutex_);
         d.facts = hotc::AnalyzeResult();
+        ++d.facts_version;
         if (d.cpp_published)
         {
             d.cpp_published = false;
@@ -1439,6 +1529,7 @@ void Server::update_cpp(Doc& d)
     facts.diagnostics.clear(); // facts.errors has the errors of this file
     std::lock_guard<std::mutex> lock(docs_mutex_);
     d.facts = std::move(facts);
+    ++d.facts_version;
     d.cpp_published = true;
     send_client(publish_message(d));
 }
@@ -1453,6 +1544,7 @@ void Server::update(Doc& d)
     {
         std::lock_guard<std::mutex> lock(docs_mutex_);
         d.facts = std::move(facts);
+        ++d.facts_version;
         if (!cpp.empty())
         {
             d.gen = Text(cpp);
@@ -4068,10 +4160,7 @@ void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const st
     {
         if (path == origin.path)
             continue;
-        std::shared_ptr<Doc> open;
-        for (const auto& [uri, doc] : docs_)
-            if (doc->path == path)
-                open = doc;
+        const std::shared_ptr<Doc> open = open_doc_at(path);
         if (open)
         {
             const auto at = key_position(*open, key);
@@ -4085,12 +4174,7 @@ void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const st
         const auto text = read_file(path);
         if (!text)
             continue;
-        Doc tmp;
-        tmp.uri = path_to_uri(path);
-        tmp.path = path;
-        tmp.gen_path = path + ".cpp";
-        tmp.gen_uri = path_to_uri(tmp.gen_path);
-        tmp.text = Text(*text);
+        Doc tmp = closed_doc(path, *text);
         bool analyzed = false;
         auto analyze_tmp = [&]
         {
@@ -4099,12 +4183,7 @@ void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const st
             ++closed_analyses_;
         };
         // The saved shard of the file holds the symbols and the references of the last analyze.
-        // The digest holds the import files. The flags of the host also go in, as the one-argument digest.
-        const Effective eff = effective_options(path);
-        std::string flags_text;
-        for (const std::string& f : eff.extra_flags)
-            flags_text += f + '\n';
-        const std::string digest = SymbolIndex::digest(index_.cached_digest(path, *text, eff.include_dirs) + flags_text);
+        const std::string digest = shard_digest(path, *text);
         auto shard = index_.load(path, digest);
         if (!shard)
         {
@@ -4138,18 +4217,15 @@ void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const st
                 if (!analyzed)
                     analyze_tmp();
                 const auto at = key_position(tmp, key);
-                if (!at || tmp.facts.cpp.empty())
+                if (!at)
                     continue;
-                tmp.gen = Text(tmp.facts.cpp);
-                tmp.map = std::make_shared<const hotc::SourceMap>(tmp.facts.source_map);
-                tmp.gen_script = tmp.text;
-                tmp.gen_version = 1;
-                send_generated(tmp, tmp.facts.cpp);
-                const auto r = symbol_places(tmp, *at, name, nullptr);
-                if (const auto* found = std::get_if<std::set<Pos>>(&r))
-                    places = *found;
-                if (clangd_ && tmp.in_clangd)
-                    clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", tmp.gen_uri}}}});
+                with_temp_clangd(tmp,
+                    [&]
+                    {
+                        const auto r = symbol_places(tmp, *at, name, nullptr);
+                        if (const auto* found = std::get_if<std::set<Pos>>(&r))
+                            places = *found;
+                    });
                 if (!places.empty())
                 {
                     m->refs = std::vector<IndexPos>();
@@ -4164,9 +4240,48 @@ void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const st
     }
 }
 
-IndexShard Server::shard_of_doc(const Doc& d) const
+std::vector<std::string> Server::script_imports(const Doc& d, const std::string& text)
+{
+    if (!open_docs_fs_)
+    {
+        open_docs_fs_ = std::make_shared<OpenDocsFs>();
+        open_docs_fs_->server = this;
+    }
+    hotc::TranslateOptions o = translate_options(d);
+    o.fs = open_docs_fs_;
+    const std::string dir = fs::path(d.path).parent_path().string();
+    std::vector<std::string> out;
+    for (const std::string& pth : hotc::analyze_imports(text, std::string()).imports)
+    {
+        if (pth.size() <= 4 || pth.compare(pth.size() - 4, 4, ".hot") != 0)
+            continue;
+        std::string itext, file, unit;
+        if (!hotc::find_import(o, pth, dir, std::string(), itext, file, unit))
+            continue;
+        const std::string id = hotc::ref_file_id(file);
+        if (std::find(out.begin(), out.end(), id) == out.end())
+            out.push_back(id);
+    }
+    return out;
+}
+
+FileRefs Server::table_of_doc(const Doc& d)
+{
+    FileRefs t;
+    t.file_id = hotc::ref_file_id(d.path);
+    t.refs = d.facts.refs;
+    t.unresolved = d.facts.unresolved;
+    t.raw_ranges = d.facts.raw_ranges;
+    t.imports = script_imports(d, d.text.s);
+    sort_refs(t);
+    return t;
+}
+
+IndexShard Server::shard_of_doc(const Doc& d)
 {
     IndexShard shard;
+    shard.table = table_of_doc(d);
+    shard.has_table = true;
     for (const hotc::AnalyzedClass& c : d.facts.classes)
     {
         IndexClass ic;
@@ -4180,6 +4295,293 @@ IndexShard Server::shard_of_doc(const Doc& d) const
         shard.classes.push_back(std::move(ic));
     }
     return shard;
+}
+
+std::shared_ptr<Doc> Server::open_doc_at(const std::string& path) const
+{
+    const fs::path want = fs::path(path).lexically_normal();
+    for (const auto& [uri, doc] : docs_)
+        if (doc->path == path || fs::path(doc->path).lexically_normal() == want)
+            return doc;
+    return nullptr;
+}
+
+Doc Server::closed_doc(const std::string& path, const std::string& text) const
+{
+    Doc tmp;
+    tmp.uri = path_to_uri(path);
+    tmp.path = path;
+    tmp.gen_path = path + ".cpp";
+    tmp.gen_uri = path_to_uri(tmp.gen_path);
+    tmp.text = Text(text);
+    return tmp;
+}
+
+std::shared_ptr<const FileRefs> Server::file_refs(const std::string& path)
+{
+    if (const std::shared_ptr<Doc> open = open_doc_at(path))
+    {
+        if (open->table && open->table_version == open->facts_version)
+        {
+            ++table_hits_;
+            return open->table;
+        }
+        open->table = std::make_shared<const FileRefs>(table_of_doc(*open));
+        open->table_version = open->facts_version;
+        ++table_analyses_;
+        return open->table;
+    }
+    const std::string norm = fs::path(path).lexically_normal().string();
+    const auto text = read_file(norm);
+    if (!text)
+        return nullptr;
+    const std::string digest = shard_digest(norm, *text);
+    TableEntry& entry = table_cache_[norm];
+    if (entry.table && entry.digest == digest)
+    {
+        ++table_hits_;
+        return entry.table;
+    }
+    if (auto shard = index_.load(norm, digest))
+    {
+        entry = {digest, std::make_shared<const FileRefs>(std::move(shard->table))};
+        ++table_hits_;
+        return entry.table;
+    }
+    Doc tmp = closed_doc(norm, *text);
+    tmp.facts = timed_translate([&] { return hotc::analyze(tmp.text.s, translate_options(tmp), session_); });
+    ++table_analyses_;
+    IndexShard shard = shard_of_doc(tmp);
+    index_.store(norm, digest, shard);
+    entry = {digest, std::make_shared<const FileRefs>(std::move(shard.table))};
+    return entry.table;
+}
+
+void Server::drop_import_graph(const std::string& path)
+{
+    if (path.empty())
+        graph_files_.clear();
+    else
+        graph_files_.erase(fs::path(path).lexically_normal().string());
+}
+
+ImportGraph& Server::import_graph()
+{
+    std::set<std::string> seen;
+    for (const std::string& path : workspace_scripts())
+    {
+        seen.insert(path);
+        const auto it = graph_files_.find(path);
+        GraphEntry next;
+        const std::shared_ptr<Doc> open = open_doc_at(path);
+        std::vector<std::string> imports;
+        if (open)
+        {
+            next.open = true;
+            next.version = open->facts_version;
+            if (it != graph_files_.end() && it->second.open && it->second.version == next.version)
+                continue;
+            imports = script_imports(*open, open->text.s);
+        }
+        else
+        {
+            std::error_code ec;
+            next.size = fs::file_size(path, ec);
+            next.mtime = fs::last_write_time(path, ec);
+            if (it != graph_files_.end() && !it->second.open && it->second.size == next.size
+                && it->second.mtime == next.mtime)
+                continue;
+            if (const auto text = read_file(path))
+                imports = script_imports(closed_doc(path, *text), *text);
+        }
+        graph_files_[path] = next;
+        graph_.set(hotc::ref_file_id(path), imports);
+    }
+    for (auto it = graph_files_.begin(); it != graph_files_.end();)
+    {
+        if (seen.count(it->first))
+        {
+            ++it;
+            continue;
+        }
+        graph_.erase(hotc::ref_file_id(it->first));
+        it = graph_files_.erase(it);
+    }
+    return graph_;
+}
+
+bool Server::with_temp_clangd(Doc& tmp, const std::function<void()>& fn)
+{
+    if (tmp.facts.cpp.empty())
+        return false;
+    tmp.gen = Text(tmp.facts.cpp);
+    tmp.map = std::make_shared<const hotc::SourceMap>(tmp.facts.source_map);
+    tmp.gen_script = tmp.text;
+    tmp.gen_version = 1;
+    send_generated(tmp, tmp.facts.cpp);
+    fn();
+    if (clangd_ && tmp.in_clangd)
+        clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", tmp.gen_uri}}}});
+    tmp.in_clangd = false;
+    return true;
+}
+
+std::shared_ptr<const FileRefs> Server::refs_of(const Doc& d)
+{
+    if (open_doc_at(d.path).get() == &d)
+        return file_refs(d.path);
+    return std::make_shared<const FileRefs>(table_of_doc(d));
+}
+
+Server::ClangdRef Server::clangd_ref(const Doc& d, Pos at)
+{
+    ClangdRef out;
+    const auto g = to_gen(d, at);
+    if (!g || !clangd_)
+        return out;
+    const auto defs = clangd_result(
+        "textDocument/definition", {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, *g)}});
+    const json def_list = defs ? (defs->is_array() ? *defs : json::array({*defs})) : json::array();
+    if (def_list.empty())
+        return out;
+    const json& loc = def_list[0];
+    const std::string uri = loc.contains("targetUri") ? loc.value("targetUri", std::string()) : loc.value("uri", std::string());
+    json mapped;
+    if (uri == d.gen_uri)
+        mapped = map_location(d, loc);
+    else if (const auto it = gen_docs_.find(uri); it != gen_docs_.end())
+        mapped = map_location(*it->second, loc);
+    else
+    {
+        out.kind = ClangdRef::Other; // a native declaration
+        return out;
+    }
+    if (mapped.is_null() || !mapped.contains("range"))
+        return out; // a name that the translator makes
+    const std::string path = uri_to_path(mapped.value("uri", std::string()));
+    std::shared_ptr<const FileRefs> table;
+    Text text;
+    if (path == d.path)
+    {
+        table = refs_of(d);
+        text = d.text;
+    }
+    else if (const std::shared_ptr<Doc> open = open_doc_at(path))
+    {
+        table = file_refs(path);
+        text = open->text;
+    }
+    else if (const auto t = read_file(path))
+    {
+        table = file_refs(path);
+        text = Text(*t);
+    }
+    if (!table)
+        return out;
+    const Pos p = from_lsp(text, mapped["range"]["start"], utf8_);
+    const hotc::ResolvedRef* r = ref_at(*table, static_cast<uint32_t>(text.offset(p.line, p.col)));
+    if (!r)
+        return out;
+    out.kind = ClangdRef::Found;
+    out.ref = *r;
+    return out;
+}
+
+std::optional<Server::Resolved> Server::resolve_at(const Doc& d, Pos cur)
+{
+    const auto table = refs_of(d);
+    if (!table)
+        return std::nullopt;
+    const uint32_t off = static_cast<uint32_t>(d.text.offset(cur.line, cur.col));
+    if (const hotc::ResolvedRef* r = ref_at(*table, off))
+        return Resolved{*r, d.text.s.substr(r->offset, r->length)};
+    bool ask = false;
+    for (const hotc::UnresolvedName& u : table->unresolved)
+        ask = ask || (u.offset <= off && off <= u.offset + u.length);
+    for (const auto& [b, e] : table->raw_ranges)
+        ask = ask || (b <= off && off < e);
+    if (!ask)
+        return std::nullopt;
+    const auto [b, e] = word_at(d, cur);
+    if (b == e)
+        return std::nullopt;
+    const ClangdRef c = clangd_ref(d, {cur.line, b});
+    if (c.kind != ClangdRef::Found)
+        return std::nullopt;
+    return Resolved{c.ref, std::string(d.text.line(cur.line).substr(static_cast<size_t>(b), static_cast<size_t>(e - b)))};
+}
+
+std::variant<Server::PlaceMap, std::string> Server::places_of(const Resolved& r, bool strict)
+{
+    PlaceMap out;
+    const std::string& name = r.name;
+    std::vector<std::string> files = {r.ref.decl_file};
+    if (!file_local(r.ref.kind))
+        for (const std::string& f : import_graph().importers_of(r.ref.decl_file))
+            files.push_back(f);
+    for (const std::string& path : files)
+    {
+        const std::shared_ptr<Doc> open = open_doc_at(path);
+        Text closed_text;
+        if (!open)
+        {
+            auto t = read_file(path);
+            if (!t || t->find(name) == std::string::npos)
+                continue; // the word filter
+            closed_text = Text(std::move(*t));
+        }
+        const Text& text = open ? open->text : closed_text;
+        const std::string uri = open ? open->uri : path_to_uri(path);
+        const auto table = file_refs(path);
+        if (!table)
+            continue;
+        for (const hotc::ResolvedRef* p : places(*table, r.ref.id))
+        {
+            const auto [line, col] = text.pos(p->offset);
+            out[uri].insert({line, col});
+        }
+        // The words that only clangd can resolve.
+        std::vector<uint32_t> asks;
+        for (const hotc::UnresolvedName& u : table->unresolved)
+            if (u.length == name.size() && text.s.compare(u.offset, u.length, name) == 0)
+                asks.push_back(u.offset);
+        for (const auto& [b, e] : table->raw_ranges)
+            for (size_t at = text.s.find(name, b); at != std::string::npos && at + name.size() <= e;
+                at = text.s.find(name, at + 1))
+            {
+                const bool left = at == 0 || !is_id_char(text.s[at - 1]);
+                const bool right = at + name.size() >= text.s.size() || !is_id_char(text.s[at + name.size()]);
+                if (left && right)
+                    asks.push_back(static_cast<uint32_t>(at));
+            }
+        if (asks.empty())
+            continue;
+        std::string error;
+        auto check = [&](const Doc& doc)
+        {
+            for (const uint32_t off : asks)
+            {
+                const auto [line, col] = doc.text.pos(off);
+                const ClangdRef c = clangd_ref(doc, {line, col});
+                if (c.kind == ClangdRef::Found && c.ref.id == r.ref.id)
+                    out[uri].insert({line, col});
+                else if (c.kind == ClangdRef::Unknown && strict && error.empty())
+                    error = "cannot resolve " + name + " at " + path + ":" + std::to_string(line + 1);
+            }
+        };
+        if (open)
+            check(*open);
+        else
+        {
+            Doc tmp = closed_doc(path, text.s);
+            tmp.facts = timed_translate([&] { return hotc::analyze(tmp.text.s, translate_options(tmp), session_); });
+            if (!with_temp_clangd(tmp, [&] { check(tmp); }) && strict)
+                error = "cannot resolve " + name + " at " + path + ":" + std::to_string(text.pos(asks[0]).first + 1);
+        }
+        if (!error.empty())
+            return error;
+    }
+    return out;
 }
 
 // True when the position is a declaration at the top level of a script: a module name, a class
@@ -5994,11 +6396,28 @@ void Server::handle(const json& msg)
     if (method == "workspace/symbol")
         return reply(id, on_workspace_symbol(p));
     if (method == "hot/indexStats")
-        return reply(id,
-            {{"analyzed", closed_analyses_}, {"loaded", index_.loads()}, {"stored", index_.stores()},
-                {"dir", index_.dir()}, {"completions", completion_translations_},
-                {"tokenRequests", native_token_requests_.load()}, {"translations", translations_.load()},
-                {"translateMs", static_cast<double>(translate_us_.load()) / 1000.0}});
+    {
+        // The test hook: "tables" (an array of URIs) gets the number of refs of each table;
+        // "importersOf" (a URI) gets the importers of that script.
+        json out;
+        if (p.is_object() && p.contains("tables") && p["tables"].is_array())
+        {
+            out["tableRefs"] = json::array();
+            for (const json& u : p["tables"])
+            {
+                const auto t = u.is_string() ? file_refs(uri_to_path(u.get<std::string>())) : nullptr;
+                out["tableRefs"].push_back(t ? static_cast<int>(t->refs.size()) : -1);
+            }
+        }
+        if (const std::string of = json_str(p, "importersOf"); !of.empty())
+            out["importers"] = import_graph().importers_of(hotc::ref_file_id(uri_to_path(of)));
+        out.update({{"analyzed", closed_analyses_}, {"loaded", index_.loads()}, {"stored", index_.stores()},
+            {"dir", index_.dir()}, {"completions", completion_translations_},
+            {"tokenRequests", native_token_requests_.load()}, {"translations", translations_.load()},
+            {"translateMs", static_cast<double>(translate_us_.load()) / 1000.0}, {"tableHits", table_hits_},
+            {"tableAnalyses", table_analyses_}});
+        return reply(id, out);
+    }
     if (method == "hot/toScript")
         return reply(id, on_to_script(p));
 

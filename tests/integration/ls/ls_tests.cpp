@@ -2474,6 +2474,7 @@ hot::ls::IndexShard sample_shard()
     hot::ls::IndexMember unknown{"heal", "method", {10, 9}, std::nullopt};
     c.members = {known, unknown};
     shard.classes.push_back(c);
+    shard.has_table = true;
     return shard;
 }
 
@@ -2610,7 +2611,9 @@ TEST(SymbolIndex, ADifferentDigestGivesNoShardAndTheNewShardReplacesTheOld)
     ASSERT_NE(d1, d2);
     ASSERT_TRUE(index.store(script, d1, sample_shard()));
     EXPECT_FALSE(index.load(script, d2));
-    ASSERT_TRUE(index.store(script, d2, hot::ls::IndexShard{}));
+    hot::ls::IndexShard empty;
+    empty.has_table = true;
+    ASSERT_TRUE(index.store(script, d2, empty));
     EXPECT_FALSE(index.load(script, d1));
     ASSERT_TRUE(index.load(script, d2));
     EXPECT_EQ(file_count(dir.path() / "index"), 1u);
@@ -2658,6 +2661,142 @@ TEST(SymbolIndex, ADifferentFormatVersionIsDropped)
     EXPECT_FALSE(std::filesystem::exists(file));
 }
 
+namespace
+{
+
+std::string read_all(const std::string& file)
+{
+    std::ifstream in(file, std::ios::binary);
+    std::stringstream ss;
+    ss << in.rdbuf();
+    return ss.str();
+}
+
+// A table with two lines: "class A { int hp; }\n" and "int f() { return A().hp + x.y; }".
+hot::ls::FileRefs sample_table()
+{
+    hot::ls::FileRefs t;
+    t.file_id = "/p/a.hot";
+    const auto add = [&](uint32_t off, uint32_t len, int line, int col, hotc::RefKind k, bool d, const char* decl,
+                         const char* file)
+    {
+        hotc::ResolvedRef r;
+        r.offset = off;
+        r.length = len;
+        r.pos = {line, col};
+        r.kind = k;
+        r.is_decl = d;
+        r.decl = decl;
+        r.decl_file = file;
+        r.id = std::string(file) + "#" + decl;
+        t.refs.push_back(r);
+    };
+    add(6, 1, 1, 7, hotc::RefKind::Class, true, "A", "/p/a.hot");
+    add(14, 2, 1, 15, hotc::RefKind::Field, true, "A.hp", "/p/a.hot");
+    add(24, 1, 2, 5, hotc::RefKind::Function, true, "f", "/p/a.hot");
+    add(37, 1, 2, 18, hotc::RefKind::Class, false, "B", "/p/b.hot");
+    add(41, 2, 2, 22, hotc::RefKind::Field, false, "A.hp", "/p/a.hot");
+    hotc::UnresolvedName u;
+    u.offset = 48;
+    u.length = 1;
+    u.pos = {2, 29};
+    t.unresolved.push_back(u);
+    t.raw_ranges = {{30, 52}};
+    t.imports = {"/p/b.hot", "/p/c.hot"};
+    return t;
+}
+
+} // namespace
+
+TEST(SymbolIndex, StoreAndLoadGiveAnEqualTable)
+{
+    TempDir dir;
+    hot::ls::SymbolIndex index;
+    index.open((dir.path() / "index").string());
+    const std::string script = (dir.path() / "a.hot").string();
+    write_file(script, "x");
+    hot::ls::IndexShard shard = sample_shard();
+    shard.table = sample_table();
+    ASSERT_TRUE(index.store(script, "d", shard));
+    const auto loaded = index.load(script, "d");
+    ASSERT_TRUE(loaded);
+    const hot::ls::FileRefs& a = shard.table;
+    const hot::ls::FileRefs& b = loaded->table;
+    EXPECT_EQ(b.file_id, a.file_id);
+    ASSERT_EQ(b.refs.size(), a.refs.size());
+    for (size_t i = 0; i < a.refs.size(); ++i)
+    {
+        SCOPED_TRACE(i);
+        EXPECT_EQ(b.refs[i].offset, a.refs[i].offset);
+        EXPECT_EQ(b.refs[i].length, a.refs[i].length);
+        EXPECT_EQ(b.refs[i].pos, a.refs[i].pos);
+        EXPECT_EQ(b.refs[i].kind, a.refs[i].kind);
+        EXPECT_EQ(b.refs[i].is_decl, a.refs[i].is_decl);
+        EXPECT_EQ(b.refs[i].decl, a.refs[i].decl);
+        EXPECT_EQ(b.refs[i].decl_file, a.refs[i].decl_file);
+        EXPECT_EQ(b.refs[i].id, a.refs[i].id);
+    }
+    ASSERT_EQ(b.unresolved.size(), 1u);
+    EXPECT_EQ(b.unresolved[0].offset, 48u);
+    EXPECT_EQ(b.unresolved[0].length, 1u);
+    EXPECT_EQ(b.unresolved[0].pos, (hotc::SourcePos{2, 29}));
+    EXPECT_EQ(b.raw_ranges, a.raw_ranges);
+    EXPECT_EQ(b.imports, a.imports);
+    EXPECT_EQ(loaded->classes.size(), shard.classes.size());
+}
+
+// A shard without the table marker is never given back. load() deletes it.
+TEST(SymbolIndex, AShardWithoutTheTableMarkerIsDropped)
+{
+    TempDir dir;
+    hot::ls::SymbolIndex index;
+    index.open((dir.path() / "index").string());
+    const std::string script = (dir.path() / "a.hot").string();
+    write_file(script, "x");
+    hot::ls::IndexShard shard = sample_shard();
+    shard.has_table = false;
+    ASSERT_TRUE(index.store(script, "d", shard));
+    EXPECT_FALSE(index.load(script, "d"));
+    EXPECT_FALSE(std::filesystem::exists(index.shard_path(script)));
+}
+
+TEST(SymbolIndex, AVersion2ShardIsDropped)
+{
+    TempDir dir;
+    hot::ls::SymbolIndex index;
+    index.open((dir.path() / "index").string());
+    const std::string script = (dir.path() / "a.hot").string();
+    write_file(script, "x");
+    const std::string file = index.shard_path(script);
+    std::filesystem::create_directories(dir.path() / "index");
+    // The body of format 2 is the array of the classes.
+    write_file(file, "hot-index 2 d " + script + "\n[{\"n\":\"A\",\"p\":[0,6],\"r\":[],\"m\":[]}]");
+    EXPECT_FALSE(index.load(script, "d"));
+    EXPECT_FALSE(std::filesystem::exists(file));
+}
+
+TEST(SymbolIndex, AChangedImportChangesTheDigestAndTheShardIsNotReused)
+{
+    TempDir dir;
+    hot::ls::SymbolIndex index;
+    index.open((dir.path() / "index").string());
+    const std::string main = (dir.path() / "main.hot").string();
+    const std::string text = "using \"dep.hot\";\nint f() { return Dep.k; }\n";
+    write_file(main, text);
+    write_file((dir.path() / "dep.hot").string(), "class Dep { const int k = 1; }\n");
+    const std::string d1 = index.cached_digest(main, text, {});
+    hot::ls::IndexShard shard;
+    shard.table = sample_table();
+    shard.has_table = true;
+    ASSERT_TRUE(index.store(main, d1, shard));
+    ASSERT_TRUE(index.load(main, d1));
+    write_file((dir.path() / "dep.hot").string(), "class Dep { const int kk = 1; }\n");
+    const std::string d2 = index.cached_digest(main, text, {});
+    EXPECT_NE(d1, d2);
+    EXPECT_FALSE(index.load(main, d2));
+    EXPECT_NE(read_all(index.shard_path(main)).find(d1), std::string::npos); // the old shard stays until a store
+}
+
 TEST(SymbolIndex, TheIndexDoesNotGrowAfter1000EditsOfOneFile)
 {
     TempDir dir;
@@ -2693,6 +2832,18 @@ TEST(LanguageServer, RenameOnAClosedFileAfterARestartUsesTheIndex)
     const json first = r["result"]["changes"][uri_of(other_path)];
     EXPECT_EQ(analyzed_files(*s.client), 1);
     EXPECT_TRUE(std::filesystem::exists(s.dir.path() / ".cache" / "hot" / "index"));
+    {
+        // The saved shard has the table of the resolved names and the table marker.
+        hot::ls::SymbolIndex index;
+        index.open((s.dir.path() / ".cache" / "hot" / "index").string());
+        const std::string shard = read_all(index.shard_path(other_path));
+        const size_t nl = shard.find('\n');
+        ASSERT_NE(nl, std::string::npos);
+        const json body = json::parse(shard.substr(nl + 1));
+        EXPECT_TRUE(body.contains("tp"));
+        EXPECT_FALSE(body["t"]["r"].empty()) << body.dump();
+        EXPECT_EQ(body["t"]["f"], hotc::ref_file_id(other_path));
+    }
     s.client.reset(); // the restart
     s.client = std::make_unique<LsClient>(options(s.dir, false));
     s.client->initialize(uri_of(s.dir.path().string()));
@@ -2710,6 +2861,54 @@ TEST(LanguageServer, RenameOnAClosedFileAfterARestartUsesTheIndex)
     ASSERT_TRUE(r.contains("result")) << r.dump();
     EXPECT_EQ(analyzed_files(*s.client), 1);
     EXPECT_EQ(file_count(s.dir.path() / ".cache" / "hot" / "index"), shards);
+}
+
+// The tables of the resolved names (file_refs) and the import graph, through the test hook of
+// hot/indexStats. An open document gives its table. A closed importer gets a table from an
+// analyze, then from its shard after a restart. A change of the import makes a new analyze.
+TEST(LanguageServer, TheRefTablesComeFromTheDocumentTheShardAndTheImportGraph)
+{
+    TempDir dir;
+    const std::string dep = (dir.path() / "dep.hot").string(), user = (dir.path() / "user.hot").string();
+    const std::string dep_text = "int k() { return 1; }\n";
+    write_file(dep, dep_text);
+    write_file(user, "using \"dep.hot\";\nint f() { return k(); }\n");
+    auto client = std::make_unique<LsClient>(options(dir, false));
+    client->initialize(uri_of(dir.path().string()));
+    client->open(uri_of(dep), dep_text);
+    auto stats = [&](const json& p) { return client->request("hot/indexStats", p)["result"]; };
+    json r = stats({{"tables", {uri_of(dep)}}});
+    EXPECT_GT(r["tableRefs"][0].get<int>(), 0) << r.dump();
+    EXPECT_EQ(r["tableAnalyses"], 1);
+    EXPECT_EQ(r["tableHits"], 0);
+    r = stats({{"tables", {uri_of(dep)}}});
+    EXPECT_EQ(r["tableAnalyses"], 1); // the same document version
+    EXPECT_EQ(r["tableHits"], 1);
+    r = stats({{"tables", {uri_of(user)}}, {"importersOf", uri_of(dep)}});
+    EXPECT_GT(r["tableRefs"][0].get<int>(), 0) << r.dump();
+    EXPECT_EQ(r["tableAnalyses"], 2);
+    EXPECT_EQ(r["importers"], json::array({hotc::ref_file_id(user)})) << r.dump();
+
+    client.reset(); // the restart
+    client = std::make_unique<LsClient>(options(dir, false));
+    client->initialize(uri_of(dir.path().string()));
+    r = stats({{"tables", {uri_of(user)}}});
+    EXPECT_GT(r["tableRefs"][0].get<int>(), 0) << r.dump();
+    EXPECT_EQ(r["tableHits"], 1); // from the shard
+    EXPECT_EQ(r["tableAnalyses"], 0);
+    r = stats({{"tables", {uri_of(user)}}});
+    EXPECT_EQ(r["tableHits"], 2); // from the memory cache
+    EXPECT_EQ(r["loaded"], 1);
+
+    // A changed import changes the digest of the importer: a new analyze.
+    write_file(dep, "int k() { return 1; }\nint j() { return 2; }\n");
+    r = stats({{"tables", {uri_of(user)}}, {"importersOf", uri_of(dep)}});
+    EXPECT_EQ(r["tableAnalyses"], 1);
+    EXPECT_EQ(r["importers"], json::array({hotc::ref_file_id(user)}));
+    // An importer without the import is not an importer.
+    write_file(user, "int f() { return 12; }\n");
+    r = stats({{"importersOf", uri_of(dep)}});
+    EXPECT_TRUE(r["importers"].empty()) << r.dump();
 }
 
 // The same for a member. The references of a member come from clangd. The shard keeps them.
