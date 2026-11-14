@@ -516,6 +516,20 @@ TEST(LanguageServer, DefinitionOfAStaticMethodOfAnImportedClassIsInThatScript)
     EXPECT_EQ(loc["range"]["start"]["character"], 15) << r.dump();
 }
 
+// Hover on the member of a qualified static call gives the declaration line from the table.
+TEST(LanguageServer, HoverOfAStaticMethodOfAnImportedClassIsTheDeclarationLine)
+{
+    REQUIRE_CLANGD();
+    Session s(true, kStaticImporter);
+    write_file(s.dir.path() / "unit.hot", kStaticImported);
+    s.client->change(s.uri, 2, kStaticImporter);
+    const std::string line = "    void Go() { int n = Unit.F(1); }";
+    const int col = static_cast<int>(line.find("Unit.F")) + 5;
+    const json r = s.client->request("textDocument/hover", doc_pos(s.uri, 2, col));
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    EXPECT_EQ(r["result"]["contents"]["value"], "```hot\nstatic int F(int v)\n```") << r.dump();
+}
+
 // F12 on the class of a qualified static call goes to the class, not to the static method.
 TEST(LanguageServer, DefinitionOfTheClassOfAStaticCallIsTheClass)
 {
