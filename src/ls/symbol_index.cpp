@@ -14,7 +14,9 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <map>
 #include <set>
+#include <stdexcept>
 #include <sstream>
 
 #include "hot/runtime/process.h"
@@ -96,6 +98,95 @@ std::vector<IndexPos> places_of(const json& j)
     return v;
 }
 
+// The lines of the table. Each name gives the start offset of its line: offset - (col - 1). The
+// result has a pair (line, start) for each line with a name, sorted by the start.
+template <typename T>
+void add_lines(const std::vector<T>& items, std::map<int, uint32_t>& lines)
+{
+    for (const T& r : items)
+        if (r.pos.line > 0 && r.pos.col > 0 && r.offset >= static_cast<uint32_t>(r.pos.col - 1))
+            lines.emplace(r.pos.line, r.offset - static_cast<uint32_t>(r.pos.col - 1));
+}
+
+json table_json(const FileRefs& t)
+{
+    std::vector<std::string> strings;
+    std::map<std::string, size_t> index;
+    const auto str = [&](const std::string& v)
+    {
+        auto [it, added] = index.emplace(v, strings.size());
+        if (added)
+            strings.push_back(v);
+        return it->second;
+    };
+    json refs = json::array();
+    for (const hotc::ResolvedRef& r : t.refs)
+        refs.push_back(json::array({r.offset, r.length, static_cast<int>(r.kind), r.is_decl ? 1 : 0, str(r.decl),
+            str(r.decl_file)}));
+    json unresolved = json::array();
+    for (const hotc::UnresolvedName& u : t.unresolved)
+        unresolved.push_back(json::array({u.offset, u.length}));
+    json raw = json::array();
+    for (const auto& [b, e] : t.raw_ranges)
+        raw.push_back(json::array({b, e}));
+    std::map<int, uint32_t> lines;
+    add_lines(t.refs, lines);
+    add_lines(t.unresolved, lines);
+    json lj = json::array();
+    for (const auto& [line, start] : lines)
+        lj.push_back(json::array({line, start}));
+    return {{"f", t.file_id}, {"s", strings}, {"r", std::move(refs)}, {"u", std::move(unresolved)},
+        {"w", std::move(raw)}, {"l", std::move(lj)}, {"i", t.imports}};
+}
+
+FileRefs table_of(const json& j)
+{
+    FileRefs t;
+    t.file_id = j.at("f").get<std::string>();
+    const std::vector<std::string> strings = j.at("s").get<std::vector<std::string>>();
+    std::vector<std::pair<uint32_t, int>> lines; // (start, line), sorted by the start
+    for (const json& l : j.at("l"))
+        lines.emplace_back(l.at(1).get<uint32_t>(), l.at(0).get<int>());
+    std::sort(lines.begin(), lines.end());
+    const auto pos = [&](uint32_t offset)
+    {
+        auto it = std::upper_bound(lines.begin(), lines.end(), std::make_pair(offset, INT32_MAX));
+        if (it == lines.begin())
+            return hotc::SourcePos{};
+        --it;
+        return hotc::SourcePos{it->second, static_cast<int>(offset - it->first) + 1};
+    };
+    for (const json& rj : j.at("r"))
+    {
+        hotc::ResolvedRef r;
+        r.offset = rj.at(0).get<uint32_t>();
+        r.length = rj.at(1).get<uint32_t>();
+        const int kind = rj.at(2).get<int>();
+        if (kind < 0 || kind > static_cast<int>(hotc::RefKind::EnumValue))
+            throw std::runtime_error("bad ref kind");
+        r.kind = static_cast<hotc::RefKind>(kind);
+        r.is_decl = rj.at(3).get<int>() != 0;
+        r.decl = strings.at(rj.at(4).get<size_t>());
+        r.decl_file = strings.at(rj.at(5).get<size_t>());
+        r.id = r.decl_file + "#" + r.decl;
+        r.pos = pos(r.offset);
+        t.refs.push_back(std::move(r));
+    }
+    for (const json& uj : j.at("u"))
+    {
+        hotc::UnresolvedName u;
+        u.offset = uj.at(0).get<uint32_t>();
+        u.length = uj.at(1).get<uint32_t>();
+        u.pos = pos(u.offset);
+        t.unresolved.push_back(u);
+    }
+    for (const json& w : j.at("w"))
+        t.raw_ranges.emplace_back(w.at(0).get<uint32_t>(), w.at(1).get<uint32_t>());
+    t.imports = j.at("i").get<std::vector<std::string>>();
+    sort_refs(t);
+    return t;
+}
+
 json shard_json(const IndexShard& shard)
 {
     json classes = json::array();
@@ -112,13 +203,14 @@ json shard_json(const IndexShard& shard)
         classes.push_back(
             {{"n", c.name}, {"p", pos_json(c.begin)}, {"r", places_json(c.refs)}, {"m", std::move(members)}});
     }
-    return classes;
+    return {{"c", std::move(classes)}, {"t", table_json(shard.table)}};
 }
 
-IndexShard shard_of(const json& classes)
+IndexShard shard_of(const json& body)
 {
     IndexShard shard;
-    for (const json& cj : classes)
+    shard.table = table_of(body.at("t"));
+    for (const json& cj : body.at("c"))
     {
         IndexClass c;
         c.name = cj.at("n").get<std::string>();
