@@ -9,7 +9,8 @@
 #                   [OUT_DIR dir] [AFTER target] [HOST target] [HOTC_ARGS arg...])
 #   hot_add_scripts(TARGET name SCRIPTS a.hot b.hot AOT [OPTIMIZED]
 #                   [INCLUDES dir...] [PRELUDES file...] [FLAGS hotc-flag...]
-#                   [DEPENDS file...] [OUT_DIR dir] [HOTC_ARGS arg...])
+#                   [DEPENDS file...] [OUT_DIR dir] [HOTC_ARGS arg...]
+#                   [HOST_TARGET target] [PRELUDE_SUFFIX suffix])
 #
 # The function also calls hot_script_host with the name TARGET. The host has the scripts
 # and the INCLUDES. In the default mode it has the FLAGS too. The language server uses
@@ -89,7 +90,7 @@ function(_hot_resource_dir out cxx)
 endfunction()
 
 function(hot_add_scripts)
-    cmake_parse_arguments(A "AOT;OPTIMIZED" "TARGET;OUT_DIR;AFTER;HOST;UNIT_ROOT;PARSE_TARGET;RUNTIME_TARGET" "SCRIPTS;INCLUDES;PRELUDES;FLAGS;DEPENDS;HOTC_ARGS" ${ARGN})
+    cmake_parse_arguments(A "AOT;OPTIMIZED" "TARGET;OUT_DIR;AFTER;HOST;UNIT_ROOT;PARSE_TARGET;RUNTIME_TARGET;HOST_TARGET;PRELUDE_SUFFIX" "SCRIPTS;INCLUDES;PRELUDES;FLAGS;DEPENDS;HOTC_ARGS" ${ARGN})
     if(A_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "hot_add_scripts: unknown arguments: ${A_UNPARSED_ARGUMENTS}")
     endif()
@@ -144,7 +145,7 @@ function(hot_add_scripts)
         if(A_PRELUDES)
             message(FATAL_ERROR "hot_add_scripts: PRELUDES works only with AOT (target ${A_TARGET})")
         endif()
-        foreach(o UNIT_ROOT PARSE_TARGET RUNTIME_TARGET)
+        foreach(o UNIT_ROOT PARSE_TARGET RUNTIME_TARGET HOST_TARGET PRELUDE_SUFFIX)
             if(A_${o})
                 message(FATAL_ERROR "hot_add_scripts: ${o} works only with AOT (target ${A_TARGET})")
             endif()
@@ -383,7 +384,17 @@ function(hot_add_scripts)
         endif()
         target_include_directories(${A_TARGET} PUBLIC ${A_INCLUDES})
         # The language server gets a script host with the same scripts and includes.
-        hot_script_host(NAME ${A_TARGET} SCRIPTS ${scripts} INCLUDES ${A_INCLUDES} ${fmt_includes})
+        # HOST_TARGET gives the defines, options and include dirs of that target to the host.
+        # PRELUDES and PRELUDE_SUFFIX give the preludes.
+        set(host_args "")
+        if(A_HOST_TARGET)
+            list(APPEND host_args TARGET ${A_HOST_TARGET})
+        endif()
+        if(A_PRELUDE_SUFFIX)
+            list(APPEND host_args PRELUDE_SUFFIX ${A_PRELUDE_SUFFIX})
+        endif()
+        hot_script_host(NAME ${A_TARGET} SCRIPTS ${scripts} INCLUDES ${A_INCLUDES} ${fmt_includes}
+                        PRELUDES ${A_PRELUDES} ${host_args})
         return()
     endif()
 

@@ -254,6 +254,28 @@ TEST_F(HostsTest, ExactScriptBeatsDir)
     EXPECT_EQ(set.match("/src/deep/dir/y.hot")->name, "dir");
 }
 
+// A host with preludes. The helper write_host has none.
+TEST_F(HostsTest, IncompleteExactHostGivesWayToHostWithPreludes)
+{
+    write_host("a_scripts", make_build("s"), R"("/src/deep/dir")", R"("/src/deep/dir/x.hot")");
+    std::ofstream(hosts_dir / "b_full.json")
+        << R"({"version":1,"name":"b_full","binaryDir":")" << make_build("f") << R"(","scriptDirs":["/src/deep"],)"
+        << R"("preludes":["/p/a.hot"],"includeDirs":["/inc"],"defines":[],"flags":[]})";
+    HostSet set;
+    set.load(hosts_dir.string());
+    EXPECT_EQ(set.match("/src/deep/dir/x.hot")->name, "b_full");
+    EXPECT_EQ(set.match("/src/deep/dir/y.hot")->name, "b_full");
+}
+
+TEST_F(HostsTest, IncompleteHostWinsWhenNoHostHasPreludes)
+{
+    write_host("a_scripts", make_build("s"), R"("/src/deep/dir")", R"("/src/deep/dir/x.hot")");
+    write_host("b_dir", make_build("f"), R"("/src/deep")");
+    HostSet set;
+    set.load(hosts_dir.string());
+    EXPECT_EQ(set.match("/src/deep/dir/x.hot")->name, "a_scripts");
+}
+
 TEST_F(HostsTest, PrefixIsComponentAware)
 {
     write_host("a", make_build("a"), R"("/a/b/")");

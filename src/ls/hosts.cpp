@@ -294,8 +294,8 @@ bool HostSet::force_reload_for(const std::string& file)
 std::shared_ptr<const Host> HostSet::match(const std::string& script_path) const
 {
     const std::string path = path_key(utf8_path(script_path));
-    std::shared_ptr<const Host> best;
-    long best_score = 0;
+    std::shared_ptr<const Host> best, best_full;
+    long best_score = 0, best_full_score = 0;
     for (const auto& h : hosts_)
     { // sorted: the first host wins a tie
         long score = 0;
@@ -316,7 +316,16 @@ std::shared_ptr<const Host> HostSet::match(const std::string& script_path) const
             best_score = score;
             best = h;
         }
+        if (score > best_full_score && (!h->preludes.empty() || !h->prelude_suffix.empty()))
+        {
+            best_full_score = score;
+            best_full = h;
+        }
     }
+    // A host without preludes cannot translate a script of a prelude project. When it wins, the best
+    // host that has preludes takes its place, also with a lower score.
+    if (best && best->preludes.empty() && best->prelude_suffix.empty() && best_full)
+        return best_full;
     return best;
 }
 
