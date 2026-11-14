@@ -5952,6 +5952,25 @@ TEST(LanguageServerNative, PrepareRenameAgreesWithRename)
     }
 }
 
+// A second script of the workspace uses the function. The script is closed: the rename asks clangd
+// for this script too.
+TEST(LanguageServerNative, RenameChangesAClosedScriptOfTheWorkspace)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    const std::string pet = (s.dir.path() / "pet.hot").string();
+    write_file(pet, "using \"natives.h\";\n\nclass Pet {\n    int cap = Clamp100(7);\n}\n");
+    const json r = native_rename_request(s, "Clamp100(MAX_HP)", "Clamp100", "ClampHp");
+    SCOPED_TRACE(r.dump());
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    const json& changes = r["result"]["changes"];
+    EXPECT_EQ(changes.size(), 3u) << r.dump(); // hero.hot, pet.hot and natives.h
+    EXPECT_EQ(edit_places(r["result"], uri_of(pet), "ClampHp"), std::set<std::string>({"3:14-3:22"})) << r.dump();
+    EXPECT_EQ(edit_places(r["result"], s.uri, "ClampHp"), word_places(kNativeScript, "Clamp100", {})) << r.dump();
+    for (const auto& [uri, edits] : changes.items())
+        EXPECT_NE(uri.find(".hot.cpp"), uri.size() - 8) << uri;
+}
+
 namespace
 {
 
