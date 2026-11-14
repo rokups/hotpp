@@ -85,6 +85,9 @@ public:
     LoadResult head;
     // False when the first phase failed (head.error is not empty).
     bool ok = true;
+    // The cost of compile, as a size in bytes (the generated C++ text, else the source text). Zero
+    // means unknown. run_compiles starts the units with the largest cost first.
+    size_t cost = 0;
     // The slow build. The default does nothing.
     virtual void compile() {}
     // Makes the result. Call it after compile. The result has the module when the load succeeds.
@@ -152,6 +155,12 @@ constexpr unsigned kDefaultMaxJobs = 16;
 // 1 or more wins. A value that is not set, not valid or 0 gives
 // min(max(1, hardware threads), kDefaultMaxJobs). The minimum is 1. On Windows it returns 1.
 unsigned build_jobs();
+
+// The job count of a compile phase with this many units. It is the unit count when the count is
+// not more than the hardware threads and not above the memory based cap (kDefaultMaxJobs). Else,
+// and for one unit, it is build_jobs(). HOT_JOBS overrides it. The minimum is 1.
+unsigned build_jobs_for(size_t units);
+unsigned build_jobs_for(size_t units, unsigned hardware, unsigned cap);
 
 // Runs compile() of each entry. It uses min(jobs, count) jobs: the caller thread and jobs - 1
 // started threads. One entry or one job runs on the caller thread, with no new thread. It catches

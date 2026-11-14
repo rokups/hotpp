@@ -42,6 +42,40 @@ namespace hot
 
 namespace fs = std::filesystem;
 
+namespace
+{
+// HOT_TIMING: prints the time of a serial phase when the scope ends. The scope does nothing
+// when the switch is off.
+class PhaseTimer
+{
+public:
+    PhaseTimer(const char* name, bool on)
+        : name_(name)
+        , on_(on)
+        , t0_(std::chrono::steady_clock::now())
+    {
+    }
+    explicit PhaseTimer(const char* name)
+        : PhaseTimer(name, std::getenv("HOT_TIMING") != nullptr)
+    {
+    }
+    ~PhaseTimer()
+    {
+        if (!on_)
+            return;
+        const auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0_);
+        std::fprintf(stderr, "hot: timing %s %lld ms\n", name_, static_cast<long long>(us.count() / 1000));
+    }
+    PhaseTimer(const PhaseTimer&) = delete;
+    PhaseTimer& operator=(const PhaseTimer&) = delete;
+
+private:
+    const char* name_;
+    bool on_;
+    std::chrono::steady_clock::time_point t0_;
+};
+} // namespace
+
 #ifdef _WIN32
 int run_command(const std::vector<std::string>& argv, std::string& output)
 {
@@ -1042,6 +1076,7 @@ void ClangFilesBackend::record_compile_command(
 
 void ClangFilesBackend::flush_compile_commands()
 {
+    const PhaseTimer timer("flush_compile_commands");
     if (!compile_db_dirty_ || opt_.compile_commands_dir.empty() || opt_.generated_dir.empty())
         return;
     compile_db_dirty_ = false;
@@ -1199,6 +1234,7 @@ std::string compiler_environment()
 
 bool ClangFilesBackend::prepare_cache()
 {
+    const PhaseTimer timer("prepare_cache");
     if (!cache_)
         return false;
     if (compiler_id_done_)
@@ -1555,6 +1591,7 @@ void ClangFilesBackend::write_pch_shadow()
 
 void ClangFilesBackend::prewarm_pch(const std::vector<const BuildJob*>& jobs, bool timing)
 {
+    const PhaseTimer timer("prewarm_pch", timing);
     if (jobs.empty() || !pch_cache_ || !pch_enabled_by_env() || compiler_id_.find("clang") == std::string::npos)
         return;
     std::vector<std::string> prefixes;
@@ -2712,6 +2749,8 @@ public:
             head.dependencies = job_.tr.dependencies; // also after a failure
             head.iface_hash = job_.tr.iface_hash;
             head.import_hashes = job_.tr.import_hashes;
+            // The queue of the compiles sorts by this cost.
+            cost = job_.tr.cpp.empty() ? job_.source_text.size() : job_.tr.cpp.size();
         }
         catch (const std::exception& e)
         {
@@ -2738,6 +2777,7 @@ private:
     {
         if (!batch_)
             return;
+        const PhaseTimer timer("BuildBatch end");
         std::shared_ptr<size_t> batch = std::move(batch_);
         bool last = false;
         {
@@ -2805,6 +2845,8 @@ std::vector<std::unique_ptr<PendingLoad>> ClangFilesBackend::begin_load_many(
     std::vector<TwoPhaseLoad*> loads;
     result.reserve(sources.size());
     // The serial part: the names of the libraries, the cache setup and the slots file.
+    std::optional<PhaseTimer> serial_timer;
+    serial_timer.emplace("begin_load_many serial part");
     const TranslateInputs in = make_translate_inputs(mode);
     std::set<std::string> units;
     for (const ScriptSource& source : sources)
@@ -2820,6 +2862,7 @@ std::vector<std::unique_ptr<PendingLoad>> ClangFilesBackend::begin_load_many(
             loads.push_back(pending.get());
         result.push_back(std::move(pending));
     }
+    serial_timer.reset();
     // The parallel part: the same thread pattern as run_compiles. HOT_JOBS=N gives N threads in total.
     std::atomic<size_t> next{0};
     const auto work = [&]

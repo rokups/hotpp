@@ -235,14 +235,39 @@ unsigned build_jobs()
 #endif
 }
 
+unsigned build_jobs_for(size_t units, unsigned hardware, unsigned cap)
+{
+    if (units > 1 && units <= std::max(1u, hardware) && units <= cap)
+        return static_cast<unsigned>(units);
+    return std::min(std::max(1u, hardware), cap);
+}
+
+unsigned build_jobs_for(size_t units)
+{
+#ifdef _WIN32
+    return 1;
+#else
+    if (std::getenv("HOT_JOBS"))
+        return build_jobs();
+    return build_jobs_for(units, std::thread::hardware_concurrency(), kDefaultMaxJobs);
+#endif
+}
+
 std::vector<std::string> run_compiles(std::vector<PendingLoad*>& pending, unsigned jobs)
 {
     std::vector<std::string> errors(pending.size());
+    // The largest unit starts first, so the last unit to end is a small one. The sort is stable:
+    // equal costs keep the order of the caller. The errors keep the index of the caller.
+    std::vector<size_t> order(pending.size());
+    for (size_t i = 0; i < order.size(); ++i)
+        order[i] = i;
+    std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) { return pending[a]->cost > pending[b]->cost; });
     std::atomic<size_t> next{0};
     const auto work = [&]
     {
-        for (size_t i = next.fetch_add(1); i < pending.size(); i = next.fetch_add(1))
+        for (size_t n = next.fetch_add(1); n < order.size(); n = next.fetch_add(1))
         {
+            const size_t i = order[n];
             try
             {
                 pending[i]->compile();
