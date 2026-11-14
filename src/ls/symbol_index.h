@@ -101,6 +101,7 @@ public:
 
 private:
     struct DigestEntry;
+    // The cache has no lock: only the main thread of the server uses it.
     std::map<std::string, std::shared_ptr<DigestEntry>> digest_cache_;
     std::string dir_;
     int loads_ = 0, stores_ = 0;

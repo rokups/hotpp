@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <algorithm>
 #include <atomic>
 #include <cctype>
 #include <set>
@@ -202,9 +203,23 @@ std::vector<std::string> using_names(const std::string& t)
     return out;
 }
 
+// The key of a file in the "seen" set. The compiler reads an import through the OS, with the
+// spelling "dir/name". So a "link/../x" path can be another file than "x". The key follows the OS
+// for the parts that exist (weakly_canonical), and two spellings of one file give one key. It does
+// not use the host set path_key: that one is only lexical on Linux.
 std::string normal_key(const fs::path& p)
 {
-    return path_utf8(p.lexically_normal());
+    std::error_code ec;
+    fs::path c = fs::weakly_canonical(p, ec);
+    if (ec)
+        c = p.lexically_normal();
+    std::string out = path_utf8(c);
+#ifdef _WIN32
+    std::replace(out.begin(), out.end(), '\\', '/');
+    if (out.size() > 1 && out[1] == ':')
+        out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
+#endif
+    return out;
 }
 
 struct FileStamp
@@ -240,9 +255,11 @@ static std::string closure_digest(const std::string& script_path, const std::str
     const std::vector<std::string>& include_dirs, std::vector<FileStamp>* deps)
 {
     std::string all = content;
-    std::set<std::string> seen; // the normal paths of the files that are read already
-    std::vector<std::pair<std::string, std::string>> todo = {{normal_key(utf8_path(script_path)), content}};
-    seen.insert(todo.back().first);
+    std::set<std::string> seen; // the keys of the files that are read already
+    // Each todo item has the spelling of the path (the compiler resolves the imports of a file
+    // from the directory of this spelling) and the text.
+    std::vector<std::pair<std::string, std::string>> todo = {{script_path, content}};
+    seen.insert(normal_key(utf8_path(script_path)));
     while (!todo.empty())
     {
         const auto [path, text] = std::move(todo.back());
@@ -254,12 +271,19 @@ static std::string closure_digest(const std::string& script_path, const std::str
                 dirs.push_back(utf8_path(d));
             for (const fs::path& d : dirs)
             {
-                const std::string file = normal_key(d / utf8_path(name));
+                const fs::path spelling = d / utf8_path(name);
+                const std::string file = normal_key(spelling);
                 if (seen.count(file))
                     break; // read already
-                std::ifstream in(utf8_path(file), std::ios::binary);
+                // The stamp is taken before the read: a change after it makes the stamp old.
+                const FileStamp stamp = stamp_of(path_utf8(spelling));
+                std::ifstream in(spelling, std::ios::binary);
                 if (!in)
+                {
+                    if (deps)
+                        deps->push_back(FileStamp{path_utf8(spelling), stamp.size, stamp.mtime}); // a missing file
                     continue;
+                }
                 seen.insert(file);
                 ++g_digest_reads;
                 std::stringstream ss;
@@ -267,8 +291,8 @@ static std::string closure_digest(const std::string& script_path, const std::str
                 std::string body = ss.str();
                 all += '\0' + file + '\0' + body;
                 if (deps)
-                    deps->push_back(stamp_of(file));
-                todo.emplace_back(file, std::move(body));
+                    deps->push_back(FileStamp{path_utf8(spelling), stamp.size, stamp.mtime});
+                todo.emplace_back(path_utf8(spelling), std::move(body));
                 break;
             }
         }
