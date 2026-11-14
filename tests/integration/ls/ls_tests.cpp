@@ -6269,3 +6269,29 @@ TEST(LanguageServerUncertain, FactsOlderThanTheTextGiveNoCrash)
         {"position", p}, {"newName", "Renamed"}});
     EXPECT_TRUE(r2.contains("result") || r2.contains("error")) << r2.dump();
 }
+
+// The server sends the generated document to clangd at the first open of a script. Then clangd
+// builds the preamble while the user reads the file. No definition request is needed before.
+TEST(LanguageServer, GeneratedDocumentGoesToClangdAtOpenBeforeAnyRequest)
+{
+    REQUIRE_CLANGD();
+    TempDir dir;
+    hot::ls::ServerOptions o = options(dir, true);
+    o.clangd_log = (dir.path() / "open-warm.log").string();
+    Session s(true, kScript, &o);
+    ASSERT_TRUE(s.diagnostics([](const json&) { return true; }).is_object());
+    std::string log;
+    for (int i = 0; i < 100; ++i)
+    {
+        std::ifstream in(o.clangd_log, std::ios::binary);
+        std::stringstream text;
+        text << in.rdbuf();
+        log = text.str();
+        if (log.find("textDocument/didOpen") != std::string::npos && log.find("player.hot.cpp") != std::string::npos)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    EXPECT_NE(log.find("textDocument/didOpen"), std::string::npos) << log.substr(0, 2000);
+    EXPECT_NE(log.find("player.hot.cpp"), std::string::npos);
+    EXPECT_EQ(log.find("textDocument/definition"), std::string::npos);
+}
