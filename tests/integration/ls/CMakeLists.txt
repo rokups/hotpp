@@ -36,3 +36,8 @@ hot_gtest(integration_ls_format_tests DISCOVERY_TIMEOUT 30)
 add_executable(integration_ls_completion_context_tests completion_context_tests.cpp)
 target_link_libraries(integration_ls_completion_context_tests PRIVATE hot_ls_lib GTest::gtest_main)
 hot_gtest(integration_ls_completion_context_tests DISCOVERY_TIMEOUT 30)
+
+# Unit test of the name resolver (the table of the resolved names). It needs no clangd.
+add_executable(integration_ls_ref_resolver_tests ref_resolver_tests.cpp)
+target_link_libraries(integration_ls_ref_resolver_tests PRIVATE hot_ls_lib GTest::gtest_main)
+hot_gtest(integration_ls_ref_resolver_tests DISCOVERY_TIMEOUT 30)
