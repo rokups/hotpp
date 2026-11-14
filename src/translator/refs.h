@@ -44,7 +44,9 @@ struct RefInputs
 struct RefTable
 {
     std::vector<ResolvedRef> refs; // sorted by offset; a name gets one ref at most
-    std::vector<UnresolvedName> unresolved; // sorted by offset
+    // Sorted by offset. A member name after "." with a receiver of no known script type, and a
+    // bare name that is not a local and not a script symbol (for example a native function).
+    std::vector<UnresolvedName> unresolved;
     std::vector<std::pair<uint32_t, uint32_t>> raw_ranges; // the begin and the end of each raw body
 };
 

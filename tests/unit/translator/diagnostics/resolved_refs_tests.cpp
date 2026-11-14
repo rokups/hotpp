@@ -464,9 +464,12 @@ TEST(ResolvedRefs, MemberOfANativeValueIsUnresolved)
     o.null_warnings = true;
     const hotc::AnalyzeResult r = hotc::analyze(text, o);
     EXPECT_TRUE(r.ok) << r.diagnostics;
-    ASSERT_EQ(r.unresolved.size(), 1u);
-    EXPECT_EQ(r.unresolved[0].offset, words(text, "hp")[0]);
-    EXPECT_EQ(r.unresolved[0].length, 2u);
+    // The bare call of the native function "Native" and the member "hp".
+    ASSERT_EQ(r.unresolved.size(), 2u);
+    EXPECT_EQ(r.unresolved[0].offset, words(text, "Native")[0]);
+    EXPECT_EQ(r.unresolved[0].length, 6u);
+    EXPECT_EQ(r.unresolved[1].offset, words(text, "hp")[0]);
+    EXPECT_EQ(r.unresolved[1].length, 2u);
     EXPECT_TRUE(r.raw_ranges.empty());
     o.resolve_refs = false;
     const hotc::AnalyzeResult off = hotc::analyze(text, o);
@@ -612,4 +615,31 @@ TEST(ResolvedRefs, TransitiveImportGivesTheIdOfTheDeclaringUnit)
         ASSERT_NE(x, nullptr) << w;
         EXPECT_EQ(x->decl_file, file) << w;
     }
+}
+
+// A bare name that is not a local and not a script symbol does not vanish: it is in the list of
+// the unresolved names. A native function stays there: the language server asks clangd.
+TEST(ResolvedRefs, BareNativeNameIsUnresolved)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kWidget);
+    write_file(dir.path() / "n.h", "inline int NativeAdd(int a, int b) { return a + b; }\ninline int native_count = 3;\n");
+    const std::string text = "using \"w.h\";\n"
+                             "using \"n.h\";\n"
+                             "int Twice(int v) { return v * 2; }\n"
+                             "class Foo : Widget {\n"
+                             "    int hp = 0;\n"
+                             "    int Get(int k) { int s = k; return NativeAdd(s, native_count) + Twice(hp); }\n"
+                             "}\n";
+    hotc::TranslateOptions o = temp_options(dir, "");
+    o.resolve_refs = true;
+    o.null_warnings = true;
+    const hotc::AnalyzeResult r = hotc::analyze(text, o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    std::set<uint32_t> got;
+    for (const hotc::UnresolvedName& u : r.unresolved)
+        got.insert(u.offset);
+    EXPECT_EQ(got, (std::set<uint32_t>{words(text, "NativeAdd")[0], words(text, "native_count")[0]}));
+    EXPECT_EQ(decl_of(r, text, "Twice", 1), "Twice");
+    EXPECT_EQ(decl_of(r, text, "hp", 1), "Foo.hp");
 }

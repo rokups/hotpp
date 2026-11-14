@@ -210,7 +210,8 @@ private:
         refs_.push_back(std::move(r));
     }
 
-    // A member name after "." with a receiver of no known script type.
+    // A member name after "." with a receiver of no known script type, or a bare name that is not
+    // a script symbol.
     void add_unresolved(uint32_t pos, const std::string& name)
     {
         if (pos == 0 || !word_at(pos, name))
@@ -666,6 +667,10 @@ private:
             if (auto it = enums_.find(n); it != enums_.end())
                 v.en = it->second;
         }
+        else
+            // No script symbol has the name: it is perhaps native (a function, a type or a
+            // namespace of a header). The name must not vanish from the table.
+            add_unresolved(pos, n);
         return v;
     }
 
