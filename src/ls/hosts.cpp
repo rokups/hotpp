@@ -169,6 +169,18 @@ std::vector<std::string> Host::cxx_flags() const
     return out;
 }
 
+bool host_in_build_dir(const Host& host, const std::string& path)
+{
+    if (host.binary_dir.empty())
+        return false;
+    auto real = [](const std::string& s) {
+        std::error_code ec;
+        const fs::path c = fs::weakly_canonical(utf8_path(s), ec);
+        return strip_slash(path_key(ec ? utf8_path(s) : c));
+    };
+    return contains(real(host.binary_dir), real(path));
+}
+
 std::string host_header_refusal(const Host& host, const std::string& path)
 {
     // weakly_canonical follows symlinks, so a link cannot hide the real place of a path.

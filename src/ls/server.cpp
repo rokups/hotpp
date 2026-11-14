@@ -809,9 +809,9 @@ private:
     std::string rename_other_scripts(NativeRenameJob& job, const Doc& d);
     // True when the file is in a workspace folder.
     bool in_workspace(const std::string& path) const;
-    // True when the file is below an include dir of the host of the document. The host is the
-    // host of the document path, else the nearest host.
-    bool in_host_include_dirs(const Doc& d, const std::string& path) const;
+    // The host for the scope rule of a native edit: the host of the document path, else the
+    // nearest host when the document is in a workspace folder, else none.
+    std::shared_ptr<const Host> scope_host(const Doc& d) const;
     // The reason why a native rename must not edit the file, or an empty string when it may.
     std::string native_edit_refusal(const Doc& d, const std::string& path) const;
     // The tokens of the native names of a document: clangd classifies the generated text. The
@@ -4990,35 +4990,31 @@ bool Server::in_workspace(const std::string& path) const
     return false;
 }
 
-bool Server::in_host_include_dirs(const Doc& d, const std::string& path) const
+// The host of a script for the scope rule: the matching host, else the nearest host when the
+// script is in a workspace folder. A script outside the workspace folders has no host then.
+std::shared_ptr<const Host> Server::scope_host(const Doc& d) const
 {
-    auto host = host_of(d.path);
-    if (!host)
-        host = nearest_host(d.path);
-    if (!host)
-        return false;
-    std::error_code ec;
-    const fs::path p = fs::weakly_canonical(path, ec);
-    for (const std::string& dir : host->include_dirs)
-    {
-        if (dir.empty())
-            continue;
-        // weakly_canonical follows symlinks, so a link in the dir cannot hide the real place.
-        const fs::path rel = p.lexically_relative(fs::weakly_canonical(dir, ec));
-        if (!rel.empty() && *rel.begin() != "..")
-            return true;
-    }
-    return false;
+    if (auto host = host_of(d.path))
+        return host;
+    return in_workspace(d.path) ? nearest_host(d.path) : nullptr;
 }
 
 std::string Server::native_edit_refusal(const Doc& d, const std::string& path) const
 {
+    const auto host = scope_host(d);
     if (in_workspace(path))
+    {
+        // A generated file below the build dir of the host gets no edit, also inside the workspace.
+        if (host && host_in_build_dir(*host, path))
+            return "in the build dir of the host";
         return {};
-    if (in_host_include_dirs(d, path))
-        return opt_.rename_host_headers ? std::string()
-                                        : "outside the workspace folders (the setting renameHostHeaders is off)";
-    return "outside the workspace folders and the include dirs of the host";
+    }
+    if (!host)
+        return "outside the workspace folders and the include dirs of the host";
+    if (std::string why = host_header_refusal(*host, path); !why.empty())
+        return why;
+    return opt_.rename_host_headers ? std::string()
+                                    : "outside the workspace folders (the setting renameHostHeaders is off)";
 }
 
 // The refusal text of a native rename starts with "what". The helpers of native_rename share this state.

@@ -21,6 +21,9 @@
 // "sourceRootsFile" (optional, one path on each line, "!" before a SYSTEM dir) and the inline arrays
 // "sourceRoots" and "systemDirs" give the source dirs of the build. "binaryDir" is the build dir.
 // host_header_refusal uses them to decide if a header that is outside the workspace may get an edit.
+// Vendored code in a source tree stays editable, unless its dir has the SYSTEM property in CMake.
+// A host file from an older CMake run has no source roots. It refuses each host header until the
+// next CMake run writes the ".roots" file.
 // HostSet loads these files. match() finds the best host for a script path.
 #pragma once
 
@@ -52,6 +55,9 @@ struct Host
 // and not below the build dir. Each compare uses the real path (symlinks resolved) and a path
 // component border. The caller checks the workspace folders and the setting renameHostHeaders.
 std::string host_header_refusal(const Host& host, const std::string& path);
+
+// True when the real path of path is below the build dir of the host (binaryDir).
+bool host_in_build_dir(const Host& host, const std::string& path);
 
 class HostSet
 {

@@ -6172,7 +6172,10 @@ struct HostHeaderCase
     TempDir dir, outside;
     std::string path, uri;
     hot::ls::ServerOptions o;
-    HostHeaderCase()
+    // outside_is_root: the dir of the header is a source root of the host. near_script: the script
+    // is in a subdir that no host matches (the host has the script dir "scripts"), so the nearest
+    // host applies.
+    explicit HostHeaderCase(bool outside_is_root = true, bool near_script = false)
     {
         const std::filesystem::path root = dir.path();
         std::filesystem::create_directories(root / "build");
@@ -6181,10 +6184,17 @@ struct HostHeaderCase
         write_file((outside.path() / "outside.h").string(), "#pragma once\nint OutsideFn(int v);\n");
         write_file((root / "hosts" / "h.json").string(),
             R"({"version":1,"name":"h","binaryDir":")" + (root / "build").generic_string()
-                + R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":[")" + root.generic_string()
-                + R"("],"scripts":[],"includeDirs":[")" + outside.path().generic_string() + R"(",")" + HOT_SOURCE_DIR
+                + R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":[")"
+                + (near_script ? (root / "scripts").generic_string() : root.generic_string())
+                + R"("],"scripts":[],"sourceRoots":[")" + (outside_is_root ? outside.path().generic_string() : root.generic_string())
+                + R"("],"includeDirs":[")" + outside.path().generic_string() + R"(",")" + HOT_SOURCE_DIR
                 + R"(/include"],"defines":[],"flags":[]})");
-        path = (root / "hero.hot").string();
+        if (near_script)
+        {
+            std::filesystem::create_directories(root / "near");
+            std::filesystem::create_directories(root / "scripts");
+        }
+        path = (root / (near_script ? "near/hero.hot" : "hero.hot")).string();
         uri = uri_of(path);
         write_file(path, "using \"outside.h\";\n\nclass Hero {\n    int x = OutsideFn(1);\n}\n");
         o = options(dir, true);
@@ -6240,6 +6250,75 @@ TEST(LanguageServerNative, RenameOfAHostHeaderIsRefusedWithTheSwitchOff)
     ASSERT_TRUE(prep.contains("error")) << prep.dump();
     EXPECT_NE(prep["error"]["message"].get<std::string>().find("renameHostHeaders is off"), std::string::npos)
         << prep.dump();
+}
+
+namespace
+{
+
+// Asks for a rename of OutsideFn in the script of c. The workspace folder is workspace_uri.
+json rename_host_header(HostHeaderCase& c, const std::string& workspace_uri, json options = json::object())
+{
+    LsClient client(c.o);
+    client.request("initialize", {{"processId", nullptr}, {"rootUri", workspace_uri}, {"capabilities", json::object()},
+                                     {"initializationOptions", options}});
+    client.notify("initialized", json::object());
+    client.open(c.uri, "using \"outside.h\";\n\nclass Hero {\n    int x = OutsideFn(1);\n}\n");
+    const json p = {{"textDocument", {{"uri", c.uri}}}, {"position", pos(3, 12)}, {"newName", "OutsideFn2"}};
+    json r;
+    for (int i = 0; i < 20; ++i)
+    {
+        r = client.request("textDocument/rename", p);
+        if (r.contains("result") && r["result"].is_object())
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    return r;
+}
+
+std::string error_text(const json& r)
+{
+    return r.contains("error") ? r["error"]["message"].get<std::string>() : std::string();
+}
+
+} // namespace
+
+TEST(LanguageServerNative, RenameOfAHeaderBelowAnIncludeDirOutsideTheSourceRootsIsRefused)
+{
+    REQUIRE_CLANGD();
+    for (const bool on : {true, false})
+    {
+        HostHeaderCase c(false);
+        const json r = rename_host_header(c, uri_of(c.dir.path().string()), {{"renameHostHeaders", on}});
+        SCOPED_TRACE(r.dump());
+        ASSERT_TRUE(r.contains("error")) << r.dump();
+        EXPECT_NE(error_text(r).find("outside the source dirs of the build of the host"), std::string::npos) << r.dump();
+        // The setting text is only for an allowed header.
+        EXPECT_EQ(error_text(r).find("renameHostHeaders is off"), std::string::npos) << r.dump();
+    }
+}
+
+TEST(LanguageServerNative, RenameOfAHostHeaderFromAScriptWithNoHostAndNoWorkspaceIsRefused)
+{
+    REQUIRE_CLANGD();
+    HostHeaderCase c(true, true);
+    // The option -I lets clangd find the header, so the refusal comes from the scope rule.
+    c.o.include_dirs.push_back(c.outside.path().string());
+    TempDir other_workspace;
+    const json r = rename_host_header(c, uri_of(other_workspace.path().string()));
+    SCOPED_TRACE(r.dump());
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+    EXPECT_NE(error_text(r).find("outside the workspace folders"), std::string::npos) << r.dump();
+}
+
+TEST(LanguageServerNative, RenameOfAHostHeaderFromAScriptWithNoHostInTheWorkspaceUsesTheNearestHost)
+{
+    REQUIRE_CLANGD();
+    HostHeaderCase c(true, true);
+    const json r = rename_host_header(c, uri_of(c.dir.path().string()));
+    SCOPED_TRACE(r.dump());
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    const std::string header_uri = uri_of((c.outside.path() / "outside.h").string());
+    EXPECT_EQ(edit_places(r["result"], header_uri, "OutsideFn2"), std::set<std::string>({"1:4-1:13"})) << r.dump();
 }
 
 namespace
