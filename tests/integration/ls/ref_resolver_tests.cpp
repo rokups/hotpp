@@ -132,6 +132,16 @@ TEST(RefResolver, SetReplacesAndEraseRemovesTheImports)
     g.erase("missing");
 }
 
+TEST(RefResolver, MergeEditsKeepsTheFirstEditOfARangeAndCountsTheConflicts)
+{
+    json changes = json::object();
+    EXPECT_EQ(hot::ls::merge_edits(changes, "file:///a.hot", json::array({edit(1, 0, 2, "x")})), 0);
+    EXPECT_EQ(hot::ls::merge_edits(changes, "file:///a.hot", json::array({edit(1, 0, 2, "y"), edit(1, 0, 2, "x")})), 1);
+    const json& a = changes["file:///a.hot"];
+    ASSERT_EQ(a.size(), 1u);
+    EXPECT_EQ(a[0], edit(1, 0, 2, "x"));
+}
+
 TEST(RefResolver, MergeEditsSortsAndRemovesEqualEdits)
 {
     json changes = json::object();

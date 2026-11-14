@@ -203,13 +203,17 @@ json shard_json(const IndexShard& shard)
         classes.push_back(
             {{"n", c.name}, {"p", pos_json(c.begin)}, {"r", places_json(c.refs)}, {"m", std::move(members)}});
     }
-    return {{"c", std::move(classes)}, {"t", table_json(shard.table)}};
+    json body = {{"c", std::move(classes)}, {"t", table_json(shard.table)}};
+    if (shard.has_table)
+        body["tp"] = 1;
+    return body;
 }
 
 IndexShard shard_of(const json& body)
 {
     IndexShard shard;
     shard.table = table_of(body.at("t"));
+    shard.has_table = body.contains("tp");
     for (const json& cj : body.at("c"))
     {
         IndexClass c;
@@ -463,6 +467,11 @@ std::optional<IndexShard> SymbolIndex::load(const std::string& script_path, cons
         std::stringstream body;
         body << in.rdbuf();
         IndexShard shard = shard_of(json::parse(body.str()));
+        if (!shard.has_table)
+        {
+            fs::remove(file, ec); // a shard with no table
+            return std::nullopt;
+        }
         ++loads_;
         return shard;
     }

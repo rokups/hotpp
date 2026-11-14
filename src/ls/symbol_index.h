@@ -16,6 +16,8 @@
 // The body (version 3) has the classes ("c") and the table of the resolved names ("t"). The
 // table keeps offset, length, kind, is_decl, decl and decl_file of each ref. The strings are in a
 // string table. load() computes ResolvedRef::id and the line and the column of each name.
+// A shard with a table has the marker "tp" (IndexShard::has_table). load() deletes a shard
+// without the marker, so a shard with a missing table never replaces an analyze.
 // The digest covers the text of the file and the texts of the scripts that it imports.
 // A write goes to a temporary file first. Then a rename puts it in place.
 #pragma once
@@ -58,6 +60,9 @@ struct IndexShard
 {
     std::vector<IndexClass> classes;
     FileRefs table; // the resolved names of the file (from the translator)
+    // True when "table" comes from an analyze with the resolved names. store() writes the marker.
+    // load() gives only a shard with the marker.
+    bool has_table = false;
     IndexClass* find_class(const std::string& name);
 };
 

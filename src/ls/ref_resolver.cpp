@@ -114,7 +114,7 @@ std::tuple<int, int, int, int> range_key(const json& edit)
 
 } // namespace
 
-void merge_edits(json& changes, const std::string& uri, const json& edits)
+int merge_edits(json& changes, const std::string& uri, const json& edits)
 {
     json& list = changes[uri];
     if (!list.is_array())
@@ -122,15 +122,22 @@ void merge_edits(json& changes, const std::string& uri, const json& edits)
     for (const json& e : edits)
         list.push_back(e);
     std::vector<json> v(list.begin(), list.end());
-    std::stable_sort(v.begin(), v.end(), [](const json& a, const json& b)
+    // The sort is stable, so the first edit of each range stays first.
+    std::stable_sort(v.begin(), v.end(), [](const json& a, const json& b) { return range_key(a) < range_key(b); });
+    int conflicts = 0;
+    std::vector<json> out;
+    for (json& e : v)
     {
-        const auto ka = range_key(a), kb = range_key(b);
-        if (ka != kb)
-            return ka < kb;
-        return a.value("newText", std::string()) < b.value("newText", std::string());
-    });
-    v.erase(std::unique(v.begin(), v.end()), v.end());
-    list = json(std::move(v));
+        if (!out.empty() && range_key(out.back()) == range_key(e))
+        {
+            if (out.back().value("newText", std::string()) != e.value("newText", std::string()))
+                ++conflicts;
+            continue;
+        }
+        out.push_back(std::move(e));
+    }
+    list = json(std::move(out));
+    return conflicts;
 }
 
 } // namespace hot::ls

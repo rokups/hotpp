@@ -6,6 +6,7 @@
 // (hotc::ResolvedRef). The server uses it for definition, references and rename.
 //
 // The module is pure: it does not start clangd and it does not read files.
+// The module has no locks. Use it from one thread.
 #pragma once
 
 #include "hot/hotc_lib.h"
@@ -68,7 +69,9 @@ private:
 };
 
 // Adds "edits" (an array of LSP TextEdit) to changes[uri] of a WorkspaceEdit. Then sorts the
-// edits of the uri by range and removes the equal edits.
-void merge_edits(nlohmann::json& changes, const std::string& uri, const nlohmann::json& edits);
+// edits of the uri by range. For each range, only the first edit stays: the edits that are in
+// changes[uri] come before the new edits. Gives the number of removed edits with a different
+// newText (the conflicts). A caller that gets a conflict can refuse the edit.
+int merge_edits(nlohmann::json& changes, const std::string& uri, const nlohmann::json& edits);
 
 } // namespace hot::ls

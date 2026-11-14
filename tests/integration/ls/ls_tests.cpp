@@ -2474,6 +2474,7 @@ hot::ls::IndexShard sample_shard()
     hot::ls::IndexMember unknown{"heal", "method", {10, 9}, std::nullopt};
     c.members = {known, unknown};
     shard.classes.push_back(c);
+    shard.has_table = true;
     return shard;
 }
 
@@ -2610,7 +2611,9 @@ TEST(SymbolIndex, ADifferentDigestGivesNoShardAndTheNewShardReplacesTheOld)
     ASSERT_NE(d1, d2);
     ASSERT_TRUE(index.store(script, d1, sample_shard()));
     EXPECT_FALSE(index.load(script, d2));
-    ASSERT_TRUE(index.store(script, d2, hot::ls::IndexShard{}));
+    hot::ls::IndexShard empty;
+    empty.has_table = true;
+    ASSERT_TRUE(index.store(script, d2, empty));
     EXPECT_FALSE(index.load(script, d1));
     ASSERT_TRUE(index.load(script, d2));
     EXPECT_EQ(file_count(dir.path() / "index"), 1u);
@@ -2742,6 +2745,21 @@ TEST(SymbolIndex, StoreAndLoadGiveAnEqualTable)
     EXPECT_EQ(loaded->classes.size(), shard.classes.size());
 }
 
+// A shard without the table marker is never given back. load() deletes it.
+TEST(SymbolIndex, AShardWithoutTheTableMarkerIsDropped)
+{
+    TempDir dir;
+    hot::ls::SymbolIndex index;
+    index.open((dir.path() / "index").string());
+    const std::string script = (dir.path() / "a.hot").string();
+    write_file(script, "x");
+    hot::ls::IndexShard shard = sample_shard();
+    shard.has_table = false;
+    ASSERT_TRUE(index.store(script, "d", shard));
+    EXPECT_FALSE(index.load(script, "d"));
+    EXPECT_FALSE(std::filesystem::exists(index.shard_path(script)));
+}
+
 TEST(SymbolIndex, AVersion2ShardIsDropped)
 {
     TempDir dir;
@@ -2769,6 +2787,7 @@ TEST(SymbolIndex, AChangedImportChangesTheDigestAndTheShardIsNotReused)
     const std::string d1 = index.cached_digest(main, text, {});
     hot::ls::IndexShard shard;
     shard.table = sample_table();
+    shard.has_table = true;
     ASSERT_TRUE(index.store(main, d1, shard));
     ASSERT_TRUE(index.load(main, d1));
     write_file((dir.path() / "dep.hot").string(), "class Dep { const int kk = 1; }\n");
@@ -2813,6 +2832,18 @@ TEST(LanguageServer, RenameOnAClosedFileAfterARestartUsesTheIndex)
     const json first = r["result"]["changes"][uri_of(other_path)];
     EXPECT_EQ(analyzed_files(*s.client), 1);
     EXPECT_TRUE(std::filesystem::exists(s.dir.path() / ".cache" / "hot" / "index"));
+    {
+        // The saved shard has the table of the resolved names and the table marker.
+        hot::ls::SymbolIndex index;
+        index.open((s.dir.path() / ".cache" / "hot" / "index").string());
+        const std::string shard = read_all(index.shard_path(other_path));
+        const size_t nl = shard.find('\n');
+        ASSERT_NE(nl, std::string::npos);
+        const json body = json::parse(shard.substr(nl + 1));
+        EXPECT_TRUE(body.contains("tp"));
+        EXPECT_FALSE(body["t"]["r"].empty()) << body.dump();
+        EXPECT_EQ(body["t"]["f"], hotc::ref_file_id(other_path));
+    }
     s.client.reset(); // the restart
     s.client = std::make_unique<LsClient>(options(s.dir, false));
     s.client->initialize(uri_of(s.dir.path().string()));

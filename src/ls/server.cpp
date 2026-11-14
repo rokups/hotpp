@@ -450,6 +450,7 @@ private:
         hotc::TranslateOptions o;
         o.script_name = d.path;
         o.generation = 1;
+        o.resolve_refs = true; // the table of the resolved names (ref_resolver.h)
         const Effective e = effective_options(d.path);
         o.include_dirs = e.include_dirs;
         o.resource_dir = e.resource_dir;
@@ -804,7 +805,13 @@ private:
     // The places of the word of a static member in the script (the declaration and the uses).
     std::set<Pos> static_places(const Doc& d, const StaticHit& hit, bool& uncertain) const;
     std::vector<std::string> workspace_scripts() const;
-    IndexShard shard_of_doc(const Doc& d) const;
+    // The hotc::ref_file_id of each direct script import of "text", the text of the script "d". The
+    // search is the search of the translator (hotc::find_import) with the open documents. A path
+    // that no file has is left out.
+    std::vector<std::string> script_imports(const Doc& d, const std::string& text);
+    // The table of the resolved names of "d", from its facts.
+    FileRefs table_of_doc(const Doc& d);
+    IndexShard shard_of_doc(const Doc& d);
     // Calls "fn" for each other .hot file of the workspace that declares the symbol "key".
     // "places" are the places of the symbol in that file. An open document is used as it is.
     // A file on disk goes to clangd only for the call.
@@ -4164,9 +4171,48 @@ void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const st
     }
 }
 
-IndexShard Server::shard_of_doc(const Doc& d) const
+std::vector<std::string> Server::script_imports(const Doc& d, const std::string& text)
+{
+    if (!open_docs_fs_)
+    {
+        open_docs_fs_ = std::make_shared<OpenDocsFs>();
+        open_docs_fs_->server = this;
+    }
+    hotc::TranslateOptions o = translate_options(d);
+    o.fs = open_docs_fs_;
+    const std::string dir = fs::path(d.path).parent_path().string();
+    std::vector<std::string> out;
+    for (const std::string& pth : hotc::analyze_imports(text, std::string()).imports)
+    {
+        if (pth.size() <= 4 || pth.compare(pth.size() - 4, 4, ".hot") != 0)
+            continue;
+        std::string itext, file, unit;
+        if (!hotc::find_import(o, pth, dir, std::string(), itext, file, unit))
+            continue;
+        const std::string id = hotc::ref_file_id(file);
+        if (std::find(out.begin(), out.end(), id) == out.end())
+            out.push_back(id);
+    }
+    return out;
+}
+
+FileRefs Server::table_of_doc(const Doc& d)
+{
+    FileRefs t;
+    t.file_id = hotc::ref_file_id(d.path);
+    t.refs = d.facts.refs;
+    t.unresolved = d.facts.unresolved;
+    t.raw_ranges = d.facts.raw_ranges;
+    t.imports = script_imports(d, d.text.s);
+    sort_refs(t);
+    return t;
+}
+
+IndexShard Server::shard_of_doc(const Doc& d)
 {
     IndexShard shard;
+    shard.table = table_of_doc(d);
+    shard.has_table = true;
     for (const hotc::AnalyzedClass& c : d.facts.classes)
     {
         IndexClass ic;
