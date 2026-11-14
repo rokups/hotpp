@@ -554,3 +554,62 @@ TEST(ResolvedRefs, SameClassNameInTwoImports)
     EXPECT_EQ(gun->id, file + "#Gun");
     EXPECT_EQ(ammo->id, file + "#Gun.ammo");
 }
+
+// Three units: c.hot imports b.hot, and b.hot imports a.hot. A name of a.hot that c.hot uses gets
+// the id of its declaration in a.hot, for each kind of symbol.
+TEST(ResolvedRefs, TransitiveImportGivesTheIdOfTheDeclaringUnit)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kWidget);
+    const std::string a = "using \"w.h\";\n"
+                          "const int Limit = 5;\n"
+                          "int Counter = 0;\n"
+                          "int Twice(int v) { return v * 2; }\n"
+                          "enum Mode { Slow, Fast }\n"
+                          "struct Pos { public int x = 0; }\n"
+                          "class Gun : Widget {\n"
+                          "    public static int Make(int k) { return k; }\n"
+                          "    public static int Shots = 0;\n"
+                          "}\n";
+    const std::string b = "using \"w.h\";\nusing \"a.hot\";\n"
+                          "class Rifle : Gun { public int Shoot() { return Twice(1) + Counter + Gun.Shots; } }\n";
+    const std::string c = "using \"w.h\";\nusing \"b.hot\";\n"
+                          "class Cannon : Rifle {\n"
+                          "    public int Blast() { Pos p; Mode m = Mode.Fast; return Twice(1) + Counter + Limit + Gun.Make(2) + Gun.Shots + p.x; }\n"
+                          "}\n";
+    write_file(dir.path() / "a.hot", a);
+    write_file(dir.path() / "b.hot", b);
+    hotc::TranslateOptions o = temp_options(dir, "");
+    o.resolve_refs = true;
+    o.null_warnings = true;
+    o.script_name = (dir.path() / "c.hot").string();
+    const hotc::AnalyzeResult r = hotc::analyze(c, o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    const std::string file = hotc::ref_file_id((dir.path() / "a.hot").string());
+    auto id_of = [&](const std::string& w, size_t nth)
+    {
+        const hotc::ResolvedRef* x = ref_at(r, words(c, w)[nth]);
+        return x ? x->id : std::string("<no ref>");
+    };
+    EXPECT_EQ(id_of("Twice", 0), file + "#Twice");
+    EXPECT_EQ(id_of("Counter", 0), file + "#Counter");
+    EXPECT_EQ(id_of("Limit", 0), file + "#Limit");
+    EXPECT_EQ(id_of("Mode", 0), file + "#Mode");
+    EXPECT_EQ(id_of("Fast", 0), file + "#Mode.Fast");
+    EXPECT_EQ(id_of("Gun", 0), file + "#Gun");
+    EXPECT_EQ(id_of("Make", 0), file + "#Gun.Make");
+    EXPECT_EQ(id_of("Pos", 0), file + "#Pos");
+    EXPECT_EQ(id_of("x", 0), file + "#Pos.x");
+    EXPECT_EQ(id_of("Shots", 0), file + "#Gun.Shots");
+    EXPECT_TRUE(r.unresolved.empty());
+    // The direct import gives the same ids.
+    o.script_name = (dir.path() / "b.hot").string();
+    const hotc::AnalyzeResult rb = hotc::analyze(b, o);
+    ASSERT_TRUE(rb.ok) << rb.diagnostics;
+    for (const char* w : {"Twice", "Counter", "Shots"})
+    {
+        const hotc::ResolvedRef* x = ref_at(rb, words(b, w)[0]);
+        ASSERT_NE(x, nullptr) << w;
+        EXPECT_EQ(x->decl_file, file) << w;
+    }
+}

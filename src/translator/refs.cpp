@@ -109,9 +109,13 @@ public:
                 module_.emplace(f.name, std::make_pair(&f, RefKind::ModuleVar));
         for (const Method& m : sc_.fns)
             fns_.emplace(m.written_name(), &m);
-        if (in_.foreign_fns)
-            for (const Method& m : *in_.foreign_fns)
-                fns_.emplace(m.written_name(), &m);
+        for (const Field* f : in_.foreign_vars)
+            if (f && f->owner.empty())
+                module_.emplace(f->name, std::make_pair(f, RefKind::ModuleVar));
+        for (const auto* list : {in_.foreign_fns, in_.deep_fns})
+            if (list)
+                for (const Method& m : *list)
+                    fns_.emplace(m.written_name(), &m);
     }
 
     RefTable run()
@@ -373,6 +377,10 @@ private:
             for (const Field& f : sc_.vars)
                 if (f.owner == d->name && f.name == key)
                     return Member{RefKind::StaticField, d, type_of(f), false};
+            // A static field of an imported class stays in the module of the import.
+            for (const Field* f : in_.foreign_vars)
+                if (f && f->owner == d->name && f->name == key)
+                    return Member{RefKind::StaticField, d, type_of(*f), false};
         }
         depth = 0;
         for (const ClassDef* d = &c; d && depth < 64; d = parent_of(*d), ++depth)
