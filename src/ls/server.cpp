@@ -345,6 +345,19 @@ std::optional<Pos> Doc::gen_script_to_text(Pos p) const
 static std::string blank_non_code(std::string_view l, bool& in_block);
 
 // The state of one native rename. The helpers of Server::native_rename share it.
+// True for the name of a file that "hotc --compile-commands" writes: "<stem>.g<N>.cpp".
+bool is_hotc_output(const std::string& path)
+{
+    const std::string name = fs::path(path).filename().string();
+    const std::string tail = ".cpp";
+    if (name.size() < 8 || name.compare(name.size() - tail.size(), tail.size(), tail) != 0)
+        return false;
+    size_t end = name.size() - tail.size(), b = end;
+    while (b > 0 && std::isdigit(static_cast<unsigned char>(name[b - 1])))
+        --b;
+    return b < end && b >= 2 && name[b - 1] == 'g' && name[b - 2] == '.';
+}
+
 struct NativeRenameJob
 {
     std::string old_name, new_name;
@@ -5106,6 +5119,10 @@ std::string Server::add_cpp_edits(NativeRenameJob& job, const Doc& d, const std:
     // A real C++ file: the edit passes through. It must be in a workspace folder (or an include dir
     // of the host), and it must change the old name.
     const std::string path = uri_to_path(uri);
+    // A file that "hotc --compile-commands" writes ("<stem>.g<N>.cpp") is generated code. The next
+    // translation writes it again, so an edit of it is lost and the script does not change.
+    if (is_hotc_output(path))
+        return job.what + ": the edit changes the generated file " + path + ", the script of this file does not change";
     if (const std::string why = native_edit_refusal(d, path); !why.empty())
         return job.what + ": the edit changes " + path + ", " + why;
     auto& text = job.cpp_texts[uri];
@@ -5372,6 +5389,7 @@ std::string Server::rename_other_scripts(NativeRenameJob& job, const Doc& d)
                 {
                     const json tdp = {{"textDocument", {{"uri", o.gen_uri}}}, {"position", gen_pos(o, g)}};
                     bool any = false, same = false;
+                    std::string related;
                     for (const char* kind : {"textDocument/declaration", "textDocument/definition"})
                     {
                         json result;
@@ -5386,13 +5404,30 @@ std::string Server::rename_other_scripts(NativeRenameJob& job, const Doc& d)
                             if (uri.empty() || !range.is_object() || !range.contains("start"))
                                 continue;
                             any = true;
-                            const std::tuple<std::string, int, int> at = {
-                                uri, range["start"].value("line", 0), range["start"].value("character", 0)};
-                            same = same || std::find(job.target.begin(), job.target.end(), at) != job.target.end();
+                            const int line = range["start"].value("line", 0), col = range["start"].value("character", 0);
+                            const std::tuple<std::string, int, int> at = {uri, line, col};
+                            // The symbol of the first answer, or a place that the first answer
+                            // renames too (a constructor of a class, an override of a method).
+                            const bool is_generated = uri == o.gen_uri || is_generated_uri(uri);
+                            bool here = std::find(job.target.begin(), job.target.end(), at) != job.target.end();
+                            if (!here && !is_generated && job.changes.contains(uri))
+                                for (const json& e : job.changes[uri])
+                                    here = here
+                                        || (e["range"]["start"].value("line", -1) == line
+                                            && e["range"]["start"].value("character", -1) == col);
+                            same = same || here;
+                            if (!here && !is_generated && is_old_name(job, uri, range))
+                                related = related.empty() ? uri_to_path(uri) : related;
                         }
                     }
                     if (!same)
                     {
+                        // A place of a real C++ file with the old name that the first answer does
+                        // not change can be a related symbol (an override, a template
+                        // specialization). A partial rename is wrong, so the server refuses.
+                        if (!related.empty())
+                            return what + ": " + c.path + " uses a symbol with the name " + old_name
+                                + " in " + related + " that the rename of clangd does not change";
                         if (any)
                             break; // an other symbol: the next word
                         continue;
@@ -5415,7 +5450,13 @@ std::string Server::rename_other_scripts(NativeRenameJob& job, const Doc& d)
         };
         std::string why;
         if (open)
+        {
+            // The generated code of an open script must be the code of its editor text. Else the
+            // script has no answer of clangd for its uses of the name.
+            if (open->facts.cpp.empty() || open->gen_script.s != open->text.s)
+                return what + ": " + c.path + " does not translate";
             why = work(*open);
+        }
         else
         {
             Doc tmp = closed_doc(c.path, *closed_text);

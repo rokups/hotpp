@@ -6065,6 +6065,53 @@ TEST(LanguageServerNative, RenameIsRefusedForAClosedScriptThatDoesNotTranslate)
     expect_rename_refusal(s, "bad.hot does not translate");
 }
 
+// A second script is open with a syntax error in its editor text. The rename does not skip it.
+TEST(LanguageServerNative, RenameIsRefusedForAnOpenScriptThatDoesNotTranslate)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    const std::string pet = (s.dir.path() / "pet.hot").string();
+    write_file(pet, kPetScript);
+    s.client->open(uri_of(pet), "using \"natives.h\";\n\nclass Pet {\n    int cap = Clamp100(7;\n}}}\n");
+    expect_rename_refusal(s, "pet.hot does not translate");
+}
+
+// A file "<stem>.g<N>.cpp" of "hotc --compile-commands" uses the function. The background index of
+// clangd knows this file, so the answer of clangd can change it. The rename refuses.
+TEST(LanguageServerNative, RenameIsRefusedForAHotcOutputFile)
+{
+    REQUIRE_CLANGD();
+    TempDir dir;
+    write_file((dir.path() / "natives.h").string(), kNativeHeader);
+    const std::string use = (dir.path() / "use.g1.cpp").string();
+    write_file(use, "#include \"natives.h\"\nint UseIt() { return Clamp100(3); }\n");
+    write_file((dir.path() / "compile_commands.json").string(),
+        "[{\"directory\":\"" + dir.path().generic_string() + "\",\"file\":\"" + use + "\",\"command\":\"clang++ -std=c++20 -I"
+            + dir.path().generic_string() + " -c " + use + "\"}]\n");
+    const std::string script = "using \"natives.h\";\n\nclass Hero {\n    int x = Clamp100(1);\n}\n";
+    const std::string path = (dir.path() / "hero.hot").string();
+    write_file(path, script);
+    hot::ls::ServerOptions o = options(dir, true);
+    o.include_dirs.push_back(dir.path().string());
+    o.compile_commands_dir = dir.path().string();
+    LsClient client(o);
+    client.initialize(uri_of(dir.path().string()));
+    client.open(uri_of(path), script);
+    const json p = {{"textDocument", {{"uri", uri_of(path)}}}, {"position", pos(3, 12)}, {"newName", "ClampHp"}};
+    json r;
+    for (int i = 0; i < 60; ++i)
+    {
+        r = client.request("textDocument/rename", p);
+        if (r.contains("error") && r["error"]["message"].get<std::string>().find("generated file") != std::string::npos)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+    SCOPED_TRACE(r.dump());
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+    EXPECT_NE(r["error"]["message"].get<std::string>().find("use.g1.cpp"), std::string::npos) << r.dump();
+}
+
+#ifndef _WIN32
 // The budget of one rename is 3 s. A proxy gives the open of the second script to clangd 3.5 s
 // late, so the budget is over when the rename asks clangd about this script.
 TEST(LanguageServerNative, RenameIsRefusedWhenTheBudgetIsOver)
@@ -6114,6 +6161,7 @@ TEST(LanguageServerNative, RenameIsRefusedWhenTheBudgetIsOver)
     ASSERT_TRUE(r.contains("error")) << r.dump();
     EXPECT_NE(r["error"]["message"].get<std::string>().find("time budget of 3 s is over at"), std::string::npos) << r.dump();
 }
+#endif
 
 namespace
 {
@@ -6186,12 +6234,95 @@ TEST(LanguageServerNative, RenameOfAHostHeaderIsRefusedWithTheSwitchOff)
     json p = {{"textDocument", {{"uri", c.uri}}}, {"position", pos(3, 12)}, {"newName", "OutsideFn2"}};
     const json r = client.request("textDocument/rename", p);
     ASSERT_TRUE(r.contains("error")) << r.dump();
-    EXPECT_NE(r["error"]["message"].get<std::string>().find("outside the workspace folders"), std::string::npos) << r.dump();
+    EXPECT_NE(r["error"]["message"].get<std::string>().find("renameHostHeaders is off"), std::string::npos) << r.dump();
     p.erase("newName");
     const json prep = client.request("textDocument/prepareRename", p);
     ASSERT_TRUE(prep.contains("error")) << prep.dump();
-    EXPECT_NE(prep["error"]["message"].get<std::string>().find("outside the workspace folders"), std::string::npos)
+    EXPECT_NE(prep["error"]["message"].get<std::string>().find("renameHostHeaders is off"), std::string::npos)
         << prep.dump();
+}
+
+namespace
+{
+
+// A header with a virtual method and an override. The clangd rename of one of them renames the
+// other. One script calls the method of the base, the other script calls the method of the
+// derived struct.
+struct VirtualCase
+{
+    TempDir dir;
+    std::string base_path, derived_path;
+    std::unique_ptr<LsClient> client;
+    static constexpr const char* kHeader =
+        "#pragma once\nstruct Base { virtual int Foo(); };\nstruct Derived : Base { int Foo() override; };\n";
+    static constexpr const char* kBase = "using \"virt.h\";\n\nclass Hero {\n    void f() {\n        Base b;\n        b.Foo();\n    }\n}\n";
+    static constexpr const char* kDerived =
+        "using \"virt.h\";\n\nclass Pet {\n    void g() {\n        Derived d;\n        d.Foo();\n    }\n}\n";
+    VirtualCase()
+    {
+        write_file((dir.path() / "virt.h").string(), kHeader);
+        base_path = (dir.path() / "hero.hot").string();
+        derived_path = (dir.path() / "pet.hot").string();
+        write_file(base_path, kBase);
+        write_file(derived_path, kDerived);
+        hot::ls::ServerOptions o = options(dir, true);
+        o.include_dirs.push_back(dir.path().string());
+        client = std::make_unique<LsClient>(o);
+        client->initialize(uri_of(dir.path().string()));
+    }
+    // Rename from the open script "from" at the line and the column. The answer is an edit or a refusal.
+    json rename(const std::string& from, const char* text, int line, int col)
+    {
+        client->open(uri_of(from), text);
+        const json p = {{"textDocument", {{"uri", uri_of(from)}}}, {"position", pos(line, col)}, {"newName", "Bar"}};
+        json r;
+        for (int i = 0; i < 20; ++i)
+        {
+            r = client->request("textDocument/rename", p);
+            if (r.contains("result") && r["result"].is_object())
+                break;
+            if (r.contains("error") && r["error"]["message"].get<std::string>().find("does not change") != std::string::npos)
+                break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        }
+        return r;
+    }
+    // Both scripts and both method declarations change, or the rename is refused.
+    void check(const json& r) const
+    {
+        SCOPED_TRACE(r.dump());
+        if (r.contains("error"))
+        {
+            EXPECT_NE(r["error"]["message"].get<std::string>().find("that the rename of clangd does not change"), std::string::npos)
+                << r.dump();
+            return;
+        }
+        ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+        EXPECT_EQ(edit_places(r["result"], uri_of(base_path), "Bar"), std::set<std::string>({"5:10-5:13"})) << r.dump();
+        EXPECT_EQ(edit_places(r["result"], uri_of(derived_path), "Bar"), std::set<std::string>({"5:10-5:13"})) << r.dump();
+        EXPECT_EQ(edit_places(r["result"], uri_of((dir.path() / "virt.h").string()), "Bar"),
+            std::set<std::string>({"1:26-1:29", "2:28-2:31"}))
+            << r.dump();
+        EXPECT_EQ(r["result"]["changes"].size(), 3u) << r.dump();
+    }
+};
+
+} // namespace
+
+// The rename starts at the call of the base method. The other script calls the override.
+TEST(LanguageServerNative, RenameOfAVirtualMethodChangesAScriptThatCallsTheOverride)
+{
+    REQUIRE_CLANGD();
+    VirtualCase c;
+    c.check(c.rename(c.base_path, VirtualCase::kBase, 5, 10));
+}
+
+// The rename starts at the call of the override. The other script calls the base method.
+TEST(LanguageServerNative, RenameOfAnOverrideChangesAScriptThatCallsTheBaseMethod)
+{
+    REQUIRE_CLANGD();
+    VirtualCase c;
+    c.check(c.rename(c.derived_path, VirtualCase::kDerived, 5, 10));
 }
 
 namespace
