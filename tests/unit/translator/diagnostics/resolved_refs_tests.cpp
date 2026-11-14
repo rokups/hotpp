@@ -371,3 +371,79 @@ TEST(ResolvedRefs, IdsAreEqualOverTwoUnits)
     ASSERT_NE(user, nullptr);
     EXPECT_EQ(user->id, hotc::ref_file_id((dir.path() / "b.hot").string()) + "#User");
 }
+
+// An override, its root in a script base class and the calls through each type have one id.
+TEST(ResolvedRefs, OverrideHasTheIdOfTheRoot)
+{
+    const std::string text = "using \"w.h\";\n"
+                             "class Base : Widget {\n"
+                             "    public virtual int Foo() { return 1; }\n"
+                             "}\n"
+                             "class Derived : Base {\n"
+                             "    public override int Foo() { return 2; }\n"
+                             "}\n"
+                             "class User : Widget {\n"
+                             "    int Run($Base b, $Derived d) { return b.Foo() + d.Foo(); }\n"
+                             "}\n";
+    const hotc::AnalyzeResult r = analyze_refs(text);
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_EQ(uses_of(r, "Base.Foo"), all_of(text, "Foo"));
+    EXPECT_EQ(decls_of(r, "Base.Foo"), pick(text, "Foo", {0, 1}));
+    EXPECT_EQ(uses_of(r, "Derived.Foo"), std::set<uint32_t>{});
+}
+
+// An interface method, its implementation and a call through the interface have one id.
+TEST(ResolvedRefs, ImplementationHasTheIdOfTheInterfaceMethod)
+{
+    const std::string text = "using \"w.h\";\n"
+                             "interface IShape {\n"
+                             "    int Area();\n"
+                             "}\n"
+                             "class Sq : Widget, IShape {\n"
+                             "    public int Area() { return 4; }\n"
+                             "    int Go(IShape s, $Sq q) { return s.Area() + q.Area() + Area(); }\n"
+                             "}\n";
+    const hotc::AnalyzeResult r = analyze_refs(text);
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_EQ(uses_of(r, "IShape.Area"), all_of(text, "Area"));
+    EXPECT_EQ(decls_of(r, "IShape.Area"), pick(text, "Area", {0, 1}));
+    EXPECT_EQ(uses_of(r, "IShape"), all_of(text, "IShape"));
+}
+
+// The root ids are equal over two units: A declares the base class, B overrides and calls.
+// A script interface of an import is not visible to the importer, so the test has no interface.
+TEST(ResolvedRefs, RootIdsAreEqualOverTwoUnits)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kWidget);
+    const std::string a = "using \"w.h\";\n"
+                          "class Base : Widget {\n"
+                          "    public virtual int Foo() { return 1; }\n"
+                          "}\n";
+    const std::string b = "using \"w.h\";\n"
+                          "using \"a.hot\";\n"
+                          "class Derived : Base {\n"
+                          "    public override int Foo() { return 2; }\n"
+                          "    int Go($Base p) { return p.Foo(); }\n"
+                          "}\n";
+    write_file(dir.path() / "a.hot", a);
+    write_file(dir.path() / "b.hot", b);
+    hotc::TranslateOptions o = temp_options(dir, "");
+    o.resolve_refs = true;
+    o.null_warnings = true;
+    o.script_name = (dir.path() / "a.hot").string();
+    const hotc::AnalyzeResult ra = hotc::analyze(a, o);
+    o.script_name = (dir.path() / "b.hot").string();
+    const hotc::AnalyzeResult rb = hotc::analyze(b, o);
+    ASSERT_TRUE(ra.ok) << ra.diagnostics;
+    ASSERT_TRUE(rb.ok) << rb.diagnostics;
+    auto id_in = [](const hotc::AnalyzeResult& r, const std::string& text, const std::string& w, size_t nth)
+    {
+        const hotc::ResolvedRef* x = ref_at(r, words(text, w)[nth]);
+        return x ? x->id : std::string("<no ref>");
+    };
+    const std::string file = hotc::ref_file_id((dir.path() / "a.hot").string());
+    EXPECT_EQ(id_in(ra, a, "Foo", 0), file + "#Base.Foo");
+    EXPECT_EQ(id_in(rb, b, "Foo", 0), file + "#Base.Foo");
+    EXPECT_EQ(id_in(rb, b, "Foo", 1), file + "#Base.Foo");
+}

@@ -85,6 +85,7 @@ struct Member
     const ClassDef* owner = nullptr;
     std::string type; // the value type, or the return type of a method
     bool callable = false;
+    const InterfaceDef* iface = nullptr; // set for a method of a script interface ("owner" is null)
 };
 
 class Resolver
@@ -204,7 +205,15 @@ private:
 
     void add_member(uint32_t pos, const std::string& name, const Member& m)
     {
-        add(pos, name, m.kind, m.owner->name + "." + name, file_of(m.owner->pos), false);
+        if (m.iface)
+            add(pos, name, m.kind, m.iface->name + "." + name, file_of(m.iface->pos), false);
+        else if (m.kind == RefKind::Method)
+        {
+            auto [decl, file] = method_root(*m.owner, name);
+            add(pos, name, m.kind, std::move(decl), std::move(file), false);
+        }
+        else
+            add(pos, name, m.kind, m.owner->name + "." + name, file_of(m.owner->pos), false);
     }
 
     // A type name: a class, an interface or an enum. True when the name is one.
@@ -336,7 +345,58 @@ private:
                 if (f.owner == d->name && f.name == key)
                     return Member{RefKind::StaticField, d, type_of(f), false};
         }
+        depth = 0;
+        for (const ClassDef* d = &c; d && depth < 64; d = parent_of(*d), ++depth)
+            for (const InterfaceDef* in : ifaces_of(*d))
+                if (const Method* m = iface_method(*in, n))
+                    return Member{RefKind::Method, nullptr, ret_of(*m), true, in};
         return std::nullopt;
+    }
+
+    // The script interfaces in the base list of "c". The parser puts them in "interfaces" (the
+    // translator moves them to "script_ifaces" after this pass).
+    std::vector<const InterfaceDef*> ifaces_of(const ClassDef& c) const
+    {
+        std::vector<const InterfaceDef*> out;
+        for (const auto* list : {&c.interfaces, &c.script_ifaces})
+            for (const std::string& n : *list)
+                if (auto it = ifaces_.find(plain_type(n)); it != ifaces_.end())
+                    if (std::find(out.begin(), out.end(), it->second) == out.end())
+                        out.push_back(it->second);
+        return out;
+    }
+
+    static const Method* iface_method(const InterfaceDef& d, const std::string& n)
+    {
+        for (const Method& m : d.methods)
+            if (m.name == n)
+                return &m;
+        return nullptr;
+    }
+
+    // The id ("decl" and file) of the instance method "n" of "c": the root declaration. The root
+    // is the highest declaration in the class chain, and a method of a script interface of a
+    // class in the chain is higher than the class. An override thus has the id of its root.
+    std::pair<std::string, std::string> method_root(const ClassDef& c, const std::string& n) const
+    {
+        std::pair<std::string, std::string> root{c.name + "." + n, file_of(c.pos)};
+        int depth = 0;
+        for (const ClassDef* d = &c; d && depth < 64; d = parent_of(*d), ++depth)
+        {
+            for (const Method& m : d->methods)
+                if (m.written_name() == n)
+                {
+                    root = {d->name + "." + n, file_of(d->pos)};
+                    break;
+                }
+            for (const InterfaceDef* in : ifaces_of(*d))
+                if (iface_method(*in, n))
+                {
+                    root = {in->name + "." + n, file_of(in->pos)};
+                    break;
+                }
+        }
+        return root;
     }
 
     const Local* local(const std::string& n) const
@@ -397,7 +457,10 @@ private:
         for (const Property& p : c.sprops)
             walk_prop(c, p);
         for (const Method& m : c.methods)
-            walk_fn(m, &c, RefKind::Method, c.name + "." + m.written_name());
+        {
+            auto [decl, file] = method_root(c, m.written_name());
+            walk_fn(m, &c, RefKind::Method, decl, file);
+        }
         for (const Method& m : c.statics)
             walk_fn(m, &c, RefKind::StaticMethod, c.name + "." + m.written_name());
         for (const Ctor& k : c.ctors)
@@ -480,13 +543,15 @@ private:
         cls_ = nullptr;
     }
 
-    void walk_fn(const Method& m, const ClassDef* c, RefKind kind, const std::string& decl)
+    // "file": the file of the root declaration of an override (empty: the main script).
+    void walk_fn(const Method& m, const ClassDef* c, RefKind kind, const std::string& decl,
+        const std::string& file = std::string())
     {
         cls_ = c;
         const std::string& name = m.written_name();
         const uint32_t at = m.op.empty() ? find_word(m.pos, name, 64) : 0;
         type_before(at);
-        add(at, name, kind, decl, std::string(), true);
+        add(at, name, kind, decl, file, true);
         if (!m.raw)
         {
             begin_body();
@@ -570,7 +635,16 @@ private:
         }
         const ClassDef* c = of.cls ? of.cls : class_named(of.type);
         if (!c)
+        {
+            // A receiver with the type of a script interface.
+            if (auto it = ifaces_.find(plain_type(of.type)); it != ifaces_.end())
+                if (const Method* m = iface_method(*it->second, n))
+                {
+                    add_member(pos, n, Member{RefKind::Method, nullptr, ret_of(*m), true, it->second});
+                    v.ret = ret_of(*m);
+                }
             return v;
+        }
         if (std::optional<Member> m = member(*c, n))
         {
             add_member(pos, n, *m);

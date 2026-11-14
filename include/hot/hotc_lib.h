@@ -125,7 +125,9 @@ enum class RefKind
 //   - a local or a parameter: "@" and the byte offset of its declaration name ("@120"). Two
 //     locals with the same name in different scopes thus have different ids.
 //   - a member of a class or an interface (also a static member and a class constant):
-//     "Class.member". The member is in the class that declares it.
+//     "Class.member". The member is in the class that declares it. An instance method has the
+//     id of its root declaration: the highest declaration in the script base classes, or the
+//     method of a script interface. An override and its root thus have one id.
 //   - a class, an interface or an enum: "Name". An enum value: "Enum.Value".
 //   - a free function, a module variable or a module constant: "Name".
 // "decl_file" is the normal path of the script that declares the symbol (hotc::ref_file_id). The
