@@ -469,7 +469,7 @@ TEST(LanguageServer, DefinitionInAnImportedScriptIsInThatScript)
     Session s(true, kImporter);
     write_file(s.dir.path() / "base.hot", imported);
     s.client->change(s.uri, 2, kImporter);
-    const json r = s.client->request("textDocument/definition", doc_pos(s.uri, 2, 21));
+    const json r = s.client->request("textDocument/definition", doc_pos(s.uri, 2, 16));
     ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << r.dump();
     const json& loc = r["result"][0];
     EXPECT_EQ(loc["uri"], uri_of((s.dir.path() / "base.hot").lexically_normal().string())) << r.dump();
@@ -6295,7 +6295,115 @@ TEST(LanguageServerRename, ImporterWordInACommentDoesNotRefuse)
 TEST(LanguageServerRename, StaticRenamedWhenImporterUsesTheWordOfAnotherClass)
 {
     expect_importer_refusal("= MaxHp;", "MaxHp",
-        "using \"player.hot\";\nclass Kid : Actor {\n    void Go() { int x = Other.MaxHp; }\n}\n", false);
+        "using \"player.hot\";\nclass Other : Actor {\n}\nclass Kid : Actor {\n    void Go() { int x = Other.MaxHp; }\n}\n", false);
+}
+
+TEST(LanguageServerRename, StaticRefusedWhenAnExpressionQualifiesTheWord)
+{
+    expect_importer_refusal("= MaxHp;", "MaxHp",
+        "using \"player.hot\";\nclass Kid : Actor {\n    void Go() { int x = GetOwner().MaxHp; }\n}\n", true);
+}
+
+TEST(LanguageServerRename, StaticRefusedWhenAGenericQualifiesTheWord)
+{
+    expect_importer_refusal("= MaxHp;", "MaxHp",
+        "using \"player.hot\";\nclass Kid : Actor {\n    void Go() { int x = Spawn<int>.MaxHp; }\n}\n", true);
+}
+
+TEST(LanguageServerRename, StaticRefusedWhenAnInstanceQualifiesTheWord)
+{
+    expect_importer_refusal("= MaxHp;", "MaxHp",
+        "using \"player.hot\";\nclass Kid : Actor {\n    void Go(Spawn@ s) { int x = s.MaxHp; }\n}\n", true);
+}
+
+TEST(LanguageServerRename, StaticRefusedWhenAClassHasTheOwnerAsASecondBase)
+{
+    expect_importer_refusal("= MaxHp;", "MaxHp",
+        "using \"player.hot\";\nclass Kid : IFoo, Spawn {\n    void Go() { int x = MaxHp; }\n}\n", true);
+}
+
+TEST(LanguageServerRename, StaticRefusedWhenTwoScriptsDeclareTheSameClassName)
+{
+    REQUIRE_CLANGD();
+    Session s(true, kOriginScript);
+    write_file(s.dir.path() / "other.hot",
+        "using \"player.hot\";\nclass Kid : Actor {\n    void Go() { int x = MaxHp; }\n}\n");
+    write_file(s.dir.path() / "third.hot", "using \"player.hot\";\nclass Kid : Spawn {\n}\n");
+    const json r = origin_rename(s, kOriginScript, "= MaxHp;", "MaxHp");
+    EXPECT_TRUE(r.contains("error")) << r.dump();
+}
+
+TEST(LanguageServerRename, ImporterInAnIncludeDirOutsideTheRootsIsFound)
+{
+    REQUIRE_CLANGD();
+    TempDir extra;
+    TempDir dir;
+    hot::ls::ServerOptions o = options(dir, true);
+    o.include_dirs.push_back(extra.path().string());
+    const std::string path = (dir.path() / "player.hot").string();
+    write_file(path, kOriginScript);
+    write_file(dir.path() / "x.hot", "using \"player.hot\";\nclass Mid : Actor {\n}\n");
+    write_file(extra.path() / "b.hot", "using \"x.hot\";\nclass Kid : Actor {\n    void Go() { Spawn@ s; }\n}\n");
+    LsClient client(o);
+    client.initialize(uri_of(dir.path().string()));
+    client.open(uri_of(path), kOriginScript);
+    const json r = client.request("textDocument/rename",
+        {{"textDocument", {{"uri", uri_of(path)}}}, {"position", pos(4, 7)}, {"newName", "Renamed"}});
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+    EXPECT_NE(r.dump().find("b.hot imports this script"), std::string::npos) << r.dump();
+}
+
+TEST(LanguageServerRename, NoRootRefusesBecauseTheImportersAreUnknown)
+{
+    REQUIRE_CLANGD();
+    TempDir dir;
+    const std::string path = (dir.path() / "player.hot").string();
+    write_file(path, kOriginScript);
+    LsClient client(options(dir, true));
+    client.request("initialize", {{"processId", nullptr}, {"rootUri", nullptr}, {"capabilities", json::object()}});
+    client.notify("initialized", json::object());
+    client.open(uri_of(path), kOriginScript);
+    const json r = client.request("textDocument/rename",
+        {{"textDocument", {{"uri", uri_of(path)}}}, {"position", pos(4, 7)}, {"newName", "Renamed"}});
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+    EXPECT_NE(r.dump().find("importers of this script are unknown"), std::string::npos) << r.dump();
+}
+
+namespace
+{
+
+// A static "count" and a statement in a function: the rename of the static from its declaration.
+json static_rename_with(const std::string& stmt)
+{
+    const std::string text =
+        "using \"Actor.h\";\nclass A : Actor {\n    static int count = 0;\n    void f(int x) {\n        " + stmt
+        + "\n    }\n}\n";
+    Session s(true, text);
+    json params = doc_pos(s.uri, 2, 16);
+    params["newName"] = "Renamed";
+    return s.client->request("textDocument/rename", params);
+}
+
+} // namespace
+
+TEST(LanguageServerScope, PointerDeclarationFormsRefuseTheStaticRename)
+{
+    REQUIRE_CLANGD();
+    for (const char* stmt : {"Foo* count{x};", "Foo* count(x);", "Foo* count[2];", "if (Foo* count = get()) {}",
+             "while (Foo* count = get()) {}", "switch (x) { case 1: Foo* count = x; }"})
+    {
+        const json r = static_rename_with(stmt);
+        ASSERT_TRUE(r.contains("error")) << stmt << " -> " << r.dump();
+        EXPECT_NE(r.dump().find("local or a parameter"), std::string::npos) << stmt << " -> " << r.dump();
+    }
+}
+
+TEST(LanguageServerScope, ProductStillRenamesTheStatic)
+{
+    REQUIRE_CLANGD();
+    const json r = static_rename_with("int y = x * count + 1;");
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    EXPECT_EQ(r["result"]["changes"].begin().value().size(), 2u) << r.dump();
 }
 
 TEST(LanguageServerRename, StaticRefusedWhenADerivedImporterUsesTheBareWord)

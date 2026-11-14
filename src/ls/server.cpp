@@ -781,6 +781,10 @@ private:
     // empty string. A comment and a string do not count. With a non-empty "owner" the word is a
     // static member of that class: only a use through the class or a derived class counts.
     std::string importer_conflict(const Doc& d, const std::string& name, const std::string& owner) const;
+    // False when no workspace root and no host script dir is known: the importers are unknown.
+    bool importers_known() const;
+    // The refusal text of a rename that importing scripts break, or an empty string.
+    std::string importer_refusal(const Doc& d, const std::string& name, const std::string& owner) const;
     std::optional<SymbolKey> key_at(const Doc& d, Pos cur);
     std::optional<Pos> key_position(const Doc& d, const SymbolKey& key) const;
     Pos class_name_pos(const Doc& d, const hotc::AnalyzedClass& c) const;
@@ -2826,7 +2830,9 @@ std::optional<Server::StaticHit> Server::static_member_at(const Doc& d, Pos cur,
                 size_t e = at + name.size();
                 while (e < code.size() && (code[e] == ' ' || code[e] == '\t' || code[e] == '\n'))
                     ++e;
-                const bool declarator_end = e < code.size() && (code[e] == '=' || code[e] == ';' || code[e] == ',' || code[e] == ')');
+                const bool eq_end = e < code.size() && code[e] == '=' && (e + 1 >= code.size() || code[e + 1] != '=');
+                const bool declarator_end = eq_end
+                    || (e < code.size() && (code[e] == ';' || code[e] == ',' || code[e] == ')' || code[e] == '{' || code[e] == '(' || code[e] == '['));
                 size_t r = q - 1;
                 while (r > boundary && (code[r - 1] == ' ' || code[r - 1] == '\t' || code[r - 1] == '*' || code[r - 1] == '&'))
                     --r;
@@ -2834,7 +2840,7 @@ std::optional<Server::StaticHit> Server::static_member_at(const Doc& d, Pos cur,
                 {
                     size_t t = r;
                     while (t > boundary && (is_id_char(code[t - 1]) || code[t - 1] == '<' || code[t - 1] == '>'
-                        || code[t - 1] == ':' || code[t - 1] == ' ' || code[t - 1] == '\t' || code[t - 1] == '\n'
+                        || (code[t - 1] == ':' && ((t >= 2 && code[t - 2] == ':') || code[t] == ':')) || code[t - 1] == ' ' || code[t - 1] == '\t' || code[t - 1] == '\n'
                         || code[t - 1] == '*' || code[t - 1] == '&'))
                         --t;
                     size_t f = t;
@@ -2852,12 +2858,16 @@ std::optional<Server::StaticHit> Server::static_member_at(const Doc& d, Pos cur,
                             --s;
                         if (s <= boundary)
                             may_declare = true;
-                        else if (code[s - 1] == ';' || code[s - 1] == '{' || code[s - 1] == '}' || code[s - 1] == ',')
-                            may_declare = true;
+                        else if (code[s - 1] == ';' || code[s - 1] == '{' || code[s - 1] == '}' || code[s - 1] == ','
+                            || (code[s - 1] == ':' && !(s >= 2 && code[s - 2] == ':')))
+                            may_declare = true; // a label colon ("case 1:", "default:") starts a statement
                         else if (code[s - 1] == '(')
                         {
                             const std::string w = prev_word(s - 1);
-                            may_declare = w != "if" && w != "while" && w != "switch" && w != "return" && w != "case";
+                            if (w == "if" || w == "while" || w == "switch")
+                                may_declare = eq_end; // an init-declaration: "if (Foo* name = get())"
+                            else
+                                may_declare = w != "return" && w != "case";
                         }
                     }
                 }
@@ -4252,7 +4262,38 @@ std::string Server::importer_conflict(const Doc& d, const std::string& name, con
         std::vector<std::string> imports;
     };
     std::map<std::string, Script> scripts; // path
-    for (const std::string& path : workspace_scripts())
+    // The scripts of the roots, of the script dirs of the hosts and of the include dirs (the
+    // dirs that an import is searched in). A hidden dir counts, a build or cache dir does not.
+    std::set<std::string> found;
+    {
+        std::set<std::string> dirs(roots_.begin(), roots_.end());
+        for (const HostSet& hs : hosts_)
+            for (const auto& h : hs.all())
+            {
+                dirs.insert(h->script_dirs.begin(), h->script_dirs.end());
+                dirs.insert(h->include_dirs.begin(), h->include_dirs.end());
+            }
+        dirs.insert(opt_.include_dirs.begin(), opt_.include_dirs.end());
+        for (const std::string& dir : dirs)
+        {
+            std::error_code ec;
+            fs::recursive_directory_iterator it(utf8_path(dir), fs::directory_options::skip_permission_denied, ec), end;
+            for (; !ec && it != end; it.increment(ec))
+            {
+                const std::string fname = path_utf8(it->path().filename());
+                std::error_code ec2;
+                if (it->is_directory(ec2))
+                {
+                    if (fname == ".cache" || fname == ".git" || fname == ".hg" || fname == ".svn" || fname == "node_modules")
+                        it.disable_recursion_pending();
+                    continue;
+                }
+                if (it->path().extension() == ".hot" && it->is_regular_file(ec2))
+                    found.insert(path_utf8(it->path().lexically_normal()));
+            }
+        }
+    }
+    for (const std::string& path : found)
     {
         if (path == d.path)
             continue;
@@ -4290,28 +4331,56 @@ std::string Server::importer_conflict(const Doc& d, const std::string& name, con
                 out.push_back(at);
         return out;
     };
-    // The base of each class of the workspace (the text of the origin too).
-    std::map<std::string, std::string> base_of;
+    // The bases of each class of the workspace (the text of the origin too). A class name that two
+    // scripts declare has the bases of both. The lists "class D : IFoo, Owner" give all bases.
+    std::map<std::string, std::set<std::string>> bases_of;
+    static const std::regex class_re(
+        "\\b(?:class|struct|interface)[ \\t\\n]+([A-Za-z_][A-Za-z_0-9]*)[ \\t\\n]*(?::([^{;]*))?");
+    auto scan_classes = [&](const std::string& code, const std::function<void(const std::string&, const std::set<std::string>&)>& fn)
+    {
+        for (auto it = std::sregex_iterator(code.begin(), code.end(), class_re); it != std::sregex_iterator(); ++it)
+        {
+            std::set<std::string> bases;
+            const std::string list = (*it)[2].str();
+            for (size_t i = 0; i < list.size();)
+            {
+                if (is_id_char(list[i]) && !(list[i] >= '0' && list[i] <= '9'))
+                {
+                    size_t j = i;
+                    while (j < list.size() && is_id_char(list[j]))
+                        ++j;
+                    bases.insert(list.substr(i, j - i));
+                    // skip a template list or a scope that follows
+                    i = j;
+                }
+                else
+                    ++i;
+            }
+            fn((*it)[1].str(), bases);
+        }
+    };
     if (!owner.empty())
     {
-        static const std::regex re("\\bclass[ \\t]+([A-Za-z_][A-Za-z_0-9]*)[ \\t]*(?::[ \\t]*([A-Za-z_][A-Za-z_0-9]*))?");
-        auto scan = [&](const std::string& code)
-        {
-            for (auto it = std::sregex_iterator(code.begin(), code.end(), re); it != std::sregex_iterator(); ++it)
-                base_of[(*it)[1].str()] = (*it)[2].str();
-        };
-        scan(code_of(d.text.s));
+        auto add = [&](const std::string& c, const std::set<std::string>& b) { bases_of[c].insert(b.begin(), b.end()); };
+        scan_classes(code_of(d.text.s), add);
         for (const auto& [path, sc] : scripts)
-            scan(sc.code);
+            scan_classes(sc.code, add);
     }
-    auto derives = [&](std::string c)
+    auto derives = [&](const std::string& start)
     {
-        for (int i = 0; i < 32 && !c.empty(); ++i)
+        std::set<std::string> seen;
+        std::vector<std::string> todo = {start};
+        while (!todo.empty() && seen.size() < 256)
         {
+            const std::string c = todo.back();
+            todo.pop_back();
             if (c == owner)
                 return true;
-            const auto it = base_of.find(c);
-            c = it == base_of.end() ? std::string() : it->second;
+            if (!seen.insert(c).second)
+                continue;
+            const auto it = bases_of.find(c);
+            if (it != bases_of.end())
+                todo.insert(todo.end(), it->second.begin(), it->second.end());
         }
         return false;
     };
@@ -4325,9 +4394,8 @@ std::string Server::importer_conflict(const Doc& d, const std::string& name, con
         if (!hit)
         {
             bool derived_class = false;
-            static const std::regex re("\\bclass[ \\t]+[A-Za-z_][A-Za-z_0-9]*[ \\t]*:[ \\t]*([A-Za-z_][A-Za-z_0-9]*)");
-            for (auto it = std::sregex_iterator(code.begin(), code.end(), re); it != std::sregex_iterator(); ++it)
-                derived_class = derived_class || derives((*it)[1].str());
+            scan_classes(code, [&](const std::string& c, const std::set<std::string>&)
+            { derived_class = derived_class || (c != owner && derives(c)); });
             for (const size_t at : ats)
             {
                 size_t q = at;
@@ -4338,23 +4406,51 @@ std::string Server::importer_conflict(const Doc& d, const std::string& name, con
                     hit = hit || derived_class; // a bare use
                     continue;
                 }
+                // A qualifier: a plain name is a class, "this", "base" or a variable. Anything
+                // else (a call, an index, a template list) is an expression: it counts.
                 size_t e = q - 1;
-                while (e > 0 && (code[e - 1] == ' ' || code[e - 1] == '\t'))
+                while (e > 0 && (code[e - 1] == ' ' || code[e - 1] == '\t' || code[e - 1] == '\n'))
                     --e;
                 size_t w = e;
                 while (w > 0 && is_id_char(code[w - 1]))
                     --w;
                 const std::string qual = code.substr(w, e - w);
-                if (qual == "this" || qual == "base")
-                    hit = hit || derived_class;
+                if (qual.empty() || qual == "this" || qual == "base")
+                    hit = true;
+                else if (w > 0 && (code[w - 1] == '.' || code[w - 1] == ':'))
+                    hit = true; // "a.b.Name": a member chain, an instance access
+                else if (bases_of.count(qual))
+                    hit = hit || derives(qual); // a known class that does not derive: not a use
                 else
-                    hit = hit || derives(qual);
+                    hit = true; // a variable or an unknown name
             }
         }
         if (hit)
             return last_segment(path);
     }
     return std::string();
+}
+
+bool Server::importers_known() const
+{
+    if (!roots_.empty())
+        return true;
+    for (const HostSet& hs : hosts_)
+        for (const auto& h : hs.all())
+            if (!h->script_dirs.empty())
+                return true;
+    return false;
+}
+
+std::string Server::importer_refusal(const Doc& d, const std::string& name, const std::string& owner) const
+{
+    if (!importers_known())
+        return "cannot rename " + name + ": the importers of this script are unknown";
+    const std::string imp = importer_conflict(d, name, owner);
+    if (imp.empty())
+        return std::string();
+    return "cannot rename " + name + ": the script " + imp
+        + " imports this script and uses the same word. Rename of uses in other scripts is not supported yet.";
 }
 
 std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
@@ -4378,9 +4474,8 @@ std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
             for (const hotc::AnalyzedMember& m : c.statics)
                 if (&m == hit->member)
                     owner = c.name;
-        if (const std::string imp = importer_conflict(d, old_name, owner); !imp.empty())
-            return std::string("cannot rename " + old_name + ": the script " + imp
-                + " imports this script and uses the same word. Rename of uses in other scripts is not supported yet.");
+        if (const std::string refusal = importer_refusal(d, old_name, owner); !refusal.empty())
+            return refusal;
         // A bare use that may be a local or a parameter: rename never skips a place silently.
         bool uncertain = false;
         const std::set<Pos> places = static_places(d, *hit, uncertain);
@@ -4411,9 +4506,8 @@ std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
                         top = top_level_decl(d, {l, static_cast<int>(at)});
             }
             if (top)
-                if (const std::string imp = importer_conflict(d, old_name, std::string()); !imp.empty())
-                    return std::string("cannot rename " + old_name + ": the script " + imp
-                        + " imports this script and uses the same word. Rename of uses in other scripts is not supported yet.");
+                if (const std::string refusal = importer_refusal(d, old_name, std::string()); !refusal.empty())
+            return refusal;
         }
         return generated ? *e : native_rename(d, cur, old_name, new_name, *e);
     }
@@ -4427,9 +4521,8 @@ std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
     };
     // A class or a member that an importing script uses: the uses there would break. Refuse.
     if (symbol_key(d, decl, old_name) || top_level_decl(d, decl))
-        if (const std::string imp = importer_conflict(d, old_name, std::string()); !imp.empty())
-            return std::string("cannot rename " + old_name + ": the script " + imp
-                + " imports this script and uses the same word. Rename of uses in other scripts is not supported yet.");
+        if (const std::string refusal = importer_refusal(d, old_name, std::string()); !refusal.empty())
+            return refusal;
     json changes = {{d.uri, edits_of(d, std::get<std::set<Pos>>(r))}};
     // A class or a member that other scripts of the workspace declare too (the versions of a
     // script) gets the new name there as well.
