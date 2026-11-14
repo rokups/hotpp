@@ -753,7 +753,34 @@ private:
         Value v = head(n.parts[0], part_pos(0));
         for (size_t i = 1; i < n.parts.size(); ++i)
             v = tail(v, n.parts[i], part_pos(i));
+        if (!n.targ_parsed && n.last_pos)
+            targs_text(n.last_pos);
         return v;
+    }
+
+    // The template arguments that are types ("GetComponent<$Foo>()") are not expressions. The
+    // script classes in the raw text after the name at "name_pos" get a ref.
+    void targs_text(uint32_t name_pos)
+    {
+        const std::string_view t = in_.text;
+        uint32_t b = name_pos;
+        while (b < t.size() && ident_char(t[b]))
+            ++b;
+        if (b >= t.size() || t[b] != '<')
+            return;
+        int depth = 0;
+        uint32_t e = b;
+        for (; e < t.size(); ++e)
+        {
+            if (t[e] == '<')
+                ++depth;
+            else if (t[e] == '>' && --depth == 0)
+                break;
+            else if (t[e] == ';' || t[e] == '(' || t[e] == '{')
+                return; // a comparison, not a template argument list
+        }
+        if (e < t.size())
+            types_in(b + 1, e);
     }
 
     // ------------------------------------------------------------ the expressions
@@ -791,7 +818,12 @@ private:
                 [&](const MemberExpr& m)
                 {
                     const Value of = eval(m.obj);
-                    return m.name.empty() ? Value{} : tail(of, m.name, m.name_pos);
+                    if (m.name.empty())
+                        return Value{};
+                    Value v = tail(of, m.name, m.name_pos);
+                    // "((Node*)n).GetComponent<$Foo>()": the member has template arguments.
+                    targs_text(m.name_pos);
+                    return v;
                 },
                 [&](const CallExpr& c)
                 {
@@ -809,8 +841,28 @@ private:
                 },
                 [&](const UnaryExpr& u)
                 {
-                    eval(u.operand);
-                    return Value{};
+                    const Value of = eval(u.operand);
+                    Value v;
+                    if (!u.postfix && u.op.size() > 1 && u.op.front() == '(')
+                    {
+                        // A cast. The type is the raw text between the parentheses.
+                        const std::string_view t = in_.text;
+                        const size_t close = t.find(')', u.pos);
+                        if (u.pos < t.size() && t[u.pos] == '(' && close != std::string_view::npos)
+                        {
+                            types_in(u.pos + 1, static_cast<uint32_t>(close));
+                            uint32_t p = u.pos + 1;
+                            while (p < close && (t[p] == ' ' || t[p] == '\t' || t[p] == '$'))
+                                ++p;
+                            uint32_t q = p;
+                            while (q < close && ident_char(t[q]))
+                                ++q;
+                            if (q > p)
+                                if (const ClassDef* c = class_named(std::string(t.substr(p, q - p))))
+                                    v.type = c->name;
+                        }
+                    }
+                    return v;
                 },
                 [&](const BinaryExpr& b)
                 {

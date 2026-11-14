@@ -771,3 +771,43 @@ TEST(ResolvedRefs, IndirectNameHintFromTranslate)
         std::string::npos)
         << var;
 }
+
+// A script class in the template arguments of a native call and in a cast.
+TEST(ResolvedRefs, ClassInTemplateArgumentAndCast)
+{
+    const std::string text = "using \"w.h\";\n"
+                             "class Gun : Widget {\n"
+                             "    int ammo = 0;\n"
+                             "    int Fire(int n) { ammo = ammo - n; return ammo; }\n"
+                             "}\n"
+                             "class Foo : Widget {\n"
+                             "    int Run(Widget* w) {\n"
+                             "        $Gun a = w.Get<$Gun>();\n"
+                             "        int b = (($Gun)a).Fire(1);\n"
+                             "        int c = (($Gun)w.Get<$Gun>()).ammo;\n"
+                             "        $Gun d = ((Widget*)w).Get<$Gun>();\n"
+                             "        return b + c;\n"
+                             "    }\n"
+                             "}\n";
+    const hotc::AnalyzeResult r = analyze_refs(text);
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_EQ(uses_of(r, "Gun"), all_of(text, "Gun"));
+    EXPECT_EQ(decls_of(r, "Gun"), pick(text, "Gun", {0}));
+    EXPECT_EQ(uses_of(r, "Gun.Fire"), all_of(text, "Fire"));
+    EXPECT_EQ(uses_of(r, "Gun.ammo"), all_of(text, "ammo"));
+}
+
+TEST(ResolvedRefs, ClassInNestedTemplateArgument)
+{
+    const std::string text = "using \"w.h\";\n"
+                             "class Gun : Widget { int ammo = 0; }\n"
+                             "class Foo : Widget {\n"
+                             "    void Run(Widget* w) {\n"
+                             "        var a = w.Get<std.vector<$Gun>>();\n"
+                             "        var b = w.Get<std.pair<int, $Gun>>();\n"
+                             "    }\n"
+                             "}\n";
+    const hotc::AnalyzeResult r = analyze_refs(text);
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_EQ(uses_of(r, "Gun"), all_of(text, "Gun"));
+}
