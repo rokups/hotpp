@@ -546,3 +546,22 @@ TEST_F(HeaderRefusalTest, SymlinkIncludeDirToOutsideIsRefused)
     EXPECT_EQ(hot::ls::host_header_refusal(h, p("eng/inc/ln/x.h")), "outside the source dirs of the build of the host");
 }
 #endif
+
+// An in-source build: the build dir equals a source root or is above it. It is no build dir rule.
+TEST_F(HeaderRefusalTest, InSourceBuildDirDoesNotRefuseSourceHeaders)
+{
+    hot::ls::Host h = host();
+    h.binary_dir = p("eng"); // equals a root
+    EXPECT_EQ(hot::ls::host_header_refusal(h, p("eng/inc/x.h")), "");
+    EXPECT_FALSE(hot::ls::host_in_build_dir(h, p("eng/inc/x.h")));
+    h.binary_dir = base; // above the roots
+    EXPECT_EQ(hot::ls::host_header_refusal(h, p("eng/inc/x.h")), "");
+    EXPECT_FALSE(hot::ls::host_in_build_dir(h, p("game/y.h")));
+}
+
+// A build dir that is a strict subdir of a root keeps the rule, also for a workspace path.
+TEST_F(HeaderRefusalTest, BuildDirBelowARootStillRefuses)
+{
+    EXPECT_TRUE(hot::ls::host_in_build_dir(host(), p("eng/build/gen.h")));
+    EXPECT_FALSE(hot::ls::host_in_build_dir(host(), p("eng/inc/x.h")));
+}

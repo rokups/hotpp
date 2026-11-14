@@ -6175,15 +6175,17 @@ struct HostHeaderCase
     // outside_is_root: the dir of the header is a source root of the host. near_script: the script
     // is in a subdir that no host matches (the host has the script dir "scripts"), so the nearest
     // host applies.
-    explicit HostHeaderCase(bool outside_is_root = true, bool near_script = false)
+    explicit HostHeaderCase(bool outside_is_root = true, bool near_script = false, bool bin_is_root = false)
     {
         const std::filesystem::path root = dir.path();
         std::filesystem::create_directories(root / "build");
         std::filesystem::create_directories(root / "hosts");
         write_file((root / "build" / "CMakeCache.txt").string(), "# cache\n");
+        if (bin_is_root) // an in-source build
+            write_file((root / "CMakeCache.txt").string(), "# cache\n");
         write_file((outside.path() / "outside.h").string(), "#pragma once\nint OutsideFn(int v);\n");
         write_file((root / "hosts" / "h.json").string(),
-            R"({"version":1,"name":"h","binaryDir":")" + (root / "build").generic_string()
+            R"({"version":1,"name":"h","binaryDir":")" + (bin_is_root ? root : root / "build").generic_string()
                 + R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":[")"
                 + (near_script ? (root / "scripts").generic_string() : root.generic_string())
                 + R"("],"scripts":[],"sourceRoots":[")" + (outside_is_root ? outside.path().generic_string() : root.generic_string())
@@ -6319,6 +6321,33 @@ TEST(LanguageServerNative, RenameOfAHostHeaderFromAScriptWithNoHostInTheWorkspac
     ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
     const std::string header_uri = uri_of((c.outside.path() / "outside.h").string());
     EXPECT_EQ(edit_places(r["result"], header_uri, "OutsideFn2"), std::set<std::string>({"1:4-1:13"})) << r.dump();
+}
+
+// An in-source build (binaryDir is the workspace root) does not refuse a header of the workspace.
+TEST(LanguageServerNative, RenameOfAWorkspaceHeaderWorksWithAnInSourceBuildDir)
+{
+    REQUIRE_CLANGD();
+    HostHeaderCase c(true, false, true);
+    write_file((c.dir.path() / "ws.h").string(), "#pragma once\nint WsFn(int v);\n");
+    const std::string text = "using \"ws.h\";\n\nclass Hero {\n    int x = WsFn(1);\n}\n";
+    write_file(c.path, text);
+    c.o.include_dirs.push_back(c.dir.path().string());
+    LsClient client(c.o);
+    client.initialize(uri_of(c.dir.path().string()));
+    client.open(c.uri, text);
+    const json p = {{"textDocument", {{"uri", c.uri}}}, {"position", pos(3, 12)}, {"newName", "WsFn2"}};
+    json r;
+    for (int i = 0; i < 20; ++i)
+    {
+        r = client.request("textDocument/rename", p);
+        if (r.contains("result") && r["result"].is_object())
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    SCOPED_TRACE(r.dump());
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    EXPECT_EQ(edit_places(r["result"], uri_of((c.dir.path() / "ws.h").string()), "WsFn2"), std::set<std::string>({"1:4-1:8"}))
+        << r.dump();
 }
 
 namespace

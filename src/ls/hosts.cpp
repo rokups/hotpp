@@ -169,41 +169,59 @@ std::vector<std::string> Host::cxx_flags() const
     return out;
 }
 
-bool host_in_build_dir(const Host& host, const std::string& path)
+namespace
+{
+
+// The real path of s (symlinks resolved), in the form of the host set.
+std::string real_key(const std::string& s)
+{
+    std::error_code ec;
+    const fs::path c = fs::weakly_canonical(utf8_path(s), ec);
+    return strip_slash(path_key(ec ? utf8_path(s) : c));
+}
+
+// True when the path is below one of the dirs (a path component border).
+bool below_any_dir(const std::vector<std::string>& dirs, const std::string& real_path)
+{
+    for (const std::string& d : dirs)
+        if (!d.empty() && contains(real_key(d), real_path))
+            return true;
+    return false;
+}
+
+// The build dir rule applies only when the build dir is a strict subdir of a source root. A build
+// dir that equals a root (an in-source build) or is above it holds the sources too.
+bool build_dir_rule_applies(const Host& host)
 {
     if (host.binary_dir.empty())
         return false;
-    auto real = [](const std::string& s) {
-        std::error_code ec;
-        const fs::path c = fs::weakly_canonical(utf8_path(s), ec);
-        return strip_slash(path_key(ec ? utf8_path(s) : c));
-    };
-    return contains(real(host.binary_dir), real(path));
+    const std::string bin = real_key(host.binary_dir);
+    for (const std::string& r : host.source_roots)
+    {
+        const std::string root = real_key(r);
+        if (root != bin && contains(root, bin))
+            return true;
+    }
+    return false;
+}
+
+} // namespace
+
+bool host_in_build_dir(const Host& host, const std::string& path)
+{
+    return build_dir_rule_applies(host) && contains(real_key(host.binary_dir), real_key(path));
 }
 
 std::string host_header_refusal(const Host& host, const std::string& path)
 {
-    // weakly_canonical follows symlinks, so a link cannot hide the real place of a path.
-    auto real = [](const std::string& s) {
-        std::error_code ec;
-        const fs::path c = fs::weakly_canonical(utf8_path(s), ec);
-        return strip_slash(path_key(ec ? utf8_path(s) : c));
-    };
-    auto below = [](const std::string& dir, const std::string& p) { return contains(dir, p); };
-    auto below_any = [&](const std::vector<std::string>& dirs, const std::string& p) {
-        for (const std::string& d : dirs)
-            if (!d.empty() && below(real(d), p))
-                return true;
-        return false;
-    };
-    const std::string p = real(path);
-    if (!below_any(host.include_dirs, p))
+    const std::string p = real_key(path);
+    if (!below_any_dir(host.include_dirs, p))
         return "outside the workspace folders and the include dirs of the host";
     if (host.source_roots.empty())
         return "the host file has no source roots (run CMake again)";
-    if (!below_any(host.source_roots, p) || below_any(host.system_dirs, p))
+    if (!below_any_dir(host.source_roots, p) || below_any_dir(host.system_dirs, p))
         return "outside the source dirs of the build of the host";
-    if (!host.binary_dir.empty() && below(real(host.binary_dir), p))
+    if (host_in_build_dir(host, path))
         return "in the build dir of the host";
     return {};
 }

@@ -681,7 +681,7 @@ endfunction()
 # workspace folders only when it is below a source root and not below a SYSTEM dir. The binary dir
 # is in the JSON file ("binaryDir"). hot-ls never edits a header below it.
 # The roots come from the source dirs that CMake read, starting at CMAKE_SOURCE_DIR (the property
-# SUBDIRECTORIES). A dir below CMAKE_BINARY_DIR is skipped. A dir below an earlier root is not
+# SUBDIRECTORIES). A dir below CMAKE_BINARY_DIR is skipped, but only when CMAKE_BINARY_DIR is a strict subdir of CMAKE_SOURCE_DIR (an in-source build skips nothing). A dir below an earlier root is not
 # written. A SYSTEM dir is written with "!" and CMake does not enter its subdirectories. The
 # function _hot_host_write_source_roots runs once, when CMake ends the top CMakeLists.txt
 # (cmake_language DEFER). It writes a file only when the text changes.
@@ -737,13 +737,23 @@ function(_hot_host_write_source_roots)
         return()
     endif()
     cmake_path(NORMAL_PATH CMAKE_BINARY_DIR OUTPUT_VARIABLE bin)
+    cmake_path(NORMAL_PATH CMAKE_SOURCE_DIR OUTPUT_VARIABLE top)
+    # The build dir is skipped only when it is a strict subdir of the source dir. An in-source
+    # build (the same dir) or a build dir above the source dir skips nothing.
+    set(skip_bin FALSE)
+    if(NOT bin STREQUAL top)
+        cmake_path(IS_PREFIX top "${bin}" NORMALIZE skip_bin)
+    endif()
     set(roots "")
     set(text "")
     set(queue "${CMAKE_SOURCE_DIR}")
     while(queue)
         list(POP_FRONT queue dir)
         cmake_path(NORMAL_PATH dir OUTPUT_VARIABLE norm)
-        cmake_path(IS_PREFIX bin "${norm}" NORMALIZE in_bin)
+        set(in_bin FALSE)
+        if(skip_bin)
+            cmake_path(IS_PREFIX bin "${norm}" NORMALIZE in_bin)
+        endif()
         if(in_bin)
             continue()
         endif()
