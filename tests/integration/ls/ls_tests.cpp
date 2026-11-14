@@ -2093,7 +2093,9 @@ TEST(LanguageServer, RenameOfAClassChangesTheOtherScripts)
     EXPECT_EQ(changes[uri_of(other_path)][0]["range"]["start"]["line"], 2);
 }
 
-TEST(LanguageServer, ReferencesIncludeTheOtherScriptsOfTheWorkspace)
+// The references come from the ids of the table. A copy of the script with no import declares
+// its own symbols: it has no references of the symbol.
+TEST(LanguageServer, ReferencesLeaveOutAnUnrelatedScriptWithTheSameNames)
 {
     REQUIRE_CLANGD();
     Session s(true);
@@ -2111,7 +2113,7 @@ TEST(LanguageServer, ReferencesIncludeTheOtherScriptsOfTheWorkspace)
             ++there;
     }
     EXPECT_EQ(here, 3) << r.dump();
-    EXPECT_EQ(there, 3) << r.dump();
+    EXPECT_EQ(there, 0) << r.dump();
 }
 
 // clangd runs its background index on the compile_commands.json of "hotc --compile-commands".

@@ -23,6 +23,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cctype>
 #include <cstdlib>
 #include <filesystem>
@@ -134,13 +135,13 @@ const Row kRows[] = {
 
 // The cases that fail on the current server. Each group names the missing feature.
 const char* const kSkip[] = {
-    // Missing feature: the definition of a name from an imported script. Also the definition of a module constant
-    // and of an enum value. The fix uses decl_file of the table.
-    "EnumValue_Definition_Deep", "EnumValue_Definition_Open", "EnumValue_Definition_Same",
-    "EnumValue_Definition_Unrelated", "FreeFunction_Definition_Deep", "Method_Definition_Deep",
-    "Method_Definition_Open", "ModuleConst_Definition_Deep", "ModuleConst_Definition_Open",
-    "ModuleConst_Definition_Same", "ModuleConst_Definition_Unrelated", "StaticConst_Definition_Deep",
-    "StaticConst_Definition_Open",
+    // Definition (through the table). The table gives "this.Fire" in an importer the id of the virtual
+    // method Gun.Fire, not the id of the override of the class. Thus the answer is the base method.
+    "Method_Definition_Deep", "Method_Definition_Open",
+    // Definition and references (through the table). The table of top.hot has no ref for the call
+    // "Twice(1)": a free function of an import of an import (lib.hot through closed.hot). The fix is in
+    // the translator.
+    "FreeFunction_Definition_Deep", "FreeFunction_References_Deep",
     // Missing feature: prepareRename of an imported name, of a module constant and of an enum value. The fix uses
     // ref_at on the table.
     "EnumValue_PrepareRename_Deep", "EnumValue_PrepareRename_Open", "EnumValue_PrepareRename_Same",
@@ -148,16 +149,6 @@ const char* const kSkip[] = {
     "Method_PrepareRename_Open", "ModuleConst_PrepareRename_Deep", "ModuleConst_PrepareRename_Open",
     "ModuleConst_PrepareRename_Same", "ModuleConst_PrepareRename_Unrelated", "StaticConst_PrepareRename_Deep",
     "StaticConst_PrepareRename_Open",
-    // Missing feature: the references in the importers. Also, an unrelated script with the same name must give no
-    // references. The fix uses the ids and the import graph.
-    "Class_References_Closed", "Class_References_Deep", "Class_References_Open", "Class_References_Unrelated",
-    "EnumValue_References_Closed", "EnumValue_References_Deep", "EnumValue_References_Open",
-    "Field_References_Closed", "Field_References_Deep", "Field_References_Open", "Field_References_Unrelated",
-    "FreeFunction_References_Closed", "FreeFunction_References_Deep", "FreeFunction_References_Open",
-    "Method_References_Closed", "Method_References_Deep", "Method_References_Open", "Method_References_Unrelated",
-    "ModuleConst_References_Closed", "ModuleConst_References_Deep", "ModuleConst_References_Open",
-    "StaticConst_References_Closed", "StaticConst_References_Deep", "StaticConst_References_Open",
-    "StaticMethod_References_Closed", "StaticMethod_References_Deep", "StaticMethod_References_Open",
     // Missing feature: a rename over the importers. Today the server refuses it when an importer uses the name. Also
     // the rename of a module constant and of an enum value. The fix uses the ids and the import graph.
     "Class_Rename_Closed", "Class_Rename_Deep", "Class_Rename_Open", "Class_Rename_Same", "EnumValue_Rename_Closed",
@@ -400,6 +391,31 @@ TEST_P(RefMatrix, Case)
     const std::set<Place> got = actual(c, dump);
     const std::set<Place> want = expected(c);
     EXPECT_EQ(show(got), show(want)) << dump.substr(0, 600);
+}
+
+// A second references request uses the warm tables: the server does no new analyze.
+TEST_F(RefMatrix, WarmTableNoAnalyze)
+{
+    if (!g_ws)
+        GTEST_SKIP() << "clangd is not installed";
+    LsClient& client = *g_ws->client;
+    json p = doc_pos(g_ws->uris[0], words(kLib, "Gun").back());
+    p["context"] = {{"includeDeclaration", true}};
+    auto stats = [&] { return client.request("hot/indexStats", json::object())["result"]; };
+    auto ask = [&]
+    {
+        const auto t0 = std::chrono::steady_clock::now();
+        const json r = client.request("textDocument/references", p);
+        const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0);
+        std::printf("[ RefMatrix ] references of Gun: %lld ms\n", static_cast<long long>(ms.count()));
+        return places_of(r.value("result", json()));
+    };
+    const std::set<Place> first = ask();
+    const int analyses = stats().value("tableAnalyses", -1);
+    const std::set<Place> warm = ask();
+    EXPECT_EQ(stats().value("tableAnalyses", -1), analyses);
+    EXPECT_EQ(show(warm), show(first));
+    EXPECT_FALSE(first.empty());
 }
 
 INSTANTIATE_TEST_SUITE_P(Matrix, RefMatrix, ::testing::ValuesIn(all_cases()),

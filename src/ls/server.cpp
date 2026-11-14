@@ -751,9 +751,6 @@ private:
     // The analyze facts and the text of the script "uri": an open document or the file on disk.
     // Null when the file is not readable.
     const hotc::AnalyzeResult* script_facts(const std::string& uri, Text& text);
-    // The declaration of the script class "cls" in the script of the location "found", when the
-    // word at "found" is not "cls". Else null. See on_locations.
-    json other_class_location(const json& found, const std::string& cls);
     json on_to_script(const json& p);
     // Gives the edit, or an error message.
     std::variant<json, std::string> on_rename(const Doc& d, const json& p);
@@ -872,8 +869,10 @@ private:
     // unresolved name or a raw body word with the same name goes to clangd. "strict" (rename):
     // a word that clangd cannot resolve gives an error with the file and the line. Not strict
     // (references): the word is left out. "also" (if given) is the script of the request: its
-    // imports go to the graph also when it is not in the roots.
-    std::variant<PlaceMap, std::string> places_of(const Resolved& r, bool strict, const std::string& also = std::string());
+    // imports go to the graph also when it is not in the roots. "texts" (if given) gets the text
+    // of each URI of the result: the positions are positions in that text.
+    std::variant<PlaceMap, std::string> places_of(const Resolved& r, bool strict, const std::string& also = std::string(),
+        std::map<std::string, Text>* texts = nullptr);
     // Calls "fn" for each other .hot file of the workspace that declares the symbol "key".
     // "places" are the places of the symbol in that file. An open document is used as it is.
     // A file on disk goes to clangd only for the call.
@@ -3772,30 +3771,59 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
     const Pos here = from_lsp(d.text, p["position"], utf8_);
     const bool is_ref = method == "textDocument/references";
     const std::string here_word = word(d, here);
-    if (is_ref && !here_word.empty() && is_script_class(d, here_word))
+    // A script symbol: the table of the resolved names gives the places (resolve_at). No value:
+    // the name is not a script symbol, and clangd gives the places (below).
+    auto by_table = [&]() -> std::optional<json>
     {
-        // A script class: the places come from the tokens (see class_places).
-        auto add = [&](const Doc& doc, const std::set<Pos>& places)
+        const auto r = resolve_at(d, here);
+        if (!r)
+            return std::nullopt;
+        const int len = static_cast<int>(r->name.size());
+        auto loc = [&](const std::string& uri, const Text& t, Pos s)
         {
-            for (const Pos& s : places)
-                out.push_back({{"uri", doc.uri},
-                    {"range", script_range(doc, s, {s.line, s.col + static_cast<int>(here_word.size())})}});
+            return json{{"uri", uri},
+                {"range", {{"start", to_lsp(t, s, utf8_)}, {"end", to_lsp(t, {s.line, s.col + len}, utf8_)}}}};
         };
-        add(d, class_places(d, here_word));
-        if (roots_.size())
-            for_other_scripts(d, {here_word, ""}, here_word, add);
-        return out;
-    }
-    // A static member or a class name of a script has no map segment that gives the place. The
-    // script index gives it.
+        // The declaration: a position in the file of the declaration. At the declaration itself
+        // it is the cursor.
+        Text decl_text;
+        const auto decl_table = file_refs(r->ref.decl_file, nullptr, &decl_text);
+        const hotc::ResolvedRef* decl = decl_table ? decl_of(*decl_table, r->ref.id) : nullptr;
+        const std::shared_ptr<Doc> decl_doc = open_doc_at(r->ref.decl_file);
+        const std::string decl_uri = decl_doc ? decl_doc->uri : path_to_uri(r->ref.decl_file);
+        std::optional<Pos> decl_pos;
+        if (decl && decl->offset <= decl_text.s.size())
+        {
+            const auto [line, col] = decl_text.pos(decl->offset);
+            decl_pos = Pos{line, col};
+        }
+        if (!is_ref)
+        {
+            if (!decl_pos)
+                return std::nullopt;
+            return json::array({loc(decl_uri, decl_text, *decl_pos)});
+        }
+        std::map<std::string, Text> texts;
+        auto found = places_of(*r, false, d.path, &texts);
+        json list = json::array();
+        if (auto* m = std::get_if<PlaceMap>(&found))
+        {
+            const bool with_decl = p.value("context", json::object()).value("includeDeclaration", true);
+            if (!with_decl && decl_pos)
+                if (const auto it = m->find(decl_uri); it != m->end())
+                    it->second.erase(*decl_pos);
+            for (const auto& [uri, at] : *m)
+                for (const Pos& s : at)
+                    list.push_back(loc(uri, texts[uri], s));
+        }
+        return list;
+    };
+    if (is_ref)
+        if (auto t = by_table())
+            return *t;
+    // A class name of a script that the table does not give: the facts give the place.
     if (!is_ref)
     {
-        if (const auto hit = static_member_at(d, here))
-        {
-            out.push_back({{"uri", d.uri},
-                {"range", script_range(d, hit->decl, {hit->decl.line, hit->decl.col + static_cast<int>(hit->member->name.size())})}});
-            return out;
-        }
         for (const hotc::AnalyzedClass& c : d.facts.classes)
             if (!c.is_interface && c.name == here_word)
             {
@@ -3832,6 +3860,9 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
                 return out;
         }
     }
+    if (!is_ref)
+        if (auto t = by_table())
+            return *t;
     // A script interface has no place in the generated text that maps back. The facts give the
     // declaration, for example from the base list of a class.
     if (!is_ref && method == "textDocument/definition" && !here_word.empty())
@@ -3898,11 +3929,6 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
                 }
                 continue;
             }
-            // "C.F(...)" with the class "C" of an import: the generated name "C__s_F" also holds
-            // the class name. clangd gives the function "F". The class in the same script is the place.
-            if (!is_ref && !m.is_null() && m.value("uri", std::string()) != d.uri && is_symbol_word(here_word))
-                if (json c = other_class_location(m, here_word); !c.is_null())
-                    m = std::move(c);
             if (m.is_null() || !seen.insert(m.dump()).second)
                 continue;
             out.push_back(std::move(m));
@@ -3948,20 +3974,6 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
                         "hot-ls: No script host matches " + d.path
                             + ", so F12 may not find native symbols. Add hot_add_host(...) or hot_script_host(...) in "
                               "CMake and run CMake again."}}}});
-    }
-    if (asks.empty())
-        return out;
-    if (method == "textDocument/references" && roots_.size())
-    {
-        const Pos cur = from_lsp(d.text, p["position"], utf8_);
-        const std::string name = word(d, cur);
-        if (const auto key = name.empty() ? std::nullopt : key_at(d, cur))
-            for_other_scripts(d, *key, name, [&](const Doc& doc, const std::set<Pos>& places)
-            {
-                for (const Pos& s : places)
-                    out.push_back({{"uri", doc.uri},
-                        {"range", script_range(doc, s, {s.line, s.col + static_cast<int>(name.size())})}});
-            });
     }
     return out;
 }
@@ -4541,7 +4553,8 @@ std::optional<Server::Resolved> Server::resolve_at(const Doc& d, Pos cur)
     return Resolved{c.ref, std::string(d.text.line(cur.line).substr(static_cast<size_t>(b), static_cast<size_t>(e - b)))};
 }
 
-std::variant<Server::PlaceMap, std::string> Server::places_of(const Resolved& r, bool strict, const std::string& also)
+std::variant<Server::PlaceMap, std::string> Server::places_of(
+    const Resolved& r, bool strict, const std::string& also, std::map<std::string, Text>* texts)
 {
     PlaceMap out;
     const std::string& name = r.name;
@@ -4565,6 +4578,8 @@ std::variant<Server::PlaceMap, std::string> Server::places_of(const Resolved& r,
         const auto table = file_refs(path, open ? nullptr : &*closed_text, &text);
         if (!table)
             continue;
+        if (texts)
+            (*texts)[uri] = text;
         for (const hotc::ResolvedRef* p : places(*table, r.ref.id))
         {
             if (p->offset > text.s.size())
@@ -6074,34 +6089,6 @@ const hotc::AnalyzeResult* Server::script_facts(const std::string& uri, Text& te
     }
     text = Text(*t);
     return &cached.second;
-}
-
-json Server::other_class_location(const json& found, const std::string& cls)
-{
-    const std::string uri = found.value("uri", std::string());
-    if (uri.empty() || cls.empty() || !found.contains("range"))
-        return nullptr;
-    Text text;
-    const hotc::AnalyzeResult* facts = script_facts(uri, text);
-    if (!facts)
-        return nullptr;
-    // The word at the found place. The place of the class itself needs no change.
-    const Pos at = from_lsp(text, found["range"]["start"], utf8_);
-    const std::string_view l = text.line(at.line);
-    const size_t b0 = std::min(static_cast<size_t>(std::max(at.col, 0)), l.size());
-    size_t e = b0;
-    while (e < l.size() && is_id_char(l[e]))
-        ++e;
-    if (l.substr(b0, e - b0) == cls)
-        return nullptr;
-    for (const hotc::AnalyzedClass& c : facts->classes)
-        if (!c.is_interface && c.name == cls)
-        {
-            const Pos b = class_name_pos_in(text, c);
-            const Pos end = {b.line, b.col + static_cast<int>(cls.size())};
-            return {{"uri", uri}, {"range", {{"start", to_lsp(text, b, utf8_)}, {"end", to_lsp(text, end, utf8_)}}}};
-        }
-    return nullptr;
 }
 
 json Server::script_member_location(const std::string& uri, const std::string& script_name)
