@@ -352,6 +352,13 @@ std::string rename_conflict(
             for (const hotc::UnresolvedName& u : f.table->unresolved)
                 if (name_at(f, u.offset, u.length) == new_name && bare_at(f, u.offset))
                     return hide + "the name would hide the name at " + where(f, u.offset);
+            // A word "new_name" in a raw body can be a C++ local or a native name.
+            for (const auto& [b, e] : f.table->raw_ranges)
+                for (size_t at = f.text.find(new_name, b); at != std::string_view::npos && at < e;
+                    at = f.text.find(new_name, at + 1))
+                    if ((at == 0 || !id_char(f.text[at - 1]))
+                        && (at + new_name.size() >= f.text.size() || !id_char(f.text[at + new_name.size()])))
+                        return hide + "the name would hide the name at " + where(f, at);
         }
         return std::string();
     }

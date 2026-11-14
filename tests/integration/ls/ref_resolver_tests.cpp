@@ -252,3 +252,17 @@ TEST(RefResolver, RenameConflictOfALocalLooksAtTheFunction)
     EXPECT_EQ(s.conflict("y", 0, "mp"), "");
     EXPECT_EQ(s.conflict("y", 0, "zz"), ""); // after the end of the function
 }
+
+// A raw body: the translator does not resolve its words. A word "n" in a raw body can be a C++
+// local, thus the rename of the module variable G to "n" refuses.
+TEST(RefResolver, RenameConflictOfAModuleSymbolLooksAtTheRawBodies)
+{
+    FileRefs t;
+    t.file_id = "/a.hot";
+    const std::string text = "int G = 5;\nvoid f() raw { int n = 1; int x = G; }\n";
+    ResolvedRef g = ref(static_cast<uint32_t>(text.find("G")), 1, "G", true, RefKind::ModuleVar);
+    t.refs = {g, ref(static_cast<uint32_t>(text.find("f(")), 1, "f", true, RefKind::Function)};
+    t.raw_ranges = {{static_cast<uint32_t>(text.find('{')), static_cast<uint32_t>(text.rfind('}') + 1)}};
+    EXPECT_NE(hot::ls::rename_conflict({{&t, text}}, g, "n").find("/a.hot:2"), std::string::npos);
+    EXPECT_EQ(hot::ls::rename_conflict({{&t, text}}, g, "q"), "");
+}
