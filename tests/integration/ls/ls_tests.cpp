@@ -6199,6 +6199,144 @@ TEST(LanguageServerScope, RenameOfAStaticRefusesWhenAnImporterUsesTheWord)
     EXPECT_TRUE(r.contains("error")) << r.dump();
 }
 
+namespace
+{
+
+const char* const kOriginScript =
+    "using \"Actor.h\";\n"
+    "\n"
+    "enum Team { Red, Blue }\n"
+    "\n"
+    "class Spawn : Actor {\n"
+    "    static const int MaxHp = 100;\n"
+    "    Team GetTeam() { return Team.Red; }\n"
+    "    override void Tick(float dt) {\n"
+    "        int k = MaxHp;\n"
+    "        float a = 2;\n"
+    "        float r = a * MaxHp + 1;\n"
+    "        int f = 3 & MaxHp;\n"
+    "    }\n"
+    "}\n";
+
+// The rename response for the last "word" of the first "context" in the origin script.
+json origin_rename(Session& s, const std::string& text, const std::string& context, const std::string& word)
+{
+    const size_t at = text.find(context);
+    EXPECT_NE(at, std::string::npos) << context;
+    const size_t w = at + context.rfind(word);
+    json params = doc_pos(s.uri, static_cast<int>(std::count(text.begin(), text.begin() + static_cast<long>(w), '\n')),
+        static_cast<int>(w - (text.rfind('\n', w - 1) + 1)));
+    params["newName"] = "Renamed";
+    return s.client->request("textDocument/rename", params);
+}
+
+void expect_importer_refusal(const char* word_context, const char* word, const char* importer_text, bool refused)
+{
+    REQUIRE_CLANGD();
+    Session s(true, kOriginScript);
+    write_file(s.dir.path() / "other.hot", importer_text);
+    const json r = origin_rename(s, kOriginScript, word_context, word);
+    if (refused)
+    {
+        ASSERT_TRUE(r.contains("error")) << r.dump();
+        EXPECT_NE(r.dump().find("other.hot imports this script"), std::string::npos) << r.dump();
+    }
+    else
+    {
+        ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+        EXPECT_FALSE(r["result"]["changes"][s.uri].empty()) << r.dump();
+    }
+}
+
+} // namespace
+
+TEST(LanguageServerRename, ClassRefusedWhenAnImporterUsesTheName)
+{
+    expect_importer_refusal("class Spawn", "Spawn",
+        "using \"player.hot\";\nclass Kid : Actor {\n    void Go() { Spawn@ s; }\n}\n", true);
+}
+
+TEST(LanguageServerRename, ClassRenamedWhenNoImporterUsesTheName)
+{
+    expect_importer_refusal("class Spawn", "Spawn",
+        "using \"player.hot\";\nclass Kid : Actor {\n    void Go() { int x = 1; }\n}\n", false);
+}
+
+TEST(LanguageServerRename, EnumValueRefusedWhenAnImporterUsesTheName)
+{
+    expect_importer_refusal("{ Red", "Red",
+        "using \"player.hot\";\nclass Kid : Actor {\n    void Go() { Team t = Team.Red; }\n}\n", true);
+}
+
+TEST(LanguageServerRename, EnumValueRenamedWhenNoImporterUsesTheName)
+{
+    expect_importer_refusal("{ Red", "Red",
+        "using \"player.hot\";\nclass Kid : Actor {\n    void Go() { int x = 1; }\n}\n", false);
+}
+
+TEST(LanguageServerRename, MethodRefusedWhenAnImporterUsesTheName)
+{
+    expect_importer_refusal("Team GetTeam", "GetTeam",
+        "using \"player.hot\";\nclass Kid : Actor {\n    void Go(Spawn@ s) { s.GetTeam(); }\n}\n", true);
+}
+
+TEST(LanguageServerRename, MethodRenamedWhenNoImporterUsesTheName)
+{
+    expect_importer_refusal("Team GetTeam", "GetTeam",
+        "using \"player.hot\";\nclass Kid : Actor {\n    void Go() { int x = 1; }\n}\n", false);
+}
+
+TEST(LanguageServerRename, ImporterWordInACommentDoesNotRefuse)
+{
+    expect_importer_refusal("Team GetTeam", "GetTeam",
+        "using \"player.hot\";\n// GetTeam in a comment\nclass Kid : Actor {\n}\n", false);
+}
+
+TEST(LanguageServerRename, StaticRenamedWhenImporterUsesTheWordOfAnotherClass)
+{
+    expect_importer_refusal("= MaxHp;", "MaxHp",
+        "using \"player.hot\";\nclass Kid : Actor {\n    void Go() { int x = Other.MaxHp; }\n}\n", false);
+}
+
+TEST(LanguageServerRename, StaticRefusedWhenADerivedImporterUsesTheBareWord)
+{
+    expect_importer_refusal("= MaxHp;", "MaxHp",
+        "using \"player.hot\";\nclass Kid : Spawn {\n    void Go() { int x = MaxHp; }\n}\n", true);
+}
+
+TEST(LanguageServerScope, StaticRenameFromABareUseInAProduct)
+{
+    REQUIRE_CLANGD();
+    Session s(true, kOriginScript);
+    for (const char* ctx : {"int k = MaxHp", "a * MaxHp", "3 & MaxHp", "static const int MaxHp"})
+    {
+        const json r = origin_rename(s, kOriginScript, ctx, "MaxHp");
+        ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << ctx << " -> " << r.dump();
+        EXPECT_EQ(r["result"]["changes"][s.uri].size(), 4u) << ctx << " -> " << r.dump();
+    }
+}
+
+TEST(LanguageServerScope, StaticRenameRefusesForARealPointerLocal)
+{
+    REQUIRE_CLANGD();
+    const char* const script =
+        "using \"Actor.h\";\n"
+        "class A : Actor {\n"
+        "    static int count = 0;\n"
+        "    void f() {\n"
+        "        Foo@ q = null;\n"
+        "        Foo* count = null;\n"
+        "        count = count;\n"
+        "    }\n"
+        "    void g() { int x = count; }\n"
+        "}\n";
+    Session s(true, script);
+    const json r = origin_rename(s, script, "int x = count", "count");
+    EXPECT_TRUE(r.contains("result") || r.contains("error")) << r.dump();
+    const json r2 = origin_rename(s, script, "count = count", "count");
+    EXPECT_TRUE(r2.contains("error")) << r2.dump(); // the local may hide the static: no edit
+}
+
 TEST(LanguageServerLinks, ColumnsCountUtf16UnitsAfterAMultiByteCharacter)
 {
     REQUIRE_CLANGD();

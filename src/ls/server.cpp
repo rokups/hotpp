@@ -777,6 +777,10 @@ private:
         const Doc& d, Pos cur, const std::string& name, Pos* decl, bool* generated = nullptr);
     // The class (and the member) that is declared at "decl", or no value for a local symbol.
     std::optional<SymbolKey> symbol_key(const Doc& d, Pos decl, const std::string& name) const;
+    // The name of an importing script (direct or through other scripts) that uses the word, or an
+    // empty string. A comment and a string do not count. With a non-empty "owner" the word is a
+    // static member of that class: only a use through the class or a derived class counts.
+    std::string importer_conflict(const Doc& d, const std::string& name, const std::string& owner) const;
     std::optional<SymbolKey> key_at(const Doc& d, Pos cur);
     std::optional<Pos> key_position(const Doc& d, const SymbolKey& key) const;
     Pos class_name_pos(const Doc& d, const hotc::AnalyzedClass& c) const;
@@ -2817,10 +2821,46 @@ std::optional<Server::StaticHit> Server::static_member_at(const Doc& d, Pos cur,
             }
             else if (pc == '&' || pc == '*')
             {
+                // "Type * name" is a declaration only at a statement start and with a declarator end.
+                // "a * name + 1" and "x & name" are uses of the word.
+                size_t e = at + name.size();
+                while (e < code.size() && (code[e] == ' ' || code[e] == '\t' || code[e] == '\n'))
+                    ++e;
+                const bool declarator_end = e < code.size() && (code[e] == '=' || code[e] == ';' || code[e] == ',' || code[e] == ')');
                 size_t r = q - 1;
-                while (r > boundary && (code[r - 1] == ' ' || code[r - 1] == '\t'))
+                while (r > boundary && (code[r - 1] == ' ' || code[r - 1] == '\t' || code[r - 1] == '*' || code[r - 1] == '&'))
                     --r;
-                may_declare = r > boundary && (is_id_char(code[r - 1]) || code[r - 1] == '>');
+                if (declarator_end && r > boundary && (is_id_char(code[r - 1]) || code[r - 1] == '>'))
+                {
+                    size_t t = r;
+                    while (t > boundary && (is_id_char(code[t - 1]) || code[t - 1] == '<' || code[t - 1] == '>'
+                        || code[t - 1] == ':' || code[t - 1] == ' ' || code[t - 1] == '\t' || code[t - 1] == '\n'
+                        || code[t - 1] == '*' || code[t - 1] == '&'))
+                        --t;
+                    size_t f = t;
+                    while (f < r && std::isspace(static_cast<unsigned char>(code[f])))
+                        ++f;
+                    size_t fe = f;
+                    while (fe < r && is_id_char(code[fe]))
+                        ++fe;
+                    const std::string first = code.substr(f, fe - f);
+                    if (!first.empty() && !not_a_type.count(first))
+                    {
+                        // A statement start: a boundary, ";", "{", "}" or a list start "(" and ",".
+                        size_t s = t;
+                        while (s > boundary && std::isspace(static_cast<unsigned char>(code[s - 1])))
+                            --s;
+                        if (s <= boundary)
+                            may_declare = true;
+                        else if (code[s - 1] == ';' || code[s - 1] == '{' || code[s - 1] == '}' || code[s - 1] == ',')
+                            may_declare = true;
+                        else if (code[s - 1] == '(')
+                        {
+                            const std::string w = prev_word(s - 1);
+                            may_declare = w != "if" && w != "while" && w != "switch" && w != "return" && w != "case";
+                        }
+                    }
+                }
             }
             else if (pc == ',' || pc == '[')
             {
@@ -4132,6 +4172,191 @@ IndexShard Server::shard_of_doc(const Doc& d) const
     return shard;
 }
 
+// True when the position is a declaration at the top level of a script: a module name, a class
+// member, an enumeration value. A local, a parameter and a name inside a body are not top level.
+static bool top_level_decl(const Doc& d, Pos decl)
+{
+    if (decl.line < 0 || decl.line >= static_cast<int>(d.text.starts.size()))
+        return false;
+    std::string code;
+    size_t at = 0;
+    bool block = false;
+    for (int l = 0; l < static_cast<int>(d.text.starts.size()); ++l)
+    {
+        if (l == decl.line)
+            at = code.size() + static_cast<size_t>(decl.col);
+        code += blank_non_code(d.text.line(l), block);
+        code += '\n';
+    }
+    if (at >= code.size())
+        return false;
+    std::vector<bool> code_brace; // true for a body of code, false for a class, an enum or a namespace
+    int parens = 0;
+    size_t start = 0; // the start of the statement before the brace
+    for (size_t i = 0; i < at; ++i)
+    {
+        const char ch = code[i];
+        if (ch == '(')
+            ++parens;
+        else if (ch == ')')
+            --parens;
+        else if (parens > 0)
+            continue;
+        else if (ch == ';')
+            start = i + 1;
+        else if (ch == '{')
+        {
+            const std::string head = code.substr(start, i - start);
+            bool decl_scope = false;
+            for (const char* w : {"enum", "class", "struct", "interface", "namespace"})
+                for (size_t f = head.find(w); f != std::string::npos && !decl_scope; f = head.find(w, f + 1))
+                    decl_scope = (f == 0 || !is_id_char(head[f - 1])) && (f + std::strlen(w) >= head.size() || !is_id_char(head[f + std::strlen(w)]));
+            code_brace.push_back(!decl_scope);
+            start = i + 1;
+        }
+        else if (ch == '}')
+        {
+            if (!code_brace.empty())
+                code_brace.pop_back();
+            start = i + 1;
+        }
+    }
+    return parens == 0 && std::none_of(code_brace.begin(), code_brace.end(), [](bool b) { return b; });
+}
+
+std::string Server::importer_conflict(const Doc& d, const std::string& name, const std::string& owner) const
+{
+    auto last_segment = [](const std::string& path)
+    {
+        const size_t sl = path.find_last_of("/\\");
+        return sl == std::string::npos ? path : path.substr(sl + 1);
+    };
+    auto code_of = [](const std::string& text)
+    {
+        std::string out;
+        bool block = false;
+        for (size_t b = 0; b < text.size();)
+        {
+            size_t e = text.find('\n', b);
+            if (e == std::string::npos)
+                e = text.size();
+            out += blank_non_code(std::string_view(text).substr(b, e - b), block);
+            out += '\n';
+            b = e + 1;
+        }
+        return out;
+    };
+    struct Script
+    {
+        std::string code;
+        std::vector<std::string> imports;
+    };
+    std::map<std::string, Script> scripts; // path
+    for (const std::string& path : workspace_scripts())
+    {
+        if (path == d.path)
+            continue;
+        std::string text;
+        for (const auto& [uri, doc] : docs_)
+            if (doc->path == path)
+                text = doc->text.s;
+        if (text.empty())
+            text = read_file(path).value_or(std::string());
+        Script sc;
+        for (const std::string& u : using_paths(text))
+            sc.imports.push_back(last_segment(u));
+        sc.code = code_of(text);
+        scripts[path] = std::move(sc);
+    }
+    std::set<std::string> names = {last_segment(d.path)}, importers;
+    for (bool grew = true; grew;)
+    {
+        grew = false;
+        for (const auto& [path, sc] : scripts)
+            if (!importers.count(path)
+                && std::any_of(sc.imports.begin(), sc.imports.end(), [&](const std::string& n) { return names.count(n); }))
+            {
+                importers.insert(path);
+                names.insert(last_segment(path));
+                grew = true;
+            }
+    }
+    // The word positions of a script code.
+    auto word_ats = [&](const std::string& code)
+    {
+        std::vector<size_t> out;
+        for (size_t at = code.find(name); at != std::string::npos; at = code.find(name, at + 1))
+            if ((at == 0 || !is_id_char(code[at - 1])) && (at + name.size() >= code.size() || !is_id_char(code[at + name.size()])))
+                out.push_back(at);
+        return out;
+    };
+    // The base of each class of the workspace (the text of the origin too).
+    std::map<std::string, std::string> base_of;
+    if (!owner.empty())
+    {
+        static const std::regex re("\\bclass[ \\t]+([A-Za-z_][A-Za-z_0-9]*)[ \\t]*(?::[ \\t]*([A-Za-z_][A-Za-z_0-9]*))?");
+        auto scan = [&](const std::string& code)
+        {
+            for (auto it = std::sregex_iterator(code.begin(), code.end(), re); it != std::sregex_iterator(); ++it)
+                base_of[(*it)[1].str()] = (*it)[2].str();
+        };
+        scan(code_of(d.text.s));
+        for (const auto& [path, sc] : scripts)
+            scan(sc.code);
+    }
+    auto derives = [&](std::string c)
+    {
+        for (int i = 0; i < 32 && !c.empty(); ++i)
+        {
+            if (c == owner)
+                return true;
+            const auto it = base_of.find(c);
+            c = it == base_of.end() ? std::string() : it->second;
+        }
+        return false;
+    };
+    for (const std::string& path : importers)
+    {
+        const std::string& code = scripts[path].code;
+        const std::vector<size_t> ats = word_ats(code);
+        if (ats.empty())
+            continue;
+        bool hit = owner.empty();
+        if (!hit)
+        {
+            bool derived_class = false;
+            static const std::regex re("\\bclass[ \\t]+[A-Za-z_][A-Za-z_0-9]*[ \\t]*:[ \\t]*([A-Za-z_][A-Za-z_0-9]*)");
+            for (auto it = std::sregex_iterator(code.begin(), code.end(), re); it != std::sregex_iterator(); ++it)
+                derived_class = derived_class || derives((*it)[1].str());
+            for (const size_t at : ats)
+            {
+                size_t q = at;
+                while (q > 0 && (code[q - 1] == ' ' || code[q - 1] == '\t' || code[q - 1] == '\n'))
+                    --q;
+                if (q == 0 || code[q - 1] != '.')
+                {
+                    hit = hit || derived_class; // a bare use
+                    continue;
+                }
+                size_t e = q - 1;
+                while (e > 0 && (code[e - 1] == ' ' || code[e - 1] == '\t'))
+                    --e;
+                size_t w = e;
+                while (w > 0 && is_id_char(code[w - 1]))
+                    --w;
+                const std::string qual = code.substr(w, e - w);
+                if (qual == "this" || qual == "base")
+                    hit = hit || derived_class;
+                else
+                    hit = hit || derives(qual);
+            }
+        }
+        if (hit)
+            return last_segment(path);
+    }
+    return std::string();
+}
+
 std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
 {
     const Pos cur = from_lsp(d.text, p["position"], utf8_);
@@ -4147,55 +4372,15 @@ std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
     if (const auto hit = static_member_at(d, cur))
     {
         // A script of the workspace that imports this script (directly or through other scripts)
-        // and uses the word can use the member too. This rename does not change that script: refuse.
-        {
-            auto last_segment = [](const std::string& path)
-            {
-                const size_t sl = path.find_last_of("/\\");
-                return sl == std::string::npos ? path : path.substr(sl + 1);
-            };
-            auto has_word = [&](const std::string& text)
-            {
-                for (size_t at = text.find(old_name); at != std::string::npos; at = text.find(old_name, at + 1))
-                    if ((at == 0 || !is_id_char(text[at - 1]))
-                        && (at + old_name.size() >= text.size() || !is_id_char(text[at + old_name.size()])))
-                        return true;
-                return false;
-            };
-            std::map<std::string, std::pair<std::string, std::vector<std::string>>> scripts; // path: text, imports
-            for (const std::string& path : workspace_scripts())
-            {
-                if (path == d.path)
-                    continue;
-                std::string text;
-                for (const auto& [uri, doc] : docs_)
-                    if (doc->path == path)
-                        text = doc->text.s;
-                if (text.empty())
-                    text = read_file(path).value_or(std::string());
-                std::vector<std::string> imports;
-                for (const std::string& u : using_paths(text))
-                    imports.push_back(last_segment(u));
-                scripts[path] = {std::move(text), std::move(imports)};
-            }
-            std::set<std::string> names = {last_segment(d.path)}, importers;
-            for (bool grew = true; grew;)
-            {
-                grew = false;
-                for (const auto& [path, ti] : scripts)
-                    if (!importers.count(path)
-                        && std::any_of(ti.second.begin(), ti.second.end(), [&](const std::string& n) { return names.count(n); }))
-                    {
-                        importers.insert(path);
-                        names.insert(last_segment(path));
-                        grew = true;
-                    }
-            }
-            for (const std::string& path : importers)
-                if (has_word(scripts[path].first))
-                    return std::string("cannot rename " + old_name + ": the script " + last_segment(path)
-                        + " imports this script and uses the same word");
-        }
+        // and uses the member can use it too. This rename does not change that script: refuse.
+        std::string owner;
+        for (const hotc::AnalyzedClass& c : d.facts.classes)
+            for (const hotc::AnalyzedMember& m : c.statics)
+                if (&m == hit->member)
+                    owner = c.name;
+        if (const std::string imp = importer_conflict(d, old_name, owner); !imp.empty())
+            return std::string("cannot rename " + old_name + ": the script " + imp
+                + " imports this script and uses the same word. Rename of uses in other scripts is not supported yet.");
         // A bare use that may be a local or a parameter: rename never skips a place silently.
         bool uncertain = false;
         const std::set<Pos> places = static_places(d, *hit, uncertain);
@@ -4211,7 +4396,27 @@ std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
     bool generated = false;
     const auto r = symbol_places(d, cur, old_name, &decl, &generated);
     if (const auto* e = std::get_if<std::string>(&r))
+    {
+        // A name that clangd renames (an enumeration value, a module function): the script may
+        // declare it at the top level. An importing script that uses the word would break.
+        if (!generated)
+        {
+            bool top = false;
+            for (int l = 0; l < static_cast<int>(d.text.starts.size()) && !top; ++l)
+            {
+                const std::string_view line = d.text.line(l);
+                for (size_t at = line.find(old_name); at != std::string_view::npos && !top; at = line.find(old_name, at + 1))
+                    if ((at == 0 || !is_id_char(line[at - 1]))
+                        && (at + old_name.size() >= line.size() || !is_id_char(line[at + old_name.size()])))
+                        top = top_level_decl(d, {l, static_cast<int>(at)});
+            }
+            if (top)
+                if (const std::string imp = importer_conflict(d, old_name, std::string()); !imp.empty())
+                    return std::string("cannot rename " + old_name + ": the script " + imp
+                        + " imports this script and uses the same word. Rename of uses in other scripts is not supported yet.");
+        }
         return generated ? *e : native_rename(d, cur, old_name, new_name, *e);
+    }
     auto edits_of = [&](const Doc& doc, const std::set<Pos>& places)
     {
         json edits = json::array();
@@ -4220,6 +4425,11 @@ std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
                 {"newText", new_name}});
         return edits;
     };
+    // A class or a member that an importing script uses: the uses there would break. Refuse.
+    if (symbol_key(d, decl, old_name) || top_level_decl(d, decl))
+        if (const std::string imp = importer_conflict(d, old_name, std::string()); !imp.empty())
+            return std::string("cannot rename " + old_name + ": the script " + imp
+                + " imports this script and uses the same word. Rename of uses in other scripts is not supported yet.");
     json changes = {{d.uri, edits_of(d, std::get<std::set<Pos>>(r))}};
     // A class or a member that other scripts of the workspace declare too (the versions of a
     // script) gets the new name there as well.
