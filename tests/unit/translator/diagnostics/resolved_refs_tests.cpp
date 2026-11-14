@@ -643,3 +643,97 @@ TEST(ResolvedRefs, BareNativeNameIsUnresolved)
     EXPECT_EQ(decl_of(r, text, "Twice", 1), "Twice");
     EXPECT_EQ(decl_of(r, text, "hp", 1), "Foo.hp");
 }
+
+// An override has the id of its root. "near_decl" names the closest declaration in the class
+// chain of the receiver, so a jump to the definition can go to the override.
+TEST(ResolvedRefs, NearDeclIsTheClosestOverride)
+{
+    const std::string text = "using \"w.h\";\n"
+                             "class Gun : Widget {\n"
+                             "    public virtual int Fire() { return 1; }\n"
+                             "}\n"
+                             "class Rifle : Gun {\n"
+                             "    public override int Fire() { return 2; }\n"
+                             "    int Shoot() { return this.Fire(); }\n"
+                             "    int Base($Gun g) { return g.Fire(); }\n"
+                             "}\n"
+                             "class Carbine : Rifle {\n"
+                             "    int Go() { return this.Fire(); }\n"
+                             "}\n";
+    const hotc::AnalyzeResult r = analyze_refs(text);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    auto at = [&](size_t nth) { return ref_at(r, words(text, "Fire")[nth]); };
+    for (size_t i = 0; i < 5; ++i)
+    {
+        ASSERT_NE(at(i), nullptr) << i;
+        EXPECT_EQ(at(i)->decl, "Gun.Fire") << i;
+    }
+    // The root declaration and the base-typed receiver: the closest declaration is the root.
+    EXPECT_TRUE(at(0)->near_decl.empty());
+    EXPECT_TRUE(at(3)->near_decl.empty());
+    EXPECT_TRUE(at(3)->near_file.empty());
+    // The override declaration, "this.Fire" in Rifle and "this.Fire" in Carbine.
+    for (size_t i : {1, 2, 4})
+    {
+        EXPECT_EQ(at(i)->near_decl, "Rifle.Fire") << i;
+        EXPECT_EQ(at(i)->near_file, at(i)->decl_file) << i;
+    }
+}
+
+// A member of a native base gives no near declaration.
+TEST(ResolvedRefs, NativeBaseMemberHasNoNearDecl)
+{
+    const std::string text = "using \"w.h\";\n"
+                             "class Foo : Widget {\n"
+                             "    public override void Update(float dt) { }\n"
+                             "    void Go() { this.Update(1.0f); }\n"
+                             "}\n"
+                             "class Bar : Widget {\n"
+                             "    void Go() { this.Update(1.0f); }\n"
+                             "}\n";
+    const hotc::AnalyzeResult r = analyze_refs(text);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    for (const hotc::ResolvedRef& x : r.refs)
+    {
+        EXPECT_TRUE(x.near_decl.empty()) << x.decl;
+        EXPECT_TRUE(x.near_file.empty()) << x.decl;
+    }
+    EXPECT_EQ(ref_at(r, words(text, "Update")[2]), nullptr);
+}
+
+// The root is in a.hot and the override is in b.hot: near_file is the file of b.hot.
+TEST(ResolvedRefs, NearDeclOverTwoUnits)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kWidget);
+    write_file(dir.path() / "a.hot", "using \"w.h\";\nclass Gun : Widget { public virtual int Fire() { return 1; } }\n");
+    const std::string b = "using \"w.h\";\nusing \"a.hot\";\n"
+                          "class Rifle : Gun {\n"
+                          "    public override int Fire() { return 2; }\n"
+                          "}\n";
+    write_file(dir.path() / "b.hot", b);
+    const std::string c = "using \"w.h\";\nusing \"b.hot\";\n"
+                          "class Carbine : Rifle {\n"
+                          "    int Go() { return this.Fire(); }\n"
+                          "}\n";
+    hotc::TranslateOptions o = temp_options(dir, "");
+    o.resolve_refs = true;
+    o.null_warnings = true;
+    o.script_name = (dir.path() / "c.hot").string();
+    const hotc::AnalyzeResult r = hotc::analyze(c, o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    const hotc::ResolvedRef* x = ref_at(r, words(c, "Fire")[0]);
+    ASSERT_NE(x, nullptr);
+    EXPECT_EQ(x->id, hotc::ref_file_id((dir.path() / "a.hot").string()) + "#Gun.Fire");
+    EXPECT_EQ(x->near_decl, "Rifle.Fire");
+    EXPECT_EQ(x->near_file, hotc::ref_file_id((dir.path() / "b.hot").string()));
+    // In b.hot the override declaration has the near declaration of its own file.
+    o.script_name = (dir.path() / "b.hot").string();
+    const hotc::AnalyzeResult rb = hotc::analyze(b, o);
+    ASSERT_TRUE(rb.ok) << rb.diagnostics;
+    const hotc::ResolvedRef* d = ref_at(rb, words(b, "Fire")[0]);
+    ASSERT_NE(d, nullptr);
+    EXPECT_TRUE(d->is_decl);
+    EXPECT_EQ(d->near_decl, "Rifle.Fire");
+    EXPECT_EQ(d->near_file, hotc::ref_file_id((dir.path() / "b.hot").string()));
+}

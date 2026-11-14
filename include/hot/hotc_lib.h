@@ -144,6 +144,11 @@ struct ResolvedRef
     std::string decl;
     std::string decl_file;
     std::string id; // decl_file + "#" + decl
+    // The closest script declaration of a method in the class chain of the receiver: "Class.member"
+    // and its file (as decl_file). An override has the id of its root declaration, but a jump to
+    // the definition can go to the override. Empty when it is the same as "decl".
+    std::string near_decl;
+    std::string near_file;
 };
 
 // The file part of a ResolvedRef::id: the absolute, lexically normal path with "/" separators.

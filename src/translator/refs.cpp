@@ -210,6 +210,27 @@ private:
         refs_.push_back(std::move(r));
     }
 
+    // The ref "add" gives for the method "name" of "owner" (the closest declaration), with the id
+    // of the root declaration "decl" in "file".
+    void add_method(uint32_t pos, const std::string& name, const ClassDef& owner, std::string decl,
+        std::string file, bool is_decl)
+    {
+        const size_t before = refs_.size();
+        add(pos, name, RefKind::Method, std::move(decl), std::move(file), is_decl);
+        if (refs_.size() == before)
+            return;
+        ResolvedRef& r = refs_.back();
+        std::string near_file = file_of(owner.pos);
+        if (near_file.empty())
+            near_file = in_.main_file;
+        std::string near_decl = owner.name + "." + name;
+        if (near_decl != r.decl || near_file != r.decl_file)
+        {
+            r.near_decl = std::move(near_decl);
+            r.near_file = std::move(near_file);
+        }
+    }
+
     // A member name after "." with a receiver of no known script type, or a bare name that is not
     // a script symbol.
     void add_unresolved(uint32_t pos, const std::string& name)
@@ -244,7 +265,7 @@ private:
         else if (m.kind == RefKind::Method)
         {
             auto [decl, file] = method_root(*m.owner, name);
-            add(pos, name, m.kind, std::move(decl), std::move(file), false);
+            add_method(pos, name, *m.owner, std::move(decl), std::move(file), false);
         }
         else
             add(pos, name, m.kind, m.owner->name + "." + name, file_of(m.owner->pos), false);
@@ -600,7 +621,10 @@ private:
         const std::string& name = m.written_name();
         const uint32_t at = m.op.empty() ? find_word(m.pos, name, 64) : 0;
         type_before(at);
-        add(at, name, kind, decl, file, true);
+        if (c && kind == RefKind::Method)
+            add_method(at, name, *c, decl, file, true);
+        else
+            add(at, name, kind, decl, file, true);
         if (!m.raw)
         {
             begin_body();
