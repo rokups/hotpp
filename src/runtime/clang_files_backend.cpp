@@ -2525,8 +2525,12 @@ std::string ClangFilesBackend::library_path(const ScriptSource& source, uint32_t
     // A fresh load starts a new epoch. The epoch is in the name, so a fresh library never has
     // the path of a library that the process still maps.
     const unsigned epoch = mode == LoadMode::Fresh ? ++epoch_ : epoch_.load();
+    // Two backends of one process can share a work directory and have the same epoch and
+    // sequence. The process-wide number "u" makes each name unique, so dlopen never returns the
+    // handle of an old library that has the same path.
+    static std::atomic<unsigned> unique{0};
     return opt_.work_dir + "/" + stem + ".g" + std::to_string(generation) + ".e" + std::to_string(epoch) + "."
-        + std::to_string(sequence_++) + module_suffix();
+        + std::to_string(sequence_++) + ".u" + std::to_string(unique++) + module_suffix();
 }
 
 LoadResult ClangFilesBackend::load_impl(

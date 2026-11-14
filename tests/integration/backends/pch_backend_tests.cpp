@@ -1347,3 +1347,26 @@ TEST(PchBackend, ResetWritesTheRandomSaltBeforeTheListAndDropsTheEntry)
 // possible here. The call in batch_done has a try/catch, and the build functions reset the state.
 
 #endif
+
+// Two backends in one process share the work directory. The library of the first backend stays
+// mapped. The second backend must run its own new code, not the old library.
+TEST(LibraryPathBackend, SecondBackendInSameWorkDirRunsNewCode)
+{
+    Fixture f;
+    auto first = make_backend(f.scratch, "work", f.cache, HOT_CXX, f.incs());
+    hot::LoadResult r1 = first->load(layout_script(1), 1);
+    ASSERT_TRUE(r1) << r1.error;
+    Session s1;
+    s1.start(std::move(*r1.module), "Calc"); // keeps the first library mapped
+    ASSERT_TRUE(s1.actor);
+
+    auto second = make_backend(f.scratch, "work", f.cache, HOT_CXX, f.incs());
+    hot::LoadResult r2 = second->load(layout_script(2), 1);
+    ASSERT_TRUE(r2) << r2.error;
+    Session s2;
+    s2.start(std::move(*r2.module), "Calc");
+    ASSERT_TRUE(s2.actor);
+    s1.world.Tick(kDt);
+    s2.world.Tick(kDt);
+    EXPECT_EQ(*s2.field("result") - *s1.field("result"), 1.0f);
+}
