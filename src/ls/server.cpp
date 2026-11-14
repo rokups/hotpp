@@ -220,6 +220,10 @@ struct Doc
     mutable bool no_host_told = false;
     Text text;
     hotc::AnalyzeResult facts;
+    int facts_version = 0; // grows at each new "facts"
+    // The table of the resolved names of "facts" (Server::file_refs) and its facts_version.
+    mutable std::shared_ptr<const FileRefs> table;
+    mutable int table_version = -1;
     // The field names of each class when the document opened, in declaration order. The rename
     // warning compares them with the current fields. A save does not refresh them.
     std::map<std::string, std::vector<std::string>> open_fields;
@@ -812,6 +816,20 @@ private:
     // The table of the resolved names of "d", from its facts.
     FileRefs table_of_doc(const Doc& d);
     IndexShard shard_of_doc(const Doc& d);
+    // The open document of the script at "path", or null.
+    std::shared_ptr<Doc> open_doc_at(const std::string& path) const;
+    // A document for a closed script: the paths and the text, with no facts and no clangd state.
+    Doc closed_doc(const std::string& path, const std::string& text) const;
+    // The table of the resolved names of the script at "path". An open document gives the table
+    // of its facts. A closed file gives the table of the memory cache, of the index shard or of a
+    // new analyze (the shard of the analyze goes to the index). Null when the file is not readable.
+    std::shared_ptr<const FileRefs> file_refs(const std::string& path);
+    // The script imports of the workspace scripts (workspace_scripts()). The ids are
+    // hotc::ref_file_id. A closed file is read again when its size or its time changes, an open
+    // document when its facts change.
+    ImportGraph& import_graph();
+    // Drops the cached imports of the script at "path", or of all scripts when "path" is empty.
+    void drop_import_graph(const std::string& path);
     // Calls "fn" for each other .hot file of the workspace that declares the symbol "key".
     // "places" are the places of the symbol in that file. An open document is used as it is.
     // A file on disk goes to clangd only for the call.
@@ -978,6 +996,26 @@ private:
         return r;
     }
     int closed_analyses_ = 0; // the analyze calls of for_other_scripts (hot/indexStats)
+    // The tables of the closed scripts (file_refs), by path. "digest" is the shard digest.
+    struct TableEntry
+    {
+        std::string digest;
+        std::shared_ptr<const FileRefs> table;
+    };
+    std::map<std::string, TableEntry> table_cache_;
+    // The tables that file_refs gives from a cache or a shard, and the tables that it makes from
+    // an analyze result (hot/indexStats).
+    int table_hits_ = 0, table_analyses_ = 0;
+    // The direct imports of each workspace script (import_graph), by path.
+    struct GraphEntry
+    {
+        bool open = false; // the imports come from an open document
+        int version = -1; // the facts_version of the open document
+        uintmax_t size = 0;
+        fs::file_time_type mtime;
+    };
+    std::map<std::string, GraphEntry> graph_files_;
+    ImportGraph graph_;
     hotc::TranslatorSession session_;
 };
 
@@ -1214,6 +1252,7 @@ void Server::refresh_hosts(Doc* current, bool force)
     if (!changed)
         return;
     disk_facts_.clear();
+    drop_import_graph(std::string());
     std::vector<std::shared_ptr<Doc>> redo;
     for (const auto& [uri, d] : docs_)
     {
@@ -1256,6 +1295,9 @@ void Server::on_watched_files(const json& p)
             // An open document owns its text. For a closed file, the cache of the analysis goes.
             // A shard of a deleted file goes at the next index_.prune().
             disk_facts_.erase(path);
+            // A new or a deleted file can change the import search of all the scripts.
+            const int type = c["type"].is_number_integer() ? c["type"].get<int>() : 0;
+            drop_import_graph(type == 2 ? path : std::string());
         }
     }
     if (host_file)
@@ -1318,6 +1360,7 @@ void Server::on_workspace_folders(const json& p)
             return std::any_of(removed.begin(), removed.end(), in) && !std::any_of(roots_.begin(), roots_.end(), in);
         });
     disk_facts_.clear();
+    drop_import_graph(std::string());
     load_hosts();
     refresh_hosts(nullptr, true);
 }
@@ -1434,6 +1477,7 @@ void Server::update_cpp(Doc& d)
     {
         std::lock_guard<std::mutex> lock(docs_mutex_);
         d.facts = hotc::AnalyzeResult();
+        ++d.facts_version;
         if (d.cpp_published)
         {
             d.cpp_published = false;
@@ -1446,6 +1490,7 @@ void Server::update_cpp(Doc& d)
     facts.diagnostics.clear(); // facts.errors has the errors of this file
     std::lock_guard<std::mutex> lock(docs_mutex_);
     d.facts = std::move(facts);
+    ++d.facts_version;
     d.cpp_published = true;
     send_client(publish_message(d));
 }
@@ -1460,6 +1505,7 @@ void Server::update(Doc& d)
     {
         std::lock_guard<std::mutex> lock(docs_mutex_);
         d.facts = std::move(facts);
+        ++d.facts_version;
         if (!cpp.empty())
         {
             d.gen = Text(cpp);
@@ -4075,10 +4121,7 @@ void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const st
     {
         if (path == origin.path)
             continue;
-        std::shared_ptr<Doc> open;
-        for (const auto& [uri, doc] : docs_)
-            if (doc->path == path)
-                open = doc;
+        const std::shared_ptr<Doc> open = open_doc_at(path);
         if (open)
         {
             const auto at = key_position(*open, key);
@@ -4092,12 +4135,7 @@ void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const st
         const auto text = read_file(path);
         if (!text)
             continue;
-        Doc tmp;
-        tmp.uri = path_to_uri(path);
-        tmp.path = path;
-        tmp.gen_path = path + ".cpp";
-        tmp.gen_uri = path_to_uri(tmp.gen_path);
-        tmp.text = Text(*text);
+        Doc tmp = closed_doc(path, *text);
         bool analyzed = false;
         auto analyze_tmp = [&]
         {
@@ -4106,12 +4144,7 @@ void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const st
             ++closed_analyses_;
         };
         // The saved shard of the file holds the symbols and the references of the last analyze.
-        // The digest holds the import files. The flags of the host also go in, as the one-argument digest.
-        const Effective eff = effective_options(path);
-        std::string flags_text;
-        for (const std::string& f : eff.extra_flags)
-            flags_text += f + '\n';
-        const std::string digest = SymbolIndex::digest(index_.cached_digest(path, *text, eff.include_dirs) + flags_text);
+        const std::string digest = shard_digest(path, *text);
         auto shard = index_.load(path, digest);
         if (!shard)
         {
@@ -4226,6 +4259,119 @@ IndexShard Server::shard_of_doc(const Doc& d)
         shard.classes.push_back(std::move(ic));
     }
     return shard;
+}
+
+std::shared_ptr<Doc> Server::open_doc_at(const std::string& path) const
+{
+    const fs::path want = fs::path(path).lexically_normal();
+    for (const auto& [uri, doc] : docs_)
+        if (doc->path == path || fs::path(doc->path).lexically_normal() == want)
+            return doc;
+    return nullptr;
+}
+
+Doc Server::closed_doc(const std::string& path, const std::string& text) const
+{
+    Doc tmp;
+    tmp.uri = path_to_uri(path);
+    tmp.path = path;
+    tmp.gen_path = path + ".cpp";
+    tmp.gen_uri = path_to_uri(tmp.gen_path);
+    tmp.text = Text(text);
+    return tmp;
+}
+
+std::shared_ptr<const FileRefs> Server::file_refs(const std::string& path)
+{
+    if (const std::shared_ptr<Doc> open = open_doc_at(path))
+    {
+        if (open->table && open->table_version == open->facts_version)
+        {
+            ++table_hits_;
+            return open->table;
+        }
+        open->table = std::make_shared<const FileRefs>(table_of_doc(*open));
+        open->table_version = open->facts_version;
+        ++table_analyses_;
+        return open->table;
+    }
+    const std::string norm = fs::path(path).lexically_normal().string();
+    const auto text = read_file(norm);
+    if (!text)
+        return nullptr;
+    const std::string digest = shard_digest(norm, *text);
+    TableEntry& entry = table_cache_[norm];
+    if (entry.table && entry.digest == digest)
+    {
+        ++table_hits_;
+        return entry.table;
+    }
+    if (auto shard = index_.load(norm, digest))
+    {
+        entry = {digest, std::make_shared<const FileRefs>(std::move(shard->table))};
+        ++table_hits_;
+        return entry.table;
+    }
+    Doc tmp = closed_doc(norm, *text);
+    tmp.facts = timed_translate([&] { return hotc::analyze(tmp.text.s, translate_options(tmp), session_); });
+    ++table_analyses_;
+    IndexShard shard = shard_of_doc(tmp);
+    index_.store(norm, digest, shard);
+    entry = {digest, std::make_shared<const FileRefs>(std::move(shard.table))};
+    return entry.table;
+}
+
+void Server::drop_import_graph(const std::string& path)
+{
+    if (path.empty())
+        graph_files_.clear();
+    else
+        graph_files_.erase(fs::path(path).lexically_normal().string());
+}
+
+ImportGraph& Server::import_graph()
+{
+    std::set<std::string> seen;
+    for (const std::string& path : workspace_scripts())
+    {
+        seen.insert(path);
+        const auto it = graph_files_.find(path);
+        GraphEntry next;
+        const std::shared_ptr<Doc> open = open_doc_at(path);
+        std::vector<std::string> imports;
+        if (open)
+        {
+            next.open = true;
+            next.version = open->facts_version;
+            if (it != graph_files_.end() && it->second.open && it->second.version == next.version)
+                continue;
+            imports = script_imports(*open, open->text.s);
+        }
+        else
+        {
+            std::error_code ec;
+            next.size = fs::file_size(path, ec);
+            next.mtime = fs::last_write_time(path, ec);
+            if (it != graph_files_.end() && !it->second.open && it->second.size == next.size
+                && it->second.mtime == next.mtime)
+                continue;
+            if (const auto text = read_file(path))
+                imports = script_imports(closed_doc(path, *text), *text);
+        }
+        graph_files_[path] = next;
+        graph_.set(hotc::ref_file_id(path), imports);
+    }
+    for (auto it = graph_files_.begin(); it != graph_files_.end();)
+    {
+        if (seen.count(it->first))
+        {
+            ++it;
+            continue;
+        }
+        graph_.erase(hotc::ref_file_id(it->first));
+        it = graph_files_.erase(it);
+    }
+    return graph_;
 }
 
 // True when the position is a declaration at the top level of a script: a module name, a class
@@ -6040,11 +6186,28 @@ void Server::handle(const json& msg)
     if (method == "workspace/symbol")
         return reply(id, on_workspace_symbol(p));
     if (method == "hot/indexStats")
-        return reply(id,
-            {{"analyzed", closed_analyses_}, {"loaded", index_.loads()}, {"stored", index_.stores()},
-                {"dir", index_.dir()}, {"completions", completion_translations_},
-                {"tokenRequests", native_token_requests_.load()}, {"translations", translations_.load()},
-                {"translateMs", static_cast<double>(translate_us_.load()) / 1000.0}});
+    {
+        // The test hook: "tables" (an array of URIs) gets the number of refs of each table;
+        // "importersOf" (a URI) gets the importers of that script.
+        json out;
+        if (p.is_object() && p.contains("tables") && p["tables"].is_array())
+        {
+            out["tableRefs"] = json::array();
+            for (const json& u : p["tables"])
+            {
+                const auto t = u.is_string() ? file_refs(uri_to_path(u.get<std::string>())) : nullptr;
+                out["tableRefs"].push_back(t ? static_cast<int>(t->refs.size()) : -1);
+            }
+        }
+        if (const std::string of = json_str(p, "importersOf"); !of.empty())
+            out["importers"] = import_graph().importers_of(hotc::ref_file_id(uri_to_path(of)));
+        out.update({{"analyzed", closed_analyses_}, {"loaded", index_.loads()}, {"stored", index_.stores()},
+            {"dir", index_.dir()}, {"completions", completion_translations_},
+            {"tokenRequests", native_token_requests_.load()}, {"translations", translations_.load()},
+            {"translateMs", static_cast<double>(translate_us_.load()) / 1000.0}, {"tableHits", table_hits_},
+            {"tableAnalyses", table_analyses_}});
+        return reply(id, out);
+    }
     if (method == "hot/toScript")
         return reply(id, on_to_script(p));
 

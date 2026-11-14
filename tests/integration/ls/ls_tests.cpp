@@ -2863,6 +2863,54 @@ TEST(LanguageServer, RenameOnAClosedFileAfterARestartUsesTheIndex)
     EXPECT_EQ(file_count(s.dir.path() / ".cache" / "hot" / "index"), shards);
 }
 
+// The tables of the resolved names (file_refs) and the import graph, through the test hook of
+// hot/indexStats. An open document gives its table. A closed importer gets a table from an
+// analyze, then from its shard after a restart. A change of the import makes a new analyze.
+TEST(LanguageServer, TheRefTablesComeFromTheDocumentTheShardAndTheImportGraph)
+{
+    TempDir dir;
+    const std::string dep = (dir.path() / "dep.hot").string(), user = (dir.path() / "user.hot").string();
+    const std::string dep_text = "int k() { return 1; }\n";
+    write_file(dep, dep_text);
+    write_file(user, "using \"dep.hot\";\nint f() { return k(); }\n");
+    auto client = std::make_unique<LsClient>(options(dir, false));
+    client->initialize(uri_of(dir.path().string()));
+    client->open(uri_of(dep), dep_text);
+    auto stats = [&](const json& p) { return client->request("hot/indexStats", p)["result"]; };
+    json r = stats({{"tables", {uri_of(dep)}}});
+    EXPECT_GT(r["tableRefs"][0].get<int>(), 0) << r.dump();
+    EXPECT_EQ(r["tableAnalyses"], 1);
+    EXPECT_EQ(r["tableHits"], 0);
+    r = stats({{"tables", {uri_of(dep)}}});
+    EXPECT_EQ(r["tableAnalyses"], 1); // the same document version
+    EXPECT_EQ(r["tableHits"], 1);
+    r = stats({{"tables", {uri_of(user)}}, {"importersOf", uri_of(dep)}});
+    EXPECT_GT(r["tableRefs"][0].get<int>(), 0) << r.dump();
+    EXPECT_EQ(r["tableAnalyses"], 2);
+    EXPECT_EQ(r["importers"], json::array({hotc::ref_file_id(user)})) << r.dump();
+
+    client.reset(); // the restart
+    client = std::make_unique<LsClient>(options(dir, false));
+    client->initialize(uri_of(dir.path().string()));
+    r = stats({{"tables", {uri_of(user)}}});
+    EXPECT_GT(r["tableRefs"][0].get<int>(), 0) << r.dump();
+    EXPECT_EQ(r["tableHits"], 1); // from the shard
+    EXPECT_EQ(r["tableAnalyses"], 0);
+    r = stats({{"tables", {uri_of(user)}}});
+    EXPECT_EQ(r["tableHits"], 2); // from the memory cache
+    EXPECT_EQ(r["loaded"], 1);
+
+    // A changed import changes the digest of the importer: a new analyze.
+    write_file(dep, "int k() { return 1; }\nint j() { return 2; }\n");
+    r = stats({{"tables", {uri_of(user)}}, {"importersOf", uri_of(dep)}});
+    EXPECT_EQ(r["tableAnalyses"], 1);
+    EXPECT_EQ(r["importers"], json::array({hotc::ref_file_id(user)}));
+    // An importer without the import is not an importer.
+    write_file(user, "int f() { return 12; }\n");
+    r = stats({{"importersOf", uri_of(dep)}});
+    EXPECT_TRUE(r["importers"].empty()) << r.dump();
+}
+
 // The same for a member. The references of a member come from clangd. The shard keeps them.
 TEST(LanguageServer, MemberRenameOnAClosedFileAfterARestartUsesTheIndex)
 {
