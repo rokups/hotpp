@@ -37,6 +37,10 @@ inline bool operator==(const IfaceMember& a, const IfaceMember& b)
 //  - members: the other members of the classes and the public free functions and variables. The
 //    list is sorted by name and has one entry for each name.
 //  - names: the sorted identifier hashes of the interface text.
+//  - copied_names: the sorted identifier hashes of the code texts that each importer copies and
+//    compiles: the struct lines, the parameter defaults, the field initializers, the "base(...)"
+//    arguments, the constant and enum values, the aliases and the stub texts. Such a text can
+//    name a member of the unit, so a change of that member makes each importer stale.
 //  - known: false when the data is not available (an old AOT table, an old cache entry). Then
 //    importer_is_stale gives "stale" for each importer (rule 2).
 struct IfaceInfo
@@ -46,11 +50,13 @@ struct IfaceInfo
     uint64_t shape = 0;
     std::vector<IfaceMember> members;
     std::vector<uint64_t> names;
+    std::vector<uint64_t> copied_names;
 };
 
 inline bool operator==(const IfaceInfo& a, const IfaceInfo& b)
 {
-    return a.known == b.known && a.hash == b.hash && a.shape == b.shape && a.members == b.members && a.names == b.names;
+    return a.known == b.known && a.hash == b.hash && a.shape == b.shape && a.members == b.members && a.names == b.names
+        && a.copied_names == b.copied_names;
 }
 
 inline bool operator!=(const IfaceInfo& a, const IfaceInfo& b)
@@ -169,9 +175,13 @@ inline std::vector<uint64_t> iface_changed_names(const IfaceInfo& a, const Iface
 //  3. The shape differs: stale.
 //  4. importer.strong has u_name: stale.
 //  5. D is the set of the member names with a different decl or with an entry on one side only.
-//  6. D and importer.names share a name: stale.
-//  7. D and the names of an other import share a name: stale. An import with no data is stale.
-//  8. Else: not stale.
+//  6. D and the copied_names of live_u or new_u share a name: stale. The importer copies a
+//     text of the unit (a struct body, a parameter default) that names the member.
+//  7. D and importer.names share a name: stale.
+//  8. D and the names of an other import share a name: stale. An import with no data is stale.
+//  9. Else: not stale.
+// The full names of an other import are used, not its copied_names: the importer also copies
+// the class declarations of an import, and their signatures can name a type of the unit.
 // Compare the live unit with the new unit, not with a recorded hash: the rule is then correct
 // for a sequence of edits and for a revert to the AOT code.
 inline bool importer_is_stale(const IfaceInfo& live_u, const IfaceInfo& new_u, const UseInfo& importer,
@@ -186,6 +196,8 @@ inline bool importer_is_stale(const IfaceInfo& live_u, const IfaceInfo& new_u, c
     if (std::find(importer.strong.begin(), importer.strong.end(), u_name) != importer.strong.end())
         return true;
     const std::vector<uint64_t> d = iface_changed_names(live_u, new_u);
+    if (detail::sorted_share(d, live_u.copied_names) || detail::sorted_share(d, new_u.copied_names))
+        return true;
     if (detail::sorted_share(d, importer.names))
         return true;
     for (const IfaceInfo* other : other_imports)
@@ -198,7 +210,8 @@ inline bool importer_is_stale(const IfaceInfo& live_u, const IfaceInfo& new_u, c
     return false;
 }
 
-// A text form of IfaceInfo for a cache: "hash shape;name:decl ...;name ...", all numbers in hex.
+// A text form of IfaceInfo for a cache: "hash shape;name:decl ...;name ...;copied ...", all
+// numbers in hex.
 // An unknown IfaceInfo gives an empty text.
 inline std::string encode_iface_info(const IfaceInfo& info)
 {
@@ -216,6 +229,9 @@ inline std::string encode_iface_info(const IfaceInfo& info)
     o += ";";
     for (size_t i = 0; i < info.names.size(); ++i)
         o += (i ? " " : "") + hex(info.names[i]);
+    o += ";";
+    for (size_t i = 0; i < info.copied_names.size(); ++i)
+        o += (i ? " " : "") + hex(info.copied_names[i]);
     return o;
 }
 
@@ -274,17 +290,24 @@ inline bool decode_iface_info(std::string_view text, IfaceInfo& info)
     }
     if (!expect(';'))
         return false;
-    while (p < end)
+    // A list of strictly ascending numbers up to "stop" (or the end when "stop" is 0).
+    auto read_list = [&](std::vector<uint64_t>& list, char stop)
     {
-        uint64_t v = 0;
-        if (!r.names.empty() && !expect(' '))
-            return false;
-        if (!detail::read_hex(p, end, v))
-            return false;
-        if (!r.names.empty() && r.names.back() >= v)
-            return false;
-        r.names.push_back(v);
-    }
+        while (p < end && *p != stop)
+        {
+            uint64_t v = 0;
+            if (!list.empty() && !expect(' '))
+                return false;
+            if (!detail::read_hex(p, end, v))
+                return false;
+            if (!list.empty() && list.back() >= v)
+                return false;
+            list.push_back(v);
+        }
+        return true;
+    };
+    if (!read_list(r.names, ';') || !expect(';') || !read_list(r.copied_names, '\0') || p != end)
+        return false;
     r.known = true;
     info = std::move(r);
     return true;

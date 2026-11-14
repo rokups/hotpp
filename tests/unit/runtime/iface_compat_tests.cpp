@@ -101,7 +101,23 @@ TEST(IfaceCompat, Rule5ChangedNamesAreTheSymmetricDifferenceAndTheOtherDecls)
     EXPECT_TRUE(hot::iface_changed_names(kLive, kLive).empty());
 }
 
-TEST(IfaceCompat, Rule6UsedChangedNameIsStale)
+// Scenario A: a struct body of the unit calls "g", and "g" gets an overload. Scenario B: a
+// parameter default of the unit calls "g". The importer copies these texts and does not name "g".
+TEST(IfaceCompat, Rule6ChangedNameInACopiedTextIsStale)
+{
+    hot::IfaceInfo live = iface(10, {{"g", 1}, {"foo", 2}});
+    hot::IfaceInfo next = iface(11, {{"g", 5}, {"foo", 2}});
+    live.copied_names = names({"S", "f", "g"});
+    next.copied_names = live.copied_names;
+    EXPECT_TRUE(hot::importer_is_stale(live, next, use({"S", "f"}), "u", {}));
+    hot::IfaceInfo only_new = next;
+    live.copied_names.clear();
+    EXPECT_TRUE(hot::importer_is_stale(live, only_new, use({"foo"}), "u", {})) << "the copied text of the new side";
+    only_new.copied_names.clear();
+    EXPECT_FALSE(hot::importer_is_stale(live, only_new, use({"foo"}), "u", {}));
+}
+
+TEST(IfaceCompat, Rule7UsedChangedNameIsStale)
 {
     EXPECT_TRUE(hot::importer_is_stale(kLive, kNewMethod, use({"Reset"}), "u", {})) << "a new member can win";
     const hot::IfaceInfo removed = iface(12, {{"Get", 1}});
@@ -110,7 +126,7 @@ TEST(IfaceCompat, Rule6UsedChangedNameIsStale)
     EXPECT_TRUE(hot::importer_is_stale(kLive, retyped, use({"Get"}), "u", {})) << "a changed member";
 }
 
-TEST(IfaceCompat, Rule7ChangedNameInAnOtherImportIsStale)
+TEST(IfaceCompat, Rule8ChangedNameInAnOtherImportIsStale)
 {
     hot::IfaceInfo mid;
     mid.known = true;
@@ -126,7 +142,7 @@ TEST(IfaceCompat, Rule7ChangedNameInAnOtherImportIsStale)
         << "the unit itself is not an other import";
 }
 
-TEST(IfaceCompat, Rule8ElseNotStale)
+TEST(IfaceCompat, Rule9ElseNotStale)
 {
     EXPECT_FALSE(hot::importer_is_stale(kLive, kNewMethod, use({"Get", "ticks", "Widget"}), "u", {}));
     EXPECT_FALSE(hot::importer_is_stale(kNewMethod, kLive, use({"Get"}), "u", {})) << "a revert keeps the importer";
@@ -143,6 +159,7 @@ TEST(IfaceCompat, TextFormRoundTrips)
     hot::IfaceInfo a = kNewMethod;
     a.hash = 0xfedcba9876543210ull;
     a.names.push_back(~0ull);
+    a.copied_names = names({"g", "S"});
     hot::IfaceInfo b;
     ASSERT_TRUE(hot::decode_iface_info(hot::encode_iface_info(a), b));
     EXPECT_TRUE(a == b);
@@ -158,7 +175,7 @@ TEST(IfaceCompat, TextFormRoundTrips)
     std::vector<uint64_t> n;
     // A bad text gives unknown data (rule 2).
     for (const char* bad : {"1 2;5:1 3:1;", "1 2;3:1 3:2;", "1 2;3:1;9 4", "1 2;3:1;4 4", "1 2;3:1;4 ",
-             "1 2;3:1;4 9 ", "1 2;3:1 ;4", "1 2;3:1", "1 2", "1 2;;4 9 2"})
+             "1 2;3:1;4 9 ", "1 2;3:1 ;4", "1 2;3:1", "1 2", "1 2;;4 9 2", "1 2;;4;9 3", "1 2;;4;3 ", "1 2;;4;3;5"})
     {
         EXPECT_FALSE(hot::decode_iface_info(bad, b)) << bad;
         EXPECT_FALSE(b.known) << bad;

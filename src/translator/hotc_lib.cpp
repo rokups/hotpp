@@ -813,6 +813,10 @@ Script parse_structure(const std::string& text, const hotc::LineMap& map, std::s
 std::string module_interface(const Script& sc, const std::string& text, hot::IfaceInfo* info = nullptr)
 {
     auto span = [&](Span sp) { return sp.end > sp.begin && sp.end <= text.size() ? text.substr(sp.begin, sp.end - sp.begin) : std::string(); };
+    // The code texts that an importer copies and compiles (IfaceInfo::copied_names): the struct
+    // lines, the parameter defaults, the field initializers, the "base(...)" arguments, the
+    // constant and enum values, the aliases and the stub texts. They can name a member of the unit.
+    std::string copied;
     // A parameter has its mode, its script type and its default text: an importer copies the
     // function and calls it with the default.
     auto params = [&](const std::vector<hotc::ast::Param>& ps)
@@ -824,7 +828,10 @@ std::string module_interface(const Script& sc, const std::string& text, hot::Ifa
             if (!p.script_type.empty())
                 o += " [" + p.script_type + "]";
             if (p.def)
+            {
                 o += " = " + span(p.def->span);
+                copied += span(p.def->span) + "\n";
+            }
         }
         return o;
     };
@@ -851,10 +858,13 @@ std::string module_interface(const Script& sc, const std::string& text, hot::Ifa
     // The fine data: the shape text and the lines of each member name.
     std::string shape;
     std::map<std::string, std::string> member_lines;
+    bool in_struct = false; // a struct line is a copied code text
     auto to_shape = [&](const std::string& line)
     {
         o += line;
         shape += line;
+        if (in_struct)
+            copied += line;
     };
     // "owner" is the class name, or empty for a module member. The line goes into the text once.
     auto to_member = [&](const std::string& key, const std::string& owner, const std::string& line)
@@ -873,14 +883,21 @@ std::string module_interface(const Script& sc, const std::string& text, hot::Ifa
     for (const hotc::ast::UsingNs& u : sc.using_ns)
         to_shape("using namespace " + u.name + "\n");
     for (const hotc::ast::TypeAlias& a : sc.aliases)
+    {
         to_shape("using " + a.name + " = " + a.resolved + "\n");
+        copied += a.resolved + "\n";
+    }
     for (const hotc::ast::EnumDef& e : sc.enums)
     {
         if (e.is_private)
             continue;
         std::string line = "enum " + e.name + " : " + e.underlying + " {";
         for (const hotc::ast::Enumerator& it : e.items)
+        {
             line += " " + it.name + (it.has_value ? " = " + span(it.value_span) : std::string()) + ",";
+            if (it.has_value)
+                copied += span(it.value_span) + "\n";
+        }
         to_shape(line + " }\n");
     }
     for (const ClassDef& c : sc.classes)
@@ -892,6 +909,7 @@ std::string module_interface(const Script& sc, const std::string& text, hot::Ifa
             + (c.is_value ? "struct " : c.is_abstract ? "abstract class " : "class ") + c.name + " : " + c.base;
         for (const std::string& i : c.interfaces)
             head += ", " + i;
+        in_struct = c.is_value;
         to_shape(head + " {\n");
         // The shell of the class derives from std::enable_shared_from_this (see ClassDef::bare_this).
         if (c.bare_this)
@@ -904,8 +922,11 @@ std::string module_interface(const Script& sc, const std::string& text, hot::Ifa
                 to_member(key, c.name, line);
         };
         for (const Field& f : c.fields)
+        {
+            copied += span(f.init_span) + "\n";
             member(f.name, std::string("  ") + access(f.access) + "field " + (f.weak ? "weak " : "") + f.type + " " + f.name
                 + (span(f.init_span).empty() ? std::string() : " = " + span(f.init_span)) + "\n");
+        }
         for (const hotc::ast::Property& pr : c.props)
             member(pr.name, "  prop " + pr.type + " " + pr.name + body(c.is_value, pr.get_span) + body(c.is_value, pr.set_span) + "\n");
         for (const hotc::ast::Ctor& k : c.ctors)
@@ -921,6 +942,7 @@ std::string module_interface(const Script& sc, const std::string& text, hot::Ifa
                     base += (i ? ", " : "") + hotc::ast::print(*k.base_args[i]);
                 base += ")";
             }
+            copied += base + "\n";
             member(c.name, std::string("  ") + access(k.access) + "ctor(" + params(k.params) + ")" + base
                 + body(c.is_value, k.body_span) + "\n");
         }
@@ -944,10 +966,14 @@ std::string module_interface(const Script& sc, const std::string& text, hot::Ifa
         for (const Method& m : c.statics)
             add_method("static ", m);
         to_shape("}\n");
+        in_struct = false;
     }
     for (const Field& f : sc.consts)
         if (f.access != hotc::ast::Access::Private)
+        {
+            copied += span(f.init_span) + "\n";
             to_shape("const " + f.type + " " + f.name + " = " + span(f.init_span) + "\n");
+        }
     for (const Field& f : sc.vars)
         if (f.access != hotc::ast::Access::Private)
             to_member(f.name, "", "var " + f.type + " " + f.name + "\n");
@@ -977,7 +1003,10 @@ std::string module_interface(const Script& sc, const std::string& text, hot::Ifa
             + std::to_string(st.checked_index) + std::to_string(st.nonnull) + std::to_string(st.is_attribute);
         for (const std::string* t : {&st.handle, &st.default_handle, &st.weak_handle, &st.factory, &st.weak_source,
                  &st.intrusive_add, &st.intrusive_release, &st.cpp_prelude, &st.cpp_overrides})
+        {
             shape += " [" + std::to_string(t->size()) + ":" + *t + "]";
+            copied += *t + "\n";
+        }
         for (const std::string& a : st.attrs)
             shape += " " + a;
         shape += "\n";
@@ -1008,6 +1037,7 @@ std::string module_interface(const Script& sc, const std::string& text, hot::Ifa
             joined.push_back(m);
     r.members = std::move(joined);
     r.names = hot::iface_name_set(o);
+    r.copied_names = hot::iface_name_set(copied);
     *info = std::move(r);
     return o;
 }

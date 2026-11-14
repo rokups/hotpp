@@ -27,9 +27,10 @@ using namespace cache_io;
 namespace
 {
 
-// Version 7 adds the fine interface data (iface_info, use_names, use_strong). An entry without
-// them gives an unknown hot::IfaceInfo and hot::UseInfo: "no fine data" (importer_is_stale rule 2).
-constexpr int entry_version = 7;
+// Version 7 adds the fine interface data (iface_info, use_names, use_strong). Version 8 adds
+// IfaceInfo::copied_names to iface_info. An entry without the data gives an unknown
+// hot::IfaceInfo and hot::UseInfo: "no fine data" (importer_is_stale rule 2).
+constexpr int entry_version = 8;
 // The maximum number of entries of a key. Each entry has other imported texts or slot lines.
 constexpr int entry_count = 4;
 constexpr uint64_t second_seed = 0x9e3779b97f4a7c15ULL;

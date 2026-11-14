@@ -224,3 +224,42 @@ TEST(IfaceInfoTranslation, ValueUseOfAForeignClassIsNotStrong)
     EXPECT_NE(r.cpp.find("hot::Value<Plain>"), std::string::npos) << "the field is a box, not the state";
     EXPECT_TRUE(has_name(r.use_info.names, "Get"));
 }
+
+// Scenario A: a struct body calls a free function of the unit. The importer copies the struct,
+// so the name of the function is a copied name. A new overload of it makes each importer stale.
+TEST(IfaceInfoTranslation, StructBodyNamesAreCopiedNames)
+{
+    TempDir dir;
+    const hot::IfaceInfo a = info(dir, "int g() { return 1; }\nstruct S {\n    int f() { return g(); }\n}\n");
+    const hot::IfaceInfo b = info(dir,
+        "int g() { return 1; }\nint g(int k) { return k; }\nstruct S {\n    int f() { return g(); }\n}\n");
+    EXPECT_TRUE(has_name(a.copied_names, "g"));
+    EXPECT_EQ(changed(a, b), std::vector<uint64_t>{hot::iface_name_hash("g")});
+    hot::UseInfo importer;
+    importer.known = true;
+    importer.names = hot::iface_name_set("S s; s.f();");
+    EXPECT_TRUE(hot::importer_is_stale(a, b, importer, "u", {}));
+}
+
+// Scenario B: a parameter default. A default cannot call a script function (the translator
+// refuses it, see lower.cpp static_call) and cannot read a variable. So today a default names only
+// a constant, an enum, a struct or a native name, which are in the shape. The default text is a
+// copied text all the same: a later language change cannot make the rule miss it.
+TEST(IfaceInfoTranslation, ParameterDefaultNamesAreCopiedNames)
+{
+    TempDir dir;
+    const hot::IfaceInfo a = info(dir, "const int Limit = 4;\nvoid foo(int x = Limit) { }\n");
+    EXPECT_TRUE(has_name(a.copied_names, "Limit"));
+    EXPECT_FALSE(has_name(a.copied_names, "foo")) << "a signature is not a copied text";
+    EXPECT_FALSE(has_name(a.copied_names, "x"));
+    hot::IfaceInfo live = a, next = a;
+    live.members.push_back({hot::iface_name_hash("Limit"), 1});
+    next.hash = a.hash + 1;
+    next.members.push_back({hot::iface_name_hash("Limit"), 2});
+    hot::UseInfo importer;
+    importer.known = true;
+    importer.names = hot::iface_name_set("foo();");
+    std::sort(live.members.begin(), live.members.end(), [](auto& p, auto& q) { return p.name < q.name; });
+    std::sort(next.members.begin(), next.members.end(), [](auto& p, auto& q) { return p.name < q.name; });
+    EXPECT_TRUE(hot::importer_is_stale(live, next, importer, "u", {})) << "a change of a name in a default";
+}

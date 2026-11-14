@@ -216,6 +216,20 @@ TEST(TranslateCache, EntryWithoutFineDataGivesUnknownData)
     }
 }
 
+// The copied names of the fine data survive the cache (a struct body names a function).
+TEST(TranslateCache, HitKeepsTheCopiedNames)
+{
+    Fixture f;
+    f.options.script_text = "int g() { return 1; }\nstruct S {\n    int f() { return g(); }\n}\n";
+    hot::TranslateCache c(f.cache);
+    const hotc::TranslateResult real = f.fill(c, f.options);
+    ASSERT_FALSE(real.iface_info.copied_names.empty());
+    const std::optional<hotc::TranslateResult> hit = c.lookup(f.options);
+    ASSERT_TRUE(hit.has_value());
+    EXPECT_TRUE(hit->iface_info == real.iface_info);
+    EXPECT_EQ(hit->iface_info.copied_names, real.iface_info.copied_names);
+}
+
 TEST(TranslateCache, EditedScriptMisses)
 {
     Fixture f;
