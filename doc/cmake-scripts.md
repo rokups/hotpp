@@ -15,7 +15,8 @@ hot_add_scripts(TARGET name SCRIPTS a.hot b.hot
                 [OUT_DIR dir] [AFTER target] [HOTC_ARGS arg...])
 hot_add_scripts(TARGET name SCRIPTS a.hot b.hot AOT [OPTIMIZED]
                 [INCLUDES dir...] [PRELUDES file...] [FLAGS hotc-flag...]
-                [DEPENDS file...] [OUT_DIR dir] [HOTC_ARGS arg...])
+                [DEPENDS file...] [OUT_DIR dir] [UNIT_ROOT dir] [PARSE_TARGET target]
+                [RUNTIME_TARGET target] [HOTC_ARGS arg...])
 ```
 
 The function runs `hotc` at build time. It has two modes. `AOT` selects the second mode. The function also calls `hot_script_host` with the name `TARGET`, so the language server knows the scripts. Call it after `add_subdirectory` of Hot++.
@@ -33,6 +34,9 @@ The function runs `hotc` at build time. It has two modes. `AOT` selects the seco
 | `FLAGS` | empty | In the default mode: compile flags for the scripts (`--cxxflag`). In AOT mode: flags for `hotc`. | none |
 | `DEPENDS` | empty | More files that the build depends on. | A relative path is relative to the current source folder (the rule of `add_custom_command`). |
 | `OUT_DIR` | default mode: `${CMAKE_BINARY_DIR}/hot_scripts`. AOT: `${CMAKE_BINARY_DIR}/hot_aot/<name>`. | The output folder. | Use an absolute path. A relative path is relative to the current build folder, and then `HOT_SCRIPTS_<TARGET>_LIBRARIES` has relative paths. |
+| `UNIT_ROOT` | none | A folder. It works only with `AOT`. Each script gets `--unit-name <path below the folder, without the extension>`, for example `Game/Game`. The unit names then equal the names at run time. A script outside the folder is an error. | A relative path is relative to the current source folder. |
+| `PARSE_TARGET` | none | A target. It works only with `AOT`. The include folders (`INCLUDE_DIRECTORIES`) and the definitions (`COMPILE_DEFINITIONS`) of the target go to `hotc --aot` as `--includes-file` and `--defines-file`. The files are `OUT_DIR/parse_includes.txt` and `OUT_DIR/parse_defines.txt`, one entry for each line, and the command depends on them. | The properties of the target only. The usage requirements of the targets that it links are not included: list them in `INCLUDES`. |
+| `RUNTIME_TARGET` | `hot::runtime_core` | A target. It works only with `AOT`. The library links this target (`PUBLIC`) instead of `hot::runtime_core`. Use it when the program already links the shared runtime. | none |
 | `AFTER` | none | A target that must build first. It works only in the default mode. AOT mode stops with an error. | none |
 | `HOTC_ARGS` | empty | More arguments for `hotc`, in both modes. | none |
 
@@ -80,7 +84,7 @@ AOT mode sets no variable. The function also writes the file `${HOT_HOSTS_DIR}/<
 
 ### Multi-config generators
 
-With `Ninja Multi-Config` or another multi-config generator, the default `OUT_DIR` has no part for the configuration. All configurations write to the same files, and `FLAGS` are the same for all of them. Build one configuration at a time in one tree. The libraries of the AOT mode are normal CMake libraries, so they follow the configuration. This behavior comes from the code of `hot_add_scripts`. A build with two configurations in one tree is untested.
+In the AOT mode, a multi-config generator adds the part `/<config>` to `OUT_DIR` (`$<CONFIG>`), so each configuration has its own generated files and its own `PARSE_TARGET` lists. `hotc` writes an output file only when its content changes, and Ninja uses `restat`, so an unchanged output starts no compile. The next text is for the default mode: the default `OUT_DIR` has no part for the configuration. All configurations write to the same files, and `FLAGS` are the same for all of them. Build one configuration at a time in one tree. The libraries of the AOT mode are normal CMake libraries, so they follow the configuration. This behavior comes from the code of `hot_add_scripts`. A build with two configurations in one tree is untested.
 
 ### Worked example: default mode with generations
 

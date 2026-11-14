@@ -40,6 +40,10 @@
 # INCLUDES are the include dirs of the translator and of the compile. FLAGS are flags
 # for hotc. OUT_DIR defaults to ${CMAKE_BINARY_DIR}/hot_aot/<name>. AOT mode has no AFTER
 # and always uses generation 1. PRELUDES is only for AOT mode.
+# UNIT_ROOT gives each script the unit name "path below the root, without the extension"
+# (--unit-name). PARSE_TARGET gives hotc the include dirs and the compile definitions of a target
+# (--includes-file, --defines-file, one file for each configuration). RUNTIME_TARGET is linked
+# instead of hot::runtime_core. With a multi-config generator OUT_DIR gets the part $<CONFIG>.
 # OPTIMIZED (AOT mode only) passes "--aot-optimized" to hotc. An optimized AOT library has no
 # slots, so no override and no reload is possible.
 #
@@ -77,7 +81,7 @@ function(_hot_resource_dir out cxx)
 endfunction()
 
 function(hot_add_scripts)
-    cmake_parse_arguments(A "AOT;OPTIMIZED" "TARGET;OUT_DIR;AFTER;HOST" "SCRIPTS;INCLUDES;PRELUDES;FLAGS;DEPENDS;HOTC_ARGS" ${ARGN})
+    cmake_parse_arguments(A "AOT;OPTIMIZED" "TARGET;OUT_DIR;AFTER;HOST;UNIT_ROOT;PARSE_TARGET;RUNTIME_TARGET" "SCRIPTS;INCLUDES;PRELUDES;FLAGS;DEPENDS;HOTC_ARGS" ${ARGN})
     if(A_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "hot_add_scripts: unknown arguments: ${A_UNPARSED_ARGUMENTS}")
     endif()
@@ -132,6 +136,11 @@ function(hot_add_scripts)
         if(A_PRELUDES)
             message(FATAL_ERROR "hot_add_scripts: PRELUDES works only with AOT (target ${A_TARGET})")
         endif()
+        foreach(o UNIT_ROOT PARSE_TARGET RUNTIME_TARGET)
+            if(A_${o})
+                message(FATAL_ERROR "hot_add_scripts: ${o} works only with AOT (target ${A_TARGET})")
+            endif()
+        endforeach()
     endif()
 
     # The output name comes from the stem of the script. Two scripts with the same stem clash.
@@ -240,6 +249,46 @@ function(hot_add_scripts)
         if(NOT A_OUT_DIR)
             set(A_OUT_DIR ${CMAKE_BINARY_DIR}/hot_aot/${A_TARGET})
         endif()
+        # A multi-config generator builds many configurations in one tree: each one has its own
+        # files, because the defines and the include dirs can differ.
+        get_property(multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+        if(multi_config)
+            set(A_OUT_DIR ${A_OUT_DIR}/$<CONFIG>)
+        endif()
+        # UNIT_ROOT: the unit name of a script is its path below the root, without the extension.
+        set(unit_args "")
+        if(A_UNIT_ROOT)
+            get_filename_component(unit_root ${A_UNIT_ROOT} ABSOLUTE)
+            foreach(abs ${scripts})
+                file(RELATIVE_PATH rel ${unit_root} ${abs})
+                if(rel MATCHES "^\\.\\.")
+                    message(FATAL_ERROR "hot_add_scripts: the script ${abs} is not below UNIT_ROOT ${unit_root} (target ${A_TARGET})")
+                endif()
+                get_filename_component(rel_dir ${rel} DIRECTORY)
+                get_filename_component(rel_stem ${rel} NAME_WLE)
+                if(rel_dir)
+                    set(rel_stem ${rel_dir}/${rel_stem})
+                endif()
+                list(APPEND unit_args --unit-name ${rel_stem})
+            endforeach()
+        endif()
+        # PARSE_TARGET: the include dirs and the defines of the target are the parse options of hotc.
+        # The lists are files of the build tree, one entry for each line, for each configuration.
+        set(parse_args "")
+        set(parse_files "")
+        if(A_PARSE_TARGET)
+            if(NOT TARGET ${A_PARSE_TARGET})
+                message(FATAL_ERROR "hot_add_scripts: PARSE_TARGET ${A_PARSE_TARGET} is not a target (target ${A_TARGET})")
+            endif()
+            set(parse_inc ${A_OUT_DIR}/parse_includes.txt)
+            set(parse_def ${A_OUT_DIR}/parse_defines.txt)
+            file(GENERATE OUTPUT ${parse_inc}
+                CONTENT "$<JOIN:$<TARGET_PROPERTY:${A_PARSE_TARGET},INCLUDE_DIRECTORIES>,\n>\n")
+            file(GENERATE OUTPUT ${parse_def}
+                CONTENT "$<JOIN:$<TARGET_PROPERTY:${A_PARSE_TARGET},COMPILE_DEFINITIONS>,\n>\n")
+            set(parse_args --includes-file ${parse_inc} --defines-file ${parse_def})
+            set(parse_files ${parse_inc} ${parse_def})
+        endif()
         set(sources "")
         set(iface_headers "")
         foreach(s ${A_SCRIPTS})
@@ -265,16 +314,21 @@ function(hot_add_scripts)
         add_custom_command(
             OUTPUT ${sources} ${registry} ${iface_headers}
             COMMAND ${CMAKE_COMMAND} -E make_directory ${A_OUT_DIR}
-            COMMAND hot::hotc --aot ${optimized_args} ${scripts} --out-dir ${A_OUT_DIR} ${args} ${A_FLAGS} ${format_args} ${depfile_args} ${A_HOTC_ARGS}
+            COMMAND hot::hotc --aot ${optimized_args} ${scripts} --out-dir ${A_OUT_DIR} ${unit_args} ${parse_args} ${args} ${A_FLAGS} ${format_args} ${depfile_args} ${A_HOTC_ARGS}
             ${depfile_opts}
-            DEPENDS hot::hotc ${scripts} ${A_PRELUDES} ${A_DEPENDS}
+            DEPENDS hot::hotc ${scripts} ${A_PRELUDES} ${parse_files} ${A_DEPENDS}
             COMMENT "hotc --aot: ${A_SCRIPTS}"
             VERBATIM)
         # The interface headers are sources too, so the library depends on them.
         add_library(${A_TARGET} STATIC ${sources} ${registry} ${iface_headers})
         # The library needs only the core. The program picks hot::aot (no loader) or the loader
         # (hot::backend; Loader::load_aot takes hot::aot_table). It never links both.
-        target_link_libraries(${A_TARGET} PUBLIC hot::runtime_core)
+        # RUNTIME_TARGET: a program that already links the shared runtime gets no second copy.
+        if(A_RUNTIME_TARGET)
+            target_link_libraries(${A_TARGET} PUBLIC ${A_RUNTIME_TARGET})
+        else()
+            target_link_libraries(${A_TARGET} PUBLIC hot::runtime_core)
+        endif()
         if(forced_flags)
             target_compile_options(${A_TARGET} PRIVATE ${forced_flags})
         endif()
