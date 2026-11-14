@@ -109,6 +109,9 @@ struct Param
     // The type is a bare script class: the parameter holds a box (hot::Value<T>). The resolution of
     // the value types sets it. The parser does not.
     bool value = false;
+    // The byte offsets of the name and of the type text (after the modifier word). 0: not known. The
+    // table of the resolved names (hotc::ResolvedRef) uses them.
+    uint32_t pos = 0, type_pos = 0;
 };
 
 // ------------------------------------------------------------------ expressions

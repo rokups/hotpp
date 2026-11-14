@@ -856,14 +856,21 @@ struct lambda_attr_p
 struct param_p
 {
     static constexpr auto rule = dsl::opt(dsl::peek(dsl::lit_c<'['>) >> dsl::p<lambda_attr_p>)
-        + param_mode_rule + dsl::p<scan_param_type> + dsl::p<id_str> + dsl::if_(dsl::lit_c<','>);
+        + param_mode_rule + dsl::position + dsl::p<scan_param_type> + dsl::position + dsl::p<id_str>
+        + dsl::if_(dsl::lit_c<','>);
     static constexpr auto value = lexy::bind(lexy::callback<ast::Param>(
-                                                 [](const ParseState& st, auto, const auto& word, Span type,
-                                                     std::string name)
+                                                 [](const ParseState& st, auto, const auto& word, const char* type_at,
+                                                     Span type, const char* name_at, std::string name)
     {
         if (only_blank(span_text(st, type)))
-            return ast::Param{std::move(name), ""};
+        {
+            ast::Param p{std::move(name), ""};
+            p.pos = st.offset(name_at);
+            return p;
+        }
         ast::Param p{std::move(name), type_of(st, type)};
+        p.type_pos = st.offset(type_at);
+        p.pos = st.offset(name_at);
         apply_param_mode(p, param_mode_of(word));
         return p;
     }),
