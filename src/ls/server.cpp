@@ -1059,6 +1059,10 @@ private:
     };
     std::map<std::string, GraphEntry> graph_files_;
     ImportGraph graph_;
+    // The last walk of the roots (import_graph) and its time. drop_import_graph clears it.
+    std::vector<std::string> graph_walk_;
+    std::chrono::steady_clock::time_point graph_walk_at_;
+    bool graph_walk_valid_ = false;
     hotc::TranslatorSession session_;
 };
 
@@ -3803,6 +3807,8 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
                 return std::nullopt;
             return json::array({loc(decl_uri, decl_text, *decl_pos)});
         }
+        // The words that only clangd resolves need a ready clangd, as on the clangd path below.
+        wait_for_native_ready(d);
         std::map<std::string, Text> texts;
         auto found = places_of(*r, false, d.path, &texts);
         json list = json::array();
@@ -3818,9 +3824,36 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
         }
         return list;
     };
-    if (is_ref)
+    // Degraded mode: the translator gives no table, or a table with gaps, for a script with a
+    // syntax error or with an import that has an error. Then the text scans of the lenient facts
+    // give the script places, and the table is not used. Remove this fallback when the translator
+    // gives a full table for a broken script.
+    const bool no_table = !d.facts.errors.empty() || (d.facts.refs.empty() && !d.facts.ok);
+    if (is_ref && !no_table)
         if (auto t = by_table())
             return *t;
+    if (no_table && is_ref && !here_word.empty() && is_script_class(d, here_word))
+    {
+        // Degraded mode: a script class. The places come from the tokens (see class_places).
+        auto add = [&](const Doc& doc, const std::set<Pos>& places)
+        {
+            for (const Pos& s : places)
+                out.push_back({{"uri", doc.uri},
+                    {"range", script_range(doc, s, {s.line, s.col + static_cast<int>(here_word.size())})}});
+        };
+        add(d, class_places(d, here_word));
+        if (roots_.size())
+            for_other_scripts(d, {here_word, ""}, here_word, add);
+        return out;
+    }
+    if (no_table && !is_ref)
+        if (const auto hit = static_member_at(d, here))
+        {
+            // Degraded mode: a static member of a script class.
+            out.push_back({{"uri", d.uri},
+                {"range", script_range(d, hit->decl, {hit->decl.line, hit->decl.col + static_cast<int>(hit->member->name.size())})}});
+            return out;
+        }
     // A class name of a script that the table does not give: the facts give the place.
     if (!is_ref)
     {
@@ -3860,7 +3893,7 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
                 return out;
         }
     }
-    if (!is_ref)
+    if (!is_ref && !no_table)
         if (auto t = by_table())
             return *t;
     // A script interface has no place in the generated text that maps back. The facts give the
@@ -3974,6 +4007,17 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
                         "hot-ls: No script host matches " + d.path
                             + ", so F12 may not find native symbols. Add hot_add_host(...) or hot_script_host(...) in "
                               "CMake and run CMake again."}}}});
+    }
+    if (no_table && !asks.empty() && is_ref && roots_.size())
+    {
+        // Degraded mode: the same symbol in the other scripts of the workspace (see for_other_scripts).
+        if (const auto key = here_word.empty() ? std::nullopt : key_at(d, here))
+            for_other_scripts(d, *key, here_word, [&](const Doc& doc, const std::set<Pos>& places)
+            {
+                for (const Pos& s : places)
+                    out.push_back({{"uri", doc.uri},
+                        {"range", script_range(doc, s, {s.line, s.col + static_cast<int>(here_word.size())})}});
+            });
     }
     return out;
 }
@@ -4385,6 +4429,7 @@ std::shared_ptr<const FileRefs> Server::file_refs(const std::string& path, const
 
 void Server::drop_import_graph(const std::string& path)
 {
+    graph_walk_valid_ = false;
     if (path.empty())
         graph_files_.clear();
     else
@@ -4395,7 +4440,15 @@ ImportGraph& Server::import_graph(const std::string& also)
 {
     // The scripts on disk in the roots, each open script and "also". An open script outside the
     // roots or not saved can import the declaration file too.
-    std::vector<std::string> paths = workspace_scripts();
+    // A walk of the roots that is less than 500 ms old is used again.
+    const auto now = std::chrono::steady_clock::now();
+    if (!graph_walk_valid_ || now - graph_walk_at_ >= std::chrono::milliseconds(500))
+    {
+        graph_walk_ = workspace_scripts();
+        graph_walk_at_ = now;
+        graph_walk_valid_ = true;
+    }
+    std::vector<std::string> paths = graph_walk_;
     for (const auto& [uri, doc] : docs_)
         if (!doc->path.empty())
             paths.push_back(fs::path(doc->path).lexically_normal().string());

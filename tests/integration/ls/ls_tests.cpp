@@ -2116,6 +2116,126 @@ TEST(LanguageServer, ReferencesLeaveOutAnUnrelatedScriptWithTheSameNames)
     EXPECT_EQ(there, 0) << r.dump();
 }
 
+// Degraded mode: a script with a syntax error, or with an import that has an error, has no table
+// of resolved names. Definition and references then use the text scans of the lenient facts.
+namespace
+{
+const char* const kDegradedLib = R"(using "Actor.h";
+class Gun : Actor {
+    public int Fire(int b) { return b * 2; }
+}
+)";
+
+const char* const kDegradedMain = R"(using "Actor.h";
+using "lib.hot";
+class Config {
+    public static const int kMax = 4;
+}
+class Pistol : Actor {
+    public Config cfg;
+    public int Shoot(Gun g) { return g.Fire(1) + Config.kMax; }
+    public int Broken() { return 1 +; }
+}
+)";
+
+// The first place of the result, as "file:line:character".
+std::string first_place(const json& r)
+{
+    if (!r.contains("result") || !r["result"].is_array() || r["result"].empty())
+        return "none";
+    const json& l = r["result"][0];
+    return std::filesystem::path(l.value("uri", std::string()).substr(7)).filename().string() + ":"
+        + std::to_string(l["range"]["start"]["line"].get<int>()) + ":"
+        + std::to_string(l["range"]["start"]["character"].get<int>());
+}
+
+struct DegradedSession
+{
+    TempDir dir;
+    std::unique_ptr<LsClient> client;
+    std::string main_uri;
+    DegradedSession(const std::string& lib, const std::string& main)
+    {
+        write_file(dir.path() / "lib.hot", lib);
+        const std::string main_path = (dir.path() / "main.hot").string();
+        write_file(main_path, main);
+        main_uri = uri_of(main_path);
+        client = std::make_unique<LsClient>(options(dir, true));
+        client->initialize(uri_of(dir.path().string()));
+        client->open(main_uri, main);
+    }
+    json ask(const std::string& method, int line, int character)
+    {
+        json p = {{"textDocument", {{"uri", main_uri}}}, {"position", pos(line, character)}};
+        if (method == "textDocument/references")
+            p["context"] = {{"includeDeclaration", true}};
+        return client->request(method, p);
+    }
+};
+} // namespace
+
+TEST(LanguageServerDegraded, DefinitionOfAStaticMemberWithASyntaxErrorElsewhere)
+{
+    REQUIRE_CLANGD();
+    DegradedSession s(kDegradedLib, kDegradedMain);
+    // "Config.kMax" on line 7: "kMax" is at character 56.
+    const json r = s.ask("textDocument/definition", 7, 57);
+    EXPECT_EQ(first_place(r), "main.hot:3:28") << r.dump();
+}
+
+// Disabled: the server before the table also gives no answer here. The broken script has no
+// generated C++ for clangd, and no text scan finds a method of an imported class.
+TEST(LanguageServerDegraded, DISABLED_DefinitionOfAnImportedMethodWithASyntaxErrorElsewhere)
+{
+    REQUIRE_CLANGD();
+    DegradedSession s(kDegradedLib, kDegradedMain);
+    // "g.Fire" on line 7: "Fire" is at character 39.
+    const json r = s.ask("textDocument/definition", 7, 40);
+    EXPECT_EQ(first_place(r), "lib.hot:2:15") << r.dump();
+}
+
+TEST(LanguageServerDegraded, ReferencesOfAClassWithASyntaxErrorElsewhere)
+{
+    REQUIRE_CLANGD();
+    DegradedSession s(kDegradedLib, kDegradedMain);
+    const json r = s.ask("textDocument/references", 2, 7);
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array()) << r.dump();
+    std::set<std::string> lines;
+    for (const json& l : r["result"])
+        if (l.value("uri", std::string()) == s.main_uri)
+            lines.insert(std::to_string(l["range"]["start"]["line"].get<int>()));
+    EXPECT_EQ(lines, (std::set<std::string>{"2", "6", "7"})) << r.dump();
+}
+
+// Disabled: the server before the table also gives no answer here. The broken script has no
+// generated C++ for clangd, and no text scan finds a method of an imported class.
+TEST(LanguageServerDegraded, DISABLED_DefinitionOfAnImportedNameWhenTheImportHasAnError)
+{
+    REQUIRE_CLANGD();
+    const std::string lib = std::string(kDegradedLib) + "class Bad { public int F() { return 1 +; } }\n";
+    const std::string main = R"(using "Actor.h";
+using "lib.hot";
+class Pistol : Actor {
+    public int Shoot(Gun g) { return g.Fire(1); }
+}
+)";
+    DegradedSession s(lib, main);
+    // "g.Fire" on line 3: "Fire" is at character 39.
+    const json r = s.ask("textDocument/definition", 3, 40);
+    EXPECT_EQ(first_place(r), "lib.hot:2:15") << r.dump();
+}
+
+TEST(LanguageServerDegraded, DefinitionOfAStaticMemberWhenTheImportHasAnError)
+{
+    REQUIRE_CLANGD();
+    const std::string lib = std::string(kDegradedLib) + "class Bad { public int F() { return 1 +; } }\n";
+    std::string main = kDegradedMain;
+    main.erase(main.find("    public int Broken()"), std::string("    public int Broken() { return 1 +; }\n").size());
+    DegradedSession s(lib, main);
+    const json r = s.ask("textDocument/definition", 7, 57);
+    EXPECT_EQ(first_place(r), "main.hot:3:28") << r.dump();
+}
+
 // clangd runs its background index on the compile_commands.json of "hotc --compile-commands".
 // A workspace symbol from a generated file that is not open maps back to the script.
 TEST(LanguageServer, BackgroundIndexFindsAScriptSymbolInAGeneratedFile)
