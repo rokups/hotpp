@@ -7129,6 +7129,22 @@ TEST(LanguageServerRename, ClassRenamedInAnImporterThatUsesTheName)
     expect_importer_rename("class Spawn", "Spawn", "using \"player.hot\";\nclass Kid : Spawn {\n}\n", Want::Edits);
 }
 
+// The import is not transitive: c.hot imports b.hot, and b.hot imports the origin script. A free
+// function of the origin script is not visible in c.hot, so the rename does not edit c.hot.
+TEST(LanguageServerRename, FreeFunctionIsNotRenamedInAnIndirectImporter)
+{
+    REQUIRE_CLANGD();
+    const std::string origin = "int Twice(int v) { return v * 2; }\n";
+    Session s(true, origin);
+    write_file(s.dir.path() / "b.hot", "using \"player.hot\";\nint Four() { return Twice(2); }\n");
+    write_file(s.dir.path() / "c.hot", "using \"b.hot\";\nint Six() { return Twice(3); }\n");
+    const json r = origin_rename(s, origin, "int Twice", "Twice");
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    const json& changes = r["result"]["changes"];
+    ASSERT_TRUE(changes.contains(s.uri)) << r.dump();
+    EXPECT_FALSE(changes.contains(uri_of((s.dir.path() / "c.hot").string()))) << r.dump();
+}
+
 TEST(LanguageServerRename, ClassRenamedWhenNoImporterUsesTheName)
 {
     expect_importer_rename("class Spawn", "Spawn",

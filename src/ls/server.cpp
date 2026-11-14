@@ -1871,7 +1871,7 @@ void Server::map_clangd_diagnostics(Doc& d)
             {
                 from_imports[at.value("uri", std::string())].push_back(
                     {{"range", at["range"]}, {"severity", g.value("severity", 1)}, {"source", "clangd"},
-                        {"message", hotc::rewrite_clang_message(g.value("message", std::string()))}});
+                        {"message", hotc::rewrite_clang_message(g.value("message", std::string()), &d.facts.indirect_names)}});
                 continue;
             }
         }
@@ -1922,7 +1922,7 @@ void Server::map_clangd_diagnostics(Doc& d)
             }
         }
         out.push_back({{"range", script_range(d, b, e)}, {"severity", g.value("severity", 1)}, {"source", "clangd"},
-            {"message", hotc::rewrite_clang_message(g.value("message", std::string()))}});
+            {"message", hotc::rewrite_clang_message(g.value("message", std::string()), &d.facts.indirect_names)}});
     }
     d.clang_diags = std::move(out);
     d.clang_import_diags = std::move(from_imports);
@@ -4741,6 +4741,13 @@ std::variant<Server::PlaceMap, std::string> Server::places_of(
                 }
             }
         }
+        // The import is not transitive: a free function or a module variable of the declaring script
+        // is not visible in a script that does not import it directly. A word with its name is not
+        // the symbol.
+        if ((r.ref.kind == hotc::RefKind::Function || r.ref.kind == hotc::RefKind::ModuleVar)
+            && table->file_id != r.ref.decl_file
+            && std::find(table->imports.begin(), table->imports.end(), r.ref.decl_file) == table->imports.end())
+            asks.clear();
         if (asks.empty())
             continue;
         std::string error;

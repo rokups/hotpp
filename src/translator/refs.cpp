@@ -112,10 +112,9 @@ public:
         for (const Field* f : in_.foreign_vars)
             if (f && f->owner.empty())
                 module_.emplace(f->name, std::make_pair(f, RefKind::ModuleVar));
-        for (const auto* list : {in_.foreign_fns, in_.deep_fns})
-            if (list)
-                for (const Method& m : *list)
-                    fns_.emplace(m.written_name(), &m);
+        if (in_.foreign_fns)
+            for (const Method& m : *in_.foreign_fns)
+                fns_.emplace(m.written_name(), &m);
     }
 
     RefTable run()

@@ -2258,7 +2258,7 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
     {
         if (!opt_.raw_diagnostics)
             output = hotc::rewrite_diagnostic(
-                output, {{job.source_name, job.source_text}}, generated, &tr.source_map);
+                output, {{job.source_name, job.source_text}}, generated, &tr.source_map, &tr.indirect_names);
         job.error = output + "the " + what + " of " + job.source_name + " failed (exit code " + std::to_string(code)
             + ")\n";
         return false;

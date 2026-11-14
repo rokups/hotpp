@@ -594,8 +594,14 @@ TEST(ResolvedRefs, TransitiveImportGivesTheIdOfTheDeclaringUnit)
         const hotc::ResolvedRef* x = ref_at(r, words(c, w)[nth]);
         return x ? x->id : std::string("<no ref>");
     };
-    EXPECT_EQ(id_of("Twice", 0), file + "#Twice");
-    EXPECT_EQ(id_of("Counter", 0), file + "#Counter");
+    // A free function and a module variable of an indirect import get no ref: the import is not
+    // transitive.
+    EXPECT_EQ(id_of("Twice", 0), "<no ref>");
+    EXPECT_EQ(id_of("Counter", 0), "<no ref>");
+    ASSERT_EQ(r.indirect_names.count("Twice"), 1u);
+    EXPECT_FALSE(r.indirect_names.at("Twice").is_var);
+    ASSERT_EQ(r.indirect_names.count("Counter"), 1u);
+    EXPECT_TRUE(r.indirect_names.at("Counter").is_var);
     EXPECT_EQ(id_of("Limit", 0), file + "#Limit");
     EXPECT_EQ(id_of("Mode", 0), file + "#Mode");
     EXPECT_EQ(id_of("Fast", 0), file + "#Mode.Fast");
@@ -604,7 +610,10 @@ TEST(ResolvedRefs, TransitiveImportGivesTheIdOfTheDeclaringUnit)
     EXPECT_EQ(id_of("Pos", 0), file + "#Pos");
     EXPECT_EQ(id_of("x", 0), file + "#Pos.x");
     EXPECT_EQ(id_of("Shots", 0), file + "#Gun.Shots");
-    EXPECT_TRUE(r.unresolved.empty());
+    // Only the two indirect names stay unresolved: they may be native.
+    ASSERT_EQ(r.unresolved.size(), 2u);
+    EXPECT_EQ(c.substr(r.unresolved[0].offset, r.unresolved[0].length), "Twice");
+    EXPECT_EQ(c.substr(r.unresolved[1].offset, r.unresolved[1].length), "Counter");
     // The direct import gives the same ids.
     o.script_name = (dir.path() / "b.hot").string();
     const hotc::AnalyzeResult rb = hotc::analyze(b, o);
