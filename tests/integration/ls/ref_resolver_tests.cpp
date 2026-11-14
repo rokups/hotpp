@@ -167,7 +167,7 @@ namespace
 // The table of a small script for rename_conflict.
 struct ConflictScript
 {
-    std::string text = "class A { int hp; int mp; void f(int x) { int y = x; return hp; } }\n"
+    std::string text = "class A { int hp; int mp; void f(int x) { int y = x; return hp + G; } }\n"
                        "class B : A { int zz; }\n"
                        "int G;\n";
     FileRefs table;
@@ -201,10 +201,11 @@ struct ConflictScript
         add("y", 0, y, true, RefKind::Local);
         add("x", 1, x, false, RefKind::Param);
         add("hp", 1, "A.hp", false, RefKind::Field);
+        add("G", 0, "G", false, RefKind::ModuleVar);
         add("B", 0, "B", true, RefKind::Class);
         add("A", 1, "A", false, RefKind::Class);
         add("zz", 0, "B.zz", true, RefKind::Field);
-        add("G", 0, "G", true, RefKind::ModuleVar);
+        add("G", 1, "G", true, RefKind::ModuleVar);
         table.bases = {{"A", ""}, {"B", "A"}};
     }
     std::string conflict(const std::string& w, int n, const std::string& new_name) const
@@ -225,14 +226,21 @@ TEST(RefResolver, RenameConflictOfAMemberLooksAtTheClassFamily)
     EXPECT_NE(s.conflict("hp", 0, "mp").find("/a.hot:1"), std::string::npos);
     EXPECT_NE(s.conflict("hp", 0, "zz").find("/a.hot:2"), std::string::npos); // a derived class
     EXPECT_EQ(s.conflict("hp", 0, "qq"), "");
+    // The bare use of hp in A::f: the parameter x would hide the renamed member ("x = x").
+    EXPECT_NE(s.conflict("hp", 0, "x").find("the local at /a.hot:1"), std::string::npos);
+    // The bare use of the module variable G in A::f: the renamed member would hide it.
+    EXPECT_NE(s.conflict("mp", 0, "G").find("the member would hide"), std::string::npos);
 }
 
 TEST(RefResolver, RenameConflictOfAModuleSymbolLooksAtTheModuleDeclarations)
 {
     const ConflictScript s;
-    EXPECT_NE(s.conflict("G", 0, "A").find("/a.hot:1"), std::string::npos);
-    EXPECT_EQ(s.conflict("G", 0, "Q"), "");
-    EXPECT_EQ(s.conflict("G", 0, "hp"), ""); // a member does not conflict with a module symbol
+    EXPECT_NE(s.conflict("G", 1, "A").find("/a.hot:1"), std::string::npos);
+    EXPECT_EQ(s.conflict("G", 1, "Q"), "");
+    // The bare use of G in A::f: the member hp would hide the renamed G.
+    EXPECT_NE(s.conflict("G", 1, "hp").find("the member at /a.hot:1"), std::string::npos);
+    // The bare use of G in A::f: the parameter x would hide the renamed G.
+    EXPECT_NE(s.conflict("G", 1, "x").find("the local at /a.hot:1"), std::string::npos);
 }
 
 TEST(RefResolver, RenameConflictOfALocalLooksAtTheFunction)

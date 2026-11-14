@@ -94,11 +94,16 @@ struct RenameFile
 // A declaration with the new name conflicts when it is in a scope that hides the symbol or that
 // the symbol hides:
 //   - a member ("Class.member", also an enum value): a member of the same class family. The
-//     family is the class, its script bases and its derived classes (FileRefs::bases).
-//   - a module symbol: a module declaration in "files".
+//     family is the class, its script bases and its derived classes (FileRefs::bases). A bare
+//     word with the new name in a file of a family class also conflicts: the member can hide it.
+//   - a module symbol: a module declaration in "files". A member with the new name in the family
+//     of a class of a file with a bare use also conflicts. So does a bare unresolved new name.
 //   - a local or a parameter: a local or a parameter in the same function, or a name between the
-//     declaration and the end of the function. The table has no function ranges: the function
-//     is the range between the declarations that are not locals or parameters (conservative).
+//     declaration and the end of the function.
+// For each kind, a bare use of the symbol in a function with a local or a parameter with the new
+// name conflicts. The table has no function ranges: the function is the range between the
+// declarations that are not locals or parameters (conservative). "files" must also have the
+// imports of the files, thus the bases of the family and the imported module symbols.
 std::string rename_conflict(
     const std::vector<RenameFile>& files, const hotc::ResolvedRef& target, const std::string& new_name);
 
