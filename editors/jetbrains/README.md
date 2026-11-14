@@ -22,7 +22,7 @@ Use the plugin LSP4IJ (Red Hat). It works in the Community and Ultimate editions
 4. Or enter the values by hand. Name: `Hot++`. Command: `hot-ls --stdio`. Mappings, `File name patterns`: `*.hot` with the language id `hot`.
 5. Press `OK`. Open a `.hot` file. The language server starts on the first file.
 
-The command can have more flags, for example `--private-clangd-dir` or `--no-native-tokens`. See `hot-ls --help`.
+The command can have more flags, for example `--private-clangd-dir`, `--no-native-tokens` or `--no-rename-host-headers`. See `hot-ls --help`.
 
 ## Notes
 
