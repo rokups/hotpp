@@ -399,6 +399,109 @@ TEST_F(RefMatrix, WarmTableNoAnalyze)
     EXPECT_FALSE(first.empty());
 }
 
+// Latency with many importers. One script declares a class with a member and a static. 30 closed
+// scripts import it and use both. The test counts the work with the table counters of
+// hot/indexStats. The time limit is a guard against a blow-up, not a benchmark.
+TEST(RefMatrixLatency, ThirtyImportersAreAnalyzedOnce)
+{
+    if (std::string(HOT_CLANGD_PATH).empty())
+        GTEST_SKIP() << "clangd is not installed";
+    constexpr int kImporters = 30;
+    const std::string lib_text = "using \"Actor.h\";\nclass Gun : Actor {\n    public int ammo = 0;\n"
+                                 "    public static const int Max = 4;\n}\n";
+    TempDir dir;
+    const std::string lib = (dir.path() / "lib.hot").string();
+    std::ofstream(lib, std::ios::binary) << lib_text;
+    std::set<std::string> importer_uris;
+    for (int i = 0; i < kImporters; ++i)
+    {
+        const std::string path = (dir.path() / ("imp" + std::to_string(i) + ".hot")).string();
+        std::ofstream(path, std::ios::binary) << "using \"Actor.h\";\nusing \"lib.hot\";\nclass Kid" << i
+                                               << " : Gun {\n    public int Go() { return this.ammo + Gun.Max; }\n}\n";
+        importer_uris.insert(uri_of(path));
+    }
+    hot::ls::ServerOptions o;
+    o.clangd = HOT_CLANGD_PATH;
+    o.include_dirs = {HOT_SOURCE_DIR "/include", HOT_SOURCE_DIR "/tests/engine"};
+    LsClient client(o);
+    client.initialize(uri_of(dir.path().string()));
+    client.open(uri_of(lib), lib_text);
+    auto stats = [&] { return client.request("hot/indexStats", json::object())["result"]; };
+    auto millis = [](std::chrono::steady_clock::time_point t0)
+    { return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count(); };
+
+    // The symbols: ammo at line 2, Max at line 3 of lib.hot.
+    struct Symbol
+    {
+        const char* word;
+        int line;
+        int character;
+    };
+    const Symbol symbols[] = {{"ammo", 2, 15}, {"Max", 3, 31}};
+    bool first = true;
+    for (const Symbol& sym : symbols)
+    {
+        SCOPED_TRACE(sym.word);
+        json p = {{"textDocument", {{"uri", uri_of(lib)}}}, {"position", {{"line", sym.line}, {"character", sym.character}}}};
+        p["context"] = {{"includeDeclaration", true}};
+        const json before = stats();
+        auto t0 = std::chrono::steady_clock::now();
+        json r = client.request("textDocument/references", p);
+        const long long refs_ms = millis(t0);
+        const json after = stats();
+        ASSERT_TRUE(r.contains("result")) << r.dump().substr(0, 400);
+        // Each importer has 1 place. The declaring file has 1 declaration (the static has a use too).
+        std::set<std::string> files;
+        size_t places = 0;
+        for (const json& l : r["result"])
+        {
+            files.insert(l["uri"].get<std::string>());
+            ++places;
+        }
+        EXPECT_EQ(files.size(), static_cast<size_t>(kImporters + 1));
+        EXPECT_EQ(places, static_cast<size_t>(kImporters + 1));
+        for (const std::string& u : importer_uris)
+            EXPECT_TRUE(files.count(u)) << u;
+        const int analyses = after.value("tableAnalyses", -1) - before.value("tableAnalyses", 0);
+        if (first)
+            EXPECT_LE(after.value("tableAnalyses", -1), kImporters + 10);
+        std::printf("[ RefMatrixLatency ] %s references: %lld ms, analyses +%d, hits +%d\n", sym.word, refs_ms, analyses,
+            after.value("tableHits", 0) - before.value("tableHits", 0));
+        first = false;
+
+        // The second request: the warm tables, no new analyze.
+        t0 = std::chrono::steady_clock::now();
+        r = client.request("textDocument/references", p);
+        const long long warm_ms = millis(t0);
+        const json warm = stats();
+        EXPECT_EQ(warm.value("tableAnalyses", -1), after.value("tableAnalyses", -2));
+        EXPECT_GT(warm.value("tableHits", -1), after.value("tableHits", 0));
+        std::printf("[ RefMatrixLatency ] %s warm references: %lld ms, analyses +%d, hits +%d\n", sym.word, warm_ms,
+            warm.value("tableAnalyses", 0) - after.value("tableAnalyses", 0),
+            warm.value("tableHits", 0) - after.value("tableHits", 0));
+
+        // The rename. The time limit is a guard, not a benchmark.
+        p.erase("context");
+        p["newName"] = "Renamed";
+        t0 = std::chrono::steady_clock::now();
+        r = client.request("textDocument/rename", p);
+        const long long rename_ms = millis(t0);
+        EXPECT_LT(rename_ms, 20000) << "guard against a blow-up";
+        ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump().substr(0, 400);
+        const json& changes = r["result"]["changes"];
+        EXPECT_EQ(changes.size(), static_cast<size_t>(kImporters + 1)) << r.dump().substr(0, 400);
+        for (const std::string& u : importer_uris)
+        {
+            ASSERT_TRUE(changes.contains(u)) << u;
+            EXPECT_EQ(changes[u].size(), 1u);
+        }
+        const json end = stats();
+        EXPECT_LE(end.value("tableAnalyses", -1), kImporters + 10);
+        std::printf("[ RefMatrixLatency ] %s rename: %lld ms, analyses total %d, hits total %d\n", sym.word, rename_ms,
+            end.value("tableAnalyses", -1), end.value("tableHits", -1));
+    }
+}
+
 // A rename to a name that a declaration in a hiding or hidden scope has: an error and no edit.
 // A free new name gives the edit (the cases of the matrix use "Renamed").
 TEST_F(RefMatrix, RenameConflicts)
