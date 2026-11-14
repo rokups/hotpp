@@ -5345,8 +5345,11 @@ std::string Server::rename_other_scripts(NativeRenameJob& job, const Doc& d)
             continue;
         if (job.target.empty())
             return what + ": clangd gives no declaration";
-        const std::string over = what + ": the time budget of " + std::to_string((opt_.rename_budget_ms + 999) / 1000)
-            + " seconds is over at " + c.path;
+        // The budget is in milliseconds when it is not a whole number of seconds.
+        const std::string budget = opt_.rename_budget_ms % 1000 == 0
+            ? std::to_string(opt_.rename_budget_ms / 1000) + " s"
+            : std::to_string(opt_.rename_budget_ms) + " ms";
+        const std::string over = what + ": the time budget of " + budget + " is over at " + c.path;
         auto ask = [&](const std::string& method, const json& params, json& result) -> std::string
         {
             if (left_ms() <= 0)
