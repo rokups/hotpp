@@ -68,6 +68,13 @@ if(NOT DEFINED HOT_INCLUDE_DIR)
     set(HOT_INCLUDE_DIR "${_hot_include_dir}" CACHE INTERNAL "The include dir of Hot++")
 endif()
 
+# HOT_HOTC_EXECUTABLE (cache variable): the path of a prebuilt hotc that runs on the build host.
+# The AOT step runs hotc on the host, also in a cross build (web, iOS, Android, UWP). When the
+# variable is set, the AOT custom command runs this file and depends on it. The project does
+# not use the target hot::hotc. When it is not set and the build is a cross build with no
+# target hot::hotc, hot_add_scripts stops with an error. See doc/cmake-scripts.md, "Cross builds".
+set(HOT_HOTC_EXECUTABLE "" CACHE FILEPATH "Prebuilt hotc that runs on the build host (AOT mode, cross builds)")
+
 # Sets the variable named by "out" to the Clang resource directory of the compiler "cxx".
 # It uses CLANG_RESOURCE_DIR if set. Else it asks "cxx" (Clang only). Empty if unknown.
 # A Windows compiler (.exe) on a different build host is not asked. Its path is not a host path.
@@ -311,12 +318,24 @@ function(hot_add_scripts)
             set(depfile_args --depfile ${depfile})
             set(depfile_opts DEPFILE ${depfile})
         endif()
+        # The tool runs on the build host. A prebuilt hotc (HOT_HOTC_EXECUTABLE) replaces the target.
+        if(HOT_HOTC_EXECUTABLE)
+            set(hotc_cmd "${HOT_HOTC_EXECUTABLE}")
+            set(hotc_dep "${HOT_HOTC_EXECUTABLE}")
+        elseif(CMAKE_CROSSCOMPILING AND NOT TARGET hot::hotc)
+            message(FATAL_ERROR "hot_add_scripts: this is a cross build and the target ${A_TARGET} needs a hotc "
+                "that runs on the build host. Build hotc in a native build and pass its path: "
+                "-DHOT_HOTC_EXECUTABLE=/path/to/hotc")
+        else()
+            set(hotc_cmd hot::hotc)
+            set(hotc_dep hot::hotc)
+        endif()
         add_custom_command(
             OUTPUT ${sources} ${registry} ${iface_headers}
             COMMAND ${CMAKE_COMMAND} -E make_directory ${A_OUT_DIR}
-            COMMAND hot::hotc --aot ${optimized_args} ${scripts} --out-dir ${A_OUT_DIR} ${unit_args} ${parse_args} ${args} ${A_FLAGS} ${format_args} ${depfile_args} ${A_HOTC_ARGS}
+            COMMAND ${hotc_cmd} --aot ${optimized_args} ${scripts} --out-dir ${A_OUT_DIR} ${unit_args} ${parse_args} ${args} ${A_FLAGS} ${format_args} ${depfile_args} ${A_HOTC_ARGS}
             ${depfile_opts}
-            DEPENDS hot::hotc ${scripts} ${A_PRELUDES} ${parse_files} ${A_DEPENDS}
+            DEPENDS ${hotc_dep} ${scripts} ${A_PRELUDES} ${parse_files} ${A_DEPENDS}
             COMMENT "hotc --aot: ${A_SCRIPTS}"
             VERBATIM)
         # The interface headers are sources too, so the library depends on them.

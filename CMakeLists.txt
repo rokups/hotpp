@@ -421,6 +421,17 @@ if(HOT_BUILD_TESTS)
     endif()
 endif()
 
+# The test of HOT_HOTC_EXECUTABLE: a build with no target hotc uses the built hotc.
+if(HOT_BUILD_TESTS AND HOT_BUILD_TRANSLATOR AND NOT CMAKE_CROSSCOMPILING)
+    add_test(NAME hotc_executable
+        COMMAND ${CMAKE_COMMAND}
+            -DHOTC=$<TARGET_FILE:hotc> -DSAMPLE_DIR=${PROJECT_SOURCE_DIR}/samples/aot
+            -DWORK_DIR=${CMAKE_BINARY_DIR}/hotc_executable
+            -DCXX_COMPILER=${CMAKE_CXX_COMPILER} -DGENERATOR=${CMAKE_GENERATOR}
+            -P ${PROJECT_SOURCE_DIR}/cmake/HotcExecutableTest.cmake)
+    set_tests_properties(hotc_executable PROPERTIES LABELS aot TIMEOUT 600)
+endif()
+
 # The VS Code extension. The folder has the node tests (HOT_BUILD_TESTS) and the install rules.
 if(HOT_BUILD_VSCODE)
     add_subdirectory(editors/vscode)

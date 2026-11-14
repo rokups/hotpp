@@ -128,6 +128,40 @@ Add `OPTIMIZED` after `AOT` to build optimized AOT code. The program that links 
 
 The library is a normal target, so it uses the compile flags of your project (`CMAKE_CXX_FLAGS` and the build type). `FLAGS` go to `hotc`, not to the compiler.
 
+### Cross builds
+
+The AOT step runs `hotc` on the build host, also when the target is web (Emscripten), iOS, Android or UWP. So `hotc` must be a host executable. Do not build it for the target.
+
+1. Build `hotc` in a native build of Hot++. Keep the path of the file.
+2. Configure the cross build with `-DHOT_HOTC_EXECUTABLE=/path/to/hotc`.
+
+```sh
+cmake --preset linux-clang-files
+cmake --build --preset linux-clang-files --target hotc
+emcmake cmake -S game -B build-web -DHOT_HOTC_EXECUTABLE=/path/to/hotc
+```
+
+When `HOT_HOTC_EXECUTABLE` is set, the custom command of an AOT target runs this file. The command depends on the file, so a new `hotc` makes the generated code again. The project does not build the target `hot::hotc` and does not need it. libclang is not needed for the target.
+
+When the variable is not set, the build is a cross build and the target `hot::hotc` does not exist, `hot_add_scripts` stops with an error. The error message tells you to set `HOT_HOTC_EXECUTABLE`. A native build does not change. It uses the target `hot::hotc` as before.
+
+The compile of the generated `.aot.cpp` is a normal compile of the target toolchain. The include directories of Hot++ and of the runtime come from the usage requirements of the library `name`, which links `hot::runtime_core` (`PUBLIC`). They do not come from the host tool. `hotc` uses `HOT_INCLUDE_DIR`, `INCLUDES` and `PARSE_TARGET` only to parse the scripts. Use `HOT_HOTC_TARGET` and `HOT_SCRIPT_SYSROOT` when the parse must see the target headers. The cache variable `CLANG_RESOURCE_DIR` sets the Clang resource directory of the parse.
+
+The test `hotc_executable` builds the sample `samples/aot` with the translator off and with a built `hotc`. It checks that the project has no target `hotc`. It also checks the error message of a cross build with no `hotc`.
+
+### Precompiled scripts and run-time reload
+
+A build can use both ways. This is the hybrid design (`MODE AOT_RELOAD` of `hot_add_host`).
+
+- The AOT code is generation 1. It is in the game binary. The game starts with it, and no compiler is needed.
+- Each script is one unit. With `UNIT_ROOT`, the unit name is the path of the script below the root, without the extension. Without `UNIT_ROOT`, the unit name is the script name. For example, `UNIT_ROOT` set to `scripts` gives `ai/wolf` for `scripts/ai/wolf.hot`. The run-time override must use the same unit name.
+- The AOT table keeps two hashes. `source_hash` is the hash of the script text. `env_hash` is the hash of the build environment (preludes, format library, view type, standard). A unit is stale when the text on disk has another `source_hash`, or when the `env_hash` of the build differs from the hash of the run-time compile.
+- A stale or changed script compiles at run time. The new module replaces the unit. Other units do not change.
+- A change of the interface of an imported unit makes all importers compile again. A change of only a body compiles only that unit.
+- `Loader::revert_unit` returns a unit to its AOT code. Use it to drop an override.
+
+See [AOT with run-time overrides](embedding-backends.html#aot-with-run-time-overrides) for the calls.
+
 ## `hot_script_host`
 
 ```
