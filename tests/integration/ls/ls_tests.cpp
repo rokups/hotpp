@@ -6398,14 +6398,14 @@ TEST(LanguageServerUncertain, DeclarationListRefusesTheRename)
     EXPECT_EQ(h.dump().find("static int count"), std::string::npos) << h.dump();
 }
 
-TEST(LanguageServerUncertain, UnspacedProductRefusesTheRename)
+TEST(LanguageServerUncertain, UnspacedProductIsAUseOfTheStatic)
 {
     REQUIRE_CLANGD();
     const std::string text = statics_script("        int y = x*count;\n");
     Session s(true, text);
     const json r = text_request(s, text, "textDocument/rename", "static int count", "count", "Renamed");
-    ASSERT_TRUE(r.contains("error")) << r.dump();
-    EXPECT_NE(r.dump().find("local or a parameter"), std::string::npos) << r.dump();
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    EXPECT_FALSE(r["result"]["changes"][s.uri].empty()) << r.dump();
 }
 
 TEST(LanguageServerUncertain, ForHeaderRefusesTheRename)
