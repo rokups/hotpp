@@ -46,7 +46,27 @@ _run(${CMAKE_COMMAND} -S ${SAMPLE_DIR} -B ${sample_build} -G ${GENERATOR}
      -DHOT_ROOT= -DCMAKE_PREFIX_PATH=${prefix}
      -DCMAKE_CXX_COMPILER=${CXX_COMPILER} "-DCMAKE_CXX_FLAGS=${CXX_FLAGS}"
      -DCMAKE_BUILD_TYPE=${CONFIG} ${script_compiler_args})
+# A native build with the SDK must use the target hot::hotc of the package. The prebuilt hotc
+# variable must stay empty.
+file(STRINGS ${sample_build}/CMakeCache.txt hotc_exe_line REGEX "^HOT_HOTC_EXECUTABLE:")
+if(NOT hotc_exe_line MATCHES "=$")
+    message(FATAL_ERROR "HOT_HOTC_EXECUTABLE is not empty in the SDK build: ${hotc_exe_line}")
+endif()
 _run(${CMAKE_COMMAND} --build ${sample_build} ${config_args})
+# Ninja only: one build file must have the hotc of the SDK prefix in an AOT command.
+file(GLOB_RECURSE sdk_ninja ${sample_build}/*.ninja)
+if(sdk_ninja)
+    set(uses_sdk_hotc FALSE)
+    foreach(f ${sdk_ninja})
+        file(READ ${f} ninja_text)
+        if(ninja_text MATCHES "${prefix}[^ \n]*/hotc ")
+            set(uses_sdk_hotc TRUE)
+        endif()
+    endforeach()
+    if(NOT uses_sdk_hotc)
+        message(FATAL_ERROR "No AOT command uses the hotc of the SDK prefix")
+    endif()
+endif()
 set(ctest_config "")
 if(CONFIG)
     set(ctest_config -C ${CONFIG})

@@ -6,7 +6,8 @@
 #   1. configure samples/aot with the translator off and HOT_HOTC_EXECUTABLE set to a built hotc
 #   2. check that the project has no target hotc
 #   3. build one AOT sample with the prebuilt hotc and run it
-#   4. check that a cross build with no hotc gives the error message.
+#   4. check that a cross build with no hotc gives the error message (a Linux host only)
+#   5. remove the build folders.
 # Variables (-D): HOTC, SAMPLE_DIR, WORK_DIR, CXX_COMPILER, GENERATOR.
 foreach(v HOTC SAMPLE_DIR WORK_DIR CXX_COMPILER GENERATOR)
     if(NOT DEFINED ${v})
@@ -41,7 +42,12 @@ file(GLOB_RECURSE exe ${build}/sample_aot_hot ${build}/sample_aot_hot.exe)
 list(GET exe 0 exe)
 _run(${exe})
 
-# A cross build with no hotc stops with a clear message.
+# A cross build with no hotc stops with a clear message. The fake cross build uses a Linux
+# system name, so it runs on a Linux host only.
+if(NOT CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
+    file(REMOVE_RECURSE ${build})
+    return()
+endif()
 set(cross ${WORK_DIR}/hotc_exe_cross)
 file(REMOVE_RECURSE ${cross})
 execute_process(
@@ -53,3 +59,5 @@ execute_process(
 if(rc EQUAL 0 OR NOT err MATCHES "HOT_HOTC_EXECUTABLE")
     message(FATAL_ERROR "The cross build did not stop with the HOT_HOTC_EXECUTABLE message (rc ${rc}):\n${err}")
 endif()
+
+file(REMOVE_RECURSE ${build} ${cross})

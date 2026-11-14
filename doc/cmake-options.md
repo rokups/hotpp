@@ -47,6 +47,7 @@ These options matter for a Windows target. See [Windows](windows.html).
 |---|---|---|
 | `HOT_BUILD_TRANSLATOR` | `ON`; `OFF` in a cross build with no LLVM release | Build the translator (`hotc`, `hot-ls`) and the run-time backends. They need `libclang`. A cross build has no `libclang` for the target, so the default is `OFF`. Set `HOT_LLVM_DIR`, `HOT_LLVM_RELEASES_DIR` or `HOT_DOWNLOAD_LLVM` to get `ON`. |
 | `HOT_HOST_HOTC` | empty | The path of a `hotc` that runs on the build host. A cross build with no translator uses it to make the modules. |
+| `HOT_HOTC_EXECUTABLE` | empty | The path of a prebuilt `hotc` for the AOT step of `hot_add_scripts`. It runs on the build host. It wins over the target `hot::hotc` in AOT mode only. The default mode still uses `hot::hotc`. `HOT_HOST_HOTC` makes an imported target instead. The file must exist at build time. See [Cross builds](cmake-scripts.html#cross-builds). |
 | `HOT_DOWNLOAD_LLVM` | `OFF` | `ON` downloads the LLVM release for Windows (`clang+llvm-23.1.4-x86_64-pc-windows-msvc.tar.zst`, 263 MB) and unpacks it. The build checks the SHA256. It needs a Windows target. |
 | `HOT_LLVM_DIR` | empty | The folder of an unpacked LLVM release for Windows. No download occurs. |
 | `HOT_LLVM_RELEASES_DIR` | empty | A folder with unpacked releases. When `HOT_LLVM_DIR` is empty, the release of the right version in this folder is `HOT_LLVM_DIR`. |

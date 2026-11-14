@@ -72,7 +72,8 @@ endif()
 # The AOT step runs hotc on the host, also in a cross build (web, iOS, Android, UWP). When the
 # variable is set, the AOT custom command runs this file and depends on it. The project does
 # not use the target hot::hotc. When it is not set and the build is a cross build with no
-# target hot::hotc, hot_add_scripts stops with an error. See doc/cmake-scripts.md, "Cross builds".
+# target hot::hotc, hot_add_scripts stops with an error. The variable wins over the target in AOT
+# mode only. The mode without AOT still runs hot::hotc. The file must exist at build time. See doc/cmake-scripts.md, "Cross builds".
 set(HOT_HOTC_EXECUTABLE "" CACHE FILEPATH "Prebuilt hotc that runs on the build host (AOT mode, cross builds)")
 
 # Sets the variable named by "out" to the Clang resource directory of the compiler "cxx".
@@ -320,8 +321,11 @@ function(hot_add_scripts)
         endif()
         # The tool runs on the build host. A prebuilt hotc (HOT_HOTC_EXECUTABLE) replaces the target.
         if(HOT_HOTC_EXECUTABLE)
-            set(hotc_cmd "${HOT_HOTC_EXECUTABLE}")
-            set(hotc_dep "${HOT_HOTC_EXECUTABLE}")
+            # A relative path is relative to the top source dir. The file must exist at build time,
+            # not at configure time, so another build can make it.
+            get_filename_component(hotc_path "${HOT_HOTC_EXECUTABLE}" ABSOLUTE BASE_DIR "${CMAKE_SOURCE_DIR}")
+            set(hotc_cmd "${hotc_path}")
+            set(hotc_dep "${hotc_path}")
         elseif(CMAKE_CROSSCOMPILING AND NOT TARGET hot::hotc)
             message(FATAL_ERROR "hot_add_scripts: this is a cross build and the target ${A_TARGET} needs a hotc "
                 "that runs on the build host. Build hotc in a native build and pass its path: "

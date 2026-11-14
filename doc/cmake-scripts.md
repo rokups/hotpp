@@ -143,6 +143,8 @@ emcmake cmake -S game -B build-web -DHOT_HOTC_EXECUTABLE=/path/to/hotc
 
 When `HOT_HOTC_EXECUTABLE` is set, the custom command of an AOT target runs this file. The command depends on the file, so a new `hotc` makes the generated code again. The project does not build the target `hot::hotc` and does not need it. libclang is not needed for the target.
 
+The variable has priority over the target `hot::hotc`, but only in AOT mode. The default mode (no `AOT`) still runs `hot::hotc`. `HOT_HOST_HOTC` is a different variable: it makes an imported target `hot::hotc` for the builds that do not build the translator. A relative `HOT_HOTC_EXECUTABLE` is relative to the top source folder. The file must exist when the build runs, not when CMake configures. Thus another build can make it.
+
 When the variable is not set, the build is a cross build and the target `hot::hotc` does not exist, `hot_add_scripts` stops with an error. The error message tells you to set `HOT_HOTC_EXECUTABLE`. A native build does not change. It uses the target `hot::hotc` as before.
 
 The compile of the generated `.aot.cpp` is a normal compile of the target toolchain. The include directories of Hot++ and of the runtime come from the usage requirements of the library `name`, which links `hot::runtime_core` (`PUBLIC`). They do not come from the host tool. `hotc` uses `HOT_INCLUDE_DIR`, `INCLUDES` and `PARSE_TARGET` only to parse the scripts. Use `HOT_HOTC_TARGET` and `HOT_SCRIPT_SYSROOT` when the parse must see the target headers. The cache variable `CLANG_RESOURCE_DIR` sets the Clang resource directory of the parse.

@@ -59,7 +59,7 @@ You need these tools:
 - `wine`.
 - A `hotc` that runs on Linux, only for the preset `mingw-files`.
 
-The preset `mingw-files` has no translator. A `hotc` from the Linux host makes the modules. Set `HOT_HOST_HOTC` to the path of that `hotc`.
+The preset `mingw-files` has no translator. A `hotc` from the Linux host makes the modules. Set `HOT_HOST_HOTC` to the path of that `hotc`. It makes an imported target `hot::hotc`. In AOT mode, `HOT_HOTC_EXECUTABLE` has priority over the target (see [Cross builds](cmake-scripts.html#cross-builds)).
 
 ```
 cmake --preset mingw-files -DHOT_HOST_HOTC=/path/to/hotc

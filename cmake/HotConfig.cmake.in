@@ -191,7 +191,7 @@ else()
 endif()
 
 # The tools of the SDK, as file paths.
-get_target_property(HOT_HOTC_EXECUTABLE hot::hotc LOCATION)
+get_target_property(HOT_HOTC_LOCATION hot::hotc LOCATION)
 get_target_property(HOT_LS_EXECUTABLE hot::hot_ls LOCATION)
 
 check_required_components(Hot)
