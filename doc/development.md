@@ -141,8 +141,11 @@ The exit code is 0 for success, 1 for an error and 2 for a wrong command line. T
 Command line of the AOT mode. The tool translates generation 1 of each script. It does not compile:
 
     hotc --aot <script>... --out-dir DIR [-I dir]... [--prelude file]... [--no-strict-borrowed]
-         [--format=std|fmt] [--resource-dir dir]
+         [--format=std|fmt] [--resource-dir dir] [-D<name>[=value]]... [-U<name>]...
+         [--defines-file file] [--includes-file file]
 
+- `-D` and `-U` set the macros of the parse of the native headers. `--defines-file` has one define for each line (`NAME`, `NAME=value`, or a line with `-D` or `-U`). `--includes-file` has one include directory for each line, like `-I`. A missing list file is an error. Only the AOT mode accepts these options.
+- `hotc` writes an output file only when its content changes. An unchanged file keeps its time stamp, so a build system does not rebuild it.
 - For each script `hotc` writes `DIR/<name>.aot.cpp`. The register function has the name `hot_script_register_<name>`, so many scripts link into one program.
 - `hotc` also writes `DIR/hot_aot_registry.cpp`. It defines the constant table `hot::aot_table` (`include/hot/aot.h`). The table gives the interface hash and the imports of each script (`hot::AotScript`). In AOT code the unit of an import is the file name of the imported script without the extension.
 - For each script `hotc` also writes `DIR/<name>.iface.h`, the interface header of the public classes. The TU of an importer includes it. In optimized AOT code (`--aot-optimized`) the header also gives the shell. The owner unit exports the forwarders `hot_fn_<unit>__<symbol>` (`new`, static methods, free functions) and `hot_mv_<unit>__<name>` (module variables).

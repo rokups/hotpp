@@ -93,6 +93,9 @@ namespace
         "            [--slots file] [--resource-dir dir] [--std=c++17|c++20|c++23]\n"
         "       hotc --aot <file.hot>... --out-dir DIR [-I dir]... [--prelude file]... [--no-strict-borrowed]\n"
         "            [--format=std|fmt] [--view=hot|std] [--resource-dir dir] [--std=c++17|c++20|c++23] [--aot-optimized]\n"
+        "            [-D<name>[=value]]... [-U<name>]... [--defines-file file] [--includes-file file]\n"
+        "  --defines-file <file> (--aot) one define for each line: NAME or NAME=value; -D and -U lines also work\n"
+        "  --includes-file <file> (--aot) one include directory for each line, as -I\n"
         "  --unit-name <name>   (--aot, --emit-cpp) the unit name of the n-th script (default: the stem)\n"
         "Each mode also accepts:\n"
         "  --depfile <path>     write the headers and imported scripts that the translation read (Make format)\n"
@@ -133,6 +136,9 @@ struct Args
     // Options that only one mode accepts.
     bool has_build_only = false; // --out-dir, --cxx, --cxxflag
     bool has_emit_only = false; // --prelude
+    bool has_aot_only = false; // -D, -U, --defines-file, --includes-file
+    std::vector<std::string> defines; // "-DNAME[=value]" and "-UNAME", in the order of the command line
+    bool bad_list_file = false; // a --defines-file or --includes-file that cannot be read
     std::string format_lib = "std"; // --format=std|fmt
     std::string view_type = hot::view_type_name(); // --view=hot|std (default: the view type of this build)
     bool view_given = false; // the flag --view is present
@@ -143,6 +149,27 @@ struct Args
     std::string compile_commands; // --compile-commands: the directory of compile_commands.json
     std::string depfile; // --depfile: the dependency file of the build system
 };
+
+// The lines of a list file without the empty lines and the line end characters. Gives false when
+// the file cannot be read.
+bool read_lines(const std::string& path, std::vector<std::string>& lines)
+{
+    std::string text;
+    if (!read_file(path, text))
+    {
+        std::fprintf(stderr, "hotc: error: cannot read %s\n", path.c_str());
+        return false;
+    }
+    std::istringstream in(text);
+    for (std::string line; std::getline(in, line);)
+    {
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' ' || line.back() == '\t'))
+            line.pop_back();
+        if (!line.empty())
+            lines.push_back(line);
+    }
+    return true;
+}
 
 Args parse_args(int argc, char** argv)
 {
@@ -257,6 +284,31 @@ Args parse_args(int argc, char** argv)
         }
         else if (a == "--std=c++17" || a == "--std=c++20" || a == "--std=c++23")
             r.std_version = a.substr(6);
+        else if (a == "-D" || a == "-U")
+        {
+            r.defines.push_back(a + next());
+            r.has_aot_only = true;
+        }
+        else if (a.rfind("-D", 0) == 0 || a.rfind("-U", 0) == 0)
+        {
+            r.defines.push_back(a);
+            r.has_aot_only = true;
+        }
+        else if (a == "--defines-file" || a == "--includes-file")
+        {
+            const std::string file = next();
+            std::vector<std::string> lines;
+            if (!read_lines(file, lines))
+                r.bad_list_file = true;
+            for (const std::string& l : lines)
+            {
+                if (a == "--includes-file")
+                    r.include_dirs.push_back(l);
+                else
+                    r.defines.push_back(l.rfind("-D", 0) == 0 || l.rfind("-U", 0) == 0 ? l : "-D" + l);
+            }
+            r.has_aot_only = true;
+        }
         else if (a == "-I")
             r.include_dirs.push_back(next());
         else if (a.rfind("-I", 0) == 0)
@@ -291,8 +343,16 @@ std::string identifier(const std::string& stem)
     return id;
 }
 
-bool write_file(const std::string& path, const std::string& text)
+// Writes the file. With "only_if_changed" an existing file with the same content stays as it is,
+// so its time stamp stays.
+bool write_file(const std::string& path, const std::string& text, bool only_if_changed = false)
 {
+    if (only_if_changed)
+    {
+        std::string old;
+        if (read_file(path, old) && old == text)
+            return true;
+    }
     std::ofstream of(path, std::ios::binary); // binary: LF line ends on each platform
     if (!of)
     {
@@ -388,6 +448,8 @@ int run_aot(const Args& args)
 {
     if (args.has_compiler_option || args.out_dir.empty() || args.inputs.empty())
         usage();
+    if (args.bad_list_file)
+        return 1;
     hotc::TranslateOptions base;
     base.generation = 1;
     base.aot = true;
@@ -402,6 +464,7 @@ int run_aot(const Args& args)
     base.sysroot = args.sysroot;
     base.std_version = args.std_version;
     base.include_dirs = args.include_dirs;
+    base.defines = args.defines;
     for (const std::string& file : args.preludes)
     {
         std::string text;
@@ -471,10 +534,10 @@ int run_aot(const Args& args)
         cpp.insert(eol == std::string::npos ? cpp.size() : eol + 1,
             "#define script_register hot_script_register_" + id + "\n");
         cpp += "#undef script_register\n";
-        if (!write_file(out, cpp))
+        if (!write_file(out, cpp, true))
             failed = true;
         // The interface header of the script: the importers include it. The TU does not include it.
-        if (!write_file(args.out_dir + "/" + stem + ".iface.h", r.iface_header))
+        if (!write_file(args.out_dir + "/" + stem + ".iface.h", r.iface_header, true))
             failed = true;
         // An importer has the lines of the classes of its imports too. A line is in the manifest
         // once: a backend seeds its slot file with it and makes one enumerator for each line.
@@ -522,7 +585,7 @@ int run_aot(const Args& args)
     reg += "const AotTable aot_table = {kAotScripts, " + std::to_string(names.size()) + ", kAotSlots"
         + (args.aot_optimized ? ", true" : "") + "};\n";
     reg += "}  // namespace hot\n";
-    if (!write_file(args.out_dir + "/hot_aot_registry.cpp", reg))
+    if (!write_file(args.out_dir + "/hot_aot_registry.cpp", reg, true))
         return 1;
     if (!args.depfile.empty() && !write_depfile(args.depfile, dep_rules))
         return 1;
@@ -550,7 +613,7 @@ bool check_not_input(const Args& args, const std::string& out)
 
 int run_emit(const Args& args)
 {
-    if (args.has_build_only || args.inputs.size() != 1 || args.gen < 1)
+    if (args.has_build_only || args.has_aot_only || args.inputs.size() != 1 || args.gen < 1)
         usage();
     hotc::TranslateOptions opt;
     opt.generation = args.gen;
@@ -636,7 +699,7 @@ int run_emit(const Args& args)
 int run_build(const Args& args)
 {
     const bool single_so = !args.output.empty();
-    if (args.has_emit_only || args.inputs.empty() || args.gen < 1)
+    if (args.has_emit_only || args.has_aot_only || args.inputs.empty() || args.gen < 1)
         usage();
     if (single_so == !args.out_dir.empty())
         usage(); // exactly one of -o and --out-dir

@@ -22,6 +22,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -1302,6 +1303,78 @@ TEST(HotcTool, AotModeWritesTheCppAndTheRegistrationFile)
     EXPECT_NE(reg.find("{\"aot_demo\", &hot_script_register_aot_demo, "), std::string::npos) << reg;
     EXPECT_NE(reg.find("{\"props_v1\", &hot_script_register_props_v1, "), std::string::npos) << reg;
     EXPECT_NE(reg.find("aot_table = {kAotScripts, 2, kAotSlots}"), std::string::npos) << reg;
+}
+
+static void write_text(const std::string& path, const std::string& text)
+{
+    std::ofstream(path, std::ios::binary) << text;
+}
+
+// A header that needs a macro of the command line. The script derives from the class of the header.
+static std::string aot_macro_script(const std::string& dir)
+{
+    std::filesystem::create_directories(dir);
+    write_text(dir + "/feat.h", "#pragma once\n#ifdef HOT_AOT_FEATURE\nstruct FeatBase { virtual ~FeatBase() = default; int value = HOT_AOT_FEATURE; };\n#endif\n");
+    write_text(dir + "/feat.hot", "using \"feat.h\";\n\nclass Feat : FeatBase {\n    int Get() {\n        return this.value;\n    }\n}\n");
+    return dir + "/feat.hot";
+}
+
+TEST(HotcTool, AotModeTakesDefinesAndIncludeDirsFromTheCommandLineAndFiles)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_aot_defs");
+    const std::string script = aot_macro_script(dir + "/src");
+    std::string text;
+    // Without the macro the header gives no base class.
+    EXPECT_EQ(run_hotc(cat({{"--aot", script, "--out-dir", dir + "/out0"}, include_args()}), text), 1);
+    EXPECT_EQ(run_hotc(cat({{"--aot", script, "--out-dir", dir + "/out1", "-DHOT_AOT_FEATURE=7"}, include_args()}), text), 0)
+        << text;
+    EXPECT_NE(read_file(dir + "/out1/feat.aot.cpp").find("FeatBase"), std::string::npos);
+    // The define file has one entry for each line, "-U" removes a define, the include file has one dir for each line.
+    write_text(dir + "/defs.txt", "HOT_AOT_FEATURE=3\n\nOTHER\n");
+    write_text(dir + "/incs.txt", dir + "/src\n");
+    EXPECT_EQ(run_hotc(cat({{"--aot", dir + "/src/feat.hot", "--out-dir", dir + "/out2", "--defines-file", dir + "/defs.txt",
+                                "--includes-file", dir + "/incs.txt"},
+                           include_args()}),
+                  text),
+        0)
+        << text;
+    EXPECT_EQ(run_hotc(cat({{"--aot", script, "--out-dir", dir + "/out3", "--defines-file", dir + "/defs.txt",
+                                "-UHOT_AOT_FEATURE"},
+                           include_args()}),
+                  text),
+        1);
+    EXPECT_EQ(run_hotc(cat({{"--aot", script, "--out-dir", dir + "/out4", "--defines-file", dir + "/missing.txt"},
+                           include_args()}),
+                  text),
+        1);
+}
+
+TEST(HotcTool, AotModeKeepsTheTimeStampOfAnUnchangedOutput)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_aot_stamp");
+    const std::string out_dir = dir + "/out";
+    const std::string aot = std::string(HOT_SOURCE_DIR) + "/tests/scripts/aot_demo.hot";
+    const std::string props = std::string(HOT_SOURCE_DIR) + "/tests/scripts/props_v1.hot";
+    std::string text;
+    const Args a = cat({{"--aot", aot, props, "--out-dir", out_dir}, include_args()});
+    ASSERT_EQ(run_hotc(a, text), 0) << text;
+    const std::vector<std::string> files = {"aot_demo.aot.cpp", "aot_demo.iface.h", "props_v1.aot.cpp", "props_v1.iface.h",
+        "hot_aot_registry.cpp"};
+    // An old time stamp: a rewrite would give the current time.
+    const auto old = std::filesystem::file_time_type::clock::now() - std::chrono::hours(48);
+    for (const std::string& f : files)
+        std::filesystem::last_write_time(out_dir + "/" + f, old);
+    ASSERT_EQ(run_hotc(a, text), 0) << text;
+    for (const std::string& f : files)
+        EXPECT_EQ(std::filesystem::last_write_time(out_dir + "/" + f), old) << f;
+    // A changed output is written.
+    write_text(out_dir + "/aot_demo.iface.h", "stale\n");
+    std::filesystem::last_write_time(out_dir + "/aot_demo.iface.h", old);
+    ASSERT_EQ(run_hotc(a, text), 0) << text;
+    EXPECT_NE(read_file(out_dir + "/aot_demo.iface.h"), "stale\n");
+    EXPECT_NE(std::filesystem::last_write_time(out_dir + "/aot_demo.iface.h"), old);
 }
 
 // --aot-optimized adds the define to each script and "true" to the table.
