@@ -362,7 +362,7 @@ BuildOutput build_batch(hot::Backend& backend, const std::string& script_path, c
         units.push_back(p.get());
         names.push_back(name);
     }
-    const std::vector<std::string> compile_errors = hot::run_compiles(units, hot::build_jobs());
+    const std::vector<std::string> compile_errors = hot::run_compiles(units, hot::build_jobs_for(units.size()));
     // Phase 3: the results, in name order. The first failure is the reported error.
     std::vector<hot::LoadResult> results;
     for (size_t i = 0; i < units.size(); ++i)

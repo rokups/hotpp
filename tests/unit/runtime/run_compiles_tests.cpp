@@ -123,3 +123,43 @@ TEST(RunCompiles, EmptyList)
     std::vector<hot::PendingLoad*> list;
     EXPECT_TRUE(hot::run_compiles(list, 4).empty());
 }
+
+namespace
+{
+class OrderPending : public hot::PendingLoad
+{
+public:
+    OrderPending(std::vector<int>& log, int id, size_t unit_cost)
+        : log_(log)
+        , id_(id)
+    {
+        cost = unit_cost;
+    }
+    void compile() override { log_.push_back(id_); }
+    hot::LoadResult finish() override { return {}; }
+
+private:
+    std::vector<int>& log_;
+    int id_;
+};
+} // namespace
+
+TEST(RunCompiles, LargestCostStartsFirstAndTiesKeepOrder)
+{
+    std::vector<int> log;
+    OrderPending a(log, 0, 10), b(log, 1, 500), c(log, 2, 10), d(log, 3, 500), e(log, 4, 70);
+    std::vector<hot::PendingLoad*> list{&a, &b, &c, &d, &e};
+    const auto errors = hot::run_compiles(list, 1);
+    EXPECT_EQ(errors.size(), 5u);
+    EXPECT_EQ(log, (std::vector<int>{1, 3, 4, 0, 2}));
+}
+
+TEST(BuildJobsFor, UnitCountRule)
+{
+    EXPECT_EQ(hot::build_jobs_for(1, 8, 16), 8u);   // one unit: the default
+    EXPECT_EQ(hot::build_jobs_for(3, 8, 16), 3u);   // units <= threads
+    EXPECT_EQ(hot::build_jobs_for(8, 8, 16), 8u);
+    EXPECT_EQ(hot::build_jobs_for(9, 8, 16), 8u);   // more units than threads: the default
+    EXPECT_EQ(hot::build_jobs_for(20, 32, 16), 16u); // above the memory cap: the default
+    EXPECT_EQ(hot::build_jobs_for(4, 0, 16), 1u);   // unknown thread count
+}
