@@ -6879,6 +6879,33 @@ TEST(LanguageServerRename, MemberRenameRefusesAMemberOfAnImportedBase)
     EXPECT_NE(r.dump().find("b.hot"), std::string::npos) << r.dump();
 }
 
+// The family goes through m.hot, a script without the old name and without the new name:
+// Derived : Mid : Base. Base.bar is in b.hot.
+TEST(LanguageServerRename, MemberRenameRefusesAMemberOfAnIndirectBase)
+{
+    REQUIRE_CLANGD();
+    const json r = rename_in_files({{"b.hot", "using \"Actor.h\";\nclass Base : Actor {\n    int bar = 0;\n}\n"},
+                                       {"m.hot", "using \"Actor.h\";\nusing \"b.hot\";\nclass Mid : Base {\n}\n"},
+                                       {"player.hot",
+                                           "using \"Actor.h\";\nusing \"m.hot\";\nclass Derived : Mid {\n    int foo = 0;\n}\n"}},
+        3, 8, "bar");
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+    EXPECT_NE(r.dump().find("b.hot"), std::string::npos) << r.dump();
+}
+
+// The importer side: Leaf : Mid : Base. m.hot has no old name and no new name.
+TEST(LanguageServerRename, MemberRenameRefusesAMemberOfAnIndirectDerivedClass)
+{
+    REQUIRE_CLANGD();
+    const json r = rename_in_files({{"player.hot", "using \"Actor.h\";\nclass Base : Actor {\n    int foo = 0;\n}\n"},
+                                       {"m.hot", "using \"Actor.h\";\nusing \"player.hot\";\nclass Mid : Base {\n}\n"},
+                                       {"leaf.hot",
+                                           "using \"Actor.h\";\nusing \"m.hot\";\nclass Leaf : Mid {\n    int bar = 0;\n}\n"}},
+        2, 8, "bar");
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+    EXPECT_NE(r.dump().find("leaf.hot"), std::string::npos) << r.dump();
+}
+
 // c.hot (in the workspace) imports x.hot (an include folder outside the workspace), and x.hot
 // imports player.hot. The rename must change c.hot or refuse: never a part of the result.
 TEST(LanguageServerRename, ImporterChainThroughAnIncludeFolderIsNotLeftOut)

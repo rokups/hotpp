@@ -4783,8 +4783,9 @@ std::optional<std::variant<json, std::string>> Server::table_rename(
             return what + "cannot read " + path;
         const std::string_view text = open ? std::string_view(open->text.s) : std::string_view(*closed_text);
         const bool affected = has_word(text, old_name);
-        // A file without the old name gets no edit. It counts for the conflict check only.
-        if (!affected && (prepare || !has_word(text, new_name)))
+        // A file without the old name gets no edit. It counts for the conflict check only: for a
+        // word with the new name, or for the bases of its classes (the class family).
+        if (!affected && (prepare || (!has_word(text, new_name) && !has_word(text, "class"))))
             continue;
         Kept k;
         k.table = file_refs(path, open ? nullptr : &*closed_text, &k.text);
@@ -4843,7 +4844,9 @@ std::optional<std::variant<json, std::string>> Server::table_rename(
             std::optional<std::string> closed_text;
             if (!open && !(closed_text = read_file(id)))
                 return what + "cannot read " + id;
-            if (!has_word(open ? std::string_view(open->text.s) : std::string_view(*closed_text), new_name))
+            // A file without the new name and without a class cannot conflict.
+            const std::string_view itext = open ? std::string_view(open->text.s) : std::string_view(*closed_text);
+            if (!has_word(itext, new_name) && !has_word(itext, "class"))
                 continue;
             Kept k;
             k.table = file_refs(id, open ? nullptr : &*closed_text, &k.text);
