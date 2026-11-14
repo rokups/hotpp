@@ -27,7 +27,12 @@ namespace hotc
 struct RefInputs
 {
     const ast::Script* script = nullptr; // the main script, with the classes, enums and constants of the imports
-    const std::vector<ast::Method>* foreign_fns = nullptr; // the free functions of the imports (can be null)
+    const std::vector<ast::Method>* foreign_fns = nullptr; // the free functions of the direct imports (can be null)
+    // The free functions of the imports of the imports (can be null). The lowering does not see
+    // them, but a rename must find each use. A function of "foreign_fns" wins over one of them.
+    const std::vector<ast::Method>* deep_fns = nullptr;
+    // The module variables of all the imports: the direct imports first.
+    std::vector<const ast::Field*> foreign_vars;
     std::string_view text; // the text of the main script
     const LineMap* map = nullptr;
     // The normal path of the main script (hotc::ref_file_id).
@@ -39,7 +44,9 @@ struct RefInputs
 struct RefTable
 {
     std::vector<ResolvedRef> refs; // sorted by offset; a name gets one ref at most
-    std::vector<UnresolvedName> unresolved; // sorted by offset
+    // Sorted by offset. A member name after "." with a receiver of no known script type, and a
+    // bare name that is not a local and not a script symbol (for example a native function).
+    std::vector<UnresolvedName> unresolved;
     std::vector<std::pair<uint32_t, uint32_t>> raw_ranges; // the begin and the end of each raw body
 };
 

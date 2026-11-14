@@ -4164,6 +4164,11 @@ void translate_impl(
         std::string unit;
     };
     std::vector<ForeignVar> foreign_vars;
+    // The public free functions and module variables of the imports of the imports. The lowering
+    // does not see them (the import is not transitive). Only the table of the resolved names
+    // (refs.h) reads them: a use in the main script gets the id of the declaration.
+    std::vector<Method> deep_fns;
+    std::vector<Field> deep_vars;
     {
         auto is_script = [](const Import& im)
         { return im.path.size() > 4 && im.path.compare(im.path.size() - 4, 4, ".hot") == 0; };
@@ -4333,7 +4338,22 @@ void translate_impl(
                             foreign_vars.push_back({std::move(v), unit});
                 }
                 else
+                {
                     indirect_texts[normal_path(file)] = import_texts.size() - 1;
+                    if (in.resolve_refs)
+                    {
+                        // The code after this does not read "is.fns" and "is.vars".
+                        for (Method& f : is.fns)
+                            if (f.access != hotc::ast::Access::Private)
+                            {
+                                f.body.stmts.clear();
+                                deep_fns.push_back(std::move(f));
+                            }
+                        for (Field& v : is.vars)
+                            if (v.access != hotc::ast::Access::Private)
+                                deep_vars.push_back(std::move(v));
+                    }
+                }
                 for (ClassDef& c : is.classes)
                     if (c.is_private)
                         private_classes.emplace(c.name, file);
@@ -4520,6 +4540,11 @@ void translate_impl(
         hotc::RefInputs ri;
         ri.script = &sc;
         ri.foreign_fns = &foreign_fns;
+        ri.deep_fns = &deep_fns;
+        for (const ForeignVar& v : foreign_vars)
+            ri.foreign_vars.push_back(&v.field);
+        for (const Field& v : deep_vars)
+            ri.foreign_vars.push_back(&v);
         ri.text = in.script_text;
         ri.map = &map;
         ri.main_file = hotc::ref_file_id(in.script_name);
