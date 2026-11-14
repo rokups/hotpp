@@ -11,11 +11,13 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
-#include <regex>
+#include <atomic>
+#include <cctype>
 #include <set>
 #include <sstream>
 
 #include "hot/runtime/process.h"
+#include "long_path.h"
 
 namespace fs = std::filesystem;
 
@@ -166,41 +168,154 @@ std::string SymbolIndex::digest(const std::string& content)
         + std::to_string(content.size());
 }
 
-std::string SymbolIndex::digest(
-    const std::string& script_path, const std::string& content, const std::vector<std::string>& include_dirs)
+namespace
 {
-    static const std::regex using_line(R"re(\busing\s*"([^"\n]+\.hot)")re");
+
+std::atomic<long> g_digest_reads{0};
+
+// Finds the names in the lines "using "x.hot"". The scan is the same as the regex
+// \busing\s*"([^"\n]+\.hot)".
+std::vector<std::string> using_names(const std::string& t)
+{
+    std::vector<std::string> out;
+    const auto is_word = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
+    size_t at = 0;
+    while ((at = t.find("using", at)) != std::string::npos)
+    {
+        const size_t start = at;
+        at += 5;
+        if (start > 0 && is_word(t[start - 1]))
+            continue;
+        size_t i = at;
+        while (i < t.size() && std::isspace(static_cast<unsigned char>(t[i])))
+            ++i;
+        if (i >= t.size() || t[i] != '"')
+            continue;
+        const size_t q = t.find_first_of("\"\n", i + 1);
+        if (q == std::string::npos || t[q] != '"' || q - (i + 1) < 5)
+            continue;
+        if (t.compare(q - 4, 4, ".hot") != 0)
+            continue;
+        out.push_back(t.substr(i + 1, q - i - 1));
+        at = q + 1;
+    }
+    return out;
+}
+
+std::string normal_key(const fs::path& p)
+{
+    return path_utf8(p.lexically_normal());
+}
+
+struct FileStamp
+{
+    std::string path;
+    std::uintmax_t size = 0;
+    long long mtime = 0;
+    bool operator==(const FileStamp& o) const { return path == o.path && size == o.size && mtime == o.mtime; }
+};
+
+FileStamp stamp_of(const std::string& path)
+{
+    FileStamp s;
+    s.path = path;
+    std::error_code ec;
+    const fs::path p = utf8_path(path);
+    s.size = fs::file_size(p, ec);
+    if (ec)
+        s.size = static_cast<std::uintmax_t>(-1);
+    const auto t = fs::last_write_time(p, ec);
+    s.mtime = ec ? 0 : static_cast<long long>(t.time_since_epoch().count());
+    return s;
+}
+
+} // namespace
+
+long SymbolIndex::digest_file_reads()
+{
+    return g_digest_reads.load();
+}
+
+static std::string closure_digest(const std::string& script_path, const std::string& content,
+    const std::vector<std::string>& include_dirs, std::vector<FileStamp>* deps)
+{
     std::string all = content;
-    std::set<std::string> seen; // the files that are read already
-    std::vector<std::pair<std::string, std::string>> todo = {{script_path, content}};
+    std::set<std::string> seen; // the normal paths of the files that are read already
+    std::vector<std::pair<std::string, std::string>> todo = {{normal_key(utf8_path(script_path)), content}};
+    seen.insert(todo.back().first);
     while (!todo.empty())
     {
-        const auto [path, text] = todo.back();
+        const auto [path, text] = std::move(todo.back());
         todo.pop_back();
-        for (std::sregex_iterator it(text.begin(), text.end(), using_line), end; it != end; ++it)
+        for (const std::string& name : using_names(text))
         {
-            const std::string name = (*it)[1].str();
-            std::vector<fs::path> dirs = {fs::path(path).parent_path()};
+            std::vector<fs::path> dirs = {utf8_path(path).parent_path()};
             for (const std::string& d : include_dirs)
-                dirs.push_back(d);
+                dirs.push_back(utf8_path(d));
             for (const fs::path& d : dirs)
             {
-                const std::string file = (d / name).string();
-                std::ifstream in(file, std::ios::binary);
+                const std::string file = normal_key(d / utf8_path(name));
+                if (seen.count(file))
+                    break; // read already
+                std::ifstream in(utf8_path(file), std::ios::binary);
                 if (!in)
                     continue;
-                if (seen.insert(file).second)
-                {
-                    std::stringstream ss;
-                    ss << in.rdbuf();
-                    all += '\0' + file + '\0' + ss.str();
-                    todo.emplace_back(file, ss.str());
-                }
+                seen.insert(file);
+                ++g_digest_reads;
+                std::stringstream ss;
+                ss << in.rdbuf();
+                std::string body = ss.str();
+                all += '\0' + file + '\0' + body;
+                if (deps)
+                    deps->push_back(stamp_of(file));
+                todo.emplace_back(file, std::move(body));
                 break;
             }
         }
     }
-    return digest(all);
+    return SymbolIndex::digest(all);
+}
+
+std::string SymbolIndex::digest(
+    const std::string& script_path, const std::string& content, const std::vector<std::string>& include_dirs)
+{
+    return closure_digest(script_path, content, include_dirs, nullptr);
+}
+
+struct SymbolIndex::DigestEntry
+{
+    std::string content_digest;
+    std::vector<std::string> include_dirs;
+    std::vector<FileStamp> deps;
+    std::string result;
+};
+
+SymbolIndex::SymbolIndex() = default;
+SymbolIndex::~SymbolIndex() = default;
+
+std::string SymbolIndex::cached_digest(
+    const std::string& script_path, const std::string& content, const std::vector<std::string>& include_dirs)
+{
+    const std::string cd = digest(content);
+    auto it = digest_cache_.find(script_path);
+    if (it != digest_cache_.end() && it->second->content_digest == cd && it->second->include_dirs == include_dirs)
+    {
+        bool same = true;
+        for (const FileStamp& d : it->second->deps)
+            if (!(stamp_of(d.path) == d))
+            {
+                same = false;
+                break;
+            }
+        if (same)
+            return it->second->result;
+    }
+    auto e = std::make_shared<DigestEntry>();
+    e->content_digest = cd;
+    e->include_dirs = include_dirs;
+    e->result = closure_digest(script_path, content, include_dirs, &e->deps);
+    digest_cache_[script_path] = e;
+    return e->result;
 }
 
 std::string SymbolIndex::shard_path(const std::string& script_path) const

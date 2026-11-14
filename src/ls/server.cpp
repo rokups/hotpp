@@ -4054,7 +4054,7 @@ void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const st
         std::string flags_text;
         for (const std::string& f : eff.extra_flags)
             flags_text += f + '\n';
-        const std::string digest = SymbolIndex::digest(SymbolIndex::digest(path, *text, eff.include_dirs) + flags_text);
+        const std::string digest = SymbolIndex::digest(index_.cached_digest(path, *text, eff.include_dirs) + flags_text);
         auto shard = index_.load(path, digest);
         if (!shard)
         {
@@ -5463,7 +5463,7 @@ std::string Server::shard_digest(const std::string& path, const std::string& tex
     std::string flags_text;
     for (const std::string& f : eff.extra_flags)
         flags_text += f + '\n';
-    return SymbolIndex::digest(SymbolIndex::digest(path, text, eff.include_dirs) + flags_text);
+    return SymbolIndex::digest(index_.cached_digest(path, text, eff.include_dirs) + flags_text);
 }
 
 void Server::add_script_symbols(const std::string& query, json& out)

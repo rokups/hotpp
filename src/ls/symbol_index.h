@@ -18,6 +18,8 @@
 #pragma once
 
 #include <functional>
+#include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -56,7 +58,10 @@ struct IndexShard
 class SymbolIndex
 {
 public:
-    static constexpr int kFormatVersion = 1;
+    static constexpr int kFormatVersion = 2;
+
+    SymbolIndex();
+    ~SymbolIndex();
 
     // Sets the directory. An empty directory switches the index off.
     void open(const std::string& dir);
@@ -70,6 +75,13 @@ public:
     // the include dirs. When an imported script changes, the digest changes.
     static std::string digest(
         const std::string& script_path, const std::string& content, const std::vector<std::string>& include_dirs);
+    // Same as the digest above. It keeps the result for each script path. It reuses the result
+    // when the content, the include dirs, and the size and the time of each imported file do not
+    // change. The content is the text of the script (an open document text is possible).
+    std::string cached_digest(
+        const std::string& script_path, const std::string& content, const std::vector<std::string>& include_dirs);
+    // The number of import files that the digest functions read from disk (a test hook).
+    static long digest_file_reads();
     // The path of the shard file of a script path.
     std::string shard_path(const std::string& script_path) const;
 
@@ -88,6 +100,8 @@ public:
     int stores() const { return stores_; }
 
 private:
+    struct DigestEntry;
+    std::map<std::string, std::shared_ptr<DigestEntry>> digest_cache_;
     std::string dir_;
     int loads_ = 0, stores_ = 0;
 };
