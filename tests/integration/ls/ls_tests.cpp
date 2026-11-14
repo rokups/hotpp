@@ -477,6 +477,55 @@ TEST(LanguageServer, DefinitionInAnImportedScriptIsInThatScript)
     EXPECT_EQ(loc["range"]["start"]["character"], 9) << r.dump();
 }
 
+// A script with a class that has a static method. Another script calls it as "Unit.F(...)".
+const char* const kStaticImported =
+    "using \"Actor.h\";\n"
+    "class Unit : Actor {\n"
+    "    static int F(int v) { return v; }\n"
+    "}\n";
+
+const char* const kStaticImporter =
+    "using \"unit.hot\";\n"
+    "class Kid : Actor {\n"
+    "    void Go() { int n = Unit.F(1); }\n"
+    "}\n";
+
+// Sends F12 at the column of "word" + "shift" on line 2 of kStaticImporter. The importer
+// imports "unit.hot" with the text "imported".
+static json static_definition(Session& s, const std::string& imported, const char* importer, const char* word, int shift)
+{
+    write_file(s.dir.path() / "unit.hot", imported);
+    s.client->change(s.uri, 2, importer);
+    const std::string line = "    void Go() { int n = Unit.F(1); }";
+    const int col = static_cast<int>(line.find(word)) + shift;
+    return s.client->request("textDocument/definition", doc_pos(s.uri, 2, col));
+}
+
+// F12 on the member of a qualified static call goes to the static method in the imported script.
+TEST(LanguageServer, DefinitionOfAStaticMethodOfAnImportedClassIsInThatScript)
+{
+    REQUIRE_CLANGD();
+    Session s(true, kStaticImporter);
+    const json r = static_definition(s, kStaticImported, kStaticImporter, "Unit.F", 5);
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << r.dump();
+    const json& loc = r["result"][0];
+    EXPECT_EQ(loc["uri"], uri_of((s.dir.path() / "unit.hot").lexically_normal().string())) << r.dump();
+    EXPECT_EQ(loc["range"]["start"]["line"], 2) << r.dump();
+    EXPECT_EQ(loc["range"]["start"]["character"], 15) << r.dump();
+}
+
+// F12 on the class of a qualified static call goes to the class, not to the static method.
+TEST(LanguageServer, DefinitionOfTheClassOfAStaticCallIsTheClass)
+{
+    REQUIRE_CLANGD();
+    Session s(true, kStaticImporter);
+    const json r = static_definition(s, kStaticImported, kStaticImporter, "Unit.F", 1);
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << r.dump();
+    const json& loc = r["result"][0];
+    EXPECT_EQ(loc["uri"], uri_of((s.dir.path() / "unit.hot").lexically_normal().string())) << r.dump();
+    EXPECT_EQ(loc["range"]["start"]["line"], 1) << r.dump();
+}
+
 TEST(LanguageServer, DefinitionOfANativeMethodIsInTheNativeHeader)
 {
     REQUIRE_CLANGD();

@@ -504,8 +504,11 @@ struct Lowerer
     }
 
     // A call of a static method or of a free function. The callee becomes the generated name. The
-    // call has no "__self" argument. The arguments get the checks of a method call.
-    void static_call(CallExpr& c, const Method& fn, const ClassDef* owner, const std::string& name, uint32_t pos)
+    // call has no "__self" argument. The arguments get the checks of a method call. "name_pos" is
+    // the script offset of the member name in "C.F(...)": the name in the symbol gets its own
+    // segment. 0: the symbol has one segment at "pos".
+    void static_call(CallExpr& c, const Method& fn, const ClassDef* owner, const std::string& name, uint32_t pos,
+        uint32_t name_pos = 0)
     {
         // These errors come first: the symbol of the callee can be wrong in these places.
         if (cx.in_module_init)
@@ -527,7 +530,10 @@ struct Lowerer
             check_member(fn.access, *owner, name, pos);
         // An overload group has C++ forwarders of the written name (see the emitter). The
         // arguments get the coercion of the one overload that fits their number.
-        c.callee = raw_named("", static_symbol(owner, fn.written_name()), pos, 0);
+        // The symbol ends with the written name ("C__s_F"). The prefix keeps the segment at "pos".
+        std::string sym = static_symbol(owner, fn.written_name());
+        const auto name_at = static_cast<uint32_t>(name_pos ? sym.size() - fn.written_name().size() : 0);
+        c.callee = make_expr(RawExpr{std::move(sym), pos, name_pos, name_at});
         const std::vector<Method>* group = owner ? &owner->statics : cx.free_fns;
         coerce_args(c, group ? overload_in(*group, &fn, c.args.size()) : &fn, 0);
         exprs(c.args);
@@ -2423,7 +2429,8 @@ struct Lowerer
         if (auto* sn = std::get_if<NameExpr>(&c.callee->v))
             if (const ClassDef* so = nullptr; const Method* st = scope_static(*sn, &so))
             {
-                static_call(c, *st, so, sn->parts[1], sn->pos);
+                const uint32_t np = sn->part_pos.size() == sn->parts.size() ? sn->part_pos[1] : sn->last_pos;
+                static_call(c, *st, so, sn->parts[1], sn->pos, np);
                 return;
             }
         member_chain(c.callee);

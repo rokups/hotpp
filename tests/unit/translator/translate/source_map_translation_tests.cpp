@@ -329,6 +329,30 @@ void expect_last_part_maps(const std::string& stmt, const std::string& last)
 
 } // namespace
 
+// "Foo.Twice(2)" becomes "Foo__s_Twice(2)". The class name maps to the start of the symbol. The
+// member name maps to the written name at the end of the symbol.
+TEST(SourceMapTranslation, MemberOfAQualifiedStaticCallHasItsOwnSegment)
+{
+    const char* const script =
+        "using \"w.h\";\n"
+        "class Foo : Widget {\n"
+        "    static int Twice(int v) { return v + v; }\n"
+        "    override void Update(float dt) {\n"
+        "        int n = Foo.Twice(2);\n"
+        "    }\n"
+        "}\n";
+    const hotc::TranslateResult r = translate_script(script);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    const std::optional<SourcePos> cls = r.source_map.map_to_generated(5, 17);
+    ASSERT_TRUE(cls.has_value()) << r.cpp;
+    EXPECT_EQ(text_at(r.cpp, *cls, 12), "Foo__s_Twice") << r.cpp;
+    const std::optional<SourcePos> member = r.source_map.map_to_generated(5, 21);
+    ASSERT_TRUE(member.has_value()) << r.cpp;
+    EXPECT_EQ(*member, (SourcePos{cls->line, cls->col + 7})) << r.cpp;
+    EXPECT_EQ(r.source_map.map_to_script(member->line, member->col), (SourcePos{5, 21}));
+    EXPECT_EQ(r.source_map.map_to_script(cls->line, cls->col), (SourcePos{5, 17}));
+}
+
 TEST(SourceMapTranslation, LastPartOfScopeNameMaps)
 {
     expect_last_part_maps("int x = Ns.Get();", "Get");

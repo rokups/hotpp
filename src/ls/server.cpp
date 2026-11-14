@@ -743,6 +743,12 @@ private:
     // Stores the shard of a document that closes, if the text is the text on disk.
     void store_closed_shard(const Doc& d);
     json script_member_location(const std::string& uri, const std::string& script_name);
+    // The analyze facts and the text of the script "uri": an open document or the file on disk.
+    // Null when the file is not readable.
+    const hotc::AnalyzeResult* script_facts(const std::string& uri, Text& text);
+    // The declaration of the script class "cls" in the script of the location "found", when the
+    // word at "found" is not "cls". Else null. See on_locations.
+    json other_class_location(const json& found, const std::string& cls);
     json on_to_script(const json& p);
     // Gives the edit, or an error message.
     std::variant<json, std::string> on_rename(const Doc& d, const json& p);
@@ -3745,6 +3751,11 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
                 }
                 continue;
             }
+            // "C.F(...)" with the class "C" of an import: the generated name "C__s_F" also holds
+            // the class name. clangd gives the function "F". The class in the same script is the place.
+            if (!is_ref && !m.is_null() && m.value("uri", std::string()) != d.uri && is_symbol_word(here_word))
+                if (json c = other_class_location(m, here_word); !c.is_null())
+                    m = std::move(c);
             if (m.is_null() || !seen.insert(m.dump()).second)
                 continue;
             out.push_back(std::move(m));
@@ -3942,11 +3953,12 @@ std::optional<SymbolKey> Server::key_at(const Doc& d, Pos cur)
     return symbol_key(d, decl, name);
 }
 
-Pos Server::class_name_pos(const Doc& d, const hotc::AnalyzedClass& c) const
+// The position of the name of the class "c" in the script text "t".
+static Pos class_name_pos_in(const Text& t, const hotc::AnalyzedClass& c)
 {
     // The begin of a class is at the keyword "class". The name comes after it on the line.
     const Pos b = {c.begin.line - 1, c.begin.col - 1};
-    const std::string_view l = d.text.line(b.line);
+    const std::string_view l = t.line(b.line);
     for (size_t at = l.find(c.name, static_cast<size_t>(b.col)); at != std::string_view::npos;
         at = l.find(c.name, at + 1))
         if ((at == 0 || !is_id_char(l[at - 1]))
@@ -3954,6 +3966,8 @@ Pos Server::class_name_pos(const Doc& d, const hotc::AnalyzedClass& c) const
             return {b.line, static_cast<int>(at)};
     return b;
 }
+
+Pos Server::class_name_pos(const Doc& d, const hotc::AnalyzedClass& c) const { return class_name_pos_in(d.text, c); }
 
 std::optional<Pos> Server::key_position(const Doc& d, const SymbolKey& key) const
 {
@@ -5303,6 +5317,56 @@ json disk_to_script(const std::string& cpp_path, int line)
     return {{"uri", path_to_uri(f.lexically_normal().string())}, {"range", {{"start", p}, {"end", p}}}};
 }
 
+const hotc::AnalyzeResult* Server::script_facts(const std::string& uri, Text& text)
+{
+    if (const auto it = docs_.find(uri); it != docs_.end())
+    {
+        text = it->second->text;
+        return &it->second->facts;
+    }
+    const std::string path = uri_to_path(uri);
+    const auto t = read_file(path);
+    if (!t)
+        return nullptr;
+    auto& cached = disk_facts_[path];
+    if (cached.first != *t)
+    {
+        Doc tmp;
+        tmp.path = path;
+        cached = {*t, timed_translate([&] { return hotc::analyze(*t, translate_options(tmp), session_); })};
+    }
+    text = Text(*t);
+    return &cached.second;
+}
+
+json Server::other_class_location(const json& found, const std::string& cls)
+{
+    const std::string uri = found.value("uri", std::string());
+    if (uri.empty() || cls.empty() || !found.contains("range"))
+        return nullptr;
+    Text text;
+    const hotc::AnalyzeResult* facts = script_facts(uri, text);
+    if (!facts)
+        return nullptr;
+    // The word at the found place. The place of the class itself needs no change.
+    const Pos at = from_lsp(text, found["range"]["start"], utf8_);
+    const std::string_view l = text.line(at.line);
+    const size_t b0 = std::min(static_cast<size_t>(std::max(at.col, 0)), l.size());
+    size_t e = b0;
+    while (e < l.size() && is_id_char(l[e]))
+        ++e;
+    if (l.substr(b0, e - b0) == cls)
+        return nullptr;
+    for (const hotc::AnalyzedClass& c : facts->classes)
+        if (!c.is_interface && c.name == cls)
+        {
+            const Pos b = class_name_pos_in(text, c);
+            const Pos end = {b.line, b.col + static_cast<int>(cls.size())};
+            return {{"uri", uri}, {"range", {{"start", to_lsp(text, b, utf8_)}, {"end", to_lsp(text, end, utf8_)}}}};
+        }
+    return nullptr;
+}
+
 json Server::script_member_location(const std::string& uri, const std::string& script_name)
 {
     // The script name is "Class.member". A helper of the translator (a thunk, a slot function,
@@ -5311,29 +5375,10 @@ json Server::script_member_location(const std::string& uri, const std::string& s
     if (uri.empty() || dot == std::string::npos)
         return nullptr;
     const std::string cls = script_name.substr(0, dot), member = script_name.substr(dot + 1);
-    const hotc::AnalyzeResult* facts = nullptr;
     Text text;
-    if (const auto it = docs_.find(uri); it != docs_.end())
-    {
-        facts = &it->second->facts;
-        text = it->second->text;
-    }
-    else
-    {
-        const std::string path = uri_to_path(uri);
-        const auto t = read_file(path);
-        if (!t)
-            return nullptr;
-        auto& cached = disk_facts_[path];
-        if (cached.first != *t)
-        {
-            Doc tmp;
-            tmp.path = path;
-            cached = {*t, timed_translate([&] { return hotc::analyze(*t, translate_options(tmp), session_); })};
-        }
-        facts = &cached.second;
-        text = Text(*t);
-    }
+    const hotc::AnalyzeResult* facts = script_facts(uri, text);
+    if (!facts)
+        return nullptr;
     for (const hotc::AnalyzedClass& c : facts->classes)
     {
         if (c.name != cls)
