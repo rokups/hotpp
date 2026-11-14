@@ -54,6 +54,11 @@ struct ServerOptions
     // The time in ms that a semantic tokens request waits for the clangd answer. A late answer is
     // kept for the next request.
     int native_token_wait_ms = 300;
+    // True: a native rename may edit a header in an include dir of the host, also outside the
+    // workspace folders (initializationOptions "renameHostHeaders"). False: such a header is refused.
+    bool rename_host_headers = true;
+    // The time in ms for all clangd calls of one native rename. After it, the rename is refused.
+    int rename_budget_ms = 10000;
 };
 
 // Runs the server on two file descriptors until "exit" or the end of the input.

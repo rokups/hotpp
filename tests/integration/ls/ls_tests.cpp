@@ -6208,6 +6208,17 @@ TEST(LanguageServerNative, SemanticTokensSwitchOnTheCommandLine)
     EXPECT_TRUE(hot::ls::ServerOptions().native_semantic_tokens);
 }
 
+// The command line switch for the edit of host headers.
+TEST(LanguageServerNative, RenameHostHeadersSwitchOnTheCommandLine)
+{
+    hot::ls::ServerOptions o;
+    std::string error;
+    ASSERT_TRUE(hot::ls::parse_arguments({"--stdio", "--no-rename-host-headers"}, o, error)) << error;
+    EXPECT_FALSE(o.rename_host_headers);
+    EXPECT_TRUE(hot::ls::ServerOptions().rename_host_headers);
+    EXPECT_EQ(hot::ls::ServerOptions().rename_budget_ms, 10000);
+}
+
 // The switch in the initializationOptions.
 TEST(LanguageServerNative, SemanticTokensSwitchInInitializationOptions)
 {

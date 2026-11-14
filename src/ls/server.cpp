@@ -763,6 +763,11 @@ private:
         const Doc& d, Pos cur, const std::string& old_name, const std::string& new_name, const std::string& no_symbol);
     // True when the file is in a workspace folder.
     bool in_workspace(const std::string& path) const;
+    // True when the file is below an include dir of the host of the document. The host is the
+    // host of the document path, else the nearest host.
+    bool in_host_include_dirs(const Doc& d, const std::string& path) const;
+    // The reason why a native rename must not edit the file, or an empty string when it may.
+    std::string native_edit_refusal(const Doc& d, const std::string& path) const;
     // The tokens of the native names of a document: clangd classifies the generated text. The
     // names that the script tokens did not classify get a token.
     std::vector<SemanticToken> native_tokens(const Doc& d, const std::vector<SemanticToken>& known);
@@ -1435,6 +1440,8 @@ json Server::on_initialize(const json& p)
             opt_.private_clangd_dir = o["privateClangdDir"].get<bool>();
         if (o.contains("nativeSemanticTokens") && o["nativeSemanticTokens"].is_boolean())
             opt_.native_semantic_tokens = o["nativeSemanticTokens"].get<bool>();
+        if (o.contains("renameHostHeaders") && o["renameHostHeaders"].is_boolean())
+            opt_.rename_host_headers = o["renameHostHeaders"].get<bool>();
         if (o.contains("compileCommandsDir"))
         {
             opt_.compile_commands_dir = o.value("compileCommandsDir", std::string());
@@ -4937,6 +4944,37 @@ bool Server::in_workspace(const std::string& path) const
     return false;
 }
 
+bool Server::in_host_include_dirs(const Doc& d, const std::string& path) const
+{
+    auto host = host_of(d.path);
+    if (!host)
+        host = nearest_host(d.path);
+    if (!host)
+        return false;
+    std::error_code ec;
+    const fs::path p = fs::weakly_canonical(path, ec);
+    for (const std::string& dir : host->include_dirs)
+    {
+        if (dir.empty())
+            continue;
+        // weakly_canonical follows symlinks, so a link in the dir cannot hide the real place.
+        const fs::path rel = p.lexically_relative(fs::weakly_canonical(dir, ec));
+        if (!rel.empty() && *rel.begin() != "..")
+            return true;
+    }
+    return false;
+}
+
+std::string Server::native_edit_refusal(const Doc& d, const std::string& path) const
+{
+    if (in_workspace(path))
+        return {};
+    if (in_host_include_dirs(d, path))
+        return opt_.rename_host_headers ? std::string()
+                                        : "outside the workspace folders (the setting renameHostHeaders is off)";
+    return "outside the workspace folders and the include dirs of the host";
+}
+
 std::variant<json, std::string> Server::native_rename(
     const Doc& d, Pos cur, const std::string& old_name, const std::string& new_name, const std::string& no_symbol)
 {
@@ -4948,8 +4986,7 @@ std::variant<json, std::string> Server::native_rename(
         return no_symbol;
     const std::string what = "cannot rename the native symbol " + old_name;
     // All the clangd calls of one rename share a time budget.
-    constexpr int kRenameBudgetMs = 10000;
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kRenameBudgetMs);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(opt_.rename_budget_ms);
     auto left_ms = [&]
     {
         return static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -4975,8 +5012,8 @@ std::variant<json, std::string> Server::native_rename(
                 if (uri.empty() || uri == d.gen_uri || gen_docs_.count(uri))
                     continue;
                 const std::string path = uri_to_path(uri);
-                if (!in_workspace(path))
-                    return what + ": it is declared in " + path + ", outside the workspace folders";
+                if (const std::string why = native_edit_refusal(d, path); !why.empty())
+                    return what + ": it is declared in " + path + ", " + why;
                 const json range = loc.contains("targetSelectionRange") ? loc["targetSelectionRange"] : loc.value("range", json());
                 if (range.is_object() && range.contains("start") && range.contains("end"))
                     declared.emplace_back(uri, range);
@@ -5053,8 +5090,8 @@ std::variant<json, std::string> Server::native_rename(
             {
                 // A real C++ file: the edit passes through. It must be in a workspace folder, and it
                 // must change the old name.
-                if (!in_workspace(uri_to_path(uri)))
-                    return what + ": the edit changes " + uri_to_path(uri) + ", outside the workspace folders";
+                if (const std::string why = native_edit_refusal(d, uri_to_path(uri)); !why.empty())
+                    return what + ": the edit changes " + uri_to_path(uri) + ", " + why;
                 for (const json& e : edits)
                     if (!e.contains("range") || !is_old_name(uri, e["range"]))
                         return what + ": an edit of " + uri_to_path(uri) + " does not change the name " + old_name;
@@ -6516,6 +6553,7 @@ const char* usage_text()
     return "usage: hot-ls [--stdio] [--clangd path] [-I dir]... [--resource-dir dir] [--cxxflag flag]...\n"
            "              [--compile-commands-dir dir] [--private-clangd-dir] [--index-dir dir]\n"
            "              [--hosts-dir dir] [--clangd-log file] [--no-native-tokens]\n"
+           "              [--no-rename-host-headers]\n"
            "  --clangd path      the clangd binary (default: clangd from PATH). \"\" turns clangd off.\n"
            "  -I dir             an include dir for the script imports and for clangd.\n"
            "  --compile-commands-dir dir\n"
@@ -6530,7 +6568,9 @@ const char* usage_text()
            "  --hosts-dir dir    the directory of the host files from hot_script_host (default:\n"
            "                     .cache/hot/hosts in each workspace folder).\n"
            "  --no-native-tokens\n"
-           "                     the semantic tokens have no tokens for native (C++) names.\n";
+           "                     the semantic tokens have no tokens for native (C++) names.\n"
+           "  --no-rename-host-headers\n"
+           "                     a native rename does not edit a header in an include dir of the host.\n";
 }
 
 bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, std::string& error)
@@ -6589,6 +6629,10 @@ bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, s
         else if (a == "--no-native-tokens")
         {
             out.native_semantic_tokens = false;
+        }
+        else if (a == "--no-rename-host-headers")
+        {
+            out.rename_host_headers = false;
         }
         else if (a == "--index-dir")
         {
