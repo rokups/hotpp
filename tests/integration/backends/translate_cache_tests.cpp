@@ -137,6 +137,9 @@ void expect_same(const hotc::TranslateResult& a, const hotc::TranslateResult& b)
     EXPECT_EQ(a.dependencies, b.dependencies);
     EXPECT_EQ(a.iface, b.iface);
     EXPECT_EQ(a.iface_hash, b.iface_hash);
+    // The fine interface data: a hit gives the data of the translate (doc/module-level.md).
+    EXPECT_TRUE(a.iface_info == b.iface_info);
+    EXPECT_TRUE(a.use_info == b.use_info);
     EXPECT_EQ(a.import_hashes, b.import_hashes);
     EXPECT_EQ(a.unit, b.unit);
     EXPECT_EQ(a.iface_header, b.iface_header);
@@ -175,9 +178,56 @@ TEST(TranslateCache, HitEqualsTheTranslate)
     const std::optional<hotc::TranslateResult> hit = c.lookup(f.options);
     ASSERT_TRUE(hit.has_value());
     expect_same(*hit, real);
+    EXPECT_TRUE(real.iface_info.known);
+    EXPECT_FALSE(real.iface_info.members.empty());
+    ASSERT_TRUE(real.use_info.known);
+    EXPECT_EQ(real.use_info.strong, std::vector<std::string>{real.import_hashes.at(0).first}) << "Kid derives from Base";
     // A position maps in the same way.
     EXPECT_EQ(hit->source_map.map_to_generated(5, 30).has_value(), real.source_map.map_to_generated(5, 30).has_value());
     EXPECT_EQ(c.stats().hits, 1u);
+}
+
+// An entry without the fine interface data, or with bad data, is a hit with unknown data
+// (hot::importer_is_stale rule 2). It is not a miss.
+TEST(TranslateCache, EntryWithoutFineDataGivesUnknownData)
+{
+    Fixture f;
+    const hotc::TranslateResult real = f.translate(f.options);
+    ASSERT_TRUE(real.iface_info.known);
+    for (const bool bad : {false, true})
+    {
+        hot::TranslateCache c(f.cache + (bad ? "-bad" : "-none"));
+        hotc::TranslateResult stored = real;
+        if (bad)
+            stored.iface_info.hash = real.iface_hash + 1; // the data of another interface
+        else
+        {
+            stored.iface_info = hot::IfaceInfo{};
+            stored.use_info = hot::UseInfo{};
+        }
+        std::string error;
+        ASSERT_TRUE(c.store(f.options, stored, fs::file_time_type::clock::now(), error)) << error;
+        const std::optional<hotc::TranslateResult> hit = c.lookup(f.options);
+        ASSERT_TRUE(hit.has_value()) << bad;
+        EXPECT_EQ(hit->iface_hash, real.iface_hash);
+        EXPECT_FALSE(hit->iface_info.known) << bad;
+        EXPECT_EQ(hit->use_info.known, bad) << "the use data of the bad entry is valid";
+        EXPECT_EQ(c.stats().hits, 1u);
+    }
+}
+
+// The copied names of the fine data survive the cache (a struct body names a function).
+TEST(TranslateCache, HitKeepsTheCopiedNames)
+{
+    Fixture f;
+    f.options.script_text = "int g() { return 1; }\nstruct S {\n    int f() { return g(); }\n}\n";
+    hot::TranslateCache c(f.cache);
+    const hotc::TranslateResult real = f.fill(c, f.options);
+    ASSERT_FALSE(real.iface_info.copied_names.empty());
+    const std::optional<hotc::TranslateResult> hit = c.lookup(f.options);
+    ASSERT_TRUE(hit.has_value());
+    EXPECT_TRUE(hit->iface_info == real.iface_info);
+    EXPECT_EQ(hit->iface_info.copied_names, real.iface_info.copied_names);
 }
 
 TEST(TranslateCache, EditedScriptMisses)

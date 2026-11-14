@@ -42,6 +42,7 @@ add_executable(unit_runtime_tests
     view_type_tests.cpp
     object_cache_tests.cpp
     begin_load_tests.cpp
+    iface_compat_tests.cpp
     run_compiles_tests.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Object.cpp)
 target_link_libraries(unit_runtime_tests PRIVATE hot_runtime engine_harness GTest::gtest_main)
