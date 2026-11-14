@@ -5,6 +5,8 @@
 #include "ref_resolver.h"
 
 #include <algorithm>
+#include <charconv>
+#include <limits>
 #include <tuple>
 
 namespace hot::ls
@@ -144,6 +146,132 @@ int merge_edits(json& changes, const std::string& uri, const json& edits)
     }
     list = json(std::move(out));
     return conflicts;
+}
+
+namespace
+{
+
+bool id_char(char c)
+{
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+}
+
+std::string_view name_at(const RenameFile& f, uint32_t offset, uint32_t length)
+{
+    if (offset > f.text.size() || length > f.text.size() - offset)
+        return {};
+    return f.text.substr(offset, length);
+}
+
+// True when the name at "offset" is not after "." or "::": a bare name that a local can hide.
+bool bare_at(const RenameFile& f, uint32_t offset)
+{
+    size_t q = offset;
+    while (q > 0 && (f.text[q - 1] == ' ' || f.text[q - 1] == '\t' || f.text[q - 1] == '\n' || f.text[q - 1] == '\r'))
+        --q;
+    return q == 0 || (f.text[q - 1] != '.' && f.text[q - 1] != ':');
+}
+
+int line_of(const RenameFile& f, size_t offset)
+{
+    return 1 + static_cast<int>(std::count(f.text.begin(), f.text.begin() + static_cast<long>(std::min(offset, f.text.size())), '\n'));
+}
+
+std::string where(const RenameFile& f, size_t offset)
+{
+    return f.table->file_id + ":" + std::to_string(line_of(f, offset));
+}
+
+} // namespace
+
+std::string rename_conflict(
+    const std::vector<RenameFile>& files, const hotc::ResolvedRef& target, const std::string& new_name)
+{
+    const std::string declared = "cannot rename to " + new_name + ": the name is declared at ";
+    if (file_local(target.kind))
+    {
+        const RenameFile* file = nullptr;
+        for (const RenameFile& f : files)
+            if (f.table && f.table->file_id == target.decl_file)
+                file = &f;
+        uint32_t decl = 0;
+        const std::string& d = target.decl;
+        if (!file || d.size() < 2 || d[0] != '@'
+            || std::from_chars(d.data() + 1, d.data() + d.size(), decl).ec != std::errc())
+            return "cannot rename to " + new_name + ": the declaration of the local is not known";
+        // The function: the range between the declarations that are not locals or parameters.
+        uint32_t begin = 0;
+        uint32_t end = static_cast<uint32_t>(file->text.size());
+        for (const hotc::ResolvedRef& r : file->table->refs)
+            if (r.is_decl && !file_local(r.kind))
+            {
+                if (r.offset < decl)
+                    begin = r.offset;
+                else if (r.offset > decl && r.offset < end)
+                    end = r.offset;
+            }
+        for (const hotc::ResolvedRef& r : file->table->refs)
+        {
+            if (r.offset < begin || r.offset >= end || r.id == target.id || name_at(*file, r.offset, r.length) != new_name)
+                continue;
+            if (r.is_decl && file_local(r.kind))
+                return declared + where(*file, r.offset);
+            if (r.offset > decl && bare_at(*file, r.offset))
+                return "cannot rename to " + new_name + ": the local would hide the name at " + where(*file, r.offset);
+        }
+        for (const hotc::UnresolvedName& u : file->table->unresolved)
+            if (u.offset > decl && u.offset < end && name_at(*file, u.offset, u.length) == new_name && bare_at(*file, u.offset))
+                return "cannot rename to " + new_name + ": the local would hide the name at " + where(*file, u.offset);
+        for (const auto& [b, e] : file->table->raw_ranges)
+            for (size_t at = file->text.find(new_name, std::max(b, decl)); at != std::string_view::npos && at < std::min(e, end);
+                at = file->text.find(new_name, at + 1))
+                if ((at == 0 || !id_char(file->text[at - 1]))
+                    && (at + new_name.size() >= file->text.size() || !id_char(file->text[at + new_name.size()])))
+                    return "cannot rename to " + new_name + ": the local would hide the name at " + where(*file, at);
+        return std::string();
+    }
+    const size_t dot = target.decl.rfind('.');
+    if (dot == std::string::npos)
+    {
+        // A module symbol.
+        for (const RenameFile& f : files)
+            if (f.table)
+                for (const hotc::ResolvedRef& r : f.table->refs)
+                    if (r.is_decl && !file_local(r.kind) && r.decl == new_name && r.id != target.id)
+                        return declared + where(f, r.offset);
+        return std::string();
+    }
+    // A member: the class family.
+    std::set<std::string> family = {target.decl.substr(0, dot)};
+    for (bool grew = true; grew;)
+    {
+        grew = false;
+        for (const RenameFile& f : files)
+            if (f.table)
+                for (const auto& [cls, base] : f.table->bases)
+                {
+                    const bool has_cls = family.count(cls) != 0, has_base = family.count(base) != 0;
+                    if (has_cls != has_base && !base.empty())
+                    {
+                        family.insert(cls);
+                        family.insert(base);
+                        grew = true;
+                    }
+                }
+    }
+    for (const RenameFile& f : files)
+        if (f.table)
+            for (const hotc::ResolvedRef& r : f.table->refs)
+            {
+                if (!r.is_decl || r.id == target.id)
+                    continue;
+                const size_t rd = r.decl.rfind('.');
+                if (rd == std::string::npos || r.decl.compare(rd + 1, std::string::npos, new_name) != 0)
+                    continue;
+                if (family.count(r.decl.substr(0, rd)) || (!r.near_decl.empty() && family.count(r.near_decl.substr(0, r.near_decl.rfind('.')))))
+                    return declared + where(f, r.offset);
+            }
+    return std::string();
 }
 
 } // namespace hot::ls

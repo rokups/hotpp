@@ -394,6 +394,39 @@ TEST_F(RefMatrix, WarmTableNoAnalyze)
     EXPECT_FALSE(first.empty());
 }
 
+// A rename to a name that a declaration in a hiding or hidden scope has: an error and no edit.
+// A free new name gives the edit (the cases of the matrix use "Renamed").
+TEST_F(RefMatrix, RenameConflicts)
+{
+    if (!g_ws)
+        GTEST_SKIP() << "clangd is not installed";
+    LsClient& client = *g_ws->client;
+    struct Conflict
+    {
+        const char* kind;
+        const char* word;
+        const char* new_name;
+        const char* file_line; // the file and the line that the message names
+    };
+    const Conflict cases[] = {
+        {"member of the class", "ammo", "Fire", "lib.hot:9"},
+        {"member of a derived class", "ammo", "Shoot", ".hot:5"},
+        {"module symbol", "Limit", "Twice", "lib.hot:3"},
+        {"local and a parameter", "shots", "bullets", "lib.hot:9"},
+        {"local that hides a member", "shots", "ammo", "lib.hot:9"},
+    };
+    for (const Conflict& c : cases)
+    {
+        SCOPED_TRACE(c.kind);
+        json p = doc_pos(g_ws->uris[0], words(kLib, c.word).back());
+        p["newName"] = c.new_name;
+        const json r = client.request("textDocument/rename", p);
+        ASSERT_TRUE(r.contains("error")) << r.dump();
+        EXPECT_FALSE(r.contains("result") && !r["result"].is_null()) << r.dump();
+        EXPECT_NE(r["error"].value("message", std::string()).find(c.file_line), std::string::npos) << r.dump();
+    }
+}
+
 INSTANTIATE_TEST_SUITE_P(Matrix, RefMatrix, ::testing::ValuesIn(all_cases()),
     [](const ::testing::TestParamInfo<Case>& i) { return case_name(i.param); });
 

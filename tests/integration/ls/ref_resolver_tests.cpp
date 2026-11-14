@@ -7,6 +7,9 @@
 
 #include <gtest/gtest.h>
 
+#include <cctype>
+#include <string>
+
 using hot::ls::FileRefs;
 using hot::ls::ImportGraph;
 using hotc::RefKind;
@@ -156,4 +159,88 @@ TEST(RefResolver, MergeEditsSortsAndRemovesEqualEdits)
     EXPECT_EQ(changes["file:///b.hot"].size(), 1u);
     hot::ls::merge_edits(changes, "file:///c.hot", json::array());
     EXPECT_TRUE(changes["file:///c.hot"].is_array());
+}
+
+namespace
+{
+
+// The table of a small script for rename_conflict.
+struct ConflictScript
+{
+    std::string text = "class A { int hp; int mp; void f(int x) { int y = x; return hp; } }\n"
+                       "class B : A { int zz; }\n"
+                       "int G;\n";
+    FileRefs table;
+
+    // The byte offset of the "n"-th whole word "w".
+    uint32_t at(const std::string& w, int n = 0) const
+    {
+        for (size_t p = text.find(w); p != std::string::npos; p = text.find(w, p + 1))
+        {
+            const bool left = p == 0 || !std::isalnum(static_cast<unsigned char>(text[p - 1]));
+            const bool right = p + w.size() >= text.size() || !std::isalnum(static_cast<unsigned char>(text[p + w.size()]));
+            if (left && right && n-- == 0)
+                return static_cast<uint32_t>(p);
+        }
+        return 0;
+    }
+    void add(const std::string& w, int n, const std::string& decl, bool is_decl, RefKind kind)
+    {
+        table.refs.push_back(ref(at(w, n), static_cast<uint32_t>(w.size()), decl, is_decl, kind));
+        table.refs.back().pos = {1, 1};
+    }
+    ConflictScript()
+    {
+        table.file_id = "/a.hot";
+        const std::string x = "@" + std::to_string(at("x")), y = "@" + std::to_string(at("y"));
+        add("A", 0, "A", true, RefKind::Class);
+        add("hp", 0, "A.hp", true, RefKind::Field);
+        add("mp", 0, "A.mp", true, RefKind::Field);
+        add("f", 0, "A.f", true, RefKind::Method);
+        add("x", 0, x, true, RefKind::Param);
+        add("y", 0, y, true, RefKind::Local);
+        add("x", 1, x, false, RefKind::Param);
+        add("hp", 1, "A.hp", false, RefKind::Field);
+        add("B", 0, "B", true, RefKind::Class);
+        add("A", 1, "A", false, RefKind::Class);
+        add("zz", 0, "B.zz", true, RefKind::Field);
+        add("G", 0, "G", true, RefKind::ModuleVar);
+        table.bases = {{"A", ""}, {"B", "A"}};
+    }
+    std::string conflict(const std::string& w, int n, const std::string& new_name) const
+    {
+        const uint32_t off = at(w, n);
+        for (const ResolvedRef& r : table.refs)
+            if (r.offset == off)
+                return hot::ls::rename_conflict({{&table, text}}, r, new_name);
+        return "no ref";
+    }
+};
+
+} // namespace
+
+TEST(RefResolver, RenameConflictOfAMemberLooksAtTheClassFamily)
+{
+    const ConflictScript s;
+    EXPECT_NE(s.conflict("hp", 0, "mp").find("/a.hot:1"), std::string::npos);
+    EXPECT_NE(s.conflict("hp", 0, "zz").find("/a.hot:2"), std::string::npos); // a derived class
+    EXPECT_EQ(s.conflict("hp", 0, "qq"), "");
+}
+
+TEST(RefResolver, RenameConflictOfAModuleSymbolLooksAtTheModuleDeclarations)
+{
+    const ConflictScript s;
+    EXPECT_NE(s.conflict("G", 0, "A").find("/a.hot:1"), std::string::npos);
+    EXPECT_EQ(s.conflict("G", 0, "Q"), "");
+    EXPECT_EQ(s.conflict("G", 0, "hp"), ""); // a member does not conflict with a module symbol
+}
+
+TEST(RefResolver, RenameConflictOfALocalLooksAtTheFunction)
+{
+    const ConflictScript s;
+    EXPECT_NE(s.conflict("y", 0, "x").find("declared"), std::string::npos); // the parameter
+    EXPECT_NE(s.conflict("x", 0, "y").find("declared"), std::string::npos); // the local
+    EXPECT_NE(s.conflict("y", 0, "hp").find("hide"), std::string::npos); // a bare use after the declaration
+    EXPECT_EQ(s.conflict("y", 0, "mp"), "");
+    EXPECT_EQ(s.conflict("y", 0, "zz"), ""); // after the end of the function
 }

@@ -4837,6 +4837,11 @@ std::optional<std::variant<json, std::string>> Server::table_rename(
         const auto [b, e] = word_at(d, cur);
         return json{{"range", script_range(d, {cur.line, b}, {cur.line, e})}, {"placeholder", old_name}};
     }
+    std::vector<RenameFile> conflict_files;
+    for (const Kept& k : kept)
+        conflict_files.push_back({k.table.get(), k.text.s});
+    if (std::string c = rename_conflict(conflict_files, r->ref, new_name); !c.empty())
+        return c;
     json changes = json::object();
     for (const auto& [uri, starts] : at)
     {

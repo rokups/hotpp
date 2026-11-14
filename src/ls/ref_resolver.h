@@ -81,4 +81,25 @@ private:
 // newText (the conflicts). A caller that gets a conflict can refuse the edit.
 int merge_edits(nlohmann::json& changes, const std::string& uri, const nlohmann::json& edits);
 
+// One file of a rename: its table and the text that gives the offsets of the table.
+struct RenameFile
+{
+    const FileRefs* table = nullptr;
+    std::string_view text;
+};
+
+// The conflict check of a rename of "target" (a ref of the symbol) to "new_name". "files" are the
+// files that the rename can change: the file of the declaration and its importers. Gives an
+// empty string when the new name is free. Else it gives a message with the file and the line.
+// A declaration with the new name conflicts when it is in a scope that hides the symbol or that
+// the symbol hides:
+//   - a member ("Class.member", also an enum value): a member of the same class family. The
+//     family is the class, its script bases and its derived classes (FileRefs::bases).
+//   - a module symbol: a module declaration in "files".
+//   - a local or a parameter: a local or a parameter in the same function, or a name between the
+//     declaration and the end of the function. The table has no function ranges: the function
+//     is the range between the declarations that are not locals or parameters (conservative).
+std::string rename_conflict(
+    const std::vector<RenameFile>& files, const hotc::ResolvedRef& target, const std::string& new_name);
+
 } // namespace hot::ls
