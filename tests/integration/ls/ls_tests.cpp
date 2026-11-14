@@ -2520,6 +2520,63 @@ TEST(SymbolIndex, DigestCoversTheImportedScripts)
     EXPECT_EQ(hot::ls::SymbolIndex::digest(main, "class A {}\n", {}), hot::ls::SymbolIndex::digest("class A {}\n"));
 }
 
+TEST(SymbolIndex, DigestReadsEachFileOnceForDotDotSpellings)
+{
+    TempDir dir;
+    const auto sub = [&](const char* n) { return (dir.path() / n).string(); };
+    std::filesystem::create_directories(sub("a"));
+    std::filesystem::create_directories(sub("b"));
+    const std::string a = sub("a") + "/A.hot", b = sub("b") + "/B.hot";
+    const std::string a_text = "using \"../b/B.hot\";\nclass A {}\n";
+    write_file(a, a_text);
+    write_file(b, "using \"../a/A.hot\";\nusing \"../b/../a/../b/B.hot\";\nclass B {}\n");
+    const long before = hot::ls::SymbolIndex::digest_file_reads();
+    const std::string d1 = hot::ls::SymbolIndex::digest(a, a_text, {});
+    EXPECT_EQ(hot::ls::SymbolIndex::digest_file_reads() - before, 1); // B only: A is the root
+    EXPECT_EQ(d1, hot::ls::SymbolIndex::digest(sub("a") + "/../a/A.hot", a_text, {}));
+}
+
+TEST(SymbolIndex, CachedDigestEqualsDigestAndInvalidatesOnImportChange)
+{
+    TempDir dir;
+    const std::string main = (dir.path() / "main.hot").string();
+    const std::string dep = (dir.path() / "dep.hot").string();
+    const std::string text = "using \"dep.hot\";\n";
+    write_file(main, text);
+    write_file(dep, "class Dep {}\n");
+    hot::ls::SymbolIndex index;
+    const std::string d1 = index.cached_digest(main, text, {});
+    EXPECT_EQ(d1, hot::ls::SymbolIndex::digest(main, text, {}));
+    const long reads = hot::ls::SymbolIndex::digest_file_reads();
+    EXPECT_EQ(d1, index.cached_digest(main, text, {}));
+    EXPECT_EQ(hot::ls::SymbolIndex::digest_file_reads(), reads); // from the cache
+    write_file(dep, "class Dep { int x = 1; }\n");
+    const std::string d2 = index.cached_digest(main, text, {});
+    EXPECT_NE(d1, d2);
+    EXPECT_EQ(d2, hot::ls::SymbolIndex::digest(main, text, {}));
+    // A changed root text (an unsaved document) also gives a new digest.
+    EXPECT_NE(d2, index.cached_digest(main, text + "class X {}\n", {}));
+}
+
+TEST(SymbolIndex, CachedDigestSeesAnImportThatAppears)
+{
+    TempDir dir;
+    const std::string main = (dir.path() / "main.hot").string();
+    const std::string inc = (dir.path() / "inc").string();
+    std::filesystem::create_directories(inc);
+    const std::string text = "using \"lib.hot\";\n";
+    write_file(main, text);
+    hot::ls::SymbolIndex index;
+    const std::string none = index.cached_digest(main, text, {inc});
+    write_file(inc + "/lib.hot", "class Lib {}\n"); // a missing import appears
+    const std::string in_inc = index.cached_digest(main, text, {inc});
+    EXPECT_NE(none, in_inc);
+    write_file((dir.path() / "lib.hot").string(), "class Near { int z; }\n"); // an earlier dir
+    const std::string near = index.cached_digest(main, text, {inc});
+    EXPECT_NE(in_inc, near);
+    EXPECT_EQ(near, hot::ls::SymbolIndex::digest(main, text, {inc}));
+}
+
 TEST(SymbolIndex, ReusesAShardWhenTheDigestMatches)
 {
     TempDir dir;
