@@ -75,6 +75,8 @@ public:
     std::shared_ptr<const Host> nearest(const std::string& script_path, std::filesystem::path& common) const;
 
     size_t size() const { return hosts_.size(); }
+    // The loaded hosts, sorted by name.
+    const std::vector<std::shared_ptr<const Host>>& all() const { return hosts_; }
 
 private:
     std::string dir_;
