@@ -408,3 +408,141 @@ TEST_F(HostsTest, PreludeSuffixIsRead)
     ASSERT_TRUE(h);
     EXPECT_EQ(h->prelude_suffix, ".prelude.hot");
 }
+
+// The source roots come from the inline arrays and from the side file. A "!" line is a SYSTEM dir.
+TEST_F(HostsTest, LoadsSourceRootsAndSystemDirs)
+{
+    const std::string build = make_build("a");
+    std::ofstream(hosts_dir / "a.json")
+        << R"({"version":1,"name":"a","binaryDir":")" << build << R"(","sourceDir":"/src/a","scriptDirs":["/src/a"],)"
+        << R"("sourceRoots":["/r/one","rel/two"],"systemDirs":["/r/sys1"],"sourceRootsFile":"a.roots"})";
+    std::ofstream(hosts_dir / "a.roots", std::ios::binary) << "/r/three\r\n\n!/r/sys2\n/r/one\n/r/four/\n";
+    HostSet set;
+    set.load(hosts_dir.string());
+    EXPECT_EQ(set.size(), 1u); // the roots file is not a host
+    const auto h = set.match("/src/a/x.hot");
+    ASSERT_TRUE(h);
+    const std::vector<std::string> roots{"/r/one", "/src/a/rel/two", "/r/three", "/r/four"};
+    EXPECT_EQ(h->source_roots, roots);
+    const std::vector<std::string> system{"/r/sys1", "/r/sys2"};
+    EXPECT_EQ(h->system_dirs, system);
+    EXPECT_EQ(h->binary_dir, build);
+}
+
+TEST_F(HostsTest, HostWithoutRootsHasNone)
+{
+    write_host("a", make_build("a"), R"("/src/a")");
+    std::ofstream(hosts_dir / "b.json") << R"({"version":1,"name":"b","scriptDirs":[],"sourceRootsFile":"gone.roots"})";
+    HostSet set;
+    set.load(hosts_dir.string(), false);
+    const auto h = set.match("/src/a/x.hot");
+    ASSERT_TRUE(h);
+    EXPECT_TRUE(h->source_roots.empty());
+    EXPECT_TRUE(h->system_dirs.empty());
+}
+
+TEST_F(HostsTest, ChangedRootsFileForcesReload)
+{
+    write_host("a", make_build("a"), R"("/src/a")");
+    HostSet set;
+    set.load(hosts_dir.string());
+    EXPECT_TRUE(set.force_reload_for((hosts_dir / "a.roots").string()));
+    EXPECT_TRUE(set.refresh());
+}
+
+// The pure function host_header_refusal.
+class HeaderRefusalTest : public HostsTest
+{
+protected:
+    void SetUp() override
+    {
+        HostsTest::SetUp();
+        base = fs::weakly_canonical(root).generic_string();
+        for (const char* d : {"eng/inc/sub", "eng/inc2", "eng2/inc", "eng/sys/inc", "eng/build/inc", "game"})
+            fs::create_directories(base + "/" + d);
+    }
+    std::string p(const std::string& rel) const { return base + "/" + rel; }
+    hot::ls::Host host() const
+    {
+        hot::ls::Host h;
+        h.name = "h";
+        h.binary_dir = p("eng/build");
+        h.include_dirs = {p("eng/inc"), p("eng/sys/inc"), p("eng/build/inc")};
+        h.source_roots = {p("eng"), p("game")};
+        h.system_dirs = {p("eng/sys")};
+        return h;
+    }
+    std::string base;
+};
+
+TEST_F(HeaderRefusalTest, HeaderBelowAnIncludeDirGetsAnEdit)
+{
+    EXPECT_EQ(hot::ls::host_header_refusal(host(), p("eng/inc/sub/x.h")), "");
+    EXPECT_EQ(hot::ls::host_header_refusal(host(), p("eng/inc/x.h")), "");
+}
+
+TEST_F(HeaderRefusalTest, IncludeDirBorderIsAPathBorder)
+{
+    EXPECT_EQ(hot::ls::host_header_refusal(host(), p("eng/inc2/x.h")),
+        "outside the workspace folders and the include dirs of the host");
+    // ".." does not leave the include dir by text.
+    EXPECT_EQ(hot::ls::host_header_refusal(host(), p("eng/inc/../inc2/x.h")),
+        "outside the workspace folders and the include dirs of the host");
+}
+
+TEST_F(HeaderRefusalTest, SourceRootBorderIsAPathBorder)
+{
+    hot::ls::Host h = host();
+    h.include_dirs = {p("eng2/inc")};
+    h.source_roots = {p("eng")};
+    EXPECT_EQ(hot::ls::host_header_refusal(h, p("eng2/inc/x.h")), "outside the source dirs of the build of the host");
+}
+
+TEST_F(HeaderRefusalTest, UsrIncludeIsRefusedAndEngineSourceGetsAnEdit)
+{
+    hot::ls::Host h;
+    h.include_dirs = {"/usr/include", "/home/u/engine/Source"};
+    h.source_roots = {"/home/u/game", "/home/u/engine"};
+    EXPECT_NE(hot::ls::host_header_refusal(h, "/usr/include/SDL2/SDL.h"), "");
+    EXPECT_NE(hot::ls::host_header_refusal(h, "/usr/include/c++/15/vector"), "");
+    EXPECT_EQ(hot::ls::host_header_refusal(h, "/usr/include/SDL2/SDL.h"), "outside the source dirs of the build of the host");
+    EXPECT_EQ(hot::ls::host_header_refusal(h, "/home/u/engine/Source/Urho3D/Scene/Node.h"), "");
+}
+
+TEST_F(HeaderRefusalTest, BuildDirIsRefused)
+{
+    EXPECT_EQ(hot::ls::host_header_refusal(host(), p("eng/build/inc/gen.h")), "in the build dir of the host");
+}
+
+TEST_F(HeaderRefusalTest, SystemDirIsRefusedAndSiblingGetsAnEdit)
+{
+    EXPECT_EQ(hot::ls::host_header_refusal(host(), p("eng/sys/inc/v.h")), "outside the source dirs of the build of the host");
+    hot::ls::Host h = host();
+    h.include_dirs.push_back(p("eng/sys2"));
+    fs::create_directories(p("eng/sys2"));
+    EXPECT_EQ(hot::ls::host_header_refusal(h, p("eng/sys2/v.h")), "");
+}
+
+TEST_F(HeaderRefusalTest, NoSourceRootsAsksForCMake)
+{
+    hot::ls::Host h = host();
+    h.source_roots.clear();
+    EXPECT_EQ(hot::ls::host_header_refusal(h, p("eng/inc/x.h")), "the host file has no source roots (run CMake again)");
+    // A header outside the include dirs keeps the first text.
+    EXPECT_EQ(hot::ls::host_header_refusal(h, p("game/x.h")), "outside the workspace folders and the include dirs of the host");
+}
+
+#ifndef _WIN32
+// A link in an include dir to a place outside the roots does not hide the real place.
+TEST_F(HeaderRefusalTest, SymlinkIncludeDirToOutsideIsRefused)
+{
+    fs::create_directories(p("outside/inc"));
+    fs::create_directory_symlink(p("outside/inc"), p("eng/link"));
+    hot::ls::Host h = host();
+    h.include_dirs.push_back(p("eng/link"));
+    EXPECT_EQ(hot::ls::host_header_refusal(h, p("eng/link/x.h")), "outside the source dirs of the build of the host");
+    // A link inside the include dir to a place outside the roots is refused as well.
+    fs::create_directory_symlink(p("outside/inc"), p("eng/inc/ln"));
+    EXPECT_EQ(hot::ls::host_header_refusal(h, p("eng/inc/ln/x.h")), "outside the source dirs of the build of the host");
+}
+#endif

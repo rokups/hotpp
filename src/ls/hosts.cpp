@@ -62,11 +62,12 @@ std::vector<std::string> read_lines(const fs::path& dir, const std::string& name
     return out;
 }
 
-// True for a file that makes a host: the JSON file and its three side files.
+// True for a file that makes a host: the JSON file and its four side files.
 bool is_host_file(const fs::path& p)
 {
     const std::string ext = p.extension().string();
-    return ext == ".json" || ext == ".defines" || ext == ".options" || ext == ".includes";
+    return ext == ".json" || ext == ".defines" || ext == ".options" || ext == ".includes"
+        || ext == ".roots";
 }
 
 // The form of a path that the host set compares: lexically normal, with "/" as the separator.
@@ -168,6 +169,33 @@ std::vector<std::string> Host::cxx_flags() const
     return out;
 }
 
+std::string host_header_refusal(const Host& host, const std::string& path)
+{
+    // weakly_canonical follows symlinks, so a link cannot hide the real place of a path.
+    auto real = [](const std::string& s) {
+        std::error_code ec;
+        const fs::path c = fs::weakly_canonical(utf8_path(s), ec);
+        return strip_slash(path_key(ec ? utf8_path(s) : c));
+    };
+    auto below = [](const std::string& dir, const std::string& p) { return contains(dir, p); };
+    auto below_any = [&](const std::vector<std::string>& dirs, const std::string& p) {
+        for (const std::string& d : dirs)
+            if (!d.empty() && below(real(d), p))
+                return true;
+        return false;
+    };
+    const std::string p = real(path);
+    if (!below_any(host.include_dirs, p))
+        return "outside the workspace folders and the include dirs of the host";
+    if (host.source_roots.empty())
+        return "the host file has no source roots (run CMake again)";
+    if (!below_any(host.source_roots, p) || below_any(host.system_dirs, p))
+        return "outside the source dirs of the build of the host";
+    if (!host.binary_dir.empty() && below(real(host.binary_dir), p))
+        return "in the build dir of the host";
+    return {};
+}
+
 void HostSet::load(const std::string& dir, bool require_cache)
 {
     dir_ = dir;
@@ -215,6 +243,19 @@ void HostSet::load(const std::string& dir, bool require_cache)
         if (inc.size() > 1)
             ordered.insert(ordered.end(), inc.begin() + 1, inc.end());
         host->include_dirs = resolve_paths(source_dir, ordered, true);
+        // The source roots and the SYSTEM dirs. The side file has one path on each line. A line
+        // with the prefix "!" is a SYSTEM dir. The inline arrays have the same meaning.
+        std::vector<std::string> roots = get_strings(j, "sourceRoots");
+        std::vector<std::string> system = get_strings(j, "systemDirs");
+        for (std::string& l : read_lines(e.path().parent_path(), get_string(j, "sourceRootsFile")))
+        {
+            if (l[0] == '!')
+                system.push_back(l.substr(1));
+            else
+                roots.push_back(std::move(l));
+        }
+        host->source_roots = resolve_paths(source_dir, roots, true);
+        host->system_dirs = resolve_paths(source_dir, system, true);
         // The options of the target come first, then the explicit flags (the last flag wins).
         host->flags = read_lines(e.path().parent_path(), get_string(j, "optionsFile"));
         for (std::string& f : get_strings(j, "flags"))
