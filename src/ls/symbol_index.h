@@ -13,8 +13,9 @@
 // "hot-index <version> <digest> <path>". The body holds the symbols and the references.
 // load() gives a shard only when the format version and the content digest match. A shard
 // with another version is deleted. prune() deletes the shard of a missing file.
-// The body (version 3) has the classes ("c") and the table of the resolved names ("t"). The
-// table keeps offset, length, kind, is_decl, decl and decl_file of each ref. The strings are in a
+// The body (version 4) has the classes ("c") and the table of the resolved names ("t"). The
+// table keeps offset, length, kind, is_decl, decl, decl_file, near_decl and near_file of each
+// ref, the syntax errors and the base of each class. The strings are in a
 // string table. load() computes ResolvedRef::id and the line and the column of each name.
 // A shard with a table has the marker "tp" (IndexShard::has_table). load() deletes a shard
 // without the marker, so a shard with a missing table never replaces an analyze.
@@ -69,7 +70,7 @@ struct IndexShard
 class SymbolIndex
 {
 public:
-    static constexpr int kFormatVersion = 3;
+    static constexpr int kFormatVersion = 4;
 
     SymbolIndex();
     ~SymbolIndex();

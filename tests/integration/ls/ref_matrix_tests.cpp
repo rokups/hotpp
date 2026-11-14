@@ -133,33 +133,9 @@ const Row kRows[] = {
     {"EnumValue", "Fast", false},
 };
 
-// The cases that fail on the current server. Each group names the missing feature.
-const char* const kSkip[] = {
-    // Definition (through the table). The table gives "this.Fire" in an importer the id of the virtual
-    // method Gun.Fire, not the id of the override of the class. Thus the answer is the base method.
-    "Method_Definition_Deep", "Method_Definition_Open",
-    // Definition and references (through the table). The table of top.hot has no ref for the call
-    // "Twice(1)": a free function of an import of an import (lib.hot through closed.hot). The fix is in
-    // the translator.
-    "FreeFunction_Definition_Deep", "FreeFunction_References_Deep",
-    // Missing feature: prepareRename of an imported name, of a module constant and of an enum value. The fix uses
-    // ref_at on the table.
-    "EnumValue_PrepareRename_Deep", "EnumValue_PrepareRename_Open", "EnumValue_PrepareRename_Same",
-    "EnumValue_PrepareRename_Unrelated", "FreeFunction_PrepareRename_Deep", "Method_PrepareRename_Deep",
-    "Method_PrepareRename_Open", "ModuleConst_PrepareRename_Deep", "ModuleConst_PrepareRename_Open",
-    "ModuleConst_PrepareRename_Same", "ModuleConst_PrepareRename_Unrelated", "StaticConst_PrepareRename_Deep",
-    "StaticConst_PrepareRename_Open",
-    // Missing feature: a rename over the importers. Today the server refuses it when an importer uses the name. Also
-    // the rename of a module constant and of an enum value. The fix uses the ids and the import graph.
-    "Class_Rename_Closed", "Class_Rename_Deep", "Class_Rename_Open", "Class_Rename_Same", "EnumValue_Rename_Closed",
-    "EnumValue_Rename_Deep", "EnumValue_Rename_Open", "EnumValue_Rename_Same", "Field_Rename_Closed",
-    "Field_Rename_Deep", "Field_Rename_Open", "Field_Rename_Same", "FreeFunction_Rename_Closed",
-    "FreeFunction_Rename_Deep", "FreeFunction_Rename_Open", "FreeFunction_Rename_Same", "Method_Rename_Closed",
-    "Method_Rename_Deep", "Method_Rename_Open", "Method_Rename_Same", "ModuleConst_Rename_Closed",
-    "ModuleConst_Rename_Deep", "ModuleConst_Rename_Open", "ModuleConst_Rename_Same", "StaticConst_Rename_Closed",
-    "StaticConst_Rename_Deep", "StaticConst_Rename_Open", "StaticConst_Rename_Same", "StaticMethod_Rename_Closed",
-    "StaticMethod_Rename_Deep", "StaticMethod_Rename_Open", "StaticMethod_Rename_Same",
-};
+// The cases that fail on the current server. Each group names the missing feature. All the cases
+// pass now: the list is empty.
+const std::vector<std::string> kSkip = {};
 
 using Place = std::tuple<std::string, int, int>; // uri, line, character
 

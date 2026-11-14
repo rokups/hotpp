@@ -122,7 +122,7 @@ json table_json(const FileRefs& t)
     json refs = json::array();
     for (const hotc::ResolvedRef& r : t.refs)
         refs.push_back(json::array({r.offset, r.length, static_cast<int>(r.kind), r.is_decl ? 1 : 0, str(r.decl),
-            str(r.decl_file)}));
+            str(r.decl_file), str(r.near_decl), str(r.near_file)}));
     json unresolved = json::array();
     for (const hotc::UnresolvedName& u : t.unresolved)
         unresolved.push_back(json::array({u.offset, u.length}));
@@ -136,7 +136,7 @@ json table_json(const FileRefs& t)
     for (const auto& [line, start] : lines)
         lj.push_back(json::array({line, start}));
     return {{"f", t.file_id}, {"s", strings}, {"r", std::move(refs)}, {"u", std::move(unresolved)},
-        {"w", std::move(raw)}, {"l", std::move(lj)}, {"i", t.imports}};
+        {"w", std::move(raw)}, {"l", std::move(lj)}, {"i", t.imports}, {"e", t.errors}, {"b", t.bases}};
 }
 
 FileRefs table_of(const json& j)
@@ -169,6 +169,8 @@ FileRefs table_of(const json& j)
         r.decl = strings.at(rj.at(4).get<size_t>());
         r.decl_file = strings.at(rj.at(5).get<size_t>());
         r.id = r.decl_file + "#" + r.decl;
+        r.near_decl = strings.at(rj.at(6).get<size_t>());
+        r.near_file = strings.at(rj.at(7).get<size_t>());
         r.pos = pos(r.offset);
         t.refs.push_back(std::move(r));
     }
@@ -183,6 +185,8 @@ FileRefs table_of(const json& j)
     for (const json& w : j.at("w"))
         t.raw_ranges.emplace_back(w.at(0).get<uint32_t>(), w.at(1).get<uint32_t>());
     t.imports = j.at("i").get<std::vector<std::string>>();
+    t.errors = j.at("e").get<std::vector<std::pair<int, std::string>>>();
+    t.bases = j.at("b").get<std::vector<std::pair<std::string, std::string>>>();
     sort_refs(t);
     return t;
 }

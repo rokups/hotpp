@@ -17,6 +17,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -31,6 +32,10 @@ struct FileRefs
     std::vector<hotc::UnresolvedName> unresolved;
     std::vector<std::pair<uint32_t, uint32_t>> raw_ranges; // the begin and the end of each raw body
     std::vector<std::string> imports; // hotc::ref_file_id of each direct script import
+    // The syntax errors of the script: the line (from 1) and the message of each error.
+    std::vector<std::pair<int, std::string>> errors;
+    // Each script class of the file and the name of its base. The base can be a native class.
+    std::vector<std::pair<std::string, std::string>> bases;
 };
 
 // Sorts the refs and the unresolved names by offset. The translator sorts them already.
@@ -62,6 +67,8 @@ public:
     // The files that import "file_id" directly or through other files. Each file is in the result
     // one time. "file_id" is not in the result. An import cycle does not cause a loop.
     std::vector<std::string> importers_of(const std::string& file_id) const;
+    // The direct imports of "file_id". Empty for a file that the graph does not have.
+    std::vector<std::string> imports_of(const std::string& file_id) const;
 
 private:
     std::map<std::string, std::vector<std::string>> imports_;

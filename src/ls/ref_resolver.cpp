@@ -54,6 +54,12 @@ bool file_local(hotc::RefKind kind)
     return kind == hotc::RefKind::Local || kind == hotc::RefKind::Param;
 }
 
+std::vector<std::string> ImportGraph::imports_of(const std::string& file_id) const
+{
+    const auto it = imports_.find(file_id);
+    return it == imports_.end() ? std::vector<std::string>() : it->second;
+}
+
 void ImportGraph::set(const std::string& file_id, const std::vector<std::string>& imports)
 {
     erase(file_id);
