@@ -36,7 +36,13 @@ struct RefInputs
     std::function<std::string(uint32_t)> file_of;
 };
 
-// The refs of the main script, sorted by offset. A name gets one ref at most.
-std::vector<ResolvedRef> resolve_refs(const RefInputs& in);
+struct RefTable
+{
+    std::vector<ResolvedRef> refs; // sorted by offset; a name gets one ref at most
+    std::vector<UnresolvedName> unresolved; // sorted by offset
+    std::vector<std::pair<uint32_t, uint32_t>> raw_ranges; // the begin and the end of each raw body
+};
+
+RefTable resolve_refs(const RefInputs& in);
 
 } // namespace hotc

@@ -112,7 +112,7 @@ public:
                 fns_.emplace(m.written_name(), &m);
     }
 
-    std::vector<ResolvedRef> run()
+    RefTable run()
     {
         const uint32_t size = static_cast<uint32_t>(in_.text.size());
         for (const ClassDef& c : sc_.classes)
@@ -142,7 +142,13 @@ public:
         refs_.erase(std::unique(refs_.begin(), refs_.end(),
                         [](const ResolvedRef& a, const ResolvedRef& b) { return a.offset == b.offset; }),
             refs_.end());
-        return std::move(refs_);
+        std::sort(unresolved_.begin(), unresolved_.end(),
+            [](const UnresolvedName& a, const UnresolvedName& b) { return a.offset < b.offset; });
+        unresolved_.erase(std::unique(unresolved_.begin(), unresolved_.end(),
+                              [](const UnresolvedName& a, const UnresolvedName& b) { return a.offset == b.offset; }),
+            unresolved_.end());
+        std::sort(raw_.begin(), raw_.end());
+        return RefTable{std::move(refs_), std::move(unresolved_), std::move(raw_)};
     }
 
 private:
@@ -154,6 +160,8 @@ private:
     std::map<std::string, std::pair<const Field*, RefKind>> module_;
     std::map<std::string, const Method*> fns_;
     std::vector<ResolvedRef> refs_;
+    std::vector<UnresolvedName> unresolved_;
+    std::vector<std::pair<uint32_t, uint32_t>> raw_;
     std::vector<std::map<std::string, Local>> scopes_;
     const ClassDef* cls_ = nullptr; // the class of the body; null in a free function
 
@@ -194,6 +202,25 @@ private:
         r.decl_file = file.empty() ? in_.main_file : std::move(file);
         r.id = r.decl_file + "#" + r.decl;
         refs_.push_back(std::move(r));
+    }
+
+    // A member name after "." with a receiver of no known script type.
+    void add_unresolved(uint32_t pos, const std::string& name)
+    {
+        if (pos == 0 || !word_at(pos, name))
+            return;
+        UnresolvedName u;
+        u.offset = pos;
+        u.length = static_cast<uint32_t>(name.size());
+        u.pos = {in_.map->line(pos), in_.map->col(pos)};
+        unresolved_.push_back(u);
+    }
+
+    // A raw body of a ".cpp" script: the pass does not read it.
+    void add_raw(const Span& s)
+    {
+        if (s.end > s.begin && s.end <= in_.text.size())
+            raw_.emplace_back(s.begin, s.end);
     }
 
     // A declaration of the main script: the name is at "pos" or a little after it.
@@ -451,6 +478,8 @@ private:
             add(p, f.name, RefKind::Field, c.name + "." + f.name, std::string(), true);
             if (!f.raw)
                 body_expr(f.init);
+            else
+                add_raw(f.raw_span);
         }
         for (const Property& p : c.props)
             walk_prop(c, p);
@@ -467,7 +496,10 @@ private:
         {
             add_type(find_word(k.pos, c.name, 16), c.name);
             if (k.raw)
+            {
+                add_raw(k.raw_span);
                 continue;
+            }
             begin_body();
             declare_params(k.params);
             for (const ExprP& a : k.base_args)
@@ -479,7 +511,10 @@ private:
         {
             add_type(find_word(m.pos, c.name, 16), c.name);
             if (m.raw)
+            {
+                add_raw(m.raw_span);
                 continue;
+            }
             begin_body();
             block(m.body);
             end_body();
@@ -559,6 +594,8 @@ private:
             block(m.body);
             end_body();
         }
+        else
+            add_raw(m.raw_span);
         cls_ = nullptr;
     }
 
@@ -637,12 +674,18 @@ private:
         if (!c)
         {
             // A receiver with the type of a script interface.
-            if (auto it = ifaces_.find(plain_type(of.type)); it != ifaces_.end())
-                if (const Method* m = iface_method(*it->second, n))
-                {
-                    add_member(pos, n, Member{RefKind::Method, nullptr, ret_of(*m), true, it->second});
-                    v.ret = ret_of(*m);
-                }
+            auto it = ifaces_.find(plain_type(of.type));
+            if (it == ifaces_.end())
+            {
+                // The receiver has no known script type: the name is perhaps native.
+                add_unresolved(pos, n);
+                return v;
+            }
+            if (const Method* m = iface_method(*it->second, n))
+            {
+                add_member(pos, n, Member{RefKind::Method, nullptr, ret_of(*m), true, it->second});
+                v.ret = ret_of(*m);
+            }
             return v;
         }
         if (std::optional<Member> m = member(*c, n))
@@ -919,7 +962,7 @@ private:
 
 } // namespace
 
-std::vector<ResolvedRef> resolve_refs(const RefInputs& in)
+RefTable resolve_refs(const RefInputs& in)
 {
     if (!in.script || !in.map)
         return {};

@@ -4530,7 +4530,10 @@ void translate_impl(
                     return hotc::ref_file_id(imported_files[i].file);
             return std::string();
         };
-        res.refs = hotc::resolve_refs(ri);
+        hotc::RefTable table = hotc::resolve_refs(ri);
+        res.refs = std::move(table.refs);
+        res.unresolved = std::move(table.unresolved);
+        res.raw_ranges = std::move(table.raw_ranges);
     }
     {
         std::vector<const hotc::ast::Field*> fvars;
@@ -11363,6 +11366,8 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
     }
     // The blank text has the same offsets and the same lines as "text". So the map is valid for it.
     res.refs = std::move(tr.refs);
+    res.unresolved = std::move(tr.unresolved);
+    res.raw_ranges = std::move(tr.raw_ranges);
     if (tr.ok)
     {
         res.source_map = std::move(tr.source_map);

@@ -447,3 +447,65 @@ TEST(ResolvedRefs, RootIdsAreEqualOverTwoUnits)
     EXPECT_EQ(id_in(rb, b, "Foo", 0), file + "#Base.Foo");
     EXPECT_EQ(id_in(rb, b, "Foo", 1), file + "#Base.Foo");
 }
+
+// A member of a value with no known script type is in the list of the unresolved names.
+TEST(ResolvedRefs, MemberOfANativeValueIsUnresolved)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kWidget);
+    write_file(dir.path() / "stats.h", "struct Stats { int hp = 0; };\ninline Stats Native() { return {}; }\n");
+    const std::string text = "using \"w.h\";\n"
+                             "using \"stats.h\";\n"
+                             "class Foo : Widget {\n"
+                             "    int Get() { var x = Native(); return x.hp; }\n"
+                             "}\n";
+    hotc::TranslateOptions o = temp_options(dir, "");
+    o.resolve_refs = true;
+    o.null_warnings = true;
+    const hotc::AnalyzeResult r = hotc::analyze(text, o);
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    ASSERT_EQ(r.unresolved.size(), 1u);
+    EXPECT_EQ(r.unresolved[0].offset, words(text, "hp")[0]);
+    EXPECT_EQ(r.unresolved[0].length, 2u);
+    EXPECT_TRUE(r.raw_ranges.empty());
+    o.resolve_refs = false;
+    const hotc::AnalyzeResult off = hotc::analyze(text, o);
+    EXPECT_TRUE(off.unresolved.empty());
+    EXPECT_TRUE(off.raw_ranges.empty());
+}
+
+TEST(ResolvedRefs, MemberOfATypedReceiverIsResolved)
+{
+    const std::string text = "using \"w.h\";\n"
+                             "class Gun : Widget {\n"
+                             "    public int ammo = 0;\n"
+                             "}\n"
+                             "class Foo : Widget {\n"
+                             "    int Get($Gun g) { return g.ammo; }\n"
+                             "}\n";
+    const hotc::AnalyzeResult r = analyze_refs(text);
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(r.unresolved.empty());
+    EXPECT_EQ(uses_of(r, "Gun.ammo"), all_of(text, "ammo"));
+}
+
+// The pass does not read the raw bodies of a ".cpp" script. The table has their ranges.
+TEST(ResolvedRefs, RawBodyGivesARange)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kWidget);
+    const std::string text = "#include \"w.h\"\n\n"
+                             "class A : public Widget\n{\npublic:\n    int n = 0;\n"
+                             "    void Update(float dt) override { n = 1; }\n};\n";
+    hotc::TranslateOptions o = temp_options(dir, text);
+    o.script_name = "t.cpp";
+    o.resolve_refs = true;
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    // The initializer of "n" and the body of Update.
+    ASSERT_EQ(r.raw_ranges.size(), 2u);
+    EXPECT_EQ(r.raw_ranges[0].first, text.find("= 0;") + 1);
+    const size_t open = text.find("{ n = 1; }");
+    EXPECT_EQ(r.raw_ranges[1].first, open + 1);
+    EXPECT_EQ(r.raw_ranges[1].second, text.find('}', open));
+}

@@ -150,6 +150,15 @@ struct ResolvedRef
 // It does not read the file system. Thus a symbolic link gives a different path.
 std::string ref_file_id(const std::string& path);
 
+// A member name after "." that the translator cannot resolve: the receiver has no known script
+// type (for example a value of a native type). The name is perhaps native. A language server
+// can ask clangd about it.
+struct UnresolvedName
+{
+    uint32_t offset = 0, length = 0; // the bytes of the name in the main script
+    SourcePos pos; // the line and the column of "offset"
+};
+
 // One range of generated C++ that comes from one range of the script. The offsets are bytes.
 // When the two lengths are equal, the text is the same in both places and a position maps
 // byte by byte. When they differ (for example "int" and "int32_t"), any position in the
@@ -383,6 +392,12 @@ struct TranslateResult
     // unless TranslateOptions::resolve_refs is true. It is valid also when ok is false, if the
     // translation got to the resolution of the names.
     std::vector<ResolvedRef> refs;
+    // The member names that the table does not resolve, in the order of the offsets. Empty
+    // unless TranslateOptions::resolve_refs is true.
+    std::vector<UnresolvedName> unresolved;
+    // The raw bodies of a ".cpp" script that the table does not read: the begin and the end
+    // offsets in the main script. Empty unless TranslateOptions::resolve_refs is true.
+    std::vector<std::pair<uint32_t, uint32_t>> raw_ranges;
     // The interface of the module (the script): the text of the declarations that importers
     // see. The names with "private" are not in it. A body change does not change it.
     std::string iface;
@@ -476,6 +491,8 @@ struct AnalyzeResult
     // The resolved names (see TranslateResult::refs). Empty unless TranslateOptions::resolve_refs is
     // true. A member with a syntax error is left out.
     std::vector<ResolvedRef> refs;
+    std::vector<UnresolvedName> unresolved; // see TranslateResult::unresolved
+    std::vector<std::pair<uint32_t, uint32_t>> raw_ranges; // see TranslateResult::raw_ranges
 };
 
 // The cache of a translator session. A backend holds one for its life.
