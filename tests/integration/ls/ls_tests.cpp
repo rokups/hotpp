@@ -620,8 +620,9 @@ struct NativeSession
     // "token_wait_ms" is the wait of a semantic tokens request for clangd. The tests give a long wait
     // so that the first answer has the native tokens.
     // "clangd" replaces the clangd program when it is not empty.
+    // "rename_budget_ms" is the time budget of one rename.
     explicit NativeSession(const char* script = kNativeScript, int token_wait_ms = 10000, bool native_tokens = true,
-        const std::string& clangd = "")
+        const std::string& clangd = "", int rename_budget_ms = 10000)
     {
         write_file((dir.path() / "natives.h").string(), kNativeHeader);
         path = (dir.path() / "hero.hot").string();
@@ -631,6 +632,7 @@ struct NativeSession
         o.include_dirs.push_back(dir.path().string());
         o.native_token_wait_ms = token_wait_ms;
         o.native_semantic_tokens = native_tokens;
+        o.rename_budget_ms = rename_budget_ms;
         if (!clangd.empty())
             o.clangd = clangd;
         client = std::make_unique<LsClient>(o);
@@ -5860,7 +5862,8 @@ TEST(LanguageServerNative, RenameOfABaseClassMethodAndFieldChangesNativeFile)
     expect_native_rename(t, "this.rage =", "rage", "fury", {});
 }
 
-// The header of the symbol is in a directory that is not a workspace folder.
+// The header of the symbol is in a directory that is not a workspace folder. No host names this
+// directory as an include dir, so the rename is refused.
 TEST(LanguageServerNative, RenameIsRefusedForASymbolOutsideTheWorkspace)
 {
     REQUIRE_CLANGD();
@@ -5969,6 +5972,226 @@ TEST(LanguageServerNative, RenameChangesAClosedScriptOfTheWorkspace)
     EXPECT_EQ(edit_places(r["result"], s.uri, "ClampHp"), word_places(kNativeScript, "Clamp100", {})) << r.dump();
     for (const auto& [uri, edits] : changes.items())
         EXPECT_NE(uri.find(".hot.cpp"), uri.size() - 8) << uri;
+}
+
+namespace
+{
+
+const char* const kPetScript = "using \"natives.h\";\n\nclass Pet {\n    int cap = Clamp100(7);\n}\n";
+
+void expect_no_script_cpp_uri(const json& changes)
+{
+    for (const auto& [uri, edits] : changes.items())
+        EXPECT_FALSE(uri.size() >= 8 && uri.compare(uri.size() - 8, 8, ".hot.cpp") == 0) << uri;
+}
+
+// The error message of a refused rename is "want". The request runs again while the index of
+// clangd is not ready.
+void expect_rename_refusal(NativeSession& s, const std::string& want)
+{
+    const json r = native_rename_request(s, "Clamp100(MAX_HP)", "Clamp100", "ClampHp");
+    SCOPED_TRACE(r.dump());
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+    EXPECT_FALSE(r.contains("result") && !r["result"].is_null()) << r.dump();
+    EXPECT_NE(r["error"]["message"].get<std::string>().find(want), std::string::npos) << r.dump();
+}
+
+} // namespace
+
+// The second script is open and has one more line on top than the file on the disk. The edit uses
+// the text of the editor.
+TEST(LanguageServerNative, RenameChangesAnOpenSecondScriptAtItsEditorText)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    const std::string pet = (s.dir.path() / "pet.hot").string();
+    write_file(pet, kPetScript);
+    s.client->open(uri_of(pet), std::string("\n") + kPetScript);
+    const json r = native_rename_request(s, "Clamp100(MAX_HP)", "Clamp100", "ClampHp");
+    SCOPED_TRACE(r.dump());
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    EXPECT_EQ(r["result"]["changes"].size(), 3u) << r.dump();
+    EXPECT_EQ(edit_places(r["result"], uri_of(pet), "ClampHp"), std::set<std::string>({"4:14-4:22"})) << r.dump();
+    expect_no_script_cpp_uri(r["result"]["changes"]);
+}
+
+// The rename starts in the second script. The edit is the same as the edit that starts in the first.
+TEST(LanguageServerNative, RenameFromTheSecondScriptGivesTheSameEdit)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    const std::string pet = (s.dir.path() / "pet.hot").string();
+    write_file(pet, kPetScript);
+    const json first = native_rename_request(s, "Clamp100(MAX_HP)", "Clamp100", "ClampHp");
+    ASSERT_TRUE(first.contains("result") && first["result"].is_object()) << first.dump();
+    s.client->open(uri_of(pet), kPetScript);
+    json p = {{"textDocument", {{"uri", uri_of(pet)}}}, {"position", pos(3, 14)}, {"newName", "ClampHp"}};
+    json second;
+    for (int i = 0; i < 20; ++i)
+    {
+        second = s.client->request("textDocument/rename", p);
+        if (second.contains("result") && second["result"].is_object())
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    SCOPED_TRACE(second.dump());
+    ASSERT_TRUE(second.contains("result") && second["result"].is_object()) << second.dump();
+    EXPECT_EQ(second["result"]["changes"].size(), 3u) << second.dump();
+    for (const std::string& uri : {s.uri, uri_of(pet), uri_of((s.dir.path() / "natives.h").string())})
+        EXPECT_EQ(edit_places(second["result"], uri, "ClampHp"), edit_places(first["result"], uri, "ClampHp")) << uri;
+    expect_no_script_cpp_uri(second["result"]["changes"]);
+}
+
+// A third script has a local variable with the name. It does not use the function.
+TEST(LanguageServerNative, RenameSkipsAScriptThatHasOnlyALocalWithTheName)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    const std::string local = (s.dir.path() / "local.hot").string();
+    write_file(local, "class Loc {\n    int f() {\n        int Clamp100 = 1;\n        return Clamp100;\n    }\n}\n");
+    const json r = native_rename_request(s, "Clamp100(MAX_HP)", "Clamp100", "ClampHp");
+    SCOPED_TRACE(r.dump());
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    EXPECT_FALSE(r["result"]["changes"].contains(uri_of(local))) << r.dump();
+    EXPECT_EQ(r["result"]["changes"].size(), 2u) << r.dump();
+}
+
+// A closed script uses the function and has a syntax error. The rename does not give a part of the edit.
+TEST(LanguageServerNative, RenameIsRefusedForAClosedScriptThatDoesNotTranslate)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    write_file((s.dir.path() / "bad.hot").string(), "using \"natives.h\";\n\nclass Bad {\n    int cap = Clamp100(7;\n}}}\n");
+    expect_rename_refusal(s, "bad.hot does not translate");
+}
+
+// The budget of one rename is 3 s. A proxy gives the open of the second script to clangd 3.5 s
+// late, so the budget is over when the rename asks clangd about this script.
+TEST(LanguageServerNative, RenameIsRefusedWhenTheBudgetIsOver)
+{
+    REQUIRE_CLANGD();
+    if (std::system("python3 -c \"\" >/dev/null 2>&1") != 0)
+        GTEST_SKIP() << "python3 is not installed";
+    TempDir tools;
+    const std::string proxy = (tools.path() / "slow_clangd.py").string();
+    write_file(proxy,
+        "import subprocess, sys, time\n"
+        "p = subprocess.Popen(sys.argv[1:], stdin=subprocess.PIPE)\n"
+        "src = sys.stdin.buffer\n"
+        "while True:\n"
+        "    head = b''\n"
+        "    while not head.endswith(b'\\r\\n\\r\\n'):\n"
+        "        c = src.read(1)\n"
+        "        if not c:\n"
+        "            p.stdin.close()\n"
+        "            p.wait()\n"
+        "            sys.exit(0)\n"
+        "        head += c\n"
+        "    size = 0\n"
+        "    for line in head.split(b'\\r\\n'):\n"
+        "        if line.lower().startswith(b'content-length:'):\n"
+        "            size = int(line.split(b':')[1])\n"
+        "    body = src.read(size)\n"
+        "    if b'\"textDocument/didOpen\"' in body and b'pet.hot' in body:\n"
+        "        time.sleep(3.5)\n"
+        "    p.stdin.write(head + body)\n"
+        "    p.stdin.flush()\n");
+    const std::string clangd = (tools.path() / "slow_clangd").string();
+    write_file(clangd, "#!/bin/sh\nexec python3 '" + proxy + "' '" HOT_CLANGD_PATH "' \"$@\"\n");
+    std::filesystem::permissions(clangd, std::filesystem::perms::owner_all, std::filesystem::perm_options::add);
+    NativeSession s(kNativeScript, 10000, true, clangd, 3000);
+    write_file((s.dir.path() / "pet.hot").string(), kPetScript);
+    json p = {{"textDocument", {{"uri", s.uri}}}, {"position", native_pos("Clamp100(MAX_HP)", "Clamp100")}, {"newName", "ClampHp"}};
+    json r;
+    for (int i = 0; i < 6; ++i)
+    {
+        r = s.client->request("textDocument/rename", p);
+        ASSERT_FALSE(r.contains("result") && r["result"].is_object()) << r.dump(); // never an edit
+        if (r.contains("error") && r["error"]["message"].get<std::string>().find("time budget of 3 s") != std::string::npos)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+    EXPECT_NE(r["error"]["message"].get<std::string>().find("time budget of 3 s is over at"), std::string::npos) << r.dump();
+}
+
+namespace
+{
+
+// A host with an include dir outside of the workspace folder. The script uses a header of this dir.
+struct HostHeaderCase
+{
+    TempDir dir, outside;
+    std::string path, uri;
+    hot::ls::ServerOptions o;
+    HostHeaderCase()
+    {
+        const std::filesystem::path root = dir.path();
+        std::filesystem::create_directories(root / "build");
+        std::filesystem::create_directories(root / "hosts");
+        write_file((root / "build" / "CMakeCache.txt").string(), "# cache\n");
+        write_file((outside.path() / "outside.h").string(), "#pragma once\nint OutsideFn(int v);\n");
+        write_file((root / "hosts" / "h.json").string(),
+            R"({"version":1,"name":"h","binaryDir":")" + (root / "build").generic_string()
+                + R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":[")" + root.generic_string()
+                + R"("],"scripts":[],"includeDirs":[")" + outside.path().generic_string() + R"(",")" + HOT_SOURCE_DIR
+                + R"(/include"],"defines":[],"flags":[]})");
+        path = (root / "hero.hot").string();
+        uri = uri_of(path);
+        write_file(path, "using \"outside.h\";\n\nclass Hero {\n    int x = OutsideFn(1);\n}\n");
+        o = options(dir, true);
+        o.hosts_dir = (root / "hosts").string();
+    }
+};
+
+} // namespace
+
+TEST(LanguageServerNative, RenameOfAHostHeaderOutsideTheWorkspaceIsAnEdit)
+{
+    REQUIRE_CLANGD();
+    HostHeaderCase c;
+    LsClient client(c.o);
+    client.initialize(uri_of(c.dir.path().string()));
+    client.open(c.uri, "using \"outside.h\";\n\nclass Hero {\n    int x = OutsideFn(1);\n}\n");
+    const std::string header_uri = uri_of((c.outside.path() / "outside.h").string());
+    json p = {{"textDocument", {{"uri", c.uri}}}, {"position", pos(3, 12)}, {"newName", "OutsideFn2"}};
+    json r;
+    for (int i = 0; i < 20; ++i)
+    {
+        r = client.request("textDocument/rename", p);
+        if (r.contains("result") && r["result"].is_object())
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    SCOPED_TRACE(r.dump());
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    EXPECT_EQ(r["result"]["changes"].size(), 2u) << r.dump();
+    EXPECT_EQ(edit_places(r["result"], c.uri, "OutsideFn2"), std::set<std::string>({"3:12-3:21"})) << r.dump();
+    EXPECT_EQ(edit_places(r["result"], header_uri, "OutsideFn2"), std::set<std::string>({"1:4-1:13"})) << r.dump();
+    p.erase("newName");
+    const json prep = client.request("textDocument/prepareRename", p);
+    EXPECT_TRUE(prep.contains("result") && prep["result"].is_object()) << prep.dump();
+}
+
+TEST(LanguageServerNative, RenameOfAHostHeaderIsRefusedWithTheSwitchOff)
+{
+    REQUIRE_CLANGD();
+    HostHeaderCase c;
+    LsClient client(c.o);
+    client.request("initialize", {{"processId", nullptr}, {"rootUri", uri_of(c.dir.path().string())},
+                                     {"capabilities", json::object()},
+                                     {"initializationOptions", {{"renameHostHeaders", false}}}});
+    client.notify("initialized", json::object());
+    client.open(c.uri, "using \"outside.h\";\n\nclass Hero {\n    int x = OutsideFn(1);\n}\n");
+    json p = {{"textDocument", {{"uri", c.uri}}}, {"position", pos(3, 12)}, {"newName", "OutsideFn2"}};
+    const json r = client.request("textDocument/rename", p);
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+    EXPECT_NE(r["error"]["message"].get<std::string>().find("outside the workspace folders"), std::string::npos) << r.dump();
+    p.erase("newName");
+    const json prep = client.request("textDocument/prepareRename", p);
+    ASSERT_TRUE(prep.contains("error")) << prep.dump();
+    EXPECT_NE(prep["error"]["message"].get<std::string>().find("outside the workspace folders"), std::string::npos)
+        << prep.dump();
 }
 
 namespace
