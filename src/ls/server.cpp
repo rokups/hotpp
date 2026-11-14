@@ -830,6 +830,45 @@ private:
     ImportGraph& import_graph();
     // Drops the cached imports of the script at "path", or of all scripts when "path" is empty.
     void drop_import_graph(const std::string& path);
+    // Gives the closed script "tmp" (with its facts) to clangd for the call of "fn". Then closes
+    // it in clangd. Gives false, and does not call "fn", when the facts have no C++.
+    bool with_temp_clangd(Doc& tmp, const std::function<void()>& fn);
+
+    // ---- the names through the tables of the resolved names (ref_resolver.h)
+    // A resolved name: the ref and the word of the name.
+    struct Resolved
+    {
+        hotc::ResolvedRef ref;
+        std::string name;
+    };
+    // The places of a symbol, by the URI of the script. The positions are the starts of the names.
+    using PlaceMap = std::map<std::string, std::set<Pos>>;
+    // What clangd tells about a name of the generated text: the script ref of its declaration, a
+    // declaration that is not a script ref (for example native), or no answer.
+    struct ClangdRef
+    {
+        enum Kind
+        {
+            Found,
+            Other,
+            Unknown,
+        } kind = Unknown;
+        hotc::ResolvedRef ref;
+    };
+    // Asks clangd for the declaration of the name at "at" in "d" (an open document, or a closed
+    // script in clangd through with_temp_clangd). Then finds the ref there (ref_at).
+    ClangdRef clangd_ref(const Doc& d, Pos at);
+    // The table of "d": file_refs for an open document, else the table of the facts of "d".
+    std::shared_ptr<const FileRefs> refs_of(const Doc& d);
+    // The symbol at "cur": the table first. A name of the table of unresolved names, or in a raw
+    // body, goes to clangd. No value: no script symbol (a native name or no name).
+    std::optional<Resolved> resolve_at(const Doc& d, Pos cur);
+    // The places of the symbol in the scripts. A local or a parameter: the file of the
+    // declaration only. Else the file of the declaration and its importers (import_graph). An
+    // unresolved name or a raw body word with the same name goes to clangd. "strict" (rename):
+    // a word that clangd cannot resolve gives an error with the file and the line. Not strict
+    // (references): the word is left out.
+    std::variant<PlaceMap, std::string> places_of(const Resolved& r, bool strict);
     // Calls "fn" for each other .hot file of the workspace that declares the symbol "key".
     // "places" are the places of the symbol in that file. An open document is used as it is.
     // A file on disk goes to clangd only for the call.
@@ -4178,18 +4217,15 @@ void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const st
                 if (!analyzed)
                     analyze_tmp();
                 const auto at = key_position(tmp, key);
-                if (!at || tmp.facts.cpp.empty())
+                if (!at)
                     continue;
-                tmp.gen = Text(tmp.facts.cpp);
-                tmp.map = std::make_shared<const hotc::SourceMap>(tmp.facts.source_map);
-                tmp.gen_script = tmp.text;
-                tmp.gen_version = 1;
-                send_generated(tmp, tmp.facts.cpp);
-                const auto r = symbol_places(tmp, *at, name, nullptr);
-                if (const auto* found = std::get_if<std::set<Pos>>(&r))
-                    places = *found;
-                if (clangd_ && tmp.in_clangd)
-                    clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", tmp.gen_uri}}}});
+                with_temp_clangd(tmp,
+                    [&]
+                    {
+                        const auto r = symbol_places(tmp, *at, name, nullptr);
+                        if (const auto* found = std::get_if<std::set<Pos>>(&r))
+                            places = *found;
+                    });
                 if (!places.empty())
                 {
                     m->refs = std::vector<IndexPos>();
@@ -4372,6 +4408,180 @@ ImportGraph& Server::import_graph()
         it = graph_files_.erase(it);
     }
     return graph_;
+}
+
+bool Server::with_temp_clangd(Doc& tmp, const std::function<void()>& fn)
+{
+    if (tmp.facts.cpp.empty())
+        return false;
+    tmp.gen = Text(tmp.facts.cpp);
+    tmp.map = std::make_shared<const hotc::SourceMap>(tmp.facts.source_map);
+    tmp.gen_script = tmp.text;
+    tmp.gen_version = 1;
+    send_generated(tmp, tmp.facts.cpp);
+    fn();
+    if (clangd_ && tmp.in_clangd)
+        clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", tmp.gen_uri}}}});
+    tmp.in_clangd = false;
+    return true;
+}
+
+std::shared_ptr<const FileRefs> Server::refs_of(const Doc& d)
+{
+    if (open_doc_at(d.path).get() == &d)
+        return file_refs(d.path);
+    return std::make_shared<const FileRefs>(table_of_doc(d));
+}
+
+Server::ClangdRef Server::clangd_ref(const Doc& d, Pos at)
+{
+    ClangdRef out;
+    const auto g = to_gen(d, at);
+    if (!g || !clangd_)
+        return out;
+    const auto defs = clangd_result(
+        "textDocument/definition", {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, *g)}});
+    const json def_list = defs ? (defs->is_array() ? *defs : json::array({*defs})) : json::array();
+    if (def_list.empty())
+        return out;
+    const json& loc = def_list[0];
+    const std::string uri = loc.contains("targetUri") ? loc.value("targetUri", std::string()) : loc.value("uri", std::string());
+    json mapped;
+    if (uri == d.gen_uri)
+        mapped = map_location(d, loc);
+    else if (const auto it = gen_docs_.find(uri); it != gen_docs_.end())
+        mapped = map_location(*it->second, loc);
+    else
+    {
+        out.kind = ClangdRef::Other; // a native declaration
+        return out;
+    }
+    if (mapped.is_null() || !mapped.contains("range"))
+        return out; // a name that the translator makes
+    const std::string path = uri_to_path(mapped.value("uri", std::string()));
+    std::shared_ptr<const FileRefs> table;
+    Text text;
+    if (path == d.path)
+    {
+        table = refs_of(d);
+        text = d.text;
+    }
+    else if (const std::shared_ptr<Doc> open = open_doc_at(path))
+    {
+        table = file_refs(path);
+        text = open->text;
+    }
+    else if (const auto t = read_file(path))
+    {
+        table = file_refs(path);
+        text = Text(*t);
+    }
+    if (!table)
+        return out;
+    const Pos p = from_lsp(text, mapped["range"]["start"], utf8_);
+    const hotc::ResolvedRef* r = ref_at(*table, static_cast<uint32_t>(text.offset(p.line, p.col)));
+    if (!r)
+        return out;
+    out.kind = ClangdRef::Found;
+    out.ref = *r;
+    return out;
+}
+
+std::optional<Server::Resolved> Server::resolve_at(const Doc& d, Pos cur)
+{
+    const auto table = refs_of(d);
+    if (!table)
+        return std::nullopt;
+    const uint32_t off = static_cast<uint32_t>(d.text.offset(cur.line, cur.col));
+    if (const hotc::ResolvedRef* r = ref_at(*table, off))
+        return Resolved{*r, d.text.s.substr(r->offset, r->length)};
+    bool ask = false;
+    for (const hotc::UnresolvedName& u : table->unresolved)
+        ask = ask || (u.offset <= off && off <= u.offset + u.length);
+    for (const auto& [b, e] : table->raw_ranges)
+        ask = ask || (b <= off && off < e);
+    if (!ask)
+        return std::nullopt;
+    const auto [b, e] = word_at(d, cur);
+    if (b == e)
+        return std::nullopt;
+    const ClangdRef c = clangd_ref(d, {cur.line, b});
+    if (c.kind != ClangdRef::Found)
+        return std::nullopt;
+    return Resolved{c.ref, std::string(d.text.line(cur.line).substr(static_cast<size_t>(b), static_cast<size_t>(e - b)))};
+}
+
+std::variant<Server::PlaceMap, std::string> Server::places_of(const Resolved& r, bool strict)
+{
+    PlaceMap out;
+    const std::string& name = r.name;
+    std::vector<std::string> files = {r.ref.decl_file};
+    if (!file_local(r.ref.kind))
+        for (const std::string& f : import_graph().importers_of(r.ref.decl_file))
+            files.push_back(f);
+    for (const std::string& path : files)
+    {
+        const std::shared_ptr<Doc> open = open_doc_at(path);
+        Text closed_text;
+        if (!open)
+        {
+            auto t = read_file(path);
+            if (!t || t->find(name) == std::string::npos)
+                continue; // the word filter
+            closed_text = Text(std::move(*t));
+        }
+        const Text& text = open ? open->text : closed_text;
+        const std::string uri = open ? open->uri : path_to_uri(path);
+        const auto table = file_refs(path);
+        if (!table)
+            continue;
+        for (const hotc::ResolvedRef* p : places(*table, r.ref.id))
+        {
+            const auto [line, col] = text.pos(p->offset);
+            out[uri].insert({line, col});
+        }
+        // The words that only clangd can resolve.
+        std::vector<uint32_t> asks;
+        for (const hotc::UnresolvedName& u : table->unresolved)
+            if (u.length == name.size() && text.s.compare(u.offset, u.length, name) == 0)
+                asks.push_back(u.offset);
+        for (const auto& [b, e] : table->raw_ranges)
+            for (size_t at = text.s.find(name, b); at != std::string::npos && at + name.size() <= e;
+                at = text.s.find(name, at + 1))
+            {
+                const bool left = at == 0 || !is_id_char(text.s[at - 1]);
+                const bool right = at + name.size() >= text.s.size() || !is_id_char(text.s[at + name.size()]);
+                if (left && right)
+                    asks.push_back(static_cast<uint32_t>(at));
+            }
+        if (asks.empty())
+            continue;
+        std::string error;
+        auto check = [&](const Doc& doc)
+        {
+            for (const uint32_t off : asks)
+            {
+                const auto [line, col] = doc.text.pos(off);
+                const ClangdRef c = clangd_ref(doc, {line, col});
+                if (c.kind == ClangdRef::Found && c.ref.id == r.ref.id)
+                    out[uri].insert({line, col});
+                else if (c.kind == ClangdRef::Unknown && strict && error.empty())
+                    error = "cannot resolve " + name + " at " + path + ":" + std::to_string(line + 1);
+            }
+        };
+        if (open)
+            check(*open);
+        else
+        {
+            Doc tmp = closed_doc(path, text.s);
+            tmp.facts = timed_translate([&] { return hotc::analyze(tmp.text.s, translate_options(tmp), session_); });
+            if (!with_temp_clangd(tmp, [&] { check(tmp); }) && strict)
+                error = "cannot resolve " + name + " at " + path + ":" + std::to_string(text.pos(asks[0]).first + 1);
+        }
+        if (!error.empty())
+            return error;
+    }
+    return out;
 }
 
 // True when the position is a declaration at the top level of a script: a module name, a class
