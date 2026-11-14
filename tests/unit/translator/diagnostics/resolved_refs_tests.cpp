@@ -509,3 +509,48 @@ TEST(ResolvedRefs, RawBodyGivesARange)
     EXPECT_EQ(r.raw_ranges[1].first, open + 1);
     EXPECT_EQ(r.raw_ranges[1].second, text.find('}', open));
 }
+
+// A ctor and a dtor after a method see the members of the class. A module variable with the
+// same name does not win over the field.
+TEST(ResolvedRefs, CtorAndDtorAfterAMethodSeeTheFields)
+{
+    const std::string text = "using \"w.h\";\n"
+                             "int hp = 7;\n"
+                             "class Foo : Widget {\n"
+                             "    int hp = 0;\n"
+                             "    int Get() { return hp; }\n"
+                             "    static int Make() { return 1; }\n"
+                             "    Foo() { hp = 1; this.hp = 2; }\n"
+                             "    ~Foo() { hp = 3; this.hp = 4; }\n"
+                             "}\n";
+    const hotc::AnalyzeResult r = analyze_refs(text);
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_EQ(uses_of(r, "Foo.hp"), pick(text, "hp", {1, 2, 3, 4, 5, 6}));
+    EXPECT_EQ(uses_of(r, "hp"), pick(text, "hp", {0}));
+    EXPECT_TRUE(r.unresolved.empty());
+}
+
+// Two imports with a class of the same name: the table picks the class that the lowering picks.
+TEST(ResolvedRefs, SameClassNameInTwoImports)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kWidget);
+    write_file(dir.path() / "a.hot", "using \"w.h\";\nclass Gun : Widget { public int ammo = 0; }\n");
+    write_file(dir.path() / "c.hot", "using \"w.h\";\nclass Gun : Widget { public int ammo = 1; }\n");
+    const std::string b = "using \"w.h\";\nusing \"a.hot\";\nusing \"c.hot\";\n"
+                          "class User : Widget {\n    int Run($Gun g) { return g.ammo; }\n}\n";
+    hotc::TranslateOptions o = temp_options(dir, "");
+    o.resolve_refs = true;
+    o.null_warnings = true;
+    o.script_name = (dir.path() / "b.hot").string();
+    const hotc::AnalyzeResult r = hotc::analyze(b, o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    // The lowering uses the last class of the name: the class of c.hot.
+    const std::string file = hotc::ref_file_id((dir.path() / "c.hot").string());
+    const hotc::ResolvedRef* gun = ref_at(r, words(b, "Gun")[0]);
+    const hotc::ResolvedRef* ammo = ref_at(r, words(b, "ammo")[0]);
+    ASSERT_NE(gun, nullptr);
+    ASSERT_NE(ammo, nullptr);
+    EXPECT_EQ(gun->id, file + "#Gun");
+    EXPECT_EQ(ammo->id, file + "#Gun.ammo");
+}

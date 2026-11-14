@@ -93,10 +93,12 @@ class Resolver
 public:
     explicit Resolver(const RefInputs& in) : in_(in), sc_(*in.script)
     {
+        // The last class of a name wins, as in the lowering (base_cx.classes). Two imports can
+        // have a class with the same name. The main script and an import cannot.
         for (const ClassDef& c : sc_.classes)
-            classes_.emplace(c.name, &c);
+            classes_[c.name] = &c;
         for (const InterfaceDef& d : sc_.interfaces)
-            ifaces_.emplace(d.name, &d);
+            ifaces_[d.name] = &d;
         for (const EnumDef& e : sc_.enums)
             enums_.emplace(e.name, &e);
         for (const Field& f : sc_.consts)
@@ -573,15 +575,18 @@ private:
         const uint32_t at = find_word(f.pos, name, 64);
         type_before(at);
         add(at, name, kind, decl, std::string(), true);
+        const ClassDef* const outer = cls_;
         cls_ = owner;
         body_expr(f.init);
-        cls_ = nullptr;
+        cls_ = outer;
     }
 
     // "file": the file of the root declaration of an override (empty: the main script).
     void walk_fn(const Method& m, const ClassDef* c, RefKind kind, const std::string& decl,
         const std::string& file = std::string())
     {
+        // walk_class calls this for each method and then walks the ctors and dtors with "cls_".
+        const ClassDef* const outer = cls_;
         cls_ = c;
         const std::string& name = m.written_name();
         const uint32_t at = m.op.empty() ? find_word(m.pos, name, 64) : 0;
@@ -596,7 +601,7 @@ private:
         }
         else
             add_raw(m.raw_span);
-        cls_ = nullptr;
+        cls_ = outer;
     }
 
     void begin_body()
