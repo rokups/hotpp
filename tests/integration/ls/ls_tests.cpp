@@ -516,7 +516,6 @@ TEST(LanguageServer, DefinitionOfAStaticMethodOfAnImportedClassIsInThatScript)
     EXPECT_EQ(loc["range"]["start"]["character"], 15) << r.dump();
 }
 
-// F12 on the class of a qualified static call goes to the class, not to the static method.
 // Hover on the member of a qualified static call gives the declaration line from the table.
 TEST(LanguageServer, HoverOfAStaticMethodOfAnImportedClassIsTheDeclarationLine)
 {
@@ -531,6 +530,7 @@ TEST(LanguageServer, HoverOfAStaticMethodOfAnImportedClassIsTheDeclarationLine)
     EXPECT_EQ(r["result"]["contents"]["value"], "```hot\nstatic int F(int v)\n```") << r.dump();
 }
 
+// F12 on the class of a qualified static call goes to the class, not to the static method.
 TEST(LanguageServer, DefinitionOfTheClassOfAStaticCallIsTheClass)
 {
     REQUIRE_CLANGD();
