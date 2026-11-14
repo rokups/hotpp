@@ -467,6 +467,7 @@ protected:
         hot::ls::Host h;
         h.name = "h";
         h.binary_dir = p("eng/build");
+        h.top_source_dir = p("eng");
         h.include_dirs = {p("eng/inc"), p("eng/sys/inc"), p("eng/build/inc")};
         h.source_roots = {p("eng"), p("game")};
         h.system_dirs = {p("eng/sys")};
@@ -551,17 +552,61 @@ TEST_F(HeaderRefusalTest, SymlinkIncludeDirToOutsideIsRefused)
 TEST_F(HeaderRefusalTest, InSourceBuildDirDoesNotRefuseSourceHeaders)
 {
     hot::ls::Host h = host();
-    h.binary_dir = p("eng"); // equals a root
+    h.binary_dir = p("eng"); // equals the top source dir
     EXPECT_EQ(hot::ls::host_header_refusal(h, p("eng/inc/x.h")), "");
     EXPECT_FALSE(hot::ls::host_in_build_dir(h, p("eng/inc/x.h")));
-    h.binary_dir = base; // above the roots
+    h.binary_dir = base; // above the top source dir
     EXPECT_EQ(hot::ls::host_header_refusal(h, p("eng/inc/x.h")), "");
     EXPECT_FALSE(hot::ls::host_in_build_dir(h, p("game/y.h")));
 }
 
 // A build dir that is a strict subdir of a root keeps the rule, also for a workspace path.
-TEST_F(HeaderRefusalTest, BuildDirBelowARootStillRefuses)
+TEST_F(HeaderRefusalTest, BuildDirBelowTheTopSourceDirStillRefuses)
 {
     EXPECT_TRUE(hot::ls::host_in_build_dir(host(), p("eng/build/gen.h")));
     EXPECT_FALSE(hot::ls::host_in_build_dir(host(), p("eng/inc/x.h")));
+}
+
+// The usual out-of-source layout: the build dir is a sibling of the top source dir. A dependency
+// that CMake fetches into the build dir is a source root, but it is below the build dir.
+TEST_F(HeaderRefusalTest, SiblingBuildDirRefusesAFetchedRoot)
+{
+    fs::create_directories(p("build/_deps/fmt-src/inc"));
+    hot::ls::Host h;
+    h.binary_dir = p("build");
+    h.top_source_dir = p("game");
+    h.include_dirs = {p("build/_deps/fmt-src/inc"), p("game")};
+    h.source_roots = {p("game"), p("build/_deps/fmt-src")};
+    EXPECT_EQ(hot::ls::host_header_refusal(h, p("build/_deps/fmt-src/inc/f.h")), "in the build dir of the host");
+    EXPECT_EQ(hot::ls::host_header_refusal(h, p("game/x.h")), "");
+    // An old host file has no top source dir. The rule stays on.
+    h.top_source_dir.clear();
+    EXPECT_EQ(hot::ls::host_header_refusal(h, p("build/_deps/fmt-src/inc/f.h")), "in the build dir of the host");
+}
+
+// A top source dir inside the build dir: the build dir is above it, so the rule is off.
+TEST_F(HeaderRefusalTest, BuildDirAboveTheTopSourceDirTurnsTheRuleOff)
+{
+    hot::ls::Host h = host();
+    h.binary_dir = base;
+    h.top_source_dir = p("eng");
+    EXPECT_EQ(hot::ls::host_header_refusal(h, p("eng/inc/x.h")), "");
+}
+
+TEST_F(HostsTest, LoadsTheTopSourceDir)
+{
+    const std::string build = make_build("a");
+    std::ofstream(hosts_dir / "a.json") << R"({"version":1,"name":"a","binaryDir":")" << build
+                                        << R"(","topSourceDir":"/top","scriptDirs":["/s"],"sourceRootsFile":"a.roots"})";
+    std::ofstream(hosts_dir / "a.roots") << "!/sys\n/first\n/second\n";
+    std::ofstream(hosts_dir / "b.json") << R"({"version":1,"name":"b","binaryDir":")" << build
+                                        << R"(","scriptDirs":["/t"],"sourceRootsFile":"b.roots"})";
+    std::ofstream(hosts_dir / "b.roots") << "!/sys\n/first\n/second\n";
+    std::ofstream(hosts_dir / "c.json") << R"({"version":1,"name":"c","binaryDir":")" << build
+                                        << R"(","scriptDirs":["/u"]})";
+    HostSet set;
+    set.load(hosts_dir.string());
+    EXPECT_EQ(set.match("/s/x.hot")->top_source_dir, "/top");
+    EXPECT_EQ(set.match("/t/x.hot")->top_source_dir, "/first"); // an old file: the first root
+    EXPECT_EQ(set.match("/u/x.hot")->top_source_dir, "");
 }

@@ -189,20 +189,15 @@ bool below_any_dir(const std::vector<std::string>& dirs, const std::string& real
     return false;
 }
 
-// The build dir rule applies only when the build dir is a strict subdir of a source root. A build
-// dir that equals a root (an in-source build) or is above it holds the sources too.
+// The build dir rule applies unless the build dir equals the top source dir or is above it (an
+// in-source build). Then the build dir holds the sources. Without a top source dir the rule stays on.
 bool build_dir_rule_applies(const Host& host)
 {
     if (host.binary_dir.empty())
         return false;
-    const std::string bin = real_key(host.binary_dir);
-    for (const std::string& r : host.source_roots)
-    {
-        const std::string root = real_key(r);
-        if (root != bin && contains(root, bin))
-            return true;
-    }
-    return false;
+    if (host.top_source_dir.empty())
+        return true;
+    return !contains(real_key(host.binary_dir), real_key(host.top_source_dir));
 }
 
 } // namespace
@@ -277,13 +272,17 @@ void HostSet::load(const std::string& dir, bool require_cache)
         // with the prefix "!" is a SYSTEM dir. The inline arrays have the same meaning.
         std::vector<std::string> roots = get_strings(j, "sourceRoots");
         std::vector<std::string> system = get_strings(j, "systemDirs");
+        std::string top = get_string(j, "topSourceDir");
         for (std::string& l : read_lines(e.path().parent_path(), get_string(j, "sourceRootsFile")))
         {
+            if (top.empty() && l[0] != '!')
+                top = l; // an old host file: the first root is the top source dir
             if (l[0] == '!')
                 system.push_back(l.substr(1));
             else
                 roots.push_back(std::move(l));
         }
+        host->top_source_dir = resolve_path(source_dir, top);
         host->source_roots = resolve_paths(source_dir, roots, true);
         host->system_dirs = resolve_paths(source_dir, system, true);
         // The options of the target come first, then the explicit flags (the last flag wins).

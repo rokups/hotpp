@@ -6186,7 +6186,7 @@ struct HostHeaderCase
         write_file((outside.path() / "outside.h").string(), "#pragma once\nint OutsideFn(int v);\n");
         write_file((root / "hosts" / "h.json").string(),
             R"({"version":1,"name":"h","binaryDir":")" + (bin_is_root ? root : root / "build").generic_string()
-                + R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":[")"
+                + R"(","topSourceDir":")" + root.generic_string() + R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":[")"
                 + (near_script ? (root / "scripts").generic_string() : root.generic_string())
                 + R"("],"scripts":[],"sourceRoots":[")" + (outside_is_root ? outside.path().generic_string() : root.generic_string())
                 + R"("],"includeDirs":[")" + outside.path().generic_string() + R"(",")" + HOT_SOURCE_DIR

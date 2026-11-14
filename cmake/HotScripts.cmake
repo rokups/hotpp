@@ -679,9 +679,11 @@ endfunction()
 # file names it in "sourceRootsFile". Each line is an absolute path. A line with the prefix "!"
 # is a SYSTEM dir (a directory with the property SYSTEM). hot-ls edits a header outside the
 # workspace folders only when it is below a source root and not below a SYSTEM dir. The binary dir
-# is in the JSON file ("binaryDir"). hot-ls never edits a header below it.
+# is in the JSON file ("binaryDir"), and so is the top source dir ("topSourceDir", CMAKE_SOURCE_DIR).
+# hot-ls never edits a header below the binary dir, unless the binary dir equals the top source dir
+# or is above it.
 # The roots come from the source dirs that CMake read, starting at CMAKE_SOURCE_DIR (the property
-# SUBDIRECTORIES). A dir below CMAKE_BINARY_DIR is skipped, but only when CMAKE_BINARY_DIR is a strict subdir of CMAKE_SOURCE_DIR (an in-source build skips nothing). A dir below an earlier root is not
+# SUBDIRECTORIES). A dir below CMAKE_BINARY_DIR is skipped, unless CMAKE_BINARY_DIR equals CMAKE_SOURCE_DIR or is above it (an in-source build skips nothing). A dir below an earlier root is not
 # written. A SYSTEM dir is written with "!" and CMake does not enter its subdirectories. The
 # function _hot_host_write_source_roots runs once, when CMake ends the top CMakeLists.txt
 # (cmake_language DEFER). It writes a file only when the text changes.
@@ -738,11 +740,12 @@ function(_hot_host_write_source_roots)
     endif()
     cmake_path(NORMAL_PATH CMAKE_BINARY_DIR OUTPUT_VARIABLE bin)
     cmake_path(NORMAL_PATH CMAKE_SOURCE_DIR OUTPUT_VARIABLE top)
-    # The build dir is skipped only when it is a strict subdir of the source dir. An in-source
-    # build (the same dir) or a build dir above the source dir skips nothing.
-    set(skip_bin FALSE)
-    if(NOT bin STREQUAL top)
-        cmake_path(IS_PREFIX top "${bin}" NORMALIZE skip_bin)
+    # A dir below the build dir is skipped, unless the build dir equals the top source dir or is
+    # above it (an in-source build). Then the sources are in the build dir and nothing is skipped.
+    cmake_path(IS_PREFIX bin "${top}" NORMALIZE bin_holds_top)
+    set(skip_bin TRUE)
+    if(bin_holds_top)
+        set(skip_bin FALSE)
     endif()
     set(roots "")
     set(text "")
@@ -846,6 +849,7 @@ function(hot_script_host)
     _hot_host_escape(e_name "${A_NAME}")
     _hot_host_escape(e_bin "${CMAKE_BINARY_DIR}")
     _hot_host_escape(e_src "${CMAKE_CURRENT_SOURCE_DIR}")
+    _hot_host_escape(e_top "${CMAKE_SOURCE_DIR}")
     _hot_host_escape(e_cxx "${CMAKE_CXX_COMPILER}")
     _hot_host_escape(e_suffix "${A_PRELUDE_SUFFIX}")
     set(res "")
@@ -859,6 +863,7 @@ function(hot_script_host)
     string(APPEND json "  \"name\": \"${e_name}\",\n")
     string(APPEND json "  \"binaryDir\": \"${e_bin}\",\n")
     string(APPEND json "  \"sourceDir\": \"${e_src}\",\n")
+    string(APPEND json "  \"topSourceDir\": \"${e_top}\",\n")
     string(APPEND json "  \"compiler\": \"${e_cxx}\",\n")
     # The language standard of the scripts. The generated code needs C++17 only, so the scripts
     # use the standard of the consuming target. Without a target, the effective standard

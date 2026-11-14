@@ -43,6 +43,9 @@ struct Host
     // The source dirs of the whole build (the file "sourceRootsFile" and "sourceRoots"), and the
     // SYSTEM dirs ("!" lines of that file and "systemDirs"). They are absolute and normalized.
     std::vector<std::string> source_roots, system_dirs;
+    // The top source dir of the build (CMAKE_SOURCE_DIR, the key "topSourceDir"). An old host file
+    // has none: the loader then takes the first source root of the ".roots" file. It can be empty.
+    std::string top_source_dir;
     std::vector<std::string> preludes; // the absolute paths of the prelude files of the host
     std::string prelude_suffix; // the suffix of the user preludes in the script dirs, or empty
 
