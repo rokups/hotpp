@@ -469,7 +469,7 @@ TEST(LanguageServer, DefinitionInAnImportedScriptIsInThatScript)
     Session s(true, kImporter);
     write_file(s.dir.path() / "base.hot", imported);
     s.client->change(s.uri, 2, kImporter);
-    const json r = s.client->request("textDocument/definition", doc_pos(s.uri, 2, 16));
+    const json r = s.client->request("textDocument/definition", doc_pos(s.uri, 2, 21));
     ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << r.dump();
     const json& loc = r["result"][0];
     EXPECT_EQ(loc["uri"], uri_of((s.dir.path() / "base.hot").lexically_normal().string())) << r.dump();
