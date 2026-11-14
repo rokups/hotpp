@@ -7680,3 +7680,81 @@ TEST(LanguageServer, GeneratedDocumentGoesToClangdAtOpenBeforeAnyRequest)
     EXPECT_NE(log.find("player.hot.cpp"), std::string::npos);
     EXPECT_EQ(log.find("textDocument/definition"), std::string::npos);
 }
+
+// HOT-10: a rename of a tagged script symbol gives the edits and one warning. It never refuses.
+namespace
+{
+// Renames the word "word" at its first place in "text". Gives the number of the edits and of the
+// showMessage warnings that name "word".
+std::pair<size_t, int> rename_with_notes(const std::string& text, const std::string& word, const std::string& at)
+{
+    Session s(true, text);
+    const size_t off = text.find(at);
+    const size_t col_in_at = at.find(word);
+    int line = 0;
+    size_t line_start = 0;
+    for (size_t i = 0; i < off; ++i)
+        if (text[i] == '\n')
+        {
+            ++line;
+            line_start = i + 1;
+        }
+    json p = doc_pos(s.uri, line, static_cast<int>(off - line_start + col_in_at));
+    p["newName"] = "Renamed";
+    const json r = s.client->request("textDocument/rename", p);
+    EXPECT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    const size_t edits = r.contains("result") && r["result"].is_object() ? r["result"]["changes"][s.uri].size() : 0;
+    int notes = 0;
+    auto note = [&](int ms)
+    {
+        return s.client->wait_notification("window/showMessage",
+            [&](const json& m)
+            { return m.value("message", std::string()).find("'" + word + "' has the attribute") != std::string::npos; },
+            ms);
+    };
+    const json first = note(1500);
+    if (!first.is_null())
+    {
+        ++notes;
+        EXPECT_EQ(first["params"].value("type", 0), 2) << first.dump();
+        if (!note(500).is_null())
+            ++notes;
+    }
+    return {edits, notes};
+}
+} // namespace
+
+TEST(LanguageServerRename, TaggedClassGivesEditsAndOneWarning)
+{
+    REQUIRE_CLANGD();
+    const auto [edits, notes] = rename_with_notes(
+        "[attribute] class Tag;\n[Tag]\nclass Unit {\n    int hp;\n}\nclass Other : Unit { }\n", "Unit", "class Unit");
+    EXPECT_EQ(edits, 2u);
+    EXPECT_EQ(notes, 1);
+}
+
+TEST(LanguageServerRename, PlainClassGivesNoWarning)
+{
+    REQUIRE_CLANGD();
+    const auto [edits, notes] = rename_with_notes("class Unit {\n    int hp;\n}\nclass Other : Unit { }\n", "Unit", "class Unit");
+    EXPECT_EQ(edits, 2u);
+    EXPECT_EQ(notes, 0);
+}
+
+TEST(LanguageServerRename, TaggedFieldGivesOneWarning)
+{
+    REQUIRE_CLANGD();
+    const auto [edits, notes] = rename_with_notes(
+        "[attribute] class Tag;\nclass Unit {\n    [Tag] int hp;\n    void f() { hp = 1; }\n}\n", "hp", "int hp;");
+    EXPECT_EQ(edits, 2u);
+    EXPECT_EQ(notes, 1);
+}
+
+TEST(LanguageServerRename, AliasFieldGivesNoWarning)
+{
+    REQUIRE_CLANGD();
+    const auto [edits, notes] = rename_with_notes(
+        "class Unit {\n    [alias(\"old\")] int hp;\n    void f() { hp = 1; }\n}\n", "hp", "int hp;");
+    EXPECT_EQ(edits, 2u);
+    EXPECT_EQ(notes, 0);
+}

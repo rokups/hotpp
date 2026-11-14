@@ -466,11 +466,15 @@ struct AnalyzedMember
     SourcePos begin, end;
     // The previous name from [alias("...")]. Only a field has it. It is empty with no alias.
     std::string alias;
+    // The names of the tags "[Tag]" of a field or a property. Not "alias". Empty for other members.
+    std::vector<std::string> attributes;
 };
 
 struct AnalyzedClass
 {
     std::string name, base;
+    // The names of the script attributes of the class ("[Tag] class C"). Not "alias".
+    std::vector<std::string> attributes;
     // True for a script interface. Its members are methods and its base is empty.
     bool is_interface = false;
     SourcePos begin;
