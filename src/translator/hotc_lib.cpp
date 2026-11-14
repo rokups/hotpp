@@ -4341,15 +4341,19 @@ void translate_impl(
                 else
                 {
                     indirect_texts[normal_path(file)] = import_texts.size() - 1;
+                    // The hint shows the name of the script as a "using" line writes it.
+                    const std::string import_name = unit.size() > 4 && unit.compare(unit.size() - 4, 4, ".hot") == 0
+                        ? unit
+                        : unit + ".hot";
                     for (const Method& f : is.fns)
                         if (f.access != hotc::ast::Access::Private)
-                            indirect_names.emplace(f.written_name(), hotc::IndirectName{unit, false});
+                            indirect_names.emplace(f.written_name(), hotc::IndirectName{import_name, false});
                     // The code after this does not read "is.vars".
                     for (Field& v : is.vars)
                         if (v.access != hotc::ast::Access::Private)
                         {
                             if (v.owner.empty())
-                                indirect_names.emplace(v.name, hotc::IndirectName{unit, true});
+                                indirect_names.emplace(v.name, hotc::IndirectName{import_name, true});
                             else if (in.resolve_refs)
                                 deep_static_vars.push_back(std::move(v));
                         }

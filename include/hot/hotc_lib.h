@@ -155,8 +155,8 @@ struct ResolvedRef
 // It does not read the file system. Thus a symbolic link gives a different path.
 std::string ref_file_id(const std::string& path);
 
-// A free function or a module variable of an import of an import: its unit name, and whether it is
-// a variable.
+// A free function or a module variable of an import of an import: the script name as a "using"
+// line writes it (the unit name and ".hot"), and whether it is a variable.
 struct IndirectName
 {
     std::string unit;

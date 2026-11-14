@@ -133,6 +133,7 @@ void expect_same(const hotc::TranslateResult& a, const hotc::TranslateResult& b)
     EXPECT_EQ(a.diagnostics, b.diagnostics);
     EXPECT_EQ(a.warnings, b.warnings);
     EXPECT_EQ(a.imports, b.imports);
+    ASSERT_EQ(a.indirect_names.size(), b.indirect_names.size());
     EXPECT_EQ(a.virtual_files, b.virtual_files);
     EXPECT_EQ(a.dependencies, b.dependencies);
     EXPECT_EQ(a.iface, b.iface);
@@ -214,6 +215,33 @@ TEST(TranslateCache, EntryWithoutFineDataGivesUnknownData)
         EXPECT_EQ(hit->use_info.known, bad) << "the use data of the bad entry is valid";
         EXPECT_EQ(c.stats().hits, 1u);
     }
+}
+
+// The indirect names survive the cache. The hint of the C++ error "unknown name" needs them.
+TEST(TranslateCache, HitKeepsTheIndirectNames)
+{
+    Fixture f;
+    fs::create_directories(f.dir + "/sub");
+    write_file(f.dir + "/sub/deep.hot", "int Twice(int v) { return v * 2; }\nint Counter = 0;\n");
+    write_file(f.base, std::string("using \"sub/deep.hot\";\n") + kBase);
+    f.options.script_text = kMain;
+    hot::TranslateCache c(f.cache);
+    const hotc::TranslateResult real = f.fill(c, f.options);
+    ASSERT_EQ(real.indirect_names.size(), 2u);
+    const std::optional<hotc::TranslateResult> hit = c.lookup(f.options);
+    ASSERT_TRUE(hit.has_value());
+    ASSERT_EQ(hit->indirect_names.size(), 2u);
+    for (const auto& [name, n] : real.indirect_names)
+    {
+        ASSERT_EQ(hit->indirect_names.count(name), 1u) << name;
+        EXPECT_EQ(hit->indirect_names.at(name).unit, n.unit) << name;
+        EXPECT_EQ(hit->indirect_names.at(name).is_var, n.is_var) << name;
+    }
+    EXPECT_EQ(hit->indirect_names.at("Twice").unit, "sub/deep.hot");
+    EXPECT_TRUE(hit->indirect_names.at("Counter").is_var);
+    const std::string probe = "use of undeclared identifier 'Twice'";
+    EXPECT_EQ(hotc::rewrite_clang_message(probe, &hit->indirect_names),
+        hotc::rewrite_clang_message(probe, &real.indirect_names));
 }
 
 // The copied names of the fine data survive the cache (a struct body names a function).

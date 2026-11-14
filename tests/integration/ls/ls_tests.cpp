@@ -7145,6 +7145,36 @@ TEST(LanguageServerRename, FreeFunctionIsNotRenamedInAnIndirectImporter)
     EXPECT_FALSE(changes.contains(uri_of((s.dir.path() / "c.hot").string()))) << r.dump();
 }
 
+// The same for a module variable.
+TEST(LanguageServerRename, ModuleVarIsNotRenamedInAnIndirectImporter)
+{
+    REQUIRE_CLANGD();
+    const std::string origin = "int Counter = 0;\n";
+    Session s(true, origin);
+    write_file(s.dir.path() / "b.hot", "using \"player.hot\";\nint Four() { return Counter + 1; }\n");
+    write_file(s.dir.path() / "c.hot", "using \"b.hot\";\nint Six() { return Counter + 2; }\n");
+    const json r = origin_rename(s, origin, "int Counter", "Counter");
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    const json& changes = r["result"]["changes"];
+    ASSERT_TRUE(changes.contains(s.uri)) << r.dump();
+    EXPECT_TRUE(changes.contains(uri_of((s.dir.path() / "b.hot").string()))) << r.dump();
+    EXPECT_FALSE(changes.contains(uri_of((s.dir.path() / "c.hot").string()))) << r.dump();
+}
+
+// An indirect importer with a syntax error (a typo) still refuses the rename: the rename cannot
+// read its table.
+TEST(LanguageServerRename, SyntaxErrorInAnIndirectImporterRefusesTheRename)
+{
+    REQUIRE_CLANGD();
+    const std::string origin = "int Twice(int v) { return v * 2; }\n";
+    Session s(true, origin);
+    write_file(s.dir.path() / "b.hot", "using \"player.hot\";\nint Four() { return Twice(2); }\n");
+    write_file(s.dir.path() / "c.hot", "using \"b.hot\";\nint Six() { return Twice(3) +; }\n");
+    const json r = origin_rename(s, origin, "int Twice", "Twice");
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+    EXPECT_NE(r.dump().find("c.hot has a syntax error"), std::string::npos) << r.dump();
+}
+
 TEST(LanguageServerRename, ClassRenamedWhenNoImporterUsesTheName)
 {
     expect_importer_rename("class Spawn", "Spawn",

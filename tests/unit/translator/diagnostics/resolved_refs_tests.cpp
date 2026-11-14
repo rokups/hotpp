@@ -746,3 +746,28 @@ TEST(ResolvedRefs, NearDeclOverTwoUnits)
     EXPECT_EQ(d->near_decl, "Rifle.Fire");
     EXPECT_EQ(d->near_file, hotc::ref_file_id((dir.path() / "b.hot").string()));
 }
+
+// The hint of an indirect name goes through translate() and rewrite_diagnostic(). The unit of the
+// import is in a subdirectory: the hint writes the "using" line with the directory.
+TEST(ResolvedRefs, IndirectNameHintFromTranslate)
+{
+    TempDir dir;
+    std::filesystem::create_directories(dir.path() / "sub");
+    write_file(dir.path() / "sub" / "a.hot", "int Twice(int v) { return v * 2; }\nint Counter = 0;\n");
+    write_file(dir.path() / "b.hot", "using \"sub/a.hot\";\nint Four() { return Twice(2); }\n");
+    const std::string c = "using \"b.hot\";\nint Six() { return Twice(3) + Counter; }\n";
+    hotc::TranslateOptions o = temp_options(dir, c);
+    o.script_name = (dir.path() / "c.hot").string();
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_EQ(r.indirect_names.count("Twice"), 1u);
+    ASSERT_EQ(r.indirect_names.count("Counter"), 1u);
+    const std::string cpp_error = "c.hot:2:15: error: use of undeclared identifier 'Twice'\n";
+    const std::string out = hotc::rewrite_diagnostic(cpp_error, {{"c.hot", c}}, {}, nullptr, &r.indirect_names);
+    EXPECT_NE(out.find("'Twice' is a function of 'sub/a.hot'. The import is not transitive. Add 'using \"sub/a.hot\";'"),
+        std::string::npos)
+        << out;
+    const std::string var = hotc::rewrite_clang_message("use of undeclared identifier 'Counter'", &r.indirect_names);
+    EXPECT_NE(var.find("'Counter' is a variable of 'sub/a.hot'. The import is not transitive. Add 'using \"sub/a.hot\";'"),
+        std::string::npos)
+        << var;
+}
