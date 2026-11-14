@@ -11121,8 +11121,10 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
         ac.name = c.name;
         ac.base = expand_std(c.base, module_ns);
         ac.begin = src_pos(map, c.pos);
+        ac.attributes = c.attributes;
         auto add = [&](const char* kind, const std::string& name, uint32_t begin, uint32_t end, bool body,
-                       const std::string& alias = std::string())
+                       const std::string& alias = std::string(),
+                       const std::vector<ast::FieldTag>* tags = nullptr)
         {
             uint32_t e = std::max(end, begin + static_cast<uint32_t>(name.size()));
             // The end of a property with accessor bodies is the end of the last accessor. The range
@@ -11141,7 +11143,10 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
                         break;
                 }
             }
-            ac.members.push_back({kind, name, src_pos(map, begin), src_pos(map, e), alias});
+            ac.members.push_back({kind, name, src_pos(map, begin), src_pos(map, e), alias, {}});
+            if (tags)
+                for (const ast::FieldTag& t : *tags)
+                    ac.members.back().attributes.push_back(t.name);
             if (body)
                 ranges.emplace_back(begin, e);
             if (body && std::string_view(kind) != "property")
@@ -11149,7 +11154,8 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
             all_ranges.emplace_back(begin, e);
         };
         for (const ast::Field& f : c.fields)
-            add("field", f.name, f.pos, f.has_init ? f.init_span.end + 1 : 0, false, f.alias);
+            add("field", f.name, f.pos, f.has_init ? f.init_span.end + 1 : 0, false, f.alias,
+                &f.attributes);
         // The pos of a method is the start of its type. The name comes after it.
         for (const ast::Method& m : c.methods)
             add("method", m.name, find_word(text, m.pos, m.name), m.end_pos + 1, true);
@@ -11161,7 +11167,7 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
             add("property", p.name, p.pos,
                 std::max({p.has_init ? p.init_span.end + 1 : 0, p.get_body ? p.get_span.end + 1 : 0,
                     p.set_body ? p.set_span.end + 1 : 0}),
-                p.get_body || p.set_body);
+                p.get_body || p.set_body, std::string(), &p.attributes);
         std::stable_sort(ac.members.begin(), ac.members.end(), [](const AnalyzedMember& a, const AnalyzedMember& b)
         { return std::tie(a.begin.line, a.begin.col) < std::tie(b.begin.line, b.begin.col); });
         // The static members. The parser moved a constant and a static field to the script lists,

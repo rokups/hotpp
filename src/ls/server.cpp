@@ -893,6 +893,8 @@ private:
         hotc::ResolvedRef ref;
         std::string name;
     };
+    // One window/showMessage for a rename of a class with an attribute or a tagged field (HOT-10).
+    void warn_attribute_rename(const Resolved& r);
     // The places of a symbol, by the URI of the script. The positions are the starts of the names.
     using PlaceMap = std::map<std::string, std::set<Pos>>;
     // What clangd tells about a name of the generated text: the script ref of its declaration, a
@@ -4950,7 +4952,43 @@ std::optional<std::variant<json, std::string>> Server::table_rename(
         if (merge_edits(changes, uri, edits) > 0)
             return what + "two edits of " + uri_to_path(uri) + " change the same range";
     }
+    warn_attribute_rename(*r);
     return json{{"changes", changes}};
+}
+
+// A rename note (HOT-10, never a refusal): a class with an attribute, or a field or a property with a
+// tag other than "alias", can be a string in a host. One window/showMessage tells the user.
+void Server::warn_attribute_rename(const Resolved& r)
+{
+    const bool is_class = r.ref.kind == hotc::RefKind::Class;
+    if (!is_class && r.ref.kind != hotc::RefKind::Field && r.ref.kind != hotc::RefKind::Property)
+        return;
+    Text text;
+    const hotc::AnalyzeResult* facts = script_facts(path_to_uri(r.ref.decl_file), text);
+    if (!facts)
+        return;
+    const std::vector<std::string>* attrs = nullptr;
+    const size_t dot = r.ref.decl.find('.');
+    for (const hotc::AnalyzedClass& c : facts->classes)
+    {
+        if (is_class)
+        {
+            if (c.name == r.ref.decl)
+                attrs = &c.attributes;
+        }
+        else if (dot != std::string::npos && c.name == r.ref.decl.substr(0, dot))
+            for (const hotc::AnalyzedMember& m : c.members)
+                if (m.name == r.ref.decl.substr(dot + 1) && (m.kind == "field" || m.kind == "property"))
+                    attrs = &m.attributes;
+    }
+    if (!attrs || attrs->empty())
+        return;
+    send_client({{"jsonrpc", "2.0"}, {"method", "window/showMessage"},
+        {"params",
+            {{"type", 2},
+                {"message",
+                    "hot-ls: '" + r.name + "' has the attribute [" + attrs->front()
+                        + "]. A host can use this name as a string. Rename does not change strings in assets or code."}}}});
 }
 
 // The refusal of a rename of a script symbol that the table does not have.
