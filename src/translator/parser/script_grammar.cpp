@@ -804,15 +804,17 @@ struct param_default_cfg
 struct param_p
 {
     static constexpr auto rule = dsl::opt(dsl::peek(dsl::lit_c<'['>) >> dsl::p<attrs_p>) + dsl::position
-        + param_mode_rule + dsl::p<scan_param_type> + dsl::p<name_p<e_param_name>>
+        + param_mode_rule + dsl::position + dsl::p<scan_param_type> + dsl::position + dsl::p<name_p<e_param_name>>
         + dsl::opt(dsl::peek(dsl::lit_c<'='>) >> dsl::p<scan_until<param_default_cfg>>) + dsl::if_(dsl::lit_c<','>);
     static constexpr auto value =
         lexy::bind(lexy::callback<ast::Param>(
-                       [](const ParseState& st, const auto& ann, const char* pos, const auto& word, Span type,
-                           std::string name, auto def)
+                       [](const ParseState& st, const auto& ann, const char* pos, const auto& word, const char* type_at,
+                           Span type, const char* name_at, std::string name, auto def)
     {
         check_name(st, pos, name);
         ast::Param p{std::move(name), ""};
+        p.type_pos = st.offset(type_at);
+        p.pos = st.offset(name_at);
         ast::ParamMode mode = param_mode_of(word);
         if (const Annot* a = annot_of(ann))
         {

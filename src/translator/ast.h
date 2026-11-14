@@ -109,6 +109,9 @@ struct Param
     // The type is a bare script class: the parameter holds a box (hot::Value<T>). The resolution of
     // the value types sets it. The parser does not.
     bool value = false;
+    // The byte offsets of the name and of the type text (after the modifier word). 0: not known. The
+    // table of the resolved names (hotc::ResolvedRef) uses them.
+    uint32_t pos = 0, type_pos = 0;
 };
 
 // ------------------------------------------------------------------ expressions
@@ -536,6 +539,7 @@ struct Field
     bool raw = false;
     std::string raw_init; // the edited initializer text
     bool raw_brace_init = false; // true when the initializer is "{...}"
+    Span raw_span; // the raw initializer in the script text (the table of the resolved names)
     // A module variable of a ".cpp" script in a namespace: the namespace path ("game::ai"). The
     // module block is at file scope, so the translator declares the type in the namespace.
     std::string ns;
@@ -627,6 +631,7 @@ struct Method
     // For a ".cpp" script. When "raw" is true, the translator uses the raw text and not the AST.
     bool raw = false;
     std::string raw_body; // the edited C++ text between the braces, without the braces
+    Span raw_span; // "raw_body" in the script text, before the edit (the table of the resolved names)
     int raw_line = 0; // the script line of the "{": the first line of "raw_body"
     std::vector<RawLine> raw_pre; // statements that come before "raw_body" (the member initializers of a constructor)
 };
@@ -648,6 +653,7 @@ struct Ctor
     // For a ".cpp" script. When "raw" is true, the translator uses the raw text and not the AST.
     bool raw = false;
     std::string raw_body; // the edited C++ text between the braces, without the braces
+    Span raw_span; // "raw_body" in the script text, before the edit (the table of the resolved names)
     int raw_line = 0; // the script line of the "{": the first line of "raw_body"
     std::string raw_base_args; // the text between the parentheses of the base initializer
     size_t raw_base_argc = 0; // the number of arguments in "raw_base_args"

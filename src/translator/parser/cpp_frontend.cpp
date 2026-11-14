@@ -1957,6 +1957,7 @@ void Frontend::read_init(CXCursor c, const ClassInfo* cls, const Where<ast::Fiel
     {
         const uint32_t start = static_cast<uint32_t>(text_[i] == '=' ? i + 1 : i);
         f.has_init = true;
+        f.raw_span = Span{start, decl.end};
         const char open = text_[i];
         const uint32_t fpos = f.pos;
         add_slice(Range{start, decl.end}, cls, [where, index, open, fpos](std::string&& s) {
@@ -2359,6 +2360,7 @@ void Frontend::read_method_body(CXCursor c, const ClassInfo* cls, const Where<as
     m.end_pos = b.end - 1;
     m.end_line = line(m.end_pos);
     m.raw_line = line(b.begin); // "raw_body" starts right after the "{"
+    m.raw_span = Span{b.begin + 1, b.end - 1};
     add_slice(Range{b.begin + 1, b.end - 1}, cls,
         [where, index](std::string&& s) { where()[index].raw_body = std::move(s); });
 }
@@ -2586,6 +2588,7 @@ void Frontend::read_ctor_body(CXCursor c, const ClassInfo& cls, const Where<ast:
     warn_static_locals(c);
     ct.end_pos = b.end - 1;
     ct.end_line = line(ct.end_pos);
+    ct.raw_span = Span{b.begin + 1, b.end - 1};
     // The text between the ")" of the parameters and the "{" of the body has the initializers.
     size_t open = text_.find('(', cpos);
     size_t close = open == std::string::npos ? open : match_close(text_, open, b.begin);

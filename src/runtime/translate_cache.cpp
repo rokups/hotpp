@@ -62,7 +62,9 @@ constexpr auto field_count(int) -> decltype(T{std::declval<A>()..., std::declval
 //     with each generation relative to the generation of the translate.
 //   - generation: in the key only when the text has the number (export_generation). See add_options.
 //   - fs: only "is there a file system" is in the key. The manifest checks the files.
-static_assert(field_count<hotc::TranslateOptions>(0) == 22,
+//   - resolve_refs: not in the key. The output does not change. An entry has no table,
+//     so a lookup with this option gives no hit.
+static_assert(field_count<hotc::TranslateOptions>(0) == 23,
     "TranslateOptions has a new field: decide if it goes into the key of the translate cache");
 
 void add_list(Hash64& h, const std::vector<std::string>& v)
@@ -540,6 +542,8 @@ void TranslateCache::remove(const ObjectCache::Key& key)
 std::optional<hotc::TranslateResult> TranslateCache::lookup(const hotc::TranslateOptions& options)
 {
     std::optional<hotc::TranslateResult> r;
+    if (options.resolve_refs)
+        return r;
     bool by_view = false;
     bool by_generation = false;
     try

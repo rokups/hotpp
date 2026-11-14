@@ -34,6 +34,7 @@
 #include "nullcheck.h"
 #include "lambda_key.h"
 #include "lint.h"
+#include "refs.h"
 #include "diag.h"
 #include "operator_names.h"
 #include "file_time.h"
@@ -4511,6 +4512,28 @@ void translate_impl(
                 for (const hotc::ast::TypeAlias& a : c.aliases)
                     check_alias_name(a);
         }
+    }
+    // The table of the resolved names (refs.h). It reads the AST before the steps that change it (the
+    // class constants, the lowering).
+    if (in.resolve_refs)
+    {
+        hotc::RefInputs ri;
+        ri.script = &sc;
+        ri.foreign_fns = &foreign_fns;
+        ri.text = in.script_text;
+        ri.map = &map;
+        ri.main_file = hotc::ref_file_id(in.script_name);
+        ri.file_of = [&imported_files](uint32_t pos)
+        {
+            for (size_t i = imported_files.size(); i-- > 0;)
+                if (pos >= imported_files[i].base)
+                    return hotc::ref_file_id(imported_files[i].file);
+            return std::string();
+        };
+        hotc::RefTable table = hotc::resolve_refs(ri);
+        res.refs = std::move(table.refs);
+        res.unresolved = std::move(table.unresolved);
+        res.raw_ranges = std::move(table.raw_ranges);
     }
     {
         std::vector<const hotc::ast::Field*> fvars;
@@ -11012,6 +11035,15 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options)
     return analyze(text, options, session);
 }
 
+std::string ref_file_id(const std::string& path)
+{
+    if (path.empty())
+        return std::string();
+    std::error_code ec;
+    const std::filesystem::path abs = std::filesystem::absolute(path, ec);
+    return (ec ? std::filesystem::path(path) : abs).lexically_normal().generic_string();
+}
+
 AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, TranslatorSession& session)
 {
     AnalyzeResult res;
@@ -11333,6 +11365,9 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
         }
     }
     // The blank text has the same offsets and the same lines as "text". So the map is valid for it.
+    res.refs = std::move(tr.refs);
+    res.unresolved = std::move(tr.unresolved);
+    res.raw_ranges = std::move(tr.raw_ranges);
     if (tr.ok)
     {
         res.source_map = std::move(tr.source_map);

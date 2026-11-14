@@ -7,6 +7,7 @@ add_executable(unit_translator_diagnostics_tests
     diag_format_tests.cpp
     diag_rewrite_tests.cpp
     analyze_tests.cpp
+    resolved_refs_tests.cpp
     syntax_error_diagnostics_tests.cpp
     translate_diagnostics_tests.cpp
     async_diagnostics_tests.cpp
