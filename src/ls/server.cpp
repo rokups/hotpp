@@ -779,14 +779,13 @@ private:
         const Doc& d, Pos cur, const std::string& name, Pos* decl, bool* generated = nullptr);
     // The class (and the member) that is declared at "decl", or no value for a local symbol.
     std::optional<SymbolKey> symbol_key(const Doc& d, Pos decl, const std::string& name) const;
-    // The name of an importing script (direct or through other scripts) that uses the word, or an
-    // empty string. A comment and a string do not count. With a non-empty "owner" the word is a
-    // static member of that class: only a use through the class or a derived class counts.
-    std::string importer_conflict(const Doc& d, const std::string& name, const std::string& owner) const;
     // False when no workspace root and no host script dir is known: the importers are unknown.
     bool importers_known() const;
-    // The refusal text of a rename that importing scripts break, or an empty string.
-    std::string importer_refusal(const Doc& d, const std::string& name, const std::string& owner) const;
+    // The rename of the script symbol at "cur" through the table (resolve_at, places_of). No value:
+    // the word is not in the table, and the native path is used. With "prepare" the answer is the
+    // range and the placeholder of prepareRename, and "new_name" is not used.
+    std::optional<std::variant<json, std::string>> table_rename(
+        const Doc& d, Pos cur, const std::string& new_name, bool prepare);
     std::optional<SymbolKey> key_at(const Doc& d, Pos cur);
     std::optional<Pos> key_position(const Doc& d, const SymbolKey& key) const;
     Pos class_name_pos(const Doc& d, const hotc::AnalyzedClass& c) const;
@@ -800,12 +799,12 @@ private:
         Pos decl;
         const hotc::AnalyzedMember* member;
     };
-    // "uncertain" (if given) is set when the bare word names a static but a same-name token of
-    // the function may declare a local. The answer is then empty: the caller must not guess.
-    std::optional<StaticHit> static_member_at(const Doc& d, Pos cur, bool* uncertain = nullptr) const;
-    // The places of the word of a static member in the script (the declaration and the uses).
-    std::set<Pos> static_places(const Doc& d, const StaticHit& hit, bool& uncertain) const;
-    std::vector<std::string> workspace_scripts() const;
+    // The answer is empty when the bare word names a static but a same-name token of the function
+    // may declare a local.
+    std::optional<StaticHit> static_member_at(const Doc& d, Pos cur) const;
+    // The scripts in the workspace folders. "with_import_dirs" adds the script dirs and the
+    // include dirs of the hosts and of the options: a script there can import a workspace script.
+    std::vector<std::string> workspace_scripts(bool with_import_dirs = false) const;
     // The hotc::ref_file_id of each direct script import of "text", the text of the script "d". The
     // search is the search of the translator (hotc::find_import) with the open documents. A path
     // that no file has is left out.
@@ -827,8 +826,9 @@ private:
         const std::string& path, const std::string* text = nullptr, Text* used = nullptr);
     // The script imports of the workspace scripts (workspace_scripts()), of each open script and
     // of the script at "also" (if given). The ids are hotc::ref_file_id. A closed file is read
-    // again when its size or its time changes, an open document when its facts change.
-    ImportGraph& import_graph(const std::string& also = std::string());
+    // again when its size or its time changes, an open document when its facts change. With
+    // "fresh" the walk of the roots is always new.
+    ImportGraph& import_graph(const std::string& also = std::string(), bool fresh = false);
     // Drops the cached imports of the script at "path", or of all scripts when "path" is empty.
     void drop_import_graph(const std::string& path);
     // Gives the closed script "tmp" (with its facts) to clangd for the call of "fn". Then closes
@@ -870,9 +870,10 @@ private:
     // a word that clangd cannot resolve gives an error with the file and the line. Not strict
     // (references): the word is left out. "also" (if given) is the script of the request: its
     // imports go to the graph also when it is not in the roots. "texts" (if given) gets the text
-    // of each URI of the result: the positions are positions in that text.
+    // of each URI of the result: the positions are positions in that text. "files" (if given)
+    // replaces the file of the declaration and its importers: the caller did the import walk.
     std::variant<PlaceMap, std::string> places_of(const Resolved& r, bool strict, const std::string& also = std::string(),
-        std::map<std::string, Text>* texts = nullptr);
+        std::map<std::string, Text>* texts = nullptr, const std::vector<std::string>* files = nullptr);
     // Calls "fn" for each other .hot file of the workspace that declares the symbol "key".
     // "places" are the places of the symbol in that file. An open document is used as it is.
     // A file on disk goes to clangd only for the call.
@@ -1038,7 +1039,7 @@ private:
         ++translations_;
         return r;
     }
-    int closed_analyses_ = 0; // the analyze calls of for_other_scripts (hot/indexStats)
+    int closed_analyses_ = 0; // the analyze calls of closed files: for_other_scripts and file_refs (hot/indexStats)
     // The tables of the closed scripts (file_refs), by path. "digest" is the shard digest.
     struct TableEntry
     {
@@ -2762,7 +2763,7 @@ json Server::on_completion(const Doc& d, const json& p)
 
 static std::string blank_non_code(std::string_view l, bool& in_block);
 
-std::optional<Server::StaticHit> Server::static_member_at(const Doc& d, Pos cur, bool* uncertain) const
+std::optional<Server::StaticHit> Server::static_member_at(const Doc& d, Pos cur) const
 {
     if (cur.line < 0 || cur.line >= static_cast<int>(d.text.starts.size()))
         return std::nullopt;
@@ -2889,8 +2890,8 @@ std::optional<Server::StaticHit> Server::static_member_at(const Doc& d, Pos cur,
         return std::nullopt;
     if (bare && in_function)
     {
-        // A same-name token that may declare a local or a parameter makes the word uncertain.
-        // The test is conservative on purpose: rename refuses on it, it never guesses.
+        // A same-name token that may declare a local or a parameter: the word is perhaps not the
+        // static. The test is conservative on purpose: it never guesses.
         static const std::set<std::string> not_a_type = {"return", "case", "new", "delete", "await", "throw",
             "else", "do", "in", "is", "as", "typeof", "default"};
         auto prev_word = [&](size_t q)
@@ -3043,38 +3044,10 @@ std::optional<Server::StaticHit> Server::static_member_at(const Doc& d, Pos cur,
                 }
             }
             if (may_declare)
-            {
-                if (uncertain)
-                    *uncertain = true;
                 return std::nullopt;
-            }
         }
     }
     return StaticHit{{found->begin.line - 1, found->begin.col - 1}, found};
-}
-
-std::set<Pos> Server::static_places(const Doc& d, const StaticHit& hit, bool& uncertain) const
-{
-    std::set<Pos> out;
-    const std::string& name = hit.member->name;
-    bool block = false;
-    for (int l = 0; l < static_cast<int>(d.text.starts.size()); ++l)
-    {
-        const std::string code = blank_non_code(d.text.line(l), block);
-        for (size_t at = code.find(name); at != std::string::npos; at = code.find(name, at + 1))
-        {
-            if ((at > 0 && is_id_char(code[at - 1])) || (at + name.size() < code.size() && is_id_char(code[at + name.size()])))
-                continue;
-            const Pos here = {l, static_cast<int>(at)};
-            bool maybe_local = false;
-            const auto h = static_member_at(d, here, &maybe_local);
-            if (maybe_local)
-                uncertain = true;
-            if (h && h->member == hit.member)
-                out.insert(here);
-        }
-    }
-    return out;
 }
 
 json Server::on_hover(const Doc& d, const json& p)
@@ -3803,6 +3776,22 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
         }
         if (!is_ref)
         {
+            // A method with a closer declaration in the class chain of the receiver (an override):
+            // the definition is that declaration, not the root declaration.
+            if (!r->ref.near_decl.empty())
+            {
+                Text near_text;
+                const auto near_table = file_refs(r->ref.near_file, nullptr, &near_text);
+                for (const hotc::ResolvedRef& n : near_table ? near_table->refs : std::vector<hotc::ResolvedRef>())
+                    if (n.is_decl && n.id == r->ref.id && n.offset <= near_text.s.size()
+                        && (n.near_decl == r->ref.near_decl || (n.near_decl.empty() && n.decl == r->ref.near_decl)))
+                    {
+                        const std::shared_ptr<Doc> near_doc = open_doc_at(r->ref.near_file);
+                        const auto [line, col] = near_text.pos(n.offset);
+                        return json::array(
+                            {loc(near_doc ? near_doc->uri : path_to_uri(r->ref.near_file), near_text, Pos{line, col})});
+                    }
+            }
             if (!decl_pos)
                 return std::nullopt;
             return json::array({loc(decl_uri, decl_text, *decl_pos)});
@@ -4187,13 +4176,24 @@ std::optional<Pos> Server::key_position(const Doc& d, const SymbolKey& key) cons
     return std::nullopt;
 }
 
-std::vector<std::string> Server::workspace_scripts() const
+std::vector<std::string> Server::workspace_scripts(bool with_import_dirs) const
 {
     std::vector<std::string> out;
-    for (const std::string& root : roots_)
+    std::set<std::string> dirs(roots_.begin(), roots_.end());
+    if (with_import_dirs)
+    {
+        for (const HostSet& hs : hosts_)
+            for (const auto& h : hs.all())
+            {
+                dirs.insert(h->script_dirs.begin(), h->script_dirs.end());
+                dirs.insert(h->include_dirs.begin(), h->include_dirs.end());
+            }
+        dirs.insert(opt_.include_dirs.begin(), opt_.include_dirs.end());
+    }
+    for (const std::string& root : dirs)
     {
         std::error_code ec;
-        fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end;
+        fs::recursive_directory_iterator it(utf8_path(root), fs::directory_options::skip_permission_denied, ec), end;
         for (; !ec && it != end; it.increment(ec))
         {
             const std::string name = it->path().filename().string();
@@ -4334,6 +4334,14 @@ FileRefs Server::table_of_doc(const Doc& d)
     t.unresolved = d.facts.unresolved;
     t.raw_ranges = d.facts.raw_ranges;
     t.imports = script_imports(d, d.text.s);
+    for (const hotc::AnalyzeError& e : d.facts.errors)
+        if (!e.note)
+            t.errors.emplace_back(e.pos.line, e.message);
+    // A script that does not translate has no table, or a table with gaps. Line 0: no line.
+    if (t.errors.empty() && !d.facts.ok)
+        t.errors.emplace_back(0, d.facts.diagnostics.substr(0, d.facts.diagnostics.find('\n')));
+    for (const hotc::AnalyzedClass& c : d.facts.classes)
+        t.bases.emplace_back(c.name, c.base);
     sort_refs(t);
     return t;
 }
@@ -4421,6 +4429,7 @@ std::shared_ptr<const FileRefs> Server::file_refs(const std::string& path, const
     Doc tmp = closed_doc(norm, *text);
     tmp.facts = timed_translate([&] { return hotc::analyze(tmp.text.s, translate_options(tmp), session_); });
     ++table_analyses_;
+    ++closed_analyses_;
     IndexShard shard = shard_of_doc(tmp);
     index_.store(norm, digest, shard);
     entry = {digest, std::make_shared<const FileRefs>(std::move(shard.table))};
@@ -4436,15 +4445,15 @@ void Server::drop_import_graph(const std::string& path)
         graph_files_.erase(fs::path(path).lexically_normal().string());
 }
 
-ImportGraph& Server::import_graph(const std::string& also)
+ImportGraph& Server::import_graph(const std::string& also, bool fresh)
 {
     // The scripts on disk in the roots, each open script and "also". An open script outside the
     // roots or not saved can import the declaration file too.
     // A walk of the roots that is less than 500 ms old is used again.
     const auto now = std::chrono::steady_clock::now();
-    if (!graph_walk_valid_ || now - graph_walk_at_ >= std::chrono::milliseconds(500))
+    if (fresh || !graph_walk_valid_ || now - graph_walk_at_ >= std::chrono::milliseconds(500))
     {
-        graph_walk_ = workspace_scripts();
+        graph_walk_ = workspace_scripts(fresh);
         graph_walk_at_ = now;
         graph_walk_valid_ = true;
     }
@@ -4607,12 +4616,15 @@ std::optional<Server::Resolved> Server::resolve_at(const Doc& d, Pos cur)
 }
 
 std::variant<Server::PlaceMap, std::string> Server::places_of(
-    const Resolved& r, bool strict, const std::string& also, std::map<std::string, Text>* texts)
+    const Resolved& r, bool strict, const std::string& also, std::map<std::string, Text>* texts,
+    const std::vector<std::string>* only)
 {
     PlaceMap out;
     const std::string& name = r.name;
     std::vector<std::string> files = {r.ref.decl_file};
-    if (!file_local(r.ref.kind))
+    if (only)
+        files = *only;
+    else if (!file_local(r.ref.kind))
         for (const std::string& f : import_graph(also).importers_of(r.ref.decl_file))
             files.push_back(f);
     for (const std::string& path : files)
@@ -4654,6 +4666,28 @@ std::variant<Server::PlaceMap, std::string> Server::places_of(
                 if (left && right)
                     asks.push_back(static_cast<uint32_t>(at));
             }
+        // Strict: a code word "name" that is not a ref, not an unresolved name and not in a raw body
+        // has no resolution in the table. Clangd must resolve it, else the rename skips a place.
+        if (strict)
+        {
+            std::set<uint32_t> known(asks.begin(), asks.end());
+            for (const hotc::ResolvedRef& p : table->refs)
+                known.insert(p.offset);
+            for (const hotc::UnresolvedName& u : table->unresolved)
+                known.insert(u.offset);
+            bool block = false;
+            for (int l = 0; l < static_cast<int>(text.starts.size()); ++l)
+            {
+                const std::string code = blank_non_code(text.line(l), block);
+                for (size_t at = code.find(name); at != std::string::npos; at = code.find(name, at + 1))
+                {
+                    const bool left = at == 0 || !is_id_char(code[at - 1]);
+                    const bool right = at + name.size() >= code.size() || !is_id_char(code[at + name.size()]);
+                    if (left && right && !known.count(static_cast<uint32_t>(text.starts[l] + at)))
+                        asks.push_back(static_cast<uint32_t>(text.starts[l] + at));
+                }
+            }
+        }
         if (asks.empty())
             continue;
         std::string error;
@@ -4684,255 +4718,6 @@ std::variant<Server::PlaceMap, std::string> Server::places_of(
     return out;
 }
 
-// True when the position is a declaration at the top level of a script: a module name, a class
-// member, an enumeration value. A local, a parameter and a name inside a body are not top level.
-static bool top_level_decl(const Doc& d, Pos decl)
-{
-    if (decl.line < 0 || decl.line >= static_cast<int>(d.text.starts.size()))
-        return false;
-    std::string code;
-    size_t at = 0;
-    bool block = false;
-    for (int l = 0; l < static_cast<int>(d.text.starts.size()); ++l)
-    {
-        if (l == decl.line)
-            at = code.size() + static_cast<size_t>(decl.col);
-        code += blank_non_code(d.text.line(l), block);
-        code += '\n';
-    }
-    if (at >= code.size())
-        return false;
-    std::vector<bool> code_brace; // true for a body of code, false for a class, an enum or a namespace
-    int parens = 0;
-    size_t start = 0; // the start of the statement before the brace
-    for (size_t i = 0; i < at; ++i)
-    {
-        const char ch = code[i];
-        if (ch == '(')
-            ++parens;
-        else if (ch == ')')
-            --parens;
-        else if (parens > 0)
-            continue;
-        else if (ch == ';')
-            start = i + 1;
-        else if (ch == '{')
-        {
-            const std::string head = code.substr(start, i - start);
-            bool decl_scope = false;
-            for (const char* w : {"enum", "class", "struct", "interface", "namespace"})
-                for (size_t f = head.find(w); f != std::string::npos && !decl_scope; f = head.find(w, f + 1))
-                    decl_scope = (f == 0 || !is_id_char(head[f - 1])) && (f + std::strlen(w) >= head.size() || !is_id_char(head[f + std::strlen(w)]));
-            code_brace.push_back(!decl_scope);
-            start = i + 1;
-        }
-        else if (ch == '}')
-        {
-            if (!code_brace.empty())
-                code_brace.pop_back();
-            start = i + 1;
-        }
-    }
-    return parens == 0 && std::none_of(code_brace.begin(), code_brace.end(), [](bool b) { return b; });
-}
-
-std::string Server::importer_conflict(const Doc& d, const std::string& name, const std::string& owner) const
-{
-    auto last_segment = [](const std::string& path)
-    {
-        const size_t sl = path.find_last_of("/\\");
-        return sl == std::string::npos ? path : path.substr(sl + 1);
-    };
-    auto code_of = [](const std::string& text)
-    {
-        std::string out;
-        bool block = false;
-        for (size_t b = 0; b < text.size();)
-        {
-            size_t e = text.find('\n', b);
-            if (e == std::string::npos)
-                e = text.size();
-            out += blank_non_code(std::string_view(text).substr(b, e - b), block);
-            out += '\n';
-            b = e + 1;
-        }
-        return out;
-    };
-    struct Script
-    {
-        std::string code;
-        std::vector<std::string> imports;
-    };
-    std::map<std::string, Script> scripts; // path
-    // The scripts of the roots, of the script dirs of the hosts and of the include dirs (the
-    // dirs that an import is searched in). A hidden dir counts, a build or cache dir does not.
-    std::set<std::string> found;
-    {
-        std::set<std::string> dirs(roots_.begin(), roots_.end());
-        for (const HostSet& hs : hosts_)
-            for (const auto& h : hs.all())
-            {
-                dirs.insert(h->script_dirs.begin(), h->script_dirs.end());
-                dirs.insert(h->include_dirs.begin(), h->include_dirs.end());
-            }
-        dirs.insert(opt_.include_dirs.begin(), opt_.include_dirs.end());
-        for (const std::string& dir : dirs)
-        {
-            std::error_code ec;
-            fs::recursive_directory_iterator it(utf8_path(dir), fs::directory_options::skip_permission_denied, ec), end;
-            for (; !ec && it != end; it.increment(ec))
-            {
-                const std::string fname = path_utf8(it->path().filename());
-                std::error_code ec2;
-                if (it->is_directory(ec2))
-                {
-                    if (fname == ".cache" || fname == ".git" || fname == ".hg" || fname == ".svn" || fname == "node_modules")
-                        it.disable_recursion_pending();
-                    continue;
-                }
-                if (it->path().extension() == ".hot" && it->is_regular_file(ec2))
-                    found.insert(path_utf8(it->path().lexically_normal()));
-            }
-        }
-    }
-    for (const std::string& path : found)
-    {
-        if (path == d.path)
-            continue;
-        std::string text;
-        for (const auto& [uri, doc] : docs_)
-            if (doc->path == path)
-                text = doc->text.s;
-        if (text.empty())
-            text = read_file(path).value_or(std::string());
-        Script sc;
-        for (const std::string& u : using_paths(text))
-            sc.imports.push_back(last_segment(u));
-        sc.code = code_of(text);
-        scripts[path] = std::move(sc);
-    }
-    std::set<std::string> names = {last_segment(d.path)}, importers;
-    for (bool grew = true; grew;)
-    {
-        grew = false;
-        for (const auto& [path, sc] : scripts)
-            if (!importers.count(path)
-                && std::any_of(sc.imports.begin(), sc.imports.end(), [&](const std::string& n) { return names.count(n); }))
-            {
-                importers.insert(path);
-                names.insert(last_segment(path));
-                grew = true;
-            }
-    }
-    // The word positions of a script code.
-    auto word_ats = [&](const std::string& code)
-    {
-        std::vector<size_t> out;
-        for (size_t at = code.find(name); at != std::string::npos; at = code.find(name, at + 1))
-            if ((at == 0 || !is_id_char(code[at - 1])) && (at + name.size() >= code.size() || !is_id_char(code[at + name.size()])))
-                out.push_back(at);
-        return out;
-    };
-    // The bases of each class of the workspace (the text of the origin too). A class name that two
-    // scripts declare has the bases of both. The lists "class D : IFoo, Owner" give all bases.
-    std::map<std::string, std::set<std::string>> bases_of;
-    static const std::regex class_re(
-        "\\b(?:class|struct|interface)[ \\t\\n]+([A-Za-z_][A-Za-z_0-9]*)[ \\t\\n]*(?::([^{;]*))?");
-    auto scan_classes = [&](const std::string& code, const std::function<void(const std::string&, const std::set<std::string>&)>& fn)
-    {
-        for (auto it = std::sregex_iterator(code.begin(), code.end(), class_re); it != std::sregex_iterator(); ++it)
-        {
-            std::set<std::string> bases;
-            const std::string list = (*it)[2].str();
-            for (size_t i = 0; i < list.size();)
-            {
-                if (is_id_char(list[i]) && !(list[i] >= '0' && list[i] <= '9'))
-                {
-                    size_t j = i;
-                    while (j < list.size() && is_id_char(list[j]))
-                        ++j;
-                    bases.insert(list.substr(i, j - i));
-                    // skip a template list or a scope that follows
-                    i = j;
-                }
-                else
-                    ++i;
-            }
-            fn((*it)[1].str(), bases);
-        }
-    };
-    if (!owner.empty())
-    {
-        auto add = [&](const std::string& c, const std::set<std::string>& b) { bases_of[c].insert(b.begin(), b.end()); };
-        scan_classes(code_of(d.text.s), add);
-        for (const auto& [path, sc] : scripts)
-            scan_classes(sc.code, add);
-    }
-    auto derives = [&](const std::string& start)
-    {
-        std::set<std::string> seen;
-        std::vector<std::string> todo = {start};
-        while (!todo.empty() && seen.size() < 256)
-        {
-            const std::string c = todo.back();
-            todo.pop_back();
-            if (c == owner)
-                return true;
-            if (!seen.insert(c).second)
-                continue;
-            const auto it = bases_of.find(c);
-            if (it != bases_of.end())
-                todo.insert(todo.end(), it->second.begin(), it->second.end());
-        }
-        return false;
-    };
-    for (const std::string& path : importers)
-    {
-        const std::string& code = scripts[path].code;
-        const std::vector<size_t> ats = word_ats(code);
-        if (ats.empty())
-            continue;
-        bool hit = owner.empty();
-        if (!hit)
-        {
-            bool derived_class = false;
-            scan_classes(code, [&](const std::string& c, const std::set<std::string>&)
-            { derived_class = derived_class || (c != owner && derives(c)); });
-            for (const size_t at : ats)
-            {
-                size_t q = at;
-                while (q > 0 && (code[q - 1] == ' ' || code[q - 1] == '\t' || code[q - 1] == '\n'))
-                    --q;
-                if (q == 0 || code[q - 1] != '.')
-                {
-                    hit = hit || derived_class; // a bare use
-                    continue;
-                }
-                // A qualifier: a plain name is a class, "this", "base" or a variable. Anything
-                // else (a call, an index, a template list) is an expression: it counts.
-                size_t e = q - 1;
-                while (e > 0 && (code[e - 1] == ' ' || code[e - 1] == '\t' || code[e - 1] == '\n'))
-                    --e;
-                size_t w = e;
-                while (w > 0 && is_id_char(code[w - 1]))
-                    --w;
-                const std::string qual = code.substr(w, e - w);
-                if (qual.empty() || qual == "this" || qual == "base")
-                    hit = true;
-                else if (w > 0 && (code[w - 1] == '.' || code[w - 1] == ':'))
-                    hit = true; // "a.b.Name": a member chain, an instance access
-                else if (bases_of.count(qual))
-                    hit = hit || derives(qual); // a known class that does not derive: not a use
-                else
-                    hit = true; // a variable or an unknown name
-            }
-        }
-        if (hit)
-            return last_segment(path);
-    }
-    return std::string();
-}
-
 bool Server::importers_known() const
 {
     if (!roots_.empty())
@@ -4944,15 +4729,177 @@ bool Server::importers_known() const
     return false;
 }
 
-std::string Server::importer_refusal(const Doc& d, const std::string& name, const std::string& owner) const
+// True when "text" has the whole word "name".
+static bool has_word(std::string_view text, const std::string& name)
 {
-    if (!importers_known())
-        return "cannot rename " + name + ": the importers of this script are unknown";
-    const std::string imp = importer_conflict(d, name, owner);
-    if (imp.empty())
-        return std::string();
-    return "cannot rename " + name + ": the script " + imp
-        + " imports this script and uses the same word. Rename of uses in other scripts is not supported yet.";
+    for (size_t at = text.find(name); at != std::string_view::npos; at = text.find(name, at + 1))
+        if ((at == 0 || !is_id_char(text[at - 1])) && (at + name.size() >= text.size() || !is_id_char(text[at + name.size()])))
+            return true;
+    return false;
+}
+
+std::optional<std::variant<json, std::string>> Server::table_rename(
+    const Doc& d, Pos cur, const std::string& new_name, bool prepare)
+{
+    const auto r = resolve_at(d, cur);
+    if (!r)
+        return std::nullopt;
+    const std::string& old_name = r->name;
+    const std::string what = "cannot rename " + old_name + ": ";
+    const bool local = file_local(r->ref.kind);
+    if (!local && !importers_known())
+        return what + "the importers of this script are unknown";
+    // The candidate files: the file of the declaration and the scripts that import it, directly or
+    // through other scripts. A fresh walk of the roots: a rename must not miss a new script.
+    ImportGraph& graph = import_graph(d.path, true);
+    std::vector<std::string> files = {r->ref.decl_file};
+    if (!local)
+        for (const std::string& f : graph.importers_of(r->ref.decl_file))
+            files.push_back(f);
+    // The open documents with a text that is not the text on disk. The table of a closed file
+    // comes from the disk texts of its imports.
+    std::map<std::string, bool> dirty_cache;
+    auto dirty = [&](const std::string& id)
+    {
+        const auto it = dirty_cache.find(id);
+        if (it != dirty_cache.end())
+            return it->second;
+        const std::shared_ptr<Doc> open = open_doc_at(id);
+        const auto disk = open ? read_file(id) : std::nullopt;
+        return dirty_cache[id] = open && (!disk || *disk != open->text.s);
+    };
+    struct Kept
+    {
+        std::shared_ptr<const FileRefs> table;
+        Text text;
+    };
+    std::vector<Kept> kept;
+    kept.reserve(files.size());
+    for (const std::string& path : files)
+    {
+        const std::shared_ptr<Doc> open = open_doc_at(path);
+        std::optional<std::string> closed_text;
+        if (!open && !(closed_text = read_file(path)))
+            return what + "cannot read " + path;
+        const std::string_view text = open ? std::string_view(open->text.s) : std::string_view(*closed_text);
+        const bool affected = has_word(text, old_name);
+        // A file without the old name gets no edit. It counts for the conflict check only: for a
+        // word with the new name, or for the bases of its classes (the class family).
+        if (!affected && (prepare || (!has_word(text, new_name) && !has_word(text, "class") && !has_word(text, "struct"))))
+            continue;
+        Kept k;
+        k.table = file_refs(path, open ? nullptr : &*closed_text, &k.text);
+        if (!k.table)
+            return what + path + " has no table of the resolved names";
+        if (affected)
+        {
+            if (open.get() != &d && !in_workspace(path))
+                return what + path + " is outside the workspace folders";
+            // The table of an open document comes from its facts, thus it has the errors too.
+            if (!k.table->errors.empty())
+            {
+                const auto& [line, message] = k.table->errors[0];
+                if (line > 0)
+                    return what + path + " has a syntax error at line " + std::to_string(line);
+                return what + path + " does not translate: " + message;
+            }
+            if (!open)
+            {
+                std::set<std::string> seen = {k.table->file_id};
+                std::vector<std::string> todo = graph.imports_of(k.table->file_id);
+                while (!todo.empty())
+                {
+                    const std::string id = todo.back();
+                    todo.pop_back();
+                    if (!seen.insert(id).second)
+                        continue;
+                    if (dirty(id))
+                        return what + path + " imports " + id + ", and the open document of " + id
+                            + " has changes that are not saved";
+                    for (const std::string& next : graph.imports_of(id))
+                        todo.push_back(next);
+                }
+            }
+        }
+        kept.push_back(std::move(k));
+    }
+    // The conflict check also reads the imports of the files, directly or not: they have the
+    // bases of the class family and the module symbols that the files see.
+    if (!prepare)
+    {
+        std::set<std::string> seen(files.begin(), files.end());
+        std::vector<std::string> todo;
+        for (const std::string& f : files)
+            for (const std::string& i : graph.imports_of(f))
+                todo.push_back(i);
+        while (!todo.empty())
+        {
+            const std::string id = todo.back();
+            todo.pop_back();
+            if (!seen.insert(id).second)
+                continue;
+            for (const std::string& next : graph.imports_of(id))
+                todo.push_back(next);
+            const std::shared_ptr<Doc> open = open_doc_at(id);
+            std::optional<std::string> closed_text;
+            if (!open && !(closed_text = read_file(id)))
+                return what + "cannot read " + id;
+            // A file without the new name and without a class cannot conflict.
+            const std::string_view itext = open ? std::string_view(open->text.s) : std::string_view(*closed_text);
+            if (!has_word(itext, new_name) && !has_word(itext, "class") && !has_word(itext, "struct"))
+                continue;
+            Kept k;
+            k.table = file_refs(id, open ? nullptr : &*closed_text, &k.text);
+            if (!k.table)
+                return what + id + " has no table of the resolved names";
+            kept.push_back(std::move(k));
+        }
+    }
+    std::map<std::string, Text> texts;
+    auto found = places_of(*r, true, d.path, &texts, &files);
+    if (const auto* e = std::get_if<std::string>(&found))
+        return what + *e;
+    const PlaceMap& at = std::get<PlaceMap>(found);
+    const int len = static_cast<int>(old_name.size());
+    for (const auto& [uri, starts] : at)
+    {
+        const Text& t = texts[uri];
+        for (const Pos& s : starts)
+            if (s.line < 0 || s.line >= static_cast<int>(t.starts.size())
+                || t.line(s.line).substr(static_cast<size_t>(s.col), old_name.size()) != old_name)
+                return what + "the text at " + uri_to_path(uri) + ":" + std::to_string(s.line + 1) + " is not " + old_name;
+    }
+    if (prepare)
+    {
+        const auto [b, e] = word_at(d, cur);
+        return json{{"range", script_range(d, {cur.line, b}, {cur.line, e})}, {"placeholder", old_name}};
+    }
+    std::vector<RenameFile> conflict_files;
+    for (const Kept& k : kept)
+        conflict_files.push_back({k.table.get(), k.text.s});
+    if (std::string c = rename_conflict(conflict_files, r->ref, new_name); !c.empty())
+        return c;
+    json changes = json::object();
+    for (const auto& [uri, starts] : at)
+    {
+        const Text& t = texts[uri];
+        json edits = json::array();
+        for (const Pos& s : starts)
+            edits.push_back({{"range", {{"start", to_lsp(t, s, utf8_)}, {"end", to_lsp(t, {s.line, s.col + len}, utf8_)}}},
+                {"newText", new_name}});
+        if (merge_edits(changes, uri, edits) > 0)
+            return what + "two edits of " + uri_to_path(uri) + " change the same range";
+    }
+    return json{{"changes", changes}};
+}
+
+// The refusal of a rename of a script symbol that the table does not have.
+static std::string untabled_refusal(const Doc& d, const std::string& old_name)
+{
+    for (const hotc::AnalyzeError& e : d.facts.errors)
+        if (!e.note)
+            return "cannot rename " + old_name + ": " + d.path + " has a syntax error at line " + std::to_string(e.pos.line);
+    return "cannot rename " + old_name + ": the table of the resolved names does not have the symbol";
 }
 
 std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
@@ -4965,73 +4912,16 @@ std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
     if (new_name.empty() || !std::all_of(new_name.begin(), new_name.end(), is_id_char)
         || (new_name[0] >= '0' && new_name[0] <= '9'))
         return std::string("the new name is not an identifier: " + new_name);
-    // A class constant, a static field or a static method: the script gives the places. The
-    // generated name ("Class__Name") has no map segment for the word.
-    if (const auto hit = static_member_at(d, cur))
-    {
-        // A script of the workspace that imports this script (directly or through other scripts)
-        // and uses the member can use it too. This rename does not change that script: refuse.
-        std::string owner;
-        for (const hotc::AnalyzedClass& c : d.facts.classes)
-            for (const hotc::AnalyzedMember& m : c.statics)
-                if (&m == hit->member)
-                    owner = c.name;
-        if (const std::string refusal = importer_refusal(d, old_name, owner); !refusal.empty())
-            return refusal;
-        // A bare use that may be a local or a parameter: rename never skips a place silently.
-        bool uncertain = false;
-        const std::set<Pos> places = static_places(d, *hit, uncertain);
-        if (uncertain)
-            return std::string("cannot rename " + old_name + ": the name may also be a local or a parameter");
-        json edits = json::array();
-        for (const Pos& s : places)
-            edits.push_back({{"range", script_range(d, s, {s.line, s.col + static_cast<int>(old_name.size())})},
-                {"newText", new_name}});
-        return json{{"changes", {{d.uri, edits}}}};
-    }
+    wait_for_native_ready(d);
+    if (auto t = table_rename(d, cur, new_name, false))
+        return std::move(*t);
+    // Not in the table: a native symbol (clangd renames it) or a name that the translator makes.
     Pos decl;
     bool generated = false;
     const auto r = symbol_places(d, cur, old_name, &decl, &generated);
     if (const auto* e = std::get_if<std::string>(&r))
-    {
-        // A name that clangd renames (an enumeration value, a module function): the script may
-        // declare it at the top level. An importing script that uses the word would break.
-        if (!generated)
-        {
-            bool top = false;
-            for (int l = 0; l < static_cast<int>(d.text.starts.size()) && !top; ++l)
-            {
-                const std::string_view line = d.text.line(l);
-                for (size_t at = line.find(old_name); at != std::string_view::npos && !top; at = line.find(old_name, at + 1))
-                    if ((at == 0 || !is_id_char(line[at - 1]))
-                        && (at + old_name.size() >= line.size() || !is_id_char(line[at + old_name.size()])))
-                        top = top_level_decl(d, {l, static_cast<int>(at)});
-            }
-            if (top)
-                if (const std::string refusal = importer_refusal(d, old_name, std::string()); !refusal.empty())
-            return refusal;
-        }
         return generated ? *e : native_rename(d, cur, old_name, new_name, *e);
-    }
-    auto edits_of = [&](const Doc& doc, const std::set<Pos>& places)
-    {
-        json edits = json::array();
-        for (const Pos& s : places)
-            edits.push_back({{"range", script_range(doc, s, {s.line, s.col + static_cast<int>(old_name.size())})},
-                {"newText", new_name}});
-        return edits;
-    };
-    // A class or a member that an importing script uses: the uses there would break. Refuse.
-    if (symbol_key(d, decl, old_name) || top_level_decl(d, decl))
-        if (const std::string refusal = importer_refusal(d, old_name, std::string()); !refusal.empty())
-            return refusal;
-    json changes = {{d.uri, edits_of(d, std::get<std::set<Pos>>(r))}};
-    // A class or a member that other scripts of the workspace declare too (the versions of a
-    // script) gets the new name there as well.
-    if (const auto key = symbol_key(d, decl, old_name))
-        for_other_scripts(d, *key, old_name,
-            [&](const Doc& doc, const std::set<Pos>& places) { changes[doc.uri] = edits_of(doc, places); });
-    return json{{"changes", changes}};
+    return untabled_refusal(d, old_name);
 }
 
 bool Server::in_workspace(const std::string& path) const
@@ -5286,11 +5176,9 @@ std::variant<json, std::string> Server::on_prepare_rename(const Doc& d, const js
     const std::string old_name = word(d, cur);
     if (old_name.empty())
         return std::string("no symbol at the position");
-    if (static_member_at(d, cur))
-    {
-        const auto [b, e] = word_at(d, cur);
-        return json{{"range", script_range(d, {cur.line, b}, {cur.line, e})}, {"placeholder", old_name}};
-    }
+    wait_for_native_ready(d);
+    if (auto t = table_rename(d, cur, std::string(), true))
+        return std::move(*t);
     Pos decl;
     bool generated = false;
     const auto r = symbol_places(d, cur, old_name, &decl, &generated);
@@ -5303,9 +5191,10 @@ std::variant<json, std::string> Server::on_prepare_rename(const Doc& d, const js
         const auto n = native_rename(d, cur, old_name, "hot_rename_probe", *e);
         if (const auto* ne = std::get_if<std::string>(&n))
             return *ne;
+        const auto [b, e2] = word_at(d, cur);
+        return json{{"range", script_range(d, {cur.line, b}, {cur.line, e2})}, {"placeholder", old_name}};
     }
-    const auto [b, e] = word_at(d, cur);
-    return json{{"range", script_range(d, {cur.line, b}, {cur.line, e})}, {"placeholder", old_name}};
+    return untabled_refusal(d, old_name);
 }
 
 json Server::on_document_symbol(const Doc& d)

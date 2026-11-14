@@ -17,6 +17,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -31,6 +32,10 @@ struct FileRefs
     std::vector<hotc::UnresolvedName> unresolved;
     std::vector<std::pair<uint32_t, uint32_t>> raw_ranges; // the begin and the end of each raw body
     std::vector<std::string> imports; // hotc::ref_file_id of each direct script import
+    // The syntax errors of the script: the line (from 1) and the message of each error.
+    std::vector<std::pair<int, std::string>> errors;
+    // Each script class of the file and the name of its base. The base can be a native class.
+    std::vector<std::pair<std::string, std::string>> bases;
 };
 
 // Sorts the refs and the unresolved names by offset. The translator sorts them already.
@@ -62,6 +67,8 @@ public:
     // The files that import "file_id" directly or through other files. Each file is in the result
     // one time. "file_id" is not in the result. An import cycle does not cause a loop.
     std::vector<std::string> importers_of(const std::string& file_id) const;
+    // The direct imports of "file_id". Empty for a file that the graph does not have.
+    std::vector<std::string> imports_of(const std::string& file_id) const;
 
 private:
     std::map<std::string, std::vector<std::string>> imports_;
@@ -73,5 +80,31 @@ private:
 // changes[uri] come before the new edits. Gives the number of removed edits with a different
 // newText (the conflicts). A caller that gets a conflict can refuse the edit.
 int merge_edits(nlohmann::json& changes, const std::string& uri, const nlohmann::json& edits);
+
+// One file of a rename: its table and the text that gives the offsets of the table.
+struct RenameFile
+{
+    const FileRefs* table = nullptr;
+    std::string_view text;
+};
+
+// The conflict check of a rename of "target" (a ref of the symbol) to "new_name". "files" are the
+// files that the rename can change: the file of the declaration and its importers. Gives an
+// empty string when the new name is free. Else it gives a message with the file and the line.
+// A declaration with the new name conflicts when it is in a scope that hides the symbol or that
+// the symbol hides:
+//   - a member ("Class.member", also an enum value): a member of the same class family. The
+//     family is the class, its script bases and its derived classes (FileRefs::bases). A bare
+//     word with the new name in a file of a family class also conflicts: the member can hide it.
+//   - a module symbol: a module declaration in "files". A member with the new name in the family
+//     of a class of a file with a bare use also conflicts. So does a bare unresolved new name.
+//   - a local or a parameter: a local or a parameter in the same function, or a name between the
+//     declaration and the end of the function.
+// For each kind, a bare use of the symbol in a function with a local or a parameter with the new
+// name conflicts. The table has no function ranges: the function is the range between the
+// declarations that are not locals or parameters (conservative). "files" must also have the
+// imports of the files, thus the bases of the family and the imported module symbols.
+std::string rename_conflict(
+    const std::vector<RenameFile>& files, const hotc::ResolvedRef& target, const std::string& new_name);
 
 } // namespace hot::ls
