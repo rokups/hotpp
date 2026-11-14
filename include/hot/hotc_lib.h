@@ -150,9 +150,10 @@ struct ResolvedRef
 // It does not read the file system. Thus a symbolic link gives a different path.
 std::string ref_file_id(const std::string& path);
 
-// A member name after "." that the translator cannot resolve: the receiver has no known script
-// type (for example a value of a native type). The name is perhaps native. A language server
-// can ask clangd about it.
+// A name that the translator cannot resolve. It is one of these:
+//   - a bare name that is not a local and matches no script symbol (for example a native function);
+//   - a member name after "." with a receiver of no known script type (for example a native value).
+// The name is perhaps native. A language server can ask clangd about it.
 struct UnresolvedName
 {
     uint32_t offset = 0, length = 0; // the bytes of the name in the main script
