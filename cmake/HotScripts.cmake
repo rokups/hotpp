@@ -675,6 +675,17 @@ endfunction()
 # The explicit INCLUDES, FLAGS, SCRIPT_DIRS and SCRIPTS go into the JSON file with a full JSON
 # escape. They must be plain values: a generator expression in them has no effect.
 #
+# The side file ${HOT_HOSTS_DIR}/<name>.roots has the source roots of the whole build. The JSON
+# file names it in "sourceRootsFile". Each line is an absolute path. A line with the prefix "!"
+# is a SYSTEM dir (a directory with the property SYSTEM). hot-ls edits a header outside the
+# workspace folders only when it is below a source root and not below a SYSTEM dir. The binary dir
+# is in the JSON file ("binaryDir"). hot-ls never edits a header below it.
+# The roots come from the source dirs that CMake read, starting at CMAKE_SOURCE_DIR (the property
+# SUBDIRECTORIES). A dir below CMAKE_BINARY_DIR is skipped. A dir below an earlier root is not
+# written. A SYSTEM dir is written with "!" and CMake does not enter its subdirectories. The
+# function _hot_host_write_source_roots runs once, when CMake ends the top CMakeLists.txt
+# (cmake_language DEFER). It writes a file only when the text changes.
+#
 # Two limits remain. Both come from the line format and from the CMake lists:
 #  - A path with a newline cannot be written in a line. hot-ls reads it as two paths.
 #  - A path with a semicolon is a CMake list separator. CMake splits such a path in two
@@ -717,6 +728,56 @@ function(_hot_host_json_array out)
         set(sep ",")
     endforeach()
     set(${out} "[${text}]" PARENT_SCOPE)
+endfunction()
+
+# Writes the .roots file of each host. It runs once, deferred to the end of the top CMakeLists.txt.
+function(_hot_host_write_source_roots)
+    get_property(names GLOBAL PROPERTY HOT_HOST_NAMES)
+    if(NOT names)
+        return()
+    endif()
+    cmake_path(NORMAL_PATH CMAKE_BINARY_DIR OUTPUT_VARIABLE bin)
+    set(roots "")
+    set(text "")
+    set(queue "${CMAKE_SOURCE_DIR}")
+    while(queue)
+        list(POP_FRONT queue dir)
+        cmake_path(NORMAL_PATH dir OUTPUT_VARIABLE norm)
+        cmake_path(IS_PREFIX bin "${norm}" NORMALIZE in_bin)
+        if(in_bin)
+            continue()
+        endif()
+        set(system FALSE)
+        get_property(system DIRECTORY "${dir}" PROPERTY SYSTEM)
+        if(system)
+            string(APPEND text "!${norm}\n")
+        else()
+            set(covered FALSE)
+            foreach(r IN LISTS roots)
+                cmake_path(IS_PREFIX r "${norm}" NORMALIZE covered_by)
+                if(covered_by)
+                    set(covered TRUE)
+                    break()
+                endif()
+            endforeach()
+            if(NOT covered)
+                list(APPEND roots "${norm}")
+                string(APPEND text "${norm}\n")
+            endif()
+            get_property(subs DIRECTORY "${dir}" PROPERTY SUBDIRECTORIES)
+            list(APPEND queue ${subs})
+        endif()
+    endwhile()
+    foreach(n IN LISTS names)
+        set(file "${HOT_HOSTS_DIR}/${n}.roots")
+        set(old "")
+        if(EXISTS "${file}")
+            file(READ "${file}" old)
+        endif()
+        if(NOT old STREQUAL text)
+            file(WRITE "${file}" "${text}")
+        endif()
+    endforeach()
 endfunction()
 
 function(hot_script_host)
@@ -764,6 +825,14 @@ function(hot_script_host)
         file(GENERATE OUTPUT "${HOT_HOSTS_DIR}/${A_NAME}${lang}.includes" CONTENT "${side_includes}")
     endif()
 
+    # One deferred call writes the .roots files of all hosts.
+    set_property(GLOBAL APPEND PROPERTY HOT_HOST_NAMES "${A_NAME}")
+    get_property(roots_scheduled GLOBAL PROPERTY HOT_HOST_ROOTS_SCHEDULED)
+    if(NOT roots_scheduled)
+        set_property(GLOBAL PROPERTY HOT_HOST_ROOTS_SCHEDULED TRUE)
+        cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL _hot_host_write_source_roots)
+    endif()
+
     _hot_host_escape(e_name "${A_NAME}")
     _hot_host_escape(e_bin "${CMAKE_BINARY_DIR}")
     _hot_host_escape(e_src "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -795,6 +864,7 @@ function(hot_script_host)
     string(APPEND json "  \"includeDirs\": ${j_includes},\n")
     string(APPEND json "  \"preludes\": ${j_preludes},\n")
     string(APPEND json "  \"preludeSuffix\": \"${e_suffix}\",\n")
+    string(APPEND json "  \"sourceRootsFile\": \"${e_name}.roots\",\n")
     string(APPEND json "  \"defines\": [],\n")
     if(use_target)
         string(APPEND json "  \"definesFile\": \"${e_name}.defines\",\n")
