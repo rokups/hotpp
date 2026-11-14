@@ -355,13 +355,28 @@ bool write_file(const std::string& path, const std::string& text, bool only_if_c
         if (read_file(path, old) && old == text)
             return true;
     }
-    std::ofstream of(path, std::ios::binary); // binary: LF line ends on each platform
-    if (!of)
+    // The text goes to "path.tmp" first, then the rename replaces the file. A reader never sees half a file.
+    const std::string tmp = path + ".tmp";
     {
-        std::fprintf(stderr, "hotc: error: cannot write %s\n", path.c_str());
+        std::ofstream of(tmp, std::ios::binary); // binary: LF line ends on each platform
+        if (of)
+            of << text;
+        if (!of || (of.close(), of.fail()))
+        {
+            std::fprintf(stderr, "hotc: error: cannot write %s\n", path.c_str());
+            std::error_code ec;
+            fs::remove(tmp, ec);
+            return false;
+        }
+    }
+    std::error_code ec;
+    fs::rename(tmp, path, ec);
+    if (ec)
+    {
+        std::fprintf(stderr, "hotc: error: cannot write %s: %s\n", path.c_str(), ec.message().c_str());
+        fs::remove(tmp, ec);
         return false;
     }
-    of << text;
     return true;
 }
 
