@@ -740,6 +740,11 @@ private:
     json on_completion(const Doc& d, const json& p);
     json using_completion(const Doc& d, Pos cur, size_t off, size_t line_begin);
     json on_hover(const Doc& d, const json& p);
+    // True when the table of the script is not usable (degraded mode).
+    static bool has_no_table(const Doc& d)
+    {
+        return !d.facts.errors.empty() || (d.facts.refs.empty() && !d.facts.ok);
+    }
     json on_signature_help(const Doc& d, const json& p);
     json on_formatting(const Doc& d, const json& p);
     json on_range_formatting(const Doc& d, const json& p);
@@ -3109,19 +3114,49 @@ json Server::on_hover(const Doc& d, const json& p)
 {
     const Pos here = from_lsp(d.text, p["position"], utf8_);
     // A static member of a script class has no map segment: the script gives the answer.
-    if (const auto hit = static_member_at(d, here))
+    // The table gives the declaration line. The text scan serves only the degraded mode.
+    auto fenced = [&](std::string t)
     {
-        std::string t(d.text.line(hit->decl.line));
-        const size_t cut = t.find(hit->member->kind == "static method" ? '{' : ';');
-        if (cut != std::string::npos)
-            t.resize(cut);
         const size_t f = t.find_first_not_of(" \t");
         t = f == std::string::npos ? std::string() : t.substr(f);
         while (!t.empty() && (t.back() == ' ' || t.back() == '\r'))
             t.pop_back();
         const auto [wb, we] = word_at(d, here);
-        return {{"contents", {{"kind", "markdown"}, {"value", "```hot\n" + t + "\n```"}}},
+        return json{{"contents", {{"kind", "markdown"}, {"value", "```hot\n" + t + "\n```"}}},
             {"range", script_range(d, {here.line, wb}, {here.line, we})}};
+    };
+    if (has_no_table(d))
+    {
+        if (const auto hit = static_member_at(d, here))
+        {
+            std::string t(d.text.line(hit->decl.line));
+            const size_t cut = t.find(hit->member->kind == "static method" ? '{' : ';');
+            if (cut != std::string::npos)
+                t.resize(cut);
+            return fenced(std::move(t));
+        }
+    }
+    else if (const auto r = resolve_at(d, here))
+    {
+        const hotc::RefKind k = r->ref.kind;
+        const bool is_static = k == hotc::RefKind::StaticMethod || k == hotc::RefKind::StaticField
+            || (k == hotc::RefKind::Const && r->ref.decl.find('.') != std::string::npos);
+        if (is_static)
+        {
+            Text decl_text;
+            const auto table = file_refs(r->ref.decl_file, nullptr, &decl_text);
+            const hotc::ResolvedRef* decl = table ? decl_of(*table, r->ref.id) : nullptr;
+            if (decl && decl->offset <= decl_text.s.size())
+            {
+                const auto [line, col] = decl_text.pos(decl->offset);
+                (void)col;
+                std::string t(decl_text.line(line));
+                const size_t cut = t.find(k == hotc::RefKind::StaticMethod ? '{' : ';');
+                if (cut != std::string::npos)
+                    t.resize(cut);
+                return fenced(std::move(t));
+            }
+        }
     }
     // A word in a comment or in a string is not a symbol: no hover.
     {
@@ -3870,9 +3905,9 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
     };
     // Degraded mode: the translator gives no table, or a table with gaps, for a script with a
     // syntax error or with an import that has an error. Then the text scans of the lenient facts
-    // give the script places, and the table is not used. Remove this fallback when the translator
-    // gives a full table for a broken script.
-    const bool no_table = !d.facts.errors.empty() || (d.facts.refs.empty() && !d.facts.ok);
+    // give the script places, and the table is not used. The fallback stays: the table can have
+    // gaps for a broken file. Hover reads the table when it exists (see on_hover).
+    const bool no_table = has_no_table(d);
     if (is_ref && !no_table)
         if (auto t = by_table())
             return *t;
