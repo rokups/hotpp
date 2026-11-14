@@ -73,7 +73,7 @@ cmake -S . -B build -G Ninja -DCMAKE_PREFIX_PATH=/opt/hot-sdk -DCMAKE_CXX_COMPIL
 cmake --build build
 ```
 
-`find_package(Hot)` defines the same functions and the same targets (`hot::runtime`, `hot::aot`, `hot::backend`, `hot::hotc` and the others) as `add_subdirectory`. It sets `HOT_HOTC_EXECUTABLE` and `HOT_LS_EXECUTABLE` to the paths of the tools. The SDK records which backends it has in the variables `HOT_SDK_CLANG_FILES` and `HOT_SDK_JIT` (`ON` or `OFF`). The target `hot::clang_backend` exists only when the SDK has the clang files backend. The target `hot::jit_backend` exists only when the SDK has the JIT backend. The target `hot::backend` exists when the SDK has at least one of them.
+`find_package(Hot)` defines the same functions and the same targets (`hot::runtime`, `hot::aot`, `hot::backend`, `hot::hotc` and the others) as `add_subdirectory`. It sets `HOT_HOTC_LOCATION` and `HOT_LS_EXECUTABLE` to the paths of the tools. `HOT_HOTC_EXECUTABLE` is a different variable: the cache variable of `hot_add_scripts` for a host `hotc`. The SDK records which backends it has in the variables `HOT_SDK_CLANG_FILES` and `HOT_SDK_JIT` (`ON` or `OFF`). The target `hot::clang_backend` exists only when the SDK has the clang files backend. The target `hot::jit_backend` exists only when the SDK has the JIT backend. The target `hot::backend` exists when the SDK has at least one of them.
 
 ## Parts of this guide
 
