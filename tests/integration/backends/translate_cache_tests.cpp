@@ -187,6 +187,35 @@ TEST(TranslateCache, HitEqualsTheTranslate)
     EXPECT_EQ(c.stats().hits, 1u);
 }
 
+// An entry without the fine interface data, or with bad data, is a hit with unknown data
+// (hot::importer_is_stale rule 2). It is not a miss.
+TEST(TranslateCache, EntryWithoutFineDataGivesUnknownData)
+{
+    Fixture f;
+    const hotc::TranslateResult real = f.translate(f.options);
+    ASSERT_TRUE(real.iface_info.known);
+    for (const bool bad : {false, true})
+    {
+        hot::TranslateCache c(f.cache + (bad ? "-bad" : "-none"));
+        hotc::TranslateResult stored = real;
+        if (bad)
+            stored.iface_info.hash = real.iface_hash + 1; // the data of another interface
+        else
+        {
+            stored.iface_info = hot::IfaceInfo{};
+            stored.use_info = hot::UseInfo{};
+        }
+        std::string error;
+        ASSERT_TRUE(c.store(f.options, stored, fs::file_time_type::clock::now(), error)) << error;
+        const std::optional<hotc::TranslateResult> hit = c.lookup(f.options);
+        ASSERT_TRUE(hit.has_value()) << bad;
+        EXPECT_EQ(hit->iface_hash, real.iface_hash);
+        EXPECT_FALSE(hit->iface_info.known) << bad;
+        EXPECT_EQ(hit->use_info.known, bad) << "the use data of the bad entry is valid";
+        EXPECT_EQ(c.stats().hits, 1u);
+    }
+}
+
 TEST(TranslateCache, EditedScriptMisses)
 {
     Fixture f;

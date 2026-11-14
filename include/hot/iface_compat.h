@@ -163,7 +163,8 @@ inline std::vector<uint64_t> iface_changed_names(const IfaceInfo& a, const Iface
 // the use data of the importer. "other_imports" has the interfaces of the other imports of the
 // importer: the direct ones and the indirect ones, without the unit itself. A null entry is an
 // import with no data. The rules, in order:
-//  1. The same hash (not zero): not stale.
+//  1. The same hash (not zero): not stale. When both sides have fine data, the shape must be
+//     the same too: a part that is only in the shape (a stub, a script interface) can change.
 //  2. One side has no fine data: stale.
 //  3. The shape differs: stale.
 //  4. importer.strong has u_name: stale.
@@ -176,7 +177,7 @@ inline std::vector<uint64_t> iface_changed_names(const IfaceInfo& a, const Iface
 inline bool importer_is_stale(const IfaceInfo& live_u, const IfaceInfo& new_u, const UseInfo& importer,
     const std::string& u_name, const std::vector<const IfaceInfo*>& other_imports)
 {
-    if (live_u.hash != 0 && live_u.hash == new_u.hash)
+    if (live_u.hash != 0 && live_u.hash == new_u.hash && (!live_u.known || !new_u.known || live_u.shape == new_u.shape))
         return false;
     if (!live_u.known || !new_u.known || !importer.known)
         return true;
@@ -238,7 +239,9 @@ inline bool read_hex(const char*& p, const char* end, uint64_t& v)
 } // namespace detail
 
 // The inverse of encode_iface_info. An empty or bad text gives an unknown IfaceInfo and false
-// for a bad text. An unknown IfaceInfo is "no fine data" (rule 2).
+// for a bad text. An unknown IfaceInfo is "no fine data" (rule 2). A text is bad when the
+// members are not in strictly ascending order of the name, or the names are not in strictly
+// ascending order: the rules need sorted lists with one entry for each name.
 inline bool decode_iface_info(std::string_view text, IfaceInfo& info)
 {
     info = IfaceInfo{};
@@ -265,6 +268,8 @@ inline bool decode_iface_info(std::string_view text, IfaceInfo& info)
             return false;
         if (!detail::read_hex(p, end, m.name) || !expect(':') || !detail::read_hex(p, end, m.decl))
             return false;
+        if (!r.members.empty() && r.members.back().name >= m.name)
+            return false;
         r.members.push_back(m);
     }
     if (!expect(';'))
@@ -275,6 +280,8 @@ inline bool decode_iface_info(std::string_view text, IfaceInfo& info)
         if (!r.names.empty() && !expect(' '))
             return false;
         if (!detail::read_hex(p, end, v))
+            return false;
+        if (!r.names.empty() && r.names.back() >= v)
             return false;
         r.names.push_back(v);
     }

@@ -62,6 +62,10 @@ TEST(IfaceCompat, Rule1SameHashIsNotStale)
     unknown.hash = 10;
     EXPECT_FALSE(hot::importer_is_stale(kLive, unknown, hot::UseInfo{}, "u", {})) << "the hash wins over no data";
     EXPECT_FALSE(hot::importer_is_stale(kLive, kLive, use({"Get"}, {"u"}), "u", {}));
+    hot::IfaceInfo reshaped = kLive;
+    reshaped.shape = 2;
+    EXPECT_TRUE(hot::importer_is_stale(kLive, reshaped, use({}), "u", {}))
+        << "the same hash with fine data needs the same shape";
     hot::IfaceInfo zero_a, zero_b;
     EXPECT_TRUE(hot::importer_is_stale(zero_a, zero_b, use({}), "u", {})) << "a zero hash is not known";
 }
@@ -152,6 +156,14 @@ TEST(IfaceCompat, TextFormRoundTrips)
     EXPECT_FALSE(b.known);
     EXPECT_FALSE(hot::decode_iface_info("12345678901234567 2;;", b)) << "a number with 17 digits";
     std::vector<uint64_t> n;
+    // A bad text gives unknown data (rule 2).
+    for (const char* bad : {"1 2;5:1 3:1;", "1 2;3:1 3:2;", "1 2;3:1;9 4", "1 2;3:1;4 4", "1 2;3:1;4 ",
+             "1 2;3:1;4 9 ", "1 2;3:1 ;4", "1 2;3:1", "1 2", "1 2;;4 9 2"})
+    {
+        EXPECT_FALSE(hot::decode_iface_info(bad, b)) << bad;
+        EXPECT_FALSE(b.known) << bad;
+    }
+    EXPECT_FALSE(hot::decode_use_names("0 0;;5 3", n)) << "unsorted names";
     ASSERT_TRUE(hot::decode_use_names(hot::encode_use_names(names({"x", "y"})), n));
     EXPECT_EQ(n, names({"x", "y"}));
     ASSERT_TRUE(hot::decode_use_names(hot::encode_use_names({}), n));
