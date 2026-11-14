@@ -32,6 +32,8 @@
 #include <tuple>
 #include <vector>
 
+#include <unistd.h>
+
 using ls_test::json;
 using ls_test::LsClient;
 using translator_test::TempDir;
@@ -6791,6 +6793,124 @@ TEST(LanguageServerScope, PointerDeclarationFormsDoNotRenameTheLocal)
                 for (const json& e : edits)
                     EXPECT_NE(e["range"]["start"]["line"], 4) << stmt << " -> " << r.dump();
     }
+}
+
+// A translator gap: in "Foo* count[2];" the table gives the local "count" the id of the static.
+// The rename follows the table, thus it changes the local too. Enable the test when the
+// translator gives the local its own id.
+TEST(LanguageServerScope, DISABLED_PointerArrayDeclarationDoesNotRenameTheLocal)
+{
+    REQUIRE_CLANGD();
+    const json r = static_rename_with("Foo* count[2];");
+    ASSERT_TRUE(r.contains("error") || r.contains("result")) << r.dump();
+    const json changes = r.contains("result") ? r["result"].value("changes", json::object()) : json::object();
+    for (const auto& [uri, edits] : changes.items())
+        for (const json& e : edits)
+            EXPECT_NE(e["range"]["start"]["line"], 4) << r.dump();
+}
+
+namespace
+{
+
+// Writes "files" (name and text) into a new workspace and opens player.hot. Then renames the
+// word at "line" and "col" of player.hot to "new_name". A name with the prefix "extra/" goes to an
+// include folder outside the workspace. "root_out" (if given) gets the workspace folder.
+json rename_in_files(const std::vector<std::pair<std::string, std::string>>& files, int line, int col,
+    const std::string& new_name, std::string* root_out = nullptr)
+{
+    TempDir dir;
+    TempDir extra;
+    hot::ls::ServerOptions o = options(dir, true);
+    o.include_dirs.push_back(extra.path().string());
+    o.include_dirs.push_back(dir.path().string());
+    std::string text;
+    for (const auto& [name, body] : files)
+    {
+        const bool out = name.rfind("extra/", 0) == 0;
+        write_file(out ? extra.path() / name.substr(6) : dir.path() / name, body);
+        if (name == "player.hot")
+            text = body;
+    }
+    if (root_out)
+        *root_out = dir.path().string();
+    const std::string path = (dir.path() / "player.hot").string();
+    LsClient client(o);
+    client.initialize(uri_of(dir.path().string()));
+    client.open(uri_of(path), text);
+    return client.request("textDocument/rename",
+        {{"textDocument", {{"uri", uri_of(path)}}}, {"position", pos(line, col)}, {"newName", new_name}});
+}
+
+} // namespace
+
+// A parameter with the new name hides the renamed member at a bare use: "v = v".
+TEST(LanguageServerRename, MemberRenameRefusesWhenAParameterHidesTheNewName)
+{
+    REQUIRE_CLANGD();
+    const json r = rename_in_files(
+        {{"player.hot", "using \"Actor.h\";\nclass A : Actor {\n    int hp = 0;\n    void SetHp(int v) { hp = v; }\n}\n"}}, 2,
+        8, "v");
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+    EXPECT_NE(r.dump().find("would hide"), std::string::npos) << r.dump();
+}
+
+// The conflict check reads the imports of the declaring script: b.hot declares Helper.
+TEST(LanguageServerRename, ModuleRenameRefusesANameOfAnImportedScript)
+{
+    REQUIRE_CLANGD();
+    const json r = rename_in_files({{"b.hot", "using \"Actor.h\";\nint Helper(int a) { return a; }\n"},
+                                       {"player.hot",
+                                           "using \"Actor.h\";\nusing \"b.hot\";\nint Foo(int a) { return a; }\n"
+                                           "int Bar() { return Foo(1); }\n"}},
+        2, 4, "Helper");
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+    EXPECT_NE(r.dump().find("b.hot"), std::string::npos) << r.dump();
+}
+
+// The conflict check reads the script of the base class: Base.bar is in b.hot.
+TEST(LanguageServerRename, MemberRenameRefusesAMemberOfAnImportedBase)
+{
+    REQUIRE_CLANGD();
+    const json r = rename_in_files({{"b.hot", "using \"Actor.h\";\nclass Base : Actor {\n    int bar = 0;\n}\n"},
+                                       {"player.hot",
+                                           "using \"Actor.h\";\nusing \"b.hot\";\nclass Derived : Base {\n    int foo = 0;\n}\n"}},
+        3, 8, "bar");
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+    EXPECT_NE(r.dump().find("b.hot"), std::string::npos) << r.dump();
+}
+
+// c.hot (in the workspace) imports x.hot (an include folder outside the workspace), and x.hot
+// imports player.hot. The rename must change c.hot or refuse: never a part of the result.
+TEST(LanguageServerRename, ImporterChainThroughAnIncludeFolderIsNotLeftOut)
+{
+    REQUIRE_CLANGD();
+    std::string root;
+    const json r = rename_in_files({{"player.hot", kOriginScript},
+                                       {"extra/x.hot", "using \"player.hot\";\nclass Mid : Actor {\n}\n"},
+                                       {"c.hot", "using \"x.hot\";\nclass Kid : Spawn {\n}\n"}},
+        4, 7, "Renamed", &root);
+    ASSERT_TRUE(r.contains("error") || r.contains("result")) << r.dump();
+    if (r.contains("result"))
+        EXPECT_TRUE(r["result"]["changes"].contains(uri_of((std::filesystem::path(root) / "c.hot").string()))) << r.dump();
+}
+
+// An importer that the server cannot read: the rename refuses and names the file.
+TEST(LanguageServerRename, RenameRefusesWhenAnImporterCannotBeRead)
+{
+    REQUIRE_CLANGD();
+    if (geteuid() == 0)
+        GTEST_SKIP() << "root can read a file without permissions";
+    Session s(true, kOriginScript);
+    const std::filesystem::path other = s.dir.path() / "other.hot";
+    write_file(other, "using \"player.hot\";\nclass Kid : Spawn {\n}\n");
+    const json first = origin_rename(s, kOriginScript, "class Spawn", "Spawn");
+    ASSERT_TRUE(first.contains("result")) << first.dump();
+    std::filesystem::permissions(other, std::filesystem::perms::none);
+    const json r = origin_rename(s, kOriginScript, "class Spawn", "Spawn");
+    std::filesystem::permissions(other, std::filesystem::perms::owner_read | std::filesystem::perms::owner_write);
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+    EXPECT_NE(r.dump().find("cannot read"), std::string::npos) << r.dump();
+    EXPECT_NE(r.dump().find("other.hot"), std::string::npos) << r.dump();
 }
 
 TEST(LanguageServerScope, ProductStillRenamesTheStatic)

@@ -870,9 +870,10 @@ private:
     // a word that clangd cannot resolve gives an error with the file and the line. Not strict
     // (references): the word is left out. "also" (if given) is the script of the request: its
     // imports go to the graph also when it is not in the roots. "texts" (if given) gets the text
-    // of each URI of the result: the positions are positions in that text.
+    // of each URI of the result: the positions are positions in that text. "files" (if given)
+    // replaces the file of the declaration and its importers: the caller did the import walk.
     std::variant<PlaceMap, std::string> places_of(const Resolved& r, bool strict, const std::string& also = std::string(),
-        std::map<std::string, Text>* texts = nullptr);
+        std::map<std::string, Text>* texts = nullptr, const std::vector<std::string>* files = nullptr);
     // Calls "fn" for each other .hot file of the workspace that declares the symbol "key".
     // "places" are the places of the symbol in that file. An open document is used as it is.
     // A file on disk goes to clangd only for the call.
@@ -4615,12 +4616,15 @@ std::optional<Server::Resolved> Server::resolve_at(const Doc& d, Pos cur)
 }
 
 std::variant<Server::PlaceMap, std::string> Server::places_of(
-    const Resolved& r, bool strict, const std::string& also, std::map<std::string, Text>* texts)
+    const Resolved& r, bool strict, const std::string& also, std::map<std::string, Text>* texts,
+    const std::vector<std::string>* only)
 {
     PlaceMap out;
     const std::string& name = r.name;
     std::vector<std::string> files = {r.ref.decl_file};
-    if (!file_local(r.ref.kind))
+    if (only)
+        files = *only;
+    else if (!file_local(r.ref.kind))
         for (const std::string& f : import_graph(also).importers_of(r.ref.decl_file))
             files.push_back(f);
     for (const std::string& path : files)
@@ -4776,7 +4780,7 @@ std::optional<std::variant<json, std::string>> Server::table_rename(
         const std::shared_ptr<Doc> open = open_doc_at(path);
         std::optional<std::string> closed_text;
         if (!open && !(closed_text = read_file(path)))
-            continue;
+            return what + "cannot read " + path;
         const std::string_view text = open ? std::string_view(open->text.s) : std::string_view(*closed_text);
         const bool affected = has_word(text, old_name);
         // A file without the old name gets no edit. It counts for the conflict check only.
@@ -4785,7 +4789,7 @@ std::optional<std::variant<json, std::string>> Server::table_rename(
         Kept k;
         k.table = file_refs(path, open ? nullptr : &*closed_text, &k.text);
         if (!k.table)
-            continue;
+            return what + path + " has no table of the resolved names";
         if (affected)
         {
             if (open.get() != &d && !in_workspace(path))
@@ -4818,8 +4822,38 @@ std::optional<std::variant<json, std::string>> Server::table_rename(
         }
         kept.push_back(std::move(k));
     }
+    // The conflict check also reads the imports of the files, directly or not: they have the
+    // bases of the class family and the module symbols that the files see.
+    if (!prepare)
+    {
+        std::set<std::string> seen(files.begin(), files.end());
+        std::vector<std::string> todo;
+        for (const std::string& f : files)
+            for (const std::string& i : graph.imports_of(f))
+                todo.push_back(i);
+        while (!todo.empty())
+        {
+            const std::string id = todo.back();
+            todo.pop_back();
+            if (!seen.insert(id).second)
+                continue;
+            for (const std::string& next : graph.imports_of(id))
+                todo.push_back(next);
+            const std::shared_ptr<Doc> open = open_doc_at(id);
+            std::optional<std::string> closed_text;
+            if (!open && !(closed_text = read_file(id)))
+                return what + "cannot read " + id;
+            if (!has_word(open ? std::string_view(open->text.s) : std::string_view(*closed_text), new_name))
+                continue;
+            Kept k;
+            k.table = file_refs(id, open ? nullptr : &*closed_text, &k.text);
+            if (!k.table)
+                return what + id + " has no table of the resolved names";
+            kept.push_back(std::move(k));
+        }
+    }
     std::map<std::string, Text> texts;
-    auto found = places_of(*r, true, d.path, &texts);
+    auto found = places_of(*r, true, d.path, &texts, &files);
     if (const auto* e = std::get_if<std::string>(&found))
         return what + *e;
     const PlaceMap& at = std::get<PlaceMap>(found);
