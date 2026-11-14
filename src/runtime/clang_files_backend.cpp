@@ -1979,6 +1979,8 @@ bool ClangFilesBackend::build_impl(const ScriptSource& source, uint32_t generati
     {
         hashes->iface_hash = job.tr.iface_hash;
         hashes->import_hashes = job.tr.import_hashes;
+        hashes->iface_info = job.tr.iface_info;
+        hashes->use_info = job.tr.use_info;
     }
     if (!translated || !compile_stage(job))
     {
@@ -2570,6 +2572,8 @@ LoadResult ClangFilesBackend::complete_load(const ScriptSource& source, uint32_t
     std::vector<std::string> dependencies = std::move(r.dependencies);
     const uint64_t iface_hash = r.iface_hash;
     std::vector<std::pair<std::string, uint64_t>> import_hashes = std::move(r.import_hashes);
+    IfaceInfo iface_info = std::move(r.iface_info);
+    UseInfo use_info = std::move(r.use_info);
     const auto open_start = std::chrono::steady_clock::now();
     r = module_from_library(so);
     open_us_ += std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - open_start)
@@ -2586,11 +2590,15 @@ LoadResult ClangFilesBackend::complete_load(const ScriptSource& source, uint32_t
     r.dependencies = std::move(dependencies);
     r.iface_hash = iface_hash;
     r.import_hashes = std::move(import_hashes);
+    r.iface_info = std::move(iface_info);
+    r.use_info = std::move(use_info);
     if (r.module)
     {
         r.module->generation = generation;
         r.module->iface_hash = iface_hash;
         r.module->imports = r.import_hashes;
+        r.module->iface_info = r.iface_info;
+        r.module->use_info = r.use_info;
         if (!source.unit.empty())
             r.module->unit = source.unit;
     }
@@ -2712,6 +2720,8 @@ public:
             head.dependencies = job_.tr.dependencies; // also after a failure
             head.iface_hash = job_.tr.iface_hash;
             head.import_hashes = job_.tr.import_hashes;
+            head.iface_info = job_.tr.iface_info;
+            head.use_info = job_.tr.use_info;
         }
         catch (const std::exception& e)
         {

@@ -181,6 +181,8 @@ public:
         head.dependencies = result_.dependencies;
         head.iface_hash = result_.iface_hash;
         head.import_hashes = result_.import_hashes;
+        head.iface_info = result_.iface_info;
+        head.use_info = result_.use_info;
         ok = result_.error.empty();
     }
     LoadResult finish() override { return std::move(result_); }

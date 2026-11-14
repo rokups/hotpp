@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "hot/iface_compat.h"
 #include "hot/vfs.h"
 
 namespace hotc
@@ -332,6 +333,11 @@ struct TranslateResult
     // (the importer copies their classes and structs). Each unit is in the list one time. The unit name of an import follows
     // the rule in doc/module-level.md. The hash is the "iface_hash" of the imported script.
     std::vector<std::pair<std::string, uint64_t>> import_hashes;
+    // The fine data of "iface" (hot::IfaceInfo): the shape, the member entries and the names.
+    // iface_info.hash is iface_hash. Valid when ok is true.
+    hot::IfaceInfo iface_info;
+    // The names that the script uses and the imports that it needs in full (hot::UseInfo).
+    hot::UseInfo use_info;
     // The unit name of the script: TranslateOptions::unit_name, or the stem of the script name.
     std::string unit;
     // AOT code only (TranslateOptions::aot): the C++ text of "<stem>.iface.h" (the stem of the script file). It holds the shell

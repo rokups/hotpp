@@ -49,6 +49,20 @@ Each unit has an interface hash (`Module::iface_hash`). Each importer records th
 - The loader also compares the state layout of a script parent in the batch with the layout that each live child compiled against. A child outside the batch with another parent layout is the error `DependentsStale`, also when the hash stays the same.
 - rbfx-script gives the path of the script relative to the resource root, without `.hot`, for example `Scripts/Hero`. The launcher gives the absolute path without `.hot`.
 
+### Fine interface data
+
+The translation also gives fine data: `hot::IfaceInfo` and `hot::UseInfo` (`hot/iface_compat.h`). `Module`, `LoadResult` and the translate cache carry them. The function `hot::importer_is_stale` uses them. The loader and the host do not use the function yet: they keep the hash rule above.
+
+- `IfaceInfo::shape` is the hash of the parts that each importer copies or that set a layout. These are the namespaces, the aliases, the enums, the constants, each struct in full and each class header. A virtual, override, abstract or operator member of a class is in the shape too: it sets the shell or the slot family.
+- The shape also has the script interfaces, the stubs and the module attribute lists. These are not in `iface_hash`.
+- `IfaceInfo::members` has one entry for each other member name: the fields, properties, constructors, methods and statics of a class, and the public free functions and variables. A constructor has the class name.
+- `UseInfo::names` has each identifier of the own script text, also in comments and strings. A name that a macro makes by token paste is not found.
+- `UseInfo::strong` has each unit of the parent chain of a class of the importer.
+- An importer does not embed the layout of a foreign class that it uses as a value. A value is a `hot::Value<T>`, a box with a pointer to the shell. A copy uses `clone_shell` of the record. So a value use is not strong.
+- An importer does not merge the script interfaces of an import. They are in the shape, so a change of them is never missed.
+- `Module::imports` and `AotScript::imports` have the direct imports and the imports of imports. Rule 7 of `importer_is_stale` uses this full list.
+- An old translate cache entry or an old AOT table has no fine data. Then each importer is stale.
+
 These headers are always included, so they need no `using`:
 `<cstddef>`, `<cstdint>`, `<cstdio>`, `<cstdlib>`, `<cstring>`, `<functional>`, `<memory>`, `<mutex>`, `<new>`, `<stdexcept>`, `<string>`, `<tuple>`, `<type_traits>`, `<typeinfo>`, `<unordered_map>`, `<utility>` and `<vector>`. Any other standard header (`<map>`, `<optional>`, `<algorithm>`) needs a `using`.
 

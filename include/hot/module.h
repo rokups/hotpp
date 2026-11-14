@@ -5,6 +5,7 @@
 // A loadable generation: the register function and the owner of the code memory.
 #pragma once
 
+#include "hot/iface_compat.h"
 #include "hot/runtime/reload_result.h"
 
 #include <cstdint>
@@ -57,6 +58,10 @@ struct Module
     // The script imports of the module as unit name and interface hash, also the imports of the
     // imports (hotc::TranslateResult::import_hashes).
     std::vector<std::pair<std::string, uint64_t>> imports;
+    // The fine interface data of the module and the names that it uses (hot::importer_is_stale).
+    // Unknown data ("known" is false) is "no fine data": each importer is stale.
+    IfaceInfo iface_info;
+    UseInfo use_info;
     // The generation of the load. The backend sets the number that it got in Backend::load. The
     // loader gives it to script_register (Registry::generation). Zero: the loader picks the
     // number, 1 for a load and the active generation plus 1 for a reload.
@@ -86,10 +91,13 @@ struct LoadResult
     // scripts. The host watches them. A change of one of them needs a full reload. A backend fills
     // the list also when the build fails.
     std::vector<std::string> dependencies;
-    // The interface hash and the import hashes of the translation. A backend copies them to
-    // "module" after a successful build (Module::iface_hash, Module::imports).
+    // The interface hash, the import hashes and the fine interface data of the translation. A backend
+    // copies them to "module" after a successful build (Module::iface_hash, Module::imports).
     uint64_t iface_hash = 0;
     std::vector<std::pair<std::string, uint64_t>> import_hashes;
+    // The fine interface data of the translation (Module::iface_info, Module::use_info).
+    IfaceInfo iface_info;
+    UseInfo use_info;
     explicit operator bool() const { return module.has_value(); }
 };
 

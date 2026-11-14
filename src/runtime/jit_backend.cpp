@@ -784,8 +784,12 @@ public:
         added.dependencies = std::move(r.dependencies);
         added.iface_hash = r.iface_hash;
         added.import_hashes = r.import_hashes;
+        added.iface_info = r.iface_info;
+        added.use_info = r.use_info;
         added.module->iface_hash = r.iface_hash;
         added.module->imports = std::move(r.import_hashes);
+        added.module->iface_info = std::move(r.iface_info);
+        added.module->use_info = std::move(r.use_info);
         if (!source_.unit.empty())
             added.module->unit = source_.unit;
         return added;
@@ -822,6 +826,8 @@ private:
         head.dependencies = tr_.dependencies; // also after a failure
         head.iface_hash = tr_.iface_hash;
         head.import_hashes = tr_.import_hashes;
+        head.iface_info = tr_.iface_info;
+        head.use_info = tr_.use_info;
         if (!tr_.ok)
         {
             fail(opt.raw_diagnostics ? tr_.diagnostics

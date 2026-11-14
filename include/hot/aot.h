@@ -46,7 +46,7 @@ struct AotScript
     const char* name; // the file name of the script without the extension
     void (*register_fn)(Registry&); // the register function that hotc generated
     uint64_t iface_hash = 0; // the interface hash of the script (Module::iface_hash)
-    const AotImport* imports = nullptr; // the direct imports of the script
+    const AotImport* imports = nullptr; // the imports of the script: the direct ones and their imports
     size_t import_count = 0;
     // The hash of the script text (hot::hash_text). 0: unknown, no check.
     uint64_t source_hash = 0;

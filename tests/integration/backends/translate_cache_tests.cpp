@@ -137,6 +137,9 @@ void expect_same(const hotc::TranslateResult& a, const hotc::TranslateResult& b)
     EXPECT_EQ(a.dependencies, b.dependencies);
     EXPECT_EQ(a.iface, b.iface);
     EXPECT_EQ(a.iface_hash, b.iface_hash);
+    // The fine interface data: a hit gives the data of the translate (doc/module-level.md).
+    EXPECT_TRUE(a.iface_info == b.iface_info);
+    EXPECT_TRUE(a.use_info == b.use_info);
     EXPECT_EQ(a.import_hashes, b.import_hashes);
     EXPECT_EQ(a.unit, b.unit);
     EXPECT_EQ(a.iface_header, b.iface_header);
@@ -175,6 +178,10 @@ TEST(TranslateCache, HitEqualsTheTranslate)
     const std::optional<hotc::TranslateResult> hit = c.lookup(f.options);
     ASSERT_TRUE(hit.has_value());
     expect_same(*hit, real);
+    EXPECT_TRUE(real.iface_info.known);
+    EXPECT_FALSE(real.iface_info.members.empty());
+    ASSERT_TRUE(real.use_info.known);
+    EXPECT_EQ(real.use_info.strong, std::vector<std::string>{real.import_hashes.at(0).first}) << "Kid derives from Base";
     // A position maps in the same way.
     EXPECT_EQ(hit->source_map.map_to_generated(5, 30).has_value(), real.source_map.map_to_generated(5, 30).has_value());
     EXPECT_EQ(c.stats().hits, 1u);

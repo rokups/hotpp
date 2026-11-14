@@ -806,7 +806,11 @@ Script parse_structure(const std::string& text, const hotc::LineMap& map, std::s
 // namespaces and each class and struct, also a private one. So the text has them too. A private
 // enum, constant, variable or function is not in it. "text" is the parsed text of the module: the
 // spans of the constant values point into it.
-std::string module_interface(const Script& sc, const std::string& text)
+// "info" (not null) gets the fine data of the interface (hot::IfaceInfo). Each line of the text
+// goes into the shape or into the entry of one member name. The shape gets more parts, which are
+// not in the text: the script interfaces, the stubs and the module attributes. When a case is not
+// clear, the part goes into the shape: that gives more recompiles, never fewer.
+std::string module_interface(const Script& sc, const std::string& text, hot::IfaceInfo* info = nullptr)
 {
     auto span = [&](Span sp) { return sp.end > sp.begin && sp.end <= text.size() ? text.substr(sp.begin, sp.end - sp.begin) : std::string(); };
     // A parameter has its mode, its script type and its default text: an importer copies the
@@ -844,35 +848,66 @@ std::string module_interface(const Script& sc, const std::string& text)
             + body(copied, m.body_span) + "\n";
     };
     std::string o;
+    // The fine data: the shape text and the lines of each member name.
+    std::string shape;
+    std::map<std::string, std::string> member_lines;
+    auto to_shape = [&](const std::string& line)
+    {
+        o += line;
+        shape += line;
+    };
+    // "owner" is the class name, or empty for a module member. The line goes into the text once.
+    auto to_member = [&](const std::string& key, const std::string& owner, const std::string& line)
+    {
+        o += line;
+        member_lines[key] += owner + "::" + line;
+    };
+    // A method with a script name other than its C++ name has an entry under each name.
+    auto method_keys = [](const Method& m)
+    {
+        std::vector<std::string> keys{m.name};
+        if (m.written_name() != m.name)
+            keys.push_back(m.written_name());
+        return keys;
+    };
     for (const hotc::ast::UsingNs& u : sc.using_ns)
-        o += "using namespace " + u.name + "\n";
+        to_shape("using namespace " + u.name + "\n");
     for (const hotc::ast::TypeAlias& a : sc.aliases)
-        o += "using " + a.name + " = " + a.resolved + "\n";
+        to_shape("using " + a.name + " = " + a.resolved + "\n");
     for (const hotc::ast::EnumDef& e : sc.enums)
     {
         if (e.is_private)
             continue;
-        o += "enum " + e.name + " : " + e.underlying + " {";
+        std::string line = "enum " + e.name + " : " + e.underlying + " {";
         for (const hotc::ast::Enumerator& it : e.items)
-            o += " " + it.name + (it.has_value ? " = " + span(it.value_span) : std::string()) + ",";
-        o += " }\n";
+            line += " " + it.name + (it.has_value ? " = " + span(it.value_span) : std::string()) + ",";
+        to_shape(line + " }\n");
     }
     for (const ClassDef& c : sc.classes)
     {
         // The parent link, the fields and the virtual slots: a child in another module needs them.
-        o += std::string(c.is_private ? "private " : "")
+        // An importer copies a struct in full: each line of a struct is in the shape. The header of a
+        // class is in the shape: the importer copies the shell, which has the parent and the bases.
+        std::string head = std::string(c.is_private ? "private " : "")
             + (c.is_value ? "struct " : c.is_abstract ? "abstract class " : "class ") + c.name + " : " + c.base;
         for (const std::string& i : c.interfaces)
-            o += ", " + i;
-        o += " {\n";
+            head += ", " + i;
+        to_shape(head + " {\n");
         // The shell of the class derives from std::enable_shared_from_this (see ClassDef::bare_this).
         if (c.bare_this)
-            o += "  shares this\n";
+            to_shape("  shares this\n");
+        auto member = [&](const std::string& key, const std::string& line)
+        {
+            if (c.is_value)
+                to_shape(line);
+            else
+                to_member(key, c.name, line);
+        };
         for (const Field& f : c.fields)
-            o += std::string("  ") + access(f.access) + "field " + (f.weak ? "weak " : "") + f.type + " " + f.name
-                + (span(f.init_span).empty() ? std::string() : " = " + span(f.init_span)) + "\n";
+            member(f.name, std::string("  ") + access(f.access) + "field " + (f.weak ? "weak " : "") + f.type + " " + f.name
+                + (span(f.init_span).empty() ? std::string() : " = " + span(f.init_span)) + "\n");
         for (const hotc::ast::Property& pr : c.props)
-            o += "  prop " + pr.type + " " + pr.name + body(c.is_value, pr.get_span) + body(c.is_value, pr.set_span) + "\n";
+            member(pr.name, "  prop " + pr.type + " " + pr.name + body(c.is_value, pr.get_span) + body(c.is_value, pr.set_span) + "\n");
         for (const hotc::ast::Ctor& k : c.ctors)
         {
             // The "base(...)" arguments are part of the interface: a child in another module runs them.
@@ -886,24 +921,94 @@ std::string module_interface(const Script& sc, const std::string& text)
                     base += (i ? ", " : "") + hotc::ast::print(*k.base_args[i]);
                 base += ")";
             }
-            o += std::string("  ") + access(k.access) + "ctor(" + params(k.params) + ")" + base
-                + body(c.is_value, k.body_span) + "\n";
+            member(c.name, std::string("  ") + access(k.access) + "ctor(" + params(k.params) + ")" + base
+                + body(c.is_value, k.body_span) + "\n");
         }
+        // A virtual, override, abstract or operator member sets the shell (its native overrides and
+        // its operator members) or the slot family. It is in the shape.
+        auto add_method = [&](const char* kind, const Method& m)
+        {
+            const std::string line = method(kind, m, c.is_value);
+            if (c.is_value || m.is_virtual || m.is_abstract || m.is_override || !m.vslot_owner.empty() || !m.op.empty())
+            {
+                to_shape(line);
+                return;
+            }
+            const std::vector<std::string> keys = method_keys(m);
+            o += line;
+            for (const std::string& k : keys)
+                member_lines[k] += c.name + "::" + line;
+        };
         for (const Method& m : c.methods)
-            o += method("", m, c.is_value);
+            add_method("", m);
         for (const Method& m : c.statics)
-            o += method("static ", m, c.is_value);
-        o += "}\n";
+            add_method("static ", m);
+        to_shape("}\n");
     }
     for (const Field& f : sc.consts)
         if (f.access != hotc::ast::Access::Private)
-            o += "const " + f.type + " " + f.name + " = " + span(f.init_span) + "\n";
+            to_shape("const " + f.type + " " + f.name + " = " + span(f.init_span) + "\n");
     for (const Field& f : sc.vars)
         if (f.access != hotc::ast::Access::Private)
-            o += "var " + f.type + " " + f.name + "\n";
+            to_member(f.name, "", "var " + f.type + " " + f.name + "\n");
     for (const Method& f : sc.fns)
         if (f.access != hotc::ast::Access::Private && f.name != "main")
-            o += "fn " + f.ret + " " + f.name + "(" + params(f.params) + ")\n";
+        {
+            const std::string line = "fn " + f.ret + " " + f.name + "(" + params(f.params) + ")\n";
+            o += line;
+            for (const std::string& k : method_keys(f))
+                member_lines[k] += "::" + line;
+        }
+    if (!info)
+        return o;
+    // The parts that are not in the text. A script interface: an importer that implements it or
+    // calls it uses its slots. A stub and a module attribute list: the importer merges them.
+    for (const hotc::ast::InterfaceDef& d : sc.interfaces)
+    {
+        shape += "interface " + d.name + " {\n";
+        for (const Method& m : d.methods)
+            shape += method("", m, false);
+        shape += "}\n";
+    }
+    for (const Stub& st : sc.stubs)
+    {
+        shape += "stub " + st.name + " " + std::to_string(st.is_native) + std::to_string(st.is_value)
+            + std::to_string(st.derived) + std::to_string(st.is_self) + std::to_string(st.is_struct)
+            + std::to_string(st.checked_index) + std::to_string(st.nonnull) + std::to_string(st.is_attribute);
+        for (const std::string* t : {&st.handle, &st.default_handle, &st.weak_handle, &st.factory, &st.weak_source,
+                 &st.intrusive_add, &st.intrusive_release, &st.cpp_prelude, &st.cpp_overrides})
+            shape += " [" + std::to_string(t->size()) + ":" + *t + "]";
+        for (const std::string& a : st.attrs)
+            shape += " " + a;
+        shape += "\n";
+    }
+    for (const Stub& st : sc.attribute_classes)
+        shape += "attribute " + st.name + "\n";
+    for (const hotc::ast::ModuleAttrs& m : sc.module_attrs)
+    {
+        shape += "attrs " + std::to_string(m.has_std) + " " + m.std_ns + " " + std::to_string(m.has_array) + " " + m.array_tpl;
+        for (const std::string& l : m.libs)
+            shape += " " + l;
+        shape += "\n";
+    }
+    hot::IfaceInfo r;
+    r.known = true;
+    r.hash = 0; // the caller sets the iface_hash of the text
+    r.shape = hot::hash_text(shape);
+    for (const auto& [name, lines] : member_lines)
+        r.members.push_back({hot::iface_name_hash(name), hot::hash_text(lines)});
+    std::sort(r.members.begin(), r.members.end(),
+        [](const hot::IfaceMember& a, const hot::IfaceMember& b) { return a.name < b.name; });
+    // Two names with one hash give one entry: the decl mixes both.
+    std::vector<hot::IfaceMember> joined;
+    for (const hot::IfaceMember& m : r.members)
+        if (!joined.empty() && joined.back().name == m.name)
+            joined.back().decl = hot::hash_mix(joined.back().decl, m.decl);
+        else
+            joined.push_back(m);
+    r.members = std::move(joined);
+    r.names = hot::iface_name_set(o);
+    *info = std::move(r);
     return o;
 }
 
@@ -3998,8 +4103,12 @@ void translate_impl(
     }
 
     // The interface of the main script, before the merge with the imports.
-    res.iface = module_interface(sc, in.script_text);
+    res.iface = module_interface(sc, in.script_text, &res.iface_info);
     res.iface_hash = hash_text(res.iface);
+    res.iface_info.hash = res.iface_hash;
+    // The names that the script uses: each identifier of the own text, also in comments and strings.
+    res.use_info.known = true;
+    res.use_info.names = hot::iface_name_set(in.script_text);
 
     // ---- script imports (design 4.10): "using "parent.hot";". One generation holds all script
     // modules of the program, so a class can derive from a class of another script. The
@@ -4276,6 +4385,19 @@ void translate_impl(
                             break;
                         it->second->iface_parent = true;
                     }
+                // The units of the parent chain are strong imports (hot::UseInfo::strong): the
+                // class of this module has the layout and the slots of each parent. The walk
+                // goes to the end of the chain, also through a parent of a middle import.
+                std::set<std::string> strong;
+                for (const ClassDef& c : sc.classes)
+                {
+                    std::set<const ClassDef*> visited;
+                    for (auto it = imported.find(c.base); it != imported.end() && visited.insert(it->second).second;
+                         it = imported.find(it->second->base))
+                        if (!it->second->foreign_unit.empty())
+                            strong.insert(it->second->foreign_unit);
+                }
+                res.use_info.strong.assign(strong.begin(), strong.end());
             }
             // The interface of a class of an import has no bodies: the owner module runs them.
             for (ClassDef& c : classes)

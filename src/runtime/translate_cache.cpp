@@ -27,7 +27,9 @@ using namespace cache_io;
 namespace
 {
 
-constexpr int entry_version = 6;
+// Version 7 adds the fine interface data (iface_info, use_names, use_strong). An entry without
+// them gives an unknown hot::IfaceInfo and hot::UseInfo: "no fine data" (importer_is_stale rule 2).
+constexpr int entry_version = 7;
 // The maximum number of entries of a key. Each entry has other imported texts or slot lines.
 constexpr int entry_count = 4;
 constexpr uint64_t second_seed = 0x9e3779b97f4a7c15ULL;
@@ -429,6 +431,10 @@ std::string first_difference(const hotc::TranslateResult& hit, const hotc::Trans
         return "unit";
     if (hit.import_hashes != real.import_hashes)
         return "import_hashes";
+    if (hit.iface_info != real.iface_info)
+        return "iface_info";
+    if (hit.use_info != real.use_info)
+        return "use_info";
     if (hit.slot_classes != real.slot_classes || hit.slot_keys != real.slot_keys)
         return "slot_keys";
     if (hit.import_lookups.size() != real.import_lookups.size())
@@ -832,6 +838,15 @@ std::optional<hotc::TranslateResult> TranslateCache::lookup_entry(
     r.virtual_files = std::move(virtual_files);
     r.iface = *iface;
     r.unit = *unit;
+    // The fine interface data. A missing or bad field gives unknown data (rule 2), not a miss.
+    const std::string* fine = get_str(data, "iface_info");
+    if (!fine || !hot::decode_iface_info(*fine, r.iface_info) || r.iface_info.hash != r.iface_hash)
+        r.iface_info = hot::IfaceInfo{};
+    if (const std::string* names = get_str(data, "use_names");
+        names && hot::decode_use_names(*names, r.use_info.names) && get_list(data, "use_strong", r.use_info.strong))
+        r.use_info.known = true;
+    else
+        r.use_info = hot::UseInfo{};
     r.iface_header = *iface_header;
     r.import_lookups = std::move(lookups);
     r.slot_classes = std::move(classes);
@@ -1024,6 +1039,13 @@ bool TranslateCache::store(const hotc::TranslateOptions& o, const hotc::Translat
         for (const auto& i : r.imports)
             files.push_back(i.first);
         data.list("imports", files);
+        if (r.iface_info.known)
+            data.field("iface_info", hot::encode_iface_info(r.iface_info));
+        if (r.use_info.known)
+        {
+            data.field("use_names", hot::encode_use_names(r.use_info.names));
+            data.list("use_strong", r.use_info.strong);
+        }
         data.key("import_hashes");
         data.begin('[');
         for (const auto& [unit, hash] : r.import_hashes)
