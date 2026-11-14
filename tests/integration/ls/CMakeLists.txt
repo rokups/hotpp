@@ -41,3 +41,12 @@ hot_gtest(integration_ls_completion_context_tests DISCOVERY_TIMEOUT 30)
 add_executable(integration_ls_ref_resolver_tests ref_resolver_tests.cpp)
 target_link_libraries(integration_ls_ref_resolver_tests PRIVATE hot_ls_lib GTest::gtest_main)
 hot_gtest(integration_ls_ref_resolver_tests DISCOVERY_TIMEOUT 30)
+
+# The matrix of the name requests: symbol kinds, requests and files. It needs clangd.
+add_executable(integration_ls_ref_matrix_tests ref_matrix_tests.cpp)
+target_include_directories(integration_ls_ref_matrix_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
+target_link_libraries(integration_ls_ref_matrix_tests PRIVATE hot_ls_lib GTest::gtest_main)
+target_compile_definitions(integration_ls_ref_matrix_tests PRIVATE
+    HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+    HOT_CLANGD_PATH="${HOT_CLANGD}")
+hot_gtest(integration_ls_ref_matrix_tests DISCOVERY_TIMEOUT 30)
