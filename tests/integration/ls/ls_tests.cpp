@@ -7143,6 +7143,39 @@ TEST(LanguageServerRename, ClassRenamedInAnImporterThatUsesTheName)
     expect_importer_rename("class Spawn", "Spawn", "using \"player.hot\";\nclass Kid : Spawn {\n}\n", Want::Edits);
 }
 
+// A script class in a template argument of a native call and in a cast gets a ref. The rename
+// edits each of these uses and does not refuse.
+TEST(LanguageServerRename, ClassInTemplateArgumentAndCastIsRenamed)
+{
+    REQUIRE_CLANGD();
+    Session s(true, kOriginScript);
+    write_file(s.dir.path() / "Holder.h",
+        "#pragma once\n#include \"Actor.h\"\nstruct Holder : Actor { template <class T> T* Find() { return nullptr; } };\n");
+    const std::string other = "using \"Holder.h\";\nusing \"player.hot\";\n"
+                              "class Kid : Actor {\n"
+                              "    int Go(Holder* h) {\n"
+                              "        if (h == null) return 1;\n"
+                              "        $Spawn a = h.Find<$Spawn>();\n"
+                              "        Team t = (($Spawn)a).GetTeam();\n"
+                              "        return 0;\n"
+                              "    }\n"
+                              "}\n";
+    write_file(s.dir.path() / "other.hot", other);
+    const json r = origin_rename(s, kOriginScript, "class Spawn", "Spawn");
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    const json& changes = r["result"]["changes"];
+    const std::string key = uri_of((s.dir.path() / "other.hot").string());
+    ASSERT_TRUE(changes.contains(key)) << r.dump();
+    // Three uses: the type of "a", the template argument and the cast.
+    EXPECT_EQ(changes[key].size(), 3u) << r.dump();
+    std::set<std::pair<int, int>> at;
+    for (const json& e : changes[key])
+        at.insert({e["range"]["start"]["line"].get<int>(), e["range"]["start"]["character"].get<int>()});
+    EXPECT_TRUE(at.count({5, 9})) << r.dump();
+    EXPECT_TRUE(at.count({5, 27})) << r.dump();
+    EXPECT_TRUE(at.count({6, 20})) << r.dump();
+}
+
 // The import is not transitive: c.hot imports b.hot, and b.hot imports the origin script. A free
 // function of the origin script is not visible in c.hot, so the rename does not edit c.hot.
 TEST(LanguageServerRename, FreeFunctionIsNotRenamedInAnIndirectImporter)
