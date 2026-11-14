@@ -823,11 +823,15 @@ private:
     // The table of the resolved names of the script at "path". An open document gives the table
     // of its facts. A closed file gives the table of the memory cache, of the index shard or of a
     // new analyze (the shard of the analyze goes to the index). Null when the file is not readable.
-    std::shared_ptr<const FileRefs> file_refs(const std::string& path);
-    // The script imports of the workspace scripts (workspace_scripts()). The ids are
-    // hotc::ref_file_id. A closed file is read again when its size or its time changes, an open
-    // document when its facts change.
-    ImportGraph& import_graph();
+    // "text" (if given) is the text of a closed file, and file_refs does not read the file. Else
+    // file_refs reads it. "used" (if given) gets the text of the table: the table offsets are
+    // offsets in that text.
+    std::shared_ptr<const FileRefs> file_refs(
+        const std::string& path, const std::string* text = nullptr, Text* used = nullptr);
+    // The script imports of the workspace scripts (workspace_scripts()), of each open script and
+    // of the script at "also" (if given). The ids are hotc::ref_file_id. A closed file is read
+    // again when its size or its time changes, an open document when its facts change.
+    ImportGraph& import_graph(const std::string& also = std::string());
     // Drops the cached imports of the script at "path", or of all scripts when "path" is empty.
     void drop_import_graph(const std::string& path);
     // Gives the closed script "tmp" (with its facts) to clangd for the call of "fn". Then closes
@@ -867,8 +871,9 @@ private:
     // declaration only. Else the file of the declaration and its importers (import_graph). An
     // unresolved name or a raw body word with the same name goes to clangd. "strict" (rename):
     // a word that clangd cannot resolve gives an error with the file and the line. Not strict
-    // (references): the word is left out.
-    std::variant<PlaceMap, std::string> places_of(const Resolved& r, bool strict);
+    // (references): the word is left out. "also" (if given) is the script of the request: its
+    // imports go to the graph also when it is not in the roots.
+    std::variant<PlaceMap, std::string> places_of(const Resolved& r, bool strict, const std::string& also = std::string());
     // Calls "fn" for each other .hot file of the workspace that declares the symbol "key".
     // "places" are the places of the symbol in that file. An open document is used as it is.
     // A file on disk goes to clangd only for the call.
@@ -4317,10 +4322,12 @@ Doc Server::closed_doc(const std::string& path, const std::string& text) const
     return tmp;
 }
 
-std::shared_ptr<const FileRefs> Server::file_refs(const std::string& path)
+std::shared_ptr<const FileRefs> Server::file_refs(const std::string& path, const std::string* given, Text* used)
 {
     if (const std::shared_ptr<Doc> open = open_doc_at(path))
     {
+        if (used)
+            *used = open->text;
         if (open->table && open->table_version == open->facts_version)
         {
             ++table_hits_;
@@ -4332,9 +4339,16 @@ std::shared_ptr<const FileRefs> Server::file_refs(const std::string& path)
         return open->table;
     }
     const std::string norm = fs::path(path).lexically_normal().string();
-    const auto text = read_file(norm);
-    if (!text)
-        return nullptr;
+    std::optional<std::string> read;
+    if (!given)
+    {
+        read = read_file(norm);
+        if (!read)
+            return nullptr;
+    }
+    const std::string* text = given ? given : &*read;
+    if (used)
+        *used = Text(*text);
     const std::string digest = shard_digest(norm, *text);
     TableEntry& entry = table_cache_[norm];
     if (entry.table && entry.digest == digest)
@@ -4365,12 +4379,21 @@ void Server::drop_import_graph(const std::string& path)
         graph_files_.erase(fs::path(path).lexically_normal().string());
 }
 
-ImportGraph& Server::import_graph()
+ImportGraph& Server::import_graph(const std::string& also)
 {
+    // The scripts on disk in the roots, each open script and "also". An open script outside the
+    // roots or not saved can import the declaration file too.
+    std::vector<std::string> paths = workspace_scripts();
+    for (const auto& [uri, doc] : docs_)
+        if (!doc->path.empty())
+            paths.push_back(fs::path(doc->path).lexically_normal().string());
+    if (!also.empty())
+        paths.push_back(fs::path(also).lexically_normal().string());
     std::set<std::string> seen;
-    for (const std::string& path : workspace_scripts())
+    for (const std::string& path : paths)
     {
-        seen.insert(path);
+        if (!seen.insert(path).second)
+            continue;
         const auto it = graph_files_.find(path);
         GraphEntry next;
         const std::shared_ptr<Doc> open = open_doc_at(path);
@@ -4418,11 +4441,26 @@ bool Server::with_temp_clangd(Doc& tmp, const std::function<void()>& fn)
     tmp.map = std::make_shared<const hotc::SourceMap>(tmp.facts.source_map);
     tmp.gen_script = tmp.text;
     tmp.gen_version = 1;
+    // The guard closes the document in clangd also when "fn" throws.
+    struct Close
+    {
+        Server& s;
+        Doc& d;
+        ~Close()
+        {
+            try
+            {
+                if (s.clangd_ && d.in_clangd)
+                    s.clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", d.gen_uri}}}});
+            }
+            catch (...)
+            {
+            }
+            d.in_clangd = false;
+        }
+    } close{*this, tmp};
     send_generated(tmp, tmp.facts.cpp);
     fn();
-    if (clangd_ && tmp.in_clangd)
-        clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", tmp.gen_uri}}}});
-    tmp.in_clangd = false;
     return true;
 }
 
@@ -4466,16 +4504,8 @@ Server::ClangdRef Server::clangd_ref(const Doc& d, Pos at)
         table = refs_of(d);
         text = d.text;
     }
-    else if (const std::shared_ptr<Doc> open = open_doc_at(path))
-    {
-        table = file_refs(path);
-        text = open->text;
-    }
-    else if (const auto t = read_file(path))
-    {
-        table = file_refs(path);
-        text = Text(*t);
-    }
+    else
+        table = file_refs(path, nullptr, &text); // one text for the offsets and the positions
     if (!table)
         return out;
     const Pos p = from_lsp(text, mapped["range"]["start"], utf8_);
@@ -4511,39 +4541,41 @@ std::optional<Server::Resolved> Server::resolve_at(const Doc& d, Pos cur)
     return Resolved{c.ref, std::string(d.text.line(cur.line).substr(static_cast<size_t>(b), static_cast<size_t>(e - b)))};
 }
 
-std::variant<Server::PlaceMap, std::string> Server::places_of(const Resolved& r, bool strict)
+std::variant<Server::PlaceMap, std::string> Server::places_of(const Resolved& r, bool strict, const std::string& also)
 {
     PlaceMap out;
     const std::string& name = r.name;
     std::vector<std::string> files = {r.ref.decl_file};
     if (!file_local(r.ref.kind))
-        for (const std::string& f : import_graph().importers_of(r.ref.decl_file))
+        for (const std::string& f : import_graph(also).importers_of(r.ref.decl_file))
             files.push_back(f);
     for (const std::string& path : files)
     {
         const std::shared_ptr<Doc> open = open_doc_at(path);
-        Text closed_text;
+        std::optional<std::string> closed_text;
         if (!open)
         {
-            auto t = read_file(path);
-            if (!t || t->find(name) == std::string::npos)
+            closed_text = read_file(path);
+            if (!closed_text || closed_text->find(name) == std::string::npos)
                 continue; // the word filter
-            closed_text = Text(std::move(*t));
         }
-        const Text& text = open ? open->text : closed_text;
         const std::string uri = open ? open->uri : path_to_uri(path);
-        const auto table = file_refs(path);
+        // The table and "text" come from the same text: the table offsets are valid in "text".
+        Text text;
+        const auto table = file_refs(path, open ? nullptr : &*closed_text, &text);
         if (!table)
             continue;
         for (const hotc::ResolvedRef* p : places(*table, r.ref.id))
         {
+            if (p->offset > text.s.size())
+                continue;
             const auto [line, col] = text.pos(p->offset);
             out[uri].insert({line, col});
         }
         // The words that only clangd can resolve.
         std::vector<uint32_t> asks;
         for (const hotc::UnresolvedName& u : table->unresolved)
-            if (u.length == name.size() && text.s.compare(u.offset, u.length, name) == 0)
+            if (u.length == name.size() && u.offset <= text.s.size() && text.s.compare(u.offset, u.length, name) == 0)
                 asks.push_back(u.offset);
         for (const auto& [b, e] : table->raw_ranges)
             for (size_t at = text.s.find(name, b); at != std::string::npos && at + name.size() <= e;
