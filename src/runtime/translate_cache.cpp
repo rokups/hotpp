@@ -28,9 +28,9 @@ namespace
 {
 
 // Version 7 adds the fine interface data (iface_info, use_names, use_strong). Version 8 adds
-// IfaceInfo::copied_names to iface_info. An entry without the data gives an unknown
+// IfaceInfo::copied_names to iface_info. Version 9 adds indirect_names. An entry without the data gives an unknown
 // hot::IfaceInfo and hot::UseInfo: "no fine data" (importer_is_stale rule 2).
-constexpr int entry_version = 8;
+constexpr int entry_version = 9;
 // The maximum number of entries of a key. Each entry has other imported texts or slot lines.
 constexpr int entry_count = 4;
 constexpr uint64_t second_seed = 0x9e3779b97f4a7c15ULL;
@@ -416,6 +416,14 @@ size_t first_other_line(const std::string& a, const std::string& b)
     return line;
 }
 
+bool same_indirect_names(const hotc::IndirectNames& a, const hotc::IndirectNames& b)
+{
+    return a.size() == b.size()
+        && std::equal(a.begin(), a.end(), b.begin(),
+            [](const auto& x, const auto& y)
+            { return x.first == y.first && x.second.unit == y.second.unit && x.second.is_var == y.second.is_var; });
+}
+
 // The first part of "hit" that differs from "real", or an empty text.
 std::string first_difference(const hotc::TranslateResult& hit, const hotc::TranslateResult& real)
 {
@@ -434,6 +442,8 @@ std::string first_difference(const hotc::TranslateResult& hit, const hotc::Trans
         return "unit";
     if (hit.import_hashes != real.import_hashes)
         return "import_hashes";
+    if (!same_indirect_names(hit.indirect_names, real.indirect_names))
+        return "indirect_names";
     if (hit.iface_info != real.iface_info)
         return "iface_info";
     if (hit.use_info != real.use_info)
@@ -781,6 +791,19 @@ std::optional<hotc::TranslateResult> TranslateCache::lookup_entry(
             return std::nullopt;
         r.import_hashes.emplace_back(*u, value);
     }
+    // An entry from before the version 9 has no list: the version check rejects it. The list can be empty.
+    const Json* indirect = get_array(data, "indirect_names");
+    if (!indirect)
+        return std::nullopt;
+    for (const Json& n : indirect->items)
+    {
+        const std::string* name = get_str(n, "name");
+        const std::string* unit = get_str(n, "unit");
+        const std::string* kind = get_str(n, "kind");
+        if (!name || !unit || !kind)
+            return std::nullopt;
+        r.indirect_names[*name] = hotc::IndirectName{*unit, *kind == "var"};
+    }
     std::vector<const MovedFile*> moved_of_file{nullptr}; // by the file number of the source map
     for (const std::string& f : import_files)
     {
@@ -1058,6 +1081,17 @@ bool TranslateCache::store(const hotc::TranslateOptions& o, const hotc::Translat
             data.begin('{');
             data.field("unit", unit);
             data.field("hash", hex64(hash));
+            data.end('}');
+        }
+        data.end(']');
+        data.key("indirect_names");
+        data.begin('[');
+        for (const auto& [name, n] : r.indirect_names)
+        {
+            data.begin('{');
+            data.field("name", name);
+            data.field("unit", n.unit);
+            data.field("kind", std::string(n.is_var ? "var" : "fn"));
             data.end('}');
         }
         data.end(']');

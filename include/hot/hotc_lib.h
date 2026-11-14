@@ -155,6 +155,15 @@ struct ResolvedRef
 // It does not read the file system. Thus a symbolic link gives a different path.
 std::string ref_file_id(const std::string& path);
 
+// A free function or a module variable of an import of an import: the script name as a "using"
+// line writes it (the unit name and ".hot"), and whether it is a variable.
+struct IndirectName
+{
+    std::string unit;
+    bool is_var = false;
+};
+using IndirectNames = std::map<std::string, IndirectName>;
+
 // A name that the translator cannot resolve. It is one of these:
 //   - a bare name that is not a local and matches no script symbol (for example a native function);
 //   - a member name after "." with a receiver of no known script type (for example a native value).
@@ -401,6 +410,9 @@ struct TranslateResult
     // The member names that the table does not resolve, in the order of the offsets. Empty
     // unless TranslateOptions::resolve_refs is true.
     std::vector<UnresolvedName> unresolved;
+    // The public free functions and module variables of the imports of the imports. An import is
+    // not transitive: these names are not visible in the main script.
+    IndirectNames indirect_names;
     // The raw bodies of a ".cpp" script that the table does not read: the begin and the end
     // offsets in the main script. Empty unless TranslateOptions::resolve_refs is true.
     std::vector<std::pair<uint32_t, uint32_t>> raw_ranges;
@@ -498,6 +510,7 @@ struct AnalyzeResult
     // true. A member with a syntax error is left out.
     std::vector<ResolvedRef> refs;
     std::vector<UnresolvedName> unresolved; // see TranslateResult::unresolved
+    IndirectNames indirect_names; // see TranslateResult::indirect_names
     std::vector<std::pair<uint32_t, uint32_t>> raw_ranges; // see TranslateResult::raw_ranges
 };
 
@@ -550,7 +563,7 @@ private:
 // A line that is not part of a Clang diagnostic stays as it is. Pass the raw text on when the
 // user asks for it (--raw-diagnostics).
 std::string rewrite_diagnostic(const std::string& text, const ScriptTexts& scripts = {},
-    const ScriptTexts& generated = {}, const SourceMap* map = nullptr);
+    const ScriptTexts& generated = {}, const SourceMap* map = nullptr, const IndirectNames* indirect = nullptr);
 
 // Gives the text of the translator diagnostics (TranslateResult::diagnostics or ::warnings) the
 // same final form as rewrite_diagnostic(): the header line "script:line:col: level: message",
@@ -572,7 +585,9 @@ std::string rewrite_generated_names(const std::string& text);
 
 // Rewrites one Clang message (no location, no source line) as rewrite_diagnostic() does. The
 // common mistakes get a plain message. A language server uses it for the clangd diagnostics.
-std::string rewrite_clang_message(const std::string& message);
+// "indirect" (can be null) has the names of the imports of the imports. The message "unknown name"
+// for such a name gets a hint: the import is not transitive.
+std::string rewrite_clang_message(const std::string& message, const IndirectNames* indirect = nullptr);
 
 // Uses a temporary session: each call parses the headers.
 TranslateResult translate(const TranslateOptions& options);

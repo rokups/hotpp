@@ -549,7 +549,8 @@ bool has_script_function(const std::string& msg)
 }
 
 std::string rewrite_message(
-    std::string msg, bool script_function, bool cpp = false, const std::set<std::string>& classes = {})
+    std::string msg, bool script_function, bool cpp = false, const std::set<std::string>& classes = {},
+    const IndirectNames* indirect = nullptr)
 {
     if (cpp)
     {
@@ -579,11 +580,28 @@ std::string rewrite_message(
             return rename_generated(m.prefix().str() + "script class '" + m[2].str() + "' has no member '"
                     + m[1].str() + "'" + m.suffix().str(),
                 false, classes);
+        // The hint of a name from an import of an import. It fires only on the "undeclared" message.
+        std::string hint;
+        if (indirect && !indirect->empty())
+        {
+            static const std::regex undeclared(R"(^use of undeclared identifier '([^']+)')");
+            std::smatch um;
+            if (std::regex_search(msg, um, undeclared))
+            {
+                const auto it = indirect->find(um[1].str());
+                if (it != indirect->end())
+                    hint = ". '" + it->first + "' is " + (it->second.is_var ? "a variable" : "a function") + " of '"
+                        + it->second.unit + "'. The import is not transitive. Add 'using \"" + it->second.unit
+                        + "\";'";
+            }
+        }
         for (const Rule& r : mistakes())
         {
             if (!std::regex_search(msg, r.re))
                 continue;
             msg = std::regex_replace(msg, r.re, r.replacement, std::regex_constants::format_first_only);
+            if (!hint.empty() && msg.rfind("unknown name '", 0) == 0)
+                msg += hint;
             break;
         }
     }
@@ -859,7 +877,7 @@ int script_column(const SourceMap& map, const LineIndex& index, const std::vecto
 } // namespace
 
 std::string rewrite_diagnostic(
-    const std::string& text, const ScriptTexts& scripts, const ScriptTexts& generated, const SourceMap* map)
+    const std::string& text, const ScriptTexts& scripts, const ScriptTexts& generated, const SourceMap* map, const IndirectNames* indirect)
 {
     bool final_newline = true;
     std::vector<std::string> lines = split_lines(text, final_newline);
@@ -1011,7 +1029,7 @@ std::string rewrite_diagnostic(
                 primary_location = location;
             if (place == Place::Generated && note && !primary_location.empty())
                 location = primary_location;
-            out.push_back(location + ": " + h.level + ": " + rewrite_message(h.message, script_function[i], cur_cpp, classes));
+            out.push_back(location + ": " + h.level + ": " + rewrite_message(h.message, script_function[i], cur_cpp, classes, indirect));
             if (cur_cpp && mapped && place == Place::Script)
             {
                 // An error in the glue: show the script line of the last "#line".
@@ -1166,9 +1184,9 @@ std::string rewrite_generated_names(const std::string& text)
     return rename_generated(text);
 }
 
-std::string rewrite_clang_message(const std::string& message)
+std::string rewrite_clang_message(const std::string& message, const IndirectNames* indirect)
 {
-    return rewrite_message(message, has_script_function(message));
+    return rewrite_message(message, has_script_function(message), false, {}, indirect);
 }
 
 } // namespace hotc

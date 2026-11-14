@@ -28,9 +28,6 @@ struct RefInputs
 {
     const ast::Script* script = nullptr; // the main script, with the classes, enums and constants of the imports
     const std::vector<ast::Method>* foreign_fns = nullptr; // the free functions of the direct imports (can be null)
-    // The free functions of the imports of the imports (can be null). The lowering does not see
-    // them, but a rename must find each use. A function of "foreign_fns" wins over one of them.
-    const std::vector<ast::Method>* deep_fns = nullptr;
     // The module variables of all the imports: the direct imports first.
     std::vector<const ast::Field*> foreign_vars;
     std::string_view text; // the text of the main script

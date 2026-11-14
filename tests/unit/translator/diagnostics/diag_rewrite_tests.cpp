@@ -687,3 +687,19 @@ TEST(DiagRewrite, CppScriptCaretNeedsTheShownLine)
         "   10 |         int unused = 1;\n"
         "1 error generated.\n");
 }
+
+// A name of an import of an import gets a hint. The hint fires only on the "undeclared" message.
+TEST(DiagRewrite, IndirectImportHint)
+{
+    const hotc::IndirectNames names{{"Twice", {"a.hot", false}}, {"Counter", {"a.hot", true}}};
+    EXPECT_EQ(hotc::rewrite_clang_message("use of undeclared identifier 'Twice'", &names),
+        "unknown name 'Twice': it is not a local, a parameter, a field or a type. 'Twice' is a function of 'a.hot'."
+        " The import is not transitive. Add 'using \"a.hot\";'");
+    EXPECT_EQ(hotc::rewrite_clang_message("use of undeclared identifier 'Counter'", &names),
+        "unknown name 'Counter': it is not a local, a parameter, a field or a type. 'Counter' is a variable of"
+        " 'a.hot'. The import is not transitive. Add 'using \"a.hot\";'");
+    EXPECT_EQ(hotc::rewrite_clang_message("use of undeclared identifier 'Other'", &names),
+        "unknown name 'Other': it is not a local, a parameter, a field or a type");
+    EXPECT_EQ(hotc::rewrite_clang_message("unknown type name 'Twice'", &names),
+        "unknown type 'Twice': add a 'using' line or a native stub");
+}

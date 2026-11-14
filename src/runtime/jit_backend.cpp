@@ -715,7 +715,7 @@ public:
             {
                 if (!backend_.opt_.raw_diagnostics)
                     compiled_.diagnostics = hotc::rewrite_diagnostic(
-                        compiled_.diagnostics, {{source_.name, source_.text}}, {{cpp_path_, tr_.cpp}}, &tr_.source_map);
+                        compiled_.diagnostics, {{source_.name, source_.text}}, {{cpp_path_, tr_.cpp}}, &tr_.source_map, &tr_.indirect_names);
                 r.error = compiled_.diagnostics + "the compile of " + source_.name + " failed\n";
                 r.reason = ReloadReason::CompileError;
                 return r;

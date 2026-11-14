@@ -7,7 +7,8 @@
 //   - Same: lib.hot, the script that declares the symbols (open).
 //   - Closed: closed.hot imports lib.hot (not open).
 //   - Open: open.hot imports lib.hot (open).
-//   - Deep: top.hot imports closed.hot, thus lib.hot through it (open).
+//   - Deep: top.hot imports closed.hot, thus lib.hot through it (open). The import is not
+//     transitive: a free function of lib.hot has no ref in top.hot.
 //   - Unrelated: other.hot has no import. It declares symbols with the same names (open).
 // Each case asserts the exact set of (uri, line, character). The expectation is the correct
 // behaviour. A case that fails on the current server is in kSkip with the missing feature.
@@ -255,7 +256,11 @@ std::set<Place> expected(const Case& c)
 {
     const Row& row = kRows[c.row];
     const int f = static_cast<int>(c.axis);
-    const bool same_symbol = c.axis != Axis::Unrelated && (!row.file_local || c.axis == Axis::Same);
+    const bool indirect_fn = c.axis == Axis::Deep && std::string(row.kind) == "FreeFunction";
+    const bool same_symbol = c.axis != Axis::Unrelated && !indirect_fn && (!row.file_local || c.axis == Axis::Same);
+    // The import is not transitive: a free function of lib.hot is not visible in top.hot.
+    if (indirect_fn && (c.op == Op::Definition || c.op == Op::PrepareRename))
+        return {};
     switch (c.op)
     {
     case Op::Definition:

@@ -4164,11 +4164,12 @@ void translate_impl(
         std::string unit;
     };
     std::vector<ForeignVar> foreign_vars;
-    // The public free functions and module variables of the imports of the imports. The lowering
-    // does not see them (the import is not transitive). Only the table of the resolved names
-    // (refs.h) reads them: a use in the main script gets the id of the declaration.
-    std::vector<Method> deep_fns;
-    std::vector<Field> deep_vars;
+    // The public free functions and module variables of the imports of the imports. The import is
+    // not transitive: they get no reference. A C++ error hint names the unit of each one.
+    hotc::IndirectNames indirect_names;
+    // The static fields of the classes of the imports of the imports. A class is transitive, so
+    // the table of the resolved names reads them.
+    std::vector<Field> deep_static_vars;
     {
         auto is_script = [](const Import& im)
         { return im.path.size() > 4 && im.path.compare(im.path.size() - 4, 4, ".hot") == 0; };
@@ -4340,19 +4341,22 @@ void translate_impl(
                 else
                 {
                     indirect_texts[normal_path(file)] = import_texts.size() - 1;
-                    if (in.resolve_refs)
-                    {
-                        // The code after this does not read "is.fns" and "is.vars".
-                        for (Method& f : is.fns)
-                            if (f.access != hotc::ast::Access::Private)
-                            {
-                                f.body.stmts.clear();
-                                deep_fns.push_back(std::move(f));
-                            }
-                        for (Field& v : is.vars)
-                            if (v.access != hotc::ast::Access::Private)
-                                deep_vars.push_back(std::move(v));
-                    }
+                    // The hint shows the name of the script as a "using" line writes it.
+                    const std::string import_name = unit.size() > 4 && unit.compare(unit.size() - 4, 4, ".hot") == 0
+                        ? unit
+                        : unit + ".hot";
+                    for (const Method& f : is.fns)
+                        if (f.access != hotc::ast::Access::Private)
+                            indirect_names.emplace(f.written_name(), hotc::IndirectName{import_name, false});
+                    // The code after this does not read "is.vars".
+                    for (Field& v : is.vars)
+                        if (v.access != hotc::ast::Access::Private)
+                        {
+                            if (v.owner.empty())
+                                indirect_names.emplace(v.name, hotc::IndirectName{import_name, true});
+                            else if (in.resolve_refs)
+                                deep_static_vars.push_back(std::move(v));
+                        }
                 }
                 for (ClassDef& c : is.classes)
                     if (c.is_private)
@@ -4533,6 +4537,11 @@ void translate_impl(
                     check_alias_name(a);
         }
     }
+    for (const Method& f : foreign_fns)
+        indirect_names.erase(f.written_name());
+    for (const ForeignVar& v : foreign_vars)
+        indirect_names.erase(v.field.name);
+    res.indirect_names = std::move(indirect_names);
     // The table of the resolved names (refs.h). It reads the AST before the steps that change it (the
     // class constants, the lowering).
     if (in.resolve_refs)
@@ -4540,10 +4549,9 @@ void translate_impl(
         hotc::RefInputs ri;
         ri.script = &sc;
         ri.foreign_fns = &foreign_fns;
-        ri.deep_fns = &deep_fns;
         for (const ForeignVar& v : foreign_vars)
             ri.foreign_vars.push_back(&v.field);
-        for (const Field& v : deep_vars)
+        for (const Field& v : deep_static_vars)
             ri.foreign_vars.push_back(&v);
         ri.text = in.script_text;
         ri.map = &map;
@@ -11392,6 +11400,7 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
     // The blank text has the same offsets and the same lines as "text". So the map is valid for it.
     res.refs = std::move(tr.refs);
     res.unresolved = std::move(tr.unresolved);
+    res.indirect_names = std::move(tr.indirect_names);
     res.raw_ranges = std::move(tr.raw_ranges);
     if (tr.ok)
     {
