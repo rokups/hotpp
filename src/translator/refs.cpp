@@ -753,33 +753,44 @@ private:
         Value v = head(n.parts[0], part_pos(0));
         for (size_t i = 1; i < n.parts.size(); ++i)
             v = tail(v, n.parts[i], part_pos(i));
-        if (!n.targ_parsed && n.last_pos)
+        if (!n.targ_parsed && !n.template_args.empty() && n.last_pos)
             targs_text(n.last_pos);
         return v;
     }
 
     // The template arguments that are types ("GetComponent<$Foo>()") are not expressions. The
-    // script classes in the raw text after the name at "name_pos" get a ref.
+    // script classes in the raw text after the name at "name_pos" get a ref. The "<" must follow
+    // the name at once. The matching ">" must have "(", "." or "::" after it. Any other text
+    // is a comparison: it gives no ref.
     void targs_text(uint32_t name_pos)
     {
         const std::string_view t = in_.text;
         uint32_t b = name_pos;
         while (b < t.size() && ident_char(t[b]))
             ++b;
-        if (b >= t.size() || t[b] != '<')
+        if (b == name_pos || b >= t.size() || t[b] != '<')
             return;
         int depth = 0;
         uint32_t e = b;
         for (; e < t.size(); ++e)
         {
-            if (t[e] == '<')
+            const char c = t[e];
+            if (c == '<')
                 ++depth;
-            else if (t[e] == '>' && --depth == 0)
+            else if (c == '>' && --depth == 0)
                 break;
-            else if (t[e] == ';' || t[e] == '(' || t[e] == '{')
-                return; // a comparison, not a template argument list
+            else if (c == ';' || c == '(' || c == ')' || c == '{' || c == '}' || c == '"' || c == '\'' || c == '='
+                     || (c == '&' && e + 1 < t.size() && t[e + 1] == '&')
+                     || (c == '|' && e + 1 < t.size() && t[e + 1] == '|')
+                     || (c == '/' && e + 1 < t.size() && (t[e + 1] == '/' || t[e + 1] == '*')))
+                return; // a comparison or other text, not a template argument list
         }
-        if (e < t.size())
+        if (e + 1 >= t.size())
+            return;
+        uint32_t n = e + 1;
+        while (n < t.size() && (t[n] == ' ' || t[n] == '\t'))
+            ++n;
+        if (n < t.size() && (t[n] == '(' || t[n] == '.' || (t[n] == ':' && n + 1 < t.size() && t[n + 1] == ':')))
             types_in(b + 1, e);
     }
 
@@ -843,21 +854,38 @@ private:
                 {
                     const Value of = eval(u.operand);
                     Value v;
-                    if (!u.postfix && u.op.size() > 1 && u.op.front() == '(')
+                    if (!u.postfix && u.op.size() >= 3 && u.op.front() == '(' && u.op.back() == ')')
                     {
-                        // A cast. The type is the raw text between the parentheses.
+                        // A cast "(T)". The ref offsets come from the raw text of the type: it
+                        // ends at the ")" that closes the "(" at the pos of the node.
                         const std::string_view t = in_.text;
-                        const size_t close = t.find(')', u.pos);
-                        if (u.pos < t.size() && t[u.pos] == '(' && close != std::string_view::npos)
+                        uint32_t close = u.pos;
+                        int depth = 0;
+                        for (; close < t.size() && close < u.pos + 512; ++close)
                         {
-                            types_in(u.pos + 1, static_cast<uint32_t>(close));
+                            if (t[close] == '(')
+                                ++depth;
+                            else if (t[close] == ')' && --depth == 0)
+                                break;
+                            else if (t[close] == ';' || t[close] == '"')
+                                break;
+                        }
+                        if (u.pos < t.size() && t[u.pos] == '(' && close < t.size() && t[close] == ')')
+                        {
+                            types_in(u.pos + 1, close);
                             uint32_t p = u.pos + 1;
                             while (p < close && (t[p] == ' ' || t[p] == '\t' || t[p] == '$'))
                                 ++p;
                             uint32_t q = p;
                             while (q < close && ident_char(t[q]))
                                 ++q;
-                            if (q > p)
+                            // The rest may hold only the marks of a handle or a pointer, not "[]"
+                            // or a template list.
+                            bool plain = q > p;
+                            for (uint32_t k = q; k < close; ++k)
+                                if (!(t[k] == ' ' || t[k] == '\t' || t[k] == '*' || t[k] == '?'))
+                                    plain = false;
+                            if (plain)
                                 if (const ClassDef* c = class_named(std::string(t.substr(p, q - p))))
                                     v.type = c->name;
                         }

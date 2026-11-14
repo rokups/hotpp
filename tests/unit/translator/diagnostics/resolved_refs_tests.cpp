@@ -811,3 +811,31 @@ TEST(ResolvedRefs, ClassInNestedTemplateArgument)
     EXPECT_TRUE(r.ok) << r.diagnostics;
     EXPECT_EQ(uses_of(r, "Gun"), all_of(text, "Gun"));
 }
+
+// A "<" that is a comparison, a string or a comment gives no template argument list.
+TEST(ResolvedRefs, NoClassRefInComparisonStringOrComment)
+{
+    const std::string text = "using \"w.h\";\n"
+                             "class Gun : Widget { int ammo = 0; }\n"
+                             "class Foo : Widget {\n"
+                             "    int Max = 3;\n"
+                             "    int Run(int i, int n, bool ok) {\n"
+                             "        int a = 0;\n"
+                             "        if (i<n) a = 1; // Gun > (1)\n"
+                             "        if (n<Max && ok) a = 2;\n"
+                             "        bool b = n < Max && Gun > 0;\n"
+                             "        string s = \"x<Gun>(1)\";\n"
+                             "        // w.Get<Gun>()\n"
+                             "        return a;\n"
+                             "    }\n"
+                             "}\n";
+    const hotc::AnalyzeResult r = analyze_refs(text);
+    // Only the declaration of the class and the bare name "Gun" in the comparison can have a ref.
+    for (const hotc::ResolvedRef& x : r.refs)
+        if (x.kind == hotc::RefKind::Class)
+        {
+            const size_t line_begin = text.rfind('\n', x.offset) + 1;
+            const std::string line = text.substr(line_begin, text.find('\n', x.offset) - line_begin);
+            EXPECT_TRUE(line.find("class ") == 0 || line.find("n < Max && Gun") != std::string::npos) << line;
+        }
+}
