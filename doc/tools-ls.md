@@ -52,7 +52,7 @@ hot_script_host(NAME engine TARGET engine
 - `hot-ls` reads the host files from `<root>/.cache/hot/hosts`. The argument `--hosts-dir` (init option `hostsDir`) sets another directory.
 - `hot-ls` gives the prelude files of the host (`PRELUDES` of `hot_script_host`) to each script of the host. A host without preludes uses the init option `preludes`, a list of files. An open prelude file does not get its own text as a prelude.
 - `hot-ls` also gives the user preludes. These are the files with the suffix `PRELUDE_SUFFIX` of `hot_script_host` in the script dirs of the host. A host without a suffix uses the init option `preludeSuffix`, and then searches the workspace folders. The search runs at each analysis, so a new prelude file works at once. The user preludes come after the other preludes, sorted by path.
-- A script matches the host with the exact `scripts` entry. Else it matches the host with the longest `scriptDirs` prefix. A tie goes to the lower name.
+- A script matches the host with the exact `scripts` entry. Else it matches the host with the longest `scriptDirs` prefix. A tie goes to the lower name. A host with no `preludes` and no `preludeSuffix` is incomplete. When the winner is incomplete and another matching host has `preludes` or a `preludeSuffix`, the best of those hosts wins instead, also with a lower score. Else the normal rule applies.
 - The effective options are the host values, then the explicit `-I` and `--cxxflag` values. So the flags override the host.
 - A host is skipped when its `binaryDir/CMakeCache.txt` is missing. The server checks it again later.
 - With no host, the old behavior stays. The server also shows an Information diagnostic at 0:0. It does not show it when `-I` or `--compile-commands-dir` is set.

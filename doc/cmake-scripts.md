@@ -16,7 +16,7 @@ hot_add_scripts(TARGET name SCRIPTS a.hot b.hot
 hot_add_scripts(TARGET name SCRIPTS a.hot b.hot AOT [OPTIMIZED]
                 [INCLUDES dir...] [PRELUDES file...] [FLAGS hotc-flag...]
                 [DEPENDS file...] [OUT_DIR dir] [UNIT_ROOT dir] [PARSE_TARGET target]
-                [RUNTIME_TARGET target] [HOTC_ARGS arg...])
+                [RUNTIME_TARGET target] [HOST_TARGET target] [PRELUDE_SUFFIX suffix] [HOTC_ARGS arg...])
 ```
 
 The function runs `hotc` at build time. It has two modes. `AOT` selects the second mode. The function also calls `hot_script_host` with the name `TARGET`, so the language server knows the scripts. Call it after `add_subdirectory` of Hot++.
@@ -37,6 +37,8 @@ The function runs `hotc` at build time. It has two modes. `AOT` selects the seco
 | `UNIT_ROOT` | none | A folder. It works only with `AOT`. Each script gets `--unit-name <path below the folder, without the extension>`, for example `Game/Game`. The unit names then equal the names at run time. A script outside the folder is an error. | A relative path is relative to the current source folder. |
 | `PARSE_TARGET` | none | A target. It works only with `AOT`. The include folders (`INCLUDE_DIRECTORIES`) and the definitions (`COMPILE_DEFINITIONS`) of the target go to `hotc --aot` as `--includes-file` and `--defines-file`. The files are `OUT_DIR/parse_includes.txt` and `OUT_DIR/parse_defines.txt`, one entry for each line, and the command depends on them. | The properties of the target only. The usage requirements of the targets that it links are not included: list them in `INCLUDES`. |
 | `RUNTIME_TARGET` | `hot::runtime_core` | A target. It works only with `AOT`. The library links this target (`PUBLIC`) instead of `hot::runtime_core`. Use it when the program already links the shared runtime. | none |
+| `HOST_TARGET` | none | A target. It works only with `AOT`. The language server host `name` gets the definitions, the options and the include folders of this target (the files `name.defines`, `name.options` and `name.includes`), as `hot_script_host(TARGET ...)` does. Without it the host has only `INCLUDES`. | The target must exist when the call runs. |
+| `PRELUDE_SUFFIX` | none | A suffix, for example `.prelude.hot`. It works only with `AOT`. It goes to the host as `preludeSuffix`. `PRELUDES` go to the host too. | none |
 | `AFTER` | none | A target that must build first. It works only in the default mode. AOT mode stops with an error. | none |
 | `HOTC_ARGS` | empty | More arguments for `hotc`, in both modes. | none |
 
