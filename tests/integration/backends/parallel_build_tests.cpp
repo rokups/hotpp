@@ -986,25 +986,192 @@ TEST(BeginLoadMany, RemovedFilesLeaveTheCachedCompileDatabase)
     EXPECT_EQ(backend->compile_commands_reads(), 1u);
 }
 
-// A damaged file does not stop the write. The next file is valid.
+// A strict check of the syntax: the text is one JSON array of objects.
+class JsonCheck
+{
+public:
+    explicit JsonCheck(const std::string& s)
+        : s_(s)
+    {
+    }
+    bool array_of_objects()
+    {
+        ws();
+        if (!eat('['))
+            return false;
+        ws();
+        if (peek() == ']')
+            return ++i_, done();
+        for (;;)
+        {
+            ws();
+            if (peek() != '{' || !value(0))
+                return false;
+            ws();
+            if (peek() == ',')
+            {
+                ++i_;
+                continue;
+            }
+            return eat(']') && done();
+        }
+    }
+
+private:
+    void ws()
+    {
+        while (i_ < s_.size() && std::strchr(" \n\r\t", s_[i_]))
+            ++i_;
+    }
+    char peek() { return i_ < s_.size() ? s_[i_] : '\0'; }
+    bool eat(char c)
+    {
+        ws();
+        if (peek() != c)
+            return false;
+        ++i_;
+        return true;
+    }
+    bool done()
+    {
+        ws();
+        return i_ == s_.size();
+    }
+    bool str()
+    {
+        if (!eat('"'))
+            return false;
+        while (i_ < s_.size() && s_[i_] != '"')
+        {
+            if (s_[i_] == '\\')
+            {
+                ++i_;
+                if (i_ >= s_.size() || !std::strchr("\"\\/bfnrt", s_[i_]))
+                {
+                    if (peek() != 'u' || i_ + 4 >= s_.size())
+                        return false;
+                    i_ += 4;
+                }
+            }
+            ++i_;
+        }
+        return i_ < s_.size() && ++i_;
+    }
+    bool value(int depth)
+    {
+        ws();
+        if (depth > 50)
+            return false;
+        const char c = peek();
+        if (c == '"')
+            return str();
+        if (c == '{' || c == '[')
+        {
+            const char close = c == '{' ? '}' : ']';
+            ++i_;
+            ws();
+            if (peek() == close)
+                return ++i_, true;
+            for (;;)
+            {
+                if (c == '{' && (!str() || !eat(':')))
+                    return false;
+                if (!value(depth + 1))
+                    return false;
+                ws();
+                if (peek() == ',')
+                {
+                    ++i_;
+                    continue;
+                }
+                return eat(close);
+            }
+        }
+        for (const char* lit : {"true", "false", "null"})
+            if (s_.compare(i_, std::strlen(lit), lit) == 0)
+                return i_ += std::strlen(lit), true;
+        const size_t b = i_;
+        if (peek() == '-')
+            ++i_;
+        while (i_ < s_.size() && std::strchr("0123456789.eE+-", s_[i_]) && s_[i_] != '\0')
+            ++i_;
+        return i_ > b && s_[i_ - 1] != '-';
+    }
+
+    const std::string& s_;
+    size_t i_ = 0;
+};
+
+// A damaged file does not stop the write. The next file is valid JSON. The sample files exist,
+// so the check for a missing file does not hide the damage.
 TEST(BeginLoadMany, DamagedCompileDatabaseIsReplaced)
 {
     SKIP_ON_WINDOWS();
     CleanEnv env;
-    const char* damaged[] = {"[ {\"file\": \"/x\", \"command\": \"a\" ", "{\"file\": \"/x\"}", "[ {\"file\": \"/x\"} } ]",
-        "[ {\"file\": \"/x\" \"command\": 1} ]", "[ {\"file\": \"unterminated} ]", ""};
-    for (const char* d : damaged)
+    TestScratch scratch;
+    const std::string real = scratch.file("real.cpp");
+    std::ofstream(real) << "int x;\n";
+    const std::string f = "\"file\":\"" + real + "\"";
+    const std::vector<std::string> damaged = {"[ {" + f + ", \"command\": \"a\" ", "{" + f + "}",
+        "[ {" + f + "} } ]", "[ {" + f + " \"command\": 1} ]", "[ {\"file\": \"unterminated} ]", "",
+        "[{" + f + "]", "[{" + f + " \"command\":1}]", "[{" + f + ", garbage}]", "[{" + f + ", }]",
+        "[{" + f + ", \"a\": [1, 2}]}]", "[{" + f + ", \"a\": 1-+}]", "[{" + f + ", \"a\": tru}]",
+        "[{" + f + "},]", "[{" + f + "} {" + f + "}]"};
+    for (size_t i = 0; i < damaged.size(); ++i)
     {
-        TestScratch scratch;
-        const std::string db = scratch.file("db");
-        write_db(db, d);
-        auto backend = make_db_backend(scratch, "work", db);
+        const std::string db = scratch.file("db" + std::to_string(i));
+        write_db(db, damaged[i]);
+        auto backend = make_db_backend(scratch, "work" + std::to_string(i), db);
         load_one_unit(*backend, 0);
         const std::string text = read_db(db);
-        EXPECT_EQ(count_entries_of(text), 1u) << d;
-        EXPECT_EQ(text.compare(0, 2, "[\n"), 0) << d;
-        EXPECT_EQ(text.compare(text.size() - 2, 2, "]\n"), 0) << d;
+        EXPECT_TRUE(JsonCheck(text).array_of_objects()) << damaged[i] << "\n" << text;
+        EXPECT_EQ(count_entries_of(text), 1u) << damaged[i];
     }
+}
+
+// A single-byte change of a valid file: the next write is valid JSON, also when the change makes
+// the file damaged.
+TEST(BeginLoadMany, MutatedCompileDatabaseGivesValidJson)
+{
+    SKIP_ON_WINDOWS();
+    CleanEnv env;
+    TestScratch scratch;
+    const std::string real = scratch.file("real.cpp");
+    std::ofstream(real) << "int x;\n";
+    const std::string valid = join_db({odd_foreign_entry(real, 2),
+        "{\"file\": \"" + real + "\", \"arguments\": [\"a\", \"{\"], \"n\": [1, -2.5e3, true, null, {}]}"});
+    ASSERT_TRUE(JsonCheck(valid).array_of_objects());
+    const std::string chars = "{}[]\",:\\";
+    // The backend is new for each sample: its memory has no stamp of an older file.
+    std::vector<std::string> samples;
+    for (size_t at = 0; at < valid.size(); ++at)
+    {
+        std::string m = valid;
+        m.erase(at, 1);
+        samples.push_back(m);
+        m = valid;
+        m.insert(at, 1, valid[at]);
+        samples.push_back(m);
+        if (at % 11 == 0)
+            for (const char c : chars)
+            {
+                m = valid;
+                m[at] = c;
+                samples.push_back(m);
+            }
+    }
+    size_t n = 0;
+    for (const std::string& m : samples)
+    {
+        const std::string db = scratch.file("db" + std::to_string(n));
+        write_db(db, m);
+        auto b = make_db_backend(scratch, "work", db);
+        load_one_unit(*b, 0);
+        const std::string text = read_db(db);
+        ASSERT_TRUE(JsonCheck(text).array_of_objects()) << "sample " << n << ": " << m << "\n" << text;
+        ++n;
+    }
+    EXPECT_GT(n, size_t(300));
 }
 
 // A write of an other process with a different size is read again.

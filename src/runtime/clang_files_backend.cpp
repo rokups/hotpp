@@ -1084,111 +1084,235 @@ struct DbSlice
     std::string file;
 };
 
-// Cuts the top-level array into objects. It matches the braces and skips the strings and their
-// escapes. It reads only the "file" value of each object. An object with no "file" string is
-// not in the list. It returns false when the text is not an array of balanced objects.
-bool scan_compile_db(const std::string& s, std::vector<DbSlice>& out)
+// Cuts the top-level array into objects and checks the syntax of each object (strings, numbers,
+// literals, nested arrays and objects, the commas and colons). It reads only the "file" value of
+// each object. An object with no "file" string is not in the list. It returns false for any
+// syntax error: the full parser then handles the file.
+class DbScanner
 {
-    size_t i = 0;
-    const auto skip_space = [&]
+public:
+    explicit DbScanner(const std::string& s)
+        : s_(s)
     {
-        while (i < s.size() && (s[i] == ' ' || s[i] == '\n' || s[i] == '\r' || s[i] == '\t'))
-            ++i;
-    };
-    skip_space();
-    if (i >= s.size() || s[i++] != '[')
-        return false;
-    skip_space();
-    if (i < s.size() && s[i] == ']')
-    {
-        ++i;
-        skip_space();
-        return i == s.size();
     }
-    for (;;)
+
+    bool run(std::vector<DbSlice>& out)
     {
-        skip_space();
-        if (i >= s.size() || s[i] != '{')
+        if (!eat('['))
             return false;
-        DbSlice slice;
-        slice.begin = i;
-        int depth = 0;
-        char last = '\0'; // the last token character outside a string
-        bool file_key = false;
-        bool have_file = false;
-        std::string file_text;
-        do
+        space();
+        if (i_ < s_.size() && s_[i_] == ']')
         {
-            const char c = s[i];
-            if (c == '"')
+            ++i_;
+            return end();
+        }
+        for (;;)
+        {
+            space();
+            DbSlice slice;
+            slice.begin = i_;
+            bool have_file = false;
+            std::string file_text;
+            if (!object(1, have_file, file_text))
+                return false;
+            slice.end = i_;
+            if (have_file && !JsonReader::decode_string(file_text, slice.file))
+                return false;
+            if (have_file && !slice.file.empty())
+                out.push_back(std::move(slice));
+            space();
+            if (i_ < s_.size() && s_[i_] == ',')
             {
-                const size_t q = i++;
-                bool escape = false;
-                while (i < s.size() && s[i] != '"')
-                {
-                    if (s[i] == '\\')
-                    {
-                        escape = true;
-                        ++i;
-                    }
-                    ++i;
-                }
-                if (i >= s.size())
-                    return false;
-                ++i; // the closing quote
-                if (depth == 1 && (last == '{' || last == ','))
-                {
-                    if (escape)
-                        return false; // an escaped key: leave it to the full parser
-                    file_key = s.compare(q, i - q, "\"file\"") == 0;
-                }
-                else if (depth == 1 && last == ':' && file_key)
-                {
-                    file_text = s.substr(q, i - q);
-                    have_file = true;
-                    file_key = false;
-                }
-                last = '"';
+                ++i_;
                 continue;
             }
-            if (c == '{' || c == '[')
-                ++depth;
-            else if (c == '}' || c == ']')
-                --depth;
-            if (depth == 1 && c == ':' && file_key)
-            {
-                // A "file" value that is not a string: leave it to the full parser.
-                size_t k = i + 1;
-                while (k < s.size() && (s[k] == ' ' || s[k] == '\n' || s[k] == '\r' || s[k] == '\t'))
-                    ++k;
-                if (k >= s.size() || s[k] != '"')
-                    return false;
-            }
-            if (c != ' ' && c != '\n' && c != '\r' && c != '\t')
-                last = c;
-            ++i;
-        } while (i < s.size() && depth > 0);
-        if (depth != 0)
-            return false;
-        slice.end = i;
-        if (have_file && !JsonReader::decode_string(file_text, slice.file))
-            return false;
-        if (have_file && !slice.file.empty())
-            out.push_back(std::move(slice));
-        skip_space();
-        if (i >= s.size())
-            return false;
-        if (s[i] == ',')
-        {
-            ++i;
-            continue;
+            return eat(']') && end();
         }
-        if (s[i] != ']')
-            return false;
-        ++i;
-        skip_space();
-        return i == s.size();
     }
+
+private:
+    void space()
+    {
+        while (i_ < s_.size() && (s_[i_] == ' ' || s_[i_] == '\n' || s_[i_] == '\r' || s_[i_] == '\t'))
+            ++i_;
+    }
+    bool eat(char c)
+    {
+        space();
+        if (i_ >= s_.size() || s_[i_] != c)
+            return false;
+        ++i_;
+        return true;
+    }
+    bool end()
+    {
+        space();
+        return i_ == s_.size();
+    }
+    // A string. "escape" tells that the string has a backslash.
+    bool string(size_t& begin, bool& escape)
+    {
+        if (!eat('"'))
+            return false;
+        begin = i_ - 1;
+        escape = false;
+        for (;;)
+        {
+            i_ = s_.find_first_of("\"\\", i_);
+            if (i_ == std::string::npos)
+            {
+                i_ = s_.size();
+                return false;
+            }
+            if (s_[i_] == '"')
+                break;
+            escape = true;
+            ++i_;
+            if (i_ >= s_.size() || !std::strchr("\"\\/bfnrtu", s_[i_]) || s_[i_] == '\0')
+                return false;
+            ++i_;
+        }
+        if (i_ >= s_.size())
+            return false;
+        ++i_;
+        return true;
+    }
+    bool value(int depth)
+    {
+        if (depth > 32)
+            return false;
+        space();
+        if (i_ >= s_.size())
+            return false;
+        const char c = s_[i_];
+        size_t b;
+        bool esc;
+        if (c == '"')
+            return string(b, esc);
+        if (c == '{')
+        {
+            bool have = false;
+            std::string ignore;
+            return object(depth + 1, have, ignore);
+        }
+        if (c == '[')
+        {
+            ++i_;
+            space();
+            if (i_ < s_.size() && s_[i_] == ']')
+            {
+                ++i_;
+                return true;
+            }
+            for (;;)
+            {
+                if (!value(depth + 1))
+                    return false;
+                space();
+                if (i_ < s_.size() && s_[i_] == ',')
+                {
+                    ++i_;
+                    continue;
+                }
+                return eat(']');
+            }
+        }
+        const size_t start = i_;
+        while (i_ < s_.size() && s_[i_] != '\0' && std::strchr("-+.eE0123456789abcdefghijklmnopqrstuvwxyz", s_[i_]))
+            ++i_;
+        if (i_ == start)
+            return false;
+        if (c >= 'a' && c <= 'z')
+        {
+            const std::string word = s_.substr(start, i_ - start);
+            return word == "true" || word == "false" || word == "null";
+        }
+        return is_json_number(s_.substr(start, i_ - start));
+    }
+    // The number grammar of JSON: -?(0|[1-9][0-9]*)(.[0-9]+)?([eE][+-]?[0-9]+)?
+    static bool is_json_number(const std::string& w)
+    {
+        size_t k = 0;
+        const auto digits = [&]
+        {
+            const size_t b = k;
+            while (k < w.size() && w[k] >= '0' && w[k] <= '9')
+                ++k;
+            return k - b;
+        };
+        if (k < w.size() && w[k] == '-')
+            ++k;
+        if (k < w.size() && w[k] == '0')
+            ++k;
+        else if (digits() == 0)
+            return false;
+        if (k < w.size() && w[k] == '.')
+        {
+            ++k;
+            if (digits() == 0)
+                return false;
+        }
+        if (k < w.size() && (w[k] == 'e' || w[k] == 'E'))
+        {
+            ++k;
+            if (k < w.size() && (w[k] == '+' || w[k] == '-'))
+                ++k;
+            if (digits() == 0)
+                return false;
+        }
+        return k == w.size();
+    }
+    // An object. At depth 1 it takes the text of the "file" value (it must be a string).
+    bool object(int depth, bool& have_file, std::string& file_text)
+    {
+        if (!eat('{'))
+            return false;
+        space();
+        if (i_ < s_.size() && s_[i_] == '}')
+        {
+            ++i_;
+            return true;
+        }
+        for (;;)
+        {
+            size_t kb, ke;
+            bool escape;
+            if (!string(kb, escape))
+                return false;
+            ke = i_;
+            if (!eat(':'))
+                return false;
+            space();
+            if (depth == 1 && escape)
+                return false; // an escaped key: leave it to the full parser
+            if (depth == 1 && s_.compare(kb, ke - kb, "\"file\"") == 0)
+            {
+                size_t vb;
+                bool vesc;
+                if (!string(vb, vesc))
+                    return false;
+                file_text = s_.substr(vb, i_ - vb);
+                have_file = true;
+            }
+            else if (!value(depth))
+                return false;
+            space();
+            if (i_ < s_.size() && s_[i_] == ',')
+            {
+                ++i_;
+                continue;
+            }
+            return eat('}');
+        }
+    }
+
+    const std::string& s_;
+    size_t i_ = 0;
+};
+
+bool scan_compile_db(const std::string& s, std::vector<DbSlice>& out)
+{
+    return DbScanner(s).run(out);
 }
 
 } // namespace
