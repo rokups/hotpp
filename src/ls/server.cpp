@@ -11,6 +11,7 @@
 #include "hosts.h"
 #include "jsonrpc.h"
 #include "long_path.h"
+#include "script_text.h"
 #include "semantic.h"
 #include "hot/clang_files_backend.h"
 #include "hot/config.h"
@@ -165,44 +166,6 @@ std::optional<std::string> read_file(const std::string& path)
     return ss.str();
 }
 
-// A text with its line table. Positions are 0-based lines and byte columns.
-struct Text
-{
-    std::string s;
-    std::vector<size_t> starts;
-    Text()
-        : starts{0}
-    {
-    }
-    explicit Text(std::string t)
-        : s(std::move(t))
-        , starts(line_starts(s))
-    {
-    }
-    std::string_view line(int l) const { return line_text(s, starts, l); }
-    size_t offset(int l, int c) const
-    {
-        if (l < 0)
-            return 0;
-        if (static_cast<size_t>(l) >= starts.size())
-            return s.size();
-        return std::min(starts[static_cast<size_t>(l)] + static_cast<size_t>(std::max(c, 0)), s.size());
-    }
-    std::pair<int, int> pos(size_t off) const
-    {
-        const auto it = std::upper_bound(starts.begin(), starts.end(), off);
-        const int l = static_cast<int>(it - starts.begin()) - 1;
-        return {l, static_cast<int>(off - starts[static_cast<size_t>(l)])};
-    }
-};
-
-struct Pos
-{
-    int line = 0, col = 0; // 0-based line, byte column
-    bool operator<(const Pos& o) const { return std::tie(line, col) < std::tie(o.line, o.col); }
-    bool operator==(const Pos& o) const { return line == o.line && col == o.col; }
-};
-
 // A script symbol that other scripts can have too: a class, or a member of a class.
 struct SymbolKey
 {
@@ -345,9 +308,7 @@ std::optional<Pos> Doc::gen_script_to_text(Pos p) const
     return Pos{l, c};
 }
 
-static std::string blank_non_code(std::string_view l, bool& in_block);
 static bool has_word(std::string_view text, const std::string& name);
-static std::vector<int> whole_word_cols(std::string_view l, const std::string& w);
 
 // The state of one native rename. The helpers of Server::native_rename share it.
 // True for the name of a file that "hotc --compile-commands" writes: "<stem>.g<N>.cpp".
@@ -2138,7 +2099,6 @@ static bool has_prefix(const std::string& name, const std::string& prefix)
     return true;
 }
 
-static std::string blank_non_code(std::string_view l, bool& in_block);
 
 json Server::using_completion(const Doc& d, Pos cur, size_t off, size_t line_begin)
 {
@@ -2961,7 +2921,6 @@ json Server::on_completion(const Doc& d, const json& p)
     return {{"isIncomplete", incomplete}, {"items", items}};
 }
 
-static std::string blank_non_code(std::string_view l, bool& in_block);
 
 std::optional<Server::StaticHit> Server::static_member_at(const Doc& d, Pos cur) const
 {
@@ -3742,60 +3701,6 @@ static bool is_symbol_word(const std::string& w)
         && !is_one_of(script_keywords()) && !is_one_of(builtin_type_names());
 }
 
-// Replaces the text of the string literals, the character literals and the comments of a line by
-// spaces. "in_block" is true inside a block comment that goes on to the next line.
-static std::string blank_non_code(std::string_view l, bool& in_block)
-{
-    std::string out(l);
-    for (size_t i = 0; i < l.size();)
-    {
-        if (in_block)
-        {
-            const size_t e = l.find("*/", i);
-            const size_t end = e == std::string_view::npos ? l.size() : e + 2;
-            std::fill(out.begin() + static_cast<long>(i), out.begin() + static_cast<long>(end), ' ');
-            in_block = e == std::string_view::npos;
-            i = end;
-        }
-        else if (l.compare(i, 2, "//") == 0)
-        {
-            std::fill(out.begin() + static_cast<long>(i), out.end(), ' ');
-            break;
-        }
-        else if (l.compare(i, 2, "/*") == 0)
-        {
-            // Skip the "/*" before the search for "*/": "/*/" does not end the comment.
-            in_block = true;
-            out[i] = out[i + 1] = ' ';
-            i += 2;
-        }
-        // A raw string and a digit separator are errors in a script (doc/limits.md), so a quote
-        // here always starts an ordinary string or character literal.
-        else if (l[i] == '"' || l[i] == '\'')
-        {
-            size_t e = i + 1;
-            while (e < l.size() && l[e] != l[i])
-                e += l[e] == '\\' ? 2 : 1;
-            e = std::min(e + 1, l.size());
-            std::fill(out.begin() + static_cast<long>(i), out.begin() + static_cast<long>(e), ' ');
-            i = e;
-        }
-        else
-            ++i;
-    }
-    return out;
-}
-
-// The columns of the whole-word matches of "w" in a line.
-static std::vector<int> whole_word_cols(std::string_view l, const std::string& w)
-{
-    std::vector<int> cols;
-    for (size_t from = 0, at; (at = l.find(w, from)) != std::string_view::npos; from = at + 1)
-        if ((at == 0 || !is_id_char(l[at - 1])) && (at + w.size() >= l.size() || !is_id_char(l[at + w.size()])))
-            cols.push_back(static_cast<int>(at));
-    return cols;
-}
-
 // The generated places of the word at a script position, for a word with no map segment. The
 // "#line" directives give the script line of each generated line. A generated line of the same
 // script line that has the word gives a place. A word in a string or a comment is not a place.
@@ -4475,32 +4380,12 @@ bool Server::table_lacks_word(const std::string& path, const std::string& text, 
             return false;
         entry = {digest, std::make_shared<const FileRefs>(std::move(shard->table))};
     }
-    // Each code word must be a resolved script ref. A word that the table does not claim (an
-    // unresolved name, a native type, a raw body word) keeps the script in the scan.
-    const FileRefs& t = *entry.table;
-    const Text body(text);
-    bool block = false;
-    for (int line = 0; line < static_cast<int>(body.starts.size()); ++line)
-        for (const int col : whole_word_cols(blank_non_code(body.line(line), block), word))
-        {
-            const hotc::ResolvedRef* r = ref_at(t, static_cast<uint32_t>(body.offset(line, col)));
-            if (!r || r->length != word.size() || body.offset(line, col) != static_cast<size_t>(r->offset))
-                return false;
-        }
-    return true;
+    return table_lacks_word_in(*entry.table, text, word);
 }
 
 std::set<Pos> Server::class_places(const Doc& d, const std::string& name) const
 {
-    // The class name has no segment in the source map, so clangd cannot find it. The semantic
-    // tokens of the facts mark each word that is the name of a script class.
-    constexpr int kClassToken = 2; // the index of "class" in semantic_token_types()
-    std::set<Pos> out;
-    for (const SemanticToken& t : script_tokens(d.text.s, d.facts))
-        if (t.type == kClassToken
-            && d.text.line(t.line).substr(static_cast<size_t>(t.col), static_cast<size_t>(t.len)) == name)
-            out.insert({t.line, t.col});
-    return out;
+    return class_places_in(d.text, d.facts, name);
 }
 
 bool Server::is_script_class(const Doc& d, const std::string& name) const
@@ -4622,20 +4507,6 @@ std::optional<SymbolKey> Server::key_at(const Doc& d, Pos cur)
     if (std::holds_alternative<std::string>(r))
         return std::nullopt;
     return symbol_key(d, decl, name);
-}
-
-// The position of the name of the class "c" in the script text "t".
-static Pos class_name_pos_in(const Text& t, const hotc::AnalyzedClass& c)
-{
-    // The begin of a class is at the keyword "class". The name comes after it on the line.
-    const Pos b = {c.begin.line - 1, c.begin.col - 1};
-    const std::string_view l = t.line(b.line);
-    for (size_t at = l.find(c.name, static_cast<size_t>(b.col)); at != std::string_view::npos;
-        at = l.find(c.name, at + 1))
-        if ((at == 0 || !is_id_char(l[at - 1]))
-            && (at + c.name.size() >= l.size() || !is_id_char(l[at + c.name.size()])))
-            return {b.line, static_cast<int>(at)};
-    return b;
 }
 
 Pos Server::class_name_pos(const Doc& d, const hotc::AnalyzedClass& c) const { return class_name_pos_in(d.text, c); }
@@ -4790,60 +4661,17 @@ std::vector<std::string> Server::script_imports(const Doc& d, const std::string&
     }
     hotc::TranslateOptions o = translate_options(d);
     o.fs = open_docs_fs_;
-    const std::string dir = fs::path(d.path).parent_path().string();
-    std::vector<std::string> out;
-    for (const std::string& pth : hotc::analyze_imports(text, std::string()).imports)
-    {
-        if (pth.size() <= 4 || pth.compare(pth.size() - 4, 4, ".hot") != 0)
-            continue;
-        std::string itext, file, unit;
-        if (!hotc::find_import(o, pth, dir, std::string(), itext, file, unit))
-            continue;
-        const std::string id = hotc::ref_file_id(file);
-        if (std::find(out.begin(), out.end(), id) == out.end())
-            out.push_back(id);
-    }
-    return out;
+    return script_imports_in(o, d.path, text);
 }
 
 FileRefs Server::table_of_doc(const Doc& d)
 {
-    FileRefs t;
-    t.file_id = hotc::ref_file_id(d.path);
-    t.refs = d.facts.refs;
-    t.unresolved = d.facts.unresolved;
-    t.raw_ranges = d.facts.raw_ranges;
-    t.imports = script_imports(d, d.text.s);
-    for (const hotc::AnalyzeError& e : d.facts.errors)
-        if (!e.note)
-            t.errors.emplace_back(e.pos.line, e.message);
-    // A script that does not translate has no table, or a table with gaps. Line 0: no line.
-    if (t.errors.empty() && !d.facts.ok)
-        t.errors.emplace_back(0, d.facts.diagnostics.substr(0, d.facts.diagnostics.find('\n')));
-    for (const hotc::AnalyzedClass& c : d.facts.classes)
-        t.bases.emplace_back(c.name, c.base);
-    sort_refs(t);
-    return t;
+    return table_of_facts(d.path, d.facts, script_imports(d, d.text.s));
 }
 
 IndexShard Server::shard_of_doc(const Doc& d)
 {
-    IndexShard shard;
-    shard.table = table_of_doc(d);
-    shard.has_table = true;
-    for (const hotc::AnalyzedClass& c : d.facts.classes)
-    {
-        IndexClass ic;
-        ic.name = c.name;
-        const Pos b = class_name_pos(d, c);
-        ic.begin = {b.line, b.col};
-        for (const Pos& q : class_places(d, c.name))
-            ic.refs.push_back({q.line, q.col});
-        for (const hotc::AnalyzedMember& m : c.members)
-            ic.members.push_back({m.name, m.kind, {m.begin.line - 1, m.begin.col - 1}, std::nullopt});
-        shard.classes.push_back(std::move(ic));
-    }
-    return shard;
+    return shard_of_facts(d.path, d.text, d.facts, script_imports(d, d.text.s));
 }
 
 std::shared_ptr<Doc> Server::open_doc_at(const std::string& path) const

@@ -11,7 +11,7 @@ find_program(HOT_CLANGD clangd HINTS "${_hot_script_bin}")
 if(NOT HOT_CLANGD)
     set(HOT_CLANGD "")
 endif()
-add_executable(integration_ls_tests ls_tests.cpp)
+add_executable(integration_ls_tests ls_tests.cpp workspace_index_tests.cpp)
 target_include_directories(integration_ls_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
 target_link_libraries(integration_ls_tests PRIVATE hot_ls_lib GTest::gtest_main)
 target_compile_definitions(integration_ls_tests PRIVATE
