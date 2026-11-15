@@ -749,17 +749,33 @@ std::string json_string(const std::string& s)
 
 } // namespace
 
+// The text of one entry, without the separator after it.
+static std::string compile_command_entry_json(const CompileCommandEntry& e)
+{
+    std::string r = "  {\n    \"directory\": ";
+    r += json_string(e.directory);
+    r += ",\n    \"file\": ";
+    r += json_string(e.file);
+    r += ",\n    \"arguments\": [";
+    for (size_t k = 0; k < e.arguments.size(); ++k)
+    {
+        if (k)
+            r += ", ";
+        r += json_string(e.arguments[k]);
+    }
+    r += "],\n    \"output\": ";
+    r += json_string(e.output);
+    r += "\n  }";
+    return r;
+}
+
 std::string compile_commands_json(const std::vector<CompileCommandEntry>& entries)
 {
     std::string r = "[\n";
     for (size_t i = 0; i < entries.size(); ++i)
     {
-        const CompileCommandEntry& e = entries[i];
-        r += "  {\n    \"directory\": " + json_string(e.directory) + ",\n    \"file\": " + json_string(e.file)
-            + ",\n    \"arguments\": [";
-        for (size_t k = 0; k < e.arguments.size(); ++k)
-            r += (k ? ", " : "") + json_string(e.arguments[k]);
-        r += "],\n    \"output\": " + json_string(e.output) + "\n  }" + (i + 1 < entries.size() ? "," : "") + "\n";
+        r += compile_command_entry_json(entries[i]);
+        r += i + 1 < entries.size() ? ",\n" : "\n";
     }
     return r + "]\n";
 }
@@ -1116,18 +1132,59 @@ void ClangFilesBackend::flush_compile_commands()
         if (same)
             return;
     }
-    disk_known_ = false;
-    // Another process can write the file after the last read. The merge keeps its entries. The
-    // window between the read and the rename is short; a lost entry comes back at its next build.
+    // The file is the same as at the last write, but an entry changed. The text of the other
+    // entries is the same: the backend keeps it, so it does not read and parse the file again.
+    std::map<std::string, CompileCommandEntry> merged;
+    std::map<std::string, std::string> rendered;
     std::string old_text;
-    std::map<std::string, CompileCommandEntry> merged = read_compile_commands(old_text);
+    if (disk_known_ && stamp(mtime, size) && mtime == disk_mtime_ && size == disk_size_)
+    {
+        merged = std::move(disk_commands_);
+        rendered = std::move(disk_rendered_);
+        for (auto it = merged.begin(); it != merged.end();)
+        {
+            if (fs::exists(it->first, ec))
+                ++it;
+            else
+            {
+                rendered.erase(it->first);
+                it = merged.erase(it);
+            }
+        }
+    }
+    else
+    {
+        // Another process can write the file after the last read. The merge keeps its entries.
+        // The window between the read and the rename is short; a lost entry comes back at its
+        // next build.
+        merged = read_compile_commands(old_text);
+        ++compile_db_reads_;
+    }
+    disk_known_ = false;
+    disk_commands_.clear();
+    disk_rendered_.clear();
     for (const auto& [file, entry] : commands_)
+    {
+        const auto m = merged.find(file);
+        if (m != merged.end() && same_entry(m->second, entry) && rendered.count(file))
+            continue;
         merged[file] = entry;
-    std::vector<CompileCommandEntry> list;
+        rendered[file] = compile_command_entry_json(entry);
+    }
+    std::string text = "[\n";
+    size_t n = 0;
     for (const auto& [file, entry] : merged) // the map order is the order of "file"
-        list.push_back(entry);
-    const std::string text = compile_commands_json(list);
-    if (text != old_text)
+    {
+        auto r = rendered.find(file);
+        if (r == rendered.end())
+            r = rendered.emplace(file, compile_command_entry_json(entry)).first;
+        text += r->second;
+        text += ++n < merged.size() ? ",\n" : "\n";
+    }
+    text += "]\n";
+    // "old_text" is empty after a fast start: the text of the file is not known, but the stamp is.
+    const bool same_as_disk = !old_text.empty() && text == old_text;
+    if (!same_as_disk)
     {
         fs::create_directories(dir, ec);
         // A write failure has no effect on the build. The next build tries again. The write is
@@ -1143,6 +1200,7 @@ void ClangFilesBackend::flush_compile_commands()
     if (stamp(disk_mtime_, disk_size_))
     {
         disk_commands_ = std::move(merged);
+        disk_rendered_ = std::move(rendered);
         disk_known_ = true;
     }
 }

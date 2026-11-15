@@ -856,6 +856,45 @@ TEST(BeginLoadMany, BatchWritesTheCompileDatabaseOnce)
     EXPECT_EQ(many_text, read_db(serial_db));
 }
 
+// The file has many foreign entries. The backend reads it once. A later write uses the entries in
+// memory and keeps the foreign entries.
+TEST(BeginLoadMany, LaterWritesDoNotReadTheCompileDatabaseAgain)
+{
+    SKIP_ON_WINDOWS();
+    CleanEnv env;
+    TestScratch scratch;
+    const std::string db = scratch.file("db");
+    fs::create_directories(db);
+    std::vector<hot::CompileCommandEntry> foreign;
+    for (int i = 0; i < 40; ++i)
+    {
+        const std::string file = scratch.file("foreign" + std::to_string(i) + ".cpp");
+        std::ofstream(file) << "int x;\n";
+        hot::CompileCommandEntry e;
+        e.directory = scratch.file("foreign");
+        e.file = file;
+        e.output = file + ".o";
+        e.arguments = {"c++", "-c", file};
+        foreign.push_back(e);
+    }
+    {
+        std::ofstream out(fs::path(db) / "compile_commands.json", std::ios::binary);
+        out << hot::compile_commands_json(foreign);
+    }
+    auto backend = make_db_backend(scratch, "work", db);
+    for (int i = 0; i < 3; ++i)
+    {
+        const std::vector<hot::ScriptSource> sources = many_sources(i, 1);
+        auto one = backend->begin_load(sources[0], 1);
+        std::vector<hot::PendingLoad*> raw{one.get()};
+        hot::run_compiles(raw, 1);
+        ASSERT_TRUE(one->finish());
+        EXPECT_EQ(backend->compile_commands_writes(), size_t(i + 1));
+        EXPECT_EQ(backend->compile_commands_reads(), 1u);
+        EXPECT_EQ(count_entries_of(read_db(db)), size_t(41 + i));
+    }
+}
+
 // A failed unit and a unit with no finish do not stop the write. It happens once.
 TEST(BeginLoadMany, PartialBatchWritesTheCompileDatabaseOnce)
 {
