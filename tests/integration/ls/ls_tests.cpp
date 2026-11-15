@@ -634,9 +634,11 @@ struct NativeSession
     // "token_wait_ms" is the wait of a semantic tokens request for clangd. The tests give a long wait
     // so that the first answer has the native tokens.
     // "clangd" replaces the clangd program when it is not empty.
-    // "rename_budget_ms" is the time budget of one rename.
+    // "rename_budget_ms" is the time budget of one rename. "reference_budget_ms" is the time
+    // budget of the scan of the other scripts for one references request.
     explicit NativeSession(const char* script = kNativeScript, int token_wait_ms = 10000, bool native_tokens = true,
-        const std::string& clangd = "", int rename_budget_ms = 10000, const char* header = kNativeHeader)
+        const std::string& clangd = "", int rename_budget_ms = 10000, const char* header = kNativeHeader,
+        int reference_budget_ms = 30000)
     {
         write_file((dir.path() / "natives.h").string(), header);
         path = (dir.path() / "hero.hot").string();
@@ -647,6 +649,7 @@ struct NativeSession
         o.native_token_wait_ms = token_wait_ms;
         o.native_semantic_tokens = native_tokens;
         o.rename_budget_ms = rename_budget_ms;
+        o.reference_budget_ms = reference_budget_ms;
         if (!clangd.empty())
             o.clangd = clangd;
         client = std::make_unique<LsClient>(o);
@@ -6345,6 +6348,126 @@ TEST(LanguageServerNative, RenameIsRefusedWhenTheBudgetIsOver)
     }
     ASSERT_TRUE(r.contains("error")) << r.dump();
     EXPECT_NE(r["error"]["message"].get<std::string>().find("time budget of 3 s is over at"), std::string::npos) << r.dump();
+}
+
+// The references of Clamp100 at "Clamp100(MAX_HP)" of hero.hot, as the sorted "file:line:col" text
+// of the places in the scripts (not natives.h).
+static std::vector<std::string> script_places(NativeSession& s, json* raw = nullptr, bool wait_decl = true)
+{
+    json p = {{"textDocument", {{"uri", s.uri}}}, {"position", native_pos("Clamp100(MAX_HP)", "Clamp100")},
+        {"context", {{"includeDeclaration", true}}}};
+    json r;
+    for (int i = 0; i < 20; ++i)
+    {
+        r = s.client->request("textDocument/references", p);
+        bool have_decl = false;
+        for (const json& l : r.value("result", json::array()))
+            have_decl = have_decl || l.value("uri", "").find("natives.h") != std::string::npos;
+        if (have_decl || !wait_decl)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    if (raw)
+        *raw = r;
+    std::vector<std::string> out;
+    for (const json& l : r.value("result", json::array()))
+    {
+        const std::string uri = l.value("uri", "");
+        if (uri.find(".hot") != std::string::npos)
+            out.push_back(std::filesystem::path(uri).filename().string() + ":" + std::to_string(l["range"]["start"]["line"].get<int>())
+                + ":" + std::to_string(l["range"]["start"]["character"].get<int>()));
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+// HOT-32: a closed script with a stored table and a script symbol with the name of the native
+// symbol (so no unresolved name) costs no analyze. The result is the same as without the stored tables.
+TEST(LanguageServerNative, ReferencesSkipClosedScriptsWithTheirOwnSymbolOfTheName)
+{
+    REQUIRE_CLANGD();
+    auto run = [&](bool warm, int& analyses)
+    {
+        NativeSession s;
+        for (int i = 0; i < 5; ++i)
+        {
+            const std::string decoy = "class Decoy" + std::to_string(i) + " {\n    // Clamp100 in a comment\n    int Clamp100(int v) {\n        return v;\n    }\n    int x = Clamp100(2);\n}\n";
+            const std::string path = (s.dir.path() / ("decoy" + std::to_string(i) + ".hot")).string();
+            write_file(path, decoy);
+            if (warm) // a close of an open document stores the shard
+            {
+                s.client->open(uri_of(path), decoy);
+                s.client->notify("textDocument/didClose", {{"textDocument", {{"uri", uri_of(path)}}}});
+            }
+        }
+        write_file((s.dir.path() / "pet.hot").string(), kPetScript);
+        auto translations = [&] { return s.client->request("hot/indexStats", json::object())["result"].value("translations", -1); };
+        const int before = translations();
+        const std::vector<std::string> places = script_places(s);
+        analyses = translations() - before;
+        return places;
+    };
+    int warm_analyses = 0, cold_analyses = 0;
+    const std::vector<std::string> warm = run(true, warm_analyses);
+    const std::vector<std::string> cold = run(false, cold_analyses);
+    EXPECT_EQ(warm, cold);
+    EXPECT_NE(std::find_if(warm.begin(), warm.end(), [](const std::string& l) { return l.rfind("pet.hot", 0) == 0; }), warm.end());
+    EXPECT_GE(cold_analyses - warm_analyses, 5) << "warm " << warm_analyses << " cold " << cold_analyses;
+}
+
+// HOT-32: when the time budget stops the scan, the server tells the user (log and showMessage)
+// and the list keeps the scripts done so far. A proxy gives the open of b_slow.hot to clangd late.
+TEST(LanguageServerNative, ReferencesTellTheUserWhenTheBudgetStopsTheScan)
+{
+    REQUIRE_CLANGD();
+    if (std::system("python3 -c \"\" >/dev/null 2>&1") != 0)
+        GTEST_SKIP() << "python3 is not installed";
+    TempDir tools;
+    const std::string proxy = (tools.path() / "slow_clangd.py").string();
+    write_file(proxy,
+        "import subprocess, sys, time\n"
+        "p = subprocess.Popen(sys.argv[1:], stdin=subprocess.PIPE)\n"
+        "src = sys.stdin.buffer\n"
+        "while True:\n"
+        "    head = b''\n"
+        "    while not head.endswith(b'\\r\\n\\r\\n'):\n"
+        "        c = src.read(1)\n"
+        "        if not c:\n"
+        "            p.stdin.close()\n"
+        "            p.wait()\n"
+        "            sys.exit(0)\n"
+        "        head += c\n"
+        "    size = 0\n"
+        "    for line in head.split(b'\\r\\n'):\n"
+        "        if line.lower().startswith(b'content-length:'):\n"
+        "            size = int(line.split(b':')[1])\n"
+        "    body = src.read(size)\n"
+        "    if b'\"textDocument/didOpen\"' in body and b'b_slow.hot' in body:\n"
+        "        time.sleep(8)\n"
+        "    p.stdin.write(head + body)\n"
+        "    p.stdin.flush()\n");
+    const std::string clangd = (tools.path() / "slow_clangd").string();
+    write_file(clangd, "#!/bin/sh\nexec python3 '" + proxy + "' '" HOT_CLANGD_PATH "' \"$@\"\n");
+    std::filesystem::permissions(clangd, std::filesystem::perms::owner_all, std::filesystem::perm_options::add);
+    NativeSession s(kNativeScript, 10000, true, clangd, 10000, kNativeHeader, 5000);
+    for (const char* name : {"a_pet.hot", "b_slow.hot", "c_pet.hot"})
+        write_file((s.dir.path() / name).string(), kPetScript);
+    json raw;
+    std::vector<std::string> places;
+    json note;
+    for (int i = 0; i < 20 && note.is_null(); ++i)
+    {
+        places = script_places(s, &raw, false);
+        note = s.client->wait_notification("window/showMessage",
+            [](const json& p) { return p.value("message", std::string()).find("scan stopped by the time budget") != std::string::npos; },
+            500);
+    }
+    ASSERT_FALSE(note.is_null()) << raw.dump();
+    const std::string message = note["params"].value("message", "");
+    EXPECT_NE(message.find("native references: scan stopped by the time budget, 2 of 3 scripts"), std::string::npos) << message;
+    EXPECT_NE(std::find_if(places.begin(), places.end(), [](const std::string& l) { return l.rfind("a_pet.hot", 0) == 0; }), places.end())
+        << raw.dump();
+    EXPECT_EQ(std::find_if(places.begin(), places.end(), [](const std::string& l) { return l.rfind("c_pet.hot", 0) == 0; }), places.end());
 }
 #endif
 

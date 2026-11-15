@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdio>
 #include <cctype>
 #include <chrono>
 #include <condition_variable>
@@ -815,6 +816,9 @@ private:
     bool is_old_name(NativeRenameJob& job, const std::string& uri, const json& range);
     std::string rename_other_scripts(NativeRenameJob& job, const Doc& d);
     void native_uses_in_scripts(const Doc& d, Pos ask, const std::string& word_name, json& out);
+    // True when a stored table (cache or shard, no analyze) of the closed script shows that the
+    // script has no code word "word" that is not a resolved script ref. False when no table is available.
+    bool table_lacks_word(const std::string& path, const std::string& text, const std::string& word);
     // clangd renames the class name only. This adds the names of the constructors and the
     // destructor: in the class body, and in the out-of-class definitions ("Old::Old(").
     void add_ctor_edits(NativeRenameJob& job);
@@ -4274,7 +4278,8 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
     const std::vector<Target> target = targets_at(d, ask);
     if (target.empty())
         return; // not a native symbol
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(opt_.rename_budget_ms);
+    // The references request is single-threaded: a long budget blocks all other requests (HOT-36).
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(opt_.reference_budget_ms);
     auto norm = [](const std::string& p) { return fs::path(p).lexically_normal().string(); };
     std::vector<std::string> todo;
     std::set<std::string> known = {norm(d.path)};
@@ -4291,10 +4296,18 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
     std::set<std::string> seen;
     for (const json& l : out)
         seen.insert(l.dump());
-    for (const std::string& path : todo)
+    for (size_t index = 0; index < todo.size(); ++index)
     {
+        const std::string& path = todo[index];
         if (std::chrono::steady_clock::now() >= deadline)
+        {
+            const std::string note = "native references: scan stopped by the time budget, " + std::to_string(index)
+                + " of " + std::to_string(todo.size()) + " scripts";
+            std::fprintf(stderr, "hot-ls: %s\n", note.c_str());
+            send_client({{"jsonrpc", "2.0"}, {"method", "window/showMessage"},
+                {"params", {{"type", 2}, {"message", "hot-ls: " + note + ". The list of references is partial."}}}});
             break;
+        }
         const std::shared_ptr<Doc> open = open_doc_at(path);
         std::optional<std::string> closed_text;
         if (!open)
@@ -4302,6 +4315,8 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
             closed_text = read_file(path);
             if (!closed_text || !has_word(*closed_text, word_name))
                 continue;
+            if (table_lacks_word(path, *closed_text, word_name))
+                continue; // every code word is a script symbol
         }
         const Text text = open ? open->text : Text(*closed_text);
         std::vector<Pos> words;
@@ -4349,6 +4364,33 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
             with_temp_clangd(tmp, [&] { work(tmp); });
         }
     }
+}
+
+bool Server::table_lacks_word(const std::string& path, const std::string& text, const std::string& word)
+{
+    const std::string norm = fs::path(path).lexically_normal().string();
+    const std::string digest = shard_digest(norm, text);
+    TableEntry& entry = table_cache_[norm];
+    if (!entry.table || entry.digest != digest)
+    {
+        auto shard = index_.load(norm, digest);
+        if (!shard)
+            return false;
+        entry = {digest, std::make_shared<const FileRefs>(std::move(shard->table))};
+    }
+    // Each code word must be a resolved script ref. A word that the table does not claim (an
+    // unresolved name, a native type, a raw body word) keeps the script in the scan.
+    const FileRefs& t = *entry.table;
+    const Text body(text);
+    bool block = false;
+    for (int line = 0; line < static_cast<int>(body.starts.size()); ++line)
+        for (const int col : whole_word_cols(blank_non_code(body.line(line), block), word))
+        {
+            const hotc::ResolvedRef* r = ref_at(t, static_cast<uint32_t>(body.offset(line, col)));
+            if (!r || r->length != word.size() || body.offset(line, col) != static_cast<size_t>(r->offset))
+                return false;
+        }
+    return true;
 }
 
 std::set<Pos> Server::class_places(const Doc& d, const std::string& name) const
