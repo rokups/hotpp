@@ -1987,4 +1987,174 @@ TEST(HotcTool, BuildModeWritesTheDepfile)
     EXPECT_NE(d.find("/tests/engine/Actor.h"), std::string::npos) << d;
 }
 
+// The list file of hotc --aot: scripts, order of the progress, jobs and the error cases.
+std::string list_script(const std::string& dir, const char* name, const char* cls)
+{
+    std::filesystem::create_directories(dir);
+    const std::string path = dir + "/" + name + ".hot";
+    write_text(path, std::string("class ") + cls + " {\n    int Run() {\n        return 1;\n    }\n}\n");
+    return path;
+}
+
+TEST(HotcTool, AotScriptsFileGivesTheUnitName)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_list_unit");
+    const std::string a = list_script(dir, "a", "Alpha");
+    const std::string b = list_script(dir, "b", "Beta");
+    write_text(dir + "/list.txt", a + "\tsub/unit_a\n" + b + "\n");
+    std::string log;
+    EXPECT_EQ(run_hotc(cat({{"--aot", "--scripts-file", dir + "/list.txt", "--out-dir", dir + "/out"}, include_args()}), log), 0)
+        << log;
+    const std::string registry = read_file(dir + "/out/hot_aot_registry.cpp");
+    EXPECT_NE(registry.find("sub/unit_a"), std::string::npos) << registry;
+}
+
+TEST(HotcTool, AotJobsGiveTheSameFilesAndLog)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_list_jobs");
+    std::string list;
+    const char* names[] = {"s1", "s2", "s3", "s4"};
+    const char* classes[] = {"One", "Two", "Three", "Four"};
+    for (int i = 0; i < 4; ++i)
+        list += list_script(dir, names[i], classes[i]) + "\n";
+    write_text(dir + "/list.txt", list);
+    // The generated files name the out dir (in #line). Both runs use the same out dir.
+    const char* files[] = {"s1.aot.cpp", "s2.aot.cpp", "s3.aot.cpp", "s4.aot.cpp", "hot_aot_registry.cpp"};
+    std::string logs[2];
+    std::string texts[2][5];
+    const char* jobs[2] = {"1", "4"};
+    for (int j = 0; j < 2; ++j)
+    {
+        std::filesystem::remove_all(dir + "/out");
+        EXPECT_EQ(run_hotc(cat({{"--aot", "--scripts-file", dir + "/list.txt", "--jobs", jobs[j], "--out-dir", dir + "/out"},
+                                   include_args()}),
+                      logs[j]),
+            0)
+            << logs[j];
+        for (int f = 0; f < 5; ++f)
+            texts[j][f] = read_file(dir + "/out/" + files[f]);
+    }
+    EXPECT_EQ(logs[0], logs[1]);
+    for (int f = 0; f < 5; ++f)
+        EXPECT_EQ(texts[0][f], texts[1][f]) << files[f];
+    // The progress lines are in script order.
+    size_t pos = 0;
+    for (const char* tag : {"[1/4]", "[2/4]", "[3/4]", "[4/4]"})
+    {
+        const size_t at = logs[1].find(tag, pos);
+        ASSERT_NE(at, std::string::npos) << tag << "\n" << logs[1];
+        pos = at + 1;
+    }
+}
+
+TEST(HotcTool, AotProgressHasThreeLinesInOrder)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_list_progress");
+    write_text(dir + "/list.txt", list_script(dir, "p1", "P1") + "\n" + list_script(dir, "p2", "P2") + "\n" +
+                                      list_script(dir, "p3", "P3") + "\n");
+    std::string log;
+    EXPECT_EQ(run_hotc(cat({{"--aot", "--scripts-file", dir + "/list.txt", "--out-dir", dir + "/out"}, include_args()}), log), 0)
+        << log;
+    const size_t a = log.find("[1/3]");
+    const size_t b = log.find("[2/3]");
+    const size_t c = log.find("[3/3]");
+    ASSERT_NE(a, std::string::npos) << log;
+    ASSERT_NE(b, std::string::npos) << log;
+    ASSERT_NE(c, std::string::npos) << log;
+    EXPECT_LT(a, b);
+    EXPECT_LT(b, c);
+}
+
+TEST(HotcTool, AotErrorScriptInTheMiddleGivesTheSameLog)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_list_error");
+    const std::string bad = dir + "/bad.hot";
+    const std::string first = list_script(dir, "e1", "E1");
+    write_text(bad, "class Bad {\n    int Run() {\n        int x = ;\n    }\n}\n");
+    const std::string last = list_script(dir, "e3", "E3");
+    write_text(dir + "/list.txt", first + "\n" + bad + "\n" + last + "\n");
+    std::string logs[2];
+    const char* jobs[2] = {"1", "4"};
+    for (int j = 0; j < 2; ++j)
+    {
+        EXPECT_EQ(run_hotc(cat({{"--aot", "--scripts-file", dir + "/list.txt", "--jobs", jobs[j], "--out-dir",
+                                     dir + "/out" + jobs[j], "--depfile", dir + "/dep" + jobs[j] + ".d"},
+                                   include_args()}),
+                      logs[j]),
+            1)
+            << logs[j];
+        EXPECT_FALSE(std::filesystem::exists(dir + "/out" + jobs[j] + "/hot_aot_registry.cpp"));
+        EXPECT_FALSE(std::filesystem::exists(dir + "/dep" + jobs[j] + ".d"));
+        // The error text of bad.hot sits between the progress lines 2 and 3.
+        const size_t two = logs[j].find("[2/3]");
+        const size_t error = logs[j].find("bad.hot", two);
+        const size_t three = logs[j].find("[3/3]");
+        ASSERT_NE(two, std::string::npos) << logs[j];
+        ASSERT_NE(three, std::string::npos) << logs[j];
+        EXPECT_LT(two, error) << logs[j];
+        EXPECT_LT(error, three) << logs[j];
+    }
+    EXPECT_EQ(logs[0], logs[1]);
+}
+
+TEST(HotcTool, AotStemsThatDifferInCaseOnlyAreAnError)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_case_stem");
+    std::filesystem::create_directories(dir + "/A");
+    std::filesystem::create_directories(dir + "/B");
+    const std::string a = list_script(dir + "/A", "Foo", "CaseA");
+    const std::string b = list_script(dir + "/B", "foo", "CaseB");
+    std::string log;
+    EXPECT_EQ(run_hotc(cat({{"--aot", a, b, "--out-dir", dir + "/out"}, include_args()}), log), 1) << log;
+    EXPECT_NE(log.find("two scripts have the name"), std::string::npos) << log;
+}
+
+TEST(HotcTool, AotWriteErrorGivesTheSameLogForEachJobCount)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_write_error");
+    write_text(dir + "/list.txt", list_script(dir, "w1", "W1") + "\n" + list_script(dir, "w2", "W2") + "\n" +
+                                      list_script(dir, "w3", "W3") + "\n");
+    std::string logs[2];
+    const char* jobs[2] = {"1", "4"};
+    for (int j = 0; j < 2; ++j)
+    {
+        std::filesystem::remove_all(dir + "/out");
+        // A directory in place of the output file makes the write fail.
+        std::filesystem::create_directories(dir + "/out/w2.aot.cpp");
+        EXPECT_EQ(run_hotc(cat({{"--aot", "--scripts-file", dir + "/list.txt", "--jobs", jobs[j], "--out-dir", dir + "/out"},
+                                   include_args()}),
+                      logs[j]),
+            1)
+            << logs[j];
+        const size_t two = logs[j].find("[2/3]");
+        const size_t error = logs[j].find("cannot write", two);
+        const size_t three = logs[j].find("[3/3]");
+        ASSERT_NE(two, std::string::npos) << logs[j];
+        ASSERT_NE(three, std::string::npos) << logs[j];
+        EXPECT_LT(two, error) << logs[j];
+        EXPECT_LT(error, three) << logs[j];
+    }
+    EXPECT_EQ(logs[0], logs[1]);
+}
+
+TEST(HotcTool, AotScriptsFileOptionErrors)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_list_args");
+    const std::string a = list_script(dir, "a", "Alpha");
+    write_text(dir + "/list.txt", a + "\n");
+    std::string log;
+    EXPECT_EQ(run_hotc({"--aot", "--scripts-file", dir + "/missing.txt", "--out-dir", dir + "/o1"}, log), 1) << log;
+    EXPECT_EQ(run_hotc({"--aot", "--scripts-file", dir + "/list.txt", "--unit-name", "x", "--out-dir", dir + "/o2"}, log), 1)
+        << log;
+    EXPECT_EQ(run_hotc({"--aot", "--scripts-file", dir + "/list.txt", "--jobs", "0", "--out-dir", dir + "/o3"}, log), 2)
+        << log;
+}
+
 } // namespace

@@ -264,11 +264,16 @@ function(hot_add_scripts)
         if(multi_config)
             set(A_OUT_DIR ${A_OUT_DIR}/$<CONFIG>)
         endif()
+        # The list file of hotc: one line for each script, "PATH" or "PATH<TAB>UNIT".
         # UNIT_ROOT: the unit name of a script is its path below the root, without the extension.
-        set(unit_args "")
         if(A_UNIT_ROOT)
             get_filename_component(unit_root ${A_UNIT_ROOT} ABSOLUTE)
-            foreach(abs ${scripts})
+        endif()
+        set(scripts_list ${A_OUT_DIR}/scripts.txt)
+        set(scripts_content "")
+        foreach(abs ${scripts})
+            set(line "${abs}")
+            if(A_UNIT_ROOT)
                 file(RELATIVE_PATH rel ${unit_root} ${abs})
                 if(rel MATCHES "^\\.\\./" OR rel STREQUAL ".." OR IS_ABSOLUTE "${rel}")
                     message(FATAL_ERROR "hot_add_scripts: the script ${abs} is not below UNIT_ROOT ${unit_root} (target ${A_TARGET})")
@@ -278,9 +283,12 @@ function(hot_add_scripts)
                 if(rel_dir)
                     set(rel_stem ${rel_dir}/${rel_stem})
                 endif()
-                list(APPEND unit_args --unit-name ${rel_stem})
-            endforeach()
-        endif()
+                set(line "${abs}\t${rel_stem}")
+            endif()
+            string(APPEND scripts_content "${line}\n")
+        endforeach()
+        file(GENERATE OUTPUT ${scripts_list} CONTENT "${scripts_content}")
+        list(LENGTH scripts scripts_count)
         # PARSE_TARGET: the include dirs and the defines of the target are the parse options of hotc.
         # The lists are files of the build tree, one entry for each line, for each configuration.
         set(parse_args "")
@@ -338,10 +346,11 @@ function(hot_add_scripts)
         add_custom_command(
             OUTPUT ${sources} ${registry} ${iface_headers}
             COMMAND ${CMAKE_COMMAND} -E make_directory ${A_OUT_DIR}
-            COMMAND ${hotc_cmd} --aot ${optimized_args} ${scripts} --out-dir ${A_OUT_DIR} ${unit_args} ${parse_args} ${args} ${A_FLAGS} ${format_args} ${depfile_args} ${A_HOTC_ARGS}
+            COMMAND ${hotc_cmd} --aot ${optimized_args} --scripts-file ${scripts_list} --out-dir ${A_OUT_DIR} ${parse_args} ${args} ${A_FLAGS} ${format_args} ${depfile_args} ${A_HOTC_ARGS}
             ${depfile_opts}
-            DEPENDS ${hotc_dep} ${scripts} ${A_PRELUDES} ${parse_files} ${A_DEPENDS}
-            COMMENT "hotc --aot: ${A_SCRIPTS}"
+            DEPENDS ${hotc_dep} ${scripts} ${scripts_list} ${A_PRELUDES} ${parse_files} ${A_DEPENDS}
+            COMMENT "hotc --aot: ${A_TARGET} (${scripts_count} scripts)"
+            USES_TERMINAL
             VERBATIM)
         # The interface headers are sources too, so the library depends on them.
         add_library(${A_TARGET} STATIC ${sources} ${registry} ${iface_headers})
