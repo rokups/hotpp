@@ -37,6 +37,11 @@
 // The option --unit-name NAME gives the unit name of a script (doc/module-level.md, "Unit names").
 // The n-th option is for the n-th file. Without it, the unit name of a file is its stem. The
 // option is for --aot and --emit-cpp. The AOT table names each script by its unit name.
+// The option --scripts-file FILE reads scripts from a list file. Each line is PATH or
+// PATH<TAB>UNIT_NAME. The tool drops empty lines. A relative PATH is relative to the current
+// directory. The list has no comments. A line without a unit name uses the stem. The scripts of
+// the list and the scripts of the command line keep the order of the command line. The option
+// --unit-name with --scripts-file is an error (exit code 1).
 // For each file the tool writes DIR/<name>.aot.cpp (generation 1). It also writes
 // DIR/hot_aot_registry.cpp, which defines the constant table hot::aot_table
 // (include/hot/aot.h). The tool does not compile. The CMake function
@@ -97,8 +102,10 @@ namespace
         "       hotc --aot <file.hot>... --out-dir DIR [-I dir]... [--prelude file]... [--no-strict-borrowed]\n"
         "            [--format=std|fmt] [--view=hot|std] [--resource-dir dir] [--std=c++17|c++20|c++23] [--aot-optimized]\n"
         "            [-D<name>[=value]]... [-U<name>]... [--defines-file file] [--includes-file file]\n"
+        "            [--scripts-file file]\n"
         "  --defines-file <file> (--aot) one define for each line: NAME or NAME=value; -D and -U lines also work\n"
         "  --includes-file <file> (--aot) one include directory for each line, as -I\n"
+        "  --scripts-file <file> (--aot) one script for each line: PATH or PATH<TAB>UNIT_NAME; not with --unit-name\n"
         "  --unit-name <name>   (--aot, --emit-cpp) the unit name of the n-th script (default: the stem)\n"
         "Each mode also accepts:\n"
         "  --depfile <path>     write the headers and imported scripts that the translation read (Make format)\n"
@@ -128,6 +135,8 @@ struct Args
     bool has_compiler_option = false; // --cxx, --cxxflag, --slots, --gen, -o
     std::vector<std::string> inputs;
     std::vector<std::string> unit_names; // --unit-name: one for each input, in the order of the inputs
+    std::vector<std::string> input_units; // one for each input: the unit name from --scripts-file, or empty
+    bool has_scripts_file = false; // the flag --scripts-file is present
     std::string out_dir, output, slots, resource_dir;
     std::string target, sysroot; // --target, --sysroot: empty means the default of the build
     std::string host_implib; // --host-implib: the import library of the host (build mode)
@@ -141,7 +150,7 @@ struct Args
     bool has_emit_only = false; // --prelude
     bool has_aot_only = false; // -D, -U, --defines-file, --includes-file
     std::vector<std::string> defines; // "-DNAME[=value]" and "-UNAME", in the order of the command line
-    bool bad_list_file = false; // a --defines-file or --includes-file that cannot be read
+    bool bad_list_file = false; // a --defines-file, --includes-file or --scripts-file that cannot be read
     std::string format_lib = "std"; // --format=std|fmt
     std::string view_type = hot::view_type_name(); // --view=hot|std (default: the view type of this build)
     bool view_given = false; // the flag --view is present
@@ -312,6 +321,21 @@ Args parse_args(int argc, char** argv)
             }
             r.has_aot_only = true;
         }
+        else if (a == "--scripts-file")
+        {
+            const std::string file = next();
+            std::vector<std::string> lines;
+            if (!read_lines(file, lines))
+                r.bad_list_file = true;
+            for (const std::string& l : lines)
+            {
+                const size_t tab = l.find('\t');
+                r.inputs.push_back(l.substr(0, tab));
+                r.input_units.push_back(tab == std::string::npos ? std::string() : l.substr(tab + 1));
+            }
+            r.has_scripts_file = true;
+            r.has_aot_only = true;
+        }
         else if (a == "-I")
             r.include_dirs.push_back(next());
         else if (a.rfind("-I", 0) == 0)
@@ -319,7 +343,10 @@ Args parse_args(int argc, char** argv)
         else if (!a.empty() && a[0] == '-')
             usage();
         else
+        {
             r.inputs.push_back(a);
+            r.input_units.push_back(std::string());
+        }
     }
     return r;
 }
@@ -464,10 +491,12 @@ std::string cpp_string_literal(const std::string& text)
 
 int run_aot(const Args& args)
 {
-    if (args.has_compiler_option || args.out_dir.empty() || args.inputs.empty())
+    if (args.has_compiler_option || args.out_dir.empty())
         usage();
     if (args.bad_list_file)
         return 1;
+    if (args.inputs.empty())
+        usage();
     hotc::TranslateOptions base;
     base.generation = 1;
     base.aot = true;
@@ -493,6 +522,11 @@ int run_aot(const Args& args)
         }
         base.preludes.emplace_back(file, std::move(text));
     }
+    if (args.has_scripts_file && !args.unit_names.empty())
+    {
+        std::fprintf(stderr, "hotc: error: --unit-name does not work with --scripts-file\n");
+        return 1;
+    }
     if (!args.unit_names.empty() && args.unit_names.size() != args.inputs.size())
     {
         std::fprintf(stderr, "hotc: error: give one --unit-name for each script or none\n");
@@ -505,7 +539,10 @@ int run_aot(const Args& args)
     for (size_t i = 0; i < args.inputs.size(); ++i)
     {
         const std::string stem = fs::path(args.inputs[i]).stem().string();
-        unit_names.push_back(args.unit_names.empty() ? stem : args.unit_names[i]);
+        if (!args.unit_names.empty())
+            unit_names.push_back(args.unit_names[i]);
+        else
+            unit_names.push_back(args.input_units[i].empty() ? stem : args.input_units[i]);
         if (!ids.insert(identifier(unit_names.back())).second || !stems.insert(stem).second)
         {
             std::fprintf(stderr, "hotc: error: two scripts have the name %s\n", unit_names.back().c_str());
