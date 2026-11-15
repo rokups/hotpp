@@ -257,9 +257,12 @@ private:
     LoadResult load_impl(const ScriptSource& source, uint32_t generation, LoadMode mode, bool use_module_cache);
     // Finds the compiler id for the cache key once. On a failure it turns the cache off.
     bool prepare_cache();
-    // Reads the database file. It gives the entries whose file exists and sets "text" to the text
-    // of the file. A read error or a damaged file gives an empty list.
-    std::map<std::string, CompileCommandEntry> read_compile_commands(std::string& text) const;
+    // Reads the database file. It gives the entries of this backend (the files in the generated
+    // directory) whose file exists. "foreign" gets the original text of each other entry whose
+    // file exists, by "file". "text" gets the text of the file. A read error or a damaged file
+    // gives an empty list.
+    std::map<std::string, CompileCommandEntry> read_compile_commands(
+        std::string& text, std::map<std::string, std::string>& foreign) const;
     // Sets the entry of a unit. Then it reads the file again, merges the entries of the file (the
     // entries of this backend win) and writes the result when its text changes. So two processes
     // keep the entries of each other. The caller holds "mutex_". "object" is the object file.
@@ -374,8 +377,10 @@ private:
     std::map<std::string, CompileCommandEntry> commands_; // the entries of this backend, by "file"
     // The entries of the compile database file at the last read or write, and the stamp of the
     // file then. With the same stamp, a build reads the file again only for a change.
+    // "disk_commands_" has only the entries of this backend. "disk_rendered_" has the JSON text of
+    // each entry of the file, by "file": the text of the foreign entries is the text of the file.
     std::map<std::string, CompileCommandEntry> disk_commands_;
-    std::map<std::string, std::string> disk_rendered_; // the JSON text of each disk_commands_ entry
+    std::map<std::string, std::string> disk_rendered_;
     bool disk_known_ = false;
     bool compile_db_dirty_ = false; // an entry in commands_ is not in the file yet
     size_t compile_db_writes_ = 0; // the writes of the file, for tests

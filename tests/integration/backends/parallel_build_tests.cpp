@@ -895,6 +895,146 @@ TEST(BeginLoadMany, LaterWritesDoNotReadTheCompileDatabaseAgain)
     }
 }
 
+// One load of the unit "i": it flushes the compile database.
+void load_one_unit(hot::ClangFilesBackend& backend, int i)
+{
+    const std::vector<hot::ScriptSource> sources = many_sources(i, 1);
+    auto one = backend.begin_load(sources[0], 1);
+    std::vector<hot::PendingLoad*> raw{one.get()};
+    hot::run_compiles(raw, 1);
+    ASSERT_TRUE(one->finish());
+}
+
+// A foreign entry with odd text: the file name "path" is the only value that the backend reads.
+std::string odd_foreign_entry(const std::string& path, int kind)
+{
+    switch (kind)
+    {
+    case 0:
+        return "{\"directory\":\"/d \\\"q\\\" {x}\",   \"command\" : \"cc -DA=\\\"}{\\\" -c " + path +
+            "\" ,\n\t\"file\"\n:\n\"" + path + "\"}";
+    case 1:
+        return "{ \"file\": \"" + path + "\", \"directory\": \"/\xC3\xA4\xE2\x82\xAC \\u00e4 \\\\\",\n"
+            "  \"arguments\": [\"a\", \"}\", \"{\", \"[\", \"\\\"\"], \"extra\": {\"file\": \"/nested\", \"n\": [1, {}]} }";
+    default:
+        return "{\"command\": \"x\", \"file\": \"" + path + "\", \"output\": \"o\"}";
+    }
+}
+
+std::string join_db(const std::vector<std::string>& entries)
+{
+    std::string r = "[ ";
+    for (size_t i = 0; i < entries.size(); ++i)
+        r += (i ? " ,\n" : "") + entries[i];
+    return r + " \n]";
+}
+
+void write_db(const std::string& db, const std::string& text)
+{
+    fs::create_directories(db);
+    std::ofstream out(fs::path(db) / "compile_commands.json", std::ios::binary);
+    out << text;
+}
+
+// A foreign entry keeps its original text, also after the next writes.
+TEST(BeginLoadMany, ForeignCompileDatabaseEntriesKeepTheirText)
+{
+    SKIP_ON_WINDOWS();
+    CleanEnv env;
+    TestScratch scratch;
+    const std::string db = scratch.file("db");
+    std::vector<std::string> texts;
+    for (int i = 0; i < 3; ++i)
+    {
+        const std::string file = scratch.file("foreign" + std::to_string(i) + ".cpp");
+        std::ofstream(file) << "int x;\n";
+        texts.push_back(odd_foreign_entry(file, i));
+    }
+    write_db(db, join_db(texts));
+    auto backend = make_db_backend(scratch, "work", db);
+    for (int i = 0; i < 2; ++i)
+    {
+        load_one_unit(*backend, i);
+        const std::string text = read_db(db);
+        for (const std::string& t : texts)
+            EXPECT_NE(text.find(t), std::string::npos) << t;
+        EXPECT_EQ(backend->compile_commands_reads(), 1u);
+        EXPECT_EQ(count_entries_of(text), size_t(3 + 1 + i) + 0u) << text; // the nested "file" has a space
+    }
+}
+
+// A foreign file that goes away is not in the next write. The file is not read again.
+TEST(BeginLoadMany, RemovedFilesLeaveTheCachedCompileDatabase)
+{
+    SKIP_ON_WINDOWS();
+    CleanEnv env;
+    TestScratch scratch;
+    const std::string db = scratch.file("db");
+    const std::string keep = scratch.file("keep.cpp");
+    const std::string gone = scratch.file("gone.cpp");
+    std::ofstream(keep) << "int x;\n";
+    std::ofstream(gone) << "int x;\n";
+    write_db(db, join_db({odd_foreign_entry(keep, 2), odd_foreign_entry(gone, 2)}));
+    auto backend = make_db_backend(scratch, "work", db);
+    load_one_unit(*backend, 0);
+    EXPECT_NE(read_db(db).find(gone), std::string::npos);
+    fs::remove(gone);
+    load_one_unit(*backend, 1);
+    const std::string text = read_db(db);
+    EXPECT_EQ(text.find(gone), std::string::npos);
+    EXPECT_NE(text.find(keep), std::string::npos);
+    EXPECT_EQ(backend->compile_commands_reads(), 1u);
+}
+
+// A damaged file does not stop the write. The next file is valid.
+TEST(BeginLoadMany, DamagedCompileDatabaseIsReplaced)
+{
+    SKIP_ON_WINDOWS();
+    CleanEnv env;
+    const char* damaged[] = {"[ {\"file\": \"/x\", \"command\": \"a\" ", "{\"file\": \"/x\"}", "[ {\"file\": \"/x\"} } ]",
+        "[ {\"file\": \"/x\" \"command\": 1} ]", "[ {\"file\": \"unterminated} ]", ""};
+    for (const char* d : damaged)
+    {
+        TestScratch scratch;
+        const std::string db = scratch.file("db");
+        write_db(db, d);
+        auto backend = make_db_backend(scratch, "work", db);
+        load_one_unit(*backend, 0);
+        const std::string text = read_db(db);
+        EXPECT_EQ(count_entries_of(text), 1u) << d;
+        EXPECT_EQ(text.compare(0, 2, "[\n"), 0) << d;
+        EXPECT_EQ(text.compare(text.size() - 2, 2, "]\n"), 0) << d;
+    }
+}
+
+// A write of an other process with a different size is read again.
+TEST(BeginLoadMany, ForeignRewriteOfTheCompileDatabaseIsReadAgain)
+{
+    SKIP_ON_WINDOWS();
+    CleanEnv env;
+    TestScratch scratch;
+    const std::string db = scratch.file("db");
+    const std::string a = scratch.file("a.cpp");
+    const std::string b = scratch.file("b.cpp");
+    std::ofstream(a) << "int x;\n";
+    std::ofstream(b) << "int x;\n";
+    write_db(db, join_db({odd_foreign_entry(a, 2)}));
+    auto backend = make_db_backend(scratch, "work", db);
+    load_one_unit(*backend, 0);
+    EXPECT_EQ(backend->compile_commands_reads(), 1u);
+    std::string text = read_db(db);
+    const size_t at = text.find("]\n");
+    ASSERT_NE(at, std::string::npos);
+    text.insert(at - 1, ",\n  " + odd_foreign_entry(b, 0)); // an other size
+    write_db(db, text);
+    load_one_unit(*backend, 1);
+    EXPECT_EQ(backend->compile_commands_reads(), 2u);
+    const std::string out = read_db(db);
+    EXPECT_NE(out.find(odd_foreign_entry(b, 0)), std::string::npos);
+    EXPECT_NE(out.find(odd_foreign_entry(a, 2)), std::string::npos);
+    EXPECT_EQ(count_entries_of(out), 3u); // the entry of "b" has a space before ":"
+}
+
 // A failed unit and a unit with no finish do not stop the write. It happens once.
 TEST(BeginLoadMany, PartialBatchWritesTheCompileDatabaseOnce)
 {
