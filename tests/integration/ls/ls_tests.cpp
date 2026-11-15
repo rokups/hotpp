@@ -5894,6 +5894,53 @@ TEST(LanguageServerNative, RenameOfAClassWithAConstructorChangesAllNamesInTheHea
     }
 }
 
+// An export macro is between "struct" and the name.
+TEST(LanguageServerNative, RenameOfAClassWithAnExportMacroChangesConstructorAndDestructor)
+{
+    REQUIRE_CLANGD();
+    const char* const header = "#pragma once\n#define API_EXPORT\n"
+                               "struct Base {};\nclass API_EXPORT Pnt : public Base\n{\npublic:\n    explicit Pnt(int v = 0);\n"
+                               "    ~Pnt();\n    int x;\n};\n";
+    const char* const script = "using \"natives.h\";\n\nclass Hero {\n    int seen = Pnt().x;\n}\n";
+    NativeSession s(script, 10000, true, "", 10000, header);
+    const json r = native_rename_request(s, "Pnt()", "Pnt", "Pos3", script);
+    SCOPED_TRACE(r.dump());
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    const std::string header_uri = uri_of((s.dir.path() / "natives.h").string());
+    ASSERT_TRUE(r["result"]["changes"].contains(header_uri)) << r.dump();
+    EXPECT_EQ(apply_edits(header, r["result"]["changes"][header_uri]),
+        "#pragma once\n#define API_EXPORT\nstruct Base {};\nclass API_EXPORT Pos3 : public Base\n{\npublic:\n"
+        "    explicit Pos3(int v = 0);\n    ~Pos3();\n    int x;\n};\n");
+}
+
+// The definitions of the constructor and the destructor are outside of the class. Inline ones in
+// the header are not in the answer of clangd (its index has no reference there): the code finds
+// "Pnt::Pnt(" and "Pnt::~Pnt(" in the declaring file.
+// A .cpp file of the workspace that no translation unit of clangd includes is not in the answer of
+// clangd: the rename does not change it (a known limit).
+TEST(LanguageServerNative, RenameOfAClassWithOutOfClassDefinitions)
+{
+    REQUIRE_CLANGD();
+    const char* const header = "#pragma once\nstruct Pnt { Pnt(int v = 0); ~Pnt(); int x; };\n"
+                               "inline Pnt::Pnt(int v) : x(v) {}\ninline Pnt::~Pnt() {}\n";
+    const char* const script = "using \"natives.h\";\n\nclass Hero {\n    int seen = Pnt().x;\n}\n";
+    const char* const source = "#include \"natives.h\"\nPnt::Pnt(int v) : x(v) {}\nPnt::~Pnt() {}\n";
+    NativeSession s(script, 10000, true, "", 10000, header);
+    const std::string cpp = (s.dir.path() / "pnt.cpp").string();
+    write_file(cpp, source);
+    const json r = native_rename_request(s, "Pnt()", "Pnt", "Pos3", script);
+    SCOPED_TRACE(r.dump());
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    const json& changes = r["result"]["changes"];
+    const std::string header_uri = uri_of((s.dir.path() / "natives.h").string());
+    ASSERT_TRUE(changes.contains(header_uri)) << r.dump();
+    EXPECT_EQ(apply_edits(header, changes[header_uri]),
+        "#pragma once\nstruct Pos3 { Pos3(int v = 0); ~Pos3(); int x; };\n"
+        "inline Pos3::Pos3(int v) : x(v) {}\ninline Pos3::~Pos3() {}\n");
+    EXPECT_FALSE(changes.contains(uri_of(cpp))) << r.dump();
+    EXPECT_EQ(changes.size(), 2u) << r.dump(); // the script and natives.h
+}
+
 TEST(LanguageServerNative, RenameOfAMethod)
 {
     REQUIRE_CLANGD();

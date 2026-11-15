@@ -5325,8 +5325,23 @@ void Server::add_ctor_edits(NativeRenameJob& job)
         auto name_at = [&](size_t i) { return s.compare(i, old.size(), old) == 0 && (i + old.size() >= s.size() || !is_id(s[i + old.size()])) && (i == 0 || !is_id(s[i - 1])); };
         for (const size_t b : have)
         {
-            // An out-of-class definition: Old::Old( and Old::~Old(
+            // An out-of-class definition: Old::Old( and Old::~Old(. The name can have template
+            // arguments: Old<T>::Old(.
             size_t i = skip_ws(b + old.size());
+            if (i < s.size() && s[i] == '<')
+            {
+                int angles = 0;
+                for (; i < s.size(); ++i)
+                {
+                    if (s[i] == '<')
+                        ++angles;
+                    else if (s[i] == '>' && --angles == 0)
+                        break;
+                    else if (s[i] == ';' || s[i] == '{' || s[i] == '}')
+                        break;
+                }
+                i = i < s.size() && s[i] == '>' ? skip_ws(i + 1) : s.size();
+            }
             if (s.compare(i, 2, "::") == 0)
             {
                 i = skip_ws(i + 2);
@@ -5335,25 +5350,77 @@ void Server::add_ctor_edits(NativeRenameJob& job)
                 if (name_at(i) && s[skip_ws(i + old.size())] == '(')
                     add.insert(i);
             }
-            // A class definition: the word before is "struct" or "class".
-            size_t w = b;
-            while (w > 0 && std::isspace(static_cast<unsigned char>(s[w - 1])))
-                --w;
-            size_t ws = w;
-            while (ws > 0 && is_id(s[ws - 1]))
-                --ws;
-            const std::string kw = s.substr(ws, w - ws);
-            if (kw != "struct" && kw != "class")
+            // A class definition: "struct" or "class" is before the name. Other tokens (a macro
+            // like URHO3D_API, an attribute) can be between. The tokens have no ";{}(" in them.
+            // "enum class Old" is not a class.
+            size_t from = b;
+            while (from > 0 && b - from < 300 && std::strchr(";{}()", s[from - 1]) == nullptr)
+                --from;
+            size_t kw_at = std::string::npos;
+            for (size_t k = from; k < b;)
+            {
+                if (!is_id(s[k]))
+                {
+                    ++k;
+                    continue;
+                }
+                size_t e = k;
+                while (e < b && is_id(s[e]))
+                    ++e;
+                const std::string word = s.substr(k, e - k);
+                if (word == "struct" || word == "class")
+                    kw_at = k;
+                k = e;
+            }
+            if (kw_at == std::string::npos)
+                continue;
+            size_t before = kw_at;
+            while (before > from && std::isspace(static_cast<unsigned char>(s[before - 1])))
+                --before;
+            if (before >= from + 4 && s.compare(before - 4, 4, "enum") == 0 && (before == from + 4 || !is_id(s[before - 5])))
                 continue;
             i = skip_ws(b + old.size());
             if (s.compare(i, 5, "final") == 0)
                 i = skip_ws(i + 5);
-            if (i >= s.size() || (s[i] != '{' && s[i] != ':'))
+            if (i >= s.size() || (s[i] != '{' && !(s[i] == ':' && s.compare(i, 2, "::") != 0)))
                 continue;
             while (i < s.size() && s[i] != '{' && s[i] != ';')
                 ++i;
             if (i >= s.size() || s[i] != '{')
                 continue;
+            // clangd can miss the out-of-class definitions of this file: its index has only the
+            // files of the translation units. Find "Old::Old(" and "Old::~Old(" in the whole file.
+            for (size_t k = 0; k < s.size(); ++k)
+            {
+                if (const size_t n = skip_non_code(s, k); n != k)
+                {
+                    k = n - 1;
+                    continue;
+                }
+                if (s[k] != old[0] || !name_at(k))
+                    continue;
+                size_t q = skip_ws(k + old.size());
+                if (q < s.size() && s[q] == '<')
+                {
+                    int angles = 0;
+                    for (; q < s.size() && s[q] != ';' && s[q] != '{'; ++q)
+                        if (s[q] == '<')
+                            ++angles;
+                        else if (s[q] == '>' && --angles == 0)
+                            break;
+                    q = q < s.size() && s[q] == '>' ? skip_ws(q + 1) : s.size();
+                }
+                if (s.compare(q, 2, "::") != 0)
+                    continue;
+                q = skip_ws(q + 2);
+                if (q < s.size() && s[q] == '~')
+                    q = skip_ws(q + 1);
+                if (name_at(q) && s[skip_ws(q + old.size())] == '(')
+                {
+                    add.insert(k);
+                    add.insert(q);
+                }
+            }
             int braces = 0, parens = 0;
             for (; i < s.size(); ++i)
             {
