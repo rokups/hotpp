@@ -142,9 +142,12 @@ Command line of the AOT mode. The tool translates generation 1 of each script. I
 
     hotc --aot <script>... --out-dir DIR [-I dir]... [--prelude file]... [--no-strict-borrowed]
          [--format=std|fmt] [--resource-dir dir] [-D<name>[=value]]... [-U<name>]...
-         [--defines-file file] [--includes-file file]
+         [--defines-file file] [--includes-file file] [--scripts-file file] [--jobs N]
 
 - `-D` and `-U` set the macros of the parse of the native headers. `--defines-file` has one define for each line (`NAME`, `NAME=value`, or a line with `-D` or `-U`). `--includes-file` has one include directory for each line, like `-I`. A missing list file is an error. Only the AOT mode accepts these options.
+- `--scripts-file` has one script for each line: `PATH`, or `PATH<TAB>UNIT_NAME`. The TAB form sets the unit name of the script, like `--unit-name`. `--scripts-file` and `--unit-name` do not work together (exit code 1). A missing list file is an error (exit code 1).
+- `--jobs N` (1 to 4096) sets how many threads translate scripts. Without it, `HOT_JOBS` sets the count. Else the count is the number of cores, capped at 16. `--jobs 0` is a usage error (exit code 2).
+- `hotc` prints the progress line `[i/N] <unit>` on stderr for each script. The lines and the diagnostics come in script order, also with many threads. The output files and the log do not depend on the job count. After an error, `hotc` writes no registry file.
 - `hotc` writes an output file only when its content changes. An unchanged file keeps its time stamp, so a build system does not rebuild it.
 - For each script `hotc` writes `DIR/<name>.aot.cpp`. The register function has the name `hot_script_register_<name>`, so many scripts link into one program.
 - `hotc` also writes `DIR/hot_aot_registry.cpp`. It defines the constant table `hot::aot_table` (`include/hot/aot.h`). The table gives the interface hash and the imports of each script (`hot::AotScript`). In AOT code the unit of an import is the file name of the imported script without the extension.
