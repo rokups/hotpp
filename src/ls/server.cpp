@@ -812,6 +812,9 @@ private:
     // True when the range of a real C++ file holds exactly the old name.
     bool is_old_name(NativeRenameJob& job, const std::string& uri, const json& range);
     std::string rename_other_scripts(NativeRenameJob& job, const Doc& d);
+    // clangd renames the class name only. This adds the names of the constructors and the
+    // destructor: in the class body, and in the out-of-class definitions ("Old::Old(").
+    void add_ctor_edits(NativeRenameJob& job);
     // True when the file is in a workspace folder.
     bool in_workspace(const std::string& path) const;
     // The host for the scope rule of a native edit: the host of the document path, else the
@@ -5268,6 +5271,204 @@ bool Server::is_old_name(NativeRenameJob& job, const std::string& uri, const jso
         && t->line(line).substr(static_cast<size_t>(b), static_cast<size_t>(e - b)) == job.old_name;
 }
 
+// Skips a comment, a string or a character literal that starts at "i". Gives the new offset, or "i"
+// when there is none.
+static size_t skip_non_code(const std::string& s, size_t i)
+{
+    if (i + 1 < s.size() && s[i] == '/' && s[i + 1] == '/')
+    {
+        const size_t e = s.find('\n', i);
+        return e == std::string::npos ? s.size() : e;
+    }
+    if (i + 1 < s.size() && s[i] == '/' && s[i + 1] == '*')
+    {
+        const size_t e = s.find("*/", i + 2);
+        return e == std::string::npos ? s.size() : e + 2;
+    }
+    if (s[i] == '"' || s[i] == '\'')
+    {
+        size_t k = i + 1;
+        while (k < s.size() && s[k] != s[i] && s[k] != '\n')
+            k += s[k] == '\\' ? 2 : 1;
+        return std::min(k + 1, s.size());
+    }
+    return i;
+}
+
+void Server::add_ctor_edits(NativeRenameJob& job)
+{
+    const std::string& old = job.old_name;
+    auto is_id = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
+    std::vector<std::string> uris;
+    for (const auto& [uri, edits] : job.changes.items())
+        if (!(uri.size() > 4 && uri.compare(uri.size() - 4, 4, ".hot") == 0))
+            uris.push_back(uri);
+    for (const std::string& uri : uris)
+    {
+        const auto it = job.cpp_texts.find(uri);
+        if (it == job.cpp_texts.end() || !it->second)
+            continue;
+        const Text& t = *it->second;
+        const std::string& s = t.s;
+        std::set<size_t> have; // the start offsets of the edits
+        for (const json& e : job.changes[uri])
+            if (e.contains("range") && is_old_name(job, uri, e["range"]))
+                have.insert(t.offset(e["range"]["start"].value("line", 0),
+                    from_lsp(t, e["range"]["start"], clangd_utf8_).col));
+        std::set<size_t> add;
+        auto skip_ws = [&](size_t i)
+        {
+            while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i])))
+                ++i;
+            return i;
+        };
+        auto name_at = [&](size_t i) { return s.compare(i, old.size(), old) == 0 && (i + old.size() >= s.size() || !is_id(s[i + old.size()])) && (i == 0 || !is_id(s[i - 1])); };
+        for (const size_t b : have)
+        {
+            // An out-of-class definition: Old::Old( and Old::~Old(. The name can have template
+            // arguments: Old<T>::Old(.
+            size_t i = skip_ws(b + old.size());
+            if (i < s.size() && s[i] == '<')
+            {
+                int angles = 0;
+                for (; i < s.size(); ++i)
+                {
+                    if (s[i] == '<')
+                        ++angles;
+                    else if (s[i] == '>' && --angles == 0)
+                        break;
+                    else if (s[i] == ';' || s[i] == '{' || s[i] == '}')
+                        break;
+                }
+                i = i < s.size() && s[i] == '>' ? skip_ws(i + 1) : s.size();
+            }
+            if (s.compare(i, 2, "::") == 0)
+            {
+                i = skip_ws(i + 2);
+                if (i < s.size() && s[i] == '~')
+                    i = skip_ws(i + 1);
+                if (name_at(i) && s[skip_ws(i + old.size())] == '(')
+                    add.insert(i);
+            }
+            // A class definition: "struct" or "class" is before the name. Other tokens (a macro
+            // like URHO3D_API, an attribute) can be between. The tokens have no ";{}(" in them.
+            // "enum class Old" is not a class.
+            size_t from = b;
+            while (from > 0 && b - from < 300 && std::strchr(";{}()", s[from - 1]) == nullptr)
+                --from;
+            size_t kw_at = std::string::npos;
+            for (size_t k = from; k < b;)
+            {
+                if (!is_id(s[k]))
+                {
+                    ++k;
+                    continue;
+                }
+                size_t e = k;
+                while (e < b && is_id(s[e]))
+                    ++e;
+                const std::string word = s.substr(k, e - k);
+                if (word == "struct" || word == "class")
+                    kw_at = k;
+                k = e;
+            }
+            if (kw_at == std::string::npos)
+                continue;
+            // A single ":" between the keyword and the name is a base list: "class Foo : public Old".
+            bool base_list = false;
+            for (size_t k = kw_at; k < b; ++k)
+                if (s[k] == ':' && s.compare(k, 2, "::") != 0 && (k == 0 || s[k - 1] != ':'))
+                    base_list = true;
+            if (base_list)
+                continue;
+            size_t before = kw_at;
+            while (before > from && std::isspace(static_cast<unsigned char>(s[before - 1])))
+                --before;
+            if (before >= from + 4 && s.compare(before - 4, 4, "enum") == 0 && (before == from + 4 || !is_id(s[before - 5])))
+                continue;
+            i = skip_ws(b + old.size());
+            if (s.compare(i, 5, "final") == 0)
+                i = skip_ws(i + 5);
+            if (i >= s.size() || (s[i] != '{' && !(s[i] == ':' && s.compare(i, 2, "::") != 0)))
+                continue;
+            while (i < s.size() && s[i] != '{' && s[i] != ';')
+                ++i;
+            if (i >= s.size() || s[i] != '{')
+                continue;
+            // clangd can miss the out-of-class definitions of this file: its index has only the
+            // files of the translation units. Find "Old::Old(" and "Old::~Old(" in the whole file.
+            for (size_t k = 0; k < s.size(); ++k)
+            {
+                if (const size_t n = skip_non_code(s, k); n != k)
+                {
+                    k = n - 1;
+                    continue;
+                }
+                if (s[k] != old[0] || !name_at(k))
+                    continue;
+                // A qualified name (B::Old::Old) can be another class: only the places that
+                // clangd renamed count.
+                size_t pre = k;
+                while (pre > 0 && std::isspace(static_cast<unsigned char>(s[pre - 1])))
+                    --pre;
+                if (pre >= 2 && s.compare(pre - 2, 2, "::") == 0 && !have.count(k))
+                    continue;
+                size_t q = skip_ws(k + old.size());
+                if (q < s.size() && s[q] == '<')
+                {
+                    int angles = 0;
+                    for (; q < s.size() && s[q] != ';' && s[q] != '{'; ++q)
+                        if (s[q] == '<')
+                            ++angles;
+                        else if (s[q] == '>' && --angles == 0)
+                            break;
+                    q = q < s.size() && s[q] == '>' ? skip_ws(q + 1) : s.size();
+                }
+                if (s.compare(q, 2, "::") != 0)
+                    continue;
+                q = skip_ws(q + 2);
+                if (q < s.size() && s[q] == '~')
+                    q = skip_ws(q + 1);
+                if (name_at(q) && s[skip_ws(q + old.size())] == '(')
+                {
+                    add.insert(k);
+                    add.insert(q);
+                }
+            }
+            int braces = 0, parens = 0;
+            for (; i < s.size(); ++i)
+            {
+                if (const size_t n = skip_non_code(s, i); n != i)
+                {
+                    i = n - 1;
+                    continue;
+                }
+                const char c = s[i];
+                if (c == '{')
+                    ++braces;
+                else if (c == '}' && --braces == 0)
+                    break;
+                else if (c == '(' || c == '[')
+                    ++parens;
+                else if (c == ')' || c == ']')
+                    --parens;
+                else if (braces == 1 && parens == 0 && c == old[0] && name_at(i)
+                    && s[skip_ws(i + old.size())] == '(')
+                    add.insert(i);
+            }
+        }
+        for (const size_t off : add)
+        {
+            if (have.count(off))
+                continue;
+            const auto [l, c] = t.pos(off);
+            const json range = {{"start", to_lsp(t, {l, c}, clangd_utf8_)},
+                {"end", to_lsp(t, {l, c + static_cast<int>(old.size())}, clangd_utf8_)}};
+            job.changes[uri].push_back({{"range", range}, {"newText", job.new_name}});
+        }
+    }
+}
+
 std::string Server::add_answer(NativeRenameJob& job, const Doc& d, const Doc& asked, const json& result)
 {
     // The edits by file. A client with "documentChanges" gets the other form; clangd gives
@@ -5410,9 +5611,13 @@ std::variant<json, std::string> Server::native_rename(const Doc& d, Pos cur, con
         return what + ": " + last_error;
     // prepareRename checks the start script and the declaration only.
     if (prepare)
+    {
+        add_ctor_edits(job);
         return json{{"changes", job.changes}};
+    }
     if (const std::string why = rename_other_scripts(job, d); !why.empty())
         return why;
+    add_ctor_edits(job);
     return json{{"changes", job.changes}};
 }
 
