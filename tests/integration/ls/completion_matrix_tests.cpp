@@ -180,9 +180,6 @@ const std::vector<Case> kCases = {
 
 // Each hole: the case name and the observed result. A hole case is skipped.
 const std::map<std::string, std::string> kHoles = {
-    {"HandleNullSafeDot",
-        "nb?. lists the native Actor members and internal names (creator, live_next, live_prev, shared_from_this), "
-        "not baseField and baseMethod of the script class"},
     {"FieldInitDot", "origin. in a field initializer gives 0 items"},
     {"BaseList", "a native class (Actor) is not offered in a base list; script classes are"},
 };
@@ -265,7 +262,7 @@ std::string run_case(const Case& c)
         names.push_back(ins);
         names.push_back(label);
         for (const std::string& s : {label, ins, i.value("filterText", std::string())})
-            for (const char* bad : {"__self", "hot::", "__iface", "hotc_"})
+            for (const char* bad : {"__self", "hot::", "__iface", "hotc_", "creator", "live_next", "live_prev", "shared_from_this"})
                 if (s.find(bad) != std::string::npos && problems.find("leak " + s) == std::string::npos)
                     problems += "leak '" + s + "'; ";
         if (i.contains("textEdit") && i["textEdit"].contains("range"))

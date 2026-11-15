@@ -2416,10 +2416,12 @@ json Server::on_completion(const Doc& d, const json& p)
     };
     if (after_dot)
     {
-        size_t ob = s - 1;
+        // The safe-access dot "?." has the receiver before the "?".
+        const size_t oe = s >= 2 && t[s - 2] == '?' ? s - 2 : s - 1;
+        size_t ob = oe;
         while (ob > 0 && is_id_char(t[ob - 1]))
             --ob;
-        const std::string obj = t.substr(ob, s - 1 - ob);
+        const std::string obj = t.substr(ob, oe - ob);
         if (obj == "this")
         {
             if (const hotc::AnalyzedClass* cls = class_at(cur))
@@ -2780,6 +2782,12 @@ json Server::on_completion(const Doc& d, const json& p)
                 continue;
             if (name == "cls" || name == "state")
                 continue; // hot::ShellBase (runtime/shell.h)
+            // The members of the generated base structs. A script member with such a name is in
+            // "names" already, so it stays.
+            static const std::set<std::string> base_internal = {"creator", "live_next", "live_prev", "shared_from_this",
+                "enable_shared_from_this", "weak_from_this"};
+            if (base_internal.count(name) && !names.count(name))
+                continue;
             if (!member)
             {
                 // A name in scope: a variable, a function, a type, an enumerator, a namespace.
