@@ -636,9 +636,9 @@ struct NativeSession
     // "clangd" replaces the clangd program when it is not empty.
     // "rename_budget_ms" is the time budget of one rename.
     explicit NativeSession(const char* script = kNativeScript, int token_wait_ms = 10000, bool native_tokens = true,
-        const std::string& clangd = "", int rename_budget_ms = 10000)
+        const std::string& clangd = "", int rename_budget_ms = 10000, const char* header = kNativeHeader)
     {
-        write_file((dir.path() / "natives.h").string(), kNativeHeader);
+        write_file((dir.path() / "natives.h").string(), header);
         path = (dir.path() / "hero.hot").string();
         uri = uri_of(path);
         write_file(path, script);
@@ -783,9 +783,8 @@ namespace
 {
 
 // The 0-based line and column of the last "word" in the first "context" of the native script.
-json native_pos(const std::string& context, const std::string& word)
+json native_pos(const std::string& context, const std::string& word, const std::string& text = kNativeScript)
 {
-    const std::string text = kNativeScript;
     const size_t at = text.find(context);
     EXPECT_NE(at, std::string::npos) << context;
     const size_t w = at + context.rfind(word);
@@ -5787,9 +5786,10 @@ std::set<std::string> edit_places(const json& result, const std::string& uri, co
 
 // A rename request at the word. The index of clangd can need some time for a symbol that a header
 // declares: ask again until the answer is an edit.
-json native_rename_request(NativeSession& s, const std::string& context, const std::string& word, const std::string& name)
+json native_rename_request(NativeSession& s, const std::string& context, const std::string& word, const std::string& name,
+    const std::string& script_text = kNativeScript)
 {
-    json p = {{"textDocument", {{"uri", s.uri}}}, {"position", native_pos(context, word)}, {"newName", name}};
+    json p = {{"textDocument", {{"uri", s.uri}}}, {"position", native_pos(context, word, script_text)}, {"newName", name}};
     json r;
     for (int i = 0; i < 20; ++i)
     {
@@ -5849,6 +5849,49 @@ TEST(LanguageServerNative, RenameIsRefusedForAClassWithAParameterOfTheSameNameIn
     const json r = native_rename_request(s, "Counter local;", "Counter", "Tally");
     ASSERT_TRUE(r.contains("error")) << r.dump();
     EXPECT_NE(r["error"].value("message", "").find("another word"), std::string::npos) << r.dump();
+}
+
+// Applies the edits of one file to the text. The edits do not overlap.
+std::string apply_edits(const std::string& text, const json& edits)
+{
+    auto offset = [&](const json& p)
+    {
+        size_t at = 0;
+        for (int l = p["line"]; l > 0; --l)
+            at = text.find('\n', at) + 1;
+        return at + p["character"].get<size_t>();
+    };
+    std::vector<std::tuple<size_t, size_t, std::string>> all;
+    for (const json& e : edits)
+        all.emplace_back(offset(e["range"]["start"]), offset(e["range"]["end"]), e["newText"].get<std::string>());
+    std::sort(all.rbegin(), all.rend());
+    std::string out = text;
+    for (const auto& [b, f, t] : all)
+        out.replace(b, f - b, t);
+    return out;
+}
+
+// The class has a constructor and a destructor. The rename changes the type name, the constructor
+// name and the destructor name in the header, from both a type use and a constructor call.
+TEST(LanguageServerNative, RenameOfAClassWithAConstructorChangesAllNamesInTheHeader)
+{
+    REQUIRE_CLANGD();
+    const char* const header = "#pragma once\nstruct Pnt { Pnt(int v = 0); ~Pnt(); int x; };\n";
+    const char* const script = "using \"natives.h\";\n\nclass Hero {\n    int seen = Pnt().x;\n\n    void Tick(float dt) {\n"
+                               "        Pnt local;\n    }\n}\n";
+    for (const char* context : {"Pnt local;", "Pnt()"})
+    {
+        NativeSession s(script, 10000, true, "", 10000, header);
+        const json r = native_rename_request(s, context, "Pnt", "Pos3", script);
+        SCOPED_TRACE(std::string(context) + " -> " + r.dump());
+        ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+        const json& changes = r["result"]["changes"];
+        const std::string header_uri = uri_of((s.dir.path() / "natives.h").string());
+        ASSERT_TRUE(changes.contains(header_uri)) << r.dump();
+        EXPECT_EQ(apply_edits(header, changes[header_uri]),
+            "#pragma once\nstruct Pos3 { Pos3(int v = 0); ~Pos3(); int x; };\n");
+        EXPECT_TRUE(edit_places(r["result"], header_uri, "Pos3").count("1:7-1:10")) << r.dump();
+    }
 }
 
 TEST(LanguageServerNative, RenameOfAMethod)
