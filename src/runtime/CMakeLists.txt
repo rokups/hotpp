@@ -63,7 +63,15 @@ add_library(hot_runtime STATIC
     scratch.cpp paths.cpp command_line.cpp object_cache.cpp)
 # scratch.cpp reads the option as the default of keep_temp().
 target_compile_definitions(hot_runtime PRIVATE HOT_KEEP_TEMP_DEFAULT=$<BOOL:${HOT_KEEP_TEMP}>)
-target_link_libraries(hot_runtime PUBLIC hot_runtime_core ${CMAKE_DL_LIBS} Threads::Threads)
+# An AOT-only platform (iOS, Android, web, UWP) runs the AOT table and loads no generated code.
+# HOT_AOT_ONLY removes dlopen, LoadLibrary and the process start from hot_runtime (module.cpp,
+# paths.cpp). The library then needs no dl library.
+if(HOT_AOT_ONLY_PLATFORM)
+    target_compile_definitions(hot_runtime PRIVATE HOT_AOT_ONLY=1)
+    target_link_libraries(hot_runtime PUBLIC hot_runtime_core Threads::Threads)
+else()
+    target_link_libraries(hot_runtime PUBLIC hot_runtime_core ${CMAKE_DL_LIBS} Threads::Threads)
+endif()
 # paths.cpp reads these (include/hot/paths.h). The compile flags are not paths, so both modes
 # have them. A portable build (HOT_PORTABLE) defines no build path. It finds the paths at run time.
 target_compile_definitions(hot_runtime PRIVATE HOT_DEFAULT_CXXFLAGS="${HOT_CXXFLAGS_JOINED}")
@@ -100,7 +108,7 @@ if(HOT_BUILD_TRANSLATOR)
     target_link_libraries(hot_translate_cache PUBLIC hot_runtime hotc_lib)
     add_library(hot_clang_backend STATIC clang_files_backend.cpp)
     target_link_libraries(hot_clang_backend PUBLIC hot_runtime hotc_lib hot_translate_cache)
-elseif(CMAKE_CROSSCOMPILING)
+elseif(CMAKE_CROSSCOMPILING AND NOT HOT_AOT_ONLY_PLATFORM)
     # A cross build has no translator. This target only compiles the backend source for the
     # target platform (for example the Windows run_command), so a cross build checks it.
     add_library(hot_win_compile_check OBJECT clang_files_backend.cpp)

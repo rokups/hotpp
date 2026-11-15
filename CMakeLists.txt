@@ -34,7 +34,20 @@ set(HOT_LLVM_RELEASES_DIR "" CACHE PATH "A folder with unpacked LLVM releases fo
 if(NOT HOT_LLVM_DIR AND HOT_LLVM_RELEASES_DIR)
     set(HOT_LLVM_DIR "${HOT_LLVM_RELEASES_DIR}/${HOT_LLVM_RELEASE_NAME}")
 endif()
-if(CMAKE_CROSSCOMPILING AND NOT HOT_LLVM_DIR AND NOT HOT_DOWNLOAD_LLVM)
+# AOT-only platforms: iOS, Android, web (Emscripten) and UWP. A program there loads no code at
+# run time and starts no compiler. So these platforms build hot::aot, hot::runtime_core and
+# hot::runtime. hot::runtime has no library loading (HOT_AOT_ONLY). The translator and both
+# backends are not built. A host
+# tool (hotc, from HOT_HOST_HOTC) compiles the scripts ahead of time (doc/platforms.md).
+set(HOT_AOT_ONLY_PLATFORM OFF)
+if(EMSCRIPTEN OR ANDROID OR IOS OR CMAKE_SYSTEM_NAME MATCHES "^(Emscripten|Android|iOS|tvOS|visionOS|watchOS|WindowsStore|WindowsPhone)$")
+    set(HOT_AOT_ONLY_PLATFORM ON)
+    message(STATUS "AOT-only platform (${CMAKE_SYSTEM_NAME}): no run-time backend, no loader, no translator")
+endif()
+
+if(HOT_AOT_ONLY_PLATFORM)
+    set(HOT_BUILD_TRANSLATOR_DEFAULT OFF)
+elseif(CMAKE_CROSSCOMPILING AND NOT HOT_LLVM_DIR AND NOT HOT_DOWNLOAD_LLVM)
     set(HOT_BUILD_TRANSLATOR_DEFAULT OFF)
 else()
     set(HOT_BUILD_TRANSLATOR_DEFAULT ON)
@@ -83,9 +96,29 @@ if(DEFINED HOT_BACKEND)
     unset(HOT_BACKEND)
 endif()
 
-option(HOT_ENABLE_CLANG_FILES "Build the clang files backend (external clang++) into hot::backend" ON)
-set(HOT_ENABLE_JIT AUTO CACHE STRING "Build the JIT backend into hot::backend: AUTO, ON or OFF")
+# An AOT-only platform (HOT_AOT_ONLY_PLATFORM) cannot have a backend: it cannot start a compiler,
+# cannot load generated code and cannot link libclang. The defaults there are OFF, and ON is an error.
+if(HOT_AOT_ONLY_PLATFORM)
+    set(HOT_ENABLE_CLANG_FILES_DEFAULT OFF)
+    set(HOT_ENABLE_JIT_DEFAULT OFF)
+else()
+    set(HOT_ENABLE_CLANG_FILES_DEFAULT ON)
+    set(HOT_ENABLE_JIT_DEFAULT AUTO)
+endif()
+option(HOT_ENABLE_CLANG_FILES "Build the clang files backend (external clang++) into hot::backend" ${HOT_ENABLE_CLANG_FILES_DEFAULT})
+set(HOT_ENABLE_JIT ${HOT_ENABLE_JIT_DEFAULT} CACHE STRING "Build the JIT backend into hot::backend: AUTO, ON or OFF")
 set_property(CACHE HOT_ENABLE_JIT PROPERTY STRINGS AUTO ON OFF)
+if(HOT_AOT_ONLY_PLATFORM)
+    string(TOUPPER "${HOT_ENABLE_JIT}" _hot_jit_upper)
+    if(HOT_ENABLE_CLANG_FILES OR _hot_jit_upper STREQUAL "ON")
+        message(FATAL_ERROR "${CMAKE_SYSTEM_NAME} is an AOT-only platform. It cannot run a compiler or "
+                "load generated code. Set HOT_ENABLE_CLANG_FILES=OFF and HOT_ENABLE_JIT=OFF "
+                "(they are the defaults here). See doc/platforms.md.")
+    endif()
+    # AUTO means: on when CMake finds LLVM. There is no LLVM for the target, so AUTO is OFF.
+    set(HOT_ENABLE_JIT OFF CACHE STRING "" FORCE)
+    unset(_hot_jit_upper)
+endif()
 
 # HOT_SCRIPT_MODE selects how the hosts and the script targets of this build compile scripts.
 # RELOAD keeps the mode of each call. AOT makes hot_add_scripts and the AOT hosts compile the

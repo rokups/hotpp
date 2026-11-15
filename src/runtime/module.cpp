@@ -16,7 +16,10 @@
     #include <process.h>
     #include <windows.h>
 #else
-    #include <dlfcn.h>
+    // An AOT-only build (HOT_AOT_ONLY) loads no library, so it has no dlfcn.h.
+    #ifndef HOT_AOT_ONLY
+        #include <dlfcn.h>
+    #endif
     #include <unistd.h>
 #endif
 #ifdef __APPLE__
@@ -57,6 +60,21 @@ std::string last_error_text()
 
 // Opens the library at "path". When "owned_copy" is true, the keep-alive object also removes
 // the file after dlclose: the file is a private copy for a core instance.
+#ifdef HOT_AOT_ONLY
+// An AOT-only platform (iOS, Android, web, UWP) cannot load generated code. The function is an
+// error stub, so the build has no dlopen and no LoadLibrary.
+LoadResult open_library(const std::string& path, const std::string&, bool owned_copy)
+{
+    LoadResult r;
+    r.error = "this build cannot load a library (HOT_AOT_ONLY): " + path;
+    if (owned_copy)
+    {
+        std::error_code ec;
+        std::filesystem::remove(path, ec);
+    }
+    return r;
+}
+#else
 LoadResult open_library(const std::string& path, const std::string& origin, bool owned_copy)
 {
     LoadResult r;
@@ -128,6 +146,7 @@ LoadResult open_library(const std::string& path, const std::string& origin, bool
     r.module->generation = gen ? *gen : 0u;
     return r;
 }
+#endif
 
 // A core instance of a library (module.h). dlopen gives the same handle for the same file,
 // also through a hard link. So the core instance loads a private copy of the file.
