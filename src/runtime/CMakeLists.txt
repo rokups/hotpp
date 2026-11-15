@@ -58,6 +58,9 @@ else()
         $<TARGET_PROPERTY:hot_runtime_core,INTERFACE_COMPILE_DEFINITIONS>)
     target_sources(hot_runtime_core PRIVATE $<TARGET_OBJECTS:hot_frame_reaper>)
 endif()
+# An AOT-only platform (iOS, Android, web, UWP) has no hot_runtime: its loader uses dlopen and
+# LoadLibrary, and its path code starts processes. Those platforms link hot_aot only.
+if(NOT HOT_AOT_ONLY_PLATFORM)
 add_library(hot_runtime STATIC
     state.cpp migration.cpp loader.cpp module.cpp
     scratch.cpp paths.cpp command_line.cpp object_cache.cpp)
@@ -84,6 +87,7 @@ else()
         HOT_DEFAULT_RESOURCE_DIR="${CLANG_RESOURCE_DIR}"
         HOT_DEFAULT_WORK_DIR="${HOT_SCRATCH_DIR}/hot_work")
 endif()
+endif()
 
 # AOT runtime (design M7): the core, the AOT registry and no-op object tracking.
 # Do not link it together with hot_runtime.
@@ -100,7 +104,7 @@ if(HOT_BUILD_TRANSLATOR)
     target_link_libraries(hot_translate_cache PUBLIC hot_runtime hotc_lib)
     add_library(hot_clang_backend STATIC clang_files_backend.cpp)
     target_link_libraries(hot_clang_backend PUBLIC hot_runtime hotc_lib hot_translate_cache)
-elseif(CMAKE_CROSSCOMPILING)
+elseif(CMAKE_CROSSCOMPILING AND NOT HOT_AOT_ONLY_PLATFORM)
     # A cross build has no translator. This target only compiles the backend source for the
     # target platform (for example the Windows run_command), so a cross build checks it.
     add_library(hot_win_compile_check OBJECT clang_files_backend.cpp)
@@ -183,7 +187,9 @@ if(HOT_CLANG_FILES_ENABLED OR HOT_JIT_ENABLED)
 endif()
 
 # Alias targets for a consumer project. They have the namespace hot::.
-add_library(hot::runtime ALIAS hot_runtime)
+if(TARGET hot_runtime)
+    add_library(hot::runtime ALIAS hot_runtime)
+endif()
 add_library(hot::runtime_core ALIAS hot_runtime_core)
 add_library(hot::aot ALIAS hot_aot)
 if(TARGET hot_backend)
