@@ -50,3 +50,12 @@ target_compile_definitions(integration_ls_ref_matrix_tests PRIVATE
     HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
     HOT_CLANGD_PATH="${HOT_CLANGD}")
 hot_gtest(integration_ls_ref_matrix_tests DISCOVERY_TIMEOUT 30)
+
+# The matrix of the completion requests: position kinds and checks. It needs clangd.
+add_executable(integration_ls_completion_matrix_tests completion_matrix_tests.cpp)
+target_include_directories(integration_ls_completion_matrix_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
+target_link_libraries(integration_ls_completion_matrix_tests PRIVATE hot_ls_lib GTest::gtest_main)
+target_compile_definitions(integration_ls_completion_matrix_tests PRIVATE
+    HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+    HOT_CLANGD_PATH="${HOT_CLANGD}")
+hot_gtest(integration_ls_completion_matrix_tests DISCOVERY_TIMEOUT 30)
