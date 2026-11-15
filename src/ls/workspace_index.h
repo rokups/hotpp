@@ -6,7 +6,9 @@
 // and the inverted maps over all entries: word to files, unclaimed word to files, and ref id to
 // files. A later step lets the server and the background threads use it.
 //
-// This part has data and maps only. It starts no thread.
+// The class has the maps and the background indexer. The indexer has worker threads at low
+// priority. A worker uses only its JobConfig and the objects that start() gets. It never
+// touches the server.
 // The class is safe for many threads. One mutex guards the entries and the maps. No function
 // holds the mutex during hotc::analyze, a SymbolIndex call or a file read. The lock order is:
 // WorkspaceIndex::mutex_ first, then the locks of SymbolIndex.
@@ -16,12 +18,18 @@
 #include "ref_resolver.h"
 #include "symbol_index.h"
 
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstdint>
+#include <deque>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <set>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -56,9 +64,64 @@ struct Entry
     std::set<std::string> unclaimed_words;
 };
 
+// The immutable snapshot of what a worker needs to index one script: the translate options
+// without the text, the flags text and the build id for the digest. The state thread makes it.
+struct JobConfig
+{
+    hotc::TranslateOptions options; // script_text is empty
+    std::string flags_text;
+    std::string build_id;
+};
+
+// The levels of the queue. A lower number runs first.
+enum class IndexLevel
+{
+    Request = 0, // a request waits for the script
+    Importer = 1, // an importer of a changed file
+    Rest = 2,
+};
+
+// The numbers of the indexer. They come from atomics, so any thread can read them.
+struct IndexStats
+{
+    bool ready = false; // every scheduled script has an entry or failed
+    int total = 0, done = 0, pending = 0, analyzed = 0, loaded = 0;
+    int64_t ready_ms = -1; // the time from the first schedule to ready, or -1
+    int threads = 0;
+};
+
 class WorkspaceIndex
 {
 public:
+    WorkspaceIndex() = default;
+    ~WorkspaceIndex() { stop(); }
+    WorkspaceIndex(const WorkspaceIndex&) = delete;
+    WorkspaceIndex& operator=(const WorkspaceIndex&) = delete;
+
+    // Starts the worker threads. "threads" 0 gives max(1, hardware_concurrency() / 2).
+    // "notify" runs on a worker after each finished job. It must be thread safe.
+    // "symbols" and "session" must live until stop() returns.
+    void start(SymbolIndex& symbols, hotc::TranslatorSession& session, unsigned threads,
+        std::function<void()> notify);
+    // Sets the stop flag, wakes the workers and joins them. Safe to call many times.
+    void stop();
+    bool started() const { return started_.load(); }
+
+    // Queues the script. A script that is queued already keeps the lower level and gets the
+    // new config. Only the state thread calls it.
+    void schedule(const std::string& path, JobConfig config, IndexLevel level);
+    // Moves the queued jobs of the paths to the level 0.
+    void bump(const std::vector<std::string>& paths);
+    // Counts a change of the path. A job that runs now does not publish its result, and the
+    // job runs again.
+    void invalidate(const std::string& path);
+    // Bumps the paths and waits until they have an entry, failed or have no job. Calls
+    // "poll" about each 50 ms without a lock (it may throw). Gives the paths that are still
+    // missing at the deadline.
+    std::vector<std::string> wait_for(const std::vector<std::string>& paths,
+        const std::function<void()>& poll, std::chrono::steady_clock::time_point deadline);
+    IndexStats stats() const;
+
     // Publishes the entry of "path". It replaces the old entry and updates the maps.
     void set(const std::string& path, std::shared_ptr<const Entry> entry);
     void erase(const std::string& path);
@@ -74,6 +137,18 @@ public:
     std::vector<std::shared_ptr<const Entry>> all_entries() const;
 
 private:
+    struct Job
+    {
+        JobConfig config;
+        IndexLevel level = IndexLevel::Rest;
+    };
+    void set_locked(const std::string& path, std::shared_ptr<const Entry> entry);
+    void worker_main();
+    // Takes the next job that no worker runs. False at stop.
+    bool take(std::string& path, Job& job, uint64_t& generation);
+    void finish(const std::string& path, Job&& job, uint64_t generation,
+        std::shared_ptr<const Entry> entry, bool analyzed);
+    void check_ready_locked();
     using FileMap = std::map<std::string, std::set<std::string>>;
     void add_locked(const std::string& path, const Entry& e);
     void remove_locked(const std::string& path, const Entry& e);
@@ -82,6 +157,23 @@ private:
     mutable std::mutex mutex_;
     std::map<std::string, std::shared_ptr<const Entry>> entries_;
     FileMap by_word_, by_unclaimed_, by_ref_;
+
+    // The indexer. mutex_ guards the queue and the sets too.
+    SymbolIndex* symbols_ = nullptr;
+    hotc::TranslatorSession* session_ = nullptr;
+    std::function<void()> notify_;
+    std::vector<std::thread> workers_;
+    std::condition_variable work_cv_, done_cv_;
+    bool stop_ = false;
+    std::atomic<bool> started_{false};
+    std::map<std::string, Job> jobs_; // the queued jobs by path
+    std::deque<std::string> queues_[3]; // the paths by level; an entry can be stale
+    std::set<std::string> running_, known_, finished_;
+    std::map<std::string, uint64_t> generation_;
+    std::chrono::steady_clock::time_point first_schedule_;
+    std::atomic<int> total_{0}, done_{0}, pending_{0}, analyzed_{0}, loaded_{0}, threads_{0};
+    std::atomic<int64_t> ready_ms_{-1};
+    std::atomic<bool> scheduled_{false};
 };
 
 // The stamp of a file. Gives false when the file is missing.
@@ -94,9 +186,10 @@ bool fresh(const Entry& e);
 // Builds the entry of a script. It is pure: it reads no server state. The shard comes from
 // "index" when the digest matches, else from hotc::analyze, and it goes into "index". The
 // imports are read from the disk only, with "options.fs" when it is set. The stamps are taken
-// at the start, so a change after the call makes fresh() give false.
+// at the start, so a change after the call makes fresh() give false. "analyzed" (if given)
+// gets true when the call ran hotc::analyze, false when it loaded the shard.
 std::shared_ptr<const Entry> build_entry(const std::string& path, const std::string& text,
     const hotc::TranslateOptions& options, const std::string& digest, SymbolIndex& index,
-    hotc::TranslatorSession& session);
+    hotc::TranslatorSession& session, bool* analyzed = nullptr);
 
 } // namespace hot::ls

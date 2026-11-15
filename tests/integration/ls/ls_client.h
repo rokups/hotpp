@@ -114,6 +114,13 @@ public:
     {
         send({{"jsonrpc", "2.0"}, {"method", method}, {"params", std::move(params)}});
     }
+    // Answers a request of the server.
+    void respond(const json& id, json result)
+    {
+        send({{"jsonrpc", "2.0"}, {"id", id}, {"result", std::move(result)}});
+    }
+    // Waits for any message that "match" accepts and removes it. Gives null on a timeout.
+    json wait_message(const std::function<bool(const json&)>& match, int timeout_ms) { return wait(match, timeout_ms); }
     // Waits for a notification that "match" accepts and removes it. Gives null on a timeout.
     json wait_notification(
         const std::string& method, const std::function<bool(const json&)>& match, int timeout_ms = 120000)

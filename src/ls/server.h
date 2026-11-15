@@ -68,6 +68,10 @@ struct ServerOptions
     // The identity of the translator build. It goes in the shard digest, so a shard of an older
     // translator is rejected (HOT-33). Empty: the size and the mtime of the running executable.
     std::string build_id;
+    // The number of worker threads of the background index (HOT-34). 0: half of the cores, 1 at least.
+    int index_threads = 0;
+    // False: no background index (--no-background-index). Tests that count analyses use it.
+    bool background_index = true;
 };
 
 // Runs the server on two file descriptors until "exit" or the end of the input.

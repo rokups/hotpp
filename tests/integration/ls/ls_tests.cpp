@@ -84,6 +84,7 @@ hot::ls::ServerOptions options(const TempDir& dir, bool clangd)
     hot::ls::ServerOptions o;
     o.clangd = clangd ? HOT_CLANGD_PATH : "";
     o.include_dirs = {HOT_SOURCE_DIR "/include", HOT_SOURCE_DIR "/tests/engine"};
+    o.background_index = false; // the tests count the analyses; the tests of the index set it
     // HOT_LS_CLANGD_LOG keeps the clangd log after the test (the temporary dir goes away).
     // A directory gets one log file for each test.
     const char* log = std::getenv("HOT_LS_CLANGD_LOG");
@@ -8528,4 +8529,144 @@ TEST(SymbolIndex, ManyThreadsUseOneIndex)
     EXPECT_EQ(bad.load(), 0);
     EXPECT_GT(index.stores(), 0);
     EXPECT_GT(loaded.load(), 0);
+}
+
+// ------------------------------------------------------------------ the background index (HOT-34)
+
+namespace
+{
+// The scripts "s0.hot" to "s<count-1>.hot" in the directory. Each has a class and some methods.
+std::vector<std::string> write_index_scripts(const std::filesystem::path& dir, int count)
+{
+    std::vector<std::string> paths;
+    for (int i = 0; i < count; ++i)
+    {
+        std::string text = "using \"Actor.h\";\nclass C" + std::to_string(i) + " : Actor {\n    int v = " + std::to_string(i) + ";\n";
+        for (int m = 0; m < 20; ++m)
+            text += "    int f" + std::to_string(m) + "(int a) { this.Move(Vec3(a, 0, 0)); return a + this.v + " + std::to_string(m) + "; }\n";
+        text += "}\n";
+        const std::string path = (dir / ("s" + std::to_string(i) + ".hot")).string();
+        write_file(path, text);
+        paths.push_back(path);
+    }
+    return paths;
+}
+
+json index_stats(LsClient& client)
+{
+    return client.request("hot/indexStats", json::object())["result"]["index"];
+}
+
+// Starts a server with the capability of the work done progress when "progress" is true.
+void initialize_with(LsClient& client, const std::string& root, bool progress)
+{
+    json caps = json::object();
+    if (progress)
+        caps["window"] = {{"workDoneProgress", true}};
+    client.request("initialize", {{"processId", nullptr}, {"rootUri", uri_of(root)}, {"capabilities", caps}});
+    client.notify("initialized", json::object());
+}
+} // namespace
+
+TEST(WorkspaceIndexBackground, IndexesTheScriptsWithoutAnOpenDocument)
+{
+    TempDir dir;
+    const auto paths = write_index_scripts(dir.path(), 6);
+    auto opt = options(dir, false);
+    opt.background_index = true;
+    LsClient client(opt);
+    client.initialize(dir.path().string());
+    json st;
+    const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    do
+    {
+        st = index_stats(client);
+        if (st.value("ready", false))
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    } while (std::chrono::steady_clock::now() < end);
+    ASSERT_TRUE(st.value("ready", false)) << st.dump();
+    EXPECT_EQ(st["total"], 6);
+    EXPECT_EQ(st["done"], 6);
+    EXPECT_GE(st["readyMs"].get<int>(), 0);
+    EXPECT_GE(st["threads"].get<int>(), 1);
+    EXPECT_EQ(file_count(dir.path() / ".cache" / "hot" / "index"), paths.size());
+}
+
+TEST(WorkspaceIndexBackground, ExitDuringTheIndexEndsTheServerFast)
+{
+    TempDir dir;
+    write_index_scripts(dir.path(), 30);
+    auto opt = options(dir, false);
+    opt.background_index = true;
+    auto client = std::make_unique<LsClient>(opt);
+    client->initialize(dir.path().string());
+    const auto begin = std::chrono::steady_clock::now();
+    client->stop();
+    EXPECT_LT(std::chrono::steady_clock::now() - begin, std::chrono::seconds(5));
+    client.reset();
+}
+
+TEST(WorkspaceIndexBackground, ARequestIsAnsweredBeforeTheIndexIsReady)
+{
+    TempDir dir;
+    write_index_scripts(dir.path(), 30);
+    const std::string path = (dir.path() / "player.hot").string();
+    write_file(path, kScript);
+    auto opt = options(dir, false);
+    opt.background_index = true;
+    LsClient client(opt);
+    client.initialize(dir.path().string());
+    client.open(uri_of(path), kScript);
+    const auto begin = std::chrono::steady_clock::now();
+    const json r = client.request("textDocument/hover", doc_pos(uri_of(path), 11, 14));
+    const auto took = std::chrono::steady_clock::now() - begin;
+    EXPECT_TRUE(r.contains("result")) << r.dump();
+    EXPECT_LT(took, std::chrono::seconds(3));
+    const json st = index_stats(client);
+    std::fprintf(stderr, "hover took %lld ms, index ready: %d (%s)\n",
+        static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(took).count()),
+        st.value("ready", false) ? 1 : 0, st.dump().c_str());
+}
+
+TEST(WorkspaceIndexBackground, ProgressNeedsTheCapability)
+{
+    for (const bool capable : {true, false})
+    {
+        TempDir dir;
+        write_index_scripts(dir.path(), 12);
+        auto opt = options(dir, false);
+        opt.background_index = true;
+        LsClient client(opt);
+        initialize_with(client, dir.path().string(), capable);
+        if (capable)
+        {
+            const json create = client.wait_message(
+                [](const json& m) { return m.value("method", std::string()) == "window/workDoneProgress/create"; }, 10000);
+            ASSERT_TRUE(create.is_object());
+            const std::string token = create["params"]["token"];
+            client.respond(create["id"], nullptr);
+            const json begin = client.wait_notification("$/progress",
+                [&](const json& p) { return p["token"] == token && p["value"]["kind"] == "begin"; }, 30000);
+            EXPECT_TRUE(begin.is_object());
+            const json end = client.wait_notification("$/progress",
+                [&](const json& p) { return p["token"] == token && p["value"]["kind"] == "end"; }, 60000);
+            ASSERT_TRUE(end.is_object());
+            EXPECT_NE(end["params"]["value"]["message"].get<std::string>().find(" of 12 scripts"), std::string::npos);
+        }
+        else
+        {
+            for (int i = 0; i < 1200; ++i)
+            {
+                if (index_stats(client).value("ready", false))
+                    break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+            ASSERT_TRUE(index_stats(client).value("ready", false));
+            const json any = client.wait_message([](const json& m) {
+                const std::string method = m.value("method", std::string());
+                return method == "$/progress" || method == "window/workDoneProgress/create"; }, 300);
+            EXPECT_TRUE(any.is_null()) << any.dump();
+        }
+    }
 }

@@ -4,10 +4,24 @@
 
 #include "workspace_index.h"
 
+#include "long_path.h"
 #include "script_text.h"
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
+
+#ifdef _WIN32
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <pthread.h>
+#include <pthread/qos.h>
+#else
+#include <sys/resource.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
 
 namespace fs = std::filesystem;
 
@@ -50,6 +64,11 @@ void WorkspaceIndex::remove_locked(const std::string& path, const Entry& e)
 void WorkspaceIndex::set(const std::string& path, std::shared_ptr<const Entry> entry)
 {
     std::lock_guard<std::mutex> lock(mutex_);
+    set_locked(path, std::move(entry));
+}
+
+void WorkspaceIndex::set_locked(const std::string& path, std::shared_ptr<const Entry> entry)
+{
     const auto it = entries_.find(path);
     if (it != entries_.end())
     {
@@ -168,8 +187,10 @@ std::vector<std::string> import_closure(
 
 std::shared_ptr<const Entry> build_entry(const std::string& path, const std::string& text,
     const hotc::TranslateOptions& options, const std::string& digest, SymbolIndex& index,
-    hotc::TranslatorSession& session)
+    hotc::TranslatorSession& session, bool* analyzed)
 {
+    if (analyzed)
+        *analyzed = false;
     auto e = std::make_shared<Entry>();
     e->path = path;
     e->digest = digest;
@@ -184,6 +205,8 @@ std::shared_ptr<const Entry> build_entry(const std::string& path, const std::str
     auto shard = index.load(path, digest);
     if (!shard)
     {
+        if (analyzed)
+            *analyzed = true;
         const hotc::AnalyzeResult facts = hotc::analyze(text, options, session);
         shard = shard_of_facts(path, Text(text), facts, script_imports_in(options, path, text));
         index.store(path, digest, *shard);
@@ -192,6 +215,259 @@ std::shared_ptr<const Entry> build_entry(const std::string& path, const std::str
     e->classes = std::move(shard->classes);
     collect_words(*e->table, text, e->words, e->unclaimed_words);
     return e;
+}
+
+// ------------------------------------------------------------------ the background indexer
+
+namespace
+{
+void lower_thread_priority()
+{
+#ifdef _WIN32
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+#elif defined(__APPLE__)
+    pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0);
+#else
+    setpriority(PRIO_PROCESS, static_cast<id_t>(syscall(SYS_gettid)), 10);
+#endif
+}
+
+bool read_whole(const std::string& path, std::string& out)
+{
+    std::ifstream in(utf8_path(path), std::ios::binary);
+    if (!in)
+        return false;
+    out.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    return true;
+}
+} // namespace
+
+void WorkspaceIndex::start(SymbolIndex& symbols, hotc::TranslatorSession& session, unsigned threads,
+    std::function<void()> notify)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (started_.load() || stop_)
+        return;
+    symbols_ = &symbols;
+    session_ = &session;
+    notify_ = std::move(notify);
+    if (threads == 0)
+        threads = std::max(1u, std::thread::hardware_concurrency() / 2);
+    threads_ = static_cast<int>(threads);
+    started_ = true;
+    for (unsigned i = 0; i < threads; ++i)
+        workers_.emplace_back([this] { worker_main(); });
+}
+
+void WorkspaceIndex::stop()
+{
+    std::vector<std::thread> workers;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        stop_ = true;
+        workers.swap(workers_);
+    }
+    work_cv_.notify_all();
+    done_cv_.notify_all();
+    for (std::thread& t : workers)
+        if (t.joinable())
+            t.join();
+}
+
+void WorkspaceIndex::schedule(const std::string& path, JobConfig config, IndexLevel level)
+{
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (stop_)
+            return;
+        if (!scheduled_.exchange(true))
+            first_schedule_ = std::chrono::steady_clock::now();
+        known_.insert(path);
+        total_ = static_cast<int>(known_.size());
+        auto it = jobs_.find(path);
+        if (it == jobs_.end())
+        {
+            jobs_[path] = Job{std::move(config), level};
+            queues_[static_cast<int>(level)].push_back(path);
+        }
+        else
+        {
+            it->second.config = std::move(config);
+            if (level < it->second.level)
+            {
+                it->second.level = level;
+                queues_[static_cast<int>(level)].push_back(path);
+            }
+        }
+        pending_ = static_cast<int>(jobs_.size() + running_.size());
+        check_ready_locked();
+    }
+    work_cv_.notify_one();
+}
+
+void WorkspaceIndex::bump(const std::vector<std::string>& paths)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const std::string& path : paths)
+    {
+        const auto it = jobs_.find(path);
+        if (it == jobs_.end() || it->second.level == IndexLevel::Request)
+            continue;
+        it->second.level = IndexLevel::Request;
+        queues_[0].push_back(path);
+    }
+}
+
+void WorkspaceIndex::invalidate(const std::string& path)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    ++generation_[path];
+}
+
+std::vector<std::string> WorkspaceIndex::wait_for(const std::vector<std::string>& paths,
+    const std::function<void()>& poll, std::chrono::steady_clock::time_point deadline)
+{
+    bump(paths);
+    work_cv_.notify_all();
+    for (;;)
+    {
+        std::vector<std::string> missing;
+        {
+            std::unique_lock<std::mutex> lock(mutex_);
+            for (const std::string& path : paths)
+                if (!entries_.count(path) && (jobs_.count(path) || running_.count(path)))
+                    missing.push_back(path);
+            if (missing.empty() || stop_ || std::chrono::steady_clock::now() >= deadline)
+                return missing;
+            done_cv_.wait_for(lock, std::chrono::milliseconds(50));
+        }
+        if (poll)
+            poll();
+    }
+}
+
+IndexStats WorkspaceIndex::stats() const
+{
+    IndexStats s;
+    s.total = total_.load();
+    s.done = done_.load();
+    s.pending = pending_.load();
+    s.analyzed = analyzed_.load();
+    s.loaded = loaded_.load();
+    s.ready_ms = ready_ms_.load();
+    s.threads = threads_.load();
+    s.ready = scheduled_.load() && s.done >= s.total;
+    return s;
+}
+
+void WorkspaceIndex::check_ready_locked()
+{
+    done_ = static_cast<int>(finished_.size());
+    if (scheduled_.load() && finished_.size() >= known_.size() && ready_ms_.load() < 0)
+        ready_ms_ = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - first_schedule_).count();
+}
+
+bool WorkspaceIndex::take(std::string& path, Job& job, uint64_t& generation)
+{
+    std::unique_lock<std::mutex> lock(mutex_);
+    for (;;)
+    {
+        if (stop_)
+            return false;
+        for (int level = 0; level < 3; ++level)
+        {
+            std::deque<std::string>& q = queues_[level];
+            for (auto it = q.begin(); it != q.end();)
+            {
+                const auto j = jobs_.find(*it);
+                // A stale entry: the job ran, or it moved to a lower level number.
+                if (j == jobs_.end() || static_cast<int>(j->second.level) != level)
+                {
+                    it = q.erase(it);
+                    continue;
+                }
+                if (running_.count(*it))
+                {
+                    ++it; // one job for a path at a time
+                    continue;
+                }
+                path = *it;
+                job = std::move(j->second);
+                jobs_.erase(j);
+                q.erase(it);
+                running_.insert(path);
+                generation = generation_[path];
+                return true;
+            }
+        }
+        work_cv_.wait(lock);
+    }
+}
+
+void WorkspaceIndex::finish(const std::string& path, Job&& job, uint64_t generation,
+    std::shared_ptr<const Entry> entry, bool analyzed)
+{
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        running_.erase(path);
+        if (analyzed)
+            ++analyzed_;
+        else if (entry)
+            ++loaded_;
+        if (generation_[path] != generation && !stop_)
+        {
+            // The path changed during the job: drop the result and run the job again.
+            if (!jobs_.count(path))
+            {
+                const int level = static_cast<int>(job.level);
+                jobs_[path] = std::move(job);
+                queues_[level].push_back(path);
+            }
+        }
+        else
+        {
+            if (entry)
+                set_locked(path, std::move(entry));
+            finished_.insert(path); // a failed job has no entry, but nobody waits for it
+        }
+        pending_ = static_cast<int>(jobs_.size() + running_.size());
+        check_ready_locked();
+    }
+    done_cv_.notify_all();
+    work_cv_.notify_one(); // a queued job of this path can run now
+}
+
+void WorkspaceIndex::worker_main()
+{
+    lower_thread_priority();
+    std::string path;
+    Job job;
+    uint64_t generation = 0;
+    while (take(path, job, generation))
+    {
+        std::shared_ptr<const Entry> entry;
+        bool analyzed = false;
+        try
+        {
+            std::string text;
+            if (read_whole(path, text))
+            {
+                const JobConfig& c = job.config;
+                const std::string digest = SymbolIndex::digest(
+                    symbols_->cached_digest(path, text, c.options.include_dirs) + c.flags_text
+                    + "\nbuild:" + c.build_id);
+                entry = build_entry(path, text, c.options, digest, *symbols_, *session_, &analyzed);
+            }
+        }
+        catch (...)
+        {
+            entry = nullptr;
+        }
+        finish(path, std::move(job), generation, std::move(entry), analyzed);
+        if (notify_)
+            notify_();
+    }
 }
 
 } // namespace hot::ls

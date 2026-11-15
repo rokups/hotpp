@@ -18,6 +18,7 @@
 #include "hot/hotc_lib.h"
 #include "hot/paths.h"
 #include "symbol_index.h"
+#include "workspace_index.h"
 
 #include <nlohmann/json.hpp>
 
@@ -379,6 +380,7 @@ public:
     }
     ~Server()
     {
+        windex_.stop(); // before the members die and before clangd stops
         if (clangd_)
             clangd_->stop();
         // The stop of clangd ends the requests of the workers.
@@ -1175,6 +1177,18 @@ private:
     std::chrono::steady_clock::time_point graph_walk_at_;
     bool graph_walk_valid_ = false;
     hotc::TranslatorSession session_;
+    // ---- the background index (HOT-34). It comes after session_ and index_: it dies first.
+    // The workers use only the JobConfig and session_ / index_ (thread safe), and send_client.
+    WorkspaceIndex windex_;
+    bool progress_wanted_ = false; // the client has window.workDoneProgress
+    // The progress of the index. The state thread and the workers call index_progress().
+    std::mutex progress_mutex_;
+    json progress_create_id_;
+    bool progress_created_ = false, progress_begun_ = false, progress_ended_ = false;
+    std::chrono::steady_clock::time_point progress_last_;
+    void start_background_index();
+    JobConfig index_job_config(const std::string& path) const;
+    void index_progress();
 };
 
 // ------------------------------------------------------------------ setup
@@ -1529,6 +1543,7 @@ void Server::on_workspace_folders(const json& p)
 
 json Server::on_initialize(const json& p)
 {
+    progress_wanted_ = p.value("/capabilities/window/workDoneProgress"_json_pointer, false) == true;
     const json encodings = p.value("/capabilities/general/positionEncodings"_json_pointer, json::array());
     for (const json& e : encodings)
         if (e == "utf-8")
@@ -6954,6 +6969,70 @@ void Server::map_clangd_symbols(const json& symbols, json& out)
     }
 }
 
+JobConfig Server::index_job_config(const std::string& path) const
+{
+    JobConfig c;
+    c.options = translate_options(closed_doc(path, std::string()));
+    const Effective eff = effective_options(path);
+    for (const std::string& f : eff.extra_flags)
+        c.flags_text += f + '\n';
+    c.build_id = opt_.build_id;
+    return c;
+}
+
+void Server::start_background_index()
+{
+    if (!opt_.background_index || !index_.enabled() || roots_.empty() || windex_.started() || shutdown_)
+        return;
+    index_.prune();
+    const std::vector<std::string> scripts = workspace_scripts();
+    if (progress_wanted_)
+    {
+        std::lock_guard<std::mutex> lock(progress_mutex_);
+        progress_create_id_ = "hot-index-progress";
+        send_client({{"jsonrpc", "2.0"}, {"id", progress_create_id_}, {"method", "window/workDoneProgress/create"},
+            {"params", {{"token", "hot-index"}}}});
+    }
+    windex_.start(index_, session_, static_cast<unsigned>(std::max(0, opt_.index_threads)), [this] { index_progress(); });
+    for (const std::string& path : scripts)
+        windex_.schedule(path, index_job_config(path), IndexLevel::Rest);
+    index_progress();
+}
+
+// Sends the begin, the report and the end of the progress. At most one report in 200 ms.
+void Server::index_progress()
+{
+    if (!progress_wanted_)
+        return;
+    std::lock_guard<std::mutex> lock(progress_mutex_);
+    if (!progress_created_ || progress_ended_)
+        return;
+    const IndexStats st = windex_.stats();
+    const auto now = std::chrono::steady_clock::now();
+    const std::string text = std::to_string(st.done) + " of " + std::to_string(st.total) + " scripts";
+    const int percent = st.total > 0 ? st.done * 100 / st.total : 100;
+    auto progress = [&](json value)
+    {
+        send_client({{"jsonrpc", "2.0"}, {"method", "$/progress"}, {"params", {{"token", "hot-index"}, {"value", std::move(value)}}}});
+    };
+    if (!progress_begun_)
+    {
+        progress_begun_ = true;
+        progress_last_ = now;
+        progress({{"kind", "begin"}, {"title", "Indexing scripts"}, {"message", text}, {"percentage", percent}});
+    }
+    if (st.ready)
+    {
+        progress_ended_ = true;
+        progress({{"kind", "end"}, {"message", text}});
+    }
+    else if (now - progress_last_ >= std::chrono::milliseconds(200))
+    {
+        progress_last_ = now;
+        progress({{"kind", "report"}, {"message", text}, {"percentage", percent}});
+    }
+}
+
 std::string Server::shard_digest(const std::string& path, const std::string& text)
 {
     // The digest holds the import files. The flags of the host also go in.
@@ -7085,13 +7164,30 @@ void Server::handle(const json& msg)
     const json id = is_request ? msg["id"] : json();
     const json p = msg.value("params", json::object());
     if (method.empty())
-        return; // a response to a request that the server did not send
+    {
+        // A response to a request of the server. Only the progress create request has one.
+        // The server ignores the other responses and sends no error reply.
+        bool created = false;
+        {
+            std::lock_guard<std::mutex> lock(progress_mutex_);
+            if (msg.contains("id") && msg["id"] == progress_create_id_ && !progress_create_id_.is_null()
+                && !msg.contains("error"))
+            {
+                progress_created_ = true;
+                created = true;
+            }
+        }
+        if (created)
+            index_progress();
+        return;
+    }
 
     if (method == "initialize")
         return reply(id, on_initialize(p));
     if (method == "shutdown")
     {
         shutdown_ = true;
+        windex_.stop();
         if (clangd_)
             clangd_->stop();
         return reply(id, nullptr);
@@ -7185,8 +7281,10 @@ void Server::handle(const json& msg)
         return on_watched_files(p);
     if (method == "workspace/didChangeWorkspaceFolders")
         return on_workspace_folders(p);
+    if (method == "initialized")
+        return start_background_index();
     if (!is_request)
-        return; // initialized, $/cancelRequest and other notifications
+        return; // $/cancelRequest and other notifications
     if (method == "workspace/symbol")
         return reply(id, on_workspace_symbol(p));
     if (method == "hot/indexStats")
@@ -7205,6 +7303,11 @@ void Server::handle(const json& msg)
         }
         if (const std::string of = json_str(p, "importersOf"); !of.empty())
             out["importers"] = import_graph().importers_of(hotc::ref_file_id(uri_to_path(of)));
+        {
+            const IndexStats st = windex_.stats();
+            out["index"] = {{"ready", st.ready}, {"total", st.total}, {"done", st.done}, {"pending", st.pending},
+                {"analyzed", st.analyzed}, {"loaded", st.loaded}, {"readyMs", st.ready_ms}, {"threads", st.threads}};
+        }
         out.update({{"analyzed", closed_analyses_}, {"loaded", index_.loads()}, {"loadMs", index_.load_ms()}, {"stored", index_.stores()},
             {"dir", index_.dir()}, {"completions", completion_translations_},
             {"tokenRequests", native_token_requests_.load()}, {"translations", translations_.load()},
@@ -7389,6 +7492,7 @@ int Server::run()
     }
     // The reader ends at the end of the input or after "exit".
     reader.join();
+    windex_.stop();
     if (clangd_)
         clangd_->stop();
     return shutdown_ ? 0 : 1;
@@ -7529,6 +7633,17 @@ bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, s
         else if (a == "--no-rename-host-headers")
         {
             out.rename_host_headers = false;
+        }
+        else if (a == "--no-background-index")
+        {
+            out.background_index = false;
+        }
+        else if (a == "--index-threads")
+        {
+            std::string n;
+            if (!next(n))
+                return false;
+            out.index_threads = std::atoi(n.c_str());
         }
         else if (a == "--index-dir")
         {
