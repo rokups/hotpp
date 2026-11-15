@@ -7188,27 +7188,18 @@ void expect_overload_hover(int call_line, const std::string& name, const std::st
 
 } // namespace
 
-// DEFECT: F12 on a call of an overloaded function or method goes to the first overload with the
-// name, not to the overload that the arguments select (the calls with a float or two arguments
-// go to line 1 or 5). The hover selects the right overload.
-TEST(LanguageServerDecl, DISABLED_DefinitionOfAFunctionCallSelectsTheOverloadByTheArgumentType)
+TEST(LanguageServerDecl, DefinitionOfAFunctionCallSelectsTheOverloadByTheArgumentType)
 {
     expect_overload_definition(8, "Pick", 1);
     expect_overload_definition(9, "Pick", 2);
 }
 
-// DEFECT: F12 on a call of an overloaded function or method goes to the first overload with the
-// name, not to the overload that the arguments select (the calls with a float or two arguments
-// go to line 1 or 5). The hover selects the right overload.
-TEST(LanguageServerDecl, DISABLED_DefinitionOfAFunctionCallSelectsTheOverloadByTheArgumentCount)
+TEST(LanguageServerDecl, DefinitionOfAFunctionCallSelectsTheOverloadByTheArgumentCount)
 {
     expect_overload_definition(10, "Pick", 3);
 }
 
-// DEFECT: F12 on a call of an overloaded function or method goes to the first overload with the
-// name, not to the overload that the arguments select (the calls with a float or two arguments
-// go to line 1 or 5). The hover selects the right overload.
-TEST(LanguageServerDecl, DISABLED_DefinitionOfAMethodCallSelectsTheOverloadByTheArgumentType)
+TEST(LanguageServerDecl, DefinitionOfAMethodCallSelectsTheOverloadByTheArgumentType)
 {
     expect_overload_definition(11, "Put", 5);
     expect_overload_definition(12, "Put", 6);
