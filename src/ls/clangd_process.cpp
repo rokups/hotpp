@@ -249,6 +249,7 @@ json ClangdProcess::request(const std::string& method, json params, int timeout_
             catch (...)
             {
                 abandoned_.insert(id);
+                send({{"jsonrpc", "2.0"}, {"method", "$/cancelRequest"}, {"params", {{"id", id}}}});
                 throw;
             }
         }

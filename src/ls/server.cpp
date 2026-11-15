@@ -748,8 +748,16 @@ private:
             return;
         if (!preamble_ready_.insert(d.gen_uri).second)
             return;
-        clangd_result("textDocument/documentSymbol", {{"textDocument", {{"uri", d.gen_uri}}}}, kPreambleWaitMs);
-        wait_for_preamble_index();
+        try
+        {
+            clangd_result("textDocument/documentSymbol", {{"textDocument", {{"uri", d.gen_uri}}}}, kPreambleWaitMs);
+            wait_for_preamble_index();
+        }
+        catch (const RequestCancelled&)
+        {
+            preamble_ready_.erase(d.gen_uri); // the preamble is not there: the next request waits again
+            throw;
+        }
     }
 
     // The same wait, but with a deadline. The mark is set only when the document is ready before
@@ -1358,7 +1366,6 @@ void Server::start_clangd(const json& init)
         args.push_back("--background-index=false");
     }
     auto c = std::make_unique<ClangdProcess>();
-    c->wait_poll = [this] { check_cancel(); }; // a cancel ends the wait for clangd
     if (!c->start(opt_.clangd, args, opt_.clangd_log, [this](const json& m) { on_clangd_notification(m); }))
         return;
     json params = {
@@ -1394,6 +1401,8 @@ void Server::start_clangd(const json& init)
             {{"textDocument", {{"uri", uri}, {"languageId", "cpp"}, {"version", 1}, {"text", *seed}}}});
         c->notify("textDocument/didClose", {{"textDocument", {{"uri", uri}}}});
     }
+    // After the start: the request "initialize" is not cancellable. A cancel ends a later wait for clangd.
+    c->wait_poll = [this] { check_cancel(); };
     clangd_ = std::move(c);
 }
 
@@ -4667,6 +4676,7 @@ void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const st
     index_.prune(); // the shard of a file that is gone
     for (const std::string& path : workspace_scripts())
     {
+        check_cancel();
         if (path == origin.path)
             continue;
         const std::shared_ptr<Doc> open = open_doc_at(path);
@@ -4916,6 +4926,7 @@ ImportGraph& Server::import_graph(const std::string& also, bool fresh)
     {
         if (!seen.insert(path).second)
             continue;
+        check_cancel(); // each file is complete when set: a cancel leaves a valid cache
         const auto it = graph_files_.find(path);
         GraphEntry next;
         const std::shared_ptr<Doc> open = open_doc_at(path);
@@ -7126,6 +7137,7 @@ void Server::add_script_symbols(const std::string& query, json& out)
     };
     for (const std::string& path : workspace_scripts())
     {
+        check_cancel();
         const std::string uri = path_to_uri(path);
         std::vector<Hit> hits;
         auto add = [&](const std::string& name, int kind, Pos at, size_t len)
@@ -7415,6 +7427,8 @@ void Server::reader_loop()
         json msg = json::parse(body, nullptr, false);
         if (msg.is_discarded() || !msg.is_object())
             continue;
+        if (msg.contains("method") && !msg["method"].is_string())
+            continue; // not a message of the protocol
         const std::string method = msg.value("method", std::string());
         {
             std::lock_guard<std::mutex> lock(queue_mutex_);
@@ -7456,14 +7470,27 @@ bool Server::next_message(json& out)
         return false;
     out = std::move(queue_.front());
     queue_.pop_front();
-    if (out.value("method", std::string()) == "textDocument/didChange")
+    // The uri of a didChange with well-formed params. Else null: such a message does not join.
+    auto change_uri = [](const json& m) -> const json*
+    {
+        if (!m.is_object() || !m.contains("method") || m["method"] != "textDocument/didChange")
+            return nullptr;
+        const auto params = m.find("params");
+        if (params == m.end() || !params->is_object())
+            return nullptr;
+        const auto td = params->find("textDocument");
+        const auto changes = params->find("contentChanges");
+        if (td == params->end() || !td->is_object() || changes == params->end() || !changes->is_array() || changes->empty())
+            return nullptr;
+        const auto uri = td->find("uri");
+        return uri != td->end() && uri->is_string() ? &*uri : nullptr;
+    };
+    if (const json* first = change_uri(out))
     {
         // Debounce: a later didChange of the same uri replaces this one. The messages
         // between them stay in order, so only the directly next ones join.
-        const std::string uri = out.value("/params/textDocument/uri"_json_pointer, std::string());
-        while (!queue_.empty() && queue_.front().value("method", std::string()) == "textDocument/didChange"
-            && queue_.front().value("/params/textDocument/uri"_json_pointer, std::string()) == uri
-            && !queue_.front().value("/params/contentChanges"_json_pointer, json::array()).empty())
+        const std::string uri = first->get<std::string>();
+        while (!queue_.empty() && change_uri(queue_.front()) && change_uri(queue_.front())->get<std::string>() == uri)
         {
             out = std::move(queue_.front());
             queue_.pop_front();

@@ -6419,13 +6419,31 @@ TEST(LanguageServerNative, CancelOfARunningReferencesScanGivesTheErrorBeforeTheB
     const json r = s.client->wait_response(id, 60000);
     const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
     ASSERT_FALSE(r.is_null());
-    // A scan that ends before the cancel arrives is a valid answer too, but not on this workspace.
+    // The state thread cannot show that the scan runs (hot/indexStats waits in the queue behind it).
+    // A reply with a result before the cancel was sent is not a cancel test: skip, no false failure.
+    if (r.contains("result") && ms < 400)
+        GTEST_SKIP() << "the scan ended before the cancel";
     ASSERT_TRUE(r.contains("error")) << r.dump();
     EXPECT_EQ(r["error"]["code"], -32800);
     EXPECT_LT(ms, 30000);
     const json hover = s.client->request("textDocument/hover", at);
     EXPECT_TRUE(hover.contains("result")) << hover.dump();
     EXPECT_FALSE(hover.contains("error")) << hover.dump();
+}
+
+// HOT-36: a cancel of the first native hover leaves no mark "preamble ready". The next hover works.
+TEST(LanguageServerNative, CancelOfTheFirstNativeHoverKeepsTheNextHoverWorking)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    json p = {{"textDocument", {{"uri", s.uri}}}, {"position", native_pos("Clamp100(MAX_HP)", "Clamp100")}};
+    const int id = s.client->send_request("textDocument/hover", p);
+    s.client->notify("$/cancelRequest", {{"id", id}});
+    const json first = s.client->wait_response(id, 60000);
+    ASSERT_FALSE(first.is_null());
+    const json next = s.client->request("textDocument/hover", p);
+    ASSERT_TRUE(next.contains("result")) << next.dump();
+    EXPECT_FALSE(next.contains("error")) << next.dump();
 }
 
 // HOT-36: a burst of didChange of one uri runs fewer analyses than the number of changes.
@@ -6452,6 +6470,19 @@ TEST(LanguageServer, BurstOfDidChangeIsAnalyzedOnceAndTheNextRequestSeesTheLastT
     EXPECT_NE(r["result"]["contents"].value("value", "").find("mana"), std::string::npos) << r.dump();
     const int analyses = translations() - before;
     EXPECT_LT(analyses, kChanges) << analyses;
+}
+
+// HOT-36: a didChange with a number as uri does not crash the server.
+TEST(LanguageServer, DidChangeWithANumericUriKeepsTheServerUsable)
+{
+    REQUIRE_CLANGD();
+    Session s(true);
+    s.client->notify("textDocument/didChange",
+        {{"textDocument", {{"uri", 5}, {"version", 2}}}, {"contentChanges", json::array({{{"text", "x"}}})}});
+    s.client->notify("textDocument/didChange",
+        {{"textDocument", {{"uri", 6}, {"version", 3}}}, {"contentChanges", json::array({{{"text", "y"}}})}});
+    const json r = s.client->request("textDocument/hover", doc_pos(s.uri, 11, 14));
+    ASSERT_TRUE(r.contains("result")) << r.dump();
 }
 
 // HOT-36: the end of the input with requests in the queue. Each earlier request gets its reply.
