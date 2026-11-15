@@ -441,9 +441,10 @@ TEST_F(RefMatrix, WarmTableNoAnalyze)
 // Latency with many importers. One script declares a class with a member and a static. 30 closed
 // scripts import it and use both. The test counts the work with the table counters of
 // hot/indexStats. The time limit is a guard against a blow-up, not a benchmark.
-// Measured (HOT-20): the first request takes about 9 s in Debug and in RelWithDebInfo. The 30
-// translations take 8 s. The libclang parse of the imported header takes about 250 ms of the 267
-// ms of each translation. Warm requests take 0 to 3 ms.
+// Measured (HOT-20), Debug: before the fix the first request took about 9 s. Each of the 30
+// translations parsed the imported header again (about 250 ms), because the session cache missed
+// on the new class name. Now the 30 translations take about 36 ms and the first request takes
+// about 2.7 s with the test setup. Warm requests take 0 to 3 ms.
 TEST(RefMatrixLatency, ThirtyImportersAreAnalyzedOnce)
 {
     if (std::string(HOT_CLANGD_PATH).empty())
