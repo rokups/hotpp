@@ -4224,6 +4224,7 @@ void translate_impl(
         std::vector<hotc::ast::UsingNs> using_ns;
         std::vector<hotc::ast::TypeAlias> aliases;
         std::vector<Stub> stubs;
+        std::vector<hotc::ast::InterfaceDef> imported_interfaces;
         uint32_t next_base = static_cast<uint32_t>(in.script_text.size()) + 1;
         // Depth first: the imports of an imported script come before its own classes.
         std::function<void(std::vector<Import>&, const std::string&, const std::string&)> visit_imports =
@@ -4386,6 +4387,9 @@ void translate_impl(
                 for (Field& f : is.consts)
                     if (f.access != hotc::ast::Access::Private)
                         consts.push_back(std::move(f));
+                // A script interface of an import is a name here. The importer copies it, like a struct.
+                for (hotc::ast::InterfaceDef& d : is.interfaces)
+                    imported_interfaces.push_back(std::move(d));
                 for (Stub& st : is.stubs)
                     stubs.push_back(std::move(st));
                 for (Stub& st : is.attribute_classes)
@@ -4488,6 +4492,18 @@ void translate_impl(
                 std::make_move_iterator(using_ns.end()));
             sc.aliases.insert(
                 sc.aliases.begin(), std::make_move_iterator(aliases.begin()), std::make_move_iterator(aliases.end()));
+            {
+                // Each interface name has one definition: in the importer or in one import.
+                std::set<std::string> iface_seen;
+                for (const hotc::ast::InterfaceDef& d : imported_interfaces)
+                    if (!iface_seen.insert(d.name).second)
+                        fail_at(map, d.pos, "the interface '" + d.name + "' is declared twice");
+                for (const hotc::ast::InterfaceDef& d : sc.interfaces)
+                    if (!iface_seen.insert(d.name).second)
+                        fail_at(map, d.pos, "the interface '" + d.name + "' is declared twice");
+            }
+            sc.interfaces.insert(sc.interfaces.begin(), std::make_move_iterator(imported_interfaces.begin()),
+                std::make_move_iterator(imported_interfaces.end()));
             // A stub of the importing script wins over a stub with the same name in an import.
             std::set<std::string> stub_names;
             for (const Stub& st : sc.stubs)

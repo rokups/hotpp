@@ -168,7 +168,7 @@ For `is` and `as`, see [Statements](statements-text.html#is-and-as).
 
 ## Interfaces
 
-An `interface` is a type with methods and no state. A class can implement many interfaces. A `.hot` script declares an interface at file level.
+An `interface` is a type with methods and no state. A class can implement many interfaces. A `.hot` script declares an interface at file level. A script that imports this script with `using` can use the interface name.
 
 ```hot
 interface IShape {

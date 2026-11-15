@@ -1,0 +1,14 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// The unit with a script interface and a class that implements it. Another unit imports it.
+using "Actor.h";
+
+interface IShape {
+    int Area();
+}
+
+class LibSquare : Actor, IShape {
+    int Area() { return 9; }
+}
