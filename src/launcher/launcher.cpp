@@ -89,6 +89,10 @@ struct Program::Impl
     std::map<std::string, Stamp> seen;
     Clock::time_point last_scan{};
     Clock::time_point change_seen{};
+    // The first change of a reload request. The debounce time does not move it. The clock of the
+    // final reload line starts here, because the user feels the wait from the first change.
+    Clock::time_point first_change{};
+    Clock::time_point reload_start{};
     bool scanned_once = false;
     bool dirty = false;
     unsigned poll_interval_ms = 200;
@@ -650,12 +654,31 @@ uint32_t Program::generation() const
     return impl_->active_generation;
 }
 
+// Formats a duration: "NNN ms" under 1 s, else "N.N s".
+static std::string format_duration(std::chrono::steady_clock::duration d)
+{
+    const long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(d).count();
+    if (ms < 1000)
+        return std::to_string(ms) + " ms";
+    char buffer[32];
+    std::snprintf(buffer, sizeof buffer, "%.1f s", static_cast<double>(ms) / 1000.0);
+    return buffer;
+}
+
 PollStatus Program::poll()
 {
     Impl& impl = *impl_;
     const Impl::Clock::time_point now = Impl::Clock::now();
     const auto elapsed_ms = [&](Impl::Clock::time_point since)
     { return std::chrono::duration_cast<std::chrono::milliseconds>(now - since).count(); };
+    // The time since the first change of the running reload.
+    const auto took = [&]() { return format_duration(Impl::Clock::now() - impl.reload_start); };
+    // The start of a failure line. The one final line of a reload carries the time.
+    const auto fail_prefix = [&](hot::LoadMode mode)
+    {
+        return std::string(mode == hot::LoadMode::Fresh ? "[hot] full restart build failed after " : "[hot] reload failed after ") +
+               took() + ": ";
+    };
 
     // 0. A restart is pending: a Fresh build gave the new module, and the program must quit. The
     // launcher takes no new file change until the restart ends.
@@ -692,6 +715,8 @@ PollStatus Program::poll()
         {
             impl.seen = current;
             impl.change_seen = now;
+            if (!impl.dirty)
+                impl.first_change = now;
         }
         impl.dirty = !(current == impl.stamps);
         // A header that is back at its build stamp ends the pause. Its next change gets a log line.
@@ -724,7 +749,7 @@ PollStatus Program::poll()
             impl.retry.clear();
             impl.pending_generation = 0;
             impl.busy_logged = false;
-            impl.log("[hot] reload applied: generation " + std::to_string(impl.active_generation));
+            impl.log("[hot] reload applied: generation " + std::to_string(impl.active_generation) + " in " + took());
             return PollStatus::Applied;
         }
         if (impl.loader.reload_pending())
@@ -743,7 +768,7 @@ PollStatus Program::poll()
         for (const auto& [name, u] : impl.pending_units)
             impl.retry.insert(name);
         impl.pending_units.clear();
-        impl.log("[hot] reload failed: " + (committed.error.empty() ? "the commit failed" : committed.error));
+        impl.log("[hot] reload failed after " + took() + ": " + (committed.error.empty() ? "the commit failed" : committed.error));
         return PollStatus::Failed;
     };
 
@@ -759,11 +784,11 @@ PollStatus Program::poll()
     // files. A Fresh build has the generation 1. It gives Building, or Failed with a log line.
     const auto start_build = [&](hot::LoadMode mode, std::map<std::string, Stamp> pre) -> PollStatus
     {
-        const char* const prefix = mode == hot::LoadMode::Fresh ? "[hot] full restart build failed: " : "[hot] reload failed: ";
+        const std::string prefix = fail_prefix(mode);
         std::string text;
         if (!read_file(impl.script_path, text))
         {
-            impl.log(std::string(prefix) + "cannot read the script '" + impl.script_path + "'");
+            impl.log(prefix + "cannot read the script '" + impl.script_path + "'");
             // Take the new stamps. The missing file is a change only once.
             take_stamps(pre, {}, true);
             return PollStatus::Failed;
@@ -840,7 +865,7 @@ PollStatus Program::poll()
         catch (const std::system_error& e)
         {
             // The thread did not start. Treat it as a failed build.
-            impl.log(std::string(prefix) + "cannot start the build thread: " + e.what());
+            impl.log(prefix + "cannot start the build thread: " + e.what());
             take_stamps(impl.build_pre, {}, true);
             impl.build_pre.clear();
             return PollStatus::Failed;
@@ -876,7 +901,7 @@ PollStatus Program::poll()
         impl.build_pre.clear();
         const uint32_t generation = impl.build_generation;
         const hot::LoadMode mode = impl.build_mode;
-        const char* const prefix = mode == hot::LoadMode::Fresh ? "[hot] full restart build failed: " : "[hot] reload failed: ";
+        const std::string prefix = fail_prefix(mode);
         std::string restart_needed; // not empty: a Reload build shows that a full restart is needed
         status = PollStatus::Failed;
         try
@@ -887,7 +912,7 @@ PollStatus Program::poll()
                 {
                     // "fresh_needed" stays: the next build is Fresh again.
                     take_stamps(pre, built.dependencies, true);
-                    impl.log(std::string(prefix) + (built.error.empty() ? "the script did not compile" : built.error));
+                    impl.log(prefix + (built.error.empty() ? "the script did not compile" : built.error));
                 }
                 else
                 {
@@ -928,7 +953,7 @@ PollStatus Program::poll()
                 take_stamps(pre, built.dependencies, true);
                 impl.retry.insert(todo.begin(), todo.end());
                 impl.retry.insert(built.attempted.begin(), built.attempted.end());
-                impl.log(std::string(prefix) + (built.error.empty() ? "the script did not compile" : built.error));
+                impl.log(prefix + (built.error.empty() ? "the script did not compile" : built.error));
             }
             else
             {
@@ -950,7 +975,7 @@ PollStatus Program::poll()
                 }
                 else
                 {
-                    impl.log(std::string(prefix) +
+                    impl.log(prefix +
                              (requested.error.empty() ? "the loader rejected the module" : requested.error));
                 }
             }
@@ -959,13 +984,13 @@ PollStatus Program::poll()
         }
         catch (const std::exception& e)
         {
-            impl.log(std::string(prefix) + e.what());
+            impl.log(prefix + e.what());
             take_stamps(pre, {}, true);
             status = PollStatus::Failed;
         }
         catch (...)
         {
-            impl.log(std::string(prefix) + "unknown exception");
+            impl.log(prefix + "unknown exception");
             take_stamps(pre, {}, true);
             status = PollStatus::Failed;
         }
@@ -980,6 +1005,7 @@ PollStatus Program::poll()
     {
         // 2c. The build, after the debounce time.
         impl.dirty = false;
+        impl.reload_start = impl.first_change;
         bool paused = false;
         // The stamps from before the build reads the files.
         std::map<std::string, Stamp> pre = stat_known(impl.stamps);

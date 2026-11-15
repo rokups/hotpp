@@ -123,7 +123,7 @@ The engine calls `Program::poll()` on the main thread, once for each frame, at t
 
 ### Compile errors
 
-A failed build keeps the old code. `poll` logs the error through `Options::log` and gives `Failed`. It logs `[hot] reload failed: <error>`. For a failed build of a full restart, it logs `[hot] full restart build failed: <error>`. `poll` does not try again until the next file change.
+A failed build keeps the old code. `poll` logs the error through `Options::log` and gives `Failed`. It logs `[hot] reload failed after <time>: <error>`. For a failed build of a full restart, it logs `[hot] full restart build failed after <time>: <error>`. A good reload logs `[hot] reload applied: generation <N> in <time>`. The time runs from the first file change. It is "NNN ms" under 1 s, else "N.N s". `poll` does not try again until the next file change.
 
 ### Native dependencies
 
