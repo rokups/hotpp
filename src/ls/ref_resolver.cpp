@@ -274,6 +274,23 @@ size_t bare_word(const RenameFile& f, const std::string& name, const std::string
 
 } // namespace
 
+std::vector<std::string> native_bases_of_family(const std::vector<RenameFile>& files, const hotc::ResolvedRef& target)
+{
+    std::vector<std::string> out;
+    const size_t dot = target.decl.find('.');
+    if (file_local(target.kind) || dot == std::string::npos || dot == 0)
+        return out;
+    std::set<std::string> script_classes;
+    for (const RenameFile& f : files)
+        if (f.table)
+            for (const auto& entry : f.table->bases)
+                script_classes.insert(entry.first);
+    for (const std::string& name : family_of(files, {target.decl.substr(0, dot)}))
+        if (!name.empty() && !script_classes.count(name))
+            out.push_back(name);
+    return out;
+}
+
 std::string rename_conflict(
     const std::vector<RenameFile>& files, const hotc::ResolvedRef& target, const std::string& new_name)
 {
