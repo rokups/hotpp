@@ -4257,13 +4257,18 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
     if (word_name.empty() || !clangd_)
         return;
     using Target = std::tuple<std::string, int, int>;
+    // True when an ask had no answer (time-out or clangd gone). A null result is an answer.
+    bool ask_failed = false;
     auto targets_at = [&](const Doc& o, Pos g)
     {
         std::vector<Target> list;
         const json tdp = {{"textDocument", {{"uri", o.gen_uri}}}, {"position", gen_pos(o, g)}};
         for (const char* kind : {"textDocument/declaration", "textDocument/definition"})
         {
-            const auto r = clangd_result(kind, tdp, kNativeBudgetMs);
+            const json raw = clangd_ && clangd_->running() ? clangd_->request(kind, tdp, kNativeBudgetMs) : json();
+            ask_failed = ask_failed || !raw.is_object();
+            const std::optional<json> r = raw.is_object() && raw.contains("result") && !raw["result"].is_null()
+                ? std::optional<json>(raw["result"]) : std::nullopt;
             for (const json& loc : r ? (r->is_array() ? *r : json::array({*r})) : json::array())
             {
                 const std::string uri = loc.contains("targetUri") ? json_str(loc, "targetUri") : json_str(loc, "uri");
@@ -4296,16 +4301,13 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
     std::set<std::string> seen;
     for (const json& l : out)
         seen.insert(l.dump());
+    size_t not_scanned = 0; // scripts that the scan could not ask, for the message
     for (size_t index = 0; index < todo.size(); ++index)
     {
         const std::string& path = todo[index];
         if (std::chrono::steady_clock::now() >= deadline)
         {
-            const std::string note = "native references: scan stopped by the time budget, " + std::to_string(index)
-                + " of " + std::to_string(todo.size()) + " scripts";
-            std::fprintf(stderr, "hot-ls: %s\n", note.c_str());
-            send_client({{"jsonrpc", "2.0"}, {"method", "window/showMessage"},
-                {"params", {{"type", 2}, {"message", "hot-ls: " + note + ". The list of references is partial."}}}});
+            not_scanned += todo.size() - index;
             break;
         }
         const std::shared_ptr<Doc> open = open_doc_at(path);
@@ -4328,8 +4330,12 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
             continue;
         auto work = [&](Doc& o)
         {
+            ask_failed = false;
             if (!wait_for_native_ready_until(o, deadline))
+            {
+                ++not_scanned;
                 return;
+            }
             for (const Pos& p : words)
             {
                 bool by_word = false;
@@ -4350,6 +4356,8 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
                     break;
                 }
             }
+            if (ask_failed)
+                ++not_scanned; // an ask had no answer: the script may have more uses
         };
         if (open)
         {
@@ -4366,6 +4374,14 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
                 shard_of_doc(tmp));
             with_temp_clangd(tmp, [&] { work(tmp); });
         }
+    }
+    if (not_scanned > 0)
+    {
+        const std::string note = "native references: scan stopped by the time budget or by a failed ask, "
+            + std::to_string(todo.size() - not_scanned) + " of " + std::to_string(todo.size()) + " scripts";
+        std::fprintf(stderr, "hot-ls: %s\n", note.c_str());
+        send_client({{"jsonrpc", "2.0"}, {"method", "window/showMessage"},
+            {"params", {{"type", 2}, {"message", "hot-ls: " + note + ". The list of references is partial."}}}});
     }
 }
 

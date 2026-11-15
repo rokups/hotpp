@@ -6388,7 +6388,8 @@ TEST(LanguageServerNative, ReferencesSkipClosedScriptsWithTheirOwnSymbolOfTheNam
     REQUIRE_CLANGD();
     auto run = [&](bool warm, int& analyses)
     {
-        NativeSession s;
+        // A cold scan analyzes each script with its own clangd. A long budget keeps the scan whole on a loaded machine.
+        NativeSession s(kNativeScript, 10000, true, "", 10000, kNativeHeader, 120000);
         for (int i = 0; i < 5; ++i)
         {
             const std::string decoy = "class Decoy" + std::to_string(i) + " {\n    // Clamp100 in a comment\n    int Clamp100(int v) {\n        return v;\n    }\n    int x = Clamp100(2);\n}\n";
@@ -6413,6 +6414,21 @@ TEST(LanguageServerNative, ReferencesSkipClosedScriptsWithTheirOwnSymbolOfTheNam
     EXPECT_EQ(warm, cold);
     EXPECT_NE(std::find_if(warm.begin(), warm.end(), [](const std::string& l) { return l.rfind("pet.hot", 0) == 0; }), warm.end());
     EXPECT_GE(cold_analyses - warm_analyses, 5) << "warm " << warm_analyses << " cold " << cold_analyses;
+}
+
+// HOT-32: a script with a resolved script ref and a native use of the same name is not skipped.
+TEST(LanguageServerNative, ReferencesKeepAStoredScriptWithAScriptRefAndANativeUse)
+{
+    REQUIRE_CLANGD();
+    NativeSession s(kNativeScript, 10000, true, "", 10000, kNativeHeader, 120000);
+    const std::string mix = "using \"natives.h\";\n\nclass A {\n    int Clamp100(int v) {\n        return v;\n    }\n"
+                            "    int x = Clamp100(2);\n}\n\nclass B {\n    int y = Clamp100(5);\n}\n";
+    const std::string path = (s.dir.path() / "mix.hot").string();
+    write_file(path, mix);
+    s.client->open(uri_of(path), mix);
+    s.client->notify("textDocument/didClose", {{"textDocument", {{"uri", uri_of(path)}}}}); // stores the table
+    const std::vector<std::string> places = script_places(s);
+    EXPECT_NE(std::find(places.begin(), places.end(), "mix.hot:10:12"), places.end()) << "places " << places.size();
 }
 
 // HOT-32: when the time budget stops the scan, the server tells the user (log and showMessage)
@@ -6464,7 +6480,11 @@ TEST(LanguageServerNative, ReferencesTellTheUserWhenTheBudgetStopsTheScan)
     }
     ASSERT_FALSE(note.is_null()) << raw.dump();
     const std::string message = note["params"].value("message", "");
-    EXPECT_NE(message.find("native references: scan stopped by the time budget, 2 of 3 scripts"), std::string::npos) << message;
+    const size_t of = message.find(" of 3 scripts");
+    ASSERT_NE(of, std::string::npos) << message;
+    const int done = std::atoi(message.substr(message.rfind(' ', of - 1) + 1, of - message.rfind(' ', of - 1) - 1).c_str());
+    EXPECT_GE(done, 1) << message;
+    EXPECT_LT(done, 3) << message;
     EXPECT_NE(std::find_if(places.begin(), places.end(), [](const std::string& l) { return l.rfind("a_pet.hot", 0) == 0; }), places.end())
         << raw.dump();
     EXPECT_EQ(std::find_if(places.begin(), places.end(), [](const std::string& l) { return l.rfind("c_pet.hot", 0) == 0; }), places.end());
