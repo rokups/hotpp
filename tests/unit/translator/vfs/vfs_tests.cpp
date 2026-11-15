@@ -409,4 +409,64 @@ TEST(VfsCache, NullFileSystemKeepsTheCache)
     EXPECT_EQ(f.session.parse_count(), n);
 }
 
+// HOT-20: scripts with the same imports and other class names share one parse of the imports.
+TEST(VfsCache, OtherClassNamesDoNotParseAgain)
+{
+    CacheFixture f;
+    f.mem->set(f.d + "/w.h", kWithUpdate, 1);
+    const auto script = [](const std::string& name)
+    { return "using \"w.h\";\nclass " + name + " : Widget {\n    override void Update(float dt) { }\n}\n"; };
+    for (const char* name : {"Kid0", "Kid1", "Kid2"})
+    {
+        hotc::TranslateOptions o = temp_options(f.dir, script(name));
+        o.fs = f.mem;
+        const hotc::TranslateResult r = hotc::translate(o, f.session);
+        EXPECT_TRUE(r.ok) << r.diagnostics;
+        EXPECT_EQ(f.session.parse_count(), 1) << name;
+    }
+}
+
+// HOT-20: a warm session gives the same result as a new session. The header has a namespace
+// that the script opens, and a native type. One script class has the name of the native type.
+TEST(VfsCache, WarmSessionGivesTheSameResultAsANewSession)
+{
+    const char* header = "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n"
+                         "namespace Ns { class Inner {}; }\n"
+                         "class Native {};\n";
+    const auto script = [](const std::string& name)
+    {
+        return "using \"w.h\";\nusing Ns;\nclass " + name
+            + " : Widget {\n    override void Update(float dt) { }\n}\n";
+    };
+    const auto run = [&](CacheFixture& f, const std::string& name)
+    {
+        hotc::TranslateOptions o = temp_options(f.dir, script(name));
+        o.fs = f.mem;
+        return hotc::translate(o, f.session);
+    };
+    CacheFixture warm;
+    warm.mem->set(warm.d + "/w.h", header, 1);
+    ASSERT_TRUE(run(warm, "Other").ok);
+    for (const char* name : {"Native", "Inner", "Widget", "Fresh"})
+    {
+        CacheFixture fresh;
+        fresh.mem->set(fresh.d + "/w.h", header, 1);
+        const int n = warm.session.parse_count();
+        const hotc::TranslateResult a = run(warm, name);
+        const hotc::TranslateResult b = run(fresh, name);
+        EXPECT_EQ(warm.session.parse_count(), n) << name;
+        EXPECT_EQ(a.ok, b.ok) << name;
+        EXPECT_EQ(a.diagnostics, b.diagnostics) << name;
+        // The temporary directories differ: compare the texts without them.
+        const auto strip = [](std::string text, const std::string& dir)
+        {
+            for (size_t p; (p = text.find(dir)) != std::string::npos;)
+                text.erase(p, dir.size());
+            return text;
+        };
+        EXPECT_EQ(strip(a.cpp, warm.d), strip(b.cpp, fresh.d)) << name;
+        EXPECT_EQ(a.slots_out, b.slots_out) << name;
+    }
+}
+
 } // namespace

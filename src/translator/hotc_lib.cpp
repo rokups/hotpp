@@ -2575,6 +2575,7 @@ bool is_global_query(const std::string& q)
 // answer is the file name of the first declaration, or "?" when the file is not known. A script
 // type with the name of a C++ type binds to the member functions of the host, so it is an error.
 const char* const kGlobalTypeQuery = "@gtype:";
+const char* const kGlobalTypeAll = "@gtype-all"; // marks a complete map of the global types
 bool is_global_type_query(const std::string& q)
 {
     return q.compare(0, 7, kGlobalTypeQuery) == 0;
@@ -2932,48 +2933,68 @@ void answer_global_queries(
             answers[q] = declared.count(q.substr(8)) ? "1" : "";
 }
 
-// Answers the queries "@gtype:NAME". The answer is the file name of the first declaration of a
-// type NAME in the global namespace (also in an "extern "C"" block), or empty when there is none.
-void answer_global_type_queries(
-    CXCursor root, const std::vector<std::string>& queries, std::map<std::string, std::string>& answers)
+// Adds one declaration to the map of the global types. "declared" keeps the first declaration of
+// each name. The value is the file name of the declaration, or "?" when it has none.
+void add_global_type(CXCursor c, std::map<std::string, std::string>& declared)
+{
+    switch (clang_getCursorKind(c))
+    {
+    case CXCursor_ClassDecl:
+    case CXCursor_StructDecl:
+    case CXCursor_UnionDecl:
+    case CXCursor_ClassTemplate:
+    case CXCursor_EnumDecl:
+    case CXCursor_TypedefDecl:
+    case CXCursor_TypeAliasDecl:
+    {
+        const std::string name = cxs(clang_getCursorSpelling(c));
+        if (name.empty() || declared.count(name))
+            break;
+        CXFile file = nullptr;
+        clang_getFileLocation(clang_getCursorLocation(c), &file, nullptr, nullptr, nullptr);
+        std::string path = file ? cxs(clang_getFileName(file)) : std::string();
+        const size_t slash = path.find_last_of("/\\");
+        if (slash != std::string::npos)
+            path.erase(0, slash + 1);
+        declared[name] = path.empty() ? "?" : path;
+        break;
+    }
+    default: break;
+    }
+}
+
+// Collects all types of the global namespace (also in an "extern "C"" block). The key is the
+// name. The value is the file name of the first declaration (see add_global_type).
+std::map<std::string, std::string> collect_global_types(CXCursor root)
 {
     std::map<std::string, std::string> declared;
     std::function<CXChildVisitResult(CXCursor)> walk = [&](CXCursor c)
     {
-        switch (clang_getCursorKind(c))
-        {
-        case CXCursor_LinkageSpec: visit(c, walk); break;
-        case CXCursor_ClassDecl:
-        case CXCursor_StructDecl:
-        case CXCursor_UnionDecl:
-        case CXCursor_ClassTemplate:
-        case CXCursor_EnumDecl:
-        case CXCursor_TypedefDecl:
-        case CXCursor_TypeAliasDecl:
-        {
-            const std::string name = cxs(clang_getCursorSpelling(c));
-            if (name.empty() || declared.count(name))
-                break;
-            CXFile file = nullptr;
-            clang_getFileLocation(clang_getCursorLocation(c), &file, nullptr, nullptr, nullptr);
-            std::string path = file ? cxs(clang_getFileName(file)) : std::string();
-            const size_t slash = path.find_last_of("/\\");
-            if (slash != std::string::npos)
-                path.erase(0, slash + 1);
-            declared[name] = path.empty() ? "?" : path;
-            break;
-        }
-        default: break;
-        }
+        if (clang_getCursorKind(c) == CXCursor_LinkageSpec)
+            visit(c, walk);
+        else
+            add_global_type(c, declared);
         return CXChildVisit_Continue;
     };
     visit(root, walk);
+    return declared;
+}
+
+// Answers the queries "@gtype:NAME". The answer is the file name of the first declaration of a
+// type NAME in the global namespace, or empty when there is none.
+// Each global type also gets an entry "@gtype:NAME" in "answers". The entry kGlobalTypeAll marks
+// that the entries are complete: an absent name then means "not found".
+void answer_global_type_queries(
+    CXCursor root, const std::vector<std::string>& queries, std::map<std::string, std::string>& answers)
+{
+    bool wanted = false;
     for (const std::string& q : queries)
-        if (is_global_type_query(q))
-        {
-            auto it = declared.find(q.substr(7));
-            answers[q] = it == declared.end() ? std::string() : it->second;
-        }
+        wanted = wanted || is_global_type_query(q);
+    if (!wanted)
+        return;
+    for (auto& [name, file] : collect_global_types(root))
+        answers[kGlobalTypeQuery + name] = std::move(file);
+    answers[kGlobalTypeAll] = "1";
 }
 
 bool type_holds_code(CXType t, int depth);
@@ -3584,6 +3605,10 @@ struct TranslatorSession::Impl
         Hierarchy hierarchy;
         FactMap facts;
         std::map<std::string, std::string> queries; // the type queries (S20b); empty: not known
+        // All global types of the probe: name -> file name. Valid only when "has_global_types" is set.
+        // An absent name has no declaration. The map does not depend on the script classes.
+        std::map<std::string, std::string> global_types;
+        bool has_global_types = false;
         // The start of the earliest parse that gave facts to the entry (TranslateResult::parse_start_ns).
         int64_t parse_start_ns = 0;
         // Clears all data fields. The caller holds "mutex". If you add a field, add it here.
@@ -3594,6 +3619,8 @@ struct TranslatorSession::Impl
             hierarchy = {};
             facts.clear();
             queries.clear();
+            global_types.clear();
+            has_global_types = false;
             parse_start_ns = 0;
         }
     };
@@ -3670,7 +3697,7 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
             complete = complete && it != e.facts.end() && it->second.members.count(m);
     }
     for (const std::string& q : queries)
-        complete = complete && e.queries.count(q);
+        complete = complete && (is_global_type_query(q) ? e.has_global_types : e.queries.count(q) != 0);
     if (!complete)
     {
         std::map<std::string, BaseInfo> out = std::move(e.bases);
@@ -3716,6 +3743,20 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
         e.files = std::move(files);
         e.hierarchy = std::move(hier);
         e.facts = std::move(facts);
+        // The global types leave "answers": they go to the map of the entry.
+        if (answers.erase(kGlobalTypeAll))
+        {
+            e.global_types.clear();
+            for (auto it = answers.begin(); it != answers.end();)
+                if (is_global_type_query(it->first))
+                {
+                    e.global_types.emplace(it->first.substr(7), std::move(it->second));
+                    it = answers.erase(it);
+                }
+                else
+                    ++it;
+            e.has_global_types = true;
+        }
         e.queries = std::move(answers);
         // The facts of a fresh entry stay. They come from the earlier parse.
         e.parse_start_ns = e.parse_start_ns != 0 ? std::min(e.parse_start_ns, start) : start;
@@ -3737,7 +3778,13 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
     for (const FactReq& r : reqs)
         facts_out[r.type] = e.facts[r.type];
     for (const std::string& q : queries)
-        answers_out[q] = e.queries[q];
+        if (is_global_type_query(q))
+        {
+            const auto it = e.global_types.find(q.substr(7));
+            answers_out[q] = it == e.global_types.end() ? std::string() : it->second;
+        }
+        else
+            answers_out[q] = e.queries[q];
     std::map<std::string, BaseInfo> r;
     for (const auto& n : names)
     {
