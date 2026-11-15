@@ -181,3 +181,56 @@ TEST(InterfaceTranslation, BaseListErrors)
         EXPECT_TRUE(has(r.diagnostics, c.error)) << c.script << "\n" << r.diagnostics;
     }
 }
+
+namespace
+{
+
+hotc::TranslateResult run_imports(const std::string& importer, const std::vector<std::pair<std::string, std::string>>& mods)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kIfaceHeader);
+    hotc::TranslateOptions o = temp_options(dir, importer);
+    for (const auto& m : mods)
+        o.modules.emplace_back(m.first, m.second);
+    return hotc::translate(o);
+}
+
+const char* kShapeLib = "interface IShape {\n    float Area();\n}\n";
+
+} // namespace
+
+// A class can list an interface that an imported script declares.
+TEST(InterfaceTranslation, ScriptInterfaceOfAnImportIsABase)
+{
+    const hotc::TranslateResult r = run_imports(
+        "using \"a.hot\";\nclass Circle : IShape {\n    float Area() { return 3.0; }\n}\n", {{"a.hot", kShapeLib}});
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_FALSE(has(r.diagnostics, "not found in the imported headers")) << r.diagnostics;
+}
+
+// The interface comes with a native parent class.
+TEST(InterfaceTranslation, ScriptInterfaceOfAnImportWithANativeParent)
+{
+    const hotc::TranslateResult r = run_imports(
+        "using \"w.h\";\nusing \"a.hot\";\nclass Circle : Widget, IShape {\n    float Area() { return 3.0; }\n}\n",
+        {{"a.hot", kShapeLib}});
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+// The importer does not implement the method: the error names the interface method.
+TEST(InterfaceTranslation, ScriptInterfaceOfAnImportChecksTheMethods)
+{
+    const hotc::TranslateResult r =
+        run_imports("using \"a.hot\";\nclass Circle : IShape {\n}\n", {{"a.hot", kShapeLib}});
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "class 'Circle' does not implement 'IShape.Area'")) << r.diagnostics;
+}
+
+// An import of an import: the name comes through the chain.
+TEST(InterfaceTranslation, ScriptInterfaceOfAnIndirectImport)
+{
+    const hotc::TranslateResult r = run_imports(
+        "using \"b.hot\";\nclass Circle : IShape {\n    float Area() { return 3.0; }\n}\n",
+        {{"b.hot", "using \"a.hot\";\nint Twice(int v) { return v * 2; }\n"}, {"a.hot", kShapeLib}});
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
