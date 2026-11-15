@@ -468,7 +468,7 @@ TEST(Launcher, CompileErrorKeepsOldCode)
         EXPECT_EQ(f.program->generation(), 1u);
         bool reported = false;
         for (const std::string& line : f.logs)
-            reported = reported || line.find("[hot] reload failed: ") == 0;
+            reported = reported || line.find("[hot] reload failed after ") == 0;
         EXPECT_TRUE(reported);
     }
 }
@@ -885,7 +885,7 @@ TEST(Launcher, RestartBuildFailureKeepsOldCode)
         EXPECT_EQ(second, launcher::PollStatus::RestartPending);
         EXPECT_EQ(starts, 2);
         EXPECT_EQ(total, 203);
-        EXPECT_GE(count_logs(f.logs, "[hot] reload failed: "), 1);
+        EXPECT_GE(count_logs(f.logs, "[hot] reload failed after "), 1);
         EXPECT_EQ(count_logs(f.logs, "[hot] full restart: "), 2);
         EXPECT_EQ(f.program->generation(), 1u);
     }
@@ -934,7 +934,7 @@ TEST(Launcher, FailedFreshBuildKeepsFreshNeeded)
         EXPECT_EQ(second, launcher::PollStatus::RestartPending);
         EXPECT_EQ(starts, 2);
         EXPECT_EQ(total, 203);
-        EXPECT_EQ(count_logs(f.logs, "[hot] full restart build failed: "), 1);
+        EXPECT_EQ(count_logs(f.logs, "[hot] full restart build failed after "), 1);
         EXPECT_EQ(count_logs(f.logs, "[hot] reload applied: "), 0);
         EXPECT_EQ(count_logs(f.logs, "[hot] full restart: "), 2);
         EXPECT_FALSE(f.program->restart_pending());
@@ -1284,7 +1284,7 @@ TEST(Launcher, ParallelCompileErrorIsStable)
         EXPECT_TRUE(env.wrapper.overlap()) << "the two broken imports must compile at the same time";
         std::string failure;
         for (const std::string& line : f.logs)
-            if (line.find("[hot] reload failed: ") == 0)
+            if (line.find("[hot] reload failed after ") == 0)
                 failure = line;
         ASSERT_FALSE(failure.empty());
         EXPECT_NE(failure.find("imp_a"), std::string::npos) << failure;
