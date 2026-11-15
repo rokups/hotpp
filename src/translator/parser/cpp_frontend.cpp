@@ -72,7 +72,7 @@ struct HiddenCalls
     CXFile file = nullptr;
     std::vector<std::pair<uint32_t, uint32_t>> ranges; // the offsets [begin, end) in the main file
 };
-HiddenCalls* g_hidden = nullptr;
+thread_local HiddenCalls* g_hidden = nullptr;
 
 bool is_hidden(CXCursor k)
 {
