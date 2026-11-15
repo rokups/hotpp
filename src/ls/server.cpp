@@ -3803,7 +3803,27 @@ std::vector<Pos> Server::gen_asks(const Doc& d, Pos script_pos, bool& by_word) c
 {
     by_word = false;
     if (const auto g = to_gen(d, script_pos))
-        return {*g};
+    {
+        // The map can put the start of a script word on a wrapper that the translator adds
+        // ("hot::deref(" before "Pnt()"). The generated word is then not the script word: the
+        // candidates by word give the right place.
+        const std::string w = word(d, script_pos);
+        const std::string_view t = d.gen.line(g->line);
+        const bool same = !is_symbol_word(w)
+            || (static_cast<size_t>(g->col) <= t.size() && t.compare(static_cast<size_t>(g->col), w.size(), w) == 0);
+        if (same)
+            return {*g};
+        std::vector<Pos> found = gen_word_candidates(d, script_pos);
+        if (found.empty())
+            return {*g};
+        by_word = true;
+        return found;
+    }
+    else
+    {
+        by_word = true;
+        return gen_word_candidates(d, script_pos);
+    }
     by_word = true;
     return gen_word_candidates(d, script_pos);
 }
