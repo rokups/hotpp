@@ -156,20 +156,8 @@ const Row kRows[] = {
     {"NativeMethod", "Move", false, false, "void Move("},
 };
 
-// The cases that fail on the current server. Each group names the defect.
-const std::vector<std::string> kSkip = {
-    // Defect: the references of a native symbol, asked in lib.hot, give the places of lib.hot and
-    // places in the generated files "open.hot.cpp" and "top.hot.cpp" (line 839 and more). The
-    // scripts that import lib.hot get no place in their own .hot file.
-    "NativeType_References_Closed",
-    "NativeType_References_Open",
-    "NativeType_References_Deep",
-    "NativeType_References_Unrelated",
-    "NativeMethod_References_Closed",
-    "NativeMethod_References_Open",
-    "NativeMethod_References_Deep",
-    "NativeMethod_References_Unrelated",
-};
+// The cases that fail on the current server. Each case has a reason. No case fails now.
+const std::vector<std::string> kSkip = {};
 
 using Place = std::tuple<std::string, int, int>; // uri, line, character
 
