@@ -158,6 +158,19 @@ if(NOT HOT_SCRIPT_AOT_OPTIMIZED)
     target_include_directories(integration_aot_iface_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
     target_link_libraries(integration_aot_iface_tests PRIVATE aot_iface_scripts hot::aot GTest::gtest_main)
     hot_gtest(integration_aot_iface_tests PROPERTIES LABELS aot)
+
+    # A script interface of an imported unit: two units, the importer implements and calls it.
+    hot_add_scripts(TARGET aot_iface_units_scripts AOT
+        SCRIPTS ${PROJECT_SOURCE_DIR}/tests/scripts/aot_iface_units/aot_shape_lib.hot
+                ${PROJECT_SOURCE_DIR}/tests/scripts/aot_iface_units/aot_shape_user.hot
+        INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
+        DEPENDS ${HOT_HEADERS})
+    add_executable(integration_aot_iface_units_tests aot_iface_units_tests.cpp
+        ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
+        ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+    target_include_directories(integration_aot_iface_units_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
+    target_link_libraries(integration_aot_iface_units_tests PRIVATE aot_iface_units_scripts hot::aot GTest::gtest_main)
+    hot_gtest(integration_aot_iface_units_tests PROPERTIES LABELS aot)
 endif()
 
 # Two scripts as two units (modules step 6): "new", a field, a method, a module variable and an

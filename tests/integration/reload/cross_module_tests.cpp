@@ -229,6 +229,28 @@ TEST_P(FamilyTests, FamilyOverTwoUnitsNewAndIs)
     EXPECT_EQ(*fld<int>(s, "made_power"), 12);
 }
 
+// A script interface of an imported unit. Both units load. The importer implements the interface
+// and calls it. Each unit has its own copy of the interface helpers.
+TEST_P(FamilyTests, ScriptInterfaceOfAnImportedUnit)
+{
+    const std::string lib = "using \"Actor.h\";\n"
+                            "interface IShape {\n    int Area();\n}\n"
+                            "class Sq : Actor, IShape {\n    int Area() { return 9; }\n}\n";
+    const std::string user = "using \"Actor.h\";\nusing \"shape.hot\";\n"
+                             "class Disc : Actor, IShape {\n    int Area() { return 31; }\n}\n"
+                             "class Probe : Actor {\n    int a = 0;\n    int b = 0;\n"
+                             "    int Total(IShape s) { return s.Area(); }\n"
+                             "    override void Tick(float dt) {\n"
+                             "        $Disc d = new $Disc();\n        $Sq q = new $Sq();\n"
+                             "        this.a = this.Total(d);\n        this.b = this.Total(q);\n    }\n}\n";
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(
+        start(s, batch_of(build("shape.hot", lib, {}, 1), build("user.hot", user, {{"shape.hot", lib}}, 1)), "Probe"));
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "a"), 31);
+    EXPECT_EQ(*fld<int>(s, "b"), 9);
+}
+
 // A chain over three units: Leaf (a.hot) : Mid (b.hot) : Root (c.hot). "base" calls, overrides and
 // parent fields cross the units. A body change of the root reloads the root alone: the live leaf
 // keeps its state and runs the new root code.

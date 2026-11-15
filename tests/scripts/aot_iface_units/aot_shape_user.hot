@@ -1,0 +1,23 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// The importer unit. It implements the interface of the imported unit and calls it.
+using "Actor.h";
+using "aot_shape_lib.hot";
+
+class UserDisc : Actor, IShape {
+    int Area() { return 31; }
+}
+
+class ShapeProbe : Actor {
+    int a = 0;
+    int b = 0;
+    int Total(IShape s) { return s.Area(); }
+    override void Tick(float dt) {
+        $UserDisc d = new $UserDisc();
+        $LibSquare q = new $LibSquare();
+        this.a = this.Total(d);
+        this.b = this.Total(q);
+    }
+}

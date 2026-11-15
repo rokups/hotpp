@@ -60,7 +60,7 @@ The translation also gives fine data: `hot::IfaceInfo` and `hot::UseInfo` (`hot/
 - `UseInfo::names` has each identifier of the own script text, also in comments and strings. A name that a macro makes by token paste is not found.
 - `UseInfo::strong` has each unit of the parent chain of a class of the importer.
 - An importer does not embed the layout of a foreign class that it uses as a value. A value is a `hot::Value<T>`, a box with a pointer to the shell. A copy uses `clone_shell` of the record. So a value use is not strong.
-- An importer does not merge the script interfaces of an import. They are in the shape, so a change of them is never missed.
+- An importer merges the script interfaces of an import, also of an import of an import. A class of the importer can list such an interface in its base list. The importer has its own copy of the interface helpers. The interface is in the shape, so a change of it is never missed.
 - `Module::imports` and `AotScript::imports` have the direct imports and the imports of imports. Rule 8 of `importer_is_stale` uses this full list.
 - An old translate cache entry or an old AOT table has no fine data. Then each importer is stale.
 
