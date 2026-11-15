@@ -6381,6 +6381,97 @@ static std::vector<std::string> script_places(NativeSession& s, json* raw = null
     return out;
 }
 
+// HOT-36: the reader thread takes "$/cancelRequest" at once. A request that waits in the queue
+// gets the error -32800 and does not run. The next request works.
+TEST(LanguageServerNative, CancelOfAQueuedReferencesRequestGivesTheErrorAndKeepsTheServerUsable)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    const json at = {{"textDocument", {{"uri", s.uri}}}, {"position", native_pos("Clamp100(MAX_HP)", "Clamp100")}};
+    json refs = at;
+    refs["context"] = {{"includeDeclaration", true}};
+    const int first = s.client->send_request("textDocument/hover", at);
+    const int second = s.client->send_request("textDocument/references", refs);
+    s.client->notify("$/cancelRequest", {{"id", second}});
+    const json cancelled = s.client->wait_response(second, 60000);
+    ASSERT_TRUE(cancelled.contains("error")) << cancelled.dump();
+    EXPECT_EQ(cancelled["error"]["code"], -32800);
+    EXPECT_FALSE(s.client->wait_response(first, 60000).is_null());
+    const json hover = s.client->request("textDocument/hover", at);
+    EXPECT_TRUE(hover.contains("result")) << hover.dump();
+    EXPECT_FALSE(hover.contains("error")) << hover.dump();
+}
+
+// HOT-36: a cancel stops a running scan of many scripts well before the budget.
+TEST(LanguageServerNative, CancelOfARunningReferencesScanGivesTheErrorBeforeTheBudget)
+{
+    REQUIRE_CLANGD();
+    NativeSession s(kNativeScript, 10000, true, "", 10000, kNativeHeader, 120000);
+    for (int i = 0; i < 40; ++i)
+        write_file((s.dir.path() / ("pet" + std::to_string(i) + ".hot")).string(), kPetScript);
+    const json at = {{"textDocument", {{"uri", s.uri}}}, {"position", native_pos("Clamp100(MAX_HP)", "Clamp100")}};
+    json refs = at;
+    refs["context"] = {{"includeDeclaration", true}};
+    const auto t0 = std::chrono::steady_clock::now();
+    const int id = s.client->send_request("textDocument/references", refs);
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    s.client->notify("$/cancelRequest", {{"id", id}});
+    const json r = s.client->wait_response(id, 60000);
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+    ASSERT_FALSE(r.is_null());
+    // A scan that ends before the cancel arrives is a valid answer too, but not on this workspace.
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+    EXPECT_EQ(r["error"]["code"], -32800);
+    EXPECT_LT(ms, 30000);
+    const json hover = s.client->request("textDocument/hover", at);
+    EXPECT_TRUE(hover.contains("result")) << hover.dump();
+    EXPECT_FALSE(hover.contains("error")) << hover.dump();
+}
+
+// HOT-36: a burst of didChange of one uri runs fewer analyses than the number of changes.
+// The hover after the burst sees the last text.
+TEST(LanguageServer, BurstOfDidChangeIsAnalyzedOnceAndTheNextRequestSeesTheLastText)
+{
+    REQUIRE_CLANGD();
+    Session s(true);
+    auto translations = [&] { return s.client->request("hot/indexStats", json::object())["result"].value("translations", -1); };
+    s.client->request("textDocument/hover", doc_pos(s.uri, 11, 14)); // the open is done
+    const int before = translations();
+    constexpr int kChanges = 40;
+    std::string last = kScript;
+    for (int i = 0; i < kChanges; ++i)
+    {
+        last = std::string(kScript) + "// change " + std::to_string(i) + "\n";
+        if (i == kChanges - 1)
+            for (size_t at; (at = last.find("hp")) != std::string::npos;)
+                last.replace(at, 2, "mana");
+        s.client->change(s.uri, i + 2, last);
+    }
+    const json r = s.client->request("textDocument/hover", doc_pos(s.uri, 11, 16));
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    EXPECT_NE(r["result"]["contents"].value("value", "").find("mana"), std::string::npos) << r.dump();
+    const int analyses = translations() - before;
+    EXPECT_LT(analyses, kChanges) << analyses;
+}
+
+// HOT-36: the end of the input with requests in the queue. Each earlier request gets its reply.
+TEST(LanguageServer, EndOfInputWithQueuedRequestsWritesAllRepliesAndTheServerExits)
+{
+    REQUIRE_CLANGD();
+    Session s(true);
+    std::vector<int> ids;
+    for (int i = 0; i < 20; ++i)
+        ids.push_back(s.client->send_request("textDocument/hover", doc_pos(s.uri, 11, 14)));
+    s.client->close_input();
+    for (const int id : ids)
+    {
+        const json r = s.client->wait_response(id, 60000);
+        ASSERT_FALSE(r.is_null()) << id;
+        EXPECT_TRUE(r.contains("result")) << r.dump();
+    }
+    EXPECT_EQ(s.client->stop(), 1); // no shutdown request: the exit code is 1
+}
+
 // HOT-32: a closed script with a stored table and a script symbol with the name of the native
 // symbol (so no unresolved name) costs no analyze. The result is the same as without the stored tables.
 TEST(LanguageServerNative, ReferencesSkipClosedScriptsWithTheirOwnSymbolOfTheName)

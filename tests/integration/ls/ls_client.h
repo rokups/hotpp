@@ -91,6 +91,25 @@ public:
         return wait(
             [&](const json& m) { return m.contains("id") && m["id"] == id && !m.contains("method"); }, timeout_ms);
     }
+    // Sends a request and does not wait. Gives the id. wait_response takes the response.
+    int send_request(const std::string& method, json params)
+    {
+        const int id = next_id_++;
+        send({{"jsonrpc", "2.0"}, {"id", id}, {"method", method}, {"params", std::move(params)}});
+        return id;
+    }
+    json wait_response(int id, int timeout_ms = 120000)
+    {
+        return wait([&](const json& m) { return m.contains("id") && m["id"] == id && !m.contains("method"); }, timeout_ms);
+    }
+    // Closes the input of the server. The server reads the end of the input.
+    void close_input()
+    {
+        std::lock_guard<std::mutex> lock(write_mutex_);
+        if (to_server_[1] >= 0)
+            ls_close_fd(to_server_[1]);
+        to_server_[1] = -1;
+    }
     void notify(const std::string& method, json params)
     {
         send({{"jsonrpc", "2.0"}, {"method", method}, {"params", std::move(params)}});
@@ -132,7 +151,7 @@ public:
         stopped_ = true;
         request("shutdown", nullptr, 30000);
         notify("exit", nullptr);
-        ls_close_fd(to_server_[1]);
+        close_input();
         server_.join();
         reader_.join();
         ls_close_fd(to_server_[0]);
@@ -144,7 +163,8 @@ private:
     void send(const json& m)
     {
         std::lock_guard<std::mutex> lock(write_mutex_);
-        hot::ls::write_message(to_server_[1], m.dump());
+        if (to_server_[1] >= 0)
+            hot::ls::write_message(to_server_[1], m.dump());
     }
     json wait(const std::function<bool(const json&)>& match, int timeout_ms)
     {

@@ -26,6 +26,7 @@
 #include <cctype>
 #include <chrono>
 #include <condition_variable>
+#include <deque>
 #include <thread>
 #include <filesystem>
 #include <fstream>
@@ -72,6 +73,7 @@ const std::string kHole = "__hot_complete";
 constexpr int kMethodNotFound = -32601;
 constexpr int kInvalidParams = -32602;
 constexpr int kRequestFailed = -32803;
+constexpr int kRequestCancelled = -32800;
 
 int hex(char c)
 {
@@ -419,6 +421,45 @@ private:
         send_client({{"jsonrpc", "2.0"}, {"id", id}, {"error", {{"code", code}, {"message", message}}}});
     }
     void handle(const json& msg);
+
+    // ---- the reader thread, the queue and the cancel (HOT-36)
+    // A request that the client cancels leaves its handler with this exception. The run loop
+    // replies with the code -32800.
+    struct RequestCancelled
+    {
+    };
+    // True when the client cancelled the request that the state thread handles now.
+    bool cancelled()
+    {
+        if (!any_cancel_.load())
+            return false;
+        std::lock_guard<std::mutex> lock(queue_mutex_);
+        return cancelled_ids_.count(current_key_) != 0;
+    }
+    void check_cancel()
+    {
+        if (cancelled())
+            throw RequestCancelled{};
+    }
+    void reader_loop();
+    // Takes the next message. Joins the later didChange of the same uri into the last one.
+    bool next_message(json& out);
+    // The id of the message as a key. Empty for a message without an id.
+    static std::string id_key(const json& msg)
+    {
+        return msg.contains("id") ? msg["id"].dump() : std::string();
+    }
+    void finish_request(const std::string& key);
+
+    static constexpr size_t kMaxCancelled = 1024;
+    std::mutex queue_mutex_;
+    std::condition_variable queue_cv_;
+    std::deque<json> queue_;
+    bool queue_closed_ = false;
+    std::set<std::string> pending_ids_;   // the ids of the requests that are queued or run
+    std::set<std::string> cancelled_ids_; // the ids that the client cancelled
+    std::string current_key_;             // the id of the request that the state thread runs
+    std::atomic<bool> any_cancel_{false};
 
     // ---- positions
     Pos from_lsp(const Text& t, const json& p, bool utf8) const
@@ -4304,6 +4345,7 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
     size_t not_scanned = 0; // scripts that the scan could not ask, for the message
     for (size_t index = 0; index < todo.size(); ++index)
     {
+        check_cancel();
         const std::string& path = todo[index];
         if (std::chrono::steady_clock::now() >= deadline)
         {
@@ -4338,6 +4380,7 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
             }
             for (const Pos& p : words)
             {
+                check_cancel();
                 bool by_word = false;
                 for (const Pos& g : gen_asks(o, p, by_word))
                 {
@@ -5031,6 +5074,7 @@ std::variant<Server::PlaceMap, std::string> Server::places_of(
             files.push_back(f);
     for (const std::string& path : files)
     {
+        check_cancel();
         const std::shared_ptr<Doc> open = open_doc_at(path);
         std::optional<std::string> closed_text;
         if (!open)
@@ -5186,6 +5230,7 @@ std::optional<std::variant<json, std::string>> Server::table_rename(
     kept.reserve(files.size());
     for (const std::string& path : files)
     {
+        check_cancel();
         const std::shared_ptr<Doc> open = open_doc_at(path);
         std::optional<std::string> closed_text;
         if (!open && !(closed_text = read_file(path)))
@@ -5954,6 +5999,7 @@ std::string Server::rename_other_scripts(NativeRenameJob& job, const Doc& d)
     size_t extras_taken = 0;
     for (size_t i = 0; i < todo.size() || extras_taken < job.extra_script_paths.size(); ++i)
     {
+        check_cancel();
         if (i >= todo.size())
         {
             add_candidate(job.extra_script_paths[extras_taken++], true);
@@ -6004,6 +6050,7 @@ std::string Server::rename_other_scripts(NativeRenameJob& job, const Doc& d)
                 return over;
             for (const Pos& p : words)
             {
+                check_cancel();
                 bool by_word = false;
                 for (const Pos& g : gen_asks(o, p, by_word))
                 {
@@ -7356,27 +7403,111 @@ void Server::handle(const json& msg)
     return reply(id, std::get<json>(r));
 }
 
-int Server::run()
+void Server::reader_loop()
 {
     MessageReader reader(in_);
     std::string body;
     while (reader.read(body))
     {
-        const json msg = json::parse(body, nullptr, false);
+        json msg = json::parse(body, nullptr, false);
         if (msg.is_discarded() || !msg.is_object())
             continue;
+        const std::string method = msg.value("method", std::string());
+        {
+            std::lock_guard<std::mutex> lock(queue_mutex_);
+            if (method == "$/cancelRequest")
+            {
+                // Only the id of a request that is queued or runs counts. The set stays small.
+                const json& params = msg.contains("params") ? msg["params"] : json();
+                if (params.is_object() && params.contains("id"))
+                {
+                    const std::string key = params["id"].dump();
+                    if (pending_ids_.count(key) && cancelled_ids_.size() < kMaxCancelled)
+                    {
+                        cancelled_ids_.insert(key);
+                        any_cancel_ = true;
+                    }
+                }
+                continue;
+            }
+            if (method != "exit" && msg.contains("id") && !method.empty())
+                pending_ids_.insert(id_key(msg));
+            queue_.push_back(std::move(msg));
+        }
+        queue_cv_.notify_one();
+        if (method == "exit")
+            break; // the state thread stops at "exit"
+    }
+    {
+        std::lock_guard<std::mutex> lock(queue_mutex_);
+        queue_closed_ = true;
+    }
+    queue_cv_.notify_one();
+}
+
+bool Server::next_message(json& out)
+{
+    std::unique_lock<std::mutex> lock(queue_mutex_);
+    queue_cv_.wait(lock, [&] { return !queue_.empty() || queue_closed_; });
+    if (queue_.empty())
+        return false;
+    out = std::move(queue_.front());
+    queue_.pop_front();
+    if (out.value("method", std::string()) == "textDocument/didChange")
+    {
+        // Debounce: a later didChange of the same uri replaces this one. The messages
+        // between them stay in order, so only the directly next ones join.
+        const std::string uri = out.value("/params/textDocument/uri"_json_pointer, std::string());
+        while (!queue_.empty() && queue_.front().value("method", std::string()) == "textDocument/didChange"
+            && queue_.front().value("/params/textDocument/uri"_json_pointer, std::string()) == uri
+            && !queue_.front().value("/params/contentChanges"_json_pointer, json::array()).empty())
+        {
+            out = std::move(queue_.front());
+            queue_.pop_front();
+        }
+    }
+    current_key_ = id_key(out);
+    return true;
+}
+
+void Server::finish_request(const std::string& key)
+{
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+    pending_ids_.erase(key);
+    cancelled_ids_.erase(key);
+    current_key_.clear();
+    any_cancel_ = !cancelled_ids_.empty();
+}
+
+int Server::run()
+{
+    std::thread reader([this] { reader_loop(); });
+    json msg;
+    while (next_message(msg))
+    {
         if (msg.value("method", std::string()) == "exit")
             break;
+        const std::string key = id_key(msg);
         try
         {
+            if (!key.empty() && cancelled())
+                throw RequestCancelled{};
             handle(msg);
+        }
+        catch (const RequestCancelled&)
+        {
+            reply_error(msg["id"], kRequestCancelled, "request cancelled");
         }
         catch (const std::exception& e)
         {
             if (msg.contains("id"))
                 reply_error(msg["id"], kRequestFailed, std::string("internal error: ") + e.what());
         }
+        if (!key.empty())
+            finish_request(key);
     }
+    // The reader ends at the end of the input or after "exit".
+    reader.join();
     if (clangd_)
         clangd_->stop();
     return shutdown_ ? 0 : 1;
