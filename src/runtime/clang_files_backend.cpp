@@ -228,7 +228,10 @@ bool write_text(const std::string& path, const std::string& text)
 // Writes the file through a temp file and a rename, so a reader never sees a part of the text.
 // The temp name has the process id: two processes do not write the same temp file. Windows
 // refuses the rename while an other process has the target open, so it tries 3 times.
-bool write_text_replace(const std::string& path, const std::string& text)
+// "mtime" and "size" (optional) get the stamp of the new file. The stamp is from the temp file
+// before the rename: a write of an other process after the rename has no effect on it.
+bool write_text_replace(const std::string& path, const std::string& text, int64_t* mtime = nullptr,
+    uintmax_t* size = nullptr)
 {
     static std::atomic<unsigned> counter{0};
 #ifdef _WIN32
@@ -240,6 +243,15 @@ bool write_text_replace(const std::string& path, const std::string& text)
     if (!write_text(tmp, text))
         return false;
     std::error_code ec;
+    if (mtime && size)
+    {
+        std::error_code e1, e2;
+        const fs::file_time_type t = fs::last_write_time(tmp, e1);
+        *size = fs::file_size(tmp, e2);
+        *mtime = static_cast<int64_t>(t.time_since_epoch().count());
+        if (e1 || e2)
+            *size = static_cast<uintmax_t>(-1); // no stamp: the next flush reads the file
+    }
 #ifdef _WIN32
     const int tries = 3;
 #else
@@ -817,6 +829,21 @@ public:
         }
     }
 
+    // Parses one object. The text has nothing else.
+    bool parse_single(CompileCommandEntry& e, bool& has_arguments)
+    {
+        if (!parse_object(e, has_arguments))
+            return false;
+        skip_space();
+        return i_ == s_.size();
+    }
+    // Decodes one JSON string with its quotes.
+    static bool decode_string(const std::string& quoted, std::string& out)
+    {
+        JsonReader r(quoted);
+        return r.parse_string(out) && r.i_ == quoted.size();
+    }
+
 private:
     void skip_space()
     {
@@ -1046,20 +1073,313 @@ fs::path absolute_path(const std::string& path)
 
 } // namespace
 
-std::map<std::string, CompileCommandEntry> ClangFilesBackend::read_compile_commands(std::string& text) const
+namespace
+{
+
+// One top-level object of the database: the range in the text and the value of "file".
+struct DbSlice
+{
+    size_t begin = 0;
+    size_t end = 0; // after the "}"
+    std::string file;
+};
+
+// Cuts the top-level array into objects and checks the syntax of each object (strings, numbers,
+// literals, nested arrays and objects, the commas and colons). It reads only the "file" value of
+// each object. An object with no "file" string is not in the list. It returns false for any
+// syntax error: the full parser then handles the file.
+class DbScanner
+{
+public:
+    explicit DbScanner(const std::string& s)
+        : s_(s)
+    {
+    }
+
+    bool run(std::vector<DbSlice>& out)
+    {
+        if (!eat('['))
+            return false;
+        space();
+        if (i_ < s_.size() && s_[i_] == ']')
+        {
+            ++i_;
+            return end();
+        }
+        for (;;)
+        {
+            space();
+            DbSlice slice;
+            slice.begin = i_;
+            bool have_file = false;
+            std::string file_text;
+            if (!object(1, have_file, file_text))
+                return false;
+            slice.end = i_;
+            if (have_file && !JsonReader::decode_string(file_text, slice.file))
+                return false;
+            if (have_file && !slice.file.empty())
+                out.push_back(std::move(slice));
+            space();
+            if (i_ < s_.size() && s_[i_] == ',')
+            {
+                ++i_;
+                continue;
+            }
+            return eat(']') && end();
+        }
+    }
+
+private:
+    void space()
+    {
+        while (i_ < s_.size() && (s_[i_] == ' ' || s_[i_] == '\n' || s_[i_] == '\r' || s_[i_] == '\t'))
+            ++i_;
+    }
+    bool eat(char c)
+    {
+        space();
+        if (i_ >= s_.size() || s_[i_] != c)
+            return false;
+        ++i_;
+        return true;
+    }
+    bool end()
+    {
+        space();
+        return i_ == s_.size();
+    }
+    // A string. "escape" tells that the string has a backslash.
+    bool string(size_t& begin, bool& escape)
+    {
+        if (!eat('"'))
+            return false;
+        begin = i_ - 1;
+        escape = false;
+        for (;;)
+        {
+            i_ = s_.find_first_of("\"\\", i_);
+            if (i_ == std::string::npos)
+            {
+                i_ = s_.size();
+                return false;
+            }
+            if (s_[i_] == '"')
+                break;
+            escape = true;
+            ++i_;
+            if (i_ >= s_.size() || !std::strchr("\"\\/bfnrtu", s_[i_]) || s_[i_] == '\0')
+                return false;
+            ++i_;
+        }
+        if (i_ >= s_.size())
+            return false;
+        ++i_;
+        return true;
+    }
+    bool value(int depth)
+    {
+        if (depth > 32)
+            return false;
+        space();
+        if (i_ >= s_.size())
+            return false;
+        const char c = s_[i_];
+        size_t b;
+        bool esc;
+        if (c == '"')
+            return string(b, esc);
+        if (c == '{')
+        {
+            bool have = false;
+            std::string ignore;
+            return object(depth + 1, have, ignore);
+        }
+        if (c == '[')
+        {
+            ++i_;
+            space();
+            if (i_ < s_.size() && s_[i_] == ']')
+            {
+                ++i_;
+                return true;
+            }
+            for (;;)
+            {
+                if (!value(depth + 1))
+                    return false;
+                space();
+                if (i_ < s_.size() && s_[i_] == ',')
+                {
+                    ++i_;
+                    continue;
+                }
+                return eat(']');
+            }
+        }
+        const size_t start = i_;
+        while (i_ < s_.size() && s_[i_] != '\0' && std::strchr("-+.eE0123456789abcdefghijklmnopqrstuvwxyz", s_[i_]))
+            ++i_;
+        if (i_ == start)
+            return false;
+        if (c >= 'a' && c <= 'z')
+        {
+            const std::string word = s_.substr(start, i_ - start);
+            return word == "true" || word == "false" || word == "null";
+        }
+        return is_json_number(s_.substr(start, i_ - start));
+    }
+    // The number grammar of JSON: -?(0|[1-9][0-9]*)(.[0-9]+)?([eE][+-]?[0-9]+)?
+    static bool is_json_number(const std::string& w)
+    {
+        size_t k = 0;
+        const auto digits = [&]
+        {
+            const size_t b = k;
+            while (k < w.size() && w[k] >= '0' && w[k] <= '9')
+                ++k;
+            return k - b;
+        };
+        if (k < w.size() && w[k] == '-')
+            ++k;
+        if (k < w.size() && w[k] == '0')
+            ++k;
+        else if (digits() == 0)
+            return false;
+        if (k < w.size() && w[k] == '.')
+        {
+            ++k;
+            if (digits() == 0)
+                return false;
+        }
+        if (k < w.size() && (w[k] == 'e' || w[k] == 'E'))
+        {
+            ++k;
+            if (k < w.size() && (w[k] == '+' || w[k] == '-'))
+                ++k;
+            if (digits() == 0)
+                return false;
+        }
+        return k == w.size();
+    }
+    // An object. At depth 1 it takes the text of the "file" value (it must be a string).
+    bool object(int depth, bool& have_file, std::string& file_text)
+    {
+        if (!eat('{'))
+            return false;
+        space();
+        if (i_ < s_.size() && s_[i_] == '}')
+        {
+            ++i_;
+            return true;
+        }
+        for (;;)
+        {
+            size_t kb, ke;
+            bool escape;
+            if (!string(kb, escape))
+                return false;
+            ke = i_;
+            if (!eat(':'))
+                return false;
+            space();
+            if (depth == 1 && escape)
+                return false; // an escaped key: leave it to the full parser
+            if (depth == 1 && s_.compare(kb, ke - kb, "\"file\"") == 0)
+            {
+                size_t vb;
+                bool vesc;
+                if (!string(vb, vesc))
+                    return false;
+                file_text = s_.substr(vb, i_ - vb);
+                have_file = true;
+            }
+            else if (!value(depth))
+                return false;
+            space();
+            if (i_ < s_.size() && s_[i_] == ',')
+            {
+                ++i_;
+                continue;
+            }
+            return eat('}');
+        }
+    }
+
+    const std::string& s_;
+    size_t i_ = 0;
+};
+
+bool scan_compile_db(const std::string& s, std::vector<DbSlice>& out)
+{
+    return DbScanner(s).run(out);
+}
+
+} // namespace
+
+std::map<std::string, CompileCommandEntry> ClangFilesBackend::read_compile_commands(
+    std::string& text, std::map<std::string, std::string>& foreign) const
 {
     std::map<std::string, CompileCommandEntry> result;
     text.clear();
+    foreign.clear();
     const std::string path = (fs::path(opt_.compile_commands_dir) / "compile_commands.json").string();
     if (!read_text(path, text))
         return result;
+    // An entry of this backend has a file in the generated directory. The backend parses these
+    // entries. It keeps the text of each other entry and writes it back as it is.
+    std::string prefix = absolute_path(opt_.generated_dir).string();
+    while (!prefix.empty() && (prefix.back() == '/' || prefix.back() == '\\'))
+        prefix.pop_back();
+    const auto ours = [&prefix](const std::string& file)
+    {
+        return file.size() > prefix.size() && file.compare(0, prefix.size(), prefix) == 0 &&
+            (file[prefix.size()] == '/' || file[prefix.size()] == '\\');
+    };
+    std::error_code ec;
+    std::vector<DbSlice> slices;
+    bool scanned = !prefix.empty() && scan_compile_db(text, slices);
+    if (scanned)
+    {
+        for (const DbSlice& sl : slices)
+        {
+            if (!fs::exists(sl.file, ec))
+                continue;
+            if (!ours(sl.file))
+            {
+                foreign[sl.file] = text.substr(sl.begin, sl.end - sl.begin);
+                continue;
+            }
+            CompileCommandEntry e;
+            bool has_arguments = false;
+            if (!JsonReader(text.substr(sl.begin, sl.end - sl.begin)).parse_single(e, has_arguments))
+            {
+                scanned = false;
+                break;
+            }
+            if (has_arguments && !e.file.empty())
+                result[e.file] = std::move(e);
+        }
+        if (scanned)
+            return result;
+        result.clear();
+        foreign.clear();
+    }
+    // The scan failed (a damaged file): the full parse as before.
     std::vector<CompileCommandEntry> old;
     if (!JsonReader(text).parse_entries(old))
         return result; // a damaged file: start empty
-    std::error_code ec;
     for (CompileCommandEntry& e : old)
-        if (!e.file.empty() && fs::exists(e.file, ec))
-            result[e.file] = std::move(e);
+    {
+        if (e.file.empty() || !fs::exists(e.file, ec))
+            continue;
+        if (!prefix.empty() && !ours(e.file))
+        {
+            foreign[e.file] = compile_command_entry_json(e);
+            continue;
+        }
+        result[e.file] = std::move(e);
+    }
     return result;
 }
 
@@ -1127,7 +1447,7 @@ void ClangFilesBackend::flush_compile_commands()
             const auto d = disk_commands_.find(it->first);
             same = d != disk_commands_.end() && same_entry(d->second, it->second);
         }
-        for (auto it = disk_commands_.begin(); same && it != disk_commands_.end(); ++it)
+        for (auto it = disk_rendered_.begin(); same && it != disk_rendered_.end(); ++it)
             same = fs::exists(it->first, ec);
         if (same)
             return;
@@ -1141,14 +1461,14 @@ void ClangFilesBackend::flush_compile_commands()
     {
         merged = std::move(disk_commands_);
         rendered = std::move(disk_rendered_);
-        for (auto it = merged.begin(); it != merged.end();)
+        for (auto it = rendered.begin(); it != rendered.end();)
         {
             if (fs::exists(it->first, ec))
                 ++it;
             else
             {
-                rendered.erase(it->first);
-                it = merged.erase(it);
+                merged.erase(it->first);
+                it = rendered.erase(it);
             }
         }
     }
@@ -1157,7 +1477,7 @@ void ClangFilesBackend::flush_compile_commands()
         // Another process can write the file after the last read. The merge keeps its entries.
         // The window between the read and the rename is short; a lost entry comes back at its
         // next build.
-        merged = read_compile_commands(old_text);
+        merged = read_compile_commands(old_text, rendered);
         ++compile_db_reads_;
     }
     disk_known_ = false;
@@ -1173,31 +1493,33 @@ void ClangFilesBackend::flush_compile_commands()
     }
     std::string text = "[\n";
     size_t n = 0;
-    for (const auto& [file, entry] : merged) // the map order is the order of "file"
+    for (const auto& [file, entry] : merged)
+        if (!rendered.count(file))
+            rendered.emplace(file, compile_command_entry_json(entry));
+    for (const auto& [file, entry_text] : rendered) // the map order is the order of "file"
     {
-        auto r = rendered.find(file);
-        if (r == rendered.end())
-            r = rendered.emplace(file, compile_command_entry_json(entry)).first;
-        text += r->second;
-        text += ++n < merged.size() ? ",\n" : "\n";
+        text += entry_text;
+        text += ++n < rendered.size() ? ",\n" : "\n";
     }
     text += "]\n";
     // "old_text" is empty after a fast start: the text of the file is not known, but the stamp is.
     const bool same_as_disk = !old_text.empty() && text == old_text;
+    bool stamped = false;
     if (!same_as_disk)
     {
         fs::create_directories(dir, ec);
         // A write failure has no effect on the build. The next build tries again. The write is
         // atomic (a temporary file and a rename).
-        if (!write_text_replace(db.string(), text))
+        if (!write_text_replace(db.string(), text, &disk_mtime_, &disk_size_))
         {
             std::fprintf(stderr, "[script] WARNING: cannot write %s\n", db.string().c_str());
             return;
         }
         ++compile_db_writes_;
+        stamped = disk_size_ != static_cast<uintmax_t>(-1);
     }
-    // The file now has the text of "merged".
-    if (stamp(disk_mtime_, disk_size_))
+    // The file now has the text of "merged" and "rendered".
+    if (stamped || (same_as_disk && stamp(disk_mtime_, disk_size_)))
     {
         disk_commands_ = std::move(merged);
         disk_rendered_ = std::move(rendered);
