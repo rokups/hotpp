@@ -4361,6 +4361,9 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
         {
             Doc tmp = closed_doc(path, *closed_text);
             tmp.facts = timed_translate([&] { return hotc::analyze(tmp.text.s, translate_options(tmp), session_); });
+            // Keep the table: the next scan skips this script when it has no native use.
+            index_.store(fs::path(path).lexically_normal().string(), shard_digest(fs::path(path).lexically_normal().string(), *closed_text),
+                shard_of_doc(tmp));
             with_temp_clangd(tmp, [&] { work(tmp); });
         }
     }
