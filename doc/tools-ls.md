@@ -139,3 +139,38 @@ The formatter of `hot-ls` works on a token stream. It keeps the comments and the
 - A token sequence that the rules do not know keeps the spacing of the author (one space for a run of spaces).
 
 Range formatting runs the formatter on the whole text. The edit holds the new text of the lines in the range only. A line inside a string or a block comment does not change.
+
+## Benchmark
+
+The driver `tools/lsbench/lsbench.py` measures `hot-ls` through the real protocol. It uses only the Python standard library. Run it with `python3 -I`.
+
+```sh
+python3 -I tools/lsbench/lsbench.py --hot-ls cmake-build/ls-rel/bin/RelWithDebInfo/hot-ls --preset bsw --json out.json
+```
+
+- Build a Release server first: `cmake --preset linux-clang-both -B cmake-build/ls-rel`, then `cmake --build cmake-build/ls-rel --config RelWithDebInfo --target hot-ls`.
+- The preset `bsw` sets the workspace `BiteSizedWar`, the class `WeaponHolder` and the native class `Log`. Use `--root`, `--class-file`, `--class-pos`, `--hover-pos`, `--native-file` and `--native-pos` for an other workspace. Lines and columns start at 1.
+- `--only NAME` runs one scenario. The names are `analyze`, `refs`, `native`, `typing`, `hover` and `cancel`. The scenarios run one after the other. Each scenario starts a new server with an empty index directory.
+- Each line has the form `name: ms` and the counters of the request `hot/indexStats` (`translations`, `translateMs`, `loaded`, `loadMs`, `analyzed`, `tableHits`, `tableAnalyses`). `--json` writes the same rows to a file. The file also holds the load of the machine.
+- Run on a quiet machine. The baseline below ran with a load average of 25 on 32 CPUs. The numbers vary a lot between runs.
+- `tools/lsbench/symbolinfo_probe.py` checks that `clangd` gives a non-empty `usr` in `textDocument/symbolInfo`, also in generated files.
+
+Baseline of the server before the redesign (BiteSizedWar, 88 scripts, times in ms, second run). The files are `tools/lsbench/baseline-release.json` and `baseline-debug.json`. The Debug server does not have `loadMs`.
+
+| Scenario | Release | Debug | Target (Release) |
+|---|---|---|---|
+| analyze: median time to the first diagnostics of a script (10 scripts) | 1480 | 1343 | none |
+| script-class references, cold | 34567 | 61194 | none |
+| script-class references, warm, same session | 96 | 11547 (1 new analysis) | < 200 |
+| script-class references, warm, new process | 6916 | 7690 | none |
+| native references (`Log`), cold | 16785 | 20781 | none |
+| native references, warm | 10089 | 10246 | < 500 |
+| typing: last change to diagnostics, median (p95) | 29 (66) | 42 (108) | p95 < 500 |
+| hover reply while references run | 54518 | 55261 | < 100 |
+| reply after `$/cancelRequest` | 49580 | 38017 | < 100 |
+| index ready (all scripts) | not measured | not measured | < 30 s |
+
+- The server answers the requests one after the other. So a hover waits for the references request. The hover reply is null in both runs.
+- The server ignores `$/cancelRequest`. The cancel time is the time of the whole request.
+- The native scan of the Release run stopped at the time budget (5 of 179 scripts) and showed a `window/showMessage`. The number of places differs between runs for this reason.
+- The Debug server is not slower than the Release server here. The time is in the translator and in `clangd`, not in the code of the server.

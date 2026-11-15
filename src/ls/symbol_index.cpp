@@ -463,6 +463,7 @@ std::optional<IndexShard> SymbolIndex::load(const std::string& script_path, cons
     }
     if (h->path != script_path || h->digest != dig)
         return std::nullopt;
+    const auto t0 = std::chrono::steady_clock::now();
     try
     {
         std::ifstream in(file, std::ios::binary);
@@ -477,6 +478,7 @@ std::optional<IndexShard> SymbolIndex::load(const std::string& script_path, cons
             return std::nullopt;
         }
         ++loads_;
+        load_us_ += std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count();
         return shard;
     }
     catch (const std::exception&)

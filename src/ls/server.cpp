@@ -7293,7 +7293,7 @@ void Server::handle(const json& msg)
         }
         if (const std::string of = json_str(p, "importersOf"); !of.empty())
             out["importers"] = import_graph().importers_of(hotc::ref_file_id(uri_to_path(of)));
-        out.update({{"analyzed", closed_analyses_}, {"loaded", index_.loads()}, {"stored", index_.stores()},
+        out.update({{"analyzed", closed_analyses_}, {"loaded", index_.loads()}, {"loadMs", index_.load_ms()}, {"stored", index_.stores()},
             {"dir", index_.dir()}, {"completions", completion_translations_},
             {"tokenRequests", native_token_requests_.load()}, {"translations", translations_.load()},
             {"translateMs", static_cast<double>(translate_us_.load()) / 1000.0}, {"tableHits", table_hits_},

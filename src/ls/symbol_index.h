@@ -110,6 +110,8 @@ public:
 
     int loads() const { return loads_; }
     int stores() const { return stores_; }
+    // The total time of the good shard loads, in ms.
+    double load_ms() const { return static_cast<double>(load_us_) / 1000.0; }
 
 private:
     struct DigestEntry;
@@ -117,6 +119,7 @@ private:
     std::map<std::string, std::shared_ptr<DigestEntry>> digest_cache_;
     std::string dir_;
     int loads_ = 0, stores_ = 0;
+    long long load_us_ = 0;
 };
 
 } // namespace hot::ls

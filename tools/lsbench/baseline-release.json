@@ -1,0 +1,123 @@
+{
+ "hot_ls": "cmake-build/ls-rel/bin/RelWithDebInfo/hot-ls",
+ "root": "/home/rk/src/rbfx/BiteSizedWar",
+ "loadavg": [
+  25.6865234375,
+  27.07275390625,
+  28.91162109375
+ ],
+ "cpus": 32,
+ "rows": [
+  {
+   "name": "analyze.first_diag_median",
+   "ms": 1479.6,
+   "translations": 10,
+   "translateMs": 20000.5,
+   "loaded": 0,
+   "loadMs": 0.0,
+   "analyzed": 0,
+   "tableHits": 0,
+   "tableAnalyses": 0,
+   "n": 10,
+   "timeouts": 0
+  },
+  {
+   "name": "analyze.first_diag_max",
+   "ms": 4800.4
+  },
+  {
+   "name": "analyze.first_diag_total",
+   "ms": 20071.3
+  },
+  {
+   "name": "refs.cold",
+   "ms": 34566.5,
+   "translations": 11,
+   "translateMs": 27539.8,
+   "loaded": 0,
+   "loadMs": 0.0,
+   "analyzed": 11,
+   "tableHits": 2,
+   "tableAnalyses": 12,
+   "places": 28,
+   "scripts": 8,
+   "error": null
+  },
+  {
+   "name": "refs.warm_same_session",
+   "ms": 96.2,
+   "translations": 0,
+   "translateMs": 0.0,
+   "loaded": 0,
+   "loadMs": 0.0,
+   "analyzed": 0,
+   "tableHits": 14,
+   "tableAnalyses": 0,
+   "places": 28
+  },
+  {
+   "name": "refs.warm_new_process",
+   "ms": 6915.7,
+   "translations": 0,
+   "translateMs": 0.0,
+   "loaded": 11,
+   "loadMs": 27.1,
+   "analyzed": 0,
+   "tableHits": 13,
+   "tableAnalyses": 1,
+   "places": 28
+  },
+  {
+   "name": "native.refs_cold",
+   "ms": 16785.3,
+   "translations": 2,
+   "translateMs": 5445.5,
+   "loaded": 0,
+   "loadMs": 0.0,
+   "analyzed": 0,
+   "tableHits": 0,
+   "tableAnalyses": 1,
+   "places": 325,
+   "scripts": 87,
+   "stderr_lines": 1,
+   "show_message": "hot-ls: native references: scan stopped by the time budget or by a failed ask, 5 of 179 scripts. The list of references is partial.",
+   "error": null
+  },
+  {
+   "name": "native.refs_warm",
+   "ms": 10088.6,
+   "translations": 2,
+   "translateMs": 147.9,
+   "loaded": 2,
+   "loadMs": 6.8,
+   "analyzed": 0,
+   "tableHits": 1,
+   "tableAnalyses": 0,
+   "places": 325
+  },
+  {
+   "name": "typing.last_change_to_diag_median",
+   "ms": 28.5,
+   "translations": 20,
+   "translateMs": 1802.5,
+   "loaded": 0,
+   "loadMs": 0.0,
+   "analyzed": 0,
+   "tableHits": 0,
+   "tableAnalyses": 0,
+   "runs": 3,
+   "p95": 65.7
+  },
+  {
+   "name": "hover.reply_under_load",
+   "ms": 54518.1,
+   "refs_ms": 54616.2,
+   "hover_null": true
+  },
+  {
+   "name": "cancel.reply",
+   "ms": 49579.9,
+   "error_code": null
+  }
+ ]
+}

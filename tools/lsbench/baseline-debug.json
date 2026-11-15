@@ -1,0 +1,116 @@
+{
+ "hot_ls": "/home/rk/src/rbfx/hotpp/cmake-build/linux-clang-both/bin/Debug/hot-ls",
+ "root": "/home/rk/src/rbfx/BiteSizedWar",
+ "loadavg": [
+  15.29345703125,
+  23.8427734375,
+  27.25830078125
+ ],
+ "cpus": 32,
+ "rows": [
+  {
+   "name": "analyze.first_diag_median",
+   "ms": 1343.0,
+   "translations": 10,
+   "translateMs": 18657.9,
+   "loaded": 0,
+   "analyzed": 0,
+   "tableHits": 0,
+   "tableAnalyses": 0,
+   "n": 10,
+   "timeouts": 0
+  },
+  {
+   "name": "analyze.first_diag_max",
+   "ms": 4815.5
+  },
+  {
+   "name": "analyze.first_diag_total",
+   "ms": 18939.5
+  },
+  {
+   "name": "refs.cold",
+   "ms": 61193.7,
+   "translations": 11,
+   "translateMs": 54445.8,
+   "loaded": 0,
+   "analyzed": 11,
+   "tableHits": 2,
+   "tableAnalyses": 12,
+   "places": 46,
+   "scripts": 12,
+   "error": null
+  },
+  {
+   "name": "refs.warm_same_session",
+   "ms": 11546.9,
+   "translations": 1,
+   "translateMs": 10466.9,
+   "loaded": 0,
+   "analyzed": 1,
+   "tableHits": 13,
+   "tableAnalyses": 1,
+   "places": 50
+  },
+  {
+   "name": "refs.warm_new_process",
+   "ms": 7690.0,
+   "translations": 0,
+   "translateMs": 0.0,
+   "loaded": 11,
+   "analyzed": 0,
+   "tableHits": 13,
+   "tableAnalyses": 1,
+   "places": 50
+  },
+  {
+   "name": "native.refs_cold",
+   "ms": 20781.0,
+   "translations": 2,
+   "translateMs": 7467.3,
+   "loaded": 0,
+   "analyzed": 0,
+   "tableHits": 0,
+   "tableAnalyses": 1,
+   "places": 552,
+   "scripts": 135,
+   "stderr_lines": 0,
+   "show_message": null,
+   "error": null
+  },
+  {
+   "name": "native.refs_warm",
+   "ms": 10246.4,
+   "translations": 2,
+   "translateMs": 278.6,
+   "loaded": 0,
+   "analyzed": 0,
+   "tableHits": 1,
+   "tableAnalyses": 0,
+   "places": 552
+  },
+  {
+   "name": "typing.last_change_to_diag_median",
+   "ms": 41.7,
+   "translations": 20,
+   "translateMs": 1734.2,
+   "loaded": 0,
+   "analyzed": 0,
+   "tableHits": 0,
+   "tableAnalyses": 0,
+   "runs": 3,
+   "p95": 108.2
+  },
+  {
+   "name": "hover.reply_under_load",
+   "ms": 55260.9,
+   "refs_ms": 55341.7,
+   "hover_null": true
+  },
+  {
+   "name": "cancel.reply",
+   "ms": 38017.4,
+   "error_code": null
+  }
+ ]
+}
