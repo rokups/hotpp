@@ -166,7 +166,7 @@ const std::vector<Case> kCases = {
     {"ReturnType", "return type", Wrap::Member, "@ G() { }", {"Point", "Base"}, {}},
     {"LocalType", "local type", Wrap::Body, "Po@", {"Point"}, {}},
     {"LocalHandleType", "local handle type", Wrap::Body, "$Ba@", {"Base"}, {}},
-    {"BaseList", "base list", Wrap::Module, "class K : @ { }", {"Base", "Actor", "Hero"}, {}},
+    {"BaseList", "base list", Wrap::Module, "class K : @ { }", {"Base", "Actor", "Hero"}, {"K"}},
     {"BaseListImported", "base list with an import", Wrap::Module, "class K2 : LibB@ { }", {"LibBase"}, {}},
     {"TemplateArgument", "template argument GetComponent<", Wrap::Body, "node.GetComponent<@", {"Base", "Hero"}, {}},
     {"NewType", "after new", Wrap::Body, "$Base b2 = new @", {"Base", "Hero"}, {"counter"}},
@@ -180,7 +180,6 @@ const std::vector<Case> kCases = {
 
 // Each hole: the case name and the observed result. A hole case is skipped.
 const std::map<std::string, std::string> kHoles = {
-    {"BaseList", "a native class (Actor) is not offered in a base list; script classes are"},
 };
 
 std::string uri_of(const std::string& path)
