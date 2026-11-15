@@ -5374,6 +5374,13 @@ void Server::add_ctor_edits(NativeRenameJob& job)
             }
             if (kw_at == std::string::npos)
                 continue;
+            // A single ":" between the keyword and the name is a base list: "class Foo : public Old".
+            bool base_list = false;
+            for (size_t k = kw_at; k < b; ++k)
+                if (s[k] == ':' && s.compare(k, 2, "::") != 0 && (k == 0 || s[k - 1] != ':'))
+                    base_list = true;
+            if (base_list)
+                continue;
             size_t before = kw_at;
             while (before > from && std::isspace(static_cast<unsigned char>(s[before - 1])))
                 --before;
@@ -5398,6 +5405,13 @@ void Server::add_ctor_edits(NativeRenameJob& job)
                     continue;
                 }
                 if (s[k] != old[0] || !name_at(k))
+                    continue;
+                // A qualified name (B::Old::Old) can be another class: only the places that
+                // clangd renamed count.
+                size_t pre = k;
+                while (pre > 0 && std::isspace(static_cast<unsigned char>(s[pre - 1])))
+                    --pre;
+                if (pre >= 2 && s.compare(pre - 2, 2, "::") == 0 && !have.count(k))
                     continue;
                 size_t q = skip_ws(k + old.size());
                 if (q < s.size() && s[q] == '<')

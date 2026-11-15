@@ -5941,6 +5941,31 @@ TEST(LanguageServerNative, RenameOfAClassWithOutOfClassDefinitions)
     EXPECT_EQ(changes.size(), 2u) << r.dump(); // the script and natives.h
 }
 
+// Another class has the same name in another namespace. Its constructor definition and its
+// body stay as they are. A base class with the name is not a class body of the name.
+TEST(LanguageServerNative, RenameOfAClassDoesNotChangeTheClassOfAnotherNamespace)
+{
+    REQUIRE_CLANGD();
+    const char* const header = "#pragma once\n"
+                               "namespace A { struct Pnt { Pnt(int v = 0); int x; }; }\n"
+                               "namespace B { struct Pnt { Pnt(int v = 0); }; }\n"
+                               "namespace C { struct Item : public A::Pnt { Item(); }; }\n"
+                               "inline B::Pnt::Pnt(int) {}\n";
+    const char* const script = "using \"natives.h\";\n\nclass Hero {\n    int seen = A.Pnt().x;\n}\n";
+    NativeSession s(script, 10000, true, "", 10000, header);
+    const json r = native_rename_request(s, "Pnt()", "Pnt", "Pos3", script);
+    SCOPED_TRACE(r.dump());
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    const std::string header_uri = uri_of((s.dir.path() / "natives.h").string());
+    ASSERT_TRUE(r["result"]["changes"].contains(header_uri)) << r.dump();
+    const std::string out = apply_edits(header, r["result"]["changes"][header_uri]);
+    EXPECT_NE(out.find("namespace A { struct Pos3 { Pos3(int v = 0); int x; }; }"), std::string::npos) << out;
+    EXPECT_NE(out.find("namespace B { struct Pnt { Pnt(int v = 0); }; }"), std::string::npos) << out;
+    // clangd does not give the use in the base list of Item (the index has no reference there).
+    EXPECT_NE(out.find("{ Item(); }"), std::string::npos) << out;
+    EXPECT_NE(out.find("inline B::Pnt::Pnt(int) {}"), std::string::npos) << out;
+}
+
 TEST(LanguageServerNative, RenameOfAMethod)
 {
     REQUIRE_CLANGD();
