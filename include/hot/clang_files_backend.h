@@ -116,6 +116,7 @@ public:
     ~ClangFilesBackend() override;
     // The number of writes of compile_commands.json by this backend. For tests.
     size_t compile_commands_writes() const { return compile_db_writes_; }
+    size_t compile_commands_reads() const { return compile_db_reads_; }
 
     // Makes a new .so for each call, so a reload of the same generation is possible.
     // The slots file does not change here. The Module has an "on_accept" callback that writes
@@ -374,9 +375,11 @@ private:
     // The entries of the compile database file at the last read or write, and the stamp of the
     // file then. With the same stamp, a build reads the file again only for a change.
     std::map<std::string, CompileCommandEntry> disk_commands_;
+    std::map<std::string, std::string> disk_rendered_; // the JSON text of each disk_commands_ entry
     bool disk_known_ = false;
     bool compile_db_dirty_ = false; // an entry in commands_ is not in the file yet
     size_t compile_db_writes_ = 0; // the writes of the file, for tests
+    size_t compile_db_reads_ = 0; // the reads and parses of the file, for tests
     int64_t disk_mtime_ = 0;
     uintmax_t disk_size_ = 0;
     // HOT_TIMING sums of the finish phase, in microseconds. The caller thread writes them.
