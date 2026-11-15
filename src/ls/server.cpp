@@ -2456,6 +2456,13 @@ json Server::on_completion(const Doc& d, const json& p)
             for (const ScopeName& n : scope.module_vars)
                 if (n.name == obj && type.empty())
                     type = n.type;
+            // A field of the class: a field initializer has no generated place for the dot.
+            if (type.empty())
+                if (const hotc::AnalyzedClass* cls = class_at(cur))
+                    if (const auto f = scope.class_fields.find(cls->name); f != scope.class_fields.end())
+                        for (const ScopeName& n : f->second)
+                            if (n.name == obj && type.empty())
+                                type = n.type;
             if (!type.empty())
                 add_members(type);
         }
@@ -2477,8 +2484,27 @@ json Server::on_completion(const Doc& d, const json& p)
                 add(n.name, 6, n.detail + (n.type.empty() ? "" : ": " + n.type), "0");
         for (const std::string& n : scope.enums)
             add(n, 13, "script enum", "1");
+        // The class that the base list declares is not a base of itself.
+        std::string declared;
+        if (base_only)
+        {
+            size_t c = s;
+            while (c > 0 && t[c - 1] != ':' && t[c - 1] != '{' && t[c - 1] != ';' && t[c - 1] != '}')
+                --c;
+            if (c > 0 && t[c - 1] == ':')
+            {
+                size_t b = c - 1;
+                while (b > 0 && std::isspace(static_cast<unsigned char>(t[b - 1])))
+                    --b;
+                size_t a = b;
+                while (a > 0 && is_id_char(t[a - 1]))
+                    --a;
+                declared = t.substr(a, b - a);
+            }
+        }
         for (const std::string& n : scope.classes)
-            add(n, 7, "script class", "1");
+            if (n != declared)
+                add(n, 7, "script class", "1");
         for (const std::string& n : scope.structs)
             add(n, 22, "script struct", "1");
         for (const std::string& n : scope.interfaces)
@@ -2583,7 +2609,7 @@ json Server::on_completion(const Doc& d, const json& p)
             }
             // The last try of a type place: the word is a builtin type, so the text translates, and
             // a module variable at the file end holds the hole as a type. Its place has no map.
-            const size_t probe_index = texts.size();
+            size_t probe_index = texts.size();
             const bool probe = ctx.kind == CompletionContext::Kind::Type || ctx.kind == CompletionContext::Kind::Base;
             if (probe && ctx.kind == CompletionContext::Kind::Type)
                 texts.push_back(t.substr(0, s) + "int" + closers + (end ? "" : ";") + t.substr(e) + "\n" + prefix + kHole
@@ -2594,8 +2620,19 @@ json Server::on_completion(const Doc& d, const json& p)
                 size_t colon = s;
                 while (colon > 0 && t[colon - 1] != ':' && t[colon - 1] != '{' && t[colon - 1] != ';' && t[colon - 1] != '}')
                     --colon;
+                // The probe is the first try: a base list gives no native type in the other texts.
                 if (colon > 0 && t[colon - 1] == ':')
-                    texts.push_back(t.substr(0, colon - 1) + " " + t.substr(e) + "\n" + prefix + kHole + " hot_hole_;\n");
+                {
+                    // The hole is a field type in the body of the class: clangd gives the native
+                    // types there. With no body, the hole is a module variable at the file end.
+                    const size_t brace = t.find('{', e);
+                    texts.insert(texts.begin(),
+                        brace != std::string::npos
+                            ? t.substr(0, colon - 1) + " " + t.substr(e, brace + 1 - e) + "\n" + prefix + kHole
+                                + " hot_hole_;" + t.substr(brace + 1)
+                            : t.substr(0, colon - 1) + " " + t.substr(e) + "\n" + prefix + kHole + " hot_hole_;\n");
+                    probe_index = 0;
+                }
             }
             const Pos hole = {cur.line, static_cast<int>(s - d.text.starts[static_cast<size_t>(cur.line)])};
             std::optional<json> r;
