@@ -15,6 +15,8 @@
 #include <atomic>
 #include <cctype>
 #include <map>
+#include <mutex>
+#include <shared_mutex>
 #include <set>
 #include <stdexcept>
 #include <sstream>
@@ -421,24 +423,34 @@ std::string SymbolIndex::cached_digest(
     const std::string& script_path, const std::string& content, const std::vector<std::string>& include_dirs)
 {
     const std::string cd = digest(content);
-    auto it = digest_cache_.find(script_path);
-    if (it != digest_cache_.end() && it->second->content_digest == cd && it->second->include_dirs == include_dirs)
+    std::shared_ptr<DigestEntry> old;
+    {
+        std::lock_guard<std::mutex> lock(digest_mutex_);
+        auto it = digest_cache_.find(script_path);
+        if (it != digest_cache_.end())
+            old = it->second;
+    }
+    // The file reads run without the lock. An entry is not changed after the insert.
+    if (old && old->content_digest == cd && old->include_dirs == include_dirs)
     {
         bool same = true;
-        for (const FileStamp& d : it->second->deps)
+        for (const FileStamp& d : old->deps)
             if (!(stamp_of(d.path) == d))
             {
                 same = false;
                 break;
             }
         if (same)
-            return it->second->result;
+            return old->result;
     }
     auto e = std::make_shared<DigestEntry>();
     e->content_digest = cd;
     e->include_dirs = include_dirs;
     e->result = closure_digest(script_path, content, include_dirs, &e->deps);
-    digest_cache_[script_path] = e;
+    {
+        std::lock_guard<std::mutex> lock(digest_mutex_);
+        digest_cache_[script_path] = e;
+    }
     return e->result;
 }
 
@@ -451,6 +463,7 @@ std::optional<IndexShard> SymbolIndex::load(const std::string& script_path, cons
 {
     if (!enabled())
         return std::nullopt;
+    std::shared_lock<std::shared_mutex> lock(shard_mutex_);
     const std::string file = shard_path(script_path);
     const auto h = read_header(file);
     if (!h)
@@ -492,10 +505,13 @@ bool SymbolIndex::store(const std::string& script_path, const std::string& dig, 
 {
     if (!enabled() || script_path.find('\n') != std::string::npos)
         return false;
+    std::shared_lock<std::shared_mutex> lock(shard_mutex_);
     std::error_code ec;
     fs::create_directories(dir_, ec);
     const std::string file = shard_path(script_path);
-    const std::string tmp = file + "." + std::to_string(hot::detail::process_id()) + ".tmp";
+    static std::atomic<unsigned long long> tmp_counter{0};
+    const std::string tmp = file + "." + std::to_string(hot::detail::process_id()) + "." +
+                            std::to_string(tmp_counter.fetch_add(1)) + ".tmp";
     {
         std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
         if (!out)
@@ -523,6 +539,7 @@ int SymbolIndex::prune()
 {
     if (!enabled())
         return 0;
+    std::unique_lock<std::shared_mutex> lock(shard_mutex_);
     int removed = 0;
     std::error_code ec;
     for (fs::directory_iterator it(dir_, ec), end; !ec && it != end; it.increment(ec))
@@ -553,6 +570,7 @@ int SymbolIndex::remove_if(const std::function<bool(const std::string&)>& match)
 {
     if (!enabled())
         return 0;
+    std::unique_lock<std::shared_mutex> lock(shard_mutex_);
     int removed = 0;
     std::error_code ec;
     for (fs::directory_iterator it(dir_, ec), end; !ec && it != end; it.increment(ec))

@@ -25,10 +25,13 @@
 
 #include "ref_resolver.h"
 
+#include <atomic>
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <shared_mutex>
 #include <string>
 #include <vector>
 
@@ -108,18 +111,21 @@ public:
     // shards.
     int remove_if(const std::function<bool(const std::string&)>& match);
 
-    int loads() const { return loads_; }
-    int stores() const { return stores_; }
+    int loads() const { return loads_.load(); }
+    int stores() const { return stores_.load(); }
     // The total time of the good shard loads, in ms.
-    double load_ms() const { return static_cast<double>(load_us_) / 1000.0; }
+    double load_ms() const { return static_cast<double>(load_us_.load()) / 1000.0; }
 
 private:
     struct DigestEntry;
-    // The cache has no lock: only the main thread of the server uses it.
+    // The class is safe for many threads. A mutex guards the digest cache. Load and store take
+    // the shard lock shared. Prune and remove_if take it exclusive.
+    std::mutex digest_mutex_;
+    std::shared_mutex shard_mutex_;
     std::map<std::string, std::shared_ptr<DigestEntry>> digest_cache_;
     std::string dir_;
-    int loads_ = 0, stores_ = 0;
-    long long load_us_ = 0;
+    std::atomic<int> loads_{0}, stores_{0};
+    std::atomic<long long> load_us_{0};
 };
 
 } // namespace hot::ls

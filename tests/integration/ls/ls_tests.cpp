@@ -17,7 +17,6 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
-#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -27,6 +26,8 @@
 #include <regex>
 #include <set>
 #include <sstream>
+#include <atomic>
+#include <chrono>
 #include <string>
 #include <thread>
 #include <tuple>
@@ -8462,4 +8463,69 @@ TEST(LanguageServerRename, AliasFieldGivesNoWarning)
         "class Unit {\n    [alias(\"old\")] int hp;\n    void f() { hp = 1; }\n}\n", "hp", "int hp;");
     EXPECT_EQ(edits, 2u);
     EXPECT_EQ(notes, 0);
+}
+
+// Many threads use one index: digest, store, load and prune run together (HOT-34).
+TEST(SymbolIndex, ManyThreadsUseOneIndex)
+{
+    TempDir dir;
+    const std::filesystem::path scripts = dir.path() / "scripts";
+    std::filesystem::create_directories(scripts);
+    constexpr int kScripts = 20;
+    std::vector<std::string> paths;
+    for (int i = 0; i < kScripts; ++i)
+    {
+        paths.push_back((scripts / ("s" + std::to_string(i) + ".hot")).string());
+        write_file(paths.back(), "class C" + std::to_string(i) + " {}\n");
+    }
+    hot::ls::SymbolIndex index;
+    index.open((dir.path() / "index").string());
+
+    std::atomic<bool> stop{false};
+    std::atomic<int> bad{0}, loaded{0};
+    std::vector<std::thread> threads;
+    for (int t = 0; t < 8; ++t)
+        threads.emplace_back(
+            [&, t]
+            {
+                unsigned n = static_cast<unsigned>(t) * 7919u;
+                while (!stop)
+                {
+                    const unsigned op = n++;
+                    const std::string& p = paths[(op / 4) % kScripts];
+                    const std::string text = "class X {}\n";
+                    const std::string d = index.cached_digest(p, text, {});
+                    switch (op % 4)
+                    {
+                    case 0:
+                    case 1:
+                        if (!index.store(p, d, sample_shard()))
+                            ++bad;
+                        break;
+                    case 2:
+                    {
+                        const auto s = index.load(p, d);
+                        if (s)
+                        {
+                            ++loaded;
+                            if (s->classes.size() != 1 || s->classes[0].name != "Player" ||
+                                s->classes[0].members.size() != 2 || !s->has_table)
+                                ++bad;
+                        }
+                        break;
+                    }
+                    default:
+                        if (t < 2)
+                            index.prune();
+                        break;
+                    }
+                }
+            });
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    stop = true;
+    for (auto& th : threads)
+        th.join();
+    EXPECT_EQ(bad.load(), 0);
+    EXPECT_GT(index.stores(), 0);
+    EXPECT_GT(loaded.load(), 0);
 }
