@@ -101,7 +101,7 @@ Or add the same flags to the entry of the script in `compile_commands.json`:
 
 ## `hotc --aot` list file and jobs
 
-`hotc --aot --scripts-file FILE` reads the scripts from a list file. Each line is `PATH` or `PATH<TAB>UNIT_NAME`. Do not use `--unit-name` with it. `--jobs N` sets the number of translate threads. `HOT_JOBS` is the second choice. The default is the number of cores, capped at 16. `hotc` prints `[i/N] <unit>` on stderr, in script order. `hot_add_scripts` writes the list file `OUT_DIR/scripts.txt` and uses `USES_TERMINAL`. Ninja then shows the progress live and runs one such command at a time.
+`hotc --aot --scripts-file FILE` reads the scripts from a list file. Each line is `PATH` or `PATH<TAB>UNIT_NAME`. Do not use `--unit-name` with it. `--jobs N` sets the number of translate threads. `HOT_JOBS` is the second choice. The default is the number of cores, capped at 16. On Windows the default is 1 and `HOT_JOBS` has no effect. `hotc` prints `[i/N] <unit>` on stderr, in script order. `hot_add_scripts` writes the list file `OUT_DIR/scripts.txt` and uses `USES_TERMINAL`. Ninja then shows the progress live and runs one such command at a time.
 
 ## VS Code
 

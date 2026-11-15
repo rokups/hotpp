@@ -43,7 +43,7 @@
 // the list and the scripts of the command line keep the order of the command line. The option
 // --unit-name with --scripts-file is an error (exit code 1).
 // The option --jobs N (1..4096) sets the count of threads that translate the scripts. Without it,
-// the environment variable HOT_JOBS sets the count. Else the count is min(cores, 16). The tool
+// the environment variable HOT_JOBS sets the count. Else the count is min(cores, 16). On Windows the count is 1 and HOT_JOBS has no effect. The tool
 // prints the progress line "[i/N] <unit name>" and the diagnostics of each script in the order
 // of the scripts, so the output is the same for each count of threads.
 // For each file the tool writes DIR/<name>.aot.cpp (generation 1). It also writes
@@ -82,7 +82,6 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
-#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -91,6 +90,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <system_error>
 #include <thread>
 #include <vector>
 
@@ -115,7 +115,7 @@ namespace
         "  --defines-file <file> (--aot) one define for each line: NAME or NAME=value; -D and -U lines also work\n"
         "  --includes-file <file> (--aot) one include directory for each line, as -I\n"
         "  --scripts-file <file> (--aot) one script for each line: PATH or PATH<TAB>UNIT_NAME; not with --unit-name\n"
-        "  --jobs <N>           (--aot) translate on N threads, 1..4096 (default: HOT_JOBS or min(cores, 16))\n"
+        "  --jobs <N>           (--aot) translate on N threads, 1..4096 (default: HOT_JOBS or min(cores, 16); 1 on Windows)\n"
         "  --unit-name <name>   (--aot, --emit-cpp) the unit name of the n-th script (default: the stem)\n"
         "Each mode also accepts:\n"
         "  --depfile <path>     write the headers and imported scripts that the translation read (Make format)\n"
@@ -402,9 +402,17 @@ std::string identifier(const std::string& stem)
 }
 
 // Writes the file. With "only_if_changed" an existing file with the same content stays as it is,
-// so its time stamp stays.
-bool write_file(const std::string& path, const std::string& text, bool only_if_changed = false)
+// so its time stamp stays. With "err" an error text goes to "err" and not to stderr.
+bool write_file(const std::string& path, const std::string& text, bool only_if_changed = false,
+    std::string* err = nullptr)
 {
+    auto report = [&](const std::string& message)
+    {
+        if (err)
+            *err += message;
+        else
+            std::fputs(message.c_str(), stderr);
+    };
     if (only_if_changed)
     {
         std::string old;
@@ -419,7 +427,7 @@ bool write_file(const std::string& path, const std::string& text, bool only_if_c
             of << text;
         if (!of || (of.close(), of.fail()))
         {
-            std::fprintf(stderr, "hotc: error: cannot write %s\n", path.c_str());
+            report("hotc: error: cannot write " + path + "\n");
             std::error_code ec;
             fs::remove(tmp, ec);
             return false;
@@ -429,7 +437,7 @@ bool write_file(const std::string& path, const std::string& text, bool only_if_c
     fs::rename(tmp, path, ec);
     if (ec)
     {
-        std::fprintf(stderr, "hotc: error: cannot write %s: %s\n", path.c_str(), ec.message().c_str());
+        report("hotc: error: cannot write " + path + ": " + ec.message() + "\n");
         fs::remove(tmp, ec);
         return false;
     }
@@ -563,7 +571,14 @@ int run_aot(const Args& args)
     // The unit name of each input. The C++ names of two units must differ, and so must the file
     // names of the outputs (the stems).
     std::vector<std::string> unit_names;
-    std::set<std::string> ids, stems;
+    std::set<std::string> ids, stems; // "stems" holds the lower-case stems
+    auto fold = [](std::string text)
+    {
+        for (char& c : text)
+            if (c >= 'A' && c <= 'Z')
+                c = static_cast<char>(c - 'A' + 'a');
+        return text;
+    };
     for (size_t i = 0; i < args.inputs.size(); ++i)
     {
         const std::string stem = fs::path(args.inputs[i]).stem().string();
@@ -571,7 +586,7 @@ int run_aot(const Args& args)
             unit_names.push_back(args.unit_names[i]);
         else
             unit_names.push_back(args.input_units[i].empty() ? stem : args.input_units[i]);
-        if (!ids.insert(identifier(unit_names.back())).second || !stems.insert(stem).second)
+        if (!ids.insert(identifier(unit_names.back())).second || !stems.insert(fold(stem)).second)
         {
             std::fprintf(stderr, "hotc: error: two scripts have the name %s\n", unit_names.back().c_str());
             return 1;
@@ -604,7 +619,6 @@ int run_aot(const Args& args)
     std::vector<Slot> results(count);
     std::vector<char> done(count, 0);
     std::mutex mutex;
-    std::condition_variable cv;
     size_t printed = 0; // the scripts that have a progress line; guarded by "mutex"
     std::atomic<size_t> next_index{0};
 
@@ -636,10 +650,10 @@ int run_aot(const Args& args)
         cpp.insert(eol == std::string::npos ? cpp.size() : eol + 1,
             "#define script_register hot_script_register_" + id + "\n");
         cpp += "#undef script_register\n";
-        if (!write_file(slot.out, cpp, true))
+        if (!write_file(slot.out, cpp, true, &slot.diag))
             slot.write_failed = true;
         // The interface header of the script: the importers include it. The TU does not include it.
-        if (!write_file(args.out_dir + "/" + stem + ".iface.h", slot.r.iface_header, true))
+        if (!write_file(args.out_dir + "/" + stem + ".iface.h", slot.r.iface_header, true, &slot.diag))
             slot.write_failed = true;
         slot.source_hash = hot::hash_script_text(opt.script_text);
     };
@@ -658,22 +672,51 @@ int run_aot(const Args& args)
     {
         for (size_t input; (input = next_index.fetch_add(1)) < count;)
         {
-            translate_one(input);
+            try
+            {
+                translate_one(input);
+            }
+            catch (const std::exception& e)
+            {
+                results[input].read_ok = false;
+                results[input].diag += std::string("hotc: error: internal error: ") + e.what() + "\n";
+            }
+            catch (...)
+            {
+                results[input].read_ok = false;
+                results[input].diag += "hotc: error: internal error\n";
+            }
             std::lock_guard<std::mutex> lock(mutex);
             done[input] = 1;
             print_ready();
-            cv.notify_all();
         }
     };
     {
         const unsigned jobs = args.jobs ? args.jobs : hot::build_jobs();
         const size_t threads = std::min<size_t>(jobs, count);
-        std::vector<std::thread> pool;
+        // The guard joins all threads on each path.
+        struct Pool
+        {
+            std::vector<std::thread> threads;
+            ~Pool()
+            {
+                for (std::thread& t : threads)
+                    if (t.joinable())
+                        t.join();
+            }
+        } pool;
         for (size_t t = 1; t < threads; ++t)
-            pool.emplace_back(work);
+        {
+            try
+            {
+                pool.threads.emplace_back(work);
+            }
+            catch (const std::system_error&)
+            {
+                break; // the caller thread runs the remaining work
+            }
+        }
         work();
-        for (std::thread& t : pool)
-            t.join();
     }
     // The serial merge, in the order of the scripts.
     for (size_t input = 0; input < count; ++input)
