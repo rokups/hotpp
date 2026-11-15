@@ -4646,14 +4646,14 @@ TEST(LanguageServerHosts, NewHostFileAppliesToAnOpenScriptAfterAWatchedFilesEven
 }
 
 // A script file that appears on disk after the start. The client sends a Created event. The
-// references of a symbol in an open script include the new file.
+// references of a symbol in an open script include the new file when it imports the open script.
 TEST(LanguageServerHosts, NewScriptFileIsFoundAfterAWatchedFilesEvent)
 {
     REQUIRE_CLANGD();
     TempDir dir;
     const std::filesystem::path root = dir.path();
     std::filesystem::create_directories(root / "hosts");
-    const std::string text = "class Player {\n    float hp = 1.0;\n}\n";
+    const std::string text = "class Player {\n    public float hp = 1.0;\n}\n";
     const std::string path = (root / "a.hot").string();
     write_file(path, text);
     hot::ls::ServerOptions o;
@@ -4665,7 +4665,7 @@ TEST(LanguageServerHosts, NewScriptFileIsFoundAfterAWatchedFilesEvent)
     auto count_other = [&](const std::string& other_uri)
     {
         const json r = client.request("textDocument/references",
-            {{"textDocument", {{"uri", uri_of(path)}}}, {"position", {{"line", 1}, {"character", 11}}},
+            {{"textDocument", {{"uri", uri_of(path)}}}, {"position", {{"line", 1}, {"character", 18}}},
                 {"context", {{"includeDeclaration", true}}}});
         int n = 0;
         if (r.contains("result") && r["result"].is_array())
@@ -4676,7 +4676,8 @@ TEST(LanguageServerHosts, NewScriptFileIsFoundAfterAWatchedFilesEvent)
     };
     const std::string other = (root / "b.hot").string();
     EXPECT_EQ(count_other(uri_of(other)), 0);
-    write_file(other, text);
+    write_file(other,
+        "using \"a.hot\";\nclass Boss {\n    public float Get(Player p) { return p.hp; }\n}\n");
     client.notify(
         "workspace/didChangeWatchedFiles", {{"changes", json::array({{{"uri", uri_of(other)}, {"type", 1}}})}});
     EXPECT_EQ(count_other(uri_of(other)), 1);
