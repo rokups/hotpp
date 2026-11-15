@@ -29,6 +29,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <set>
 #include <string>
@@ -51,6 +52,10 @@ class Gun : Actor {
     public static const int Max = 4;
     public static int Make(int k) { Mode m = Mode.Fast; return k + Gun.Max; }
     public virtual int Fire(int bullets) { int shots = bullets + ammo; return Twice(shots) + Max + Limit + Make(shots); }
+    public virtual int Reload(int n) { return n; }
+    public int Rank { get { return ammo + 1; } set { ammo = value; } }
+    public int Rate() { Rank = 2; return Rank; }
+    public void Drift() { Vec3 d; this.Move(d); }
 }
 )";
 
@@ -58,7 +63,9 @@ const char* const kClosed = R"(using "Actor.h";
 using "lib.hot";
 class Rifle : Gun {
     public override int Fire(int bullets) { int shots = bullets + this.ammo + Gun.Max + Limit + Twice(1) + Gun.Make(2); Mode m = Mode.Fast; return shots; }
-    public int Shoot() { return this.Fire(1); }
+    public override int Reload(int n) { return n + 1; }
+    public int Shoot() { return this.Fire(1) + this.Rank; }
+    public void Nudge() { Vec3 d; this.Move(d); }
 }
 )";
 
@@ -66,7 +73,9 @@ const char* const kOpen = R"(using "Actor.h";
 using "lib.hot";
 class Pistol : Gun {
     public override int Fire(int bullets) { int shots = bullets + this.ammo + Gun.Max + Limit + Twice(1) + Gun.Make(2); Mode m = Mode.Fast; return shots; }
-    public int Shoot() { return this.Fire(1); }
+    public override int Reload(int n) { return n + 1; }
+    public int Shoot() { return this.Fire(1) + this.Rank; }
+    public void Nudge() { Vec3 d; this.Move(d); }
 }
 )";
 
@@ -74,7 +83,9 @@ const char* const kTop = R"(using "Actor.h";
 using "closed.hot";
 class Cannon : Rifle {
     public override int Fire(int bullets) { int shots = bullets + this.ammo + Gun.Max + Limit + Twice(1) + Gun.Make(2); Mode m = Mode.Fast; return shots; }
-    public int Blast() { return this.Fire(1); }
+    public override int Reload(int n) { return n + 2; }
+    public int Blast() { return this.Fire(1) + this.Rank; }
+    public void Shove() { Vec3 d; this.Move(d); }
 }
 )";
 
@@ -87,6 +98,10 @@ class Gun : Actor {
     public static const int Max = 9;
     public static int Make(int k) { Mode m = Mode.Fast; return k + Gun.Max; }
     public virtual int Fire(int bullets) { int shots = bullets + ammo + Max + Limit + Twice(1) + Make(1); return shots; }
+    public virtual int Reload(int n) { return n; }
+    public int Rank { get { return ammo + 2; } set { ammo = value; } }
+    public int Rate() { Rank = 3; return Rank; }
+    public void Drift() { Vec3 d; this.Move(d); }
 }
 )";
 
@@ -119,6 +134,9 @@ struct Row
     // The definition is in the axis file: the importers override the method "Fire". There a use
     // of "Fire" goes to the override of the class.
     bool def_in_axis = false;
+    // A native symbol of Actor.h: the definition is the text of "native_ctx" in the header, the
+    // word is the same symbol in all the files, and a rename is not possible.
+    const char* native_ctx = nullptr;
 };
 
 const Row kRows[] = {
@@ -132,11 +150,26 @@ const Row kRows[] = {
     {"FreeFunction", "Twice", false},
     {"Class", "Gun", false},
     {"EnumValue", "Fast", false},
+    {"Property", "Rank", false},
+    {"SeparateOverride", "Reload", false, true},
+    {"NativeType", "Vec3", false, false, "struct Vec3"},
+    {"NativeMethod", "Move", false, false, "void Move("},
 };
 
-// The cases that fail on the current server. Each group names the missing feature. All the cases
-// pass now: the list is empty.
-const std::vector<std::string> kSkip = {};
+// The cases that fail on the current server. Each group names the defect.
+const std::vector<std::string> kSkip = {
+    // Defect: the references of a native symbol, asked in lib.hot, give the places of lib.hot and
+    // places in the generated files "open.hot.cpp" and "top.hot.cpp" (line 839 and more). The
+    // scripts that import lib.hot get no place in their own .hot file.
+    "NativeType_References_Closed",
+    "NativeType_References_Open",
+    "NativeType_References_Deep",
+    "NativeType_References_Unrelated",
+    "NativeMethod_References_Closed",
+    "NativeMethod_References_Open",
+    "NativeMethod_References_Deep",
+    "NativeMethod_References_Unrelated",
+};
 
 using Place = std::tuple<std::string, int, int>; // uri, line, character
 
@@ -257,7 +290,8 @@ std::set<Place> expected(const Case& c)
     const Row& row = kRows[c.row];
     const int f = static_cast<int>(c.axis);
     const bool indirect_fn = c.axis == Axis::Deep && std::string(row.kind) == "FreeFunction";
-    const bool same_symbol = c.axis != Axis::Unrelated && !indirect_fn && (!row.file_local || c.axis == Axis::Same);
+    const bool native = row.native_ctx != nullptr;
+    const bool same_symbol = (native || c.axis != Axis::Unrelated) && !indirect_fn && (!row.file_local || c.axis == Axis::Same);
     // The import is not transitive: a free function of lib.hot is not visible in top.hot.
     if (indirect_fn && (c.op == Op::Definition || c.op == Op::PrepareRename))
         return {};
@@ -265,6 +299,18 @@ std::set<Place> expected(const Case& c)
     {
     case Op::Definition:
     {
+        if (native)
+        {
+            std::ifstream in(HOT_SOURCE_DIR "/tests/engine/Actor.h", std::ios::binary);
+            const std::string h((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            const auto at = words(h.substr(h.find(row.native_ctx)), row.word).front();
+            const int base = static_cast<int>(std::count(h.begin(), h.begin() + static_cast<long>(h.find(row.native_ctx)), '\n'));
+            // The context starts at a line start or after "void ": the column is of the first line.
+            const size_t cs = h.find(row.native_ctx);
+            const size_t ls = h.rfind('\n', cs - 1) + 1;
+            return {Place{uri_of(HOT_SOURCE_DIR "/tests/engine/Actor.h"), base + at.first,
+                at.first == 0 ? static_cast<int>(cs - ls) + at.second : at.second}};
+        }
         // The first word in a file is the declaration.
         const int decl_file = same_symbol && !row.def_in_axis ? 0 : f;
         const auto first = words(kTexts[decl_file], row.word).front();
@@ -272,11 +318,16 @@ std::set<Place> expected(const Case& c)
     }
     case Op::PrepareRename:
     {
+        // The server refuses the rename of a native symbol: no range.
+        if (native)
+            return {};
         const auto last = words(kTexts[f], row.word).back();
         return {Place{g_ws->uris[f], last.first, last.second}};
     }
     case Op::References:
     case Op::Rename:
+        if (native && c.op == Op::Rename)
+            return {};
         return same_symbol ? word_places(f, row.word) : std::set<Place>{};
     }
     return {};
@@ -518,7 +569,7 @@ TEST_F(RefMatrix, RenameConflicts)
     };
     const Conflict cases[] = {
         {"member of the class", "ammo", "Fire", "lib.hot:9"},
-        {"member of a derived class", "ammo", "Shoot", ".hot:5"},
+        {"member of a derived class", "ammo", "Shoot", ".hot:6"},
         {"module symbol", "Limit", "Twice", "lib.hot:3"},
         {"local and a parameter", "shots", "bullets", "lib.hot:9"},
         {"local that hides a member", "shots", "ammo", "lib.hot:9"},

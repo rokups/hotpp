@@ -7134,6 +7134,99 @@ TEST(LanguageServerDecl, HoverOfAnOverrideName)
     expect_decl_hover("override void Tick", "Tick", "Tick");
 }
 
+// ------------------------------------------------------------------ overloaded functions and methods
+namespace
+{
+
+// The 0-based lines: 1, 2 and 3 the overloads of Pick, 5 and 6 the overloads of Put, 8 to 12 the calls.
+const char* const kOverloadScript =
+    "using \"Actor.h\";\n"
+    "int Pick(int v) { return v; }\n"
+    "float Pick(float f) { return f; }\n"
+    "int Pick(int a, int b) { return a + b; }\n"
+    "class Box : Actor {\n"
+    "    int Put(int v) { return v; }\n"
+    "    float Put(float f) { return f; }\n"
+    "    void Run() {\n"
+    "        int a = Pick(1);\n"
+    "        float b = Pick(2.5f);\n"
+    "        int c = Pick(1, 2);\n"
+    "        int d = this.Put(1);\n"
+    "        float e = this.Put(1.5f);\n"
+    "    }\n"
+    "}\n";
+
+// The request is at the name of the call on "call_line" (0-based).
+json overload_request(Session& s, const char* method, int call_line, const std::string& name)
+{
+    std::string line;
+    std::istringstream in(kOverloadScript);
+    for (int i = 0; i <= call_line; ++i)
+        std::getline(in, line);
+    const int col = static_cast<int>(line.find(name + "("));
+    return s.client->request(method, doc_pos(s.uri, call_line, col + 1));
+}
+
+void expect_overload_definition(int call_line, const std::string& name, int decl_line)
+{
+    REQUIRE_CLANGD();
+    Session s(true, kOverloadScript);
+    const json r = overload_request(s, "textDocument/definition", call_line, name);
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << r.dump();
+    EXPECT_EQ(r["result"][0]["uri"], s.uri) << r.dump();
+    EXPECT_EQ(r["result"][0]["range"]["start"]["line"], decl_line) << r.dump();
+}
+
+void expect_overload_hover(int call_line, const std::string& name, const std::string& want)
+{
+    REQUIRE_CLANGD();
+    Session s(true, kOverloadScript);
+    const json r = overload_request(s, "textDocument/hover", call_line, name);
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    EXPECT_NE(r["result"].dump().find(want), std::string::npos) << r.dump();
+}
+
+} // namespace
+
+// DEFECT: F12 on a call of an overloaded function or method goes to the first overload with the
+// name, not to the overload that the arguments select (the calls with a float or two arguments
+// go to line 1 or 5). The hover selects the right overload.
+TEST(LanguageServerDecl, DISABLED_DefinitionOfAFunctionCallSelectsTheOverloadByTheArgumentType)
+{
+    expect_overload_definition(8, "Pick", 1);
+    expect_overload_definition(9, "Pick", 2);
+}
+
+// DEFECT: F12 on a call of an overloaded function or method goes to the first overload with the
+// name, not to the overload that the arguments select (the calls with a float or two arguments
+// go to line 1 or 5). The hover selects the right overload.
+TEST(LanguageServerDecl, DISABLED_DefinitionOfAFunctionCallSelectsTheOverloadByTheArgumentCount)
+{
+    expect_overload_definition(10, "Pick", 3);
+}
+
+// DEFECT: F12 on a call of an overloaded function or method goes to the first overload with the
+// name, not to the overload that the arguments select (the calls with a float or two arguments
+// go to line 1 or 5). The hover selects the right overload.
+TEST(LanguageServerDecl, DISABLED_DefinitionOfAMethodCallSelectsTheOverloadByTheArgumentType)
+{
+    expect_overload_definition(11, "Put", 5);
+    expect_overload_definition(12, "Put", 6);
+}
+
+TEST(LanguageServerDecl, HoverOfAFunctionCallShowsTheSignatureOfTheSelectedOverload)
+{
+    expect_overload_hover(8, "Pick", "Pick(int v)");
+    expect_overload_hover(9, "Pick", "Pick(float f)");
+    expect_overload_hover(10, "Pick", "Pick(int a, int b)");
+}
+
+TEST(LanguageServerDecl, HoverOfAMethodCallShowsTheSignatureOfTheSelectedOverload)
+{
+    expect_overload_hover(11, "Put", "Put(Box *__self, int v)");
+    expect_overload_hover(12, "Put", "Put(Box *__self, float f)");
+}
+
 // ------------------------------------------------------------------ document links of using lines
 TEST(LanguageServerLinks, UsingHeaderAndScriptGetLinks)
 {
