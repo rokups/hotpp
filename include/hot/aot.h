@@ -48,7 +48,7 @@ struct AotScript
     uint64_t iface_hash = 0; // the interface hash of the script (Module::iface_hash)
     const AotImport* imports = nullptr; // the imports of the script: the direct ones and their imports
     size_t import_count = 0;
-    // The hash of the script text (hot::hash_text). 0: unknown, no check.
+    // The hash of the script text (hot::hash_script_text). It ignores the kind of line end. 0: unknown, no check.
     uint64_t source_hash = 0;
 };
 
