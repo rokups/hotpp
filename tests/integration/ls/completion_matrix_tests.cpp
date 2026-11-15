@@ -180,7 +180,6 @@ const std::vector<Case> kCases = {
 
 // Each hole: the case name and the observed result. A hole case is skipped.
 const std::map<std::string, std::string> kHoles = {
-    {"FieldInitDot", "origin. in a field initializer gives 0 items"},
     {"BaseList", "a native class (Actor) is not offered in a base list; script classes are"},
 };
 

@@ -2456,6 +2456,13 @@ json Server::on_completion(const Doc& d, const json& p)
             for (const ScopeName& n : scope.module_vars)
                 if (n.name == obj && type.empty())
                     type = n.type;
+            // A field of the class: a field initializer has no generated place for the dot.
+            if (type.empty())
+                if (const hotc::AnalyzedClass* cls = class_at(cur))
+                    if (const auto f = scope.class_fields.find(cls->name); f != scope.class_fields.end())
+                        for (const ScopeName& n : f->second)
+                            if (n.name == obj && type.empty())
+                                type = n.type;
             if (!type.empty())
                 add_members(type);
         }

@@ -569,6 +569,10 @@ ScriptScope scan_scope(const std::string& text, size_t at, size_t typed_begin)
         {
             stack.back().locals.push_back({t.s, type, "local"});
         }
+        else if (here == Block::Type && par == 0)
+        {
+            r.class_fields[stack.back().enum_name].push_back({t.s, type, "field"});
+        }
         else if (par > 0)
         {
             params.push_back({t.s, type, "parameter"});

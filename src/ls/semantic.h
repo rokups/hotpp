@@ -102,6 +102,8 @@ struct ScriptScope
     // The static members of each script class or struct (names only). The detail is "static const",
     // "static field" or "static method". The facts of the analysis have no statics and no constants.
     std::map<std::string, std::vector<ScopeName>> class_statics;
+    // The instance fields of each script class or struct, with the declared type as written.
+    std::map<std::string, std::vector<ScopeName>> class_fields;
 };
 
 // Scans "text". The locals are the ones in scope at the byte offset "at". The word that starts at
