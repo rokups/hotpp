@@ -9,6 +9,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <algorithm>
 #include <functional>
 #include <map>
 #include <set>
@@ -42,6 +43,9 @@ public:
 
     // Sends a request and waits for the response. The result is the full response message
     // ("result" or "error"), or null when clangd does not answer in time or stopped.
+    // Set before start. The request calls it about every 20 ms while it waits. It may throw to end the wait.
+    // It runs on each thread that waits, so it must check the thread itself.
+    std::function<void()> wait_poll;
     nlohmann::json request(const std::string& method, nlohmann::json params, int timeout_ms = 60000);
     void notify(const std::string& method, nlohmann::json params);
 

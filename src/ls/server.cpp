@@ -431,7 +431,8 @@ private:
     // True when the client cancelled the request that the state thread handles now.
     bool cancelled()
     {
-        if (!any_cancel_.load())
+        // Only the state thread runs the requests of the client.
+        if (!any_cancel_.load() || std::this_thread::get_id() != state_thread_)
             return false;
         std::lock_guard<std::mutex> lock(queue_mutex_);
         return cancelled_ids_.count(current_key_) != 0;
@@ -460,6 +461,7 @@ private:
     std::set<std::string> cancelled_ids_; // the ids that the client cancelled
     std::string current_key_;             // the id of the request that the state thread runs
     std::atomic<bool> any_cancel_{false};
+    std::thread::id state_thread_;
 
     // ---- positions
     Pos from_lsp(const Text& t, const json& p, bool utf8) const
@@ -1356,6 +1358,7 @@ void Server::start_clangd(const json& init)
         args.push_back("--background-index=false");
     }
     auto c = std::make_unique<ClangdProcess>();
+    c->wait_poll = [this] { check_cancel(); }; // a cancel ends the wait for clangd
     if (!c->start(opt_.clangd, args, opt_.clangd_log, [this](const json& m) { on_clangd_notification(m); }))
         return;
     json params = {
@@ -7481,6 +7484,7 @@ void Server::finish_request(const std::string& key)
 
 int Server::run()
 {
+    state_thread_ = std::this_thread::get_id();
     std::thread reader([this] { reader_loop(); });
     json msg;
     while (next_message(msg))

@@ -236,9 +236,24 @@ json ClangdProcess::request(const std::string& method, json params, int timeout_
         return nullptr;
     std::unique_lock<std::mutex> lock(mutex_);
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    const std::function<void()> poll = wait_poll;
     while (!responses_.count(id))
     {
-        if (closed_ || cv_.wait_until(lock, deadline) == std::cv_status::timeout)
+        if (poll)
+        {
+            // The poll can throw to cancel the wait. The late response is then dropped.
+            try
+            {
+                poll();
+            }
+            catch (...)
+            {
+                abandoned_.insert(id);
+                throw;
+            }
+        }
+        const auto slice = poll ? std::min(deadline, std::chrono::steady_clock::now() + std::chrono::milliseconds(20)) : deadline;
+        if (closed_ || (cv_.wait_until(lock, slice) == std::cv_status::timeout && slice == deadline))
         {
             if (!responses_.count(id))
             {
