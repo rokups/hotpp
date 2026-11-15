@@ -3895,6 +3895,58 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
                             {loc(near_doc ? near_doc->uri : path_to_uri(r->ref.near_file), near_text, Pos{line, col})});
                     }
             }
+            // Overloads share one id in the table. Then clangd selects the overload at the
+            // generated position, by the arguments of the call. The call goes to a forwarder of
+            // the written name that has no map segment: its body calls the overload.
+            size_t decl_count = 0;
+            for (const hotc::ResolvedRef& n : decl_table ? decl_table->refs : std::vector<hotc::ResolvedRef>())
+                if (n.is_decl && n.id == r->ref.id)
+                    ++decl_count;
+            if (decl_count > 1 && !r->ref.is_decl && clangd_)
+                if (const auto g = to_gen(d, here))
+                {
+                    wait_for_native_ready(d);
+                    auto locations = [&](const json& at, const char* kind) -> json
+                    {
+                        const auto defs = clangd_result(kind, at, kNativeBudgetMs);
+                        return defs ? (defs->is_array() ? *defs : json::array({*defs})) : json::array();
+                    };
+                    const json first = {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, *g)}};
+                    for (const json& l : locations(first, "textDocument/definition"))
+                    {
+                        const std::string uri = l.contains("targetUri") ? l.value("targetUri", std::string())
+                                                                        : l.value("uri", std::string());
+                        const Doc* gd = nullptr;
+                        if (uri == d.gen_uri)
+                            gd = &d;
+                        else if (const auto it = gen_docs_.find(uri); it != gen_docs_.end())
+                            gd = it->second.get();
+                        if (!gd)
+                            continue;
+                        json m = map_location(*gd, l);
+                        if (m.is_null())
+                        {
+                            // The forwarder: "return <overload>(" is two lines after its name.
+                            const json range = l.contains("targetSelectionRange") ? l["targetSelectionRange"] : l.value("range", json());
+                            const Pos fp = from_lsp(gd->gen, range["start"], clangd_utf8_);
+                            const std::string_view body = gd->gen.line(fp.line + 2);
+                            const size_t ret = body.find("return ");
+                            if (ret == std::string_view::npos)
+                                continue;
+                            const json second = {{"textDocument", {{"uri", uri}}},
+                                {"position", to_lsp(gd->gen, {fp.line + 2, static_cast<int>(ret) + 7}, clangd_utf8_)}};
+                            // The declaration is the prototype of the overload, with a map segment.
+                            for (const json& l2 : locations(second, "textDocument/declaration"))
+                            {
+                                m = map_location(*gd, l2);
+                                if (!m.is_null())
+                                    break;
+                            }
+                        }
+                        if (!m.is_null() && m.contains("range") && m.value("uri", std::string()) == decl_uri)
+                            return json::array({m});
+                    }
+                }
             if (!decl_pos)
                 return std::nullopt;
             return json::array({loc(decl_uri, decl_text, *decl_pos)});

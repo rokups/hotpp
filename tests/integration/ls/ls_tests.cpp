@@ -4646,14 +4646,14 @@ TEST(LanguageServerHosts, NewHostFileAppliesToAnOpenScriptAfterAWatchedFilesEven
 }
 
 // A script file that appears on disk after the start. The client sends a Created event. The
-// references of a symbol in an open script include the new file.
+// references of a symbol in an open script include the new file when it imports the open script.
 TEST(LanguageServerHosts, NewScriptFileIsFoundAfterAWatchedFilesEvent)
 {
     REQUIRE_CLANGD();
     TempDir dir;
     const std::filesystem::path root = dir.path();
     std::filesystem::create_directories(root / "hosts");
-    const std::string text = "class Player {\n    float hp = 1.0;\n}\n";
+    const std::string text = "class Player {\n    public float hp = 1.0;\n}\n";
     const std::string path = (root / "a.hot").string();
     write_file(path, text);
     hot::ls::ServerOptions o;
@@ -4665,7 +4665,7 @@ TEST(LanguageServerHosts, NewScriptFileIsFoundAfterAWatchedFilesEvent)
     auto count_other = [&](const std::string& other_uri)
     {
         const json r = client.request("textDocument/references",
-            {{"textDocument", {{"uri", uri_of(path)}}}, {"position", {{"line", 1}, {"character", 11}}},
+            {{"textDocument", {{"uri", uri_of(path)}}}, {"position", {{"line", 1}, {"character", 18}}},
                 {"context", {{"includeDeclaration", true}}}});
         int n = 0;
         if (r.contains("result") && r["result"].is_array())
@@ -4676,7 +4676,8 @@ TEST(LanguageServerHosts, NewScriptFileIsFoundAfterAWatchedFilesEvent)
     };
     const std::string other = (root / "b.hot").string();
     EXPECT_EQ(count_other(uri_of(other)), 0);
-    write_file(other, text);
+    write_file(other,
+        "using \"a.hot\";\nclass Boss {\n    public float Get(Player p) { return p.hp; }\n}\n");
     client.notify(
         "workspace/didChangeWatchedFiles", {{"changes", json::array({{{"uri", uri_of(other)}, {"type", 1}}})}});
     EXPECT_EQ(count_other(uri_of(other)), 1);
@@ -7188,27 +7189,18 @@ void expect_overload_hover(int call_line, const std::string& name, const std::st
 
 } // namespace
 
-// DEFECT: F12 on a call of an overloaded function or method goes to the first overload with the
-// name, not to the overload that the arguments select (the calls with a float or two arguments
-// go to line 1 or 5). The hover selects the right overload.
-TEST(LanguageServerDecl, DISABLED_DefinitionOfAFunctionCallSelectsTheOverloadByTheArgumentType)
+TEST(LanguageServerDecl, DefinitionOfAFunctionCallSelectsTheOverloadByTheArgumentType)
 {
     expect_overload_definition(8, "Pick", 1);
     expect_overload_definition(9, "Pick", 2);
 }
 
-// DEFECT: F12 on a call of an overloaded function or method goes to the first overload with the
-// name, not to the overload that the arguments select (the calls with a float or two arguments
-// go to line 1 or 5). The hover selects the right overload.
-TEST(LanguageServerDecl, DISABLED_DefinitionOfAFunctionCallSelectsTheOverloadByTheArgumentCount)
+TEST(LanguageServerDecl, DefinitionOfAFunctionCallSelectsTheOverloadByTheArgumentCount)
 {
     expect_overload_definition(10, "Pick", 3);
 }
 
-// DEFECT: F12 on a call of an overloaded function or method goes to the first overload with the
-// name, not to the overload that the arguments select (the calls with a float or two arguments
-// go to line 1 or 5). The hover selects the right overload.
-TEST(LanguageServerDecl, DISABLED_DefinitionOfAMethodCallSelectsTheOverloadByTheArgumentType)
+TEST(LanguageServerDecl, DefinitionOfAMethodCallSelectsTheOverloadByTheArgumentType)
 {
     expect_overload_definition(11, "Put", 5);
     expect_overload_definition(12, "Put", 6);

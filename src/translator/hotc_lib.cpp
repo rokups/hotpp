@@ -1973,7 +1973,7 @@ struct Out
     {
         if (m.pos == 0)
             return;
-        auto [sp, gp] = name_segment(head, head_from, sym, script, m.pos, m.name);
+        auto [sp, gp] = name_segment(head, head_from, sym, script, m.pos, m.written_name());
         if (gp == head_from)
             return;
         for (const auto& prm : m.params)
