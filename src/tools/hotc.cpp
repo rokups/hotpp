@@ -42,6 +42,10 @@
 // directory. The list has no comments. A line without a unit name uses the stem. The scripts of
 // the list and the scripts of the command line keep the order of the command line. The option
 // --unit-name with --scripts-file is an error (exit code 1).
+// The option --jobs N (1..4096) sets the count of threads that translate the scripts. Without it,
+// the environment variable HOT_JOBS sets the count. Else the count is min(cores, 16). The tool
+// prints the progress line "[i/N] <unit name>" and the diagnostics of each script in the order
+// of the scripts, so the output is the same for each count of threads.
 // For each file the tool writes DIR/<name>.aot.cpp (generation 1). It also writes
 // DIR/hot_aot_registry.cpp, which defines the constant table hot::aot_table
 // (include/hot/aot.h). The tool does not compile. The CMake function
@@ -67,6 +71,7 @@
 // output is the .so file. In emit mode it needs -o. CMake and Ninja read the file.
 //
 // Exit code: 0 success, 1 error, 2 bad usage.
+#include "hot/backend.h"
 #include "hot/clang_files_backend.h"
 #include "hot/config.h"
 #include "hot/hotc_lib.h"
@@ -75,14 +80,18 @@
 #include "hot/runtime/process.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
+#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <set>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -102,10 +111,11 @@ namespace
         "       hotc --aot <file.hot>... --out-dir DIR [-I dir]... [--prelude file]... [--no-strict-borrowed]\n"
         "            [--format=std|fmt] [--view=hot|std] [--resource-dir dir] [--std=c++17|c++20|c++23] [--aot-optimized]\n"
         "            [-D<name>[=value]]... [-U<name>]... [--defines-file file] [--includes-file file]\n"
-        "            [--scripts-file file]\n"
+        "            [--scripts-file file] [--jobs N]\n"
         "  --defines-file <file> (--aot) one define for each line: NAME or NAME=value; -D and -U lines also work\n"
         "  --includes-file <file> (--aot) one include directory for each line, as -I\n"
         "  --scripts-file <file> (--aot) one script for each line: PATH or PATH<TAB>UNIT_NAME; not with --unit-name\n"
+        "  --jobs <N>           (--aot) translate on N threads, 1..4096 (default: HOT_JOBS or min(cores, 16))\n"
         "  --unit-name <name>   (--aot, --emit-cpp) the unit name of the n-th script (default: the stem)\n"
         "Each mode also accepts:\n"
         "  --depfile <path>     write the headers and imported scripts that the translation read (Make format)\n"
@@ -136,6 +146,7 @@ struct Args
     std::vector<std::string> inputs;
     std::vector<std::string> unit_names; // --unit-name: one for each input, in the order of the inputs
     std::vector<std::string> input_units; // one for each input: the unit name from --scripts-file, or empty
+    unsigned jobs = 0; // --jobs: the count of threads of --aot (0: HOT_JOBS or the default)
     bool has_scripts_file = false; // the flag --scripts-file is present
     std::string out_dir, output, slots, resource_dir;
     std::string target, sysroot; // --target, --sysroot: empty means the default of the build
@@ -321,6 +332,16 @@ Args parse_args(int argc, char** argv)
             }
             r.has_aot_only = true;
         }
+        else if (a == "--jobs")
+        {
+            const std::string v = next();
+            char* end = nullptr;
+            const unsigned long n = std::strtoul(v.c_str(), &end, 10);
+            if (v.empty() || *end != '\0' || n < 1 || n > 4096)
+                usage();
+            r.jobs = static_cast<unsigned>(n);
+            r.has_aot_only = true;
+        }
         else if (a == "--scripts-file")
         {
             const std::string file = next();
@@ -353,15 +374,22 @@ Args parse_args(int argc, char** argv)
 
 // Prints the errors and the warnings of the translator. The default form is the form of a
 // rewritten compiler diagnostic. --raw-diagnostics prints the text as it is.
-void print_diagnostics(const Args& args, const hotc::TranslateOptions& opt, const hotc::TranslateResult& r)
+std::string diagnostics_text(const Args& args, const hotc::TranslateOptions& opt, const hotc::TranslateResult& r)
 {
+    std::string all;
     hotc::ScriptTexts scripts = hotc::script_texts(opt.script_name, opt.script_text, r);
     scripts.insert(scripts.end(), opt.modules.begin(), opt.modules.end());
     for (const std::string* text : {&r.diagnostics, &r.warnings})
     {
         const std::string out = args.raw_diagnostics ? *text : hotc::rewrite_translator_diagnostic(*text, scripts);
-        std::fputs(out.c_str(), stderr);
+        all += out;
     }
+    return all;
+}
+
+void print_diagnostics(const Args& args, const hotc::TranslateOptions& opt, const hotc::TranslateResult& r)
+{
+    std::fputs(diagnostics_text(args, opt, r).c_str(), stderr);
 }
 
 // The C++ identifier of a script name: letters, digits and "_".
@@ -561,40 +589,102 @@ int run_aot(const Args& args)
     std::string slots; // the manifests of all scripts: a class belongs to one script
     std::set<std::string> seen_slot_lines;
     bool failed = false;
-    for (size_t input = 0; input < args.inputs.size(); ++input)
+    // The result of one script. A worker fills its own slot only.
+    struct Slot
     {
+        hotc::TranslateOptions opt;
+        hotc::TranslateResult r;
+        std::string out; // the path of the .aot.cpp file
+        std::string diag; // the text for stderr: a read error or the diagnostics
+        bool read_ok = false;
+        bool write_failed = false;
+        uint64_t source_hash = 0;
+    };
+    const size_t count = args.inputs.size();
+    std::vector<Slot> results(count);
+    std::vector<char> done(count, 0);
+    std::mutex mutex;
+    std::condition_variable cv;
+    size_t printed = 0; // the scripts that have a progress line; guarded by "mutex"
+    std::atomic<size_t> next_index{0};
+
+    auto translate_one = [&](size_t input)
+    {
+        Slot& slot = results[input];
         const std::string& path = args.inputs[input];
         const std::string stem = fs::path(path).stem().string();
         const std::string id = identifier(unit_names[input]);
-        const std::string out = args.out_dir + "/" + stem + ".aot.cpp";
-        hotc::TranslateOptions opt = base;
+        slot.out = args.out_dir + "/" + stem + ".aot.cpp";
+        hotc::TranslateOptions& opt = slot.opt;
+        opt = base;
         opt.script_name = path;
         opt.unit_name = unit_names[input];
-        opt.output_name = out;
+        opt.output_name = slot.out;
         if (!read_file(path, opt.script_text))
         {
-            std::fprintf(stderr, "hotc: error: cannot read %s\n", path.c_str());
-            failed = true;
-            continue;
+            slot.diag = "hotc: error: cannot read " + path + "\n";
+            return;
         }
-        hotc::TranslateResult r = hotc::translate(opt, session);
-        print_diagnostics(args, opt, r);
-        if (!r.ok)
-        {
-            failed = true;
-            continue;
-        }
+        slot.read_ok = true;
+        slot.r = hotc::translate(opt, session);
+        slot.diag = diagnostics_text(args, opt, slot.r);
+        if (!slot.r.ok)
+            return;
         // Each script gets its own register function, so the scripts link into one program.
-        std::string cpp = r.cpp;
+        std::string cpp = slot.r.cpp;
         const size_t eol = cpp.find('\n');
         cpp.insert(eol == std::string::npos ? cpp.size() : eol + 1,
             "#define script_register hot_script_register_" + id + "\n");
         cpp += "#undef script_register\n";
-        if (!write_file(out, cpp, true))
-            failed = true;
+        if (!write_file(slot.out, cpp, true))
+            slot.write_failed = true;
         // The interface header of the script: the importers include it. The TU does not include it.
-        if (!write_file(args.out_dir + "/" + stem + ".iface.h", r.iface_header, true))
+        if (!write_file(args.out_dir + "/" + stem + ".iface.h", slot.r.iface_header, true))
+            slot.write_failed = true;
+        slot.source_hash = hot::hash_script_text(opt.script_text);
+    };
+    // Prints the progress line and the text of each finished script, in the order of the scripts.
+    auto print_ready = [&]()
+    {
+        while (printed < count && done[printed])
+        {
+            std::fprintf(stderr, "[%zu/%zu] %s\n", printed + 1, count, unit_names[printed].c_str());
+            std::fputs(results[printed].diag.c_str(), stderr);
+            ++printed;
+        }
+        std::fflush(stderr);
+    };
+    auto work = [&]()
+    {
+        for (size_t input; (input = next_index.fetch_add(1)) < count;)
+        {
+            translate_one(input);
+            std::lock_guard<std::mutex> lock(mutex);
+            done[input] = 1;
+            print_ready();
+            cv.notify_all();
+        }
+    };
+    {
+        const unsigned jobs = args.jobs ? args.jobs : hot::build_jobs();
+        const size_t threads = std::min<size_t>(jobs, count);
+        std::vector<std::thread> pool;
+        for (size_t t = 1; t < threads; ++t)
+            pool.emplace_back(work);
+        work();
+        for (std::thread& t : pool)
+            t.join();
+    }
+    // The serial merge, in the order of the scripts.
+    for (size_t input = 0; input < count; ++input)
+    {
+        Slot& slot = results[input];
+        if (!slot.read_ok || !slot.r.ok || slot.write_failed)
+        {
             failed = true;
+            continue;
+        }
+        const hotc::TranslateResult& r = slot.r;
         // An importer has the lines of the classes of its imports too. A line is in the manifest
         // once: a backend seeds its slot file with it and makes one enumerator for each line.
         {
@@ -604,9 +694,9 @@ int run_aot(const Args& args)
                     slots += line + "\n";
         }
         names.push_back(r.unit);
-        source_hashes.push_back(hot::hash_script_text(opt.script_text));
+        source_hashes.push_back(slot.source_hash);
         units.push_back({r.iface_hash, r.import_hashes});
-        dep_rules.push_back({out, r.dependencies});
+        dep_rules.push_back({slot.out, r.dependencies});
     }
     if (failed)
         return 1;
