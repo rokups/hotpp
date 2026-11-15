@@ -232,6 +232,29 @@ TEST(RefResolver, RenameConflictOfAMemberLooksAtTheClassFamily)
     EXPECT_NE(s.conflict("mp", 0, "G").find("the member would hide"), std::string::npos);
 }
 
+TEST(RefResolver, NativeBasesOfTheFamily)
+{
+    const ConflictScript s;
+    auto bases = [&](const std::string& w, int n, FileRefs table)
+    {
+        const uint32_t off = s.at(w, n);
+        for (const ResolvedRef& r : table.refs)
+            if (r.offset == off)
+                return hot::ls::native_bases_of_family({{&table, s.text}}, r);
+        return std::vector<std::string>{"no ref"};
+    };
+    // No native base: A and B are script classes.
+    EXPECT_TRUE(bases("hp", 0, s.table).empty());
+    // A has the native base Node. B derives from A: the family has Node.
+    FileRefs native = s.table;
+    native.bases = {{"A", "Node"}, {"B", "A"}};
+    EXPECT_EQ(bases("hp", 0, native), std::vector<std::string>{"Node"});
+    EXPECT_EQ(bases("zz", 0, native), std::vector<std::string>{"Node"}); // a script chain ending in a native class
+    // A module symbol and a local have no class family.
+    EXPECT_TRUE(bases("G", 1, native).empty());
+    EXPECT_TRUE(bases("y", 0, native).empty());
+}
+
 TEST(RefResolver, RenameConflictOfAModuleSymbolLooksAtTheModuleDeclarations)
 {
     const ConflictScript s;

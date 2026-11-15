@@ -88,6 +88,13 @@ struct RenameFile
     std::string_view text;
 };
 
+// The names of the native base classes of the class family of the member "target". A native base
+// is a base name that is not a script class in "files". Gives an empty list for a target that is
+// not a member. Only the direct native base of a script class is known: the bases of a native
+// class are not in the tables. rename_conflict does not see the members of these classes: the
+// server asks the native index for them.
+std::vector<std::string> native_bases_of_family(const std::vector<RenameFile>& files, const hotc::ResolvedRef& target);
+
 // The conflict check of a rename of "target" (a ref of the symbol) to "new_name". "files" are the
 // files that the rename can change: the file of the declaration and its importers. Gives an
 // empty string when the new name is free. Else it gives a message with the file and the line.
@@ -104,6 +111,7 @@ struct RenameFile
 // name conflicts. The table has no function ranges: the function is the range between the
 // declarations that are not locals or parameters (conservative). "files" must also have the
 // imports of the files, thus the bases of the family and the imported module symbols.
+// The check does not see the members of a native base class (see native_bases_of_family).
 std::string rename_conflict(
     const std::vector<RenameFile>& files, const hotc::ResolvedRef& target, const std::string& new_name);
 

@@ -5876,6 +5876,43 @@ TEST(LanguageServerNative, RenameOfABaseClassMethodAndFieldChangesNativeFile)
     expect_native_rename(t, "this.rage =", "rage", "fury", {});
 }
 
+// HOT-6: the rename conflict check looks at the members of a native base class.
+TEST(LanguageServerNative, RenameToAMemberOfTheNativeBaseIsRefused)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    for (const char* taken : {"rage", "Roar"})
+    {
+        json p = {{"textDocument", {{"uri", s.uri}}}, {"position", native_pos("Counter counter;", "counter")},
+            {"newName", taken}};
+        const json r = s.client->request("textDocument/rename", p);
+        ASSERT_TRUE(r.contains("error")) << r.dump();
+        EXPECT_NE(r["error"].value("message", "").find(std::string("the native class Boss has a member ") + taken),
+            std::string::npos) << r.dump();
+    }
+}
+
+TEST(LanguageServerNative, RenameToAFreeNameWithANativeBaseWorks)
+{
+    REQUIRE_CLANGD();
+    NativeSession s;
+    json p = {{"textDocument", {{"uri", s.uri}}}, {"position", native_pos("Counter counter;", "counter")},
+        {"newName", "tally"}};
+    const json r = s.client->request("textDocument/rename", p);
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    EXPECT_TRUE(r["result"]["changes"].contains(s.uri)) << r.dump();
+}
+
+TEST(LanguageServerNative, RenameInAClassWithoutNativeBaseIgnoresNativeMembers)
+{
+    REQUIRE_CLANGD();
+    const std::string script = "using \"natives.h\";\n\nclass Solo {\n    int a = 1;\n}\n";
+    NativeSession s(script.c_str());
+    json p = {{"textDocument", {{"uri", s.uri}}}, {"position", pos(3, 8)}, {"newName", "rage"}};
+    const json r = s.client->request("textDocument/rename", p);
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+}
+
 // The header of the symbol is in a directory that is not a workspace folder. No host names this
 // directory as an include dir, so the rename is refused.
 TEST(LanguageServerNative, RenameIsRefusedForASymbolOutsideTheWorkspace)

@@ -900,6 +900,14 @@ private:
     };
     // One window/showMessage for a rename of a class with an attribute or a tagged field (HOT-10).
     void warn_attribute_rename(const Resolved& r);
+    // The conflict check for the members of the native bases (HOT-6). Gives a refusal text, or an
+    // empty string when the rename can go on. rename_conflict does not see a native class, so the
+    // workspace index of clangd gives the members: a symbol "<Base>::<new_name>". A hit refuses.
+    // Fail closed: when clangd is not ready, gives an error or does not answer in time, the
+    // rename is refused ("the members of the native base B are unknown"). A definitive empty
+    // answer lets the rename go on. Limits: only the direct native base of a script class (no walk
+    // to the base of a native base), and the index must know the header of the base.
+    std::string native_member_conflict(const Doc& d, const std::vector<std::string>& bases, const std::string& new_name);
     // The places of a symbol, by the URI of the script. The positions are the starts of the names.
     using PlaceMap = std::map<std::string, std::set<Pos>>;
     // What clangd tells about a name of the generated text: the script ref of its declaration, a
@@ -4976,6 +4984,10 @@ std::optional<std::variant<json, std::string>> Server::table_rename(
         conflict_files.push_back({k.table.get(), k.text.s});
     if (std::string c = rename_conflict(conflict_files, r->ref, new_name); !c.empty())
         return c;
+    if (!local)
+        if (const std::vector<std::string> native = native_bases_of_family(conflict_files, r->ref); !native.empty())
+            if (std::string c = native_member_conflict(d, native, new_name); !c.empty())
+                return c;
     json changes = json::object();
     for (const auto& [uri, starts] : at)
     {
@@ -4989,6 +5001,32 @@ std::optional<std::variant<json, std::string>> Server::table_rename(
     }
     warn_attribute_rename(*r);
     return json{{"changes", changes}};
+}
+
+std::string Server::native_member_conflict(
+    const Doc& d, const std::vector<std::string>& bases, const std::string& new_name)
+{
+    for (const std::string& base : bases)
+    {
+        const std::string unknown = "cannot rename to " + new_name + ": the members of the native base " + base + " are unknown";
+        if (!clangd_ || !clangd_->running())
+            return unknown;
+        wait_for_native_ready(d);
+        const auto r = clangd_result("workspace/symbol", {{"query", base + "::" + new_name}}, kNativeBudgetMs);
+        if (!r || !r->is_array())
+            return unknown;
+        for (const json& sym : *r)
+        {
+            const json loc = sym.value("location", json());
+            std::string container = sym.value("containerName", std::string());
+            if (const size_t colons = container.rfind("::"); colons != std::string::npos)
+                container = container.substr(colons + 2);
+            if (sym.value("name", std::string()) == new_name && container == base && loc.is_object()
+                && !gen_docs_.count(loc.value("uri", std::string())) && loc.value("uri", std::string()) != d.gen_uri)
+                return "cannot rename to " + new_name + ": the native class " + base + " has a member " + new_name;
+        }
+    }
+    return std::string();
 }
 
 // A rename note (HOT-10, never a refusal): a class with an attribute, or a field or a property with a
