@@ -5895,6 +5895,24 @@ TEST(LanguageServerNative, RenameOfAClassWithAConstructorChangesAllNamesInTheHea
     }
 }
 
+// A constructor call in a statement of a method body: the generated C++ has a runtime call
+// around it. The rename must not ask clangd about a runtime name.
+TEST(LanguageServerNative, RenameOfAConstructorCallInAMethodBodyFindsTheClass)
+{
+    REQUIRE_CLANGD();
+    const char* const header = "#pragma once\nstruct Pnt { Pnt(int v = 0); ~Pnt(); int x; };\n";
+    const char* const script = "using \"natives.h\";\n\nclass Hero {\n    void Tick(float dt) {\n"
+                               "        int k = Pnt().x;\n        k = k + 1;\n    }\n}\n";
+    NativeSession s(script, 10000, true, "", 10000, header);
+    const json r = native_rename_request(s, "Pnt()", "Pnt", "Pos3", script);
+    SCOPED_TRACE(r.dump());
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    const std::string header_uri = uri_of((s.dir.path() / "natives.h").string());
+    ASSERT_TRUE(r["result"]["changes"].contains(header_uri)) << r.dump();
+    EXPECT_EQ(apply_edits(header, r["result"]["changes"][header_uri]),
+        "#pragma once\nstruct Pos3 { Pos3(int v = 0); ~Pos3(); int x; };\n");
+}
+
 // An export macro is between "struct" and the name.
 TEST(LanguageServerNative, RenameOfAClassWithAnExportMacroChangesConstructorAndDestructor)
 {
