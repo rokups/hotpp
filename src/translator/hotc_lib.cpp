@@ -4492,6 +4492,16 @@ void translate_impl(
                 std::make_move_iterator(using_ns.end()));
             sc.aliases.insert(
                 sc.aliases.begin(), std::make_move_iterator(aliases.begin()), std::make_move_iterator(aliases.end()));
+            {
+                // Each interface name has one definition: in the importer or in one import.
+                std::set<std::string> iface_seen;
+                for (const hotc::ast::InterfaceDef& d : imported_interfaces)
+                    if (!iface_seen.insert(d.name).second)
+                        fail_at(map, d.pos, "the interface '" + d.name + "' is declared twice");
+                for (const hotc::ast::InterfaceDef& d : sc.interfaces)
+                    if (!iface_seen.insert(d.name).second)
+                        fail_at(map, d.pos, "the interface '" + d.name + "' is declared twice");
+            }
             sc.interfaces.insert(sc.interfaces.begin(), std::make_move_iterator(imported_interfaces.begin()),
                 std::make_move_iterator(imported_interfaces.end()));
             // A stub of the importing script wins over a stub with the same name in an import.

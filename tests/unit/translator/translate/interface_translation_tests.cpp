@@ -234,3 +234,37 @@ TEST(InterfaceTranslation, ScriptInterfaceOfAnIndirectImport)
         {{"b.hot", "using \"a.hot\";\nint Twice(int v) { return v * 2; }\n"}, {"a.hot", kShapeLib}});
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
+
+// The importer declares a name that an import declares: an error at the declaration of the importer.
+TEST(InterfaceTranslation, ImporterRedeclaresAnImportedInterface)
+{
+    const hotc::TranslateResult r = run_imports(
+        "using \"a.hot\";\ninterface IShape {\n    float Area();\n}\n", {{"a.hot", kShapeLib}});
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "the interface 'IShape' is declared twice")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "t.hot:2:")) << r.diagnostics;
+}
+
+// Two imports declare one name: an error.
+TEST(InterfaceTranslation, TwoImportsDeclareOneInterface)
+{
+    const hotc::TranslateResult r = run_imports("using \"a.hot\";\nusing \"c.hot\";\n",
+        {{"a.hot", kShapeLib}, {"c.hot", kShapeLib}});
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "the interface 'IShape' is declared twice")) << r.diagnostics;
+}
+
+// A diamond: two imports reach one script. The interface has one definition and there is no error.
+TEST(InterfaceTranslation, DiamondImportHasOneInterfaceDefinition)
+{
+    const hotc::TranslateResult r = run_imports(
+        "using \"b.hot\";\nusing \"c.hot\";\nclass Circle : IShape {\n    float Area() { return 3.0; }\n}\n",
+        {{"b.hot", "using \"a.hot\";\nint F() { return 1; }\n"},
+            {"c.hot", "using \"a.hot\";\nint G() { return 2; }\n"}, {"a.hot", kShapeLib}});
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    size_t count = 0;
+    for (size_t at = r.cpp.find("struct IShape__iface;"); at != std::string::npos;
+         at = r.cpp.find("struct IShape__iface;", at + 1))
+        ++count;
+    EXPECT_EQ(count, 1u);
+}
