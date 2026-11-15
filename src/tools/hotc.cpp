@@ -567,7 +567,7 @@ int run_aot(const Args& args)
                     slots += line + "\n";
         }
         names.push_back(r.unit);
-        source_hashes.push_back(hot::hash_text(opt.script_text));
+        source_hashes.push_back(hot::hash_script_text(opt.script_text));
         units.push_back({r.iface_hash, r.import_hashes});
         dep_rules.push_back({out, r.dependencies});
     }

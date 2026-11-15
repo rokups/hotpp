@@ -2,6 +2,7 @@
 // One test for each of the 8 rules, in the order of the rules.
 
 #include "hot/iface_compat.h"
+#include "hot/runtime/hashing.h"
 
 #include <gtest/gtest.h>
 
@@ -185,4 +186,22 @@ TEST(IfaceCompat, TextFormRoundTrips)
     EXPECT_EQ(n, names({"x", "y"}));
     ASSERT_TRUE(hot::decode_use_names(hot::encode_use_names({}), n));
     EXPECT_TRUE(n.empty());
+}
+
+TEST(ScriptTextHash, LineEndKindDoesNotChangeTheHash)
+{
+    const uint64_t lf = hot::hash_script_text("class A {\n    int a = 1;\n}\n");
+    EXPECT_EQ(hot::hash_script_text("class A {\r\n    int a = 1;\r\n}\r\n"), lf);
+    EXPECT_EQ(hot::hash_script_text("class A {\r    int a = 1;\r}\r"), lf);
+    EXPECT_EQ(hot::hash_script_text("class A {\r\n    int a = 1;\n}\r"), lf);
+    // A text without a CR keeps the value of hot::hash_text.
+    EXPECT_EQ(lf, hot::hash_text("class A {\n    int a = 1;\n}\n"));
+}
+
+TEST(ScriptTextHash, DifferentContentGivesADifferentHash)
+{
+    EXPECT_NE(hot::hash_script_text("class A {\n    int a = 1;\n}\n"), hot::hash_script_text("class A {\n    int a = 2;\n}\n"));
+    // A blank line is content: "\r\r" is two line ends.
+    EXPECT_NE(hot::hash_script_text("a\r\r"), hot::hash_script_text("a\r\n"));
+    EXPECT_NE(hot::hash_script_text("a\n\n"), hot::hash_script_text("a\n"));
 }

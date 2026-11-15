@@ -1455,6 +1455,23 @@ TEST(HotcTool, AotRegistryHasTheSourceHashAndTheEnvironmentHash)
     EXPECT_EQ(read_file(dir + "/o5/hot_aot_registry.cpp").find(want_env + "};"), std::string::npos);
 }
 
+TEST(HotcTool, AotRegistryHasTheSameSourceHashForCrlfAndLf)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_aot_crlf");
+    std::filesystem::create_directories(dir);
+    const std::string lf = "class H {\n    int a = 1;\n}\n";
+    const std::string crlf = "class H {\r\n    int a = 1;\r\n}\r\n";
+    std::string text;
+    write_text(dir + "/h.hot", lf);
+    ASSERT_EQ(run_hotc(cat({{"--aot", dir + "/h.hot", "--out-dir", dir + "/lf"}, include_args()}), text), 0) << text;
+    write_text(dir + "/h.hot", crlf);
+    ASSERT_EQ(run_hotc(cat({{"--aot", dir + "/h.hot", "--out-dir", dir + "/crlf"}, include_args()}), text), 0) << text;
+    const std::string want = std::to_string(hot::hash_script_text(lf)) + "ull";
+    EXPECT_NE(registry_row(read_file(dir + "/lf/hot_aot_registry.cpp"), "h").find(want), std::string::npos);
+    EXPECT_NE(registry_row(read_file(dir + "/crlf/hot_aot_registry.cpp"), "h").find(want), std::string::npos);
+}
+
 TEST(HotcTool, AotModeFailsWhenAnImportIsNotAnInput)
 {
     TestScratch scratch;
