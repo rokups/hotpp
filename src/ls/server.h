@@ -65,6 +65,9 @@ struct ServerOptions
     // the list is partial and the server tells the user. The server is single-threaded: a long
     // budget blocks the other requests (HOT-36).
     int reference_budget_ms = 10000;
+    // The identity of the translator build. It goes in the shard digest, so a shard of an older
+    // translator is rejected (HOT-33). Empty: the size and the mtime of the running executable.
+    std::string build_id;
 };
 
 // Runs the server on two file descriptors until "exit" or the end of the input.

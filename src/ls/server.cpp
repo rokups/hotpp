@@ -384,6 +384,26 @@ struct NativeRenameJob
     std::vector<std::string> extra_script_paths;
 };
 
+namespace
+{
+// The identity of this build: the size and the mtime of the running executable (HOT-33).
+std::string executable_build_id()
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+#ifdef _WIN32
+    const fs::path exe;
+#else
+    const fs::path exe = fs::read_symlink("/proc/self/exe", ec);
+#endif
+    if (exe.empty())
+        return "unknown";
+    const auto size = fs::file_size(exe, ec);
+    const auto time = fs::last_write_time(exe, ec).time_since_epoch().count();
+    return std::to_string(size) + ':' + std::to_string(time);
+}
+} // namespace
+
 class Server
 {
 public:
@@ -392,6 +412,8 @@ public:
         , out_(out)
         , opt_(std::move(o))
     {
+        if (opt_.build_id.empty())
+            opt_.build_id = executable_build_id();
         read_compile_commands();
     }
     ~Server()
@@ -7111,7 +7133,7 @@ std::string Server::shard_digest(const std::string& path, const std::string& tex
     std::string flags_text;
     for (const std::string& f : eff.extra_flags)
         flags_text += f + '\n';
-    return SymbolIndex::digest(index_.cached_digest(path, text, eff.include_dirs) + flags_text);
+    return SymbolIndex::digest(index_.cached_digest(path, text, eff.include_dirs) + flags_text + "\nbuild:" + opt_.build_id);
 }
 
 void Server::add_script_symbols(const std::string& query, json& out)

@@ -3089,6 +3089,30 @@ TEST(LanguageServer, TheRefTablesComeFromTheDocumentTheShardAndTheImportGraph)
     EXPECT_TRUE(r["importers"].empty()) << r.dump();
 }
 
+// A shard of another translator build is not loaded (HOT-33). The same build loads it.
+TEST(LanguageServer, AShardOfAnotherBuildIsNotLoaded)
+{
+    TempDir dir;
+    const std::string script = (dir.path() / "a.hot").string();
+    write_file(script, "int f() { return 1; }\n");
+    auto run = [&](const std::string& build_id)
+    {
+        hot::ls::ServerOptions o = options(dir, false);
+        o.build_id = build_id;
+        LsClient client(o);
+        client.initialize(uri_of(dir.path().string()));
+        client.open(uri_of(script), "int f() { return 1; }\n");
+        client.request("hot/indexStats", {{"tables", {uri_of(script)}}});
+        client.notify("textDocument/didClose", {{"textDocument", {{"uri", uri_of(script)}}}});
+        client.request("hot/indexStats", json::object());
+        client.request("hot/indexStats", {{"tables", {uri_of(script)}}});
+        return client.request("hot/indexStats", json::object())["result"].value("loaded", -1);
+    };
+    EXPECT_EQ(run("build-a"), 0); // stores the shard
+    EXPECT_GT(run("build-a"), 0);
+    EXPECT_EQ(run("build-b"), 0);
+}
+
 // The same for a member. The references of a member come from clangd. The shard keeps them.
 TEST(LanguageServer, MemberRenameOnAClosedFileAfterARestartUsesTheIndex)
 {
