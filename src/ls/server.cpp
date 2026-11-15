@@ -343,6 +343,8 @@ std::optional<Pos> Doc::gen_script_to_text(Pos p) const
 }
 
 static std::string blank_non_code(std::string_view l, bool& in_block);
+static bool has_word(std::string_view text, const std::string& name);
+static std::vector<int> whole_word_cols(std::string_view l, const std::string& w);
 
 // The state of one native rename. The helpers of Server::native_rename share it.
 // True for the name of a file that "hotc --compile-commands" writes: "<stem>.g<N>.cpp".
@@ -812,6 +814,7 @@ private:
     // True when the range of a real C++ file holds exactly the old name.
     bool is_old_name(NativeRenameJob& job, const std::string& uri, const json& range);
     std::string rename_other_scripts(NativeRenameJob& job, const Doc& d);
+    void native_uses_in_scripts(const Doc& d, Pos ask, const std::string& word_name, json& out);
     // clangd renames the class name only. This adds the names of the constructors and the
     // destructor: in the class body, and in the out-of-class definitions ("Old::Old(").
     void add_ctor_edits(NativeRenameJob& job);
@@ -4062,6 +4065,7 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
     // does not hold the editor.
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kNativeBudgetMs);
     std::set<std::string> seen;
+    std::optional<Pos> hit_ask;
     for (const Pos& g : asks)
     {
         int timeout_ms = 60000;
@@ -4134,9 +4138,12 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
                             out.push_back(std::move(m));
                     }
                 }
+            hit_ask = g;
             break;
         }
     }
+    if (is_ref && hit_ask)
+        native_uses_in_scripts(d, *hit_ask, here_word, out);
     // A symbol word with a place in the generated text (or no generated text at all, because the
     // translation never worked), but no answer, and no host in use (a host that
     // matches, or the nearest host): tell the user one time why F12 cannot find the symbol.
@@ -4164,6 +4171,119 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
             });
     }
     return out;
+}
+
+// The references of a native symbol: clangd gives the places in the generated file of "d" and
+// in the generated files of other scripts. The places in a generated file of another script have
+// no map here. Remove them. Then find the uses in the other scripts of the workspace: the script
+// words with the name that have the same declaration as the symbol at "ask".
+void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& word_name, json& out)
+{
+    auto is_gen = [&](const json& l)
+    {
+        const std::string uri = l.value("uri", std::string());
+        return uri != d.uri && is_generated_uri(uri);
+    };
+    out.erase(std::remove_if(out.begin(), out.end(), is_gen), out.end());
+    if (word_name.empty() || !clangd_)
+        return;
+    using Target = std::tuple<std::string, int, int>;
+    auto targets_at = [&](const Doc& o, Pos g)
+    {
+        std::vector<Target> list;
+        const json tdp = {{"textDocument", {{"uri", o.gen_uri}}}, {"position", gen_pos(o, g)}};
+        for (const char* kind : {"textDocument/declaration", "textDocument/definition"})
+        {
+            const auto r = clangd_result(kind, tdp, kNativeBudgetMs);
+            for (const json& loc : r ? (r->is_array() ? *r : json::array({*r})) : json::array())
+            {
+                const std::string uri = loc.contains("targetUri") ? json_str(loc, "targetUri") : json_str(loc, "uri");
+                const json range = loc.contains("targetSelectionRange") ? loc["targetSelectionRange"] : loc.value("range", json());
+                if (uri.empty() || !range.is_object() || !range.contains("start") || is_generated_uri(uri))
+                    continue;
+                list.emplace_back(uri, range["start"].value("line", 0), range["start"].value("character", 0));
+            }
+        }
+        return list;
+    };
+    const std::vector<Target> target = targets_at(d, ask);
+    if (target.empty())
+        return; // not a native symbol
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(opt_.rename_budget_ms);
+    auto norm = [](const std::string& p) { return fs::path(p).lexically_normal().string(); };
+    std::vector<std::string> todo;
+    std::set<std::string> known = {norm(d.path)};
+    auto add = [&](const std::string& path)
+    {
+        if (known.insert(norm(path)).second)
+            todo.push_back(path);
+    };
+    for (const auto& [uri, doc] : docs_)
+        if (doc->path.size() > 4 && doc->path.compare(doc->path.size() - 4, 4, ".hot") == 0)
+            add(doc->path);
+    for (const std::string& path : workspace_scripts(true))
+        add(path);
+    std::set<std::string> seen;
+    for (const json& l : out)
+        seen.insert(l.dump());
+    for (const std::string& path : todo)
+    {
+        if (std::chrono::steady_clock::now() >= deadline)
+            break;
+        const std::shared_ptr<Doc> open = open_doc_at(path);
+        std::optional<std::string> closed_text;
+        if (!open)
+        {
+            closed_text = read_file(path);
+            if (!closed_text || !has_word(*closed_text, word_name))
+                continue;
+        }
+        const Text text = open ? open->text : Text(*closed_text);
+        std::vector<Pos> words;
+        bool block = false;
+        for (int line = 0; line < static_cast<int>(text.starts.size()); ++line)
+            for (const int col : whole_word_cols(blank_non_code(text.line(line), block), word_name))
+                words.push_back({line, col});
+        if (words.empty())
+            continue;
+        auto work = [&](Doc& o)
+        {
+            if (!wait_for_native_ready_until(o, deadline))
+                return;
+            for (const Pos& p : words)
+            {
+                bool by_word = false;
+                for (const Pos& g : gen_asks(o, p, by_word))
+                {
+                    const std::vector<Target> here = targets_at(o, g);
+                    if (here.empty())
+                        continue;
+                    const bool same = std::any_of(here.begin(), here.end(),
+                        [&](const Target& t) { return std::find(target.begin(), target.end(), t) != target.end(); });
+                    if (same)
+                    {
+                        const json w = {{"uri", o.uri},
+                            {"range", script_range(o, p, {p.line, p.col + static_cast<int>(word_name.size())})}};
+                        if (seen.insert(w.dump()).second)
+                            out.push_back(w);
+                    }
+                    break;
+                }
+            }
+        };
+        if (open)
+        {
+            if (open->facts.cpp.empty() || open->gen_script.s != open->text.s)
+                continue; // the script does not translate
+            work(*open);
+        }
+        else
+        {
+            Doc tmp = closed_doc(path, *closed_text);
+            tmp.facts = timed_translate([&] { return hotc::analyze(tmp.text.s, translate_options(tmp), session_); });
+            with_temp_clangd(tmp, [&] { work(tmp); });
+        }
+    }
 }
 
 std::set<Pos> Server::class_places(const Doc& d, const std::string& name) const
