@@ -579,11 +579,18 @@ template <DeclEnd E, typename Reader> bool find_decl_type(DeclCursor<Reader> c, 
             {
                 DeclCursor<Reader> next = c;
                 next.skip_blank();
-                const int n = next.get();
+                int n = next.get();
                 bool end = false;
                 if constexpr (E == DeclEnd::Stmt)
                 {
                     end = n == ';' || (n == '=' && next.get(1) != '=');
+                    // An array declarator: "Foo* count[2];" or "int a[2][3] = ...".
+                    while (!end && n == '[' && skip_type_list(next))
+                    {
+                        next.skip_blank();
+                        n = next.get();
+                        end = n == ';' || (n == '=' && next.get(1) != '=');
+                    }
                 }
                 else if constexpr (E == DeclEnd::LocalFn)
                 {

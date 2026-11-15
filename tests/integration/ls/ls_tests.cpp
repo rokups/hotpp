@@ -7383,7 +7383,7 @@ TEST(LanguageServerScope, PointerDeclarationFormsDoNotRenameTheLocal)
 // A translator gap: in "Foo* count[2];" the table gives the local "count" the id of the static.
 // The rename follows the table, thus it changes the local too. Enable the test when the
 // translator gives the local its own id.
-TEST(LanguageServerScope, DISABLED_PointerArrayDeclarationDoesNotRenameTheLocal)
+TEST(LanguageServerScope, PointerArrayDeclarationDoesNotRenameTheLocal)
 {
     REQUIRE_CLANGD();
     const json r = static_rename_with("Foo* count[2];");
