@@ -6602,6 +6602,120 @@ TEST(LanguageServerNative, RenameOfAnOverrideChangesAScriptThatCallsTheBaseMetho
 namespace
 {
 
+// A header and two scripts, "hero.hot" and "pet.hot". Both scripts call a method with the same
+// name. The rename starts in "hero.hot" at the call (line 5, column 10).
+struct ProbeCase
+{
+    TempDir dir;
+    std::string hero_path, pet_path;
+    std::unique_ptr<LsClient> client;
+    static std::string script(const std::string& cls, const std::string& type, const std::string& call)
+    {
+        return "using \"probe.h\";\n\nclass " + cls + " {\n    void f() {\n        " + type + " v;\n        v." + call
+            + ";\n    }\n}\n";
+    }
+    ProbeCase(const std::string& header, const std::string& hero, const std::string& pet, int budget_ms = 10000)
+    {
+        write_file((dir.path() / "probe.h").string(), header);
+        hero_path = (dir.path() / "hero.hot").string();
+        pet_path = (dir.path() / "pet.hot").string();
+        write_file(hero_path, hero);
+        write_file(pet_path, pet);
+        hot::ls::ServerOptions o = options(dir, true);
+        o.include_dirs.push_back(dir.path().string());
+        o.rename_budget_ms = budget_ms;
+        client = std::make_unique<LsClient>(o);
+        client->initialize(uri_of(dir.path().string()));
+    }
+    std::string uri(const char* file) const { return uri_of((dir.path() / file).string()); }
+    // The answer is an edit or a refusal of the rename at the call in "hero.hot".
+    json rename(const std::string& hero_text, const char* new_name = "Bar")
+    {
+        client->open(uri_of(hero_path), hero_text);
+        const json p = {{"textDocument", {{"uri", uri_of(hero_path)}}}, {"position", pos(5, 10)}, {"newName", new_name}};
+        json r;
+        for (int i = 0; i < 20; ++i)
+        {
+            r = client->request("textDocument/rename", p);
+            if (r.contains("result") && r["result"].is_object())
+                break;
+            if (r.contains("error") && r["error"]["message"].get<std::string>().find("does not change") != std::string::npos)
+                break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        }
+        return r;
+    }
+    // The rename is refused and gives no edit.
+    void expect_refusal(const json& r) const
+    {
+        SCOPED_TRACE(r.dump());
+        ASSERT_TRUE(r.contains("error")) << r.dump();
+        EXPECT_NE(r["error"]["message"].get<std::string>().find("that the rename of clangd does not change"), std::string::npos)
+            << r.dump();
+    }
+};
+
+} // namespace
+
+// Two unrelated classes have a method with the same name. A narrowing with a rename probe was
+// tried and removed: for an override, a diamond and a template specialization the probe of the
+// other script gives an edit that is a partial rename. So the server refuses all the cases.
+TEST(LanguageServerNative, RenameOfAMethodIsRefusedForAnUnrelatedClassWithTheSameMethodName)
+{
+    REQUIRE_CLANGD();
+    const std::string a = ProbeCase::script("Hero", "Node", "GetName()");
+    ProbeCase c("#pragma once\nstruct Node { int GetName(); };\nstruct Component { int GetName(); };\n", a,
+        ProbeCase::script("Pet", "Component", "GetName()"));
+    c.expect_refusal(c.rename(a));
+}
+
+// The other script uses an override that the first answer of clangd does not change.
+TEST(LanguageServerNative, RenameOfAMethodIsRefusedForAnOverrideInAnotherScript)
+{
+    REQUIRE_CLANGD();
+    const std::string a = ProbeCase::script("Hero", "Base", "Foo()");
+    ProbeCase c("#pragma once\nstruct Base { virtual int Foo(); };\nstruct Derived : Base { int Foo() override; };\n",
+        a, ProbeCase::script("Pet", "Derived", "Foo()"));
+    c.expect_refusal(c.rename(a));
+}
+
+// C overrides A::f and B::f. One script uses A::f and the other script uses B::f.
+TEST(LanguageServerNative, RenameOfAMethodIsRefusedForADiamondInAnotherScript)
+{
+    REQUIRE_CLANGD();
+    const std::string a = ProbeCase::script("Hero", "A", "f()");
+    ProbeCase c("#pragma once\nstruct A { virtual int f(); };\nstruct B { virtual int f(); };\n"
+                "struct C : A, B { int f() override; };\n",
+        a, ProbeCase::script("Pet", "B", "f()"));
+    c.expect_refusal(c.rename(a));
+}
+
+// One script uses the method of the primary template, the other uses a specialization.
+TEST(LanguageServerNative, RenameOfAMethodIsRefusedForATemplateSpecializationInAnotherScript)
+{
+    REQUIRE_CLANGD();
+    const std::string a = ProbeCase::script("Hero", "S<float>", "Get()");
+    ProbeCase c("#pragma once\ntemplate <class T> struct S { int Get(); };\n"
+                "template <> struct S<int> { int Get(); };\n",
+        a, ProbeCase::script("Pet", "S<int>", "Get()"));
+    c.expect_refusal(c.rename(a));
+}
+
+// A budget that is too small refuses the rename. There is never an edit.
+TEST(LanguageServerNative, RenameWithATinyBudgetIsRefusedForAScriptWithTheSameMethodName)
+{
+    REQUIRE_CLANGD();
+    const std::string a = ProbeCase::script("Hero", "Node", "GetName()");
+    ProbeCase c("#pragma once\nstruct Node { int GetName(); };\nstruct Component { int GetName(); };\n", a,
+        ProbeCase::script("Pet", "Component", "GetName()"), 1);
+    const json r = c.rename(a);
+    SCOPED_TRACE(r.dump());
+    EXPECT_FALSE(r.contains("result") && r["result"].is_object()) << r.dump();
+}
+
+namespace
+{
+
 struct Tok
 {
     int line, col, len, type;

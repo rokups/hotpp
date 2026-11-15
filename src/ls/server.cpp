@@ -1294,8 +1294,10 @@ void Server::start_clangd(const json& init)
     // names). The index search marks an answer incomplete when more than the limit of names
     // match. The default of 100 is too small for a short prefix and the MSVC STL. An
     // incomplete answer stops the reuse of the answer while the prefix grows.
+    // "--rename-file-limit=0": the default of 50 files makes clangd refuse a rename that
+    // changes more files. A rename of a widely used native symbol needs more.
     std::vector<std::string> args = {opt_.clangd_log.empty() ? "--log=error" : "--log=info",
-        "--header-insertion=never", "-j=2", "--limit-results=1000"};
+        "--header-insertion=never", "-j=2", "--limit-results=1000", "--rename-file-limit=0"};
     if (!opt_.compile_commands_dir.empty())
     {
         args.push_back("--compile-commands-dir=" + private_cdb_dir());
