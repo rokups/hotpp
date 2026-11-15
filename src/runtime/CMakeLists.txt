@@ -58,15 +58,20 @@ else()
         $<TARGET_PROPERTY:hot_runtime_core,INTERFACE_COMPILE_DEFINITIONS>)
     target_sources(hot_runtime_core PRIVATE $<TARGET_OBJECTS:hot_frame_reaper>)
 endif()
-# An AOT-only platform (iOS, Android, web, UWP) has no hot_runtime: its loader uses dlopen and
-# LoadLibrary, and its path code starts processes. Those platforms link hot_aot only.
-if(NOT HOT_AOT_ONLY_PLATFORM)
 add_library(hot_runtime STATIC
     state.cpp migration.cpp loader.cpp module.cpp
     scratch.cpp paths.cpp command_line.cpp object_cache.cpp)
 # scratch.cpp reads the option as the default of keep_temp().
 target_compile_definitions(hot_runtime PRIVATE HOT_KEEP_TEMP_DEFAULT=$<BOOL:${HOT_KEEP_TEMP}>)
-target_link_libraries(hot_runtime PUBLIC hot_runtime_core ${CMAKE_DL_LIBS} Threads::Threads)
+# An AOT-only platform (iOS, Android, web, UWP) runs the AOT table and loads no generated code.
+# HOT_AOT_ONLY removes dlopen, LoadLibrary and the process start from hot_runtime (module.cpp,
+# paths.cpp). The library then needs no dl library.
+if(HOT_AOT_ONLY_PLATFORM)
+    target_compile_definitions(hot_runtime PRIVATE HOT_AOT_ONLY=1)
+    target_link_libraries(hot_runtime PUBLIC hot_runtime_core Threads::Threads)
+else()
+    target_link_libraries(hot_runtime PUBLIC hot_runtime_core ${CMAKE_DL_LIBS} Threads::Threads)
+endif()
 # paths.cpp reads these (include/hot/paths.h). The compile flags are not paths, so both modes
 # have them. A portable build (HOT_PORTABLE) defines no build path. It finds the paths at run time.
 target_compile_definitions(hot_runtime PRIVATE HOT_DEFAULT_CXXFLAGS="${HOT_CXXFLAGS_JOINED}")
@@ -86,7 +91,6 @@ else()
         HOT_DEFAULT_INCLUDES="${HOT_DEFAULT_INCLUDES_JOINED}"
         HOT_DEFAULT_RESOURCE_DIR="${CLANG_RESOURCE_DIR}"
         HOT_DEFAULT_WORK_DIR="${HOT_SCRATCH_DIR}/hot_work")
-endif()
 endif()
 
 # AOT runtime (design M7): the core, the AOT registry and no-op object tracking.
@@ -187,9 +191,7 @@ if(HOT_CLANG_FILES_ENABLED OR HOT_JIT_ENABLED)
 endif()
 
 # Alias targets for a consumer project. They have the namespace hot::.
-if(TARGET hot_runtime)
-    add_library(hot::runtime ALIAS hot_runtime)
-endif()
+add_library(hot::runtime ALIAS hot_runtime)
 add_library(hot::runtime_core ALIAS hot_runtime_core)
 add_library(hot::aot ALIAS hot_aot)
 if(TARGET hot_backend)

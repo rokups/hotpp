@@ -199,6 +199,11 @@ std::vector<std::string> find_include_dirs()
 // Run "<compiler> -print-resource-dir" and return the first line of the output.
 std::string query_resource_dir(const std::string& compiler)
 {
+#ifdef HOT_AOT_ONLY
+    // An AOT-only platform starts no process.
+    (void)compiler;
+    return {};
+#else
     if (compiler.empty() || compiler.find('\'') != std::string::npos || compiler.find('"') != std::string::npos ||
         compiler.find('\n') != std::string::npos)
         return {};
@@ -226,6 +231,7 @@ std::string query_resource_dir(const std::string& compiler)
     if (out.find('\n') != std::string::npos)
         return {};
     return out;
+#endif
 }
 
 // The work directory of a portable host. A path that other users can predict or write is not safe.

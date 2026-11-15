@@ -35,8 +35,9 @@ if(NOT HOT_LLVM_DIR AND HOT_LLVM_RELEASES_DIR)
     set(HOT_LLVM_DIR "${HOT_LLVM_RELEASES_DIR}/${HOT_LLVM_RELEASE_NAME}")
 endif()
 # AOT-only platforms: iOS, Android, web (Emscripten) and UWP. A program there loads no code at
-# run time and starts no compiler. So these platforms have only the AOT libraries (hot::aot,
-# hot::runtime_core). The loader, the translator and both backends are not built. A host
+# run time and starts no compiler. So these platforms build hot::aot, hot::runtime_core and
+# hot::runtime. hot::runtime has no library loading (HOT_AOT_ONLY). The translator and both
+# backends are not built. A host
 # tool (hotc, from HOT_HOST_HOTC) compiles the scripts ahead of time (doc/platforms.md).
 set(HOT_AOT_ONLY_PLATFORM OFF)
 if(EMSCRIPTEN OR ANDROID OR IOS OR CMAKE_SYSTEM_NAME MATCHES "^(Emscripten|Android|iOS|tvOS|visionOS|watchOS|WindowsStore|WindowsPhone)$")
@@ -484,15 +485,10 @@ if(HOT_INSTALL)
     set(HOT_CMAKE_INSTALL_DIR ${CMAKE_INSTALL_LIBDIR}/cmake/Hot)
 
     # The names in the namespace hot:: (hot::runtime, hot::aot, ...).
-    if(TARGET hot_runtime)
-        set_target_properties(hot_runtime PROPERTIES EXPORT_NAME runtime)
-    endif()
+    set_target_properties(hot_runtime PROPERTIES EXPORT_NAME runtime)
     set_target_properties(hot_runtime_core PROPERTIES EXPORT_NAME runtime_core)
     set_target_properties(hot_aot PROPERTIES EXPORT_NAME aot)
-    set(HOT_INSTALL_TARGETS hot_runtime_core hot_aot)
-    if(TARGET hot_runtime)
-        list(APPEND HOT_INSTALL_TARGETS hot_runtime)
-    endif()
+    set(HOT_INSTALL_TARGETS hot_runtime hot_runtime_core hot_aot)
     if(HOT_BUILD_TRANSLATOR)
         set_target_properties(hotc_lib PROPERTIES EXPORT_NAME hotc_lib)
         set_target_properties(hotc PROPERTIES EXPORT_NAME hotc)
