@@ -638,7 +638,7 @@ struct NativeSession
     // budget of the scan of the other scripts for one references request.
     explicit NativeSession(const char* script = kNativeScript, int token_wait_ms = 10000, bool native_tokens = true,
         const std::string& clangd = "", int rename_budget_ms = 10000, const char* header = kNativeHeader,
-        int reference_budget_ms = 30000)
+        int reference_budget_ms = 10000)
     {
         write_file((dir.path() / "natives.h").string(), header);
         path = (dir.path() / "hero.hot").string();

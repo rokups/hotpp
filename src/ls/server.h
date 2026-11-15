@@ -64,7 +64,7 @@ struct ServerOptions
     // The time in ms for the scan of the other scripts for a native references request. After it,
     // the list is partial and the server tells the user. The server is single-threaded: a long
     // budget blocks the other requests (HOT-36).
-    int reference_budget_ms = 30000;
+    int reference_budget_ms = 10000;
 };
 
 // Runs the server on two file descriptors until "exit" or the end of the input.

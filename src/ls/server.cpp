@@ -4369,6 +4369,7 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
     }
 }
 
+// Temporary filter. The workspace index of ticket HOT-34 replaces it with a word-to-files map.
 bool Server::table_lacks_word(const std::string& path, const std::string& text, const std::string& word)
 {
     const std::string norm = fs::path(path).lexically_normal().string();
