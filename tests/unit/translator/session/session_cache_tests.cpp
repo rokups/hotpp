@@ -493,7 +493,7 @@ TEST(SessionParallel, ThrowingParseLetsTheWaiterParse)
     inside.get_future().wait();
     hotc::TranslateResult b_res;
     std::thread b([&] { b_res = hotc::translate(o, session); });
-    std::this_thread::sleep_for(std::chrono::milliseconds(200)); // b waits for the entry
+    std::this_thread::sleep_for(std::chrono::milliseconds(900)); // b waits for the entry
     go.set_value();
     a.join();
     b.join();
@@ -534,6 +534,13 @@ struct CppStep
     std::string script;
     bool ok; // the plain parse must succeed
 };
+
+// A file that changed in the last 50 ms before a parse is not stamped: the unit is not kept. A test
+// that counts kept units waits after it writes a file.
+void settle()
+{
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+}
 
 hotc::TranslateOptions cpp_options(const TempDir& dir, const std::string& script, const char* name = "t.cpp")
 {
@@ -608,6 +615,7 @@ TEST(SessionCache, CppUnitWithAnErrorIsNotKept)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", kCppHeaderV1);
+    settle();
     hotc::TranslatorSession s;
     const std::string inc = "#include \"w.h\"\n";
     EXPECT_TRUE(hotc::translate(cpp_options(dir, cpp_script(inc, "")), s).ok);
@@ -649,6 +657,7 @@ TEST(SessionCache, CppChangedDefineGivesAnotherUnit)
     TempDir dir;
     write_file(dir.path() / "w.h", "#pragma once\n#ifdef EXTRA\n#define BASE_VALUE 7\n#else\n#define BASE_VALUE 1\n#endif\n"
         "class Widget { public: virtual ~Widget() {} virtual int Update(float dt) { return BASE_VALUE; } };\n");
+    settle();
     hotc::TranslatorSession s;
     const std::string script = cpp_script("#include \"w.h\"\n", "    int Update(float dt) override { return BASE_VALUE; }\n");
     hotc::TranslateOptions a = cpp_options(dir, script);
@@ -667,6 +676,7 @@ TEST(SessionCache, CppEvictionAndLimit)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", kCppHeaderV1);
+    settle();
     hotc::TranslatorSession s;
     const std::string script = cpp_script("#include \"w.h\"\n", "");
     for (int i = 0; i < 7; ++i)
@@ -711,14 +721,15 @@ TEST(SessionParallel, CppThreadsShareOneSession)
         scripts.push_back(cpp_script(inc, "    int Update(float dt) override { return " + std::to_string(i) + "; }\n"));
     std::vector<hotc::TranslateResult> want;
     for (int i = 0; i < kThreads; ++i)
-        want.push_back(plain_translate(cpp_options(dir, scripts[i])));
+        want.push_back(plain_translate(cpp_options(dir, scripts[i], ("th" + std::to_string(i) + ".cpp").c_str())));
     std::vector<std::thread> threads;
     std::atomic<int> bad{0};
     for (int t = 0; t < kThreads; ++t)
         threads.emplace_back([&, t] {
             for (int r = 0; r < kRounds; ++r)
             {
-                const hotc::TranslateResult got = hotc::translate(cpp_options(dir, scripts[t]), s);
+                const std::string fname = "th" + std::to_string(t) + ".cpp"; // 6 keys, the limit is 4
+                const hotc::TranslateResult got = hotc::translate(cpp_options(dir, scripts[t], fname.c_str()), s);
                 if (!got.ok || got.cpp != want[t].cpp || got.slots_out != want[t].slots_out)
                     ++bad;
             }
@@ -744,10 +755,85 @@ TEST(SessionParallel, CppClearDuringTranslateIsSafe)
             std::this_thread::yield();
         }
     });
+    const hotc::TranslateResult want = plain_translate(o);
     for (int i = 0; i < 6; ++i)
-        EXPECT_TRUE(hotc::translate(o, s).ok);
+    {
+        const hotc::TranslateResult got = hotc::translate(o, s);
+        EXPECT_TRUE(got.ok);
+        if (got.ok)
+            EXPECT_EQ(got.cpp, want.cpp);
+    }
     stop = true;
     clearer.join();
     s.clear();
+    EXPECT_EQ(s.tu_cache_size(), 0u);
+}
+
+// A header edit with the same size and a reset mtime (touch -r) is seen by the ctime.
+TEST(SessionCache, CppEditWithTheSameSizeAndTheOldMtimeIsSeenByTheCtime)
+{
+    TempDir dir;
+    const std::string v1 = "#pragma once\nclass Widget { public: virtual ~Widget() {} virtual int Update(float dt) { return 1; } };\n";
+    const std::string v2 = "#pragma once\nclass Widget { public: virtual ~Widget() {} virtual int Updatf(float dt) { return 1; } };\n";
+    ASSERT_EQ(v1.size(), v2.size());
+    write_file(dir.path() / "w.h", v1);
+    const auto old_time = std::filesystem::last_write_time(dir.path() / "w.h");
+    settle();
+    hotc::TranslatorSession s;
+    const std::string script = cpp_script("#include \"w.h\"\n", "    int Update(float dt) override { return 1; }\n");
+    EXPECT_TRUE(hotc::translate(cpp_options(dir, script), s).ok);
+    EXPECT_EQ(s.tu_cache_size(), 1u);
+    write_file(dir.path() / "w.h", v2);
+    std::filesystem::last_write_time(dir.path() / "w.h", old_time); // the size and the mtime are as before
+    const hotc::TranslateOptions o = cpp_options(dir, script);
+    const hotc::TranslateResult want = plain_translate(o);
+    EXPECT_FALSE(want.ok); // Update is no override of the new header
+    expect_same(hotc::translate(o, s), want, "same size, old mtime");
+}
+
+// A new header in an earlier directory of the include search shadows the found one.
+TEST(SessionCache, CppShadowingHeaderInAnEarlierIncludeDirectoryIsSeen)
+{
+    TempDir first, second;
+    write_file(second.path() / "w.h", kCppHeaderV1);
+    std::filesystem::create_directories(second.path() / "sub");
+    write_file(second.path() / "sub" / "y.h", kCppHeaderV1);
+    settle();
+    hotc::TranslatorSession s;
+    auto options = [&](const std::string& script)
+    {
+        hotc::TranslateOptions o = cpp_options(first, script);
+        o.include_dirs = {first.path().string(), second.path().string()};
+        return o;
+    };
+    const std::string body = "    int Update(float dt) override { return 1; }\n";
+    const std::string plain = cpp_script("#include \"w.h\"\n", body);
+    const std::string sub = cpp_script("#include \"sub/y.h\"\n", body);
+    EXPECT_TRUE(hotc::translate(options(plain), s).ok);
+    EXPECT_TRUE(hotc::translate(options(sub), s).ok);
+    // The new headers have no Update: the method is no override any more.
+    write_file(first.path() / "w.h", "#pragma once\nclass Widget { public: virtual ~Widget() {} virtual void Draw() {} };\n");
+    std::filesystem::create_directories(first.path() / "sub");
+    write_file(first.path() / "sub" / "y.h", "#pragma once\nclass Widget { public: virtual ~Widget() {} virtual void Draw() {} };\n");
+    for (const std::string& script : {plain, sub})
+    {
+        const hotc::TranslateOptions o = options(script);
+        const hotc::TranslateResult want = plain_translate(o);
+        EXPECT_FALSE(want.ok);
+        expect_same(hotc::translate(o, s), want, "shadowed header");
+    }
+}
+
+// A unit that nobody uses for the idle limit goes at the next call.
+TEST(SessionCache, CppIdleUnitIsDisposed)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kCppHeaderV1);
+    settle();
+    hotc::TranslatorSession s;
+    s.set_tu_cache_idle_ms(600); // the translate after the parse must be shorter
+    EXPECT_TRUE(hotc::translate(cpp_options(dir, cpp_script("#include \"w.h\"\n", "")), s).ok);
+    EXPECT_EQ(s.tu_cache_size(), 1u);
+    std::this_thread::sleep_for(std::chrono::milliseconds(900));
     EXPECT_EQ(s.tu_cache_size(), 0u);
 }
