@@ -137,6 +137,9 @@ public:
     std::vector<std::string> files_with_unclaimed_word(const std::string& word) const;
     // The sorted paths of the files that have a ref with the id (ResolvedRef::id).
     std::vector<std::string> files_with_ref(const std::string& id) const;
+    // The sorted paths of the scripts that have "dep" in Entry::dep_stamps. A missing
+    // candidate counts too.
+    std::vector<std::string> files_with_dep(const std::string& dep) const;
     std::vector<std::shared_ptr<const Entry>> all_entries() const;
 
 private:
@@ -145,7 +148,7 @@ private:
         JobConfig config;
         IndexLevel level = IndexLevel::Rest;
     };
-    void set_locked(const std::string& path, std::shared_ptr<const Entry> entry);
+    void set_locked(const std::string& path, std::shared_ptr<const Entry> entry, uint64_t generation);
     void worker_main();
     // Takes the next job that no worker runs. False at stop.
     bool take(std::string& path, Job& job, uint64_t& generation);
@@ -160,6 +163,7 @@ private:
     mutable std::mutex mutex_;
     std::map<std::string, std::shared_ptr<const Entry>> entries_;
     FileMap by_word_, by_unclaimed_, by_ref_;
+    FileMap by_dep_; // dependency file -> the scripts that have this file in Entry::dep_stamps
 
     // The indexer. mutex_ guards the queue and the sets too.
     SymbolIndex* symbols_ = nullptr;
@@ -172,7 +176,14 @@ private:
     std::map<std::string, Job> jobs_; // the queued jobs by path
     std::deque<std::string> queues_[3]; // the paths by level; an entry can be stale
     std::set<std::string> running_, known_, finished_;
-    std::map<std::string, uint64_t> generation_;
+    struct Slot // one for each known path
+    {
+        JobConfig config;              // kept after take(), so the index can queue the path again
+        uint64_t generation = 0;       // counts the changes of the path
+        uint64_t entry_generation = 0; // the generation at the start of the job that made the entry
+        bool failed = false;           // the last job at this generation gave no entry
+    };
+    std::map<std::string, Slot> slots_;
     std::chrono::steady_clock::time_point first_schedule_;
     std::atomic<int> total_{0}, done_{0}, pending_{0}, analyzed_{0}, loaded_{0}, threads_{0};
     std::atomic<int64_t> ready_ms_{-1};

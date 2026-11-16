@@ -38,6 +38,8 @@ void WorkspaceIndex::add_locked(const std::string& path, const Entry& e)
         for (const hotc::ResolvedRef& r : e.table->refs)
             if (!r.id.empty())
                 by_ref_[r.id].insert(path);
+    for (const auto& dep : e.dep_stamps)
+        by_dep_[dep.first].insert(path);
 }
 
 void WorkspaceIndex::remove_locked(const std::string& path, const Entry& e)
@@ -59,15 +61,17 @@ void WorkspaceIndex::remove_locked(const std::string& path, const Entry& e)
         for (const hotc::ResolvedRef& r : e.table->refs)
             if (!r.id.empty())
                 drop(by_ref_, r.id);
+    for (const auto& dep : e.dep_stamps)
+        drop(by_dep_, dep.first);
 }
 
 void WorkspaceIndex::set(const std::string& path, std::shared_ptr<const Entry> entry)
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    set_locked(path, std::move(entry));
+    set_locked(path, std::move(entry), slots_[path].generation);
 }
 
-void WorkspaceIndex::set_locked(const std::string& path, std::shared_ptr<const Entry> entry)
+void WorkspaceIndex::set_locked(const std::string& path, std::shared_ptr<const Entry> entry, uint64_t generation)
 {
     const auto it = entries_.find(path);
     if (it != entries_.end())
@@ -78,6 +82,7 @@ void WorkspaceIndex::set_locked(const std::string& path, std::shared_ptr<const E
     if (!entry)
         return;
     add_locked(path, *entry);
+    slots_[path].entry_generation = generation;
     entries_[path] = std::move(entry);
 }
 
@@ -114,6 +119,12 @@ std::vector<std::string> WorkspaceIndex::files_with_ref(const std::string& id) c
 {
     std::lock_guard<std::mutex> lock(mutex_);
     return lookup(by_ref_, id);
+}
+
+std::vector<std::string> WorkspaceIndex::files_with_dep(const std::string& dep) const
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    return lookup(by_dep_, dep);
 }
 
 std::vector<std::shared_ptr<const Entry>> WorkspaceIndex::all_entries() const
@@ -275,6 +286,7 @@ void WorkspaceIndex::schedule(const std::string& path, JobConfig config, IndexLe
             first_schedule_ = std::chrono::steady_clock::now();
         known_.insert(path);
         total_ = static_cast<int>(known_.size());
+        slots_[path].config = config;
         auto it = jobs_.find(path);
         if (it == jobs_.end())
         {
@@ -325,7 +337,7 @@ void WorkspaceIndex::bump(const std::vector<std::string>& paths)
 void WorkspaceIndex::invalidate(const std::string& path)
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    ++generation_[path];
+    ++slots_[path].generation;
 }
 
 std::vector<std::string> WorkspaceIndex::wait_for(const std::vector<std::string>& paths,
@@ -401,7 +413,7 @@ bool WorkspaceIndex::take(std::string& path, Job& job, uint64_t& generation)
                 jobs_.erase(j);
                 q.erase(it);
                 running_.insert(path);
-                generation = generation_[path];
+                generation = slots_[path].generation;
                 return true;
             }
         }
@@ -419,7 +431,7 @@ void WorkspaceIndex::finish(const std::string& path, Job&& job, uint64_t generat
             ++analyzed_;
         else if (entry)
             ++loaded_;
-        if (generation_[path] != generation && !stop_)
+        if (slots_[path].generation != generation && !stop_)
         {
             // The path changed during the job: drop the result and run the job again.
             if (!jobs_.count(path))
@@ -432,7 +444,7 @@ void WorkspaceIndex::finish(const std::string& path, Job&& job, uint64_t generat
         else
         {
             if (entry)
-                set_locked(path, std::move(entry));
+                set_locked(path, std::move(entry), generation);
             finished_.insert(path); // a failed job has no entry, but nobody waits for it
         }
         pending_ = static_cast<int>(jobs_.size() + running_.size());

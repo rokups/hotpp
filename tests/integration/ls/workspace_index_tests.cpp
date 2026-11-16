@@ -114,6 +114,35 @@ TEST(WorkspaceIndex, SetReplaceEraseUpdateTheMaps)
     EXPECT_EQ(idx.all_entries().size(), 1u);
 }
 
+TEST(WorkspaceIndex, DepMapFollowsSetReplaceErase)
+{
+    const auto with_deps = [](const std::string& path, const std::vector<std::string>& deps)
+    {
+        auto e = std::make_shared<Entry>(*make_entry(path, {}, {}, {}));
+        for (const std::string& d : deps)
+            e->dep_stamps.emplace_back(d, FileStamp{1, 2});
+        return std::shared_ptr<const Entry>(e);
+    };
+    WorkspaceIndex idx;
+    idx.set("a", with_deps("a", {"d1", "d2"}));
+    idx.set("b", with_deps("b", {"d2", "missing.h"}));
+    EXPECT_EQ(idx.files_with_dep("d1"), (std::vector<std::string>{"a"}));
+    EXPECT_EQ(idx.files_with_dep("d2"), (std::vector<std::string>{"a", "b"}));
+    EXPECT_EQ(idx.files_with_dep("missing.h"), (std::vector<std::string>{"b"}));
+
+    // A replace drops the old deps of the file.
+    idx.set("a", with_deps("a", {"d3"}));
+    EXPECT_TRUE(idx.files_with_dep("d1").empty());
+    EXPECT_EQ(idx.files_with_dep("d2"), (std::vector<std::string>{"b"}));
+    EXPECT_EQ(idx.files_with_dep("d3"), (std::vector<std::string>{"a"}));
+
+    idx.erase("b");
+    EXPECT_TRUE(idx.files_with_dep("d2").empty());
+    EXPECT_TRUE(idx.files_with_dep("missing.h").empty());
+    idx.erase("a");
+    EXPECT_TRUE(idx.files_with_dep("d3").empty());
+}
+
 TEST(WorkspaceIndex, BuiltEntriesFeedTheMaps)
 {
     TempDir tmp;
