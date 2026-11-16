@@ -265,14 +265,13 @@ static std::shared_ptr<const Entry> entry_in(const IndexSnapshot& snap, const st
 }
 
 // The valid entry of a closed path, or null. An entry with a text that is not the text on disk
-// is dropped from the snapshot: the caller then reads the disk. "disk" gets the disk text.
-static std::shared_ptr<const Entry> checked_entry(IndexSnapshot& snap, const std::string& path, std::optional<std::string>& disk)
+// ("disk") is dropped from the snapshot: the caller then uses the disk text.
+static std::shared_ptr<const Entry> checked_entry(IndexSnapshot& snap, const std::string& path, const std::string& disk)
 {
     std::shared_ptr<const Entry> e = entry_in(snap, path);
     if (!e)
         return nullptr;
-    disk = read_file(path);
-    if (disk && *disk == e->text)
+    if (disk == e->text)
         return e;
     snap.entries.erase(fs::path(path).lexically_normal().string());
     return nullptr;
@@ -5050,10 +5049,21 @@ std::variant<Server::PlaceMap, std::string> Server::places_of(
             files.push_back(f);
     // The index entries of the closed scripts. No deadline: the poll is check_cancel.
     // Strict without "given": no entry is used, every closed script uses the inline code.
+    // A closed script without the name on disk gets no entry: it has no place, and a cold index
+    // does not wait for it.
     IndexSnapshot own;
     if (!given && !strict)
-        own = index_entries(files, std::chrono::steady_clock::time_point::max());
+    {
+        std::vector<std::string> wanted;
+        for (const std::string& path : files)
+            if (!open_doc_at(path))
+                if (const auto disk = read_file(path); disk && disk->find(name) != std::string::npos)
+                    wanted.push_back(path);
+        own = index_entries(wanted, std::chrono::steady_clock::time_point::max());
+    }
     const IndexSnapshot& snap = given ? *given : own;
+    // Strict with "given": the caller counted the lookups.
+    const bool count = !(strict && given);
     for (const std::string& path : files)
     {
         check_cancel();
@@ -5062,48 +5072,22 @@ std::variant<Server::PlaceMap, std::string> Server::places_of(
         std::optional<std::string> closed_text;
         if (!open)
         {
+            const std::optional<std::string> disk = read_file(path);
+            if (!disk || disk->find(name) == std::string::npos)
+                continue; // the word filter
             if (given || !strict)
                 e = entry_in(snap, path);
-            // Strict with "given": the entry text must be the text on disk, else the places are wrong.
-            // The compare comes before the word filter: a stale text can hide the name.
-            if (e && strict && given)
+            if (e && *disk != e->text)
             {
-                const std::optional<std::string> disk = read_file(path);
-                if (!disk || *disk != e->text)
+                // Strict with "given": the entry text must be the text on disk, else the places are wrong.
+                if (strict)
                     return path + " changed on disk during the rename";
+                e = nullptr; // not strict: the disk text wins
             }
-            // Not strict: a disk text that differs from the entry text drops the entry.
-            if (e && !strict)
-            {
-                const std::optional<std::string> disk = read_file(path);
-                if (!disk || *disk != e->text)
-                {
-                    e = nullptr;
-                    closed_text = disk;
-                    ++entry_misses_;
-                    if (!closed_text || closed_text->find(name) == std::string::npos)
-                        continue; // the word filter
-                }
-                else
-                {
-                    ++entry_hits_;
-                    if (e->text.find(name) == std::string::npos)
-                        continue; // the word filter
-                }
-            }
-            else if (e)
-            {
-                ++entry_hits_;
-                if (e->text.find(name) == std::string::npos)
-                    continue; // the word filter
-            }
-            else
-            {
-                ++entry_misses_;
-                closed_text = read_file(path);
-                if (!closed_text || closed_text->find(name) == std::string::npos)
-                    continue; // the word filter
-            }
+            if (count)
+                ++(e ? entry_hits_ : entry_misses_);
+            if (!e)
+                closed_text = disk;
         }
         const std::string uri = open ? open->uri : path_to_uri(path);
         // The table and "text" come from the same text: the table offsets are valid in "text".
@@ -5269,8 +5253,27 @@ std::optional<std::variant<json, std::string>> Server::table_rename(
                 todo.push_back(next);
         }
     }
-    std::vector<std::string> wanted = files;
-    wanted.insert(wanted.end(), closure.begin(), closure.end());
+    // The disk texts of the closed files, read once. Only a closed file with a word of the later
+    // filters gets an entry: a cold index does not wait for the other files.
+    std::map<std::string, std::optional<std::string>> disks;
+    auto disk_of = [&](const std::string& path) -> const std::optional<std::string>&
+    {
+        auto it = disks.find(path);
+        if (it == disks.end())
+            it = disks.emplace(path, read_file(path)).first;
+        return it->second;
+    };
+    std::vector<std::string> wanted;
+    for (const std::string& path : files)
+        if (!open_doc_at(path))
+            if (const auto& disk = disk_of(path);
+                disk && (has_word(*disk, old_name) || (!prepare && (has_word(*disk, new_name) || has_word(*disk, "class") || has_word(*disk, "struct")))))
+                wanted.push_back(path);
+    for (const std::string& id : closure)
+        if (!open_doc_at(id))
+            if (const auto& disk = disk_of(id);
+                disk && (has_word(*disk, new_name) || has_word(*disk, "class") || has_word(*disk, "struct")))
+                wanted.push_back(id);
     IndexSnapshot snap = index_entries(wanted, std::chrono::steady_clock::time_point::max());
     // The open documents with a text that is not the text on disk. The table of a closed file
     // comes from the disk texts of its imports.
@@ -5296,27 +5299,28 @@ std::optional<std::variant<json, std::string>> Server::table_rename(
         check_cancel();
         const std::shared_ptr<Doc> open = open_doc_at(path);
         std::optional<std::string> closed_text;
-        const std::shared_ptr<const Entry> entry = open ? nullptr : checked_entry(snap, path, closed_text);
-        if (!open && !entry)
+        std::shared_ptr<const Entry> entry;
+        if (!open)
         {
-            ++entry_misses_;
-            if (!closed_text && !(closed_text = read_file(path)))
+            closed_text = disk_of(path);
+            if (!closed_text)
                 return what + "cannot read " + path;
+            entry = checked_entry(snap, path, *closed_text);
         }
-        const std::string_view text = open    ? std::string_view(open->text.s)
-            : entry                           ? std::string_view(entry->text)
-                                              : std::string_view(*closed_text);
+        const std::string_view text = open ? std::string_view(open->text.s) : std::string_view(*closed_text);
         const bool affected = has_word(text, old_name);
         // A file without the old name gets no edit. It counts for the conflict check only: for a
         // word with the new name, or for the bases of its classes (the class family).
         if (!affected && (prepare || (!has_word(text, new_name) && !has_word(text, "class") && !has_word(text, "struct"))))
             continue;
+        // One lookup for each closed file of the request: a hit when the entry is used.
+        if (!open)
+            ++(entry ? entry_hits_ : entry_misses_);
         Kept k;
         if (entry)
         {
             k.table = entry->table;
             k.text = Text(entry->text);
-            ++entry_hits_;
         }
         else
             k.table = file_refs(path, open ? nullptr : &*closed_text, &k.text);
@@ -5363,25 +5367,25 @@ std::optional<std::variant<json, std::string>> Server::table_rename(
             check_cancel();
             const std::shared_ptr<Doc> open = open_doc_at(id);
             std::optional<std::string> closed_text;
-            const std::shared_ptr<const Entry> entry = open ? nullptr : checked_entry(snap, id, closed_text);
-            if (!open && !entry)
+            std::shared_ptr<const Entry> entry;
+            if (!open)
             {
-                ++entry_misses_;
-                if (!closed_text && !(closed_text = read_file(id)))
+                closed_text = disk_of(id);
+                if (!closed_text)
                     return what + "cannot read " + id;
+                entry = checked_entry(snap, id, *closed_text);
             }
             // A file without the new name and without a class cannot conflict.
-            const std::string_view itext = open    ? std::string_view(open->text.s)
-                : entry                            ? std::string_view(entry->text)
-                                                   : std::string_view(*closed_text);
+            const std::string_view itext = open ? std::string_view(open->text.s) : std::string_view(*closed_text);
             if (!has_word(itext, new_name) && !has_word(itext, "class") && !has_word(itext, "struct"))
                 continue;
+            if (!open)
+                ++(entry ? entry_hits_ : entry_misses_);
             Kept k;
             if (entry)
             {
                 k.table = entry->table;
                 k.text = Text(entry->text);
-                ++entry_hits_;
             }
             else
                 k.table = file_refs(id, open ? nullptr : &*closed_text, &k.text);
@@ -5390,6 +5394,8 @@ std::optional<std::variant<json, std::string>> Server::table_rename(
             kept.push_back(std::move(k));
         }
     }
+    if (opt_.rename_hook)
+        opt_.rename_hook("before_places");
     std::map<std::string, Text> texts;
     auto found = places_of(*r, true, d.path, &texts, &files, &snap);
     if (const auto* e = std::get_if<std::string>(&found))
@@ -5418,19 +5424,18 @@ std::optional<std::variant<json, std::string>> Server::table_rename(
         if (const std::vector<std::string> native = native_bases_of_family(conflict_files, r->ref); !native.empty())
             if (std::string c = native_member_conflict(d, native, new_name); !c.empty())
                 return c;
-    // The safety rule: the text of a closed file from an entry must be the text on disk. Else an
-    // edit could use wrong bytes. Every closed file with an edit gets this compare.
+    if (opt_.rename_hook)
+        opt_.rename_hook("before_final");
+    // The safety rule: the text of each closed file with an edit must be the text on disk, whether it
+    // came from an entry or from a read. Else an edit could use wrong bytes.
     for (const auto& [uri, starts] : at)
     {
         const std::string path = uri_to_path(uri);
         if (starts.empty() || open_doc_at(path))
             continue;
-        if (const std::shared_ptr<const Entry> entry = entry_in(snap, path))
-        {
-            const std::optional<std::string> disk = read_file(path);
-            if (!disk || *disk != entry->text || texts[uri].s != entry->text)
-                return what + path + " changed on disk during the rename";
-        }
+        const std::optional<std::string> disk = read_file(path);
+        if (!disk || *disk != texts[uri].s)
+            return what + path + " changed on disk during the rename";
     }
     json changes = json::object();
     for (const auto& [uri, starts] : at)

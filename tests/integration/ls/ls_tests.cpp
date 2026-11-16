@@ -9321,8 +9321,9 @@ TEST(WorkspaceIndexReferences, ScriptReferencesGiveTheSameResultWithAndWithoutTh
             EXPECT_NE(text.find("ROOT/a.hot"), std::string::npos) << text;
         EXPECT_EQ(text.find("ROOT/c.hot"), std::string::npos) << text;
         EXPECT_EQ(off_after["entryHits"].get<int>(), 0) << off_after.dump();
-        // The four closed scripts (lib, a, b, c) each give one hit.
-        EXPECT_EQ(on_after["entryHits"].get<int>() - on_before["entryHits"].get<int>(), 4) << which << " " << on_after.dump();
+        // Each closed script with the name gives one hit: lib and a for Lib and Calc; lib, a and b for Twice.
+        EXPECT_EQ(on_after["entryHits"].get<int>() - on_before["entryHits"].get<int>(), which == 2 ? 3 : 2)
+            << which << " " << on_after.dump();
         EXPECT_EQ(on_after["entryMisses"].get<int>(), on_before["entryMisses"].get<int>()) << on_after.dump();
         for (const char* key : {"analyzed", "tableAnalyses", "loaded"})
             EXPECT_EQ(on_after[key].get<int>(), on_before[key].get<int>()) << key << " " << which << " " << on_after.dump();
@@ -9424,7 +9425,9 @@ TEST(WorkspaceIndexReferences, RenameUsesTheIndexEntries)
     ASSERT_TRUE(on.contains("changes")) << on.dump();
     EXPECT_TRUE(on["changes"].contains("ROOT/b.hot")) << on.dump();
     EXPECT_EQ(off, on);
-    EXPECT_GT(on_after["entryHits"].get<int>(), on_before["entryHits"].get<int>()) << on_after.dump();
+    // The closed files a, b and c: one hit each.
+    EXPECT_EQ(on_after["entryHits"].get<int>() - on_before["entryHits"].get<int>(), 3) << on_after.dump();
+    EXPECT_EQ(on_after["entryMisses"].get<int>(), on_before["entryMisses"].get<int>()) << on_after.dump();
     EXPECT_EQ(off_after["entryHits"].get<int>(), 0) << off_after.dump();
 }
 
@@ -9449,14 +9452,32 @@ enum class RnMode
 
 // Renames from the open library. "which": 0 Lib, 1 Calc, 2 fld, 3 Twice. The result has a fixed root.
 // "expect" is a part of the error text that the request must give (empty for a success).
+// "hook_stage" (if not null): at this stage of the measured request, a hook rewrites b.hot with a text of the same
+// size and restores the mtime. The request must then give the error "changed on disk during the rename".
 json script_rename_run(bool background_index, int which, bool prepare, const std::string& new_name, RnMode mode,
-    const std::string& expect, json* stats_before, json* stats_after)
+    const std::string& expect_in, json* stats_before, json* stats_after, const char* hook_stage = nullptr)
 {
+    const std::string expect = hook_stage ? std::string() : expect_in;
+    const std::string final_expect = hook_stage ? "changed on disk during the rename" : expect_in;
+    auto armed = std::make_shared<std::atomic<bool>>(false);
     TempDir dir;
     TempDir extra;
     hot::ls::ServerOptions o = options(dir, true);
     o.background_index = background_index;
     o.reference_budget_ms = 120000;
+    const std::string b_path_hook = (dir.path() / "b.hot").string();
+    if (hook_stage)
+        o.rename_hook = [armed, hook_stage, b_path_hook](const char* stage)
+        {
+            if (!armed->load() || std::string(stage) != hook_stage)
+                return;
+            armed->store(false);
+            const auto old_time = std::filesystem::last_write_time(b_path_hook);
+            std::string text = kRnUseB;
+            text.replace(text.find("Twice(3)"), 8, "Twice(4)");
+            write_file(b_path_hook, text); // the same size
+            std::filesystem::last_write_time(b_path_hook, old_time);
+        };
     if (mode == RnMode::Outside)
     {
         o.include_dirs.push_back(extra.path().string());
@@ -9502,12 +9523,13 @@ json script_rename_run(bool background_index, int which, bool prepare, const std
     if (!prepare)
         p["newName"] = new_name;
     const std::string method = prepare ? "textDocument/prepareRename" : "textDocument/rename";
-    auto done = [&](const json& r)
+    auto done_for = [&](const json& r, const std::string& want)
     {
-        if (expect.empty())
+        if (want.empty())
             return r.contains("result") && r["result"].is_object();
-        return r.contains("error") && r["error"].value("message", "").find(expect) != std::string::npos;
+        return r.contains("error") && r["error"].value("message", "").find(want) != std::string::npos;
     };
+    auto done = [&](const json& r) { return done_for(r, expect); };
     // The first answers can be wrong while clangd starts. Ask again until the answer is as expected.
     for (int i = 0; i < 40; ++i)
     {
@@ -9526,9 +9548,10 @@ json script_rename_run(bool background_index, int which, bool prepare, const std
         std::filesystem::last_write_time(b_path, old_time);
     }
     *stats_before = client.request("hot/indexStats", json::object())["result"];
+    armed->store(hook_stage != nullptr);
     const json r = client.request(method, p);
     *stats_after = client.request("hot/indexStats", json::object())["result"];
-    EXPECT_TRUE(done(r)) << r.dump();
+    EXPECT_TRUE(done_for(r, final_expect)) << r.dump();
     std::string out = r.contains("error") ? r["error"].dump() : r.value("result", json::object()).dump();
     const std::string root = uri_of(dir.path().string());
     for (size_t at; (at = out.find(root)) != std::string::npos;)
@@ -9562,7 +9585,9 @@ TEST(WorkspaceIndexRename, RenameGivesTheSameResultWithAndWithoutTheIndex)
             ASSERT_TRUE(on.contains("changes")) << on.dump();
             EXPECT_TRUE(on["changes"].contains("ROOT/lib.hot")) << on.dump();
             EXPECT_TRUE(on["changes"].contains("ROOT/a.hot")) << on.dump();
-            EXPECT_GT(on_after["entryHits"].get<int>(), on_before["entryHits"].get<int>()) << tag << " " << on_after.dump();
+            // The closed files a and b: one hit each.
+            EXPECT_EQ(on_after["entryHits"].get<int>() - on_before["entryHits"].get<int>(), 2) << tag << " " << on_after.dump();
+            EXPECT_EQ(on_after["entryMisses"].get<int>(), on_before["entryMisses"].get<int>()) << tag << " " << on_after.dump();
             for (const char* key : {"analyzed", "tableAnalyses", "loaded"})
                 EXPECT_EQ(on_after[key].get<int>(), on_before[key].get<int>()) << key << " " << tag << " " << on_after.dump();
         }
@@ -9621,4 +9646,77 @@ TEST(WorkspaceIndexRename, RenameSeesADiskChangeWithNoEvent)
         if (mode == RnMode::DiskSameSize)
             EXPECT_GT(on_after["entryMisses"].get<int>(), on_before["entryMisses"].get<int>()) << on_after.dump();
     }
+}
+
+// HOT-34 step 5E-fix: a file changes on disk (the same size, the old mtime) inside the request. The rename gives
+// the error and no edit. The hook runs at the two stages. With the index off, the final compare refuses too.
+TEST(WorkspaceIndexRename, RenameRefusesAFileThatChangesInsideTheRequest)
+{
+    REQUIRE_CLANGD();
+    for (const char* stage : {"before_places", "before_final"})
+    {
+        json before, after;
+        const json on = script_rename_run(true, 3, false, "Twice2", RnMode::Plain, "", &before, &after, stage);
+        EXPECT_NE(on.dump().find("changed on disk during the rename"), std::string::npos) << stage << " " << on.dump();
+        EXPECT_GT(after["entryHits"].get<int>(), before["entryHits"].get<int>()) << stage << " " << after.dump();
+    }
+    json before, after;
+    const json off = script_rename_run(false, 3, false, "Twice2", RnMode::Plain, "", &before, &after, "before_final");
+    EXPECT_NE(off.dump().find("changed on disk during the rename"), std::string::npos) << off.dump();
+}
+
+// HOT-34 step 5E-fix: one file has the name, 20 importers have no name and no class. The index is cold (no wait). The result is the
+// same as without the index. The lookups count only the file with the name.
+TEST(WorkspaceIndexRename, ColdIndexLooksUpOnlyTheFilesWithTheName)
+{
+    REQUIRE_CLANGD();
+    auto run = [&](bool background_index, json* before, json* after)
+    {
+        TempDir dir;
+        hot::ls::ServerOptions o = options(dir, true);
+        o.background_index = background_index;
+        o.reference_budget_ms = 120000;
+        LsClient client(o);
+        client.initialize(uri_of(dir.path().string()));
+        const std::string lib = (dir.path() / "lib.hot").string();
+        write_file(lib, kRefLib);
+        client.open(uri_of(lib), kRefLib);
+        client.notify("textDocument/didClose", {{"textDocument", {{"uri", uri_of(lib)}}}});
+        for (int i = 0; i < 20; ++i)
+        {
+            const std::string name = "u" + std::to_string(i);
+            const std::string text = "using \"lib.hot\";\nint z" + std::to_string(i) + " = " + std::to_string(i) + ";\n";
+            write_file((dir.path() / (name + ".hot")).string(), text);
+        }
+        const std::string open_path = (dir.path() / "d.hot").string();
+        write_file(open_path, kRefOpenDisk);
+        client.open(uri_of(open_path), kRefOpenDisk);
+        const json p = {{"textDocument", {{"uri", uri_of(open_path)}}},
+            {"position", ref_pos_of(kRefOpenDisk, "Twice", 0)}, {"newName", "Double"}};
+        json r;
+        for (int i = 0; i < 40; ++i)
+        {
+            *before = client.request("hot/indexStats", json::object())["result"];
+            r = client.request("textDocument/rename", p);
+            *after = client.request("hot/indexStats", json::object())["result"];
+            if (r.contains("result") && r["result"].is_object() && r["result"].contains("changes"))
+                break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        }
+        std::string out = r.value("result", json::object()).dump();
+        const std::string root = uri_of(dir.path().string());
+        for (size_t at; (at = out.find(root)) != std::string::npos;)
+            out.replace(at, root.size(), "ROOT");
+        return json::parse(out);
+    };
+    json off_before, off_after, on_before, on_after;
+    const json off = run(false, &off_before, &off_after);
+    const json on = run(true, &on_before, &on_after);
+    ASSERT_TRUE(on.contains("changes")) << on.dump();
+    EXPECT_TRUE(on["changes"].contains("ROOT/lib.hot")) << on.dump();
+    EXPECT_EQ(off, on);
+    // Only lib.hot has the name. The importers have no name and no class: no lookup for them.
+    const int lookups = on_after["entryHits"].get<int>() + on_after["entryMisses"].get<int>()
+        - on_before["entryHits"].get<int>() - on_before["entryMisses"].get<int>();
+    EXPECT_EQ(lookups, 1) << on_after.dump();
 }

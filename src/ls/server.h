@@ -11,6 +11,7 @@
 // script and the generated C++. The diag rewriter changes generated names to script names.
 #pragma once
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -72,6 +73,9 @@ struct ServerOptions
     int index_threads = 0;
     // False: no background index (--no-background-index). Tests that count analyses use it.
     bool background_index = true;
+    // A test hook of the script rename. It gets the stage name "before_places" or "before_final".
+    // Empty in production.
+    std::function<void(const char* stage)> rename_hook;
 };
 
 // Runs the server on two file descriptors until "exit" or the end of the input.
