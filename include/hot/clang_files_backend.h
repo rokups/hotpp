@@ -375,12 +375,14 @@ private:
     struct ShapeSplit
     {
         std::string key; // empty: no split for this unit
+        std::string unit_id; // for the files of one script
         std::string pch; // the shape PCH file (exists on a hit)
         std::string header_text; // the shape text with "#line 1 <unit>"
         std::string main_text; // the rest with "#line <N> <unit>"
     };
     ShapeSplit plan_shape(const std::string& cpp_text, const std::string& unit_cpp, const std::string& base_pch,
-        const std::string& base_key, const std::vector<std::string>& args, bool is_hot) const;
+        const std::string& base_key, const std::vector<std::string>& args, bool is_hot,
+        const std::string& script_dir) const;
     void start_shape_build(const ShapeSplit& split, const std::string& base_pch, const std::string& script_dir,
         const std::string& unit, bool timing);
     std::mutex shape_mutex_;
@@ -458,6 +460,10 @@ private:
 // True when the compile of the options uses its own fmt code (-DFMT_HEADER_ONLY): see the comment of
 // "fmt_header_only" in ClangFilesOptions.
 bool fmt_header_only(const ClangFilesOptions& options);
+// Removes the old files of the shape PCH directory "dir": keeps the "keep_unit" newest PCH of the
+// script with the id "unit_id" and the "keep_all" newest in all (by the time of the last use).
+// Removes markers older than a day and temp files older than an hour.
+void evict_shape_files(const std::string& dir, const std::string& unit_id, size_t keep_unit, size_t keep_all);
 // True when the ELF module at "path" has an undefined fmt symbol that dlsym does not find. False on
 // other targets.
 bool has_missing_fmt_symbol(const std::string& path, std::string* first_name = nullptr);

@@ -1043,7 +1043,7 @@ TEST(ObjectCacheBackend, MissingFmtSymbolFallsBackToTheOwnFmtCode)
 // ---- the shape PCH of a .hot unit
 
 // Edits of a method body give the right results with a shape PCH. A damaged shape PCH never fails a
-// reload: the unit compiles whole and the key gets a ".nosplit" marker.
+// reload: the unit compiles whole and the PCH builds again.
 TEST(ObjectCacheBackend, ShapePchKeepsResultsAndSurvivesDamage)
 {
 #if defined(__linux__)
@@ -1069,10 +1069,208 @@ TEST(ObjectCacheBackend, ShapePchKeepsResultsAndSurvivesDamage)
     for (const fs::path& p : pchs)
         std::ofstream(p, std::ios::binary | std::ios::trunc) << "damaged";
     edit_run(20, 2);
-    bool marker = false;
+    // A damaged PCH is no reason for a marker: the file is removed and builds again.
     for (const auto& e : fs::directory_iterator(shape_dir, ec))
-        marker = marker || e.path().extension() == ".nosplit";
-    EXPECT_TRUE(marker);
+        EXPECT_NE(e.path().extension(), ".nosplit");
+#else
+    GTEST_SKIP() << "ELF only";
+#endif
+}
+
+namespace
+{
+
+size_t count_ext(const fs::path& dir, const char* ext)
+{
+    size_t n = 0;
+    std::error_code ec;
+    for (const auto& e : fs::directory_iterator(dir, ec))
+        if (e.path().extension() == ext)
+            ++n;
+    return n;
+}
+
+size_t count_text_in(const std::string& text, const std::string& part)
+{
+    size_t n = 0;
+    for (size_t at = text.find(part); at != std::string::npos; at = text.find(part, at + 1))
+        ++n;
+    return n;
+}
+
+// Loads "count" edits of the Calc script, one backend. The destructor joins the PCH threads.
+void run_edits(const hot::ClangFilesOptions& o, int first, int count, bool expect_ok = true)
+{
+    hot::ClangFilesBackend backend(o);
+    for (int i = first; i < first + count; ++i)
+    {
+        const float r = load_and_run(backend, {"calc.hot", script_text((std::to_string(i) + ".0").c_str()), {}, "Calc"});
+        if (expect_ok)
+            EXPECT_EQ(r, static_cast<float>(i));
+    }
+}
+
+} // namespace
+
+// Interpolated text through the fmt flags. A test build has no host that exports fmt (HOT_USE_FMT is
+// off: the script uses std::format). So the test checks the text with the host fmt flags on and
+// proves the text on each path: host fmt, own fmt after the fallback, or std::format.
+TEST(ObjectCacheBackend, InterpolatedTextIsRightWithTheHostFmtFlags)
+{
+#if defined(__linux__)
+    CleanEnv env;
+    TestScratch scratch;
+    hot::ClangFilesOptions o = fmt_options(scratch, "i", {"-DFMT_SHARED", "-DFMT_HEADER_ONLY"});
+    hot::ClangFilesBackend backend(o);
+    const hot::ScriptSource src = {"calc.hot",
+        "using <string>;\nusing \"Actor.h\";\nclass Calc : Actor {\n    float result = 0.0;\n"
+        "    override void Tick(float dt) {\n"
+        "        std.string s = \"n=${42} x=${1.5:.2f} i=${-7}\";\n"
+        "        this.result = s == \"n=42 x=1.50 i=-7\" ? 1.0 : 0.0;\n    }\n}\n",
+        {}, "Calc"};
+    EXPECT_EQ(load_and_run(backend, src), 1.0f);
+#else
+    GTEST_SKIP() << "ELF only";
+#endif
+}
+
+// A syntax error in a body, then the fix: the shape PCH stays, is used again, and no marker exists.
+TEST(ObjectCacheBackend, ErrorInABodyDoesNotDisableTheShapePch)
+{
+#if defined(__linux__)
+    CleanEnv env;
+    EnvGuard timing("HOT_TIMING", "1");
+    TestScratch scratch;
+    hot::ClangFilesOptions o = fmt_options(scratch, "e", {});
+    const fs::path shape_dir = fs::path(o.cache_dir) / "pch" / "shape";
+    testing::internal::CaptureStderr();
+    run_edits(o, 1, 6);
+    {
+        hot::ClangFilesBackend backend(o);
+        EXPECT_FALSE(backend.load({"calc.hot", script_text("1.0 +"), {}, "Calc"}, 1));
+    }
+    run_edits(o, 30, 2);
+    const std::string log = testing::internal::GetCapturedStderr();
+    if (count_ext(shape_dir, ".pch") == 0)
+        GTEST_SKIP() << "no shape PCH was built (no base PCH in this setup)";
+    EXPECT_EQ(count_ext(shape_dir, ".nosplit"), 0u);
+    EXPECT_EQ(count_ext(shape_dir, ".pch"), 1u);
+    EXPECT_GE(count_text_in(log, "shape pch hit"), 2u) << log;
+#else
+    GTEST_SKIP() << "ELF only";
+#endif
+}
+
+// A base PCH change (a changed header) gives a new shape key. Each script keeps 2 shape PCH files.
+// The first hit stores its object (the shape files are no input of the object).
+TEST(ObjectCacheBackend, ShapePchFollowsTheBasePchAndKeepsTwoPerScript)
+{
+#if defined(__linux__)
+    CleanEnv env;
+    EnvGuard timing("HOT_TIMING", "1");
+    TestScratch scratch;
+    const fs::path inc = scratch.file("eng");
+    fs::copy(fs::path(HOT_SOURCE_DIR) / "tests" / "engine", inc, fs::copy_options::recursive);
+    hot::ClangFilesOptions o = fmt_options(scratch, "k", {});
+    o.include_dirs = {inc.string(), std::string(HOT_SOURCE_DIR) + "/include"};
+    const fs::path shape_dir = fs::path(o.cache_dir) / "pch" / "shape";
+    std::vector<size_t> counts;
+    testing::internal::CaptureStderr();
+    for (int phase = 0; phase < 3; ++phase)
+    {
+        std::ofstream(inc / "Actor.h", std::ios::app) << "\n// phase " << phase << "\n";
+        run_edits(o, 10 * phase + 1, 6);
+        counts.push_back(count_ext(shape_dir, ".pch"));
+    }
+    const std::string log = testing::internal::GetCapturedStderr();
+    if (counts[0] == 0)
+        GTEST_SKIP() << "no shape PCH was built (no base PCH in this setup)";
+    EXPECT_EQ(counts[0], 1u);
+    EXPECT_EQ(counts[1], 2u); // a new key
+    EXPECT_EQ(counts[2], 2u); // the oldest is removed
+    EXPECT_EQ(count_text_in(log, "shape/"), 0u) << log; // the shape files are no input of the object
+#else
+    GTEST_SKIP() << "ELF only";
+#endif
+}
+
+// The eviction works for each script and by the last use: many scripts never evict the PCH of
+// the script in work; an old marker and old temp files go.
+TEST(ObjectCacheBackend, ShapePchEvictionIsPerScriptAndByLastUse)
+{
+    TestScratch scratch;
+    const fs::path dir = scratch.file("shape");
+    fs::create_directories(dir);
+    const auto now = fs::file_time_type::clock::now();
+    auto make = [&](const std::string& stem, std::chrono::hours age) {
+        for (const char* ext : {".pch", ".h"})
+        {
+            std::ofstream(dir / (stem + ext)) << "x";
+            fs::last_write_time(dir / (stem + ext), now - age);
+        }
+    };
+    for (int u = 0; u < 12; ++u)
+        for (int k = 0; k < 3; ++k)
+            make("u" + std::to_string(u) + "-k" + std::to_string(k), std::chrono::hours(1 + u * 3 + k));
+    std::ofstream(dir / "u0-old.nosplit") << "x";
+    fs::last_write_time(dir / "u0-old.nosplit", now - std::chrono::hours(30));
+    std::ofstream(dir / "x.pch.tmp") << "x";
+    fs::last_write_time(dir / "x.pch.tmp", now - std::chrono::hours(3));
+    hot::evict_shape_files(dir.string(), "u11", 2, 100);
+    EXPECT_EQ(count_ext(dir, ".pch"), 35u); // u11 keeps 2 of 3
+    EXPECT_TRUE(fs::exists(dir / "u11-k0.pch"));
+    EXPECT_TRUE(fs::exists(dir / "u11-k1.pch"));
+    EXPECT_FALSE(fs::exists(dir / "u11-k2.pch"));
+    EXPECT_FALSE(fs::exists(dir / "u11-k2.h"));
+    EXPECT_FALSE(fs::exists(dir / "u0-old.nosplit"));
+    EXPECT_FALSE(fs::exists(dir / "x.pch.tmp"));
+    hot::evict_shape_files(dir.string(), "u0", 2, 8); // the global limit: the 8 newest remain
+    EXPECT_EQ(count_ext(dir, ".pch"), 7u); // the 8 newest, and u0 has only 2 of its 3
+    EXPECT_TRUE(fs::exists(dir / "u0-k0.pch")); // the newest of all
+}
+
+// The module from a shape PCH hit exports the same symbols as the module of the whole unit.
+TEST(ObjectCacheBackend, ShapePchModuleHasTheSameExports)
+{
+#if defined(__linux__)
+    CleanEnv env;
+    EnvGuard timing("HOT_TIMING", "1");
+    auto exports_of = [&](const std::string& tag, bool shape) {
+        TestScratch scratch;
+        EnvGuard off("HOT_SHAPE_PCH", shape ? "1" : "0");
+        hot::ClangFilesOptions o = fmt_options(scratch, tag, {});
+        testing::internal::CaptureStderr();
+        run_edits(o, 1, 6);
+        const std::string log = testing::internal::GetCapturedStderr();
+        const bool hit = log.find("shape pch hit") != std::string::npos;
+        std::string newest;
+        fs::file_time_type best{};
+        std::error_code ec;
+        for (const auto& e : fs::recursive_directory_iterator(o.work_dir, ec))
+            if (e.path().extension() == ".so" && (newest.empty() || e.last_write_time(ec) > best))
+            {
+                newest = e.path().string();
+                best = e.last_write_time(ec);
+            }
+        std::string out;
+        if (!newest.empty())
+        {
+            std::FILE* p = popen(("nm -D --defined-only " + newest + " | awk '{print $2 \" \" $3}' | sort").c_str(), "r");
+            char buf[512];
+            while (p && std::fgets(buf, sizeof buf, p))
+                out += buf;
+            if (p)
+                pclose(p);
+        }
+        return std::make_pair(hit, out);
+    };
+    const auto whole = exports_of("w", false);
+    const auto split = exports_of("p", true);
+    if (!split.first)
+        GTEST_SKIP() << "no shape PCH hit in this setup";
+    EXPECT_FALSE(whole.first);
+    ASSERT_FALSE(whole.second.empty());
+    EXPECT_EQ(whole.second, split.second);
 #else
     GTEST_SKIP() << "ELF only";
 #endif
