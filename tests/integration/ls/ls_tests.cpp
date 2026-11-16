@@ -2650,6 +2650,19 @@ int analyzed_files(LsClient& client)
 
 } // namespace
 
+TEST(SymbolIndex, EntryCountersStartAtZero)
+{
+    TempDir dir;
+    hot::ls::ServerOptions o = options(dir, false);
+    LsClient client(o);
+    client.initialize(uri_of(dir.path().string()));
+    const json r = client.request("hot/indexStats", json::object())["result"];
+    ASSERT_TRUE(r.contains("entryHits")) << r.dump();
+    ASSERT_TRUE(r.contains("entryMisses")) << r.dump();
+    EXPECT_EQ(r["entryHits"], 0);
+    EXPECT_EQ(r["entryMisses"], 0);
+}
+
 TEST(SymbolIndex, DigestCoversTheImportedScripts)
 {
     TempDir dir;

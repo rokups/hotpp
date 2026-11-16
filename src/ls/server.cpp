@@ -257,6 +257,13 @@ static std::string json_str(const json& j, const char* key)
     return f != j.end() && f->is_string() ? f->get<std::string>() : std::string();
 }
 
+// The valid entry of a path in an index snapshot, or null when the snapshot has none.
+[[maybe_unused]] static std::shared_ptr<const Entry> entry_in(const IndexSnapshot& snap, const std::string& path)
+{
+    const auto it = snap.entries.find(fs::path(path).lexically_normal().string());
+    return it != snap.entries.end() ? it->second : nullptr;
+}
+
 // A method or a constructor of a document, with the byte range of its declaration. A destructor is
 // not in the call hierarchy.
 struct Callable
@@ -1170,6 +1177,7 @@ private:
     // The tables that file_refs gives from a cache or a shard, and the tables that it makes from
     // an analyze result (hot/indexStats).
     int table_hits_ = 0, table_analyses_ = 0;
+    int entry_hits_ = 0, entry_misses_ = 0; // the index entry lookups of closed scripts (hot/indexStats, state thread only)
     // The direct imports of each workspace script (import_graph), by path.
     struct GraphEntry
     {
@@ -7471,7 +7479,7 @@ void Server::handle(const json& msg)
             {"dir", index_.dir()}, {"completions", completion_translations_},
             {"tokenRequests", native_token_requests_.load()}, {"translations", translations_.load()},
             {"translateMs", static_cast<double>(translate_us_.load()) / 1000.0}, {"tableHits", table_hits_},
-            {"tableAnalyses", table_analyses_}});
+            {"tableAnalyses", table_analyses_}, {"entryHits", entry_hits_}, {"entryMisses", entry_misses_}});
         return reply(id, out);
     }
     if (method == "hot/toScript")
