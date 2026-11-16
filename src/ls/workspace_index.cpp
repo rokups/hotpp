@@ -286,26 +286,12 @@ void WorkspaceIndex::schedule(const std::string& path, JobConfig config, IndexLe
             first_schedule_ = std::chrono::steady_clock::now();
         known_.insert(path);
         total_ = static_cast<int>(known_.size());
-        slots_[path].config = config;
-        auto it = jobs_.find(path);
-        if (it == jobs_.end())
-        {
-            jobs_[path] = Job{std::move(config), level};
-            queues_[static_cast<int>(level)].push_back(path);
-        }
-        else
-        {
-            it->second.config = std::move(config);
-            if (level < it->second.level)
-            {
-                it->second.level = level;
-                queues_[static_cast<int>(level)].push_back(path);
-            }
-        }
+        slots_[path].config = std::move(config);
+        queue_locked(path, level);
         pending_ = static_cast<int>(jobs_.size() + running_.size());
         check_ready_locked();
     }
-    work_cv_.notify_one();
+    work_cv_.notify_all();
 }
 
 void WorkspaceIndex::finish_scheduling()
@@ -327,17 +313,66 @@ void WorkspaceIndex::bump(const std::vector<std::string>& paths)
     for (const std::string& path : paths)
     {
         const auto it = jobs_.find(path);
-        if (it == jobs_.end() || it->second.level == IndexLevel::Request)
+        if (it == jobs_.end() || it->second == IndexLevel::Request)
             continue;
-        it->second.level = IndexLevel::Request;
+        it->second = IndexLevel::Request;
         queues_[0].push_back(path);
+    }
+}
+
+void WorkspaceIndex::queue_locked(const std::string& path, IndexLevel level)
+{
+    Slot& slot = slots_[path];
+    ++slot.generation;
+    slot.failed = false;
+    const auto it = jobs_.find(path);
+    if (it == jobs_.end())
+    {
+        jobs_[path] = level;
+        queues_[static_cast<int>(level)].push_back(path);
+    }
+    else if (level < it->second)
+    {
+        it->second = level;
+        queues_[static_cast<int>(level)].push_back(path);
     }
 }
 
 void WorkspaceIndex::invalidate(const std::string& path)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-    ++slots_[path].generation;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        std::vector<std::string> targets{path};
+        const auto dep = by_dep_.find(path);
+        if (dep != by_dep_.end())
+            targets.insert(targets.end(), dep->second.begin(), dep->second.end());
+        for (const std::string& target : targets)
+            if (slots_.count(target))
+                queue_locked(target, IndexLevel::Importer);
+        pending_ = static_cast<int>(jobs_.size() + running_.size());
+    }
+    work_cv_.notify_all();
+}
+
+void WorkspaceIndex::forget(const std::string& path)
+{
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const auto it = entries_.find(path);
+        if (it != entries_.end())
+        {
+            remove_locked(path, *it->second);
+            entries_.erase(it);
+        }
+        slots_.erase(path);
+        jobs_.erase(path); // a stale queue entry is dropped by take()
+        known_.erase(path);
+        finished_.erase(path);
+        total_ = static_cast<int>(known_.size());
+        pending_ = static_cast<int>(jobs_.size() + running_.size());
+        check_ready_locked();
+    }
+    done_cv_.notify_all();
 }
 
 std::vector<std::string> WorkspaceIndex::wait_for(const std::vector<std::string>& paths,
@@ -398,7 +433,7 @@ bool WorkspaceIndex::take(std::string& path, Job& job, uint64_t& generation)
             {
                 const auto j = jobs_.find(*it);
                 // A stale entry: the job ran, or it moved to a lower level number.
-                if (j == jobs_.end() || static_cast<int>(j->second.level) != level)
+                if (j == jobs_.end() || static_cast<int>(j->second) != level)
                 {
                     it = q.erase(it);
                     continue;
@@ -409,11 +444,20 @@ bool WorkspaceIndex::take(std::string& path, Job& job, uint64_t& generation)
                     continue;
                 }
                 path = *it;
-                job = std::move(j->second);
+                const auto slot = slots_.find(*it);
+                if (slot == slots_.end())
+                {
+                    jobs_.erase(j); // the path is forgotten
+                    it = q.erase(it);
+                    continue;
+                }
+                path = *it;
+                job.config = slot->second.config;
+                job.level = j->second;
+                generation = slot->second.generation;
                 jobs_.erase(j);
                 q.erase(it);
                 running_.insert(path);
-                generation = slots_[path].generation;
                 return true;
             }
         }
@@ -421,7 +465,7 @@ bool WorkspaceIndex::take(std::string& path, Job& job, uint64_t& generation)
     }
 }
 
-void WorkspaceIndex::finish(const std::string& path, Job&& job, uint64_t generation,
+void WorkspaceIndex::finish(const std::string& path, const Job& job, uint64_t generation,
     std::shared_ptr<const Entry> entry, bool analyzed)
 {
     {
@@ -431,20 +475,26 @@ void WorkspaceIndex::finish(const std::string& path, Job&& job, uint64_t generat
             ++analyzed_;
         else if (entry)
             ++loaded_;
-        if (slots_[path].generation != generation && !stop_)
+        const auto slot = slots_.find(path);
+        if (slot == slots_.end())
+        {
+            // The path is forgotten: drop the result.
+        }
+        else if (slot->second.generation != generation)
         {
             // The path changed during the job: drop the result and run the job again.
-            if (!jobs_.count(path))
+            if (!stop_ && !jobs_.count(path))
             {
-                const int level = static_cast<int>(job.level);
-                jobs_[path] = std::move(job);
-                queues_[level].push_back(path);
+                jobs_[path] = job.level;
+                queues_[static_cast<int>(job.level)].push_back(path);
             }
         }
         else
         {
             if (entry)
                 set_locked(path, std::move(entry), generation);
+            else
+                slot->second.failed = true;
             finished_.insert(path); // a failed job has no entry, but nobody waits for it
         }
         pending_ = static_cast<int>(jobs_.size() + running_.size());
@@ -481,7 +531,7 @@ void WorkspaceIndex::worker_main()
         {
             entry = nullptr;
         }
-        finish(path, std::move(job), generation, std::move(entry), analyzed);
+        finish(path, job, generation, std::move(entry), analyzed);
         if (notify_)
             notify_();
     }

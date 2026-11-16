@@ -115,9 +115,10 @@ public:
     void finish_scheduling();
     // Moves the queued jobs of the paths to the level 0.
     void bump(const std::vector<std::string>& paths);
-    // Counts a change of the path. A job that runs now does not publish its result, and the
-    // job runs again.
+    // Counts a change of the path and of its importers, and queues a job for each one at the Importer level.
     void invalidate(const std::string& path);
+    // Removes the entry, the slot and the queued job of a deleted script.
+    void forget(const std::string& path);
     // Bumps the paths and waits until they have an entry, failed or have no job. Calls
     // "poll" about each 50 ms without a lock (it may throw). Gives the paths that are still
     // missing at the deadline.
@@ -143,16 +144,18 @@ public:
     std::vector<std::shared_ptr<const Entry>> all_entries() const;
 
 private:
-    struct Job
+    struct Job // what a worker runs: the config comes from the slot
     {
         JobConfig config;
         IndexLevel level = IndexLevel::Rest;
     };
+    // Counts a change of the path and queues a job at "level" (keeps a higher priority level).
+    void queue_locked(const std::string& path, IndexLevel level);
     void set_locked(const std::string& path, std::shared_ptr<const Entry> entry, uint64_t generation);
     void worker_main();
     // Takes the next job that no worker runs. False at stop.
     bool take(std::string& path, Job& job, uint64_t& generation);
-    void finish(const std::string& path, Job&& job, uint64_t generation,
+    void finish(const std::string& path, const Job& job, uint64_t generation,
         std::shared_ptr<const Entry> entry, bool analyzed);
     void check_ready_locked();
     using FileMap = std::map<std::string, std::set<std::string>>;
@@ -173,7 +176,7 @@ private:
     std::condition_variable work_cv_, done_cv_;
     bool stop_ = false;
     std::atomic<bool> started_{false};
-    std::map<std::string, Job> jobs_; // the queued jobs by path
+    std::map<std::string, IndexLevel> jobs_; // the queued jobs by path
     std::deque<std::string> queues_[3]; // the paths by level; an entry can be stale
     std::set<std::string> running_, known_, finished_;
     struct Slot // one for each known path

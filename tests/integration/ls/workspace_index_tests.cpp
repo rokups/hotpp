@@ -11,6 +11,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <thread>
 
 namespace fs = std::filesystem;
 using namespace hot::ls;
@@ -280,4 +281,87 @@ TEST(WorkspaceIndex, QueuedScriptsKeepTheIndexNotReadyUntilTheyFinish)
     EXPECT_FALSE(st.ready);
     EXPECT_EQ(st.total, 2);
     EXPECT_EQ(st.ready_ms, -1);
+}
+
+namespace
+{
+std::shared_ptr<const Entry> entry_with_deps(const std::string& path, const std::vector<std::string>& deps)
+{
+    auto e = std::make_shared<Entry>(*make_entry(path, {"w"}, {}, {"f#1"}));
+    for (const std::string& d : deps)
+        e->dep_stamps.emplace_back(d, FileStamp{1, 2});
+    return e;
+}
+} // namespace
+
+// HOT-34: invalidate queues the path and the scripts that import it. The old entry stays.
+TEST(WorkspaceIndex, InvalidateQueuesThePathAndItsImporters)
+{
+    WorkspaceIndex idx;
+    // set() makes the slots and queues no job.
+    idx.set("lib.hot", entry_with_deps("lib.hot", {}));
+    idx.set("main.hot", entry_with_deps("main.hot", {"lib.hot"}));
+    idx.set("other.hot", entry_with_deps("other.hot", {"x.h"}));
+    EXPECT_EQ(idx.stats().pending, 0);
+    const auto old = idx.entry("lib.hot");
+    idx.invalidate("lib.hot");
+    EXPECT_EQ(idx.stats().pending, 2); // lib.hot and main.hot
+    EXPECT_EQ(idx.entry("lib.hot"), old);
+    EXPECT_NE(idx.entry("main.hot"), nullptr);
+    idx.invalidate("lib.hot");
+    EXPECT_EQ(idx.stats().pending, 2); // a queued job is not queued twice
+    idx.invalidate("unknown.hot"); // no effect
+    EXPECT_EQ(idx.stats().pending, 2);
+}
+
+TEST(WorkspaceIndex, ForgetRemovesTheEntryTheSlotAndTheJob)
+{
+    WorkspaceIndex idx;
+    idx.schedule("a.hot", JobConfig{}, IndexLevel::Rest);
+    idx.schedule("b.hot", JobConfig{}, IndexLevel::Rest);
+    idx.set("a.hot", entry_with_deps("a.hot", {"d.h"}));
+    EXPECT_EQ(idx.stats().pending, 2);
+    idx.forget("a.hot");
+    EXPECT_EQ(idx.entry("a.hot"), nullptr);
+    EXPECT_TRUE(idx.files_with_word("w").empty());
+    EXPECT_TRUE(idx.files_with_ref("f#1").empty());
+    EXPECT_TRUE(idx.files_with_dep("d.h").empty());
+    EXPECT_EQ(idx.stats().pending, 1);
+    EXPECT_EQ(idx.stats().total, 1);
+    idx.invalidate("a.hot"); // the slot is gone: no job
+    EXPECT_EQ(idx.stats().pending, 1);
+    idx.forget("a.hot"); // no effect
+}
+
+// HOT-34: the helpers have no blocking hook, so this test cannot stop a job in the middle. It
+// invalidates the script many times while one worker runs, then checks that the index settles
+// on one entry of the last text and that the job queue is empty.
+TEST(WorkspaceIndex, InvalidateDuringAJobDropsTheResultAndRunsAgain)
+{
+    TempDir tmp;
+    const std::string path = tmp.write("main.hot", "class M\n{\n    int f() { return 1; }\n}\n", -100);
+    SymbolIndex symbols;
+    hotc::TranslatorSession session;
+    WorkspaceIndex idx;
+    JobConfig config;
+    config.options = options_for(path);
+    idx.schedule(path, config, IndexLevel::Rest);
+    idx.finish_scheduling();
+    idx.start(symbols, session, 1, nullptr);
+    for (int i = 0; i < 50; ++i)
+    {
+        idx.invalidate(path);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    tmp.write("main.hot", "class M\n{\n    int g() { return 2; }\n}\n", -50);
+    idx.invalidate(path);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    while (idx.stats().pending > 0 && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    idx.stop();
+    EXPECT_EQ(idx.stats().pending, 0);
+    const auto e = idx.entry(path);
+    ASSERT_TRUE(e);
+    EXPECT_NE(e->text.find("int g()"), std::string::npos);
+    EXPECT_EQ(idx.all_entries().size(), 1u);
 }
