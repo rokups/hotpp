@@ -541,6 +541,7 @@ public:
     // The most libclang units that the session keeps for a reparse of a .cpp script (default 4).
     // 0 turns the reuse off. Call it before the translate calls.
     void set_tu_cache_limit(size_t n);
+    size_t tu_cache_size() const; // the number of kept libclang units
 
     struct Impl;
 

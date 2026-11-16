@@ -3650,6 +3650,11 @@ void TranslatorSession::set_tu_cache_limit(size_t n)
     impl_->tu_cache.set_max_units(n);
 }
 
+size_t TranslatorSession::tu_cache_size() const
+{
+    return impl_->tu_cache.size();
+}
+
 void TranslatorSession::clear()
 {
     std::map<std::string, std::shared_ptr<Impl::Entry>> old;
@@ -11000,6 +11005,7 @@ void register_llvm_targets()
 TranslateResult translate(const TranslateOptions& in)
 {
     TranslatorSession session;
+    session.set_tu_cache_limit(0); // one call: no preamble and no kept unit
     return translate(in, session);
 }
 
@@ -11154,6 +11160,7 @@ static std::string normalize_import_path(const std::string& path)
 AnalyzeResult analyze(const std::string& text, const TranslateOptions& options)
 {
     TranslatorSession session;
+    session.set_tu_cache_limit(0);
     return analyze(text, options, session);
 }
 
@@ -11601,6 +11608,7 @@ std::vector<VirtualMethod> virtual_methods(const std::string& text, const Transl
 AnalyzeResult analyze_cpp(const std::string& text, const std::string& path, const TranslateOptions& options)
 {
     TranslatorSession session;
+    session.set_tu_cache_limit(0);
     return analyze_cpp(text, path, options, session);
 }
 

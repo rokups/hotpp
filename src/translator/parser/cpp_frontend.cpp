@@ -22,6 +22,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <filesystem>
 #include <functional>
 #include <map>
 #include <mutex>
@@ -56,6 +57,30 @@ std::string cxs(CXString s)
     return r;
 }
 
+using Clock = std::chrono::steady_clock;
+constexpr auto kIdleLimit = std::chrono::minutes(10);
+
+// The size and the time of a file that a kept unit read. libclang checks the files of the preamble
+// by size and time in seconds. This stamp has the time in nanoseconds and the inode.
+struct Stamp
+{
+    std::string path;
+    FileTimes times;
+};
+
+bool same_times(const FileTimes& a, const FileTimes& b)
+{
+    return a.exists == b.exists && a.mtime_ns == b.mtime_ns && a.size == b.size && a.ino == b.ino;
+}
+
+void collect_inclusion(CXFile file, CXSourceLocation*, unsigned, CXClientData data)
+{
+    CXString n = clang_getFileName(file);
+    if (const char* c = clang_getCString(n))
+        static_cast<std::vector<std::string>*>(data)->push_back(c);
+    clang_disposeString(n);
+}
+
 // A guard for the libclang handles. It releases them on every exit path. If "cache" is set and
 // "keep" is true, it gives the handles to the cache instead.
 struct Handles
@@ -65,6 +90,8 @@ struct Handles
     TuCache* cache = nullptr;
     std::string key;
     bool keep = false;
+    uint64_t generation = 0; // the generation of the cache at the start of the parse
+    std::vector<Stamp> stamps;
     void dispose()
     {
         if (tu)
@@ -155,10 +182,12 @@ std::string type_text(CXType t)
     return unexpand_std(cxs(clang_getTypeSpelling(t))); // the placeholder of the namespace (std_ns.h)
 }
 
-// The main file of the unit that Frontend::run reads. A unit with a preamble gives the entities
-// of the preamble (the directives at the top) with a location that clang_Location_isFromMainFile
-// does not accept, so the check also compares the file.
+// A unit with a preamble gives the directives of the preamble (the "#include" lines and the
+// macros at the top) with a location that clang_Location_isFromMainFile does not accept. For
+// such a unit, "g_main_file" is the main file and the check also accepts a directive that is in
+// that file. A unit with no preamble has "g_main_file" null: the check is the plain one.
 thread_local CXFile g_main_file = nullptr;
+thread_local bool g_use_preamble = false;
 
 bool in_main_file(CXSourceLocation loc, CXFile main)
 {
@@ -173,7 +202,14 @@ bool in_main_file(CXSourceLocation loc, CXFile main)
 
 bool from_main(CXCursor c)
 {
-    return in_main_file(clang_getCursorLocation(c), g_main_file);
+    const CXSourceLocation loc = clang_getCursorLocation(c);
+    if (clang_Location_isFromMainFile(loc))
+        return true;
+    if (!g_main_file)
+        return false;
+    // Only a directive can be in the preamble (a declaration comes after it).
+    const CXCursorKind k = clang_getCursorKind(c);
+    return (k == CXCursor_InclusionDirective || k == CXCursor_MacroDefinition) && in_main_file(loc, g_main_file);
 }
 
 // True when the spelling location of the cursor is not its expansion location (a macro).
@@ -3308,7 +3344,7 @@ ast::Script Frontend::run(CXTranslationUnit tu, const std::string& name)
     main_ = clang_getFile(tu, name.c_str());
     struct MainScope
     {
-        explicit MainScope(CXFile f) { g_main_file = f; }
+        explicit MainScope(CXFile f) { g_main_file = g_use_preamble ? f : nullptr; }
         ~MainScope() { g_main_file = nullptr; }
     } main_scope(main_);
     for (CXCursor k : children(clang_getTranslationUnitCursor(tu)))
@@ -3440,51 +3476,93 @@ struct TuCache::Impl
     struct Slot
     {
         std::string key;
-        CXIndex idx;
-        CXTranslationUnit tu;
+        CXIndex idx = nullptr;
+        CXTranslationUnit tu = nullptr;
+        std::vector<Stamp> stamps; // the files of the unit
+        Clock::time_point used;
     };
     std::atomic<size_t> max_units{0};
+    std::atomic<uint64_t> generation{0}; // clear() adds one: a unit of an older parse is not kept
     mutable std::mutex mutex;
     std::deque<Slot> slots; // the oldest first
-    void drop(Slot& s)
+    static void drop(Slot& s)
     {
-        clang_disposeTranslationUnit(s.tu);
-        clang_disposeIndex(s.idx);
+        if (s.tu)
+            clang_disposeTranslationUnit(s.tu);
+        if (s.idx)
+            clang_disposeIndex(s.idx);
+    }
+    // Moves the units that nobody used for kIdleLimit to "dead". The caller holds the lock.
+    void evict_idle(std::vector<Slot>& dead)
+    {
+        const auto now = Clock::now();
+        for (auto it = slots.begin(); it != slots.end();)
+            if (now - it->used > kIdleLimit)
+            {
+                dead.push_back(std::move(*it));
+                it = slots.erase(it);
+            }
+            else
+                ++it;
     }
     // Removes the unit of "key" from the cache. Returns false if there is none.
     bool take(const std::string& key, Slot& out)
     {
-        std::lock_guard<std::mutex> lock(mutex);
-        for (auto it = slots.begin(); it != slots.end(); ++it)
-            if (it->key == key)
-            {
-                out = *it;
-                slots.erase(it);
-                return true;
-            }
-        return false;
-    }
-    void put(Slot s)
-    {
         std::vector<Slot> dead;
+        bool found = false;
         {
             std::lock_guard<std::mutex> lock(mutex);
+            evict_idle(dead);
             for (auto it = slots.begin(); it != slots.end(); ++it)
-                if (it->key == s.key)
-                { // another thread parsed the same key: keep the new unit only
-                    dead.push_back(*it);
+                if (it->key == key)
+                {
+                    out = std::move(*it);
                     slots.erase(it);
+                    found = true;
                     break;
                 }
-            slots.push_back(std::move(s));
-            while (slots.size() > max_units)
-            {
-                dead.push_back(slots.front());
-                slots.pop_front();
-            }
         }
         for (Slot& d : dead)
             drop(d); // outside the lock: the dispose is slow
+        return found;
+    }
+    // Keeps the unit. The unit goes if "gen" is not the current generation. The function does not throw.
+    void put(Slot s, uint64_t gen) noexcept
+    {
+        std::vector<Slot> dead;
+        try
+        {
+            s.used = Clock::now();
+            std::lock_guard<std::mutex> lock(mutex);
+            if (gen != generation.load() || max_units == 0)
+            {
+                dead.push_back(std::move(s));
+            }
+            else
+            {
+                evict_idle(dead);
+                for (auto it = slots.begin(); it != slots.end(); ++it)
+                    if (it->key == s.key)
+                    { // another thread parsed the same key: keep the new unit only
+                        dead.push_back(std::move(*it));
+                        slots.erase(it);
+                        break;
+                    }
+                slots.push_back(std::move(s));
+                while (slots.size() > max_units)
+                {
+                    dead.push_back(std::move(slots.front()));
+                    slots.pop_front();
+                }
+            }
+        }
+        catch (...)
+        { // out of memory: the unit that the move did not store is in "s" or in "dead"
+            if (s.tu || s.idx)
+                dead.push_back(std::move(s));
+        }
+        for (Slot& d : dead)
+            drop(d);
     }
 };
 
@@ -3505,7 +3583,7 @@ void TuCache::set_max_units(size_t n)
         std::lock_guard<std::mutex> lock(impl_->mutex);
         while (impl_->slots.size() > n)
         {
-            dead.push_back(impl_->slots.front());
+            dead.push_back(std::move(impl_->slots.front()));
             impl_->slots.pop_front();
         }
     }
@@ -3517,6 +3595,7 @@ void TuCache::clear()
     std::deque<Impl::Slot> old;
     {
         std::lock_guard<std::mutex> lock(impl_->mutex);
+        ++impl_->generation;
         old.swap(impl_->slots);
     }
     for (Impl::Slot& s : old)
@@ -3532,8 +3611,26 @@ Handles::~Handles()
 {
     if (keep && cache && tu && idx)
     {
-        cache->state().put({key, idx, tu});
-        return;
+        TuCache::Impl::Slot slot;
+        bool ready = false;
+        try
+        {
+            slot.key = key;
+            slot.idx = idx;
+            slot.tu = tu;
+            slot.stamps = std::move(stamps);
+            ready = true;
+        }
+        catch (...)
+        {
+        }
+        if (ready)
+        {
+            idx = nullptr; // the cache owns the handles now (put never throws and always disposes)
+            tu = nullptr;
+            cache->state().put(std::move(slot), generation);
+            return;
+        }
     }
     dispose();
 }
@@ -3574,24 +3671,38 @@ ast::Script parse_cpp_script(const std::string& text, const std::string& name,
     if (cache)
     {
         h.cache = cache;
+        h.generation = cache->state().generation.load();
         h.key = name;
         for (const std::string& a : clang_args)
             h.key += '\n' + a;
-        TuCache::Impl::Slot slot{};
+        std::error_code cwd_ec;
+        h.key += '\n' + std::filesystem::current_path(cwd_ec).string();
+        TuCache::Impl::Slot slot;
         if (cache->state().take(h.key, slot))
         {
             clang_disposeIndex(h.idx); // the unit brings its own index
             h.idx = slot.idx;
             h.tu = slot.tu;
+            slot.idx = nullptr;
+            slot.tu = nullptr;
+            bool fresh = true;
+            for (const Stamp& st : slot.stamps)
+                if (!same_times(st.times, file_times(st.path)))
+                {
+                    fresh = false; // a file of the unit changed (a finer check than the one of libclang)
+                    break;
+                }
             // The unit has the preamble. libclang reuses it if the included files did not change.
-            if (clang_reparseTranslationUnit(h.tu, static_cast<unsigned>(unsaved.size()), unsaved.data(),
-                    clang_defaultReparseOptions(h.tu)) == 0)
+            if (fresh
+                && clang_reparseTranslationUnit(h.tu, static_cast<unsigned>(unsaved.size()), unsaved.data(),
+                       clang_defaultReparseOptions(h.tu))
+                    == 0)
             {
                 ec = CXError_Success;
                 reparsed = true;
             }
             else
-            { // the reparse failed: drop the unit and parse again from the start
+            { // a file changed or the reparse failed: drop the unit and parse again from the start
                 h.dispose();
                 h.idx = clang_createIndex(0, 0);
             }
@@ -3614,8 +3725,7 @@ ast::Script parse_cpp_script(const std::string& text, const std::string& name,
         diag.add_line(0, "libclang cannot parse the script");
         return sc;
     }
-    h.keep = true;
-    const CXFile main_file = clang_getFile(h.tu, name.c_str());
+    const CXFile main_file = cache ? clang_getFile(h.tu, name.c_str()) : nullptr;
     bool diag_error = false;
     for (unsigned i = 0, n = clang_getNumDiagnostics(h.tu); i < n; ++i)
     {
@@ -3656,8 +3766,32 @@ ast::Script parse_cpp_script(const std::string& text, const std::string& name,
         }
         clang_disposeDiagnostic(d);
     }
+    // A unit that had an error is not kept: a reparse can drop or change the diagnostics of a header.
+    h.keep = cache != nullptr && !diag_error;
+    if (h.keep)
+    {
+        std::vector<std::string> files;
+        clang_getInclusions(h.tu, collect_inclusion, &files);
+        std::sort(files.begin(), files.end());
+        files.erase(std::unique(files.begin(), files.end()), files.end());
+        std::set<std::string> in_memory; // the script and the headers in memory: libclang gets their text
+        for (const CXUnsavedFile& u : unsaved)
+            in_memory.insert(u.Filename);
+        for (std::string& f : files)
+        {
+            if (in_memory.count(f))
+                continue;
+            FileTimes t = file_times(f);
+            h.stamps.push_back({std::move(f), t});
+        }
+    }
     if (diag_error)
         return sc;
+    g_use_preamble = cache != nullptr;
+    struct PreambleScope
+    {
+        ~PreambleScope() { g_use_preamble = false; }
+    } preamble_scope;
     try
     {
         const auto t_visit = t_now();

@@ -21,8 +21,15 @@ namespace hotc
 // include preamble (the first block of directives of the unit) only once. A unit stays in the
 // cache only while no thread uses it: parse_cpp_script takes the unit out and puts it back at
 // the end. So one thread at a time uses a unit, and the cache is thread safe. The key of a unit
-// is the file name and the compiler arguments. The cache keeps a bounded number of units and
-// drops the oldest one. A unit that fails a reparse is dropped, and the next parse is fresh.
+// is the file name, the compiler arguments and the current directory. The cache keeps a bounded
+// number of units and drops the oldest one. A unit that nobody uses for 10 minutes is disposed
+// at the next take or put. A unit is dropped (the next parse is fresh) when:
+//   - the parse had an error in any file (a reparse can drop a diagnostic of a header),
+//   - a reparse fails,
+//   - a file that the unit included has a new size, time (nanoseconds) or inode,
+//   - clear() ran during its parse.
+// Limit: a header edit that keeps the size, the time and the inode is not seen.
+// The text of the script and of the headers in memory is always new: the reparse gets it.
 class TuCache
 {
 public:
