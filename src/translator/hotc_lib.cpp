@@ -3629,6 +3629,9 @@ struct TranslatorSession::Impl
     std::mutex mutex;
     std::map<std::string, std::shared_ptr<Entry>> entries;
     std::atomic<int> parses{0};
+    // The libclang units of the .cpp scripts, kept for the reparse. See hotc::TuCache for the
+    // thread rule: a parse takes the unit out, so one thread at a time uses a unit.
+    hotc::TuCache tu_cache;
 };
 
 TranslatorSession::TranslatorSession()
@@ -3642,6 +3645,11 @@ int TranslatorSession::parse_count() const
     return impl_->parses.load();
 }
 
+void TranslatorSession::set_tu_cache_limit(size_t n)
+{
+    impl_->tu_cache.set_max_units(n);
+}
+
 void TranslatorSession::clear()
 {
     std::map<std::string, std::shared_ptr<Impl::Entry>> old;
@@ -3649,6 +3657,7 @@ void TranslatorSession::clear()
         std::lock_guard<std::mutex> lock(impl_->mutex);
         old.swap(impl_->entries);
     }
+    impl_->tu_cache.clear();
     // A parse in progress keeps its entry alive. The old entries die here, outside the lock.
 }
 
@@ -4148,7 +4157,7 @@ void translate_impl(
             at = eol + 1;
         }
         sc = hotc::parse_cpp_script(in.script_text, opt.input, clang_args(opt), map, g_diag, res.virtual_files,
-            opt.aot_optimized);
+            opt.aot_optimized, &session.tu_cache);
         if (!g_diag.items.empty())
             throw TranslateAbort{};
         for (const Import& im : sc.imports)

@@ -15,11 +15,16 @@
 #include <clang-c/Index.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <functional>
 #include <map>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <tuple>
@@ -51,18 +56,25 @@ std::string cxs(CXString s)
     return r;
 }
 
-// A guard for the libclang handles. It releases them on every exit path.
+// A guard for the libclang handles. It releases them on every exit path. If "cache" is set and
+// "keep" is true, it gives the handles to the cache instead.
 struct Handles
 {
     CXIndex idx = nullptr;
     CXTranslationUnit tu = nullptr;
-    ~Handles()
+    TuCache* cache = nullptr;
+    std::string key;
+    bool keep = false;
+    void dispose()
     {
         if (tu)
             clang_disposeTranslationUnit(tu);
         if (idx)
             clang_disposeIndex(idx);
+        tu = nullptr;
+        idx = nullptr;
     }
+    ~Handles();
 };
 
 // The calls of a shell macro in the body of a script class (see Frontend::find_shell_macros). The
@@ -143,9 +155,25 @@ std::string type_text(CXType t)
     return unexpand_std(cxs(clang_getTypeSpelling(t))); // the placeholder of the namespace (std_ns.h)
 }
 
+// The main file of the unit that Frontend::run reads. A unit with a preamble gives the entities
+// of the preamble (the directives at the top) with a location that clang_Location_isFromMainFile
+// does not accept, so the check also compares the file.
+thread_local CXFile g_main_file = nullptr;
+
+bool in_main_file(CXSourceLocation loc, CXFile main)
+{
+    if (clang_Location_isFromMainFile(loc))
+        return true;
+    if (!main)
+        return false;
+    CXFile f = nullptr;
+    clang_getExpansionLocation(loc, &f, nullptr, nullptr, nullptr);
+    return f && clang_File_isEqual(f, main);
+}
+
 bool from_main(CXCursor c)
 {
-    return clang_Location_isFromMainFile(clang_getCursorLocation(c)) != 0;
+    return in_main_file(clang_getCursorLocation(c), g_main_file);
 }
 
 // True when the spelling location of the cursor is not its expansion location (a macro).
@@ -3278,6 +3306,11 @@ void Frontend::find_shell_macros()
 ast::Script Frontend::run(CXTranslationUnit tu, const std::string& name)
 {
     main_ = clang_getFile(tu, name.c_str());
+    struct MainScope
+    {
+        explicit MainScope(CXFile f) { g_main_file = f; }
+        ~MainScope() { g_main_file = nullptr; }
+    } main_scope(main_);
     for (CXCursor k : children(clang_getTranslationUnitCursor(tu)))
         if (from_main(k))
             add_top(k);
@@ -3402,11 +3435,116 @@ void Frontend::read_top(const std::vector<CXCursor>& top)
 
 } // namespace
 
+struct TuCache::Impl
+{
+    struct Slot
+    {
+        std::string key;
+        CXIndex idx;
+        CXTranslationUnit tu;
+    };
+    std::atomic<size_t> max_units{0};
+    mutable std::mutex mutex;
+    std::deque<Slot> slots; // the oldest first
+    void drop(Slot& s)
+    {
+        clang_disposeTranslationUnit(s.tu);
+        clang_disposeIndex(s.idx);
+    }
+    // Removes the unit of "key" from the cache. Returns false if there is none.
+    bool take(const std::string& key, Slot& out)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        for (auto it = slots.begin(); it != slots.end(); ++it)
+            if (it->key == key)
+            {
+                out = *it;
+                slots.erase(it);
+                return true;
+            }
+        return false;
+    }
+    void put(Slot s)
+    {
+        std::vector<Slot> dead;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            for (auto it = slots.begin(); it != slots.end(); ++it)
+                if (it->key == s.key)
+                { // another thread parsed the same key: keep the new unit only
+                    dead.push_back(*it);
+                    slots.erase(it);
+                    break;
+                }
+            slots.push_back(std::move(s));
+            while (slots.size() > max_units)
+            {
+                dead.push_back(slots.front());
+                slots.pop_front();
+            }
+        }
+        for (Slot& d : dead)
+            drop(d); // outside the lock: the dispose is slow
+    }
+};
+
+TuCache::TuCache(size_t max_units)
+    : impl_(new Impl)
+{
+    impl_->max_units = max_units;
+}
+TuCache::~TuCache()
+{
+    clear();
+}
+void TuCache::set_max_units(size_t n)
+{
+    impl_->max_units = n;
+    std::vector<Impl::Slot> dead;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mutex);
+        while (impl_->slots.size() > n)
+        {
+            dead.push_back(impl_->slots.front());
+            impl_->slots.pop_front();
+        }
+    }
+    for (Impl::Slot& d : dead)
+        impl_->drop(d);
+}
+void TuCache::clear()
+{
+    std::deque<Impl::Slot> old;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mutex);
+        old.swap(impl_->slots);
+    }
+    for (Impl::Slot& s : old)
+        impl_->drop(s);
+}
+size_t TuCache::size() const
+{
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    return impl_->slots.size();
+}
+
+Handles::~Handles()
+{
+    if (keep && cache && tu && idx)
+    {
+        cache->state().put({key, idx, tu});
+        return;
+    }
+    dispose();
+}
+
 ast::Script parse_cpp_script(const std::string& text, const std::string& name,
     const std::vector<std::string>& clang_args, const LineMap& map, Diagnostics& diag,
-    const std::vector<std::pair<std::string, std::string>>& virtual_files, bool aot_optimized)
+    const std::vector<std::pair<std::string, std::string>>& virtual_files, bool aot_optimized, TuCache* cache)
 {
     ast::Script sc;
+    if (cache && cache->state().max_units == 0)
+        cache = nullptr; // the cache is off
     std::vector<const char*> cargs;
     for (const auto& a : clang_args)
         cargs.push_back(a.c_str());
@@ -3424,13 +3562,60 @@ ast::Script parse_cpp_script(const std::string& text, const std::string& name,
             unsaved_names.push_back(std::move(spelling));
             unsaved.push_back({unsaved_names.back().c_str(), vtext.c_str(), static_cast<unsigned long>(vtext.size())});
         }
-    CXErrorCode ec = clang_parseTranslationUnit2(h.idx, name.c_str(), cargs.data(), static_cast<int>(cargs.size()),
-        unsaved.data(), static_cast<unsigned>(unsaved.size()), CXTranslationUnit_DetailedPreprocessingRecord, &h.tu);
+    // HOT_TIMING: the time of the libclang parse and of the visit (stderr).
+    const bool timing = std::getenv("HOT_TIMING") != nullptr;
+    auto t_now = [] { return std::chrono::steady_clock::now(); };
+    auto ms_since = [&](std::chrono::steady_clock::time_point t) {
+        return std::chrono::duration<double, std::milli>(t_now() - t).count();
+    };
+    const auto t_parse = t_now();
+    CXErrorCode ec = CXError_Failure;
+    bool reparsed = false;
+    if (cache)
+    {
+        h.cache = cache;
+        h.key = name;
+        for (const std::string& a : clang_args)
+            h.key += '\n' + a;
+        TuCache::Impl::Slot slot{};
+        if (cache->state().take(h.key, slot))
+        {
+            clang_disposeIndex(h.idx); // the unit brings its own index
+            h.idx = slot.idx;
+            h.tu = slot.tu;
+            // The unit has the preamble. libclang reuses it if the included files did not change.
+            if (clang_reparseTranslationUnit(h.tu, static_cast<unsigned>(unsaved.size()), unsaved.data(),
+                    clang_defaultReparseOptions(h.tu)) == 0)
+            {
+                ec = CXError_Success;
+                reparsed = true;
+            }
+            else
+            { // the reparse failed: drop the unit and parse again from the start
+                h.dispose();
+                h.idx = clang_createIndex(0, 0);
+            }
+        }
+    }
+    if (!reparsed)
+    {
+        unsigned options = CXTranslationUnit_DetailedPreprocessingRecord;
+        if (cache)
+            options |= CXTranslationUnit_PrecompiledPreamble | CXTranslationUnit_CreatePreambleOnFirstParse;
+        ec = clang_parseTranslationUnit2(h.idx, name.c_str(), cargs.data(), static_cast<int>(cargs.size()),
+            unsaved.data(), static_cast<unsigned>(unsaved.size()), options, &h.tu);
+    }
+    if (timing)
+        std::fprintf(stderr, "[cpp-frontend] libclang %s %.1f ms\n", reparsed ? "reparse" : "parse",
+            ms_since(t_parse));
     if (ec != CXError_Success || !h.tu)
     {
+        h.dispose();
         diag.add_line(0, "libclang cannot parse the script");
         return sc;
     }
+    h.keep = true;
+    const CXFile main_file = clang_getFile(h.tu, name.c_str());
     bool diag_error = false;
     for (unsigned i = 0, n = clang_getNumDiagnostics(h.tu); i < n; ++i)
     {
@@ -3438,7 +3623,7 @@ ast::Script parse_cpp_script(const std::string& text, const std::string& name,
         if (clang_getDiagnosticSeverity(d) >= CXDiagnostic_Error)
         {
             CXSourceLocation loc = clang_getDiagnosticLocation(d);
-            if (clang_Location_isFromMainFile(loc))
+            if (in_main_file(loc, main_file))
             {
                 std::string msg = cxs(clang_getDiagnosticSpelling(d));
                 // The same text as the .hot error for "new" of an abstract class.
@@ -3453,7 +3638,7 @@ ast::Script parse_cpp_script(const std::string& text, const std::string& name,
                 {
                     CXDiagnostic child = clang_getDiagnosticInSet(children, c);
                     CXSourceLocation cloc = clang_getDiagnosticLocation(child);
-                    if (clang_Location_isFromMainFile(cloc))
+                    if (in_main_file(cloc, main_file))
                         diag.note(offset_of(cloc), map, cxs(clang_getDiagnosticSpelling(child)));
                     clang_disposeDiagnostic(child);
                 }
@@ -3475,8 +3660,11 @@ ast::Script parse_cpp_script(const std::string& text, const std::string& name,
         return sc;
     try
     {
+        const auto t_visit = t_now();
         Frontend fe(text, map, aot_optimized);
         sc = fe.run(h.tu, name);
+        if (timing)
+            std::fprintf(stderr, "[cpp-frontend] visit %.1f ms\n", ms_since(t_visit));
         for (const auto& [wpos, wmsg] : fe.warnings())
             diag.warn(wpos, map, wmsg);
     }

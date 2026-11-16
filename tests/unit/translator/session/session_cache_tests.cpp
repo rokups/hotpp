@@ -500,3 +500,70 @@ TEST(SessionParallel, ThrowingParseLetsTheWaiterParse)
     ASSERT_TRUE(b_res.ok) << b_res.diagnostics;
     EXPECT_EQ(session.parse_count(), 2);
 }
+
+namespace
+{
+
+const char* kCppHeaderV1 =
+    "#pragma once\n"
+    "class Widget { public: virtual ~Widget() {} virtual int Update(float dt) { return 1; } };\n";
+const char* kCppHeaderV2 =
+    "#pragma once\n"
+    "class Widget { public: virtual ~Widget() {} virtual int Update(float dt) { return 1; }\n"
+    "    virtual int Extra() { return 2; } };\n";
+
+std::string cpp_script(const std::string& includes, const std::string& body)
+{
+    return includes + "class Foo : public Widget\n{\npublic:\n" + body + "};\n";
+}
+
+} // namespace
+
+// A reparse of a kept unit with a new script text must give the same result as a fresh parse.
+// The edits change the body, the member list, a header, the include block and add an error.
+TEST(SessionCache, CppReparseGivesTheSameResultAsAFreshParse)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kCppHeaderV1);
+    const std::string inc = "#include \"w.h\"\n";
+    struct Step
+    {
+        const char* header; // null: the header stays
+        std::string script;
+    };
+    const std::vector<Step> steps = {
+        {nullptr, cpp_script(inc, "    int Update(float dt) override { return 1; }\n")},
+        {nullptr, cpp_script(inc, "    int Update(float dt) override { return 2; }\n")},
+        {nullptr, cpp_script(inc, "    int hp = 3;\n    int Update(float dt) override { return hp; }\n")},
+        {kCppHeaderV2, cpp_script(inc, "    int Extra() override { return 5; }\n")},
+        {nullptr, cpp_script(inc, "    int Update(float dt) override { return missing; }\n")},
+        {nullptr, cpp_script(inc + "#include <string>\n", "    int Update(float dt) override { return 4; }\n")},
+        {kCppHeaderV1, cpp_script(inc, "    int Update(float dt) override { return 1; }\n")},
+    };
+    hotc::TranslatorSession shared;
+    for (size_t i = 0; i < steps.size(); ++i)
+    {
+        if (steps[i].header)
+            write_file(dir.path() / "w.h", steps[i].header);
+        hotc::TranslateOptions o = temp_options(dir, steps[i].script);
+        o.script_name = "t.cpp";
+        hotc::TranslatorSession fresh;
+        fresh.set_tu_cache_limit(0); // a plain parse with no preamble
+        const hotc::TranslateResult want = hotc::translate(o, fresh);
+        const hotc::TranslateResult got = hotc::translate(o, shared);
+        if (i != 4)
+            EXPECT_TRUE(want.ok) << "step " << i << "\n" << want.diagnostics;
+        EXPECT_EQ(got.ok, want.ok) << "step " << i << "\n" << got.diagnostics << want.diagnostics;
+        EXPECT_EQ(got.cpp, want.cpp) << "step " << i;
+        EXPECT_EQ(got.diagnostics, want.diagnostics) << "step " << i;
+        EXPECT_EQ(got.slots_out, want.slots_out) << "step " << i;
+    }
+    // The step with the missing name is an error in both ways.
+    hotc::TranslateOptions bad = temp_options(dir, steps[4].script);
+    bad.script_name = "t.cpp";
+    EXPECT_FALSE(hotc::translate(bad, shared).ok);
+    shared.clear(); // drops the kept units
+    hotc::TranslateOptions again = temp_options(dir, steps[6].script);
+    again.script_name = "t.cpp";
+    EXPECT_TRUE(hotc::translate(again, shared).ok);
+}

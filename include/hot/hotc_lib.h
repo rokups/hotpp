@@ -538,6 +538,9 @@ public:
 
     int parse_count() const; // the number of libclang parses until now
     void clear(); // drops the cache
+    // The most libclang units that the session keeps for a reparse of a .cpp script (default 4).
+    // 0 turns the reuse off. Call it before the translate calls.
+    void set_tu_cache_limit(size_t n);
 
     struct Impl;
 
