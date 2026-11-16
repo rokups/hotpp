@@ -298,8 +298,33 @@ bool pch_enabled_by_env()
     return !(v && std::strcmp(v, "0") == 0);
 }
 
+// A line that sets a macro of the script mode (a ".cpp" script or optimized AOT code). The unit has
+// the line before its includes, so the PCH must have it too. No other "#define" line is accepted.
+bool is_script_macro_line(const std::string& line)
+{
+    return line == "#define __HOTSCRIPT__ 1" || line == "#define HOT_AOT_OPTIMIZED 1";
+}
+
+// True when the PCH text has a script macro line. Such a unit uses only its exact PCH: the shared
+// PCH of the other units has no such macro.
+bool has_script_macros(const std::string& prefix)
+{
+    for (size_t pos = 0; pos < prefix.size();)
+    {
+        const size_t nl = prefix.find('\n', pos);
+        const size_t next = nl == std::string::npos ? prefix.size() : nl + 1;
+        std::string line = prefix.substr(pos, next - pos);
+        while (!line.empty() && (line.back() == '\n' || line.back() == '\r'))
+            line.pop_back();
+        if (is_script_macro_line(line))
+            return true;
+        pos = next;
+    }
+    return false;
+}
+
 // The start of the translated text up to the last "#include" line of the start. The start has
-// only "#include" and "#line" lines, empty lines and "//" comments. The PCH has this exact
+// only "#include" and "#line" lines, the script macro lines, empty lines and "//" comments. The PCH has this exact
 // text, so a compile with the exact PCH of the unit sees the same declarations and macros as a
 // compile without it. The shared PCH has more: it adds the declarations and macros of the headers
 // of other units. The include lines in the .cpp find their include guards. Empty: no include.
@@ -316,7 +341,8 @@ std::string include_prefix(const std::string& cpp)
             line.pop_back();
         if (line.rfind("#include", 0) == 0)
             end = next;
-        else if (!(line.empty() || line.rfind("//", 0) == 0 || line.rfind("#line", 0) == 0))
+        else if (!(line.empty() || line.rfind("//", 0) == 0 || line.rfind("#line", 0) == 0
+                     || is_script_macro_line(line)))
             break;
         pos = next;
     }
@@ -338,7 +364,10 @@ std::string pch_header_text(const std::string& prefix)
     {
         const size_t nl = prefix.find('\n', pos);
         const size_t next = nl == std::string::npos ? prefix.size() : nl + 1;
-        if (prefix.compare(pos, 8, "#include") == 0)
+        std::string line = prefix.substr(pos, next - pos);
+        while (!line.empty() && (line.back() == '\n' || line.back() == '\r'))
+            line.pop_back();
+        if (prefix.compare(pos, 8, "#include") == 0 || is_script_macro_line(line))
         {
             r.append(prefix, pos, next - pos);
             if (r.back() != '\n')
@@ -1826,6 +1855,17 @@ std::optional<ClangFilesBackend::PchPlan> ClangFilesBackend::plan_pch(
             return plan;
         }
     }
+    // A unit with script macros (a .cpp script) uses only its exact PCH. The shared PCH has no
+    // such macro, and the unit adds no line to the union.
+    if (has_script_macros(prefix))
+    {
+        plan.why = "unit has script macros: exact pch only";
+        if (exact_bad)
+            plan.why += "; exact pch has the bad marker";
+        else
+            plan.build = true;
+        return plan;
+    }
     std::string shared;
     if (read_text((fs::path(opt_.cache_dir) / "pch" / "shared.inc").string(), shared) && !shared.empty())
     {
@@ -2014,9 +2054,15 @@ void ClangFilesBackend::prewarm_pch(const std::vector<const BuildJob*>& jobs, bo
     {
         if (opt_.fs && !job->tr.virtual_files.empty())
             return;
-        prefixes.push_back(without_unit_dir_lines(opt_, job->script_dir, include_prefix(job->tr.cpp)));
+        const std::string prefix = include_prefix(job->tr.cpp);
+        // A unit with script macros has only its exact PCH (see plan_pch).
+        if (has_script_macros(pch_header_text(prefix)))
+            continue;
+        prefixes.push_back(without_unit_dir_lines(opt_, job->script_dir, prefix));
         batch_shadow.insert(batch_shadow.end(), job->tr.shadow_paths.begin(), job->tr.shadow_paths.end());
     }
+    if (prefixes.empty())
+        return;
     const fs::path dir = fs::path(opt_.cache_dir) / "pch";
     // The probe path test does the stat calls (many) without "pch_mutex_". A change of the list
     // while they run (the generation) means a new test. The epoch changes only below, under the lock.

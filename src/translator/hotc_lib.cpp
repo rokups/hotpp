@@ -6056,6 +6056,23 @@ void translate_impl(
         o.w(shell_line(im.line, im.pos));
         o.w("#include " + im.target() + "\n");
     }
+    // A ".cpp" script: the first run of includes of the file goes here, before the generated
+    // declarations. The text up to the last include is then the same for each edit of a body, so
+    // the files backend can make a PCH of it. write_texts skips these chunks.
+    size_t cpp_lead_includes = 0;
+    if (sc.is_cpp)
+    {
+        for (const hotc::ast::Script::Chunk& ch : sc.chunks)
+        {
+            if (ch.kind != hotc::ast::Script::Chunk::Kind::Text || ch.text.rfind("#include", 0) != 0)
+                break;
+            o.w("#line " + std::to_string(ch.line) + " \"" + esc(file_at(ch.pos)) + "\"\n");
+            o.w(ch.text + "\n");
+            ++cpp_lead_includes;
+        }
+        if (cpp_lead_includes)
+            reset();
+    }
     // "using ns;" is "using namespace ns;" at file scope, after all the includes. The generated
     // classes are at file scope too (a ".cpp" script has its own text), so the names are visible there.
     for (const auto& u : sc.using_ns)
@@ -7324,7 +7341,7 @@ void translate_impl(
     auto write_texts = [&](size_t i)
     {
         auto include = [&](size_t j) { return j < texts[i].size() && texts[i][j]->text.rfind("#include", 0) == 0; };
-        for (size_t j = 0; j < texts[i].size(); ++j)
+        for (size_t j = i == 0 ? cpp_lead_includes : 0; j < texts[i].size(); ++j)
         {
             const hotc::ast::Script::Chunk* ch = texts[i][j];
             if (include(j))

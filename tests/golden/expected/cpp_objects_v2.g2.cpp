@@ -11,7 +11,10 @@
 
 #include "hot/runtime.h"
 
-#line 15 "cpp_objects_v2.cpp.cpp"
+#line 4 "cpp_objects_v2.cpp"
+#include "Actor.h"
+#line 17 "cpp_objects_v2.cpp.cpp"
+#line 18 "cpp_objects_v2.cpp.cpp"
 
 // The generation of this module. The register function sets it from the registry.
 [[maybe_unused]] static uint32_t GEN = 0;
@@ -25,9 +28,6 @@ struct Minion_Shell;
 using Minion = Minion_Shell;
 struct Spawner_Shell;
 using Spawner = Spawner_Shell;
-#line 4 "cpp_objects_v2.cpp"
-#include "Actor.h"
-#line 31 "cpp_objects_v2.cpp.cpp"
 
 // ---------------------------------------------------------------- struct HotModule
 struct HotModule {

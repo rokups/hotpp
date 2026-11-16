@@ -11,7 +11,12 @@
 
 #include "hot/runtime.h"
 
-#line 15 "cpp_ns_v2.cpp.cpp"
+#line 7 "cpp_ns_v2.cpp"
+#include "Actor.h"
+#line 8 "cpp_ns_v2.cpp"
+#include "EngineMath.h"
+#line 19 "cpp_ns_v2.cpp.cpp"
+#line 20 "cpp_ns_v2.cpp.cpp"
 
 // The generation of this module. The register function sets it from the registry.
 [[maybe_unused]] static uint32_t GEN = 0;
@@ -35,11 +40,6 @@ namespace game::ai { using Brain = ::game::ai::hot_gen::game__ai__Brain_Shell; }
 using namespace game::ai::hot_gen;
 struct Watcher_Shell;
 using Watcher = Watcher_Shell;
-#line 7 "cpp_ns_v2.cpp"
-#include "Actor.h"
-#line 8 "cpp_ns_v2.cpp"
-#include "EngineMath.h"
-#line 43 "cpp_ns_v2.cpp.cpp"
 namespace red::hot_gen {
 
 // ---------------------------------------------------------------- class red__Unit

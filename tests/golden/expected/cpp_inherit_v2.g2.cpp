@@ -11,7 +11,12 @@
 
 #include "hot/runtime.h"
 
-#line 15 "cpp_inherit_v2.cpp.cpp"
+#line 5 "cpp_inherit_v2.cpp"
+#include "Actor.h"
+#line 6 "cpp_inherit_v2.cpp"
+#include "EngineMath.h"
+#line 19 "cpp_inherit_v2.cpp.cpp"
+#line 20 "cpp_inherit_v2.cpp.cpp"
 
 // The generation of this module. The register function sets it from the registry.
 [[maybe_unused]] static uint32_t GEN = 0;
@@ -25,11 +30,6 @@ struct Base_Shell;
 using Base = Base_Shell;
 struct Kid_Shell;
 using Kid = Kid_Shell;
-#line 5 "cpp_inherit_v2.cpp"
-#include "Actor.h"
-#line 6 "cpp_inherit_v2.cpp"
-#include "EngineMath.h"
-#line 33 "cpp_inherit_v2.cpp.cpp"
 
 // ---------------------------------------------------------------- class Base
 // Slot numbers. Native virtuals come first, in the order of Actor.
