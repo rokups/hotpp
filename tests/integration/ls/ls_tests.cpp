@@ -8695,3 +8695,129 @@ TEST(WorkspaceIndexBackground, ProgressNeedsTheCapability)
         }
     }
 }
+
+// ------------------------------------------------------------------ server events and the index
+
+namespace
+{
+const char* const kEventLib = "class Gun {\n    public int Fire(int b) { return b * 2; }\n}\n";
+const char* const kEventLibChanged = "class Gun {\n    public int Fire(int b) { return b * 3; }\n    public int Aim() { return 1; }\n}\n";
+
+std::string event_importer(int i)
+{
+    return "using \"lib.hot\";\nclass User" + std::to_string(i) + " {\n    public int Shoot(Gun g) { return g.Fire(1); }\n}\n";
+}
+
+// Waits until the index is ready and has no pending job. Gives the last stats.
+json wait_index_idle(LsClient& client)
+{
+    json st;
+    const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    do
+    {
+        st = index_stats(client);
+        if (st.value("ready", false) && st.value("pending", 1) == 0)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    } while (std::chrono::steady_clock::now() < end);
+    return st;
+}
+
+// Waits until the predicate is true for the stats, with a bound. Gives the last stats.
+json wait_index_until(LsClient& client, const std::function<bool(const json&)>& pred)
+{
+    json st;
+    const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    do
+    {
+        st = index_stats(client);
+        if (pred(st) && st.value("pending", 1) == 0)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    } while (std::chrono::steady_clock::now() < end);
+    return st;
+}
+
+void watched(LsClient& client, const std::string& path, int type)
+{
+    client.notify("workspace/didChangeWatchedFiles", {{"changes", json::array({{{"uri", uri_of(path)}, {"type", type}}})}});
+}
+} // namespace
+
+TEST(WorkspaceIndexEvents, WatchedChangeMakesTheIndexAnalyzeTheImporters)
+{
+    TempDir dir;
+    const std::string lib = (dir.path() / "lib.hot").string();
+    write_file(lib, kEventLib);
+    write_file((dir.path() / "a.hot").string(), event_importer(1));
+    write_file((dir.path() / "b.hot").string(), event_importer(2));
+    write_file((dir.path() / "c.hot").string(), "class Alone {\n    public int V() { return 1; }\n}\n");
+    auto opt = options(dir, false);
+    opt.background_index = true;
+    LsClient client(opt);
+    client.initialize(dir.path().string());
+    const json before = wait_index_idle(client);
+    ASSERT_TRUE(before.value("ready", false)) << before.dump();
+    const int start = before["analyzed"].get<int>() + before["loaded"].get<int>();
+    write_file(lib, kEventLibChanged);
+    watched(client, lib, 2);
+    // The changed script and its two importers: three more jobs. The script "c.hot" gets none.
+    const json after = wait_index_until(client, [&](const json& s) { return s["analyzed"].get<int>() + s["loaded"].get<int>() >= start + 3; });
+    EXPECT_EQ(after["analyzed"].get<int>() + after["loaded"].get<int>(), start + 3) << after.dump();
+    EXPECT_EQ(after["pending"], 0);
+}
+
+TEST(WorkspaceIndexEvents, WatchedDeleteRemovesTheScriptFromTheIndex)
+{
+    TempDir dir;
+    const std::string lib = (dir.path() / "lib.hot").string();
+    write_file(lib, kEventLib);
+    write_file((dir.path() / "a.hot").string(), event_importer(1));
+    auto opt = options(dir, false);
+    opt.background_index = true;
+    LsClient client(opt);
+    client.initialize(dir.path().string());
+    const json before = wait_index_idle(client);
+    ASSERT_TRUE(before.value("ready", false)) << before.dump();
+    EXPECT_EQ(before["total"], 2);
+    const int start = before["analyzed"].get<int>() + before["loaded"].get<int>();
+    std::filesystem::remove(lib);
+    watched(client, lib, 3);
+    // The importer is analyzed again. The deleted script is gone from the total.
+    const json after = wait_index_until(client, [&](const json& s) { return s["total"] == 1 && s["analyzed"].get<int>() + s["loaded"].get<int>() > start; });
+    EXPECT_EQ(after["total"], 1) << after.dump();
+    EXPECT_EQ(after["pending"], 0);
+    EXPECT_GT(after["analyzed"].get<int>() + after["loaded"].get<int>(), start);
+}
+
+TEST(WorkspaceIndexEvents, CloseOfAChangedFileAnalyzesOnlyWhenTheStampDiffers)
+{
+    TempDir dir;
+    const std::string path = (dir.path() / "a.hot").string();
+    const std::string text = "class Alone {\n    public int V() { return 1; }\n}\n";
+    write_file(path, text);
+    auto opt = options(dir, false);
+    opt.background_index = true;
+    LsClient client(opt);
+    client.initialize(dir.path().string());
+    const json before = wait_index_idle(client);
+    ASSERT_TRUE(before.value("ready", false)) << before.dump();
+    auto jobs = [&](const json& s) { return s["analyzed"].get<int>() + s["loaded"].get<int>(); };
+    const int start = jobs(before);
+    // The disk stamp is the same: no job.
+    client.open(uri_of(path), text);
+    client.change(uri_of(path), 2, text + "// not saved\n");
+    client.notify("textDocument/didClose", {{"textDocument", {{"uri", uri_of(path)}}}});
+    const json same = index_stats(client); // the request is after the close in the queue
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    const json same2 = wait_index_idle(client);
+    EXPECT_EQ(jobs(same), start) << same.dump();
+    EXPECT_EQ(jobs(same2), start) << same2.dump();
+    // The file changes on the disk with no event. The close finds the new stamp.
+    const std::string changed = text + "// a longer text\n";
+    write_file(path, changed);
+    client.open(uri_of(path), changed);
+    client.notify("textDocument/didClose", {{"textDocument", {{"uri", uri_of(path)}}}});
+    const json after = wait_index_until(client, [&](const json& s) { return jobs(s) > start; });
+    EXPECT_EQ(jobs(after), start + 1) << after.dump();
+}

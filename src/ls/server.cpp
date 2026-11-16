@@ -1188,6 +1188,13 @@ private:
     std::chrono::steady_clock::time_point progress_last_;
     void start_background_index();
     JobConfig index_job_config(const std::string& path) const;
+    // The index key of a script path: the form of workspace_scripts().
+    static std::string index_key(const std::string& path) { return fs::path(path).lexically_normal().string(); }
+    bool index_active() const { return opt_.background_index && (windex_.started() || windex_.stats().total > 0); }
+    // Queues all workspace scripts again with a new config. A host or an option change calls it.
+    void reschedule_index();
+    std::string host_signature() const;
+    std::string index_signature_; // what the index jobs use from the hosts, at the last schedule
     void index_progress();
 };
 
@@ -1429,6 +1436,7 @@ void Server::refresh_hosts(Doc* current, bool force)
         return;
     disk_facts_.clear();
     drop_import_graph(std::string());
+    reschedule_index();
     std::vector<std::shared_ptr<Doc>> redo;
     for (const auto& [uri, d] : docs_)
     {
@@ -1474,6 +1482,15 @@ void Server::on_watched_files(const json& p)
             // A new or a deleted file can change the import search of all the scripts.
             const int type = c["type"].is_number_integer() ? c["type"].get<int>() : 0;
             drop_import_graph(type == 2 ? path : std::string());
+            if (index_active())
+            {
+                const std::string key = index_key(path);
+                windex_.invalidate(key); // before forget(), so the importers of a deleted file queue
+                if (type == 3)
+                    windex_.forget(key);
+                else if (type == 1 && in_workspace(key))
+                    windex_.schedule(key, index_job_config(key), IndexLevel::Importer);
+            }
         }
     }
     if (host_file)
@@ -6980,6 +6997,40 @@ JobConfig Server::index_job_config(const std::string& path) const
     return c;
 }
 
+std::string Server::host_signature() const
+{
+    // A host refresh can report a change for the same data. The index needs a new job only
+    // when the data of a job changes: the flags, the include dirs, the standard, the preludes.
+    std::string sig;
+    for (const HostSet& hs : hosts_)
+        for (const auto& h : hs.all())
+        {
+            sig += h->name + '\n' + h->std_version + '\n';
+            for (const std::string& f : h->cxx_flags())
+                sig += f + '\n';
+            for (const std::string& d : h->include_dirs)
+                sig += d + '\n';
+            for (const std::string& d : h->script_dirs)
+                sig += d + '\n';
+            for (const std::string& d : h->preludes)
+                sig += d + '\n';
+            sig += '\x01';
+        }
+    return sig;
+}
+
+void Server::reschedule_index()
+{
+    if (!index_active())
+        return;
+    std::string sig = host_signature();
+    if (sig == index_signature_)
+        return;
+    index_signature_ = std::move(sig);
+    for (const std::string& path : workspace_scripts())
+        windex_.schedule(path, index_job_config(path), IndexLevel::Rest);
+}
+
 void Server::start_background_index()
 {
     if (!opt_.background_index || !index_.enabled() || roots_.empty() || windex_.started() || shutdown_)
@@ -6996,6 +7047,7 @@ void Server::start_background_index()
     // Queue all scripts first. The workers start after that, so no worker ends the queue early.
     for (const std::string& path : scripts)
         windex_.schedule(path, index_job_config(path), IndexLevel::Rest);
+    index_signature_ = host_signature();
     windex_.finish_scheduling();
     windex_.start(index_, session_, static_cast<unsigned>(std::max(0, opt_.index_threads)), [this] { index_progress(); });
     index_progress();
@@ -7260,6 +7312,15 @@ void Server::handle(const json& msg)
         preamble_ready_.erase(d->gen_uri);
         completion_synced_.erase(d->gen_uri);
         store_closed_shard(*d);
+        if (!d->cpp && index_active())
+        {
+            // A change that was not saved to the disk shows in the stamp: the index analyzes again.
+            const std::string key = index_key(d->path);
+            FileStamp disk;
+            const auto e = windex_.entry(key);
+            if (!e || !stat_file(key, disk) || e->stamp != disk)
+                windex_.invalidate(key);
+        }
         {
             std::lock_guard<std::mutex> lock(docs_mutex_);
             docs_.erase(d->uri);
