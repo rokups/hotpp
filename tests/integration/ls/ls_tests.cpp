@@ -6599,7 +6599,10 @@ TEST(LanguageServerNative, ReferencesSkipClosedScriptsWithTheirOwnSymbolOfTheNam
     const std::vector<std::string> cold = run(false, cold_analyses);
     EXPECT_EQ(warm, cold);
     EXPECT_NE(std::find_if(warm.begin(), warm.end(), [](const std::string& l) { return l.rfind("pet.hot", 0) == 0; }), warm.end());
-    EXPECT_GE(cold_analyses - warm_analyses, 5) << "warm " << warm_analyses << " cold " << cold_analyses;
+    // With the index on, the entries skip the decoy scripts in the cold run too: the two runs are equal.
+    const char* bg = std::getenv("HOTPP_TEST_BACKGROUND_INDEX");
+    const int least = bg && std::string(bg) == "1" ? 0 : 5;
+    EXPECT_GE(cold_analyses - warm_analyses, least) << "warm " << warm_analyses << " cold " << cold_analyses;
 }
 
 // HOT-32: a script with a resolved script ref and a native use of the same name is not skipped.
@@ -9084,4 +9087,95 @@ TEST(WorkspaceIndexSymbol, OpenDocumentWithUnsavedTextWinsOverTheDisk)
             EXPECT_EQ(after["tableAnalyses"], before["tableAnalyses"]) << after.dump();
         }
     }
+}
+
+namespace
+{
+// A native symbol with three closed scripts. "use" calls it. "own" has the word only as a script
+// symbol. "none" lacks the word. The result has the places with a fixed root and the statistics.
+json native_reference_run(bool background_index, json* stats_before, json* stats_after)
+{
+    TempDir dir;
+    write_file((dir.path() / "natives.h").string(), kNativeHeader);
+    const std::string hero = (dir.path() / "hero.hot").string();
+    hot::ls::ServerOptions o = options(dir, true);
+    o.background_index = background_index;
+    o.include_dirs.push_back(dir.path().string());
+    o.native_token_wait_ms = 10000;
+    o.reference_budget_ms = 120000;
+    write_file(hero, kNativeScript);
+    const std::vector<std::pair<std::string, std::string>> closed = {
+        {"use.hot", kPetScript},
+        {"own.hot", "class Own {\n    int Clamp100(int v) {\n        return v;\n    }\n    int x = Clamp100(2);\n}\n"},
+        {"none.hot", "class None {\n    int y = 1;\n}\n"}};
+    LsClient client(o);
+    client.initialize(uri_of(dir.path().string()));
+    client.open(uri_of(hero), kNativeScript);
+    for (const auto& [name, text] : closed)
+    {
+        const std::string file = (dir.path() / name).string();
+        write_file(file, text);
+        client.open(uri_of(file), text);
+        client.notify("textDocument/didClose", {{"textDocument", {{"uri", uri_of(file)}}}});
+    }
+    if (background_index)
+    {
+        // The wait can return before the entries are valid. The probe waits for each closed entry.
+        wait_index_idle(client);
+        for (const auto& [name, text] : closed)
+        {
+            const std::string uri = uri_of((dir.path() / name).string());
+            json r;
+            for (int i = 0; i < 100; ++i)
+            {
+                r = client.request("hot/indexStats", {{"entryOf", uri}})["result"];
+                if (r.value("entryOf", "") != "missing")
+                    break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            EXPECT_NE(r.value("entryOf", ""), "missing") << r.dump();
+        }
+    }
+    const json p = {{"textDocument", {{"uri", uri_of(hero)}}}, {"position", native_pos("Clamp100(MAX_HP)", "Clamp100")},
+        {"context", {{"includeDeclaration", true}}}};
+    // The first answers can miss the header place while clangd starts. Ask again until it has it.
+    json r;
+    for (int i = 0; i < 20; ++i)
+    {
+        r = client.request("textDocument/references", p);
+        bool have_decl = false;
+        for (const json& l : r.value("result", json::array()))
+            have_decl = have_decl || l.value("uri", "").find("natives.h") != std::string::npos;
+        if (have_decl)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    // The measured request runs after the loop: the server state is warm, the counters are stable.
+    *stats_before = client.request("hot/indexStats", json::object())["result"];
+    r = client.request("textDocument/references", p);
+    *stats_after = client.request("hot/indexStats", json::object())["result"];
+    std::string text = r.value("result", json::array()).dump();
+    const std::string root = uri_of(dir.path().string());
+    for (size_t at; (at = text.find(root)) != std::string::npos;)
+        text.replace(at, root.size(), "ROOT");
+    return json::parse(text);
+}
+} // namespace
+
+// HOT-34: the native reference filter reads the index. The result is the same as without the index.
+// With the index on, only the script that uses the native symbol goes to an analyze.
+TEST(WorkspaceIndexReferences, NativeReferencesGiveTheSameResultWithAndWithoutTheIndex)
+{
+    REQUIRE_CLANGD();
+    json off_before, off_after, on_before, on_after;
+    const json off = native_reference_run(false, &off_before, &off_after);
+    const json on = native_reference_run(true, &on_before, &on_after);
+    EXPECT_EQ(off, on);
+    const std::string text = on.dump();
+    EXPECT_NE(text.find("ROOT/use.hot"), std::string::npos) << text;
+    EXPECT_EQ(text.find("ROOT/own.hot"), std::string::npos) << text;
+    EXPECT_EQ(text.find("ROOT/none.hot"), std::string::npos) << text;
+    EXPECT_GT(on_after["entryHits"].get<int>(), on_before["entryHits"].get<int>()) << on_after.dump();
+    // Each analyze of the scan counts as a translation. The index jobs use their own session.
+    EXPECT_EQ(on_after["translations"].get<int>() - on_before["translations"].get<int>(), 1) << on_after.dump();
 }

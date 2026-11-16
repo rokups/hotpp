@@ -258,7 +258,7 @@ static std::string json_str(const json& j, const char* key)
 }
 
 // The valid entry of a path in an index snapshot, or null when the snapshot has none.
-[[maybe_unused]] static std::shared_ptr<const Entry> entry_in(const IndexSnapshot& snap, const std::string& path)
+static std::shared_ptr<const Entry> entry_in(const IndexSnapshot& snap, const std::string& path)
 {
     const auto it = snap.entries.find(fs::path(path).lexically_normal().string());
     return it != snap.entries.end() ? it->second : nullptr;
@@ -4352,6 +4352,8 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
             add(doc->path);
     for (const std::string& path : workspace_scripts(true))
         add(path);
+    // The deadline is now: a wait for an index job would use the scan budget. A missing path uses the fallback.
+    const IndexSnapshot snap = index_entries(todo, std::chrono::steady_clock::now());
     std::set<std::string> seen;
     for (const json& l : out)
         seen.insert(l.dump());
@@ -4369,11 +4371,22 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
         std::optional<std::string> closed_text;
         if (!open)
         {
-            closed_text = read_file(path);
-            if (!closed_text || !has_word(*closed_text, word_name))
-                continue;
-            if (table_lacks_word(path, *closed_text, word_name))
-                continue; // every code word is a script symbol
+            if (const std::shared_ptr<const Entry> e = entry_in(snap, path))
+            {
+                ++entry_hits_;
+                if (!has_word(e->text, word_name) || !e->unclaimed_words.count(word_name))
+                    continue; // no word, or every code word is a script symbol
+                closed_text = e->text;
+            }
+            else
+            {
+                ++entry_misses_;
+                closed_text = read_file(path);
+                if (!closed_text || !has_word(*closed_text, word_name))
+                    continue;
+                if (table_lacks_word(path, *closed_text, word_name))
+                    continue; // every code word is a script symbol
+            }
         }
         const Text text = open ? open->text : Text(*closed_text);
         std::vector<Pos> words;
@@ -4441,7 +4454,7 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
     }
 }
 
-// Temporary filter. The workspace index of ticket HOT-34 replaces it with a word-to-files map.
+// The fallback filter for a path that the workspace index does not have (HOT-34).
 bool Server::table_lacks_word(const std::string& path, const std::string& text, const std::string& word)
 {
     const std::string norm = fs::path(path).lexically_normal().string();
