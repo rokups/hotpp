@@ -84,7 +84,10 @@ hot::ls::ServerOptions options(const TempDir& dir, bool clangd)
     hot::ls::ServerOptions o;
     o.clangd = clangd ? HOT_CLANGD_PATH : "";
     o.include_dirs = {HOT_SOURCE_DIR "/include", HOT_SOURCE_DIR "/tests/engine"};
-    o.background_index = false; // the tests count the analyses; the tests of the index set it
+    // The tests count the analyses, so the default is off. The tests of the index set it.
+    // HOTPP_TEST_BACKGROUND_INDEX=1 turns the index on for all tests.
+    const char* bg = std::getenv("HOTPP_TEST_BACKGROUND_INDEX");
+    o.background_index = bg && std::string(bg) == "1";
     // HOT_LS_CLANGD_LOG keeps the clangd log after the test (the temporary dir goes away).
     // A directory gets one log file for each test.
     const char* log = std::getenv("HOT_LS_CLANGD_LOG");
