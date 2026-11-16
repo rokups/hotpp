@@ -124,6 +124,45 @@ Limits:
 - A `#line` fallback has the line only. The column is the column of the same word in the script line, or the first non-blank column.
 - Two open scripts that import the same script publish diagnostics for it. The last publish wins.
 
+## Workspace index
+
+The server has a background index of the closed `.hot` scripts of the workspace (ticket HOT-34). It is on by default.
+
+Settings:
+
+- The index is on by default. `--no-background-index` turns it off. The server then analyzes a closed script inline when a request needs it, and uses the shard index as before.
+- `--index-threads N` sets the number of worker threads. The default (0) is half of the cores, at least 1. The workers run at low priority.
+- `--index-dir dir` sets the directory of the saved shards (see above). The index uses the shards to avoid a new analysis after a restart.
+- The index needs a workspace folder. Without a folder, the server does not start it.
+
+What the index covers. Each script has one entry. An entry holds the text, the table of the resolved names, the classes and members, the identifier words and the words that no resolved name claims. The server uses the entries for:
+
+- script references and rename (also `prepareRename`) of a script symbol: the candidate files, the places and the conflict check;
+- workspace symbols of the closed scripts;
+- native references and native rename: a closed script is skipped when no word of the entry can be the native name;
+- the import graph: an entry keeps the stamp of each script in the import closure of its script.
+
+Invariants:
+
+- The index describes the files on disk. An open document never uses an entry: it uses its own text and its own analysis.
+- An entry is valid only when the size and the mtime of the script and of each script in its import closure are the same as at the analysis.
+- Rename and references also compare the disk text with the text of the entry. A difference drops the entry, and the request reads the disk. The rename compares the text of each closed file with an edit again before it builds the edits. A change during the rename gives the error `... changed on disk during the rename`. The server never sends an edit for a text that it did not read.
+- A request asks the index only for the scripts that it needs. A script without the searched word on disk gets no lookup, so a cold index does not delay a request for files that cannot contribute.
+
+Costs:
+
+- CPU: each script is analyzed once in the background, at the start and after each change of the file or of an import. The workers use `--index-threads` threads at low priority.
+- Memory: one entry for each script. In the benchmark workspace the server uses about 100 MB more than without the index for 311 scripts, and about 135 MB more for 1561 scripts.
+- Disk: the shards of `.cache/hot/index/` (see above).
+
+Limits that the design accepts:
+
+- A path that fails to read or to analyze is tried again at each request. It has no negative cache, so a broken script can add time to each request that needs it.
+- The server sees a new user prelude (a file with `PRELUDE_SUFFIX`) only through a watched-files event. A prelude that appears with no event is not used until the next event.
+- The server reads a prelude file twice: once for the index job and once for the document analysis.
+
+Measured times: see "Index benchmark" in the Benchmark section.
+
 ## Threads, cancel and debounce
 
 The server keeps one state thread. This thread owns all state: the documents, the table cache, the index and the `clangd` child. The state has no locks for this reason.
@@ -187,3 +226,38 @@ Baseline of the server before the redesign (BiteSizedWar, 88 scripts, times in m
 - The server ignores `$/cancelRequest`. The cancel time is the time of the whole request.
 - The native scan of the Release run stopped at the time budget (5 of 179 scripts) and showed a `window/showMessage`. The number of places differs between runs for this reason.
 - The Debug server is not slower than the Release server here. The time is in the translator and in `clangd`, not in the code of the server.
+
+### Index benchmark
+
+The tool `tools/lsbench/index_bench.py` measures the server over a generated workspace. It does not use files of a real project. The workspace has 10 groups of 30 scripts (units), a library script for each group, a shared script `common/base.hot` and the native header `Actor.h` of the test host. Each unit imports the base, its library and `Actor.h`. It has a class, a field and two methods. The tool runs the server with the index on and with `--no-background-index`. It measures the time until the index is ready, one cold request of references and rename (the first request after the start), and 30 warm samples of each request kind.
+
+```sh
+python3 -I tools/lsbench/index_bench.py --hot-ls cmake-build/linux-clang-both/bin/RelWithDebInfo/hot-ls --json out.json
+```
+
+- `--groups N` makes a workspace of N groups. `--mode on|off|both` and `--samples N` choose the runs.
+- Each warm request runs after one warm-up request of the same kind. `completion` has no warm-up: its first sample is the first completion of the document (about 420 ms, the first translation and the answer of `clangd`). The other samples are under 1 ms.
+- The numbers below are from a machine with other jobs (load average 9 to 15 on 32 CPUs, marked LOADED). Release build (RelWithDebInfo). Times in ms.
+
+311 scripts. Each row is median (p95).
+
+| Request | Index on | Index off |
+|---|---|---|
+| index ready | 3252 | not applicable |
+| cold references of a library class (31 files) | 1352 | 1666 |
+| cold rename of a library class (31 files) | 1353 | 1964 |
+| hover (script member) | 0.8 (1.4) | 0.7 (0.9) |
+| hover (native member) | 0.5 (0.7) | 0.5 (0.5) |
+| definition | 0.1 (0.1) | 0.0 (0.1) |
+| references, 30 importers | 3.9 (5.9) | 3.5 (4.3) |
+| references, 300 importers | 21.6 (24.9) | 18.8 (31.0) |
+| prepareRename, 300 importers | 25.4 (27.5) | 28.5 (29.6) |
+| rename, 30 importers | 6.3 (6.6) | 6.8 (6.9) |
+| rename, 300 importers | 35.8 (38.4) | 38.3 (43.7) |
+| workspace symbols (query with 555 results) | 14.9 (19.9) | 31.7 (34.8) |
+| diagnostics after an edit | 2.8 (3.3) | 2.8 (2.9) |
+| server RSS after the index is ready | 124.6 MB | 27.1 MB |
+
+- With the index off, the warm numbers come from the in-memory table cache of the same session. The first references request of a 300-file symbol took 3033 ms (analysis of the closed scripts). With the index on, the first request is also fast: the worker has analyzed the scripts.
+- 1561 scripts (`--groups 50`, index on, load 9): index ready in 16.7 s, server RSS 162 MB, references with 1500 importers 118 ms, rename with 1500 importers 188 ms, workspace symbols (3055 results) 81 ms.
+- All requests are far below the target of 500 ms with the index. Warm script references (30 files) take 4 ms, the target is 200 ms. The hover time with the index on is the same as with the index off.
