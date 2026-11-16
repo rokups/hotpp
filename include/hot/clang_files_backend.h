@@ -364,6 +364,29 @@ private:
     // The path of a marker file of the PCH entry ("seen" or "bad").
     std::string pch_marker(const ObjectCache::Key& key, const char* ext) const;
 
+    // The shape PCH of a .hot unit. The text of a unit before its "function bodies" banner is the
+    // shape: includes, types, declarations and tables. It stays the same when an edit changes only a
+    // body. A PCH of the shape (chained on the PCH of the includes) lets the compile of the rest
+    // skip the parse and the template instances of the shape. Files: "<cache_dir>/pch/shape/<key>.pch".
+    // A miss compiles the whole unit and builds the shape PCH in "shape_thread_" after the compile.
+    // The key has the compile arguments, the base PCH (its path, size and time) and the shape text.
+    // A failure of a split compile makes "<key>.nosplit": the key uses the whole unit for one day.
+    // "shape_mutex_" guards "shape_thread_" and "shape_building_". One shape build runs at a time.
+    struct ShapeSplit
+    {
+        std::string key; // empty: no split for this unit
+        std::string pch; // the shape PCH file (exists on a hit)
+        std::string header_text; // the shape text with "#line 1 <unit>"
+        std::string main_text; // the rest with "#line <N> <unit>"
+    };
+    ShapeSplit plan_shape(const std::string& cpp_text, const std::string& unit_cpp, const std::string& base_pch,
+        const std::string& base_key, const std::vector<std::string>& args, bool is_hot) const;
+    void start_shape_build(const ShapeSplit& split, const std::string& base_pch, const std::string& script_dir,
+        const std::string& unit, bool timing);
+    std::mutex shape_mutex_;
+    std::thread shape_thread_;
+    bool shape_building_ = false;
+
     ClangFilesOptions opt_;
     std::unique_ptr<ObjectCache> cache_; // null: no cache
     std::unique_ptr<ObjectCache> pch_cache_; // the PCH entries in "<cache_dir>/pch"; null: no PCH

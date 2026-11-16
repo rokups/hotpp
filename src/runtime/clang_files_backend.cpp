@@ -589,6 +589,15 @@ ClangFilesBackend::~ClangFilesBackend()
 {
     wait_for_pch(); // the PCH thread uses the backend and the work directory
     {
+        std::thread t;
+        {
+            std::lock_guard<std::mutex> lock(shape_mutex_);
+            t = std::move(shape_thread_);
+        }
+        if (t.joinable())
+            t.join(); // the shape thread uses the backend and the cache directory
+    }
+    {
         // A batch that never finished leaves entries that are not in the file.
         std::lock_guard<std::mutex> lock(mutex_);
         flush_compile_commands();
@@ -2331,6 +2340,119 @@ void ClangFilesBackend::start_pending_pch()
     }
 }
 
+namespace
+{
+
+// The banner of the translator before the function bodies of a .hot unit.
+const char* const kBodiesBanner = "// ---------------------------------------------------------------- function bodies\n";
+
+std::string shape_hash(const std::string& text)
+{
+    char buf[40];
+    std::snprintf(buf, sizeof buf, "%016llx%016llx", static_cast<unsigned long long>(hotc::text_hash("shape1\n" + text)),
+        static_cast<unsigned long long>(hotc::text_hash(text + "\nshape2")));
+    return buf;
+}
+
+} // namespace
+
+ClangFilesBackend::ShapeSplit ClangFilesBackend::plan_shape(const std::string& cpp_text, const std::string& unit_cpp,
+    const std::string& base_pch, const std::string& base_key, const std::vector<std::string>& args, bool is_hot) const
+{
+    ShapeSplit s;
+    const char* off = std::getenv("HOT_SHAPE_PCH");
+    if (!is_hot || (off && std::strcmp(off, "0") == 0) || opt_.cache_dir.empty() || base_pch.empty())
+        return s;
+    // The first banner: the generation 1 text and later texts have it once.
+    const size_t at = cpp_text.find(kBodiesBanner);
+    if (at == std::string::npos || at == 0 || cpp_text[at - 1] != '\n')
+        return s;
+    const std::string shape = cpp_text.substr(0, at);
+    std::error_code ec;
+    const uintmax_t size = fs::file_size(base_pch, ec);
+    const auto mtime = fs::last_write_time(base_pch, ec).time_since_epoch().count();
+    if (ec)
+        return s;
+    std::string material = base_pch + "\n" + base_key + "\n" + std::to_string(size) + "\n" + std::to_string(mtime) + "\n";
+    for (const std::string& a : args)
+        material += a + "\n";
+    s.key = shape_hash(material + shape);
+    s.pch = (fs::path(opt_.cache_dir) / "pch" / "shape" / (s.key + ".pch")).string();
+    size_t lines = 1;
+    for (char c : shape)
+        if (c == '\n')
+            ++lines;
+    s.header_text = "#line 1 \"" + unit_cpp + "\"\n" + shape;
+    s.main_text = "#line " + std::to_string(lines) + " \"" + unit_cpp + "\"\n" + cpp_text.substr(at);
+    return s;
+}
+
+void ClangFilesBackend::start_shape_build(const ShapeSplit& split, const std::string& base_pch,
+    const std::string& script_dir, const std::string& unit, bool timing)
+{
+    std::thread old;
+    {
+        std::lock_guard<std::mutex> lock(shape_mutex_);
+        if (shape_building_)
+            return; // one build at a time
+        if (shape_thread_.joinable())
+            old = std::move(shape_thread_);
+        shape_building_ = true;
+    }
+    if (old.joinable())
+        old.join(); // the last build ended (shape_building_ was false)
+    std::lock_guard<std::mutex> lock(shape_mutex_);
+    shape_thread_ = std::thread([this, split, base_pch, script_dir, unit, timing] {
+        const auto t0 = std::chrono::steady_clock::now();
+        const fs::path dir = fs::path(opt_.cache_dir) / "pch" / "shape";
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+        const std::string tag = split.key + "." + std::to_string(hot::detail::process_id());
+        // The PCH names its header file: the header stays next to the PCH (same key, same text).
+        const std::string hdr = (dir / (split.key + ".h")).string();
+        const std::string tmp = (dir / (tag + ".pch.tmp")).string();
+        const std::string dep = (dir / (tag + ".d.tmp")).string();
+        bool ok = write_text(hdr, split.header_text);
+        std::string output;
+        if (ok)
+        {
+            ok = run_command(with_pch(pch_build_command(opt_, hdr, tmp, dep, script_dir), base_pch), output) == 0;
+            if (ok)
+            {
+                fs::rename(tmp, split.pch, ec);
+                ok = !ec;
+            }
+        }
+        fs::remove(tmp, ec);
+        fs::remove(dep, ec);
+        if (!ok)
+        {
+            fs::remove(hdr, ec);
+            write_text((dir / (split.key + ".nosplit")).string(), output);
+        }
+        else
+        {
+            // Keep the 8 newest shape PCH files: one file is about 2 MB.
+            std::vector<std::pair<fs::file_time_type, fs::path>> files;
+            for (const auto& e : fs::directory_iterator(dir, ec))
+                if (e.path().extension() == ".pch")
+                    files.emplace_back(e.last_write_time(ec), e.path());
+            std::sort(files.begin(), files.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+            for (size_t i = 8; i < files.size(); ++i)
+            {
+                fs::remove(files[i].second, ec);
+                fs::remove(fs::path(files[i].second).replace_extension(".h"), ec);
+            }
+        }
+        if (timing)
+            std::fprintf(stderr, "hot: %s shape pch %s in %lld ms (key %.8s)\n", unit.c_str(), ok ? "built" : "failed",
+                static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - t0).count()), split.key.c_str());
+        std::lock_guard<std::mutex> done(shape_mutex_);
+        shape_building_ = false;
+    });
+}
+
 bool ClangFilesBackend::build_pch(const PchPlan& plan, const std::string& script_dir, std::string& error)
 {
     const fs::file_time_type started = fs::file_time_type::clock::now();
@@ -3009,8 +3131,53 @@ bool ClangFilesBackend::compile_stage_once(BuildJob& job, bool keep_mirror)
                 bool used_pch = false;
                 if (pch && !pch->pch.empty())
                 {
-                    rc = run_command(with_pch(plain, pch->pch), output);
+                    // The shape PCH: on a hit the compile gets the rest of the unit after the PCH of
+                    // the shape. On a miss it compiles the whole unit and builds the shape PCH later.
+                    const std::string& sn = job.source_name;
+                    const bool is_hot_unit = sn.size() > 4 && sn.compare(sn.size() - 4, 4, ".hot") == 0;
+                    ShapeSplit shape = plan_shape(tr.cpp, cpp_path, pch->pch, pch->key.hex(),
+                        compile_object_command(opt_, "", "", ""), is_hot_unit);
+                    bool shape_hit = false;
+                    std::string main_path;
+                    if (!shape.key.empty() && !fs::exists(fs::path(shape.pch).replace_extension(".nosplit"), ec))
+                    {
+                        if (fs::exists(shape.pch, ec))
+                        {
+                            main_path = tmp + ".main.cpp";
+                            std::vector<std::string> cmd = plain;
+                            cmd[cmd.size() - 3] = main_path; // the input file
+                            cmd = with_pch(std::move(cmd), shape.pch);
+                            if (write_text(main_path, shape.main_text))
+                            {
+                                rc = run_command(cmd, output);
+                                shape_hit = rc == 0;
+                                if (shape_hit)
+                                {
+                                    if (timing)
+                                        std::fprintf(stderr, "hot: %s shape pch hit (key %.8s)\n", unit.c_str(),
+                                            shape.key.c_str());
+                                }
+                                else
+                                {
+                                    // The split compile fails and the whole unit may work: the shape is bad.
+                                    fs::remove(tmp, ec);
+                                    fs::remove(dep, ec);
+                                    write_text(fs::path(shape.pch).replace_extension(".nosplit").string(), output);
+                                    fs::remove(shape.pch, ec);
+                                    fs::remove(fs::path(shape.pch).replace_extension(".h"), ec);
+                                    std::fprintf(stderr, "hot: %s does not compile with its shape PCH; the whole unit is used\n",
+                                        unit.c_str());
+                                }
+                            }
+                            fs::remove(main_path, ec);
+                        }
+                    }
+                    if (!shape_hit)
+                        rc = run_command(with_pch(plain, pch->pch), output);
                     used_pch = rc == 0;
+                    if (rc == 0 && !shape_hit && !shape.key.empty() && !fs::exists(shape.pch, ec)
+                        && !fs::exists(fs::path(shape.pch).replace_extension(".nosplit"), ec))
+                        start_shape_build(shape, pch->pch, script_dir, unit, timing);
                     if (rc != 0)
                     {
                         // The PCH must never fail a build: compile again without it. When that

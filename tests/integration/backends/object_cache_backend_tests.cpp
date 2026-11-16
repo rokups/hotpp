@@ -1039,3 +1039,41 @@ TEST(ObjectCacheBackend, MissingFmtSymbolFallsBackToTheOwnFmtCode)
     GTEST_SKIP() << "ELF only";
 #endif
 }
+
+// ---- the shape PCH of a .hot unit
+
+// Edits of a method body give the right results with a shape PCH. A damaged shape PCH never fails a
+// reload: the unit compiles whole and the key gets a ".nosplit" marker.
+TEST(ObjectCacheBackend, ShapePchKeepsResultsAndSurvivesDamage)
+{
+#if defined(__linux__)
+    CleanEnv env;
+    TestScratch scratch;
+    hot::ClangFilesOptions o = fmt_options(scratch, "s", {});
+    const fs::path shape_dir = fs::path(o.cache_dir) / "pch" / "shape";
+    auto edit_run = [&](int first, int count) {
+        hot::ClangFilesBackend backend(o);
+        for (int i = first; i < first + count; ++i)
+            EXPECT_EQ(load_and_run(backend, {"calc.hot", script_text((std::to_string(i) + ".0").c_str()), {}, "Calc"}),
+                static_cast<float>(i));
+    }; // the destructor joins the PCH threads
+    edit_run(1, 6);
+    edit_run(7, 2);
+    std::vector<fs::path> pchs;
+    std::error_code ec;
+    for (const auto& e : fs::directory_iterator(shape_dir, ec))
+        if (e.path().extension() == ".pch")
+            pchs.push_back(e.path());
+    if (pchs.empty())
+        GTEST_SKIP() << "no shape PCH was built (no base PCH in this setup)";
+    for (const fs::path& p : pchs)
+        std::ofstream(p, std::ios::binary | std::ios::trunc) << "damaged";
+    edit_run(20, 2);
+    bool marker = false;
+    for (const auto& e : fs::directory_iterator(shape_dir, ec))
+        marker = marker || e.path().extension() == ".nosplit";
+    EXPECT_TRUE(marker);
+#else
+    GTEST_SKIP() << "ELF only";
+#endif
+}
