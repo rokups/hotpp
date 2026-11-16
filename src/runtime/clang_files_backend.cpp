@@ -725,6 +725,32 @@ std::vector<std::string> compile_object_command(const ClangFilesOptions& opt, co
     return cmd;
 }
 
+// Runs the link of a module. When the link with the linker flag (lld) fails, it runs once more
+// with the default linker, so a broken lld never fails a reload. HOT_TIMING logs the retry.
+static int run_link(const ClangFilesOptions& opt, const std::string& obj, const std::string& so,
+    std::string& output, bool timing)
+{
+    int rc = run_command(link_module_command(opt, obj, so), output);
+    if (rc != 0 && !opt.linker_flag.empty())
+    {
+        ClangFilesOptions plain = opt;
+        plain.linker_flag.clear();
+        std::string retry_output;
+        const int retry_rc = run_command(link_module_command(plain, obj, so), retry_output);
+        if (timing)
+            std::fprintf(stderr, "hot: the link with %s failed; the link with the default linker %s\n",
+                opt.linker_flag.c_str(), retry_rc == 0 ? "works" : "fails too");
+        if (retry_rc == 0)
+        {
+            output.clear();
+            return 0;
+        }
+        output = retry_output;
+        return retry_rc;
+    }
+    return rc;
+}
+
 // True for an ELF target of a host that is not Windows. HOT_LINKER=default turns lld off.
 static bool use_lld_by_default(const ClangFilesOptions& opt)
 {
@@ -1696,8 +1722,14 @@ bool ClangFilesBackend::prepare_cache()
     if (opt_.linker_flag.empty() && use_lld_by_default(opt_) && version.find("clang") != std::string::npos)
     {
         std::string ld_out;
-        const int ld_rc = run_command(
-            {opt_.compiler, "-fuse-ld=lld", "-Wl,--version", "-x", "c", "/dev/null", "-o", "/dev/null"}, ld_out);
+        std::vector<std::string> probe = {opt_.compiler};
+        if (!opt_.target_triple.empty())
+            probe.push_back("--target=" + opt_.target_triple);
+        if (!opt_.sysroot.empty())
+            probe.push_back("--sysroot=" + opt_.sysroot);
+        for (const char* a : {"-fuse-ld=lld", "-Wl,--version", "-x", "c", "/dev/null", "-o", "/dev/null"})
+            probe.push_back(a);
+        const int ld_rc = run_command(probe, ld_out);
         const size_t at = ld_out.find("LLD ");
         if (ld_rc == 0 && at != std::string::npos)
         {
@@ -2737,7 +2769,7 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
         t2 = std::chrono::steady_clock::now();
         if (rc != 0)
             return fail("compile", rc);
-        link_rc = run_command(link_module_command(opt_, obj_path, out_so), output);
+        link_rc = run_link(opt_, obj_path, out_so, output, timing);
     }
     else
     {
@@ -2961,7 +2993,7 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
                     temp_object = tmp;
                 }
             }
-            link_rc = run_command(link_module_command(opt_, object, out_so), output);
+            link_rc = run_link(opt_, object, out_so, output, timing);
             job.built_object = temp_object.empty() ? object : obj_path;
             if (!temp_object.empty())
                 fs::remove(temp_object, ec);

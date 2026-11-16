@@ -951,6 +951,7 @@ TEST(PchBackend, FailingUnitDoesNotDisableSharedPch)
         {}, "Calc"};
     EXPECT_EQ(load_batch(*backend, {u1}), 1u);
     EXPECT_EQ(bad_markers(f.cache), 0u);
+    backend->wait_for_pch(); // a PCH build of the u1 batch can still run and add a compile
     const size_t before = f.pch_compiles();
     EXPECT_EQ(load_batch(*backend, {two_header_script(5, "u2.hot")}), 1u);
     backend->wait_for_pch();

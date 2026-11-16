@@ -108,8 +108,11 @@ struct ClangFilesOptions
     std::string target_triple;
     std::string sysroot; // the sysroot of the modules ("--sysroot="); empty: none
     // The linker flag of the module link, for example "-fuse-ld=lld". Empty: the default linker of
-    // the compiler. The backend sets it for an ELF target when the compiler finds lld. The
-    // environment variable HOT_LINKER=default keeps the default linker.
+    // the compiler. The backend sets it for an ELF target when the compiler finds lld. The probe
+    // runs with the object cache only (the lld version is part of the compiler id of the cache).
+    // A backend with no cache links with the default linker. A failed lld link runs again with the
+    // default linker.
+    // The environment variable HOT_LINKER=default keeps the default linker.
     std::string linker_flag;
 };
 
