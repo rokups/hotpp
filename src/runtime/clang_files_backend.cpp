@@ -3,6 +3,7 @@
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
 #include "hot/clang_files_backend.h"
+#include "parallel_probe.h"
 
 #include "hot/config.h"
 #include "hot/scratch.h"
@@ -1998,12 +1999,10 @@ void ClangFilesBackend::prewarm_pch(const std::vector<const BuildJob*>& jobs, bo
         std::error_code ec;
         shadow_exists = false;
         batch_existing.clear();
-        for (const std::string& path : listed)
-            if (fs::exists(path, ec))
-            {
-                shadow_exists = true;
-                break;
-            }
+        shadow_exists = detail::find_any_parallel(listed, [](const std::string& path) {
+            std::error_code probe_ec;
+            return fs::exists(path, probe_ec);
+        }) != listed.size();
         if (shadow_exists)
             for (const std::string& path : batch_shadow)
                 if (fs::exists(path, ec))
