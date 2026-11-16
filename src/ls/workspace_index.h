@@ -183,15 +183,18 @@ private:
 bool stat_file(const std::string& path, FileStamp& out);
 
 // True when the files still have the stamps of the entry. It does a stat of the script and of
-// each dependency. It reads no file. A missing file or a changed stamp gives false.
-bool fresh(const Entry& e);
+// each dependency. It reads no file. A changed stamp gives false. A dependency that was missing
+// and is still missing is equal. "memo" (if given) keeps the stamps for the life of one call
+// series: the caller makes it empty and drops it after the pass.
+bool fresh(const Entry& e, std::map<std::string, FileStamp>* memo = nullptr);
 
 // Builds the entry of a script. It is pure: it reads no server state. The shard comes from
 // "index" when the digest matches, else from hotc::analyze, and it goes into "index". The
-// imports are read from the disk only, with "options.fs" when it is set. The stamps are taken
-// at the start, so a change after the call makes fresh() give false. "analyzed" (if given)
+// imports are read from the disk only, with "options.fs" when it is set. "stamp" is the stamp
+// of the script that the caller took before it read "text". The stamps of the imports come
+// from the digest search. A change after the read makes fresh() give false. "analyzed" (if given)
 // gets true when the call ran hotc::analyze, false when it loaded the shard.
-std::shared_ptr<const Entry> build_entry(const std::string& path, const std::string& text,
+std::shared_ptr<const Entry> build_entry(const std::string& path, const FileStamp& stamp, const std::string& text,
     const hotc::TranslateOptions& options, const std::string& digest, SymbolIndex& index,
     hotc::TranslatorSession& session, bool* analyzed = nullptr);
 

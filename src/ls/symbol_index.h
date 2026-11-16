@@ -93,8 +93,16 @@ public:
     // Same as the digest above. It keeps the result for each script path. It reuses the result
     // when the content, the include dirs, and the size and the time of each imported file do not
     // change. The content is the text of the script (an open document text is possible).
-    std::string cached_digest(
-        const std::string& script_path, const std::string& content, const std::vector<std::string>& include_dirs);
+    // "deps" (if given) gets the stamp of each file that the search probed, in the order of the
+    // search. A probed file that is missing has size UINT64_MAX and mtime 0.
+    struct DepStamp
+    {
+        std::string path;
+        uint64_t size = 0;
+        int64_t mtime = 0;
+    };
+    std::string cached_digest(const std::string& script_path, const std::string& content,
+        const std::vector<std::string>& include_dirs, std::vector<DepStamp>* deps = nullptr);
     // The number of import files that the digest functions read from disk (a test hook).
     static long digest_file_reads();
     // The path of the shard file of a script path.

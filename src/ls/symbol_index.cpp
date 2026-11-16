@@ -425,9 +425,17 @@ struct SymbolIndex::DigestEntry
 SymbolIndex::SymbolIndex() = default;
 SymbolIndex::~SymbolIndex() = default;
 
-std::string SymbolIndex::cached_digest(
-    const std::string& script_path, const std::string& content, const std::vector<std::string>& include_dirs)
+std::string SymbolIndex::cached_digest(const std::string& script_path, const std::string& content,
+    const std::vector<std::string>& include_dirs, std::vector<DepStamp>* out_deps)
 {
+    const auto give = [out_deps](const DigestEntry& d)
+    {
+        if (!out_deps)
+            return;
+        out_deps->clear();
+        for (const FileStamp& f : d.deps)
+            out_deps->push_back(DepStamp{f.path, static_cast<uint64_t>(f.size), static_cast<int64_t>(f.mtime)});
+    };
     const std::string cd = digest(content);
     std::shared_ptr<DigestEntry> old;
     {
@@ -447,7 +455,10 @@ std::string SymbolIndex::cached_digest(
                 break;
             }
         if (same)
+        {
+            give(*old);
             return old->result;
+        }
     }
     auto e = std::make_shared<DigestEntry>();
     e->content_digest = cd;
@@ -457,6 +468,7 @@ std::string SymbolIndex::cached_digest(
         std::lock_guard<std::mutex> lock(digest_mutex_);
         digest_cache_[script_path] = e;
     }
+    give(*e);
     return e->result;
 }
 

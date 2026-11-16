@@ -140,52 +140,43 @@ bool stat_file(const std::string& path, FileStamp& out)
     return true;
 }
 
-bool fresh(const Entry& e)
+namespace
 {
+// The stamp that stands for a file that is missing. It is the same value as in SymbolIndex.
+constexpr uint64_t kMissingSize = UINT64_MAX;
+
+FileStamp stat_or_missing(const std::string& file, std::map<std::string, FileStamp>* memo)
+{
+    if (memo)
+    {
+        const auto it = memo->find(file);
+        if (it != memo->end())
+            return it->second;
+    }
     FileStamp s;
-    if (!stat_file(e.path, s) || s != e.stamp)
+    if (!stat_file(file, s))
+    {
+        s.size = kMissingSize;
+        s.mtime = 0;
+    }
+    if (memo)
+        (*memo)[file] = s;
+    return s;
+}
+} // namespace
+
+bool fresh(const Entry& e, std::map<std::string, FileStamp>* memo)
+{
+    const FileStamp self = stat_or_missing(e.path, memo);
+    if (self.size == kMissingSize || self != e.stamp)
         return false;
     for (const auto& [file, stamp] : e.dep_stamps)
-        if (!stat_file(file, s) || s != stamp)
+        if (stat_or_missing(file, memo) != stamp)
             return false;
     return true;
 }
 
-namespace
-{
-// The files of the import closure of the script, each one time, in the order of the search.
-std::vector<std::string> import_closure(
-    const hotc::TranslateOptions& options, const std::string& path, const std::string& text)
-{
-    std::vector<std::string> out;
-    std::set<std::string> seen;
-    seen.insert(fs::path(path).lexically_normal().string());
-    struct Todo
-    {
-        std::string path, text;
-    };
-    std::vector<Todo> todo{{path, text}};
-    for (size_t i = 0; i < todo.size(); ++i)
-    {
-        const std::string dir = fs::path(todo[i].path).parent_path().string();
-        for (const std::string& pth : hotc::analyze_imports(todo[i].text, std::string()).imports)
-        {
-            if (pth.size() <= 4 || pth.compare(pth.size() - 4, 4, ".hot") != 0)
-                continue;
-            std::string itext, file, unit;
-            if (!hotc::find_import(options, pth, dir, std::string(), itext, file, unit))
-                continue;
-            if (!seen.insert(fs::path(file).lexically_normal().string()).second)
-                continue;
-            out.push_back(file);
-            todo.push_back({file, std::move(itext)});
-        }
-    }
-    return out;
-}
-} // namespace
-
-std::shared_ptr<const Entry> build_entry(const std::string& path, const std::string& text,
+std::shared_ptr<const Entry> build_entry(const std::string& path, const FileStamp& stamp, const std::string& text,
     const hotc::TranslateOptions& options, const std::string& digest, SymbolIndex& index,
     hotc::TranslatorSession& session, bool* analyzed)
 {
@@ -195,13 +186,13 @@ std::shared_ptr<const Entry> build_entry(const std::string& path, const std::str
     e->path = path;
     e->digest = digest;
     e->text = text;
-    stat_file(path, e->stamp);
-    for (const std::string& file : import_closure(options, path, text))
-    {
-        FileStamp s;
-        stat_file(file, s); // a missing file has the zero stamp, so fresh() gives false
-        e->dep_stamps.emplace_back(file, s);
-    }
+    e->stamp = stamp; // the caller took it before it read the text
+    // The digest search stamps each probed file before it reads the file. It also stamps a
+    // missing candidate, so a file that appears earlier in the search makes fresh() give false.
+    std::vector<SymbolIndex::DepStamp> deps;
+    index.cached_digest(path, text, options.include_dirs, &deps);
+    for (const auto& d : deps)
+        e->dep_stamps.emplace_back(d.path, FileStamp{d.size, d.mtime});
     auto shard = index.load(path, digest);
     if (!shard)
     {
@@ -464,13 +455,14 @@ void WorkspaceIndex::worker_main()
         try
         {
             std::string text;
-            if (read_whole(path, text))
+            FileStamp stamp; // taken before the read: a change after it makes the stamp old
+            if (stat_file(path, stamp) && read_whole(path, text))
             {
                 const JobConfig& c = job.config;
                 const std::string digest = SymbolIndex::digest(
                     symbols_->cached_digest(path, text, c.options.include_dirs) + c.flags_text
                     + "\nbuild:" + c.build_id);
-                entry = build_entry(path, text, c.options, digest, *symbols_, *session_, &analyzed);
+                entry = build_entry(path, stamp, text, c.options, digest, *symbols_, *session_, &analyzed);
             }
         }
         catch (...)

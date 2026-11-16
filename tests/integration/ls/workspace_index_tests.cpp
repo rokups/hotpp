@@ -35,6 +35,13 @@ std::shared_ptr<Entry> make_entry(const std::string& path, std::set<std::string>
     return e;
 }
 
+FileStamp stamp_now(const std::string& path)
+{
+    FileStamp s;
+    stat_file(path, s);
+    return s;
+}
+
 struct TempDir
 {
     fs::path dir;
@@ -113,7 +120,7 @@ TEST(WorkspaceIndex, BuiltEntriesFeedTheMaps)
     const std::string path = tmp.write("a.hot", "class A\n{\n    int count = 0;\n    void bump() { count = count + 1; }\n}\n");
     SymbolIndex index; // switched off: no directory
     hotc::TranslatorSession session;
-    const auto e = build_entry(path, "class A\n{\n    int count = 0;\n    void bump() { count = count + 1; }\n}\n",
+    const auto e = build_entry(path, stamp_now(path), "class A\n{\n    int count = 0;\n    void bump() { count = count + 1; }\n}\n",
         options_for(path), "d1", index, session);
     ASSERT_TRUE(e);
     EXPECT_EQ(e->classes.size(), 1u);
@@ -143,7 +150,7 @@ TEST(WorkspaceIndex, UnclaimedWordsAgreeWithTableLacksWord)
     for (const std::string& text : scripts)
     {
         const std::string path = tmp.write("s" + std::to_string(n++) + ".hot", text);
-        const auto e = build_entry(path, text, options_for(path), "d", index, session);
+        const auto e = build_entry(path, stamp_now(path), text, options_for(path), "d", index, session);
         ASSERT_TRUE(e);
         ASSERT_FALSE(e->words.empty());
         for (const std::string& w : e->words)
@@ -165,7 +172,7 @@ TEST(WorkspaceIndex, FreshFollowsTheStampsOfTheScriptAndOfItsImports)
     const std::string path = tmp.write("main.hot", text, -100);
     SymbolIndex index;
     hotc::TranslatorSession session;
-    const auto e = build_entry(path, text, options_for(path), "d", index, session);
+    const auto e = build_entry(path, stamp_now(path), text, options_for(path), "d", index, session);
     ASSERT_TRUE(e);
     ASSERT_EQ(e->dep_stamps.size(), 1u);
     EXPECT_TRUE(fresh(*e));
@@ -174,15 +181,51 @@ TEST(WorkspaceIndex, FreshFollowsTheStampsOfTheScriptAndOfItsImports)
     tmp.write("lib.hot", "int helper() { return 2; }\n", -50); // same size, new mtime
     EXPECT_FALSE(fresh(*e));
 
-    const auto e2 = build_entry(path, text, options_for(path), "d", index, session);
+    const auto e2 = build_entry(path, stamp_now(path), text, options_for(path), "d", index, session);
     EXPECT_TRUE(fresh(*e2));
     tmp.write("main.hot", text + "// more\n", -40);
     EXPECT_FALSE(fresh(*e2));
 
-    const auto e3 = build_entry(path, text + "// more\n", options_for(path), "d", index, session);
+    const auto e3 = build_entry(path, stamp_now(path), text + "// more\n", options_for(path), "d", index, session);
     EXPECT_TRUE(fresh(*e3));
     fs::remove(lib);
     EXPECT_FALSE(fresh(*e3));
+}
+
+TEST(WorkspaceIndex, BuildEntryKeepsTheStampTakenBeforeTheRead)
+{
+    TempDir tmp;
+    const std::string text = "class A\n{\n    int f() { return 1; }\n}\n";
+    const std::string path = tmp.write("a.hot", text, -100);
+    SymbolIndex index;
+    hotc::TranslatorSession session;
+    FileStamp old = stamp_now(path);
+    old.mtime -= 1000; // a stamp from before a later write
+    const auto e = build_entry(path, old, text, options_for(path), "d", index, session);
+    ASSERT_TRUE(e);
+    EXPECT_EQ(e->stamp, old);
+    EXPECT_FALSE(fresh(*e));
+}
+
+TEST(WorkspaceIndex, FreshSeesAnImportThatAppearsEarlierInTheSearch)
+{
+    TempDir tmp;
+    fs::create_directories(tmp.dir / "inc");
+    const std::string lib = tmp.write("inc/lib.hot", "int helper() { return 1; }\n", -100);
+    const std::string text = "using \"lib.hot\";\nclass M\n{\n    int f() { return helper(); }\n}\n";
+    const std::string path = tmp.write("main.hot", text, -100);
+    hotc::TranslateOptions options = options_for(path);
+    options.include_dirs = {(tmp.dir / "inc").string()};
+    SymbolIndex index;
+    hotc::TranslatorSession session;
+    const auto e = build_entry(path, stamp_now(path), text, options, "d", index, session);
+    ASSERT_TRUE(e);
+    EXPECT_TRUE(fresh(*e));
+    std::map<std::string, FileStamp> memo;
+    EXPECT_TRUE(fresh(*e, &memo)); // a missing candidate stays equal
+    EXPECT_FALSE(memo.empty());
+    tmp.write("lib.hot", "int helper() { return 2; }\n", -100); // the script directory comes first
+    EXPECT_FALSE(fresh(*e));
 }
 
 // HOT-34: an index with no script ends its progress. The ready state needs finish_scheduling().
