@@ -3075,7 +3075,9 @@ TEST(LanguageServer, TheRefTablesComeFromTheDocumentTheShardAndTheImportGraph)
     const std::string dep_text = "int k() { return 1; }\n";
     write_file(dep, dep_text);
     write_file(user, "using \"dep.hot\";\nint f() { return k(); }\n");
-    auto client = std::make_unique<LsClient>(options(dir, false));
+    hot::ls::ServerOptions o = options(dir, false);
+    o.background_index = false;
+    auto client = std::make_unique<LsClient>(o);
     client->initialize(uri_of(dir.path().string()));
     client->open(uri_of(dep), dep_text);
     auto stats = [&](const json& p) { return client->request("hot/indexStats", p)["result"]; };
@@ -3092,7 +3094,7 @@ TEST(LanguageServer, TheRefTablesComeFromTheDocumentTheShardAndTheImportGraph)
     EXPECT_EQ(r["importers"], json::array({hotc::ref_file_id(user)})) << r.dump();
 
     client.reset(); // the restart
-    client = std::make_unique<LsClient>(options(dir, false));
+    client = std::make_unique<LsClient>(o);
     client->initialize(uri_of(dir.path().string()));
     r = stats({{"tables", {uri_of(user)}}});
     EXPECT_GT(r["tableRefs"][0].get<int>(), 0) << r.dump();
@@ -3122,6 +3124,7 @@ TEST(LanguageServer, AShardOfAnotherBuildIsNotLoaded)
     auto run = [&](const std::string& build_id)
     {
         hot::ls::ServerOptions o = options(dir, false);
+        o.background_index = false;
         o.build_id = build_id;
         LsClient client(o);
         client.initialize(uri_of(dir.path().string()));
@@ -3141,13 +3144,11 @@ TEST(LanguageServer, AShardOfAnotherBuildIsNotLoaded)
 TEST(LanguageServer, MemberRenameOnAClosedFileAfterARestartUsesTheIndex)
 {
     REQUIRE_CLANGD();
-    Session s(true);
-    hot::ls::ServerOptions o = options(s.dir, true);
-    o.index_dir = (s.dir.path() / "my-index").string();
-    s.client.reset();
-    s.client = std::make_unique<LsClient>(o);
-    s.client->initialize(uri_of(s.dir.path().string()));
-    s.client->open(s.uri, kScript);
+    TempDir index; // the index directory is not in the workspace
+    hot::ls::ServerOptions o = options(index, true);
+    o.background_index = false;
+    o.index_dir = (index.path() / "my-index").string();
+    Session s(true, kScript, &o);
     // The other script imports the script: its use of the member is a place of the rename.
     const std::string other_path = (s.dir.path() / "player_v2.hot").string();
     write_file(other_path, "using \"Actor.h\";\nusing \"player.hot\";\nclass Kid : Player {\n    void Go() { this.hp = 1.0; }\n}\n");
@@ -5425,7 +5426,9 @@ TEST(LanguageServer, WorkspaceSymbolUsesOnlyTheShardsOfClosedFiles)
     std::filesystem::create_directories(one);
     // The file is on disk, but it is never open: no shard, no symbol, and no analysis.
     write_file(one / "lonely.hot", folder_script("Charlie"));
-    LsClient client(options(dir, false));
+    hot::ls::ServerOptions o = options(dir, false);
+    o.background_index = false;
+    LsClient client(o);
     init_folders(client, {one});
     const std::string kept = fill(client, one / "kept.hot", "Alpha");
     const int before = analyses(client);
