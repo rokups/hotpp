@@ -305,6 +305,19 @@ void WorkspaceIndex::schedule(const std::string& path, JobConfig config, IndexLe
     work_cv_.notify_one();
 }
 
+void WorkspaceIndex::finish_scheduling()
+{
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (stop_)
+            return;
+        if (!scheduled_.exchange(true))
+            first_schedule_ = std::chrono::steady_clock::now();
+        check_ready_locked();
+    }
+    done_cv_.notify_all();
+}
+
 void WorkspaceIndex::bump(const std::vector<std::string>& paths)
 {
     std::lock_guard<std::mutex> lock(mutex_);

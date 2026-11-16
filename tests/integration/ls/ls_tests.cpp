@@ -2918,6 +2918,25 @@ TEST(SymbolIndex, AShardWithoutTheTableMarkerIsDropped)
     EXPECT_FALSE(std::filesystem::exists(index.shard_path(script)));
 }
 
+TEST(SymbolIndex, AShardWithABrokenBodyIsDropped)
+{
+    TempDir dir;
+    hot::ls::SymbolIndex index;
+    index.open((dir.path() / "index").string());
+    const std::string script = (dir.path() / "a.hot").string();
+    write_file(script, "x");
+    ASSERT_TRUE(index.store(script, "d", sample_shard()));
+    const std::string file = index.shard_path(script);
+    std::string first;
+    {
+        std::ifstream in(file, std::ios::binary);
+        std::getline(in, first);
+    }
+    write_file(file, first + "\n{not json");
+    EXPECT_FALSE(index.load(script, "d"));
+    EXPECT_FALSE(std::filesystem::exists(file));
+}
+
 // A shard of format 3 has no near_decl and no near_file: load() deletes it.
 TEST(SymbolIndex, AVersion3ShardIsDropped)
 {

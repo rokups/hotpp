@@ -110,6 +110,9 @@ public:
     // Queues the script. A script that is queued already keeps the lower level and gets the
     // new config. Only the state thread calls it.
     void schedule(const std::string& path, JobConfig config, IndexLevel level);
+    // Tells the index that the first scheduling ends. An index with no script is ready after
+    // this call. Only the state thread calls it.
+    void finish_scheduling();
     // Moves the queued jobs of the paths to the level 0.
     void bump(const std::vector<std::string>& paths);
     // Counts a change of the path. A job that runs now does not publish its result, and the

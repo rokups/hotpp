@@ -184,3 +184,28 @@ TEST(WorkspaceIndex, FreshFollowsTheStampsOfTheScriptAndOfItsImports)
     fs::remove(lib);
     EXPECT_FALSE(fresh(*e3));
 }
+
+// HOT-34: an index with no script ends its progress. The ready state needs finish_scheduling().
+TEST(WorkspaceIndex, AnEmptyWorkspaceIsReadyAfterTheSchedulingEnds)
+{
+    WorkspaceIndex index;
+    EXPECT_FALSE(index.stats().ready);
+    index.finish_scheduling();
+    const IndexStats st = index.stats();
+    EXPECT_TRUE(st.ready);
+    EXPECT_EQ(st.total, 0);
+    EXPECT_GE(st.ready_ms, 0);
+}
+
+// HOT-34: with queued scripts and no worker, the index is not ready and has no ready time.
+TEST(WorkspaceIndex, QueuedScriptsKeepTheIndexNotReadyUntilTheyFinish)
+{
+    WorkspaceIndex index;
+    index.schedule("a.hot", JobConfig{}, IndexLevel::Rest);
+    index.schedule("b.hot", JobConfig{}, IndexLevel::Rest);
+    index.finish_scheduling();
+    const IndexStats st = index.stats();
+    EXPECT_FALSE(st.ready);
+    EXPECT_EQ(st.total, 2);
+    EXPECT_EQ(st.ready_ms, -1);
+}

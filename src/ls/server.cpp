@@ -6993,9 +6993,11 @@ void Server::start_background_index()
         send_client({{"jsonrpc", "2.0"}, {"id", progress_create_id_}, {"method", "window/workDoneProgress/create"},
             {"params", {{"token", "hot-index"}}}});
     }
-    windex_.start(index_, session_, static_cast<unsigned>(std::max(0, opt_.index_threads)), [this] { index_progress(); });
+    // Queue all scripts first. The workers start after that, so no worker ends the queue early.
     for (const std::string& path : scripts)
         windex_.schedule(path, index_job_config(path), IndexLevel::Rest);
+    windex_.finish_scheduling();
+    windex_.start(index_, session_, static_cast<unsigned>(std::max(0, opt_.index_threads)), [this] { index_progress(); });
     index_progress();
 }
 

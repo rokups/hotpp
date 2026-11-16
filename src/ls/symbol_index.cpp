@@ -59,13 +59,9 @@ struct Header
     std::string digest, path;
 };
 
-// Reads the first line of a shard file.
-std::optional<Header> read_header(const std::string& file)
+// Parses the first line of a shard file.
+std::optional<Header> parse_header(const std::string& line)
 {
-    std::ifstream in(file, std::ios::binary);
-    std::string line;
-    if (!in || !std::getline(in, line))
-        return std::nullopt;
     std::istringstream ss(line);
     std::string magic;
     Header h;
@@ -74,6 +70,16 @@ std::optional<Header> read_header(const std::string& file)
     ss.get(); // the space before the path
     std::getline(ss, h.path);
     return h;
+}
+
+// Reads the first line of a shard file.
+std::optional<Header> read_header(const std::string& file)
+{
+    std::ifstream in(file, std::ios::binary);
+    std::string line;
+    if (!in || !std::getline(in, line))
+        return std::nullopt;
+    return parse_header(line);
 }
 
 json pos_json(const IndexPos& p)
@@ -463,42 +469,58 @@ std::optional<IndexShard> SymbolIndex::load(const std::string& script_path, cons
 {
     if (!enabled())
         return std::nullopt;
-    std::shared_lock<std::shared_mutex> lock(shard_mutex_);
     const std::string file = shard_path(script_path);
-    const auto h = read_header(file);
-    if (!h)
-        return std::nullopt; // no shard (or a file that is not a shard: store() replaces it)
-    std::error_code ec;
-    if (h->version != kFormatVersion)
+    std::optional<Header> bad; // the header of a shard to delete
+    std::optional<IndexShard> result;
     {
-        fs::remove(file, ec);
-        return std::nullopt;
-    }
-    if (h->path != script_path || h->digest != dig)
-        return std::nullopt;
-    const auto t0 = std::chrono::steady_clock::now();
-    try
-    {
+        std::shared_lock<std::shared_mutex> lock(shard_mutex_);
         std::ifstream in(file, std::ios::binary);
         std::string line;
-        std::getline(in, line);
-        std::stringstream body;
-        body << in.rdbuf();
-        IndexShard shard = shard_of(json::parse(body.str()));
-        if (!shard.has_table)
-        {
-            fs::remove(file, ec); // a shard with no table
+        if (!in || !std::getline(in, line))
             return std::nullopt;
+        const auto h = parse_header(line);
+        if (!h)
+            return std::nullopt; // no shard (or a file that is not a shard: store() replaces it)
+        if (h->version != kFormatVersion)
+            bad = h;
+        else if (h->path == script_path && h->digest == dig)
+        {
+            const auto t0 = std::chrono::steady_clock::now();
+            try
+            {
+                std::stringstream body;
+                body << in.rdbuf();
+                IndexShard shard = shard_of(json::parse(body.str()));
+                if (shard.has_table)
+                {
+                    ++loads_;
+                    load_us_ += std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now() - t0).count();
+                    result = std::move(shard);
+                }
+                else
+                    bad = h; // a shard with no table
+            }
+            catch (const std::exception&)
+            {
+                bad = h; // a broken shard
+            }
         }
-        ++loads_;
-        load_us_ += std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count();
-        return shard;
     }
-    catch (const std::exception&)
+    if (bad)
     {
-        fs::remove(file, ec); // a broken shard
+        // The delete needs the exclusive lock. A store() can replace the file after the shared
+        // lock ends, so the delete happens only when the header is the same.
+        std::unique_lock<std::shared_mutex> lock(shard_mutex_);
+        const auto now = read_header(file);
+        if (now && now->version == bad->version && now->digest == bad->digest && now->path == bad->path)
+        {
+            std::error_code ec;
+            fs::remove(file, ec);
+        }
         return std::nullopt;
     }
+    return result;
 }
 
 bool SymbolIndex::store(const std::string& script_path, const std::string& dig, const IndexShard& shard)
