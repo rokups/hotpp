@@ -515,7 +515,7 @@ private:
         const auto it = docs_.find(uri);
         return it == docs_.end() ? nullptr : it->second;
     }
-    hotc::TranslateOptions translate_options(const Doc& d) const
+    hotc::TranslateOptions translate_options(const Doc& d, bool with_preludes = true) const
     {
         hotc::TranslateOptions o;
         o.script_name = d.path;
@@ -533,13 +533,10 @@ private:
         o.view_type = hot::view_type_name();
         // The preludes of the host, as at run time. A prelude file that is open is analyzed
         // as a script, so it does not also get its own text as a prelude.
-        for (const std::string& p : e.preludes)
-        {
-            if (fs::path(p).lexically_normal() == fs::path(d.path).lexically_normal())
-                continue;
-            if (const auto text = read_file(p))
+        if (with_preludes)
+            for (const std::string& p : prelude_files(e, d.path))
+                if (const auto text = read_file(p))
                 o.preludes.emplace_back(p, *text);
-        }
         return o;
     }
     // ---- hosts
@@ -549,7 +546,17 @@ private:
         std::string resource_dir;
         std::string std_version; // the "std" of the host file (empty: the standard of the build)
         std::vector<std::string> preludes; // the prelude files: of the host, else of the options
+        std::string prelude_suffix; // the suffix of the user preludes of the script
     };
+    // The prelude files of a host without the script itself. The paths only, no text.
+    static std::vector<std::string> prelude_files(const Effective& e, const std::string& script)
+    {
+        std::vector<std::string> out;
+        for (const std::string& p : e.preludes)
+            if (fs::path(p).lexically_normal() != fs::path(script).lexically_normal())
+                out.push_back(p);
+        return out;
+    }
     std::shared_ptr<const Host> host_of(const std::string& path) const
     {
         for (const HostSet& h : hosts_)
@@ -607,6 +614,7 @@ private:
         // The user preludes: the files with the suffix in the script dirs, sorted by path, after
         // the preludes of the host. The search runs for each analysis, so a new file works at once.
         const std::string suffix = host && !host->prelude_suffix.empty() ? host->prelude_suffix : opt_.prelude_suffix;
+        e.prelude_suffix = suffix;
         if (!suffix.empty())
         {
             std::vector<std::string> found;
@@ -1494,6 +1502,15 @@ void Server::on_watched_files(const json& p)
                     windex_.forget(key);
                 else if (type == 1 && in_workspace(key))
                     windex_.schedule(key, index_job_config(key), IndexLevel::Importer);
+                // A new or a deleted user prelude changes the preludes of all the scripts.
+                if (type == 1 || type == 3)
+                    for (const std::string& script : workspace_scripts())
+                    {
+                        const std::string& suffix = effective_options(script).prelude_suffix;
+                        if (!suffix.empty() && path.size() >= suffix.size()
+                            && path.compare(path.size() - suffix.size(), suffix.size(), suffix) == 0)
+                            windex_.schedule(script, index_job_config(script), IndexLevel::Rest);
+                    }
             }
         }
     }
@@ -7022,8 +7039,10 @@ IndexSnapshot Server::index_entries(const std::vector<std::string>& paths, std::
 JobConfig Server::index_job_config(const std::string& path) const
 {
     JobConfig c;
-    c.options = translate_options(closed_doc(path, std::string()));
+    c.options = translate_options(closed_doc(path, std::string()), false);
     const Effective eff = effective_options(path);
+    for (const std::string& p : prelude_files(eff, path))
+        c.prelude_paths.push_back(index_key(p));
     for (const std::string& f : eff.extra_flags)
         c.flags_text += f + '\n';
     c.build_id = opt_.build_id;

@@ -691,3 +691,132 @@ TEST(WorkspaceIndex, DepPathsHaveTheNormalForm)
     idx.set(path, e);
     EXPECT_EQ(idx.files_with_dep(lib), (std::vector<std::string>{path}));
 }
+
+// ---- HOT-34: the preludes in the worker
+
+namespace
+{
+const char* const kPreludeOne = "int helper() { return 1; }\n";
+const char* const kPreludeTwo = "int helper() { return 2; }\n";
+const char* const kPreludeScript = "class M\n{\n    int f() { return helper(); }\n}\n";
+
+std::string prelude_key(const std::string& p) { return fs::path(p).lexically_normal().string(); }
+
+JobConfig config_with_prelude(const std::string& path, const std::string& prelude)
+{
+    JobConfig c = config_for(path);
+    c.prelude_paths = {prelude_key(prelude)};
+    return c;
+}
+
+// Runs one index with one worker. Gives the entry of the script.
+std::shared_ptr<const Entry> index_once(const JobConfig& c, const std::string& path, SymbolIndex& symbols)
+{
+    hotc::TranslatorSession session;
+    WorkspaceIndex idx;
+    idx.schedule(path, c, IndexLevel::Rest);
+    idx.finish_scheduling();
+    idx.start(symbols, session, 1, nullptr);
+    const auto r = idx.wait_for({path}, nullptr, std::chrono::steady_clock::now() + kLong);
+    idx.stop();
+    return r.missing.empty() ? r.entries.at(path) : nullptr;
+}
+
+bool has_dep(const Entry& e, const std::string& dep, bool missing)
+{
+    for (const auto& [file, stamp] : e.dep_stamps)
+        if (file == dep)
+            return (stamp.size == UINT64_MAX) == missing;
+    return false;
+}
+} // namespace
+
+// HOT-34: a prelude is a dep of the script. A prelude edit makes the entry old.
+TEST(WorkspaceIndex, PreludeIsADepAndAnEditMakesTheEntryOld)
+{
+    TempDir tmp;
+    const std::string prelude = tmp.write("p.hot", kPreludeOne, -100);
+    const std::string path = tmp.write("main.hot", kPreludeScript, -100);
+    SymbolIndex symbols;
+    hotc::TranslatorSession session;
+    WorkspaceIndex idx;
+    idx.schedule(path, config_with_prelude(path, prelude), IndexLevel::Rest);
+    idx.finish_scheduling();
+    idx.start(symbols, session, 1, nullptr);
+    const auto first = idx.wait_for({path}, nullptr, std::chrono::steady_clock::now() + kLong);
+    ASSERT_TRUE(first.missing.empty());
+    const auto old = first.entries.at(path);
+    EXPECT_TRUE(has_dep(*old, prelude_key(prelude), false));
+    EXPECT_EQ(idx.files_with_dep(prelude_key(prelude)), (std::vector<std::string>{path}));
+    EXPECT_TRUE(fresh(*old, nullptr));
+
+    tmp.write("p.hot", kPreludeTwo, -50);
+    EXPECT_FALSE(fresh(*old, nullptr));
+    idx.invalidate(prelude_key(prelude)); // the prelude is no script: only the importer queues
+    const auto second = idx.wait_for({path}, nullptr, std::chrono::steady_clock::now() + kLong);
+    idx.stop();
+    ASSERT_TRUE(second.missing.empty());
+    const auto now = second.entries.at(path);
+    EXPECT_NE(now, old);
+    EXPECT_NE(now->digest, old->digest);
+    EXPECT_TRUE(fresh(*now, nullptr));
+}
+
+// HOT-34: a missing prelude has the missing stamp. A new file makes the entry old.
+TEST(WorkspaceIndex, MissingPreludeHasAMissingStampAndCreatingItMakesTheEntryOld)
+{
+    TempDir tmp;
+    const std::string prelude = (tmp.dir / "p.hot").string();
+    const std::string path = tmp.write("main.hot", "class M\n{\n    int f() { return 1; }\n}\n", -100);
+    SymbolIndex symbols;
+    const auto e = index_once(config_with_prelude(path, prelude), path, symbols);
+    ASSERT_TRUE(e);
+    EXPECT_TRUE(has_dep(*e, prelude_key(prelude), true));
+    EXPECT_TRUE(fresh(*e, nullptr));
+    tmp.write("p.hot", kPreludeOne);
+    EXPECT_FALSE(fresh(*e, nullptr));
+}
+
+// HOT-34: the prelude text is in the digest. An old shard does not load for a new prelude.
+TEST(WorkspaceIndex, PreludeTextChangesTheDigestAndTheShardDoesNotLoad)
+{
+    TempDir tmp;
+    const std::string prelude = tmp.write("p.hot", kPreludeOne, -100);
+    const std::string path = tmp.write("main.hot", kPreludeScript, -100);
+    const JobConfig c = config_with_prelude(path, prelude);
+    SymbolIndex symbols;
+    symbols.open((tmp.dir / "shards").string());
+    const auto a = index_once(c, path, symbols);
+    ASSERT_TRUE(a);
+    EXPECT_GT(symbols.stores(), 0);
+    const int loads = symbols.loads();
+    const auto same = index_once(c, path, symbols);
+    ASSERT_TRUE(same);
+    EXPECT_EQ(same->digest, a->digest);
+    EXPECT_GT(symbols.loads(), loads); // the same prelude text: the shard loads
+
+    tmp.write("p.hot", kPreludeTwo, -50);
+    const int loads2 = symbols.loads();
+    const auto b = index_once(c, path, symbols);
+    ASSERT_TRUE(b);
+    EXPECT_NE(b->digest, a->digest);
+    EXPECT_EQ(symbols.loads(), loads2); // the old shard does not load
+}
+
+// HOT-34: the prelude key has the form of index_key(), the dep map key.
+TEST(WorkspaceIndex, PreludeKeyHasTheFormOfIndexKey)
+{
+    TempDir tmp;
+    fs::create_directories(tmp.dir / "sub");
+    const std::string prelude = tmp.write("p.hot", kPreludeOne, -100);
+    const std::string path = tmp.write("main.hot", kPreludeScript, -100);
+    const std::string spelled = (tmp.dir / "sub" / ".." / "p.hot").string();
+    SymbolIndex symbols;
+    const auto e = index_once(config_with_prelude(path, spelled), path, symbols);
+    ASSERT_TRUE(e);
+    ASSERT_EQ(e->dep_stamps.size(), 1u);
+    EXPECT_EQ(e->dep_stamps[0].first, fs::path(prelude).lexically_normal().string());
+    WorkspaceIndex idx;
+    idx.set(path, e);
+    EXPECT_EQ(idx.files_with_dep(fs::path(prelude).lexically_normal().string()), (std::vector<std::string>{path}));
+}

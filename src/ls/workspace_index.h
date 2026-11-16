@@ -68,7 +68,8 @@ struct Entry
 // without the text, the flags text and the build id for the digest. The state thread makes it.
 struct JobConfig
 {
-    hotc::TranslateOptions options; // script_text is empty
+    hotc::TranslateOptions options; // script_text is empty, preludes is empty
+    std::vector<std::string> prelude_paths; // the prelude files in the form of index_key(); the worker reads them
     std::string flags_text;
     std::string build_id;
 };

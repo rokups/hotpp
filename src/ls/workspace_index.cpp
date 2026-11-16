@@ -650,10 +650,29 @@ void WorkspaceIndex::worker_main()
                 const JobConfig& c = job.config;
                 // One digest call gives the digest and the stamps of the imports it read.
                 std::vector<SymbolIndex::DepStamp> deps;
-                const std::string digest = SymbolIndex::digest(
-                    symbols_->cached_digest(path, text, c.options.include_dirs, &deps) + c.flags_text
-                    + "\nbuild:" + c.build_id);
-                entry = build_entry(path, stamp, text, c.options, digest, deps, *symbols_, *session_, &analyzed);
+                std::string digest_in = symbols_->cached_digest(path, text, c.options.include_dirs, &deps);
+                // The preludes are read from disk. A stamp is taken before its read. A missing
+                // file gets the missing stamp, so a file that appears makes the entry old.
+                hotc::TranslateOptions opts = c.options;
+                for (const std::string& p : c.prelude_paths)
+                {
+                    FileStamp ps;
+                    std::string ptext;
+                    if (stat_file(p, ps) && read_whole(p, ptext))
+                    {
+                        deps.push_back(SymbolIndex::DepStamp{p, ps.size, ps.mtime});
+                        digest_in += "\nprelude:" + p + '\0' + ptext;
+                        opts.preludes.emplace_back(p, std::move(ptext));
+                    }
+                    else
+                    {
+                        ps.size = kMissingSize;
+                        ps.mtime = 0;
+                        deps.push_back(SymbolIndex::DepStamp{p, ps.size, ps.mtime});
+                    }
+                }
+                const std::string digest = SymbolIndex::digest(digest_in + c.flags_text + "\nbuild:" + c.build_id);
+                entry = build_entry(path, stamp, text, opts, digest, deps, *symbols_, *session_, &analyzed);
             }
         }
         catch (...)

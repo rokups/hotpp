@@ -8767,6 +8767,52 @@ TEST(WorkspaceIndexEvents, WatchedChangeMakesTheIndexAnalyzeTheImporters)
     EXPECT_EQ(after["pending"], 0);
 }
 
+// HOT-34: an edit of a prelude on the disk makes the index analyze the script again.
+TEST(WorkspaceIndexEvents, WatchedPreludeEditMakesTheIndexAnalyzeTheScriptAgain)
+{
+    TempDir pre;
+    const std::string prelude = (pre.path() / "game.prelude.hot").string();
+    write_file(prelude, "[attribute] class Tagged;\n");
+    TempDir dir;
+    write_file((dir.path() / "a.hot").string(), "[Tagged] class Marker { int n = 0; }\n");
+    auto opt = options(dir, false);
+    opt.background_index = true;
+    opt.preludes = {prelude};
+    LsClient client(opt);
+    client.initialize(dir.path().string());
+    const json before = wait_index_idle(client);
+    ASSERT_TRUE(before.value("ready", false)) << before.dump();
+    const int start = before["analyzed"].get<int>();
+    write_file(prelude, "[attribute] class Tagged;\n[attribute] class Other;\n");
+    watched(client, prelude, 2);
+    // The text of the prelude is in the digest: the shard of the old text does not load.
+    const json after = wait_index_until(client, [&](const json& s) { return s["analyzed"].get<int>() > start; });
+    EXPECT_EQ(after["analyzed"].get<int>(), start + 1) << after.dump();
+    EXPECT_EQ(after["pending"], 0);
+}
+
+// HOT-34: a new user prelude file makes the index analyze the scripts again.
+TEST(WorkspaceIndexEvents, WatchedNewUserPreludeMakesTheIndexAnalyzeTheScriptAgain)
+{
+    TempDir dir;
+    write_file((dir.path() / "a.hot").string(), "[Tagged] class Marker { int n = 0; }\n");
+    auto opt = options(dir, false);
+    opt.background_index = true;
+    opt.prelude_suffix = ".prelude.hot";
+    LsClient client(opt);
+    client.initialize(dir.path().string());
+    const json before = wait_index_idle(client);
+    ASSERT_TRUE(before.value("ready", false)) << before.dump();
+    const int start = before["analyzed"].get<int>();
+    const std::string prelude = (dir.path() / "user.prelude.hot").string();
+    write_file(prelude, "[attribute] class Tagged;\n");
+    watched(client, prelude, 1);
+    // The new prelude and the script: two more analyses.
+    const json after = wait_index_until(client, [&](const json& s) { return s["analyzed"].get<int>() >= start + 2; });
+    EXPECT_EQ(after["analyzed"].get<int>(), start + 2) << after.dump();
+    EXPECT_EQ(after["pending"], 0);
+}
+
 TEST(WorkspaceIndexEvents, WatchedDeleteRemovesTheScriptFromTheIndex)
 {
     TempDir dir;
