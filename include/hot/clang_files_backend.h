@@ -55,6 +55,15 @@ struct ClangFilesOptions
     // cache between backends.
     std::shared_ptr<hotc::TranslatorSession> session;
     std::vector<std::string> extra_flags; // added to the compile command
+    // Own fmt code in each unit (-DFMT_HEADER_ONLY). The compile uses the fmt code of the host only
+    // when the extra flags have -DFMT_SHARED, the target is ELF, HOT_FMT_HEADER_ONLY is not "1" and
+    // this flag is false. The backend sets the flag (it is shared by the copies of the options) after
+    // a module had an fmt symbol that the host does not export: it compiles again with the own code.
+    std::shared_ptr<std::atomic<bool>> fmt_header_only;
+    // Tells if the linked module at the path needs an fmt symbol that the process does not export
+    // (the name goes to the second argument). Empty: the check reads the dynamic symbols of the
+    // ELF file. A test sets it.
+    std::function<bool(const std::string&, std::string*)> missing_fmt_symbol;
     // False: the compile has no "-g". The compile is faster. The default backend sets this from
     // the environment variable HOT_DEBUG_INFO (see default_backend.cpp).
     bool debug_info = true;
@@ -252,6 +261,8 @@ private:
     // threads for different jobs. It reads only "opt_", "cache_", "pch_cache_", "compiler_id_",
     // "link_cache_" and the PCH state under "pch_mutex_".
     bool compile_stage(BuildJob& job);
+    // The compile and the link of one job. "keep_mirror" true: the mirror stays for a second call.
+    bool compile_stage_once(BuildJob& job, bool keep_mirror);
     // Stage 3: records the compile command of the job. With "defer" the file write waits for
     // flush_compile_commands. The caller holds "mutex_".
     void record_stage(const BuildJob& job, bool defer = false);
@@ -421,6 +432,13 @@ private:
 // command then adds "-I<mirror_root><dir>" before each "-I<dir>", and one for "script_dir" (the
 // directory of the script; empty: none). "mirror_root" empty: "<work_dir>/vfs/". A load that
 // compiles with the root of its own job gives the same arguments, but for this root.
+// True when the compile of the options uses its own fmt code (-DFMT_HEADER_ONLY): see the comment of
+// "fmt_header_only" in ClangFilesOptions.
+bool fmt_header_only(const ClangFilesOptions& options);
+// True when the ELF module at "path" has an undefined fmt symbol that dlsym does not find. False on
+// other targets.
+bool has_missing_fmt_symbol(const std::string& path, std::string* first_name = nullptr);
+
 std::vector<std::string> compile_object_command(const ClangFilesOptions& options, const std::string& cpp_path,
     const std::string& obj_path, const std::string& depfile_path, const std::string& script_dir = std::string(),
     const std::string& mirror_root = std::string());

@@ -911,3 +911,131 @@ TEST(ObjectCacheBackend, StaleWorkDirectoriesGoAndLiveOnesStay)
 }
 
 } // namespace
+
+// ---- the fmt code of the host (-UFMT_HEADER_ONLY)
+
+namespace
+{
+
+hot::ClangFilesOptions fmt_options(TestScratch& scratch, const std::string& name, const std::vector<std::string>& flags)
+{
+    hot::ClangFilesOptions o;
+    o.compiler = HOT_CXX;
+    o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
+    o.work_dir = scratch.file(name + "_work");
+    o.compile_commands_dir = scratch.file(name + "_db");
+    o.cache_dir = scratch.file(name + "_cache"); // the database is written with a cache
+    o.extra_flags = flags;
+    return o;
+}
+
+} // namespace
+
+// The compile gets -UFMT_HEADER_ONLY after all flags when the host flags have -DFMT_SHARED (ELF). The
+// override HOT_FMT_HEADER_ONLY=1 and the sticky flag keep the own fmt code. Other targets are unchanged.
+TEST(ObjectCacheBackend, HostFmtFlagRule)
+{
+    CleanEnv env;
+    TestScratch scratch;
+    auto last_flag = [](const hot::ClangFilesOptions& o) {
+        const std::vector<std::string> cmd = hot::compile_object_command(o, "/x.cpp", "/x.o", "/x.d");
+        auto it = std::find(cmd.begin(), cmd.end(), "-MD"); // the flags end before the depfile flags
+        return it == cmd.begin() ? std::string() : *(it - 1);
+    };
+    hot::ClangFilesOptions shared = fmt_options(scratch, "r", {"-DFMT_SHARED", "-DFMT_HEADER_ONLY"});
+    hot::ClangFilesOptions plain = fmt_options(scratch, "p", {"-DFMT_HEADER_ONLY"});
+#if defined(__linux__)
+    EXPECT_EQ(last_flag(shared), "-UFMT_HEADER_ONLY");
+    EXPECT_NE(last_flag(plain), "-UFMT_HEADER_ONLY"); // no FMT_SHARED: unchanged
+    shared.extra_flags[0] = "-DFMT_SHARED=1"; // a define with a value counts too
+    EXPECT_EQ(last_flag(shared), "-UFMT_HEADER_ONLY");
+    {
+        EnvGuard force("HOT_FMT_HEADER_ONLY", "1");
+        EXPECT_NE(last_flag(shared), "-UFMT_HEADER_ONLY");
+    }
+    shared.fmt_header_only = std::make_shared<std::atomic<bool>>(true); // the sticky flag
+    EXPECT_NE(last_flag(shared), "-UFMT_HEADER_ONLY");
+#else
+    EXPECT_NE(last_flag(shared), "-UFMT_HEADER_ONLY");
+#endif
+}
+
+// The check of the undefined fmt symbols: a module with an fmt symbol that no library has is found.
+TEST(ObjectCacheBackend, MissingFmtSymbolCheckReadsTheModule)
+{
+#if defined(__linux__)
+    CleanEnv env;
+    TestScratch scratch;
+    const fs::path dir = scratch.file("sym");
+    fs::create_directories(dir);
+    std::ofstream(dir / "bad.cpp") << "namespace fmt { inline namespace v10 { void hot_no_such_fmt_symbol(); } }\n"
+                                      "extern \"C\" void hot_use() { fmt::v10::hot_no_such_fmt_symbol(); }\n";
+    std::ofstream(dir / "good.cpp") << "#include <cstdio>\nextern \"C\" void hot_use() { std::puts(\"x\"); }\n";
+    for (const char* n : {"bad", "good"})
+    {
+        const std::string cmd = std::string(HOT_CXX) + " -shared -fPIC -o " + (dir / (std::string(n) + ".so")).string()
+            + " " + (dir / (std::string(n) + ".cpp")).string();
+        ASSERT_EQ(std::system(cmd.c_str()), 0) << cmd;
+    }
+    std::string name;
+    EXPECT_TRUE(hot::has_missing_fmt_symbol((dir / "bad.so").string(), &name));
+    EXPECT_NE(name.find("hot_no_such_fmt_symbol"), std::string::npos) << name;
+    EXPECT_FALSE(hot::has_missing_fmt_symbol((dir / "good.so").string()));
+    EXPECT_FALSE(hot::has_missing_fmt_symbol((dir / "missing.so").string()));
+#else
+    GTEST_SKIP() << "ELF only";
+#endif
+}
+
+// The module compiled with -UFMT_HEADER_ONLY loads and runs, and the compile database has the flag.
+TEST(ObjectCacheBackend, HostFmtModuleRuns)
+{
+#if defined(__linux__)
+    CleanEnv env;
+    TestScratch scratch;
+    hot::ClangFilesOptions o = fmt_options(scratch, "h", {"-DFMT_SHARED", "-DFMT_HEADER_ONLY"});
+    {
+        hot::ClangFilesBackend backend(o);
+        EXPECT_EQ(load_and_run(backend, kCalc7), 7.0f);
+    } // the database is written when the backend ends
+    const std::string json = read_file(fs::path(o.compile_commands_dir) / "compile_commands.json");
+    EXPECT_NE(json.find("-UFMT_HEADER_ONLY"), std::string::npos) << json.substr(0, 1500);
+#else
+    GTEST_SKIP() << "ELF only";
+#endif
+}
+
+// A module that needs an fmt symbol the host lacks: the backend logs it, turns the own fmt code on
+// (sticky) and compiles again. The module runs and the database has no -U flag.
+TEST(ObjectCacheBackend, MissingFmtSymbolFallsBackToTheOwnFmtCode)
+{
+#if defined(__linux__)
+    CleanEnv env;
+    TestScratch scratch;
+    hot::ClangFilesOptions o = fmt_options(scratch, "f", {"-DFMT_SHARED", "-DFMT_HEADER_ONLY"});
+    o.fmt_header_only = std::make_shared<std::atomic<bool>>(false);
+    int calls = 0;
+    o.missing_fmt_symbol = [&](const std::string&, std::string* name) {
+        if (++calls > 1)
+            return false;
+        *name = "_ZN3fmt3v10test";
+        return true;
+    };
+    testing::internal::CaptureStderr();
+    float result = 0;
+    {
+        hot::ClangFilesBackend backend(o);
+        result = load_and_run(backend, kCalc7);
+    } // the database is written when the backend ends
+    const std::string log = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(result, 7.0f);
+    EXPECT_NE(log.find("needs the fmt symbol _ZN3fmt3v10test"), std::string::npos) << log;
+    EXPECT_TRUE(o.fmt_header_only->load());
+    EXPECT_EQ(calls, 1); // the second compile does not check: the own code is on
+    const std::string json = read_file(fs::path(o.compile_commands_dir) / "compile_commands.json");
+    EXPECT_NE(json.find("-DFMT_HEADER_ONLY"), std::string::npos) << json; // the database is not empty
+    EXPECT_EQ(json.find("-UFMT_HEADER_ONLY"), std::string::npos) << json;
+#else
+    GTEST_SKIP() << "ELF only";
+#endif
+}

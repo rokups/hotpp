@@ -11,6 +11,10 @@
 #include "hot/paths.h"
 #include "hot/runtime/process.h"
 
+#if defined(__linux__)
+#include <dlfcn.h>
+#include <elf.h>
+#endif
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
@@ -20,6 +24,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <optional>
 #include <random>
 #include <sstream>
@@ -549,6 +554,8 @@ ClangFilesBackend::ClangFilesBackend(ClangFilesOptions options)
 {
     if (!opt_.session)
         opt_.session = std::make_shared<hotc::TranslatorSession>();
+    if (!opt_.fmt_header_only)
+        opt_.fmt_header_only = std::make_shared<std::atomic<bool>>(false);
     if (opt_.slots_file.empty())
         opt_.slots_file = opt_.work_dir + "/slots.txt";
     if (!opt_.cache_dir.empty() && ObjectCache::enabled_by_env())
@@ -643,6 +650,86 @@ std::vector<std::string> mingw_flags(const ClangFilesOptions& opt, bool compile)
 
 } // namespace
 
+// The script uses its own copy of the fmt code (-DFMT_HEADER_ONLY)? Not when the host flags have
+// -DFMT_SHARED: the host has the fmt code and exports it (libUrho3D.so does). The own copy costs
+// about 300 ms of the compile time of a unit. Only ELF: other targets keep the own copy (the host
+// import library of Windows must carry the fmt symbols; the loader of Mach-O has no check here).
+// HOT_FMT_HEADER_ONLY=1 forces the own copy. A backend that found a missing fmt symbol sets the
+// shared flag "opt.fmt_header_only": the own copy is on from then.
+bool fmt_header_only(const ClangFilesOptions& opt)
+{
+#if defined(__linux__)
+    if (const char* v = std::getenv("HOT_FMT_HEADER_ONLY"); v && std::strcmp(v, "1") == 0)
+        return true;
+    if (opt.fmt_header_only && opt.fmt_header_only->load())
+        return true;
+    for (const std::string& f : opt.extra_flags)
+        if (f == "-DFMT_SHARED" || f.compare(0, 13, "-DFMT_SHARED=") == 0)
+            return false;
+    return true;
+#else
+    (void)opt;
+    return true;
+#endif
+}
+
+// True when the module "path" has an undefined fmt symbol that the process does not export. The
+// loader would fail on it. The function reads the dynamic symbol table of an ELF64 file.
+bool has_missing_fmt_symbol(const std::string& path, std::string* first_name)
+{
+#if defined(__linux__)
+    std::string data;
+    {
+        std::ifstream in(path, std::ios::binary);
+        if (!in)
+            return false;
+        data.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
+    if (data.size() < sizeof(Elf64_Ehdr) || std::memcmp(data.data(), ELFMAG, SELFMAG) != 0
+        || data[EI_CLASS] != ELFCLASS64)
+        return false;
+    Elf64_Ehdr eh;
+    std::memcpy(&eh, data.data(), sizeof eh);
+    if (eh.e_shoff == 0 || eh.e_shentsize != sizeof(Elf64_Shdr) || eh.e_shoff + uint64_t(eh.e_shnum) * sizeof(Elf64_Shdr) > data.size())
+        return false;
+    auto section = [&](size_t i) {
+        Elf64_Shdr sh;
+        std::memcpy(&sh, data.data() + eh.e_shoff + i * sizeof(Elf64_Shdr), sizeof sh);
+        return sh;
+    };
+    for (size_t i = 0; i < eh.e_shnum; ++i)
+    {
+        const Elf64_Shdr sh = section(i);
+        if (sh.sh_type != SHT_DYNSYM || sh.sh_link >= eh.e_shnum || sh.sh_offset + sh.sh_size > data.size())
+            continue;
+        const Elf64_Shdr str = section(sh.sh_link);
+        if (str.sh_offset + str.sh_size > data.size())
+            continue;
+        for (uint64_t off = 0; off + sizeof(Elf64_Sym) <= sh.sh_size; off += sizeof(Elf64_Sym))
+        {
+            Elf64_Sym sym;
+            std::memcpy(&sym, data.data() + sh.sh_offset + off, sizeof sym);
+            if (sym.st_shndx != SHN_UNDEF || ELF64_ST_BIND(sym.st_info) == STB_WEAK || sym.st_name == 0 || sym.st_name >= str.sh_size)
+                continue;
+            const char* name = data.data() + str.sh_offset + sym.st_name;
+            if (!std::strstr(name, "3fmt3v"))
+                continue;
+            if (!dlsym(RTLD_DEFAULT, name))
+            {
+                if (first_name)
+                    *first_name = name;
+                return true;
+            }
+        }
+    }
+    return false;
+#else
+    (void)path;
+    (void)first_name;
+    return false;
+#endif
+}
+
 // The split of the flags between the compile and the link, for each target:
 // - ELF: the compile has the code flags (-fPIC, -fno-plt, -fvisibility). The link has -shared and -fPIC.
 // - MinGW: the compile has the libstdc++ headers. The link has lld, the static runtime and -L.
@@ -704,7 +791,7 @@ std::vector<std::string> compile_object_command(const ClangFilesOptions& opt, co
             cmd.push_back("-I" + mirror + vfs_relative(d).value_or(std::string()));
         cmd.push_back("-I" + d);
     }
-    for (const std::string& f : format_compile_flags())
+    for (const std::string& f : format_compile_flags(fmt_header_only(opt)))
         cmd.push_back(f);
     for (const std::string& f : checks_compile_flags())
         cmd.push_back(f);
@@ -712,6 +799,11 @@ std::vector<std::string> compile_object_command(const ClangFilesOptions& opt, co
         cmd.push_back(f);
     for (const std::string& f : traceback_compile_flags())
         cmd.push_back(f);
+    // The host flags can have -DFMT_HEADER_ONLY (the compile database of rbfx has it). It makes the
+    // unit hold the whole fmt engine: the unit then needs about 300 ms more. This flag comes after all
+    // other flags, so it removes the macro that any earlier flag sets.
+    if (!fmt_header_only(opt))
+        cmd.push_back("-UFMT_HEADER_ONLY");
     // The depfile names the headers of the compile (the input of an object cache).
     if (!depfile_path.empty())
     {
@@ -2723,6 +2815,27 @@ bool ClangFilesBackend::translate_stage(BuildJob& job, const ScriptSource& sourc
 
 bool ClangFilesBackend::compile_stage(BuildJob& job)
 {
+    // The units use the fmt code of the host. If a module needs an fmt symbol that the host does not
+    // export, the module would not load. Then this backend turns the own fmt copy on and compiles again.
+    const bool host_fmt = !fmt_header_only(opt_);
+    const bool ok = compile_stage_once(job, host_fmt);
+    std::string missing;
+    if (!host_fmt || !ok || !(opt_.missing_fmt_symbol ? opt_.missing_fmt_symbol(job.out_so, &missing) : has_missing_fmt_symbol(job.out_so, &missing)))
+    {
+        if (host_fmt)
+            remove_mirror(job);
+        return ok;
+    }
+    if (opt_.fmt_header_only)
+        opt_.fmt_header_only->store(true);
+    const std::string msg = "hot: " + job.unit + " needs the fmt symbol " + missing
+        + " that the host does not export; the units use their own fmt code from now";
+    std::fprintf(stderr, "%s\n", msg.c_str());
+    return compile_stage_once(job, false);
+}
+
+bool ClangFilesBackend::compile_stage_once(BuildJob& job, bool keep_mirror)
+{
     std::error_code ec;
     const fs::path so_path(job.out_so);
     const std::string& out_so = job.out_so;
@@ -2739,8 +2852,13 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
     struct MirrorGuard
     {
         BuildJob& job;
-        ~MirrorGuard() { remove_mirror(job); }
-    } mirror_guard{job};
+        bool keep;
+        ~MirrorGuard()
+        {
+            if (!keep)
+                remove_mirror(job);
+        }
+    } mirror_guard{job, keep_mirror};
     fs::remove(so_path, ec);
     std::string output;
     // The diagnostics can name the "#line" name or the path of the file (before the first "#line").

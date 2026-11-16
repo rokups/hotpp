@@ -354,7 +354,7 @@ CompileArgs make_args(const JitOptions& opt, const std::string& path, const std:
         // another header with the same name.
         s.key_args.push_back("-I" + normal(d));
     }
-    for (const std::string& f : format_compile_flags())
+    for (const std::string& f : format_compile_flags(true)) // the JIT keeps its own fmt copy
         args.push_back(f);
     for (const std::string& f : checks_compile_flags())
         args.push_back(f);

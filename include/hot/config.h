@@ -95,13 +95,16 @@ constexpr const char* cxx_std_name()
 }
 
 // The flags that the compile command of a script needs for the format library.
-// The list is empty for std::format.
-inline std::vector<std::string> format_compile_flags()
+// The list is empty for std::format. "header_only" adds -DFMT_HEADER_ONLY: the script then holds
+// its own copy of the fmt code. Without it, the script uses the fmt code of the host (the host
+// flags must have -DFMT_SHARED and the host must export the fmt symbols).
+inline std::vector<std::string> format_compile_flags(bool header_only = true)
 {
     std::vector<std::string> flags;
     if (HOT_USE_FMT)
     {
-        flags.push_back("-DFMT_HEADER_ONLY");
+        if (header_only)
+            flags.push_back("-DFMT_HEADER_ONLY");
         if (HOT_FMT_INCLUDE_DIR[0] != '\0')
             flags.push_back(std::string("-I") + HOT_FMT_INCLUDE_DIR);
     }
