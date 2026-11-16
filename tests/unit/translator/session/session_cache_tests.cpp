@@ -17,6 +17,7 @@
 #include <chrono>
 #include <atomic>
 #include <condition_variable>
+#include <filesystem>
 #include <functional>
 #include <future>
 #include <iostream>
@@ -519,51 +520,234 @@ std::string cpp_script(const std::string& includes, const std::string& body)
 
 } // namespace
 
+namespace
+{
+
+const char* kCppHeaderBroken =
+    "#pragma once\n"
+    "class Widget { public: virtual ~Widget() {} virtual int Update(float dt) { return 1; }\n"
+    "    int f() { return ; ) } };\n";
+
+struct CppStep
+{
+    const char* header; // null: the header stays
+    std::string script;
+    bool ok; // the plain parse must succeed
+};
+
+hotc::TranslateOptions cpp_options(const TempDir& dir, const std::string& script, const char* name = "t.cpp")
+{
+    hotc::TranslateOptions o = temp_options(dir, script);
+    o.script_name = name;
+    return o;
+}
+
+// "got" must equal the plain parse (a session with no unit reuse) in all texts.
+void expect_same(const hotc::TranslateResult& got, const hotc::TranslateResult& want, const std::string& what)
+{
+    EXPECT_EQ(got.ok, want.ok) << what << "\n" << got.diagnostics << "\n--\n" << want.diagnostics;
+    EXPECT_EQ(got.cpp, want.cpp) << what;
+    EXPECT_EQ(got.diagnostics, want.diagnostics) << what;
+    EXPECT_EQ(got.slots_out, want.slots_out) << what;
+}
+
+hotc::TranslateResult plain_translate(const hotc::TranslateOptions& o)
+{
+    hotc::TranslatorSession plain;
+    plain.set_tu_cache_limit(0); // a plain parse with no preamble
+    return hotc::translate(o, plain);
+}
+
+} // namespace
+
 // A reparse of a kept unit with a new script text must give the same result as a fresh parse.
-// The edits change the body, the member list, a header, the include block and add an error.
+// The edits change the body, the member list, a header, the include block and add errors in the
+// script, in a header and in the include block.
 TEST(SessionCache, CppReparseGivesTheSameResultAsAFreshParse)
 {
     TempDir dir;
     write_file(dir.path() / "w.h", kCppHeaderV1);
     const std::string inc = "#include \"w.h\"\n";
-    struct Step
-    {
-        const char* header; // null: the header stays
-        std::string script;
-    };
-    const std::vector<Step> steps = {
-        {nullptr, cpp_script(inc, "    int Update(float dt) override { return 1; }\n")},
-        {nullptr, cpp_script(inc, "    int Update(float dt) override { return 2; }\n")},
-        {nullptr, cpp_script(inc, "    int hp = 3;\n    int Update(float dt) override { return hp; }\n")},
-        {kCppHeaderV2, cpp_script(inc, "    int Extra() override { return 5; }\n")},
-        {nullptr, cpp_script(inc, "    int Update(float dt) override { return missing; }\n")},
-        {nullptr, cpp_script(inc + "#include <string>\n", "    int Update(float dt) override { return 4; }\n")},
-        {kCppHeaderV1, cpp_script(inc, "    int Update(float dt) override { return 1; }\n")},
+    const std::string upd = "    int Update(float dt) override { return 1; }\n";
+    const std::vector<CppStep> steps = {
+        {nullptr, cpp_script(inc, upd), true},
+        {nullptr, cpp_script(inc, "    int Update(float dt) override { return 2; }\n"), true},
+        {nullptr, cpp_script(inc, "    int hp = 3;\n    int Update(float dt) override { return hp; }\n"), true},
+        {kCppHeaderV2, cpp_script(inc, "    int Extra() override { return 5; }\n"), true},
+        {nullptr, cpp_script(inc, "    int Update(float dt) override { return missing; }\n"), false},
+        {nullptr, cpp_script(inc + "#include <string>\n", "    int Update(float dt) override { return 4; }\n"), true},
+        {kCppHeaderBroken, cpp_script(inc, upd), false}, // a syntax error in an inline body of a header
+        {nullptr, cpp_script(inc, upd + "    int Twice() { return 2; }\n"), false}, // the header stays broken
+        {kCppHeaderV1, cpp_script(inc, upd), true}, // the header is fixed
+        {nullptr, "#include \"nothere.h\"\n" + inc + "class Foo : public Widget {};\n", false},
+        {nullptr, cpp_script("#include \"nothere.h\"\n", upd), false},
+        {nullptr, cpp_script(inc, upd), true},
+        {kCppHeaderV2, cpp_script(inc, upd), true},
+        {kCppHeaderV1, cpp_script(inc, upd), true},
     };
     hotc::TranslatorSession shared;
     for (size_t i = 0; i < steps.size(); ++i)
     {
         if (steps[i].header)
             write_file(dir.path() / "w.h", steps[i].header);
-        hotc::TranslateOptions o = temp_options(dir, steps[i].script);
-        o.script_name = "t.cpp";
-        hotc::TranslatorSession fresh;
-        fresh.set_tu_cache_limit(0); // a plain parse with no preamble
-        const hotc::TranslateResult want = hotc::translate(o, fresh);
-        const hotc::TranslateResult got = hotc::translate(o, shared);
-        if (i != 4)
-            EXPECT_TRUE(want.ok) << "step " << i << "\n" << want.diagnostics;
-        EXPECT_EQ(got.ok, want.ok) << "step " << i << "\n" << got.diagnostics << want.diagnostics;
-        EXPECT_EQ(got.cpp, want.cpp) << "step " << i;
-        EXPECT_EQ(got.diagnostics, want.diagnostics) << "step " << i;
-        EXPECT_EQ(got.slots_out, want.slots_out) << "step " << i;
+        const hotc::TranslateOptions o = cpp_options(dir, steps[i].script);
+        const hotc::TranslateResult want = plain_translate(o);
+        EXPECT_EQ(want.ok, steps[i].ok) << "step " << i << "\n" << want.diagnostics;
+        expect_same(hotc::translate(o, shared), want, "shared, step " + std::to_string(i));
+        hotc::TranslatorSession first; // the first parse of a new session builds the preamble
+        expect_same(hotc::translate(o, first), want, "first parse, step " + std::to_string(i));
     }
-    // The step with the missing name is an error in both ways.
-    hotc::TranslateOptions bad = temp_options(dir, steps[4].script);
-    bad.script_name = "t.cpp";
-    EXPECT_FALSE(hotc::translate(bad, shared).ok);
     shared.clear(); // drops the kept units
-    hotc::TranslateOptions again = temp_options(dir, steps[6].script);
-    again.script_name = "t.cpp";
+    EXPECT_EQ(shared.tu_cache_size(), 0u);
+    const hotc::TranslateOptions again = cpp_options(dir, steps[0].script);
     EXPECT_TRUE(hotc::translate(again, shared).ok);
+}
+
+// A unit that had an error is not kept: the next parse is fresh.
+TEST(SessionCache, CppUnitWithAnErrorIsNotKept)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kCppHeaderV1);
+    hotc::TranslatorSession s;
+    const std::string inc = "#include \"w.h\"\n";
+    EXPECT_TRUE(hotc::translate(cpp_options(dir, cpp_script(inc, "")), s).ok);
+    EXPECT_EQ(s.tu_cache_size(), 1u);
+    EXPECT_FALSE(hotc::translate(cpp_options(dir, cpp_script(inc, "    int x = missing;\n")), s).ok);
+    EXPECT_EQ(s.tu_cache_size(), 0u);
+    EXPECT_TRUE(hotc::translate(cpp_options(dir, cpp_script(inc, "")), s).ok);
+    EXPECT_EQ(s.tu_cache_size(), 1u);
+}
+
+// A self-include and a symlinked include give the same result as a plain parse.
+TEST(SessionCache, CppSelfIncludeAndSymlinkedIncludeEqualAPlainParse)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kCppHeaderV1);
+    write_file(dir.path() / "self.h",
+        "#pragma once\n#include \"self.h\"\n#include \"w.h\"\nstruct SelfBox { int v = 1; };\n");
+    std::error_code ec;
+    std::filesystem::create_symlink(dir.path() / "w.h", dir.path() / "link.h", ec);
+    ASSERT_FALSE(ec) << ec.message();
+    const std::string body = "    int Update(float dt) override { return 1; }\n";
+    const std::string scripts[] = {
+        cpp_script("#include \"self.h\"\n", body),
+        cpp_script("#include \"link.h\"\n#include \"w.h\"\n", body),
+        cpp_script("#include \"w.h\"\n#include \"link.h\"\n", body + "    int g() { return 3; }\n"),
+    };
+    hotc::TranslatorSession shared;
+    for (int round = 0; round < 2; ++round)
+        for (size_t i = 0; i < 3; ++i)
+        {
+            const hotc::TranslateOptions o = cpp_options(dir, scripts[i]);
+            expect_same(hotc::translate(o, shared), plain_translate(o), "script " + std::to_string(i));
+        }
+}
+
+// The key has the compiler arguments: a changed define drops the unit and the result follows.
+TEST(SessionCache, CppChangedDefineGivesAnotherUnit)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", "#pragma once\n#ifdef EXTRA\n#define BASE_VALUE 7\n#else\n#define BASE_VALUE 1\n#endif\n"
+        "class Widget { public: virtual ~Widget() {} virtual int Update(float dt) { return BASE_VALUE; } };\n");
+    hotc::TranslatorSession s;
+    const std::string script = cpp_script("#include \"w.h\"\n", "    int Update(float dt) override { return BASE_VALUE; }\n");
+    hotc::TranslateOptions a = cpp_options(dir, script);
+    hotc::TranslateOptions b = a;
+    b.defines.push_back("-DEXTRA=1");
+    for (int i = 0; i < 2; ++i)
+    {
+        expect_same(hotc::translate(a, s), plain_translate(a), "no define");
+        expect_same(hotc::translate(b, s), plain_translate(b), "with define");
+    }
+    EXPECT_EQ(s.tu_cache_size(), 2u); // one unit for each argument list
+}
+
+// The cache keeps at most the limit; the oldest unit goes; a smaller limit drops units at once.
+TEST(SessionCache, CppEvictionAndLimit)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kCppHeaderV1);
+    hotc::TranslatorSession s;
+    const std::string script = cpp_script("#include \"w.h\"\n", "");
+    for (int i = 0; i < 7; ++i)
+    {
+        const std::string name = "u" + std::to_string(i) + ".cpp";
+        EXPECT_TRUE(hotc::translate(cpp_options(dir, script, name.c_str()), s).ok);
+        EXPECT_LE(s.tu_cache_size(), 4u);
+    }
+    EXPECT_EQ(s.tu_cache_size(), 4u);
+    s.set_tu_cache_limit(2);
+    EXPECT_EQ(s.tu_cache_size(), 2u);
+    s.set_tu_cache_limit(0);
+    EXPECT_EQ(s.tu_cache_size(), 0u);
+    EXPECT_TRUE(hotc::translate(cpp_options(dir, script), s).ok);
+    EXPECT_EQ(s.tu_cache_size(), 0u); // the cache is off
+}
+
+// A header edit between two translates gives a fresh unit (the stamp check) and the same result.
+TEST(SessionCache, CppHeaderEditWithTheSameSizeIsSeenByTheTime)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", "#pragma once\nclass Widget { public: virtual ~Widget() {} virtual int Update(float dt) { return 1; } };\n");
+    hotc::TranslatorSession s;
+    const std::string script = cpp_script("#include \"w.h\"\n", "    int Update(float dt) override { return 1; }\n");
+    EXPECT_TRUE(hotc::translate(cpp_options(dir, script), s).ok);
+    // The same size; the method name differs in one letter. The nanosecond time changes.
+    write_file(dir.path() / "w.h", "#pragma once\nclass Widget { public: virtual ~Widget() {} virtual int Update(float dx) { return 1; } };\n");
+    const hotc::TranslateOptions o = cpp_options(dir, script);
+    expect_same(hotc::translate(o, s), plain_translate(o), "same size edit");
+}
+
+// N threads translate one script with one session: each result equals the plain parse.
+TEST(SessionParallel, CppThreadsShareOneSession)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kCppHeaderV1);
+    const std::string inc = "#include \"w.h\"\n";
+    hotc::TranslatorSession s;
+    const int kThreads = 6, kRounds = 3;
+    std::vector<std::string> scripts;
+    for (int i = 0; i < kThreads; ++i)
+        scripts.push_back(cpp_script(inc, "    int Update(float dt) override { return " + std::to_string(i) + "; }\n"));
+    std::vector<hotc::TranslateResult> want;
+    for (int i = 0; i < kThreads; ++i)
+        want.push_back(plain_translate(cpp_options(dir, scripts[i])));
+    std::vector<std::thread> threads;
+    std::atomic<int> bad{0};
+    for (int t = 0; t < kThreads; ++t)
+        threads.emplace_back([&, t] {
+            for (int r = 0; r < kRounds; ++r)
+            {
+                const hotc::TranslateResult got = hotc::translate(cpp_options(dir, scripts[t]), s);
+                if (!got.ok || got.cpp != want[t].cpp || got.slots_out != want[t].slots_out)
+                    ++bad;
+            }
+        });
+    for (std::thread& th : threads)
+        th.join();
+    EXPECT_EQ(bad.load(), 0);
+    EXPECT_LE(s.tu_cache_size(), 4u);
+}
+
+// clear() during a parse is safe: the parse ends, its unit is not kept.
+TEST(SessionParallel, CppClearDuringTranslateIsSafe)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kCppHeaderV1);
+    hotc::TranslatorSession s;
+    const hotc::TranslateOptions o = cpp_options(dir, cpp_script("#include \"w.h\"\n", ""));
+    std::atomic<bool> stop{false};
+    std::thread clearer([&] {
+        while (!stop)
+        {
+            s.clear();
+            std::this_thread::yield();
+        }
+    });
+    for (int i = 0; i < 6; ++i)
+        EXPECT_TRUE(hotc::translate(o, s).ok);
+    stop = true;
+    clearer.join();
+    s.clear();
+    EXPECT_EQ(s.tu_cache_size(), 0u);
 }
