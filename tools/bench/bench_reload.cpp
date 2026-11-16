@@ -135,6 +135,10 @@ int main(int argc, char** argv)
         return 2;
     }
 #ifndef _WIN32
+    // The wrapper gives the engine libraries by LD_PRELOAD. The loader has read it already. The
+    // compiler and linker processes must not inherit it: each one would load the engine libraries
+    // again (about 0.8 s for each process) and the phase times would be wrong.
+    unsetenv("LD_PRELOAD");
     for (const std::string& lib : preloads)
         if (!dlopen(lib.c_str(), RTLD_NOW | RTLD_GLOBAL))
         {
