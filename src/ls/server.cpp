@@ -1188,6 +1188,10 @@ private:
     std::chrono::steady_clock::time_point progress_last_;
     void start_background_index();
     JobConfig index_job_config(const std::string& path) const;
+    // The valid index entries of the closed paths. An open path is in neither "entries" nor "missing".
+    // The server never gives an open path to wait_for. The index always describes the disk.
+    // An inverted map is exact only for a path set that wait_for validated with an empty "missing" list.
+    IndexSnapshot index_entries(const std::vector<std::string>& paths, std::chrono::steady_clock::time_point deadline);
     // The index key of a script path: the form of workspace_scripts().
     static std::string index_key(const std::string& path) { return fs::path(path).lexically_normal().string(); }
     bool index_active() const { return opt_.background_index && (windex_.started() || windex_.stats().total > 0); }
@@ -6986,6 +6990,23 @@ void Server::map_clangd_symbols(const json& symbols, json& out)
     }
 }
 
+IndexSnapshot Server::index_entries(const std::vector<std::string>& paths, std::chrono::steady_clock::time_point deadline)
+{
+    // The server never gives an open path to wait_for. The index always describes the disk.
+    // An inverted map is exact only for a path set that wait_for validated with an empty "missing" list.
+    std::vector<std::string> closed;
+    for (const std::string& path : paths)
+    {
+        if (open_doc_at(path))
+            continue;
+        const std::string key = index_key(path);
+        if (!windex_.entry(key))
+            windex_.schedule(key, index_job_config(key), IndexLevel::Request);
+        closed.push_back(key);
+    }
+    return windex_.wait_for(closed, [this] { check_cancel(); }, deadline);
+}
+
 JobConfig Server::index_job_config(const std::string& path) const
 {
     JobConfig c;
@@ -7362,6 +7383,19 @@ void Server::handle(const json& msg)
             {
                 const auto t = u.is_string() ? file_refs(uri_to_path(u.get<std::string>())) : nullptr;
                 out["tableRefs"].push_back(t ? static_cast<int>(t->refs.size()) : -1);
+            }
+        }
+        if (const std::string of = json_str(p, "entryOf"); !of.empty())
+        {
+            // The test probe: "open", "valid" or "missing".
+            const std::string path = uri_to_path(of);
+            if (open_doc_at(path))
+                out["entryOf"] = "open";
+            else
+            {
+                const std::string key = index_key(path);
+                const IndexSnapshot snap = index_entries({path}, std::chrono::steady_clock::now() + std::chrono::seconds(2));
+                out["entryOf"] = snap.entries.count(key) ? "valid" : "missing";
             }
         }
         if (const std::string of = json_str(p, "importersOf"); !of.empty())

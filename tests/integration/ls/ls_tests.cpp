@@ -8821,3 +8821,42 @@ TEST(WorkspaceIndexEvents, CloseOfAChangedFileAnalyzesOnlyWhenTheStampDiffers)
     const json after = wait_index_until(client, [&](const json& s) { return jobs(s) > start; });
     EXPECT_EQ(jobs(after), start + 1) << after.dump();
 }
+
+TEST(WorkspaceIndexEvents, IndexProbeGivesOpenForAnOpenDocument)
+{
+    TempDir dir;
+    const std::string path = (dir.path() / "a.hot").string();
+    const std::string text = "class Alone {\n    public int V() { return 1; }\n}\n";
+    write_file(path, text);
+    auto opt = options(dir, false);
+    opt.background_index = true;
+    LsClient client(opt);
+    client.initialize(dir.path().string());
+    ASSERT_TRUE(wait_index_idle(client).value("ready", false));
+    client.open(uri_of(path), text);
+    client.change(uri_of(path), 2, text + "// not saved\n");
+    const json r = client.request("hot/indexStats", {{"entryOf", uri_of(path)}})["result"];
+    EXPECT_EQ(r.value("entryOf", ""), "open") << r.dump();
+}
+
+TEST(WorkspaceIndexEvents, IndexProbeGivesValidAfterADiskChangeWithoutAnEvent)
+{
+    TempDir dir;
+    const std::string path = (dir.path() / "a.hot").string();
+    const std::string text = "class Alone {\n    public int V() { return 1; }\n}\n";
+    write_file(path, text);
+    auto opt = options(dir, false);
+    opt.background_index = true;
+    LsClient client(opt);
+    client.initialize(dir.path().string());
+    const json before = wait_index_idle(client);
+    ASSERT_TRUE(before.value("ready", false)) << before.dump();
+    auto jobs = [&](const json& s) { return s["analyzed"].get<int>() + s["loaded"].get<int>(); };
+    const int start = jobs(before);
+    write_file(path, text + "// a longer text\n");
+    // No watched-files event: the stamp check finds the change and the index builds the entry again.
+    const json r = client.request("hot/indexStats", {{"entryOf", uri_of(path)}})["result"];
+    EXPECT_EQ(r.value("entryOf", ""), "valid") << r.dump();
+    const json after = index_stats(client);
+    EXPECT_GT(jobs(after), start) << after.dump();
+}
