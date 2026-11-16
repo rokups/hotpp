@@ -696,6 +696,22 @@ std::vector<std::string> compile_object_command(const ClangFilesOptions& opt, co
     return cmd;
 }
 
+// True for an ELF target of a host that is not Windows. HOT_LINKER=default turns lld off.
+static bool use_lld_by_default(const ClangFilesOptions& opt)
+{
+#ifdef _WIN32
+    (void)opt;
+    return false;
+#else
+    const char* env = std::getenv("HOT_LINKER");
+    if (env && std::string(env) == "default")
+        return false;
+    if (darwin_target(opt) || is_mingw_triple(opt.target_triple))
+        return false;
+    return opt.target_triple.empty() || opt.target_triple.find("linux") != std::string::npos;
+#endif
+}
+
 std::vector<std::string> link_module_command(
     const ClangFilesOptions& opt, const std::string& obj_path, const std::string& out_so)
 {
@@ -709,6 +725,8 @@ std::vector<std::string> link_module_command(
         cmd.push_back("--target=" + opt.target_triple);
     if (!opt.sysroot.empty())
         cmd.push_back("--sysroot=" + opt.sysroot);
+    if (!opt.linker_flag.empty())
+        cmd.push_back(opt.linker_flag);
     for (const std::string& f : mingw_flags(opt, false))
         cmd.push_back(f);
     for (const std::string& f : darwin_target_flags(darwin_target(opt)))
@@ -1643,6 +1661,21 @@ bool ClangFilesBackend::prepare_cache()
     }
     compiler_id_ = program + "|" + version + "|" + std::to_string(mtime) + "|" + std::to_string(size) +
         compiler_environment();
+    // lld links a module faster than GNU ld (about 50 ms against 150 ms). The probe runs once. The
+    // linker version is part of the compiler id, so a new linker makes new module keys. The flag is
+    // in the link command, which is in the module key too. Without lld the link stays as before.
+    if (opt_.linker_flag.empty() && use_lld_by_default(opt_) && version.find("clang") != std::string::npos)
+    {
+        std::string ld_out;
+        const int ld_rc = run_command(
+            {opt_.compiler, "-fuse-ld=lld", "-Wl,--version", "-x", "c", "/dev/null", "-o", "/dev/null"}, ld_out);
+        const size_t at = ld_out.find("LLD ");
+        if (ld_rc == 0 && at != std::string::npos)
+        {
+            opt_.linker_flag = "-fuse-ld=lld";
+            compiler_id_ += "|ld:" + ld_out.substr(at, ld_out.find('\n', at) - at);
+        }
+    }
     // The compiler id is in the key of the translate cache too: a new compiler often comes with
     // new system headers, and the dependency list of a translate has no system header.
     if (tr_cache_)

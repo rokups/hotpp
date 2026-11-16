@@ -107,6 +107,10 @@ struct ClangFilesOptions
     // A MinGW triple adds the libstdc++ headers of the sysroot (hot/command_line.h).
     std::string target_triple;
     std::string sysroot; // the sysroot of the modules ("--sysroot="); empty: none
+    // The linker flag of the module link, for example "-fuse-ld=lld". Empty: the default linker of
+    // the compiler. The backend sets it for an ELF target when the compiler finds lld. The
+    // environment variable HOT_LINKER=default keeps the default linker.
+    std::string linker_flag;
 };
 
 class ClangFilesBackend : public Backend
