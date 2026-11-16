@@ -8839,6 +8839,25 @@ TEST(WorkspaceIndexEvents, IndexProbeGivesOpenForAnOpenDocument)
     EXPECT_EQ(r.value("entryOf", ""), "open") << r.dump();
 }
 
+// HOT-34: with background_index off, the probe gives "missing" at once and starts no job.
+TEST(WorkspaceIndexEvents, IndexProbeGivesMissingFastWhenTheIndexIsOff)
+{
+    TempDir dir;
+    const std::string path = (dir.path() / "a.hot").string();
+    write_file(path, "class Alone {\n    public int V() { return 1; }\n}\n");
+    auto opt = options(dir, false);
+    opt.background_index = false;
+    LsClient client(opt);
+    client.initialize(dir.path().string());
+    const auto start = std::chrono::steady_clock::now();
+    const json r = client.request("hot/indexStats", {{"entryOf", uri_of(path)}})["result"];
+    EXPECT_EQ(r.value("entryOf", ""), "missing") << r.dump();
+    EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::seconds(1));
+    const json st = index_stats(client);
+    EXPECT_EQ(st.value("total", -1), 0) << st.dump();
+    EXPECT_EQ(st["analyzed"].get<int>() + st["loaded"].get<int>(), 0) << st.dump();
+}
+
 TEST(WorkspaceIndexEvents, IndexProbeGivesValidAfterADiskChangeWithoutAnEvent)
 {
     TempDir dir;

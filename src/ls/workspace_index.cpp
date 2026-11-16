@@ -39,7 +39,7 @@ void WorkspaceIndex::add_locked(const std::string& path, const Entry& e)
             if (!r.id.empty())
                 by_ref_[r.id].insert(path);
     for (const auto& dep : e.dep_stamps)
-        by_dep_[dep.first].insert(path);
+        by_dep_[dep.first].insert(path); // dep.first has the form of index_key()
 }
 
 void WorkspaceIndex::remove_locked(const std::string& path, const Entry& e)
@@ -188,8 +188,9 @@ bool fresh(const Entry& e, std::map<std::string, FileStamp>* memo)
 }
 
 std::shared_ptr<const Entry> build_entry(const std::string& path, const FileStamp& stamp, const std::string& text,
-    const hotc::TranslateOptions& options, const std::string& digest, SymbolIndex& index,
-    hotc::TranslatorSession& session, bool* analyzed)
+    const hotc::TranslateOptions& options, const std::string& digest,
+    const std::vector<SymbolIndex::DepStamp>& deps, SymbolIndex& index, hotc::TranslatorSession& session,
+    bool* analyzed)
 {
     if (analyzed)
         *analyzed = false;
@@ -200,8 +201,6 @@ std::shared_ptr<const Entry> build_entry(const std::string& path, const FileStam
     e->stamp = stamp; // the caller took it before it read the text
     // The digest search stamps each probed file before it reads the file. It also stamps a
     // missing candidate, so a file that appears earlier in the search makes fresh() give false.
-    std::vector<SymbolIndex::DepStamp> deps;
-    index.cached_digest(path, text, options.include_dirs, &deps);
     for (const auto& d : deps)
         e->dep_stamps.emplace_back(d.path, FileStamp{d.size, d.mtime});
     auto shard = index.load(path, digest);
@@ -276,22 +275,58 @@ void WorkspaceIndex::stop()
             t.join();
 }
 
+void WorkspaceIndex::schedule_locked(const std::string& path, JobConfig config, IndexLevel level)
+{
+    if (!scheduled_.exchange(true))
+        first_schedule_ = std::chrono::steady_clock::now();
+    known_.insert(path);
+    total_ = static_cast<int>(known_.size());
+    Slot& slot = slots_[path];
+    slot.config = std::move(config);
+    slot.has_config = true;
+    queue_locked(path, level);
+    pending_ = static_cast<int>(jobs_.size() + running_.size());
+    check_ready_locked();
+}
+
 void WorkspaceIndex::schedule(const std::string& path, JobConfig config, IndexLevel level)
 {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (stop_)
             return;
-        if (!scheduled_.exchange(true))
-            first_schedule_ = std::chrono::steady_clock::now();
-        known_.insert(path);
-        total_ = static_cast<int>(known_.size());
-        Slot& slot = slots_[path];
-        slot.config = std::move(config);
-        slot.has_config = true;
-        queue_locked(path, level);
-        pending_ = static_cast<int>(jobs_.size() + running_.size());
-        check_ready_locked();
+        schedule_locked(path, std::move(config), level);
+    }
+    work_cv_.notify_all();
+}
+
+void WorkspaceIndex::ensure(const std::string& path, JobConfig config, IndexLevel level)
+{
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (stop_)
+            return;
+        const auto slot = slots_.find(path);
+        if (slot != slots_.end() && slot->second.has_config)
+        {
+            const auto queued = jobs_.find(path);
+            if (queued != jobs_.end())
+            {
+                // Keep the generation. Only raise the level.
+                if (level < queued->second)
+                {
+                    queued->second = level;
+                    queues_[static_cast<int>(level)].push_back(path);
+                }
+                return;
+            }
+            if (running_.count(path))
+                return; // a running job is not dropped
+            const auto e = entries_.find(path);
+            if (e != entries_.end() && slot->second.entry_generation == slot->second.generation)
+                return; // wait_for checks the stamps
+        }
+        schedule_locked(path, std::move(config), level);
     }
     work_cv_.notify_all();
 }
@@ -325,7 +360,7 @@ void WorkspaceIndex::bump(const std::vector<std::string>& paths)
 void WorkspaceIndex::queue_locked(const std::string& path, IndexLevel level)
 {
     Slot& slot = slots_[path];
-    ++slot.generation;
+    slot.generation = ++next_generation_;
     slot.failed = false;
     const auto it = jobs_.find(path);
     if (it == jobs_.end())
@@ -449,13 +484,15 @@ IndexSnapshot WorkspaceIndex::wait_for(const std::vector<std::string>& paths,
         {
             if (first_round)
                 first[v.path] = v.entry;
+            // A worker may publish a path in this call. Its stamps can be newer than "memo".
+            // So it gets a memo that is new for this round.
             if (!v.known)
                 lost.insert(v.path);
             else if (v.entry && v.current)
             {
-                // A worker published this entry in this call: accept it by generation only.
                 const bool published = !first_round && v.entry != first[v.path];
-                if (published || fresh(*v.entry, &memo)) // no lock here
+                std::map<std::string, FileStamp> published_memo;
+                if (fresh(*v.entry, published ? &published_memo : &memo)) // no lock here
                     out.entries[v.path] = v.entry;
                 else if (!invalidate_stale(v.path, v.entry))
                     lost.insert(v.path);
@@ -611,16 +648,20 @@ void WorkspaceIndex::worker_main()
             if (stat_file(path, stamp) && read_whole(path, text))
             {
                 const JobConfig& c = job.config;
+                // One digest call gives the digest and the stamps of the imports it read.
+                std::vector<SymbolIndex::DepStamp> deps;
                 const std::string digest = SymbolIndex::digest(
-                    symbols_->cached_digest(path, text, c.options.include_dirs) + c.flags_text
+                    symbols_->cached_digest(path, text, c.options.include_dirs, &deps) + c.flags_text
                     + "\nbuild:" + c.build_id);
-                entry = build_entry(path, stamp, text, c.options, digest, *symbols_, *session_, &analyzed);
+                entry = build_entry(path, stamp, text, c.options, digest, deps, *symbols_, *session_, &analyzed);
             }
         }
         catch (...)
         {
             entry = nullptr;
         }
+        if (job_hook_)
+            job_hook_(path);
         finish(path, job, generation, std::move(entry), analyzed);
         if (notify_)
             notify_();

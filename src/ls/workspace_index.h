@@ -120,6 +120,11 @@ public:
     // Queues the script. A script that is queued already keeps the lower level and gets the
     // new config. Only the state thread calls it.
     void schedule(const std::string& path, JobConfig config, IndexLevel level);
+    // Like schedule(), for a path that a request needs. It never drops a running job: when the
+    // path has a queued or a running job, it only moves a queued job to a lower level and it
+    // does not count a change. A path with a valid entry and no job gets nothing. Else it does
+    // schedule(). Only the state thread calls it.
+    void ensure(const std::string& path, JobConfig config, IndexLevel level);
     // Tells the index that the first scheduling ends. An index with no script is ready after
     // this call. Only the state thread calls it.
     void finish_scheduling();
@@ -138,6 +143,9 @@ public:
     IndexSnapshot wait_for(const std::vector<std::string>& paths,
         const std::function<void()>& poll, std::chrono::steady_clock::time_point deadline);
     IndexStats stats() const;
+    // A test hook. The worker calls it after the read and the build and before finish(). Set
+    // it before start(). The default is empty.
+    void set_job_hook(std::function<void(const std::string&)> hook) { job_hook_ = std::move(hook); }
 
     // Publishes the entry of "path". It replaces the old entry and updates the maps.
     void set(const std::string& path, std::shared_ptr<const Entry> entry);
@@ -170,6 +178,8 @@ private:
     // path gets no job. Gives true when a newer entry replaced "stale".
     bool invalidate_stale(const std::string& path, const std::shared_ptr<const Entry>& stale);
     void set_locked(const std::string& path, std::shared_ptr<const Entry> entry, uint64_t generation);
+    // Does the work of schedule() for the lock holder.
+    void schedule_locked(const std::string& path, JobConfig config, IndexLevel level);
     void worker_main();
     // Takes the next job that no worker runs. False at stop.
     bool take(std::string& path, Job& job, uint64_t& generation);
@@ -190,6 +200,7 @@ private:
     SymbolIndex* symbols_ = nullptr;
     hotc::TranslatorSession* session_ = nullptr;
     std::function<void()> notify_;
+    std::function<void(const std::string&)> job_hook_;
     std::vector<std::thread> workers_;
     std::condition_variable work_cv_, done_cv_;
     bool stop_ = false;
@@ -201,11 +212,12 @@ private:
     {
         JobConfig config;              // kept after take(), so the index can queue the path again
         bool has_config = false;       // schedule() set the config; a slot without it gets no job
-        uint64_t generation = 0;       // counts the changes of the path
+        uint64_t generation = 0;       // a value of next_generation_; 0 when no change happened
         uint64_t entry_generation = 0; // the generation at the start of the job that made the entry
         bool failed = false;           // the last job at this generation gave no entry
     };
     std::map<std::string, Slot> slots_;
+    uint64_t next_generation_ = 0; // the source of every generation; it never gives a value twice
     std::chrono::steady_clock::time_point first_schedule_;
     std::atomic<int> total_{0}, done_{0}, pending_{0}, analyzed_{0}, loaded_{0}, threads_{0};
     std::atomic<int64_t> ready_ms_{-1};
@@ -224,11 +236,14 @@ bool fresh(const Entry& e, std::map<std::string, FileStamp>* memo = nullptr);
 // Builds the entry of a script. It is pure: it reads no server state. The shard comes from
 // "index" when the digest matches, else from hotc::analyze, and it goes into "index". The
 // imports are read from the disk only, with "options.fs" when it is set. "stamp" is the stamp
-// of the script that the caller took before it read "text". The stamps of the imports come
-// from the digest search. A change after the read makes fresh() give false. "analyzed" (if given)
-// gets true when the call ran hotc::analyze, false when it loaded the shard.
+// of the script that the caller took before it read "text". "deps" are the stamps that the
+// same cached_digest call gave for "digest". The caller makes both with one call, so the
+// entry has the stamps of the imports that the digest has. A change after the read makes
+// fresh() give false. "analyzed" (if given) gets true when the call ran hotc::analyze, false
+// when it loaded the shard.
 std::shared_ptr<const Entry> build_entry(const std::string& path, const FileStamp& stamp, const std::string& text,
-    const hotc::TranslateOptions& options, const std::string& digest, SymbolIndex& index,
-    hotc::TranslatorSession& session, bool* analyzed = nullptr);
+    const hotc::TranslateOptions& options, const std::string& digest,
+    const std::vector<SymbolIndex::DepStamp>& deps, SymbolIndex& index, hotc::TranslatorSession& session,
+    bool* analyzed = nullptr);
 
 } // namespace hot::ls

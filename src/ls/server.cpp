@@ -6994,17 +6994,29 @@ IndexSnapshot Server::index_entries(const std::vector<std::string>& paths, std::
 {
     // The server never gives an open path to wait_for. The index always describes the disk.
     // An inverted map is exact only for a path set that wait_for validated with an empty "missing" list.
-    std::vector<std::string> closed;
+    // With no running index, or for a path outside the workspace, the path is missing. No job runs.
+    const bool active = windex_.started() && index_active();
+    IndexSnapshot out;
+    std::vector<std::string> wanted;
     for (const std::string& path : paths)
     {
         if (open_doc_at(path))
             continue;
         const std::string key = index_key(path);
-        if (!windex_.entry(key))
-            windex_.schedule(key, index_job_config(key), IndexLevel::Request);
-        closed.push_back(key);
+        if (!active || !in_workspace(key))
+        {
+            out.missing.push_back(key);
+            continue;
+        }
+        windex_.ensure(key, index_job_config(key), IndexLevel::Request); // keeps a running job
+        wanted.push_back(key);
     }
-    return windex_.wait_for(closed, [this] { check_cancel(); }, deadline);
+    if (wanted.empty())
+        return out;
+    IndexSnapshot snap = windex_.wait_for(wanted, [this] { check_cancel(); }, deadline);
+    out.entries = std::move(snap.entries);
+    out.missing.insert(out.missing.end(), snap.missing.begin(), snap.missing.end());
+    return out;
 }
 
 JobConfig Server::index_job_config(const std::string& path) const

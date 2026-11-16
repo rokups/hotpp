@@ -8,9 +8,12 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <future>
 #include <thread>
 
 namespace fs = std::filesystem;
@@ -82,6 +85,16 @@ hotc::TranslateOptions options_for(const std::string& path)
     o.resolve_refs = true;
     return o;
 }
+
+// build_entry() with the deps of one cached_digest call, as the worker does it.
+std::shared_ptr<const Entry> build_here(const std::string& path, const FileStamp& stamp, const std::string& text,
+    const hotc::TranslateOptions& options, const std::string& digest, SymbolIndex& index,
+    hotc::TranslatorSession& session, bool* analyzed = nullptr)
+{
+    std::vector<SymbolIndex::DepStamp> deps;
+    index.cached_digest(path, text, options.include_dirs, &deps);
+    return build_entry(path, stamp, text, options, digest, deps, index, session, analyzed);
+}
 } // namespace
 
 TEST(WorkspaceIndex, SetReplaceEraseUpdateTheMaps)
@@ -150,7 +163,7 @@ TEST(WorkspaceIndex, BuiltEntriesFeedTheMaps)
     const std::string path = tmp.write("a.hot", "class A\n{\n    int count = 0;\n    void bump() { count = count + 1; }\n}\n");
     SymbolIndex index; // switched off: no directory
     hotc::TranslatorSession session;
-    const auto e = build_entry(path, stamp_now(path), "class A\n{\n    int count = 0;\n    void bump() { count = count + 1; }\n}\n",
+    const auto e = build_here(path, stamp_now(path), "class A\n{\n    int count = 0;\n    void bump() { count = count + 1; }\n}\n",
         options_for(path), "d1", index, session);
     ASSERT_TRUE(e);
     EXPECT_EQ(e->classes.size(), 1u);
@@ -180,7 +193,7 @@ TEST(WorkspaceIndex, UnclaimedWordsAgreeWithTableLacksWord)
     for (const std::string& text : scripts)
     {
         const std::string path = tmp.write("s" + std::to_string(n++) + ".hot", text);
-        const auto e = build_entry(path, stamp_now(path), text, options_for(path), "d", index, session);
+        const auto e = build_here(path, stamp_now(path), text, options_for(path), "d", index, session);
         ASSERT_TRUE(e);
         ASSERT_FALSE(e->words.empty());
         for (const std::string& w : e->words)
@@ -202,7 +215,7 @@ TEST(WorkspaceIndex, FreshFollowsTheStampsOfTheScriptAndOfItsImports)
     const std::string path = tmp.write("main.hot", text, -100);
     SymbolIndex index;
     hotc::TranslatorSession session;
-    const auto e = build_entry(path, stamp_now(path), text, options_for(path), "d", index, session);
+    const auto e = build_here(path, stamp_now(path), text, options_for(path), "d", index, session);
     ASSERT_TRUE(e);
     ASSERT_EQ(e->dep_stamps.size(), 1u);
     EXPECT_TRUE(fresh(*e));
@@ -211,12 +224,12 @@ TEST(WorkspaceIndex, FreshFollowsTheStampsOfTheScriptAndOfItsImports)
     tmp.write("lib.hot", "int helper() { return 2; }\n", -50); // same size, new mtime
     EXPECT_FALSE(fresh(*e));
 
-    const auto e2 = build_entry(path, stamp_now(path), text, options_for(path), "d", index, session);
+    const auto e2 = build_here(path, stamp_now(path), text, options_for(path), "d", index, session);
     EXPECT_TRUE(fresh(*e2));
     tmp.write("main.hot", text + "// more\n", -40);
     EXPECT_FALSE(fresh(*e2));
 
-    const auto e3 = build_entry(path, stamp_now(path), text + "// more\n", options_for(path), "d", index, session);
+    const auto e3 = build_here(path, stamp_now(path), text + "// more\n", options_for(path), "d", index, session);
     EXPECT_TRUE(fresh(*e3));
     fs::remove(lib);
     EXPECT_FALSE(fresh(*e3));
@@ -231,7 +244,7 @@ TEST(WorkspaceIndex, BuildEntryKeepsTheStampTakenBeforeTheRead)
     hotc::TranslatorSession session;
     FileStamp old = stamp_now(path);
     old.mtime -= 1000; // a stamp from before a later write
-    const auto e = build_entry(path, old, text, options_for(path), "d", index, session);
+    const auto e = build_here(path, old, text, options_for(path), "d", index, session);
     ASSERT_TRUE(e);
     EXPECT_EQ(e->stamp, old);
     EXPECT_FALSE(fresh(*e));
@@ -248,7 +261,7 @@ TEST(WorkspaceIndex, FreshSeesAnImportThatAppearsEarlierInTheSearch)
     options.include_dirs = {(tmp.dir / "inc").string()};
     SymbolIndex index;
     hotc::TranslatorSession session;
-    const auto e = build_entry(path, stamp_now(path), text, options, "d", index, session);
+    const auto e = build_here(path, stamp_now(path), text, options, "d", index, session);
     ASSERT_TRUE(e);
     EXPECT_TRUE(fresh(*e));
     std::map<std::string, FileStamp> memo;
@@ -342,39 +355,6 @@ TEST(WorkspaceIndex, ForgetRemovesTheEntryTheSlotAndTheJob)
     idx.forget("a.hot"); // no effect
 }
 
-// HOT-34: the helpers have no blocking hook, so this test cannot stop a job in the middle. It
-// invalidates the script many times while one worker runs, then checks that the index settles
-// on one entry of the last text and that the job queue is empty.
-TEST(WorkspaceIndex, InvalidateDuringAJobDropsTheResultAndRunsAgain)
-{
-    TempDir tmp;
-    const std::string path = tmp.write("main.hot", "class M\n{\n    int f() { return 1; }\n}\n", -100);
-    SymbolIndex symbols;
-    hotc::TranslatorSession session;
-    WorkspaceIndex idx;
-    JobConfig config;
-    config.options = options_for(path);
-    idx.schedule(path, config, IndexLevel::Rest);
-    idx.finish_scheduling();
-    idx.start(symbols, session, 1, nullptr);
-    for (int i = 0; i < 50; ++i)
-    {
-        idx.invalidate(path);
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    tmp.write("main.hot", "class M\n{\n    int g() { return 2; }\n}\n", -50);
-    idx.invalidate(path);
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
-    while (idx.stats().pending > 0 && std::chrono::steady_clock::now() < deadline)
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    idx.stop();
-    EXPECT_EQ(idx.stats().pending, 0);
-    const auto e = idx.entry(path);
-    ASSERT_TRUE(e);
-    EXPECT_NE(e->text.find("int g()"), std::string::npos);
-    EXPECT_EQ(idx.all_entries().size(), 1u);
-}
-
 namespace
 {
 const char* const kTextOne = "class M\n{\n    int f() { return 1; }\n}\n";
@@ -450,7 +430,7 @@ TEST(WorkspaceIndex, WaitForWithDeadlineNowGivesTheStalePathAsMissing)
     const std::string path = tmp.write("main.hot", kTextOne, -100);
     SymbolIndex symbols;
     hotc::TranslatorSession session;
-    const auto e = build_entry(path, stamp_now(path), kTextOne, options_for(path), "d", symbols, session);
+    const auto e = build_here(path, stamp_now(path), kTextOne, options_for(path), "d", symbols, session);
     WorkspaceIndex idx; // no worker: the queued job stays
     idx.schedule(path, config_for(path), IndexLevel::Rest);
     idx.set(path, e);
@@ -484,21 +464,23 @@ TEST(WorkspaceIndex, WaitForGivesAFailedPathAsMissing)
     EXPECT_TRUE(snap.entries.empty());
 }
 
-// HOT-34: an entry that a worker publishes in the call is valid by generation. The test publishes
-// it from poll() with a stamp that no stat can match. A stamp check would reject it for ever.
+// HOT-34: an entry that a worker publishes in the call is valid by generation and by a stamp check
+// with a new memo. The test publishes the entry of the new text from poll(). The call must end
+// after one poll. The first memo holds the stamp of the old round, so it must not decide.
 TEST(WorkspaceIndex, WaitForDoesNotLoopOnAnEntryPublishedDuringTheCall)
 {
     TempDir tmp;
     const std::string path = tmp.write("main.hot", kTextOne, -100);
     SymbolIndex symbols;
     hotc::TranslatorSession session;
-    const auto old = build_entry(path, stamp_now(path), kTextOne, options_for(path), "d", symbols, session);
+    const auto old = build_here(path, stamp_now(path), kTextOne, options_for(path), "d", symbols, session);
     WorkspaceIndex idx; // no worker
     idx.schedule(path, config_for(path), IndexLevel::Rest);
     idx.set(path, old);
     tmp.write("main.hot", kTextTwo, -50); // the old entry is stale
     auto published = std::make_shared<Entry>(*old);
-    published->stamp = FileStamp{1, 1};
+    published->text = kTextTwo;
+    published->stamp = stamp_now(path);
     int polls = 0;
     const auto snap = idx.wait_for({path},
         [&]
@@ -519,7 +501,7 @@ TEST(WorkspaceIndex, ASlotWithNoConfigGetsNoJobAndItsStalePathIsMissing)
     const std::string path = tmp.write("main.hot", kTextOne, -100);
     SymbolIndex symbols;
     hotc::TranslatorSession session;
-    const auto e = build_entry(path, stamp_now(path), kTextOne, options_for(path), "d", symbols, session);
+    const auto e = build_here(path, stamp_now(path), kTextOne, options_for(path), "d", symbols, session);
     WorkspaceIndex idx;
     idx.set(path, e); // no schedule(): no config
     idx.invalidate(path);
@@ -532,4 +514,180 @@ TEST(WorkspaceIndex, ASlotWithNoConfigGetsNoJobAndItsStalePathIsMissing)
     EXPECT_TRUE(snap.entries.empty());
     EXPECT_EQ(idx.stats().pending, 0);
     EXPECT_EQ(idx.entry(path), e);
+}
+
+namespace
+{
+// A hook that blocks the first job of a path until the test releases it.
+struct JobGate
+{
+    std::promise<void> entered, release;
+    std::shared_future<void> release_future = release.get_future().share();
+    std::atomic<int> calls{0};
+    std::function<void(const std::string&)> hook()
+    {
+        return [this](const std::string&)
+        {
+            if (calls++ == 0)
+            {
+                entered.set_value();
+                release_future.wait();
+            }
+        };
+    }
+};
+} // namespace
+
+// HOT-34: an invalidate call in the middle of a job drops the result and runs the job again.
+TEST(WorkspaceIndex, InvalidateDuringAJobDropsTheResultAndRunsAgain)
+{
+    TempDir tmp;
+    const std::string path = tmp.write("main.hot", kTextOne, -100);
+    SymbolIndex symbols;
+    hotc::TranslatorSession session;
+    WorkspaceIndex idx;
+    JobGate gate;
+    idx.set_job_hook(gate.hook());
+    idx.schedule(path, config_for(path), IndexLevel::Rest);
+    idx.finish_scheduling();
+    idx.start(symbols, session, 1, nullptr);
+    gate.entered.get_future().wait(); // the job has read kTextOne
+    tmp.write("main.hot", kTextTwo, -50);
+    idx.invalidate(path);
+    gate.release.set_value();
+    const auto snap = idx.wait_for({path}, nullptr, std::chrono::steady_clock::now() + kLong);
+    idx.stop();
+    ASSERT_TRUE(snap.missing.empty());
+    EXPECT_NE(snap.entries.at(path)->text.find("int g()"), std::string::npos);
+    EXPECT_GE(idx.stats().analyzed, 2);
+    EXPECT_EQ(idx.all_entries().size(), 1u);
+}
+
+// HOT-34: ensure() on a path with a running job does not count a change. The job result stays.
+TEST(WorkspaceIndex, EnsureKeepsARunningJob)
+{
+    TempDir tmp;
+    const std::string path = tmp.write("main.hot", kTextOne, -100);
+    SymbolIndex symbols;
+    hotc::TranslatorSession session;
+    WorkspaceIndex idx;
+    JobGate gate;
+    idx.set_job_hook(gate.hook());
+    idx.schedule(path, config_for(path), IndexLevel::Rest);
+    idx.finish_scheduling();
+    idx.start(symbols, session, 1, nullptr);
+    gate.entered.get_future().wait();
+    idx.ensure(path, config_for(path), IndexLevel::Request);
+    idx.ensure(path, config_for(path), IndexLevel::Request);
+    EXPECT_EQ(idx.stats().pending, 1); // only the running job
+    gate.release.set_value();
+    const auto snap = idx.wait_for({path}, nullptr, std::chrono::steady_clock::now() + kLong);
+    idx.stop();
+    ASSERT_TRUE(snap.missing.empty());
+    EXPECT_NE(snap.entries.at(path)->text.find("int f()"), std::string::npos);
+    EXPECT_EQ(idx.stats().analyzed, 1); // no second job
+}
+
+// HOT-34: ensure() creates a slot for an unknown path and queues a job once.
+TEST(WorkspaceIndex, EnsureCreatesASlotAndKeepsAQueuedJob)
+{
+    WorkspaceIndex idx;
+    idx.ensure("a.hot", JobConfig{}, IndexLevel::Request);
+    EXPECT_EQ(idx.stats().total, 1);
+    EXPECT_EQ(idx.stats().pending, 1);
+    idx.ensure("a.hot", JobConfig{}, IndexLevel::Request);
+    EXPECT_EQ(idx.stats().pending, 1);
+    // A valid entry and no job: ensure() queues nothing.
+    WorkspaceIndex other;
+    other.schedule("b.hot", JobConfig{}, IndexLevel::Rest);
+    other.set("b.hot", entry_with_deps("b.hot", {}));
+    other.forget("b.hot");
+    EXPECT_EQ(other.stats().total, 0);
+    EXPECT_EQ(other.stats().pending, 0);
+}
+
+// HOT-34: forget() and schedule() of a path in the middle of a job. The old result is dropped.
+TEST(WorkspaceIndex, ForgetAndScheduleDuringAJobDropTheOldResult)
+{
+    TempDir tmp;
+    const std::string path = tmp.write("main.hot", kTextOne, -100);
+    SymbolIndex symbols;
+    hotc::TranslatorSession session;
+    WorkspaceIndex idx;
+    JobGate gate;
+    idx.set_job_hook(gate.hook());
+    idx.schedule(path, config_for(path), IndexLevel::Rest);
+    idx.finish_scheduling();
+    idx.start(symbols, session, 1, nullptr);
+    gate.entered.get_future().wait(); // the job has read kTextOne
+    tmp.write("main.hot", kTextTwo, -50);
+    idx.forget(path);
+    idx.schedule(path, config_for(path), IndexLevel::Request);
+    gate.release.set_value();
+    const auto snap = idx.wait_for({path}, nullptr, std::chrono::steady_clock::now() + kLong);
+    idx.stop();
+    ASSERT_TRUE(snap.missing.empty());
+    EXPECT_NE(snap.entries.at(path)->text.find("int g()"), std::string::npos);
+}
+
+// HOT-34: a file changes after the job read it and before the publish, inside one wait_for.
+// The snapshot must not hold the old text.
+TEST(WorkspaceIndex, WaitForRejectsAnEntryPublishedWithAnOldStamp)
+{
+    TempDir tmp;
+    const std::string path = tmp.write("main.hot", kTextOne, -100);
+    SymbolIndex symbols;
+    hotc::TranslatorSession session;
+    WorkspaceIndex idx;
+    JobGate gate;
+    idx.set_job_hook(
+        [&](const std::string& p)
+        {
+            if (gate.calls++ == 0)
+                tmp.write("main.hot", kTextTwo, -50); // after the read, before the publish
+            (void)p;
+        });
+    idx.schedule(path, config_for(path), IndexLevel::Rest);
+    idx.finish_scheduling();
+    idx.start(symbols, session, 1, nullptr);
+    const auto snap = idx.wait_for({path}, nullptr, std::chrono::steady_clock::now() + kLong);
+    idx.stop();
+    ASSERT_TRUE(snap.missing.empty());
+    EXPECT_NE(snap.entries.at(path)->text.find("int g()"), std::string::npos);
+    EXPECT_GE(idx.stats().analyzed, 2);
+}
+
+// HOT-34: build_entry keeps the dep stamps that the caller gives. It does not stat again.
+TEST(WorkspaceIndex, BuildEntryUsesTheGivenDepStamps)
+{
+    TempDir tmp;
+    const std::string text = "class A\n{\n    int f() { return 1; }\n}\n";
+    const std::string path = tmp.write("a.hot", text, -100);
+    SymbolIndex index;
+    hotc::TranslatorSession session;
+    const std::vector<SymbolIndex::DepStamp> deps = {{(tmp.dir / "x.hot").string(), 7, 9}};
+    const auto e = build_entry(path, stamp_now(path), text, options_for(path), "d", deps, index, session);
+    ASSERT_TRUE(e);
+    ASSERT_EQ(e->dep_stamps.size(), 1u);
+    EXPECT_EQ(e->dep_stamps[0].first, deps[0].path);
+    EXPECT_EQ(e->dep_stamps[0].second, (FileStamp{7, 9}));
+}
+
+// HOT-34: a dep path has the normal form, so files_with_dep finds a path with "..".
+TEST(WorkspaceIndex, DepPathsHaveTheNormalForm)
+{
+    TempDir tmp;
+    fs::create_directories(tmp.dir / "sub");
+    const std::string lib = tmp.write("lib.hot", "int helper() { return 1; }\n", -100);
+    const std::string text = "using \"sub/../lib.hot\";\nclass M\n{\n    int f() { return helper(); }\n}\n";
+    const std::string path = tmp.write("main.hot", text, -100);
+    SymbolIndex index;
+    hotc::TranslatorSession session;
+    const auto e = build_here(path, stamp_now(path), text, options_for(path), "d", index, session);
+    ASSERT_TRUE(e);
+    ASSERT_EQ(e->dep_stamps.size(), 1u);
+    EXPECT_EQ(e->dep_stamps[0].first, fs::path(lib).lexically_normal().string());
+    WorkspaceIndex idx;
+    idx.set(path, e);
+    EXPECT_EQ(idx.files_with_dep(lib), (std::vector<std::string>{path}));
 }

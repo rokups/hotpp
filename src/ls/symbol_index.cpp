@@ -315,6 +315,10 @@ std::vector<std::string> using_names(const std::string& t)
 // spelling "dir/name". So a "link/../x" path can be another file than "x". The key follows the OS
 // for the parts that exist (weakly_canonical), and two spellings of one file give one key. It does
 // not use the host set path_key: that one is only lexical on Linux.
+// The path of a dependency in a stamp list. It has the form of the key of the server index
+// (lexically_normal), so the index finds the importers of a path with "..".
+std::string dep_key(const fs::path& p) { return p.lexically_normal().string(); }
+
 std::string normal_key(const fs::path& p)
 {
     std::error_code ec;
@@ -389,7 +393,7 @@ static std::string closure_digest(const std::string& script_path, const std::str
                 if (!in)
                 {
                     if (deps)
-                        deps->push_back(FileStamp{path_utf8(spelling), stamp.size, stamp.mtime}); // a missing file
+                        deps->push_back(FileStamp{dep_key(spelling), stamp.size, stamp.mtime}); // a missing file
                     continue;
                 }
                 seen.insert(file);
@@ -399,7 +403,7 @@ static std::string closure_digest(const std::string& script_path, const std::str
                 std::string body = ss.str();
                 all += '\0' + file + '\0' + body;
                 if (deps)
-                    deps->push_back(FileStamp{path_utf8(spelling), stamp.size, stamp.mtime});
+                    deps->push_back(FileStamp{dep_key(spelling), stamp.size, stamp.mtime});
                 todo.emplace_back(path_utf8(spelling), std::move(body));
                 break;
             }
