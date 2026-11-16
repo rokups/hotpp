@@ -7209,7 +7209,10 @@ void Server::add_script_symbols(const std::string& query, json& out)
         Pos at;
         size_t len;
     };
-    for (const std::string& path : workspace_scripts())
+    // The deadline is now: the index returns at once and queues the stale paths.
+    const auto scripts = workspace_scripts();
+    const IndexSnapshot snap = index_entries(scripts, std::chrono::steady_clock::now());
+    for (const std::string& path : scripts)
     {
         check_cancel();
         const std::string uri = path_to_uri(path);
@@ -7237,9 +7240,26 @@ void Server::add_script_symbols(const std::string& query, json& out)
                         m.name.size());
             }
         }
+        else if (auto e = entry_in(snap, path); e || (index_active() && (e = windex_.entry(index_key(path)))))
+        {
+            // An entry can be stale here. That is allowed for a workspace symbol.
+            ++entry_hits_;
+            for (const IndexClass& c : e->classes)
+            {
+                add(c.name, 5, {c.begin.line, c.begin.col}, c.name.size());
+                for (const IndexMember& m : c.members)
+                    add(c.name + "." + m.name, m.kind == "field" ? 8 : 6, {m.begin.line, m.begin.col}, m.name.size());
+            }
+            if (!hits.empty())
+            {
+                closed_text = Text(e->text);
+                text = &closed_text;
+            }
+        }
         else
         {
-            // A closed file is never analyzed here: only a saved shard counts.
+            // A closed file without an entry is never analyzed here: only a saved shard counts.
+            ++entry_misses_;
             auto content = read_file(path);
             if (!content)
                 continue;

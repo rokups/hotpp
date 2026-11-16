@@ -8992,3 +8992,96 @@ TEST(WorkspaceIndexEvents, IndexProbeGivesValidAfterADiskChangeWithoutAnEvent)
     const json after = index_stats(client);
     EXPECT_GT(jobs(after), start) << after.dump();
 }
+
+// ------------------------------------------------------------------ HOT-34: workspace symbol and the index
+
+namespace
+{
+std::string ws_script(int i)
+{
+    const std::string n = std::to_string(i);
+    return "class Probe" + n + " {\n    public int Value" + n + "() { return " + n + "; }\n    public int field" + n + ";\n}\n";
+}
+
+// Builds the same workspace in both modes and gives the workspace/symbol result with a fixed root.
+json workspace_symbol_run(bool background_index, int count, const std::string& query, json* stats_before,
+    json* stats_after, bool open_edit)
+{
+    TempDir dir;
+    auto opt = options(dir, false);
+    opt.background_index = background_index;
+    LsClient client(opt);
+    client.initialize(dir.path().string());
+    for (int i = 0; i < count; ++i)
+    {
+        const auto file = dir.path() / ("s" + std::to_string(i) + ".hot");
+        write_file(file, ws_script(i));
+        const std::string uri = uri_of(file.string());
+        client.open(uri, ws_script(i));
+        client.notify("textDocument/didClose", {{"textDocument", {{"uri", uri}}}});
+    }
+    if (open_edit)
+    {
+        // The text in the editor removes Value0 and adds Extra0. The disk keeps Value0.
+        const std::string uri = uri_of((dir.path() / "s0.hot").string());
+        client.open(uri, ws_script(0));
+        client.change(uri, 2, "class Probe0 {\n    public int Extra0() { return 0; }\n}\n");
+    }
+    if (background_index)
+    {
+        // A close can queue a new job. The probe waits until each closed entry is valid.
+        wait_index_idle(client);
+        for (int i = 0; i < count; ++i)
+        {
+            const std::string uri = uri_of((dir.path() / ("s" + std::to_string(i) + ".hot")).string());
+            const json r = client.request("hot/indexStats", {{"entryOf", uri}})["result"];
+            EXPECT_NE(r.value("entryOf", ""), "missing") << r.dump();
+        }
+    }
+    if (stats_before)
+        *stats_before = client.request("hot/indexStats", json::object())["result"];
+    json r = client.request("workspace/symbol", {{"query", query}})["result"];
+    if (stats_after)
+        *stats_after = client.request("hot/indexStats", json::object())["result"];
+    std::string text = r.dump();
+    const std::string root = uri_of(dir.path().string());
+    for (size_t at; (at = text.find(root)) != std::string::npos;)
+        text.replace(at, root.size(), "ROOT");
+    return json::parse(text);
+}
+} // namespace
+
+TEST(WorkspaceIndexSymbol, WorkspaceSymbolGivesTheSameResultWithAndWithoutTheIndex)
+{
+    for (const char* query : {"Probe", "Value", "Probe3.Value"})
+    {
+        json before, after;
+        const json off = workspace_symbol_run(false, 6, query, nullptr, nullptr, false);
+        const json on = workspace_symbol_run(true, 6, query, &before, &after, false);
+        EXPECT_FALSE(off.empty()) << query;
+        EXPECT_EQ(off, on) << query;
+        EXPECT_GT(after["entryHits"].get<int>(), before["entryHits"].get<int>()) << after.dump();
+        EXPECT_EQ(after["analyzed"], before["analyzed"]) << after.dump();
+        EXPECT_EQ(after["tableAnalyses"], before["tableAnalyses"]) << after.dump();
+    }
+}
+
+TEST(WorkspaceIndexSymbol, OpenDocumentWithUnsavedTextWinsOverTheDisk)
+{
+    for (const bool on : {false, true})
+    {
+        json before, after;
+        const json r = workspace_symbol_run(on, 3, "0", &before, &after, true);
+        std::set<std::string> names;
+        for (const json& s : r)
+            names.insert(s.value("name", ""));
+        EXPECT_TRUE(names.count("Probe0.Extra0")) << r.dump();
+        EXPECT_FALSE(names.count("Probe0.Value0")) << r.dump();
+        if (on)
+        {
+            EXPECT_GT(after["entryHits"].get<int>(), before["entryHits"].get<int>()) << after.dump();
+            EXPECT_EQ(after["analyzed"], before["analyzed"]) << after.dump();
+            EXPECT_EQ(after["tableAnalyses"], before["tableAnalyses"]) << after.dump();
+        }
+    }
+}
