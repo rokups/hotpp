@@ -211,6 +211,13 @@ private:
         std::string mirror_dir;
         std::string mirror_root;
         std::chrono::steady_clock::time_point t0, t1;
+        // HOT_TIMING: the end of each part of the translate and of the compile, in order.
+        std::vector<std::pair<const char*, std::chrono::steady_clock::time_point>> marks;
+        void mark(const char* name)
+        {
+            if (timing)
+                marks.emplace_back(name, std::chrono::steady_clock::now());
+        }
         std::filesystem::file_time_type translate_start;
         std::string built_object; // the object file of the compile, for the compile database
         std::optional<ObjectCache::Key> cached_module;

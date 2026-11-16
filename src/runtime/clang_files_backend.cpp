@@ -2519,15 +2519,18 @@ bool ClangFilesBackend::translate_stage(BuildJob& job, const ScriptSource& sourc
     if (tr_cache)
         cached = tr_cache->lookup(to);
     job.translate_hit = cached.has_value();
+    job.mark("lookup");
     job.translate_start = fs::file_time_type::clock::now();
     hotc::TranslateResult& tr = job.tr;
     tr = job.translate_hit ? std::move(*cached) : hotc::translate(to, *opt_.session);
+    job.mark("translate");
     if (tr_cache && !job.translate_hit && tr.ok && tr.diagnostics.empty())
     {
         std::string store_error;
         if (!tr_cache->store(to, tr, job.translate_start, store_error) && job.timing)
             std::fprintf(stderr, "hot: %s has no translate cache entry: %s\n", unit.c_str(), store_error.c_str());
     }
+    job.mark("store");
     job.t1 = std::chrono::steady_clock::now();
     if (!tr.ok)
     {
@@ -2662,6 +2665,7 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
     {
         // The key has the translated text, the compile arguments (the paths of this build are
         // fixed names, also the root of the mirror: the root of the job is not in the key), the compiler and the mirror files that the compile can read.
+        job.mark("write_cpp");
         ObjectCache::KeyInputs inputs;
         inputs.cpp_text = tr.cpp;
         inputs.args = ObjectCache::normalize_args(
@@ -2673,7 +2677,9 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
         for (const std::string& p : tr.shadow_paths)
             inputs.shadow_hash += hotc::text_hash(p);
         const ObjectCache::Key key = ObjectCache::make_key(inputs);
+        job.mark("key");
         std::optional<ObjectCache::Hit> hit = cache_->lookup(key);
+        job.mark("obj_lookup");
         cache_note = hit ? ", cache hit" : ", cache miss";
         // The key of the linked module: the object key, the link command and the host library.
         std::optional<ObjectCache::Key> module_key;
@@ -2770,6 +2776,7 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
                     else if (pch && pch->build)
                         start_pch_build(*pch, script_dir, unit, timing);
                 }
+                job.mark("plan_pch");
                 int rc = 0;
                 bool used_pch = false;
                 if (pch && !pch->pch.empty())
@@ -2840,6 +2847,7 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
                 if (used_pch)
                     pch_note = ", pch";
                 t2 = std::chrono::steady_clock::now();
+                job.mark("clang");
                 std::string dep_text;
                 if (rc == 0)
                     read_text(dep, dep_text);
@@ -2863,7 +2871,9 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
                 }
                 std::string store_error;
                 // The start of the translate: the translated text depends on the headers too.
-                if (cache_->store(key, tmp, dep_text, opt_.work_dir, translate_start, store_error))
+                const bool stored = cache_->store(key, tmp, dep_text, opt_.work_dir, translate_start, store_error);
+                job.mark("obj_store");
+                if (stored)
                     object = cache_->object_path(key).string();
                 else
                 {
@@ -2917,9 +2927,36 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
                 tms(tt.lower_ns), tms(tt.check_ns), tms(tt.emit_ns));
             translate_detail = buf;
         }
-        std::fprintf(stderr, "hot: %s translate %s, compile %lld ms, link %lld ms%s%s%s\n", unit.c_str(),
+        // The parts of the translate (from t0 to t1) and of the compile (from t1 to t2). Each part
+        // is the time from the earlier mark. "tail" is the rest to the end of the phase.
+        std::string parts;
+        {
+            const auto us = [](auto x, auto y) {
+                return static_cast<long long>(std::chrono::duration_cast<std::chrono::microseconds>(y - x).count());
+            };
+            auto prev = job.t0;
+            std::string tp, cp;
+            bool in_compile = false;
+            for (const auto& m : job.marks)
+            {
+                std::string& dst = in_compile || std::string(m.first) == "write_cpp" ? cp : tp;
+                if (&dst == &cp && !in_compile)
+                {
+                    in_compile = true;
+                    tp += " tail " + std::to_string(us(prev, job.t1) / 1000.0).substr(0, 5);
+                    prev = job.t1;
+                }
+                char b2[64];
+                std::snprintf(b2, sizeof b2, "%s%s %.1f", dst.empty() ? "" : ", ", m.first, us(prev, m.second) / 1000.0);
+                dst += b2;
+                prev = m.second;
+            }
+            if (!tp.empty() || !cp.empty())
+                parts = " [translate parts ms: " + tp + "] [compile parts ms: " + cp + "]";
+        }
+        std::fprintf(stderr, "hot: %s translate %s, compile %lld ms, link %lld ms%s%s%s%s\n", unit.c_str(),
             translate_note.c_str(), ms(job.t1, t2), ms(t2, t3), cache_note, pch_note.c_str(),
-            translate_detail.c_str());
+            translate_detail.c_str(), parts.c_str());
     }
     if (link_rc != 0)
         return fail("link", link_rc);
