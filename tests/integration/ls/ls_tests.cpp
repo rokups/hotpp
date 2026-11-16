@@ -9179,3 +9179,139 @@ TEST(WorkspaceIndexReferences, NativeReferencesGiveTheSameResultWithAndWithoutTh
     // Each analyze of the scan counts as a translation. The index jobs use their own session.
     EXPECT_EQ(on_after["translations"].get<int>() - on_before["translations"].get<int>(), 1) << on_after.dump();
 }
+
+// ------------------------------------------------------------------ HOT-34: script references and the index
+
+namespace
+{
+const char* const kRefLib = "class Lib {\n    int Calc(int a) { return a; }\n}\nint Twice(int v) { return v * 2; }\n";
+const char* const kRefUseA = "using \"lib.hot\";\nclass UserA {\n    Lib l;\n    int fx() { return Twice(1); }\n    int fy() { return l.Calc(2); }\n}\n";
+const char* const kRefUseB = "using \"lib.hot\";\nclass UserB {\n    int fx() { return Twice(3); }\n}\n";
+const char* const kRefUseC = "using \"lib.hot\";\nclass UserC {\n    int z = 1;\n}\n";
+// The disk text of the open importer has one use. The editor text has one more.
+const char* const kRefOpenDisk = "using \"lib.hot\";\nclass UserD {\n    Lib l;\n    int fx() { return Twice(4); }\n}\n";
+const char* const kRefOpenText =
+    "using \"lib.hot\";\nclass UserD {\n    Lib l;\n    int fx() { return Twice(4); }\n    int fw() { return Twice(5); }\n    int fv() { return l.Calc(6); }\n}\n";
+
+// The position of the "n"-th word "word" in "text" (a position of the request).
+json ref_pos_of(const std::string& text, const std::string& word, int n)
+{
+    size_t at = std::string::npos;
+    for (int i = 0; i <= n; ++i)
+        at = text.find(word, at == std::string::npos ? 0 : at + 1);
+    const int line = static_cast<int>(std::count(text.begin(), text.begin() + at, '\n'));
+    const int col = static_cast<int>(at - (text.rfind('\n', at) == std::string::npos ? 0 : text.rfind('\n', at) + 1));
+    return pos(line, col);
+}
+
+// Builds the library and four importers (one is open with unsaved text). "which" is 0 for the class,
+// 1 for the method and 2 for the free function. "disk_change" writes a new use to a closed importer
+// with no event before the measured request. The result has a fixed root.
+json script_reference_run(bool background_index, int which, bool disk_change, json* stats_before, json* stats_after)
+{
+    TempDir dir;
+    hot::ls::ServerOptions o = options(dir, true);
+    o.background_index = background_index;
+    o.reference_budget_ms = 120000;
+    const std::vector<std::pair<std::string, std::string>> closed = {
+        {"lib.hot", kRefLib}, {"a.hot", kRefUseA}, {"b.hot", kRefUseB}, {"c.hot", kRefUseC}};
+    LsClient client(o);
+    client.initialize(uri_of(dir.path().string()));
+    for (const auto& [name, text] : closed)
+    {
+        const std::string file = (dir.path() / name).string();
+        write_file(file, text);
+        client.open(uri_of(file), text);
+        client.notify("textDocument/didClose", {{"textDocument", {{"uri", uri_of(file)}}}});
+    }
+    const std::string open_path = (dir.path() / "d.hot").string();
+    write_file(open_path, kRefOpenDisk);
+    client.open(uri_of(open_path), kRefOpenDisk);
+    client.change(uri_of(open_path), 2, kRefOpenText);
+    if (background_index)
+    {
+        // The wait can return before the entries are valid. The probe waits for each closed entry.
+        wait_index_idle(client);
+        for (const auto& [name, text] : closed)
+        {
+            const std::string uri = uri_of((dir.path() / name).string());
+            json r;
+            for (int i = 0; i < 100; ++i)
+            {
+                r = client.request("hot/indexStats", {{"entryOf", uri}})["result"];
+                if (r.value("entryOf", "") != "missing")
+                    break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            EXPECT_NE(r.value("entryOf", ""), "missing") << r.dump();
+        }
+    }
+    // The request starts from the open importer: the position is a use in the editor text.
+    const std::string text = kRefOpenText;
+    const json at = which == 0 ? ref_pos_of(text, "Lib", 0) : which == 1 ? ref_pos_of(text, "Calc", 0) : ref_pos_of(text, "Twice", 0);
+    const json p = {{"textDocument", {{"uri", uri_of(open_path)}}}, {"position", at}, {"context", {{"includeDeclaration", true}}}};
+    // A first request warms the tables of the open document and clangd.
+    // The first answers can be empty while clangd starts. Ask again until the result has a place.
+    for (int i = 0; i < 40; ++i)
+    {
+        const json w = client.request("textDocument/references", p);
+        if (!w.value("result", json::array()).empty())
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    std::string b_text = kRefUseB;
+    if (disk_change)
+    {
+        b_text += "class Extra {\n    int fe() { return Twice(7); }\n}\n";
+        write_file((dir.path() / "b.hot").string(), b_text); // no watched-files event
+    }
+    *stats_before = client.request("hot/indexStats", json::object())["result"];
+    const json r = client.request("textDocument/references", p);
+    *stats_after = client.request("hot/indexStats", json::object())["result"];
+    std::string out = r.value("result", json::array()).dump();
+    const std::string root = uri_of(dir.path().string());
+    for (size_t pos_at; (pos_at = out.find(root)) != std::string::npos;)
+        out.replace(pos_at, root.size(), "ROOT");
+    return json::parse(out);
+}
+} // namespace
+
+// HOT-34: the script references read the index. The result is the same as without the index.
+TEST(WorkspaceIndexReferences, ScriptReferencesGiveTheSameResultWithAndWithoutTheIndex)
+{
+    REQUIRE_CLANGD();
+    for (int which = 0; which < 3; ++which)
+    {
+        json off_before, off_after, on_before, on_after;
+        const json off = script_reference_run(false, which, false, &off_before, &off_after);
+        const json on = script_reference_run(true, which, false, &on_before, &on_after);
+        EXPECT_EQ(off, on) << which;
+        const std::string text = on.dump();
+        EXPECT_NE(text.find("ROOT/lib.hot"), std::string::npos) << text;
+        EXPECT_NE(text.find("ROOT/d.hot"), std::string::npos) << text;
+        if (which != 1)
+            EXPECT_NE(text.find("ROOT/a.hot"), std::string::npos) << text;
+        EXPECT_EQ(text.find("ROOT/c.hot"), std::string::npos) << text;
+        EXPECT_EQ(off_after["entryHits"].get<int>(), 0) << off_after.dump();
+        EXPECT_GT(on_after["entryHits"].get<int>(), on_before["entryHits"].get<int>()) << on_after.dump();
+        for (const char* key : {"analyzed", "tableAnalyses", "loaded"})
+            EXPECT_EQ(on_after[key].get<int>(), on_before[key].get<int>()) << key << " " << which << " " << on_after.dump();
+    }
+}
+
+// HOT-34: a disk change with no event gives the new place. The entry text differs from the disk text.
+TEST(WorkspaceIndexReferences, ScriptReferencesSeeADiskChangeWithNoEvent)
+{
+    REQUIRE_CLANGD();
+    json off_before, off_after, on_before, on_after;
+    const json off = script_reference_run(false, 2, true, &off_before, &off_after);
+    const json on = script_reference_run(true, 2, true, &on_before, &on_after);
+    EXPECT_EQ(off, on);
+    const json base = [&]
+    {
+        json b0, b1;
+        return script_reference_run(true, 2, false, &b0, &b1);
+    }();
+    EXPECT_EQ(on.size(), base.size() + 1) << on.dump();
+    EXPECT_NE(on.dump().find("\"line\":5"), std::string::npos) << on.dump();
+}

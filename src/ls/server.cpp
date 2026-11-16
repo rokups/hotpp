@@ -1000,7 +1000,8 @@ private:
     // of each URI of the result: the positions are positions in that text. "files" (if given)
     // replaces the file of the declaration and its importers: the caller did the import walk.
     std::variant<PlaceMap, std::string> places_of(const Resolved& r, bool strict, const std::string& also = std::string(),
-        std::map<std::string, Text>* texts = nullptr, const std::vector<std::string>* files = nullptr);
+        std::map<std::string, Text>* texts = nullptr, const std::vector<std::string>* files = nullptr,
+        const IndexSnapshot* given = nullptr);
     // Calls "fn" for each other .hot file of the workspace that declares the symbol "key".
     // "places" are the places of the symbol in that file. An open document is used as it is.
     // A file on disk goes to clangd only for the call.
@@ -5013,7 +5014,7 @@ std::optional<Server::Resolved> Server::resolve_at(const Doc& d, Pos cur)
 
 std::variant<Server::PlaceMap, std::string> Server::places_of(
     const Resolved& r, bool strict, const std::string& also, std::map<std::string, Text>* texts,
-    const std::vector<std::string>* only)
+    const std::vector<std::string>* only, const IndexSnapshot* given)
 {
     PlaceMap out;
     const std::string& name = r.name;
@@ -5023,46 +5024,96 @@ std::variant<Server::PlaceMap, std::string> Server::places_of(
     else if (!file_local(r.ref.kind))
         for (const std::string& f : import_graph(also).importers_of(r.ref.decl_file))
             files.push_back(f);
+    // The index entries of the closed scripts. No deadline: the poll is check_cancel.
+    IndexSnapshot own;
+    if (!given)
+        own = index_entries(files, std::chrono::steady_clock::time_point::max());
+    const IndexSnapshot& snap = given ? *given : own;
     for (const std::string& path : files)
     {
         check_cancel();
         const std::shared_ptr<Doc> open = open_doc_at(path);
+        std::shared_ptr<const Entry> e;
         std::optional<std::string> closed_text;
         if (!open)
         {
-            closed_text = read_file(path);
-            if (!closed_text || closed_text->find(name) == std::string::npos)
-                continue; // the word filter
+            e = entry_in(snap, path);
+            if (e)
+            {
+                ++entry_hits_;
+                if (e->text.find(name) == std::string::npos)
+                    continue; // the word filter
+            }
+            else
+            {
+                ++entry_misses_;
+                closed_text = read_file(path);
+                if (!closed_text || closed_text->find(name) == std::string::npos)
+                    continue; // the word filter
+            }
         }
         const std::string uri = open ? open->uri : path_to_uri(path);
         // The table and "text" come from the same text: the table offsets are valid in "text".
+        std::shared_ptr<const FileRefs> table;
         Text text;
-        const auto table = file_refs(path, open ? nullptr : &*closed_text, &text);
+        std::set<Pos> found;
+        std::vector<uint32_t> asks;
+        // Fills "found" and "asks" from "table" and "text".
+        auto scan = [&]
+        {
+            found.clear();
+            asks.clear();
+            for (const hotc::ResolvedRef* p : places(*table, r.ref.id))
+            {
+                if (p->offset > text.s.size())
+                    continue;
+                const auto [line, col] = text.pos(p->offset);
+                found.insert({line, col});
+            }
+            // The words that only clangd can resolve.
+            for (const hotc::UnresolvedName& u : table->unresolved)
+                if (u.length == name.size() && u.offset <= text.s.size() && text.s.compare(u.offset, u.length, name) == 0)
+                    asks.push_back(u.offset);
+            for (const auto& [b, e2] : table->raw_ranges)
+                for (size_t at = text.s.find(name, b); at != std::string::npos && at + name.size() <= e2;
+                    at = text.s.find(name, at + 1))
+                {
+                    const bool left = at == 0 || !is_id_char(text.s[at - 1]);
+                    const bool right = at + name.size() >= text.s.size() || !is_id_char(text.s[at + name.size()]);
+                    if (left && right)
+                        asks.push_back(static_cast<uint32_t>(at));
+                }
+        };
+        if (e)
+        {
+            table = e->table;
+            text = Text(e->text);
+        }
+        else
+            table = file_refs(path, open ? nullptr : &*closed_text, &text);
         if (!table)
             continue;
+        scan();
+        // Not strict: a disk text that differs from the entry text drops the entry for this file.
+        if (e && !strict && (!found.empty() || !asks.empty()))
+        {
+            const std::optional<std::string> disk = read_file(path);
+            if (!disk || *disk != e->text)
+            {
+                e = nullptr;
+                closed_text = disk;
+                if (!closed_text || closed_text->find(name) == std::string::npos)
+                    continue; // the word filter
+                table = file_refs(path, &*closed_text, &text);
+                if (!table)
+                    continue;
+                scan();
+            }
+        }
         if (texts)
             (*texts)[uri] = text;
-        for (const hotc::ResolvedRef* p : places(*table, r.ref.id))
-        {
-            if (p->offset > text.s.size())
-                continue;
-            const auto [line, col] = text.pos(p->offset);
-            out[uri].insert({line, col});
-        }
-        // The words that only clangd can resolve.
-        std::vector<uint32_t> asks;
-        for (const hotc::UnresolvedName& u : table->unresolved)
-            if (u.length == name.size() && u.offset <= text.s.size() && text.s.compare(u.offset, u.length, name) == 0)
-                asks.push_back(u.offset);
-        for (const auto& [b, e] : table->raw_ranges)
-            for (size_t at = text.s.find(name, b); at != std::string::npos && at + name.size() <= e;
-                at = text.s.find(name, at + 1))
-            {
-                const bool left = at == 0 || !is_id_char(text.s[at - 1]);
-                const bool right = at + name.size() >= text.s.size() || !is_id_char(text.s[at + name.size()]);
-                if (left && right)
-                    asks.push_back(static_cast<uint32_t>(at));
-            }
+        for (const Pos& pos : found)
+            out[uri].insert(pos);
         // Strict: a code word "name" that is not a ref, not an unresolved name and not in a raw body
         // has no resolution in the table. Clangd must resolve it, else the rename skips a place.
         if (strict)
