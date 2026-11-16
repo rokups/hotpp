@@ -2648,6 +2648,19 @@ int analyzed_files(LsClient& client)
     return r["result"].value("analyzed", -1);
 }
 
+// The entry hits of the index lookups (hot/indexStats).
+int entry_hits_of(LsClient& client)
+{
+    return client.request("hot/indexStats", json::object())["result"].value("entryHits", -1);
+}
+
+// True when the tests run with the background index (HOTPP_TEST_BACKGROUND_INDEX=1).
+bool test_index_on()
+{
+    const char* bg = std::getenv("HOTPP_TEST_BACKGROUND_INDEX");
+    return bg && std::string(bg) == "1";
+}
+
 } // namespace
 
 TEST(SymbolIndex, EntryCountersStartAtZero)
@@ -3045,7 +3058,16 @@ TEST(LanguageServer, RenameOnAClosedFileAfterARestartUsesTheIndex)
     ASSERT_TRUE(r.contains("result")) << r.dump();
     ASSERT_TRUE(r["result"]["changes"].contains(uri_of(other_path))) << r.dump();
     const json first = r["result"]["changes"][uri_of(other_path)];
-    EXPECT_EQ(analyzed_files(*s.client), 1);
+    // Without the index the rename analyzes the file inline. With the index (HOT-34 step 5E) the rename
+    // takes the closed file from the index entry: the worker analyzes it, the inline count stays 0.
+    // The edits are the same in both modes (the restart below compares them too).
+    if (test_index_on())
+    {
+        EXPECT_EQ(analyzed_files(*s.client), 0);
+        EXPECT_GT(entry_hits_of(*s.client), 0);
+    }
+    else
+        EXPECT_EQ(analyzed_files(*s.client), 1);
     EXPECT_TRUE(std::filesystem::exists(s.dir.path() / ".cache" / "hot" / "index"));
     {
         // The saved shard has the table of the resolved names and the table marker.
@@ -3072,9 +3094,19 @@ TEST(LanguageServer, RenameOnAClosedFileAfterARestartUsesTheIndex)
     std::string changed = importer;
     changed += "\n";
     write_file(other_path, changed);
+    const int hits_before = entry_hits_of(*s.client);
     r = s.client->request("textDocument/rename", p);
     ASSERT_TRUE(r.contains("result")) << r.dump();
-    EXPECT_EQ(analyzed_files(*s.client), 1);
+    // The appended newline moves no place: the edits equal the first edits.
+    EXPECT_EQ(r["result"]["changes"][uri_of(other_path)], first) << r.dump();
+    if (test_index_on())
+    {
+        // The stamp changed, the index analyzed the file again in the worker and the rename used the new entry.
+        EXPECT_EQ(analyzed_files(*s.client), 0);
+        EXPECT_GT(entry_hits_of(*s.client), hits_before);
+    }
+    else
+        EXPECT_EQ(analyzed_files(*s.client), 1);
     EXPECT_EQ(file_count(s.dir.path() / ".cache" / "hot" / "index"), shards);
 }
 
@@ -9658,7 +9690,9 @@ TEST(WorkspaceIndexRename, RenameRefusesAFileThatChangesInsideTheRequest)
         json before, after;
         const json on = script_rename_run(true, 3, false, "Twice2", RnMode::Plain, "", &before, &after, stage);
         EXPECT_NE(on.dump().find("changed on disk during the rename"), std::string::npos) << stage << " " << on.dump();
-        EXPECT_GT(after["entryHits"].get<int>(), before["entryHits"].get<int>()) << stage << " " << after.dump();
+        // The closed files a and b each used a valid entry: two hits, no miss. A miss for b.hot would show here.
+        EXPECT_EQ(after["entryHits"].get<int>() - before["entryHits"].get<int>(), 2) << stage << " " << after.dump();
+        EXPECT_EQ(after["entryMisses"].get<int>(), before["entryMisses"].get<int>()) << stage << " " << after.dump();
     }
     json before, after;
     const json off = script_rename_run(false, 3, false, "Twice2", RnMode::Plain, "", &before, &after, "before_final");
@@ -9702,6 +9736,15 @@ TEST(WorkspaceIndexRename, ColdIndexLooksUpOnlyTheFilesWithTheName)
             if (r.contains("result") && r["result"].is_object() && r["result"].contains("changes"))
                 break;
             std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        }
+        if (background_index)
+        {
+            // The request called ensure only for lib.hot (the file with the name): the index has one job.
+            // The entryOf probe itself makes a job, so the job count is read before any probe.
+            const json st = client.request("hot/indexStats", json::object())["result"];
+            EXPECT_EQ(st["index"]["total"].get<int>(), 1) << st.dump();
+            const json probe = client.request("hot/indexStats", {{"entryOf", uri_of((dir.path() / "lib.hot").string())}})["result"];
+            EXPECT_EQ(probe.value("entryOf", ""), "valid") << probe.dump();
         }
         std::string out = r.value("result", json::object()).dump();
         const std::string root = uri_of(dir.path().string());
