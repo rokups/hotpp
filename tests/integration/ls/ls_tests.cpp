@@ -9359,8 +9359,8 @@ TEST(WorkspaceIndexReferences, ScriptReferencesSeeASameStampEditWithNoEvent)
     EXPECT_EQ(on_after["entryMisses"].get<int>() - on_before["entryMisses"].get<int>(), 1) << on_after.dump();
 }
 
-// HOT-34: the rename (strict) does not use the index entries. The changes are the same with the index on or off.
-TEST(WorkspaceIndexReferences, RenameDoesNotUseTheIndexEntries)
+// HOT-34 step 5E: the rename uses the index entries. The changes are the same with the index on or off.
+TEST(WorkspaceIndexReferences, RenameUsesTheIndexEntries)
 {
     REQUIRE_CLANGD();
     auto run = [&](bool background_index, json* hits_before, json* hits_after)
@@ -9424,5 +9424,201 @@ TEST(WorkspaceIndexReferences, RenameDoesNotUseTheIndexEntries)
     ASSERT_TRUE(on.contains("changes")) << on.dump();
     EXPECT_TRUE(on["changes"].contains("ROOT/b.hot")) << on.dump();
     EXPECT_EQ(off, on);
-    EXPECT_EQ(on_after["entryHits"].get<int>(), on_before["entryHits"].get<int>()) << on_after.dump();
+    EXPECT_GT(on_after["entryHits"].get<int>(), on_before["entryHits"].get<int>()) << on_after.dump();
+    EXPECT_EQ(off_after["entryHits"].get<int>(), 0) << off_after.dump();
+}
+
+namespace
+{
+const char* const kRnLib =
+    "class Lib {\n    public int fld;\n    int Calc(int a) { return a; }\n}\nint Twice(int v) { return v * 2; }\n";
+const char* const kRnUseA = "using \"lib.hot\";\nclass UserA {\n    Lib l;\n    int fx() { return Twice(1); }\n"
+                            "    int fy() { return l.Calc(2) + l.fld; }\n}\n";
+const char* const kRnUseB = "using \"lib.hot\";\nclass UserB {\n    int fx() { return Twice(3); }\n}\n";
+const char* const kRnUseBBad = "using \"lib.hot\";\nclass UserB {\n    int fx() { return Twice(3) }\n}\n";
+
+enum class RnMode
+{
+    Plain,
+    SyntaxError,
+    UnsavedLib,
+    Outside,
+    DiskAppend,
+    DiskSameSize
+};
+
+// Renames from the open library. "which": 0 Lib, 1 Calc, 2 fld, 3 Twice. The result has a fixed root.
+// "expect" is a part of the error text that the request must give (empty for a success).
+json script_rename_run(bool background_index, int which, bool prepare, const std::string& new_name, RnMode mode,
+    const std::string& expect, json* stats_before, json* stats_after)
+{
+    TempDir dir;
+    TempDir extra;
+    hot::ls::ServerOptions o = options(dir, true);
+    o.background_index = background_index;
+    o.reference_budget_ms = 120000;
+    if (mode == RnMode::Outside)
+    {
+        o.include_dirs.push_back(extra.path().string());
+        o.include_dirs.push_back(dir.path().string());
+        write_file(extra.path() / "x.hot", kRnUseB);
+    }
+    std::string b_first = mode == RnMode::SyntaxError ? kRnUseBBad : kRnUseB;
+    if (mode == RnMode::DiskSameSize)
+        b_first.replace(b_first.find("Twice"), 5, "Twicf");
+    const std::vector<std::pair<std::string, std::string>> closed = {{"a.hot", kRnUseA}, {"b.hot", b_first}};
+    LsClient client(o);
+    client.initialize(uri_of(dir.path().string()));
+    const std::string lib = (dir.path() / "lib.hot").string();
+    write_file(lib, kRnLib);
+    client.open(uri_of(lib), kRnLib);
+    for (const auto& [name, text] : closed)
+    {
+        const std::string file = (dir.path() / name).string();
+        write_file(file, text);
+        client.open(uri_of(file), text);
+        client.notify("textDocument/didClose", {{"textDocument", {{"uri", uri_of(file)}}}});
+    }
+    if (mode == RnMode::UnsavedLib)
+        client.change(uri_of(lib), 2, std::string(kRnLib) + "// not saved\n");
+    if (background_index)
+    {
+        wait_index_idle(client);
+        for (const auto& [name, text] : closed)
+        {
+            json r;
+            for (int i = 0; i < 100; ++i)
+            {
+                r = client.request("hot/indexStats", {{"entryOf", uri_of((dir.path() / name).string())}})["result"];
+                if (r.value("entryOf", "") != "missing")
+                    break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            EXPECT_NE(r.value("entryOf", ""), "missing") << r.dump();
+        }
+    }
+    const std::string word = which == 0 ? "Lib" : which == 1 ? "Calc" : which == 2 ? "fld" : "Twice";
+    json p = {{"textDocument", {{"uri", uri_of(lib)}}}, {"position", ref_pos_of(kRnLib, word, 0)}};
+    if (!prepare)
+        p["newName"] = new_name;
+    const std::string method = prepare ? "textDocument/prepareRename" : "textDocument/rename";
+    auto done = [&](const json& r)
+    {
+        if (expect.empty())
+            return r.contains("result") && r["result"].is_object();
+        return r.contains("error") && r["error"].value("message", "").find(expect) != std::string::npos;
+    };
+    // The first answers can be wrong while clangd starts. Ask again until the answer is as expected.
+    for (int i = 0; i < 40; ++i)
+    {
+        if (done(client.request(method, p)))
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    if (mode == RnMode::DiskAppend)
+        write_file((dir.path() / "b.hot").string(),
+            std::string(kRnUseB) + "class Extra {\n    int fe() { return Twice(7); }\n}\n"); // no event
+    else if (mode == RnMode::DiskSameSize)
+    {
+        const std::string b_path = (dir.path() / "b.hot").string();
+        const auto old_time = std::filesystem::last_write_time(b_path);
+        write_file(b_path, kRnUseB); // no event, the same size
+        std::filesystem::last_write_time(b_path, old_time);
+    }
+    *stats_before = client.request("hot/indexStats", json::object())["result"];
+    const json r = client.request(method, p);
+    *stats_after = client.request("hot/indexStats", json::object())["result"];
+    EXPECT_TRUE(done(r)) << r.dump();
+    std::string out = r.contains("error") ? r["error"].dump() : r.value("result", json::object()).dump();
+    const std::string root = uri_of(dir.path().string());
+    for (size_t at; (at = out.find(root)) != std::string::npos;)
+        out.replace(at, root.size(), "ROOT");
+    const std::string plain = dir.path().string();
+    for (size_t at; (at = out.find(plain)) != std::string::npos;)
+        out.replace(at, plain.size(), "ROOT");
+    const std::string plain_extra = extra.path().string();
+    for (size_t at; (at = out.find(plain_extra)) != std::string::npos;)
+        out.replace(at, plain_extra.size(), "EXTRA");
+    return json::parse(out);
+}
+} // namespace
+
+// HOT-34 step 5E: rename and prepareRename of each kind give the same result with and without the index.
+TEST(WorkspaceIndexRename, RenameGivesTheSameResultWithAndWithoutTheIndex)
+{
+    REQUIRE_CLANGD();
+    const char* const names[] = {"Lib2", "Calc2", "fld2", "Twice2"};
+    for (int which = 0; which < 4; ++which)
+        for (const bool prepare : {false, true})
+        {
+            const std::string tag = std::to_string(which) + (prepare ? "p" : "r");
+            json off_before, off_after, on_before, on_after;
+            const json off = script_rename_run(false, which, prepare, names[which], RnMode::Plain, "", &off_before, &off_after);
+            const json on = script_rename_run(true, which, prepare, names[which], RnMode::Plain, "", &on_before, &on_after);
+            EXPECT_EQ(off, on) << tag;
+            EXPECT_EQ(off_after["entryHits"].get<int>(), 0) << off_after.dump();
+            if (prepare)
+                continue;
+            ASSERT_TRUE(on.contains("changes")) << on.dump();
+            EXPECT_TRUE(on["changes"].contains("ROOT/lib.hot")) << on.dump();
+            EXPECT_TRUE(on["changes"].contains("ROOT/a.hot")) << on.dump();
+            EXPECT_GT(on_after["entryHits"].get<int>(), on_before["entryHits"].get<int>()) << tag << " " << on_after.dump();
+            for (const char* key : {"analyzed", "tableAnalyses", "loaded"})
+                EXPECT_EQ(on_after[key].get<int>(), on_before[key].get<int>()) << key << " " << tag << " " << on_after.dump();
+        }
+}
+
+// HOT-34 step 5E: each refusal gives the same error text with and without the index.
+TEST(WorkspaceIndexRename, RefusalsGiveTheSameTextWithAndWithoutTheIndex)
+{
+    REQUIRE_CLANGD();
+    struct Case
+    {
+        RnMode mode;
+        int which;
+        const char* new_name;
+        const char* expect;
+    };
+    const Case cases[] = {
+        {RnMode::SyntaxError, 3, "Twice2", "has a syntax error"},
+        {RnMode::Plain, 1, "fld", "fld"},
+        {RnMode::UnsavedLib, 3, "Twice2", "has changes that are not saved"},
+        {RnMode::Outside, 3, "Twice2", "is outside the workspace folders"},
+    };
+    for (const Case& c : cases)
+    {
+        json b0, b1, c0, c1;
+        const json off = script_rename_run(false, c.which, false, c.new_name, c.mode, c.expect, &b0, &b1);
+        const json on = script_rename_run(true, c.which, false, c.new_name, c.mode, c.expect, &c0, &c1);
+        EXPECT_EQ(off, on) << c.expect;
+        EXPECT_NE(on.dump().find(c.expect), std::string::npos) << on.dump();
+    }
+}
+
+// HOT-34 step 5E: a closed importer that changes on disk with no event. The edits fit the new text.
+// The same-size case has the old stamp: only the compare of the texts finds the change. The stale entry
+// is dropped (a miss) and the disk text is used. The final compare cannot be made to fire in a
+// deterministic way, because the text on disk must change inside one request.
+TEST(WorkspaceIndexRename, RenameSeesADiskChangeWithNoEvent)
+{
+    REQUIRE_CLANGD();
+    for (const RnMode mode : {RnMode::DiskAppend, RnMode::DiskSameSize})
+    {
+        json off_before, off_after, on_before, on_after;
+        const json off = script_rename_run(false, 3, false, "Twice2", mode, "", &off_before, &off_after);
+        const json on = script_rename_run(true, 3, false, "Twice2", mode, "", &on_before, &on_after);
+        const std::string tag = std::to_string(static_cast<int>(mode));
+        EXPECT_EQ(off, on) << tag;
+        ASSERT_TRUE(on.contains("changes")) << on.dump();
+        ASSERT_TRUE(on["changes"].contains("ROOT/b.hot")) << on.dump();
+        // The disk text of b.hot: the use "Twice(3)" is at line 2, column 22.
+        const json& edits = on["changes"]["ROOT/b.hot"];
+        EXPECT_EQ(edits[0]["range"]["start"]["line"].get<int>(), 2) << on.dump();
+        EXPECT_EQ(edits[0]["range"]["start"]["character"].get<int>(), 22) << on.dump();
+        if (mode == RnMode::DiskAppend)
+            EXPECT_EQ(edits.size(), 2u) << on.dump();
+        // An append changes the stamp: the index makes a new entry. The same-size edit keeps the stamp.
+        if (mode == RnMode::DiskSameSize)
+            EXPECT_GT(on_after["entryMisses"].get<int>(), on_before["entryMisses"].get<int>()) << on_after.dump();
+    }
 }
