@@ -3650,6 +3650,11 @@ void TranslatorSession::set_tu_cache_limit(size_t n)
     impl_->tu_cache.set_max_units(n);
 }
 
+void TranslatorSession::set_tu_cache_idle_ms(long long ms)
+{
+    impl_->tu_cache.set_idle_limit(std::chrono::milliseconds(ms));
+}
+
 size_t TranslatorSession::tu_cache_size() const
 {
     return impl_->tu_cache.size();

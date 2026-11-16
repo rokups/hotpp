@@ -9,6 +9,7 @@
 #include "../ast.h"
 #include "../diag.h"
 
+#include <chrono>
 #include <memory>
 #include <string>
 #include <utility>
@@ -22,13 +23,21 @@ namespace hotc
 // cache only while no thread uses it: parse_cpp_script takes the unit out and puts it back at
 // the end. So one thread at a time uses a unit, and the cache is thread safe. The key of a unit
 // is the file name, the compiler arguments and the current directory. The cache keeps a bounded
-// number of units and drops the oldest one. A unit that nobody uses for 10 minutes is disposed
-// at the next take or put. A unit is dropped (the next parse is fresh) when:
+// number of units and drops the oldest one. A unit that nobody used for the idle limit (default
+// 10 minutes) is disposed at the next translate (or size() call); there is no thread. A unit is
+// dropped (the next parse is fresh) when:
 //   - the parse had an error in any file (a reparse can drop a diagnostic of a header),
 //   - a reparse fails,
-//   - a file that the unit included has a new size, time (nanoseconds) or inode,
+//   - a file that the unit included, or an include search directory (also its subdirectory for a
+//     path include like "a/x.h"), has a new size, mtime, ctime or inode (a new file in an earlier
+//     directory shadows a header),
+//   - a file changed in the last 50 ms before the parse started (the edit can have come during
+//     the parse): the unit is not kept,
 //   - clear() ran during its parse.
-// Limit: a header edit that keeps the size, the time and the inode is not seen.
+// The stamps are read before a reparse. After it they stay when the preprocessor lines of the
+// script are the same (the unit reads the same files). Limits: a shadowing file in the directory
+// of an includer ("x.h" next to a header that includes "x.h") is not seen; an edit that keeps
+// the size, the mtime, the ctime and the inode is not seen.
 // The text of the script and of the headers in memory is always new: the reparse gets it.
 class TuCache
 {
@@ -40,6 +49,7 @@ public:
     void clear(); // drops all kept units
     // The most kept units. 0 turns the cache off: each parse is plain and fresh. Excess units go.
     void set_max_units(size_t n);
+    void set_idle_limit(std::chrono::milliseconds t); // for the tests
     size_t size() const; // the number of kept units
     struct Impl;
     Impl& state() { return *impl_; } // for the parser only

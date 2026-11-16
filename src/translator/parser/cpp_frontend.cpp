@@ -58,7 +58,6 @@ std::string cxs(CXString s)
 }
 
 using Clock = std::chrono::steady_clock;
-constexpr auto kIdleLimit = std::chrono::minutes(10);
 
 // The size and the time of a file that a kept unit read. libclang checks the files of the preamble
 // by size and time in seconds. This stamp has the time in nanoseconds and the inode.
@@ -70,7 +69,86 @@ struct Stamp
 
 bool same_times(const FileTimes& a, const FileTimes& b)
 {
-    return a.exists == b.exists && a.mtime_ns == b.mtime_ns && a.size == b.size && a.ino == b.ino;
+    return a.exists == b.exists && a.mtime_ns == b.mtime_ns && a.ctime_ns == b.ctime_ns && a.size == b.size
+        && a.ino == b.ino;
+}
+
+// A hash of the preprocessor lines of the script text (the first non-blank character is "#") and of
+// the names of the headers in memory. If it is the same, the files that the unit reads are the same
+// files (the compiler arguments are in the key). The text of a header is not in it: the stamps of
+// the files check that.
+uint64_t directive_hash(const std::string& text, const std::vector<std::pair<std::string, std::string>>& vfiles)
+{
+    std::string lines;
+    for (size_t at = 0; at < text.size();)
+    {
+        const size_t eol = std::min(text.find('\n', at), text.size());
+        const size_t i = text.find_first_not_of(" \t", at);
+        if (i < eol && text[i] == '#')
+        {
+            lines.append(text, i, eol - i);
+            lines += '\n';
+        }
+        at = eol + 1;
+    }
+    for (const auto& v : vfiles)
+        lines += v.first + '\n';
+    return std::hash<std::string>()(lines);
+}
+
+// The directories of the include search that a new file can shadow a found header from: each
+// "-I"/"-isystem" directory, and its subdirectory for each "#include" with a path ("a/x.h").
+std::vector<std::string> search_dirs(const std::string& text, const std::vector<std::string>& args)
+{
+    std::vector<std::string> dirs, out;
+    for (size_t i = 0; i < args.size(); ++i)
+    {
+        const std::string& a = args[i];
+        for (const char* opt : {"-I", "-isystem", "-iquote", "-idirafter"})
+        {
+            const size_t n = std::strlen(opt);
+            if (a.compare(0, n, opt) != 0)
+                continue;
+            if (a.size() > n)
+                dirs.push_back(a.substr(n));
+            else if (i + 1 < args.size())
+                dirs.push_back(args[i + 1]);
+            break;
+        }
+    }
+    std::set<std::string> subs;
+    for (size_t at = 0; at < text.size();)
+    {
+        const size_t eol = std::min(text.find('\n', at), text.size());
+        size_t i = text.find_first_not_of(" \t", at);
+        if (i < eol && text[i] == '#')
+        {
+            i = text.find_first_not_of(" \t", i + 1);
+            if (i < eol && text.compare(i, 7, "include") == 0)
+            {
+                const size_t open = text.find_first_of("<\"", i + 7);
+                const size_t close = open < eol ? text.find(text[open] == '<' ? '>' : '"', open + 1) : std::string::npos;
+                if (close < eol)
+                {
+                    const std::string path = text.substr(open + 1, close - open - 1);
+                    const size_t slash = path.rfind('/');
+                    if (slash != std::string::npos)
+                        subs.insert(path.substr(0, slash));
+                }
+            }
+        }
+        at = eol + 1;
+    }
+    std::set<std::string> seen;
+    for (const std::string& d : dirs)
+    {
+        if (seen.insert(d).second)
+            out.push_back(d);
+        for (const std::string& sub : subs)
+            if (seen.insert(d + "/" + sub).second)
+                out.push_back(d + "/" + sub);
+    }
+    return out;
 }
 
 void collect_inclusion(CXFile file, CXSourceLocation*, unsigned, CXClientData data)
@@ -92,6 +170,7 @@ struct Handles
     bool keep = false;
     uint64_t generation = 0; // the generation of the cache at the start of the parse
     std::vector<Stamp> stamps;
+    uint64_t text_hash = 0;
     void dispose()
     {
         if (tu)
@@ -3473,31 +3552,63 @@ void Frontend::read_top(const std::vector<CXCursor>& top)
 
 struct TuCache::Impl
 {
+    // A kept unit. The slot owns the handles: a move gives them over and the source has none. So
+    // an exception can not make two owners, and the destructor disposes what the slot owns.
     struct Slot
     {
         std::string key;
         CXIndex idx = nullptr;
         CXTranslationUnit tu = nullptr;
-        std::vector<Stamp> stamps; // the files of the unit
+        std::vector<Stamp> stamps; // the files and directories that the unit depends on
+        uint64_t text_hash = 0; // directive_hash of the text of the last parse
         Clock::time_point used;
+        Slot() = default;
+        Slot(Slot&& o) noexcept
+            : key(std::move(o.key)), idx(o.idx), tu(o.tu), stamps(std::move(o.stamps)), text_hash(o.text_hash),
+              used(o.used)
+        {
+            o.idx = nullptr;
+            o.tu = nullptr;
+        }
+        Slot& operator=(Slot&& o) noexcept
+        {
+            if (this != &o)
+            {
+                release();
+                key = std::move(o.key);
+                idx = o.idx;
+                tu = o.tu;
+                stamps = std::move(o.stamps);
+                text_hash = o.text_hash;
+                used = o.used;
+                o.idx = nullptr;
+                o.tu = nullptr;
+            }
+            return *this;
+        }
+        ~Slot() { release(); }
+        void release() noexcept
+        {
+            if (tu)
+                clang_disposeTranslationUnit(tu);
+            if (idx)
+                clang_disposeIndex(idx);
+            tu = nullptr;
+            idx = nullptr;
+        }
     };
+    std::atomic<int64_t> idle_ms{600000}; // a unit that nobody used for this time is disposed
     std::atomic<size_t> max_units{0};
     std::atomic<uint64_t> generation{0}; // clear() adds one: a unit of an older parse is not kept
     mutable std::mutex mutex;
-    std::deque<Slot> slots; // the oldest first
-    static void drop(Slot& s)
-    {
-        if (s.tu)
-            clang_disposeTranslationUnit(s.tu);
-        if (s.idx)
-            clang_disposeIndex(s.idx);
-    }
+    mutable std::deque<Slot> slots; // the oldest first
+    static void drop(Slot& s) { s.release(); }
     // Moves the units that nobody used for kIdleLimit to "dead". The caller holds the lock.
-    void evict_idle(std::vector<Slot>& dead)
+    void evict_idle(std::vector<Slot>& dead) const
     {
         const auto now = Clock::now();
         for (auto it = slots.begin(); it != slots.end();)
-            if (now - it->used > kIdleLimit)
+            if (now - it->used > std::chrono::milliseconds(idle_ms.load()))
             {
                 dead.push_back(std::move(*it));
                 it = slots.erase(it);
@@ -3557,12 +3668,10 @@ struct TuCache::Impl
             }
         }
         catch (...)
-        { // out of memory: the unit that the move did not store is in "s" or in "dead"
-            if (s.tu || s.idx)
-                dead.push_back(std::move(s));
+        { // out of memory: a slot owns its handles and a move nulls the source, so each unit
+            // has one owner here ("s", "slots" or "dead") and its destructor disposes it
         }
-        for (Slot& d : dead)
-            drop(d);
+        // "dead" disposes its units here, outside the lock
     }
 };
 
@@ -3601,10 +3710,20 @@ void TuCache::clear()
     for (Impl::Slot& s : old)
         impl_->drop(s);
 }
+void TuCache::set_idle_limit(std::chrono::milliseconds t)
+{
+    impl_->idle_ms = t.count();
+}
 size_t TuCache::size() const
 {
-    std::lock_guard<std::mutex> lock(impl_->mutex);
-    return impl_->slots.size();
+    std::vector<Impl::Slot> dead;
+    size_t n;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mutex);
+        impl_->evict_idle(dead);
+        n = impl_->slots.size();
+    }
+    return n;
 }
 
 Handles::~Handles()
@@ -3612,25 +3731,15 @@ Handles::~Handles()
     if (keep && cache && tu && idx)
     {
         TuCache::Impl::Slot slot;
-        bool ready = false;
-        try
-        {
-            slot.key = key;
-            slot.idx = idx;
-            slot.tu = tu;
-            slot.stamps = std::move(stamps);
-            ready = true;
-        }
-        catch (...)
-        {
-        }
-        if (ready)
-        {
-            idx = nullptr; // the cache owns the handles now (put never throws and always disposes)
-            tu = nullptr;
-            cache->state().put(std::move(slot), generation);
-            return;
-        }
+        slot.idx = idx;
+        slot.tu = tu;
+        idx = nullptr; // the slot owns the handles now
+        tu = nullptr;
+        slot.key = std::move(key); // the moves do not throw
+        slot.stamps = std::move(stamps);
+        slot.text_hash = text_hash;
+        cache->state().put(std::move(slot), generation); // never throws; it disposes what it drops
+        return;
     }
     dispose();
 }
@@ -3668,9 +3777,17 @@ ast::Script parse_cpp_script(const std::string& text, const std::string& name,
     const auto t_parse = t_now();
     CXErrorCode ec = CXError_Failure;
     bool reparsed = false;
+    // The files stamps must be older than the start of the parse (see the stamp code below).
+    const uint64_t wall_start_ns = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch())
+            .count());
+    std::vector<Stamp> verified; // the stamps of the old unit that match the files now
+    bool same_set = false; // the old unit read the same files as this parse will read
+    size_t stat_count = 0;
     if (cache)
     {
         h.cache = cache;
+        h.text_hash = directive_hash(text, virtual_files);
         h.generation = cache->state().generation.load();
         h.key = name;
         for (const std::string& a : clang_args)
@@ -3687,11 +3804,14 @@ ast::Script parse_cpp_script(const std::string& text, const std::string& name,
             slot.tu = nullptr;
             bool fresh = true;
             for (const Stamp& st : slot.stamps)
+            {
+                ++stat_count;
                 if (!same_times(st.times, file_times(st.path)))
                 {
                     fresh = false; // a file of the unit changed (a finer check than the one of libclang)
                     break;
                 }
+            }
             // The unit has the preamble. libclang reuses it if the included files did not change.
             if (fresh
                 && clang_reparseTranslationUnit(h.tu, static_cast<unsigned>(unsaved.size()), unsaved.data(),
@@ -3700,6 +3820,11 @@ ast::Script parse_cpp_script(const std::string& text, const std::string& name,
             {
                 ec = CXError_Success;
                 reparsed = true;
+                // The stamps were read before the reparse. If the directives are the same, the unit
+                // reads the same files: the stamps stay.
+                same_set = slot.text_hash == h.text_hash;
+                if (same_set)
+                    verified = std::move(slot.stamps);
             }
             else
             { // a file changed or the reparse failed: drop the unit and parse again from the start
@@ -3768,8 +3893,13 @@ ast::Script parse_cpp_script(const std::string& text, const std::string& name,
     }
     // A unit that had an error is not kept: a reparse can drop or change the diagnostics of a header.
     h.keep = cache != nullptr && !diag_error;
-    if (h.keep)
+    if (h.keep && same_set)
+        h.stamps = std::move(verified);
+    else if (h.keep)
     {
+        // Stamps after the parse. A file that changed in the last 50 ms before the parse started
+        // can have another content in the unit than the stamp says (the edit came during the
+        // parse): the unit is not kept then.
         std::vector<std::string> files;
         clang_getInclusions(h.tu, collect_inclusion, &files);
         std::sort(files.begin(), files.end());
@@ -3777,14 +3907,26 @@ ast::Script parse_cpp_script(const std::string& text, const std::string& name,
         std::set<std::string> in_memory; // the script and the headers in memory: libclang gets their text
         for (const CXUnsavedFile& u : unsaved)
             in_memory.insert(u.Filename);
+        std::vector<std::string> paths;
         for (std::string& f : files)
+            if (!in_memory.count(f))
+                paths.push_back(std::move(f));
+        // A new header in an earlier directory of the include search can shadow a found header.
+        for (std::string& d : search_dirs(text, clang_args))
+            paths.push_back(std::move(d));
+        const uint64_t limit = wall_start_ns > 50000000 ? wall_start_ns - 50000000 : 0;
+        for (std::string& f : paths)
         {
-            if (in_memory.count(f))
-                continue;
+            ++stat_count;
             FileTimes t = file_times(f);
+            if (t.exists && (t.mtime_ns > limit || t.ctime_ns > limit))
+                h.keep = false;
             h.stamps.push_back({std::move(f), t});
         }
     }
+    if (timing && cache)
+        std::fprintf(stderr, "[cpp-frontend] stamps: %zu file_times calls, %s\n", stat_count,
+            same_set ? "set unchanged" : "set collected");
     if (diag_error)
         return sc;
     g_use_preamble = cache != nullptr;
