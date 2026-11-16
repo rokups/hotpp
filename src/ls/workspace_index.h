@@ -133,6 +133,8 @@ public:
     void bump(const std::vector<std::string>& paths);
     // Counts a change of the path and of its importers, and queues a job for each one at the Importer level.
     void invalidate(const std::string& path);
+    // The sorted paths that have a slot with a config (made by schedule() or ensure()).
+    std::vector<std::string> known_paths() const;
     // Removes the entry, the slot and the queued job of a deleted script.
     void forget(const std::string& path);
     // Waits until each path has a valid entry (see IndexSnapshot), failed or is not known. It

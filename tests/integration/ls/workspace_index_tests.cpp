@@ -597,13 +597,42 @@ TEST(WorkspaceIndex, EnsureCreatesASlotAndKeepsAQueuedJob)
     EXPECT_EQ(idx.stats().pending, 1);
     idx.ensure("a.hot", JobConfig{}, IndexLevel::Request);
     EXPECT_EQ(idx.stats().pending, 1);
-    // A valid entry and no job: ensure() queues nothing.
-    WorkspaceIndex other;
-    other.schedule("b.hot", JobConfig{}, IndexLevel::Rest);
-    other.set("b.hot", entry_with_deps("b.hot", {}));
-    other.forget("b.hot");
-    EXPECT_EQ(other.stats().total, 0);
-    EXPECT_EQ(other.stats().pending, 0);
+    EXPECT_EQ(idx.stats().total, 1);
+}
+
+// HOT-34: known_paths() gives each path that has a slot with a config.
+TEST(WorkspaceIndex, KnownPathsHaveAConfig)
+{
+    WorkspaceIndex idx;
+    idx.schedule("b.hot", JobConfig{}, IndexLevel::Rest);
+    idx.ensure("a.hot", JobConfig{}, IndexLevel::Request);
+    idx.set("c.hot", entry_with_deps("c.hot", {})); // a slot with no config
+    EXPECT_EQ(idx.known_paths(), (std::vector<std::string>{"a.hot", "b.hot"}));
+    idx.forget("a.hot");
+    EXPECT_EQ(idx.known_paths(), (std::vector<std::string>{"b.hot"}));
+}
+
+// HOT-34: a path with a valid entry and no job: ensure() queues nothing.
+TEST(WorkspaceIndex, EnsureQueuesNothingForAValidEntry)
+{
+    TempDir tmp;
+    const std::string path = tmp.write("main.hot", kTextOne, -100);
+    SymbolIndex symbols;
+    hotc::TranslatorSession session;
+    WorkspaceIndex idx;
+    std::atomic<int> jobs{0};
+    idx.set_job_hook([&](const std::string&) { ++jobs; });
+    idx.schedule(path, config_for(path), IndexLevel::Rest);
+    idx.finish_scheduling();
+    idx.start(symbols, session, 1, nullptr);
+    const auto snap = idx.wait_for({path}, nullptr, std::chrono::steady_clock::now() + kLong);
+    ASSERT_TRUE(snap.missing.empty());
+    while (idx.stats().pending != 0)
+        std::this_thread::yield();
+    idx.ensure(path, config_for(path), IndexLevel::Request);
+    EXPECT_EQ(idx.stats().pending, 0);
+    idx.stop();
+    EXPECT_EQ(jobs.load(), 1);
 }
 
 // HOT-34: forget() and schedule() of a path in the middle of a job. The old result is dropped.
@@ -673,7 +702,7 @@ TEST(WorkspaceIndex, BuildEntryUsesTheGivenDepStamps)
     EXPECT_EQ(e->dep_stamps[0].second, (FileStamp{7, 9}));
 }
 
-// HOT-34: a dep path has the normal form, so files_with_dep finds a path with "..".
+// HOT-34: a dep stamp keeps the spelling. files_with_dep uses the normal form of the path.
 TEST(WorkspaceIndex, DepPathsHaveTheNormalForm)
 {
     TempDir tmp;
@@ -686,11 +715,70 @@ TEST(WorkspaceIndex, DepPathsHaveTheNormalForm)
     const auto e = build_here(path, stamp_now(path), text, options_for(path), "d", index, session);
     ASSERT_TRUE(e);
     ASSERT_EQ(e->dep_stamps.size(), 1u);
-    EXPECT_EQ(e->dep_stamps[0].first, fs::path(lib).lexically_normal().string());
+    EXPECT_EQ(e->dep_stamps[0].first, (tmp.dir / "sub/../lib.hot").string());
+    EXPECT_TRUE(fresh(*e));
     WorkspaceIndex idx;
     idx.set(path, e);
     EXPECT_EQ(idx.files_with_dep(lib), (std::vector<std::string>{path}));
+    EXPECT_TRUE(idx.files_with_dep(e->dep_stamps[0].first).empty());
+    idx.erase(path);
+    EXPECT_TRUE(idx.files_with_dep(lib).empty());
 }
+
+// HOT-34: an include dir of the form "a/../x" keeps its spelling in the stamp. by_dep_ has the
+// normal key.
+TEST(WorkspaceIndex, IncludeDirWithDotDotKeepsTheSpelling)
+{
+    TempDir tmp;
+    fs::create_directories(tmp.dir / "a");
+    fs::create_directories(tmp.dir / "x");
+    const std::string lib = tmp.write("x/lib.hot", "int helper() { return 1; }\n", -100);
+    const std::string text = "using \"lib.hot\";\nclass M\n{\n    int f() { return helper(); }\n}\n";
+    const std::string path = tmp.write("main.hot", text, -100);
+    SymbolIndex index;
+    hotc::TranslatorSession session;
+    hotc::TranslateOptions opts = options_for(path);
+    const std::string dir = (tmp.dir / "a/../x").string();
+    opts.include_dirs = {dir};
+    std::vector<SymbolIndex::DepStamp> deps;
+    const std::string digest = index.cached_digest(path, text, opts.include_dirs, &deps);
+    const auto e = build_entry(path, stamp_now(path), text, opts, digest, deps, index, session);
+    ASSERT_TRUE(e);
+    bool found = false;
+    for (const auto& [file, stamp] : e->dep_stamps)
+        if (file == (fs::path(dir) / "lib.hot").string())
+            found = true;
+    EXPECT_TRUE(found);
+    EXPECT_TRUE(fresh(*e));
+    WorkspaceIndex idx;
+    idx.set(path, e);
+    EXPECT_EQ(idx.files_with_dep(fs::path(lib).lexically_normal().string()), (std::vector<std::string>{path}));
+}
+
+#ifndef _WIN32
+// HOT-34: "link/../lib.hot" with a symlink names another file than the lexical form. The stat
+// follows the spelling, so fresh() stays true when nothing changes.
+TEST(WorkspaceIndex, SymlinkInADepPathStaysFresh)
+{
+    TempDir tmp;
+    fs::create_directories(tmp.dir / "real/sub");
+    std::error_code ec;
+    fs::create_directory_symlink(tmp.dir / "real/sub", tmp.dir / "link", ec);
+    if (ec)
+        GTEST_SKIP() << "no symlink";
+    tmp.write("real/lib.hot", "int helper() { return 1; }\n", -100);
+    const std::string text = "using \"link/../lib.hot\";\nclass M\n{\n    int f() { return helper(); }\n}\n";
+    const std::string path = tmp.write("main.hot", text, -100);
+    SymbolIndex index;
+    hotc::TranslatorSession session;
+    const auto e = build_here(path, stamp_now(path), text, options_for(path), "d", index, session);
+    ASSERT_TRUE(e);
+    ASSERT_EQ(e->dep_stamps.size(), 1u);
+    EXPECT_NE(e->dep_stamps[0].second.size, UINT64_MAX);
+    EXPECT_TRUE(fresh(*e));
+    EXPECT_TRUE(fresh(*e));
+}
+#endif
 
 // ---- HOT-34: the preludes in the worker
 

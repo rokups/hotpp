@@ -85,6 +85,12 @@ public:
 
     // The digest of a file content.
     static std::string digest(const std::string& content);
+    // The shard digest of a script. "imports" is the result of cached_digest. "preludes" are the
+    // (path, text) pairs of the prelude files that exist, in the order of the analysis. The
+    // worker and the server both call it, so they share the shards.
+    static std::string shard_digest(const std::string& imports,
+        const std::vector<std::pair<std::string, std::string>>& preludes, const std::string& flags_text,
+        const std::string& build_id);
     // The digest of a script and of the scripts that it imports ("using "x.hot";"), also the
     // imports of the imports. A script import is read from the directory of the script, then from
     // the include dirs. When an imported script changes, the digest changes.

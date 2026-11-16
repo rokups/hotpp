@@ -28,6 +28,16 @@ namespace fs = std::filesystem;
 namespace hot::ls
 {
 
+namespace
+{
+// The key of a dependency in by_dep_. It has the form of index_key() (lexically_normal). The
+// stamp keeps the spelling, because the stat must name the file that the compiler reads.
+std::string dep_key(const std::string& spelling)
+{
+    return utf8_path(spelling).lexically_normal().string();
+}
+} // namespace
+
 void WorkspaceIndex::add_locked(const std::string& path, const Entry& e)
 {
     for (const std::string& w : e.words)
@@ -39,7 +49,7 @@ void WorkspaceIndex::add_locked(const std::string& path, const Entry& e)
             if (!r.id.empty())
                 by_ref_[r.id].insert(path);
     for (const auto& dep : e.dep_stamps)
-        by_dep_[dep.first].insert(path); // dep.first has the form of index_key()
+        by_dep_[dep_key(dep.first)].insert(path);
 }
 
 void WorkspaceIndex::remove_locked(const std::string& path, const Entry& e)
@@ -62,7 +72,7 @@ void WorkspaceIndex::remove_locked(const std::string& path, const Entry& e)
             if (!r.id.empty())
                 drop(by_ref_, r.id);
     for (const auto& dep : e.dep_stamps)
-        drop(by_dep_, dep.first);
+        drop(by_dep_, dep_key(dep.first));
 }
 
 void WorkspaceIndex::set(const std::string& path, std::shared_ptr<const Entry> entry)
@@ -417,6 +427,16 @@ bool WorkspaceIndex::invalidate_stale(const std::string& path, const std::shared
     return queued;
 }
 
+std::vector<std::string> WorkspaceIndex::known_paths() const
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::vector<std::string> out;
+    for (const auto& [path, slot] : slots_)
+        if (slot.has_config)
+            out.push_back(path);
+    return out;
+}
+
 void WorkspaceIndex::forget(const std::string& path)
 {
     {
@@ -650,10 +670,11 @@ void WorkspaceIndex::worker_main()
                 const JobConfig& c = job.config;
                 // One digest call gives the digest and the stamps of the imports it read.
                 std::vector<SymbolIndex::DepStamp> deps;
-                std::string digest_in = symbols_->cached_digest(path, text, c.options.include_dirs, &deps);
+                const std::string digest_in = symbols_->cached_digest(path, text, c.options.include_dirs, &deps);
                 // The preludes are read from disk. A stamp is taken before its read. A missing
                 // file gets the missing stamp, so a file that appears makes the entry old.
                 hotc::TranslateOptions opts = c.options;
+                std::vector<std::pair<std::string, std::string>> prelude_texts;
                 for (const std::string& p : c.prelude_paths)
                 {
                     FileStamp ps;
@@ -661,8 +682,7 @@ void WorkspaceIndex::worker_main()
                     if (stat_file(p, ps) && read_whole(p, ptext))
                     {
                         deps.push_back(SymbolIndex::DepStamp{p, ps.size, ps.mtime});
-                        digest_in += "\nprelude:" + p + '\0' + ptext;
-                        opts.preludes.emplace_back(p, std::move(ptext));
+                        prelude_texts.emplace_back(p, std::move(ptext));
                     }
                     else
                     {
@@ -671,7 +691,8 @@ void WorkspaceIndex::worker_main()
                         deps.push_back(SymbolIndex::DepStamp{p, ps.size, ps.mtime});
                     }
                 }
-                const std::string digest = SymbolIndex::digest(digest_in + c.flags_text + "\nbuild:" + c.build_id);
+                const std::string digest = SymbolIndex::shard_digest(digest_in, prelude_texts, c.flags_text, c.build_id);
+                opts.preludes.insert(opts.preludes.end(), prelude_texts.begin(), prelude_texts.end());
                 entry = build_entry(path, stamp, text, opts, digest, deps, *symbols_, *session_, &analyzed);
             }
         }

@@ -8813,6 +8813,60 @@ TEST(WorkspaceIndexEvents, WatchedNewUserPreludeMakesTheIndexAnalyzeTheScriptAga
     EXPECT_EQ(after["pending"], 0);
 }
 
+// HOT-34: many created .hot files that are not preludes do not queue the other scripts. One
+// file with the prelude suffix does.
+TEST(WorkspaceIndexEvents, WatchedFilesWithoutThePreludeSuffixQueueNothing)
+{
+    TempDir dir;
+    write_file((dir.path() / "a.hot").string(), "[Tagged] class Marker { int n = 0; }\n");
+    write_file((dir.path() / "b.hot").string(), "class Other { int n = 0; }\n");
+    auto opt = options(dir, false);
+    opt.background_index = true;
+    opt.prelude_suffix = ".prelude.hot";
+    LsClient client(opt);
+    client.initialize(dir.path().string());
+    const json before = wait_index_idle(client);
+    ASSERT_TRUE(before.value("ready", false)) << before.dump();
+    const int start = before["analyzed"].get<int>() + before["loaded"].get<int>();
+    TempDir outside; // a created file outside the workspace queues no job of its own
+    json changes = json::array();
+    for (int i = 0; i < 50; ++i)
+        changes.push_back({{"uri", uri_of((outside.path() / ("n" + std::to_string(i) + ".hot")).string())}, {"type", 1}});
+    client.notify("workspace/didChangeWatchedFiles", {{"changes", changes}});
+    const json same = wait_index_idle(client);
+    EXPECT_EQ(same["analyzed"].get<int>() + same["loaded"].get<int>(), start) << same.dump();
+    const std::string prelude = (dir.path() / "user.prelude.hot").string();
+    write_file(prelude, "[attribute] class Tagged;\n");
+    watched(client, prelude, 1);
+    const json after = wait_index_until(client, [&](const json& s) { return s["analyzed"].get<int>() + s["loaded"].get<int>() > start; });
+    EXPECT_GT(after["analyzed"].get<int>() + after["loaded"].get<int>(), start) << after.dump();
+}
+
+// HOT-34: the server and the index worker give one shard digest for a script with a prelude. The
+// server loads the shard that the worker stored, and it does not analyze the script again.
+TEST(WorkspaceIndexEvents, ServerLoadsTheShardOfTheWorkerForAScriptWithAPrelude)
+{
+    TempDir pre;
+    const std::string prelude = (pre.path() / "game.prelude.hot").string();
+    write_file(prelude, "[attribute] class Tagged;\n");
+    TempDir dir;
+    const std::string script = (dir.path() / "a.hot").string();
+    write_file(script, "[Tagged] class Marker { int n = 0; }\n");
+    auto opt = options(dir, false);
+    opt.background_index = true;
+    opt.preludes = {prelude};
+    LsClient client(opt);
+    client.initialize(dir.path().string());
+    const json before = wait_index_idle(client);
+    ASSERT_TRUE(before.value("ready", false)) << before.dump();
+    const json st0 = client.request("hot/indexStats", json::object())["result"];
+    const json st1 = client.request("hot/indexStats", {{"tables", {uri_of(script)}}})["result"];
+    const json st2 = client.request("hot/indexStats", json::object())["result"];
+    EXPECT_EQ(st2["analyzed"].get<int>(), st0["analyzed"].get<int>()) << st2.dump();
+    EXPECT_GT(st2["loaded"].get<int>(), st0["loaded"].get<int>()) << st2.dump();
+    (void)st1;
+}
+
 TEST(WorkspaceIndexEvents, WatchedDeleteRemovesTheScriptFromTheIndex)
 {
     TempDir dir;

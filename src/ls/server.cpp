@@ -1475,6 +1475,15 @@ void Server::refresh_hosts(Doc* current, bool force)
 void Server::on_watched_files(const json& p)
 {
     bool host_file = false;
+    // The prelude suffixes of the options and of all the hosts. A file that has none of them is
+    // not a prelude, so it needs no walk of the scripts.
+    std::set<std::string> suffixes, changed_suffixes;
+    if (!opt_.prelude_suffix.empty())
+        suffixes.insert(opt_.prelude_suffix);
+    for (const HostSet& hs : hosts_)
+        for (const auto& h : hs.all())
+            if (!h->prelude_suffix.empty())
+                suffixes.insert(h->prelude_suffix);
     for (const json& c : p.value("changes", json::array()))
     {
         if (!c.is_object() || !c.value("uri", json()).is_string())
@@ -1504,16 +1513,20 @@ void Server::on_watched_files(const json& p)
                     windex_.schedule(key, index_job_config(key), IndexLevel::Importer);
                 // A new or a deleted user prelude changes the preludes of all the scripts.
                 if (type == 1 || type == 3)
-                    for (const std::string& script : workspace_scripts())
-                    {
-                        const std::string& suffix = effective_options(script).prelude_suffix;
-                        if (!suffix.empty() && path.size() >= suffix.size()
-                            && path.compare(path.size() - suffix.size(), suffix.size(), suffix) == 0)
-                            windex_.schedule(script, index_job_config(script), IndexLevel::Rest);
-                    }
+                    for (const std::string& suffix : suffixes)
+                        if (path.size() >= suffix.size() && path.compare(path.size() - suffix.size(), suffix.size(), suffix) == 0)
+                            changed_suffixes.insert(suffix);
             }
         }
     }
+    // One walk of the scripts for the whole notification.
+    if (!changed_suffixes.empty() && index_active())
+        for (const std::string& script : workspace_scripts())
+        {
+            const std::string& suffix = effective_options(script).prelude_suffix;
+            if (changed_suffixes.count(suffix))
+                windex_.schedule(script, index_job_config(script), IndexLevel::Rest);
+        }
     if (host_file)
         refresh_hosts(nullptr);
 }
@@ -7079,8 +7092,20 @@ void Server::reschedule_index()
     if (sig == index_signature_)
         return;
     index_signature_ = std::move(sig);
+    // Every path that has a slot gets the new config. This includes the paths that ensure()
+    // made under hidden directories. A path that left the workspace is forgotten.
+    std::set<std::string> paths;
     for (const std::string& path : workspace_scripts())
-        windex_.schedule(path, index_job_config(path), IndexLevel::Rest);
+        paths.insert(path);
+    for (const std::string& path : windex_.known_paths())
+        paths.insert(path);
+    for (const std::string& path : paths)
+    {
+        if (in_workspace(path))
+            windex_.schedule(path, index_job_config(path), IndexLevel::Rest);
+        else
+            windex_.forget(path);
+    }
 }
 
 void Server::start_background_index()
@@ -7146,7 +7171,13 @@ std::string Server::shard_digest(const std::string& path, const std::string& tex
     std::string flags_text;
     for (const std::string& f : eff.extra_flags)
         flags_text += f + '\n';
-    return SymbolIndex::digest(index_.cached_digest(path, text, eff.include_dirs) + flags_text + "\nbuild:" + opt_.build_id);
+    // The preludes go in with the key form of index_job_config, so the worker gives the same digest.
+    std::vector<std::pair<std::string, std::string>> preludes;
+    for (const std::string& p : prelude_files(eff, path))
+        if (const auto prelude_text = read_file(p))
+            preludes.emplace_back(index_key(p), *prelude_text);
+    return SymbolIndex::shard_digest(
+        index_.cached_digest(path, text, eff.include_dirs), preludes, flags_text, opt_.build_id);
 }
 
 void Server::add_script_symbols(const std::string& query, json& out)
