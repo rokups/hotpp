@@ -63,3 +63,9 @@ target_compile_definitions(bench_backends_opt PRIVATE BENCH_AOT_OPT=1
     BENCH_INCLUDES="${PROJECT_SOURCE_DIR}/include|${PROJECT_SOURCE_DIR}/tests/engine|${CMAKE_CURRENT_SOURCE_DIR}"
     BENCH_RESOURCE_DIR="${CLANG_RESOURCE_DIR}"
     BENCH_WORK_DIR="${HOT_SCRATCH_DIR}/bench_opt")
+
+# bench_reload: the warm reload after a body edit of one script, with the compile flags of a host
+# (tools/bench/bench_reload.py). No host scripts are built into it.
+add_executable(bench_reload bench_reload.cpp)
+target_link_libraries(bench_reload PRIVATE hot_backend)
+set_target_properties(bench_reload PROPERTIES ENABLE_EXPORTS ON)
