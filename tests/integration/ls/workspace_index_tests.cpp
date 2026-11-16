@@ -298,7 +298,16 @@ std::shared_ptr<const Entry> entry_with_deps(const std::string& path, const std:
 TEST(WorkspaceIndex, InvalidateQueuesThePathAndItsImporters)
 {
     WorkspaceIndex idx;
-    // set() makes the slots and queues no job.
+    // The three scripts do not exist: each job fails. Then no job is queued and no worker runs.
+    SymbolIndex symbols;
+    hotc::TranslatorSession session;
+    for (const char* p : {"lib.hot", "main.hot", "other.hot"})
+        idx.schedule(p, JobConfig{}, IndexLevel::Rest);
+    idx.start(symbols, session, 1, nullptr);
+    for (int i = 0; i < 6000 && idx.stats().pending > 0; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    idx.stop();
+    ASSERT_EQ(idx.stats().pending, 0);
     idx.set("lib.hot", entry_with_deps("lib.hot", {}));
     idx.set("main.hot", entry_with_deps("main.hot", {"lib.hot"}));
     idx.set("other.hot", entry_with_deps("other.hot", {"x.h"}));
@@ -364,4 +373,163 @@ TEST(WorkspaceIndex, InvalidateDuringAJobDropsTheResultAndRunsAgain)
     ASSERT_TRUE(e);
     EXPECT_NE(e->text.find("int g()"), std::string::npos);
     EXPECT_EQ(idx.all_entries().size(), 1u);
+}
+
+namespace
+{
+const char* const kTextOne = "class M\n{\n    int f() { return 1; }\n}\n";
+const char* const kTextTwo = "class M\n{\n    int g() { return 2; }\n}\n";
+
+JobConfig config_for(const std::string& path)
+{
+    JobConfig c;
+    c.options = options_for(path);
+    return c;
+}
+
+const auto kLong = std::chrono::seconds(30);
+} // namespace
+
+// HOT-34: a change on the disk with no invalidate call gives a new entry from wait_for.
+TEST(WorkspaceIndex, WaitForReplacesAnEntryAfterADiskChangeWithoutAnEvent)
+{
+    TempDir tmp;
+    const std::string path = tmp.write("main.hot", kTextOne, -100);
+    SymbolIndex symbols;
+    hotc::TranslatorSession session;
+    WorkspaceIndex idx;
+    idx.schedule(path, config_for(path), IndexLevel::Rest);
+    idx.finish_scheduling();
+    idx.start(symbols, session, 1, nullptr);
+    const auto first = idx.wait_for({path}, nullptr, std::chrono::steady_clock::now() + kLong);
+    ASSERT_TRUE(first.missing.empty());
+    const auto old = first.entries.at(path);
+    EXPECT_NE(old->text.find("int f()"), std::string::npos);
+
+    tmp.write("main.hot", kTextTwo, -50); // no invalidate call
+    const auto second = idx.wait_for({path}, nullptr, std::chrono::steady_clock::now() + kLong);
+    idx.stop();
+    ASSERT_TRUE(second.missing.empty());
+    const auto fresh_entry = second.entries.at(path);
+    EXPECT_NE(fresh_entry, old);
+    EXPECT_NE(fresh_entry->text.find("int g()"), std::string::npos);
+    EXPECT_EQ(idx.entry(path), fresh_entry);
+}
+
+// HOT-34: a change of an import gives a new entry of the importer.
+TEST(WorkspaceIndex, WaitForReplacesTheEntryOfAnImporterAfterAnImportChange)
+{
+    TempDir tmp;
+    const std::string lib = tmp.write("lib.hot", "int helper() { return 1; }\n", -100);
+    const std::string path = tmp.write("main.hot", "using \"lib.hot\";\nclass M\n{\n    int f() { return helper(); }\n}\n", -100);
+    SymbolIndex symbols;
+    hotc::TranslatorSession session;
+    WorkspaceIndex idx;
+    idx.schedule(lib, config_for(lib), IndexLevel::Rest);
+    idx.schedule(path, config_for(path), IndexLevel::Rest);
+    idx.finish_scheduling();
+    idx.start(symbols, session, 1, nullptr);
+    const auto first = idx.wait_for({lib, path}, nullptr, std::chrono::steady_clock::now() + kLong);
+    ASSERT_TRUE(first.missing.empty());
+    const auto old = first.entries.at(path);
+    ASSERT_EQ(old->dep_stamps.size(), 1u);
+
+    tmp.write("lib.hot", "int helper() { return 2; }\n", -50);
+    const auto second = idx.wait_for({path}, nullptr, std::chrono::steady_clock::now() + kLong);
+    idx.stop();
+    ASSERT_TRUE(second.missing.empty());
+    const auto now_entry = second.entries.at(path);
+    EXPECT_NE(now_entry, old);
+    EXPECT_EQ(now_entry->dep_stamps.front().second, stamp_now(lib));
+}
+
+// HOT-34: a deadline of now checks the stamps, queues the stale path and gives it as missing.
+TEST(WorkspaceIndex, WaitForWithDeadlineNowGivesTheStalePathAsMissing)
+{
+    TempDir tmp;
+    const std::string path = tmp.write("main.hot", kTextOne, -100);
+    SymbolIndex symbols;
+    hotc::TranslatorSession session;
+    const auto e = build_entry(path, stamp_now(path), kTextOne, options_for(path), "d", symbols, session);
+    WorkspaceIndex idx; // no worker: the queued job stays
+    idx.schedule(path, config_for(path), IndexLevel::Rest);
+    idx.set(path, e);
+    idx.finish_scheduling();
+    const auto ok = idx.wait_for({path}, nullptr, std::chrono::steady_clock::now());
+    EXPECT_TRUE(ok.missing.empty());
+    EXPECT_EQ(ok.entries.at(path), e);
+
+    tmp.write("main.hot", kTextTwo, -50);
+    const auto snap = idx.wait_for({path}, nullptr, std::chrono::steady_clock::now());
+    EXPECT_EQ(snap.missing, (std::vector<std::string>{path}));
+    EXPECT_TRUE(snap.entries.empty());
+    EXPECT_EQ(idx.entry(path), e);
+    EXPECT_EQ(idx.stats().pending, 1); // the stale path is queued
+}
+
+// HOT-34: a path that failed, or that the index does not know, is missing.
+TEST(WorkspaceIndex, WaitForGivesAFailedPathAsMissing)
+{
+    TempDir tmp;
+    const std::string path = (tmp.dir / "none.hot").string(); // no such file
+    SymbolIndex symbols;
+    hotc::TranslatorSession session;
+    WorkspaceIndex idx;
+    idx.schedule(path, config_for(path), IndexLevel::Rest);
+    idx.finish_scheduling();
+    idx.start(symbols, session, 1, nullptr);
+    const auto snap = idx.wait_for({path, "unknown.hot"}, nullptr, std::chrono::steady_clock::now() + kLong);
+    idx.stop();
+    EXPECT_EQ(snap.missing, (std::vector<std::string>{path, "unknown.hot"}));
+    EXPECT_TRUE(snap.entries.empty());
+}
+
+// HOT-34: an entry that a worker publishes in the call is valid by generation. The test publishes
+// it from poll() with a stamp that no stat can match. A stamp check would reject it for ever.
+TEST(WorkspaceIndex, WaitForDoesNotLoopOnAnEntryPublishedDuringTheCall)
+{
+    TempDir tmp;
+    const std::string path = tmp.write("main.hot", kTextOne, -100);
+    SymbolIndex symbols;
+    hotc::TranslatorSession session;
+    const auto old = build_entry(path, stamp_now(path), kTextOne, options_for(path), "d", symbols, session);
+    WorkspaceIndex idx; // no worker
+    idx.schedule(path, config_for(path), IndexLevel::Rest);
+    idx.set(path, old);
+    tmp.write("main.hot", kTextTwo, -50); // the old entry is stale
+    auto published = std::make_shared<Entry>(*old);
+    published->stamp = FileStamp{1, 1};
+    int polls = 0;
+    const auto snap = idx.wait_for({path},
+        [&]
+        {
+            if (++polls == 1)
+                idx.set(path, published); // the generation is the current one
+        },
+        std::chrono::steady_clock::now() + kLong);
+    EXPECT_TRUE(snap.missing.empty());
+    EXPECT_EQ(snap.entries.at(path), published);
+    EXPECT_EQ(polls, 1);
+}
+
+// HOT-34: a slot that set() made has no config. invalidate and wait_for queue no job for it.
+TEST(WorkspaceIndex, ASlotWithNoConfigGetsNoJobAndItsStalePathIsMissing)
+{
+    TempDir tmp;
+    const std::string path = tmp.write("main.hot", kTextOne, -100);
+    SymbolIndex symbols;
+    hotc::TranslatorSession session;
+    const auto e = build_entry(path, stamp_now(path), kTextOne, options_for(path), "d", symbols, session);
+    WorkspaceIndex idx;
+    idx.set(path, e); // no schedule(): no config
+    idx.invalidate(path);
+    EXPECT_EQ(idx.stats().pending, 0);
+    EXPECT_EQ(idx.wait_for({path}, nullptr, std::chrono::steady_clock::now() + kLong).entries.at(path), e);
+
+    tmp.write("main.hot", kTextTwo, -50);
+    const auto snap = idx.wait_for({path}, nullptr, std::chrono::steady_clock::now() + kLong);
+    EXPECT_EQ(snap.missing, (std::vector<std::string>{path}));
+    EXPECT_TRUE(snap.entries.empty());
+    EXPECT_EQ(idx.stats().pending, 0);
+    EXPECT_EQ(idx.entry(path), e);
 }

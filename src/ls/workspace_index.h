@@ -90,6 +90,16 @@ struct IndexStats
     int threads = 0;
 };
 
+// The result of WorkspaceIndex::wait_for.
+struct IndexSnapshot
+{
+    // The valid entries only. An entry is valid when it is of the current generation of the
+    // slot and it passed the stamp check in the call, or a worker published it in the call.
+    std::map<std::string, std::shared_ptr<const Entry>> entries;
+    // The paths that are stale at the deadline, that failed, or that the index does not know.
+    std::vector<std::string> missing;
+};
+
 class WorkspaceIndex
 {
 public:
@@ -119,10 +129,13 @@ public:
     void invalidate(const std::string& path);
     // Removes the entry, the slot and the queued job of a deleted script.
     void forget(const std::string& path);
-    // Bumps the paths and waits until they have an entry, failed or have no job. Calls
-    // "poll" about each 50 ms without a lock (it may throw). Gives the paths that are still
-    // missing at the deadline.
-    std::vector<std::string> wait_for(const std::vector<std::string>& paths,
+    // Waits until each path has a valid entry (see IndexSnapshot), failed or is not known. It
+    // checks the stamps of the entries on the caller thread without the lock, with one stat of
+    // each file in the call. It queues a job for a stale entry and bumps the jobs of the paths
+    // in each round. A slot with no config (made by set() only) gets no job: its stale path is
+    // missing. Calls "poll" about each 50 ms without a lock (it may throw). A deadline in the
+    // past returns after one round.
+    IndexSnapshot wait_for(const std::vector<std::string>& paths,
         const std::function<void()>& poll, std::chrono::steady_clock::time_point deadline);
     IndexStats stats() const;
 
@@ -151,6 +164,11 @@ private:
     };
     // Counts a change of the path and queues a job at "level" (keeps a higher priority level).
     void queue_locked(const std::string& path, IndexLevel level);
+    // Does invalidate() for the lock holder. Gives true when a job is queued for "path" itself.
+    bool invalidate_locked(const std::string& path);
+    // Like invalidate(), but only when entries_[path] is still "stale". Gives false when the
+    // path gets no job. Gives true when a newer entry replaced "stale".
+    bool invalidate_stale(const std::string& path, const std::shared_ptr<const Entry>& stale);
     void set_locked(const std::string& path, std::shared_ptr<const Entry> entry, uint64_t generation);
     void worker_main();
     // Takes the next job that no worker runs. False at stop.
@@ -182,6 +200,7 @@ private:
     struct Slot // one for each known path
     {
         JobConfig config;              // kept after take(), so the index can queue the path again
+        bool has_config = false;       // schedule() set the config; a slot without it gets no job
         uint64_t generation = 0;       // counts the changes of the path
         uint64_t entry_generation = 0; // the generation at the start of the job that made the entry
         bool failed = false;           // the last job at this generation gave no entry

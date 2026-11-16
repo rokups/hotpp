@@ -286,7 +286,9 @@ void WorkspaceIndex::schedule(const std::string& path, JobConfig config, IndexLe
             first_schedule_ = std::chrono::steady_clock::now();
         known_.insert(path);
         total_ = static_cast<int>(known_.size());
-        slots_[path].config = std::move(config);
+        Slot& slot = slots_[path];
+        slot.config = std::move(config);
+        slot.has_config = true;
         queue_locked(path, level);
         pending_ = static_cast<int>(jobs_.size() + running_.size());
         check_ready_locked();
@@ -338,20 +340,46 @@ void WorkspaceIndex::queue_locked(const std::string& path, IndexLevel level)
     }
 }
 
+bool WorkspaceIndex::invalidate_locked(const std::string& path)
+{
+    std::vector<std::string> targets{path};
+    const auto dep = by_dep_.find(path);
+    if (dep != by_dep_.end())
+        targets.insert(targets.end(), dep->second.begin(), dep->second.end());
+    bool queued = false;
+    for (const std::string& target : targets)
+    {
+        const auto slot = slots_.find(target);
+        if (slot == slots_.end() || !slot->second.has_config)
+            continue; // a job with no config would analyze with empty options
+        queue_locked(target, IndexLevel::Importer);
+        if (target == path)
+            queued = true;
+    }
+    pending_ = static_cast<int>(jobs_.size() + running_.size());
+    return queued;
+}
+
 void WorkspaceIndex::invalidate(const std::string& path)
 {
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        std::vector<std::string> targets{path};
-        const auto dep = by_dep_.find(path);
-        if (dep != by_dep_.end())
-            targets.insert(targets.end(), dep->second.begin(), dep->second.end());
-        for (const std::string& target : targets)
-            if (slots_.count(target))
-                queue_locked(target, IndexLevel::Importer);
-        pending_ = static_cast<int>(jobs_.size() + running_.size());
+        invalidate_locked(path);
     }
     work_cv_.notify_all();
+}
+
+bool WorkspaceIndex::invalidate_stale(const std::string& path, const std::shared_ptr<const Entry>& stale)
+{
+    bool queued = true;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const auto it = entries_.find(path);
+        if (it != entries_.end() && it->second == stale)
+            queued = invalidate_locked(path);
+    }
+    work_cv_.notify_all();
+    return queued;
 }
 
 void WorkspaceIndex::forget(const std::string& path)
@@ -375,21 +403,83 @@ void WorkspaceIndex::forget(const std::string& path)
     done_cv_.notify_all();
 }
 
-std::vector<std::string> WorkspaceIndex::wait_for(const std::vector<std::string>& paths,
+IndexSnapshot WorkspaceIndex::wait_for(const std::vector<std::string>& paths,
     const std::function<void()>& poll, std::chrono::steady_clock::time_point deadline)
 {
-    bump(paths);
-    work_cv_.notify_all();
-    for (;;)
+    struct View // the state of one path, copied under the lock
     {
-        std::vector<std::string> missing;
+        std::string path;
+        std::shared_ptr<const Entry> entry;
+        bool known = false, current = false, failed = false, queued = false;
+    };
+    IndexSnapshot out;
+    std::map<std::string, FileStamp> memo; // one stat of each file in this call
+    std::map<std::string, std::shared_ptr<const Entry>> first; // the entry of each path in round 1
+    std::set<std::string> lost; // the paths that no job can make valid
+    std::vector<std::string> todo = paths;
+    for (bool first_round = true;; first_round = false)
+    {
+        std::vector<View> views;
+        bool stopped = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            stopped = stop_;
+            for (const std::string& path : todo)
+            {
+                View v;
+                v.path = path;
+                const auto slot = slots_.find(path);
+                if (slot != slots_.end())
+                {
+                    v.known = true;
+                    v.failed = slot->second.failed;
+                    const auto e = entries_.find(path);
+                    if (e != entries_.end())
+                    {
+                        v.entry = e->second;
+                        v.current = slot->second.entry_generation == slot->second.generation;
+                    }
+                    v.queued = jobs_.count(path) || running_.count(path);
+                }
+                views.push_back(std::move(v));
+            }
+        }
+        std::vector<std::string> pending;
+        for (const View& v : views)
+        {
+            if (first_round)
+                first[v.path] = v.entry;
+            if (!v.known)
+                lost.insert(v.path);
+            else if (v.entry && v.current)
+            {
+                // A worker published this entry in this call: accept it by generation only.
+                const bool published = !first_round && v.entry != first[v.path];
+                if (published || fresh(*v.entry, &memo)) // no lock here
+                    out.entries[v.path] = v.entry;
+                else if (!invalidate_stale(v.path, v.entry))
+                    lost.insert(v.path);
+                else
+                    pending.push_back(v.path);
+            }
+            else if (v.failed || !v.queued)
+                lost.insert(v.path);
+            else
+                pending.push_back(v.path);
+        }
+        todo = pending;
+        const bool late = std::chrono::steady_clock::now() >= deadline;
+        if (pending.empty() || stopped || late)
+        {
+            for (const std::string& path : paths)
+                if (lost.count(path) || (!out.entries.count(path)))
+                    out.missing.push_back(path);
+            return out;
+        }
+        bump(pending); // each round: a re-queued job must not wait behind the Rest queue
+        work_cv_.notify_all();
         {
             std::unique_lock<std::mutex> lock(mutex_);
-            for (const std::string& path : paths)
-                if (!entries_.count(path) && (jobs_.count(path) || running_.count(path)))
-                    missing.push_back(path);
-            if (missing.empty() || stop_ || std::chrono::steady_clock::now() >= deadline)
-                return missing;
             done_cv_.wait_for(lock, std::chrono::milliseconds(50));
         }
         if (poll)
