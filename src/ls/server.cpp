@@ -4372,17 +4372,27 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
         std::optional<std::string> closed_text;
         if (!open)
         {
-            if (const std::shared_ptr<const Entry> e = entry_in(snap, path))
+            std::shared_ptr<const Entry> e = entry_in(snap, path);
+            bool read_done = false;
+            if (e)
+            {
+                // A disk text that differs from the entry text drops the entry.
+                closed_text = read_file(path);
+                read_done = true;
+                if (!closed_text || *closed_text != e->text)
+                    e = nullptr;
+            }
+            if (e)
             {
                 ++entry_hits_;
                 if (!has_word(e->text, word_name) || !e->unclaimed_words.count(word_name))
                     continue; // no word, or every code word is a script symbol
-                closed_text = e->text;
             }
             else
             {
                 ++entry_misses_;
-                closed_text = read_file(path);
+                if (!read_done)
+                    closed_text = read_file(path);
                 if (!closed_text || !has_word(*closed_text, word_name))
                     continue;
                 if (table_lacks_word(path, *closed_text, word_name))
@@ -5025,8 +5035,9 @@ std::variant<Server::PlaceMap, std::string> Server::places_of(
         for (const std::string& f : import_graph(also).importers_of(r.ref.decl_file))
             files.push_back(f);
     // The index entries of the closed scripts. No deadline: the poll is check_cancel.
+    // Strict without "given": no entry is used, every closed script uses the inline code.
     IndexSnapshot own;
-    if (!given)
+    if (!given && !strict)
         own = index_entries(files, std::chrono::steady_clock::time_point::max());
     const IndexSnapshot& snap = given ? *given : own;
     for (const std::string& path : files)
@@ -5037,8 +5048,28 @@ std::variant<Server::PlaceMap, std::string> Server::places_of(
         std::optional<std::string> closed_text;
         if (!open)
         {
-            e = entry_in(snap, path);
-            if (e)
+            if (given || !strict)
+                e = entry_in(snap, path);
+            // Not strict: a disk text that differs from the entry text drops the entry.
+            if (e && !strict)
+            {
+                const std::optional<std::string> disk = read_file(path);
+                if (!disk || *disk != e->text)
+                {
+                    e = nullptr;
+                    closed_text = disk;
+                    ++entry_misses_;
+                    if (!closed_text || closed_text->find(name) == std::string::npos)
+                        continue; // the word filter
+                }
+                else
+                {
+                    ++entry_hits_;
+                    if (e->text.find(name) == std::string::npos)
+                        continue; // the word filter
+                }
+            }
+            else if (e)
             {
                 ++entry_hits_;
                 if (e->text.find(name) == std::string::npos)
@@ -5094,22 +5125,6 @@ std::variant<Server::PlaceMap, std::string> Server::places_of(
         if (!table)
             continue;
         scan();
-        // Not strict: a disk text that differs from the entry text drops the entry for this file.
-        if (e && !strict && (!found.empty() || !asks.empty()))
-        {
-            const std::optional<std::string> disk = read_file(path);
-            if (!disk || *disk != e->text)
-            {
-                e = nullptr;
-                closed_text = disk;
-                if (!closed_text || closed_text->find(name) == std::string::npos)
-                    continue; // the word filter
-                table = file_refs(path, &*closed_text, &text);
-                if (!table)
-                    continue;
-                scan();
-            }
-        }
         if (texts)
             (*texts)[uri] = text;
         for (const Pos& pos : found)

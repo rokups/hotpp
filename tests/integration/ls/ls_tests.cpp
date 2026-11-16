@@ -6572,6 +6572,8 @@ TEST(LanguageServer, EndOfInputWithQueuedRequestsWritesAllRepliesAndTheServerExi
 TEST(LanguageServerNative, ReferencesSkipClosedScriptsWithTheirOwnSymbolOfTheName)
 {
     REQUIRE_CLANGD();
+    const char* const bg_env = std::getenv("HOTPP_TEST_BACKGROUND_INDEX");
+    const bool bg_on = bg_env && std::string(bg_env) == "1";
     auto run = [&](bool warm, int& analyses)
     {
         // A cold scan analyzes each script with its own clangd. A long budget keeps the scan whole on a loaded machine.
@@ -6589,6 +6591,17 @@ TEST(LanguageServerNative, ReferencesSkipClosedScriptsWithTheirOwnSymbolOfTheNam
         }
         write_file((s.dir.path() / "pet.hot").string(), kPetScript);
         auto translations = [&] { return s.client->request("hot/indexStats", json::object())["result"].value("translations", -1); };
+        if (bg_on) // wait for the entry of each decoy
+            for (int i = 0; i < 5; ++i)
+            {
+                const std::string uri = uri_of((s.dir.path() / ("decoy" + std::to_string(i) + ".hot")).string());
+                for (int n = 0; n < 100; ++n)
+                {
+                    if (s.client->request("hot/indexStats", {{"entryOf", uri}})["result"].value("entryOf", "") != "missing")
+                        break;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                }
+            }
         const int before = translations();
         const std::vector<std::string> places = script_places(s);
         analyses = translations() - before;
@@ -6600,9 +6613,14 @@ TEST(LanguageServerNative, ReferencesSkipClosedScriptsWithTheirOwnSymbolOfTheNam
     EXPECT_EQ(warm, cold);
     EXPECT_NE(std::find_if(warm.begin(), warm.end(), [](const std::string& l) { return l.rfind("pet.hot", 0) == 0; }), warm.end());
     // With the index on, the entries skip the decoy scripts in the cold run too: the two runs are equal.
-    const char* bg = std::getenv("HOTPP_TEST_BACKGROUND_INDEX");
-    const int least = bg && std::string(bg) == "1" ? 0 : 5;
+    const int least = bg_on ? 0 : 5;
     EXPECT_GE(cold_analyses - warm_analyses, least) << "warm " << warm_analyses << " cold " << cold_analyses;
+    // With the index on, no decoy goes to an analyze: only pet.hot does.
+    if (bg_on)
+    {
+        EXPECT_EQ(cold_analyses, 1) << "cold " << cold_analyses;
+        EXPECT_EQ(warm_analyses, 1) << "warm " << warm_analyses;
+    }
 }
 
 // HOT-32: a script with a resolved script ref and a native use of the same name is not skipped.
@@ -9205,16 +9223,20 @@ json ref_pos_of(const std::string& text, const std::string& word, int n)
 }
 
 // Builds the library and four importers (one is open with unsaved text). "which" is 0 for the class,
-// 1 for the method and 2 for the free function. "disk_change" writes a new use to a closed importer
-// with no event before the measured request. The result has a fixed root.
-json script_reference_run(bool background_index, int which, bool disk_change, json* stats_before, json* stats_after)
+// 1 for the method and 2 for the free function. "disk_change" is 0 for no change. It is 1 to append a new use to
+// a closed importer with no event before the measured request. It is 2 to edit the closed importer with the same
+// size and the old mtime: the index text has a misspelled name that the disk text has right. The result has a fixed root.
+json script_reference_run(bool background_index, int which, int disk_change, json* stats_before, json* stats_after)
 {
     TempDir dir;
     hot::ls::ServerOptions o = options(dir, true);
     o.background_index = background_index;
     o.reference_budget_ms = 120000;
+    std::string b_first = kRefUseB;
+    if (disk_change == 2)
+        b_first.replace(b_first.find("Twice"), 5, "Twicf");
     const std::vector<std::pair<std::string, std::string>> closed = {
-        {"lib.hot", kRefLib}, {"a.hot", kRefUseA}, {"b.hot", kRefUseB}, {"c.hot", kRefUseC}};
+        {"lib.hot", kRefLib}, {"a.hot", kRefUseA}, {"b.hot", b_first}, {"c.hot", kRefUseC}};
     LsClient client(o);
     client.initialize(uri_of(dir.path().string()));
     for (const auto& [name, text] : closed)
@@ -9259,11 +9281,17 @@ json script_reference_run(bool background_index, int which, bool disk_change, js
             break;
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
     }
-    std::string b_text = kRefUseB;
-    if (disk_change)
+    if (disk_change == 1)
     {
-        b_text += "class Extra {\n    int fe() { return Twice(7); }\n}\n";
+        const std::string b_text = std::string(kRefUseB) + "class Extra {\n    int fe() { return Twice(7); }\n}\n";
         write_file((dir.path() / "b.hot").string(), b_text); // no watched-files event
+    }
+    else if (disk_change == 2)
+    {
+        const std::string b_path = (dir.path() / "b.hot").string();
+        const auto old_time = std::filesystem::last_write_time(b_path);
+        write_file(b_path, kRefUseB); // no watched-files event, the same size
+        std::filesystem::last_write_time(b_path, old_time);
     }
     *stats_before = client.request("hot/indexStats", json::object())["result"];
     const json r = client.request("textDocument/references", p);
@@ -9293,7 +9321,9 @@ TEST(WorkspaceIndexReferences, ScriptReferencesGiveTheSameResultWithAndWithoutTh
             EXPECT_NE(text.find("ROOT/a.hot"), std::string::npos) << text;
         EXPECT_EQ(text.find("ROOT/c.hot"), std::string::npos) << text;
         EXPECT_EQ(off_after["entryHits"].get<int>(), 0) << off_after.dump();
-        EXPECT_GT(on_after["entryHits"].get<int>(), on_before["entryHits"].get<int>()) << on_after.dump();
+        // The four closed scripts (lib, a, b, c) each give one hit.
+        EXPECT_EQ(on_after["entryHits"].get<int>() - on_before["entryHits"].get<int>(), 4) << which << " " << on_after.dump();
+        EXPECT_EQ(on_after["entryMisses"].get<int>(), on_before["entryMisses"].get<int>()) << on_after.dump();
         for (const char* key : {"analyzed", "tableAnalyses", "loaded"})
             EXPECT_EQ(on_after[key].get<int>(), on_before[key].get<int>()) << key << " " << which << " " << on_after.dump();
     }
@@ -9314,4 +9344,85 @@ TEST(WorkspaceIndexReferences, ScriptReferencesSeeADiskChangeWithNoEvent)
     }();
     EXPECT_EQ(on.size(), base.size() + 1) << on.dump();
     EXPECT_NE(on.dump().find("\"line\":5"), std::string::npos) << on.dump();
+}
+
+// HOT-34: a same-size edit with the old mtime and no event gives the new place. The stamp is equal,
+// so only the compare of the disk text with the entry text finds the change. The entry is dropped (a miss).
+TEST(WorkspaceIndexReferences, ScriptReferencesSeeASameStampEditWithNoEvent)
+{
+    REQUIRE_CLANGD();
+    json off_before, off_after, on_before, on_after;
+    const json off = script_reference_run(false, 2, 2, &off_before, &off_after);
+    const json on = script_reference_run(true, 2, 2, &on_before, &on_after);
+    EXPECT_EQ(off, on);
+    EXPECT_NE(on.dump().find("ROOT/b.hot"), std::string::npos) << on.dump();
+    EXPECT_EQ(on_after["entryMisses"].get<int>() - on_before["entryMisses"].get<int>(), 1) << on_after.dump();
+}
+
+// HOT-34: the rename (strict) does not use the index entries. The changes are the same with the index on or off.
+TEST(WorkspaceIndexReferences, RenameDoesNotUseTheIndexEntries)
+{
+    REQUIRE_CLANGD();
+    auto run = [&](bool background_index, json* hits_before, json* hits_after)
+    {
+        TempDir dir;
+        hot::ls::ServerOptions o = options(dir, true);
+        o.background_index = background_index;
+        o.reference_budget_ms = 120000;
+        const std::vector<std::pair<std::string, std::string>> closed = {
+            {"lib.hot", kRefLib}, {"a.hot", kRefUseA}, {"b.hot", kRefUseB}, {"c.hot", kRefUseC}};
+        LsClient client(o);
+        client.initialize(uri_of(dir.path().string()));
+        for (const auto& [name, text] : closed)
+        {
+            const std::string file = (dir.path() / name).string();
+            write_file(file, text);
+            client.open(uri_of(file), text);
+            if (name != "lib.hot") // the rename starts from the open library
+                client.notify("textDocument/didClose", {{"textDocument", {{"uri", uri_of(file)}}}});
+        }
+        if (background_index)
+        {
+            wait_index_idle(client);
+            for (const auto& [name, text] : closed)
+            {
+                if (name == "lib.hot")
+                    continue;
+                json r;
+                for (int i = 0; i < 100; ++i)
+                {
+                    r = client.request("hot/indexStats", {{"entryOf", uri_of((dir.path() / name).string())}})["result"];
+                    if (r.value("entryOf", "") != "missing")
+                        break;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                }
+                EXPECT_NE(r.value("entryOf", ""), "missing") << r.dump();
+            }
+        }
+        const std::string lib = (dir.path() / "lib.hot").string();
+        json p = {{"textDocument", {{"uri", uri_of(lib)}}}, {"position", ref_pos_of(kRefLib, "Twice", 0)}, {"newName", "Double"}};
+        // The first answers can be empty while clangd starts. Ask again until the rename has changes.
+        json r;
+        for (int i = 0; i < 40; ++i)
+        {
+            *hits_before = client.request("hot/indexStats", json::object())["result"];
+            r = client.request("textDocument/rename", p);
+            *hits_after = client.request("hot/indexStats", json::object())["result"];
+            if (r.contains("result") && r["result"].is_object() && r["result"].contains("changes"))
+                break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        }
+        std::string out = r.value("result", json::object()).dump();
+        const std::string root = uri_of(dir.path().string());
+        for (size_t at; (at = out.find(root)) != std::string::npos;)
+            out.replace(at, root.size(), "ROOT");
+        return json::parse(out);
+    };
+    json off_before, off_after, on_before, on_after;
+    const json off = run(false, &off_before, &off_after);
+    const json on = run(true, &on_before, &on_after);
+    ASSERT_TRUE(on.contains("changes")) << on.dump();
+    EXPECT_TRUE(on["changes"].contains("ROOT/b.hot")) << on.dump();
+    EXPECT_EQ(off, on);
+    EXPECT_EQ(on_after["entryHits"].get<int>(), on_before["entryHits"].get<int>()) << on_after.dump();
 }
