@@ -14,6 +14,9 @@
 #if defined(__linux__)
 #include <dlfcn.h>
 #include <elf.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #endif
 #include <algorithm>
 #include <atomic>
@@ -396,6 +399,15 @@ std::vector<std::string> pch_build_command(const ClangFilesOptions& opt, const s
     return cmd;
 }
 
+// The options with a fixed fmt choice: a PCH build uses the choice of its plan, also when an other
+// job turned the own fmt copy on after the plan.
+ClangFilesOptions with_fmt_choice(const ClangFilesOptions& opt, bool own_fmt)
+{
+    ClangFilesOptions o = opt;
+    o.fmt_header_only = std::make_shared<std::atomic<bool>>(own_fmt);
+    return o;
+}
+
 // The compile command of the unit with the PCH.
 std::vector<std::string> with_pch(std::vector<std::string> cmd, const std::string& pch)
 {
@@ -556,6 +568,15 @@ ClangFilesBackend::ClangFilesBackend(ClangFilesOptions options)
         opt_.session = std::make_shared<hotc::TranslatorSession>();
     if (!opt_.fmt_header_only)
         opt_.fmt_header_only = std::make_shared<std::atomic<bool>>(false);
+    // The decision before the first compile: the flags ask for the fmt code of the host, but the host
+    // does not export it (a host library loaded RTLD_LOCAL is also checked). The own copy is on then.
+    // The check of the module after the link stays as the safety net.
+    if (!fmt_header_only(opt_) && !(opt_.host_fmt_probe ? opt_.host_fmt_probe() : host_exports_fmt(opt_.host_import_library)))
+    {
+        opt_.fmt_header_only->store(true);
+        if (std::getenv("HOT_TIMING"))
+            std::fprintf(stderr, "hot: the host does not export the fmt code; the units use their own fmt code\n");
+    }
     if (opt_.slots_file.empty())
         opt_.slots_file = opt_.work_dir + "/slots.txt";
     if (!opt_.cache_dir.empty() && ObjectCache::enabled_by_env())
@@ -665,12 +686,28 @@ std::vector<std::string> mingw_flags(const ClangFilesOptions& opt, bool compile)
 // import library of Windows must carry the fmt symbols; the loader of Mach-O has no check here).
 // HOT_FMT_HEADER_ONLY=1 forces the own copy. A backend that found a missing fmt symbol sets the
 // shared flag "opt.fmt_header_only": the own copy is on from then.
+// True for a Linux target with 64 bit ELF files (the check of the fmt symbols reads only these).
+static bool elf64_linux_target(const std::string& triple)
+{
+    if (triple.empty())
+        return sizeof(void*) == 8;
+    if (triple.find("linux") == std::string::npos)
+        return false;
+    for (const char* narrow : {"i386", "i486", "i586", "i686", "arm", "thumb", "mips-", "mipsel", "powerpc-", "riscv32"})
+        if (triple.rfind(narrow, 0) == 0)
+            return false;
+    return true;
+}
+
 bool fmt_header_only(const ClangFilesOptions& opt)
 {
 #if defined(__linux__)
     if (const char* v = std::getenv("HOT_FMT_HEADER_ONLY"); v && std::strcmp(v, "1") == 0)
         return true;
     if (opt.fmt_header_only && opt.fmt_header_only->load())
+        return true;
+    // The own fmt copy stays for a target that the check of the fmt symbols cannot read.
+    if (sizeof(void*) != 8 || !elf64_linux_target(opt.target_triple))
         return true;
     for (const std::string& f : opt.extra_flags)
         if (f == "-DFMT_SHARED" || f.compare(0, 13, "-DFMT_SHARED=") == 0)
@@ -682,59 +719,114 @@ bool fmt_header_only(const ClangFilesOptions& opt)
 #endif
 }
 
-// True when the module "path" has an undefined fmt symbol that the process does not export. The
-// loader would fail on it. The function reads the dynamic symbol table of an ELF64 file.
-bool has_missing_fmt_symbol(const std::string& path, std::string* first_name)
+#if defined(__linux__)
+namespace
+{
+
+// A symbol of the host: the global scope, or the handle of the host library when it is already
+// loaded (a host that loaded it with RTLD_LOCAL, for example a .NET P/Invoke).
+bool host_has_symbol(const char* name, const std::string& host_library)
+{
+    if (dlsym(RTLD_DEFAULT, name))
+        return true;
+    if (!host_library.empty())
+        if (void* handle = dlopen(host_library.c_str(), RTLD_LAZY | RTLD_NOLOAD))
+        {
+            const bool found = dlsym(handle, name) != nullptr;
+            dlclose(handle);
+            return found;
+        }
+    return false;
+}
+
+// Reads "len" bytes at "off" of the file. False when the range is outside the file.
+bool read_range(int fd, uint64_t file_size, uint64_t off, uint64_t len, void* out)
+{
+    if (off > file_size || len > file_size - off)
+        return false;
+    char* dst = static_cast<char*>(out);
+    while (len > 0)
+    {
+        const ssize_t n = pread(fd, dst, static_cast<size_t>(len), static_cast<off_t>(off));
+        if (n <= 0)
+            return false;
+        dst += n;
+        off += static_cast<uint64_t>(n);
+        len -= static_cast<uint64_t>(n);
+    }
+    return true;
+}
+
+} // namespace
+#endif
+
+bool host_exports_fmt(const std::string& host_library)
 {
 #if defined(__linux__)
-    std::string data;
-    {
-        std::ifstream in(path, std::ios::binary);
-        if (!in)
-            return false;
-        data.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
-    }
-    if (data.size() < sizeof(Elf64_Ehdr) || std::memcmp(data.data(), ELFMAG, SELFMAG) != 0
-        || data[EI_CLASS] != ELFCLASS64)
+    // A symbol that each module with the fmt code of the host needs.
+    return host_has_symbol("_ZN3fmt3v106detail11assert_failEPKciS3_", host_library);
+#else
+    (void)host_library;
+    return false;
+#endif
+}
+
+// True when the module "path" has an undefined fmt symbol that the process does not export. The
+// loader would fail on it. The function reads the dynamic symbol table of an ELF64 file. It reads
+// only the headers and the two tables (pread), not the whole file.
+bool has_missing_fmt_symbol(const std::string& path, std::string* first_name, const std::string& host_library)
+{
+#if defined(__linux__)
+    const int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+    if (fd < 0)
         return false;
+    struct Closer
+    {
+        int fd;
+        ~Closer() { close(fd); }
+    } closer{fd};
+    struct stat st;
+    if (fstat(fd, &st) != 0 || st.st_size <= 0)
+        return false;
+    const uint64_t size = static_cast<uint64_t>(st.st_size);
     Elf64_Ehdr eh;
-    std::memcpy(&eh, data.data(), sizeof eh);
-    if (eh.e_shoff == 0 || eh.e_shentsize != sizeof(Elf64_Shdr) || eh.e_shoff + uint64_t(eh.e_shnum) * sizeof(Elf64_Shdr) > data.size())
+    if (!read_range(fd, size, 0, sizeof eh, &eh) || std::memcmp(eh.e_ident, ELFMAG, SELFMAG) != 0
+        || eh.e_ident[EI_CLASS] != ELFCLASS64 || eh.e_shoff == 0 || eh.e_shentsize != sizeof(Elf64_Shdr))
         return false;
-    auto section = [&](size_t i) {
-        Elf64_Shdr sh;
-        std::memcpy(&sh, data.data() + eh.e_shoff + i * sizeof(Elf64_Shdr), sizeof sh);
-        return sh;
-    };
-    for (size_t i = 0; i < eh.e_shnum; ++i)
+    std::vector<Elf64_Shdr> sections(eh.e_shnum);
+    if (!sections.empty() && !read_range(fd, size, eh.e_shoff, uint64_t(eh.e_shnum) * sizeof(Elf64_Shdr), sections.data()))
+        return false;
+    const uint64_t limit = 256ull << 20; // a dynamic table of more than 256 MB is not real
+    for (const Elf64_Shdr& sh : sections)
     {
-        const Elf64_Shdr sh = section(i);
-        if (sh.sh_type != SHT_DYNSYM || sh.sh_link >= eh.e_shnum || sh.sh_offset + sh.sh_size > data.size())
+        if (sh.sh_type != SHT_DYNSYM || sh.sh_link >= sections.size() || sh.sh_size > limit)
             continue;
-        const Elf64_Shdr str = section(sh.sh_link);
-        if (str.sh_offset + str.sh_size > data.size())
+        const Elf64_Shdr& str = sections[sh.sh_link];
+        if (str.sh_size > limit || str.sh_size == 0)
             continue;
-        for (uint64_t off = 0; off + sizeof(Elf64_Sym) <= sh.sh_size; off += sizeof(Elf64_Sym))
+        std::vector<Elf64_Sym> syms(static_cast<size_t>(sh.sh_size / sizeof(Elf64_Sym)));
+        std::vector<char> names(static_cast<size_t>(str.sh_size) + 1, '\0'); // ends with a zero
+        if (!read_range(fd, size, sh.sh_offset, syms.size() * sizeof(Elf64_Sym), syms.data())
+            || !read_range(fd, size, str.sh_offset, str.sh_size, names.data()))
+            continue;
+        for (const Elf64_Sym& sym : syms)
         {
-            Elf64_Sym sym;
-            std::memcpy(&sym, data.data() + sh.sh_offset + off, sizeof sym);
-            if (sym.st_shndx != SHN_UNDEF || ELF64_ST_BIND(sym.st_info) == STB_WEAK || sym.st_name == 0 || sym.st_name >= str.sh_size)
+            if (sym.st_shndx != SHN_UNDEF || ELF64_ST_BIND(sym.st_info) == STB_WEAK || sym.st_name == 0
+                || sym.st_name >= str.sh_size)
                 continue;
-            const char* name = data.data() + str.sh_offset + sym.st_name;
-            if (!std::strstr(name, "3fmt3v"))
+            const char* name = names.data() + sym.st_name;
+            if (!std::strstr(name, "3fmt3v") || host_has_symbol(name, host_library))
                 continue;
-            if (!dlsym(RTLD_DEFAULT, name))
-            {
-                if (first_name)
-                    *first_name = name;
-                return true;
-            }
+            if (first_name)
+                *first_name = name;
+            return true;
         }
     }
     return false;
 #else
     (void)path;
     (void)first_name;
+    (void)host_library;
     return false;
 #endif
 }
@@ -1936,6 +2028,7 @@ ClangFilesBackend::PchPlan ClangFilesBackend::make_pch_plan(
     inputs.compiler_id = compiler_id_;
     inputs.shadow_hash = shadow_hash;
     PchPlan plan;
+    plan.own_fmt = fmt_header_only(opt_);
     plan.key = ObjectCache::make_key(inputs);
     plan.prefix = text;
     plan.header = pch_marker(plan.key, ".h");
@@ -2362,15 +2455,21 @@ void evict_shape_files(const std::string& dir_name, const std::string& unit_id, 
     std::error_code ec;
     const auto now = fs::file_time_type::clock::now();
     std::vector<std::pair<fs::file_time_type, fs::path>> files;
-    for (const auto& e : fs::directory_iterator(dir, ec))
+    // An explicit loop: the increment of a directory iterator must not throw in a thread.
+    fs::directory_iterator it(dir, ec), end;
+    for (; !ec && it != end; it.increment(ec))
     {
-        const fs::path& path = e.path();
+        const fs::path& path = it->path();
         const std::string ext = path.extension().string();
-        const auto age = now - e.last_write_time(ec);
+        std::error_code time_ec;
+        const auto mtime = it->last_write_time(time_ec);
+        if (time_ec)
+            continue;
+        const auto age = now - mtime;
         if ((ext == ".tmp" && age > std::chrono::hours(1)) || (ext == ".nosplit" && age > std::chrono::hours(24)))
-            fs::remove(path, ec); // a build that died, or an old marker
+            fs::remove(path, time_ec); // a build that died, or an old marker
         else if (ext == ".pch")
-            files.emplace_back(e.last_write_time(ec), path);
+            files.emplace_back(mtime, path);
     }
     // The newest first. A hit sets the time of its PCH, so this is the order of the last use.
     std::sort(files.begin(), files.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
@@ -2409,6 +2508,7 @@ ClangFilesBackend::ShapeSplit ClangFilesBackend::plan_shape(const std::string& c
         material += a + "\n";
     // The header has "#line 1 <unit_cpp>" and the build uses the script dir: both belong to the key.
     material += "dir " + script_dir + "\nunit " + unit_cpp + "\n";
+    s.own_fmt = fmt_header_only(opt_);
     s.key = shape_hash(material + shape);
     // The file stem has the unit id: the eviction finds the files of one script by it.
     s.unit_id = shape_hash(unit_cpp).substr(0, 12);
@@ -2450,11 +2550,13 @@ void ClangFilesBackend::start_shape_build(const ShapeSplit& split, const std::st
         old.join(); // the last build ended (shape_building_ was false)
     std::lock_guard<std::mutex> lock(shape_mutex_);
     shape_thread_ = std::thread([this, split, base_pch, script_dir, unit, timing] {
+      try {
         const auto t0 = std::chrono::steady_clock::now();
         const fs::path dir = fs::path(opt_.cache_dir) / "pch" / "shape";
         std::error_code ec;
         fs::create_directories(dir, ec);
-        const std::string tag = split.key + "." + std::to_string(hot::detail::process_id());
+        static std::atomic<unsigned> shape_counter{0};
+        const std::string tag = split.key + "." + std::to_string(hot::detail::process_id()) + "." + std::to_string(shape_counter++);
         // The PCH names its header file: the header stays next to the PCH (same key, same text).
         const std::string hdr = fs::path(split.pch).replace_extension(".h").string();
         const std::string tmp = (dir / (tag + ".pch.tmp")).string();
@@ -2466,7 +2568,7 @@ void ClangFilesBackend::start_shape_build(const ShapeSplit& split, const std::st
         std::string output;
         if (ok)
         {
-            ok = run_command(with_pch(pch_build_command(opt_, hdr, tmp, dep, script_dir), base_pch), output) == 0;
+            ok = run_command(with_pch(pch_build_command(with_fmt_choice(opt_, split.own_fmt), hdr, tmp, dep, script_dir), base_pch), output) == 0;
             if (ok)
             {
                 fs::rename(tmp, split.pch, ec);
@@ -2475,8 +2577,8 @@ void ClangFilesBackend::start_shape_build(const ShapeSplit& split, const std::st
         }
         fs::remove(tmp, ec);
         fs::remove(dep, ec);
-        if (!ok)
-            fs::remove(hdr, ec); // a failed build is no reason for a marker: the whole unit compiles
+        if (!ok && !fs::exists(split.pch, ec))
+            fs::remove(hdr, ec); // a failed build is no reason for a marker. Keep the header of a good PCH.
         else
         {
             // Keep the 2 newest shape PCH files of this script and the 32 newest in all. An
@@ -2488,6 +2590,9 @@ void ClangFilesBackend::start_shape_build(const ShapeSplit& split, const std::st
             std::fprintf(stderr, "hot: %s shape pch %s in %lld ms (key %.8s)\n", unit.c_str(), ok ? "built" : "failed",
                 static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::steady_clock::now() - t0).count()), split.key.c_str());
+      } catch (...) {
+        // A failure of the file system (an exception) never ends the process: no shape PCH then.
+      }
         std::lock_guard<std::mutex> done(shape_mutex_);
         shape_building_ = false;
     });
@@ -2519,7 +2624,7 @@ bool ClangFilesBackend::build_pch(const PchPlan& plan, const std::string& script
     const std::string dep = base + ".pchd.tmp" + std::to_string(hot::detail::process_id());
     std::error_code ec;
     std::string output;
-    const int rc = run_command(pch_build_command(opt_, plan.header, tmp, dep, script_dir), output);
+    const int rc = run_command(pch_build_command(with_fmt_choice(opt_, plan.own_fmt), plan.header, tmp, dep, script_dir), output);
     std::string dep_text;
     if (rc == 0)
         read_text(dep, dep_text);
@@ -2982,7 +3087,7 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
     const bool host_fmt = !fmt_header_only(opt_);
     const bool ok = compile_stage_once(job, host_fmt);
     std::string missing;
-    if (!host_fmt || !ok || !(opt_.missing_fmt_symbol ? opt_.missing_fmt_symbol(job.out_so, &missing) : has_missing_fmt_symbol(job.out_so, &missing)))
+    if (!host_fmt || !ok || !(opt_.missing_fmt_symbol ? opt_.missing_fmt_symbol(job.out_so, &missing) : has_missing_fmt_symbol(job.out_so, &missing, opt_.host_import_library)))
     {
         if (host_fmt)
             remove_mirror(job);
@@ -3176,8 +3281,13 @@ bool ClangFilesBackend::compile_stage_once(BuildJob& job, bool keep_mirror)
                     // the shape. On a miss it compiles the whole unit and builds the shape PCH later.
                     const std::string& sn = job.source_name;
                     const bool is_hot_unit = sn.size() > 4 && sn.compare(sn.size() - 4, 4, ".hot") == 0;
-                    ShapeSplit shape = plan_shape(tr.cpp, cpp_path, pch->pch, pch->key.hex(),
-                        compile_object_command(opt_, "", "", "", script_dir, job.mirror_root), is_hot_unit, script_dir);
+                    // A stable name: the work dir of a process has its id, and the key must not have it.
+                    std::string stable_name = line_name;
+                    const std::string work_prefix = opt_.work_dir;
+                    if (!work_prefix.empty() && stable_name.compare(0, work_prefix.size(), work_prefix) == 0)
+                        stable_name = "@work@" + stable_name.substr(work_prefix.size());
+                    ShapeSplit shape = plan_shape(tr.cpp, stable_name, pch->pch, pch->key.hex(), inputs.args,
+                        is_hot_unit, script_dir);
                     bool shape_hit = false;
                     bool split_failed = false;
                     std::string split_out;
@@ -3224,7 +3334,9 @@ bool ClangFilesBackend::compile_stage_once(BuildJob& job, bool keep_mirror)
                             split_out.find("PCH file") != std::string::npos ||
                             split_out.find("AST file") != std::string::npos ||
                             split_out.find("has been modified") != std::string::npos ||
-                            split_out.find("could not find file") != std::string::npos;
+                            split_out.find("could not find file") != std::string::npos ||
+                            split_out.find("precompiled header") != std::string::npos ||
+                            split_out.find("defined in the PCH") != std::string::npos;
                         if (pch_problem)
                         {
                             fs::remove(shape_pch_path, ec);

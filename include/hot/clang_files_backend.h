@@ -64,6 +64,8 @@ struct ClangFilesOptions
     // (the name goes to the second argument). Empty: the check reads the dynamic symbols of the
     // ELF file. A test sets it.
     std::function<bool(const std::string&, std::string*)> missing_fmt_symbol;
+    // Tells if the host exports the fmt code. Empty: host_exports_fmt. A test sets it.
+    std::function<bool()> host_fmt_probe;
     // False: the compile has no "-g". The compile is faster. The default backend sets this from
     // the environment variable HOT_DEBUG_INFO (see default_backend.cpp).
     bool debug_info = true;
@@ -316,6 +318,8 @@ private:
         uint64_t extra_epoch = 0;
         // Why the plan has no shared PCH (for HOT_TIMING). Empty when it has one.
         std::string why;
+        // The fmt choice at plan time (the key has its flags). The build uses it, not a later value.
+        bool own_fmt = false;
     };
     // The PCH plan for the translated text. No value: the compile does not use a PCH.
     // "mirror_files": the compile reads mirror files of the host file system.
@@ -376,6 +380,7 @@ private:
     {
         std::string key; // empty: no split for this unit
         std::string unit_id; // for the files of one script
+        bool own_fmt = false; // the fmt choice at plan time
         std::string pch; // the shape PCH file (exists on a hit)
         std::string header_text; // the shape text with "#line 1 <unit>"
         std::string main_text; // the rest with "#line <N> <unit>"
@@ -466,7 +471,11 @@ bool fmt_header_only(const ClangFilesOptions& options);
 void evict_shape_files(const std::string& dir, const std::string& unit_id, size_t keep_unit, size_t keep_all);
 // True when the ELF module at "path" has an undefined fmt symbol that dlsym does not find. False on
 // other targets.
-bool has_missing_fmt_symbol(const std::string& path, std::string* first_name = nullptr);
+bool has_missing_fmt_symbol(const std::string& path, std::string* first_name = nullptr,
+    const std::string& host_library = std::string());
+// True when the host exports the fmt code (a fixed fmt symbol, in the global scope or in the handle
+// of "host_library" when that library is loaded). The backend asks it once, before the first compile.
+bool host_exports_fmt(const std::string& host_library);
 
 std::vector<std::string> compile_object_command(const ClangFilesOptions& options, const std::string& cpp_path,
     const std::string& obj_path, const std::string& depfile_path, const std::string& script_dir = std::string(),

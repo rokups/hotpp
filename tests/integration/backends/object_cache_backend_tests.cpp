@@ -917,6 +917,13 @@ TEST(ObjectCacheBackend, StaleWorkDirectoriesGoAndLiveOnesStay)
 namespace
 {
 
+// A clang compiler with the PCH on must build the shape PCH: a missing PCH is a failure.
+bool shape_pch_expected()
+{
+    const char* pch = std::getenv("HOT_PCH");
+    return std::string(HOT_CXX).find("clang") != std::string::npos && !(pch && std::string(pch) == "0");
+}
+
 hot::ClangFilesOptions fmt_options(TestScratch& scratch, const std::string& name, const std::vector<std::string>& flags)
 {
     hot::ClangFilesOptions o;
@@ -926,6 +933,7 @@ hot::ClangFilesOptions fmt_options(TestScratch& scratch, const std::string& name
     o.compile_commands_dir = scratch.file(name + "_db");
     o.cache_dir = scratch.file(name + "_cache"); // the database is written with a cache
     o.extra_flags = flags;
+    o.host_fmt_probe = [] { return true; }; // the tests act as a host with the fmt code
     return o;
 }
 
@@ -955,8 +963,36 @@ TEST(ObjectCacheBackend, HostFmtFlagRule)
     }
     shared.fmt_header_only = std::make_shared<std::atomic<bool>>(true); // the sticky flag
     EXPECT_NE(last_flag(shared), "-UFMT_HEADER_ONLY");
+    // A target that the check of the fmt symbols cannot read keeps the own fmt copy.
+    shared.extra_flags[0] = "-DFMT_SHARED";
+    shared.target_triple = "i686-linux-gnu";
+    EXPECT_TRUE(hot::fmt_header_only(shared));
+    shared.target_triple = "x86_64-w64-mingw32";
+    EXPECT_TRUE(hot::fmt_header_only(shared));
+    shared.target_triple = "aarch64-linux-gnu";
+    shared.fmt_header_only.reset(); // the sticky flag of the checks above is off
+    EXPECT_FALSE(hot::fmt_header_only(shared));
 #else
     EXPECT_NE(last_flag(shared), "-UFMT_HEADER_ONLY");
+#endif
+}
+
+// A host without the fmt code: the backend turns the own fmt copy on before the first compile.
+TEST(ObjectCacheBackend, HostWithoutFmtCodeUsesTheOwnCopyFromTheStart)
+{
+#if defined(__linux__)
+    CleanEnv env;
+    TestScratch scratch;
+    hot::ClangFilesOptions o = fmt_options(scratch, "n", {"-DFMT_SHARED", "-DFMT_HEADER_ONLY"});
+    o.host_fmt_probe = [] { return false; };
+    o.fmt_header_only = std::make_shared<std::atomic<bool>>(false);
+    hot::ClangFilesBackend backend(o);
+    EXPECT_TRUE(o.fmt_header_only->load());
+    EXPECT_TRUE(hot::fmt_header_only(o));
+    EXPECT_EQ(load_and_run(backend, kCalc7), 7.0f);
+    EXPECT_FALSE(hot::host_exports_fmt("")); // the test program has no fmt code
+#else
+    GTEST_SKIP() << "ELF only";
 #endif
 }
 
@@ -1065,7 +1101,10 @@ TEST(ObjectCacheBackend, ShapePchKeepsResultsAndSurvivesDamage)
         if (e.path().extension() == ".pch")
             pchs.push_back(e.path());
     if (pchs.empty())
-        GTEST_SKIP() << "no shape PCH was built (no base PCH in this setup)";
+    {
+        ASSERT_FALSE(shape_pch_expected()) << "no shape PCH was built";
+        GTEST_SKIP() << "no shape PCH was built (no clang or no PCH)";
+    }
     for (const fs::path& p : pchs)
         std::ofstream(p, std::ios::binary | std::ios::trunc) << "damaged";
     edit_run(20, 2);
@@ -1152,7 +1191,10 @@ TEST(ObjectCacheBackend, ErrorInABodyDoesNotDisableTheShapePch)
     run_edits(o, 30, 2);
     const std::string log = testing::internal::GetCapturedStderr();
     if (count_ext(shape_dir, ".pch") == 0)
-        GTEST_SKIP() << "no shape PCH was built (no base PCH in this setup)";
+    {
+        ASSERT_FALSE(shape_pch_expected()) << "no shape PCH was built";
+        GTEST_SKIP() << "no shape PCH was built (no clang or no PCH)";
+    }
     EXPECT_EQ(count_ext(shape_dir, ".nosplit"), 0u);
     EXPECT_EQ(count_ext(shape_dir, ".pch"), 1u);
     EXPECT_GE(count_text_in(log, "shape pch hit"), 2u) << log;
@@ -1184,7 +1226,10 @@ TEST(ObjectCacheBackend, ShapePchFollowsTheBasePchAndKeepsTwoPerScript)
     }
     const std::string log = testing::internal::GetCapturedStderr();
     if (counts[0] == 0)
-        GTEST_SKIP() << "no shape PCH was built (no base PCH in this setup)";
+    {
+        ASSERT_FALSE(shape_pch_expected()) << "no shape PCH was built";
+        GTEST_SKIP() << "no shape PCH was built (no clang or no PCH)";
+    }
     EXPECT_EQ(counts[0], 1u);
     EXPECT_EQ(counts[1], 2u); // a new key
     EXPECT_EQ(counts[2], 2u); // the oldest is removed
@@ -1267,10 +1312,44 @@ TEST(ObjectCacheBackend, ShapePchModuleHasTheSameExports)
     const auto whole = exports_of("w", false);
     const auto split = exports_of("p", true);
     if (!split.first)
-        GTEST_SKIP() << "no shape PCH hit in this setup";
+    {
+        ASSERT_FALSE(shape_pch_expected()) << "no shape PCH hit";
+        GTEST_SKIP() << "no shape PCH hit (no clang or no PCH)";
+    }
     EXPECT_FALSE(whole.first);
     ASSERT_FALSE(whole.second.empty());
     EXPECT_EQ(whole.second, split.second);
+#else
+    GTEST_SKIP() << "ELF only";
+#endif
+}
+
+// Two processes (two work dirs, one cache dir): the second one hits the shape PCH of the first, and a
+// third one loads the same text from the object cache (the store of the first hit worked).
+TEST(ObjectCacheBackend, ShapePchAndObjectsAreSharedBetweenProcesses)
+{
+#if defined(__linux__)
+    CleanEnv env;
+    EnvGuard timing("HOT_TIMING", "1");
+    TestScratch scratch;
+    hot::ClangFilesOptions first = fmt_options(scratch, "x1", {});
+    hot::ClangFilesOptions second = fmt_options(scratch, "x2", {});
+    hot::ClangFilesOptions third = fmt_options(scratch, "x3", {});
+    second.cache_dir = third.cache_dir = first.cache_dir;
+    const fs::path shape_dir = fs::path(first.cache_dir) / "pch" / "shape";
+    run_edits(first, 1, 6);
+    if (count_ext(shape_dir, ".pch") == 0)
+    {
+        ASSERT_FALSE(shape_pch_expected()) << "no shape PCH was built";
+        GTEST_SKIP() << "no shape PCH (no clang or no PCH)";
+    }
+    testing::internal::CaptureStderr();
+    run_edits(second, 50, 1);
+    run_edits(third, 50, 1);
+    const std::string log = testing::internal::GetCapturedStderr();
+    EXPECT_NE(log.find("shape pch hit"), std::string::npos) << log;
+    EXPECT_TRUE(log.find("cache hit") != std::string::npos || log.find("link cached") != std::string::npos) << log;
+    EXPECT_EQ(count_text_in(log, "shape/"), 0u) << log;
 #else
     GTEST_SKIP() << "ELF only";
 #endif
