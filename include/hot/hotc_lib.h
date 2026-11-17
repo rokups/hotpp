@@ -516,6 +516,9 @@ struct AnalyzeResult
     std::vector<UnresolvedName> unresolved; // see TranslateResult::unresolved
     IndirectNames indirect_names; // see TranslateResult::indirect_names
     std::vector<std::pair<uint32_t, uint32_t>> raw_ranges; // see TranslateResult::raw_ranges
+    // The sum of the timing of all translate passes, and the number of passes. For measurement only.
+    TranslateTiming timing;
+    int passes = 0;
 };
 
 // The cache of a translator session. A backend holds one for its life.

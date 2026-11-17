@@ -1180,6 +1180,17 @@ private:
         ++translations_;
         return r;
     }
+    // The timing of the last update() of an open script (hot/indexStats): the sum of the translate
+    // phases in nanoseconds, the passes, the parses, and the time after analyze().
+    struct LastUpdate
+    {
+        hotc::TranslateTiming timing;
+        int passes = 0;
+        long long post_ns = 0, analyze_ns = 0;
+        long long seq = 0;
+    };
+    mutable std::mutex last_update_mutex_;
+    LastUpdate last_update_;
     int closed_analyses_ = 0; // the analyze calls of closed files: for_other_scripts and file_refs (hot/indexStats)
     // The tables of the closed scripts (file_refs), by path. "digest" is the shard digest.
     struct TableEntry
@@ -1751,8 +1762,14 @@ void Server::update(Doc& d)
 {
     if (d.cpp)
         return update_cpp(d);
+    const auto update_t0 = std::chrono::steady_clock::now();
     hotc::AnalyzeResult facts =
         timed_translate([&] { return hotc::analyze(d.text.s, translate_options(d), session_); });
+    const auto post_t0 = std::chrono::steady_clock::now();
+    LastUpdate last;
+    last.timing = facts.timing;
+    last.passes = facts.passes;
+    last.analyze_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(post_t0 - update_t0).count();
     std::string cpp = facts.cpp;
     {
         std::lock_guard<std::mutex> lock(docs_mutex_);
@@ -1776,6 +1793,10 @@ void Server::update(Doc& d)
         send_client(publish_message(d));
         publish_imports(d);
     }
+    last.post_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - post_t0).count();
+    std::lock_guard<std::mutex> lock(last_update_mutex_);
+    last.seq = last_update_.seq + 1;
+    last_update_ = last;
 }
 
 static std::string script_file_path(const Doc& d, const std::string& name);
@@ -7662,6 +7683,16 @@ void Server::handle(const json& msg)
             {"tokenRequests", native_token_requests_.load()}, {"translations", translations_.load()},
             {"translateMs", static_cast<double>(translate_us_.load()) / 1000.0}, {"tableHits", table_hits_},
             {"tableAnalyses", table_analyses_}, {"entryHits", entry_hits_}, {"entryMisses", entry_misses_}});
+        {
+            // The last update() of an open script, in ms. Additive fields for the measurement.
+            std::lock_guard<std::mutex> lock(last_update_mutex_);
+            const auto ms = [](long long ns) { return static_cast<double>(ns) / 1e6; };
+            const hotc::TranslateTiming& t = last_update_.timing;
+            out["lastUpdate"] = {{"frontMs", ms(t.front_ns)}, {"lowerMs", ms(t.lower_ns)}, {"checkMs", ms(t.check_ns)},
+                {"emitMs", ms(t.emit_ns)}, {"parseMs", ms(t.parse_ns)}, {"parseWaitMs", ms(t.parse_wait_ns)},
+                {"parses", t.parses}, {"passes", last_update_.passes}, {"postWorkMs", ms(last_update_.post_ns)},
+                {"analyzeMs", ms(last_update_.analyze_ns)}, {"seq", last_update_.seq}};
+        }
         return reply(id, out);
     }
     if (method == "hot/toScript")

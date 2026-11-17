@@ -11369,6 +11369,18 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
     TranslateOptions o = options;
     o.script_text = valid;
     TranslateResult tr = translate(o, session);
+    auto add_timing = [&res](const TranslateTiming& t)
+    {
+        res.timing.parse_ns += t.parse_ns;
+        res.timing.parse_wait_ns += t.parse_wait_ns;
+        res.timing.parses += t.parses;
+        res.timing.front_ns += t.front_ns;
+        res.timing.lower_ns += t.lower_ns;
+        res.timing.check_ns += t.check_ns;
+        res.timing.emit_ns += t.emit_ns;
+        ++res.passes;
+    };
+    add_timing(tr.timing);
     if (!tr.base_virtuals.empty())
         res.base_virtuals = tr.base_virtuals;
     if (diag.items.empty())
@@ -11510,6 +11522,7 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
             }
             o.script_text = valid;
             tr = translate(o, session);
+            add_timing(tr.timing);
             if (!tr.base_virtuals.empty())
                 res.base_virtuals = tr.base_virtuals;
         }

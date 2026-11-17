@@ -7,7 +7,7 @@ the time until the index is ready, one cold sample of rename and references (fir
 index not ready), and warm samples of each request kind (median and p95 in ms).
 It uses the client of lsbench.py. Lines and columns here are 0-based (LSP).
 """
-import argparse, importlib.util, json, os, shutil, statistics, sys, tempfile, time
+import argparse, importlib.util, json, os, shutil, statistics, subprocess, sys, tempfile, time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -285,6 +285,81 @@ def edit_bench(a, root, rel, label, cdb=None):
     r.stop()
 
 
+def edit_kinds_bench(a, root, rel, cdb):
+    """The phases of didChange to publishDiagnostics for 4 kinds of edit, 12 runs each. The edits
+    change the text in memory only. hot/indexStats "lastUpdate" gives the phases of the server."""
+    import re
+    r = Run(a, root, True)
+    idx = tempfile.mkdtemp(prefix="idx-", dir=a.scratch)
+    t0 = time.perf_counter()
+    r.c = lsbench.Client(os.path.abspath(a.hot_ls), str(root), idx, ["--compile-commands-dir", cdb] if cdb else
+                         ["-I", str(ROOT / "include"), "-I", str(ROOT / "tests" / "engine"), "--clangd", a.clangd])
+    r.wait_ready(t0)
+    uri, text = r.doc(rel)
+    r.c.wait_diag(uri, 0, timeout=300)
+    # A statement in a function body: a line with 8 spaces, a name, "=", a number and ";".
+    m = re.search(r"^( {8,})([\w.]+) = (\d+)(\.\d+)?;[ \t]*$", text, re.M)
+    if not m:
+        print("%s: no literal line in a body" % rel)
+        r.stop()
+        return
+    lit_line = m.group(0)
+    ind = m.group(1)
+    members = ["Length", "LengthSquared", "Normalized", "Abs", "ToHash", "IsNaN", "IsInf", "ToString", "x_", "y_", "z_", "ToVector2"]
+    ver = [1]
+    def run_kind(label, make):
+        rows = []
+        for i in range(12):
+            for tag, cur in make(i):
+                ver[0] += 1
+                n = r.c.diag_count(uri)
+                seq0 = r.c.stats().get("lastUpdate", {}).get("seq", 0)
+                t = time.perf_counter()
+                r.c.notify("textDocument/didChange", {"textDocument": {"uri": uri, "version": ver[0]}, "contentChanges": [{"text": cur}]})
+                d = r.c.wait_diag(uri, n, ver[0], timeout=120)
+                total = (d - t) * 1000.0 if d else 120000.0
+                lu = {}
+                for _ in range(100):
+                    lu = r.c.stats().get("lastUpdate", {})
+                    if lu.get("seq", 0) > seq0:
+                        break
+                    time.sleep(0.01)
+                rows.append((tag, total, lu))
+        return rows
+    def kind_a(i):
+        yield "a comment", text.rstrip("\n") + "\n//" + "x" * (i + 1) + "\n"
+    def kind_b(i):
+        yield "b literal", text.replace(lit_line, "%s%s = %d;" % (ind, m.group(2), 7001 + i), 1)
+    def kind_c(i):
+        yield "c unknown", text.replace(lit_line, lit_line + "\n%sint zq%d = zzUnknown%d + 1;" % (ind, i, i), 1)
+        yield "c fix", text
+    def kind_d(i):
+        yield "d native", text.replace(lit_line, lit_line + "\n%sVector3 zv%d;\n%sauto zr%d = zv%d.%s%s;" % (
+            ind, i, ind, i, i, members[i], "()" if members[i][-1] != "_" else ""), 1)
+    print("%s (%d lines) load %.1f, median ms of 12" % (rel, text.count("\n"), os.getloadavg()[0]))
+    print("  %-10s %7s %7s %7s %7s %7s %6s %9s %8s" % ("edit", "front", "lower", "check", "emit", "parse", "passes", "post-work", "total"))
+    only = os.environ.get("EDIT_KINDS", "abcd")
+    for kind in [k for k in (kind_a, kind_b, kind_c, kind_d) if k.__name__[-1] in only]:
+        if kind is kind_b:
+            print("BEGIN", flush=True)
+        perf = None
+        if os.environ.get("PERF_OUT") and kind is kind_b:
+            perf = subprocess.Popen(["perf", "record", "-e", "cpu-clock:u", "-F", "499", "-o", os.environ["PERF_OUT"], "-p", str(r.c.proc.pid)],
+                                    stdout=subprocess.DEVNULL, stderr=open(os.environ["PERF_OUT"] + ".err", "w"))
+            time.sleep(1)
+        rows = run_kind(kind.__name__, kind)
+        if perf:
+            perf.terminate()
+            perf.wait()
+        for tag in sorted({x[0] for x in rows}):
+            sel = [x for x in rows if x[0] == tag]
+            med = lambda k: statistics.median([x[2].get(k, 0) for x in sel])
+            print("  %-10s %7.1f %7.1f %7.1f %7.1f %7.1f %6.1f %9.1f %8.1f" % (
+                tag, med("frontMs"), med("lowerMs"), med("checkMs"), med("emitMs"), med("parseMs"), med("passes"),
+                med("postWorkMs"), statistics.median([x[1] for x in sel])), flush=True)
+    r.stop()
+
+
 def main():
     global GROUPS
     ap = argparse.ArgumentParser()
@@ -297,6 +372,7 @@ def main():
     ap.add_argument("--mode", choices=["on", "off", "both"], default="both")
     ap.add_argument("--json")
     ap.add_argument("--edit-bench", action="store_true", help="measure typing edits (didChange, diagnostics, hover) and exit")
+    ap.add_argument("--edit-kinds", action="store_true", help="with --edit-bench: 4 kinds of edit, the phases of the server")
     ap.add_argument("--edit-root")
     ap.add_argument("--edit-file")
     ap.add_argument("--edit-cdb")
@@ -308,7 +384,9 @@ def main():
     root.mkdir(parents=True, exist_ok=True)
     generate(root)
     if a.edit_bench:
-        if a.edit_root:
+        if a.edit_kinds:
+            edit_kinds_bench(a, Path(a.edit_root), a.edit_file, a.edit_cdb)
+        elif a.edit_root:
             edit_bench(a, Path(a.edit_root), a.edit_file, a.edit_file, a.edit_cdb)
         else:
             edit_bench(a, root, a.edit_file or "g3/unit90.hot", a.edit_file or "g3/unit90.hot")
