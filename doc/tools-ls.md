@@ -177,6 +177,22 @@ The server joins a series of `didChange` messages for one URI. The state thread 
 
 The tests are in `tests/integration/ls/` (`LanguageServer.*`). They run the server on a thread with an LSP client over pipes. The `clangd` tests are skipped when `clangd` is missing. Set `HOT_LS_CLANGD_LOG=file` to get the `clangd` log of a test.
 
+## The generated unit for clangd (split shell and lite document)
+
+The translator can write a marker line `// @hot-shell-end` in the generated C++ (`TranslateOptions::split_shell`, only the language server sets it). The text before the marker has the imported blocks, the imported function bodies and the module variable accessors. It does not depend on the own bodies.
+
+The server writes this text to a header file. It gives clangd the unit as `#include "<header>"`, then empty lines, then the own part. The unit keeps the lines and columns of the full text, so no position mapping is needed. A place in the header maps to the same place in the full text (`ClangdProcess::set_uri_alias`). The header file is in the temporary directory, in `hot-ls-shell`.
+
+The translator also writes `// @hot-body-begin` and `// @hot-body-end` around each own function body. For hover, definition and completion in a body, the server uses a second document (the path of the unit plus `.lite.cpp`). This document has the bodies of the other own functions as empty lines. The diagnostics and the other requests use the full document. A place outside a body uses the full document too.
+
+An edit of an imported script changes the header. The document then starts again in clangd, because clangd can answer with the old header while it builds the new preamble. For about one second after such an edit, the diagnostics can show errors that come from the old header. They go away when the new preamble is ready.
+
+Environment variables:
+
+- `HOT_LS_SPLIT_SHELL=0` turns the header off. clangd then gets one unit.
+- `HOT_LS_LITE_DOC=0` turns the lite document off.
+- `HOT_LS_SHELL_DIR=<dir>` sets the directory of the header files (the tests use it).
+
 ## Formatter rules
 
 The formatter of `hot-ls` works on a token stream. It keeps the comments and the literals as tokens. It does not parse the script. The code is `src/ls/format.cpp`. The function `format_hot` is pure. It is idempotent and it never changes a token: only white space changes. Tests check this on all example scripts.

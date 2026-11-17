@@ -131,7 +131,7 @@ TEST(SplitShellTranslation, FlagOffGivesNoMarkerAndTheSameCode)
         {
             const size_t e = t.find('\n', at);
             const std::string l = t.substr(at, e == std::string::npos ? e : e - at);
-            if (!l.empty() && l.rfind("#line", 0) != 0 && l != "// @hot-shell-end" && l.rfind("// -------", 0) != 0)
+            if (!l.empty() && l.rfind("#line", 0) != 0 && l != "// @hot-shell-end" && l.rfind("// @hot-body-", 0) != 0 && l.rfind("// -------", 0) != 0)
                 r.insert(l);
             at = e == std::string::npos ? t.size() : e + 1;
         }

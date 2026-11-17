@@ -7454,6 +7454,7 @@ void translate_impl(
     // script writes all bodies after the last block, so every class is complete there. A ".cpp"
     // script also writes them before each text between two blocks. So a body does not see a
     // declaration, a using directive or a macro that comes later in the file, as in C++.
+    bool mark_bodies = false; // set after the shell marker in the split mode
     auto flush_bodies = [&]
     {
         if (bodies.empty())
@@ -7470,7 +7471,12 @@ void translate_impl(
                     o.w("namespace " + b.ns + " {\n");
                 body_ns = b.ns;
             }
+            // The split mode: each own body has a begin line and an end line (the language server keeps one body).
+            if (mark_bodies)
+                o.w("// @hot-body-begin\n");
             b.write();
+            if (mark_bodies)
+                o.w("// @hot-body-end\n");
         }
         if (!body_ns.empty())
             o.w("} // namespace " + body_ns + "\n");
@@ -7717,6 +7723,7 @@ void translate_impl(
         flush_bodies();
         o.w("// @hot-shell-end\n");
         reset();
+        mark_bodies = true;
     };
     for (size_t si = 0; si < seq.size(); ++si)
     {
