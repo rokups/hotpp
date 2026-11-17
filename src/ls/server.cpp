@@ -579,7 +579,12 @@ private:
     std::thread worker_;
     std::mutex worker_mutex_;
     std::condition_variable worker_cv_;
-    std::deque<json> worker_queue_;
+    struct SlowItem
+    {
+        json msg;
+        uint64_t epoch; // the epoch when the state thread queued the request
+    };
+    std::deque<SlowItem> worker_queue_;
     bool worker_closed_ = false; // under worker_mutex_
     std::atomic<bool> worker_stop_{false};
     std::atomic<int> slow_running_{0}; // 1 while the worker runs a request (hot/indexStats)
@@ -5545,6 +5550,9 @@ bool Server::with_temp_clangd(Doc& tmp, const std::function<void()>& fn)
     tmp.map = std::make_shared<const hotc::SourceMap>(tmp.facts.source_map);
     tmp.gen_script = tmp.text;
     tmp.gen_version = 1;
+    // The client owns the uri of an open script: no temporary document then.
+    if (open_doc_at(tmp.path) || gen_docs_.count(tmp.gen_uri))
+        return false;
     // The guard closes the document in clangd also when "fn" throws.
     struct Close
     {
@@ -5554,7 +5562,10 @@ bool Server::with_temp_clangd(Doc& tmp, const std::function<void()>& fn)
         {
             try
             {
-                if (s.clangd_ && d.in_clangd)
+                // The client can open the script while the worker waits. The open document then owns
+                // the uri: no didClose. The state lock is held here, also on the exception path.
+                const bool owned = s.open_doc_at(d.path) || s.gen_docs_.count(d.gen_uri);
+                if (s.clangd_ && d.in_clangd && !owned)
                     s.clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", d.gen_uri}}}});
             }
             catch (...)
@@ -8495,7 +8506,7 @@ bool Server::run_request(const json& msg)
         std::lock_guard<std::mutex> lock(worker_mutex_);
         if (!worker_closed_)
         {
-            worker_queue_.push_back(msg);
+            worker_queue_.push_back({msg, epoch_.load()});
             if (!worker_.joinable())
                 worker_ = std::thread([this] { worker_loop(); });
             worker_cv_.notify_one();
@@ -8516,18 +8527,20 @@ void Server::worker_loop()
     for (;;)
     {
         json msg;
+        uint64_t epoch = 0;
         {
             std::unique_lock<std::mutex> lock(worker_mutex_);
             worker_cv_.wait(lock, [this] { return !worker_queue_.empty() || worker_stop_.load(); });
             if (worker_stop_.load())
                 return;
-            msg = std::move(worker_queue_.front());
+            msg = std::move(worker_queue_.front().msg);
+            epoch = worker_queue_.front().epoch;
             worker_queue_.pop_front();
         }
         request_key_ = id_key(msg);
-        slow_running_ = 1;
-        request_epoch_ = epoch_.load();
+        request_epoch_ = epoch;
         state_lock_.lock_slow();
+        slow_running_ = 1; // the worker holds the state lock
         run_locked(msg);
         state_lock_.unlock();
         slow_running_ = 0;
@@ -8538,7 +8551,7 @@ void Server::worker_loop()
 
 void Server::stop_worker()
 {
-    std::deque<json> rest;
+    std::deque<SlowItem> rest;
     {
         std::lock_guard<std::mutex> lock(worker_mutex_);
         worker_closed_ = true;
@@ -8548,10 +8561,10 @@ void Server::stop_worker()
     worker_cv_.notify_all();
     if (worker_.joinable())
         worker_.join();
-    for (const json& m : rest) // the requests that never started
+    for (const SlowItem& it : rest) // the requests that never started
     {
-        reply_error(m["id"], kRequestCancelled, "request cancelled");
-        finish_request(id_key(m));
+        reply_error(it.msg["id"], kRequestCancelled, "request cancelled");
+        finish_request(id_key(it.msg));
     }
 }
 
