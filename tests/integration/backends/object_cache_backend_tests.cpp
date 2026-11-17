@@ -1915,3 +1915,41 @@ TEST(ObjectCacheBackend, UnitStateGuardNeedsAUseInBothObjects)
     GTEST_SKIP() << "ELF only";
 #endif
 }
+
+// Real compiler output: a local variable of each size, used with an immediate store, an immediate
+// compare, an immediate add or a plain read, at -O0 and -O2. Each use is found (the addend of a pc
+// relative relocation depends on the size of the immediate), so two objects with such uses are refused.
+TEST(ObjectCacheBackend, UnitStateGuardFindsEveryKindOfUse)
+{
+#if defined(__linux__)
+    TestScratch scratch;
+    const fs::path dir = scratch.file("guard3");
+    fs::create_directories(dir);
+    const char* const bodies[] = {
+        "void f() { g = 1; }\n",         // store of an immediate
+        "bool f() { return g == 0; }\n", // compare with an immediate
+        "void f() { g += 1; }\n",        // add of an immediate
+        "int f() { return g; }\n",       // plain read
+    };
+    for (const char* type : {"bool", "char", "short", "int"})
+        for (const char* opt : {"-O0", "-O2"})
+        {
+            std::vector<std::set<std::string>> sets;
+            for (size_t k = 0; k < 4; ++k)
+            {
+                const std::string base = std::string(type) + opt + std::to_string(k);
+                std::ofstream(dir / (base + ".cpp")) << "static volatile " << type << " g;\n" << bodies[k];
+                const std::string cmd = std::string(HOT_CXX) + " " + opt + " -c -fPIC -o " + (dir / (base + ".o")).string()
+                    + " " + (dir / (base + ".cpp")).string();
+                ASSERT_EQ(std::system(cmd.c_str()), 0) << cmd;
+                sets.emplace_back();
+                ASSERT_TRUE(hot::unit_state_symbols_of((dir / (base + ".o")).string(), sets.back()));
+                EXPECT_EQ(sets.back().size(), 1u) << type << " " << opt << " body " << k;
+            }
+            for (size_t k = 1; k < sets.size(); ++k)
+                EXPECT_EQ(sets[0], sets[k]) << type << " " << opt << " body " << k; // the same name: refused when both objects have it
+        }
+#else
+    GTEST_SKIP() << "ELF only";
+#endif
+}

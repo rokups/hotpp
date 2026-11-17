@@ -2747,10 +2747,17 @@ bool elf_symbols(const std::string& path, std::vector<ElfSym>& syms)
         const size_t first_sym = syms.size() - sh.sh_size / sizeof(Elf64_Sym);
         // The data symbols of each section. The assembler writes a relocation against a local variable
         // as "section symbol + offset", so a use is found by the offset.
-        std::map<uint16_t, std::vector<size_t>> data_in_section;
+        std::map<uint16_t, std::vector<size_t>> data_in_section; // sorted by the value
+        std::map<uint16_t, uint64_t> longest; // the biggest symbol of each section
         for (size_t k = first_sym; k < syms.size(); ++k)
             if (syms[k].bind == STB_LOCAL && (syms[k].type == STT_OBJECT || syms[k].type == STT_TLS) && syms[k].defined)
+            {
                 data_in_section[syms[k].shndx].push_back(k);
+                longest[syms[k].shndx] = std::max<uint64_t>(longest[syms[k].shndx], std::max<uint64_t>(syms[k].size, 1));
+            }
+        for (auto& entry : data_in_section)
+            std::sort(entry.second.begin(), entry.second.end(),
+                [&](size_t a, size_t b) { return syms[a].value < syms[b].value; });
         if (eh.e_shstrndx >= eh.e_shnum)
             continue;
         const Elf64_Shdr names_section = section(eh.e_shstrndx);
@@ -2786,19 +2793,36 @@ bool elf_symbols(const std::string& path, std::vector<ElfSym>& syms)
                 const auto in_section = data_in_section.find(syms[idx].shndx);
                 if (in_section == data_in_section.end())
                     continue;
-                // x86-64: an absolute type names the offset itself, a pc relative type has the
-                // distance to the end of the instruction (4, or 8 with an immediate) in the addend.
-                // Other machines: every data symbol of the section counts as used.
+                // x86-64. The target of a pc relative relocation is S + A + 4 + (the size of the immediate
+                // that follows the displacement: 0, 1, 2 or 4), so the offset is in [A + 4, A + 8]. All
+                // types except the absolute ones use this interval; this covers the TLS general and local
+                // dynamic types (19, 20) and the initial exec type (22) too. An absolute type (64, 32, 32S,
+                // DTPOFF32, TPOFF32) and PC64 name the offset itself. A symbol is used when its range
+                // meets the interval: a neighbour can be marked too, which only refuses a split. Other
+                // machines: every data symbol of the section counts as used.
                 const uint32_t type = ELF64_R_TYPE(ra.r_info);
-                const bool absolute = type == 1 || type == 10 || type == 11 || type == 21 || type == 23;
-                for (size_t k : in_section->second)
+                const bool exact = type == 1 || type == 10 || type == 11 || type == 21 || type == 23 || type == 24;
+                const std::vector<size_t>& sorted = in_section->second;
+                if (eh.e_machine != EM_X86_64)
                 {
-                    const int64_t lo = static_cast<int64_t>(syms[k].value);
-                    const int64_t hi = lo + static_cast<int64_t>(std::max<uint64_t>(syms[k].size, 1));
-                    auto inside = [&](int64_t off) { return off >= lo && off < hi; };
-                    if (eh.e_machine != EM_X86_64 || (absolute ? inside(ra.r_addend)
-                                                               : (inside(ra.r_addend + 4) || inside(ra.r_addend + 8))))
+                    for (size_t k : sorted)
                         syms[k].used = true;
+                    continue;
+                }
+                const int64_t qlo = exact ? ra.r_addend : ra.r_addend + 4;
+                const int64_t qhi = exact ? ra.r_addend : ra.r_addend + 8;
+                const int64_t reach = static_cast<int64_t>(longest[syms[idx].shndx]);
+                // The first symbol that starts after the interval; the ones before it can meet it.
+                auto it = std::upper_bound(sorted.begin(), sorted.end(), qhi,
+                    [&](int64_t v, size_t k) { return v < static_cast<int64_t>(syms[k].value); });
+                while (it != sorted.begin())
+                {
+                    --it;
+                    const int64_t lo = static_cast<int64_t>(syms[*it].value);
+                    if (lo + reach <= qlo)
+                        break; // no symbol before this one reaches the interval
+                    if (lo + static_cast<int64_t>(std::max<uint64_t>(syms[*it].size, 1)) > qlo)
+                        syms[*it].used = true;
                 }
             }
         }
@@ -3987,6 +4011,7 @@ bool ClangFilesBackend::compile_stage_once(BuildJob& job, bool keep_mirror)
                             if (rc == 0)
                             {
                                 // The guard: no copy of the unit state in both objects.
+                                const auto guard_start = std::chrono::steady_clock::now();
                                 std::set<std::string> state_a, state_b;
                                 if (!unit_state_symbols(obj_main, state_a) || !unit_state_symbols(obj_shape, state_b))
                                     why = "cannot read the symbols of the objects";
@@ -4002,6 +4027,9 @@ bool ClangFilesBackend::compile_stage_once(BuildJob& job, bool keep_mirror)
                                     else
                                         why = merged_object_problem(tmp, shape.fns);
                                 }
+                                if (timing)
+                                    std::fprintf(stderr, "hot: %s split guard and join %.1f ms\n", unit.c_str(),
+                                        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - guard_start).count());
                                 if (!why.empty())
                                     rc = 1;
                                 else
