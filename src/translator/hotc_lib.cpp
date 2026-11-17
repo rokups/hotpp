@@ -768,10 +768,13 @@ bool has_bare_this(std::string_view s)
 
 // The decision of the class for std::enable_shared_from_this needs "this" as a handle. A text scan
 // of the bodies gives it before the lowering, so an importer gets the value of the owner unit.
-bool has_bare_this(const ClassDef& c, const std::string& text)
+bool has_bare_this(const ClassDef& c, const std::string& text, uint32_t origin)
 {
     const auto in = [&](Span sp)
-    { return sp.end > sp.begin && sp.end <= text.size() && has_bare_this(std::string_view(text).substr(sp.begin, sp.end - sp.begin)); };
+    {
+        return sp.begin >= origin && sp.end > sp.begin && sp.end - origin <= text.size()
+            && has_bare_this(std::string_view(text).substr(sp.begin - origin, sp.end - sp.begin));
+    };
     for (const Method& m : c.methods)
         if (in(m.body_span))
             return true;
@@ -791,14 +794,15 @@ bool has_bare_this(const ClassDef& c, const std::string& text)
 }
 
 // The parser reports all syntax errors in source order. Any error stops the translation.
-Script parse_structure(const std::string& text, const hotc::LineMap& map, std::string_view host_array_tpl)
+Script parse_structure(
+    const std::string& text, uint32_t origin, const hotc::LineMap& map, std::string_view host_array_tpl)
 {
-    Script sc = hotc::parse_script_array(text, map, g_diag, host_array_tpl);
+    Script sc = hotc::parse_script_array(text, map, g_diag, host_array_tpl, origin);
     g_generic_display.insert(g_generic_display.end(), sc.generic_display.begin(), sc.generic_display.end());
     if (!g_diag.items.empty())
         throw TranslateAbort{};
     for (ClassDef& c : sc.classes)
-        c.bare_this = !c.is_value && has_bare_this(c, text);
+        c.bare_this = !c.is_value && has_bare_this(c, text, origin);
     return sc;
 }
 
@@ -812,9 +816,11 @@ Script parse_structure(const std::string& text, const hotc::LineMap& map, std::s
 // goes into the shape or into the entry of one member name. The shape gets more parts, which are
 // not in the text: the script interfaces, the stubs and the module attributes. When a case is not
 // clear, the part goes into the shape: that gives more recompiles, never fewer.
-std::string module_interface(const Script& sc, const std::string& text, hot::IfaceInfo* info = nullptr)
+std::string module_interface(
+    const Script& sc, const std::string& text, uint32_t origin, hot::IfaceInfo* info = nullptr)
 {
-    auto span = [&](Span sp) { return sp.end > sp.begin && sp.end <= text.size() ? text.substr(sp.begin, sp.end - sp.begin) : std::string(); };
+    auto span = [&](Span sp)
+    { return sp.begin >= origin && sp.end > sp.begin && sp.end - origin <= text.size() ? text.substr(sp.begin - origin, sp.end - sp.begin) : std::string(); };
     // The code texts that an importer copies and compiles (IfaceInfo::copied_names): the struct
     // lines, the parameter defaults, the field initializers, the "base(...)" arguments, the
     // constant and enum values, the aliases and the stub texts. They can name a member of the unit.
@@ -1045,7 +1051,7 @@ std::string module_interface(const Script& sc, const std::string& text, hot::Ifa
 }
 
 // The import view of a parsed imported script (hotc::import_view). "text" is the parsed text: the
-// file text starts at the byte offset "base". The view has these parts:
+// first byte has the position "origin". The view has these parts:
 //   - the file text with the masked bodies removed: each other byte, each comment and each
 //     declaration of the file is in it;
 //   - the interface text: it has the facts that the parse gets from a body (ClassDef::bare_this);
@@ -1056,24 +1062,24 @@ std::string module_interface(const Script& sc, const std::string& text, hot::Ifa
 // A masked range is a body that the importer drops: a method, a constructor, a destructor or an
 // accessor of a class, or a free function. A pinned position in a range keeps the range.
 hotc::ImportView import_view_of(
-    const Script& sc, const std::string& text, uint32_t base, const hotc::LineMap& map, std::string_view array_tpl)
+    const Script& sc, const std::string& text, uint32_t origin, const hotc::LineMap& map, std::string_view array_tpl)
 {
     std::vector<std::pair<uint32_t, uint32_t>> spans;
     auto mask = [&](Span sp)
     {
         // An absent body has the span 0..0. A real body starts after its "{".
-        if (!(sp.begin > base && sp.end >= sp.begin && sp.end <= text.size()))
+        if (!(sp.begin > origin && sp.end >= sp.begin && sp.end - origin <= text.size()))
             return;
         // The range also has the "{" and the white space before it and before the body: an
         // edit can put the "{" on its own line.
         size_t b = sp.begin;
         auto blank = [&](char ch) { return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r'; };
-        while (b > base && blank(text[b - 1]))
+        while (b > origin && blank(text[b - 1 - origin]))
             --b;
-        if (b > base && text[b - 1] == '{')
+        if (b > origin && text[b - 1 - origin] == '{')
         {
             --b;
-            while (b > base && blank(text[b - 1]))
+            while (b > origin && blank(text[b - 1 - origin]))
                 --b;
         }
         spans.emplace_back(static_cast<uint32_t>(b), static_cast<uint32_t>(sp.end));
@@ -1104,7 +1110,7 @@ hotc::ImportView import_view_of(
     auto pin = [&](const char* tag, uint32_t pos, int line)
     {
         pinned.push_back(pos);
-        const uint32_t rel = pos >= base ? pos - base : 0;
+        const uint32_t rel = pos >= origin ? pos - origin : 0;
         pins += std::string(tag) + " " + std::to_string(rel) + " " + std::to_string(map.line(pos)) + ":"
             + std::to_string(map.col(pos)) + " " + std::to_string(line) + "\n";
     };
@@ -1163,21 +1169,21 @@ hotc::ImportView import_view_of(
 
     std::string v = "hot-import-view 1\n";
     hotc::ImportView out;
-    size_t at = base;
+    size_t at = origin;
     auto chunk = [&](size_t end)
     {
-        v += std::to_string(end - at) + ":" + text.substr(at, end - at) + "\n";
+        v += std::to_string(end - at) + ":" + text.substr(at - origin, end - at) + "\n";
     };
     for (const auto& [b, e] : merged)
     {
         chunk(b);
         v += "<masked>\n";
-        out.masked.push_back(b - base);
-        out.masked.push_back(e - base);
+        out.masked.push_back(b - origin);
+        out.masked.push_back(e - origin);
         at = e;
     }
-    chunk(text.size());
-    v += "interface\n" + module_interface(sc, text);
+    chunk(origin + text.size());
+    v += "interface\n" + module_interface(sc, text, origin);
     v += "pins\n" + pins;
     v += "array " + std::string(array_tpl) + "\n";
     for (const hotc::ast::ModuleAttrs& m : sc.module_attrs)
@@ -4186,7 +4192,7 @@ void translate_impl(
     }
     else
     {
-        sc = parse_structure(in.script_text, map, array_tpl);
+        sc = parse_structure(in.script_text, 0, map, array_tpl);
         // The header import would copy the C++ text of the script: plain classes with no hot reload.
         for (const Import& im : sc.imports)
             if (im.path.size() > 4 && im.path.compare(im.path.size() - 4, 4, ".cpp") == 0)
@@ -4210,7 +4216,7 @@ void translate_impl(
     }
 
     // The interface of the main script, before the merge with the imports.
-    res.iface = module_interface(sc, in.script_text, &res.iface_info);
+    res.iface = module_interface(sc, in.script_text, 0, &res.iface_info);
     res.iface_hash = hash_text(res.iface);
     res.iface_info.hash = res.iface_hash;
     // The names that the script uses: each identifier of the own text, also in comments and strings.
@@ -4222,7 +4228,6 @@ void translate_impl(
     // translator parses each imported script and adds its classes, enums and stubs. The parser
     // reads the imported text after a blank prefix, so its positions come after the earlier
     // texts. The map gives the file and the line of each position (LineMap::add_file).
-    std::deque<std::string> import_texts; // the parsed texts; the AST spans point into them
     // The imported scripts in the order of reading: the offset of the text in the map, the file
     // name and the text. The source map gets a file number for each (the first is 1).
     struct ImportedFile
@@ -4291,7 +4296,7 @@ void translate_impl(
         int depth = 0;
         std::set<std::string> native_paths;
         std::vector<Import> natives;
-        // The scripts that an import imports: the normal path and the index in import_texts. A direct
+        // The scripts that an import imports: the normal path and the index in imported_files. A direct
         // import of the same script later parses the text again for its functions and variables.
         std::map<std::string, size_t> indirect_texts;
         std::vector<ClassDef> classes;
@@ -4337,7 +4342,8 @@ void translate_impl(
                         auto it = indirect_texts.find(normal_path(file));
                         if (it != indirect_texts.end())
                         {
-                            Script again = parse_structure(import_texts[it->second], map, array_tpl);
+                            Script again = parse_structure(
+                                imported_files[it->second].text, imported_files[it->second].base, map, array_tpl);
                             for (Method& f : again.fns)
                                 if (f.access != hotc::ast::Access::Private)
                                 {
@@ -4364,12 +4370,8 @@ void translate_impl(
                 map.add_file(base, text, file);
                 imported_files.push_back({base, file, text});
                 res.imports.emplace_back(file, text);
-                import_texts.emplace_back();
-                import_texts.back().reserve(static_cast<size_t>(base) + text.size());
-                import_texts.back().assign(base, ' ');
-                import_texts.back().append(text);
                 const auto t_parse = std::chrono::steady_clock::now();
-                Script is = parse_structure(import_texts.back(), map, array_tpl);
+                Script is = parse_structure(imported_files.back().text, base, map, array_tpl);
                 res.timing.import_parse_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
                     std::chrono::steady_clock::now() - t_parse).count();
                 {
@@ -4400,7 +4402,7 @@ void translate_impl(
                 {
                     if (std::find(sc.generic_names.begin(), sc.generic_names.end(), g) != sc.generic_names.end())
                         continue;
-                    const std::vector<uint32_t> uses = hotc::find_generic_uses(in.script_text, g);
+                    const std::vector<uint32_t> uses = hotc::find_generic_uses(in.script_text, 0, g);
                     if (!uses.empty())
                         fail_at(map, uses.front(),
                             "the generic '" + g + "' of the unit '" + unit
@@ -4411,9 +4413,9 @@ void translate_impl(
                 // the list too: the importer copies its classes and structs, so a change of them
                 // makes the importer stale.
                 const auto t_view = std::chrono::steady_clock::now();
-                res.import_hashes.emplace_back(unit, hash_text(module_interface(is, import_texts.back())));
+                res.import_hashes.emplace_back(unit, hash_text(module_interface(is, imported_files.back().text, base)));
                 // The import view: a translation cache keeps its entry when the view stays the same.
-                views[normal_path(file)] = import_view_of(is, import_texts.back(), base, map, array_tpl);
+                views[normal_path(file)] = import_view_of(is, imported_files.back().text, base, map, array_tpl);
                 res.timing.import_view_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
                     std::chrono::steady_clock::now() - t_view).count();
                 // The module variables, the convert hooks and the free functions of the import stay in
@@ -4434,7 +4436,7 @@ void translate_impl(
                 }
                 else
                 {
-                    indirect_texts[normal_path(file)] = import_texts.size() - 1;
+                    indirect_texts[normal_path(file)] = imported_files.size() - 1;
                     // The hint shows the name of the script as a "using" line writes it.
                     const std::string import_name = unit.size() > 4 && unit.compare(unit.size() - 4, 4, ".hot") == 0
                         ? unit
@@ -11810,7 +11812,7 @@ std::optional<ImportView> import_view(const std::string& text, const std::string
     try
     {
         const hotc::LineMap map(text);
-        const Script sc = parse_structure(text, map, array_tpl);
+        const Script sc = parse_structure(text, 0, map, array_tpl);
         out = import_view_of(sc, text, 0, map, array_tpl);
     }
     catch (const TranslateAbort&)

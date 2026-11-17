@@ -74,12 +74,12 @@ struct GenericContext
 // The current context of this thread, or null.
 GenericContext*& generic_context();
 
-// Finds the generic declarations of a ".hot" text. Each parameter list of a declaration becomes
+// Finds the generic declarations of a ".hot" text. The first byte has the position "origin". Each parameter list of a declaration becomes
 // blank in "text" (the offsets stay). Reports the forms that version 1 does not support.
-std::vector<GenericDecl> scan_generics(std::string& text, const LineMap& map, Diagnostics& diag);
+std::vector<GenericDecl> scan_generics(std::string& text, uint32_t origin, const LineMap& map, Diagnostics& diag);
 
 // The positions of each use "name<" in a ".hot" text, outside comments and literals.
-std::vector<uint32_t> find_generic_uses(const std::string& text, const std::string& name);
+std::vector<uint32_t> find_generic_uses(const std::string& text, uint32_t origin, const std::string& name);
 
 // Splits the text between the angle brackets at the commas of the top level. Trims each part.
 std::vector<std::string> split_type_args(const std::string& inner);

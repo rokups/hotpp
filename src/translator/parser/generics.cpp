@@ -38,7 +38,7 @@ struct Tok
 };
 
 // The tokens of a ".hot" text without comments. A string or a character literal is one token "\"".
-std::vector<Tok> tokens(const std::string& t)
+std::vector<Tok> tokens(const std::string& t, uint32_t origin)
 {
     std::vector<Tok> out;
     const size_t n = t.size();
@@ -66,7 +66,7 @@ std::vector<Tok> tokens(const std::string& t)
             i = e == std::string::npos ? n : e + 2;
             continue;
         }
-        const uint32_t at = static_cast<uint32_t>(i);
+        const uint32_t at = origin + static_cast<uint32_t>(i);
         if (c == '"' && i > 0 && t[i - 1] == '$')
         {
             // An interpolated string: "{expr}" can hold strings and braces.
@@ -229,9 +229,9 @@ bool ends_type(const Tok& t)
     return t.text == ">" || t.text == "]" || t.text == "?" || t.text == "*" || t.text == "&";
 }
 
-void blank(std::string& text, uint32_t b, uint32_t e)
+void blank(std::string& text, uint32_t origin, uint32_t b, uint32_t e)
 {
-    for (uint32_t i = b; i < e && i < text.size(); ++i)
+    for (uint32_t i = b - origin; i < e - origin && i < text.size(); ++i)
         if (text[i] != '\n')
             text[i] = ' ';
 }
@@ -428,10 +428,10 @@ std::string GenericContext::use(const std::string& name, const std::string& inne
     return mangled;
 }
 
-std::vector<GenericDecl> scan_generics(std::string& text, const LineMap& map, Diagnostics& diag)
+std::vector<GenericDecl> scan_generics(std::string& text, uint32_t origin, const LineMap& map, Diagnostics& diag)
 {
     std::vector<GenericDecl> out;
-    const std::vector<Tok> ts = tokens(text);
+    const std::vector<Tok> ts = tokens(text, origin);
     GenericContext err;
     err.diag = &diag;
     err.map = &map;
@@ -458,7 +458,7 @@ std::vector<GenericDecl> scan_generics(std::string& text, const LineMap& map, Di
         if (const size_t w = where_clause(ts, from, body))
         {
             err.error(ts[w].pos, kNoConstraints);
-            blank(text, ts[w].pos, ts[body].pos);
+            blank(text, origin, ts[w].pos, ts[body].pos);
         }
     };
     for (size_t k = 0; k < ts.size(); ++k)
@@ -523,7 +523,7 @@ std::vector<GenericDecl> scan_generics(std::string& text, const LineMap& map, Di
             {
                 err.error(name.pos, std::string("a generic ") + t.text + " is not supported. Only a struct, a class and a free function can be generic");
                 if (after != 0)
-                    blank(text, ts[k + 2].pos, ts[after - 1].pos + 1);
+                    blank(text, origin, ts[k + 2].pos, ts[after - 1].pos + 1);
                 continue;
             }
             if (after == 0)
@@ -543,7 +543,7 @@ std::vector<GenericDecl> scan_generics(std::string& text, const LineMap& map, Di
             d.params = std::move(params);
             d.item_begin = item_begin;
             d.name_pos = name.pos;
-            blank(text, ts[k + 2].pos, ts[after - 1].pos + 1);
+            blank(text, origin, ts[k + 2].pos, ts[after - 1].pos + 1);
             out.push_back(std::move(d));
             open = &out.back();
             k = after - 1;
@@ -567,7 +567,7 @@ std::vector<GenericDecl> scan_generics(std::string& text, const LineMap& map, Di
         if (braces == 1)
         {
             err.error(t.pos, "a generic method is not supported. Use a generic free function or a generic class");
-            blank(text, ts[k + 1].pos, ts[after - 1].pos + 1);
+            blank(text, origin, ts[k + 1].pos, ts[after - 1].pos + 1);
             k = after - 1;
             continue;
         }
@@ -582,13 +582,13 @@ std::vector<GenericDecl> scan_generics(std::string& text, const LineMap& map, Di
         d.params = std::move(params);
         d.item_begin = item_begin;
         d.name_pos = t.pos;
-        blank(text, ts[k + 1].pos, ts[after - 1].pos + 1);
+        blank(text, origin, ts[k + 1].pos, ts[after - 1].pos + 1);
         out.push_back(std::move(d));
         open = &out.back();
         k = after - 1;
     }
     if (open)
-        open->item_end = static_cast<uint32_t>(text.size());
+        open->item_end = origin + static_cast<uint32_t>(text.size());
     // A parameter name is unique and is not a type of the language.
     for (GenericDecl& d : out)
     {
@@ -604,10 +604,10 @@ std::vector<GenericDecl> scan_generics(std::string& text, const LineMap& map, Di
     return out;
 }
 
-std::vector<uint32_t> find_generic_uses(const std::string& text, const std::string& name)
+std::vector<uint32_t> find_generic_uses(const std::string& text, uint32_t origin, const std::string& name)
 {
     std::vector<uint32_t> out;
-    const std::vector<Tok> ts = tokens(text);
+    const std::vector<Tok> ts = tokens(text, origin);
     for (size_t k = 0; k + 1 < ts.size(); ++k)
         if (ts[k].word && ts[k].text == name && ts[k + 1].text == "<" && (k == 0 || ts[k - 1].text != "."))
             out.push_back(ts[k].pos);

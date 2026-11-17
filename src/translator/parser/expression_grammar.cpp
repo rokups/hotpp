@@ -93,7 +93,7 @@ constexpr auto id_r =
 // ---------------------------------------------------------------- plain helpers
 std::string_view span_text(const ParseState& st, Span sp)
 {
-    return std::string_view(st.base + sp.begin, sp.end - sp.begin);
+    return std::string_view(st.at(sp.begin), sp.end - sp.begin);
 }
 
 // The type text of a span. A "." is a scope and becomes "::". A "::" is an error.
@@ -133,8 +133,8 @@ ast::NameExpr split_name(const ParseState& st, std::string_view t, uint32_t pos)
                     break;
             }
             const std::size_t e = j < t.size() ? j + 1 : t.size();
-            const std::string targs = array_types(st, st.base + pos + i,
-                canonical_type_at(st, st.base + pos + i, scope_text(st, st.base + pos + i, t.substr(i, e - i))), false);
+            const std::string targs = array_types(st, st.at(pos + i),
+                canonical_type_at(st, st.at(pos + i), scope_text(st, st.at(pos + i), t.substr(i, e - i))), false);
             const std::size_t targs_at = i;
             i = e;
             // "Box<int>" or "first<int>" at the start of a name: the generated name (generics.h).
@@ -158,7 +158,7 @@ ast::NameExpr split_name(const ParseState& st, std::string_view t, uint32_t pos)
                     const Span args{targs_begin, pos + static_cast<uint32_t>(e) - 1};
                     Diagnostics quiet;
                     std::vector<ExprP> list =
-                        parse_expression_list(ParseInput{std::string_view(st.base, st.size), st.map, st.array_tpl, st.aliases}, args, quiet);
+                        parse_expression_list(ParseInput{std::string_view(st.data, st.size), st.origin, st.map, st.array_tpl, st.aliases}, args, quiet);
                     if (quiet.items.empty() && !list.empty())
                     {
                         n.targ_exprs = std::move(list);
@@ -400,8 +400,8 @@ struct Builder
     static ExprP test(const ParseState& st, ExprP o, Span name, bool is_as)
     {
         const uint32_t pos = ast::pos_of(*o);
-        const bool handle = st.base[name.begin] == '$';
-        const char* at = st.base + name.begin + (handle ? 1 : 0);
+        const bool handle = *st.at(name.begin) == '$';
+        const char* at = st.at(name.begin + (handle ? 1 : 0));
         std::string type = scope_text(st, at, std::string(span_text(st, name)).substr(handle ? 1 : 0));
         if (handle)
             check_type_marks(st, at, "$" + type);
@@ -569,7 +569,7 @@ ExprP make_string(const ParseState& st, const char* b, const char* e)
     n.pos = st.offset(b);
     std::string cur;
     const char* close_quote = e - 1;
-    const ParseInput in{std::string_view(st.base, st.size), st.map, st.array_tpl, st.aliases};
+    const ParseInput in{std::string_view(st.data, st.size), st.origin, st.map, st.array_tpl, st.aliases};
     for (const char* p = b + 1; p < close_quote;)
     {
         if (*p == '\\' && p + 1 < close_quote)
@@ -680,7 +680,7 @@ struct member_name_p
         const std::size_t lt = t.find('<');
         if (lt == std::string_view::npos)
             return MemberName{std::string(t), sp.begin};
-        const char* at = st.base + sp.begin + lt;
+        const char* at = st.at(sp.begin + lt);
         std::string targs = array_types(st, at, canonical_type_at(st, at, scope_text(st, at, t.substr(lt))), false);
         return MemberName{std::string(t.substr(0, lt)) + targs, sp.begin};
     },
@@ -688,7 +688,7 @@ struct member_name_p
     {
         // The hole is right after the ".", before any white space.
         uint32_t dot_end = st.offset(pos);
-        while (dot_end > 0 && std::isspace(static_cast<unsigned char>(st.base[dot_end - 1])))
+        while (dot_end > st.origin && std::isspace(static_cast<unsigned char>(*st.at(dot_end - 1))))
             --dot_end;
         st.diag->add(dot_end, *st.map, "expected a member name after '.'");
         st.diag->member_holes.push_back(dot_end);
@@ -762,7 +762,7 @@ struct new_p
             | dsl::else_ >> (dsl::lit_c<'('> + dsl::p<elems_p<')'>>));
     static ExprP make(const ParseState& st, const char* pos, bool handle, Span name, std::vector<ExprP>&& args)
     {
-        const char* at = st.base + name.begin;
+        const char* at = st.at(name.begin);
         std::string type = scope_text(st, at, span_text(st, name));
         if (handle)
             check_type_marks(st, at, "$" + type);
@@ -817,12 +817,12 @@ struct coll_p
         {
             if (c.is_map && !en.value)
             {
-                st.error(st.base + ast::pos_of(*en.key), "a map entry needs a value: key: value");
+                st.error(st.at(ast::pos_of(*en.key)), "a map entry needs a value: key: value");
                 continue;
             }
             if (!c.is_map && en.value)
             {
-                st.error(st.base + ast::pos_of(*en.key), "a list element has no value");
+                st.error(st.at(ast::pos_of(*en.key)), "a list element has no value");
                 continue;
             }
             c.elems.push_back(std::move(en.key));
@@ -935,7 +935,7 @@ ExprP make_lambda(const ParseState& st, const char* pos, LambdaRest&& rest, ast:
         l.body.stmts.push_back(ast::make_stmt(std::move(r)));
         return ast::make_expr(std::move(l));
     }
-    const ParseInput in{std::string_view(st.base, st.size), st.map, st.array_tpl, st.aliases};
+    const ParseInput in{std::string_view(st.data, st.size), st.origin, st.map, st.array_tpl, st.aliases};
     l.body = parse_block(in, rest.body, *st.diag);
     return ast::make_expr(std::move(l));
 }
@@ -1037,19 +1037,19 @@ struct attr_lambda_p
             const bool is_name = a.name == "name";
             if (!is_name && a.name != "alias")
             {
-                st.error(st.base + a.pos, "unknown attribute '" + a.name + "' on a lambda");
+                st.error(st.at(a.pos), "unknown attribute '" + a.name + "' on a lambda");
                 continue;
             }
             std::string text;
             if (!attr_string(span_text(st, a.args), text))
             {
-                st.error(st.base + a.pos, "[" + a.name + "(...)] needs a string argument");
+                st.error(st.at(a.pos), "[" + a.name + "(...)] needs a string argument");
                 continue;
             }
             if (!is_name)
                 l.aliases.push_back(std::move(text));
             else if (!l.name.empty() || l.name_pos != 0)
-                st.error(st.base + a.pos, "duplicate attribute 'name'");
+                st.error(st.at(a.pos), "duplicate attribute 'name'");
             else
             {
                 l.name = std::move(text);
@@ -1379,10 +1379,11 @@ template <typename Entry, typename Result>
 bool run(ParseInput in, Span span, Diagnostics& diag, Result& out, uint32_t& end_offset)
 {
     const std::size_t size = in.text.size();
-    const std::size_t end = span.end < size ? span.end : size;
-    const std::size_t begin = span.begin < end ? span.begin : end;
-    const ParseState st{in.text.data(), in.map, &diag, size, in.array_tpl, in.aliases};
-    const auto input = lexy::string_input<Encoding>(in.text.data() + begin, end - begin);
+    // "begin" and "end" are positions: the origin plus the index in the text.
+    const std::size_t end = std::min<std::size_t>(std::max<std::size_t>(span.end, in.origin), in.origin + size);
+    const std::size_t begin = std::min<std::size_t>(std::max<std::size_t>(span.begin, in.origin), end);
+    const ParseState st{in.text.data(), in.origin, in.map, &diag, size, in.array_tpl, in.aliases};
+    const auto input = lexy::string_input<Encoding>(in.text.data() + (begin - in.origin), end - begin);
     int syntax_errors = 0;
     bool spaceship = false;
     auto sink = lexy::callback<void>([&](const auto&, const auto& e)
@@ -1416,7 +1417,7 @@ bool run(ParseInput in, Span span, Diagnostics& diag, Result& out, uint32_t& end
     // The end of the parse must be the end of the span.
     if (end_offset != end)
     {
-        diag.add(end_offset, *in.map, end_of_expr_message(in.text, end_offset));
+        diag.add(end_offset, *in.map, end_of_expr_message(in.text, end_offset - in.origin));
         return false;
     }
     return true;

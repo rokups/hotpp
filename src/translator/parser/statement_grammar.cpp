@@ -101,7 +101,7 @@ constexpr auto var_or_const = dsl::literal_set(kw_var, kw_const);
 // ---------------------------------------------------------------- plain helpers
 std::string_view span_text(const ParseState& st, Span sp)
 {
-    return std::string_view(st.base + sp.begin, sp.end - sp.begin);
+    return std::string_view(st.at(sp.begin), sp.end - sp.begin);
 }
 
 bool blank(const ParseState& st, Span sp)
@@ -117,7 +117,7 @@ std::string type_of(const ParseState& st, Span sp)
 
 ParseInput input_of(const ParseState& st)
 {
-    return ParseInput{std::string_view(st.base, st.size), st.map, st.array_tpl, st.aliases};
+    return ParseInput{std::string_view(st.data, st.size), st.origin, st.map, st.array_tpl, st.aliases};
 }
 
 // The expression of the span. Null: the error is in the diagnostics.
@@ -160,7 +160,7 @@ bool binding_ok(const ParseState& st, uint32_t pos, size_t count)
 {
     if (count >= 2)
         return true;
-    st.error(st.base + pos, "a structured binding needs two or more names");
+    st.error(st.at(pos), "a structured binding needs two or more names");
     return false;
 }
 
@@ -224,7 +224,7 @@ StmtP make_decl(const ParseState& st, DeclParts&& d)
             return nullptr;
         if (!d.has_init)
         {
-            st.error(st.base + v.pos, "a structured binding needs an initializer");
+            st.error(st.at(v.pos), "a structured binding needs an initializer");
             return nullptr;
         }
     }
@@ -232,9 +232,9 @@ StmtP make_decl(const ParseState& st, DeclParts&& d)
     if (!d.has_init)
     {
         if (v.is_ref)
-            st.error(st.base + v.pos, "a ref needs an initializer");
+            st.error(st.at(v.pos), "a ref needs an initializer");
         else if (v.type.empty())
-            st.error(st.base + v.pos, "var needs an initializer");
+            st.error(st.at(v.pos), "var needs an initializer");
     }
     if (d.has_init)
     {
@@ -254,11 +254,11 @@ StmtP make_attr_decl(const ParseState& st, std::vector<StmtAttr>&& attrs, DeclPa
     for (const StmtAttr& a : attrs)
     {
         if (a.first == "value")
-            st.error(st.base + a.second, kValueRemoved);
+            st.error(st.at(a.second), kValueRemoved);
         else if (a.first != "weak")
-            st.error(st.base + a.second, "unknown attribute '" + a.first + "' on a local variable");
+            st.error(st.at(a.second), "unknown attribute '" + a.first + "' on a local variable");
         else if (weak_pos != 0)
-            st.error(st.base + a.second, "duplicate attribute '" + a.first + "'");
+            st.error(st.at(a.second), "duplicate attribute '" + a.first + "'");
         else
             weak_pos = a.second;
     }
@@ -271,7 +271,7 @@ StmtP make_attr_decl(const ParseState& st, std::vector<StmtAttr>&& attrs, DeclPa
         return s;
     if (untyped)
     {
-        st.error(st.base + weak_pos,
+        st.error(st.at(weak_pos),
             "[weak] needs the handle type of the local: write '[weak] T name', not 'var' or a structured binding");
         return nullptr;
     }
@@ -777,12 +777,12 @@ template <DeclEnd E> struct ref_rest
     static constexpr auto value = lexy::bind(lexy::callback<RefHead>(
                                                  [](const ParseState& st, const char* b, const char* e, std::string name)
     {
-        RefHead r{make_typed_head(st, st.base, b, e, std::move(name))};
+        RefHead r{make_typed_head(st, st.data, b, e, std::move(name))};
         r.head.is_ref = true;
         return r;
     }, [](const ParseState& st, NameList&& n)
     {
-        RefHead r{make_head(st, st.base, std::string())};
+        RefHead r{make_head(st, st.data, std::string())};
         r.head.is_ref = true;
         set_names(r.head, std::move(n));
         return r;
@@ -799,12 +799,12 @@ template <DeclEnd E> struct const_rest
     static constexpr auto value = lexy::bind(lexy::callback<VarHead>(
                                                  [](const ParseState& st, NameList&& n)
     {
-        VarHead h = make_head(st, st.base, std::string());
+        VarHead h = make_head(st, st.data, std::string());
         set_names(h, std::move(n));
         return h;
     },
                                                  [](const ParseState& st, const char* b, const char* e, std::string name)
-    { return make_typed_head(st, st.base, b, e, std::move(name)); }),
+    { return make_typed_head(st, st.data, b, e, std::move(name)); }),
         lexy::parse_state, lexy::values);
 };
 
@@ -847,7 +847,7 @@ template <DeclEnd E> struct var_head
             [](const ParseState& st, const char* pos, VarHead&& h, const char* end)
     {
         h.pos = st.offset(pos);
-        st.error(st.base + h.pos, kConstInferred);
+        st.error(st.at(h.pos), kConstInferred);
         if (h.names.empty())
             h.name_pos = name_at(st, pos, end, h.name.size());
         else
@@ -1143,7 +1143,7 @@ struct catch_named
         }
         else if constexpr (std::is_same_v<std::decay_t<decltype(name)>, lexy::nullopt>)
         {
-            st.error(st.base + type.end, "expected a name");
+            st.error(st.at(type.end), "expected a name");
         }
         else
         {
@@ -1345,7 +1345,7 @@ struct case_label
         i.kind = SwItem::Case;
         i.pos = st.offset(pos);
         if (blank(st, label))
-            st.error(st.base + label.begin, "expected an expression");
+            st.error(st.at(label.begin), "expected an expression");
         else
             i.label = expr_of(st, label);
         return i;
@@ -1417,7 +1417,7 @@ struct switch_stmt
                     continue;
                 if (!open)
                 {
-                    st.error(st.base + it.pos, "expected 'case' or 'default'");
+                    st.error(st.at(it.pos), "expected 'case' or 'default'");
                     continue;
                 }
                 n.cases.back().stmts.push_back(std::move(it.stmt));
@@ -1495,9 +1495,10 @@ ast::BlockStmt parse_block(ParseInput in, Span body_without_braces, Diagnostics&
     block.pos = body_without_braces.begin > 0 ? body_without_braces.begin - 1 : 0;
     block.end_pos = body_without_braces.end;
 
+    // "begin" and "end" are positions: the origin plus the index in the text.
     const std::size_t size = in.text.size();
-    const std::size_t end = body_without_braces.end < size ? body_without_braces.end : size;
-    const std::size_t begin = body_without_braces.begin < end ? body_without_braces.begin : end;
+    const std::size_t end = std::min<std::size_t>(std::max<std::size_t>(body_without_braces.end, in.origin), in.origin + size);
+    const std::size_t begin = std::min<std::size_t>(std::max<std::size_t>(body_without_braces.begin, in.origin), end);
 
     NestingGuard guard;
     if (NestingGuard::depth > max_block_nesting)
@@ -1506,8 +1507,8 @@ ast::BlockStmt parse_block(ParseInput in, Span body_without_braces, Diagnostics&
         return block;
     }
     const size_t first_item = diag.items.size();
-    const ParseState st{in.text.data(), in.map, &diag, size, in.array_tpl, in.aliases};
-    const auto input = lexy::string_input<Encoding>(in.text.data() + begin, end - begin);
+    const ParseState st{in.text.data(), in.origin, in.map, &diag, size, in.array_tpl, in.aliases};
+    const auto input = lexy::string_input<Encoding>(in.text.data() + (begin - in.origin), end - begin);
     auto result = parse_with_diag<block_entry>(input, st);
     // The parse reports the recursion limit again at each column. Keep the first error and
     // drop the errors after it: the rest of the body is not parsed.
