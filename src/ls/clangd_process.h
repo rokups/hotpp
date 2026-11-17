@@ -51,7 +51,8 @@ public:
 
     // Each "uri" of a message from clangd that is "from" becomes "to". The generated unit of a document
     // can have its shell in a header (Server::send_generated): a place in the header is a place in the unit.
-    void set_uri_alias(const std::string& from, const std::string& to);
+    // With "drop_diagnostics" the publishDiagnostics of the uri "from" never reach the server.
+    void set_uri_alias(const std::string& from, const std::string& to, bool drop_diagnostics = false);
 
     // Sends "shutdown" and "exit", then waits for the process. It kills a process that hangs.
     void stop();
@@ -69,6 +70,7 @@ private:
     std::thread reader_;
     std::mutex write_mutex_, mutex_, alias_mutex_;
     std::map<std::string, std::string> uri_alias_;
+    std::set<std::string> quiet_uris_;
     std::condition_variable cv_;
     std::map<int64_t, nlohmann::json> responses_;
     std::set<int64_t> abandoned_; // the ids of requests that timed out: a late response is dropped

@@ -26,6 +26,9 @@
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 #include <cctype>
 #include <chrono>
 #include <condition_variable>
@@ -231,6 +234,8 @@ struct Doc
     // The header that clangd has for the shell of the unit (Server::send_generated): its path and the hash of its text.
     std::string shell_path;
     size_t shell_hash = 0;
+    std::string shell_old; // the header of the last text, removed when the new one is open
+    bool shell_active = false; // the unit of clangd includes shell_path
     bool shell_changed = false; // the header changed: the next send reopens the document
     // The host of the script at the last update. Null: no host.
     std::shared_ptr<const Host> host;
@@ -738,11 +743,24 @@ private:
     // The lite document (HOT-43): the uri that hover, definition and completion ask for the place "gen_line0"
     // (a line of "full", the generated text). It has the bodies of the other own functions as empty lines. The
     // full uri when there is no lite document for the place.
-    std::string lite_uri(const Doc& d, const std::string& full, int gen_line0);
+    std::string lite_uri(const Doc& d, const std::string& full, int gen_line0, int wait_ms = kNativeBudgetMs);
+    static std::optional<std::string> unit_with_include(const std::string& header, const std::string& cpp, size_t at);
+    void remove_shell(Doc& d)
+    {
+        std::error_code ec;
+        for (std::string* p : {&d.shell_path, &d.shell_old})
+            if (!p->empty())
+                fs::remove(*p, ec);
+        d.shell_path.clear();
+        d.shell_old.clear();
+        d.shell_hash = 0;
+        d.shell_active = false;
+    }
     struct LiteState
     {
         bool open = false;
         size_t text_hash = 0, shell_hash = 0;
+        bool ready = false; // the AST of the lite document is there
         int version = 0;
     };
     std::map<std::string, LiteState> lite_; // by the gen uri
@@ -1559,6 +1577,7 @@ void Server::refresh_hosts(Doc* current, bool force)
         if (clangd_ && d->in_clangd)
             clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", d->gen_uri}}}});
         close_lite(*d);
+        remove_shell(*d);
         d->in_clangd = false;
         preamble_ready_.erase(d->gen_uri);
         completion_synced_.erase(d->gen_uri);
@@ -1788,11 +1807,11 @@ static bool write_file_atomic(const fs::path& path, const std::string& text)
 }
 
 // The unit text with the bodies of the own functions empty, but the body that has the line "keep_line0". Each body
-// is between the lines "// @hot-body-begin" and "// @hot-body-end". The lines stay: a position of the unit is the same
+// is between the lines "// @hot-body-begin" (with "keep" for a body that stays) and "// @hot-body-end". The lines stay: a position of the unit is the same
 // position in the result. Gives nothing when the line is in no body.
 static std::optional<std::string> blank_other_bodies(const std::string& unit, int keep_line0)
 {
-    static const std::string begin = "\n// @hot-body-begin\n", end = "\n// @hot-body-end\n";
+    static const std::string begin = "\n// @hot-body-begin", keep_tag = " keep", end = "\n// @hot-body-end\n";
     std::string out;
     out.reserve(unit.size());
     size_t at = 0;
@@ -1803,7 +1822,12 @@ static std::optional<std::string> blank_other_bodies(const std::string& unit, in
         const size_t b = unit.find(begin, at);
         if (b == std::string::npos)
             break;
-        const size_t s0 = b + begin.size();
+        // The emitter writes "keep" for a body that is never empty (a deduced return type).
+        const bool deduced = unit.compare(b + begin.size(), keep_tag.size(), keep_tag) == 0;
+        const size_t line_end = unit.find('\n', b + 1);
+        if (line_end == std::string::npos)
+            return std::nullopt;
+        const size_t s0 = line_end + 1;
         const size_t e = unit.find(end, s0 - 1);
         if (e == std::string::npos)
             return std::nullopt;
@@ -1811,10 +1835,10 @@ static std::optional<std::string> blank_other_bodies(const std::string& unit, in
         out.append(unit, at, s0 - at);
         line += static_cast<int>(std::count(unit.begin() + static_cast<std::ptrdiff_t>(at), unit.begin() + static_cast<std::ptrdiff_t>(s0), '\n'));
         const int lines = static_cast<int>(std::count(unit.begin() + static_cast<std::ptrdiff_t>(s0), unit.begin() + static_cast<std::ptrdiff_t>(s1), '\n'));
-        if (keep_line0 >= line && keep_line0 < line + lines)
+        if (deduced || (keep_line0 >= line && keep_line0 < line + lines))
         {
             out.append(unit, s0, s1 - s0);
-            kept = true;
+            kept = kept || (keep_line0 >= line && keep_line0 < line + lines);
         }
         else
             out.append(static_cast<size_t>(lines), '\n');
@@ -1827,107 +1851,158 @@ static std::optional<std::string> blank_other_bodies(const std::string& unit, in
     return out;
 }
 
-std::string Server::lite_uri(const Doc& d, const std::string& full, int gen_line0)
+std::string Server::lite_uri(const Doc& d, const std::string& full, int gen_line0, int wait_ms)
 {
     if (!lite_doc_enabled() || !clangd_ || !clangd_->running() || !preamble_ready_.count(d.gen_uri))
         return d.gen_uri; // a cold document: the requests follow the budget of the full document
     const size_t at = full.find(kShellEnd);
-    if (at == std::string::npos)
+    if (at == std::string::npos || !d.shell_active)
         return d.gen_uri;
-    const std::string unit = unit_for_clangd(const_cast<Doc&>(d), full);
-    if (unit.size() == full.size() && unit == full)
-        return d.gen_uri; // no header: no lite document
-    const auto lite = blank_other_bodies(unit, gen_line0);
+    // The header is the one that send_generated wrote for the full document. A different header: the full document.
+    if (std::hash<std::string>()(full.substr(0, at + 1)) != d.shell_hash)
+        return d.gen_uri;
+    const auto unit = unit_with_include(d.shell_path, full, at);
+    if (!unit)
+        return d.gen_uri;
+    const auto lite = blank_other_bodies(*unit, gen_line0);
     if (!lite)
         return d.gen_uri; // the place is in no function body
     const std::string path = d.gen_path + ".lite.cpp", uri = path_to_uri(path);
     const size_t text_hash = std::hash<std::string>()(*lite);
-    const size_t shell_hash = std::hash<std::string>()(full.substr(0, at));
-    bool opened = false;
+    bool wait = false;
     {
-    std::lock_guard<std::mutex> lock(lite_mutex_);
-    LiteState& st = lite_[d.gen_uri];
-    if (st.open && st.text_hash == text_hash)
-        return uri;
-    clangd_->set_uri_alias(uri, d.gen_uri);
-    if (st.open && st.shell_hash != shell_hash)
-    {
-        // A new header: the document starts again, so it has no old preamble (see send_generated).
-        clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", uri}}}});
-        st.open = false;
-    }
-    const int v = ++st.version;
-    if (!st.open)
-    {
-        hot::ClangFilesOptions co;
-        const Effective e = effective_options(d.path);
-        co.include_dirs = e.include_dirs;
-        co.resource_dir = e.resource_dir;
-        co.std_version = e.std_version;
-        co.extra_flags = e.extra_flags;
-        const std::vector<std::string> cmd = hot::compile_object_command(co, path, path + ".o", std::string());
-        clangd_->notify("workspace/didChangeConfiguration",
-            {{"settings",
-                {{"compilationDatabaseChanges",
-                    {{path,
-                        {{"workingDirectory", fs::path(path).parent_path().string()}, {"compilationCommand", cmd}}}}}}}});
-        clangd_->notify("textDocument/didOpen",
-            {{"textDocument", {{"uri", uri}, {"languageId", "cpp"}, {"version", v}, {"text", *lite}}}});
-        st.open = true;
-        opened = true;
-    }
-    else
-        clangd_->notify("textDocument/didChange",
-            {{"textDocument", {{"uri", uri}, {"version", v}}}, {"contentChanges", json::array({{{"text", *lite}}})}});
-    st.text_hash = text_hash;
-    st.shell_hash = shell_hash;
+        std::lock_guard<std::mutex> lock(lite_mutex_);
+        LiteState& st = lite_[d.gen_uri];
+        if (!st.open || st.text_hash != text_hash)
+        {
+            clangd_->set_uri_alias(uri, d.gen_uri, true);
+            if (st.open && st.shell_hash != d.shell_hash)
+            {
+                // A new header: the document starts again, so it has no old preamble (see send_generated).
+                clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", uri}}}});
+                st.open = false;
+                st.ready = false;
+            }
+            const int v = ++st.version;
+            if (!st.open)
+            {
+                hot::ClangFilesOptions co;
+                const Effective e = effective_options(d.path);
+                co.include_dirs = e.include_dirs;
+                co.resource_dir = e.resource_dir;
+                co.std_version = e.std_version;
+                co.extra_flags = e.extra_flags;
+                const std::vector<std::string> cmd = hot::compile_object_command(co, path, path + ".o", std::string());
+                clangd_->notify("workspace/didChangeConfiguration",
+                    {{"settings",
+                        {{"compilationDatabaseChanges",
+                            {{path,
+                                {{"workingDirectory", fs::path(path).parent_path().string()},
+                                    {"compilationCommand", cmd}}}}}}}});
+                clangd_->notify("textDocument/didOpen",
+                    {{"textDocument", {{"uri", uri}, {"languageId", "cpp"}, {"version", v}, {"text", *lite}}}});
+                st.open = true;
+            }
+            else
+                clangd_->notify("textDocument/didChange",
+                    {{"textDocument", {{"uri", uri}, {"version", v}}},
+                        {"contentChanges", json::array({{{"text", *lite}}})}});
+            st.text_hash = text_hash;
+            st.shell_hash = d.shell_hash;
+        }
+        wait = !st.ready;
     }
     // A new document has no preamble. Before the first preamble clangd gives only words of the file, so the
-    // first request waits for the AST here.
-    if (opened)
-        clangd_result("textDocument/documentSymbol", {{"textDocument", {{"uri", uri}}}}, 30000);
+    // request waits for the AST here, but not longer than its own budget. After a time-out the request uses the
+    // full document, and the lite document finishes its open in the background.
+    if (wait)
+    {
+        if (wait_ms <= 0 || !clangd_result("textDocument/documentSymbol", {{"textDocument", {{"uri", uri}}}}, wait_ms))
+            return d.gen_uri;
+        std::lock_guard<std::mutex> lock(lite_mutex_);
+        lite_[d.gen_uri].ready = true;
+    }
     return uri;
+}
+
+// The unit text: the include of the header, then the lines of the shell as empty lines, then the own part.
+std::optional<std::string> Server::unit_with_include(const std::string& header, const std::string& cpp, size_t at)
+{
+    const size_t lines = static_cast<size_t>(std::count(cpp.begin(), cpp.begin() + at + 1, '\n'));
+    if (lines < 2 || header.find_first_of("\n\r") != std::string::npos)
+        return std::nullopt;
+    std::string path;
+    for (const char c : fs::path(header).generic_string())
+    {
+        if (c == '"' || c == '\\')
+            path += '\\';
+        path += c;
+    }
+    std::string out = "#include \"" + path + "\"\n";
+    out.append(lines - 1, '\n');
+    out.append(cpp, at + 1, std::string::npos);
+    return out;
+}
+
+// The directory of the headers: one for each user, with the mode 0700.
+static fs::path shell_dir()
+{
+    std::error_code ec;
+    const char* env_dir = std::getenv("HOT_LS_SHELL_DIR"); // for the tests
+    fs::path dir;
+    if (env_dir && *env_dir)
+        dir = env_dir;
+    else if (const char* xdg = std::getenv("XDG_CACHE_HOME"); xdg && *xdg)
+        dir = fs::path(xdg) / "hot-ls";
+    else if (const char* home = std::getenv("HOME"); home && *home)
+        dir = fs::path(home) / ".cache" / "hot-ls";
+    else
+#ifdef _WIN32
+        dir = fs::temp_directory_path(ec) / "hot-ls-shell";
+#else
+        dir = fs::temp_directory_path(ec) / ("hot-ls-shell-" + std::to_string(static_cast<long long>(::getuid())));
+#endif
+    fs::create_directories(dir, ec);
+    fs::permissions(dir, fs::perms::owner_all, ec);
+    return dir;
 }
 
 // The text that clangd gets for the unit. With the marker, the text before it goes to a header and the unit
 // starts with an include of it. The unit keeps the lines of the full text: the include line and empty lines
 // take the place of the shell. So each position of the full text is the same position in the unit, and a
-// place in the header is the same place in the full text. The shell is in a cache directory, not near the script.
+// place in the header is the same place in the full text. The header name has the hash of its content, so two
+// processes never write the same name with different content. Only send_generated calls this function.
 std::string Server::unit_for_clangd(Doc& d, const std::string& cpp)
 {
+    d.shell_active = false;
     const size_t at = cpp.find(kShellEnd);
     if (at == std::string::npos)
         return cpp;
     const std::string shell = cpp.substr(0, at + 1);
-    const size_t lines = static_cast<size_t>(std::count(shell.begin(), shell.end(), '\n'));
-    if (lines < 2)
-        return cpp;
-    if (d.shell_path.empty())
-    {
-        std::error_code ec;
-        const char* env_dir = std::getenv("HOT_LS_SHELL_DIR"); // for the tests
-        const fs::path dir = env_dir && *env_dir ? fs::path(env_dir) : fs::temp_directory_path(ec) / "hot-ls-shell";
-        char name[32];
-        std::snprintf(name, sizeof name, "%016zx", std::hash<std::string>()(d.gen_path));
-        d.shell_path = (dir / (std::string(name) + ".shell.h")).string();
-    }
     const size_t hash = std::hash<std::string>()(shell);
+    char name[48];
+    std::snprintf(name, sizeof name, "%016zx-%016zx.shell.h", std::hash<std::string>()(d.gen_path), hash);
+    const std::string path = (shell_dir() / name).string();
+    const auto unit = unit_with_include(path, cpp, at);
+    if (!unit)
+        return cpp; // a path that the include cannot hold: clangd gets the full text
     std::error_code ec;
-    if (hash != d.shell_hash || !fs::exists(d.shell_path, ec))
+    if (path != d.shell_path || !fs::exists(path, ec))
     {
-        if (!write_file_atomic(d.shell_path, shell))
+        if (!write_file_atomic(path, shell))
             return cpp; // no header: clangd gets the full text
+        if (!d.shell_path.empty() && d.shell_path != path)
+            d.shell_old = d.shell_path;
+        d.shell_path = path;
         d.shell_hash = hash;
         // clangd builds a new preamble for the new header. The next request waits for it, as for a new document.
         preamble_ready_.erase(d.gen_uri);
         completion_synced_.erase(d.gen_uri);
         d.shell_changed = true;
     }
+    d.shell_active = true;
     clangd_->set_uri_alias(path_to_uri(d.shell_path), d.gen_uri);
-    std::string out = "#include \"" + fs::path(d.shell_path).generic_string() + "\"\n";
-    out.append(lines - 1, '\n');
-    out.append(cpp, at + 1, std::string::npos);
-    return out;
+    return *unit;
 }
 
 void Server::send_generated(Doc& d, const std::string& full)
@@ -1972,6 +2047,13 @@ void Server::send_generated(Doc& d, const std::string& full)
         clangd_->notify("textDocument/didChange",
             {{"textDocument", {{"uri", d.gen_uri}, {"version", v}}},
                 {"contentChanges", json::array({{{"text", cpp}}})}});
+    }
+    // The new header is open now. The header of the old text is not needed (best effort).
+    if (!d.shell_old.empty())
+    {
+        std::error_code ec;
+        fs::remove(d.shell_old, ec);
+        d.shell_old.clear();
     }
 }
 
@@ -3107,7 +3189,7 @@ json Server::on_completion(const Doc& d, const json& p)
                 if (std::chrono::steady_clock::now() < budget_end)
                 {
                     std::string lu;
-                    { PhaseTimer pt("round lite sync"); lu = lite_uri(md, facts.cpp, g->line - 1); }
+                    { PhaseTimer pt("round lite sync"); lu = lite_uri(md, facts.cpp, g->line - 1, budget_left()); }
                     if (lu != d.gen_uri)
                     {
                         lite_sent = true;
@@ -3137,7 +3219,7 @@ json Server::on_completion(const Doc& d, const json& p)
                 if (first_sync)
                     wait_for_preamble_index(std::min(5000, budget_left()));
                 r = clangd_result("textDocument/completion",
-                    {{"textDocument", {{"uri", lite_uri(md, facts.cpp, g->line - 1)}}},
+                    {{"textDocument", {{"uri", lite_uri(md, facts.cpp, g->line - 1, budget_left())}}},
                         {"position",
                             to_lsp(gen, {g->line - 1, g->col - 1 + static_cast<int>(prefix.size())}, clangd_utf8_)}},
                     budget_left());
@@ -3161,7 +3243,7 @@ json Server::on_completion(const Doc& d, const json& p)
                 if (g && left > 0)
                 {
                     std::string lu;
-                    { PhaseTimer pt("this lite sync"); lu = lite_uri(md, facts.cpp, g->line - 1); }
+                    { PhaseTimer pt("this lite sync"); lu = lite_uri(md, facts.cpp, g->line - 1, static_cast<int>(left)); }
                     if (lu == d.gen_uri)
                         send_generated(md, facts.cpp);
                     const Text gen(facts.cpp);
@@ -3205,7 +3287,8 @@ json Server::on_completion(const Doc& d, const json& p)
                     const auto stale_end = std::chrono::steady_clock::now() + std::chrono::milliseconds(opt_.completion_budget_ms);
                     if (wait_for_native_ready_until(d, stale_end))
                         r = clangd_result("textDocument/completion",
-                            {{"textDocument", {{"uri", lite_uri(d, d.gen.s, g->line)}}}, {"position", gen_pos(d, *g)}},
+                            {{"textDocument", {{"uri", lite_uri(d, d.gen.s, g->line, std::max(1, static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                stale_end - std::chrono::steady_clock::now()).count())))}}}, {"position", gen_pos(d, *g)}},
                             std::max(1, static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
                                 stale_end - std::chrono::steady_clock::now()).count())));
                     mapped = true; // no answer in time: the reply is incomplete
@@ -3660,8 +3743,18 @@ json Server::on_hover(const Doc& d, const json& p)
                 break;
             timeout_ms = static_cast<int>(left);
         }
+        // The open of the lite document uses part of the budget. A time-out gives the full document.
+        const std::string target = lite_uri(d, d.gen.s, g.line, timeout_ms);
+        if (by_word)
+        {
+            const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+                deadline - std::chrono::steady_clock::now()).count();
+            if (left <= 0)
+                break;
+            timeout_ms = static_cast<int>(left);
+        }
         auto r = clangd_result(
-            "textDocument/hover", {{"textDocument", {{"uri", lite_uri(d, d.gen.s, g.line)}}}, {"position", gen_pos(d, g)}}, timeout_ms);
+            "textDocument/hover", {{"textDocument", {{"uri", target}}}, {"position", gen_pos(d, g)}}, timeout_ms);
         if (!r || !r->contains("contents"))
             continue;
         json c = (*r)["contents"];
@@ -7873,6 +7966,7 @@ void Server::handle(const json& msg)
         if (clangd_ && d->in_clangd)
             clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", d->gen_uri}}}});
         close_lite(*d);
+        remove_shell(*d);
         preamble_ready_.erase(d->gen_uri);
         completion_synced_.erase(d->gen_uri);
         store_closed_shard(*d);
@@ -8155,6 +8249,8 @@ int Server::run()
     windex_.stop();
     if (clangd_)
         clangd_->stop();
+    for (auto& [uri, doc] : docs_) // the headers of the units (best effort)
+        remove_shell(*doc);
     return shutdown_ ? 0 : 1;
 }
 

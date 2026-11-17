@@ -9881,6 +9881,7 @@ json split_features(bool split, size_t* shell_count = nullptr, bool lite = true)
             const std::string text((std::istreambuf_iterator<char>(log)), std::istreambuf_iterator<char>());
             out["lite_seen"] = text.find("player.hot.cpp.lite.cpp") != std::string::npos;
         }
+        out["shell_count"] = static_cast<int>(shell_files(shells.path()).size()); // the session is open
         std::string dump = out.dump();
         const std::string root = uri_of(s.dir.path().string());
         for (size_t at; (at = dump.find(root)) != std::string::npos;)
@@ -9888,7 +9889,8 @@ json split_features(bool split, size_t* shell_count = nullptr, bool lite = true)
         out = json::parse(dump);
     }
     if (shell_count)
-        *shell_count = shell_files(shells.path()).size();
+        *shell_count = static_cast<size_t>(out["shell_count"].get<int>());
+    out.erase("shell_count");
     return out;
 }
 
@@ -9959,7 +9961,11 @@ TEST(LanguageServer, SplitShellHeaderFollowsAnEditOfAnImport)
     }
     ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
     EXPECT_NE(r["result"].dump().find("mana"), std::string::npos) << r.dump();
-    EXPECT_NE(translator_test::read_file(files[0]).find("mana"), std::string::npos);
+    // The new header has a new name (the hash of the content) and the old header is gone.
+    const auto now = shell_files(shells.path());
+    ASSERT_EQ(now.size(), 1u);
+    EXPECT_NE(now[0], files[0]);
+    EXPECT_NE(translator_test::read_file(now[0]).find("mana"), std::string::npos);
 }
 
 // Hover, definition and completion in the bodies of the own functions are the same with the lite document and
@@ -10002,4 +10008,68 @@ TEST(LanguageServer, LiteDocFollowsAnEditInsideABody)
     }
     ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
     EXPECT_NE(r["result"].dump().find("fresh"), std::string::npos) << r.dump();
+}
+
+// ------------------------------------------------------------------ HOT-43 review: the lite document
+
+namespace
+{
+
+// The messages of publishDiagnostics for the script, until no new one comes for "quiet_ms".
+std::vector<json> collect_diagnostics(Session& s, int quiet_ms)
+{
+    std::vector<json> out;
+    for (;;)
+    {
+        const json n = s.client->wait_notification("textDocument/publishDiagnostics",
+            [&](const json& p) { return p.value("uri", std::string()) == s.uri; }, quiet_ms);
+        if (n.is_null())
+            return out;
+        out.push_back(n["params"]["diagnostics"]);
+    }
+}
+
+bool has_message(const json& diags, const std::string& prefix)
+{
+    return std::any_of(diags.begin(), diags.end(),
+        [&](const json& x) { return x.value("message", "").rfind(prefix, 0) == 0; });
+}
+
+// The list of the own errors of the importer (the type error in Other.Bad).
+const char* const kOwnError = "Cannot initialize a variable";
+
+} // namespace
+
+// The lite document is a second open file with the same symbols. Its diagnostics do not reach the client: an error
+// in a blanked body stays in the list while the hover and the completion use the lite document.
+TEST(LanguageServer, LiteDocDiagnosticsNeverReplaceTheFullDiagnostics)
+{
+    REQUIRE_CLANGD();
+    const EnvGuard env("HOT_LS_SPLIT_SHELL", "1");
+    const EnvGuard lite_env("HOT_LS_LITE_DOC", "1");
+    TempDir shells;
+    const EnvGuard dir_env("HOT_LS_SHELL_DIR", shells.path().string());
+    Session s(true, "using \"Actor.h\";\n");
+    write_file(s.dir.path() / "base.hot", kSplitBase);
+    s.client->change(s.uri, 2, kSplitImporter);
+    ASSERT_FALSE(s.diagnostics([](const json& d) { return has_message(d, kOwnError); }).is_null());
+    const std::string go = "    float Go(float a) { return this.Heal(a) + this.own; }";
+    bool lite_used = false;
+    collect_diagnostics(s, 1500); // the list is final
+    // A hover in Go, then a hover in Bad: the lite document changes the body each time, so its version runs through
+    // the version of the full document. The full document does not change: each new publish is a lite publish.
+    for (int round = 0; round < 10; ++round)
+    {
+        s.client->request("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(go.find("this.own")) + 7));
+        std::this_thread::sleep_for(std::chrono::milliseconds(700)); // clangd publishes each lite version
+        s.client->request("textDocument/hover", doc_pos(s.uri, 7, 13));
+        for (const json& d : collect_diagnostics(s, 700))
+            EXPECT_TRUE(has_message(d, kOwnError)) << "round " << round << ": " << d.dump();
+    }
+    {
+        std::ifstream log((s.dir.path() / "clangd.log").string());
+        const std::string text((std::istreambuf_iterator<char>(log)), std::istreambuf_iterator<char>());
+        lite_used = text.find("player.hot.cpp.lite.cpp") != std::string::npos;
+    }
+    EXPECT_TRUE(lite_used);
 }

@@ -9,6 +9,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cctype>
+#include <regex>
 #include <set>
 #include <string>
 
@@ -138,6 +140,67 @@ TEST(SplitShellTranslation, FlagOffGivesNoMarkerAndTheSameCode)
         return r;
     };
     EXPECT_EQ(lines(off.cpp), lines(on.cpp));
+}
+
+// A body with a deduced return type is marked "keep": the language server never blanks it. Each other marked
+// body has a full declaration before the first marked body, so an empty body keeps the declarations valid.
+TEST(SplitShellTranslation, OnlyBodiesWithADeclarationAreBlankable)
+{
+    const std::string importer = std::string(kImporter)
+        + "auto Fr(int a) { return a + 1; }\n"
+          "class Dd : Widget {\n"
+          "    int x = 1;\n"
+          "    auto Dedu() { return this.x + 1; }\n"
+          "    int Plain() { return this.Dedu(); }\n"
+          "}\n";
+    const auto r = translate_split(kLib, importer, true);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    const std::string& cpp = r.cpp;
+    const std::string begin = "// @hot-body-begin";
+    const size_t first = cpp.find(begin, cpp.find(kMarker));
+    ASSERT_NE(first, std::string::npos);
+    size_t keep_count = 0, plain_count = 0;
+    for (size_t at = first; at != std::string::npos; at = cpp.find(begin, at + 1))
+    {
+        const size_t line_end = cpp.find('\n', at);
+        const bool keep = cpp.compare(at + begin.size(), 5, " keep") == 0;
+        // The signature: the first line after the marker that is not a "#line" directive.
+        size_t l = line_end + 1;
+        std::string sig;
+        for (;;)
+        {
+            const size_t e = cpp.find('\n', l);
+            sig = cpp.substr(l, e - l);
+            if (sig.empty() || sig[0] != '#')
+                break;
+            l = e + 1;
+        }
+        const bool deduced = std::regex_search(sig, std::regex(R"(\bauto\b)"));
+        EXPECT_EQ(keep, deduced) << sig;
+        if (keep)
+        {
+            ++keep_count;
+            continue;
+        }
+        ++plain_count;
+        const size_t paren = sig.find('(');
+        ASSERT_NE(paren, std::string::npos) << sig;
+        size_t b = paren;
+        while (b > 0 && (std::isalnum(static_cast<unsigned char>(sig[b - 1])) || sig[b - 1] == '_' || sig[b - 1] == ':'))
+            --b;
+        const std::string name = sig.substr(b, paren - b);
+        // A declaration: the name and "(", then ";" before the next "{".
+        const std::string prefix = cpp.substr(0, first);
+        bool declared = false;
+        for (size_t d = prefix.find(name + "("); d != std::string::npos && !declared; d = prefix.find(name + "(", d + 1))
+        {
+            const size_t semi = prefix.find(';', d), brace = prefix.find('{', d);
+            declared = semi != std::string::npos && (brace == std::string::npos || semi < brace);
+        }
+        EXPECT_TRUE(declared) << "no declaration before the first body: " << sig;
+    }
+    EXPECT_GE(keep_count, 2u); // Fr and Dedu
+    EXPECT_GE(plain_count, 3u);
 }
 
 } // namespace

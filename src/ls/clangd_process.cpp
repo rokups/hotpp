@@ -4,6 +4,9 @@
 
 #include "clangd_process.h"
 
+#include <algorithm>
+#include <set>
+
 #include "jsonrpc.h"
 
 #include <chrono>
@@ -208,10 +211,12 @@ void alias_uris(json& j, const std::map<std::string, std::string>& alias)
 }
 } // namespace
 
-void ClangdProcess::set_uri_alias(const std::string& from, const std::string& to)
+void ClangdProcess::set_uri_alias(const std::string& from, const std::string& to, bool drop_diagnostics)
 {
     std::lock_guard<std::mutex> lock(alias_mutex_);
     uri_alias_[from] = to;
+    if (drop_diagnostics)
+        quiet_uris_.insert(from);
 }
 
 void ClangdProcess::reader_loop()
@@ -225,6 +230,12 @@ void ClangdProcess::reader_loop()
             continue;
         {
             std::lock_guard<std::mutex> lock(alias_mutex_);
+            // The diagnostics of a quiet document are dropped before the alias: they are not the ones of the
+            // document that the alias names.
+            if (!quiet_uris_.empty() && msg.value("method", std::string()) == "textDocument/publishDiagnostics"
+                && msg.contains("params") && msg["params"].is_object()
+                && quiet_uris_.count(msg["params"].value("uri", std::string())))
+                continue;
             if (!uri_alias_.empty())
                 alias_uris(msg, uri_alias_);
         }
@@ -302,6 +313,20 @@ json ClangdProcess::request(const std::string& method, json params, int timeout_
     }
     json r = std::move(responses_[id]);
     responses_.erase(id);
+    // The lite document (an alias of the full document) has the same symbols: a list of places can have an
+    // entry two times after the alias. The first entry stays.
+    static const std::set<std::string> lists = {"textDocument/references", "workspace/symbol",
+        "textDocument/prepareCallHierarchy", "callHierarchy/incomingCalls", "callHierarchy/outgoingCalls",
+        "textDocument/definition", "textDocument/declaration", "textDocument/typeDefinition",
+        "textDocument/implementation"};
+    if (r.is_array() && lists.count(method))
+    {
+        json out = json::array();
+        for (json& e : r)
+            if (std::find(out.begin(), out.end(), e) == out.end())
+                out.push_back(std::move(e));
+        r = std::move(out);
+    }
     return r;
 }
 

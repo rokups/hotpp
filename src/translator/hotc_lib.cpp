@@ -61,6 +61,7 @@
 #include <fstream>
 #include <functional>
 #include <map>
+#include <regex>
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -6184,8 +6185,26 @@ void translate_impl(
     {
         std::string ns;
         std::function<void()> write;
+        bool keep = false; // the split shell never blanks this body: its return type comes from the body
     };
-    std::vector<DeferredBody> bodies;
+    // The list of the bodies. "keep_next" is for the next push: a function with a deduced return type.
+    struct BodyList : std::vector<DeferredBody>
+    {
+        bool keep_next = false;
+        void push_back(DeferredBody b)
+        {
+            b.keep = keep_next;
+            keep_next = false;
+            std::vector<DeferredBody>::push_back(std::move(b));
+        }
+    };
+    BodyList bodies;
+    // True when the return type has the word "auto": the body of the function is part of its declaration.
+    auto deduced_ret = [](const std::string& r)
+    {
+        static const std::regex re(R"((^|[^A-Za-z0-9_])auto($|[^A-Za-z0-9_]))");
+        return std::regex_search(r, re);
+    };
     // The parts of a method that the text of a deferred body reads. The emitter holds the statements.
     auto body_head = [](const Method& m)
     {
@@ -7164,6 +7183,7 @@ void translate_impl(
             const std::string at = "#line " + std::to_string(m.line) + " \"" + file + "\"\n";
             const int end_line = m.end_line > 0 ? m.end_line : m.line;
             const std::string head = "static " + ret + " " + sym + "(" + cn + "* __self" + param_text(m.params) + ")\n";
+            bodies.keep_next = deduced_ret(ret);
             bodies.push_back({std::string(),
                 [&o, &reset, &write_stmts, h = body_head(m), em, file, at, end_line, head]
                 {
@@ -7207,6 +7227,7 @@ void translate_impl(
                 continue;
             const std::string head =
                 "static " + m->ret + " " + P + m->name + "(" + m->params[0].type + " " + m->params[0].name + ")\n{\n";
+            bodies.keep_next = deduced_ret(m->ret);
             bodies.push_back({std::string(),
                 [&o, &reset, &write_stmts, h = body_head(*m), em, head]
                 {
@@ -7473,7 +7494,7 @@ void translate_impl(
             }
             // The split mode: each own body has a begin line and an end line (the language server keeps one body).
             if (mark_bodies)
-                o.w("// @hot-body-begin\n");
+                o.w(b.keep ? "// @hot-body-begin keep\n" : "// @hot-body-begin\n");
             b.write();
             if (mark_bodies)
                 o.w("// @hot-body-end\n");
@@ -7657,6 +7678,7 @@ void translate_impl(
                 const std::string fwd_fn = !opt.aot_optimized ? std::string()
                     : "hot_fn_" + unit_symbol(m.foreign_unit.empty() ? opt.unit
                                                                        : m.foreign_unit) + "__" + ls.symbol;
+                bodies.keep_next = deduced_ret(m.ret);
                 bodies.push_back({r.ns,
                     [&o, &all_text, &reset, &line_of, gen, &write_stmts, h = body_head(m), ls, file, end_line, first_line, fwd_fn]
                     {
@@ -10210,6 +10232,7 @@ void translate_impl(
                     ? "        hot::detail::throw_null_reference(\"call of a retired generation: " + what + "\");\n"
                     : !ret.empty() && ret.back() == '*' ? std::string("        return nullptr;\n")
                     : "        return" + (ret == "void" ? std::string() : " " + ret + "()") + ";\n";
+            bodies.keep_next = deduced_ret(m.ret);
             bodies.push_back({cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns),
                 [&o, &all_text, &mapped, &reset, &line_of, gen, &write_stmts, h = body_head(m), em, file, end_line, first_line,
                     is_fn, sym, whead, wbody, bmember, mhead, mconst, mhead_from, what, shell, body_locals, tname, stale_ret,
@@ -10336,6 +10359,7 @@ void translate_impl(
             const std::string head =
                 (opt.aot_optimized ? "[[maybe_unused]] static " : "static ") + m.ret + " " + P + m.name + "(" + m.params[0].type + " "
                 + m.params[0].name + ")\n";
+            bodies.keep_next = deduced_ret(m.ret);
             bodies.push_back({cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns),
                 [&o, &reset, &line_of, gen, &write_stmts, h = body_head(m), em, file, end_line, head]
                 {
