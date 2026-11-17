@@ -30,6 +30,8 @@
 #include <unistd.h>
 #endif
 #include <cctype>
+#include <csignal>
+#include <cerrno>
 #include <chrono>
 #include <condition_variable>
 #include <deque>
@@ -421,7 +423,7 @@ struct PhaseTimer
 static bool lite_doc_enabled()
 {
     const char* e = std::getenv("HOT_LS_LITE_DOC");
-    return !(e && std::string(e) == "0");
+    return e && std::string(e) == "1"; // off by default (HOT-43): the corpus check decides
 }
 
 static bool split_shell_enabled()
@@ -722,6 +724,11 @@ private:
             && a->include_dirs == b->include_dirs && a->cxx_flags() == b->cxx_flags() && a->preludes == b->preludes;
     }
     void load_hosts();
+    void log_info(const std::string& text)
+    {
+        send_client({{"jsonrpc", "2.0"}, {"method", "window/logMessage"},
+            {"params", {{"type", 3}, {"message", "hot-ls: " + text}}}});
+    }
     // Tells the client which host a document uses (window/logMessage, type Info).
     void log_host(const Doc& d, const std::shared_ptr<const Host>& host)
     {
@@ -744,6 +751,8 @@ private:
     // (a line of "full", the generated text). It has the bodies of the other own functions as empty lines. The
     // full uri when there is no lite document for the place.
     std::string lite_uri(const Doc& d, const std::string& full, int gen_line0, int wait_ms = kNativeBudgetMs);
+    std::string shell_dir_;
+    const std::string& shell_dir();
     static std::optional<std::string> unit_with_include(const std::string& header, const std::string& cpp, size_t at);
     void remove_shell(Doc& d)
     {
@@ -762,17 +771,39 @@ private:
         size_t text_hash = 0, shell_hash = 0;
         bool ready = false; // the AST of the lite document is there
         int version = 0;
+        std::string uri; // the uri of the lite document
+        unsigned long long used = 0; // the last use (the oldest document is closed first)
     };
+    static constexpr size_t kMaxLiteDocs = 2;
+    unsigned long long lite_tick_ = 0;
+    std::atomic<int> lite_hits_{0}, lite_fallbacks_{0}, lite_mismatches_{0};
+    static bool lite_check_enabled()
+    {
+        const char* e = std::getenv("HOT_LS_LITE_CHECK");
+        return e && std::string(e) == "1";
+    }
+    // HOT_LS_LITE_CHECK=1: the same request goes to the full document and the answers are compared.
+    // A difference is a log message and a count (hot/indexStats "liteMismatch").
+    void lite_check(const char* method, const json& params, const Doc& d, const json& lite_answer, const char* what);
+    std::string lite_uri_impl(const Doc& d, const std::string& full, int gen_line0, int wait_ms);
     std::map<std::string, LiteState> lite_; // by the gen uri
+    // The caller holds lite_mutex_.
+    void drop_lite_locked(std::map<std::string, LiteState>::iterator it)
+    {
+        if (clangd_)
+        {
+            if (it->second.open)
+                clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", it->second.uri}}}});
+            clangd_->clear_uri_alias(it->second.uri);
+        }
+        lite_.erase(it);
+    }
     void close_lite(const Doc& d)
     {
         std::lock_guard<std::mutex> lock(lite_mutex_);
         const auto it = lite_.find(d.gen_uri);
-        if (it == lite_.end())
-            return;
-        if (clangd_ && it->second.open)
-            clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", path_to_uri(d.gen_path + ".lite.cpp")}}}});
-        lite_.erase(it);
+        if (it != lite_.end())
+            drop_lite_locked(it);
     }
     std::mutex lite_mutex_;
     json publish_message(const Doc& d) const;
@@ -1853,6 +1884,42 @@ static std::optional<std::string> blank_other_bodies(const std::string& unit, in
 
 std::string Server::lite_uri(const Doc& d, const std::string& full, int gen_line0, int wait_ms)
 {
+    std::string r = lite_uri_impl(d, full, gen_line0, wait_ms);
+    if (lite_doc_enabled())
+        ++(r == d.gen_uri ? lite_fallbacks_ : lite_hits_);
+    return r;
+}
+
+void Server::lite_check(const char* method, const json& params, const Doc& d, const json& lite_answer, const char* what)
+{
+    if (!lite_check_enabled() || params["textDocument"].value("uri", std::string()) == d.gen_uri)
+        return;
+    json full_params = params;
+    full_params["textDocument"]["uri"] = d.gen_uri;
+    const auto full = clangd_result(method, full_params, kNativeBudgetMs);
+    auto norm = [](json j)
+    {
+        // A list of completion items: the sorted labels. Another answer: as it is.
+        json items = j.is_array() ? j : j.is_object() && j.contains("items") ? j["items"] : json();
+        if (items.is_array())
+        {
+            std::vector<std::string> labels;
+            for (const json& i : items)
+                labels.push_back(i.value("label", std::string()));
+            std::sort(labels.begin(), labels.end());
+            return json(labels);
+        }
+        return j;
+    };
+    if (!full || norm(*full) == norm(lite_answer))
+        return;
+    ++lite_mismatches_;
+    log_info(std::string("lite mismatch (") + what + ") " + d.path + ": lite " + norm(lite_answer).dump().substr(0, 300)
+        + " full " + norm(*full).dump().substr(0, 300));
+}
+
+std::string Server::lite_uri_impl(const Doc& d, const std::string& full, int gen_line0, int wait_ms)
+{
     if (!lite_doc_enabled() || !clangd_ || !clangd_->running() || !preamble_ready_.count(d.gen_uri))
         return d.gen_uri; // a cold document: the requests follow the budget of the full document
     const size_t at = full.find(kShellEnd);
@@ -1861,6 +1928,11 @@ std::string Server::lite_uri(const Doc& d, const std::string& full, int gen_line
     // The header is the one that send_generated wrote for the full document. A different header: the full document.
     if (std::hash<std::string>()(full.substr(0, at + 1)) != d.shell_hash)
         return d.gen_uri;
+    {
+        std::error_code ec;
+        if (!fs::exists(d.shell_path, ec))
+            return d.gen_uri; // the header is gone
+    }
     const auto unit = unit_with_include(d.shell_path, full, at);
     if (!unit)
         return d.gen_uri;
@@ -1872,7 +1944,17 @@ std::string Server::lite_uri(const Doc& d, const std::string& full, int gen_line
     bool wait = false;
     {
         std::lock_guard<std::mutex> lock(lite_mutex_);
+        if (!lite_.count(d.gen_uri) && lite_.size() >= kMaxLiteDocs)
+        {
+            auto oldest = lite_.begin();
+            for (auto it = lite_.begin(); it != lite_.end(); ++it)
+                if (it->second.used < oldest->second.used)
+                    oldest = it;
+            drop_lite_locked(oldest);
+        }
         LiteState& st = lite_[d.gen_uri];
+        st.used = ++lite_tick_;
+        st.uri = uri;
         if (!st.open || st.text_hash != text_hash)
         {
             clangd_->set_uri_alias(uri, d.gen_uri, true);
@@ -1944,27 +2026,65 @@ std::optional<std::string> Server::unit_with_include(const std::string& header, 
     return out;
 }
 
-// The directory of the headers: one for each user, with the mode 0700.
-static fs::path shell_dir()
+// The base of the header directories: one for each user. "HOT_LS_SHELL_DIR" is for the tests.
+static fs::path shell_base_dir()
 {
     std::error_code ec;
-    const char* env_dir = std::getenv("HOT_LS_SHELL_DIR"); // for the tests
-    fs::path dir;
-    if (env_dir && *env_dir)
-        dir = env_dir;
-    else if (const char* xdg = std::getenv("XDG_CACHE_HOME"); xdg && *xdg)
-        dir = fs::path(xdg) / "hot-ls";
-    else if (const char* home = std::getenv("HOME"); home && *home)
-        dir = fs::path(home) / ".cache" / "hot-ls";
-    else
+    if (const char* env_dir = std::getenv("HOT_LS_SHELL_DIR"); env_dir && *env_dir)
+        return env_dir;
+    if (const char* xdg = std::getenv("XDG_CACHE_HOME"); xdg && *xdg)
+        return fs::path(xdg) / "hot-ls";
+    if (const char* home = std::getenv("HOME"); home && *home)
+        return fs::path(home) / ".cache" / "hot-ls";
 #ifdef _WIN32
-        dir = fs::temp_directory_path(ec) / "hot-ls-shell";
+    return fs::temp_directory_path(ec) / "hot-ls-shell";
 #else
-        dir = fs::temp_directory_path(ec) / ("hot-ls-shell-" + std::to_string(static_cast<long long>(::getuid())));
+    return fs::temp_directory_path(ec) / ("hot-ls-shell-" + std::to_string(static_cast<long long>(::getuid())));
 #endif
+}
+
+static bool process_is_alive(long long pid)
+{
+#ifdef _WIN32
+    (void)pid;
+    return true; // no prune on Windows
+#else
+    return ::kill(static_cast<pid_t>(pid), 0) == 0 || errno != ESRCH;
+#endif
+}
+
+// The directory of the headers of this server: "<base>/<pid>-<n>", mode 0700, in the canonical form (no symbolic
+// link). It starts by the removal of the directories of dead processes. The server removes its own at exit.
+const std::string& Server::shell_dir()
+{
+    if (!shell_dir_.empty())
+        return shell_dir_;
+    static std::atomic<int> counter{0};
+    std::error_code ec;
+    const fs::path base = shell_base_dir();
+    fs::create_directories(base, ec);
+    fs::permissions(base, fs::perms::owner_all, ec);
+    const fs::path canon = fs::weakly_canonical(base, ec);
+    for (const auto& e : fs::directory_iterator(canon, ec))
+    {
+        const std::string name = e.path().filename().string();
+        const size_t dash = name.find('-');
+        if (dash == std::string::npos || !e.is_directory(ec)
+            || name.find_first_not_of("0123456789", 0) != dash)
+            continue;
+        if (!process_is_alive(std::atoll(name.substr(0, dash).c_str())))
+            fs::remove_all(e.path(), ec);
+    }
+#ifdef _WIN32
+    const long long pid = 0;
+#else
+    const long long pid = static_cast<long long>(::getpid());
+#endif
+    const fs::path dir = canon / (std::to_string(pid) + "-" + std::to_string(counter++));
     fs::create_directories(dir, ec);
     fs::permissions(dir, fs::perms::owner_all, ec);
-    return dir;
+    shell_dir_ = dir.string();
+    return shell_dir_;
 }
 
 // The text that clangd gets for the unit. With the marker, the text before it goes to a header and the unit
@@ -1982,14 +2102,15 @@ std::string Server::unit_for_clangd(Doc& d, const std::string& cpp)
     const size_t hash = std::hash<std::string>()(shell);
     char name[48];
     std::snprintf(name, sizeof name, "%016zx-%016zx.shell.h", std::hash<std::string>()(d.gen_path), hash);
-    const std::string path = (shell_dir() / name).string();
+    const std::string path = (fs::path(shell_dir()) / name).string();
     const auto unit = unit_with_include(path, cpp, at);
     if (!unit)
         return cpp; // a path that the include cannot hold: clangd gets the full text
     std::error_code ec;
     if (path != d.shell_path || !fs::exists(path, ec))
     {
-        if (!write_file_atomic(path, shell))
+        // The name has the hash of the content: an equal file stays, also when the rename fails.
+        if (!fs::exists(path, ec) && !write_file_atomic(path, shell) && !fs::exists(path, ec))
             return cpp; // no header: clangd gets the full text
         if (!d.shell_path.empty() && d.shell_path != path)
             d.shell_old = d.shell_path;
@@ -3286,11 +3407,18 @@ json Server::on_completion(const Doc& d, const json& p)
                 {
                     const auto stale_end = std::chrono::steady_clock::now() + std::chrono::milliseconds(opt_.completion_budget_ms);
                     if (wait_for_native_ready_until(d, stale_end))
-                        r = clangd_result("textDocument/completion",
-                            {{"textDocument", {{"uri", lite_uri(d, d.gen.s, g->line, std::max(1, static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
-                                stale_end - std::chrono::steady_clock::now()).count())))}}}, {"position", gen_pos(d, *g)}},
-                            std::max(1, static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
-                                stale_end - std::chrono::steady_clock::now()).count())));
+                    {
+                        const auto stale_left = [&]
+                        {
+                            return std::max(1, static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                stale_end - std::chrono::steady_clock::now()).count()));
+                        };
+                        const json comp_params = {{"textDocument", {{"uri", lite_uri(d, d.gen.s, g->line, stale_left())}}},
+                            {"position", gen_pos(d, *g)}};
+                        r = clangd_result("textDocument/completion", comp_params, stale_left());
+                        if (r)
+                            lite_check("textDocument/completion", comp_params, d, *r, "completion");
+                    }
                     mapped = true; // no answer in time: the reply is incomplete
                 }
             }
@@ -3753,8 +3881,10 @@ json Server::on_hover(const Doc& d, const json& p)
                 break;
             timeout_ms = static_cast<int>(left);
         }
-        auto r = clangd_result(
-            "textDocument/hover", {{"textDocument", {{"uri", target}}}, {"position", gen_pos(d, g)}}, timeout_ms);
+        const json hover_params = {{"textDocument", {{"uri", target}}}, {"position", gen_pos(d, g)}};
+        auto r = clangd_result("textDocument/hover", hover_params, timeout_ms);
+        if (r)
+            lite_check("textDocument/hover", hover_params, d, *r, "hover");
         if (!r || !r->contains("contents"))
             continue;
         json c = (*r)["contents"];
@@ -4432,6 +4562,8 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
                     auto locations = [&](const json& at, const char* kind) -> json
                     {
                         const auto defs = clangd_result(kind, at, kNativeBudgetMs);
+                        if (defs)
+                            lite_check(kind, at, d, *defs, "definition");
                         return defs ? (defs->is_array() ? *defs : json::array({*defs})) : json::array();
                     };
                     const json first = {{"textDocument", {{"uri", lite_uri(d, d.gen.s, g->line)}}}, {"position", gen_pos(d, *g)}};
@@ -6314,6 +6446,10 @@ std::string Server::add_answer(NativeRenameJob& job, const Doc& d, const Doc& as
     {
         if (!edits.is_array())
             continue;
+        // A file of this server (a lite document, a header of a unit) is never a place of the user.
+        if (uri.size() >= 9 && (uri.compare(uri.size() - 9, 9, ".lite.cpp") == 0
+                || (uri.size() >= 8 && uri.compare(uri.size() - 8, 8, ".shell.h") == 0)))
+            continue;
         const auto gen_it = gen_docs_.find(uri);
         std::string why;
         if (uri == asked.gen_uri)
@@ -7520,7 +7656,14 @@ json Server::on_workspace_symbol(const json& p)
     if (r && r->is_array())
         map_clangd_symbols(*r, out);
     add_script_symbols(query, out);
-    return out;
+    // The lite document gives a symbol with another range for the same script place: after the map two entries are
+    // equal. The first entry stays.
+    json unique = json::array();
+    std::set<std::string> seen;
+    for (json& e : out)
+        if (seen.insert(e.dump()).second)
+            unique.push_back(std::move(e));
+    return unique;
 }
 
 void Server::map_clangd_symbols(const json& symbols, json& out)
@@ -8045,6 +8188,7 @@ void Server::handle(const json& msg)
         out.update({{"analyzed", closed_analyses_}, {"loaded", index_.loads()}, {"loadMs", index_.load_ms()}, {"stored", index_.stores()},
             {"dir", index_.dir()}, {"completions", completion_translations_},
             {"tokenRequests", native_token_requests_.load()}, {"translations", translations_.load()},
+            {"liteHits", lite_hits_.load()}, {"liteFallback", lite_fallbacks_.load()}, {"liteMismatch", lite_mismatches_.load()},
             {"translateMs", static_cast<double>(translate_us_.load()) / 1000.0}, {"tableHits", table_hits_},
             {"tableAnalyses", table_analyses_}, {"entryHits", entry_hits_}, {"entryMisses", entry_misses_}});
         {
@@ -8251,6 +8395,11 @@ int Server::run()
         clangd_->stop();
     for (auto& [uri, doc] : docs_) // the headers of the units (best effort)
         remove_shell(*doc);
+    if (!shell_dir_.empty())
+    {
+        std::error_code ec;
+        fs::remove_all(shell_dir_, ec);
+    }
     return shutdown_ ? 0 : 1;
 }
 

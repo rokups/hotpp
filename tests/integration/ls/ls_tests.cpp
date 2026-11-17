@@ -9824,7 +9824,7 @@ std::vector<std::filesystem::path> shell_files(const std::filesystem::path& dir)
 {
     std::vector<std::filesystem::path> r;
     std::error_code ec;
-    for (const auto& e : std::filesystem::directory_iterator(dir, ec))
+    for (const auto& e : std::filesystem::recursive_directory_iterator(dir, ec))
         if (e.path().string().size() > 8 && e.path().string().substr(e.path().string().size() - 8) == ".shell.h")
             r.push_back(e.path());
     return r;
@@ -10072,4 +10072,141 @@ TEST(LanguageServer, LiteDocDiagnosticsNeverReplaceTheFullDiagnostics)
         lite_used = text.find("player.hot.cpp.lite.cpp") != std::string::npos;
     }
     EXPECT_TRUE(lite_used);
+}
+
+namespace
+{
+
+//   line 3: Go, line 4: calls Go two times, line 8: a type error in another body.
+const char* const kLiteCalls =
+    "using \"base.hot\";\n"
+    "class Kid : Base {\n"
+    "    float own = 1.0;\n"
+    "    float Go(float a) { return this.Heal(a) + this.own; }\n"
+    "    float Twice(float a) { return this.Go(a) + this.Go(a); }\n"
+    "}\n"
+    "class Other : Actor {\n"
+    "    void Bad() {\n"
+    "        int x = \"text\";\n"
+    "    }\n"
+    "}\n";
+
+// A session with the split shell, the importer open and the first hover done (the document is warm), so the next
+// hover in a body goes to the lite document when "lite" is on.
+struct LiteSession
+{
+    EnvGuard split{"HOT_LS_SPLIT_SHELL", "1"};
+    EnvGuard lite_env;
+    TempDir shells;
+    EnvGuard dir_env;
+    Session s;
+    LiteSession(bool lite, const char* text = kLiteCalls, const char* base = kSplitBase)
+        : lite_env("HOT_LS_LITE_DOC", lite ? "1" : "0"), dir_env("HOT_LS_SHELL_DIR", shells.path().string()),
+          s(true, "using \"Actor.h\";\n")
+    {
+        write_file(s.dir.path() / "base.hot", base);
+        s.client->change(s.uri, 2, text);
+        s.diagnostics([](const json& d) { return has_message(d, kOwnError); });
+        warm(3, 54);
+    }
+    void warm(int line, int col)
+    {
+        for (int i = 0; i < 4; ++i)
+        {
+            json r;
+            for (int k = 0; k < 40; ++k)
+            {
+                r = s.client->request("textDocument/hover", doc_pos(s.uri, line, col));
+                if (r.contains("result") && r["result"].is_object())
+                    break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            }
+        }
+    }
+    bool lite_in_log()
+    {
+        std::ifstream log((s.dir.path() / "clangd.log").string());
+        const std::string t((std::istreambuf_iterator<char>(log)), std::istreambuf_iterator<char>());
+        return t.find(".lite.cpp") != std::string::npos;
+    }
+    // A dump of the json with the root of the session replaced.
+    std::string norm(const json& j)
+    {
+        std::string dump = j.dump();
+        const std::string root = uri_of(s.dir.path().string());
+        for (size_t at; (at = dump.find(root)) != std::string::npos;)
+            dump.replace(at, root.size(), "ROOT");
+        return dump;
+    }
+};
+
+// The answers of the requests that use the full document, with the lite document open.
+json lite_open_requests(bool lite, std::string* lite_seen)
+{
+    LiteSession ls(lite);
+    Session& s = ls.s;
+    json out;
+    json refs_ctx = {{"includeDeclaration", true}};
+    json at_go = doc_pos(s.uri, 3, 11), at_own = doc_pos(s.uri, 2, 12), at_kid = doc_pos(s.uri, 1, 8);
+    at_go["context"] = refs_ctx;
+    at_own["context"] = refs_ctx;
+    out["refs_go"] = s.client->request("textDocument/references", at_go);
+    out["refs_own"] = s.client->request("textDocument/references", at_own);
+    ls.warm(3, 54); // the lite document is open again
+    for (const char* q : {"Kid", "Go", "own"})
+        out[std::string("symbol_") + q] = s.client->request("workspace/symbol", {{"query", q}});
+    ls.warm(3, 54);
+    json rn_go = at_go, rn_kid = at_kid;
+    rn_go["newName"] = "Run";
+    rn_kid["newName"] = "Kid2";
+    out["rename_go"] = s.client->request("textDocument/rename", rn_go);
+    ls.warm(3, 54);
+    out["rename_kid"] = s.client->request("textDocument/rename", rn_kid);
+    ls.warm(3, 54);
+    out["prepare_call"] = s.client->request("textDocument/prepareCallHierarchy", at_go);
+    out["definition_twice"] = s.client->request("textDocument/definition", doc_pos(s.uri, 4, 40));
+    out["document_symbol"] = s.client->request("textDocument/documentSymbol", {{"textDocument", {{"uri", s.uri}}}});
+    if (lite_seen)
+        *lite_seen = ls.lite_in_log() ? "yes" : "no";
+    return json::parse(ls.norm(out));
+}
+
+} // namespace
+
+// References, rename, workspace/symbol, call hierarchy and definition with the lite document open: no duplicate
+// entry, no uri of the lite document or of a header, and the same answer as without the lite document.
+TEST(LanguageServer, LiteDocIsHiddenFromReferencesRenameAndSymbols)
+{
+    REQUIRE_CLANGD();
+    std::string seen_on, seen_off;
+    const json on = lite_open_requests(true, &seen_on);
+    const json off = lite_open_requests(false, &seen_off);
+    EXPECT_EQ(seen_on, "yes");
+    EXPECT_EQ(seen_off, "no");
+    for (const auto& [key, value] : on.items())
+    {
+        const std::string dump = value.dump();
+        EXPECT_EQ(dump.find(".lite.cpp"), std::string::npos) << key << ": " << dump;
+        EXPECT_EQ(dump.find(".shell.h"), std::string::npos) << key << ": " << dump;
+        EXPECT_EQ(value, off[key]) << key;
+        const json& res = value.contains("result") ? value["result"] : value;
+        if (res.is_array())
+        {
+            std::set<std::string> seen;
+            for (const json& e : res)
+                EXPECT_TRUE(seen.insert(e.dump()).second) << key << " has a duplicate: " << e.dump();
+        }
+        if (res.is_object() && res.contains("changes"))
+        {
+            // The edits of one file never overlap or repeat.
+            for (const auto& [uri, edits] : res["changes"].items())
+            {
+                std::set<std::string> ranges;
+                for (const json& e : edits)
+                    EXPECT_TRUE(ranges.insert(e["range"].dump()).second) << key << " " << uri << ": " << e.dump();
+            }
+        }
+    }
+    EXPECT_NE(on["rename_go"].dump().find("Run"), std::string::npos) << on["rename_go"].dump();
+    EXPECT_NE(on["refs_go"].dump().find("range"), std::string::npos) << on["refs_go"].dump();
 }

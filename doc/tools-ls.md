@@ -181,16 +181,17 @@ The tests are in `tests/integration/ls/` (`LanguageServer.*`). They run the serv
 
 The translator can write a marker line `// @hot-shell-end` in the generated C++ (`TranslateOptions::split_shell`, only the language server sets it). The text before the marker has the imported blocks, the imported function bodies and the module variable accessors. It does not depend on the own bodies.
 
-The server writes this text to a header file. It gives clangd the unit as `#include "<header>"`, then empty lines, then the own part. The unit keeps the lines and columns of the full text, so no position mapping is needed. A place in the header maps to the same place in the full text (`ClangdProcess::set_uri_alias`). The header file is in the temporary directory, in `hot-ls-shell`.
+The server writes this text to a header file. It gives clangd the unit as `#include "<header>"`, then empty lines, then the own part. The unit keeps the lines and columns of the full text, so no position mapping is needed. A place in the header maps to the same place in the full text (`ClangdProcess::set_uri_alias`). The header name has the hash of its content. Each server has its own directory `<cache>/hot-ls/<pid>-<n>` (mode 0700, `XDG_CACHE_HOME` or `~/.cache`). The server removes it at exit. At start it removes the directories of dead processes.
 
-The translator also writes `// @hot-body-begin` and `// @hot-body-end` around each own function body. For hover, definition and completion in a body, the server uses a second document (the path of the unit plus `.lite.cpp`). This document has the bodies of the other own functions as empty lines. The diagnostics and the other requests use the full document. A place outside a body uses the full document too.
+The translator also writes `// @hot-body-begin` and `// @hot-body-end` around each own function body. A body with a deduced return type (`auto`) has `// @hot-body-begin keep`: the server never makes it empty. For hover, definition and completion in a body, the server uses a second document (the path of the unit plus `.lite.cpp`). This document has the bodies of the other own functions as empty lines. The diagnostics, the references, the rename and the other requests use the full document. The diagnostics of the lite document never reach the client. The server keeps at most two lite documents open. A place outside a body uses the full document too.
 
 An edit of an imported script changes the header. The document then starts again in clangd, because clangd can answer with the old header while it builds the new preamble. For about one second after such an edit, the diagnostics can show errors that come from the old header. They go away when the new preamble is ready.
 
 Environment variables:
 
 - `HOT_LS_SPLIT_SHELL=0` turns the header off. clangd then gets one unit.
-- `HOT_LS_LITE_DOC=0` turns the lite document off.
+- `HOT_LS_LITE_DOC=1` turns the lite document on. It is off by default.
+- `HOT_LS_LITE_CHECK=1` asks the full document too for hover, completion and definition. The server logs each difference. `hot/indexStats` has the counts `liteHits`, `liteFallback` and `liteMismatch`.
 - `HOT_LS_SHELL_DIR=<dir>` sets the directory of the header files (the tests use it).
 
 ## Formatter rules

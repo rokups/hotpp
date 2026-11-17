@@ -53,6 +53,7 @@ public:
     // can have its shell in a header (Server::send_generated): a place in the header is a place in the unit.
     // With "drop_diagnostics" the publishDiagnostics of the uri "from" never reach the server.
     void set_uri_alias(const std::string& from, const std::string& to, bool drop_diagnostics = false);
+    void clear_uri_alias(const std::string& from);
 
     // Sends "shutdown" and "exit", then waits for the process. It kills a process that hangs.
     void stop();

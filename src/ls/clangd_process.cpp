@@ -5,6 +5,7 @@
 #include "clangd_process.h"
 
 #include <algorithm>
+#include <cstring>
 #include <set>
 
 #include "jsonrpc.h"
@@ -211,12 +212,36 @@ void alias_uris(json& j, const std::map<std::string, std::string>& alias)
 }
 } // namespace
 
+// True for the uri of a file that only this server writes: a lite document or a header of a unit.
+static bool is_internal_uri(const std::string& u)
+{
+    const auto ends = [&](const char* t) { const size_t n = std::strlen(t); return u.size() >= n && u.compare(u.size() - n, n, t) == 0; };
+    return ends(".lite.cpp") || ends(".shell.h");
+}
+
+static bool has_internal_uri(const json& e)
+{
+    if (!e.is_object())
+        return false;
+    for (const char* key : {"uri", "targetUri"})
+        if (e.contains(key) && e[key].is_string() && is_internal_uri(e[key].get<std::string>()))
+            return true;
+    return e.contains("location") && has_internal_uri(e["location"]);
+}
+
 void ClangdProcess::set_uri_alias(const std::string& from, const std::string& to, bool drop_diagnostics)
 {
     std::lock_guard<std::mutex> lock(alias_mutex_);
     uri_alias_[from] = to;
     if (drop_diagnostics)
         quiet_uris_.insert(from);
+}
+
+void ClangdProcess::clear_uri_alias(const std::string& from)
+{
+    std::lock_guard<std::mutex> lock(alias_mutex_);
+    uri_alias_.erase(from);
+    quiet_uris_.erase(from);
 }
 
 void ClangdProcess::reader_loop()
@@ -323,7 +348,7 @@ json ClangdProcess::request(const std::string& method, json params, int timeout_
     {
         json out = json::array();
         for (json& e : r)
-            if (std::find(out.begin(), out.end(), e) == out.end())
+            if (!has_internal_uri(e) && std::find(out.begin(), out.end(), e) == out.end())
                 out.push_back(std::move(e));
         r = std::move(out);
     }
