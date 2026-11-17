@@ -422,6 +422,32 @@ struct PhaseTimer
     }
 };
 
+// The "-j=" value of clangd. The environment variable HOT_LS_CLANGD_J=<n> sets it (default 2).
+static std::string clangd_jobs_arg()
+{
+    const char* e = std::getenv("HOT_LS_CLANGD_J");
+    const int n = e ? std::atoi(e) : 0;
+    return "-j=" + std::to_string(n > 0 ? n : 2);
+}
+
+// One PROBE line for a probe text: the passes and the translate timing (HOT_LS_TIMING).
+static void probe_timing_line(const char* label, const hotc::AnalyzeResult& r)
+{
+    static const char* const file = std::getenv("HOT_LS_TIMING");
+    if (!file)
+        return;
+    const auto ms = [](int64_t ns) { return static_cast<double>(ns) / 1e6; };
+    const hotc::TranslateTiming& t = r.timing;
+    if (FILE* f = std::fopen(file, "a"))
+    {
+        std::fprintf(f,
+            "PROBE %s passes=%d parses=%lld parse_ms=%.1f wait_ms=%.1f front_ms=%.1f check_ms=%.1f foreign_ms=%.1f own_ms=%.1f\n",
+            label, r.passes, static_cast<long long>(t.parses), ms(t.parse_ns), ms(t.parse_wait_ns), ms(t.front_ns),
+            ms(t.check_ns), ms(t.foreign_class_ns), ms(t.own_class_ns));
+        std::fclose(f);
+    }
+}
+
 static bool lite_doc_enabled()
 {
     const char* e = std::getenv("HOT_LS_LITE_DOC");
@@ -1642,7 +1668,7 @@ void Server::start_clangd(const json& init)
     // "--rename-file-limit=0": the default of 50 files makes clangd refuse a rename that
     // changes more files. A rename of a widely used native symbol needs more.
     std::vector<std::string> args = {opt_.clangd_log.empty() ? "--log=error" : "--log=info",
-        "--header-insertion=never", "-j=2", "--limit-results=1000", "--rename-file-limit=0"};
+        "--header-insertion=never", clangd_jobs_arg(), "--limit-results=1000", "--rename-file-limit=0"};
     if (!opt_.compile_commands_dir.empty())
     {
         args.push_back("--compile-commands-dir=" + private_cdb_dir());
@@ -2919,6 +2945,9 @@ json Server::using_completion(const Doc& d, Pos cur, size_t off, size_t line_beg
 
 json Server::on_completion(const Doc& d, const json& p)
 {
+    PhaseTimer total("completion total");
+    std::optional<PhaseTimer> phase;
+    phase.emplace("script facts");
     const Pos cur = from_lsp(d.text, p["position"], utf8_);
     const std::string& t = d.text.s;
     const size_t off = d.text.offset(cur.line, cur.col);
@@ -3249,6 +3278,7 @@ json Server::on_completion(const Doc& d, const json& p)
     // name, so the statement translates and clangd completes at its generated place. The real text
     // comes back after. The last answer is reused while only the prefix grows: clangd filters by
     // the prefix, so an answer that was not cut by the limit holds the longer prefix too.
+    phase.reset();
     bool incomplete = false;
     if (clangd_ && clangd_->running())
     {
@@ -3381,6 +3411,10 @@ json Server::on_completion(const Doc& d, const json& p)
                 hotc::TranslateOptions to = translate_options(d);
                 to.null_warnings = true;
                 hotc::AnalyzeResult facts = [&] { PhaseTimer pt("round analyze"); return timed_translate([&] { return hotc::analyze(patched, to, session_); }); }();
+                {
+                    const std::string label = "T" + std::to_string(text_index) + (probe && text_index == probe_index ? " probe" : "");
+                    probe_timing_line(label.c_str(), facts);
+                }
                 const bool is_probe = probe && text_index == probe_index;
                 std::optional<hotc::SourcePos> g = facts.cpp.empty() || is_probe
                     ? std::nullopt
@@ -3449,6 +3483,8 @@ json Server::on_completion(const Doc& d, const json& p)
                         continue;
                     }
                 }
+                std::optional<PhaseTimer> full;
+                full.emplace("full sync");
                 if (std::chrono::steady_clock::now() >= budget_end || !wait_for_native_ready_until(d, ready_end))
                     break;
                 sent = true;
@@ -3463,11 +3499,14 @@ json Server::on_completion(const Doc& d, const json& p)
                 }
                 if (first_sync)
                     wait_for_preamble_index(std::min(5000, budget_left()));
+                full.reset();
+                full.emplace("full clangd call");
                 r = clangd_result("textDocument/completion",
                     {{"textDocument", {{"uri", lite_uri(md, facts.cpp, g->line - 1, budget_left())}}},
                         {"position",
                             to_lsp(gen, {g->line - 1, g->col - 1 + static_cast<int>(prefix.size())}, clangd_utf8_)}},
                     budget_left());
+                full.reset();
                 const bool got = r && (r->is_array() ? !r->empty() : !r->value("items", json::array()).empty());
                 if (got)
                     break;
@@ -3480,6 +3519,7 @@ json Server::on_completion(const Doc& d, const json& p)
                 hotc::TranslateOptions to = translate_options(d);
                 to.null_warnings = true;
                 hotc::AnalyzeResult facts = [&] { PhaseTimer pt("this analyze"); return timed_translate([&] { return hotc::analyze(with_this, to, session_); }); }();
+                probe_timing_line("this", facts);
                 const auto g = facts.cpp.empty()
                     ? std::nullopt
                     : facts.source_map.map_to_generated(hole.line + 1, hole.col + 1 + 5);
@@ -3546,7 +3586,10 @@ json Server::on_completion(const Doc& d, const json& p)
                     mapped = true; // no answer in time: the reply is incomplete
                 }
             }
-            restore.f();
+            {
+                PhaseTimer pr("restore");
+                restore.f();
+            }
             sent = false;
             cc.rest = rest;
             cc.prefix = prefix;
@@ -3558,6 +3601,7 @@ json Server::on_completion(const Doc& d, const json& p)
             cc.complete = !mapped || (r && !cc.list.empty() && !(r->is_object() && r->value("isIncomplete", false)));
         }
         incomplete = !cc.complete;
+        phase.emplace("post items");
         for (const json& it : cc.list)
         {
             std::string name = it.value("filterText", std::string());
@@ -8234,6 +8278,7 @@ void Server::handle(const json& msg)
         refresh_hosts(d.get());
         if (!same_host(host_before, d->host))
             log_host(*d, d->host);
+        PhaseTimer live("live update");
         return update(*d);
     }
     if (method == "textDocument/didClose")
