@@ -3641,6 +3641,46 @@ struct TranslatorSession::Impl
     // The libclang units of the .cpp scripts, kept for the reparse. See hotc::TuCache for the
     // thread rule: a parse takes the unit out, so one thread at a time uses a unit.
     hotc::TuCache tu_cache;
+
+    // The import cache (TranslateOptions::import_cache). A value is immutable: a user copies the
+    // script before it changes it. "mutex" guards the map and the tick. The least recently used
+    // entry goes out at 256 entries.
+    struct ImportValue
+    {
+        std::string text; // the text of the key: a hit compares it, so a hash clash gives no hit
+        std::shared_ptr<const Script> script;
+        unsigned long long iface_hash = 0;
+        hotc::ImportView view;
+        uint64_t used = 0;
+    };
+    static constexpr size_t kImportCacheMax = 256;
+    std::mutex import_mutex;
+    std::map<std::string, std::shared_ptr<ImportValue>> imports;
+    uint64_t import_tick = 0;
+
+    std::shared_ptr<const ImportValue> import_get(const std::string& key, const std::string& text)
+    {
+        std::lock_guard<std::mutex> lock(import_mutex);
+        const auto it = imports.find(key);
+        if (it == imports.end() || it->second->text != text)
+            return nullptr;
+        it->second->used = ++import_tick;
+        return it->second;
+    }
+    void import_put(const std::string& key, std::shared_ptr<ImportValue> v)
+    {
+        std::lock_guard<std::mutex> lock(import_mutex);
+        v->used = ++import_tick;
+        imports[key] = std::move(v);
+        while (imports.size() > kImportCacheMax)
+        {
+            auto oldest = imports.begin();
+            for (auto it = imports.begin(); it != imports.end(); ++it)
+                if (it->second->used < oldest->second->used)
+                    oldest = it;
+            imports.erase(oldest);
+        }
+    }
 };
 
 TranslatorSession::TranslatorSession()
@@ -3669,6 +3709,12 @@ size_t TranslatorSession::tu_cache_size() const
     return impl_->tu_cache.size();
 }
 
+size_t TranslatorSession::import_cache_size() const
+{
+    std::lock_guard<std::mutex> lock(impl_->import_mutex);
+    return impl_->imports.size();
+}
+
 void TranslatorSession::clear()
 {
     std::map<std::string, std::shared_ptr<Impl::Entry>> old;
@@ -3677,6 +3723,11 @@ void TranslatorSession::clear()
         old.swap(impl_->entries);
     }
     impl_->tu_cache.clear();
+    {
+        std::map<std::string, std::shared_ptr<Impl::ImportValue>> old_imports;
+        std::lock_guard<std::mutex> lock(impl_->import_mutex);
+        old_imports.swap(impl_->imports);
+    }
     // A parse in progress keeps its entry alive. The old entries die here, outside the lock.
 }
 
@@ -4386,10 +4437,44 @@ void translate_impl(
                 map.add_file(base, text, file);
                 imported_files.push_back({base, file, text});
                 res.imports.emplace_back(file, text);
-                const auto t_parse = std::chrono::steady_clock::now();
-                Script is = parse_structure(imported_files.back().text, base, map, array_tpl);
-                res.timing.import_parse_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
-                    std::chrono::steady_clock::now() - t_parse).count();
+                // The import cache: the key has all that the parse reads. The positions depend on the base.
+                std::string cache_key;
+                std::shared_ptr<const hotc::TranslatorSession::Impl::ImportValue> cached;
+                Script is;
+                if (in.import_cache)
+                {
+                    cache_key = file + '\0' + unit + '\0' + std::to_string(base) + '\0' + array_tpl + '\0' + std_ns
+                        + '\0' + std::to_string(hotc::text_hash(text));
+                    cached = session.import_get(cache_key, text);
+                }
+                if (cached)
+                {
+                    // The parse adds the display names of its generics to the global list. Replay it.
+                    const auto t_copy = std::chrono::steady_clock::now();
+                    is = *cached->script;
+                    g_generic_display.insert(
+                        g_generic_display.end(), is.generic_display.begin(), is.generic_display.end());
+                    res.timing.import_copy_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now() - t_copy).count();
+                    ++res.timing.import_cache_hits;
+                }
+                else
+                {
+                    const auto t_parse = std::chrono::steady_clock::now();
+                    is = parse_structure(imported_files.back().text, base, map, array_tpl);
+                    res.timing.import_parse_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now() - t_parse).count();
+                    if (in.import_cache)
+                        ++res.timing.import_cache_misses;
+                }
+                // The copy for a new entry: the code below changes "is".
+                std::shared_ptr<hotc::TranslatorSession::Impl::ImportValue> fresh;
+                if (in.import_cache && !cached)
+                {
+                    fresh = std::make_shared<hotc::TranslatorSession::Impl::ImportValue>();
+                    fresh->text = text;
+                    fresh->script = std::make_shared<const Script>(is);
+                }
                 {
                     // The output has one namespace for all the scripts of the program.
                     std::set<std::string> seen_attrs;
@@ -4429,9 +4514,24 @@ void translate_impl(
                 // the list too: the importer copies its classes and structs, so a change of them
                 // makes the importer stale.
                 const auto t_view = std::chrono::steady_clock::now();
-                res.import_hashes.emplace_back(unit, hash_text(module_interface(is, imported_files.back().text, base)));
-                // The import view: a translation cache keeps its entry when the view stays the same.
-                views[normal_path(file)] = import_view_of(is, imported_files.back().text, base, map, array_tpl);
+                if (cached)
+                {
+                    res.import_hashes.emplace_back(unit, cached->iface_hash);
+                    views[normal_path(file)] = cached->view;
+                }
+                else
+                {
+                    const auto iface_hash = hash_text(module_interface(is, imported_files.back().text, base));
+                    res.import_hashes.emplace_back(unit, iface_hash);
+                    // The import view: a translation cache keeps its entry when the view stays the same.
+                    views[normal_path(file)] = import_view_of(is, imported_files.back().text, base, map, array_tpl);
+                    if (fresh)
+                    {
+                        fresh->iface_hash = iface_hash;
+                        fresh->view = views[normal_path(file)];
+                        session.import_put(cache_key, std::move(fresh));
+                    }
+                }
                 res.timing.import_view_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
                     std::chrono::steady_clock::now() - t_view).count();
                 // The module variables, the convert hooks and the free functions of the import stay in
@@ -11636,6 +11736,9 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
         res.timing.import_read_ns += t.import_read_ns;
         res.timing.import_parse_ns += t.import_parse_ns;
         res.timing.import_view_ns += t.import_view_ns;
+        res.timing.import_copy_ns += t.import_copy_ns;
+        res.timing.import_cache_hits += t.import_cache_hits;
+        res.timing.import_cache_misses += t.import_cache_misses;
         res.timing.foreign_class_ns += t.foreign_class_ns;
         res.timing.foreign_classes += t.foreign_classes;
         res.timing.own_class_ns += t.own_class_ns;

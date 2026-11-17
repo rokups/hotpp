@@ -120,8 +120,44 @@ struct Param
 // otherwise. The emitter uses pos to find the script line of a leaf.
 struct Expr;
 struct Stmt;
-using ExprP = std::unique_ptr<Expr>;
-using StmtP = std::unique_ptr<Stmt>;
+// An owning pointer to a node. A copy of the pointer copies the node (a deep copy). So a parsed
+// script is copyable: the import cache of the translator session copies a cached script before
+// the link code changes it. A move does not copy.
+template <class T>
+class DeepPtr : public std::unique_ptr<T>
+{
+public:
+    using std::unique_ptr<T>::unique_ptr;
+    DeepPtr() = default;
+    DeepPtr(std::unique_ptr<T>&& p) noexcept
+        : std::unique_ptr<T>(std::move(p))
+    {
+    }
+    DeepPtr(const DeepPtr& o)
+        : std::unique_ptr<T>(o ? std::make_unique<T>(*o) : nullptr)
+    {
+    }
+    DeepPtr(DeepPtr&&) noexcept = default;
+    DeepPtr& operator=(const DeepPtr& o)
+    {
+        if (this != &o)
+            this->reset(o ? new T(*o) : nullptr);
+        return *this;
+    }
+    DeepPtr& operator=(DeepPtr&&) noexcept = default;
+    DeepPtr& operator=(std::nullptr_t) noexcept
+    {
+        this->reset();
+        return *this;
+    }
+    DeepPtr& operator=(std::unique_ptr<T>&& p) noexcept
+    {
+        std::unique_ptr<T>::operator=(std::move(p));
+        return *this;
+    }
+};
+using ExprP = DeepPtr<Expr>;
+using StmtP = DeepPtr<Stmt>;
 
 struct NameExpr
 { // a.b.c<int> in the script. The lowering pass decides: a scope or a member chain.
