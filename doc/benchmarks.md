@@ -644,3 +644,44 @@ The destructor of the backend writes the file if an entry is not written yet.
 | Warm, after | 4.0 s | 1881 ms |
 
 The sum of `record_stage` after the change is 68 ms.
+
+## Edit-to-reload latency
+
+This section measures the time from an edited script to the new code in the process. The files backend does the work (translate, compile, link, load). The tool is `bench_reload` with the script `tools/bench/bench_reload.py`. The numbers are from BiteSizedWar, clang 23, the `-g` build of the flags of `WeaponHolder.cpp`, and the same machine as above.
+
+**Method.** One run is one new process with an empty cache folder. It does one load that is not timed, one warm-up reload and 12 timed reloads. Each reload edits one number in the body of a method. The table shows the median of the 12 reloads. The `.hot` script is `WeaponHolder.hot` (a real BiteSizedWar script, the generated unit has about 4700 lines). The `.cpp` script is `tools/bench/reload/heavy_reload.cpp`. Two rounds ran, and each round ran each variant once (alternated). The load average was 1.6 to 2.2 (the tool prints it before each run; 2.0 is the limit for a quiet run, and the second round was at 2.0 to 2.2). Run it with:
+
+```
+python3 -I tools/bench/bench_reload.py --exe build/bin/bench_reload --out /tmp/bench --kind hot --reps 12 --load-limit 99
+python3 -I tools/bench/bench_reload.py --exe build/bin/bench_reload --out /tmp/bench --kind cpp --reps 12 --load-limit 99
+```
+
+The switches in the table below make the baselines: `HOT_SPLIT_UNIT_OBJECTS=0`, `HOT_SHAPE_PCH=0`, `HOT_PCH_INSTANTIATE=0`. The line "all steps off" also sets `HOT_DIRECT_LINK=0` and `HOT_FMT_HEADER_ONLY=1`.
+
+| Script | Variant | Total (ms) | Translate | Compile | Link |
+|---|---|---|---|---|---|
+| `.hot` | all steps on | 490 / 489 | 50 | 408 / 406 | 30 |
+| `.hot` | `HOT_SPLIT_UNIT_OBJECTS=0` | 603 / 600 | 50 | 522 / 518 | 29 |
+| `.hot` | `HOT_SHAPE_PCH=0` | 756 / 757 | 50 | 674 / 677 | 29 |
+| `.hot` | all steps off | 1052 / 1046 | 50 | 948 / 945 | 49 |
+| `.cpp` | all steps on | 531 / 533 | 122 | 379 / 382 | 27 |
+| `.cpp` | `HOT_PCH_INSTANTIATE=0` | 1085 / 1085 | 675 | 381 / 382 | 27 |
+| `.cpp` | all steps off | 1377 / 1376 | 675 | 651 / 652 | 48 |
+
+(Two values: round 1 / round 2.) The first reload after a process start (the warm-up reload, a cold cache folder) takes 758 ms for `.hot` and 530 ms for `.cpp`: the shape PCH is not ready, so the compile reads the whole unit. The first load takes 5.5 s (`.hot`) and 7.3 s (`.cpp`). Before this work the `.hot` reload took about 1380 ms, and the `.cpp` reload took about 6970 ms (the first measurement, load 4 to 5).
+
+**What each step gave** (medians of the runs of that step, so the loads differ a little):
+
+| Step | Effect |
+|---|---|
+| Link with lld | `.hot` link 200 -> 52 ms. |
+| Parallel probe test of the shared PCH | the probe path test of `begin_load_many` runs on all cores. |
+| PCH of the native includes of a `.cpp` unit | `.cpp` compile 3549 -> 668 ms, total 5965 -> 3020 ms. |
+| Kept libclang unit of a `.cpp` script (preamble reuse) | `.cpp` translate about 2300 -> 680 ms, total 3020 -> 1380 ms. |
+| `fmt` of the host in the modules | `.hot` total 1050/1107 -> 782/785 ms, `.cpp` total 1379/1406 -> 1110/1130 ms. |
+| Shape PCH of a `.hot` unit | `.hot` total 782 -> about 620 ms. |
+| Two objects for a `.hot` unit | `.hot` total 621 -> 508 ms (-113 ms). The join (`ld.lld -r`) costs about 27 ms and the guard about 8 ms. |
+| Template instances in the libclang preamble | `.cpp` translate 677 -> 122 ms, total 1105 -> 550 ms (-555 ms). |
+| Direct linker command | link 49 -> 30 ms (-18 ms) for `.hot` and 48 -> 27 ms for `.cpp`. |
+
+The probe test of the shared PCH (`prewarm_pch`) takes 16 to 40 ms (the list of the BiteSizedWar cache has about 13000 paths). A cache of the directory time stamps saved about 4 ms, so the backend does not use it. The rest of the `.hot` reload (490 ms) is the compile of the bodies (about 380 ms of clang) and the read of the generated unit. The rest of the `.cpp` reload is the compile (about 380 ms), the libclang reparse (68 ms) and the translate after it.
