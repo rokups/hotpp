@@ -324,6 +324,23 @@ def edit_kinds_bench(a, root, rel, cdb):
                     if lu.get("seq", 0) > seq0:
                         break
                     time.sleep(0.01)
+                lu = dict(lu)
+                if os.environ.get("EDIT_REQ") and d:
+                    # A hover just after the diagnostics, then a completion just after a second didChange.
+                    line_no = cur[:cur.find(lit_line.strip())].count("\n") if lit_line.strip() in cur else 0
+                    pos = {"line": line_no, "character": len(ind) + 1}
+                    tdoc = {"uri": uri}
+                    t = time.perf_counter()
+                    r.c.request("textDocument/hover", {"textDocument": tdoc, "position": pos}, timeout=120)
+                    lu["hoverMs"] = (time.perf_counter() - t) * 1000.0
+                    ver[0] += 1
+                    n2 = r.c.diag_count(uri)
+                    r.c.notify("textDocument/didChange", {"textDocument": {"uri": uri, "version": ver[0]},
+                                                          "contentChanges": [{"text": cur + "\n//c%d\n" % ver[0]}]})
+                    t = time.perf_counter()
+                    r.c.request("textDocument/completion", {"textDocument": tdoc, "position": pos}, timeout=120)
+                    lu["compMs"] = (time.perf_counter() - t) * 1000.0
+                    r.c.wait_diag(uri, n2, ver[0], timeout=120)
                 rows.append((tag, total, lu))
         return rows
     def kind_a(i):
@@ -357,6 +374,12 @@ def edit_kinds_bench(a, root, rel, cdb):
             print("  %-10s %7.1f %7.1f %7.1f %7.1f %7.1f %6.1f %9.1f %8.1f" % (
                 tag, med("frontMs"), med("lowerMs"), med("checkMs"), med("emitMs"), med("parseMs"), med("passes"),
                 med("postWorkMs"), statistics.median([x[1] for x in sel])), flush=True)
+            p95 = lambda vals: sorted(vals)[min(len(vals) - 1, int(round(0.95 * (len(vals) - 1))))]
+            print("    total median %.1f p95 %.1f" % (statistics.median([x[1] for x in sel]), p95([x[1] for x in sel])), flush=True)
+            if os.environ.get("EDIT_REQ"):
+                for key in ("hoverMs", "compMs"):
+                    vals = [x[2].get(key, 0) for x in sel]
+                    print("    %s median %.1f p95 %.1f" % (key, statistics.median(vals), p95(vals)), flush=True)
             print("    import read/parse/view %.1f %.1f %.1f | classes foreign %.1f ms (%d) own %.1f ms (%d) | check_class %.1f" % (
                 med("importReadMs"), med("importParseMs"), med("importViewMs"), med("foreignClassMs"), med("foreignClasses"),
                 med("ownClassMs"), med("ownClasses"), med("checkClassMs")), flush=True)
