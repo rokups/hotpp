@@ -42,6 +42,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <locale>
 #include <mutex>
 #include <optional>
 #include <cstring>
@@ -720,6 +721,7 @@ private:
     }
     std::shared_ptr<const Host> host_of(const std::string& path) const
     {
+        std::lock_guard<std::mutex> lock(hosts_mutex_); // the clangd reader thread calls this too
         for (const HostSet& h : hosts_)
             if (auto m = h.match(path))
                 return m;
@@ -1255,6 +1257,8 @@ private:
     // The index directory and the database directory of the clangd child are in the first folder
     // of initialize. Each is one flat directory for all folders, so it stays for the whole session.
     std::vector<std::string> roots_;
+    // hosts_mutex_ guards the change of hosts_ (the state thread) against host_of() (the clangd reader thread).
+    mutable std::mutex hosts_mutex_;
     std::vector<HostSet> hosts_; // the host files: one set for each hosts dir
     bool utf8_ = false, clangd_utf8_ = false, shutdown_ = false;
     std::vector<std::string> clangd_token_types_; // the legend of the semantic tokens of clangd
@@ -1682,6 +1686,7 @@ void Server::start_clangd(const json& init)
 
 void Server::load_hosts()
 {
+    std::lock_guard<std::mutex> lock(hosts_mutex_);
     hosts_.clear();
     std::vector<std::string> dirs;
     if (!opt_.hosts_dir.empty())
@@ -1700,8 +1705,11 @@ void Server::load_hosts()
 void Server::refresh_hosts(Doc* current, bool force)
 {
     bool changed = force;
-    for (HostSet& h : hosts_)
-        changed = h.refresh() || changed;
+    {
+        std::lock_guard<std::mutex> lock(hosts_mutex_);
+        for (HostSet& h : hosts_)
+            changed = h.refresh() || changed;
+    }
     if (!changed)
         return;
     disk_facts_.clear();
@@ -1752,6 +1760,7 @@ void Server::on_watched_files(const json& p)
         const std::string ext = fs::path(path).extension().string();
         if (ext == ".json" || ext == ".defines" || ext == ".options" || ext == ".includes")
         {
+            std::lock_guard<std::mutex> lock(hosts_mutex_);
             for (HostSet& h : hosts_)
                 host_file = h.force_reload_for(path) || host_file;
         }
@@ -8571,6 +8580,16 @@ void Server::stop_worker()
 int Server::run()
 {
     state_thread_ = std::this_thread::get_id();
+    // The regex compiler of libstdc++ fills a lazy cache of the global ctype facet. Two threads that
+    // compile a regex at the same time race on it. Fill the cache before the reader thread starts.
+    {
+        const auto& ct = std::use_facet<std::ctype<char>>(std::locale());
+        for (int c = 0; c < 256; ++c)
+        {
+            ct.narrow(static_cast<char>(c), 0);
+            ct.widen(static_cast<char>(c));
+        }
+    }
     std::thread reader([this] { reader_loop(); });
     json msg;
     while (next_message(msg))
