@@ -83,6 +83,7 @@ constexpr int kMethodNotFound = -32601;
 constexpr int kInvalidParams = -32602;
 constexpr int kRequestFailed = -32803;
 constexpr int kRequestCancelled = -32800;
+constexpr int kContentModified = -32801;
 
 int hex(char c)
 {
@@ -479,20 +480,93 @@ private:
     struct RequestCancelled
     {
     };
-    // True when the client cancelled the request that the state thread handles now.
+    // The id of the request that the current thread runs. Empty for a thread with no request.
+    static inline thread_local std::string request_key_;
+    // True when the current thread is the slow worker. No slow worker exists yet.
+    static inline thread_local bool is_slow_worker = false;
+    // The epoch that the slow worker saw at the start of its request.
+    static inline thread_local uint64_t request_epoch_ = 0;
+    // True when the client cancelled the request that the current thread runs.
     bool cancelled()
     {
-        // Only the state thread runs the requests of the client.
-        if (!any_cancel_.load() || std::this_thread::get_id() != state_thread_)
+        if (!any_cancel_.load() || request_key_.empty())
             return false;
         std::lock_guard<std::mutex> lock(queue_mutex_);
-        return cancelled_ids_.count(current_key_) != 0;
+        return cancelled_ids_.count(request_key_) != 0;
     }
     void check_cancel()
     {
         if (cancelled())
             throw RequestCancelled{};
     }
+    // The state lock. The thread that holds it owns the state of the server.
+    class StateLock
+    {
+    public:
+        // The state thread waits as a fast waiter: it goes before the slow worker.
+        void lock_fast()
+        {
+            std::unique_lock<std::mutex> lock(mutex_);
+            ++fast_waiting_;
+            cv_.wait(lock, [this] { return !busy_; });
+            --fast_waiting_;
+            busy_ = true;
+        }
+        // The slow worker waits until no fast waiter exists.
+        void lock_slow()
+        {
+            std::unique_lock<std::mutex> lock(mutex_);
+            cv_.wait(lock, [this] { return !busy_ && fast_waiting_ == 0; });
+            busy_ = true;
+        }
+        void unlock()
+        {
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                busy_ = false;
+            }
+            cv_.notify_all();
+        }
+
+    private:
+        std::mutex mutex_;
+        std::condition_variable cv_;
+        bool busy_ = false;
+        int fast_waiting_ = 0;
+    };
+    // The slow worker releases the state lock for a long wait. On the state thread it does nothing.
+    class Yield
+    {
+    public:
+        explicit Yield(Server& s) : lock_(is_slow_worker ? &s.state_lock_ : nullptr)
+        {
+            if (lock_)
+                lock_->unlock();
+        }
+        ~Yield()
+        {
+            if (lock_)
+                lock_->lock_slow();
+        }
+        Yield(const Yield&) = delete;
+        Yield& operator=(const Yield&) = delete;
+
+    private:
+        StateLock* lock_;
+    };
+    // A request of the slow worker leaves its handler with this exception when the state changed.
+    // The run loop replies with the code -32801.
+    struct StaleRequest
+    {
+    };
+    void check_epoch()
+    {
+        if (is_slow_worker && epoch_.load() != request_epoch_)
+            throw StaleRequest{};
+    }
+    StateLock state_lock_;
+    std::atomic<uint64_t> epoch_{0}; // grows at each client notification and at each send_generated
+    void run_request(const json& msg);
     void reader_loop();
     // Takes the next message. Joins the later didChange of the same uri into the last one.
     bool next_message(json& out);
@@ -510,7 +584,6 @@ private:
     bool queue_closed_ = false;
     std::set<std::string> pending_ids_;   // the ids of the requests that are queued or run
     std::set<std::string> cancelled_ids_; // the ids that the client cancelled
-    std::string current_key_;             // the id of the request that the state thread runs
     std::atomic<bool> any_cancel_{false};
     std::thread::id state_thread_;
 
@@ -847,6 +920,7 @@ private:
                         return;
             if (clock::now() + std::chrono::milliseconds(20) >= deadline)
                 return;
+            Yield yield(*this);
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
         }
     }
@@ -877,7 +951,7 @@ private:
             clangd_result("textDocument/documentSymbol", {{"textDocument", {{"uri", d.gen_uri}}}}, kPreambleWaitMs);
             wait_for_preamble_index();
         }
-        catch (const RequestCancelled&)
+        catch (...)
         {
             preamble_ready_.erase(d.gen_uri); // the preamble is not there: the next request waits again
             throw;
@@ -901,11 +975,18 @@ private:
         return left() > 0;
     }
 
+    // Every request to clangd goes through here: it is a yield point of the slow worker.
+    json clangd_request(const std::string& method, json params, int timeout_ms)
+    {
+        Yield yield(*this);
+        return clangd_->request(method, std::move(params), timeout_ms);
+    }
+
     std::optional<json> clangd_result(const std::string& method, json params, int timeout_ms = 60000)
     {
         if (!clangd_ || !clangd_->running())
             return std::nullopt;
-        json r = clangd_->request(method, std::move(params), timeout_ms);
+        json r = clangd_request(method, std::move(params), timeout_ms);
         if (!r.is_object() || !r.contains("result") || r["result"].is_null())
             return std::nullopt;
         return r["result"];
@@ -2109,6 +2190,8 @@ std::string Server::unit_for_clangd(Doc& d, const std::string& cpp)
 
 void Server::send_generated(Doc& d, const std::string& full)
 {
+    if (!is_slow_worker)
+        ++epoch_;
     if (!clangd_ || !clangd_->running())
         return;
     const std::string cpp = unit_for_clangd(d, full);
@@ -4832,7 +4915,7 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
         const json tdp = {{"textDocument", {{"uri", o.gen_uri}}}, {"position", gen_pos(o, g)}};
         for (const char* kind : {"textDocument/declaration", "textDocument/definition"})
         {
-            const json raw = clangd_ && clangd_->running() ? clangd_->request(kind, tdp, kNativeBudgetMs) : json();
+            const json raw = clangd_ && clangd_->running() ? clangd_request(kind, tdp, kNativeBudgetMs) : json();
             ask_failed = ask_failed || !raw.is_object();
             const std::optional<json> r = raw.is_object() && raw.contains("result") && !raw["result"].is_null()
                 ? std::optional<json>(raw["result"]) : std::nullopt;
@@ -6509,7 +6592,7 @@ std::variant<json, std::string> Server::native_rename(const Doc& d, Pos cur, con
             }
         json params = tdp;
         params["newName"] = new_name;
-        const json resp = clangd_->request("textDocument/rename", params, std::max(left_ms(), 1));
+        const json resp = clangd_request("textDocument/rename", params, std::max(left_ms(), 1));
         if (!resp.is_object())
             continue;
         if (resp.contains("error"))
@@ -6640,7 +6723,7 @@ std::string Server::rename_other_scripts(NativeRenameJob& job, const Doc& d)
         {
             if (left_ms() <= 0)
                 return over;
-            const json resp = clangd_->request(method, params, left_ms());
+            const json resp = clangd_request(method, params, left_ms());
             if (!resp.is_object() || resp.contains("error"))
                 return what + ": clangd gives no answer for " + c.path;
             result = resp.contains("result") ? resp["result"] : json();
@@ -7723,7 +7806,11 @@ IndexSnapshot Server::index_entries(const std::vector<std::string>& paths, std::
     }
     if (wanted.empty())
         return out;
-    IndexSnapshot snap = windex_.wait_for(wanted, [this] { check_cancel(); }, deadline);
+    IndexSnapshot snap;
+    {
+        Yield yield(*this);
+        snap = windex_.wait_for(wanted, [this] { check_cancel(); }, deadline);
+    }
     out.entries = std::move(snap.entries);
     out.missing.insert(out.missing.end(), snap.missing.begin(), snap.missing.end());
     return out;
@@ -8331,7 +8418,6 @@ bool Server::next_message(json& out)
             queue_.pop_front();
         }
     }
-    current_key_ = id_key(out);
     return true;
 }
 
@@ -8340,8 +8426,36 @@ void Server::finish_request(const std::string& key)
     std::lock_guard<std::mutex> lock(queue_mutex_);
     pending_ids_.erase(key);
     cancelled_ids_.erase(key);
-    current_key_.clear();
     any_cancel_ = !cancelled_ids_.empty();
+}
+
+void Server::run_request(const json& msg)
+{
+    request_key_ = id_key(msg);
+    if (!msg.contains("id") && !msg.value("method", std::string()).empty())
+        ++epoch_; // a client notification
+    state_lock_.lock_fast();
+    try
+    {
+        if (!request_key_.empty() && cancelled())
+            throw RequestCancelled{};
+        handle(msg);
+    }
+    catch (const RequestCancelled&)
+    {
+        reply_error(msg["id"], kRequestCancelled, "request cancelled");
+    }
+    catch (const StaleRequest&)
+    {
+        reply_error(msg["id"], kContentModified, "content modified");
+    }
+    catch (const std::exception& e)
+    {
+        if (msg.contains("id"))
+            reply_error(msg["id"], kRequestFailed, std::string("internal error: ") + e.what());
+    }
+    state_lock_.unlock();
+    request_key_.clear();
 }
 
 int Server::run()
@@ -8354,21 +8468,7 @@ int Server::run()
         if (msg.value("method", std::string()) == "exit")
             break;
         const std::string key = id_key(msg);
-        try
-        {
-            if (!key.empty() && cancelled())
-                throw RequestCancelled{};
-            handle(msg);
-        }
-        catch (const RequestCancelled&)
-        {
-            reply_error(msg["id"], kRequestCancelled, "request cancelled");
-        }
-        catch (const std::exception& e)
-        {
-            if (msg.contains("id"))
-                reply_error(msg["id"], kRequestFailed, std::string("internal error: ") + e.what());
-        }
+        run_request(msg);
         if (!key.empty())
             finish_request(key);
     }
