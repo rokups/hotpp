@@ -86,6 +86,9 @@ struct TranslateOptions
     // The table of the resolved names (TranslateResult::refs, AnalyzeResult::refs). False (the
     // default): the translator makes no table. A language server sets it for its analyze calls.
     bool resolve_refs = false;
+    // LS only. The generated text has the line "// @hot-shell-end". The text before it depends only on the
+    // imports and the preamble. It has the interface blocks of the imports and their function bodies.
+    bool split_shell = false;
 };
 
 // The scripts of a build: pairs of the name that "#line" uses and the script text.
