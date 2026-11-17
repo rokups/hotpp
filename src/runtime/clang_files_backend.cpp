@@ -2547,6 +2547,13 @@ bool split_unit_into_two(const std::string& text, const std::string& name, UnitS
             t.pop_back();
         return t.size() > 2 && t.compare(t.size() - 2, 2, ");") == 0;
     };
+    // The signature of a function line: the text after the kind up to the last ')' (the full
+    // prototype, so overloads stay apart; a comment and the end of the line do not count).
+    auto sig_of = [&](const std::string& l, int k) {
+        const std::string t = l.substr(0, l.find("//"));
+        const size_t close = t.rfind(')');
+        return close == std::string::npos ? std::string() : t.substr(std::strlen(kinds[k]), close + 1 - std::strlen(kinds[k]));
+    };
     std::set<std::pair<std::string, int>> protos;
     std::vector<std::string> p_lines;
     std::vector<size_t> p_orig; // the line number (0 based) of each line of P in the unit
@@ -2562,18 +2569,13 @@ bool split_unit_into_two(const std::string& text, const std::string& name, UnitS
         p_lines.push_back(lines[i]);
         p_orig.push_back(i);
     }
-    // An overloaded name is not split: the key of a function is its name.
-    std::set<std::string> proto_names;
+    // The key of a function is its full prototype: overloads are different functions. Two equal
+    // prototypes make the split invalid.
     for (const std::string& l : p_lines)
     {
         const int k = kind_of(l);
-        if (k >= 0 && is_proto(l))
-        {
-            const std::string n = function_name_of(l, std::strlen(kinds[k]));
-            if (!proto_names.insert(n).second)
-                return false;
-            protos.insert({n, k});
-        }
+        if (k >= 0 && is_proto(l) && !protos.insert({sig_of(l, k), k}).second)
+            return false;
     }
     std::set<std::pair<std::string, int>> defined;
     for (size_t i = bodies; i < reg; ++i)
@@ -2581,16 +2583,15 @@ bool split_unit_into_two(const std::string& text, const std::string& name, UnitS
         const int k = kind_of(lines[i]);
         if (k < 0 || is_proto(lines[i]) || lines[i].find(");") != std::string::npos)
             continue;
-        const auto key = std::make_pair(function_name_of(lines[i], std::strlen(kinds[k])), k);
+        const auto key = std::make_pair(sig_of(lines[i], k), k);
         if (protos.count(key) && !defined.insert(key).second)
-            return false; // two definitions of one name
+            return false; // two definitions of one prototype
     }
-    // A definition in P of a name that B defines (an overload) is not split.
+    // A definition in P of a function that B defines is not split.
     for (const std::string& l : p_lines)
     {
         const int k = kind_of(l);
-        if (k >= 0 && !is_proto(l) && l.find('(') != std::string::npos
-            && defined.count({function_name_of(l, std::strlen(kinds[k])), k}))
+        if (k >= 0 && !is_proto(l) && l.find('(') != std::string::npos && defined.count({sig_of(l, k), k}))
             return false;
     }
     auto convert = [&](std::string& l, bool in_p) {
@@ -2598,7 +2599,7 @@ bool split_unit_into_two(const std::string& text, const std::string& name, UnitS
         if (k < 0 || (in_p != is_proto(l)))
             return;
         const std::string n = function_name_of(l, std::strlen(kinds[k]));
-        if (defined.count({n, k}))
+        if (defined.count({sig_of(l, k), k}))
         {
             l = (k == 0 ? "[[maybe_unused]] HOT_UNIT_INLINE " : "HOT_UNIT_FN ") + l.substr(std::strlen(kinds[k]));
             if (in_p)

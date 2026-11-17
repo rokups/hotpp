@@ -1524,7 +1524,7 @@ std::string handmade_unit(const std::string& p_extra, const std::string& bodies_
 // after the macro block.
 TEST(ObjectCacheBackend, SplitHeaderKeepsTheLineNumbers)
 {
-    const std::string text = handmade_unit("static int f(int);\n", "static int f(int x) { return x; }\n");
+    const std::string text = handmade_unit("static int f(int x);\n", "static int f(int x) { return x; }\n");
     std::string header, main, shape;
     std::vector<std::string> fns;
     ASSERT_TRUE(hot::split_unit_for_test(text, "u.hot", header, main, shape, fns));
@@ -1545,17 +1545,31 @@ TEST(ObjectCacheBackend, SplitRefusesOverloadsAndAcceptsTrailingComments)
 {
     std::string header, main, shape;
     std::vector<std::string> fns;
-    EXPECT_FALSE(hot::split_unit_for_test(handmade_unit("static int f(int);\nstatic int f(double);\n",
-                                              "static int f(int x) { return x; }\nstatic int f(double x) { return 1; }\n"),
+    // Overloads with other parameters are different functions: they split, each one with its text.
+    ASSERT_TRUE(hot::split_unit_for_test(handmade_unit("static int f(int x);\nstatic int f(double x);\n",
+                                             "static int f(int x) { return x; }\nstatic int f(double x) { return 1; }\n"),
         "u.hot", header, main, shape, fns));
-    EXPECT_FALSE(hot::split_unit_for_test(handmade_unit("static int f(int);\nstatic int f(double x) { return 1; }\n",
+    EXPECT_EQ(fns.size(), 2u);
+    EXPECT_NE(main.find("HOT_UNIT_FN int f(int x)"), std::string::npos) << main;
+    EXPECT_NE(main.find("HOT_UNIT_FN int f(double x)"), std::string::npos) << main;
+    // An overload that P defines with a body stays static in P.
+    ASSERT_TRUE(hot::split_unit_for_test(handmade_unit("static int f(int x);\nstatic int f(double x) { return 1; }\n",
+                                             "static int f(int x) { return x; }\n"),
+        "u.hot", header, main, shape, fns));
+    EXPECT_EQ(header.find("HOT_UNIT_FN int f(double"), std::string::npos) << header;
+    EXPECT_NE(header.find("HOT_UNIT_FN int f(int x);"), std::string::npos) << header;
+    // The same prototype twice, or a P definition of a prototype that B defines: no split.
+    EXPECT_FALSE(hot::split_unit_for_test(handmade_unit("static int f(int x);\nstatic int f(int x);\n",
+                                              "static int f(int x) { return x; }\n"),
+        "u.hot", header, main, shape, fns));
+    EXPECT_FALSE(hot::split_unit_for_test(handmade_unit("static int f(int x);\nstatic int f(int x) { return 1; }\n",
                                               "static int f(int x) { return x; }\n"),
         "u.hot", header, main, shape, fns));
     fns.clear();
-    ASSERT_TRUE(hot::split_unit_for_test(handmade_unit("static int g(int); // a note\n", "static int g(int x) { return x; }\n"),
+    ASSERT_TRUE(hot::split_unit_for_test(handmade_unit("static int g(int x); // a note\n", "static int g(int x) { return x; }\n"),
         "u.hot", header, main, shape, fns));
     EXPECT_EQ(fns, std::vector<std::string>{"g"});
-    EXPECT_NE(header.find("HOT_UNIT_FN int g(int); // a note"), std::string::npos) << header;
+    EXPECT_NE(header.find("HOT_UNIT_FN int g(int x); // a note"), std::string::npos) << header;
     EXPECT_NE(main.find("HOT_UNIT_FN int g(int x)"), std::string::npos) << main;
 }
 
