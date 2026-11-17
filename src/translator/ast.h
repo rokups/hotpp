@@ -70,6 +70,57 @@ inline std::string strip_ref_return_word(const std::string& type)
 // fills "expr" and "span". The lowering fills "cpp" one time (empty until then).
 struct ParamDefault;
 
+// While a CloneDefaults guard lives in a thread, a copy of a DefaultPtr copies the ParamDefault too.
+// Else the copies share it. The import cache of the translator session copies a cached script with
+// the guard: the lowering writes "cpp" and "expr" of a default, so two users must not share it.
+struct CloneDefaults
+{
+    CloneDefaults() : previous(active()) { active() = true; }
+    ~CloneDefaults() { active() = previous; }
+    CloneDefaults(const CloneDefaults&) = delete;
+    CloneDefaults& operator=(const CloneDefaults&) = delete;
+    static bool& active()
+    {
+        static thread_local bool on = false;
+        return on;
+    }
+    bool previous;
+};
+
+class DefaultPtr : public std::shared_ptr<ParamDefault>
+{
+public:
+    using std::shared_ptr<ParamDefault>::shared_ptr;
+    DefaultPtr() = default;
+    DefaultPtr(std::shared_ptr<ParamDefault> p) noexcept
+        : std::shared_ptr<ParamDefault>(std::move(p))
+    {
+    }
+    DefaultPtr(const DefaultPtr& o)
+        : std::shared_ptr<ParamDefault>(o && CloneDefaults::active() ? std::make_shared<ParamDefault>(*o)
+                                       : static_cast<const std::shared_ptr<ParamDefault>&>(o))
+    {
+    }
+    DefaultPtr(DefaultPtr&&) noexcept = default;
+    DefaultPtr& operator=(const DefaultPtr& o)
+    {
+        if (this != &o)
+            std::shared_ptr<ParamDefault>::operator=(DefaultPtr(o));
+        return *this;
+    }
+    DefaultPtr& operator=(DefaultPtr&&) noexcept = default;
+    DefaultPtr& operator=(std::nullptr_t) noexcept
+    {
+        this->reset();
+        return *this;
+    }
+    DefaultPtr& operator=(std::shared_ptr<ParamDefault> p) noexcept
+    {
+        std::shared_ptr<ParamDefault>::operator=(std::move(p));
+        return *this;
+    }
+};
+
 // The modifier of a parameter. "in T x" is a const reference, "ref T x" and "out T x" are references,
 // "[byval] T x" is a copy. "Plain" is a parameter with no modifier.
 enum class ParamMode
@@ -88,7 +139,7 @@ struct Param
     // the mode Plain and a type with a "&".
     std::string name, type;
     ParamMode mode = ParamMode::Plain;
-    std::shared_ptr<ParamDefault> def{}; // null: the parameter has no default value
+    DefaultPtr def{}; // null: the parameter has no default value
     // The type as the script writes it. The translator sets it before it rewrites "type" to the
     // C++ storage type. The lowering pass reads it for the type-directed member access.
     std::string script_type{};
@@ -120,8 +171,44 @@ struct Param
 // otherwise. The emitter uses pos to find the script line of a leaf.
 struct Expr;
 struct Stmt;
-using ExprP = std::unique_ptr<Expr>;
-using StmtP = std::unique_ptr<Stmt>;
+// An owning pointer to a node. A copy of the pointer copies the node (a deep copy). So a parsed
+// script is copyable: the import cache of the translator session copies a cached script before
+// the link code changes it. A move does not copy.
+template <class T>
+class DeepPtr : public std::unique_ptr<T>
+{
+public:
+    using std::unique_ptr<T>::unique_ptr;
+    DeepPtr() = default;
+    DeepPtr(std::unique_ptr<T>&& p) noexcept
+        : std::unique_ptr<T>(std::move(p))
+    {
+    }
+    DeepPtr(const DeepPtr& o)
+        : std::unique_ptr<T>(o ? std::make_unique<T>(*o) : nullptr)
+    {
+    }
+    DeepPtr(DeepPtr&&) noexcept = default;
+    DeepPtr& operator=(const DeepPtr& o)
+    {
+        if (this != &o)
+            this->reset(o ? new T(*o) : nullptr);
+        return *this;
+    }
+    DeepPtr& operator=(DeepPtr&&) noexcept = default;
+    DeepPtr& operator=(std::nullptr_t) noexcept
+    {
+        this->reset();
+        return *this;
+    }
+    DeepPtr& operator=(std::unique_ptr<T>&& p) noexcept
+    {
+        std::unique_ptr<T>::operator=(std::move(p));
+        return *this;
+    }
+};
+using ExprP = DeepPtr<Expr>;
+using StmtP = DeepPtr<Stmt>;
 
 struct NameExpr
 { // a.b.c<int> in the script. The lowering pass decides: a scope or a member chain.

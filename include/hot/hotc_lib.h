@@ -38,6 +38,10 @@ struct TranslateOptions
     // leave it false: then the text has no generation and a later generation hits the object cache.
     // AOT code ignores it.
     bool export_generation = false;
+    // The session keeps the parsed imports in memory (TranslatorSession::import_cache_size). An
+    // unchanged import skips the structure parse, the interface text and the import view. The
+    // output does not change. Default false.
+    bool import_cache = false;
     std::string slots_in; // the content of the slot file (empty: no earlier generation)
     std::vector<std::string> include_dirs; // for the imports of the script
     std::string resource_dir; // the Clang resource directory (empty: the built-in default)
@@ -353,6 +357,9 @@ struct TranslateTiming
     int64_t import_read_ns = 0;  // the read of the import texts
     int64_t import_parse_ns = 0; // the structure parse of the import texts
     int64_t import_view_ns = 0;  // the interface hash and the import view
+    int64_t import_copy_ns = 0;  // the copy of a cached import script (import cache hit)
+    int64_t import_cache_hits = 0;   // the imports that the import cache gave
+    int64_t import_cache_misses = 0; // the imports that the import cache did not have
     int64_t foreign_class_ns = 0; // the class loop: the time for the imported classes
     int64_t foreign_classes = 0;  // the class loop: the number of imported classes
     int64_t own_class_ns = 0;     // the class loop: the time for the own classes
@@ -557,12 +564,13 @@ public:
     TranslatorSession& operator=(const TranslatorSession&) = delete;
 
     int parse_count() const; // the number of libclang parses until now
-    void clear(); // drops the cache
+    void clear(); // drops the cache, also the parsed imports
     // The most libclang units that the session keeps for a reparse of a .cpp script (default 4).
     // 0 turns the reuse off. Call it before the translate calls.
     void set_tu_cache_limit(size_t n);
     void set_tu_cache_idle_ms(long long ms); // idle limit of a kept unit (default 600000); for the tests
     size_t tu_cache_size() const; // the number of kept libclang units
+    size_t import_cache_size() const; // the number of kept parsed imports (TranslateOptions::import_cache)
 
     struct Impl;
 

@@ -8322,7 +8322,8 @@ void Server::handle(const json& msg)
                 {"parses", t.parses}, {"passes", last_update_.passes}, {"postWorkMs", ms(last_update_.post_ns)},
                 {"analyzeMs", ms(last_update_.analyze_ns)}, {"seq", last_update_.seq},
                 {"importReadMs", ms(t.import_read_ns)}, {"importParseMs", ms(t.import_parse_ns)},
-                {"importViewMs", ms(t.import_view_ns)}, {"foreignClassMs", ms(t.foreign_class_ns)},
+                {"importViewMs", ms(t.import_view_ns)}, {"importCopyMs", ms(t.import_copy_ns)},
+                {"importCacheHits", t.import_cache_hits}, {"importCacheMisses", t.import_cache_misses}, {"foreignClassMs", ms(t.foreign_class_ns)},
                 {"foreignClasses", t.foreign_classes}, {"ownClassMs", ms(t.own_class_ns)},
                 {"ownClasses", t.own_classes}, {"checkClassMs", ms(t.check_class_ns)}};
             for (int k = 0; k < 16; ++k)
