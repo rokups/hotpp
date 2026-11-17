@@ -49,6 +49,10 @@ public:
     nlohmann::json request(const std::string& method, nlohmann::json params, int timeout_ms = 60000);
     void notify(const std::string& method, nlohmann::json params);
 
+    // Each "uri" of a message from clangd that is "from" becomes "to". The generated unit of a document
+    // can have its shell in a header (Server::send_generated): a place in the header is a place in the unit.
+    void set_uri_alias(const std::string& from, const std::string& to);
+
     // Sends "shutdown" and "exit", then waits for the process. It kills a process that hangs.
     void stop();
 
@@ -63,7 +67,8 @@ private:
 #endif
     int to_ = -1, from_ = -1;
     std::thread reader_;
-    std::mutex write_mutex_, mutex_;
+    std::mutex write_mutex_, mutex_, alias_mutex_;
+    std::map<std::string, std::string> uri_alias_;
     std::condition_variable cv_;
     std::map<int64_t, nlohmann::json> responses_;
     std::set<int64_t> abandoned_; // the ids of requests that timed out: a late response is dropped

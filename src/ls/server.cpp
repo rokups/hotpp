@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
+#include <cstdlib>
 #include <cctype>
 #include <chrono>
 #include <condition_variable>
@@ -226,6 +227,9 @@ struct Doc
     int gen_version = 0; // the clangd version of the real text
     int sent_version = 0; // the last clangd version
     bool in_clangd = false;
+    // The header that clangd has for the shell of the unit (Server::send_generated): its path and the hash of its text.
+    std::string shell_path;
+    size_t shell_hash = 0;
     // The host of the script at the last update. Null: no host.
     std::shared_ptr<const Host> host;
     json clang_diags = json::array(); // the mapped clangd diagnostics of gen_version
@@ -386,6 +390,14 @@ std::string executable_build_id()
 }
 } // namespace
 
+// The split of the generated unit in a shell header and the rest. The environment variable HOT_LS_SPLIT_SHELL=0
+// turns it off: clangd then gets one unit.
+static bool split_shell_enabled()
+{
+    const char* e = std::getenv("HOT_LS_SPLIT_SHELL");
+    return !(e && std::string(e) == "0");
+}
+
 class Server
 {
 public:
@@ -541,6 +553,7 @@ private:
         o.script_name = d.path;
         o.generation = 1;
         o.resolve_refs = true; // the table of the resolved names (ref_resolver.h)
+        o.split_shell = split_shell_enabled();
         const Effective e = effective_options(d.path);
         o.include_dirs = e.include_dirs;
         o.resource_dir = e.resource_dir;
@@ -694,6 +707,7 @@ private:
     void update(Doc& d);
     void update_cpp(Doc& d);
     void send_generated(Doc& d, const std::string& cpp);
+    std::string unit_for_clangd(Doc& d, const std::string& cpp);
     json publish_message(const Doc& d) const;
     std::map<std::string, json> import_diagnostics(const Doc& d) const;
     void publish_imports(Doc& d);
@@ -1698,10 +1712,73 @@ json Server::on_initialize(const json& p)
 
 // ------------------------------------------------------------------ documents and diagnostics
 
-void Server::send_generated(Doc& d, const std::string& cpp)
+// The marker line that the translator writes in the split mode (TranslateOptions::split_shell).
+static const char kShellEnd[] = "\n// @hot-shell-end\n";
+
+// Writes the file with a temporary name and a rename, so clangd never reads a half file.
+static bool write_file_atomic(const fs::path& path, const std::string& text)
+{
+    std::error_code ec;
+    fs::create_directories(path.parent_path(), ec);
+    static std::atomic<unsigned> counter{0};
+    const fs::path tmp = path.string() + ".tmp" + std::to_string(std::hash<std::thread::id>()(std::this_thread::get_id()))
+        + "_" + std::to_string(counter++);
+    {
+        std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
+        if (!f)
+            return false;
+        f.write(text.data(), static_cast<std::streamsize>(text.size()));
+        if (!f)
+            return false;
+    }
+    fs::rename(tmp, path, ec);
+    if (ec)
+        fs::remove(tmp, ec);
+    return !ec;
+}
+
+// The text that clangd gets for the unit. With the marker, the text before it goes to a header and the unit
+// starts with an include of it. The unit keeps the lines of the full text: the include line and empty lines
+// take the place of the shell. So each position of the full text is the same position in the unit, and a
+// place in the header is the same place in the full text. The shell is in a cache directory, not near the script.
+std::string Server::unit_for_clangd(Doc& d, const std::string& cpp)
+{
+    const size_t at = cpp.find(kShellEnd);
+    if (at == std::string::npos)
+        return cpp;
+    const std::string shell = cpp.substr(0, at + 1);
+    const size_t lines = static_cast<size_t>(std::count(shell.begin(), shell.end(), '\n'));
+    if (lines < 2)
+        return cpp;
+    if (d.shell_path.empty())
+    {
+        std::error_code ec;
+        const char* env_dir = std::getenv("HOT_LS_SHELL_DIR"); // for the tests
+        const fs::path dir = env_dir && *env_dir ? fs::path(env_dir) : fs::temp_directory_path(ec) / "hot-ls-shell";
+        char name[32];
+        std::snprintf(name, sizeof name, "%016zx", std::hash<std::string>()(d.gen_path));
+        d.shell_path = (dir / (std::string(name) + ".shell.h")).string();
+    }
+    const size_t hash = std::hash<std::string>()(shell);
+    std::error_code ec;
+    if (hash != d.shell_hash || !fs::exists(d.shell_path, ec))
+    {
+        if (!write_file_atomic(d.shell_path, shell))
+            return cpp; // no header: clangd gets the full text
+        d.shell_hash = hash;
+    }
+    clangd_->set_uri_alias(path_to_uri(d.shell_path), d.gen_uri);
+    std::string out = "#include \"" + fs::path(d.shell_path).generic_string() + "\"\n";
+    out.append(lines - 1, '\n');
+    out.append(cpp, at + 1, std::string::npos);
+    return out;
+}
+
+void Server::send_generated(Doc& d, const std::string& full)
 {
     if (!clangd_ || !clangd_->running())
         return;
+    const std::string cpp = unit_for_clangd(d, full);
     const int v = ++d.sent_version;
     if (!d.in_clangd)
     {

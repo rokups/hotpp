@@ -9763,3 +9763,191 @@ TEST(WorkspaceIndexRename, ColdIndexLooksUpOnlyTheFilesWithTheName)
         - on_before["entryHits"].get<int>() - on_before["entryMisses"].get<int>();
     EXPECT_EQ(lookups, 1) << on_after.dump();
 }
+
+// ------------------------------------------------------------------ the split of the generated unit (HOT-43)
+
+namespace
+{
+
+// Sets an environment variable for the test and restores it at the end.
+struct EnvGuard
+{
+    std::string name, old;
+    bool had = false;
+    EnvGuard(const char* n, const std::string& value) : name(n)
+    {
+        if (const char* o = std::getenv(n))
+        {
+            had = true;
+            old = o;
+        }
+#ifdef _WIN32
+        _putenv_s(n, value.c_str());
+#else
+        setenv(n, value.c_str(), 1);
+#endif
+    }
+    ~EnvGuard()
+    {
+#ifdef _WIN32
+        _putenv_s(name.c_str(), had ? old.c_str() : "");
+#else
+        if (had)
+            setenv(name.c_str(), old.c_str(), 1);
+        else
+            unsetenv(name.c_str());
+#endif
+    }
+};
+
+const char* const kSplitBase =
+    "using \"Actor.h\";\n"
+    "class Base : Actor {\n"
+    "    float hp = 2.0;\n"
+    "    float Heal(float a) { return this.hp + a; }\n"
+    "}\n";
+
+//   line 2: an own field, line 3: uses an own field and an imported method, line 7: a type error.
+const char* const kSplitImporter =
+    "using \"base.hot\";\n"
+    "class Kid : Base {\n"
+    "    float own = 1.0;\n"
+    "    float Go(float a) { return this.Heal(a) + this.own; }\n"
+    "}\n"
+    "class Other : Actor {\n"
+    "    void Bad() {\n"
+    "        int x = \"text\";\n"
+    "    }\n"
+    "}\n";
+
+std::vector<std::filesystem::path> shell_files(const std::filesystem::path& dir)
+{
+    std::vector<std::filesystem::path> r;
+    std::error_code ec;
+    for (const auto& e : std::filesystem::directory_iterator(dir, ec))
+        if (e.path().string().size() > 8 && e.path().string().substr(e.path().string().size() - 8) == ".shell.h")
+            r.push_back(e.path());
+    return r;
+}
+
+// The results of the features on the own class, with the split on or off.
+json split_features(bool split, size_t* shell_count = nullptr)
+{
+    const EnvGuard env("HOT_LS_SPLIT_SHELL", split ? "1" : "0");
+    TempDir shells;
+    const EnvGuard dir_env("HOT_LS_SHELL_DIR", shells.path().string());
+    json out;
+    {
+        Session s(true, "using \"Actor.h\";\n");
+        write_file(s.dir.path() / "base.hot", kSplitBase);
+        s.client->change(s.uri, 2, kSplitImporter);
+        // With the split, clangd can show the errors of the old header for a short time after the header changed.
+        // The test waits for the error of the own class: the list is then final.
+        const json diag = s.diagnostics(
+            [](const json& d)
+            {
+                return std::any_of(d.begin(), d.end(), [](const json& x)
+                    { return x.value("message", "").rfind("Cannot initialize a variable", 0) == 0; });
+            });
+        json diags = json::array();
+        if (!diag.is_null())
+            for (const json& d : diag["params"]["diagnostics"])
+                // An error inside the header is not shown for the importer: the test compares the own error only.
+                if (d.value("message", "").rfind("Cannot initialize a variable", 0) == 0)
+                    diags.push_back({{"range", d["range"]}, {"message", d.value("message", "")}, {"source", d.value("source", "")}});
+        out["diagnostics"] = diags;
+        const std::string go = "    float Go(float a) { return this.Heal(a) + this.own; }";
+        out["hover_own"] = s.client->request("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(go.find("this.own")) + 7));
+        out["hover_heal"] = s.client->request("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(go.find("Heal")) + 1));
+        out["definition_own"] = s.client->request("textDocument/definition", doc_pos(s.uri, 3, static_cast<int>(go.find("this.own")) + 7));
+        out["definition_heal"] = s.client->request("textDocument/definition", doc_pos(s.uri, 3, static_cast<int>(go.find("Heal")) + 1));
+        std::string text = kSplitImporter;
+        text.replace(text.find("return this.Heal(a) + this.own;"), 31, "this.");
+        s.client->change(s.uri, 3, text);
+        const json r = s.client->request("textDocument/completion", doc_pos(s.uri, 3, 29));
+        std::vector<std::string> labels;
+        if (r.contains("result") && r["result"].contains("items"))
+            for (const json& i : r["result"]["items"])
+                labels.push_back(i.value("insertText", i.value("label", "")));
+        std::sort(labels.begin(), labels.end());
+        out["completion"] = labels;
+        std::string dump = out.dump();
+        const std::string root = uri_of(s.dir.path().string());
+        for (size_t at; (at = dump.find(root)) != std::string::npos;)
+            dump.replace(at, root.size(), "ROOT");
+        out = json::parse(dump);
+    }
+    if (shell_count)
+        *shell_count = shell_files(shells.path()).size();
+    return out;
+}
+
+} // namespace
+
+// Hover, definition, completion and diagnostics of an own class are the same with the split and without it.
+TEST(LanguageServer, SplitShellGivesTheSameResultsAsOneUnit)
+{
+    REQUIRE_CLANGD();
+    size_t shells_on = 0, shells_off = 0;
+    const json on = split_features(true, &shells_on);
+    const json off = split_features(false, &shells_off);
+    EXPECT_EQ(shells_on, 1u);
+    EXPECT_EQ(shells_off, 0u);
+    EXPECT_EQ(on["diagnostics"], off["diagnostics"]) << on["diagnostics"].dump();
+    EXPECT_FALSE(on["diagnostics"].empty());
+    EXPECT_EQ(on["hover_own"], off["hover_own"]);
+    EXPECT_EQ(on["hover_heal"], off["hover_heal"]);
+    EXPECT_EQ(on["definition_own"], off["definition_own"]);
+    EXPECT_EQ(on["definition_heal"], off["definition_heal"]);
+    EXPECT_EQ(on["completion"], off["completion"]);
+    const std::string hover = on["hover_own"].dump();
+    EXPECT_NE(hover.find("own"), std::string::npos) << hover;
+    // The method of the import is defined in the imported script, not in the header of the shell.
+    EXPECT_NE(on["definition_heal"].dump().find("base.hot"), std::string::npos) << on["definition_heal"].dump();
+    const auto& labels = on["completion"];
+    EXPECT_NE(std::find(labels.begin(), labels.end(), "Heal"), labels.end());
+    EXPECT_NE(std::find(labels.begin(), labels.end(), "own"), labels.end());
+}
+
+// An edit of an imported script changes the header, and the features see the change.
+TEST(LanguageServer, SplitShellHeaderFollowsAnEditOfAnImport)
+{
+    REQUIRE_CLANGD();
+    const EnvGuard env("HOT_LS_SPLIT_SHELL", "1");
+    TempDir shells;
+    const EnvGuard dir_env("HOT_LS_SHELL_DIR", shells.path().string());
+    Session s(true, kSplitImporter);
+    write_file(s.dir.path() / "base.hot", kSplitBase);
+    s.client->change(s.uri, 2, kSplitImporter);
+    ASSERT_NE(s.client->request("textDocument/hover", doc_pos(s.uri, 3, 30)), nullptr);
+    const auto files = shell_files(shells.path());
+    ASSERT_EQ(files.size(), 1u);
+    const std::string before = translator_test::read_file(files[0]);
+    EXPECT_EQ(before.find("mana"), std::string::npos);
+    // The edit of an own body keeps the header file.
+    std::string own = kSplitImporter;
+    own.replace(own.find("float own = 1.0;"), 16, "float own = 1.0;\n    float extra = 3.0;");
+    s.client->change(s.uri, 3, own);
+    ASSERT_NE(s.client->request("textDocument/hover", doc_pos(s.uri, 3, 10)), nullptr);
+    EXPECT_EQ(translator_test::read_file(files[0]), before);
+    // The edit of the import changes it.
+    std::string base = kSplitBase;
+    base.replace(base.find("float hp = 2.0;"), 15, "float hp = 2.0;\n    float mana = 3.0;");
+    write_file(s.dir.path() / "base.hot", base);
+    std::string user = kSplitImporter;
+    user.replace(user.find("this.Heal(a)"), 12, "this.mana");
+    s.client->change(s.uri, 4, user);
+    const std::string go = "    float Go(float a) { return this.mana + this.own; }";
+    // The header changed: clangd builds a new preamble first. The hover waits for it, so the test tries again.
+    json r;
+    for (int i = 0; i < 40; ++i)
+    {
+        r = s.client->request("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(go.find("mana")) + 1));
+        if (r.contains("result") && r["result"].is_object())
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    EXPECT_NE(r["result"].dump().find("mana"), std::string::npos) << r.dump();
+    EXPECT_NE(translator_test::read_file(files[0]).find("mana"), std::string::npos);
+}

@@ -182,6 +182,38 @@ bool ClangdProcess::send(const json& msg)
     return write_message(to_, msg.dump(-1, ' ', false, json::error_handler_t::replace));
 }
 
+namespace
+{
+// Replaces the "uri" and "targetUri" values that the map has, at any depth.
+void alias_uris(json& j, const std::map<std::string, std::string>& alias)
+{
+    if (j.is_object())
+    {
+        for (auto& [key, value] : j.items())
+        {
+            if (value.is_string() && (key == "uri" || key == "targetUri"))
+            {
+                const auto it = alias.find(value.get_ref<const std::string&>());
+                if (it != alias.end())
+                    value = it->second;
+            }
+            else if (value.is_structured())
+                alias_uris(value, alias);
+        }
+    }
+    else if (j.is_array())
+        for (json& x : j)
+            if (x.is_structured())
+                alias_uris(x, alias);
+}
+} // namespace
+
+void ClangdProcess::set_uri_alias(const std::string& from, const std::string& to)
+{
+    std::lock_guard<std::mutex> lock(alias_mutex_);
+    uri_alias_[from] = to;
+}
+
 void ClangdProcess::reader_loop()
 {
     MessageReader reader(from_);
@@ -191,6 +223,11 @@ void ClangdProcess::reader_loop()
         json msg = json::parse(body, nullptr, false);
         if (msg.is_discarded() || !msg.is_object())
             continue;
+        {
+            std::lock_guard<std::mutex> lock(alias_mutex_);
+            if (!uri_alias_.empty())
+                alias_uris(msg, uri_alias_);
+        }
         if (msg.contains("method"))
         {
             if (msg.contains("id"))
