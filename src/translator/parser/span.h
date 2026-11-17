@@ -27,12 +27,13 @@ struct Span
     uint32_t begin = 0, end = 0;
 };
 
-// The input of a sub-parser. The text is the whole script buffer. The map belongs to
-// the same text. A Span is a byte range in this text. A position in an error is an
-// absolute byte offset in this text.
+// The input of a sub-parser. The text starts at the position "origin". The map belongs to
+// the same text. A Span is a range of positions. A position in an error is the origin plus the
+// index in the text.
 struct ParseInput
 {
     std::string_view text;
+    uint32_t origin = 0; // the position of the first byte of the text
     const LineMap* map = nullptr;
     // The template of the type "T[N]" (the module attribute "array", std_ns.h). It is the internal form.
     std::string_view array_tpl = kDefaultArrayTpl;

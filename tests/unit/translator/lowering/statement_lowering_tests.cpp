@@ -108,7 +108,7 @@ TEST(StatementLowering, CaseLabelsOnSeparateLinesKeepTheirCase)
     const std::string text = " switch (k) {\ncase 1:\ncase 2: default:\nx = 1;\n}";
     LineMap map(text);
     f.cx.map = &map;
-    ast::BlockStmt b = parse_block({text, &map}, {0, static_cast<uint32_t>(text.size())}, f.diag);
+    ast::BlockStmt b = parse_block({text, 0, &map}, {0, static_cast<uint32_t>(text.size())}, f.diag);
     lower_block(b, f.cx, f.diag);
     ast::Emitter e(map, "f.hot");
     ast::emit_stmts(b.stmts, e, 1);

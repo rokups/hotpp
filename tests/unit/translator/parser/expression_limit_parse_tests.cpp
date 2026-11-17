@@ -29,7 +29,7 @@ TEST(ExpressionParseLimits, Truncation)
         const std::string text = full.substr(0, n);
         const LineMap map(text);
         Diagnostics diag;
-        ast::ExprP x = parse_expression({text, &map}, {0, static_cast<uint32_t>(n)}, diag);
+        ast::ExprP x = parse_expression({text, 0, &map}, {0, static_cast<uint32_t>(n)}, diag);
         if (x)
             ++ok;
         if (!x)

@@ -347,6 +347,20 @@ struct TranslateTiming
     int64_t lower_ns = 0;      // from the session lookup to the first check
     int64_t check_ns = 0;      // from the first check to the start of the emit
     int64_t emit_ns = 0;       // from the start of the emit to the end
+    int64_t import_read_ns = 0;  // the read of the import texts
+    int64_t import_parse_ns = 0; // the structure parse of the import texts
+    int64_t import_view_ns = 0;  // the interface hash and the import view
+    int64_t foreign_class_ns = 0; // the class loop: the time for the imported classes
+    int64_t foreign_classes = 0;  // the class loop: the number of imported classes
+    int64_t own_class_ns = 0;     // the class loop: the time for the own classes
+    int64_t own_classes = 0;      // the class loop: the number of own classes
+    int64_t check_class_ns = 0;   // the time in check_class
+    // The class loop sub-steps. Row 0 is the imported classes, row 1 the own classes. Columns: before the
+    // base info, base info, resolve and check, const and param use, slots, shell, state text, the rest.
+    int64_t step_ns[2][40] = {};
+    // The front sub-steps: start, preludes, imports, type model, attributes, enums, module variables,
+    // overloads and statics, interfaces, inheritance, questions, using namespace, libclang setup.
+    int64_t front_step_ns[16] = {};
 };
 
 // A virtual method that a script class can override. The types have the script spelling.
@@ -516,6 +530,9 @@ struct AnalyzeResult
     std::vector<UnresolvedName> unresolved; // see TranslateResult::unresolved
     IndirectNames indirect_names; // see TranslateResult::indirect_names
     std::vector<std::pair<uint32_t, uint32_t>> raw_ranges; // see TranslateResult::raw_ranges
+    // The sum of the timing of all translate passes, and the number of passes. For measurement only.
+    TranslateTiming timing;
+    int passes = 0;
 };
 
 // The cache of a translator session. A backend holds one for its life.

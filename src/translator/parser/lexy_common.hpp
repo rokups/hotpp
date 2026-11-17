@@ -44,16 +44,19 @@ inline constexpr const char* kValueRemoved = "[value] is removed; write the type
 // The state that lexy passes to the callbacks and to the error sink.
 struct ParseState
 {
-    const char* base;
+    const char* data;  // the first byte of the text
+    uint32_t origin;   // the position of the first byte: a position is origin + the index in the text
     const LineMap* map;
     Diagnostics* diag;
-    size_t size = 0; // the size of the whole buffer that starts at base
+    size_t size = 0; // the size of the text that starts at data
     // The template of the type "T[N]" (the module attribute "array", std_ns.h). It is the internal form.
     std::string_view array_tpl = kDefaultArrayTpl;
     // The type aliases in scope, or null (see AliasMap).
     const AliasMap* aliases = nullptr;
 
-    uint32_t offset(const char* p) const { return static_cast<uint32_t>(p - base); }
+    uint32_t offset(const char* p) const { return origin + static_cast<uint32_t>(p - data); }
+    // The byte at a position.
+    const char* at(uint32_t pos) const { return data + (pos - origin); }
     void error(const char* p, std::string msg) const { diag->add(offset(p), *map, std::move(msg)); }
 };
 
@@ -554,7 +557,7 @@ inline std::string canonical_type_at(const ParseState& st, const char* pos, cons
     if (!error.empty())
         st.error(pos, error);
     if (GenericContext* gen = generic_context())
-        gen->at = static_cast<uint32_t>(pos - st.base);
+        gen->at = st.offset(pos);
     if (st.aliases)
         r = apply_aliases(*st.aliases, r);
     return r;
@@ -710,18 +713,18 @@ inline void check_type_marks(const ParseState& st, const char* pos, const std::s
 // A "T[]" is an error when "view_ok" is false.
 inline std::string type_of_span(const ParseState& st, Span sp, bool view_ok = true)
 {
-    const std::string_view raw(st.base + sp.begin, sp.end - sp.begin);
+    const std::string_view raw(st.at(sp.begin), sp.end - sp.begin);
     if (only_blank(raw))
-        st.error(st.base + sp.begin, "expected a type");
+        st.error(st.at(sp.begin), "expected a type");
     std::size_t colons = std::string_view::npos;
     std::string t = type_text(raw, &colons);
     if (colons != std::string_view::npos)
-        st.error(st.base + sp.begin + colons, e_use_dot_colons::name);
+        st.error(st.at(sp.begin + colons), e_use_dot_colons::name);
     const std::size_t amp = raw.find('&');
     if (amp != std::string_view::npos)
-        st.error(st.base + sp.begin + amp, "\"&\" is not a type suffix; write ref T x");
-    check_type_marks(st, st.base + sp.begin, t);
-    return array_types(st, st.base + sp.begin, canonical_type_at(st, st.base + sp.begin, t), true, view_ok);
+        st.error(st.at(sp.begin + amp), "\"&\" is not a type suffix; write ref T x");
+    check_type_marks(st, st.at(sp.begin), t);
+    return array_types(st, st.at(sp.begin), canonical_type_at(st, st.at(sp.begin), t), true, view_ok);
 }
 
 // Rewrites the scope separators of the raw text of template arguments: "." between two names

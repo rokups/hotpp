@@ -57,7 +57,7 @@ HOT_ERROR_TAG(e_base, "expected 'base(...)' after ':' of a constructor; a field 
 // The text of a span.
 std::string_view span_text(const ParseState& st, Span sp)
 {
-    return std::string_view(st.base + sp.begin, sp.end - sp.begin);
+    return std::string_view(st.at(sp.begin), sp.end - sp.begin);
 }
 
 // The type text of a span. A "." is a scope and becomes "::". A "::" is an error.
@@ -840,7 +840,7 @@ struct param_p
             p.def->span = def;
             p.def->pos = def.begin - 1;
             if (only_blank(span_text(st, def)))
-                st.error(st.base + def.begin, "expected a default value");
+                st.error(st.at(def.begin), "expected a default value");
         }
         return p;
     }),
@@ -1184,7 +1184,7 @@ struct typed_member
                 (a.is_get ? p.get_span : p.set_span) = a.body;
                 (a.is_get ? p.get_is_expr : p.set_is_expr) = a.is_expr;
                 if (a.is_expr && only_blank(span_text(st, a.body)))
-                    st.error(st.base + a.body.begin, "expected an expression");
+                    st.error(st.at(a.body.begin), "expected an expression");
             }
         }
         if (rest.arrow)
@@ -1195,7 +1195,7 @@ struct typed_member
             p.get_body.emplace();
             p.get_span = rest.arrow_body;
             if (only_blank(span_text(st, rest.arrow_body)))
-                st.error(st.base + rest.arrow_body.begin, "expected an expression");
+                st.error(st.at(rest.arrow_body.begin), "expected an expression");
         }
         if (!p.has_get && !p.has_set)
             st.error(rest.open, "a property needs a 'get' or a 'set' accessor");
@@ -1207,9 +1207,9 @@ struct typed_member
             p.has_init = true;
             p.init_span = rest.init;
             if (!p.is_auto())
-                st.error(st.base + rest.init.begin - 1, "only an auto property can have an initializer");
+                st.error(st.at(rest.init.begin - 1), "only an auto property can have an initializer");
             else if (only_blank(span_text(st, rest.init)))
-                st.error(st.base + rest.init.begin, "expected an initializer");
+                st.error(st.at(rest.init.begin), "expected an initializer");
         }
         p.pos = st.offset(name_pos);
         p.line = st.map->line(p.pos);
@@ -1272,7 +1272,7 @@ struct typed_member
             st.error(name_pos, kConstInferred);
         m.no_body_pos = rest.no_body_pos;
         if (rest.expr_body && only_blank(span_text(st, rest.body)))
-            st.error(st.base + rest.body.begin, "expected an expression");
+            st.error(st.at(rest.body.begin), "expected an expression");
         me.pos = st.offset(start);
         me.line = st.map->line(me.pos);
         me.end_pos = rest.no_body_pos ? st.offset(rest.no_body_pos) : rest.body.end;
@@ -1297,7 +1297,7 @@ struct typed_member
             f.has_init = true;
             f.init_span = rest.init;
             if (only_blank(span_text(st, rest.init)))
-                st.error(st.base + rest.init.begin, "expected an initializer");
+                st.error(st.at(rest.init.begin), "expected an initializer");
         }
         f.pos = st.offset(name_pos);
         f.line = st.map->line(f.pos);
@@ -1381,7 +1381,7 @@ struct using_member_p
             return m;
         }
         const uint32_t at = t.kind == TopItem::IsImport ? t.import.pos : t.using_ns.pos;
-        st.error(st.base + at, "a class has only a type alias 'using Name = type;'");
+        st.error(st.at(at), "a class has only a type alias 'using Name = type;'");
         return m;
     }),
         lexy::parse_state, lexy::values);
@@ -1454,12 +1454,12 @@ struct base_p
                                                                              lexy::nullopt) { return std::move(name); },
                                                  [](const ParseState& st, std::string&& name, Span args)
     {
-        const std::string_view raw(st.base + args.begin, args.end - args.begin);
+        const std::string_view raw(st.at(args.begin), args.end - args.begin);
         std::size_t colons = std::string_view::npos;
         const std::string text = type_text(raw, &colons);
         if (colons != std::string_view::npos)
-            st.error(st.base + args.begin + colons, e_use_dot_colons::name);
-        return array_types(st, st.base + args.begin, canonical_type_at(st, st.base + args.begin, name + text));
+            st.error(st.at(args.begin + colons), e_use_dot_colons::name);
+        return array_types(st, st.at(args.begin), canonical_type_at(st, st.at(args.begin), name + text));
     }),
         lexy::parse_state, lexy::values);
 };
@@ -1693,19 +1693,19 @@ void add_members(const ParseState& st, ast::ClassDef& c, std::vector<Member>&& m
             if (m.ctor_name == c.name)
                 c.dtors.push_back(std::move(m.method));
             else
-                st.error(st.base + m.method.pos, "the name of a destructor is '~" + c.name + "'");
+                st.error(st.at(m.method.pos), "the name of a destructor is '~" + c.name + "'");
         }
         else if (m.kind == Member::IsCtor)
         {
             if (m.ctor_name == c.name)
                 c.ctors.push_back(std::move(m.ctor));
             else
-                st.error(st.base + m.ctor.pos, "a method needs a return type; write 'Ret name(...)'");
+                st.error(st.at(m.ctor.pos), "a method needs a return type; write 'Ret name(...)'");
         }
         else if (m.kind == Member::IsMethod)
         {
             if (m.method.is_abstract && !c.is_abstract)
-                st.error(st.base + m.method.pos,
+                st.error(st.at(m.method.pos),
                     "abstract method '" + m.method.name + "' needs an abstract " + (c.is_value ? "struct" : "class")
                         + ": write 'abstract class " + c.name + "'");
             if (m.method.is_static)
@@ -2028,23 +2028,23 @@ struct interface_p
             if (m.kind == Member::IsMethod)
             {
                 if (!m.method.op.empty())
-                    st.error(st.base + m.method.pos, "an operator needs a class or a struct");
+                    st.error(st.at(m.method.pos), "an operator needs a class or a struct");
                 if (m.no_body_pos == nullptr)
-                    st.error(st.base + m.method.body_span.begin,
+                    st.error(st.at(m.method.body_span.begin),
                         "an interface method cannot have a body; end the declaration with ';'");
                 if (!seen.insert(m.method.name).second)
-                    st.error(st.base + m.method.pos,
+                    st.error(st.at(m.method.pos),
                         "duplicate method '" + m.method.name + "' in interface '" + d.name + "'");
                 d.methods.push_back(std::move(m.method));
             }
             else if (m.kind == Member::IsField)
-                st.error(st.base + m.field.pos, "an interface cannot have a field; it has methods only");
+                st.error(st.at(m.field.pos), "an interface cannot have a field; it has methods only");
             else if (m.kind == Member::IsProp)
-                st.error(st.base + m.prop.pos, "an interface cannot have a property; it has methods only");
+                st.error(st.at(m.prop.pos), "an interface cannot have a property; it has methods only");
             else if (m.kind == Member::IsCtor)
-                st.error(st.base + m.ctor.pos, "an interface cannot have a constructor");
+                st.error(st.at(m.ctor.pos), "an interface cannot have a constructor");
             else if (m.kind == Member::IsDtor)
-                st.error(st.base + m.method.pos, "an interface cannot have a destructor");
+                st.error(st.at(m.method.pos), "an interface cannot have a destructor");
         }
         return t;
     }),
@@ -2279,7 +2279,7 @@ struct enumerator_p
         e.has_value = true;
         e.value_span = value;
         if (only_blank(span_text(st, value)))
-            st.error(st.base + value.begin, "expected an enumerator value");
+            st.error(st.at(value.begin), "expected an enumerator value");
         return e;
     }),
             lexy::parse_state, lexy::values);
@@ -2387,10 +2387,10 @@ const std::vector<std::string>& class_attribute_names()
 }
 
 ast::Script parse_script_array(std::string_view text, const LineMap& map, Diagnostics& diag,
-    std::string_view host_array_tpl)
+    std::string_view host_array_tpl, uint32_t origin)
 {
     const size_t n_items = diag.items.size(), n_warnings = diag.warnings.size(), n_holes = diag.member_holes.size();
-    ast::Script sc = parse_script(text, map, diag, host_array_tpl);
+    ast::Script sc = parse_script(text, map, diag, host_array_tpl, origin);
     std::string tpl(host_array_tpl);
     for (const ast::ModuleAttrs& m : sc.module_attrs)
         if (m.has_array)
@@ -2400,7 +2400,7 @@ ast::Script parse_script_array(std::string_view text, const LineMap& map, Diagno
     diag.items.resize(n_items);
     diag.warnings.resize(n_warnings);
     diag.member_holes.resize(n_holes);
-    return parse_script(text, map, diag, tpl);
+    return parse_script(text, map, diag, tpl, origin);
 }
 
 namespace
@@ -2466,7 +2466,7 @@ void resolve_aliases(const ParseState& st, std::vector<ast::TypeAlias>& list, co
     for (size_t i = 0; i < list.size(); ++i)
     {
         ast::TypeAlias& a = list[i];
-        const char* at = st.base + a.pos;
+        const char* at = st.at(a.pos);
         std::string later; // the first later alias that the type uses
         for (size_t k = i + 1; k < list.size() && later.empty(); ++k)
             if (list[k].name != a.name && mentions_name(a.type, list[k].name))
@@ -2618,7 +2618,8 @@ void static_props(ast::ClassDef& c, ast::Script& script)
     }
 }
 
-ast::Script parse_script(std::string_view text_in, const LineMap& map, Diagnostics& diag, std::string_view array_tpl)
+ast::Script parse_script(
+    std::string_view text_in, const LineMap& map, Diagnostics& diag, std::string_view array_tpl, uint32_t origin)
 {
     ast::Script script;
     const size_t first_item = diag.items.size();
@@ -2632,12 +2633,13 @@ ast::Script parse_script(std::string_view text_in, const LineMap& map, Diagnosti
     if (text_in.find('<') != std::string_view::npos)
     {
         generic_text.assign(text_in);
-        gen.decls = scan_generics(generic_text, map, diag);
+        gen.decls = scan_generics(generic_text, origin, map, diag);
         // The scan also blanks the parts that it reports (a generic method, a constraint).
         if (!gen.decls.empty() || generic_text != text_in)
             text = generic_text;
     }
-    const ParseState st{text.data(), &map, &diag, text.size(), array_tpl};
+    // A position is the origin plus the index in the text (ParseState::origin).
+    const ParseState st{text.data(), origin, &map, &diag, text.size(), array_tpl};
     const auto input = lexy::string_input<Encoding>(text.data(), text.size());
     auto result = parse_with_diag<file_p>(input, st);
     if (result.has_value())
@@ -2661,7 +2663,7 @@ ast::Script parse_script(std::string_view text_in, const LineMap& map, Diagnosti
                 for (const ast::InterfaceDef& o : script.interfaces)
                     dup = dup || o.name == t.iface.name;
                 if (dup)
-                    st.error(st.base + t.iface.pos, "duplicate interface '" + t.iface.name + "'");
+                    st.error(st.at(t.iface.pos), "duplicate interface '" + t.iface.name + "'");
                 else
                     script.interfaces.push_back(std::move(t.iface));
             }
@@ -2809,7 +2811,7 @@ ast::Script parse_script(std::string_view text_in, const LineMap& map, Diagnosti
                 rw.method(m);
     }
     // The span-then-call step: parse each body and each initializer.
-    ParseInput in{text, &map, array_tpl, &module_aliases};
+    ParseInput in{text, origin, &map, array_tpl, &module_aliases};
     for (ast::EnumDef& e : script.enums)
         for (ast::Enumerator& m : e.items)
             if (m.has_value && !only_blank(span_text(st, m.value_span)))
@@ -2892,12 +2894,12 @@ ast::Script parse_script(std::string_view text_in, const LineMap& map, Diagnosti
     auto instantiate = [&](size_t di, const std::vector<std::string>* args, const std::string& name, int depth)
     {
         const GenericDecl& d = gen.decls[di];
-        if (d.item_end <= d.item_begin || d.item_end > text.size())
+        if (d.item_end <= d.item_begin || d.item_begin < origin || d.item_end > origin + text.size())
             return;
         std::string buf(text.size(), ' ');
-        buf.replace(d.item_begin, d.item_end - d.item_begin, text.substr(d.item_begin, d.item_end - d.item_begin));
+        buf.replace(d.item_begin - origin, d.item_end - d.item_begin, text.substr(d.item_begin - origin, d.item_end - d.item_begin));
         Diagnostics scratch;
-        const ParseState st2{buf.data(), &map, &scratch, buf.size(), array_tpl};
+        const ParseState st2{buf.data(), origin, &map, &scratch, buf.size(), array_tpl};
         auto r = parse_with_diag<file_p>(lexy::string_input<Encoding>(buf.data(), buf.size()), st2);
         for (Diag& e : scratch.items)
             gen.error(e.pos, std::move(e.msg));

@@ -32,7 +32,7 @@ struct Parsed
         : text(std::move(t))
         , map(text)
     {
-        block = parse_block({text, &map}, {0, static_cast<uint32_t>(text.size())}, diag);
+        block = parse_block({text, 0, &map}, {0, static_cast<uint32_t>(text.size())}, diag);
     }
 
     // The printed text of the statements, separated by one space.

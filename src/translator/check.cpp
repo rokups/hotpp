@@ -2920,8 +2920,8 @@ struct ParamAnalysis
         // writes in each script class with a function F can change.
         auto receiver_call = [&](const std::string& name)
         {
-            auto it = ctx.script_methods.find(name);
-            if (it == ctx.script_methods.end() || !ctx.for_class)
+            auto it = ctx.script_methods->find(name);
+            if (it == ctx.script_methods->end() || !ctx.for_class)
                 return;
             for (const ClassDef* cd : it->second)
             {
@@ -3205,11 +3205,9 @@ struct ParamAnalysis
             {
                 if (!f.empty() && f[0] == '.')
                 {
-                    auto mt = ctx.member_types.find(f.substr(1));
-                    if (mt != ctx.member_types.end())
-                        for (const std::string& t : mt->second)
-                            if (can_alias(ptype, t))
-                                use.aliased = true;
+                    for (const std::string& t : ctx.member_types.of(f.substr(1)))
+                        if (can_alias(ptype, t))
+                            use.aliased = true;
                     continue;
                 }
                 auto it = ctx.fields.find(f);

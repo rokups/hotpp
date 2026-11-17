@@ -34,7 +34,7 @@ TEST(ExampleScriptParse, ExampleScripts)
             for (const ast::Method& m : c.methods)
             {
                 Diagnostics diag;
-                const ast::BlockStmt b = parse_block({text, &map}, m.body_span, diag);
+                const ast::BlockStmt b = parse_block({text, 0, &map}, m.body_span, diag);
                 EXPECT_EQ(diag.items.size(), 0u) << name << " " << c.name << "::" << m.name << "\n"
                                                  << diag.format(name);
                 EXPECT_FALSE(b.stmts.empty()) << name << " " << m.name;

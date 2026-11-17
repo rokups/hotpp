@@ -235,6 +235,8 @@ The tool `tools/lsbench/index_bench.py` measures the server over a generated wor
 python3 -I tools/lsbench/index_bench.py --hot-ls cmake-build/linux-clang-both/bin/RelWithDebInfo/hot-ls --json out.json
 ```
 
+- `--edit-bench` measures typing: 12 one-character edits of `--edit-file` (default `g3/unit90.hot`). It prints the time to the diagnostics, to a hover after them and to a hover sent right after the `didChange`. `--edit-root` and `--edit-cdb` select an other workspace.
+- `--edit-bench --edit-kinds` measures the time from `didChange` to the diagnostics for 4 kinds of edit, 12 runs each: a comment (a), a literal (b), an unknown name (c, with the fix back) and a new native member (d). `--edit-root`, `--edit-cdb` and `--edit-file` select a real workspace. The edit file needs a body line of the form `name = number;`. `EDIT_KINDS=b` runs one kind. `EDIT_REQ=1` also times a hover after the diagnostics and a completion after a second `didChange`. The tool prints the median and the p95 of each time and the phases of the server.
 - `--groups N` makes a workspace of N groups. `--mode on|off|both` and `--samples N` choose the runs.
 - Each warm request runs after one warm-up request of the same kind. `completion` has no warm-up: its first sample is the first completion of the document (about 420 ms, the first translation and the answer of `clangd`). The other samples are under 1 ms.
 - The numbers below are from a machine with other jobs (load average 9 to 15 on 32 CPUs, marked LOADED). Release build (RelWithDebInfo). Times in ms.
@@ -261,3 +263,27 @@ python3 -I tools/lsbench/index_bench.py --hot-ls cmake-build/linux-clang-both/bi
 - With the index off, the warm numbers come from the in-memory table cache of the same session. The first references request of a 300-file symbol took 3033 ms (analysis of the closed scripts). With the index on, the first request is also fast: the worker has analyzed the scripts.
 - 1561 scripts (`--groups 50`, index on, load 9): index ready in 16.7 s, server RSS 162 MB, references with 1500 importers 118 ms, rename with 1500 importers 188 ms, workspace symbols (3055 results) 81 ms.
 - All requests are far below the target of 500 ms with the index. Warm script references (30 files) take 4 ms, the target is 200 ms. The hover time with the index on is the same as with the index off.
+
+
+### Edit benchmark: phases and the import origin
+
+Method: the tool opens `GameCore.hot` of BiteSizedWar (2275 lines, 82 imported classes and 67 own classes) with the compile commands of the project. Then it changes the text in memory and waits for the diagnostics. The phases come from `hot/indexStats`, the field `lastUpdate`. Times in ms, median of 12 runs, kind b (literal).
+
+| Phase | Before | After |
+|---|---|---|
+| front (preludes, imports, type model, libclang setup) | 166 | 163 |
+| check (class loop) | 400 | 170 |
+| emit | 12 | 13 |
+| total, didChange to diagnostics | 647 | 411 to 433 (p95 up to 436, one run of d 706) |
+| class loop, imported classes (82) | 250 | 66 |
+| class loop, own classes (67) | 129 | 93 |
+
+What changed in the class loop. The parameter analysis context did not build its maps of all classes again for each class: the loop keeps the field list of each class and one map of the script functions. An imported static function builds no lowering context, because it has no body. `default_arg` copies the context only when it lowers a default value. An imported class builds no state struct text, and a field initializer builds its context only when it lowers an initializer.
+
+Front, ms: preludes 9, import loop 136 (read 14, structure parse 67, view 6, the rest of the loop about 49), questions for libclang 8, `using namespace` 8, libclang setup 29. The next work for the front is in the import loop.
+
+The import origin. Each imported script gets a position range of its own in the position space of the translation. The first import starts at a fixed power of two (1 MiB, or the next power of two above the main script). So an edit of the main script moves no position of an import until the main script passes the power of two. A script of 2 GiB or more is an error. The import text has no blank padding: the parser gets an `origin` (`ParseInput::origin`, the `origin` argument of `parse_script`). A position in an error or in a node is the origin plus the index in the text. The `LineMap` has the origin of each import file. The tests `ImportOrigin.*` check that the refs, the source map and the diagnostics of an import do not depend on the size of the main script.
+
+The fields of `lastUpdate` in `hot/indexStats`: `frontMs`, `lowerMs`, `checkMs`, `emitMs`, `parseMs`, `parseWaitMs`, `parses`, `passes`, `postWorkMs`, `analyzeMs`, `seq`, `importReadMs`, `importParseMs`, `importViewMs`, `foreignClassMs`, `foreignClasses`, `ownClassMs`, `ownClasses`, `checkClassMs`, `frontStep0Ms` to `frontStep12Ms` (the sections of the front phase), `foreignStep<k>Ms` and `ownStep<k>Ms` (the steps of the class loop for imported and own classes; 0 to 7 are the main steps, the others are inner steps used for measurement).
+
+Hover and completion after an edit (BiteSizedWar `GameCore.hot`, load average 3 at the start and 8 to 10 later, so these numbers are rough): a hover just after the diagnostics took 17 ms after a literal edit and about 3036 ms after the other kinds (the native budget of clangd, `kNativeBudgetMs`, ends the wait). A completion after a `didChange` took about 2500 to 3300 ms.

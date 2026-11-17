@@ -155,10 +155,36 @@ struct ParamContext
     std::map<std::string, std::string> fields;
     // The types of the fields of all script classes by field name. A write through another
     // object ("slot.lead = null") changes a field with one of these types.
-    std::map<std::string, std::vector<std::string>> member_types;
+    // The field list of each script class is shared: the class loop keeps the list of a class that
+    // does not change, so a new context copies only the pointers.
+    struct MemberTypes
+    {
+        using ClassFields = std::vector<std::pair<std::string, std::string>>; // field name, type text
+        std::vector<std::shared_ptr<const ClassFields>> classes;
+        bool empty() const
+        {
+            for (const auto& c : classes)
+                if (!c->empty())
+                    return false;
+            return true;
+        }
+        // The types of the fields with this name, in the order of the classes.
+        std::vector<std::string> of(const std::string& name) const
+        {
+            std::vector<std::string> r;
+            for (const auto& c : classes)
+                for (const auto& f : *c)
+                    if (f.first == name)
+                        r.push_back(f.second);
+            return r;
+        }
+    };
+    MemberTypes member_types;
     // The script classes by the name of a function that they declare. A call to such a function
     // on another object can write the fields of one of these classes.
-    std::map<std::string, std::vector<const ast::ClassDef*>> script_methods;
+    // The maps are shared: a class loop builds them again only when a function list changes.
+    using ScriptMethods = std::map<std::string, std::vector<const ast::ClassDef*>>;
+    std::shared_ptr<const ScriptMethods> script_methods = std::make_shared<const ScriptMethods>();
     std::function<bool(const std::string& type, const std::string& method)> const_method;
     std::function<const CallTarget*(const ast::CallExpr&)> call_target;
     std::function<char(const std::string& key, size_t arg, size_t argc)> native_arg;

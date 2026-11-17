@@ -227,4 +227,40 @@ TEST(ImportStableTextTranslation, ClassBodyWarningOfAnImportIsNotInTheImporter)
     EXPECT_EQ(r.cpp.find("unused_value"), std::string::npos) << "the class body stays in its own module";
 }
 
+// An error in an import names the file, the line and the column of the import. The size of the
+// main script does not change them, also when the main script is larger than the first import
+// offset. Two translates of the same input give the same result.
+TEST(ImportStableTextTranslation, ImportDiagnosticPositionDoesNotDependOnTheMainSize)
+{
+    const std::string bad_lib = replaced(kLib, "int First() { return 1; }", "int main() { return 1; }");
+    const std::string small = "using \"w.h\";\nusing \"lib.hot\";\nclass Kid : Widget { }\n";
+    std::string text_sizes[3] = {small, small, small};
+    // 3 KiB, 1.5 MiB and 3 MiB of comment lines before the code.
+    const size_t comment_bytes[3] = {0, 3u << 10, 3u << 20};
+    std::string first;
+    for (int i = 0; i < 3; ++i)
+    {
+        std::string filler;
+        while (filler.size() < comment_bytes[i])
+            filler += "// filler line of the main script\n";
+        text_sizes[i] = small + filler;
+        TempDir dir;
+        const hotc::TranslateResult a = translate_with(dir, bad_lib, text_sizes[i]);
+        const hotc::TranslateResult b = translate_with(dir, bad_lib, text_sizes[i]);
+        ASSERT_FALSE(a.ok);
+        EXPECT_EQ(a.diagnostics, b.diagnostics);
+        EXPECT_NE(a.diagnostics.find("lib.hot:10:1:"), std::string::npos) << a.diagnostics;
+        if (i == 0)
+            first = a.diagnostics;
+        else
+            EXPECT_EQ(first, a.diagnostics);
+    }
+    const hotc::TranslateResult ok_a = [&]
+    {
+        TempDir dir;
+        return translate_with(dir, kLib, text_sizes[2] + "");
+    }();
+    EXPECT_TRUE(ok_a.ok) << ok_a.diagnostics;
+}
+
 } // namespace

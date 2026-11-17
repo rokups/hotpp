@@ -67,7 +67,7 @@ struct Fixture
     {
         LineMap map(text);
         cx.map = &map;
-        ast::BlockStmt b = parse_block({text, &map}, {0, static_cast<uint32_t>(text.size())}, diag);
+        ast::BlockStmt b = parse_block({text, 0, &map}, {0, static_cast<uint32_t>(text.size())}, diag);
         lower_block(b, cx, diag);
         cx.map = nullptr;
         std::string r;
@@ -80,7 +80,7 @@ struct Fixture
     {
         LineMap map(text);
         cx.map = &map;
-        ast::ExprP e = parse_expression({text, &map}, {0, static_cast<uint32_t>(text.size())}, diag);
+        ast::ExprP e = parse_expression({text, 0, &map}, {0, static_cast<uint32_t>(text.size())}, diag);
         EXPECT_TRUE(e) << text;
         if (!e)
             return "";

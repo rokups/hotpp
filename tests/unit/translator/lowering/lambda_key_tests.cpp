@@ -25,7 +25,7 @@ struct KeyRun
     explicit KeyRun(const std::string& text, const std::string& base = "u:Foo::run")
     {
         LineMap map(text);
-        ast::BlockStmt b = parse_block({text, &map}, {0, static_cast<uint32_t>(text.size())}, diag);
+        ast::BlockStmt b = parse_block({text, 0, &map}, {0, static_cast<uint32_t>(text.size())}, diag);
         EXPECT_TRUE(diag.items.empty()) << text;
         assign_lambda_keys(b, base, &map, diag, &all);
     }
