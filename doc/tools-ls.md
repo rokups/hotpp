@@ -235,6 +235,7 @@ The tool `tools/lsbench/index_bench.py` measures the server over a generated wor
 python3 -I tools/lsbench/index_bench.py --hot-ls cmake-build/linux-clang-both/bin/RelWithDebInfo/hot-ls --json out.json
 ```
 
+- `--edit-bench` measures typing: 12 one-character edits of `--edit-file` (default `g3/unit90.hot`). It prints the time to the diagnostics, to a hover after them and to a hover sent right after the `didChange`. `--edit-root` and `--edit-cdb` select an other workspace.
 - `--groups N` makes a workspace of N groups. `--mode on|off|both` and `--samples N` choose the runs.
 - Each warm request runs after one warm-up request of the same kind. `completion` has no warm-up: its first sample is the first completion of the document (about 420 ms, the first translation and the answer of `clangd`). The other samples are under 1 ms.
 - The numbers below are from a machine with other jobs (load average 9 to 15 on 32 CPUs, marked LOADED). Release build (RelWithDebInfo). Times in ms.

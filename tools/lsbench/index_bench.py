@@ -239,6 +239,52 @@ def warm(a, root, index_on):
             "stats": {k: final.get(k) for k in ("analyzed", "tableAnalyses", "loaded", "entryHits", "entryMisses", "translations")}}
 
 
+def edit_bench(a, root, rel, label, cdb=None):
+    """Typing latency: 12 edits that insert one char. Time to the diagnostics publish, to a hover
+    after the publish, and to a hover sent right after the didChange (the blocking case)."""
+    import re
+    r = Run(a, root, True)
+    t0 = r.start() if not cdb else None
+    if cdb:
+        idx = tempfile.mkdtemp(prefix="idx-", dir=a.scratch)
+        t0 = time.perf_counter()
+        r.c = lsbench.Client(os.path.abspath(a.hot_ls), str(root), idx, ["--compile-commands-dir", cdb])
+    r.wait_ready(t0)
+    uri, text = r.doc(rel)
+    r.c.wait_diag(uri, 0, timeout=300)
+    m = re.search(r"^\s*(?:export\s+)?(?:class|def|struct|enum)\s+(\w+)", text, re.M) or re.search(r"\w+", text)
+    line = text.count("\n", 0, m.start(m.lastindex or 0))
+    hpos = {"line": line, "character": m.start(m.lastindex or 0) - text.rfind("\n", 0, m.start(m.lastindex or 0)) - 1}
+    hov = {"textDocument": {"uri": uri}, "position": hpos}
+    r.c.request("textDocument/hover", hov, timeout=300)
+    ver = [1]
+    out = {"diag": [], "hover_after": [], "hover_direct": [], "diag_direct": []}
+    def change():
+        ver[0] += 1
+        cur = text.rstrip("\n") + "\n//" + "x" * (ver[0] - 1) + "\n"
+        n = r.c.diag_count(uri)
+        t = time.perf_counter()
+        r.c.notify("textDocument/didChange", {"textDocument": {"uri": uri, "version": ver[0]}, "contentChanges": [{"text": cur}]})
+        return n, t
+    for direct in (False, True):
+        for _ in range(12):
+            n, t = change()
+            if direct:
+                ms, msg = r.c.request("textDocument/hover", hov, timeout=300)
+                out["hover_direct"].append(ms)
+                d = r.c.wait_diag(uri, n, ver[0], timeout=120)
+                out["diag_direct"].append((d - t) * 1000.0)
+            else:
+                d = r.c.wait_diag(uri, n, ver[0], timeout=120)
+                out["diag"].append((d - t) * 1000.0)
+                out["hover_after"].append(r.c.request("textDocument/hover", hov, timeout=300)[0] + (d - t) * 1000.0)
+    lines = text.count("\n")
+    print("%s (%d lines) load %.1f" % (label, lines, os.getloadavg()[0]))
+    for k, v in out.items():
+        print("  %-13s median %7.1f  p95 %7.1f  max %7.1f" % (k, statistics.median(v), pct(v, 95), max(v)), flush=True)
+    r.stop()
+
+
 def main():
     global GROUPS
     ap = argparse.ArgumentParser()
@@ -250,6 +296,10 @@ def main():
     ap.add_argument("--slow-ms", type=float, default=20000, help="stop the samples of a request after this slow sample")
     ap.add_argument("--mode", choices=["on", "off", "both"], default="both")
     ap.add_argument("--json")
+    ap.add_argument("--edit-bench", action="store_true", help="measure typing edits (didChange, diagnostics, hover) and exit")
+    ap.add_argument("--edit-root")
+    ap.add_argument("--edit-file")
+    ap.add_argument("--edit-cdb")
     ap.add_argument("--verbose", action="store_true")
     a = ap.parse_args()
     GROUPS = a.groups
@@ -257,6 +307,13 @@ def main():
     root = Path(a.workspace) if a.workspace else Path(a.scratch) / "ws"
     root.mkdir(parents=True, exist_ok=True)
     generate(root)
+    if a.edit_bench:
+        if a.edit_root:
+            edit_bench(a, Path(a.edit_root), a.edit_file, a.edit_file, a.edit_cdb)
+        else:
+            edit_bench(a, root, a.edit_file or "g3/unit90.hot", a.edit_file or "g3/unit90.hot")
+        shutil.rmtree(a.scratch, ignore_errors=True)
+        return
     load0 = os.getloadavg()
     result = {"load_start": load0, "scripts": GROUPS * PER_GROUP + GROUPS + 1, "modes": {}}
     for index_on in ([True, False] if a.mode == "both" else [a.mode == "on"]):
