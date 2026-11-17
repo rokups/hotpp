@@ -44,8 +44,19 @@ if(EMSCRIPTEN OR ANDROID OR IOS OR CMAKE_SYSTEM_NAME MATCHES "^(Emscripten|Andro
     set(HOT_AOT_ONLY_PLATFORM ON)
     message(STATUS "AOT-only platform (${CMAKE_SYSTEM_NAME}): no run-time backend, no loader, no translator")
 endif()
+# HOT_FORCE_AOT_ONLY makes a desktop host build like an AOT-only platform, so a test can check
+# the configuration. The host is the target here, so the translator and hotc stay on (the AOT
+# tests need hotc). The backends are off, the loader has no dlopen and hot_runtime has HOT_AOT_ONLY.
+# It needs HOT_SCRIPT_MODE AOT or AOT_OPTIMIZED (checked after the mode is read).
+option(HOT_FORCE_AOT_ONLY "Build a desktop host as an AOT-only platform (no backend, no loader). Needs HOT_SCRIPT_MODE AOT or AOT_OPTIMIZED" OFF)
+set(HOT_AOT_ONLY_FORCED OFF)
+if(HOT_FORCE_AOT_ONLY AND NOT HOT_AOT_ONLY_PLATFORM)
+    set(HOT_AOT_ONLY_PLATFORM ON)
+    set(HOT_AOT_ONLY_FORCED ON)
+    message(STATUS "HOT_FORCE_AOT_ONLY: the desktop host builds as an AOT-only platform (translator and hotc stay on)")
+endif()
 
-if(HOT_AOT_ONLY_PLATFORM)
+if(HOT_AOT_ONLY_PLATFORM AND NOT HOT_AOT_ONLY_FORCED)
     set(HOT_BUILD_TRANSLATOR_DEFAULT OFF)
 elseif(CMAKE_CROSSCOMPILING AND NOT HOT_LLVM_DIR AND NOT HOT_DOWNLOAD_LLVM)
     set(HOT_BUILD_TRANSLATOR_DEFAULT OFF)
@@ -116,7 +127,12 @@ if(HOT_AOT_ONLY_PLATFORM)
                 "(they are the defaults here). See doc/platforms.md.")
     endif()
     # AUTO means: on when CMake finds LLVM. There is no LLVM for the target, so AUTO is OFF.
-    set(HOT_ENABLE_JIT OFF CACHE STRING "" FORCE)
+    if(HOT_AOT_ONLY_FORCED)
+        # A normal variable: the cache keeps the user value, so the build is normal when the option goes OFF.
+        set(HOT_ENABLE_JIT OFF)
+    else()
+        set(HOT_ENABLE_JIT OFF CACHE STRING "" FORCE)
+    endif()
     unset(_hot_jit_upper)
 endif()
 
@@ -127,6 +143,9 @@ set(HOT_SCRIPT_MODE RELOAD CACHE STRING "Script mode of the build: RELOAD, AOT o
 set_property(CACHE HOT_SCRIPT_MODE PROPERTY STRINGS RELOAD AOT AOT_OPTIMIZED)
 if(NOT HOT_SCRIPT_MODE MATCHES "^(RELOAD|AOT|AOT_OPTIMIZED)$")
     message(FATAL_ERROR "HOT_SCRIPT_MODE must be RELOAD, AOT or AOT_OPTIMIZED. It is: ${HOT_SCRIPT_MODE}")
+endif()
+if(HOT_FORCE_AOT_ONLY AND NOT HOT_SCRIPT_MODE MATCHES "^(AOT|AOT_OPTIMIZED)$")
+    message(FATAL_ERROR "HOT_FORCE_AOT_ONLY needs HOT_SCRIPT_MODE=AOT or AOT_OPTIMIZED. It is: ${HOT_SCRIPT_MODE}")
 endif()
 set(HOT_SCRIPT_AOT OFF)
 set(HOT_SCRIPT_AOT_OPTIMIZED OFF)
@@ -340,6 +359,8 @@ if(NOT HOT_CLANG_FILES_ENABLED AND NOT HOT_JIT_ENABLED)
     message(STATUS "No run-time backend: hot::backend is not built. Only AOT and PRECOMPILED hosts work.")
     if(HOT_BUILD_TESTS AND NOT HOT_BUILD_TRANSLATOR)
         message(STATUS "The tests that need a run-time backend are not built (HOT_BUILD_TRANSLATOR=OFF).")
+    elseif(HOT_BUILD_TESTS AND HOT_AOT_ONLY_FORCED)
+        message(STATUS "The tests that need a run-time backend are not built (HOT_FORCE_AOT_ONLY).")
     elseif(HOT_BUILD_TESTS)
         message(FATAL_ERROR "The tests need a run-time backend. Set HOT_ENABLE_CLANG_FILES=ON or "
                 "HOT_ENABLE_JIT=ON, or set HOT_BUILD_TESTS=OFF.")
@@ -435,7 +456,7 @@ add_subdirectory(src)
 if(HOT_BUILD_TESTS)
     add_subdirectory(tests)
     # The benchmark uses the test engine and the test scripts.
-    if(HOT_BUILD_TRANSLATOR)
+    if(HOT_BUILD_TRANSLATOR AND TARGET hot_backend)
         add_subdirectory(tools/bench)
     endif()
 

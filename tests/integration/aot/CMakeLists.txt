@@ -22,26 +22,28 @@ target_link_libraries(aot_demo PRIVATE aot_demo_scripts hot::aot)
 #  integration_aot_parity_tests: links the loader. It runs the same demo with the loader and
 #    with the AOT program aot_demo, and checks that aot_demo has no loader or Clang symbol.
 #  integration_aot_registry_tests: links only hot_aot and AOT scripts (no loader).
-add_executable(integration_aot_parity_tests aot_parity_tests.cpp
-    ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
-    ${PROJECT_SOURCE_DIR}/tests/engine/Object.cpp
-    ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
-target_include_directories(integration_aot_parity_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
-# aot_demo_scripts links only the core: Loader::load_aot takes the table (no hot_aot here).
-target_link_libraries(integration_aot_parity_tests PRIVATE aot_demo_scripts hot_backend GTest::gtest_main)
-set_target_properties(integration_aot_parity_tests PROPERTIES ENABLE_EXPORTS ON)
-add_dependencies(integration_aot_parity_tests aot_demo)
-target_compile_definitions(integration_aot_parity_tests PRIVATE
-    HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
-    AOT_DEMO_PATH="$<TARGET_FILE:aot_demo>")
-# The folder of the LLVM tools (llvm-nm, llvm-readobj, llvm-pdbutil) for the Windows symbol checks.
-# It is the "bin" folder of the LLVM release that has libclang.dll. It can be empty: the test then
-# searches PATH.
-if(HOT_LIBCLANG_DLL)
-    get_filename_component(_hot_llvm_tools_dir "${HOT_LIBCLANG_DLL}" DIRECTORY)
-    target_compile_definitions(integration_aot_parity_tests PRIVATE HOT_LLVM_TOOLS_DIR="${_hot_llvm_tools_dir}")
+if(TARGET hot_backend)
+    add_executable(integration_aot_parity_tests aot_parity_tests.cpp
+        ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
+        ${PROJECT_SOURCE_DIR}/tests/engine/Object.cpp
+        ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+    target_include_directories(integration_aot_parity_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
+    # aot_demo_scripts links only the core: Loader::load_aot takes the table (no hot_aot here).
+    target_link_libraries(integration_aot_parity_tests PRIVATE aot_demo_scripts hot_backend GTest::gtest_main)
+    set_target_properties(integration_aot_parity_tests PROPERTIES ENABLE_EXPORTS ON)
+    add_dependencies(integration_aot_parity_tests aot_demo)
+    target_compile_definitions(integration_aot_parity_tests PRIVATE
+        HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+        AOT_DEMO_PATH="$<TARGET_FILE:aot_demo>")
+    # The folder of the LLVM tools (llvm-nm, llvm-readobj, llvm-pdbutil) for the Windows symbol checks.
+    # It is the "bin" folder of the LLVM release that has libclang.dll. It can be empty: the test then
+    # searches PATH.
+    if(HOT_LIBCLANG_DLL)
+        get_filename_component(_hot_llvm_tools_dir "${HOT_LIBCLANG_DLL}" DIRECTORY)
+        target_compile_definitions(integration_aot_parity_tests PRIVATE HOT_LLVM_TOOLS_DIR="${_hot_llvm_tools_dir}")
+    endif()
+    hot_gtest(integration_aot_parity_tests PROPERTIES LABELS aot-opt)
 endif()
-hot_gtest(integration_aot_parity_tests PROPERTIES LABELS aot-opt)
 
 # Two scripts in one AOT library: the demo and the module variables.
 hot_add_scripts(TARGET aot_registry_scripts AOT
@@ -61,19 +63,21 @@ hot_gtest(integration_aot_registry_tests PROPERTIES LABELS aot)
 
 # Loader::load_aot and Backend::seed_slots: the loader, a backend and the AOT scripts in one
 # program. The scripts library links only the core of the runtime.
-add_executable(integration_aot_load_tests aot_load_tests.cpp
-    ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
-    ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
-target_include_directories(integration_aot_load_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
-target_link_libraries(integration_aot_load_tests PRIVATE aot_registry_scripts hot_backend hot_clang_backend GTest::gtest_main)
-set_target_properties(integration_aot_load_tests PROPERTIES ENABLE_EXPORTS ON)
-target_compile_definitions(integration_aot_load_tests PRIVATE HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
-hot_gtest(integration_aot_load_tests PROPERTIES LABELS aot)
+if(TARGET hot_backend)
+    add_executable(integration_aot_load_tests aot_load_tests.cpp
+        ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
+        ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+    target_include_directories(integration_aot_load_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
+    target_link_libraries(integration_aot_load_tests PRIVATE aot_registry_scripts hot_backend hot_clang_backend GTest::gtest_main)
+    set_target_properties(integration_aot_load_tests PROPERTIES ENABLE_EXPORTS ON)
+    target_compile_definitions(integration_aot_load_tests PRIVATE HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+    hot_gtest(integration_aot_load_tests PROPERTIES LABELS aot)
+endif()
 
 # Override and revert of one AOT unit at run time: two units, the loader and a backend.
 # An override needs the slots of the AOT unit. HOT_SCRIPT_MODE=AOT_OPTIMIZED makes this target
 # optimized, and optimized AOT code has no slots, so that build has no such test.
-if(NOT HOT_SCRIPT_AOT_OPTIMIZED)
+if(TARGET hot_backend AND NOT HOT_SCRIPT_AOT_OPTIMIZED)
     hot_add_scripts(TARGET aot_override_scripts AOT
         SCRIPTS ${PROJECT_SOURCE_DIR}/tests/scripts/override_a_v1.hot ${PROJECT_SOURCE_DIR}/tests/scripts/override_b_v1.hot
         INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
@@ -98,8 +102,10 @@ add_executable(aot_demo_opt aot_demo_main.cpp ${PROJECT_SOURCE_DIR}/tests/engine
     ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
 target_include_directories(aot_demo_opt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(aot_demo_opt PRIVATE aot_demo_opt_scripts hot::aot)
-add_dependencies(integration_aot_parity_tests aot_demo_opt)
-target_compile_definitions(integration_aot_parity_tests PRIVATE AOT_DEMO_OPT_PATH="$<TARGET_FILE:aot_demo_opt>")
+if(TARGET integration_aot_parity_tests)
+    add_dependencies(integration_aot_parity_tests aot_demo_opt)
+    target_compile_definitions(integration_aot_parity_tests PRIVATE AOT_DEMO_OPT_PATH="$<TARGET_FILE:aot_demo_opt>")
+endif()
 
 # The registry tests and the load tests with the optimized library of two scripts.
 hot_add_scripts(TARGET aot_registry_opt_scripts AOT OPTIMIZED
@@ -114,13 +120,15 @@ target_compile_definitions(integration_aot_registry_opt_tests PRIVATE AOT_EXPECT
 target_link_libraries(integration_aot_registry_opt_tests PRIVATE aot_registry_opt_scripts hot::aot GTest::gtest_main)
 hot_gtest(integration_aot_registry_opt_tests TEST_PREFIX opt/ PROPERTIES LABELS aot-opt)
 
-add_executable(integration_aot_opt_load_tests aot_opt_load_tests.cpp
-    ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
-    ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
-target_include_directories(integration_aot_opt_load_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
-target_link_libraries(integration_aot_opt_load_tests PRIVATE aot_registry_opt_scripts hot_backend GTest::gtest_main)
-set_target_properties(integration_aot_opt_load_tests PROPERTIES ENABLE_EXPORTS ON)
-hot_gtest(integration_aot_opt_load_tests PROPERTIES LABELS aot-opt)
+if(TARGET hot_backend)
+    add_executable(integration_aot_opt_load_tests aot_opt_load_tests.cpp
+        ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
+        ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+    target_include_directories(integration_aot_opt_load_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
+    target_link_libraries(integration_aot_opt_load_tests PRIVATE aot_registry_opt_scripts hot_backend GTest::gtest_main)
+    set_target_properties(integration_aot_opt_load_tests PROPERTIES ENABLE_EXPORTS ON)
+    hot_gtest(integration_aot_opt_load_tests PROPERTIES LABELS aot-opt)
+endif()
 
 # The cover script has the cases that the demo lacks: a noexcept override, a const virtual that
 # the shell forwards, an interface base, and a script virtual through a base handle. The parity
@@ -139,11 +147,15 @@ foreach(variant "" _opt)
         ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
     target_include_directories(aot_cover${variant} PRIVATE ${PROJECT_SOURCE_DIR}/tests/engine)
     target_link_libraries(aot_cover${variant} PRIVATE aot_cover${variant}_scripts hot::aot)
-    add_dependencies(integration_aot_parity_tests aot_cover${variant})
+    if(TARGET integration_aot_parity_tests)
+        add_dependencies(integration_aot_parity_tests aot_cover${variant})
+    endif()
 endforeach()
-target_compile_definitions(integration_aot_parity_tests PRIVATE
-    AOT_COVER_PATH="$<TARGET_FILE:aot_cover>"
-    AOT_COVER_OPT_PATH="$<TARGET_FILE:aot_cover_opt>")
+if(TARGET integration_aot_parity_tests)
+    target_compile_definitions(integration_aot_parity_tests PRIVATE
+        AOT_COVER_PATH="$<TARGET_FILE:aot_cover>"
+        AOT_COVER_OPT_PATH="$<TARGET_FILE:aot_cover_opt>")
+endif()
 
 # Script interfaces in loader-less AOT code (design 41b, B5): the registry builds the id tables.
 # HOT_SCRIPT_MODE=AOT_OPTIMIZED makes this AOT target optimized. hotc does not compile script
@@ -214,17 +226,51 @@ foreach(set_name units units_chain)
         target_include_directories(integration_aot_${name}_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests/engine)
         target_compile_definitions(integration_aot_${name}_tests PRIVATE ${chain_def} ${expect_opt})
         target_link_libraries(integration_aot_${name}_tests PRIVATE aot_${name}_scripts hot::aot GTest::gtest_main)
-        add_executable(integration_aot_${name}_load_tests aot_units_tests.cpp
-            ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
-            ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
-        target_include_directories(integration_aot_${name}_load_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests/engine
-            ${PROJECT_SOURCE_DIR}/tests)
-        target_compile_definitions(integration_aot_${name}_load_tests PRIVATE AOT_UNITS_LOADER=1 ${chain_def}
-            ${expect_opt} HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
-        target_link_libraries(integration_aot_${name}_load_tests PRIVATE aot_${name}_scripts hot_backend
-            GTest::gtest_main)
-        set_target_properties(integration_aot_${name}_load_tests PROPERTIES ENABLE_EXPORTS ON)
+        if(TARGET hot_backend)
+            add_executable(integration_aot_${name}_load_tests aot_units_tests.cpp
+                ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
+                ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+            target_include_directories(integration_aot_${name}_load_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests/engine
+                ${PROJECT_SOURCE_DIR}/tests)
+            target_compile_definitions(integration_aot_${name}_load_tests PRIVATE AOT_UNITS_LOADER=1 ${chain_def}
+                ${expect_opt} HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+            target_link_libraries(integration_aot_${name}_load_tests PRIVATE aot_${name}_scripts hot_backend
+                GTest::gtest_main)
+            set_target_properties(integration_aot_${name}_load_tests PROPERTIES ENABLE_EXPORTS ON)
+        endif()
         hot_gtest(integration_aot_${name}_tests TEST_PREFIX ${name}/ PROPERTIES LABELS ${label})
-        hot_gtest(integration_aot_${name}_load_tests TEST_PREFIX ${name}_load/ PROPERTIES LABELS ${label})
+        if(TARGET hot_backend)
+            hot_gtest(integration_aot_${name}_load_tests TEST_PREFIX ${name}_load/ PROPERTIES LABELS ${label})
+        endif()
     endforeach()
 endforeach()
+
+# The symbol check of a forced AOT-only build on Linux (tests/check_aot_only_symbols.cmake).
+if(HOT_AOT_ONLY_FORCED AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_program(HOT_NM nm REQUIRED)
+    find_program(HOT_LDD ldd REQUIRED)
+    add_test(NAME aot_only_symbols
+        COMMAND ${CMAKE_COMMAND} -DNM=${HOT_NM} -DLDD=${HOT_LDD}
+            -DRUNTIME_LIB=$<TARGET_FILE:hot_runtime> -DAOT_DEMO=$<TARGET_FILE:aot_demo>
+            "-DAOT_OBJECTS=$<TARGET_FILE:aot_demo_scripts>;$<TARGET_FILE:hot_aot>"
+            -P ${PROJECT_SOURCE_DIR}/tests/check_aot_only_symbols.cmake)
+    set_tests_properties(aot_only_symbols PROPERTIES LABELS "aot;aot-only")
+    add_dependencies(aot_demo hot_runtime)
+
+    # The negative proof: the check must fail on a strong and on a weak forbidden name.
+    foreach(kind strong weak)
+        add_library(aot_only_bad_${kind} STATIC aot_only_bad_${kind}.cpp)
+        add_test(NAME aot_only_symbols_rejects_${kind}
+            COMMAND ${CMAKE_COMMAND} -DNM=${HOT_NM} -DLDD=${HOT_LDD}
+                -DRUNTIME_LIB=$<TARGET_FILE:aot_only_bad_${kind}> -DAOT_DEMO=$<TARGET_FILE:aot_demo>
+                -P ${PROJECT_SOURCE_DIR}/tests/check_aot_only_symbols.cmake)
+        # The output must name the symbol. A script error or a missing file does not pass.
+        if(kind STREQUAL "strong")
+            set(_hot_reject_name dlopen)
+        else()
+            set(_hot_reject_name popen)
+        endif()
+        set_tests_properties(aot_only_symbols_rejects_${kind} PROPERTIES LABELS "aot;aot-only"
+            PASS_REGULAR_EXPRESSION "needs forbidden symbols: .*${_hot_reject_name}")
+    endforeach()
+endif()

@@ -7,7 +7,10 @@
 # without the translator (HOT_BUILD_TRANSLATOR=OFF) has them only with HOT_HOST_HOTC.
 if(TARGET hot::hotc)
     add_subdirectory(aot)
-    add_subdirectory(precompiled-library)
+    # The sample loads a library at run time, so a forced AOT-only build (no loader) skips it.
+    if(NOT HOT_AOT_ONLY_FORCED)
+        add_subdirectory(precompiled-library)
+    endif()
 else()
     message(STATUS "samples: skipped (no target hot::hotc, set HOT_HOST_HOTC)")
 endif()
@@ -26,8 +29,13 @@ endif()
 # The sample tests use the default work folder in the scratch folder. The test hot_scratch_clean
 # removes this folder, so no sample test runs at the same time as the clean test.
 if(COMMAND hot_gtest AND CMAKE_VERSION VERSION_GREATER_EQUAL 3.28) # needs set_property(TEST DIRECTORY)
+    get_property(_hot_sample_subdirs DIRECTORY PROPERTY SUBDIRECTORIES)
     foreach(_hot_dir aot aot-reload runtime-compile hot-reload clang-files-backend jit-backend imgui
                      precompiled-library launcher)
+        # A build without a backend (HOT_FORCE_AOT_ONLY) does not add some sample folders.
+        if(NOT "${CMAKE_CURRENT_SOURCE_DIR}/${_hot_dir}" IN_LIST _hot_sample_subdirs)
+            continue()
+        endif()
         get_property(_hot_sample_tests DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${_hot_dir} PROPERTY TESTS)
         foreach(_hot_test ${_hot_sample_tests})
             set_property(TEST ${_hot_test} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${_hot_dir} APPEND PROPERTY FIXTURES_REQUIRED hot_scratch)
