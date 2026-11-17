@@ -4033,6 +4033,13 @@ void translate_impl(
         }
         ~PhaseTimer() { next(nullptr); }
     } phases{&res.timing.front_ns};
+    auto fstep_last = std::chrono::steady_clock::now();
+    auto fstep = [&](int k)
+    {
+        const auto now = std::chrono::steady_clock::now();
+        res.timing.front_step_ns[k] += std::chrono::duration_cast<std::chrono::nanoseconds>(now - fstep_last).count();
+        fstep_last = now;
+    };
     Options opt;
     opt.input = in.script_name;
     opt.unit = in.unit_name.empty() ? std::filesystem::path(in.script_name).stem().string() : in.unit_name;
@@ -4066,6 +4073,7 @@ void translate_impl(
         opt.output = opt.input + ".cpp";
     g_script = opt.input;
 
+    fstep(0);
     // ---- the preludes. They load first, in order. A module attribute list ("[std("eastl")];") in a
     // prelude sets the default of the host, and a later prelude overrides an earlier one. A list in
     // the script overrides the default for the script. An attribute name is valid once in one file.
@@ -4223,6 +4231,7 @@ void translate_impl(
     res.use_info.known = true;
     res.use_info.names = hot::iface_name_set(in.script_text);
 
+    fstep(1);
     // ---- script imports (design 4.10): "using "parent.hot";". One generation holds all script
     // modules of the program, so a class can derive from a class of another script. The
     // translator parses each imported script and adds its classes, enums and stubs. The parser
@@ -4702,6 +4711,7 @@ void translate_impl(
         return f.empty() ? opt.input : f;
     };
 
+    fstep(2);
     // ---- the type model: the preludes first, then the stubs of the script
     hotc::TypeModel types;
     types.set_std_ns(std_ns);
@@ -4744,6 +4754,7 @@ void translate_impl(
         const auto& origin = stub_origin.at(hotc::TypeModel::stub_key(*st));
         all_stubs.push_back({st, origin.first, origin.second});
     }
+    fstep(3);
     // ---- script attributes. A tag "[Name]" on a script class needs "[attribute] class Name;" in a
     // prelude, in the script or in an imported script.
     {
@@ -4790,6 +4801,7 @@ void translate_impl(
                             "the attribute '" + a.name + "' on property '" + c.name + "." + p.name + "' needs both 'get' and 'set': the host reads and writes the value");
                 }
     }
+    fstep(4);
     // ---- script enums (design 5.3, 7.2). An enum becomes a C++ "enum class". A field of an
     // enum type reloads as its underlying integer type.
     std::map<std::string, std::string> enum_types; // the name and the underlying type
@@ -4820,6 +4832,7 @@ void translate_impl(
     for (const ClassDef& cd : sc.classes)
         if (cd.name.compare(0, 4, "hot_") == 0)
             fail_at(map, cd.pos, "the class name '" + cd.name + "' is reserved: the prefix 'hot_' is for the generated code");
+    fstep(5);
     // ---- module variables (design 5.3, 7.3). They live in the module state block, which is
     // the state of a synthetic struct. The block migrates like the fields of a class.
     const bool has_module = !sc.vars.empty();
@@ -4862,6 +4875,7 @@ void translate_impl(
         if (!module_vars.count(m.name.substr(8)))
             fail_at(map, m.pos,
                 "'" + m.name + "' is not a convert hook: the script has no module variable '" + m.name.substr(8) + "'");
+    fstep(6);
     // ---- method overloads (gap G17). Two methods of a class with one name are an overload group
     // when the parameter types differ. Each member gets a unique key (see Method::src_name). A
     // name with one method keeps its name, so its slot and the slot manifest do not change. An
@@ -5041,6 +5055,7 @@ void translate_impl(
             }
         }
     }
+    fstep(7);
     // ---- script interfaces (design 41b, D1 and D8). A name in the base list that names a script
     // interface moves to "script_ifaces". The class parent (the first name) cannot be an interface.
     if (opt.aot_optimized && !sc.interfaces.empty())
@@ -5169,6 +5184,7 @@ void translate_impl(
                 if (c.has_base_call)
                     fail_at(map, c.pos, "class '" + cd.name + "' has no base class: remove 'base(...)'");
 
+    fstep(8);
     // ---- script inheritance (design 4.5). A base that is a script class of this script is a
     // script parent. The root of a chain is the first class without a script parent. Its base
     // is the native base of every class of the chain.
@@ -5245,6 +5261,7 @@ void translate_impl(
         if (const ClassDef* par = script_parent(cd); par && par->foreign_unit == cd.foreign_unit)
             unit_parents.insert(par->name);
 
+    fstep(9);
     // ---- the questions for libclang about the types (design 7.10.7 and the stub "class *;")
     std::map<std::string, std::set<std::string>> asked; // type text, member names
     auto is_exact = [](const std::string& n) { return n != "*" && n.find('*') == std::string::npos; };
@@ -5331,6 +5348,7 @@ void translate_impl(
             break;
         }
     }
+    fstep(10);
     // ---- a bare native type name under "using ns;" (doc/module-level.md). In a type position it
     // means "ns::Name", as when the script writes the prefix. The probe tells which namespace
     // declares the name. The rewrite comes after the probe.
@@ -5534,6 +5552,7 @@ void translate_impl(
     for (auto& [t, ms] : asked)
         reqs.push_back({t, std::vector<std::string>(ms.begin(), ms.end())});
 
+    fstep(11);
     // ---- libclang: parse the imports and read the native base classes.
     // The native headers that only the file system of the host holds go to libclang in memory.
     if (!is_cpp_script)
@@ -5620,6 +5639,7 @@ void translate_impl(
             m.native = true;
             res.base_virtuals[bname].push_back(std::move(m));
         }
+    fstep(12);
     phases.next(&res.timing.lower_ns);
     // The rewrite of the bare names (see bare_cands). A name that two namespaces declare is an error.
     if (!bare_cands.empty())
@@ -11525,6 +11545,8 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
         res.timing.own_class_ns += t.own_class_ns;
         res.timing.own_classes += t.own_classes;
         res.timing.check_class_ns += t.check_class_ns;
+        for (int k = 0; k < 16; ++k)
+            res.timing.front_step_ns[k] += t.front_step_ns[k];
         for (int f = 0; f < 2; ++f)
             for (int k = 0; k < 24; ++k)
                 res.timing.step_ns[f][k] += t.step_ns[f][k];

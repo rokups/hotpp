@@ -7696,6 +7696,8 @@ void Server::handle(const json& msg)
                 {"importViewMs", ms(t.import_view_ns)}, {"foreignClassMs", ms(t.foreign_class_ns)},
                 {"foreignClasses", t.foreign_classes}, {"ownClassMs", ms(t.own_class_ns)},
                 {"ownClasses", t.own_classes}, {"checkClassMs", ms(t.check_class_ns)}};
+            for (int k = 0; k < 16; ++k)
+                out["lastUpdate"]["frontStep" + std::to_string(k) + "Ms"] = ms(t.front_step_ns[k]);
             for (int f = 0; f < 2; ++f)
                 for (int k = 0; k < 24; ++k)
                     out["lastUpdate"][std::string(f ? "ownStep" : "foreignStep") + std::to_string(k) + "Ms"] =

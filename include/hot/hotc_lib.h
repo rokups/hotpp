@@ -358,6 +358,9 @@ struct TranslateTiming
     // The class loop sub-steps. Row 0 is the imported classes, row 1 the own classes. Columns: before the
     // base info, base info, resolve and check, const and param use, slots, shell, state text, the rest.
     int64_t step_ns[2][24] = {};
+    // The front sub-steps: start, preludes, imports, type model, attributes, enums, module variables,
+    // overloads and statics, interfaces, inheritance, questions, using namespace, libclang setup.
+    int64_t front_step_ns[16] = {};
 };
 
 // A virtual method that a script class can override. The types have the script spelling.
