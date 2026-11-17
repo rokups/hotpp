@@ -40,6 +40,7 @@
 #include <fstream>
 #include <functional>
 #include <limits>
+#include <future>
 #include <map>
 #include <memory>
 #include <locale>
@@ -470,6 +471,13 @@ static bool import_cache_enabled(bool option)
     if (e && std::string(e) == "1")
         return true;
     return option;
+}
+
+// HOT-51: the cache of the native members of "this" in a completion. The variable HOT_LS_THIS_CACHE is 0 or 1 (default 1).
+static bool this_cache_enabled()
+{
+    const char* e = std::getenv("HOT_LS_THIS_CACHE");
+    return !(e && std::string(e) == "0");
 }
 
 class Server
@@ -1433,6 +1441,24 @@ private:
     std::vector<TokenWorker> token_workers_;
     std::atomic<int> native_token_requests_{0}; // the requests of tokens to clangd (hot/indexStats)
     int completion_translations_ = 0; // the translations of a completion text (hot/indexStats)
+    // HOT-51: the native members of "this" (the answer of clangd for the empty prefix), one entry for each
+    // document. "pre" holds the class, its script bases and the host options. "shell" is the hash of the
+    // shell header: it holds the imports and the class declarations. "bad": the answer was not complete.
+    struct ThisEntry
+    {
+        std::string pre;
+        size_t shell = 0;
+        bool bad = false;
+        json items = json::array();
+    };
+    std::mutex this_mutex_;
+    std::map<std::string, ThisEntry> this_cache_;
+    std::atomic<int> this_analyzes_{0}, this_hits_{0};
+    void drop_this_cache()
+    {
+        std::lock_guard<std::mutex> lock(this_mutex_);
+        this_cache_.clear();
+    }
     // The translations of the server (all analyze calls) and their total time (hot/indexStats).
     mutable std::atomic<int> translations_{0};
     mutable std::atomic<long long> translate_us_{0};
@@ -1721,10 +1747,12 @@ void Server::start_clangd(const json& init)
         check_epoch();
     };
     clangd_ = std::move(c);
+    drop_this_cache(); // a new clangd: no answer of the old one stays
 }
 
 void Server::load_hosts()
 {
+    drop_this_cache();
     std::lock_guard<std::mutex> lock(hosts_mutex_);
     hosts_.clear();
     std::vector<std::string> dirs;
@@ -1797,6 +1825,8 @@ void Server::on_watched_files(const json& p)
             continue;
         const std::string path = uri_to_path(c["uri"].get<std::string>());
         const std::string ext = fs::path(path).extension().string();
+        if (ext != ".hot")
+            drop_this_cache(); // a header or a host file: the native members can change
         if (ext == ".json" || ext == ".defines" || ext == ".options" || ext == ".includes")
         {
             std::lock_guard<std::mutex> lock(hosts_mutex_);
@@ -3403,6 +3433,71 @@ json Server::on_completion(const Doc& d, const json& p)
                     md.gen_version = md.sent_version + 1; // before the send: the diagnostics can come at once
                     send_generated(md, d.gen.s);
                 }};
+            // HOT-51: the probe "this." (below). The cache keeps the members for the class, the bases, the
+            // host options and the shell header. With the cache, clangd gets the empty prefix: the members
+            // do not depend on the word, and the prefix filters them here.
+            const hotc::AnalyzedClass* this_cls = !member && !type_only ? class_at(cur) : nullptr;
+            const bool this_cache = this_cls && this_cache_enabled();
+            const auto this_text = [&](const std::string& word)
+            {
+                return t.substr(0, s) + "this." + word + kHole + closers + (end ? "" : ";") + t.substr(e);
+            };
+            std::string this_pre;
+            bool this_bad = false;
+            std::optional<ThisEntry> this_entry;
+            std::future<hotc::AnalyzeResult> this_future;
+            if (this_cache)
+            {
+                const hotc::TranslateOptions o = translate_options(d);
+                // The head of the class has all its bases ("class A : B, C"). "base" holds the first one.
+                std::string pre = this_cls->name;
+                {
+                    const size_t line = static_cast<size_t>(std::max(0, this_cls->begin.line - 1));
+                    if (line < d.text.starts.size())
+                    {
+                        const size_t from = std::min(d.text.s.size(), d.text.starts[line] + static_cast<size_t>(std::max(0, this_cls->begin.col - 1)));
+                        const size_t to_brace = d.text.s.find('{', from);
+                        pre += ':' + d.text.s.substr(from, to_brace == std::string::npos ? 0 : to_brace - from);
+                    }
+                }
+                std::set<std::string> seen;
+                for (std::string n = this_cls->base; !n.empty() && seen.insert(n).second;)
+                {
+                    pre += '<' + n;
+                    std::string next;
+                    for (const hotc::AnalyzedClass& c : d.facts.classes)
+                        if (c.name == n)
+                            next = c.base;
+                    n = next;
+                }
+                for (const std::string& x : o.include_dirs)
+                    pre += "\n-I" + x;
+                for (const std::string& x : o.defines)
+                    pre += "\n" + x;
+                pre += "\n" + o.std_version + "\n" + o.resource_dir;
+                this_pre = std::move(pre);
+                {
+                    std::lock_guard<std::mutex> lock(this_mutex_);
+                    if (const auto it = this_cache_.find(d.path); it != this_cache_.end() && it->second.pre == this_pre)
+                        this_entry = it->second;
+                }
+                this_bad = this_entry && this_entry->bad;
+                // A miss is likely: the analysis of the "this" text runs while the first probe runs. The
+                // clangd calls stay in order: they patch the text of the one document.
+                if (!this_entry)
+                {
+                    hotc::TranslateOptions to = translate_options(d);
+                    to.null_warnings = true;
+                    this_future = std::async(std::launch::async,
+                        [this, to = std::move(to), text = this_text(std::string())]
+                        {
+                            PhaseTimer pt("this analyze");
+                            ++this_analyzes_;
+                            return timed_translate([&] { return hotc::analyze(text, to, session_); });
+                        });
+                }
+            }
+            size_t shell_key = 0; // the hash of the shell header of the first probe that has a place
             for (size_t text_index = 0; text_index < texts.size(); ++text_index)
             {
                 const std::string& patched = texts[text_index];
@@ -3445,6 +3540,8 @@ json Server::on_completion(const Doc& d, const json& p)
                 if (!g)
                     continue;
                 mapped = true;
+                if (const size_t at = facts.cpp.find(kShellEnd); at != std::string::npos && !shell_key)
+                    shell_key = std::hash<std::string>()(facts.cpp.substr(0, at + 1));
                 const Text gen(facts.cpp);
                 // Before its first preamble, clangd gives only "fallback" words of the file. A
                 // request that needs the AST waits for the preamble. The wait is on the real text,
@@ -3513,38 +3610,87 @@ json Server::on_completion(const Doc& d, const json& p)
             }
             // The native members of the base are not names in the generated code of a method. A second
             // try with "this." gives them. Its items join the list.
-            if (!member && !type_only && (sent || lite_sent) && r && class_at(cur))
+            if (this_cls && (sent || lite_sent) && r)
             {
-                const std::string with_this = t.substr(0, s) + "this." + prefix + kHole + closers + (end ? "" : ";") + t.substr(e);
-                hotc::TranslateOptions to = translate_options(d);
-                to.null_warnings = true;
-                hotc::AnalyzeResult facts = [&] { PhaseTimer pt("this analyze"); return timed_translate([&] { return hotc::analyze(with_this, to, session_); }); }();
-                probe_timing_line("this", facts);
-                const auto g = facts.cpp.empty()
-                    ? std::nullopt
-                    : facts.source_map.map_to_generated(hole.line + 1, hole.col + 1 + 5);
-                const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    *t0 + std::chrono::milliseconds(opt_.completion_budget_ms + kCompletionAstMs) - std::chrono::steady_clock::now()).count();
-                if (g && left > 0)
+                // The answer of clangd for the "this." text of "word". Nothing when no place or no time.
+                const auto this_probe = [&](hotc::AnalyzeResult facts, const std::string& word) -> std::optional<json>
                 {
+                    probe_timing_line("this", facts);
+                    const auto g = facts.cpp.empty()
+                        ? std::nullopt
+                        : facts.source_map.map_to_generated(hole.line + 1, hole.col + 1 + 5);
+                    const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        *t0 + std::chrono::milliseconds(opt_.completion_budget_ms + kCompletionAstMs) - std::chrono::steady_clock::now()).count();
+                    if (!g || left <= 0)
+                        return std::nullopt;
                     std::string lu;
                     { PhaseTimer pt("this lite sync"); lu = lite_uri(md, facts.cpp, g->line - 1, static_cast<int>(left)); }
                     if (lu == d.gen_uri)
                         send_generated(md, facts.cpp);
                     const Text gen(facts.cpp);
                     PhaseTimer pc("this clangd call");
-                    auto r2 = clangd_result("textDocument/completion",
+                    return clangd_result("textDocument/completion",
                         {{"textDocument", {{"uri", lu}}},
                             {"position",
-                                to_lsp(gen, {g->line - 1, g->col - 1 + static_cast<int>(prefix.size())}, clangd_utf8_)}},
+                                to_lsp(gen, {g->line - 1, g->col - 1 + static_cast<int>(word.size())}, clangd_utf8_)}},
                         static_cast<int>(left));
-                    if (r2)
+                };
+                const auto items_of = [](const json& j) { return j.is_array() ? j : j.value("items", json::array()); };
+                std::optional<json> r2;
+                bool from_cache = false;
+                if (this_cache && !this_bad && shell_key)
+                {
+                    if (this_entry && this_entry->shell == shell_key)
                     {
-                        json merged = r->is_array() ? *r : r->value("items", json::array());
-                        for (const json& it : r2->is_array() ? *r2 : r2->value("items", json::array()))
-                            merged.push_back(it);
-                        r = merged;
+                        ++this_hits_;
+                        r2 = this_entry->items;
+                        from_cache = true;
                     }
+                    else
+                    {
+                        // The shell header is new (an edit of an import or of a class): ask for all the members.
+                        hotc::AnalyzeResult facts;
+                        if (this_future.valid())
+                            facts = this_future.get();
+                        else
+                        {
+                            ++this_analyzes_;
+                            hotc::TranslateOptions to = translate_options(d);
+                            to.null_warnings = true;
+                            PhaseTimer pt("this analyze");
+                            facts = timed_translate([&] { return hotc::analyze(this_text(std::string()), to, session_); });
+                        }
+                        r2 = this_probe(std::move(facts), std::string());
+                        ThisEntry entry{this_pre, shell_key, false, json::array()};
+                        // The limit of clangd (--limit-results=1000) cuts a long list: it is not complete.
+                        if (r2 && !(r2->is_object() && r2->value("isIncomplete", false)) && items_of(*r2).size() < 1000)
+                            entry.items = items_of(*r2);
+                        else
+                            entry.bad = true;
+                        {
+                            std::lock_guard<std::mutex> lock(this_mutex_);
+                            this_cache_[d.path] = entry;
+                        }
+                        if (entry.bad)
+                            r2.reset(); // the old probe with the prefix follows
+                    }
+                }
+                if (!r2 && !from_cache)
+                {
+                    this_future = {};
+                    ++this_analyzes_;
+                    hotc::TranslateOptions to = translate_options(d);
+                    to.null_warnings = true;
+                    const std::string with_this = this_text(prefix);
+                    hotc::AnalyzeResult facts = [&] { PhaseTimer pt("this analyze"); return timed_translate([&] { return hotc::analyze(with_this, to, session_); }); }();
+                    r2 = this_probe(std::move(facts), prefix);
+                }
+                if (r2)
+                {
+                    json merged = r->is_array() ? *r : r->value("items", json::array());
+                    for (const json& it : items_of(*r2))
+                        merged.push_back(it);
+                    r = merged;
                 }
             }
             // No patched text translates (an error that the analysis cannot cut out). The last good
@@ -8321,6 +8467,8 @@ void Server::handle(const json& msg)
                 {"params", {{"uri", uri}, {"diagnostics", json::array()}}}});
         return;
     }
+    if (method == "workspace/didChangeConfiguration")
+        drop_this_cache();
     if (method == "workspace/didChangeWatchedFiles")
         return on_watched_files(p);
     if (method == "workspace/didChangeWorkspaceFolders")
@@ -8367,7 +8515,7 @@ void Server::handle(const json& msg)
                 {"analyzed", st.analyzed}, {"loaded", st.loaded}, {"readyMs", st.ready_ms}, {"threads", st.threads}};
         }
         out.update({{"analyzed", closed_analyses_}, {"loaded", index_.loads()}, {"loadMs", index_.load_ms()}, {"stored", index_.stores()},
-            {"dir", index_.dir()}, {"completions", completion_translations_},
+            {"dir", index_.dir()}, {"completions", completion_translations_}, {"thisAnalyzes", this_analyzes_.load()}, {"thisHits", this_hits_.load()},
             {"tokenRequests", native_token_requests_.load()}, {"translations", translations_.load()},
             {"liteHits", lite_hits_.load()}, {"liteFallback", lite_fallbacks_.load()}, {"liteMismatch", lite_mismatches_.load()},
             {"translateMs", static_cast<double>(translate_us_.load()) / 1000.0}, {"tableHits", table_hits_},

@@ -10761,3 +10761,116 @@ TEST(LanguageServer, SlowOpenOfTheLiteDocumentFallsBackToTheFullDocument)
     EXPECT_GT(stats["result"].value("liteFallback", 0), 0) << stats.dump();
 }
 #endif
+
+// ------------------------------------------------------------------ the cache of the "this" members (HOT-51)
+
+namespace
+{
+
+const char* const kThisBase = "using \"Actor.h\";\nusing \"Damageable.h\";\nclass Base : Actor { }\n";
+
+// The script Hero with a plain name at line 5. Line 4 holds the number "n": a change of it needs a new translation.
+std::string this_script(const std::string& bases, const std::string& word, int n)
+{
+    return "using \"base.hot\";\nusing \"Damageable.h\";\nclass Hero : " + bases + " {\n    void run() {\n        int counter = "
+        + std::to_string(n) + ";\n        " + word + "\n    }\n}\n";
+}
+
+std::vector<std::string> this_names(Session& s, int version, const std::string& bases, const std::string& word, int n)
+{
+    s.client->change(s.uri, version, this_script(bases, word, n));
+    const json r = s.client->request("textDocument/completion", doc_pos(s.uri, 5, 8 + static_cast<int>(word.size())));
+    std::vector<std::string> out;
+    EXPECT_TRUE(r.contains("result")) << r.dump();
+    if (r.contains("result"))
+        for (const json& i : r["result"].value("items", json::array()))
+            out.push_back(i.value("insertText", i.value("label", "")));
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+bool contains_name(const std::vector<std::string>& names, const std::string& n)
+{
+    return std::find(names.begin(), names.end(), n) != names.end();
+}
+
+int this_stat(Session& s, const char* key)
+{
+    return s.client->request("hot/indexStats", json::object())["result"].value(key, -1);
+}
+
+// The cache of the members of "this": the answers are the same with and without it.
+TEST(LanguageServer, ThisCacheGivesTheSameCompletionAsNoCache)
+{
+    REQUIRE_CLANGD();
+    std::vector<std::string> answers[2][3];
+    for (int cache = 0; cache < 2; ++cache)
+    {
+        const EnvGuard env("HOT_LS_THIS_CACHE", cache ? "1" : "0");
+        Session s(true, this_script("Base", "Mo", 1));
+        write_file(s.dir.path() / "base.hot", kThisBase);
+        answers[cache][0] = this_names(s, 2, "Base", "Mo", 1);
+        answers[cache][1] = this_names(s, 3, "Base", "Na", 2); // other word, other text: the cache is used
+        answers[cache][2] = this_names(s, 4, "Base", "P", 3); // one letter
+        EXPECT_TRUE(contains_name(answers[cache][0], "Move")) << cache;
+        EXPECT_TRUE(contains_name(answers[cache][1], "Name")) << cache;
+        EXPECT_FALSE(contains_name(answers[cache][1], "Move")) << cache;
+        EXPECT_TRUE(contains_name(answers[cache][2], "Position")) << cache;
+        if (cache)
+        {
+            // The first request asks for the members. The next ones use the answer.
+            EXPECT_EQ(this_stat(s, "thisAnalyzes"), 1);
+            EXPECT_GE(this_stat(s, "thisHits"), 2);
+        }
+        else
+        {
+            EXPECT_EQ(this_stat(s, "thisHits"), 0);
+            EXPECT_GE(this_stat(s, "thisAnalyzes"), 3);
+        }
+    }
+    for (int i = 0; i < 3; ++i)
+    {
+        std::vector<std::string> diff;
+        std::set_symmetric_difference(answers[0][i].begin(), answers[0][i].end(), answers[1][i].begin(),
+            answers[1][i].end(), std::back_inserter(diff));
+        EXPECT_TRUE(diff.empty()) << "request " << i << ": " << json(diff).dump().substr(0, 200) << " no cache has "
+            << answers[0][i].size() << " cache has " << answers[1][i].size();
+    }
+}
+
+// An edit of the imported base class (new native base) shows in the next completion.
+TEST(LanguageServer, ThisCacheDropsTheMembersWhenTheImportedBaseChanges)
+{
+    REQUIRE_CLANGD();
+    // The switch HOT_LS_THIS_CACHE of the process stays: the test holds with and without the cache.
+    const char* sw = std::getenv("HOT_LS_THIS_CACHE");
+    const bool cache = !(sw && std::string(sw) == "0");
+    Session s(true, this_script("Base", "Ta", 1));
+    write_file(s.dir.path() / "base.hot", kThisBase);
+    EXPECT_FALSE(contains_name(this_names(s, 2, "Base", "Ta", 1), "Tag"));
+    EXPECT_FALSE(contains_name(this_names(s, 3, "Base", "Ta", 2), "Tag")); // from the cache
+    if (cache)
+        EXPECT_EQ(this_stat(s, "thisAnalyzes"), 1);
+    write_file(s.dir.path() / "base.hot",
+        "using \"Actor.h\";\nusing \"Damageable.h\";\nclass Base : Actor, ITagged { }\n");
+    const auto after = this_names(s, 4, "Base", "Ta", 3);
+    EXPECT_TRUE(contains_name(after, "Tag")) << "the cache kept the old members";
+    if (cache)
+        EXPECT_EQ(this_stat(s, "thisAnalyzes"), 2);
+}
+
+// A change of the bases of the class shows in the next completion.
+TEST(LanguageServer, ThisCacheDropsTheMembersWhenTheBasesOfTheClassChange)
+{
+    REQUIRE_CLANGD();
+    // The switch HOT_LS_THIS_CACHE of the process stays: the test holds with and without the cache.
+    const char* sw = std::getenv("HOT_LS_THIS_CACHE");
+    const bool cache = !(sw && std::string(sw) == "0");
+    Session s(true, this_script("Base", "Ta", 1));
+    write_file(s.dir.path() / "base.hot", kThisBase);
+    EXPECT_FALSE(contains_name(this_names(s, 2, "Actor", "Ta", 1), "Tag"));
+    EXPECT_TRUE(contains_name(this_names(s, 3, "Actor, ITagged", "Ta", 1), "Tag"));
+    EXPECT_FALSE(contains_name(this_names(s, 4, "Actor", "Ta", 1), "Tag"));
+}
+
+} // namespace
