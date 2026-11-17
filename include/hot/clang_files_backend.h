@@ -384,10 +384,13 @@ private:
         std::string pch; // the shape PCH file (exists on a hit)
         std::string header_text; // the shape text with "#line 1 <unit>"
         std::string main_text; // the rest with "#line <N> <unit>"
+        // Not empty: the split has two objects. The text is the record and the entry (R and T), a second
+        // file for the compile with the same PCH. "main_text" then has only the function bodies.
+        std::string second_text;
     };
     ShapeSplit plan_shape(const std::string& cpp_text, const std::string& unit_cpp, const std::string& base_pch,
         const std::string& base_key, const std::vector<std::string>& args, bool is_hot,
-        const std::string& script_dir) const;
+        const std::string& script_dir, bool two_objects) const;
     void start_shape_build(const ShapeSplit& split, const std::string& base_pch, const std::string& script_dir,
         const std::string& unit, bool timing);
     std::mutex shape_mutex_;
@@ -468,6 +471,9 @@ bool fmt_header_only(const ClangFilesOptions& options);
 // Removes the old files of the shape PCH directory "dir": keeps the "keep_unit" newest PCH of the
 // script with the id "unit_id" and the "keep_all" newest in all (by the time of the last use).
 // Removes markers older than a day and temp files older than an hour.
+// The local data symbols of the unit state (GEN, hot_live, *_slot, *_fields, *_layout) of an ELF64 object. A
+// name in both objects of a two object unit is a second copy of the state. False: no ELF64 file.
+bool unit_state_symbols_of(const std::string& object_path, std::set<std::string>& names);
 void evict_shape_files(const std::string& dir, const std::string& unit_id, size_t keep_unit, size_t keep_all);
 // True when the ELF module at "path" has an undefined fmt symbol that dlsym does not find. False on
 // other targets.

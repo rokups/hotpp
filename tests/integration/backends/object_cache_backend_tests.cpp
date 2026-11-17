@@ -1354,3 +1354,144 @@ TEST(ObjectCacheBackend, ShapePchAndObjectsAreSharedBetweenProcesses)
     GTEST_SKIP() << "ELF only";
 #endif
 }
+
+// ---- two objects for a .hot unit
+
+namespace
+{
+
+// The newest .so of the work dir and the number of defined symbols (nm, whole symbol table) whose
+// name ends with "suffix".
+size_t count_defined_symbols(const fs::path& work_dir, const std::string& suffix)
+{
+    std::string newest;
+    fs::file_time_type best{};
+    std::error_code ec;
+    for (const auto& e : fs::recursive_directory_iterator(work_dir, ec))
+        if (e.path().extension() == ".so" && (newest.empty() || e.last_write_time(ec) > best))
+        {
+            newest = e.path().string();
+            best = e.last_write_time(ec);
+        }
+    if (newest.empty())
+        return 0;
+    size_t n = 0;
+    std::FILE* p = popen(("nm --defined-only " + newest).c_str(), "r");
+    char buf[1024];
+    while (p && std::fgets(buf, sizeof buf, p))
+    {
+        std::string line(buf);
+        while (!line.empty() && (line.back() == '\n' || line.back() == ' '))
+            line.pop_back();
+        if (line.size() > suffix.size() && line.compare(line.size() - suffix.size(), suffix.size(), suffix) == 0
+            && line[line.size() - suffix.size() - 1] == ' ')
+            ++n;
+    }
+    if (p)
+        pclose(p);
+    return n;
+}
+
+} // namespace
+
+// A script with classes, lambdas and handles is edited 8 times in one cache: from the third edit the
+// unit uses two objects. Each run gives the right fields (class, state, lambda calls), and the module
+// has one copy of the unit state (GEN, hot_live, the slot of the module).
+TEST(ObjectCacheBackend, TwoObjectsRunAClassScriptWithLambdas)
+{
+#if defined(__linux__)
+    CleanEnv env;
+    EnvGuard timing("HOT_TIMING", "1");
+    TestScratch scratch;
+    std::ifstream in(std::string(HOT_SOURCE_DIR) + "/tests/scripts/value_use_v1.hot");
+    std::stringstream ss;
+    ss << in.rdbuf();
+    const std::string original = ss.str();
+    const std::string tick = "override void Tick(float dt) {";
+    ASSERT_NE(original.find(tick), std::string::npos);
+    hot::ClangFilesOptions o = fmt_options(scratch, "t", {});
+    const fs::path shape_dir = fs::path(o.cache_dir) / "pch" / "shape";
+    testing::internal::CaptureStderr();
+    {
+        hot::ClangFilesBackend backend(o);
+        for (int i = 1; i <= 8; ++i)
+        {
+            std::string text = original;
+            text.insert(text.find(tick) + tick.size(), "\n        int hot_edit = " + std::to_string(i) + ";");
+            hot::LoadResult r = backend.load({"value_use.hot", text, {}, "Holder"}, 1);
+            ASSERT_TRUE(static_cast<bool>(r)) << r.error;
+            Session s;
+            s.start(std::move(*r.module), "Holder");
+            ASSERT_NE(s.actor, nullptr);
+            s.world.Tick(kDt);
+            auto field = [&](const char* name) { return *hot::field_ptr<int>(s.inst.shell, name); };
+            EXPECT_EQ(field("r_a"), 10);
+            EXPECT_EQ(field("r_b"), 20);
+            EXPECT_EQ(field("r_lam"), 3);
+            EXPECT_EQ(field("r_cap"), 5);
+            EXPECT_EQ(field("r_var"), 10);
+        }
+    }
+    const std::string log = testing::internal::GetCapturedStderr();
+    if (log.find("two objects") == std::string::npos)
+    {
+        ASSERT_FALSE(shape_pch_expected()) << "no split with two objects" << log;
+        GTEST_SKIP() << "no two objects (no clang, no PCH or no lld)";
+    }
+    EXPECT_EQ(log.find("does not compile with its shape PCH"), std::string::npos) << log;
+    EXPECT_EQ(count_defined_symbols(o.work_dir, "GEN"), 1u);
+    EXPECT_EQ(count_defined_symbols(o.work_dir, "hot_live"), 1u);
+    EXPECT_LE(count_defined_symbols(o.work_dir, "_slot"), 1u); // no second copy of a module slot
+#else
+    GTEST_SKIP() << "ELF only";
+#endif
+}
+
+// HOT_SPLIT_UNIT_OBJECTS=0 keeps one object (the split with the shape PCH stays).
+TEST(ObjectCacheBackend, TwoObjectsCanBeTurnedOff)
+{
+#if defined(__linux__)
+    CleanEnv env;
+    EnvGuard timing("HOT_TIMING", "1");
+    EnvGuard off("HOT_SPLIT_UNIT_OBJECTS", "0");
+    TestScratch scratch;
+    hot::ClangFilesOptions o = fmt_options(scratch, "o", {});
+    testing::internal::CaptureStderr();
+    run_edits(o, 1, 6);
+    const std::string log = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(log.find("two objects"), std::string::npos) << log;
+    EXPECT_NE(log.find("shape pch hit"), std::string::npos) << log;
+#else
+    GTEST_SKIP() << "ELF only";
+#endif
+}
+
+// The guard of the two object split: a local unit state symbol (GEN) in an object is found. A shared
+// (inline) variable is not a local symbol, so it is not found.
+TEST(ObjectCacheBackend, UnitStateGuardFindsLocalCopiesOfTheState)
+{
+#if defined(__linux__)
+    TestScratch scratch;
+    const fs::path dir = scratch.file("guard");
+    fs::create_directories(dir);
+    std::ofstream(dir / "local.cpp") << "static unsigned GEN = 0;\nstatic unsigned hot_live = 0;\nstatic void* X_slot = nullptr;\n"
+                                        "unsigned f() { return ++GEN + ++hot_live + (X_slot != nullptr); }\n";
+    std::ofstream(dir / "shared.cpp") << "inline unsigned GEN = 0;\ninline unsigned hot_live = 0;\ninline void* X_slot = nullptr;\n"
+                                         "unsigned g() { return ++GEN + ++hot_live + (X_slot != nullptr); }\n";
+    for (const char* n : {"local", "shared"})
+    {
+        const std::string cmd = std::string(HOT_CXX) + " -c -fPIC -o " + (dir / (std::string(n) + ".o")).string() + " "
+            + (dir / (std::string(n) + ".cpp")).string();
+        ASSERT_EQ(std::system(cmd.c_str()), 0) << cmd;
+    }
+    std::set<std::string> local, shared;
+    ASSERT_TRUE(hot::unit_state_symbols_of((dir / "local.o").string(), local));
+    ASSERT_TRUE(hot::unit_state_symbols_of((dir / "shared.o").string(), shared));
+    EXPECT_EQ(local.size(), 3u); // _ZL3GEN, _ZL8hot_live, _ZL6X_slot
+    EXPECT_TRUE(shared.empty());
+    std::set<std::string> none;
+    EXPECT_FALSE(hot::unit_state_symbols_of((dir / "missing.o").string(), none));
+#else
+    GTEST_SKIP() << "ELF only";
+#endif
+}

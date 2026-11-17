@@ -20,6 +20,7 @@
 #endif
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cerrno>
 #include <chrono>
 #include <cstdio>
@@ -2439,6 +2440,280 @@ namespace
 // The banner of the translator before the function bodies of a .hot unit.
 const char* const kBodiesBanner = "// ---------------------------------------------------------------- function bodies\n";
 
+
+// ---- two objects for a .hot unit (design D)
+//
+// The text of a unit has four parts: P (everything before the bodies, without the record and entry
+// ranges), R (the record and entry ranges: slots, record, _create, _make_N, constructor table),
+// B (the function bodies) and T (script_register). The shape PCH has P. One compile does B and one
+// does R and T, both with the shape PCH: only the shape object defines the record, and each object
+// emits only the static and inline code that it uses. A linker -r step joins the two objects.
+// The text edits make the unit state shared between the two objects:
+//  - GEN, hot_live, *_slot, *_fields and *_layout become "inline" variables (one copy in the module);
+//  - a function that P declares and B defines gets external linkage (HOT_UNIT_FN / HOT_UNIT_INLINE),
+//    so R and T can call it from the other object.
+// Any text that does not have the expected form makes the split invalid: the unit then uses the
+// shape PCH with one object, or the whole unit.
+struct UnitSplit
+{
+    std::string header; // the shape header: P with the macros
+    std::string main; // B
+    std::string shape; // R and T
+};
+
+bool starts_with(const std::string& s, const char* prefix)
+{
+    return s.compare(0, std::strlen(prefix), prefix) == 0;
+}
+
+// The name of a function prototype or definition line: the identifier before the first '('.
+std::string function_name_of(const std::string& line, size_t from)
+{
+    const size_t paren = line.find('(', from);
+    if (paren == std::string::npos || paren == 0)
+        return std::string();
+    size_t b = paren;
+    while (b > from && (std::isalnum(static_cast<unsigned char>(line[b - 1])) || line[b - 1] == '_'))
+        --b;
+    return line.substr(b, paren - b);
+}
+
+bool split_unit_into_two(const std::string& text, const std::string& name, UnitSplit& out)
+{
+    const std::string bodies_banner = kBodiesBanner;
+    const std::string record_banner = "// ------------------------------------------------------ record and entry\n";
+    const std::string script_register = "extern \"C\" void script_register(hot::Registry& reg)\n";
+    std::vector<std::string> lines;
+    for (size_t at = 0; at < text.size();)
+    {
+        size_t e = text.find('\n', at);
+        e = e == std::string::npos ? text.size() : e + 1;
+        lines.push_back(text.substr(at, e - at));
+        at = e;
+    }
+    size_t bodies = lines.size(), reg = lines.size();
+    std::vector<std::pair<size_t, size_t>> records; // [begin, end) of each record and entry range
+    for (size_t i = 0; i < lines.size(); ++i)
+    {
+        if (lines[i] == bodies_banner)
+        {
+            if (bodies != lines.size())
+                return false; // two banners
+            bodies = i;
+        }
+        else if (lines[i] == script_register)
+        {
+            if (reg != lines.size())
+                return false;
+            reg = i;
+        }
+        else if (lines[i] == record_banner)
+        {
+            size_t j = i + 1;
+            while (j < lines.size() && !starts_with(lines[j], "// ----------------"))
+                ++j;
+            records.emplace_back(i, j);
+            i = j - 1;
+        }
+    }
+    if (bodies == lines.size() || reg == lines.size() || reg < bodies || records.empty() || records.back().second > bodies)
+        return false;
+    // Prototypes of P that have a definition in B.
+    const char* const kinds[] = {"[[maybe_unused]] HOT_HIDDEN static ", "static "};
+    auto kind_of = [&](const std::string& l) -> int {
+        for (int k = 0; k < 2; ++k)
+            if (starts_with(l, kinds[k]))
+            {
+                if (k == 1)
+                    for (const char* skip : {"const ", "void*", "uint32_t", "constexpr", "inline ", "assert"})
+                        if (l.compare(std::strlen(kinds[k]), std::strlen(skip), skip) == 0)
+                            return -1;
+                return k;
+            }
+        return -1;
+    };
+    std::set<std::pair<std::string, int>> protos;
+    std::vector<std::string> p_lines;
+    size_t rec = 0;
+    for (size_t i = 0; i < bodies; ++i)
+    {
+        if (rec < records.size() && i == records[rec].first)
+        {
+            i = records[rec].second - 1;
+            ++rec;
+            continue;
+        }
+        p_lines.push_back(lines[i]);
+    }
+    for (const std::string& l : p_lines)
+    {
+        const int k = kind_of(l);
+        if (k >= 0 && l.size() > 3 && l.compare(l.size() - 3, 2, ");") == 0)
+            protos.insert({function_name_of(l, std::strlen(kinds[k])), k});
+    }
+    std::set<std::pair<std::string, int>> defined;
+    for (size_t i = bodies; i < reg; ++i)
+    {
+        const int k = kind_of(lines[i]);
+        if (k < 0 || lines[i].find(");") != std::string::npos)
+            continue;
+        const auto key = std::make_pair(function_name_of(lines[i], std::strlen(kinds[k])), k);
+        if (protos.count(key))
+            defined.insert(key);
+    }
+    auto convert = [&](std::string& l) {
+        const int k = kind_of(l);
+        if (k >= 0 && defined.count({function_name_of(l, std::strlen(kinds[k])), k}))
+            l = (k == 0 ? "[[maybe_unused]] HOT_UNIT_INLINE " : "HOT_UNIT_FN ") + l.substr(std::strlen(kinds[k]));
+    };
+    int gen = 0, live = 0;
+    size_t macro_at = p_lines.size();
+    for (size_t i = 0; i < p_lines.size(); ++i)
+    {
+        std::string& l = p_lines[i];
+        if (starts_with(l, "[[maybe_unused]] static uint32_t GEN = "))
+        {
+            l = "[[maybe_unused]] HOT_UNIT_VAR " + l.substr(std::strlen("[[maybe_unused]] static "));
+            ++gen;
+            macro_at = std::min(macro_at, i);
+        }
+        else if (starts_with(l, "static uint32_t hot_live = "))
+        {
+            l = "HOT_UNIT_VAR " + l.substr(7);
+            ++live;
+        }
+        else if (starts_with(l, "static void* ") && l.find("_slot = ") != std::string::npos)
+            l = "HOT_UNIT_VAR " + l.substr(7);
+        else if ((starts_with(l, "static const hot::FieldInfo ") && l.find("_fields[] =") != std::string::npos)
+            || (starts_with(l, "static const hot::StateLayout ") && l.find("_layout =") != std::string::npos))
+            l = "HOT_UNIT_VAR const " + l.substr(std::strlen("static const "));
+        else
+            convert(l);
+    }
+    if (gen != 1 || live != 1)
+        return false;
+    out = UnitSplit();
+    out.header = "#define HOT_SPLIT_UNIT 1\n#line 1 \"" + name + "\"\n";
+    for (size_t i = 0; i < p_lines.size(); ++i)
+    {
+        if (i == macro_at)
+            out.header += "#ifdef HOT_SPLIT_UNIT\n#define HOT_UNIT_VAR inline\n#define HOT_UNIT_FN\n"
+                          "#define HOT_UNIT_INLINE HOT_NODEBUG\n#else\n#define HOT_UNIT_VAR static\n"
+                          "#define HOT_UNIT_FN static\n#define HOT_UNIT_INLINE HOT_HIDDEN static\n#endif\n";
+        out.header += p_lines[i];
+    }
+    out.main = "#line " + std::to_string(bodies + 1) + " \"" + name + "\"\n";
+    for (size_t i = bodies; i < reg; ++i)
+    {
+        std::string l = lines[i];
+        convert(l);
+        out.main += l;
+    }
+    for (const auto& range : records)
+    {
+        out.shape += "#line " + std::to_string(range.first + 1) + " \"" + name + "\"\n";
+        for (size_t i = range.first; i < range.second; ++i)
+            out.shape += lines[i];
+    }
+    out.shape += "#line " + std::to_string(reg + 1) + " \"" + name + "\"\n";
+    for (size_t i = reg; i < lines.size(); ++i)
+        out.shape += lines[i];
+    return true;
+}
+
+// The names of the local data symbols of an ELF64 object that belong to the unit state. A symbol of
+// this kind in both objects is a second copy of the state: the split is wrong then. Not looked at:
+// "_ZZ" names (a variable inside a function: each object has its own, as in a unit without the split),
+// and other local variables (the constant tables and strings of P; each object builds its own, and
+// no code needs them to be the same object). False when the file is not an ELF64 file.
+bool unit_state_symbols(const std::string& path, std::set<std::string>& names)
+{
+#if defined(__linux__)
+    std::ifstream in(path, std::ios::binary);
+    std::string data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    Elf64_Ehdr eh;
+    if (data.size() < sizeof eh)
+        return false;
+    std::memcpy(&eh, data.data(), sizeof eh);
+    if (std::memcmp(eh.e_ident, ELFMAG, SELFMAG) != 0 || eh.e_ident[EI_CLASS] != ELFCLASS64 || eh.e_shoff == 0
+        || eh.e_shentsize != sizeof(Elf64_Shdr) || eh.e_shoff > data.size()
+        || uint64_t(eh.e_shnum) * sizeof(Elf64_Shdr) > data.size() - eh.e_shoff)
+        return false;
+    auto section = [&](size_t i) {
+        Elf64_Shdr sh;
+        std::memcpy(&sh, data.data() + eh.e_shoff + i * sizeof(Elf64_Shdr), sizeof sh);
+        return sh;
+    };
+    auto in_file = [&](uint64_t off, uint64_t len) { return off <= data.size() && len <= data.size() - off; };
+    for (size_t i = 0; i < eh.e_shnum; ++i)
+    {
+        const Elf64_Shdr sh = section(i);
+        if (sh.sh_type != SHT_SYMTAB || sh.sh_link >= eh.e_shnum || !in_file(sh.sh_offset, sh.sh_size))
+            continue;
+        const Elf64_Shdr str = section(sh.sh_link);
+        if (!in_file(str.sh_offset, str.sh_size))
+            continue;
+        for (uint64_t off = 0; off + sizeof(Elf64_Sym) <= sh.sh_size; off += sizeof(Elf64_Sym))
+        {
+            Elf64_Sym sym;
+            std::memcpy(&sym, data.data() + sh.sh_offset + off, sizeof sym);
+            if (ELF64_ST_BIND(sym.st_info) != STB_LOCAL || ELF64_ST_TYPE(sym.st_info) != STT_OBJECT
+                || sym.st_name == 0 || sym.st_name >= str.sh_size)
+                continue;
+            std::string name(data.c_str() + str.sh_offset + sym.st_name,
+                strnlen(data.c_str() + str.sh_offset + sym.st_name, str.sh_size - sym.st_name));
+            std::string base = name;
+            if (starts_with(base, "_ZL"))
+            {
+                size_t d = 3;
+                while (d < base.size() && std::isdigit(static_cast<unsigned char>(base[d])))
+                    ++d;
+                base = base.substr(d);
+            }
+            auto ends = [&](const char* suffix) {
+                const size_t n = std::strlen(suffix);
+                return base.size() >= n && base.compare(base.size() - n, n, suffix) == 0;
+            };
+            if (base == "GEN" || base == "hot_live" || ends("_slot") || ends("_fields") || ends("_layout"))
+                names.insert(name);
+        }
+    }
+    return true;
+#else
+    (void)path;
+    (void)names;
+    return false;
+#endif
+}
+
+// The linker of the join step: "ld.lld" next to the compiler, else in the PATH. Empty: none.
+std::string find_lld(const std::string& compiler)
+{
+    std::error_code ec;
+    const fs::path beside = fs::path(compiler).parent_path() / "ld.lld";
+    if (!fs::path(compiler).parent_path().empty() && fs::exists(beside, ec))
+        return beside.string();
+    if (const char* path = std::getenv("PATH"))
+    {
+        std::stringstream ss(path);
+        std::string dir;
+        while (std::getline(ss, dir, ':'))
+            if (!dir.empty() && fs::exists(fs::path(dir) / "ld.lld", ec))
+                return (fs::path(dir) / "ld.lld").string();
+    }
+    return std::string();
+}
+
+std::atomic<unsigned> g_running_compiles{0};
+
+int run_counted(const std::vector<std::string>& cmd, std::string& output)
+{
+    ++g_running_compiles;
+    const int rc = run_command(cmd, output);
+    --g_running_compiles;
+    return rc;
+}
+
 std::string shape_hash(const std::string& text)
 {
     char buf[40];
@@ -2483,9 +2758,14 @@ void evict_shape_files(const std::string& dir_name, const std::string& unit_id, 
     }
 }
 
+bool unit_state_symbols_of(const std::string& object_path, std::set<std::string>& names)
+{
+    return unit_state_symbols(object_path, names);
+}
+
 ClangFilesBackend::ShapeSplit ClangFilesBackend::plan_shape(const std::string& cpp_text, const std::string& unit_cpp,
     const std::string& base_pch, const std::string& base_key, const std::vector<std::string>& args, bool is_hot,
-    const std::string& script_dir) const
+    const std::string& script_dir, bool two_objects) const
 {
     ShapeSplit s;
     const char* off = std::getenv("HOT_SHAPE_PCH");
@@ -2498,6 +2778,9 @@ ClangFilesBackend::ShapeSplit ClangFilesBackend::plan_shape(const std::string& c
     if (at == std::string::npos || at == 0 || cpp_text[at - 1] != '\n' || cpp_text.find(banner, at + 1) != std::string::npos)
         return s;
     const std::string shape = cpp_text.substr(0, at);
+    UnitSplit two;
+    if (two_objects && !split_unit_into_two(cpp_text, unit_cpp, two))
+        return s; // the text has not the expected form: the caller tries the split with one object
     std::error_code ec;
     const uintmax_t size = fs::file_size(base_pch, ec);
     const auto mtime = fs::last_write_time(base_pch, ec).time_since_epoch().count();
@@ -2509,7 +2792,7 @@ ClangFilesBackend::ShapeSplit ClangFilesBackend::plan_shape(const std::string& c
     // The header has "#line 1 <unit_cpp>" and the build uses the script dir: both belong to the key.
     material += "dir " + script_dir + "\nunit " + unit_cpp + "\n";
     s.own_fmt = fmt_header_only(opt_);
-    s.key = shape_hash(material + shape);
+    s.key = shape_hash(material + (two_objects ? "two objects\n" + two.header : shape));
     // The file stem has the unit id: the eviction finds the files of one script by it.
     s.unit_id = shape_hash(unit_cpp).substr(0, 12);
     s.pch = (fs::path(opt_.cache_dir) / "pch" / "shape" / (s.unit_id + "-" + s.key + ".pch")).string();
@@ -2529,6 +2812,13 @@ ClangFilesBackend::ShapeSplit ClangFilesBackend::plan_shape(const std::string& c
     for (char c : shape)
         if (c == '\n')
             ++lines;
+    if (two_objects)
+    {
+        s.header_text = std::move(two.header);
+        s.main_text = std::move(two.main);
+        s.second_text = std::move(two.shape);
+        return s;
+    }
     s.header_text = "#line 1 \"" + unit_cpp + "\"\n" + shape;
     s.main_text = "#line " + std::to_string(lines) + " \"" + unit_cpp + "\"\n" + cpp_text.substr(at);
     return s;
@@ -3286,8 +3576,21 @@ bool ClangFilesBackend::compile_stage_once(BuildJob& job, bool keep_mirror)
                     const std::string work_prefix = opt_.work_dir;
                     if (!work_prefix.empty() && stable_name.compare(0, work_prefix.size(), work_prefix) == 0)
                         stable_name = "@work@" + stable_name.substr(work_prefix.size());
+                    // Two objects (design D): a compile of the bodies and a compile of the record and the
+                    // entry, in parallel, joined by "ld.lld -r". HOT_SPLIT_UNIT_OBJECTS=0 turns it off.
+                    const char* two_env = std::getenv("HOT_SPLIT_UNIT_OBJECTS");
+                    const std::string lld = find_lld(opt_.compiler);
+                    const bool want_two = is_hot_unit && !lld.empty() && !(two_env && std::strcmp(two_env, "0") == 0);
+#if !defined(__linux__)
+                    const bool two_allowed = false;
+#else
+                    const bool two_allowed = want_two && elf64_linux_target(opt_.target_triple);
+#endif
                     ShapeSplit shape = plan_shape(tr.cpp, stable_name, pch->pch, pch->key.hex(), inputs.args,
-                        is_hot_unit, script_dir);
+                        is_hot_unit, script_dir, two_allowed);
+                    if (shape.key.empty() && two_allowed)
+                        shape = plan_shape(tr.cpp, stable_name, pch->pch, pch->key.hex(), inputs.args, is_hot_unit,
+                            script_dir, false);
                     bool shape_hit = false;
                     bool split_failed = false;
                     std::string split_out;
@@ -3299,7 +3602,82 @@ bool ClangFilesBackend::compile_stage_once(BuildJob& job, bool keep_mirror)
                         std::vector<std::string> cmd = plain;
                         cmd[cmd.size() - 3] = main_path; // the input file
                         cmd = with_pch(std::move(cmd), shape.pch);
-                        if (write_text(main_path, shape.main_text))
+                        if (!shape.second_text.empty() && write_text(main_path, shape.main_text))
+                        {
+                            // Two objects: bodies (main) and record and entry (shape file).
+                            const std::string second_path = tmp + ".shape.cpp";
+                            const std::string obj_main = tmp + ".main.o";
+                            const std::string obj_shape = tmp + ".shape.o";
+                            const std::string dep_shape = dep + ".shape";
+                            cmd[cmd.size() - 1] = obj_main;
+                            std::vector<std::string> cmd2 = plain;
+                            cmd2[cmd2.size() - 3] = second_path;
+                            cmd2[cmd2.size() - 1] = obj_shape;
+                            cmd2[cmd2.size() - 4] = dep_shape;
+                            cmd2 = with_pch(std::move(cmd2), shape.pch);
+                            std::string out_a, out_b;
+                            int rc_a = 1, rc_b = 1;
+                            if (write_text(second_path, shape.second_text))
+                            {
+                                // The second compile runs next to the first one only when the number of
+                                // compiles stays under the job limit (HOT_JOBS); else one after the other.
+                                std::thread second;
+                                if (g_running_compiles.load() + 1 < build_jobs())
+                                    second = std::thread([&] { rc_b = run_counted(cmd2, out_b); });
+                                rc_a = run_counted(cmd, out_a);
+                                if (second.joinable())
+                                    second.join();
+                                else
+                                    rc_b = run_counted(cmd2, out_b);
+                            }
+                            std::string why;
+                            rc = rc_a != 0 ? rc_a : rc_b;
+                            if (rc == 0)
+                            {
+                                // The guard: no copy of the unit state in both objects.
+                                std::set<std::string> state_a, state_b;
+                                if (!unit_state_symbols(obj_main, state_a) || !unit_state_symbols(obj_shape, state_b))
+                                    why = "cannot read the symbols of the objects";
+                                else
+                                    for (const std::string& n : state_a)
+                                        if (state_b.count(n))
+                                            why = "the unit state " + n + " is in both objects";
+                                if (why.empty())
+                                {
+                                    std::string link_out;
+                                    if (run_command({lld, "-r", obj_shape, obj_main, "-o", tmp}, link_out) != 0)
+                                        why = "the join of the objects failed: " + link_out;
+                                }
+                                if (!why.empty())
+                                    rc = 1;
+                                else
+                                {
+                                    std::string dep_a, dep_b;
+                                    read_text(dep, dep_a);
+                                    read_text(dep_shape, dep_b);
+                                    write_text(dep, dep_a + "\n" + dep_b);
+                                }
+                            }
+                            split_out = out_a + out_b + why;
+                            output = split_out;
+                            shape_hit = rc == 0;
+                            for (const std::string& f : {obj_main, obj_shape, dep_shape, second_path})
+                                fs::remove(f, ec);
+                            if (shape_hit)
+                            {
+                                fs::last_write_time(shape_pch_path, fs::file_time_type::clock::now(), ec);
+                                if (timing)
+                                    std::fprintf(stderr, "hot: %s shape pch hit, two objects (key %.8s)\n",
+                                        unit.c_str(), shape.key.c_str());
+                            }
+                            else
+                            {
+                                split_failed = true;
+                                fs::remove(tmp, ec);
+                                fs::remove(dep, ec);
+                            }
+                        }
+                        else if (write_text(main_path, shape.main_text))
                         {
                             rc = run_command(cmd, split_out);
                             shape_hit = rc == 0;
