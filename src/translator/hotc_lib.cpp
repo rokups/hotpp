@@ -218,12 +218,13 @@ struct TranslateAbort
 // one time, as an initializer (no "this" and no locals). The text is for the first declaration
 // of a function only: the slot and the thunk signatures never have it.
 // "ps" are the parameters of the function: a default value cannot use them.
-std::string default_arg(const hotc::ast::Param& p, const std::vector<hotc::ast::Param>& ps, hotc::RCtx cx)
+std::string default_arg(const hotc::ast::Param& p, const std::vector<hotc::ast::Param>& ps, const hotc::RCtx& host_cx)
 {
     if (!p.def)
         return {};
     if (!p.def->lowered)
     {
+        hotc::RCtx cx = host_cx; // the copy only when the default is lowered
         cx.allow_this = false;
         cx.in_default = true;
         for (const hotc::ast::Param& q : ps)
@@ -6595,20 +6596,22 @@ void translate_impl(
             ls.where = (is_free ? std::string() : host.name + ".") + m.name;
             ls.ret = m.ret.empty() ? std::string("void") : m.ret;
             ls.method = &m;
-            RCtx cx = host_cx;
-            cx.where = ls.where;
-            cx.lambda_base = opt.unit + ":" + (is_free ? std::string() : host.name + "::") + m.name;
-            cx.ret_type = m.script_ret;
-            cx.ret_value = m.ret_value;
-            cx.new_classes = body_new;
-            cx.allow_this = false;
-            cx.in_static = true;
-            cx.in_free_fn = is_free;
-            cx.static_name = m.name;
-            cx.in_module_init = false;
-            hotc::add_params(cx, m.params);
-            if (m.foreign_unit.empty()) // a function of an import has no body here
+            if (m.foreign_unit.empty()) // a function of an import has no body here: no context to build
+            {
+                RCtx cx = host_cx;
+                cx.where = ls.where;
+                cx.lambda_base = opt.unit + ":" + (is_free ? std::string() : host.name + "::") + m.name;
+                cx.ret_type = m.script_ret;
+                cx.ret_value = m.ret_value;
+                cx.new_classes = body_new;
+                cx.allow_this = false;
+                cx.in_static = true;
+                cx.in_free_fn = is_free;
+                cx.static_name = m.name;
+                cx.in_module_init = false;
+                hotc::add_params(cx, m.params);
                 ls.body = lower_body(m, cx, true);
+            }
             if (g_diag.items.empty())
             {
                 for (const Param& p : m.params)
@@ -8614,6 +8617,7 @@ void translate_impl(
             o.w("extern const hot::StateLayout " + cn + "_layout;\n\n");
 
         loop_timer.lap(4);
+        loop_timer.sub(24);
         // ---- shell
         o.w("// The shell overrides every virtual of " + BL + ". Each stub reads one slot.\n");
         // A bare "this" used as a handle needs "shared_from_this" (design 7.10.1). A plain class
@@ -8685,6 +8689,7 @@ void translate_impl(
                                                        : "hot::init_state(this, &" + cn + "_record);";
         const std::string own_dtor = opt.aot_optimized ? "hot::finish_object(this, &" + cn + "_record);"
                                                        : "hot::destroy_state(this);";
+        loop_timer.sub(25);
         if (par)
         {
             mapped("    template <class... A>\n    explicit " + shell
@@ -8728,6 +8733,7 @@ void translate_impl(
         // script has only the written operators. The member is const when the C++ method is const.
         // Optimized AOT code has no slot, so this block adds no operator members. The body of the
         // operator is the member then (see body_member).
+        loop_timer.sub(26);
         if (!opt.aot_optimized)
         {
             std::string ops;
@@ -8768,6 +8774,7 @@ void translate_impl(
         // the native base, so it can call a protected implementation. The forwarder of the state
         // struct and the "base_" function of a parent shell call this public member.
         // A protected virtual that the script overrides has the member too: "base.M()" calls it.
+        loop_timer.sub(27);
         for (size_t i = 0; i < native_count && !par; ++i)
         {
             if (slots[i].impl && !slots[i].nv->prot)
@@ -8799,6 +8806,7 @@ void translate_impl(
         // member. The root shell overrides all of them. A child shell overrides the ones that its
         // class overrides. The definitions come after the state struct (direct_defs).
         std::string direct_defs;
+        loop_timer.sub(28);
         for (size_t i = 0; i < native_count && (!par || opt.aot_optimized); ++i)
         {
             // Optimized AOT code: a pure native method that the root does not override must still have
@@ -8858,6 +8866,7 @@ void translate_impl(
         // function is a virtual member "__b_<m>". The first shell that declares it holds the
         // virtual function. A shell with an override of it overrides it too. A call goes through
         // the vtable of the shell, not through a slot.
+        loop_timer.sub(29);
         if (opt.aot_optimized)
         {
             auto no_comma = [](const std::string& l) { return l.empty() ? l : l.substr(2); };
@@ -9323,6 +9332,7 @@ void translate_impl(
             return !par ? std::string(placeholder ? ", \x01std::" : ", std::") + "enable_shared_from_this<" + shell + ">"
                         : ", hot::share_this_base<" + par->name + "_Shell, " + shell + ">";
         };
+        loop_timer.sub(30);
         if (!cd.foreign_unit.empty() && !cd.iface_parent)
         {
             o.s.resize(from_header ? iface_begin : foreign_mark);
@@ -9431,6 +9441,7 @@ void translate_impl(
             o.w("\n");
             if (!cd.ns.empty())
                 o.w("} // namespace " + hotc::ast::gen_namespace(cd.ns) + "\n");
+            loop_timer.sub(31);
             reset();
             // A child in the same import needs the data of this class for its own parent link.
             // The later steps of the loop fill the same data. This branch does not reach them.
@@ -11548,7 +11559,7 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
         for (int k = 0; k < 16; ++k)
             res.timing.front_step_ns[k] += t.front_step_ns[k];
         for (int f = 0; f < 2; ++f)
-            for (int k = 0; k < 24; ++k)
+            for (int k = 0; k < 32; ++k)
                 res.timing.step_ns[f][k] += t.step_ns[f][k];
         ++res.passes;
     };

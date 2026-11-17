@@ -7699,7 +7699,7 @@ void Server::handle(const json& msg)
             for (int k = 0; k < 16; ++k)
                 out["lastUpdate"]["frontStep" + std::to_string(k) + "Ms"] = ms(t.front_step_ns[k]);
             for (int f = 0; f < 2; ++f)
-                for (int k = 0; k < 24; ++k)
+                for (int k = 0; k < 32; ++k)
                     out["lastUpdate"][std::string(f ? "ownStep" : "foreignStep") + std::to_string(k) + "Ms"] =
                         ms(t.step_ns[f][k]);
         }

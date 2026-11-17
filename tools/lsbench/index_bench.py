@@ -364,7 +364,7 @@ def edit_kinds_bench(a, root, rel, cdb):
             for who in ("foreign", "own"):
                 print("    steps %-7s pre/base/check/const/slots/shell/state/rest %s" % (
                     who, " ".join("%.1f" % med("%sStep%dMs" % (who, i)) for i in range(8))), flush=True)
-                print("    sub %-7s const/null/structtext/fieldinit/table/gen13 %s" % (who, " ".join("%.1f" % med("%sStep%dMs" % (who, i)) for i in (14, 16, 17, 19, 20, 21))), flush=True)
+                print("    sub %-7s const/null/structtext/fieldinit/table/gen13 %s" % (who, " ".join("%.1f" % med("%sStep%dMs" % (who, i)) for i in (24, 25, 26, 27, 28, 29, 30, 31))), flush=True)
     r.stop()
 
 
