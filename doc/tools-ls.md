@@ -187,12 +187,19 @@ The translator also writes `// @hot-body-begin` and `// @hot-body-end` around ea
 
 An edit of an imported script changes the header. The document then starts again in clangd, because clangd can answer with the old header while it builds the new preamble. For about one second after such an edit, the diagnostics can show errors that come from the old header. They go away when the new preamble is ready.
 
+An error in the body of an imported script is in the header. clangd reports it at the `#include` line of the unit, and the server does not show it for the importer (the script itself shows it). The full unit has a second error for the importer that comes from the first one (`No matching function for call to 'forward'` at the line of a class). With the split this second error is gone. The other diagnostics are the same. A test checks this.
+
+The corpus check `tools/lsbench/lite_corpus.py` asks hover and completion at places in all scripts of a workspace with `HOT_LS_LITE_CHECK=1` and prints each difference of the lite document and the full document.
+
+Result on the BiteSizedWar scripts (182 scripts, 636 places, hover and completion): 1506 lite hits, 256 fallbacks and 8 differences (4 places, each one twice). All 8 are hover texts of a field of `Vector3`, where the full document adds a body text (`{ }`) to the declaration. Because the differences are not zero, the lite document stays off by default.
+
 Environment variables:
 
-- `HOT_LS_SPLIT_SHELL=0` turns the header off. clangd then gets one unit.
+- `HOT_LS_SPLIT_SHELL=0` turns the header off. clangd then gets one unit. The split is on by default.
 - `HOT_LS_LITE_DOC=1` turns the lite document on. It is off by default.
 - `HOT_LS_LITE_CHECK=1` asks the full document too for hover, completion and definition. The server logs each difference. `hot/indexStats` has the counts `liteHits`, `liteFallback` and `liteMismatch`.
 - `HOT_LS_SHELL_DIR=<dir>` sets the directory of the header files (the tests use it).
+- `HOT_LS_TIMING=<file>` appends the phases of a completion to the file.
 
 ## Formatter rules
 
