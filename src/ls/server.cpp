@@ -1448,12 +1448,34 @@ private:
     {
         std::string pre;
         size_t shell = 0;
+        size_t stamp = 0; // the stamp of the headers (header_stamp)
         bool bad = false;
         json items = json::array();
     };
+    // The files of an include graph: the time, the size and the names of the includes. A file is read again only when
+    // its time or its size changes.
+    struct IncFile
+    {
+        long long time = 0;
+        std::uintmax_t size = 0;
+        std::vector<std::string> includes;
+    };
+    std::map<std::string, IncFile> inc_files_; // by path, under this_mutex_
+    // The hash of the time and the size of each header that the shell header includes, also the headers that they
+    // include. Only the files that the include dirs hold. A new header at an earlier place changes the stamp too. False
+    // in "ok": the graph is too big, so the caller does not use the cache. No watcher event is needed.
+    size_t header_stamp(const std::vector<std::string>& names, const std::vector<std::string>& dirs,
+        const std::string& doc_dir, bool& ok);
     std::mutex this_mutex_;
     std::map<std::string, ThisEntry> this_cache_;
     std::atomic<int> this_analyzes_{0}, this_hits_{0};
+    // After a header event clangd builds a new preamble, and its answers can be old for a while. The cache stores
+    // no answer until this time (steady clock, milliseconds). 5 s is more than the preamble of a host header needs.
+    std::atomic<long long> this_hold_until_ms_{0};
+    static long long steady_ms()
+    {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
     void drop_this_cache()
     {
         std::lock_guard<std::mutex> lock(this_mutex_);
@@ -1750,6 +1772,102 @@ void Server::start_clangd(const json& init)
     drop_this_cache(); // a new clangd: no answer of the old one stays
 }
 
+static std::vector<std::string> include_names(const std::string& text)
+{
+    std::vector<std::string> out;
+    for (size_t at = 0; at < text.size();)
+    {
+        size_t end = text.find('\n', at);
+        if (end == std::string::npos)
+            end = text.size();
+        size_t i = at;
+        while (i < end && (text[i] == ' ' || text[i] == '\t'))
+            ++i;
+        if (i < end && text[i] == '#')
+        {
+            ++i;
+            while (i < end && (text[i] == ' ' || text[i] == '\t'))
+                ++i;
+            if (text.compare(i, 7, "include") == 0)
+            {
+                i += 7;
+                while (i < end && (text[i] == ' ' || text[i] == '\t'))
+                    ++i;
+                if (i < end && (text[i] == '"' || text[i] == '<'))
+                {
+                    const char close = text[i] == '"' ? '"' : '>';
+                    const size_t c = text.find(close, i + 1);
+                    if (c != std::string::npos && c < end)
+                        out.push_back(std::string(1, text[i]) + text.substr(i + 1, c - i - 1));
+                }
+            }
+        }
+        at = end + 1;
+    }
+    return out;
+}
+
+size_t Server::header_stamp(const std::vector<std::string>& names, const std::vector<std::string>& dirs,
+    const std::string& doc_dir, bool& ok)
+{
+    constexpr size_t kMaxHeaders = 4000;
+    ok = true;
+    size_t h = 0;
+    const auto mix = [&](const std::string& x) { h = h * 1000003u ^ std::hash<std::string>()(x); };
+    std::lock_guard<std::mutex> lock(this_mutex_);
+    std::set<std::string> seen;
+    // The name starts with '"' (a quoted include) or '<'. The place of the including file comes first for '"'.
+    std::vector<std::pair<std::string, std::string>> work; // name, directory of the including file
+    for (const std::string& n : names)
+        work.emplace_back(n, doc_dir);
+    while (!work.empty())
+    {
+        const auto [name, from] = work.back();
+        work.pop_back();
+        std::string found;
+        std::error_code ec;
+        std::vector<std::string> where;
+        if (name[0] == '"')
+            where.push_back(from);
+        where.insert(where.end(), dirs.begin(), dirs.end());
+        for (const std::string& dir : where)
+        {
+            const fs::path p = fs::path(utf8_path(dir)) / utf8_path(name.substr(1));
+            if (fs::is_regular_file(p, ec))
+            {
+                found = path_utf8(p.lexically_normal());
+                break;
+            }
+        }
+        if (found.empty())
+        {
+            mix("?" + name); // a missing header: a new one changes the stamp
+            continue;
+        }
+        if (!seen.insert(found).second)
+            continue;
+        if (seen.size() > kMaxHeaders)
+        {
+            ok = false;
+            return 0;
+        }
+        const long long time = fs::last_write_time(utf8_path(found), ec).time_since_epoch().count();
+        const std::uintmax_t size = fs::file_size(utf8_path(found), ec);
+        mix(found + ":" + std::to_string(time) + ":" + std::to_string(size));
+        IncFile& f = inc_files_[found];
+        if (f.time != time || f.size != size || (f.time == 0 && f.size == 0))
+        {
+            f.time = time;
+            f.size = size;
+            f.includes = include_names(read_file(found).value_or(std::string()));
+        }
+        const std::string parent = path_utf8(fs::path(utf8_path(found)).parent_path());
+        for (const std::string& n : f.includes)
+            work.emplace_back(n, parent);
+    }
+    return h;
+}
+
 void Server::load_hosts()
 {
     drop_this_cache();
@@ -1819,6 +1937,7 @@ void Server::on_watched_files(const json& p)
         for (const auto& h : hs.all())
             if (!h->prelude_suffix.empty())
                 suffixes.insert(h->prelude_suffix);
+    json for_clangd = json::array();
     for (const json& c : p.value("changes", json::array()))
     {
         if (!c.is_object() || !c.value("uri", json()).is_string())
@@ -1826,7 +1945,15 @@ void Server::on_watched_files(const json& p)
         const std::string path = uri_to_path(c["uri"].get<std::string>());
         const std::string ext = fs::path(path).extension().string();
         if (ext != ".hot")
+        {
             drop_this_cache(); // a header or a host file: the native members can change
+            // clangd rebuilds the preamble of the open documents that include a changed header.
+            if (ext == ".h" || ext == ".hpp" || ext == ".hh" || ext == ".inl")
+            {
+                for_clangd.push_back(c);
+                this_hold_until_ms_ = steady_ms() + 5000;
+            }
+        }
         if (ext == ".json" || ext == ".defines" || ext == ".options" || ext == ".includes")
         {
             std::lock_guard<std::mutex> lock(hosts_mutex_);
@@ -1865,6 +1992,8 @@ void Server::on_watched_files(const json& p)
             if (changed_suffixes.count(suffix))
                 windex_.schedule(script, index_job_config(script), IndexLevel::Rest);
         }
+    if (!for_clangd.empty() && clangd_ && clangd_->running())
+        clangd_->notify("workspace/didChangeWatchedFiles", {{"changes", for_clangd}});
     if (host_file)
         refresh_hosts(nullptr);
 }
@@ -3498,6 +3627,7 @@ json Server::on_completion(const Doc& d, const json& p)
                 }
             }
             size_t shell_key = 0; // the hash of the shell header of the first probe that has a place
+            std::vector<std::string> shell_includes; // the includes of that shell header
             for (size_t text_index = 0; text_index < texts.size(); ++text_index)
             {
                 const std::string& patched = texts[text_index];
@@ -3541,7 +3671,10 @@ json Server::on_completion(const Doc& d, const json& p)
                     continue;
                 mapped = true;
                 if (const size_t at = facts.cpp.find(kShellEnd); at != std::string::npos && !shell_key)
+                {
                     shell_key = std::hash<std::string>()(facts.cpp.substr(0, at + 1));
+                    shell_includes = include_names(facts.cpp.substr(0, at + 1));
+                }
                 const Text gen(facts.cpp);
                 // Before its first preamble, clangd gives only "fallback" words of the file. A
                 // request that needs the AST waits for the preamble. The wait is on the real text,
@@ -3638,9 +3771,15 @@ json Server::on_completion(const Doc& d, const json& p)
                 const auto items_of = [](const json& j) { return j.is_array() ? j : j.value("items", json::array()); };
                 std::optional<json> r2;
                 bool from_cache = false;
+                // The headers can change on disk with no event of the client: the stamp has their time and size.
+                bool stamp_ok = false;
+                size_t stamp = 0;
                 if (this_cache && !this_bad && shell_key)
+                    stamp = header_stamp(shell_includes, translate_options(d).include_dirs,
+                        path_utf8(fs::path(utf8_path(d.path)).parent_path()), stamp_ok);
+                if (this_cache && !this_bad && shell_key && stamp_ok && steady_ms() >= this_hold_until_ms_)
                 {
-                    if (this_entry && this_entry->shell == shell_key)
+                    if (this_entry && this_entry->shell == shell_key && this_entry->stamp == stamp)
                     {
                         ++this_hits_;
                         r2 = this_entry->items;
@@ -3661,7 +3800,7 @@ json Server::on_completion(const Doc& d, const json& p)
                             facts = timed_translate([&] { return hotc::analyze(this_text(std::string()), to, session_); });
                         }
                         r2 = this_probe(std::move(facts), std::string());
-                        ThisEntry entry{this_pre, shell_key, false, json::array()};
+                        ThisEntry entry{this_pre, shell_key, stamp, false, json::array()};
                         // The limit of clangd (--limit-results=1000) cuts a long list: it is not complete.
                         if (r2 && !(r2->is_object() && r2->value("isIncomplete", false)) && items_of(*r2).size() < 1000)
                             entry.items = items_of(*r2);

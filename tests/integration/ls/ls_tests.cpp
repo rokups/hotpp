@@ -10873,4 +10873,57 @@ TEST(LanguageServer, ThisCacheDropsTheMembersWhenTheBasesOfTheClassChange)
     EXPECT_FALSE(contains_name(this_names(s, 4, "Actor", "Ta", 1), "Tag"));
 }
 
+// A native header changes on disk. Without an event the cache asks clangd again (the stamp). With the event
+// the new member shows. The member is in a header that the included header includes.
+TEST(LanguageServer, ThisCacheSeesAChangeOfANativeHeaderWithoutAnEvent)
+{
+    REQUIRE_CLANGD();
+    TempDir headers;
+    TempDir dir;
+    hot::ls::ServerOptions o = options(dir, true);
+    o.include_dirs.push_back(headers.path().string());
+    const auto base_header = [](const std::string& members)
+    {
+        return "#pragma once\n#include \"Actor.h\"\nclass GadgetBase : public Actor\n{\npublic:\n" + members + "};\n";
+    };
+    write_file(headers.path() / "GadgetBase.h", base_header("    void Ping();\n"));
+    write_file(headers.path() / "Gadget.h", "#pragma once\n#include \"GadgetBase.h\"\nclass Gadget : public GadgetBase {};\n");
+    const std::string script = "using \"Gadget.h\";\nclass Hero : Gadget {\n    void run() {\n        int n = 1;\n        Po\n    }\n}\n";
+    Session s(true, script, &o);
+    const auto ask = [&](int version, int n, const std::string& word)
+    {
+        std::string text = script;
+        text.replace(text.find("int n = 1;"), 10, "int n = " + std::to_string(n) + ";");
+        text.replace(text.find("Po\n"), 2, word);
+        s.client->change(s.uri, version, text);
+        std::vector<std::string> out;
+        const json r = s.client->request("textDocument/completion", doc_pos(s.uri, 4, 8 + static_cast<int>(word.size())));
+        for (const json& i : r["result"].value("items", json::array()))
+            out.push_back(i.value("insertText", i.value("label", "")));
+        return out;
+    };
+    const char* sw = std::getenv("HOT_LS_THIS_CACHE");
+    const bool cache = !(sw && std::string(sw) == "0");
+    EXPECT_TRUE(contains_name(ask(2, 1, "Pi"), "Ping"));
+    EXPECT_FALSE(contains_name(ask(3, 2, "Po"), "Pong"));
+    if (cache)
+        EXPECT_EQ(this_stat(s, "thisAnalyzes"), 1);
+    // No event: the stamp of the headers (time and size) shows the change, so the server asks clangd again.
+    write_file(headers.path() / "GadgetBase.h", base_header("    void Ping();\n    void Pong();\n"));
+    ask(4, 3, "Po");
+    if (cache)
+        EXPECT_EQ(this_stat(s, "thisAnalyzes"), 2);
+    // The event of the client goes to clangd too: it rebuilds the preamble, and the member shows.
+    s.client->notify("workspace/didChangeWatchedFiles",
+        {{"changes", json::array({{{"uri", uri_of((headers.path() / "GadgetBase.h").string())}, {"type", 2}}})}});
+    bool seen = false;
+    for (int i = 0; i < 20 && !seen; ++i)
+    {
+        seen = contains_name(ask(5 + i, 4 + i, "Po"), "Pong");
+        if (!seen)
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+    EXPECT_TRUE(seen) << "the new member of the header does not show";
+}
+
 } // namespace

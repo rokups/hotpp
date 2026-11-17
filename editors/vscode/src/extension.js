@@ -71,6 +71,7 @@ function startServer() {
   watchers = [
     vscode.workspace.createFileSystemWatcher('**/*.hot'),
     vscode.workspace.createFileSystemWatcher('**/.cache/hot/hosts/*'),
+    vscode.workspace.createFileSystemWatcher('**/*.{h,hpp,hh,inl}'),
   ];
   const options = {
     // The server gets the ".cpp" documents too. It publishes the hotc errors for a ".cpp" script,
