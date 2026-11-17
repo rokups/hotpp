@@ -229,6 +229,24 @@ static bool has_internal_uri(const json& e)
     return e.contains("location") && has_internal_uri(e["location"]);
 }
 
+void filter_list_response(const std::string& method, json& r)
+{
+    // The lite document (an alias of the full document) has the same symbols: a list of places can have an
+    // entry two times after the alias. The first entry stays.
+    static const std::set<std::string> lists = {"textDocument/references", "workspace/symbol",
+        "textDocument/prepareCallHierarchy", "callHierarchy/incomingCalls", "callHierarchy/outgoingCalls",
+        "textDocument/definition", "textDocument/declaration", "textDocument/typeDefinition",
+        "textDocument/implementation"};
+    if (lists.count(method) && r.is_object() && r.contains("result") && r["result"].is_array())
+    {
+        json out = json::array();
+        for (json& e : r["result"])
+            if (!has_internal_uri(e) && std::find(out.begin(), out.end(), e) == out.end())
+                out.push_back(std::move(e));
+        r["result"] = std::move(out);
+    }
+}
+
 void ClangdProcess::set_uri_alias(const std::string& from, const std::string& to, bool drop_diagnostics)
 {
     std::lock_guard<std::mutex> lock(alias_mutex_);
@@ -338,20 +356,7 @@ json ClangdProcess::request(const std::string& method, json params, int timeout_
     }
     json r = std::move(responses_[id]);
     responses_.erase(id);
-    // The lite document (an alias of the full document) has the same symbols: a list of places can have an
-    // entry two times after the alias. The first entry stays.
-    static const std::set<std::string> lists = {"textDocument/references", "workspace/symbol",
-        "textDocument/prepareCallHierarchy", "callHierarchy/incomingCalls", "callHierarchy/outgoingCalls",
-        "textDocument/definition", "textDocument/declaration", "textDocument/typeDefinition",
-        "textDocument/implementation"};
-    if (r.is_array() && lists.count(method))
-    {
-        json out = json::array();
-        for (json& e : r)
-            if (!has_internal_uri(e) && std::find(out.begin(), out.end(), e) == out.end())
-                out.push_back(std::move(e));
-        r = std::move(out);
-    }
+    filter_list_response(method, r);
     return r;
 }
 

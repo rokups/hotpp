@@ -3,6 +3,7 @@
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
 // Tests of HostSet (step 2a): load, match and refresh.
+#include "clangd_process.h"
 #include "hosts.h"
 
 #include <gtest/gtest.h>
@@ -629,4 +630,19 @@ TEST_F(HostsTest, LoadsTheTopSourceDir)
     EXPECT_EQ(set.match("/s/x.hot")->top_source_dir, "/top");
     EXPECT_EQ(set.match("/t/x.hot")->top_source_dir, "/first"); // an old file: the first root
     EXPECT_EQ(set.match("/u/x.hot")->top_source_dir, "");
+}
+
+// A list response has each entry one time and no entry with an internal uri (HOT-43).
+TEST(ClangdListFilter, RemovesDuplicatesAndInternalUris)
+{
+    using nlohmann::json;
+    const json a = {{"uri", "file:///a.hot"}, {"range", 1}};
+    const json b = {{"uri", "file:///b.hot"}, {"range", 2}};
+    const json lite = {{"uri", "file:///a.hot.cpp.lite.cpp"}, {"range", 3}};
+    json r = {{"id", 1}, {"result", json::array({a, b, a, lite})}};
+    hot::ls::filter_list_response("textDocument/references", r);
+    EXPECT_EQ(r["result"], json::array({a, b}));
+    json other = {{"id", 2}, {"result", json::array({a, a})}};
+    hot::ls::filter_list_response("textDocument/hover", other);
+    EXPECT_EQ(other["result"].size(), 2u);
 }

@@ -80,4 +80,7 @@ private:
     Handler on_notification_;
 };
 
+// Removes the duplicate entries and the entries with an internal uri from the "result" list of a response.
+void filter_list_response(const std::string& method, nlohmann::json& response);
+
 } // namespace hot::ls

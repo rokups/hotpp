@@ -2012,15 +2012,10 @@ std::string Server::lite_uri_impl(const Doc& d, const std::string& full, int gen
 std::optional<std::string> Server::unit_with_include(const std::string& header, const std::string& cpp, size_t at)
 {
     const size_t lines = static_cast<size_t>(std::count(cpp.begin(), cpp.begin() + at + 1, '\n'));
-    if (lines < 2 || header.find_first_of("\n\r") != std::string::npos)
+    const std::string path = fs::path(header).generic_string();
+    // The include has no escapes: a path with a quote or a line break uses the one-unit path.
+    if (lines < 2 || path.find_first_of("\"\n\r") != std::string::npos)
         return std::nullopt;
-    std::string path;
-    for (const char c : fs::path(header).generic_string())
-    {
-        if (c == '"' || c == '\\')
-            path += '\\';
-        path += c;
-    }
     std::string out = "#include \"" + path + "\"\n";
     out.append(lines - 1, '\n');
     out.append(cpp, at + 1, std::string::npos);
@@ -2481,6 +2476,9 @@ void Server::map_clangd_diagnostics(Doc& d)
     std::map<std::string, json> from_imports;
     for (const json& g : raw)
     {
+        // An error inside the shell header: clangd reports it at the include line of the unit (line 0).
+        if (d.shell_active && g["range"]["start"].value("line", 0) == 0)
+            continue;
         Pos b, e;
         const auto s = to_script(d, g["range"]["start"]);
         if (!s)
