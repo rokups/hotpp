@@ -20,6 +20,7 @@
 #endif
 #include <algorithm>
 #include <atomic>
+#include <map>
 #include <cctype>
 #include <cerrno>
 #include <chrono>
@@ -2689,6 +2690,10 @@ struct ElfSym
     unsigned char type = 0;
     bool defined = false;
     bool writable = false; // defined in a section with SHF_WRITE (.data, .bss, .tdata, .tbss)
+    uint16_t shndx = 0;
+    uint64_t value = 0;
+    uint64_t size = 0;
+    bool used = false; // a relocation of code or data (not of a dynamic initializer) names the symbol
 };
 
 // All named symbols of the .symtab of an ELF64 file. False when the file is not an ELF64 file.
@@ -2723,16 +2728,79 @@ bool elf_symbols(const std::string& path, std::vector<ElfSym>& syms)
         {
             Elf64_Sym sym;
             std::memcpy(&sym, data.data() + sh.sh_offset + off, sizeof sym);
-            if (sym.st_name == 0 || sym.st_name >= str.sh_size)
-                continue;
-            ElfSym e;
-            e.name.assign(data.c_str() + str.sh_offset + sym.st_name,
-                strnlen(data.c_str() + str.sh_offset + sym.st_name, str.sh_size - sym.st_name));
+            ElfSym e; // an unnamed symbol stays in the list (the index of a relocation) with an empty name
+            if (sym.st_name != 0 && sym.st_name < str.sh_size)
+                e.name.assign(data.c_str() + str.sh_offset + sym.st_name,
+                    strnlen(data.c_str() + str.sh_offset + sym.st_name, str.sh_size - sym.st_name));
             e.bind = ELF64_ST_BIND(sym.st_info);
             e.type = ELF64_ST_TYPE(sym.st_info);
             e.defined = sym.st_shndx != SHN_UNDEF;
+            e.shndx = sym.st_shndx;
+            e.value = sym.st_value;
+            e.size = sym.st_size;
             e.writable = e.defined && sym.st_shndx < eh.e_shnum && (section(sym.st_shndx).sh_flags & SHF_WRITE) != 0;
             syms.push_back(std::move(e));
+        }
+        // The relocations: which symbols the code and the data of the object use. The sections of the
+        // dynamic initializers (.text.startup, .init_array), the debug data and the unwind tables do
+        // not count.
+        const size_t first_sym = syms.size() - sh.sh_size / sizeof(Elf64_Sym);
+        // The data symbols of each section. The assembler writes a relocation against a local variable
+        // as "section symbol + offset", so a use is found by the offset.
+        std::map<uint16_t, std::vector<size_t>> data_in_section;
+        for (size_t k = first_sym; k < syms.size(); ++k)
+            if (syms[k].bind == STB_LOCAL && (syms[k].type == STT_OBJECT || syms[k].type == STT_TLS) && syms[k].defined)
+                data_in_section[syms[k].shndx].push_back(k);
+        if (eh.e_shstrndx >= eh.e_shnum)
+            continue;
+        const Elf64_Shdr names_section = section(eh.e_shstrndx);
+        if (!in_file(names_section.sh_offset, names_section.sh_size))
+            continue;
+        for (size_t k = 0; k < eh.e_shnum; ++k)
+        {
+            const Elf64_Shdr rel = section(k);
+            if (rel.sh_type != SHT_RELA || rel.sh_link != i || rel.sh_info >= eh.e_shnum
+                || !in_file(rel.sh_offset, rel.sh_size))
+                continue;
+            const Elf64_Shdr target = section(rel.sh_info);
+            if (target.sh_name >= names_section.sh_size)
+                continue;
+            const std::string tname(data.c_str() + names_section.sh_offset + target.sh_name,
+                strnlen(data.c_str() + names_section.sh_offset + target.sh_name, names_section.sh_size - target.sh_name));
+            if (starts_with(tname, ".text.startup") || starts_with(tname, ".init_array") || starts_with(tname, ".debug")
+                || starts_with(tname, ".eh_frame") || starts_with(tname, ".gcc_except") || starts_with(tname, ".llvm")
+                || starts_with(tname, ".fini_array") || starts_with(tname, ".ctors"))
+                continue;
+            for (uint64_t off = 0; off + sizeof(Elf64_Rela) <= rel.sh_size; off += sizeof(Elf64_Rela))
+            {
+                Elf64_Rela ra;
+                std::memcpy(&ra, data.data() + rel.sh_offset + off, sizeof ra);
+                const size_t idx = first_sym + ELF64_R_SYM(ra.r_info);
+                if (idx >= syms.size())
+                    continue;
+                if (syms[idx].type != STT_SECTION)
+                {
+                    syms[idx].used = true;
+                    continue;
+                }
+                const auto in_section = data_in_section.find(syms[idx].shndx);
+                if (in_section == data_in_section.end())
+                    continue;
+                // x86-64: an absolute type names the offset itself, a pc relative type has the
+                // distance to the end of the instruction (4, or 8 with an immediate) in the addend.
+                // Other machines: every data symbol of the section counts as used.
+                const uint32_t type = ELF64_R_TYPE(ra.r_info);
+                const bool absolute = type == 1 || type == 10 || type == 11 || type == 21 || type == 23;
+                for (size_t k : in_section->second)
+                {
+                    const int64_t lo = static_cast<int64_t>(syms[k].value);
+                    const int64_t hi = lo + static_cast<int64_t>(std::max<uint64_t>(syms[k].size, 1));
+                    auto inside = [&](int64_t off) { return off >= lo && off < hi; };
+                    if (eh.e_machine != EM_X86_64 || (absolute ? inside(ra.r_addend)
+                                                               : (inside(ra.r_addend + 4) || inside(ra.r_addend + 8))))
+                        syms[k].used = true;
+                }
+            }
         }
     }
     return true;
@@ -2748,10 +2816,13 @@ bool elf_symbols(const std::string& path, std::vector<ElfSym>& syms)
 // initializers). A mutable local variable that both objects define is a second copy: before the
 // split the unit had one copy, so the split is wrong then. Looked at:
 //  - the unit state by name: GEN, hot_live, *_slot, *_fields, *_layout (also with "_ZL<n>");
-//  - each local object symbol in a writable section (SHF_WRITE): a static or anonymous-namespace
+//  - each local object symbol in a writable section (SHF_WRITE) that the object uses: a static or anonymous-namespace
 //    variable of a header, a static local of a static function (_ZZ), its guard (_ZGV), a thread
 //    local variable.
 // Not looked at (harmless, because the copies are equal or they are only caches):
+//  - a symbol that no code or data of the object uses (a relocation of .text or .data; a dynamic
+//    initializer does not count): its copy is dead. This is the case for a "static const" object
+//    of a header that this object does not read, for example a string constant;
 //  - symbols in a read only section (constant tables and strings of P: equal copies, nothing writes);
 //  - "__site" symbols (FieldSite and FnSite caches: each object may fill its own, the epoch checks
 //    them) and the "__construct_keys" arrays (see is_cache_symbol);
@@ -2776,7 +2847,7 @@ bool unit_state_symbols(const std::string& path, std::set<std::string>& names)
         return false;
     for (const ElfSym& e : syms)
     {
-        if (e.bind != STB_LOCAL || (e.type != STT_OBJECT && e.type != STT_TLS))
+        if (e.name.empty() || e.bind != STB_LOCAL || (e.type != STT_OBJECT && e.type != STT_TLS))
             continue;
         std::string base = e.name;
         if (starts_with(base, "_ZL"))
@@ -2791,7 +2862,7 @@ bool unit_state_symbols(const std::string& path, std::set<std::string>& names)
             return base.size() >= n && base.compare(base.size() - n, n, suffix) == 0;
         };
         const bool by_name = base == "GEN" || base == "hot_live" || ends("_slot") || ends("_fields") || ends("_layout");
-        if (by_name || (e.writable && !is_cache_symbol(e.name)))
+        if (by_name || (e.writable && e.used && !is_cache_symbol(e.name)))
             names.insert(e.name);
     }
     return true;
@@ -2811,6 +2882,8 @@ std::string merged_object_problem(const std::string& path, const std::vector<std
     std::vector<std::string> defined_global;
     for (const ElfSym& e : syms)
     {
+        if (e.name.empty())
+            continue;
         if (!e.defined)
         {
             undefined.insert(e.name);

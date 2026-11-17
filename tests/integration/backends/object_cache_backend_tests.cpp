@@ -1827,8 +1827,8 @@ float run_counter_script(hot::ClangFilesBackend& backend, int edit)
 
 } // namespace
 
-// A header with a mutable static variable that a field initializer and a body both use: the two
-// objects would have two copies. The split is refused, the module works.
+// A header with a mutable static variable that a field initializer and a body use: the split is
+// refused and the module has one counter (the results are right).
 TEST(ObjectCacheBackend, MutableHeaderStateInBothObjectsRefusesTheSplit)
 {
 #if defined(__linux__)
@@ -1838,7 +1838,7 @@ TEST(ObjectCacheBackend, MutableHeaderStateInBothObjectsRefusesTheSplit)
     EnvGuard timing("HOT_TIMING", "1");
     TestScratch scratch;
     hot::ClangFilesOptions o = header_options(scratch, "h",
-        "#pragma once\nstatic int g_counter = 0;\ninline int next_id() { return ++g_counter; }\n");
+        "#pragma once\nstatic int g_counter = 0;\nstatic int next_id() { return ++g_counter; }\n");
     testing::internal::CaptureStderr();
     {
         hot::ClangFilesBackend backend(o);
@@ -1846,7 +1846,13 @@ TEST(ObjectCacheBackend, MutableHeaderStateInBothObjectsRefusesTheSplit)
             EXPECT_EQ(run_counter_script(backend, i), 101.0f); // first = 1 (or any), result = next - first + 100
     }
     const std::string log = testing::internal::GetCapturedStderr();
-    EXPECT_EQ(log.find("hit, two objects"), std::string::npos) << log;
+    // The initializer and the body are in different objects and both use the counter: the guard
+    // refuses the split (before the guard the results were 100: two counters).
+    if (shape_pch_expected())
+    {
+        EXPECT_NE(log.find("two objects refused"), std::string::npos) << log;
+        EXPECT_EQ(log.find("hit, two objects"), std::string::npos) << log;
+    }
 #else
     GTEST_SKIP() << "ELF only";
 #endif
@@ -1876,6 +1882,35 @@ TEST(ObjectCacheBackend, ClassWithoutFieldsStillSplits)
     const std::string log = testing::internal::GetCapturedStderr();
     if (shape_pch_expected())
         EXPECT_NE(log.find("hit, two objects"), std::string::npos) << log;
+#else
+    GTEST_SKIP() << "ELF only";
+#endif
+}
+
+// The guard counts a mutable local variable that both objects USE (a relocation of code), not one that an
+// object only defines.
+TEST(ObjectCacheBackend, UnitStateGuardNeedsAUseInBothObjects)
+{
+#if defined(__linux__)
+    TestScratch scratch;
+    const fs::path dir = scratch.file("guard2");
+    fs::create_directories(dir);
+    std::ofstream(dir / "a.cpp") << "static int g_counter = 0;\nint fa() { return ++g_counter; }\n";
+    std::ofstream(dir / "b.cpp") << "static int g_counter = 0;\nint fb() { return ++g_counter; }\n";
+    std::ofstream(dir / "c.cpp") << "[[gnu::used]] static int g_counter = 0;\nint fc() { return 1; }\n";
+    for (const char* n : {"a", "b", "c"})
+    {
+        const std::string cmd = std::string(HOT_CXX) + " -c -fPIC -o " + (dir / (std::string(n) + ".o")).string() + " "
+            + (dir / (std::string(n) + ".cpp")).string();
+        ASSERT_EQ(std::system(cmd.c_str()), 0) << cmd;
+    }
+    std::set<std::string> a, b, c;
+    ASSERT_TRUE(hot::unit_state_symbols_of((dir / "a.o").string(), a));
+    ASSERT_TRUE(hot::unit_state_symbols_of((dir / "b.o").string(), b));
+    ASSERT_TRUE(hot::unit_state_symbols_of((dir / "c.o").string(), c));
+    EXPECT_EQ(a, b);
+    EXPECT_EQ(a.size(), 1u);
+    EXPECT_TRUE(c.empty()); // defined, but no code uses it
 #else
     GTEST_SKIP() << "ELF only";
 #endif
