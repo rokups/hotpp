@@ -31,7 +31,7 @@ struct Parsed
         : text(std::move(t))
         , map(text)
     {
-        expr = parse_expression({text, &map}, {0, static_cast<uint32_t>(text.size())}, diag);
+        expr = parse_expression({text, 0, &map}, {0, static_cast<uint32_t>(text.size())}, diag);
     }
 };
 

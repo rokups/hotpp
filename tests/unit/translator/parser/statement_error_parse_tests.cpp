@@ -106,7 +106,7 @@ TEST(StatementParseError, OffsetsInBuffer)
     const uint32_t b = static_cast<uint32_t>(text.find("{\n    x")) + 1;
     const uint32_t e = static_cast<uint32_t>(text.find("  }\n}"));
     Diagnostics diag;
-    ast::BlockStmt blk = parse_block({text, &map}, {b, e}, diag);
+    ast::BlockStmt blk = parse_block({text, 0, &map}, {b, e}, diag);
     EXPECT_EQ(blk.pos, b - 1);
     EXPECT_EQ(blk.end_pos, e);
     ASSERT_EQ(blk.stmts.size(), 1u);
@@ -117,7 +117,7 @@ TEST(StatementParseError, OffsetsInBuffer)
     EXPECT_EQ(diag.items[0].msg, "expected an expression");
     // The parser reads only the span.
     Diagnostics d2;
-    ast::BlockStmt part = parse_block({text, &map}, {b, b + 15}, d2); // up to "x = 1;"
+    ast::BlockStmt part = parse_block({text, 0, &map}, {b, b + 15}, d2); // up to "x = 1;"
     EXPECT_EQ(d2.items.size(), 0u) << d2.format("t");
     EXPECT_EQ(part.stmts.size(), 1u);
 }

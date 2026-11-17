@@ -163,7 +163,7 @@ TEST(ExpressionParse, List)
     auto items = [](const std::string& text, Diagnostics& diag)
     {
         const LineMap map(text);
-        return parse_expression_list({text, &map}, {0, static_cast<uint32_t>(text.size())}, diag);
+        return parse_expression_list({text, 0, &map}, {0, static_cast<uint32_t>(text.size())}, diag);
     };
     Diagnostics d1;
     auto v = items("a, f(b, c), g(1, 2), x ? y : z", d1);
@@ -213,7 +213,7 @@ TEST(ExpressionParse, Offsets)
     const uint32_t b = static_cast<uint32_t>(text.find("a + foo"));
     const uint32_t e = static_cast<uint32_t>(text.find(");")) + 1;
     Diagnostics diag;
-    ast::ExprP x = parse_expression({text, &map}, {b, e}, diag);
+    ast::ExprP x = parse_expression({text, 0, &map}, {b, e}, diag);
     ASSERT_TRUE(x);
     EXPECT_EQ(diag.items.size(), 0u);
     EXPECT_EQ(ast::pos_of(*x), b);
@@ -226,7 +226,7 @@ TEST(ExpressionParse, Offsets)
 
     // An error in the span has the absolute line and column.
     Diagnostics d2;
-    EXPECT_TRUE(parse_expression({text, &map}, {b, b + 3}, d2) == nullptr); // "a +"
+    EXPECT_TRUE(parse_expression({text, 0, &map}, {b, b + 3}, d2) == nullptr); // "a +"
     ASSERT_EQ(d2.items.size(), 1u);
     EXPECT_EQ(d2.items[0].line, 2);
     EXPECT_EQ(d2.items[0].col, 12);
@@ -234,16 +234,16 @@ TEST(ExpressionParse, Offsets)
 
     // The parser reads only the span: the text after it is not seen.
     Diagnostics d3;
-    ast::ExprP y = parse_expression({text, &map}, {b, b + 1}, d3);
+    ast::ExprP y = parse_expression({text, 0, &map}, {b, b + 1}, d3);
     ASSERT_TRUE(y);
     EXPECT_EQ(ast::print(*y), "a");
     EXPECT_EQ(d3.items.size(), 0u);
 
     // Text after the expression in the span.
     Diagnostics d4;
-    EXPECT_TRUE(parse_expression({text, &map}, {b, b + 3 + 4}, d4) != nullptr); // "a + foo"
+    EXPECT_TRUE(parse_expression({text, 0, &map}, {b, b + 3 + 4}, d4) != nullptr); // "a + foo"
     Diagnostics d5;
-    EXPECT_TRUE(parse_expression({text, &map}, {b - 2, b + 1}, d5) == nullptr); // "= a"
+    EXPECT_TRUE(parse_expression({text, 0, &map}, {b - 2, b + 1}, d5) == nullptr); // "= a"
     EXPECT_EQ(d5.items.size(), 1u);
 }
 
