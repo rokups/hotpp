@@ -177,6 +177,30 @@ The server joins a series of `didChange` messages for one URI. The state thread 
 
 The tests are in `tests/integration/ls/` (`LanguageServer.*`). They run the server on a thread with an LSP client over pipes. The `clangd` tests are skipped when `clangd` is missing. Set `HOT_LS_CLANGD_LOG=file` to get the `clangd` log of a test.
 
+## The generated unit for clangd (split shell and lite document)
+
+The translator can write a marker line `// @hot-shell-end` in the generated C++ (`TranslateOptions::split_shell`, only the language server sets it). The text before the marker has the imported blocks, the imported function bodies and the module variable accessors. It does not depend on the own bodies.
+
+The server writes this text to a header file. It gives clangd the unit as `#include "<header>"`, then empty lines, then the own part. The unit keeps the lines and columns of the full text, so no position mapping is needed. A place in the header maps to the same place in the full text (`ClangdProcess::set_uri_alias`). The header name has the hash of its content. Each server has its own directory `<cache>/hot-ls/<pid>-<n>` (mode 0700, `XDG_CACHE_HOME` or `~/.cache`). The server removes it at exit. At start it removes the directories of dead processes.
+
+The translator also writes `// @hot-body-begin` and `// @hot-body-end` around each own function body. A body with a deduced return type (`auto`) has `// @hot-body-begin keep`: the server never makes it empty. For hover, definition and completion in a body, the server uses a second document (the path of the unit plus `.lite.cpp`). This document has the bodies of the other own functions as empty lines. The diagnostics, the references, the rename and the other requests use the full document. The diagnostics of the lite document never reach the client. The server keeps at most two lite documents open. A place outside a body uses the full document too.
+
+An edit of an imported script changes the header. The document then starts again in clangd, because clangd can answer with the old header while it builds the new preamble. For about one second after such an edit, the diagnostics can show errors that come from the old header. They go away when the new preamble is ready.
+
+An error in the body of an imported script is in the header. clangd reports it at the `#include` line of the unit, and the server does not show it for the importer (the script itself shows it). The full unit has a second error for the importer that comes from the first one (`No matching function for call to 'forward'` at the line of a class). With the split this second error is gone. The other diagnostics are the same. A test checks this.
+
+The corpus check `tools/lsbench/lite_corpus.py` asks hover and completion at places in all scripts of a workspace with `HOT_LS_LITE_CHECK=1` and prints each difference of the lite document and the full document.
+
+Result on the BiteSizedWar scripts (182 scripts, 636 places, hover and completion): 1506 lite hits, 256 fallbacks and 8 differences (4 places, each one twice). All 8 are hover texts of a field of `Vector3`, where the full document adds a body text (`{ }`) to the declaration. Because the differences are not zero, the lite document stays off by default.
+
+Environment variables:
+
+- `HOT_LS_SPLIT_SHELL=0` turns the header off. clangd then gets one unit. The split is on by default.
+- `HOT_LS_LITE_DOC=1` turns the lite document on. It is off by default.
+- `HOT_LS_LITE_CHECK=1` asks the full document too for hover, completion and definition. The server logs each difference. `hot/indexStats` has the counts `liteHits`, `liteFallback` and `liteMismatch`.
+- `HOT_LS_SHELL_DIR=<dir>` sets the directory of the header files (the tests use it).
+- `HOT_LS_TIMING=<file>` appends the phases of a completion to the file.
+
 ## Formatter rules
 
 The formatter of `hot-ls` works on a token stream. It keeps the comments and the literals as tokens. It does not parse the script. The code is `src/ls/format.cpp`. The function `format_hot` is pure. It is idempotent and it never changes a token: only white space changes. Tests check this on all example scripts.

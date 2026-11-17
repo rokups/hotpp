@@ -19,6 +19,13 @@
 namespace hot::ls
 {
 
+// The unit text of clangd: the include of the header, empty lines, then the own part of "cpp" after the offset "at".
+// No value when the header path has a quote or a line break (the include has no escapes).
+std::optional<std::string> shell_unit_with_include(const std::string& header, const std::string& cpp, size_t at);
+
+// True for a clangd diagnostic that must not reach the script: it is on the include line (line 0) of a unit with a header.
+bool is_shell_include_diagnostic(bool shell_active, int unit_line);
+
 struct ServerOptions
 {
     std::string clangd = "clangd"; // the clangd binary. Empty: no clangd.

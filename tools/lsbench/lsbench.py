@@ -36,6 +36,7 @@ class Client:
         self.replies = {}      # id -> (time, message)
         self.diag = {}         # uri -> list of (time, version, count of diagnostics)
         self.messages = []     # window/showMessage texts
+        self.lite_logs = []    # window/logMessage texts about the lite document
         self.stderr_lines = 0
         self.next_id = 1
         cmd = [exe, "--stdio", "--index-dir", index_dir] + extra
@@ -85,6 +86,8 @@ class Client:
                     if m == "textDocument/publishDiagnostics":
                         self.diag.setdefault(p["uri"], []).append(
                             (t, p.get("version"), len(p.get("diagnostics", []))))
+                    elif m == "window/logMessage" and "lite mismatch" in p.get("message", ""):
+                        self.lite_logs.append(p["message"])
                     elif m in ("window/showMessage", "window/logMessage"):
                         if m == "window/showMessage":
                             self.messages.append(p.get("message", ""))

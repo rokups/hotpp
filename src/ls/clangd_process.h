@@ -49,6 +49,12 @@ public:
     nlohmann::json request(const std::string& method, nlohmann::json params, int timeout_ms = 60000);
     void notify(const std::string& method, nlohmann::json params);
 
+    // Each "uri" of a message from clangd that is "from" becomes "to". The generated unit of a document
+    // can have its shell in a header (Server::send_generated): a place in the header is a place in the unit.
+    // With "drop_diagnostics" the publishDiagnostics of the uri "from" never reach the server.
+    void set_uri_alias(const std::string& from, const std::string& to, bool drop_diagnostics = false);
+    void clear_uri_alias(const std::string& from);
+
     // Sends "shutdown" and "exit", then waits for the process. It kills a process that hangs.
     void stop();
 
@@ -63,7 +69,9 @@ private:
 #endif
     int to_ = -1, from_ = -1;
     std::thread reader_;
-    std::mutex write_mutex_, mutex_;
+    std::mutex write_mutex_, mutex_, alias_mutex_;
+    std::map<std::string, std::string> uri_alias_;
+    std::set<std::string> quiet_uris_;
     std::condition_variable cv_;
     std::map<int64_t, nlohmann::json> responses_;
     std::set<int64_t> abandoned_; // the ids of requests that timed out: a late response is dropped
@@ -71,5 +79,8 @@ private:
     std::atomic<bool> closed_{false};
     Handler on_notification_;
 };
+
+// Removes the duplicate entries and the entries with an internal uri from the "result" list of a response.
+void filter_list_response(const std::string& method, nlohmann::json& response);
 
 } // namespace hot::ls

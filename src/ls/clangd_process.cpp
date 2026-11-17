@@ -4,6 +4,10 @@
 
 #include "clangd_process.h"
 
+#include <algorithm>
+#include <cstring>
+#include <set>
+
 #include "jsonrpc.h"
 
 #include <chrono>
@@ -182,6 +186,82 @@ bool ClangdProcess::send(const json& msg)
     return write_message(to_, msg.dump(-1, ' ', false, json::error_handler_t::replace));
 }
 
+namespace
+{
+// Replaces the "uri" and "targetUri" values that the map has, at any depth.
+void alias_uris(json& j, const std::map<std::string, std::string>& alias)
+{
+    if (j.is_object())
+    {
+        for (auto& [key, value] : j.items())
+        {
+            if (value.is_string() && (key == "uri" || key == "targetUri"))
+            {
+                const auto it = alias.find(value.get_ref<const std::string&>());
+                if (it != alias.end())
+                    value = it->second;
+            }
+            else if (value.is_structured())
+                alias_uris(value, alias);
+        }
+    }
+    else if (j.is_array())
+        for (json& x : j)
+            if (x.is_structured())
+                alias_uris(x, alias);
+}
+} // namespace
+
+// True for the uri of a file that only this server writes: a lite document or a header of a unit.
+static bool is_internal_uri(const std::string& u)
+{
+    const auto ends = [&](const char* t) { const size_t n = std::strlen(t); return u.size() >= n && u.compare(u.size() - n, n, t) == 0; };
+    return ends(".lite.cpp") || ends(".shell.h");
+}
+
+static bool has_internal_uri(const json& e)
+{
+    if (!e.is_object())
+        return false;
+    for (const char* key : {"uri", "targetUri"})
+        if (e.contains(key) && e[key].is_string() && is_internal_uri(e[key].get<std::string>()))
+            return true;
+    return e.contains("location") && has_internal_uri(e["location"]);
+}
+
+void filter_list_response(const std::string& method, json& r)
+{
+    // The lite document (an alias of the full document) has the same symbols: a list of places can have an
+    // entry two times after the alias. The first entry stays.
+    static const std::set<std::string> lists = {"textDocument/references", "workspace/symbol",
+        "textDocument/prepareCallHierarchy", "callHierarchy/incomingCalls", "callHierarchy/outgoingCalls",
+        "textDocument/definition", "textDocument/declaration", "textDocument/typeDefinition",
+        "textDocument/implementation"};
+    if (lists.count(method) && r.is_object() && r.contains("result") && r["result"].is_array())
+    {
+        json out = json::array();
+        for (json& e : r["result"])
+            if (!has_internal_uri(e) && std::find(out.begin(), out.end(), e) == out.end())
+                out.push_back(std::move(e));
+        r["result"] = std::move(out);
+    }
+}
+
+void ClangdProcess::set_uri_alias(const std::string& from, const std::string& to, bool drop_diagnostics)
+{
+    std::lock_guard<std::mutex> lock(alias_mutex_);
+    uri_alias_[from] = to;
+    if (drop_diagnostics)
+        quiet_uris_.insert(from);
+}
+
+void ClangdProcess::clear_uri_alias(const std::string& from)
+{
+    std::lock_guard<std::mutex> lock(alias_mutex_);
+    uri_alias_.erase(from);
+    quiet_uris_.erase(from);
+}
+
 void ClangdProcess::reader_loop()
 {
     MessageReader reader(from_);
@@ -191,6 +271,17 @@ void ClangdProcess::reader_loop()
         json msg = json::parse(body, nullptr, false);
         if (msg.is_discarded() || !msg.is_object())
             continue;
+        {
+            std::lock_guard<std::mutex> lock(alias_mutex_);
+            // The diagnostics of a quiet document are dropped before the alias: they are not the ones of the
+            // document that the alias names.
+            if (!quiet_uris_.empty() && msg.value("method", std::string()) == "textDocument/publishDiagnostics"
+                && msg.contains("params") && msg["params"].is_object()
+                && quiet_uris_.count(msg["params"].value("uri", std::string())))
+                continue;
+            if (!uri_alias_.empty())
+                alias_uris(msg, uri_alias_);
+        }
         if (msg.contains("method"))
         {
             if (msg.contains("id"))
@@ -265,6 +356,7 @@ json ClangdProcess::request(const std::string& method, json params, int timeout_
     }
     json r = std::move(responses_[id]);
     responses_.erase(id);
+    filter_list_response(method, r);
     return r;
 }
 

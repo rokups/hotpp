@@ -3,10 +3,13 @@
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
 // Tests of HostSet (step 2a): load, match and refresh.
+#include "clangd_process.h"
 #include "hosts.h"
+#include "server.h"
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -629,4 +632,40 @@ TEST_F(HostsTest, LoadsTheTopSourceDir)
     EXPECT_EQ(set.match("/s/x.hot")->top_source_dir, "/top");
     EXPECT_EQ(set.match("/t/x.hot")->top_source_dir, "/first"); // an old file: the first root
     EXPECT_EQ(set.match("/u/x.hot")->top_source_dir, "");
+}
+
+// A list response has each entry one time and no entry with an internal uri (HOT-43).
+TEST(ClangdListFilter, RemovesDuplicatesAndInternalUris)
+{
+    using nlohmann::json;
+    const json a = {{"uri", "file:///a.hot"}, {"range", 1}};
+    const json b = {{"uri", "file:///b.hot"}, {"range", 2}};
+    const json lite = {{"uri", "file:///a.hot.cpp.lite.cpp"}, {"range", 3}};
+    json r = {{"id", 1}, {"result", json::array({a, b, a, lite})}};
+    hot::ls::filter_list_response("textDocument/references", r);
+    EXPECT_EQ(r["result"], json::array({a, b}));
+    json other = {{"id", 2}, {"result", json::array({a, a})}};
+    hot::ls::filter_list_response("textDocument/hover", other);
+    EXPECT_EQ(other["result"].size(), 2u);
+}
+
+// A diagnostic on the include line of a unit with a header is dropped. Without a header it stays (HOT-43).
+TEST(ShellUnit, IncludeLineDiagnosticIsDroppedOnlyWithAHeader)
+{
+    EXPECT_TRUE(hot::ls::is_shell_include_diagnostic(true, 0));
+    EXPECT_FALSE(hot::ls::is_shell_include_diagnostic(false, 0));
+    EXPECT_FALSE(hot::ls::is_shell_include_diagnostic(true, 1));
+}
+
+// The include has no escapes: a header path with a quote or a line break gives no unit, so the server uses the one unit.
+TEST(ShellUnit, IncludePathWithAQuoteOrALineBreakIsRejected)
+{
+    const std::string cpp = "// shell\n// shell\n// shell\n// @hot-shell-end\nint own;\n";
+    const size_t at = cpp.find("// @hot-shell-end") + 16;
+    const auto ok = hot::ls::shell_unit_with_include("/tmp/a b/x.shell.h", cpp, at);
+    ASSERT_TRUE(ok.has_value());
+    EXPECT_EQ(ok->rfind("#include \"/tmp/a b/x.shell.h\"\n", 0), 0u);
+    EXPECT_EQ(std::count(ok->begin(), ok->end(), '\n'), std::count(cpp.begin(), cpp.end(), '\n'));
+    EXPECT_FALSE(hot::ls::shell_unit_with_include("/tmp/a\"b/x.shell.h", cpp, at).has_value());
+    EXPECT_FALSE(hot::ls::shell_unit_with_include("/tmp/a\nb/x.shell.h", cpp, at).has_value());
 }

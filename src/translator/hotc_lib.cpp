@@ -61,6 +61,7 @@
 #include <fstream>
 #include <functional>
 #include <map>
+#include <regex>
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -6184,8 +6185,26 @@ void translate_impl(
     {
         std::string ns;
         std::function<void()> write;
+        bool keep = false; // the split shell never blanks this body: its return type comes from the body
     };
-    std::vector<DeferredBody> bodies;
+    // The list of the bodies. "keep_next" is for the next push: a function with a deduced return type.
+    struct BodyList : std::vector<DeferredBody>
+    {
+        bool keep_next = false;
+        void push_back(DeferredBody b)
+        {
+            b.keep = keep_next;
+            keep_next = false;
+            std::vector<DeferredBody>::push_back(std::move(b));
+        }
+    };
+    BodyList bodies;
+    // True when the return type has the word "auto": the body of the function is part of its declaration.
+    auto deduced_ret = [](const std::string& r)
+    {
+        static const std::regex re(R"((^|[^A-Za-z0-9_])auto($|[^A-Za-z0-9_]))");
+        return std::regex_search(r, re);
+    };
     // The parts of a method that the text of a deferred body reads. The emitter holds the statements.
     auto body_head = [](const Method& m)
     {
@@ -7164,6 +7183,7 @@ void translate_impl(
             const std::string at = "#line " + std::to_string(m.line) + " \"" + file + "\"\n";
             const int end_line = m.end_line > 0 ? m.end_line : m.line;
             const std::string head = "static " + ret + " " + sym + "(" + cn + "* __self" + param_text(m.params) + ")\n";
+            bodies.keep_next = deduced_ret(ret);
             bodies.push_back({std::string(),
                 [&o, &reset, &write_stmts, h = body_head(m), em, file, at, end_line, head]
                 {
@@ -7207,6 +7227,7 @@ void translate_impl(
                 continue;
             const std::string head =
                 "static " + m->ret + " " + P + m->name + "(" + m->params[0].type + " " + m->params[0].name + ")\n{\n";
+            bodies.keep_next = deduced_ret(m->ret);
             bodies.push_back({std::string(),
                 [&o, &reset, &write_stmts, h = body_head(*m), em, head]
                 {
@@ -7387,7 +7408,16 @@ void translate_impl(
     // A ".cpp" script is the text of the file in source order. The block of a class replaces the
     // class, and the module block comes at the first module variable. "texts[i]" is the text
     // before the block "seq[i]". The last entry of "texts" is the text after the last block.
+    // The split mode (TranslateOptions::split_shell): the text before the line "// @hot-shell-end" depends
+    // only on the imports. It has the blocks of the imports, their module variables, their function
+    // prototypes and their function bodies. The own blocks come after the line.
+    const bool split_mode = in.split_shell && !sc.is_cpp;
+    bool tail_done = false;
     std::vector<ClassDef*> seq = order;
+    // The blocks of the imports come first. An own struct can come between two imported structs
+    // in the order of the dependencies. An imported block never needs an own block.
+    if (split_mode)
+        std::stable_partition(seq.begin(), seq.end(), [&](const ClassDef* c) { return imported(c->pos); });
     std::vector<std::vector<const hotc::ast::Script::Chunk*>> texts(order.size() + 1);
     if (sc.is_cpp)
     {
@@ -7445,6 +7475,7 @@ void translate_impl(
     // script writes all bodies after the last block, so every class is complete there. A ".cpp"
     // script also writes them before each text between two blocks. So a body does not see a
     // declaration, a using directive or a macro that comes later in the file, as in C++.
+    bool mark_bodies = false; // set after the shell marker in the split mode
     auto flush_bodies = [&]
     {
         if (bodies.empty())
@@ -7461,7 +7492,12 @@ void translate_impl(
                     o.w("namespace " + b.ns + " {\n");
                 body_ns = b.ns;
             }
+            // The split mode: each own body has a begin line and an end line (the language server keeps one body).
+            if (mark_bodies)
+                o.w(b.keep ? "// @hot-body-begin keep\n" : "// @hot-body-begin\n");
             b.write();
+            if (mark_bodies)
+                o.w("// @hot-body-end\n");
         }
         if (!body_ns.empty())
             o.w("} // namespace " + body_ns + "\n");
@@ -7539,9 +7575,182 @@ void translate_impl(
         std::vector<std::pair<std::string, const ClassDef*>> methods; // function name, class
         std::shared_ptr<const hotc::ParamContext::ScriptMethods> script_methods;
     } ctx_shared;
+    // ---- the module variables of the imports. The owner unit holds each one in its module block.
+    // The accessor gives a reference: an importer reads and writes the variable (hot::mod_var).
+    // Optimized AOT code: the accessor calls the forwarder "hot_mv_<unit>__<name>" of the owner unit.
+    auto emit_foreign_vars = [&]
+    {
+        if (g_diag.items.empty() && !foreign_vars.empty())
+        {
+            o.w("// ---------------------------------------------------------------- module variables of the imports\n");
+            for (const ForeignVar& v : foreign_vars)
+            {
+                const std::string t = types.cpp_storage(v.field.type, hotc::TypeModel::StorageUse::Field);
+                if (opt.aot_optimized)
+                {
+                    const std::string fn = "hot_mv_" + unit_symbol(v.unit) + "__" + v.field.name;
+                    o.w(t + "& " + fn + "();\n[[maybe_unused]] HOT_HIDDEN static " + t + "& hot_mv_" + v.field.name
+                        + "()\n{\n    return " + fn + "();\n}\n\n");
+                    continue;
+                }
+                o.w("[[maybe_unused]] HOT_HIDDEN static " + t + "& hot_mv_" + v.field.name + "()\n{\n");
+                o.w("    static hot::FieldSite __site;\n");
+                o.w("    return hot::mod_var<" + t + ">(hot::unit_ref(\"" + esc(v.unit) + "\"), __site, \"" + v.field.name
+                    + "\");\n}\n\n");
+            }
+            reset();
+        }
+    };
+    // ---- static methods and free functions. A function has a prototype here, after all the blocks. So
+    // a body of a method sees it. The definition comes in the bodies section. The function has no
+    // slot, no "sig" line, no manifest entry and no register call: the calls are direct.
+    // "part" is 0 for all functions, 1 for the functions of the imports, 2 for the own functions.
+    auto emit_statics = [&](int part)
+    {
+        if (!g_diag.items.empty() || lowered_statics.empty())
+            return;
+        {
+            // The functions in source order: the classes first, then the free functions.
+            struct StaticRef
+            {
+                const LoweredStatic* ls;
+                std::string ns;
+            };
+            std::vector<StaticRef> refs;
+            for (const ClassDef& cd : sc.classes)
+                for (const Method& m : cd.statics)
+                    if (auto it = lowered_statics.find(cd.name + "::" + m.name); it != lowered_statics.end())
+                        refs.push_back({&it->second, cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns)});
+            for (const Method& m : fn_cls.statics)
+                if (auto it = lowered_statics.find(m.name); it != lowered_statics.end())
+                    refs.push_back({&it->second, std::string()});
+            if (part != 0)
+                refs.erase(std::remove_if(refs.begin(), refs.end(),
+                               [part](const StaticRef& r) { return r.ls->method->foreign_unit.empty() == (part == 1); }),
+                    refs.end());
+            if (part != 0 && refs.empty())
+                return;
+            o.w("// ---------------------------------------------------------------- static methods and free functions\n");
+            std::string proto_ns;
+            for (const StaticRef& r : refs)
+            {
+                if (r.ns != proto_ns)
+                {
+                    if (!proto_ns.empty())
+                        o.w("} // namespace " + proto_ns + "\n");
+                    if (!r.ns.empty())
+                        o.w("namespace " + r.ns + " {\n");
+                    proto_ns = r.ns;
+                }
+                const LoweredStatic& ls = *r.ls;
+                const std::string decl = "[[maybe_unused]] HOT_HIDDEN static " + ls.ret + " " + ls.symbol + "(" + ls.params_def
+                    + ");\n";
+                o.head_segments(decl, ls.symbol, *ls.method, all_text);
+                o.w(decl);
+                // The forwarder of an overload group (gap G17): one C++ overload of the written name
+                // for each member. C++ selects the member by the argument types.
+                if (!ls.method->src_name.empty())
+                {
+                    std::string as;
+                    for (const hotc::ast::Param& p : ls.method->params)
+                        as += std::string(as.empty() ? "" : ", ") + "std::forward<decltype(" + p.name + ")>(" + p.name + ")";
+                    o.w("[[maybe_unused]] HOT_HIDDEN static " + ls.ret + " "
+                        + hotc::static_fn_symbol(ls.owner, ls.method->src_name) + "(" + ls.params_def + ")\n{\n    return "
+                        + ls.symbol + "(" + as + ");\n}\n");
+                }
+            }
+            if (!proto_ns.empty())
+                o.w("} // namespace " + proto_ns + "\n");
+            o.w("\n");
+            reset();
+            for (const StaticRef& r : refs)
+            {
+                const LoweredStatic ls = *r.ls;
+                const std::string file = esc(file_at(ls.method->pos));
+                // A function of an import has no body here: its lines are the lines of the generated file.
+                const bool gen = imported(ls.method->pos) && !ls.method->foreign_unit.empty();
+                const Method& m = *ls.method;
+                const int end_line = m.end_line > 0 ? m.end_line : m.line;
+                int first_line = m.line;
+                if (!m.body.stmts.empty() && hotc::ast::pos_of(*m.body.stmts.front()) != 0)
+                    first_line = map.line(hotc::ast::pos_of(*m.body.stmts.front()));
+                // Optimized AOT code: the exported forwarder of the function, "hot_fn_<unit>__<symbol>".
+                const std::string fwd_fn = !opt.aot_optimized ? std::string()
+                    : "hot_fn_" + unit_symbol(m.foreign_unit.empty() ? opt.unit
+                                                                       : m.foreign_unit) + "__" + ls.symbol;
+                bodies.keep_next = deduced_ret(m.ret);
+                bodies.push_back({r.ns,
+                    [&o, &all_text, &reset, &line_of, gen, &write_stmts, h = body_head(m), ls, file, end_line, first_line, fwd_fn]
+                    {
+                        auto line_at = [&](int l) { return line_of(l, file, gen); };
+                        const std::string head = "[[maybe_unused]] HOT_HIDDEN static " + ls.ret + " " + ls.symbol + "(" + ls.params;
+                        o.w(line_at(h->line));
+                        o.head_segments(head, ls.symbol, *h, all_text);
+                        o.w(head + ")\n");
+                        o.w(line_at(h->line));
+                        o.w("{\n");
+                        std::string fargs;
+                        for (const hotc::ast::Param& p : ls.method->params)
+                            fargs += std::string(fargs.empty() ? "" : ", ") + "std::forward<decltype(" + p.name + ")>(" + p.name + ")";
+                        if (!ls.method->foreign_unit.empty() && !fwd_fn.empty())
+                        {
+                            // Optimized AOT code: a plain call of the forwarder of the owner unit.
+                            o.w("    " + ls.ret + " " + fwd_fn + "(" + ls.params + ");\n");
+                            o.w("    return " + fwd_fn + "(" + fargs + ");\n}\n");
+                            reset();
+                            o.w("\n");
+                            return;
+                        }
+                        if (!ls.method->foreign_unit.empty())
+                        {
+                            // A function of an imported module: a call through the function table of
+                            // its unit. The signature key is the type of this declaration.
+                            std::string args;
+                            for (const hotc::ast::Param& p : ls.method->params)
+                                args += ", std::forward<decltype(" + p.name + ")>(" + p.name + ")";
+                            o.w("    static hot::FnSite __site;\n");
+                            o.w("    return hot::call_fn<decltype(" + ls.symbol + ")>(hot::unit_ref(\"" + esc(ls.method->foreign_unit)
+                                + "\"), __site, \"" + (ls.owner.empty() ? "" : ls.owner + "::") + ls.method->name + "\"" + args
+                                + ");\n");
+                            o.w("}\n");
+                            reset();
+                            o.w("\n");
+                            return;
+                        }
+                        // The frame guard of a static method and a free function (see the member bodies).
+                        o.w(line_at(first_line));
+                        o.w("    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;\n");
+                        o.w(line_at(first_line));
+                        o.w("    HOT_TRACE_FRAME(\"" + hotc::show_generic_names(ls.where, g_generic_display) + "\", \"" + file + "\");\n");
+                        write_stmts(*h, ls.body.get());
+                        o.w(line_at(end_line));
+                        o.w("}\n");
+                        if (!fwd_fn.empty())
+                            o.w(ls.ret + " " + fwd_fn + "(" + ls.params + ")\n{\n    return " + ls.symbol + "(" + fargs
+                                + ");\n}\n");
+                        reset();
+                        o.w("\n");
+                    }});
+            }
+        }
+    };
     std::set<std::string> iface_units; // the units with an include of the interface header
+    auto emit_shell_tail = [&]
+    {
+        tail_done = true;
+        if (!g_diag.items.empty())
+            return;
+        emit_foreign_vars();
+        emit_statics(1);
+        flush_bodies();
+        o.w("// @hot-shell-end\n");
+        reset();
+        mark_bodies = true;
+    };
     for (size_t si = 0; si < seq.size(); ++si)
     {
+        if (split_mode && !tail_done && !imported(seq[si]->pos))
+            emit_shell_tail();
         if (sc.is_cpp && !texts[si].empty())
             flush_bodies();
         write_texts(si);
@@ -10023,6 +10232,7 @@ void translate_impl(
                     ? "        hot::detail::throw_null_reference(\"call of a retired generation: " + what + "\");\n"
                     : !ret.empty() && ret.back() == '*' ? std::string("        return nullptr;\n")
                     : "        return" + (ret == "void" ? std::string() : " " + ret + "()") + ";\n";
+            bodies.keep_next = deduced_ret(m.ret);
             bodies.push_back({cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns),
                 [&o, &all_text, &mapped, &reset, &line_of, gen, &write_stmts, h = body_head(m), em, file, end_line, first_line,
                     is_fn, sym, whead, wbody, bmember, mhead, mconst, mhead_from, what, shell, body_locals, tname, stale_ret,
@@ -10149,6 +10359,7 @@ void translate_impl(
             const std::string head =
                 (opt.aot_optimized ? "[[maybe_unused]] static " : "static ") + m.ret + " " + P + m.name + "(" + m.params[0].type + " "
                 + m.params[0].name + ")\n";
+            bodies.keep_next = deduced_ret(m.ret);
             bodies.push_back({cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns),
                 [&o, &reset, &line_of, gen, &write_stmts, h = body_head(m), em, file, end_line, head]
                 {
@@ -10647,29 +10858,9 @@ void translate_impl(
             }
         reset();
     }
-    // ---- the module variables of the imports. The owner unit holds each one in its module block.
-    // The accessor gives a reference: an importer reads and writes the variable (hot::mod_var).
-    // Optimized AOT code: the accessor calls the forwarder "hot_mv_<unit>__<name>" of the owner unit.
-    if (g_diag.items.empty() && !foreign_vars.empty())
-    {
-        o.w("// ---------------------------------------------------------------- module variables of the imports\n");
-        for (const ForeignVar& v : foreign_vars)
-        {
-            const std::string t = types.cpp_storage(v.field.type, hotc::TypeModel::StorageUse::Field);
-            if (opt.aot_optimized)
-            {
-                const std::string fn = "hot_mv_" + unit_symbol(v.unit) + "__" + v.field.name;
-                o.w(t + "& " + fn + "();\n[[maybe_unused]] HOT_HIDDEN static " + t + "& hot_mv_" + v.field.name
-                    + "()\n{\n    return " + fn + "();\n}\n\n");
-                continue;
-            }
-            o.w("[[maybe_unused]] HOT_HIDDEN static " + t + "& hot_mv_" + v.field.name + "()\n{\n");
-            o.w("    static hot::FieldSite __site;\n");
-            o.w("    return hot::mod_var<" + t + ">(hot::unit_ref(\"" + esc(v.unit) + "\"), __site, \"" + v.field.name
-                + "\");\n}\n\n");
-        }
-        reset();
-    }
+    // ---- the module variables of the imports (written before the own blocks in the split mode)
+    if (!tail_done)
+        emit_foreign_vars();
     // ---- optimized AOT code: the exported forwarders of the module variables of this unit. An
     // importer reads and writes a variable through them.
     if (g_diag.items.empty() && opt.aot_optimized && !sc.is_cpp)
@@ -10718,128 +10909,11 @@ void translate_impl(
         o.w("\n");
     }
 
-    // ---- static methods and free functions. A function has a prototype here, after all the blocks. So
-    // a body of a method sees it. The definition comes in the bodies section. The function has no
-    // slot, no "sig" line, no manifest entry and no register call: the calls are direct.
-    if (g_diag.items.empty() && !lowered_statics.empty())
-    {
-        // The functions in source order: the classes first, then the free functions.
-        struct StaticRef
-        {
-            const LoweredStatic* ls;
-            std::string ns;
-        };
-        std::vector<StaticRef> refs;
-        for (const ClassDef& cd : sc.classes)
-            for (const Method& m : cd.statics)
-                if (auto it = lowered_statics.find(cd.name + "::" + m.name); it != lowered_statics.end())
-                    refs.push_back({&it->second, cd.ns.empty() ? std::string() : hotc::ast::gen_namespace(cd.ns)});
-        for (const Method& m : fn_cls.statics)
-            if (auto it = lowered_statics.find(m.name); it != lowered_statics.end())
-                refs.push_back({&it->second, std::string()});
-        o.w("// ---------------------------------------------------------------- static methods and free functions\n");
-        std::string proto_ns;
-        for (const StaticRef& r : refs)
-        {
-            if (r.ns != proto_ns)
-            {
-                if (!proto_ns.empty())
-                    o.w("} // namespace " + proto_ns + "\n");
-                if (!r.ns.empty())
-                    o.w("namespace " + r.ns + " {\n");
-                proto_ns = r.ns;
-            }
-            const LoweredStatic& ls = *r.ls;
-            const std::string decl = "[[maybe_unused]] HOT_HIDDEN static " + ls.ret + " " + ls.symbol + "(" + ls.params_def
-                + ");\n";
-            o.head_segments(decl, ls.symbol, *ls.method, all_text);
-            o.w(decl);
-            // The forwarder of an overload group (gap G17): one C++ overload of the written name
-            // for each member. C++ selects the member by the argument types.
-            if (!ls.method->src_name.empty())
-            {
-                std::string as;
-                for (const hotc::ast::Param& p : ls.method->params)
-                    as += std::string(as.empty() ? "" : ", ") + "std::forward<decltype(" + p.name + ")>(" + p.name + ")";
-                o.w("[[maybe_unused]] HOT_HIDDEN static " + ls.ret + " "
-                    + hotc::static_fn_symbol(ls.owner, ls.method->src_name) + "(" + ls.params_def + ")\n{\n    return "
-                    + ls.symbol + "(" + as + ");\n}\n");
-            }
-        }
-        if (!proto_ns.empty())
-            o.w("} // namespace " + proto_ns + "\n");
-        o.w("\n");
-        reset();
-        for (const StaticRef& r : refs)
-        {
-            const LoweredStatic ls = *r.ls;
-            const std::string file = esc(file_at(ls.method->pos));
-            // A function of an import has no body here: its lines are the lines of the generated file.
-            const bool gen = imported(ls.method->pos) && !ls.method->foreign_unit.empty();
-            const Method& m = *ls.method;
-            const int end_line = m.end_line > 0 ? m.end_line : m.line;
-            int first_line = m.line;
-            if (!m.body.stmts.empty() && hotc::ast::pos_of(*m.body.stmts.front()) != 0)
-                first_line = map.line(hotc::ast::pos_of(*m.body.stmts.front()));
-            // Optimized AOT code: the exported forwarder of the function, "hot_fn_<unit>__<symbol>".
-            const std::string fwd_fn = !opt.aot_optimized ? std::string()
-                : "hot_fn_" + unit_symbol(m.foreign_unit.empty() ? opt.unit
-                                                                   : m.foreign_unit) + "__" + ls.symbol;
-            bodies.push_back({r.ns,
-                [&o, &all_text, &reset, &line_of, gen, &write_stmts, h = body_head(m), ls, file, end_line, first_line, fwd_fn]
-                {
-                    auto line_at = [&](int l) { return line_of(l, file, gen); };
-                    const std::string head = "[[maybe_unused]] HOT_HIDDEN static " + ls.ret + " " + ls.symbol + "(" + ls.params;
-                    o.w(line_at(h->line));
-                    o.head_segments(head, ls.symbol, *h, all_text);
-                    o.w(head + ")\n");
-                    o.w(line_at(h->line));
-                    o.w("{\n");
-                    std::string fargs;
-                    for (const hotc::ast::Param& p : ls.method->params)
-                        fargs += std::string(fargs.empty() ? "" : ", ") + "std::forward<decltype(" + p.name + ")>(" + p.name + ")";
-                    if (!ls.method->foreign_unit.empty() && !fwd_fn.empty())
-                    {
-                        // Optimized AOT code: a plain call of the forwarder of the owner unit.
-                        o.w("    " + ls.ret + " " + fwd_fn + "(" + ls.params + ");\n");
-                        o.w("    return " + fwd_fn + "(" + fargs + ");\n}\n");
-                        reset();
-                        o.w("\n");
-                        return;
-                    }
-                    if (!ls.method->foreign_unit.empty())
-                    {
-                        // A function of an imported module: a call through the function table of
-                        // its unit. The signature key is the type of this declaration.
-                        std::string args;
-                        for (const hotc::ast::Param& p : ls.method->params)
-                            args += ", std::forward<decltype(" + p.name + ")>(" + p.name + ")";
-                        o.w("    static hot::FnSite __site;\n");
-                        o.w("    return hot::call_fn<decltype(" + ls.symbol + ")>(hot::unit_ref(\"" + esc(ls.method->foreign_unit)
-                            + "\"), __site, \"" + (ls.owner.empty() ? "" : ls.owner + "::") + ls.method->name + "\"" + args
-                            + ");\n");
-                        o.w("}\n");
-                        reset();
-                        o.w("\n");
-                        return;
-                    }
-                    // The frame guard of a static method and a free function (see the member bodies).
-                    o.w(line_at(first_line));
-                    o.w("    HOT_NODEBUG_LOCAL hot::detail::FrameGuard __hot_frame;\n");
-                    o.w(line_at(first_line));
-                    o.w("    HOT_TRACE_FRAME(\"" + hotc::show_generic_names(ls.where, g_generic_display) + "\", \"" + file + "\");\n");
-                    write_stmts(*h, ls.body.get());
-                    o.w(line_at(end_line));
-                    o.w("}\n");
-                    if (!fwd_fn.empty())
-                        o.w(ls.ret + " " + fwd_fn + "(" + ls.params + ")\n{\n    return " + ls.symbol + "(" + fargs
-                            + ");\n}\n");
-                    reset();
-                    o.w("\n");
-                }});
-        }
-    }
+    // ---- static methods and free functions
+    emit_statics(split_mode ? 2 : 0);
     phases.next(&res.timing.emit_ns); // the text of the bodies and the registration
+    if (split_mode && !tail_done)
+        emit_shell_tail();
     flush_bodies();
     write_texts(seq.size());
 
