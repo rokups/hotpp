@@ -259,6 +259,44 @@ jobs:
       - name: Test
         run: ctest --preset ${{ matrix.preset }}-rel -j "$(nproc)"
 
+  # The AOT-only check on Linux. The preset linux-clang-aot-only sets HOT_FORCE_AOT_ONLY: no
+  # backend, no loader, no dlopen in hot_runtime. The ctest aot_only_symbols checks nm and ldd.
+  # The AOT tests run. The tests that need a loader or a backend are not registered.
+  aot-only-linux:
+    name: aot-only-linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install LLVM, Clang and Ninja
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc > /dev/null
+          echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-${LLVM_VERSION} main" | sudo tee /etc/apt/sources.list.d/llvm.list
+          sudo apt-get update
+          sudo apt-get install -y clang-${LLVM_VERSION} clangd-${LLVM_VERSION} libclang-${LLVM_VERSION}-dev llvm-${LLVM_VERSION}-dev ninja-build
+          # The presets use "clang" and "clang++". This folder has them for the pinned version.
+          echo "/usr/lib/llvm-${LLVM_VERSION}/bin" >> "$GITHUB_PATH"
+          echo "CPM_SOURCE_CACHE=$HOME/.cache/cpm" >> "$GITHUB_ENV"
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/cpm
+          key: cpm-linux-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+          restore-keys: cpm-linux-
+
+      - name: Configure
+        run: cmake --preset linux-clang-aot-only
+
+      - name: Build
+        run: cmake --build --preset linux-clang-aot-only-rel
+
+      - name: Symbol check
+        run: ctest --preset linux-clang-aot-only-rel -R aot_only_symbols --output-on-failure
+
+      - name: Test
+        run: ctest --preset linux-clang-aot-only-rel -j "$(nproc)"
+
   # The native Windows build with MSVC (the preset vs-files). cl.exe builds hotc, the runtime and
   # the tests. clang++.exe of the LLVM release compiles the script modules. Some tests do not run
   # or skip on MSVC today. These are known gaps. Later steps remove them.

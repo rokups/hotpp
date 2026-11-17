@@ -102,6 +102,17 @@
       "cacheVariables": { "HOT_SCRIPT_MODE": "AOT_OPTIMIZED" }
     },
     {
+      "name": "linux-clang-aot-only",
+      "description": "HOT_FORCE_AOT_ONLY: AOT mode, no backend, no loader (desktop check of the AOT-only platforms).",
+      "inherits": "linux-clang-both",
+      "cacheVariables": {
+        "HOT_SCRIPT_MODE": "AOT",
+        "HOT_FORCE_AOT_ONLY": "ON",
+        "HOT_ENABLE_CLANG_FILES": "OFF",
+        "HOT_ENABLE_JIT": "OFF"
+      }
+    },
+    {
       "name": "vs-files",
       "description": "No generator: CMake takes the newest Visual Studio of the host.",
       "binaryDir": "${sourceDir}/cmake-build/${presetName}",
@@ -207,6 +218,7 @@
     { "name": "linux-clang-jit-tsan", "configurePreset": "linux-clang-jit-tsan", "configuration": "Debug" },
     { "name": "linux-clang-aot-rel", "configurePreset": "linux-clang-aot", "configuration": "RelWithDebInfo" },
     { "name": "linux-clang-aot-opt-rel", "configurePreset": "linux-clang-aot-opt", "configuration": "RelWithDebInfo" },
+    { "name": "linux-clang-aot-only-rel", "configurePreset": "linux-clang-aot-only", "configuration": "RelWithDebInfo" },
     { "name": "vs-aot-rel", "configurePreset": "vs-aot", "configuration": "RelWithDebInfo" },
     { "name": "vs-aot-opt-rel", "configurePreset": "vs-aot-opt", "configuration": "RelWithDebInfo" },
     { "name": "macos-clang-files-rel", "configurePreset": "macos-clang-files", "configuration": "RelWithDebInfo" },
@@ -238,6 +250,7 @@
     { "name": "linux-clang-jit-tsan", "inherits": "base-test", "configurePreset": "linux-clang-jit-tsan", "configuration": "Debug" },
     { "name": "linux-clang-aot-rel", "inherits": "base-test", "configurePreset": "linux-clang-aot", "configuration": "RelWithDebInfo" },
     { "name": "linux-clang-aot-opt-rel", "inherits": "base-test", "configurePreset": "linux-clang-aot-opt", "configuration": "RelWithDebInfo" },
+    { "name": "linux-clang-aot-only-rel", "inherits": "base-test", "configurePreset": "linux-clang-aot-only", "configuration": "RelWithDebInfo" },
     { "name": "vs-aot-rel", "inherits": "base-test", "configurePreset": "vs-aot", "configuration": "RelWithDebInfo" },
     { "name": "vs-aot-opt-rel", "inherits": "base-test", "configurePreset": "vs-aot-opt", "configuration": "RelWithDebInfo" },
     { "name": "macos-clang-files-rel", "inherits": "base-test", "configurePreset": "macos-clang-files", "configuration": "RelWithDebInfo" },

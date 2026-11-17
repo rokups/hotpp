@@ -41,6 +41,10 @@ The packing step of a game engine (for example `rbfx_script_pack`) is not part o
 
 ## What is verified
 
+The option `HOT_FORCE_AOT_ONLY` (default `OFF`) builds a desktop host as an AOT-only platform. It sets `HOT_AOT_ONLY_PLATFORM`. The backends stay off and `ON` is a configure error for them. The loader has no `dlopen` and `hot_runtime` has `HOT_AOT_ONLY`. The translator and `hotc` stay on, because the host is the target and the AOT tests need `hotc`. The option needs `HOT_SCRIPT_MODE` `AOT` or `AOT_OPTIMIZED`. The preset `linux-clang-aot-only` sets it.
+
+On Linux with the preset `linux-clang-aot-only`, the ctest `aot_only_symbols` (`tests/check_aot_only_symbols.cmake`) checks this automatically. It runs `nm --undefined-only` on `libhot_runtime.a`, `libhot_aot.a` and the AOT script library of `aot_demo`, and `nm -D --undefined-only` on `aot_demo`. The check fails on `dlopen`, `dlsym`, `dlclose`, `fork`, `posix_spawn`, `exec*`, `popen`, `system`, `inotify*`, `clang` or `llvm`. It also fails when `ldd` of `aot_demo` lists `libclang` or LLVM. This build does not register the tests that need a loader or a backend: the integration tests `reload`, `closures`, `async`, `threading`, `backends` and `launcher`, the parity, load, override and `*_load` tests of `aot`, the benchmark and the loader samples. The AOT tests pass in this build.
+
 On Linux with the preset `linux-clang-aot`:
 
 - `hot_aot`, `hot_runtime_core` and (with `HOT_AOT_ONLY`) `hot_runtime` build. The test program `aot_demo` has no `libclang` or LLVM in `ldd`, and no `clang`, `llvm`, `dlopen`, `fork`, `posix_spawn` or `execv` in `nm -D --undefined-only`. The undefined symbols of their objects have no `clang`, `llvm`, `dlopen`, `dlsym`, `fork`, `posix_spawn`, `exec*`, `popen`, `system` or `inotify`.
