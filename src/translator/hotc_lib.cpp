@@ -4301,7 +4301,11 @@ void translate_impl(
         std::vector<hotc::ast::TypeAlias> aliases;
         std::vector<Stub> stubs;
         std::vector<hotc::ast::InterfaceDef> imported_interfaces;
-        uint32_t next_base = static_cast<uint32_t>(in.script_text.size()) + 1;
+        // The first import starts at a fixed power of two. So an edit of the main script does not move
+        // the positions of the imports, until the main script passes the power of two.
+        uint32_t next_base = 1u << 20;
+        while (next_base < in.script_text.size() + 1)
+            next_base <<= 1;
         // Depth first: the imports of an imported script come before its own classes.
         std::function<void(std::vector<Import>&, const std::string&, const std::string&)> visit_imports =
             [&](std::vector<Import>& ims, const std::string& from_dir, const std::string& from_unit_dir)
