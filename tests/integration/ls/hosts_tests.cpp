@@ -5,9 +5,11 @@
 // Tests of HostSet (step 2a): load, match and refresh.
 #include "clangd_process.h"
 #include "hosts.h"
+#include "server.h"
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -645,4 +647,25 @@ TEST(ClangdListFilter, RemovesDuplicatesAndInternalUris)
     json other = {{"id", 2}, {"result", json::array({a, a})}};
     hot::ls::filter_list_response("textDocument/hover", other);
     EXPECT_EQ(other["result"].size(), 2u);
+}
+
+// A diagnostic on the include line of a unit with a header is dropped. Without a header it stays (HOT-43).
+TEST(ShellUnit, IncludeLineDiagnosticIsDroppedOnlyWithAHeader)
+{
+    EXPECT_TRUE(hot::ls::is_shell_include_diagnostic(true, 0));
+    EXPECT_FALSE(hot::ls::is_shell_include_diagnostic(false, 0));
+    EXPECT_FALSE(hot::ls::is_shell_include_diagnostic(true, 1));
+}
+
+// The include has no escapes: a header path with a quote or a line break gives no unit, so the server uses the one unit.
+TEST(ShellUnit, IncludePathWithAQuoteOrALineBreakIsRejected)
+{
+    const std::string cpp = "// shell\n// shell\n// shell\n// @hot-shell-end\nint own;\n";
+    const size_t at = cpp.find("// @hot-shell-end") + 16;
+    const auto ok = hot::ls::shell_unit_with_include("/tmp/a b/x.shell.h", cpp, at);
+    ASSERT_TRUE(ok.has_value());
+    EXPECT_EQ(ok->rfind("#include \"/tmp/a b/x.shell.h\"\n", 0), 0u);
+    EXPECT_EQ(std::count(ok->begin(), ok->end(), '\n'), std::count(cpp.begin(), cpp.end(), '\n'));
+    EXPECT_FALSE(hot::ls::shell_unit_with_include("/tmp/a\"b/x.shell.h", cpp, at).has_value());
+    EXPECT_FALSE(hot::ls::shell_unit_with_include("/tmp/a\nb/x.shell.h", cpp, at).has_value());
 }

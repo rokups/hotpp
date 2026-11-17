@@ -753,7 +753,6 @@ private:
     std::string lite_uri(const Doc& d, const std::string& full, int gen_line0, int wait_ms = kNativeBudgetMs);
     std::string shell_dir_;
     const std::string& shell_dir();
-    static std::optional<std::string> unit_with_include(const std::string& header, const std::string& cpp, size_t at);
     void remove_shell(Doc& d)
     {
         std::error_code ec;
@@ -1933,7 +1932,7 @@ std::string Server::lite_uri_impl(const Doc& d, const std::string& full, int gen
         if (!fs::exists(d.shell_path, ec))
             return d.gen_uri; // the header is gone
     }
-    const auto unit = unit_with_include(d.shell_path, full, at);
+    const auto unit = shell_unit_with_include(d.shell_path, full, at);
     if (!unit)
         return d.gen_uri;
     const auto lite = blank_other_bodies(*unit, gen_line0);
@@ -2006,20 +2005,6 @@ std::string Server::lite_uri_impl(const Doc& d, const std::string& full, int gen
         lite_[d.gen_uri].ready = true;
     }
     return uri;
-}
-
-// The unit text: the include of the header, then the lines of the shell as empty lines, then the own part.
-std::optional<std::string> Server::unit_with_include(const std::string& header, const std::string& cpp, size_t at)
-{
-    const size_t lines = static_cast<size_t>(std::count(cpp.begin(), cpp.begin() + at + 1, '\n'));
-    const std::string path = fs::path(header).generic_string();
-    // The include has no escapes: a path with a quote or a line break uses the one-unit path.
-    if (lines < 2 || path.find_first_of("\"\n\r") != std::string::npos)
-        return std::nullopt;
-    std::string out = "#include \"" + path + "\"\n";
-    out.append(lines - 1, '\n');
-    out.append(cpp, at + 1, std::string::npos);
-    return out;
 }
 
 // The base of the header directories: one for each user. "HOT_LS_SHELL_DIR" is for the tests.
@@ -2099,7 +2084,7 @@ std::string Server::unit_for_clangd(Doc& d, const std::string& cpp)
     char name[48];
     std::snprintf(name, sizeof name, "%016zx-%016zx.shell.h", std::hash<std::string>()(d.gen_path), hash);
     const std::string path = (fs::path(shell_dir()) / name).string();
-    const auto unit = unit_with_include(path, cpp, at);
+    const auto unit = shell_unit_with_include(path, cpp, at);
     if (!unit)
         return cpp; // a path that the include cannot hold: clangd gets the full text
     std::error_code ec;
@@ -2477,7 +2462,7 @@ void Server::map_clangd_diagnostics(Doc& d)
     for (const json& g : raw)
     {
         // An error inside the shell header: clangd reports it at the include line of the unit (line 0).
-        if (d.shell_active && g["range"]["start"].value("line", 0) == 0)
+        if (is_shell_include_diagnostic(d.shell_active, g["range"]["start"].value("line", 0)))
             continue;
         Pos b, e;
         const auto s = to_script(d, g["range"]["start"]);
@@ -8571,6 +8556,25 @@ bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, s
         }
     }
     return true;
+}
+
+bool is_shell_include_diagnostic(bool shell_active, int unit_line)
+{
+    return shell_active && unit_line == 0;
+}
+
+// The unit text: the include of the header, then the lines of the shell as empty lines, then the own part.
+std::optional<std::string> shell_unit_with_include(const std::string& header, const std::string& cpp, size_t at)
+{
+    const size_t lines = static_cast<size_t>(std::count(cpp.begin(), cpp.begin() + at + 1, '\n'));
+    const std::string path = fs::path(header).generic_string();
+    // The include has no escapes: a path with a quote or a line break uses the one-unit path.
+    if (lines < 2 || path.find_first_of("\"\n\r") != std::string::npos)
+        return std::nullopt;
+    std::string out = "#include \"" + path + "\"\n";
+    out.append(lines - 1, '\n');
+    out.append(cpp, at + 1, std::string::npos);
+    return out;
 }
 
 } // namespace hot::ls
