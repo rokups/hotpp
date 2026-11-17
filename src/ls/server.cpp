@@ -40,6 +40,7 @@
 #include <fstream>
 #include <functional>
 #include <limits>
+#include <future>
 #include <map>
 #include <memory>
 #include <locale>
@@ -470,6 +471,13 @@ static bool import_cache_enabled(bool option)
     if (e && std::string(e) == "1")
         return true;
     return option;
+}
+
+// HOT-51: the cache of the native members of "this" in a completion. The variable HOT_LS_THIS_CACHE is 0 or 1 (default 1).
+static bool this_cache_enabled()
+{
+    const char* e = std::getenv("HOT_LS_THIS_CACHE");
+    return !(e && std::string(e) == "0");
 }
 
 class Server
@@ -1433,6 +1441,46 @@ private:
     std::vector<TokenWorker> token_workers_;
     std::atomic<int> native_token_requests_{0}; // the requests of tokens to clangd (hot/indexStats)
     int completion_translations_ = 0; // the translations of a completion text (hot/indexStats)
+    // HOT-51: the native members of "this" (the answer of clangd for the empty prefix), one entry for each
+    // document. "pre" holds the class, its script bases and the host options. "shell" is the hash of the
+    // shell header: it holds the imports and the class declarations. "bad": the answer was not complete.
+    struct ThisEntry
+    {
+        std::string pre;
+        size_t shell = 0;
+        size_t stamp = 0; // the stamp of the headers (header_stamp)
+        bool bad = false;
+        json items = json::array();
+    };
+    // The files of an include graph: the time, the size and the names of the includes. A file is read again only when
+    // its time or its size changes.
+    struct IncFile
+    {
+        long long time = 0;
+        std::uintmax_t size = 0;
+        std::vector<std::string> includes;
+    };
+    std::map<std::string, IncFile> inc_files_; // by path, under this_mutex_
+    // The hash of the time and the size of each header that the shell header includes, also the headers that they
+    // include. Only the files that the include dirs hold. A new header at an earlier place changes the stamp too. False
+    // in "ok": the graph is too big, so the caller does not use the cache. No watcher event is needed.
+    size_t header_stamp(const std::vector<std::string>& names, const std::vector<std::string>& dirs,
+        const std::string& doc_dir, bool& ok);
+    std::mutex this_mutex_;
+    std::map<std::string, ThisEntry> this_cache_;
+    std::atomic<int> this_analyzes_{0}, this_hits_{0};
+    // After a header event clangd builds a new preamble, and its answers can be old for a while. The cache stores
+    // no answer until this time (steady clock, milliseconds). 5 s is more than the preamble of a host header needs.
+    std::atomic<long long> this_hold_until_ms_{0};
+    static long long steady_ms()
+    {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+    void drop_this_cache()
+    {
+        std::lock_guard<std::mutex> lock(this_mutex_);
+        this_cache_.clear();
+    }
     // The translations of the server (all analyze calls) and their total time (hot/indexStats).
     mutable std::atomic<int> translations_{0};
     mutable std::atomic<long long> translate_us_{0};
@@ -1721,10 +1769,108 @@ void Server::start_clangd(const json& init)
         check_epoch();
     };
     clangd_ = std::move(c);
+    drop_this_cache(); // a new clangd: no answer of the old one stays
+}
+
+static std::vector<std::string> include_names(const std::string& text)
+{
+    std::vector<std::string> out;
+    for (size_t at = 0; at < text.size();)
+    {
+        size_t end = text.find('\n', at);
+        if (end == std::string::npos)
+            end = text.size();
+        size_t i = at;
+        while (i < end && (text[i] == ' ' || text[i] == '\t'))
+            ++i;
+        if (i < end && text[i] == '#')
+        {
+            ++i;
+            while (i < end && (text[i] == ' ' || text[i] == '\t'))
+                ++i;
+            if (text.compare(i, 7, "include") == 0)
+            {
+                i += 7;
+                while (i < end && (text[i] == ' ' || text[i] == '\t'))
+                    ++i;
+                if (i < end && (text[i] == '"' || text[i] == '<'))
+                {
+                    const char close = text[i] == '"' ? '"' : '>';
+                    const size_t c = text.find(close, i + 1);
+                    if (c != std::string::npos && c < end)
+                        out.push_back(std::string(1, text[i]) + text.substr(i + 1, c - i - 1));
+                }
+            }
+        }
+        at = end + 1;
+    }
+    return out;
+}
+
+size_t Server::header_stamp(const std::vector<std::string>& names, const std::vector<std::string>& dirs,
+    const std::string& doc_dir, bool& ok)
+{
+    constexpr size_t kMaxHeaders = 4000;
+    ok = true;
+    size_t h = 0;
+    const auto mix = [&](const std::string& x) { h = h * 1000003u ^ std::hash<std::string>()(x); };
+    std::lock_guard<std::mutex> lock(this_mutex_);
+    std::set<std::string> seen;
+    // The name starts with '"' (a quoted include) or '<'. The place of the including file comes first for '"'.
+    std::vector<std::pair<std::string, std::string>> work; // name, directory of the including file
+    for (const std::string& n : names)
+        work.emplace_back(n, doc_dir);
+    while (!work.empty())
+    {
+        const auto [name, from] = work.back();
+        work.pop_back();
+        std::string found;
+        std::error_code ec;
+        std::vector<std::string> where;
+        if (name[0] == '"')
+            where.push_back(from);
+        where.insert(where.end(), dirs.begin(), dirs.end());
+        for (const std::string& dir : where)
+        {
+            const fs::path p = fs::path(utf8_path(dir)) / utf8_path(name.substr(1));
+            if (fs::is_regular_file(p, ec))
+            {
+                found = path_utf8(p.lexically_normal());
+                break;
+            }
+        }
+        if (found.empty())
+        {
+            mix("?" + name); // a missing header: a new one changes the stamp
+            continue;
+        }
+        if (!seen.insert(found).second)
+            continue;
+        if (seen.size() > kMaxHeaders)
+        {
+            ok = false;
+            return 0;
+        }
+        const long long time = fs::last_write_time(utf8_path(found), ec).time_since_epoch().count();
+        const std::uintmax_t size = fs::file_size(utf8_path(found), ec);
+        mix(found + ":" + std::to_string(time) + ":" + std::to_string(size));
+        IncFile& f = inc_files_[found];
+        if (f.time != time || f.size != size || (f.time == 0 && f.size == 0))
+        {
+            f.time = time;
+            f.size = size;
+            f.includes = include_names(read_file(found).value_or(std::string()));
+        }
+        const std::string parent = path_utf8(fs::path(utf8_path(found)).parent_path());
+        for (const std::string& n : f.includes)
+            work.emplace_back(n, parent);
+    }
+    return h;
 }
 
 void Server::load_hosts()
 {
+    drop_this_cache();
     std::lock_guard<std::mutex> lock(hosts_mutex_);
     hosts_.clear();
     std::vector<std::string> dirs;
@@ -1791,12 +1937,23 @@ void Server::on_watched_files(const json& p)
         for (const auto& h : hs.all())
             if (!h->prelude_suffix.empty())
                 suffixes.insert(h->prelude_suffix);
+    json for_clangd = json::array();
     for (const json& c : p.value("changes", json::array()))
     {
         if (!c.is_object() || !c.value("uri", json()).is_string())
             continue;
         const std::string path = uri_to_path(c["uri"].get<std::string>());
         const std::string ext = fs::path(path).extension().string();
+        if (ext != ".hot")
+        {
+            drop_this_cache(); // a header or a host file: the native members can change
+            // clangd rebuilds the preamble of the open documents that include a changed header.
+            if (ext == ".h" || ext == ".hpp" || ext == ".hh" || ext == ".inl")
+            {
+                for_clangd.push_back(c);
+                this_hold_until_ms_ = steady_ms() + 5000;
+            }
+        }
         if (ext == ".json" || ext == ".defines" || ext == ".options" || ext == ".includes")
         {
             std::lock_guard<std::mutex> lock(hosts_mutex_);
@@ -1835,6 +1992,8 @@ void Server::on_watched_files(const json& p)
             if (changed_suffixes.count(suffix))
                 windex_.schedule(script, index_job_config(script), IndexLevel::Rest);
         }
+    if (!for_clangd.empty() && clangd_ && clangd_->running())
+        clangd_->notify("workspace/didChangeWatchedFiles", {{"changes", for_clangd}});
     if (host_file)
         refresh_hosts(nullptr);
 }
@@ -3403,6 +3562,72 @@ json Server::on_completion(const Doc& d, const json& p)
                     md.gen_version = md.sent_version + 1; // before the send: the diagnostics can come at once
                     send_generated(md, d.gen.s);
                 }};
+            // HOT-51: the probe "this." (below). The cache keeps the members for the class, the bases, the
+            // host options and the shell header. With the cache, clangd gets the empty prefix: the members
+            // do not depend on the word, and the prefix filters them here.
+            const hotc::AnalyzedClass* this_cls = !member && !type_only ? class_at(cur) : nullptr;
+            const bool this_cache = this_cls && this_cache_enabled();
+            const auto this_text = [&](const std::string& word)
+            {
+                return t.substr(0, s) + "this." + word + kHole + closers + (end ? "" : ";") + t.substr(e);
+            };
+            std::string this_pre;
+            bool this_bad = false;
+            std::optional<ThisEntry> this_entry;
+            std::future<hotc::AnalyzeResult> this_future;
+            if (this_cache)
+            {
+                const hotc::TranslateOptions o = translate_options(d);
+                // The head of the class has all its bases ("class A : B, C"). "base" holds the first one.
+                std::string pre = this_cls->name;
+                {
+                    const size_t line = static_cast<size_t>(std::max(0, this_cls->begin.line - 1));
+                    if (line < d.text.starts.size())
+                    {
+                        const size_t from = std::min(d.text.s.size(), d.text.starts[line] + static_cast<size_t>(std::max(0, this_cls->begin.col - 1)));
+                        const size_t to_brace = d.text.s.find('{', from);
+                        pre += ':' + d.text.s.substr(from, to_brace == std::string::npos ? 0 : to_brace - from);
+                    }
+                }
+                std::set<std::string> seen;
+                for (std::string n = this_cls->base; !n.empty() && seen.insert(n).second;)
+                {
+                    pre += '<' + n;
+                    std::string next;
+                    for (const hotc::AnalyzedClass& c : d.facts.classes)
+                        if (c.name == n)
+                            next = c.base;
+                    n = next;
+                }
+                for (const std::string& x : o.include_dirs)
+                    pre += "\n-I" + x;
+                for (const std::string& x : o.defines)
+                    pre += "\n" + x;
+                pre += "\n" + o.std_version + "\n" + o.resource_dir;
+                this_pre = std::move(pre);
+                {
+                    std::lock_guard<std::mutex> lock(this_mutex_);
+                    if (const auto it = this_cache_.find(d.path); it != this_cache_.end() && it->second.pre == this_pre)
+                        this_entry = it->second;
+                }
+                this_bad = this_entry && this_entry->bad;
+                // A miss is likely: the analysis of the "this" text runs while the first probe runs. The
+                // clangd calls stay in order: they patch the text of the one document.
+                if (!this_entry)
+                {
+                    hotc::TranslateOptions to = translate_options(d);
+                    to.null_warnings = true;
+                    this_future = std::async(std::launch::async,
+                        [this, to = std::move(to), text = this_text(std::string())]
+                        {
+                            PhaseTimer pt("this analyze");
+                            ++this_analyzes_;
+                            return timed_translate([&] { return hotc::analyze(text, to, session_); });
+                        });
+                }
+            }
+            size_t shell_key = 0; // the hash of the shell header of the first probe that has a place
+            std::vector<std::string> shell_includes; // the includes of that shell header
             for (size_t text_index = 0; text_index < texts.size(); ++text_index)
             {
                 const std::string& patched = texts[text_index];
@@ -3445,6 +3670,11 @@ json Server::on_completion(const Doc& d, const json& p)
                 if (!g)
                     continue;
                 mapped = true;
+                if (const size_t at = facts.cpp.find(kShellEnd); at != std::string::npos && !shell_key)
+                {
+                    shell_key = std::hash<std::string>()(facts.cpp.substr(0, at + 1));
+                    shell_includes = include_names(facts.cpp.substr(0, at + 1));
+                }
                 const Text gen(facts.cpp);
                 // Before its first preamble, clangd gives only "fallback" words of the file. A
                 // request that needs the AST waits for the preamble. The wait is on the real text,
@@ -3513,38 +3743,93 @@ json Server::on_completion(const Doc& d, const json& p)
             }
             // The native members of the base are not names in the generated code of a method. A second
             // try with "this." gives them. Its items join the list.
-            if (!member && !type_only && (sent || lite_sent) && r && class_at(cur))
+            if (this_cls && (sent || lite_sent) && r)
             {
-                const std::string with_this = t.substr(0, s) + "this." + prefix + kHole + closers + (end ? "" : ";") + t.substr(e);
-                hotc::TranslateOptions to = translate_options(d);
-                to.null_warnings = true;
-                hotc::AnalyzeResult facts = [&] { PhaseTimer pt("this analyze"); return timed_translate([&] { return hotc::analyze(with_this, to, session_); }); }();
-                probe_timing_line("this", facts);
-                const auto g = facts.cpp.empty()
-                    ? std::nullopt
-                    : facts.source_map.map_to_generated(hole.line + 1, hole.col + 1 + 5);
-                const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    *t0 + std::chrono::milliseconds(opt_.completion_budget_ms + kCompletionAstMs) - std::chrono::steady_clock::now()).count();
-                if (g && left > 0)
+                // The answer of clangd for the "this." text of "word". Nothing when no place or no time.
+                const auto this_probe = [&](hotc::AnalyzeResult facts, const std::string& word) -> std::optional<json>
                 {
+                    probe_timing_line("this", facts);
+                    const auto g = facts.cpp.empty()
+                        ? std::nullopt
+                        : facts.source_map.map_to_generated(hole.line + 1, hole.col + 1 + 5);
+                    const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        *t0 + std::chrono::milliseconds(opt_.completion_budget_ms + kCompletionAstMs) - std::chrono::steady_clock::now()).count();
+                    if (!g || left <= 0)
+                        return std::nullopt;
                     std::string lu;
                     { PhaseTimer pt("this lite sync"); lu = lite_uri(md, facts.cpp, g->line - 1, static_cast<int>(left)); }
                     if (lu == d.gen_uri)
                         send_generated(md, facts.cpp);
                     const Text gen(facts.cpp);
                     PhaseTimer pc("this clangd call");
-                    auto r2 = clangd_result("textDocument/completion",
+                    return clangd_result("textDocument/completion",
                         {{"textDocument", {{"uri", lu}}},
                             {"position",
-                                to_lsp(gen, {g->line - 1, g->col - 1 + static_cast<int>(prefix.size())}, clangd_utf8_)}},
+                                to_lsp(gen, {g->line - 1, g->col - 1 + static_cast<int>(word.size())}, clangd_utf8_)}},
                         static_cast<int>(left));
-                    if (r2)
+                };
+                const auto items_of = [](const json& j) { return j.is_array() ? j : j.value("items", json::array()); };
+                std::optional<json> r2;
+                bool from_cache = false;
+                // The headers can change on disk with no event of the client: the stamp has their time and size.
+                bool stamp_ok = false;
+                size_t stamp = 0;
+                if (this_cache && !this_bad && shell_key)
+                    stamp = header_stamp(shell_includes, translate_options(d).include_dirs,
+                        path_utf8(fs::path(utf8_path(d.path)).parent_path()), stamp_ok);
+                if (this_cache && !this_bad && shell_key && stamp_ok && steady_ms() >= this_hold_until_ms_)
+                {
+                    if (this_entry && this_entry->shell == shell_key && this_entry->stamp == stamp)
                     {
-                        json merged = r->is_array() ? *r : r->value("items", json::array());
-                        for (const json& it : r2->is_array() ? *r2 : r2->value("items", json::array()))
-                            merged.push_back(it);
-                        r = merged;
+                        ++this_hits_;
+                        r2 = this_entry->items;
+                        from_cache = true;
                     }
+                    else
+                    {
+                        // The shell header is new (an edit of an import or of a class): ask for all the members.
+                        hotc::AnalyzeResult facts;
+                        if (this_future.valid())
+                            facts = this_future.get();
+                        else
+                        {
+                            ++this_analyzes_;
+                            hotc::TranslateOptions to = translate_options(d);
+                            to.null_warnings = true;
+                            PhaseTimer pt("this analyze");
+                            facts = timed_translate([&] { return hotc::analyze(this_text(std::string()), to, session_); });
+                        }
+                        r2 = this_probe(std::move(facts), std::string());
+                        ThisEntry entry{this_pre, shell_key, stamp, false, json::array()};
+                        // The limit of clangd (--limit-results=1000) cuts a long list: it is not complete.
+                        if (r2 && !(r2->is_object() && r2->value("isIncomplete", false)) && items_of(*r2).size() < 1000)
+                            entry.items = items_of(*r2);
+                        else
+                            entry.bad = true;
+                        {
+                            std::lock_guard<std::mutex> lock(this_mutex_);
+                            this_cache_[d.path] = entry;
+                        }
+                        if (entry.bad)
+                            r2.reset(); // the old probe with the prefix follows
+                    }
+                }
+                if (!r2 && !from_cache)
+                {
+                    this_future = {};
+                    ++this_analyzes_;
+                    hotc::TranslateOptions to = translate_options(d);
+                    to.null_warnings = true;
+                    const std::string with_this = this_text(prefix);
+                    hotc::AnalyzeResult facts = [&] { PhaseTimer pt("this analyze"); return timed_translate([&] { return hotc::analyze(with_this, to, session_); }); }();
+                    r2 = this_probe(std::move(facts), prefix);
+                }
+                if (r2)
+                {
+                    json merged = r->is_array() ? *r : r->value("items", json::array());
+                    for (const json& it : items_of(*r2))
+                        merged.push_back(it);
+                    r = merged;
                 }
             }
             // No patched text translates (an error that the analysis cannot cut out). The last good
@@ -8321,6 +8606,8 @@ void Server::handle(const json& msg)
                 {"params", {{"uri", uri}, {"diagnostics", json::array()}}}});
         return;
     }
+    if (method == "workspace/didChangeConfiguration")
+        drop_this_cache();
     if (method == "workspace/didChangeWatchedFiles")
         return on_watched_files(p);
     if (method == "workspace/didChangeWorkspaceFolders")
@@ -8367,7 +8654,7 @@ void Server::handle(const json& msg)
                 {"analyzed", st.analyzed}, {"loaded", st.loaded}, {"readyMs", st.ready_ms}, {"threads", st.threads}};
         }
         out.update({{"analyzed", closed_analyses_}, {"loaded", index_.loads()}, {"loadMs", index_.load_ms()}, {"stored", index_.stores()},
-            {"dir", index_.dir()}, {"completions", completion_translations_},
+            {"dir", index_.dir()}, {"completions", completion_translations_}, {"thisAnalyzes", this_analyzes_.load()}, {"thisHits", this_hits_.load()},
             {"tokenRequests", native_token_requests_.load()}, {"translations", translations_.load()},
             {"liteHits", lite_hits_.load()}, {"liteFallback", lite_fallbacks_.load()}, {"liteMismatch", lite_mismatches_.load()},
             {"translateMs", static_cast<double>(translate_us_.load()) / 1000.0}, {"tableHits", table_hits_},

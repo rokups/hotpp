@@ -51,6 +51,7 @@ def main():
     ap.add_argument("--file", required=True)
     ap.add_argument("--runs", type=int, default=10)
     ap.add_argument("--scenarios", default="AB")
+    ap.add_argument("--cold", action="store_true", help="each edit adds a class: the shell header changes (a cache miss)")
     a = ap.parse_args()
     tfile = os.environ["HOT_LS_TIMING"]
     idx = tempfile.mkdtemp(prefix="idx-")
@@ -73,7 +74,7 @@ def main():
             lat, phases, probes = [], {}, {}
             for i in range(a.runs + 1):  # the first run warms the caches: not counted
                 ver += 1
-                cur = text + "\n// c%d\n" % ver
+                cur = text + ("\nclass HotBench%d { }\n" if a.cold else "\n// c%d\n") % ver
                 n = c.diag_count(uri)
                 _, off = read_new(tfile, off)
                 c.notify("textDocument/didChange", {"textDocument": {"uri": uri, "version": ver}, "contentChanges": [{"text": cur}]})
