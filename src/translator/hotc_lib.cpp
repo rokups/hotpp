@@ -7339,7 +7339,6 @@ void translate_impl(
             if (!cd.is_value)
                 visit(cd);
     }
-    std::set<std::string> emitted;
     // What a class with a script parent takes from the parent (design 4.5). The parent comes
     // first in the emit order, so its entry is complete then.
     struct ClassInfo
@@ -7505,6 +7504,13 @@ void translate_impl(
 
     // The errors of the bodies of one class do not stop the next class: all classes report their errors.
     // An error of an earlier step (a static function or a free function) also stops the run after the loop.
+    // The cache of the parameter analysis contexts: the lists of the fields and the script functions.
+    struct CtxShared
+    {
+        std::map<const ClassDef*, std::shared_ptr<const hotc::ParamContext::MemberTypes::ClassFields>> fields;
+        std::vector<std::pair<std::string, const ClassDef*>> methods; // function name, class
+        std::shared_ptr<const hotc::ParamContext::ScriptMethods> script_methods;
+    } ctx_shared;
     std::set<std::string> iface_units; // the units with an include of the interface header
     for (size_t si = 0; si < seq.size(); ++si)
     {
@@ -7545,7 +7551,6 @@ void translate_impl(
             write_marks(&block_types);
         }
         const std::string cn = cd.name;
-        emitted.insert(cn);
         if (cd.is_value)
         {
             emit_value(cd);
@@ -8070,6 +8075,55 @@ void translate_impl(
         // The context of another class is built one time for this class: "class_ctx" keeps it.
         // The fields of the other classes do not change during the analysis of this class.
         std::map<const ClassDef*, hotc::ParamContext> class_ctx;
+        // The field lists and the map of the script functions cover all classes. A class loop step
+        // changes the field types of one class, so the cache keeps the list of each class and builds a
+        // list again only when its input differs. The result is the same as a build for each context.
+        auto refresh_ctx_shared = [&](hotc::ParamContext& ctx)
+        {
+            ctx.member_types.classes.clear();
+            bool same = ctx_shared.script_methods != nullptr;
+            size_t mi = 0;
+            for (const ClassDef& oc : sc.classes)
+            {
+                auto& snap = ctx_shared.fields[&oc];
+                bool fields_same = snap && snap->size() == oc.fields.size();
+                for (size_t i = 0; fields_same && i < oc.fields.size(); ++i)
+                {
+                    const Field& f = oc.fields[i];
+                    fields_same = (*snap)[i].first == f.name && (*snap)[i].second == (f.script_type.empty() ? f.type : f.script_type);
+                }
+                if (!fields_same)
+                {
+                    auto list = std::make_shared<hotc::ParamContext::MemberTypes::ClassFields>();
+                    for (const Field& f : oc.fields)
+                        list->emplace_back(f.name, f.script_type.empty() ? f.type : f.script_type);
+                    snap = std::move(list);
+                }
+                ctx.member_types.classes.push_back(snap);
+                for (const Method& om : oc.methods)
+                {
+                    if (same && (mi >= ctx_shared.methods.size() || ctx_shared.methods[mi].first != om.name
+                                    || ctx_shared.methods[mi].second != &oc))
+                        same = false;
+                    ++mi;
+                }
+            }
+            if (same && mi == ctx_shared.methods.size())
+            {
+                ctx.script_methods = ctx_shared.script_methods;
+                return;
+            }
+            ctx_shared.methods.clear();
+            auto sm = std::make_shared<hotc::ParamContext::ScriptMethods>();
+            for (const ClassDef& oc : sc.classes)
+                for (const Method& om : oc.methods)
+                {
+                    ctx_shared.methods.emplace_back(om.name, &oc);
+                    (*sm)[om.name].push_back(&oc);
+                }
+            ctx_shared.script_methods = sm;
+            ctx.script_methods = std::move(sm);
+        };
         std::function<const hotc::ParamContext&(const ClassDef&)> ctx_of_class;
         std::function<hotc::ParamContext(const ClassDef&)> make_ctx = [&](const ClassDef& c0)
         {
@@ -8081,14 +8135,8 @@ void translate_impl(
                 for (const Field& f : d->fields)
                     ctx.fields.emplace(f.name, f.script_type.empty() ? f.type : f.script_type);
             loop_timer.sub(19);
-            for (const ClassDef& oc : sc.classes)
-                for (const Field& f : oc.fields)
-                    ctx.member_types[f.name].push_back(f.script_type.empty() ? f.type : f.script_type);
+            refresh_ctx_shared(ctx);
             loop_timer.sub(20);
-            for (const ClassDef& oc : sc.classes)
-                for (const Method& om : oc.methods)
-                    ctx.script_methods[om.name].push_back(&oc);
-            loop_timer.sub(21);
             ctx.script_fn = [&script_parent, &hook_of, &c0](const std::string& n) -> const Method*
             {
                 int depth = 0;
@@ -8940,7 +8988,9 @@ void translate_impl(
             var_field_inits[f.name] = init;
         }
         loop_timer.sub(15);
-        if (!opt.aot_optimized)
+        // The text of a class of an import from here to the cut is dropped. The struct text has no other effect.
+        const bool drop_text = !cd.foreign_unit.empty() && !cd.iface_parent;
+        if (!opt.aot_optimized && !drop_text)
         {
         o.w("struct " + S + (pinfo ? " : " + pinfo->S : std::string()) + " {\n");
         // The runtime writes the owner shell into the first member of a root state struct.
@@ -9045,11 +9095,16 @@ void translate_impl(
         {
             if (opt.aot_optimized)
                 break;
-            RCtx fc = base_cx;
-            fc.allow_this = false;
-            fc.typed_init = !f.type.empty();
-            fc.in_field_init = true;
             std::string init;
+            const bool lowers = !f.raw && (f.value || (var_field_inits.count(f.name) == 0 && f.has_init && f.init));
+            RCtx fc;
+            if (lowers)
+            {
+                fc = base_cx;
+                fc.allow_this = false;
+                fc.typed_init = !f.type.empty();
+                fc.in_field_init = true;
+            }
             if (f.raw)
                 init = f.raw_init; // a ".cpp" script: the text is already C++
             else if (f.value)
