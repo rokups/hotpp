@@ -1436,7 +1436,7 @@ TEST(ObjectCacheBackend, TwoObjectsRunAClassScriptWithLambdas)
     const std::string log = testing::internal::GetCapturedStderr();
     // Two objects are expected whenever the compiler has a shape PCH and ld.lld exists.
     if (shape_pch_expected())
-        ASSERT_NE(log.find("two objects"), std::string::npos) << log;
+        ASSERT_NE(log.find("hit, two objects"), std::string::npos) << log;
     EXPECT_EQ(log.find("does not compile with its shape PCH"), std::string::npos) << log;
     EXPECT_EQ(count_defined_symbols(o.work_dir, "GEN"), 1u);
     EXPECT_EQ(count_defined_symbols(o.work_dir, "hot_live"), 1u);
@@ -1462,7 +1462,7 @@ TEST(ObjectCacheBackend, TwoObjectsCanBeTurnedOff)
     testing::internal::CaptureStderr();
     run_edits(o, 1, 6);
     const std::string log = testing::internal::GetCapturedStderr();
-    EXPECT_EQ(log.find("two objects"), std::string::npos) << log;
+    EXPECT_EQ(log.find("hit, two objects"), std::string::npos) << log;
     EXPECT_NE(log.find("shape pch hit"), std::string::npos) << log;
 #else
     GTEST_SKIP() << "ELF only";
@@ -1751,7 +1751,7 @@ TEST(ObjectCacheBackend, TwoObjectsOverManyScripts)
         if (!loaded)
             continue; // a script that does not load alone (its own needs): not a split case
         ++used;
-        if (log.find("two objects") != std::string::npos)
+        if (log.find("hit, two objects") != std::string::npos)
             ++two;
         else
             fallbacks += f.filename().string() + " ";
@@ -1761,6 +1761,121 @@ TEST(ObjectCacheBackend, TwoObjectsOverManyScripts)
     if (shape_pch_expected())
         EXPECT_GE(two, used / 2) << "scripts without two objects: " << fallbacks;
     std::fprintf(stderr, "two objects: %zu of %zu scripts; others: %s\n", two, used, fallbacks.c_str());
+#else
+    GTEST_SKIP() << "ELF only";
+#endif
+}
+
+// The object key has the split decision: an object that the split made does not serve a build with
+// HOT_SPLIT_UNIT_OBJECTS=0, and the first object serves again when the split is on.
+TEST(ObjectCacheBackend, SplitDecisionIsInTheObjectKey)
+{
+#if defined(__linux__)
+    EXPECT_NE(hot::split_object_tag_of(true), hot::split_object_tag_of(false));
+    EXPECT_NE(hot::split_object_tag_of(true).find("2obj-v"), std::string::npos); // the version is in the tag
+    if (hot::find_lld_of(HOT_CXX).empty())
+        GTEST_SKIP() << "no ld.lld";
+    CleanEnv env;
+    EnvGuard timing("HOT_TIMING", "1");
+    TestScratch scratch;
+    hot::ClangFilesOptions o = fmt_options(scratch, "k", {});
+    testing::internal::CaptureStderr();
+    run_edits(o, 1, 9);
+    const std::string on = testing::internal::GetCapturedStderr();
+    if (shape_pch_expected())
+        ASSERT_NE(on.find("hit, two objects"), std::string::npos) << on;
+    std::string off;
+    {
+        EnvGuard no_split("HOT_SPLIT_UNIT_OBJECTS", "0");
+        testing::internal::CaptureStderr();
+        run_edits(o, 9, 1);
+        off = testing::internal::GetCapturedStderr();
+    }
+    EXPECT_NE(off.find("cache miss"), std::string::npos) << off; // not the joined object of the first run
+    EXPECT_EQ(off.find("cache hit"), std::string::npos) << off;
+    EXPECT_EQ(off.find("link cached"), std::string::npos) << off;
+    testing::internal::CaptureStderr();
+    run_edits(o, 9, 1);
+    const std::string again = testing::internal::GetCapturedStderr();
+    EXPECT_TRUE(again.find("cache hit") != std::string::npos || again.find("link cached") != std::string::npos) << again;
+#else
+    GTEST_SKIP() << "ELF only";
+#endif
+}
+
+namespace
+{
+
+// A script with a class and a method of a given text, in a given directory of headers.
+hot::ClangFilesOptions header_options(TestScratch& scratch, const std::string& name, const std::string& header)
+{
+    hot::ClangFilesOptions o = fmt_options(scratch, name, {});
+    const fs::path dir = scratch.file(name + "_inc");
+    fs::create_directories(dir);
+    std::ofstream(dir / "counter.h") << header;
+    o.include_dirs.push_back(dir.string());
+    return o;
+}
+
+float run_counter_script(hot::ClangFilesBackend& backend, int edit)
+{
+    const std::string text = "using \"Actor.h\";\nusing \"counter.h\";\nclass Calc : Actor {\n    int first = next_id();\n"
+                             "    float result = 0.0;\n    override void Tick(float dt) {\n        int edit = "
+        + std::to_string(edit) + ";\n        this.result = (float)(next_id() - this.first + 100);\n    }\n}\n";
+    return load_and_run(backend, {"calc.hot", text, {}, "Calc"});
+}
+
+} // namespace
+
+// A header with a mutable static variable that a field initializer and a body both use: the two
+// objects would have two copies. The split is refused, the module works.
+TEST(ObjectCacheBackend, MutableHeaderStateInBothObjectsRefusesTheSplit)
+{
+#if defined(__linux__)
+    if (hot::find_lld_of(HOT_CXX).empty())
+        GTEST_SKIP() << "no ld.lld";
+    CleanEnv env;
+    EnvGuard timing("HOT_TIMING", "1");
+    TestScratch scratch;
+    hot::ClangFilesOptions o = header_options(scratch, "h",
+        "#pragma once\nstatic int g_counter = 0;\ninline int next_id() { return ++g_counter; }\n");
+    testing::internal::CaptureStderr();
+    {
+        hot::ClangFilesBackend backend(o);
+        for (int i = 1; i <= 7; ++i)
+            EXPECT_EQ(run_counter_script(backend, i), 101.0f); // first = 1 (or any), result = next - first + 100
+    }
+    const std::string log = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(log.find("hit, two objects"), std::string::npos) << log;
+#else
+    GTEST_SKIP() << "ELF only";
+#endif
+}
+
+// A class without fields: its tables are not state in two objects, the split works.
+TEST(ObjectCacheBackend, ClassWithoutFieldsStillSplits)
+{
+#if defined(__linux__)
+    if (hot::find_lld_of(HOT_CXX).empty())
+        GTEST_SKIP() << "no ld.lld";
+    CleanEnv env;
+    EnvGuard timing("HOT_TIMING", "1");
+    TestScratch scratch;
+    hot::ClangFilesOptions o = fmt_options(scratch, "n", {});
+    testing::internal::CaptureStderr();
+    {
+        hot::ClangFilesBackend backend(o);
+        for (int i = 1; i <= 9; ++i)
+        {
+            const std::string text = "using \"Actor.h\";\nclass Plain : Actor {\n    override void Tick(float dt) {\n"
+                                     "        int edit = " + std::to_string(i) + ";\n    }\n}\n";
+            const hot::LoadResult r = backend.load({"plain.hot", text, {}, "Plain"}, 1);
+            EXPECT_TRUE(static_cast<bool>(r)) << r.error;
+        }
+    }
+    const std::string log = testing::internal::GetCapturedStderr();
+    if (shape_pch_expected())
+        EXPECT_NE(log.find("hit, two objects"), std::string::npos) << log;
 #else
     GTEST_SKIP() << "ELF only";
 #endif

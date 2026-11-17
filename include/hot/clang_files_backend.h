@@ -475,6 +475,8 @@ bool fmt_header_only(const ClangFilesOptions& options);
 // The local data symbols of the unit state (GEN, hot_live, *_slot, *_fields, *_layout) of an ELF64 object. A
 // name in both objects of a two object unit is a second copy of the state. False: no ELF64 file.
 // Test access to the two object split.
+// The tag of the object key for the two object decision.
+std::string split_object_tag_of(bool two_objects);
 bool two_object_flags_ok_of(const std::vector<std::string>& args);
 std::string merged_object_problem_of(const std::string& path, const std::vector<std::string>& fns);
 std::string find_lld_of(const std::string& compiler);

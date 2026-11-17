@@ -2461,6 +2461,16 @@ const char* const kBodiesBanner = "// ------------------------------------------
 //    so R and T can call it from the other object.
 // Any text that does not have the expected form makes the split invalid: the unit then uses the
 // shape PCH with one object, or the whole unit.
+// The version of the split transform. It is in the object key and in the shape PCH key: a change of
+// the transform makes the old joined objects invalid.
+const char* const kSplitVersion = "hot-split=2obj-v1";
+
+// The tag in the object key: the version with the two object decision.
+std::string split_object_tag(bool two_objects)
+{
+    return two_objects ? std::string(kSplitVersion) : std::string("hot-split=off");
+}
+
 struct UnitSplit
 {
     std::string header; // the shape header: P with the macros
@@ -2672,17 +2682,13 @@ bool split_unit_into_two(const std::string& text, const std::string& name, UnitS
     return true;
 }
 
-// The names of the local data symbols of an ELF64 object that belong to the unit state. A symbol of
-// this kind in both objects is a second copy of the state: the split is wrong then. Not looked at:
-// "_ZZ" names (a variable inside a function: each object has its own, as in a unit without the split),
-// and other local variables (the constant tables and strings of P; each object builds its own, and
-// no code needs them to be the same object). False when the file is not an ELF64 file.
 struct ElfSym
 {
     std::string name;
     unsigned char bind = 0;
     unsigned char type = 0;
     bool defined = false;
+    bool writable = false; // defined in a section with SHF_WRITE (.data, .bss, .tdata, .tbss)
 };
 
 // All named symbols of the .symtab of an ELF64 file. False when the file is not an ELF64 file.
@@ -2725,6 +2731,7 @@ bool elf_symbols(const std::string& path, std::vector<ElfSym>& syms)
             e.bind = ELF64_ST_BIND(sym.st_info);
             e.type = ELF64_ST_TYPE(sym.st_info);
             e.defined = sym.st_shndx != SHN_UNDEF;
+            e.writable = e.defined && sym.st_shndx < eh.e_shnum && (section(sym.st_shndx).sh_flags & SHF_WRITE) != 0;
             syms.push_back(std::move(e));
         }
     }
@@ -2736,11 +2743,32 @@ bool elf_symbols(const std::string& path, std::vector<ElfSym>& syms)
 #endif
 }
 
-// The names of the local data symbols of an ELF64 object that belong to the unit state. A symbol of
-// this kind in both objects is a second copy of the state: the split is wrong then. Not looked at:
-// "_ZZ" names (a variable inside a function: each object has its own, as in a unit without the split),
-// and other local variables (the constant tables and strings of P; each object builds its own, and
-// no code needs them to be the same object). False when the file is not an ELF64 file.
+// The names of the local data symbols of an ELF64 object that are shared state of the unit. P is in
+// BOTH objects, and the record object runs user code too (the constructor of a shell and the field
+// initializers). A mutable local variable that both objects define is a second copy: before the
+// split the unit had one copy, so the split is wrong then. Looked at:
+//  - the unit state by name: GEN, hot_live, *_slot, *_fields, *_layout (also with "_ZL<n>");
+//  - each local object symbol in a writable section (SHF_WRITE): a static or anonymous-namespace
+//    variable of a header, a static local of a static function (_ZZ), its guard (_ZGV), a thread
+//    local variable.
+// Not looked at (harmless, because the copies are equal or they are only caches):
+//  - symbols in a read only section (constant tables and strings of P: equal copies, nothing writes);
+//  - "__site" symbols (FieldSite and FnSite caches: each object may fill its own, the epoch checks
+//    them) and the "__construct_keys" arrays (see is_cache_symbol);
+//  - weak and global symbols (inline variables and template statics: the linker keeps one);
+//  - local functions: a function that both objects define is a copy of the same code. The limit:
+//    the address of such a function can differ between the objects (no check of relocations).
+// False when the file is not an ELF64 file.
+bool is_cache_symbol(const std::string& name)
+{
+    // "__construct_keys": a "static const char* const" array that the translator writes with
+    // typeid(..).name(). The compiler fills it at load time (so it is in .bss), but it is const and
+    // each object gets the same strings: the record uses one copy, and no code writes to it.
+    const std::string keys = "__construct_keys";
+    return name.find("__site") != std::string::npos
+        || (name.size() >= keys.size() && name.compare(name.size() - keys.size(), keys.size(), keys) == 0);
+}
+
 bool unit_state_symbols(const std::string& path, std::set<std::string>& names)
 {
     std::vector<ElfSym> syms;
@@ -2748,7 +2776,7 @@ bool unit_state_symbols(const std::string& path, std::set<std::string>& names)
         return false;
     for (const ElfSym& e : syms)
     {
-        if (e.bind != STB_LOCAL || e.type != STT_OBJECT)
+        if (e.bind != STB_LOCAL || (e.type != STT_OBJECT && e.type != STT_TLS))
             continue;
         std::string base = e.name;
         if (starts_with(base, "_ZL"))
@@ -2762,7 +2790,8 @@ bool unit_state_symbols(const std::string& path, std::set<std::string>& names)
             const size_t n = std::strlen(suffix);
             return base.size() >= n && base.compare(base.size() - n, n, suffix) == 0;
         };
-        if (base == "GEN" || base == "hot_live" || ends("_slot") || ends("_fields") || ends("_layout"))
+        const bool by_name = base == "GEN" || base == "hot_live" || ends("_slot") || ends("_fields") || ends("_layout");
+        if (by_name || (e.writable && !is_cache_symbol(e.name)))
             names.insert(e.name);
     }
     return true;
@@ -2852,12 +2881,33 @@ std::string find_lld(const std::string& compiler)
 
 std::atomic<unsigned> g_running_compiles{0};
 
+// Gives the place back when it ends (also on an exception).
+struct PlaceGuard
+{
+    bool held = true;
+    ~PlaceGuard()
+    {
+        if (held)
+            --g_running_compiles;
+    }
+};
+
+// Joins a thread when it ends: a joinable thread that is destroyed ends the program.
+struct JoinGuard
+{
+    std::thread& thread;
+    ~JoinGuard()
+    {
+        if (thread.joinable())
+            thread.join();
+    }
+};
+
 int run_counted(const std::vector<std::string>& cmd, std::string& output)
 {
     ++g_running_compiles;
-    const int rc = run_command(cmd, output);
-    --g_running_compiles;
-    return rc;
+    PlaceGuard place;
+    return run_command(cmd, output);
 }
 
 // Takes one place for a compile that runs next to others. False: the job limit is reached.
@@ -2926,6 +2976,11 @@ void evict_shape_files(const std::string& dir_name, const std::string& unit_id, 
     }
 }
 
+std::string split_object_tag_of(bool two_objects)
+{
+    return split_object_tag(two_objects);
+}
+
 bool two_object_flags_ok_of(const std::vector<std::string>& args)
 {
     return two_object_flags_ok(args);
@@ -2987,6 +3042,8 @@ ClangFilesBackend::ShapeSplit ClangFilesBackend::plan_shape(const std::string& c
         material += a + "\n";
     // The header has "#line 1 <unit_cpp>" and the build uses the script dir: both belong to the key.
     material += "dir " + script_dir + "\nunit " + unit_cpp + "\n";
+    if (two_objects)
+        material += std::string(kSplitVersion) + "\n";
     s.own_fmt = fmt_header_only(opt_);
     s.key = shape_hash(material + (two_objects ? "two objects\n" + two.header : shape));
     // The file stem has the unit id: the eviction finds the files of one script by it.
@@ -3653,6 +3710,21 @@ bool ClangFilesBackend::compile_stage_once(BuildJob& job, bool keep_mirror)
         inputs.args = ObjectCache::normalize_args(
             compile_object_command(opt_, "@cpp@", "@obj@", "@dep@", script_dir), opt_.work_dir);
         inputs.compiler_id = compiler_id_;
+        // The split decision is in the key: an object that the two object split made (joined) must not
+        // serve a build without the split, and a new version of the transform makes new keys.
+        const bool hot_unit_key = job.source_name.size() > 4
+            && job.source_name.compare(job.source_name.size() - 4, 4, ".hot") == 0;
+        const char* two_env = std::getenv("HOT_SPLIT_UNIT_OBJECTS");
+        const std::string lld = find_lld(opt_.compiler);
+#if defined(__linux__)
+        const bool elf_target = elf64_linux_target(opt_.target_triple);
+#else
+        const bool elf_target = false;
+#endif
+        const bool two_allowed = hot_unit_key && elf_target && !lld.empty() && two_object_flags_ok(inputs.args)
+            && !(two_env && std::strcmp(two_env, "0") == 0);
+        if (hot_unit_key)
+            inputs.args.push_back(split_object_tag(two_allowed));
         if (opt_.fs)
             inputs.virtual_files = tr.virtual_files;
         // A sum of the path hashes: the order of the paths is different after a translate cache hit.
@@ -3775,14 +3847,6 @@ bool ClangFilesBackend::compile_stage_once(BuildJob& job, bool keep_mirror)
                         stable_name = "@work@" + stable_name.substr(work_prefix.size());
                     // Two objects (design D): a compile of the bodies and a compile of the record and the
                     // entry, in parallel, joined by "ld.lld -r". HOT_SPLIT_UNIT_OBJECTS=0 turns it off.
-                    const char* two_env = std::getenv("HOT_SPLIT_UNIT_OBJECTS");
-                    const std::string lld = find_lld(opt_.compiler);
-                    const bool want_two = is_hot_unit && !lld.empty() && two_object_flags_ok(inputs.args) && !(two_env && std::strcmp(two_env, "0") == 0);
-#if !defined(__linux__)
-                    const bool two_allowed = false;
-#else
-                    const bool two_allowed = want_two && elf64_linux_target(opt_.target_triple);
-#endif
                     ShapeSplit shape = plan_shape(tr.cpp, stable_name, pch->pch, pch->key.hex(), inputs.args,
                         is_hot_unit, script_dir, two_allowed);
                     if (shape.key.empty() && two_allowed)
@@ -3790,6 +3854,7 @@ bool ClangFilesBackend::compile_stage_once(BuildJob& job, bool keep_mirror)
                             script_dir, false);
                     bool shape_hit = false;
                     bool split_failed = false;
+                    bool split_io_error = false; // a file write failed: no marker, the next build tries again
                     std::string split_out;
                     shape_deps.clear();
                     const fs::path shape_pch_path(shape.pch);
@@ -3814,6 +3879,7 @@ bool ClangFilesBackend::compile_stage_once(BuildJob& job, bool keep_mirror)
                             cmd2 = with_pch(std::move(cmd2), shape.pch);
                             std::string out_a, out_b;
                             int rc_a = 1, rc_b = 1;
+                            bool io_error = false;
                             TempFiles temp{{obj_main, obj_shape, dep_shape, second_path}};
                             if (write_text(second_path, shape.second_text))
                             {
@@ -3825,8 +3891,8 @@ bool ClangFilesBackend::compile_stage_once(BuildJob& job, bool keep_mirror)
                                     try
                                     {
                                         second = std::thread([&] {
+                                            PlaceGuard place; // the place of the reservation
                                             rc_b = run_command(cmd2, out_b);
-                                            --g_running_compiles;
                                         });
                                     }
                                     catch (const std::system_error&)
@@ -3834,13 +3900,16 @@ bool ClangFilesBackend::compile_stage_once(BuildJob& job, bool keep_mirror)
                                         --g_running_compiles; // no thread: the compile runs here
                                     }
                                 }
+                                JoinGuard join_second{second};
                                 rc_a = run_counted(cmd, out_a);
                                 if (second.joinable())
                                     second.join();
                                 else
                                     rc_b = run_counted(cmd2, out_b);
                             }
-                            std::string why;
+                            else
+                                io_error = true;
+                            std::string why = io_error ? "cannot write the second file" : std::string();
                             rc = rc_a != 0 ? rc_a : rc_b;
                             if (rc == 0)
                             {
@@ -3870,6 +3939,7 @@ bool ClangFilesBackend::compile_stage_once(BuildJob& job, bool keep_mirror)
                                     write_text(dep, dep_a + "\n" + dep_b);
                                 }
                             }
+                            split_io_error = io_error;
                             split_out = out_a + out_b + why;
                             output = split_out;
                             shape_hit = rc == 0;
@@ -3884,6 +3954,9 @@ bool ClangFilesBackend::compile_stage_once(BuildJob& job, bool keep_mirror)
                             }
                             else
                             {
+                                if (timing)
+                                    std::fprintf(stderr, "hot: %s two objects refused: %.300s\n", unit.c_str(),
+                                        split_out.c_str());
                                 split_failed = true;
                                 fs::remove(tmp, ec);
                                 fs::remove(dep, ec);
@@ -3932,10 +4005,12 @@ bool ClangFilesBackend::compile_stage_once(BuildJob& job, bool keep_mirror)
                             fs::remove(shape_pch_path, ec);
                             fs::remove(fs::path(shape.pch).replace_extension(".h"), ec);
                         }
-                        else
+                        else if (!split_io_error)
                             write_text(fs::path(shape.pch).replace_extension(".nosplit").string(), split_out);
                         std::fprintf(stderr, "hot: %s does not compile with its shape PCH; the whole unit is used\n",
                             unit.c_str());
+                        if (timing)
+                            std::fprintf(stderr, "hot: split output: %.600s\n", split_out.c_str());
                     }
                     used_pch = rc == 0;
                     if (rc == 0 && !shape_hit && !shape.key.empty() && !fs::exists(shape.pch, ec))
