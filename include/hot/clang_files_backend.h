@@ -55,6 +55,17 @@ struct ClangFilesOptions
     // cache between backends.
     std::shared_ptr<hotc::TranslatorSession> session;
     std::vector<std::string> extra_flags; // added to the compile command
+    // Own fmt code in each unit (-DFMT_HEADER_ONLY). The compile uses the fmt code of the host only
+    // when the extra flags have -DFMT_SHARED, the target is ELF, HOT_FMT_HEADER_ONLY is not "1" and
+    // this flag is false. The backend sets the flag (it is shared by the copies of the options) after
+    // a module had an fmt symbol that the host does not export: it compiles again with the own code.
+    std::shared_ptr<std::atomic<bool>> fmt_header_only;
+    // Tells if the linked module at the path needs an fmt symbol that the process does not export
+    // (the name goes to the second argument). Empty: the check reads the dynamic symbols of the
+    // ELF file. A test sets it.
+    std::function<bool(const std::string&, std::string*)> missing_fmt_symbol;
+    // Tells if the host exports the fmt code. Empty: host_exports_fmt. A test sets it.
+    std::function<bool()> host_fmt_probe;
     // False: the compile has no "-g". The compile is faster. The default backend sets this from
     // the environment variable HOT_DEBUG_INFO (see default_backend.cpp).
     bool debug_info = true;
@@ -107,6 +118,13 @@ struct ClangFilesOptions
     // A MinGW triple adds the libstdc++ headers of the sysroot (hot/command_line.h).
     std::string target_triple;
     std::string sysroot; // the sysroot of the modules ("--sysroot="); empty: none
+    // The linker flag of the module link, for example "-fuse-ld=lld". Empty: the default linker of
+    // the compiler. The backend sets it for an ELF target when the compiler finds lld. The probe
+    // runs with the object cache only (the lld version is part of the compiler id of the cache).
+    // A backend with no cache links with the default linker. A failed lld link runs again with the
+    // default linker.
+    // The environment variable HOT_LINKER=default keeps the default linker.
+    std::string linker_flag;
 };
 
 class ClangFilesBackend : public Backend
@@ -211,6 +229,13 @@ private:
         std::string mirror_dir;
         std::string mirror_root;
         std::chrono::steady_clock::time_point t0, t1;
+        // HOT_TIMING: the end of each part of the translate and of the compile, in order.
+        std::vector<std::pair<const char*, std::chrono::steady_clock::time_point>> marks;
+        void mark(const char* name)
+        {
+            if (timing)
+                marks.emplace_back(name, std::chrono::steady_clock::now());
+        }
         std::filesystem::file_time_type translate_start;
         std::string built_object; // the object file of the compile, for the compile database
         std::optional<ObjectCache::Key> cached_module;
@@ -238,6 +263,8 @@ private:
     // threads for different jobs. It reads only "opt_", "cache_", "pch_cache_", "compiler_id_",
     // "link_cache_" and the PCH state under "pch_mutex_".
     bool compile_stage(BuildJob& job);
+    // The compile and the link of one job. "keep_mirror" true: the mirror stays for a second call.
+    bool compile_stage_once(BuildJob& job, bool keep_mirror);
     // Stage 3: records the compile command of the job. With "defer" the file write waits for
     // flush_compile_commands. The caller holds "mutex_".
     void record_stage(const BuildJob& job, bool defer = false);
@@ -291,6 +318,8 @@ private:
         uint64_t extra_epoch = 0;
         // Why the plan has no shared PCH (for HOT_TIMING). Empty when it has one.
         std::string why;
+        // The fmt choice at plan time (the key has its flags). The build uses it, not a later value.
+        bool own_fmt = false;
     };
     // The PCH plan for the translated text. No value: the compile does not use a PCH.
     // "mirror_files": the compile reads mirror files of the host file system.
@@ -338,6 +367,36 @@ private:
     void trim_pch();
     // The path of a marker file of the PCH entry ("seen" or "bad").
     std::string pch_marker(const ObjectCache::Key& key, const char* ext) const;
+
+    // The shape PCH of a .hot unit. The text of a unit before its "function bodies" banner is the
+    // shape: includes, types, declarations and tables. It stays the same when an edit changes only a
+    // body. A PCH of the shape (chained on the PCH of the includes) lets the compile of the rest
+    // skip the parse and the template instances of the shape. Files: "<cache_dir>/pch/shape/<key>.pch".
+    // A miss compiles the whole unit and builds the shape PCH in "shape_thread_" after the compile.
+    // The key has the compile arguments, the base PCH (its path, size and time) and the shape text.
+    // A failure of a split compile makes "<key>.nosplit": the key uses the whole unit for one day.
+    // "shape_mutex_" guards "shape_thread_" and "shape_building_". One shape build runs at a time.
+    struct ShapeSplit
+    {
+        std::string key; // empty: no split for this unit
+        std::string unit_id; // for the files of one script
+        bool own_fmt = false; // the fmt choice at plan time
+        std::string pch; // the shape PCH file (exists on a hit)
+        std::string header_text; // the shape text with "#line 1 <unit>"
+        std::string main_text; // the rest with "#line <N> <unit>"
+        // Not empty: the split has two objects. The text is the record and the entry (R and T), a second
+        // file for the compile with the same PCH. "main_text" then has only the function bodies.
+        std::string second_text;
+        std::vector<std::string> fns; // the functions of P with external linkage (two objects)
+    };
+    ShapeSplit plan_shape(const std::string& cpp_text, const std::string& unit_cpp, const std::string& base_pch,
+        const std::string& base_key, const std::vector<std::string>& args, bool is_hot,
+        const std::string& script_dir, bool two_objects) const;
+    void start_shape_build(const ShapeSplit& split, const std::string& base_pch, const std::string& script_dir,
+        const std::string& unit, bool timing);
+    std::mutex shape_mutex_;
+    std::thread shape_thread_;
+    bool shape_building_ = false;
 
     ClangFilesOptions opt_;
     std::unique_ptr<ObjectCache> cache_; // null: no cache
@@ -407,6 +466,32 @@ private:
 // command then adds "-I<mirror_root><dir>" before each "-I<dir>", and one for "script_dir" (the
 // directory of the script; empty: none). "mirror_root" empty: "<work_dir>/vfs/". A load that
 // compiles with the root of its own job gives the same arguments, but for this root.
+// True when the compile of the options uses its own fmt code (-DFMT_HEADER_ONLY): see the comment of
+// "fmt_header_only" in ClangFilesOptions.
+bool fmt_header_only(const ClangFilesOptions& options);
+// Removes the old files of the shape PCH directory "dir": keeps the "keep_unit" newest PCH of the
+// script with the id "unit_id" and the "keep_all" newest in all (by the time of the last use).
+// Removes markers older than a day and temp files older than an hour.
+// The local data symbols of the unit state (GEN, hot_live, *_slot, *_fields, *_layout) of an ELF64 object. A
+// name in both objects of a two object unit is a second copy of the state. False: no ELF64 file.
+// Test access to the two object split.
+// The tag of the object key for the two object decision.
+std::string split_object_tag_of(bool two_objects);
+bool two_object_flags_ok_of(const std::vector<std::string>& args);
+std::string merged_object_problem_of(const std::string& path, const std::vector<std::string>& fns);
+std::string find_lld_of(const std::string& compiler);
+bool split_unit_for_test(const std::string& text, const std::string& name, std::string& header, std::string& main,
+    std::string& shape, std::vector<std::string>& fns);
+bool unit_state_symbols_of(const std::string& object_path, std::set<std::string>& names);
+void evict_shape_files(const std::string& dir, const std::string& unit_id, size_t keep_unit, size_t keep_all);
+// True when the ELF module at "path" has an undefined fmt symbol that dlsym does not find. False on
+// other targets.
+bool has_missing_fmt_symbol(const std::string& path, std::string* first_name = nullptr,
+    const std::string& host_library = std::string());
+// True when the host exports the fmt code (a fixed fmt symbol, in the global scope or in the handle
+// of "host_library" when that library is loaded). The backend asks it once, before the first compile.
+bool host_exports_fmt(const std::string& host_library);
+
 std::vector<std::string> compile_object_command(const ClangFilesOptions& options, const std::string& cpp_path,
     const std::string& obj_path, const std::string& depfile_path, const std::string& script_dir = std::string(),
     const std::string& mirror_root = std::string());

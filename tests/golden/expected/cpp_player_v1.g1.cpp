@@ -11,7 +11,16 @@
 
 #include "hot/runtime.h"
 
-#line 15 "cpp_player_v1.cpp.cpp"
+#line 3 "cpp_player_v1.cpp"
+#include "Actor.h"
+#line 4 "cpp_player_v1.cpp"
+#include "EngineMath.h"
+#line 6 "cpp_player_v1.cpp"
+#include <cstdio>
+#line 7 "cpp_player_v1.cpp"
+#include <string>
+#line 23 "cpp_player_v1.cpp.cpp"
+#line 24 "cpp_player_v1.cpp.cpp"
 
 // The generation of this module. The register function sets it from the registry.
 [[maybe_unused]] static uint32_t GEN = 0;
@@ -23,15 +32,6 @@ static void* HotModule_slot = nullptr;
 [[maybe_unused]] HOT_HIDDEN static HotModule* hot_mod() { return static_cast<HotModule*>(HotModule_slot); }
 struct Player_Shell;
 using Player = Player_Shell;
-#line 3 "cpp_player_v1.cpp"
-#include "Actor.h"
-#line 4 "cpp_player_v1.cpp"
-#include "EngineMath.h"
-#line 6 "cpp_player_v1.cpp"
-#include <cstdio>
-#line 7 "cpp_player_v1.cpp"
-#include <string>
-#line 35 "cpp_player_v1.cpp.cpp"
 
 #line 9 "cpp_player_v1.cpp"
 enum class Mode { Idle, Run };

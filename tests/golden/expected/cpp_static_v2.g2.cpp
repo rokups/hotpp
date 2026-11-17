@@ -11,7 +11,10 @@
 
 #include "hot/runtime.h"
 
-#line 15 "cpp_static_v2.cpp.cpp"
+#line 4 "cpp_static_v2.cpp"
+#include "Actor.h"
+#line 17 "cpp_static_v2.cpp.cpp"
+#line 18 "cpp_static_v2.cpp.cpp"
 
 // The generation of this module. The register function sets it from the registry.
 [[maybe_unused]] static uint32_t GEN = 0;
@@ -23,9 +26,6 @@ static void* HotModule_slot = nullptr;
 [[maybe_unused]] HOT_HIDDEN static HotModule* hot_mod() { return static_cast<HotModule*>(HotModule_slot); }
 struct Counter_Shell;
 using Counter = Counter_Shell;
-#line 4 "cpp_static_v2.cpp"
-#include "Actor.h"
-#line 29 "cpp_static_v2.cpp.cpp"
 
 #line 7 "cpp_static_v2.cpp"
 int tally();

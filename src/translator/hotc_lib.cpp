@@ -65,6 +65,7 @@
 #include <memory>
 #include <mutex>
 #include <set>
+#include <cstring>
 #include <sstream>
 #include <string>
 #include <tuple>
@@ -3629,6 +3630,9 @@ struct TranslatorSession::Impl
     std::mutex mutex;
     std::map<std::string, std::shared_ptr<Entry>> entries;
     std::atomic<int> parses{0};
+    // The libclang units of the .cpp scripts, kept for the reparse. See hotc::TuCache for the
+    // thread rule: a parse takes the unit out, so one thread at a time uses a unit.
+    hotc::TuCache tu_cache;
 };
 
 TranslatorSession::TranslatorSession()
@@ -3642,6 +3646,21 @@ int TranslatorSession::parse_count() const
     return impl_->parses.load();
 }
 
+void TranslatorSession::set_tu_cache_limit(size_t n)
+{
+    impl_->tu_cache.set_max_units(n);
+}
+
+void TranslatorSession::set_tu_cache_idle_ms(long long ms)
+{
+    impl_->tu_cache.set_idle_limit(std::chrono::milliseconds(ms));
+}
+
+size_t TranslatorSession::tu_cache_size() const
+{
+    return impl_->tu_cache.size();
+}
+
 void TranslatorSession::clear()
 {
     std::map<std::string, std::shared_ptr<Impl::Entry>> old;
@@ -3649,6 +3668,7 @@ void TranslatorSession::clear()
         std::lock_guard<std::mutex> lock(impl_->mutex);
         old.swap(impl_->entries);
     }
+    impl_->tu_cache.clear();
     // A parse in progress keeps its entry alive. The old entries die here, outside the lock.
 }
 
@@ -3976,6 +3996,15 @@ std::vector<std::string> clang_args(const Options& opt)
             break;
         }
     }
+    // The preamble of libclang is a PCH. With this flag it has the template instances of its
+    // headers, so a reparse of a kept unit does not make them again (about 550 ms less on a large
+    // script). HOT_PCH_INSTANTIATE=0 turns it off.
+    const char* instantiate = std::getenv("HOT_PCH_INSTANTIATE");
+    if (!instantiate || std::strcmp(instantiate, "0") != 0)
+    {
+        args.push_back("-Xclang");
+        args.push_back("-fpch-instantiate-templates");
+    }
     return args;
 }
 
@@ -4148,7 +4177,7 @@ void translate_impl(
             at = eol + 1;
         }
         sc = hotc::parse_cpp_script(in.script_text, opt.input, clang_args(opt), map, g_diag, res.virtual_files,
-            opt.aot_optimized);
+            opt.aot_optimized, &session.tu_cache);
         if (!g_diag.items.empty())
             throw TranslateAbort{};
         for (const Import& im : sc.imports)
@@ -6056,6 +6085,23 @@ void translate_impl(
         o.w(shell_line(im.line, im.pos));
         o.w("#include " + im.target() + "\n");
     }
+    // A ".cpp" script: the first run of includes of the file goes here, before the generated
+    // declarations. The text up to the last include is then the same for each edit of a body, so
+    // the files backend can make a PCH of it. write_texts skips these chunks.
+    size_t cpp_lead_includes = 0;
+    if (sc.is_cpp)
+    {
+        for (const hotc::ast::Script::Chunk& ch : sc.chunks)
+        {
+            if (ch.kind != hotc::ast::Script::Chunk::Kind::Text || ch.text.rfind("#include", 0) != 0)
+                break;
+            o.w("#line " + std::to_string(ch.line) + " \"" + esc(file_at(ch.pos)) + "\"\n");
+            o.w(ch.text + "\n");
+            ++cpp_lead_includes;
+        }
+        if (cpp_lead_includes)
+            reset();
+    }
     // "using ns;" is "using namespace ns;" at file scope, after all the includes. The generated
     // classes are at file scope too (a ".cpp" script has its own text), so the names are visible there.
     for (const auto& u : sc.using_ns)
@@ -7324,7 +7370,7 @@ void translate_impl(
     auto write_texts = [&](size_t i)
     {
         auto include = [&](size_t j) { return j < texts[i].size() && texts[i][j]->text.rfind("#include", 0) == 0; };
-        for (size_t j = 0; j < texts[i].size(); ++j)
+        for (size_t j = i == 0 ? cpp_lead_includes : 0; j < texts[i].size(); ++j)
         {
             const hotc::ast::Script::Chunk* ch = texts[i][j];
             if (include(j))
@@ -10974,6 +11020,7 @@ void register_llvm_targets()
 TranslateResult translate(const TranslateOptions& in)
 {
     TranslatorSession session;
+    session.set_tu_cache_limit(0); // one call: no preamble and no kept unit
     return translate(in, session);
 }
 
@@ -11128,6 +11175,7 @@ static std::string normalize_import_path(const std::string& path)
 AnalyzeResult analyze(const std::string& text, const TranslateOptions& options)
 {
     TranslatorSession session;
+    session.set_tu_cache_limit(0);
     return analyze(text, options, session);
 }
 
@@ -11575,6 +11623,7 @@ std::vector<VirtualMethod> virtual_methods(const std::string& text, const Transl
 AnalyzeResult analyze_cpp(const std::string& text, const std::string& path, const TranslateOptions& options)
 {
     TranslatorSession session;
+    session.set_tu_cache_limit(0);
     return analyze_cpp(text, path, options, session);
 }
 

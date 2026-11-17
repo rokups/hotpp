@@ -11,7 +11,10 @@
 
 #include "hot/runtime.h"
 
-#line 15 "cpp_outofclass_v1.cpp.cpp"
+#line 3 "cpp_outofclass_v1.cpp"
+#include "Actor.h"
+#line 17 "cpp_outofclass_v1.cpp.cpp"
+#line 18 "cpp_outofclass_v1.cpp.cpp"
 
 // The generation of this module. The register function sets it from the registry.
 [[maybe_unused]] static uint32_t GEN = 0;
@@ -23,9 +26,6 @@ static void* HotModule_slot = nullptr;
 [[maybe_unused]] HOT_HIDDEN static HotModule* hot_mod() { return static_cast<HotModule*>(HotModule_slot); }
 struct Fighter_Shell;
 using Fighter = Fighter_Shell;
-#line 3 "cpp_outofclass_v1.cpp"
-#include "Actor.h"
-#line 29 "cpp_outofclass_v1.cpp.cpp"
 
 // ---------------------------------------------------------------- struct HotModule
 struct HotModule {

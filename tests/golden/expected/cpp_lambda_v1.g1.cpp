@@ -11,7 +11,12 @@
 
 #include "hot/runtime.h"
 
-#line 15 "cpp_lambda_v1.cpp.cpp"
+#line 3 "cpp_lambda_v1.cpp"
+#include "Actor.h"
+#line 5 "cpp_lambda_v1.cpp"
+#include <functional>
+#line 19 "cpp_lambda_v1.cpp.cpp"
+#line 20 "cpp_lambda_v1.cpp.cpp"
 
 // The generation of this module. The register function sets it from the registry.
 [[maybe_unused]] static uint32_t GEN = 0;
@@ -23,11 +28,6 @@ static void* HotModule_slot = nullptr;
 [[maybe_unused]] HOT_HIDDEN static HotModule* hot_mod() { return static_cast<HotModule*>(HotModule_slot); }
 struct Lamp_Shell;
 using Lamp = Lamp_Shell;
-#line 3 "cpp_lambda_v1.cpp"
-#include "Actor.h"
-#line 5 "cpp_lambda_v1.cpp"
-#include <functional>
-#line 31 "cpp_lambda_v1.cpp.cpp"
 
 // ---------------------------------------------------------------- struct HotModule
 struct HotModule {

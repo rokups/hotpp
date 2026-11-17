@@ -5,6 +5,7 @@
 #include "hot/translate_cache.h"
 
 #include "cache_io.h"
+#include "parallel_probe.h"
 
 #include <algorithm>
 #include <chrono>
@@ -1008,10 +1009,22 @@ bool TranslateCache::store(const hotc::TranslateOptions& o, const hotc::Translat
         if (r.parse_start_ns != 0)
             start_ns = std::min(start_ns, r.parse_start_ns);
         const int64_t newest = start_ns - int64_t(2000000000);
+        // The stat calls of a few thousand headers run in parallel. The loop below reads the results.
+        struct Stamp
+        {
+            int64_t mtime = 0, size = 0;
+            bool ok = false;
+        };
+        std::vector<Stamp> stamps(r.dependencies.size());
+        detail::parallel_for(stamps.size(), [&](size_t i) {
+            stamps[i].ok = disk_stamp(r.dependencies[i], stamps[i].mtime, stamps[i].size);
+        });
         man.key("deps");
         man.begin('[');
+        size_t dep_index = 0;
         for (const std::string& d : r.dependencies)
         {
+            const Stamp stamp = stamps[dep_index++];
             man.begin('{');
             man.field("path", d);
             if (import_files.count(d))
@@ -1025,8 +1038,8 @@ bool TranslateCache::store(const hotc::TranslateOptions& o, const hotc::Translat
                     error = "the host file '" + d + "' is not in the virtual files";
                     return false;
                 }
-                int64_t mtime = 0, size = 0;
-                if (!disk_stamp(d, mtime, size))
+                const int64_t mtime = stamp.mtime, size = stamp.size;
+                if (!stamp.ok)
                 {
                     error = "cannot stat '" + d + "'";
                     return false;
@@ -1045,12 +1058,13 @@ bool TranslateCache::store(const hotc::TranslateOptions& o, const hotc::Translat
         man.end(']');
         // A file at a shadow path now hides a header of the parse.
         write_shadows(man, r.shadow_paths);
-        for (const std::string& s : r.shadow_paths)
-            if (hotc::shadow_exists(o.fs.get(), s))
-            {
-                error = "the file '" + s + "' hides a header of the parse";
-                return false;
-            }
+        const size_t hidden = detail::find_any_parallel(r.shadow_paths,
+            [&](const std::string& s) { return hotc::shadow_exists(o.fs.get(), s); });
+        if (hidden != r.shadow_paths.size())
+        {
+            error = "the file '" + r.shadow_paths[hidden] + "' hides a header of the parse";
+            return false;
+        }
 
         Writer data;
         data.begin('{');

@@ -11,7 +11,12 @@
 
 #include "hot/runtime.h"
 
-#line 15 "cpp_operators_v2.cpp.cpp"
+#line 4 "cpp_operators_v2.cpp"
+#include "Actor.h"
+#line 6 "cpp_operators_v2.cpp"
+#include <cstdio>
+#line 19 "cpp_operators_v2.cpp.cpp"
+#line 20 "cpp_operators_v2.cpp.cpp"
 
 // The generation of this module. The register function sets it from the registry.
 [[maybe_unused]] static uint32_t GEN = 0;
@@ -25,11 +30,6 @@ struct Vec_Shell;
 using Vec = Vec_Shell;
 struct Driver_Shell;
 using Driver = Driver_Shell;
-#line 4 "cpp_operators_v2.cpp"
-#include "Actor.h"
-#line 6 "cpp_operators_v2.cpp"
-#include <cstdio>
-#line 33 "cpp_operators_v2.cpp.cpp"
 
 // ---------------------------------------------------------------- class Vec
 // Slot numbers. Native virtuals come first, in the order of Actor.

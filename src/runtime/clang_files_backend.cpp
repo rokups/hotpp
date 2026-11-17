@@ -3,6 +3,7 @@
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
 #include "hot/clang_files_backend.h"
+#include "parallel_probe.h"
 
 #include "hot/config.h"
 #include "hot/scratch.h"
@@ -10,8 +11,17 @@
 #include "hot/paths.h"
 #include "hot/runtime/process.h"
 
+#if defined(__linux__)
+#include <dlfcn.h>
+#include <elf.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 #include <algorithm>
 #include <atomic>
+#include <map>
+#include <cctype>
 #include <cerrno>
 #include <chrono>
 #include <cstdio>
@@ -19,6 +29,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <optional>
 #include <random>
 #include <sstream>
@@ -297,8 +308,33 @@ bool pch_enabled_by_env()
     return !(v && std::strcmp(v, "0") == 0);
 }
 
+// A line that sets a macro of the script mode (a ".cpp" script or optimized AOT code). The unit has
+// the line before its includes, so the PCH must have it too. No other "#define" line is accepted.
+bool is_script_macro_line(const std::string& line)
+{
+    return line == "#define __HOTSCRIPT__ 1" || line == "#define HOT_AOT_OPTIMIZED 1";
+}
+
+// True when the PCH text has a script macro line. Such a unit uses only its exact PCH: the shared
+// PCH of the other units has no such macro.
+bool has_script_macros(const std::string& prefix)
+{
+    for (size_t pos = 0; pos < prefix.size();)
+    {
+        const size_t nl = prefix.find('\n', pos);
+        const size_t next = nl == std::string::npos ? prefix.size() : nl + 1;
+        std::string line = prefix.substr(pos, next - pos);
+        while (!line.empty() && (line.back() == '\n' || line.back() == '\r'))
+            line.pop_back();
+        if (is_script_macro_line(line))
+            return true;
+        pos = next;
+    }
+    return false;
+}
+
 // The start of the translated text up to the last "#include" line of the start. The start has
-// only "#include" and "#line" lines, empty lines and "//" comments. The PCH has this exact
+// only "#include" and "#line" lines, the script macro lines, empty lines and "//" comments. The PCH has this exact
 // text, so a compile with the exact PCH of the unit sees the same declarations and macros as a
 // compile without it. The shared PCH has more: it adds the declarations and macros of the headers
 // of other units. The include lines in the .cpp find their include guards. Empty: no include.
@@ -315,7 +351,8 @@ std::string include_prefix(const std::string& cpp)
             line.pop_back();
         if (line.rfind("#include", 0) == 0)
             end = next;
-        else if (!(line.empty() || line.rfind("//", 0) == 0 || line.rfind("#line", 0) == 0))
+        else if (!(line.empty() || line.rfind("//", 0) == 0 || line.rfind("#line", 0) == 0
+                     || is_script_macro_line(line)))
             break;
         pos = next;
     }
@@ -337,7 +374,10 @@ std::string pch_header_text(const std::string& prefix)
     {
         const size_t nl = prefix.find('\n', pos);
         const size_t next = nl == std::string::npos ? prefix.size() : nl + 1;
-        if (prefix.compare(pos, 8, "#include") == 0)
+        std::string line = prefix.substr(pos, next - pos);
+        while (!line.empty() && (line.back() == '\n' || line.back() == '\r'))
+            line.pop_back();
+        if (prefix.compare(pos, 8, "#include") == 0 || is_script_macro_line(line))
         {
             r.append(prefix, pos, next - pos);
             if (r.back() != '\n')
@@ -359,6 +399,15 @@ std::vector<std::string> pch_build_command(const ClangFilesOptions& opt, const s
     // The command ends with "<input> -o <output>".
     cmd.insert(cmd.end() - 3, {"-fpch-instantiate-templates", "-x", "c++-header"});
     return cmd;
+}
+
+// The options with a fixed fmt choice: a PCH build uses the choice of its plan, also when an other
+// job turned the own fmt copy on after the plan.
+ClangFilesOptions with_fmt_choice(const ClangFilesOptions& opt, bool own_fmt)
+{
+    ClangFilesOptions o = opt;
+    o.fmt_header_only = std::make_shared<std::atomic<bool>>(own_fmt);
+    return o;
 }
 
 // The compile command of the unit with the PCH.
@@ -519,6 +568,17 @@ ClangFilesBackend::ClangFilesBackend(ClangFilesOptions options)
 {
     if (!opt_.session)
         opt_.session = std::make_shared<hotc::TranslatorSession>();
+    if (!opt_.fmt_header_only)
+        opt_.fmt_header_only = std::make_shared<std::atomic<bool>>(false);
+    // The decision before the first compile: the flags ask for the fmt code of the host, but the host
+    // does not export it (a host library loaded RTLD_LOCAL is also checked). The own copy is on then.
+    // The check of the module after the link stays as the safety net.
+    if (!fmt_header_only(opt_) && !(opt_.host_fmt_probe ? opt_.host_fmt_probe() : host_exports_fmt(opt_.host_import_library)))
+    {
+        opt_.fmt_header_only->store(true);
+        if (std::getenv("HOT_TIMING"))
+            std::fprintf(stderr, "hot: the host does not export the fmt code; the units use their own fmt code\n");
+    }
     if (opt_.slots_file.empty())
         opt_.slots_file = opt_.work_dir + "/slots.txt";
     if (!opt_.cache_dir.empty() && ObjectCache::enabled_by_env())
@@ -551,6 +611,15 @@ ClangFilesBackend::ClangFilesBackend(ClangFilesOptions options)
 ClangFilesBackend::~ClangFilesBackend()
 {
     wait_for_pch(); // the PCH thread uses the backend and the work directory
+    {
+        std::thread t;
+        {
+            std::lock_guard<std::mutex> lock(shape_mutex_);
+            t = std::move(shape_thread_);
+        }
+        if (t.joinable())
+            t.join(); // the shape thread uses the backend and the cache directory
+    }
     {
         // A batch that never finished leaves entries that are not in the file.
         std::lock_guard<std::mutex> lock(mutex_);
@@ -613,6 +682,164 @@ std::vector<std::string> mingw_flags(const ClangFilesOptions& opt, bool compile)
 
 } // namespace
 
+// The script uses its own copy of the fmt code (-DFMT_HEADER_ONLY)? Not when the host flags have
+// -DFMT_SHARED: the host has the fmt code and exports it (libUrho3D.so does). The own copy costs
+// about 300 ms of the compile time of a unit. Only ELF: other targets keep the own copy (the host
+// import library of Windows must carry the fmt symbols; the loader of Mach-O has no check here).
+// HOT_FMT_HEADER_ONLY=1 forces the own copy. A backend that found a missing fmt symbol sets the
+// shared flag "opt.fmt_header_only": the own copy is on from then.
+// True for a Linux target with 64 bit ELF files (the check of the fmt symbols reads only these).
+static bool elf64_linux_target(const std::string& triple)
+{
+    if (triple.empty())
+        return sizeof(void*) == 8;
+    if (triple.find("linux") == std::string::npos)
+        return false;
+    for (const char* narrow : {"i386", "i486", "i586", "i686", "arm", "thumb", "mips-", "mipsel", "powerpc-", "riscv32"})
+        if (triple.rfind(narrow, 0) == 0)
+            return false;
+    return true;
+}
+
+bool fmt_header_only(const ClangFilesOptions& opt)
+{
+#if defined(__linux__)
+    if (const char* v = std::getenv("HOT_FMT_HEADER_ONLY"); v && std::strcmp(v, "1") == 0)
+        return true;
+    if (opt.fmt_header_only && opt.fmt_header_only->load())
+        return true;
+    // The own fmt copy stays for a target that the check of the fmt symbols cannot read.
+    if (sizeof(void*) != 8 || !elf64_linux_target(opt.target_triple))
+        return true;
+    for (const std::string& f : opt.extra_flags)
+        if (f == "-DFMT_SHARED" || f.compare(0, 13, "-DFMT_SHARED=") == 0)
+            return false;
+    return true;
+#else
+    (void)opt;
+    return true;
+#endif
+}
+
+#if defined(__linux__)
+namespace
+{
+
+// A symbol of the host: the global scope, or the handle of the host library when it is already
+// loaded (a host that loaded it with RTLD_LOCAL, for example a .NET P/Invoke).
+bool host_has_symbol(const char* name, const std::string& host_library)
+{
+    if (dlsym(RTLD_DEFAULT, name))
+        return true;
+    if (!host_library.empty())
+        if (void* handle = dlopen(host_library.c_str(), RTLD_LAZY | RTLD_NOLOAD))
+        {
+            const bool found = dlsym(handle, name) != nullptr;
+            dlclose(handle);
+            return found;
+        }
+    return false;
+}
+
+// Reads "len" bytes at "off" of the file. False when the range is outside the file.
+bool read_range(int fd, uint64_t file_size, uint64_t off, uint64_t len, void* out)
+{
+    if (off > file_size || len > file_size - off)
+        return false;
+    char* dst = static_cast<char*>(out);
+    while (len > 0)
+    {
+        const ssize_t n = pread(fd, dst, static_cast<size_t>(len), static_cast<off_t>(off));
+        if (n <= 0)
+            return false;
+        dst += n;
+        off += static_cast<uint64_t>(n);
+        len -= static_cast<uint64_t>(n);
+    }
+    return true;
+}
+
+} // namespace
+#endif
+
+bool host_exports_fmt(const std::string& host_library)
+{
+#if defined(__linux__)
+    // A symbol that each module with the fmt code of the host needs.
+    // The inline namespace of fmt changes with the version of the headers: the probe tries the
+    // versions 10, 11 and 12. Any of them means that the host has the code (a module that needs an
+    // other one fails the check of its undefined symbols after the link, and then uses its own copy).
+    for (const char* name : {"_ZN3fmt3v106detail11assert_failEPKciS3_", "_ZN3fmt3v116detail11assert_failEPKciS3_",
+             "_ZN3fmt3v126detail11assert_failEPKciS3_"})
+        if (host_has_symbol(name, host_library))
+            return true;
+    return false;
+#else
+    (void)host_library;
+    return false;
+#endif
+}
+
+// True when the module "path" has an undefined fmt symbol that the process does not export. The
+// loader would fail on it. The function reads the dynamic symbol table of an ELF64 file. It reads
+// only the headers and the two tables (pread), not the whole file.
+bool has_missing_fmt_symbol(const std::string& path, std::string* first_name, const std::string& host_library)
+{
+#if defined(__linux__)
+    const int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+    if (fd < 0)
+        return false;
+    struct Closer
+    {
+        int fd;
+        ~Closer() { close(fd); }
+    } closer{fd};
+    struct stat st;
+    if (fstat(fd, &st) != 0 || st.st_size <= 0)
+        return false;
+    const uint64_t size = static_cast<uint64_t>(st.st_size);
+    Elf64_Ehdr eh;
+    if (!read_range(fd, size, 0, sizeof eh, &eh) || std::memcmp(eh.e_ident, ELFMAG, SELFMAG) != 0
+        || eh.e_ident[EI_CLASS] != ELFCLASS64 || eh.e_shoff == 0 || eh.e_shentsize != sizeof(Elf64_Shdr))
+        return false;
+    std::vector<Elf64_Shdr> sections(eh.e_shnum);
+    if (!sections.empty() && !read_range(fd, size, eh.e_shoff, uint64_t(eh.e_shnum) * sizeof(Elf64_Shdr), sections.data()))
+        return false;
+    const uint64_t limit = 256ull << 20; // a dynamic table of more than 256 MB is not real
+    for (const Elf64_Shdr& sh : sections)
+    {
+        if (sh.sh_type != SHT_DYNSYM || sh.sh_link >= sections.size() || sh.sh_size > limit)
+            continue;
+        const Elf64_Shdr& str = sections[sh.sh_link];
+        if (str.sh_size > limit || str.sh_size == 0)
+            continue;
+        std::vector<Elf64_Sym> syms(static_cast<size_t>(sh.sh_size / sizeof(Elf64_Sym)));
+        std::vector<char> names(static_cast<size_t>(str.sh_size) + 1, '\0'); // ends with a zero
+        if (!read_range(fd, size, sh.sh_offset, syms.size() * sizeof(Elf64_Sym), syms.data())
+            || !read_range(fd, size, str.sh_offset, str.sh_size, names.data()))
+            continue;
+        for (const Elf64_Sym& sym : syms)
+        {
+            if (sym.st_shndx != SHN_UNDEF || ELF64_ST_BIND(sym.st_info) == STB_WEAK || sym.st_name == 0
+                || sym.st_name >= str.sh_size)
+                continue;
+            const char* name = names.data() + sym.st_name;
+            if (!std::strstr(name, "3fmt3v") || host_has_symbol(name, host_library))
+                continue;
+            if (first_name)
+                *first_name = name;
+            return true;
+        }
+    }
+    return false;
+#else
+    (void)path;
+    (void)first_name;
+    (void)host_library;
+    return false;
+#endif
+}
+
 // The split of the flags between the compile and the link, for each target:
 // - ELF: the compile has the code flags (-fPIC, -fno-plt, -fvisibility). The link has -shared and -fPIC.
 // - MinGW: the compile has the libstdc++ headers. The link has lld, the static runtime and -L.
@@ -674,7 +901,7 @@ std::vector<std::string> compile_object_command(const ClangFilesOptions& opt, co
             cmd.push_back("-I" + mirror + vfs_relative(d).value_or(std::string()));
         cmd.push_back("-I" + d);
     }
-    for (const std::string& f : format_compile_flags())
+    for (const std::string& f : format_compile_flags(fmt_header_only(opt)))
         cmd.push_back(f);
     for (const std::string& f : checks_compile_flags())
         cmd.push_back(f);
@@ -682,6 +909,11 @@ std::vector<std::string> compile_object_command(const ClangFilesOptions& opt, co
         cmd.push_back(f);
     for (const std::string& f : traceback_compile_flags())
         cmd.push_back(f);
+    // The host flags can have -DFMT_HEADER_ONLY (the compile database of rbfx has it). It makes the
+    // unit hold the whole fmt engine: the unit then needs about 300 ms more. This flag comes after all
+    // other flags, so it removes the macro that any earlier flag sets.
+    if (!fmt_header_only(opt))
+        cmd.push_back("-UFMT_HEADER_ONLY");
     // The depfile names the headers of the compile (the input of an object cache).
     if (!depfile_path.empty())
     {
@@ -693,6 +925,156 @@ std::vector<std::string> compile_object_command(const ClangFilesOptions& opt, co
     cmd.push_back("-o");
     cmd.push_back(obj_path);
     return cmd;
+}
+
+// The words of a line that "clang -###" prints: each word is in double quotes, with a backslash
+// before a quote or a backslash.
+static std::vector<std::string> parse_driver_line(const std::string& line)
+{
+    std::vector<std::string> words;
+    for (size_t i = 0; i < line.size();)
+    {
+        if (line[i] != '"')
+        {
+            ++i;
+            continue;
+        }
+        std::string w;
+        for (++i; i < line.size() && line[i] != '"'; ++i)
+        {
+            if (line[i] == '\\' && i + 1 < line.size())
+                ++i;
+            w += line[i];
+        }
+        ++i;
+        words.push_back(std::move(w));
+    }
+    return words;
+}
+
+// The linker command that the driver would run for a link with lld (an ELF host): the driver costs
+// about 17 ms for each link, and the command is the same for each module. One "-###" run gives it
+// and the next links run it directly. The result holds for the options (the key). Empty: no direct
+// link (an other linker, an other target, more than one command, or HOT_DIRECT_LINK=0). The caller
+// runs the driver when the direct link fails.
+static std::vector<std::string> direct_link_command(
+    const ClangFilesOptions& opt, const std::string& obj, const std::string& so)
+{
+#ifdef _WIN32
+    (void)opt;
+    (void)obj;
+    (void)so;
+    return {};
+#else
+    const char* off = std::getenv("HOT_DIRECT_LINK");
+    if ((off && std::strcmp(off, "0") == 0) || opt.linker_flag.empty() || darwin_target(opt)
+        || is_mingw_triple(opt.target_triple)
+        || !(opt.target_triple.empty() || opt.target_triple.find("linux") != std::string::npos))
+        return {};
+    static std::mutex mutex;
+    static std::map<std::string, std::vector<std::string>> known;
+    const std::string placeholder = "/dev/null"; // the driver wants an input that exists
+    std::vector<std::string> probe = link_module_command(opt, placeholder, "@so@");
+    std::string key;
+    for (const std::string& w : probe)
+        key += w + '\n';
+    std::vector<std::string> command;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        const auto it = known.find(key);
+        if (it != known.end())
+            command = it->second;
+        else
+        {
+            probe.push_back("-###");
+            std::string text;
+            if (run_command(probe, text) == 0)
+            {
+                std::vector<std::string> lines;
+                std::stringstream stream(text);
+                for (std::string line; std::getline(stream, line);)
+                {
+                    const size_t first = line.find_first_not_of(" \t");
+                    if (first != std::string::npos && line[first] == '"')
+                        lines.push_back(line.substr(first));
+                }
+                if (lines.size() == 1)
+                {
+                    command = parse_driver_line(lines[0]);
+                    const bool linker = !command.empty() && fs::path(command[0]).filename().string().find("ld") == 0;
+                    if (!linker || std::count(command.begin(), command.end(), placeholder) != 1
+                        || std::count(command.begin(), command.end(), std::string("@so@")) != 1)
+                        command.clear();
+                }
+            }
+            known[key] = command;
+        }
+    }
+    for (std::string& w : command)
+        if (w == "/dev/null")
+            w = obj;
+        else if (w == "@so@")
+            w = so;
+    return command;
+#endif
+}
+
+// Runs the link of a module. When the link with the linker flag (lld) fails, it runs once more
+// with the default linker, so a broken lld never fails a reload. HOT_TIMING logs the retry.
+static int run_link(const ClangFilesOptions& opt, const std::string& obj, const std::string& so,
+    std::string& output, bool timing)
+{
+    // The linker alone (without the driver) when its command is known. A failure runs the driver.
+    int rc = 1;
+    const std::vector<std::string> direct = direct_link_command(opt, obj, so);
+    if (timing)
+        std::fprintf(stderr, "hot: direct link %s\n", direct.empty() ? "off" : direct[0].c_str());
+    if (!direct.empty())
+    {
+        rc = run_command(direct, output);
+        if (rc != 0)
+        {
+            if (timing)
+                std::fprintf(stderr, "hot: the direct link failed; the driver links\n");
+            output.clear();
+        }
+    }
+    if (rc != 0)
+        rc = run_command(link_module_command(opt, obj, so), output);
+    if (rc != 0 && !opt.linker_flag.empty())
+    {
+        ClangFilesOptions plain = opt;
+        plain.linker_flag.clear();
+        std::string retry_output;
+        const int retry_rc = run_command(link_module_command(plain, obj, so), retry_output);
+        if (timing)
+            std::fprintf(stderr, "hot: the link with %s failed; the link with the default linker %s\n",
+                opt.linker_flag.c_str(), retry_rc == 0 ? "works" : "fails too");
+        if (retry_rc == 0)
+        {
+            output.clear();
+            return 0;
+        }
+        output = retry_output;
+        return retry_rc;
+    }
+    return rc;
+}
+
+// True for an ELF target of a host that is not Windows. HOT_LINKER=default turns lld off.
+static bool use_lld_by_default(const ClangFilesOptions& opt)
+{
+#ifdef _WIN32
+    (void)opt;
+    return false;
+#else
+    const char* env = std::getenv("HOT_LINKER");
+    if (env && std::string(env) == "default")
+        return false;
+    if (darwin_target(opt) || is_mingw_triple(opt.target_triple))
+        return false;
+    return opt.target_triple.empty() || opt.target_triple.find("linux") != std::string::npos;
+#endif
 }
 
 std::vector<std::string> link_module_command(
@@ -708,6 +1090,8 @@ std::vector<std::string> link_module_command(
         cmd.push_back("--target=" + opt.target_triple);
     if (!opt.sysroot.empty())
         cmd.push_back("--sysroot=" + opt.sysroot);
+    if (!opt.linker_flag.empty())
+        cmd.push_back(opt.linker_flag);
     for (const std::string& f : mingw_flags(opt, false))
         cmd.push_back(f);
     for (const std::string& f : darwin_target_flags(darwin_target(opt)))
@@ -1642,6 +2026,27 @@ bool ClangFilesBackend::prepare_cache()
     }
     compiler_id_ = program + "|" + version + "|" + std::to_string(mtime) + "|" + std::to_string(size) +
         compiler_environment();
+    // lld links a module faster than GNU ld (about 50 ms against 150 ms). The probe runs once. The
+    // linker version is part of the compiler id, so a new linker makes new module keys. The flag is
+    // in the link command, which is in the module key too. Without lld the link stays as before.
+    if (opt_.linker_flag.empty() && use_lld_by_default(opt_) && version.find("clang") != std::string::npos)
+    {
+        std::string ld_out;
+        std::vector<std::string> probe = {opt_.compiler};
+        if (!opt_.target_triple.empty())
+            probe.push_back("--target=" + opt_.target_triple);
+        if (!opt_.sysroot.empty())
+            probe.push_back("--sysroot=" + opt_.sysroot);
+        for (const char* a : {"-fuse-ld=lld", "-Wl,--version", "-x", "c", "/dev/null", "-o", "/dev/null"})
+            probe.push_back(a);
+        const int ld_rc = run_command(probe, ld_out);
+        const size_t at = ld_out.find("LLD ");
+        if (ld_rc == 0 && at != std::string::npos)
+        {
+            opt_.linker_flag = "-fuse-ld=lld";
+            compiler_id_ += "|ld:" + ld_out.substr(at, ld_out.find('\n', at) - at);
+        }
+    }
     // The compiler id is in the key of the translate cache too: a new compiler often comes with
     // new system headers, and the dependency list of a translate has no system header.
     if (tr_cache_)
@@ -1740,6 +2145,7 @@ ClangFilesBackend::PchPlan ClangFilesBackend::make_pch_plan(
     inputs.compiler_id = compiler_id_;
     inputs.shadow_hash = shadow_hash;
     PchPlan plan;
+    plan.own_fmt = fmt_header_only(opt_);
     plan.key = ObjectCache::make_key(inputs);
     plan.prefix = text;
     plan.header = pch_marker(plan.key, ".h");
@@ -1791,6 +2197,17 @@ std::optional<ClangFilesBackend::PchPlan> ClangFilesBackend::plan_pch(
             plan.pch = hit->object.string();
             return plan;
         }
+    }
+    // A unit with script macros (a .cpp script) uses only its exact PCH. The shared PCH has no
+    // such macro, and the unit adds no line to the union.
+    if (has_script_macros(prefix))
+    {
+        plan.why = "unit has script macros: exact pch only";
+        if (exact_bad)
+            plan.why += "; exact pch has the bad marker";
+        else
+            plan.build = true;
+        return plan;
     }
     std::string shared;
     if (read_text((fs::path(opt_.cache_dir) / "pch" / "shared.inc").string(), shared) && !shared.empty())
@@ -1980,9 +2397,15 @@ void ClangFilesBackend::prewarm_pch(const std::vector<const BuildJob*>& jobs, bo
     {
         if (opt_.fs && !job->tr.virtual_files.empty())
             return;
-        prefixes.push_back(without_unit_dir_lines(opt_, job->script_dir, include_prefix(job->tr.cpp)));
+        const std::string prefix = include_prefix(job->tr.cpp);
+        // A unit with script macros has only its exact PCH (see plan_pch).
+        if (has_script_macros(pch_header_text(prefix)))
+            continue;
+        prefixes.push_back(without_unit_dir_lines(opt_, job->script_dir, prefix));
         batch_shadow.insert(batch_shadow.end(), job->tr.shadow_paths.begin(), job->tr.shadow_paths.end());
     }
+    if (prefixes.empty())
+        return;
     const fs::path dir = fs::path(opt_.cache_dir) / "pch";
     // The probe path test does the stat calls (many) without "pch_mutex_". A change of the list
     // while they run (the generation) means a new test. The epoch changes only below, under the lock.
@@ -1998,12 +2421,10 @@ void ClangFilesBackend::prewarm_pch(const std::vector<const BuildJob*>& jobs, bo
         std::error_code ec;
         shadow_exists = false;
         batch_existing.clear();
-        for (const std::string& path : listed)
-            if (fs::exists(path, ec))
-            {
-                shadow_exists = true;
-                break;
-            }
+        shadow_exists = detail::find_any_parallel(listed, [](const std::string& path) {
+            std::error_code probe_ec;
+            return fs::exists(path, probe_ec);
+        }) != listed.size();
         if (shadow_exists)
             for (const std::string& path : batch_shadow)
                 if (fs::exists(path, ec))
@@ -2129,6 +2550,803 @@ void ClangFilesBackend::start_pending_pch()
     }
 }
 
+namespace
+{
+
+// The banner of the translator before the function bodies of a .hot unit.
+const char* const kBodiesBanner = "// ---------------------------------------------------------------- function bodies\n";
+
+
+// ---- two objects for a .hot unit (design D)
+//
+// The text of a unit has four parts: P (everything before the bodies, without the record and entry
+// ranges), R (the record and entry ranges: slots, record, _create, _make_N, constructor table),
+// B (the function bodies) and T (script_register). The shape PCH has P. One compile does B and one
+// does R and T, both with the shape PCH: only the shape object defines the record, and each object
+// emits only the static and inline code that it uses. A linker -r step joins the two objects.
+// The text edits make the unit state shared between the two objects:
+//  - GEN, hot_live, *_slot, *_fields and *_layout become "inline" variables (one copy in the module);
+//  - a function that P declares and B defines gets external linkage (HOT_UNIT_FN / HOT_UNIT_INLINE),
+//    so R and T can call it from the other object.
+// Any text that does not have the expected form makes the split invalid: the unit then uses the
+// shape PCH with one object, or the whole unit.
+// The version of the split transform. It is in the object key and in the shape PCH key: a change of
+// the transform makes the old joined objects invalid.
+const char* const kSplitVersion = "hot-split=2obj-v1";
+
+// The tag in the object key: the version with the two object decision.
+std::string split_object_tag(bool two_objects)
+{
+    return two_objects ? std::string(kSplitVersion) : std::string("hot-split=off");
+}
+
+struct UnitSplit
+{
+    std::string header; // the shape header: P with the macros
+    std::string main; // B
+    std::string shape; // R and T
+    std::vector<std::string> fns; // the functions that got external linkage
+};
+
+bool starts_with(const std::string& s, const char* prefix)
+{
+    return s.compare(0, std::strlen(prefix), prefix) == 0;
+}
+
+// The name of a function prototype or definition line: the identifier before the first '('.
+std::string function_name_of(const std::string& line, size_t from)
+{
+    const size_t paren = line.find('(', from);
+    if (paren == std::string::npos || paren == 0)
+        return std::string();
+    size_t b = paren;
+    while (b > from && (std::isalnum(static_cast<unsigned char>(line[b - 1])) || line[b - 1] == '_'))
+        --b;
+    return line.substr(b, paren - b);
+}
+
+bool split_unit_into_two(const std::string& text, const std::string& name, UnitSplit& out)
+{
+    const std::string bodies_banner = kBodiesBanner;
+    const std::string record_banner = "// ------------------------------------------------------ record and entry\n";
+    const std::string script_register = "extern \"C\" void script_register(hot::Registry& reg)\n";
+    std::vector<std::string> lines;
+    for (size_t at = 0; at < text.size();)
+    {
+        size_t e = text.find('\n', at);
+        e = e == std::string::npos ? text.size() : e + 1;
+        lines.push_back(text.substr(at, e - at));
+        at = e;
+    }
+    size_t bodies = lines.size(), reg = lines.size();
+    std::vector<std::pair<size_t, size_t>> records; // [begin, end) of each record and entry range
+    for (size_t i = 0; i < lines.size(); ++i)
+    {
+        if (lines[i] == bodies_banner)
+        {
+            if (bodies != lines.size())
+                return false; // two banners
+            bodies = i;
+        }
+        else if (lines[i] == script_register)
+        {
+            if (reg != lines.size())
+                return false;
+            reg = i;
+        }
+        else if (lines[i] == record_banner)
+        {
+            size_t j = i + 1;
+            while (j < lines.size() && !starts_with(lines[j], "// ----------------"))
+                ++j;
+            records.emplace_back(i, j);
+            i = j - 1;
+        }
+    }
+    if (bodies == lines.size() || reg == lines.size() || reg < bodies || records.empty() || records.back().second > bodies)
+        return false;
+    // Prototypes of P that have a definition in B.
+    const char* const kinds[] = {"[[maybe_unused]] HOT_HIDDEN static ", "static "};
+    auto kind_of = [&](const std::string& l) -> int {
+        for (int k = 0; k < 2; ++k)
+            if (starts_with(l, kinds[k]))
+            {
+                if (k == 1)
+                    for (const char* skip : {"const ", "void*", "uint32_t", "constexpr", "inline ", "assert"})
+                        if (l.compare(std::strlen(kinds[k]), std::strlen(skip), skip) == 0)
+                            return -1;
+                return k;
+            }
+        return -1;
+    };
+    // A prototype ends with ");" (a comment after it does not matter).
+    auto is_proto = [](const std::string& l) {
+        std::string t = l.substr(0, l.find("//"));
+        while (!t.empty() && std::isspace(static_cast<unsigned char>(t.back())))
+            t.pop_back();
+        return t.size() > 2 && t.compare(t.size() - 2, 2, ");") == 0;
+    };
+    // The signature of a function line: the text after the kind up to the last ')' (the full
+    // prototype, so overloads stay apart; a comment and the end of the line do not count).
+    auto sig_of = [&](const std::string& l, int k) {
+        const std::string t = l.substr(0, l.find("//"));
+        const size_t close = t.rfind(')');
+        return close == std::string::npos ? std::string() : t.substr(std::strlen(kinds[k]), close + 1 - std::strlen(kinds[k]));
+    };
+    std::set<std::pair<std::string, int>> protos;
+    std::vector<std::string> p_lines;
+    std::vector<size_t> p_orig; // the line number (0 based) of each line of P in the unit
+    size_t rec = 0;
+    for (size_t i = 0; i < bodies; ++i)
+    {
+        if (rec < records.size() && i == records[rec].first)
+        {
+            i = records[rec].second - 1;
+            ++rec;
+            continue;
+        }
+        p_lines.push_back(lines[i]);
+        p_orig.push_back(i);
+    }
+    // The key of a function is its full prototype: overloads are different functions. Two equal
+    // prototypes make the split invalid.
+    for (const std::string& l : p_lines)
+    {
+        const int k = kind_of(l);
+        if (k >= 0 && is_proto(l) && !protos.insert({sig_of(l, k), k}).second)
+            return false;
+    }
+    std::set<std::pair<std::string, int>> defined;
+    for (size_t i = bodies; i < reg; ++i)
+    {
+        const int k = kind_of(lines[i]);
+        if (k < 0 || is_proto(lines[i]) || lines[i].find(");") != std::string::npos)
+            continue;
+        const auto key = std::make_pair(sig_of(lines[i], k), k);
+        if (protos.count(key) && !defined.insert(key).second)
+            return false; // two definitions of one prototype
+    }
+    // A definition in P of a function that B defines is not split.
+    for (const std::string& l : p_lines)
+    {
+        const int k = kind_of(l);
+        if (k >= 0 && !is_proto(l) && l.find('(') != std::string::npos && defined.count({sig_of(l, k), k}))
+            return false;
+    }
+    auto convert = [&](std::string& l, bool in_p) {
+        const int k = kind_of(l);
+        if (k < 0 || (in_p != is_proto(l)))
+            return;
+        const std::string n = function_name_of(l, std::strlen(kinds[k]));
+        if (defined.count({sig_of(l, k), k}))
+        {
+            l = (k == 0 ? "[[maybe_unused]] HOT_UNIT_INLINE " : "HOT_UNIT_FN ") + l.substr(std::strlen(kinds[k]));
+            if (in_p)
+                out.fns.push_back(n);
+        }
+    };
+    int gen = 0, live = 0;
+    size_t macro_at = p_lines.size();
+    for (size_t i = 0; i < p_lines.size(); ++i)
+    {
+        std::string& l = p_lines[i];
+        if (starts_with(l, "[[maybe_unused]] static uint32_t GEN = "))
+        {
+            l = "[[maybe_unused]] HOT_UNIT_VAR " + l.substr(std::strlen("[[maybe_unused]] static "));
+            ++gen;
+            macro_at = std::min(macro_at, i);
+        }
+        else if (starts_with(l, "static uint32_t hot_live = "))
+        {
+            l = "HOT_UNIT_VAR " + l.substr(7);
+            ++live;
+        }
+        else if (starts_with(l, "static void* ") && l.find("_slot = ") != std::string::npos)
+            l = "HOT_UNIT_VAR " + l.substr(7);
+        else if ((starts_with(l, "static const hot::FieldInfo ") && l.find("_fields[] =") != std::string::npos)
+            || (starts_with(l, "static const hot::StateLayout ") && l.find("_layout =") != std::string::npos))
+            l = "HOT_UNIT_VAR const " + l.substr(std::strlen("static const "));
+        else
+            convert(l, true);
+    }
+    if (gen != 1 || live != 1)
+        return false;
+    {
+        std::vector<std::string> fns = std::move(out.fns);
+        out = UnitSplit();
+        out.fns = std::move(fns);
+    }
+    out.header = "#define HOT_SPLIT_UNIT 1\n#line 1 \"" + name + "\"\n";
+    for (size_t i = 0; i < p_lines.size(); ++i)
+    {
+        bool reline = i > 0 && p_orig[i] != p_orig[i - 1] + 1; // a range was removed before this line
+        if (i == macro_at)
+        {
+            out.header += "#ifdef HOT_SPLIT_UNIT\n#define HOT_UNIT_VAR inline\n#define HOT_UNIT_FN\n"
+                          "#define HOT_UNIT_INLINE HOT_NODEBUG\n#else\n#define HOT_UNIT_VAR static\n"
+                          "#define HOT_UNIT_FN static\n#define HOT_UNIT_INLINE HOT_HIDDEN static\n#endif\n";
+            reline = true;
+        }
+        // The line numbers of P stay the ones of the unit (__LINE__, messages).
+        if (reline)
+            out.header += "#line " + std::to_string(p_orig[i] + 1) + " \"" + name + "\"\n";
+        out.header += p_lines[i];
+    }
+    out.main = "#line " + std::to_string(bodies + 1) + " \"" + name + "\"\n";
+    for (size_t i = bodies; i < reg; ++i)
+    {
+        std::string l = lines[i];
+        convert(l, false);
+        out.main += l;
+    }
+    for (const auto& range : records)
+    {
+        out.shape += "#line " + std::to_string(range.first + 1) + " \"" + name + "\"\n";
+        for (size_t i = range.first; i < range.second; ++i)
+            out.shape += lines[i];
+    }
+    out.shape += "#line " + std::to_string(reg + 1) + " \"" + name + "\"\n";
+    for (size_t i = reg; i < lines.size(); ++i)
+        out.shape += lines[i];
+    return true;
+}
+
+struct ElfSym
+{
+    std::string name;
+    unsigned char bind = 0;
+    unsigned char type = 0;
+    bool defined = false;
+    bool writable = false; // defined in a section with SHF_WRITE (.data, .bss, .tdata, .tbss)
+    uint16_t shndx = 0;
+    uint64_t value = 0;
+    uint64_t size = 0;
+    bool used = false; // a relocation of code or data (not of a dynamic initializer) names the symbol
+};
+
+// All named symbols of the .symtab of an ELF64 file. False when the file is not an ELF64 file.
+bool elf_symbols(const std::string& path, std::vector<ElfSym>& syms)
+{
+#if defined(__linux__)
+    std::ifstream in(path, std::ios::binary);
+    std::string data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    Elf64_Ehdr eh;
+    if (data.size() < sizeof eh)
+        return false;
+    std::memcpy(&eh, data.data(), sizeof eh);
+    if (std::memcmp(eh.e_ident, ELFMAG, SELFMAG) != 0 || eh.e_ident[EI_CLASS] != ELFCLASS64 || eh.e_shoff == 0
+        || eh.e_shentsize != sizeof(Elf64_Shdr) || eh.e_shoff > data.size()
+        || uint64_t(eh.e_shnum) * sizeof(Elf64_Shdr) > data.size() - eh.e_shoff)
+        return false;
+    auto section = [&](size_t i) {
+        Elf64_Shdr sh;
+        std::memcpy(&sh, data.data() + eh.e_shoff + i * sizeof(Elf64_Shdr), sizeof sh);
+        return sh;
+    };
+    auto in_file = [&](uint64_t off, uint64_t len) { return off <= data.size() && len <= data.size() - off; };
+    for (size_t i = 0; i < eh.e_shnum; ++i)
+    {
+        const Elf64_Shdr sh = section(i);
+        if (sh.sh_type != SHT_SYMTAB || sh.sh_link >= eh.e_shnum || !in_file(sh.sh_offset, sh.sh_size))
+            continue;
+        const Elf64_Shdr str = section(sh.sh_link);
+        if (!in_file(str.sh_offset, str.sh_size))
+            continue;
+        for (uint64_t off = 0; off + sizeof(Elf64_Sym) <= sh.sh_size; off += sizeof(Elf64_Sym))
+        {
+            Elf64_Sym sym;
+            std::memcpy(&sym, data.data() + sh.sh_offset + off, sizeof sym);
+            ElfSym e; // an unnamed symbol stays in the list (the index of a relocation) with an empty name
+            if (sym.st_name != 0 && sym.st_name < str.sh_size)
+                e.name.assign(data.c_str() + str.sh_offset + sym.st_name,
+                    strnlen(data.c_str() + str.sh_offset + sym.st_name, str.sh_size - sym.st_name));
+            e.bind = ELF64_ST_BIND(sym.st_info);
+            e.type = ELF64_ST_TYPE(sym.st_info);
+            e.defined = sym.st_shndx != SHN_UNDEF;
+            e.shndx = sym.st_shndx;
+            e.value = sym.st_value;
+            e.size = sym.st_size;
+            e.writable = e.defined && sym.st_shndx < eh.e_shnum && (section(sym.st_shndx).sh_flags & SHF_WRITE) != 0;
+            syms.push_back(std::move(e));
+        }
+        // The relocations: which symbols the code and the data of the object use. The sections of the
+        // dynamic initializers (.text.startup, .init_array), the debug data and the unwind tables do
+        // not count.
+        const size_t first_sym = syms.size() - sh.sh_size / sizeof(Elf64_Sym);
+        // The data symbols of each section. The assembler writes a relocation against a local variable
+        // as "section symbol + offset", so a use is found by the offset.
+        std::map<uint16_t, std::vector<size_t>> data_in_section; // sorted by the value
+        std::map<uint16_t, uint64_t> longest; // the biggest symbol of each section
+        for (size_t k = first_sym; k < syms.size(); ++k)
+            if (syms[k].bind == STB_LOCAL && (syms[k].type == STT_OBJECT || syms[k].type == STT_TLS) && syms[k].defined)
+            {
+                data_in_section[syms[k].shndx].push_back(k);
+                longest[syms[k].shndx] = std::max<uint64_t>(longest[syms[k].shndx], std::max<uint64_t>(syms[k].size, 1));
+            }
+        for (auto& entry : data_in_section)
+            std::sort(entry.second.begin(), entry.second.end(),
+                [&](size_t a, size_t b) { return syms[a].value < syms[b].value; });
+        if (eh.e_shstrndx >= eh.e_shnum)
+            continue;
+        const Elf64_Shdr names_section = section(eh.e_shstrndx);
+        if (!in_file(names_section.sh_offset, names_section.sh_size))
+            continue;
+        for (size_t k = 0; k < eh.e_shnum; ++k)
+        {
+            const Elf64_Shdr rel = section(k);
+            if (rel.sh_type != SHT_RELA || rel.sh_link != i || rel.sh_info >= eh.e_shnum
+                || !in_file(rel.sh_offset, rel.sh_size))
+                continue;
+            const Elf64_Shdr target = section(rel.sh_info);
+            if (target.sh_name >= names_section.sh_size)
+                continue;
+            const std::string tname(data.c_str() + names_section.sh_offset + target.sh_name,
+                strnlen(data.c_str() + names_section.sh_offset + target.sh_name, names_section.sh_size - target.sh_name));
+            if (starts_with(tname, ".text.startup") || starts_with(tname, ".init_array") || starts_with(tname, ".debug")
+                || starts_with(tname, ".eh_frame") || starts_with(tname, ".gcc_except") || starts_with(tname, ".llvm")
+                || starts_with(tname, ".fini_array") || starts_with(tname, ".ctors"))
+                continue;
+            for (uint64_t off = 0; off + sizeof(Elf64_Rela) <= rel.sh_size; off += sizeof(Elf64_Rela))
+            {
+                Elf64_Rela ra;
+                std::memcpy(&ra, data.data() + rel.sh_offset + off, sizeof ra);
+                const size_t idx = first_sym + ELF64_R_SYM(ra.r_info);
+                if (idx >= syms.size())
+                    continue;
+                if (syms[idx].type != STT_SECTION)
+                {
+                    syms[idx].used = true;
+                    continue;
+                }
+                const auto in_section = data_in_section.find(syms[idx].shndx);
+                if (in_section == data_in_section.end())
+                    continue;
+                // x86-64. The target of a pc relative relocation is S + A + 4 + (the size of the immediate
+                // that follows the displacement: 0, 1, 2 or 4), so the offset is in [A + 4, A + 8]. All
+                // types except the absolute ones use this interval; this covers the TLS general and local
+                // dynamic types (19, 20) and the initial exec type (22) too. An absolute type (64, 32, 32S,
+                // DTPOFF32, TPOFF32) and PC64 name the offset itself. A symbol is used when its range
+                // meets the interval: a neighbour can be marked too, which only refuses a split. Other
+                // machines: every data symbol of the section counts as used.
+                const uint32_t type = ELF64_R_TYPE(ra.r_info);
+                const bool exact = type == 1 || type == 10 || type == 11 || type == 21 || type == 23 || type == 24;
+                const std::vector<size_t>& sorted = in_section->second;
+                if (eh.e_machine != EM_X86_64)
+                {
+                    for (size_t k : sorted)
+                        syms[k].used = true;
+                    continue;
+                }
+                const int64_t qlo = exact ? ra.r_addend : ra.r_addend + 4;
+                const int64_t qhi = exact ? ra.r_addend : ra.r_addend + 8;
+                const int64_t reach = static_cast<int64_t>(longest[syms[idx].shndx]);
+                // The first symbol that starts after the interval; the ones before it can meet it.
+                auto it = std::upper_bound(sorted.begin(), sorted.end(), qhi,
+                    [&](int64_t v, size_t k) { return v < static_cast<int64_t>(syms[k].value); });
+                while (it != sorted.begin())
+                {
+                    --it;
+                    const int64_t lo = static_cast<int64_t>(syms[*it].value);
+                    if (lo + reach <= qlo)
+                        break; // no symbol before this one reaches the interval
+                    if (lo + static_cast<int64_t>(std::max<uint64_t>(syms[*it].size, 1)) > qlo)
+                        syms[*it].used = true;
+                }
+            }
+        }
+    }
+    return true;
+#else
+    (void)path;
+    (void)syms;
+    return false;
+#endif
+}
+
+// The names of the local data symbols of an ELF64 object that are shared state of the unit. P is in
+// BOTH objects, and the record object runs user code too (the constructor of a shell and the field
+// initializers). A mutable local variable that both objects define is a second copy: before the
+// split the unit had one copy, so the split is wrong then. Looked at:
+//  - the unit state by name: GEN, hot_live, *_slot, *_fields, *_layout (also with "_ZL<n>");
+//  - each local object symbol in a writable section (SHF_WRITE) that the object uses: a static or anonymous-namespace
+//    variable of a header, a static local of a static function (_ZZ), its guard (_ZGV), a thread
+//    local variable.
+// Not looked at (harmless, because the copies are equal or they are only caches):
+//  - a symbol that no code or data of the object uses (a relocation of .text or .data; a dynamic
+//    initializer does not count): its copy is dead. This is the case for a "static const" object
+//    of a header that this object does not read, for example a string constant;
+//  - symbols in a read only section (constant tables and strings of P: equal copies, nothing writes);
+//  - "__site" symbols (FieldSite and FnSite caches: each object may fill its own, the epoch checks
+//    them) and the "__construct_keys" arrays (see is_cache_symbol);
+//  - weak and global symbols (inline variables and template statics: the linker keeps one);
+//  - local functions: a function that both objects define is a copy of the same code. The limit:
+//    the address of such a function can differ between the objects (no check of relocations).
+// False when the file is not an ELF64 file.
+bool is_cache_symbol(const std::string& name)
+{
+    // "__construct_keys": a "static const char* const" array that the translator writes with
+    // typeid(..).name(). The compiler fills it at load time (so it is in .bss), but it is const and
+    // each object gets the same strings: the record uses one copy, and no code writes to it.
+    const std::string keys = "__construct_keys";
+    return name.find("__site") != std::string::npos
+        || (name.size() >= keys.size() && name.compare(name.size() - keys.size(), keys.size(), keys) == 0);
+}
+
+bool unit_state_symbols(const std::string& path, std::set<std::string>& names)
+{
+    std::vector<ElfSym> syms;
+    if (!elf_symbols(path, syms))
+        return false;
+    for (const ElfSym& e : syms)
+    {
+        if (e.name.empty() || e.bind != STB_LOCAL || (e.type != STT_OBJECT && e.type != STT_TLS))
+            continue;
+        std::string base = e.name;
+        if (starts_with(base, "_ZL"))
+        {
+            size_t d = 3;
+            while (d < base.size() && std::isdigit(static_cast<unsigned char>(base[d])))
+                ++d;
+            base = base.substr(d);
+        }
+        auto ends = [&](const char* suffix) {
+            const size_t n = std::strlen(suffix);
+            return base.size() >= n && base.compare(base.size() - n, n, suffix) == 0;
+        };
+        const bool by_name = base == "GEN" || base == "hot_live" || ends("_slot") || ends("_fields") || ends("_layout");
+        if (by_name || (e.writable && e.used && !is_cache_symbol(e.name)))
+            names.insert(e.name);
+    }
+    return true;
+}
+
+// The check of the joined object. A problem text is returned (empty: the object is right):
+//  - a function that P declares with external linkage (fns) must have a defined symbol;
+//  - no undefined symbol may have the name of a local function or variable that the object defines
+//    (the other object used a name that stayed internal in this one: the link would fail);
+// "_ZL<n>name" is the internal name of "_Z<n>name". Needs an ELF64 object.
+std::string merged_object_problem(const std::string& path, const std::vector<std::string>& fns)
+{
+    std::vector<ElfSym> syms;
+    if (!elf_symbols(path, syms))
+        return "cannot read the symbols of the joined object";
+    std::set<std::string> undefined, local_external_names;
+    std::vector<std::string> defined_global;
+    for (const ElfSym& e : syms)
+    {
+        if (e.name.empty())
+            continue;
+        if (!e.defined)
+        {
+            undefined.insert(e.name);
+            continue;
+        }
+        if (e.bind == STB_LOCAL && (e.type == STT_FUNC || e.type == STT_OBJECT))
+        {
+            local_external_names.insert(e.name);
+            if (starts_with(e.name, "_ZL"))
+                local_external_names.insert("_Z" + e.name.substr(3));
+        }
+        else if (e.bind != STB_LOCAL)
+            defined_global.push_back(e.name);
+    }
+    for (const std::string& n : local_external_names)
+        if (undefined.count(n))
+            return "the symbol " + n + " is internal in one object and used from the other";
+    for (const std::string& fn : fns)
+    {
+        const std::string mangled = std::to_string(fn.size()) + fn;
+        bool found = false;
+        for (const std::string& d : defined_global)
+            if (d == fn || d.find(mangled) != std::string::npos)
+            {
+                found = true;
+                break;
+            }
+        if (!found)
+            return "the function " + fn + " has no definition in the joined object";
+    }
+    return std::string();
+}
+
+// The flags that stop the join step: LTO makes bitcode objects, and a linker other than lld may
+// not know "-r" the same way.
+bool two_object_flags_ok(const std::vector<std::string>& args)
+{
+    for (const std::string& a : args)
+    {
+        if (starts_with(a, "-flto"))
+            return false;
+        if (starts_with(a, "-fuse-ld=") && a != "-fuse-ld=lld")
+            return false;
+    }
+    return true;
+}
+
+// The linker of the join step: "ld.lld" next to the compiler, else in the PATH. Empty: none.
+std::string find_lld(const std::string& compiler)
+{
+    std::error_code ec;
+    // HOT_LLD names the tool (a test uses it for a tool that fails).
+    if (const char* forced = std::getenv("HOT_LLD"); forced && *forced)
+        return forced;
+    const fs::path beside = fs::path(compiler).parent_path() / "ld.lld";
+    if (!fs::path(compiler).parent_path().empty() && fs::exists(beside, ec))
+        return beside.string();
+    if (const char* path = std::getenv("PATH"))
+    {
+        std::stringstream ss(path);
+        std::string dir;
+        while (std::getline(ss, dir, ':'))
+            if (!dir.empty() && fs::exists(fs::path(dir) / "ld.lld", ec))
+                return (fs::path(dir) / "ld.lld").string();
+    }
+    return std::string();
+}
+
+std::atomic<unsigned> g_running_compiles{0};
+
+// Gives the place back when it ends (also on an exception).
+struct PlaceGuard
+{
+    bool held = true;
+    ~PlaceGuard()
+    {
+        if (held)
+            --g_running_compiles;
+    }
+};
+
+// Joins a thread when it ends: a joinable thread that is destroyed ends the program.
+struct JoinGuard
+{
+    std::thread& thread;
+    ~JoinGuard()
+    {
+        if (thread.joinable())
+            thread.join();
+    }
+};
+
+int run_counted(const std::vector<std::string>& cmd, std::string& output)
+{
+    ++g_running_compiles;
+    PlaceGuard place;
+    return run_command(cmd, output);
+}
+
+// Takes one place for a compile that runs next to others. False: the job limit is reached.
+bool reserve_compile_place()
+{
+    const unsigned before = g_running_compiles.fetch_add(1);
+    if (before + 1 < build_jobs())
+        return true;
+    --g_running_compiles;
+    return false;
+}
+
+// Removes the files when it ends (also on an exception).
+struct TempFiles
+{
+    std::vector<std::string> files;
+    ~TempFiles()
+    {
+        std::error_code ec;
+        for (const std::string& f : files)
+            fs::remove(f, ec);
+    }
+};
+
+std::string shape_hash(const std::string& text)
+{
+    char buf[40];
+    std::snprintf(buf, sizeof buf, "%016llx%016llx", static_cast<unsigned long long>(hotc::text_hash("shape1\n" + text)),
+        static_cast<unsigned long long>(hotc::text_hash(text + "\nshape2")));
+    return buf;
+}
+
+} // namespace
+
+void evict_shape_files(const std::string& dir_name, const std::string& unit_id, size_t keep_unit, size_t keep_all)
+{
+    const fs::path dir(dir_name);
+    std::error_code ec;
+    const auto now = fs::file_time_type::clock::now();
+    std::vector<std::pair<fs::file_time_type, fs::path>> files;
+    // An explicit loop: the increment of a directory iterator must not throw in a thread.
+    fs::directory_iterator it(dir, ec), end;
+    for (; !ec && it != end; it.increment(ec))
+    {
+        const fs::path& path = it->path();
+        const std::string ext = path.extension().string();
+        std::error_code time_ec;
+        const auto mtime = it->last_write_time(time_ec);
+        if (time_ec)
+            continue;
+        const auto age = now - mtime;
+        if ((ext == ".tmp" && age > std::chrono::hours(1)) || (ext == ".nosplit" && age > std::chrono::hours(24)))
+            fs::remove(path, time_ec); // a build that died, or an old marker
+        else if (ext == ".pch")
+            files.emplace_back(mtime, path);
+    }
+    // The newest first. A hit sets the time of its PCH, so this is the order of the last use.
+    std::sort(files.begin(), files.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+    size_t unit_seen = 0;
+    for (size_t i = 0; i < files.size(); ++i)
+    {
+        const bool mine = !unit_id.empty() && files[i].second.filename().string().rfind(unit_id + "-", 0) == 0;
+        if ((mine && ++unit_seen > keep_unit) || i >= keep_all)
+            for (const char* ext : {".pch", ".h", ".nosplit"}) // unlink: a reader keeps its handle on ELF
+                fs::remove(fs::path(files[i].second).replace_extension(ext), ec);
+    }
+}
+
+std::string split_object_tag_of(bool two_objects)
+{
+    return split_object_tag(two_objects);
+}
+
+bool two_object_flags_ok_of(const std::vector<std::string>& args)
+{
+    return two_object_flags_ok(args);
+}
+
+std::string merged_object_problem_of(const std::string& path, const std::vector<std::string>& fns)
+{
+    return merged_object_problem(path, fns);
+}
+
+std::string find_lld_of(const std::string& compiler)
+{
+    return find_lld(compiler);
+}
+
+bool split_unit_for_test(const std::string& text, const std::string& name, std::string& header, std::string& main,
+    std::string& shape, std::vector<std::string>& fns)
+{
+    UnitSplit u;
+    if (!split_unit_into_two(text, name, u))
+        return false;
+    header = u.header;
+    main = u.main;
+    shape = u.shape;
+    fns = u.fns;
+    return true;
+}
+
+bool unit_state_symbols_of(const std::string& object_path, std::set<std::string>& names)
+{
+    return unit_state_symbols(object_path, names);
+}
+
+ClangFilesBackend::ShapeSplit ClangFilesBackend::plan_shape(const std::string& cpp_text, const std::string& unit_cpp,
+    const std::string& base_pch, const std::string& base_key, const std::vector<std::string>& args, bool is_hot,
+    const std::string& script_dir, bool two_objects) const
+{
+    ShapeSplit s;
+    const char* off = std::getenv("HOT_SHAPE_PCH");
+    if (!is_hot || (off && std::strcmp(off, "0") == 0) || opt_.cache_dir.empty() || base_pch.empty())
+        return s;
+    // The translator writes the banner once. A second banner (in a raw string or a comment of the
+    // user) makes the place unsafe: the unit then compiles whole.
+    const std::string banner = kBodiesBanner;
+    const size_t at = cpp_text.find(banner);
+    if (at == std::string::npos || at == 0 || cpp_text[at - 1] != '\n' || cpp_text.find(banner, at + 1) != std::string::npos)
+        return s;
+    const std::string shape = cpp_text.substr(0, at);
+    UnitSplit two;
+    if (two_objects && !split_unit_into_two(cpp_text, unit_cpp, two))
+        return s; // the text has not the expected form: the caller tries the split with one object
+    std::error_code ec;
+    const uintmax_t size = fs::file_size(base_pch, ec);
+    const auto mtime = fs::last_write_time(base_pch, ec).time_since_epoch().count();
+    if (ec)
+        return s;
+    std::string material = base_pch + "\n" + base_key + "\n" + std::to_string(size) + "\n" + std::to_string(mtime) + "\n";
+    for (const std::string& a : args)
+        material += a + "\n";
+    // The header has "#line 1 <unit_cpp>" and the build uses the script dir: both belong to the key.
+    material += "dir " + script_dir + "\nunit " + unit_cpp + "\n";
+    if (two_objects)
+        material += std::string(kSplitVersion) + "\n";
+    s.own_fmt = fmt_header_only(opt_);
+    s.key = shape_hash(material + (two_objects ? "two objects\n" + two.header : shape));
+    // The file stem has the unit id: the eviction finds the files of one script by it.
+    s.unit_id = shape_hash(unit_cpp).substr(0, 12);
+    s.pch = (fs::path(opt_.cache_dir) / "pch" / "shape" / (s.unit_id + "-" + s.key + ".pch")).string();
+    // A marker of a split that failed for this key (the whole unit compiled): it holds for one day.
+    const fs::path marker = fs::path(s.pch).replace_extension(".nosplit");
+    const auto mt = fs::last_write_time(marker, ec);
+    if (!ec)
+    {
+        if (fs::file_time_type::clock::now() - mt < std::chrono::hours(24))
+        {
+            s.key.clear();
+            return s;
+        }
+        fs::remove(marker, ec);
+    }
+    size_t lines = 1;
+    for (char c : shape)
+        if (c == '\n')
+            ++lines;
+    if (two_objects)
+    {
+        s.header_text = std::move(two.header);
+        s.main_text = std::move(two.main);
+        s.second_text = std::move(two.shape);
+        s.fns = std::move(two.fns);
+        return s;
+    }
+    s.header_text = "#line 1 \"" + unit_cpp + "\"\n" + shape;
+    s.main_text = "#line " + std::to_string(lines) + " \"" + unit_cpp + "\"\n" + cpp_text.substr(at);
+    return s;
+}
+
+void ClangFilesBackend::start_shape_build(const ShapeSplit& split, const std::string& base_pch,
+    const std::string& script_dir, const std::string& unit, bool timing)
+{
+    std::thread old;
+    {
+        std::lock_guard<std::mutex> lock(shape_mutex_);
+        if (shape_building_)
+            return; // one build at a time
+        if (shape_thread_.joinable())
+            old = std::move(shape_thread_);
+        shape_building_ = true;
+    }
+    if (old.joinable())
+        old.join(); // the last build ended (shape_building_ was false)
+    std::lock_guard<std::mutex> lock(shape_mutex_);
+    shape_thread_ = std::thread([this, split, base_pch, script_dir, unit, timing] {
+      try {
+        const auto t0 = std::chrono::steady_clock::now();
+        const fs::path dir = fs::path(opt_.cache_dir) / "pch" / "shape";
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+        static std::atomic<unsigned> shape_counter{0};
+        const std::string tag = split.key + "." + std::to_string(hot::detail::process_id()) + "." + std::to_string(shape_counter++);
+        // The PCH names its header file: the header stays next to the PCH (same key, same text).
+        const std::string hdr = fs::path(split.pch).replace_extension(".h").string();
+        const std::string tmp = (dir / (tag + ".pch.tmp")).string();
+        const std::string dep = (dir / (tag + ".d.tmp")).string();
+        // The PCH records the time of its header: never rewrite the header when it is the same
+        // (an other process can have written it). A new file goes through a temp file and a rename.
+        std::string have;
+        bool ok = (read_text(hdr, have) && have == split.header_text) || write_text_replace(hdr, split.header_text);
+        std::string output;
+        if (ok)
+        {
+            ok = run_command(with_pch(pch_build_command(with_fmt_choice(opt_, split.own_fmt), hdr, tmp, dep, script_dir), base_pch), output) == 0;
+            if (ok)
+            {
+                fs::rename(tmp, split.pch, ec);
+                ok = !ec;
+            }
+        }
+        fs::remove(tmp, ec);
+        fs::remove(dep, ec);
+        if (!ok && !fs::exists(split.pch, ec))
+            fs::remove(hdr, ec); // a failed build is no reason for a marker. Keep the header of a good PCH.
+        else
+        {
+            // Keep the 2 newest shape PCH files of this script and the 32 newest in all. An
+            // other process can read an old file: unlink is safe on ELF (the reader keeps its
+            // handle). Windows refuses the removal of an open file: the file stays for a later run.
+            evict_shape_files(dir.string(), split.unit_id, 2, 32);
+        }
+        if (timing)
+            std::fprintf(stderr, "hot: %s shape pch %s in %lld ms (key %.8s)\n", unit.c_str(), ok ? "built" : "failed",
+                static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - t0).count()), split.key.c_str());
+      } catch (...) {
+        // A failure of the file system (an exception) never ends the process: no shape PCH then.
+      }
+        std::lock_guard<std::mutex> done(shape_mutex_);
+        shape_building_ = false;
+    });
+}
+
 bool ClangFilesBackend::build_pch(const PchPlan& plan, const std::string& script_dir, std::string& error)
 {
     const fs::file_time_type started = fs::file_time_type::clock::now();
@@ -2155,7 +3373,7 @@ bool ClangFilesBackend::build_pch(const PchPlan& plan, const std::string& script
     const std::string dep = base + ".pchd.tmp" + std::to_string(hot::detail::process_id());
     std::error_code ec;
     std::string output;
-    const int rc = run_command(pch_build_command(opt_, plan.header, tmp, dep, script_dir), output);
+    const int rc = run_command(pch_build_command(with_fmt_choice(opt_, plan.own_fmt), plan.header, tmp, dep, script_dir), output);
     std::string dep_text;
     if (rc == 0)
         read_text(dep, dep_text);
@@ -2519,15 +3737,18 @@ bool ClangFilesBackend::translate_stage(BuildJob& job, const ScriptSource& sourc
     if (tr_cache)
         cached = tr_cache->lookup(to);
     job.translate_hit = cached.has_value();
+    job.mark("lookup");
     job.translate_start = fs::file_time_type::clock::now();
     hotc::TranslateResult& tr = job.tr;
     tr = job.translate_hit ? std::move(*cached) : hotc::translate(to, *opt_.session);
+    job.mark("translate");
     if (tr_cache && !job.translate_hit && tr.ok && tr.diagnostics.empty())
     {
         std::string store_error;
         if (!tr_cache->store(to, tr, job.translate_start, store_error) && job.timing)
             std::fprintf(stderr, "hot: %s has no translate cache entry: %s\n", unit.c_str(), store_error.c_str());
     }
+    job.mark("store");
     job.t1 = std::chrono::steady_clock::now();
     if (!tr.ok)
     {
@@ -2610,6 +3831,27 @@ bool ClangFilesBackend::translate_stage(BuildJob& job, const ScriptSource& sourc
 
 bool ClangFilesBackend::compile_stage(BuildJob& job)
 {
+    // The units use the fmt code of the host. If a module needs an fmt symbol that the host does not
+    // export, the module would not load. Then this backend turns the own fmt copy on and compiles again.
+    const bool host_fmt = !fmt_header_only(opt_);
+    const bool ok = compile_stage_once(job, host_fmt);
+    std::string missing;
+    if (!host_fmt || !ok || !(opt_.missing_fmt_symbol ? opt_.missing_fmt_symbol(job.out_so, &missing) : has_missing_fmt_symbol(job.out_so, &missing, opt_.host_import_library)))
+    {
+        if (host_fmt)
+            remove_mirror(job);
+        return ok;
+    }
+    if (opt_.fmt_header_only)
+        opt_.fmt_header_only->store(true);
+    const std::string msg = "hot: " + job.unit + " needs the fmt symbol " + missing
+        + " that the host does not export; the units use their own fmt code from now";
+    std::fprintf(stderr, "%s\n", msg.c_str());
+    return compile_stage_once(job, false);
+}
+
+bool ClangFilesBackend::compile_stage_once(BuildJob& job, bool keep_mirror)
+{
     std::error_code ec;
     const fs::path so_path(job.out_so);
     const std::string& out_so = job.out_so;
@@ -2626,8 +3868,13 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
     struct MirrorGuard
     {
         BuildJob& job;
-        ~MirrorGuard() { remove_mirror(job); }
-    } mirror_guard{job};
+        bool keep;
+        ~MirrorGuard()
+        {
+            if (!keep)
+                remove_mirror(job);
+        }
+    } mirror_guard{job, keep_mirror};
     fs::remove(so_path, ec);
     std::string output;
     // The diagnostics can name the "#line" name or the path of the file (before the first "#line").
@@ -2656,24 +3903,42 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
         t2 = std::chrono::steady_clock::now();
         if (rc != 0)
             return fail("compile", rc);
-        link_rc = run_command(link_module_command(opt_, obj_path, out_so), output);
+        link_rc = run_link(opt_, obj_path, out_so, output, timing);
     }
     else
     {
         // The key has the translated text, the compile arguments (the paths of this build are
         // fixed names, also the root of the mirror: the root of the job is not in the key), the compiler and the mirror files that the compile can read.
+        job.mark("write_cpp");
         ObjectCache::KeyInputs inputs;
         inputs.cpp_text = tr.cpp;
         inputs.args = ObjectCache::normalize_args(
             compile_object_command(opt_, "@cpp@", "@obj@", "@dep@", script_dir), opt_.work_dir);
         inputs.compiler_id = compiler_id_;
+        // The split decision is in the key: an object that the two object split made (joined) must not
+        // serve a build without the split, and a new version of the transform makes new keys.
+        const bool hot_unit_key = job.source_name.size() > 4
+            && job.source_name.compare(job.source_name.size() - 4, 4, ".hot") == 0;
+        const char* two_env = std::getenv("HOT_SPLIT_UNIT_OBJECTS");
+        const std::string lld = find_lld(opt_.compiler);
+#if defined(__linux__)
+        const bool elf_target = elf64_linux_target(opt_.target_triple);
+#else
+        const bool elf_target = false;
+#endif
+        const bool two_allowed = hot_unit_key && elf_target && !lld.empty() && two_object_flags_ok(inputs.args)
+            && !(two_env && std::strcmp(two_env, "0") == 0);
+        if (hot_unit_key)
+            inputs.args.push_back(split_object_tag(two_allowed));
         if (opt_.fs)
             inputs.virtual_files = tr.virtual_files;
         // A sum of the path hashes: the order of the paths is different after a translate cache hit.
         for (const std::string& p : tr.shadow_paths)
             inputs.shadow_hash += hotc::text_hash(p);
         const ObjectCache::Key key = ObjectCache::make_key(inputs);
+        job.mark("key");
         std::optional<ObjectCache::Hit> hit = cache_->lookup(key);
+        job.mark("obj_lookup");
         cache_note = hit ? ", cache hit" : ", cache miss";
         // The key of the linked module: the object key, the link command and the host library.
         std::optional<ObjectCache::Key> module_key;
@@ -2770,12 +4035,195 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
                     else if (pch && pch->build)
                         start_pch_build(*pch, script_dir, unit, timing);
                 }
+                job.mark("plan_pch");
                 int rc = 0;
                 bool used_pch = false;
+                std::vector<std::string> shape_deps; // cache files of a shape PCH hit: not object inputs
                 if (pch && !pch->pch.empty())
                 {
-                    rc = run_command(with_pch(plain, pch->pch), output);
+                    // The shape PCH: on a hit the compile gets the rest of the unit after the PCH of
+                    // the shape. On a miss it compiles the whole unit and builds the shape PCH later.
+                    const std::string& sn = job.source_name;
+                    const bool is_hot_unit = sn.size() > 4 && sn.compare(sn.size() - 4, 4, ".hot") == 0;
+                    // A stable name: the work dir of a process has its id, and the key must not have it.
+                    std::string stable_name = line_name;
+                    const std::string work_prefix = opt_.work_dir;
+                    if (!work_prefix.empty() && stable_name.compare(0, work_prefix.size(), work_prefix) == 0)
+                        stable_name = "@work@" + stable_name.substr(work_prefix.size());
+                    // Two objects (design D): a compile of the bodies and a compile of the record and the
+                    // entry, in parallel, joined by "ld.lld -r". HOT_SPLIT_UNIT_OBJECTS=0 turns it off.
+                    ShapeSplit shape = plan_shape(tr.cpp, stable_name, pch->pch, pch->key.hex(), inputs.args,
+                        is_hot_unit, script_dir, two_allowed);
+                    if (shape.key.empty() && two_allowed)
+                        shape = plan_shape(tr.cpp, stable_name, pch->pch, pch->key.hex(), inputs.args, is_hot_unit,
+                            script_dir, false);
+                    bool shape_hit = false;
+                    bool split_failed = false;
+                    bool split_io_error = false; // a file write failed: no marker, the next build tries again
+                    std::string split_out;
+                    shape_deps.clear();
+                    const fs::path shape_pch_path(shape.pch);
+                    if (!shape.key.empty() && fs::exists(shape_pch_path, ec))
+                    {
+                        const std::string main_path = tmp + ".main.cpp";
+                        std::vector<std::string> cmd = plain;
+                        cmd[cmd.size() - 3] = main_path; // the input file
+                        cmd = with_pch(std::move(cmd), shape.pch);
+                        if (!shape.second_text.empty() && write_text(main_path, shape.main_text))
+                        {
+                            // Two objects: bodies (main) and record and entry (shape file).
+                            const std::string second_path = tmp + ".shape.cpp";
+                            const std::string obj_main = tmp + ".main.o";
+                            const std::string obj_shape = tmp + ".shape.o";
+                            const std::string dep_shape = dep + ".shape";
+                            cmd[cmd.size() - 1] = obj_main;
+                            std::vector<std::string> cmd2 = plain;
+                            cmd2[cmd2.size() - 3] = second_path;
+                            cmd2[cmd2.size() - 1] = obj_shape;
+                            cmd2[cmd2.size() - 4] = dep_shape;
+                            cmd2 = with_pch(std::move(cmd2), shape.pch);
+                            std::string out_a, out_b;
+                            int rc_a = 1, rc_b = 1;
+                            bool io_error = false;
+                            TempFiles temp{{obj_main, obj_shape, dep_shape, second_path}};
+                            if (write_text(second_path, shape.second_text))
+                            {
+                                // The second compile runs next to the first one only when a place is free
+                                // (the job limit, HOT_JOBS); else one after the other.
+                                std::thread second;
+                                if (reserve_compile_place())
+                                {
+                                    try
+                                    {
+                                        second = std::thread([&] {
+                                            PlaceGuard place; // the place of the reservation
+                                            rc_b = run_command(cmd2, out_b);
+                                        });
+                                    }
+                                    catch (const std::system_error&)
+                                    {
+                                        --g_running_compiles; // no thread: the compile runs here
+                                    }
+                                }
+                                JoinGuard join_second{second};
+                                rc_a = run_counted(cmd, out_a);
+                                if (second.joinable())
+                                    second.join();
+                                else
+                                    rc_b = run_counted(cmd2, out_b);
+                            }
+                            else
+                                io_error = true;
+                            std::string why = io_error ? "cannot write the second file" : std::string();
+                            rc = rc_a != 0 ? rc_a : rc_b;
+                            if (rc == 0)
+                            {
+                                // The guard: no copy of the unit state in both objects.
+                                const auto guard_start = std::chrono::steady_clock::now();
+                                std::set<std::string> state_a, state_b;
+                                if (!unit_state_symbols(obj_main, state_a) || !unit_state_symbols(obj_shape, state_b))
+                                    why = "cannot read the symbols of the objects";
+                                else
+                                    for (const std::string& n : state_a)
+                                        if (state_b.count(n))
+                                            why = "the unit state " + n + " is in both objects";
+                                if (why.empty())
+                                {
+                                    std::string link_out;
+                                    if (run_command({lld, "-r", obj_shape, obj_main, "-o", tmp}, link_out) != 0)
+                                        why = "the join of the objects failed: " + link_out;
+                                    else
+                                        why = merged_object_problem(tmp, shape.fns);
+                                }
+                                if (timing)
+                                    std::fprintf(stderr, "hot: %s split guard and join %.1f ms\n", unit.c_str(),
+                                        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - guard_start).count());
+                                if (!why.empty())
+                                    rc = 1;
+                                else
+                                {
+                                    std::string dep_a, dep_b;
+                                    read_text(dep, dep_a);
+                                    read_text(dep_shape, dep_b);
+                                    write_text(dep, dep_a + "\n" + dep_b);
+                                }
+                            }
+                            split_io_error = io_error;
+                            split_out = out_a + out_b + why;
+                            output = split_out;
+                            shape_hit = rc == 0;
+                            for (const std::string& f : {obj_main, obj_shape, dep_shape, second_path})
+                                fs::remove(f, ec);
+                            if (shape_hit)
+                            {
+                                fs::last_write_time(shape_pch_path, fs::file_time_type::clock::now(), ec);
+                                if (timing)
+                                    std::fprintf(stderr, "hot: %s shape pch hit, two objects (key %.8s)\n",
+                                        unit.c_str(), shape.key.c_str());
+                            }
+                            else
+                            {
+                                if (timing)
+                                    std::fprintf(stderr, "hot: %s two objects refused: %.300s\n", unit.c_str(),
+                                        split_out.c_str());
+                                split_failed = true;
+                                fs::remove(tmp, ec);
+                                fs::remove(dep, ec);
+                            }
+                        }
+                        else if (write_text(main_path, shape.main_text))
+                        {
+                            rc = run_command(cmd, split_out);
+                            shape_hit = rc == 0;
+                            if (shape_hit)
+                            {
+                                output = split_out;
+                                fs::last_write_time(shape_pch_path, fs::file_time_type::clock::now(), ec); // last use
+                                if (timing)
+                                    std::fprintf(stderr, "hot: %s shape pch hit (key %.8s)\n", unit.c_str(),
+                                        shape.key.c_str());
+                            }
+                            else
+                            {
+                                split_failed = true;
+                                fs::remove(tmp, ec);
+                                fs::remove(dep, ec);
+                            }
+                        }
+                        fs::remove(main_path, ec);
+                    }
+                    if (shape_hit)
+                        shape_deps = {shape.pch, fs::path(shape.pch).replace_extension(".h").string()};
+                    if (!shape_hit)
+                        rc = run_command(with_pch(plain, pch->pch), output);
+                    if (split_failed && rc == 0)
+                    {
+                        // The whole unit works, so the split is the cause. A damaged or changed
+                        // PCH (or a PCH that an other job removed) only needs a new build.
+                        // Other errors make a marker: the key uses the whole unit for one day.
+                        const bool pch_problem = !fs::exists(shape_pch_path, ec) ||
+                            split_out.find("malformed or corrupted") != std::string::npos ||
+                            split_out.find("PCH file") != std::string::npos ||
+                            split_out.find("AST file") != std::string::npos ||
+                            split_out.find("has been modified") != std::string::npos ||
+                            split_out.find("could not find file") != std::string::npos ||
+                            split_out.find("precompiled header") != std::string::npos ||
+                            split_out.find("defined in the PCH") != std::string::npos;
+                        if (pch_problem)
+                        {
+                            fs::remove(shape_pch_path, ec);
+                            fs::remove(fs::path(shape.pch).replace_extension(".h"), ec);
+                        }
+                        else if (!split_io_error)
+                            write_text(fs::path(shape.pch).replace_extension(".nosplit").string(), split_out);
+                        std::fprintf(stderr, "hot: %s does not compile with its shape PCH; the whole unit is used\n",
+                            unit.c_str());
+                        if (timing)
+                            std::fprintf(stderr, "hot: split output: %.600s\n", split_out.c_str());
+                    }
                     used_pch = rc == 0;
+                    if (rc == 0 && !shape_hit && !shape.key.empty() && !fs::exists(shape.pch, ec))
+                        start_shape_build(shape, pch->pch, script_dir, unit, timing);
                     if (rc != 0)
                     {
                         // The PCH must never fail a build: compile again without it. When that
@@ -2840,6 +4288,7 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
                 if (used_pch)
                     pch_note = ", pch";
                 t2 = std::chrono::steady_clock::now();
+                job.mark("clang");
                 std::string dep_text;
                 if (rc == 0)
                     read_text(dep, dep_text);
@@ -2847,6 +4296,11 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
                 // The object depends on the headers of the PCH too. Clang lists them in the
                 // depfile of a compile with "-include-pch". The rule keeps them for a clang
                 // that does not. parse_depfile reads each rule.
+                // The shape PCH and its header are files of the cache: the key has their content. Their
+                // time is new after a build, so the store would refuse them as changed headers.
+                for (const std::string& d : shape_deps)
+                    for (size_t at = dep_text.find(d); at != std::string::npos; at = dep_text.find(d, at))
+                        dep_text.erase(at, d.size());
                 if (used_pch)
                     dep_text += "\n" + depfile_rule(pch_cache_->headers(pch->key));
                 if (rc != 0)
@@ -2863,7 +4317,9 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
                 }
                 std::string store_error;
                 // The start of the translate: the translated text depends on the headers too.
-                if (cache_->store(key, tmp, dep_text, opt_.work_dir, translate_start, store_error))
+                const bool stored = cache_->store(key, tmp, dep_text, opt_.work_dir, translate_start, store_error);
+                job.mark("obj_store");
+                if (stored)
                     object = cache_->object_path(key).string();
                 else
                 {
@@ -2873,7 +4329,7 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
                     temp_object = tmp;
                 }
             }
-            link_rc = run_command(link_module_command(opt_, object, out_so), output);
+            link_rc = run_link(opt_, object, out_so, output, timing);
             job.built_object = temp_object.empty() ? object : obj_path;
             if (!temp_object.empty())
                 fs::remove(temp_object, ec);
@@ -2917,9 +4373,36 @@ bool ClangFilesBackend::compile_stage(BuildJob& job)
                 tms(tt.lower_ns), tms(tt.check_ns), tms(tt.emit_ns));
             translate_detail = buf;
         }
-        std::fprintf(stderr, "hot: %s translate %s, compile %lld ms, link %lld ms%s%s%s\n", unit.c_str(),
+        // The parts of the translate (from t0 to t1) and of the compile (from t1 to t2). Each part
+        // is the time from the earlier mark. "tail" is the rest to the end of the phase.
+        std::string parts;
+        {
+            const auto us = [](auto x, auto y) {
+                return static_cast<long long>(std::chrono::duration_cast<std::chrono::microseconds>(y - x).count());
+            };
+            auto prev = job.t0;
+            std::string tp, cp;
+            bool in_compile = false;
+            for (const auto& m : job.marks)
+            {
+                std::string& dst = in_compile || std::string(m.first) == "write_cpp" ? cp : tp;
+                if (&dst == &cp && !in_compile)
+                {
+                    in_compile = true;
+                    tp += " tail " + std::to_string(us(prev, job.t1) / 1000.0).substr(0, 5);
+                    prev = job.t1;
+                }
+                char b2[64];
+                std::snprintf(b2, sizeof b2, "%s%s %.1f", dst.empty() ? "" : ", ", m.first, us(prev, m.second) / 1000.0);
+                dst += b2;
+                prev = m.second;
+            }
+            if (!tp.empty() || !cp.empty())
+                parts = " [translate parts ms: " + tp + "] [compile parts ms: " + cp + "]";
+        }
+        std::fprintf(stderr, "hot: %s translate %s, compile %lld ms, link %lld ms%s%s%s%s\n", unit.c_str(),
             translate_note.c_str(), ms(job.t1, t2), ms(t2, t3), cache_note, pch_note.c_str(),
-            translate_detail.c_str());
+            translate_detail.c_str(), parts.c_str());
     }
     if (link_rc != 0)
         return fail("link", link_rc);

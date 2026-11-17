@@ -13,6 +13,7 @@ set(BACKEND_TEST_SOURCES
     vfs_backend_tests.cpp
     object_cache_backend_tests.cpp
     pch_backend_tests.cpp
+    parallel_probe_tests.cpp
     run_command_tests.cpp
     translate_cache_tests.cpp
     backend_selection_tests.cpp
@@ -30,6 +31,7 @@ add_executable(integration_backend_tests ${BACKEND_TEST_SOURCES}
     ${PROJECT_SOURCE_DIR}/tests/engine/Object.cpp
     ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
 target_include_directories(integration_backend_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
+target_include_directories(integration_backend_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/runtime)
 if(HOT_JIT_ENABLED)
     # The JIT tests call the C interface of the JIT engine (src/runtime/jit_engine.h).
     target_include_directories(integration_backend_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/runtime)

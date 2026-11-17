@@ -11,7 +11,14 @@
 
 #include "hot/runtime.h"
 
-#line 15 "cpp_ctor_init_v2.cpp.cpp"
+#line 4 "cpp_ctor_init_v2.cpp"
+#include "Actor.h"
+#line 6 "cpp_ctor_init_v2.cpp"
+#include <string>
+#line 7 "cpp_ctor_init_v2.cpp"
+#include <utility>
+#line 21 "cpp_ctor_init_v2.cpp.cpp"
+#line 22 "cpp_ctor_init_v2.cpp.cpp"
 
 // The generation of this module. The register function sets it from the registry.
 [[maybe_unused]] static uint32_t GEN = 0;
@@ -25,13 +32,6 @@ struct Unit_Shell;
 using Unit = Unit_Shell;
 struct Spawner_Shell;
 using Spawner = Spawner_Shell;
-#line 4 "cpp_ctor_init_v2.cpp"
-#include "Actor.h"
-#line 6 "cpp_ctor_init_v2.cpp"
-#include <string>
-#line 7 "cpp_ctor_init_v2.cpp"
-#include <utility>
-#line 35 "cpp_ctor_init_v2.cpp.cpp"
 
 // ---------------------------------------------------------------- class Unit
 // Slot numbers. Native virtuals come first, in the order of Actor.

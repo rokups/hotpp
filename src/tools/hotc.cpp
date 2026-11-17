@@ -596,6 +596,7 @@ int run_aot(const Args& args)
     fs::create_directories(args.out_dir, ec);
 
     hotc::TranslatorSession session;
+    session.set_tu_cache_limit(0); // the batch parses each script once
     std::vector<std::string> names;
     // The interface hash and the imports of each script, in the order of "names".
     std::vector<std::pair<uint64_t, std::vector<std::pair<std::string, uint64_t>>>> units;

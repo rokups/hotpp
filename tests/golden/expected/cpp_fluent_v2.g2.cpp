@@ -11,7 +11,10 @@
 
 #include "hot/runtime.h"
 
-#line 15 "cpp_fluent_v2.cpp.cpp"
+#line 4 "cpp_fluent_v2.cpp"
+#include "Actor.h"
+#line 17 "cpp_fluent_v2.cpp.cpp"
+#line 18 "cpp_fluent_v2.cpp.cpp"
 
 // The generation of this module. The register function sets it from the registry.
 [[maybe_unused]] static uint32_t GEN = 0;
@@ -25,9 +28,6 @@ struct Counter_Shell;
 using Counter = Counter_Shell;
 struct Builder_Shell;
 using Builder = Builder_Shell;
-#line 4 "cpp_fluent_v2.cpp"
-#include "Actor.h"
-#line 31 "cpp_fluent_v2.cpp.cpp"
 
 // ---------------------------------------------------------------- class Counter
 // Slot numbers. Native virtuals come first, in the order of Actor.

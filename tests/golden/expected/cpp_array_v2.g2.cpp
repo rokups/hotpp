@@ -11,7 +11,16 @@
 
 #include "hot/runtime.h"
 
-#line 15 "cpp_array_v2.cpp.cpp"
+#line 2 "cpp_array_v2.cpp"
+#include "Actor.h"
+#line 4 "cpp_array_v2.cpp"
+#include <functional>
+#line 5 "cpp_array_v2.cpp"
+#include <string>
+#line 6 "cpp_array_v2.cpp"
+#include <vector>
+#line 23 "cpp_array_v2.cpp.cpp"
+#line 24 "cpp_array_v2.cpp.cpp"
 
 // The generation of this module. The register function sets it from the registry.
 [[maybe_unused]] static uint32_t GEN = 0;
@@ -23,15 +32,6 @@ static void* HotModule_slot = nullptr;
 [[maybe_unused]] HOT_HIDDEN static HotModule* hot_mod() { return static_cast<HotModule*>(HotModule_slot); }
 struct Buf_Shell;
 using Buf = Buf_Shell;
-#line 2 "cpp_array_v2.cpp"
-#include "Actor.h"
-#line 4 "cpp_array_v2.cpp"
-#include <functional>
-#line 5 "cpp_array_v2.cpp"
-#include <string>
-#line 6 "cpp_array_v2.cpp"
-#include <vector>
-#line 35 "cpp_array_v2.cpp.cpp"
 
 // ---------------------------------------------------------------- struct HotModule
 struct HotModule {
