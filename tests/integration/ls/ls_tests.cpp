@@ -33,6 +33,7 @@
 #include <tuple>
 #include <vector>
 
+#include <sys/wait.h>
 #include <unistd.h>
 
 using ls_test::json;
@@ -10210,3 +10211,268 @@ TEST(LanguageServer, LiteDocIsHiddenFromReferencesRenameAndSymbols)
     EXPECT_NE(on["rename_go"].dump().find("Run"), std::string::npos) << on["rename_go"].dump();
     EXPECT_NE(on["refs_go"].dump().find("range"), std::string::npos) << on["refs_go"].dump();
 }
+
+// The main script shows the same diagnostics with the split shell and without it when an imported script has an error
+// in a body. clangd reports such an error at the include line of the unit: the server drops it, as for the full unit.
+TEST(LanguageServer, ErrorInAnImportedBodyGivesTheSameDiagnosticsWithTheSplit)
+{
+    REQUIRE_CLANGD();
+    const std::string bad_base =
+        "using \"Actor.h\";\n"
+        "class Base : Actor {\n"
+        "    float hp = 2.0;\n"
+        "    float Heal(float a) { int y = \"text\"; return this.hp + a; }\n"
+        "}\n";
+    auto run = [&](bool split)
+    {
+        const EnvGuard env("HOT_LS_SPLIT_SHELL", split ? "1" : "0");
+        TempDir shells;
+        const EnvGuard dir_env("HOT_LS_SHELL_DIR", shells.path().string());
+        Session s(true, "using \"Actor.h\";\n");
+        write_file(s.dir.path() / "base.hot", bad_base);
+        s.client->change(s.uri, 2, kLiteCalls);
+        const json first = s.diagnostics([](const json& d) { return has_message(d, kOwnError); });
+        json last = first["params"]["diagnostics"];
+        // The last list with the own error, after no new list for 2 s. The older lists of the first texts are
+        // in the queue too: they have no own error.
+        for (const json& d : collect_diagnostics(s, 2000))
+            if (has_message(d, kOwnError))
+                last = d;
+        json out = json::array();
+        for (const json& d : last)
+            // The error of the imported body makes a second error in the generated code of the importer: clangd
+            // reports it at the line of the class. With the split shell it is in the header and clangd reports
+            // nothing for the main file. This is the only difference.
+            if (d.value("message", "").rfind("No matching function for call to 'forward'", 0) != 0)
+                out.push_back({{"range", d["range"]}, {"message", d.value("message", "")}});
+        return out;
+    };
+    const json on = run(true), off = run(false);
+    EXPECT_EQ(on, off) << on.dump() << "\n" << off.dump();
+    EXPECT_TRUE(has_message(on, kOwnError)) << on.dump();
+}
+
+// A body with a deduced return type is never empty in the lite document: the hover in a body that calls it shows
+// the deduced type.
+TEST(LanguageServer, LiteDocKeepsABodyWithADeducedReturnType)
+{
+    REQUIRE_CLANGD();
+    const char* const text =
+        "using \"base.hot\";\n"
+        "class Kid : Base {\n"
+        "    float own = 1.0;\n"
+        "    auto Dedu() { return this.own + 1.0; }\n"
+        "    float Use(float a) { auto v = this.Dedu(); return v + this.own + a; }\n"
+        "}\n"
+        "class Other : Actor {\n"
+        "    void Bad() {\n"
+        "        int x = \"text\";\n"
+        "    }\n"
+        "}\n";
+    auto hover = [&](bool lite)
+    {
+        LiteSession ls(lite, text);
+        const std::string use = "    float Use(float a) { auto v = this.Dedu(); return v + this.own + a; }";
+        json r;
+        for (int i = 0; i < 40; ++i)
+        {
+            r = ls.s.client->request("textDocument/hover", doc_pos(ls.s.uri, 4, static_cast<int>(use.find("this.own")) + 7));
+            if (r.contains("result") && r["result"].is_object())
+                break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        }
+        return ls.norm(r);
+    };
+    const std::string lite = hover(true), full = hover(false);
+    EXPECT_EQ(lite, full);
+    EXPECT_NE(lite.find("own"), std::string::npos) << lite;
+}
+
+// A function that moves down by 30 lines: the definition of a call from another body has the new line.
+TEST(LanguageServer, LiteDocDefinitionFollowsLinesAddedAboveAFunction)
+{
+    REQUIRE_CLANGD();
+    LiteSession ls(true);
+    Session& s = ls.s;
+    std::string text = kLiteCalls;
+    text.insert(text.find("class Kid"), std::string(30, '\n'));
+    s.client->change(s.uri, 3, text);
+    s.diagnostics([](const json& d) { return has_message(d, kOwnError); });
+    const std::string twice = "    float Twice(float a) { return this.Go(a) + this.Go(a); }";
+    json r;
+    for (int i = 0; i < 40; ++i)
+    {
+        r = s.client->request("textDocument/definition", doc_pos(s.uri, 34, static_cast<int>(twice.find("Go(a)")) + 1));
+        if (r.contains("result") && !r["result"].is_null())
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    }
+    const std::string dump = ls.norm(r);
+    EXPECT_NE(dump.find("\"line\":33"), std::string::npos) << dump;
+    EXPECT_EQ(dump.find("\"line\":3,"), std::string::npos) << dump;
+    EXPECT_EQ(dump.find(".lite.cpp"), std::string::npos) << dump;
+}
+
+#ifndef _WIN32
+// The directory of the headers can be a symbolic link with a space in the path. No answer has a uri of a header or
+// of a lite document, and the lite diagnostics never reach the client.
+TEST(LanguageServer, HeaderDirectoryWithASymlinkAndASpaceGivesNoInternalUri)
+{
+    REQUIRE_CLANGD();
+    TempDir area;
+    const auto real = area.path() / "real dir";
+    const auto link = area.path() / "link dir";
+    std::filesystem::create_directories(real);
+    std::filesystem::create_directory_symlink(real, link);
+    const EnvGuard split("HOT_LS_SPLIT_SHELL", "1");
+    const EnvGuard lite_env("HOT_LS_LITE_DOC", "1");
+    const EnvGuard dir_env("HOT_LS_SHELL_DIR", link.string());
+    Session s(true, "using \"Actor.h\";\n");
+    write_file(s.dir.path() / "base.hot", kSplitBase);
+    s.client->change(s.uri, 2, kLiteCalls);
+    ASSERT_FALSE(s.diagnostics([](const json& d) { return has_message(d, kOwnError); }).is_null());
+    collect_diagnostics(s, 1500); // the old lists of the first texts
+    json all = json::array();
+    const std::string go = "    float Go(float a) { return this.Heal(a) + this.own; }";
+    for (int i = 0; i < 4; ++i)
+    {
+        all.push_back(s.client->request("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(go.find("this.own")) + 7)));
+        all.push_back(s.client->request("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(go.find("Heal")) + 1)));
+        all.push_back(s.client->request("textDocument/definition", doc_pos(s.uri, 3, static_cast<int>(go.find("Heal")) + 1)));
+        json refs = doc_pos(s.uri, 3, 11);
+        refs["context"] = {{"includeDeclaration", true}};
+        all.push_back(s.client->request("textDocument/references", refs));
+        all.push_back(s.client->request("workspace/symbol", {{"query", "Heal"}}));
+    }
+    const std::string dump = all.dump();
+    EXPECT_EQ(dump.find(".shell.h"), std::string::npos);
+    EXPECT_EQ(dump.find(".lite.cpp"), std::string::npos);
+    EXPECT_NE(dump.find("Heal"), std::string::npos);
+    for (const json& d : collect_diagnostics(s, 800))
+        EXPECT_TRUE(has_message(d, kOwnError)) << d.dump();
+    // The header is in a directory of this server inside the real directory.
+    EXPECT_EQ(shell_files(real).size(), 1u);
+}
+
+// A second server on the same script closes the document: the first server answers without an edit, because each
+// server has its own header directory. Dead directories of crashed servers are removed at start.
+TEST(LanguageServer, TwoServersOnOneScriptAndPruneOfDeadHeaderDirectories)
+{
+    REQUIRE_CLANGD();
+    TempDir shells;
+    // A directory of a process that is gone (kill -9): the child ends at once.
+    const pid_t child = fork();
+    if (child == 0)
+        _exit(0);
+    int status = 0;
+    waitpid(child, &status, 0);
+    const auto dead = shells.path() / (std::to_string(child) + "-0");
+    std::filesystem::create_directories(dead);
+    write_file(dead / "0123-0456.shell.h", "// old\n");
+    const EnvGuard split("HOT_LS_SPLIT_SHELL", "1");
+    const EnvGuard lite_env("HOT_LS_LITE_DOC", "0");
+    const EnvGuard dir_env("HOT_LS_SHELL_DIR", shells.path().string());
+    Session s(true, "using \"Actor.h\";\n");
+    write_file(s.dir.path() / "base.hot", kSplitBase);
+    s.client->change(s.uri, 2, kLiteCalls);
+    ASSERT_FALSE(s.diagnostics([](const json& d) { return has_message(d, kOwnError); }).is_null());
+    EXPECT_FALSE(std::filesystem::exists(dead)); // pruned
+    {
+        ls_test::LsClient second(options(s.dir, true));
+        second.initialize(uri_of(s.dir.path().string()));
+        second.open(s.uri, kLiteCalls);
+        second.change(s.uri, 2, kLiteCalls);
+        const std::string go = "    float Go(float a) { return this.Heal(a) + this.own; }";
+        json r;
+        for (int i = 0; i < 40; ++i)
+        {
+            r = second.request("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(go.find("Heal")) + 1));
+            if (r.contains("result") && r["result"].is_object())
+                break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        }
+        EXPECT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+        second.notify("textDocument/didClose", {{"textDocument", {{"uri", s.uri}}}});
+        second.stop();
+    }
+    const std::string go = "    float Go(float a) { return this.Heal(a) + this.own; }";
+    json r;
+    for (int i = 0; i < 40; ++i)
+    {
+        r = s.client->request("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(go.find("Heal")) + 1));
+        if (r.contains("result") && r["result"].is_object())
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    }
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    EXPECT_NE(r["result"].dump().find("Heal"), std::string::npos) << r.dump();
+}
+#endif
+
+#ifndef _WIN32
+// A clangd that never answers the first request for the lite document (a slow machine): the hover uses the full
+// document inside its budget, and the server counts the fallback.
+TEST(LanguageServer, SlowOpenOfTheLiteDocumentFallsBackToTheFullDocument)
+{
+    REQUIRE_CLANGD();
+    if (std::system("python3 -c \"\" >/dev/null 2>&1") != 0)
+        GTEST_SKIP() << "python3 is not installed";
+    TempDir tools;
+    const std::string proxy = (tools.path() / "mute_lite.py").string();
+    write_file(proxy,
+        "import subprocess, sys\n"
+        "p = subprocess.Popen(sys.argv[1:], stdin=subprocess.PIPE)\n"
+        "src = sys.stdin.buffer\n"
+        "while True:\n"
+        "    head = b''\n"
+        "    while not head.endswith(b'\\r\\n\\r\\n'):\n"
+        "        c = src.read(1)\n"
+        "        if not c:\n"
+        "            p.stdin.close()\n"
+        "            p.wait()\n"
+        "            sys.exit(0)\n"
+        "        head += c\n"
+        "    size = 0\n"
+        "    for line in head.split(b'\\r\\n'):\n"
+        "        if line.lower().startswith(b'content-length:'):\n"
+        "            size = int(line.split(b':')[1])\n"
+        "    body = src.read(size)\n"
+        "    if b'\"textDocument/documentSymbol\"' in body and b'.lite.cpp' in body:\n"
+        "        continue\n"
+        "    p.stdin.write(head + body)\n"
+        "    p.stdin.flush()\n");
+    const std::string clangd = (tools.path() / "mute_clangd").string();
+    write_file(clangd, "#!/bin/sh\nexec python3 '" + proxy + "' '" HOT_CLANGD_PATH "' \"$@\"\n");
+    std::filesystem::permissions(clangd, std::filesystem::perms::owner_all, std::filesystem::perm_options::add);
+    const EnvGuard split("HOT_LS_SPLIT_SHELL", "1");
+    const EnvGuard lite_env("HOT_LS_LITE_DOC", "1");
+    TempDir shells;
+    const EnvGuard dir_env("HOT_LS_SHELL_DIR", shells.path().string());
+    TempDir dir;
+    hot::ls::ServerOptions o = options(dir, true);
+    o.clangd = clangd;
+    Session s(true, "using \"Actor.h\";\n", &o);
+    write_file(s.dir.path() / "base.hot", kSplitBase);
+    s.client->change(s.uri, 2, kLiteCalls);
+    ASSERT_FALSE(s.diagnostics([](const json& d) { return has_message(d, kOwnError); }).is_null());
+    const std::string go = "    float Go(float a) { return this.Heal(a) + this.own; }";
+    for (int i = 0; i < 4; ++i)
+    {
+        const auto t0 = std::chrono::steady_clock::now();
+        json r;
+        for (int k = 0; k < 40; ++k)
+        {
+            r = s.client->request("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(go.find("this.own")) + 7));
+            if (r.contains("result") && r["result"].is_object())
+                break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        }
+        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+        EXPECT_TRUE(r.contains("result") && r["result"].is_object()) << "hover " << i << ": " << r.dump();
+        if (i >= 2) // the document is warm: the wait for the lite AST is the budget of the hover at most
+            EXPECT_LT(ms, 9000.0) << "hover " << i;
+    }
+    const json stats = s.client->request("hot/indexStats", json::object());
+    EXPECT_GT(stats["result"].value("liteFallback", 0), 0) << stats.dump();
+}
+#endif

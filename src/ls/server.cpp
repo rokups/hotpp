@@ -1995,11 +1995,12 @@ std::string Server::lite_uri_impl(const Doc& d, const std::string& full, int gen
         wait = !st.ready;
     }
     // A new document has no preamble. Before the first preamble clangd gives only words of the file, so the
-    // request waits for the AST here, but not longer than its own budget. After a time-out the request uses the
+    // request waits for the AST here, but not longer than half of its own budget. After a time-out the request uses the
     // full document, and the lite document finishes its open in the background.
     if (wait)
     {
-        if (wait_ms <= 0 || !clangd_result("textDocument/documentSymbol", {{"textDocument", {{"uri", uri}}}}, wait_ms))
+        // Half of the budget at most: the other half is for the answer of the full document after a time-out.
+        if (wait_ms < 2 || !clangd_result("textDocument/documentSymbol", {{"textDocument", {{"uri", uri}}}}, wait_ms / 2))
             return d.gen_uri;
         std::lock_guard<std::mutex> lock(lite_mutex_);
         lite_[d.gen_uri].ready = true;
