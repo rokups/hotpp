@@ -2629,16 +2629,22 @@ ast::Script parse_script(std::string_view text_in, const LineMap& map, Diagnosti
     gen.map = &map;
     std::string generic_text;
     std::string_view text = text_in;
-    if (text_in.find('<') != std::string_view::npos)
+    // The blank prefix of an import text is the same in the copy, so the compare skips it.
+    const size_t lead_in = std::min(text_in.find_first_not_of(' '), text_in.size());
+    if (text_in.find('<', lead_in) != std::string_view::npos)
     {
         generic_text.assign(text_in);
         gen.decls = scan_generics(generic_text, map, diag);
         // The scan also blanks the parts that it reports (a generic method, a constraint).
-        if (!gen.decls.empty() || generic_text != text_in)
+        if (!gen.decls.empty() || std::string_view(generic_text).substr(lead_in) != text_in.substr(lead_in))
             text = generic_text;
     }
     const ParseState st{text.data(), &map, &diag, text.size(), array_tpl};
-    const auto input = lexy::string_input<Encoding>(text.data(), text.size());
+    // The text of an import has a prefix of blanks (positions stay global). The grammar skips it as white
+    // space, so the input starts after it. The base of the state stays at the start of the text.
+    const size_t lead = text.find_first_not_of(' ');
+    const size_t start = lead == std::string_view::npos ? text.size() : lead;
+    const auto input = lexy::string_input<Encoding>(text.data() + start, text.size() - start);
     auto result = parse_with_diag<file_p>(input, st);
     if (result.has_value())
     {
