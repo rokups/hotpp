@@ -1383,8 +1383,7 @@ size_t count_defined_symbols(const fs::path& work_dir, const std::string& suffix
         std::string line(buf);
         while (!line.empty() && (line.back() == '\n' || line.back() == ' '))
             line.pop_back();
-        if (line.size() > suffix.size() && line.compare(line.size() - suffix.size(), suffix.size(), suffix) == 0
-            && line[line.size() - suffix.size() - 1] == ' ')
+        if (line.size() > suffix.size() && line.compare(line.size() - suffix.size(), suffix.size(), suffix) == 0)
             ++n;
     }
     if (p)
@@ -1400,6 +1399,8 @@ size_t count_defined_symbols(const fs::path& work_dir, const std::string& suffix
 TEST(ObjectCacheBackend, TwoObjectsRunAClassScriptWithLambdas)
 {
 #if defined(__linux__)
+    if (hot::find_lld_of(HOT_CXX).empty())
+        GTEST_SKIP() << "no ld.lld: the two object split is off";
     CleanEnv env;
     EnvGuard timing("HOT_TIMING", "1");
     TestScratch scratch;
@@ -1433,15 +1434,17 @@ TEST(ObjectCacheBackend, TwoObjectsRunAClassScriptWithLambdas)
         }
     }
     const std::string log = testing::internal::GetCapturedStderr();
-    if (log.find("two objects") == std::string::npos)
-    {
-        ASSERT_FALSE(shape_pch_expected()) << "no split with two objects" << log;
-        GTEST_SKIP() << "no two objects (no clang, no PCH or no lld)";
-    }
+    // Two objects are expected whenever the compiler has a shape PCH and ld.lld exists.
+    if (shape_pch_expected())
+        ASSERT_NE(log.find("two objects"), std::string::npos) << log;
     EXPECT_EQ(log.find("does not compile with its shape PCH"), std::string::npos) << log;
     EXPECT_EQ(count_defined_symbols(o.work_dir, "GEN"), 1u);
     EXPECT_EQ(count_defined_symbols(o.work_dir, "hot_live"), 1u);
-    EXPECT_LE(count_defined_symbols(o.work_dir, "_slot"), 1u); // no second copy of a module slot
+    // The slot variable of the module is not used by this script. The tables of the classes are
+    // local constants: each class has one table in the joined module.
+    EXPECT_LE(count_defined_symbols(o.work_dir, "HotModule_slot"), 1u);
+    EXPECT_EQ(count_defined_symbols(o.work_dir, "Holder_slots"), 1u);
+    EXPECT_EQ(count_defined_symbols(o.work_dir, "Pt_slots"), 1u);
 #else
     GTEST_SKIP() << "ELF only";
 #endif
@@ -1491,6 +1494,259 @@ TEST(ObjectCacheBackend, UnitStateGuardFindsLocalCopiesOfTheState)
     EXPECT_TRUE(shared.empty());
     std::set<std::string> none;
     EXPECT_FALSE(hot::unit_state_symbols_of((dir / "missing.o").string(), none));
+#else
+    GTEST_SKIP() << "ELF only";
+#endif
+}
+
+namespace
+{
+
+// A unit text in the form of the translator, with the banners.
+std::string handmade_unit(const std::string& p_extra, const std::string& bodies_extra)
+{
+    return "#include <cstdint>\n"                                                       // 1
+           "[[maybe_unused]] static uint32_t GEN = 0;\n"                                // 2
+           "static uint32_t hot_live = 0;\n"                                            // 3
+           + p_extra +
+           "// ------------------------------------------------------ record and entry\n"
+           "static void* X_slot = nullptr;\n"
+           "// ---------------- more of P\n"
+           "constexpr int after_line = __LINE__;\n"
+           "// ---------------------------------------------------------------- function bodies\n"
+           + bodies_extra +
+           "extern \"C\" void script_register(hot::Registry& reg)\n{\n}\n";
+}
+
+} // namespace
+
+// The shape header has the same __LINE__ as the whole unit for a line after a removed range and
+// after the macro block.
+TEST(ObjectCacheBackend, SplitHeaderKeepsTheLineNumbers)
+{
+    const std::string text = handmade_unit("static int f(int);\n", "static int f(int x) { return x; }\n");
+    std::string header, main, shape;
+    std::vector<std::string> fns;
+    ASSERT_TRUE(hot::split_unit_for_test(text, "u.hot", header, main, shape, fns));
+    ASSERT_EQ(fns, std::vector<std::string>{"f"});
+    int line = 1;
+    for (char c : text.substr(0, text.find("constexpr int after_line")))
+        line += c == '\n';
+    TestScratch scratch;
+    const std::string file = scratch.file("lines.cpp");
+    std::ofstream(file) << header << "static_assert(after_line == " << line << ");\n";
+    const std::string cmd = std::string(HOT_CXX) + " -std=c++20 -fsyntax-only -x c++ " + file + " 2>&1";
+    EXPECT_EQ(std::system(cmd.c_str()), 0) << header;
+}
+
+// An overloaded name, two definitions, or a definition in P of a name that B defines: no split.
+// A comment after a prototype is allowed.
+TEST(ObjectCacheBackend, SplitRefusesOverloadsAndAcceptsTrailingComments)
+{
+    std::string header, main, shape;
+    std::vector<std::string> fns;
+    EXPECT_FALSE(hot::split_unit_for_test(handmade_unit("static int f(int);\nstatic int f(double);\n",
+                                              "static int f(int x) { return x; }\nstatic int f(double x) { return 1; }\n"),
+        "u.hot", header, main, shape, fns));
+    EXPECT_FALSE(hot::split_unit_for_test(handmade_unit("static int f(int);\nstatic int f(double x) { return 1; }\n",
+                                              "static int f(int x) { return x; }\n"),
+        "u.hot", header, main, shape, fns));
+    fns.clear();
+    ASSERT_TRUE(hot::split_unit_for_test(handmade_unit("static int g(int); // a note\n", "static int g(int x) { return x; }\n"),
+        "u.hot", header, main, shape, fns));
+    EXPECT_EQ(fns, std::vector<std::string>{"g"});
+    EXPECT_NE(header.find("HOT_UNIT_FN int g(int); // a note"), std::string::npos) << header;
+    EXPECT_NE(main.find("HOT_UNIT_FN int g(int x)"), std::string::npos) << main;
+}
+
+TEST(ObjectCacheBackend, TwoObjectsRefuseLtoAndOtherLinkers)
+{
+    EXPECT_TRUE(hot::two_object_flags_ok_of({"-O2", "-fuse-ld=lld", "-g"}));
+    EXPECT_FALSE(hot::two_object_flags_ok_of({"-O2", "-flto"}));
+    EXPECT_FALSE(hot::two_object_flags_ok_of({"-flto=thin"}));
+    EXPECT_FALSE(hot::two_object_flags_ok_of({"-fuse-ld=gold"}));
+}
+
+// The check of the joined object finds an internal name that the other object uses, and a missing
+// function; a good join has no problem.
+TEST(ObjectCacheBackend, JoinCheckFindsInternalNamesAndMissingFunctions)
+{
+#if defined(__linux__)
+    const std::string lld = hot::find_lld_of(HOT_CXX);
+    if (lld.empty())
+        GTEST_SKIP() << "no ld.lld";
+    TestScratch scratch;
+    auto join = [&](const char* a, const char* b, const char* tag) {
+        const fs::path dir = scratch.file(std::string("join_") + tag);
+        fs::create_directories(dir);
+        std::ofstream(dir / "a.cpp") << a;
+        std::ofstream(dir / "b.cpp") << b;
+        for (const char* n : {"a", "b"})
+        {
+            const std::string cmd = std::string(HOT_CXX) + " -c -fPIC -o " + (dir / (std::string(n) + ".o")).string() + " "
+                + (dir / (std::string(n) + ".cpp")).string();
+            EXPECT_EQ(std::system(cmd.c_str()), 0) << cmd;
+        }
+        const std::string out = (dir / "m.o").string();
+        const std::string cmd = lld + " -r " + (dir / "a.o").string() + " " + (dir / "b.o").string() + " -o " + out;
+        EXPECT_EQ(std::system(cmd.c_str()), 0) << cmd;
+        return out;
+    };
+    // B calls X_create, which R has as an internal function (a name of the record in P).
+    const std::string bad = join("static int X_create() { return 1; }\nint other() { return X_create(); }\n",
+        "static int X_create();\nint body() { return X_create(); }\n", "bad");
+    EXPECT_NE(hot::merged_object_problem_of(bad, {}).find("X_create"), std::string::npos);
+    const std::string bad2 = join("static int f() { return 1; }\nint g() { return f(); }\n",
+        "int f();\nint h() { return f(); }\n", "bad2");
+    EXPECT_FALSE(hot::merged_object_problem_of(bad2, {}).empty());
+    const std::string good = join("int g() { return 2; }\n", "int h() { return 1; }\n", "good");
+    EXPECT_EQ(hot::merged_object_problem_of(good, {"g", "h"}), "");
+    EXPECT_NE(hot::merged_object_problem_of(good, {"nowhere"}).find("nowhere"), std::string::npos);
+    EXPECT_FALSE(hot::merged_object_problem_of((scratch.file("join_good") + "/none.o"), {}).empty());
+#else
+    GTEST_SKIP() << "ELF only";
+#endif
+}
+
+// A join tool that fails: the load works from the whole unit (or the split with one object), the
+// result is right, and the marker for the failed split is written.
+TEST(ObjectCacheBackend, FailedJoinFallsBackAndWritesTheMarker)
+{
+#if defined(__linux__)
+    if (hot::find_lld_of(HOT_CXX).empty())
+        GTEST_SKIP() << "no ld.lld";
+    CleanEnv env;
+    EnvGuard timing("HOT_TIMING", "1");
+    TestScratch scratch;
+    const std::string tool = scratch.file("badlld.sh");
+    std::ofstream(tool) << "#!/bin/sh\necho join broken >&2\nexit 1\n";
+    fs::permissions(tool, fs::perms::owner_all);
+    EnvGuard lld("HOT_LLD", tool.c_str());
+    hot::ClangFilesOptions o = fmt_options(scratch, "j", {});
+    const fs::path shape_dir = fs::path(o.cache_dir) / "pch" / "shape";
+    testing::internal::CaptureStderr();
+    run_edits(o, 1, 8);
+    const std::string log = testing::internal::GetCapturedStderr();
+    if (shape_pch_expected())
+    {
+        EXPECT_NE(log.find("does not compile with its shape PCH"), std::string::npos) << log;
+        EXPECT_GE(count_ext(shape_dir, ".nosplit"), 1u);
+    }
+#else
+    GTEST_SKIP() << "ELF only";
+#endif
+}
+
+// Two scripts with the same file name in two directories do not mix their shape PCH or objects.
+TEST(ObjectCacheBackend, SameScriptNameInTwoDirectoriesStaysApart)
+{
+    CleanEnv env;
+    TestScratch scratch;
+    hot::ClangFilesOptions o = fmt_options(scratch, "d", {});
+    hot::ClangFilesBackend backend(o);
+    for (int i = 1; i <= 6; ++i)
+    {
+        EXPECT_EQ(load_and_run(backend, {"a/calc.hot", script_text((std::to_string(i) + ".0").c_str()), {}, "Calc"}),
+            static_cast<float>(i));
+        EXPECT_EQ(load_and_run(backend, {"b/calc.hot", script_text((std::to_string(i + 100) + ".0").c_str()), {}, "Calc"}),
+            static_cast<float>(i + 100));
+    }
+}
+
+// The PCH of a cache is built again for other fmt flags and the results stay right.
+TEST(ObjectCacheBackend, PchRebuildWithAChangedFmtFlagKeepsResults)
+{
+#if defined(__linux__)
+    CleanEnv env;
+    TestScratch scratch;
+    hot::ClangFilesOptions o = fmt_options(scratch, "c", {"-DFMT_SHARED", "-DFMT_HEADER_ONLY"});
+    run_edits(o, 1, 5);
+    o.extra_flags = {"-DFMT_HEADER_ONLY"};
+    o.work_dir = scratch.file("c_work2");
+    run_edits(o, 10, 5);
+    o.extra_flags = {"-DFMT_SHARED", "-DFMT_HEADER_ONLY"};
+    o.work_dir = scratch.file("c_work3");
+    run_edits(o, 20, 5);
+#else
+    GTEST_SKIP() << "ELF only";
+#endif
+}
+
+// Many real scripts: the split and the join work (two objects), or the unit falls back without an
+// error. The module has one copy of GEN and hot_live. Scripts with imports are not used.
+TEST(ObjectCacheBackend, TwoObjectsOverManyScripts)
+{
+#if defined(__linux__)
+    if (hot::find_lld_of(HOT_CXX).empty())
+        GTEST_SKIP() << "no ld.lld";
+    CleanEnv env;
+    EnvGuard timing("HOT_TIMING", "1");
+    TestScratch scratch;
+    hot::ClangFilesOptions o = fmt_options(scratch, "m", {});
+    std::vector<fs::path> files;
+    for (const auto& e : fs::directory_iterator(std::string(HOT_SOURCE_DIR) + "/tests/scripts"))
+        if (e.path().extension() == ".hot")
+            files.push_back(e.path());
+    std::sort(files.begin(), files.end());
+    size_t used = 0, two = 0;
+    std::string fallbacks;
+    for (const fs::path& f : files)
+    {
+        if (used >= 16)
+            break;
+        std::ifstream in(f);
+        std::stringstream ss;
+        ss << in.rdbuf();
+        const std::string text = ss.str();
+        if (text.find("using \"") != text.find("using \"Actor.h\"") || text.find("using \"Actor.h\"") == std::string::npos)
+            continue;
+        const size_t c = text.find("\nclass ");
+        if (c == std::string::npos)
+            continue;
+        size_t e = c + 7;
+        while (e < text.size() && (std::isalnum(static_cast<unsigned char>(text[e])) || text[e] == '_'))
+            ++e;
+        const std::string cls = text.substr(c + 7, e - c - 7);
+        // The first load of the script gets the base PCH, the second builds the shape PCH, the third uses it.
+        testing::internal::CaptureStderr();
+        bool loaded = true;
+        {
+            // The last module stays loaded: its file stays in the work dir for the symbol check.
+            std::unique_ptr<hot::ClangFilesBackend> backend;
+            hot::LoadResult r;
+            for (int round = 0; round < 3; ++round)
+            {
+                r = hot::LoadResult();
+                backend.reset();
+                backend = std::make_unique<hot::ClangFilesBackend>(o);
+                // Only the PCH files stay: the objects and the links are made again.
+                std::error_code rm_ec;
+                for (const auto& entry : fs::directory_iterator(o.cache_dir, rm_ec))
+                    if (entry.path().filename() != "pch")
+                        fs::remove_all(entry.path(), rm_ec);
+                r = backend->load({f.filename().string(), text, {}, cls}, 1);
+                loaded = loaded && static_cast<bool>(r);
+            }
+            if (loaded)
+            {
+                EXPECT_EQ(count_defined_symbols(o.work_dir, "GEN"), 1u) << f;
+                EXPECT_EQ(count_defined_symbols(o.work_dir, "hot_live"), 1u) << f;
+            }
+        }
+        const std::string log = testing::internal::GetCapturedStderr();
+        if (!loaded)
+            continue; // a script that does not load alone (its own needs): not a split case
+        ++used;
+        if (log.find("two objects") != std::string::npos)
+            ++two;
+        else
+            fallbacks += f.filename().string() + " ";
+        EXPECT_EQ(log.find("does not compile with its shape PCH"), std::string::npos) << f << "\n" << log;
+    }
+    EXPECT_GE(used, 8u);
+    if (shape_pch_expected())
+        EXPECT_GE(two, used / 2) << "scripts without two objects: " << fallbacks;
+    std::fprintf(stderr, "two objects: %zu of %zu scripts; others: %s\n", two, used, fallbacks.c_str());
 #else
     GTEST_SKIP() << "ELF only";
 #endif

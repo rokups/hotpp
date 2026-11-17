@@ -387,6 +387,7 @@ private:
         // Not empty: the split has two objects. The text is the record and the entry (R and T), a second
         // file for the compile with the same PCH. "main_text" then has only the function bodies.
         std::string second_text;
+        std::vector<std::string> fns; // the functions of P with external linkage (two objects)
     };
     ShapeSplit plan_shape(const std::string& cpp_text, const std::string& unit_cpp, const std::string& base_pch,
         const std::string& base_key, const std::vector<std::string>& args, bool is_hot,
@@ -473,6 +474,12 @@ bool fmt_header_only(const ClangFilesOptions& options);
 // Removes markers older than a day and temp files older than an hour.
 // The local data symbols of the unit state (GEN, hot_live, *_slot, *_fields, *_layout) of an ELF64 object. A
 // name in both objects of a two object unit is a second copy of the state. False: no ELF64 file.
+// Test access to the two object split.
+bool two_object_flags_ok_of(const std::vector<std::string>& args);
+std::string merged_object_problem_of(const std::string& path, const std::vector<std::string>& fns);
+std::string find_lld_of(const std::string& compiler);
+bool split_unit_for_test(const std::string& text, const std::string& name, std::string& header, std::string& main,
+    std::string& shape, std::vector<std::string>& fns);
 bool unit_state_symbols_of(const std::string& object_path, std::set<std::string>& names);
 void evict_shape_files(const std::string& dir, const std::string& unit_id, size_t keep_unit, size_t keep_all);
 // True when the ELF module at "path" has an undefined fmt symbol that dlsym does not find. False on

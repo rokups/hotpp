@@ -765,7 +765,14 @@ bool host_exports_fmt(const std::string& host_library)
 {
 #if defined(__linux__)
     // A symbol that each module with the fmt code of the host needs.
-    return host_has_symbol("_ZN3fmt3v106detail11assert_failEPKciS3_", host_library);
+    // The inline namespace of fmt changes with the version of the headers: the probe tries the
+    // versions 10, 11 and 12. Any of them means that the host has the code (a module that needs an
+    // other one fails the check of its undefined symbols after the link, and then uses its own copy).
+    for (const char* name : {"_ZN3fmt3v106detail11assert_failEPKciS3_", "_ZN3fmt3v116detail11assert_failEPKciS3_",
+             "_ZN3fmt3v126detail11assert_failEPKciS3_"})
+        if (host_has_symbol(name, host_library))
+            return true;
+    return false;
 #else
     (void)host_library;
     return false;
@@ -2459,6 +2466,7 @@ struct UnitSplit
     std::string header; // the shape header: P with the macros
     std::string main; // B
     std::string shape; // R and T
+    std::vector<std::string> fns; // the functions that got external linkage
 };
 
 bool starts_with(const std::string& s, const char* prefix)
@@ -2532,8 +2540,16 @@ bool split_unit_into_two(const std::string& text, const std::string& name, UnitS
             }
         return -1;
     };
+    // A prototype ends with ");" (a comment after it does not matter).
+    auto is_proto = [](const std::string& l) {
+        std::string t = l.substr(0, l.find("//"));
+        while (!t.empty() && std::isspace(static_cast<unsigned char>(t.back())))
+            t.pop_back();
+        return t.size() > 2 && t.compare(t.size() - 2, 2, ");") == 0;
+    };
     std::set<std::pair<std::string, int>> protos;
     std::vector<std::string> p_lines;
+    std::vector<size_t> p_orig; // the line number (0 based) of each line of P in the unit
     size_t rec = 0;
     for (size_t i = 0; i < bodies; ++i)
     {
@@ -2544,27 +2560,50 @@ bool split_unit_into_two(const std::string& text, const std::string& name, UnitS
             continue;
         }
         p_lines.push_back(lines[i]);
+        p_orig.push_back(i);
     }
+    // An overloaded name is not split: the key of a function is its name.
+    std::set<std::string> proto_names;
     for (const std::string& l : p_lines)
     {
         const int k = kind_of(l);
-        if (k >= 0 && l.size() > 3 && l.compare(l.size() - 3, 2, ");") == 0)
-            protos.insert({function_name_of(l, std::strlen(kinds[k])), k});
+        if (k >= 0 && is_proto(l))
+        {
+            const std::string n = function_name_of(l, std::strlen(kinds[k]));
+            if (!proto_names.insert(n).second)
+                return false;
+            protos.insert({n, k});
+        }
     }
     std::set<std::pair<std::string, int>> defined;
     for (size_t i = bodies; i < reg; ++i)
     {
         const int k = kind_of(lines[i]);
-        if (k < 0 || lines[i].find(");") != std::string::npos)
+        if (k < 0 || is_proto(lines[i]) || lines[i].find(");") != std::string::npos)
             continue;
         const auto key = std::make_pair(function_name_of(lines[i], std::strlen(kinds[k])), k);
-        if (protos.count(key))
-            defined.insert(key);
+        if (protos.count(key) && !defined.insert(key).second)
+            return false; // two definitions of one name
     }
-    auto convert = [&](std::string& l) {
+    // A definition in P of a name that B defines (an overload) is not split.
+    for (const std::string& l : p_lines)
+    {
         const int k = kind_of(l);
-        if (k >= 0 && defined.count({function_name_of(l, std::strlen(kinds[k])), k}))
+        if (k >= 0 && !is_proto(l) && l.find('(') != std::string::npos
+            && defined.count({function_name_of(l, std::strlen(kinds[k])), k}))
+            return false;
+    }
+    auto convert = [&](std::string& l, bool in_p) {
+        const int k = kind_of(l);
+        if (k < 0 || (in_p != is_proto(l)))
+            return;
+        const std::string n = function_name_of(l, std::strlen(kinds[k]));
+        if (defined.count({n, k}))
+        {
             l = (k == 0 ? "[[maybe_unused]] HOT_UNIT_INLINE " : "HOT_UNIT_FN ") + l.substr(std::strlen(kinds[k]));
+            if (in_p)
+                out.fns.push_back(n);
+        }
     };
     int gen = 0, live = 0;
     size_t macro_at = p_lines.size();
@@ -2588,25 +2627,36 @@ bool split_unit_into_two(const std::string& text, const std::string& name, UnitS
             || (starts_with(l, "static const hot::StateLayout ") && l.find("_layout =") != std::string::npos))
             l = "HOT_UNIT_VAR const " + l.substr(std::strlen("static const "));
         else
-            convert(l);
+            convert(l, true);
     }
     if (gen != 1 || live != 1)
         return false;
-    out = UnitSplit();
+    {
+        std::vector<std::string> fns = std::move(out.fns);
+        out = UnitSplit();
+        out.fns = std::move(fns);
+    }
     out.header = "#define HOT_SPLIT_UNIT 1\n#line 1 \"" + name + "\"\n";
     for (size_t i = 0; i < p_lines.size(); ++i)
     {
+        bool reline = i > 0 && p_orig[i] != p_orig[i - 1] + 1; // a range was removed before this line
         if (i == macro_at)
+        {
             out.header += "#ifdef HOT_SPLIT_UNIT\n#define HOT_UNIT_VAR inline\n#define HOT_UNIT_FN\n"
                           "#define HOT_UNIT_INLINE HOT_NODEBUG\n#else\n#define HOT_UNIT_VAR static\n"
                           "#define HOT_UNIT_FN static\n#define HOT_UNIT_INLINE HOT_HIDDEN static\n#endif\n";
+            reline = true;
+        }
+        // The line numbers of P stay the ones of the unit (__LINE__, messages).
+        if (reline)
+            out.header += "#line " + std::to_string(p_orig[i] + 1) + " \"" + name + "\"\n";
         out.header += p_lines[i];
     }
     out.main = "#line " + std::to_string(bodies + 1) + " \"" + name + "\"\n";
     for (size_t i = bodies; i < reg; ++i)
     {
         std::string l = lines[i];
-        convert(l);
+        convert(l, false);
         out.main += l;
     }
     for (const auto& range : records)
@@ -2626,7 +2676,16 @@ bool split_unit_into_two(const std::string& text, const std::string& name, UnitS
 // "_ZZ" names (a variable inside a function: each object has its own, as in a unit without the split),
 // and other local variables (the constant tables and strings of P; each object builds its own, and
 // no code needs them to be the same object). False when the file is not an ELF64 file.
-bool unit_state_symbols(const std::string& path, std::set<std::string>& names)
+struct ElfSym
+{
+    std::string name;
+    unsigned char bind = 0;
+    unsigned char type = 0;
+    bool defined = false;
+};
+
+// All named symbols of the .symtab of an ELF64 file. False when the file is not an ELF64 file.
+bool elf_symbols(const std::string& path, std::vector<ElfSym>& syms)
 {
 #if defined(__linux__)
     std::ifstream in(path, std::ios::binary);
@@ -2657,39 +2716,125 @@ bool unit_state_symbols(const std::string& path, std::set<std::string>& names)
         {
             Elf64_Sym sym;
             std::memcpy(&sym, data.data() + sh.sh_offset + off, sizeof sym);
-            if (ELF64_ST_BIND(sym.st_info) != STB_LOCAL || ELF64_ST_TYPE(sym.st_info) != STT_OBJECT
-                || sym.st_name == 0 || sym.st_name >= str.sh_size)
+            if (sym.st_name == 0 || sym.st_name >= str.sh_size)
                 continue;
-            std::string name(data.c_str() + str.sh_offset + sym.st_name,
+            ElfSym e;
+            e.name.assign(data.c_str() + str.sh_offset + sym.st_name,
                 strnlen(data.c_str() + str.sh_offset + sym.st_name, str.sh_size - sym.st_name));
-            std::string base = name;
-            if (starts_with(base, "_ZL"))
-            {
-                size_t d = 3;
-                while (d < base.size() && std::isdigit(static_cast<unsigned char>(base[d])))
-                    ++d;
-                base = base.substr(d);
-            }
-            auto ends = [&](const char* suffix) {
-                const size_t n = std::strlen(suffix);
-                return base.size() >= n && base.compare(base.size() - n, n, suffix) == 0;
-            };
-            if (base == "GEN" || base == "hot_live" || ends("_slot") || ends("_fields") || ends("_layout"))
-                names.insert(name);
+            e.bind = ELF64_ST_BIND(sym.st_info);
+            e.type = ELF64_ST_TYPE(sym.st_info);
+            e.defined = sym.st_shndx != SHN_UNDEF;
+            syms.push_back(std::move(e));
         }
     }
     return true;
 #else
     (void)path;
-    (void)names;
+    (void)syms;
     return false;
 #endif
+}
+
+// The names of the local data symbols of an ELF64 object that belong to the unit state. A symbol of
+// this kind in both objects is a second copy of the state: the split is wrong then. Not looked at:
+// "_ZZ" names (a variable inside a function: each object has its own, as in a unit without the split),
+// and other local variables (the constant tables and strings of P; each object builds its own, and
+// no code needs them to be the same object). False when the file is not an ELF64 file.
+bool unit_state_symbols(const std::string& path, std::set<std::string>& names)
+{
+    std::vector<ElfSym> syms;
+    if (!elf_symbols(path, syms))
+        return false;
+    for (const ElfSym& e : syms)
+    {
+        if (e.bind != STB_LOCAL || e.type != STT_OBJECT)
+            continue;
+        std::string base = e.name;
+        if (starts_with(base, "_ZL"))
+        {
+            size_t d = 3;
+            while (d < base.size() && std::isdigit(static_cast<unsigned char>(base[d])))
+                ++d;
+            base = base.substr(d);
+        }
+        auto ends = [&](const char* suffix) {
+            const size_t n = std::strlen(suffix);
+            return base.size() >= n && base.compare(base.size() - n, n, suffix) == 0;
+        };
+        if (base == "GEN" || base == "hot_live" || ends("_slot") || ends("_fields") || ends("_layout"))
+            names.insert(e.name);
+    }
+    return true;
+}
+
+// The check of the joined object. A problem text is returned (empty: the object is right):
+//  - a function that P declares with external linkage (fns) must have a defined symbol;
+//  - no undefined symbol may have the name of a local function or variable that the object defines
+//    (the other object used a name that stayed internal in this one: the link would fail);
+// "_ZL<n>name" is the internal name of "_Z<n>name". Needs an ELF64 object.
+std::string merged_object_problem(const std::string& path, const std::vector<std::string>& fns)
+{
+    std::vector<ElfSym> syms;
+    if (!elf_symbols(path, syms))
+        return "cannot read the symbols of the joined object";
+    std::set<std::string> undefined, local_external_names;
+    std::vector<std::string> defined_global;
+    for (const ElfSym& e : syms)
+    {
+        if (!e.defined)
+        {
+            undefined.insert(e.name);
+            continue;
+        }
+        if (e.bind == STB_LOCAL && (e.type == STT_FUNC || e.type == STT_OBJECT))
+        {
+            local_external_names.insert(e.name);
+            if (starts_with(e.name, "_ZL"))
+                local_external_names.insert("_Z" + e.name.substr(3));
+        }
+        else if (e.bind != STB_LOCAL)
+            defined_global.push_back(e.name);
+    }
+    for (const std::string& n : local_external_names)
+        if (undefined.count(n))
+            return "the symbol " + n + " is internal in one object and used from the other";
+    for (const std::string& fn : fns)
+    {
+        const std::string mangled = std::to_string(fn.size()) + fn;
+        bool found = false;
+        for (const std::string& d : defined_global)
+            if (d == fn || d.find(mangled) != std::string::npos)
+            {
+                found = true;
+                break;
+            }
+        if (!found)
+            return "the function " + fn + " has no definition in the joined object";
+    }
+    return std::string();
+}
+
+// The flags that stop the join step: LTO makes bitcode objects, and a linker other than lld may
+// not know "-r" the same way.
+bool two_object_flags_ok(const std::vector<std::string>& args)
+{
+    for (const std::string& a : args)
+    {
+        if (starts_with(a, "-flto"))
+            return false;
+        if (starts_with(a, "-fuse-ld=") && a != "-fuse-ld=lld")
+            return false;
+    }
+    return true;
 }
 
 // The linker of the join step: "ld.lld" next to the compiler, else in the PATH. Empty: none.
 std::string find_lld(const std::string& compiler)
 {
     std::error_code ec;
+    // HOT_LLD names the tool (a test uses it for a tool that fails).
+    if (const char* forced = std::getenv("HOT_LLD"); forced && *forced)
+        return forced;
     const fs::path beside = fs::path(compiler).parent_path() / "ld.lld";
     if (!fs::path(compiler).parent_path().empty() && fs::exists(beside, ec))
         return beside.string();
@@ -2713,6 +2858,28 @@ int run_counted(const std::vector<std::string>& cmd, std::string& output)
     --g_running_compiles;
     return rc;
 }
+
+// Takes one place for a compile that runs next to others. False: the job limit is reached.
+bool reserve_compile_place()
+{
+    const unsigned before = g_running_compiles.fetch_add(1);
+    if (before + 1 < build_jobs())
+        return true;
+    --g_running_compiles;
+    return false;
+}
+
+// Removes the files when it ends (also on an exception).
+struct TempFiles
+{
+    std::vector<std::string> files;
+    ~TempFiles()
+    {
+        std::error_code ec;
+        for (const std::string& f : files)
+            fs::remove(f, ec);
+    }
+};
 
 std::string shape_hash(const std::string& text)
 {
@@ -2756,6 +2923,34 @@ void evict_shape_files(const std::string& dir_name, const std::string& unit_id, 
             for (const char* ext : {".pch", ".h", ".nosplit"}) // unlink: a reader keeps its handle on ELF
                 fs::remove(fs::path(files[i].second).replace_extension(ext), ec);
     }
+}
+
+bool two_object_flags_ok_of(const std::vector<std::string>& args)
+{
+    return two_object_flags_ok(args);
+}
+
+std::string merged_object_problem_of(const std::string& path, const std::vector<std::string>& fns)
+{
+    return merged_object_problem(path, fns);
+}
+
+std::string find_lld_of(const std::string& compiler)
+{
+    return find_lld(compiler);
+}
+
+bool split_unit_for_test(const std::string& text, const std::string& name, std::string& header, std::string& main,
+    std::string& shape, std::vector<std::string>& fns)
+{
+    UnitSplit u;
+    if (!split_unit_into_two(text, name, u))
+        return false;
+    header = u.header;
+    main = u.main;
+    shape = u.shape;
+    fns = u.fns;
+    return true;
 }
 
 bool unit_state_symbols_of(const std::string& object_path, std::set<std::string>& names)
@@ -2817,6 +3012,7 @@ ClangFilesBackend::ShapeSplit ClangFilesBackend::plan_shape(const std::string& c
         s.header_text = std::move(two.header);
         s.main_text = std::move(two.main);
         s.second_text = std::move(two.shape);
+        s.fns = std::move(two.fns);
         return s;
     }
     s.header_text = "#line 1 \"" + unit_cpp + "\"\n" + shape;
@@ -3580,7 +3776,7 @@ bool ClangFilesBackend::compile_stage_once(BuildJob& job, bool keep_mirror)
                     // entry, in parallel, joined by "ld.lld -r". HOT_SPLIT_UNIT_OBJECTS=0 turns it off.
                     const char* two_env = std::getenv("HOT_SPLIT_UNIT_OBJECTS");
                     const std::string lld = find_lld(opt_.compiler);
-                    const bool want_two = is_hot_unit && !lld.empty() && !(two_env && std::strcmp(two_env, "0") == 0);
+                    const bool want_two = is_hot_unit && !lld.empty() && two_object_flags_ok(inputs.args) && !(two_env && std::strcmp(two_env, "0") == 0);
 #if !defined(__linux__)
                     const bool two_allowed = false;
 #else
@@ -3617,13 +3813,26 @@ bool ClangFilesBackend::compile_stage_once(BuildJob& job, bool keep_mirror)
                             cmd2 = with_pch(std::move(cmd2), shape.pch);
                             std::string out_a, out_b;
                             int rc_a = 1, rc_b = 1;
+                            TempFiles temp{{obj_main, obj_shape, dep_shape, second_path}};
                             if (write_text(second_path, shape.second_text))
                             {
-                                // The second compile runs next to the first one only when the number of
-                                // compiles stays under the job limit (HOT_JOBS); else one after the other.
+                                // The second compile runs next to the first one only when a place is free
+                                // (the job limit, HOT_JOBS); else one after the other.
                                 std::thread second;
-                                if (g_running_compiles.load() + 1 < build_jobs())
-                                    second = std::thread([&] { rc_b = run_counted(cmd2, out_b); });
+                                if (reserve_compile_place())
+                                {
+                                    try
+                                    {
+                                        second = std::thread([&] {
+                                            rc_b = run_command(cmd2, out_b);
+                                            --g_running_compiles;
+                                        });
+                                    }
+                                    catch (const std::system_error&)
+                                    {
+                                        --g_running_compiles; // no thread: the compile runs here
+                                    }
+                                }
                                 rc_a = run_counted(cmd, out_a);
                                 if (second.joinable())
                                     second.join();
@@ -3647,6 +3856,8 @@ bool ClangFilesBackend::compile_stage_once(BuildJob& job, bool keep_mirror)
                                     std::string link_out;
                                     if (run_command({lld, "-r", obj_shape, obj_main, "-o", tmp}, link_out) != 0)
                                         why = "the join of the objects failed: " + link_out;
+                                    else
+                                        why = merged_object_problem(tmp, shape.fns);
                                 }
                                 if (!why.empty())
                                     rc = 1;
