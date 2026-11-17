@@ -230,6 +230,9 @@ void HostSet::load(const std::string& dir, bool require_cache)
     skipped_.clear();
     std::error_code ec;
     mtime_ = fs::last_write_time(dir, ec);
+    dir_exists_ = !ec;
+    if (ec)
+        mtime_ = fs::file_time_type{};
     names_ = json_names(dir);
     if (ec)
         return;
@@ -308,7 +311,8 @@ bool HostSet::refresh()
         return false;
     std::error_code ec;
     const auto now = fs::last_write_time(dir_, ec);
-    const bool same_time = ec ? mtime_ == fs::file_time_type{} : now == mtime_;
+    // A missing directory has no time. Compare only the state in that case.
+    const bool same_time = ec ? !dir_exists_ : (dir_exists_ && now == mtime_);
     if (forced_ || !same_time || json_names(dir_) != names_)
     {
         forced_ = false;
