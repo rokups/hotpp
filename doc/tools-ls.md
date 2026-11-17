@@ -201,7 +201,7 @@ Environment variables:
 - `HOT_LS_THIS_CACHE=0|1` turns the cache of the `this` members off or on. The default is 1.
   - A completion of a plain name in a method asks clangd for the native members of the base classes. With the cache, the server asks once with an empty prefix. It filters the answer by the prefix.
   - The key holds the document, the head of the class, the host options and the hash of the shell header. It holds also a stamp: the time and the size of each header that the shell header includes, and of the headers that these include. The server checks the stamp at each request. A header edit on disk needs no event of the client.
-  - A watched header (`.h`, `.hpp`, `.hh`, `.inl`) goes to clangd too, so it builds a new preamble. The VS Code extension watches these files. The cache stores no answer for 5 s after such an event, because clangd can answer from the old preamble in that time.
+  - A watched header (`.h`, `.hpp`, `.hh`, `.inl`) goes to clangd too, so it builds a new preamble. The VS Code extension watches these files. The cache stores no answer for 5 s after such an event, because clangd can answer from the old preamble in that time. A preamble that takes longer than 5 s can still leave an old list in the cache. The stamp does not see a header that only an `#include` with a macro name or `#include_next` reaches.
   - A new clangd, a host change, a file that is not a script and `didChangeConfiguration` drop the cache.
   - `hot/indexStats` has the counts `thisAnalyzes` and `thisHits`.
   - On a miss, the analysis of the `this` text runs at the same time as the first probe. The clangd calls stay in order, because they patch the one text of the document.
