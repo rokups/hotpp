@@ -1810,8 +1810,8 @@ static std::optional<std::string> blank_other_bodies(const std::string& unit, in
 
 std::string Server::lite_uri(const Doc& d, const std::string& full, int gen_line0)
 {
-    if (!lite_doc_enabled() || !clangd_ || !clangd_->running())
-        return d.gen_uri;
+    if (!lite_doc_enabled() || !clangd_ || !clangd_->running() || !preamble_ready_.count(d.gen_uri))
+        return d.gen_uri; // a cold document: the requests follow the budget of the full document
     const size_t at = full.find(kShellEnd);
     if (at == std::string::npos)
         return d.gen_uri;
@@ -3012,6 +3012,7 @@ json Server::on_completion(const Doc& d, const json& p)
             bool mapped = false; // a try had a place for the hole
             std::optional<std::chrono::steady_clock::time_point> t0; // the start of the clangd waits
             bool sent = false; // the generated text of a try is in clangd
+            bool lite_sent = false; // the text of a try is in the lite document
             Doc& md = const_cast<Doc&>(d);
             // The real generated text goes back once, also when a request throws.
             struct Restore
@@ -3077,13 +3078,31 @@ json Server::on_completion(const Doc& d, const json& p)
                     t0 = std::chrono::steady_clock::now();
                 const auto ready_end = *t0 + std::chrono::milliseconds(opt_.completion_budget_ms);
                 const auto budget_end = ready_end + std::chrono::milliseconds(kCompletionAstMs);
-                if (std::chrono::steady_clock::now() >= budget_end || !wait_for_native_ready_until(d, ready_end))
-                    break;
                 auto budget_left = [&]
                 {
                     return std::max(1, static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
                         budget_end - std::chrono::steady_clock::now()).count()));
                 };
+                // The lite document has the patched text of the own body only. The full document is not touched, so
+                // the request does not wait for its AST.
+                if (std::chrono::steady_clock::now() < budget_end)
+                {
+                    const std::string lu = lite_uri(md, facts.cpp, g->line - 1);
+                    if (lu != d.gen_uri)
+                    {
+                        lite_sent = true;
+                        r = clangd_result("textDocument/completion",
+                            {{"textDocument", {{"uri", lu}}},
+                                {"position",
+                                    to_lsp(gen, {g->line - 1, g->col - 1 + static_cast<int>(prefix.size())}, clangd_utf8_)}},
+                            budget_left());
+                        if (r && (r->is_array() ? !r->empty() : !r->value("items", json::array()).empty()))
+                            break;
+                        continue;
+                    }
+                }
+                if (std::chrono::steady_clock::now() >= budget_end || !wait_for_native_ready_until(d, ready_end))
+                    break;
                 sent = true;
                 send_generated(md, facts.cpp);
                 // The first patched text of a document waits for its AST (the budget holds).
@@ -3107,7 +3126,7 @@ json Server::on_completion(const Doc& d, const json& p)
             }
             // The native members of the base are not names in the generated code of a method. A second
             // try with "this." gives them. Its items join the list.
-            if (!member && !type_only && sent && r && class_at(cur))
+            if (!member && !type_only && (sent || lite_sent) && r && class_at(cur))
             {
                 const std::string with_this = t.substr(0, s) + "this." + prefix + kHole + closers + (end ? "" : ";") + t.substr(e);
                 hotc::TranslateOptions to = translate_options(d);
@@ -3120,10 +3139,12 @@ json Server::on_completion(const Doc& d, const json& p)
                     *t0 + std::chrono::milliseconds(opt_.completion_budget_ms + kCompletionAstMs) - std::chrono::steady_clock::now()).count();
                 if (g && left > 0)
                 {
-                    send_generated(md, facts.cpp);
+                    const std::string lu = lite_uri(md, facts.cpp, g->line - 1);
+                    if (lu == d.gen_uri)
+                        send_generated(md, facts.cpp);
                     const Text gen(facts.cpp);
                     auto r2 = clangd_result("textDocument/completion",
-                        {{"textDocument", {{"uri", lite_uri(md, facts.cpp, g->line - 1)}}},
+                        {{"textDocument", {{"uri", lu}}},
                             {"position",
                                 to_lsp(gen, {g->line - 1, g->col - 1 + static_cast<int>(prefix.size())}, clangd_utf8_)}},
                         static_cast<int>(left));
