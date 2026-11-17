@@ -360,6 +360,10 @@ def edit_kinds_bench(a, root, rel, cdb):
             print("    import read/parse/view %.1f %.1f %.1f | classes foreign %.1f ms (%d) own %.1f ms (%d) | check_class %.1f" % (
                 med("importReadMs"), med("importParseMs"), med("importViewMs"), med("foreignClassMs"), med("foreignClasses"),
                 med("ownClassMs"), med("ownClasses"), med("checkClassMs")), flush=True)
+            for who in ("foreign", "own"):
+                print("    steps %-7s pre/base/check/const/slots/shell/state/rest %s" % (
+                    who, " ".join("%.1f" % med("%sStep%dMs" % (who, i)) for i in range(8))), flush=True)
+                print("    sub %-7s const/null/structtext/fieldinit/table/gen13 %s" % (who, " ".join("%.1f" % med("%sStep%dMs" % (who, i)) for i in (14, 16, 17, 19, 20, 21))), flush=True)
     r.stop()
 
 

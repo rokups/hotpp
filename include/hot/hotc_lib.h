@@ -355,6 +355,9 @@ struct TranslateTiming
     int64_t own_class_ns = 0;     // the class loop: the time for the own classes
     int64_t own_classes = 0;      // the class loop: the number of own classes
     int64_t check_class_ns = 0;   // the time in check_class
+    // The class loop sub-steps. Row 0 is the imported classes, row 1 the own classes. Columns: before the
+    // base info, base info, resolve and check, const and param use, slots, shell, state text, the rest.
+    int64_t step_ns[2][24] = {};
 };
 
 // A virtual method that a script class can override. The types have the script spelling.

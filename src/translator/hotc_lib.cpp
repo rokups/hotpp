@@ -7517,8 +7517,20 @@ void translate_impl(
             hotc::TranslateTiming& t;
             bool foreign;
             std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+            std::chrono::steady_clock::time_point last = start;
+            int64_t since(std::chrono::steady_clock::time_point& from)
+            {
+                const auto now = std::chrono::steady_clock::now();
+                const int64_t d = std::chrono::duration_cast<std::chrono::nanoseconds>(now - from).count();
+                from = now;
+                return d;
+            }
+            std::chrono::steady_clock::time_point sub_last = start;
+            void lap(int k) { t.step_ns[foreign ? 0 : 1][k] += since(last); }
+            void sub(int k) { t.step_ns[foreign ? 0 : 1][k] += since(sub_last); }
             ~LoopTimer()
             {
+                t.step_ns[foreign ? 0 : 1][7] += since(last);
                 const int64_t ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                     std::chrono::steady_clock::now() - start).count();
                 (foreign ? t.foreign_class_ns : t.own_class_ns) += ns;
@@ -7570,6 +7582,7 @@ void translate_impl(
         auto slot_id = [&](const std::string& n)
         { return (prefix_slots ? cn + "_" : std::string()) + "SLOT_" + n; };
 
+        loop_timer.lap(0);
         // ---- base class information from libclang
         // A class without a base derives from hot::PlainObject (design 7.10.1).
         // A class with a script parent uses the native base of the root of the chain.
@@ -7690,6 +7703,7 @@ void translate_impl(
                         fail_at(map, a == &cd ? m.pos : cd.pos, "function name '" + m.name + "' is reserved" + where);
             }
         }
+        loop_timer.lap(1);
         desugar_props(cd, map);
         if (!sc.is_cpp)
             hotc::resolve_value_uses(cd, types); // the accessors of a property are new functions
@@ -8046,6 +8060,8 @@ void translate_impl(
             }
             if (g_diag.items.size() != before)
                 throw TranslateAbort{};
+        loop_timer.lap(2);
+        loop_timer.sub(15);
         }
 
         // ---- the context of the parameter analysis (S20b): the script functions and the fields
@@ -8059,16 +8075,20 @@ void translate_impl(
         {
             hotc::ParamContext ctx;
             ctx.memo = &param_memo;
+            loop_timer.sub(15);
             int pdepth = 0;
             for (const ClassDef* d = &c0; d && pdepth < 64; d = script_parent(*d), ++pdepth)
                 for (const Field& f : d->fields)
                     ctx.fields.emplace(f.name, f.script_type.empty() ? f.type : f.script_type);
+            loop_timer.sub(19);
             for (const ClassDef& oc : sc.classes)
                 for (const Field& f : oc.fields)
                     ctx.member_types[f.name].push_back(f.script_type.empty() ? f.type : f.script_type);
+            loop_timer.sub(20);
             for (const ClassDef& oc : sc.classes)
                 for (const Method& om : oc.methods)
                     ctx.script_methods[om.name].push_back(&oc);
+            loop_timer.sub(21);
             ctx.script_fn = [&script_parent, &hook_of, &c0](const std::string& n) -> const Method*
             {
                 int depth = 0;
@@ -8123,13 +8143,24 @@ void translate_impl(
             return it->second;
         };
         const hotc::ParamContext param_ctx = make_ctx(cd);
+        loop_timer.sub(16);
+        auto timed_use = [&](const Method& m, const std::string& n, const hotc::ParamContext& c)
+        {
+            const auto t0 = std::chrono::steady_clock::now();
+            hotc::ParamUse u = hotc::analyze_param_use(m, n, c);
+            loop_timer.t.step_ns[loop_timer.foreign ? 0 : 1][14] +=
+                std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count();
+            return u;
+        };
         infer_const_in(cd, param_ctx.script_fn,
             [&](const Method& m)
             {
                 return !m.is_virtual && !m.is_override && !m.overrides_virtual && !m.is_abstract && !m.is_async
                     && !m.raw && hook_of(m) == Hook::None;
             });
+        loop_timer.sub(8);
         null_check_in(cd);
+        loop_timer.sub(9);
 
         // ---- the C++ storage types. An override keeps the native types.
         for (Field& f : cd.fields)
@@ -8153,7 +8184,7 @@ void translate_impl(
                     }
                     if (p.native_type.empty())
                         continue;
-                    const hotc::ParamUse use = hotc::analyze_param_use(m, p.name, param_ctx);
+                    const hotc::ParamUse use = timed_use(m, p.name, param_ctx);
                     p.body_type = types.body_param(
                         p.script_type, use.mutated || use.aliased, use.rebound || use.aliased, use.stored);
                     p.bind_to = cpp_type_or_fail(
@@ -8202,7 +8233,7 @@ void translate_impl(
                         types, map, m.pos, p.type, hotc::TypeModel::StorageUse::Param); // a script class gives "storage(T)&"
                     continue;
                 }
-                const hotc::ParamUse use = hotc::analyze_param_use(m, p.name, param_ctx);
+                const hotc::ParamUse use = timed_use(m, p.name, param_ctx);
                 if (p.value)
                 { // "C" (a bare script class): "hot::In<hot::Value<E>>" in the slot. A body that
                   // changes the parameter works on a copy.
@@ -8232,6 +8263,7 @@ void translate_impl(
                 m.ret = "hot::Task<" + (m.ret.empty() ? std::string("void") : m.ret) + ">";
         }
 
+        loop_timer.sub(17);
         // A constructor has no slot and no generation function. A plain parameter has the one rule,
         // but a body that changes the parameter gets a copy: the parameter goes by value.
         for (hotc::ast::Ctor& c : cd.ctors)
@@ -8245,7 +8277,7 @@ void translate_impl(
                 std::string copy; // the by-value form, when the body changes the parameter
                 if (plain)
                 {
-                    const hotc::ParamUse use = hotc::analyze_param_use(probe, p.name, param_ctx);
+                    const hotc::ParamUse use = timed_use(probe, p.name, param_ctx);
                     const bool changed = use.mutated || use.aliased;
                     if (p.value && changed)
                         copy = value_storage_or_fail(types, map, c.pos, p.type);
@@ -8260,6 +8292,8 @@ void translate_impl(
             c.body = std::move(probe.body);
         }
 
+        loop_timer.sub(18);
+        loop_timer.lap(3);
         // ---- slots: native virtuals first, then the script functions
         std::vector<Slot> slots;
         std::map<std::string, int> name_count;
@@ -8511,6 +8545,7 @@ void translate_impl(
         if (exported && !opt.aot_optimized)
             o.w("extern const hot::StateLayout " + cn + "_layout;\n\n");
 
+        loop_timer.lap(4);
         // ---- shell
         o.w("// The shell overrides every virtual of " + BL + ". Each stub reads one slot.\n");
         // A bare "this" used as a handle needs "shared_from_this" (design 7.10.1). A plain class
@@ -8846,6 +8881,7 @@ void translate_impl(
         }
         o.w("};\n\n");
 
+        loop_timer.lap(5);
         // A class of an import ends after its shell (see below): the text from here is not kept.
         const size_t foreign_mark = o.s.size(), foreign_segs = o.segs.size();
         const int foreign_lines = o.lines;
@@ -8903,6 +8939,7 @@ void translate_impl(
             f.type = "std::remove_cv_t<std::remove_reference_t<decltype(" + init + ")>>";
             var_field_inits[f.name] = init;
         }
+        loop_timer.sub(15);
         if (!opt.aot_optimized)
         {
         o.w("struct " + S + (pinfo ? " : " + pinfo->S : std::string()) + " {\n");
@@ -8988,6 +9025,7 @@ void translate_impl(
         }
         o.w("};\n\n");
         }
+        loop_timer.sub(10);
         // An interface parent from the header: the text from the slot numbers to here is in the header.
         if (from_header && cd.iface_parent)
         {
@@ -9067,6 +9105,7 @@ void translate_impl(
                     + P + m->name + "(hot::convert_source<" + m->params[0].type + ">(src)));\n}\n",
                 m->line, m->pos);
         }
+        loop_timer.sub(11);
         if (opt.aot_optimized)
         {
             for (const Field& f : cd.fields)
@@ -9148,6 +9187,7 @@ void translate_impl(
             + (prop_count ? ", " + cn + "_props, " + std::to_string(prop_count) : std::string()) + ",\n};\n\n");
         }
 
+        loop_timer.sub(12);
         // ---- generation functions
         o.w("// ------------------------------------------------- generation functions\n");
         if (!opt.aot_optimized)
@@ -9174,6 +9214,8 @@ void translate_impl(
             return r;
         };
 
+        loop_timer.sub(13);
+        loop_timer.lap(6);
         // ---- the interface of a class of an import. The owner unit holds the record, the state, the
         // slot table and the bodies. The importer gets the slot numbers, the shell and functions with
         // the names of the local forms: a method is a slot call, a field is hot::field, "new" is
@@ -11428,6 +11470,9 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
         res.timing.own_class_ns += t.own_class_ns;
         res.timing.own_classes += t.own_classes;
         res.timing.check_class_ns += t.check_class_ns;
+        for (int f = 0; f < 2; ++f)
+            for (int k = 0; k < 24; ++k)
+                res.timing.step_ns[f][k] += t.step_ns[f][k];
         ++res.passes;
     };
     add_timing(tr.timing);
