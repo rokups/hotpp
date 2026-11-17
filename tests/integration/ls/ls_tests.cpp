@@ -10120,6 +10120,93 @@ TEST(LanguageServer, SplitShellGivesTheSameResultsAsOneUnit)
     EXPECT_NE(std::find(labels.begin(), labels.end(), "own"), labels.end());
 }
 
+namespace
+{
+// The number of the last update of an open script (hot/indexStats).
+json last_update_stats(Session& s)
+{
+    return s.client->request("hot/indexStats", json::object())["result"]["lastUpdate"];
+}
+
+// Changes the importer and waits until the server has analyzed it. Returns the stats of that update.
+json change_and_wait_update(Session& s, int version, const std::string& text)
+{
+    const int64_t seq0 = last_update_stats(s).value("seq", int64_t(0));
+    s.client->change(s.uri, version, text);
+    for (int i = 0; i < 1000; ++i)
+    {
+        const json lu = last_update_stats(s);
+        if (lu.value("seq", int64_t(0)) > seq0)
+            return lu;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return json::object();
+}
+
+// Edits of an importer and of its import, with the import cache on or off.
+json import_cache_features(bool cache)
+{
+    const EnvGuard env("HOT_LS_IMPORT_CACHE", cache ? "1" : "0");
+    json out;
+    Session s(true, "using \"Actor.h\";\n");
+    write_file(s.dir.path() / "base.hot", kSplitBase);
+    const json first = change_and_wait_update(s, 2, kSplitImporter);
+    out["hits1"] = first.value("importCacheHits", int64_t(-1));
+    out["misses1"] = first.value("importCacheMisses", int64_t(-1));
+    const json diag = s.diagnostics(
+        [](const json& d)
+        {
+            return std::any_of(d.begin(), d.end(), [](const json& x)
+                { return x.value("message", "").rfind("Cannot initialize a variable", 0) == 0; });
+        });
+    // The second edit of the importer: the import has the same text.
+    const json second = change_and_wait_update(s, 3, std::string(kSplitImporter) + "// edit\n");
+    out["hits2"] = second.value("importCacheHits", int64_t(-1));
+    out["misses2"] = second.value("importCacheMisses", int64_t(-1));
+    json diags = json::array();
+    if (!diag.is_null())
+        for (const json& d : diag["params"]["diagnostics"])
+            if (d.value("message", "").rfind("Cannot initialize a variable", 0) == 0)
+                diags.push_back({{"range", d["range"]}, {"message", d.value("message", "")}});
+    out["diagnostics"] = diags;
+    const std::string go = "    float Go(float a) { return this.Heal(a) + this.own; }";
+    out["hover_own"] = s.client->request("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(go.find("this.own")) + 7));
+    out["hover_heal"] = s.client->request("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(go.find("Heal")) + 1));
+    // A body edit of the import: the text hash changes, so the import must miss.
+    std::string base = kSplitBase;
+    base.replace(base.find("this.hp + a"), 11, "this.hp * a");
+    write_file(s.dir.path() / "base.hot", base);
+    const json third = change_and_wait_update(s, 4, std::string(kSplitImporter) + "// edit 2\n");
+    out["hits3"] = third.value("importCacheHits", int64_t(-1));
+    out["misses3"] = third.value("importCacheMisses", int64_t(-1));
+    std::string dump = out.dump();
+    const std::string root = uri_of(s.dir.path().string());
+    for (size_t at; (at = dump.find(root)) != std::string::npos;)
+        dump.replace(at, root.size(), "ROOT");
+    return json::parse(dump);
+}
+} // namespace
+
+// The import cache gives hits on the second edit of an importer, and the results are the same as without it.
+TEST(LanguageServer, ImportCacheGivesTheSameResultsAndHitsOnTheSecondEdit)
+{
+    REQUIRE_CLANGD();
+    const json on = import_cache_features(true);
+    const json off = import_cache_features(false);
+    EXPECT_EQ(on["misses1"].get<int64_t>(), 1) << on.dump();
+    EXPECT_GT(on["hits2"].get<int64_t>(), 0) << on.dump();
+    // A body edit of the import: a miss for that script, no hit.
+    EXPECT_EQ(on["hits3"].get<int64_t>(), 0) << on.dump();
+    EXPECT_GT(on["misses3"].get<int64_t>(), 0) << on.dump();
+    // The switch off: no counter moves.
+    EXPECT_EQ(off["hits2"].get<int64_t>(), 0) << off.dump();
+    EXPECT_EQ(off["misses2"].get<int64_t>(), 0) << off.dump();
+    EXPECT_EQ(on["diagnostics"], off["diagnostics"]) << on["diagnostics"].dump();
+    EXPECT_FALSE(on["diagnostics"].empty());
+    EXPECT_EQ(on["hover_own"], off["hover_own"]);
+    EXPECT_EQ(on["hover_heal"], off["hover_heal"]);
+}
+
 // An edit of an imported script changes the header, and the features see the change.
 TEST(LanguageServer, SplitShellHeaderFollowsAnEditOfAnImport)
 {

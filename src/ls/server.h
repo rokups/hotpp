@@ -78,6 +78,9 @@ struct ServerOptions
     std::string build_id;
     // The number of worker threads of the background index (HOT-34). 0: half of the cores, 1 at least.
     int index_threads = 0;
+    // Default true: the translator keeps the parsed imports in memory (TranslateOptions::import_cache).
+    // The environment variable HOT_LS_IMPORT_CACHE=0|1 overrides it.
+    bool import_cache = true;
     // False: no background index (--no-background-index). Tests that count analyses use it.
     bool background_index = true;
     // A test hook of the script rename. It gets the stage name "before_places" or "before_final".
