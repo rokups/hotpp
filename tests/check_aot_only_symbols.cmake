@@ -39,7 +39,7 @@ function(check_undefined file dynamic)
         string(REGEX REPLACE "@.*$" "" _base "${_name}")
         if(_base IN_LIST _bad_exact OR _base MATCHES "^exec(l|le|lp|v|ve|vp|vpe|veat)?$"
            OR _base MATCHES "^inotify" OR _base MATCHES "^posix_spawn_file_actions_"
-           OR _base MATCHES "^(clang_|LLVM|_ZN[K]?[0-9]*(clang|llvm))|libclang|libLLVM")
+           OR _base MATCHES "^(clang_|LLVM|_Z[A-Z]*N[K]?[0-9]*(clang|llvm))|libclang|libLLVM")
             list(APPEND _found "${_name}")
         endif()
     endforeach()

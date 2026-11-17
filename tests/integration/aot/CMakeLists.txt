@@ -264,6 +264,13 @@ if(HOT_AOT_ONLY_FORCED AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
             COMMAND ${CMAKE_COMMAND} -DNM=${HOT_NM} -DLDD=${HOT_LDD}
                 -DRUNTIME_LIB=$<TARGET_FILE:aot_only_bad_${kind}> -DAOT_DEMO=$<TARGET_FILE:aot_demo>
                 -P ${PROJECT_SOURCE_DIR}/tests/check_aot_only_symbols.cmake)
-        set_tests_properties(aot_only_symbols_rejects_${kind} PROPERTIES WILL_FAIL TRUE LABELS "aot;aot-only")
+        # The output must name the symbol. A script error or a missing file does not pass.
+        if(kind STREQUAL "strong")
+            set(_hot_reject_name dlopen)
+        else()
+            set(_hot_reject_name popen)
+        endif()
+        set_tests_properties(aot_only_symbols_rejects_${kind} PROPERTIES LABELS "aot;aot-only"
+            PASS_REGULAR_EXPRESSION "needs forbidden symbols: .*${_hot_reject_name}")
     endforeach()
 endif()
