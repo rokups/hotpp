@@ -46,9 +46,12 @@ std::vector<Tok> tokens(const std::string& t)
     while (i < n)
     {
         const char c = t[i];
-        if (std::isspace(static_cast<unsigned char>(c)))
+        // The C locale blank characters. A long run of blanks (the import padding) costs one pass.
+        if (c == ' ' || (c >= '\t' && c <= '\r'))
         {
-            ++i;
+            do
+                ++i;
+            while (i < n && (t[i] == ' ' || (t[i] >= '\t' && t[i] <= '\r')));
             continue;
         }
         if (c == '/' && i + 1 < n && t[i + 1] == '/')

@@ -4356,7 +4356,10 @@ void translate_impl(
                 map.add_file(base, text, file);
                 imported_files.push_back({base, file, text});
                 res.imports.emplace_back(file, text);
-                import_texts.push_back(std::string(base, ' ') + text);
+                import_texts.emplace_back();
+                import_texts.back().reserve(static_cast<size_t>(base) + text.size());
+                import_texts.back().assign(base, ' ');
+                import_texts.back().append(text);
                 Script is = parse_structure(import_texts.back(), map, array_tpl);
                 {
                     // The output has one namespace for all the scripts of the program.
