@@ -383,6 +383,8 @@ def edit_kinds_bench(a, root, rel, cdb):
             print("    import read/parse/view %.1f %.1f %.1f | classes foreign %.1f ms (%d) own %.1f ms (%d) | check_class %.1f" % (
                 med("importReadMs"), med("importParseMs"), med("importViewMs"), med("foreignClassMs"), med("foreignClasses"),
                 med("ownClassMs"), med("ownClasses"), med("checkClassMs")), flush=True)
+            print("    analyzeMs median %.1f | import cache hits %.1f misses %.1f copy %.1f ms" % (
+                med("analyzeMs"), med("importCacheHits"), med("importCacheMisses"), med("importCopyMs")), flush=True)
             print("    front steps %s" % " ".join("%.1f" % med("frontStep%dMs" % i) for i in range(13)), flush=True)
             for who in ("foreign", "own"):
                 print("    steps %-7s pre/base/check/const/slots/shell/state/rest %s" % (

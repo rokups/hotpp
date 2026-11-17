@@ -434,6 +434,18 @@ static bool split_shell_enabled()
     return !(e && std::string(e) == "0");
 }
 
+// The import cache of the translator (TranslateOptions::import_cache). The environment variable
+// HOT_LS_IMPORT_CACHE=0|1 wins over the option.
+static bool import_cache_enabled(bool option)
+{
+    const char* e = std::getenv("HOT_LS_IMPORT_CACHE");
+    if (e && std::string(e) == "0")
+        return false;
+    if (e && std::string(e) == "1")
+        return true;
+    return option;
+}
+
 class Server
 {
 public:
@@ -683,6 +695,7 @@ private:
         o.generation = 1;
         o.resolve_refs = true; // the table of the resolved names (ref_resolver.h)
         o.split_shell = split_shell_enabled();
+        o.import_cache = import_cache_enabled(opt_.import_cache); // session_ keeps the cache
         const Effective e = effective_options(d.path);
         o.include_dirs = e.include_dirs;
         o.resource_dir = e.resource_dir;
@@ -1882,6 +1895,8 @@ json Server::on_initialize(const json& p)
             opt_.hosts_dir = o.value("hostsDir", std::string());
         if (o.contains("privateClangdDir") && o["privateClangdDir"].is_boolean())
             opt_.private_clangd_dir = o["privateClangdDir"].get<bool>();
+        if (o.contains("importCache") && o["importCache"].is_boolean())
+            opt_.import_cache = o["importCache"].get<bool>();
         if (o.contains("nativeSemanticTokens") && o["nativeSemanticTokens"].is_boolean())
             opt_.native_semantic_tokens = o["nativeSemanticTokens"].get<bool>();
         if (o.contains("renameHostHeaders") && o["renameHostHeaders"].is_boolean())
@@ -8744,6 +8759,14 @@ bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, s
         else if (a == "--private-clangd-dir")
         {
             out.private_clangd_dir = true;
+        }
+        else if (a == "--import-cache")
+        {
+            out.import_cache = true;
+        }
+        else if (a == "--no-import-cache")
+        {
+            out.import_cache = false;
         }
         else if (a == "--no-native-tokens")
         {
