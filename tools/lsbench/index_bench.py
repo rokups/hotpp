@@ -357,6 +357,9 @@ def edit_kinds_bench(a, root, rel, cdb):
             print("  %-10s %7.1f %7.1f %7.1f %7.1f %7.1f %6.1f %9.1f %8.1f" % (
                 tag, med("frontMs"), med("lowerMs"), med("checkMs"), med("emitMs"), med("parseMs"), med("passes"),
                 med("postWorkMs"), statistics.median([x[1] for x in sel])), flush=True)
+            print("    import read/parse/view %.1f %.1f %.1f | classes foreign %.1f ms (%d) own %.1f ms (%d) | check_class %.1f" % (
+                med("importReadMs"), med("importParseMs"), med("importViewMs"), med("foreignClassMs"), med("foreignClasses"),
+                med("ownClassMs"), med("ownClasses"), med("checkClassMs")), flush=True)
     r.stop()
 
 

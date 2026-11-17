@@ -347,6 +347,14 @@ struct TranslateTiming
     int64_t lower_ns = 0;      // from the session lookup to the first check
     int64_t check_ns = 0;      // from the first check to the start of the emit
     int64_t emit_ns = 0;       // from the start of the emit to the end
+    int64_t import_read_ns = 0;  // the read of the import texts
+    int64_t import_parse_ns = 0; // the structure parse of the import texts
+    int64_t import_view_ns = 0;  // the interface hash and the import view
+    int64_t foreign_class_ns = 0; // the class loop: the time for the imported classes
+    int64_t foreign_classes = 0;  // the class loop: the number of imported classes
+    int64_t own_class_ns = 0;     // the class loop: the time for the own classes
+    int64_t own_classes = 0;      // the class loop: the number of own classes
+    int64_t check_class_ns = 0;   // the time in check_class
 };
 
 // A virtual method that a script class can override. The types have the script spelling.

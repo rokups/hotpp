@@ -4317,7 +4317,11 @@ void translate_impl(
                 if (is_main_script(im.path))
                     continue;
                 std::string text, file, unit;
-                if (!read_import(im.path, from_dir, from_unit_dir, text, file, unit))
+                const auto t_read = std::chrono::steady_clock::now();
+                const bool read_ok = read_import(im.path, from_dir, from_unit_dir, text, file, unit);
+                res.timing.import_read_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::steady_clock::now() - t_read).count();
+                if (!read_ok)
                     fail_at(map, im.pos, "the script '" + im.path + "' is not found");
                 // The set has the lexically normal name: two relative paths to one file give one visit.
                 if (!seen.insert(normal_path(file)).second)
@@ -4360,7 +4364,10 @@ void translate_impl(
                 import_texts.back().reserve(static_cast<size_t>(base) + text.size());
                 import_texts.back().assign(base, ' ');
                 import_texts.back().append(text);
+                const auto t_parse = std::chrono::steady_clock::now();
                 Script is = parse_structure(import_texts.back(), map, array_tpl);
+                res.timing.import_parse_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::steady_clock::now() - t_parse).count();
                 {
                     // The output has one namespace for all the scripts of the program.
                     std::set<std::string> seen_attrs;
@@ -4399,9 +4406,12 @@ void translate_impl(
                 // unit name is the same in AOT code and in other code. An import of an import is in
                 // the list too: the importer copies its classes and structs, so a change of them
                 // makes the importer stale.
+                const auto t_view = std::chrono::steady_clock::now();
                 res.import_hashes.emplace_back(unit, hash_text(module_interface(is, import_texts.back())));
                 // The import view: a translation cache keeps its entry when the view stays the same.
                 views[normal_path(file)] = import_view_of(is, import_texts.back(), base, map, array_tpl);
+                res.timing.import_view_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::steady_clock::now() - t_view).count();
                 // The module variables, the convert hooks and the free functions of the import stay in
                 // their own module: the importer gets no copy of them. A direct import gives the
                 // declarations of the public ones. The import is not transitive.
@@ -6699,8 +6709,13 @@ void translate_impl(
             reserved(c.pos, c.params);
         {
             const size_t before = g_diag.items.size();
-            hotc::check_class(cd, types, map, g_diag, in.strict_borrowed, sc.is_cpp,
-                hotc::cxx_std_below_20(opt.std_version), &sc.classes);
+            {
+                const auto t_cc = std::chrono::steady_clock::now();
+                hotc::check_class(cd, types, map, g_diag, in.strict_borrowed, sc.is_cpp,
+                    hotc::cxx_std_below_20(opt.std_version), &sc.classes);
+                res.timing.check_class_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::steady_clock::now() - t_cc).count();
+            }
             if (g_diag.items.size() != before)
                 throw TranslateAbort{};
         }
@@ -7491,6 +7506,19 @@ void translate_impl(
             flush_bodies();
         write_texts(si);
         ClassDef& cd = *seq[si];
+        struct LoopTimer
+        {
+            hotc::TranslateTiming& t;
+            bool foreign;
+            std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+            ~LoopTimer()
+            {
+                const int64_t ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::steady_clock::now() - start).count();
+                (foreign ? t.foreign_class_ns : t.own_class_ns) += ns;
+                ++(foreign ? t.foreign_classes : t.own_classes);
+            }
+        } loop_timer{res.timing, !cd.foreign_unit.empty()};
         // A type that the block uses is complete here. So the mark is after its declaration and
         // before the first use of the block.
         if (sc.is_cpp)
@@ -8003,8 +8031,13 @@ void translate_impl(
         // ---- the borrowed-storage rule and the rows of design 5.3 that the script text shows
         {
             const size_t before = g_diag.items.size();
-            hotc::check_class(cd, types, map, g_diag, in.strict_borrowed, sc.is_cpp,
-                hotc::cxx_std_below_20(opt.std_version), &sc.classes);
+            {
+                const auto t_cc = std::chrono::steady_clock::now();
+                hotc::check_class(cd, types, map, g_diag, in.strict_borrowed, sc.is_cpp,
+                    hotc::cxx_std_below_20(opt.std_version), &sc.classes);
+                res.timing.check_class_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::steady_clock::now() - t_cc).count();
+            }
             if (g_diag.items.size() != before)
                 throw TranslateAbort{};
         }
@@ -11381,6 +11414,14 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
         res.timing.lower_ns += t.lower_ns;
         res.timing.check_ns += t.check_ns;
         res.timing.emit_ns += t.emit_ns;
+        res.timing.import_read_ns += t.import_read_ns;
+        res.timing.import_parse_ns += t.import_parse_ns;
+        res.timing.import_view_ns += t.import_view_ns;
+        res.timing.foreign_class_ns += t.foreign_class_ns;
+        res.timing.foreign_classes += t.foreign_classes;
+        res.timing.own_class_ns += t.own_class_ns;
+        res.timing.own_classes += t.own_classes;
+        res.timing.check_class_ns += t.check_class_ns;
         ++res.passes;
     };
     add_timing(tr.timing);
