@@ -6528,6 +6528,161 @@ TEST(LanguageServerNative, CancelOfARunningReferencesScanGivesTheErrorBeforeTheB
     EXPECT_FALSE(hover.contains("error")) << hover.dump();
 }
 
+#ifndef _WIN32
+// HOT-36: the slow worker. A proxy holds the first references request to clangd until a gate file
+// exists. All other messages pass.
+namespace
+{
+
+// Writes the proxy in "tools" and gives the path of the clangd program that runs it.
+std::string make_gated_clangd(const TempDir& tools)
+{
+    const std::string proxy = (tools.path() / "gate_clangd.py").string();
+    write_file(proxy,
+        "import os, subprocess, sys, threading, time\n"
+        "gate = sys.argv[1]\n"
+        "p = subprocess.Popen(sys.argv[2:], stdin=subprocess.PIPE)\n"
+        "src = sys.stdin.buffer\n"
+        "lock = threading.Lock()\n"
+        "held = False\n"
+        "def put(data):\n"
+        "    with lock:\n"
+        "        try:\n"
+        "            p.stdin.write(data)\n"
+        "            p.stdin.flush()\n"
+        "        except Exception:\n"
+        "            pass\n"
+        "def release(data):\n"
+        "    while not os.path.exists(gate):\n"
+        "        time.sleep(0.05)\n"
+        "    put(data)\n"
+        "while True:\n"
+        "    head = b''\n"
+        "    while not head.endswith(b'\\r\\n\\r\\n'):\n"
+        "        c = src.read(1)\n"
+        "        if not c:\n"
+        "            with lock:\n"
+        "                p.stdin.close()\n"
+        "            p.wait()\n"
+        "            sys.exit(0)\n"
+        "        head += c\n"
+        "    size = 0\n"
+        "    for line in head.split(b'\\r\\n'):\n"
+        "        if line.lower().startswith(b'content-length:'):\n"
+        "            size = int(line.split(b':')[1])\n"
+        "    body = src.read(size)\n"
+        "    if not held and b'\"textDocument/references\"' in body:\n"
+        "        held = True\n"
+        "        threading.Thread(target=release, args=(head + body,), daemon=True).start()\n"
+        "        continue\n"
+        "    put(head + body)\n");
+    const std::string gate = (tools.path() / "gate").string();
+    const std::string clangd = (tools.path() / "gate_clangd").string();
+    write_file(clangd, "#!/bin/sh\nexec python3 '" + proxy + "' '" + gate + "' '" HOT_CLANGD_PATH "' \"$@\"\n");
+    std::filesystem::permissions(clangd, std::filesystem::perms::owner_all, std::filesystem::perm_options::add);
+    return clangd;
+}
+
+// Opens the gate at the end of the scope, before the session stops.
+struct GateOpener
+{
+    std::string gate;
+    ~GateOpener() { write_file(gate, "open"); }
+};
+
+bool wait_slow_running(NativeSession& s)
+{
+    for (int i = 0; i < 200; ++i)
+    {
+        const json r = s.client->request("hot/indexStats", json::object(), 20000);
+        if (r.contains("result") && r["result"].value("slowRunning", 0) == 1)
+            return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    return false;
+}
+
+json native_refs_params(NativeSession& s)
+{
+    return {{"textDocument", {{"uri", s.uri}}}, {"position", native_pos("Clamp100(MAX_HP)", "Clamp100")},
+        {"context", {{"includeDeclaration", true}}}};
+}
+
+json native_hover_params(NativeSession& s)
+{
+    return {{"textDocument", {{"uri", s.uri}}}, {"position", native_pos("Clamp100(MAX_HP)", "Clamp100")}};
+}
+
+} // namespace
+
+#define SLOW_WORKER_SETUP()                                                                   \
+    REQUIRE_CLANGD();                                                                         \
+    if (std::system("python3 -c \"\" >/dev/null 2>&1") != 0)                                  \
+        GTEST_SKIP() << "python3 is not installed";                                           \
+    TempDir tools;                                                                            \
+    NativeSession s(kNativeScript, 10000, true, make_gated_clangd(tools));                    \
+    GateOpener opener{(tools.path() / "gate").string()};                                      \
+    {                                                                                         \
+        const json first = s.client->request("textDocument/hover", native_hover_params(s));   \
+        ASSERT_TRUE(first.contains("result")) << first.dump();                                \
+    }
+
+// HOT-36: a hover answers while a references request waits for clangd on the slow worker.
+TEST(LanguageServerNative, HoverAnswersWhileReferencesRuns)
+{
+    SLOW_WORKER_SETUP();
+    const int id = s.client->send_request("textDocument/references", native_refs_params(s));
+    ASSERT_TRUE(wait_slow_running(s));
+    const json hover = s.client->request("textDocument/hover", native_hover_params(s), 20000);
+    ASSERT_TRUE(hover.contains("result")) << hover.dump();
+    EXPECT_FALSE(hover.contains("error")) << hover.dump();
+    EXPECT_TRUE(s.client->wait_response(id, 300).is_null());
+    write_file(opener.gate, "open");
+    const json r = s.client->wait_response(id, 60000);
+    ASSERT_FALSE(r.is_null());
+    EXPECT_TRUE(r.contains("result")) << r.dump();
+}
+
+// HOT-36: a cancel stops the references request that runs on the worker, with the gate closed.
+TEST(LanguageServerNative, CancelOfReferencesOnTheWorker)
+{
+    SLOW_WORKER_SETUP();
+    const int id = s.client->send_request("textDocument/references", native_refs_params(s));
+    ASSERT_TRUE(wait_slow_running(s));
+    s.client->notify("$/cancelRequest", {{"id", id}});
+    const json r = s.client->wait_response(id, 20000);
+    ASSERT_FALSE(r.is_null());
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+    EXPECT_EQ(r["error"]["code"], -32800);
+}
+
+// HOT-36: an edit while the worker runs a request gives the error ContentModified (-32801).
+TEST(LanguageServerNative, EditDuringReferencesGivesContentModified)
+{
+    SLOW_WORKER_SETUP();
+    const int id = s.client->send_request("textDocument/references", native_refs_params(s));
+    ASSERT_TRUE(wait_slow_running(s));
+    s.client->change(s.uri, 2, std::string(kNativeScript) + "// edit\n");
+    const json r = s.client->wait_response(id, 20000);
+    ASSERT_FALSE(r.is_null());
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+    EXPECT_EQ(r["error"]["code"], -32801);
+    const json hover = s.client->request("textDocument/hover", native_hover_params(s), 20000);
+    EXPECT_TRUE(hover.contains("result")) << hover.dump();
+}
+
+// HOT-36: shutdown and exit stop the server while the worker waits for clangd.
+TEST(LanguageServerNative, ExitDuringReferencesStopsTheServer)
+{
+    SLOW_WORKER_SETUP();
+    s.client->send_request("textDocument/references", native_refs_params(s));
+    ASSERT_TRUE(wait_slow_running(s));
+    const auto t0 = std::chrono::steady_clock::now();
+    EXPECT_EQ(s.client->stop(), 0);
+    EXPECT_LT(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0).count(), 10);
+}
+#endif
+
 // HOT-36: a cancel of the first native hover leaves no mark "preamble ready". The next hover works.
 TEST(LanguageServerNative, CancelOfTheFirstNativeHoverKeepsTheNextHoverWorking)
 {

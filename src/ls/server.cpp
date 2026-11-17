@@ -489,6 +489,8 @@ private:
     // True when the client cancelled the request that the current thread runs.
     bool cancelled()
     {
+        if (is_slow_worker && worker_stop_.load())
+            return true; // the server stops: the worker leaves its request
         if (!any_cancel_.load() || request_key_.empty())
             return false;
         std::lock_guard<std::mutex> lock(queue_mutex_);
@@ -566,7 +568,21 @@ private:
     }
     StateLock state_lock_;
     std::atomic<uint64_t> epoch_{0}; // grows at each client notification and at each send_generated
-    void run_request(const json& msg);
+    // Gives true when the slow worker took the request. The worker finishes it later.
+    bool run_request(const json& msg);
+    void run_locked(const json& msg);
+    // The slow worker: a FIFO queue and one thread. It runs the requests that can take long.
+    static bool is_slow_method(const std::string& method) { return method == "textDocument/references"; }
+    void enqueue_slow(const json& msg);
+    void worker_loop();
+    void stop_worker();
+    std::thread worker_;
+    std::mutex worker_mutex_;
+    std::condition_variable worker_cv_;
+    std::deque<json> worker_queue_;
+    bool worker_closed_ = false; // under worker_mutex_
+    std::atomic<bool> worker_stop_{false};
+    std::atomic<int> slow_running_{0}; // 1 while the worker runs a request (hot/indexStats)
     void reader_loop();
     // Takes the next message. Joins the later didChange of the same uri into the last one.
     bool next_message(json& out);
@@ -920,8 +936,11 @@ private:
                         return;
             if (clock::now() + std::chrono::milliseconds(20) >= deadline)
                 return;
-            Yield yield(*this);
-            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            {
+                Yield yield(*this);
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+            check_epoch();
         }
     }
 
@@ -978,8 +997,13 @@ private:
     // Every request to clangd goes through here: it is a yield point of the slow worker.
     json clangd_request(const std::string& method, json params, int timeout_ms)
     {
-        Yield yield(*this);
-        return clangd_->request(method, std::move(params), timeout_ms);
+        json r;
+        {
+            Yield yield(*this);
+            r = clangd_->request(method, std::move(params), timeout_ms);
+        }
+        check_epoch();
+        return r;
     }
 
     std::optional<json> clangd_result(const std::string& method, json params, int timeout_ms = 60000)
@@ -1643,7 +1667,11 @@ void Server::start_clangd(const json& init)
         c->notify("textDocument/didClose", {{"textDocument", {{"uri", uri}}}});
     }
     // After the start: the request "initialize" is not cancellable. A cancel ends a later wait for clangd.
-    c->wait_poll = [this] { check_cancel(); };
+    c->wait_poll = [this]
+    {
+        check_cancel();
+        check_epoch();
+    };
     clangd_ = std::move(c);
 }
 
@@ -7809,8 +7837,9 @@ IndexSnapshot Server::index_entries(const std::vector<std::string>& paths, std::
     IndexSnapshot snap;
     {
         Yield yield(*this);
-        snap = windex_.wait_for(wanted, [this] { check_cancel(); }, deadline);
+        snap = windex_.wait_for(wanted, [this] { check_cancel(); check_epoch(); }, deadline);
     }
+    check_epoch();
     out.entries = std::move(snap.entries);
     out.missing.insert(out.missing.end(), snap.missing.begin(), snap.missing.end());
     return out;
@@ -8227,6 +8256,7 @@ void Server::handle(const json& msg)
         // The test hook: "tables" (an array of URIs) gets the number of refs of each table;
         // "importersOf" (a URI) gets the importers of that script.
         json out;
+        out["slowRunning"] = slow_running_.load();
         if (p.is_object() && p.contains("tables") && p["tables"].is_array())
         {
             out["tableRefs"] = json::array();
@@ -8429,14 +8459,11 @@ void Server::finish_request(const std::string& key)
     any_cancel_ = !cancelled_ids_.empty();
 }
 
-void Server::run_request(const json& msg)
+void Server::run_locked(const json& msg)
 {
-    request_key_ = id_key(msg);
-    if (!msg.contains("id") && !msg.value("method", std::string()).empty())
-        ++epoch_; // a client notification
-    state_lock_.lock_fast();
     try
     {
+        check_epoch(); // the worker: the state changed since the dequeue
         if (!request_key_.empty() && cancelled())
             throw RequestCancelled{};
         handle(msg);
@@ -8454,8 +8481,78 @@ void Server::run_request(const json& msg)
         if (msg.contains("id"))
             reply_error(msg["id"], kRequestFailed, std::string("internal error: ") + e.what());
     }
+}
+
+bool Server::run_request(const json& msg)
+{
+    const std::string method = msg.value("method", std::string());
+    if (!msg.contains("id") && !method.empty())
+        ++epoch_; // a client notification
+    if (method == "shutdown")
+        stop_worker(); // before the lock: the worker needs the lock to leave
+    if (msg.contains("id") && is_slow_method(method))
+    {
+        std::lock_guard<std::mutex> lock(worker_mutex_);
+        if (!worker_closed_)
+        {
+            worker_queue_.push_back(msg);
+            if (!worker_.joinable())
+                worker_ = std::thread([this] { worker_loop(); });
+            worker_cv_.notify_one();
+            return true;
+        }
+    }
+    request_key_ = id_key(msg);
+    state_lock_.lock_fast();
+    run_locked(msg);
     state_lock_.unlock();
     request_key_.clear();
+    return false;
+}
+
+void Server::worker_loop()
+{
+    is_slow_worker = true;
+    for (;;)
+    {
+        json msg;
+        {
+            std::unique_lock<std::mutex> lock(worker_mutex_);
+            worker_cv_.wait(lock, [this] { return !worker_queue_.empty() || worker_stop_.load(); });
+            if (worker_stop_.load())
+                return;
+            msg = std::move(worker_queue_.front());
+            worker_queue_.pop_front();
+        }
+        request_key_ = id_key(msg);
+        slow_running_ = 1;
+        request_epoch_ = epoch_.load();
+        state_lock_.lock_slow();
+        run_locked(msg);
+        state_lock_.unlock();
+        slow_running_ = 0;
+        finish_request(request_key_);
+        request_key_.clear();
+    }
+}
+
+void Server::stop_worker()
+{
+    std::deque<json> rest;
+    {
+        std::lock_guard<std::mutex> lock(worker_mutex_);
+        worker_closed_ = true;
+        worker_stop_ = true;
+        rest.swap(worker_queue_);
+    }
+    worker_cv_.notify_all();
+    if (worker_.joinable())
+        worker_.join();
+    for (const json& m : rest) // the requests that never started
+    {
+        reply_error(m["id"], kRequestCancelled, "request cancelled");
+        finish_request(id_key(m));
+    }
 }
 
 int Server::run()
@@ -8468,10 +8565,10 @@ int Server::run()
         if (msg.value("method", std::string()) == "exit")
             break;
         const std::string key = id_key(msg);
-        run_request(msg);
-        if (!key.empty())
+        if (!run_request(msg) && !key.empty())
             finish_request(key);
     }
+    stop_worker(); // before windex_.stop()
     // The reader ends at the end of the input or after "exit".
     reader.join();
     windex_.stop();
