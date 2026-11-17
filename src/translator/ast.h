@@ -70,6 +70,57 @@ inline std::string strip_ref_return_word(const std::string& type)
 // fills "expr" and "span". The lowering fills "cpp" one time (empty until then).
 struct ParamDefault;
 
+// While a CloneDefaults guard lives in a thread, a copy of a DefaultPtr copies the ParamDefault too.
+// Else the copies share it. The import cache of the translator session copies a cached script with
+// the guard: the lowering writes "cpp" and "expr" of a default, so two users must not share it.
+struct CloneDefaults
+{
+    CloneDefaults() : previous(active()) { active() = true; }
+    ~CloneDefaults() { active() = previous; }
+    CloneDefaults(const CloneDefaults&) = delete;
+    CloneDefaults& operator=(const CloneDefaults&) = delete;
+    static bool& active()
+    {
+        static thread_local bool on = false;
+        return on;
+    }
+    bool previous;
+};
+
+class DefaultPtr : public std::shared_ptr<ParamDefault>
+{
+public:
+    using std::shared_ptr<ParamDefault>::shared_ptr;
+    DefaultPtr() = default;
+    DefaultPtr(std::shared_ptr<ParamDefault> p) noexcept
+        : std::shared_ptr<ParamDefault>(std::move(p))
+    {
+    }
+    DefaultPtr(const DefaultPtr& o)
+        : std::shared_ptr<ParamDefault>(o && CloneDefaults::active() ? std::make_shared<ParamDefault>(*o)
+                                       : static_cast<const std::shared_ptr<ParamDefault>&>(o))
+    {
+    }
+    DefaultPtr(DefaultPtr&&) noexcept = default;
+    DefaultPtr& operator=(const DefaultPtr& o)
+    {
+        if (this != &o)
+            std::shared_ptr<ParamDefault>::operator=(DefaultPtr(o));
+        return *this;
+    }
+    DefaultPtr& operator=(DefaultPtr&&) noexcept = default;
+    DefaultPtr& operator=(std::nullptr_t) noexcept
+    {
+        this->reset();
+        return *this;
+    }
+    DefaultPtr& operator=(std::shared_ptr<ParamDefault> p) noexcept
+    {
+        std::shared_ptr<ParamDefault>::operator=(std::move(p));
+        return *this;
+    }
+};
+
 // The modifier of a parameter. "in T x" is a const reference, "ref T x" and "out T x" are references,
 // "[byval] T x" is a copy. "Plain" is a parameter with no modifier.
 enum class ParamMode
@@ -88,7 +139,7 @@ struct Param
     // the mode Plain and a type with a "&".
     std::string name, type;
     ParamMode mode = ParamMode::Plain;
-    std::shared_ptr<ParamDefault> def{}; // null: the parameter has no default value
+    DefaultPtr def{}; // null: the parameter has no default value
     // The type as the script writes it. The translator sets it before it rewrites "type" to the
     // C++ storage type. The lowering pass reads it for the type-directed member access.
     std::string script_type{};

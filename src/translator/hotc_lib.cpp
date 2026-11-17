@@ -3603,6 +3603,12 @@ std::string emit_field_tags(std::string& out, const std::string& prefix, const h
 namespace hotc
 {
 
+// A vector of these types must move on a reallocation: a copy is a deep copy of the syntax tree.
+static_assert(std::is_nothrow_move_constructible_v<hotc::ast::Method>);
+static_assert(std::is_nothrow_move_constructible_v<hotc::ast::ClassDef>);
+static_assert(std::is_nothrow_move_constructible_v<hotc::ast::Field>);
+static_assert(std::is_nothrow_move_constructible_v<hotc::ast::Script>);
+
 // The cache of one key (flags + imports): the base classes and the files that the parse read.
 struct TranslatorSession::Impl
 {
@@ -4451,6 +4457,7 @@ void translate_impl(
                 {
                     // The parse adds the display names of its generics to the global list. Replay it.
                     const auto t_copy = std::chrono::steady_clock::now();
+                    const hotc::ast::CloneDefaults clone_defaults;
                     is = *cached->script;
                     g_generic_display.insert(
                         g_generic_display.end(), is.generic_display.begin(), is.generic_display.end());
@@ -4473,6 +4480,7 @@ void translate_impl(
                 {
                     fresh = std::make_shared<hotc::TranslatorSession::Impl::ImportValue>();
                     fresh->text = text;
+                    const hotc::ast::CloneDefaults clone_defaults;
                     fresh->script = std::make_shared<const Script>(is);
                 }
                 {

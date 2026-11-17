@@ -14,6 +14,8 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <thread>
+#include <vector>
 
 namespace
 {
@@ -216,6 +218,57 @@ TEST(ImportCache, RepositoryScriptsGiveTheSameOutput)
         }
     EXPECT_GT(n, 10);
     EXPECT_GT(with_imports, 5);
+}
+
+// A default argument is lowered in the context of each importer. The cached script must not share it.
+const char* kDefLib =
+    "using \"w.h\";\n"
+    "enum E { X, Y }\n"
+    "const int K = 3;\n"
+    "using Num = int;\n"
+    "class D : Widget {\n"
+    "    int F(int a = K) { return a; }\n"
+    "    int G(E e = E.X) { return 0; }\n"
+    "    int H(Num n = 2 * K) { return n; }\n"
+    "}\n";
+const char* kDefImporter1 = "using \"w.h\";\nusing \"a.hot\";\nclass U1 : D { int R() { return this.F() + this.H(); } }\n";
+const char* kDefImporter2 = "using \"w.h\";\nusing \"a.hot\";\nclass U2 : D { int R() { return this.F(1); } }\n"
+                            "class U3 : D { override int G(E e = E.Y) { return 1; } }\n";
+// A weak default with "new": check_weak_new reports it where the default is lowered.
+const char* kBadDefLib = "using \"w.h\";\nclass D : Widget {\n    int F([weak] $D o = new $D()) { return 1; }\n}\n";
+
+TEST(ImportCache, DefaultArgumentsGiveTheSameOutputForTwoImporters)
+{
+    TempDir dir;
+    hotc::TranslatorSession s, s_off;
+    for (const char* lib : {kDefLib, kBadDefLib})
+        for (const char* importer : {kDefImporter1, kDefImporter2, kDefImporter1})
+        {
+            const auto off = run(s_off, dir, lib, kB, importer, false);
+            const auto on = run(s, dir, lib, kB, importer, true);
+            SCOPED_TRACE(std::string(lib) + importer);
+            expect_same_output(off, on);
+        }
+    EXPECT_TRUE(run(s_off, dir, kDefLib, kB, kDefImporter1, false).ok);
+    EXPECT_FALSE(run(s_off, dir, kBadDefLib, kB, kDefImporter1, false).ok);
+}
+
+TEST(ImportCache, TwoThreadsHitOneEntry)
+{
+    TempDir dir;
+    hotc::TranslatorSession s, s_off;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    const auto want1 = run(s_off, dir, kDefLib, kB, kDefImporter1, false);
+    const auto want2 = run(s_off, dir, kDefLib, kB, kDefImporter2, false);
+    run(s, dir, kDefLib, kB, kDefImporter1, true);
+    std::vector<hotc::TranslateResult> got(8);
+    std::vector<std::thread> threads;
+    for (size_t i = 0; i < got.size(); ++i)
+        threads.emplace_back([&, i] { got[i] = run(s, dir, kDefLib, kB, i % 2 ? kDefImporter2 : kDefImporter1, true); });
+    for (std::thread& t : threads)
+        t.join();
+    for (size_t i = 0; i < got.size(); ++i)
+        expect_same_output(i % 2 ? want2 : want1, got[i]);
 }
 
 } // namespace
