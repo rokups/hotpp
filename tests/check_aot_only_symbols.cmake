@@ -2,16 +2,20 @@
 # This work is licensed under the terms of the MIT license.
 # For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
+cmake_minimum_required(VERSION 3.20)
+
 # The check of an AOT-only build (HOT_FORCE_AOT_ONLY) on Linux. The runtime library and the AOT
 # program must not need a loader, a process start, a file watch, Clang or LLVM.
 # Input: -DNM=<nm> -DLDD=<ldd> -DRUNTIME_LIB=<libhot_runtime.a> -DAOT_DEMO=<binary>
 #        -DAOT_OBJECTS=<list of object or library files, optional>
 # Each file is read with nm --undefined-only (with -D for a binary). The check fails when an
-# undefined name is one of: dlopen, dlsym, dlclose, fork, posix_spawn, exec*, popen, system,
-# inotify*, or has "clang" or "llvm" in it. The ldd output of the binary must have no libclang
+# undefined or weak undefined name is one of: dlopen, dlsym, dlclose, dlmopen, dladdr, fork,
+# vfork, clone, posix_spawn*, exec*, fexecve, popen, pclose, system, inotify*, or a Clang or LLVM
+# name (clang_*, LLVM*, the C++ namespaces clang and llvm). The ldd output of the binary must have no libclang
 # and no LLVM.
 
-set(_bad_exact "dlopen" "dlsym" "dlclose" "fork" "posix_spawn" "posix_spawnp" "popen" "system")
+set(_bad_exact "dlopen" "dlsym" "dlclose" "dlmopen" "dladdr" "fork" "vfork" "clone" "__libc_fork"
+    "__libc_dlopen_mode" "posix_spawn" "posix_spawnp" "fexecve" "popen" "pclose" "system")
 set(_failed FALSE)
 
 function(check_undefined file dynamic)
@@ -28,14 +32,14 @@ function(check_undefined file dynamic)
     string(REPLACE "\n" ";" _lines "${_out}")
     set(_found "")
     foreach(_line IN LISTS _lines)
-        if(NOT _line MATCHES "^[ \t]*U[ \t]+([^ \t]+)")
+        if(NOT _line MATCHES "^[ \t]*[UwV][ \t]+([^ \t]+)")
             continue()
         endif()
         set(_name "${CMAKE_MATCH_1}")
         string(REGEX REPLACE "@.*$" "" _base "${_name}")
-        string(TOLOWER "${_base}" _lower)
         if(_base IN_LIST _bad_exact OR _base MATCHES "^exec(l|le|lp|v|ve|vp|vpe|veat)?$"
-           OR _base MATCHES "^inotify" OR _lower MATCHES "clang|llvm")
+           OR _base MATCHES "^inotify" OR _base MATCHES "^posix_spawn_file_actions_"
+           OR _base MATCHES "^(clang_|LLVM|_ZN[K]?[0-9]*(clang|llvm))|libclang|libLLVM")
             list(APPEND _found "${_name}")
         endif()
     endforeach()

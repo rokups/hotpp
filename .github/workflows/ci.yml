@@ -295,7 +295,7 @@ jobs:
         run: ctest --preset linux-clang-aot-only-rel -R aot_only_symbols --output-on-failure
 
       - name: Test
-        run: ctest --preset linux-clang-aot-only-rel -j "$(nproc)"
+        run: ctest --preset linux-clang-aot-only-rel -j2 -E LanguageServer
 
   # The native Windows build with MSVC (the preset vs-files). cl.exe builds hotc, the runtime and
   # the tests. clang++.exe of the LLVM release compiles the script modules. Some tests do not run

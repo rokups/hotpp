@@ -127,7 +127,12 @@ if(HOT_AOT_ONLY_PLATFORM)
                 "(they are the defaults here). See doc/platforms.md.")
     endif()
     # AUTO means: on when CMake finds LLVM. There is no LLVM for the target, so AUTO is OFF.
-    set(HOT_ENABLE_JIT OFF CACHE STRING "" FORCE)
+    if(HOT_AOT_ONLY_FORCED)
+        # A normal variable: the cache keeps the user value, so the build is normal when the option goes OFF.
+        set(HOT_ENABLE_JIT OFF)
+    else()
+        set(HOT_ENABLE_JIT OFF CACHE STRING "" FORCE)
+    endif()
     unset(_hot_jit_upper)
 endif()
 

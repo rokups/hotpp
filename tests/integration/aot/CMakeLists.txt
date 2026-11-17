@@ -256,4 +256,14 @@ if(HOT_AOT_ONLY_FORCED AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
             -P ${PROJECT_SOURCE_DIR}/tests/check_aot_only_symbols.cmake)
     set_tests_properties(aot_only_symbols PROPERTIES LABELS "aot;aot-only")
     add_dependencies(aot_demo hot_runtime)
+
+    # The negative proof: the check must fail on a strong and on a weak forbidden name.
+    foreach(kind strong weak)
+        add_library(aot_only_bad_${kind} STATIC aot_only_bad_${kind}.cpp)
+        add_test(NAME aot_only_symbols_rejects_${kind}
+            COMMAND ${CMAKE_COMMAND} -DNM=${HOT_NM} -DLDD=${HOT_LDD}
+                -DRUNTIME_LIB=$<TARGET_FILE:aot_only_bad_${kind}> -DAOT_DEMO=$<TARGET_FILE:aot_demo>
+                -P ${PROJECT_SOURCE_DIR}/tests/check_aot_only_symbols.cmake)
+        set_tests_properties(aot_only_symbols_rejects_${kind} PROPERTIES WILL_FAIL TRUE LABELS "aot;aot-only")
+    endforeach()
 endif()
