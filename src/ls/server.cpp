@@ -394,6 +394,25 @@ std::string executable_build_id()
 
 // The split of the generated unit in a shell header and the rest. The environment variable HOT_LS_SPLIT_SHELL=0
 // turns it off: clangd then gets one unit.
+// HOT_LS_TIMING=<file> appends the phases of a completion to the file.
+struct PhaseTimer
+{
+    const char* label;
+    std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+    explicit PhaseTimer(const char* l) : label(l) {}
+    ~PhaseTimer()
+    {
+        static const char* const file = std::getenv("HOT_LS_TIMING");
+        if (file)
+            if (FILE* f = std::fopen(file, "a"))
+            {
+                std::fprintf(f, "PHASE %-22s %7.1f ms\n", label,
+                    std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
+                std::fclose(f);
+            }
+    }
+};
+
 static bool lite_doc_enabled()
 {
     const char* e = std::getenv("HOT_LS_LITE_DOC");
@@ -3034,7 +3053,7 @@ json Server::on_completion(const Doc& d, const json& p)
                 // is null at this place must not stop the translation.
                 hotc::TranslateOptions to = translate_options(d);
                 to.null_warnings = true;
-                hotc::AnalyzeResult facts = timed_translate([&] { return hotc::analyze(patched, to, session_); });
+                hotc::AnalyzeResult facts = [&] { PhaseTimer pt("round analyze"); return timed_translate([&] { return hotc::analyze(patched, to, session_); }); }();
                 const bool is_probe = probe && text_index == probe_index;
                 std::optional<hotc::SourcePos> g = facts.cpp.empty() || is_probe
                     ? std::nullopt
@@ -3087,10 +3106,12 @@ json Server::on_completion(const Doc& d, const json& p)
                 // the request does not wait for its AST.
                 if (std::chrono::steady_clock::now() < budget_end)
                 {
-                    const std::string lu = lite_uri(md, facts.cpp, g->line - 1);
+                    std::string lu;
+                    { PhaseTimer pt("round lite sync"); lu = lite_uri(md, facts.cpp, g->line - 1); }
                     if (lu != d.gen_uri)
                     {
                         lite_sent = true;
+                        PhaseTimer pc("round clangd call");
                         r = clangd_result("textDocument/completion",
                             {{"textDocument", {{"uri", lu}}},
                                 {"position",
@@ -3131,7 +3152,7 @@ json Server::on_completion(const Doc& d, const json& p)
                 const std::string with_this = t.substr(0, s) + "this." + prefix + kHole + closers + (end ? "" : ";") + t.substr(e);
                 hotc::TranslateOptions to = translate_options(d);
                 to.null_warnings = true;
-                hotc::AnalyzeResult facts = timed_translate([&] { return hotc::analyze(with_this, to, session_); });
+                hotc::AnalyzeResult facts = [&] { PhaseTimer pt("this analyze"); return timed_translate([&] { return hotc::analyze(with_this, to, session_); }); }();
                 const auto g = facts.cpp.empty()
                     ? std::nullopt
                     : facts.source_map.map_to_generated(hole.line + 1, hole.col + 1 + 5);
@@ -3139,10 +3160,12 @@ json Server::on_completion(const Doc& d, const json& p)
                     *t0 + std::chrono::milliseconds(opt_.completion_budget_ms + kCompletionAstMs) - std::chrono::steady_clock::now()).count();
                 if (g && left > 0)
                 {
-                    const std::string lu = lite_uri(md, facts.cpp, g->line - 1);
+                    std::string lu;
+                    { PhaseTimer pt("this lite sync"); lu = lite_uri(md, facts.cpp, g->line - 1); }
                     if (lu == d.gen_uri)
                         send_generated(md, facts.cpp);
                     const Text gen(facts.cpp);
+                    PhaseTimer pc("this clangd call");
                     auto r2 = clangd_result("textDocument/completion",
                         {{"textDocument", {{"uri", lu}}},
                             {"position",
