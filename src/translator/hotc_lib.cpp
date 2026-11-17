@@ -8631,7 +8631,9 @@ void translate_impl(
         base_cx.foreign_vars = foreign_var_units;
         base_cx.in_module_init = cn == kModuleName;
         base_cx.free_fns = &fn_cls.statics;
+        loop_timer.sub(32);
         lower_statics(cd, base_cx, false);
+        loop_timer.sub(33);
         // Optimized AOT code: the fields are members of the shell. Each member has the lowered
         // initializer as a default member initializer, in the order of the declaration.
         // The member of the shell for an ordinary script function. The body of a ".cpp" script calls
@@ -9370,12 +9372,14 @@ void translate_impl(
                     o.w("[[maybe_unused]] HOT_HIDDEN static " + fn_ret(m) + " " + P + m.name + "(" + shell + "* __self"
                         + param_decl_def(m) + ")\n{\n    return hot::call_script<" + fn_ret(m) + "(" + B + "*" + type_list(m)
                         + ")>(__self, " + slot_id(m.name) + fwd_args(m.params) + ");\n}\n");
+            loop_timer.sub(34);
             // The forwarders of an overload group (gap G17), as in the class of the unit.
             for (const Method& m : cd.methods)
                 if (!m.src_name.empty() && !m.is_override && !m.overrides_virtual && hook_of(m) == Hook::None)
                     o.w("[[maybe_unused]] HOT_HIDDEN static " + fn_ret(m) + " " + P + m.src_name + "(" + shell
                         + "* __self" + param_decl_def(m) + ")\n{\n    return " + P + m.name + "(__self"
                         + fwd_args(m.params) + ");\n}\n");
+            loop_timer.sub(35);
             // The "base." forwarders of an overload group (gap G17): "<C>__<name>__ovbase". They
             // call the implementation that C sees, with a direct call. They cover the overloads
             // of C and of its script parents.
@@ -9389,6 +9393,7 @@ void translate_impl(
                                 + shell + "* __self" + param_decl_def(m) + ")\n{\n    return " + a->name + "__" + m.name
                                 + "(__self" + fwd_args(m.params) + ");\n}\n");
             }
+            loop_timer.sub(36);
             for (const Field& f : cd.fields)
             {
                 const std::string t = types.cpp_storage(f.type, hotc::TypeModel::StorageUse::Field);
@@ -9400,6 +9405,7 @@ void translate_impl(
                         + "(hot::ShellBase* __s)\n{\n    static hot::FieldSite __site;\n    return hot::field<" + t
                         + ">(__s, __site, \"" + f.name + "\");\n}\n");
             }
+            loop_timer.sub(37);
             std::vector<std::vector<Param>> overloads;
             for (const hotc::ast::Ctor& k : cd.ctors)
                 overloads.push_back(k.params);
@@ -11559,7 +11565,7 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
         for (int k = 0; k < 16; ++k)
             res.timing.front_step_ns[k] += t.front_step_ns[k];
         for (int f = 0; f < 2; ++f)
-            for (int k = 0; k < 32; ++k)
+            for (int k = 0; k < 40; ++k)
                 res.timing.step_ns[f][k] += t.step_ns[f][k];
         ++res.passes;
     };
