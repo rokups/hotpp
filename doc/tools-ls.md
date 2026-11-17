@@ -197,7 +197,7 @@ Environment variables:
 
 - `HOT_LS_SPLIT_SHELL=0` turns the header off. clangd then gets one unit. The split is on by default.
 - `HOT_LS_LITE_DOC=1` turns the lite document on. It is off by default.
-- `HOT_LS_IMPORT_CACHE=0|1` turns the import cache of the translator off or on. The variable wins over the setting `importCache` in `initializationOptions` and over the arguments `--import-cache` and `--no-import-cache`. The cache is on by default. On GameCore.hot it cuts the median of `analyzeMs` from about 395 ms to about 330 ms, and `importParseMs` from 69 ms to 0.
+- `HOT_LS_IMPORT_CACHE=0|1` turns the import cache of the translator off or on. The variable wins over the setting `importCache` in `initializationOptions`. The setting wins over the arguments `--import-cache` and `--no-import-cache`. The cache is on by default. On GameCore.hot it cuts the median of `analyzeMs` from about 395 ms to about 330 ms. It cuts `importParseMs` from 69 ms to 0.
 - `HOT_LS_LITE_CHECK=1` asks the full document too for hover, completion and definition. The server logs each difference. `hot/indexStats` has the counts `liteHits`, `liteFallback` and `liteMismatch`.
 - `HOT_LS_SHELL_DIR=<dir>` sets the directory of the header files (the tests use it).
 - `HOT_LS_TIMING=<file>` appends the phases of a completion to the file.
