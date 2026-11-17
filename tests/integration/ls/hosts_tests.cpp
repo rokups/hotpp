@@ -342,6 +342,26 @@ TEST_F(HostsTest, RefreshReloadsAfterChange)
     EXPECT_FALSE(set.refresh());
 }
 
+TEST_F(HostsTest, RefreshIsStableWhenDirIsMissing)
+{
+    const std::string build = make_build("m");
+    fs::remove_all(hosts_dir);
+    HostSet set;
+    set.load(hosts_dir.string());
+    EXPECT_EQ(set.size(), 0u);
+    EXPECT_FALSE(set.refresh());
+    EXPECT_FALSE(set.refresh());
+    fs::create_directories(hosts_dir);
+    write_host("new", build, R"("/src")");
+    EXPECT_TRUE(set.refresh());
+    EXPECT_EQ(set.size(), 1u);
+    EXPECT_FALSE(set.refresh());
+    fs::remove_all(hosts_dir);
+    EXPECT_TRUE(set.refresh());
+    EXPECT_EQ(set.size(), 0u);
+    EXPECT_FALSE(set.refresh());
+}
+
 TEST_F(HostsTest, RefreshAddsHostWhenCacheAppears)
 {
     const std::string build = make_build("s", false);

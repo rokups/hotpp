@@ -105,6 +105,7 @@ private:
     bool loaded_ = false;
     bool forced_ = false; // reload at the next refresh()
     std::filesystem::file_time_type mtime_{};
+    bool dir_exists_ = false; // false when the time of dir_ could not be read
     std::vector<std::string> names_; // sorted names of the "*.json" files in dir_
     std::vector<std::shared_ptr<const Host>> hosts_; // sorted by name
     std::vector<std::shared_ptr<const Host>> skipped_; // valid, but no CMakeCache.txt
