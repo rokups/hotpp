@@ -837,3 +837,63 @@ TEST(SessionCache, CppIdleUnitIsDisposed)
     std::this_thread::sleep_for(std::chrono::milliseconds(900));
     EXPECT_EQ(s.tu_cache_size(), 0u);
 }
+
+// Early instantiation in the preamble (-fpch-instantiate-templates): a template that fails to
+// instantiate, in a header or in the script, gives the same result and diagnostics as a parse
+// without the flag (HOT_PCH_INSTANTIATE=0), and the next parse after a fix works. A bad header
+// of one script does not change an other script, because the units have their own keys.
+TEST(SessionCache, CppTemplateInstantiationErrorsEqualAParseWithoutEarlyInstances)
+{
+    const char* tpl =
+        "template <class T> struct Chk { static_assert(sizeof(T) == 4, \"need four bytes\"); T v; };\n";
+    const std::string good = std::string("#pragma once\n") + tpl +
+        "class Widget { public: virtual ~Widget() {} virtual int Update(float dt) { return 1; } };\n"
+        "inline int use_good() { Chk<int> c; return c.v; }\n";
+    const std::string bad_in_header = std::string("#pragma once\n") + tpl +
+        "class Widget { public: virtual ~Widget() {} virtual int Update(float dt) { return 1; } };\n"
+        "inline int use_bad() { Chk<char> c; return c.v; }\n"
+        "template struct Chk<char>;\n";
+    TempDir dir;
+    const std::string inc = "#include \"w.h\"\n";
+    const std::string upd = "    int Update(float dt) override { return 1; }\n";
+    const std::string bad_in_script = "    int Update(float dt) override { Chk<short> s; return s.v; }\n";
+    struct Step
+    {
+        const std::string* header;
+        std::string script;
+        const char* other_script_name; // a second unit in the same session
+    };
+    const std::vector<Step> steps = {
+        {&good, cpp_script(inc, upd), nullptr},
+        {&bad_in_header, cpp_script(inc, upd), nullptr},
+        {&bad_in_header, cpp_script(inc, "    int Update(float dt) override { return 2; }\n"), "other.cpp"},
+        {&good, cpp_script(inc, upd), "other.cpp"}, // fixed
+        {&good, cpp_script(inc, bad_in_script), nullptr},
+        {&good, cpp_script(inc, upd), nullptr}, // fixed
+    };
+    hotc::TranslatorSession shared;
+    for (size_t i = 0; i < steps.size(); ++i)
+    {
+        write_file(dir.path() / "w.h", *steps[i].header);
+        settle();
+        hotc::TranslateOptions o = cpp_options(dir, steps[i].script);
+        hotc::TranslateResult want;
+        {
+            ::setenv("HOT_PCH_INSTANTIATE", "0", 1);
+            want = plain_translate(o);
+            ::unsetenv("HOT_PCH_INSTANTIATE");
+        }
+        EXPECT_EQ(want.ok, i == 0 || i == 3 || i == 5) << "step " << i << "\n" << want.diagnostics;
+        if (!want.ok)
+            EXPECT_NE(want.diagnostics.find("need four bytes"), std::string::npos) << want.diagnostics;
+        expect_same(hotc::translate(o, shared), want, "shared, step " + std::to_string(i));
+        if (steps[i].other_script_name)
+        {
+            const hotc::TranslateOptions other = cpp_options(dir, cpp_script("", "    int v = 1;\n"), steps[i].other_script_name);
+            ::setenv("HOT_PCH_INSTANTIATE", "0", 1);
+            const hotc::TranslateResult want_other = plain_translate(other);
+            ::unsetenv("HOT_PCH_INSTANTIATE");
+            EXPECT_EQ(hotc::translate(other, shared).cpp, want_other.cpp) << "other unit, step " << i;
+        }
+    }
+}
