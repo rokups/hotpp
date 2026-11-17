@@ -4318,6 +4318,9 @@ void translate_impl(
         std::vector<hotc::ast::InterfaceDef> imported_interfaces;
         // The first import starts at a fixed power of two. So an edit of the main script does not move
         // the positions of the imports, until the main script passes the power of two.
+        // The positions are 32 bit. A script of 2 GiB or more has no room for the power of two.
+        if (in.script_text.size() >= 0x7fffffffu)
+            fail_at(map, 0, "the script is too large");
         uint32_t next_base = 1u << 20;
         while (next_base < in.script_text.size() + 1)
             next_base <<= 1;
@@ -4369,6 +4372,8 @@ void translate_impl(
                     }
                     continue;
                 }
+                if (static_cast<uint64_t>(next_base) + text.size() + 1 > 0xffffffffull)
+                    fail_at(map, im.pos, "the imported scripts are too large");
                 const uint32_t base = next_base;
                 next_base += static_cast<uint32_t>(text.size()) + 1;
                 // The byte 0x01 is the internal placeholder of the standard namespace (std_ns.h).
