@@ -927,12 +927,120 @@ std::vector<std::string> compile_object_command(const ClangFilesOptions& opt, co
     return cmd;
 }
 
+// The words of a line that "clang -###" prints: each word is in double quotes, with a backslash
+// before a quote or a backslash.
+static std::vector<std::string> parse_driver_line(const std::string& line)
+{
+    std::vector<std::string> words;
+    for (size_t i = 0; i < line.size();)
+    {
+        if (line[i] != '"')
+        {
+            ++i;
+            continue;
+        }
+        std::string w;
+        for (++i; i < line.size() && line[i] != '"'; ++i)
+        {
+            if (line[i] == '\\' && i + 1 < line.size())
+                ++i;
+            w += line[i];
+        }
+        ++i;
+        words.push_back(std::move(w));
+    }
+    return words;
+}
+
+// The linker command that the driver would run for a link with lld (an ELF host): the driver costs
+// about 17 ms for each link, and the command is the same for each module. One "-###" run gives it
+// and the next links run it directly. The result holds for the options (the key). Empty: no direct
+// link (an other linker, an other target, more than one command, or HOT_DIRECT_LINK=0). The caller
+// runs the driver when the direct link fails.
+static std::vector<std::string> direct_link_command(
+    const ClangFilesOptions& opt, const std::string& obj, const std::string& so)
+{
+#ifdef _WIN32
+    (void)opt;
+    (void)obj;
+    (void)so;
+    return {};
+#else
+    const char* off = std::getenv("HOT_DIRECT_LINK");
+    if ((off && std::strcmp(off, "0") == 0) || opt.linker_flag.empty() || darwin_target(opt)
+        || is_mingw_triple(opt.target_triple)
+        || !(opt.target_triple.empty() || opt.target_triple.find("linux") != std::string::npos))
+        return {};
+    static std::mutex mutex;
+    static std::map<std::string, std::vector<std::string>> known;
+    const std::string placeholder = "/dev/null"; // the driver wants an input that exists
+    std::vector<std::string> probe = link_module_command(opt, placeholder, "@so@");
+    std::string key;
+    for (const std::string& w : probe)
+        key += w + '\n';
+    std::vector<std::string> command;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        const auto it = known.find(key);
+        if (it != known.end())
+            command = it->second;
+        else
+        {
+            probe.push_back("-###");
+            std::string text;
+            if (run_command(probe, text) == 0)
+            {
+                std::vector<std::string> lines;
+                std::stringstream stream(text);
+                for (std::string line; std::getline(stream, line);)
+                {
+                    const size_t first = line.find_first_not_of(" \t");
+                    if (first != std::string::npos && line[first] == '"')
+                        lines.push_back(line.substr(first));
+                }
+                if (lines.size() == 1)
+                {
+                    command = parse_driver_line(lines[0]);
+                    const bool linker = !command.empty() && fs::path(command[0]).filename().string().find("ld") == 0;
+                    if (!linker || std::count(command.begin(), command.end(), placeholder) != 1
+                        || std::count(command.begin(), command.end(), std::string("@so@")) != 1)
+                        command.clear();
+                }
+            }
+            known[key] = command;
+        }
+    }
+    for (std::string& w : command)
+        if (w == "/dev/null")
+            w = obj;
+        else if (w == "@so@")
+            w = so;
+    return command;
+#endif
+}
+
 // Runs the link of a module. When the link with the linker flag (lld) fails, it runs once more
 // with the default linker, so a broken lld never fails a reload. HOT_TIMING logs the retry.
 static int run_link(const ClangFilesOptions& opt, const std::string& obj, const std::string& so,
     std::string& output, bool timing)
 {
-    int rc = run_command(link_module_command(opt, obj, so), output);
+    // The linker alone (without the driver) when its command is known. A failure runs the driver.
+    int rc = 1;
+    const std::vector<std::string> direct = direct_link_command(opt, obj, so);
+    if (timing)
+        std::fprintf(stderr, "hot: direct link %s\n", direct.empty() ? "off" : direct[0].c_str());
+    if (!direct.empty())
+    {
+        rc = run_command(direct, output);
+        if (rc != 0)
+        {
+            if (timing)
+                std::fprintf(stderr, "hot: the direct link failed; the driver links\n");
+            output.clear();
+        }
+    }
+    if (rc != 0)
+        rc = run_command(link_module_command(opt, obj, so), output);
     if (rc != 0 && !opt.linker_flag.empty())
     {
         ClangFilesOptions plain = opt;

@@ -72,12 +72,14 @@ struct CleanEnv
         : cache("HOT_CACHE", "1")
         , link_cache("HOT_LINK_CACHE", "1")
         , max_mb("HOT_CACHE_MAX_MB", "")
+        , direct_link("HOT_DIRECT_LINK", "0") // the tests count the runs of the compiler (the driver links)
     {
         test_support::unset_env("HOT_CACHE_MAX_MB");
     }
     EnvGuard cache;
     EnvGuard link_cache;
     EnvGuard max_mb;
+    EnvGuard direct_link;
 };
 
 std::string script_text(const char* value)
@@ -1949,6 +1951,35 @@ TEST(ObjectCacheBackend, UnitStateGuardFindsEveryKindOfUse)
             for (size_t k = 1; k < sets.size(); ++k)
                 EXPECT_EQ(sets[0], sets[k]) << type << " " << opt << " body " << k; // the same name: refused when both objects have it
         }
+#else
+    GTEST_SKIP() << "ELF only";
+#endif
+}
+
+// The link runs the linker without the driver (the command comes from one "-###" run), and the
+// modules work. HOT_DIRECT_LINK=0 uses the driver.
+TEST(ObjectCacheBackend, DirectLinkWorksAndCanBeTurnedOff)
+{
+#if defined(__linux__)
+    CleanEnv env;
+    EnvGuard timing("HOT_TIMING", "1");
+    TestScratch scratch;
+    hot::ClangFilesOptions o = fmt_options(scratch, "dl", {});
+    o.linker_flag = "-fuse-ld=lld";
+    EnvGuard direct_on("HOT_DIRECT_LINK", "1");
+    if (hot::find_lld_of(HOT_CXX).empty())
+        GTEST_SKIP() << "no ld.lld";
+    testing::internal::CaptureStderr();
+    run_edits(o, 1, 3);
+    const std::string direct = testing::internal::GetCapturedStderr();
+    EXPECT_NE(direct.find("hot: direct link /"), std::string::npos) << direct;
+    EXPECT_EQ(direct.find("direct link failed"), std::string::npos) << direct;
+    EnvGuard off("HOT_DIRECT_LINK", "0");
+    o.work_dir = scratch.file("dl_work2");
+    testing::internal::CaptureStderr();
+    run_edits(o, 10, 3);
+    const std::string driver = testing::internal::GetCapturedStderr();
+    EXPECT_NE(driver.find("hot: direct link off"), std::string::npos) << driver;
 #else
     GTEST_SKIP() << "ELF only";
 #endif
