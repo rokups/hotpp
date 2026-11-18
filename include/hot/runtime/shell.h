@@ -151,7 +151,7 @@ HOT_HIDDEN typename detail::sig_result<Sig>::type call_script(ShellBase* self, u
         }
     }
     using Pmf = typename detail::sig_pmf<Sig>::type;
-    return (static_cast<StateBase*>(self->state)->*reinterpret_cast<Pmf>(cls->slots[slot]))(std::forward<A>(a)...);
+    return (static_cast<StateBase*>(self->state)->*slot_cast<Pmf>(cls->slots[slot]))(std::forward<A>(a)...);
 }
 
 // Calls slot "slot" of the record "parent" with the state "state" (modules step 5). A child of a
@@ -169,7 +169,7 @@ template <class Sig, class... A>
 HOT_HIDDEN typename detail::plain_pmf<Sig>::result call_parent(const ClassRecord* parent, void* state, unsigned slot, A&&... a)
 {
     using Pmf = typename detail::plain_pmf<Sig>::type;
-    return (static_cast<StateBase*>(state)->*reinterpret_cast<Pmf>(parent->slots[slot]))(std::forward<A>(a)...);
+    return (static_cast<StateBase*>(state)->*slot_cast<Pmf>(parent->slots[slot]))(std::forward<A>(a)...);
 }
 
 // Result of a noexcept shell override after an unhandled script error, when the result type has no
@@ -285,7 +285,7 @@ HOT_HIDDEN typename detail::sig_result<Sig>::type call(ShellBase* self, unsigned
     try
     {
         using Pmf = typename detail::sig_pmf<Sig>::type;
-        return (static_cast<StateBase*>(self->state)->*reinterpret_cast<Pmf>(cls->slots[slot]))(std::forward<A>(a)...);
+        return (static_cast<StateBase*>(self->state)->*slot_cast<Pmf>(cls->slots[slot]))(std::forward<A>(a)...);
     }
     catch (const ScriptError&)
     {
@@ -697,7 +697,7 @@ HOT_NODEBUG HOT_EXPORT ShellCore* construct_raw(
     const ClassRef& cls, const char* key, void** args, size_t count, uint64_t const_mask);
 template <class... Args> constexpr uint64_t arg_const_mask()
 {
-    uint64_t mask = 0, bit = 1;
+    [[maybe_unused]] uint64_t mask = 0, bit = 1;
     ((mask |= std::is_const_v<std::remove_reference_t<Args>> ? bit : 0, bit <<= 1), ...);
     return mask;
 }

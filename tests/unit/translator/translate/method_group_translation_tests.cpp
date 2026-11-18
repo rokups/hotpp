@@ -56,7 +56,7 @@ TEST(MethodGroupTranslation, BareAndThisFormsAreBoundGroups)
     // Two equal parts are legal. The second gets an ordinal.
     EXPECT_TRUE(has(r, "key = \"t:Foo::run/m:this.Hit#1\";")) << r.cpp;
     // The bound group is a lambda box with the parameter types of the method.
-    EXPECT_TRUE(has(r, "hot::make_lambda_deduced<__LamTag_0>(GEN, hot::caps(__self), [](auto& __c, int32_t __mg0)"))
+    EXPECT_TRUE(has(r, "hot::make_lambda_deduced<__LamTag_0>(GEN, hot::caps(__self), []([[maybe_unused]] auto& __c, int32_t __mg0)"))
         << r.cpp;
 }
 

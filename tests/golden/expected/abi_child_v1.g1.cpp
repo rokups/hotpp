@@ -159,6 +159,9 @@ static void Base__init_twice(void*, void* f) { using T = int32_t; new (f) T(0); 
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static_assert(offsetof(hot_state_Base, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Base_fields[] = {
@@ -171,9 +174,11 @@ static const hot::FieldInfo Base_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
-static const hot::StateLayout Base_layout = {
+[[maybe_unused]] static const hot::StateLayout Base_layout = {
     "hot_state_Base", sizeof(hot_state_Base), alignof(hot_state_Base), 3, Base_fields, true,
 };
 
@@ -208,7 +213,7 @@ HOT_HIDDEN static auto Base__plan()
     return std::make_pair(Base__super_args(), std::tuple<>());
 #line 7 "abi_child_v1.hot"
 }
-#line 212 "abi_child_v1.hot.cpp"
+#line 217 "abi_child_v1.hot.cpp"
 using Base_SuperArgs = decltype(Base__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -233,7 +238,7 @@ HOT_NODEBUG static hot::ShellBase* Base__construct(void* mem, const char* key, c
     return nullptr;
 #line 7 "abi_child_v1.hot"
 }
-#line 237 "abi_child_v1.hot.cpp"
+#line 242 "abi_child_v1.hot.cpp"
 
 static const char* const Base__construct_keys[] = {typeid(Base_SuperArgs).name(), nullptr};
 
@@ -249,7 +254,7 @@ HOT_HIDDEN static Base_Shell* Base__build([[maybe_unused]] bool __note)
     return __self;
 #line 7 "abi_child_v1.hot"
 }
-#line 253 "abi_child_v1.hot.cpp"
+#line 258 "abi_child_v1.hot.cpp"
 #line 7 "abi_child_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Base_Shell* Base__new()
 #line 7 "abi_child_v1.hot"
@@ -258,7 +263,7 @@ HOT_HIDDEN static Base_Shell* Base__build([[maybe_unused]] bool __note)
     return Base__build(true);
 #line 7 "abi_child_v1.hot"
 }
-#line 262 "abi_child_v1.hot.cpp"
+#line 267 "abi_child_v1.hot.cpp"
 #line 7 "abi_child_v1.hot"
 template <int = 0>
 #line 7 "abi_child_v1.hot"
@@ -273,7 +278,7 @@ template <int = 0>
     return __h;
 #line 7 "abi_child_v1.hot"
 }
-#line 277 "abi_child_v1.hot.cpp"
+#line 282 "abi_child_v1.hot.cpp"
 
 [[maybe_unused]] HOT_HIDDEN static void Base__base_Tick(Actor* a, float a0)
 {
@@ -302,7 +307,7 @@ static int32_t Base__Power__thunk(Actor* __a)
     return hot::call<int32_t(Actor*)>(__self, Base_SLOT_Power);
 #line 12 "abi_child_v1.hot"
 }
-#line 306 "abi_child_v1.hot.cpp"
+#line 311 "abi_child_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -316,7 +321,7 @@ static int32_t Base__Twice__thunk(Actor* __a)
     return hot::call<int32_t(Actor*)>(__self, Base_SLOT_Twice);
 #line 14 "abi_child_v1.hot"
 }
-#line 320 "abi_child_v1.hot.cpp"
+#line 325 "abi_child_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -330,7 +335,7 @@ static void Base__Bump__thunk(Actor* __a)
     return hot::call<void(Actor*)>(__self, Base_SLOT_Bump);
 #line 16 "abi_child_v1.hot"
 }
-#line 334 "abi_child_v1.hot.cpp"
+#line 339 "abi_child_v1.hot.cpp"
 
 static void* Base___native__thunk(hot::ShellCore* __s)
 {
@@ -338,6 +343,10 @@ static void* Base___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Base_slots[Base_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Base::__fwd_Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Base::TakeDamage_f),
@@ -346,6 +355,9 @@ static const hot::SlotFn Base_slots[Base_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Base::Twice),
     reinterpret_cast<hot::SlotFn>(&hot_state_Base::Bump),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Base_record = {
     "Base", 0, Base_slots, Base_SLOT_COUNT, &Base_layout, nullptr,
@@ -366,7 +378,7 @@ HOT_NODEBUG static hot::Instance Base_create()
     return {static_cast<Actor*>(p), p};
 #line 7 "abi_child_v1.hot"
 }
-#line 370 "abi_child_v1.hot.cpp"
+#line 382 "abi_child_v1.hot.cpp"
 
 #line 7 "abi_child_v1.hot"
 HOT_NODEBUG static hot::Instance Base__make_0([[maybe_unused]] void** __a)
@@ -376,7 +388,7 @@ HOT_NODEBUG static hot::Instance Base__make_0([[maybe_unused]] void** __a)
     return Base_create();
 #line 7 "abi_child_v1.hot"
 }
-#line 380 "abi_child_v1.hot.cpp"
+#line 392 "abi_child_v1.hot.cpp"
 
 static const hot::CtorEntry Base__constructors[] = {
     {hot::ctor_key<>(), &Base__make_0, hot::ctor_write_mask<>()},
@@ -408,7 +420,7 @@ struct Kid_Shell final : Base_Shell {
         hot::init_state(this, &Kid_record);
 #line 24 "abi_child_v1.hot"
     }
-#line 412 "abi_child_v1.hot.cpp"
+#line 424 "abi_child_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -424,17 +436,20 @@ struct hot_state_Kid : hot_state_Base {
 
 #line 25 "abi_child_v1.hot"
 static void Kid__init_kid_hits(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 428 "abi_child_v1.hot.cpp"
+#line 440 "abi_child_v1.hot.cpp"
 #line 26 "abi_child_v1.hot"
 static void Kid__init_moved(void*, void* f) { using T = float; new (f) T(0.0f); }
-#line 431 "abi_child_v1.hot.cpp"
+#line 443 "abi_child_v1.hot.cpp"
 #line 27 "abi_child_v1.hot"
 static void Kid__init_super_power(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 434 "abi_child_v1.hot.cpp"
+#line 446 "abi_child_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static_assert(offsetof(hot_state_Kid, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Kid_fields[] = {
@@ -453,9 +468,11 @@ static const hot::FieldInfo Kid_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
-static const hot::StateLayout Kid_layout = {
+[[maybe_unused]] static const hot::StateLayout Kid_layout = {
     "hot_state_Kid", sizeof(hot_state_Kid), alignof(hot_state_Kid), 6, Kid_fields, true,
 };
 
@@ -479,7 +496,7 @@ HOT_HIDDEN static auto Kid__plan()
     return std::make_pair(std::make_tuple(std::string("Kid")), std::make_pair(std::move(__up), std::move(__pp.second)));
 #line 24 "abi_child_v1.hot"
 }
-#line 483 "abi_child_v1.hot.cpp"
+#line 500 "abi_child_v1.hot.cpp"
 using Kid_SuperArgs = decltype(Kid__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -504,7 +521,7 @@ HOT_NODEBUG static hot::ShellBase* Kid__construct(void* mem, const char* key, co
     return nullptr;
 #line 24 "abi_child_v1.hot"
 }
-#line 508 "abi_child_v1.hot.cpp"
+#line 525 "abi_child_v1.hot.cpp"
 
 static const char* const Kid__construct_keys[] = {typeid(Kid_SuperArgs).name(), nullptr};
 
@@ -520,7 +537,7 @@ HOT_HIDDEN static Kid_Shell* Kid__build([[maybe_unused]] bool __note)
     return __self;
 #line 24 "abi_child_v1.hot"
 }
-#line 524 "abi_child_v1.hot.cpp"
+#line 541 "abi_child_v1.hot.cpp"
 #line 24 "abi_child_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Kid_Shell* Kid__new()
 #line 24 "abi_child_v1.hot"
@@ -529,7 +546,7 @@ HOT_HIDDEN static Kid_Shell* Kid__build([[maybe_unused]] bool __note)
     return Kid__build(true);
 #line 24 "abi_child_v1.hot"
 }
-#line 533 "abi_child_v1.hot.cpp"
+#line 550 "abi_child_v1.hot.cpp"
 #line 24 "abi_child_v1.hot"
 template <int = 0>
 #line 24 "abi_child_v1.hot"
@@ -544,7 +561,7 @@ template <int = 0>
     return __h;
 #line 24 "abi_child_v1.hot"
 }
-#line 548 "abi_child_v1.hot.cpp"
+#line 565 "abi_child_v1.hot.cpp"
 
 static void* Kid___native__thunk(hot::ShellCore* __s)
 {
@@ -552,6 +569,10 @@ static void* Kid___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Kid_slots[Kid_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Kid::Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Kid::TakeDamage_f),
@@ -560,6 +581,9 @@ static const hot::SlotFn Kid_slots[Kid_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Base::Twice),
     reinterpret_cast<hot::SlotFn>(&hot_state_Base::Bump),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Kid_record = {
     "Kid", 0, Kid_slots, Kid_SLOT_COUNT, &Kid_layout, &Base_record,
@@ -580,7 +604,7 @@ HOT_NODEBUG static hot::Instance Kid_create()
     return {static_cast<Actor*>(p), p};
 #line 24 "abi_child_v1.hot"
 }
-#line 584 "abi_child_v1.hot.cpp"
+#line 608 "abi_child_v1.hot.cpp"
 
 #line 24 "abi_child_v1.hot"
 HOT_NODEBUG static hot::Instance Kid__make_0([[maybe_unused]] void** __a)
@@ -590,7 +614,7 @@ HOT_NODEBUG static hot::Instance Kid__make_0([[maybe_unused]] void** __a)
     return Kid_create();
 #line 24 "abi_child_v1.hot"
 }
-#line 594 "abi_child_v1.hot.cpp"
+#line 618 "abi_child_v1.hot.cpp"
 
 static const hot::CtorEntry Kid__constructors[] = {
     {hot::ctor_key<>(), &Kid__make_0, hot::ctor_write_mask<>()},
@@ -605,7 +629,7 @@ static const hot::CtorEntry Kid__constructors[] = {
     return state_of(__self)->Power();
 #line 12 "abi_child_v1.hot"
 }
-#line 609 "abi_child_v1.hot.cpp"
+#line 633 "abi_child_v1.hot.cpp"
 #line 12 "abi_child_v1.hot"
 int32_t hot_state_Base::Power()
 #line 12 "abi_child_v1.hot"
@@ -630,7 +654,7 @@ int32_t hot_state_Base::Power()
     HOT_TRACE_LINE(); return 1;
 #line 12 "abi_child_v1.hot"
 }
-#line 634 "abi_child_v1.hot.cpp"
+#line 658 "abi_child_v1.hot.cpp"
 
 #line 14 "abi_child_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Base__Twice(Base_Shell* __self)
@@ -640,7 +664,7 @@ int32_t hot_state_Base::Power()
     return state_of(__self)->Twice();
 #line 14 "abi_child_v1.hot"
 }
-#line 644 "abi_child_v1.hot.cpp"
+#line 668 "abi_child_v1.hot.cpp"
 #line 14 "abi_child_v1.hot"
 int32_t hot_state_Base::Twice()
 #line 14 "abi_child_v1.hot"
@@ -665,7 +689,7 @@ int32_t hot_state_Base::Twice()
     HOT_TRACE_LINE(); return Base__Power_virt(__self) * 2;
 #line 14 "abi_child_v1.hot"
 }
-#line 669 "abi_child_v1.hot.cpp"
+#line 693 "abi_child_v1.hot.cpp"
 
 #line 16 "abi_child_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Base__Bump(Base_Shell* __self)
@@ -675,7 +699,7 @@ int32_t hot_state_Base::Twice()
     return state_of(__self)->Bump();
 #line 16 "abi_child_v1.hot"
 }
-#line 679 "abi_child_v1.hot.cpp"
+#line 703 "abi_child_v1.hot.cpp"
 #line 16 "abi_child_v1.hot"
 void hot_state_Base::Bump()
 #line 16 "abi_child_v1.hot"
@@ -700,7 +724,7 @@ void hot_state_Base::Bump()
     HOT_TRACE_LINE(); __st->hits = __st->hits + 10;
 #line 16 "abi_child_v1.hot"
 }
-#line 704 "abi_child_v1.hot.cpp"
+#line 728 "abi_child_v1.hot.cpp"
 
 #line 18 "abi_child_v1.hot"
 void hot_state_Base::TakeDamage_f(float amount)
@@ -728,7 +752,7 @@ void hot_state_Base::TakeDamage_f(float amount)
     HOT_TRACE_LINE(); __st->hits = __st->hits + 1;
 #line 21 "abi_child_v1.hot"
 }
-#line 732 "abi_child_v1.hot.cpp"
+#line 756 "abi_child_v1.hot.cpp"
 
 #line 29 "abi_child_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Kid__Power(Kid_Shell* __self)
@@ -738,7 +762,7 @@ void hot_state_Base::TakeDamage_f(float amount)
     return state_of(__self)->Power();
 #line 29 "abi_child_v1.hot"
 }
-#line 742 "abi_child_v1.hot.cpp"
+#line 766 "abi_child_v1.hot.cpp"
 #line 29 "abi_child_v1.hot"
 int32_t hot_state_Kid::Power()
 #line 29 "abi_child_v1.hot"
@@ -763,7 +787,7 @@ int32_t hot_state_Kid::Power()
     HOT_TRACE_LINE(); return 5;
 #line 29 "abi_child_v1.hot"
 }
-#line 767 "abi_child_v1.hot.cpp"
+#line 791 "abi_child_v1.hot.cpp"
 
 #line 31 "abi_child_v1.hot"
 void hot_state_Kid::TakeDamage_f(float amount)
@@ -791,7 +815,7 @@ void hot_state_Kid::TakeDamage_f(float amount)
     HOT_TRACE_LINE(); __st->kid_hits = __st->kid_hits + 1;
 #line 34 "abi_child_v1.hot"
 }
-#line 795 "abi_child_v1.hot.cpp"
+#line 819 "abi_child_v1.hot.cpp"
 
 #line 36 "abi_child_v1.hot"
 void hot_state_Kid::Tick(float dt)
@@ -827,7 +851,7 @@ void hot_state_Kid::Tick(float dt)
     HOT_TRACE_LINE(); __st->super_power = Base__Power(__self);
 #line 43 "abi_child_v1.hot"
 }
-#line 831 "abi_child_v1.hot.cpp"
+#line 855 "abi_child_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

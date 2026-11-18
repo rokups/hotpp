@@ -55,6 +55,9 @@ static void Pt__init_x(void*, void* f) { using T = int32_t; new (f) T(0); }
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static const hot::FieldInfo Pt_fields[] = {
     {"x", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(Pt, x), sizeof(int32_t),
@@ -62,8 +65,10 @@ static const hot::FieldInfo Pt_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
-static const hot::StateLayout Pt_layout = {
+[[maybe_unused]] static const hot::StateLayout Pt_layout = {
     "Pt", sizeof(Pt), alignof(Pt), 1, Pt_fields,
 };
 
@@ -95,7 +100,7 @@ struct FnOvBase_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<FnOv
     }
 #line 37 "fn_overload_v2.hot"
     ~FnOvBase_Shell() override { hot::destroy_state(this); }
-#line 99 "fn_overload_v2.hot.cpp"
+#line 104 "fn_overload_v2.hot.cpp"
 #line 37 "fn_overload_v2.hot"
     template <class... A>
 #line 37 "fn_overload_v2.hot"
@@ -104,7 +109,7 @@ struct FnOvBase_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<FnOv
     {
 #line 37 "fn_overload_v2.hot"
     }
-#line 108 "fn_overload_v2.hot.cpp"
+#line 113 "fn_overload_v2.hot.cpp"
 #line 37 "fn_overload_v2.hot"
     HOT_NODEBUG void __hot_base_Tick(float a0)
 #line 37 "fn_overload_v2.hot"
@@ -113,7 +118,7 @@ struct FnOvBase_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<FnOv
         return Actor::Tick(a0);
 #line 37 "fn_overload_v2.hot"
     }
-#line 117 "fn_overload_v2.hot.cpp"
+#line 122 "fn_overload_v2.hot.cpp"
 #line 37 "fn_overload_v2.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 37 "fn_overload_v2.hot"
@@ -122,7 +127,7 @@ struct FnOvBase_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<FnOv
         return Actor::TakeDamage(a0);
 #line 37 "fn_overload_v2.hot"
     }
-#line 126 "fn_overload_v2.hot.cpp"
+#line 131 "fn_overload_v2.hot.cpp"
 #line 37 "fn_overload_v2.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 37 "fn_overload_v2.hot"
@@ -131,7 +136,7 @@ struct FnOvBase_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<FnOv
         return Actor::TakeDamage(a0, a1);
 #line 37 "fn_overload_v2.hot"
     }
-#line 135 "fn_overload_v2.hot.cpp"
+#line 140 "fn_overload_v2.hot.cpp"
 
 #line 37 "fn_overload_v2.hot"
     void Tick(float a0) override
@@ -141,7 +146,7 @@ struct FnOvBase_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<FnOv
         return hot::call<void(Actor*, float)>(this, FnOvBase_SLOT_Tick, a0);
 #line 37 "fn_overload_v2.hot"
     }
-#line 145 "fn_overload_v2.hot.cpp"
+#line 150 "fn_overload_v2.hot.cpp"
 
 #line 37 "fn_overload_v2.hot"
     void TakeDamage(float a0) override
@@ -151,7 +156,7 @@ struct FnOvBase_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<FnOv
         return hot::call<void(Actor*, float)>(this, FnOvBase_SLOT_TakeDamage_f, a0);
 #line 37 "fn_overload_v2.hot"
     }
-#line 155 "fn_overload_v2.hot.cpp"
+#line 160 "fn_overload_v2.hot.cpp"
 
 #line 37 "fn_overload_v2.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -161,7 +166,7 @@ struct FnOvBase_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<FnOv
         return hot::call<void(Actor*, Actor&, float)>(this, FnOvBase_SLOT_TakeDamage_Af, a0, a1);
 #line 37 "fn_overload_v2.hot"
     }
-#line 165 "fn_overload_v2.hot.cpp"
+#line 170 "fn_overload_v2.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -179,7 +184,7 @@ struct hot_state_FnOvBase {
         return static_cast<FnOvBase_Shell*>(__hot_owner)->__hot_base_Tick(a0);
 #line 37 "fn_overload_v2.hot"
     }
-#line 183 "fn_overload_v2.hot.cpp"
+#line 188 "fn_overload_v2.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 37 "fn_overload_v2.hot"
     HOT_NODEBUG void __fwd_TakeDamage_f(float a0)
@@ -189,7 +194,7 @@ struct hot_state_FnOvBase {
         return static_cast<FnOvBase_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 37 "fn_overload_v2.hot"
     }
-#line 193 "fn_overload_v2.hot.cpp"
+#line 198 "fn_overload_v2.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 37 "fn_overload_v2.hot"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -199,21 +204,26 @@ struct hot_state_FnOvBase {
         return static_cast<FnOvBase_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 37 "fn_overload_v2.hot"
     }
-#line 203 "fn_overload_v2.hot.cpp"
+#line 208 "fn_overload_v2.hot.cpp"
 };
 
 
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static_assert(offsetof(hot_state_FnOvBase, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo* const FnOvBase_fields = nullptr;
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
-static const hot::StateLayout FnOvBase_layout = {
+[[maybe_unused]] static const hot::StateLayout FnOvBase_layout = {
     "hot_state_FnOvBase", sizeof(hot_state_FnOvBase), alignof(hot_state_FnOvBase), 0, FnOvBase_fields, true,
 };
 
@@ -272,7 +282,7 @@ HOT_HIDDEN static auto FnOvBase__plan()
     return std::make_pair(FnOvBase__super_args(), std::tuple<>());
 #line 37 "fn_overload_v2.hot"
 }
-#line 276 "fn_overload_v2.hot.cpp"
+#line 286 "fn_overload_v2.hot.cpp"
 using FnOvBase_SuperArgs = decltype(FnOvBase__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -297,7 +307,7 @@ HOT_NODEBUG static hot::ShellBase* FnOvBase__construct(void* mem, const char* ke
     return nullptr;
 #line 37 "fn_overload_v2.hot"
 }
-#line 301 "fn_overload_v2.hot.cpp"
+#line 311 "fn_overload_v2.hot.cpp"
 
 static const char* const FnOvBase__construct_keys[] = {typeid(FnOvBase_SuperArgs).name(), nullptr};
 
@@ -313,7 +323,7 @@ HOT_HIDDEN static FnOvBase_Shell* FnOvBase__build([[maybe_unused]] bool __note)
     return __self;
 #line 37 "fn_overload_v2.hot"
 }
-#line 317 "fn_overload_v2.hot.cpp"
+#line 327 "fn_overload_v2.hot.cpp"
 #line 37 "fn_overload_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static FnOvBase_Shell* FnOvBase__new()
 #line 37 "fn_overload_v2.hot"
@@ -322,7 +332,7 @@ HOT_HIDDEN static FnOvBase_Shell* FnOvBase__build([[maybe_unused]] bool __note)
     return FnOvBase__build(true);
 #line 37 "fn_overload_v2.hot"
 }
-#line 326 "fn_overload_v2.hot.cpp"
+#line 336 "fn_overload_v2.hot.cpp"
 #line 37 "fn_overload_v2.hot"
 template <int = 0>
 #line 37 "fn_overload_v2.hot"
@@ -337,7 +347,7 @@ template <int = 0>
     return __h;
 #line 37 "fn_overload_v2.hot"
 }
-#line 341 "fn_overload_v2.hot.cpp"
+#line 351 "fn_overload_v2.hot.cpp"
 
 [[maybe_unused]] HOT_HIDDEN static void FnOvBase__base_Tick(Actor* a, float a0)
 {
@@ -360,6 +370,10 @@ static void* FnOvBase___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn FnOvBase_slots[FnOvBase_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_FnOvBase::__fwd_Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_FnOvBase::__fwd_TakeDamage_f),
@@ -367,6 +381,9 @@ static const hot::SlotFn FnOvBase_slots[FnOvBase_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_FnOvBase::Pick__ov_int32_Ut),
     reinterpret_cast<hot::SlotFn>(&hot_state_FnOvBase::Pick__ov_std_Sstring),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord FnOvBase_record = {
     "FnOvBase", 0, FnOvBase_slots, FnOvBase_SLOT_COUNT, &FnOvBase_layout, nullptr,
@@ -387,7 +404,7 @@ HOT_NODEBUG static hot::Instance FnOvBase_create()
     return {static_cast<Actor*>(p), p};
 #line 37 "fn_overload_v2.hot"
 }
-#line 391 "fn_overload_v2.hot.cpp"
+#line 408 "fn_overload_v2.hot.cpp"
 
 #line 37 "fn_overload_v2.hot"
 HOT_NODEBUG static hot::Instance FnOvBase__make_0([[maybe_unused]] void** __a)
@@ -397,7 +414,7 @@ HOT_NODEBUG static hot::Instance FnOvBase__make_0([[maybe_unused]] void** __a)
     return FnOvBase_create();
 #line 37 "fn_overload_v2.hot"
 }
-#line 401 "fn_overload_v2.hot.cpp"
+#line 418 "fn_overload_v2.hot.cpp"
 
 static const hot::CtorEntry FnOvBase__constructors[] = {
     {hot::ctor_key<>(), &FnOvBase__make_0, hot::ctor_write_mask<>()},
@@ -426,7 +443,7 @@ struct FnOvMade_Shell final : hot::PlainObject, hot::ShellBase {
     }
 #line 47 "fn_overload_v2.hot"
     ~FnOvMade_Shell() override { hot::destroy_state(this); }
-#line 430 "fn_overload_v2.hot.cpp"
+#line 447 "fn_overload_v2.hot.cpp"
 #line 47 "fn_overload_v2.hot"
     explicit FnOvMade_Shell(hot::CloneFrom, const hot::ShellBase* src)
 #line 47 "fn_overload_v2.hot"
@@ -435,7 +452,7 @@ struct FnOvMade_Shell final : hot::PlainObject, hot::ShellBase {
         hot::clone_state(this, &FnOvMade_record, src);
 #line 47 "fn_overload_v2.hot"
     }
-#line 439 "fn_overload_v2.hot.cpp"
+#line 456 "fn_overload_v2.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -450,11 +467,14 @@ struct hot_state_FnOvMade {
 
 #line 48 "fn_overload_v2.hot"
 static void FnOvMade__init_seed(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 454 "fn_overload_v2.hot.cpp"
+#line 471 "fn_overload_v2.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static_assert(offsetof(hot_state_FnOvMade, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo FnOvMade_fields[] = {
@@ -463,9 +483,11 @@ static const hot::FieldInfo FnOvMade_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
-static const hot::StateLayout FnOvMade_layout = {
+[[maybe_unused]] static const hot::StateLayout FnOvMade_layout = {
     "hot_state_FnOvMade", sizeof(hot_state_FnOvMade), alignof(hot_state_FnOvMade), 1, FnOvMade_fields, true,
 };
 
@@ -480,7 +502,7 @@ HOT_HIDDEN hot_state_FnOvMade* state_of(FnOvMade_Shell* __self)
 [[maybe_unused]] HOT_HIDDEN static void FnOvMade__ctor(FnOvMade_Shell* __self, hot::In<std::string> s);
 [[maybe_unused]] HOT_HIDDEN static void FnOvMade__ctor(FnOvMade_Shell* __self, int32_t a, int32_t b);
 #line 50 "fn_overload_v2.hot"
-[[maybe_unused]] HOT_HIDDEN static auto FnOvMade__super_args(int32_t s)
+[[maybe_unused]] HOT_HIDDEN static auto FnOvMade__super_args([[maybe_unused]] int32_t s)
 #line 50 "fn_overload_v2.hot"
 {
 #line 50 "fn_overload_v2.hot"
@@ -505,10 +527,10 @@ HOT_HIDDEN static void FnOvMade__ctor_chain(FnOvMade_Shell* __self, [[maybe_unus
     FnOvMade__ctor(__self, s);
 #line 50 "fn_overload_v2.hot"
 }
-#line 509 "fn_overload_v2.hot.cpp"
+#line 531 "fn_overload_v2.hot.cpp"
 using FnOvMade_SuperArgs = decltype(FnOvMade__plan(std::declval<int32_t>()).first);
 #line 54 "fn_overload_v2.hot"
-[[maybe_unused]] HOT_HIDDEN static auto FnOvMade__super_args(hot::In<std::string> s)
+[[maybe_unused]] HOT_HIDDEN static auto FnOvMade__super_args([[maybe_unused]] hot::In<std::string> s)
 #line 54 "fn_overload_v2.hot"
 {
 #line 54 "fn_overload_v2.hot"
@@ -533,10 +555,10 @@ HOT_HIDDEN static void FnOvMade__ctor_chain(FnOvMade_Shell* __self, [[maybe_unus
     FnOvMade__ctor(__self, s);
 #line 54 "fn_overload_v2.hot"
 }
-#line 537 "fn_overload_v2.hot.cpp"
+#line 559 "fn_overload_v2.hot.cpp"
 using FnOvMade_SuperArgs_1 = decltype(FnOvMade__plan(std::declval<hot::In<std::string>>()).first);
 #line 58 "fn_overload_v2.hot"
-[[maybe_unused]] HOT_HIDDEN static auto FnOvMade__super_args(int32_t a, int32_t b)
+[[maybe_unused]] HOT_HIDDEN static auto FnOvMade__super_args([[maybe_unused]] int32_t a, [[maybe_unused]] int32_t b)
 #line 58 "fn_overload_v2.hot"
 {
 #line 58 "fn_overload_v2.hot"
@@ -561,7 +583,7 @@ HOT_HIDDEN static void FnOvMade__ctor_chain(FnOvMade_Shell* __self, [[maybe_unus
     FnOvMade__ctor(__self, a, b);
 #line 58 "fn_overload_v2.hot"
 }
-#line 565 "fn_overload_v2.hot.cpp"
+#line 587 "fn_overload_v2.hot.cpp"
 using FnOvMade_SuperArgs_2 = decltype(FnOvMade__plan(std::declval<int32_t>(), std::declval<int32_t>()).first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -618,7 +640,7 @@ HOT_NODEBUG static hot::ShellBase* FnOvMade__construct(void* mem, const char* ke
     return nullptr;
 #line 47 "fn_overload_v2.hot"
 }
-#line 622 "fn_overload_v2.hot.cpp"
+#line 644 "fn_overload_v2.hot.cpp"
 
 static const char* const FnOvMade__construct_keys[] = {typeid(FnOvMade_SuperArgs).name(), typeid(FnOvMade_SuperArgs_1).name(), typeid(FnOvMade_SuperArgs_2).name(), hot::kCloneKey, nullptr};
 
@@ -646,7 +668,7 @@ HOT_HIDDEN static FnOvMade_Shell* FnOvMade__build([[maybe_unused]] bool __note, 
     return __self;
 #line 50 "fn_overload_v2.hot"
 }
-#line 650 "fn_overload_v2.hot.cpp"
+#line 672 "fn_overload_v2.hot.cpp"
 #line 50 "fn_overload_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static FnOvMade_Shell* FnOvMade__new(int32_t s)
 #line 50 "fn_overload_v2.hot"
@@ -655,7 +677,7 @@ HOT_HIDDEN static FnOvMade_Shell* FnOvMade__build([[maybe_unused]] bool __note, 
     return FnOvMade__build(true, s);
 #line 50 "fn_overload_v2.hot"
 }
-#line 659 "fn_overload_v2.hot.cpp"
+#line 681 "fn_overload_v2.hot.cpp"
 #line 50 "fn_overload_v2.hot"
 template <int = 0>
 #line 50 "fn_overload_v2.hot"
@@ -672,7 +694,7 @@ template <int = 0>
     return __h;
 #line 50 "fn_overload_v2.hot"
 }
-#line 676 "fn_overload_v2.hot.cpp"
+#line 698 "fn_overload_v2.hot.cpp"
 
 #line 54 "fn_overload_v2.hot"
 HOT_HIDDEN static FnOvMade_Shell* FnOvMade__build([[maybe_unused]] bool __note, hot::In<std::string> s)
@@ -698,7 +720,7 @@ HOT_HIDDEN static FnOvMade_Shell* FnOvMade__build([[maybe_unused]] bool __note, 
     return __self;
 #line 54 "fn_overload_v2.hot"
 }
-#line 702 "fn_overload_v2.hot.cpp"
+#line 724 "fn_overload_v2.hot.cpp"
 #line 54 "fn_overload_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static FnOvMade_Shell* FnOvMade__new(hot::In<std::string> s)
 #line 54 "fn_overload_v2.hot"
@@ -707,7 +729,7 @@ HOT_HIDDEN static FnOvMade_Shell* FnOvMade__build([[maybe_unused]] bool __note, 
     return FnOvMade__build(true, s);
 #line 54 "fn_overload_v2.hot"
 }
-#line 711 "fn_overload_v2.hot.cpp"
+#line 733 "fn_overload_v2.hot.cpp"
 #line 54 "fn_overload_v2.hot"
 template <int = 0>
 #line 54 "fn_overload_v2.hot"
@@ -724,7 +746,7 @@ template <int = 0>
     return __h;
 #line 54 "fn_overload_v2.hot"
 }
-#line 728 "fn_overload_v2.hot.cpp"
+#line 750 "fn_overload_v2.hot.cpp"
 
 #line 58 "fn_overload_v2.hot"
 HOT_HIDDEN static FnOvMade_Shell* FnOvMade__build([[maybe_unused]] bool __note, int32_t a, int32_t b)
@@ -750,7 +772,7 @@ HOT_HIDDEN static FnOvMade_Shell* FnOvMade__build([[maybe_unused]] bool __note, 
     return __self;
 #line 58 "fn_overload_v2.hot"
 }
-#line 754 "fn_overload_v2.hot.cpp"
+#line 776 "fn_overload_v2.hot.cpp"
 #line 58 "fn_overload_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static FnOvMade_Shell* FnOvMade__new(int32_t a, int32_t b)
 #line 58 "fn_overload_v2.hot"
@@ -759,7 +781,7 @@ HOT_HIDDEN static FnOvMade_Shell* FnOvMade__build([[maybe_unused]] bool __note, 
     return FnOvMade__build(true, a, b);
 #line 58 "fn_overload_v2.hot"
 }
-#line 763 "fn_overload_v2.hot.cpp"
+#line 785 "fn_overload_v2.hot.cpp"
 #line 58 "fn_overload_v2.hot"
 template <int = 0>
 #line 58 "fn_overload_v2.hot"
@@ -776,7 +798,7 @@ template <int = 0>
     return __h;
 #line 58 "fn_overload_v2.hot"
 }
-#line 780 "fn_overload_v2.hot.cpp"
+#line 802 "fn_overload_v2.hot.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -788,7 +810,7 @@ HOT_NODEBUG static hot::ShellCore* FnOvMade__new_default()
     return FnOvMade__build(false, std::decay_t<int32_t>());
 #line 50 "fn_overload_v2.hot"
 }
-#line 792 "fn_overload_v2.hot.cpp"
+#line 814 "fn_overload_v2.hot.cpp"
 
 [[maybe_unused]] HOT_HIDDEN static void FnOvMade__ctor_export0(hot::ShellBase* __s, int32_t s)
 {
@@ -843,7 +865,7 @@ HOT_NODEBUG static hot::Instance FnOvMade_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 47 "fn_overload_v2.hot"
 }
-#line 847 "fn_overload_v2.hot.cpp"
+#line 869 "fn_overload_v2.hot.cpp"
 
 #line 50 "fn_overload_v2.hot"
 HOT_NODEBUG static hot::Instance FnOvMade__make_0([[maybe_unused]] void** __a)
@@ -857,7 +879,7 @@ HOT_NODEBUG static hot::Instance FnOvMade__make_0([[maybe_unused]] void** __a)
     return {static_cast<hot::PlainObject*>(p), p};
 #line 50 "fn_overload_v2.hot"
 }
-#line 861 "fn_overload_v2.hot.cpp"
+#line 883 "fn_overload_v2.hot.cpp"
 #line 54 "fn_overload_v2.hot"
 HOT_NODEBUG static hot::Instance FnOvMade__make_1([[maybe_unused]] void** __a)
 #line 54 "fn_overload_v2.hot"
@@ -870,7 +892,7 @@ HOT_NODEBUG static hot::Instance FnOvMade__make_1([[maybe_unused]] void** __a)
     return {static_cast<hot::PlainObject*>(p), p};
 #line 54 "fn_overload_v2.hot"
 }
-#line 874 "fn_overload_v2.hot.cpp"
+#line 896 "fn_overload_v2.hot.cpp"
 #line 58 "fn_overload_v2.hot"
 HOT_NODEBUG static hot::Instance FnOvMade__make_2([[maybe_unused]] void** __a)
 #line 58 "fn_overload_v2.hot"
@@ -883,7 +905,7 @@ HOT_NODEBUG static hot::Instance FnOvMade__make_2([[maybe_unused]] void** __a)
     return {static_cast<hot::PlainObject*>(p), p};
 #line 58 "fn_overload_v2.hot"
 }
-#line 887 "fn_overload_v2.hot.cpp"
+#line 909 "fn_overload_v2.hot.cpp"
 
 static const hot::CtorEntry FnOvMade__constructors[] = {
     {hot::ctor_key<int32_t>(), &FnOvMade__make_0, hot::ctor_write_mask<int32_t>()},
@@ -917,7 +939,7 @@ struct FnOv_Shell final : FnOvBase_Shell {
         hot::init_state(this, &FnOv_record);
 #line 63 "fn_overload_v2.hot"
     }
-#line 921 "fn_overload_v2.hot.cpp"
+#line 943 "fn_overload_v2.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -936,26 +958,29 @@ struct hot_state_FnOv : hot_state_FnOvBase {
 
 #line 64 "fn_overload_v2.hot"
 static void FnOv__init_ticks(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 940 "fn_overload_v2.hot.cpp"
+#line 962 "fn_overload_v2.hot.cpp"
 #line 65 "fn_overload_v2.hot"
 static void FnOv__init_stat(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 943 "fn_overload_v2.hot.cpp"
+#line 965 "fn_overload_v2.hot.cpp"
 #line 66 "fn_overload_v2.hot"
 static void FnOv__init_free(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 946 "fn_overload_v2.hot.cpp"
+#line 968 "fn_overload_v2.hot.cpp"
 #line 67 "fn_overload_v2.hot"
 static void FnOv__init_strct(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 949 "fn_overload_v2.hot.cpp"
+#line 971 "fn_overload_v2.hot.cpp"
 #line 68 "fn_overload_v2.hot"
 static void FnOv__init_based(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 952 "fn_overload_v2.hot.cpp"
+#line 974 "fn_overload_v2.hot.cpp"
 #line 69 "fn_overload_v2.hot"
 static void FnOv__init_made(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 955 "fn_overload_v2.hot.cpp"
+#line 977 "fn_overload_v2.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static_assert(offsetof(hot_state_FnOv, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo FnOv_fields[] = {
@@ -974,9 +999,11 @@ static const hot::FieldInfo FnOv_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
-static const hot::StateLayout FnOv_layout = {
+[[maybe_unused]] static const hot::StateLayout FnOv_layout = {
     "hot_state_FnOv", sizeof(hot_state_FnOv), alignof(hot_state_FnOv), 6, FnOv_fields, true,
 };
 
@@ -1011,7 +1038,7 @@ HOT_HIDDEN static auto FnOv__plan()
     return std::make_pair(std::make_tuple(std::string("FnOv")), std::make_pair(std::move(__up), std::move(__pp.second)));
 #line 63 "fn_overload_v2.hot"
 }
-#line 1015 "fn_overload_v2.hot.cpp"
+#line 1042 "fn_overload_v2.hot.cpp"
 using FnOv_SuperArgs = decltype(FnOv__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -1036,7 +1063,7 @@ HOT_NODEBUG static hot::ShellBase* FnOv__construct(void* mem, const char* key, c
     return nullptr;
 #line 63 "fn_overload_v2.hot"
 }
-#line 1040 "fn_overload_v2.hot.cpp"
+#line 1067 "fn_overload_v2.hot.cpp"
 
 static const char* const FnOv__construct_keys[] = {typeid(FnOv_SuperArgs).name(), nullptr};
 
@@ -1052,7 +1079,7 @@ HOT_HIDDEN static FnOv_Shell* FnOv__build([[maybe_unused]] bool __note)
     return __self;
 #line 63 "fn_overload_v2.hot"
 }
-#line 1056 "fn_overload_v2.hot.cpp"
+#line 1083 "fn_overload_v2.hot.cpp"
 #line 63 "fn_overload_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static FnOv_Shell* FnOv__new()
 #line 63 "fn_overload_v2.hot"
@@ -1061,7 +1088,7 @@ HOT_HIDDEN static FnOv_Shell* FnOv__build([[maybe_unused]] bool __note)
     return FnOv__build(true);
 #line 63 "fn_overload_v2.hot"
 }
-#line 1065 "fn_overload_v2.hot.cpp"
+#line 1092 "fn_overload_v2.hot.cpp"
 #line 63 "fn_overload_v2.hot"
 template <int = 0>
 #line 63 "fn_overload_v2.hot"
@@ -1076,7 +1103,7 @@ template <int = 0>
     return __h;
 #line 63 "fn_overload_v2.hot"
 }
-#line 1080 "fn_overload_v2.hot.cpp"
+#line 1107 "fn_overload_v2.hot.cpp"
 
 static void* FnOv___native__thunk(hot::ShellCore* __s)
 {
@@ -1084,6 +1111,10 @@ static void* FnOv___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn FnOv_slots[FnOv_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_FnOv::Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_FnOvBase::__fwd_TakeDamage_f),
@@ -1091,6 +1122,9 @@ static const hot::SlotFn FnOv_slots[FnOv_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_FnOv::Pick__ov_int32_Ut),
     reinterpret_cast<hot::SlotFn>(&hot_state_FnOv::Pick__ov_std_Sstring),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord FnOv_record = {
     "FnOv", 0, FnOv_slots, FnOv_SLOT_COUNT, &FnOv_layout, &FnOvBase_record,
@@ -1111,7 +1145,7 @@ HOT_NODEBUG static hot::Instance FnOv_create()
     return {static_cast<Actor*>(p), p};
 #line 63 "fn_overload_v2.hot"
 }
-#line 1115 "fn_overload_v2.hot.cpp"
+#line 1149 "fn_overload_v2.hot.cpp"
 
 #line 63 "fn_overload_v2.hot"
 HOT_NODEBUG static hot::Instance FnOv__make_0([[maybe_unused]] void** __a)
@@ -1121,7 +1155,7 @@ HOT_NODEBUG static hot::Instance FnOv__make_0([[maybe_unused]] void** __a)
     return FnOv_create();
 #line 63 "fn_overload_v2.hot"
 }
-#line 1125 "fn_overload_v2.hot.cpp"
+#line 1159 "fn_overload_v2.hot.cpp"
 
 static const hot::CtorEntry FnOv__constructors[] = {
     {hot::ctor_key<>(), &FnOv__make_0, hot::ctor_write_mask<>()},
@@ -1159,7 +1193,7 @@ static const hot::CtorEntry FnOv__constructors[] = {
     return hot_fn_Half__ov_std_Sstring(std::forward<decltype(s)>(s));
 }
 
-#line 1163 "fn_overload_v2.hot.cpp"
+#line 1197 "fn_overload_v2.hot.cpp"
 // ---------------------------------------------------------------- function bodies
 #line 12 "fn_overload_v2.hot"
 static int32_t Pt__Add(Pt* __self, int32_t v)
@@ -1171,7 +1205,7 @@ static int32_t Pt__Add(Pt* __self, int32_t v)
     return __st->x + v;
 #line 14 "fn_overload_v2.hot"
 }
-#line 1175 "fn_overload_v2.hot.cpp"
+#line 1209 "fn_overload_v2.hot.cpp"
 
 #line 16 "fn_overload_v2.hot"
 static int32_t Pt__Add(Pt* __self, float v)
@@ -1183,7 +1217,7 @@ static int32_t Pt__Add(Pt* __self, float v)
     return __st->x + 100;
 #line 18 "fn_overload_v2.hot"
 }
-#line 1187 "fn_overload_v2.hot.cpp"
+#line 1221 "fn_overload_v2.hot.cpp"
 
 #line 20 "fn_overload_v2.hot"
 static int32_t Pt__Add(Pt* __self, int32_t a, int32_t b)
@@ -1195,7 +1229,7 @@ static int32_t Pt__Add(Pt* __self, int32_t a, int32_t b)
     return __st->x + a + b;
 #line 22 "fn_overload_v2.hot"
 }
-#line 1199 "fn_overload_v2.hot.cpp"
+#line 1233 "fn_overload_v2.hot.cpp"
 
 #line 38 "fn_overload_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t FnOvBase__Pick__ov_int32_Ut(FnOvBase_Shell* __self, int32_t x)
@@ -1205,7 +1239,7 @@ static int32_t Pt__Add(Pt* __self, int32_t a, int32_t b)
     return state_of(__self)->Pick__ov_int32_Ut(std::forward<int32_t>(x));
 #line 38 "fn_overload_v2.hot"
 }
-#line 1209 "fn_overload_v2.hot.cpp"
+#line 1243 "fn_overload_v2.hot.cpp"
 #line 38 "fn_overload_v2.hot"
 int32_t hot_state_FnOvBase::Pick__ov_int32_Ut(int32_t x)
 #line 38 "fn_overload_v2.hot"
@@ -1230,7 +1264,7 @@ int32_t hot_state_FnOvBase::Pick__ov_int32_Ut(int32_t x)
     HOT_TRACE_LINE(); return 1;
 #line 40 "fn_overload_v2.hot"
 }
-#line 1234 "fn_overload_v2.hot.cpp"
+#line 1268 "fn_overload_v2.hot.cpp"
 
 #line 42 "fn_overload_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t FnOvBase__Pick__ov_std_Sstring(FnOvBase_Shell* __self, hot::In<std::string> s)
@@ -1240,7 +1274,7 @@ int32_t hot_state_FnOvBase::Pick__ov_int32_Ut(int32_t x)
     return state_of(__self)->Pick__ov_std_Sstring(std::forward<hot::In<std::string>>(s));
 #line 42 "fn_overload_v2.hot"
 }
-#line 1244 "fn_overload_v2.hot.cpp"
+#line 1278 "fn_overload_v2.hot.cpp"
 #line 42 "fn_overload_v2.hot"
 int32_t hot_state_FnOvBase::Pick__ov_std_Sstring(hot::In<std::string> s)
 #line 42 "fn_overload_v2.hot"
@@ -1265,7 +1299,7 @@ int32_t hot_state_FnOvBase::Pick__ov_std_Sstring(hot::In<std::string> s)
     HOT_TRACE_LINE(); return 2;
 #line 44 "fn_overload_v2.hot"
 }
-#line 1269 "fn_overload_v2.hot.cpp"
+#line 1303 "fn_overload_v2.hot.cpp"
 
 #line 50 "fn_overload_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static void FnOvMade__ctor(FnOvMade_Shell* __self, int32_t s)
@@ -1275,7 +1309,7 @@ int32_t hot_state_FnOvBase::Pick__ov_std_Sstring(hot::In<std::string> s)
     return state_of(__self)->ctor(std::forward<int32_t>(s));
 #line 50 "fn_overload_v2.hot"
 }
-#line 1279 "fn_overload_v2.hot.cpp"
+#line 1313 "fn_overload_v2.hot.cpp"
 #line 50 "fn_overload_v2.hot"
 void hot_state_FnOvMade::ctor(int32_t s)
 #line 50 "fn_overload_v2.hot"
@@ -1300,7 +1334,7 @@ void hot_state_FnOvMade::ctor(int32_t s)
     HOT_TRACE_LINE(); __st->seed = s;
 #line 52 "fn_overload_v2.hot"
 }
-#line 1304 "fn_overload_v2.hot.cpp"
+#line 1338 "fn_overload_v2.hot.cpp"
 
 #line 54 "fn_overload_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static void FnOvMade__ctor(FnOvMade_Shell* __self, hot::In<std::string> s)
@@ -1310,7 +1344,7 @@ void hot_state_FnOvMade::ctor(int32_t s)
     return state_of(__self)->ctor(std::forward<hot::In<std::string>>(s));
 #line 54 "fn_overload_v2.hot"
 }
-#line 1314 "fn_overload_v2.hot.cpp"
+#line 1348 "fn_overload_v2.hot.cpp"
 #line 54 "fn_overload_v2.hot"
 void hot_state_FnOvMade::ctor(hot::In<std::string> s)
 #line 54 "fn_overload_v2.hot"
@@ -1335,7 +1369,7 @@ void hot_state_FnOvMade::ctor(hot::In<std::string> s)
     HOT_TRACE_LINE(); __st->seed = 300;
 #line 56 "fn_overload_v2.hot"
 }
-#line 1339 "fn_overload_v2.hot.cpp"
+#line 1373 "fn_overload_v2.hot.cpp"
 
 #line 58 "fn_overload_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static void FnOvMade__ctor(FnOvMade_Shell* __self, int32_t a, int32_t b)
@@ -1345,7 +1379,7 @@ void hot_state_FnOvMade::ctor(hot::In<std::string> s)
     return state_of(__self)->ctor(std::forward<int32_t>(a), std::forward<int32_t>(b));
 #line 58 "fn_overload_v2.hot"
 }
-#line 1349 "fn_overload_v2.hot.cpp"
+#line 1383 "fn_overload_v2.hot.cpp"
 #line 58 "fn_overload_v2.hot"
 void hot_state_FnOvMade::ctor(int32_t a, int32_t b)
 #line 58 "fn_overload_v2.hot"
@@ -1370,7 +1404,7 @@ void hot_state_FnOvMade::ctor(int32_t a, int32_t b)
     HOT_TRACE_LINE(); __st->seed = a * b;
 #line 60 "fn_overload_v2.hot"
 }
-#line 1374 "fn_overload_v2.hot.cpp"
+#line 1408 "fn_overload_v2.hot.cpp"
 
 #line 83 "fn_overload_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t FnOv__Pick__ov_int32_Ut(FnOv_Shell* __self, int32_t x)
@@ -1380,7 +1414,7 @@ void hot_state_FnOvMade::ctor(int32_t a, int32_t b)
     return state_of(__self)->Pick__ov_int32_Ut(std::forward<int32_t>(x));
 #line 83 "fn_overload_v2.hot"
 }
-#line 1384 "fn_overload_v2.hot.cpp"
+#line 1418 "fn_overload_v2.hot.cpp"
 #line 83 "fn_overload_v2.hot"
 int32_t hot_state_FnOv::Pick__ov_int32_Ut(int32_t x)
 #line 83 "fn_overload_v2.hot"
@@ -1405,7 +1439,7 @@ int32_t hot_state_FnOv::Pick__ov_int32_Ut(int32_t x)
     HOT_TRACE_LINE(); return FnOvBase__Pick__ovbase(__self, x) + 100;
 #line 85 "fn_overload_v2.hot"
 }
-#line 1409 "fn_overload_v2.hot.cpp"
+#line 1443 "fn_overload_v2.hot.cpp"
 
 #line 87 "fn_overload_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t FnOv__Pick__ov_std_Sstring(FnOv_Shell* __self, hot::In<std::string> s)
@@ -1415,7 +1449,7 @@ int32_t hot_state_FnOv::Pick__ov_int32_Ut(int32_t x)
     return state_of(__self)->Pick__ov_std_Sstring(std::forward<hot::In<std::string>>(s));
 #line 87 "fn_overload_v2.hot"
 }
-#line 1419 "fn_overload_v2.hot.cpp"
+#line 1453 "fn_overload_v2.hot.cpp"
 #line 87 "fn_overload_v2.hot"
 int32_t hot_state_FnOv::Pick__ov_std_Sstring(hot::In<std::string> s)
 #line 87 "fn_overload_v2.hot"
@@ -1440,7 +1474,7 @@ int32_t hot_state_FnOv::Pick__ov_std_Sstring(hot::In<std::string> s)
     HOT_TRACE_LINE(); return FnOvBase__Pick__ovbase(__self, s) + 200;
 #line 89 "fn_overload_v2.hot"
 }
-#line 1444 "fn_overload_v2.hot.cpp"
+#line 1478 "fn_overload_v2.hot.cpp"
 
 #line 91 "fn_overload_v2.hot"
 void hot_state_FnOv::Tick(float dt)
@@ -1488,7 +1522,7 @@ void hot_state_FnOv::Tick(float dt)
     HOT_TRACE_LINE(); __st->made = state_of(hot::shell_of<FnOvMade_Shell>(a, "FnOvMade"))->seed + state_of(hot::shell_of<FnOvMade_Shell>(b, "FnOvMade"))->seed + state_of(hot::shell_of<FnOvMade_Shell>(c, "FnOvMade"))->seed;
 #line 104 "fn_overload_v2.hot"
 }
-#line 1492 "fn_overload_v2.hot.cpp"
+#line 1526 "fn_overload_v2.hot.cpp"
 
 #line 71 "fn_overload_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t FnOv__s_Twice__ov_int32_Ut(int32_t v)
@@ -1502,7 +1536,7 @@ void hot_state_FnOv::Tick(float dt)
     HOT_TRACE_LINE(); return v * 3;
 #line 73 "fn_overload_v2.hot"
 }
-#line 1506 "fn_overload_v2.hot.cpp"
+#line 1540 "fn_overload_v2.hot.cpp"
 
 #line 75 "fn_overload_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t FnOv__s_Twice__ov_int32_Ut_Nint32_Ut(int32_t a, int32_t b)
@@ -1516,7 +1550,7 @@ void hot_state_FnOv::Tick(float dt)
     HOT_TRACE_LINE(); return a + b;
 #line 77 "fn_overload_v2.hot"
 }
-#line 1520 "fn_overload_v2.hot.cpp"
+#line 1554 "fn_overload_v2.hot.cpp"
 
 #line 79 "fn_overload_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t FnOv__s_Twice__ov_float(float v)
@@ -1530,7 +1564,7 @@ void hot_state_FnOv::Tick(float dt)
     HOT_TRACE_LINE(); return 500;
 #line 81 "fn_overload_v2.hot"
 }
-#line 1534 "fn_overload_v2.hot.cpp"
+#line 1568 "fn_overload_v2.hot.cpp"
 
 #line 25 "fn_overload_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Half__ov_int32_Ut(int32_t v)
@@ -1544,7 +1578,7 @@ void hot_state_FnOv::Tick(float dt)
     HOT_TRACE_LINE(); return v / 2 + 1;
 #line 27 "fn_overload_v2.hot"
 }
-#line 1548 "fn_overload_v2.hot.cpp"
+#line 1582 "fn_overload_v2.hot.cpp"
 
 #line 29 "fn_overload_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Half__ov_int32_Ut_Nint32_Ut(int32_t a, int32_t b)
@@ -1558,7 +1592,7 @@ void hot_state_FnOv::Tick(float dt)
     HOT_TRACE_LINE(); return a + b;
 #line 31 "fn_overload_v2.hot"
 }
-#line 1562 "fn_overload_v2.hot.cpp"
+#line 1596 "fn_overload_v2.hot.cpp"
 
 #line 33 "fn_overload_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Half__ov_std_Sstring(hot::In<std::string> s)
@@ -1572,7 +1606,7 @@ void hot_state_FnOv::Tick(float dt)
     HOT_TRACE_LINE(); return 70;
 #line 35 "fn_overload_v2.hot"
 }
-#line 1576 "fn_overload_v2.hot.cpp"
+#line 1610 "fn_overload_v2.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

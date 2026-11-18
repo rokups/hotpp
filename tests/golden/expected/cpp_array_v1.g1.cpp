@@ -48,6 +48,9 @@ static void HotModule__init_Buf__s_hits(void*, void* f) { using T = int[3]; new 
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static const hot::FieldInfo HotModule_fields[] = {
     {"table", nullptr, hot::type_key<int[4]>(), offsetof(HotModule, table), sizeof(int[4]),
@@ -57,8 +60,10 @@ static const hot::FieldInfo HotModule_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
-static const hot::StateLayout HotModule_layout = {
+[[maybe_unused]] static const hot::StateLayout HotModule_layout = {
     "HotModule", sizeof(HotModule), alignof(HotModule), 2, HotModule_fields,
 };
 
@@ -89,7 +94,7 @@ struct Buf_Shell final : Actor, hot::ShellBase {
     }
 #line 11 "cpp_array_v1.cpp"
     ~Buf_Shell() override { hot::destroy_state(this); }
-#line 93 "cpp_array_v1.cpp.cpp"
+#line 98 "cpp_array_v1.cpp.cpp"
 #line 11 "cpp_array_v1.cpp"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 11 "cpp_array_v1.cpp"
@@ -98,7 +103,7 @@ struct Buf_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0);
 #line 11 "cpp_array_v1.cpp"
     }
-#line 102 "cpp_array_v1.cpp.cpp"
+#line 107 "cpp_array_v1.cpp.cpp"
 #line 11 "cpp_array_v1.cpp"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 11 "cpp_array_v1.cpp"
@@ -107,7 +112,7 @@ struct Buf_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0, a1);
 #line 11 "cpp_array_v1.cpp"
     }
-#line 111 "cpp_array_v1.cpp.cpp"
+#line 116 "cpp_array_v1.cpp.cpp"
 
 #line 11 "cpp_array_v1.cpp"
     void Tick(float a0) override
@@ -117,7 +122,7 @@ struct Buf_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 11 "cpp_array_v1.cpp"
     }
-#line 121 "cpp_array_v1.cpp.cpp"
+#line 126 "cpp_array_v1.cpp.cpp"
 
 #line 11 "cpp_array_v1.cpp"
     void TakeDamage(float a0) override
@@ -127,7 +132,7 @@ struct Buf_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 11 "cpp_array_v1.cpp"
     }
-#line 131 "cpp_array_v1.cpp.cpp"
+#line 136 "cpp_array_v1.cpp.cpp"
 
 #line 11 "cpp_array_v1.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -137,7 +142,7 @@ struct Buf_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 11 "cpp_array_v1.cpp"
     }
-#line 141 "cpp_array_v1.cpp.cpp"
+#line 146 "cpp_array_v1.cpp.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -164,7 +169,7 @@ struct hot_state_Buf {
         return static_cast<Buf_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 11 "cpp_array_v1.cpp"
     }
-#line 168 "cpp_array_v1.cpp.cpp"
+#line 173 "cpp_array_v1.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 11 "cpp_array_v1.cpp"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -174,37 +179,40 @@ struct hot_state_Buf {
         return static_cast<Buf_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 11 "cpp_array_v1.cpp"
     }
-#line 178 "cpp_array_v1.cpp.cpp"
+#line 183 "cpp_array_v1.cpp.cpp"
 };
 
 #line 36 "cpp_array_v1.cpp"
 static void Buf__init_data(void*, void* f) { using T = int[4]; new (f) T{10, 20, 30, 40}; }
-#line 183 "cpp_array_v1.cpp.cpp"
+#line 188 "cpp_array_v1.cpp.cpp"
 #line 37 "cpp_array_v1.cpp"
 static void Buf__init_grid(void*, void* f) { using T = int[2][3]; new (f) T{}; }
-#line 186 "cpp_array_v1.cpp.cpp"
+#line 191 "cpp_array_v1.cpp.cpp"
 #line 38 "cpp_array_v1.cpp"
 static void Buf__init_names(void*, void* f) { using T = std::string[2]; new (f) T{}; }
-#line 189 "cpp_array_v1.cpp.cpp"
+#line 194 "cpp_array_v1.cpp.cpp"
 #line 39 "cpp_array_v1.cpp"
 static void Buf__init_total(void*, void* f) { using T = int; new (f) T(0); }
-#line 192 "cpp_array_v1.cpp.cpp"
+#line 197 "cpp_array_v1.cpp.cpp"
 #line 40 "cpp_array_v1.cpp"
 static void Buf__init_lut(void*, void* f) { using T = const int[3]; new (f) T{1, 2, 3}; }
-#line 195 "cpp_array_v1.cpp.cpp"
+#line 200 "cpp_array_v1.cpp.cpp"
 #line 41 "cpp_array_v1.cpp"
 static void Buf__init_tags(void*, void* f) { using T = const std::string[2]; new (f) T{"x", "y"}; }
-#line 198 "cpp_array_v1.cpp.cpp"
+#line 203 "cpp_array_v1.cpp.cpp"
 #line 42 "cpp_array_v1.cpp"
 static void Buf__init_handlers(void*, void* f) { using T = std::function<void ()>[2]; new (f) T{}; }
-#line 201 "cpp_array_v1.cpp.cpp"
+#line 206 "cpp_array_v1.cpp.cpp"
 #line 43 "cpp_array_v1.cpp"
 static void Buf__init_rows(void*, void* f) { using T = std::vector<int>[2]; new (f) T{}; }
-#line 204 "cpp_array_v1.cpp.cpp"
+#line 209 "cpp_array_v1.cpp.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static_assert(offsetof(hot_state_Buf, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Buf_fields[] = {
@@ -227,9 +235,11 @@ static const hot::FieldInfo Buf_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
-static const hot::StateLayout Buf_layout = {
+[[maybe_unused]] static const hot::StateLayout Buf_layout = {
     "hot_state_Buf", sizeof(hot_state_Buf), alignof(hot_state_Buf), 8, Buf_fields, true,
 };
 
@@ -268,7 +278,7 @@ HOT_HIDDEN static void Buf__ctor_chain(Buf_Shell* __self, [[maybe_unused]] Chain
     Buf__ctor(__self);
 #line 14 "cpp_array_v1.cpp"
 }
-#line 272 "cpp_array_v1.cpp.cpp"
+#line 282 "cpp_array_v1.cpp.cpp"
 using Buf_SuperArgs = decltype(Buf__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -293,7 +303,7 @@ HOT_NODEBUG static hot::ShellBase* Buf__construct(void* mem, const char* key, co
     return nullptr;
 #line 11 "cpp_array_v1.cpp"
 }
-#line 297 "cpp_array_v1.cpp.cpp"
+#line 307 "cpp_array_v1.cpp.cpp"
 
 static const char* const Buf__construct_keys[] = {typeid(Buf_SuperArgs).name(), nullptr};
 
@@ -321,7 +331,7 @@ HOT_HIDDEN static Buf_Shell* Buf__build([[maybe_unused]] bool __note)
     return __self;
 #line 14 "cpp_array_v1.cpp"
 }
-#line 325 "cpp_array_v1.cpp.cpp"
+#line 335 "cpp_array_v1.cpp.cpp"
 #line 14 "cpp_array_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static Buf_Shell* Buf__new()
 #line 14 "cpp_array_v1.cpp"
@@ -330,7 +340,7 @@ HOT_HIDDEN static Buf_Shell* Buf__build([[maybe_unused]] bool __note)
     return Buf__build(true);
 #line 14 "cpp_array_v1.cpp"
 }
-#line 334 "cpp_array_v1.cpp.cpp"
+#line 344 "cpp_array_v1.cpp.cpp"
 #line 14 "cpp_array_v1.cpp"
 template <int = 0>
 #line 14 "cpp_array_v1.cpp"
@@ -347,7 +357,7 @@ template <int = 0>
     return __h;
 #line 14 "cpp_array_v1.cpp"
 }
-#line 351 "cpp_array_v1.cpp.cpp"
+#line 361 "cpp_array_v1.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -359,7 +369,7 @@ HOT_NODEBUG static hot::ShellCore* Buf__new_default()
     return Buf__build(false);
 #line 14 "cpp_array_v1.cpp"
 }
-#line 363 "cpp_array_v1.cpp.cpp"
+#line 373 "cpp_array_v1.cpp.cpp"
 
 [[maybe_unused]] HOT_HIDDEN static void Buf__ctor_export0(hot::ShellBase* __s)
 {
@@ -377,7 +387,7 @@ static int Buf__sum__thunk(Actor* __a)
     return hot::call<int(Actor*)>(__self, SLOT_sum);
 #line 28 "cpp_array_v1.cpp"
 }
-#line 381 "cpp_array_v1.cpp.cpp"
+#line 391 "cpp_array_v1.cpp.cpp"
 
 static void* Buf___native__thunk(hot::ShellCore* __s)
 {
@@ -385,12 +395,19 @@ static void* Buf___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Buf_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Buf::Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Buf::__fwd_TakeDamage_f),
     reinterpret_cast<hot::SlotFn>(&hot_state_Buf::__fwd_TakeDamage_Af),
     reinterpret_cast<hot::SlotFn>(&hot_state_Buf::sum),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Buf_record = {
     "Buf", 0, Buf_slots, SLOT_COUNT, &Buf_layout, nullptr,
@@ -425,7 +442,7 @@ HOT_NODEBUG static hot::Instance Buf_create()
     return {static_cast<Actor*>(p), p};
 #line 11 "cpp_array_v1.cpp"
 }
-#line 429 "cpp_array_v1.cpp.cpp"
+#line 446 "cpp_array_v1.cpp.cpp"
 
 #line 14 "cpp_array_v1.cpp"
 HOT_NODEBUG static hot::Instance Buf__make_0([[maybe_unused]] void** __a)
@@ -439,7 +456,7 @@ HOT_NODEBUG static hot::Instance Buf__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 14 "cpp_array_v1.cpp"
 }
-#line 443 "cpp_array_v1.cpp.cpp"
+#line 460 "cpp_array_v1.cpp.cpp"
 
 static const hot::CtorEntry Buf__constructors[] = {
     {hot::ctor_key<>(), &Buf__make_0, hot::ctor_write_mask<>()},
@@ -454,7 +471,7 @@ static const hot::CtorEntry Buf__constructors[] = {
     return state_of(__self)->ctor();
 #line 14 "cpp_array_v1.cpp"
 }
-#line 458 "cpp_array_v1.cpp.cpp"
+#line 475 "cpp_array_v1.cpp.cpp"
 #line 14 "cpp_array_v1.cpp"
 void hot_state_Buf::ctor()
 #line 14 "cpp_array_v1.cpp"
@@ -479,7 +496,7 @@ void hot_state_Buf::ctor()
  names[0] = "first"; 
 #line 14 "cpp_array_v1.cpp"
 }
-#line 483 "cpp_array_v1.cpp.cpp"
+#line 500 "cpp_array_v1.cpp.cpp"
 
 #line 16 "cpp_array_v1.cpp"
 void hot_state_Buf::Tick(float dt)
@@ -514,7 +531,7 @@ void hot_state_Buf::Tick(float dt)
     
 #line 26 "cpp_array_v1.cpp"
 }
-#line 518 "cpp_array_v1.cpp.cpp"
+#line 535 "cpp_array_v1.cpp.cpp"
 
 #line 28 "cpp_array_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Buf__sum(Buf_Shell* __self)
@@ -524,7 +541,7 @@ void hot_state_Buf::Tick(float dt)
     return state_of(__self)->sum();
 #line 28 "cpp_array_v1.cpp"
 }
-#line 528 "cpp_array_v1.cpp.cpp"
+#line 545 "cpp_array_v1.cpp.cpp"
 #line 28 "cpp_array_v1.cpp"
 int hot_state_Buf::sum()
 #line 28 "cpp_array_v1.cpp"
@@ -554,7 +571,7 @@ int hot_state_Buf::sum()
     
 #line 34 "cpp_array_v1.cpp"
 }
-#line 558 "cpp_array_v1.cpp.cpp"
+#line 575 "cpp_array_v1.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

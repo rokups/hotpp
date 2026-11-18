@@ -7234,7 +7234,7 @@ void translate_impl(
                 o.w("}\n");
             reset();
         }
-        o.w("#if defined(__clang__)\n#pragma clang diagnostic push\n#pragma clang diagnostic ignored \"-Winvalid-offsetof\"\n#endif\n");
+        o.w("#if defined(__clang__)\n#pragma clang diagnostic push\n#pragma clang diagnostic ignored \"-Winvalid-offsetof\"\n#elif defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored \"-Winvalid-offsetof\"\n#endif\n");
         if (cd.fields.empty())
         {
             o.w("static const hot::FieldInfo* const " + cn + "_fields = nullptr;\n");
@@ -7269,8 +7269,8 @@ void translate_impl(
             }
             o.w("};\n");
         }
-        o.w("#if defined(__clang__)\n#pragma clang diagnostic pop\n#endif\n");
-        o.w("static const hot::StateLayout " + cn + "_layout = {\n    \"" + cn + "\", sizeof(" + cn + "), alignof(" + cn
+        o.w("#if defined(__clang__)\n#pragma clang diagnostic pop\n#elif defined(__GNUC__)\n#pragma GCC diagnostic pop\n#endif\n");
+        o.w("[[maybe_unused]] static const hot::StateLayout " + cn + "_layout = {\n    \"" + cn + "\", sizeof(" + cn + "), alignof(" + cn
             + "), " + std::to_string(cd.fields.size()) + ", " + cn + "_fields,\n};\n\n");
 
         // The function bodies. "self" is the struct itself, so "st" is "self". The text comes
@@ -9523,7 +9523,7 @@ void translate_impl(
         }
         else
         {
-        o.w("\n#if defined(__clang__)\n#pragma clang diagnostic push\n#pragma clang diagnostic ignored \"-Winvalid-offsetof\"\n#endif\n");
+        o.w("\n#if defined(__clang__)\n#pragma clang diagnostic push\n#pragma clang diagnostic ignored \"-Winvalid-offsetof\"\n#elif defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored \"-Winvalid-offsetof\"\n#endif\n");
         o.w("static_assert(offsetof(" + S + ", __hot_owner) == 0, \"the owner pointer must be the first member\");\n");
         // The field table of a child has the rows of the parent first. "$S$" is the state struct.
         if (pinfo)
@@ -9569,7 +9569,7 @@ void translate_impl(
             }
             o.w("};\n");
         }
-        o.w("#if defined(__clang__)\n#pragma clang diagnostic pop\n#endif\n\n");
+        o.w("#if defined(__clang__)\n#pragma clang diagnostic pop\n#elif defined(__GNUC__)\n#pragma GCC diagnostic pop\n#endif\n\n");
         // The properties with tags: the thunks come after the declarations of the accessors.
         std::string prop_rows;
         size_t prop_count = 0;
@@ -9590,7 +9590,7 @@ void translate_impl(
         if (prop_count)
             o.w("static const hot::PropertyInfo " + cn + "_props[] = {\n" + prop_rows + "};\n");
         if (!from_header) // the owner unit has the layout of an interface parent
-        o.w(std::string(exported ? "" : "static ") + "const hot::StateLayout " + cn + "_layout = {\n    \"" + S
+        o.w(std::string(exported ? "" : "[[maybe_unused]] static ") + "const hot::StateLayout " + cn + "_layout = {\n    \"" + S
             + "\", sizeof(" + S + "), alignof(" + S + "), " + std::to_string(info.rows.size()) + ", " + cn + "_fields, true"
             + (prop_count ? ", " + cn + "_props, " + std::to_string(prop_count) : std::string()) + ",\n};\n\n");
         }
@@ -9927,14 +9927,16 @@ void translate_impl(
                 // A "&&" parameter is a const reference in the plan: the plan only reads it. A "T&"
                 // parameter stays a reference, and "base(x)" with the name of such a parameter or
                 // "base(*p)" binds the parent parameter to the lvalue of the child (std::ref).
-                std::string pd, names, declvals;
+                std::string pd, pd_unused, names, declvals;
                 for (size_t i = 0; i < cm.params.size(); ++i)
                 {
                     const Param& p = cm.params[i];
                     const std::string n = norm(p.type);
                     const bool by_ref = n.size() > 2 && n.compare(n.size() - 2, 2, "&&") == 0;
-                    pd += (i ? ", " : "")
-                        + name_in_type(by_ref ? "const std::remove_reference_t<" + p.type + ">&" : p.type, p.name);
+                    const std::string decl =
+                        name_in_type(by_ref ? "const std::remove_reference_t<" + p.type + ">&" : p.type, p.name);
+                    pd += (i ? ", " : "") + decl;
+                    pd_unused += (i ? ", [[maybe_unused]] " : "[[maybe_unused]] ") + decl;
                     names += (i ? ", " : "") + p.name;
                     declvals += (i ? ", " : "") + ("std::declval<" + p.type + ">()");
                 }
@@ -9983,7 +9985,7 @@ void translate_impl(
                 std::string plan_text;
                 if (!par)
                 {
-                    plan_text += "[[maybe_unused]] HOT_HIDDEN static auto " + P + "super_args(" + pd
+                    plan_text += "[[maybe_unused]] HOT_HIDDEN static auto " + P + "super_args(" + pd_unused
                         + ")\n{\n    return \x01std::make_tuple(" + sup_text + ");\n}\n";
                     plan_text += "HOT_HIDDEN static auto " + P + "plan(" + pd + ")\n{\n    return \x01std::make_pair(" + P
                         + "super_args(" + names + "), \x01std::tuple<>());\n}\n";
@@ -10172,6 +10174,9 @@ void translate_impl(
         // frame exists for a slot call. The member checks the generation and holds the statements.
         // A script function also gets a wrapper for the direct calls of other script code.
         // The wrapper is hidden from the debugger. The member maps to the script lines.
+        // A constructor with a base(...) call passes some parameters only to the base: the body may
+        // not use them, so they get [[maybe_unused]].
+        bool params_maybe_unused = false;
         auto emit_body = [&](Method& m, bool is_fn, const std::string& sym, const std::string& ret,
                              const std::string& what, const std::string& member)
         {
@@ -10253,7 +10258,7 @@ void translate_impl(
             for (const Param& p : m.params)
             {
                 const bool conv = !p.body_type.empty();
-                params += std::string(params.empty() ? "" : ", ")
+                params += std::string(params.empty() ? "" : ", ") + (params_maybe_unused ? "[[maybe_unused]] " : "")
                     + name_in_type(conv ? p.type : body_const(p, p.type), (conv ? "__" : "") + p.name);
                 if (is_async)
                     continue;
@@ -10488,7 +10493,9 @@ void translate_impl(
             ctor_ms[k].raw_body = cd.ctors[k].raw_body;
             ctor_ms[k].raw_line = cd.ctors[k].raw_line;
             ctor_ms[k].raw_pre = cd.ctors[k].raw_pre;
+            params_maybe_unused = cd.ctors[k].has_base_call;
             emit_body(ctor_ms[k], true, P + "ctor", "void", cd.key_name() + "::" + last_component(cd.key_name()), "ctor");
+            params_maybe_unused = false;
         }
         if (has_dtor)
             emit_body(cd.dtors[0], true, P + "dtor", "void", cd.key_name() + "::~" + last_component(cd.key_name()), "dtor");
@@ -10692,6 +10699,7 @@ void translate_impl(
         }
         else
         {
+            o.w("#if defined(__GNUC__) && !defined(__clang__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored \"-Wcast-function-type\"\n#endif\n");
             o.w("static const hot::SlotFn " + cn + "_slots[" + slot_id("COUNT") + "] = {\n");
             // A slot of an interface parent is a hole: the loader fills it from the parent record.
             auto inherited = [&](const std::string& fn)
@@ -10703,7 +10711,7 @@ void translate_impl(
             };
             for (const std::string& fn : table)
                 o.w(fn.empty() || inherited(fn) ? std::string("    nullptr,\n") : "    reinterpret_cast<hot::SlotFn>(&" + fn + "),\n");
-            o.w("};\n\n");
+            o.w("};\n#if defined(__GNUC__) && !defined(__clang__)\n#pragma GCC diagnostic pop\n#endif\n\n");
             // The names of the defunct slots (removed functions). The loader copies the pointer into
             // the record, and a call of a removed function names the function in its error.
             if (std::any_of(defunct_names.begin(), defunct_names.end(), [](const std::string& n) { return !n.empty(); }))

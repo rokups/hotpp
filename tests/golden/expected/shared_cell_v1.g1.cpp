@@ -169,6 +169,9 @@ static void Counter__init_fired(void*, void* f) { using T = int32_t; new (f) T(0
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static_assert(offsetof(hot_state_Counter, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Counter_fields[] = {
@@ -183,9 +186,11 @@ static const hot::FieldInfo Counter_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
-static const hot::StateLayout Counter_layout = {
+[[maybe_unused]] static const hot::StateLayout Counter_layout = {
     "hot_state_Counter", sizeof(hot_state_Counter), alignof(hot_state_Counter), 4, Counter_fields, true,
 };
 
@@ -216,7 +221,7 @@ HOT_HIDDEN static auto Counter__plan()
     return std::make_pair(Counter__super_args(), std::tuple<>());
 #line 5 "shared_cell_v1.hot"
 }
-#line 220 "shared_cell_v1.hot.cpp"
+#line 225 "shared_cell_v1.hot.cpp"
 using Counter_SuperArgs = decltype(Counter__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -241,7 +246,7 @@ HOT_NODEBUG static hot::ShellBase* Counter__construct(void* mem, const char* key
     return nullptr;
 #line 5 "shared_cell_v1.hot"
 }
-#line 245 "shared_cell_v1.hot.cpp"
+#line 250 "shared_cell_v1.hot.cpp"
 
 static const char* const Counter__construct_keys[] = {typeid(Counter_SuperArgs).name(), nullptr};
 
@@ -257,7 +262,7 @@ HOT_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note)
     return __self;
 #line 5 "shared_cell_v1.hot"
 }
-#line 261 "shared_cell_v1.hot.cpp"
+#line 266 "shared_cell_v1.hot.cpp"
 #line 5 "shared_cell_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Counter_Shell* Counter__new()
 #line 5 "shared_cell_v1.hot"
@@ -266,7 +271,7 @@ HOT_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note)
     return Counter__build(true);
 #line 5 "shared_cell_v1.hot"
 }
-#line 270 "shared_cell_v1.hot.cpp"
+#line 275 "shared_cell_v1.hot.cpp"
 #line 5 "shared_cell_v1.hot"
 template <int = 0>
 #line 5 "shared_cell_v1.hot"
@@ -281,7 +286,7 @@ template <int = 0>
     return __h;
 #line 5 "shared_cell_v1.hot"
 }
-#line 285 "shared_cell_v1.hot.cpp"
+#line 290 "shared_cell_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -295,7 +300,7 @@ static void Counter__count__thunk(Actor* __a)
     return hot::call<void(Actor*)>(__self, SLOT_count);
 #line 12 "shared_cell_v1.hot"
 }
-#line 299 "shared_cell_v1.hot.cpp"
+#line 304 "shared_cell_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -309,7 +314,7 @@ static void Counter__share__thunk(Actor* __a)
     return hot::call<void(Actor*)>(__self, SLOT_share);
 #line 22 "shared_cell_v1.hot"
 }
-#line 313 "shared_cell_v1.hot.cpp"
+#line 318 "shared_cell_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -323,7 +328,7 @@ static void Counter__bump__thunk(Actor* __a, int32_t p)
     return hot::call<void(Actor*, int32_t)>(__self, SLOT_bump, p);
 #line 32 "shared_cell_v1.hot"
 }
-#line 327 "shared_cell_v1.hot.cpp"
+#line 332 "shared_cell_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -337,7 +342,7 @@ static void Counter__arm__thunk(Actor* __a, World& w)
     return hot::call<void(Actor*, World&)>(__self, SLOT_arm, w);
 #line 40 "shared_cell_v1.hot"
 }
-#line 341 "shared_cell_v1.hot.cpp"
+#line 346 "shared_cell_v1.hot.cpp"
 
 static void* Counter___native__thunk(hot::ShellCore* __s)
 {
@@ -345,6 +350,10 @@ static void* Counter___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Counter_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Counter::__fwd_Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Counter::__fwd_TakeDamage_f),
@@ -354,6 +363,9 @@ static const hot::SlotFn Counter_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Counter::bump),
     reinterpret_cast<hot::SlotFn>(&hot_state_Counter::arm),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Counter_record = {
     "Counter", 0, Counter_slots, SLOT_COUNT, &Counter_layout, nullptr,
@@ -374,7 +386,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return {static_cast<Actor*>(p), p};
 #line 5 "shared_cell_v1.hot"
 }
-#line 378 "shared_cell_v1.hot.cpp"
+#line 390 "shared_cell_v1.hot.cpp"
 
 #line 5 "shared_cell_v1.hot"
 HOT_NODEBUG static hot::Instance Counter__make_0([[maybe_unused]] void** __a)
@@ -384,7 +396,7 @@ HOT_NODEBUG static hot::Instance Counter__make_0([[maybe_unused]] void** __a)
     return Counter_create();
 #line 5 "shared_cell_v1.hot"
 }
-#line 388 "shared_cell_v1.hot.cpp"
+#line 400 "shared_cell_v1.hot.cpp"
 
 static const hot::CtorEntry Counter__constructors[] = {
     {hot::ctor_key<>(), &Counter__make_0, hot::ctor_write_mask<>()},
@@ -399,7 +411,7 @@ static const hot::CtorEntry Counter__constructors[] = {
     return state_of(__self)->count();
 #line 12 "shared_cell_v1.hot"
 }
-#line 403 "shared_cell_v1.hot.cpp"
+#line 415 "shared_cell_v1.hot.cpp"
 #line 12 "shared_cell_v1.hot"
 void hot_state_Counter::count()
 #line 12 "shared_cell_v1.hot"
@@ -421,9 +433,9 @@ void hot_state_Counter::count()
 #line 13 "shared_cell_v1.hot"
     HOT_TRACE_FRAME("Counter.count", "shared_cell_v1.hot");
 #line 13 "shared_cell_v1.hot"
-    HOT_TRACE_LINE(); auto __cell_n = hot::make_cell<int32_t>(0); int32_t& n = *__cell_n;
+    HOT_TRACE_LINE(); auto __cell_n = hot::make_cell<int32_t>(0); [[maybe_unused]] int32_t& n = *__cell_n;
 #line 14 "shared_cell_v1.hot"
-    HOT_TRACE_LINE(); auto inc = hot::make_lambda_deduced<__LamTag_0>(GEN, hot::caps(__self, __cell_n), [](auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& __cell_n = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& n = *__cell_n; n++; } });
+    HOT_TRACE_LINE(); auto inc = hot::make_lambda_deduced<__LamTag_0>(GEN, hot::caps(__self, __cell_n), []([[maybe_unused]] auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& __cell_n = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& n = *__cell_n; n++; } });
 #line 15 "shared_cell_v1.hot"
     HOT_TRACE_LINE(); inc();
 #line 16 "shared_cell_v1.hot"
@@ -434,7 +446,7 @@ void hot_state_Counter::count()
     HOT_TRACE_LINE(); __st->counted = n;
 #line 19 "shared_cell_v1.hot"
 }
-#line 438 "shared_cell_v1.hot.cpp"
+#line 450 "shared_cell_v1.hot.cpp"
 
 #line 22 "shared_cell_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Counter__share(Counter_Shell* __self)
@@ -444,7 +456,7 @@ void hot_state_Counter::count()
     return state_of(__self)->share();
 #line 22 "shared_cell_v1.hot"
 }
-#line 448 "shared_cell_v1.hot.cpp"
+#line 460 "shared_cell_v1.hot.cpp"
 #line 22 "shared_cell_v1.hot"
 void hot_state_Counter::share()
 #line 22 "shared_cell_v1.hot"
@@ -466,11 +478,11 @@ void hot_state_Counter::share()
 #line 23 "shared_cell_v1.hot"
     HOT_TRACE_FRAME("Counter.share", "shared_cell_v1.hot");
 #line 23 "shared_cell_v1.hot"
-    HOT_TRACE_LINE(); auto __cell_total = hot::make_cell(1); auto& total = *__cell_total;
+    HOT_TRACE_LINE(); auto __cell_total = hot::make_cell(1); [[maybe_unused]] auto& total = *__cell_total;
 #line 24 "shared_cell_v1.hot"
-    HOT_TRACE_LINE(); auto add = hot::make_lambda_deduced<__LamTag_1>(GEN, hot::caps(__self, __cell_total), [](auto& __c, int32_t k) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& __cell_total = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& total = *__cell_total; total += k; } });
+    HOT_TRACE_LINE(); auto add = hot::make_lambda_deduced<__LamTag_1>(GEN, hot::caps(__self, __cell_total), []([[maybe_unused]] auto& __c, int32_t k) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& __cell_total = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& total = *__cell_total; total += k; } });
 #line 25 "shared_cell_v1.hot"
-    HOT_TRACE_LINE(); auto read = hot::make_lambda_deduced<__LamTag_2>(GEN, hot::caps(__self, __cell_total), [](auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& __cell_total = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& total = *__cell_total; return total; } });
+    HOT_TRACE_LINE(); auto read = hot::make_lambda_deduced<__LamTag_2>(GEN, hot::caps(__self, __cell_total), []([[maybe_unused]] auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& __cell_total = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& total = *__cell_total; return total; } });
 #line 26 "shared_cell_v1.hot"
     HOT_TRACE_LINE(); add(4);
 #line 27 "shared_cell_v1.hot"
@@ -479,7 +491,7 @@ void hot_state_Counter::share()
     HOT_TRACE_LINE(); __st->shared = read() * 100 + total;
 #line 29 "shared_cell_v1.hot"
 }
-#line 483 "shared_cell_v1.hot.cpp"
+#line 495 "shared_cell_v1.hot.cpp"
 
 #line 32 "shared_cell_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Counter__bump(Counter_Shell* __self, int32_t p)
@@ -489,7 +501,7 @@ void hot_state_Counter::share()
     return state_of(__self)->bump(std::forward<int32_t>(p));
 #line 32 "shared_cell_v1.hot"
 }
-#line 493 "shared_cell_v1.hot.cpp"
+#line 505 "shared_cell_v1.hot.cpp"
 #line 32 "shared_cell_v1.hot"
 void hot_state_Counter::bump(int32_t p)
 #line 32 "shared_cell_v1.hot"
@@ -511,9 +523,9 @@ void hot_state_Counter::bump(int32_t p)
 #line 32 "shared_cell_v1.hot"
     HOT_TRACE_FRAME("Counter.bump", "shared_cell_v1.hot");
 #line 32 "shared_cell_v1.hot"
-    { HOT_TRACE_LINE(); auto __cell_p = hot::make_cell<int32_t>(p); int32_t& p = *__cell_p;
+    { HOT_TRACE_LINE(); auto __cell_p = hot::make_cell<int32_t>(p); [[maybe_unused]] int32_t& p = *__cell_p;
 #line 33 "shared_cell_v1.hot"
-        HOT_TRACE_LINE(); auto f = hot::make_lambda_deduced<__LamTag_3>(GEN, hot::caps(__self, __cell_p), [](auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& __cell_p = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& p = *__cell_p; p = p * 2; } });
+        HOT_TRACE_LINE(); auto f = hot::make_lambda_deduced<__LamTag_3>(GEN, hot::caps(__self, __cell_p), []([[maybe_unused]] auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& __cell_p = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& p = *__cell_p; p = p * 2; } });
 #line 34 "shared_cell_v1.hot"
         HOT_TRACE_LINE(); f();
 #line 35 "shared_cell_v1.hot"
@@ -524,7 +536,7 @@ void hot_state_Counter::bump(int32_t p)
     }
 #line 37 "shared_cell_v1.hot"
 }
-#line 528 "shared_cell_v1.hot.cpp"
+#line 540 "shared_cell_v1.hot.cpp"
 
 #line 40 "shared_cell_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Counter__arm(Counter_Shell* __self, World& w)
@@ -534,7 +546,7 @@ void hot_state_Counter::bump(int32_t p)
     return state_of(__self)->arm(std::forward<World&>(w));
 #line 40 "shared_cell_v1.hot"
 }
-#line 538 "shared_cell_v1.hot.cpp"
+#line 550 "shared_cell_v1.hot.cpp"
 #line 40 "shared_cell_v1.hot"
 void hot_state_Counter::arm(World& w)
 #line 40 "shared_cell_v1.hot"
@@ -556,9 +568,9 @@ void hot_state_Counter::arm(World& w)
 #line 41 "shared_cell_v1.hot"
     HOT_TRACE_FRAME("Counter.arm", "shared_cell_v1.hot");
 #line 41 "shared_cell_v1.hot"
-    HOT_TRACE_LINE(); auto __cell_n = hot::make_cell<int32_t>(0); int32_t& n = *__cell_n;
+    HOT_TRACE_LINE(); auto __cell_n = hot::make_cell<int32_t>(0); [[maybe_unused]] int32_t& n = *__cell_n;
 #line 42 "shared_cell_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(w).AddTimer(0.5f, hot::make_lambda_deduced<__LamTag_4>(GEN, hot::caps(__self, __cell_n), [](auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& __cell_n = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& n = *__cell_n;
+    HOT_TRACE_LINE(); hot::deref(w).AddTimer(0.5f, hot::make_lambda_deduced<__LamTag_4>(GEN, hot::caps(__self, __cell_n), []([[maybe_unused]] auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& __cell_n = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& n = *__cell_n;
 #line 43 "shared_cell_v1.hot"
             n += 1;
 #line 44 "shared_cell_v1.hot"
@@ -566,7 +578,7 @@ void hot_state_Counter::arm(World& w)
 #line 45 "shared_cell_v1.hot"
         } }));
 #line 46 "shared_cell_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(w).AddTimer(0.5f, hot::make_lambda_deduced<__LamTag_5>(GEN, hot::caps(__self, __cell_n), [](auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& __cell_n = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& n = *__cell_n;
+    HOT_TRACE_LINE(); hot::deref(w).AddTimer(0.5f, hot::make_lambda_deduced<__LamTag_5>(GEN, hot::caps(__self, __cell_n), []([[maybe_unused]] auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& __cell_n = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); auto& n = *__cell_n;
 #line 47 "shared_cell_v1.hot"
             n += 10;
 #line 48 "shared_cell_v1.hot"
@@ -575,7 +587,7 @@ void hot_state_Counter::arm(World& w)
         } }));
 #line 50 "shared_cell_v1.hot"
 }
-#line 579 "shared_cell_v1.hot.cpp"
+#line 591 "shared_cell_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

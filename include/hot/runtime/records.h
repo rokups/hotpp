@@ -58,7 +58,7 @@ template <class... P> inline const char* ctor_key()
 // const. Such a parameter does not accept a const argument of the host.
 template <class... P> constexpr uint64_t ctor_write_mask()
 {
-    uint64_t mask = 0, bit = 1;
+    [[maybe_unused]] uint64_t mask = 0, bit = 1;
     ((mask |= (std::is_reference_v<P> && !std::is_const_v<std::remove_reference_t<P>>) ? bit : 0, bit <<= 1), ...);
     return mask;
 }
@@ -101,6 +101,19 @@ struct StateBase
     HOT_EXPORT void* __removed();
 };
 using SlotFn = void (StateBase::*)();
+// Gives the slot "f" the member function pointer type "Pmf" of the call. The slot table keeps one
+// pointer type for all signatures. GCC warns about this cast, so the cast has its own guard.
+template <class Pmf> inline Pmf slot_cast(SlotFn f)
+{
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
+    return reinterpret_cast<Pmf>(f);
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+}
 // The signature key of a slot of a removed class. No typeid name has this text, so a call of the
 // slot detaches (a silent default result) and does not call StateBase::__removed (see call_script).
 inline constexpr const char* kRemovedSlotKey = "!removed";

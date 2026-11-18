@@ -56,7 +56,7 @@ TEST(ConstructorTranslation, ConstructorEmitsTheEntryPoints)
         "}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r, "static void Squad__ctor(Squad_Shell* __self, hot::In<std::string> label, int32_t extra)")) << r.cpp;
-    EXPECT_TRUE(has(r, "Squad__super_args(hot::In<std::string> label, int32_t extra)")) << r.cpp;
+    EXPECT_TRUE(has(r, "Squad__super_args([[maybe_unused]] hot::In<std::string> label, [[maybe_unused]] int32_t extra)")) << r.cpp;
     EXPECT_TRUE(has(r, "static Squad_Shell* Squad__new(hot::In<std::string> label, int32_t extra)")) << r.cpp;
     EXPECT_TRUE(has(r, "hot::construct_shell(&Squad_record")) << r.cpp;
     EXPECT_TRUE(has(r, "&Squad__construct")) << r.cpp;

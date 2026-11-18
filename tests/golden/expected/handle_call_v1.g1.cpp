@@ -358,6 +358,9 @@ static void Caller__init_last(void*, void* f) { using T = std::shared_ptr<Charm>
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static_assert(offsetof(hot_state_Caller, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Caller_fields[] = {
@@ -366,9 +369,11 @@ static const hot::FieldInfo Caller_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
-static const hot::StateLayout Caller_layout = {
+[[maybe_unused]] static const hot::StateLayout Caller_layout = {
     "hot_state_Caller", sizeof(hot_state_Caller), alignof(hot_state_Caller), 1, Caller_fields, true,
 };
 
@@ -395,7 +400,7 @@ HOT_HIDDEN static auto Caller__plan()
     return std::make_pair(Caller__super_args(), std::tuple<>());
 #line 10 "handle_call_v1.hot"
 }
-#line 399 "handle_call_v1.hot.cpp"
+#line 404 "handle_call_v1.hot.cpp"
 using Caller_SuperArgs = decltype(Caller__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -420,7 +425,7 @@ HOT_NODEBUG static hot::ShellBase* Caller__construct(void* mem, const char* key,
     return nullptr;
 #line 10 "handle_call_v1.hot"
 }
-#line 424 "handle_call_v1.hot.cpp"
+#line 429 "handle_call_v1.hot.cpp"
 
 static const char* const Caller__construct_keys[] = {typeid(Caller_SuperArgs).name(), nullptr};
 
@@ -436,7 +441,7 @@ HOT_HIDDEN static Caller_Shell* Caller__build([[maybe_unused]] bool __note)
     return __self;
 #line 10 "handle_call_v1.hot"
 }
-#line 440 "handle_call_v1.hot.cpp"
+#line 445 "handle_call_v1.hot.cpp"
 #line 10 "handle_call_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Caller_Shell* Caller__new()
 #line 10 "handle_call_v1.hot"
@@ -445,7 +450,7 @@ HOT_HIDDEN static Caller_Shell* Caller__build([[maybe_unused]] bool __note)
     return Caller__build(true);
 #line 10 "handle_call_v1.hot"
 }
-#line 449 "handle_call_v1.hot.cpp"
+#line 454 "handle_call_v1.hot.cpp"
 #line 10 "handle_call_v1.hot"
 template <int = 0>
 #line 10 "handle_call_v1.hot"
@@ -460,7 +465,7 @@ template <int = 0>
     return __h;
 #line 10 "handle_call_v1.hot"
 }
-#line 464 "handle_call_v1.hot.cpp"
+#line 469 "handle_call_v1.hot.cpp"
 
 static void* Caller___native__thunk(hot::ShellCore* __s)
 {
@@ -468,6 +473,10 @@ static void* Caller___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Caller_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Caller::__fwd_Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Caller::__fwd_TakeDamage_f),
@@ -481,6 +490,9 @@ static const hot::SlotFn Caller_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Caller::__fwd_Make),
     reinterpret_cast<hot::SlotFn>(&hot_state_Caller::__fwd_Borrow),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Caller_record = {
     "Caller", 0, Caller_slots, SLOT_COUNT, &Caller_layout, nullptr,
@@ -501,7 +513,7 @@ HOT_NODEBUG static hot::Instance Caller_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "handle_call_v1.hot"
 }
-#line 505 "handle_call_v1.hot.cpp"
+#line 517 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
 HOT_NODEBUG static hot::Instance Caller__make_0([[maybe_unused]] void** __a)
@@ -511,7 +523,7 @@ HOT_NODEBUG static hot::Instance Caller__make_0([[maybe_unused]] void** __a)
     return Caller_create();
 #line 10 "handle_call_v1.hot"
 }
-#line 515 "handle_call_v1.hot.cpp"
+#line 527 "handle_call_v1.hot.cpp"
 
 static const hot::CtorEntry Caller__constructors[] = {
     {hot::ctor_key<>(), &Caller__make_0, hot::ctor_write_mask<>()},
@@ -546,7 +558,7 @@ int hot_state_Caller::WearRaw(Charm* __c)
     HOT_TRACE_LINE(); return 1;
 #line 16 "handle_call_v1.hot"
 }
-#line 550 "handle_call_v1.hot.cpp"
+#line 562 "handle_call_v1.hot.cpp"
 
 #line 19 "handle_call_v1.hot"
 int hot_state_Caller::WearBlade(Blade* __b)
@@ -614,7 +626,7 @@ int hot_state_Caller::WearBlade(Blade* __b)
     HOT_TRACE_LINE(); return Mixed(hot::star(local));
 #line 41 "handle_call_v1.hot"
 }
-#line 618 "handle_call_v1.hot.cpp"
+#line 630 "handle_call_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

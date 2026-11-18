@@ -1,0 +1,31 @@
+// The generated C++ of this script builds with -Wall -Wextra -Werror (integration/aot). The
+// script has no unused name. Each part triggers one path of the generator that once warned.
+using "Actor.h";
+using <string>;
+
+// A value struct has a layout table that nothing else uses.
+struct WarnPoint {
+    int x = 0;
+    int y = 0;
+}
+
+// Slots, a field table and a base(...) call. The constructor body does not use "tag".
+class WarnShape : Actor {
+    int sides = 3;
+    WarnPoint origin;
+
+    WarnShape(int tag) : base(std.string("shape") + std.to_string(tag)) {
+        this.sides = 4;
+    }
+
+    virtual int Sides() { return this.sides; }
+
+    // A lambda without a capture, and a local that only a lambda uses.
+    int Run(int step) {
+        int total = 0;
+        auto add = (int k) => { total += k; };
+        add(step);
+        auto none = () => { return 7; };
+        return total + none();
+    }
+}

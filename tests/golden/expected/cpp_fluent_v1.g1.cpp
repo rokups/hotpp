@@ -165,6 +165,9 @@ static void Counter__init_n(void*, void* f) { using T = int; new (f) T(0); }
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static_assert(offsetof(hot_state_Counter, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Counter_fields[] = {
@@ -173,9 +176,11 @@ static const hot::FieldInfo Counter_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
-static const hot::StateLayout Counter_layout = {
+[[maybe_unused]] static const hot::StateLayout Counter_layout = {
     "hot_state_Counter", sizeof(hot_state_Counter), alignof(hot_state_Counter), 1, Counter_fields, true,
 };
 
@@ -216,7 +221,7 @@ HOT_HIDDEN static void Counter__ctor_chain(Counter_Shell* __self, [[maybe_unused
     Counter__ctor(__self);
 #line 9 "cpp_fluent_v1.cpp"
 }
-#line 220 "cpp_fluent_v1.cpp.cpp"
+#line 225 "cpp_fluent_v1.cpp.cpp"
 using Counter_SuperArgs = decltype(Counter__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -241,7 +246,7 @@ HOT_NODEBUG static hot::ShellBase* Counter__construct(void* mem, const char* key
     return nullptr;
 #line 6 "cpp_fluent_v1.cpp"
 }
-#line 245 "cpp_fluent_v1.cpp.cpp"
+#line 250 "cpp_fluent_v1.cpp.cpp"
 
 static const char* const Counter__construct_keys[] = {typeid(Counter_SuperArgs).name(), nullptr};
 
@@ -269,7 +274,7 @@ HOT_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note)
     return __self;
 #line 9 "cpp_fluent_v1.cpp"
 }
-#line 273 "cpp_fluent_v1.cpp.cpp"
+#line 278 "cpp_fluent_v1.cpp.cpp"
 #line 9 "cpp_fluent_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static Counter_Shell* Counter__new()
 #line 9 "cpp_fluent_v1.cpp"
@@ -278,7 +283,7 @@ HOT_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note)
     return Counter__build(true);
 #line 9 "cpp_fluent_v1.cpp"
 }
-#line 282 "cpp_fluent_v1.cpp.cpp"
+#line 287 "cpp_fluent_v1.cpp.cpp"
 #line 9 "cpp_fluent_v1.cpp"
 template <int = 0>
 #line 9 "cpp_fluent_v1.cpp"
@@ -295,7 +300,7 @@ template <int = 0>
     return __h;
 #line 9 "cpp_fluent_v1.cpp"
 }
-#line 299 "cpp_fluent_v1.cpp.cpp"
+#line 304 "cpp_fluent_v1.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -307,7 +312,7 @@ HOT_NODEBUG static hot::ShellCore* Counter__new_default()
     return Counter__build(false);
 #line 9 "cpp_fluent_v1.cpp"
 }
-#line 311 "cpp_fluent_v1.cpp.cpp"
+#line 316 "cpp_fluent_v1.cpp.cpp"
 
 [[maybe_unused]] HOT_HIDDEN static void Counter__ctor_export0(hot::ShellBase* __s)
 {
@@ -325,7 +330,7 @@ static Counter & Counter__add__thunk(Actor* __a, int v)
     return hot::call<Counter &(Actor*, int)>(__self, Counter_SLOT_add, v);
 #line 12 "cpp_fluent_v1.cpp"
 }
-#line 329 "cpp_fluent_v1.cpp.cpp"
+#line 334 "cpp_fluent_v1.cpp.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -339,7 +344,7 @@ static const Counter & Counter__peek__thunk(Actor* __a)
     return hot::call<const Counter &(Actor*)>(__self, Counter_SLOT_peek);
 #line 18 "cpp_fluent_v1.cpp"
 }
-#line 343 "cpp_fluent_v1.cpp.cpp"
+#line 348 "cpp_fluent_v1.cpp.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -353,7 +358,7 @@ static Counter * Counter__self__thunk(Actor* __a)
     return hot::call<Counter *(Actor*)>(__self, Counter_SLOT_self);
 #line 19 "cpp_fluent_v1.cpp"
 }
-#line 357 "cpp_fluent_v1.cpp.cpp"
+#line 362 "cpp_fluent_v1.cpp.cpp"
 
 static void* Counter___native__thunk(hot::ShellCore* __s)
 {
@@ -361,6 +366,10 @@ static void* Counter___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Counter_slots[Counter_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Counter::__fwd_Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Counter::__fwd_TakeDamage_f),
@@ -369,6 +378,9 @@ static const hot::SlotFn Counter_slots[Counter_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Counter::peek),
     reinterpret_cast<hot::SlotFn>(&hot_state_Counter::self),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Counter_record = {
     "Counter", 0, Counter_slots, Counter_SLOT_COUNT, &Counter_layout, nullptr,
@@ -403,7 +415,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return {static_cast<Actor*>(p), p};
 #line 6 "cpp_fluent_v1.cpp"
 }
-#line 407 "cpp_fluent_v1.cpp.cpp"
+#line 419 "cpp_fluent_v1.cpp.cpp"
 
 #line 9 "cpp_fluent_v1.cpp"
 HOT_NODEBUG static hot::Instance Counter__make_0([[maybe_unused]] void** __a)
@@ -417,7 +429,7 @@ HOT_NODEBUG static hot::Instance Counter__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 9 "cpp_fluent_v1.cpp"
 }
-#line 421 "cpp_fluent_v1.cpp.cpp"
+#line 433 "cpp_fluent_v1.cpp.cpp"
 
 static const hot::CtorEntry Counter__constructors[] = {
     {hot::ctor_key<>(), &Counter__make_0, hot::ctor_write_mask<>()},
@@ -431,10 +443,13 @@ struct HotModule {
 
 #line 25 "cpp_fluent_v1.cpp"
 static void HotModule__init_counter(void*, void* f) { using T = Counter *; new (f) T(nullptr); }
-#line 435 "cpp_fluent_v1.cpp.cpp"
+#line 447 "cpp_fluent_v1.cpp.cpp"
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static const hot::FieldInfo HotModule_fields[] = {
     {"counter", nullptr, hot::type_key<Counter *>(), offsetof(HotModule, counter), sizeof(Counter *),
@@ -442,8 +457,10 @@ static const hot::FieldInfo HotModule_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
-static const hot::StateLayout HotModule_layout = {
+[[maybe_unused]] static const hot::StateLayout HotModule_layout = {
     "HotModule", sizeof(HotModule), alignof(HotModule), 1, HotModule_fields,
 };
 
@@ -473,7 +490,7 @@ struct Builder_Shell final : Actor, hot::ShellBase {
     }
 #line 27 "cpp_fluent_v1.cpp"
     ~Builder_Shell() override { hot::destroy_state(this); }
-#line 477 "cpp_fluent_v1.cpp.cpp"
+#line 494 "cpp_fluent_v1.cpp.cpp"
 #line 27 "cpp_fluent_v1.cpp"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 27 "cpp_fluent_v1.cpp"
@@ -482,7 +499,7 @@ struct Builder_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0);
 #line 27 "cpp_fluent_v1.cpp"
     }
-#line 486 "cpp_fluent_v1.cpp.cpp"
+#line 503 "cpp_fluent_v1.cpp.cpp"
 #line 27 "cpp_fluent_v1.cpp"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 27 "cpp_fluent_v1.cpp"
@@ -491,7 +508,7 @@ struct Builder_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0, a1);
 #line 27 "cpp_fluent_v1.cpp"
     }
-#line 495 "cpp_fluent_v1.cpp.cpp"
+#line 512 "cpp_fluent_v1.cpp.cpp"
 
 #line 27 "cpp_fluent_v1.cpp"
     void Tick(float a0) override
@@ -501,7 +518,7 @@ struct Builder_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Builder_SLOT_Tick, a0);
 #line 27 "cpp_fluent_v1.cpp"
     }
-#line 505 "cpp_fluent_v1.cpp.cpp"
+#line 522 "cpp_fluent_v1.cpp.cpp"
 
 #line 27 "cpp_fluent_v1.cpp"
     void TakeDamage(float a0) override
@@ -511,7 +528,7 @@ struct Builder_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Builder_SLOT_TakeDamage_f, a0);
 #line 27 "cpp_fluent_v1.cpp"
     }
-#line 515 "cpp_fluent_v1.cpp.cpp"
+#line 532 "cpp_fluent_v1.cpp.cpp"
 
 #line 27 "cpp_fluent_v1.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -521,7 +538,7 @@ struct Builder_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, Builder_SLOT_TakeDamage_Af, a0, a1);
 #line 27 "cpp_fluent_v1.cpp"
     }
-#line 525 "cpp_fluent_v1.cpp.cpp"
+#line 542 "cpp_fluent_v1.cpp.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -543,7 +560,7 @@ struct hot_state_Builder {
         return static_cast<Builder_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 27 "cpp_fluent_v1.cpp"
     }
-#line 547 "cpp_fluent_v1.cpp.cpp"
+#line 564 "cpp_fluent_v1.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 27 "cpp_fluent_v1.cpp"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -553,22 +570,25 @@ struct hot_state_Builder {
         return static_cast<Builder_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 27 "cpp_fluent_v1.cpp"
     }
-#line 557 "cpp_fluent_v1.cpp.cpp"
+#line 574 "cpp_fluent_v1.cpp.cpp"
 };
 
 #line 52 "cpp_fluent_v1.cpp"
 static void Builder__init_same_ref(void*, void* f) { using T = int; new (f) T(0); }
-#line 562 "cpp_fluent_v1.cpp.cpp"
+#line 579 "cpp_fluent_v1.cpp.cpp"
 #line 53 "cpp_fluent_v1.cpp"
 static void Builder__init_same_ptr(void*, void* f) { using T = int; new (f) T(0); }
-#line 565 "cpp_fluent_v1.cpp.cpp"
+#line 582 "cpp_fluent_v1.cpp.cpp"
 #line 54 "cpp_fluent_v1.cpp"
 static void Builder__init_total(void*, void* f) { using T = int; new (f) T(0); }
-#line 568 "cpp_fluent_v1.cpp.cpp"
+#line 585 "cpp_fluent_v1.cpp.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static_assert(offsetof(hot_state_Builder, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Builder_fields[] = {
@@ -581,9 +601,11 @@ static const hot::FieldInfo Builder_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
-static const hot::StateLayout Builder_layout = {
+[[maybe_unused]] static const hot::StateLayout Builder_layout = {
     "hot_state_Builder", sizeof(hot_state_Builder), alignof(hot_state_Builder), 3, Builder_fields, true,
 };
 
@@ -622,7 +644,7 @@ HOT_HIDDEN static void Builder__ctor_chain(Builder_Shell* __self, [[maybe_unused
     Builder__ctor(__self);
 #line 30 "cpp_fluent_v1.cpp"
 }
-#line 626 "cpp_fluent_v1.cpp.cpp"
+#line 648 "cpp_fluent_v1.cpp.cpp"
 using Builder_SuperArgs = decltype(Builder__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -647,7 +669,7 @@ HOT_NODEBUG static hot::ShellBase* Builder__construct(void* mem, const char* key
     return nullptr;
 #line 27 "cpp_fluent_v1.cpp"
 }
-#line 651 "cpp_fluent_v1.cpp.cpp"
+#line 673 "cpp_fluent_v1.cpp.cpp"
 
 static const char* const Builder__construct_keys[] = {typeid(Builder_SuperArgs).name(), nullptr};
 
@@ -675,7 +697,7 @@ HOT_HIDDEN static Builder_Shell* Builder__build([[maybe_unused]] bool __note)
     return __self;
 #line 30 "cpp_fluent_v1.cpp"
 }
-#line 679 "cpp_fluent_v1.cpp.cpp"
+#line 701 "cpp_fluent_v1.cpp.cpp"
 #line 30 "cpp_fluent_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static Builder_Shell* Builder__new()
 #line 30 "cpp_fluent_v1.cpp"
@@ -684,7 +706,7 @@ HOT_HIDDEN static Builder_Shell* Builder__build([[maybe_unused]] bool __note)
     return Builder__build(true);
 #line 30 "cpp_fluent_v1.cpp"
 }
-#line 688 "cpp_fluent_v1.cpp.cpp"
+#line 710 "cpp_fluent_v1.cpp.cpp"
 #line 30 "cpp_fluent_v1.cpp"
 template <int = 0>
 #line 30 "cpp_fluent_v1.cpp"
@@ -701,7 +723,7 @@ template <int = 0>
     return __h;
 #line 30 "cpp_fluent_v1.cpp"
 }
-#line 705 "cpp_fluent_v1.cpp.cpp"
+#line 727 "cpp_fluent_v1.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -713,7 +735,7 @@ HOT_NODEBUG static hot::ShellCore* Builder__new_default()
     return Builder__build(false);
 #line 30 "cpp_fluent_v1.cpp"
 }
-#line 717 "cpp_fluent_v1.cpp.cpp"
+#line 739 "cpp_fluent_v1.cpp.cpp"
 
 #line 32 "cpp_fluent_v1.cpp"
 static void Builder__dtor_slot(hot::ShellCore* s)
@@ -723,7 +745,7 @@ static void Builder__dtor_slot(hot::ShellCore* s)
     Builder__dtor(static_cast<Builder_Shell*>(s));
 #line 32 "cpp_fluent_v1.cpp"
 }
-#line 727 "cpp_fluent_v1.cpp.cpp"
+#line 749 "cpp_fluent_v1.cpp.cpp"
 
 [[maybe_unused]] HOT_HIDDEN static void Builder__ctor_export0(hot::ShellBase* __s)
 {
@@ -739,11 +761,18 @@ static void* Builder___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Builder_slots[Builder_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Builder::Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Builder::__fwd_TakeDamage_f),
     reinterpret_cast<hot::SlotFn>(&hot_state_Builder::__fwd_TakeDamage_Af),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Builder_record = {
     "Builder", 0, Builder_slots, Builder_SLOT_COUNT, &Builder_layout, nullptr,
@@ -778,7 +807,7 @@ HOT_NODEBUG static hot::Instance Builder_create()
     return {static_cast<Actor*>(p), p};
 #line 27 "cpp_fluent_v1.cpp"
 }
-#line 782 "cpp_fluent_v1.cpp.cpp"
+#line 811 "cpp_fluent_v1.cpp.cpp"
 
 #line 30 "cpp_fluent_v1.cpp"
 HOT_NODEBUG static hot::Instance Builder__make_0([[maybe_unused]] void** __a)
@@ -792,7 +821,7 @@ HOT_NODEBUG static hot::Instance Builder__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 30 "cpp_fluent_v1.cpp"
 }
-#line 796 "cpp_fluent_v1.cpp.cpp"
+#line 825 "cpp_fluent_v1.cpp.cpp"
 
 static const hot::CtorEntry Builder__constructors[] = {
     {hot::ctor_key<>(), &Builder__make_0, hot::ctor_write_mask<>()},
@@ -807,7 +836,7 @@ static const hot::CtorEntry Builder__constructors[] = {
     return state_of(__self)->ctor();
 #line 9 "cpp_fluent_v1.cpp"
 }
-#line 811 "cpp_fluent_v1.cpp.cpp"
+#line 840 "cpp_fluent_v1.cpp.cpp"
 #line 9 "cpp_fluent_v1.cpp"
 void hot_state_Counter::ctor()
 #line 9 "cpp_fluent_v1.cpp"
@@ -832,7 +861,7 @@ void hot_state_Counter::ctor()
 
 #line 9 "cpp_fluent_v1.cpp"
 }
-#line 836 "cpp_fluent_v1.cpp.cpp"
+#line 865 "cpp_fluent_v1.cpp.cpp"
 
 #line 12 "cpp_fluent_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static Counter & Counter__add(Counter_Shell* __self, int v)
@@ -842,7 +871,7 @@ void hot_state_Counter::ctor()
     return state_of(__self)->add(std::forward<int>(v));
 #line 12 "cpp_fluent_v1.cpp"
 }
-#line 846 "cpp_fluent_v1.cpp.cpp"
+#line 875 "cpp_fluent_v1.cpp.cpp"
 #line 12 "cpp_fluent_v1.cpp"
 Counter & hot_state_Counter::add(int v)
 #line 12 "cpp_fluent_v1.cpp"
@@ -870,7 +899,7 @@ Counter & hot_state_Counter::add(int v)
     
 #line 16 "cpp_fluent_v1.cpp"
 }
-#line 874 "cpp_fluent_v1.cpp.cpp"
+#line 903 "cpp_fluent_v1.cpp.cpp"
 
 #line 18 "cpp_fluent_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static const Counter & Counter__peek(Counter_Shell* __self)
@@ -880,7 +909,7 @@ Counter & hot_state_Counter::add(int v)
     return state_of(__self)->peek();
 #line 18 "cpp_fluent_v1.cpp"
 }
-#line 884 "cpp_fluent_v1.cpp.cpp"
+#line 913 "cpp_fluent_v1.cpp.cpp"
 #line 18 "cpp_fluent_v1.cpp"
 const Counter & hot_state_Counter::peek()
 #line 18 "cpp_fluent_v1.cpp"
@@ -905,7 +934,7 @@ const Counter & hot_state_Counter::peek()
  return *__self; 
 #line 18 "cpp_fluent_v1.cpp"
 }
-#line 909 "cpp_fluent_v1.cpp.cpp"
+#line 938 "cpp_fluent_v1.cpp.cpp"
 
 #line 19 "cpp_fluent_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static Counter * Counter__self(Counter_Shell* __self)
@@ -915,7 +944,7 @@ const Counter & hot_state_Counter::peek()
     return state_of(__self)->self();
 #line 19 "cpp_fluent_v1.cpp"
 }
-#line 919 "cpp_fluent_v1.cpp.cpp"
+#line 948 "cpp_fluent_v1.cpp.cpp"
 #line 19 "cpp_fluent_v1.cpp"
 Counter * hot_state_Counter::self()
 #line 19 "cpp_fluent_v1.cpp"
@@ -940,7 +969,7 @@ Counter * hot_state_Counter::self()
  return __self; 
 #line 19 "cpp_fluent_v1.cpp"
 }
-#line 944 "cpp_fluent_v1.cpp.cpp"
+#line 973 "cpp_fluent_v1.cpp.cpp"
 
 #line 30 "cpp_fluent_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Builder__ctor(Builder_Shell* __self)
@@ -950,7 +979,7 @@ Counter * hot_state_Counter::self()
     return state_of(__self)->ctor();
 #line 30 "cpp_fluent_v1.cpp"
 }
-#line 954 "cpp_fluent_v1.cpp.cpp"
+#line 983 "cpp_fluent_v1.cpp.cpp"
 #line 30 "cpp_fluent_v1.cpp"
 void hot_state_Builder::ctor()
 #line 30 "cpp_fluent_v1.cpp"
@@ -975,7 +1004,7 @@ void hot_state_Builder::ctor()
 
 #line 30 "cpp_fluent_v1.cpp"
 }
-#line 979 "cpp_fluent_v1.cpp.cpp"
+#line 1008 "cpp_fluent_v1.cpp.cpp"
 
 #line 32 "cpp_fluent_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Builder__dtor(Builder_Shell* __self)
@@ -985,7 +1014,7 @@ void hot_state_Builder::ctor()
     return state_of(__self)->dtor();
 #line 32 "cpp_fluent_v1.cpp"
 }
-#line 989 "cpp_fluent_v1.cpp.cpp"
+#line 1018 "cpp_fluent_v1.cpp.cpp"
 #line 32 "cpp_fluent_v1.cpp"
 void hot_state_Builder::dtor()
 #line 32 "cpp_fluent_v1.cpp"
@@ -1011,7 +1040,7 @@ void hot_state_Builder::dtor()
     
 #line 36 "cpp_fluent_v1.cpp"
 }
-#line 1015 "cpp_fluent_v1.cpp.cpp"
+#line 1044 "cpp_fluent_v1.cpp.cpp"
 
 #line 38 "cpp_fluent_v1.cpp"
 void hot_state_Builder::Tick(float dt)
@@ -1048,7 +1077,7 @@ void hot_state_Builder::Tick(float dt)
     
 #line 50 "cpp_fluent_v1.cpp"
 }
-#line 1052 "cpp_fluent_v1.cpp.cpp"
+#line 1081 "cpp_fluent_v1.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

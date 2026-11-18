@@ -159,6 +159,9 @@ static void Ov__init_kinds(void*, void* f) { using T = int32_t; new (f) T(0); }
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static_assert(offsetof(hot_state_Ov, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Ov_fields[] = {
@@ -171,9 +174,11 @@ static const hot::FieldInfo Ov_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
-static const hot::StateLayout Ov_layout = {
+[[maybe_unused]] static const hot::StateLayout Ov_layout = {
     "hot_state_Ov", sizeof(hot_state_Ov), alignof(hot_state_Ov), 3, Ov_fields, true,
 };
 
@@ -254,7 +259,7 @@ HOT_HIDDEN static auto Ov__plan()
     return std::make_pair(Ov__super_args(), std::tuple<>());
 #line 9 "method_overload_v1.hot"
 }
-#line 258 "method_overload_v1.hot.cpp"
+#line 263 "method_overload_v1.hot.cpp"
 using Ov_SuperArgs = decltype(Ov__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -279,7 +284,7 @@ HOT_NODEBUG static hot::ShellBase* Ov__construct(void* mem, const char* key, con
     return nullptr;
 #line 9 "method_overload_v1.hot"
 }
-#line 283 "method_overload_v1.hot.cpp"
+#line 288 "method_overload_v1.hot.cpp"
 
 static const char* const Ov__construct_keys[] = {typeid(Ov_SuperArgs).name(), nullptr};
 
@@ -295,7 +300,7 @@ HOT_HIDDEN static Ov_Shell* Ov__build([[maybe_unused]] bool __note)
     return __self;
 #line 9 "method_overload_v1.hot"
 }
-#line 299 "method_overload_v1.hot.cpp"
+#line 304 "method_overload_v1.hot.cpp"
 #line 9 "method_overload_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Ov_Shell* Ov__new()
 #line 9 "method_overload_v1.hot"
@@ -304,7 +309,7 @@ HOT_HIDDEN static Ov_Shell* Ov__build([[maybe_unused]] bool __note)
     return Ov__build(true);
 #line 9 "method_overload_v1.hot"
 }
-#line 308 "method_overload_v1.hot.cpp"
+#line 313 "method_overload_v1.hot.cpp"
 #line 9 "method_overload_v1.hot"
 template <int = 0>
 #line 9 "method_overload_v1.hot"
@@ -319,7 +324,7 @@ template <int = 0>
     return __h;
 #line 9 "method_overload_v1.hot"
 }
-#line 323 "method_overload_v1.hot.cpp"
+#line 328 "method_overload_v1.hot.cpp"
 
 [[maybe_unused]] HOT_HIDDEN static void Ov__base_Tick(Actor* a, float a0)
 {
@@ -348,7 +353,7 @@ static int32_t Ov__Score__ov_int32_Ut__thunk(Actor* __a, int32_t x)
     return hot::call<int32_t(Actor*, int32_t)>(__self, Ov_SLOT_Score__ov_int32_Ut, x);
 #line 14 "method_overload_v1.hot"
 }
-#line 352 "method_overload_v1.hot.cpp"
+#line 357 "method_overload_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -362,7 +367,7 @@ static int32_t Ov__Score__ov_float__thunk(Actor* __a, float x)
     return hot::call<int32_t(Actor*, float)>(__self, Ov_SLOT_Score__ov_float, x);
 #line 18 "method_overload_v1.hot"
 }
-#line 366 "method_overload_v1.hot.cpp"
+#line 371 "method_overload_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -376,7 +381,7 @@ static int32_t Ov__Kind__ov_int32_Ut__thunk(Actor* __a, int32_t x)
     return hot::call<int32_t(Actor*, int32_t)>(__self, Ov_SLOT_Kind__ov_int32_Ut, x);
 #line 22 "method_overload_v1.hot"
 }
-#line 380 "method_overload_v1.hot.cpp"
+#line 385 "method_overload_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -390,7 +395,7 @@ static int32_t Ov__Kind__ov_std_Sstring__thunk(Actor* __a, hot::In<std::string> 
     return hot::call<int32_t(Actor*, hot::In<std::string>)>(__self, Ov_SLOT_Kind__ov_std_Sstring, s);
 #line 26 "method_overload_v1.hot"
 }
-#line 394 "method_overload_v1.hot.cpp"
+#line 399 "method_overload_v1.hot.cpp"
 
 static void* Ov___native__thunk(hot::ShellCore* __s)
 {
@@ -398,6 +403,10 @@ static void* Ov___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Ov_slots[Ov_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Ov::Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Ov::__fwd_TakeDamage_f),
@@ -407,6 +416,9 @@ static const hot::SlotFn Ov_slots[Ov_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Ov::Kind__ov_int32_Ut),
     reinterpret_cast<hot::SlotFn>(&hot_state_Ov::Kind__ov_std_Sstring),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Ov_record = {
     "Ov", 0, Ov_slots, Ov_SLOT_COUNT, &Ov_layout, nullptr,
@@ -427,7 +439,7 @@ HOT_NODEBUG static hot::Instance Ov_create()
     return {static_cast<Actor*>(p), p};
 #line 9 "method_overload_v1.hot"
 }
-#line 431 "method_overload_v1.hot.cpp"
+#line 443 "method_overload_v1.hot.cpp"
 
 #line 9 "method_overload_v1.hot"
 HOT_NODEBUG static hot::Instance Ov__make_0([[maybe_unused]] void** __a)
@@ -437,7 +449,7 @@ HOT_NODEBUG static hot::Instance Ov__make_0([[maybe_unused]] void** __a)
     return Ov_create();
 #line 9 "method_overload_v1.hot"
 }
-#line 441 "method_overload_v1.hot.cpp"
+#line 453 "method_overload_v1.hot.cpp"
 
 static const hot::CtorEntry Ov__constructors[] = {
     {hot::ctor_key<>(), &Ov__make_0, hot::ctor_write_mask<>()},
@@ -469,7 +481,7 @@ struct OvChild_Shell final : Ov_Shell {
         hot::init_state(this, &OvChild_record);
 #line 38 "method_overload_v1.hot"
     }
-#line 473 "method_overload_v1.hot.cpp"
+#line 485 "method_overload_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -482,6 +494,9 @@ struct hot_state_OvChild : hot_state_Ov {
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static_assert(offsetof(hot_state_OvChild, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo OvChild_fields[] = {
@@ -494,9 +509,11 @@ static const hot::FieldInfo OvChild_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
-static const hot::StateLayout OvChild_layout = {
+[[maybe_unused]] static const hot::StateLayout OvChild_layout = {
     "hot_state_OvChild", sizeof(hot_state_OvChild), alignof(hot_state_OvChild), 3, OvChild_fields, true,
 };
 
@@ -540,7 +557,7 @@ HOT_HIDDEN static auto OvChild__plan()
     return std::make_pair(std::make_tuple(std::string("OvChild")), std::make_pair(std::move(__up), std::move(__pp.second)));
 #line 38 "method_overload_v1.hot"
 }
-#line 544 "method_overload_v1.hot.cpp"
+#line 561 "method_overload_v1.hot.cpp"
 using OvChild_SuperArgs = decltype(OvChild__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -565,7 +582,7 @@ HOT_NODEBUG static hot::ShellBase* OvChild__construct(void* mem, const char* key
     return nullptr;
 #line 38 "method_overload_v1.hot"
 }
-#line 569 "method_overload_v1.hot.cpp"
+#line 586 "method_overload_v1.hot.cpp"
 
 static const char* const OvChild__construct_keys[] = {typeid(OvChild_SuperArgs).name(), nullptr};
 
@@ -581,7 +598,7 @@ HOT_HIDDEN static OvChild_Shell* OvChild__build([[maybe_unused]] bool __note)
     return __self;
 #line 38 "method_overload_v1.hot"
 }
-#line 585 "method_overload_v1.hot.cpp"
+#line 602 "method_overload_v1.hot.cpp"
 #line 38 "method_overload_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static OvChild_Shell* OvChild__new()
 #line 38 "method_overload_v1.hot"
@@ -590,7 +607,7 @@ HOT_HIDDEN static OvChild_Shell* OvChild__build([[maybe_unused]] bool __note)
     return OvChild__build(true);
 #line 38 "method_overload_v1.hot"
 }
-#line 594 "method_overload_v1.hot.cpp"
+#line 611 "method_overload_v1.hot.cpp"
 #line 38 "method_overload_v1.hot"
 template <int = 0>
 #line 38 "method_overload_v1.hot"
@@ -605,7 +622,7 @@ template <int = 0>
     return __h;
 #line 38 "method_overload_v1.hot"
 }
-#line 609 "method_overload_v1.hot.cpp"
+#line 626 "method_overload_v1.hot.cpp"
 
 static void* OvChild___native__thunk(hot::ShellCore* __s)
 {
@@ -613,6 +630,10 @@ static void* OvChild___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn OvChild_slots[OvChild_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Ov::Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Ov::__fwd_TakeDamage_f),
@@ -622,6 +643,9 @@ static const hot::SlotFn OvChild_slots[OvChild_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_OvChild::Kind__ov_int32_Ut),
     reinterpret_cast<hot::SlotFn>(&hot_state_Ov::Kind__ov_std_Sstring),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord OvChild_record = {
     "OvChild", 0, OvChild_slots, OvChild_SLOT_COUNT, &OvChild_layout, &Ov_record,
@@ -642,7 +666,7 @@ HOT_NODEBUG static hot::Instance OvChild_create()
     return {static_cast<Actor*>(p), p};
 #line 38 "method_overload_v1.hot"
 }
-#line 646 "method_overload_v1.hot.cpp"
+#line 670 "method_overload_v1.hot.cpp"
 
 #line 38 "method_overload_v1.hot"
 HOT_NODEBUG static hot::Instance OvChild__make_0([[maybe_unused]] void** __a)
@@ -652,7 +676,7 @@ HOT_NODEBUG static hot::Instance OvChild__make_0([[maybe_unused]] void** __a)
     return OvChild_create();
 #line 38 "method_overload_v1.hot"
 }
-#line 656 "method_overload_v1.hot.cpp"
+#line 680 "method_overload_v1.hot.cpp"
 
 static const hot::CtorEntry OvChild__constructors[] = {
     {hot::ctor_key<>(), &OvChild__make_0, hot::ctor_write_mask<>()},
@@ -667,7 +691,7 @@ static const hot::CtorEntry OvChild__constructors[] = {
     return state_of(__self)->Score__ov_int32_Ut(std::forward<int32_t>(x));
 #line 14 "method_overload_v1.hot"
 }
-#line 671 "method_overload_v1.hot.cpp"
+#line 695 "method_overload_v1.hot.cpp"
 #line 14 "method_overload_v1.hot"
 int32_t hot_state_Ov::Score__ov_int32_Ut(int32_t const x)
 #line 14 "method_overload_v1.hot"
@@ -692,7 +716,7 @@ int32_t hot_state_Ov::Score__ov_int32_Ut(int32_t const x)
     HOT_TRACE_LINE(); return x * 2;
 #line 16 "method_overload_v1.hot"
 }
-#line 696 "method_overload_v1.hot.cpp"
+#line 720 "method_overload_v1.hot.cpp"
 
 #line 18 "method_overload_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Ov__Score__ov_float(Ov_Shell* __self, float x)
@@ -702,7 +726,7 @@ int32_t hot_state_Ov::Score__ov_int32_Ut(int32_t const x)
     return state_of(__self)->Score__ov_float(std::forward<float>(x));
 #line 18 "method_overload_v1.hot"
 }
-#line 706 "method_overload_v1.hot.cpp"
+#line 730 "method_overload_v1.hot.cpp"
 #line 18 "method_overload_v1.hot"
 int32_t hot_state_Ov::Score__ov_float(float const x)
 #line 18 "method_overload_v1.hot"
@@ -727,7 +751,7 @@ int32_t hot_state_Ov::Score__ov_float(float const x)
     HOT_TRACE_LINE(); return 1000;
 #line 20 "method_overload_v1.hot"
 }
-#line 731 "method_overload_v1.hot.cpp"
+#line 755 "method_overload_v1.hot.cpp"
 
 #line 22 "method_overload_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Ov__Kind__ov_int32_Ut(Ov_Shell* __self, int32_t x)
@@ -737,7 +761,7 @@ int32_t hot_state_Ov::Score__ov_float(float const x)
     return state_of(__self)->Kind__ov_int32_Ut(std::forward<int32_t>(x));
 #line 22 "method_overload_v1.hot"
 }
-#line 741 "method_overload_v1.hot.cpp"
+#line 765 "method_overload_v1.hot.cpp"
 #line 22 "method_overload_v1.hot"
 int32_t hot_state_Ov::Kind__ov_int32_Ut(int32_t x)
 #line 22 "method_overload_v1.hot"
@@ -762,7 +786,7 @@ int32_t hot_state_Ov::Kind__ov_int32_Ut(int32_t x)
     HOT_TRACE_LINE(); return 1;
 #line 24 "method_overload_v1.hot"
 }
-#line 766 "method_overload_v1.hot.cpp"
+#line 790 "method_overload_v1.hot.cpp"
 
 #line 26 "method_overload_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Ov__Kind__ov_std_Sstring(Ov_Shell* __self, hot::In<std::string> s)
@@ -772,7 +796,7 @@ int32_t hot_state_Ov::Kind__ov_int32_Ut(int32_t x)
     return state_of(__self)->Kind__ov_std_Sstring(std::forward<hot::In<std::string>>(s));
 #line 26 "method_overload_v1.hot"
 }
-#line 776 "method_overload_v1.hot.cpp"
+#line 800 "method_overload_v1.hot.cpp"
 #line 26 "method_overload_v1.hot"
 int32_t hot_state_Ov::Kind__ov_std_Sstring(hot::In<std::string> s)
 #line 26 "method_overload_v1.hot"
@@ -797,7 +821,7 @@ int32_t hot_state_Ov::Kind__ov_std_Sstring(hot::In<std::string> s)
     HOT_TRACE_LINE(); return 2;
 #line 28 "method_overload_v1.hot"
 }
-#line 801 "method_overload_v1.hot.cpp"
+#line 825 "method_overload_v1.hot.cpp"
 
 #line 30 "method_overload_v1.hot"
 void hot_state_Ov::Tick(float dt)
@@ -829,7 +853,7 @@ void hot_state_Ov::Tick(float dt)
     HOT_TRACE_LINE(); __st->kinds = Ov__Kind(__self, 1) + Ov__Kind(__self, "a");
 #line 35 "method_overload_v1.hot"
 }
-#line 833 "method_overload_v1.hot.cpp"
+#line 857 "method_overload_v1.hot.cpp"
 
 #line 39 "method_overload_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t OvChild__Kind__ov_int32_Ut(OvChild_Shell* __self, int32_t x)
@@ -839,7 +863,7 @@ void hot_state_Ov::Tick(float dt)
     return state_of(__self)->Kind__ov_int32_Ut(std::forward<int32_t>(x));
 #line 39 "method_overload_v1.hot"
 }
-#line 843 "method_overload_v1.hot.cpp"
+#line 867 "method_overload_v1.hot.cpp"
 #line 39 "method_overload_v1.hot"
 int32_t hot_state_OvChild::Kind__ov_int32_Ut(int32_t x)
 #line 39 "method_overload_v1.hot"
@@ -864,7 +888,7 @@ int32_t hot_state_OvChild::Kind__ov_int32_Ut(int32_t x)
     HOT_TRACE_LINE(); return 10;
 #line 41 "method_overload_v1.hot"
 }
-#line 868 "method_overload_v1.hot.cpp"
+#line 892 "method_overload_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

@@ -344,7 +344,7 @@ struct ExprPrinter
     void operator()(const LambdaExpr& n) const
     {
         e.put(n.boxed ? "[]" : "[=" + n.captures + "]", n.pos);
-        e.put(n.boxed ? "(auto& __c" : "(");
+        e.put(n.boxed ? "([[maybe_unused]] auto& __c" : "(");
         for (size_t i = 0; i < n.params.size(); ++i)
         {
             if (i || n.boxed)
@@ -456,7 +456,7 @@ void decl(const VarDeclStmt& d, Emitter& e)
             emit_expr(*d.init, e);
         e.put(");");
         e.space();
-        e.put(local_type(d.type, true, false), d.pos);
+        e.put("[[maybe_unused]] " + local_type(d.type, true, false), d.pos);
         e.space();
         e.put_mapped(d.name, d.name_pos);
         e.space();
