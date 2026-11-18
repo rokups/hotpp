@@ -2245,7 +2245,7 @@ TEST(LanguageServerDegraded, TableAnswersForAValidMethodWithASyntaxErrorInAnothe
     EXPECT_EQ(lines, (std::set<std::string>{"2", "3", "4"})) << r.dump();
 }
 
-TEST(LanguageServerDegraded, FallbackAnswersInsideTheBrokenStatement)
+TEST(LanguageServerDegraded, NoAnswerInsideTheBrokenStatement)
 {
     REQUIRE_CLANGD();
     DegradedSession s("", kDegradedField);
@@ -2255,6 +2255,29 @@ TEST(LanguageServerDegraded, FallbackAnswersInsideTheBrokenStatement)
     const json r = s.ask("textDocument/references", 5, 34);
     ASSERT_TRUE(r.contains("result") && r["result"].is_array()) << r.dump();
     EXPECT_TRUE(r["result"].empty()) << r.dump();
+}
+
+TEST(LanguageServerDegraded, FallbackGivesAStaticMemberInsideTheBrokenStatement)
+{
+    REQUIRE_CLANGD();
+    std::string main = kDegradedMain;
+    const std::string broken = "{ return 1 +; }";
+    main.replace(main.find(broken), broken.size(), "{ return Config.kMax +; }");
+    DegradedSession s(kDegradedLib, main);
+    // "Config.kMax" on line 8: the table has no entry, the text scan gives the declaration.
+    const json r = s.ask("textDocument/definition", 8, 41);
+    EXPECT_EQ(first_place(r), "main.hot:3:28") << r.dump();
+}
+
+TEST(LanguageServerDegraded, HoverOfAStaticMemberUsesTheTable)
+{
+    REQUIRE_CLANGD();
+    DegradedSession s(kDegradedLib, kDegradedMain);
+    // "Config.kMax" on line 7: "kMax" is at character 56.
+    const json r = s.ask("textDocument/hover", 7, 57);
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    EXPECT_NE(r["result"]["contents"]["value"].get<std::string>().find("static const int kMax = 4"), std::string::npos)
+        << r.dump();
 }
 
 // Disabled, measured: the table gives no place for "g.Fire" of the imported class Gun when
