@@ -8265,7 +8265,7 @@ TEST(LanguageServerRename, ClassInTemplateArgumentAndCastIsRenamed)
                               "    int Go(Holder* h) {\n"
                               "        if (h == null) return 1;\n"
                               "        $Spawn a = h.Find<$Spawn>();\n"
-                              "        Team t = (($Spawn)a).GetTeam();\n"
+                              "        Team t = (($Spawn)a)!.GetTeam();\n"
                               "        return 0;\n"
                               "    }\n"
                               "}\n";
