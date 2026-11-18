@@ -317,7 +317,13 @@ void ClangdProcess::reader_loop()
     cv_.notify_all();
 }
 
-json ClangdProcess::request(const std::string& method, json params, int timeout_ms)
+void ClangdProcess::wake_cancel()
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    cv_.notify_all();
+}
+
+json ClangdProcess::request(const std::string& method, json params, int timeout_ms, const std::atomic<bool>* cancel)
 {
     const int64_t id = next_id_++;
     json msg = {{"jsonrpc", "2.0"}, {"id", id}, {"method", method}};
@@ -328,8 +334,14 @@ json ClangdProcess::request(const std::string& method, json params, int timeout_
     std::unique_lock<std::mutex> lock(mutex_);
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
     const std::function<void()> poll = wait_poll;
+    bool cancel_sent = false;
     while (!responses_.count(id))
     {
+        if (cancel && !cancel_sent && cancel->load())
+        {
+            cancel_sent = true;
+            send({{"jsonrpc", "2.0"}, {"method", "$/cancelRequest"}, {"params", {{"id", id}}}});
+        }
         if (poll)
         {
             // The poll can throw to cancel the wait. The late response is then dropped.

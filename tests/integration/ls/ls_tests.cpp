@@ -11131,6 +11131,79 @@ TEST(LanguageServer, ThisCacheGivesTheSameCompletionAsNoCache)
     }
 }
 
+// HOT-53: the speculative clangd call. A request with a memo of the last probe text sends the memo text with the new
+// word to clangd while the real text translates. The answer is used only for an equal real text.
+namespace
+{
+
+// The script of this_script. The local "counter" has the name "local" (7 characters: the word keeps its offset).
+// "spaces" trailing blanks after the word make a new text, so no cache of the completion hits, and the generated text stays.
+std::vector<std::string> spec_names(Session& s, int version, const std::string& word, int spaces, const std::string& local)
+{
+    std::string text = this_script("Base", word + std::string(static_cast<size_t>(spaces), ' '), 1);
+    text.replace(text.find("counter"), 7, local);
+    s.client->change(s.uri, version, text);
+    s.client->request("hot/indexStats", json::object()); // the update of the dirty document
+    const json r = s.client->request(
+        "textDocument/completion", doc_pos(s.uri, 5, 8 + static_cast<int>(word.size())));
+    std::vector<std::string> out;
+    EXPECT_TRUE(r.contains("result")) << r.dump();
+    if (r.contains("result"))
+        for (const json& i : r["result"].value("items", json::array()))
+            out.push_back(i.value("insertText", i.value("label", "")));
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+} // namespace
+
+// An equal text gives the same items as the serial path (HOT_LS_SPECULATE=0). The fail path (the text before the word
+// changed between two requests) gives the items of the new text: no stale list.
+TEST(LanguageServer, SpeculationGivesTheSameCompletionAsSerial)
+{
+    REQUIRE_CLANGD();
+    std::vector<std::string> answers[2][5];
+    for (int spec = 0; spec < 2; ++spec)
+    {
+        const EnvGuard env("HOT_LS_SPECULATE", spec ? "1" : "0");
+        Session s(true, this_script("Base", "Mo", 1));
+        write_file(s.dir.path() / "base.hot", kThisBase);
+        answers[spec][0] = spec_names(s, 2, "Mo", 0, "natural"); // first request: no memo
+        answers[spec][1] = spec_names(s, 3, "Na", 1, "natural"); // equal text with the new word
+        answers[spec][2] = spec_names(s, 4, "Mo", 2, "natural");
+        const int used = this_stat(s, "holeSpecUsed");
+        const int dropped_before = this_stat(s, "holeSpecDropped");
+        answers[spec][3] = spec_names(s, 5, "Na", 3, "nautilu"); // fail path: another local before the word
+        answers[spec][4] = spec_names(s, 6, "Na", 4, "natural"); // fail path: the old local again
+        EXPECT_TRUE(contains_name(answers[spec][0], "Move")) << spec;
+        EXPECT_TRUE(contains_name(answers[spec][1], "Name")) << spec;
+        EXPECT_TRUE(contains_name(answers[spec][1], "natural")) << spec;
+        EXPECT_FALSE(contains_name(answers[spec][1], "Move")) << spec;
+        EXPECT_TRUE(contains_name(answers[spec][3], "nautilu")) << spec;
+        EXPECT_FALSE(contains_name(answers[spec][3], "natural")) << spec;
+        EXPECT_TRUE(contains_name(answers[spec][4], "natural")) << spec;
+        EXPECT_FALSE(contains_name(answers[spec][4], "nautilu")) << spec;
+        if (spec)
+        {
+            EXPECT_GE(used, 1);
+            EXPECT_GE(this_stat(s, "holeSpecDropped"), dropped_before + 2);
+        }
+        else
+        {
+            EXPECT_EQ(used, 0);
+            EXPECT_EQ(this_stat(s, "holeSpecDropped"), 0);
+        }
+    }
+    for (int i = 0; i < 5; ++i)
+    {
+        std::vector<std::string> diff;
+        std::set_symmetric_difference(answers[0][i].begin(), answers[0][i].end(), answers[1][i].begin(),
+            answers[1][i].end(), std::back_inserter(diff));
+        EXPECT_TRUE(diff.empty()) << "request " << i << ": " << json(diff).dump().substr(0, 200) << " serial has "
+            << answers[0][i].size() << " speculation has " << answers[1][i].size();
+    }
+}
+
 // HOT-53: the stamp with the memo is the same as the stamp of the full probe, before and after a header change. A
 // new header that shadows an earlier directory entry counts only after the watched event.
 TEST(LanguageServer, HeaderStampMemoEqualsFullProbe)
