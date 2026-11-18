@@ -3567,6 +3567,8 @@ json Server::on_completion(const Doc& d, const json& p)
     // comes back after. The last answer is reused while only the prefix grows: clangd filters by
     // the prefix, so an answer that was not cut by the limit holds the longer prefix too.
     phase.reset();
+    std::optional<PhaseTimer> pre_round; // HOT-53: the work from the facts to the first probe
+    pre_round.emplace("pre round");
     bool incomplete = false;
     if (clangd_ && clangd_->running())
     {
@@ -3765,6 +3767,7 @@ json Server::on_completion(const Doc& d, const json& p)
             }
             size_t shell_key = 0; // the hash of the shell header of the first probe that has a place
             std::vector<std::string> shell_includes; // the includes of that shell header
+            pre_round.reset();
             for (size_t text_index = 0; text_index < texts.size(); ++text_index)
             {
                 const std::string& patched = texts[text_index];
@@ -3922,8 +3925,11 @@ json Server::on_completion(const Doc& d, const json& p)
                 bool stamp_ok = false;
                 size_t stamp = 0;
                 if (this_cache && !this_bad && shell_key)
+                {
+                    PhaseTimer pt("this stamp");
                     stamp = header_stamp(shell_includes, translate_options(d).include_dirs,
                         path_utf8(fs::path(utf8_path(d.path)).parent_path()), stamp_ok);
+                }
                 if (this_cache && !this_bad && shell_key && stamp_ok && steady_ms() >= this_hold_until_ms_
                     && !d.shell_unconfirmed)
                 {
