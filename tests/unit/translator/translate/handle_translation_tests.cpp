@@ -292,3 +292,48 @@ TEST(HandleTranslation, ThisCannotBindToAPointerReferenceParameter)
     EXPECT_TRUE(has(r.diagnostics, "'this' cannot bind to the reference parameter 'h' of the script class 'Foo'"))
         << r.diagnostics;
 }
+
+namespace
+{
+const char* const kGetStub = "[native, handle(\"std::shared_ptr<$T>\"), raw_pointer(\"Get\")] class Weapon;\n";
+
+hotc::TranslateResult get_stub_translate(const std::string& members, const std::string& prelude_stub = "")
+{
+    static TempDir* dir = nullptr;
+    if (!dir)
+        dir = new TempDir();
+    write_file(dir->path() / "w.h", kWeaponHeader);
+    hotc::TranslateOptions o = temp_options(*dir, weapon_script(prelude_stub.empty() ? kGetStub : kWeaponStub, members));
+    if (!prelude_stub.empty())
+        o.preludes.push_back({"get.prelude", prelude_stub});
+    return hotc::translate(o);
+}
+} // namespace
+
+TEST(HandleTranslation, RawPointerCastOfAWeakHandleUsesTheAccessor)
+{
+    const hotc::TranslateResult r =
+        get_stub_translate("    void Take(Weapon* q) { }\n    [weak] Weapon w;\n    void Run() { this.Take((Weapon*)this.w); }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "hot::lock(")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, ").Get())")) << r.cpp;
+}
+
+TEST(HandleTranslation, RawPointerCastOfARefPointerHasNoAccessor)
+{
+    const hotc::TranslateResult r = get_stub_translate("    void Take(Weapon* q) { }\n    void Run(ref Weapon* p) { this.Take((Weapon*)p); }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "hot::cast_ptr<Weapon*>(p)")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, ".Get()")) << r.cpp;
+}
+
+TEST(HandleTranslation, ANewHandleInALaterStubDropsTheOldAccessor)
+{
+    // The prelude states raw_pointer("Get"). The script stub states another handle form without it.
+    const hotc::TranslateResult r = get_stub_translate(
+        "    void Take(Weapon* q) { }\n    void Run() { Weapon h = null; this.Take((Weapon*)h); }\n",
+        "[native, handle(\"Other<$T>\"), raw_pointer(\"Get\")] class Weapon;\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "h.get()")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "h.Get()")) << r.cpp;
+}

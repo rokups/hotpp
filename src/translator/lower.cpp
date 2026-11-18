@@ -117,6 +117,16 @@ static std::string object_type(const std::string& type)
     return t;
 }
 
+// True for the type "T*&" (a reference to a pointer).
+static bool is_ptr_ref_type(const std::string& type)
+{
+    const size_t e = type.find_last_not_of(" \t");
+    if (e == std::string::npos || type[e] != '&' || (e > 0 && type[e - 1] == '&') || e == 0)
+        return false;
+    const size_t p = type.find_last_not_of(" \t", e - 1);
+    return p != std::string::npos && type[p] == '*';
+}
+
 void add_params(RCtx& cx, const std::vector<ast::Param>& params)
 {
     for (const ast::Param& p : params)
@@ -131,6 +141,10 @@ void add_params(RCtx& cx, const std::vector<ast::Param>& params)
         else
             cx.value_locals.erase(p.name);
         cx.cell_locals.erase(p.name);
+        if (is_ptr_ref_type(p.script_type.empty() ? p.type : p.script_type))
+            cx.ptr_ref_locals.insert(p.name);
+        else
+            cx.ptr_ref_locals.erase(p.name);
         const std::string t = object_type(p.script_type.empty() ? p.type : p.script_type);
         if (t.empty())
             cx.local_type.erase(p.name);
@@ -1313,6 +1327,10 @@ struct Lowerer
         cx.weak_locals.erase(name); // a "[weak]" local adds the name again after this call
         cx.value_locals.erase(name); // a box local adds the name again after this call
         cx.cell_locals.erase(name); // a shared local adds the name again after this call
+        if (is_ptr_ref_type(type))
+            cx.ptr_ref_locals.insert(name);
+        else
+            cx.ptr_ref_locals.erase(name);
         if (type.empty())
             cx.local_type.erase(name);
         else
@@ -3831,7 +3849,10 @@ struct Lowerer
                     std::string obj = object_type(ft);
                     if (!obj.empty() && obj[0] == '$')
                         obj.erase(0, 1);
-                    if (cx.types && !obj.empty() && !is_weak_handle(*u->operand))
+                    // A pointer, also "T*&", has no accessor. A weak read is "hot::lock(w)": a strong handle.
+                    const auto* nm = std::get_if<NameExpr>(&u->operand->v);
+                    const bool ptr_ref = nm && nm->parts.size() == 1 && cx.ptr_ref_locals.count(nm->parts[0]) != 0;
+                    if (cx.types && !obj.empty() && ft.find('*') == std::string::npos && !ptr_ref)
                         accessor = cx.types->raw_pointer_member(obj);
                 }
                 expr(u->operand);

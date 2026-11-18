@@ -118,11 +118,10 @@ std::string merge_stub(ast::Stub& m, const ast::Stub& s)
         m.handle = s.handle;
         m.intrusive_add = s.intrusive_add;
         m.intrusive_release = s.intrusive_release;
+        if (value || s.handle != old_handle || intrusive)
+            m.raw_pointer.clear(); // the accessor belongs to its handle
         if (value)
-        {
             m.factory.clear();
-            m.raw_pointer.clear();
-        }
         if (!handle || s.handle.empty())
             m.weak_handle.clear();
         else if (had_weak && s.handle != old_handle && !states(s, "weak_handle"))
