@@ -3851,7 +3851,8 @@ struct Lowerer
                         obj.erase(0, 1);
                     // A pointer, also "T*&", has no accessor. A weak read is "hot::lock(w)": a strong handle.
                     const auto* nm = std::get_if<NameExpr>(&u->operand->v);
-                    const bool ptr_ref = nm && nm->parts.size() == 1 && cx.ptr_ref_locals.count(nm->parts[0]) != 0;
+                    const bool ptr_ref = nm && nm->parts.size() == 1 && cx.locals.count(nm->parts[0]) != 0
+                        && cx.ptr_ref_locals.count(nm->parts[0]) != 0;
                     if (cx.types && !obj.empty() && ft.find('*') == std::string::npos && !ptr_ref)
                         accessor = cx.types->raw_pointer_member(obj);
                 }
@@ -4832,7 +4833,7 @@ struct Lowerer
     struct ScopeSave
     {
         RCtx& cx;
-        std::set<std::string> locals, weak_locals, value_locals, cell_locals;
+        std::set<std::string> locals, weak_locals, value_locals, cell_locals, ptr_ref_locals;
         std::map<std::string, std::string> local_type, path_names;
         std::map<std::string, std::pair<const Expr*, std::string>> path_exprs;
         explicit ScopeSave(RCtx& c)
@@ -4841,6 +4842,7 @@ struct Lowerer
             , weak_locals(c.weak_locals)
             , value_locals(c.value_locals)
             , cell_locals(c.cell_locals)
+            , ptr_ref_locals(c.ptr_ref_locals)
             , local_type(c.local_type)
             , path_names(c.path_names)
             , path_exprs(c.path_exprs)
@@ -4852,6 +4854,7 @@ struct Lowerer
             cx.weak_locals = std::move(weak_locals);
             cx.value_locals = std::move(value_locals);
             cx.cell_locals = std::move(cell_locals);
+            cx.ptr_ref_locals = std::move(ptr_ref_locals);
             cx.local_type = std::move(local_type);
             cx.path_names = std::move(path_names);
             cx.path_exprs = std::move(path_exprs);

@@ -337,3 +337,11 @@ TEST(HandleTranslation, ANewHandleInALaterStubDropsTheOldAccessor)
     EXPECT_TRUE(has(r.cpp, "h.get()")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "h.Get()")) << r.cpp;
 }
+
+TEST(HandleTranslation, RefPointerLocalOfAnInnerScopeDoesNotHideTheField)
+{
+    const hotc::TranslateResult r = get_stub_translate(
+        "    Weapon w;\n    void Take(Weapon* q) { }\n    void Run(Weapon* q) { { ref Weapon* w = q; } this.Take((Weapon*)w); }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, ".Get())")) << r.cpp;
+}
