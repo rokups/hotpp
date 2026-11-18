@@ -11163,6 +11163,74 @@ TEST(LanguageServer, ThisCacheDropsTheMembersWhenTheImportedBaseChanges)
         EXPECT_GE(this_stat(s, "thisAnalyzes"), 2);
 }
 
+// HOT-52: after a change of the imported base and the hold, the first final reply has the new members. The reply
+// is the same 3 s later. HOT_LS_STALE_RUNS sets the number of runs (default 1).
+TEST(LanguageServer, FirstFinalReplyAfterTheHoldHasTheNewMembers)
+{
+    REQUIRE_CLANGD();
+    const EnvGuard env("HOT_LS_SPLIT_SHELL", "1");
+    const EnvGuard stable("HOT_LS_STABLE_SHELL", "1");
+    const char* runs_env = std::getenv("HOT_LS_STALE_RUNS");
+    const int runs = runs_env ? std::max(1, std::atoi(runs_env)) : 1;
+    auto script = [](int n) {
+        return "using \"base.hot\";\nclass Kid : Base {\n    void run() {\n        this.\n    }\n}\n// " + std::to_string(n)
+            + "\n";
+    };
+    auto base = [](const char* member) {
+        return std::string("using \"Actor.h\";\nclass Base : Actor {\n    float ") + member + " = 1.0;\n}\n";
+    };
+    int stale = 0;
+    for (int run = 0; run < runs; ++run)
+    {
+        TempDir shells;
+        const EnvGuard dir_env("HOT_LS_SHELL_DIR", shells.path().string());
+        Session s(true, script(0));
+        write_file(s.dir.path() / "base.hot", base("Old"));
+        int version = 2;
+        // Ask until the reply is final. The names are the sorted insert texts.
+        auto final_names = [&](std::vector<std::string>& out) {
+            for (int i = 0; i < 300; ++i)
+            {
+                s.client->change(s.uri, ++version, script(version));
+                const json r = s.client->request("textDocument/completion", doc_pos(s.uri, 3, 13), 20000);
+                if (r.contains("result") && r["result"].is_object() && !r["result"].value("isIncomplete", false))
+                {
+                    out.clear();
+                    for (const json& it : r["result"].value("items", json::array()))
+                        out.push_back(it.value("insertText", it.value("label", "")));
+                    return true;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            }
+            return false;
+        };
+        std::vector<std::string> l1, first, second;
+        ASSERT_TRUE(final_names(l1));
+        if (!contains_name(l1, "Old"))
+        {
+            // The first list has the old member only after the import is read: ask once more.
+            ASSERT_TRUE(final_names(l1));
+        }
+        ASSERT_TRUE(contains_name(l1, "Old"));
+        write_file(s.dir.path() / "base.hot", base("New"));
+        s.client->change(s.uri, ++version, script(version));
+        std::this_thread::sleep_for(std::chrono::milliseconds(hot::ls::kShellHoldMs + 500));
+        ASSERT_TRUE(final_names(first));
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+        ASSERT_TRUE(final_names(second));
+        std::sort(first.begin(), first.end());
+        std::sort(second.begin(), second.end());
+        const bool bad = !contains_name(first, "New") || contains_name(first, "Old");
+        if (bad)
+            ++stale;
+        std::cerr << "STALE_RUN " << run << " first_stale=" << (bad ? 1 : 0) << " same_later=" << (first == second ? 1 : 0)
+                  << "\n";
+        EXPECT_FALSE(bad) << "run " << run << ": the first final reply is stale";
+        EXPECT_TRUE(contains_name(second, "New") && !contains_name(second, "Old")) << "run " << run;
+    }
+    std::cerr << "STALE_TOTAL " << stale << " of " << runs << "\n";
+}
+
 // A change of the bases of the class shows in the next completion.
 TEST(LanguageServer, ThisCacheDropsTheMembersWhenTheBasesOfTheClassChange)
 {
