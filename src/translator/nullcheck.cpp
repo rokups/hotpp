@@ -461,7 +461,7 @@ private:
     }
 
     // True when the cast of "from" to the handle type "to" ("$C") is a cast to the same class or to
-    // a script base class. The lowering writes hot::nonnull for it. Any other handle cast can give null.
+    // a script base class. Any other handle cast can give null.
     bool handle_unwrap(const Val& from, const std::string& to) const
     {
         if (from.type.empty() || from.type[0] != '$' || to[0] != '$')
@@ -476,11 +476,10 @@ private:
         return false;
     }
 
-    // The value of the cast "(T)v" of a pointer or a handle. A cast to the same pointer type and a
-    // cast of a handle to the same class or a base class is a checked unwrap: it throws on null, so the
-    // result is not null. A "const" cast keeps the value. A pointer cast keeps the null state. A handle
-    // cast to another class (a downcast) can give null.
-    Val cast(const Val& ov, const std::string& ct, const Expr& operand)
+    // The value of the cast "(T)v" of a pointer or a handle. A cast never throws and never narrows.
+    // A pointer cast, a cast of a handle to the same class and an up-cast keep the null state of the
+    // operand. A handle cast to another class (a down-cast) can give null.
+    Val cast(const Val& ov, const std::string& ct)
     {
         const std::string to = strip_type(ct);
         if (!ov.ptr || to.empty() || !ptr_like(to) || to.back() == '?')
@@ -495,15 +494,9 @@ private:
         Val v = from_script(to);
         v.ptr = true;
         const bool is_handle = to[0] == '$';
-        const bool unwrap = is_handle ? handle_unwrap(ov, to) : (to.back() == '*' && !ov.cnst && no_spaces(strip_type(ov.type)) == no_spaces(to));
-        if (unwrap)
-        {
-            v.nonnull = true;
-            if (const int id = narrowable(operand); id >= 0)
-                st_.nn.insert(id); // the cast threw when the name was null
-        }
-        else
-            v.nonnull = !is_handle && ov.nonnull;
+        // A same-type cast and an up-cast keep the null state of the operand. A down-cast can give null.
+        const bool keep = is_handle ? handle_unwrap(ov, to) : true;
+        v.nonnull = keep && ov.nonnull;
         return v;
     }
 
@@ -686,7 +679,7 @@ private:
         if (!u.postfix && u.op == "*")
             require(ov, u.pos ? u.pos : pos_of(*u.operand));
         if (const std::string ct = cast_type(u); !ct.empty())
-            return cast(ov, ct, *u.operand);
+            return cast(ov, ct);
         return {};
     }
 

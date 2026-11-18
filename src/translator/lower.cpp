@@ -231,13 +231,11 @@ struct Lowerer
             diag.add_line(0, msg);
     }
 
-    // Temporary, removed in HOT-58 S9: a cast that tests for null warns. The text asks for "x!".
-    // Set it to false to switch the lint off. It never changes the generated code.
-    static constexpr bool hot58_cast_lint = true;
-    void hot58_cast_warn(uint32_t pos)
+    // A cast to the type of its operand does nothing. The warning does not change the generated code.
+    void warn_same_cast(uint32_t pos)
     {
-        if (hot58_cast_lint && cx.map)
-            diag.warn(pos, *cx.map, "HOT-58: this cast tests for null; write x!");
+        if (cx.map)
+            diag.warn(pos, *cx.map, "a cast to the same type has no effect");
     }
 
     ExprP raw(std::string text, uint32_t pos) { return make_expr(RawExpr{std::move(text), pos}); }
@@ -3766,10 +3764,9 @@ struct Lowerer
                 std::string from = u->operand ? object_type(type_of(*u->operand)) : std::string();
                 if (!from.empty() && from[0] == '$')
                     from.erase(0, 1);
-                // An upcast and a cast to the same type cannot fail: "static_pointer_cast". Every other
-                // cast is checked with the class record, as "as" is: a failed cast gives a null handle.
-                // A cast to the same type or to a base type is a checked unwrap (hot::nonnull): a null
-                // handle throws hot::NullReference and the result is not null.
+                // A cast to the same type is the operand. An upcast cannot fail: "static_pointer_cast".
+                // Every other cast is checked with the class record, as "as" is: a failed cast gives a
+                // null handle. A cast never throws: a null handle stays null.
                 bool upcast = false;
                 for (const ClassDef* d = class_named(from); d && !upcast; d = class_named(d->base))
                     upcast = d->name == to;
@@ -3788,21 +3785,11 @@ struct Lowerer
                             c.args.push_back(std::move(u->operand));
                             c.args.push_back(raw("\"" + to + "\"", u->pos));
                         }
-                        else if (same || upcast)
+                        else if (same)
                         {
-                            hot58_cast_warn(u->pos);
-                            // The cast of an upcast keeps the handle conversion, after the null test.
-                            c.callee = raw("hot::nonnull", u->pos);
-                            c.args.push_back(std::move(u->operand));
-                            if (!same)
-                            {
-                                CallExpr conv;
-                                conv.pos = u->pos;
-                                conv.callee = raw(std::string(sp, std::strlen(sp) - std::strlen("shared_ptr<")) + "static_pointer_cast<"
-                                        + h.substr(std::strlen(sp), h.size() - std::strlen(sp) - 1) + ">", u->pos);
-                                conv.args.push_back(make_expr(std::move(c)));
-                                c = std::move(conv);
-                            }
+                            warn_same_cast(u->pos);
+                            e = std::move(u->operand);
+                            return;
                         }
                         else
                         {
@@ -3814,38 +3801,32 @@ struct Lowerer
                         return;
                     }
                 // Another handle (an intrusive pointer, or a raw pointer): the same checks, then the C cast.
-                if (checked || same || upcast)
+                if (same)
+                {
+                    warn_same_cast(u->pos);
+                    e = std::move(u->operand);
+                    return;
+                }
+                if (checked)
                 {
                     CallExpr c;
                     c.pos = u->pos;
-                    if (checked)
-                    {
-                        c.callee = raw("hot::as_script<" + to + "_Shell>", u->pos);
-                        c.args.push_back(std::move(u->operand));
-                        c.args.push_back(raw("\"" + to + "\"", u->pos));
-                    }
-                    else
-                    {
-                        hot58_cast_warn(u->pos);
-                        c.callee = raw("hot::nonnull", u->pos);
-                        c.args.push_back(std::move(u->operand));
-                    }
+                    c.callee = raw("hot::as_script<" + to + "_Shell>", u->pos);
+                    c.args.push_back(std::move(u->operand));
+                    c.args.push_back(raw("\"" + to + "\"", u->pos));
                     u->operand = make_expr(std::move(c));
                 }
                 return;
             }
             if (!u->postfix && is_ptr_cast(u->op))
-            { // "(T*)p": a checked unwrap when "p" has the type "T*" (the C++ compiler decides), else the C cast
+            { // "(T*)p": a cast that never throws (hot::cast_ptr)
                 if (u->operand)
-                { // temporary, removed in HOT-58 S9: warn when the operand is not a raw pointer of another type
-                    const std::string to_t = u->op.substr(1, u->op.size() - 2);
+                {
                     std::string ft = type_of(*u->operand);
                     while (!ft.empty() && ft.back() == ' ')
                         ft.pop_back();
-                    const bool raw_other = !ft.empty() && ft.back() == '*' && ft != to_t
-                        && !(cx.types && cx.types->is_handle(ft));
-                    if (!raw_other || is_weak_handle(*u->operand))
-                        hot58_cast_warn(u->pos);
+                    if (!ft.empty() && ft == u->op.substr(1, u->op.size() - 2))
+                        warn_same_cast(u->pos);
                 }
                 expr(u->operand);
                 CallExpr c;
@@ -3854,6 +3835,14 @@ struct Lowerer
                 c.args.push_back(std::move(u->operand));
                 e = make_expr(std::move(c));
                 return;
+            }
+            if (!u->postfix && u->operand && u->op.size() > 2 && u->op.front() == '(' && u->op.back() == ')')
+            { // "(T)v" of a value of the type "T"
+                std::string ft = type_of(*u->operand);
+                while (!ft.empty() && ft.back() == ' ')
+                    ft.pop_back();
+                if (!ft.empty() && ft == u->op.substr(1, u->op.size() - 2))
+                    warn_same_cast(u->pos);
             }
             if (!u->postfix && u->operand && is_int_cast(u->op))
             { // "(int)f": a float out of the range gives the nearest limit, NaN gives 0
