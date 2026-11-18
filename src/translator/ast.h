@@ -928,6 +928,11 @@ struct ModuleAttrs
     // The attributes [lib("name")]: the standard-like library namespaces, for example "eastl". A
     // script names their types with the namespace ("eastl.vector<int>"), next to "std.vector<int>".
     std::vector<std::string> libs;
+    // The attribute [fn_invoker("MACRO")]: the unit registers "<name>@call" for each public free
+    // function without overloads. The pointer is MACRO(hot_fn_<name>).
+    bool has_fn_invoker = false;
+    std::string fn_invoker;
+    uint32_t fn_invoker_pos = 0; // the position of the attribute "fn_invoker"
 };
 
 // A script enum: "enum Name : type { A, B = 5 }". It becomes a C++ "enum class". The
