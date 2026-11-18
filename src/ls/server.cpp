@@ -1517,7 +1517,18 @@ private:
     // include. Only the files that the include dirs hold. A new header at an earlier place changes the stamp too. False
     // in "ok": the graph is too big, so the caller does not use the cache. No watcher event is needed.
     size_t header_stamp(const std::vector<std::string>& names, const std::vector<std::string>& dirs,
-        const std::string& doc_dir, bool& ok);
+        const std::string& doc_dir, bool& ok, bool use_memo = true);
+    // HOT-53: the found path of an include and its time and size, by the name and the including directory. A warm
+    // call stats only the found files. The memo is empty after drop_this_cache. A change of the include dirs or a
+    // missing file or a changed stat makes the full probe. An empty path: no directory held the header.
+    struct StampMemo
+    {
+        std::string path;
+        long long time = 0;
+        std::uintmax_t size = 0;
+    };
+    std::map<std::string, StampMemo> stamp_memo_; // under this_mutex_
+    size_t stamp_memo_dirs_ = 0; // the hash of the include dirs of the memo
     std::mutex this_mutex_;
     std::map<std::string, ThisEntry> this_cache_;
     std::atomic<int> this_analyzes_{0}, this_hits_{0};
@@ -1532,6 +1543,7 @@ private:
     {
         std::lock_guard<std::mutex> lock(this_mutex_);
         this_cache_.clear();
+        stamp_memo_.clear();
     }
     // The translations of the server (all analyze calls) and their total time (hot/indexStats).
     mutable std::atomic<int> translations_{0};
@@ -1878,13 +1890,21 @@ static std::vector<std::string> include_names(const std::string& text)
 }
 
 size_t Server::header_stamp(const std::vector<std::string>& names, const std::vector<std::string>& dirs,
-    const std::string& doc_dir, bool& ok)
+    const std::string& doc_dir, bool& ok, bool use_memo)
 {
     constexpr size_t kMaxHeaders = 4000;
     ok = true;
     size_t h = 0;
     const auto mix = [&](const std::string& x) { h = h * 1000003u ^ std::hash<std::string>()(x); };
     std::lock_guard<std::mutex> lock(this_mutex_);
+    size_t dirs_hash = 0;
+    for (const std::string& d : dirs)
+        dirs_hash = dirs_hash * 1000003u ^ std::hash<std::string>()(d);
+    if (dirs_hash != stamp_memo_dirs_)
+    {
+        stamp_memo_.clear();
+        stamp_memo_dirs_ = dirs_hash;
+    }
     std::set<std::string> seen;
     // The name starts with '"' (a quoted include) or '<'. The place of the including file comes first for '"'.
     std::vector<std::pair<std::string, std::string>> work; // name, directory of the including file
@@ -1896,17 +1916,51 @@ size_t Server::header_stamp(const std::vector<std::string>& names, const std::ve
         work.pop_back();
         std::string found;
         std::error_code ec;
-        std::vector<std::string> where;
-        if (name[0] == '"')
-            where.push_back(from);
-        where.insert(where.end(), dirs.begin(), dirs.end());
-        for (const std::string& dir : where)
-        {
-            const fs::path p = fs::path(utf8_path(dir)) / utf8_path(name.substr(1));
-            if (fs::is_regular_file(p, ec))
+        const std::string memo_key = (name[0] == '"' ? from : std::string()) + '\n' + name;
+        bool memo_hit = false;
+        if (use_memo)
+            if (const auto it = stamp_memo_.find(memo_key); it != stamp_memo_.end())
             {
-                found = path_utf8(p.lexically_normal());
-                break;
+                if (it->second.path.empty())
+                    memo_hit = true;
+                else
+                {
+                    const fs::path mp = utf8_path(it->second.path);
+                    const auto t = fs::last_write_time(mp, ec);
+                    const std::error_code ec1 = ec;
+                    const std::uintmax_t sz = fs::file_size(mp, ec);
+                    if (!ec1 && !ec && t.time_since_epoch().count() == it->second.time && sz == it->second.size)
+                    {
+                        found = it->second.path;
+                        memo_hit = true;
+                    }
+                }
+            }
+        if (!memo_hit)
+        {
+            std::vector<std::string> where;
+            if (name[0] == '"')
+                where.push_back(from);
+            where.insert(where.end(), dirs.begin(), dirs.end());
+            for (const std::string& dir : where)
+            {
+                const fs::path p = fs::path(utf8_path(dir)) / utf8_path(name.substr(1));
+                if (fs::is_regular_file(p, ec))
+                {
+                    found = path_utf8(p.lexically_normal());
+                    break;
+                }
+            }
+            if (use_memo)
+            {
+                StampMemo m;
+                m.path = found;
+                if (!found.empty())
+                {
+                    m.time = fs::last_write_time(utf8_path(found), ec).time_since_epoch().count();
+                    m.size = fs::file_size(utf8_path(found), ec);
+                }
+                stamp_memo_[memo_key] = m;
             }
         }
         if (found.empty())
@@ -8941,6 +8995,20 @@ void Server::handle(const json& msg)
         return; // $/cancelRequest and other notifications
     if (method == "workspace/symbol")
         return reply(id, on_workspace_symbol(p));
+    if (method == "hot/headerStamp")
+    {
+        // The test hook of HOT-53: the stamp with the memo and the stamp of the full probe.
+        std::vector<std::string> names, dirs;
+        for (const json& n : p.value("names", json::array()))
+            names.push_back(n.get<std::string>());
+        for (const json& n : p.value("dirs", json::array()))
+            dirs.push_back(n.get<std::string>());
+        const std::string dd = p.value("docDir", std::string());
+        bool ok1 = false, ok2 = false;
+        const size_t memo = header_stamp(names, dirs, dd, ok1, true);
+        const size_t full = header_stamp(names, dirs, dd, ok2, false);
+        return reply(id, {{"memo", std::to_string(memo)}, {"full", std::to_string(full)}, {"ok", ok1 && ok2}});
+    }
     if (method == "hot/indexStats")
     {
         // The test hook: "tables" (an array of URIs) gets the number of refs of each table;

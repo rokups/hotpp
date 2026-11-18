@@ -11131,6 +11131,43 @@ TEST(LanguageServer, ThisCacheGivesTheSameCompletionAsNoCache)
     }
 }
 
+// HOT-53: the stamp with the memo is the same as the stamp of the full probe, before and after a header change. A
+// new header that shadows an earlier directory entry counts only after the watched event.
+TEST(LanguageServer, HeaderStampMemoEqualsFullProbe)
+{
+    Session s(false);
+    const std::filesystem::path a = s.dir.path() / "inc_a", b = s.dir.path() / "inc_b";
+    std::filesystem::create_directories(a);
+    std::filesystem::create_directories(b);
+    write_file(b / "x.h", "#include <y.h>\n// one\n");
+    write_file(b / "y.h", "// y\n");
+    const json q = {{"names", json::array({"<x.h", "<missing.h"})},
+        {"dirs", json::array({a.string(), b.string()})}, {"docDir", s.dir.path().string()}};
+    const auto stamp = [&] {
+        const json r = s.client->request("hot/headerStamp", q)["result"];
+        EXPECT_TRUE(r.value("ok", false));
+        return std::make_pair(r.value("memo", ""), r.value("full", ""));
+    };
+    const auto s1 = stamp();
+    EXPECT_EQ(s1.first, s1.second);
+    const auto s2 = stamp(); // warm: the memo answers
+    EXPECT_EQ(s2.first, s1.first);
+    write_file(b / "y.h", "// y changed with a longer text\n");
+    const auto s3 = stamp();
+    EXPECT_EQ(s3.first, s3.second);
+    EXPECT_NE(s3.first, s1.first);
+    // A new header in the earlier directory: the memo keeps the old path until the watched event.
+    write_file(a / "x.h", "// shadow\n");
+    const auto s4 = stamp();
+    EXPECT_EQ(s4.first, s3.first);
+    EXPECT_NE(s4.second, s3.first);
+    s.client->notify("workspace/didChangeWatchedFiles",
+        {{"changes", json::array({{{"uri", "file://" + (a / "x.h").string()}, {"type", 1}}})}});
+    const auto s5 = stamp();
+    EXPECT_EQ(s5.first, s5.second);
+    EXPECT_EQ(s5.first, s4.second);
+}
+
 // An edit of the imported base class (new native base) shows in the next completion.
 TEST(LanguageServer, ThisCacheDropsTheMembersWhenTheImportedBaseChanges)
 {
