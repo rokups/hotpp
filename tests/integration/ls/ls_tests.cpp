@@ -11204,6 +11204,84 @@ TEST(LanguageServer, SpeculationGivesTheSameCompletionAsSerial)
     }
 }
 
+// HOT-53: the speculation sent its text to the full document, and then no patched text translates. The fallback asks at
+// the old positions, so clangd must hold the real text: the items equal the serial items.
+TEST(LanguageServer, SpeculationThenNoTranslationGivesTheSerialItems)
+{
+    REQUIRE_CLANGD();
+    std::vector<std::string> answers[2];
+    for (int spec = 0; spec < 2; ++spec)
+    {
+        const EnvGuard env("HOT_LS_SPECULATE", spec ? "1" : "0");
+        const EnvGuard lite("HOT_LS_LITE_DOC", "0"); // the speculation uses the full document
+        Session s(true, this_script("Base", "Mo", 1));
+        write_file(s.dir.path() / "base.hot", kThisBase);
+        spec_names(s, 2, "Mo", 0, "natural");
+        spec_names(s, 3, "Na", 1, "natural"); // the memo
+        spec_names(s, 4, "Mo", 2, "natural");
+        const int dropped_before = this_stat(s, "holeSpecDropped");
+        // The text after the word has an error that the analysis cannot cut out: no try has a place.
+        std::string text = this_script("Base", "Na   ", 1);
+        text.replace(text.find("= 1;"), 4, "= (;"); // the same length: the word keeps its offset
+        s.client->change(s.uri, 5, text);
+        s.client->request("hot/indexStats", json::object());
+        const json r = s.client->request("textDocument/completion", doc_pos(s.uri, 5, 10));
+        ASSERT_TRUE(r.contains("result")) << r.dump();
+        for (const json& i : r["result"].value("items", json::array()))
+            answers[spec].push_back(i.value("insertText", i.value("label", "")));
+        std::sort(answers[spec].begin(), answers[spec].end());
+        // The next request of a good text must see the real text in clangd.
+        const auto good = spec_names(s, 6, "Na", 5, "natural");
+        EXPECT_TRUE(contains_name(good, "Name")) << spec;
+        if (spec)
+            EXPECT_GT(this_stat(s, "holeSpecDropped"), dropped_before) << "the speculation did not run";
+    }
+    EXPECT_EQ(answers[0], answers[1]) << "serial " << answers[0].size() << " speculation " << answers[1].size();
+}
+
+// HOT-53: the memo text has the hole in a class body (a type place), and the real place is a statement: no equal text.
+TEST(LanguageServer, SpeculationWithTheMemoOfAClassBodyGivesTheSerialItems)
+{
+    REQUIRE_CLANGD();
+    std::vector<std::string> answers[2];
+    for (int spec = 0; spec < 2; ++spec)
+    {
+        const EnvGuard env("HOT_LS_SPECULATE", spec ? "1" : "0");
+        const std::string head = "using \"base.hot\";\nclass Hero : Base {\n";
+        const std::string stmt_head = head + "    void run() {\n        "; // the word of a statement
+        // The same offset of the word in a class body: a comment pads the line.
+        std::string pad = "    /*";
+        while (pad.size() + 3 < stmt_head.size() - head.size())
+            pad += ' ';
+        pad += "*/ ";
+        ASSERT_EQ(head.size() + pad.size(), stmt_head.size());
+        const std::string field_tail = "\n    void run() {\n    }\n}\n";
+        Session s(true, head + pad + "Mo" + field_tail);
+        write_file(s.dir.path() / "base.hot", kThisBase);
+        for (int v = 0; v < 3; ++v) // a type place: the memo holds the hole in the class body
+        {
+            s.client->change(s.uri, 2 + v, head + pad + "Mo" + std::string(static_cast<size_t>(v), ' ') + field_tail);
+            s.client->request("hot/indexStats", json::object());
+            s.client->request("textDocument/completion", doc_pos(s.uri, 2, static_cast<int>(pad.size()) + 2));
+        }
+        s.client->change(s.uri, 6, stmt_head + "Mo\n    }\n}\n");
+        s.client->request("hot/indexStats", json::object());
+        const json r = s.client->request("textDocument/completion", doc_pos(s.uri, 3, 10));
+        ASSERT_TRUE(r.contains("result")) << r.dump();
+        // The global names of the index of clangd depend on its progress: compare the names of the typed prefix.
+        for (const json& i : r["result"].value("items", json::array()))
+            if (const std::string n = i.value("insertText", i.value("label", "")); n.compare(0, 2, "Mo") == 0)
+                answers[spec].push_back(n);
+        std::sort(answers[spec].begin(), answers[spec].end());
+    }
+    EXPECT_FALSE(answers[0].empty()) << "no item of the prefix";
+    std::vector<std::string> diff;
+    std::set_symmetric_difference(answers[0].begin(), answers[0].end(), answers[1].begin(), answers[1].end(),
+        std::back_inserter(diff));
+    EXPECT_TRUE(diff.empty()) << json(diff).dump().substr(0, 300) << " serial " << answers[0].size() << " speculation "
+        << answers[1].size();
+}
+
 // HOT-53: the stamp with the memo is the same as the stamp of the full probe, before and after a header change. A
 // new header that shadows an earlier directory entry counts only after the watched event.
 TEST(LanguageServer, HeaderStampMemoEqualsFullProbe)

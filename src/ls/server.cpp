@@ -3949,6 +3949,10 @@ json Server::on_completion(const Doc& d, const json& p)
                 {
                     spec = swap_hole_word(m.cpp, m.word, spec_word);
                     spec_index = m.index;
+                    // The shell part of the text must be the shell header that clangd holds.
+                    const size_t at = spec.find(kShellEnd);
+                    if (at == std::string::npos || std::hash<std::string>()(spec.substr(0, at + 1)) != d.shell_hash)
+                        spec.clear();
                 }
             }
             // HOT-53: the speculative call. The memo text with the new word goes to clangd now, and the call runs
@@ -4066,7 +4070,8 @@ json Server::on_completion(const Doc& d, const json& p)
                 if (spec_run)
                 {
                     PhaseTimer pw("spec wait");
-                    if (text_index == spec_run->index && facts.cpp == spec && *g == spec_run->place)
+                    const bool same = text_index == spec_run->index && facts.cpp == spec && *g == spec_run->place;
+                    if (same)
                     {
                         std::optional<json> sr = spec_run->finish();
                         spec_run.reset();
@@ -4082,7 +4087,8 @@ json Server::on_completion(const Doc& d, const json& p)
                     else
                         spec_run.reset(); // the real text differs: cancel the call, wait for clangd
                     ++hole_spec_dropped_;
-                    t0.reset(); // the normal path starts its own budget
+                    if (!same)
+                        t0.reset(); // the normal path starts its own budget. An equal text that timed out keeps the budget.
                     lite_sent = false;
                 }
                 // Before its first preamble, clangd gives only "fallback" words of the file. A
@@ -4161,6 +4167,13 @@ json Server::on_completion(const Doc& d, const json& p)
                     break;
             }
             spec_run.reset(); // no call of the speculation stays in flight (no try had a place)
+            // The speculation can have put its text in the full document. The fallback below asks at the old
+            // positions, so clangd must hold the real text first.
+            if (!mapped && sent)
+            {
+                restore.f();
+                sent = false;
+            }
             // The native members of the base are not names in the generated code of a method. A second
             // try with "this." gives them. Its items join the list.
             if (this_cls && (sent || lite_sent) && r)
