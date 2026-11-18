@@ -1538,6 +1538,21 @@ private:
         std::shared_ptr<const FileRefs> table;
     };
     std::map<std::string, TableEntry> table_cache_;
+    // The clangd answers for the native names of the closed scripts (HOT-35), by path. "map" keeps
+    // the targets for each asked offset. "stamps" has the stamp of each target file. The memo
+    // belongs to "digest" of the script. A new digest or a changed stamp drops it.
+    struct NativeMemo
+    {
+        std::string digest;
+        bool loaded = false;
+        std::map<int, std::vector<NativeTarget>> map;
+        std::vector<NativeStamp> stamps;
+    };
+    std::map<std::string, NativeMemo> native_memo_;
+    // The scripts that native_uses_in_scripts answered from the memo, and the scripts that it
+    // asked clangd for (a temporary document each). hot/indexStats shows them.
+    int native_memo_hits_ = 0, native_memo_misses_ = 0;
+    NativeMemo& native_memo_of(const std::string& norm, const std::string& digest);
     // The tables that file_refs gives from a cache or a shard, and the tables that it makes from
     // an analyze result (hot/indexStats).
     int table_hits_ = 0, table_analyses_ = 0;
@@ -5378,6 +5393,7 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
     for (const json& l : out)
         seen.insert(l.dump());
     size_t not_scanned = 0; // scripts that the scan could not ask, for the message
+    std::map<int, std::vector<NativeTarget>> fresh; // the answers of the script that clangd gave now
     for (size_t index = 0; index < todo.size(); ++index)
     {
         check_cancel();
@@ -5389,6 +5405,7 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
         }
         const std::shared_ptr<Doc> open = open_doc_at(path);
         std::optional<std::string> closed_text;
+        std::string entry_digest; // the shard digest of the closed text, when the index entry is good
         if (!open)
         {
             std::shared_ptr<const Entry> e = entry_in(snap, path);
@@ -5404,6 +5421,7 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
             if (e)
             {
                 ++entry_hits_;
+                entry_digest = e->digest;
                 if (!has_word(e->text, word_name) || !e->unclaimed_words.count(word_name))
                     continue; // no word, or every code word is a script symbol
             }
@@ -5426,6 +5444,34 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
                 words.push_back({line, col});
         if (words.empty())
             continue;
+        // The memo of a closed script: the stored answers of clangd for each asked offset.
+        std::string norm_path, memo_digest;
+        NativeMemo* memo = nullptr;
+        if (!open)
+        {
+            norm_path = fs::path(path).lexically_normal().string();
+            memo_digest = entry_digest.empty() ? shard_digest(norm_path, *closed_text) : entry_digest;
+            memo = &native_memo_of(norm_path, memo_digest);
+            // A changed target file drops all answers of the script.
+            for (const NativeStamp& st : memo->stamps)
+                if (!(SymbolIndex::stamp_file(st.path) == st))
+                {
+                    memo->map.clear();
+                    memo->stamps.clear();
+                    break;
+                }
+        }
+        auto emit = [&](const Doc& o, Pos p, const std::vector<Target>& here)
+        {
+            const bool same = std::any_of(here.begin(), here.end(),
+                [&](const Target& t) { return std::find(target.begin(), target.end(), t) != target.end(); });
+            if (!same)
+                return;
+            const json w = {{"uri", o.uri},
+                {"range", script_range(o, p, {p.line, p.col + static_cast<int>(word_name.size())})}};
+            if (seen.insert(w.dump()).second)
+                out.push_back(w);
+        };
         auto work = [&](Doc& o)
         {
             ask_failed = false;
@@ -5438,22 +5484,27 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
             {
                 check_cancel();
                 bool by_word = false;
+                std::vector<Target> answer; // the answer for "p": the first ask with a target
+                const bool failed_before = ask_failed;
+                ask_failed = false;
                 for (const Pos& g : gen_asks(o, p, by_word))
                 {
-                    const std::vector<Target> here = targets_at(o, g);
+                    std::vector<Target> here = targets_at(o, g);
                     if (here.empty())
                         continue;
-                    const bool same = std::any_of(here.begin(), here.end(),
-                        [&](const Target& t) { return std::find(target.begin(), target.end(), t) != target.end(); });
-                    if (same)
-                    {
-                        const json w = {{"uri", o.uri},
-                            {"range", script_range(o, p, {p.line, p.col + static_cast<int>(word_name.size())})}};
-                        if (seen.insert(w.dump()).second)
-                            out.push_back(w);
-                    }
+                    answer = std::move(here);
                     break;
                 }
+                // A position with a failed ask has no memo entry. An empty answer is an answer.
+                if (memo && !ask_failed)
+                {
+                    std::vector<NativeTarget> list;
+                    for (const Target& t : answer)
+                        list.push_back({std::get<0>(t), std::get<1>(t), std::get<2>(t)});
+                    fresh[static_cast<int>(o.text.offset(p.line, p.col))] = std::move(list);
+                }
+                ask_failed = ask_failed || failed_before;
+                emit(o, p, answer);
             }
             if (ask_failed)
                 ++not_scanned; // an ask had no answer: the script may have more uses
@@ -5466,12 +5517,52 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
         }
         else
         {
+            const Text closed_text_view(*closed_text);
+            bool all_known = true;
+            for (const Pos& p : words)
+                all_known = all_known && memo->map.count(static_cast<int>(closed_text_view.offset(p.line, p.col)));
+            if (all_known)
+            {
+                // Every position has a stored answer and no target file changed: no analyze, no clangd.
+                ++native_memo_hits_;
+                const Doc plain = closed_doc(path, *closed_text);
+                for (const Pos& p : words)
+                {
+                    check_cancel();
+                    std::vector<Target> here;
+                    for (const NativeTarget& t : memo->map.at(static_cast<int>(plain.text.offset(p.line, p.col))))
+                        here.emplace_back(t.uri, t.line, t.character);
+                    emit(plain, p, here);
+                }
+                continue;
+            }
+            ++native_memo_misses_;
             Doc tmp = closed_doc(path, *closed_text);
             tmp.facts = timed_translate([&] { return hotc::analyze(tmp.text.s, translate_options(tmp), session_); });
             // Keep the table: the next scan skips this script when it has no native use.
-            index_.store(fs::path(path).lexically_normal().string(), shard_digest(fs::path(path).lexically_normal().string(), *closed_text),
-                shard_of_doc(tmp));
+            // This store comes before the memo store, so it does not erase the memo.
+            index_.store(norm_path, memo_digest, shard_of_doc(tmp));
+            fresh.clear();
+            const size_t not_scanned_before = not_scanned;
             with_temp_clangd(tmp, [&] { work(tmp); });
+            // A script with a failed ask or a missed wait stores nothing (the scan is partial).
+            if (not_scanned == not_scanned_before && !fresh.empty())
+            {
+                // The old answers stay: the stamps of the scan start were good. A new offset replaces an old one.
+                for (auto& [offset, list] : fresh)
+                {
+                    for (const NativeTarget& t : list)
+                    {
+                        const std::string tp = uri_to_path(t.uri);
+                        if (tp.empty() || std::any_of(memo->stamps.begin(), memo->stamps.end(),
+                                [&](const NativeStamp& st) { return st.path == tp; }))
+                            continue;
+                        memo->stamps.push_back(SymbolIndex::stamp_file(tp));
+                    }
+                    memo->map[offset] = std::move(list);
+                }
+                index_.store_native(norm_path, memo_digest, memo->map, memo->stamps);
+            }
         }
     }
     if (not_scanned > 0)
@@ -5482,6 +5573,24 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
         send_client({{"jsonrpc", "2.0"}, {"method", "window/showMessage"},
             {"params", {{"type", 2}, {"message", "hot-ls: " + note + ". The list of references is partial."}}}});
     }
+}
+
+// The memo of a closed script for "digest". It loads the answers from the shard on first use.
+Server::NativeMemo& Server::native_memo_of(const std::string& norm, const std::string& digest)
+{
+    NativeMemo& m = native_memo_[norm];
+    if (!m.loaded || m.digest != digest)
+    {
+        m = NativeMemo();
+        m.loaded = true;
+        m.digest = digest;
+        if (auto shard = index_.load(norm, digest))
+        {
+            m.map = std::move(shard->native_targets);
+            m.stamps = std::move(shard->native_stamps);
+        }
+    }
+    return m;
 }
 
 // The fallback filter for a path that the workspace index does not have (HOT-34).
@@ -8716,7 +8825,8 @@ void Server::handle(const json& msg)
             {"tokenRequests", native_token_requests_.load()}, {"translations", translations_.load()},
             {"liteHits", lite_hits_.load()}, {"liteFallback", lite_fallbacks_.load()}, {"liteMismatch", lite_mismatches_.load()},
             {"translateMs", static_cast<double>(translate_us_.load()) / 1000.0}, {"tableHits", table_hits_},
-            {"tableAnalyses", table_analyses_}, {"entryHits", entry_hits_}, {"entryMisses", entry_misses_}});
+            {"tableAnalyses", table_analyses_}, {"entryHits", entry_hits_}, {"entryMisses", entry_misses_},
+            {"nativeMemoHits", native_memo_hits_}, {"nativeMemoMisses", native_memo_misses_}});
         {
             // The last update() of an open script, in ms. Additive fields for the measurement.
             std::lock_guard<std::mutex> lock(last_update_mutex_);
