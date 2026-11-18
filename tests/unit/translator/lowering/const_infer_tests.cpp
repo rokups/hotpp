@@ -220,7 +220,7 @@ TEST(ConstInfer, LambdaThatAssignsALocalMakesACell)
 {
     const hotc::TranslateResult r = run("    void Run() { int x = 3; var f = () => { x = 4; }; f(); n = x; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "auto __cell_x = hot::make_cell<int32_t>(3); int32_t& x = *__cell_x;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "auto __cell_x = hot::make_cell<int32_t>(3); [[maybe_unused]] int32_t& x = *__cell_x;")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "auto& x = *__cell_x; x = 4;")) << r.cpp;
 }
 
@@ -252,7 +252,7 @@ TEST(ConstInfer, ParameterThatALambdaWritesIsCopiedIntoACell)
 {
     const hotc::TranslateResult r = run("    void Run(int p) { var f = () => { p += 1; }; f(); n = p; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "auto __cell_p = hot::make_cell<int32_t>(p); int32_t& p = *__cell_p;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "auto __cell_p = hot::make_cell<int32_t>(p); [[maybe_unused]] int32_t& p = *__cell_p;")) << r.cpp;
 }
 
 TEST(ConstInfer, ForInitLocalThatALambdaWritesIsAnError)
