@@ -1517,7 +1517,8 @@ private:
     std::map<std::string, IncFile> inc_files_; // by path, under this_mutex_
     // The hash of the time and the size of each header that the shell header includes, also the headers that they
     // include. Only the files that the include dirs hold. A new header at an earlier place changes the stamp too. False
-    // in "ok": the graph is too big, so the caller does not use the cache. No watcher event is needed.
+    // in "ok": the graph is too big, so the caller does not use the cache. A changed or deleted header shows at once. A new
+    // header that shadows an earlier dir entry, or a missing header that appears, shows after a watched event (the memo).
     size_t header_stamp(const std::vector<std::string>& names, const std::vector<std::string>& dirs,
         const std::string& doc_dir, bool& ok, bool use_memo = true);
     // HOT-53: the found path of an include and its time and size, by the name and the including directory. A warm

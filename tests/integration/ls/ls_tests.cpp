@@ -11166,6 +11166,21 @@ TEST(LanguageServer, HeaderStampMemoEqualsFullProbe)
     const auto s5 = stamp();
     EXPECT_EQ(s5.first, s5.second);
     EXPECT_EQ(s5.first, s4.second);
+    // A deleted header changes the stamp at once.
+    std::filesystem::remove(a / "x.h"); // the shadow header
+    const auto s6 = stamp();
+    EXPECT_EQ(s6.first, s6.second);
+    EXPECT_NE(s6.first, s5.first);
+    // A missing header that appears: the memo keeps "missing" until the watched event.
+    write_file(a / "missing.h", "// now here\n");
+    const auto s7 = stamp();
+    EXPECT_EQ(s7.first, s6.first);
+    EXPECT_NE(s7.second, s6.first);
+    s.client->notify("workspace/didChangeWatchedFiles",
+        {{"changes", json::array({{{"uri", "file://" + (a / "missing.h").string()}, {"type", 1}}})}});
+    const auto s8 = stamp();
+    EXPECT_EQ(s8.first, s8.second);
+    EXPECT_EQ(s8.first, s7.second);
 }
 
 // An edit of the imported base class (new native base) shows in the next completion.
