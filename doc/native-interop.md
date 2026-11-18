@@ -123,7 +123,7 @@ class Shop : Actor {
 }
 ```
 
-Pass `h` for a handle parameter, or for a native `T*` or `T&` parameter. The conversion needs the exact class of the parameter. For a handle of a derived class, write `(Base*)h` for a `T*` and `*h` for a `T&`. The cast is a checked unwrap: a null handle throws `NullReference`. `.` on a handle always means a member of the pointee, so `h.get()` calls `get` of the pointee. Inside a method, `this` is a handle for a handle parameter. For a native `Actor&` parameter, write `*this`. A `T&` parameter of a script class takes a variable, not `this`: write `$Hero me = this;` first.
+Pass `h` for a handle parameter, or for a native `T*` or `T&` parameter. The conversion needs the exact class of the parameter. For a handle of a derived class, write `(Base*)h` for a `T*` and `*h` for a `T&`. The cast does not test for null: a null handle gives a null pointer. Write `h!` to throw `NullReference` on null. `.` on a handle always means a member of the pointee, so `h.get()` calls `get` of the pointee. Inside a method, `this` is a handle for a handle parameter. For a native `Actor&` parameter, write `*this`. A `T&` parameter of a script class takes a variable, not `this`: write `$Hero me = this;` first.
 
 ## Fallback handle
 

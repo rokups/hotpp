@@ -77,7 +77,8 @@ These forms narrow a name:
 - `while (p != null)`.
 - `p != null && p.m`, `p == null || p.m`, `p != null ? p.m : d` and `!`.
 - `p is $T q`, `p?.m` and `p ?? d`.
-- A cast to the same type, `(T*)p` or `($C)h`, throws on null. The result and the name `p` are not null after it. A downcast result can be null.
+- `p!` makes the result not null. After `p!;` the local name or parameter `p` is not null. A field never narrows. `$C v = f()!;` makes `v` not null. A cast keeps the null state of its operand, so `($C)h.m()` with a possibly null `h` is an error: write `($C)h!.m()`. A downcast result can be null.
+- Warning: `a cast to the same type has no effect`. It is permanent. It shows for `(T*)p` where `p` is `T*`, and for `($C)h` where `h` is `$C`.
 - The result of `p?.m` can be null: a handle member stays nullable, a value member gives `T?`.
 
 Other rules:

@@ -145,7 +145,7 @@ For a type that is always a value, write a `struct` (see [Classes](classes.html#
 
 A value is valid on a field, a parameter, the return type of a method, a local, a foreach variable and a lambda parameter. A bare `C` in a template argument is a value too: `std.vector<C>` holds values. A class with a native base cannot be a value in any of these places.
 
-`as` and `is` need the handle: write `x as $C` and `x is $C`. A cast `($C)h` to a derived class is a checked cast. A failed cast gives a null handle. A foreach over `std.vector<$C>` needs the variable `$C x`.
+`as` and `is` need the handle: write `x as $C` and `x is $C`. A down-cast `($C)h` to a derived script class gives a null handle when the class is wrong or `h` is null. It never throws. A foreach over `std.vector<$C>` needs the variable `$C x`.
 
 ```hot
 using "Actor.h";
