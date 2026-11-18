@@ -52,6 +52,9 @@ static void Pair_G_int_G_float__init_b(void*, void* f) { using T = float; new (f
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static const hot::FieldInfo Pair_G_int_G_float_fields[] = {
     {"a", nullptr, typeid(hot::typekey_t<int32_t>).name(), offsetof(Pair_G_int_G_float, a), sizeof(int32_t),
@@ -61,6 +64,8 @@ static const hot::FieldInfo Pair_G_int_G_float_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 [[maybe_unused]] static const hot::StateLayout Pair_G_int_G_float_layout = {
     "Pair_G_int_G_float", sizeof(Pair_G_int_G_float), alignof(Pair_G_int_G_float), 2, Pair_G_int_G_float_fields,
@@ -91,7 +96,7 @@ struct Counter_G_int_Shell final : hot::PlainObject, hot::ShellBase {
     }
 #line 9 "generics_v1.hot"
     ~Counter_G_int_Shell() override { hot::destroy_state(this); }
-#line 95 "generics_v1.hot.cpp"
+#line 100 "generics_v1.hot.cpp"
 #line 9 "generics_v1.hot"
     explicit Counter_G_int_Shell(hot::CloneFrom, const hot::ShellBase* src)
 #line 9 "generics_v1.hot"
@@ -100,7 +105,7 @@ struct Counter_G_int_Shell final : hot::PlainObject, hot::ShellBase {
         hot::clone_state(this, &Counter_G_int_record, src);
 #line 9 "generics_v1.hot"
     }
-#line 104 "generics_v1.hot.cpp"
+#line 109 "generics_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -114,11 +119,14 @@ struct hot_state_Counter_G_int {
 
 #line 10 "generics_v1.hot"
 static void Counter_G_int__init_total(void*, void* f) { using T = int32_t; new (f) T(); }
-#line 118 "generics_v1.hot.cpp"
+#line 123 "generics_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static_assert(offsetof(hot_state_Counter_G_int, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Counter_G_int_fields[] = {
@@ -127,6 +135,8 @@ static const hot::FieldInfo Counter_G_int_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
 [[maybe_unused]] static const hot::StateLayout Counter_G_int_layout = {
@@ -158,7 +168,7 @@ HOT_HIDDEN static auto Counter_G_int__plan()
     return std::make_pair(Counter_G_int__super_args(), std::tuple<>());
 #line 9 "generics_v1.hot"
 }
-#line 162 "generics_v1.hot.cpp"
+#line 172 "generics_v1.hot.cpp"
 using Counter_G_int_SuperArgs = decltype(Counter_G_int__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -191,7 +201,7 @@ HOT_NODEBUG static hot::ShellBase* Counter_G_int__construct(void* mem, const cha
     return nullptr;
 #line 9 "generics_v1.hot"
 }
-#line 195 "generics_v1.hot.cpp"
+#line 205 "generics_v1.hot.cpp"
 
 static const char* const Counter_G_int__construct_keys[] = {typeid(Counter_G_int_SuperArgs).name(), hot::kCloneKey, nullptr};
 
@@ -207,7 +217,7 @@ HOT_HIDDEN static Counter_G_int_Shell* Counter_G_int__build([[maybe_unused]] boo
     return __self;
 #line 9 "generics_v1.hot"
 }
-#line 211 "generics_v1.hot.cpp"
+#line 221 "generics_v1.hot.cpp"
 #line 9 "generics_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Counter_G_int_Shell* Counter_G_int__new()
 #line 9 "generics_v1.hot"
@@ -216,7 +226,7 @@ HOT_HIDDEN static Counter_G_int_Shell* Counter_G_int__build([[maybe_unused]] boo
     return Counter_G_int__build(true);
 #line 9 "generics_v1.hot"
 }
-#line 220 "generics_v1.hot.cpp"
+#line 230 "generics_v1.hot.cpp"
 #line 9 "generics_v1.hot"
 template <int = 0>
 #line 9 "generics_v1.hot"
@@ -231,7 +241,7 @@ template <int = 0>
     return __h;
 #line 9 "generics_v1.hot"
 }
-#line 235 "generics_v1.hot.cpp"
+#line 245 "generics_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -245,7 +255,7 @@ static void Counter_G_int__Add__thunk(hot::PlainObject* __a, int32_t v)
     return hot::call<void(hot::PlainObject*, int32_t)>(__self, Counter_G_int_SLOT_Add, v);
 #line 12 "generics_v1.hot"
 }
-#line 249 "generics_v1.hot.cpp"
+#line 259 "generics_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -259,7 +269,7 @@ static int32_t Counter_G_int__Get__thunk(hot::PlainObject* __a)
     return hot::call<int32_t(hot::PlainObject*)>(__self, Counter_G_int_SLOT_Get);
 #line 13 "generics_v1.hot"
 }
-#line 263 "generics_v1.hot.cpp"
+#line 273 "generics_v1.hot.cpp"
 
 static void* Counter_G_int___native__thunk(hot::ShellCore* __s)
 {
@@ -291,7 +301,7 @@ HOT_NODEBUG static hot::Instance Counter_G_int_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 9 "generics_v1.hot"
 }
-#line 295 "generics_v1.hot.cpp"
+#line 305 "generics_v1.hot.cpp"
 
 #line 9 "generics_v1.hot"
 HOT_NODEBUG static hot::Instance Counter_G_int__make_0([[maybe_unused]] void** __a)
@@ -301,7 +311,7 @@ HOT_NODEBUG static hot::Instance Counter_G_int__make_0([[maybe_unused]] void** _
     return Counter_G_int_create();
 #line 9 "generics_v1.hot"
 }
-#line 305 "generics_v1.hot.cpp"
+#line 315 "generics_v1.hot.cpp"
 
 static const hot::CtorEntry Counter_G_int__constructors[] = {
     {hot::ctor_key<>(), &Counter_G_int__make_0, hot::ctor_write_mask<>()},
@@ -333,7 +343,7 @@ struct Keeper_Shell final : Actor, hot::ShellBase {
     }
 #line 25 "generics_v1.hot"
     ~Keeper_Shell() override { hot::destroy_state(this); }
-#line 337 "generics_v1.hot.cpp"
+#line 347 "generics_v1.hot.cpp"
 #line 25 "generics_v1.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 25 "generics_v1.hot"
@@ -342,7 +352,7 @@ struct Keeper_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0);
 #line 25 "generics_v1.hot"
     }
-#line 346 "generics_v1.hot.cpp"
+#line 356 "generics_v1.hot.cpp"
 #line 25 "generics_v1.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 25 "generics_v1.hot"
@@ -351,7 +361,7 @@ struct Keeper_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0, a1);
 #line 25 "generics_v1.hot"
     }
-#line 355 "generics_v1.hot.cpp"
+#line 365 "generics_v1.hot.cpp"
 
 #line 25 "generics_v1.hot"
     void Tick(float a0) override
@@ -361,7 +371,7 @@ struct Keeper_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Keeper_SLOT_Tick, a0);
 #line 25 "generics_v1.hot"
     }
-#line 365 "generics_v1.hot.cpp"
+#line 375 "generics_v1.hot.cpp"
 
 #line 25 "generics_v1.hot"
     void TakeDamage(float a0) override
@@ -371,7 +381,7 @@ struct Keeper_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Keeper_SLOT_TakeDamage_f, a0);
 #line 25 "generics_v1.hot"
     }
-#line 375 "generics_v1.hot.cpp"
+#line 385 "generics_v1.hot.cpp"
 
 #line 25 "generics_v1.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -381,7 +391,7 @@ struct Keeper_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, Keeper_SLOT_TakeDamage_Af, a0, a1);
 #line 25 "generics_v1.hot"
     }
-#line 385 "generics_v1.hot.cpp"
+#line 395 "generics_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -402,7 +412,7 @@ struct hot_state_Keeper {
         return static_cast<Keeper_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 25 "generics_v1.hot"
     }
-#line 406 "generics_v1.hot.cpp"
+#line 416 "generics_v1.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 25 "generics_v1.hot"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -412,25 +422,28 @@ struct hot_state_Keeper {
         return static_cast<Keeper_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 25 "generics_v1.hot"
     }
-#line 416 "generics_v1.hot.cpp"
+#line 426 "generics_v1.hot.cpp"
 };
 
 #line 26 "generics_v1.hot"
 static void Keeper__init_ints(void*, void* f) { using T = std::shared_ptr<Counter_G_int>; new (f) T(); }
-#line 421 "generics_v1.hot.cpp"
+#line 431 "generics_v1.hot.cpp"
 #line 27 "generics_v1.hot"
 static void Keeper__init_got(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 424 "generics_v1.hot.cpp"
+#line 434 "generics_v1.hot.cpp"
 #line 28 "generics_v1.hot"
 static void Keeper__init_pair(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 427 "generics_v1.hot.cpp"
+#line 437 "generics_v1.hot.cpp"
 #line 29 "generics_v1.hot"
 static void Keeper__init_twice(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 430 "generics_v1.hot.cpp"
+#line 440 "generics_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static_assert(offsetof(hot_state_Keeper, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Keeper_fields[] = {
@@ -445,6 +458,8 @@ static const hot::FieldInfo Keeper_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
 [[maybe_unused]] static const hot::StateLayout Keeper_layout = {
@@ -474,7 +489,7 @@ HOT_HIDDEN static auto Keeper__plan()
     return std::make_pair(Keeper__super_args(), std::tuple<>());
 #line 25 "generics_v1.hot"
 }
-#line 478 "generics_v1.hot.cpp"
+#line 493 "generics_v1.hot.cpp"
 using Keeper_SuperArgs = decltype(Keeper__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -499,7 +514,7 @@ HOT_NODEBUG static hot::ShellBase* Keeper__construct(void* mem, const char* key,
     return nullptr;
 #line 25 "generics_v1.hot"
 }
-#line 503 "generics_v1.hot.cpp"
+#line 518 "generics_v1.hot.cpp"
 
 static const char* const Keeper__construct_keys[] = {typeid(Keeper_SuperArgs).name(), nullptr};
 
@@ -515,7 +530,7 @@ HOT_HIDDEN static Keeper_Shell* Keeper__build([[maybe_unused]] bool __note)
     return __self;
 #line 25 "generics_v1.hot"
 }
-#line 519 "generics_v1.hot.cpp"
+#line 534 "generics_v1.hot.cpp"
 #line 25 "generics_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Keeper_Shell* Keeper__new()
 #line 25 "generics_v1.hot"
@@ -524,7 +539,7 @@ HOT_HIDDEN static Keeper_Shell* Keeper__build([[maybe_unused]] bool __note)
     return Keeper__build(true);
 #line 25 "generics_v1.hot"
 }
-#line 528 "generics_v1.hot.cpp"
+#line 543 "generics_v1.hot.cpp"
 #line 25 "generics_v1.hot"
 template <int = 0>
 #line 25 "generics_v1.hot"
@@ -539,7 +554,7 @@ template <int = 0>
     return __h;
 #line 25 "generics_v1.hot"
 }
-#line 543 "generics_v1.hot.cpp"
+#line 558 "generics_v1.hot.cpp"
 
 static void* Keeper___native__thunk(hot::ShellCore* __s)
 {
@@ -572,7 +587,7 @@ HOT_NODEBUG static hot::Instance Keeper_create()
     return {static_cast<Actor*>(p), p};
 #line 25 "generics_v1.hot"
 }
-#line 576 "generics_v1.hot.cpp"
+#line 591 "generics_v1.hot.cpp"
 
 #line 25 "generics_v1.hot"
 HOT_NODEBUG static hot::Instance Keeper__make_0([[maybe_unused]] void** __a)
@@ -582,7 +597,7 @@ HOT_NODEBUG static hot::Instance Keeper__make_0([[maybe_unused]] void** __a)
     return Keeper_create();
 #line 25 "generics_v1.hot"
 }
-#line 586 "generics_v1.hot.cpp"
+#line 601 "generics_v1.hot.cpp"
 
 static const hot::CtorEntry Keeper__constructors[] = {
     {hot::ctor_key<>(), &Keeper__make_0, hot::ctor_write_mask<>()},
@@ -591,7 +606,7 @@ static const hot::CtorEntry Keeper__constructors[] = {
 // ---------------------------------------------------------------- static methods and free functions
 [[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Twice_G_int(int32_t x);
 
-#line 595 "generics_v1.hot.cpp"
+#line 610 "generics_v1.hot.cpp"
 // ---------------------------------------------------------------- function bodies
 #line 20 "generics_v1.hot"
 static int32_t Pair_G_int_G_float__First(Pair_G_int_G_float* __self)
@@ -603,7 +618,7 @@ static int32_t Pair_G_int_G_float__First(Pair_G_int_G_float* __self)
     return __st->a;
 #line 20 "generics_v1.hot"
 }
-#line 607 "generics_v1.hot.cpp"
+#line 622 "generics_v1.hot.cpp"
 
 #line 12 "generics_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Counter_G_int__Add(Counter_G_int_Shell* __self, int32_t v)
@@ -613,7 +628,7 @@ static int32_t Pair_G_int_G_float__First(Pair_G_int_G_float* __self)
     return state_of(__self)->Add(std::forward<int32_t>(v));
 #line 12 "generics_v1.hot"
 }
-#line 617 "generics_v1.hot.cpp"
+#line 632 "generics_v1.hot.cpp"
 #line 12 "generics_v1.hot"
 void hot_state_Counter_G_int::Add(int32_t const v)
 #line 12 "generics_v1.hot"
@@ -638,7 +653,7 @@ void hot_state_Counter_G_int::Add(int32_t const v)
     HOT_TRACE_LINE(); __st->total = __st->total + v;
 #line 12 "generics_v1.hot"
 }
-#line 642 "generics_v1.hot.cpp"
+#line 657 "generics_v1.hot.cpp"
 
 #line 13 "generics_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Counter_G_int__Get(Counter_G_int_Shell* __self)
@@ -648,7 +663,7 @@ void hot_state_Counter_G_int::Add(int32_t const v)
     return state_of(__self)->Get();
 #line 13 "generics_v1.hot"
 }
-#line 652 "generics_v1.hot.cpp"
+#line 667 "generics_v1.hot.cpp"
 #line 13 "generics_v1.hot"
 int32_t hot_state_Counter_G_int::Get()
 #line 13 "generics_v1.hot"
@@ -673,7 +688,7 @@ int32_t hot_state_Counter_G_int::Get()
     HOT_TRACE_LINE(); return __st->total;
 #line 13 "generics_v1.hot"
 }
-#line 677 "generics_v1.hot.cpp"
+#line 692 "generics_v1.hot.cpp"
 
 #line 31 "generics_v1.hot"
 void hot_state_Keeper::Tick(float dt)
@@ -719,7 +734,7 @@ void hot_state_Keeper::Tick(float dt)
     HOT_TRACE_LINE(); __st->twice = hot_fn_Twice_G_int(3);
 #line 43 "generics_v1.hot"
 }
-#line 723 "generics_v1.hot.cpp"
+#line 738 "generics_v1.hot.cpp"
 
 #line 23 "generics_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Twice_G_int(int32_t x)
@@ -733,7 +748,7 @@ void hot_state_Keeper::Tick(float dt)
     HOT_TRACE_LINE(); return x + x;
 #line 23 "generics_v1.hot"
 }
-#line 737 "generics_v1.hot.cpp"
+#line 752 "generics_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

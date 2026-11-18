@@ -67,6 +67,9 @@ static void HotModule__init_total(void*, void* f) { using T = float; new (f) T(0
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static const hot::FieldInfo HotModule_fields[] = {
     {"total", nullptr, hot::type_key<float>(), offsetof(HotModule, total), sizeof(float),
@@ -74,6 +77,8 @@ static const hot::FieldInfo HotModule_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 [[maybe_unused]] static const hot::StateLayout HotModule_layout = {
     "HotModule", sizeof(HotModule), alignof(HotModule), 1, HotModule_fields,
@@ -86,14 +91,14 @@ static float HotModule__convert_total(int old)
 
     return old * 2.0f;
 
-#line 90 "cpp_player_v2.cpp.cpp"
+#line 95 "cpp_player_v2.cpp.cpp"
 }
 
 
 #line 18 "cpp_player_v2.cpp"
 const float kMaxHp = 100.0f;
 
-#line 97 "cpp_player_v2.cpp.cpp"
+#line 102 "cpp_player_v2.cpp.cpp"
 
 #line 20 "cpp_player_v2.cpp"
 static float clamp_hp(float v)
@@ -101,7 +106,7 @@ static float clamp_hp(float v)
     return Math::Max(Math::Min(v, kMaxHp), 0.0f);
 }
 
-#line 105 "cpp_player_v2.cpp.cpp"
+#line 110 "cpp_player_v2.cpp.cpp"
 
 // ---------------------------------------------------------------- class Player
 // Slot numbers. Native virtuals come first, in the order of Actor.
@@ -129,7 +134,7 @@ struct Player_Shell final : Actor, hot::ShellBase {
     }
 #line 31 "cpp_player_v2.cpp"
     ~Player_Shell() override { hot::destroy_state(this); }
-#line 133 "cpp_player_v2.cpp.cpp"
+#line 138 "cpp_player_v2.cpp.cpp"
 
 #line 31 "cpp_player_v2.cpp"
     void Tick(float a0) override
@@ -139,7 +144,7 @@ struct Player_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 31 "cpp_player_v2.cpp"
     }
-#line 143 "cpp_player_v2.cpp.cpp"
+#line 148 "cpp_player_v2.cpp.cpp"
 
 #line 31 "cpp_player_v2.cpp"
     void TakeDamage(float a0) override
@@ -149,7 +154,7 @@ struct Player_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 31 "cpp_player_v2.cpp"
     }
-#line 153 "cpp_player_v2.cpp.cpp"
+#line 158 "cpp_player_v2.cpp.cpp"
 
 #line 31 "cpp_player_v2.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -159,7 +164,7 @@ struct Player_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 31 "cpp_player_v2.cpp"
     }
-#line 163 "cpp_player_v2.cpp.cpp"
+#line 168 "cpp_player_v2.cpp.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -182,22 +187,22 @@ struct hot_state_Player {
 
 #line 74 "cpp_player_v2.cpp"
 static void Player__init_health(void*, void* f) { using T = float; new (f) T(100.0f); }
-#line 186 "cpp_player_v2.cpp.cpp"
+#line 191 "cpp_player_v2.cpp.cpp"
 #line 75 "cpp_player_v2.cpp"
 static void Player__init_speed(void*, void* f) { using T = float; new (f) T(5.0f); }
-#line 189 "cpp_player_v2.cpp.cpp"
+#line 194 "cpp_player_v2.cpp.cpp"
 #line 76 "cpp_player_v2.cpp"
 static void Player__init_target(void*, void* f) { using T = std::string; new (f) T(); }
-#line 192 "cpp_player_v2.cpp.cpp"
+#line 197 "cpp_player_v2.cpp.cpp"
 #line 77 "cpp_player_v2.cpp"
 static void Player__init_p(void*, void* f) { using T = Point; new (f) T{1, 2}; }
-#line 195 "cpp_player_v2.cpp.cpp"
+#line 200 "cpp_player_v2.cpp.cpp"
 #line 78 "cpp_player_v2.cpp"
 static void Player__init_mode(void*, void* f) { using T = Mode; new (f) T(Mode::Idle); }
-#line 198 "cpp_player_v2.cpp.cpp"
+#line 203 "cpp_player_v2.cpp.cpp"
 #line 79 "cpp_player_v2.cpp"
 static void Player__init_level(void*, void* f) { using T = float; new (f) T(1.0f); }
-#line 201 "cpp_player_v2.cpp.cpp"
+#line 206 "cpp_player_v2.cpp.cpp"
 static float Player__convert_level(int old);
 #line 66 "cpp_player_v2.cpp"
 static void Player__convert_level_hook(void* dst, const void* src)
@@ -207,11 +212,14 @@ static void Player__convert_level_hook(void* dst, const void* src)
     new (dst) float(Player__convert_level(hot::convert_source<int>(src)));
 #line 66 "cpp_player_v2.cpp"
 }
-#line 211 "cpp_player_v2.cpp.cpp"
+#line 216 "cpp_player_v2.cpp.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static_assert(offsetof(hot_state_Player, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Player_fields[] = {
@@ -230,6 +238,8 @@ static const hot::FieldInfo Player_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
 [[maybe_unused]] static const hot::StateLayout Player_layout = {
@@ -272,7 +282,7 @@ HOT_HIDDEN static void Player__ctor_chain(Player_Shell* __self, [[maybe_unused]]
     Player__ctor(__self);
 #line 34 "cpp_player_v2.cpp"
 }
-#line 276 "cpp_player_v2.cpp.cpp"
+#line 286 "cpp_player_v2.cpp.cpp"
 using Player_SuperArgs = decltype(Player__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -297,7 +307,7 @@ HOT_NODEBUG static hot::ShellBase* Player__construct(void* mem, const char* key,
     return nullptr;
 #line 31 "cpp_player_v2.cpp"
 }
-#line 301 "cpp_player_v2.cpp.cpp"
+#line 311 "cpp_player_v2.cpp.cpp"
 
 static const char* const Player__construct_keys[] = {typeid(Player_SuperArgs).name(), nullptr};
 
@@ -325,7 +335,7 @@ HOT_HIDDEN static Player_Shell* Player__build([[maybe_unused]] bool __note)
     return __self;
 #line 34 "cpp_player_v2.cpp"
 }
-#line 329 "cpp_player_v2.cpp.cpp"
+#line 339 "cpp_player_v2.cpp.cpp"
 #line 34 "cpp_player_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static Player_Shell* Player__new()
 #line 34 "cpp_player_v2.cpp"
@@ -334,7 +344,7 @@ HOT_HIDDEN static Player_Shell* Player__build([[maybe_unused]] bool __note)
     return Player__build(true);
 #line 34 "cpp_player_v2.cpp"
 }
-#line 338 "cpp_player_v2.cpp.cpp"
+#line 348 "cpp_player_v2.cpp.cpp"
 #line 34 "cpp_player_v2.cpp"
 template <int = 0>
 #line 34 "cpp_player_v2.cpp"
@@ -351,7 +361,7 @@ template <int = 0>
     return __h;
 #line 34 "cpp_player_v2.cpp"
 }
-#line 355 "cpp_player_v2.cpp.cpp"
+#line 365 "cpp_player_v2.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -363,7 +373,7 @@ HOT_NODEBUG static hot::ShellCore* Player__new_default()
     return Player__build(false);
 #line 34 "cpp_player_v2.cpp"
 }
-#line 367 "cpp_player_v2.cpp.cpp"
+#line 377 "cpp_player_v2.cpp.cpp"
 
 [[maybe_unused]] HOT_HIDDEN static void Player__ctor_export0(hot::ShellBase* __s)
 {
@@ -390,7 +400,7 @@ static void Player__onReload_hook(hot::ShellBase* s, const hot::OldState& old)
     Player__onReload(static_cast<Player_Shell*>(s), old);
 #line 68 "cpp_player_v2.cpp"
 }
-#line 394 "cpp_player_v2.cpp.cpp"
+#line 404 "cpp_player_v2.cpp.cpp"
 
 hot::ClassRecord Player_record = {
     "Player", 0, Player_slots, SLOT_COUNT, &Player_layout, nullptr,
@@ -425,7 +435,7 @@ HOT_NODEBUG static hot::Instance Player_create()
     return {static_cast<Actor*>(p), p};
 #line 31 "cpp_player_v2.cpp"
 }
-#line 429 "cpp_player_v2.cpp.cpp"
+#line 439 "cpp_player_v2.cpp.cpp"
 
 #line 34 "cpp_player_v2.cpp"
 HOT_NODEBUG static hot::Instance Player__make_0([[maybe_unused]] void** __a)
@@ -439,7 +449,7 @@ HOT_NODEBUG static hot::Instance Player__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 34 "cpp_player_v2.cpp"
 }
-#line 443 "cpp_player_v2.cpp.cpp"
+#line 453 "cpp_player_v2.cpp.cpp"
 
 static const hot::CtorEntry Player__constructors[] = {
     {hot::ctor_key<>(), &Player__make_0, hot::ctor_write_mask<>()},
@@ -454,7 +464,7 @@ static const hot::CtorEntry Player__constructors[] = {
     return state_of(__self)->ctor();
 #line 34 "cpp_player_v2.cpp"
 }
-#line 458 "cpp_player_v2.cpp.cpp"
+#line 468 "cpp_player_v2.cpp.cpp"
 #line 34 "cpp_player_v2.cpp"
 void hot_state_Player::ctor()
 #line 34 "cpp_player_v2.cpp"
@@ -479,7 +489,7 @@ void hot_state_Player::ctor()
 
 #line 34 "cpp_player_v2.cpp"
 }
-#line 483 "cpp_player_v2.cpp.cpp"
+#line 493 "cpp_player_v2.cpp.cpp"
 
 #line 36 "cpp_player_v2.cpp"
 void hot_state_Player::Tick(float dt)
@@ -512,7 +522,7 @@ void hot_state_Player::Tick(float dt)
     
 #line 44 "cpp_player_v2.cpp"
 }
-#line 516 "cpp_player_v2.cpp.cpp"
+#line 526 "cpp_player_v2.cpp.cpp"
 
 #line 46 "cpp_player_v2.cpp"
 void hot_state_Player::TakeDamage_f(float amount)
@@ -541,7 +551,7 @@ void hot_state_Player::TakeDamage_f(float amount)
     
 #line 50 "cpp_player_v2.cpp"
 }
-#line 545 "cpp_player_v2.cpp.cpp"
+#line 555 "cpp_player_v2.cpp.cpp"
 
 #line 52 "cpp_player_v2.cpp"
 void hot_state_Player::TakeDamage_Af(Actor & source, float amount)
@@ -571,7 +581,7 @@ void hot_state_Player::TakeDamage_Af(Actor & source, float amount)
     
 #line 57 "cpp_player_v2.cpp"
 }
-#line 575 "cpp_player_v2.cpp.cpp"
+#line 585 "cpp_player_v2.cpp.cpp"
 
 #line 59 "cpp_player_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Player__heal(Player_Shell* __self, float a)
@@ -581,7 +591,7 @@ void hot_state_Player::TakeDamage_Af(Actor & source, float amount)
     return state_of(__self)->heal(std::forward<float>(a));
 #line 59 "cpp_player_v2.cpp"
 }
-#line 585 "cpp_player_v2.cpp.cpp"
+#line 595 "cpp_player_v2.cpp.cpp"
 #line 59 "cpp_player_v2.cpp"
 void hot_state_Player::heal(float a)
 #line 59 "cpp_player_v2.cpp"
@@ -609,7 +619,7 @@ void hot_state_Player::heal(float a)
     
 #line 63 "cpp_player_v2.cpp"
 }
-#line 613 "cpp_player_v2.cpp.cpp"
+#line 623 "cpp_player_v2.cpp.cpp"
 
 #line 66 "cpp_player_v2.cpp"
 static float Player__convert_level(int old)
@@ -619,7 +629,7 @@ static float Player__convert_level(int old)
  return old * 10.0f; 
 #line 66 "cpp_player_v2.cpp"
 }
-#line 623 "cpp_player_v2.cpp.cpp"
+#line 633 "cpp_player_v2.cpp.cpp"
 
 #line 68 "cpp_player_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Player__onReload(Player_Shell* __self, const hot::OldState& old)
@@ -629,7 +639,7 @@ static float Player__convert_level(int old)
     return state_of(__self)->onReload(std::forward<const hot::OldState&>(old));
 #line 68 "cpp_player_v2.cpp"
 }
-#line 633 "cpp_player_v2.cpp.cpp"
+#line 643 "cpp_player_v2.cpp.cpp"
 #line 68 "cpp_player_v2.cpp"
 void hot_state_Player::onReload(const hot::OldState& old)
 #line 68 "cpp_player_v2.cpp"
@@ -657,7 +667,7 @@ void hot_state_Player::onReload(const hot::OldState& old)
     
 #line 72 "cpp_player_v2.cpp"
 }
-#line 661 "cpp_player_v2.cpp.cpp"
+#line 671 "cpp_player_v2.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

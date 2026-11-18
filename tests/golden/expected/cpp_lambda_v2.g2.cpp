@@ -40,6 +40,9 @@ static void HotModule__init_calls(void*, void* f) { using T = int; new (f) T(0);
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static const hot::FieldInfo HotModule_fields[] = {
     {"calls", nullptr, hot::type_key<int>(), offsetof(HotModule, calls), sizeof(int),
@@ -47,6 +50,8 @@ static const hot::FieldInfo HotModule_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 [[maybe_unused]] static const hot::StateLayout HotModule_layout = {
     "HotModule", sizeof(HotModule), alignof(HotModule), 1, HotModule_fields,
@@ -80,7 +85,7 @@ struct Lamp_Shell final : Actor, hot::ShellBase {
     }
 #line 10 "cpp_lambda_v2.cpp"
     ~Lamp_Shell() override { hot::destroy_state(this); }
-#line 84 "cpp_lambda_v2.cpp.cpp"
+#line 89 "cpp_lambda_v2.cpp.cpp"
 #line 10 "cpp_lambda_v2.cpp"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 10 "cpp_lambda_v2.cpp"
@@ -89,7 +94,7 @@ struct Lamp_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0);
 #line 10 "cpp_lambda_v2.cpp"
     }
-#line 93 "cpp_lambda_v2.cpp.cpp"
+#line 98 "cpp_lambda_v2.cpp.cpp"
 #line 10 "cpp_lambda_v2.cpp"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 10 "cpp_lambda_v2.cpp"
@@ -98,7 +103,7 @@ struct Lamp_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0, a1);
 #line 10 "cpp_lambda_v2.cpp"
     }
-#line 102 "cpp_lambda_v2.cpp.cpp"
+#line 107 "cpp_lambda_v2.cpp.cpp"
 
 #line 10 "cpp_lambda_v2.cpp"
     void Tick(float a0) override
@@ -108,7 +113,7 @@ struct Lamp_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 10 "cpp_lambda_v2.cpp"
     }
-#line 112 "cpp_lambda_v2.cpp.cpp"
+#line 117 "cpp_lambda_v2.cpp.cpp"
 
 #line 10 "cpp_lambda_v2.cpp"
     void TakeDamage(float a0) override
@@ -118,7 +123,7 @@ struct Lamp_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 10 "cpp_lambda_v2.cpp"
     }
-#line 122 "cpp_lambda_v2.cpp.cpp"
+#line 127 "cpp_lambda_v2.cpp.cpp"
 
 #line 10 "cpp_lambda_v2.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -128,7 +133,7 @@ struct Lamp_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 10 "cpp_lambda_v2.cpp"
     }
-#line 132 "cpp_lambda_v2.cpp.cpp"
+#line 137 "cpp_lambda_v2.cpp.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -160,7 +165,7 @@ struct hot_state_Lamp {
         return static_cast<Lamp_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 10 "cpp_lambda_v2.cpp"
     }
-#line 164 "cpp_lambda_v2.cpp.cpp"
+#line 169 "cpp_lambda_v2.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 10 "cpp_lambda_v2.cpp"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -170,50 +175,53 @@ struct hot_state_Lamp {
         return static_cast<Lamp_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 10 "cpp_lambda_v2.cpp"
     }
-#line 174 "cpp_lambda_v2.cpp.cpp"
+#line 179 "cpp_lambda_v2.cpp.cpp"
 };
 
 #line 48 "cpp_lambda_v2.cpp"
 static void Lamp__init_base_level(void*, void* f) { using T = int; new (f) T(3); }
-#line 179 "cpp_lambda_v2.cpp.cpp"
+#line 184 "cpp_lambda_v2.cpp.cpp"
 #line 49 "cpp_lambda_v2.cpp"
 static void Lamp__init_level(void*, void* f) { using T = int; new (f) T(0); }
-#line 182 "cpp_lambda_v2.cpp.cpp"
+#line 187 "cpp_lambda_v2.cpp.cpp"
 #line 50 "cpp_lambda_v2.cpp"
 static void Lamp__init_count(void*, void* f) { using T = int; new (f) T(0); }
-#line 185 "cpp_lambda_v2.cpp.cpp"
+#line 190 "cpp_lambda_v2.cpp.cpp"
 #line 51 "cpp_lambda_v2.cpp"
 static void Lamp__init_sum(void*, void* f) { using T = int; new (f) T(0); }
-#line 188 "cpp_lambda_v2.cpp.cpp"
+#line 193 "cpp_lambda_v2.cpp.cpp"
 #line 52 "cpp_lambda_v2.cpp"
 static void Lamp__init_gen(void*, void* f) { using T = int; new (f) T(0); }
-#line 191 "cpp_lambda_v2.cpp.cpp"
+#line 196 "cpp_lambda_v2.cpp.cpp"
 #line 53 "cpp_lambda_v2.cpp"
 static void Lamp__init_nested(void*, void* f) { using T = int; new (f) T(0); }
-#line 194 "cpp_lambda_v2.cpp.cpp"
+#line 199 "cpp_lambda_v2.cpp.cpp"
 #line 54 "cpp_lambda_v2.cpp"
 static void Lamp__init_flag(void*, void* f) { using T = bool; new (f) T(false); }
-#line 197 "cpp_lambda_v2.cpp.cpp"
+#line 202 "cpp_lambda_v2.cpp.cpp"
 #line 55 "cpp_lambda_v2.cpp"
 static void Lamp__init_stored_result(void*, void* f) { using T = int; new (f) T(0); }
-#line 200 "cpp_lambda_v2.cpp.cpp"
+#line 205 "cpp_lambda_v2.cpp.cpp"
 #line 56 "cpp_lambda_v2.cpp"
 static void Lamp__init_stored(void*, void* f) { using T = std::function<int ()>; new (f) T(); }
-#line 203 "cpp_lambda_v2.cpp.cpp"
+#line 208 "cpp_lambda_v2.cpp.cpp"
 #line 57 "cpp_lambda_v2.cpp"
 static void Lamp__init_kept_ref(void*, void* f) { using T = std::function<int ()>; new (f) T(); }
-#line 206 "cpp_lambda_v2.cpp.cpp"
+#line 211 "cpp_lambda_v2.cpp.cpp"
 #line 58 "cpp_lambda_v2.cpp"
 static void Lamp__init_kept_init(void*, void* f) { using T = std::function<int ()>; new (f) T(); }
-#line 209 "cpp_lambda_v2.cpp.cpp"
+#line 214 "cpp_lambda_v2.cpp.cpp"
 #line 60 "cpp_lambda_v2.cpp"
 HOT_HIDDEN hot_state_Lamp* state_of(Lamp_Shell* __self);
 static void Lamp__init_from_init(void* st, void* f) { [[maybe_unused]] auto* __self = static_cast<Lamp_Shell*>(static_cast<hot_state_Lamp*>(st)->__hot_owner); using T = std::function<int ()>; new (f) T(hot::cpp_lambda(&hot_live, "Lamp lambda", [__self] { return state_of(__self)->count + state_of(__self)->level; })); }
-#line 213 "cpp_lambda_v2.cpp.cpp"
+#line 218 "cpp_lambda_v2.cpp.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static_assert(offsetof(hot_state_Lamp, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Lamp_fields[] = {
@@ -244,6 +252,8 @@ static const hot::FieldInfo Lamp_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
 [[maybe_unused]] static const hot::StateLayout Lamp_layout = {
@@ -286,7 +296,7 @@ HOT_HIDDEN static void Lamp__ctor_chain(Lamp_Shell* __self, [[maybe_unused]] Cha
     Lamp__ctor(__self);
 #line 13 "cpp_lambda_v2.cpp"
 }
-#line 290 "cpp_lambda_v2.cpp.cpp"
+#line 300 "cpp_lambda_v2.cpp.cpp"
 using Lamp_SuperArgs = decltype(Lamp__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -311,7 +321,7 @@ HOT_NODEBUG static hot::ShellBase* Lamp__construct(void* mem, const char* key, c
     return nullptr;
 #line 10 "cpp_lambda_v2.cpp"
 }
-#line 315 "cpp_lambda_v2.cpp.cpp"
+#line 325 "cpp_lambda_v2.cpp.cpp"
 
 static const char* const Lamp__construct_keys[] = {typeid(Lamp_SuperArgs).name(), nullptr};
 
@@ -339,7 +349,7 @@ HOT_HIDDEN static Lamp_Shell* Lamp__build([[maybe_unused]] bool __note)
     return __self;
 #line 13 "cpp_lambda_v2.cpp"
 }
-#line 343 "cpp_lambda_v2.cpp.cpp"
+#line 353 "cpp_lambda_v2.cpp.cpp"
 #line 13 "cpp_lambda_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static Lamp_Shell* Lamp__new()
 #line 13 "cpp_lambda_v2.cpp"
@@ -348,7 +358,7 @@ HOT_HIDDEN static Lamp_Shell* Lamp__build([[maybe_unused]] bool __note)
     return Lamp__build(true);
 #line 13 "cpp_lambda_v2.cpp"
 }
-#line 352 "cpp_lambda_v2.cpp.cpp"
+#line 362 "cpp_lambda_v2.cpp.cpp"
 #line 13 "cpp_lambda_v2.cpp"
 template <int = 0>
 #line 13 "cpp_lambda_v2.cpp"
@@ -365,7 +375,7 @@ template <int = 0>
     return __h;
 #line 13 "cpp_lambda_v2.cpp"
 }
-#line 369 "cpp_lambda_v2.cpp.cpp"
+#line 379 "cpp_lambda_v2.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -377,7 +387,7 @@ HOT_NODEBUG static hot::ShellCore* Lamp__new_default()
     return Lamp__build(false);
 #line 13 "cpp_lambda_v2.cpp"
 }
-#line 381 "cpp_lambda_v2.cpp.cpp"
+#line 391 "cpp_lambda_v2.cpp.cpp"
 
 [[maybe_unused]] HOT_HIDDEN static void Lamp__ctor_export0(hot::ShellBase* __s)
 {
@@ -430,7 +440,7 @@ HOT_NODEBUG static hot::Instance Lamp_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "cpp_lambda_v2.cpp"
 }
-#line 434 "cpp_lambda_v2.cpp.cpp"
+#line 444 "cpp_lambda_v2.cpp.cpp"
 
 #line 13 "cpp_lambda_v2.cpp"
 HOT_NODEBUG static hot::Instance Lamp__make_0([[maybe_unused]] void** __a)
@@ -444,7 +454,7 @@ HOT_NODEBUG static hot::Instance Lamp__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 13 "cpp_lambda_v2.cpp"
 }
-#line 448 "cpp_lambda_v2.cpp.cpp"
+#line 458 "cpp_lambda_v2.cpp.cpp"
 
 static const hot::CtorEntry Lamp__constructors[] = {
     {hot::ctor_key<>(), &Lamp__make_0, hot::ctor_write_mask<>()},
@@ -459,7 +469,7 @@ static const hot::CtorEntry Lamp__constructors[] = {
     return state_of(__self)->ctor();
 #line 13 "cpp_lambda_v2.cpp"
 }
-#line 463 "cpp_lambda_v2.cpp.cpp"
+#line 473 "cpp_lambda_v2.cpp.cpp"
 #line 13 "cpp_lambda_v2.cpp"
 void hot_state_Lamp::ctor()
 #line 13 "cpp_lambda_v2.cpp"
@@ -487,7 +497,7 @@ void hot_state_Lamp::ctor()
     
 #line 17 "cpp_lambda_v2.cpp"
 }
-#line 491 "cpp_lambda_v2.cpp.cpp"
+#line 501 "cpp_lambda_v2.cpp.cpp"
 
 #line 19 "cpp_lambda_v2.cpp"
 void hot_state_Lamp::Tick(float dt)
@@ -536,7 +546,7 @@ void hot_state_Lamp::Tick(float dt)
     
 #line 43 "cpp_lambda_v2.cpp"
 }
-#line 540 "cpp_lambda_v2.cpp.cpp"
+#line 550 "cpp_lambda_v2.cpp.cpp"
 
 #line 45 "cpp_lambda_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Lamp__bump(Lamp_Shell* __self, int n)
@@ -546,7 +556,7 @@ void hot_state_Lamp::Tick(float dt)
     return state_of(__self)->bump(std::forward<int>(n));
 #line 45 "cpp_lambda_v2.cpp"
 }
-#line 550 "cpp_lambda_v2.cpp.cpp"
+#line 560 "cpp_lambda_v2.cpp.cpp"
 #line 45 "cpp_lambda_v2.cpp"
 void hot_state_Lamp::bump(int n)
 #line 45 "cpp_lambda_v2.cpp"
@@ -571,7 +581,7 @@ void hot_state_Lamp::bump(int n)
  count += n + 5; 
 #line 45 "cpp_lambda_v2.cpp"
 }
-#line 575 "cpp_lambda_v2.cpp.cpp"
+#line 585 "cpp_lambda_v2.cpp.cpp"
 
 #line 46 "cpp_lambda_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static bool Lamp__self_is_set(Lamp_Shell* __self, Actor * a)
@@ -581,7 +591,7 @@ void hot_state_Lamp::bump(int n)
     return state_of(__self)->self_is_set(std::forward<Actor *>(a));
 #line 46 "cpp_lambda_v2.cpp"
 }
-#line 585 "cpp_lambda_v2.cpp.cpp"
+#line 595 "cpp_lambda_v2.cpp.cpp"
 #line 46 "cpp_lambda_v2.cpp"
 bool hot_state_Lamp::self_is_set(Actor * a)
 #line 46 "cpp_lambda_v2.cpp"
@@ -606,7 +616,7 @@ bool hot_state_Lamp::self_is_set(Actor * a)
  return a != nullptr; 
 #line 46 "cpp_lambda_v2.cpp"
 }
-#line 610 "cpp_lambda_v2.cpp.cpp"
+#line 620 "cpp_lambda_v2.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

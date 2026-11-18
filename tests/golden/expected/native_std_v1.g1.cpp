@@ -161,6 +161,9 @@ static void Tracker__init_described(void*, void* f) { using T = std::string; new
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static_assert(offsetof(hot_state_Tracker, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Tracker_fields[] = {
@@ -179,6 +182,8 @@ static const hot::FieldInfo Tracker_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
 [[maybe_unused]] static const hot::StateLayout Tracker_layout = {
@@ -208,7 +213,7 @@ HOT_HIDDEN static auto Tracker__plan()
     return std::make_pair(Tracker__super_args(), std::tuple<>());
 #line 10 "native_std_v1.hot"
 }
-#line 212 "native_std_v1.hot.cpp"
+#line 217 "native_std_v1.hot.cpp"
 using Tracker_SuperArgs = decltype(Tracker__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -233,7 +238,7 @@ HOT_NODEBUG static hot::ShellBase* Tracker__construct(void* mem, const char* key
     return nullptr;
 #line 10 "native_std_v1.hot"
 }
-#line 237 "native_std_v1.hot.cpp"
+#line 242 "native_std_v1.hot.cpp"
 
 static const char* const Tracker__construct_keys[] = {typeid(Tracker_SuperArgs).name(), nullptr};
 
@@ -249,7 +254,7 @@ HOT_HIDDEN static Tracker_Shell* Tracker__build([[maybe_unused]] bool __note)
     return __self;
 #line 10 "native_std_v1.hot"
 }
-#line 253 "native_std_v1.hot.cpp"
+#line 258 "native_std_v1.hot.cpp"
 #line 10 "native_std_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Tracker_Shell* Tracker__new()
 #line 10 "native_std_v1.hot"
@@ -258,7 +263,7 @@ HOT_HIDDEN static Tracker_Shell* Tracker__build([[maybe_unused]] bool __note)
     return Tracker__build(true);
 #line 10 "native_std_v1.hot"
 }
-#line 262 "native_std_v1.hot.cpp"
+#line 267 "native_std_v1.hot.cpp"
 #line 10 "native_std_v1.hot"
 template <int = 0>
 #line 10 "native_std_v1.hot"
@@ -273,7 +278,7 @@ template <int = 0>
     return __h;
 #line 10 "native_std_v1.hot"
 }
-#line 277 "native_std_v1.hot.cpp"
+#line 282 "native_std_v1.hot.cpp"
 
 static void* Tracker___native__thunk(hot::ShellCore* __s)
 {
@@ -306,7 +311,7 @@ HOT_NODEBUG static hot::Instance Tracker_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "native_std_v1.hot"
 }
-#line 310 "native_std_v1.hot.cpp"
+#line 315 "native_std_v1.hot.cpp"
 
 #line 10 "native_std_v1.hot"
 HOT_NODEBUG static hot::Instance Tracker__make_0([[maybe_unused]] void** __a)
@@ -316,7 +321,7 @@ HOT_NODEBUG static hot::Instance Tracker__make_0([[maybe_unused]] void** __a)
     return Tracker_create();
 #line 10 "native_std_v1.hot"
 }
-#line 320 "native_std_v1.hot.cpp"
+#line 325 "native_std_v1.hot.cpp"
 
 static const hot::CtorEntry Tracker__constructors[] = {
     {hot::ctor_key<>(), &Tracker__make_0, hot::ctor_write_mask<>()},
@@ -371,7 +376,7 @@ void hot_state_Tracker::Tick(float dt)
     HOT_TRACE_LINE(); hot::deref(__st->history).push_back(hot::float_to_int<int32_t>(hot::deref(__st->history).size()) * 10);
 #line 32 "native_std_v1.hot"
 }
-#line 375 "native_std_v1.hot.cpp"
+#line 380 "native_std_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

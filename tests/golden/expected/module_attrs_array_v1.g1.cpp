@@ -139,6 +139,9 @@ static void Grid__init_weights(void*, void* f) { using T = hostns::FixedArray<ho
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static_assert(offsetof(hot_state_Grid, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Grid_fields[] = {
@@ -149,6 +152,8 @@ static const hot::FieldInfo Grid_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
 [[maybe_unused]] static const hot::StateLayout Grid_layout = {
@@ -178,7 +183,7 @@ HOT_HIDDEN static auto Grid__plan()
     return std::make_pair(Grid__super_args(), std::tuple<>());
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 182 "module_attrs_array_v1.hot.cpp"
+#line 187 "module_attrs_array_v1.hot.cpp"
 using Grid_SuperArgs = decltype(Grid__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -203,7 +208,7 @@ HOT_NODEBUG static hot::ShellBase* Grid__construct(void* mem, const char* key, c
     return nullptr;
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 207 "module_attrs_array_v1.hot.cpp"
+#line 212 "module_attrs_array_v1.hot.cpp"
 
 static const char* const Grid__construct_keys[] = {typeid(Grid_SuperArgs).name(), nullptr};
 
@@ -219,7 +224,7 @@ HOT_HIDDEN static Grid_Shell* Grid__build([[maybe_unused]] bool __note)
     return __self;
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 223 "module_attrs_array_v1.hot.cpp"
+#line 228 "module_attrs_array_v1.hot.cpp"
 #line 7 "module_attrs_array_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Grid_Shell* Grid__new()
 #line 7 "module_attrs_array_v1.hot"
@@ -228,7 +233,7 @@ HOT_HIDDEN static Grid_Shell* Grid__build([[maybe_unused]] bool __note)
     return Grid__build(true);
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 232 "module_attrs_array_v1.hot.cpp"
+#line 237 "module_attrs_array_v1.hot.cpp"
 #line 7 "module_attrs_array_v1.hot"
 template <int = 0>
 #line 7 "module_attrs_array_v1.hot"
@@ -243,7 +248,7 @@ template <int = 0>
     return __h;
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 247 "module_attrs_array_v1.hot.cpp"
+#line 252 "module_attrs_array_v1.hot.cpp"
 
 static void* Grid___native__thunk(hot::ShellCore* __s)
 {
@@ -276,7 +281,7 @@ HOT_NODEBUG static hot::Instance Grid_create()
     return {static_cast<Actor*>(p), p};
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 280 "module_attrs_array_v1.hot.cpp"
+#line 285 "module_attrs_array_v1.hot.cpp"
 
 #line 7 "module_attrs_array_v1.hot"
 HOT_NODEBUG static hot::Instance Grid__make_0([[maybe_unused]] void** __a)
@@ -286,7 +291,7 @@ HOT_NODEBUG static hot::Instance Grid__make_0([[maybe_unused]] void** __a)
     return Grid_create();
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 290 "module_attrs_array_v1.hot.cpp"
+#line 295 "module_attrs_array_v1.hot.cpp"
 
 static const hot::CtorEntry Grid__constructors[] = {
     {hot::ctor_key<>(), &Grid__make_0, hot::ctor_write_mask<>()},
@@ -319,7 +324,7 @@ void hot_state_Grid::Tick(float dt)
     HOT_TRACE_LINE(); hot::index(hot::index(__st->weights, 1), 2) = dt;
 #line 14 "module_attrs_array_v1.hot"
 }
-#line 323 "module_attrs_array_v1.hot.cpp"
+#line 328 "module_attrs_array_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

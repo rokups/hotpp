@@ -68,11 +68,16 @@ struct hot_state_Parser {
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static_assert(offsetof(hot_state_Parser, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo* const Parser_fields = nullptr;
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
 [[maybe_unused]] static const hot::StateLayout Parser_layout = {
@@ -103,7 +108,7 @@ HOT_HIDDEN static auto Parser__plan()
     return std::make_pair(Parser__super_args(), std::tuple<>());
 #line 6 "out_ptr_v1.hot"
 }
-#line 107 "out_ptr_v1.hot.cpp"
+#line 112 "out_ptr_v1.hot.cpp"
 using Parser_SuperArgs = decltype(Parser__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -136,7 +141,7 @@ HOT_NODEBUG static hot::ShellBase* Parser__construct(void* mem, const char* key,
     return nullptr;
 #line 6 "out_ptr_v1.hot"
 }
-#line 140 "out_ptr_v1.hot.cpp"
+#line 145 "out_ptr_v1.hot.cpp"
 
 static const char* const Parser__construct_keys[] = {typeid(Parser_SuperArgs).name(), hot::kCloneKey, nullptr};
 
@@ -152,7 +157,7 @@ HOT_HIDDEN static Parser_Shell* Parser__build([[maybe_unused]] bool __note)
     return __self;
 #line 6 "out_ptr_v1.hot"
 }
-#line 156 "out_ptr_v1.hot.cpp"
+#line 161 "out_ptr_v1.hot.cpp"
 #line 6 "out_ptr_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Parser_Shell* Parser__new()
 #line 6 "out_ptr_v1.hot"
@@ -161,7 +166,7 @@ HOT_HIDDEN static Parser_Shell* Parser__build([[maybe_unused]] bool __note)
     return Parser__build(true);
 #line 6 "out_ptr_v1.hot"
 }
-#line 165 "out_ptr_v1.hot.cpp"
+#line 170 "out_ptr_v1.hot.cpp"
 #line 6 "out_ptr_v1.hot"
 template <int = 0>
 #line 6 "out_ptr_v1.hot"
@@ -176,7 +181,7 @@ template <int = 0>
     return __h;
 #line 6 "out_ptr_v1.hot"
 }
-#line 180 "out_ptr_v1.hot.cpp"
+#line 185 "out_ptr_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -190,7 +195,7 @@ static int32_t Parser__Run__thunk(hot::PlainObject* __a)
     return hot::call<int32_t(hot::PlainObject*)>(__self, SLOT_Run);
 #line 7 "out_ptr_v1.hot"
 }
-#line 194 "out_ptr_v1.hot.cpp"
+#line 199 "out_ptr_v1.hot.cpp"
 
 static void* Parser___native__thunk(hot::ShellCore* __s)
 {
@@ -221,7 +226,7 @@ HOT_NODEBUG static hot::Instance Parser_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 6 "out_ptr_v1.hot"
 }
-#line 225 "out_ptr_v1.hot.cpp"
+#line 230 "out_ptr_v1.hot.cpp"
 
 #line 6 "out_ptr_v1.hot"
 HOT_NODEBUG static hot::Instance Parser__make_0([[maybe_unused]] void** __a)
@@ -231,7 +236,7 @@ HOT_NODEBUG static hot::Instance Parser__make_0([[maybe_unused]] void** __a)
     return Parser_create();
 #line 6 "out_ptr_v1.hot"
 }
-#line 235 "out_ptr_v1.hot.cpp"
+#line 240 "out_ptr_v1.hot.cpp"
 
 static const hot::CtorEntry Parser__constructors[] = {
     {hot::ctor_key<>(), &Parser__make_0, hot::ctor_write_mask<>()},
@@ -246,7 +251,7 @@ static const hot::CtorEntry Parser__constructors[] = {
     return state_of(__self)->Run();
 #line 7 "out_ptr_v1.hot"
 }
-#line 250 "out_ptr_v1.hot.cpp"
+#line 255 "out_ptr_v1.hot.cpp"
 #line 7 "out_ptr_v1.hot"
 int32_t hot_state_Parser::Run()
 #line 7 "out_ptr_v1.hot"
@@ -279,7 +284,7 @@ int32_t hot_state_Parser::Run()
     HOT_TRACE_LINE(); return Consumed("12.5xyz", end) + n + hot::float_to_int<int32_t>(v);
 #line 13 "out_ptr_v1.hot"
 }
-#line 283 "out_ptr_v1.hot.cpp"
+#line 288 "out_ptr_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

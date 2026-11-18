@@ -45,6 +45,9 @@ static void Vec3__init_data(void*, void* f) { using T = std::array<float, 3>; ne
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static const hot::FieldInfo Vec3_fields[] = {
     {"data", nullptr, typeid(hot::typekey_t<std::array<float, 3>>).name(), offsetof(Vec3, data), sizeof(std::array<float, 3>),
@@ -52,6 +55,8 @@ static const hot::FieldInfo Vec3_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 [[maybe_unused]] static const hot::StateLayout Vec3_layout = {
     "Vec3", sizeof(Vec3), alignof(Vec3), 1, Vec3_fields,
@@ -83,7 +88,7 @@ struct Unit_Shell final : hot::PlainObject, hot::ShellBase {
     }
 #line 15 "ref_return_v1.hot"
     ~Unit_Shell() override { hot::destroy_state(this); }
-#line 87 "ref_return_v1.hot.cpp"
+#line 92 "ref_return_v1.hot.cpp"
 #line 15 "ref_return_v1.hot"
     explicit Unit_Shell(hot::CloneFrom, const hot::ShellBase* src)
 #line 15 "ref_return_v1.hot"
@@ -92,7 +97,7 @@ struct Unit_Shell final : hot::PlainObject, hot::ShellBase {
         hot::clone_state(this, &Unit_record, src);
 #line 15 "ref_return_v1.hot"
     }
-#line 96 "ref_return_v1.hot.cpp"
+#line 101 "ref_return_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -108,14 +113,17 @@ struct hot_state_Unit {
 
 #line 16 "ref_return_v1.hot"
 static void Unit__init_hp(void*, void* f) { using T = int32_t; new (f) T(5); }
-#line 112 "ref_return_v1.hot.cpp"
+#line 117 "ref_return_v1.hot.cpp"
 #line 17 "ref_return_v1.hot"
 static void Unit__init_pos(void*, void* f) { using T = Vec3; new (f) T(); }
-#line 115 "ref_return_v1.hot.cpp"
+#line 120 "ref_return_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 static_assert(offsetof(hot_state_Unit, __hot_owner) == 0, "the owner pointer must be the first member");
 static const hot::FieldInfo Unit_fields[] = {
@@ -126,6 +134,8 @@ static const hot::FieldInfo Unit_fields[] = {
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
 [[maybe_unused]] static const hot::StateLayout Unit_layout = {
@@ -163,7 +173,7 @@ HOT_HIDDEN static auto Unit__plan()
     return std::make_pair(Unit__super_args(), std::tuple<>());
 #line 15 "ref_return_v1.hot"
 }
-#line 167 "ref_return_v1.hot.cpp"
+#line 177 "ref_return_v1.hot.cpp"
 using Unit_SuperArgs = decltype(Unit__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -196,7 +206,7 @@ HOT_NODEBUG static hot::ShellBase* Unit__construct(void* mem, const char* key, c
     return nullptr;
 #line 15 "ref_return_v1.hot"
 }
-#line 200 "ref_return_v1.hot.cpp"
+#line 210 "ref_return_v1.hot.cpp"
 
 static const char* const Unit__construct_keys[] = {typeid(Unit_SuperArgs).name(), hot::kCloneKey, nullptr};
 
@@ -212,7 +222,7 @@ HOT_HIDDEN static Unit_Shell* Unit__build([[maybe_unused]] bool __note)
     return __self;
 #line 15 "ref_return_v1.hot"
 }
-#line 216 "ref_return_v1.hot.cpp"
+#line 226 "ref_return_v1.hot.cpp"
 #line 15 "ref_return_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Unit_Shell* Unit__new()
 #line 15 "ref_return_v1.hot"
@@ -221,7 +231,7 @@ HOT_HIDDEN static Unit_Shell* Unit__build([[maybe_unused]] bool __note)
     return Unit__build(true);
 #line 15 "ref_return_v1.hot"
 }
-#line 225 "ref_return_v1.hot.cpp"
+#line 235 "ref_return_v1.hot.cpp"
 #line 15 "ref_return_v1.hot"
 template <int = 0>
 #line 15 "ref_return_v1.hot"
@@ -236,7 +246,7 @@ template <int = 0>
     return __h;
 #line 15 "ref_return_v1.hot"
 }
-#line 240 "ref_return_v1.hot.cpp"
+#line 250 "ref_return_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -250,7 +260,7 @@ static int32_t& Unit__Hp__thunk(hot::PlainObject* __a)
     return hot::call<int32_t&(hot::PlainObject*)>(__self, Unit_SLOT_Hp);
 #line 19 "ref_return_v1.hot"
 }
-#line 254 "ref_return_v1.hot.cpp"
+#line 264 "ref_return_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -264,7 +274,7 @@ static int32_t& Unit__Choose__thunk(hot::PlainObject* __a, int32_t& a)
     return hot::call<int32_t&(hot::PlainObject*, int32_t&)>(__self, Unit_SLOT_Choose, a);
 #line 27 "ref_return_v1.hot"
 }
-#line 268 "ref_return_v1.hot.cpp"
+#line 278 "ref_return_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -278,7 +288,7 @@ static void Unit__Run__thunk(hot::PlainObject* __a)
     return hot::call<void(hot::PlainObject*)>(__self, Unit_SLOT_Run);
 #line 31 "ref_return_v1.hot"
 }
-#line 282 "ref_return_v1.hot.cpp"
+#line 292 "ref_return_v1.hot.cpp"
 
 static void* Unit___native__thunk(hot::ShellCore* __s)
 {
@@ -311,7 +321,7 @@ HOT_NODEBUG static hot::Instance Unit_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 15 "ref_return_v1.hot"
 }
-#line 315 "ref_return_v1.hot.cpp"
+#line 325 "ref_return_v1.hot.cpp"
 
 #line 15 "ref_return_v1.hot"
 HOT_NODEBUG static hot::Instance Unit__make_0([[maybe_unused]] void** __a)
@@ -321,7 +331,7 @@ HOT_NODEBUG static hot::Instance Unit__make_0([[maybe_unused]] void** __a)
     return Unit_create();
 #line 15 "ref_return_v1.hot"
 }
-#line 325 "ref_return_v1.hot.cpp"
+#line 335 "ref_return_v1.hot.cpp"
 
 static const hot::CtorEntry Unit__constructors[] = {
     {hot::ctor_key<>(), &Unit__make_0, hot::ctor_write_mask<>()},
@@ -330,7 +340,7 @@ static const hot::CtorEntry Unit__constructors[] = {
 // ---------------------------------------------------------------- static methods and free functions
 [[maybe_unused]] HOT_HIDDEN static int32_t& Unit__s_Pick(int32_t& a, int32_t& b);
 
-#line 334 "ref_return_v1.hot.cpp"
+#line 344 "ref_return_v1.hot.cpp"
 // ---------------------------------------------------------------- function bodies
 #line 5 "ref_return_v1.hot"
 static float& Vec3__At(Vec3* __self, int32_t i)
@@ -342,7 +352,7 @@ static float& Vec3__At(Vec3* __self, int32_t i)
     return hot::index(__st->data, i);
 #line 7 "ref_return_v1.hot"
 }
-#line 346 "ref_return_v1.hot.cpp"
+#line 356 "ref_return_v1.hot.cpp"
 
 #line 9 "ref_return_v1.hot"
 static void Vec3__Fill(Vec3* __self)
@@ -356,7 +366,7 @@ static void Vec3__Fill(Vec3* __self)
     r = 1;
 #line 12 "ref_return_v1.hot"
 }
-#line 360 "ref_return_v1.hot.cpp"
+#line 370 "ref_return_v1.hot.cpp"
 
 #line 19 "ref_return_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t& Unit__Hp(Unit_Shell* __self)
@@ -366,7 +376,7 @@ static void Vec3__Fill(Vec3* __self)
     return state_of(__self)->Hp();
 #line 19 "ref_return_v1.hot"
 }
-#line 370 "ref_return_v1.hot.cpp"
+#line 380 "ref_return_v1.hot.cpp"
 #line 19 "ref_return_v1.hot"
 int32_t& hot_state_Unit::Hp()
 #line 19 "ref_return_v1.hot"
@@ -391,7 +401,7 @@ int32_t& hot_state_Unit::Hp()
     HOT_TRACE_LINE(); return __st->hp;
 #line 21 "ref_return_v1.hot"
 }
-#line 395 "ref_return_v1.hot.cpp"
+#line 405 "ref_return_v1.hot.cpp"
 
 #line 27 "ref_return_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t& Unit__Choose(Unit_Shell* __self, int32_t& a)
@@ -401,7 +411,7 @@ int32_t& hot_state_Unit::Hp()
     return state_of(__self)->Choose(std::forward<int32_t&>(a));
 #line 27 "ref_return_v1.hot"
 }
-#line 405 "ref_return_v1.hot.cpp"
+#line 415 "ref_return_v1.hot.cpp"
 #line 27 "ref_return_v1.hot"
 int32_t& hot_state_Unit::Choose(int32_t& a)
 #line 27 "ref_return_v1.hot"
@@ -426,7 +436,7 @@ int32_t& hot_state_Unit::Choose(int32_t& a)
     HOT_TRACE_LINE(); return Unit__s_Pick(a, __st->hp);
 #line 29 "ref_return_v1.hot"
 }
-#line 430 "ref_return_v1.hot.cpp"
+#line 440 "ref_return_v1.hot.cpp"
 
 #line 31 "ref_return_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Unit__Run(Unit_Shell* __self)
@@ -436,7 +446,7 @@ int32_t& hot_state_Unit::Choose(int32_t& a)
     return state_of(__self)->Run();
 #line 31 "ref_return_v1.hot"
 }
-#line 440 "ref_return_v1.hot.cpp"
+#line 450 "ref_return_v1.hot.cpp"
 #line 31 "ref_return_v1.hot"
 void hot_state_Unit::Run()
 #line 31 "ref_return_v1.hot"
@@ -467,7 +477,7 @@ void hot_state_Unit::Run()
     HOT_TRACE_LINE(); k = 3;
 #line 36 "ref_return_v1.hot"
 }
-#line 471 "ref_return_v1.hot.cpp"
+#line 481 "ref_return_v1.hot.cpp"
 
 #line 23 "ref_return_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t& Unit__s_Pick(int32_t& a, int32_t& b)
@@ -481,7 +491,7 @@ void hot_state_Unit::Run()
     HOT_TRACE_LINE(); return a > 0 ? a : b;
 #line 25 "ref_return_v1.hot"
 }
-#line 485 "ref_return_v1.hot.cpp"
+#line 495 "ref_return_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

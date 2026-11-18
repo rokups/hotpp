@@ -7234,7 +7234,7 @@ void translate_impl(
                 o.w("}\n");
             reset();
         }
-        o.w("#if defined(__clang__)\n#pragma clang diagnostic push\n#pragma clang diagnostic ignored \"-Winvalid-offsetof\"\n#endif\n");
+        o.w("#if defined(__clang__)\n#pragma clang diagnostic push\n#pragma clang diagnostic ignored \"-Winvalid-offsetof\"\n#elif defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored \"-Winvalid-offsetof\"\n#endif\n");
         if (cd.fields.empty())
         {
             o.w("static const hot::FieldInfo* const " + cn + "_fields = nullptr;\n");
@@ -7269,7 +7269,7 @@ void translate_impl(
             }
             o.w("};\n");
         }
-        o.w("#if defined(__clang__)\n#pragma clang diagnostic pop\n#endif\n");
+        o.w("#if defined(__clang__)\n#pragma clang diagnostic pop\n#elif defined(__GNUC__)\n#pragma GCC diagnostic pop\n#endif\n");
         o.w("[[maybe_unused]] static const hot::StateLayout " + cn + "_layout = {\n    \"" + cn + "\", sizeof(" + cn + "), alignof(" + cn
             + "), " + std::to_string(cd.fields.size()) + ", " + cn + "_fields,\n};\n\n");
 
@@ -9523,7 +9523,7 @@ void translate_impl(
         }
         else
         {
-        o.w("\n#if defined(__clang__)\n#pragma clang diagnostic push\n#pragma clang diagnostic ignored \"-Winvalid-offsetof\"\n#endif\n");
+        o.w("\n#if defined(__clang__)\n#pragma clang diagnostic push\n#pragma clang diagnostic ignored \"-Winvalid-offsetof\"\n#elif defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored \"-Winvalid-offsetof\"\n#endif\n");
         o.w("static_assert(offsetof(" + S + ", __hot_owner) == 0, \"the owner pointer must be the first member\");\n");
         // The field table of a child has the rows of the parent first. "$S$" is the state struct.
         if (pinfo)
@@ -9569,7 +9569,7 @@ void translate_impl(
             }
             o.w("};\n");
         }
-        o.w("#if defined(__clang__)\n#pragma clang diagnostic pop\n#endif\n\n");
+        o.w("#if defined(__clang__)\n#pragma clang diagnostic pop\n#elif defined(__GNUC__)\n#pragma GCC diagnostic pop\n#endif\n\n");
         // The properties with tags: the thunks come after the declarations of the accessors.
         std::string prop_rows;
         size_t prop_count = 0;
