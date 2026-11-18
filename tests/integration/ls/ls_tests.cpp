@@ -3035,6 +3035,87 @@ TEST(SymbolIndex, AShardWithABrokenBodyIsDropped)
 }
 
 // A shard of format 3 has no near_decl and no near_file: load() deletes it.
+namespace hot::ls
+{
+bool clangd_answered(const nlohmann::json& raw);
+}
+
+TEST(NativeMemoPredicate, ErrorAnswerIsNoAnswer)
+{
+    using hot::ls::clangd_answered;
+    EXPECT_FALSE(clangd_answered(nlohmann::json::parse(R"({"error":{}})")));
+    EXPECT_FALSE(clangd_answered(nlohmann::json()));
+    EXPECT_TRUE(clangd_answered(nlohmann::json::parse(R"({"result":null})")));
+    EXPECT_TRUE(clangd_answered(nlohmann::json::parse(R"({"result":[]})")));
+}
+
+TEST(SymbolIndex, AVersion4ShardIsDropped)
+{
+    TempDir dir;
+    hot::ls::SymbolIndex index;
+    index.open((dir.path() / "index").string());
+    const std::string script = (dir.path() / "a.hot").string();
+    write_file(script, "x");
+    hot::ls::IndexShard shard = sample_shard();
+    shard.table = sample_table();
+    ASSERT_TRUE(index.store(script, "d", shard));
+    const std::string file = index.shard_path(script);
+    std::string text = read_all(file);
+    const std::string head = "hot-index " + std::to_string(hot::ls::SymbolIndex::kFormatVersion) + " ";
+    ASSERT_EQ(text.rfind(head, 0), 0u);
+    text.replace(0, head.size(), "hot-index 4 ");
+    write_file(file, text);
+    EXPECT_FALSE(index.load(script, "d"));
+    EXPECT_FALSE(std::filesystem::exists(file));
+}
+
+TEST(SymbolIndex, NativeTargetsRoundTripAndMerge)
+{
+    TempDir dir;
+    hot::ls::SymbolIndex index;
+    index.open((dir.path() / "index").string());
+    const std::string script = (dir.path() / "a.hot").string();
+    write_file(script, "x");
+    hot::ls::IndexShard shard = sample_shard();
+    shard.table = sample_table();
+    shard.native_targets[5] = {{"file:///h.h", 3, 4}, {"file:///h.h", 9, 1}};
+    shard.native_targets[8] = {};
+    shard.native_stamps = {{"/h.h", 10, 20}};
+    shard.native_guard = {{"\"a.h\"", "<b.h>"}, 77, 99};
+    ASSERT_TRUE(index.store(script, "d", shard));
+    auto loaded = index.load(script, "d");
+    ASSERT_TRUE(loaded);
+    EXPECT_EQ(loaded->native_targets, shard.native_targets);
+    EXPECT_EQ(loaded->native_stamps, shard.native_stamps);
+    EXPECT_EQ(loaded->native_guard, shard.native_guard);
+    // A merge replaces an offset and keeps the others.
+    ASSERT_TRUE(index.store_native(script, "d", {{8, {{"file:///h.h", 1, 1}}}, {11, {}}}, {{"/h.h", 10, 20}},
+        shard.native_guard));
+    loaded = index.load(script, "d");
+    ASSERT_TRUE(loaded);
+    EXPECT_EQ(loaded->native_targets.size(), 3u);
+    EXPECT_EQ(loaded->native_targets.at(5).size(), 2u);
+    EXPECT_EQ(loaded->native_targets.at(8).size(), 1u);
+    EXPECT_TRUE(loaded->native_targets.at(11).empty());
+    // A changed stamp of a stored file drops the old answers.
+    ASSERT_TRUE(index.store_native(script, "d", {{20, {}}}, {{"/h.h", 11, 20}}, shard.native_guard));
+    loaded = index.load(script, "d");
+    ASSERT_TRUE(loaded);
+    EXPECT_EQ(loaded->native_targets.size(), 1u);
+    EXPECT_TRUE(loaded->native_targets.count(20));
+    // A changed header stamp or host key of the guard drops the old answers too.
+    hot::ls::NativeGuard other = shard.native_guard;
+    other.host_key = 100;
+    ASSERT_TRUE(index.store_native(script, "d", {{30, {}}}, {{"/h.h", 11, 20}}, other));
+    loaded = index.load(script, "d");
+    ASSERT_TRUE(loaded);
+    EXPECT_EQ(loaded->native_targets.size(), 1u);
+    EXPECT_TRUE(loaded->native_targets.count(30));
+    EXPECT_EQ(loaded->native_guard, other);
+    // A wrong digest stores nothing.
+    EXPECT_FALSE(index.store_native(script, "other", {{1, {}}}, {}, other));
+}
+
 TEST(SymbolIndex, AVersion3ShardIsDropped)
 {
     TempDir dir;
@@ -9500,7 +9581,9 @@ TEST(WorkspaceIndexReferences, NativeReferencesGiveTheSameResultWithAndWithoutTh
     EXPECT_EQ(text.find("ROOT/none.hot"), std::string::npos) << text;
     EXPECT_GT(on_after["entryHits"].get<int>(), on_before["entryHits"].get<int>()) << on_after.dump();
     // Each analyze of the scan counts as a translation. The index jobs use their own session.
-    EXPECT_EQ(on_after["translations"].get<int>() - on_before["translations"].get<int>(), 1) << on_after.dump();
+    // The warm-up requests stored the native memo (HOT-35): the measured request makes no analyze.
+    EXPECT_EQ(on_after["translations"].get<int>() - on_before["translations"].get<int>(), 0) << on_after.dump();
+    EXPECT_GT(on_after["nativeMemoHits"].get<int>(), on_before["nativeMemoHits"].get<int>()) << on_after.dump();
 }
 
 // ------------------------------------------------------------------ HOT-34: script references and the index

@@ -13,7 +13,7 @@
 // "hot-index <version> <digest> <path>". The body holds the symbols and the references.
 // load() gives a shard only when the format version and the content digest match. A shard
 // with another version is deleted. prune() deletes the shard of a missing file.
-// The body (version 4) has the classes ("c") and the table of the resolved names ("t"). The
+// The body (version 5) has the classes ("c") and the table of the resolved names ("t"). The
 // table keeps offset, length, kind, is_decl, decl, decl_file, near_decl and near_file of each
 // ref, the syntax errors and the base of each class. The strings are in a
 // string table. load() computes ResolvedRef::id and the line and the column of each name.
@@ -60,9 +60,46 @@ struct IndexClass
     IndexMember* find_member(const std::string& member);
 };
 
+// A place that clangd gave for a native name (HOT-35).
+struct NativeTarget
+{
+    std::string uri;
+    int line = 0, character = 0;
+    bool operator==(const NativeTarget& o) const { return uri == o.uri && line == o.line && character == o.character; }
+};
+
+// The size and the time of a file. A missing file has size UINT64_MAX and mtime 0.
+struct NativeStamp
+{
+    std::string path;
+    uint64_t size = 0;
+    int64_t mtime = 0;
+    bool operator==(const NativeStamp& o) const { return path == o.path && size == o.size && mtime == o.mtime; }
+};
+
+// The guard of the native answers of a script (HOT-35). "includes" are the include names of the shell
+// header of the generated unit. "header_stamp" is the Server::header_stamp of these includes. "host_key"
+// is the hash of the host options and of the clangd program. The answers hold only while both match.
+struct NativeGuard
+{
+    std::vector<std::string> includes;
+    uint64_t header_stamp = 0;
+    uint64_t host_key = 0;
+    bool operator==(const NativeGuard& o) const
+    {
+        return includes == o.includes && header_stamp == o.header_stamp && host_key == o.host_key;
+    }
+};
+
 struct IndexShard
 {
     std::vector<IndexClass> classes;
+    // The answers of clangd for the native names of a closed script (HOT-35). The key is the
+    // offset of the asked position. The value is the list of the targets. An empty list is an
+    // answer too. "native_stamps" has one stamp for each target file. Version 5 of the format.
+    std::map<int, std::vector<NativeTarget>> native_targets;
+    std::vector<NativeStamp> native_stamps;
+    NativeGuard native_guard;
     FileRefs table; // the resolved names of the file (from the translator)
     // True when "table" comes from an analyze with the resolved names. store() writes the marker.
     // load() gives only a shard with the marker.
@@ -73,7 +110,7 @@ struct IndexShard
 class SymbolIndex
 {
 public:
-    static constexpr int kFormatVersion = 4;
+    static constexpr int kFormatVersion = 5;
 
     SymbolIndex();
     ~SymbolIndex();
@@ -118,6 +155,15 @@ public:
     std::optional<IndexShard> load(const std::string& script_path, const std::string& digest);
     // Writes the shard of a script. It replaces the old shard. Gives false on an error.
     bool store(const std::string& script_path, const std::string& digest, const IndexShard& shard);
+    // Adds the native answers to the shard of a script. It loads the shard, merges the answers
+    // (an offset in "map" replaces the old offset) and stores the shard. When a stored stamp
+    // differs from a new stamp of the same file, or the stored guard differs from "guard", it drops the old answers first. Gives false when
+    // there is no shard with this digest or the store fails.
+    bool store_native(const std::string& script_path, const std::string& digest,
+        const std::map<int, std::vector<NativeTarget>>& map, const std::vector<NativeStamp>& stamps,
+        const NativeGuard& guard);
+    // The stamp of a file now.
+    static NativeStamp stamp_file(const std::string& path);
     // Deletes the shards of missing files, the shards with another version and old temporary
     // files. Gives the number of deleted files.
     int prune();
