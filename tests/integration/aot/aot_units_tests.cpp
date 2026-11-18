@@ -15,7 +15,7 @@
 #ifdef AOT_UNITS_LOADER
 #include "hot/backend.h"
 #endif
-#if defined(AOT_UNITS_LOADER) && !defined(AOT_EXPECT_OPTIMIZED)
+#ifdef AOT_UNITS_LOADER
 #include "support/script_files.h"
 #endif
 
@@ -247,7 +247,6 @@ TEST(AotUnits, LoadAotOfAnOldTableGivesUnknownFineData)
     }
 }
 
-#ifndef AOT_EXPECT_OPTIMIZED
 // The data that the loader reads from the table equals the data of the translation of the script.
 TEST(AotUnits, LoadAotFineDataEqualsTheTranslatorData)
 {
@@ -277,7 +276,38 @@ TEST(AotUnits, LoadAotFineDataEqualsTheTranslatorData)
         EXPECT_EQ(use.strong, built.use_info.strong) << unit;
         EXPECT_FALSE(iface.members.empty()) << unit;
         EXPECT_FALSE(use.names.empty()) << unit;
+        EXPECT_EQ(iface.hash, hot::aot_table.scripts[i].iface_hash) << unit;
     }
+}
+
+#ifndef AOT_EXPECT_OPTIMIZED
+// A unit that reverts to AOT has the fine data of the AOT table again.
+TEST(AotUnits, RevertToAotRestoresTheFineData)
+{
+    std::unique_ptr<hot::Backend> backend = hot::make_default_backend();
+    backend->seed_slots(hot::aot_table.slots);
+    hot::Loader loader;
+    const hot::ReloadResult r = loader.load_aot(hot::aot_table);
+    ASSERT_TRUE(r) << r.error;
+    hot::ScriptSource src = test_support::source("aot_units/aot_unit_base_v2.hot");
+    src.unit = "aot_unit_base";
+    hot::LoadResult built = backend->load(src, 2);
+    ASSERT_TRUE(built) << built.error;
+    ASSERT_TRUE(loader.request_reload(std::move(*built.module))) << "reload";
+    ASSERT_TRUE(loader.commit_pending());
+    loader.frame_boundary();
+    hot::IfaceInfo aot_iface;
+    hot::UseInfo aot_use;
+    ASSERT_TRUE(loader.aot_unit_info("aot_unit_base", aot_iface, aot_use));
+    ASSERT_TRUE(aot_iface.known);
+    const hot::ReloadResult rv = loader.revert_unit("aot_unit_base", *backend);
+    ASSERT_TRUE(rv) << rv.error;
+    hot::IfaceInfo iface;
+    hot::UseInfo use;
+    ASSERT_TRUE(loader.pending_unit_info("aot_unit_base", iface, use));
+    EXPECT_EQ(iface, aot_iface);
+    EXPECT_EQ(use, aot_use);
+    EXPECT_TRUE(loader.commit_pending());
 }
 #endif
 

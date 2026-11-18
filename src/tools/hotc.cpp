@@ -785,8 +785,9 @@ int run_aot(const Args& args)
         if (v.empty())
             return;
         reg += "const uint64_t " + var + "[] = {";
+        size_t n = 0;
         for (uint64_t x : v)
-            reg += std::to_string(x) + "ull, ";
+            reg += std::to_string(x) + (++n % 64 == 0 ? "ull,\n" : "ull, ");
         reg += "};\n";
     };
     for (size_t i = 0; i < names.size(); ++i)
@@ -798,8 +799,10 @@ int run_aot(const Args& args)
             if (!f.members.empty())
             {
                 reg += "const AotMember kMembers_" + id + "[] = {";
+                size_t n = 0;
                 for (const hot::IfaceMember& m : f.members)
-                    reg += "{" + std::to_string(m.name) + "ull, " + std::to_string(m.decl) + "ull}, ";
+                    reg += "{" + std::to_string(m.name) + "ull, " + std::to_string(m.decl) + "ull}"
+                        + (++n % 64 == 0 ? ",\n" : ", ");
                 reg += "};\n";
             }
             u64_array("kIfaceNames_" + id, f.names);
@@ -819,8 +822,9 @@ int run_aot(const Args& args)
             if (!u.strong.empty())
             {
                 reg += "const char* const kUseStrong_" + id + "[] = {";
+                size_t n = 0;
                 for (const std::string& s : u.strong)
-                    reg += "\"" + s + "\", ";
+                    reg += "\"" + s + "\"" + (++n % 64 == 0 ? ",\n" : ", ");
                 reg += "};\n";
             }
             reg += "const AotUse kUse_" + id + " = {" + (u.names.empty() ? std::string("nullptr") : "kUseNames_" + id)

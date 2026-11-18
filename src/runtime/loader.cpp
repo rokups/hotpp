@@ -579,6 +579,21 @@ bool Loader::aot_unit_info(const std::string& unit, IfaceInfo& iface, UseInfo& u
     return true;
 }
 
+bool Loader::pending_unit_info(const std::string& unit, IfaceInfo& iface, UseInfo& use) const
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!pending_)
+        return false;
+    for (const PendingUnit& u : pending_->units)
+        if (u.module.unit == unit)
+        {
+            iface = u.module.iface_info;
+            use = u.module.use_info;
+            return true;
+        }
+    return false;
+}
+
 ReloadResult Loader::load_aot(const AotTable& table)
 {
     {
@@ -1270,6 +1285,8 @@ ReloadResult Loader::revert_unit(const std::string& unit, Backend& backend)
         pu.module.unit = unit;
         pu.module.iface_hash = au->second.iface_hash;
         pu.module.imports = au->second.imports;
+        pu.module.iface_info = au->second.iface_info;
+        pu.module.use_info = au->second.use_info;
         std::set<std::string> classes;
         for (const auto& [name, e] : au->second.reg.entries())
             classes.insert(name);

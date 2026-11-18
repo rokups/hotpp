@@ -184,6 +184,10 @@ public:
     // False when the unit is not an AOT unit. An old table (null fields) gives known == false.
     bool aot_unit_info(const std::string& unit, IfaceInfo& iface, UseInfo& use) const;
 
+    // The same data of a unit in the pending batch (for example the revert to AOT). False when no
+    // pending batch has the unit.
+    bool pending_unit_info(const std::string& unit, IfaceInfo& iface, UseInfo& use) const;
+
     // Drops all state of the loader for a full reload. The sequence of the host is: save the host
     // state, drop all script handles, closures and thunk pointers, reset, load the fresh module
     // (Backend::load with LoadMode::Fresh) and call load() again, then restore the host state.
