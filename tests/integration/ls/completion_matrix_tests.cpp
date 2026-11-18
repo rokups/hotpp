@@ -173,6 +173,12 @@ const std::vector<Case> kCases = {
     {"TemplateArgument", "template argument GetComponent<", Wrap::Body, "node.GetComponent<@", {"Base", "Hero"}, {}},
     {"NewType", "after new", Wrap::Body, "$Base b2 = new @", {"Base", "Hero"}, {"counter"}},
     {"NewTypePrefix", "after new with a prefix", Wrap::Body, "$Base b2 = new Ba@", {"Base"}, {}},
+    // A qualified type name in the parameter list of a free function (HOT-56).
+    {"FreeParamQualified", "qualified type in a free function parameter", Wrap::Module,
+        "$Base F56a(in gfx.@Color c, Holder* h,\n    $Base b, Point p) {\n    return null;\n}", {"Color"}, {}},
+    {"FreeParamQualifiedOpen", "qualified type, parameter list not closed", Wrap::Module, "$Base F56b(in gfx.@", {"Color"}, {}},
+    {"FreeParamQualifiedPlain", "qualified type without in", Wrap::Module,
+        "$Base F56c(gfx.@Color c, Holder* h) {\n    return null;\n}", {"Color"}, {}},
     // The special places.
     {"UsingString", "inside a using string", Wrap::Top, "using \"@", {"Cm.h", "lib.hot"}, {"main.hot"}},
     {"UsingStringPartial", "inside a using string with a prefix", Wrap::Top, "using \"li@", {"lib.hot"}, {"Cm.h"}},
