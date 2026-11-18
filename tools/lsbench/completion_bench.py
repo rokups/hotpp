@@ -105,9 +105,12 @@ def main():
                         probes.setdefault(ln.split(" passes=")[0][6:], []).append(ln)
                 for k, v in ph.items():
                     phases.setdefault(k, []).append(v)
-            print("SCEN %s %s latency_median %.1f" % (sc, name, statistics.median(lat)), flush=True)
+            lat_s = sorted(lat)
+            p95 = lat_s[min(len(lat_s) - 1, int(0.95 * len(lat_s)))]
+            print("SCEN %s %s latency_median %.1f p95 %.1f max %.1f" % (sc, name, statistics.median(lat), p95, lat_s[-1]), flush=True)
             for k, v in phases.items():
-                print("SCEN %s %s PHASE %s median %.1f n=%d" % (sc, name, k, statistics.median(v), len(v)), flush=True)
+                vs = sorted(v)
+                print("SCEN %s %s PHASE %s median %.1f p95 %.1f max %.1f n=%d" % (sc, name, k, statistics.median(v), vs[min(len(vs) - 1, int(0.95 * len(vs)))], vs[-1], len(v)), flush=True)
             for k, v in probes.items():
                 print("SCEN %s %s %s" % (sc, name, v[len(v) // 2]), flush=True)
                 print("SCEN %s %s %s count=%d" % (sc, name, k, len(v)), flush=True)
