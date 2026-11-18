@@ -998,9 +998,8 @@ TEST_P(BackendTests, SafeAccessInAnExpression)
     EXPECT_EQ(*s.field("ticks"), 1.0f);
 }
 
-// A cast to the same handle type is a checked unwrap: a null handle throws hot::NullReference.
-// The script catches it. A handle that is not null passes.
-TEST_P(BackendTests, CheckedUnwrapCastThrowsOnNull)
+// A cast to the same handle type never throws: a null handle stays null. "x!" is the assertion.
+TEST_P(BackendTests, SameTypeCastKeepsNull)
 {
     const hot::ScriptSource src = {"chk_unwrap.hot", std::string(kChecksHead) + R"(
         $Box a = new $Box();
@@ -1009,7 +1008,9 @@ TEST_P(BackendTests, CheckedUnwrapCastThrowsOnNull)
         $Box none = null;
         try {
             var bad = ($Box)none;
-            this.after = 1.0;
+            if (bad == null) this.after = 1.0;
+            var worse = ($Box)none!;
+            this.v = 9.0;
         } catch (NullReference e) {
             this.caught = 1.0;
         }
@@ -1021,7 +1022,7 @@ TEST_P(BackendTests, CheckedUnwrapCastThrowsOnNull)
     s.world.Tick(kDt);
     EXPECT_EQ(*s.field("v"), 5.0f);
     EXPECT_EQ(*s.field("caught"), 1.0f);
-    EXPECT_EQ(*s.field("after"), 0.0f);
+    EXPECT_EQ(*s.field("after"), 1.0f);
 }
 
 // "x as $C" and a cast "($C)x" to a derived script class never crash. A wrong class and a null

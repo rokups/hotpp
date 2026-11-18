@@ -241,14 +241,15 @@ struct DerivedItem : Item
     int extra = 0;
 };
 
-// The cast "(T*)h" of a handle is a checked unwrap that gives the raw pointer.
+// The cast "(T*)h" of a handle gives the raw pointer. A null handle gives nullptr.
 TEST(CastPtr, HandleGivesTheRawPointer)
 {
     auto h = std::make_shared<DerivedItem>();
     EXPECT_EQ(hot::cast_ptr<Item*>(h), static_cast<Item*>(h.get()));
     EXPECT_EQ(hot::cast_ptr<DerivedItem*>(h), h.get());
     std::shared_ptr<DerivedItem> n;
-    EXPECT_THROW(hot::cast_ptr<Item*>(n), hot::NullReference);
+    EXPECT_NO_THROW(EXPECT_EQ(hot::cast_ptr<Item*>(n), nullptr));
+    EXPECT_NO_THROW(EXPECT_EQ(hot::cast_ptr<DerivedItem*>(n), nullptr));
 }
 
 TEST(AsRef, HandleGivesTheObject)
@@ -393,13 +394,13 @@ TEST(NonNullMsg, OptionalPassesThrough)
     static_assert(std::is_same_v<decltype(hot::nonnull(o, "m")), int&>);
 }
 
-TEST(CastPtr, SameTypeIsACheckedUnwrap)
+TEST(CastPtr, SameTypeKeepsNull)
 {
     Item i;
     Item* p = &i;
     EXPECT_EQ(hot::cast_ptr<Item*>(p), &i);
     Item* n = nullptr;
-    EXPECT_THROW(hot::cast_ptr<Item*>(n), hot::NullReference);
+    EXPECT_NO_THROW(EXPECT_EQ(hot::cast_ptr<Item*>(n), nullptr));
 }
 
 TEST(CastPtr, OtherTypeIsTheCCast)

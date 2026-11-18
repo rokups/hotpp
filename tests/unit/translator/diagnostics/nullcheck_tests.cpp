@@ -262,7 +262,7 @@ TEST(NullCheck, CoalesceOfANonNullLeftSideIsNonNull)
     EXPECT_EQ(warns("var n = p ?? new $Node(); n.hp = 1;"), 0);
 }
 
-// "($C)h" to the same class or to a base class is a checked unwrap. A cast to a derived class can give null.
+// "($C)h" keeps the null state of "h". A cast to a derived class can give null.
 std::string cast_script(const std::string& body)
 {
     return "class Node {\n    int hp = 0;\n}\n"
@@ -278,29 +278,26 @@ int cast_warns(const std::string& body)
     return null_warnings(r);
 }
 
-// Temporary lint, removed in HOT-58 S9: each cast that tests for null warns, the code does not change.
-TEST(NullCheck, Hot58CastLintWarnsAtEachEmitSite)
+// A cast changes the type and never tests for null. "x!" is the only non-null assertion.
+TEST(NullCheck, CastToTheSameHandleTypeKeepsTheNullState)
 {
-    const char* const msg = "HOT-58: this cast tests for null; write x!";
-    for (const char* body : {"var a = ($Node)b;", "var a = ($Node)s;", "int* q = null; var a = (int*)q;"})
-    {
-        const hotc::TranslateResult r = translate_real(cast_script(body));
-        size_t n = 0;
-        for (size_t p = r.warnings.find(msg); p != std::string::npos; p = r.warnings.find(msg, p + 1))
-            ++n;
-        EXPECT_EQ(n, 1u) << body << "\n" << r.warnings << r.diagnostics;
-    }
-}
-
-TEST(NullCheck, CastToTheSameHandleTypeIsNonNull)
-{
-    EXPECT_EQ(cast_warns("var a = ($Node)b; a.hp = 1;"), 0);
+    EXPECT_EQ(cast_warns("var a = ($Node)b; a.hp = 1;"), 1); // the cast does not narrow
+    EXPECT_EQ(cast_warns("var a = ($Node)b!; a.hp = 1;"), 0); // "b!" is not null
     EXPECT_EQ(cast_warns("var a = b; a.hp = 1;"), 1);
 }
 
-TEST(NullCheck, CastToABaseHandleTypeIsNonNull)
+TEST(NullCheck, CastOfAMemberCallNeedsTheAssertion)
 {
-    EXPECT_EQ(cast_warns("var a = ($Node)s; a.hp = 1;"), 0);
+    EXPECT_EQ(cast_warns("(($Node)b).hp = 1;"), 1);
+    EXPECT_EQ(cast_warns("(($Node)b!).hp = 1;"), 0);
+    EXPECT_EQ(cast_warns("(($Node)s!).hp = 1;"), 0);
+    EXPECT_EQ(cast_warns("($Node)b.hp = 1;"), 1);
+}
+
+TEST(NullCheck, CastToABaseHandleTypeKeepsTheNullState)
+{
+    EXPECT_EQ(cast_warns("var a = ($Node)s; a.hp = 1;"), 1);
+    EXPECT_EQ(cast_warns("if (s == null) return; var a = ($Node)s; a.hp = 1;"), 0);
 }
 
 TEST(NullCheck, CastToADerivedHandleTypeCanBeNull)
@@ -309,19 +306,20 @@ TEST(NullCheck, CastToADerivedHandleTypeCanBeNull)
     EXPECT_EQ(cast_warns("var a = ($Sub)b; if (a != null) a.extra = 1;"), 0);
 }
 
-TEST(NullCheck, CastUnwrapNarrowsTheName)
+TEST(NullCheck, CastDoesNotNarrowTheName)
 {
-    EXPECT_EQ(cast_warns("var a = ($Node)b; b.hp = 1;"), 0);
+    EXPECT_EQ(cast_warns("var a = ($Node)b; b.hp = 1;"), 1);
     EXPECT_EQ(cast_warns("var a = ($Sub)b; b.hp = 1;"), 1);
 }
 
-TEST(NullCheck, CastOfAPointerToTheSameTypeIsNonNull)
+TEST(NullCheck, CastOfAPointerKeepsTheNullState)
 {
     auto count = [](const char* body)
     { return null_warnings(translate_real(std::string("class Tester {\n    void run(int* a, const int* c) {\n") + body + "\n    }\n}\n")); };
-    EXPECT_EQ(count("var b = (int*)a; b[0] = 1;"), 0);
+    EXPECT_EQ(count("var b = (int*)a; b[0] = 1;"), 1);
+    EXPECT_EQ(count("var b = (int*)a!; b[0] = 1;"), 0);
     EXPECT_EQ(count("var b = a; b[0] = 1;"), 1);
-    EXPECT_EQ(count("var b = (int*)a; a[0] = 1;"), 0);
+    EXPECT_EQ(count("var b = (int*)a; a[0] = 1;"), 1);
     // A const cast keeps the null state of the pointer.
     EXPECT_EQ(count("var b = (const int*)a; b[0] = 1;"), 1);
     EXPECT_EQ(count("if (a == null) return; var b = (const int*)a; b[0] = 1;"), 0);
@@ -622,4 +620,34 @@ TEST(NullCheck, LocalFromAnUntypedCallAssertionIsNonNull)
     const std::string members = "    std.function<$Node()> cb;\n";
     EXPECT_EQ(warns("$Node n = this.cb()!;\n        n.hp = 1;", members), 0);
     EXPECT_EQ(warns("$Node n = this.cb();\n        n.hp = 1;", members), 1);
+}
+
+// ---------------------------------------------------------------- "a cast to the same type has no effect"
+namespace
+{
+int same_cast_warns(const std::string& params, const std::string& body)
+{
+    const hotc::TranslateResult r = translate_real(
+        "class Node {\n    int hp = 0;\n}\nclass Sub : Node {\n    int extra = 0;\n}\n"
+        "class Tester {\n    void run(" + params + ") {\n" + body + "\n    }\n}\n");
+    return count_of(r.warnings, "a cast to the same type has no effect");
+}
+} // namespace
+
+TEST(NullCheck, SameTypeCastWarns)
+{
+    EXPECT_EQ(same_cast_warns("$Node b", "var a = ($Node)b;"), 1);
+    EXPECT_EQ(same_cast_warns("int* p", "var a = (int*)p;"), 1);
+    EXPECT_EQ(same_cast_warns("float f", "float g = (float)f;"), 1);
+}
+
+TEST(NullCheck, ChangingCastDoesNotWarnAsSameType)
+{
+    EXPECT_EQ(same_cast_warns("$Sub s", "var a = ($Node)s;"), 0);
+    EXPECT_EQ(same_cast_warns("$Node b", "var a = ($Sub)b;"), 0);
+    EXPECT_EQ(same_cast_warns("const int* p", "var a = (int*)p;"), 0);
+    EXPECT_EQ(same_cast_warns("int* p", "var a = (const int*)p;"), 0);
+    EXPECT_EQ(same_cast_warns("int i", "float g = (float)i;"), 0);
+    EXPECT_EQ(same_cast_warns("float f", "int g = (int)f;"), 0);
+    EXPECT_EQ(same_cast_warns("", "var a = (float)unknown_fn();"), 0);
 }

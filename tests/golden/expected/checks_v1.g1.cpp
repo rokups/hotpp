@@ -468,7 +468,7 @@ int32_t hot_state_Checks::load(int32_t* const p)
 #line 12 "checks_v1.hot"
     HOT_TRACE_FRAME("Checks.load", "checks_v1.hot");
 #line 12 "checks_v1.hot"
-    HOT_TRACE_LINE(); return hot::star(hot::cast_ptr<int32_t*>(p));
+    HOT_TRACE_LINE(); return hot::star(hot::cast_ptr<int32_t*>(hot::nonnull(p, "checks_v1.hot:12: 'p' is null")));
 #line 13 "checks_v1.hot"
 }
 #line 475 "checks_v1.hot.cpp"
@@ -548,7 +548,7 @@ int32_t hot_state_Checks::safe_load(int32_t* const p)
 #line 24 "checks_v1.hot"
     HOT_TRACE_LINE(); try {
 #line 25 "checks_v1.hot"
-        HOT_TRACE_LINE(); return hot::star(hot::cast_ptr<int32_t*>(p));
+        HOT_TRACE_LINE(); return hot::star(hot::cast_ptr<int32_t*>(hot::nonnull(p, "checks_v1.hot:25: 'p' is null")));
 #line 26 "checks_v1.hot"
     } catch (const hot::NullReference& e) {
 #line 27 "checks_v1.hot"
@@ -597,7 +597,7 @@ void hot_state_Checks::first_member(Actor* const other)
 #line 36 "checks_v1.hot"
     HOT_TRACE_FRAME("Checks.first_member", "checks_v1.hot");
 #line 36 "checks_v1.hot"
-    HOT_TRACE_LINE(); hot::deref((hot::cast_ptr<Actor*>(other))).Move(Vec3());
+    HOT_TRACE_LINE(); hot::deref((hot::cast_ptr<Actor*>(hot::nonnull(other, "checks_v1.hot:36: 'other' is null")))).Move(Vec3());
 #line 37 "checks_v1.hot"
 }
 #line 604 "checks_v1.hot.cpp"

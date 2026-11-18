@@ -358,23 +358,24 @@ TEST(ScriptKindsTranslation, UpcastAndSameTypeCastAreStatic)
 {
     const hotc::TranslateResult r = translate_script(
         "class Squad : Unit { int a = 0; }\nclass Boss : Unit {\n    int Run($Squad s) {\n"
-        "        $Unit u = ($Unit)s;\n        $Squad t = ($Squad)s;\n        return t.a;\n    }\n}\n");
+        "        $Unit u = ($Unit)s;\n        $Squad t = ($Squad)s;\n        return 0;\n    }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    // A cast to the same type is a checked unwrap: a null handle throws hot::NullReference.
+    // A cast to the same type is the operand. A cast never tests for null.
     // The base "Unit" is not a script class, so that upcast stays a static cast.
     EXPECT_NE(r.cpp.find("std::static_pointer_cast<Unit>(s)"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("= hot::nonnull(s);"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("std::shared_ptr<Squad> t = s;"), std::string::npos) << r.cpp;
+    EXPECT_EQ(r.cpp.find("hot::nonnull"), std::string::npos) << r.cpp;
     EXPECT_EQ(r.cpp.find("static_pointer_cast<Squad>"), std::string::npos) << r.cpp;
     EXPECT_EQ(r.cpp.find("hot::as_script<Unit_Shell>(s"), std::string::npos) << r.cpp;
 }
 
-TEST(ScriptKindsTranslation, UpcastToAScriptBaseIsACheckedUnwrap)
+TEST(ScriptKindsTranslation, UpcastToAScriptBaseHasNoNullTest)
 {
     const hotc::TranslateResult r = translate_script(
         "class Base { int a = 0; }\nclass Mid : Base { int b = 0; }\nclass Boss {\n    int Run($Mid m) {\n"
-        "        $Base u = ($Base)m;\n        $Mid d = ($Mid)u;\n        return u.a;\n    }\n}\n");
+        "        $Base u = ($Base)m;\n        $Mid d = ($Mid)u;\n        return 0;\n    }\n}\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_NE(r.cpp.find("std::static_pointer_cast<Base>(hot::nonnull(m))"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("std::static_pointer_cast<Base>(m)"), std::string::npos) << r.cpp;
     // A downcast keeps hot::as_script: a failed cast gives null.
     EXPECT_NE(r.cpp.find("hot::as_script<Mid_Shell>(u, \"Mid\")"), std::string::npos) << r.cpp;
 }
@@ -476,4 +477,24 @@ TEST(ScriptKindsTranslation, CppParameterDeclaratorsKeepTheNameInside)
         EXPECT_FALSE(has(r, "(*p)[3] = 3")) << r.cpp;
         EXPECT_FALSE(has(r, "(int (*)[3]) = ")) << r.cpp;
     }
+}
+
+TEST(ScriptKindsTranslation, CastOfAnAssertedHandleCompiles)
+{
+    const hotc::TranslateResult r = translate_script(
+        "class Node { int hp = 0; int Get() { return hp; } $Node Self() { return this; } }\nclass Slab { $Node node; }\n"
+        "class Boss {\n    int Run($Slab slab, $Node h) {\n"
+        "        if (slab == null) return 0;\n"
+        "        int a = (($Node)slab.node!).Get();\n        return a + (($Node)h!).Get();\n    }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_NE(r.cpp.find("hot::nonnull("), std::string::npos) << r.cpp;
+}
+
+TEST(ScriptKindsTranslation, CastOfAPossiblyNullHandleDoesNotNarrow)
+{
+    const hotc::TranslateResult r = translate_script(
+        "class Node { int hp = 0; $Node Self() { return this; } int Get() { return hp; } }\n"
+        "class Boss {\n    int Run($Node h) {\n        return (($Node)h).Get();\n    }\n}\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("can be null here"), std::string::npos) << r.diagnostics;
 }

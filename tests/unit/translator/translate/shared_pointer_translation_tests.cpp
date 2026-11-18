@@ -89,8 +89,8 @@ TEST(SharedPointerRules, ResetWithACastToARawPointerIsAnError)
     EXPECT_FALSE(c.ok);
 }
 
-// The cast "($C)h" of an intrusive handle has the same checks as the cast of a shared handle.
-TEST(SharedPointerRules, CastOfAnIntrusiveHandleIsChecked)
+// The cast "($C)h" of an intrusive handle never tests for null. "h!" does.
+TEST(SharedPointerRules, CastOfAnIntrusiveHandleHasNoNullTest)
 {
     static TempDir* dir = nullptr;
     if (!dir)
@@ -100,9 +100,9 @@ TEST(SharedPointerRules, CastOfAnIntrusiveHandleIsChecked)
         "using \"s.h\";\n[native, handle(\"$T*\"), intrusive(\"AddRef\", \"Release\")] class Rc;\n"
         "class Foo : Rc {\n    int a = 0;\n    void Fn() { }\n}\nclass Bar : Rc {\n    int b = 0;\n"
         "    void Run($Foo h, $Rc r) {\n"
-        "        (($Foo)h).Fn();\n        $Rc u = ($Rc)h;\n        $Foo d = ($Foo)r;\n    }\n}\n"));
+        "        (($Foo)h!).Fn();\n        $Rc u = ($Rc)h;\n        $Foo d = ($Foo)r;\n    }\n}\n"));
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "hot::nonnull(h)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::nonnull(h, ")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "hot::as_script<Foo_Shell>(r, \"Foo\")")) << r.cpp;
 }
 

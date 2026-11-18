@@ -53,15 +53,17 @@ TEST(CheckedPtr, EmptyPointerIsNull)
     EXPECT_EQ(q.get(), nullptr);
 }
 
-// The cast "(T*)fld" of a weak native field is a checked unwrap: a null target throws.
-TEST(CheckedPtr, CastPtrIsACheckedUnwrap)
+// The cast "(T*)fld" of a weak native field never throws: a null or expired target gives nullptr.
+TEST(CheckedPtr, CastPtrNeverThrows)
 {
     hot::CheckedPtr<Charm> n;
-    EXPECT_THROW(hot::cast_ptr<Charm*>(n), hot::NullReference);
-    EXPECT_THROW(hot::cast_ptr<const Charm*>(n), hot::NullReference);
+    EXPECT_NO_THROW(EXPECT_EQ(hot::cast_ptr<Charm*>(n), nullptr));
+    EXPECT_NO_THROW(EXPECT_EQ(hot::cast_ptr<const Charm*>(n), nullptr));
     auto strong = std::make_shared<Charm>();
     hot::CheckedPtr<Charm> p = strong;
     EXPECT_EQ(hot::cast_ptr<Charm*>(p), strong.get());
+    strong.reset();
+    EXPECT_NO_THROW(EXPECT_EQ(hot::cast_ptr<Charm*>(p), nullptr)); // the object is gone
 }
 
 // The assertion "p!" of a weak native field: a null target throws with the message.

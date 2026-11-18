@@ -9,7 +9,7 @@ class Checks : Actor {
     }
 
     int load(int* p) {
-        return *(int*)p;
+        return *(int*)p!;
     }
 
     int safe_at(int i) {
@@ -22,7 +22,7 @@ class Checks : Actor {
 
     int safe_load(int* p) {
         try {
-            return *(int*)p;
+            return *(int*)p!;
         } catch (hot.NullReference e) {
             return -1;
         } catch (hot.ScriptError e) {
@@ -33,6 +33,6 @@ class Checks : Actor {
     }
 
     void first_member(Actor* other) {
-        ((Actor*)other).Move(Vec3());
+        ((Actor*)other!).Move(Vec3());
     }
 }
