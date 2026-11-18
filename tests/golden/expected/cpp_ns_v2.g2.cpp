@@ -164,7 +164,7 @@ static const hot::FieldInfo red__Unit_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout red__Unit_layout = {
+[[maybe_unused]] static const hot::StateLayout red__Unit_layout = {
     "hot_state_red__Unit", sizeof(hot_state_red__Unit), alignof(hot_state_red__Unit), 1, red__Unit_fields, true,
 };
 
@@ -501,7 +501,7 @@ static const hot::FieldInfo blue__Unit_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout blue__Unit_layout = {
+[[maybe_unused]] static const hot::StateLayout blue__Unit_layout = {
     "hot_state_blue__Unit", sizeof(hot_state_blue__Unit), alignof(hot_state_blue__Unit), 3, blue__Unit_fields, true,
 };
 
@@ -750,7 +750,7 @@ static const hot::FieldInfo HotModule_fields[] = {
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
-static const hot::StateLayout HotModule_layout = {
+[[maybe_unused]] static const hot::StateLayout HotModule_layout = {
     "HotModule", sizeof(HotModule), alignof(HotModule), 3, HotModule_fields,
 };
 
@@ -1042,7 +1042,7 @@ static const hot::FieldInfo game__Player_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout game__Player_layout = {
+[[maybe_unused]] static const hot::StateLayout game__Player_layout = {
     "hot_state_game__Player", sizeof(hot_state_game__Player), alignof(hot_state_game__Player), 2, game__Player_fields, true,
 };
 
@@ -1317,7 +1317,7 @@ static const hot::FieldInfo game__ai__Brain_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout game__ai__Brain_layout = {
+[[maybe_unused]] static const hot::StateLayout game__ai__Brain_layout = {
     "hot_state_game__ai__Brain", sizeof(hot_state_game__ai__Brain), alignof(hot_state_game__ai__Brain), 3, game__ai__Brain_fields, true,
 };
 
@@ -1805,7 +1805,7 @@ static const hot::FieldInfo Watcher_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Watcher_layout = {
+[[maybe_unused]] static const hot::StateLayout Watcher_layout = {
     "hot_state_Watcher", sizeof(hot_state_Watcher), alignof(hot_state_Watcher), 3, Watcher_fields, true,
 };
 

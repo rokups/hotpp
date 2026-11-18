@@ -191,7 +191,7 @@ static const hot::FieldInfo Unit_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Unit_layout = {
+[[maybe_unused]] static const hot::StateLayout Unit_layout = {
     "hot_state_Unit", sizeof(hot_state_Unit), alignof(hot_state_Unit), 7, Unit_fields, true,
 };
 
@@ -411,7 +411,7 @@ static const hot::FieldInfo HotModule_fields[] = {
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
-static const hot::StateLayout HotModule_layout = {
+[[maybe_unused]] static const hot::StateLayout HotModule_layout = {
     "HotModule", sizeof(HotModule), alignof(HotModule), 1, HotModule_fields,
 };
 
@@ -532,7 +532,7 @@ static const hot::FieldInfo* const Spawner_fields = nullptr;
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Spawner_layout = {
+[[maybe_unused]] static const hot::StateLayout Spawner_layout = {
     "hot_state_Spawner", sizeof(hot_state_Spawner), alignof(hot_state_Spawner), 0, Spawner_fields, true,
 };
 

@@ -90,7 +90,7 @@ static const hot::FieldInfo Worker_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Worker_layout = {
+[[maybe_unused]] static const hot::StateLayout Worker_layout = {
     "hot_state_Worker", sizeof(hot_state_Worker), alignof(hot_state_Worker), 1, Worker_fields, true,
 };
 

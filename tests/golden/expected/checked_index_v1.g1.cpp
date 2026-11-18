@@ -159,7 +159,7 @@ static const hot::FieldInfo Grid_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Grid_layout = {
+[[maybe_unused]] static const hot::StateLayout Grid_layout = {
     "hot_state_Grid", sizeof(hot_state_Grid), alignof(hot_state_Grid), 3, Grid_fields, true,
 };
 

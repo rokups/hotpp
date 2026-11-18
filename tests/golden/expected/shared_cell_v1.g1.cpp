@@ -185,7 +185,7 @@ static const hot::FieldInfo Counter_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Counter_layout = {
+[[maybe_unused]] static const hot::StateLayout Counter_layout = {
     "hot_state_Counter", sizeof(hot_state_Counter), alignof(hot_state_Counter), 4, Counter_fields, true,
 };
 

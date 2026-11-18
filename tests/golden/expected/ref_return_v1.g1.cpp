@@ -53,7 +53,7 @@ static const hot::FieldInfo Vec3_fields[] = {
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
-static const hot::StateLayout Vec3_layout = {
+[[maybe_unused]] static const hot::StateLayout Vec3_layout = {
     "Vec3", sizeof(Vec3), alignof(Vec3), 1, Vec3_fields,
 };
 
@@ -128,7 +128,7 @@ static const hot::FieldInfo Unit_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Unit_layout = {
+[[maybe_unused]] static const hot::StateLayout Unit_layout = {
     "hot_state_Unit", sizeof(hot_state_Unit), alignof(hot_state_Unit), 2, Unit_fields, true,
 };
 

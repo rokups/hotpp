@@ -55,7 +55,7 @@ static const hot::FieldInfo Rack_fields[] = {
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
-static const hot::StateLayout Rack_layout = {
+[[maybe_unused]] static const hot::StateLayout Rack_layout = {
     "Rack", sizeof(Rack), alignof(Rack), 1, Rack_fields,
 };
 
@@ -154,7 +154,7 @@ static const hot::FieldInfo Node_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Node_layout = {
+[[maybe_unused]] static const hot::StateLayout Node_layout = {
     "hot_state_Node", sizeof(hot_state_Node), alignof(hot_state_Node), 4, Node_fields, true,
 };
 

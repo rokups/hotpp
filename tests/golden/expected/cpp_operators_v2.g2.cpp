@@ -263,7 +263,7 @@ static const hot::FieldInfo Vec_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Vec_layout = {
+[[maybe_unused]] static const hot::StateLayout Vec_layout = {
     "hot_state_Vec", sizeof(hot_state_Vec), alignof(hot_state_Vec), 1, Vec_fields, true,
 };
 
@@ -535,7 +535,7 @@ static const hot::FieldInfo HotModule_fields[] = {
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
-static const hot::StateLayout HotModule_layout = {
+[[maybe_unused]] static const hot::StateLayout HotModule_layout = {
     "HotModule", sizeof(HotModule), alignof(HotModule), 2, HotModule_fields,
 };
 
@@ -656,7 +656,7 @@ static const hot::FieldInfo* const Driver_fields = nullptr;
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Driver_layout = {
+[[maybe_unused]] static const hot::StateLayout Driver_layout = {
     "hot_state_Driver", sizeof(hot_state_Driver), alignof(hot_state_Driver), 0, Driver_fields, true,
 };
 

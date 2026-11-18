@@ -296,7 +296,7 @@ static const hot::FieldInfo Holder_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Holder_layout = {
+[[maybe_unused]] static const hot::StateLayout Holder_layout = {
     "hot_state_Holder", sizeof(hot_state_Holder), alignof(hot_state_Holder), 4, Holder_fields, true,
 };
 

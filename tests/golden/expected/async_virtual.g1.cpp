@@ -87,7 +87,7 @@ static const hot::FieldInfo* const Base_fields = nullptr;
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Base_layout = {
+[[maybe_unused]] static const hot::StateLayout Base_layout = {
     "hot_state_Base", sizeof(hot_state_Base), alignof(hot_state_Base), 0, Base_fields, true,
 };
 
@@ -322,7 +322,7 @@ static const hot::FieldInfo* const Derived_fields = nullptr;
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Derived_layout = {
+[[maybe_unused]] static const hot::StateLayout Derived_layout = {
     "hot_state_Derived", sizeof(hot_state_Derived), alignof(hot_state_Derived), 0, Derived_fields, true,
 };
 

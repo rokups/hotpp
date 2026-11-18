@@ -75,7 +75,7 @@ static const hot::FieldInfo* const Parser_fields = nullptr;
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Parser_layout = {
+[[maybe_unused]] static const hot::StateLayout Parser_layout = {
     "hot_state_Parser", sizeof(hot_state_Parser), alignof(hot_state_Parser), 0, Parser_fields, true,
 };
 

@@ -63,7 +63,7 @@ static const hot::FieldInfo Pt_fields[] = {
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
-static const hot::StateLayout Pt_layout = {
+[[maybe_unused]] static const hot::StateLayout Pt_layout = {
     "Pt", sizeof(Pt), alignof(Pt), 1, Pt_fields,
 };
 
@@ -213,7 +213,7 @@ static const hot::FieldInfo* const FnOvBase_fields = nullptr;
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout FnOvBase_layout = {
+[[maybe_unused]] static const hot::StateLayout FnOvBase_layout = {
     "hot_state_FnOvBase", sizeof(hot_state_FnOvBase), alignof(hot_state_FnOvBase), 0, FnOvBase_fields, true,
 };
 
@@ -465,7 +465,7 @@ static const hot::FieldInfo FnOvMade_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout FnOvMade_layout = {
+[[maybe_unused]] static const hot::StateLayout FnOvMade_layout = {
     "hot_state_FnOvMade", sizeof(hot_state_FnOvMade), alignof(hot_state_FnOvMade), 1, FnOvMade_fields, true,
 };
 
@@ -976,7 +976,7 @@ static const hot::FieldInfo FnOv_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout FnOv_layout = {
+[[maybe_unused]] static const hot::StateLayout FnOv_layout = {
     "hot_state_FnOv", sizeof(hot_state_FnOv), alignof(hot_state_FnOv), 6, FnOv_fields, true,
 };
 

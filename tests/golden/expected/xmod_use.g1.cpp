@@ -71,7 +71,7 @@ static const hot::FieldInfo Pt_fields[] = {
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
-static const hot::StateLayout Pt_layout = {
+[[maybe_unused]] static const hot::StateLayout Pt_layout = {
     "Pt", sizeof(Pt), alignof(Pt), 2, Pt_fields,
 };
 
@@ -209,7 +209,7 @@ static const hot::FieldInfo User_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout User_layout = {
+[[maybe_unused]] static const hot::StateLayout User_layout = {
     "hot_state_User", sizeof(hot_state_User), alignof(hot_state_User), 1, User_fields, true,
 };
 

@@ -46,7 +46,7 @@ static const hot::FieldInfo HotModule_fields[] = {
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
-static const hot::StateLayout HotModule_layout = {
+[[maybe_unused]] static const hot::StateLayout HotModule_layout = {
     "HotModule", sizeof(HotModule), alignof(HotModule), 1, HotModule_fields,
 };
 
@@ -186,7 +186,7 @@ static const hot::FieldInfo Bumper_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Bumper_layout = {
+[[maybe_unused]] static const hot::StateLayout Bumper_layout = {
     "hot_state_Bumper", sizeof(hot_state_Bumper), alignof(hot_state_Bumper), 1, Bumper_fields, true,
 };
 

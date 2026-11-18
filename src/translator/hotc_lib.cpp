@@ -7270,7 +7270,7 @@ void translate_impl(
             o.w("};\n");
         }
         o.w("#if defined(__clang__)\n#pragma clang diagnostic pop\n#endif\n");
-        o.w("static const hot::StateLayout " + cn + "_layout = {\n    \"" + cn + "\", sizeof(" + cn + "), alignof(" + cn
+        o.w("[[maybe_unused]] static const hot::StateLayout " + cn + "_layout = {\n    \"" + cn + "\", sizeof(" + cn + "), alignof(" + cn
             + "), " + std::to_string(cd.fields.size()) + ", " + cn + "_fields,\n};\n\n");
 
         // The function bodies. "self" is the struct itself, so "st" is "self". The text comes
@@ -9590,7 +9590,7 @@ void translate_impl(
         if (prop_count)
             o.w("static const hot::PropertyInfo " + cn + "_props[] = {\n" + prop_rows + "};\n");
         if (!from_header) // the owner unit has the layout of an interface parent
-        o.w(std::string(exported ? "" : "static ") + "const hot::StateLayout " + cn + "_layout = {\n    \"" + S
+        o.w(std::string(exported ? "" : "[[maybe_unused]] static ") + "const hot::StateLayout " + cn + "_layout = {\n    \"" + S
             + "\", sizeof(" + S + "), alignof(" + S + "), " + std::to_string(info.rows.size()) + ", " + cn + "_fields, true"
             + (prop_count ? ", " + cn + "_props, " + std::to_string(prop_count) : std::string()) + ",\n};\n\n");
         }

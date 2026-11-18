@@ -99,7 +99,7 @@ static const hot::FieldInfo Child_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Child_layout = {
+[[maybe_unused]] static const hot::StateLayout Child_layout = {
     "hot_state_Child", sizeof(hot_state_Child), alignof(hot_state_Child), 2, Child_fields, true,
 };
 
@@ -330,7 +330,7 @@ static const hot::FieldInfo Parent_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Parent_layout = {
+[[maybe_unused]] static const hot::StateLayout Parent_layout = {
     "hot_state_Parent", sizeof(hot_state_Parent), alignof(hot_state_Parent), 2, Parent_fields, true,
 };
 
@@ -577,7 +577,7 @@ static const hot::FieldInfo Pong_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Pong_layout = {
+[[maybe_unused]] static const hot::StateLayout Pong_layout = {
     "hot_state_Pong", sizeof(hot_state_Pong), alignof(hot_state_Pong), 2, Pong_fields, true,
 };
 
@@ -816,7 +816,7 @@ static const hot::FieldInfo Ping_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Ping_layout = {
+[[maybe_unused]] static const hot::StateLayout Ping_layout = {
     "hot_state_Ping", sizeof(hot_state_Ping), alignof(hot_state_Ping), 1, Ping_fields, true,
 };
 
@@ -1039,7 +1039,7 @@ static const hot::FieldInfo Node_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Node_layout = {
+[[maybe_unused]] static const hot::StateLayout Node_layout = {
     "hot_state_Node", sizeof(hot_state_Node), alignof(hot_state_Node), 1, Node_fields, true,
 };
 
@@ -1259,7 +1259,7 @@ static const hot::FieldInfo Part_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Part_layout = {
+[[maybe_unused]] static const hot::StateLayout Part_layout = {
     "hot_state_Part", sizeof(hot_state_Part), alignof(hot_state_Part), 2, Part_fields, true,
 };
 
@@ -1450,7 +1450,7 @@ static const hot::FieldInfo Owner_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Owner_layout = {
+[[maybe_unused]] static const hot::StateLayout Owner_layout = {
     "hot_state_Owner", sizeof(hot_state_Owner), alignof(hot_state_Owner), 1, Owner_fields, true,
 };
 

@@ -157,7 +157,7 @@ static const hot::FieldInfo Gauge_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Gauge_layout = {
+[[maybe_unused]] static const hot::StateLayout Gauge_layout = {
     "hot_state_Gauge", sizeof(hot_state_Gauge), alignof(hot_state_Gauge), 4, Gauge_fields, true,
 };
 

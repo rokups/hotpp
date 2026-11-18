@@ -127,7 +127,7 @@ static const hot::FieldInfo Player_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Player_layout = {
+[[maybe_unused]] static const hot::StateLayout Player_layout = {
     "hot_state_Player", sizeof(hot_state_Player), alignof(hot_state_Player), 4, Player_fields, true,
 };
 

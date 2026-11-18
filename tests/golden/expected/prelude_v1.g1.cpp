@@ -157,7 +157,7 @@ static const hot::FieldInfo Smith_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Smith_layout = {
+[[maybe_unused]] static const hot::StateLayout Smith_layout = {
     "hot_state_Smith", sizeof(hot_state_Smith), alignof(hot_state_Smith), 3, Smith_fields, true,
 };
 
@@ -352,7 +352,7 @@ static const hot::FieldInfo Tool_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Tool_layout = {
+[[maybe_unused]] static const hot::StateLayout Tool_layout = {
     "hot_state_Tool", sizeof(hot_state_Tool), alignof(hot_state_Tool), 1, Tool_fields, true,
 };
 

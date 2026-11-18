@@ -175,7 +175,7 @@ static const hot::FieldInfo Ov_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Ov_layout = {
+[[maybe_unused]] static const hot::StateLayout Ov_layout = {
     "hot_state_Ov", sizeof(hot_state_Ov), alignof(hot_state_Ov), 3, Ov_fields, true,
 };
 
@@ -468,7 +468,7 @@ static const hot::FieldInfo OvChild_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout OvChild_layout = {
+[[maybe_unused]] static const hot::StateLayout OvChild_layout = {
     "hot_state_OvChild", sizeof(hot_state_OvChild), alignof(hot_state_OvChild), 3, OvChild_fields, true,
 };
 

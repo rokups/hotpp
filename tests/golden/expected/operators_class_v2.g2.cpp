@@ -135,7 +135,7 @@ static const hot::FieldInfo Money_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Money_layout = {
+[[maybe_unused]] static const hot::StateLayout Money_layout = {
     "hot_state_Money", sizeof(hot_state_Money), alignof(hot_state_Money), 1, Money_fields, true,
 };
 
@@ -488,7 +488,7 @@ static const hot::FieldInfo Holder_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Holder_layout = {
+[[maybe_unused]] static const hot::StateLayout Holder_layout = {
     "hot_state_Holder", sizeof(hot_state_Holder), alignof(hot_state_Holder), 4, Holder_fields, true,
 };
 

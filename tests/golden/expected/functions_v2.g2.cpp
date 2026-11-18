@@ -50,7 +50,7 @@ static const hot::FieldInfo Vec_fields[] = {
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
-static const hot::StateLayout Vec_layout = {
+[[maybe_unused]] static const hot::StateLayout Vec_layout = {
     "Vec", sizeof(Vec), alignof(Vec), 1, Vec_fields,
 };
 
@@ -206,7 +206,7 @@ static const hot::FieldInfo Hero_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Hero_layout = {
+[[maybe_unused]] static const hot::StateLayout Hero_layout = {
     "hot_state_Hero", sizeof(hot_state_Hero), alignof(hot_state_Hero), 6, Hero_fields, true,
 };
 
@@ -469,7 +469,7 @@ static const hot::FieldInfo Helper_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Helper_layout = {
+[[maybe_unused]] static const hot::StateLayout Helper_layout = {
     "hot_state_Helper", sizeof(hot_state_Helper), alignof(hot_state_Helper), 1, Helper_fields, true,
 };
 

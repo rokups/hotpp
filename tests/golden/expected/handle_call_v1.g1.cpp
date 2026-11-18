@@ -368,7 +368,7 @@ static const hot::FieldInfo Caller_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Caller_layout = {
+[[maybe_unused]] static const hot::StateLayout Caller_layout = {
     "hot_state_Caller", sizeof(hot_state_Caller), alignof(hot_state_Caller), 1, Caller_fields, true,
 };
 

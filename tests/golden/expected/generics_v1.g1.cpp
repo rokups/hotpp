@@ -62,7 +62,7 @@ static const hot::FieldInfo Pair_G_int_G_float_fields[] = {
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
-static const hot::StateLayout Pair_G_int_G_float_layout = {
+[[maybe_unused]] static const hot::StateLayout Pair_G_int_G_float_layout = {
     "Pair_G_int_G_float", sizeof(Pair_G_int_G_float), alignof(Pair_G_int_G_float), 2, Pair_G_int_G_float_fields,
 };
 
@@ -129,7 +129,7 @@ static const hot::FieldInfo Counter_G_int_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Counter_G_int_layout = {
+[[maybe_unused]] static const hot::StateLayout Counter_G_int_layout = {
     "hot_state_Counter_G_int", sizeof(hot_state_Counter_G_int), alignof(hot_state_Counter_G_int), 1, Counter_G_int_fields, true,
 };
 
@@ -447,7 +447,7 @@ static const hot::FieldInfo Keeper_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Keeper_layout = {
+[[maybe_unused]] static const hot::StateLayout Keeper_layout = {
     "hot_state_Keeper", sizeof(hot_state_Keeper), alignof(hot_state_Keeper), 4, Keeper_fields, true,
 };
 

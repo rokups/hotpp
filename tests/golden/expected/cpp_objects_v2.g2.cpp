@@ -60,7 +60,7 @@ static const hot::FieldInfo HotModule_fields[] = {
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
-static const hot::StateLayout HotModule_layout = {
+[[maybe_unused]] static const hot::StateLayout HotModule_layout = {
     "HotModule", sizeof(HotModule), alignof(HotModule), 3, HotModule_fields,
 };
 
@@ -210,7 +210,7 @@ static const hot::FieldInfo Minion_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Minion_layout = {
+[[maybe_unused]] static const hot::StateLayout Minion_layout = {
     "hot_state_Minion", sizeof(hot_state_Minion), alignof(hot_state_Minion), 3, Minion_fields, true,
 };
 
@@ -720,7 +720,7 @@ static const hot::FieldInfo Spawner_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Spawner_layout = {
+[[maybe_unused]] static const hot::StateLayout Spawner_layout = {
     "hot_state_Spawner", sizeof(hot_state_Spawner), alignof(hot_state_Spawner), 1, Spawner_fields, true,
 };
 

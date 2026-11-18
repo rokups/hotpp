@@ -169,7 +169,7 @@ static const hot::FieldInfo Checks_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Checks_layout = {
+[[maybe_unused]] static const hot::StateLayout Checks_layout = {
     "hot_state_Checks", sizeof(hot_state_Checks), alignof(hot_state_Checks), 1, Checks_fields, true,
 };
 

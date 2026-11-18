@@ -149,7 +149,7 @@ static const hot::FieldInfo Beeper_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Beeper_layout = {
+[[maybe_unused]] static const hot::StateLayout Beeper_layout = {
     "hot_state_Beeper", sizeof(hot_state_Beeper), alignof(hot_state_Beeper), 2, Beeper_fields, true,
 };
 

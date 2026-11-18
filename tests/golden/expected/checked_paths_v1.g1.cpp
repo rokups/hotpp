@@ -87,7 +87,7 @@ static const hot::FieldInfo Shared_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Shared_layout = {
+[[maybe_unused]] static const hot::StateLayout Shared_layout = {
     "hot_state_Shared", sizeof(hot_state_Shared), alignof(hot_state_Shared), 1, Shared_fields, true,
 };
 
@@ -290,7 +290,7 @@ static const hot::FieldInfo Q_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Q_layout = {
+[[maybe_unused]] static const hot::StateLayout Q_layout = {
     "hot_state_Q", sizeof(hot_state_Q), alignof(hot_state_Q), 1, Q_fields, true,
 };
 
@@ -551,7 +551,7 @@ static const hot::FieldInfo Player_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Player_layout = {
+[[maybe_unused]] static const hot::StateLayout Player_layout = {
     "hot_state_Player", sizeof(hot_state_Player), alignof(hot_state_Player), 4, Player_fields, true,
 };
 

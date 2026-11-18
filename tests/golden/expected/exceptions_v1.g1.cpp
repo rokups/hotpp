@@ -58,7 +58,7 @@ static const hot::FieldInfo AppError_fields[] = {
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
-static const hot::StateLayout AppError_layout = {
+[[maybe_unused]] static const hot::StateLayout AppError_layout = {
     "AppError", sizeof(AppError), alignof(AppError), 1, AppError_fields,
 };
 
@@ -101,7 +101,7 @@ static const hot::FieldInfo NetError_fields[] = {
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
-static const hot::StateLayout NetError_layout = {
+[[maybe_unused]] static const hot::StateLayout NetError_layout = {
     "NetError", sizeof(NetError), alignof(NetError), 1, NetError_fields,
 };
 
@@ -242,7 +242,7 @@ static const hot::FieldInfo* const Thrower_fields = nullptr;
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Thrower_layout = {
+[[maybe_unused]] static const hot::StateLayout Thrower_layout = {
     "hot_state_Thrower", sizeof(hot_state_Thrower), alignof(hot_state_Thrower), 0, Thrower_fields, true,
 };
 

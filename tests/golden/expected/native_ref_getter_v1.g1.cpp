@@ -90,7 +90,7 @@ static const hot::FieldInfo Rig_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Rig_layout = {
+[[maybe_unused]] static const hot::StateLayout Rig_layout = {
     "hot_state_Rig", sizeof(hot_state_Rig), alignof(hot_state_Rig), 2, Rig_fields, true,
 };
 

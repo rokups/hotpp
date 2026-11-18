@@ -187,7 +187,7 @@ static const hot::FieldInfo Tracker_fields[] = {
 #pragma clang diagnostic pop
 #endif
 
-static const hot::StateLayout Tracker_layout = {
+[[maybe_unused]] static const hot::StateLayout Tracker_layout = {
     "hot_state_Tracker", sizeof(hot_state_Tracker), alignof(hot_state_Tracker), 7, Tracker_fields, true,
 };
 
