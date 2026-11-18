@@ -456,7 +456,7 @@ void decl(const VarDeclStmt& d, Emitter& e)
             emit_expr(*d.init, e);
         e.put(");");
         e.space();
-        e.put(local_type(d.type, true, false), d.pos);
+        e.put("[[maybe_unused]] " + local_type(d.type, true, false), d.pos);
         e.space();
         e.put_mapped(d.name, d.name_pos);
         e.space();
