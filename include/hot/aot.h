@@ -40,6 +40,35 @@ struct AotImport
     uint64_t hash;
 };
 
+// One member entry of the fine interface data (hot::IfaceMember).
+struct AotMember
+{
+    uint64_t name;
+    uint64_t decl;
+};
+
+// The fine interface data of a script (hot::IfaceInfo, without "hash": it is AotScript::iface_hash).
+// An array with no entry is null and has the count 0.
+struct AotIface
+{
+    uint64_t shape;
+    const AotMember* members;
+    size_t member_count;
+    const uint64_t* names;
+    size_t name_count;
+    const uint64_t* copied_names;
+    size_t copied_name_count;
+};
+
+// The names that a script uses (hot::UseInfo).
+struct AotUse
+{
+    const uint64_t* names;
+    size_t name_count;
+    const char* const* strong; // the unit names that the importer needs in full
+    size_t strong_count;
+};
+
 // One script of the AOT table. Each script is one unit. The unit name is "name".
 struct AotScript
 {
@@ -50,6 +79,10 @@ struct AotScript
     size_t import_count = 0;
     // The hash of the script text (hot::hash_script_text). It ignores the kind of line end. 0: unknown, no check.
     uint64_t source_hash = 0;
+    // The fine interface data and the used names (importer_is_stale). Null: no fine data, the loader
+    // gives an unknown IfaceInfo or UseInfo (an older table). These two fields stay at the end.
+    const AotIface* iface = nullptr;
+    const AotUse* use = nullptr;
 };
 
 struct AotTable

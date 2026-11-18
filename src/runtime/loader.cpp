@@ -535,6 +535,65 @@ bool Loader::resolve_unit_link(const char* name, UnitInfo& out)
     return true;
 }
 
+namespace
+{
+// The fine data of an AOT script as IfaceInfo. A null table gives an unknown IfaceInfo.
+IfaceInfo aot_iface_info(const AotScript& sc)
+{
+    IfaceInfo r;
+    if (!sc.iface)
+        return r;
+    const AotIface& f = *sc.iface;
+    r.known = true;
+    r.hash = sc.iface_hash;
+    r.shape = f.shape;
+    for (size_t i = 0; i < f.member_count; ++i)
+        r.members.push_back({f.members[i].name, f.members[i].decl});
+    r.names.assign(f.names, f.names + f.name_count);
+    r.copied_names.assign(f.copied_names, f.copied_names + f.copied_name_count);
+    return r;
+}
+
+UseInfo aot_use_info(const AotScript& sc)
+{
+    UseInfo r;
+    if (!sc.use)
+        return r;
+    const AotUse& u = *sc.use;
+    r.known = true;
+    r.names.assign(u.names, u.names + u.name_count);
+    for (size_t i = 0; i < u.strong_count; ++i)
+        r.strong.emplace_back(u.strong[i]);
+    return r;
+}
+} // namespace
+
+bool Loader::aot_unit_info(const std::string& unit, IfaceInfo& iface, UseInfo& use) const
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto it = aot_units_.find(unit);
+    if (it == aot_units_.end())
+        return false;
+    iface = it->second.iface_info;
+    use = it->second.use_info;
+    return true;
+}
+
+bool Loader::pending_unit_info(const std::string& unit, IfaceInfo& iface, UseInfo& use) const
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!pending_)
+        return false;
+    for (const PendingUnit& u : pending_->units)
+        if (u.module.unit == unit)
+        {
+            iface = u.module.iface_info;
+            use = u.module.use_info;
+            return true;
+        }
+    return false;
+}
+
 ReloadResult Loader::load_aot(const AotTable& table)
 {
     {
@@ -555,6 +614,8 @@ ReloadResult Loader::load_aot(const AotTable& table)
         m.origin = std::string("aot:") + sc.name;
         m.unit = sc.name;
         m.iface_hash = sc.iface_hash;
+        m.iface_info = aot_iface_info(sc);
+        m.use_info = aot_use_info(sc);
         for (size_t k = 0; k < sc.import_count; ++k)
             m.imports.emplace_back(sc.imports[k].unit, sc.imports[k].hash);
         if (!by_unit.emplace(m.unit, i).second)
@@ -593,6 +654,8 @@ ReloadResult Loader::load_aot(const AotTable& table)
         const std::string unit = modules[i].unit;
         const uint64_t iface_hash = modules[i].iface_hash;
         std::vector<std::pair<std::string, uint64_t>> imports = modules[i].imports;
+        IfaceInfo iface_info = modules[i].iface_info;
+        UseInfo use_info = modules[i].use_info;
         Registry code;
         ReloadResult r = load_unit(std::move(modules[i]), &code);
         if (r)
@@ -603,6 +666,8 @@ ReloadResult Loader::load_aot(const AotTable& table)
             au.reg = std::move(code);
             au.iface_hash = iface_hash;
             au.imports = std::move(imports);
+            au.iface_info = std::move(iface_info);
+            au.use_info = std::move(use_info);
         }
         else
         {
@@ -1220,6 +1285,8 @@ ReloadResult Loader::revert_unit(const std::string& unit, Backend& backend)
         pu.module.unit = unit;
         pu.module.iface_hash = au->second.iface_hash;
         pu.module.imports = au->second.imports;
+        pu.module.iface_info = au->second.iface_info;
+        pu.module.use_info = au->second.use_info;
         std::set<std::string> classes;
         for (const auto& [name, e] : au->second.reg.entries())
             classes.insert(name);
