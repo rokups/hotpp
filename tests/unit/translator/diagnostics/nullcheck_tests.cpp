@@ -595,3 +595,31 @@ TEST(NullCheck, AssertionDoesNotNarrowAField)
     EXPECT_EQ(warns("f!;\n        f.hp = 1;"), 1);
     EXPECT_EQ(warns("f!.hp = 1;"), 0);
 }
+
+TEST(NullCheck, LocalInitializedFromAssertionIsNonNull)
+{
+    EXPECT_EQ(warns("$Node n = p!.find()!;\n        n.hp = 1;"), 0);
+    EXPECT_EQ(warns("$Node n = (p!.find()!);\n        n.hp = 1;"), 0);
+    EXPECT_EQ(warns("var n = p!.find()!;\n        n.hp = 1;"), 0);
+    EXPECT_EQ(warns("$Node n = p!.find();\n        n.hp = 1;"), 1); // no assertion: unchanged
+}
+
+TEST(NullCheck, LocalAssignedFromAssertionIsNonNull)
+{
+    EXPECT_EQ(warns("$Node n = null;\n        n = p!.find()!;\n        n.hp = 1;"), 0);
+    EXPECT_EQ(warns("$Node n = null;\n        n = p!.find();\n        n.hp = 1;"), 1);
+}
+
+TEST(NullCheck, FieldAssignedFromAssertionStaysNullable)
+{
+    EXPECT_EQ(warns("this.f = p!.find()!;\n        this.f.hp = 1;"), 1);
+    EXPECT_EQ(warns("f = p!.find()!;\n        f.hp = 1;"), 1);
+}
+
+TEST(NullCheck, LocalFromAnUntypedCallAssertionIsNonNull)
+{
+    // The call goes through a std.function field: the analyzer does not know its type.
+    const std::string members = "    std.function<$Node()> cb;\n";
+    EXPECT_EQ(warns("$Node n = this.cb()!;\n        n.hp = 1;", members), 0);
+    EXPECT_EQ(warns("$Node n = this.cb();\n        n.hp = 1;", members), 1);
+}
