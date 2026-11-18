@@ -7,6 +7,7 @@
 #include "semantic.h"
 
 #include <algorithm>
+#include <cstring>
 #include <filesystem>
 
 namespace hot::ls
@@ -83,6 +84,70 @@ std::string blank_non_code(std::string_view l, bool& in_block)
             ++i;
     }
     return out;
+}
+
+bool class_facts_hold(const Text& analyzed, const std::string& text, const hotc::AnalyzeResult& facts)
+{
+    const std::string& a = analyzed.s;
+    const std::string& b = text;
+    if (a == b)
+        return true;
+    size_t p = 0;
+    const size_t n = std::min(a.size(), b.size());
+    while (p < n && a[p] == b[p])
+        ++p;
+    size_t q = 0;
+    while (q < n - p && a[a.size() - 1 - q] == b[b.size() - 1 - q])
+        ++q;
+    const size_t old_end = a.size() - q, new_end = b.size() - q;
+    // The changed bytes of both texts are plain.
+    const auto plain = [](char c) { return is_id_char(c) || std::strchr(" \t.,()[]=+-<>!?&|^%:", c) != nullptr; };
+    for (size_t i = p; i < old_end; ++i)
+        if (!plain(a[i]) || a[i] == '\0')
+            return false;
+    for (size_t i = p; i < new_end; ++i)
+        if (!plain(b[i]) || b[i] == '\0')
+            return false;
+    // A byte next to the change can join with it to a comment sign, a quote or an escape.
+    const auto sign = [](char c) { return c != '\0' && std::strchr("/*\"'\\#", c) != nullptr; };
+    if ((p > 0 && sign(a[p - 1])) || (old_end < a.size() && sign(a[old_end])))
+        return false;
+    // The text without strings and comments, to match the braces. A byte of it is a space or the byte of "a".
+    std::string code(a.size(), ' ');
+    bool block = false;
+    for (size_t l = 0; l < analyzed.starts.size(); ++l)
+    {
+        const std::string blank = blank_non_code(analyzed.line(static_cast<int>(l)), block);
+        std::copy(blank.begin(), blank.end(), code.begin() + static_cast<long>(analyzed.starts[l]));
+    }
+    for (const hotc::AnalyzedClass& c : facts.classes)
+        for (const hotc::AnalyzedMember& m : c.members)
+        {
+            if (m.kind != "method" && m.kind != "constructor" && m.kind != "destructor")
+                continue;
+            if (m.begin.line < 1 || m.end.line < 1)
+                continue;
+            const size_t mb = analyzed.offset(m.begin.line - 1, m.begin.col - 1);
+            const size_t me = analyzed.offset(m.end.line - 1, m.end.col - 1);
+            // The member ends after the closing brace of the body. The open brace of the body matches it.
+            if (me <= mb || me > a.size() || code[me - 1] != '}' || old_end > me - 1)
+                continue;
+            int depth = 0;
+            size_t open = std::string::npos;
+            for (size_t i = me; i-- > mb;)
+            {
+                if (code[i] == '}')
+                    ++depth;
+                else if (code[i] == '{' && --depth == 0)
+                {
+                    open = i;
+                    break;
+                }
+            }
+            if (open != std::string::npos && p > open)
+                return true;
+        }
+    return false;
 }
 
 // The columns of the whole-word matches of "w" in a line.

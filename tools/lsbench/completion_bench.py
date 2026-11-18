@@ -51,6 +51,8 @@ def main():
     ap.add_argument("--file", required=True)
     ap.add_argument("--runs", type=int, default=10)
     ap.add_argument("--scenarios", default="AB")
+    ap.add_argument("--edit", choices=["end", "line"], default="end",
+                    help="end: a comment at the file end (a line change). line: spaces at the end of the cursor line (a body edit)")
     ap.add_argument("--cold", action="store_true", help="each edit adds a class: the shell header changes (a cache miss)")
     a = ap.parse_args()
     tfile = os.environ["HOT_LS_TIMING"]
@@ -74,7 +76,12 @@ def main():
             lat, phases, probes = [], {}, {}
             for i in range(a.runs + 1):  # the first run warms the caches: not counted
                 ver += 1
-                cur = text + ("\nclass HotBench%d { }\n" if a.cold else "\n// c%d\n") % ver
+                if a.edit == "line":
+                    ls = text.split("\n")
+                    ls[line] += " " * (ver % 5 + 1)
+                    cur = "\n".join(ls)
+                else:
+                    cur = text + ("\nclass HotBench%d { }\n" if a.cold else "\n// c%d\n") % ver
                 n = c.diag_count(uri)
                 _, off = read_new(tfile, off)
                 c.notify("textDocument/didChange", {"textDocument": {"uri": uri, "version": ver}, "contentChanges": [{"text": cur}]})

@@ -42,6 +42,14 @@ struct Pos
 // spaces. "in_block" is true inside a block comment that goes on to the next line.
 std::string blank_non_code(std::string_view l, bool& in_block);
 
+// HOT-51: true when the class facts of "analyzed" (the text that "facts" come from) still hold for "text".
+// This is the case when the two texts differ only inside the body of one method, one constructor or one
+// destructor, in one line, and the changed bytes are plain: words, spaces and the brackets "( ) [ ]" and
+// the operator signs, but no brace, ";", quote, comment sign, "#" or newline. Then the classes, their bases and
+// their member names are the same in both texts, and the line count is the same. The completion reads only
+// these facts.
+bool class_facts_hold(const Text& analyzed, const std::string& text, const hotc::AnalyzeResult& facts);
+
 // The columns of the whole-word matches of "w" in a line.
 std::vector<int> whole_word_cols(std::string_view l, const std::string& w);
 

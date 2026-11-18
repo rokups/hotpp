@@ -10926,4 +10926,252 @@ TEST(LanguageServer, ThisCacheSeesAChangeOfANativeHeaderWithoutAnEvent)
     EXPECT_TRUE(seen) << "the new member of the header does not show";
 }
 
+// ------------------------------------------------------------------ HOT-51: the deferred live update
+
+// kScript with line 7 replaced. The line 7 is in the body of Tick.
+std::string with_line7(const std::string& line)
+{
+    std::string t = kScript;
+    const size_t b = t.find("        this.heal(1.0);");
+    t.replace(b, std::string("        this.heal(1.0);").size(), line);
+    return t;
+}
+
+std::vector<std::string> completion_labels(Session& s, int line, int col)
+{
+    std::vector<std::string> out;
+    const json r = s.client->request("textDocument/completion", doc_pos(s.uri, line, col));
+    if (r.contains("result"))
+        for (const json& i : r["result"].is_array() ? r["result"] : r["result"].value("items", json::array()))
+            out.push_back(i.value("insertText", i.value("label", "")));
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+// The stats that the hook gives with no flush of the dirty documents.
+json defer_stats(Session& s)
+{
+    return s.client->request("hot/indexStats", {{"noFlush", true}})["result"];
+}
+
+// The JSON as text, with the name of the temporary directory replaced.
+json scrub(const json& j, const Session& s)
+{
+    std::string t = j.dump();
+    const std::string dir = uri_of(s.dir.path().string());
+    for (size_t at; (at = t.find(dir)) != std::string::npos;)
+        t.replace(at, dir.size(), "DIR");
+    json r = json::parse(t);
+    if (r.is_object())
+        r.erase("id"); // the id depends on the number of earlier requests
+    return r;
+}
+
+// The answers of the requests after a didChange with no wait, with the switch HOT_LS_DEFER_UPDATE.
+json deferred_features(const char* defer)
+{
+    const EnvGuard env("HOT_LS_DEFER_UPDATE", defer);
+    const EnvGuard idle("HOT_LS_FLUSH_IDLE_MS", "3000"); // the skip path stays visible: no idle flush
+    const bool deferred = std::string(defer) == "1";
+    json out;
+    Session s(true);
+    int version = 1;
+    const auto edit = [&](const std::string& text) { s.client->change(s.uri, ++version, text); };
+    // The completion right after the edit: a plain place, after a dot, a type place. A hover flushes the
+    // document to the base text first, so the edit under test is one typed word.
+    const auto settle = [&](const std::string& text)
+    {
+        edit(text);
+        s.client->request("textDocument/hover", doc_pos(s.uri, 11, 15));
+    };
+    settle(with_line7("        he"));
+    edit(with_line7("        hea"));
+    out["plain"] = completion_labels(s, 7, 11);
+    if (deferred)
+        EXPECT_EQ(defer_stats(s)["dirtyDocs"], 1) << "plain: the completion must skip the flush";
+    settle(with_line7("        this"));
+    edit(with_line7("        this."));
+    out["dot"] = completion_labels(s, 7, 13);
+    if (deferred)
+        EXPECT_EQ(defer_stats(s)["dirtyDocs"], 1) << "dot: the completion must skip the flush";
+    settle(with_line7("        V"));
+    edit(with_line7("        Ve"));
+    out["type"] = completion_labels(s, 7, 10);
+    if (deferred)
+        EXPECT_EQ(defer_stats(s)["dirtyDocs"], 1) << "type: the completion must skip the flush";
+    // A new local in the same edit: "var w = ...;" and then "w." as two quick edits.
+    edit(with_line7("        var w = Vec3(1, 2, 3);"));
+    edit(with_line7("        var w = Vec3(1, 2, 3); w."));
+    out["new_local"] = completion_labels(s, 7, 33);
+    if (deferred)
+        EXPECT_EQ(defer_stats(s)["dirtyDocs"], 0) << "a ; in the edit flushes";
+    // The same, with the edits of a class member: the new field shows after "this.".
+    std::string field = with_line7("        this.");
+    field.replace(field.find("    float hp = 100.0;"), 21, "    float hp = 100.0;\n    float mana = 1.0;");
+    edit(field);
+    out["new_field"] = completion_labels(s, 8, 13);
+    // Hover, definition, references and rename right after an edit.
+    edit(with_line7("        this.heal(1.0); "));
+    out["hover"] = scrub(s.client->request("textDocument/hover", doc_pos(s.uri, 11, 15)), s);
+    out["definition"] = scrub(s.client->request("textDocument/definition", doc_pos(s.uri, 7, 15)), s);
+    edit(with_line7("        this.heal(1.0);  "));
+    out["references"] = scrub(s.client->request("textDocument/references",
+        {{"textDocument", {{"uri", s.uri}}}, {"position", pos(11, 15)}, {"context", {{"includeDeclaration", true}}}}), s);
+    edit(with_line7("        this.heal(1.0);   "));
+    out["rename"] = scrub(s.client->request("textDocument/rename",
+        {{"textDocument", {{"uri", s.uri}}}, {"position", pos(3, 11)}, {"newName", "health"}}), s);
+    // The last edit has an error: the diagnostics of the final text.
+    std::string bad = kScript;
+    bad.replace(bad.find("this.hp = this.hp + amount;"), 27, "this.hp = ;");
+    edit(bad);
+    const json n = s.diagnostics([](const json& d) { return has_source(d, "hot"); });
+    out["diagnostics"] = n.is_null() ? json() : n["params"]["diagnostics"];
+    return out;
+}
+
+// The answers are the same with the deferred update and without it.
+TEST(LanguageServer, DeferredUpdateGivesTheSameResultsAsTheImmediateUpdate)
+{
+    REQUIRE_CLANGD();
+    const json off = deferred_features("0");
+    const json on = deferred_features("1");
+    for (const char* key : {"plain", "dot", "type", "new_local", "new_field", "hover", "definition", "references",
+             "rename", "diagnostics"})
+        EXPECT_EQ(on[key], off[key]) << key;
+    const auto has = [&](const char* key, const char* name)
+    {
+        const std::vector<std::string> v = on[key].get<std::vector<std::string>>();
+        return std::find(v.begin(), v.end(), name) != v.end();
+    };
+    EXPECT_TRUE(has("plain", "heal")) << on["plain"].dump();
+    EXPECT_TRUE(has("dot", "hp")) << on["dot"].dump();
+    EXPECT_TRUE(has("dot", "Move")) << on["dot"].dump();
+    EXPECT_TRUE(has("type", "Vec3")) << on["type"].dump();
+    EXPECT_TRUE(has("new_local", "x")) << on["new_local"].dump();
+    EXPECT_TRUE(has("new_field", "mana")) << on["new_field"].dump();
+    EXPECT_FALSE(on["diagnostics"].empty());
+}
+
+// An edit in a body does not wait for the analyze before the completion. An edit that adds a line does.
+TEST(LanguageServer, DeferredUpdateIsSkippedByACompletionAfterABodyEdit)
+{
+    REQUIRE_CLANGD();
+    const EnvGuard env("HOT_LS_DEFER_UPDATE", "1");
+    const EnvGuard idle("HOT_LS_FLUSH_IDLE_MS", "3000"); // the test looks at the state before the idle flush
+    Session s(true);
+    const json first = s.client->request("hot/indexStats", json::object())["result"];
+    const int runs0 = first["updateRuns"];
+    EXPECT_EQ(first["dirtyDocs"], 0);
+    // A body edit: the completion keeps the document dirty.
+    s.client->change(s.uri, 2, with_line7("        this.heal(1.0); "));
+    const auto labels = completion_labels(s, 7, 13);
+    EXPECT_FALSE(labels.empty());
+    json st = defer_stats(s);
+    EXPECT_EQ(st["updateRuns"], runs0) << st.dump();
+    EXPECT_EQ(st["dirtyDocs"], 1) << st.dump();
+    // Any other request flushes first.
+    s.client->request("textDocument/hover", doc_pos(s.uri, 11, 15));
+    st = defer_stats(s);
+    EXPECT_EQ(st["updateRuns"], runs0 + 1) << st.dump();
+    EXPECT_EQ(st["dirtyDocs"], 0) << st.dump();
+    // An edit that changes the line count: the completion flushes first.
+    s.client->change(s.uri, 3, with_line7("        this.heal(1.0);\n        he"));
+    completion_labels(s, 8, 10);
+    st = defer_stats(s);
+    EXPECT_EQ(st["updateRuns"], runs0 + 2) << st.dump();
+    EXPECT_EQ(st["dirtyDocs"], 0) << st.dump();
+    // An edit of a member name in a body-like place of a class header: the completion flushes first.
+    // Before each case the document goes back to the base text and a hover flushes it: the diff is the edit only.
+    s.client->change(s.uri, 4, kScript);
+    s.client->request("textDocument/hover", doc_pos(s.uri, 11, 15));
+    st = defer_stats(s);
+    const int runs_head = st["updateRuns"];
+    std::string head = kScript;
+    head.replace(head.find("float hp"), 8, "float hq");
+    s.client->change(s.uri, 5, head);
+    completion_labels(s, 7, 13);
+    st = defer_stats(s);
+    EXPECT_EQ(st["updateRuns"], runs_head + 1) << st.dump();
+    EXPECT_EQ(st["dirtyDocs"], 0) << st.dump();
+    // A body edit with a semicolon: the completion flushes first.
+    s.client->change(s.uri, 6, kScript);
+    s.client->request("textDocument/hover", doc_pos(s.uri, 11, 15));
+    const int runs_semi = defer_stats(s)["updateRuns"];
+    s.client->change(s.uri, 7, with_line7("        this.heal(1.0);;"));
+    completion_labels(s, 7, 13);
+    st = defer_stats(s);
+    EXPECT_EQ(st["updateRuns"], runs_semi + 1) << st.dump();
+    EXPECT_EQ(st["dirtyDocs"], 0) << st.dump();
+}
+
+// The diagnostics of a burst of edits come when the input is quiet, and they are the same as one by one.
+TEST(LanguageServer, DeferredUpdateBurstGivesTheFinalDiagnostics)
+{
+    REQUIRE_CLANGD();
+    std::string bad = kScript;
+    bad.replace(bad.find("this.hp = this.hp + amount;"), 27, "this.hp = ;");
+    json one_by_one;
+    {
+        const EnvGuard env("HOT_LS_DEFER_UPDATE", "0");
+        Session s(true);
+        s.client->change(s.uri, 2, bad);
+        const json n = s.diagnostics([](const json& d) { return has_source(d, "hot"); });
+        ASSERT_FALSE(n.is_null());
+        one_by_one = n["params"]["diagnostics"];
+    }
+    const EnvGuard env("HOT_LS_DEFER_UPDATE", "1");
+    Session s(true);
+    for (int i = 0; i < 20; ++i)
+        s.client->change(s.uri, 2 + i, with_line7("        this.heal(" + std::to_string(i) + ".0);"));
+    s.client->change(s.uri, 30, bad);
+    const auto t0 = std::chrono::steady_clock::now();
+    const json n = s.client->wait_notification("textDocument/publishDiagnostics",
+        [&](const json& p) { return p.value("uri", std::string()) == s.uri && has_source(p["diagnostics"], "hot"); }, 20000);
+    ASSERT_FALSE(n.is_null()) << "no diagnostics after the burst";
+    EXPECT_LT(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0).count(), 10);
+    EXPECT_EQ(n["params"]["diagnostics"], one_by_one);
+    EXPECT_EQ(defer_stats(s)["dirtyDocs"], 0);
+}
+
+// A document that is dirty at a close, a configuration change, a file event or a shutdown loses no update.
+TEST(LanguageServer, DeferredUpdateKeepsTheStateAtEventsWhileDirty)
+{
+    REQUIRE_CLANGD();
+    const EnvGuard env("HOT_LS_DEFER_UPDATE", "1");
+    const EnvGuard idle("HOT_LS_FLUSH_IDLE_MS", "3000");
+    {
+        Session s(true);
+        s.client->change(s.uri, 2, with_line7("        this.heal(1.0); "));
+        EXPECT_EQ(defer_stats(s)["dirtyDocs"], 1); // the stats request did not flush
+        s.client->notify("workspace/didChangeConfiguration", {{"settings", json::object()}});
+        EXPECT_EQ(defer_stats(s)["dirtyDocs"], 0); // the event flushed first
+        const json h = s.client->request("textDocument/hover", doc_pos(s.uri, 11, 15));
+        EXPECT_TRUE(h.contains("result")) << h.dump();
+        s.client->change(s.uri, 3, with_line7("        this.heal(1.0);  "));
+        s.client->notify("workspace/didChangeWatchedFiles",
+            {{"changes", json::array({{{"uri", uri_of((s.dir.path() / "other.hot").string())}, {"type", 1}}})}});
+        s.client->request("hot/indexStats", json::object()); // a message after the event
+        EXPECT_EQ(defer_stats(s)["dirtyDocs"], 0);
+    }
+    {
+        // A close while dirty: the server answers and the document opens again.
+        Session s(true);
+        s.client->change(s.uri, 2, with_line7("        this.heal(1.0); "));
+        s.client->notify("textDocument/didClose", {{"textDocument", {{"uri", s.uri}}}});
+        s.client->open(s.uri, kScript);
+        const json h = s.client->request("textDocument/hover", doc_pos(s.uri, 11, 15));
+        EXPECT_TRUE(h.contains("result")) << h.dump();
+        EXPECT_EQ(defer_stats(s)["dirtyDocs"], 0);
+    }
+    {
+        // A shutdown right after a change: the server ends with the code 0, and fast.
+        Session s(true);
+        s.client->change(s.uri, 2, with_line7("        this.heal(1.0); "));
+        const auto t0 = std::chrono::steady_clock::now();
+        EXPECT_EQ(s.client->stop(), 0);
+        EXPECT_LT(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0).count(), 10);
+    }
+}
+
+
 } // namespace
