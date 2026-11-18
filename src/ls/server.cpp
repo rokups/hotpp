@@ -4296,18 +4296,7 @@ json Server::on_hover(const Doc& d, const json& p)
         return json{{"contents", {{"kind", "markdown"}, {"value", "```hot\n" + t + "\n```"}}},
             {"range", script_range(d, {here.line, wb}, {here.line, we})}};
     };
-    if (has_no_table(d))
-    {
-        if (const auto hit = static_member_at(d, here))
-        {
-            std::string t(d.text.line(hit->decl.line));
-            const size_t cut = t.find(hit->member->kind == "static method" ? '{' : ';');
-            if (cut != std::string::npos)
-                t.resize(cut);
-            return fenced(std::move(t));
-        }
-    }
-    else if (const auto r = resolve_at(d, here))
+    if (const auto r = resolve_at(d, here))
     {
         const hotc::RefKind k = r->ref.kind;
         const bool is_static = k == hotc::RefKind::StaticMethod || k == hotc::RefKind::StaticField
@@ -4327,6 +4316,17 @@ json Server::on_hover(const Doc& d, const json& p)
                     t.resize(cut);
                 return fenced(std::move(t));
             }
+        }
+    }
+    if (has_no_table(d))
+    {
+        if (const auto hit = static_member_at(d, here))
+        {
+            std::string t(d.text.line(hit->decl.line));
+            const size_t cut = t.find(hit->member->kind == "static method" ? '{' : ';');
+            if (cut != std::string::npos)
+                t.resize(cut);
+            return fenced(std::move(t));
         }
     }
     // A word in a comment or in a string is not a symbol: no hover.
@@ -5111,9 +5111,6 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
     // give the script places, and the table is not used. The fallback stays: the table can have
     // gaps for a broken file. Hover reads the table when it exists (see on_hover).
     const bool no_table = has_no_table(d);
-    if (is_ref && !no_table)
-        if (auto t = by_table())
-            return *t;
     if (no_table && is_ref && !here_word.empty() && is_script_class(d, here_word))
     {
         // Degraded mode: a script class. The places come from the tokens (see class_places).
@@ -5128,6 +5125,12 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
             for_other_scripts(d, {here_word, ""}, here_word, add);
         return out;
     }
+    if (is_ref)
+        if (auto t = by_table())
+            return *t;
+    if (no_table && !is_ref)
+        if (auto t = by_table())
+            return *t;
     if (no_table && !is_ref)
         if (const auto hit = static_member_at(d, here))
         {
@@ -5175,7 +5178,7 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
                 return out;
         }
     }
-    if (!is_ref && !no_table)
+    if (!is_ref)
         if (auto t = by_table())
             return *t;
     // A script interface has no place in the generated text that maps back. The facts give the
