@@ -1102,7 +1102,9 @@ private:
     json on_completion(const Doc& d, const json& p);
     json using_completion(const Doc& d, Pos cur, size_t off, size_t line_begin);
     json on_hover(const Doc& d, const json& p);
-    // True when the table of the script is not usable (degraded mode).
+    // True when the script has errors or no table (degraded mode).
+    // The answers use the table first.
+    // The text scan serves only the gaps G1, G2 and G3 (see doc/tools-ls.md).
     static bool has_no_table(const Doc& d)
     {
         return !d.facts.errors.empty() || (d.facts.refs.empty() && !d.facts.ok);
@@ -4296,18 +4298,7 @@ json Server::on_hover(const Doc& d, const json& p)
         return json{{"contents", {{"kind", "markdown"}, {"value", "```hot\n" + t + "\n```"}}},
             {"range", script_range(d, {here.line, wb}, {here.line, we})}};
     };
-    if (has_no_table(d))
-    {
-        if (const auto hit = static_member_at(d, here))
-        {
-            std::string t(d.text.line(hit->decl.line));
-            const size_t cut = t.find(hit->member->kind == "static method" ? '{' : ';');
-            if (cut != std::string::npos)
-                t.resize(cut);
-            return fenced(std::move(t));
-        }
-    }
-    else if (const auto r = resolve_at(d, here))
+    if (const auto r = resolve_at(d, here))
     {
         const hotc::RefKind k = r->ref.kind;
         const bool is_static = k == hotc::RefKind::StaticMethod || k == hotc::RefKind::StaticField
@@ -4327,6 +4318,17 @@ json Server::on_hover(const Doc& d, const json& p)
                     t.resize(cut);
                 return fenced(std::move(t));
             }
+        }
+    }
+    if (has_no_table(d))
+    {
+        if (const auto hit = static_member_at(d, here))
+        {
+            std::string t(d.text.line(hit->decl.line));
+            const size_t cut = t.find(hit->member->kind == "static method" ? '{' : ';');
+            if (cut != std::string::npos)
+                t.resize(cut);
+            return fenced(std::move(t));
         }
     }
     // A word in a comment or in a string is not a symbol: no hover.
@@ -5106,14 +5108,17 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
         }
         return list;
     };
-    // Degraded mode: the translator gives no table, or a table with gaps, for a script with a
-    // syntax error or with an import that has an error. Then the text scans of the lenient facts
-    // give the script places, and the table is not used. The fallback stays: the table can have
-    // gaps for a broken file. Hover reads the table when it exists (see on_hover).
+    // Degraded mode: the table comes first.
+    // The text scans of the lenient facts serve only when the table gives no result.
+    // The table has gaps:
+    // G1: the error statement and the rest of its body.
+    // G2: an import with an error.
+    // G3: more than 4 error regions.
+    // Remove the scans when G1, G2 and G3 are closed.
+    // The class scan stays before the table.
+    // The table has no entry for a class name that qualifies a member ("Class.member").
+    // The table list can miss a use inside a broken statement (G1).
     const bool no_table = has_no_table(d);
-    if (is_ref && !no_table)
-        if (auto t = by_table())
-            return *t;
     if (no_table && is_ref && !here_word.empty() && is_script_class(d, here_word))
     {
         // Degraded mode: a script class. The places come from the tokens (see class_places).
@@ -5128,6 +5133,9 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
             for_other_scripts(d, {here_word, ""}, here_word, add);
         return out;
     }
+    if (is_ref || no_table)
+        if (auto t = by_table())
+            return *t;
     if (no_table && !is_ref)
         if (const auto hit = static_member_at(d, here))
         {
