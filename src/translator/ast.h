@@ -284,6 +284,9 @@ struct UnaryExpr
     ExprP operand;
     bool postfix = false;
     uint32_t pos = 0;
+    // The postfix "!" (non-null assertion): the position of the "!" and the source text of the operand.
+    uint32_t op_pos = 0;
+    std::string text{};
 };
 struct BinaryExpr
 { // also the assignment operators

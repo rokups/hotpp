@@ -264,8 +264,13 @@ template <char C0, char C1, char C2> struct Bin
 {
 }; // an infix operator, also an assignment
 template <char C0, char C1, char C2> struct Post
-{
-}; // "++" or "--" after the operand
+{ // "++", "--" or "!" after the operand; it keeps the position of the operator
+    const char* pos;
+    explicit Post(const char* p)
+        : pos(p)
+    {
+    }
+};
 template <char C0, char C1, char C2> struct Member
 {
 }; // "."
@@ -355,10 +360,20 @@ struct Builder
     {
         return ast::make_expr(ast::UnaryExpr{"await", std::move(e), false, st.offset(t.pos)});
     }
-    template <char C0, char C1, char C2> ExprP operator()(const ParseState&, ExprP e, Post<C0, C1, C2>) const
+    template <char C0, char C1, char C2> ExprP operator()(const ParseState& st, ExprP e, Post<C0, C1, C2> t) const
     {
         const uint32_t pos = ast::pos_of(*e);
-        return ast::make_expr(ast::UnaryExpr{OpName<C0, C1, C2>::v, std::move(e), true, pos});
+        ast::UnaryExpr u{OpName<C0, C1, C2>::v, std::move(e), true, pos};
+        if (C0 == '!')
+        { // the position of the "!" and the text of the operand, for the message of the assertion
+            u.op_pos = st.offset(t.pos);
+            const char* b = st.at(pos);
+            const char* en = t.pos;
+            while (en > b && std::isspace(static_cast<unsigned char>(en[-1])))
+                --en;
+            u.text.assign(b, en);
+        }
+        return ast::make_expr(std::move(u));
     }
     ExprP operator()(const ParseState&, ExprP c, CondTag, ExprP a, ExprP b) const
     {

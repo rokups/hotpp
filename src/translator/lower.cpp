@@ -230,6 +230,56 @@ struct Lowerer
     }
 
     ExprP raw(std::string text, uint32_t pos) { return make_expr(RawExpr{std::move(text), pos}); }
+
+    // The C++ string literal of a text. A byte that is not a printable ASCII char becomes an octal
+    // escape, so the literal is safe in any source charset.
+    static std::string cpp_string(const std::string& t)
+    {
+        std::string r = "\"";
+        for (const unsigned char c : t)
+        {
+            if (c == '\\' || c == '"' || c == '?')
+                r += '\\', r += static_cast<char>(c);
+            else if (c == '\n')
+                r += "\\n";
+            else if (c == '\t')
+                r += "\\t";
+            else if (c < 0x20 || c >= 0x7F)
+            {
+                r += '\\';
+                r += static_cast<char>('0' + (c >> 6));
+                r += static_cast<char>('0' + ((c >> 3) & 7));
+                r += static_cast<char>('0' + (c & 7));
+            }
+            else
+                r += static_cast<char>(c);
+        }
+        return r + "\"";
+    }
+
+    // The message of the assertion "x!": "file:line: 'text' is null". The text of the operand has at
+    // most 60 bytes, then "...".
+    std::string nonnull_message(const UnaryExpr& u) const
+    {
+        std::string text = u.text;
+        if (text.size() > 60)
+        {
+            size_t n = 60;
+            while (n > 0 && (static_cast<unsigned char>(text[n]) & 0xC0) == 0x80)
+                --n;
+            text = text.substr(0, n) + "...";
+        }
+        std::string file;
+        int line = 0;
+        if (cx.map)
+        {
+            file = cx.map->file(u.op_pos);
+            if (file.empty())
+                file = cx.map->main_file;
+            line = cx.map->line(u.op_pos);
+        }
+        return cpp_string(file + ":" + std::to_string(line) + ": '" + text + "' is null");
+    }
     // Raw text "prefix + name" where the name comes from the script name at name_pos.
     ExprP raw_named(const std::string& prefix, const std::string& name, uint32_t pos, uint32_t name_pos)
     {
@@ -1102,7 +1152,7 @@ struct Lowerer
         if (auto* u = std::get_if<UnaryExpr>(&e.v))
         {
             if (u->postfix)
-                return {};
+                return u->op == "!" && u->operand ? type_of(*u->operand) : std::string();
             // "($C)h" has the class "C" when "C" is a script class: a member call on it is a script call.
             if (u->op.size() > 3 && u->op[0] == '(' && u->op[1] == '$' && u->op.back() == ')')
                 if (const std::string to = u->op.substr(2, u->op.size() - 3); class_named(to))
@@ -3679,6 +3729,17 @@ struct Lowerer
             if ((u->op == "++" || u->op == "--") && u->operand
                 && op_index_target_error(*u->operand, u->pos != 0 ? u->pos : pos_of(*u->operand)))
                 return;
+            if (u->postfix && u->op == "!" && u->operand)
+            { // "x!": a checked unwrap with the message of the place (hot::nonnull)
+                expr(u->operand);
+                CallExpr c;
+                c.pos = u->pos;
+                c.callee = raw("hot::nonnull", u->pos);
+                c.args.push_back(std::move(u->operand));
+                c.args.push_back(raw(nonnull_message(*u), 0));
+                e = make_expr(std::move(c));
+                return;
+            }
             if (u->op == "await" && !u->postfix)
             {
                 check_await(u->pos);

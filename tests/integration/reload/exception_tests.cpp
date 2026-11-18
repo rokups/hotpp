@@ -1073,6 +1073,37 @@ class Player : Actor {
     EXPECT_EQ(*s.field("v"), 4.0f);
 }
 
+// The assertion "x!" on a null handle throws hot::NullReference. The message has the script, the
+// line and the text of the operand. A handle that is not null passes.
+TEST_P(BackendTests, NonNullAssertionThrowsWithPlaceAndText)
+{
+    const std::string full = std::string(kChecksHead) + R"(
+        $Box a = new $Box();
+        this.v = a!.n;
+        $Box none = null;
+        this.after = none!.n;
+)" + kChecksTail + kBoxClass;
+    const hot::ScriptSource src = {"chk_assert.hot", full};
+    const size_t bang = full.find("none!");
+    ASSERT_NE(bang, std::string::npos);
+    const auto line = std::count(full.begin(), full.begin() + static_cast<std::ptrdiff_t>(bang), '\n') + 1;
+    hot::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
+    HandlerGuard guard;
+    std::vector<std::string> messages;
+    hot::set_script_error_handler([&messages](const hot::ScriptErrorReport& e)
+                                  { messages.push_back(std::string(e.type) + ": " + e.message); });
+    s.world.Tick(kDt);
+    EXPECT_EQ(*s.field("v"), 3.0f);
+    EXPECT_EQ(*s.field("after"), 0.0f);
+    ASSERT_EQ(messages.size(), 1u);
+    EXPECT_NE(messages[0].find("hot::NullReference"), std::string::npos) << messages[0];
+    EXPECT_NE(messages[0].find("chk_assert.hot:" + std::to_string(line) + ": 'none' is null"), std::string::npos)
+        << messages[0];
+}
+
 // An index past the end throws hot::IndexOutOfRange. A catch of the base ScriptError also
 // catches a null reference.
 TEST_P(BackendTests, IndexOutOfRangeCaughtInScript)

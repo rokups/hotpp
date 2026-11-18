@@ -75,6 +75,12 @@ void golden_one(const std::string& base, const std::string& ext = ".hot", const 
 
 } // namespace
 
+// The non-null assertion "x!" becomes hot::nonnull with the place and the text.
+TEST(GoldenTranslation, NonNullBasic)
+{
+    golden_one("nonnull_basic");
+}
+
 // An async method is a coroutine that returns a hot::Task. The script needs C++20.
 TEST(GoldenTranslation, AsyncBasic)
 {

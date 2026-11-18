@@ -44,6 +44,9 @@ struct LineMap
         regions_.push_back(std::move(r));
     }
 
+    // The name of the main script, for a position that no imported script owns.
+    std::string main_file;
+
     int line(uint32_t pos) const
     {
         const std::vector<uint32_t>& s = starts_of(pos);

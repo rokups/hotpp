@@ -35,6 +35,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <stdexcept>
 
 namespace hotc::ast
 {
@@ -269,6 +270,9 @@ struct ExprPrinter
     {
         if (n.postfix)
         {
+            // The lowering changes "x!" to a hot::nonnull call. The text "x!" is not C++.
+            if (n.op == "!")
+                throw std::logic_error("internal error: a postfix '!' reached the printer");
             emit_expr(*n.operand, e);
             e.put(n.op);
             return;
