@@ -6690,7 +6690,8 @@ namespace
 {
 
 // Writes the proxy in "tools" and gives the path of the clangd program that runs it.
-// The proxy holds the first message of the method "method" that has the text "marker".
+// The proxy holds the first message of the method "method" that has the text "marker". With the environment
+// variable GATE_ALL it holds each such message while the gate file does not exist.
 std::string make_gated_clangd(const TempDir& tools, const std::string& method = "textDocument/references",
     const std::string& marker = "")
 {
@@ -6730,6 +6731,9 @@ std::string make_gated_clangd(const TempDir& tools, const std::string& method = 
         "        if line.lower().startswith(b'content-length:'):\n"
         "            size = int(line.split(b':')[1])\n"
         "    body = src.read(size)\n"
+        "    if os.environ.get('GATE_ALL') and method in body and marker in body and not os.path.exists(gate):\n"
+        "        threading.Thread(target=release, args=(head + body,), daemon=True).start()\n"
+        "        continue\n"
         "    if not held and method in body and marker in body:\n"
         "        held = True\n"
         "        open(gate + '.seen', 'w').close()\n"
@@ -10404,11 +10408,130 @@ TEST(LanguageServer, SplitShellHeaderFollowsAnEditOfAnImport)
     }
     ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
     EXPECT_NE(r["result"].dump().find("mana"), std::string::npos) << r.dump();
-    // The new header has a new name (the hash of the content) and the old header is gone.
+    // The header keeps its name (HOT-52) and has the new content.
     const auto now = shell_files(shells.path());
     ASSERT_EQ(now.size(), 1u);
-    EXPECT_NE(now[0], files[0]);
+    EXPECT_EQ(now[0], files[0]);
     EXPECT_NE(translator_test::read_file(now[0]).find("mana"), std::string::npos);
+}
+
+// HOT-52: after a change of the shell the completion does not wait for the new preamble. clangd answers from the old
+// preamble, the reply has "isIncomplete", and later the new names are there.
+TEST(LanguageServer, CompletionAfterAShellChangeAnswersAtOnceAndThenHasTheNewNames)
+{
+    REQUIRE_CLANGD();
+    const EnvGuard env("HOT_LS_SPLIT_SHELL", "1");
+    const EnvGuard stable("HOT_LS_STABLE_SHELL", "1");
+    TempDir shells;
+    const EnvGuard dir_env("HOT_LS_SHELL_DIR", shells.path().string());
+    Session s(true, kSplitImporter);
+    write_file(s.dir.path() / "base.hot", kSplitBase);
+    s.client->change(s.uri, 2, kSplitImporter);
+    ASSERT_NE(s.client->request("textDocument/hover", doc_pos(s.uri, 3, 30)), nullptr);
+    const auto files = shell_files(shells.path());
+    ASSERT_EQ(files.size(), 1u);
+    const std::string before = translator_test::read_file(files[0]);
+    // A new class changes the shell. The cursor is after "this.".
+    std::string user = kSplitImporter;
+    user.replace(user.find("this.Heal(a)"), 12, "this.");
+    user += "class ExtraThing { }\n";
+    s.client->change(s.uri, 3, user);
+    const std::string go = "    float Go(float a) { return this.";
+    const int col = static_cast<int>(go.size());
+    auto labels = [](const json& r)
+    {
+        std::set<std::string> out;
+        const json items = r["result"].is_array() ? r["result"] : r["result"].value("items", json::array());
+        for (const json& i : items)
+            out.insert(i.value("label", ""));
+        return out;
+    };
+    const auto t0 = std::chrono::steady_clock::now();
+    json r = s.client->request("textDocument/completion", doc_pos(s.uri, 3, col));
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    EXPECT_TRUE(r["result"].value("isIncomplete", false)) << r.dump();
+    EXPECT_TRUE(labels(r).count("own")) << r.dump();
+    EXPECT_LT(ms, 2500);
+    // The header has the same name and the new text.
+    const auto now = shell_files(shells.path());
+    ASSERT_EQ(now.size(), 1u);
+    EXPECT_EQ(now[0], files[0]);
+    EXPECT_NE(translator_test::read_file(now[0]), before);
+    EXPECT_NE(translator_test::read_file(now[0]).find("ExtraThing"), std::string::npos);
+    // After the hold the answer is complete and has the new names.
+    std::string plain = user;
+    plain.replace(plain.find("this."), 5, "ExtraTh");
+    s.client->change(s.uri, 4, plain);
+    const int col2 = static_cast<int>(std::string("    float Go(float a) { return ExtraTh").size());
+    bool found = false;
+    for (int i = 0; i < 40 && !found; ++i)
+    {
+        r = s.client->request("textDocument/completion", doc_pos(s.uri, 3, col2));
+        if (r.contains("result") && r["result"].is_object() && labels(r).count("ExtraThing"))
+            found = !r["result"].value("isIncomplete", false);
+        if (!found)
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+    EXPECT_TRUE(found) << r.dump();
+}
+
+// HOT-52: after the hold, a reply is final only when clangd shows the new preamble. A clangd that is slower than the
+// hold (here: documentSymbol is held by the proxy) keeps the replies incomplete. When it answers, the reply is final.
+TEST(LanguageServer, CompletionStaysIncompleteWhenTheNewPreambleIsLateAfterTheHold)
+{
+    REQUIRE_CLANGD();
+    if (std::system("python3 -c \"\" >/dev/null 2>&1") != 0)
+        GTEST_SKIP() << "python3 is not installed";
+    const EnvGuard env("HOT_LS_SPLIT_SHELL", "1");
+    const EnvGuard stable("HOT_LS_STABLE_SHELL", "1");
+    const EnvGuard all("GATE_ALL", "1");
+    TempDir shells, tools;
+    const EnvGuard dir_env("HOT_LS_SHELL_DIR", shells.path().string());
+    const std::string clangd = make_gated_clangd(tools, "textDocument/documentSymbol");
+    const std::string gate = (tools.path() / "gate").string();
+    write_file(gate, "open");
+    GateOpener opener{gate};
+    TempDir dir;
+    hot::ls::ServerOptions o = options(dir, true);
+    o.clangd = clangd;
+    o.completion_budget_ms = 600;
+    Session s(true, kSplitImporter, &o);
+    write_file(s.dir.path() / "base.hot", kSplitBase);
+    s.client->change(s.uri, 2, kSplitImporter);
+    ASSERT_NE(s.client->request("textDocument/hover", doc_pos(s.uri, 3, 30)), nullptr);
+    std::string plain = kSplitImporter;
+    plain.replace(plain.find("this.Heal(a)"), 12, "ExtraTh");
+    plain += "class ExtraThing { }\n";
+    const int col = static_cast<int>(std::string("    float Go(float a) { return ExtraTh").size());
+    auto ask = [&] { return s.client->request("textDocument/completion", doc_pos(s.uri, 3, col), 20000); };
+    // Warm: a first completion with the gate open.
+    s.client->change(s.uri, 3, kSplitImporter);
+    ask();
+    // A shell change, then the hold passes with the gate closed.
+    s.client->change(s.uri, 4, plain);
+    json r = ask();
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    EXPECT_TRUE(r["result"].value("isIncomplete", false));
+    std::filesystem::remove(gate);
+    std::this_thread::sleep_for(std::chrono::milliseconds(hot::ls::kShellHoldMs + 500));
+    for (int i = 0; i < 2; ++i)
+    {
+        r = ask();
+        ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+        EXPECT_TRUE(r["result"].value("isIncomplete", false)) << "try " << i << ": " << r.dump();
+    }
+    // The preamble answer comes: the next reply is final.
+    write_file(gate, "open");
+    bool final_reply = false;
+    for (int i = 0; i < 20 && !final_reply; ++i)
+    {
+        r = ask();
+        final_reply = r.contains("result") && r["result"].is_object() && !r["result"].value("isIncomplete", false);
+        if (!final_reply)
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    }
+    EXPECT_TRUE(final_reply) << r.dump();
 }
 
 // Hover, definition and completion in the bodies of the own functions are the same with the lite document and
@@ -11017,16 +11140,95 @@ TEST(LanguageServer, ThisCacheDropsTheMembersWhenTheImportedBaseChanges)
     const bool cache = !(sw && std::string(sw) == "0");
     Session s(true, this_script("Base", "Ta", 1));
     write_file(s.dir.path() / "base.hot", kThisBase);
-    EXPECT_FALSE(contains_name(this_names(s, 2, "Base", "Ta", 1), "Tag"));
-    EXPECT_FALSE(contains_name(this_names(s, 3, "Base", "Ta", 2), "Tag")); // from the cache
+    // The import changes the shell (HOT-52): the replies are not stored during the hold. The test waits for it.
+    s.client->change(s.uri, 2, this_script("Base", "Ta", 1));
+    std::this_thread::sleep_for(std::chrono::milliseconds(hot::ls::kShellHoldMs + 500));
+    EXPECT_FALSE(contains_name(this_names(s, 3, "Base", "Ta", 1), "Tag"));
+    EXPECT_FALSE(contains_name(this_names(s, 4, "Base", "Ta", 2), "Tag")); // from the cache
     if (cache)
         EXPECT_EQ(this_stat(s, "thisAnalyzes"), 1);
     write_file(s.dir.path() / "base.hot",
         "using \"Actor.h\";\nusing \"Damageable.h\";\nclass Base : Actor, ITagged { }\n");
-    const auto after = this_names(s, 4, "Base", "Ta", 3);
+    // The header changes (HOT-52): clangd answers from the old preamble for a time, and the reply is not stored.
+    // Like a client, the test asks again. The text changes each time, so each request is a new one.
+    std::vector<std::string> after;
+    for (int i = 0; i < hot::ls::kShellHoldMs / 250 + 16 && !contains_name(after, "Tag"); ++i)
+    {
+        after = this_names(s, 5 + i, "Base", "Ta", 3 + i);
+        if (!contains_name(after, "Tag"))
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
     EXPECT_TRUE(contains_name(after, "Tag")) << "the cache kept the old members";
     if (cache)
-        EXPECT_EQ(this_stat(s, "thisAnalyzes"), 2);
+        EXPECT_GE(this_stat(s, "thisAnalyzes"), 2);
+}
+
+// HOT-52: after a change of the imported base and the hold, the first final reply has the new members. The reply
+// is the same 3 s later. HOT_LS_STALE_RUNS sets the number of runs (default 1).
+TEST(LanguageServer, FirstFinalReplyAfterTheHoldHasTheNewMembers)
+{
+    REQUIRE_CLANGD();
+    const EnvGuard env("HOT_LS_SPLIT_SHELL", "1");
+    const EnvGuard stable("HOT_LS_STABLE_SHELL", "1");
+    const char* runs_env = std::getenv("HOT_LS_STALE_RUNS");
+    const int runs = runs_env ? std::max(1, std::atoi(runs_env)) : 1;
+    auto script = [](int n) {
+        return "using \"base.hot\";\nclass Kid : Base {\n    void run() {\n        this.\n    }\n}\n// " + std::to_string(n)
+            + "\n";
+    };
+    auto base = [](const char* member) {
+        return std::string("using \"Actor.h\";\nclass Base : Actor {\n    float ") + member + " = 1.0;\n}\n";
+    };
+    int stale = 0;
+    for (int run = 0; run < runs; ++run)
+    {
+        TempDir shells;
+        const EnvGuard dir_env("HOT_LS_SHELL_DIR", shells.path().string());
+        Session s(true, script(0));
+        write_file(s.dir.path() / "base.hot", base("Old"));
+        int version = 2;
+        // Ask until the reply is final. The names are the sorted insert texts.
+        auto final_names = [&](std::vector<std::string>& out) {
+            for (int i = 0; i < 300; ++i)
+            {
+                s.client->change(s.uri, ++version, script(version));
+                const json r = s.client->request("textDocument/completion", doc_pos(s.uri, 3, 13), 20000);
+                if (r.contains("result") && r["result"].is_object() && !r["result"].value("isIncomplete", false))
+                {
+                    out.clear();
+                    for (const json& it : r["result"].value("items", json::array()))
+                        out.push_back(it.value("insertText", it.value("label", "")));
+                    return true;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            }
+            return false;
+        };
+        std::vector<std::string> l1, first, second;
+        ASSERT_TRUE(final_names(l1));
+        if (!contains_name(l1, "Old"))
+        {
+            // The first list has the old member only after the import is read: ask once more.
+            ASSERT_TRUE(final_names(l1));
+        }
+        ASSERT_TRUE(contains_name(l1, "Old"));
+        write_file(s.dir.path() / "base.hot", base("New"));
+        s.client->change(s.uri, ++version, script(version));
+        std::this_thread::sleep_for(std::chrono::milliseconds(hot::ls::kShellHoldMs + 500));
+        ASSERT_TRUE(final_names(first));
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+        ASSERT_TRUE(final_names(second));
+        std::sort(first.begin(), first.end());
+        std::sort(second.begin(), second.end());
+        const bool bad = !contains_name(first, "New") || contains_name(first, "Old");
+        if (bad)
+            ++stale;
+        std::cerr << "STALE_RUN " << run << " first_stale=" << (bad ? 1 : 0) << " same_later=" << (first == second ? 1 : 0)
+                  << "\n";
+        EXPECT_FALSE(bad) << "run " << run << ": the first final reply is stale";
+        EXPECT_TRUE(contains_name(second, "New") && !contains_name(second, "Old")) << "run " << run;
+    }
+    std::cerr << "STALE_TOTAL " << stale << " of " << runs << "\n";
 }
 
 // A change of the bases of the class shows in the next completion.

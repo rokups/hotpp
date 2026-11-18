@@ -19,6 +19,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -26,6 +27,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 using ls_test::json;
@@ -245,8 +247,17 @@ std::string run_case(const Case& c)
     const int line_len = static_cast<int>(le - (at - col));
 
     g_ws->client->change(g_ws->uri, ++g_ws->version, text);
-    const json r = g_ws->client->request("textDocument/completion",
-        {{"textDocument", {{"uri", g_ws->uri}}}, {"position", {{"line", line}, {"character", col}}}});
+    // After a change of the shell, clangd answers from the old preamble and the reply has "isIncomplete" (HOT-52).
+    // Like a client, the test asks again until the reply is complete.
+    json r;
+    for (int tries = 0; tries < hot::ls::kShellHoldMs / 250 + 16; ++tries)
+    {
+        r = g_ws->client->request("textDocument/completion",
+            {{"textDocument", {{"uri", g_ws->uri}}}, {"position", {{"line", line}, {"character", col}}}});
+        if (!r.contains("result") || !r["result"].is_object() || !r["result"].value("isIncomplete", false))
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
     if (!r.contains("result") || r["result"].is_null())
         return "no result: " + r.dump().substr(0, 120);
     const json& res = r["result"];
