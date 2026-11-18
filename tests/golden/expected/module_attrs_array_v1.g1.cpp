@@ -256,11 +256,18 @@ static void* Grid___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Grid_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Grid::Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Grid::__fwd_TakeDamage_f),
     reinterpret_cast<hot::SlotFn>(&hot_state_Grid::__fwd_TakeDamage_Af),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Grid_record = {
     "Grid", 0, Grid_slots, SLOT_COUNT, &Grid_layout, nullptr,
@@ -281,7 +288,7 @@ HOT_NODEBUG static hot::Instance Grid_create()
     return {static_cast<Actor*>(p), p};
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 285 "module_attrs_array_v1.hot.cpp"
+#line 292 "module_attrs_array_v1.hot.cpp"
 
 #line 7 "module_attrs_array_v1.hot"
 HOT_NODEBUG static hot::Instance Grid__make_0([[maybe_unused]] void** __a)
@@ -291,7 +298,7 @@ HOT_NODEBUG static hot::Instance Grid__make_0([[maybe_unused]] void** __a)
     return Grid_create();
 #line 7 "module_attrs_array_v1.hot"
 }
-#line 295 "module_attrs_array_v1.hot.cpp"
+#line 302 "module_attrs_array_v1.hot.cpp"
 
 static const hot::CtorEntry Grid__constructors[] = {
     {hot::ctor_key<>(), &Grid__make_0, hot::ctor_write_mask<>()},
@@ -324,7 +331,7 @@ void hot_state_Grid::Tick(float dt)
     HOT_TRACE_LINE(); hot::index(hot::index(__st->weights, 1), 2) = dt;
 #line 14 "module_attrs_array_v1.hot"
 }
-#line 328 "module_attrs_array_v1.hot.cpp"
+#line 335 "module_attrs_array_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

@@ -10692,6 +10692,7 @@ void translate_impl(
         }
         else
         {
+            o.w("#if defined(__GNUC__) && !defined(__clang__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored \"-Wcast-function-type\"\n#endif\n");
             o.w("static const hot::SlotFn " + cn + "_slots[" + slot_id("COUNT") + "] = {\n");
             // A slot of an interface parent is a hole: the loader fills it from the parent record.
             auto inherited = [&](const std::string& fn)
@@ -10703,7 +10704,7 @@ void translate_impl(
             };
             for (const std::string& fn : table)
                 o.w(fn.empty() || inherited(fn) ? std::string("    nullptr,\n") : "    reinterpret_cast<hot::SlotFn>(&" + fn + "),\n");
-            o.w("};\n\n");
+            o.w("};\n#if defined(__GNUC__) && !defined(__clang__)\n#pragma GCC diagnostic pop\n#endif\n\n");
             // The names of the defunct slots (removed functions). The loader copies the pointer into
             // the record, and a call of a removed function names the function in its error.
             if (std::any_of(defunct_names.begin(), defunct_names.end(), [](const std::string& n) { return !n.empty(); }))

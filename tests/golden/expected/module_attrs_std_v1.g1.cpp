@@ -243,11 +243,18 @@ static void* Counter___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Counter_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Counter::Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Counter::__fwd_TakeDamage_f),
     reinterpret_cast<hot::SlotFn>(&hot_state_Counter::__fwd_TakeDamage_Af),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Counter_record = {
     "Counter", 0, Counter_slots, SLOT_COUNT, &Counter_layout, nullptr,
@@ -268,7 +275,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return {static_cast<Actor*>(p), p};
 #line 7 "module_attrs_std_v1.hot"
 }
-#line 272 "module_attrs_std_v1.hot.cpp"
+#line 279 "module_attrs_std_v1.hot.cpp"
 
 #line 7 "module_attrs_std_v1.hot"
 HOT_NODEBUG static hot::Instance Counter__make_0([[maybe_unused]] void** __a)
@@ -278,7 +285,7 @@ HOT_NODEBUG static hot::Instance Counter__make_0([[maybe_unused]] void** __a)
     return Counter_create();
 #line 7 "module_attrs_std_v1.hot"
 }
-#line 282 "module_attrs_std_v1.hot.cpp"
+#line 289 "module_attrs_std_v1.hot.cpp"
 
 static const hot::CtorEntry Counter__constructors[] = {
     {hot::ctor_key<>(), &Counter__make_0, hot::ctor_write_mask<>()},
@@ -311,7 +318,7 @@ void hot_state_Counter::Tick(float dt)
     HOT_TRACE_LINE(); __st->label = mystd::to_string(hot::deref(__st->history).size());
 #line 14 "module_attrs_std_v1.hot"
 }
-#line 315 "module_attrs_std_v1.hot.cpp"
+#line 322 "module_attrs_std_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

@@ -233,12 +233,19 @@ static void* Player___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Player_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Player::Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Player::TakeDamage_f),
     reinterpret_cast<hot::SlotFn>(&hot_state_Player::TakeDamage_Af),
     reinterpret_cast<hot::SlotFn>(&hot_state_Player::heal),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Player_record = {
     "Player", 0, Player_slots, SLOT_COUNT, &Player_layout, nullptr,
@@ -259,7 +266,7 @@ HOT_NODEBUG static hot::Instance Player_create()
     return {static_cast<Actor*>(p), p};
 #line 6 "player_v2.hot"
 }
-#line 263 "player_v2.hot.cpp"
+#line 270 "player_v2.hot.cpp"
 
 #line 6 "player_v2.hot"
 HOT_NODEBUG static hot::Instance Player__make_0([[maybe_unused]] void** __a)
@@ -269,7 +276,7 @@ HOT_NODEBUG static hot::Instance Player__make_0([[maybe_unused]] void** __a)
     return Player_create();
 #line 6 "player_v2.hot"
 }
-#line 273 "player_v2.hot.cpp"
+#line 280 "player_v2.hot.cpp"
 
 static const hot::CtorEntry Player__constructors[] = {
     {hot::ctor_key<>(), &Player__make_0, hot::ctor_write_mask<>()},
@@ -304,7 +311,7 @@ void hot_state_Player::Tick(float dt)
     hot::deref(__self->Name).c_str(), dt, hot::deref(__self->Position).x, __st->health, __st->shield);
 #line 16 "player_v2.hot"
 }
-#line 308 "player_v2.hot.cpp"
+#line 315 "player_v2.hot.cpp"
 
 #line 18 "player_v2.hot"
 void hot_state_Player::TakeDamage_f(float amount)
@@ -334,7 +341,7 @@ void hot_state_Player::TakeDamage_f(float amount)
     __st->health);
 #line 22 "player_v2.hot"
 }
-#line 338 "player_v2.hot.cpp"
+#line 345 "player_v2.hot.cpp"
 
 #line 24 "player_v2.hot"
 void hot_state_Player::TakeDamage_Af(Actor& source, float amount)
@@ -364,7 +371,7 @@ void hot_state_Player::TakeDamage_Af(Actor& source, float amount)
     HOT_TRACE_LINE(); __self->TakeDamage(amount);
 #line 28 "player_v2.hot"
 }
-#line 368 "player_v2.hot.cpp"
+#line 375 "player_v2.hot.cpp"
 
 #line 30 "player_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static void Player__heal(Player_Shell* __self, float amount)
@@ -374,7 +381,7 @@ void hot_state_Player::TakeDamage_Af(Actor& source, float amount)
     return state_of(__self)->heal(std::forward<float>(amount));
 #line 30 "player_v2.hot"
 }
-#line 378 "player_v2.hot.cpp"
+#line 385 "player_v2.hot.cpp"
 #line 30 "player_v2.hot"
 void hot_state_Player::heal(float amount)
 #line 30 "player_v2.hot"
@@ -403,7 +410,7 @@ void hot_state_Player::heal(float amount)
     __st->health);
 #line 34 "player_v2.hot"
 }
-#line 407 "player_v2.hot.cpp"
+#line 414 "player_v2.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

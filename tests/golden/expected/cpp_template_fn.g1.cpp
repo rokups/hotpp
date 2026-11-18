@@ -333,11 +333,18 @@ static void* Scaler___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Scaler_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Scaler::Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Scaler::__fwd_TakeDamage_f),
     reinterpret_cast<hot::SlotFn>(&hot_state_Scaler::__fwd_TakeDamage_Af),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Scaler_record = {
     "Scaler", 0, Scaler_slots, SLOT_COUNT, &Scaler_layout, nullptr,
@@ -372,7 +379,7 @@ HOT_NODEBUG static hot::Instance Scaler_create()
     return {static_cast<Actor*>(p), p};
 #line 15 "cpp_template_fn.cpp"
 }
-#line 376 "cpp_template_fn.cpp.cpp"
+#line 383 "cpp_template_fn.cpp.cpp"
 
 #line 20 "cpp_template_fn.cpp"
 HOT_NODEBUG static hot::Instance Scaler__make_0([[maybe_unused]] void** __a)
@@ -386,7 +393,7 @@ HOT_NODEBUG static hot::Instance Scaler__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 20 "cpp_template_fn.cpp"
 }
-#line 390 "cpp_template_fn.cpp.cpp"
+#line 397 "cpp_template_fn.cpp.cpp"
 
 static const hot::CtorEntry Scaler__constructors[] = {
     {hot::ctor_key<>(), &Scaler__make_0, hot::ctor_write_mask<>()},
@@ -401,7 +408,7 @@ static const hot::CtorEntry Scaler__constructors[] = {
     return state_of(__self)->ctor();
 #line 20 "cpp_template_fn.cpp"
 }
-#line 405 "cpp_template_fn.cpp.cpp"
+#line 412 "cpp_template_fn.cpp.cpp"
 #line 20 "cpp_template_fn.cpp"
 void hot_state_Scaler::ctor()
 #line 20 "cpp_template_fn.cpp"
@@ -426,7 +433,7 @@ void hot_state_Scaler::ctor()
 
 #line 20 "cpp_template_fn.cpp"
 }
-#line 430 "cpp_template_fn.cpp.cpp"
+#line 437 "cpp_template_fn.cpp.cpp"
 
 #line 22 "cpp_template_fn.cpp"
 void hot_state_Scaler::Tick(float dt)
@@ -456,7 +463,7 @@ void hot_state_Scaler::Tick(float dt)
     
 #line 27 "cpp_template_fn.cpp"
 }
-#line 460 "cpp_template_fn.cpp.cpp"
+#line 467 "cpp_template_fn.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

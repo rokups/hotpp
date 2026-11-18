@@ -367,12 +367,19 @@ static void* Player___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Player_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Player::Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Player::TakeDamage_f),
     reinterpret_cast<hot::SlotFn>(&hot_state_Player::TakeDamage_Af),
     reinterpret_cast<hot::SlotFn>(&hot_state_Player::heal),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Player_record = {
     "Player", 0, Player_slots, SLOT_COUNT, &Player_layout, nullptr,
@@ -407,7 +414,7 @@ HOT_NODEBUG static hot::Instance Player_create()
     return {static_cast<Actor*>(p), p};
 #line 25 "cpp_player_v1.cpp"
 }
-#line 411 "cpp_player_v1.cpp.cpp"
+#line 418 "cpp_player_v1.cpp.cpp"
 
 #line 28 "cpp_player_v1.cpp"
 HOT_NODEBUG static hot::Instance Player__make_0([[maybe_unused]] void** __a)
@@ -421,7 +428,7 @@ HOT_NODEBUG static hot::Instance Player__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 28 "cpp_player_v1.cpp"
 }
-#line 425 "cpp_player_v1.cpp.cpp"
+#line 432 "cpp_player_v1.cpp.cpp"
 
 static const hot::CtorEntry Player__constructors[] = {
     {hot::ctor_key<>(), &Player__make_0, hot::ctor_write_mask<>()},
@@ -436,7 +443,7 @@ static const hot::CtorEntry Player__constructors[] = {
     return state_of(__self)->ctor();
 #line 28 "cpp_player_v1.cpp"
 }
-#line 440 "cpp_player_v1.cpp.cpp"
+#line 447 "cpp_player_v1.cpp.cpp"
 #line 28 "cpp_player_v1.cpp"
 void hot_state_Player::ctor()
 #line 28 "cpp_player_v1.cpp"
@@ -461,7 +468,7 @@ void hot_state_Player::ctor()
 
 #line 28 "cpp_player_v1.cpp"
 }
-#line 465 "cpp_player_v1.cpp.cpp"
+#line 472 "cpp_player_v1.cpp.cpp"
 
 #line 30 "cpp_player_v1.cpp"
 void hot_state_Player::Tick(float dt)
@@ -494,7 +501,7 @@ void hot_state_Player::Tick(float dt)
     
 #line 38 "cpp_player_v1.cpp"
 }
-#line 498 "cpp_player_v1.cpp.cpp"
+#line 505 "cpp_player_v1.cpp.cpp"
 
 #line 40 "cpp_player_v1.cpp"
 void hot_state_Player::TakeDamage_f(float amount)
@@ -523,7 +530,7 @@ void hot_state_Player::TakeDamage_f(float amount)
     
 #line 44 "cpp_player_v1.cpp"
 }
-#line 527 "cpp_player_v1.cpp.cpp"
+#line 534 "cpp_player_v1.cpp.cpp"
 
 #line 46 "cpp_player_v1.cpp"
 void hot_state_Player::TakeDamage_Af(Actor & source, float amount)
@@ -553,7 +560,7 @@ void hot_state_Player::TakeDamage_Af(Actor & source, float amount)
     
 #line 51 "cpp_player_v1.cpp"
 }
-#line 557 "cpp_player_v1.cpp.cpp"
+#line 564 "cpp_player_v1.cpp.cpp"
 
 #line 53 "cpp_player_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static void Player__heal(Player_Shell* __self, float a)
@@ -563,7 +570,7 @@ void hot_state_Player::TakeDamage_Af(Actor & source, float amount)
     return state_of(__self)->heal(std::forward<float>(a));
 #line 53 "cpp_player_v1.cpp"
 }
-#line 567 "cpp_player_v1.cpp.cpp"
+#line 574 "cpp_player_v1.cpp.cpp"
 #line 53 "cpp_player_v1.cpp"
 void hot_state_Player::heal(float a)
 #line 53 "cpp_player_v1.cpp"
@@ -591,7 +598,7 @@ void hot_state_Player::heal(float a)
     
 #line 57 "cpp_player_v1.cpp"
 }
-#line 595 "cpp_player_v1.cpp.cpp"
+#line 602 "cpp_player_v1.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

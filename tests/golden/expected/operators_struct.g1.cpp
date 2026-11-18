@@ -465,11 +465,18 @@ static void* Holder___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Holder_slots[Holder_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Holder::Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Holder::__fwd_TakeDamage_f),
     reinterpret_cast<hot::SlotFn>(&hot_state_Holder::__fwd_TakeDamage_Af),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Holder_record = {
     "Holder", 0, Holder_slots, Holder_SLOT_COUNT, &Holder_layout, nullptr,
@@ -490,7 +497,7 @@ HOT_NODEBUG static hot::Instance Holder_create()
     return {static_cast<Actor*>(p), p};
 #line 32 "operators_struct.hot"
 }
-#line 494 "operators_struct.hot.cpp"
+#line 501 "operators_struct.hot.cpp"
 
 #line 32 "operators_struct.hot"
 HOT_NODEBUG static hot::Instance Holder__make_0([[maybe_unused]] void** __a)
@@ -500,7 +507,7 @@ HOT_NODEBUG static hot::Instance Holder__make_0([[maybe_unused]] void** __a)
     return Holder_create();
 #line 32 "operators_struct.hot"
 }
-#line 504 "operators_struct.hot.cpp"
+#line 511 "operators_struct.hot.cpp"
 
 static const hot::CtorEntry Holder__constructors[] = {
     {hot::ctor_key<>(), &Holder__make_0, hot::ctor_write_mask<>()},
@@ -519,7 +526,7 @@ static void Vec2__ctor(Vec2* __self, float ax, float ay)
     __st->y = ay;
 #line 15 "operators_struct.hot"
 }
-#line 523 "operators_struct.hot.cpp"
+#line 530 "operators_struct.hot.cpp"
 
 #line 16 "operators_struct.hot"
 static Vec2 Vec2__op_add(Vec2* __self, const Vec2& o)
@@ -531,7 +538,7 @@ static Vec2 Vec2__op_add(Vec2* __self, const Vec2& o)
     return Vec2(__st->x + hot::deref(o).x, __st->y + hot::deref(o).y);
 #line 16 "operators_struct.hot"
 }
-#line 535 "operators_struct.hot.cpp"
+#line 542 "operators_struct.hot.cpp"
 
 #line 17 "operators_struct.hot"
 static Vec2 Vec2__op_neg(Vec2* __self)
@@ -543,7 +550,7 @@ static Vec2 Vec2__op_neg(Vec2* __self)
     return Vec2(-__st->x, -__st->y);
 #line 17 "operators_struct.hot"
 }
-#line 547 "operators_struct.hot.cpp"
+#line 554 "operators_struct.hot.cpp"
 
 #line 18 "operators_struct.hot"
 static Vec2 Vec2__op_mul(Vec2* __self, float f)
@@ -555,7 +562,7 @@ static Vec2 Vec2__op_mul(Vec2* __self, float f)
     return Vec2(__st->x * f, __st->y * f);
 #line 18 "operators_struct.hot"
 }
-#line 559 "operators_struct.hot.cpp"
+#line 566 "operators_struct.hot.cpp"
 
 #line 19 "operators_struct.hot"
 static bool Vec2__op_lt(Vec2* __self, const Vec2& o)
@@ -567,7 +574,7 @@ static bool Vec2__op_lt(Vec2* __self, const Vec2& o)
     return __st->x < hot::deref(o).x;
 #line 19 "operators_struct.hot"
 }
-#line 571 "operators_struct.hot.cpp"
+#line 578 "operators_struct.hot.cpp"
 
 #line 20 "operators_struct.hot"
 static bool Vec2__op_gt(Vec2* __self, const Vec2& o)
@@ -579,7 +586,7 @@ static bool Vec2__op_gt(Vec2* __self, const Vec2& o)
     return __st->x > hot::deref(o).x;
 #line 20 "operators_struct.hot"
 }
-#line 583 "operators_struct.hot.cpp"
+#line 590 "operators_struct.hot.cpp"
 
 #line 21 "operators_struct.hot"
 static float& Vec2__op_index(Vec2* __self, int32_t i)
@@ -591,7 +598,7 @@ static float& Vec2__op_index(Vec2* __self, int32_t i)
     return hot::index(__st->data, i);
 #line 21 "operators_struct.hot"
 }
-#line 595 "operators_struct.hot.cpp"
+#line 602 "operators_struct.hot.cpp"
 
 #line 47 "operators_struct.hot"
 void hot_state_Holder::Tick(float dt)
@@ -683,7 +690,7 @@ void hot_state_Holder::Tick(float dt)
     HOT_TRACE_LINE(); __st->r_sorted = (hot::deref(hot::index(list, 0)).x == 1.0f && hot::deref(hot::index(list, 1)).x == 3.0f && hot::deref(hot::index(list, 2)).x == 4.0f) ? 1 : 0;
 #line 82 "operators_struct.hot"
 }
-#line 687 "operators_struct.hot.cpp"
+#line 694 "operators_struct.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

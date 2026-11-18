@@ -434,6 +434,10 @@ static void* Money___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Money_slots[Money_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Money::op_add),
     reinterpret_cast<hot::SlotFn>(&hot_state_Money::op_mul),
@@ -443,6 +447,9 @@ static const hot::SlotFn Money_slots[Money_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Money::op_gt),
     reinterpret_cast<hot::SlotFn>(&hot_state_Money::op_index),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Money_record = {
     "Money", 0, Money_slots, Money_SLOT_COUNT, &Money_layout, nullptr,
@@ -477,7 +484,7 @@ HOT_NODEBUG static hot::Instance Money_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 9 "operators_use_class.hot"
 }
-#line 481 "operators_use_class.hot.cpp"
+#line 488 "operators_use_class.hot.cpp"
 
 #line 12 "operators_use_class.hot"
 HOT_NODEBUG static hot::Instance Money__make_0([[maybe_unused]] void** __a)
@@ -491,7 +498,7 @@ HOT_NODEBUG static hot::Instance Money__make_0([[maybe_unused]] void** __a)
     return {static_cast<hot::PlainObject*>(p), p};
 #line 12 "operators_use_class.hot"
 }
-#line 495 "operators_use_class.hot.cpp"
+#line 502 "operators_use_class.hot.cpp"
 
 static const hot::CtorEntry Money__constructors[] = {
     {hot::ctor_key<int32_t>(), &Money__make_0, hot::ctor_write_mask<int32_t>()},
@@ -523,7 +530,7 @@ struct Holder_Shell final : Actor, hot::ShellBase {
     }
 #line 45 "operators_use_class.hot"
     ~Holder_Shell() override { hot::destroy_state(this); }
-#line 527 "operators_use_class.hot.cpp"
+#line 534 "operators_use_class.hot.cpp"
 #line 45 "operators_use_class.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 45 "operators_use_class.hot"
@@ -532,7 +539,7 @@ struct Holder_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0);
 #line 45 "operators_use_class.hot"
     }
-#line 536 "operators_use_class.hot.cpp"
+#line 543 "operators_use_class.hot.cpp"
 #line 45 "operators_use_class.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 45 "operators_use_class.hot"
@@ -541,7 +548,7 @@ struct Holder_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0, a1);
 #line 45 "operators_use_class.hot"
     }
-#line 545 "operators_use_class.hot.cpp"
+#line 552 "operators_use_class.hot.cpp"
 
 #line 45 "operators_use_class.hot"
     void Tick(float a0) override
@@ -551,7 +558,7 @@ struct Holder_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Holder_SLOT_Tick, a0);
 #line 45 "operators_use_class.hot"
     }
-#line 555 "operators_use_class.hot.cpp"
+#line 562 "operators_use_class.hot.cpp"
 
 #line 45 "operators_use_class.hot"
     void TakeDamage(float a0) override
@@ -561,7 +568,7 @@ struct Holder_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Holder_SLOT_TakeDamage_f, a0);
 #line 45 "operators_use_class.hot"
     }
-#line 565 "operators_use_class.hot.cpp"
+#line 572 "operators_use_class.hot.cpp"
 
 #line 45 "operators_use_class.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -571,7 +578,7 @@ struct Holder_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, Holder_SLOT_TakeDamage_Af, a0, a1);
 #line 45 "operators_use_class.hot"
     }
-#line 575 "operators_use_class.hot.cpp"
+#line 582 "operators_use_class.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -603,7 +610,7 @@ struct hot_state_Holder {
         return static_cast<Holder_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 45 "operators_use_class.hot"
     }
-#line 607 "operators_use_class.hot.cpp"
+#line 614 "operators_use_class.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 45 "operators_use_class.hot"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -613,54 +620,54 @@ struct hot_state_Holder {
         return static_cast<Holder_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 45 "operators_use_class.hot"
     }
-#line 617 "operators_use_class.hot.cpp"
+#line 624 "operators_use_class.hot.cpp"
 };
 
 #line 46 "operators_use_class.hot"
 static void Holder__init_a(void*, void* f) { using T = hot::Value<Money>; new (f) T(hot::Value<Money>(std::shared_ptr<Money>(Money__new_shared(100)))); }
-#line 622 "operators_use_class.hot.cpp"
+#line 629 "operators_use_class.hot.cpp"
 #line 47 "operators_use_class.hot"
 static void Holder__init_b(void*, void* f) { using T = hot::Value<Money>; new (f) T(hot::Value<Money>(std::shared_ptr<Money>(Money__new_shared(250)))); }
-#line 625 "operators_use_class.hot.cpp"
+#line 632 "operators_use_class.hot.cpp"
 #line 48 "operators_use_class.hot"
 static void Holder__init_ticks(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 628 "operators_use_class.hot.cpp"
+#line 635 "operators_use_class.hot.cpp"
 #line 49 "operators_use_class.hot"
 static void Holder__init_r_add(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 631 "operators_use_class.hot.cpp"
+#line 638 "operators_use_class.hot.cpp"
 #line 50 "operators_use_class.hot"
 static void Holder__init_r_mul_int(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 634 "operators_use_class.hot.cpp"
+#line 641 "operators_use_class.hot.cpp"
 #line 51 "operators_use_class.hot"
 static void Holder__init_r_member(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 637 "operators_use_class.hot.cpp"
+#line 644 "operators_use_class.hot.cpp"
 #line 52 "operators_use_class.hot"
 static void Holder__init_r_var(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 640 "operators_use_class.hot.cpp"
+#line 647 "operators_use_class.hot.cpp"
 #line 53 "operators_use_class.hot"
 static void Holder__init_r_neg(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 643 "operators_use_class.hot.cpp"
+#line 650 "operators_use_class.hot.cpp"
 #line 54 "operators_use_class.hot"
 static void Holder__init_r_eq(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 646 "operators_use_class.hot.cpp"
+#line 653 "operators_use_class.hot.cpp"
 #line 55 "operators_use_class.hot"
 static void Holder__init_r_ne(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 649 "operators_use_class.hot.cpp"
+#line 656 "operators_use_class.hot.cpp"
 #line 56 "operators_use_class.hot"
 static void Holder__init_r_lt(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 652 "operators_use_class.hot.cpp"
+#line 659 "operators_use_class.hot.cpp"
 #line 57 "operators_use_class.hot"
 static void Holder__init_r_index(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 655 "operators_use_class.hot.cpp"
+#line 662 "operators_use_class.hot.cpp"
 #line 58 "operators_use_class.hot"
 static void Holder__init_r_compound(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 658 "operators_use_class.hot.cpp"
+#line 665 "operators_use_class.hot.cpp"
 #line 59 "operators_use_class.hot"
 static void Holder__init_r_chain(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 661 "operators_use_class.hot.cpp"
+#line 668 "operators_use_class.hot.cpp"
 #line 60 "operators_use_class.hot"
 static void Holder__init_r_field(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 664 "operators_use_class.hot.cpp"
+#line 671 "operators_use_class.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -735,7 +742,7 @@ HOT_HIDDEN static auto Holder__plan()
     return std::make_pair(Holder__super_args(), std::tuple<>());
 #line 45 "operators_use_class.hot"
 }
-#line 739 "operators_use_class.hot.cpp"
+#line 746 "operators_use_class.hot.cpp"
 using Holder_SuperArgs = decltype(Holder__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -760,7 +767,7 @@ HOT_NODEBUG static hot::ShellBase* Holder__construct(void* mem, const char* key,
     return nullptr;
 #line 45 "operators_use_class.hot"
 }
-#line 764 "operators_use_class.hot.cpp"
+#line 771 "operators_use_class.hot.cpp"
 
 static const char* const Holder__construct_keys[] = {typeid(Holder_SuperArgs).name(), nullptr};
 
@@ -776,7 +783,7 @@ HOT_HIDDEN static Holder_Shell* Holder__build([[maybe_unused]] bool __note)
     return __self;
 #line 45 "operators_use_class.hot"
 }
-#line 780 "operators_use_class.hot.cpp"
+#line 787 "operators_use_class.hot.cpp"
 #line 45 "operators_use_class.hot"
 [[maybe_unused]] HOT_HIDDEN static Holder_Shell* Holder__new()
 #line 45 "operators_use_class.hot"
@@ -785,7 +792,7 @@ HOT_HIDDEN static Holder_Shell* Holder__build([[maybe_unused]] bool __note)
     return Holder__build(true);
 #line 45 "operators_use_class.hot"
 }
-#line 789 "operators_use_class.hot.cpp"
+#line 796 "operators_use_class.hot.cpp"
 #line 45 "operators_use_class.hot"
 template <int = 0>
 #line 45 "operators_use_class.hot"
@@ -800,7 +807,7 @@ template <int = 0>
     return __h;
 #line 45 "operators_use_class.hot"
 }
-#line 804 "operators_use_class.hot.cpp"
+#line 811 "operators_use_class.hot.cpp"
 
 static void* Holder___native__thunk(hot::ShellCore* __s)
 {
@@ -808,11 +815,18 @@ static void* Holder___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Holder_slots[Holder_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Holder::Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Holder::__fwd_TakeDamage_f),
     reinterpret_cast<hot::SlotFn>(&hot_state_Holder::__fwd_TakeDamage_Af),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Holder_record = {
     "Holder", 0, Holder_slots, Holder_SLOT_COUNT, &Holder_layout, nullptr,
@@ -833,7 +847,7 @@ HOT_NODEBUG static hot::Instance Holder_create()
     return {static_cast<Actor*>(p), p};
 #line 45 "operators_use_class.hot"
 }
-#line 837 "operators_use_class.hot.cpp"
+#line 851 "operators_use_class.hot.cpp"
 
 #line 45 "operators_use_class.hot"
 HOT_NODEBUG static hot::Instance Holder__make_0([[maybe_unused]] void** __a)
@@ -843,7 +857,7 @@ HOT_NODEBUG static hot::Instance Holder__make_0([[maybe_unused]] void** __a)
     return Holder_create();
 #line 45 "operators_use_class.hot"
 }
-#line 847 "operators_use_class.hot.cpp"
+#line 861 "operators_use_class.hot.cpp"
 
 static const hot::CtorEntry Holder__constructors[] = {
     {hot::ctor_key<>(), &Holder__make_0, hot::ctor_write_mask<>()},
@@ -858,7 +872,7 @@ static const hot::CtorEntry Holder__constructors[] = {
     return state_of(__self)->ctor(std::forward<int32_t>(c));
 #line 12 "operators_use_class.hot"
 }
-#line 862 "operators_use_class.hot.cpp"
+#line 876 "operators_use_class.hot.cpp"
 #line 12 "operators_use_class.hot"
 void hot_state_Money::ctor(int32_t c)
 #line 12 "operators_use_class.hot"
@@ -883,7 +897,7 @@ void hot_state_Money::ctor(int32_t c)
     HOT_TRACE_LINE(); __st->cents = c;
 #line 14 "operators_use_class.hot"
 }
-#line 887 "operators_use_class.hot.cpp"
+#line 901 "operators_use_class.hot.cpp"
 
 #line 16 "operators_use_class.hot"
 [[maybe_unused]] HOT_HIDDEN static hot::Value<Money> Money__op_add(Money_Shell* __self, hot::In<hot::Value<Money>> o)
@@ -893,7 +907,7 @@ void hot_state_Money::ctor(int32_t c)
     return state_of(__self)->op_add(std::forward<hot::In<hot::Value<Money>>>(o));
 #line 16 "operators_use_class.hot"
 }
-#line 897 "operators_use_class.hot.cpp"
+#line 911 "operators_use_class.hot.cpp"
 #line 16 "operators_use_class.hot"
 hot::Value<Money> hot_state_Money::op_add(hot::In<hot::Value<Money>> o)
 #line 16 "operators_use_class.hot"
@@ -918,7 +932,7 @@ hot::Value<Money> hot_state_Money::op_add(hot::In<hot::Value<Money>> o)
     HOT_TRACE_LINE(); return hot::Value<Money>(std::shared_ptr<Money>(Money__new_shared(__st->cents + state_of(hot::shell_of<Money_Shell>(o, "Money"))->cents)));
 #line 18 "operators_use_class.hot"
 }
-#line 922 "operators_use_class.hot.cpp"
+#line 936 "operators_use_class.hot.cpp"
 
 #line 20 "operators_use_class.hot"
 [[maybe_unused]] HOT_HIDDEN static hot::Value<Money> Money__op_mul(Money_Shell* __self, int32_t f)
@@ -928,7 +942,7 @@ hot::Value<Money> hot_state_Money::op_add(hot::In<hot::Value<Money>> o)
     return state_of(__self)->op_mul(std::forward<int32_t>(f));
 #line 20 "operators_use_class.hot"
 }
-#line 932 "operators_use_class.hot.cpp"
+#line 946 "operators_use_class.hot.cpp"
 #line 20 "operators_use_class.hot"
 hot::Value<Money> hot_state_Money::op_mul(int32_t const f)
 #line 20 "operators_use_class.hot"
@@ -953,7 +967,7 @@ hot::Value<Money> hot_state_Money::op_mul(int32_t const f)
     HOT_TRACE_LINE(); return hot::Value<Money>(std::shared_ptr<Money>(Money__new_shared(__st->cents * f)));
 #line 22 "operators_use_class.hot"
 }
-#line 957 "operators_use_class.hot.cpp"
+#line 971 "operators_use_class.hot.cpp"
 
 #line 24 "operators_use_class.hot"
 [[maybe_unused]] HOT_HIDDEN static hot::Value<Money> Money__op_neg(Money_Shell* __self)
@@ -963,7 +977,7 @@ hot::Value<Money> hot_state_Money::op_mul(int32_t const f)
     return state_of(__self)->op_neg();
 #line 24 "operators_use_class.hot"
 }
-#line 967 "operators_use_class.hot.cpp"
+#line 981 "operators_use_class.hot.cpp"
 #line 24 "operators_use_class.hot"
 hot::Value<Money> hot_state_Money::op_neg()
 #line 24 "operators_use_class.hot"
@@ -988,7 +1002,7 @@ hot::Value<Money> hot_state_Money::op_neg()
     HOT_TRACE_LINE(); return hot::Value<Money>(std::shared_ptr<Money>(Money__new_shared(-__st->cents)));
 #line 26 "operators_use_class.hot"
 }
-#line 992 "operators_use_class.hot.cpp"
+#line 1006 "operators_use_class.hot.cpp"
 
 #line 28 "operators_use_class.hot"
 [[maybe_unused]] HOT_HIDDEN static bool Money__op_eq(Money_Shell* __self, hot::In<hot::Value<Money>> o)
@@ -998,7 +1012,7 @@ hot::Value<Money> hot_state_Money::op_neg()
     return state_of(__self)->op_eq(std::forward<hot::In<hot::Value<Money>>>(o));
 #line 28 "operators_use_class.hot"
 }
-#line 1002 "operators_use_class.hot.cpp"
+#line 1016 "operators_use_class.hot.cpp"
 #line 28 "operators_use_class.hot"
 bool hot_state_Money::op_eq(hot::In<hot::Value<Money>> o)
 #line 28 "operators_use_class.hot"
@@ -1023,7 +1037,7 @@ bool hot_state_Money::op_eq(hot::In<hot::Value<Money>> o)
     HOT_TRACE_LINE(); return __st->cents == state_of(hot::shell_of<Money_Shell>(o, "Money"))->cents;
 #line 30 "operators_use_class.hot"
 }
-#line 1027 "operators_use_class.hot.cpp"
+#line 1041 "operators_use_class.hot.cpp"
 
 #line 32 "operators_use_class.hot"
 [[maybe_unused]] HOT_HIDDEN static bool Money__op_lt(Money_Shell* __self, hot::In<hot::Value<Money>> o)
@@ -1033,7 +1047,7 @@ bool hot_state_Money::op_eq(hot::In<hot::Value<Money>> o)
     return state_of(__self)->op_lt(std::forward<hot::In<hot::Value<Money>>>(o));
 #line 32 "operators_use_class.hot"
 }
-#line 1037 "operators_use_class.hot.cpp"
+#line 1051 "operators_use_class.hot.cpp"
 #line 32 "operators_use_class.hot"
 bool hot_state_Money::op_lt(hot::In<hot::Value<Money>> o)
 #line 32 "operators_use_class.hot"
@@ -1058,7 +1072,7 @@ bool hot_state_Money::op_lt(hot::In<hot::Value<Money>> o)
     HOT_TRACE_LINE(); return __st->cents < state_of(hot::shell_of<Money_Shell>(o, "Money"))->cents;
 #line 34 "operators_use_class.hot"
 }
-#line 1062 "operators_use_class.hot.cpp"
+#line 1076 "operators_use_class.hot.cpp"
 
 #line 36 "operators_use_class.hot"
 [[maybe_unused]] HOT_HIDDEN static bool Money__op_gt(Money_Shell* __self, hot::In<hot::Value<Money>> o)
@@ -1068,7 +1082,7 @@ bool hot_state_Money::op_lt(hot::In<hot::Value<Money>> o)
     return state_of(__self)->op_gt(std::forward<hot::In<hot::Value<Money>>>(o));
 #line 36 "operators_use_class.hot"
 }
-#line 1072 "operators_use_class.hot.cpp"
+#line 1086 "operators_use_class.hot.cpp"
 #line 36 "operators_use_class.hot"
 bool hot_state_Money::op_gt(hot::In<hot::Value<Money>> o)
 #line 36 "operators_use_class.hot"
@@ -1093,7 +1107,7 @@ bool hot_state_Money::op_gt(hot::In<hot::Value<Money>> o)
     HOT_TRACE_LINE(); return __st->cents > state_of(hot::shell_of<Money_Shell>(o, "Money"))->cents;
 #line 38 "operators_use_class.hot"
 }
-#line 1097 "operators_use_class.hot.cpp"
+#line 1111 "operators_use_class.hot.cpp"
 
 #line 40 "operators_use_class.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Money__op_index(Money_Shell* __self, int32_t i)
@@ -1103,7 +1117,7 @@ bool hot_state_Money::op_gt(hot::In<hot::Value<Money>> o)
     return state_of(__self)->op_index(std::forward<int32_t>(i));
 #line 40 "operators_use_class.hot"
 }
-#line 1107 "operators_use_class.hot.cpp"
+#line 1121 "operators_use_class.hot.cpp"
 #line 40 "operators_use_class.hot"
 int32_t hot_state_Money::op_index(int32_t const i)
 #line 40 "operators_use_class.hot"
@@ -1128,7 +1142,7 @@ int32_t hot_state_Money::op_index(int32_t const i)
     HOT_TRACE_LINE(); return __st->cents * 10 + i;
 #line 42 "operators_use_class.hot"
 }
-#line 1132 "operators_use_class.hot.cpp"
+#line 1146 "operators_use_class.hot.cpp"
 
 #line 62 "operators_use_class.hot"
 void hot_state_Holder::Tick(float dt)
@@ -1202,7 +1216,7 @@ void hot_state_Holder::Tick(float dt)
     HOT_TRACE_LINE(); __st->r_field = (state_of(hot::shell_of<Money_Shell>(__st->a, "Money"))->cents == 350) ? 1 : 0;
 #line 88 "operators_use_class.hot"
 }
-#line 1206 "operators_use_class.hot.cpp"
+#line 1220 "operators_use_class.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

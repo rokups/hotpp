@@ -264,11 +264,18 @@ static void* Grid___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Grid_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Grid::Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Grid::__fwd_TakeDamage_f),
     reinterpret_cast<hot::SlotFn>(&hot_state_Grid::__fwd_TakeDamage_Af),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Grid_record = {
     "Grid", 0, Grid_slots, SLOT_COUNT, &Grid_layout, nullptr,
@@ -289,7 +296,7 @@ HOT_NODEBUG static hot::Instance Grid_create()
     return {static_cast<Actor*>(p), p};
 #line 11 "checked_index_v1.hot"
 }
-#line 293 "checked_index_v1.hot.cpp"
+#line 300 "checked_index_v1.hot.cpp"
 
 #line 11 "checked_index_v1.hot"
 HOT_NODEBUG static hot::Instance Grid__make_0([[maybe_unused]] void** __a)
@@ -299,7 +306,7 @@ HOT_NODEBUG static hot::Instance Grid__make_0([[maybe_unused]] void** __a)
     return Grid_create();
 #line 11 "checked_index_v1.hot"
 }
-#line 303 "checked_index_v1.hot.cpp"
+#line 310 "checked_index_v1.hot.cpp"
 
 static const hot::CtorEntry Grid__constructors[] = {
     {hot::ctor_key<>(), &Grid__make_0, hot::ctor_write_mask<>()},
@@ -334,7 +341,7 @@ void hot_state_Grid::Tick(float dt)
     HOT_TRACE_LINE(); hot::index(__st->plain, 0) = 1;
 #line 20 "checked_index_v1.hot"
 }
-#line 338 "checked_index_v1.hot.cpp"
+#line 345 "checked_index_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

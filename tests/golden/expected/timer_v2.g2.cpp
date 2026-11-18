@@ -255,12 +255,19 @@ static void* Beeper___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Beeper_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Beeper::Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Beeper::__fwd_TakeDamage_f),
     reinterpret_cast<hot::SlotFn>(&hot_state_Beeper::__fwd_TakeDamage_Af),
     reinterpret_cast<hot::SlotFn>(&hot_state_Beeper::arm),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Beeper_record = {
     "Beeper", 0, Beeper_slots, SLOT_COUNT, &Beeper_layout, nullptr,
@@ -281,7 +288,7 @@ HOT_NODEBUG static hot::Instance Beeper_create()
     return {static_cast<Actor*>(p), p};
 #line 4 "timer_v2.hot"
 }
-#line 285 "timer_v2.hot.cpp"
+#line 292 "timer_v2.hot.cpp"
 
 #line 4 "timer_v2.hot"
 HOT_NODEBUG static hot::Instance Beeper__make_0([[maybe_unused]] void** __a)
@@ -291,7 +298,7 @@ HOT_NODEBUG static hot::Instance Beeper__make_0([[maybe_unused]] void** __a)
     return Beeper_create();
 #line 4 "timer_v2.hot"
 }
-#line 295 "timer_v2.hot.cpp"
+#line 302 "timer_v2.hot.cpp"
 
 static const hot::CtorEntry Beeper__constructors[] = {
     {hot::ctor_key<>(), &Beeper__make_0, hot::ctor_write_mask<>()},
@@ -322,7 +329,7 @@ void hot_state_Beeper::Tick(float dt)
     HOT_TRACE_LINE(); __st->ticks = __st->ticks + 1;
 #line 10 "timer_v2.hot"
 }
-#line 326 "timer_v2.hot.cpp"
+#line 333 "timer_v2.hot.cpp"
 
 #line 12 "timer_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static void Beeper__arm(Beeper_Shell* __self, World& w, float delay)
@@ -332,7 +339,7 @@ void hot_state_Beeper::Tick(float dt)
     return state_of(__self)->arm(std::forward<World&>(w), std::forward<float>(delay));
 #line 12 "timer_v2.hot"
 }
-#line 336 "timer_v2.hot.cpp"
+#line 343 "timer_v2.hot.cpp"
 #line 12 "timer_v2.hot"
 void hot_state_Beeper::arm(World& w, float delay)
 #line 12 "timer_v2.hot"
@@ -363,7 +370,7 @@ void hot_state_Beeper::arm(World& w, float delay)
         } }));
 #line 17 "timer_v2.hot"
 }
-#line 367 "timer_v2.hot.cpp"
+#line 374 "timer_v2.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

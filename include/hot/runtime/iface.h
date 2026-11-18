@@ -137,7 +137,7 @@ HOT_HIDDEN typename detail::sig_result<Sig>::type call_iface(
     }
     using Pmf = typename detail::iface_pmf<Sig>::type;
     auto* self = static_cast<ShellBase*>(core);
-    return (static_cast<StateBase*>(self->state)->*reinterpret_cast<Pmf>(cls->slots[slot]))(std::forward<A>(a)...);
+    return (static_cast<StateBase*>(self->state)->*slot_cast<Pmf>(cls->slots[slot]))(std::forward<A>(a)...);
 }
 
 // ---- Conversions

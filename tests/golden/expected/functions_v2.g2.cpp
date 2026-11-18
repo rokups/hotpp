@@ -316,11 +316,18 @@ static void* Hero___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Hero_slots[Hero_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Hero::Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Hero::__fwd_TakeDamage_f),
     reinterpret_cast<hot::SlotFn>(&hot_state_Hero::__fwd_TakeDamage_Af),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Hero_record = {
     "Hero", 0, Hero_slots, Hero_SLOT_COUNT, &Hero_layout, nullptr,
@@ -341,7 +348,7 @@ HOT_NODEBUG static hot::Instance Hero_create()
     return {static_cast<Actor*>(p), p};
 #line 32 "functions_v2.hot"
 }
-#line 345 "functions_v2.hot.cpp"
+#line 352 "functions_v2.hot.cpp"
 
 #line 32 "functions_v2.hot"
 HOT_NODEBUG static hot::Instance Hero__make_0([[maybe_unused]] void** __a)
@@ -351,7 +358,7 @@ HOT_NODEBUG static hot::Instance Hero__make_0([[maybe_unused]] void** __a)
     return Hero_create();
 #line 32 "functions_v2.hot"
 }
-#line 355 "functions_v2.hot.cpp"
+#line 362 "functions_v2.hot.cpp"
 
 static const hot::CtorEntry Hero__constructors[] = {
     {hot::ctor_key<>(), &Hero__make_0, hot::ctor_write_mask<>()},
@@ -383,7 +390,7 @@ struct Helper_Shell final : Actor, hot::ShellBase {
     }
 #line 55 "functions_v2.hot"
     ~Helper_Shell() override { hot::destroy_state(this); }
-#line 387 "functions_v2.hot.cpp"
+#line 394 "functions_v2.hot.cpp"
 #line 55 "functions_v2.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 55 "functions_v2.hot"
@@ -392,7 +399,7 @@ struct Helper_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0);
 #line 55 "functions_v2.hot"
     }
-#line 396 "functions_v2.hot.cpp"
+#line 403 "functions_v2.hot.cpp"
 #line 55 "functions_v2.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 55 "functions_v2.hot"
@@ -401,7 +408,7 @@ struct Helper_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0, a1);
 #line 55 "functions_v2.hot"
     }
-#line 405 "functions_v2.hot.cpp"
+#line 412 "functions_v2.hot.cpp"
 
 #line 55 "functions_v2.hot"
     void Tick(float a0) override
@@ -411,7 +418,7 @@ struct Helper_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Helper_SLOT_Tick, a0);
 #line 55 "functions_v2.hot"
     }
-#line 415 "functions_v2.hot.cpp"
+#line 422 "functions_v2.hot.cpp"
 
 #line 55 "functions_v2.hot"
     void TakeDamage(float a0) override
@@ -421,7 +428,7 @@ struct Helper_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Helper_SLOT_TakeDamage_f, a0);
 #line 55 "functions_v2.hot"
     }
-#line 425 "functions_v2.hot.cpp"
+#line 432 "functions_v2.hot.cpp"
 
 #line 55 "functions_v2.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -431,7 +438,7 @@ struct Helper_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, Helper_SLOT_TakeDamage_Af, a0, a1);
 #line 55 "functions_v2.hot"
     }
-#line 435 "functions_v2.hot.cpp"
+#line 442 "functions_v2.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -449,7 +456,7 @@ struct hot_state_Helper {
         return static_cast<Helper_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 55 "functions_v2.hot"
     }
-#line 453 "functions_v2.hot.cpp"
+#line 460 "functions_v2.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 55 "functions_v2.hot"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -459,12 +466,12 @@ struct hot_state_Helper {
         return static_cast<Helper_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 55 "functions_v2.hot"
     }
-#line 463 "functions_v2.hot.cpp"
+#line 470 "functions_v2.hot.cpp"
 };
 
 #line 56 "functions_v2.hot"
 static void Helper__init_seen(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 468 "functions_v2.hot.cpp"
+#line 475 "functions_v2.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -511,7 +518,7 @@ HOT_HIDDEN static auto Helper__plan()
     return std::make_pair(Helper__super_args(), std::tuple<>());
 #line 55 "functions_v2.hot"
 }
-#line 515 "functions_v2.hot.cpp"
+#line 522 "functions_v2.hot.cpp"
 using Helper_SuperArgs = decltype(Helper__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -536,7 +543,7 @@ HOT_NODEBUG static hot::ShellBase* Helper__construct(void* mem, const char* key,
     return nullptr;
 #line 55 "functions_v2.hot"
 }
-#line 540 "functions_v2.hot.cpp"
+#line 547 "functions_v2.hot.cpp"
 
 static const char* const Helper__construct_keys[] = {typeid(Helper_SuperArgs).name(), nullptr};
 
@@ -552,7 +559,7 @@ HOT_HIDDEN static Helper_Shell* Helper__build([[maybe_unused]] bool __note)
     return __self;
 #line 55 "functions_v2.hot"
 }
-#line 556 "functions_v2.hot.cpp"
+#line 563 "functions_v2.hot.cpp"
 #line 55 "functions_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static Helper_Shell* Helper__new()
 #line 55 "functions_v2.hot"
@@ -561,7 +568,7 @@ HOT_HIDDEN static Helper_Shell* Helper__build([[maybe_unused]] bool __note)
     return Helper__build(true);
 #line 55 "functions_v2.hot"
 }
-#line 565 "functions_v2.hot.cpp"
+#line 572 "functions_v2.hot.cpp"
 #line 55 "functions_v2.hot"
 template <int = 0>
 #line 55 "functions_v2.hot"
@@ -576,7 +583,7 @@ template <int = 0>
     return __h;
 #line 55 "functions_v2.hot"
 }
-#line 580 "functions_v2.hot.cpp"
+#line 587 "functions_v2.hot.cpp"
 
 static void* Helper___native__thunk(hot::ShellCore* __s)
 {
@@ -584,11 +591,18 @@ static void* Helper___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Helper_slots[Helper_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Helper::Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Helper::__fwd_TakeDamage_f),
     reinterpret_cast<hot::SlotFn>(&hot_state_Helper::__fwd_TakeDamage_Af),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Helper_record = {
     "Helper", 0, Helper_slots, Helper_SLOT_COUNT, &Helper_layout, nullptr,
@@ -609,7 +623,7 @@ HOT_NODEBUG static hot::Instance Helper_create()
     return {static_cast<Actor*>(p), p};
 #line 55 "functions_v2.hot"
 }
-#line 613 "functions_v2.hot.cpp"
+#line 627 "functions_v2.hot.cpp"
 
 #line 55 "functions_v2.hot"
 HOT_NODEBUG static hot::Instance Helper__make_0([[maybe_unused]] void** __a)
@@ -619,7 +633,7 @@ HOT_NODEBUG static hot::Instance Helper__make_0([[maybe_unused]] void** __a)
     return Helper_create();
 #line 55 "functions_v2.hot"
 }
-#line 623 "functions_v2.hot.cpp"
+#line 637 "functions_v2.hot.cpp"
 
 static const hot::CtorEntry Helper__constructors[] = {
     {hot::ctor_key<>(), &Helper__make_0, hot::ctor_write_mask<>()},
@@ -632,7 +646,7 @@ static const hot::CtorEntry Helper__constructors[] = {
 [[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Fact(int32_t n);
 [[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Scale(int32_t x, int32_t k = 3);
 
-#line 636 "functions_v2.hot.cpp"
+#line 650 "functions_v2.hot.cpp"
 // ---------------------------------------------------------------- function bodies
 #line 44 "functions_v2.hot"
 void hot_state_Hero::Tick(float dt)
@@ -668,7 +682,7 @@ void hot_state_Hero::Tick(float dt)
     HOT_TRACE_LINE(); __st->twice = Vec__s_Twice(21);
 #line 51 "functions_v2.hot"
 }
-#line 672 "functions_v2.hot.cpp"
+#line 686 "functions_v2.hot.cpp"
 
 #line 58 "functions_v2.hot"
 void hot_state_Helper::Tick(float dt)
@@ -694,7 +708,7 @@ void hot_state_Helper::Tick(float dt)
     HOT_TRACE_LINE(); __st->seen = Hero__s_Weight(100) + hot_fn_Add(1, 1);
 #line 60 "functions_v2.hot"
 }
-#line 698 "functions_v2.hot.cpp"
+#line 712 "functions_v2.hot.cpp"
 
 #line 27 "functions_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Vec__s_Twice(int32_t v)
@@ -708,7 +722,7 @@ void hot_state_Helper::Tick(float dt)
     HOT_TRACE_LINE(); return v * 2;
 #line 29 "functions_v2.hot"
 }
-#line 712 "functions_v2.hot.cpp"
+#line 726 "functions_v2.hot.cpp"
 
 #line 40 "functions_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Hero__s_Weight(int32_t m)
@@ -722,7 +736,7 @@ void hot_state_Helper::Tick(float dt)
     HOT_TRACE_LINE(); return m + 2;
 #line 42 "functions_v2.hot"
 }
-#line 726 "functions_v2.hot.cpp"
+#line 740 "functions_v2.hot.cpp"
 
 #line 9 "functions_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Add(int32_t a, int32_t b)
@@ -736,7 +750,7 @@ void hot_state_Helper::Tick(float dt)
     HOT_TRACE_LINE(); return a + b + 100;
 #line 11 "functions_v2.hot"
 }
-#line 740 "functions_v2.hot.cpp"
+#line 754 "functions_v2.hot.cpp"
 
 #line 13 "functions_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Fact(int32_t n)
@@ -756,7 +770,7 @@ void hot_state_Helper::Tick(float dt)
     HOT_TRACE_LINE(); return n * hot_fn_Fact(n - 1);
 #line 18 "functions_v2.hot"
 }
-#line 760 "functions_v2.hot.cpp"
+#line 774 "functions_v2.hot.cpp"
 
 #line 20 "functions_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Scale(int32_t x, int32_t k)
@@ -770,7 +784,7 @@ void hot_state_Helper::Tick(float dt)
     HOT_TRACE_LINE(); return x * k;
 #line 22 "functions_v2.hot"
 }
-#line 774 "functions_v2.hot.cpp"
+#line 788 "functions_v2.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

@@ -278,6 +278,10 @@ static void* Grid___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Grid_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Grid::Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Grid::__fwd_TakeDamage_f),
@@ -285,6 +289,9 @@ static const hot::SlotFn Grid_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Grid::total),
     reinterpret_cast<hot::SlotFn>(&hot_state_Grid::make),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Grid_record = {
     "Grid", 0, Grid_slots, SLOT_COUNT, &Grid_layout, nullptr,
@@ -305,7 +312,7 @@ HOT_NODEBUG static hot::Instance Grid_create()
     return {static_cast<Actor*>(p), p};
 #line 5 "array_v2.hot"
 }
-#line 309 "array_v2.hot.cpp"
+#line 316 "array_v2.hot.cpp"
 
 #line 5 "array_v2.hot"
 HOT_NODEBUG static hot::Instance Grid__make_0([[maybe_unused]] void** __a)
@@ -315,7 +322,7 @@ HOT_NODEBUG static hot::Instance Grid__make_0([[maybe_unused]] void** __a)
     return Grid_create();
 #line 5 "array_v2.hot"
 }
-#line 319 "array_v2.hot.cpp"
+#line 326 "array_v2.hot.cpp"
 
 static const hot::CtorEntry Grid__constructors[] = {
     {hot::ctor_key<>(), &Grid__make_0, hot::ctor_write_mask<>()},
@@ -352,7 +359,7 @@ void hot_state_Grid::Tick(float dt)
     HOT_TRACE_LINE(); hot::index(hot::index(__st->m, 1), 2) = hot::index(__st->a, 0) + 5;
 #line 17 "array_v2.hot"
 }
-#line 356 "array_v2.hot.cpp"
+#line 363 "array_v2.hot.cpp"
 
 #line 19 "array_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Grid__total(Grid_Shell* __self)
@@ -362,7 +369,7 @@ void hot_state_Grid::Tick(float dt)
     return state_of(__self)->total();
 #line 19 "array_v2.hot"
 }
-#line 366 "array_v2.hot.cpp"
+#line 373 "array_v2.hot.cpp"
 #line 19 "array_v2.hot"
 int32_t hot_state_Grid::total()
 #line 19 "array_v2.hot"
@@ -395,7 +402,7 @@ int32_t hot_state_Grid::total()
     HOT_TRACE_LINE(); return sum + hot::deref(__st->a).size() + __st->extra;
 #line 25 "array_v2.hot"
 }
-#line 399 "array_v2.hot.cpp"
+#line 406 "array_v2.hot.cpp"
 
 #line 27 "array_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static std::array<int32_t, 4> Grid__make(Grid_Shell* __self, hot::In<std::array<int32_t, 2>> p)
@@ -405,7 +412,7 @@ int32_t hot_state_Grid::total()
     return state_of(__self)->make(std::forward<hot::In<std::array<int32_t, 2>>>(p));
 #line 27 "array_v2.hot"
 }
-#line 409 "array_v2.hot.cpp"
+#line 416 "array_v2.hot.cpp"
 #line 27 "array_v2.hot"
 std::array<int32_t, 4> hot_state_Grid::make(hot::In<std::array<int32_t, 2>> p)
 #line 27 "array_v2.hot"
@@ -434,7 +441,7 @@ std::array<int32_t, 4> hot_state_Grid::make(hot::In<std::array<int32_t, 2>> p)
     HOT_TRACE_LINE(); return r;
 #line 31 "array_v2.hot"
 }
-#line 438 "array_v2.hot.cpp"
+#line 445 "array_v2.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

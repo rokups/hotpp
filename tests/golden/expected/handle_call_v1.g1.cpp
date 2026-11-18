@@ -473,6 +473,10 @@ static void* Caller___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Caller_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Caller::__fwd_Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Caller::__fwd_TakeDamage_f),
@@ -486,6 +490,9 @@ static const hot::SlotFn Caller_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Caller::__fwd_Make),
     reinterpret_cast<hot::SlotFn>(&hot_state_Caller::__fwd_Borrow),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Caller_record = {
     "Caller", 0, Caller_slots, SLOT_COUNT, &Caller_layout, nullptr,
@@ -506,7 +513,7 @@ HOT_NODEBUG static hot::Instance Caller_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "handle_call_v1.hot"
 }
-#line 510 "handle_call_v1.hot.cpp"
+#line 517 "handle_call_v1.hot.cpp"
 
 #line 10 "handle_call_v1.hot"
 HOT_NODEBUG static hot::Instance Caller__make_0([[maybe_unused]] void** __a)
@@ -516,7 +523,7 @@ HOT_NODEBUG static hot::Instance Caller__make_0([[maybe_unused]] void** __a)
     return Caller_create();
 #line 10 "handle_call_v1.hot"
 }
-#line 520 "handle_call_v1.hot.cpp"
+#line 527 "handle_call_v1.hot.cpp"
 
 static const hot::CtorEntry Caller__constructors[] = {
     {hot::ctor_key<>(), &Caller__make_0, hot::ctor_write_mask<>()},
@@ -551,7 +558,7 @@ int hot_state_Caller::WearRaw(Charm* __c)
     HOT_TRACE_LINE(); return 1;
 #line 16 "handle_call_v1.hot"
 }
-#line 555 "handle_call_v1.hot.cpp"
+#line 562 "handle_call_v1.hot.cpp"
 
 #line 19 "handle_call_v1.hot"
 int hot_state_Caller::WearBlade(Blade* __b)
@@ -619,7 +626,7 @@ int hot_state_Caller::WearBlade(Blade* __b)
     HOT_TRACE_LINE(); return Mixed(hot::star(local));
 #line 41 "handle_call_v1.hot"
 }
-#line 623 "handle_call_v1.hot.cpp"
+#line 630 "handle_call_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

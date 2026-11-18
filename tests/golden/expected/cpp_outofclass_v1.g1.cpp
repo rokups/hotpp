@@ -370,6 +370,10 @@ static void* Fighter___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Fighter_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::__fwd_TakeDamage_f),
@@ -377,6 +381,9 @@ static const hot::SlotFn Fighter_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::hit),
     reinterpret_cast<hot::SlotFn>(&hot_state_Fighter::get),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Fighter_record = {
     "Fighter", 0, Fighter_slots, SLOT_COUNT, &Fighter_layout, nullptr,
@@ -411,7 +418,7 @@ HOT_NODEBUG static hot::Instance Fighter_create()
     return {static_cast<Actor*>(p), p};
 #line 8 "cpp_outofclass_v1.cpp"
 }
-#line 415 "cpp_outofclass_v1.cpp.cpp"
+#line 422 "cpp_outofclass_v1.cpp.cpp"
 
 #line 11 "cpp_outofclass_v1.cpp"
 HOT_NODEBUG static hot::Instance Fighter__make_0([[maybe_unused]] void** __a)
@@ -425,7 +432,7 @@ HOT_NODEBUG static hot::Instance Fighter__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 11 "cpp_outofclass_v1.cpp"
 }
-#line 429 "cpp_outofclass_v1.cpp.cpp"
+#line 436 "cpp_outofclass_v1.cpp.cpp"
 
 static const hot::CtorEntry Fighter__constructors[] = {
     {hot::ctor_key<>(), &Fighter__make_0, hot::ctor_write_mask<>()},
@@ -440,7 +447,7 @@ static const hot::CtorEntry Fighter__constructors[] = {
     return state_of(__self)->ctor();
 #line 11 "cpp_outofclass_v1.cpp"
 }
-#line 444 "cpp_outofclass_v1.cpp.cpp"
+#line 451 "cpp_outofclass_v1.cpp.cpp"
 #line 11 "cpp_outofclass_v1.cpp"
 void hot_state_Fighter::ctor()
 #line 11 "cpp_outofclass_v1.cpp"
@@ -465,7 +472,7 @@ void hot_state_Fighter::ctor()
 
 #line 11 "cpp_outofclass_v1.cpp"
 }
-#line 469 "cpp_outofclass_v1.cpp.cpp"
+#line 476 "cpp_outofclass_v1.cpp.cpp"
 
 #line 13 "cpp_outofclass_v1.cpp"
 void hot_state_Fighter::Tick(float dt)
@@ -496,7 +503,7 @@ void hot_state_Fighter::Tick(float dt)
     
 #line 19 "cpp_outofclass_v1.cpp"
 }
-#line 500 "cpp_outofclass_v1.cpp.cpp"
+#line 507 "cpp_outofclass_v1.cpp.cpp"
 
 #line 21 "cpp_outofclass_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Fighter__hit(Fighter_Shell* __self, int d, int scale)
@@ -506,7 +513,7 @@ void hot_state_Fighter::Tick(float dt)
     return state_of(__self)->hit(std::forward<int>(d), std::forward<int>(scale));
 #line 21 "cpp_outofclass_v1.cpp"
 }
-#line 510 "cpp_outofclass_v1.cpp.cpp"
+#line 517 "cpp_outofclass_v1.cpp.cpp"
 #line 21 "cpp_outofclass_v1.cpp"
 int hot_state_Fighter::hit(int d, int scale)
 #line 21 "cpp_outofclass_v1.cpp"
@@ -534,7 +541,7 @@ int hot_state_Fighter::hit(int d, int scale)
     
 #line 25 "cpp_outofclass_v1.cpp"
 }
-#line 538 "cpp_outofclass_v1.cpp.cpp"
+#line 545 "cpp_outofclass_v1.cpp.cpp"
 
 #line 27 "cpp_outofclass_v1.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Fighter__get(Fighter_Shell* __self)
@@ -544,7 +551,7 @@ int hot_state_Fighter::hit(int d, int scale)
     return state_of(__self)->get();
 #line 27 "cpp_outofclass_v1.cpp"
 }
-#line 548 "cpp_outofclass_v1.cpp.cpp"
+#line 555 "cpp_outofclass_v1.cpp.cpp"
 #line 27 "cpp_outofclass_v1.cpp"
 int hot_state_Fighter::get()
 #line 27 "cpp_outofclass_v1.cpp"
@@ -569,7 +576,7 @@ int hot_state_Fighter::get()
  return hp; 
 #line 27 "cpp_outofclass_v1.cpp"
 }
-#line 573 "cpp_outofclass_v1.cpp.cpp"
+#line 580 "cpp_outofclass_v1.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

@@ -387,12 +387,19 @@ static void* Buf___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Buf_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Buf::Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Buf::__fwd_TakeDamage_f),
     reinterpret_cast<hot::SlotFn>(&hot_state_Buf::__fwd_TakeDamage_Af),
     reinterpret_cast<hot::SlotFn>(&hot_state_Buf::sum),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Buf_record = {
     "Buf", 0, Buf_slots, SLOT_COUNT, &Buf_layout, nullptr,
@@ -427,7 +434,7 @@ HOT_NODEBUG static hot::Instance Buf_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "cpp_array_v2.cpp"
 }
-#line 431 "cpp_array_v2.cpp.cpp"
+#line 438 "cpp_array_v2.cpp.cpp"
 
 #line 13 "cpp_array_v2.cpp"
 HOT_NODEBUG static hot::Instance Buf__make_0([[maybe_unused]] void** __a)
@@ -441,7 +448,7 @@ HOT_NODEBUG static hot::Instance Buf__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 13 "cpp_array_v2.cpp"
 }
-#line 445 "cpp_array_v2.cpp.cpp"
+#line 452 "cpp_array_v2.cpp.cpp"
 
 static const hot::CtorEntry Buf__constructors[] = {
     {hot::ctor_key<>(), &Buf__make_0, hot::ctor_write_mask<>()},
@@ -456,7 +463,7 @@ static const hot::CtorEntry Buf__constructors[] = {
     return state_of(__self)->ctor();
 #line 13 "cpp_array_v2.cpp"
 }
-#line 460 "cpp_array_v2.cpp.cpp"
+#line 467 "cpp_array_v2.cpp.cpp"
 #line 13 "cpp_array_v2.cpp"
 void hot_state_Buf::ctor()
 #line 13 "cpp_array_v2.cpp"
@@ -481,7 +488,7 @@ void hot_state_Buf::ctor()
  names[0] = "first"; 
 #line 13 "cpp_array_v2.cpp"
 }
-#line 485 "cpp_array_v2.cpp.cpp"
+#line 492 "cpp_array_v2.cpp.cpp"
 
 #line 15 "cpp_array_v2.cpp"
 void hot_state_Buf::Tick(float dt)
@@ -515,7 +522,7 @@ void hot_state_Buf::Tick(float dt)
     
 #line 24 "cpp_array_v2.cpp"
 }
-#line 519 "cpp_array_v2.cpp.cpp"
+#line 526 "cpp_array_v2.cpp.cpp"
 
 #line 26 "cpp_array_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Buf__sum(Buf_Shell* __self)
@@ -525,7 +532,7 @@ void hot_state_Buf::Tick(float dt)
     return state_of(__self)->sum();
 #line 26 "cpp_array_v2.cpp"
 }
-#line 529 "cpp_array_v2.cpp.cpp"
+#line 536 "cpp_array_v2.cpp.cpp"
 #line 26 "cpp_array_v2.cpp"
 int hot_state_Buf::sum()
 #line 26 "cpp_array_v2.cpp"
@@ -555,7 +562,7 @@ int hot_state_Buf::sum()
     
 #line 32 "cpp_array_v2.cpp"
 }
-#line 559 "cpp_array_v2.cpp.cpp"
+#line 566 "cpp_array_v2.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

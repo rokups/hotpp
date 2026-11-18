@@ -233,10 +233,17 @@ static void* Rig___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Rig_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Rig::Step),
     reinterpret_cast<hot::SlotFn>(&hot_state_Rig::Local),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Rig_record = {
     "Rig", 0, Rig_slots, SLOT_COUNT, &Rig_layout, nullptr,
@@ -257,7 +264,7 @@ HOT_NODEBUG static hot::Instance Rig_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 10 "native_ref_getter_v1.hot"
 }
-#line 261 "native_ref_getter_v1.hot.cpp"
+#line 268 "native_ref_getter_v1.hot.cpp"
 
 #line 10 "native_ref_getter_v1.hot"
 HOT_NODEBUG static hot::Instance Rig__make_0([[maybe_unused]] void** __a)
@@ -267,7 +274,7 @@ HOT_NODEBUG static hot::Instance Rig__make_0([[maybe_unused]] void** __a)
     return Rig_create();
 #line 10 "native_ref_getter_v1.hot"
 }
-#line 271 "native_ref_getter_v1.hot.cpp"
+#line 278 "native_ref_getter_v1.hot.cpp"
 
 static const hot::CtorEntry Rig__constructors[] = {
     {hot::ctor_key<>(), &Rig__make_0, hot::ctor_write_mask<>()},
@@ -282,7 +289,7 @@ static const hot::CtorEntry Rig__constructors[] = {
     return state_of(__self)->Step();
 #line 14 "native_ref_getter_v1.hot"
 }
-#line 286 "native_ref_getter_v1.hot.cpp"
+#line 293 "native_ref_getter_v1.hot.cpp"
 #line 14 "native_ref_getter_v1.hot"
 void hot_state_Rig::Step()
 #line 14 "native_ref_getter_v1.hot"
@@ -315,7 +322,7 @@ void hot_state_Rig::Step()
     HOT_TRACE_LINE(); hot::deref(k).frame = __st->frames;
 #line 20 "native_ref_getter_v1.hot"
 }
-#line 319 "native_ref_getter_v1.hot.cpp"
+#line 326 "native_ref_getter_v1.hot.cpp"
 
 #line 22 "native_ref_getter_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Rig__Local(Rig_Shell* __self, const std::shared_ptr<Animator>& a)
@@ -325,7 +332,7 @@ void hot_state_Rig::Step()
     return state_of(__self)->Local(std::forward<const std::shared_ptr<Animator>&>(a));
 #line 22 "native_ref_getter_v1.hot"
 }
-#line 329 "native_ref_getter_v1.hot.cpp"
+#line 336 "native_ref_getter_v1.hot.cpp"
 #line 22 "native_ref_getter_v1.hot"
 void hot_state_Rig::Local(const std::shared_ptr<Animator>& a)
 #line 22 "native_ref_getter_v1.hot"
@@ -356,7 +363,7 @@ void hot_state_Rig::Local(const std::shared_ptr<Animator>& a)
     HOT_TRACE_LINE(); hot::deref(s).frame = 3;
 #line 27 "native_ref_getter_v1.hot"
 }
-#line 360 "native_ref_getter_v1.hot.cpp"
+#line 367 "native_ref_getter_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

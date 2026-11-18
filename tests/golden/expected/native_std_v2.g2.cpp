@@ -292,11 +292,18 @@ static void* Tracker___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Tracker_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Tracker::Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Tracker::__fwd_TakeDamage_f),
     reinterpret_cast<hot::SlotFn>(&hot_state_Tracker::__fwd_TakeDamage_Af),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Tracker_record = {
     "Tracker", 0, Tracker_slots, SLOT_COUNT, &Tracker_layout, nullptr,
@@ -317,7 +324,7 @@ HOT_NODEBUG static hot::Instance Tracker_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "native_std_v2.hot"
 }
-#line 321 "native_std_v2.hot.cpp"
+#line 328 "native_std_v2.hot.cpp"
 
 #line 10 "native_std_v2.hot"
 HOT_NODEBUG static hot::Instance Tracker__make_0([[maybe_unused]] void** __a)
@@ -327,7 +334,7 @@ HOT_NODEBUG static hot::Instance Tracker__make_0([[maybe_unused]] void** __a)
     return Tracker_create();
 #line 10 "native_std_v2.hot"
 }
-#line 331 "native_std_v2.hot.cpp"
+#line 338 "native_std_v2.hot.cpp"
 
 static const hot::CtorEntry Tracker__constructors[] = {
     {hot::ctor_key<>(), &Tracker__make_0, hot::ctor_write_mask<>()},
@@ -378,7 +385,7 @@ void hot_state_Tracker::Tick(float dt)
     HOT_TRACE_LINE(); hot::deref(__st->history).push_back(hot::float_to_int<int32_t>(hot::deref(__st->history).size()) * 10);
 #line 31 "native_std_v2.hot"
 }
-#line 382 "native_std_v2.hot.cpp"
+#line 389 "native_std_v2.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

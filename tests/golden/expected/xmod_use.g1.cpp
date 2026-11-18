@@ -383,9 +383,16 @@ static void* User___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn User_slots[User_SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_User::run),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord User_record = {
     "User", 0, User_slots, User_SLOT_COUNT, &User_layout, nullptr,
@@ -420,7 +427,7 @@ HOT_NODEBUG static hot::Instance User_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 5 "xmod_use.hot"
 }
-#line 424 "xmod_use.hot.cpp"
+#line 431 "xmod_use.hot.cpp"
 
 #line 8 "xmod_use.hot"
 HOT_NODEBUG static hot::Instance User__make_0([[maybe_unused]] void** __a)
@@ -434,7 +441,7 @@ HOT_NODEBUG static hot::Instance User__make_0([[maybe_unused]] void** __a)
     return {static_cast<hot::PlainObject*>(p), p};
 #line 8 "xmod_use.hot"
 }
-#line 438 "xmod_use.hot.cpp"
+#line 445 "xmod_use.hot.cpp"
 
 static const hot::CtorEntry User__constructors[] = {
     {hot::ctor_key<>(), &User__make_0, hot::ctor_write_mask<>()},
@@ -447,12 +454,12 @@ static const hot::CtorEntry User__constructors[] = {
     return hot::mod_var<int32_t>(hot::unit_ref("xmod_lib"), __site, "counter");
 }
 
-#line 451 "xmod_use.hot.cpp"
+#line 458 "xmod_use.hot.cpp"
 // ---------------------------------------------------------------- static methods and free functions
 [[maybe_unused]] HOT_HIDDEN static int32_t Box__s_unit();
 [[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_twice(int32_t v);
 
-#line 456 "xmod_use.hot.cpp"
+#line 463 "xmod_use.hot.cpp"
 // ---------------------------------------------------------------- function bodies
 #line 8 "xmod_use.hot"
 [[maybe_unused]] HOT_HIDDEN static void User__ctor(User_Shell* __self)
@@ -462,7 +469,7 @@ static const hot::CtorEntry User__constructors[] = {
     return state_of(__self)->ctor();
 #line 8 "xmod_use.hot"
 }
-#line 466 "xmod_use.hot.cpp"
+#line 473 "xmod_use.hot.cpp"
 #line 8 "xmod_use.hot"
 void hot_state_User::ctor()
 #line 8 "xmod_use.hot"
@@ -487,7 +494,7 @@ void hot_state_User::ctor()
     HOT_TRACE_LINE(); __st->box = std::shared_ptr<Box>(Box__new_shared(3));
 #line 10 "xmod_use.hot"
 }
-#line 491 "xmod_use.hot.cpp"
+#line 498 "xmod_use.hot.cpp"
 
 #line 12 "xmod_use.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t User__run(User_Shell* __self)
@@ -497,7 +504,7 @@ void hot_state_User::ctor()
     return state_of(__self)->run();
 #line 12 "xmod_use.hot"
 }
-#line 501 "xmod_use.hot.cpp"
+#line 508 "xmod_use.hot.cpp"
 #line 12 "xmod_use.hot"
 int32_t hot_state_User::run()
 #line 12 "xmod_use.hot"
@@ -540,25 +547,25 @@ int32_t hot_state_User::run()
     HOT_TRACE_LINE(); return a + hot::deref(p).x + d + hot_mv_counter();
 #line 23 "xmod_use.hot"
 }
-#line 544 "xmod_use.hot.cpp"
+#line 551 "xmod_use.hot.cpp"
 
-#line 546 "xmod_use.hot.cpp"
+#line 553 "xmod_use.hot.cpp"
 [[maybe_unused]] HOT_HIDDEN static int32_t Box__s_unit()
-#line 548 "xmod_use.hot.cpp"
+#line 555 "xmod_use.hot.cpp"
 {
     static hot::FnSite __site;
     return hot::call_fn<decltype(Box__s_unit)>(hot::unit_ref("xmod_lib"), __site, "Box::unit");
 }
-#line 553 "xmod_use.hot.cpp"
+#line 560 "xmod_use.hot.cpp"
 
-#line 555 "xmod_use.hot.cpp"
+#line 562 "xmod_use.hot.cpp"
 [[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_twice(int32_t v)
-#line 557 "xmod_use.hot.cpp"
+#line 564 "xmod_use.hot.cpp"
 {
     static hot::FnSite __site;
     return hot::call_fn<decltype(hot_fn_twice)>(hot::unit_ref("xmod_lib"), __site, "twice", std::forward<decltype(v)>(v));
 }
-#line 562 "xmod_use.hot.cpp"
+#line 569 "xmod_use.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

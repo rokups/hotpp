@@ -337,11 +337,18 @@ static void* Bumper___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Bumper_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Bumper::Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Bumper::__fwd_TakeDamage_f),
     reinterpret_cast<hot::SlotFn>(&hot_state_Bumper::__fwd_TakeDamage_Af),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Bumper_record = {
     "Bumper", 0, Bumper_slots, SLOT_COUNT, &Bumper_layout, nullptr,
@@ -376,7 +383,7 @@ HOT_NODEBUG static hot::Instance Bumper_create()
     return {static_cast<Actor*>(p), p};
 #line 18 "cpp_namespace_fn.cpp"
 }
-#line 380 "cpp_namespace_fn.cpp.cpp"
+#line 387 "cpp_namespace_fn.cpp.cpp"
 
 #line 23 "cpp_namespace_fn.cpp"
 HOT_NODEBUG static hot::Instance Bumper__make_0([[maybe_unused]] void** __a)
@@ -390,7 +397,7 @@ HOT_NODEBUG static hot::Instance Bumper__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 23 "cpp_namespace_fn.cpp"
 }
-#line 394 "cpp_namespace_fn.cpp.cpp"
+#line 401 "cpp_namespace_fn.cpp.cpp"
 
 static const hot::CtorEntry Bumper__constructors[] = {
     {hot::ctor_key<>(), &Bumper__make_0, hot::ctor_write_mask<>()},
@@ -405,7 +412,7 @@ static const hot::CtorEntry Bumper__constructors[] = {
     return state_of(__self)->ctor();
 #line 23 "cpp_namespace_fn.cpp"
 }
-#line 409 "cpp_namespace_fn.cpp.cpp"
+#line 416 "cpp_namespace_fn.cpp.cpp"
 #line 23 "cpp_namespace_fn.cpp"
 void hot_state_Bumper::ctor()
 #line 23 "cpp_namespace_fn.cpp"
@@ -430,7 +437,7 @@ void hot_state_Bumper::ctor()
 
 #line 23 "cpp_namespace_fn.cpp"
 }
-#line 434 "cpp_namespace_fn.cpp.cpp"
+#line 441 "cpp_namespace_fn.cpp.cpp"
 
 #line 25 "cpp_namespace_fn.cpp"
 void hot_state_Bumper::Tick(float dt)
@@ -460,7 +467,7 @@ void hot_state_Bumper::Tick(float dt)
     
 #line 30 "cpp_namespace_fn.cpp"
 }
-#line 464 "cpp_namespace_fn.cpp.cpp"
+#line 471 "cpp_namespace_fn.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

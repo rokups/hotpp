@@ -203,9 +203,16 @@ static void* Parser___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Parser_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Parser::Run),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Parser_record = {
     "Parser", 0, Parser_slots, SLOT_COUNT, &Parser_layout, nullptr,
@@ -226,7 +233,7 @@ HOT_NODEBUG static hot::Instance Parser_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 6 "out_ptr_v1.hot"
 }
-#line 230 "out_ptr_v1.hot.cpp"
+#line 237 "out_ptr_v1.hot.cpp"
 
 #line 6 "out_ptr_v1.hot"
 HOT_NODEBUG static hot::Instance Parser__make_0([[maybe_unused]] void** __a)
@@ -236,7 +243,7 @@ HOT_NODEBUG static hot::Instance Parser__make_0([[maybe_unused]] void** __a)
     return Parser_create();
 #line 6 "out_ptr_v1.hot"
 }
-#line 240 "out_ptr_v1.hot.cpp"
+#line 247 "out_ptr_v1.hot.cpp"
 
 static const hot::CtorEntry Parser__constructors[] = {
     {hot::ctor_key<>(), &Parser__make_0, hot::ctor_write_mask<>()},
@@ -251,7 +258,7 @@ static const hot::CtorEntry Parser__constructors[] = {
     return state_of(__self)->Run();
 #line 7 "out_ptr_v1.hot"
 }
-#line 255 "out_ptr_v1.hot.cpp"
+#line 262 "out_ptr_v1.hot.cpp"
 #line 7 "out_ptr_v1.hot"
 int32_t hot_state_Parser::Run()
 #line 7 "out_ptr_v1.hot"
@@ -284,7 +291,7 @@ int32_t hot_state_Parser::Run()
     HOT_TRACE_LINE(); return Consumed("12.5xyz", end) + n + hot::float_to_int<int32_t>(v);
 #line 13 "out_ptr_v1.hot"
 }
-#line 288 "out_ptr_v1.hot.cpp"
+#line 295 "out_ptr_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

@@ -389,12 +389,19 @@ static void* Counter___native__thunk(hot::ShellCore* __s)
 }
 
 // ------------------------------------------------------ record and entry
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static const hot::SlotFn Counter_slots[SLOT_COUNT] = {
     reinterpret_cast<hot::SlotFn>(&hot_state_Counter::Tick),
     reinterpret_cast<hot::SlotFn>(&hot_state_Counter::__fwd_TakeDamage_f),
     reinterpret_cast<hot::SlotFn>(&hot_state_Counter::__fwd_TakeDamage_Af),
     reinterpret_cast<hot::SlotFn>(&hot_state_Counter::Peek),
 };
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 hot::ClassRecord Counter_record = {
     "Counter", 0, Counter_slots, SLOT_COUNT, &Counter_layout, nullptr,
@@ -429,7 +436,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return {static_cast<Actor*>(p), p};
 #line 9 "cpp_static_v2.cpp"
 }
-#line 433 "cpp_static_v2.cpp.cpp"
+#line 440 "cpp_static_v2.cpp.cpp"
 
 #line 12 "cpp_static_v2.cpp"
 HOT_NODEBUG static hot::Instance Counter__make_0([[maybe_unused]] void** __a)
@@ -443,7 +450,7 @@ HOT_NODEBUG static hot::Instance Counter__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 12 "cpp_static_v2.cpp"
 }
-#line 447 "cpp_static_v2.cpp.cpp"
+#line 454 "cpp_static_v2.cpp.cpp"
 
 static const hot::CtorEntry Counter__constructors[] = {
     {hot::ctor_key<>(), &Counter__make_0, hot::ctor_write_mask<>()},
@@ -458,7 +465,7 @@ static const hot::CtorEntry Counter__constructors[] = {
     return state_of(__self)->ctor();
 #line 12 "cpp_static_v2.cpp"
 }
-#line 462 "cpp_static_v2.cpp.cpp"
+#line 469 "cpp_static_v2.cpp.cpp"
 #line 12 "cpp_static_v2.cpp"
 void hot_state_Counter::ctor()
 #line 12 "cpp_static_v2.cpp"
@@ -483,7 +490,7 @@ void hot_state_Counter::ctor()
 
 #line 12 "cpp_static_v2.cpp"
 }
-#line 487 "cpp_static_v2.cpp.cpp"
+#line 494 "cpp_static_v2.cpp.cpp"
 
 #line 14 "cpp_static_v2.cpp"
 void hot_state_Counter::Tick(float dt)
@@ -516,7 +523,7 @@ void hot_state_Counter::Tick(float dt)
     
 #line 22 "cpp_static_v2.cpp"
 }
-#line 520 "cpp_static_v2.cpp.cpp"
+#line 527 "cpp_static_v2.cpp.cpp"
 
 #line 24 "cpp_static_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Counter__Peek(Counter_Shell* __self)
@@ -526,7 +533,7 @@ void hot_state_Counter::Tick(float dt)
     return state_of(__self)->Peek();
 #line 24 "cpp_static_v2.cpp"
 }
-#line 530 "cpp_static_v2.cpp.cpp"
+#line 537 "cpp_static_v2.cpp.cpp"
 #line 24 "cpp_static_v2.cpp"
 int hot_state_Counter::Peek()
 #line 24 "cpp_static_v2.cpp"
@@ -554,18 +561,18 @@ int hot_state_Counter::Peek()
     
 #line 28 "cpp_static_v2.cpp"
 }
-#line 558 "cpp_static_v2.cpp.cpp"
+#line 565 "cpp_static_v2.cpp.cpp"
 
 
 #line 30 "cpp_static_v2.cpp"
 int Counter__s_scale(int v) { return v * Counter__s_kFactor; }
 
-#line 564 "cpp_static_v2.cpp.cpp"
+#line 571 "cpp_static_v2.cpp.cpp"
 
 #line 33 "cpp_static_v2.cpp"
 int Counter__s_plus(int a, int b) { return a + b; }
 
-#line 569 "cpp_static_v2.cpp.cpp"
+#line 576 "cpp_static_v2.cpp.cpp"
 
 #line 50 "cpp_static_v2.cpp"
 int tally()
@@ -573,7 +580,7 @@ int tally()
     return Counter__s_scale(static_cast<int>(hot_mod()->Counter__s_count)) + hot_mod()->Counter__s_hits;
 }
 
-#line 577 "cpp_static_v2.cpp.cpp"
+#line 584 "cpp_static_v2.cpp.cpp"
 extern "C" void script_register(hot::Registry& reg)
 {
     GEN = reg.generation();
