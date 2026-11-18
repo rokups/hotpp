@@ -85,7 +85,7 @@ a struct field of move-only type 'std::unique_ptr<Vec3>' is not supported: a cop
 
 ## Handles and borrowing
 
-`.` on a handle means a member of the pointee. Pass `h` for a handle parameter, or for a native `T*` or `T&` parameter: the translator converts the handle (see "Native objects as parameters" in `native-interop.md`). The conversion needs the exact class of the parameter. For a handle of a derived class, write the cast `(T*)h` for a `T*` and `*h` for a `T&`. The cast is a checked unwrap: a null handle throws `NullReference`. A `ref` parameter of a script class is a reference to the handle, so the callee can rebind it. `this` is not a variable: copy it to a local first. An intrusive stub is an exception: its `T*` is the handle, so a field can have it.
+`.` on a handle means a member of the pointee. Pass `h` for a handle parameter, or for a native `T*` or `T&` parameter: the translator converts the handle (see "Native objects as parameters" in `native-interop.md`). The conversion needs the exact class of the parameter. For a handle of a derived class, write the cast `(T*)h` for a `T*` and `*h` for a `T&`. The cast does not test for null: a null handle gives a null pointer. Write `h!` to throw `NullReference` on null. A `ref` parameter of a script class is a reference to the handle, so the callee can rebind it. `this` is not a variable: copy it to a local first. An intrusive stub is an exception: its `T*` is the handle, so a field can have it.
 
 ```hot
 using "Actor.h"; using "Weapon.h"; using "Armory.h"; using "Object.h";

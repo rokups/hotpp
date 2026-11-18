@@ -112,7 +112,9 @@ The checks are a build-time choice. The CMake option `HOT_RUNTIME_CHECKS` (defau
 
 ### Traceback
 
-The traceback is off by default. To turn it on, configure Hot++ with `-DHOT_TRACEBACK=ON`. The option sets the macro `HOT_TRACEBACK` to `1` for the runtime library and for the compile of the scripts. It works for `.hot` scripts only.
+The traceback is off by default in Hot++. rbfx-script turns it on by default. To turn it on in Hot++, configure Hot++ with `-DHOT_TRACEBACK=ON`. The option sets the macro `HOT_TRACEBACK` to `1` for the runtime library and for the compile of the scripts. It works for `.hot` scripts only.
+
+A null handle dereference throws `hot::NullReference` ("null handle dereference") when `HOT_RUNTIME_CHECKS` is ON. The method and the script line come only with `HOT_TRACEBACK=ON`.
 
 With the traceback on, each script member function records a frame on a thread-local stack. Each statement stores its script line in the frame. A `hot::ScriptError` copies the stack when the script throws it, because the unwind removes the frames. `hot::ScriptError::traceback()` gives the text. `hot::ScriptErrorReport::traceback` has the same text. Each frame is one line, and the innermost frame is first:
 

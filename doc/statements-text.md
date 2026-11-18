@@ -72,17 +72,44 @@ class Pick {
 }
 ```
 
-## Checked unwrap
+## Casts and the postfix `!`
 
-A cast to the same nullable type removes the null from the value. It throws `hot::NullReference` when the value is null. This test is always on. It does not depend on `HOT_RUNTIME_CHECKS`.
+A cast changes the type. It never tests for null and never throws. This holds for `($C)h`, `(T*)p`, an up-cast and a cast to the same type. A cast to the same type has no effect, and the lint warns about it.
 
-- `(T*)p`, where `p` is `T*`, writes `hot::nonnull(p)`. The result is not null.
-- `($C)h`, where `h` is `$C` or a `$Derived` of a script class `C`, writes `hot::nonnull(h)`. An upcast also keeps the handle conversion.
-- A downcast `($Derived)h` keeps `hot::as_script`. The result can be null.
+- `(T*)p` writes `hot::cast_ptr<T*>(p)`.
+- `($C)h` for an up-cast keeps the handle conversion.
+- A down-cast `($Derived)h` to a script class keeps `hot::as_script`. The result is null when the class is wrong or when `h` is null.
 - `(const T*)p` keeps the null state of `p`.
 - `(T)x` for `x` of type `T?` is not a cast.
 
-After a checked unwrap of a local name, the name is not null.
+The postfix `x!` asserts that `x` is not null. It throws `hot::NullReference` when `x` is null. The message is `<file>:<line>: '<operand text>' is null`. The file is the base name. The text has at most 60 bytes. `x!` complements `?.`.
+
+- `x!` works in chains: `foo!.bar()`, `a!.m`, `f()!.m` and `a![i]`.
+- `x!` always checks. `HOT_RUNTIME_CHECKS` does not turn it off.
+- `x!` does not parse before `=`: `a != b` stays `!=`.
+- The prefix `!x` is not changed.
+- The result of `x!` is not null. After the statement `x!;`, a local name or a parameter `x` is not null. A field never narrows.
+
+```hot
+class Node {
+    $Node next = null;
+    int x = 0;
+
+    int First($Node n) {
+        n!;                      // n is not null from here
+        return n.x;
+    }
+
+    int Second($Node n) {
+        return n!.next!.x;       // checks n and n.next
+    }
+
+    void Third() {
+        $Node v = next!;         // v is not null
+        v.x = 1;
+    }
+}
+```
 
 ## `is` and `as`
 

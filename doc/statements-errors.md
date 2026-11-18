@@ -31,7 +31,7 @@ class Safe {
 
 The runtime checks a pointer, a handle and an index of an array, a `std::vector` or any type with the stub attribute `checked_index` (see [Native interop](native-interop-checks.html#checks-on-a-stub)). A failed check throws one of these builtin types:
 
-- `NullReference`: the script used a null pointer or a null handle, for example `p.x` or `*p`. A null handle, a null `T*` or an expired `CheckedPtr` passed to a native `T&` or `const T&` parameter also throws it. This check and the checked unwrap `(T*)p` are always on, also with `HOT_RUNTIME_CHECKS=0`. See [Limits](limits.html).
+- `NullReference`: the script used a null pointer or a null handle, for example `p.x` or `*p`. A null handle, a null `T*` or an expired `CheckedPtr` passed to a native `T&` or `const T&` parameter also throws it. This check and the postfix `p!` are always on, also with `HOT_RUNTIME_CHECKS=0`. See [Limits](limits.html).
 - `IndexOutOfRange`: an index is negative or not less than the size of an array, a `std::vector` or a checked native container.
 - `ArithmeticError`: an integer `/`, `%`, `/=` or `%=` had a zero divisor. The message is `integer divide by zero` or `integer modulo by zero`. The check is always on, also with `HOT_RUNTIME_CHECKS=0`. `INT_MIN / -1` does not throw: it wraps to `INT_MIN`, and `INT_MIN % -1` is `0`. A float divide by zero gives `inf` or `nan` and does not throw.
 - `ArithmeticError` also covers a shift: `<<`, `>>`, `<<=` or `>>=` with a negative count, or with a count not less than the bit width of the promoted left operand. The message is `shift count out of range`. The check is always on. A left shift wraps and does not throw. A right shift of a negative value copies the sign bit.
@@ -149,5 +149,5 @@ Each row shows how HotScript stops one cause of a crash. The mechanism is a comp
 | Shift out of range | Runtime, always on | `ArithmeticError` | `ShiftsOverflowAndFloatCastsAreDefined`; `arith_tests.cpp` |
 | Signed overflow, float to int cast | Defined result (`-fwrapv`, saturation) | None | `SignedOverflowWrapsWithTheOptimizer`; `ShiftsOverflowAndFloatCastsAreDefined` |
 | Deep recursion | Runtime, always on | `ScriptError("stack overflow")` | `InfiniteRecursionIsCaughtInScript`; `RecursionLimitIsExactAndCanChange` |
-| Bad `as` or derived cast | Gives a null handle. The use is checked as null. | `NullReference` | `BadAsAndDerivedCastGiveNullAndTheUseThrows`; `IsAs.ScriptClassesWalkTheParentRecords`; `CheckedUnwrapCastThrowsOnNull` |
+| Bad `as` or derived cast | Gives a null handle. The use is checked as null. | `NullReference` | `BadAsAndDerivedCastGiveNullAndTheUseThrows`; `IsAs.ScriptClassesWalkTheParentRecords` |
 | `await` on a dead task | Runtime | `ScriptError` (`TaskCancelled` for a cancel) | `TaskTests.EmptyTaskAwaitThrows`, `DestroyOfAnAwaitedChildGivesTheParentAnError`; `TaskReload.AwaitOfATaskCreatedBeforeAReloadGetsTheError` |

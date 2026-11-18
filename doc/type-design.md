@@ -200,9 +200,10 @@ Note: the check sees direct mutation only. See doc/limits.md.
 - `x ?? y` gives `y` when `x` is null. When `y` is not null, the result is not null.
 - `x is T name` binds a non null name.
 - `x as T` gives a nullable result.
-- `(T*)p` where `p` is `T*`, and `($C)h` where `h` is `$C` or a script `$Derived` of `C`, emit `hot::nonnull(p)`. It throws a recoverable `hot::NullReference`, also when `HOT_RUNTIME_CHECKS` is 0. The result is not null. The C++ compiler decides the type of `p` for `(T*)p`: the translator writes `hot::cast_ptr<T*>(p)`. For a handle `h` of a derived class, `(Base*)h` is a checked unwrap that gives the raw pointer of the object, converted to `Base*`.
-- A downcast `($Derived)h` keeps `hot::as_script`. The result can be null.
-- `(const T*)p` keeps the null state of `p`. `(T)x` for a `T?` is not a cast.
+- A cast `($C)h`, `(T*)p`, an up-cast and a cast to the same type change the type only. They never test for null and never throw. The translator writes `hot::cast_ptr<T*>(p)` for `(T*)p`. For a handle `h` of a derived class, `(Base*)h` gives the raw pointer of the object, converted to `Base*`.
+- A down-cast `($Derived)h` keeps `hot::as_script`. The result can be null.
+- A cast keeps the null state of its operand. `(T)x` for a `T?` is not a cast. So `($C)h.m()` with a possibly null `h` is an error: write `($C)h!.m()` or check `h` first.
+- `x!` makes the result not null. It throws `hot::NullReference` on null, also when `HOT_RUNTIME_CHECKS` is 0. After `x!;` the local name or parameter `x` is not null. A field never narrows. `$C v = f()!;` makes the local `v` not null.
 - The error text is `"p" can be null here; check it with "if (p != null)" or use "p?.m"`.
 - A comparison with `null` is never a warning.
 - Imports from libclang are nullable.
