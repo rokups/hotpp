@@ -4712,27 +4712,32 @@ json Server::on_hover(const Doc& d, const json& p)
         return json{{"contents", {{"kind", "markdown"}, {"value", "```hot\n" + t + "\n```"}}},
             {"range", script_range(d, {here.line, wb}, {here.line, we})}};
     };
-    if (const auto r = resolve_at(d, here))
+    // The declaration line of a script symbol, read from the file of the declaration.
+    auto decl_hover = [&](const auto& r) -> std::optional<json>
     {
-        const hotc::RefKind k = r->ref.kind;
+        const hotc::RefKind k = r.ref.kind;
+        Text decl_text;
+        const auto table = file_refs(r.ref.decl_file, nullptr, &decl_text);
+        const hotc::ResolvedRef* decl = table ? decl_of(*table, r.ref.id) : nullptr;
+        if (!decl || decl->offset > decl_text.s.size())
+            return std::nullopt;
+        const auto [line, col] = decl_text.pos(decl->offset);
+        (void)col;
+        std::string t(decl_text.line(line));
+        const size_t cut = t.find(k == hotc::RefKind::StaticField || k == hotc::RefKind::Const || k == hotc::RefKind::Field ? ';' : '{');
+        if (cut != std::string::npos)
+            t.resize(cut);
+        return fenced(std::move(t));
+    };
+    const auto at_ref = resolve_at(d, here);
+    if (at_ref)
+    {
+        const hotc::RefKind k = at_ref->ref.kind;
         const bool is_static = k == hotc::RefKind::StaticMethod || k == hotc::RefKind::StaticField
-            || (k == hotc::RefKind::Const && r->ref.decl.find('.') != std::string::npos);
+            || (k == hotc::RefKind::Const && at_ref->ref.decl.find('.') != std::string::npos);
         if (is_static)
-        {
-            Text decl_text;
-            const auto table = file_refs(r->ref.decl_file, nullptr, &decl_text);
-            const hotc::ResolvedRef* decl = table ? decl_of(*table, r->ref.id) : nullptr;
-            if (decl && decl->offset <= decl_text.s.size())
-            {
-                const auto [line, col] = decl_text.pos(decl->offset);
-                (void)col;
-                std::string t(decl_text.line(line));
-                const size_t cut = t.find(k == hotc::RefKind::StaticMethod ? '{' : ';');
-                if (cut != std::string::npos)
-                    t.resize(cut);
-                return fenced(std::move(t));
-            }
-        }
+            if (auto h = decl_hover(*at_ref))
+                return *h;
     }
     if (has_no_table(d))
     {
@@ -4808,6 +4813,10 @@ json Server::on_hover(const Doc& d, const json& p)
         }
         return out;
     }
+    // A method of a script class that the native side does not know (a call through a handle).
+    if (at_ref && (at_ref->ref.kind == hotc::RefKind::Method || at_ref->ref.kind == hotc::RefKind::Property))
+        if (auto h = decl_hover(*at_ref))
+            return *h;
     return nullptr;
 }
 

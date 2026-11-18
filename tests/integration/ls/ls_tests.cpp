@@ -11879,4 +11879,21 @@ TEST(LanguageServer, CastToTheSameTypeGivesAWarningWithTheRemoveCastAction)
         }
 }
 
+
+TEST(LanguageServer, HoverOfAScriptMethodThroughBangDotAndSafeDotShowsTheDeclaration)
+{
+    REQUIRE_CLANGD();
+    for (const char* form : {"o!.Heal()", "o?.Heal()", "this.Find()!.Heal()", "this.other!.Heal()"})
+    {
+        std::string text = kBangScript;
+        text.replace(text.find("o!.Heal();\n        this.Find()"), 10, std::string(form) + ";");
+        Session s(true, text);
+        const size_t col = text.find("Heal", text.find(std::string(form) + ";"));
+        const size_t ls = text.rfind('\n', col) + 1;
+        const json h = s.client->request("textDocument/hover", doc_pos(s.uri, 9, static_cast<int>(col - ls) + 1));
+        ASSERT_TRUE(h.contains("result") && h["result"].is_object()) << form << " " << h.dump();
+        EXPECT_NE(h["result"]["contents"].value("value", "").find("void Heal()"), std::string::npos) << form;
+    }
+}
+
 } // namespace
