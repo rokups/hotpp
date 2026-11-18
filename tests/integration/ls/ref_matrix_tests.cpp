@@ -33,6 +33,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <thread>
 #include <tuple>
 #include <vector>
 
@@ -607,6 +608,135 @@ TEST(RefMatrixScripts, HaveNoErrors)
         for (const json& e : d["params"]["diagnostics"])
             EXPECT_NE(e.value("severity", 1), 1) << kFiles[i] << ": " << e.dump();
     }
+}
+
+// HOT-35: the memo of the clangd answers for the native names in closed scripts. The header
+// "nat.h" has two overloads of a method, a free function and a type. Two closed scripts use them.
+const char* const kNatHeader = "#pragma once\nstruct Box { int Put(int v); int Put(float v, int w); };\nint Free(int v);\n";
+const char* const kNatOpen = "using \"nat.h\";\nclass Open {\n    public int Go() { Box b; return b.Put(1) + Free(1); }\n}\n";
+const char* const kNatClosedOne = "using \"nat.h\";\nclass One {\n    public int Go() { Box b; return b.Put(1) + Free(2); }\n}\n";
+const char* const kNatClosedTwo = "using \"nat.h\";\nclass Two {\n    public int Go() { Box b; return b.Put(2.5, 3) + Free(4); }\n}\n";
+
+struct NativeMemoWs
+{
+    TempDir dir;
+    std::unique_ptr<LsClient> client;
+    std::string open_uri, one_uri, two_uri;
+
+    explicit NativeMemoWs(int budget_ms = 10000)
+    {
+        auto put = [&](const char* name, const char* text)
+        {
+            const std::string p = (dir.path() / name).string();
+            std::ofstream(p, std::ios::binary) << text;
+            return uri_of(p);
+        };
+        put("nat.h", kNatHeader);
+        open_uri = put("open.hot", kNatOpen);
+        one_uri = put("one.hot", kNatClosedOne);
+        two_uri = put("two.hot", kNatClosedTwo);
+        hot::ls::ServerOptions o;
+        o.clangd = HOT_CLANGD_PATH;
+        o.include_dirs = {HOT_SOURCE_DIR "/include", HOT_SOURCE_DIR "/tests/engine", dir.path().string()};
+        o.clangd_log = (dir.path() / "clangd.log").string();
+        o.index_dir = (dir.path() / "index").string();
+        o.reference_budget_ms = budget_ms;
+        client = std::make_unique<LsClient>(o);
+        client->initialize(uri_of(dir.path().string()));
+        client->open(open_uri, kNatOpen);
+    }
+    json stats() { return client->request("hot/indexStats", json::object())["result"]; }
+    // The references of the word at the first use of "context" in open.hot, only the places in the closed scripts.
+    std::set<Place> refs(const std::string& context, const std::string& word)
+    {
+        const std::string text = kNatOpen;
+        const size_t at = text.find(context) + context.rfind(word);
+        const auto place = words(text.substr(0, at) + word, word).back();
+        json p = doc_pos(open_uri, place);
+        p["context"] = {{"includeDeclaration", true}};
+        std::set<Place> out;
+        for (const Place& pl : places_of(client->request("textDocument/references", p).value("result", json())))
+            if (std::get<0>(pl) == one_uri || std::get<0>(pl) == two_uri) // clangd alone gives the header place
+                out.insert(pl);
+        return out;
+    }
+};
+
+TEST(NativeMemo, SecondRunUsesTheMemo)
+{
+    if (std::string(HOT_CLANGD_PATH).empty())
+        GTEST_SKIP() << "clangd is not installed";
+    NativeMemoWs ws;
+    struct Item
+    {
+        const char* context;
+        const char* word;
+        bool in_one, in_two;
+    };
+    // The overload Put(int) matches only one.hot. Put(float, int) is in two.hot, not in one.hot.
+    for (const Item& it : {Item{"b.Put(1)", "Put", true, false}, Item{"Free(1)", "Free", true, true},
+             Item{"Box b;", "Box", true, true}})
+    {
+        SCOPED_TRACE(it.word);
+        const json s0 = ws.stats();
+        const std::set<Place> first = ws.refs(it.context, it.word);
+        const json s1 = ws.stats();
+        const std::set<Place> second = ws.refs(it.context, it.word);
+        const json s2 = ws.stats();
+        EXPECT_EQ(show(second), show(first));
+        auto has = [&](const std::string& uri)
+        {
+            return std::any_of(first.begin(), first.end(), [&](const Place& p) { return std::get<0>(p) == uri; });
+        };
+        EXPECT_EQ(has(ws.one_uri), it.in_one) << show(first);
+        EXPECT_EQ(has(ws.two_uri), it.in_two) << show(first);
+        EXPECT_GT(s1.value("nativeMemoMisses", 0), s0.value("nativeMemoMisses", 0));
+        EXPECT_GT(s2.value("nativeMemoHits", 0), s1.value("nativeMemoHits", 0));
+        EXPECT_EQ(s2.value("nativeMemoMisses", -1), s1.value("nativeMemoMisses", -2)); // no new temporary document
+    }
+}
+
+TEST(NativeMemo, AHeaderEditDropsTheMemoAndTheResultStaysCorrect)
+{
+    if (std::string(HOT_CLANGD_PATH).empty())
+        GTEST_SKIP() << "clangd is not installed";
+    NativeMemoWs ws;
+    const std::set<Place> first = ws.refs("b.Put(1)", "Put");
+    ws.refs("b.Put(1)", "Put"); // the memo serves this one
+    const json s1 = ws.stats();
+    ASSERT_GT(s1.value("nativeMemoHits", 0), 0);
+    // Lines above the declarations: the size of the target file changes.
+    const std::string header = (ws.dir.path() / "nat.h").string();
+    std::ofstream(header, std::ios::binary | std::ios::trunc) << "#pragma once\n\n\n" << (kNatHeader + 13);
+    ws.client->change(ws.open_uri, 2, std::string(kNatOpen) + "\n");
+    std::set<Place> after = ws.refs("b.Put(1)", "Put");
+    const json s2 = ws.stats();
+    // clangd needs some time to read the new header for the open script.
+    for (int i = 0; i < 20 && after.empty(); ++i)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        after = ws.refs("b.Put(1)", "Put");
+    }
+    EXPECT_GT(s2.value("nativeMemoMisses", 0), s1.value("nativeMemoMisses", 0));
+    EXPECT_EQ(s2.value("nativeMemoHits", -1), s1.value("nativeMemoHits", -2));
+    auto count_in = [&](const std::set<Place>& s, const std::string& uri)
+    {
+        return std::count_if(s.begin(), s.end(), [&](const Place& p) { return std::get<0>(p) == uri; });
+    };
+    EXPECT_EQ(count_in(after, ws.one_uri), count_in(first, ws.one_uri)) << show(after);
+    EXPECT_EQ(count_in(after, ws.two_uri), 0) << show(after);
+}
+
+TEST(NativeMemo, AScanThatTheBudgetCutsStoresNothing)
+{
+    if (std::string(HOT_CLANGD_PATH).empty())
+        GTEST_SKIP() << "clangd is not installed";
+    NativeMemoWs ws(0);
+    const json s0 = ws.stats();
+    ws.refs("b.Put(1)", "Put");
+    const json s1 = ws.stats();
+    EXPECT_EQ(s1.value("nativeMemoMisses", -1), s0.value("nativeMemoMisses", -2));
+    EXPECT_EQ(s1.value("nativeMemoHits", -1), s0.value("nativeMemoHits", -2));
 }
 
 } // namespace
