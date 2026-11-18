@@ -528,6 +528,8 @@ struct AnalyzeResult
     std::vector<SourcePos> completion_points;
     // The translation errors of a script with no syntax error, as in TranslateResult.
     std::string diagnostics;
+    // The warnings of the translation, as in TranslateResult::warnings.
+    std::string warnings;
     // The map for the valid parts. A member with a syntax error is left out of the translation.
     // The map is empty when the rest does not translate (for example a type error).
     SourceMap source_map;

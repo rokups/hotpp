@@ -2828,7 +2828,7 @@ json Server::analyze_diagnostics(const Doc& d) const
     }
     // The translation errors: "name:line:col: error: text", one line each.
     static const std::regex re(R"(^(.*):(\d+):(\d+): (fatal error|error|warning|note): (.*)$)");
-    std::istringstream ss(d.facts.diagnostics);
+    std::istringstream ss(d.facts.diagnostics + d.facts.warnings);
     for (std::string l; std::getline(ss, l);)
     {
         std::smatch m;
@@ -3624,8 +3624,8 @@ json Server::on_completion(const Doc& d, const json& p)
     };
     if (after_dot)
     {
-        // The safe-access dot "?." has the receiver before the "?".
-        const size_t oe = s >= 2 && t[s - 2] == '?' ? s - 2 : s - 1;
+        // The safe-access dot "?." and the dot after the postfix "!" have the receiver before the sign.
+        const size_t oe = s >= 2 && (t[s - 2] == '?' || t[s - 2] == '!') ? s - 2 : s - 1;
         size_t ob = oe;
         while (ob > 0 && is_id_char(t[ob - 1]))
             --ob;
@@ -5182,6 +5182,26 @@ json Server::on_code_action(const Doc& d, const json& p)
             const auto [l, c] = d.text.pos(at);
             const json pt = to_lsp(d.text, {l, c}, utf8_);
             add("Insert ';'", diag, {{"range", {{"start", pt}, {"end", pt}}}, {"newText", ";"}});
+            continue;
+        }
+        if (diag.value("source", "") == "hot" && message == "a cast to the same type has no effect")
+        {
+            // The warning is at the "(" of the cast "(T)x". The fix removes the "(T)".
+            const size_t at = d.text.offset(b.line, b.col);
+            int depth = 0;
+            size_t close = at;
+            for (; close < t.size() && t[at] == '('; ++close)
+            {
+                depth += t[close] == '(' ? 1 : t[close] == ')' ? -1 : 0;
+                if (depth == 0)
+                    break;
+            }
+            if (close < t.size() && t[at] == '(')
+            {
+                const auto [l, c] = d.text.pos(close + 1);
+                add("Remove the cast", diag,
+                    {{"range", {{"start", range["start"]}, {"end", to_lsp(d.text, {l, c}, utf8_)}}}, {"newText", ""}});
+            }
             continue;
         }
         std::smatch m;

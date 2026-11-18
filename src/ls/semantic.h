@@ -24,7 +24,7 @@ struct SemanticToken
     int line = 0, col = 0, len = 0, type = 0;
 };
 
-// The tokens of a script: keywords, types, classes, methods, properties, numbers, strings and
+// The tokens of a script: keywords, types, classes, methods, properties, numbers, strings, the postfix "!" and
 // comments. The names come from the facts of analyze(). A token never spans two lines.
 std::vector<SemanticToken> script_tokens(const std::string& text, const hotc::AnalyzeResult& facts);
 

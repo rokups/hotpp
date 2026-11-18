@@ -27,7 +27,8 @@ enum Type
     Property,
     Number,
     String,
-    Comment
+    Comment,
+    Operator
 };
 
 // The keywords of the script. The list follows the TextMate grammar in editors/vscode. The
@@ -54,7 +55,7 @@ const std::set<std::string>& keywords()
 const std::vector<std::string>& semantic_token_types()
 {
     static const std::vector<std::string> t = {
-        "keyword", "type", "class", "method", "property", "number", "string", "comment"};
+        "keyword", "type", "class", "method", "property", "number", "string", "comment", "operator"};
     return t;
 }
 
@@ -228,6 +229,12 @@ std::vector<SemanticToken> script_tokens(const std::string& text, const hotc::An
             if (type >= 0)
                 add(i, e, type);
             i = e;
+        }
+        else if (c == '!' && i > 0 && (is_id_char(text[i - 1]) || text[i - 1] == ')' || text[i - 1] == ']')
+            && (i + 1 >= text.size() || text[i + 1] != '='))
+        {
+            add(i, i + 1, Operator); // the postfix "!" (non-null assertion); "!=" and the prefix "!" are not
+            ++i;
         }
         else
         {
