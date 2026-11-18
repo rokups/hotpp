@@ -133,6 +133,7 @@ Each row shows how HotScript stops one cause of a crash. The mechanism is a comp
 |---|---|---|---|
 | Null handle, pointer or optional | Compile error where the analysis sees null. Else runtime. | `NullReference` | golden `55`-`59`; `NullDerefCaughtInScript`; `StarNullCaught`; `RuntimeChecks.DerefOfNullPointerThrows`, `DerefOfAnEmptyOptionalThrows` |
 | Null interface | Runtime | `ScriptError` | `CallOfANullInterfaceThrowsAScriptError`; `Fixture.NullHandleThrows` |
+| Postfix `x!` on null | Runtime, always on | `NullReference` | `NonNullAssertionThrowsWithPlaceAndText`; `HotcTool.AotOptimizedNonNullAssertion`; golden `NonNullBasic` |
 | Null or expired `CheckedPtr` | Runtime, always on | `NullReference` | `CheckedPtr.ArrowOnNullThrows`, `ArrowOnExpiredThrows`; `CheckedPtrFieldReadsNullAfterTheTargetDies` |
 | Null handle to a native `T&` | Runtime, always on | `NullReference` | `NullHandleToNativeReferenceParameterIsCatchable`; `NullAlwaysOn.*` |
 | Index out of range: vector, array, span, string | Runtime | `IndexOutOfRange` | `IndexOutOfRangeCaughtInScript`; `ViewParameterConvertsAndChecksIndex`; `RuntimeChecks.*IndexOutOfRangeThrows` |
