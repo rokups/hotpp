@@ -375,7 +375,7 @@ void hot_state_Beeper::arm(World& w, float delay)
 #line 14 "timer_v1.hot"
     HOT_TRACE_FRAME("Beeper.arm", "timer_v1.hot");
 #line 14 "timer_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(w).AddTimer(delay, hot::make_lambda_deduced<__LamTag_0>(GEN, hot::caps(__self), [](auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self);
+    HOT_TRACE_LINE(); hot::deref(w).AddTimer(delay, hot::make_lambda_deduced<__LamTag_0>(GEN, hot::caps(__self), []([[maybe_unused]] auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self);
 #line 15 "timer_v1.hot"
             __st->fired = __st->fired + 1;
 #line 16 "timer_v1.hot"

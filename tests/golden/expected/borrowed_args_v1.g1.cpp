@@ -1027,7 +1027,7 @@ float hot_state_Caller::Run(Vec3& v, Vec3* p, bool const c)
 #line 47 "borrowed_args_v1.hot"
     HOT_TRACE_LINE(); Probe__Take(hot::shell_of<Probe_Shell>(pb, "Probe"), hot::cast_ptr<Vec3*>(p));
 #line 48 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); auto f = hot::make_lambda_deduced<__LamTag_0>(GEN, hot::caps(__self, pb), [](auto& __c, Vec3& w) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& pb = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); { if (pb) Probe__Look(hot::shell_of<Probe_Shell>(pb, "Probe"), w); } } });
+    HOT_TRACE_LINE(); auto f = hot::make_lambda_deduced<__LamTag_0>(GEN, hot::caps(__self, pb), []([[maybe_unused]] auto& __c, Vec3& w) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& pb = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); { if (pb) Probe__Look(hot::shell_of<Probe_Shell>(pb, "Probe"), w); } } });
 #line 49 "borrowed_args_v1.hot"
     HOT_TRACE_LINE(); f(a);
 #line 50 "borrowed_args_v1.hot"

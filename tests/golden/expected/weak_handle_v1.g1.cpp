@@ -705,7 +705,7 @@ int32_t hot_state_Node::Watch()
 #line 53 "weak_handle_v1.hot"
     HOT_TRACE_FRAME("Node.Watch", "weak_handle_v1.hot");
 #line 53 "weak_handle_v1.hot"
-    HOT_TRACE_LINE(); auto f = hot::make_lambda_deduced<__LamTag_0>(GEN, hot::caps(__self), [](auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); return hot::lock(__st->seen) != nullptr ? hot::deref(hot::lock(__st->seen)).dmg : 0; } });
+    HOT_TRACE_LINE(); auto f = hot::make_lambda_deduced<__LamTag_0>(GEN, hot::caps(__self), []([[maybe_unused]] auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); return hot::lock(__st->seen) != nullptr ? hot::deref(hot::lock(__st->seen)).dmg : 0; } });
 #line 54 "weak_handle_v1.hot"
     HOT_TRACE_LINE(); return f();
 #line 55 "weak_handle_v1.hot"
