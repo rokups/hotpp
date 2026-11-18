@@ -51,7 +51,13 @@ Each unit has an interface hash (`Module::iface_hash`). Each importer records th
 
 ### Fine interface data
 
-The translation also gives fine data: `hot::IfaceInfo` and `hot::UseInfo` (`hot/iface_compat.h`). `Module`, `LoadResult` and the translate cache carry them. The function `hot::importer_is_stale` uses them. The loader uses the function to find the stale importers. The host does not use it yet: it keeps the hash rule above until step C.
+The translation also gives fine data: `hot::IfaceInfo` and `hot::UseInfo` (`hot/iface_compat.h`). `Module`, `LoadResult` and the translate cache carry them. The function `hot::importer_is_stale` uses them. The loader uses the function to find the stale importers. The host uses it too: it keeps an importer that the edit does not touch and compiles only the stale importers. The reload log line gives the number of scripts that compile and the number of dependents kept without compile.
+
+Measured in BiteSizedWarHot (see [the benchmark](benchmarks.html), HOT-54), warm start, `Game/EffectClock.hot` with 17 importers:
+
+- A body edit, an unused new method and a new field reload in 0.8 to 0.9 s. All 17 importers are kept without compile.
+- A new overload with a name that importers use compiles 7 scripts and keeps 11. The reload takes 6.6 s.
+- The first edit after a start takes 2.1 s. The libclang probe parse of the unit (1.3 s) is the main cost, not a missing PCH. A shared PCH before the first edit (steps 8 and 9 of the reload plan) does not remove it in a warm start, so it is not done. A cold cache folder is not measured.
 
 - `IfaceInfo::shape` is the hash of the parts that each importer copies or that set a layout. These are the namespaces, the aliases, the enums, the constants, each struct in full and each class header. A virtual, override, abstract or operator member of a class is in the shape too: it sets the shell or the slot family.
 - The shape also has the script interfaces, the stubs and the module attribute lists. These are not in `iface_hash`.
