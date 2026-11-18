@@ -104,7 +104,7 @@ A `[weak]` parameter does not match a native virtual method with a strong handle
 A host can use its own smart pointer, for example an intrusive pointer of an engine. The stub gives the handle template and the weak template:
 
 ```
-[native, handle("Urho3D::SharedPtr<$T>"), weak_handle("Urho3D::WeakPtr<$T>")] class Urho3D.RefCounted;
+[native, handle("Urho3D::SharedPtr<$T>"), weak_handle("Urho3D::WeakPtr<$T>"), raw_pointer("Get")] class Urho3D.RefCounted;
 ```
 
 - The rule is for the class and for all its subclasses. A script class with such a native base uses the same handle.
@@ -114,7 +114,7 @@ A host can use its own smart pointer, for example an intrusive pointer of an eng
 - A `$T` cannot come from a raw pointer. This applies to `this`, to a `T*` value and to `h.reset(p)`. The error text is `cannot create a shared pointer from a raw pointer; use new $T(...)`. The exception is a class with a weak source: a script class, or a native class with `std::enable_shared_from_this`. The form `h.reset(p)` is always an error.
 - `$Derived` converts to `$Base`. The reverse needs a cast.
 - A read of a `[weak]` value calls `lock() or `Lock()` of the weak pointer.
-- The handle needs `operator->`, `operator*` and a test against `nullptr`. The raw pointer comes from `get()` or `Get()`.
+- The handle needs `operator->`, `operator*` and a test against `nullptr`. The raw pointer comes from the member that the stub names with `raw_pointer("Name")`. The default is `get`. A handle with only `Get()` needs `raw_pointer("Get")`. The cast `(T*)h` writes `h.Name()`. A wrong name gives a C++ compile error at that name.
 - For a template of the form `Name<$T>`, the module header specializes `hot::is_handle`. For another form, the host specializes `hot::is_handle` in a header that the script includes.
 
 A stub with a non-intrusive handle is also a weak source for pointer fields (see "Pointer fields" below). The module header writes a `hot::weak_ref_traits` specialization for each such stub. The specialization is guarded: it does not apply to a class with `weak_from_this()`. A host can write the specialization by hand for a smart pointer that the stub does not describe:

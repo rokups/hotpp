@@ -1012,7 +1012,7 @@ std::string module_interface(
         shape += "stub " + st.name + " " + std::to_string(st.is_native) + std::to_string(st.is_value)
             + std::to_string(st.derived) + std::to_string(st.is_self) + std::to_string(st.is_struct)
             + std::to_string(st.checked_index) + std::to_string(st.nonnull) + std::to_string(st.is_attribute);
-        for (const std::string* t : {&st.handle, &st.default_handle, &st.weak_handle, &st.factory, &st.weak_source,
+        for (const std::string* t : {&st.handle, &st.default_handle, &st.weak_handle, &st.factory, &st.raw_pointer, &st.weak_source,
                  &st.intrusive_add, &st.intrusive_release, &st.cpp_prelude, &st.cpp_overrides})
         {
             shape += " [" + std::to_string(t->size()) + ":" + *t + "]";

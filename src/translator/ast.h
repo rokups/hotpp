@@ -879,6 +879,8 @@ struct Stub
     // [factory("std::make_shared<$T>")]: the callee of "new $T(args)" on a native class. "$T" is the class.
     // Empty: the default of the handle.
     std::string factory;
+    // [raw_pointer("Get")]: the name of the member that gives the raw pointer of the handle. Empty: "get".
+    std::string raw_pointer;
     // [weak_source("hot::registered_weak_ref<$T>")]: the class is a weak source for pointer fields with
     // no handle. The text is the base of weak_ref_traits<T>. "$T" is the class. Empty: no such source.
     std::string weak_source;

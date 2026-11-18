@@ -186,14 +186,14 @@ template <class T> HOT_HIDDEN T nonnull(std::optional<T>&& o, const char* msg)
 }
 
 // The script writes the cast "(T*)p". The translator writes "hot::cast_ptr<T*>(p)". The cast changes
-// the type and never throws. A handle gives the raw pointer of its object: "(Base*)h" of a handle of
-// a derived class gives the base pointer, and a null handle gives nullptr. A CheckedPtr gives its
-// pointer, or nullptr when it is empty or the object is gone. Else it is the C cast.
-// The C++ compiler tests the type, so the translator needs no type of "p".
+// the type and never throws. For a handle that the translator knows, "p" is the raw pointer that the
+// accessor of the handle gives ("h.get()", or the name of [raw_pointer]): a null handle gives nullptr.
+// A CheckedPtr gives its pointer, or nullptr when it is empty or the object is gone. A handle with
+// the type unknown to the translator must have "get()". Else it is the C cast.
 template <class To, class P> HOT_HIDDEN constexpr decltype(auto) cast_ptr(P&& p)
 {
     if constexpr (std::is_same_v<detail::remove_cvref_t<P>, To>)
-        return static_cast<P&&>(p);
+        return detail::remove_cvref_t<P>(static_cast<P&&>(p));
     else if constexpr (is_handle_v<P> || is_checked_ptr_v<P>)
         return (To)p.get();
     else

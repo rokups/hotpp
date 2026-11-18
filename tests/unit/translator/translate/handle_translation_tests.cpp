@@ -100,8 +100,27 @@ TEST(HandleTranslation, CastOfAHandleToAPointerGivesTheRawPointer)
     const hotc::TranslateResult r =
         weapon_translate("    void Take(Weapon* q) { }\n    void Run() { Weapon h = null; this.Take((Weapon*)h); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "hot::cast_ptr<Weapon*>(h)")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::cast_ptr<Weapon*>(h.get())")) << r.cpp;
 }
+
+// The member that gives the raw pointer of a handle: "get" by default, else [raw_pointer].
+TEST(HandleTranslation, RawPointerCastUsesTheConfiguredAccessor)
+{
+    const std::string members = "    void Take(Weapon* q) { }\n    void Run() { Weapon h = null; this.Take((Weapon*)h); }\n";
+    const hotc::TranslateResult d = weapon_translate(members);
+    ASSERT_TRUE(d.ok) << d.diagnostics;
+    EXPECT_TRUE(has(d.cpp, "hot::cast_ptr<Weapon*>(h.get())")) << d.cpp;
+    static TempDir* dir = nullptr;
+    if (!dir)
+        dir = new TempDir();
+    write_file(dir->path() / "w.h", kWeaponHeader);
+    const char* const stub = "[native, handle(\"std::shared_ptr<$T>\"), raw_pointer(\"Get\")] class Weapon;\n";
+    const hotc::TranslateResult c = hotc::translate(temp_options(*dir, weapon_script(stub, members)));
+    ASSERT_TRUE(c.ok) << c.diagnostics;
+    EXPECT_TRUE(has(c.cpp, "hot::cast_ptr<Weapon*>(h.Get())")) << c.cpp;
+    EXPECT_FALSE(has(c.cpp, "h.get()")) << c.cpp;
+}
+
 
 TEST(HandleTranslation, DereferenceAndMultiplyEmitCorrectly)
 {

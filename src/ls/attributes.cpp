@@ -27,6 +27,7 @@ const std::vector<AttributeInfo>& attribute_table()
         {"weak_handle", "The weak handle template of the type.", 1, {}, "stub"},
         {"weak_source", "The traits base of a weak source type.", 1, {}, "stub"},
         {"factory", "The factory that makes an object of the type.", 1, {}, "stub"},
+        {"raw_pointer", "The member of the handle that gives the raw pointer. Default: get.", 1, {}, "stub"},
         {"alias", "The old key of a renamed member, class or lambda.", 1, {}, "class, member, lambda"},
         {"cpp_prelude", "C++ text for this class only.", 1, {}, "class, stub"},
         {"cpp_overrides", "The names of the native virtuals that the prelude overrides.", 1, {}, "stub"},

@@ -3820,6 +3820,7 @@ struct Lowerer
             }
             if (!u->postfix && is_ptr_cast(u->op))
             { // "(T*)p": a cast that never throws (hot::cast_ptr)
+                std::string accessor; // the member of a handle that gives the raw pointer ([raw_pointer], default "get")
                 if (u->operand)
                 {
                     std::string ft = type_of(*u->operand);
@@ -3827,8 +3828,25 @@ struct Lowerer
                         ft.pop_back();
                     if (!ft.empty() && ft == u->op.substr(1, u->op.size() - 2))
                         warn_same_cast(u->pos);
+                    std::string obj = object_type(ft);
+                    if (!obj.empty() && obj[0] == '$')
+                        obj.erase(0, 1);
+                    if (cx.types && !obj.empty() && !is_weak_handle(*u->operand))
+                        accessor = cx.types->raw_pointer_member(obj);
                 }
                 expr(u->operand);
+                if (!accessor.empty())
+                { // "(T*)h": the cast gets the raw pointer of the handle: a null handle gives nullptr
+                    MemberExpr me;
+                    me.pos = u->pos;
+                    me.name_pos = u->pos;
+                    me.name = accessor;
+                    me.obj = std::move(u->operand);
+                    CallExpr get;
+                    get.pos = u->pos;
+                    get.callee = make_expr(std::move(me));
+                    u->operand = make_expr(std::move(get));
+                }
                 CallExpr c;
                 c.pos = u->pos;
                 c.callee = raw("hot::cast_ptr<" + u->op.substr(1, u->op.size() - 2) + ">", u->pos);

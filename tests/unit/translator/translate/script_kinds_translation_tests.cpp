@@ -498,3 +498,10 @@ TEST(ScriptKindsTranslation, CastOfAPossiblyNullHandleDoesNotNarrow)
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.diagnostics.find("can be null here"), std::string::npos) << r.diagnostics;
 }
+
+TEST(ScriptKindsTranslation, RawPointerOptionNeedsAHandle)
+{
+    const hotc::TranslateResult r = translate_script("[native, value, raw_pointer(\"Get\")] class Rc;\nclass Boss { }\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.diagnostics.find("'raw_pointer' needs a handle"), std::string::npos) << r.diagnostics;
+}

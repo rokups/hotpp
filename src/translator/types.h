@@ -34,6 +34,7 @@ struct TypeRule
     std::string intrusive_add, intrusive_release; // the member names of an intrusive handle, else empty
     std::string weak_source; // the traits base of [weak_source("...")], "$T" is the class, else empty
     std::string factory_tpl; // the callee template of "new $T(args)" on a native class ([factory]), else empty
+    std::string raw_pointer; // the member of the handle that gives the raw pointer ([raw_pointer]), else empty
     bool native = false; // the stub has the attribute [native]
     bool self = false; // an exact stub with [self]: the rule is for this type only
     bool nonnull = false; // the stub has the attribute [nonnull]: a native call returns a non null value of the type
@@ -293,6 +294,9 @@ public:
 
     // True when the type is a plain handle type (not a pointer, a reference or a builtin).
     bool is_handle(const std::string& type) const;
+    // The name of the member that gives the raw pointer of the handle of the class "type": the
+    // option [raw_pointer] of its stub, else "get". Empty when "type" has no handle.
+    std::string raw_pointer_member(const std::string& type) const;
 
     // True when the class has std::enable_shared_from_this<X> in its bases. The fact of libclang
     // for the class counts, and the fact of each base (the bases of a script class too).

@@ -99,7 +99,6 @@ struct Val
     std::string type; // the type text, empty when not known
     bool ptr = false; // the type is "T*", "$T", "T?" or a native pointer or handle
     bool nonnull = false; // the value is known as non null (only with "ptr")
-    bool cnst = false; // the type text has a "const": a cast to the same type text is not a cast to the same type
     Origin origin = Origin::Other;
     std::string text; // the text of a simple name or of a chain of names, else empty
     bool maybe_null() const { return ptr && !nonnull; }
@@ -348,7 +347,6 @@ private:
         Val v;
         v.type = strip_type(type);
         v.ptr = ptr_like(type);
-        v.cnst = type.find("const") != std::string::npos;
         return v;
     }
 
@@ -357,7 +355,6 @@ private:
     {
         Val v;
         v.type = strip_type(type);
-        v.cnst = type.find("const") != std::string::npos;
         if (v.type.empty())
             return v;
         v.ptr = v.type.back() == '*' || v.type.find("optional<") != std::string::npos || types_.is_handle(v.type);
@@ -488,7 +485,6 @@ private:
         {
             Val v = ov; // "(const T*)p": a view of the same pointer
             v.type = to;
-            v.cnst = true;
             return v;
         }
         Val v = from_script(to);

@@ -252,6 +252,26 @@ TEST(CastPtr, HandleGivesTheRawPointer)
     EXPECT_NO_THROW(EXPECT_EQ(hot::cast_ptr<DerivedItem*>(n), nullptr));
 }
 
+// A handle with only "Get()" (the rbfx SharedPtr form). The translator writes "h.Get()" for the
+// option [raw_pointer("Get")], so "cast_ptr" gets the raw pointer.
+template <class T> struct GetOnlyHandle
+{
+    T* p = nullptr;
+    T* Get() const { return p; }
+};
+
+TEST(CastPtr, RawPointerOfAHandleWithOnlyGetIsNullSafe)
+{
+    DerivedItem d;
+    GetOnlyHandle<DerivedItem> h{&d};
+    EXPECT_EQ(hot::cast_ptr<Item*>(h.Get()), static_cast<Item*>(&d));
+    GetOnlyHandle<DerivedItem> n;
+    EXPECT_NO_THROW(EXPECT_EQ(hot::cast_ptr<Item*>(n.Get()), nullptr));
+    static_assert(std::is_same_v<decltype(hot::cast_ptr<Item*>(h.Get())), Item*>);
+    Item* q = &d;
+    static_assert(std::is_same_v<decltype(hot::cast_ptr<Item*>(q)), Item*>);
+}
+
 TEST(AsRef, HandleGivesTheObject)
 {
     auto h = std::make_shared<Item>(Item{9});
