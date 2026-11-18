@@ -11417,7 +11417,9 @@ TranslateResult translate(const TranslateOptions& in, TranslatorSession& session
     }
     catch (const std::logic_error& e)
     { // an internal check of the translator failed: a diagnostic, no crash of a tool
-        g_diag.add_line(0, e.what());
+        static const std::string prefix = "internal error: ";
+        const std::string what = e.what();
+        g_diag.add_line(0, what.compare(0, prefix.size(), prefix) == 0 ? what : prefix + what);
         res.ok = false;
         res.cpp.clear();
         res.slots_out.clear();
