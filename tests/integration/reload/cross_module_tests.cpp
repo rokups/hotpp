@@ -86,8 +86,13 @@ class Leaf : Mid {
 }
 )";
 
+class FamilyTests;
+void check_two_changed_imports(FamilyTests& t, Session& s, bool use_x, bool use_y);
+
 class FamilyTests : public ::testing::TestWithParam<hot::BackendKind>
 {
+    friend void check_two_changed_imports(FamilyTests&, Session&, bool, bool);
+
 protected:
     void SetUp() override
     {
@@ -961,6 +966,70 @@ TEST_P(FamilyTests, StructBodyOfAnImportThatCallsTheUnitStalesTheImporter)
     s.world.Tick(kDt);
     EXPECT_EQ(*fld<int>(s, "g"), 2);
     ASSERT_NO_FATAL_FAILURE(expect_alone_stale(s, build("u.hot", u2, {}, 2), {"i", "m"}));
+}
+
+// An importer of two units that both change in one batch. Each unit gets a new overload of its
+// function. The importer is stale when it names the function of one of the units, and it stays
+// when it names none of them.
+void check_two_changed_imports(FamilyTests& t, Session& s, bool use_x, bool use_y)
+{
+    const std::string x1 = "int tx(int v) { return v + 1; }\n";
+    const std::string y1 = "int ty(int v) { return v + 2; }\n";
+    const std::string x2 = x1 + "int tx(int v, int w) { return v + w; }\n";
+    const std::string y2 = y1 + "int ty(int v, int w) { return v + w; }\n";
+    const std::string a = std::string("using \"Actor.h\";\nusing \"x.hot\";\nusing \"y.hot\";\nclass User : Actor {\n    int g = 0;\n"
+                                      "    override void Tick(float dt) { this.g = ")
+        + (use_x ? "tx(1)" : "0") + " + " + (use_y ? "ty(1)" : "0") + "; }\n}\n";
+    std::vector<hot::LoadResult> first;
+    first.push_back(t.build("a.hot", a, {{"x.hot", x1}, {"y.hot", y1}}, 1));
+    first.push_back(t.build("x.hot", x1, {}, 1));
+    first.push_back(t.build("y.hot", y1, {}, 1));
+    ASSERT_NO_FATAL_FAILURE(t.start(s, std::move(first), "User"));
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "g"), (use_x ? 2 : 0) + (use_y ? 3 : 0));
+    const hot::ClassRecord* user = s.inst.shell->cls;
+    std::vector<hot::LoadResult> batch;
+    batch.push_back(t.build("x.hot", x2, {}, 2));
+    batch.push_back(t.build("y.hot", y2, {}, 2));
+    if (use_x || use_y)
+    {
+        for (const hot::LoadResult& r : batch)
+            ASSERT_TRUE(r) << r.error;
+        const hot::ReloadResult res = s.loader.request_reload(std::move(batch));
+        EXPECT_EQ(res.status, hot::ReloadStatus::Failed);
+        EXPECT_EQ(res.reason, hot::ReloadReason::DependentsStale) << res.error;
+        EXPECT_EQ(res.units, std::vector<std::string>{"a"});
+        EXPECT_FALSE(s.loader.reload_pending());
+    }
+    else
+    {
+        ASSERT_NO_FATAL_FAILURE(t.reload(s, std::move(batch)));
+        s.world.Tick(kDt);
+        EXPECT_EQ(s.inst.shell->cls, user);
+        EXPECT_EQ(user->generation, 1u) << "the importer is not in the batch";
+        EXPECT_EQ(*fld<int>(s, "g"), 0);
+    }
+}
+
+TEST_P(FamilyTests, TwoChangedImportsFirstUnusedSecondUsedStalesTheImporter)
+{
+    StrictEnv env(false);
+    Session s;
+    check_two_changed_imports(*this, s, false, true);
+}
+
+TEST_P(FamilyTests, TwoChangedImportsFirstUsedSecondUnusedStalesTheImporter)
+{
+    StrictEnv env(false);
+    Session s;
+    check_two_changed_imports(*this, s, true, false);
+}
+
+TEST_P(FamilyTests, TwoChangedImportsNeitherUsedKeepsTheImporter)
+{
+    StrictEnv env(false);
+    Session s;
+    check_two_changed_imports(*this, s, false, false);
 }
 
 std::string kind_name(const ::testing::TestParamInfo<hot::BackendKind>& info)
