@@ -47,7 +47,10 @@ struct FileStamp
 
 // The data of one script. An Entry does not change after set() publishes it. The index stores
 // it as std::shared_ptr<const Entry>.
-// A later native identity (HOT-35) adds one field here and one map to the index.
+// The native identity of a name (HOT-35) is not an Entry field. The answers of clangd for the
+// native names of a closed script are in the shard (IndexShard::native_targets) and in
+// Server::native_memo_. The shard stamps the target files, and the script digest covers the
+// script. The index stays clangd-free.
 struct Entry
 {
     std::string path;

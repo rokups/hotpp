@@ -172,6 +172,20 @@ Limits that the design accepts:
 
 Measured times: see "Index benchmark" in the Benchmark section.
 
+### Native answer memo (HOT-35)
+
+The scan for the references of a native symbol asks `clangd` for the declaration and the definition at each word of each closed script. This is slow. The shard of a closed script now keeps these answers.
+
+- The shard (format version 5) has the key `n`. It holds the targets of each asked offset and one stamp (size and mtime) for each target file. An empty list is an answer too.
+- `clangd` stays the source of the truth. The server records only what `clangd` answered.
+- The scan uses the memo when each asked offset has an entry and no stamp changed. It then makes no analysis and no temporary document. The scan compares the stored targets with the target of the symbol at the cursor, which `clangd` gives each time.
+- A changed target file drops the memo of the script. A new script digest also drops it. The digest covers the script text, the imports and the translator version.
+- The scan stores nothing for a script with a failed ask or a missed wait. A scan that the time budget cuts stores nothing for the scripts that it did not reach.
+- `hot/indexStats` shows `nativeMemoHits` and `nativeMemoMisses`. A miss is one script that the scan asked `clangd` for (one temporary document).
+- A write of the table of the same script (for example from an index job) can erase the stored answers on disk. The scan then asks `clangd` again and stores them again.
+
+Residual risk: the memo checks only the target files. A change in a header that is not a stored target can change the overload resolution of a call. The server does not see this change until the script digest changes.
+
 ## Threads, cancel and debounce
 
 The server keeps one state thread. This thread owns all state: the documents, the table cache, the index and the `clangd` child. The state has no locks for this reason.
