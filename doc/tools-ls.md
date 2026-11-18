@@ -184,6 +184,9 @@ The scan for the references of a native symbol asks `clangd` for the declaration
 - `hot/indexStats` shows `nativeMemoHits` and `nativeMemoMisses`. A miss is one script that the scan asked `clangd` for (one temporary document).
 - An index job can write the table of the same script again. This can erase the stored answers on disk. The scan then asks `clangd` again. It stores the answers again.
 - An empty answer has no target file, so no target stamp covers it. The shard also keeps a guard of the script: the include names of the shell header, the stamp of these headers (time and size of each header, also the nested ones), and a host key. The host key is a hash of the include dirs, the flags, the resource dir, the standard, the `clangd` program and the compile commands dir. The memo is valid only when the header stamp and the host key are the same.
+- A header that a script reaches only through `#include MACRO` is not tracked by the stamp.
+- A `.clangd` config file is not part of the host key.
+- The memo guard is computed before the asks. Old answers are dropped when the guard changed during the analyze of the script.
 - A script with no shell header, or with an include graph that is too large for the stamp, gets no memo.
 - An answer of `clangd` with an `error` is no answer. The scan stores nothing for that script.
 - The analysis of a closed script reads its imports from disk, as the digest does. An open unsaved import buffer changes neither of them.

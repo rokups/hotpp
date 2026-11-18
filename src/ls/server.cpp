@@ -74,6 +74,12 @@ int import_parse_count()
 
 using json = nlohmann::json;
 
+// True when a request to clangd got an answer: a message with no "error". A null result is an answer.
+bool clangd_answered(const json& raw)
+{
+    return raw.is_object() && !raw.contains("error");
+}
+
 namespace
 {
 
@@ -5358,7 +5364,7 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
         for (const char* kind : {"textDocument/declaration", "textDocument/definition"})
         {
             const json raw = clangd_ && clangd_->running() ? clangd_request(kind, tdp, kNativeBudgetMs) : json();
-            ask_failed = ask_failed || !raw.is_object() || raw.contains("error"); // an error answer is no answer
+            ask_failed = ask_failed || !clangd_answered(raw);
             const std::optional<json> r = raw.is_object() && raw.contains("result") && !raw["result"].is_null()
                 ? std::optional<json>(raw["result"]) : std::nullopt;
             for (const json& loc : r ? (r->is_array() ? *r : json::array({*r})) : json::array())
@@ -5579,6 +5585,13 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
             // A script with a failed ask or a missed wait stores nothing (the scan is partial).
             if (guard_ok && not_scanned == not_scanned_before && !fresh.empty())
             {
+                // The old answers hold only for the guard that they had. A header can change between the
+                // check at the scan start and now_guard (the analyze takes time).
+                if (!memo->map.empty() && !(memo->guard == now_guard))
+                {
+                    memo->map.clear();
+                    memo->stamps.clear();
+                }
                 memo->guard = now_guard;
                 // The old answers stay: the stamps of the scan start were good. A new offset replaces an old one.
                 for (auto& [offset, list] : fresh)

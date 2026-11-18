@@ -3035,6 +3035,20 @@ TEST(SymbolIndex, AShardWithABrokenBodyIsDropped)
 }
 
 // A shard of format 3 has no near_decl and no near_file: load() deletes it.
+namespace hot::ls
+{
+bool clangd_answered(const nlohmann::json& raw);
+}
+
+TEST(NativeMemoPredicate, ErrorAnswerIsNoAnswer)
+{
+    using hot::ls::clangd_answered;
+    EXPECT_FALSE(clangd_answered(nlohmann::json::parse(R"({"error":{}})")));
+    EXPECT_FALSE(clangd_answered(nlohmann::json()));
+    EXPECT_TRUE(clangd_answered(nlohmann::json::parse(R"({"result":null})")));
+    EXPECT_TRUE(clangd_answered(nlohmann::json::parse(R"({"result":[]})")));
+}
+
 TEST(SymbolIndex, AVersion4ShardIsDropped)
 {
     TempDir dir;
