@@ -252,6 +252,8 @@ struct Doc
     std::string shell_old; // the header of the last text, removed when the new one is open
     bool shell_active = false; // the unit of clangd includes shell_path
     bool shell_changed = false; // the header changed: the next send reopens the document
+    bool shell_stable = false; // shell_path is the stable name of the document (one path, new content)
+    long long shell_hold_until_ms = 0; // steady_ms(): until then clangd can answer from the old header
     // The host of the script at the last update. Null: no host.
     std::shared_ptr<const Host> host;
     json clang_diags = json::array(); // the mapped clangd diagnostics of gen_version
@@ -2306,7 +2308,7 @@ std::string Server::lite_uri_impl(const Doc& d, const std::string& full, int gen
         if (!fs::exists(d.shell_path, ec))
             return d.gen_uri; // the header is gone
     }
-    const auto unit = shell_unit_with_include(d.shell_path, full, at);
+    const auto unit = shell_unit_with_include(d.shell_path, full, at, d.shell_stable ? d.shell_hash : 0);
     if (!unit)
         return d.gen_uri;
     const auto lite = blank_other_bodies(*unit, gen_line0);
@@ -2331,7 +2333,7 @@ std::string Server::lite_uri_impl(const Doc& d, const std::string& full, int gen
         if (!st.open || st.text_hash != text_hash)
         {
             clangd_->set_uri_alias(uri, d.gen_uri, true);
-            if (st.open && st.shell_hash != d.shell_hash)
+            if (st.open && st.shell_hash != d.shell_hash && !d.shell_stable)
             {
                 // A new header: the document starts again, so it has no old preamble (see send_generated).
                 clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", uri}}}});
@@ -2442,6 +2444,13 @@ const std::string& Server::shell_dir()
     return shell_dir_;
 }
 
+// HOT_LS_STABLE_SHELL=0 turns off the stable header name (HOT-52): each text of the shell then has its own file.
+static bool stable_shell_enabled()
+{
+    const char* e = std::getenv("HOT_LS_STABLE_SHELL");
+    return !(e && std::string(e) == "0");
+}
+
 // The text that clangd gets for the unit. With the marker, the text before it goes to a header and the unit
 // starts with an include of it. The unit keeps the lines of the full text: the include line and empty lines
 // take the place of the shell. So each position of the full text is the same position in the unit, and a
@@ -2455,13 +2464,54 @@ std::string Server::unit_for_clangd(Doc& d, const std::string& cpp)
         return cpp;
     const std::string shell = cpp.substr(0, at + 1);
     const size_t hash = std::hash<std::string>()(shell);
+    const size_t gen_hash = std::hash<std::string>()(d.gen_path);
     char name[48];
-    std::snprintf(name, sizeof name, "%016zx-%016zx.shell.h", std::hash<std::string>()(d.gen_path), hash);
+    std::error_code ec;
+    if (stable_shell_enabled())
+    {
+        // One name for each document: a new text of the shell goes to the same file. clangd sees a changed
+        // header, builds a new preamble in the background and answers with the old one meanwhile.
+        std::snprintf(name, sizeof name, "%016zx.shell.h", gen_hash);
+        const std::string spath = (fs::path(shell_dir()) / name).string();
+        const auto sunit = shell_unit_with_include(spath, cpp, at, hash);
+        if (sunit)
+        {
+            const bool in_place = d.in_clangd && d.shell_stable && d.shell_path == spath;
+            if (d.shell_path == spath && d.shell_hash == hash && fs::exists(spath, ec))
+            {
+                d.shell_active = true;
+                d.shell_stable = true;
+                clangd_->set_uri_alias(path_to_uri(d.shell_path), d.gen_uri);
+                return *sunit;
+            }
+            if (write_file_atomic(spath, shell))
+            {
+                d.shell_path = spath;
+                d.shell_hash = hash;
+                d.shell_stable = true;
+                if (in_place)
+                {
+                    d.shell_hold_until_ms = steady_ms() + 5000;
+                    this_hold_until_ms_ = steady_ms() + 5000;
+                }
+                else
+                {
+                    preamble_ready_.erase(d.gen_uri);
+                    completion_synced_.erase(d.gen_uri);
+                    d.shell_changed = true;
+                }
+                d.shell_active = true;
+                clangd_->set_uri_alias(path_to_uri(d.shell_path), d.gen_uri);
+                return *sunit;
+            }
+            // The write failed (a lock on Windows): the name with the hash of the content.
+        }
+    }
+    std::snprintf(name, sizeof name, "%016zx-%016zx.shell.h", gen_hash, hash);
     const std::string path = (fs::path(shell_dir()) / name).string();
     const auto unit = shell_unit_with_include(path, cpp, at);
     if (!unit)
         return cpp; // a path that the include cannot hold: clangd gets the full text
-    std::error_code ec;
     if (path != d.shell_path || !fs::exists(path, ec))
     {
         // The name has the hash of the content: an equal file stays, also when the rename fails.
@@ -2471,6 +2521,7 @@ std::string Server::unit_for_clangd(Doc& d, const std::string& cpp)
             d.shell_old = d.shell_path;
         d.shell_path = path;
         d.shell_hash = hash;
+        d.shell_stable = false;
         // clangd builds a new preamble for the new header. The next request waits for it, as for a new document.
         preamble_ready_.erase(d.gen_uri);
         completion_synced_.erase(d.gen_uri);
@@ -3949,7 +4000,10 @@ json Server::on_completion(const Doc& d, const json& p)
             // A translation that fails stays failed while the prefix grows. An empty answer is not
             // complete: clangd gives the names of the headers from its index, and it fills the index
             // after the preamble. An early answer can be empty, so the next request asks again.
-            cc.complete = !mapped || (r && !cc.list.empty() && !(r->is_object() && r->value("isIncomplete", false)));
+            // Within the hold after a shell change clangd can answer from the old preamble: the answer is not final.
+            cc.complete = !mapped
+                || (r && !cc.list.empty() && !(r->is_object() && r->value("isIncomplete", false))
+                    && steady_ms() >= d.shell_hold_until_ms);
         }
         incomplete = !cc.complete;
         phase.emplace("post items");
@@ -9468,14 +9522,22 @@ bool is_shell_include_diagnostic(bool shell_active, int unit_line)
 }
 
 // The unit text: the include of the header, then the lines of the shell as empty lines, then the own part.
-std::optional<std::string> shell_unit_with_include(const std::string& header, const std::string& cpp, size_t at)
+std::optional<std::string> shell_unit_with_include(const std::string& header, const std::string& cpp, size_t at, size_t stamp)
 {
     const size_t lines = static_cast<size_t>(std::count(cpp.begin(), cpp.begin() + at + 1, '\n'));
     const std::string path = fs::path(header).generic_string();
     // The include has no escapes: a path with a quote or a line break uses the one-unit path.
     if (lines < 2 || path.find_first_of("\"\n\r") != std::string::npos)
         return std::nullopt;
-    std::string out = "#include \"" + path + "\"\n";
+    std::string out = "#include \"" + path + "\"";
+    if (stamp)
+    {
+        // A stable header name: the stamp changes the text of the unit, so clangd checks the header again.
+        char buf[32];
+        std::snprintf(buf, sizeof buf, " // %016zx", stamp);
+        out += buf;
+    }
+    out += "\n";
     out.append(lines - 1, '\n');
     out.append(cpp, at + 1, std::string::npos);
     return out;

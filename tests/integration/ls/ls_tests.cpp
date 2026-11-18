@@ -10404,10 +10404,10 @@ TEST(LanguageServer, SplitShellHeaderFollowsAnEditOfAnImport)
     }
     ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
     EXPECT_NE(r["result"].dump().find("mana"), std::string::npos) << r.dump();
-    // The new header has a new name (the hash of the content) and the old header is gone.
+    // The header keeps its name (HOT-52) and has the new content.
     const auto now = shell_files(shells.path());
     ASSERT_EQ(now.size(), 1u);
-    EXPECT_NE(now[0], files[0]);
+    EXPECT_EQ(now[0], files[0]);
     EXPECT_NE(translator_test::read_file(now[0]).find("mana"), std::string::npos);
 }
 
