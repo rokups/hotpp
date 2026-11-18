@@ -11140,16 +11140,27 @@ TEST(LanguageServer, ThisCacheDropsTheMembersWhenTheImportedBaseChanges)
     const bool cache = !(sw && std::string(sw) == "0");
     Session s(true, this_script("Base", "Ta", 1));
     write_file(s.dir.path() / "base.hot", kThisBase);
-    EXPECT_FALSE(contains_name(this_names(s, 2, "Base", "Ta", 1), "Tag"));
-    EXPECT_FALSE(contains_name(this_names(s, 3, "Base", "Ta", 2), "Tag")); // from the cache
+    // The import changes the shell (HOT-52): the replies are not stored during the hold. The test waits for it.
+    s.client->change(s.uri, 2, this_script("Base", "Ta", 1));
+    std::this_thread::sleep_for(std::chrono::milliseconds(hot::ls::kShellHoldMs + 500));
+    EXPECT_FALSE(contains_name(this_names(s, 3, "Base", "Ta", 1), "Tag"));
+    EXPECT_FALSE(contains_name(this_names(s, 4, "Base", "Ta", 2), "Tag")); // from the cache
     if (cache)
         EXPECT_EQ(this_stat(s, "thisAnalyzes"), 1);
     write_file(s.dir.path() / "base.hot",
         "using \"Actor.h\";\nusing \"Damageable.h\";\nclass Base : Actor, ITagged { }\n");
-    const auto after = this_names(s, 4, "Base", "Ta", 3);
+    // The header changes (HOT-52): clangd answers from the old preamble for a time, and the reply is not stored.
+    // Like a client, the test asks again. The text changes each time, so each request is a new one.
+    std::vector<std::string> after;
+    for (int i = 0; i < hot::ls::kShellHoldMs / 250 + 16 && !contains_name(after, "Tag"); ++i)
+    {
+        after = this_names(s, 5 + i, "Base", "Ta", 3 + i);
+        if (!contains_name(after, "Tag"))
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
     EXPECT_TRUE(contains_name(after, "Tag")) << "the cache kept the old members";
     if (cache)
-        EXPECT_EQ(this_stat(s, "thisAnalyzes"), 2);
+        EXPECT_GE(this_stat(s, "thisAnalyzes"), 2);
 }
 
 // A change of the bases of the class shows in the next completion.
