@@ -17,6 +17,7 @@
 
 #include <memory>
 #include <string>
+#include <cstdlib>
 #include <utility>
 #include <vector>
 
@@ -85,8 +86,13 @@ class Leaf : Mid {
 }
 )";
 
+class FamilyTests;
+void check_two_changed_imports(FamilyTests& t, Session& s, bool use_x, bool use_y);
+
 class FamilyTests : public ::testing::TestWithParam<hot::BackendKind>
 {
+    friend void check_two_changed_imports(FamilyTests&, Session&, bool, bool);
+
 protected:
     void SetUp() override
     {
@@ -773,6 +779,257 @@ TEST_P(FamilyTests, StructChangeOfAnImportOfAnImportNeedsTheImporterInTheBatch)
     EXPECT_EQ(stale.units, std::vector<std::string>{"num_user"});
     EXPECT_FALSE(s.loader.reload_pending());
     EXPECT_EQ(*fld<int>(s, "g"), 6);
+}
+
+// The stale rule of the importers (include/hot/iface_compat.h). The unit "u.hot" has a free function and
+// a class. The unit "i.hot" imports it and calls the free function. The units "k.hot" and "k2.hot" have
+// a child class of the class of "u.hot".
+const char* const kRuleU = R"(
+using "Actor.h";
+int twice(int v) { return v * 2; }
+class Base : Actor {
+    int x = 1;
+    Base() { }
+    int Get() { return this.x; }
+}
+)";
+
+const char* const kRuleI = R"(
+using "Actor.h";
+using "u.hot";
+class User : Actor {
+    int g = 0;
+    $Base h;
+    override void Tick(float dt) {
+        $Base b = this.h;
+        if (b == null) {
+            b = new $Base();
+            this.h = b;
+        }
+        b.Move(Vec3(1.0f, 0.0f, 0.0f));
+        this.g = twice(this.g + 1) + b.Get() * 0;
+    }
+}
+)";
+
+const char* const kRuleK = "using \"Actor.h\";\nusing \"u.hot\";\nclass Kid : Base { int k = 5; }\n";
+const char* const kRuleK2 = "using \"Actor.h\";\nusing \"u.hot\";\nclass Kid2 : Base { int k2 = 6; }\n";
+
+// "u.hot" with a new non-virtual method and a new free function: a pure addition.
+std::string rule_u_with(const char* in_class, const char* free_fn)
+{
+    std::string t = kRuleU;
+    t.replace(t.find("    int Get()"), 0, std::string("    ") + in_class + "\n");
+    t += std::string(free_fn) + "\n";
+    return t;
+}
+
+// Sets HOT_STRICT_IFACE for the scope of a test.
+struct StrictEnv
+{
+    explicit StrictEnv(bool on)
+    {
+        if (on)
+            ::setenv("HOT_STRICT_IFACE", "1", 1);
+        else
+            ::unsetenv("HOT_STRICT_IFACE"); // the test needs the new rule, also when the shell sets the switch
+    }
+    ~StrictEnv() { ::unsetenv("HOT_STRICT_IFACE"); }
+};
+
+// The batch "u" alone must fail with DependentsStale for the units "expect".
+void expect_alone_stale(Session& s, hot::LoadResult r, std::vector<std::string> expect)
+{
+    ASSERT_TRUE(r) << r.error;
+    std::vector<hot::LoadResult> alone;
+    alone.push_back(std::move(r));
+    const hot::ReloadResult res = s.loader.request_reload(std::move(alone));
+    EXPECT_EQ(res.status, hot::ReloadStatus::Failed);
+    EXPECT_EQ(res.reason, hot::ReloadReason::DependentsStale) << res.error;
+    EXPECT_EQ(res.units, expect);
+    EXPECT_FALSE(s.loader.reload_pending());
+}
+
+// Case 1 and the sibling: a new method of the unit. The importer stays. Each child class in another
+// unit is stale, also a sibling in a third unit: the classes of a family share one slot numbering.
+TEST_P(FamilyTests, NewMethodKeepsTheImporterAndStalesEachChild)
+{
+    StrictEnv env(false);
+    const std::string u2 = rule_u_with("int Extra() { return this.x + 40; }", "");
+    Session s;
+    std::vector<hot::LoadResult> first;
+    first.push_back(build("i.hot", kRuleI, {{"u.hot", kRuleU}}, 1));
+    first.push_back(build("k.hot", kRuleK, {{"u.hot", kRuleU}}, 1));
+    first.push_back(build("k2.hot", kRuleK2, {{"u.hot", kRuleU}}, 1));
+    first.push_back(build("u.hot", kRuleU, {}, 1));
+    ASSERT_NO_FATAL_FAILURE(start(s, std::move(first), "User"));
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "g"), 2);
+    const hot::ClassRecord* user = s.inst.shell->cls;
+    ASSERT_NO_FATAL_FAILURE(expect_alone_stale(s, build("u.hot", u2, {}, 2), {"k", "k2"}));
+    // The sibling in the third unit is stale when only one child is in the batch.
+    std::vector<hot::LoadResult> one_kid;
+    one_kid.push_back(build("u.hot", u2, {}, 3));
+    one_kid.push_back(build("k.hot", kRuleK, {{"u.hot", u2}}, 3));
+    for (const hot::LoadResult& r : one_kid)
+        ASSERT_TRUE(r) << r.error;
+    const hot::ReloadResult res = s.loader.request_reload(std::move(one_kid));
+    EXPECT_EQ(res.reason, hot::ReloadReason::DependentsStale) << res.error;
+    EXPECT_EQ(res.units, std::vector<std::string>{"k2"});
+    // Both children in the batch: the commit works and the importer keeps its code and its state.
+    std::vector<hot::LoadResult> kids;
+    kids.push_back(build("u.hot", u2, {}, 4));
+    kids.push_back(build("k.hot", kRuleK, {{"u.hot", u2}}, 4));
+    kids.push_back(build("k2.hot", kRuleK2, {{"u.hot", u2}}, 4));
+    ASSERT_NO_FATAL_FAILURE(reload(s, std::move(kids)));
+    s.world.Tick(kDt);
+    EXPECT_EQ(s.inst.shell->cls, user);
+    EXPECT_EQ(user->generation, 1u) << "the importer is not in the batch";
+    EXPECT_EQ(*fld<int>(s, "g"), 14); // the ticks of the commit frame and of the next frame: 2, 6, 14
+    const hot::ClassEntry* kid = s.loader.find("Kid");
+    ASSERT_NE(kid, nullptr);
+    EXPECT_NE(kid->record->super, nullptr);
+}
+
+// The negative proof of case 1: with HOT_STRICT_IFACE=1 each importer is stale after the new method.
+TEST_P(FamilyTests, StrictSwitchKeepsTheWholeHashRuleForANewMethod)
+{
+    StrictEnv env(true);
+    const std::string u2 = rule_u_with("int Extra() { return this.x + 40; }", "");
+    Session s;
+    std::vector<hot::LoadResult> first;
+    first.push_back(build("i.hot", kRuleI, {{"u.hot", kRuleU}}, 1));
+    first.push_back(build("k.hot", kRuleK, {{"u.hot", kRuleU}}, 1));
+    first.push_back(build("u.hot", kRuleU, {}, 1));
+    ASSERT_NO_FATAL_FAILURE(start(s, std::move(first), "User"));
+    ASSERT_NO_FATAL_FAILURE(expect_alone_stale(s, build("u.hot", u2, {}, 2), {"i", "k"}));
+}
+
+// Case 3: a new overload of a function that the importer calls. The importer is stale.
+TEST_P(FamilyTests, NewOverloadOfACalledFunctionStalesTheImporter)
+{
+    StrictEnv env(false);
+    const std::string u2 = rule_u_with("", "int twice(int v, int w) { return v + w; }");
+    Session s;
+    std::vector<hot::LoadResult> first;
+    first.push_back(build("i.hot", kRuleI, {{"u.hot", kRuleU}}, 1));
+    first.push_back(build("u.hot", kRuleU, {}, 1));
+    ASSERT_NO_FATAL_FAILURE(start(s, std::move(first), "User"));
+    ASSERT_NO_FATAL_FAILURE(expect_alone_stale(s, build("u.hot", u2, {}, 2), {"i"}));
+}
+
+// Case 4: a new script method with the name of a native method of the base class that the importer
+// calls. A call can bind to the new method, so the importer is stale.
+TEST_P(FamilyTests, NewMethodNamedLikeANativeBaseMethodStalesTheImporter)
+{
+    StrictEnv env(false);
+    const std::string u2 = rule_u_with("void Move(int n) { this.x = n; }", "");
+    Session s;
+    std::vector<hot::LoadResult> first;
+    first.push_back(build("i.hot", kRuleI, {{"u.hot", kRuleU}}, 1));
+    first.push_back(build("u.hot", kRuleU, {}, 1));
+    ASSERT_NO_FATAL_FAILURE(start(s, std::move(first), "User"));
+    ASSERT_NO_FATAL_FAILURE(expect_alone_stale(s, build("u.hot", u2, {}, 2), {"i"}));
+}
+
+// Case 5: a changed struct. Each importer copies the struct, so the importer is stale.
+TEST_P(FamilyTests, StructChangeOfTheUnitStalesTheImporterByTheShape)
+{
+    StrictEnv env(false);
+    const std::string pt1 = "struct Pt {\n    int v = 1;\n    int Get() { return this.v + 1; }\n}\n";
+    const std::string user = "using \"Actor.h\";\nusing \"pt.hot\";\nclass User : Actor {\n    Pt p;\n    int g = 0;\n"
+                             "    override void Tick(float dt) { this.g = this.p.Get(); }\n}\n";
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(
+        start(s, batch_of(build("user.hot", user, {{"pt.hot", pt1}}, 1), build("pt.hot", pt1, {}, 1)), "User"));
+    std::string pt2 = pt1;
+    pt2.replace(pt2.find("+ 1"), 3, "+ 5");
+    ASSERT_NO_FATAL_FAILURE(expect_alone_stale(s, build("pt.hot", pt2, {}, 2), {"user"}));
+}
+
+// Case 6: "i.hot" imports "m.hot", and "m.hot" has a struct with a body that calls "a" of "u.hot".
+// A new overload of "a" makes the importer stale: it copies the struct body of "m.hot".
+TEST_P(FamilyTests, StructBodyOfAnImportThatCallsTheUnitStalesTheImporter)
+{
+    StrictEnv env(false);
+    const std::string u1 = "int a(int v) { return v + 1; }\n";
+    const std::string u2 = u1 + "int a(int v, int w) { return v + w; }\n";
+    const std::string m = "using \"u.hot\";\nstruct S {\n    int v = 1;\n    int G() { return a(this.v); }\n}\n";
+    const std::string i = "using \"Actor.h\";\nusing \"m.hot\";\nusing \"u.hot\";\nclass User : Actor {\n    S s;\n    int g = 0;\n"
+                          "    override void Tick(float dt) { this.g = this.s.G(); }\n}\n";
+    Session s;
+    std::vector<hot::LoadResult> first;
+    first.push_back(build("i.hot", i, {{"m.hot", m}, {"u.hot", u1}}, 1));
+    first.push_back(build("m.hot", m, {{"u.hot", u1}}, 1));
+    first.push_back(build("u.hot", u1, {}, 1));
+    ASSERT_NO_FATAL_FAILURE(start(s, std::move(first), "User"));
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "g"), 2);
+    ASSERT_NO_FATAL_FAILURE(expect_alone_stale(s, build("u.hot", u2, {}, 2), {"i", "m"}));
+}
+
+// An importer of two units that both change in one batch. Each unit gets a new overload of its
+// function. The importer is stale when it names the function of one of the units, and it stays
+// when it names none of them.
+void check_two_changed_imports(FamilyTests& t, Session& s, bool use_x, bool use_y)
+{
+    const std::string x1 = "int tx(int v) { return v + 1; }\n";
+    const std::string y1 = "int ty(int v) { return v + 2; }\n";
+    const std::string x2 = x1 + "int tx(int v, int w) { return v + w; }\n";
+    const std::string y2 = y1 + "int ty(int v, int w) { return v + w; }\n";
+    const std::string a = std::string("using \"Actor.h\";\nusing \"x.hot\";\nusing \"y.hot\";\nclass User : Actor {\n    int g = 0;\n"
+                                      "    override void Tick(float dt) { this.g = ")
+        + (use_x ? "tx(1)" : "0") + " + " + (use_y ? "ty(1)" : "0") + "; }\n}\n";
+    std::vector<hot::LoadResult> first;
+    first.push_back(t.build("a.hot", a, {{"x.hot", x1}, {"y.hot", y1}}, 1));
+    first.push_back(t.build("x.hot", x1, {}, 1));
+    first.push_back(t.build("y.hot", y1, {}, 1));
+    ASSERT_NO_FATAL_FAILURE(t.start(s, std::move(first), "User"));
+    s.world.Tick(kDt);
+    EXPECT_EQ(*fld<int>(s, "g"), (use_x ? 2 : 0) + (use_y ? 3 : 0));
+    const hot::ClassRecord* user = s.inst.shell->cls;
+    std::vector<hot::LoadResult> batch;
+    batch.push_back(t.build("x.hot", x2, {}, 2));
+    batch.push_back(t.build("y.hot", y2, {}, 2));
+    if (use_x || use_y)
+    {
+        for (const hot::LoadResult& r : batch)
+            ASSERT_TRUE(r) << r.error;
+        const hot::ReloadResult res = s.loader.request_reload(std::move(batch));
+        EXPECT_EQ(res.status, hot::ReloadStatus::Failed);
+        EXPECT_EQ(res.reason, hot::ReloadReason::DependentsStale) << res.error;
+        EXPECT_EQ(res.units, std::vector<std::string>{"a"});
+        EXPECT_FALSE(s.loader.reload_pending());
+    }
+    else
+    {
+        ASSERT_NO_FATAL_FAILURE(t.reload(s, std::move(batch)));
+        s.world.Tick(kDt);
+        EXPECT_EQ(s.inst.shell->cls, user);
+        EXPECT_EQ(user->generation, 1u) << "the importer is not in the batch";
+        EXPECT_EQ(*fld<int>(s, "g"), 0);
+    }
+}
+
+TEST_P(FamilyTests, TwoChangedImportsFirstUnusedSecondUsedStalesTheImporter)
+{
+    StrictEnv env(false);
+    Session s;
+    check_two_changed_imports(*this, s, false, true);
+}
+
+TEST_P(FamilyTests, TwoChangedImportsFirstUsedSecondUnusedStalesTheImporter)
+{
+    StrictEnv env(false);
+    Session s;
+    check_two_changed_imports(*this, s, true, false);
+}
+
+TEST_P(FamilyTests, TwoChangedImportsNeitherUsedKeepsTheImporter)
+{
+    StrictEnv env(false);
+    Session s;
+    check_two_changed_imports(*this, s, false, false);
 }
 
 std::string kind_name(const ::testing::TestParamInfo<hot::BackendKind>& info)

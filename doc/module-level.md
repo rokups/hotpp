@@ -51,7 +51,7 @@ Each unit has an interface hash (`Module::iface_hash`). Each importer records th
 
 ### Fine interface data
 
-The translation also gives fine data: `hot::IfaceInfo` and `hot::UseInfo` (`hot/iface_compat.h`). `Module`, `LoadResult` and the translate cache carry them. The function `hot::importer_is_stale` uses them. The loader and the host do not use the function yet: they keep the hash rule above.
+The translation also gives fine data: `hot::IfaceInfo` and `hot::UseInfo` (`hot/iface_compat.h`). `Module`, `LoadResult` and the translate cache carry them. The function `hot::importer_is_stale` uses them. The loader uses the function to find the stale importers. The host does not use it yet: it keeps the hash rule above until step C.
 
 - `IfaceInfo::shape` is the hash of the parts that each importer copies or that set a layout. These are the namespaces, the aliases, the enums, the constants, each struct in full and each class header. A virtual, override, abstract or operator member of a class is in the shape too: it sets the shell or the slot family.
 - The shape also has the script interfaces, the stubs and the module attribute lists. These are not in `iface_hash`.
@@ -63,6 +63,10 @@ The translation also gives fine data: `hot::IfaceInfo` and `hot::UseInfo` (`hot/
 - An importer merges the script interfaces of an import, also of an import of an import. A class of the importer can list such an interface in its base list. The importer has its own copy of the interface helpers. The interface is in the shape, so a change of it is never missed.
 - `Module::imports` and `AotScript::imports` have the direct imports and the imports of imports. Rule 8 of `importer_is_stale` uses this full list.
 - An old translate cache entry or an old AOT table has no fine data. Then each importer is stale.
+
+The loader compares the live interface of an import with the new interface of the batch. It does not compare a recorded hash. When it keeps an importer, it sets the recorded import hash to the new hash.
+
+Set the environment variable `HOT_STRICT_IFACE=1` to restore the whole-hash rule in the loader. Then each importer of a changed interface is stale. The new rule is the default.
 
 These headers are always included, so they need no `using`:
 `<cstddef>`, `<cstdint>`, `<cstdio>`, `<cstdlib>`, `<cstring>`, `<functional>`, `<memory>`, `<mutex>`, `<new>`, `<stdexcept>`, `<string>`, `<tuple>`, `<type_traits>`, `<typeinfo>`, `<unordered_map>`, `<utility>` and `<vector>`. Any other standard header (`<map>`, `<optional>`, `<algorithm>`) needs a `using`.

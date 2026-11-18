@@ -21,6 +21,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <stdexcept>
@@ -308,6 +309,45 @@ TEST(AotUnits, RevertToAotRestoresTheFineData)
     EXPECT_EQ(iface, aot_iface);
     EXPECT_EQ(use, aot_use);
     EXPECT_TRUE(loader.commit_pending());
+}
+#endif
+
+#if !defined(AOT_UNITS_CHAIN) && !defined(AOT_EXPECT_OPTIMIZED)
+// A new method of a class in the base unit does not make the AOT importer stale (the stale rule of
+// the loader, include/hot/iface_compat.h). A revert of the base unit to the AOT code keeps the importer
+// too: the loader compares the live interface with the AOT interface, not with a recorded hash.
+TEST(AotUnits, NewMethodOfTheBaseUnitAndItsRevertKeepTheAotImporter)
+{
+    ::unsetenv("HOT_STRICT_IFACE"); // the test needs the new rule
+    std::unique_ptr<hot::Backend> backend = hot::make_default_backend();
+    backend->seed_slots(hot::aot_table.slots);
+    hot::Loader loader;
+    const hot::ReloadResult r = loader.load_aot(hot::aot_table);
+    ASSERT_TRUE(r) << r.error;
+    const hot::ClassEntry* e = loader.find("UnitApp");
+    ASSERT_NE(e, nullptr);
+    const uint32_t app_gen = e->record->generation;
+    World world;
+    Actor* app = static_cast<Actor*>(e->create().native);
+    expect_one_tick(world, app);
+
+    hot::ScriptSource src = test_support::source("aot_units/aot_unit_base_v3.hot");
+    src.unit = "aot_unit_base";
+    hot::LoadResult built = backend->load(src, 2);
+    ASSERT_TRUE(built) << built.error;
+    ASSERT_NE(built.iface_hash, hot::aot_table.scripts[0].iface_hash) << "the new method changes the hash";
+    ASSERT_TRUE(loader.request_reload(std::move(*built.module))) << "the importer stays: the name is unused";
+    ASSERT_TRUE(loader.commit_pending());
+    loader.frame_boundary();
+    EXPECT_EQ(loader.find("UnitApp")->record->generation, app_gen) << "the importer is not in the batch";
+
+    const hot::ReloadResult rv = loader.revert_unit("aot_unit_base", *backend);
+    ASSERT_TRUE(rv) << rv.error;
+    ASSERT_TRUE(loader.commit_pending());
+    loader.frame_boundary();
+    EXPECT_EQ(loader.find("UnitApp")->record->generation, app_gen);
+    world.Tick(0.5f);
+    EXPECT_GT(app->Position.x, kScore);
 }
 #endif
 
