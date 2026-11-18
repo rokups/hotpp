@@ -10961,28 +10961,50 @@ json scrub(const json& j, const Session& s)
     const std::string dir = uri_of(s.dir.path().string());
     for (size_t at; (at = t.find(dir)) != std::string::npos;)
         t.replace(at, dir.size(), "DIR");
-    return json::parse(t);
+    json r = json::parse(t);
+    if (r.is_object())
+        r.erase("id"); // the id depends on the number of earlier requests
+    return r;
 }
 
 // The answers of the requests after a didChange with no wait, with the switch HOT_LS_DEFER_UPDATE.
 json deferred_features(const char* defer)
 {
     const EnvGuard env("HOT_LS_DEFER_UPDATE", defer);
+    const EnvGuard idle("HOT_LS_FLUSH_IDLE_MS", "3000"); // the skip path stays visible: no idle flush
+    const bool deferred = std::string(defer) == "1";
     json out;
     Session s(true);
     int version = 1;
     const auto edit = [&](const std::string& text) { s.client->change(s.uri, ++version, text); };
-    // The completion right after the edit: a plain place, after a dot, a type place.
-    edit(with_line7("        he"));
-    out["plain"] = completion_labels(s, 7, 10);
+    // The completion right after the edit: a plain place, after a dot, a type place. A hover flushes the
+    // document to the base text first, so the edit under test is one typed word.
+    const auto settle = [&](const std::string& text)
+    {
+        edit(text);
+        s.client->request("textDocument/hover", doc_pos(s.uri, 11, 15));
+    };
+    settle(with_line7("        he"));
+    edit(with_line7("        hea"));
+    out["plain"] = completion_labels(s, 7, 11);
+    if (deferred)
+        EXPECT_EQ(defer_stats(s)["dirtyDocs"], 1) << "plain: the completion must skip the flush";
+    settle(with_line7("        this"));
     edit(with_line7("        this."));
     out["dot"] = completion_labels(s, 7, 13);
+    if (deferred)
+        EXPECT_EQ(defer_stats(s)["dirtyDocs"], 1) << "dot: the completion must skip the flush";
+    settle(with_line7("        V"));
     edit(with_line7("        Ve"));
     out["type"] = completion_labels(s, 7, 10);
+    if (deferred)
+        EXPECT_EQ(defer_stats(s)["dirtyDocs"], 1) << "type: the completion must skip the flush";
     // A new local in the same edit: "var w = ...;" and then "w." as two quick edits.
     edit(with_line7("        var w = Vec3(1, 2, 3);"));
     edit(with_line7("        var w = Vec3(1, 2, 3); w."));
     out["new_local"] = completion_labels(s, 7, 33);
+    if (deferred)
+        EXPECT_EQ(defer_stats(s)["dirtyDocs"], 0) << "a ; in the edit flushes";
     // The same, with the edits of a class member: the new field shows after "this.".
     std::string field = with_line7("        this.");
     field.replace(field.find("    float hp = 100.0;"), 21, "    float hp = 100.0;\n    float mana = 1.0;");
@@ -11059,18 +11081,26 @@ TEST(LanguageServer, DeferredUpdateIsSkippedByACompletionAfterABodyEdit)
     EXPECT_EQ(st["updateRuns"], runs0 + 2) << st.dump();
     EXPECT_EQ(st["dirtyDocs"], 0) << st.dump();
     // An edit of a member name in a body-like place of a class header: the completion flushes first.
+    // Before each case the document goes back to the base text and a hover flushes it: the diff is the edit only.
+    s.client->change(s.uri, 4, kScript);
+    s.client->request("textDocument/hover", doc_pos(s.uri, 11, 15));
+    st = defer_stats(s);
+    const int runs_head = st["updateRuns"];
     std::string head = kScript;
     head.replace(head.find("float hp"), 8, "float hq");
-    s.client->change(s.uri, 4, head);
+    s.client->change(s.uri, 5, head);
     completion_labels(s, 7, 13);
     st = defer_stats(s);
-    EXPECT_EQ(st["updateRuns"], runs0 + 3) << st.dump();
+    EXPECT_EQ(st["updateRuns"], runs_head + 1) << st.dump();
     EXPECT_EQ(st["dirtyDocs"], 0) << st.dump();
     // A body edit with a semicolon: the completion flushes first.
-    s.client->change(s.uri, 5, head); // the same text again: no change of facts
-    s.client->change(s.uri, 6, with_line7("        this.heal(1.0);;"));
+    s.client->change(s.uri, 6, kScript);
+    s.client->request("textDocument/hover", doc_pos(s.uri, 11, 15));
+    const int runs_semi = defer_stats(s)["updateRuns"];
+    s.client->change(s.uri, 7, with_line7("        this.heal(1.0);;"));
     completion_labels(s, 7, 13);
     st = defer_stats(s);
+    EXPECT_EQ(st["updateRuns"], runs_semi + 1) << st.dump();
     EXPECT_EQ(st["dirtyDocs"], 0) << st.dump();
 }
 

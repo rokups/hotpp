@@ -401,3 +401,32 @@ TEST(ClassFactsHold, EditsOutsideABodyAreNotAccepted)
     EXPECT_FALSE(hold("class Foo\n{\n    int hits = 0;\n    void Update() { hits = 1;; }\n}\n")); // a semicolon
     EXPECT_FALSE(hold("class Foo\n{\n    int hits = 0;\n    void Update() { hits = 1; // }\n}\n")); // a comment sign
 }
+
+// HOT-51: the analyzed text has a syntax error in a body (a call that is not closed) and a member after it. A plain
+// edit that repairs it, or that breaks it more, must keep the class facts too.
+TEST(ClassFactsHold, BrokenAnalyzedTextAndItsRepair)
+{
+    const std::string base =
+        "class Foo\n"
+        "{\n"
+        "    int a;\n"
+        "    void Bad()\n"
+        "    {\n"
+        "        var q = 1;\n"
+        "        foo(q,\n"
+        "    }\n"
+        "    void After() { a = 1; }\n"
+        "    int b;\n"
+        "}\n";
+    hotc::TranslateOptions o;
+    o.script_name = "t.hot";
+    o.generation = 1;
+    const hotc::AnalyzeResult before = hotc::analyze(base, o);
+    EXPECT_FALSE(before.errors.empty());
+    const std::string repaired = base.substr(0, base.find("foo(q,") + 6) + ")" + base.substr(base.find("foo(q,") + 6);
+    const hot::ls::Text analyzed(base);
+    if (hot::ls::class_facts_hold(analyzed, repaired, before))
+        EXPECT_EQ(class_signature(hotc::analyze(repaired, o)), class_signature(before));
+    size_t total = 0;
+    check_class_facts_rule(base, &total, 13); // stride 1 passed too (6 min)
+}
