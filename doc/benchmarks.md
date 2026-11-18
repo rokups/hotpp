@@ -685,3 +685,27 @@ The switches in the table below make the baselines: `HOT_SPLIT_UNIT_OBJECTS=0`, 
 | Direct linker command | link 49 -> 30 ms (-18 ms) for `.hot` and 48 -> 27 ms for `.cpp`. |
 
 The probe test of the shared PCH (`prewarm_pch`) takes 16 to 40 ms (the list of the BiteSizedWar cache has about 13000 paths). A cache of the directory time stamps saved about 4 ms, so the backend does not use it. The rest of the `.hot` reload (490 ms) is the compile of the bodies (about 380 ms of clang) and the read of the generated unit. The rest of the `.cpp` reload is the compile (about 380 ms), the libclang reparse (68 ms) and the translate after it.
+
+## Reload after an interface change (BiteSizedWarHot, HOT-54)
+
+This section measures the reload of one edit of `Game/EffectClock.hot` in the game BiteSizedWarHot. The host decides with `importer_is_stale` which importers it recompiles (HOT-12 steps A to C). The ticket asks if a shared PCH before the first edit (steps 8 and 9 of `reload-plan.md`) is needed.
+
+**Method.** The program is the Debug build of BiteSizedWarHot (`HOT_TIMING=1 ./BiteSizedWarHot --offline --headless`), clang 23, loose scripts, 23 enabled scripts, the object cache and the shared PCH of an earlier run on the disk (a warm start). The scripts are from a worktree of BiteSizedWar (master `6a23bc5`). A driver script changes `EffectClock.hot`, waits for the line `reload done in X (N scripts, K dependents kept without compile)` and restores the file with `git checkout`. Each edit has a number that is new in each run, so no run is an object cache hit. One process does the 5 edit kinds in this order: first edit after the start (a body edit), body, unused new method, new field, new overload `GetEffectStep(float)`. Three processes ran. "Wall" is the time from the write of the file to the log line (poll of the driver 0.2 s, the poll of the file change of the host adds up to 0.5 s).
+
+The machine is the 32 thread machine of the other sections. It was not quiet: the load average was 13 to 27 because of other work (before the run: 13.5). The numbers are an upper bound of a quiet machine.
+
+| Edit kind | Reload time of the 3 runs (ms) | Median (ms) | Wall median (s) | Units compiled | Dependents kept without compile |
+|---|---|---|---|---|---|
+| Start (not an edit) | 2200 / 2000 / 2000 | 2000 | 3.3 | 23 (object cache hits) | 0 |
+| First edit after the start (body) | 2300 / 2100 / 2100 | 2100 | 2.8 | 1 | 0 |
+| Body (a constant in a method) | 919 / 1100 / 919 | 919 | 1.4 | 1 | 0 |
+| Unused new method | 822 / 844 / 822 | 822 | 1.2 | 1 | 17 |
+| New field | 954 / 879 / 839 | 879 | 1.4 | 1 | 17 |
+| New overload `GetEffectStep(float)` (the name is in importers) | 6400 / 6600 / 6800 | 6600 | 6.6 | 7 | 11 |
+
+Notes:
+- `EffectClock` has 17 importers. An unused method or a new field changes no name that an importer uses, so the host keeps all 17 importers without a compile. The reload costs the same as a body edit.
+- The new overload makes the 6 importers that use the name `GetEffectStep` stale. The unit and 6 importers compile (7 scripts). The 11 other importers stay. The old rule (hash only) made 18 units compile in 27 to 47 s (WAR-2).
+- The first edit after the start takes 2.1 s. A later body edit takes 0.9 s. The shared PCH is not the cause: the line of the first edit has `pch` and the plan finds the PCH of the earlier run. The difference is the translate phase: 1415 ms with a libclang probe parse of 1324 ms, against 106 to 196 ms for the later edits (the parse is not repeated). The first edit also builds the shape PCH of the unit (134 ms, in parallel).
+- The compile of the unit takes 0.5 to 0.7 s and the link about 0.1 s in each edit. The `flush_compile_commands` phase takes 2 to 4 ms (it took 4 s in WAR-2).
+- A cold cache folder (no PCH and no objects on the disk) was not measured here. WAR-2 measured the first reload of such a start at 8.7 s, with a shared PCH build of 6 s.
