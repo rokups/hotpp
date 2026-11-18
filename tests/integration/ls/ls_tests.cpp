@@ -10411,6 +10411,67 @@ TEST(LanguageServer, SplitShellHeaderFollowsAnEditOfAnImport)
     EXPECT_NE(translator_test::read_file(now[0]).find("mana"), std::string::npos);
 }
 
+// HOT-52: after a change of the shell the completion does not wait for the new preamble. clangd answers from the old
+// preamble, the reply has "isIncomplete", and later the new names are there.
+TEST(LanguageServer, CompletionAfterAShellChangeAnswersAtOnceAndThenHasTheNewNames)
+{
+    REQUIRE_CLANGD();
+    const EnvGuard env("HOT_LS_SPLIT_SHELL", "1");
+    const EnvGuard stable("HOT_LS_STABLE_SHELL", "1");
+    TempDir shells;
+    const EnvGuard dir_env("HOT_LS_SHELL_DIR", shells.path().string());
+    Session s(true, kSplitImporter);
+    write_file(s.dir.path() / "base.hot", kSplitBase);
+    s.client->change(s.uri, 2, kSplitImporter);
+    ASSERT_NE(s.client->request("textDocument/hover", doc_pos(s.uri, 3, 30)), nullptr);
+    const auto files = shell_files(shells.path());
+    ASSERT_EQ(files.size(), 1u);
+    const std::string before = translator_test::read_file(files[0]);
+    // A new class changes the shell. The cursor is after "this.".
+    std::string user = kSplitImporter;
+    user.replace(user.find("this.Heal(a)"), 12, "this.");
+    user += "class ExtraThing { }\n";
+    s.client->change(s.uri, 3, user);
+    const std::string go = "    float Go(float a) { return this.";
+    const int col = static_cast<int>(go.size());
+    auto labels = [](const json& r)
+    {
+        std::set<std::string> out;
+        const json items = r["result"].is_array() ? r["result"] : r["result"].value("items", json::array());
+        for (const json& i : items)
+            out.insert(i.value("label", ""));
+        return out;
+    };
+    const auto t0 = std::chrono::steady_clock::now();
+    json r = s.client->request("textDocument/completion", doc_pos(s.uri, 3, col));
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    EXPECT_TRUE(r["result"].value("isIncomplete", false)) << r.dump();
+    EXPECT_TRUE(labels(r).count("own")) << r.dump();
+    EXPECT_LT(ms, 2500);
+    // The header has the same name and the new text.
+    const auto now = shell_files(shells.path());
+    ASSERT_EQ(now.size(), 1u);
+    EXPECT_EQ(now[0], files[0]);
+    EXPECT_NE(translator_test::read_file(now[0]), before);
+    EXPECT_NE(translator_test::read_file(now[0]).find("ExtraThing"), std::string::npos);
+    // After the hold the answer is complete and has the new names.
+    std::string plain = user;
+    plain.replace(plain.find("this."), 5, "ExtraTh");
+    s.client->change(s.uri, 4, plain);
+    const int col2 = static_cast<int>(std::string("    float Go(float a) { return ExtraTh").size());
+    bool found = false;
+    for (int i = 0; i < 40 && !found; ++i)
+    {
+        r = s.client->request("textDocument/completion", doc_pos(s.uri, 3, col2));
+        if (r.contains("result") && r["result"].is_object() && labels(r).count("ExtraThing"))
+            found = !r["result"].value("isIncomplete", false);
+        if (!found)
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+    EXPECT_TRUE(found) << r.dump();
+}
+
 // Hover, definition and completion in the bodies of the own functions are the same with the lite document and
 // without it. A hover in a second body, a place outside the bodies and an edit in a body work.
 TEST(LanguageServer, LiteDocGivesTheSameResultsAsTheFullDocument)
