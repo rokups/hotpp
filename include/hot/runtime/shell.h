@@ -697,7 +697,7 @@ HOT_NODEBUG HOT_EXPORT ShellCore* construct_raw(
     const ClassRef& cls, const char* key, void** args, size_t count, uint64_t const_mask);
 template <class... Args> constexpr uint64_t arg_const_mask()
 {
-    uint64_t mask = 0, bit = 1;
+    [[maybe_unused]] uint64_t mask = 0, bit = 1;
     ((mask |= std::is_const_v<std::remove_reference_t<Args>> ? bit : 0, bit <<= 1), ...);
     return mask;
 }

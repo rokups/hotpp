@@ -87,7 +87,7 @@ private:
     // Bit i is set when argument i is const.
     template <class... Args> static constexpr uint64_t const_mask()
     {
-        uint64_t mask = 0, bit = 1;
+        [[maybe_unused]] uint64_t mask = 0, bit = 1;
         ((mask |= std::is_const_v<std::remove_reference_t<Args>> ? bit : 0, bit <<= 1), ...);
         return mask;
     }
