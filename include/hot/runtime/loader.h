@@ -461,6 +461,10 @@ private:
     {
         uint64_t iface_hash = 0;
         std::vector<std::pair<std::string, uint64_t>> imports;
+        // The fine data of the live code (Module::iface_info, Module::use_info). check_links gives
+        // them to importer_is_stale. A unit with no data (known == false) is stale (rule 2).
+        IfaceInfo iface_info;
+        UseInfo use_info;
         std::unique_ptr<FnTable> fns;
     };
     std::unordered_map<std::string, UnitLink> links_;

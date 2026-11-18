@@ -3,6 +3,7 @@
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
 #include "hot/runtime/loader.h"
+#include "hot/iface_compat.h"
 
 #include "hot/backend.h"
 #include "hot/runtime/iface.h"
@@ -13,6 +14,7 @@
 #include <atomic>
 #include <cassert>
 #include <cstdio>
+#include <cstdlib>
 #include <exception>
 #include <stdexcept>
 #include <functional>
@@ -505,6 +507,8 @@ void Loader::set_link(const Module& module, const Registry& code)
     UnitLink& link = links_[module.unit];
     link.iface_hash = module.iface_hash;
     link.imports = module.imports;
+    link.iface_info = module.iface_info;
+    link.use_info = module.use_info;
     if (link.fns)
         old_fns_.push_back(std::move(link.fns));
     link.fns = std::make_unique<FnTable>(); // a new id
@@ -1367,18 +1371,46 @@ ReloadResult Loader::check_links(const Pending& p) const
                 return r;
             }
         }
-    // A live unit outside the batch that imports a changed interface must be in the batch.
+    // A live unit outside the batch that imports a changed interface must be in the batch, unless
+    // importer_is_stale (include/hot/iface_compat.h) keeps it. The rule compares the live interface of
+    // the import with the new one, not a recorded hash. HOT_STRICT_IFACE=1 restores the whole-hash rule.
+    const char* strict_env = std::getenv("HOT_STRICT_IFACE");
+    const bool strict = strict_env && strict_env[0] == '1';
     std::vector<std::string> stale;
     for (const auto& [unit, link] : links_)
     {
         if (batch.count(unit))
             continue;
         for (const auto& [dep, hash] : link.imports)
-            if (const auto b = batch.find(dep); b != batch.end() && b->second->iface_hash != hash)
+        {
+            const auto b = batch.find(dep);
+            if (b == batch.end() || b->second->iface_hash == hash)
+                continue;
+            const auto live = links_.find(dep);
+            bool is_stale = true;
+            if (!strict && live != links_.end())
+            {
+                // The other imports of the importer: the live and the new interface of each one.
+                std::vector<const IfaceInfo*> others;
+                for (const auto& [other, ohash] : link.imports)
+                {
+                    if (other == dep)
+                        continue;
+                    if (const auto ob = batch.find(other); ob != batch.end())
+                        others.push_back(&ob->second->iface_info);
+                    if (const auto ol = links_.find(other); ol != links_.end())
+                        others.push_back(&ol->second.iface_info);
+                    else
+                        others.push_back(nullptr); // no live data: stale
+                }
+                is_stale = importer_is_stale(live->second.iface_info, b->second->iface_info, link.use_info, dep, others);
+            }
+            if (is_stale)
             {
                 stale.push_back(unit);
                 break;
             }
+        }
     }
     // A live class outside the batch with a script parent in the batch: the new parent layout must
     // be the layout that the class compiled against. The interface hash does not tell all of the
@@ -1858,6 +1890,18 @@ ReloadResult Loader::commit_locked()
         switch_live(unit, bw.u->staged, bw.u->have_core ? &bw.u->core_reg : nullptr, true,
             &deferred);
         set_link(bw.u->module, bw.u->staged);
+    }
+    // A live importer outside the batch that check_links kept: it compiled against the old interface
+    // of an import in the batch. It stays valid, so its recorded hash becomes the new hash. The next
+    // check compares the live interface with the new one.
+    for (auto& [unit, link] : links_)
+    {
+        if (std::any_of(P.units.begin(), P.units.end(), [&](const PendingUnit& u) { return u.module.unit == unit; }))
+            continue;
+        for (auto& [dep, hash] : link.imports)
+            for (const PendingUnit& u : P.units)
+                if (u.module.unit == dep)
+                    hash = u.module.iface_hash;
     }
     ++link_epoch;
 

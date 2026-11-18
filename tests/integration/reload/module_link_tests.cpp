@@ -11,6 +11,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdlib>
 #include <filesystem>
 
 #include <memory>
@@ -112,6 +113,19 @@ using "a.hot";
 int bfn(int v) { return afn(v) + 2; }
 )";
 
+// Sets HOT_STRICT_IFACE=1 for the scope of a test: the loader then uses the whole-hash rule.
+struct StrictEnv
+{
+    explicit StrictEnv(bool on)
+    {
+        if (on)
+            ::setenv("HOT_STRICT_IFACE", "1", 1);
+        else
+            ::unsetenv("HOT_STRICT_IFACE"); // the test needs the new rule, also when the shell sets the switch
+    }
+    ~StrictEnv() { ::unsetenv("HOT_STRICT_IFACE"); }
+};
+
 class ModuleLinkTests : public ::testing::TestWithParam<hot::BackendKind>
 {
 protected:
@@ -212,11 +226,51 @@ TEST_P(ModuleLinkTests, BodyChangeOfTheImportKeepsTheImporter)
     EXPECT_EQ(fld(s, "seen"), 4); // the module variable of B survived the reload
 }
 
-// A field change of B changes its interface. A reload of B alone is rejected, because the live A
-// compiled against the old interface. A batch of B and the rebuilt A commits. The objects keep
-// their state.
-TEST_P(ModuleLinkTests, FieldChangeOfTheImportNeedsTheImporterInTheBatch)
+// A field change of B in front of the used field. The importer A uses "size" and "area" of Box by name
+// and does not use the new name "extra". The stale rule keeps A: B alone commits, the live Box object
+// migrates, and A reads its old field "size" in the new layout.
+TEST_P(ModuleLinkTests, FieldChangeOfTheImportKeepsTheImporterWhenTheNameIsUnused)
 {
+    StrictEnv env(false);
+    hot::LoadResult b1 = build("b.hot", kB1, nullptr, nullptr, 1);
+    hot::LoadResult a1 = build("a.hot", kA, "b.hot", kB1, 1);
+    Session s;
+    std::vector<hot::LoadResult> first;
+    first.push_back(std::move(b1));
+    first.push_back(std::move(a1));
+    ASSERT_NO_FATAL_FAILURE(start(s, std::move(first)));
+    s.world.Tick(kDt);
+    EXPECT_EQ(fld(s, "last"), 9);
+    const hot::ClassRecord* player = s.inst.shell->cls;
+
+    std::vector<hot::LoadResult> alone;
+    alone.push_back(build("b.hot", kB3, nullptr, nullptr, 2));
+    ASSERT_NO_FATAL_FAILURE(reload(s, std::move(alone)));
+    s.world.Tick(kDt);
+    EXPECT_EQ(s.inst.shell->cls, player);
+    EXPECT_EQ(player->generation, 1u) << "A is not in the batch";
+    EXPECT_EQ(fld(s, "ticks"), 3);
+    EXPECT_EQ(fld(s, "sz"), 3); // the Box object kept its size, A reads it in the new layout
+    EXPECT_EQ(fld(s, "last"), 14); // the new Box.area: 3 * 3 + "extra" (5)
+    EXPECT_EQ(fld(s, "seen"), 3);
+
+    // A second change of B: the live B is the changed one. The rule compares it with the new B.
+    // A reload of B back to kB1 removes "extra": the old Box code and layout return, A still stays.
+    std::vector<hot::LoadResult> back;
+    back.push_back(build("b.hot", kB1, nullptr, nullptr, 3));
+    ASSERT_NO_FATAL_FAILURE(reload(s, std::move(back)));
+    s.world.Tick(kDt);
+    EXPECT_EQ(player->generation, 1u);
+    EXPECT_EQ(fld(s, "sz"), 3);
+    EXPECT_EQ(fld(s, "last"), 9);
+}
+
+// A field change of B changes its interface. With HOT_STRICT_IFACE=1 the loader uses the whole-hash
+// rule: a reload of B alone is rejected, because the live A compiled against the old interface. A
+// batch of B and the rebuilt A commits. The objects keep their state.
+TEST_P(ModuleLinkTests, StrictSwitchFieldChangeOfTheImportNeedsTheImporterInTheBatch)
+{
+    StrictEnv env(true);
     hot::LoadResult b1 = build("b.hot", kB1, nullptr, nullptr, 1);
     hot::LoadResult a1 = build("a.hot", kA, "b.hot", kB1, 1);
     Session s;
