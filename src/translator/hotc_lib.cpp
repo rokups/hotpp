@@ -10174,6 +10174,9 @@ void translate_impl(
         // frame exists for a slot call. The member checks the generation and holds the statements.
         // A script function also gets a wrapper for the direct calls of other script code.
         // The wrapper is hidden from the debugger. The member maps to the script lines.
+        // A constructor with a base(...) call passes some parameters only to the base: the body may
+        // not use them, so they get [[maybe_unused]].
+        bool params_maybe_unused = false;
         auto emit_body = [&](Method& m, bool is_fn, const std::string& sym, const std::string& ret,
                              const std::string& what, const std::string& member)
         {
@@ -10255,7 +10258,7 @@ void translate_impl(
             for (const Param& p : m.params)
             {
                 const bool conv = !p.body_type.empty();
-                params += std::string(params.empty() ? "" : ", ")
+                params += std::string(params.empty() ? "" : ", ") + (params_maybe_unused ? "[[maybe_unused]] " : "")
                     + name_in_type(conv ? p.type : body_const(p, p.type), (conv ? "__" : "") + p.name);
                 if (is_async)
                     continue;
@@ -10490,7 +10493,9 @@ void translate_impl(
             ctor_ms[k].raw_body = cd.ctors[k].raw_body;
             ctor_ms[k].raw_line = cd.ctors[k].raw_line;
             ctor_ms[k].raw_pre = cd.ctors[k].raw_pre;
+            params_maybe_unused = cd.ctors[k].has_base_call;
             emit_body(ctor_ms[k], true, P + "ctor", "void", cd.key_name() + "::" + last_component(cd.key_name()), "ctor");
+            params_maybe_unused = false;
         }
         if (has_dtor)
             emit_body(cd.dtors[0], true, P + "dtor", "void", cd.key_name() + "::~" + last_component(cd.key_name()), "dtor");

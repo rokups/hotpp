@@ -1179,7 +1179,7 @@ static const hot::CtorEntry Spawner__constructors[] = {
 }
 #line 1181 "aot_demo.hot.cpp"
 #line 17 "aot_demo.hot"
-void hot_state_Fighter::ctor(int32_t start)
+void hot_state_Fighter::ctor([[maybe_unused]] int32_t start)
 #line 17 "aot_demo.hot"
 {
 #line 17 "aot_demo.hot"
@@ -1519,7 +1519,7 @@ void hot_state_Fighter::set_Shield(float const value)
 }
 #line 1521 "aot_demo.hot.cpp"
 #line 47 "aot_demo.hot"
-void hot_state_Veteran::ctor(int32_t start, int32_t r)
+void hot_state_Veteran::ctor([[maybe_unused]] int32_t start, [[maybe_unused]] int32_t r)
 #line 47 "aot_demo.hot"
 {
 #line 47 "aot_demo.hot"

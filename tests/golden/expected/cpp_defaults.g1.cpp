@@ -412,7 +412,7 @@ static const hot::CtorEntry Counter__constructors[] = {
 }
 #line 414 "cpp_defaults.cpp.cpp"
 #line 17 "cpp_defaults.cpp"
-void hot_state_Counter::ctor(int start)
+void hot_state_Counter::ctor([[maybe_unused]] int start)
 #line 17 "cpp_defaults.cpp"
 {
 #line 17 "cpp_defaults.cpp"

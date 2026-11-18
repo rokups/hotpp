@@ -488,7 +488,7 @@ static const hot::CtorEntry Minion__constructors[] = {
 }
 #line 490 "cpp_objects_v1.cpp.cpp"
 #line 9 "cpp_objects_v1.cpp"
-void hot_state_Minion::ctor(int p)
+void hot_state_Minion::ctor([[maybe_unused]] int p)
 #line 9 "cpp_objects_v1.cpp"
 {
 #line 9 "cpp_objects_v1.cpp"

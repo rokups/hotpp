@@ -801,7 +801,7 @@ static const hot::CtorEntry Kid__constructors[] = {
 }
 #line 803 "cpp_inherit_v2.cpp.cpp"
 #line 11 "cpp_inherit_v2.cpp"
-void hot_state_Base::ctor(int start)
+void hot_state_Base::ctor([[maybe_unused]] int start)
 #line 11 "cpp_inherit_v2.cpp"
 {
 #line 11 "cpp_inherit_v2.cpp"
@@ -972,7 +972,7 @@ void hot_state_Base::TakeDamage_f(float amount)
 }
 #line 974 "cpp_inherit_v2.cpp.cpp"
 #line 39 "cpp_inherit_v2.cpp"
-void hot_state_Kid::ctor(int start)
+void hot_state_Kid::ctor([[maybe_unused]] int start)
 #line 39 "cpp_inherit_v2.cpp"
 {
 #line 39 "cpp_inherit_v2.cpp"
