@@ -231,6 +231,15 @@ struct Lowerer
             diag.add_line(0, msg);
     }
 
+    // Temporary, removed in HOT-58 S9: a cast that tests for null warns. The text asks for "x!".
+    // Set it to false to switch the lint off. It never changes the generated code.
+    static constexpr bool hot58_cast_lint = true;
+    void hot58_cast_warn(uint32_t pos)
+    {
+        if (hot58_cast_lint && cx.map)
+            diag.warn(pos, *cx.map, "HOT-58: this cast tests for null; write x!");
+    }
+
     ExprP raw(std::string text, uint32_t pos) { return make_expr(RawExpr{std::move(text), pos}); }
 
     // The C++ string literal of a text. A byte that is not a printable ASCII char becomes an octal
@@ -3781,6 +3790,7 @@ struct Lowerer
                         }
                         else if (same || upcast)
                         {
+                            hot58_cast_warn(u->pos);
                             // The cast of an upcast keeps the handle conversion, after the null test.
                             c.callee = raw("hot::nonnull", u->pos);
                             c.args.push_back(std::move(u->operand));
@@ -3816,6 +3826,7 @@ struct Lowerer
                     }
                     else
                     {
+                        hot58_cast_warn(u->pos);
                         c.callee = raw("hot::nonnull", u->pos);
                         c.args.push_back(std::move(u->operand));
                     }
@@ -3825,6 +3836,17 @@ struct Lowerer
             }
             if (!u->postfix && is_ptr_cast(u->op))
             { // "(T*)p": a checked unwrap when "p" has the type "T*" (the C++ compiler decides), else the C cast
+                if (u->operand)
+                { // temporary, removed in HOT-58 S9: warn when the operand is not a raw pointer of another type
+                    const std::string to_t = u->op.substr(1, u->op.size() - 2);
+                    std::string ft = type_of(*u->operand);
+                    while (!ft.empty() && ft.back() == ' ')
+                        ft.pop_back();
+                    const bool raw_other = !ft.empty() && ft.back() == '*' && ft != to_t
+                        && !(cx.types && cx.types->is_handle(ft));
+                    if (!raw_other || is_weak_handle(*u->operand))
+                        hot58_cast_warn(u->pos);
+                }
                 expr(u->operand);
                 CallExpr c;
                 c.pos = u->pos;

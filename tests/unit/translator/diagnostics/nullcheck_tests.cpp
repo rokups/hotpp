@@ -278,6 +278,20 @@ int cast_warns(const std::string& body)
     return null_warnings(r);
 }
 
+// Temporary lint, removed in HOT-58 S9: each cast that tests for null warns, the code does not change.
+TEST(NullCheck, Hot58CastLintWarnsAtEachEmitSite)
+{
+    const char* const msg = "HOT-58: this cast tests for null; write x!";
+    for (const char* body : {"var a = ($Node)b;", "var a = ($Node)s;", "int* q = null; var a = (int*)q;"})
+    {
+        const hotc::TranslateResult r = translate_real(cast_script(body));
+        size_t n = 0;
+        for (size_t p = r.warnings.find(msg); p != std::string::npos; p = r.warnings.find(msg, p + 1))
+            ++n;
+        EXPECT_EQ(n, 1u) << body << "\n" << r.warnings << r.diagnostics;
+    }
+}
+
 TEST(NullCheck, CastToTheSameHandleTypeIsNonNull)
 {
     EXPECT_EQ(cast_warns("var a = ($Node)b; a.hp = 1;"), 0);
