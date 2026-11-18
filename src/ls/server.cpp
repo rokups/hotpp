@@ -834,7 +834,8 @@ private:
     // that no host matches uses the nearest host, so that its "using" headers are found. When
     // the command line has no include dir and no host is near, the default include dirs of the
     // build are used (the runtime headers).
-    Effective effective_options(const std::string& path) const
+    // With "preludes" false the walk of the script dirs for the user preludes is skipped (HOT-53: the include dirs only).
+    Effective effective_options(const std::string& path, bool preludes = true) const
     {
         Effective e;
         auto host = host_of(path);
@@ -853,7 +854,7 @@ private:
         // the preludes of the host. The search runs for each analysis, so a new file works at once.
         const std::string suffix = host && !host->prelude_suffix.empty() ? host->prelude_suffix : opt_.prelude_suffix;
         e.prelude_suffix = suffix;
-        if (!suffix.empty())
+        if (preludes && !suffix.empty())
         {
             std::vector<std::string> found;
             for (const std::string& dir : host ? host->script_dirs : roots_)
@@ -1511,6 +1512,7 @@ private:
         long long time = 0;
         std::uintmax_t size = 0;
         std::vector<std::string> includes;
+        std::string parent; // the directory of the file
     };
     std::map<std::string, IncFile> inc_files_; // by path, under this_mutex_
     // The hash of the time and the size of each header that the shell header includes, also the headers that they
@@ -1906,6 +1908,7 @@ size_t Server::header_stamp(const std::vector<std::string>& names, const std::ve
         stamp_memo_dirs_ = dirs_hash;
     }
     std::set<std::string> seen;
+    std::map<std::string, std::tuple<bool, long long, std::uintmax_t>> stats; // path: ok, time, size
     // The name starts with '"' (a quoted include) or '<'. The place of the including file comes first for '"'.
     std::vector<std::pair<std::string, std::string>> work; // name, directory of the including file
     for (const std::string& n : names)
@@ -1925,11 +1928,19 @@ size_t Server::header_stamp(const std::vector<std::string>& names, const std::ve
                     memo_hit = true;
                 else
                 {
-                    const fs::path mp = utf8_path(it->second.path);
-                    const auto t = fs::last_write_time(mp, ec);
-                    const std::error_code ec1 = ec;
-                    const std::uintmax_t sz = fs::file_size(mp, ec);
-                    if (!ec1 && !ec && t.time_since_epoch().count() == it->second.time && sz == it->second.size)
+                    // One stat of a file in a call: many includers share a header.
+                    auto st = stats.find(it->second.path);
+                    if (st == stats.end())
+                    {
+                        const fs::path mp = utf8_path(it->second.path);
+                        const auto t = fs::last_write_time(mp, ec);
+                        const std::error_code ec1 = ec;
+                        const std::uintmax_t sz = fs::file_size(mp, ec);
+                        st = stats.emplace(it->second.path,
+                            std::make_tuple(!ec1 && !ec, t.time_since_epoch().count(), sz)).first;
+                    }
+                    if (std::get<0>(st->second) && std::get<1>(st->second) == it->second.time
+                        && std::get<2>(st->second) == it->second.size)
                     {
                         found = it->second.path;
                         memo_hit = true;
@@ -1975,8 +1986,18 @@ size_t Server::header_stamp(const std::vector<std::string>& names, const std::ve
             ok = false;
             return 0;
         }
-        const long long time = fs::last_write_time(utf8_path(found), ec).time_since_epoch().count();
-        const std::uintmax_t size = fs::file_size(utf8_path(found), ec);
+        long long time = 0;
+        std::uintmax_t size = 0;
+        if (const auto st = stats.find(found); st != stats.end() && std::get<0>(st->second))
+        {
+            time = std::get<1>(st->second);
+            size = std::get<2>(st->second);
+        }
+        else
+        {
+            time = fs::last_write_time(utf8_path(found), ec).time_since_epoch().count();
+            size = fs::file_size(utf8_path(found), ec);
+        }
         mix(found + ":" + std::to_string(time) + ":" + std::to_string(size));
         IncFile& f = inc_files_[found];
         if (f.time != time || f.size != size || (f.time == 0 && f.size == 0))
@@ -1984,10 +2005,12 @@ size_t Server::header_stamp(const std::vector<std::string>& names, const std::ve
             f.time = time;
             f.size = size;
             f.includes = include_names(read_file(found).value_or(std::string()));
+            f.parent.clear();
         }
-        const std::string parent = path_utf8(fs::path(utf8_path(found)).parent_path());
+        if (f.parent.empty())
+            f.parent = path_utf8(fs::path(utf8_path(found)).parent_path());
         for (const std::string& n : f.includes)
-            work.emplace_back(n, parent);
+            work.emplace_back(n, f.parent);
     }
     return h;
 }
@@ -3981,7 +4004,13 @@ json Server::on_completion(const Doc& d, const json& p)
                 if (this_cache && !this_bad && shell_key)
                 {
                     PhaseTimer pt("this stamp");
-                    stamp = header_stamp(shell_includes, translate_options(d).include_dirs,
+                    std::vector<std::string> sdirs;
+                    {
+                        PhaseTimer po("stamp options");
+                        sdirs = effective_options(d.path, false).include_dirs;
+                    }
+                    PhaseTimer pw("stamp walk");
+                    stamp = header_stamp(shell_includes, sdirs,
                         path_utf8(fs::path(utf8_path(d.path)).parent_path()), stamp_ok);
                 }
                 if (this_cache && !this_bad && shell_key && stamp_ok && steady_ms() >= this_hold_until_ms_
