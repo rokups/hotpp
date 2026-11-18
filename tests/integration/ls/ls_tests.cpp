@@ -9555,7 +9555,9 @@ TEST(WorkspaceIndexReferences, NativeReferencesGiveTheSameResultWithAndWithoutTh
     EXPECT_EQ(text.find("ROOT/none.hot"), std::string::npos) << text;
     EXPECT_GT(on_after["entryHits"].get<int>(), on_before["entryHits"].get<int>()) << on_after.dump();
     // Each analyze of the scan counts as a translation. The index jobs use their own session.
-    EXPECT_EQ(on_after["translations"].get<int>() - on_before["translations"].get<int>(), 1) << on_after.dump();
+    // The warm-up requests stored the native memo (HOT-35): the measured request makes no analyze.
+    EXPECT_EQ(on_after["translations"].get<int>() - on_before["translations"].get<int>(), 0) << on_after.dump();
+    EXPECT_GT(on_after["nativeMemoHits"].get<int>(), on_before["nativeMemoHits"].get<int>()) << on_after.dump();
 }
 
 // ------------------------------------------------------------------ HOT-34: script references and the index

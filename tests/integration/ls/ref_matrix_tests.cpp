@@ -623,7 +623,7 @@ struct NativeMemoWs
     std::unique_ptr<LsClient> client;
     std::string open_uri, one_uri, two_uri;
 
-    explicit NativeMemoWs(int budget_ms = 10000)
+    explicit NativeMemoWs(int budget_ms = 10000, int extra = 0)
     {
         auto put = [&](const char* name, const char* text)
         {
@@ -635,6 +635,9 @@ struct NativeMemoWs
         open_uri = put("open.hot", kNatOpen);
         one_uri = put("one.hot", kNatClosedOne);
         two_uri = put("two.hot", kNatClosedTwo);
+        for (int i = 0; i < extra; ++i)
+            std::ofstream((dir.path() / ("more" + std::to_string(i) + ".hot")).string(), std::ios::binary)
+                << "using \"nat.h\";\nclass More" << i << " {\n    public int Go() { return Free(" << i << "); }\n}\n";
         hot::ls::ServerOptions o;
         o.clangd = HOT_CLANGD_PATH;
         o.include_dirs = {HOT_SOURCE_DIR "/include", HOT_SOURCE_DIR "/tests/engine", dir.path().string()};
@@ -656,7 +659,7 @@ struct NativeMemoWs
         p["context"] = {{"includeDeclaration", true}};
         std::set<Place> out;
         for (const Place& pl : places_of(client->request("textDocument/references", p).value("result", json())))
-            if (std::get<0>(pl) == one_uri || std::get<0>(pl) == two_uri) // clangd alone gives the header place
+            if (std::get<0>(pl) != open_uri && std::get<0>(pl).find("nat.h") == std::string::npos) // clangd alone gives the header place
                 out.insert(pl);
         return out;
     }
@@ -737,6 +740,26 @@ TEST(NativeMemo, AScanThatTheBudgetCutsStoresNothing)
     const json s1 = ws.stats();
     EXPECT_EQ(s1.value("nativeMemoMisses", -1), s0.value("nativeMemoMisses", -2));
     EXPECT_EQ(s1.value("nativeMemoHits", -1), s0.value("nativeMemoHits", -2));
+}
+
+// The time of the first and of the second native references request with 12 closed scripts.
+TEST(NativeMemo, TimeOfTheFirstAndTheSecondRequest)
+{
+    if (std::string(HOT_CLANGD_PATH).empty())
+        GTEST_SKIP() << "clangd is not installed";
+    NativeMemoWs ws(120000, 10);
+    auto timed = [&]
+    {
+        const auto t0 = std::chrono::steady_clock::now();
+        const std::set<Place> r = ws.refs("Free(1)", "Free");
+        const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0);
+        std::printf("[ NativeMemo ] references of Free, 12 closed scripts: %lld ms\n", static_cast<long long>(ms.count()));
+        return r;
+    };
+    const std::set<Place> first = timed();
+    const std::set<Place> second = timed();
+    EXPECT_EQ(show(second), show(first));
+    EXPECT_EQ(first.size(), 12u) << show(first);
 }
 
 } // namespace
