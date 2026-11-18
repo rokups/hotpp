@@ -121,3 +121,45 @@ TEST(NonNullTranslation, TypeCheckSeesThroughTheAssertion)
     ASSERT_TRUE(t.ok) << t.diagnostics;
     EXPECT_TRUE(has(t.cpp, "Node__Ping(hot::shell_of<Node_Shell>(hot::nonnull(y,")) << t.cpp;
 }
+
+// The message has the base name of the script: no path of the build machine in the output.
+TEST(NonNullTranslation, MessageHasNoDirectory)
+{
+    TempDir dir;
+    hotc::TranslateOptions o = temp_options(dir, std::string(kNode) + "class Foo { void A($Node a) { a!.Ping(); } }\n");
+    o.script_name = (dir.path() / "sub" / "t.hot").string();
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    const size_t at = r.cpp.find("hot::nonnull(a, \"");
+    ASSERT_NE(at, std::string::npos) << r.cpp;
+    const std::string msg = r.cpp.substr(at, r.cpp.find(')', at) - at);
+    EXPECT_NE(msg.find("\"t.hot:"), std::string::npos) << msg;
+    EXPECT_EQ(msg.find('/'), std::string::npos) << msg;
+}
+
+// A context that the lowering does not visit as a normal expression gives a diagnostic or a correct
+// lowering. It never gives the text "x!" and never the internal error of the printer.
+TEST(NonNullTranslation, UnusualContextsGiveADiagnosticOrCorrectCode)
+{
+    for (const char* body : {
+             "    void A($Node a, int x = a!.v) { }\n",
+             "    void A(int x = Make()!.v) { }\n",
+             "    int k = Make()!.v;\n",
+             "    static_assert(sizeof(int) == 4);\n    void A($Node a) { int[a!.v] arr; }\n",
+             "    void A() { int[Make()!.v] arr; }\n",
+             "    void A($Node a) { var f = [a!]() => 1; }\n",
+             "    [attr(a!)] void A($Node a) { }\n",
+             "    void A($Node a) { std.string s = \"v ${a!.v}\"; }\n",
+             "    void A($Node a) { for (int i = 0; i < a!.v; i++) { } while (a!.v > 0) { } }\n",
+             "    int A($Node a) { return a!.v > 0 ? a!.v : 1; }\n",
+             "    void A($Node a) { switch (a!.v) { case 1: break; } }\n",
+         })
+    {
+        const hotc::TranslateResult r = check_translate(kNode + "$Node Make() { return null; }\n", body);
+        EXPECT_EQ(r.diagnostics.find("internal error"), std::string::npos) << body << r.diagnostics;
+        if (r.ok)
+            EXPECT_FALSE(has(r.cpp, "!.") || has(r.cpp, "a!") || has(r.cpp, ")!")) << body << r.cpp;
+        else
+            EXPECT_FALSE(r.diagnostics.empty()) << body;
+    }
+}

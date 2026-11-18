@@ -574,3 +574,10 @@ TEST(NullCheck, AssertionDoesNotChangeTheConditions)
     EXPECT_EQ(warns("if (!(p != null)) { return; }\n        p.hp = 1;"), 0);
     EXPECT_EQ(warns("if (p != null) { p.hp = 1; }"), 0);
 }
+
+TEST(NullCheck, AssertionDoesNotNarrowAField)
+{
+    // A field is not a narrowable place: "f!" leaves the finding of the later "f.hp".
+    EXPECT_EQ(warns("f!;\n        f.hp = 1;"), 1);
+    EXPECT_EQ(warns("f!.hp = 1;"), 0);
+}

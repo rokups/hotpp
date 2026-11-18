@@ -51,6 +51,7 @@
 #include <clang-c/Index.h>
 
 #include <algorithm>
+#include <stdexcept>
 #include <cctype>
 #include <chrono>
 #include <cstdio>
@@ -11409,6 +11410,14 @@ TranslateResult translate(const TranslateOptions& in, TranslatorSession& session
     }
     catch (const TranslateAbort&)
     {
+        res.ok = false;
+        res.cpp.clear();
+        res.slots_out.clear();
+        res.sigs_out.clear();
+    }
+    catch (const std::logic_error& e)
+    { // an internal check of the translator failed: a diagnostic, no crash of a tool
+        g_diag.add_line(0, e.what());
         res.ok = false;
         res.cpp.clear();
         res.slots_out.clear();

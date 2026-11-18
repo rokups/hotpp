@@ -5,6 +5,7 @@
 // The lowering pass. See lower.h.
 #include "lower.h"
 
+
 #include "builtin_types.h"
 #include "emit.h"
 #include "lambda_key.h"
@@ -12,6 +13,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 #include <cstring>
 #include <optional>
 #include <set>
@@ -278,6 +280,8 @@ struct Lowerer
                 file = cx.map->main_file;
             line = cx.map->line(u.op_pos);
         }
+        // The base name only: the output must not hold the path of the build machine.
+        file = std::filesystem::path(file).filename().string();
         return cpp_string(file + ":" + std::to_string(line) + ": '" + text + "' is null");
     }
     // Raw text "prefix + name" where the name comes from the script name at name_pos.
