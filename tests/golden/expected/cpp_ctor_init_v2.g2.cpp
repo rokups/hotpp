@@ -215,7 +215,7 @@ HOT_HIDDEN hot_state_Unit* state_of(Unit_Shell* __self)
 
 [[maybe_unused]] HOT_HIDDEN static void Unit__ctor(Unit_Shell* __self, int hp_, std::string n, int bonus);
 #line 12 "cpp_ctor_init_v2.cpp"
-[[maybe_unused]] HOT_HIDDEN static auto Unit__super_args(int hp_, std::string n, int bonus)
+[[maybe_unused]] HOT_HIDDEN static auto Unit__super_args([[maybe_unused]] int hp_, [[maybe_unused]] std::string n, [[maybe_unused]] int bonus)
 #line 12 "cpp_ctor_init_v2.cpp"
 {
 #line 12 "cpp_ctor_init_v2.cpp"

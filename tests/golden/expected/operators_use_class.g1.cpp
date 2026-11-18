@@ -200,7 +200,7 @@ HOT_HIDDEN hot_state_Money* state_of(Money_Shell* __self)
 
 [[maybe_unused]] HOT_HIDDEN static void Money__ctor(Money_Shell* __self, int32_t c);
 #line 12 "operators_use_class.hot"
-[[maybe_unused]] HOT_HIDDEN static auto Money__super_args(int32_t c)
+[[maybe_unused]] HOT_HIDDEN static auto Money__super_args([[maybe_unused]] int32_t c)
 #line 12 "operators_use_class.hot"
 {
 #line 12 "operators_use_class.hot"

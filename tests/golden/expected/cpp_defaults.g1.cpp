@@ -192,7 +192,7 @@ HOT_HIDDEN hot_state_Counter* state_of(Counter_Shell* __self)
 
 [[maybe_unused]] HOT_HIDDEN static void Counter__ctor(Counter_Shell* __self, int start);
 #line 17 "cpp_defaults.cpp"
-[[maybe_unused]] HOT_HIDDEN static auto Counter__super_args(int start)
+[[maybe_unused]] HOT_HIDDEN static auto Counter__super_args([[maybe_unused]] int start)
 #line 17 "cpp_defaults.cpp"
 {
 #line 17 "cpp_defaults.cpp"

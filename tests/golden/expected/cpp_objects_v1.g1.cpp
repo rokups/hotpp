@@ -238,7 +238,7 @@ HOT_HIDDEN hot_state_Minion* state_of(Minion_Shell* __self)
 
 [[maybe_unused]] HOT_HIDDEN static void Minion__ctor(Minion_Shell* __self, int p);
 #line 9 "cpp_objects_v1.cpp"
-[[maybe_unused]] HOT_HIDDEN static auto Minion__super_args(int p)
+[[maybe_unused]] HOT_HIDDEN static auto Minion__super_args([[maybe_unused]] int p)
 #line 9 "cpp_objects_v1.cpp"
 {
 #line 9 "cpp_objects_v1.cpp"

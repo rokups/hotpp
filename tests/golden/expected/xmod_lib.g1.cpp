@@ -234,7 +234,7 @@ HOT_HIDDEN static void Box__ctor_chain(Box_Shell* __self, [[maybe_unused]] Chain
 #line 235 "xmod_lib.hot.cpp"
 using Box_SuperArgs = decltype(Box__plan().first);
 #line 23 "xmod_lib.hot"
-[[maybe_unused]] HOT_HIDDEN static auto Box__super_args(int32_t s)
+[[maybe_unused]] HOT_HIDDEN static auto Box__super_args([[maybe_unused]] int32_t s)
 #line 23 "xmod_lib.hot"
 {
 #line 23 "xmod_lib.hot"

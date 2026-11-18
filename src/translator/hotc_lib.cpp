@@ -9927,14 +9927,16 @@ void translate_impl(
                 // A "&&" parameter is a const reference in the plan: the plan only reads it. A "T&"
                 // parameter stays a reference, and "base(x)" with the name of such a parameter or
                 // "base(*p)" binds the parent parameter to the lvalue of the child (std::ref).
-                std::string pd, names, declvals;
+                std::string pd, pd_unused, names, declvals;
                 for (size_t i = 0; i < cm.params.size(); ++i)
                 {
                     const Param& p = cm.params[i];
                     const std::string n = norm(p.type);
                     const bool by_ref = n.size() > 2 && n.compare(n.size() - 2, 2, "&&") == 0;
-                    pd += (i ? ", " : "")
-                        + name_in_type(by_ref ? "const std::remove_reference_t<" + p.type + ">&" : p.type, p.name);
+                    const std::string decl =
+                        name_in_type(by_ref ? "const std::remove_reference_t<" + p.type + ">&" : p.type, p.name);
+                    pd += (i ? ", " : "") + decl;
+                    pd_unused += (i ? ", [[maybe_unused]] " : "[[maybe_unused]] ") + decl;
                     names += (i ? ", " : "") + p.name;
                     declvals += (i ? ", " : "") + ("std::declval<" + p.type + ">()");
                 }
@@ -9983,7 +9985,7 @@ void translate_impl(
                 std::string plan_text;
                 if (!par)
                 {
-                    plan_text += "[[maybe_unused]] HOT_HIDDEN static auto " + P + "super_args(" + pd
+                    plan_text += "[[maybe_unused]] HOT_HIDDEN static auto " + P + "super_args(" + pd_unused
                         + ")\n{\n    return \x01std::make_tuple(" + sup_text + ");\n}\n";
                     plan_text += "HOT_HIDDEN static auto " + P + "plan(" + pd + ")\n{\n    return \x01std::make_pair(" + P
                         + "super_args(" + names + "), \x01std::tuple<>());\n}\n";

@@ -140,7 +140,7 @@ HOT_HIDDEN static void Probe__ctor_chain(Probe_Shell* __self, [[maybe_unused]] C
 #line 141 "borrowed_args_v1.hot.cpp"
 using Probe_SuperArgs = decltype(Probe__plan().first);
 #line 10 "borrowed_args_v1.hot"
-[[maybe_unused]] HOT_HIDDEN static auto Probe__super_args(Vec3* p)
+[[maybe_unused]] HOT_HIDDEN static auto Probe__super_args([[maybe_unused]] Vec3* p)
 #line 10 "borrowed_args_v1.hot"
 {
 #line 10 "borrowed_args_v1.hot"

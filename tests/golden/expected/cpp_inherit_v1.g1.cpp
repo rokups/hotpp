@@ -206,7 +206,7 @@ HOT_HIDDEN hot_state_Base* state_of(Base_Shell* __self)
 
 [[maybe_unused]] HOT_HIDDEN static void Base__ctor(Base_Shell* __self, int start);
 #line 11 "cpp_inherit_v1.cpp"
-[[maybe_unused]] HOT_HIDDEN static auto Base__super_args(int start)
+[[maybe_unused]] HOT_HIDDEN static auto Base__super_args([[maybe_unused]] int start)
 #line 11 "cpp_inherit_v1.cpp"
 {
 #line 11 "cpp_inherit_v1.cpp"

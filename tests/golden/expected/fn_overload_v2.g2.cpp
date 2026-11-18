@@ -502,7 +502,7 @@ HOT_HIDDEN hot_state_FnOvMade* state_of(FnOvMade_Shell* __self)
 [[maybe_unused]] HOT_HIDDEN static void FnOvMade__ctor(FnOvMade_Shell* __self, hot::In<std::string> s);
 [[maybe_unused]] HOT_HIDDEN static void FnOvMade__ctor(FnOvMade_Shell* __self, int32_t a, int32_t b);
 #line 50 "fn_overload_v2.hot"
-[[maybe_unused]] HOT_HIDDEN static auto FnOvMade__super_args(int32_t s)
+[[maybe_unused]] HOT_HIDDEN static auto FnOvMade__super_args([[maybe_unused]] int32_t s)
 #line 50 "fn_overload_v2.hot"
 {
 #line 50 "fn_overload_v2.hot"
@@ -530,7 +530,7 @@ HOT_HIDDEN static void FnOvMade__ctor_chain(FnOvMade_Shell* __self, [[maybe_unus
 #line 531 "fn_overload_v2.hot.cpp"
 using FnOvMade_SuperArgs = decltype(FnOvMade__plan(std::declval<int32_t>()).first);
 #line 54 "fn_overload_v2.hot"
-[[maybe_unused]] HOT_HIDDEN static auto FnOvMade__super_args(hot::In<std::string> s)
+[[maybe_unused]] HOT_HIDDEN static auto FnOvMade__super_args([[maybe_unused]] hot::In<std::string> s)
 #line 54 "fn_overload_v2.hot"
 {
 #line 54 "fn_overload_v2.hot"
@@ -558,7 +558,7 @@ HOT_HIDDEN static void FnOvMade__ctor_chain(FnOvMade_Shell* __self, [[maybe_unus
 #line 559 "fn_overload_v2.hot.cpp"
 using FnOvMade_SuperArgs_1 = decltype(FnOvMade__plan(std::declval<hot::In<std::string>>()).first);
 #line 58 "fn_overload_v2.hot"
-[[maybe_unused]] HOT_HIDDEN static auto FnOvMade__super_args(int32_t a, int32_t b)
+[[maybe_unused]] HOT_HIDDEN static auto FnOvMade__super_args([[maybe_unused]] int32_t a, [[maybe_unused]] int32_t b)
 #line 58 "fn_overload_v2.hot"
 {
 #line 58 "fn_overload_v2.hot"

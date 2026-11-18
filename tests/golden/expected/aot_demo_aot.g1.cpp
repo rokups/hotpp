@@ -202,7 +202,7 @@ HOT_HIDDEN hot_state_Fighter* state_of(Fighter_Shell* __self)
 [[maybe_unused]] HOT_HIDDEN static void Fighter__ctor(Fighter_Shell* __self, int32_t start);
 [[maybe_unused]] HOT_HIDDEN static void Fighter__dtor(Fighter_Shell* __self);
 #line 17 "aot_demo.hot"
-[[maybe_unused]] HOT_HIDDEN static auto Fighter__super_args(int32_t start)
+[[maybe_unused]] HOT_HIDDEN static auto Fighter__super_args([[maybe_unused]] int32_t start)
 #line 17 "aot_demo.hot"
 {
 #line 17 "aot_demo.hot"
