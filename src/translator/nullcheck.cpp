@@ -666,6 +666,14 @@ private:
         if (!u.operand)
             return {};
         const Val ov = expr(*u.operand);
+        if (is_bang(u))
+        { // "x!" throws when "x" is null: the result is not null, and the name is not null after it
+            Val v = ov;
+            v.nonnull = ov.ptr;
+            if (const int id = narrowable(*u.operand); id >= 0)
+                st_.nn.insert(id);
+            return v;
+        }
         if (!u.postfix && u.op == "*")
             require(ov, u.pos ? u.pos : pos_of(*u.operand));
         if (const std::string ct = cast_type(u); !ct.empty())

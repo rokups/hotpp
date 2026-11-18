@@ -540,3 +540,37 @@ TEST(NullCheck, NonNullDefaultOfTheLibrary)
     EXPECT_EQ(r.ok, null_warnings(r) == 0) << r.diagnostics;
     EXPECT_EQ(null_warnings(r), 0) << r.diagnostics;
 }
+
+// ---------------------------------------------------------------- the assertion "x!"
+
+TEST(NullCheck, AssertionMakesTheResultNonNull)
+{
+    EXPECT_EQ(warns("p!.hp = 1;"), 0);
+    EXPECT_EQ(warns("int a = p!.val();"), 0);
+    EXPECT_EQ(warns("int a = p!.find()!.hp;"), 0);
+    EXPECT_EQ(warns("$Node n = p!;\n        n.hp = 1;"), 0);
+}
+
+TEST(NullCheck, AssertionNarrowsTheNameAfterIt)
+{
+    EXPECT_EQ(warns("p!;\n        p.hp = 1;"), 0);
+    EXPECT_EQ(warns("int a = p!.hp;\n        p.hp = a;"), 0);
+}
+
+TEST(NullCheck, AssertionNarrowsOnlyItsOwnName)
+{
+    EXPECT_EQ(warns("p!;\n        q.hp = 1;"), 1);
+    EXPECT_EQ(warns("p!.hp = 1;\n        q.hp = 1;"), 1);
+}
+
+TEST(NullCheck, AssertionOnANonNullValueHasNoFinding)
+{
+    EXPECT_EQ(warns("$Node n = new $Node();\n        n!.hp = 1;"), 0);
+}
+
+TEST(NullCheck, AssertionDoesNotChangeTheConditions)
+{
+    EXPECT_EQ(warns("if (p != q) { }\n        p.hp = 1;"), 1);
+    EXPECT_EQ(warns("if (!(p != null)) { return; }\n        p.hp = 1;"), 0);
+    EXPECT_EQ(warns("if (p != null) { p.hp = 1; }"), 0);
+}
