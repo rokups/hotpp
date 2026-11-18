@@ -3771,20 +3771,30 @@ json Server::on_completion(const Doc& d, const json& p)
                 }
                 std::optional<PhaseTimer> full;
                 full.emplace("full sync");
-                if (std::chrono::steady_clock::now() >= budget_end || !wait_for_native_ready_until(d, ready_end))
+                if (std::chrono::steady_clock::now() >= budget_end)
                     break;
+                {
+                    PhaseTimer pw("ready wait");
+                    if (!wait_for_native_ready_until(d, ready_end))
+                        break;
+                }
                 sent = true;
                 send_generated(md, facts.cpp);
                 // The first patched text of a document waits for its AST (the budget holds).
                 const bool first_sync = completion_synced_.insert(d.gen_uri).second;
-                if (first_sync
-                    && !clangd_result("textDocument/documentSymbol", {{"textDocument", {{"uri", d.gen_uri}}}}, budget_left()))
                 {
-                    completion_synced_.erase(d.gen_uri);
-                    break;
+                    std::optional<PhaseTimer> fs_timer;
+                    if (first_sync)
+                        fs_timer.emplace("first sync wait");
+                    if (first_sync
+                        && !clangd_result("textDocument/documentSymbol", {{"textDocument", {{"uri", d.gen_uri}}}}, budget_left()))
+                    {
+                        completion_synced_.erase(d.gen_uri);
+                        break;
+                    }
+                    if (first_sync)
+                        wait_for_preamble_index(std::min(5000, budget_left()));
                 }
-                if (first_sync)
-                    wait_for_preamble_index(std::min(5000, budget_left()));
                 full.reset();
                 full.emplace("full clangd call");
                 r = clangd_result("textDocument/completion",
