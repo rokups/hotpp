@@ -274,6 +274,16 @@ struct Doc
         json list = json::array();
     };
     mutable CompletionCache completion;
+    // HOT-53: the last patched generated text of the first probe (the try that had a place). A new request swaps the hole word.
+    struct SpecMemo
+    {
+        std::string cpp, word; // the generated text and the hole word (prefix and kHole) in it
+        size_t index = 0; // the text index of the try that had a place for the hole
+        size_t hole = 0; // the offset of the hole word in the script text
+        size_t shell_hash = 0;
+        bool valid = false;
+    };
+    mutable SpecMemo spec_memo;
 };
 
 // The string member of a JSON object, or an empty string. A missing member, a null and any other
@@ -1535,6 +1545,8 @@ private:
     std::mutex this_mutex_;
     std::map<std::string, ThisEntry> this_cache_;
     std::atomic<int> this_analyzes_{0}, this_hits_{0};
+    // HOT-53: the memo text with the new hole word against the real text of the first probe (hot/indexStats).
+    std::atomic<int> hole_spec_tried_{0}, hole_spec_equal_{0}, hole_spec_prefix_equal_{0};
     // After a header event clangd builds a new preamble, and its answers can be old for a while. The cache stores
     // no answer until this time (steady clock, milliseconds). 5 s is more than the preamble of a host header needs.
     std::atomic<long long> this_hold_until_ms_{0};
@@ -3309,6 +3321,30 @@ json Server::using_completion(const Doc& d, Pos cur, size_t off, size_t line_beg
     return {{"isIncomplete", false}, {"items", items}};
 }
 
+// HOT-53: the first offset of the hole word in a generated text. The word starts after a non-name character.
+static size_t find_hole_word(const std::string& text, const std::string& word, size_t from = 0)
+{
+    for (size_t o = text.find(word, from); o != std::string::npos; o = text.find(word, o + 1))
+        if (o == 0 || !is_id_char(text[o - 1]))
+            return o;
+    return std::string::npos;
+}
+
+// The text with each hole word "from" replaced by "to".
+static std::string swap_hole_word(const std::string& text, const std::string& from, const std::string& to)
+{
+    std::string out;
+    size_t pos = 0;
+    for (size_t o = find_hole_word(text, from); o != std::string::npos; o = find_hole_word(text, from, pos))
+    {
+        out.append(text, pos, o - pos);
+        out += to;
+        pos = o + from.size();
+    }
+    out.append(text, pos, std::string::npos);
+    return out;
+}
+
 json Server::on_completion(const Doc& d, const json& p)
 {
     PhaseTimer total("completion total");
@@ -3843,6 +3879,20 @@ json Server::on_completion(const Doc& d, const json& p)
                         });
                 }
             }
+            // HOT-53: the memo text of the last request with the new hole word. The gate counts how often it
+            // equals the real text of the first probe.
+            std::string spec;
+            size_t spec_index = 0;
+            const std::string spec_word = prefix + kHole;
+            {
+                const Doc::SpecMemo& m = d.spec_memo;
+                if (m.valid && m.hole == s && m.shell_hash == d.shell_hash && !d.shell_unconfirmed
+                    && steady_ms() >= d.shell_hold_until_ms && !texts.empty())
+                {
+                    spec = swap_hole_word(m.cpp, m.word, spec_word);
+                    spec_index = m.index;
+                }
+            }
             size_t shell_key = 0; // the hash of the shell header of the first probe that has a place
             std::vector<std::string> shell_includes; // the includes of that shell header
             pre_round.reset();
@@ -3854,6 +3904,20 @@ json Server::on_completion(const Doc& d, const json& p)
                 hotc::TranslateOptions to = translate_options(d);
                 to.null_warnings = true;
                 hotc::AnalyzeResult facts = [&] { PhaseTimer pt("round analyze"); return timed_translate([&] { return hotc::analyze(patched, to, session_); }); }();
+                if (text_index == spec_index && !spec.empty() && !facts.cpp.empty())
+                {
+                    {
+                        ++hole_spec_tried_;
+                        if (facts.cpp == spec)
+                            ++hole_spec_equal_;
+                        else
+                        {
+                            const size_t a = find_hole_word(facts.cpp, spec_word), b = find_hole_word(spec, spec_word);
+                            if (a != std::string::npos && a == b && facts.cpp.compare(0, a, spec, 0, a) == 0)
+                                ++hole_spec_prefix_equal_;
+                        }
+                    }
+                }
                 {
                     const std::string label = "T" + std::to_string(text_index) + (probe && text_index == probe_index ? " probe" : "");
                     probe_timing_line(label.c_str(), facts);
@@ -3888,6 +3952,15 @@ json Server::on_completion(const Doc& d, const json& p)
                 if (!g)
                     continue;
                 mapped = true;
+                {
+                    Doc::SpecMemo& m = d.spec_memo;
+                    m.cpp = facts.cpp;
+                    m.word = spec_word;
+                    m.index = text_index;
+                    m.hole = s;
+                    m.shell_hash = d.shell_hash;
+                    m.valid = true;
+                }
                 if (const size_t at = facts.cpp.find(kShellEnd); at != std::string::npos && !shell_key)
                 {
                     shell_key = std::hash<std::string>()(facts.cpp.substr(0, at + 1));
@@ -9084,6 +9157,8 @@ void Server::handle(const json& msg)
         }
         out.update({{"analyzed", closed_analyses_}, {"loaded", index_.loads()}, {"loadMs", index_.load_ms()}, {"stored", index_.stores()},
             {"dir", index_.dir()}, {"completions", completion_translations_}, {"thisAnalyzes", this_analyzes_.load()}, {"thisHits", this_hits_.load()},
+            {"holeSpecTried", hole_spec_tried_.load()}, {"holeSpecEqual", hole_spec_equal_.load()},
+            {"holeSpecPrefixEqual", hole_spec_prefix_equal_.load()},
             {"tokenRequests", native_token_requests_.load()}, {"translations", translations_.load()},
             {"liteHits", lite_hits_.load()}, {"liteFallback", lite_fallbacks_.load()}, {"liteMismatch", lite_mismatches_.load()},
             {"translateMs", static_cast<double>(translate_us_.load()) / 1000.0}, {"tableHits", table_hits_},

@@ -74,6 +74,7 @@ def main():
     for sc in a.scenarios:
         for name, (line, ch) in pl.items():
             lat, phases, probes = [], {}, {}
+            st0 = c.stats()
             for i in range(a.runs + 1):  # the first run warms the caches: not counted
                 ver += 1
                 if a.edit == "line":
@@ -105,6 +106,8 @@ def main():
                         probes.setdefault(ln.split(" passes=")[0][6:], []).append(ln)
                 for k, v in ph.items():
                     phases.setdefault(k, []).append(v)
+            st1 = c.stats()
+            print("SCEN %s %s SPEC %s" % (sc, name, " ".join("%s=%d" % (k, st1.get(k, 0) - st0.get(k, 0)) for k in ("holeSpecTried", "holeSpecEqual", "holeSpecPrefixEqual"))), flush=True)
             lat_s = sorted(lat)
             p95 = lat_s[min(len(lat_s) - 1, int(0.95 * len(lat_s)))]
             print("SCEN %s %s latency_median %.1f p95 %.1f max %.1f" % (sc, name, statistics.median(lat), p95, lat_s[-1]), flush=True)
