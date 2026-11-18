@@ -319,6 +319,7 @@ struct IndexTag
 #define HOT_PRE(S) dsl::op<Pre<HOT_CH3(S)>>(LEXY_LIT(S))
 #define HOT_PRE_NF(S, CC) dsl::op<Pre<HOT_CH3(S)>>(dsl::not_followed_by(LEXY_LIT(S), CC))
 #define HOT_POST(S) dsl::op<Post<HOT_CH3(S)>>(LEXY_LIT(S))
+#define HOT_POST_NF(S, CC) dsl::op<Post<HOT_CH3(S)>>(dsl::not_followed_by(LEXY_LIT(S), CC))
 
 // The chars that an operator must not have after it.
 constexpr auto cc_eq = dsl::lit_c<'='>;
@@ -1170,11 +1171,11 @@ template <bool Full> struct expr_g : lexy::expression_production
         | dsl::peek(kw_new) >> dsl::p<new_p> | dsl::peek(LEXY_LIT("::")) >> dsl::error<e_use_dot_colons>
         | dsl::peek(id_r) >> dsl::p<name_p> | dsl::else_ >> dsl::error<e_expected_expr>;
 
-    // a++  a--  f(args)  a[i]  a.b. The text "a->b" is an error. The parse reports it at the
+    // a++  a--  a! (not "a!=")  f(args)  a[i]  a.b. The text "a->b" is an error. The parse reports it at the
     // "->" and goes on, so a call or an index after it gives no second error.
     struct postfix_lvl : dsl::postfix_op
     {
-        static constexpr auto op = HOT_POST("++") / HOT_POST("--")
+        static constexpr auto op = HOT_POST("++") / HOT_POST("--") / HOT_POST_NF("!", cc_eq)
             / dsl::op<CallTag>(LEXY_LIT("(") >> dsl::p<elems_p<')'>>)
             / dsl::op<IndexTag>(LEXY_LIT("[") >> dsl::p<index_p>)
             / dsl::op<SafeTag>(dsl::not_followed_by(LEXY_LIT("?."), dsl::ascii::digit) >> dsl::p<member_name_p>)
