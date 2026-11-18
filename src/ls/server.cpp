@@ -2828,7 +2828,7 @@ json Server::analyze_diagnostics(const Doc& d) const
     }
     // The translation errors: "name:line:col: error: text", one line each.
     static const std::regex re(R"(^(.*):(\d+):(\d+): (fatal error|error|warning|note): (.*)$)");
-    std::istringstream ss(d.facts.diagnostics);
+    std::istringstream ss(d.facts.diagnostics + d.facts.warnings);
     for (std::string l; std::getline(ss, l);)
     {
         std::smatch m;
@@ -3624,8 +3624,8 @@ json Server::on_completion(const Doc& d, const json& p)
     };
     if (after_dot)
     {
-        // The safe-access dot "?." has the receiver before the "?".
-        const size_t oe = s >= 2 && t[s - 2] == '?' ? s - 2 : s - 1;
+        // The safe-access dot "?." and the dot after the postfix "!" have the receiver before the sign.
+        const size_t oe = s >= 2 && (t[s - 2] == '?' || t[s - 2] == '!') ? s - 2 : s - 1;
         size_t ob = oe;
         while (ob > 0 && is_id_char(t[ob - 1]))
             --ob;
@@ -4712,27 +4712,32 @@ json Server::on_hover(const Doc& d, const json& p)
         return json{{"contents", {{"kind", "markdown"}, {"value", "```hot\n" + t + "\n```"}}},
             {"range", script_range(d, {here.line, wb}, {here.line, we})}};
     };
-    if (const auto r = resolve_at(d, here))
+    // The declaration line of a script symbol, read from the file of the declaration.
+    auto decl_hover = [&](const auto& r) -> std::optional<json>
     {
-        const hotc::RefKind k = r->ref.kind;
+        const hotc::RefKind k = r.ref.kind;
+        Text decl_text;
+        const auto table = file_refs(r.ref.decl_file, nullptr, &decl_text);
+        const hotc::ResolvedRef* decl = table ? decl_of(*table, r.ref.id) : nullptr;
+        if (!decl || decl->offset > decl_text.s.size())
+            return std::nullopt;
+        const auto [line, col] = decl_text.pos(decl->offset);
+        (void)col;
+        std::string t(decl_text.line(line));
+        const size_t cut = t.find(k == hotc::RefKind::StaticField || k == hotc::RefKind::Const || k == hotc::RefKind::Field ? ';' : '{');
+        if (cut != std::string::npos)
+            t.resize(cut);
+        return fenced(std::move(t));
+    };
+    const auto at_ref = resolve_at(d, here);
+    if (at_ref)
+    {
+        const hotc::RefKind k = at_ref->ref.kind;
         const bool is_static = k == hotc::RefKind::StaticMethod || k == hotc::RefKind::StaticField
-            || (k == hotc::RefKind::Const && r->ref.decl.find('.') != std::string::npos);
+            || (k == hotc::RefKind::Const && at_ref->ref.decl.find('.') != std::string::npos);
         if (is_static)
-        {
-            Text decl_text;
-            const auto table = file_refs(r->ref.decl_file, nullptr, &decl_text);
-            const hotc::ResolvedRef* decl = table ? decl_of(*table, r->ref.id) : nullptr;
-            if (decl && decl->offset <= decl_text.s.size())
-            {
-                const auto [line, col] = decl_text.pos(decl->offset);
-                (void)col;
-                std::string t(decl_text.line(line));
-                const size_t cut = t.find(k == hotc::RefKind::StaticMethod ? '{' : ';');
-                if (cut != std::string::npos)
-                    t.resize(cut);
-                return fenced(std::move(t));
-            }
-        }
+            if (auto h = decl_hover(*at_ref))
+                return *h;
     }
     if (has_no_table(d))
     {
@@ -4808,6 +4813,10 @@ json Server::on_hover(const Doc& d, const json& p)
         }
         return out;
     }
+    // A method of a script class that the native side does not know (a call through a handle).
+    if (at_ref && (at_ref->ref.kind == hotc::RefKind::Method || at_ref->ref.kind == hotc::RefKind::Property))
+        if (auto h = decl_hover(*at_ref))
+            return *h;
     return nullptr;
 }
 
@@ -5182,6 +5191,26 @@ json Server::on_code_action(const Doc& d, const json& p)
             const auto [l, c] = d.text.pos(at);
             const json pt = to_lsp(d.text, {l, c}, utf8_);
             add("Insert ';'", diag, {{"range", {{"start", pt}, {"end", pt}}}, {"newText", ";"}});
+            continue;
+        }
+        if (diag.value("source", "") == "hot" && message == "a cast to the same type has no effect")
+        {
+            // The warning is at the "(" of the cast "(T)x". The fix removes the "(T)".
+            const size_t at = d.text.offset(b.line, b.col);
+            int depth = 0;
+            size_t close = at;
+            for (; close < t.size() && t[at] == '('; ++close)
+            {
+                depth += t[close] == '(' ? 1 : t[close] == ')' ? -1 : 0;
+                if (depth == 0)
+                    break;
+            }
+            if (close < t.size() && t[at] == '(')
+            {
+                const auto [l, c] = d.text.pos(close + 1);
+                add("Remove the cast", diag,
+                    {{"range", {{"start", range["start"]}, {"end", to_lsp(d.text, {l, c}, utf8_)}}}, {"newText", ""}});
+            }
             continue;
         }
         std::smatch m;

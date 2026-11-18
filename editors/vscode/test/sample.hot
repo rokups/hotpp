@@ -32,6 +32,9 @@ class Calc : Base {
         foreach (var (i, e) in enumerate(this.xs)) { i; }
         for (var i in range(0, 3)) { &i; *sh; }
         this.owner?.Tick(1.0f);
+        this.owner!.Tick(1.0f);
+        bool same = a != b && !c;
+        f()!.Tick(a![0]);
         if (sh is Circle ci && ci.r > 0) { var sq = sh as Square; }
         switch (name) { case "a": case "b": return; default: break; }
         var let = function + super;

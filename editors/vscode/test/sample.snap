@@ -351,106 +351,138 @@
 34: "1.0f" constant.numeric.float.hot
 34: ")" 
 34: ";" punctuation.terminator.statement.hot
-35: "if" keyword.control.flow.hot
-35: " (sh " 
-35: "is" keyword.operator.word.hot
-35: "Circle" entity.name.type.hot
-35: "ci" variable.other.local.hot
-35: "&&" keyword.operator.logical.hot
-35: " ci" 
+35: "this" variable.language.hot
 35: "." punctuation.accessor.hot
-35: "r " 
-35: ">" keyword.operator.comparison.hot
-35: "0" constant.numeric.integer.hot
-35: ") { " 
-35: "var" storage.type.hot
-35: " sq " 
-35: "=" keyword.operator.assignment.hot
-35: " sh " 
-35: "as" keyword.operator.word.hot
-35: "Square" entity.name.type.hot
+35: "owner" 
+35: "!" keyword.operator.nonnull.hot
+35: "." punctuation.accessor.hot
+35: "Tick" entity.name.function.hot
+35: "(" 
+35: "1.0f" constant.numeric.float.hot
+35: ")" 
 35: ";" punctuation.terminator.statement.hot
-35: " }" 
-36: "switch" keyword.control.flow.hot
-36: " (name) { " 
-36: "case" keyword.control.flow.hot
-36: "\"" string.quoted.double.hot
-36: "a" string.quoted.double.hot
-36: "\"" string.quoted.double.hot
-36: ":" keyword.operator.ternary.hot
-36: "case" keyword.control.flow.hot
-36: "\"" string.quoted.double.hot
-36: "b" string.quoted.double.hot
-36: "\"" string.quoted.double.hot
-36: ":" keyword.operator.ternary.hot
-36: "return" keyword.control.flow.hot
+36: "bool" storage.type.builtin.hot
+36: " same " 
+36: "=" keyword.operator.assignment.hot
+36: " a " 
+36: "!=" keyword.operator.comparison.hot
+36: " b " 
+36: "&&" keyword.operator.logical.hot
+36: "!" keyword.operator.logical.hot
+36: "c" 
 36: ";" punctuation.terminator.statement.hot
-36: "default" keyword.control.flow.hot
-36: ":" keyword.operator.ternary.hot
-36: "break" keyword.control.flow.hot
-36: ";" punctuation.terminator.statement.hot
-36: " }" 
-37: "var" storage.type.hot
-37: " let " 
-37: "=" keyword.operator.assignment.hot
-37: " function " 
-37: "+" keyword.operator.arithmetic.hot
-37: " super" 
+37: "f" entity.name.function.hot
+37: "()" 
+37: "!" keyword.operator.nonnull.hot
+37: "." punctuation.accessor.hot
+37: "Tick" entity.name.function.hot
+37: "(a" 
+37: "!" keyword.operator.nonnull.hot
+37: "[" meta.collection-literal.hot punctuation.definition.collection.begin.hot
+37: "0" meta.collection-literal.hot constant.numeric.integer.hot
+37: "]" meta.collection-literal.hot punctuation.definition.collection.end.hot
+37: ")" 
 37: ";" punctuation.terminator.statement.hot
-38: "    }" 
-39: "}" 
-40: "// Weak handles: the field style and the inline style." comment.line.double-slash.hot
-41: "class" storage.type.class.hot
-41: "Node" entity.name.type.class.hot
-41: " {" 
-42: "[" meta.attribute.hot punctuation.definition.attribute.begin.hot
-42: "weak" meta.attribute.hot entity.other.attribute-name.hot
-42: "]" meta.attribute.hot punctuation.definition.attribute.end.hot
-43: "    Node parent" 
-43: ";" punctuation.terminator.statement.hot
-44: "void" storage.type.hot
-44: "See" entity.name.function.hot
-44: "(" 
-44: "[" meta.attribute.hot punctuation.definition.attribute.begin.hot
-44: "weak" meta.attribute.hot entity.other.attribute-name.hot
-44: "]" meta.attribute.hot punctuation.definition.attribute.end.hot
-44: " Node n) { " 
-44: "[" meta.attribute.hot punctuation.definition.attribute.begin.hot
-44: "weak" meta.attribute.hot entity.other.attribute-name.hot
-44: "]" meta.attribute.hot punctuation.definition.attribute.end.hot
-44: " Node m " 
-44: "=" keyword.operator.assignment.hot
-44: " n" 
-44: ";" punctuation.terminator.statement.hot
-44: " }" 
-45: "}" 
-46: "abstract" storage.modifier.hot
-46: "class" storage.type.class.hot
-46: "Shape" entity.name.type.class.hot
-46: " { " 
-46: "abstract" storage.modifier.hot
-46: "float" storage.type.builtin.hot
-46: "Area" entity.name.function.hot
-46: "()" 
+38: "if" keyword.control.flow.hot
+38: " (sh " 
+38: "is" keyword.operator.word.hot
+38: "Circle" entity.name.type.hot
+38: "ci" variable.other.local.hot
+38: "&&" keyword.operator.logical.hot
+38: " ci" 
+38: "." punctuation.accessor.hot
+38: "r " 
+38: ">" keyword.operator.comparison.hot
+38: "0" constant.numeric.integer.hot
+38: ") { " 
+38: "var" storage.type.hot
+38: " sq " 
+38: "=" keyword.operator.assignment.hot
+38: " sh " 
+38: "as" keyword.operator.word.hot
+38: "Square" entity.name.type.hot
+38: ";" punctuation.terminator.statement.hot
+38: " }" 
+39: "switch" keyword.control.flow.hot
+39: " (name) { " 
+39: "case" keyword.control.flow.hot
+39: "\"" string.quoted.double.hot
+39: "a" string.quoted.double.hot
+39: "\"" string.quoted.double.hot
+39: ":" keyword.operator.ternary.hot
+39: "case" keyword.control.flow.hot
+39: "\"" string.quoted.double.hot
+39: "b" string.quoted.double.hot
+39: "\"" string.quoted.double.hot
+39: ":" keyword.operator.ternary.hot
+39: "return" keyword.control.flow.hot
+39: ";" punctuation.terminator.statement.hot
+39: "default" keyword.control.flow.hot
+39: ":" keyword.operator.ternary.hot
+39: "break" keyword.control.flow.hot
+39: ";" punctuation.terminator.statement.hot
+39: " }" 
+40: "var" storage.type.hot
+40: " let " 
+40: "=" keyword.operator.assignment.hot
+40: " function " 
+40: "+" keyword.operator.arithmetic.hot
+40: " super" 
+40: ";" punctuation.terminator.statement.hot
+41: "    }" 
+42: "}" 
+43: "// Weak handles: the field style and the inline style." comment.line.double-slash.hot
+44: "class" storage.type.class.hot
+44: "Node" entity.name.type.class.hot
+44: " {" 
+45: "[" meta.attribute.hot punctuation.definition.attribute.begin.hot
+45: "weak" meta.attribute.hot entity.other.attribute-name.hot
+45: "]" meta.attribute.hot punctuation.definition.attribute.end.hot
+46: "    Node parent" 
 46: ";" punctuation.terminator.statement.hot
-46: " }" 
-47: "interface" storage.type.class.hot
-47: "IShape" entity.name.type.class.hot
-47: " { " 
-47: "float" storage.type.builtin.hot
-47: "Area" entity.name.function.hot
-47: "()" 
+47: "void" storage.type.hot
+47: "See" entity.name.function.hot
+47: "(" 
+47: "[" meta.attribute.hot punctuation.definition.attribute.begin.hot
+47: "weak" meta.attribute.hot entity.other.attribute-name.hot
+47: "]" meta.attribute.hot punctuation.definition.attribute.end.hot
+47: " Node n) { " 
+47: "[" meta.attribute.hot punctuation.definition.attribute.begin.hot
+47: "weak" meta.attribute.hot entity.other.attribute-name.hot
+47: "]" meta.attribute.hot punctuation.definition.attribute.end.hot
+47: " Node m " 
+47: "=" keyword.operator.assignment.hot
+47: " n" 
 47: ";" punctuation.terminator.statement.hot
 47: " }" 
-48: "class" storage.type.class.hot
-48: "Sq" entity.name.type.class.hot
-48: ":" punctuation.separator.inheritance.hot
-48: "Shape, IShape" entity.other.inherited-class.hot
-48: " { " 
-48: "float" storage.type.builtin.hot
-48: "Area" entity.name.function.hot
-48: "() { " 
-48: "return" keyword.control.flow.hot
-48: "1.0" constant.numeric.float.hot
-48: ";" punctuation.terminator.statement.hot
-48: " } }" 
+48: "}" 
+49: "abstract" storage.modifier.hot
+49: "class" storage.type.class.hot
+49: "Shape" entity.name.type.class.hot
+49: " { " 
+49: "abstract" storage.modifier.hot
+49: "float" storage.type.builtin.hot
+49: "Area" entity.name.function.hot
+49: "()" 
+49: ";" punctuation.terminator.statement.hot
+49: " }" 
+50: "interface" storage.type.class.hot
+50: "IShape" entity.name.type.class.hot
+50: " { " 
+50: "float" storage.type.builtin.hot
+50: "Area" entity.name.function.hot
+50: "()" 
+50: ";" punctuation.terminator.statement.hot
+50: " }" 
+51: "class" storage.type.class.hot
+51: "Sq" entity.name.type.class.hot
+51: ":" punctuation.separator.inheritance.hot
+51: "Shape, IShape" entity.other.inherited-class.hot
+51: " { " 
+51: "float" storage.type.builtin.hot
+51: "Area" entity.name.function.hot
+51: "() { " 
+51: "return" keyword.control.flow.hot
+51: "1.0" constant.numeric.float.hot
+51: ";" punctuation.terminator.statement.hot
+51: " } }" 

@@ -190,6 +190,7 @@
         { "name": "keyword.operator.arrow.hot", "match": "->" },
         { "name": "storage.type.function.arrow.hot", "match": "=>" },
         { "name": "punctuation.accessor.safe.hot", "match": "\\?\\." },
+        { "name": "keyword.operator.nonnull.hot", "match": "(?<=[\\w)\\]])!(?!=)" },
         { "name": "keyword.operator.comparison.hot", "match": "==|!=|<=|>=|<|>" },
         { "name": "keyword.operator.logical.hot", "match": "&&|\\|\\||!" },
         { "name": "keyword.operator.assignment.hot", "match": "(?:<<|>>|[-+*/%&|^])?=" },

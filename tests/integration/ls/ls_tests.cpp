@@ -8265,7 +8265,7 @@ TEST(LanguageServerRename, ClassInTemplateArgumentAndCastIsRenamed)
                               "    int Go(Holder* h) {\n"
                               "        if (h == null) return 1;\n"
                               "        $Spawn a = h.Find<$Spawn>();\n"
-                              "        Team t = (($Spawn)a).GetTeam();\n"
+                              "        Team t = (($Spawn)a)!.GetTeam();\n"
                               "        return 0;\n"
                               "    }\n"
                               "}\n";
@@ -11748,5 +11748,152 @@ TEST(LanguageServer, DeferredUpdateKeepsTheStateAtEventsWhileDirty)
     }
 }
 
+
+
+// ------------------------------------------------------------------ the postfix "!" and the cast warning
+namespace
+{
+
+const char* const kBangScript =
+    "using \"Actor.h\";\n" // 0
+    "\n" // 1
+    "class Hero : Actor {\n" // 2
+    "    int hp = 0;\n" // 3
+    "    $Hero other;\n" // 4
+    "    $Hero Find() { return this.other; }\n" // 5
+    "    void Heal() { this.hp = 1; }\n" // 6
+    "    void Run() {\n" // 7
+    "        var o = this.other;\n" // 8
+    "        o!.Heal();\n" // 9
+    "        this.Find()!.Heal();\n" // 10
+    "        bool ne = this.hp != 2;\n" // 11
+    "        $Hero h = ($Hero)o;\n" // 12
+    "        o!.Heal();\n" // 13
+    "    }\n" // 14
+    "}\n";
+
+std::vector<std::string> bang_completion_labels(Session& s, int line, int col)
+{
+    const json r = s.client->request("textDocument/completion", doc_pos(s.uri, line, col));
+    std::vector<std::string> labels;
+    if (r.contains("result"))
+        for (const json& i : r["result"]["items"])
+            labels.push_back(i.value("insertText", i.value("label", "")));
+    return labels;
+}
+
+} // namespace
+
+TEST(LanguageServer, CompletionAfterBangDotListsTheMembersOfTheType)
+{
+    REQUIRE_CLANGD();
+    std::string text = kBangScript;
+    text.replace(text.rfind("o!.Heal();"), 10, "o!.");
+    Session s(true, text);
+    const auto labels = bang_completion_labels(s, 13, 11);
+    EXPECT_NE(std::find(labels.begin(), labels.end(), "Move"), labels.end());
+    EXPECT_NE(std::find(labels.begin(), labels.end(), "Position"), labels.end());
+}
+
+TEST(LanguageServer, CompletionAfterCallBangDotListsTheMembersOfTheType)
+{
+    REQUIRE_CLANGD();
+    std::string text = kBangScript;
+    text.replace(text.find("this.Find()!.Heal();"), 20, "this.Find()!.");
+    Session s(true, text);
+    const auto labels = bang_completion_labels(s, 10, 21);
+    EXPECT_NE(std::find(labels.begin(), labels.end(), "Move"), labels.end());
+    EXPECT_NE(std::find(labels.begin(), labels.end(), "Position"), labels.end());
+}
+
+TEST(LanguageServer, DefinitionAndHoverThroughBangDot)
+{
+    REQUIRE_CLANGD();
+    Session s(true, kBangScript);
+    for (const auto& [line, col] : {std::pair{9, 12}, std::pair{10, 22}})
+    {
+        const json d = s.client->request("textDocument/definition", doc_pos(s.uri, line, col));
+        ASSERT_TRUE(d.contains("result") && d["result"].is_array() && !d["result"].empty()) << d.dump();
+        EXPECT_EQ(d["result"][0]["uri"], s.uri);
+        EXPECT_EQ(d["result"][0]["range"]["start"]["line"], 6) << d.dump();
+    }
+    // The hover of a native member after "!." shows the member.
+    std::string text = kBangScript;
+    text.replace(text.find("o!.Heal();\n        this.Find()"), 10, "o!.Move(Vec3(1, 0, 0));");
+    Session m(true, text);
+    for (const auto& [line, col] : {std::pair{9, 12}})
+    {
+        const json h = m.client->request("textDocument/hover", doc_pos(m.uri, line, col));
+        ASSERT_TRUE(h.contains("result") && h["result"].is_object()) << h.dump();
+        EXPECT_NE(h["result"]["contents"].value("value", "").find("Move"), std::string::npos) << h.dump();
+    }
+}
+
+TEST(LanguageServer, SemanticTokensMarkThePostfixBangAsAnOperator)
+{
+    Session s(false, kBangScript);
+    const json r = s.client->request("textDocument/semanticTokens/full", {{"textDocument", {{"uri", s.uri}}}});
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    std::vector<std::tuple<int, int, int, int>> toks;
+    const json& data = r["result"]["data"];
+    int line = 0, col = 0;
+    for (size_t i = 0; i + 4 < data.size(); i += 5)
+    {
+        line += data[i].get<int>();
+        col = data[i].get<int>() == 0 ? col + data[i + 1].get<int>() : data[i + 1].get<int>();
+        toks.emplace_back(line, col, data[i + 2].get<int>(), data[i + 3].get<int>());
+    }
+    const int op = static_cast<int>(hot::ls::semantic_token_types().size()) - 1;
+    EXPECT_EQ(hot::ls::semantic_token_types()[static_cast<size_t>(op)], "operator");
+    auto has = [&](int l, int c) { return std::find(toks.begin(), toks.end(), std::make_tuple(l, c, 1, op)) != toks.end(); };
+    EXPECT_TRUE(has(9, 9));
+    EXPECT_TRUE(has(10, 19));
+    EXPECT_FALSE(has(11, 24)); // the "!" of "!="
+}
+
+TEST(LanguageServer, CastToTheSameTypeGivesAWarningWithTheRemoveCastAction)
+{
+    REQUIRE_CLANGD();
+    Session s(true, kBangScript);
+    const json n = s.diagnostics(
+        [](const json& ds) {
+            return std::any_of(ds.begin(), ds.end(), [](const json& d) {
+                return d.value("message", "").find("a cast to the same type has no effect") != std::string::npos;
+            });
+        });
+    ASSERT_FALSE(n.is_null());
+    for (const json& d : n["params"]["diagnostics"])
+        if (d.value("message", "").find("same type") != std::string::npos)
+        {
+            EXPECT_EQ(d["severity"], 2) << d.dump();
+            EXPECT_EQ(d["range"]["start"]["line"], 12) << d.dump();
+            const json a = s.client->request("textDocument/codeAction",
+                {{"textDocument", {{"uri", s.uri}}}, {"range", d["range"]},
+                    {"context", {{"diagnostics", json::array({d})}}}});
+            ASSERT_TRUE(a.contains("result") && a["result"].size() == 1) << a.dump();
+            EXPECT_EQ(a["result"][0]["title"], "Remove the cast");
+            const json& edit = a["result"][0]["edit"]["changes"][s.uri][0];
+            EXPECT_EQ(edit["newText"], "");
+            EXPECT_EQ(edit["range"]["start"], pos(12, 18)) << edit.dump();
+            EXPECT_EQ(edit["range"]["end"], pos(12, 25)) << edit.dump();
+        }
+}
+
+
+TEST(LanguageServer, HoverOfAScriptMethodThroughBangDotAndSafeDotShowsTheDeclaration)
+{
+    REQUIRE_CLANGD();
+    for (const char* form : {"o!.Heal()", "o?.Heal()", "this.Find()!.Heal()", "this.other!.Heal()"})
+    {
+        std::string text = kBangScript;
+        text.replace(text.find("o!.Heal();\n        this.Find()"), 10, std::string(form) + ";");
+        Session s(true, text);
+        const size_t col = text.find("Heal", text.find(std::string(form) + ";"));
+        const size_t ls = text.rfind('\n', col) + 1;
+        const json h = s.client->request("textDocument/hover", doc_pos(s.uri, 9, static_cast<int>(col - ls) + 1));
+        ASSERT_TRUE(h.contains("result") && h["result"].is_object()) << form << " " << h.dump();
+        EXPECT_NE(h["result"]["contents"].value("value", "").find("void Heal()"), std::string::npos) << form;
+    }
+}
 
 } // namespace

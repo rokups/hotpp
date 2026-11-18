@@ -11786,6 +11786,7 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
     {
         res.ok = tr.ok;
         res.diagnostics = tr.diagnostics;
+        res.warnings = tr.warnings;
     }
     // A semantic error in one member must not remove the text of the other members. After a failed
     // translation, the retry blanks the smallest region at each error position: the member, then

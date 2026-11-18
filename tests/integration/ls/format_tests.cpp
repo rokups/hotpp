@@ -91,6 +91,12 @@ TEST(Formatter, SpacesAroundBinaryOperatorsAndAfterCommas)
         "x = -y;\nz = a - b;\nw = a - -b;\nq = !p;\ni++;\n");
 }
 
+TEST(Formatter, PostfixBangTakesNoSpaceAndNotEqualIsUnchanged)
+{
+    EXPECT_EQ(format_hot("x = a!.b();\ny = f()!.m;\nz = a![i];\nw = a!=b;\nv = a != b;\nu = a!.b!.c;\nt = !a;\n"),
+        "x = a!.b();\ny = f()!.m;\nz = a![i];\nw = a != b;\nv = a != b;\nu = a!.b!.c;\nt = !a;\n");
+}
+
 TEST(Formatter, KeywordsTakeASpaceBeforeParenAndCallsTakeNone)
 {
     EXPECT_EQ(
