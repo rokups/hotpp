@@ -198,6 +198,10 @@ struct Doc
     Text text;
     hotc::AnalyzeResult facts;
     int facts_version = 0; // grows at each new "facts"
+    // HOT-51: the text that "facts" come from. A didChange stores the new text and sets "dirty". The next
+    // update() analyzes the text again (Server::flush_dirty). Until then "facts", "gen" and "map" belong to "analyzed".
+    Text analyzed;
+    bool dirty = false;
     // The table of the resolved names of "facts" (Server::file_refs) and its facts_version.
     mutable std::shared_ptr<const FileRefs> table;
     mutable int table_version = -1;
@@ -480,6 +484,14 @@ static bool this_cache_enabled()
     return !(e && std::string(e) == "0");
 }
 
+// HOT-51: the deferred live update. The variable HOT_LS_DEFER_UPDATE is 0 or 1 (default 1). With 1, a didChange
+// stores the text and the analyze runs later (Server::flush_dirty).
+static bool defer_update_enabled()
+{
+    const char* e = std::getenv("HOT_LS_DEFER_UPDATE");
+    return !(e && std::string(e) == "0");
+}
+
 class Server
 {
 public:
@@ -637,7 +649,14 @@ private:
     std::atomic<int> slow_running_{0}; // 1 while the worker runs a request (hot/indexStats)
     void reader_loop();
     // Takes the next message. Joins the later didChange of the same uri into the last one.
-    bool next_message(json& out);
+    // "idle" gets true when no message came for flush_idle_ms() and a document is dirty (HOT-51). "out" is empty then.
+    bool next_message(json& out, bool& idle);
+    // HOT_LS_FLUSH_IDLE_MS is for the tests (default 5).
+    static int flush_idle_ms()
+    {
+        const char* e = std::getenv("HOT_LS_FLUSH_IDLE_MS");
+        return e && std::atoi(e) > 0 ? std::atoi(e) : 5;
+    }
     // The id of the message as a key. Empty for a message without an id.
     static std::string id_key(const json& msg)
     {
@@ -888,6 +907,12 @@ private:
     void on_watched_files(const json& p);
     void update(Doc& d);
     void update_cpp(Doc& d);
+    // HOT-51: the live update of each document that has "dirty" set, except "skip". The state thread calls it.
+    void flush_dirty(const Doc* skip = nullptr);
+    // True when the message needs the facts of the last edit: the state thread flushes before it.
+    bool needs_flush(const json& msg, const Doc*& skip);
+    bool any_dirty_ = false; // the state thread only
+    std::atomic<int> update_runs_{0}; // the number of update() calls of the scripts (hot/indexStats)
     void send_generated(Doc& d, const std::string& cpp);
     std::string unit_for_clangd(Doc& d, const std::string& cpp);
     // The lite document (HOT-43): the uri that hover, definition and completion ask for the place "gen_line0"
@@ -2515,6 +2540,7 @@ void Server::update(Doc& d)
 {
     if (d.cpp)
         return update_cpp(d);
+    ++update_runs_;
     const auto update_t0 = std::chrono::steady_clock::now();
     hotc::AnalyzeResult facts =
         timed_translate([&] { return hotc::analyze(d.text.s, translate_options(d), session_); });
@@ -2527,6 +2553,8 @@ void Server::update(Doc& d)
     {
         std::lock_guard<std::mutex> lock(docs_mutex_);
         d.facts = std::move(facts);
+        d.analyzed = d.text;
+        d.dirty = false;
         ++d.facts_version;
         if (!cpp.empty())
         {
@@ -2870,6 +2898,8 @@ void Server::on_clangd_notification(const json& msg)
     if (p.contains("version") && p["version"].is_number_integer() && p["version"].get<int>() != d.gen_version)
         return;
     d.raw_clang_diags = p.value("diagnostics", json::array());
+    if (d.dirty)
+        return; // HOT-51: the facts are old. The next update() maps these diagnostics and publishes.
     map_clangd_diagnostics(d);
     send_client(publish_message(d));
     publish_imports(d);
@@ -8563,8 +8593,20 @@ void Server::handle(const json& msg)
         refresh_hosts(d.get());
         if (!same_host(host_before, d->host))
             log_host(*d, d->host);
-        PhaseTimer live("live update");
-        return update(*d);
+        if (d->cpp || !defer_update_enabled())
+        {
+            PhaseTimer live("live update");
+            return update(*d);
+        }
+        // HOT-51: the analyze runs at the next message that needs it, or when the input is idle (run).
+        // The epoch grew already (run_request): a request of the slow worker that began before gets -32801.
+        {
+            std::lock_guard<std::mutex> lock(docs_mutex_);
+            d->dirty = true;
+            d->set_edit(); // the positions of the old generated text go through the edit, as after a translation error
+        }
+        any_dirty_ = true;
+        return;
     }
     if (method == "textDocument/didClose")
     {
@@ -8624,6 +8666,14 @@ void Server::handle(const json& msg)
         // "importersOf" (a URI) gets the importers of that script.
         json out;
         out["slowRunning"] = slow_running_.load();
+        out["updateRuns"] = update_runs_.load();
+        {
+            std::lock_guard<std::mutex> lock(docs_mutex_);
+            int dirty = 0;
+            for (const auto& [uri, doc] : docs_)
+                dirty += doc->dirty ? 1 : 0;
+            out["dirtyDocs"] = dirty;
+        }
         if (p.is_object() && p.contains("tables") && p["tables"].is_array())
         {
             out["tableRefs"] = json::array();
@@ -8782,10 +8832,22 @@ void Server::reader_loop()
     queue_cv_.notify_one();
 }
 
-bool Server::next_message(json& out)
+bool Server::next_message(json& out, bool& idle)
 {
+    idle = false;
     std::unique_lock<std::mutex> lock(queue_mutex_);
-    queue_cv_.wait(lock, [&] { return !queue_.empty() || queue_closed_; });
+    const auto ready = [&] { return !queue_.empty() || queue_closed_; };
+    if (any_dirty_)
+    {
+        // A dirty document gets its analyze when the input is quiet: the diagnostics follow the typing.
+        if (!queue_cv_.wait_for(lock, std::chrono::milliseconds(flush_idle_ms()), ready))
+        {
+            idle = true;
+            return true;
+        }
+    }
+    else
+        queue_cv_.wait(lock, ready);
     if (queue_.empty())
         return false;
     out = std::move(queue_.front());
@@ -8816,6 +8878,60 @@ bool Server::next_message(json& out)
             queue_.pop_front();
         }
     }
+    return true;
+}
+
+void Server::flush_dirty(const Doc* skip)
+{
+    std::vector<std::shared_ptr<Doc>> todo;
+    {
+        std::lock_guard<std::mutex> lock(docs_mutex_);
+        for (const auto& [uri, doc] : docs_)
+            if (doc->dirty && doc.get() != skip)
+                todo.push_back(doc);
+    }
+    for (const std::shared_ptr<Doc>& d : todo)
+    {
+        // The slow worker can hold the state lock. The state thread goes first (lock_fast).
+        state_lock_.lock_fast();
+        try
+        {
+            PhaseTimer live("live update");
+            update(*d); // clears "dirty"
+        }
+        catch (const std::exception&)
+        {
+            std::lock_guard<std::mutex> lock(docs_mutex_);
+            d->dirty = false; // no loop of a failing analyze
+        }
+        state_lock_.unlock();
+    }
+    any_dirty_ = skip != nullptr && skip->dirty;
+}
+
+bool Server::needs_flush(const json& msg, const Doc*& skip)
+{
+    const std::string method = msg.value("method", std::string());
+    // A response, a $/ notification, the text change itself and the end of the server need no analyze.
+    // A closing server drops the state. "exit" and "shutdown" never read the facts.
+    if (method.empty() || method == "textDocument/didChange" || method == "shutdown" || method == "exit"
+        || method.compare(0, 2, "$/") == 0)
+        return false;
+    // The test hook with "noFlush" reads the counters only.
+    if (method == "hot/indexStats")
+        return !(msg.contains("params") && msg["params"].is_object() && msg["params"].value("noFlush", false));
+    if (method != "textDocument/completion" || !msg.contains("id"))
+        return true;
+    // A completion reads the facts of its own document only for the class facts (class_at, the members
+    // and the base list), and the text is its own. It skips the flush of this document when the
+    // class facts hold for the new text (class_facts_hold). The other documents flush.
+    const json params = msg.value("params", json::object());
+    const auto d = params.is_object() ? doc_of(params) : nullptr;
+    if (!d || !d->dirty)
+        return true;
+    if (!class_facts_hold(d->analyzed, d->text.s, d->facts))
+        return true;
+    skip = d.get();
     return true;
 }
 
@@ -8940,10 +9056,22 @@ int Server::run()
     }
     std::thread reader([this] { reader_loop(); });
     json msg;
-    while (next_message(msg))
+    bool idle = false;
+    while (next_message(msg, idle))
     {
+        if (idle)
+        {
+            flush_dirty();
+            continue;
+        }
         if (msg.value("method", std::string()) == "exit")
             break;
+        if (any_dirty_)
+        {
+            const Doc* skip = nullptr;
+            if (needs_flush(msg, skip))
+                flush_dirty(skip);
+        }
         const std::string key = id_key(msg);
         if (!run_request(msg) && !key.empty())
             finish_request(key);

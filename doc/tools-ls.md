@@ -205,6 +205,15 @@ Environment variables:
   - A new clangd, a host change, a file that is not a script and `didChangeConfiguration` drop the cache.
   - `hot/indexStats` has the counts `thisAnalyzes` and `thisHits`.
   - On a miss, the analysis of the `this` text runs at the same time as the first probe. The clangd calls stay in order, because they patch the one text of the document.
+- `HOT_LS_DEFER_UPDATE=0|1` turns the deferred live update off or on. The default is 1.
+  - With 0, a `didChange` runs the analysis of the script at once, before the next message.
+  - With 1, a `didChange` stores the text and sets a flag on the document. The analysis runs later. This sends the text to clangd and publishes the diagnostics. The epoch grows at the `didChange`, so a `references` request of the slow worker that began before the edit still gets `-32801`.
+  - The analysis runs before each message, except these: `didChange`, a completion that can use the old facts, `$/` notifications, `shutdown` and `exit`. It runs also when no message comes for 5 ms (`HOT_LS_FLUSH_IDLE_MS` changes this time, for tests). So the diagnostics follow the typing as before.
+  - A completion reads the facts of the last analysis for the classes: the class at the cursor, its members and its bases. It skips the analysis only when `class_facts_hold` is true (`src/ls/script_text.cpp`). The old text and the new text must differ in one line, inside the body of a method, a constructor or a destructor. The changed bytes must be plain: words, spaces, `( ) [ ]`, `.` `,` `:` and the operator signs. No brace, `;`, quote, comment sign, `#` or newline. A byte next to the change must not be `/`, `*`, a quote, `\` or `#`. Other edits (a new line, a member, a class header, a brace, a `;`) run the analysis first.
+  - The script facts of the completion that are not class facts (locals, fields, statics, imports) come from the new text, not from the facts.
+  - The probe texts of a completion are always analyzed from the new text. After the probes the server puts the old generated text back in clangd. The analysis that follows sends the new one.
+  - A `didClose` and every other request run the analysis first.
+  - `hot/indexStats` has the counts `updateRuns` and `dirtyDocs`. The parameter `noFlush` keeps the dirty documents dirty (for tests).
 - `HOT_LS_LITE_CHECK=1` asks the full document too for hover, completion and definition. The server logs each difference. `hot/indexStats` has the counts `liteHits`, `liteFallback` and `liteMismatch`.
 - `HOT_LS_SHELL_DIR=<dir>` sets the directory of the header files (the tests use it).
 - `HOT_LS_TIMING=<file>` appends the phases of a completion to the file. It writes one `PHASE` line for each phase: `completion total`, `script facts`, `full sync`, `full clangd call`, `restore`, `post items` and `live update`. It writes one `PROBE` line for each probe text, with the passes, the parses and the translate times.

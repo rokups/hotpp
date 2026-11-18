@@ -4,11 +4,16 @@
 
 // Unit tests of the name resolver of hot-ls (ref_resolver.h). They need no clangd and no files.
 #include "ref_resolver.h"
+#include "script_text.h"
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cctype>
+#include <cstdlib>
+#include <sstream>
 #include <string>
+#include <vector>
 
 using hot::ls::FileRefs;
 using hot::ls::ImportGraph;
@@ -288,4 +293,111 @@ TEST(RefResolver, RenameConflictOfAModuleSymbolLooksAtTheRawBodies)
     t.raw_ranges = {{static_cast<uint32_t>(text.find('{')), static_cast<uint32_t>(text.rfind('}') + 1)}};
     EXPECT_NE(hot::ls::rename_conflict({{&t, text}}, g, "n").find("/a.hot:2"), std::string::npos);
     EXPECT_EQ(hot::ls::rename_conflict({{&t, text}}, g, "q"), "");
+}
+
+// HOT-51: class_facts_hold is the rule that lets a completion use the facts of an older text. Each edit that the
+// rule accepts must keep the classes, the bases and the member names. The test tries many edits at each place.
+namespace
+{
+
+std::string class_signature(const hotc::AnalyzeResult& r)
+{
+    std::ostringstream o;
+    for (const hotc::AnalyzedClass& c : r.classes)
+    {
+        o << c.name << ':' << c.base << ':' << c.is_interface << ':' << c.attributes.size() << '{';
+        for (const hotc::AnalyzedMember& m : c.members)
+            o << m.kind << ' ' << m.name << ';';
+        o << '|';
+        for (const hotc::AnalyzedMember& m : c.statics)
+            o << m.kind << ' ' << m.name << ';';
+        o << '}';
+    }
+    return o.str();
+}
+
+size_t check_class_facts_rule(const std::string& base, size_t* total, size_t stride)
+{
+    hotc::TranslateOptions o;
+    o.script_name = "t.hot";
+    o.generation = 1;
+    const hotc::AnalyzeResult before = hotc::analyze(base, o);
+    const hot::ls::Text analyzed(base);
+    const std::string want = class_signature(before);
+    size_t held = 0;
+    const std::vector<std::string> inserts = {"x", "1", " ", ".", "(", ")", "[", "]", "=", "+", "<", ">", "!", "?", "&", "|",
+        ":", ",", "class Zed", " struct Zed ", " interface Zed ", "enum Zed", "public ", "override ", "int z", "void g()",
+        "namespace N", "using w", "x.y(", "(((", "))", "a ? b : c", "operator", "get", "set"};
+    for (size_t at = 0; at <= base.size(); at += stride)
+    {
+        std::vector<std::string> edits;
+        for (const std::string& ins : inserts)
+            edits.push_back(base.substr(0, at) + ins + base.substr(at));
+        for (size_t len = 1; len <= 3 && at + len <= base.size(); ++len)
+            edits.push_back(base.substr(0, at) + base.substr(at + len));
+        for (const std::string& text : edits)
+        {
+            ++*total;
+            if (!hot::ls::class_facts_hold(analyzed, text, before))
+                continue;
+            ++held;
+            const hotc::AnalyzeResult after = hotc::analyze(text, o);
+            EXPECT_EQ(class_signature(after), want) << "edit at " << at << " of the text:\n" << text;
+            if (::testing::Test::HasFailure())
+                return held;
+        }
+    }
+    return held;
+}
+
+} // namespace
+
+TEST(ClassFactsHold, AcceptedEditsKeepTheClassFacts)
+{
+    const std::string base =
+        "class Foo\n"
+        "{\n"
+        "    int hits = 0;\n"
+        "    string name;\n"
+        "    void Update(float dt)\n"
+        "    {\n"
+        "        var a = hits + 1;\n"
+        "        if (a > 2) { hits = 0; }\n"
+        "        for (int i = 0; i < 3; i++) hits += i;\n"
+        "        log(\"a { b } // c\");\n"
+        "        /* block { */\n"
+        "        a.\n"
+        "    }\n"
+        "    Foo() { hits = 1; }\n"
+        "    int Get() { return hits; }\n"
+        "    void Broken() { var q = (1 + ; }\n"
+        "}\n"
+        "class Bar : Foo { void Go() { this.x(); } }\n";
+    size_t total = 0;
+    // HOT_FUZZ_STRIDE=1 tries each place (slow). The default tries each 60th place.
+    const char* env = std::getenv("HOT_FUZZ_STRIDE");
+    const size_t held = check_class_facts_rule(base, &total, env ? static_cast<size_t>(std::max(1, std::atoi(env))) : 60);
+    EXPECT_GT(held, 0u);
+    EXPECT_LT(held, total); // the rule is not a blanket yes
+    std::printf("class_facts_hold: %zu of %zu edits accepted\n", held, total);
+}
+
+TEST(ClassFactsHold, EditsOutsideABodyAreNotAccepted)
+{
+    const std::string base = "class Foo\n{\n    int hits = 0;\n    void Update() { hits = 1; }\n}\n";
+    hotc::TranslateOptions o;
+    o.script_name = "t.hot";
+    o.generation = 1;
+    const hotc::AnalyzeResult facts = hotc::analyze(base, o);
+    const hot::ls::Text analyzed(base);
+    const auto hold = [&](const std::string& text) { return hot::ls::class_facts_hold(analyzed, text, facts); };
+    EXPECT_TRUE(hold(base));
+    EXPECT_TRUE(hold("class Foo\n{\n    int hits = 0;\n    void Update() { hits = 1 + x; }\n}\n"));
+    EXPECT_FALSE(hold("class Foo\n{\n    int hits = 0;\n    int more;\n    void Update() { hits = 1; }\n}\n")); // a new line
+    EXPECT_FALSE(hold("class Foo\n{\n    int hitz = 0;\n    void Update() { hits = 1; }\n}\n")); // a field name
+    EXPECT_FALSE(hold("class Foo\n{\n    int hits = 0;\n    void Updat() { hits = 1; }\n}\n")); // a method name
+    EXPECT_FALSE(hold("class Fo\n{\n    int hits = 0;\n    void Update() { hits = 1; }\n}\n")); // a class name
+    EXPECT_FALSE(hold("class Foo\n{\n    int hits = 0;\n    void Update() { hits = 1; } }\n}\n")); // a brace
+    EXPECT_FALSE(hold("class Foo\n{\n    int hits = 0;\n    void Update() { hits = 1;; }\n}\n")); // a semicolon
+    EXPECT_FALSE(hold("class Foo\n{\n    int hits = 0;\n    void Update() { hits = 1; // }\n}\n")); // a comment sign
 }
