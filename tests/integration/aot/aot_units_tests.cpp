@@ -15,7 +15,7 @@
 #ifdef AOT_UNITS_LOADER
 #include "hot/backend.h"
 #endif
-#if defined(AOT_UNITS_LOADER) && defined(AOT_UNITS_CHAIN) && !defined(AOT_EXPECT_OPTIMIZED)
+#if defined(AOT_UNITS_LOADER) && !defined(AOT_EXPECT_OPTIMIZED)
 #include "support/script_files.h"
 #endif
 
@@ -219,6 +219,65 @@ TEST(AotUnits, LoaderRefusesARevertOfAnOptimizedUnit)
     ASSERT_NE(e, nullptr);
     World world;
     expect_one_tick(world, static_cast<Actor*>(e->create().native));
+}
+#endif
+
+// An old table has no fine data (null fields): the loader data is unknown (rule 2) and the load works.
+TEST(AotUnits, LoadAotOfAnOldTableGivesUnknownFineData)
+{
+    std::vector<hot::AotScript> old(hot::aot_table.scripts, hot::aot_table.scripts + hot::aot_table.count);
+    for (hot::AotScript& sc : old)
+    {
+        sc.iface = nullptr;
+        sc.use = nullptr;
+    }
+    hot::AotTable table = hot::aot_table;
+    table.scripts = old.data();
+    hot::Loader loader;
+    const hot::ReloadResult r = loader.load_aot(table);
+    ASSERT_TRUE(r) << r.error;
+    for (const hot::AotScript& sc : old)
+    {
+        hot::IfaceInfo iface;
+        hot::UseInfo use;
+        iface.known = use.known = true;
+        ASSERT_TRUE(loader.aot_unit_info(sc.name, iface, use)) << sc.name;
+        EXPECT_FALSE(iface.known) << sc.name;
+        EXPECT_FALSE(use.known) << sc.name;
+    }
+}
+
+#ifndef AOT_EXPECT_OPTIMIZED
+// The data that the loader reads from the table equals the data of the translation of the script.
+TEST(AotUnits, LoadAotFineDataEqualsTheTranslatorData)
+{
+    std::unique_ptr<hot::Backend> backend = hot::make_default_backend();
+    backend->seed_slots(hot::aot_table.slots);
+    hot::Loader loader;
+    const hot::ReloadResult r = loader.load_aot(hot::aot_table);
+    ASSERT_TRUE(r) << r.error;
+    for (size_t i = 0; i < hot::aot_table.count; ++i)
+    {
+        const std::string unit = hot::aot_table.scripts[i].name;
+        hot::ScriptSource src = test_support::source(("aot_units/" + unit + ".hot").c_str());
+        src.unit = unit;
+        hot::LoadResult built = backend->load(src, 2);
+        ASSERT_TRUE(built) << unit << ": " << built.error;
+        hot::IfaceInfo iface;
+        hot::UseInfo use;
+        ASSERT_TRUE(loader.aot_unit_info(unit, iface, use)) << unit;
+        EXPECT_TRUE(iface.known) << unit;
+        EXPECT_TRUE(use.known) << unit;
+        EXPECT_EQ(iface.hash, built.iface_info.hash) << unit;
+        EXPECT_EQ(iface.shape, built.iface_info.shape) << unit;
+        EXPECT_EQ(iface.members, built.iface_info.members) << unit;
+        EXPECT_EQ(iface.names, built.iface_info.names) << unit;
+        EXPECT_EQ(iface.copied_names, built.iface_info.copied_names) << unit;
+        EXPECT_EQ(use.names, built.use_info.names) << unit;
+        EXPECT_EQ(use.strong, built.use_info.strong) << unit;
+        EXPECT_FALSE(iface.members.empty()) << unit;
+        EXPECT_FALSE(use.names.empty()) << unit;
+    }
 }
 #endif
 

@@ -602,6 +602,8 @@ int run_aot(const Args& args)
     std::vector<std::pair<uint64_t, std::vector<std::pair<std::string, uint64_t>>>> units;
     std::vector<DepRule> dep_rules;
     std::vector<uint64_t> source_hashes; // the hash of the text of each script, in the order of "names"
+    std::vector<hot::IfaceInfo> iface_infos; // the fine data of each script, in the order of "names"
+    std::vector<hot::UseInfo> use_infos;
     std::string slots; // the manifests of all scripts: a class belongs to one script
     std::set<std::string> seen_slot_lines;
     bool failed = false;
@@ -739,6 +741,8 @@ int run_aot(const Args& args)
         }
         names.push_back(r.unit);
         source_hashes.push_back(slot.source_hash);
+        iface_infos.push_back(r.iface_info);
+        use_infos.push_back(r.use_info);
         units.push_back({r.iface_hash, r.import_hashes});
         dep_rules.push_back({slot.out, r.dependencies});
     }
@@ -774,6 +778,57 @@ int run_aot(const Args& args)
             reg += "    {\"" + unit + "\", " + std::to_string(hash) + "ull},\n";
         reg += "};\n";
     }
+    // The fine interface data: constant arrays (AotIface, AotUse). Unknown data gives no table: the
+    // field of AotScript stays null.
+    auto u64_array = [&](const std::string& var, const std::vector<uint64_t>& v)
+    {
+        if (v.empty())
+            return;
+        reg += "const uint64_t " + var + "[] = {";
+        for (uint64_t x : v)
+            reg += std::to_string(x) + "ull, ";
+        reg += "};\n";
+    };
+    for (size_t i = 0; i < names.size(); ++i)
+    {
+        const std::string id = identifier(names[i]);
+        const hot::IfaceInfo& f = iface_infos[i];
+        if (f.known)
+        {
+            if (!f.members.empty())
+            {
+                reg += "const AotMember kMembers_" + id + "[] = {";
+                for (const hot::IfaceMember& m : f.members)
+                    reg += "{" + std::to_string(m.name) + "ull, " + std::to_string(m.decl) + "ull}, ";
+                reg += "};\n";
+            }
+            u64_array("kIfaceNames_" + id, f.names);
+            u64_array("kCopiedNames_" + id, f.copied_names);
+            const auto ptr = [&](const char* prefix, bool has)
+            { return has ? std::string(prefix) + id : std::string("nullptr"); };
+            reg += "const AotIface kIface_" + id + " = {" + std::to_string(f.shape) + "ull, "
+                + ptr("kMembers_", !f.members.empty()) + ", " + std::to_string(f.members.size()) + ", "
+                + ptr("kIfaceNames_", !f.names.empty()) + ", " + std::to_string(f.names.size()) + ", "
+                + ptr("kCopiedNames_", !f.copied_names.empty()) + ", " + std::to_string(f.copied_names.size())
+                + "};\n";
+        }
+        const hot::UseInfo& u = use_infos[i];
+        if (u.known)
+        {
+            u64_array("kUseNames_" + id, u.names);
+            if (!u.strong.empty())
+            {
+                reg += "const char* const kUseStrong_" + id + "[] = {";
+                for (const std::string& s : u.strong)
+                    reg += "\"" + s + "\", ";
+                reg += "};\n";
+            }
+            reg += "const AotUse kUse_" + id + " = {" + (u.names.empty() ? std::string("nullptr") : "kUseNames_" + id)
+                + ", " + std::to_string(u.names.size()) + ", "
+                + (u.strong.empty() ? std::string("nullptr") : "kUseStrong_" + id) + ", "
+                + std::to_string(u.strong.size()) + "};\n";
+        }
+    }
     reg += "const AotScript kAotScripts[] = {\n";
     for (size_t i = 0; i < names.size(); ++i)
     {
@@ -782,7 +837,9 @@ int run_aot(const Args& args)
         reg += "    {\"" + n + "\", &hot_script_register_" + id + ", " + std::to_string(units[i].first) + "ull, "
             + (units[i].second.empty() ? std::string("nullptr, 0")
                                        : "kImports_" + id + ", " + std::to_string(units[i].second.size()))
-            + ", " + std::to_string(source_hashes[i]) + "ull},\n";
+            + ", " + std::to_string(source_hashes[i]) + "ull, "
+            + (iface_infos[i].known ? "&kIface_" + id : std::string("nullptr")) + ", "
+            + (use_infos[i].known ? "&kUse_" + id : std::string("nullptr")) + "},\n";
     }
     reg += "};\n\n// The slot manifest of all scripts. A run-time backend seeds its slot file with it.\n";
     // Optimized AOT code has no slots: the manifest is empty.

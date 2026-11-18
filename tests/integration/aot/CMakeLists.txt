@@ -183,6 +183,19 @@ if(NOT HOT_SCRIPT_AOT_OPTIMIZED)
     target_include_directories(integration_aot_iface_units_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
     target_link_libraries(integration_aot_iface_units_tests PRIVATE aot_iface_units_scripts hot::aot GTest::gtest_main)
     hot_gtest(integration_aot_iface_units_tests PROPERTIES LABELS aot)
+    if(TARGET hot_backend)
+        # The loader reads the fine interface data of the AOT table (equal to the translator data).
+        add_executable(integration_aot_iface_units_load_tests aot_iface_units_tests.cpp
+            ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
+            ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+        target_include_directories(integration_aot_iface_units_load_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
+        target_compile_definitions(integration_aot_iface_units_load_tests PRIVATE AOT_IFACE_LOADER=1
+            HOT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+        target_link_libraries(integration_aot_iface_units_load_tests PRIVATE aot_iface_units_scripts hot_backend
+            GTest::gtest_main)
+        set_target_properties(integration_aot_iface_units_load_tests PROPERTIES ENABLE_EXPORTS ON)
+        hot_gtest(integration_aot_iface_units_load_tests TEST_PREFIX load/ PROPERTIES LABELS aot)
+    endif()
 endif()
 
 # Two scripts as two units (modules step 6): "new", a field, a method, a module variable and an
