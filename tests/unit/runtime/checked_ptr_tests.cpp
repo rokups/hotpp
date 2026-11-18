@@ -64,6 +64,24 @@ TEST(CheckedPtr, CastPtrIsACheckedUnwrap)
     EXPECT_EQ(hot::cast_ptr<Charm*>(p), strong.get());
 }
 
+// The assertion "p!" of a weak native field: a null target throws with the message.
+TEST(CheckedPtr, NonnullWithMessage)
+{
+    hot::CheckedPtr<Charm> n;
+    try
+    {
+        hot::nonnull(n, "f.hot:1: 'n' is null");
+        FAIL() << "no exception";
+    }
+    catch (const hot::NullReference& e)
+    {
+        EXPECT_STREQ(e.what(), "f.hot:1: 'n' is null");
+    }
+    auto strong = std::make_shared<Charm>();
+    hot::CheckedPtr<Charm> p = strong;
+    EXPECT_EQ(&hot::nonnull(p, "m"), &p);
+}
+
 TEST(CheckedPtr, LiveReadFromHandle)
 {
     auto strong = std::make_shared<Charm>();

@@ -146,6 +146,45 @@ template <class T> HOT_HIDDEN T nonnull(std::optional<T>&& o)
     return std::move(*o);
 }
 
+// The explicit non-null assertion "x!". The translator writes "hot::nonnull(x, "file:line: 'x' is null")".
+// The behavior and the return types are the same as for the one-argument overloads. A null value
+// throws hot::NullReference with the message "msg". "msg" is a static string: the success path
+// makes no allocation. The test is always on, also when HOT_RUNTIME_CHECKS is 0.
+template <class T> HOT_HIDDEN T* nonnull(T* p, const char* msg)
+{
+    if (HOT_UNLIKELY(!p))
+        detail::throw_null_reference(msg);
+    return p;
+}
+template <class H, std::enable_if_t<is_handle_v<H> || is_checked_ptr_v<H>, int> = 0>
+HOT_HIDDEN decltype(auto) nonnull(H&& h, const char* msg)
+{
+    if (HOT_UNLIKELY(!static_cast<bool>(h)))
+        detail::throw_null_reference(msg);
+    if constexpr (std::is_lvalue_reference_v<H>)
+        return (h);
+    else
+        return detail::remove_cvref_t<H>(std::move(h));
+}
+template <class T> HOT_HIDDEN T& nonnull(std::optional<T>& o, const char* msg)
+{
+    if (HOT_UNLIKELY(!o))
+        detail::throw_null_reference(msg);
+    return *o;
+}
+template <class T> HOT_HIDDEN const T& nonnull(const std::optional<T>& o, const char* msg)
+{
+    if (HOT_UNLIKELY(!o))
+        detail::throw_null_reference(msg);
+    return *o;
+}
+template <class T> HOT_HIDDEN T nonnull(std::optional<T>&& o, const char* msg)
+{
+    if (HOT_UNLIKELY(!o))
+        detail::throw_null_reference(msg);
+    return std::move(*o);
+}
+
 // The script writes the cast "(T*)p". The translator writes "hot::cast_ptr<T*>(p)". When the type
 // of "p" is already "T*", or "p" is a CheckedPtr or a handle, the cast is a checked unwrap: the
 // null test (hot::nonnull) comes before the C cast. A handle gives the raw pointer of its object:

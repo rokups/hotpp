@@ -331,6 +331,68 @@ TEST(NonNull, ThrowsWithRuntimeChecksOff)
     }
 }
 
+// ---- hot::nonnull(x, msg): the explicit non-null assertion "x!"
+template <class F> std::string null_message(F&& f)
+{
+    try
+    {
+        f();
+    }
+    catch (const hot::NullReference& e)
+    {
+        return e.what();
+    }
+    return "no exception";
+}
+
+TEST(NonNullMsg, PointerThrowsWithTheMessage)
+{
+    Item* p = nullptr;
+    EXPECT_EQ(null_message([&] { hot::nonnull(p, "a.hot:3: 'p' is null"); }), "a.hot:3: 'p' is null");
+}
+
+TEST(NonNullMsg, PointerPassesThrough)
+{
+    Item i;
+    Item* p = &i;
+    EXPECT_EQ(hot::nonnull(p, "m"), &i);
+    static_assert(std::is_same_v<decltype(hot::nonnull(p, "m")), Item*>);
+}
+
+TEST(NonNullMsg, HandleThrowsWithTheMessage)
+{
+    std::shared_ptr<Item> h;
+    EXPECT_EQ(null_message([&] { hot::nonnull(h, "msg h"); }), "msg h");
+    EXPECT_EQ(null_message([&] { hot::nonnull(std::shared_ptr<Item>(), "msg r"); }), "msg r");
+}
+
+TEST(NonNullMsg, HandlePassesThrough)
+{
+    auto h = std::make_shared<Item>(Item{4});
+    EXPECT_EQ(&hot::nonnull(h, "m"), &h);
+    static_assert(std::is_same_v<decltype(hot::nonnull(h, "m")), std::shared_ptr<Item>&>);
+    auto v = hot::nonnull(std::make_shared<Item>(Item{6}), "m");
+    EXPECT_EQ(v->m, 6);
+    static_assert(std::is_same_v<decltype(hot::nonnull(std::make_shared<Item>(), "m")), std::shared_ptr<Item>>);
+}
+
+TEST(NonNullMsg, OptionalThrowsWithTheMessage)
+{
+    std::optional<int> o;
+    EXPECT_EQ(null_message([&] { hot::nonnull(o, "msg o"); }), "msg o");
+    EXPECT_EQ(null_message([&] { hot::nonnull(std::optional<int>(), "msg r"); }), "msg r");
+    const std::optional<int> c;
+    EXPECT_EQ(null_message([&] { hot::nonnull(c, "msg c"); }), "msg c");
+}
+
+TEST(NonNullMsg, OptionalPassesThrough)
+{
+    std::optional<int> o = 5;
+    EXPECT_EQ(&hot::nonnull(o, "m"), &*o);
+    EXPECT_EQ(hot::nonnull(std::optional<int>(8), "m"), 8);
+    static_assert(std::is_same_v<decltype(hot::nonnull(o, "m")), int&>);
+}
+
 TEST(CastPtr, SameTypeIsACheckedUnwrap)
 {
     Item i;
