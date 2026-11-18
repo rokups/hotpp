@@ -3035,6 +3035,61 @@ TEST(SymbolIndex, AShardWithABrokenBodyIsDropped)
 }
 
 // A shard of format 3 has no near_decl and no near_file: load() deletes it.
+TEST(SymbolIndex, AVersion4ShardIsDropped)
+{
+    TempDir dir;
+    hot::ls::SymbolIndex index;
+    index.open((dir.path() / "index").string());
+    const std::string script = (dir.path() / "a.hot").string();
+    write_file(script, "x");
+    hot::ls::IndexShard shard = sample_shard();
+    shard.table = sample_table();
+    ASSERT_TRUE(index.store(script, "d", shard));
+    const std::string file = index.shard_path(script);
+    std::string text = read_all(file);
+    const std::string head = "hot-index " + std::to_string(hot::ls::SymbolIndex::kFormatVersion) + " ";
+    ASSERT_EQ(text.rfind(head, 0), 0u);
+    text.replace(0, head.size(), "hot-index 4 ");
+    write_file(file, text);
+    EXPECT_FALSE(index.load(script, "d"));
+    EXPECT_FALSE(std::filesystem::exists(file));
+}
+
+TEST(SymbolIndex, NativeTargetsRoundTripAndMerge)
+{
+    TempDir dir;
+    hot::ls::SymbolIndex index;
+    index.open((dir.path() / "index").string());
+    const std::string script = (dir.path() / "a.hot").string();
+    write_file(script, "x");
+    hot::ls::IndexShard shard = sample_shard();
+    shard.table = sample_table();
+    shard.native_targets[5] = {{"file:///h.h", 3, 4}, {"file:///h.h", 9, 1}};
+    shard.native_targets[8] = {};
+    shard.native_stamps = {{"/h.h", 10, 20}};
+    ASSERT_TRUE(index.store(script, "d", shard));
+    auto loaded = index.load(script, "d");
+    ASSERT_TRUE(loaded);
+    EXPECT_EQ(loaded->native_targets, shard.native_targets);
+    EXPECT_EQ(loaded->native_stamps, shard.native_stamps);
+    // A merge replaces an offset and keeps the others.
+    ASSERT_TRUE(index.store_native(script, "d", {{8, {{"file:///h.h", 1, 1}}}, {11, {}}}, {{"/h.h", 10, 20}}));
+    loaded = index.load(script, "d");
+    ASSERT_TRUE(loaded);
+    EXPECT_EQ(loaded->native_targets.size(), 3u);
+    EXPECT_EQ(loaded->native_targets.at(5).size(), 2u);
+    EXPECT_EQ(loaded->native_targets.at(8).size(), 1u);
+    EXPECT_TRUE(loaded->native_targets.at(11).empty());
+    // A changed stamp of a stored file drops the old answers.
+    ASSERT_TRUE(index.store_native(script, "d", {{20, {}}}, {{"/h.h", 11, 20}}));
+    loaded = index.load(script, "d");
+    ASSERT_TRUE(loaded);
+    EXPECT_EQ(loaded->native_targets.size(), 1u);
+    EXPECT_TRUE(loaded->native_targets.count(20));
+    // A wrong digest stores nothing.
+    EXPECT_FALSE(index.store_native(script, "other", {{1, {}}}, {}));
+}
+
 TEST(SymbolIndex, AVersion3ShardIsDropped)
 {
     TempDir dir;

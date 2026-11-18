@@ -218,6 +218,20 @@ json shard_json(const IndexShard& shard)
     json body = {{"c", std::move(classes)}, {"t", table_json(shard.table)}};
     if (shard.has_table)
         body["tp"] = 1;
+    if (!shard.native_targets.empty() || !shard.native_stamps.empty())
+    {
+        json targets = json::array(), stamps = json::array();
+        for (const auto& [offset, list] : shard.native_targets)
+        {
+            json l = json::array();
+            for (const NativeTarget& t : list)
+                l.push_back(json::array({t.uri, t.line, t.character}));
+            targets.push_back(json::array({offset, std::move(l)}));
+        }
+        for (const NativeStamp& st : shard.native_stamps)
+            stamps.push_back(json::array({st.path, st.size, st.mtime}));
+        body["n"] = {{"t", std::move(targets)}, {"s", std::move(stamps)}};
+    }
     return body;
 }
 
@@ -226,6 +240,20 @@ IndexShard shard_of(const json& body)
     IndexShard shard;
     shard.table = table_of(body.at("t"));
     shard.has_table = body.contains("tp");
+    if (body.contains("n"))
+    {
+        const json& n = body["n"];
+        for (const json& e : n.at("t"))
+        {
+            std::vector<NativeTarget> list;
+            for (const json& t : e.at(1))
+                list.push_back({t.at(0).get<std::string>(), t.at(1).get<int>(), t.at(2).get<int>()});
+            shard.native_targets[e.at(0).get<int>()] = std::move(list);
+        }
+        for (const json& st : n.at("s"))
+            shard.native_stamps.push_back(
+                {st.at(0).get<std::string>(), st.at(1).get<uint64_t>(), st.at(2).get<int64_t>()});
+    }
     for (const json& cj : body.at("c"))
     {
         IndexClass c;
@@ -577,6 +605,41 @@ bool SymbolIndex::store(const std::string& script_path, const std::string& dig, 
     }
     ++stores_;
     return true;
+}
+
+NativeStamp SymbolIndex::stamp_file(const std::string& path)
+{
+    const FileStamp f = stamp_of(path);
+    return {f.path, static_cast<uint64_t>(f.size), static_cast<int64_t>(f.mtime)};
+}
+
+bool SymbolIndex::store_native(const std::string& script_path, const std::string& dig,
+    const std::map<int, std::vector<NativeTarget>>& map, const std::vector<NativeStamp>& stamps)
+{
+    auto shard = load(script_path, dig);
+    if (!shard)
+        return false;
+    bool conflict = false;
+    for (const NativeStamp& old : shard->native_stamps)
+        for (const NativeStamp& now : stamps)
+            if (old.path == now.path && !(old == now))
+                conflict = true;
+    if (conflict)
+    {
+        shard->native_targets.clear();
+        shard->native_stamps.clear();
+    }
+    for (const auto& [offset, list] : map)
+        shard->native_targets[offset] = list;
+    for (const NativeStamp& now : stamps)
+    {
+        bool found = false;
+        for (const NativeStamp& old : shard->native_stamps)
+            found = found || old.path == now.path;
+        if (!found)
+            shard->native_stamps.push_back(now);
+    }
+    return store(script_path, dig, *shard);
 }
 
 int SymbolIndex::prune()
