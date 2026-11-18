@@ -254,6 +254,7 @@ struct Doc
     bool shell_changed = false; // the header changed: the next send reopens the document
     bool shell_stable = false; // shell_path is the stable name of the document (one path, new content)
     long long shell_hold_until_ms = 0; // steady_ms(): until then clangd can answer from the old header
+    bool shell_unconfirmed = false; // the header changed in place and clangd has not shown the new preamble yet
     // The host of the script at the last update. Null: no host.
     std::shared_ptr<const Host> host;
     json clang_diags = json::array(); // the mapped clangd diagnostics of gen_version
@@ -929,6 +930,21 @@ private:
     std::string lite_uri(const Doc& d, const std::string& full, int gen_line0, int wait_ms = kNativeBudgetMs);
     std::string shell_dir_;
     const std::string& shell_dir();
+    // After an in-place change of the shell header (HOT-52): true when the new preamble is shown. After the hold,
+    // one documentSymbol request waits for the AST, which needs the new preamble. A time-out keeps the doc
+    // unconfirmed, so the next request asks again. A confirmed or stable-free document costs nothing.
+    bool confirm_shell_preamble(Doc& d, int wait_ms)
+    {
+        if (!d.shell_unconfirmed)
+            return true;
+        if (steady_ms() < d.shell_hold_until_ms || wait_ms < 1)
+            return false;
+        if (!clangd_ || !clangd_->running()
+            || !clangd_result("textDocument/documentSymbol", {{"textDocument", {{"uri", d.gen_uri}}}}, wait_ms))
+            return false;
+        d.shell_unconfirmed = false;
+        return true;
+    }
     void remove_shell(Doc& d)
     {
         std::error_code ec;
@@ -939,6 +955,7 @@ private:
         d.shell_old.clear();
         d.shell_hash = 0;
         d.shell_active = false;
+        d.shell_unconfirmed = false;
     }
     struct LiteState
     {
@@ -2491,8 +2508,9 @@ std::string Server::unit_for_clangd(Doc& d, const std::string& cpp)
                 d.shell_stable = true;
                 if (in_place)
                 {
-                    d.shell_hold_until_ms = steady_ms() + 5000;
-                    this_hold_until_ms_ = steady_ms() + 5000;
+                    d.shell_hold_until_ms = steady_ms() + kShellHoldMs;
+                    d.shell_unconfirmed = true;
+                    this_hold_until_ms_ = steady_ms() + kShellHoldMs;
                 }
                 else
                 {
@@ -2505,6 +2523,9 @@ std::string Server::unit_for_clangd(Doc& d, const std::string& cpp)
                 return *sunit;
             }
             // The write failed (a lock on Windows): the name with the hash of the content.
+            // remove_shell must remove the stable file too.
+            if (d.shell_stable && !d.shell_path.empty())
+                d.shell_old = d.shell_path;
         }
     }
     std::snprintf(name, sizeof name, "%016zx-%016zx.shell.h", gen_hash, hash);
@@ -2522,6 +2543,7 @@ std::string Server::unit_for_clangd(Doc& d, const std::string& cpp)
         d.shell_path = path;
         d.shell_hash = hash;
         d.shell_stable = false;
+        d.shell_unconfirmed = false;
         // clangd builds a new preamble for the new header. The next request waits for it, as for a new document.
         preamble_ready_.erase(d.gen_uri);
         completion_synced_.erase(d.gen_uri);
@@ -3554,6 +3576,8 @@ json Server::on_completion(const Doc& d, const json& p)
             cc.valid && cc.complete && cc.rest == rest && prefix.compare(0, cc.prefix.size(), cc.prefix) == 0;
         if (!hit)
         {
+            // HOT-52: after the hold of a shell change, the reply is final only when clangd shows the new preamble.
+            confirm_shell_preamble(const_cast<Doc&>(d), opt_.completion_budget_ms);
             ++completion_translations_;
             size_t n = e;
             while (n < t.size() && (t[n] == ' ' || t[n] == '\t' || t[n] == '\r' || t[n] == '\n'))
@@ -3894,7 +3918,8 @@ json Server::on_completion(const Doc& d, const json& p)
                 if (this_cache && !this_bad && shell_key)
                     stamp = header_stamp(shell_includes, translate_options(d).include_dirs,
                         path_utf8(fs::path(utf8_path(d.path)).parent_path()), stamp_ok);
-                if (this_cache && !this_bad && shell_key && stamp_ok && steady_ms() >= this_hold_until_ms_)
+                if (this_cache && !this_bad && shell_key && stamp_ok && steady_ms() >= this_hold_until_ms_
+                    && !d.shell_unconfirmed)
                 {
                     if (this_entry && this_entry->shell == shell_key && this_entry->stamp == stamp)
                     {
@@ -4003,7 +4028,7 @@ json Server::on_completion(const Doc& d, const json& p)
             // Within the hold after a shell change clangd can answer from the old preamble: the answer is not final.
             cc.complete = !mapped
                 || (r && !cc.list.empty() && !(r->is_object() && r->value("isIncomplete", false))
-                    && steady_ms() >= d.shell_hold_until_ms);
+                    && steady_ms() >= d.shell_hold_until_ms && !d.shell_unconfirmed);
         }
         incomplete = !cc.complete;
         phase.emplace("post items");

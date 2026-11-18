@@ -19,6 +19,10 @@
 namespace hot::ls
 {
 
+// The minimum time (ms) after a change of the shell header in which the completion replies are not final (HOT-52).
+// After it the server also asks clangd for a signal that the new preamble is ready.
+inline constexpr int kShellHoldMs = 5000;
+
 // The unit text of clangd: the include of the header, empty lines, then the own part of "cpp" after the offset "at".
 // No value when the header path has a quote or a line break (the include has no escapes).
 std::optional<std::string> shell_unit_with_include(const std::string& header, const std::string& cpp, size_t at, size_t stamp = 0);

@@ -6690,7 +6690,8 @@ namespace
 {
 
 // Writes the proxy in "tools" and gives the path of the clangd program that runs it.
-// The proxy holds the first message of the method "method" that has the text "marker".
+// The proxy holds the first message of the method "method" that has the text "marker". With the environment
+// variable GATE_ALL it holds each such message while the gate file does not exist.
 std::string make_gated_clangd(const TempDir& tools, const std::string& method = "textDocument/references",
     const std::string& marker = "")
 {
@@ -6730,6 +6731,9 @@ std::string make_gated_clangd(const TempDir& tools, const std::string& method = 
         "        if line.lower().startswith(b'content-length:'):\n"
         "            size = int(line.split(b':')[1])\n"
         "    body = src.read(size)\n"
+        "    if os.environ.get('GATE_ALL') and method in body and marker in body and not os.path.exists(gate):\n"
+        "        threading.Thread(target=release, args=(head + body,), daemon=True).start()\n"
+        "        continue\n"
         "    if not held and method in body and marker in body:\n"
         "        held = True\n"
         "        open(gate + '.seen', 'w').close()\n"
@@ -10470,6 +10474,64 @@ TEST(LanguageServer, CompletionAfterAShellChangeAnswersAtOnceAndThenHasTheNewNam
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
     EXPECT_TRUE(found) << r.dump();
+}
+
+// HOT-52: after the hold, a reply is final only when clangd shows the new preamble. A clangd that is slower than the
+// hold (here: documentSymbol is held by the proxy) keeps the replies incomplete. When it answers, the reply is final.
+TEST(LanguageServer, CompletionStaysIncompleteWhenTheNewPreambleIsLateAfterTheHold)
+{
+    REQUIRE_CLANGD();
+    if (std::system("python3 -c \"\" >/dev/null 2>&1") != 0)
+        GTEST_SKIP() << "python3 is not installed";
+    const EnvGuard env("HOT_LS_SPLIT_SHELL", "1");
+    const EnvGuard stable("HOT_LS_STABLE_SHELL", "1");
+    const EnvGuard all("GATE_ALL", "1");
+    TempDir shells, tools;
+    const EnvGuard dir_env("HOT_LS_SHELL_DIR", shells.path().string());
+    const std::string clangd = make_gated_clangd(tools, "textDocument/documentSymbol");
+    const std::string gate = (tools.path() / "gate").string();
+    write_file(gate, "open");
+    GateOpener opener{gate};
+    TempDir dir;
+    hot::ls::ServerOptions o = options(dir, true);
+    o.clangd = clangd;
+    o.completion_budget_ms = 600;
+    Session s(true, kSplitImporter, &o);
+    write_file(s.dir.path() / "base.hot", kSplitBase);
+    s.client->change(s.uri, 2, kSplitImporter);
+    ASSERT_NE(s.client->request("textDocument/hover", doc_pos(s.uri, 3, 30)), nullptr);
+    std::string plain = kSplitImporter;
+    plain.replace(plain.find("this.Heal(a)"), 12, "ExtraTh");
+    plain += "class ExtraThing { }\n";
+    const int col = static_cast<int>(std::string("    float Go(float a) { return ExtraTh").size());
+    auto ask = [&] { return s.client->request("textDocument/completion", doc_pos(s.uri, 3, col), 20000); };
+    // Warm: a first completion with the gate open.
+    s.client->change(s.uri, 3, kSplitImporter);
+    ask();
+    // A shell change, then the hold passes with the gate closed.
+    s.client->change(s.uri, 4, plain);
+    json r = ask();
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    EXPECT_TRUE(r["result"].value("isIncomplete", false));
+    std::filesystem::remove(gate);
+    std::this_thread::sleep_for(std::chrono::milliseconds(hot::ls::kShellHoldMs + 500));
+    for (int i = 0; i < 2; ++i)
+    {
+        r = ask();
+        ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+        EXPECT_TRUE(r["result"].value("isIncomplete", false)) << "try " << i << ": " << r.dump();
+    }
+    // The preamble answer comes: the next reply is final.
+    write_file(gate, "open");
+    bool final_reply = false;
+    for (int i = 0; i < 20 && !final_reply; ++i)
+    {
+        r = ask();
+        final_reply = r.contains("result") && r["result"].is_object() && !r["result"].value("isIncomplete", false);
+        if (!final_reply)
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    }
+    EXPECT_TRUE(final_reply) << r.dump();
 }
 
 // Hover, definition and completion in the bodies of the own functions are the same with the lite document and

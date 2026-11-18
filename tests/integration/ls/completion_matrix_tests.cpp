@@ -250,7 +250,7 @@ std::string run_case(const Case& c)
     // After a change of the shell, clangd answers from the old preamble and the reply has "isIncomplete" (HOT-52).
     // Like a client, the test asks again until the reply is complete.
     json r;
-    for (int tries = 0; tries < 24; ++tries)
+    for (int tries = 0; tries < hot::ls::kShellHoldMs / 250 + 16; ++tries)
     {
         r = g_ws->client->request("textDocument/completion",
             {{"textDocument", {{"uri", g_ws->uri}}}, {"position", {{"line", line}, {"character", col}}}});
