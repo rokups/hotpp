@@ -287,3 +287,15 @@ if(HOT_AOT_ONLY_FORCED AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
             PASS_REGULAR_EXPRESSION "needs forbidden symbols: .*${_hot_reject_name}")
     endforeach()
 endif()
+
+# The generated C++ must build without a warning, also with -Wall -Wextra. -Werror makes the build
+# of this target fail on a warning. warn_free.hot has one part for each kind of warning that the
+# generator once produced: the layout table of a value struct, the slot table, the field table, a
+# base(...) call that uses a constructor parameter alone, and a lambda with and without a capture.
+if(NOT MSVC)
+    hot_add_scripts(TARGET warn_free_scripts AOT
+                    SCRIPTS ${PROJECT_SOURCE_DIR}/tests/scripts/warn_free.hot
+                    INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
+                    DEPENDS ${HOT_HEADERS})
+    target_compile_options(warn_free_scripts PRIVATE -Wall -Wextra -Werror)
+endif()
