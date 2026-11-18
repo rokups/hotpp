@@ -3276,8 +3276,15 @@ Completion complete_at(bool clangd, std::string text, const std::string& replace
     if (!lib.empty())
         write_file(s.dir.path() / "lib.hot", lib);
     Completion c;
-    json r = s.client->request("textDocument/completion", doc_pos(s.uri, line, col));
-    c.result = r.contains("result") ? r["result"] : json::object();
+    // The server has a time budget for clangd. Under load the reply is "isIncomplete": a client asks again.
+    json r;
+    for (int attempt = 0; attempt < 5; ++attempt)
+    {
+        r = s.client->request("textDocument/completion", doc_pos(s.uri, line, col));
+        c.result = r.contains("result") ? r["result"] : json::object();
+        if (!c.result.is_object() || !c.result.value("isIncomplete", false))
+            break;
+    }
     for (const json& i : c.result.value("items", json::array()))
         c.names.push_back(i.value("insertText", i.value("label", "")));
     return c;
@@ -10474,7 +10481,20 @@ TEST(LanguageServer, LiteDocIsHiddenFromReferencesRenameAndSymbols)
         const std::string dump = value.dump();
         EXPECT_EQ(dump.find(".lite.cpp"), std::string::npos) << key << ": " << dump;
         EXPECT_EQ(dump.find(".shell.h"), std::string::npos) << key << ": " << dump;
-        EXPECT_EQ(value, off[key]) << key;
+        // The workspace/symbol list has header symbols from the clangd index: their set depends on the indexing
+        // progress and differs from run to run. Compare only the symbols of the script files.
+        auto script_only = [&](const json& j)
+        {
+            if (key.rfind("symbol_", 0) != 0 || !j.contains("result"))
+                return j;
+            json out = j;
+            out["result"] = json::array();
+            for (const json& e : j["result"])
+                if (e["location"].value("uri", "").rfind("ROOT/", 0) == 0)
+                    out["result"].push_back(e);
+            return out;
+        };
+        EXPECT_EQ(script_only(value), script_only(off[key])) << key;
         const json& res = value.contains("result") ? value["result"] : value;
         if (res.is_array())
         {
