@@ -1102,7 +1102,8 @@ private:
     json on_completion(const Doc& d, const json& p);
     json using_completion(const Doc& d, Pos cur, size_t off, size_t line_begin);
     json on_hover(const Doc& d, const json& p);
-    // True when the table of the script is not usable (degraded mode).
+    // True when the script has errors or no table (degraded mode). The answers use the table
+    // first. The text scan serves only the gaps G1, G2 and G3 (see doc/tools-ls.md).
     static bool has_no_table(const Doc& d)
     {
         return !d.facts.errors.empty() || (d.facts.refs.empty() && !d.facts.ok);
@@ -5106,10 +5107,11 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
         }
         return list;
     };
-    // Degraded mode: the translator gives no table, or a table with gaps, for a script with a
-    // syntax error or with an import that has an error. Then the text scans of the lenient facts
-    // give the script places, and the table is not used. The fallback stays: the table can have
-    // gaps for a broken file. Hover reads the table when it exists (see on_hover).
+    // Degraded mode: the table comes first. The text scans of the lenient facts serve only when
+    // the table gives no result. The gaps: G1 (the error statement and the rest of its body),
+    // G2 (an import with an error) and G3 (more than 4 error regions). Remove the scans when
+    // G1, G2 and G3 are closed. The class scan stays before the table: the table has no entry
+    // for a class name that qualifies a member ("Class.member").
     const bool no_table = has_no_table(d);
     if (no_table && is_ref && !here_word.empty() && is_script_class(d, here_word))
     {
