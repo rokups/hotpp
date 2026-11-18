@@ -3626,6 +3626,9 @@ json Server::on_completion(const Doc& d, const json& p)
             if (!end)
             {
                 texts.push_back(before + closers + t.substr(e)); // a name follows: "a.b F()"
+                // HOT-56: the text after the word closes the brackets: "F(in a.b c, int d)".
+                if (!closers.empty())
+                    texts.push_back(before + t.substr(e));
                 texts.push_back(before + angles + " hot_hole_" + closers + ";" + t.substr(e));
                 if (!closers.empty())
                     texts.push_back(before + angles + " hot_hole_" + closers + " {}" + t.substr(e));
@@ -3633,7 +3636,10 @@ json Server::on_completion(const Doc& d, const json& p)
             // A type place: the text with a dummy name comes first, the hole is a type in it.
             if (type_only)
             {
-                std::vector<std::string> typed = {before + angles + " hot_hole_" + closers + (end ? "" : ";") + t.substr(e)};
+                std::vector<std::string> typed;
+                if (!end && !closers.empty())
+                    typed.push_back(before + t.substr(e)); // HOT-56: the type is before the real name
+                typed.push_back(before + angles + " hot_hole_" + closers + (end ? "" : ";") + t.substr(e));
                 if (!end && !closers.empty())
                     typed.push_back(before + angles + " hot_hole_" + closers + " {}" + t.substr(e));
                 typed.insert(typed.end(), texts.begin(), texts.end());
