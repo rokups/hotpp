@@ -87,6 +87,7 @@ A stub with the key of a stub in an earlier file merges into the earlier rule. I
 | `weak_handle` | Replaces the earlier value. It belongs to the handle: a new storage without a handle removes it. A new handle with an inherited weak handle is an error, unless the later stub states `weak_handle` again. |
 | `default_handle` | Replaces the earlier value. |
 | `factory` | Replaces the earlier value. A new `value` storage removes it. The template must hold `$T`. |
+| `raw_pointer` | Replaces the earlier value. A new `value` storage removes it. The name of the member that gives the raw pointer of the handle. Default: `get`. |
 | `native`, `self`, `checked_index` | Add up. A later stub cannot remove them. |
 | `cpp_prelude` | Adds up. The later text comes after the earlier text. |
 | `cpp_overrides` | Adds up. The result has the names of all stubs, each name one time. |

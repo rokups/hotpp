@@ -81,7 +81,7 @@ bool states(const ast::Stub& s, const char* attr)
     const std::string a = attr;
     return (a == "value" && s.is_value) || (a == "handle" && !s.handle.empty())
         || (a == "intrusive" && (!s.intrusive_add.empty() || !s.intrusive_release.empty()))
-        || (a == "weak_handle" && !s.weak_handle.empty()) || (a == "weak_source" && !s.weak_source.empty()) || (a == "factory" && !s.factory.empty()) || (a == "default_handle" && !s.default_handle.empty())
+        || (a == "weak_handle" && !s.weak_handle.empty()) || (a == "weak_source" && !s.weak_source.empty()) || (a == "factory" && !s.factory.empty()) || (a == "raw_pointer" && !s.raw_pointer.empty()) || (a == "default_handle" && !s.default_handle.empty())
         || (a == "cpp_prelude" && !s.cpp_prelude.empty()) || (a == "cpp_overrides" && !s.cpp_overrides.empty());
 }
 
@@ -118,6 +118,8 @@ std::string merge_stub(ast::Stub& m, const ast::Stub& s)
         m.handle = s.handle;
         m.intrusive_add = s.intrusive_add;
         m.intrusive_release = s.intrusive_release;
+        if (value || s.handle != old_handle || intrusive)
+            m.raw_pointer.clear(); // the accessor belongs to its handle
         if (value)
             m.factory.clear();
         if (!handle || s.handle.empty())
@@ -134,6 +136,8 @@ std::string merge_stub(ast::Stub& m, const ast::Stub& s)
         m.default_handle = s.default_handle;
     if (states(s, "factory"))
         m.factory = s.factory;
+    if (states(s, "raw_pointer"))
+        m.raw_pointer = s.raw_pointer;
     m.is_native = m.is_native || s.is_native;
     m.is_self = m.is_self || s.is_self;
     m.checked_index = m.checked_index || s.checked_index;
@@ -175,7 +179,7 @@ std::string check_rule(const ast::Stub& s)
             return "'class *' accepts only 'native', 'default_handle' and 'weak_handle'";
         if (!s.weak_source.empty())
             return "'class *' accepts only 'native', 'default_handle' and 'weak_handle'";
-        if (!s.factory.empty())
+        if (!s.factory.empty() || !s.raw_pointer.empty())
             return "'class *' accepts only 'native', 'default_handle' and 'weak_handle'";
         if (!s.weak_handle.empty() && (s.default_handle.empty() || s.weak_handle.find("$T") == std::string::npos))
             return "'weak_handle' needs a 'default_handle' and a template with '$T'";
@@ -185,6 +189,8 @@ std::string check_rule(const ast::Stub& s)
         return "'default_handle' is valid only on 'class *'";
     if (!s.factory.empty() && s.factory.find("$T") == std::string::npos)
         return "'factory' needs a template with '$T'. Example: factory(\"std::make_shared<$T>\")";
+    if (!s.raw_pointer.empty() && s.is_value)
+        return "'raw_pointer' needs a handle. 'value' and 'raw_pointer' are exclusive";
     if (!s.factory.empty() && s.is_value)
         return "'factory' needs a handle. 'value' and 'factory' are exclusive";
     if (!s.weak_handle.empty() && (s.handle.empty() || s.handle == "$T*" || s.weak_handle.find("$T") == std::string::npos))
@@ -276,6 +282,7 @@ void TypeModel::add_stubs(const std::vector<ast::Stub>& stubs, Diagnostics& diag
         rule.cpp_prelude = s.cpp_prelude;
         rule.cpp_overrides = s.cpp_overrides;
         rule.factory_tpl = s.factory;
+        rule.raw_pointer = s.raw_pointer;
         rule.weak_source = s.weak_source;
         if (intrusive)
         {
@@ -569,6 +576,14 @@ bool TypeModel::is_handle(const std::string& type_in) const
     if (starts_with(type, "const ") || is_builtin(type))
         return false;
     return lookup(type).kind == Kind::Handle;
+}
+
+std::string TypeModel::raw_pointer_member(const std::string& type_in) const
+{
+    if (!is_handle(type_in))
+        return {};
+    const TypeRule rule = lookup(type_in);
+    return rule.raw_pointer.empty() ? "get" : rule.raw_pointer;
 }
 
 bool TypeModel::has_shared_from_this(const std::string& type) const

@@ -69,6 +69,8 @@ struct RCtx
     // another script object are weak when the AST of the field says so.
     std::set<std::string> weak_fields;
     std::set<std::string> weak_locals;
+    // The locals and parameters with the type "T*&": object_type() drops the pointer of that type.
+    std::set<std::string> ptr_ref_locals;
     // box uses (design 7.10). "value_fields" has the box fields of the class and
     // "value_locals" has the box parameters and locals. Such a name holds a hot::Value<E>.
     // A conversion to a box target copies the object. "new C()" is the exception: the new

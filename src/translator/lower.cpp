@@ -117,6 +117,16 @@ static std::string object_type(const std::string& type)
     return t;
 }
 
+// True for the type "T*&" (a reference to a pointer).
+static bool is_ptr_ref_type(const std::string& type)
+{
+    const size_t e = type.find_last_not_of(" \t");
+    if (e == std::string::npos || type[e] != '&' || (e > 0 && type[e - 1] == '&') || e == 0)
+        return false;
+    const size_t p = type.find_last_not_of(" \t", e - 1);
+    return p != std::string::npos && type[p] == '*';
+}
+
 void add_params(RCtx& cx, const std::vector<ast::Param>& params)
 {
     for (const ast::Param& p : params)
@@ -131,6 +141,10 @@ void add_params(RCtx& cx, const std::vector<ast::Param>& params)
         else
             cx.value_locals.erase(p.name);
         cx.cell_locals.erase(p.name);
+        if (is_ptr_ref_type(p.script_type.empty() ? p.type : p.script_type))
+            cx.ptr_ref_locals.insert(p.name);
+        else
+            cx.ptr_ref_locals.erase(p.name);
         const std::string t = object_type(p.script_type.empty() ? p.type : p.script_type);
         if (t.empty())
             cx.local_type.erase(p.name);
@@ -231,13 +245,11 @@ struct Lowerer
             diag.add_line(0, msg);
     }
 
-    // Temporary, removed in HOT-58 S9: a cast that tests for null warns. The text asks for "x!".
-    // Set it to false to switch the lint off. It never changes the generated code.
-    static constexpr bool hot58_cast_lint = true;
-    void hot58_cast_warn(uint32_t pos)
+    // A cast to the type of its operand does nothing. The warning does not change the generated code.
+    void warn_same_cast(uint32_t pos)
     {
-        if (hot58_cast_lint && cx.map)
-            diag.warn(pos, *cx.map, "HOT-58: this cast tests for null; write x!");
+        if (cx.map)
+            diag.warn(pos, *cx.map, "a cast to the same type has no effect");
     }
 
     ExprP raw(std::string text, uint32_t pos) { return make_expr(RawExpr{std::move(text), pos}); }
@@ -1315,6 +1327,10 @@ struct Lowerer
         cx.weak_locals.erase(name); // a "[weak]" local adds the name again after this call
         cx.value_locals.erase(name); // a box local adds the name again after this call
         cx.cell_locals.erase(name); // a shared local adds the name again after this call
+        if (is_ptr_ref_type(type))
+            cx.ptr_ref_locals.insert(name);
+        else
+            cx.ptr_ref_locals.erase(name);
         if (type.empty())
             cx.local_type.erase(name);
         else
@@ -3766,10 +3782,9 @@ struct Lowerer
                 std::string from = u->operand ? object_type(type_of(*u->operand)) : std::string();
                 if (!from.empty() && from[0] == '$')
                     from.erase(0, 1);
-                // An upcast and a cast to the same type cannot fail: "static_pointer_cast". Every other
-                // cast is checked with the class record, as "as" is: a failed cast gives a null handle.
-                // A cast to the same type or to a base type is a checked unwrap (hot::nonnull): a null
-                // handle throws hot::NullReference and the result is not null.
+                // A cast to the same type is the operand. An upcast cannot fail: "static_pointer_cast".
+                // Every other cast is checked with the class record, as "as" is: a failed cast gives a
+                // null handle. A cast never throws: a null handle stays null.
                 bool upcast = false;
                 for (const ClassDef* d = class_named(from); d && !upcast; d = class_named(d->base))
                     upcast = d->name == to;
@@ -3788,21 +3803,11 @@ struct Lowerer
                             c.args.push_back(std::move(u->operand));
                             c.args.push_back(raw("\"" + to + "\"", u->pos));
                         }
-                        else if (same || upcast)
+                        else if (same)
                         {
-                            hot58_cast_warn(u->pos);
-                            // The cast of an upcast keeps the handle conversion, after the null test.
-                            c.callee = raw("hot::nonnull", u->pos);
-                            c.args.push_back(std::move(u->operand));
-                            if (!same)
-                            {
-                                CallExpr conv;
-                                conv.pos = u->pos;
-                                conv.callee = raw(std::string(sp, std::strlen(sp) - std::strlen("shared_ptr<")) + "static_pointer_cast<"
-                                        + h.substr(std::strlen(sp), h.size() - std::strlen(sp) - 1) + ">", u->pos);
-                                conv.args.push_back(make_expr(std::move(c)));
-                                c = std::move(conv);
-                            }
+                            warn_same_cast(u->pos);
+                            e = std::move(u->operand);
+                            return;
                         }
                         else
                         {
@@ -3814,46 +3819,70 @@ struct Lowerer
                         return;
                     }
                 // Another handle (an intrusive pointer, or a raw pointer): the same checks, then the C cast.
-                if (checked || same || upcast)
+                if (same)
+                {
+                    warn_same_cast(u->pos);
+                    e = std::move(u->operand);
+                    return;
+                }
+                if (checked)
                 {
                     CallExpr c;
                     c.pos = u->pos;
-                    if (checked)
-                    {
-                        c.callee = raw("hot::as_script<" + to + "_Shell>", u->pos);
-                        c.args.push_back(std::move(u->operand));
-                        c.args.push_back(raw("\"" + to + "\"", u->pos));
-                    }
-                    else
-                    {
-                        hot58_cast_warn(u->pos);
-                        c.callee = raw("hot::nonnull", u->pos);
-                        c.args.push_back(std::move(u->operand));
-                    }
+                    c.callee = raw("hot::as_script<" + to + "_Shell>", u->pos);
+                    c.args.push_back(std::move(u->operand));
+                    c.args.push_back(raw("\"" + to + "\"", u->pos));
                     u->operand = make_expr(std::move(c));
                 }
                 return;
             }
             if (!u->postfix && is_ptr_cast(u->op))
-            { // "(T*)p": a checked unwrap when "p" has the type "T*" (the C++ compiler decides), else the C cast
+            { // "(T*)p": a cast that never throws (hot::cast_ptr)
+                std::string accessor; // the member of a handle that gives the raw pointer ([raw_pointer], default "get")
                 if (u->operand)
-                { // temporary, removed in HOT-58 S9: warn when the operand is not a raw pointer of another type
-                    const std::string to_t = u->op.substr(1, u->op.size() - 2);
+                {
                     std::string ft = type_of(*u->operand);
                     while (!ft.empty() && ft.back() == ' ')
                         ft.pop_back();
-                    const bool raw_other = !ft.empty() && ft.back() == '*' && ft != to_t
-                        && !(cx.types && cx.types->is_handle(ft));
-                    if (!raw_other || is_weak_handle(*u->operand))
-                        hot58_cast_warn(u->pos);
+                    if (!ft.empty() && ft == u->op.substr(1, u->op.size() - 2))
+                        warn_same_cast(u->pos);
+                    std::string obj = object_type(ft);
+                    if (!obj.empty() && obj[0] == '$')
+                        obj.erase(0, 1);
+                    // A pointer, also "T*&", has no accessor. A weak read is "hot::lock(w)": a strong handle.
+                    const auto* nm = std::get_if<NameExpr>(&u->operand->v);
+                    const bool ptr_ref = nm && nm->parts.size() == 1 && cx.locals.count(nm->parts[0]) != 0
+                        && cx.ptr_ref_locals.count(nm->parts[0]) != 0;
+                    if (cx.types && !obj.empty() && ft.find('*') == std::string::npos && !ptr_ref)
+                        accessor = cx.types->raw_pointer_member(obj);
                 }
                 expr(u->operand);
+                if (!accessor.empty())
+                { // "(T*)h": the cast gets the raw pointer of the handle: a null handle gives nullptr
+                    MemberExpr me;
+                    me.pos = u->pos;
+                    me.name_pos = u->pos;
+                    me.name = accessor;
+                    me.obj = std::move(u->operand);
+                    CallExpr get;
+                    get.pos = u->pos;
+                    get.callee = make_expr(std::move(me));
+                    u->operand = make_expr(std::move(get));
+                }
                 CallExpr c;
                 c.pos = u->pos;
                 c.callee = raw("hot::cast_ptr<" + u->op.substr(1, u->op.size() - 2) + ">", u->pos);
                 c.args.push_back(std::move(u->operand));
                 e = make_expr(std::move(c));
                 return;
+            }
+            if (!u->postfix && u->operand && u->op.size() > 2 && u->op.front() == '(' && u->op.back() == ')')
+            { // "(T)v" of a value of the type "T"
+                std::string ft = type_of(*u->operand);
+                while (!ft.empty() && ft.back() == ' ')
+                    ft.pop_back();
+                if (!ft.empty() && ft == u->op.substr(1, u->op.size() - 2))
+                    warn_same_cast(u->pos);
             }
             if (!u->postfix && u->operand && is_int_cast(u->op))
             { // "(int)f": a float out of the range gives the nearest limit, NaN gives 0
@@ -4804,7 +4833,7 @@ struct Lowerer
     struct ScopeSave
     {
         RCtx& cx;
-        std::set<std::string> locals, weak_locals, value_locals, cell_locals;
+        std::set<std::string> locals, weak_locals, value_locals, cell_locals, ptr_ref_locals;
         std::map<std::string, std::string> local_type, path_names;
         std::map<std::string, std::pair<const Expr*, std::string>> path_exprs;
         explicit ScopeSave(RCtx& c)
@@ -4813,6 +4842,7 @@ struct Lowerer
             , weak_locals(c.weak_locals)
             , value_locals(c.value_locals)
             , cell_locals(c.cell_locals)
+            , ptr_ref_locals(c.ptr_ref_locals)
             , local_type(c.local_type)
             , path_names(c.path_names)
             , path_exprs(c.path_exprs)
@@ -4824,6 +4854,7 @@ struct Lowerer
             cx.weak_locals = std::move(weak_locals);
             cx.value_locals = std::move(value_locals);
             cx.cell_locals = std::move(cell_locals);
+            cx.ptr_ref_locals = std::move(ptr_ref_locals);
             cx.local_type = std::move(local_type);
             cx.path_names = std::move(path_names);
             cx.path_exprs = std::move(path_exprs);

@@ -241,14 +241,35 @@ struct DerivedItem : Item
     int extra = 0;
 };
 
-// The cast "(T*)h" of a handle is a checked unwrap that gives the raw pointer.
+// The cast "(T*)h" of a handle gives the raw pointer. A null handle gives nullptr.
 TEST(CastPtr, HandleGivesTheRawPointer)
 {
     auto h = std::make_shared<DerivedItem>();
     EXPECT_EQ(hot::cast_ptr<Item*>(h), static_cast<Item*>(h.get()));
     EXPECT_EQ(hot::cast_ptr<DerivedItem*>(h), h.get());
     std::shared_ptr<DerivedItem> n;
-    EXPECT_THROW(hot::cast_ptr<Item*>(n), hot::NullReference);
+    EXPECT_NO_THROW(EXPECT_EQ(hot::cast_ptr<Item*>(n), nullptr));
+    EXPECT_NO_THROW(EXPECT_EQ(hot::cast_ptr<DerivedItem*>(n), nullptr));
+}
+
+// A handle with only "Get()" (the rbfx SharedPtr form). The translator writes "h.Get()" for the
+// option [raw_pointer("Get")], so "cast_ptr" gets the raw pointer.
+template <class T> struct GetOnlyHandle
+{
+    T* p = nullptr;
+    T* Get() const { return p; }
+};
+
+TEST(CastPtr, RawPointerOfAHandleWithOnlyGetIsNullSafe)
+{
+    DerivedItem d;
+    GetOnlyHandle<DerivedItem> h{&d};
+    EXPECT_EQ(hot::cast_ptr<Item*>(h.Get()), static_cast<Item*>(&d));
+    GetOnlyHandle<DerivedItem> n;
+    EXPECT_NO_THROW(EXPECT_EQ(hot::cast_ptr<Item*>(n.Get()), nullptr));
+    static_assert(std::is_same_v<decltype(hot::cast_ptr<Item*>(h.Get())), Item*>);
+    Item* q = &d;
+    static_assert(std::is_same_v<decltype(hot::cast_ptr<Item*>(q)), Item*>);
 }
 
 TEST(AsRef, HandleGivesTheObject)
@@ -393,13 +414,13 @@ TEST(NonNullMsg, OptionalPassesThrough)
     static_assert(std::is_same_v<decltype(hot::nonnull(o, "m")), int&>);
 }
 
-TEST(CastPtr, SameTypeIsACheckedUnwrap)
+TEST(CastPtr, SameTypeKeepsNull)
 {
     Item i;
     Item* p = &i;
     EXPECT_EQ(hot::cast_ptr<Item*>(p), &i);
     Item* n = nullptr;
-    EXPECT_THROW(hot::cast_ptr<Item*>(n), hot::NullReference);
+    EXPECT_NO_THROW(EXPECT_EQ(hot::cast_ptr<Item*>(n), nullptr));
 }
 
 TEST(CastPtr, OtherTypeIsTheCCast)

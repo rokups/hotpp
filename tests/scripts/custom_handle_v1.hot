@@ -8,7 +8,7 @@
 using "Actor.h";
 using "RefPtr.h";
 
-[native, handle("RefPtr<$T>"), weak_handle("WeakRef<$T>")] class RefBase;
+[native, handle("RefPtr<$T>"), weak_handle("WeakRef<$T>"), raw_pointer("Get")] class RefBase;
 
 class Pet : Thing {
     Pet() : base(9) {

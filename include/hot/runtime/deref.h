@@ -185,19 +185,17 @@ template <class T> HOT_HIDDEN T nonnull(std::optional<T>&& o, const char* msg)
     return std::move(*o);
 }
 
-// The script writes the cast "(T*)p". The translator writes "hot::cast_ptr<T*>(p)". When the type
-// of "p" is already "T*", or "p" is a CheckedPtr or a handle, the cast is a checked unwrap: the
-// null test (hot::nonnull) comes before the C cast. A handle gives the raw pointer of its object:
-// "(Base*)h" of a handle of a derived class gives the base pointer. Else it is the C cast.
-// The C++ compiler tests the type, so the translator needs no type of "p".
+// The script writes the cast "(T*)p". The translator writes "hot::cast_ptr<T*>(p)". The cast changes
+// the type and never throws. For a handle that the translator knows, "p" is the raw pointer that the
+// accessor of the handle gives ("h.get()", or the name of [raw_pointer]): a null handle gives nullptr.
+// A CheckedPtr gives its pointer, or nullptr when it is empty or the object is gone. A handle with
+// the type unknown to the translator must have "get()". Else it is the C cast.
 template <class To, class P> HOT_HIDDEN constexpr decltype(auto) cast_ptr(P&& p)
 {
     if constexpr (std::is_same_v<detail::remove_cvref_t<P>, To>)
-        return nonnull(static_cast<P&&>(p));
-    else if constexpr (is_handle_v<P>) // the raw pointer of the object, checked for null
-        return (To)std::addressof(*nonnull(static_cast<P&&>(p)));
-    else if constexpr (is_checked_ptr_v<P>)
-        return (To)nonnull(static_cast<P&&>(p)); // the analyzer treats this cast as a checked unwrap
+        return detail::remove_cvref_t<P>(static_cast<P&&>(p));
+    else if constexpr (is_handle_v<P> || is_checked_ptr_v<P>)
+        return (To)p.get();
     else
         return (To)(static_cast<P&&>(p));
 }

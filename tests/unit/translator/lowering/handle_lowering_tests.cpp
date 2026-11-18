@@ -113,7 +113,7 @@ TEST(HandleLowering, HandleToNativePointerAndReference)
     // An explicit form and a non-handle argument are not converted.
     carrier = "p:Weapon";
     EXPECT_EQ(f.body("Weapon w = null; Use((Weapon*)w); Use(3);"),
-        "std::shared_ptr<Weapon> w = nullptr; Use(hot::cast_ptr<Weapon*>(w)); Use(3);");
+        "std::shared_ptr<Weapon> w = nullptr; Use(hot::cast_ptr<Weapon*>(w.get())); Use(3);");
 }
 
 // A value lvalue of type T goes to a native "T*" or "const T*" parameter: "hot::as_ptr(x)".
