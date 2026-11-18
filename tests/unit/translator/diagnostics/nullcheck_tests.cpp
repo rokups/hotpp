@@ -278,6 +278,20 @@ int cast_warns(const std::string& body)
     return null_warnings(r);
 }
 
+// Temporary lint, removed in HOT-58 S9: each cast that tests for null warns, the code does not change.
+TEST(NullCheck, Hot58CastLintWarnsAtEachEmitSite)
+{
+    const char* const msg = "HOT-58: this cast tests for null; write x!";
+    for (const char* body : {"var a = ($Node)b;", "var a = ($Node)s;", "int* q = null; var a = (int*)q;"})
+    {
+        const hotc::TranslateResult r = translate_real(cast_script(body));
+        size_t n = 0;
+        for (size_t p = r.warnings.find(msg); p != std::string::npos; p = r.warnings.find(msg, p + 1))
+            ++n;
+        EXPECT_EQ(n, 1u) << body << "\n" << r.warnings << r.diagnostics;
+    }
+}
+
 TEST(NullCheck, CastToTheSameHandleTypeIsNonNull)
 {
     EXPECT_EQ(cast_warns("var a = ($Node)b; a.hp = 1;"), 0);
@@ -539,4 +553,73 @@ TEST(NullCheck, NonNullDefaultOfTheLibrary)
     const hotc::TranslateResult r = native_translate("[native, nonnull] class *;\n", "var i = this.make(); i.x = 1;");
     EXPECT_EQ(r.ok, null_warnings(r) == 0) << r.diagnostics;
     EXPECT_EQ(null_warnings(r), 0) << r.diagnostics;
+}
+
+// ---------------------------------------------------------------- the assertion "x!"
+
+TEST(NullCheck, AssertionMakesTheResultNonNull)
+{
+    EXPECT_EQ(warns("p!.hp = 1;"), 0);
+    EXPECT_EQ(warns("int a = p!.val();"), 0);
+    EXPECT_EQ(warns("int a = p!.find()!.hp;"), 0);
+    EXPECT_EQ(warns("$Node n = p!;\n        n.hp = 1;"), 0);
+}
+
+TEST(NullCheck, AssertionNarrowsTheNameAfterIt)
+{
+    EXPECT_EQ(warns("p!;\n        p.hp = 1;"), 0);
+    EXPECT_EQ(warns("int a = p!.hp;\n        p.hp = a;"), 0);
+}
+
+TEST(NullCheck, AssertionNarrowsOnlyItsOwnName)
+{
+    EXPECT_EQ(warns("p!;\n        q.hp = 1;"), 1);
+    EXPECT_EQ(warns("p!.hp = 1;\n        q.hp = 1;"), 1);
+}
+
+TEST(NullCheck, AssertionOnANonNullValueHasNoFinding)
+{
+    EXPECT_EQ(warns("$Node n = new $Node();\n        n!.hp = 1;"), 0);
+}
+
+TEST(NullCheck, AssertionDoesNotChangeTheConditions)
+{
+    EXPECT_EQ(warns("if (p != q) { }\n        p.hp = 1;"), 1);
+    EXPECT_EQ(warns("if (!(p != null)) { return; }\n        p.hp = 1;"), 0);
+    EXPECT_EQ(warns("if (p != null) { p.hp = 1; }"), 0);
+}
+
+TEST(NullCheck, AssertionDoesNotNarrowAField)
+{
+    // A field is not a narrowable place: "f!" leaves the finding of the later "f.hp".
+    EXPECT_EQ(warns("f!;\n        f.hp = 1;"), 1);
+    EXPECT_EQ(warns("f!.hp = 1;"), 0);
+}
+
+TEST(NullCheck, LocalInitializedFromAssertionIsNonNull)
+{
+    EXPECT_EQ(warns("$Node n = p!.find()!;\n        n.hp = 1;"), 0);
+    EXPECT_EQ(warns("$Node n = (p!.find()!);\n        n.hp = 1;"), 0);
+    EXPECT_EQ(warns("var n = p!.find()!;\n        n.hp = 1;"), 0);
+    EXPECT_EQ(warns("$Node n = p!.find();\n        n.hp = 1;"), 1); // no assertion: unchanged
+}
+
+TEST(NullCheck, LocalAssignedFromAssertionIsNonNull)
+{
+    EXPECT_EQ(warns("$Node n = null;\n        n = p!.find()!;\n        n.hp = 1;"), 0);
+    EXPECT_EQ(warns("$Node n = null;\n        n = p!.find();\n        n.hp = 1;"), 1);
+}
+
+TEST(NullCheck, FieldAssignedFromAssertionStaysNullable)
+{
+    EXPECT_EQ(warns("this.f = p!.find()!;\n        this.f.hp = 1;"), 1);
+    EXPECT_EQ(warns("f = p!.find()!;\n        f.hp = 1;"), 1);
+}
+
+TEST(NullCheck, LocalFromAnUntypedCallAssertionIsNonNull)
+{
+    // The call goes through a std.function field: the analyzer does not know its type.
+    const std::string members = "    std.function<$Node()> cb;\n";
+    EXPECT_EQ(warns("$Node n = this.cb()!;\n        n.hp = 1;", members), 0);
+    EXPECT_EQ(warns("$Node n = this.cb();\n        n.hp = 1;", members), 1);
 }

@@ -70,6 +70,10 @@ public:
     // has no frame of its own.
     bool trace_lines = false;
 
+    // True: the text is for a debug view or a test of the parser (ast::print). The printer then accepts a
+    // node that the lowering must remove, for example the postfix "!".
+    bool debug = false;
+
     int depth = 0; // the indentation level; each "{" adds 1 and each "}" removes 1
 
 private:

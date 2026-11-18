@@ -262,3 +262,15 @@ TEST(ConstInfer, ForInitLocalThatALambdaWritesIsAnError)
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "the lambda writes 'i', and 'i' cannot be a shared cell")) << r.diagnostics;
 }
+
+// The postfix "!" keeps the const inference: "wp!.dmg" is a read, "wp!.dmg = 2" writes through the handle.
+TEST(ConstInfer, NonNullAssertionKeepsConstness)
+{
+    const hotc::TranslateResult r = run("    int Run() { $Weapon w = this.wp; int x = 3; int y = w!.dmg; return x + y; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "const int32_t x = 3;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "const std::shared_ptr<Weapon> w = ")) << r.cpp;
+    const hotc::TranslateResult m = run("    void Run() { $Weapon w = this.wp; w!.dmg = 2; }\n");
+    ASSERT_TRUE(m.ok) << m.diagnostics;
+    EXPECT_TRUE(has(m.cpp, "const std::shared_ptr<Weapon> w = ")) << m.cpp;
+}

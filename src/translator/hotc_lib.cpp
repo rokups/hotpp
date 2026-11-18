@@ -51,6 +51,7 @@
 #include <clang-c/Index.h>
 
 #include <algorithm>
+#include <stdexcept>
 #include <cctype>
 #include <chrono>
 #include <cstdio>
@@ -4209,6 +4210,7 @@ void translate_impl(
     hotc::current_std_ns() = std_ns;
 
     hotc::LineMap map(in.script_text);
+    map.main_file = in.script_name;
     // The byte 0x01 is the internal placeholder of the standard namespace (std_ns.h).
     if (const size_t bad = in.script_text.find('\x01'); bad != std::string::npos)
         fail_at(map, static_cast<uint32_t>(bad), "the byte 0x01 is not allowed in a script");
@@ -11408,6 +11410,16 @@ TranslateResult translate(const TranslateOptions& in, TranslatorSession& session
     }
     catch (const TranslateAbort&)
     {
+        res.ok = false;
+        res.cpp.clear();
+        res.slots_out.clear();
+        res.sigs_out.clear();
+    }
+    catch (const std::logic_error& e)
+    { // an internal check of the translator failed: a diagnostic, no crash of a tool
+        static const std::string prefix = "internal error: ";
+        const std::string what = e.what();
+        g_diag.add_line(0, what.compare(0, prefix.size(), prefix) == 0 ? what : prefix + what);
         res.ok = false;
         res.cpp.clear();
         res.slots_out.clear();

@@ -653,6 +653,8 @@ struct Checker
         }
         if (const auto* p = std::get_if<ParenExpr>(&e.v))
             return p->inner ? expr_type(*p->inner) : std::string();
+        if (const auto* u = std::get_if<UnaryExpr>(&e.v); u && is_bang(*u))
+            return expr_type(*u->operand);
         return std::string();
     }
 
@@ -781,6 +783,8 @@ struct Checker
         }
         if (const auto* p = std::get_if<ParenExpr>(&e.v))
             return p->inner && starts_weak(*p->inner);
+        if (const auto* u = std::get_if<UnaryExpr>(&e.v); u && is_bang(*u))
+            return starts_weak(*u->operand);
         return false;
     }
 
@@ -884,6 +888,8 @@ struct Checker
             return pe->inner && place_of(*pe->inner, out) ? true : temp();
         if (const auto* u = std::get_if<UnaryExpr>(&e.v))
         {
+            if (is_bang(*u))
+                return place_of(*u->operand, out) ? true : temp();
             if (u->postfix || u->op != "*" || !u->operand || !place_of(*u->operand, out))
                 return temp();
             out.element = true; // the target of a handle or a pointer: the owner can be replaced
@@ -1445,6 +1451,8 @@ struct Checker
     {
         if (auto* p = std::get_if<ParenExpr>(&e.v))
             return p->inner && owning_init(*p->inner);
+        if (auto* u = std::get_if<UnaryExpr>(&e.v); u && is_bang(*u))
+            return owning_init(*u->operand);
         if (auto* n = std::get_if<NameExpr>(&e.v))
             return n->parts.size() == 1 && n->template_args.empty() && owning_locals.count(n->parts[0]) != 0;
         if (auto* c = std::get_if<CallExpr>(&e.v); c && c->callee)
@@ -2757,6 +2765,8 @@ const std::string* root_name(const Expr& e)
         return root_name(*ix->obj);
     if (auto* p = std::get_if<ParenExpr>(&e.v))
         return root_name(*p->inner);
+    if (auto* u = std::get_if<UnaryExpr>(&e.v); u && is_bang(*u))
+        return root_name(*u->operand);
     return nullptr;
 }
 
@@ -2767,6 +2777,8 @@ bool is_exactly(const Expr& e, const std::string& name)
         return n->parts.size() == 1 && n->parts[0] == name;
     if (auto* p = std::get_if<ParenExpr>(&e.v))
         return is_exactly(*p->inner, name);
+    if (auto* u = std::get_if<UnaryExpr>(&e.v); u && is_bang(*u))
+        return is_exactly(*u->operand, name);
     return false;
 }
 
@@ -2801,6 +2813,8 @@ const std::string* field_root(
         return field_root(*ix->obj, locals, fields);
     if (auto* p = std::get_if<ParenExpr>(&e.v))
         return field_root(*p->inner, locals, fields);
+    if (auto* u = std::get_if<UnaryExpr>(&e.v); u && is_bang(*u))
+        return field_root(*u->operand, locals, fields);
     return nullptr;
 }
 
@@ -2877,6 +2891,8 @@ const std::string* foreign_member(const Expr& e)
         return foreign_member(*ix->obj);
     if (auto* p = std::get_if<ParenExpr>(&e.v))
         return foreign_member(*p->inner);
+    if (auto* u = std::get_if<UnaryExpr>(&e.v); u && is_bang(*u))
+        return foreign_member(*u->operand);
     return nullptr;
 }
 
@@ -3413,6 +3429,8 @@ struct QueryCollector
         }
         if (auto* p = std::get_if<ParenExpr>(&e.v))
             return type_of(*p->inner);
+        if (auto* u = std::get_if<UnaryExpr>(&e.v); u && is_bang(*u))
+            return type_of(*u->operand);
         if (auto* aw = std::get_if<UnaryExpr>(&e.v); aw && !aw->postfix && aw->op == "await" && aw->operand)
         { // "await" of a "Task<T>" gives T
             const std::string v = task_value_type(type_of(*aw->operand).cpp);

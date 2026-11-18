@@ -132,6 +132,15 @@ const std::string* single_name(const Expr& e)
     return n && n->parts.size() == 1 && n->template_args.empty() ? &n->parts[0] : nullptr;
 }
 
+// True for "x!" (also in parentheses): the value is not null, also when its type is not known.
+bool is_asserted(const Expr& e)
+{
+    if (auto* p = std::get_if<ParenExpr>(&e.v))
+        return p->inner && is_asserted(*p->inner);
+    auto* u = std::get_if<UnaryExpr>(&e.v);
+    return u && is_bang(*u);
+}
+
 bool is_assign_op(const std::string& op)
 {
     return op == "=" || (op.size() >= 2 && op.back() == '=' && op != "==" && op != "!=" && op != "<=" && op != ">=");
@@ -666,6 +675,14 @@ private:
         if (!u.operand)
             return {};
         const Val ov = expr(*u.operand);
+        if (is_bang(u))
+        { // "x!" throws when "x" is null: the result is not null, and the name is not null after it
+            Val v = ov;
+            v.nonnull = ov.ptr;
+            if (const int id = narrowable(*u.operand); id >= 0)
+                st_.nn.insert(id);
+            return v;
+        }
         if (!u.postfix && u.op == "*")
             require(ov, u.pos ? u.pos : pos_of(*u.operand));
         if (const std::string ct = cast_type(u); !ct.empty())
@@ -708,7 +725,7 @@ private:
                     {
                         const Val r = expr(*b.rhs);
                         const Var& var = vars_[static_cast<size_t>(id)];
-                        if (var.v.ptr && !var.disabled && r.ptr && r.nonnull)
+                        if (var.v.ptr && !var.disabled && ((r.ptr && r.nonnull) || is_asserted(*b.rhs)))
                             st_.nn.insert(id); // a known non null value
                         else
                             st_.nn.erase(id);
@@ -955,7 +972,7 @@ private:
                 v = from_cpp(d.native_type);
         }
         v.nonnull = false;
-        const bool nn = d.init && v.ptr && (iv.ptr ? iv.nonnull : d.type.empty() && !d.native_type.empty() && from_cpp(d.native_type).nonnull);
+        const bool nn = d.init && v.ptr && (is_asserted(*d.init) || (iv.ptr ? iv.nonnull : d.type.empty() && !d.native_type.empty() && from_cpp(d.native_type).nonnull));
         declare(d.name, v, nn);
     }
 

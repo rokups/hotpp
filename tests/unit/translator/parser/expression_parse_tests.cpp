@@ -315,3 +315,51 @@ TEST(ExpressionParse, SafeMember)
     EXPECT_TRUE(m->safe);
     EXPECT_EQ(m->name, "b");
 }
+
+// A postfix "!" is the non-null assertion. It is a postfix UnaryExpr with the op "!". The parser
+// keeps "!=" as the operator and "!a" as the prefix. The emitter prints the text until it is lowered.
+TEST(ExpressionParse, NonNullAssertion)
+{
+    Parsed p("a!");
+    ASSERT_TRUE(p.expr);
+    const auto* u = std::get_if<ast::UnaryExpr>(&p.expr->v);
+    ASSERT_TRUE(u);
+    EXPECT_TRUE(u->postfix);
+    EXPECT_EQ(u->op, "!");
+    EXPECT_EQ(p.diag.items.size(), 0u);
+    EXPECT_EQ(round_trip("a !"), "a!");
+    EXPECT_EQ(round_trip("x = y!"), "x = y!");
+    EXPECT_EQ(round_trip("a! == b"), "a! == b");
+    EXPECT_EQ(round_trip("a!.m"), "a!.m");
+    EXPECT_EQ(round_trip("a!.m()"), "a!.m()");
+    EXPECT_EQ(round_trip("a ! . m"), "a!.m");
+    EXPECT_EQ(round_trip("f()!.m"), "f()!.m");
+    EXPECT_EQ(round_trip("a![i]"), "hot::index(a!, i)");
+    EXPECT_EQ(round_trip("!x!"), "!x!");
+    EXPECT_EQ(round_trip("a!!"), "a!!");
+    EXPECT_EQ(round_trip("a!++"), "a!++");
+}
+
+TEST(ExpressionParse, NonNullAssertionKeepsNotEqualAndPrefix)
+{
+    EXPECT_EQ(round_trip("a != b"), "a != b");
+    EXPECT_EQ(round_trip("a!=b"), "a != b");
+    EXPECT_EQ(round_trip("!a"), "!a");
+    Parsed p("a != b");
+    ASSERT_TRUE(p.expr);
+    const auto* b = std::get_if<ast::BinaryExpr>(&p.expr->v);
+    ASSERT_TRUE(b);
+    EXPECT_EQ(b->op, "!=");
+    Parsed q("!a");
+    ASSERT_TRUE(q.expr);
+    const auto* u = std::get_if<ast::UnaryExpr>(&q.expr->v);
+    ASSERT_TRUE(u);
+    EXPECT_FALSE(u->postfix);
+    EXPECT_EQ(u->op, "!");
+}
+
+TEST(ExpressionParse, NonNullAssertionInAStatement)
+{
+    EXPECT_EQ(round_trip("a! + b"), "a! + b");
+    EXPECT_EQ(round_trip("f(a!, b!)"), "f(a!, b!)");
+}

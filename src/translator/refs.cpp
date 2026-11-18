@@ -853,6 +853,8 @@ private:
                 [&](const UnaryExpr& u)
                 {
                     const Value of = eval(u.operand);
+                    if (is_bang(u))
+                        return of; // "x!" has the value of "x"
                     Value v;
                     if (!u.postfix && u.op.size() >= 3 && u.op.front() == '(' && u.op.back() == ')')
                     {

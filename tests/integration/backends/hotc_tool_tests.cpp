@@ -1503,6 +1503,19 @@ TEST(HotcTool, AotOptimizedWritesTheDefineAndTheTableFlag)
     EXPECT_NE(reg.find("aot_table = {kAotScripts, 1, kAotSlots, true, "), std::string::npos) << reg;
 }
 
+// The non-null assertion "x!" compiles in optimized AOT code.
+TEST(HotcTool, AotOptimizedNonNullAssertion)
+{
+    TestScratch scratch;
+    const std::string out_dir = scratch.file("hotc_aot_opt_nonnull");
+    const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/nonnull_basic.hot";
+    std::string text;
+    EXPECT_EQ(run_hotc(cat({{"--aot", "--aot-optimized", script, "--out-dir", out_dir}, include_args()}), text), 0)
+        << text;
+    const std::string out = read_file(out_dir + "/nonnull_basic.aot.cpp");
+    EXPECT_NE(out.find("hot::nonnull("), std::string::npos) << out;
+}
+
 // Optimized AOT code has no state_of, no ShellBase and no init_state: the shell has the fields.
 TEST(HotcTool, AotOptimizedFieldAccessUsesTheShell)
 {

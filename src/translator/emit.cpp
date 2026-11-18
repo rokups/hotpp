@@ -35,6 +35,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <stdexcept>
 
 namespace hotc::ast
 {
@@ -269,6 +270,9 @@ struct ExprPrinter
     {
         if (n.postfix)
         {
+            // The lowering changes "x!" to a hot::nonnull call. The text "x!" is not C++.
+            if (n.op == "!" && !e.debug)
+                throw std::logic_error("internal error: a postfix '!' reached the printer");
             emit_expr(*n.operand, e);
             e.put(n.op);
             return;
@@ -866,6 +870,7 @@ void emit_stmts(const std::vector<StmtP>& v, Emitter& out, int depth)
 std::string print(const Expr& x)
 {
     Emitter e;
+    e.debug = true;
     emit_expr(x, e);
     return e.text();
 }
@@ -873,6 +878,7 @@ std::string print(const Expr& x)
 std::string print(const Stmt& s)
 {
     Emitter e;
+    e.debug = true;
     emit_stmt(s, e);
     return e.text();
 }
