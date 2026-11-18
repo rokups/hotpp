@@ -623,7 +623,8 @@ struct NativeMemoWs
     std::unique_ptr<LsClient> client;
     std::string open_uri, one_uri, two_uri;
 
-    explicit NativeMemoWs(int budget_ms = 10000, int extra = 0)
+    explicit NativeMemoWs(int budget_ms = 10000, int extra = 0,
+        const std::vector<std::pair<std::string, std::string>>& files = {}, const std::string& hosts_dir = "")
     {
         auto put = [&](const char* name, const char* text)
         {
@@ -635,6 +636,8 @@ struct NativeMemoWs
         open_uri = put("open.hot", kNatOpen);
         one_uri = put("one.hot", kNatClosedOne);
         two_uri = put("two.hot", kNatClosedTwo);
+        for (const auto& [name, text] : files)
+            std::ofstream((dir.path() / name).string(), std::ios::binary) << text;
         for (int i = 0; i < extra; ++i)
             std::ofstream((dir.path() / ("more" + std::to_string(i) + ".hot")).string(), std::ios::binary)
                 << "using \"nat.h\";\nclass More" << i << " {\n    public int Go() { return Free(" << i << "); }\n}\n";
@@ -644,6 +647,7 @@ struct NativeMemoWs
         o.clangd_log = (dir.path() / "clangd.log").string();
         o.index_dir = (dir.path() / "index").string();
         o.reference_budget_ms = budget_ms;
+        o.hosts_dir = hosts_dir;
         client = std::make_unique<LsClient>(o);
         client->initialize(uri_of(dir.path().string()));
         client->open(open_uri, kNatOpen);
@@ -760,6 +764,82 @@ TEST(NativeMemo, TimeOfTheFirstAndTheSecondRequest)
     const std::set<Place> second = timed();
     EXPECT_EQ(show(second), show(first));
     EXPECT_EQ(first.size(), 12u) << show(first);
+}
+
+// An empty answer (no declaration visible) is valid only while the headers of the script are the same.
+// late.hot includes the empty header extra.h and calls Free: the answer is empty. Then extra.h includes nat.h.
+TEST(NativeMemo, AnEmptyAnswerIsDroppedWhenAHeaderAddsTheDeclaration)
+{
+    if (std::string(HOT_CLANGD_PATH).empty())
+        GTEST_SKIP() << "clangd is not installed";
+    NativeMemoWs ws(10000, 0,
+        {{"extra.h", "#pragma once\n"},
+            {"late.hot", "using \"extra.h\";\nclass Late {\n    public int Go() { return Free(5); }\n}\n"}});
+    const std::string late_uri = uri_of((ws.dir.path() / "late.hot").string());
+    auto has_late = [&](const std::set<Place>& s)
+    {
+        return std::any_of(s.begin(), s.end(), [&](const Place& p) { return std::get<0>(p) == late_uri; });
+    };
+    EXPECT_FALSE(has_late(ws.refs("Free(1)", "Free")));
+    EXPECT_FALSE(has_late(ws.refs("Free(1)", "Free")));
+    const json s1 = ws.stats();
+    EXPECT_GT(s1.value("nativeMemoHits", 0), 0);
+    std::ofstream((ws.dir.path() / "extra.h").string(), std::ios::binary | std::ios::trunc)
+        << "#pragma once\n#include \"nat.h\"\n";
+    EXPECT_TRUE(has_late(ws.refs("Free(1)", "Free")));
+    const json s2 = ws.stats();
+    EXPECT_GT(s2.value("nativeMemoMisses", 0), s1.value("nativeMemoMisses", 0));
+    EXPECT_TRUE(has_late(ws.refs("Free(1)", "Free"))); // and the new answer is memoized
+    EXPECT_GT(ws.stats().value("nativeMemoHits", 0), s2.value("nativeMemoHits", 0));
+}
+
+// A change of the host options (a flag of the host file) drops the memo of the script.
+TEST(NativeMemo, AChangeOfTheHostFlagsDropsTheMemo)
+{
+    if (std::string(HOT_CLANGD_PATH).empty())
+        GTEST_SKIP() << "clangd is not installed";
+    TempDir hosts;
+    const std::string root = hosts.path().string();
+    std::filesystem::create_directories(hosts.path() / "build");
+    std::ofstream((hosts.path() / "build" / "CMakeCache.txt").string()) << "# cache\n";
+    NativeMemoWs ws(10000, 0, {}, "");
+    // The host file lists the workspace of "ws" as its script dir.
+    const std::string hosts_dir = (hosts.path() / "hosts").string();
+    std::filesystem::create_directories(hosts_dir);
+    auto write_host = [&](const std::string& flags)
+    {
+        std::ofstream((hosts.path() / "hosts" / "h.json").string(), std::ios::binary | std::ios::trunc)
+            << R"({"version":1,"name":"h","binaryDir":")" << (hosts.path() / "build").generic_string()
+            << R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":[")"
+            << ws.dir.path().generic_string() << R"("],"scripts":[],"includeDirs":[")" << ws.dir.path().generic_string()
+            << R"(",")" << HOT_SOURCE_DIR << R"(/include",")" << HOT_SOURCE_DIR << R"(/tests/engine"],"defines":[],"flags":[)"
+            << flags << "]}";
+    };
+    write_host("");
+    // A second server with the host: the first server of "ws" has no host.
+    hot::ls::ServerOptions o;
+    o.clangd = HOT_CLANGD_PATH;
+    o.hosts_dir = hosts_dir;
+    o.index_dir = (hosts.path() / "index").string();
+    o.clangd_log = (hosts.path() / "clangd.log").string();
+    LsClient client(o);
+    client.initialize(uri_of(ws.dir.path().string()));
+    client.open(ws.open_uri, kNatOpen);
+    auto stats = [&] { return client.request("hot/indexStats", json::object())["result"]; };
+    json p = doc_pos(ws.open_uri, words(kNatOpen, "Free").back());
+    p["context"] = {{"includeDeclaration", true}};
+    client.request("textDocument/references", p);
+    client.request("textDocument/references", p);
+    const json s1 = stats();
+    ASSERT_GT(s1.value("nativeMemoHits", 0), 0) << s1.dump();
+    write_host(R"("-DHOT_NAT_FLAG=1")");
+    client.notify("workspace/didChangeWatchedFiles",
+        {{"changes", json::array({{{"uri", uri_of((hosts.path() / "hosts" / "h.json").string())}, {"type", 2}}})}});
+    client.change(ws.open_uri, 2, std::string(kNatOpen) + "\n");
+    client.request("textDocument/references", p);
+    const json s2 = stats();
+    EXPECT_GT(s2.value("nativeMemoMisses", 0), s1.value("nativeMemoMisses", 0));
+    EXPECT_EQ(s2.value("nativeMemoHits", -1), s1.value("nativeMemoHits", -2));
 }
 
 } // namespace

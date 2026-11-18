@@ -230,7 +230,8 @@ json shard_json(const IndexShard& shard)
         }
         for (const NativeStamp& st : shard.native_stamps)
             stamps.push_back(json::array({st.path, st.size, st.mtime}));
-        body["n"] = {{"t", std::move(targets)}, {"s", std::move(stamps)}};
+        body["n"] = {{"t", std::move(targets)}, {"s", std::move(stamps)},
+            {"g", json::array({shard.native_guard.includes, shard.native_guard.header_stamp, shard.native_guard.host_key})}};
     }
     return body;
 }
@@ -250,6 +251,8 @@ IndexShard shard_of(const json& body)
                 list.push_back({t.at(0).get<std::string>(), t.at(1).get<int>(), t.at(2).get<int>()});
             shard.native_targets[e.at(0).get<int>()] = std::move(list);
         }
+        const json& g = n.at("g");
+        shard.native_guard = {g.at(0).get<std::vector<std::string>>(), g.at(1).get<uint64_t>(), g.at(2).get<uint64_t>()};
         for (const json& st : n.at("s"))
             shard.native_stamps.push_back(
                 {st.at(0).get<std::string>(), st.at(1).get<uint64_t>(), st.at(2).get<int64_t>()});
@@ -614,12 +617,13 @@ NativeStamp SymbolIndex::stamp_file(const std::string& path)
 }
 
 bool SymbolIndex::store_native(const std::string& script_path, const std::string& dig,
-    const std::map<int, std::vector<NativeTarget>>& map, const std::vector<NativeStamp>& stamps)
+    const std::map<int, std::vector<NativeTarget>>& map, const std::vector<NativeStamp>& stamps,
+    const NativeGuard& guard)
 {
     auto shard = load(script_path, dig);
     if (!shard)
         return false;
-    bool conflict = false;
+    bool conflict = !shard->native_targets.empty() && !(shard->native_guard == guard);
     for (const NativeStamp& old : shard->native_stamps)
         for (const NativeStamp& now : stamps)
             if (old.path == now.path && !(old == now))
@@ -629,6 +633,7 @@ bool SymbolIndex::store_native(const std::string& script_path, const std::string
         shard->native_targets.clear();
         shard->native_stamps.clear();
     }
+    shard->native_guard = guard;
     for (const auto& [offset, list] : map)
         shard->native_targets[offset] = list;
     for (const NativeStamp& now : stamps)

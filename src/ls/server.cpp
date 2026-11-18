@@ -1547,8 +1547,11 @@ private:
         bool loaded = false;
         std::map<int, std::vector<NativeTarget>> map;
         std::vector<NativeStamp> stamps;
+        NativeGuard guard; // the header stamp and the host key: the answers hold only while both match
     };
     std::map<std::string, NativeMemo> native_memo_;
+    // The hash of the host options and of the clangd program that a temporary document of "path" uses.
+    uint64_t native_host_key(const std::string& path) const;
     // The scripts that native_uses_in_scripts answered from the memo, and the scripts that it
     // asked clangd for (a temporary document each). hot/indexStats shows them.
     int native_memo_hits_ = 0, native_memo_misses_ = 0;
@@ -5355,7 +5358,7 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
         for (const char* kind : {"textDocument/declaration", "textDocument/definition"})
         {
             const json raw = clangd_ && clangd_->running() ? clangd_request(kind, tdp, kNativeBudgetMs) : json();
-            ask_failed = ask_failed || !raw.is_object();
+            ask_failed = ask_failed || !raw.is_object() || raw.contains("error"); // an error answer is no answer
             const std::optional<json> r = raw.is_object() && raw.contains("result") && !raw["result"].is_null()
                 ? std::optional<json>(raw["result"]) : std::nullopt;
             for (const json& loc : r ? (r->is_array() ? *r : json::array({*r})) : json::array())
@@ -5445,7 +5448,9 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
         if (words.empty())
             continue;
         // The memo of a closed script: the stored answers of clangd for each asked offset.
-        std::string norm_path, memo_digest;
+        std::string norm_path, memo_digest, script_dir;
+        std::vector<std::string> include_dirs;
+        uint64_t host_key = 0;
         NativeMemo* memo = nullptr;
         if (!open)
         {
@@ -5460,6 +5465,22 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
                     memo->stamps.clear();
                     break;
                 }
+            // The guard covers the answers that no target stamp can show: an empty answer holds only while the
+            // headers of the shell and the host options are the same. No guard, no memo.
+            script_dir = path_utf8(fs::path(utf8_path(norm_path)).parent_path());
+            include_dirs = effective_options(norm_path).include_dirs;
+            host_key = native_host_key(norm_path);
+            if (!memo->map.empty())
+            {
+                bool ok = false;
+                const uint64_t stamp = memo->guard.includes.empty()
+                    ? 0 : header_stamp(memo->guard.includes, include_dirs, script_dir, ok);
+                if (!ok || stamp != memo->guard.header_stamp || host_key != memo->guard.host_key)
+                {
+                    memo->map.clear();
+                    memo->stamps.clear();
+                }
+            }
         }
         auto emit = [&](const Doc& o, Pos p, const std::vector<Target>& here)
         {
@@ -5543,11 +5564,22 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
             // This store comes before the memo store, so it does not erase the memo.
             index_.store(norm_path, memo_digest, shard_of_doc(tmp));
             fresh.clear();
+            // The guard comes before the asks: a header change during the asks shows at the next request.
+            NativeGuard now_guard;
+            bool guard_ok = false;
+            if (const size_t at = tmp.facts.cpp.find(kShellEnd); at != std::string::npos)
+            {
+                now_guard.includes = include_names(tmp.facts.cpp.substr(0, at + 1));
+                now_guard.host_key = host_key;
+                now_guard.header_stamp = header_stamp(now_guard.includes, include_dirs, script_dir, guard_ok);
+                guard_ok = guard_ok && !now_guard.includes.empty();
+            }
             const size_t not_scanned_before = not_scanned;
             with_temp_clangd(tmp, [&] { work(tmp); });
             // A script with a failed ask or a missed wait stores nothing (the scan is partial).
-            if (not_scanned == not_scanned_before && !fresh.empty())
+            if (guard_ok && not_scanned == not_scanned_before && !fresh.empty())
             {
+                memo->guard = now_guard;
                 // The old answers stay: the stamps of the scan start were good. A new offset replaces an old one.
                 for (auto& [offset, list] : fresh)
                 {
@@ -5561,7 +5593,7 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
                     }
                     memo->map[offset] = std::move(list);
                 }
-                index_.store_native(norm_path, memo_digest, memo->map, memo->stamps);
+                index_.store_native(norm_path, memo_digest, memo->map, memo->stamps, memo->guard);
             }
         }
     }
@@ -5573,6 +5605,24 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
         send_client({{"jsonrpc", "2.0"}, {"method", "window/showMessage"},
             {"params", {{"type", 2}, {"message", "hot-ls: " + note + ". The list of references is partial."}}}});
     }
+}
+
+uint64_t Server::native_host_key(const std::string& path) const
+{
+    const Effective e = effective_options(path);
+    uint64_t h = 1469598103934665603ull;
+    const auto mix = [&](const std::string& x) { h = (h ^ std::hash<std::string>()(x)) * 1099511628211ull; };
+    for (const std::string& d : e.include_dirs)
+        mix("I" + d);
+    for (const std::string& f : e.extra_flags)
+        mix("F" + f);
+    mix("R" + e.resource_dir);
+    mix("S" + e.std_version);
+    mix("C" + opt_.clangd);
+    mix("D" + opt_.compile_commands_dir);
+    const NativeStamp program = SymbolIndex::stamp_file(opt_.clangd);
+    mix(std::to_string(program.size) + ":" + std::to_string(program.mtime));
+    return h;
 }
 
 // The memo of a closed script for "digest". It loads the answers from the shard on first use.

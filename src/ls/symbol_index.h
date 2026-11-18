@@ -77,6 +77,20 @@ struct NativeStamp
     bool operator==(const NativeStamp& o) const { return path == o.path && size == o.size && mtime == o.mtime; }
 };
 
+// The guard of the native answers of a script (HOT-35). "includes" are the include names of the shell
+// header of the generated unit. "header_stamp" is the Server::header_stamp of these includes. "host_key"
+// is the hash of the host options and of the clangd program. The answers hold only while both match.
+struct NativeGuard
+{
+    std::vector<std::string> includes;
+    uint64_t header_stamp = 0;
+    uint64_t host_key = 0;
+    bool operator==(const NativeGuard& o) const
+    {
+        return includes == o.includes && header_stamp == o.header_stamp && host_key == o.host_key;
+    }
+};
+
 struct IndexShard
 {
     std::vector<IndexClass> classes;
@@ -85,6 +99,7 @@ struct IndexShard
     // answer too. "native_stamps" has one stamp for each target file. Version 5 of the format.
     std::map<int, std::vector<NativeTarget>> native_targets;
     std::vector<NativeStamp> native_stamps;
+    NativeGuard native_guard;
     FileRefs table; // the resolved names of the file (from the translator)
     // True when "table" comes from an analyze with the resolved names. store() writes the marker.
     // load() gives only a shard with the marker.
@@ -142,10 +157,11 @@ public:
     bool store(const std::string& script_path, const std::string& digest, const IndexShard& shard);
     // Adds the native answers to the shard of a script. It loads the shard, merges the answers
     // (an offset in "map" replaces the old offset) and stores the shard. When a stored stamp
-    // differs from a new stamp of the same file, it drops the old answers first. Gives false when
+    // differs from a new stamp of the same file, or the stored guard differs from "guard", it drops the old answers first. Gives false when
     // there is no shard with this digest or the store fails.
     bool store_native(const std::string& script_path, const std::string& digest,
-        const std::map<int, std::vector<NativeTarget>>& map, const std::vector<NativeStamp>& stamps);
+        const std::map<int, std::vector<NativeTarget>>& map, const std::vector<NativeStamp>& stamps,
+        const NativeGuard& guard);
     // The stamp of a file now.
     static NativeStamp stamp_file(const std::string& path);
     // Deletes the shards of missing files, the shards with another version and old temporary

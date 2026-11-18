@@ -3067,13 +3067,16 @@ TEST(SymbolIndex, NativeTargetsRoundTripAndMerge)
     shard.native_targets[5] = {{"file:///h.h", 3, 4}, {"file:///h.h", 9, 1}};
     shard.native_targets[8] = {};
     shard.native_stamps = {{"/h.h", 10, 20}};
+    shard.native_guard = {{"\"a.h\"", "<b.h>"}, 77, 99};
     ASSERT_TRUE(index.store(script, "d", shard));
     auto loaded = index.load(script, "d");
     ASSERT_TRUE(loaded);
     EXPECT_EQ(loaded->native_targets, shard.native_targets);
     EXPECT_EQ(loaded->native_stamps, shard.native_stamps);
+    EXPECT_EQ(loaded->native_guard, shard.native_guard);
     // A merge replaces an offset and keeps the others.
-    ASSERT_TRUE(index.store_native(script, "d", {{8, {{"file:///h.h", 1, 1}}}, {11, {}}}, {{"/h.h", 10, 20}}));
+    ASSERT_TRUE(index.store_native(script, "d", {{8, {{"file:///h.h", 1, 1}}}, {11, {}}}, {{"/h.h", 10, 20}},
+        shard.native_guard));
     loaded = index.load(script, "d");
     ASSERT_TRUE(loaded);
     EXPECT_EQ(loaded->native_targets.size(), 3u);
@@ -3081,13 +3084,22 @@ TEST(SymbolIndex, NativeTargetsRoundTripAndMerge)
     EXPECT_EQ(loaded->native_targets.at(8).size(), 1u);
     EXPECT_TRUE(loaded->native_targets.at(11).empty());
     // A changed stamp of a stored file drops the old answers.
-    ASSERT_TRUE(index.store_native(script, "d", {{20, {}}}, {{"/h.h", 11, 20}}));
+    ASSERT_TRUE(index.store_native(script, "d", {{20, {}}}, {{"/h.h", 11, 20}}, shard.native_guard));
     loaded = index.load(script, "d");
     ASSERT_TRUE(loaded);
     EXPECT_EQ(loaded->native_targets.size(), 1u);
     EXPECT_TRUE(loaded->native_targets.count(20));
+    // A changed header stamp or host key of the guard drops the old answers too.
+    hot::ls::NativeGuard other = shard.native_guard;
+    other.host_key = 100;
+    ASSERT_TRUE(index.store_native(script, "d", {{30, {}}}, {{"/h.h", 11, 20}}, other));
+    loaded = index.load(script, "d");
+    ASSERT_TRUE(loaded);
+    EXPECT_EQ(loaded->native_targets.size(), 1u);
+    EXPECT_TRUE(loaded->native_targets.count(30));
+    EXPECT_EQ(loaded->native_guard, other);
     // A wrong digest stores nothing.
-    EXPECT_FALSE(index.store_native(script, "other", {{1, {}}}, {}));
+    EXPECT_FALSE(index.store_native(script, "other", {{1, {}}}, {}, other));
 }
 
 TEST(SymbolIndex, AVersion3ShardIsDropped)
