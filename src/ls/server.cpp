@@ -274,6 +274,17 @@ struct Doc
         json list = json::array();
     };
     mutable CompletionCache completion;
+    // HOT-53: the last patched generated text of the first probe (the try that had a place). A new request swaps the hole word.
+    struct SpecMemo
+    {
+        std::string cpp, word; // the generated text and the hole word (prefix and kHole) in it
+        int gline = 0, gcol = 0; // the place of the hole in the generated text (1-based)
+        size_t index = 0; // the text index of the try that had a place for the hole
+        size_t hole = 0; // the offset of the hole word in the script text
+        size_t shell_hash = 0;
+        bool valid = false;
+    };
+    mutable SpecMemo spec_memo;
 };
 
 // The string member of a JSON object, or an empty string. A missing member, a null and any other
@@ -490,6 +501,13 @@ static bool import_cache_enabled(bool option)
 static bool this_cache_enabled()
 {
     const char* e = std::getenv("HOT_LS_THIS_CACHE");
+    return !(e && std::string(e) == "0");
+}
+
+// HOT-53: the speculative clangd call of a completion. The variable HOT_LS_SPECULATE is 0 or 1 (default 1).
+static bool speculate_enabled()
+{
+    const char* e = std::getenv("HOT_LS_SPECULATE");
     return !(e && std::string(e) == "0");
 }
 
@@ -1535,6 +1553,9 @@ private:
     std::mutex this_mutex_;
     std::map<std::string, ThisEntry> this_cache_;
     std::atomic<int> this_analyzes_{0}, this_hits_{0};
+    // HOT-53: the memo text with the new hole word against the real text of the first probe (hot/indexStats).
+    std::atomic<int> hole_spec_tried_{0}, hole_spec_equal_{0}, hole_spec_prefix_equal_{0};
+    std::atomic<int> hole_spec_used_{0}, hole_spec_dropped_{0}; // the answers of a speculative call: used, not used
     // After a header event clangd builds a new preamble, and its answers can be old for a while. The cache stores
     // no answer until this time (steady clock, milliseconds). 5 s is more than the preamble of a host header needs.
     std::atomic<long long> this_hold_until_ms_{0};
@@ -3309,6 +3330,79 @@ json Server::using_completion(const Doc& d, Pos cur, size_t off, size_t line_beg
     return {{"isIncomplete", false}, {"items", items}};
 }
 
+// HOT-53: the first offset of the hole word in a generated text. The word starts after a non-name character.
+static size_t find_hole_word(const std::string& text, const std::string& word, size_t from = 0)
+{
+    for (size_t o = text.find(word, from); o != std::string::npos; o = text.find(word, o + 1))
+        if (o == 0 || !is_id_char(text[o - 1]))
+            return o;
+    return std::string::npos;
+}
+
+// The text with each hole word "from" replaced by "to".
+static std::string swap_hole_word(const std::string& text, const std::string& from, const std::string& to)
+{
+    std::string out;
+    size_t pos = 0;
+    for (size_t o = find_hole_word(text, from); o != std::string::npos; o = find_hole_word(text, from, pos))
+    {
+        out.append(text, pos, o - pos);
+        out += to;
+        pos = o + from.size();
+    }
+    out.append(text, pos, std::string::npos);
+    return out;
+}
+
+// HOT-53: one clangd completion call on a worker thread. The thread of the request keeps the clangd calls of the
+// document in order: it settles the run (cancel and join) before any other text goes to clangd. The destructor joins
+// too, so a fail path or an exception leaves no call in flight. No std::async: its future blocks in the destructor
+// with no cancel.
+struct SpecRun
+{
+    ClangdProcess* clangd = nullptr;
+    std::thread thread;
+    std::atomic<bool> cancel{false};
+    std::optional<json> result; // valid after the join
+    size_t index = 0;
+    hotc::SourcePos place{};
+
+    void start(ClangdProcess* c, json params, int timeout_ms)
+    {
+        clangd = c;
+        thread = std::thread(
+            [this, params = std::move(params), timeout_ms]() mutable
+            {
+                try
+                {
+                    json r = clangd->request("textDocument/completion", std::move(params), timeout_ms, &cancel);
+                    if (r.is_object() && r.contains("result") && !r["result"].is_null())
+                        result = std::move(r["result"]);
+                }
+                catch (...)
+                {
+                }
+            });
+    }
+    // Waits for the answer.
+    std::optional<json> finish()
+    {
+        if (thread.joinable())
+            thread.join();
+        return std::move(result);
+    }
+    // Asks clangd to cancel the call and waits for its response.
+    void settle()
+    {
+        if (!thread.joinable())
+            return;
+        cancel = true;
+        clangd->wake_cancel();
+        thread.join();
+    }
+    ~SpecRun() { settle(); }
+};
+
 json Server::on_completion(const Doc& d, const json& p)
 {
     PhaseTimer total("completion total");
@@ -3843,6 +3937,59 @@ json Server::on_completion(const Doc& d, const json& p)
                         });
                 }
             }
+            // HOT-53: the memo text of the last request with the new hole word. The gate counts how often it
+            // equals the real text of the first probe.
+            std::string spec;
+            size_t spec_index = 0;
+            const std::string spec_word = prefix + kHole;
+            {
+                const Doc::SpecMemo& m = d.spec_memo;
+                if (m.valid && m.hole == s && m.shell_hash == d.shell_hash && !d.shell_unconfirmed
+                    && steady_ms() >= d.shell_hold_until_ms && !texts.empty())
+                {
+                    spec = swap_hole_word(m.cpp, m.word, spec_word);
+                    spec_index = m.index;
+                    // The shell part of the text must be the shell header that clangd holds.
+                    const size_t at = spec.find(kShellEnd);
+                    if (at == std::string::npos || std::hash<std::string>()(spec.substr(0, at + 1)) != d.shell_hash)
+                        spec.clear();
+                }
+            }
+            // HOT-53: the speculative call. The memo text with the new word goes to clangd now, and the call runs
+            // while the first probe analyzes. An equal real text uses the answer. Else the call is cancelled and the
+            // normal path runs. Not with a dirty document (the generated text of the restore is old), not for a cold
+            // document, and not during the hold of a shell change (spec is empty then).
+            std::optional<SpecRun> spec_run;
+            if (!spec.empty() && speculate_enabled() && !d.dirty && d.in_clangd && spec_index < texts.size()
+                && preamble_ready_.count(d.gen_uri) && completion_synced_.count(d.gen_uri))
+            {
+                PhaseTimer ps("spec launch");
+                const Doc::SpecMemo& m = d.spec_memo;
+                t0 = std::chrono::steady_clock::now();
+                const auto budget_end = *t0 + std::chrono::milliseconds(opt_.completion_budget_ms + kCompletionAstMs);
+                const auto left = [&]
+                {
+                    return std::max(1, static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                        budget_end - std::chrono::steady_clock::now()).count()));
+                };
+                std::string lu = lite_uri(md, spec, m.gline - 1, left());
+                if (lu != d.gen_uri)
+                    lite_sent = true;
+                else
+                {
+                    sent = true;
+                    send_generated(md, spec);
+                    lu = lite_uri(md, spec, m.gline - 1, left());
+                }
+                spec_run.emplace();
+                spec_run->index = spec_index;
+                spec_run->place = {m.gline, m.gcol};
+                spec_run->start(clangd_.get(),
+                    {{"textDocument", {{"uri", lu}}},
+                        {"position",
+                            to_lsp(Text(spec), {m.gline - 1, m.gcol - 1 + static_cast<int>(prefix.size())}, clangd_utf8_)}},
+                    left());
+            }
             size_t shell_key = 0; // the hash of the shell header of the first probe that has a place
             std::vector<std::string> shell_includes; // the includes of that shell header
             pre_round.reset();
@@ -3854,6 +4001,20 @@ json Server::on_completion(const Doc& d, const json& p)
                 hotc::TranslateOptions to = translate_options(d);
                 to.null_warnings = true;
                 hotc::AnalyzeResult facts = [&] { PhaseTimer pt("round analyze"); return timed_translate([&] { return hotc::analyze(patched, to, session_); }); }();
+                if (text_index == spec_index && !spec.empty() && !facts.cpp.empty())
+                {
+                    {
+                        ++hole_spec_tried_;
+                        if (facts.cpp == spec)
+                            ++hole_spec_equal_;
+                        else
+                        {
+                            const size_t a = find_hole_word(facts.cpp, spec_word), b = find_hole_word(spec, spec_word);
+                            if (a != std::string::npos && a == b && facts.cpp.compare(0, a, spec, 0, a) == 0)
+                                ++hole_spec_prefix_equal_;
+                        }
+                    }
+                }
                 {
                     const std::string label = "T" + std::to_string(text_index) + (probe && text_index == probe_index ? " probe" : "");
                     probe_timing_line(label.c_str(), facts);
@@ -3887,6 +4048,18 @@ json Server::on_completion(const Doc& d, const json& p)
                 }
                 if (!g)
                     continue;
+                if (!mapped)
+                {
+                    Doc::SpecMemo& m = d.spec_memo;
+                    m.gline = g->line;
+                    m.gcol = g->col;
+                    m.cpp = facts.cpp;
+                    m.word = spec_word;
+                    m.index = text_index;
+                    m.hole = s;
+                    m.shell_hash = d.shell_hash;
+                    m.valid = true;
+                }
                 mapped = true;
                 if (const size_t at = facts.cpp.find(kShellEnd); at != std::string::npos && !shell_key)
                 {
@@ -3894,6 +4067,30 @@ json Server::on_completion(const Doc& d, const json& p)
                     shell_includes = include_names(facts.cpp.substr(0, at + 1));
                 }
                 const Text gen(facts.cpp);
+                if (spec_run)
+                {
+                    PhaseTimer pw("spec wait");
+                    const bool same = text_index == spec_run->index && facts.cpp == spec && *g == spec_run->place;
+                    if (same)
+                    {
+                        std::optional<json> sr = spec_run->finish();
+                        spec_run.reset();
+                        if (sr)
+                        {
+                            ++hole_spec_used_;
+                            r = std::move(sr);
+                            if (r->is_array() ? !r->empty() : !r->value("items", json::array()).empty())
+                                break;
+                            continue;
+                        }
+                    }
+                    else
+                        spec_run.reset(); // the real text differs: cancel the call, wait for clangd
+                    ++hole_spec_dropped_;
+                    if (!same)
+                        t0.reset(); // the normal path starts its own budget. An equal text that timed out keeps the budget.
+                    lite_sent = false;
+                }
                 // Before its first preamble, clangd gives only "fallback" words of the file. A
                 // request that needs the AST waits for the preamble. The wait is on the real text,
                 // before the patched text goes to clangd: a new text would restart the preamble.
@@ -3968,6 +4165,14 @@ json Server::on_completion(const Doc& d, const json& p)
                 const bool got = r && (r->is_array() ? !r->empty() : !r->value("items", json::array()).empty());
                 if (got)
                     break;
+            }
+            spec_run.reset(); // no call of the speculation stays in flight (no try had a place)
+            // The speculation can have put its text in the full document. The fallback below asks at the old
+            // positions, so clangd must hold the real text first.
+            if (!mapped && sent)
+            {
+                restore.f();
+                sent = false;
             }
             // The native members of the base are not names in the generated code of a method. A second
             // try with "this." gives them. Its items join the list.
@@ -9084,6 +9289,9 @@ void Server::handle(const json& msg)
         }
         out.update({{"analyzed", closed_analyses_}, {"loaded", index_.loads()}, {"loadMs", index_.load_ms()}, {"stored", index_.stores()},
             {"dir", index_.dir()}, {"completions", completion_translations_}, {"thisAnalyzes", this_analyzes_.load()}, {"thisHits", this_hits_.load()},
+            {"holeSpecTried", hole_spec_tried_.load()}, {"holeSpecEqual", hole_spec_equal_.load()},
+            {"holeSpecPrefixEqual", hole_spec_prefix_equal_.load()}, {"holeSpecUsed", hole_spec_used_.load()},
+            {"holeSpecDropped", hole_spec_dropped_.load()},
             {"tokenRequests", native_token_requests_.load()}, {"translations", translations_.load()},
             {"liteHits", lite_hits_.load()}, {"liteFallback", lite_fallbacks_.load()}, {"liteMismatch", lite_mismatches_.load()},
             {"translateMs", static_cast<double>(translate_us_.load()) / 1000.0}, {"tableHits", table_hits_},

@@ -238,6 +238,11 @@ Environment variables:
   - A new clangd, a host change, a file that is not a script and `didChangeConfiguration` drop the cache.
   - `hot/indexStats` has the counts `thisAnalyzes` and `thisHits`.
   - On a miss, the analysis of the `this` text runs at the same time as the first probe. The clangd calls stay in order, because they patch the one text of the document.
+- `HOT_LS_SPECULATE=0|1` turns the speculative clangd call of a completion off or on. The default is 1.
+  - A completion that misses the caches analyzes a patched text of the script. The call to clangd waits for this analysis. With the switch on, the server keeps the generated text of the last patched text (the memo). A new request puts the new word in the memo text and sends it to clangd at once. The call runs while the analysis runs.
+  - The server uses the answer only when the generated text of the analysis equals the memo text with the new word, and the place of the word is the same. Then the items are the same as without the speculation. If the texts differ, the server cancels the call (`$/cancelRequest`), waits for the response of clangd, drops the answer and runs the normal path. The calls to clangd stay in order, one at a time for a document.
+  - The server makes no speculation during the hold of a shell header change, while a shell header is unconfirmed, for a cold document (no preamble or no first completion yet), or when the document waits for the deferred update.
+  - `hot/indexStats` shows `holeSpecTried`, `holeSpecEqual` and `holeSpecPrefixEqual` (the memo text against the real text of the first probe), `holeSpecUsed` (answers used) and `holeSpecDropped` (answers dropped).
 - `HOT_LS_DEFER_UPDATE=0|1` turns the deferred live update off or on. The default is 1.
   - With 0, a `didChange` runs the analysis of the script at once, before the next message.
   - With 1, a `didChange` stores the text and sets a flag on the document. The analysis runs later. This sends the text to clangd and publishes the diagnostics. The epoch grows at the `didChange`, so a `references` request of the slow worker that began before the edit still gets `-32801`.

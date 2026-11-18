@@ -46,7 +46,11 @@ public:
     // Set before start. The request calls it about every 20 ms while it waits. It may throw to end the wait.
     // It runs on each thread that waits, so it must check the thread itself.
     std::function<void()> wait_poll;
-    nlohmann::json request(const std::string& method, nlohmann::json params, int timeout_ms = 60000);
+    // With "cancel": when the flag turns true, the request sends "$/cancelRequest" once and keeps waiting for the
+    // response, so the document of the request is free when the call returns. "wake_cancel" ends the wait of the poll.
+    nlohmann::json request(const std::string& method, nlohmann::json params, int timeout_ms = 60000,
+        const std::atomic<bool>* cancel = nullptr);
+    void wake_cancel();
     void notify(const std::string& method, nlohmann::json params);
 
     // Each "uri" of a message from clangd that is "from" becomes "to". The generated unit of a document

@@ -51,8 +51,9 @@ def main():
     ap.add_argument("--file", required=True)
     ap.add_argument("--runs", type=int, default=10)
     ap.add_argument("--scenarios", default="AB")
-    ap.add_argument("--edit", choices=["end", "line"], default="end",
-                    help="end: a comment at the file end (a line change). line: spaces at the end of the cursor line (a body edit)")
+    ap.add_argument("--edit", choices=["end", "line", "fail"], default="end",
+                    help="end: a comment at the file end (a line change). line: spaces at the end of the cursor line (a body edit). "
+                         "fail: a letter of a returned name before the cursor changes (same length): the generated text changes, so a speculation fails")
     ap.add_argument("--cold", action="store_true", help="each edit adds a class: the shell header changes (a cache miss)")
     a = ap.parse_args()
     tfile = os.environ["HOT_LS_TIMING"]
@@ -74,9 +75,19 @@ def main():
     for sc in a.scenarios:
         for name, (line, ch) in pl.items():
             lat, phases, probes = [], {}, {}
+            st0 = c.stats()
             for i in range(a.runs + 1):  # the first run warms the caches: not counted
                 ver += 1
-                if a.edit == "line":
+                if a.edit == "fail":
+                    ls = text.split("\n")
+                    for k in range(line - 1, -1, -1):
+                        m = re.search(r'return (\w\w+)', ls[k])
+                        if m:
+                            ch0 = m.start(1)
+                            ls[k] = ls[k][:ch0] + ("Q" if ver % 2 else "Z") + ls[k][ch0 + 1:]
+                            break
+                    cur = "\n".join(ls)
+                elif a.edit == "line":
                     ls = text.split("\n")
                     ls[line] += " " * (ver % 5 + 1)
                     cur = "\n".join(ls)
@@ -105,6 +116,8 @@ def main():
                         probes.setdefault(ln.split(" passes=")[0][6:], []).append(ln)
                 for k, v in ph.items():
                     phases.setdefault(k, []).append(v)
+            st1 = c.stats()
+            print("SCEN %s %s SPEC %s" % (sc, name, " ".join("%s=%d" % (k, st1.get(k, 0) - st0.get(k, 0)) for k in ("holeSpecTried", "holeSpecEqual", "holeSpecPrefixEqual", "holeSpecUsed", "holeSpecDropped"))), flush=True)
             lat_s = sorted(lat)
             p95 = lat_s[min(len(lat_s) - 1, int(0.95 * len(lat_s)))]
             print("SCEN %s %s latency_median %.1f p95 %.1f max %.1f" % (sc, name, statistics.median(lat), p95, lat_s[-1]), flush=True)
