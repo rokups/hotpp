@@ -111,3 +111,13 @@ TEST(NonNullTranslation, NotEqualIsNotAnAssertion)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_FALSE(has(r.cpp, "hot::nonnull(a")) << r.cpp;
 }
+
+TEST(NonNullTranslation, TypeCheckSeesThroughTheAssertion)
+{
+    const hotc::TranslateResult ok = run("    int A($Node a) { return a!.Self()!.Add(a!.v); }\n");
+    EXPECT_TRUE(ok.ok) << ok.diagnostics;
+    // The type of "a!" is the type of "a": the call "y!.Ping()" is a typed script call.
+    const hotc::TranslateResult t = run("    void A($Node a) { var y = a!.Self(); y!.Ping(); }\n");
+    ASSERT_TRUE(t.ok) << t.diagnostics;
+    EXPECT_TRUE(has(t.cpp, "Node__Ping(hot::shell_of<Node_Shell>(hot::nonnull(y,")) << t.cpp;
+}

@@ -66,6 +66,8 @@ Root root_of(const Expr& e, bool this_paths = false)
         return p->inner ? root_of(*p->inner, this_paths) : Root{};
     if (auto* u = std::get_if<UnaryExpr>(&e.v))
     {
+        if (is_bang(*u))
+            return root_of(*u->operand, this_paths);
         if (u->postfix || !u->operand)
             return {};
         const bool ref_cast = u->op.size() > 2 && u->op.front() == '(' && u->op.compare(u->op.size() - 2, 2, "&)") == 0;

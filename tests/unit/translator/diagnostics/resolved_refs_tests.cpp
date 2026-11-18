@@ -839,3 +839,23 @@ TEST(ResolvedRefs, NoClassRefInComparisonStringOrComment)
             EXPECT_TRUE(line.find("class ") == 0 || line.find("n < Max && Gun") != std::string::npos) << line;
         }
 }
+
+// A use of "n" in "n!" and in "n!.v" is a use of "n": the references find it.
+TEST(ResolvedRefs, NonNullAssertionIsAUseOfTheName)
+{
+    const std::string text = "using \"w.h\";\n"
+                             "class Box { int v = 1; }\n"
+                             "class Foo : Widget {\n"
+                             "    int Calc($Box n) {\n"
+                             "        $Box m = n!;\n"
+                             "        return n!.v + m!.v;\n"
+                             "    }\n"
+                             "}\n";
+    const hotc::AnalyzeResult r = analyze_refs(text);
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    const std::string n = decl_of(r, text, "n", 0);
+    EXPECT_EQ(uses_of(r, n), all_of(text, "n"));
+    // The member "v" after "n!." resolves to the field of "Box".
+    EXPECT_EQ(decl_of(r, text, "v", 1), "Box.v");
+    EXPECT_EQ(decl_of(r, text, "v", 2), "Box.v");
+}

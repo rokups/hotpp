@@ -464,3 +464,13 @@ TEST(LintUnused, BodyWithRawCppTextGivesNoUnusedWarning)
     EXPECT_EQ(lint_warning_count(false), 1u);
     EXPECT_EQ(lint_warning_count(true), 0u);
 }
+
+// ---------------------------------------------------------------- non-null assertion
+
+TEST(LintNonNull, AssertionUsesTheLocalAndGivesNoWarning)
+{
+    // A use of "n" in "n!" is a use of "n": no unused warning. The assertion is not dead code.
+    const std::string w = warnings_of("        $Node n = new $Node();\n        n!.count = 1;\n        n!;", "    int v = 0;\n");
+    EXPECT_FALSE(has(w, "unused")) << w;
+    EXPECT_FALSE(has(w, "unreachable")) << w;
+}

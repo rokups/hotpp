@@ -288,6 +288,11 @@ struct UnaryExpr
     uint32_t op_pos = 0;
     std::string text{};
 };
+// True for the postfix "!" (non-null assertion): it keeps the place and the type of its operand.
+inline bool is_bang(const UnaryExpr& u)
+{
+    return u.postfix && u.op == "!" && u.operand;
+}
 struct BinaryExpr
 { // also the assignment operators
     std::string op;
