@@ -238,3 +238,52 @@ TEST(EmbeddedNav, TimingOn300Lines)
         EXPECT_LT(ms[18], 1000.0) << m;
     }
 }
+
+// A symbol that the same block declares: the answer comes from the editor text of the document.
+TEST(EmbeddedNav, SameBlockMethodDefinitionAndHover)
+{
+    Nav n;
+    const std::string head = "<p>\xC3\xA4</p>"; // 3 + 1 + 4 UTF-16 units
+    const std::string body = "class Foo { void g() {} void f() { g(); } }";
+    const int base = 3 + 1 + 4 + 8;
+    n.open("<rml>\n<script>\nclass Pad { }\n</script>\n" + head + "<script>" + body + "</script>\n</rml>\n");
+    const json d = n.ask("textDocument/definition", 4, base + col_of(body, "g();") + 0);
+    ASSERT_FALSE(d.is_null());
+    const json& l = d.is_array() ? d[0] : d;
+    EXPECT_EQ(l["uri"], n.uri) << d.dump();
+    EXPECT_EQ(l["range"]["start"]["line"], 4) << d.dump();
+    EXPECT_EQ(l["range"]["start"]["character"], base + col_of(body, "g()")) << d.dump();
+    const json h = n.ask("textDocument/hover", 4, base + col_of(body, "g();"));
+    ASSERT_FALSE(h.is_null());
+    EXPECT_NE(h["contents"]["value"].get<std::string>().find("g"), std::string::npos) << h.dump();
+}
+
+// A static method of the same block: the hover text comes from the declaration line of the unit text.
+TEST(EmbeddedNav, SameBlockStaticMethodHover)
+{
+    Nav n;
+    const std::string line = "    void f() { Foo.F(1); }";
+    n.open("<rml>\n<script>\nclass Foo {\n    static int F(int v) { return v; }\n" + line + "\n}\n</script>\n</rml>\n");
+    const json h = n.ask("textDocument/hover", 4, col_of(line, "F(1)"));
+    ASSERT_FALSE(h.is_null());
+    EXPECT_EQ(h["contents"]["value"], "```hot\nstatic int F(int v)\n```") << h.dump();
+    EXPECT_EQ(h["range"]["start"]["character"], col_of(line, "F(1)")) << h.dump();
+}
+
+// The answer follows an unsaved edit, not the file on the disk.
+TEST(EmbeddedNav, SameBlockAnswerFollowsAnUnsavedEdit)
+{
+    Nav n;
+    const std::string body = "class Foo { void g() {} void f() { g(); } }";
+    n.open("<rml>\n<script>\n" + body + "\n</script>\n</rml>\n");
+    const std::string edited = "class Foo { int pad; void g() {} void f() { g(); } }";
+    n.client->change(n.uri, 2, "<rml>\n<script>\n" + edited + "\n</script>\n</rml>\n");
+    n.client->wait_notification("textDocument/publishDiagnostics", [&](const json& p) { return p.value("uri", std::string()) == n.uri; }, 120000);
+    const json d = n.ask("textDocument/definition", 2, col_of(edited, "g();"));
+    ASSERT_FALSE(d.is_null());
+    const json& l = d.is_array() ? d[0] : d;
+    EXPECT_EQ(l["range"]["start"]["line"], 2) << d.dump();
+    EXPECT_EQ(l["range"]["start"]["character"], col_of(edited, "g()")) << d.dump();
+    const json h = n.ask("textDocument/hover", 2, col_of(edited, "g();"));
+    ASSERT_FALSE(h.is_null());
+}
