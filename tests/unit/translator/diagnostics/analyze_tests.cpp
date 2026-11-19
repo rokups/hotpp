@@ -653,3 +653,51 @@ TEST(Analyze, BrokenImportOverloadGivesNoRefToTheOtherOverload)
         if (x.decl == "Gun.Fire")
             ADD_FAILURE() << "ref to Gun.Fire at " << x.pos.line << ":" << x.pos.col << " decl_file=" << x.decl_file;
 }
+
+// Only a member that the parser dropped is lost. The helper analyzes the main script that calls
+// "g.Fire(<arg>)" and tells whether the call has the ref of "Gun.Fire".
+namespace
+{
+bool fire_ref_present(const std::string& gun_members, const std::string& after, const std::string& arg)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n");
+    const std::string lib = "using \"w.h\";\nclass Gun : Widget {\n" + gun_members + "}\n" + after;
+    const std::string main = "using \"w.h\";\n"
+                             "using \"lib.hot\";\n"
+                             "class Pistol : Widget {\n"
+                             "    public int Shoot($Gun g) { if (g == null) return 0; return g.Fire(" + arg + "); }\n"
+                             "}\n";
+    write_file(dir.path() / "lib.hot", lib);
+    hotc::TranslateOptions o = temp_options(dir, "");
+    o.resolve_refs = true;
+    o.modules = {{"lib.hot", lib}};
+    const hotc::AnalyzeResult r = hotc::analyze(main, o);
+    EXPECT_FALSE(r.ok);
+    for (const hotc::ResolvedRef& x : r.refs)
+        if (x.decl == "Gun.Fire")
+            return true;
+    return false;
+}
+const char* const kFireInt = "    public int Fire(int b) { return b * 2; }\n";
+} // namespace
+
+TEST(Analyze, BrokenImportStatementInAMethodBodyLosesNoMember)
+{
+    // (a) a statement error in an overload: the overload stays.
+    EXPECT_TRUE(fire_ref_present(std::string(kFireInt) + "    public int Fire(float b) { return b +; }\n", "", "1"));
+    // (b) a statement error after an inner ";" in another method: the members of the class stay.
+    EXPECT_TRUE(fire_ref_present(
+        std::string(kFireInt) + "    public int Reload() { int a = 0; return a +; }\n", "", "1"));
+}
+
+TEST(Analyze, BrokenImportHeaderOfTheNextClassLosesNoMember)
+{
+    EXPECT_TRUE(fire_ref_present(kFireInt, "class Bad : {\n}\n", "1"));
+}
+
+TEST(Analyze, BrokenImportOverloadHeaderGivesNoRef)
+{
+    EXPECT_FALSE(fire_ref_present(std::string(kFireInt) + "    public int Fire(float b +) { return 1; }\n", "", "1.5"));
+    EXPECT_FALSE(fire_ref_present(std::string(kFireInt) + "    public int Fire(float b { return 1; }\n", "", "1.5"));
+}

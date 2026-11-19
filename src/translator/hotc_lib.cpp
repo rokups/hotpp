@@ -815,6 +815,81 @@ std::vector<std::string> lost_members(
                 owner = &c;
         if (!owner)
             continue;
+        // The error must be inside the class body. An error after the closing brace belongs to a
+        // later class that the parser dropped.
+        const size_t open = text.find('{', owner->pos - origin);
+        if (open == std::string::npos)
+            continue;
+        if (err > open)
+        {
+            size_t close = open;
+            for (int depth = 0; close < text.size(); ++close)
+            {
+                const char ch = text[close];
+                if (ch == '"' || ch == '\'')
+                {
+                    for (++close; close < text.size() && text[close] != ch && text[close] != '\n'; ++close)
+                        if (text[close] == '\\')
+                            ++close;
+                }
+                else if (ch == '/' && close + 1 < text.size() && text[close + 1] == '/')
+                {
+                    while (close < text.size() && text[close] != '\n')
+                        ++close;
+                }
+                else if (ch == '/' && close + 1 < text.size() && text[close + 1] == '*')
+                {
+                    const size_t end = text.find("*/", close + 2);
+                    close = end == std::string::npos ? text.size() : end + 1;
+                }
+                else if (ch == '{')
+                    ++depth;
+                else if (ch == '}' && --depth == 0)
+                    break;
+            }
+            // An error after the closing brace belongs to a later declaration that the parser
+            // dropped. If no declaration starts between, a member swallowed the closing brace: the
+            // error belongs to the class.
+            if (err > close)
+            {
+                const std::string_view gap = std::string_view(text).substr(close + 1, err - close - 1);
+                bool later = false;
+                for (const char* kw : {"class", "struct", "interface", "enum", "using", "namespace", "["})
+                    later = later || gap.find(kw) != std::string_view::npos;
+                if (later)
+                    continue;
+            }
+        }
+        // An error inside the body of a kept member drops only a statement: no member is lost.
+        {
+            bool in_kept = false;
+            auto in_span = [&](Span sp)
+            { in_kept = in_kept || (sp.end > sp.begin && sp.begin >= origin && err >= sp.begin - origin && err <= sp.end - origin); };
+            for (const Method& m : owner->methods)
+                in_span(m.body_span);
+            for (const Method& m : owner->statics)
+                in_span(m.body_span);
+            for (const Method& m : owner->dtors)
+                in_span(m.body_span);
+            for (const hotc::ast::Ctor& k : owner->ctors)
+                in_span(k.body_span);
+            for (const hotc::ast::Property& pr : owner->props)
+            {
+                in_span(pr.get_span);
+                in_span(pr.set_span);
+            }
+            for (const hotc::ast::Property& pr : owner->sprops)
+            {
+                in_span(pr.get_span);
+                in_span(pr.set_span);
+            }
+            for (const Field& f : owner->fields)
+                in_span(f.init_span);
+            for (const Field& f : owner->svars)
+                in_span(f.init_span);
+            if (in_kept)
+                continue;
+        }
         // The start of the member: back to an unmatched "{" of the class, or a ";" or "}" of the
         // member before. The "{" of a method body (after ")") is inside the member.
         int paren = 0, brace = 0;
@@ -850,10 +925,10 @@ std::vector<std::string> lost_members(
             --b;
         }
         std::string name;
-        const size_t open = text.find('(', b);
-        if (open != std::string::npos && open <= err)
+        const size_t paren_at = text.find('(', b);
+        if (paren_at != std::string::npos && paren_at <= err)
         {
-            size_t e = open;
+            size_t e = paren_at;
             while (e > b && std::isspace(static_cast<unsigned char>(text[e - 1])))
                 --e;
             size_t st = e;
