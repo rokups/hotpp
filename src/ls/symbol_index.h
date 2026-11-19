@@ -47,15 +47,12 @@ struct IndexMember
 {
     std::string name, kind;
     IndexPos begin;
-    // The places of the member in this file. No value: not computed yet (this needs clangd).
-    std::optional<std::vector<IndexPos>> refs;
 };
 
 struct IndexClass
 {
     std::string name;
     IndexPos begin; // the place of the class name
-    std::vector<IndexPos> refs;
     std::vector<IndexMember> members;
     IndexMember* find_member(const std::string& member);
 };
@@ -110,7 +107,7 @@ struct IndexShard
 class SymbolIndex
 {
 public:
-    static constexpr int kFormatVersion = 5;
+    static constexpr int kFormatVersion = 6;
 
     SymbolIndex();
     ~SymbolIndex();

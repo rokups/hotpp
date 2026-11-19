@@ -64,9 +64,6 @@ std::vector<int> whole_word_cols(std::string_view l, const std::string& w);
 // The position of the name of the class "c" in the script text "t".
 Pos class_name_pos_in(const Text& t, const hotc::AnalyzedClass& c);
 
-// The places of the class name "name": the semantic tokens of the facts that mark it.
-std::set<Pos> class_places_in(const Text& t, const hotc::AnalyzeResult& facts, const std::string& name);
-
 // True when each code word "word" in "text" is an exact resolved ref of the table. A word that
 // the table does not claim (an unresolved name, a native type, a raw body word) gives false.
 bool table_lacks_word_in(const FileRefs& table, const std::string& text, const std::string& word);

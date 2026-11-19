@@ -85,14 +85,8 @@ Features:
 - Hover, go-to-definition and references. A script symbol goes to the script. A native symbol goes to the native header.
   - Hover of a static method, a static field or a class constant of a script class shows the declaration line.
     - The line comes from the table of the resolved names.
-    - The server uses the table first.
-    - It uses a text scan of the lenient facts only when the table gives no result.
-    - The scan serves hover and definition of a static member, and references of a script class.
-    - The table has gaps for a broken script:
-      - G1: a use inside the error statement and in the rest of its body has no table entry. A list of references can miss such a use.
-      - G2: an import with an error loses its `using` line, so its names are not in the table.
-      - G3: more than 4 error regions give an empty table.
-    - Remove the text scan when G1, G2 and G3 are closed.
+    - The server uses the table first. The table also serves a script with a syntax error, and a script with an import that has a syntax error: the valid parts of both stay in the table.
+    - A statement that does not parse gives no answer. The rest of the member keeps the tail blank, so a name there has no table entry either.
   - A name with no map segment (a type name, a base class, a name after `new`, a field initializer) has no position in the generated C++. For hover, definition and references, the server then looks for the same word in the generated lines of the script line. It asks `clangd` at the first place that answers. A word in a comment or in a string gets no hover.
   - References of a native symbol give the uses in the script and the places in C++ files. A use with no map segment is found by the word in its script line: the k-th use on the generated line is the k-th use on the script line, so a parameter with the same name is skipped. The scan of the other scripts skips a closed script when its stored table (cache or index shard) shows that each code word with the symbol name is a resolved script symbol. A closed script with no stored table is analyzed as before. The scan stores the table of each closed script that it analyzes. The scan has its own time budget: `reference_budget_ms` in `ServerOptions` (default 10 seconds). The rename budget is also 10 seconds. A cancel stops the scan (see Threads). When the budget stops the scan, or an ask to `clangd` gets no answer, the server writes `native references: scan stopped by the time budget or by a failed ask, N of M scripts` (N scripts are scanned) to stderr and sends `window/showMessage` (warning) with the same fact. The list of references is then partial. The declaration and the definition in the header are added, because `clangd` has them only in its index.
 - Document symbols come from analyze. Semantic tokens come from a small lexer and the facts. The postfix `!` (non-null assertion) is a token of the type `operator`; `!=` and the prefix `!` are not.

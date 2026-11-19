@@ -2148,8 +2148,9 @@ TEST(LanguageServer, ReferencesLeaveOutAnUnrelatedScriptWithTheSameNames)
     EXPECT_EQ(there, 0) << r.dump();
 }
 
-// Degraded mode: a script with a syntax error, or with an import that has an error, has no table
-// of resolved names. Definition and references then use the text scans of the lenient facts.
+// Degraded mode: a script with a syntax error, or with an import that has an error, has a table
+// for its valid parts. Definition and references use the table. A name inside a statement that
+// does not parse has no entry: it gets no answer.
 // The only error of each fixture is the intended one (a syntax error in main or in the import).
 // Without it the strict translation is ok: a script class with a native base is a handle
 // ("$Gun g"), and the call on a nullable handle follows a null check.
@@ -2219,7 +2220,7 @@ TEST(LanguageServerDegraded, DefinitionOfAStaticMemberWithASyntaxErrorElsewhere)
 }
 
 // A syntax error in another method: the table gives the answer for a valid method. The same name
-// inside the broken statement has no table entry, and the text scan gives the answer.
+// inside the broken statement has no table entry, and it gets no answer.
 namespace
 {
 const char* const kDegradedField = R"(using "Actor.h";
@@ -2260,16 +2261,16 @@ TEST(LanguageServerDegraded, NoAnswerInsideTheBrokenStatement)
     EXPECT_TRUE(r["result"].empty()) << r.dump();
 }
 
-TEST(LanguageServerDegraded, FallbackGivesAStaticMemberInsideTheBrokenStatement)
+TEST(LanguageServerDegraded, NoAnswerForAStaticMemberInsideTheBrokenStatement)
 {
     REQUIRE_CLANGD();
     std::string main = kDegradedMain;
     const std::string broken = "{ return 1 +; }";
     main.replace(main.find(broken), broken.size(), "{ return Config.kMax +; }");
     DegradedSession s(kDegradedLib, main);
-    // "Config.kMax" on line 8: the table has no entry, the text scan gives the declaration.
+    // "Config.kMax" on line 8: the table has no entry, and no text scan gives the declaration.
     const json r = s.ask("textDocument/definition", 8, 41);
-    EXPECT_EQ(first_place(r), "main.hot:3:28") << r.dump();
+    EXPECT_EQ(first_place(r), "none") << r.dump();
 }
 
 TEST(LanguageServerDegraded, HoverOfAStaticMemberUsesTheTable)
@@ -2689,9 +2690,8 @@ hot::ls::IndexShard sample_shard()
     hot::ls::IndexClass c;
     c.name = "Player";
     c.begin = {2, 6};
-    c.refs = {{2, 6}, {9, 4}};
-    hot::ls::IndexMember known{"hp", "field", {3, 10}, std::vector<hot::ls::IndexPos>{{3, 10}, {11, 13}}};
-    hot::ls::IndexMember unknown{"heal", "method", {10, 9}, std::nullopt};
+    hot::ls::IndexMember known{"hp", "field", {3, 10}};
+    hot::ls::IndexMember unknown{"heal", "method", {10, 9}};
     c.members = {known, unknown};
     shard.classes.push_back(c);
     shard.has_table = true;
@@ -2837,12 +2837,10 @@ TEST(SymbolIndex, ReusesAShardWhenTheDigestMatches)
     ASSERT_TRUE(shard);
     hot::ls::IndexClass* c = shard->find_class("Player");
     ASSERT_NE(c, nullptr);
-    EXPECT_EQ(c->refs.size(), 2u);
+    EXPECT_EQ(c->begin.line, 2);
     ASSERT_NE(c->find_member("hp"), nullptr);
-    ASSERT_TRUE(c->find_member("hp")->refs);
-    EXPECT_EQ(c->find_member("hp")->refs->size(), 2u);
     ASSERT_NE(c->find_member("heal"), nullptr);
-    EXPECT_FALSE(c->find_member("heal")->refs);
+    EXPECT_EQ(c->find_member("heal")->begin.line, 10);
     EXPECT_EQ(index.loads(), 1);
 }
 
