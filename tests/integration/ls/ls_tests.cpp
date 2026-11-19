@@ -2835,12 +2835,14 @@ TEST(SymbolIndex, ReusesAShardWhenTheDigestMatches)
     ASSERT_TRUE(index.store(script, digest, sample_shard()));
     auto shard = index.load(script, digest);
     ASSERT_TRUE(shard);
-    hot::ls::IndexClass* c = shard->find_class("Player");
-    ASSERT_NE(c, nullptr);
-    EXPECT_EQ(c->begin.line, 2);
-    ASSERT_NE(c->find_member("hp"), nullptr);
-    ASSERT_NE(c->find_member("heal"), nullptr);
-    EXPECT_EQ(c->find_member("heal")->begin.line, 10);
+    ASSERT_EQ(shard->classes.size(), 1u);
+    const hot::ls::IndexClass& c = shard->classes[0];
+    EXPECT_EQ(c.name, "Player");
+    EXPECT_EQ(c.begin.line, 2);
+    ASSERT_EQ(c.members.size(), 2u);
+    EXPECT_EQ(c.members[0].name, "hp");
+    EXPECT_EQ(c.members[1].name, "heal");
+    EXPECT_EQ(c.members[1].begin.line, 10);
     EXPECT_EQ(index.loads(), 1);
 }
 

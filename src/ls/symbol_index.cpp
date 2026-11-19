@@ -258,22 +258,6 @@ IndexShard shard_of(const json& body)
 
 } // namespace
 
-IndexMember* IndexClass::find_member(const std::string& member)
-{
-    for (IndexMember& m : members)
-        if (m.name == member)
-            return &m;
-    return nullptr;
-}
-
-IndexClass* IndexShard::find_class(const std::string& name)
-{
-    for (IndexClass& c : classes)
-        if (c.name == name)
-            return &c;
-    return nullptr;
-}
-
 void SymbolIndex::open(const std::string& dir)
 {
     dir_ = dir;
