@@ -2150,6 +2150,9 @@ TEST(LanguageServer, ReferencesLeaveOutAnUnrelatedScriptWithTheSameNames)
 
 // Degraded mode: a script with a syntax error, or with an import that has an error, has no table
 // of resolved names. Definition and references then use the text scans of the lenient facts.
+// The only error of each fixture is the intended one (a syntax error in main or in the import).
+// Without it the strict translation is ok: a script class with a native base is a handle
+// ("$Gun g"), and the call on a nullable handle follows a null check.
 namespace
 {
 const char* const kDegradedLib = R"(using "Actor.h";
@@ -2165,7 +2168,7 @@ class Config {
 }
 class Pistol : Actor {
     public Config cfg;
-    public int Shoot(Gun g) { return g.Fire(1) + Config.kMax; }
+    public int Shoot($Gun g) { if (g == null) return 0; return g.Fire(1) + Config.kMax; }
     public int Broken() { return 1 +; }
 }
 )";
@@ -2210,8 +2213,8 @@ TEST(LanguageServerDegraded, DefinitionOfAStaticMemberWithASyntaxErrorElsewhere)
 {
     REQUIRE_CLANGD();
     DegradedSession s(kDegradedLib, kDegradedMain);
-    // "Config.kMax" on line 7: "kMax" is at character 56.
-    const json r = s.ask("textDocument/definition", 7, 57);
+    // "Config.kMax" on line 7: "kMax" is at character 82.
+    const json r = s.ask("textDocument/definition", 7, 83);
     EXPECT_EQ(first_place(r), "main.hot:3:28") << r.dump();
 }
 
@@ -2273,22 +2276,20 @@ TEST(LanguageServerDegraded, HoverOfAStaticMemberUsesTheTable)
 {
     REQUIRE_CLANGD();
     DegradedSession s(kDegradedLib, kDegradedMain);
-    // "Config.kMax" on line 7: "kMax" is at character 56.
-    const json r = s.ask("textDocument/hover", 7, 57);
+    // "Config.kMax" on line 7: "kMax" is at character 82.
+    const json r = s.ask("textDocument/hover", 7, 83);
     ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
     EXPECT_NE(r["result"]["contents"]["value"].get<std::string>().find("static const int kMax = 4"), std::string::npos)
         << r.dump();
 }
 
-// Disabled, measured: the table gives no place for "g.Fire" of the imported class Gun when
-// another method of the script has a syntax error. The result is empty. The broken script has no
-// generated C++ for clangd, and no text scan finds a method of an imported class.
-TEST(LanguageServerDegraded, DISABLED_DefinitionOfAnImportedMethodWithASyntaxErrorElsewhere)
+// A method of an imported class, when another method of the script has a syntax error.
+TEST(LanguageServerDegraded, DefinitionOfAnImportedMethodWithASyntaxErrorElsewhere)
 {
     REQUIRE_CLANGD();
     DegradedSession s(kDegradedLib, kDegradedMain);
-    // "g.Fire" on line 7: "Fire" is at character 39.
-    const json r = s.ask("textDocument/definition", 7, 40);
+    // "g.Fire" on line 7: "Fire" is at character 65.
+    const json r = s.ask("textDocument/definition", 7, 66);
     EXPECT_EQ(first_place(r), "lib.hot:2:15") << r.dump();
 }
 
@@ -2305,22 +2306,20 @@ TEST(LanguageServerDegraded, ReferencesOfAClassWithASyntaxErrorElsewhere)
     EXPECT_EQ(lines, (std::set<std::string>{"2", "6", "7"})) << r.dump();
 }
 
-// Disabled, measured: the result is empty. The import has an error and loses its "using" line
-// (gap G2), so the table has no name for "g.Fire". No text scan finds a method of an imported
-// class.
-TEST(LanguageServerDegraded, DISABLED_DefinitionOfAnImportedNameWhenTheImportHasAnError)
+// A method of an imported class, when the import has an error (gap G2).
+TEST(LanguageServerDegraded, DefinitionOfAnImportedNameWhenTheImportHasAnError)
 {
     REQUIRE_CLANGD();
     const std::string lib = std::string(kDegradedLib) + "class Bad { public int F() { return 1 +; } }\n";
     const std::string main = R"(using "Actor.h";
 using "lib.hot";
 class Pistol : Actor {
-    public int Shoot(Gun g) { return g.Fire(1); }
+    public int Shoot($Gun g) { if (g == null) return 0; return g.Fire(1); }
 }
 )";
     DegradedSession s(lib, main);
-    // "g.Fire" on line 3: "Fire" is at character 39.
-    const json r = s.ask("textDocument/definition", 3, 40);
+    // "g.Fire" on line 3: "Fire" is at character 65.
+    const json r = s.ask("textDocument/definition", 3, 66);
     EXPECT_EQ(first_place(r), "lib.hot:2:15") << r.dump();
 }
 
@@ -2331,7 +2330,7 @@ TEST(LanguageServerDegraded, DefinitionOfAStaticMemberWhenTheImportHasAnError)
     std::string main = kDegradedMain;
     main.erase(main.find("    public int Broken()"), std::string("    public int Broken() { return 1 +; }\n").size());
     DegradedSession s(lib, main);
-    const json r = s.ask("textDocument/definition", 7, 57);
+    const json r = s.ask("textDocument/definition", 7, 83);
     EXPECT_EQ(first_place(r), "main.hot:3:28") << r.dump();
 }
 
