@@ -65,9 +65,11 @@ constexpr auto field_count(int) -> decltype(T{std::declval<A>()..., std::declval
 //   - fs: only "is there a file system" is in the key. The manifest checks the files.
 //   - import_cache: in the key only when true. The output does not change. A key with false stays
 //     the same as before the option.
+//   - lenient_imports: in the key only when true. The result can be ok with a broken import. A key
+//     with false stays the same as before the option.
 //   - resolve_refs: not in the key. The output does not change. An entry has no table,
 //     so a lookup with this option gives no hit.
-static_assert(field_count<hotc::TranslateOptions>(0) == 25,
+static_assert(field_count<hotc::TranslateOptions>(0) == 26,
     "TranslateOptions has a new field: decide if it goes into the key of the translate cache");
 
 void add_list(Hash64& h, const std::vector<std::string>& v)
@@ -125,6 +127,8 @@ void add_options(Hash64& h, const hotc::TranslateOptions& o, const std::string& 
     h.add_u64(o.export_generation);
     if (o.import_cache)
         h.add_text("import-cache");
+    if (o.lenient_imports)
+        h.add_text("lenient-imports");
 }
 
 // ------------------------------------------------------------ JSON

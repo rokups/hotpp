@@ -91,21 +91,6 @@ IndexPos pos_of(const json& j)
     return {j.at(0).get<int>(), j.at(1).get<int>()};
 }
 
-json places_json(const std::vector<IndexPos>& v)
-{
-    json a = json::array();
-    for (const IndexPos& p : v)
-        a.push_back(pos_json(p));
-    return a;
-}
-std::vector<IndexPos> places_of(const json& j)
-{
-    std::vector<IndexPos> v;
-    for (const json& p : j)
-        v.push_back(pos_of(p));
-    return v;
-}
-
 // The lines of the table. Each name gives the start offset of its line: offset - (col - 1). The
 // result has a pair (line, start) for each line with a name, sorted by the start.
 template <typename T>
@@ -207,13 +192,9 @@ json shard_json(const IndexShard& shard)
         json members = json::array();
         for (const IndexMember& m : c.members)
         {
-            json mj = {{"n", m.name}, {"k", m.kind}, {"p", pos_json(m.begin)}};
-            if (m.refs)
-                mj["r"] = places_json(*m.refs);
-            members.push_back(std::move(mj));
+            members.push_back({{"n", m.name}, {"k", m.kind}, {"p", pos_json(m.begin)}});
         }
-        classes.push_back(
-            {{"n", c.name}, {"p", pos_json(c.begin)}, {"r", places_json(c.refs)}, {"m", std::move(members)}});
+        classes.push_back({{"n", c.name}, {"p", pos_json(c.begin)}, {"m", std::move(members)}});
     }
     json body = {{"c", std::move(classes)}, {"t", table_json(shard.table)}};
     if (shard.has_table)
@@ -262,15 +243,12 @@ IndexShard shard_of(const json& body)
         IndexClass c;
         c.name = cj.at("n").get<std::string>();
         c.begin = pos_of(cj.at("p"));
-        c.refs = places_of(cj.at("r"));
         for (const json& mj : cj.at("m"))
         {
             IndexMember m;
             m.name = mj.at("n").get<std::string>();
             m.kind = mj.at("k").get<std::string>();
             m.begin = pos_of(mj.at("p"));
-            if (mj.contains("r"))
-                m.refs = places_of(mj["r"]);
             c.members.push_back(std::move(m));
         }
         shard.classes.push_back(std::move(c));
@@ -279,22 +257,6 @@ IndexShard shard_of(const json& body)
 }
 
 } // namespace
-
-IndexMember* IndexClass::find_member(const std::string& member)
-{
-    for (IndexMember& m : members)
-        if (m.name == member)
-            return &m;
-    return nullptr;
-}
-
-IndexClass* IndexShard::find_class(const std::string& name)
-{
-    for (IndexClass& c : classes)
-        if (c.name == name)
-            return &c;
-    return nullptr;
-}
 
 void SymbolIndex::open(const std::string& dir)
 {

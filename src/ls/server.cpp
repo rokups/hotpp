@@ -184,12 +184,6 @@ std::optional<std::string> read_file(const std::string& path)
     return ss.str();
 }
 
-// A script symbol that other scripts can have too: a class, or a member of a class.
-struct SymbolKey
-{
-    std::string cls, member; // member is empty for a class
-};
-
 // One open .hot document and its state in clangd. A ".cpp" document is also a Doc, but with "cpp"
 // set: it has no state in clangd and it gets the errors of hotc only (update_cpp).
 struct Doc
@@ -1190,13 +1184,6 @@ private:
     json on_completion(const Doc& d, const json& p);
     json using_completion(const Doc& d, Pos cur, size_t off, size_t line_begin);
     json on_hover(const Doc& d, const json& p);
-    // True when the script has errors or no table (degraded mode).
-    // The answers use the table first.
-    // The text scan serves only the gaps G1, G2 and G3 (see doc/tools-ls.md).
-    static bool has_no_table(const Doc& d)
-    {
-        return !d.facts.errors.empty() || (d.facts.refs.empty() && !d.facts.ok);
-    }
     json on_signature_help(const Doc& d, const json& p);
     json on_formatting(const Doc& d, const json& p);
     json on_range_formatting(const Doc& d, const json& p);
@@ -1351,8 +1338,6 @@ private:
     // "generated" (if not null) is set when the error is a name that the translator makes.
     std::variant<std::set<Pos>, std::string> symbol_places(
         const Doc& d, Pos cur, const std::string& name, Pos* decl, bool* generated = nullptr);
-    // The class (and the member) that is declared at "decl", or no value for a local symbol.
-    std::optional<SymbolKey> symbol_key(const Doc& d, Pos decl, const std::string& name) const;
     // False when no workspace root and no host script dir is known: the importers are unknown.
     bool importers_known() const;
     // The rename of the script symbol at "cur" through the table (resolve_at, places_of). No value:
@@ -1360,22 +1345,8 @@ private:
     // range and the placeholder of prepareRename, and "new_name" is not used.
     std::optional<std::variant<json, std::string>> table_rename(
         const Doc& d, Pos cur, const std::string& new_name, bool prepare);
-    std::optional<SymbolKey> key_at(const Doc& d, Pos cur);
-    std::optional<Pos> key_position(const Doc& d, const SymbolKey& key) const;
     Pos class_name_pos(const Doc& d, const hotc::AnalyzedClass& c) const;
-    std::set<Pos> class_places(const Doc& d, const std::string& name) const;
     bool is_script_class(const Doc& d, const std::string& name) const;
-    // A static member of a script class (a constant, a static field or a static method) at the
-    // position: the word after "Class." or a bare name inside the class. The answer holds the
-    // declaration and the member.
-    struct StaticHit
-    {
-        Pos decl;
-        const hotc::AnalyzedMember* member;
-    };
-    // The answer is empty when the bare word names a static but a same-name token of the function
-    // may declare a local.
-    std::optional<StaticHit> static_member_at(const Doc& d, Pos cur) const;
     // The scripts in the workspace folders. "with_import_dirs" adds the script dirs and the
     // include dirs of the hosts and of the options: a script there can import a workspace script.
     std::vector<std::string> workspace_scripts(bool with_import_dirs = false) const;
@@ -1461,11 +1432,6 @@ private:
     std::variant<PlaceMap, std::string> places_of(const Resolved& r, bool strict, const std::string& also = std::string(),
         std::map<std::string, Text>* texts = nullptr, const std::vector<std::string>* files = nullptr,
         const IndexSnapshot* given = nullptr);
-    // Calls "fn" for each other .hot file of the workspace that declares the symbol "key".
-    // "places" are the places of the symbol in that file. An open document is used as it is.
-    // A file on disk goes to clangd only for the call.
-    void for_other_scripts(const Doc& origin, const SymbolKey& key, const std::string& name,
-        const std::function<void(const Doc&, const std::set<Pos>&)>& fn);
 
     int in_, out_;
     ServerOptions opt_;
@@ -1696,7 +1662,7 @@ private:
     };
     mutable std::mutex last_update_mutex_;
     LastUpdate last_update_;
-    int closed_analyses_ = 0; // the analyze calls of closed files: for_other_scripts and file_refs (hot/indexStats)
+    int closed_analyses_ = 0; // the analyze calls of closed files: file_refs (hot/indexStats)
     // The tables of the closed scripts (file_refs), by path. "digest" is the shard digest.
     struct TableEntry
     {
@@ -4602,293 +4568,6 @@ json Server::on_completion(const Doc& d, const json& p)
 }
 
 
-std::optional<Server::StaticHit> Server::static_member_at(const Doc& d, Pos cur) const
-{
-    if (cur.line < 0 || cur.line >= static_cast<int>(d.text.starts.size()))
-        return std::nullopt;
-    const auto [wb, we] = word_at(d, cur);
-    if (we <= wb)
-        return std::nullopt;
-    const std::string_view l = d.text.line(cur.line);
-    const std::string name(l.substr(static_cast<size_t>(wb), static_cast<size_t>(we - wb)));
-    auto find_class = [&](const std::string& n) -> const hotc::AnalyzedClass*
-    {
-        for (const hotc::AnalyzedClass& c : d.facts.classes)
-            if (c.name == n)
-                return &c;
-        return nullptr;
-    };
-    // The class and its script bases, nearest first.
-    auto chain = [&](const hotc::AnalyzedClass* c)
-    {
-        std::vector<const hotc::AnalyzedClass*> out;
-        for (; c && out.size() < 32; c = find_class(c->base))
-            out.push_back(c);
-        return out;
-    };
-    // The code of the whole script: a comment, a string and a character literal are spaces. The
-    // line "l" starts at "off[l]".
-    std::string code;
-    std::vector<size_t> off;
-    {
-        bool block = false;
-        for (int i = 0; i < static_cast<int>(d.text.starts.size()); ++i)
-        {
-            off.push_back(code.size());
-            code += blank_non_code(d.text.line(i), block);
-            code += '\n';
-        }
-    }
-    const size_t co = off[static_cast<size_t>(cur.line)] + static_cast<size_t>(wb);
-    if (co >= code.size() || code[co] == ' ')
-        return std::nullopt; // a word in a comment or in a string
-    const hotc::AnalyzedClass* start = nullptr;
-    bool bare = false;
-    size_t boundary = 0, scope_end = 0;
-    bool in_function = false;
-    int b = wb;
-    while (b > 0 && (l[static_cast<size_t>(b) - 1] == ' ' || l[static_cast<size_t>(b) - 1] == '\t'))
-        --b;
-    if (b > 0 && l[static_cast<size_t>(b) - 1] == '.')
-    {
-        int e = b - 1;
-        int q = e;
-        while (q > 0 && is_id_char(l[static_cast<size_t>(q) - 1]))
-            --q;
-        start = find_class(std::string(l.substr(static_cast<size_t>(q), static_cast<size_t>(e - q))));
-        if (!start)
-            return std::nullopt;
-    }
-    else
-    {
-        // A bare name: the class that holds the word. The range of a class ends at its closing brace.
-        // The facts can be older than the text: a line outside the text gives no answer.
-        const hotc::AnalyzedClass* near_class = nullptr;
-        for (const hotc::AnalyzedClass& c : d.facts.classes)
-            if (c.begin.line - 1 <= cur.line)
-                near_class = &c;
-        if (!near_class || near_class->begin.line < 1 || near_class->begin.line - 1 >= static_cast<int>(off.size())
-            || near_class->begin.col < 1)
-            return std::nullopt;
-        const size_t cb = off[static_cast<size_t>(near_class->begin.line - 1)] + static_cast<size_t>(near_class->begin.col - 1);
-        const size_t open = cb < code.size() ? code.find('{', cb) : std::string::npos;
-        if (open == std::string::npos || open > co)
-            return std::nullopt;
-        // Scan from the class brace to the word. "boundary" is the start of the member at depth 1.
-        int depth = 1, parens = 0;
-        boundary = open + 1;
-        for (size_t i = open + 1; i < co; ++i)
-        {
-            const char ch = code[i];
-            if (ch == '{')
-            {
-                ++depth;
-            }
-            else if (ch == '}')
-            {
-                if (--depth == 0)
-                    return std::nullopt; // after the class
-                if (depth == 1)
-                    boundary = i + 1;
-            }
-            else if (depth == 1 && ch == '(')
-                ++parens;
-            else if (depth == 1 && ch == ')')
-                --parens;
-            else if (depth == 1 && ch == ';')
-                boundary = i + 1;
-        }
-        start = near_class;
-        bare = true;
-        in_function = depth >= 2 || parens > 0;
-        if (in_function)
-        {
-            scope_end = co;
-            int dd = depth;
-            for (; scope_end < code.size(); ++scope_end)
-            {
-                if (code[scope_end] == '{')
-                    ++dd;
-                else if (code[scope_end] == '}' && --dd <= 1)
-                    break;
-                else if (code[scope_end] == ';' && dd == 1)
-                    break;
-            }
-        }
-    }
-    const hotc::AnalyzedMember* found = nullptr;
-    for (const hotc::AnalyzedClass* c : chain(start))
-    {
-        for (const hotc::AnalyzedMember& m : c->statics)
-            if (!found && m.name == name)
-                found = &m;
-        if (found)
-            break;
-    }
-    if (!found)
-        return std::nullopt;
-    if (bare && in_function)
-    {
-        // A same-name token that may declare a local or a parameter: the word is perhaps not the
-        // static. The test is conservative on purpose: it never guesses.
-        static const std::set<std::string> not_a_type = {"return", "case", "new", "delete", "await", "throw",
-            "else", "do", "in", "is", "as", "typeof", "default"};
-        auto prev_word = [&](size_t q)
-        {
-            while (q > boundary && (code[q - 1] == ' ' || code[q - 1] == '\t' || code[q - 1] == '\n'))
-                --q;
-            size_t w = q;
-            while (w > boundary && is_id_char(code[w - 1]))
-                --w;
-            return code.substr(w, q - w);
-        };
-        for (size_t at = code.find(name, boundary); at != std::string::npos && at < scope_end; at = code.find(name, at + 1))
-        {
-            if ((at > 0 && is_id_char(code[at - 1])) || is_id_char(code[at + name.size()]))
-                continue;
-            size_t q = at;
-            while (q > boundary && (code[q - 1] == ' ' || code[q - 1] == '\t' || code[q - 1] == '\n'))
-                --q;
-            if (q <= boundary)
-                continue;
-            const char pc = code[q - 1];
-            bool may_declare = false;
-            if (is_id_char(pc))
-                may_declare = !not_a_type.count(prev_word(q));
-            else if (pc == '>')
-            {
-                // "->" and "=>" are not a type end. A ">" next to a name ends a template list.
-                size_t r = q - 1;
-                while (r > boundary && code[r - 1] == '>')
-                    --r;
-                may_declare = r > boundary && code[r - 1] != '-' && code[r - 1] != '=' && (is_id_char(code[r - 1]) || code[r - 1] == '>');
-            }
-            else if (pc == '&' || pc == '*')
-            {
-                // "Type * name" is a declaration only at a statement start and with a declarator end.
-                // "a * name + 1" and "x & name" are uses of the word.
-                size_t e = at + name.size();
-                while (e < code.size() && (code[e] == ' ' || code[e] == '\t' || code[e] == '\n'))
-                    ++e;
-                const bool eq_end = e < code.size() && code[e] == '=' && (e + 1 >= code.size() || code[e + 1] != '=');
-                const bool declarator_end = eq_end
-                    || (e < code.size() && (code[e] == ';' || code[e] == ',' || code[e] == ')' || code[e] == '{' || code[e] == '(' || code[e] == '['));
-                size_t r = q - 1;
-                while (r > boundary && (code[r - 1] == ' ' || code[r - 1] == '\t' || code[r - 1] == '*' || code[r - 1] == '&'))
-                    --r;
-                if (declarator_end && r > boundary && (is_id_char(code[r - 1]) || code[r - 1] == '>'))
-                {
-                    size_t t = r;
-                    while (t > boundary && (is_id_char(code[t - 1]) || code[t - 1] == '<' || code[t - 1] == '>'
-                        || (code[t - 1] == ':' && ((t >= 2 && code[t - 2] == ':') || code[t] == ':')) || code[t - 1] == ' ' || code[t - 1] == '\t' || code[t - 1] == '\n'
-                        || code[t - 1] == '*' || code[t - 1] == '&'))
-                        --t;
-                    size_t f = t;
-                    while (f < r && std::isspace(static_cast<unsigned char>(code[f])))
-                        ++f;
-                    size_t fe = f;
-                    while (fe < r && is_id_char(code[fe]))
-                        ++fe;
-                    const std::string first = code.substr(f, fe - f);
-                    if (!first.empty() && !not_a_type.count(first))
-                    {
-                        // A statement start: a boundary, ";", "{", "}" or a list start "(" and ",".
-                        size_t s = t;
-                        while (s > boundary && std::isspace(static_cast<unsigned char>(code[s - 1])))
-                            --s;
-                        if (s <= boundary)
-                            may_declare = true;
-                        else if (code[s - 1] == ';' || code[s - 1] == '{' || code[s - 1] == '}' || code[s - 1] == ','
-                            || (code[s - 1] == ':' && !(s >= 2 && code[s - 2] == ':')))
-                            may_declare = true; // a label colon ("case 1:", "default:") starts a statement
-                        else if (code[s - 1] == '(')
-                        {
-                            const std::string w = prev_word(s - 1);
-                            if (w == "if" || w == "while" || w == "switch")
-                                may_declare = eq_end; // an init-declaration: "if (Foo* name = get())"
-                            else
-                                may_declare = w != "return" && w != "case";
-                        }
-                    }
-                }
-            }
-            else if (pc == ',' || pc == '[')
-            {
-                // A declaration list ("int a = 0, count = 1;") or a binding ("auto [i, count]").
-                // A statement start: after the last ";", "{" or "}" before the word.
-                size_t st = at;
-                while (st > boundary && code[st - 1] != ';' && code[st - 1] != '{' && code[st - 1] != '}')
-                    --st;
-                int par = 0, sq = 0;
-                size_t open_sq = std::string::npos;
-                for (size_t i = st; i < at; ++i)
-                {
-                    if (code[i] == '(')
-                        ++par;
-                    else if (code[i] == ')')
-                        --par;
-                    else if (code[i] == '[')
-                    {
-                        ++sq;
-                        open_sq = i;
-                    }
-                    else if (code[i] == ']')
-                        --sq;
-                }
-                if (sq > 0 && open_sq != std::string::npos)
-                {
-                    const std::string w = prev_word(open_sq);
-                    may_declare = w == "auto" || w == "var" || w == "let";
-                }
-                else if (par == 0)
-                {
-                    // Two names in a row at the statement start: a type and a declarator.
-                    size_t i = st;
-                    while (i < at && std::isspace(static_cast<unsigned char>(code[i])))
-                        ++i;
-                    size_t j = i;
-                    while (j < at && (is_id_char(code[j]) || code[j] == '<' || code[j] == '>' || code[j] == ':' || code[j] == '*' || code[j] == '&'))
-                        ++j;
-                    size_t k = j;
-                    while (k < at && std::isspace(static_cast<unsigned char>(code[k])))
-                        ++k;
-                    may_declare = j > i && k > j && k < at && (std::isalpha(static_cast<unsigned char>(code[k])) || code[k] == '_');
-                }
-            }
-            if (!may_declare)
-            {
-                // A "for (" header can declare a name in any form.
-                size_t st = at;
-                int par = 0;
-                for (; st > boundary; --st)
-                {
-                    if (code[st - 1] == ')')
-                        ++par;
-                    else if (code[st - 1] == '(' && par-- == 0)
-                        break;
-                    else if (code[st - 1] == ';' && par == 0)
-                    {
-                        // "for (a; b; c)": a ";" inside the header: go on to the "(".
-                    }
-                    else if ((code[st - 1] == '{' || code[st - 1] == '}') && par == 0)
-                    {
-                        st = boundary;
-                        break;
-                    }
-                }
-                if (st > boundary)
-                {
-                    const std::string w = prev_word(st - 1);
-                    may_declare = w == "for" || w == "foreach";
-                }
-            }
-            if (may_declare)
-                return std::nullopt;
-        }
-    }
-    return StaticHit{{found->begin.line - 1, found->begin.col - 1}, found};
-}
-
 json Server::on_hover(const Doc& d, const json& p)
 {
     const Pos here = from_lsp(d.text, p["position"], utf8_);
@@ -4930,17 +4609,6 @@ json Server::on_hover(const Doc& d, const json& p)
         if (is_static)
             if (auto h = decl_hover(*at_ref))
                 return *h;
-    }
-    if (has_no_table(d))
-    {
-        if (const auto hit = static_member_at(d, here))
-        {
-            std::string t(d.text.line(hit->decl.line));
-            const size_t cut = t.find(hit->member->kind == "static method" ? '{' : ';');
-            if (cut != std::string::npos)
-                t.resize(cut);
-            return fenced(std::move(t));
-        }
     }
     // A word in a comment or in a string is not a symbol: no hover.
     {
@@ -5743,42 +5411,12 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
         }
         return list;
     };
-    // Degraded mode: the table comes first.
-    // The text scans of the lenient facts serve only when the table gives no result.
-    // The table has gaps:
-    // G1: the error statement and the rest of its body.
-    // G2: an import with an error.
-    // G3: more than 4 error regions.
-    // Remove the scans when G1, G2 and G3 are closed.
-    // The class scan stays before the table.
-    // The table has no entry for a class name that qualifies a member ("Class.member").
-    // The table list can miss a use inside a broken statement (G1).
-    const bool no_table = has_no_table(d);
-    if (no_table && is_ref && !here_word.empty() && is_script_class(d, here_word))
-    {
-        // Degraded mode: a script class. The places come from the tokens (see class_places).
-        auto add = [&](const Doc& doc, const std::set<Pos>& places)
-        {
-            for (const Pos& s : places)
-                out.push_back({{"uri", doc.uri},
-                    {"range", script_range(doc, s, {s.line, s.col + static_cast<int>(here_word.size())})}});
-        };
-        add(d, class_places(d, here_word));
-        if (roots_.size())
-            for_other_scripts(d, {here_word, ""}, here_word, add);
-        return out;
-    }
-    if (is_ref || no_table)
+    // The table comes first for the references. The definition uses it after the facts of a class
+    // and the override step below. A script with an error has a table for its valid parts. A name
+    // inside a statement that does not parse has no entry: it gets no answer (see doc/tools-ls.md).
+    if (is_ref)
         if (auto t = by_table())
             return *t;
-    if (no_table && !is_ref)
-        if (const auto hit = static_member_at(d, here))
-        {
-            // Degraded mode: a static member of a script class.
-            out.push_back({{"uri", d.uri},
-                {"range", script_range(d, hit->decl, {hit->decl.line, hit->decl.col + static_cast<int>(hit->member->name.size())})}});
-            return out;
-        }
     // A class name of a script that the table does not give: the facts give the place.
     if (!is_ref)
     {
@@ -5818,7 +5456,7 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
                 return out;
         }
     }
-    if (!is_ref && !no_table)
+    if (!is_ref)
         if (auto t = by_table())
             return *t;
     // A script interface has no place in the generated text that maps back. The facts give the
@@ -5936,17 +5574,6 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
                         "hot-ls: No script host matches " + d.path
                             + ", so F12 may not find native symbols. Add hot_add_host(...) or hot_script_host(...) in "
                               "CMake and run CMake again."}}}});
-    }
-    if (no_table && !asks.empty() && is_ref && roots_.size())
-    {
-        // Degraded mode: the same symbol in the other scripts of the workspace (see for_other_scripts).
-        if (const auto key = here_word.empty() ? std::nullopt : key_at(d, here))
-            for_other_scripts(d, *key, here_word, [&](const Doc& doc, const std::set<Pos>& places)
-            {
-                for (const Pos& s : places)
-                    out.push_back({{"uri", doc.uri},
-                        {"range", script_range(doc, s, {s.line, s.col + static_cast<int>(here_word.size())})}});
-            });
     }
     return out;
 }
@@ -6283,11 +5910,6 @@ bool Server::table_lacks_word(const std::string& path, const std::string& text, 
     return table_lacks_word_in(*entry.table, text, word);
 }
 
-std::set<Pos> Server::class_places(const Doc& d, const std::string& name) const
-{
-    return class_places_in(d.text, d.facts, name);
-}
-
 bool Server::is_script_class(const Doc& d, const std::string& name) const
 {
     return std::any_of(
@@ -6305,7 +5927,7 @@ std::variant<std::set<Pos>, std::string> Server::symbol_places(
             for (const hotc::AnalyzedClass& c : d.facts.classes)
                 if (c.name == old_name)
                     *decl = class_name_pos(d, c);
-        return class_places(d, old_name);
+        return std::set<Pos>{};
     }
     const auto g = to_gen(d, {cur.line, word_at(d, cur).first});
     if (!g || !clangd_)
@@ -6369,62 +5991,7 @@ std::variant<std::set<Pos>, std::string> Server::symbol_places(
     return starts;
 }
 
-std::optional<SymbolKey> Server::symbol_key(const Doc& d, Pos decl, const std::string& name) const
-{
-    if (decl.line < 0)
-    {
-        // The declaration is in another script. Take the member of this script, if it is the only one.
-        // An interface method has the same name as its implementations. It does not count.
-        std::optional<SymbolKey> found;
-        for (const hotc::AnalyzedClass& c : d.facts.classes)
-            for (const hotc::AnalyzedMember& m : c.members)
-                if (m.name == name && !c.is_interface)
-                {
-                    if (found)
-                        return std::nullopt;
-                    found = SymbolKey{c.name, name};
-                }
-        return found;
-    }
-    for (const hotc::AnalyzedClass& c : d.facts.classes)
-    {
-        if (c.name == name && c.begin.line - 1 == decl.line)
-            return SymbolKey{name, ""};
-        for (const hotc::AnalyzedMember& m : c.members)
-            if (m.name == name && m.begin.line - 1 == decl.line)
-                return SymbolKey{c.name, name};
-    }
-    return std::nullopt;
-}
-
-std::optional<SymbolKey> Server::key_at(const Doc& d, Pos cur)
-{
-    const std::string name = word(d, cur);
-    if (name.empty())
-        return std::nullopt;
-    Pos decl;
-    const auto r = symbol_places(d, cur, name, &decl);
-    if (std::holds_alternative<std::string>(r))
-        return std::nullopt;
-    return symbol_key(d, decl, name);
-}
-
 Pos Server::class_name_pos(const Doc& d, const hotc::AnalyzedClass& c) const { return class_name_pos_in(d.text, c); }
-
-std::optional<Pos> Server::key_position(const Doc& d, const SymbolKey& key) const
-{
-    for (const hotc::AnalyzedClass& c : d.facts.classes)
-    {
-        if (c.name != key.cls)
-            continue;
-        if (key.member.empty())
-            return class_name_pos(d, c);
-        for (const hotc::AnalyzedMember& m : c.members)
-            if (m.name == key.member)
-                return Pos{m.begin.line - 1, m.begin.col - 1};
-    }
-    return std::nullopt;
-}
 
 std::vector<std::string> Server::workspace_scripts(bool with_import_dirs) const
 {
@@ -6461,95 +6028,6 @@ std::vector<std::string> Server::workspace_scripts(bool with_import_dirs) const
     std::sort(out.begin(), out.end());
     out.erase(std::unique(out.begin(), out.end()), out.end());
     return out;
-}
-
-void Server::for_other_scripts(const Doc& origin, const SymbolKey& key, const std::string& name,
-    const std::function<void(const Doc&, const std::set<Pos>&)>& fn)
-{
-    index_.prune(); // the shard of a file that is gone
-    for (const std::string& path : workspace_scripts())
-    {
-        check_cancel();
-        if (path == origin.path)
-            continue;
-        const std::shared_ptr<Doc> open = open_doc_at(path);
-        if (open)
-        {
-            const auto at = key_position(*open, key);
-            if (!at || word(*open, *at) != name)
-                continue;
-            const auto r = symbol_places(*open, *at, name, nullptr);
-            if (const auto* places = std::get_if<std::set<Pos>>(&r); places && !places->empty())
-                fn(*open, *places);
-            continue;
-        }
-        const auto text = read_file(path);
-        if (!text)
-            continue;
-        Doc tmp = closed_doc(path, *text);
-        bool analyzed = false;
-        auto analyze_tmp = [&]
-        {
-            tmp.facts = timed_translate([&] { return hotc::analyze(tmp.text.s, translate_options(tmp), session_); });
-            analyzed = true;
-            ++closed_analyses_;
-        };
-        // The saved shard of the file holds the symbols and the references of the last analyze.
-        const std::string digest = shard_digest(path, *text);
-        auto shard = index_.load(path, digest);
-        if (!shard)
-        {
-            if (text->find(name) == std::string::npos)
-                continue;
-            analyze_tmp();
-            shard = shard_of_doc(tmp);
-            index_.store(path, digest, *shard);
-        }
-        IndexClass* cls = shard->find_class(key.cls);
-        if (!cls)
-            continue;
-        std::set<Pos> places;
-        if (key.member.empty())
-        {
-            for (const IndexPos& r : cls->refs)
-                places.insert({r.line, r.col});
-        }
-        else
-        {
-            IndexMember* m = cls->find_member(key.member);
-            if (!m)
-                continue;
-            if (m->refs)
-            {
-                for (const IndexPos& r : *m->refs)
-                    places.insert({r.line, r.col});
-            }
-            else
-            { // a member needs clangd. The result goes into the shard.
-                if (!analyzed)
-                    analyze_tmp();
-                const auto at = key_position(tmp, key);
-                if (!at)
-                    continue;
-                with_temp_clangd(tmp,
-                    [&]
-                    {
-                        const auto r = symbol_places(tmp, *at, name, nullptr);
-                        if (const auto* found = std::get_if<std::set<Pos>>(&r))
-                            places = *found;
-                    });
-                if (!places.empty())
-                {
-                    m->refs = std::vector<IndexPos>();
-                    for (const Pos& q : places)
-                        m->refs->push_back({q.line, q.col});
-                    index_.store(path, digest, *shard);
-                }
-            }
-        }
-        if (!places.empty())
-            fn(tmp, places);
-    }
 }
 
 std::vector<std::string> Server::script_imports(const Doc& d, const std::string& text)

@@ -564,3 +564,215 @@ TEST(VirtualMethods, TemplateBaseAndPartlyWrittenOverrideGiveTheList)
     EXPECT_EQ(g->signature, "(int fallback)");
     EXPECT_EQ(g->ret_script, "int");
 }
+
+// An import with a syntax error in one class: the valid classes of the import stay usable. The
+// refs of the importer have the names of the valid class, and the diagnostics are the error of
+// the import.
+namespace
+{
+const char* const kBrokenImportLib =
+    "using \"w.h\";\n"
+    "class Gun : Widget {\n"
+    "    public int Fire(int b) { return b * 2; }\n"
+    "}\n"
+    "class Bad { public int F() { return 1 +; } }\n";
+const char* const kBrokenImportMain =
+    "using \"w.h\";\n"
+    "using \"lib.hot\";\n"
+    "class Pistol : Widget {\n"
+    "    public int Shoot($Gun g) { if (g == null) return 0; return g.Fire(1); }\n"
+    "}\n";
+
+hotc::TranslateOptions broken_import_options(const TempDir& dir)
+{
+    write_file(dir.path() / "w.h", "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n");
+    write_file(dir.path() / "lib.hot", kBrokenImportLib);
+    hotc::TranslateOptions o = temp_options(dir, "");
+    o.modules = {{"lib.hot", kBrokenImportLib}};
+    o.import_cache = true;
+    return o;
+}
+} // namespace
+
+TEST(Analyze, BrokenImportKeepsTheRefsOfItsValidClasses)
+{
+    TempDir dir;
+    hotc::TranslateOptions o = broken_import_options(dir);
+    o.resolve_refs = true;
+    hotc::TranslatorSession session;
+    const hotc::AnalyzeResult r = hotc::analyze(kBrokenImportMain, o, session);
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.passes, 2);
+    EXPECT_EQ(r.diagnostics.rfind("lib.hot:5:", 0), 0u) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("error"), std::string::npos);
+    bool fire = false;
+    for (const hotc::ResolvedRef& x : r.refs)
+        fire = fire || (x.decl == "Gun.Fire" && x.decl_file.find("lib.hot") != std::string::npos);
+    EXPECT_TRUE(fire);
+    // A strict translation of the same script, in the same session, still fails.
+    hotc::TranslateOptions strict = broken_import_options(dir);
+    strict.script_text = kBrokenImportMain;
+    const hotc::TranslateResult t = hotc::translate(strict, session);
+    EXPECT_FALSE(t.ok);
+    EXPECT_NE(t.diagnostics.find("lib.hot:5:"), std::string::npos) << t.diagnostics;
+    EXPECT_TRUE(t.import_diagnostics.empty());
+    // A lenient translation reports the error of the import apart.
+    hotc::TranslateOptions lenient = strict;
+    lenient.lenient_imports = true;
+    const hotc::TranslateResult l = hotc::translate(lenient, session);
+    EXPECT_TRUE(l.ok) << l.diagnostics;
+    EXPECT_NE(l.import_diagnostics.find("lib.hot:5:"), std::string::npos) << l.import_diagnostics;
+    // The lenient hit from the cache gives the same error. The strict lookup stays strict.
+    const hotc::TranslateResult l2 = hotc::translate(lenient, session);
+    EXPECT_EQ(l2.import_diagnostics, l.import_diagnostics);
+    EXPECT_FALSE(hotc::translate(strict, session).ok);
+}
+
+// An import with an overload that does not parse: the call of the overload must not get the ref of
+// the other overload.
+TEST(Analyze, BrokenImportOverloadGivesNoRefToTheOtherOverload)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n");
+    const std::string lib = "using \"w.h\";\n"
+                            "class Gun : Widget {\n"
+                            "    public int Fire(int b) { return b * 2; }\n"
+                            "    public int Fire(float b +) { return 1; }\n"
+                            "}\n";
+    const std::string main = "using \"w.h\";\n"
+                             "using \"lib.hot\";\n"
+                             "class Pistol : Widget {\n"
+                             "    public int Shoot($Gun g) { if (g == null) return 0; return g.Fire(1.5); }\n"
+                             "}\n";
+    write_file(dir.path() / "lib.hot", lib);
+    hotc::TranslateOptions o = temp_options(dir, "");
+    o.resolve_refs = true;
+    o.modules = {{"lib.hot", lib}};
+    const hotc::AnalyzeResult r = hotc::analyze(main, o);
+    for (const hotc::ResolvedRef& x : r.refs)
+        if (x.decl == "Gun.Fire")
+            ADD_FAILURE() << "ref to Gun.Fire at " << x.pos.line << ":" << x.pos.col << " decl_file=" << x.decl_file;
+}
+
+// Only a member that the parser dropped is lost. The helper analyzes the main script that calls
+// "g.Fire(<arg>)" and tells whether the call has the ref of "Gun.Fire".
+namespace
+{
+bool fire_ref_present(const std::string& gun_members, const std::string& after, const std::string& arg)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n");
+    const std::string lib = "using \"w.h\";\nclass Gun : Widget {\n" + gun_members + "}\n" + after;
+    const std::string main = "using \"w.h\";\n"
+                             "using \"lib.hot\";\n"
+                             "class Pistol : Widget {\n"
+                             "    public int Shoot($Gun g) { if (g == null) return 0; return g.Fire(" + arg + "); }\n"
+                             "}\n";
+    write_file(dir.path() / "lib.hot", lib);
+    hotc::TranslateOptions o = temp_options(dir, "");
+    o.resolve_refs = true;
+    o.modules = {{"lib.hot", lib}};
+    const hotc::AnalyzeResult r = hotc::analyze(main, o);
+    EXPECT_FALSE(r.ok);
+    for (const hotc::ResolvedRef& x : r.refs)
+        if (x.decl == "Gun.Fire")
+            return true;
+    return false;
+}
+const char* const kFireInt = "    public int Fire(int b) { return b * 2; }\n";
+} // namespace
+
+TEST(Analyze, BrokenImportStatementInAMethodBodyLosesNoMember)
+{
+    // (a) a statement error in an overload: the overload stays.
+    EXPECT_TRUE(fire_ref_present(std::string(kFireInt) + "    public int Fire(float b) { return b +; }\n", "", "1"));
+    // (b) a statement error after an inner ";" in another method: the members of the class stay.
+    EXPECT_TRUE(fire_ref_present(
+        std::string(kFireInt) + "    public int Reload() { int a = 0; return a +; }\n", "", "1"));
+}
+
+TEST(Analyze, BrokenImportHeaderOfTheNextClassLosesNoMember)
+{
+    EXPECT_TRUE(fire_ref_present(kFireInt, "class Bad : {\n}\n", "1"));
+}
+
+TEST(Analyze, BrokenImportOverloadHeaderGivesNoRef)
+{
+    EXPECT_FALSE(fire_ref_present(std::string(kFireInt) + "    public int Fire(float b +) { return 1; }\n", "", "1.5"));
+    EXPECT_FALSE(fire_ref_present(std::string(kFireInt) + "    public int Fire(float b { return 1; }\n", "", "1.5"));
+}
+
+TEST(Analyze, BrokenImportLostOverloadGivesNoRefWhateverTheHeaderLooksLike)
+{
+    // B1: the body of the overload is open at the end of the text.
+    EXPECT_FALSE(fire_ref_present(
+        std::string(kFireInt) + "    public int Fire(float b) {\n        int a = 0;\n        Log(b)\n", "", "1.5"));
+    // B2: an attribute with parentheses stands before the broken header.
+    EXPECT_FALSE(fire_ref_present(
+        std::string(kFireInt) + "    [alias(\"Shoot\")] public int Fire(float b +) { return 1; }\n", "", "1.5"));
+}
+
+// The owner and the bases of a class with a lost member lose their refs too.
+namespace
+{
+struct DerivedRefs
+{
+    bool fire_through_gun = false; // a ref with decl or near_decl "Gun.Fire" or "Weapon.Fire" at the call
+    bool other_class = false; // the ref of "Other.Ping" at its call
+};
+
+DerivedRefs derived_refs(const std::string& gun_members)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n");
+    const std::string lib = "using \"w.h\";\n"
+                            "class Other : Widget {\n"
+                            "    public int Ping() { return 1; }\n"
+                            "}\n"
+                            "class Weapon : Widget {\n"
+                            "    public virtual int Fire(int b) { return b; }\n"
+                            "}\n"
+                            "class Gun : Weapon {\n" + gun_members + "}\n";
+    const std::string main = "using \"w.h\";\n"
+                             "using \"lib.hot\";\n"
+                             "class Pistol : Widget {\n"
+                             "    public int Shoot($Gun g, $Other o) {\n"
+                             "        if (g == null) return 0;\n"
+                             "        if (o == null) return 0;\n"
+                             "        return g.Fire(1.5) + o.Ping();\n"
+                             "    }\n"
+                             "}\n";
+    write_file(dir.path() / "lib.hot", lib);
+    hotc::TranslateOptions o = temp_options(dir, "");
+    o.resolve_refs = true;
+    o.modules = {{"lib.hot", lib}};
+    const hotc::AnalyzeResult r = hotc::analyze(main, o);
+    DerivedRefs out;
+    for (const hotc::ResolvedRef& x : r.refs)
+    {
+        if (x.pos.line == 7 && (x.decl.find(".Fire") != std::string::npos || x.near_decl.find(".Fire") != std::string::npos))
+            out.fire_through_gun = true;
+        if (x.pos.line == 7 && x.decl == "Other.Ping")
+            out.other_class = true;
+    }
+    return out;
+}
+} // namespace
+
+TEST(Analyze, BrokenImportOverrideOfALostOverloadGivesNoRefThroughTheOwner)
+{
+    // C1: Gun has Fire(char) and loses Fire(float). The call of the lost overload can resolve to
+    // Weapon.Fire(int): "decl" is in Weapon, "near_decl" is the owner Gun.
+    const DerivedRefs r = derived_refs(
+        "    new public int Fire(char c) { return 2; }\n    new public int Fire(float b +) { return 1; }\n");
+    EXPECT_FALSE(r.fire_through_gun);
+    EXPECT_TRUE(r.other_class);
+}
+
+TEST(Analyze, BrokenImportLostMemberOfAClassDropsTheRefsOfItsBase)
+{
+    // C2: Gun loses Fire(float), which hid the inherited Fire(int) of Weapon.
+    const DerivedRefs r = derived_refs("    new public int Fire(float b +) { return 1; }\n");
+    EXPECT_FALSE(r.fire_through_gun);
+    EXPECT_TRUE(r.other_class);
+}

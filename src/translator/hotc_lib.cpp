@@ -796,12 +796,143 @@ bool has_bare_this(const ClassDef& c, const std::string& text, uint32_t origin)
     return false;
 }
 
-// The parser reports all syntax errors in source order. Any error stops the translation.
-Script parse_structure(
-    const std::string& text, uint32_t origin, const hotc::LineMap& map, std::string_view host_array_tpl)
+// The names of the classes of an import that lost a member in a lenient parse. The error is in the
+// class body and outside the body of a kept member. A call of a member of such a class gets no ref:
+// a lost overload could leave the other overload as a wrong target. "positions" are the offsets of
+// the errors, "origin" is the base of the text.
+std::vector<std::string> lost_classes(
+    const Script& sc, const std::string& text, uint32_t origin, const std::vector<uint32_t>& positions)
 {
+    std::vector<std::string> out;
+    for (const uint32_t gpos : positions)
+    {
+        if (gpos < origin || gpos - origin > text.size())
+            continue;
+        const size_t err = gpos - origin;
+        const hotc::ast::ClassDef* owner = nullptr;
+        for (const ClassDef& c : sc.classes)
+            if (c.pos >= origin && c.pos - origin <= err && (!owner || c.pos > owner->pos))
+                owner = &c;
+        if (!owner)
+            continue;
+        // The error must be inside the class body. An error after the closing brace belongs to a
+        // later class that the parser dropped.
+        const size_t open = text.find('{', owner->pos - origin);
+        if (open == std::string::npos)
+            continue;
+        if (err > open)
+        {
+            size_t close = open;
+            for (int depth = 0; close < text.size(); ++close)
+            {
+                const char ch = text[close];
+                if (ch == '"' || ch == '\'')
+                {
+                    for (++close; close < text.size() && text[close] != ch && text[close] != '\n'; ++close)
+                        if (text[close] == '\\')
+                            ++close;
+                }
+                else if (ch == '/' && close + 1 < text.size() && text[close + 1] == '/')
+                {
+                    while (close < text.size() && text[close] != '\n')
+                        ++close;
+                }
+                else if (ch == '/' && close + 1 < text.size() && text[close + 1] == '*')
+                {
+                    const size_t end = text.find("*/", close + 2);
+                    close = end == std::string::npos ? text.size() : end + 1;
+                }
+                else if (ch == '{')
+                    ++depth;
+                else if (ch == '}' && --depth == 0)
+                    break;
+            }
+            // An error after the closing brace belongs to a later declaration that the parser
+            // dropped. If no declaration starts between, a member swallowed the closing brace: the
+            // error belongs to the class.
+            if (err > close)
+            {
+                const std::string_view gap = std::string_view(text).substr(close + 1, err - close - 1);
+                bool later = false;
+                for (const char* kw : {"class", "struct", "interface", "enum", "using", "namespace", "["})
+                    later = later || gap.find(kw) != std::string_view::npos;
+                if (later)
+                    continue;
+            }
+        }
+        // An error inside the body of a kept member drops only a statement: no member is lost.
+        {
+            bool in_kept = false;
+            auto in_span = [&](Span sp)
+            { in_kept = in_kept || (sp.end > sp.begin && sp.begin >= origin && err >= sp.begin - origin && err <= sp.end - origin); };
+            for (const Method& m : owner->methods)
+                in_span(m.body_span);
+            for (const Method& m : owner->statics)
+                in_span(m.body_span);
+            for (const Method& m : owner->dtors)
+                in_span(m.body_span);
+            for (const hotc::ast::Ctor& k : owner->ctors)
+                in_span(k.body_span);
+            for (const hotc::ast::Property& pr : owner->props)
+            {
+                in_span(pr.get_span);
+                in_span(pr.set_span);
+            }
+            for (const hotc::ast::Property& pr : owner->sprops)
+            {
+                in_span(pr.get_span);
+                in_span(pr.set_span);
+            }
+            for (const Field& f : owner->fields)
+                in_span(f.init_span);
+            for (const Field& f : owner->svars)
+                in_span(f.init_span);
+            if (in_kept)
+                continue;
+        }
+        // The text scan of the member name is not safe (an attribute, an open body). The whole
+        // class is lost.
+        // The base chain too: the call of an inherited overload through the class can resolve to a
+        // base, when the lost member hid it.
+        for (const ClassDef* c = owner; c;)
+        {
+            if (std::find(out.begin(), out.end(), c->name) == out.end())
+                out.push_back(c->name);
+            if (c->base.empty())
+                break;
+            const ClassDef* next = nullptr;
+            for (const ClassDef& k : sc.classes)
+                if (k.name == c->base && k.name != c->name)
+                    next = &k;
+            if (!next && std::find(out.begin(), out.end(), c->base) == out.end())
+                out.push_back(c->base); // a base in another script: the caller gives no file
+            c = next;
+            if (c && std::find(out.begin(), out.end(), c->name) != out.end())
+                break;
+        }
+    }
+    return out;
+}
+
+// The parser reports all syntax errors in source order. Any error stops the translation.
+// "lenient_diag" (not null): the errors of the parse go into it as text, and the parse does not stop
+// the translation. The recovered declarations stay.
+Script parse_structure(const std::string& text, uint32_t origin, const hotc::LineMap& map,
+    std::string_view host_array_tpl, std::string* lenient_diag = nullptr, std::vector<uint32_t>* lenient_pos = nullptr)
+{
+    const size_t before = g_diag.items.size();
     Script sc = hotc::parse_script_array(text, map, g_diag, host_array_tpl, origin);
     g_generic_display.insert(g_generic_display.end(), sc.generic_display.begin(), sc.generic_display.end());
+    if (lenient_diag && g_diag.items.size() > before)
+    {
+        hotc::Diagnostics own;
+        own.items.assign(g_diag.items.begin() + before, g_diag.items.end());
+        g_diag.items.resize(before);
+        if (lenient_pos)
+            for (const hotc::Diag& dg : own.items)
+                lenient_pos->push_back(dg.pos);
+        *lenient_diag = own.format(g_script);
+    }
     if (!g_diag.items.empty())
         throw TranslateAbort{};
     for (ClassDef& c : sc.classes)
@@ -3658,6 +3789,10 @@ struct TranslatorSession::Impl
         std::shared_ptr<const Script> script;
         unsigned long long iface_hash = 0;
         hotc::ImportView view;
+        // The syntax errors of a lenient parse (TranslateOptions::lenient_imports). A strict lookup
+        // never sees such a value: the key of it has the suffix "\0L".
+        std::string diag_text;
+        std::vector<std::string> lost; // see TranslateResult::import_lost
         uint64_t used = 0;
     };
     static constexpr size_t kImportCacheMax = 256;
@@ -4417,8 +4552,9 @@ void translate_impl(
                         auto it = indirect_texts.find(normal_path(file));
                         if (it != indirect_texts.end())
                         {
-                            Script again = parse_structure(
-                                imported_files[it->second].text, imported_files[it->second].base, map, array_tpl);
+                            std::string again_diag;
+                            Script again = parse_structure(imported_files[it->second].text,
+                                imported_files[it->second].base, map, array_tpl, in.lenient_imports ? &again_diag : nullptr);
                             for (Method& f : again.fns)
                                 if (f.access != hotc::ast::Access::Private)
                                 {
@@ -4450,12 +4586,18 @@ void translate_impl(
                 // The import cache: the key has all that the parse reads. The positions depend on the base.
                 std::string cache_key;
                 std::shared_ptr<const hotc::TranslatorSession::Impl::ImportValue> cached;
+                std::string lenient_diag;
+                std::vector<std::string> lost;
                 Script is;
                 if (in.import_cache)
                 {
                     cache_key = file + '\0' + unit + '\0' + std::to_string(base) + '\0' + array_tpl + '\0' + std_ns
                         + '\0' + std::to_string(hotc::text_hash(text));
-                    cached = session.import_get(cache_key, text);
+                    // A lenient parse with errors has its own key. A strict lookup never sees it.
+                    if (in.lenient_imports)
+                        cached = session.import_get(cache_key + std::string("\0L", 2), text);
+                    if (!cached)
+                        cached = session.import_get(cache_key, text);
                 }
                 if (cached)
                 {
@@ -4468,15 +4610,30 @@ void translate_impl(
                     res.timing.import_copy_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
                         std::chrono::steady_clock::now() - t_copy).count();
                     ++res.timing.import_cache_hits;
+                    res.import_diagnostics += cached->diag_text;
+                    lenient_diag = cached->diag_text;
+                    lost = cached->lost;
                 }
                 else
                 {
                     const auto t_parse = std::chrono::steady_clock::now();
-                    is = parse_structure(imported_files.back().text, base, map, array_tpl);
+                    std::vector<uint32_t> lost_at;
+                    is = parse_structure(imported_files.back().text, base, map, array_tpl,
+                        in.lenient_imports ? &lenient_diag : nullptr, &lost_at);
+                    if (!lost_at.empty())
+                        lost = lost_classes(is, imported_files.back().text, base, lost_at);
+                    res.import_diagnostics += lenient_diag;
                     res.timing.import_parse_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
                         std::chrono::steady_clock::now() - t_parse).count();
                     if (in.import_cache)
                         ++res.timing.import_cache_misses;
+                }
+                for (const std::string& l : lost)
+                {
+                    const bool here = std::any_of(is.classes.begin(), is.classes.end(),
+                        [&](const ClassDef& k) { return k.name == l; });
+                    // A base of another script has no file here: the empty file matches any file.
+                    res.import_lost.emplace_back(here ? hotc::ref_file_id(file) : std::string(), l);
                 }
                 // The copy for a new entry: the code below changes "is".
                 std::shared_ptr<hotc::TranslatorSession::Impl::ImportValue> fresh;
@@ -4484,6 +4641,8 @@ void translate_impl(
                 {
                     fresh = std::make_shared<hotc::TranslatorSession::Impl::ImportValue>();
                     fresh->text = text;
+                    fresh->diag_text = lenient_diag;
+                    fresh->lost = lost;
                     const hotc::ast::CloneDefaults clone_defaults;
                     fresh->script = std::make_shared<const Script>(is);
                 }
@@ -4541,7 +4700,8 @@ void translate_impl(
                     {
                         fresh->iface_hash = iface_hash;
                         fresh->view = views[normal_path(file)];
-                        session.import_put(cache_key, std::move(fresh));
+                        session.import_put(lenient_diag.empty() ? cache_key : cache_key + std::string("\0L", 2),
+                            std::move(fresh));
                     }
                 }
                 res.timing.import_view_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -11817,8 +11977,31 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
     {
         std::set<std::pair<size_t, size_t>> blanked;
         const std::string script_name = options.script_name.empty() ? std::string("script.hot") : options.script_name;
+        bool lenient_tried = false;
         for (int pass = 0; pass < 4 && !tr.ok; ++pass)
         {
+            // An error in another file: first one retry with lenient imports. The valid parts of an
+            // import with a syntax error stay usable, so its "using" line stays. If the error is not
+            // a syntax error, the retry gives the same error and the blank below handles it.
+            if (!lenient_tried)
+            {
+                bool foreign = false;
+                std::istringstream all(tr.diagnostics);
+                for (std::string ln; std::getline(all, ln);)
+                    foreign = foreign || (ln.compare(0, script_name.size() + 1, script_name + ":") != 0
+                                             && ln.find(": error: ") != std::string::npos);
+                if (foreign)
+                {
+                    lenient_tried = true;
+                    o.lenient_imports = true;
+                    tr = translate(o, session);
+                    add_timing(tr.timing);
+                    if (!tr.base_virtuals.empty())
+                        res.base_virtuals = tr.base_virtuals;
+                    if (tr.ok)
+                        break;
+                }
+            }
             std::vector<std::pair<size_t, size_t>> regions;
             std::istringstream lines(tr.diagnostics);
             for (std::string ln; std::getline(lines, ln);)
@@ -11951,6 +12134,19 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
     }
     // The blank text has the same offsets and the same lines as "text". So the map is valid for it.
     res.refs = std::move(tr.refs);
+    // The refs of a member that a lenient parse lost: no ref is better than the ref of an overload.
+    if (!tr.import_lost.empty())
+    {
+        auto lost = [&](const ResolvedRef& r)
+        {
+            for (const auto& [file, cls] : tr.import_lost)
+                if (((r.decl_file == file || file.empty()) && r.decl.compare(0, cls.size() + 1, cls + ".") == 0)
+                    || ((r.near_file == file || file.empty()) && r.near_decl.compare(0, cls.size() + 1, cls + ".") == 0))
+                    return true;
+            return false;
+        };
+        res.refs.erase(std::remove_if(res.refs.begin(), res.refs.end(), lost), res.refs.end());
+    }
     res.unresolved = std::move(tr.unresolved);
     res.indirect_names = std::move(tr.indirect_names);
     res.raw_ranges = std::move(tr.raw_ranges);

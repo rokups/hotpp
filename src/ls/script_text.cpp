@@ -173,19 +173,6 @@ Pos class_name_pos_in(const Text& t, const hotc::AnalyzedClass& c)
     return b;
 }
 
-std::set<Pos> class_places_in(const Text& t, const hotc::AnalyzeResult& facts, const std::string& name)
-{
-    // The class name has no segment in the source map, so clangd cannot find it. The semantic
-    // tokens of the facts mark each word that is the name of a script class.
-    constexpr int kClassToken = 2; // the index of "class" in semantic_token_types()
-    std::set<Pos> out;
-    for (const SemanticToken& tok : script_tokens(t.s, facts))
-        if (tok.type == kClassToken
-            && t.line(tok.line).substr(static_cast<size_t>(tok.col), static_cast<size_t>(tok.len)) == name)
-            out.insert({tok.line, tok.col});
-    return out;
-}
-
 bool table_lacks_word_in(const FileRefs& t, const std::string& text, const std::string& word)
 {
     const Text body(text);
@@ -283,10 +270,8 @@ IndexShard shard_of_facts(
         ic.name = c.name;
         const Pos b = class_name_pos_in(text, c);
         ic.begin = {b.line, b.col};
-        for (const Pos& q : class_places_in(text, facts, c.name))
-            ic.refs.push_back({q.line, q.col});
         for (const hotc::AnalyzedMember& m : c.members)
-            ic.members.push_back({m.name, m.kind, {m.begin.line - 1, m.begin.col - 1}, std::nullopt});
+            ic.members.push_back({m.name, m.kind, {m.begin.line - 1, m.begin.col - 1}});
         shard.classes.push_back(std::move(ic));
     }
     return shard;

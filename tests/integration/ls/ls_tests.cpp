@@ -2148,8 +2148,12 @@ TEST(LanguageServer, ReferencesLeaveOutAnUnrelatedScriptWithTheSameNames)
     EXPECT_EQ(there, 0) << r.dump();
 }
 
-// Degraded mode: a script with a syntax error, or with an import that has an error, has no table
-// of resolved names. Definition and references then use the text scans of the lenient facts.
+// Degraded mode: a script with a syntax error, or with an import that has an error, has a table
+// for its valid parts. Definition and references use the table. A name inside a statement that
+// does not parse has no entry: it gets no answer.
+// The only error of each fixture is the intended one (a syntax error in main or in the import).
+// Without it the strict translation is ok: a script class with a native base is a handle
+// ("$Gun g"), and the call on a nullable handle follows a null check.
 namespace
 {
 const char* const kDegradedLib = R"(using "Actor.h";
@@ -2165,7 +2169,7 @@ class Config {
 }
 class Pistol : Actor {
     public Config cfg;
-    public int Shoot(Gun g) { return g.Fire(1) + Config.kMax; }
+    public int Shoot($Gun g) { if (g == null) return 0; return g.Fire(1) + Config.kMax; }
     public int Broken() { return 1 +; }
 }
 )";
@@ -2210,13 +2214,13 @@ TEST(LanguageServerDegraded, DefinitionOfAStaticMemberWithASyntaxErrorElsewhere)
 {
     REQUIRE_CLANGD();
     DegradedSession s(kDegradedLib, kDegradedMain);
-    // "Config.kMax" on line 7: "kMax" is at character 56.
-    const json r = s.ask("textDocument/definition", 7, 57);
+    // "Config.kMax" on line 7: "kMax" is at character 82.
+    const json r = s.ask("textDocument/definition", 7, 83);
     EXPECT_EQ(first_place(r), "main.hot:3:28") << r.dump();
 }
 
 // A syntax error in another method: the table gives the answer for a valid method. The same name
-// inside the broken statement has no table entry, and the text scan gives the answer.
+// inside the broken statement has no table entry, and it gets no answer.
 namespace
 {
 const char* const kDegradedField = R"(using "Actor.h";
@@ -2257,38 +2261,36 @@ TEST(LanguageServerDegraded, NoAnswerInsideTheBrokenStatement)
     EXPECT_TRUE(r["result"].empty()) << r.dump();
 }
 
-TEST(LanguageServerDegraded, FallbackGivesAStaticMemberInsideTheBrokenStatement)
+TEST(LanguageServerDegraded, NoAnswerForAStaticMemberInsideTheBrokenStatement)
 {
     REQUIRE_CLANGD();
     std::string main = kDegradedMain;
     const std::string broken = "{ return 1 +; }";
     main.replace(main.find(broken), broken.size(), "{ return Config.kMax +; }");
     DegradedSession s(kDegradedLib, main);
-    // "Config.kMax" on line 8: the table has no entry, the text scan gives the declaration.
+    // "Config.kMax" on line 8: the table has no entry, and no text scan gives the declaration.
     const json r = s.ask("textDocument/definition", 8, 41);
-    EXPECT_EQ(first_place(r), "main.hot:3:28") << r.dump();
+    EXPECT_EQ(first_place(r), "none") << r.dump();
 }
 
 TEST(LanguageServerDegraded, HoverOfAStaticMemberUsesTheTable)
 {
     REQUIRE_CLANGD();
     DegradedSession s(kDegradedLib, kDegradedMain);
-    // "Config.kMax" on line 7: "kMax" is at character 56.
-    const json r = s.ask("textDocument/hover", 7, 57);
+    // "Config.kMax" on line 7: "kMax" is at character 82.
+    const json r = s.ask("textDocument/hover", 7, 83);
     ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
     EXPECT_NE(r["result"]["contents"]["value"].get<std::string>().find("static const int kMax = 4"), std::string::npos)
         << r.dump();
 }
 
-// Disabled, measured: the table gives no place for "g.Fire" of the imported class Gun when
-// another method of the script has a syntax error. The result is empty. The broken script has no
-// generated C++ for clangd, and no text scan finds a method of an imported class.
-TEST(LanguageServerDegraded, DISABLED_DefinitionOfAnImportedMethodWithASyntaxErrorElsewhere)
+// A method of an imported class, when another method of the script has a syntax error.
+TEST(LanguageServerDegraded, DefinitionOfAnImportedMethodWithASyntaxErrorElsewhere)
 {
     REQUIRE_CLANGD();
     DegradedSession s(kDegradedLib, kDegradedMain);
-    // "g.Fire" on line 7: "Fire" is at character 39.
-    const json r = s.ask("textDocument/definition", 7, 40);
+    // "g.Fire" on line 7: "Fire" is at character 65.
+    const json r = s.ask("textDocument/definition", 7, 66);
     EXPECT_EQ(first_place(r), "lib.hot:2:15") << r.dump();
 }
 
@@ -2305,22 +2307,20 @@ TEST(LanguageServerDegraded, ReferencesOfAClassWithASyntaxErrorElsewhere)
     EXPECT_EQ(lines, (std::set<std::string>{"2", "6", "7"})) << r.dump();
 }
 
-// Disabled, measured: the result is empty. The import has an error and loses its "using" line
-// (gap G2), so the table has no name for "g.Fire". No text scan finds a method of an imported
-// class.
-TEST(LanguageServerDegraded, DISABLED_DefinitionOfAnImportedNameWhenTheImportHasAnError)
+// A method of an imported class, when the import has an error (gap G2).
+TEST(LanguageServerDegraded, DefinitionOfAnImportedNameWhenTheImportHasAnError)
 {
     REQUIRE_CLANGD();
     const std::string lib = std::string(kDegradedLib) + "class Bad { public int F() { return 1 +; } }\n";
     const std::string main = R"(using "Actor.h";
 using "lib.hot";
 class Pistol : Actor {
-    public int Shoot(Gun g) { return g.Fire(1); }
+    public int Shoot($Gun g) { if (g == null) return 0; return g.Fire(1); }
 }
 )";
     DegradedSession s(lib, main);
-    // "g.Fire" on line 3: "Fire" is at character 39.
-    const json r = s.ask("textDocument/definition", 3, 40);
+    // "g.Fire" on line 3: "Fire" is at character 65.
+    const json r = s.ask("textDocument/definition", 3, 66);
     EXPECT_EQ(first_place(r), "lib.hot:2:15") << r.dump();
 }
 
@@ -2331,7 +2331,7 @@ TEST(LanguageServerDegraded, DefinitionOfAStaticMemberWhenTheImportHasAnError)
     std::string main = kDegradedMain;
     main.erase(main.find("    public int Broken()"), std::string("    public int Broken() { return 1 +; }\n").size());
     DegradedSession s(lib, main);
-    const json r = s.ask("textDocument/definition", 7, 57);
+    const json r = s.ask("textDocument/definition", 7, 83);
     EXPECT_EQ(first_place(r), "main.hot:3:28") << r.dump();
 }
 
@@ -2690,9 +2690,8 @@ hot::ls::IndexShard sample_shard()
     hot::ls::IndexClass c;
     c.name = "Player";
     c.begin = {2, 6};
-    c.refs = {{2, 6}, {9, 4}};
-    hot::ls::IndexMember known{"hp", "field", {3, 10}, std::vector<hot::ls::IndexPos>{{3, 10}, {11, 13}}};
-    hot::ls::IndexMember unknown{"heal", "method", {10, 9}, std::nullopt};
+    hot::ls::IndexMember known{"hp", "field", {3, 10}};
+    hot::ls::IndexMember unknown{"heal", "method", {10, 9}};
     c.members = {known, unknown};
     shard.classes.push_back(c);
     shard.has_table = true;
@@ -2836,14 +2835,14 @@ TEST(SymbolIndex, ReusesAShardWhenTheDigestMatches)
     ASSERT_TRUE(index.store(script, digest, sample_shard()));
     auto shard = index.load(script, digest);
     ASSERT_TRUE(shard);
-    hot::ls::IndexClass* c = shard->find_class("Player");
-    ASSERT_NE(c, nullptr);
-    EXPECT_EQ(c->refs.size(), 2u);
-    ASSERT_NE(c->find_member("hp"), nullptr);
-    ASSERT_TRUE(c->find_member("hp")->refs);
-    EXPECT_EQ(c->find_member("hp")->refs->size(), 2u);
-    ASSERT_NE(c->find_member("heal"), nullptr);
-    EXPECT_FALSE(c->find_member("heal")->refs);
+    ASSERT_EQ(shard->classes.size(), 1u);
+    const hot::ls::IndexClass& c = shard->classes[0];
+    EXPECT_EQ(c.name, "Player");
+    EXPECT_EQ(c.begin.line, 2);
+    ASSERT_EQ(c.members.size(), 2u);
+    EXPECT_EQ(c.members[0].name, "hp");
+    EXPECT_EQ(c.members[1].name, "heal");
+    EXPECT_EQ(c.members[1].begin.line, 10);
     EXPECT_EQ(index.loads(), 1);
 }
 
@@ -7861,6 +7860,41 @@ TEST(LanguageServerDecl, DefinitionOfABaseMember)
 TEST(LanguageServerDecl, DefinitionOfAnOverrideName)
 {
     expect_decl_definition("override void Tick", "Tick", 0, "Actor.h");
+}
+
+// The override step comes before the table: a script with an error still goes to the native base.
+namespace
+{
+const char* const kOverrideMain = R"(using "Actor.h";
+using "lib.hot";
+class Player : Actor {
+    override void Tick(float dt) { }
+%s}
+)";
+
+void expect_override_in_header(const std::string& lib, const std::string& extra)
+{
+    REQUIRE_CLANGD();
+    std::string main = kOverrideMain;
+    main.replace(main.find("%s"), 2, extra);
+    DegradedSession s(lib, main);
+    // "Tick" on line 3: character 18.
+    const json r = s.ask("textDocument/definition", 3, 19);
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << r.dump();
+    EXPECT_NE(r["result"][0].value("uri", "").find("Actor.h"), std::string::npos) << r.dump();
+}
+} // namespace
+
+TEST(LanguageServerDecl, DefinitionOfAnOverrideNameWithATypeErrorInAnotherMethod)
+{
+    // A script class with a native base by value is a type error, not a syntax error.
+    expect_override_in_header(kDegradedLib, "    public int Bad(Gun g) { return 1; }\n");
+}
+
+TEST(LanguageServerDecl, DefinitionOfAnOverrideNameWhenTheImportHasASyntaxError)
+{
+    expect_override_in_header(
+        std::string(kDegradedLib) + "class Bad { public int F() { return 1 +; } }\n", "");
 }
 
 TEST(LanguageServerDecl, HoverOfAClassConstantAfterTheClassName)

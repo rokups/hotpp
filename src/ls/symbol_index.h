@@ -47,17 +47,13 @@ struct IndexMember
 {
     std::string name, kind;
     IndexPos begin;
-    // The places of the member in this file. No value: not computed yet (this needs clangd).
-    std::optional<std::vector<IndexPos>> refs;
 };
 
 struct IndexClass
 {
     std::string name;
     IndexPos begin; // the place of the class name
-    std::vector<IndexPos> refs;
     std::vector<IndexMember> members;
-    IndexMember* find_member(const std::string& member);
 };
 
 // A place that clangd gave for a native name (HOT-35).
@@ -104,13 +100,12 @@ struct IndexShard
     // True when "table" comes from an analyze with the resolved names. store() writes the marker.
     // load() gives only a shard with the marker.
     bool has_table = false;
-    IndexClass* find_class(const std::string& name);
 };
 
 class SymbolIndex
 {
 public:
-    static constexpr int kFormatVersion = 5;
+    static constexpr int kFormatVersion = 6;
 
     SymbolIndex();
     ~SymbolIndex();
