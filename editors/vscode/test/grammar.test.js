@@ -190,6 +190,24 @@ async function main() {
   if (has(find(l[1], 'int'), 'source.hot')) fail('rml: the text after a script with src has a hot scope');
   if (!has(find(l[1], 'b'), 'entity.name.tag.html')) fail('rml: the tag after a script with src has no html scope');
 
+  // The end tag ends the block inside a string and inside a block comment (as the mask does).
+  l = rmlLines('<script>\nstring s = "</script>";\n</script>\n<b>x</b>');
+  if (!has(find(l[1], '</'), 'punctuation.definition.tag') && !l[1].some((t) => has(t, 'entity.name.tag.html')))
+    fail('rml: the end tag in a string is not a tag');
+  if (!has(find(l[3], 'b'), 'entity.name.tag.html') || l[3].some((t) => has(t, 'source.hot')))
+    fail('rml: the block does not end at the end tag in a string');
+  l = rmlLines('<script>\n/* a </script>\n<i>t</i>');
+  if (!has(find(l[2], 'i'), 'entity.name.tag.html') || l[2].some((t) => has(t, 'comment')))
+    fail('rml: the block does not end at the end tag in a comment');
+  l = rmlLines("<script>\nint x; // </script>\n<i>t</i>");
+  if (!has(find(l[2], 'i'), 'entity.name.tag.html') || l[2].some((t) => has(t, 'source.hot')))
+    fail('rml: the block does not end at the end tag in a line comment');
+
+  // A self-closing script tag has no body.
+  l = rmlLines('<script src="x.hot" />\n<b>int</b>');
+  if (l.some((line) => line.some((t) => has(t, 'source.hot')))) fail('rml: a self-closing script has a hot scope');
+  if (!has(find(l[1], 'b'), 'entity.name.tag.html')) fail('rml: the tag after a self-closing script has no html scope');
+
   // A script tag in an HTML comment is not code.
   l = rmlLines('<!-- <script>\nint x;\n</script> -->\n<i>t</i>');
   if (l.slice(0, 3).some((line) => line.some((t) => has(t, 'source.hot')))) fail('rml: a comment has a hot scope');

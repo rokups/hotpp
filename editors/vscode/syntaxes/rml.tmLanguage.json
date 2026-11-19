@@ -4,6 +4,7 @@
   "scopeName": "text.html.rml",
   "patterns": [
     { "include": "#comment" },
+    { "include": "#script-self-closing" },
     { "include": "#script" },
     { "include": "text.html.basic" }
   ],
@@ -12,6 +13,15 @@
       "name": "comment.block.html",
       "begin": "<!--",
       "end": "-->"
+    },
+    "script-self-closing": {
+      "match": "(?i)(<)(script)\\b[^>]*?(/>)",
+      "name": "meta.tag.script.rml",
+      "captures": {
+        "1": { "name": "punctuation.definition.tag.begin.html" },
+        "2": { "name": "entity.name.tag.html" },
+        "3": { "name": "punctuation.definition.tag.end.html" }
+      }
     },
     "script": {
       "name": "meta.tag.script.rml",
