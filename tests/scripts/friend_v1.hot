@@ -15,9 +15,9 @@ class Parent : ProtBase {
         this.Poke(n);
     }
 
-    void PokeLambda(int n) {
+    void PokeLambda() {
         var f = () => {
-            Poke(n);
+            Poke(4);
         };
         f();
     }
@@ -28,9 +28,9 @@ class Child : Parent {
         Poke(n);
     }
 
-    void PokeChildLambda(int n) {
+    void PokeChildLambda() {
         var f = () => {
-            this.Poke(n);
+            this.Poke(2);
         };
         f();
     }

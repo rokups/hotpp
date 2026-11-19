@@ -32,6 +32,13 @@ protected:
         reinterpret_cast<void (*)(ProtBase*, int32_t)>(fn)(&g, n);
     }
 
+    void call0(const char* thunk_name, ProtBase& g)
+    {
+        void* fn = loader.thunk(thunk_name);
+        ASSERT_NE(fn, nullptr) << thunk_name;
+        reinterpret_cast<void (*)(ProtBase*)>(fn)(&g);
+    }
+
     hot::Loader loader;
     std::unique_ptr<hot::Backend> backend;
 };
@@ -44,7 +51,7 @@ TEST_F(AotFriend, ParentMethodsCallProtectedBaseMember)
     ProtBase& g = *static_cast<ProtBase*>(inst.native);
     call("Parent::PokeDirect", g, 1);
     call("Parent::PokeThis", g, 2);
-    call("Parent::PokeLambda", g, 4);
+    call0("Parent::PokeLambda", g);
     EXPECT_EQ(g.Value(), 7);
     delete &g;
 }
@@ -56,8 +63,8 @@ TEST_F(AotFriend, ChildMethodsCallProtectedBaseMember)
     hot::Instance inst = e->create();
     ProtBase& g = *static_cast<ProtBase*>(inst.native);
     call("Child::PokeChild", g, 1);
-    call("Child::PokeChildLambda", g, 2);
-    call("Parent::PokeLambda", g, 4);
+    call0("Child::PokeChildLambda", g);
+    call0("Parent::PokeLambda", g);
     EXPECT_EQ(g.Value(), 7);
     delete &g;
 }
