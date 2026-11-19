@@ -20,7 +20,9 @@ PRESETS = {
         "cdb": ".cache/hot",
     }
 }
-SCENARIOS = ["analyze", "refs", "native", "typing", "hover", "cancel"]
+SCENARIOS = ["analyze", "refs", "native", "typing", "hover", "cancel", "rml"]
+RML_GOAL_MS = 500.0    # goal: p95 of each request kind
+RML_LIMIT_MS = 1000.0  # hard limit: any request
 
 
 def now():
@@ -347,13 +349,154 @@ class Bench:
         finally:
             c.close()
 
+    # g. a markup document (.rml) with two script blocks, in a generated host
+    def rml_document(self):
+        """Give (text, blocks). Each block is the 0-based first code line and the count of methods."""
+        lines = ["<rml>", "<head>", "<title>Bench \u00e9\u65e5\u672c</title>"]
+        blocks = []
+        for b in range(2):
+            for i in range(50):
+                lines.append("<p>caf\u00e9 %d %d</p>" % (b, i))
+            lines.append("<script>")
+            blocks.append(len(lines))
+            lines.append("class Blk%d {" % b)
+            lines.append("    int f0(int a) { int t = a; return t; }")
+            for i in range(1, 58):
+                lines.append("    int f%d(int a) { int t = f%d(a) + %d; return t; }" % (i, i - 1, i))
+            lines.append("}")
+            lines.append("</script>")
+        lines += ["</head>", "<body>"]
+        while len(lines) < 299:
+            lines.append("<p>\u00fcber</p>")
+        lines += ["</body>", "</rml>"]
+        return "\n".join(lines) + "\n", blocks
+
+    def s_rml(self):
+        repo = Path(__file__).resolve().parents[2]
+        root = tempfile.mkdtemp(dir=self.scratch)
+        (Path(root) / "build").mkdir()
+        (Path(root) / "build" / "CMakeCache.txt").write_text("# cache\n")
+        (Path(root) / "prefix.txt").write_text('using "Actor.h";\n')
+        (Path(root) / "hosts").mkdir()
+        res = subprocess.run(["clang", "-print-resource-dir"], capture_output=True, text=True).stdout.strip()
+        host = {"version": 1, "name": "t", "binaryDir": str(Path(root) / "build"), "compiler": "/usr/bin/c++",
+                "std": "c++17", "resourceDir": res, "sourceDir": root, "scriptDirs": [root],
+                "includeDirs": [str(repo / "tests" / "engine"), str(repo / "include")],
+                "embedded": [{"suffix": ".rml", "tag": "script", "prefixFile": "prefix.txt"}]}
+        (Path(root) / "hosts" / "t.json").write_text(json.dumps(host))
+        text, blocks = self.rml_document()
+        path = str(Path(root) / "page.rml")
+        Path(path).write_text(text)
+        c = Client(os.path.abspath(self.a.hot_ls), root, self.new_index(),
+                   ["--hosts-dir", str(Path(root) / "hosts"), "--no-background-index", "-I" + str(repo / "include"),
+                    "-I" + str(repo / "tests" / "engine")])
+        runs = self.a.rml_runs
+        try:
+            uri, _, _, _ = c.open(path, text)
+            if c.wait_diag(uri, 0, timeout=300) is None:
+                raise RuntimeError("rml: no first diagnostics")
+            lines = text.split("\n")
+            # Places inside the blocks: the name "t" in "return t;" (hover), the call "f<i-1>" (definition).
+            hover, defin, compl = [], [], []
+            for k in range(runs):
+                blk = blocks[k % 2]
+                ln = blk + 2 + (k * 2) % 55
+                s = lines[ln]
+                hover.append((ln, s.index("return t") + 7))
+                defin.append((ln, s.index("= f") + 3))
+                compl.append((ln, s.index("return t") + 8))
+            ver = [1]
+
+            def change(k):
+                ver[0] += 1
+                cur = list(lines)
+                ln = blocks[0] + 2 + k % 50
+                cur[ln] = cur[ln].replace("; return", "; int u%d = 0; return" % ver[0], 1)
+                n = c.diag_count(uri)
+                t0 = now()
+                c.notify("textDocument/didChange", {"textDocument": {"uri": uri, "version": ver[0]},
+                                                    "contentChanges": [{"text": "\n".join(cur)}]})
+                t = c.wait_diag(uri, n, ver[0], timeout=60)
+                return None if t is None else (t - t0) * 1000.0
+
+            def ask(method):
+                def f(pos):
+                    t0 = now()
+                    msg = c.request(method, {"textDocument": {"uri": uri},
+                                             "position": {"line": pos[0], "character": pos[1]}}, timeout=60)[1]
+                    return (now() - t0) * 1000.0, msg.get("result")
+                return f
+
+            results = {}
+            change(0)  # warm-up, not counted
+            results["diag"] = [change(k) for k in range(runs)]
+            for name, method, places in (("hover", "textDocument/hover", hover),
+                                         ("definition", "textDocument/definition", defin),
+                                         ("completion", "textDocument/completion", compl)):
+                f = ask(method)
+                f(places[0])  # warm-up, not counted
+                ms, nulls = [], 0
+                for pos in places:
+                    t, res = f(pos)
+                    ms.append(t)
+                    nulls += res is None
+                results[name] = ms
+                results[name + "_nulls"] = nulls
+        except (TimeoutError, RuntimeError) as e:
+            self.failed = True
+            print("rml.limit: FAIL, %s: %s" % (type(e).__name__, e), flush=True)
+            return
+        finally:
+            c.close()
+        worst = worst_p95 = 0.0
+        bad = False
+        for name in ("diag", "hover", "definition", "completion"):
+            ms = results[name]
+            if name == "completion" and results["completion_nulls"] == runs:
+                self.row("rml." + name, None, result="n/a")
+                continue
+            if any(m is None for m in ms):
+                self.row("rml." + name, None, result="timeout")
+                worst = float("inf")
+                bad = True
+                continue
+            ok = sorted(ms)
+            p95 = ok[min(len(ok) - 1, int(0.95 * len(ok)))]
+            extra = {"nulls": results[name + "_nulls"]} if name + "_nulls" in results else {}
+            self.row("rml." + name, statistics.mean(ms), p95=round(p95, 1), max=round(ok[-1], 1), n=len(ms), **extra)
+            worst = max(worst, ok[-1])
+            worst_p95 = max(worst_p95, p95)
+            if name in ("hover", "definition") and results[name + "_nulls"] > 0:
+                bad = True
+                print("rml.%s: FAIL, %d null answers" % (name, results[name + "_nulls"]), flush=True)
+        if not bad:
+            goal = "goal ok" if worst_p95 < RML_GOAL_MS else "goal missed"
+            print("rml.goal: p95 < %d ms: %s (worst p95 %.1f)" % (RML_GOAL_MS, goal, worst_p95), flush=True)
+        if bad or worst > RML_LIMIT_MS:
+            self.failed = True
+            print("rml.limit: FAIL, %s (limit %d ms)" % ("a timeout or a null answer" if bad else "a request took %.1f ms" % worst, RML_LIMIT_MS), flush=True)
+        else:
+            print("rml.limit: ok, max %.1f ms (limit %d ms)" % (worst, RML_LIMIT_MS), flush=True)
+
     def run(self):
+        self.failed = False
+        try:
+            self.run_scenarios()
+        finally:
+            shutil.rmtree(self.scratch, ignore_errors=True)
+        return self.finish()
+
+    def run_scenarios(self):
         for name in self.a.only or SCENARIOS:
+            if name == "rml" and not self.a.only:
+                continue  # run rml only with --only rml
             getattr(self, "s_" + name)()
-        shutil.rmtree(self.scratch, ignore_errors=True)
+
+    def finish(self):
         if self.a.json:
             Path(self.a.json).write_text(json.dumps({"hot_ls": self.a.hot_ls, "root": self.root, "loadavg": os.getloadavg(), "cpus": os.cpu_count(),
                                                      "rows": self.rows}, indent=1) + "\n")
+        return 1 if self.failed else 0
 
 
 def main():
@@ -371,11 +514,12 @@ def main():
     ap.add_argument("--only", action="append", choices=SCENARIOS)
     ap.add_argument("--scripts", type=int, default=10, help="scripts of scenario analyze")
     ap.add_argument("--runs", type=int, default=3, help="runs of scenario typing")
+    ap.add_argument("--rml-runs", type=int, default=20, help="requests of each kind in scenario rml")
     ap.add_argument("--json", help="write the rows to this file")
     a = ap.parse_args()
-    if not a.root and not a.preset:
+    if not a.root and not a.preset and a.only != ["rml"]:
         ap.error("give --preset or --root")
-    Bench(a).run()
+    return Bench(a).run()
 
 
 if __name__ == "__main__":
