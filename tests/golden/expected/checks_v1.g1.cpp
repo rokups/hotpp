@@ -38,6 +38,7 @@ extern hot::ClassRecord Checks_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Checks_Shell final : Actor, hot::ShellBase {
+    friend struct hot_state_Checks;
 #line 4 "checks_v1.hot"
     template <class... A>
 #line 4 "checks_v1.hot"
@@ -50,7 +51,7 @@ struct Checks_Shell final : Actor, hot::ShellBase {
     }
 #line 4 "checks_v1.hot"
     ~Checks_Shell() override { hot::destroy_state(this); }
-#line 54 "checks_v1.hot.cpp"
+#line 55 "checks_v1.hot.cpp"
 #line 4 "checks_v1.hot"
     HOT_NODEBUG void __hot_base_Tick(float a0)
 #line 4 "checks_v1.hot"
@@ -59,7 +60,7 @@ struct Checks_Shell final : Actor, hot::ShellBase {
         return Actor::Tick(a0);
 #line 4 "checks_v1.hot"
     }
-#line 63 "checks_v1.hot.cpp"
+#line 64 "checks_v1.hot.cpp"
 #line 4 "checks_v1.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 4 "checks_v1.hot"
@@ -68,7 +69,7 @@ struct Checks_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0);
 #line 4 "checks_v1.hot"
     }
-#line 72 "checks_v1.hot.cpp"
+#line 73 "checks_v1.hot.cpp"
 #line 4 "checks_v1.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 4 "checks_v1.hot"
@@ -77,7 +78,7 @@ struct Checks_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0, a1);
 #line 4 "checks_v1.hot"
     }
-#line 81 "checks_v1.hot.cpp"
+#line 82 "checks_v1.hot.cpp"
 
 #line 4 "checks_v1.hot"
     void Tick(float a0) override
@@ -87,7 +88,7 @@ struct Checks_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 4 "checks_v1.hot"
     }
-#line 91 "checks_v1.hot.cpp"
+#line 92 "checks_v1.hot.cpp"
 
 #line 4 "checks_v1.hot"
     void TakeDamage(float a0) override
@@ -97,7 +98,7 @@ struct Checks_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 4 "checks_v1.hot"
     }
-#line 101 "checks_v1.hot.cpp"
+#line 102 "checks_v1.hot.cpp"
 
 #line 4 "checks_v1.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -107,7 +108,7 @@ struct Checks_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 4 "checks_v1.hot"
     }
-#line 111 "checks_v1.hot.cpp"
+#line 112 "checks_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -129,7 +130,7 @@ struct hot_state_Checks {
         return static_cast<Checks_Shell*>(__hot_owner)->__hot_base_Tick(a0);
 #line 4 "checks_v1.hot"
     }
-#line 133 "checks_v1.hot.cpp"
+#line 134 "checks_v1.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 4 "checks_v1.hot"
     HOT_NODEBUG void __fwd_TakeDamage_f(float a0)
@@ -139,7 +140,7 @@ struct hot_state_Checks {
         return static_cast<Checks_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 4 "checks_v1.hot"
     }
-#line 143 "checks_v1.hot.cpp"
+#line 144 "checks_v1.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 4 "checks_v1.hot"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -149,12 +150,12 @@ struct hot_state_Checks {
         return static_cast<Checks_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 4 "checks_v1.hot"
     }
-#line 153 "checks_v1.hot.cpp"
+#line 154 "checks_v1.hot.cpp"
 };
 
 #line 5 "checks_v1.hot"
 static void Checks__init_vals(void*, void* f) { using T = std::array<int32_t, 4>; new (f) T(); }
-#line 158 "checks_v1.hot.cpp"
+#line 159 "checks_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -206,7 +207,7 @@ HOT_HIDDEN static auto Checks__plan()
     return std::make_pair(Checks__super_args(), std::tuple<>());
 #line 4 "checks_v1.hot"
 }
-#line 210 "checks_v1.hot.cpp"
+#line 211 "checks_v1.hot.cpp"
 using Checks_SuperArgs = decltype(Checks__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -231,7 +232,7 @@ HOT_NODEBUG static hot::ShellBase* Checks__construct(void* mem, const char* key,
     return nullptr;
 #line 4 "checks_v1.hot"
 }
-#line 235 "checks_v1.hot.cpp"
+#line 236 "checks_v1.hot.cpp"
 
 static const char* const Checks__construct_keys[] = {typeid(Checks_SuperArgs).name(), nullptr};
 
@@ -247,7 +248,7 @@ HOT_HIDDEN static Checks_Shell* Checks__build([[maybe_unused]] bool __note)
     return __self;
 #line 4 "checks_v1.hot"
 }
-#line 251 "checks_v1.hot.cpp"
+#line 252 "checks_v1.hot.cpp"
 #line 4 "checks_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Checks_Shell* Checks__new()
 #line 4 "checks_v1.hot"
@@ -256,7 +257,7 @@ HOT_HIDDEN static Checks_Shell* Checks__build([[maybe_unused]] bool __note)
     return Checks__build(true);
 #line 4 "checks_v1.hot"
 }
-#line 260 "checks_v1.hot.cpp"
+#line 261 "checks_v1.hot.cpp"
 #line 4 "checks_v1.hot"
 template <int = 0>
 #line 4 "checks_v1.hot"
@@ -271,7 +272,7 @@ template <int = 0>
     return __h;
 #line 4 "checks_v1.hot"
 }
-#line 275 "checks_v1.hot.cpp"
+#line 276 "checks_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -285,7 +286,7 @@ static int32_t Checks__at__thunk(Actor* __a, int32_t i)
     return hot::call<int32_t(Actor*, int32_t)>(__self, SLOT_at, i);
 #line 7 "checks_v1.hot"
 }
-#line 289 "checks_v1.hot.cpp"
+#line 290 "checks_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -299,7 +300,7 @@ static int32_t Checks__load__thunk(Actor* __a, int32_t* p)
     return hot::call<int32_t(Actor*, int32_t*)>(__self, SLOT_load, p);
 #line 11 "checks_v1.hot"
 }
-#line 303 "checks_v1.hot.cpp"
+#line 304 "checks_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -313,7 +314,7 @@ static int32_t Checks__safe_at__thunk(Actor* __a, int32_t i)
     return hot::call<int32_t(Actor*, int32_t)>(__self, SLOT_safe_at, i);
 #line 15 "checks_v1.hot"
 }
-#line 317 "checks_v1.hot.cpp"
+#line 318 "checks_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -327,7 +328,7 @@ static int32_t Checks__safe_load__thunk(Actor* __a, int32_t* p)
     return hot::call<int32_t(Actor*, int32_t*)>(__self, SLOT_safe_load, p);
 #line 23 "checks_v1.hot"
 }
-#line 331 "checks_v1.hot.cpp"
+#line 332 "checks_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -341,7 +342,7 @@ static void Checks__first_member__thunk(Actor* __a, Actor* other)
     return hot::call<void(Actor*, Actor*)>(__self, SLOT_first_member, other);
 #line 35 "checks_v1.hot"
 }
-#line 345 "checks_v1.hot.cpp"
+#line 346 "checks_v1.hot.cpp"
 
 static void* Checks___native__thunk(hot::ShellCore* __s)
 {
@@ -386,7 +387,7 @@ HOT_NODEBUG static hot::Instance Checks_create()
     return {static_cast<Actor*>(p), p};
 #line 4 "checks_v1.hot"
 }
-#line 390 "checks_v1.hot.cpp"
+#line 391 "checks_v1.hot.cpp"
 
 #line 4 "checks_v1.hot"
 HOT_NODEBUG static hot::Instance Checks__make_0([[maybe_unused]] void** __a)
@@ -396,7 +397,7 @@ HOT_NODEBUG static hot::Instance Checks__make_0([[maybe_unused]] void** __a)
     return Checks_create();
 #line 4 "checks_v1.hot"
 }
-#line 400 "checks_v1.hot.cpp"
+#line 401 "checks_v1.hot.cpp"
 
 static const hot::CtorEntry Checks__constructors[] = {
     {hot::ctor_key<>(), &Checks__make_0, hot::ctor_write_mask<>()},
@@ -411,7 +412,7 @@ static const hot::CtorEntry Checks__constructors[] = {
     return state_of(__self)->at(std::forward<int32_t>(i));
 #line 7 "checks_v1.hot"
 }
-#line 415 "checks_v1.hot.cpp"
+#line 416 "checks_v1.hot.cpp"
 #line 7 "checks_v1.hot"
 int32_t hot_state_Checks::at(int32_t const i)
 #line 7 "checks_v1.hot"
@@ -436,7 +437,7 @@ int32_t hot_state_Checks::at(int32_t const i)
     HOT_TRACE_LINE(); return hot::index(__st->vals, i);
 #line 9 "checks_v1.hot"
 }
-#line 440 "checks_v1.hot.cpp"
+#line 441 "checks_v1.hot.cpp"
 
 #line 11 "checks_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Checks__load(Checks_Shell* __self, int32_t* p)
@@ -446,7 +447,7 @@ int32_t hot_state_Checks::at(int32_t const i)
     return state_of(__self)->load(std::forward<int32_t*>(p));
 #line 11 "checks_v1.hot"
 }
-#line 450 "checks_v1.hot.cpp"
+#line 451 "checks_v1.hot.cpp"
 #line 11 "checks_v1.hot"
 int32_t hot_state_Checks::load(int32_t* const p)
 #line 11 "checks_v1.hot"
@@ -471,7 +472,7 @@ int32_t hot_state_Checks::load(int32_t* const p)
     HOT_TRACE_LINE(); return hot::star(hot::cast_ptr<int32_t*>(hot::nonnull(p, "checks_v1.hot:12: 'p' is null")));
 #line 13 "checks_v1.hot"
 }
-#line 475 "checks_v1.hot.cpp"
+#line 476 "checks_v1.hot.cpp"
 
 #line 15 "checks_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Checks__safe_at(Checks_Shell* __self, int32_t i)
@@ -481,7 +482,7 @@ int32_t hot_state_Checks::load(int32_t* const p)
     return state_of(__self)->safe_at(std::forward<int32_t>(i));
 #line 15 "checks_v1.hot"
 }
-#line 485 "checks_v1.hot.cpp"
+#line 486 "checks_v1.hot.cpp"
 #line 15 "checks_v1.hot"
 int32_t hot_state_Checks::safe_at(int32_t const i)
 #line 15 "checks_v1.hot"
@@ -514,7 +515,7 @@ int32_t hot_state_Checks::safe_at(int32_t const i)
     }
 #line 21 "checks_v1.hot"
 }
-#line 518 "checks_v1.hot.cpp"
+#line 519 "checks_v1.hot.cpp"
 
 #line 23 "checks_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Checks__safe_load(Checks_Shell* __self, int32_t* p)
@@ -524,7 +525,7 @@ int32_t hot_state_Checks::safe_at(int32_t const i)
     return state_of(__self)->safe_load(std::forward<int32_t*>(p));
 #line 23 "checks_v1.hot"
 }
-#line 528 "checks_v1.hot.cpp"
+#line 529 "checks_v1.hot.cpp"
 #line 23 "checks_v1.hot"
 int32_t hot_state_Checks::safe_load(int32_t* const p)
 #line 23 "checks_v1.hot"
@@ -565,7 +566,7 @@ int32_t hot_state_Checks::safe_load(int32_t* const p)
     }
 #line 33 "checks_v1.hot"
 }
-#line 569 "checks_v1.hot.cpp"
+#line 570 "checks_v1.hot.cpp"
 
 #line 35 "checks_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Checks__first_member(Checks_Shell* __self, Actor* other)
@@ -575,7 +576,7 @@ int32_t hot_state_Checks::safe_load(int32_t* const p)
     return state_of(__self)->first_member(std::forward<Actor*>(other));
 #line 35 "checks_v1.hot"
 }
-#line 579 "checks_v1.hot.cpp"
+#line 580 "checks_v1.hot.cpp"
 #line 35 "checks_v1.hot"
 void hot_state_Checks::first_member(Actor* const other)
 #line 35 "checks_v1.hot"
@@ -600,7 +601,7 @@ void hot_state_Checks::first_member(Actor* const other)
     HOT_TRACE_LINE(); hot::deref((hot::cast_ptr<Actor*>(hot::nonnull(other, "checks_v1.hot:36: 'other' is null")))).Move(Vec3());
 #line 37 "checks_v1.hot"
 }
-#line 604 "checks_v1.hot.cpp"
+#line 605 "checks_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

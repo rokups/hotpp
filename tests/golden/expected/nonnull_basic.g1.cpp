@@ -33,6 +33,7 @@ extern hot::ClassRecord Node_record;
 
 // The shell overrides every virtual of hot::PlainObject. Each stub reads one slot.
 struct Node_Shell final : hot::PlainObject, hot::ShellBase {
+    friend struct hot_state_Node;
 #line 4 "nonnull_basic.hot"
     template <class... A>
 #line 4 "nonnull_basic.hot"
@@ -45,7 +46,7 @@ struct Node_Shell final : hot::PlainObject, hot::ShellBase {
     }
 #line 4 "nonnull_basic.hot"
     ~Node_Shell() override { hot::destroy_state(this); }
-#line 49 "nonnull_basic.hot.cpp"
+#line 50 "nonnull_basic.hot.cpp"
 #line 4 "nonnull_basic.hot"
     explicit Node_Shell(hot::CloneFrom, const hot::ShellBase* src)
 #line 4 "nonnull_basic.hot"
@@ -54,7 +55,7 @@ struct Node_Shell final : hot::PlainObject, hot::ShellBase {
         hot::clone_state(this, &Node_record, src);
 #line 4 "nonnull_basic.hot"
     }
-#line 58 "nonnull_basic.hot.cpp"
+#line 59 "nonnull_basic.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -68,10 +69,10 @@ struct hot_state_Node {
 
 #line 5 "nonnull_basic.hot"
 static void Node__init_v(void*, void* f) { using T = int32_t; new (f) T(5); }
-#line 72 "nonnull_basic.hot.cpp"
+#line 73 "nonnull_basic.hot.cpp"
 #line 6 "nonnull_basic.hot"
 static void Node__init_next(void*, void* f) { using T = std::shared_ptr<Node>; new (f) T(nullptr); }
-#line 75 "nonnull_basic.hot.cpp"
+#line 76 "nonnull_basic.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -121,7 +122,7 @@ HOT_HIDDEN static auto Node__plan()
     return std::make_pair(Node__super_args(), std::tuple<>());
 #line 4 "nonnull_basic.hot"
 }
-#line 125 "nonnull_basic.hot.cpp"
+#line 126 "nonnull_basic.hot.cpp"
 using Node_SuperArgs = decltype(Node__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -154,7 +155,7 @@ HOT_NODEBUG static hot::ShellBase* Node__construct(void* mem, const char* key, c
     return nullptr;
 #line 4 "nonnull_basic.hot"
 }
-#line 158 "nonnull_basic.hot.cpp"
+#line 159 "nonnull_basic.hot.cpp"
 
 static const char* const Node__construct_keys[] = {typeid(Node_SuperArgs).name(), hot::kCloneKey, nullptr};
 
@@ -170,7 +171,7 @@ HOT_HIDDEN static Node_Shell* Node__build([[maybe_unused]] bool __note)
     return __self;
 #line 4 "nonnull_basic.hot"
 }
-#line 174 "nonnull_basic.hot.cpp"
+#line 175 "nonnull_basic.hot.cpp"
 #line 4 "nonnull_basic.hot"
 [[maybe_unused]] HOT_HIDDEN static Node_Shell* Node__new()
 #line 4 "nonnull_basic.hot"
@@ -179,7 +180,7 @@ HOT_HIDDEN static Node_Shell* Node__build([[maybe_unused]] bool __note)
     return Node__build(true);
 #line 4 "nonnull_basic.hot"
 }
-#line 183 "nonnull_basic.hot.cpp"
+#line 184 "nonnull_basic.hot.cpp"
 #line 4 "nonnull_basic.hot"
 template <int = 0>
 #line 4 "nonnull_basic.hot"
@@ -194,7 +195,7 @@ template <int = 0>
     return __h;
 #line 4 "nonnull_basic.hot"
 }
-#line 198 "nonnull_basic.hot.cpp"
+#line 199 "nonnull_basic.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -208,7 +209,7 @@ static std::shared_ptr<Node> Node__Next__thunk(hot::PlainObject* __a)
     return hot::call<std::shared_ptr<Node>(hot::PlainObject*)>(__self, Node_SLOT_Next);
 #line 7 "nonnull_basic.hot"
 }
-#line 212 "nonnull_basic.hot.cpp"
+#line 213 "nonnull_basic.hot.cpp"
 
 static void* Node___native__thunk(hot::ShellCore* __s)
 {
@@ -246,7 +247,7 @@ HOT_NODEBUG static hot::Instance Node_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 4 "nonnull_basic.hot"
 }
-#line 250 "nonnull_basic.hot.cpp"
+#line 251 "nonnull_basic.hot.cpp"
 
 #line 4 "nonnull_basic.hot"
 HOT_NODEBUG static hot::Instance Node__make_0([[maybe_unused]] void** __a)
@@ -256,7 +257,7 @@ HOT_NODEBUG static hot::Instance Node__make_0([[maybe_unused]] void** __a)
     return Node_create();
 #line 4 "nonnull_basic.hot"
 }
-#line 260 "nonnull_basic.hot.cpp"
+#line 261 "nonnull_basic.hot.cpp"
 
 static const hot::CtorEntry Node__constructors[] = {
     {hot::ctor_key<>(), &Node__make_0, hot::ctor_write_mask<>()},
@@ -279,6 +280,7 @@ extern hot::ClassRecord Holder_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Holder_Shell final : Actor, hot::ShellBase {
+    friend struct hot_state_Holder;
 #line 10 "nonnull_basic.hot"
     template <class... A>
 #line 10 "nonnull_basic.hot"
@@ -291,7 +293,7 @@ struct Holder_Shell final : Actor, hot::ShellBase {
     }
 #line 10 "nonnull_basic.hot"
     ~Holder_Shell() override { hot::destroy_state(this); }
-#line 295 "nonnull_basic.hot.cpp"
+#line 297 "nonnull_basic.hot.cpp"
 #line 10 "nonnull_basic.hot"
     HOT_NODEBUG void __hot_base_Tick(float a0)
 #line 10 "nonnull_basic.hot"
@@ -300,7 +302,7 @@ struct Holder_Shell final : Actor, hot::ShellBase {
         return Actor::Tick(a0);
 #line 10 "nonnull_basic.hot"
     }
-#line 304 "nonnull_basic.hot.cpp"
+#line 306 "nonnull_basic.hot.cpp"
 #line 10 "nonnull_basic.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 10 "nonnull_basic.hot"
@@ -309,7 +311,7 @@ struct Holder_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0);
 #line 10 "nonnull_basic.hot"
     }
-#line 313 "nonnull_basic.hot.cpp"
+#line 315 "nonnull_basic.hot.cpp"
 #line 10 "nonnull_basic.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 10 "nonnull_basic.hot"
@@ -318,7 +320,7 @@ struct Holder_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0, a1);
 #line 10 "nonnull_basic.hot"
     }
-#line 322 "nonnull_basic.hot.cpp"
+#line 324 "nonnull_basic.hot.cpp"
 
 #line 10 "nonnull_basic.hot"
     void Tick(float a0) override
@@ -328,7 +330,7 @@ struct Holder_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Holder_SLOT_Tick, a0);
 #line 10 "nonnull_basic.hot"
     }
-#line 332 "nonnull_basic.hot.cpp"
+#line 334 "nonnull_basic.hot.cpp"
 
 #line 10 "nonnull_basic.hot"
     void TakeDamage(float a0) override
@@ -338,7 +340,7 @@ struct Holder_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Holder_SLOT_TakeDamage_f, a0);
 #line 10 "nonnull_basic.hot"
     }
-#line 342 "nonnull_basic.hot.cpp"
+#line 344 "nonnull_basic.hot.cpp"
 
 #line 10 "nonnull_basic.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -348,7 +350,7 @@ struct Holder_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, Holder_SLOT_TakeDamage_Af, a0, a1);
 #line 10 "nonnull_basic.hot"
     }
-#line 352 "nonnull_basic.hot.cpp"
+#line 354 "nonnull_basic.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -369,7 +371,7 @@ struct hot_state_Holder {
         return static_cast<Holder_Shell*>(__hot_owner)->__hot_base_Tick(a0);
 #line 10 "nonnull_basic.hot"
     }
-#line 373 "nonnull_basic.hot.cpp"
+#line 375 "nonnull_basic.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 10 "nonnull_basic.hot"
     HOT_NODEBUG void __fwd_TakeDamage_f(float a0)
@@ -379,7 +381,7 @@ struct hot_state_Holder {
         return static_cast<Holder_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 10 "nonnull_basic.hot"
     }
-#line 383 "nonnull_basic.hot.cpp"
+#line 385 "nonnull_basic.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 10 "nonnull_basic.hot"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -389,15 +391,15 @@ struct hot_state_Holder {
         return static_cast<Holder_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 10 "nonnull_basic.hot"
     }
-#line 393 "nonnull_basic.hot.cpp"
+#line 395 "nonnull_basic.hot.cpp"
 };
 
 #line 11 "nonnull_basic.hot"
 static void Holder__init_head(void*, void* f) { using T = std::shared_ptr<Node>; new (f) T(nullptr); }
-#line 398 "nonnull_basic.hot.cpp"
+#line 400 "nonnull_basic.hot.cpp"
 #line 12 "nonnull_basic.hot"
 static void Holder__init_n(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 401 "nonnull_basic.hot.cpp"
+#line 403 "nonnull_basic.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -449,7 +451,7 @@ HOT_HIDDEN static auto Holder__plan()
     return std::make_pair(Holder__super_args(), std::tuple<>());
 #line 10 "nonnull_basic.hot"
 }
-#line 453 "nonnull_basic.hot.cpp"
+#line 455 "nonnull_basic.hot.cpp"
 using Holder_SuperArgs = decltype(Holder__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -474,7 +476,7 @@ HOT_NODEBUG static hot::ShellBase* Holder__construct(void* mem, const char* key,
     return nullptr;
 #line 10 "nonnull_basic.hot"
 }
-#line 478 "nonnull_basic.hot.cpp"
+#line 480 "nonnull_basic.hot.cpp"
 
 static const char* const Holder__construct_keys[] = {typeid(Holder_SuperArgs).name(), nullptr};
 
@@ -490,7 +492,7 @@ HOT_HIDDEN static Holder_Shell* Holder__build([[maybe_unused]] bool __note)
     return __self;
 #line 10 "nonnull_basic.hot"
 }
-#line 494 "nonnull_basic.hot.cpp"
+#line 496 "nonnull_basic.hot.cpp"
 #line 10 "nonnull_basic.hot"
 [[maybe_unused]] HOT_HIDDEN static Holder_Shell* Holder__new()
 #line 10 "nonnull_basic.hot"
@@ -499,7 +501,7 @@ HOT_HIDDEN static Holder_Shell* Holder__build([[maybe_unused]] bool __note)
     return Holder__build(true);
 #line 10 "nonnull_basic.hot"
 }
-#line 503 "nonnull_basic.hot.cpp"
+#line 505 "nonnull_basic.hot.cpp"
 #line 10 "nonnull_basic.hot"
 template <int = 0>
 #line 10 "nonnull_basic.hot"
@@ -514,7 +516,7 @@ template <int = 0>
     return __h;
 #line 10 "nonnull_basic.hot"
 }
-#line 518 "nonnull_basic.hot.cpp"
+#line 520 "nonnull_basic.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -528,7 +530,7 @@ static int32_t Holder__First__thunk(Actor* __a)
     return hot::call<int32_t(Actor*)>(__self, Holder_SLOT_First);
 #line 14 "nonnull_basic.hot"
 }
-#line 532 "nonnull_basic.hot.cpp"
+#line 534 "nonnull_basic.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -542,7 +544,7 @@ static int32_t Holder__Second__thunk(Actor* __a)
     return hot::call<int32_t(Actor*)>(__self, Holder_SLOT_Second);
 #line 18 "nonnull_basic.hot"
 }
-#line 546 "nonnull_basic.hot.cpp"
+#line 548 "nonnull_basic.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -556,7 +558,7 @@ static void Holder__arm__thunk(Actor* __a, World& w, float delay)
     return hot::call<void(Actor*, World&, float)>(__self, Holder_SLOT_arm, w, delay);
 #line 23 "nonnull_basic.hot"
 }
-#line 560 "nonnull_basic.hot.cpp"
+#line 562 "nonnull_basic.hot.cpp"
 
 static void* Holder___native__thunk(hot::ShellCore* __s)
 {
@@ -599,7 +601,7 @@ HOT_NODEBUG static hot::Instance Holder_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "nonnull_basic.hot"
 }
-#line 603 "nonnull_basic.hot.cpp"
+#line 605 "nonnull_basic.hot.cpp"
 
 #line 10 "nonnull_basic.hot"
 HOT_NODEBUG static hot::Instance Holder__make_0([[maybe_unused]] void** __a)
@@ -609,7 +611,7 @@ HOT_NODEBUG static hot::Instance Holder__make_0([[maybe_unused]] void** __a)
     return Holder_create();
 #line 10 "nonnull_basic.hot"
 }
-#line 613 "nonnull_basic.hot.cpp"
+#line 615 "nonnull_basic.hot.cpp"
 
 static const hot::CtorEntry Holder__constructors[] = {
     {hot::ctor_key<>(), &Holder__make_0, hot::ctor_write_mask<>()},
@@ -624,7 +626,7 @@ static const hot::CtorEntry Holder__constructors[] = {
     return state_of(__self)->Next();
 #line 7 "nonnull_basic.hot"
 }
-#line 628 "nonnull_basic.hot.cpp"
+#line 630 "nonnull_basic.hot.cpp"
 #line 7 "nonnull_basic.hot"
 std::shared_ptr<Node> hot_state_Node::Next()
 #line 7 "nonnull_basic.hot"
@@ -649,7 +651,7 @@ std::shared_ptr<Node> hot_state_Node::Next()
     HOT_TRACE_LINE(); return next;
 #line 7 "nonnull_basic.hot"
 }
-#line 653 "nonnull_basic.hot.cpp"
+#line 655 "nonnull_basic.hot.cpp"
 
 #line 14 "nonnull_basic.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Holder__First(Holder_Shell* __self)
@@ -659,7 +661,7 @@ std::shared_ptr<Node> hot_state_Node::Next()
     return state_of(__self)->First();
 #line 14 "nonnull_basic.hot"
 }
-#line 663 "nonnull_basic.hot.cpp"
+#line 665 "nonnull_basic.hot.cpp"
 #line 14 "nonnull_basic.hot"
 int32_t hot_state_Holder::First()
 #line 14 "nonnull_basic.hot"
@@ -684,7 +686,7 @@ int32_t hot_state_Holder::First()
     HOT_TRACE_LINE(); return state_of(hot::shell_of<Node_Shell>(hot::nonnull(head, "nonnull_basic.hot:15: 'head' is null"), "Node"))->v;
 #line 16 "nonnull_basic.hot"
 }
-#line 688 "nonnull_basic.hot.cpp"
+#line 690 "nonnull_basic.hot.cpp"
 
 #line 18 "nonnull_basic.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Holder__Second(Holder_Shell* __self)
@@ -694,7 +696,7 @@ int32_t hot_state_Holder::First()
     return state_of(__self)->Second();
 #line 18 "nonnull_basic.hot"
 }
-#line 698 "nonnull_basic.hot.cpp"
+#line 700 "nonnull_basic.hot.cpp"
 #line 18 "nonnull_basic.hot"
 int32_t hot_state_Holder::Second()
 #line 18 "nonnull_basic.hot"
@@ -721,7 +723,7 @@ int32_t hot_state_Holder::Second()
     HOT_TRACE_LINE(); return state_of(hot::shell_of<Node_Shell>(hot::nonnull(x, "nonnull_basic.hot:20: 'x' is null"), "Node"))->v;
 #line 21 "nonnull_basic.hot"
 }
-#line 725 "nonnull_basic.hot.cpp"
+#line 727 "nonnull_basic.hot.cpp"
 
 #line 23 "nonnull_basic.hot"
 [[maybe_unused]] HOT_HIDDEN static void Holder__arm(Holder_Shell* __self, World& w, float delay)
@@ -731,7 +733,7 @@ int32_t hot_state_Holder::Second()
     return state_of(__self)->arm(std::forward<World&>(w), std::forward<float>(delay));
 #line 23 "nonnull_basic.hot"
 }
-#line 735 "nonnull_basic.hot.cpp"
+#line 737 "nonnull_basic.hot.cpp"
 #line 23 "nonnull_basic.hot"
 void hot_state_Holder::arm(World& w, float delay)
 #line 23 "nonnull_basic.hot"
@@ -760,7 +762,7 @@ void hot_state_Holder::arm(World& w, float delay)
         } }));
 #line 27 "nonnull_basic.hot"
 }
-#line 764 "nonnull_basic.hot.cpp"
+#line 766 "nonnull_basic.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

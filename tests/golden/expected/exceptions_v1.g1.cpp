@@ -131,6 +131,7 @@ extern hot::ClassRecord Thrower_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Thrower_Shell final : Actor, hot::ShellBase {
+    friend struct hot_state_Thrower;
 #line 22 "exceptions_v1.hot"
     template <class... A>
 #line 22 "exceptions_v1.hot"
@@ -143,7 +144,7 @@ struct Thrower_Shell final : Actor, hot::ShellBase {
     }
 #line 22 "exceptions_v1.hot"
     ~Thrower_Shell() override { hot::destroy_state(this); }
-#line 147 "exceptions_v1.hot.cpp"
+#line 148 "exceptions_v1.hot.cpp"
 #line 22 "exceptions_v1.hot"
     HOT_NODEBUG void __hot_base_Tick(float a0)
 #line 22 "exceptions_v1.hot"
@@ -152,7 +153,7 @@ struct Thrower_Shell final : Actor, hot::ShellBase {
         return Actor::Tick(a0);
 #line 22 "exceptions_v1.hot"
     }
-#line 156 "exceptions_v1.hot.cpp"
+#line 157 "exceptions_v1.hot.cpp"
 #line 22 "exceptions_v1.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 22 "exceptions_v1.hot"
@@ -161,7 +162,7 @@ struct Thrower_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0);
 #line 22 "exceptions_v1.hot"
     }
-#line 165 "exceptions_v1.hot.cpp"
+#line 166 "exceptions_v1.hot.cpp"
 #line 22 "exceptions_v1.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 22 "exceptions_v1.hot"
@@ -170,7 +171,7 @@ struct Thrower_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0, a1);
 #line 22 "exceptions_v1.hot"
     }
-#line 174 "exceptions_v1.hot.cpp"
+#line 175 "exceptions_v1.hot.cpp"
 
 #line 22 "exceptions_v1.hot"
     void Tick(float a0) override
@@ -180,7 +181,7 @@ struct Thrower_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Thrower_SLOT_Tick, a0);
 #line 22 "exceptions_v1.hot"
     }
-#line 184 "exceptions_v1.hot.cpp"
+#line 185 "exceptions_v1.hot.cpp"
 
 #line 22 "exceptions_v1.hot"
     void TakeDamage(float a0) override
@@ -190,7 +191,7 @@ struct Thrower_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Thrower_SLOT_TakeDamage_f, a0);
 #line 22 "exceptions_v1.hot"
     }
-#line 194 "exceptions_v1.hot.cpp"
+#line 195 "exceptions_v1.hot.cpp"
 
 #line 22 "exceptions_v1.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -200,7 +201,7 @@ struct Thrower_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, Thrower_SLOT_TakeDamage_Af, a0, a1);
 #line 22 "exceptions_v1.hot"
     }
-#line 204 "exceptions_v1.hot.cpp"
+#line 205 "exceptions_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -218,7 +219,7 @@ struct hot_state_Thrower {
         return static_cast<Thrower_Shell*>(__hot_owner)->__hot_base_Tick(a0);
 #line 22 "exceptions_v1.hot"
     }
-#line 222 "exceptions_v1.hot.cpp"
+#line 223 "exceptions_v1.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 22 "exceptions_v1.hot"
     HOT_NODEBUG void __fwd_TakeDamage_f(float a0)
@@ -228,7 +229,7 @@ struct hot_state_Thrower {
         return static_cast<Thrower_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 22 "exceptions_v1.hot"
     }
-#line 232 "exceptions_v1.hot.cpp"
+#line 233 "exceptions_v1.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 22 "exceptions_v1.hot"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -238,7 +239,7 @@ struct hot_state_Thrower {
         return static_cast<Thrower_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 22 "exceptions_v1.hot"
     }
-#line 242 "exceptions_v1.hot.cpp"
+#line 243 "exceptions_v1.hot.cpp"
 };
 
 
@@ -286,7 +287,7 @@ HOT_HIDDEN static auto Thrower__plan()
     return std::make_pair(Thrower__super_args(), std::tuple<>());
 #line 22 "exceptions_v1.hot"
 }
-#line 290 "exceptions_v1.hot.cpp"
+#line 291 "exceptions_v1.hot.cpp"
 using Thrower_SuperArgs = decltype(Thrower__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -311,7 +312,7 @@ HOT_NODEBUG static hot::ShellBase* Thrower__construct(void* mem, const char* key
     return nullptr;
 #line 22 "exceptions_v1.hot"
 }
-#line 315 "exceptions_v1.hot.cpp"
+#line 316 "exceptions_v1.hot.cpp"
 
 static const char* const Thrower__construct_keys[] = {typeid(Thrower_SuperArgs).name(), nullptr};
 
@@ -327,7 +328,7 @@ HOT_HIDDEN static Thrower_Shell* Thrower__build([[maybe_unused]] bool __note)
     return __self;
 #line 22 "exceptions_v1.hot"
 }
-#line 331 "exceptions_v1.hot.cpp"
+#line 332 "exceptions_v1.hot.cpp"
 #line 22 "exceptions_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Thrower_Shell* Thrower__new()
 #line 22 "exceptions_v1.hot"
@@ -336,7 +337,7 @@ HOT_HIDDEN static Thrower_Shell* Thrower__build([[maybe_unused]] bool __note)
     return Thrower__build(true);
 #line 22 "exceptions_v1.hot"
 }
-#line 340 "exceptions_v1.hot.cpp"
+#line 341 "exceptions_v1.hot.cpp"
 #line 22 "exceptions_v1.hot"
 template <int = 0>
 #line 22 "exceptions_v1.hot"
@@ -351,7 +352,7 @@ template <int = 0>
     return __h;
 #line 22 "exceptions_v1.hot"
 }
-#line 355 "exceptions_v1.hot.cpp"
+#line 356 "exceptions_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -365,7 +366,7 @@ static int32_t Thrower__caught__thunk(Actor* __a)
     return hot::call<int32_t(Actor*)>(__self, Thrower_SLOT_caught);
 #line 23 "exceptions_v1.hot"
 }
-#line 369 "exceptions_v1.hot.cpp"
+#line 370 "exceptions_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -379,7 +380,7 @@ static void Thrower__escape__thunk(Actor* __a)
     return hot::call<void(Actor*)>(__self, Thrower_SLOT_escape);
 #line 32 "exceptions_v1.hot"
 }
-#line 383 "exceptions_v1.hot.cpp"
+#line 384 "exceptions_v1.hot.cpp"
 
 static void* Thrower___native__thunk(hot::ShellCore* __s)
 {
@@ -421,7 +422,7 @@ HOT_NODEBUG static hot::Instance Thrower_create()
     return {static_cast<Actor*>(p), p};
 #line 22 "exceptions_v1.hot"
 }
-#line 425 "exceptions_v1.hot.cpp"
+#line 426 "exceptions_v1.hot.cpp"
 
 #line 22 "exceptions_v1.hot"
 HOT_NODEBUG static hot::Instance Thrower__make_0([[maybe_unused]] void** __a)
@@ -431,7 +432,7 @@ HOT_NODEBUG static hot::Instance Thrower__make_0([[maybe_unused]] void** __a)
     return Thrower_create();
 #line 22 "exceptions_v1.hot"
 }
-#line 435 "exceptions_v1.hot.cpp"
+#line 436 "exceptions_v1.hot.cpp"
 
 static const hot::CtorEntry Thrower__constructors[] = {
     {hot::ctor_key<>(), &Thrower__make_0, hot::ctor_write_mask<>()},
@@ -448,7 +449,7 @@ static void AppError__ctor(AppError* __self, hot::In<std::string> message)
     __st->code = 7;
 #line 11 "exceptions_v1.hot"
 }
-#line 452 "exceptions_v1.hot.cpp"
+#line 453 "exceptions_v1.hot.cpp"
 
 #line 17 "exceptions_v1.hot"
 static void NetError__ctor(NetError* __self, int32_t p)
@@ -460,7 +461,7 @@ static void NetError__ctor(NetError* __self, int32_t p)
     __st->port = p;
 #line 19 "exceptions_v1.hot"
 }
-#line 464 "exceptions_v1.hot.cpp"
+#line 465 "exceptions_v1.hot.cpp"
 
 #line 23 "exceptions_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Thrower__caught(Thrower_Shell* __self)
@@ -470,7 +471,7 @@ static void NetError__ctor(NetError* __self, int32_t p)
     return state_of(__self)->caught();
 #line 23 "exceptions_v1.hot"
 }
-#line 474 "exceptions_v1.hot.cpp"
+#line 475 "exceptions_v1.hot.cpp"
 #line 23 "exceptions_v1.hot"
 int32_t hot_state_Thrower::caught()
 #line 23 "exceptions_v1.hot"
@@ -505,7 +506,7 @@ int32_t hot_state_Thrower::caught()
     HOT_TRACE_LINE(); return 0;
 #line 30 "exceptions_v1.hot"
 }
-#line 509 "exceptions_v1.hot.cpp"
+#line 510 "exceptions_v1.hot.cpp"
 
 #line 32 "exceptions_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Thrower__escape(Thrower_Shell* __self)
@@ -515,7 +516,7 @@ int32_t hot_state_Thrower::caught()
     return state_of(__self)->escape();
 #line 32 "exceptions_v1.hot"
 }
-#line 519 "exceptions_v1.hot.cpp"
+#line 520 "exceptions_v1.hot.cpp"
 #line 32 "exceptions_v1.hot"
 void hot_state_Thrower::escape()
 #line 32 "exceptions_v1.hot"
@@ -540,7 +541,7 @@ void hot_state_Thrower::escape()
     HOT_TRACE_LINE(); throw AppError("app down");
 #line 34 "exceptions_v1.hot"
 }
-#line 544 "exceptions_v1.hot.cpp"
+#line 545 "exceptions_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

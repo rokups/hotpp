@@ -9170,6 +9170,9 @@ void translate_impl(
         o.w(shell_head + " {\n");
         // A ".cpp" script cannot write a cpp_prelude, but its shells get the texts of the prelude files.
         o.w(prelude_block(types.preludes(cn), shell, par ? par->name + "_Shell" : B, cn));
+        // The script methods are members of the state struct. The friend line lets them call a protected
+        // member of the native base through the shell.
+        o.w("    friend struct " + S + ";\n");
         // The members of the shell map to the class line.
         // Optimized AOT code: the shell sets the record. Each shell runs the script destructor when
         // it is the shell of the class of the object, before its own fields die.

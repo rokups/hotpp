@@ -44,6 +44,7 @@ extern const hot::StateLayout Fighter_layout;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Fighter_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<Fighter_Shell> {
+    friend struct hot_state_Fighter;
 #line 7 "aot_demo.hot"
     template <class... A>
 #line 7 "aot_demo.hot"
@@ -56,7 +57,7 @@ struct Fighter_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<Fight
     }
 #line 7 "aot_demo.hot"
     ~Fighter_Shell() override { hot::destroy_state(this); }
-#line 63 "aot_demo.hot.cpp"
+#line 64 "aot_demo.hot.cpp"
 #line 7 "aot_demo.hot"
     template <class... A>
 #line 7 "aot_demo.hot"
@@ -65,7 +66,7 @@ struct Fighter_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<Fight
     {
 #line 7 "aot_demo.hot"
     }
-#line 72 "aot_demo.hot.cpp"
+#line 73 "aot_demo.hot.cpp"
 #line 7 "aot_demo.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 7 "aot_demo.hot"
@@ -74,7 +75,7 @@ struct Fighter_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<Fight
         return Actor::TakeDamage(a0, a1);
 #line 7 "aot_demo.hot"
     }
-#line 81 "aot_demo.hot.cpp"
+#line 82 "aot_demo.hot.cpp"
 
 #line 7 "aot_demo.hot"
     void Tick(float a0) override
@@ -84,7 +85,7 @@ struct Fighter_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<Fight
         return hot::call<void(Actor*, float)>(this, Fighter_SLOT_Tick, a0);
 #line 7 "aot_demo.hot"
     }
-#line 91 "aot_demo.hot.cpp"
+#line 92 "aot_demo.hot.cpp"
 
 #line 7 "aot_demo.hot"
     void TakeDamage(float a0) override
@@ -94,7 +95,7 @@ struct Fighter_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<Fight
         return hot::call<void(Actor*, float)>(this, Fighter_SLOT_TakeDamage_f, a0);
 #line 7 "aot_demo.hot"
     }
-#line 101 "aot_demo.hot.cpp"
+#line 102 "aot_demo.hot.cpp"
 
 #line 7 "aot_demo.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -104,7 +105,7 @@ struct Fighter_Shell : Actor, hot::ShellBase, std::enable_shared_from_this<Fight
         return hot::call<void(Actor*, Actor&, float)>(this, Fighter_SLOT_TakeDamage_Af, a0, a1);
 #line 7 "aot_demo.hot"
     }
-#line 111 "aot_demo.hot.cpp"
+#line 112 "aot_demo.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -134,7 +135,7 @@ struct hot_state_Fighter {
         return static_cast<Fighter_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 7 "aot_demo.hot"
     }
-#line 141 "aot_demo.hot.cpp"
+#line 142 "aot_demo.hot.cpp"
 };
 
 
@@ -154,6 +155,7 @@ extern const hot::StateLayout Veteran_layout;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Veteran_Shell : Fighter_Shell {
+    friend struct hot_state_Veteran;
 #line 43 "aot_demo.hot"
     template <class... A>
 #line 43 "aot_demo.hot"
@@ -166,7 +168,7 @@ struct Veteran_Shell : Fighter_Shell {
         hot::init_state(this, &Veteran_record);
 #line 43 "aot_demo.hot"
     }
-#line 548 "aot_demo.hot.cpp"
+#line 550 "aot_demo.hot.cpp"
 #line 43 "aot_demo.hot"
     template <class... A>
 #line 43 "aot_demo.hot"
@@ -175,7 +177,7 @@ struct Veteran_Shell : Fighter_Shell {
     {
 #line 43 "aot_demo.hot"
     }
-#line 557 "aot_demo.hot.cpp"
+#line 559 "aot_demo.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -206,6 +208,7 @@ extern const hot::StateLayout Spawner_layout;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Spawner_Shell : Actor, hot::ShellBase {
+    friend struct hot_state_Spawner;
 #line 66 "aot_demo.hot"
     template <class... A>
 #line 66 "aot_demo.hot"
@@ -218,7 +221,7 @@ struct Spawner_Shell : Actor, hot::ShellBase {
     }
 #line 66 "aot_demo.hot"
     ~Spawner_Shell() override { hot::destroy_state(this); }
-#line 880 "aot_demo.hot.cpp"
+#line 883 "aot_demo.hot.cpp"
 #line 66 "aot_demo.hot"
     template <class... A>
 #line 66 "aot_demo.hot"
@@ -227,7 +230,7 @@ struct Spawner_Shell : Actor, hot::ShellBase {
     {
 #line 66 "aot_demo.hot"
     }
-#line 889 "aot_demo.hot.cpp"
+#line 892 "aot_demo.hot.cpp"
 #line 66 "aot_demo.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 66 "aot_demo.hot"
@@ -236,7 +239,7 @@ struct Spawner_Shell : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0);
 #line 66 "aot_demo.hot"
     }
-#line 898 "aot_demo.hot.cpp"
+#line 901 "aot_demo.hot.cpp"
 #line 66 "aot_demo.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 66 "aot_demo.hot"
@@ -245,7 +248,7 @@ struct Spawner_Shell : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0, a1);
 #line 66 "aot_demo.hot"
     }
-#line 907 "aot_demo.hot.cpp"
+#line 910 "aot_demo.hot.cpp"
 
 #line 66 "aot_demo.hot"
     void Tick(float a0) override
@@ -255,7 +258,7 @@ struct Spawner_Shell : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Spawner_SLOT_Tick, a0);
 #line 66 "aot_demo.hot"
     }
-#line 917 "aot_demo.hot.cpp"
+#line 920 "aot_demo.hot.cpp"
 
 #line 66 "aot_demo.hot"
     void TakeDamage(float a0) override
@@ -265,7 +268,7 @@ struct Spawner_Shell : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Spawner_SLOT_TakeDamage_f, a0);
 #line 66 "aot_demo.hot"
     }
-#line 927 "aot_demo.hot.cpp"
+#line 930 "aot_demo.hot.cpp"
 
 #line 66 "aot_demo.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -275,7 +278,7 @@ struct Spawner_Shell : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, Spawner_SLOT_TakeDamage_Af, a0, a1);
 #line 66 "aot_demo.hot"
     }
-#line 937 "aot_demo.hot.cpp"
+#line 940 "aot_demo.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -297,7 +300,7 @@ struct hot_state_Spawner {
         return static_cast<Spawner_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 66 "aot_demo.hot"
     }
-#line 959 "aot_demo.hot.cpp"
+#line 962 "aot_demo.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 66 "aot_demo.hot"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -307,6 +310,6 @@ struct hot_state_Spawner {
         return static_cast<Spawner_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 66 "aot_demo.hot"
     }
-#line 969 "aot_demo.hot.cpp"
+#line 972 "aot_demo.hot.cpp"
 };
 

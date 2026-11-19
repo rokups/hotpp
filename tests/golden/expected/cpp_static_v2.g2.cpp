@@ -126,6 +126,7 @@ extern hot::ClassRecord Counter_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Counter_Shell final : Actor, hot::ShellBase {
+    friend struct hot_state_Counter;
 #line 9 "cpp_static_v2.cpp"
     template <class... A>
 #line 9 "cpp_static_v2.cpp"
@@ -138,7 +139,7 @@ struct Counter_Shell final : Actor, hot::ShellBase {
     }
 #line 9 "cpp_static_v2.cpp"
     ~Counter_Shell() override { hot::destroy_state(this); }
-#line 142 "cpp_static_v2.cpp.cpp"
+#line 143 "cpp_static_v2.cpp.cpp"
 #line 9 "cpp_static_v2.cpp"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 9 "cpp_static_v2.cpp"
@@ -147,7 +148,7 @@ struct Counter_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0);
 #line 9 "cpp_static_v2.cpp"
     }
-#line 151 "cpp_static_v2.cpp.cpp"
+#line 152 "cpp_static_v2.cpp.cpp"
 #line 9 "cpp_static_v2.cpp"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 9 "cpp_static_v2.cpp"
@@ -156,7 +157,7 @@ struct Counter_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0, a1);
 #line 9 "cpp_static_v2.cpp"
     }
-#line 160 "cpp_static_v2.cpp.cpp"
+#line 161 "cpp_static_v2.cpp.cpp"
 
 #line 9 "cpp_static_v2.cpp"
     void Tick(float a0) override
@@ -166,7 +167,7 @@ struct Counter_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 9 "cpp_static_v2.cpp"
     }
-#line 170 "cpp_static_v2.cpp.cpp"
+#line 171 "cpp_static_v2.cpp.cpp"
 
 #line 9 "cpp_static_v2.cpp"
     void TakeDamage(float a0) override
@@ -176,7 +177,7 @@ struct Counter_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 9 "cpp_static_v2.cpp"
     }
-#line 180 "cpp_static_v2.cpp.cpp"
+#line 181 "cpp_static_v2.cpp.cpp"
 
 #line 9 "cpp_static_v2.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -186,7 +187,7 @@ struct Counter_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 9 "cpp_static_v2.cpp"
     }
-#line 190 "cpp_static_v2.cpp.cpp"
+#line 191 "cpp_static_v2.cpp.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -207,7 +208,7 @@ struct hot_state_Counter {
         return static_cast<Counter_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 9 "cpp_static_v2.cpp"
     }
-#line 211 "cpp_static_v2.cpp.cpp"
+#line 212 "cpp_static_v2.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 9 "cpp_static_v2.cpp"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -217,15 +218,15 @@ struct hot_state_Counter {
         return static_cast<Counter_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 9 "cpp_static_v2.cpp"
     }
-#line 221 "cpp_static_v2.cpp.cpp"
+#line 222 "cpp_static_v2.cpp.cpp"
 };
 
 #line 38 "cpp_static_v2.cpp"
 static void Counter__init_last(void*, void* f) { using T = int; new (f) T(0); }
-#line 226 "cpp_static_v2.cpp.cpp"
+#line 227 "cpp_static_v2.cpp.cpp"
 #line 39 "cpp_static_v2.cpp"
 static void Counter__init_via_free(void*, void* f) { using T = int; new (f) T(0); }
-#line 229 "cpp_static_v2.cpp.cpp"
+#line 230 "cpp_static_v2.cpp.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -286,7 +287,7 @@ HOT_HIDDEN static void Counter__ctor_chain(Counter_Shell* __self, [[maybe_unused
     Counter__ctor(__self);
 #line 12 "cpp_static_v2.cpp"
 }
-#line 290 "cpp_static_v2.cpp.cpp"
+#line 291 "cpp_static_v2.cpp.cpp"
 using Counter_SuperArgs = decltype(Counter__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -311,7 +312,7 @@ HOT_NODEBUG static hot::ShellBase* Counter__construct(void* mem, const char* key
     return nullptr;
 #line 9 "cpp_static_v2.cpp"
 }
-#line 315 "cpp_static_v2.cpp.cpp"
+#line 316 "cpp_static_v2.cpp.cpp"
 
 static const char* const Counter__construct_keys[] = {typeid(Counter_SuperArgs).name(), nullptr};
 
@@ -339,7 +340,7 @@ HOT_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note)
     return __self;
 #line 12 "cpp_static_v2.cpp"
 }
-#line 343 "cpp_static_v2.cpp.cpp"
+#line 344 "cpp_static_v2.cpp.cpp"
 #line 12 "cpp_static_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static Counter_Shell* Counter__new()
 #line 12 "cpp_static_v2.cpp"
@@ -348,7 +349,7 @@ HOT_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note)
     return Counter__build(true);
 #line 12 "cpp_static_v2.cpp"
 }
-#line 352 "cpp_static_v2.cpp.cpp"
+#line 353 "cpp_static_v2.cpp.cpp"
 #line 12 "cpp_static_v2.cpp"
 template <int = 0>
 #line 12 "cpp_static_v2.cpp"
@@ -365,7 +366,7 @@ template <int = 0>
     return __h;
 #line 12 "cpp_static_v2.cpp"
 }
-#line 369 "cpp_static_v2.cpp.cpp"
+#line 370 "cpp_static_v2.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -377,7 +378,7 @@ HOT_NODEBUG static hot::ShellCore* Counter__new_default()
     return Counter__build(false);
 #line 12 "cpp_static_v2.cpp"
 }
-#line 381 "cpp_static_v2.cpp.cpp"
+#line 382 "cpp_static_v2.cpp.cpp"
 
 [[maybe_unused]] HOT_HIDDEN static void Counter__ctor_export0(hot::ShellBase* __s)
 {
@@ -436,7 +437,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return {static_cast<Actor*>(p), p};
 #line 9 "cpp_static_v2.cpp"
 }
-#line 440 "cpp_static_v2.cpp.cpp"
+#line 441 "cpp_static_v2.cpp.cpp"
 
 #line 12 "cpp_static_v2.cpp"
 HOT_NODEBUG static hot::Instance Counter__make_0([[maybe_unused]] void** __a)
@@ -450,7 +451,7 @@ HOT_NODEBUG static hot::Instance Counter__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 12 "cpp_static_v2.cpp"
 }
-#line 454 "cpp_static_v2.cpp.cpp"
+#line 455 "cpp_static_v2.cpp.cpp"
 
 static const hot::CtorEntry Counter__constructors[] = {
     {hot::ctor_key<>(), &Counter__make_0, hot::ctor_write_mask<>()},
@@ -465,7 +466,7 @@ static const hot::CtorEntry Counter__constructors[] = {
     return state_of(__self)->ctor();
 #line 12 "cpp_static_v2.cpp"
 }
-#line 469 "cpp_static_v2.cpp.cpp"
+#line 470 "cpp_static_v2.cpp.cpp"
 #line 12 "cpp_static_v2.cpp"
 void hot_state_Counter::ctor()
 #line 12 "cpp_static_v2.cpp"
@@ -490,7 +491,7 @@ void hot_state_Counter::ctor()
 
 #line 12 "cpp_static_v2.cpp"
 }
-#line 494 "cpp_static_v2.cpp.cpp"
+#line 495 "cpp_static_v2.cpp.cpp"
 
 #line 14 "cpp_static_v2.cpp"
 void hot_state_Counter::Tick(float dt)
@@ -523,7 +524,7 @@ void hot_state_Counter::Tick(float dt)
     
 #line 22 "cpp_static_v2.cpp"
 }
-#line 527 "cpp_static_v2.cpp.cpp"
+#line 528 "cpp_static_v2.cpp.cpp"
 
 #line 24 "cpp_static_v2.cpp"
 [[maybe_unused]] HOT_HIDDEN static int Counter__Peek(Counter_Shell* __self)
@@ -533,7 +534,7 @@ void hot_state_Counter::Tick(float dt)
     return state_of(__self)->Peek();
 #line 24 "cpp_static_v2.cpp"
 }
-#line 537 "cpp_static_v2.cpp.cpp"
+#line 538 "cpp_static_v2.cpp.cpp"
 #line 24 "cpp_static_v2.cpp"
 int hot_state_Counter::Peek()
 #line 24 "cpp_static_v2.cpp"
@@ -561,18 +562,18 @@ int hot_state_Counter::Peek()
     
 #line 28 "cpp_static_v2.cpp"
 }
-#line 565 "cpp_static_v2.cpp.cpp"
+#line 566 "cpp_static_v2.cpp.cpp"
 
 
 #line 30 "cpp_static_v2.cpp"
 int Counter__s_scale(int v) { return v * Counter__s_kFactor; }
 
-#line 571 "cpp_static_v2.cpp.cpp"
+#line 572 "cpp_static_v2.cpp.cpp"
 
 #line 33 "cpp_static_v2.cpp"
 int Counter__s_plus(int a, int b) { return a + b; }
 
-#line 576 "cpp_static_v2.cpp.cpp"
+#line 577 "cpp_static_v2.cpp.cpp"
 
 #line 50 "cpp_static_v2.cpp"
 int tally()
@@ -580,7 +581,7 @@ int tally()
     return Counter__s_scale(static_cast<int>(hot_mod()->Counter__s_count)) + hot_mod()->Counter__s_hits;
 }
 
-#line 584 "cpp_static_v2.cpp.cpp"
+#line 585 "cpp_static_v2.cpp.cpp"
 extern "C" void script_register(hot::Registry& reg)
 {
     GEN = reg.generation();

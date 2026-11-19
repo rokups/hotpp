@@ -29,6 +29,7 @@ extern hot::ClassRecord Fighter_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Fighter_Shell : Actor, hot::ShellCore, std::enable_shared_from_this<Fighter_Shell> {
+    friend struct hot_state_Fighter;
 #line 7 "aot_demo.hot"
     template <class... A>
 #line 7 "aot_demo.hot"
@@ -41,7 +42,7 @@ struct Fighter_Shell : Actor, hot::ShellCore, std::enable_shared_from_this<Fight
     }
 #line 7 "aot_demo.hot"
     ~Fighter_Shell() override { hot::finish_object(this, &Fighter_record); }
-#line 48 "aot_demo.hot.cpp"
+#line 49 "aot_demo.hot.cpp"
 #line 7 "aot_demo.hot"
     template <class... A>
 #line 7 "aot_demo.hot"
@@ -50,7 +51,7 @@ struct Fighter_Shell : Actor, hot::ShellCore, std::enable_shared_from_this<Fight
     {
 #line 7 "aot_demo.hot"
     }
-#line 57 "aot_demo.hot.cpp"
+#line 58 "aot_demo.hot.cpp"
 #line 7 "aot_demo.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 7 "aot_demo.hot"
@@ -59,27 +60,27 @@ struct Fighter_Shell : Actor, hot::ShellCore, std::enable_shared_from_this<Fight
         return Actor::TakeDamage(a0, a1);
 #line 7 "aot_demo.hot"
     }
-#line 66 "aot_demo.hot.cpp"
+#line 67 "aot_demo.hot.cpp"
 
 #line 7 "aot_demo.hot"
     void Tick(float a0) override;
-#line 70 "aot_demo.hot.cpp"
+#line 71 "aot_demo.hot.cpp"
 
 #line 7 "aot_demo.hot"
     void TakeDamage(float a0) override;
-#line 74 "aot_demo.hot.cpp"
+#line 75 "aot_demo.hot.cpp"
 #line 8 "aot_demo.hot"
     int32_t hp = hot::field_init<int32_t>(100);
-#line 77 "aot_demo.hot.cpp"
+#line 78 "aot_demo.hot.cpp"
 #line 9 "aot_demo.hot"
     int32_t ticks = hot::field_init<int32_t>(0);
-#line 80 "aot_demo.hot.cpp"
+#line 81 "aot_demo.hot.cpp"
 #line 11 "aot_demo.hot"
     float shield_raw = hot::field_init<float>(0.0f);
-#line 83 "aot_demo.hot.cpp"
+#line 84 "aot_demo.hot.cpp"
 #line 10 "aot_demo.hot"
     int32_t __p_Level = hot::field_init<int32_t>(1);
-#line 86 "aot_demo.hot.cpp"
+#line 87 "aot_demo.hot.cpp"
 
 #line 7 "aot_demo.hot"
     void __b_ctor(int32_t start);
@@ -101,7 +102,7 @@ struct Fighter_Shell : Actor, hot::ShellCore, std::enable_shared_from_this<Fight
     float __b_get_Shield();
 #line 7 "aot_demo.hot"
     void __b_set_Shield(float value);
-#line 108 "aot_demo.hot.cpp"
+#line 109 "aot_demo.hot.cpp"
 };
 
 
@@ -110,6 +111,7 @@ extern hot::ClassRecord Veteran_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Veteran_Shell : Fighter_Shell {
+    friend struct hot_state_Veteran;
 #line 43 "aot_demo.hot"
     template <class... A>
 #line 43 "aot_demo.hot"
@@ -124,7 +126,7 @@ struct Veteran_Shell : Fighter_Shell {
     }
 #line 43 "aot_demo.hot"
     ~Veteran_Shell() override { hot::finish_object(this, &Veteran_record); }
-#line 413 "aot_demo.hot.cpp"
+#line 415 "aot_demo.hot.cpp"
 #line 43 "aot_demo.hot"
     template <class... A>
 #line 43 "aot_demo.hot"
@@ -133,17 +135,17 @@ struct Veteran_Shell : Fighter_Shell {
     {
 #line 43 "aot_demo.hot"
     }
-#line 422 "aot_demo.hot.cpp"
+#line 424 "aot_demo.hot.cpp"
 
 #line 43 "aot_demo.hot"
     void Tick(float a0) override;
-#line 426 "aot_demo.hot.cpp"
+#line 428 "aot_demo.hot.cpp"
 #line 44 "aot_demo.hot"
     int32_t rage = hot::field_init<int32_t>(3);
-#line 429 "aot_demo.hot.cpp"
+#line 431 "aot_demo.hot.cpp"
 #line 45 "aot_demo.hot"
     int32_t parent_power = hot::field_init<int32_t>(0);
-#line 432 "aot_demo.hot.cpp"
+#line 434 "aot_demo.hot.cpp"
 
 #line 43 "aot_demo.hot"
     void __b_ctor(int32_t start, int32_t r);
@@ -155,7 +157,7 @@ struct Veteran_Shell : Fighter_Shell {
     int32_t __b_Attack();
 #line 43 "aot_demo.hot"
     void __b_Tick(float dt);
-#line 444 "aot_demo.hot.cpp"
+#line 446 "aot_demo.hot.cpp"
 };
 
 
@@ -164,6 +166,7 @@ extern hot::ClassRecord Spawner_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Spawner_Shell : Actor, hot::ShellCore {
+    friend struct hot_state_Spawner;
 #line 66 "aot_demo.hot"
     template <class... A>
 #line 66 "aot_demo.hot"
@@ -176,7 +179,7 @@ struct Spawner_Shell : Actor, hot::ShellCore {
     }
 #line 66 "aot_demo.hot"
     ~Spawner_Shell() override { hot::finish_object(this, &Spawner_record); }
-#line 649 "aot_demo.hot.cpp"
+#line 652 "aot_demo.hot.cpp"
 #line 66 "aot_demo.hot"
     template <class... A>
 #line 66 "aot_demo.hot"
@@ -185,7 +188,7 @@ struct Spawner_Shell : Actor, hot::ShellCore {
     {
 #line 66 "aot_demo.hot"
     }
-#line 658 "aot_demo.hot.cpp"
+#line 661 "aot_demo.hot.cpp"
 #line 66 "aot_demo.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 66 "aot_demo.hot"
@@ -194,7 +197,7 @@ struct Spawner_Shell : Actor, hot::ShellCore {
         return Actor::TakeDamage(a0);
 #line 66 "aot_demo.hot"
     }
-#line 667 "aot_demo.hot.cpp"
+#line 670 "aot_demo.hot.cpp"
 #line 66 "aot_demo.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 66 "aot_demo.hot"
@@ -203,28 +206,28 @@ struct Spawner_Shell : Actor, hot::ShellCore {
         return Actor::TakeDamage(a0, a1);
 #line 66 "aot_demo.hot"
     }
-#line 676 "aot_demo.hot.cpp"
+#line 679 "aot_demo.hot.cpp"
 
 #line 66 "aot_demo.hot"
     void Tick(float a0) override;
-#line 680 "aot_demo.hot.cpp"
+#line 683 "aot_demo.hot.cpp"
 #line 67 "aot_demo.hot"
     std::shared_ptr<Fighter> kid = hot::field_init<std::shared_ptr<Fighter>>(nullptr);
-#line 683 "aot_demo.hot.cpp"
+#line 686 "aot_demo.hot.cpp"
 #line 68 "aot_demo.hot"
     int32_t power = hot::field_init<int32_t>(0);
-#line 686 "aot_demo.hot.cpp"
+#line 689 "aot_demo.hot.cpp"
 #line 69 "aot_demo.hot"
     int32_t attack = hot::field_init<int32_t>(0);
-#line 689 "aot_demo.hot.cpp"
+#line 692 "aot_demo.hot.cpp"
 #line 70 "aot_demo.hot"
     bool is_veteran = hot::field_init<bool>(false);
-#line 692 "aot_demo.hot.cpp"
+#line 695 "aot_demo.hot.cpp"
 
 #line 66 "aot_demo.hot"
     void __b_dtor();
 #line 66 "aot_demo.hot"
     void __b_Tick(float dt);
-#line 698 "aot_demo.hot.cpp"
+#line 701 "aot_demo.hot.cpp"
 };
 

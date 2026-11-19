@@ -180,6 +180,7 @@ extern hot::ClassRecord Holder_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Holder_Shell final : Actor, hot::ShellBase {
+    friend struct hot_state_Holder;
 #line 32 "operators_struct.hot"
     template <class... A>
 #line 32 "operators_struct.hot"
@@ -192,7 +193,7 @@ struct Holder_Shell final : Actor, hot::ShellBase {
     }
 #line 32 "operators_struct.hot"
     ~Holder_Shell() override { hot::destroy_state(this); }
-#line 196 "operators_struct.hot.cpp"
+#line 197 "operators_struct.hot.cpp"
 #line 32 "operators_struct.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 32 "operators_struct.hot"
@@ -201,7 +202,7 @@ struct Holder_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0);
 #line 32 "operators_struct.hot"
     }
-#line 205 "operators_struct.hot.cpp"
+#line 206 "operators_struct.hot.cpp"
 #line 32 "operators_struct.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 32 "operators_struct.hot"
@@ -210,7 +211,7 @@ struct Holder_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0, a1);
 #line 32 "operators_struct.hot"
     }
-#line 214 "operators_struct.hot.cpp"
+#line 215 "operators_struct.hot.cpp"
 
 #line 32 "operators_struct.hot"
     void Tick(float a0) override
@@ -220,7 +221,7 @@ struct Holder_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Holder_SLOT_Tick, a0);
 #line 32 "operators_struct.hot"
     }
-#line 224 "operators_struct.hot.cpp"
+#line 225 "operators_struct.hot.cpp"
 
 #line 32 "operators_struct.hot"
     void TakeDamage(float a0) override
@@ -230,7 +231,7 @@ struct Holder_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Holder_SLOT_TakeDamage_f, a0);
 #line 32 "operators_struct.hot"
     }
-#line 234 "operators_struct.hot.cpp"
+#line 235 "operators_struct.hot.cpp"
 
 #line 32 "operators_struct.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -240,7 +241,7 @@ struct Holder_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, Holder_SLOT_TakeDamage_Af, a0, a1);
 #line 32 "operators_struct.hot"
     }
-#line 244 "operators_struct.hot.cpp"
+#line 245 "operators_struct.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -270,7 +271,7 @@ struct hot_state_Holder {
         return static_cast<Holder_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 32 "operators_struct.hot"
     }
-#line 274 "operators_struct.hot.cpp"
+#line 275 "operators_struct.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 32 "operators_struct.hot"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -280,48 +281,48 @@ struct hot_state_Holder {
         return static_cast<Holder_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 32 "operators_struct.hot"
     }
-#line 284 "operators_struct.hot.cpp"
+#line 285 "operators_struct.hot.cpp"
 };
 
 #line 33 "operators_struct.hot"
 static void Holder__init_ticks(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 289 "operators_struct.hot.cpp"
+#line 290 "operators_struct.hot.cpp"
 #line 34 "operators_struct.hot"
 static void Holder__init_r_add(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 292 "operators_struct.hot.cpp"
+#line 293 "operators_struct.hot.cpp"
 #line 35 "operators_struct.hot"
 static void Holder__init_r_neg(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 295 "operators_struct.hot.cpp"
+#line 296 "operators_struct.hot.cpp"
 #line 36 "operators_struct.hot"
 static void Holder__init_r_mul(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 298 "operators_struct.hot.cpp"
+#line 299 "operators_struct.hot.cpp"
 #line 37 "operators_struct.hot"
 static void Holder__init_r_lt(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 301 "operators_struct.hot.cpp"
+#line 302 "operators_struct.hot.cpp"
 #line 38 "operators_struct.hot"
 static void Holder__init_r_gt(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 304 "operators_struct.hot.cpp"
+#line 305 "operators_struct.hot.cpp"
 #line 39 "operators_struct.hot"
 static void Holder__init_r_index(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 307 "operators_struct.hot.cpp"
+#line 308 "operators_struct.hot.cpp"
 #line 40 "operators_struct.hot"
 static void Holder__init_r_compound(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 310 "operators_struct.hot.cpp"
+#line 311 "operators_struct.hot.cpp"
 #line 41 "operators_struct.hot"
 static void Holder__init_r_eq(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 313 "operators_struct.hot.cpp"
+#line 314 "operators_struct.hot.cpp"
 #line 42 "operators_struct.hot"
 static void Holder__init_r_ne(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 316 "operators_struct.hot.cpp"
+#line 317 "operators_struct.hot.cpp"
 #line 43 "operators_struct.hot"
 static void Holder__init_r_pair_eq(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 319 "operators_struct.hot.cpp"
+#line 320 "operators_struct.hot.cpp"
 #line 44 "operators_struct.hot"
 static void Holder__init_r_pair_ne(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 322 "operators_struct.hot.cpp"
+#line 323 "operators_struct.hot.cpp"
 #line 45 "operators_struct.hot"
 static void Holder__init_r_sorted(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 325 "operators_struct.hot.cpp"
+#line 326 "operators_struct.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -392,7 +393,7 @@ HOT_HIDDEN static auto Holder__plan()
     return std::make_pair(Holder__super_args(), std::tuple<>());
 #line 32 "operators_struct.hot"
 }
-#line 396 "operators_struct.hot.cpp"
+#line 397 "operators_struct.hot.cpp"
 using Holder_SuperArgs = decltype(Holder__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -417,7 +418,7 @@ HOT_NODEBUG static hot::ShellBase* Holder__construct(void* mem, const char* key,
     return nullptr;
 #line 32 "operators_struct.hot"
 }
-#line 421 "operators_struct.hot.cpp"
+#line 422 "operators_struct.hot.cpp"
 
 static const char* const Holder__construct_keys[] = {typeid(Holder_SuperArgs).name(), nullptr};
 
@@ -433,7 +434,7 @@ HOT_HIDDEN static Holder_Shell* Holder__build([[maybe_unused]] bool __note)
     return __self;
 #line 32 "operators_struct.hot"
 }
-#line 437 "operators_struct.hot.cpp"
+#line 438 "operators_struct.hot.cpp"
 #line 32 "operators_struct.hot"
 [[maybe_unused]] HOT_HIDDEN static Holder_Shell* Holder__new()
 #line 32 "operators_struct.hot"
@@ -442,7 +443,7 @@ HOT_HIDDEN static Holder_Shell* Holder__build([[maybe_unused]] bool __note)
     return Holder__build(true);
 #line 32 "operators_struct.hot"
 }
-#line 446 "operators_struct.hot.cpp"
+#line 447 "operators_struct.hot.cpp"
 #line 32 "operators_struct.hot"
 template <int = 0>
 #line 32 "operators_struct.hot"
@@ -457,7 +458,7 @@ template <int = 0>
     return __h;
 #line 32 "operators_struct.hot"
 }
-#line 461 "operators_struct.hot.cpp"
+#line 462 "operators_struct.hot.cpp"
 
 static void* Holder___native__thunk(hot::ShellCore* __s)
 {
@@ -497,7 +498,7 @@ HOT_NODEBUG static hot::Instance Holder_create()
     return {static_cast<Actor*>(p), p};
 #line 32 "operators_struct.hot"
 }
-#line 501 "operators_struct.hot.cpp"
+#line 502 "operators_struct.hot.cpp"
 
 #line 32 "operators_struct.hot"
 HOT_NODEBUG static hot::Instance Holder__make_0([[maybe_unused]] void** __a)
@@ -507,7 +508,7 @@ HOT_NODEBUG static hot::Instance Holder__make_0([[maybe_unused]] void** __a)
     return Holder_create();
 #line 32 "operators_struct.hot"
 }
-#line 511 "operators_struct.hot.cpp"
+#line 512 "operators_struct.hot.cpp"
 
 static const hot::CtorEntry Holder__constructors[] = {
     {hot::ctor_key<>(), &Holder__make_0, hot::ctor_write_mask<>()},
@@ -526,7 +527,7 @@ static void Vec2__ctor(Vec2* __self, float ax, float ay)
     __st->y = ay;
 #line 15 "operators_struct.hot"
 }
-#line 530 "operators_struct.hot.cpp"
+#line 531 "operators_struct.hot.cpp"
 
 #line 16 "operators_struct.hot"
 static Vec2 Vec2__op_add(Vec2* __self, const Vec2& o)
@@ -538,7 +539,7 @@ static Vec2 Vec2__op_add(Vec2* __self, const Vec2& o)
     return Vec2(__st->x + hot::deref(o).x, __st->y + hot::deref(o).y);
 #line 16 "operators_struct.hot"
 }
-#line 542 "operators_struct.hot.cpp"
+#line 543 "operators_struct.hot.cpp"
 
 #line 17 "operators_struct.hot"
 static Vec2 Vec2__op_neg(Vec2* __self)
@@ -550,7 +551,7 @@ static Vec2 Vec2__op_neg(Vec2* __self)
     return Vec2(-__st->x, -__st->y);
 #line 17 "operators_struct.hot"
 }
-#line 554 "operators_struct.hot.cpp"
+#line 555 "operators_struct.hot.cpp"
 
 #line 18 "operators_struct.hot"
 static Vec2 Vec2__op_mul(Vec2* __self, float f)
@@ -562,7 +563,7 @@ static Vec2 Vec2__op_mul(Vec2* __self, float f)
     return Vec2(__st->x * f, __st->y * f);
 #line 18 "operators_struct.hot"
 }
-#line 566 "operators_struct.hot.cpp"
+#line 567 "operators_struct.hot.cpp"
 
 #line 19 "operators_struct.hot"
 static bool Vec2__op_lt(Vec2* __self, const Vec2& o)
@@ -574,7 +575,7 @@ static bool Vec2__op_lt(Vec2* __self, const Vec2& o)
     return __st->x < hot::deref(o).x;
 #line 19 "operators_struct.hot"
 }
-#line 578 "operators_struct.hot.cpp"
+#line 579 "operators_struct.hot.cpp"
 
 #line 20 "operators_struct.hot"
 static bool Vec2__op_gt(Vec2* __self, const Vec2& o)
@@ -586,7 +587,7 @@ static bool Vec2__op_gt(Vec2* __self, const Vec2& o)
     return __st->x > hot::deref(o).x;
 #line 20 "operators_struct.hot"
 }
-#line 590 "operators_struct.hot.cpp"
+#line 591 "operators_struct.hot.cpp"
 
 #line 21 "operators_struct.hot"
 static float& Vec2__op_index(Vec2* __self, int32_t i)
@@ -598,7 +599,7 @@ static float& Vec2__op_index(Vec2* __self, int32_t i)
     return hot::index(__st->data, i);
 #line 21 "operators_struct.hot"
 }
-#line 602 "operators_struct.hot.cpp"
+#line 603 "operators_struct.hot.cpp"
 
 #line 47 "operators_struct.hot"
 void hot_state_Holder::Tick(float dt)
@@ -690,7 +691,7 @@ void hot_state_Holder::Tick(float dt)
     HOT_TRACE_LINE(); __st->r_sorted = (hot::deref(hot::index(list, 0)).x == 1.0f && hot::deref(hot::index(list, 1)).x == 3.0f && hot::deref(hot::index(list, 2)).x == 4.0f) ? 1 : 0;
 #line 82 "operators_struct.hot"
 }
-#line 694 "operators_struct.hot.cpp"
+#line 695 "operators_struct.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

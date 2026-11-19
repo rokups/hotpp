@@ -43,6 +43,7 @@ extern hot::ClassRecord Tracker_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Tracker_Shell final : Actor, hot::ShellBase {
+    friend struct hot_state_Tracker;
 #line 10 "native_std_v2.hot"
     template <class... A>
 #line 10 "native_std_v2.hot"
@@ -55,7 +56,7 @@ struct Tracker_Shell final : Actor, hot::ShellBase {
     }
 #line 10 "native_std_v2.hot"
     ~Tracker_Shell() override { hot::destroy_state(this); }
-#line 59 "native_std_v2.hot.cpp"
+#line 60 "native_std_v2.hot.cpp"
 #line 10 "native_std_v2.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 10 "native_std_v2.hot"
@@ -64,7 +65,7 @@ struct Tracker_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0);
 #line 10 "native_std_v2.hot"
     }
-#line 68 "native_std_v2.hot.cpp"
+#line 69 "native_std_v2.hot.cpp"
 #line 10 "native_std_v2.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 10 "native_std_v2.hot"
@@ -73,7 +74,7 @@ struct Tracker_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0, a1);
 #line 10 "native_std_v2.hot"
     }
-#line 77 "native_std_v2.hot.cpp"
+#line 78 "native_std_v2.hot.cpp"
 
 #line 10 "native_std_v2.hot"
     void Tick(float a0) override
@@ -83,7 +84,7 @@ struct Tracker_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 10 "native_std_v2.hot"
     }
-#line 87 "native_std_v2.hot.cpp"
+#line 88 "native_std_v2.hot.cpp"
 
 #line 10 "native_std_v2.hot"
     void TakeDamage(float a0) override
@@ -93,7 +94,7 @@ struct Tracker_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 10 "native_std_v2.hot"
     }
-#line 97 "native_std_v2.hot.cpp"
+#line 98 "native_std_v2.hot.cpp"
 
 #line 10 "native_std_v2.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -103,7 +104,7 @@ struct Tracker_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 10 "native_std_v2.hot"
     }
-#line 107 "native_std_v2.hot.cpp"
+#line 108 "native_std_v2.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -127,7 +128,7 @@ struct hot_state_Tracker {
         return static_cast<Tracker_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 10 "native_std_v2.hot"
     }
-#line 131 "native_std_v2.hot.cpp"
+#line 132 "native_std_v2.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 10 "native_std_v2.hot"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -137,30 +138,30 @@ struct hot_state_Tracker {
         return static_cast<Tracker_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 10 "native_std_v2.hot"
     }
-#line 141 "native_std_v2.hot.cpp"
+#line 142 "native_std_v2.hot.cpp"
 };
 
 #line 11 "native_std_v2.hot"
 static void Tracker__init_title(void*, void* f) { using T = std::string; new (f) T("new title"); }
-#line 146 "native_std_v2.hot.cpp"
+#line 147 "native_std_v2.hot.cpp"
 #line 12 "native_std_v2.hot"
 static void Tracker__init_history(void*, void* f) { using T = std::vector<int32_t>; new (f) T(std::vector<int32_t>()); }
-#line 149 "native_std_v2.hot.cpp"
+#line 150 "native_std_v2.hot.cpp"
 #line 13 "native_std_v2.hot"
 static void Tracker__init_dist(void*, void* f) { using T = float; new (f) T(0.0f); }
-#line 152 "native_std_v2.hot.cpp"
+#line 153 "native_std_v2.hot.cpp"
 #line 14 "native_std_v2.hot"
 static void Tracker__init_lowest(void*, void* f) { using T = float; new (f) T(0.0f); }
-#line 155 "native_std_v2.hot.cpp"
+#line 156 "native_std_v2.hot.cpp"
 #line 15 "native_std_v2.hot"
 static void Tracker__init_sum(void*, void* f) { using T = float; new (f) T(0.0f); }
-#line 158 "native_std_v2.hot.cpp"
+#line 159 "native_std_v2.hot.cpp"
 #line 16 "native_std_v2.hot"
 static void Tracker__init_described(void*, void* f) { using T = std::string; new (f) T(""); }
-#line 161 "native_std_v2.hot.cpp"
+#line 162 "native_std_v2.hot.cpp"
 #line 17 "native_std_v2.hot"
 static void Tracker__init_note(void*, void* f) { using T = std::string; new (f) T("note from generation 2"); }
-#line 164 "native_std_v2.hot.cpp"
+#line 165 "native_std_v2.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -219,7 +220,7 @@ HOT_HIDDEN static auto Tracker__plan()
     return std::make_pair(Tracker__super_args(), std::tuple<>());
 #line 10 "native_std_v2.hot"
 }
-#line 223 "native_std_v2.hot.cpp"
+#line 224 "native_std_v2.hot.cpp"
 using Tracker_SuperArgs = decltype(Tracker__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -244,7 +245,7 @@ HOT_NODEBUG static hot::ShellBase* Tracker__construct(void* mem, const char* key
     return nullptr;
 #line 10 "native_std_v2.hot"
 }
-#line 248 "native_std_v2.hot.cpp"
+#line 249 "native_std_v2.hot.cpp"
 
 static const char* const Tracker__construct_keys[] = {typeid(Tracker_SuperArgs).name(), nullptr};
 
@@ -260,7 +261,7 @@ HOT_HIDDEN static Tracker_Shell* Tracker__build([[maybe_unused]] bool __note)
     return __self;
 #line 10 "native_std_v2.hot"
 }
-#line 264 "native_std_v2.hot.cpp"
+#line 265 "native_std_v2.hot.cpp"
 #line 10 "native_std_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static Tracker_Shell* Tracker__new()
 #line 10 "native_std_v2.hot"
@@ -269,7 +270,7 @@ HOT_HIDDEN static Tracker_Shell* Tracker__build([[maybe_unused]] bool __note)
     return Tracker__build(true);
 #line 10 "native_std_v2.hot"
 }
-#line 273 "native_std_v2.hot.cpp"
+#line 274 "native_std_v2.hot.cpp"
 #line 10 "native_std_v2.hot"
 template <int = 0>
 #line 10 "native_std_v2.hot"
@@ -284,7 +285,7 @@ template <int = 0>
     return __h;
 #line 10 "native_std_v2.hot"
 }
-#line 288 "native_std_v2.hot.cpp"
+#line 289 "native_std_v2.hot.cpp"
 
 static void* Tracker___native__thunk(hot::ShellCore* __s)
 {
@@ -324,7 +325,7 @@ HOT_NODEBUG static hot::Instance Tracker_create()
     return {static_cast<Actor*>(p), p};
 #line 10 "native_std_v2.hot"
 }
-#line 328 "native_std_v2.hot.cpp"
+#line 329 "native_std_v2.hot.cpp"
 
 #line 10 "native_std_v2.hot"
 HOT_NODEBUG static hot::Instance Tracker__make_0([[maybe_unused]] void** __a)
@@ -334,7 +335,7 @@ HOT_NODEBUG static hot::Instance Tracker__make_0([[maybe_unused]] void** __a)
     return Tracker_create();
 #line 10 "native_std_v2.hot"
 }
-#line 338 "native_std_v2.hot.cpp"
+#line 339 "native_std_v2.hot.cpp"
 
 static const hot::CtorEntry Tracker__constructors[] = {
     {hot::ctor_key<>(), &Tracker__make_0, hot::ctor_write_mask<>()},
@@ -385,7 +386,7 @@ void hot_state_Tracker::Tick(float dt)
     HOT_TRACE_LINE(); hot::deref(__st->history).push_back(hot::float_to_int<int32_t>(hot::deref(__st->history).size()) * 10);
 #line 31 "native_std_v2.hot"
 }
-#line 389 "native_std_v2.hot.cpp"
+#line 390 "native_std_v2.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

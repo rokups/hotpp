@@ -35,6 +35,7 @@ extern hot::ClassRecord Base_record;
 
 // The shell overrides every virtual of hot::PlainObject. Each stub reads one slot.
 struct Base_Shell : hot::PlainObject, hot::ShellBase {
+    friend struct hot_state_Base;
 #line 4 "async_virtual.hot"
     template <class... A>
 #line 4 "async_virtual.hot"
@@ -47,7 +48,7 @@ struct Base_Shell : hot::PlainObject, hot::ShellBase {
     }
 #line 4 "async_virtual.hot"
     ~Base_Shell() override { hot::destroy_state(this); }
-#line 51 "async_virtual.hot.cpp"
+#line 52 "async_virtual.hot.cpp"
 #line 4 "async_virtual.hot"
     template <class... A>
 #line 4 "async_virtual.hot"
@@ -56,7 +57,7 @@ struct Base_Shell : hot::PlainObject, hot::ShellBase {
     {
 #line 4 "async_virtual.hot"
     }
-#line 60 "async_virtual.hot.cpp"
+#line 61 "async_virtual.hot.cpp"
 #line 4 "async_virtual.hot"
     explicit Base_Shell(hot::CloneFrom, const hot::ShellBase* src)
 #line 4 "async_virtual.hot"
@@ -65,7 +66,7 @@ struct Base_Shell : hot::PlainObject, hot::ShellBase {
         hot::clone_state(this, &Base_record, src);
 #line 4 "async_virtual.hot"
     }
-#line 69 "async_virtual.hot.cpp"
+#line 70 "async_virtual.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -126,7 +127,7 @@ HOT_HIDDEN static auto Base__plan()
     return std::make_pair(Base__super_args(), std::tuple<>());
 #line 4 "async_virtual.hot"
 }
-#line 130 "async_virtual.hot.cpp"
+#line 131 "async_virtual.hot.cpp"
 using Base_SuperArgs = decltype(Base__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -159,7 +160,7 @@ HOT_NODEBUG static hot::ShellBase* Base__construct(void* mem, const char* key, c
     return nullptr;
 #line 4 "async_virtual.hot"
 }
-#line 163 "async_virtual.hot.cpp"
+#line 164 "async_virtual.hot.cpp"
 
 static const char* const Base__construct_keys[] = {typeid(Base_SuperArgs).name(), hot::kCloneKey, nullptr};
 
@@ -175,7 +176,7 @@ HOT_HIDDEN static Base_Shell* Base__build([[maybe_unused]] bool __note)
     return __self;
 #line 4 "async_virtual.hot"
 }
-#line 179 "async_virtual.hot.cpp"
+#line 180 "async_virtual.hot.cpp"
 #line 4 "async_virtual.hot"
 [[maybe_unused]] HOT_HIDDEN static Base_Shell* Base__new()
 #line 4 "async_virtual.hot"
@@ -184,7 +185,7 @@ HOT_HIDDEN static Base_Shell* Base__build([[maybe_unused]] bool __note)
     return Base__build(true);
 #line 4 "async_virtual.hot"
 }
-#line 188 "async_virtual.hot.cpp"
+#line 189 "async_virtual.hot.cpp"
 #line 4 "async_virtual.hot"
 template <int = 0>
 #line 4 "async_virtual.hot"
@@ -199,7 +200,7 @@ template <int = 0>
     return __h;
 #line 4 "async_virtual.hot"
 }
-#line 203 "async_virtual.hot.cpp"
+#line 204 "async_virtual.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -213,7 +214,7 @@ static hot::Task<int32_t> Base__Compute__thunk(hot::PlainObject* __a, int32_t x)
     return hot::call<hot::Task<int32_t>(hot::PlainObject*, int32_t)>(__self, Base_SLOT_Compute, x);
 #line 5 "async_virtual.hot"
 }
-#line 217 "async_virtual.hot.cpp"
+#line 218 "async_virtual.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -227,7 +228,7 @@ static hot::Task<int32_t> Base__Run__thunk(hot::PlainObject* __a, int32_t x)
     return hot::call<hot::Task<int32_t>(hot::PlainObject*, int32_t)>(__self, Base_SLOT_Run, x);
 #line 9 "async_virtual.hot"
 }
-#line 231 "async_virtual.hot.cpp"
+#line 232 "async_virtual.hot.cpp"
 
 static void* Base___native__thunk(hot::ShellCore* __s)
 {
@@ -266,7 +267,7 @@ HOT_NODEBUG static hot::Instance Base_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 4 "async_virtual.hot"
 }
-#line 270 "async_virtual.hot.cpp"
+#line 271 "async_virtual.hot.cpp"
 
 #line 4 "async_virtual.hot"
 HOT_NODEBUG static hot::Instance Base__make_0([[maybe_unused]] void** __a)
@@ -276,7 +277,7 @@ HOT_NODEBUG static hot::Instance Base__make_0([[maybe_unused]] void** __a)
     return Base_create();
 #line 4 "async_virtual.hot"
 }
-#line 280 "async_virtual.hot.cpp"
+#line 281 "async_virtual.hot.cpp"
 
 static const hot::CtorEntry Base__constructors[] = {
     {hot::ctor_key<>(), &Base__make_0, hot::ctor_write_mask<>()},
@@ -293,6 +294,7 @@ extern hot::ClassRecord Derived_record;
 
 // The shell overrides every virtual of hot::PlainObject. Each stub reads one slot.
 struct Derived_Shell final : Base_Shell {
+    friend struct hot_state_Derived;
 #line 14 "async_virtual.hot"
     template <class... A>
 #line 14 "async_virtual.hot"
@@ -305,7 +307,7 @@ struct Derived_Shell final : Base_Shell {
         hot::init_state(this, &Derived_record);
 #line 14 "async_virtual.hot"
     }
-#line 309 "async_virtual.hot.cpp"
+#line 311 "async_virtual.hot.cpp"
 #line 14 "async_virtual.hot"
     explicit Derived_Shell(hot::CloneFrom, const hot::ShellBase* src) : Base_Shell(hot::ConstructChild{})
 #line 14 "async_virtual.hot"
@@ -314,7 +316,7 @@ struct Derived_Shell final : Base_Shell {
         hot::clone_state(this, &Derived_record, src);
 #line 14 "async_virtual.hot"
     }
-#line 318 "async_virtual.hot.cpp"
+#line 320 "async_virtual.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -363,7 +365,7 @@ HOT_HIDDEN static auto Derived__plan()
     return std::make_pair(std::make_tuple(), std::make_pair(std::move(__up), std::move(__pp.second)));
 #line 14 "async_virtual.hot"
 }
-#line 367 "async_virtual.hot.cpp"
+#line 369 "async_virtual.hot.cpp"
 using Derived_SuperArgs = decltype(Derived__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -396,7 +398,7 @@ HOT_NODEBUG static hot::ShellBase* Derived__construct(void* mem, const char* key
     return nullptr;
 #line 14 "async_virtual.hot"
 }
-#line 400 "async_virtual.hot.cpp"
+#line 402 "async_virtual.hot.cpp"
 
 static const char* const Derived__construct_keys[] = {typeid(Derived_SuperArgs).name(), hot::kCloneKey, nullptr};
 
@@ -412,7 +414,7 @@ HOT_HIDDEN static Derived_Shell* Derived__build([[maybe_unused]] bool __note)
     return __self;
 #line 14 "async_virtual.hot"
 }
-#line 416 "async_virtual.hot.cpp"
+#line 418 "async_virtual.hot.cpp"
 #line 14 "async_virtual.hot"
 [[maybe_unused]] HOT_HIDDEN static Derived_Shell* Derived__new()
 #line 14 "async_virtual.hot"
@@ -421,7 +423,7 @@ HOT_HIDDEN static Derived_Shell* Derived__build([[maybe_unused]] bool __note)
     return Derived__build(true);
 #line 14 "async_virtual.hot"
 }
-#line 425 "async_virtual.hot.cpp"
+#line 427 "async_virtual.hot.cpp"
 #line 14 "async_virtual.hot"
 template <int = 0>
 #line 14 "async_virtual.hot"
@@ -436,7 +438,7 @@ template <int = 0>
     return __h;
 #line 14 "async_virtual.hot"
 }
-#line 440 "async_virtual.hot.cpp"
+#line 442 "async_virtual.hot.cpp"
 
 static void* Derived___native__thunk(hot::ShellCore* __s)
 {
@@ -475,7 +477,7 @@ HOT_NODEBUG static hot::Instance Derived_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 14 "async_virtual.hot"
 }
-#line 479 "async_virtual.hot.cpp"
+#line 481 "async_virtual.hot.cpp"
 
 #line 14 "async_virtual.hot"
 HOT_NODEBUG static hot::Instance Derived__make_0([[maybe_unused]] void** __a)
@@ -485,7 +487,7 @@ HOT_NODEBUG static hot::Instance Derived__make_0([[maybe_unused]] void** __a)
     return Derived_create();
 #line 14 "async_virtual.hot"
 }
-#line 489 "async_virtual.hot.cpp"
+#line 491 "async_virtual.hot.cpp"
 
 static const hot::CtorEntry Derived__constructors[] = {
     {hot::ctor_key<>(), &Derived__make_0, hot::ctor_write_mask<>()},
@@ -500,7 +502,7 @@ static const hot::CtorEntry Derived__constructors[] = {
     return state_of(__self)->Compute(std::forward<int32_t>(x));
 #line 5 "async_virtual.hot"
 }
-#line 504 "async_virtual.hot.cpp"
+#line 506 "async_virtual.hot.cpp"
 #line 5 "async_virtual.hot"
 [[maybe_unused]] static hot::Task<int32_t> Base__Compute_co(hot::detail::TaskOriginData, Base_Shell* __self, int32_t x)
 #line 5 "async_virtual.hot"
@@ -511,7 +513,7 @@ static const hot::CtorEntry Derived__constructors[] = {
     co_return x + 1;
 #line 7 "async_virtual.hot"
 }
-#line 515 "async_virtual.hot.cpp"
+#line 517 "async_virtual.hot.cpp"
 
 #line 5 "async_virtual.hot"
 hot::Task<int32_t> hot_state_Base::Compute(int32_t x)
@@ -537,7 +539,7 @@ hot::Task<int32_t> hot_state_Base::Compute(int32_t x)
     return Base__Compute_co(hot::detail::TaskOriginData{GEN, &hot_live, "Base::Compute"}, __self, std::forward<int32_t>(x));
 #line 7 "async_virtual.hot"
 }
-#line 541 "async_virtual.hot.cpp"
+#line 543 "async_virtual.hot.cpp"
 
 #line 9 "async_virtual.hot"
 [[maybe_unused]] HOT_HIDDEN static hot::Task<int32_t> Base__Run(Base_Shell* __self, int32_t x)
@@ -547,7 +549,7 @@ hot::Task<int32_t> hot_state_Base::Compute(int32_t x)
     return state_of(__self)->Run(std::forward<int32_t>(x));
 #line 9 "async_virtual.hot"
 }
-#line 551 "async_virtual.hot.cpp"
+#line 553 "async_virtual.hot.cpp"
 #line 9 "async_virtual.hot"
 [[maybe_unused]] static hot::Task<int32_t> Base__Run_co(hot::detail::TaskOriginData, Base_Shell* __self, int32_t x)
 #line 9 "async_virtual.hot"
@@ -558,7 +560,7 @@ hot::Task<int32_t> hot_state_Base::Compute(int32_t x)
     co_return co_await Base__Compute_virt(__self, x);
 #line 11 "async_virtual.hot"
 }
-#line 562 "async_virtual.hot.cpp"
+#line 564 "async_virtual.hot.cpp"
 
 #line 9 "async_virtual.hot"
 hot::Task<int32_t> hot_state_Base::Run(int32_t x)
@@ -584,7 +586,7 @@ hot::Task<int32_t> hot_state_Base::Run(int32_t x)
     return Base__Run_co(hot::detail::TaskOriginData{GEN, &hot_live, "Base::Run"}, __self, std::forward<int32_t>(x));
 #line 11 "async_virtual.hot"
 }
-#line 588 "async_virtual.hot.cpp"
+#line 590 "async_virtual.hot.cpp"
 
 #line 15 "async_virtual.hot"
 [[maybe_unused]] HOT_HIDDEN static hot::Task<int32_t> Derived__Compute(Derived_Shell* __self, int32_t x)
@@ -594,7 +596,7 @@ hot::Task<int32_t> hot_state_Base::Run(int32_t x)
     return state_of(__self)->Compute(std::forward<int32_t>(x));
 #line 15 "async_virtual.hot"
 }
-#line 598 "async_virtual.hot.cpp"
+#line 600 "async_virtual.hot.cpp"
 #line 15 "async_virtual.hot"
 [[maybe_unused]] static hot::Task<int32_t> Derived__Compute_co(hot::detail::TaskOriginData, Derived_Shell* __self, int32_t x)
 #line 15 "async_virtual.hot"
@@ -607,7 +609,7 @@ hot::Task<int32_t> hot_state_Base::Run(int32_t x)
     co_return b * 10;
 #line 18 "async_virtual.hot"
 }
-#line 611 "async_virtual.hot.cpp"
+#line 613 "async_virtual.hot.cpp"
 
 #line 15 "async_virtual.hot"
 hot::Task<int32_t> hot_state_Derived::Compute(int32_t x)
@@ -633,7 +635,7 @@ hot::Task<int32_t> hot_state_Derived::Compute(int32_t x)
     return Derived__Compute_co(hot::detail::TaskOriginData{GEN, &hot_live, "Derived::Compute"}, __self, std::forward<int32_t>(x));
 #line 18 "async_virtual.hot"
 }
-#line 637 "async_virtual.hot.cpp"
+#line 639 "async_virtual.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

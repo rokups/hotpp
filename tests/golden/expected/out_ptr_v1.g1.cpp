@@ -33,6 +33,7 @@ extern hot::ClassRecord Parser_record;
 
 // The shell overrides every virtual of hot::PlainObject. Each stub reads one slot.
 struct Parser_Shell final : hot::PlainObject, hot::ShellBase {
+    friend struct hot_state_Parser;
 #line 6 "out_ptr_v1.hot"
     template <class... A>
 #line 6 "out_ptr_v1.hot"
@@ -45,7 +46,7 @@ struct Parser_Shell final : hot::PlainObject, hot::ShellBase {
     }
 #line 6 "out_ptr_v1.hot"
     ~Parser_Shell() override { hot::destroy_state(this); }
-#line 49 "out_ptr_v1.hot.cpp"
+#line 50 "out_ptr_v1.hot.cpp"
 #line 6 "out_ptr_v1.hot"
     explicit Parser_Shell(hot::CloneFrom, const hot::ShellBase* src)
 #line 6 "out_ptr_v1.hot"
@@ -54,7 +55,7 @@ struct Parser_Shell final : hot::PlainObject, hot::ShellBase {
         hot::clone_state(this, &Parser_record, src);
 #line 6 "out_ptr_v1.hot"
     }
-#line 58 "out_ptr_v1.hot.cpp"
+#line 59 "out_ptr_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -108,7 +109,7 @@ HOT_HIDDEN static auto Parser__plan()
     return std::make_pair(Parser__super_args(), std::tuple<>());
 #line 6 "out_ptr_v1.hot"
 }
-#line 112 "out_ptr_v1.hot.cpp"
+#line 113 "out_ptr_v1.hot.cpp"
 using Parser_SuperArgs = decltype(Parser__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -141,7 +142,7 @@ HOT_NODEBUG static hot::ShellBase* Parser__construct(void* mem, const char* key,
     return nullptr;
 #line 6 "out_ptr_v1.hot"
 }
-#line 145 "out_ptr_v1.hot.cpp"
+#line 146 "out_ptr_v1.hot.cpp"
 
 static const char* const Parser__construct_keys[] = {typeid(Parser_SuperArgs).name(), hot::kCloneKey, nullptr};
 
@@ -157,7 +158,7 @@ HOT_HIDDEN static Parser_Shell* Parser__build([[maybe_unused]] bool __note)
     return __self;
 #line 6 "out_ptr_v1.hot"
 }
-#line 161 "out_ptr_v1.hot.cpp"
+#line 162 "out_ptr_v1.hot.cpp"
 #line 6 "out_ptr_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Parser_Shell* Parser__new()
 #line 6 "out_ptr_v1.hot"
@@ -166,7 +167,7 @@ HOT_HIDDEN static Parser_Shell* Parser__build([[maybe_unused]] bool __note)
     return Parser__build(true);
 #line 6 "out_ptr_v1.hot"
 }
-#line 170 "out_ptr_v1.hot.cpp"
+#line 171 "out_ptr_v1.hot.cpp"
 #line 6 "out_ptr_v1.hot"
 template <int = 0>
 #line 6 "out_ptr_v1.hot"
@@ -181,7 +182,7 @@ template <int = 0>
     return __h;
 #line 6 "out_ptr_v1.hot"
 }
-#line 185 "out_ptr_v1.hot.cpp"
+#line 186 "out_ptr_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -195,7 +196,7 @@ static int32_t Parser__Run__thunk(hot::PlainObject* __a)
     return hot::call<int32_t(hot::PlainObject*)>(__self, SLOT_Run);
 #line 7 "out_ptr_v1.hot"
 }
-#line 199 "out_ptr_v1.hot.cpp"
+#line 200 "out_ptr_v1.hot.cpp"
 
 static void* Parser___native__thunk(hot::ShellCore* __s)
 {
@@ -233,7 +234,7 @@ HOT_NODEBUG static hot::Instance Parser_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 6 "out_ptr_v1.hot"
 }
-#line 237 "out_ptr_v1.hot.cpp"
+#line 238 "out_ptr_v1.hot.cpp"
 
 #line 6 "out_ptr_v1.hot"
 HOT_NODEBUG static hot::Instance Parser__make_0([[maybe_unused]] void** __a)
@@ -243,7 +244,7 @@ HOT_NODEBUG static hot::Instance Parser__make_0([[maybe_unused]] void** __a)
     return Parser_create();
 #line 6 "out_ptr_v1.hot"
 }
-#line 247 "out_ptr_v1.hot.cpp"
+#line 248 "out_ptr_v1.hot.cpp"
 
 static const hot::CtorEntry Parser__constructors[] = {
     {hot::ctor_key<>(), &Parser__make_0, hot::ctor_write_mask<>()},
@@ -258,7 +259,7 @@ static const hot::CtorEntry Parser__constructors[] = {
     return state_of(__self)->Run();
 #line 7 "out_ptr_v1.hot"
 }
-#line 262 "out_ptr_v1.hot.cpp"
+#line 263 "out_ptr_v1.hot.cpp"
 #line 7 "out_ptr_v1.hot"
 int32_t hot_state_Parser::Run()
 #line 7 "out_ptr_v1.hot"
@@ -291,7 +292,7 @@ int32_t hot_state_Parser::Run()
     HOT_TRACE_LINE(); return Consumed("12.5xyz", end) + n + hot::float_to_int<int32_t>(v);
 #line 13 "out_ptr_v1.hot"
 }
-#line 295 "out_ptr_v1.hot.cpp"
+#line 296 "out_ptr_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
