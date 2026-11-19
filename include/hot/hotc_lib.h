@@ -389,6 +389,8 @@ struct TranslateResult
     // base as the script writes it. The language server reads them for "override" completion.
     std::map<std::string, std::vector<VirtualMethod>> base_virtuals;
     std::string cpp; // the generated C++ text (valid when ok)
+    // True for optimized AOT code of a unit with [fn_invoker]: the unit keeps its function table.
+    bool keeps_fn_table = false;
     std::string slots_out; // the new slot file content (valid when ok)
     // The signature lines of the slot file (design 5.3): "sig Cls::fn Sig", one for each script
     // function. A backend writes them after "slots_out" and gives both back in "slots_in". A

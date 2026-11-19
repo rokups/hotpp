@@ -93,7 +93,7 @@ int Add(int a, int b) { return a + b; }
 - The table has no entry for `main`, for a `private` function, for an overloaded name and for an instance of a generic function.
 - The host reads the entry with `hot::unit_ref(unit).fns`. A reload gives a new table with a new `FnTable::id` and the new body.
 - The attribute is valid in a script only. In a prelude it is an error. A repeat in one file is an error. A stub cannot have it.
-- `hotc --aot` writes the entries. Optimized AOT code (`--aot-optimized`) has no function table, so it has no `@call` entry.
+- `hotc --aot` writes the entries. Optimized AOT code (`--aot-optimized`) has no function table, except for a unit with this attribute. That unit keeps its function table with the plain entries and the `@call` entries. The unit stays optimized. Other units of the build keep an empty table. `hotc` prints the line `hotc: optimized AOT keeps the function table of <N> unit(s): <unit>, ...`.
 - A unit without the attribute has the same output as before.
 
 ### The array type

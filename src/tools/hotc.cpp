@@ -736,6 +736,7 @@ int run_aot(const Args& args)
         work();
     }
     // The serial merge, in the order of the scripts.
+    std::vector<std::string> kept_tables; // the units that keep the function table in optimized AOT
     for (size_t input = 0; input < count; ++input)
     {
         Slot& slot = results[input];
@@ -753,6 +754,8 @@ int run_aot(const Args& args)
                 if (seen_slot_lines.insert(line).second)
                     slots += line + "\n";
         }
+        if (r.keeps_fn_table)
+            kept_tables.push_back(r.unit);
         names.push_back(r.unit);
         source_hashes.push_back(slot.source_hash);
         iface_infos.push_back(r.iface_info);
@@ -762,6 +765,13 @@ int run_aot(const Args& args)
     }
     if (failed)
         return 1;
+    if (!kept_tables.empty())
+    {
+        std::string line = "hotc: optimized AOT keeps the function table of " + std::to_string(kept_tables.size()) + " unit(s): ";
+        for (size_t i = 0; i < kept_tables.size(); ++i)
+            line += (i ? ", " : "") + kept_tables[i];
+        std::fprintf(stderr, "%s\n", line.c_str());
+    }
     // An import must be a script of the input list: the table has to hold its unit.
     for (size_t i = 0; i < names.size(); ++i)
         for (const auto& imp : units[i].second)
