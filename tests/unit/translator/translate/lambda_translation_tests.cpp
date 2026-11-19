@@ -128,7 +128,7 @@ TEST(LambdaTranslation, WrittenLocalIsACellCapture)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("hot::caps(__self, __cell_c), []([[maybe_unused]] auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); "
                          "[[maybe_unused]] auto& __cell_c = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = "
-                         "state_of(__self); auto& c = *__cell_c;"),
+                         "state_of(__self); [[maybe_unused]] auto& c = *__cell_c;"),
         std::string::npos)
         << r.cpp;
 }

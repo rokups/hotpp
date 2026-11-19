@@ -3073,7 +3073,7 @@ struct Lowerer
         for (auto it = cx.cell_locals.rbegin(); it != cx.cell_locals.rend(); ++it)
             if (!binding_captures({*it}, body_text, false, param_names).empty())
                 l.body.stmts.insert(l.body.stmts.begin(),
-                    make_stmt(RawStmt{"auto& " + *it + " = *__cell_" + *it + ";", 0}));
+                    make_stmt(RawStmt{"[[maybe_unused]] auto& " + *it + " = *__cell_" + *it + ";", 0}));
         fin = outer;
         cx.ret_type = outer_ret;
         cx.ret_value = outer_ret_value;

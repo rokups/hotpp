@@ -250,7 +250,7 @@ void expand_alias_callee(const ParseState& st, ast::Expr& callee)
 // ---------------------------------------------------------------- operator tags
 // An operator name as template arguments: up to 3 chars. The macro HOT_CH3 splits a literal.
 // A class type as a template argument needs C++20, so the name is a list of chars.
-constexpr char op_char(const char* s, std::size_t i)
+[[maybe_unused]] constexpr char op_char(const char* s, std::size_t i)
 {
     return s[0] == 0 ? char(0) : (i == 0 ? s[0] : op_char(s + 1, i - 1));
 }
@@ -1016,7 +1016,7 @@ struct lambda_attr_skip : lexy::token_production
         + dsl::lit_c<')'> + attr_ws;
     static constexpr auto rule =
         dsl::lit_c<'['> + item + dsl::while_(dsl::lit_c<','> >> item) + dsl::lit_c<']'> + attr_ws + dsl::lit_c<'('>;
-    static constexpr auto value = lexy::noop;
+    [[maybe_unused]] static constexpr auto value = lexy::noop;
 };
 
 // True when the text is one string literal. The text between the quotes goes to "out".
