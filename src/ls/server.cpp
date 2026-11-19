@@ -1201,6 +1201,36 @@ private:
     json on_range_formatting(const Doc& d, const json& p);
     json on_code_action(const Doc& d, const json& p);
     json on_locations(const Doc& d, const json& p, const std::string& method);
+    // HOT-65 S4: true when the unit position is on code of a script block. The mask of the unit text keeps
+    // only the code of the blocks. All other text is a space. The cursor can touch the end of a word.
+    static bool in_script_block(const Doc& d, Pos at)
+    {
+        if (at.line < 0)
+            return false;
+        const std::string line(d.text.line(at.line));
+        auto code = [&](int col) { return col >= 0 && col < static_cast<int>(line.size()) && !std::isspace(static_cast<unsigned char>(line[col])); };
+        return code(at.col) || code(at.col - 1);
+    }
+    // HOT-65 S4: a location in the prefix text of a markup document has no raw position. A location in the raw
+    // text never starts at line 0 column 0 (the block code follows a tag). Such a location comes from the clamp
+    // of to_lsp. The function removes it. An empty list becomes null.
+    void drop_prefix_locations(json& r) const
+    {
+        if (!r.is_array())
+            return;
+        json kept = json::array();
+        for (const json& l : r)
+        {
+            const std::string uri = l.contains("targetUri") ? l.value("targetUri", std::string()) : l.value("uri", std::string());
+            const json& range = l.contains("targetSelectionRange") ? l["targetSelectionRange"] : l.value("range", json::object());
+            const auto it = docs_.find(uri);
+            const bool prefix = it != docs_.end() && it->second->embedded && range.contains("start")
+                && range["start"].value("line", 1) == 0 && range["start"].value("character", 1) == 0;
+            if (!prefix)
+                kept.push_back(l);
+        }
+        r = kept.empty() ? json(nullptr) : kept;
+    }
     std::vector<Pos> gen_word_candidates(const Doc& d, Pos script_pos) const;
     // The places in the generated text to ask clangd about a script position. "by_word" is set when
     // the position has no map segment and the places come from the word.
@@ -9513,7 +9543,19 @@ void Server::handle(const json& msg)
     if (d->cpp)
         return reply(id, nullptr); // a ".cpp" document: clangd owns the features, hot-ls only publishes errors
     if (d->embedded)
-        return reply(id, nullptr); // HOT-65 step S1: a markup document gets diagnostics only
+    {
+        // HOT-65 step S4: a markup document answers hover and definition for a position in a script block.
+        // All other requests, and a position in the markup or the prefix, get null.
+        if (method != "textDocument/hover" && method != "textDocument/definition")
+            return reply(id, nullptr);
+        if (d->embed_bad || !d->embed_found || !in_script_block(*d, from_lsp(d->text, p["position"], utf8_)))
+            return reply(id, nullptr);
+        if (method == "textDocument/hover")
+            return reply(id, on_hover(*d, p));
+        json r = on_locations(*d, p, method);
+        drop_prefix_locations(r);
+        return reply(id, r);
+    }
     if (method == "textDocument/completion")
         return reply(id, on_completion(*d, p));
     if (method == "textDocument/hover")

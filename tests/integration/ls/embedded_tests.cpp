@@ -274,7 +274,7 @@ TEST(EmbeddedDiagnostics, OtherRequestsAnswerNull)
     const json id = {{"textDocument", {{"uri", e.uri}}}};
     json at = id;
     at["position"] = {{"line", 2}, {"character", 8}};
-    for (const char* m : {"textDocument/hover", "textDocument/completion", "textDocument/definition",
+    for (const char* m : {"textDocument/completion",
              "textDocument/signatureHelp", "textDocument/prepareRename", "textDocument/prepareCallHierarchy"})
     {
         const json r = e.client->request(m, at);

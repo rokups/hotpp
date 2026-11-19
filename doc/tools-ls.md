@@ -144,7 +144,10 @@ The next change of the document reads the prefix file again. A fixed file works 
 The unit text is `mask_embedded_scripts(raw, tag, &found, prefix)`: the same text as at run time.
 The server converts the columns on the raw text, so the ranges are in the markup coordinates.
 A document without a `<script>` block gets an empty diagnostics list.
-In step S1 only the diagnostics work. All other requests answer null.
+In step S4 `textDocument/hover` and `textDocument/definition` work for a position inside a `<script>` block.
+A position in the markup or the prefix answers null. A definition in the prefix text also answers null.
+A definition in a `.hot` file is a normal location. A name in the block gives a range in the markup coordinates.
+All other requests answer null.
 A document that opens before a host has the rule is not served. Open it again after the host file changes.
 
 ## Workspace index
