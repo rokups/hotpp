@@ -120,6 +120,40 @@ target_compile_definitions(integration_aot_registry_opt_tests PRIVATE AOT_EXPECT
 target_link_libraries(integration_aot_registry_opt_tests PRIVATE aot_registry_opt_scripts hot::aot GTest::gtest_main)
 hot_gtest(integration_aot_registry_opt_tests TEST_PREFIX opt/ PROPERTIES LABELS aot-opt)
 
+# An optimized unit with [fn_invoker] keeps its function table. The other units stay as before:
+# the CTest "aot_keep_other_units_equal" compares their generated files with the registry target.
+hot_add_scripts(TARGET aot_keep_scripts AOT OPTIMIZED
+    SCRIPTS ${PROJECT_SOURCE_DIR}/tests/scripts/aot_demo.hot ${PROJECT_SOURCE_DIR}/tests/scripts/module_v1.hot
+        ${PROJECT_SOURCE_DIR}/tests/scripts/aot_keep_base.hot ${PROJECT_SOURCE_DIR}/tests/scripts/aot_keep.hot
+    INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
+    DEPENDS ${HOT_HEADERS})
+add_executable(integration_aot_keep_table_tests aot_keep_table_tests.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+target_include_directories(integration_aot_keep_table_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests)
+target_link_libraries(integration_aot_keep_table_tests PRIVATE aot_keep_scripts hot::aot GTest::gtest_main)
+hot_gtest(integration_aot_keep_table_tests TEST_PREFIX opt/ PROPERTIES LABELS aot-opt)
+# The other units generate the same files as in the registry target. The #line lines hold the file path, so the script normalizes the directory.
+foreach(stem aot_demo module_v1)
+    add_test(NAME opt/aot_keep_other_units_equal_${stem}
+        COMMAND ${CMAKE_COMMAND}
+            -DA=${CMAKE_BINARY_DIR}/hot_aot/aot_registry_opt_scripts/$<CONFIG>/${stem}.aot.cpp
+            -DB=${CMAKE_BINARY_DIR}/hot_aot/aot_keep_scripts/$<CONFIG>/${stem}.aot.cpp
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/compare_generated.cmake)
+    set_tests_properties(opt/aot_keep_other_units_equal_${stem} PROPERTIES LABELS aot-opt)
+endforeach()
+# The status line of hotc: a run with the same inputs prints the unit that keeps its table.
+_hot_resource_dir(aot_keep_res_dir "${CMAKE_CXX_COMPILER}")
+set(aot_keep_list ${CMAKE_CURRENT_BINARY_DIR}/aot_keep_status_scripts.txt)
+file(WRITE ${aot_keep_list}
+    "${PROJECT_SOURCE_DIR}/tests/scripts/aot_demo.hot\n${PROJECT_SOURCE_DIR}/tests/scripts/aot_keep_base.hot\n${PROJECT_SOURCE_DIR}/tests/scripts/aot_keep.hot\n")
+add_test(NAME opt/aot_keep_status_line
+    COMMAND hot::hotc --aot --aot-optimized --scripts-file ${aot_keep_list}
+        --out-dir ${CMAKE_CURRENT_BINARY_DIR}/aot_keep_status_out -I ${PROJECT_SOURCE_DIR}/tests/engine -I ${HOT_INCLUDE_DIR}
+        --resource-dir ${aot_keep_res_dir})
+set_tests_properties(opt/aot_keep_status_line PROPERTIES LABELS aot-opt
+    PASS_REGULAR_EXPRESSION "hotc: optimized AOT keeps the function table of 1 unit\\(s\\): aot_keep\n")
+
 if(TARGET hot_backend)
     add_executable(integration_aot_opt_load_tests aot_opt_load_tests.cpp
         ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp

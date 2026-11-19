@@ -1,0 +1,13 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// An optimized AOT unit with [fn_invoker]: it keeps its function table and the @call entries.
+// KeepViaBase calls a public free function of another unit.
+using "Invoker.h";
+using "aot_keep_base.hot";
+
+[fn_invoker("TEST_INVOKER")];
+
+int KeepAdd(int a, int b) { return a + b; }
+int KeepViaBase(int v) { return KeepBaseTwice(v) + 1; }

@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <regex>
+#include <sstream>
 #include <set>
 #include <string>
 
@@ -364,15 +365,37 @@ TEST(StaticFunctionTranslation, UnitWithoutInvokerHasNoCallEntry)
     EXPECT_EQ(none.cpp.find("hot_inv"), std::string::npos) << none.cpp;
 }
 
-TEST(StaticFunctionTranslation, InvokerWorksInAotButNotInOptimizedAot)
+TEST(StaticFunctionTranslation, OptimizedAotKeepsTheFunctionTableOnlyWithInvoker)
 {
     const hotc::TranslateResult aot = translate_invoker("[fn_invoker(\"MY_INVOKER\")];\n", true, false);
     ASSERT_TRUE(aot.ok) << aot.diagnostics;
     EXPECT_TRUE(has_text(aot, "MY_INVOKER(hot_fn_Add)")) << aot.cpp;
-    // The optimized AOT code has no function table.
+    EXPECT_FALSE(aot.keeps_fn_table);
+    // The optimized AOT code with the attribute keeps the table and the @call entries.
     const hotc::TranslateResult opt = translate_invoker("[fn_invoker(\"MY_INVOKER\")];\n", true, true);
     ASSERT_TRUE(opt.ok) << opt.diagnostics;
-    EXPECT_EQ(opt.cpp.find("@call"), std::string::npos) << opt.cpp;
+    EXPECT_TRUE(opt.keeps_fn_table);
+    EXPECT_TRUE(has_text(opt, "MY_INVOKER(hot_fn_Add)")) << opt.cpp;
+    EXPECT_TRUE(has_text(opt, "reg.add_fn(\"Add@call\", ")) << opt.cpp;
+    EXPECT_TRUE(has_text(opt, "reg.add_fn(\"Add\", ")) << opt.cpp;
+    // Without the attribute the optimized code has no table and no @call entry.
+    const hotc::TranslateResult none = translate_invoker("", true, true);
+    ASSERT_TRUE(none.ok) << none.diagnostics;
+    EXPECT_FALSE(none.keeps_fn_table);
+    EXPECT_EQ(none.cpp.find("@call"), std::string::npos) << none.cpp;
+    EXPECT_EQ(none.cpp.find("reg.add_fn("), std::string::npos) << none.cpp;
+    // The text with the attribute differs from the text without it only by the table lines and the
+    // "#line" lines (the attribute line moves the script lines).
+    auto without_table = [](const std::string& text)
+    {
+        std::string out;
+        std::istringstream in(text);
+        for (std::string line; std::getline(in, line);)
+            if (line.find("reg.add_fn(") == std::string::npos && line.rfind("#line ", 0) != 0)
+                out += line + "\n";
+        return out;
+    };
+    EXPECT_EQ(without_table(opt.cpp), without_table(none.cpp));
 }
 
 TEST(StaticFunctionTranslation, InvokerNeedsAMacroName)

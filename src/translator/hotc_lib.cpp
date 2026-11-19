@@ -11114,7 +11114,15 @@ void translate_impl(
         o.w("    hot::flush_lambdas(reg);\n");
     // The function table of the unit: an importer calls a public free function through it
     // (hot::call_fn). The key is the C++ function type.
-    if (!opt.aot_optimized)
+    // The module attribute [fn_invoker("MACRO")]: "<name>@call" holds MACRO(hot_fn_<name>) for
+    // each public free function without overloads. The key is the type of the macro result.
+    // An optimized AOT unit with the attribute keeps its function table.
+    std::string invoker;
+    for (const hotc::ast::ModuleAttrs& ma : sc.module_attrs)
+        if (ma.has_fn_invoker)
+            invoker = ma.fn_invoker;
+    res.keeps_fn_table = opt.aot_optimized && !invoker.empty();
+    if (!opt.aot_optimized || !invoker.empty())
     {
         // A static method of a class has the key "C::F".
         for (const ClassDef& cd : sc.classes)
@@ -11132,12 +11140,6 @@ void translate_impl(
                 if (auto it = lowered_statics.find(m.name); it != lowered_statics.end())
                     o.w("    reg.add_fn(\"" + m.name + "\", typeid(decltype(" + it->second.symbol + ")).name(), reinterpret_cast<void*>(&"
                         + it->second.symbol + "));\n");
-        // The module attribute [fn_invoker("MACRO")]: "<name>@call" holds MACRO(hot_fn_<name>) for
-        // each public free function without overloads. The key is the type of the macro result.
-        std::string invoker;
-        for (const hotc::ast::ModuleAttrs& ma : sc.module_attrs)
-            if (ma.has_fn_invoker)
-                invoker = ma.fn_invoker;
         if (!invoker.empty())
         {
             std::set<std::string> generated;
