@@ -11131,7 +11131,8 @@ void translate_impl(
             if (m.foreign_unit.empty() && m.access != hotc::ast::Access::Private && m.name != "main")
                 if (auto it = lowered_statics.find(m.name); it != lowered_statics.end())
                     o.w("    reg.add_fn(\"" + m.name + "\", typeid(decltype(" + it->second.symbol + ")).name(), reinterpret_cast<void*>(&"
-                        + it->second.symbol + "));\n");        // The module attribute [fn_invoker("MACRO")]: "<name>@call" holds MACRO(hot_fn_<name>) for
+                        + it->second.symbol + "));\n");
+        // The module attribute [fn_invoker("MACRO")]: "<name>@call" holds MACRO(hot_fn_<name>) for
         // each public free function without overloads. The key is the type of the macro result.
         std::string invoker;
         for (const hotc::ast::ModuleAttrs& ma : sc.module_attrs)

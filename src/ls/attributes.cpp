@@ -34,6 +34,7 @@ const std::vector<AttributeInfo>& attribute_table()
         {"std", "The name of the standard namespace.", 1, {}, "module"},
         {"lib", "A standard-like library namespace.", 1, {}, "module"},
         {"array", "The C++ template of a fixed-size array type.", 1, {}, "module"},
+        {"fn_invoker", "A macro that makes the call entry <name>@call of each public free function.", 1, {}, "module"},
         {"intrusive", "The add and release functions of an intrusive handle.", 2, {}, "stub"},
         {"byval", "The parameter passes by value.", 0, {}, "parameter"},
         {"name", "The key of a reloadable lambda.", 1, {}, "lambda"},

@@ -392,3 +392,31 @@ TEST(StaticFunctionTranslation, InvokerNeedsAMacroName)
     EXPECT_NE(stub.diagnostics.find("attribute 'fn_invoker' is valid only on a module attribute list"), std::string::npos)
         << stub.diagnostics;
 }
+
+// Other signatures. The generated line takes only the address of the function, so a default
+// argument, a "ref" parameter and a handle parameter register an entry: the macro decides what it
+// accepts. A free function cannot be "async" and a script has no namespace block, so these two
+// cases have no entry.
+TEST(StaticFunctionTranslation, InvokerRegistersDefaultRefAndHandleSignatures)
+{
+    TempDir dir;
+    write_file(dir.path() / "u.h", kHeader);
+    hotc::TranslateOptions o = temp_options(dir,
+        "using \"u.h\";\nusing <string>;\n[fn_invoker(\"MY_INVOKER\")];\n"
+        "class Node { int hp = 0; }\n"
+        "int Scaled(int v, int k = 3) { return v * k; }\n"
+        "void Inc(ref int v) { v = v + 1; }\n"
+        "int Weight($Node n) { return 1; }\n"
+        "class A : Unit { }\n");
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    for (const char* n : {"Scaled", "Inc", "Weight"})
+        EXPECT_TRUE(has_text(r, std::string("MY_INVOKER(hot_fn_") + n + ")")) << n << "\n" << r.cpp;
+}
+
+TEST(StaticFunctionTranslation, InvokerHasNoEntryForAnAsyncFunction)
+{
+    const hotc::TranslateResult r = translate_invoker("[fn_invoker(\"MY_INVOKER\")];\nasync int Wait() { return 1; }\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.cpp.find("Wait@call"), std::string::npos) << r.cpp;
+}

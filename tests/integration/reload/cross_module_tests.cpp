@@ -587,6 +587,9 @@ int Calls() { return calls; }
 private int Hidden(int v) { return v; }
 int Half(int v) { return v / 2; }
 int Half(std.string s) { return 70; }
+int Scaled(int v, int k = 3) { return v * k; }
+void Inc(ref int v) { v = v + 1; }
+int Weight($InvActor a) { return 1; }
 
 class InvActor : Actor { }
 )";
@@ -603,6 +606,9 @@ int Calls() { return calls; }
 private int Hidden(int v) { return v; }
 int Half(int v) { return v / 2; }
 int Half(std.string s) { return 70; }
+int Scaled(int v, int k = 3) { return v * k; }
+void Inc(ref int v) { v = v + 1; }
+int Weight($InvActor a) { return 1; }
 
 class InvActor : Actor { }
 )";
@@ -638,6 +644,14 @@ TEST_P(FamilyTests, FnInvokerGivesTheCallEntriesAndSurvivesReload)
     ASSERT_TRUE(call_invoker(*u1.fns, "Count@call", 0, out));
     ASSERT_TRUE(call_invoker(*u1.fns, "Calls@call", 0, out));
     EXPECT_EQ(out, 2) << "the invoker calls the function of the unit and shares its module variable";
+    // A default argument gives an entry that the invoker calls with all arguments. A ref parameter
+    // and a handle parameter give an entry that the test invoker refuses (false).
+    ASSERT_TRUE(call_invoker(*u1.fns, "Scaled@call", 4, out));
+    EXPECT_EQ(out, 16);
+    EXPECT_FALSE(call_invoker(*u1.fns, "Inc@call", 4, out));
+    EXPECT_NE(u1.fns->find("Inc@call"), nullptr);
+    EXPECT_FALSE(call_invoker(*u1.fns, "Weight@call", 4, out));
+    EXPECT_NE(u1.fns->find("Weight@call"), nullptr);
     const uint64_t id1 = u1.fns->id;
 
     std::vector<hot::LoadResult> v2;
