@@ -1,0 +1,29 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// Generation 2: the type of "c" changes from int to float. There is no convert hook.
+using "Actor.h";
+using <string>;
+using <vector>;
+
+struct Pt {
+    int x = 0;
+    int y = 0;
+}
+
+int a = 1;
+int b = 2;
+float c = 9.0;
+int d = 4;
+std.string name = "one";
+std.vector<int> list;
+Pt pt;
+
+class Probe : Actor {
+    int seen = 0;
+
+    override void Tick(float dt) {
+        this.seen = a;
+    }
+}
