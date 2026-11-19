@@ -294,3 +294,49 @@ TEST(EmbeddedCompletion, BlockBoundaries)
     EXPECT_FALSE(c.ask(4, static_cast<int>(l4.find("</script"))).is_null());
     EXPECT_TRUE(c.ask(4, static_cast<int>(l4.find("</rml"))).is_null());
 }
+
+// An empty block (a "src" block) has no code: a request between its tags answers null and the server lives on.
+TEST(EmbeddedCompletion, EmptyBlockAfterTheLastCodeBlockAnswersNull)
+{
+    REQUIRE_CLANGD();
+    Comp c;
+    c.open("<rml>\n<script>class Foobar { }</script>\n<p>a</p>\n<p>b</p>\n<script src=\"x\"></script>\n</rml>\n");
+    const std::string l = "<script src=\"x\"></script>";
+    EXPECT_TRUE(c.ask(4, static_cast<int>(l.find("</script"))).is_null());
+    EXPECT_TRUE(c.client->request("textDocument/hover", {{"textDocument", {{"uri", c.uri}}},
+        {"position", {{"line", 4}, {"character", static_cast<int>(l.find("</script"))}}}})["result"].is_null());
+    c.edit("<rml>\n<script>class Foobaz { }</script>\n<p>a</p>\n<p>b</p>\n<script src=\"x\"></script>\n</rml>\n");
+    const json r = c.ask(1, 8 + 10);
+    EXPECT_FALSE(r.is_null());
+}
+
+TEST(EmbeddedCompletion, OnlyBlockEmptyAnswersNull)
+{
+    Comp c;
+    c.open("<rml>\n<p>a</p>\n<p>b</p>\n<script src=\"x\"></script>\n</rml>\n");
+    const std::string l = "<script src=\"x\"></script>";
+    EXPECT_TRUE(c.ask(3, static_cast<int>(l.find("</script"))).is_null());
+    c.edit("<rml>\n<p>a</p>\n<p>b</p>\n<script src=\"x\"></script>\n<p>c</p>\n</rml>\n");
+    EXPECT_TRUE(c.ask(3, static_cast<int>(l.find("</script"))).is_null());
+}
+
+TEST(EmbeddedCompletion, CrLfLineEnds)
+{
+    REQUIRE_CLANGD();
+    Comp c;
+    c.open("<rml>\r\n<script>\r\nclass Foobar { int v; }\r\nclass Bar {\r\n    void g() {\r\n        \r\n    }\r\n}\r\n</script>\r\n</rml>\r\n");
+    const json r = c.ask(5, 8);
+    ASSERT_FALSE(r.is_null());
+    EXPECT_TRUE(has_label(r, "Foobar")) << r.dump().substr(0, 300);
+    expect_no_prefix_edit(r);
+    write_bytes(c.dir.path() / "yy.hot", "class Y { }\r\n");
+    c.edit("<rml>\r\n<p>\xC3\xA4</p><script>using \"y\"; class Foo { }\r\n</script>\r\n</rml>\r\n");
+    const json u = c.ask(1, 3 + 1 + 4 + 8 + 7);
+    ASSERT_FALSE(u.is_null());
+    for (const json& it : u["items"])
+        if (it.contains("textEdit"))
+        {
+            EXPECT_EQ(it["textEdit"]["range"]["start"]["line"], 1) << it.dump();
+            EXPECT_EQ(it["textEdit"]["range"]["start"]["character"], 3 + 1 + 4 + 8 + 7) << it.dump();
+        }
+}

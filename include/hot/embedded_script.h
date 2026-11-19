@@ -102,7 +102,7 @@ inline size_t skip_tag(std::string_view t, size_t pos, bool& self_closing, bool&
 //  5. `prefix` goes in front of line 1 and has no line end. Only the columns of the code on
 //     line 1 change.
 // A text without a block gives an empty string, also with a prefix.
-// `blocks` (if not null) gets the byte range [start, end) of the code of each block in `text`.
+// `blocks` (if not null) gets the byte range [start, end) of the code of each block in `text`. A block with no code has no range.
 // `found` (if not null) is true when the text has a block. A block with `src` and no code counts.
 inline std::string mask_embedded_scripts(std::string_view text, std::string_view tag = "script",
     bool* found = nullptr, std::string_view prefix = {}, std::vector<std::pair<size_t, size_t>>* blocks = nullptr)
@@ -196,10 +196,10 @@ inline std::string mask_embedded_scripts(std::string_view text, std::string_view
             p = lt + 2;
         }
 
-        if (blocks != nullptr)
-            blocks->emplace_back(after, content_end);
         if (content_end > after)
         {
+            if (blocks != nullptr)
+                blocks->emplace_back(after, content_end);
             for (size_t i = outside_from; i < after; ++i)
                 if (text[i] == '\r' || text[i] == '\n')
                     pending += text[i];

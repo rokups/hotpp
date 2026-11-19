@@ -1211,6 +1211,8 @@ private:
         const int col = at.col - (at.line == 0 ? d.text.shift0 : 0);
         if (col < 0 || col > static_cast<int>(d.text.client->line(at.line).size()))
             return false;
+        if (at.line >= static_cast<int>(d.text.starts.size()))
+            return false;
         const size_t off = d.text.client->offset(at.line, col);
         for (const auto& b : d.embed_blocks)
             if (off >= b.first && off <= b.second)
@@ -3597,6 +3599,8 @@ json Server::on_completion(const Doc& d, const json& p)
     std::optional<PhaseTimer> phase;
     phase.emplace("script facts");
     const Pos cur = from_lsp(d.text, p["position"], utf8_);
+    if (cur.line < 0 || cur.line >= static_cast<int>(d.text.starts.size()))
+        return nullptr;
     const std::string& t = d.text.s;
     const size_t off = d.text.offset(cur.line, cur.col);
     // The word at the cursor is [s, e). The typed prefix is [s, off).
