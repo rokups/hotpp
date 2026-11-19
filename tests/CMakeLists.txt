@@ -22,6 +22,10 @@ add_test(NAME no_export_all_symbols
 # A script library that hotc does not build allows undefined symbols on macOS only.
 add_test(NAME module_link_options
     COMMAND ${CMAKE_COMMAND} -DROOT=${PROJECT_SOURCE_DIR} -P ${CMAKE_CURRENT_SOURCE_DIR}/check_module_link.cmake)
+# hot_script_host writes the embedded rule of a host.
+add_test(NAME host_embedded
+    COMMAND ${CMAKE_COMMAND} -DROOT=${PROJECT_SOURCE_DIR} -DWORK=${CMAKE_CURRENT_BINARY_DIR}/host_embedded
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_host_embedded.cmake)
 # The tests. Each folder has its own CMakeLists.txt.
 add_subdirectory(engine)
 # The scripts need hotc (hot::hotc). A cross build has it only with HOT_HOST_HOTC.

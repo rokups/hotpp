@@ -655,7 +655,14 @@ endfunction()
 # hot_script_host: describe a script host for the language server hot-ls.
 #
 #   hot_script_host(NAME name [TARGET target] [SCRIPT_DIRS dir...] [SCRIPTS file...]
-#                   [INCLUDES dir...] [FLAGS flag...] [PRELUDES file...] [PRELUDE_SUFFIX suffix])
+#                   [INCLUDES dir...] [FLAGS flag...] [PRELUDES file...] [PRELUDE_SUFFIX suffix]
+#                   [EMBEDDED_SUFFIX suffix EMBEDDED_PREFIX_FILE file [EMBEDDED_TAG tag]])
+#
+# EMBEDDED_SUFFIX (for example ".rml") declares one embedded rule: hot-ls reads a file with this
+# suffix as a document with embedded scripts. EMBEDDED_PREFIX_FILE is the prefix file of the
+# virtual script and is required with EMBEDDED_SUFFIX. The function writes its absolute path.
+# EMBEDDED_TAG is the tag of the script elements and defaults to "script". The JSON file has
+# the rule in the array "embedded". Without EMBEDDED_SUFFIX the JSON file has no such key.
 #
 # PRELUDES names the prelude files that the host gives to the translator at run time. hot-ls
 # gives them to each script of the host, so it knows the stubs and the attributes of the host.
@@ -803,9 +810,12 @@ function(_hot_host_write_source_roots)
 endfunction()
 
 function(hot_script_host)
-    cmake_parse_arguments(A "" "NAME;TARGET;PRELUDE_SUFFIX" "SCRIPT_DIRS;SCRIPTS;INCLUDES;FLAGS;PRELUDES" ${ARGN})
+    cmake_parse_arguments(A "" "NAME;TARGET;PRELUDE_SUFFIX;EMBEDDED_SUFFIX;EMBEDDED_PREFIX_FILE;EMBEDDED_TAG" "SCRIPT_DIRS;SCRIPTS;INCLUDES;FLAGS;PRELUDES" ${ARGN})
     if(NOT A_NAME OR (NOT A_SCRIPT_DIRS AND NOT A_SCRIPTS))
         message(FATAL_ERROR "hot_script_host needs NAME and SCRIPT_DIRS or SCRIPTS")
+    endif()
+    if(A_EMBEDDED_SUFFIX AND NOT A_EMBEDDED_PREFIX_FILE)
+        message(FATAL_ERROR "hot_script_host: EMBEDDED_SUFFIX needs EMBEDDED_PREFIX_FILE")
     endif()
     set(use_target FALSE)
     if(A_TARGET)
@@ -888,6 +898,18 @@ function(hot_script_host)
     string(APPEND json "  \"includeDirs\": ${j_includes},\n")
     string(APPEND json "  \"preludes\": ${j_preludes},\n")
     string(APPEND json "  \"preludeSuffix\": \"${e_suffix}\",\n")
+    if(A_EMBEDDED_SUFFIX)
+        set(tag "script")
+        if(A_EMBEDDED_TAG)
+            set(tag "${A_EMBEDDED_TAG}")
+        endif()
+        cmake_path(ABSOLUTE_PATH A_EMBEDDED_PREFIX_FILE BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+            OUTPUT_VARIABLE prefix_file)
+        _hot_host_escape(e_esuffix "${A_EMBEDDED_SUFFIX}")
+        _hot_host_escape(e_etag "${tag}")
+        _hot_host_escape(e_eprefix "${prefix_file}")
+        string(APPEND json "  \"embedded\": [{\"suffix\": \"${e_esuffix}\", \"tag\": \"${e_etag}\", \"prefixFile\": \"${e_eprefix}\"}],\n")
+    endif()
     string(APPEND json "  \"sourceRootsFile\": \"${e_name}.roots\",\n")
     string(APPEND json "  \"defines\": [],\n")
     if(use_target)
