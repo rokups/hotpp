@@ -10,6 +10,7 @@
 #include "ref_resolver.h"
 #include "symbol_index.h"
 
+#include <memory>
 #include <set>
 #include <string>
 #include <string_view>
@@ -29,6 +30,13 @@ struct Text
     std::string_view line(int l) const;
     size_t offset(int l, int c) const;
     std::pair<int, int> pos(size_t off) const;
+    // HOT-65: the unit text of a markup document (a ".rml" file). The unit text has a prefix in front of
+    // line 0 and has no markup. "shift0" is the byte length of the prefix. "client" is the raw text that the
+    // editor shows. The columns of the unit text are byte columns of the raw text, with "shift0" more on line 0.
+    // The server converts the LSP columns on the raw text (Server::from_lsp and Server::to_lsp). A text
+    // that is not a unit text has shift0 0 and no client.
+    int shift0 = 0;
+    std::shared_ptr<const Text> client;
 };
 
 struct Pos

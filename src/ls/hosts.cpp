@@ -259,6 +259,25 @@ void HostSet::load(const std::string& dir, bool require_cache)
         host->scripts = resolve_paths(source_dir, get_strings(j, "scripts"), false);
         host->preludes = resolve_paths(source_dir, get_strings(j, "preludes"), false);
         host->prelude_suffix = get_string(j, "preludeSuffix");
+        // HOT-65: "embedded" is an array of {"suffix", "tag", "prefixFile"}. A relative prefix path
+        // is relative to "sourceDir". An entry without a suffix is skipped. The tag is "script" by default.
+        if (j.contains("embedded") && j["embedded"].is_array())
+            for (const json& r : j["embedded"])
+            {
+                if (!r.is_object())
+                    continue;
+                EmbeddedRule rule;
+                rule.suffix = get_string(r, "suffix");
+                if (rule.suffix.size() < 2 || rule.suffix[0] != '.')
+                    continue;
+                rule.tag = get_string(r, "tag");
+                if (rule.tag.empty())
+                    rule.tag = "script";
+                const std::string pf = get_string(r, "prefixFile");
+                if (!pf.empty())
+                    rule.prefix_file = resolve_path(source_dir, pf);
+                host->embedded.push_back(std::move(rule));
+            }
         // The first entry of "includeDirs" is the project dir. The dirs of the target (from the
         // side file) come next, then the other entries. Each relative path is relative to
         // "sourceDir". A repeated dir is dropped; the first one stays.
