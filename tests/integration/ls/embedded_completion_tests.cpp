@@ -262,3 +262,35 @@ TEST(EmbeddedCompletion, TimingOn300Lines)
         EXPECT_LT(ms[18], 1000.0) << kind;
     }
 }
+
+// A whitespace position inside a block (an empty indented line, after "= ") completes.
+TEST(EmbeddedCompletion, WhitespaceInsideABlockCompletes)
+{
+    REQUIRE_CLANGD();
+    Comp c;
+    c.open("<rml>\n<script>\nclass Foobar { int v; }\nclass Bar {\n    void g() {\n        \n        int x = \n    }\n}\n</script>\n</rml>\n");
+    json r = c.ask(5, 8);
+    ASSERT_FALSE(r.is_null());
+    EXPECT_TRUE(has_label(r, "Foobar")) << r.dump().substr(0, 300);
+    r = c.ask(6, 16);
+    ASSERT_FALSE(r.is_null());
+    EXPECT_TRUE(has_label(r, "Foobar")) << r.dump().substr(0, 300);
+    expect_no_prefix_edit(r);
+}
+
+TEST(EmbeddedCompletion, BlockBoundaries)
+{
+    REQUIRE_CLANGD();
+    Comp c;
+    const std::string text = "<rml>\n<script>class Foobar { }\n</script>\n<p>Foo</p>\n<script>class Baz { void f() { Fo } }</script></rml>\n";
+    c.open(text);
+    EXPECT_TRUE(c.ask(3, 5).is_null());                 // markup between blocks
+    EXPECT_TRUE(c.ask(1, 4).is_null());                 // inside the open tag
+    EXPECT_TRUE(c.ask(1, 7).is_null());                 // before the ">" of the open tag
+    EXPECT_TRUE(c.ask(0, 2).is_null());
+    EXPECT_FALSE(c.ask(2, 0).is_null());                // right at "</script"
+    EXPECT_TRUE(c.ask(2, 3).is_null());                 // inside the end tag
+    const std::string l4 = "<script>class Baz { void f() { Fo } }</script></rml>";
+    EXPECT_FALSE(c.ask(4, static_cast<int>(l4.find("</script"))).is_null());
+    EXPECT_TRUE(c.ask(4, static_cast<int>(l4.find("</rml"))).is_null());
+}

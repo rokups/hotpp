@@ -205,6 +205,7 @@ struct Doc
     // document get no answer: only the diagnostics work (HOT-65 step S1).
     bool embedded = false;
     bool embed_found = false; // the raw text has a script block
+    std::vector<std::pair<size_t, size_t>> embed_blocks; // the raw byte ranges of the block code
     bool embed_bad = false;   // no rule now, or the prefix file is not valid: the document gets no facts
     std::string raw;
     EmbeddedRule rule;
@@ -1201,15 +1202,20 @@ private:
     json on_range_formatting(const Doc& d, const json& p);
     json on_code_action(const Doc& d, const json& p);
     json on_locations(const Doc& d, const json& p, const std::string& method);
-    // HOT-65 S4: true when the unit position is on code of a script block. The mask of the unit text keeps
-    // only the code of the blocks. All other text is a space. The cursor can touch the end of a word.
+    // HOT-65: true when the unit position is inside a script block: from the end of the open tag to the
+    // start of the end tag, both included. The ranges are the raw byte ranges that the mask found.
     static bool in_script_block(const Doc& d, Pos at)
     {
-        if (at.line < 0)
+        if (at.line < 0 || !d.text.client || at.line >= static_cast<int>(d.text.client->starts.size()))
             return false;
-        const std::string line(d.text.line(at.line));
-        auto code = [&](int col) { return col >= 0 && col < static_cast<int>(line.size()) && !std::isspace(static_cast<unsigned char>(line[col])); };
-        return code(at.col) || code(at.col - 1);
+        const int col = at.col - (at.line == 0 ? d.text.shift0 : 0);
+        if (col < 0 || col > static_cast<int>(d.text.client->line(at.line).size()))
+            return false;
+        const size_t off = d.text.client->offset(at.line, col);
+        for (const auto& b : d.embed_blocks)
+            if (off >= b.first && off <= b.second)
+                return true;
+        return false;
     }
     // HOT-65 S4: a location in the prefix text of a markup document has no raw position. A location in the raw
     // text never starts at line 0 column 0 (the block code follows a tag). Such a location comes from the clamp
@@ -2879,7 +2885,8 @@ void Server::set_embedded_text(Doc& d, std::string raw)
             {"params", {{"type", 2}, {"message", "hot-ls: " + d.path + " is not served: " + why}}}});
     d.embed_bad = bad;
     bool found = false;
-    Text unit(bad ? std::string() : hot::mask_embedded_scripts(d.raw, d.rule.tag, &found, *prefix));
+    d.embed_blocks.clear();
+    Text unit(bad ? std::string() : hot::mask_embedded_scripts(d.raw, d.rule.tag, &found, *prefix, &d.embed_blocks));
     d.embed_found = found;
     unit.shift0 = bad ? 0 : static_cast<int>(prefix->size());
     unit.client = std::make_shared<const Text>(d.raw);
