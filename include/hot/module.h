@@ -47,7 +47,7 @@ struct Module
     // a reload of it removes every class that the new module lacks. A reload of a named unit
     // removes only the missing classes of this unit, and it keeps the module block of each other
     // unit. A class that arrives in another unit than its first unit makes the module bad.
-    std::string unit;
+    std::string unit = {};
     // The entry point "main" of the script (the symbol "hot_main"). It is null when the module has
     // no "main". The pointer stays valid while the module library stays loaded. An AOT module
     // leaves it null. The function does not catch an exception of the script.
@@ -57,11 +57,11 @@ struct Module
     uint64_t iface_hash = 0;
     // The script imports of the module as unit name and interface hash, also the imports of the
     // imports (hotc::TranslateResult::import_hashes).
-    std::vector<std::pair<std::string, uint64_t>> imports;
+    std::vector<std::pair<std::string, uint64_t>> imports = {};
     // The fine interface data of the module and the names that it uses (hot::importer_is_stale).
     // Unknown data ("known" is false) is "no fine data": each importer is stale.
-    IfaceInfo iface_info;
-    UseInfo use_info;
+    IfaceInfo iface_info = {};
+    UseInfo use_info = {};
     // The generation of the load. The backend sets the number that it got in Backend::load. The
     // loader gives it to script_register (Registry::generation). Zero: the loader picks the
     // number, 1 for a load and the active generation plus 1 for a reload.

@@ -982,7 +982,8 @@ int run_emit(const Args& args)
         }
         mf << r.slots_out << r.sigs_out;
     }
-    if (!args.depfile.empty() && !write_depfile(args.depfile, {{args.output, r.dependencies}}))
+    const std::vector<DepRule> dep_rules{{args.output, r.dependencies}};
+    if (!args.depfile.empty() && !write_depfile(args.depfile, dep_rules))
         return 1;
     return 0;
 }

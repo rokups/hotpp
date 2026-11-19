@@ -10790,9 +10790,10 @@ TEST(LanguageServer, LiteDocIsHiddenFromReferencesRenameAndSymbols)
         EXPECT_EQ(dump.find(".shell.h"), std::string::npos) << key << ": " << dump;
         // The workspace/symbol list has header symbols from the clangd index: their set depends on the indexing
         // progress and differs from run to run. Compare only the symbols of the script files.
+        const std::string& result_key = key;
         auto script_only = [&](const json& j)
         {
-            if (key.rfind("symbol_", 0) != 0 || !j.contains("result"))
+            if (result_key.rfind("symbol_", 0) != 0 || !j.contains("result"))
                 return j;
             json out = j;
             out["result"] = json::array();
@@ -11428,7 +11429,8 @@ TEST(LanguageServer, FirstFinalReplyAfterTheHoldHasTheNewMembers)
         auto final_names = [&](std::vector<std::string>& out) {
             for (int i = 0; i < 300; ++i)
             {
-                s.client->change(s.uri, ++version, script(version));
+                ++version;
+                s.client->change(s.uri, version, script(version));
                 const json r = s.client->request("textDocument/completion", doc_pos(s.uri, 3, 13), 20000);
                 if (r.contains("result") && r["result"].is_object() && !r["result"].value("isIncomplete", false))
                 {
@@ -11450,7 +11452,8 @@ TEST(LanguageServer, FirstFinalReplyAfterTheHoldHasTheNewMembers)
         }
         ASSERT_TRUE(contains_name(l1, "Old"));
         write_file(s.dir.path() / "base.hot", base("New"));
-        s.client->change(s.uri, ++version, script(version));
+        ++version;
+        s.client->change(s.uri, version, script(version));
         std::this_thread::sleep_for(std::chrono::milliseconds(hot::ls::kShellHoldMs + 500));
         ASSERT_TRUE(final_names(first));
         std::this_thread::sleep_for(std::chrono::seconds(3));
@@ -11473,8 +11476,6 @@ TEST(LanguageServer, ThisCacheDropsTheMembersWhenTheBasesOfTheClassChange)
 {
     REQUIRE_CLANGD();
     // The switch HOT_LS_THIS_CACHE of the process stays: the test holds with and without the cache.
-    const char* sw = std::getenv("HOT_LS_THIS_CACHE");
-    const bool cache = !(sw && std::string(sw) == "0");
     Session s(true, this_script("Base", "Ta", 1));
     write_file(s.dir.path() / "base.hot", kThisBase);
     EXPECT_FALSE(contains_name(this_names(s, 2, "Actor", "Ta", 1), "Tag"));

@@ -1896,7 +1896,8 @@ ReloadResult Loader::commit_locked()
     // check compares the live interface with the new one.
     for (auto& [unit, link] : links_)
     {
-        if (std::any_of(P.units.begin(), P.units.end(), [&](const PendingUnit& u) { return u.module.unit == unit; }))
+        const std::string& link_unit = unit;
+        if (std::any_of(P.units.begin(), P.units.end(), [&](const PendingUnit& u) { return u.module.unit == link_unit; }))
             continue;
         for (auto& [dep, hash] : link.imports)
             for (const PendingUnit& u : P.units)

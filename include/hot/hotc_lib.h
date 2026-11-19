@@ -27,11 +27,11 @@ namespace hotc
 struct TranslateOptions
 {
     std::string script_text; // the content of the script
-    std::string script_name; // the name for "#line" and for the diagnostics
+    std::string script_name = {}; // the name for "#line" and for the diagnostics
     // The unit name of the script (doc/module-level.md, "Unit names"). Empty: the stem of script_name.
     // The imports get their unit names from it, and AOT code names its symbols with it.
-    std::string unit_name;
-    std::string output_name; // the name of the generated .cpp for "#line" (default: script_name + ".cpp")
+    std::string unit_name = {};
+    std::string output_name = {}; // the name of the generated .cpp for "#line" (default: script_name + ".cpp")
     int generation = 0; // 1 or more
     // The module exports its generation as the symbol "hot_module_generation" (module_from_library
     // reads it). Only the tool hotc sets it, for a module with an explicit "--gen N". The backends
@@ -42,25 +42,25 @@ struct TranslateOptions
     // unchanged import skips the structure parse, the interface text and the import view. The
     // output does not change. Default false.
     bool import_cache = false;
-    std::string slots_in; // the content of the slot file (empty: no earlier generation)
-    std::vector<std::string> include_dirs; // for the imports of the script
-    std::string resource_dir; // the Clang resource directory (empty: the built-in default)
+    std::string slots_in = {}; // the content of the slot file (empty: no earlier generation)
+    std::vector<std::string> include_dirs = {}; // for the imports of the script
+    std::string resource_dir = {}; // the Clang resource directory (empty: the built-in default)
     // The target triple and the sysroot of the parse (-target, --sysroot). Empty: the built-in
     // default of the build (HOT_HOTC_TARGET, HOT_SCRIPT_SYSROOT), else the default of libclang.
     // A MinGW triple also adds the libstdc++ headers of the sysroot (hot::mingw_target_flags).
-    std::string target;
-    std::string sysroot;
+    std::string target = {};
+    std::string sysroot = {};
     // The C++ standard for the parse of the native headers, for example "c++17". Empty: the
     // standard of the host (HOT_CXX_STANDARD in hot/config.h).
-    std::string std_version;
+    std::string std_version = {};
     // The macro flags of the parse of the native headers ("-DNAME", "-DNAME=value", "-UNAME").
     // A backend gives the "-D" and "-U" flags of its compile, so the parse sees the same macros.
-    std::vector<std::string> defines;
-    std::vector<std::pair<std::string, std::string>> preludes; // name, text
+    std::vector<std::string> defines = {};
+    std::vector<std::pair<std::string, std::string>> preludes = {}; // name, text
     // The texts of the imported scripts ("using "parent.hot";"), as name and text. The name is
     // the path in the "using" line. A name that is not here is read from the directory of the
     // script, then from the include directories.
-    std::vector<std::pair<std::string, std::string>> modules;
+    std::vector<std::pair<std::string, std::string>> modules = {};
     // The borrowed-storage rule of design 7.10.4 and 7.10.6: a field, a return value, a
     // collection element or a lambda capture cannot hold a native "T*", a "T&" or a "ref" of a
     // type that is not a handle. True (the default): a violation is an error. False: it is a
@@ -80,7 +80,7 @@ struct TranslateOptions
     // The file system of the host for the imports ("using "x.hot";" and "using "x.h";"). For each
     // directory the translator reads this file system first and then the disk. Null: the disk only.
     // The file system must be thread safe.
-    std::shared_ptr<hot::FileSystem> fs;
+    std::shared_ptr<hot::FileSystem> fs = nullptr;
     // AOT code (hotc --aot). Each thunk of a script function carries the signature key of its
     // slot, also the thunk of the first signature. Loader::revert_unit restores the keys from it.
     bool aot = false;
@@ -505,9 +505,9 @@ struct AnalyzedMember
     // the initializer of a field or a property, or else after the name.
     SourcePos begin, end;
     // The previous name from [alias("...")]. Only a field has it. It is empty with no alias.
-    std::string alias;
+    std::string alias = {};
     // The names of the tags "[Tag]" of a field or a property. Not "alias". Empty for other members.
-    std::vector<std::string> attributes;
+    std::vector<std::string> attributes = {};
 };
 
 struct AnalyzedClass

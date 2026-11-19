@@ -1458,7 +1458,6 @@ TEST_F(TaskReload, StaleParentInAChainGetsItsOwnMessage)
 }
 
 // The stale handler runs without the link lock: it can read the tasks and other threads can use them.
-static hot::Task<int>* g_hook_parent = nullptr;
 static hot::Task<int>* g_hook_child = nullptr;
 static std::atomic<int> g_hook_calls{0};
 static std::atomic<int> g_hook_lock_free{0};
@@ -1493,7 +1492,6 @@ TEST_F(TaskReload, StaleCallRunsWithoutTheLinkLock)
     grand.resume();
     ASSERT_TRUE(static_cast<bool>(slot));
     reload_to_2();
-    g_hook_parent = &parent;
     g_hook_child = &child;
     g_hook_calls = 0;
     g_hook_lock_free = 0;

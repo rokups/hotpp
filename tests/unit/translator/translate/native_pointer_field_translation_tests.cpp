@@ -18,7 +18,6 @@ namespace
 {
 
 const char* kSharedStub = "[native, handle(\"std::shared_ptr<$T>\")] class Shared;\n";
-const char* kWeaponStub = "[native, handle(\"std::shared_ptr<$T>\")] class Weapon;\n";
 const char* kIntrusiveStub = "[native, handle(\"$T*\"), intrusive(\"AddRef\", \"Release\")] class Counted;\n";
 
 // The ".hot" frontend: one field line in the class Foo.

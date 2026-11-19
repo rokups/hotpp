@@ -193,7 +193,7 @@ template <class FE, class FS> struct Walker
 
 template <class FE, class FS> Walker<FE, FS> make_walker(FE& fe, FS& fs)
 {
-    return Walker<FE, FS>{fe, fs, nullptr};
+    return Walker<FE, FS>{fe, fs, {}, {}, {}, {}};
 }
 
 } // namespace hotc::walk

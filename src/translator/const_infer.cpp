@@ -125,10 +125,10 @@ struct BodyInfo
     std::map<std::string, bool> handle; // true when each declaration of the name is a handle
     std::map<std::string, bool> copy_ok; // true when "return name;" copies at no risk
     std::map<std::string, bool> scalar; // true when each declaration of the name is a number
-    std::set<std::string> written;
+    std::set<std::string> written = {};
     // The names that an assignment, "++" or "--" writes (a subset of "written"). The check of a
     // lambda (G06) reads it: only such a write is sure.
-    std::set<std::string> assigned;
+    std::set<std::string> assigned = {};
     // False for a lambda body (G06): "return x;" in a lambda does not need a shared cell.
     bool return_writes = true;
     // The check of "Method::self_const". "this.f" has the root "f" and "this" has the root "this".
@@ -136,7 +136,7 @@ struct BodyInfo
     // the object goes to "self_calls" and not to "written".
     bool self_mode = false;
     const std::set<std::string>* self_methods = nullptr;
-    std::set<std::string> self_calls;
+    std::set<std::string> self_calls = {};
 
     Root root(const Expr& e) const { return root_of(e, self_mode); }
 

@@ -576,7 +576,7 @@ struct ret_term
 };
 struct field_term
 {
-    static constexpr auto term = dsl::lit_c<'='> / dsl::lit_c<';'> / dsl::lit_c<'}'>;
+    [[maybe_unused]] static constexpr auto term = dsl::lit_c<'='> / dsl::lit_c<';'> / dsl::lit_c<'}'>;
 };
 struct init_cfg
 {
@@ -1688,9 +1688,6 @@ struct stub_name_p
     { return std::move(name); }, [](std::string&& name, std::string&& suffix) { return std::move(name) + suffix; });
 };
 
-void add_members(const ParseState&, ast::ClassDef&, lexy::nullopt)
-{
-}
 void add_members(const ParseState& st, ast::ClassDef& c, std::vector<Member>&& members)
 {
     for (Member& m : members)
@@ -1962,7 +1959,7 @@ constexpr auto class_rest = dsl::position
 // A "struct" is a script value type. Else the declaration is a module variable:
 // [alias("old")] Type name [= init];
 // "abstract" before "class" or "struct": the value is the position of the word, or nullopt.
-constexpr auto abstract_prefix = dsl::opt(dsl::peek(kw_abstract) >> dsl::position + kw_abstract);
+constexpr auto abstract_prefix = dsl::opt(dsl::peek(kw_abstract) >> (dsl::position + kw_abstract));
 constexpr auto class_or_struct = dsl::literal_set(kw_class, kw_struct);
 
 const char* abstract_pos_of(lexy::nullopt)
@@ -2026,10 +2023,6 @@ struct iface_bases_p
         lexy::callback<const char*>([](const char* pos, std::vector<std::string>&&) { return pos; });
 };
 
-std::vector<Member> iface_members_of(lexy::nullopt)
-{
-    return {};
-}
 std::vector<Member> iface_members_of(std::vector<Member>&& v)
 {
     return std::move(v);
@@ -2085,7 +2078,7 @@ struct interface_p
 // One or more modifiers, then the whole word "interface". It does not read ahead past the
 // modifiers, so a name that only contains "interface" does not match.
 constexpr auto modifier_then_interface =
-    dsl::peek(modifier_set) + dsl::while_(dsl::peek(modifier_set) >> modifier_set + dsl::whitespace(ws_rule))
+    dsl::peek(modifier_set) + dsl::while_(dsl::peek(modifier_set) >> (modifier_set + dsl::whitespace(ws_rule)))
     + kw_interface;
 
 // Modifiers before "interface" at file level: each one is an error.
