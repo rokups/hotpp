@@ -5411,9 +5411,10 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
         }
         return list;
     };
-    // The table comes first. A script with an error has a table for its valid parts. A name inside
-    // a statement that does not parse has no entry: it gets no answer (see doc/tools-ls.md).
-    if (is_ref || !d.facts.ok)
+    // The table comes first for the references. The definition uses it after the facts of a class
+    // and the override step below. A script with an error has a table for its valid parts. A name
+    // inside a statement that does not parse has no entry: it gets no answer (see doc/tools-ls.md).
+    if (is_ref)
         if (auto t = by_table())
             return *t;
     // A class name of a script that the table does not give: the facts give the place.
@@ -5455,7 +5456,7 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
                 return out;
         }
     }
-    if (!is_ref && d.facts.ok)
+    if (!is_ref)
         if (auto t = by_table())
             return *t;
     // A script interface has no place in the generated text that maps back. The facts give the

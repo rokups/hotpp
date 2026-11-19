@@ -7860,6 +7860,41 @@ TEST(LanguageServerDecl, DefinitionOfAnOverrideName)
     expect_decl_definition("override void Tick", "Tick", 0, "Actor.h");
 }
 
+// The override step comes before the table: a script with an error still goes to the native base.
+namespace
+{
+const char* const kOverrideMain = R"(using "Actor.h";
+using "lib.hot";
+class Player : Actor {
+    override void Tick(float dt) { }
+%s}
+)";
+
+void expect_override_in_header(const std::string& lib, const std::string& extra)
+{
+    REQUIRE_CLANGD();
+    std::string main = kOverrideMain;
+    main.replace(main.find("%s"), 2, extra);
+    DegradedSession s(lib, main);
+    // "Tick" on line 3: character 18.
+    const json r = s.ask("textDocument/definition", 3, 19);
+    ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << r.dump();
+    EXPECT_NE(r["result"][0].value("uri", "").find("Actor.h"), std::string::npos) << r.dump();
+}
+} // namespace
+
+TEST(LanguageServerDecl, DefinitionOfAnOverrideNameWithATypeErrorInAnotherMethod)
+{
+    // A script class with a native base by value is a type error, not a syntax error.
+    expect_override_in_header(kDegradedLib, "    public int Bad(Gun g) { return 1; }\n");
+}
+
+TEST(LanguageServerDecl, DefinitionOfAnOverrideNameWhenTheImportHasASyntaxError)
+{
+    expect_override_in_header(
+        std::string(kDegradedLib) + "class Bad { public int F() { return 1 +; } }\n", "");
+}
+
 TEST(LanguageServerDecl, HoverOfAClassConstantAfterTheClassName)
 {
     expect_decl_hover("= Player.MaxHp", "MaxHp", "int");

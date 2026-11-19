@@ -627,3 +627,29 @@ TEST(Analyze, BrokenImportKeepsTheRefsOfItsValidClasses)
     EXPECT_EQ(l2.import_diagnostics, l.import_diagnostics);
     EXPECT_FALSE(hotc::translate(strict, session).ok);
 }
+
+// An import with an overload that does not parse: the call of the overload must not get the ref of
+// the other overload.
+TEST(Analyze, BrokenImportOverloadGivesNoRefToTheOtherOverload)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n");
+    const std::string lib = "using \"w.h\";\n"
+                            "class Gun : Widget {\n"
+                            "    public int Fire(int b) { return b * 2; }\n"
+                            "    public int Fire(float b +) { return 1; }\n"
+                            "}\n";
+    const std::string main = "using \"w.h\";\n"
+                             "using \"lib.hot\";\n"
+                             "class Pistol : Widget {\n"
+                             "    public int Shoot($Gun g) { if (g == null) return 0; return g.Fire(1.5); }\n"
+                             "}\n";
+    write_file(dir.path() / "lib.hot", lib);
+    hotc::TranslateOptions o = temp_options(dir, "");
+    o.resolve_refs = true;
+    o.modules = {{"lib.hot", lib}};
+    const hotc::AnalyzeResult r = hotc::analyze(main, o);
+    for (const hotc::ResolvedRef& x : r.refs)
+        if (x.decl == "Gun.Fire")
+            ADD_FAILURE() << "ref to Gun.Fire at " << x.pos.line << ":" << x.pos.col << " decl_file=" << x.decl_file;
+}
