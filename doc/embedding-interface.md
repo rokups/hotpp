@@ -154,6 +154,21 @@ When no constructor matches, `construct` throws `std::invalid_argument`. The tex
 
 `DefaultBackendOptions` sets only `include_dirs` and `extra_flags`. The default backend sets the compiler, the resource folder and (for `CLANG_FILES`) the work folder from the build.
 
+## Script blocks in a markup file
+
+`include/hot/embedded_script.h`. The header needs no engine and no exceptions.
+
+`std::string hot::mask_embedded_scripts(std::string_view text, std::string_view tag = "script", bool* found = nullptr, std::string_view prefix = {})`
+
+The function gives the script text of a markup file, for example an RmlUi `.rml` file. The result is a normal script text. Line and column positions in the result are the same as in the file.
+
+- The scan stops at the first `</head>`. A comment `<!-- -->`, a CDATA section and the attributes of other tags hold no block.
+- A block starts at `<tag` (any case). It ends at `</`, spaces, `tag`, spaces, `>`. A block without an end runs to the end of the text.
+- The function copies the code of each block. Of other text it keeps only the line ends. The first line of a block gets spaces up to the column of the code. A column is a byte count.
+- The result ends with the last block. A `</script>` in a string of the code ends the block.
+- `prefix` goes in front of line 1 and has no line end. Only the columns on line 1 change.
+- A text without a block gives an empty string. `found` is then false. A block that has only `src` counts as a block.
+
 ## Weak pointers for pointer fields
 
 `include/hot/runtime/checked_ptr.h`.
