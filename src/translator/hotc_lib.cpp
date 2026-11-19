@@ -4187,6 +4187,8 @@ void translate_impl(
         {
             if (!pd.items.empty())
                 break;
+            if (m.has_fn_invoker)
+                pd.add(m.fn_invoker_pos, pmap, "attribute 'fn_invoker' is valid in a script only: a prelude cannot set it");
             for (const auto& [aname, apos] : m.used)
                 if (!module_attrs_seen.insert(aname).second)
                     pd.add(apos, pmap, "attribute '" + aname + "' is given twice in one file");
@@ -11130,6 +11132,24 @@ void translate_impl(
                 if (auto it = lowered_statics.find(m.name); it != lowered_statics.end())
                     o.w("    reg.add_fn(\"" + m.name + "\", typeid(decltype(" + it->second.symbol + ")).name(), reinterpret_cast<void*>(&"
                         + it->second.symbol + "));\n");
+        // The module attribute [fn_invoker("MACRO")]: "<name>@call" holds MACRO(hot_fn_<name>) for
+        // each public free function without overloads. The key is the type of the macro result.
+        std::string invoker;
+        for (const hotc::ast::ModuleAttrs& ma : sc.module_attrs)
+            if (ma.has_fn_invoker)
+                invoker = ma.fn_invoker;
+        if (!invoker.empty())
+        {
+            std::set<std::string> generated;
+            for (const auto& g : sc.generic_display)
+                generated.insert(g.first);
+            for (const Method& m : fn_cls.statics)
+                if (m.foreign_unit.empty() && m.access != hotc::ast::Access::Private && m.name != "main"
+                    && m.src_name.empty() && !generated.count(m.name))
+                    if (auto it = lowered_statics.find(m.name); it != lowered_statics.end())
+                        o.w("    { auto hot_inv = " + invoker + "(" + it->second.symbol + "); reg.add_fn(\"" + m.name
+                            + "@call\", typeid(hot_inv).name(), reinterpret_cast<void*>(hot_inv)); }\n");
+        }
     }
     for (const auto& t : flag_regs)
         o.w(t);

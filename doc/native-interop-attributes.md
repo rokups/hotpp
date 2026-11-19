@@ -77,6 +77,25 @@ Limits:
 - A fixed-size array `T[N]` uses the array template (the attribute `array`), not `L::array`.
 - The traits are for the names above only. For another container, add a stub with `checked_index`, or write a `hot::holds_no_code` specialization in the host.
 
+### Function invokers
+
+The attribute `fn_invoker("MACRO")` gives the host a typed call entry for each free function of the script.
+
+```
+[fn_invoker("HOST_INVOKER")];
+int Add(int a, int b) { return a + b; }
+```
+
+- `MACRO` is the name of a C++ macro. It is an identifier. An empty text or another text is an error: `'<text>' is not a macro name`.
+- The macro takes the pointer of one free function and gives one pointer value. The macro comes from a header that the script includes. An unknown macro is a C++ compile error.
+- For each public free function without overloads, the function table of the unit gets the entry `<name>@call`. The pointer is `MACRO(hot_fn_<name>)`. The signature key is `typeid` of the macro result.
+- The macro must accept each signature of the free functions of the script. A macro that makes a function without captures is AOT safe: the host needs no reflection.
+- The table has no entry for `main`, for a `private` function, for an overloaded name and for an instance of a generic function.
+- The host reads the entry with `hot::unit_ref(unit).fns`. A reload gives a new table with a new `FnTable::id` and the new body.
+- The attribute is valid in a script only. In a prelude it is an error. A repeat in one file is an error. A stub cannot have it.
+- `hotc --aot` writes the entries. Optimized AOT code (`--aot-optimized`) has no function table, so it has no `@call` entry.
+- A unit without the attribute has the same output as before.
+
 ### The array type
 
 The attribute `array("template")` sets the C++ type of a fixed-size array `T[N]` of a script. The default is `$std::array<$T, $N>`.

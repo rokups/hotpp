@@ -9,6 +9,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <regex>
 #include <set>
 #include <string>
@@ -308,4 +309,114 @@ TEST(StaticFunctionTranslation, ErrorInInitializerHasNoWrongSymbol)
     const hotc::TranslateResult r =
         translate_script("int F() { return 1; }\nint H(int a = F()) { return a; }\nclass A : Unit { }\n");
     EXPECT_EQ(r.diagnostics.find("HotFns__s_F"), std::string::npos) << r.diagnostics;
+}
+
+// The module attribute [fn_invoker("MACRO")]: the table of the unit gets "<name>@call".
+namespace
+{
+const char* kInvokerFns =
+    "int Add(int a, int b) { return a + b; }\n"
+    "private int Hidden(int a) { return a; }\n"
+    "int Half(int v) { return v / 2; }\n"
+    "int Half(std.string s) { return 70; }\n"
+    "T Larger<T>(T a, T b) => a > b ? a : b;\n"
+    "int UseLarger() { return Larger<int>(1, 2); }\n"
+    "void main() { }\n"
+    "class A : Unit { }\n";
+
+hotc::TranslateResult translate_invoker(const std::string& attr, bool aot = false, bool optimized = false)
+{
+    TempDir dir;
+    write_file(dir.path() / "u.h", kHeader);
+    hotc::TranslateOptions o = temp_options(dir, "using \"u.h\";\nusing <string>;\n" + attr + kInvokerFns);
+    o.aot = aot;
+    o.aot_optimized = optimized;
+    return hotc::translate(o);
+}
+
+bool has_text(const hotc::TranslateResult& r, const std::string& part)
+{
+    return r.cpp.find(part) != std::string::npos;
+}
+} // namespace
+
+TEST(StaticFunctionTranslation, InvokerRegistersEachPublicFunctionWithoutOverloads)
+{
+    const hotc::TranslateResult r = translate_invoker("[fn_invoker(\"MY_INVOKER\")];\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has_text(r, "auto hot_inv = MY_INVOKER(hot_fn_Add); reg.add_fn(\"Add@call\", typeid(hot_inv).name()")) << r.cpp;
+    EXPECT_TRUE(has_text(r, "MY_INVOKER(hot_fn_UseLarger)")) << r.cpp;
+    EXPECT_FALSE(has_text(r, "MY_INVOKER(hot_fn_Hidden)")) << r.cpp;
+    EXPECT_FALSE(has_text(r, "MY_INVOKER(hot_fn_main)")) << r.cpp;
+    EXPECT_FALSE(has_text(r, "MY_INVOKER(hot_fn_Half")) << r.cpp;
+    EXPECT_FALSE(has_text(r, "MY_INVOKER(hot_fn_Larger")) << r.cpp;
+    EXPECT_EQ(r.cpp.find("Half@call"), std::string::npos) << r.cpp;
+    // The normal entries stay.
+    EXPECT_TRUE(has_text(r, "reg.add_fn(\"Add\", ")) << r.cpp;
+}
+
+// The golden tests keep the output of a unit without the attribute equal.
+TEST(StaticFunctionTranslation, UnitWithoutInvokerHasNoCallEntry)
+{
+    const hotc::TranslateResult none = translate_invoker("");
+    ASSERT_TRUE(none.ok) << none.diagnostics;
+    EXPECT_EQ(none.cpp.find("@call"), std::string::npos) << none.cpp;
+    EXPECT_EQ(none.cpp.find("hot_inv"), std::string::npos) << none.cpp;
+}
+
+TEST(StaticFunctionTranslation, InvokerWorksInAotButNotInOptimizedAot)
+{
+    const hotc::TranslateResult aot = translate_invoker("[fn_invoker(\"MY_INVOKER\")];\n", true, false);
+    ASSERT_TRUE(aot.ok) << aot.diagnostics;
+    EXPECT_TRUE(has_text(aot, "MY_INVOKER(hot_fn_Add)")) << aot.cpp;
+    // The optimized AOT code has no function table.
+    const hotc::TranslateResult opt = translate_invoker("[fn_invoker(\"MY_INVOKER\")];\n", true, true);
+    ASSERT_TRUE(opt.ok) << opt.diagnostics;
+    EXPECT_EQ(opt.cpp.find("@call"), std::string::npos) << opt.cpp;
+}
+
+TEST(StaticFunctionTranslation, InvokerNeedsAMacroName)
+{
+    for (const char* bad : {"\"\"", "\"A B\"", "\"1A\"", "\"A(\""})
+    {
+        const hotc::TranslateResult r = translate_invoker(std::string("[fn_invoker(") + bad + ")];\n");
+        EXPECT_FALSE(r.ok) << bad;
+        EXPECT_NE(r.diagnostics.find("is not a macro name"), std::string::npos) << r.diagnostics;
+    }
+    const hotc::TranslateResult twice = translate_invoker("[fn_invoker(\"A\")];\n[fn_invoker(\"B\")];\n");
+    EXPECT_FALSE(twice.ok);
+    EXPECT_NE(twice.diagnostics.find("attribute 'fn_invoker' is given twice in one file"), std::string::npos)
+        << twice.diagnostics;
+    const hotc::TranslateResult stub = translate_invoker("[native, fn_invoker(\"A\")] class *;\n");
+    EXPECT_FALSE(stub.ok);
+    EXPECT_NE(stub.diagnostics.find("attribute 'fn_invoker' is valid only on a module attribute list"), std::string::npos)
+        << stub.diagnostics;
+}
+
+// Other signatures. The generated line takes only the address of the function, so a default
+// argument, a "ref" parameter and a handle parameter register an entry: the macro decides what it
+// accepts. A free function cannot be "async" and a script has no namespace block, so these two
+// cases have no entry.
+TEST(StaticFunctionTranslation, InvokerRegistersDefaultRefAndHandleSignatures)
+{
+    TempDir dir;
+    write_file(dir.path() / "u.h", kHeader);
+    hotc::TranslateOptions o = temp_options(dir,
+        "using \"u.h\";\nusing <string>;\n[fn_invoker(\"MY_INVOKER\")];\n"
+        "class Node { int hp = 0; }\n"
+        "int Scaled(int v, int k = 3) { return v * k; }\n"
+        "void Inc(ref int v) { v = v + 1; }\n"
+        "int Weight($Node n) { return 1; }\n"
+        "class A : Unit { }\n");
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    for (const char* n : {"Scaled", "Inc", "Weight"})
+        EXPECT_TRUE(has_text(r, std::string("MY_INVOKER(hot_fn_") + n + ")")) << n << "\n" << r.cpp;
+}
+
+TEST(StaticFunctionTranslation, InvokerHasNoEntryForAnAsyncFunction)
+{
+    const hotc::TranslateResult r = translate_invoker("[fn_invoker(\"MY_INVOKER\")];\nasync int Wait() { return 1; }\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.cpp.find("Wait@call"), std::string::npos) << r.cpp;
 }

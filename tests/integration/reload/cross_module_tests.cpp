@@ -5,6 +5,7 @@
 // Reload tests of a script family over two or three units (modules step 5). The child unit imports
 // the parent unit with "using". Each unit is its own module. The child state derives from the
 // parent state of the interface. The loader fills the inherited slots of the child from the parent.
+#include "Invoker.h"
 #include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/reload_assert.h"
@@ -14,6 +15,7 @@
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <typeinfo>
 
 #include <memory>
 #include <string>
@@ -568,6 +570,100 @@ TEST_P(FamilyTests, OverloadsOverTwoUnits)
     EXPECT_EQ(*fld<int>(s, "free"), 5 + 80);
     EXPECT_EQ(*fld<int>(s, "stat"), 9 + 600);
     EXPECT_EQ(*fld<int>(s, "based"), (3 + 10) + (4 + 20));
+}
+
+// The module attribute [fn_invoker("TEST_INVOKER")]. The unit "inv.hot" gets "<name>@call" in the
+// function table for each public free function without overloads. A host calls an invoker through
+// hot::unit_ref. A reload gives a new table id and the new body.
+const char* kInv1 = R"(
+using "Actor.h";
+using "Invoker.h";
+[fn_invoker("TEST_INVOKER")];
+
+int calls = 0;
+int Triple(int v) { calls = calls + 1; return v * 3; }
+void Count() { calls = calls + 1; }
+int Calls() { return calls; }
+private int Hidden(int v) { return v; }
+int Half(int v) { return v / 2; }
+int Half(std.string s) { return 70; }
+int Scaled(int v, int k = 3) { return v * k; }
+void Inc(ref int v) { v = v + 1; }
+int Weight($InvActor a) { return 1; }
+
+class InvActor : Actor { }
+)";
+
+const char* kInv2 = R"(
+using "Actor.h";
+using "Invoker.h";
+[fn_invoker("TEST_INVOKER")];
+
+int calls = 0;
+int Triple(int v) { calls = calls + 1; return v * 30; }
+void Count() { calls = calls + 1; }
+int Calls() { return calls; }
+private int Hidden(int v) { return v; }
+int Half(int v) { return v / 2; }
+int Half(std.string s) { return 70; }
+int Scaled(int v, int k = 3) { return v * k; }
+void Inc(ref int v) { v = v + 1; }
+int Weight($InvActor a) { return 1; }
+
+class InvActor : Actor { }
+)";
+
+bool call_invoker(const hot::FnTable& fns, const char* name, int in, int& out)
+{
+    const hot::FnEntry* e = fns.find(name);
+    if (!e)
+        return false;
+    EXPECT_EQ(e->sig, typeid(TestInvoker).name());
+    TestInvokeArgs a;
+    a.in = in;
+    const bool ok = reinterpret_cast<TestInvoker>(e->fn)(a);
+    out = a.out;
+    return ok;
+}
+
+TEST_P(FamilyTests, FnInvokerGivesTheCallEntriesAndSurvivesReload)
+{
+    Session s;
+    std::vector<hot::LoadResult> v1;
+    v1.push_back(build("inv.hot", kInv1, {}, 1));
+    ASSERT_NO_FATAL_FAILURE(start(s, std::move(v1), "InvActor"));
+    const hot::UnitInfo u1 = hot::unit_ref("inv").info;
+    ASSERT_NE(u1.fns, nullptr);
+    EXPECT_NE(u1.fns->find("Triple"), nullptr) << "the normal entry stays";
+    EXPECT_EQ(u1.fns->find("Hidden@call"), nullptr);
+    EXPECT_EQ(u1.fns->find("Half@call"), nullptr);
+    EXPECT_EQ(u1.fns->find("main@call"), nullptr);
+    int out = 0;
+    ASSERT_TRUE(call_invoker(*u1.fns, "Triple@call", 5, out));
+    EXPECT_EQ(out, 15);
+    ASSERT_TRUE(call_invoker(*u1.fns, "Count@call", 0, out));
+    ASSERT_TRUE(call_invoker(*u1.fns, "Calls@call", 0, out));
+    EXPECT_EQ(out, 2) << "the invoker calls the function of the unit and shares its module variable";
+    // A default argument gives an entry that the invoker calls with all arguments. A ref parameter
+    // and a handle parameter give an entry that the test invoker refuses (false).
+    ASSERT_TRUE(call_invoker(*u1.fns, "Scaled@call", 4, out));
+    EXPECT_EQ(out, 16);
+    EXPECT_FALSE(call_invoker(*u1.fns, "Inc@call", 4, out));
+    EXPECT_NE(u1.fns->find("Inc@call"), nullptr);
+    EXPECT_FALSE(call_invoker(*u1.fns, "Weight@call", 4, out));
+    EXPECT_NE(u1.fns->find("Weight@call"), nullptr);
+    const uint64_t id1 = u1.fns->id;
+
+    std::vector<hot::LoadResult> v2;
+    v2.push_back(build("inv.hot", kInv2, {}, 2));
+    ASSERT_NO_FATAL_FAILURE(reload(s, std::move(v2)));
+    const hot::UnitInfo u2 = hot::unit_ref("inv").info;
+    ASSERT_NE(u2.fns, nullptr);
+    EXPECT_NE(u2.fns->id, id1) << "a reload gives a new function table";
+    ASSERT_TRUE(call_invoker(*u2.fns, "Triple@call", 5, out));
+    EXPECT_EQ(out, 150) << "the new body";
+    ASSERT_TRUE(call_invoker(*u2.fns, "Calls@call", 0, out));
+    EXPECT_EQ(out, 3) << "the module variable keeps its value";
 }
 
 // A missing parent module is a translation error at the "using" line.
