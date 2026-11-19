@@ -1201,6 +1201,36 @@ private:
     json on_range_formatting(const Doc& d, const json& p);
     json on_code_action(const Doc& d, const json& p);
     json on_locations(const Doc& d, const json& p, const std::string& method);
+    // HOT-65 S4: true when the unit position is on code of a script block. The mask of the unit text keeps
+    // only the code of the blocks. All other text is a space. The cursor can touch the end of a word.
+    static bool in_script_block(const Doc& d, Pos at)
+    {
+        if (at.line < 0)
+            return false;
+        const std::string line(d.text.line(at.line));
+        auto code = [&](int col) { return col >= 0 && col < static_cast<int>(line.size()) && !std::isspace(static_cast<unsigned char>(line[col])); };
+        return code(at.col) || code(at.col - 1);
+    }
+    // HOT-65 S4: a location in the prefix text of a markup document has no raw position. A location in the raw
+    // text never starts at line 0 column 0 (the block code follows a tag). Such a location comes from the clamp
+    // of to_lsp. The function removes it. An empty list becomes null.
+    void drop_prefix_locations(json& r) const
+    {
+        if (!r.is_array())
+            return;
+        json kept = json::array();
+        for (const json& l : r)
+        {
+            const std::string uri = l.contains("targetUri") ? l.value("targetUri", std::string()) : l.value("uri", std::string());
+            const json& range = l.contains("targetSelectionRange") ? l["targetSelectionRange"] : l.value("range", json::object());
+            const auto it = docs_.find(uri);
+            const bool prefix = it != docs_.end() && it->second->embedded && range.contains("start")
+                && range["start"].value("line", 1) == 0 && range["start"].value("character", 1) == 0;
+            if (!prefix)
+                kept.push_back(l);
+        }
+        r = kept.empty() ? json(nullptr) : kept;
+    }
     std::vector<Pos> gen_word_candidates(const Doc& d, Pos script_pos) const;
     // The places in the generated text to ask clangd about a script position. "by_word" is set when
     // the position has no map segment and the places come from the word.
@@ -1327,7 +1357,9 @@ private:
     FileRefs table_of_doc(const Doc& d);
     IndexShard shard_of_doc(const Doc& d);
     // The open document of the script at "path", or null.
-    std::shared_ptr<Doc> open_doc_at(const std::string& path) const;
+    // "with_embedded" (HOT-65 S4): a markup document is found too. Only the lookup of the declaration of a
+    // symbol in the same markup document uses it. All cross-document features skip markup documents.
+    std::shared_ptr<Doc> open_doc_at(const std::string& path, bool with_embedded = false) const;
     // A document for a closed script: the paths and the text, with no facts and no clangd state.
     Doc closed_doc(const std::string& path, const std::string& text) const;
     // The table of the resolved names of the script at "path". An open document gives the table
@@ -5577,7 +5609,7 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
         Text decl_text;
         const auto decl_table = file_refs(r->ref.decl_file, nullptr, &decl_text);
         const hotc::ResolvedRef* decl = decl_table ? decl_of(*decl_table, r->ref.id) : nullptr;
-        const std::shared_ptr<Doc> decl_doc = open_doc_at(r->ref.decl_file);
+        const std::shared_ptr<Doc> decl_doc = open_doc_at(r->ref.decl_file, true);
         const std::string decl_uri = decl_doc ? decl_doc->uri : path_to_uri(r->ref.decl_file);
         std::optional<Pos> decl_pos;
         if (decl && decl->offset <= decl_text.s.size())
@@ -5597,7 +5629,7 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
                     if (n.is_decl && n.id == r->ref.id && n.offset <= near_text.s.size()
                         && (n.near_decl == r->ref.near_decl || (n.near_decl.empty() && n.decl == r->ref.near_decl)))
                     {
-                        const std::shared_ptr<Doc> near_doc = open_doc_at(r->ref.near_file);
+                        const std::shared_ptr<Doc> near_doc = open_doc_at(r->ref.near_file, true);
                         const auto [line, col] = near_text.pos(n.offset);
                         return json::array(
                             {loc(near_doc ? near_doc->uri : path_to_uri(r->ref.near_file), near_text, Pos{line, col})});
@@ -6509,11 +6541,11 @@ IndexShard Server::shard_of_doc(const Doc& d)
     return shard_of_facts(d.path, d.text, d.facts, script_imports(d, d.text.s));
 }
 
-std::shared_ptr<Doc> Server::open_doc_at(const std::string& path) const
+std::shared_ptr<Doc> Server::open_doc_at(const std::string& path, bool with_embedded) const
 {
     const fs::path want = fs::path(path).lexically_normal();
     for (const auto& [uri, doc] : docs_)
-        if (!doc->embedded && (doc->path == path || fs::path(doc->path).lexically_normal() == want))
+        if ((with_embedded || !doc->embedded) && (doc->path == path || fs::path(doc->path).lexically_normal() == want))
             return doc;
     return nullptr;
 }
@@ -6531,7 +6563,7 @@ Doc Server::closed_doc(const std::string& path, const std::string& text) const
 
 std::shared_ptr<const FileRefs> Server::file_refs(const std::string& path, const std::string* given, Text* used)
 {
-    if (const std::shared_ptr<Doc> open = open_doc_at(path))
+    if (const std::shared_ptr<Doc> open = open_doc_at(path, true))
     {
         if (used)
             *used = open->text;
@@ -9513,7 +9545,19 @@ void Server::handle(const json& msg)
     if (d->cpp)
         return reply(id, nullptr); // a ".cpp" document: clangd owns the features, hot-ls only publishes errors
     if (d->embedded)
-        return reply(id, nullptr); // HOT-65 step S1: a markup document gets diagnostics only
+    {
+        // HOT-65 step S4: a markup document answers hover and definition for a position in a script block.
+        // All other requests, and a position in the markup or the prefix, get null.
+        if (method != "textDocument/hover" && method != "textDocument/definition")
+            return reply(id, nullptr);
+        if (d->embed_bad || !d->embed_found || !in_script_block(*d, from_lsp(d->text, p["position"], utf8_)))
+            return reply(id, nullptr);
+        if (method == "textDocument/hover")
+            return reply(id, on_hover(*d, p));
+        json r = on_locations(*d, p, method);
+        drop_prefix_locations(r);
+        return reply(id, r);
+    }
     if (method == "textDocument/completion")
         return reply(id, on_completion(*d, p));
     if (method == "textDocument/hover")
