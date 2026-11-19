@@ -15,6 +15,7 @@
 #include "semantic.h"
 #include "hot/clang_files_backend.h"
 #include "hot/config.h"
+#include "hot/embedded_script.h"
 #include "hot/hotc_lib.h"
 #include "hot/paths.h"
 #include "symbol_index.h"
@@ -198,6 +199,15 @@ struct Doc
     // a script. It ignores any other ".cpp" document. All the other requests get no answer.
     bool cpp = false;
     bool cpp_published = false; // the last publish of a ".cpp" document had a diagnostic list
+    // HOT-65: a markup document (for example ".rml") with a host rule "embedded". "raw" is the text of the
+    // editor. "text" is the unit text: the masked script blocks with the prefix of the rule (Server::set_embedded_text).
+    // The unit text goes to the same generated file in clangd as a ".hot" script. The requests of this
+    // document get no answer: only the diagnostics work (HOT-65 step S1).
+    bool embedded = false;
+    bool embed_found = false; // the raw text has a script block
+    bool embed_bad = false;   // no rule now, or the prefix file is not valid: the document gets no facts
+    std::string raw;
+    EmbeddedRule rule;
     // The "no host matches" message went to the user for this document. It resets when the host
     // set of the document changes. It lives in the document, so a close of the document drops it.
     mutable bool no_host_told = false;
@@ -702,13 +712,26 @@ private:
     std::thread::id state_thread_;
 
     // ---- positions
+    // HOT-65: the columns of a unit text of a markup document count on the raw text of the editor (t.client).
+    // Line 0 of the unit text has "shift0" prefix bytes in front. The mask keeps the byte columns of the raw text.
     Pos from_lsp(const Text& t, const json& p, bool utf8) const
     {
         const int l = p.value("line", 0), c = p.value("character", 0);
+        if (t.client)
+        {
+            const int b = utf8 ? c : utf16_to_byte(t.client->line(l), c);
+            return {l, b + (l == 0 ? t.shift0 : 0)};
+        }
         return {l, utf8 ? c : utf16_to_byte(t.line(l), c)};
     }
     json to_lsp(const Text& t, Pos p, bool utf8) const
     {
+        if (t.client)
+        {
+            // A column in the prefix (an error of the prefix text) goes to column 0.
+            const int b = std::max(0, p.col - (p.line == 0 ? t.shift0 : 0));
+            return {{"line", p.line}, {"character", utf8 ? b : byte_to_utf16(t.client->line(p.line), b)}};
+        }
         return {{"line", p.line}, {"character", utf8 ? p.col : byte_to_utf16(t.line(p.line), p.col)}};
     }
     json script_range(const Doc& d, Pos b, Pos e) const
@@ -931,6 +954,26 @@ private:
     // Checks the host files after a document event. A document whose host changed gets the new
     // compile command. "current" is the document of the event: the caller updates it.
     void refresh_hosts(Doc* current, bool force = false);
+    // HOT-65: the rule "embedded" of the effective host (host_of, else nearest_host) for the suffix of the path.
+    std::optional<EmbeddedRule> embedded_rule_of(const std::string& path) const
+    {
+        const std::string ext = fs::path(path).extension().string();
+        if (ext.empty() || ext == ".hot" || ext == ".cpp")
+            return std::nullopt;
+        auto host = host_of(path);
+        if (!host)
+            host = nearest_host(path);
+        if (host)
+            for (const EmbeddedRule& r : host->embedded)
+                if (r.suffix == ext)
+                    return r;
+        return std::nullopt;
+    }
+    // True when hot-ls serves the path: a ".hot" or ".cpp" file, or a file that a host rule "embedded" names.
+    bool is_served(const std::string& path) const { return is_served_path(path) || embedded_rule_of(path).has_value(); }
+    // Sets "raw", "embedded" state and the unit text of the document from the raw text. A rule that is gone or a prefix
+    // file that is not valid gives "embed_bad" (one log line).
+    void set_embedded_text(Doc& d, std::string raw);
     // The notification workspace/didChangeWatchedFiles: new, changed and deleted files on disk.
     void on_watched_files(const json& p);
     void update(Doc& d);
@@ -2734,10 +2777,80 @@ void Server::update_cpp(Doc& d)
     send_client(publish_message(d));
 }
 
+// HOT-65: the prefix of the rule. The file loses one final line end. A line end inside or a byte that is
+// not ASCII makes the prefix not valid: it gives nullopt and the reason in "why".
+static std::optional<std::string> read_embedded_prefix(const EmbeddedRule& rule, std::string& why)
+{
+    if (rule.prefix_file.empty())
+        return std::string();
+    const auto text = read_file(rule.prefix_file);
+    if (!text)
+    {
+        why = "cannot read the prefix file " + rule.prefix_file;
+        return std::nullopt;
+    }
+    std::string prefix = *text;
+    if (!prefix.empty() && prefix.back() == '\n')
+    {
+        prefix.pop_back();
+        if (!prefix.empty() && prefix.back() == '\r')
+            prefix.pop_back();
+    }
+    for (const char c : prefix)
+        if (c == '\n' || c == '\r' || static_cast<unsigned char>(c) >= 0x80)
+        {
+            why = "the prefix file " + rule.prefix_file + " has a line end inside or a byte that is not ASCII";
+            return std::nullopt;
+        }
+    return prefix;
+}
+
+void Server::set_embedded_text(Doc& d, std::string raw)
+{
+    d.embedded = true;
+    d.raw = std::move(raw);
+    const auto rule = embedded_rule_of(d.path);
+    std::string why;
+    std::optional<std::string> prefix;
+    if (!rule)
+        why = "no host rule for the suffix of " + d.path;
+    else
+    {
+        d.rule = *rule;
+        prefix = read_embedded_prefix(d.rule, why);
+    }
+    const bool bad = !prefix.has_value();
+    if (bad && !d.embed_bad)
+        send_client({{"jsonrpc", "2.0"}, {"method", "window/logMessage"},
+            {"params", {{"type", 2}, {"message", "hot-ls: " + d.path + " is not served: " + why}}}});
+    d.embed_bad = bad;
+    bool found = false;
+    Text unit(bad ? std::string() : hot::mask_embedded_scripts(d.raw, d.rule.tag, &found, *prefix));
+    d.embed_found = found;
+    unit.shift0 = bad ? 0 : static_cast<int>(prefix->size());
+    unit.client = std::make_shared<const Text>(d.raw);
+    d.text = std::move(unit);
+}
+
 void Server::update(Doc& d)
 {
     if (d.cpp)
         return update_cpp(d);
+    if (d.embedded && (d.embed_bad || !d.embed_found))
+    {
+        // No script block, no rule or a prefix that is not valid: no facts and an empty list.
+        std::lock_guard<std::mutex> lock(docs_mutex_);
+        d.facts = hotc::AnalyzeResult();
+        d.analyzed = d.text;
+        d.dirty = false;
+        ++d.facts_version;
+        d.clang_diags = json::array();
+        d.clang_import_diags.clear();
+        d.set_edit();
+        send_client(publish_message(d));
+        publish_imports(d);
+        return;
+    }
     ++update_runs_;
     const auto update_t0 = std::chrono::steady_clock::now();
     hotc::AnalyzeResult facts =
@@ -9147,7 +9260,7 @@ void Server::handle(const json& msg)
         auto d = std::make_shared<Doc>();
         d->uri = td.value("uri", std::string());
         d->path = uri_to_path(d->uri);
-        if (!is_served_path(d->path))
+        if (!is_served(d->path))
             return; // a header or other file: the C++ tools own it
         d->cpp = fs::path(d->path).extension() == ".cpp";
         if (!d->cpp)
@@ -9155,7 +9268,14 @@ void Server::handle(const json& msg)
             d->gen_path = d->path + ".cpp";
             d->gen_uri = path_to_uri(d->gen_path);
         }
-        d->text = Text(td.value("text", std::string()));
+        if (embedded_rule_of(d->path))
+        {
+            set_embedded_text(*d, td.value("text", std::string()));
+            if (d->embed_bad)
+                return; // a prefix that is not valid: the document is not served (one log line)
+        }
+        else
+            d->text = Text(td.value("text", std::string()));
         {
             std::lock_guard<std::mutex> lock(docs_mutex_);
             docs_[d->uri] = d;
@@ -9186,7 +9306,10 @@ void Server::handle(const json& msg)
             return;
         {
             std::lock_guard<std::mutex> lock(docs_mutex_);
-            d->text = Text(changes.back().value("text", std::string()));
+            if (d->embedded)
+                set_embedded_text(*d, changes.back().value("text", std::string()));
+            else
+                d->text = Text(changes.back().value("text", std::string()));
         }
         const auto host_before = d->host;
         refresh_hosts(d.get());
@@ -9367,12 +9490,14 @@ void Server::handle(const json& msg)
     if (!d)
     {
         // A file that hot-ls does not serve (a header, for example) gets an empty answer.
-        if (!is_served_path(uri_to_path(p.value("/textDocument/uri"_json_pointer, std::string()))))
+        if (!is_served(uri_to_path(p.value("/textDocument/uri"_json_pointer, std::string()))))
             return reply(id, nullptr);
         return reply_error(id, kInvalidParams, "the document is not open");
     }
     if (d->cpp)
         return reply(id, nullptr); // a ".cpp" document: clangd owns the features, hot-ls only publishes errors
+    if (d->embedded)
+        return reply(id, nullptr); // HOT-65 step S1: a markup document gets diagnostics only
     if (method == "textDocument/completion")
         return reply(id, on_completion(*d, p));
     if (method == "textDocument/hover")

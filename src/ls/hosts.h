@@ -36,6 +36,14 @@
 namespace hot::ls
 {
 
+// HOT-65: a rule of the host JSON key "embedded". A file with the suffix holds script code in the
+// blocks "<tag>" (a markup file). "prefix_file" is the absolute path of the file that has the prefix
+// of the unit text (the header lines), or empty.
+struct EmbeddedRule
+{
+    std::string suffix, tag, prefix_file;
+};
+
 struct Host
 {
     std::string name, binary_dir, compiler, std_version, resource_dir;
@@ -48,6 +56,7 @@ struct Host
     std::string top_source_dir;
     std::vector<std::string> preludes; // the absolute paths of the prelude files of the host
     std::string prelude_suffix; // the suffix of the user preludes in the script dirs, or empty
+    std::vector<EmbeddedRule> embedded; // the markup suffixes of the host (HOT-65)
 
     // The flags, then "-D<define>" for each define. The JSON file has no "-D" prefix.
     std::vector<std::string> cxx_flags() const;
