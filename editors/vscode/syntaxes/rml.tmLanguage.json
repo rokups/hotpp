@@ -1,0 +1,51 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "RML",
+  "scopeName": "text.html.rml",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#script" },
+    { "include": "text.html.basic" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.block.html",
+      "begin": "<!--",
+      "end": "-->"
+    },
+    "script": {
+      "name": "meta.tag.script.rml",
+      "begin": "(?i)(<)(script)\\b",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.tag.begin.html" },
+        "2": { "name": "entity.name.tag.html" }
+      },
+      "end": "(?i)(</)(script)\\s*(>)",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.tag.begin.html" },
+        "2": { "name": "entity.name.tag.html" },
+        "3": { "name": "punctuation.definition.tag.end.html" }
+      },
+      "patterns": [
+        {
+          "begin": "\\G",
+          "end": "(>)",
+          "endCaptures": { "1": { "name": "punctuation.definition.tag.end.html" } },
+          "patterns": [
+            { "match": "[^\\s=>/\"']+", "name": "entity.other.attribute-name.html" },
+            { "match": "=", "name": "punctuation.separator.key-value.html" },
+            { "begin": "\"", "end": "\"", "name": "string.quoted.double.html" },
+            { "begin": "'", "end": "'", "name": "string.quoted.single.html" }
+          ]
+        },
+        {
+          "begin": "(?!\\G)",
+          "end": "(?i)(?=</script\\b)",
+          "name": "meta.embedded.block.hot",
+          "contentName": "source.hot",
+          "patterns": [ { "include": "source.hot" } ]
+        }
+      ]
+    }
+  }
+}

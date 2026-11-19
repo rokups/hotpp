@@ -42,6 +42,10 @@ if (pkg) {
   const c = pkg.contributes || {};
   if (!(c.languages || []).some((l) => l.id === 'hot' && l.extensions.includes('.hot'))) fail('language hot');
   if (!(c.grammars || []).some((g) => g.scopeName === grammar.scopeName)) fail('grammar scope');
+  if (!(c.languages || []).some((l) => l.id === 'rml' && l.extensions.includes('.rml'))) fail('language rml');
+  const rmlReg = (c.grammars || []).find((g) => g.scopeName === 'text.html.rml');
+  if (!rmlReg || rmlReg.embeddedLanguages['source.hot'] !== 'hot') fail('grammar rml');
+  if (!(pkg.activationEvents || []).includes('onLanguage:rml')) fail('activation event rml');
   if (!c.configuration || !c.configuration.properties['hot.server.path']) fail('setting hot.server.path');
 }
 
@@ -92,6 +96,13 @@ try {
   finish();
 }
 
+const grammarFiles = {
+  [grammar.scopeName]: grammarFile,
+  'text.html.rml': path.join(root, 'syntaxes', 'rml.tmLanguage.json'),
+  // A small stand-in for the HTML grammar of VS Code. It has its own script rule.
+  'text.html.basic': path.join(root, 'test', 'html_stub.tmLanguage.json'),
+};
+
 async function main() {
   const wasm = fs.readFileSync(require.resolve('vscode-oniguruma/release/onig.wasm')).buffer;
   await oniguruma.loadWASM(wasm);
@@ -100,8 +111,10 @@ async function main() {
       createOnigScanner: (p) => new oniguruma.OnigScanner(p),
       createOnigString: (s) => new oniguruma.OnigString(s),
     }),
-    loadGrammar: async (scope) => (scope === grammar.scopeName ? textmate.parseRawGrammar(
-      fs.readFileSync(grammarFile, 'utf8'), grammarFile) : null),
+    loadGrammar: async (scope) => {
+      const file = grammarFiles[scope];
+      return file ? textmate.parseRawGrammar(fs.readFileSync(file, 'utf8'), file) : null;
+    },
   });
   const g = await registry.loadGrammar(grammar.scopeName);
   if (!g) { fail('the grammar does not load'); return; }
@@ -140,6 +153,48 @@ async function main() {
   } else if (fs.readFileSync(snap, 'utf8') !== got) {
     fail('test/sample.hot differs from test/sample.snap. Run with --update to accept.');
   }
+
+  // ---- the rml grammar
+  const rml = await registry.loadGrammar('text.html.rml');
+  if (!rml) { fail('the rml grammar does not load'); return; }
+  function rmlLines(text) {
+    let state = textmate.INITIAL;
+    return text.split('\n').map((line) => {
+      const r = rml.tokenizeLine(line, state);
+      state = r.ruleStack;
+      return r.tokens.map((t) => ({ text: line.slice(t.startIndex, t.endIndex), scopes: t.scopes }));
+    });
+  }
+  const find = (tokens, text) => tokens.find((t) => t.text === text);
+  const has = (t, prefix) => !!t && t.scopes.some((s) => s.startsWith(prefix));
+
+  // The body of a script block is Hot++. It wins over the script rule of the HTML grammar.
+  let l = rmlLines('<div id="a">\n<script type="x">\nint x = 1;\n</script>\n<p>t</p>');
+  if (!has(find(l[0], 'div'), 'entity.name.tag.html')) fail('rml: markup outside has no html scope');
+  if (!has(find(l[2], 'int'), 'source.hot')) fail('rml: script body has no source.hot scope');
+  if (has(find(l[2], 'int'), 'source.js')) fail('rml: script body has the scope of the HTML script rule');
+  if (!has(find(l[2], 'int'), 'keyword') && !has(find(l[2], 'int'), 'storage'))
+    fail('rml: "int" in a script body has no keyword or type scope');
+  if (!has(find(l[1], 'script'), 'entity.name.tag.html')) fail('rml: script tag name');
+  if (!has(find(l[3], 'script'), 'entity.name.tag.html')) fail('rml: script end tag name');
+  if (has(find(l[4], 'p'), 'source.hot')) fail('rml: markup after a script block has a hot scope');
+  if (!has(find(l[4], '>t'), 'text.html.rml')) fail('rml: top scope');
+
+  // An uppercase tag works too.
+  l = rmlLines('<SCRIPT>\nint x = 1;\n</SCRIPT>');
+  if (!has(find(l[1], 'int'), 'source.hot')) fail('rml: uppercase SCRIPT body has no source.hot scope');
+
+  // A script tag with "src" has no body. The text after it is markup.
+  l = rmlLines('<script src="x.hot"></script>\n<b>int</b>');
+  if (l[0].some((t) => has(t, 'source.hot'))) fail('rml: script with src has a hot scope');
+  if (has(find(l[1], 'int'), 'source.hot')) fail('rml: the text after a script with src has a hot scope');
+  if (!has(find(l[1], 'b'), 'entity.name.tag.html')) fail('rml: the tag after a script with src has no html scope');
+
+  // A script tag in an HTML comment is not code.
+  l = rmlLines('<!-- <script>\nint x;\n</script> -->\n<i>t</i>');
+  if (l.slice(0, 3).some((line) => line.some((t) => has(t, 'source.hot')))) fail('rml: a comment has a hot scope');
+  if (!has(find(l[1], 'int x;'), 'comment.block.html')) fail('rml: the comment scope is lost');
+  if (!has(find(l[3], 'i'), 'entity.name.tag.html')) fail('rml: the markup after a comment has no html scope');
 }
 
 function finish() {
