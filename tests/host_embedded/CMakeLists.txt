@@ -15,6 +15,9 @@ elseif(CASE STREQUAL "rule")
 elseif(CASE STREQUAL "tag")
     hot_script_host(NAME H SCRIPTS a.hot EMBEDDED_SUFFIX .x EMBEDDED_TAG code
         EMBEDDED_PREFIX_FILE "${CMAKE_CURRENT_SOURCE_DIR}/p.hot")
+elseif(CASE STREQUAL "outside")
+    hot_script_host(NAME H SCRIPTS a.hot EMBEDDED_SUFFIX .x
+        EMBEDDED_PREFIX_FILE "${ROOT}/tests/check_host_embedded.cmake")
 elseif(CASE STREQUAL "noprefix")
     hot_script_host(NAME H SCRIPTS a.hot EMBEDDED_SUFFIX .rml)
 endif()

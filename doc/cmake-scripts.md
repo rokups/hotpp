@@ -205,6 +205,12 @@ The folder is `HOT_HOSTS_DIR`. The default is `${CMAKE_SOURCE_DIR}/.cache/hot/ho
 
 `hot_add_scripts` calls `hot_script_host` without `TARGET`, so it writes only the JSON file. The `includeDirs` entry has the include folder of Hot++, the `INCLUDES` and (with fmt) the fmt folder. In default mode `flags` has `FLAGS` and the fmt flags.
 
+Rule for the path fields:
+
+- `hot_script_host` resolves `prefixFile` (in `embedded`) itself. It writes the path relative to `sourceDir` when the file is inside `sourceDir`. It keeps the path absolute when the file is outside.
+- `sourceDir`, `binaryDir`, `topSourceDir`, `compiler` and `resourceDir` are absolute by nature. The JSON file is a per-machine build artifact in `.cache`.
+- `scriptDirs`, `scripts`, `preludes` and `includeDirs` stay as the caller gave them.
+
 Two notes on the fields:
 
 - `std`: with `TARGET`, the `CXX_STANDARD` property of the target, else `CMAKE_CXX_STANDARD`, else 17. Without `TARGET` it is `CMAKE_CXX_STANDARD` or 17. It agrees with the default 17 of Hot++.

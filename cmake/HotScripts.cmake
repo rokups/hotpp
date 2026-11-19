@@ -905,6 +905,11 @@ function(hot_script_host)
         endif()
         cmake_path(ABSOLUTE_PATH A_EMBEDDED_PREFIX_FILE BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
             OUTPUT_VARIABLE prefix_file)
+        # Inside sourceDir the path is written relative to it. Outside, it stays absolute.
+        cmake_path(IS_PREFIX CMAKE_CURRENT_SOURCE_DIR "${prefix_file}" NORMALIZE in_source)
+        if(in_source)
+            cmake_path(RELATIVE_PATH prefix_file BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        endif()
         _hot_host_escape(e_esuffix "${A_EMBEDDED_SUFFIX}")
         _hot_host_escape(e_etag "${tag}")
         _hot_host_escape(e_eprefix "${prefix_file}")

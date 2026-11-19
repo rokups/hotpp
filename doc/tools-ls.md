@@ -131,7 +131,7 @@ Limits:
 ## Markup documents with script blocks (HOT-65, step S1)
 
 A host JSON file can have the key `"embedded"`: `[{"suffix": ".rml", "tag": "script", "prefixFile": "<path>"}]`.
-A relative path is relative to `sourceDir`. hot-ls then serves the files with this suffix.
+A relative path is relative to `sourceDir`. `hot_script_host` writes a path inside `sourceDir` as a relative path. It keeps a path outside `sourceDir` absolute. hot-ls then serves the files with this suffix.
 hot-ls reads the prefix file at each analysis. It removes one final line end.
 It rejects a prefix with a line end inside or a non-ASCII byte. It logs one line and publishes an empty list.
 The next change of the document reads the prefix file again. A fixed file works then.
