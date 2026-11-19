@@ -53,7 +53,7 @@ struct PathWalk
     // The "break" states of the loops and the switches that are open: (some break seen, all assigned).
     std::vector<std::pair<bool, bool>> breaks;
     // One entry for each open loop: a "continue" was seen, and all "continue" states assigned.
-    std::vector<std::pair<bool, bool>> continues;
+    std::vector<std::pair<bool, bool>> continues = {};
 
     static bool is_name(const Expr& e, const std::string& n, bool whole)
     {
@@ -513,7 +513,7 @@ struct RefInfo
 {
     Place place;
     uint32_t pos = 0;
-    std::string type; // the declared type of the initializer, or empty when not known
+    std::string type = {}; // the declared type of the initializer, or empty when not known
     // The initializer has a call of a "ref" method (B5): the lowering gives a C++ reference, not a checked
     // path. Only such a ref gets the shape change rule. "front", "back" and "at" are path steps.
     bool call = false;
@@ -568,33 +568,33 @@ struct Checker
     struct Scope
     {
         std::set<std::string> locals;
-        std::map<std::string, std::string> local_types;
+        std::map<std::string, std::string> local_types = {};
         std::set<std::string> borrowed;
     };
     std::vector<Scope> scopes; // the state at the start of each lambda that is open
-    std::map<std::string, std::string> local_types; // the declared type of a local ("": not known)
-    std::set<std::string> owning_locals; // the locals and by-value parameters that own their elements
-    std::vector<std::set<std::string>> owning_stack; // owning_locals at the start of each open block
+    std::map<std::string, std::string> local_types = {}; // the declared type of a local ("": not known)
+    std::set<std::string> owning_locals = {}; // the locals and by-value parameters that own their elements
+    std::vector<std::set<std::string>> owning_stack = {}; // owning_locals at the start of each open block
     // The view locals ("T[] s = v;", "std.string_view w = t;") and the root of the container that they
     // view. Rule V2 uses it: a return of "s" is a view of a local owner. A use after a shape change is
     // safe: the lowering writes the view of the owner again at each use (B7).
-    std::map<std::string, std::string> view_src;
-    std::vector<std::map<std::string, std::string>> view_stack; // view_src at the start of each open block
-    std::string method_ret; // the declared return type of the method in progress
-    std::map<std::string, std::string> field_types; // the declared type of each field
-    std::set<const Expr*> callee_names; // names in the callee place of a call
-    std::set<const Expr*> arg_names; // the arguments of a call: a method group is valid there
-    std::map<std::string, RefInfo> refs; // the "ref" locals that are live in the body in progress
-    std::vector<std::map<std::string, RefInfo>> refs_stack; // "refs" at the start of each open block
-    std::set<std::string> ref_params; // the "ref" and "out" parameters of the body in progress
+    std::map<std::string, std::string> view_src = {};
+    std::vector<std::map<std::string, std::string>> view_stack = {}; // view_src at the start of each open block
+    std::string method_ret = {}; // the declared return type of the method in progress
+    std::map<std::string, std::string> field_types = {}; // the declared type of each field
+    std::set<const Expr*> callee_names = {}; // names in the callee place of a call
+    std::set<const Expr*> arg_names = {}; // the arguments of a call: a method group is valid there
+    std::map<std::string, RefInfo> refs = {}; // the "ref" locals that are live in the body in progress
+    std::vector<std::map<std::string, RefInfo>> refs_stack = {}; // "refs" at the start of each open block
+    std::set<std::string> ref_params = {}; // the "ref" and "out" parameters of the body in progress
     // The live "ref" entries that the variable of a "foreach" hides. The end of the loop gives them back.
-    std::map<const Stmt*, std::vector<std::pair<std::string, RefInfo>>> hidden_refs;
+    std::map<const Stmt*, std::vector<std::pair<std::string, RefInfo>>> hidden_refs = {};
     // The refs of a declaration that start at the end of the declaration statement.
-    std::map<const VarDeclStmt*, std::vector<std::pair<std::string, RefInfo>>> pending_refs;
-    std::set<std::string> copy_params; // the plain, "in" and "[byval]" parameters of the body in progress
+    std::map<const VarDeclStmt*, std::vector<std::pair<std::string, RefInfo>>> pending_refs = {};
+    std::set<std::string> copy_params = {}; // the plain, "in" and "[byval]" parameters of the body in progress
     bool method_ret_ref = false; // true while the body of a method with a "ref T" return is in progress
-    std::set<std::string> weak_fields; // the "[weak]" fields of the class
-    std::set<std::string> weak_locals; // the "[weak]" parameters and locals of the body in progress
+    std::set<std::string> weak_fields = {}; // the "[weak]" fields of the class
+    std::set<std::string> weak_locals = {}; // the "[weak]" parameters and locals of the body in progress
     const std::vector<ClassDef>* classes = nullptr; // the script classes of the unit, with the imported classes
 
     // True when the method returns "ref T". The checker runs before and after the lowering of the return type.
@@ -3274,10 +3274,10 @@ struct QueryCollector
 
     const ClassDef* cls = nullptr;
     bool allow_this = true;
-    std::set<std::string> locals;
-    std::map<std::string, QType> env;
-    std::map<std::string, std::string> value_params; // name to the type: the parameters for "methods"
-    std::set<std::string> param_names; // the by-value parameters of the body in progress
+    std::set<std::string> locals = {};
+    std::map<std::string, QType> env = {};
+    std::map<std::string, std::string> value_params = {}; // name to the type: the parameters for "methods"
+    std::set<std::string> param_names = {}; // the by-value parameters of the body in progress
 
     // True when the type text names a script class or a script enum.
     bool mentions_script(const std::string& t) const

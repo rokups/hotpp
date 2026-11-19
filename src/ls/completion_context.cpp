@@ -177,8 +177,8 @@ struct Scanner
 {
     std::string_view text;
     std::vector<Frame> stack;
-    std::string_view lastSig; // the last token of any kind, also ";" "{" and ")"
-    std::string_view prevSig; // the token before lastSig
+    std::string_view lastSig = {}; // the last token of any kind, also ";" "{" and ")"
+    std::string_view prevSig = {}; // the token before lastSig
 
     void sig(std::string_view s)
     {

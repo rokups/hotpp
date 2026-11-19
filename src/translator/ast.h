@@ -223,7 +223,7 @@ struct NameExpr
     // The raw text of the earlier parts can differ from parts[i] (see split_name).
     uint32_t last_pos = 0;
     // The script offset of each part, in the order of parts. Empty when unknown.
-    std::vector<uint32_t> part_pos;
+    std::vector<uint32_t> part_pos = {};
     // The lowering: the C++ text of a "foreach" variable that the guard gives at each use, for
     // example "__it0.ref()" (foreach.h). Empty: the normal name.
     std::string emit_as{};

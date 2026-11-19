@@ -5735,7 +5735,7 @@ void translate_impl(
         const StubSrc* src = nullptr; // the stub, or null for the array template
         bool pattern = false; // the stub is "Name<*>"
         bool handle = false; // a hot::is_handle specialization: written for a class template only
-        std::string kind; // not empty: the spec is written only for this kind of the name (a "lib" type)
+        std::string kind = {}; // not empty: the spec is written only for this kind of the name (a "lib" type)
     };
     std::vector<CheckedSpec> checked_specs;
     if (!sc.is_cpp)

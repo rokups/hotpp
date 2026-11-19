@@ -230,10 +230,10 @@ struct Lowerer
         int loops = 0; // the loops in the finally body around the current statement
         int switches = 0; // the switches in the finally body around the current statement
     };
-    FinallyState fin;
+    FinallyState fin = {};
 
     // The collection literals that have a declared type. Only these are allowed.
-    std::set<const Expr*> typed_collections;
+    std::set<const Expr*> typed_collections = {};
     // The number of the next string switch. It makes the name of the local that holds the value.
     int string_switches = 0;
 
@@ -1344,9 +1344,9 @@ struct Lowerer
     // Method groups (doc/lambdas.md, "Method groups"). "key_stack" has the keys of the lambdas
     // around the current expression. "group_seen" counts the equal "m:" parts of the function.
     // "callees" has the callee of each call: a method name there is a call, not a group.
-    std::vector<std::string> key_stack;
-    std::map<std::string, int> group_seen;
-    std::set<const Expr*> callees;
+    std::vector<std::string> key_stack = {};
+    std::map<std::string, int> group_seen = {};
+    std::set<const Expr*> callees = {};
     bool target_next = false; // the same for the next expr() call
 
     // A field of the class "c" (or of a script parent) that has "[weak]".
@@ -4872,7 +4872,7 @@ struct Lowerer
     // The names of the structured bindings in scope ("var (a, b) = e" and "foreach (var (k, v)
     // in c)"). C++17 cannot capture a structured binding in a lambda (C++20 can). So a lambda
     // that uses a binding gets an init-capture "a = a" (or "&a = a"). An init-capture is C++14.
-    std::vector<std::string> bindings;
+    std::vector<std::string> bindings = {};
 
     // The init-captures for the names in "scope" that the C++ text uses, for example ", a = a".
     // "by_ref" gives ", &a = a". A name in "skip" (a lambda parameter) gets no capture. A name
