@@ -711,3 +711,68 @@ TEST(Analyze, BrokenImportLostOverloadGivesNoRefWhateverTheHeaderLooksLike)
     EXPECT_FALSE(fire_ref_present(
         std::string(kFireInt) + "    [alias(\"Shoot\")] public int Fire(float b +) { return 1; }\n", "", "1.5"));
 }
+
+// The owner and the bases of a class with a lost member lose their refs too.
+namespace
+{
+struct DerivedRefs
+{
+    bool fire_through_gun = false; // a ref with decl or near_decl "Gun.Fire" or "Weapon.Fire" at the call
+    bool other_class = false; // the ref of "Other.Ping" at its call
+};
+
+DerivedRefs derived_refs(const std::string& gun_members)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n");
+    const std::string lib = "using \"w.h\";\n"
+                            "class Other : Widget {\n"
+                            "    public int Ping() { return 1; }\n"
+                            "}\n"
+                            "class Weapon : Widget {\n"
+                            "    public virtual int Fire(int b) { return b; }\n"
+                            "}\n"
+                            "class Gun : Weapon {\n" + gun_members + "}\n";
+    const std::string main = "using \"w.h\";\n"
+                             "using \"lib.hot\";\n"
+                             "class Pistol : Widget {\n"
+                             "    public int Shoot($Gun g, $Other o) {\n"
+                             "        if (g == null) return 0;\n"
+                             "        if (o == null) return 0;\n"
+                             "        return g.Fire(1.5) + o.Ping();\n"
+                             "    }\n"
+                             "}\n";
+    write_file(dir.path() / "lib.hot", lib);
+    hotc::TranslateOptions o = temp_options(dir, "");
+    o.resolve_refs = true;
+    o.modules = {{"lib.hot", lib}};
+    const hotc::AnalyzeResult r = hotc::analyze(main, o);
+    DerivedRefs out;
+    for (const hotc::ResolvedRef& x : r.refs)
+    {
+        if (x.pos.line == 7 && (x.decl.find(".Fire") != std::string::npos || x.near_decl.find(".Fire") != std::string::npos))
+            out.fire_through_gun = true;
+        if (x.pos.line == 7 && x.decl == "Other.Ping")
+            out.other_class = true;
+    }
+    return out;
+}
+} // namespace
+
+TEST(Analyze, BrokenImportOverrideOfALostOverloadGivesNoRefThroughTheOwner)
+{
+    // C1: Gun has Fire(char) and loses Fire(float). The call of the lost overload can resolve to
+    // Weapon.Fire(int): "decl" is in Weapon, "near_decl" is the owner Gun.
+    const DerivedRefs r = derived_refs(
+        "    new public int Fire(char c) { return 2; }\n    new public int Fire(float b +) { return 1; }\n");
+    EXPECT_FALSE(r.fire_through_gun);
+    EXPECT_TRUE(r.other_class);
+}
+
+TEST(Analyze, BrokenImportLostMemberOfAClassDropsTheRefsOfItsBase)
+{
+    // C2: Gun loses Fire(float), which hid the inherited Fire(int) of Weapon.
+    const DerivedRefs r = derived_refs("    new public int Fire(float b +) { return 1; }\n");
+    EXPECT_FALSE(r.fire_through_gun);
+    EXPECT_TRUE(r.other_class);
+}

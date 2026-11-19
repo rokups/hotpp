@@ -892,8 +892,24 @@ std::vector<std::string> lost_classes(
         }
         // The text scan of the member name is not safe (an attribute, an open body). The whole
         // class is lost.
-        if (std::find(out.begin(), out.end(), owner->name) == out.end())
-            out.push_back(owner->name);
+        // The base chain too: the call of an inherited overload through the class can resolve to a
+        // base, when the lost member hid it.
+        for (const ClassDef* c = owner; c;)
+        {
+            if (std::find(out.begin(), out.end(), c->name) == out.end())
+                out.push_back(c->name);
+            if (c->base.empty())
+                break;
+            const ClassDef* next = nullptr;
+            for (const ClassDef& k : sc.classes)
+                if (k.name == c->base && k.name != c->name)
+                    next = &k;
+            if (!next && std::find(out.begin(), out.end(), c->base) == out.end())
+                out.push_back(c->base); // a base in another script: the caller gives no file
+            c = next;
+            if (c && std::find(out.begin(), out.end(), c->name) != out.end())
+                break;
+        }
     }
     return out;
 }
@@ -4613,7 +4629,12 @@ void translate_impl(
                         ++res.timing.import_cache_misses;
                 }
                 for (const std::string& l : lost)
-                    res.import_lost.emplace_back(hotc::ref_file_id(file), l);
+                {
+                    const bool here = std::any_of(is.classes.begin(), is.classes.end(),
+                        [&](const ClassDef& k) { return k.name == l; });
+                    // A base of another script has no file here: the empty file matches any file.
+                    res.import_lost.emplace_back(here ? hotc::ref_file_id(file) : std::string(), l);
+                }
                 // The copy for a new entry: the code below changes "is".
                 std::shared_ptr<hotc::TranslatorSession::Impl::ImportValue> fresh;
                 if (in.import_cache && !cached)
@@ -12119,7 +12140,8 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
         auto lost = [&](const ResolvedRef& r)
         {
             for (const auto& [file, cls] : tr.import_lost)
-                if (r.decl_file == file && r.decl.compare(0, cls.size() + 1, cls + ".") == 0)
+                if (((r.decl_file == file || file.empty()) && r.decl.compare(0, cls.size() + 1, cls + ".") == 0)
+                    || ((r.near_file == file || file.empty()) && r.near_decl.compare(0, cls.size() + 1, cls + ".") == 0))
                     return true;
             return false;
         };
