@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace
@@ -162,6 +163,22 @@ TEST(Trace, ReportCarriesTheTraceback)
     hot::set_script_error_handler({});
     EXPECT_NE(seen.find("  at Gun.Fire ("), std::string::npos) << seen;
     EXPECT_NE(seen.find("  at Hero.Update ("), std::string::npos) << seen;
+}
+
+TEST(Trace, EachThreadHasItsOwnStack)
+{
+    TraceGuard a("A.Run", "a.hot");
+    uint32_t other = 99;
+    std::string text;
+    std::thread t([&] {
+        other = depth();
+        TraceGuard b("B.Run", "b.hot");
+        text = hot::detail::trace_capture();
+    });
+    t.join();
+    EXPECT_EQ(other, 0u);
+    EXPECT_NE(text.find("B.Run"), std::string::npos);
+    EXPECT_EQ(text.find("A.Run"), std::string::npos);
 }
 
 #else
