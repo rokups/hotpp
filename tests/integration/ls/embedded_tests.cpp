@@ -190,11 +190,80 @@ TEST(EmbeddedDiagnostics, PrefixErrorIsClamped)
     }
 }
 
-TEST(EmbeddedDiagnostics, PrefixWithALineEndIsNotServed)
+TEST(EmbeddedDiagnostics, PrefixWithALineEndGivesAnEmptyList)
 {
     Embedded e("using \"Actor.h\";\nusing <vector>;\n");
     e.open("<rml>\n<script>\n" + kBad + "</script>\n</rml>\n");
-    EXPECT_TRUE(e.publish([](const json&) { return true; }, 1500).is_null());
+    {
+        const json n = e.any();
+        ASSERT_FALSE(n.is_null());
+        EXPECT_TRUE(n["params"]["diagnostics"].empty()) << n.dump();
+    }
+}
+
+// A document with a bad prefix is registered: requests answer null, and a fix of the prefix file recovers it.
+TEST(EmbeddedDiagnostics, BadPrefixDocumentRecoversAfterTheFix)
+{
+    Embedded e("using \"Actor.h\";\nusing <vector>;\n");
+    const std::string text = "<rml>\n<script>\n" + kBad + "</script>\n</rml>\n";
+    e.open(text);
+    {
+        const json n = e.any();
+        ASSERT_FALSE(n.is_null());
+        EXPECT_TRUE(n["params"]["diagnostics"].empty()) << n.dump();
+    }
+    const json r = e.client->request("textDocument/hover",
+        {{"textDocument", {{"uri", e.uri}}}, {"position", {{"line", 1}, {"character", 1}}}});
+    ASSERT_TRUE(r.contains("result")) << r.dump(); // null, not an error
+    EXPECT_TRUE(r["result"].is_null()) << r.dump();
+    write_bytes(e.dir.path() / "prefix.txt", "using \"Actor.h\";\n");
+    e.client->change(e.uri, 2, text);
+    const json n = e.errors();
+    ASSERT_FALSE(n.is_null());
+    EXPECT_EQ(n["params"]["diagnostics"][0]["range"]["start"]["line"], 2) << n.dump();
+}
+
+// A block that goes away clears the side document: hot/toScript on it answers null and does not crash.
+// The list is empty. A block that comes back gives diagnostics again.
+TEST(EmbeddedDiagnostics, RemovedBlockResetsTheMapAndRecovers)
+{
+    Embedded e;
+    const std::string good = "<rml>\n<script>\n" + kBad + "</script>\n</rml>\n";
+    e.open(good);
+    ASSERT_FALSE(e.errors().is_null());
+    e.client->change(e.uri, 2, "<rml>\n</rml>\n");
+    ASSERT_FALSE(e.publish([](const json& d) { return d.empty(); }).is_null());
+    const json r = e.client->request("hot/toScript",
+        {{"textDocument", {{"uri", uri_of(e.path + ".cpp")}}}, {"position", {{"line", 3}, {"character", 1}}}});
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    EXPECT_TRUE(r["result"].is_null()) << r.dump();
+    e.client->change(e.uri, 3, good);
+    EXPECT_FALSE(e.errors().is_null());
+}
+
+// An embedded document is invisible to the cross-document requests of a ".hot" script.
+TEST(EmbeddedDiagnostics, HotRequestsSkipTheMarkupDocument)
+{
+    Embedded e;
+    const std::string main = (e.dir.path() / "main.hot").string();
+    const std::string main_uri = uri_of(main);
+    const std::string hot_text = "class Foo {\n    int hp = 1;\n    void f() { }\n}\n";
+    write_bytes(main, hot_text);
+    e.client->open(main_uri, hot_text);
+    e.open("<rml>\n<script>\nclass Foo {\n    int hp = 1;\n    void f() { }\n}\n</script>\n</rml>\n");
+    ASSERT_FALSE(e.any().is_null());
+    json at = {{"textDocument", {{"uri", main_uri}}}, {"position", {{"line", 0}, {"character", 7}}}};
+    json refs = at;
+    refs["context"] = {{"includeDeclaration", true}};
+    const json r = e.client->request("textDocument/references", refs);
+    EXPECT_EQ(r.dump().find("page.rml"), std::string::npos) << r.dump();
+    json ren = at;
+    ren["newName"] = "Bar";
+    const json rr = e.client->request("textDocument/rename", ren);
+    EXPECT_EQ(rr.dump().find("page.rml"), std::string::npos) << rr.dump();
+    json prep = {{"textDocument", {{"uri", main_uri}}}, {"position", {{"line", 1}, {"character", 8}}}};
+    const json ch = e.client->request("textDocument/prepareCallHierarchy", prep);
+    EXPECT_EQ(ch.dump().find("page.rml"), std::string::npos) << ch.dump();
 }
 
 TEST(EmbeddedDiagnostics, OtherRequestsAnswerNull)

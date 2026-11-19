@@ -139,7 +139,8 @@ Limits:
 A host JSON file can have the key `"embedded"`: `[{"suffix": ".rml", "tag": "script", "prefixFile": "<path>"}]`.
 A relative path is relative to `sourceDir`. hot-ls then serves the files with this suffix.
 hot-ls reads the prefix file at each analysis. It removes one final line end.
-It rejects a prefix with a line end inside or a non-ASCII byte. It logs one line and does not serve the document.
+It rejects a prefix with a line end inside or a non-ASCII byte. It logs one line and publishes an empty list.
+The next change of the document reads the prefix file again. A fixed file works then.
 The unit text is `mask_embedded_scripts(raw, tag, &found, prefix)`: the same text as at run time.
 The server converts the columns on the raw text, so the ranges are in the markup coordinates.
 A document without a `<script>` block gets an empty diagnostics list.

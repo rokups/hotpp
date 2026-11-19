@@ -1443,7 +1443,7 @@ private:
         {
             const std::string norm = fs::path(path).lexically_normal().string();
             for (const auto& [uri, doc] : server->docs_)
-                if (fs::path(doc->path).lexically_normal().string() == norm)
+                if (!doc->embedded && fs::path(doc->path).lexically_normal().string() == norm)
                 {
                     out = doc->text.s;
                     return true;
@@ -2839,11 +2839,25 @@ void Server::update(Doc& d)
     if (d.embedded && (d.embed_bad || !d.embed_found))
     {
         // No script block, no rule or a prefix that is not valid: no facts and an empty list.
+        // The side document leaves clangd (as at a host change). A late publish of clangd then finds
+        // an old version and a null map: the server drops it.
+        if (clangd_ && d.in_clangd)
+            clangd_->notify("textDocument/didClose", {{"textDocument", {{"uri", d.gen_uri}}}});
+        close_lite(d);
+        remove_shell(d);
+        d.in_clangd = false;
+        preamble_ready_.erase(d.gen_uri);
+        completion_synced_.erase(d.gen_uri);
         std::lock_guard<std::mutex> lock(docs_mutex_);
         d.facts = hotc::AnalyzeResult();
         d.analyzed = d.text;
         d.dirty = false;
         ++d.facts_version;
+        d.map.reset();
+        d.gen = Text();
+        d.gen_script = d.text;
+        d.gen_version = d.sent_version + 1; // no version of clangd has this number: a late publish is dropped
+        d.raw_clang_diags = json::array();
         d.clang_diags = json::array();
         d.clang_import_diags.clear();
         d.set_edit();
@@ -6499,7 +6513,7 @@ std::shared_ptr<Doc> Server::open_doc_at(const std::string& path) const
 {
     const fs::path want = fs::path(path).lexically_normal();
     for (const auto& [uri, doc] : docs_)
-        if (doc->path == path || fs::path(doc->path).lexically_normal() == want)
+        if (!doc->embedded && (doc->path == path || fs::path(doc->path).lexically_normal() == want))
             return doc;
     return nullptr;
 }
@@ -6588,7 +6602,7 @@ ImportGraph& Server::import_graph(const std::string& also, bool fresh)
     }
     std::vector<std::string> paths = graph_walk_;
     for (const auto& [uri, doc] : docs_)
-        if (!doc->path.empty())
+        if (!doc->path.empty() && !doc->embedded)
             paths.push_back(fs::path(doc->path).lexically_normal().string());
     if (!also.empty())
         paths.push_back(fs::path(also).lexically_normal().string());
@@ -8614,7 +8628,7 @@ json Server::on_native_call_hierarchy(bool incoming, const json& data)
         const std::string name = json_str(native, "name");
         for (const auto& [uri, doc] : docs_)
         {
-            if (doc->cpp)
+            if (doc->cpp || doc->embedded)
                 continue;
             const std::vector<Callable> own = callables_of(*doc);
             if (std::any_of(own.begin(), own.end(), [&](const Callable& c) { return c.m->name == name; }))
@@ -8664,7 +8678,7 @@ json Server::on_call_hierarchy(const std::string& method, const json& p)
     if (const json* native = field(*data, "native", json::value_t::object); native && !native->empty())
         return on_native_call_hierarchy(incoming, *data);
     const auto it = docs_.find(uri->get<std::string>());
-    if (it == docs_.end() || it->second->cpp)
+    if (it == docs_.end() || it->second->cpp || it->second->embedded)
         return out;
     const Doc& d = *it->second;
     const std::vector<Callable> all = callables_of(d);
@@ -8801,6 +8815,8 @@ json disk_to_script(const std::string& cpp_path, int line)
 
 const hotc::AnalyzeResult* Server::script_facts(const std::string& uri, Text& text)
 {
+    if (const auto it = docs_.find(uri); it != docs_.end() && it->second->embedded)
+        return nullptr; // HOT-65 S1: a markup document is no source of facts for other documents
     if (const auto it = docs_.find(uri); it != docs_.end())
     {
         text = it->second->text;
@@ -9118,7 +9134,7 @@ void Server::add_script_symbols(const std::string& query, json& out)
         };
         std::shared_ptr<Doc> open;
         for (const auto& [u, doc] : docs_)
-            if (doc->path == path)
+            if (doc->path == path && !doc->embedded)
                 open = doc;
         const Text* text = nullptr;
         Text closed_text;
@@ -9270,9 +9286,9 @@ void Server::handle(const json& msg)
         }
         if (embedded_rule_of(d->path))
         {
+            // A prefix that is not valid (one log line): the document is registered with "embed_bad".
+            // It gets no facts and an empty list. A later didChange checks the prefix again.
             set_embedded_text(*d, td.value("text", std::string()));
-            if (d->embed_bad)
-                return; // a prefix that is not valid: the document is not served (one log line)
         }
         else
             d->text = Text(td.value("text", std::string()));
