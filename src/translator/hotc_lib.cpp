@@ -796,11 +796,11 @@ bool has_bare_this(const ClassDef& c, const std::string& text, uint32_t origin)
     return false;
 }
 
-// The members that a lenient parse of an import lost: "Class.member", or "Class.*" when the member
-// name is not clear. A call of a member with such a name must get no ref: the other overloads of the
-// name can be the wrong target. "positions" are the offsets of the errors, "origin" is the base of
-// the text.
-std::vector<std::string> lost_members(
+// The names of the classes of an import that lost a member in a lenient parse. The error is in the
+// class body and outside the body of a kept member. A call of a member of such a class gets no ref:
+// a lost overload could leave the other overload as a wrong target. "positions" are the offsets of
+// the errors, "origin" is the base of the text.
+std::vector<std::string> lost_classes(
     const Script& sc, const std::string& text, uint32_t origin, const std::vector<uint32_t>& positions)
 {
     std::vector<std::string> out;
@@ -890,53 +890,10 @@ std::vector<std::string> lost_members(
             if (in_kept)
                 continue;
         }
-        // The start of the member: back to an unmatched "{" of the class, or a ";" or "}" of the
-        // member before. The "{" of a method body (after ")") is inside the member.
-        int paren = 0, brace = 0;
-        size_t b = err;
-        while (b > 0)
-        {
-            const char ch = text[b - 1];
-            if (ch == ')')
-                ++paren;
-            else if (ch == '(')
-                --paren;
-            else if (ch == '}')
-            {
-                if (brace == 0 && paren <= 0)
-                    break;
-                ++brace;
-            }
-            else if (ch == '{')
-            {
-                if (brace > 0)
-                    --brace;
-                else
-                {
-                    size_t q = b - 1;
-                    while (q > 0 && std::isspace(static_cast<unsigned char>(text[q - 1])))
-                        --q;
-                    if (q == 0 || text[q - 1] != ')')
-                        break;
-                }
-            }
-            else if (ch == ';' && brace == 0 && paren <= 0)
-                break;
-            --b;
-        }
-        std::string name;
-        const size_t paren_at = text.find('(', b);
-        if (paren_at != std::string::npos && paren_at <= err)
-        {
-            size_t e = paren_at;
-            while (e > b && std::isspace(static_cast<unsigned char>(text[e - 1])))
-                --e;
-            size_t st = e;
-            while (st > b && (std::isalnum(static_cast<unsigned char>(text[st - 1])) || text[st - 1] == '_'))
-                --st;
-            name = text.substr(st, e - st);
-        }
-        out.push_back(owner->name + "." + (name.empty() ? "*" : name));
+        // The text scan of the member name is not safe (an attribute, an open body). The whole
+        // class is lost.
+        if (std::find(out.begin(), out.end(), owner->name) == out.end())
+            out.push_back(owner->name);
     }
     return out;
 }
@@ -4648,7 +4605,7 @@ void translate_impl(
                     is = parse_structure(imported_files.back().text, base, map, array_tpl,
                         in.lenient_imports ? &lenient_diag : nullptr, &lost_at);
                     if (!lost_at.empty())
-                        lost = lost_members(is, imported_files.back().text, base, lost_at);
+                        lost = lost_classes(is, imported_files.back().text, base, lost_at);
                     res.import_diagnostics += lenient_diag;
                     res.timing.import_parse_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
                         std::chrono::steady_clock::now() - t_parse).count();
@@ -12161,10 +12118,8 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
     {
         auto lost = [&](const ResolvedRef& r)
         {
-            for (const auto& [file, member] : tr.import_lost)
-                if (r.decl_file == file
-                    && (r.decl == member || (member.size() > 2 && member.compare(member.size() - 2, 2, ".*") == 0
-                                                && r.decl.compare(0, member.size() - 1, member, 0, member.size() - 1) == 0)))
+            for (const auto& [file, cls] : tr.import_lost)
+                if (r.decl_file == file && r.decl.compare(0, cls.size() + 1, cls + ".") == 0)
                     return true;
             return false;
         };

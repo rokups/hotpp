@@ -411,9 +411,9 @@ struct TranslateResult
     // TranslateOptions::lenient_imports is true. The result can be ok then: the translation used the
     // valid declarations of the imports.
     std::string import_diagnostics;
-    // The members that a lenient parse lost: the ref_file_id of the import and "Class.member" (or
-    // "Class.*" when the name is not clear). analyze() leaves out the refs of these members: a call
-    // of a lost overload could get the ref of another overload.
+    // The classes of an import that lost a member in a lenient parse: the ref_file_id of the import
+    // and the class name. analyze() leaves out the refs of the members of these classes: a call of
+    // a lost overload could get the ref of another overload.
     std::vector<std::pair<std::string, std::string>> import_lost;
     // Always false. A removed function keeps a defunct slot. The field stays for API compatibility.
     bool slots_removed = false;

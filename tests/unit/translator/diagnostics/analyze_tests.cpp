@@ -701,3 +701,13 @@ TEST(Analyze, BrokenImportOverloadHeaderGivesNoRef)
     EXPECT_FALSE(fire_ref_present(std::string(kFireInt) + "    public int Fire(float b +) { return 1; }\n", "", "1.5"));
     EXPECT_FALSE(fire_ref_present(std::string(kFireInt) + "    public int Fire(float b { return 1; }\n", "", "1.5"));
 }
+
+TEST(Analyze, BrokenImportLostOverloadGivesNoRefWhateverTheHeaderLooksLike)
+{
+    // B1: the body of the overload is open at the end of the text.
+    EXPECT_FALSE(fire_ref_present(
+        std::string(kFireInt) + "    public int Fire(float b) {\n        int a = 0;\n        Log(b)\n", "", "1.5"));
+    // B2: an attribute with parentheses stands before the broken header.
+    EXPECT_FALSE(fire_ref_present(
+        std::string(kFireInt) + "    [alias(\"Shoot\")] public int Fire(float b +) { return 1; }\n", "", "1.5"));
+}
