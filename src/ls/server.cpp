@@ -1231,6 +1231,28 @@ private:
         }
         r = kept.empty() ? json(nullptr) : kept;
     }
+    // HOT-65 S5: a completion item with an edit that starts at the clamp of to_lsp (line 0, column 0) would edit
+    // the prefix. The function removes such an item. Edit ranges are in raw coordinates already (to_lsp).
+    static void drop_prefix_items(json& r)
+    {
+        json* items = r.is_object() && r.contains("items") ? &r["items"] : (r.is_array() ? &r : nullptr);
+        if (!items || !items->is_array())
+            return;
+        auto at_prefix = [](const json& range)
+        { return range.is_object() && range.contains("start") && range["start"].value("line", 1) == 0 && range["start"].value("character", 1) == 0; };
+        json kept = json::array();
+        for (const json& it : *items)
+        {
+            bool bad = it.contains("textEdit") && it["textEdit"].is_object()
+                && at_prefix(it["textEdit"].contains("range") ? it["textEdit"]["range"] : it["textEdit"].value("insert", json::object()));
+            if (it.contains("additionalTextEdits") && it["additionalTextEdits"].is_array())
+                for (const json& ed : it["additionalTextEdits"])
+                    bad = bad || at_prefix(ed.value("range", json::object()));
+            if (!bad)
+                kept.push_back(it);
+        }
+        *items = kept;
+    }
     std::vector<Pos> gen_word_candidates(const Doc& d, Pos script_pos) const;
     // The places in the generated text to ask clangd about a script position. "by_word" is set when
     // the position has no map segment and the places come from the word.
@@ -9548,12 +9570,18 @@ void Server::handle(const json& msg)
     {
         // HOT-65 step S4: a markup document answers hover and definition for a position in a script block.
         // All other requests, and a position in the markup or the prefix, get null.
-        if (method != "textDocument/hover" && method != "textDocument/definition")
+        if (method != "textDocument/hover" && method != "textDocument/definition" && method != "textDocument/completion")
             return reply(id, nullptr);
         if (d->embed_bad || !d->embed_found || !in_script_block(*d, from_lsp(d->text, p["position"], utf8_)))
             return reply(id, nullptr);
         if (method == "textDocument/hover")
             return reply(id, on_hover(*d, p));
+        if (method == "textDocument/completion")
+        {
+            json r = on_completion(*d, p);
+            drop_prefix_items(r);
+            return reply(id, r);
+        }
         json r = on_locations(*d, p, method);
         drop_prefix_locations(r);
         return reply(id, r);
