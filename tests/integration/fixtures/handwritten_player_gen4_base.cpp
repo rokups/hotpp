@@ -102,11 +102,6 @@ static const hot::StateLayout Player_layout = {
 };
 
 // ------------------------------------------------- generation functions
-static inline PlayerState_g4* state_of(Player_Shell* self)
-{
-    return static_cast<PlayerState_g4*>(self->state);
-}
-
 void PlayerState_g4::heal(float amount)
 {
     if (HOT_UNLIKELY(hot::active_generation != GEN))
