@@ -147,7 +147,9 @@ A document without a `<script>` block gets an empty diagnostics list.
 In step S4 `textDocument/hover` and `textDocument/definition` work for a position inside a `<script>` block.
 A position in the markup or the prefix answers null. A definition in the prefix text also answers null.
 A definition in a `.hot` file is a normal location. A name in the block gives a range in the markup coordinates.
-All other requests answer null.
+In step S5 `textDocument/completion` works for a position inside a `<script>` block, also right after the last code character of a line.
+The names of the prefix complete as in a `.hot` file. An item with an edit at the prefix is removed, and the edit ranges are in the markup coordinates.
+The completion cache keys on the unit text, so a changed text never reuses an old answer. The server has no `completionItem/resolve`. All other requests answer null.
 A document that opens before a host has the rule is not served. Open it again after the host file changes.
 
 ## Workspace index
