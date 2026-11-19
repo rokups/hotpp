@@ -13,11 +13,11 @@
   "repository": {
     "comments": {
       "patterns": [
-        { "name": "comment.line.double-slash.hot", "match": "//.*$" },
+        { "name": "comment.line.double-slash.hot", "match": "//(?:(?!(?i:</script\\s*>)).)*" },
         {
           "name": "comment.block.hot",
           "begin": "/\\*",
-          "end": "\\*/"
+          "end": "\\*/|(?=(?i:</script\\s*>))"
         }
       ]
     },
@@ -219,7 +219,7 @@
     "char": {
       "name": "string.quoted.single.hot",
       "begin": "'",
-      "end": "'|$",
+      "end": "'|$|(?=(?i:</script\\s*>))",
       "patterns": [
         { "name": "constant.character.escape.hot", "match": "\\\\." }
       ]
@@ -227,7 +227,7 @@
     "string": {
       "name": "string.quoted.double.hot",
       "begin": "\"",
-      "end": "\"|$",
+      "end": "\"|$|(?=(?i:</script\\s*>))",
       "patterns": [
         { "name": "constant.character.escape.hot", "match": "\\\\." },
         { "include": "#interpolation" }

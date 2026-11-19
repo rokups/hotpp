@@ -38,6 +38,10 @@ const FEATURES = [
   'provideLinkedEditingRange',
 ];
 
+// The languages that get the features of the server: "hot" and "rml". A ".rml" document holds
+// Hot++ code in its script blocks.
+const SERVED_LANGUAGES = new Set(['hot', 'rml']);
+
 // Makes the middleware object. In each function the first argument is the document and the last
 // argument is the function "next" that calls the server.
 function onlyHot() {
@@ -46,17 +50,19 @@ function onlyHot() {
     middleware[name] = (...args) => {
       const next = args[args.length - 1];
       const document = args[0];
-      if (document && document.languageId !== 'hot') return undefined;
+      if (document && !SERVED_LANGUAGES.has(document.languageId)) return undefined;
       return next(...args.slice(0, -1));
     };
   }
   return middleware;
 }
 
-// The documents that the client sends to the server: the "hot" documents and the ".cpp" files.
+// The documents that the client sends to the server: the "hot" documents, the ".rml" files and
+// the ".cpp" files.
 // A C++ header (".h", ".hpp") is not a script. The C++ tools own it, so the server never gets it.
 const DOCUMENT_SELECTOR = [
   { scheme: 'file', language: 'hot' },
+  { scheme: 'file', pattern: '**/*.rml' },
   { scheme: 'file', language: 'cpp', pattern: '**/*.cpp' },
 ];
 

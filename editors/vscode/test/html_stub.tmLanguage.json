@@ -1,0 +1,20 @@
+{
+  "name": "HTML stub",
+  "scopeName": "text.html.basic",
+  "patterns": [
+    {
+      "name": "meta.tag.script.stub",
+      "begin": "(?i)(<)(script)\\b[^>]*>",
+      "end": "(?i)(</)(script)\\s*>",
+      "contentName": "source.js",
+      "patterns": [ { "match": "\\w+", "name": "variable.js" } ]
+    },
+    {
+      "match": "(</?)(\\w+)",
+      "captures": {
+        "1": { "name": "punctuation.definition.tag.begin.html" },
+        "2": { "name": "entity.name.tag.html" }
+      }
+    }
+  ]
+}

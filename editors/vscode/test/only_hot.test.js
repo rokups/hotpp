@@ -37,8 +37,18 @@ assert.strictEqual(calls, 2);
 // The selector sends only "hot" documents and ".cpp" files to the server. A header is not sent.
 assert.deepStrictEqual(DOCUMENT_SELECTOR, [
   { scheme: 'file', language: 'hot' },
+  { scheme: 'file', pattern: '**/*.rml' },
   { scheme: 'file', language: 'cpp', pattern: '**/*.cpp' },
 ]);
+
+// An "rml" document goes to the server like a "hot" document.
+assert.deepStrictEqual(m.provideHover({ languageId: 'rml' }, 'pos', 'tok', next), [{ languageId: 'rml' }, 'pos', 'tok']);
+assert.strictEqual(calls, 3);
+// The other languages get no answer: for example "html" and "plaintext".
+assert.strictEqual(m.provideHover({ languageId: 'html' }, 'pos', 'tok', next), undefined);
+assert.strictEqual(m.provideHover({ languageId: 'plaintext' }, 'pos', 'tok', next), undefined);
+assert.strictEqual(calls, 3);
+
 const cppEntry = DOCUMENT_SELECTOR.find((s) => s.language === 'cpp');
 assert.ok(cppEntry.pattern.endsWith('*.cpp'));
 assert.ok(!DOCUMENT_SELECTOR.some((s) => s.language === 'cpp' && !s.pattern));

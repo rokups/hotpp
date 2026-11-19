@@ -9,7 +9,7 @@
   "engines": { "vscode": "^1.80.0" },
   "categories": ["Programming Languages"],
   "main": "./src/extension.js",
-  "activationEvents": ["onLanguage:hot", "onLanguage:cpp", "onCommand:hot.showScriptPosition", "onCommand:hot.restartServer"],
+  "activationEvents": ["onLanguage:hot", "onLanguage:rml", "onLanguage:cpp", "onCommand:hot.showScriptPosition", "onCommand:hot.restartServer"],
   "contributes": {
     "commands": [
       {
@@ -27,6 +27,11 @@
         "aliases": ["Hot++", "hot"],
         "extensions": [".hot"],
         "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "rml",
+        "aliases": ["RML", "rml"],
+        "extensions": [".rml"]
       }
     ],
     "breakpoints": [
@@ -37,6 +42,12 @@
         "language": "hot",
         "scopeName": "source.hot",
         "path": "./syntaxes/hot.tmLanguage.json"
+      },
+      {
+        "language": "rml",
+        "scopeName": "text.html.rml",
+        "path": "./syntaxes/rml.tmLanguage.json",
+        "embeddedLanguages": { "source.hot": "hot" }
       }
     ],
     "configuration": {
