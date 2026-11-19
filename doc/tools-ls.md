@@ -309,7 +309,7 @@ python3 -I tools/lsbench/lsbench.py --hot-ls cmake-build/ls-rel/bin/RelWithDebIn
 - The scenario `rml` needs no workspace: run `python3 -I tools/lsbench/lsbench.py --hot-ls PATH --only rml`. It makes a host with an `embedded` rule and a 300-line `.rml` document with two script blocks in a temporary directory.
 - It measures 20 requests each of didChange to publishDiagnostics, hover, definition and completion (`--rml-runs`). The row has the mean, `p95` and `max` in ms. A completion answer that is always null shows `n/a`.
 - The line `rml.goal` shows `goal ok` when each p95 is below 500 ms, else `goal missed`. A request above 1000 ms is a failure: the line `rml.limit` shows FAIL and the exit code is 1.
-- A script block must come before the closing `</head>` or inside `<body>`: a document with `</head>` before the first script block gave no diagnostics in this scenario.
+- A script block must come before the first `</head>`: a document with `</head>` before the first script block gave no diagnostics in this scenario.
 - `tools/lsbench/symbolinfo_probe.py` checks that `clangd` gives a non-empty `usr` in `textDocument/symbolInfo`, also in generated files.
 
 Baseline of the server before the redesign (BiteSizedWar, 88 scripts, times in ms, second run). The files are `tools/lsbench/baseline-release.json` and `baseline-debug.json`. The Debug server does not have `loadMs`.

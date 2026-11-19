@@ -442,9 +442,14 @@ class Bench:
                     nulls += res is None
                 results[name] = ms
                 results[name + "_nulls"] = nulls
+        except (TimeoutError, RuntimeError) as e:
+            self.failed = True
+            print("rml.limit: FAIL, %s: %s" % (type(e).__name__, e), flush=True)
+            return
         finally:
             c.close()
-        worst = 0.0
+        worst = worst_p95 = 0.0
+        bad = False
         for name in ("diag", "hover", "definition", "completion"):
             ms = results[name]
             if name == "completion" and results["completion_nulls"] == runs:
@@ -453,28 +458,41 @@ class Bench:
             if any(m is None for m in ms):
                 self.row("rml." + name, None, result="timeout")
                 worst = float("inf")
+                bad = True
                 continue
             ok = sorted(ms)
             p95 = ok[min(len(ok) - 1, int(0.95 * len(ok)))]
             extra = {"nulls": results[name + "_nulls"]} if name + "_nulls" in results else {}
             self.row("rml." + name, statistics.mean(ms), p95=round(p95, 1), max=round(ok[-1], 1), n=len(ms), **extra)
             worst = max(worst, ok[-1])
-            self.rml_p95 = max(getattr(self, "rml_p95", 0.0), p95)
-        goal = "goal ok" if getattr(self, "rml_p95", 0.0) < RML_GOAL_MS else "goal missed"
-        print("rml.goal: p95 < %d ms: %s (worst p95 %.1f)" % (RML_GOAL_MS, goal, getattr(self, "rml_p95", 0.0)), flush=True)
-        if worst > RML_LIMIT_MS:
+            worst_p95 = max(worst_p95, p95)
+            if name in ("hover", "definition") and results[name + "_nulls"] > 0:
+                bad = True
+                print("rml.%s: FAIL, %d null answers" % (name, results[name + "_nulls"]), flush=True)
+        if not bad:
+            goal = "goal ok" if worst_p95 < RML_GOAL_MS else "goal missed"
+            print("rml.goal: p95 < %d ms: %s (worst p95 %.1f)" % (RML_GOAL_MS, goal, worst_p95), flush=True)
+        if bad or worst > RML_LIMIT_MS:
             self.failed = True
-            print("rml.limit: FAIL, a request took %.1f ms (limit %d ms)" % (worst, RML_LIMIT_MS), flush=True)
+            print("rml.limit: FAIL, %s (limit %d ms)" % ("a timeout or a null answer" if bad else "a request took %.1f ms" % worst, RML_LIMIT_MS), flush=True)
         else:
             print("rml.limit: ok, max %.1f ms (limit %d ms)" % (worst, RML_LIMIT_MS), flush=True)
 
     def run(self):
         self.failed = False
+        try:
+            self.run_scenarios()
+        finally:
+            shutil.rmtree(self.scratch, ignore_errors=True)
+        return self.finish()
+
+    def run_scenarios(self):
         for name in self.a.only or SCENARIOS:
-            if name == "rml" and not self.a.only and not self.root:
-                continue  # the default run has no rml without a workspace: run it with --only rml
+            if name == "rml" and not self.a.only:
+                continue  # run rml only with --only rml
             getattr(self, "s_" + name)()
-        shutil.rmtree(self.scratch, ignore_errors=True)
+
+    def finish(self):
         if self.a.json:
             Path(self.a.json).write_text(json.dumps({"hot_ls": self.a.hot_ls, "root": self.root, "loadavg": os.getloadavg(), "cpus": os.cpu_count(),
                                                      "rows": self.rows}, indent=1) + "\n")
