@@ -5768,7 +5768,8 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
             for_other_scripts(d, {here_word, ""}, here_word, add);
         return out;
     }
-    if (is_ref || no_table)
+    // A script with an error has a table for its valid parts: the table comes first.
+    if (is_ref || no_table || !d.facts.ok)
         if (auto t = by_table())
             return *t;
     if (no_table && !is_ref)

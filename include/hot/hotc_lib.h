@@ -90,6 +90,11 @@ struct TranslateOptions
     // The table of the resolved names (TranslateResult::refs, AnalyzeResult::refs). False (the
     // default): the translator makes no table. A language server sets it for its analyze calls.
     bool resolve_refs = false;
+    // A syntax error in an imported script does not stop the translation. The valid declarations of
+    // that script stay usable, and its errors go to TranslateResult::import_diagnostics. False (the
+    // default): such an error is an error of the translation. A language server sets it for a
+    // retry in analyze().
+    bool lenient_imports = false;
     // LS only. The generated text has the line "// @hot-shell-end". The text before it depends only on the
     // imports and the preamble. It has the interface blocks of the imports and their function bodies.
     bool split_shell = false;
@@ -402,6 +407,10 @@ struct TranslateResult
     // translation. See src/translator/lambda_key.h.
     std::vector<std::string> lambda_keys;
     std::string diagnostics; // the errors, one line each: "name:line:col: error: text"
+    // The syntax errors of the imported scripts, in the form of "diagnostics". Not empty only when
+    // TranslateOptions::lenient_imports is true. The result can be ok then: the translation used the
+    // valid declarations of the imports.
+    std::string import_diagnostics;
     // Always false. A removed function keeps a defunct slot. The field stays for API compatibility.
     bool slots_removed = false;
     // The warnings, one line each: "name:line:col: warning: text". The translation can be ok

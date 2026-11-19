@@ -564,3 +564,66 @@ TEST(VirtualMethods, TemplateBaseAndPartlyWrittenOverrideGiveTheList)
     EXPECT_EQ(g->signature, "(int fallback)");
     EXPECT_EQ(g->ret_script, "int");
 }
+
+// An import with a syntax error in one class: the valid classes of the import stay usable. The
+// refs of the importer have the names of the valid class, and the diagnostics are the error of
+// the import.
+namespace
+{
+const char* const kBrokenImportLib =
+    "using \"w.h\";\n"
+    "class Gun : Widget {\n"
+    "    public int Fire(int b) { return b * 2; }\n"
+    "}\n"
+    "class Bad { public int F() { return 1 +; } }\n";
+const char* const kBrokenImportMain =
+    "using \"w.h\";\n"
+    "using \"lib.hot\";\n"
+    "class Pistol : Widget {\n"
+    "    public int Shoot($Gun g) { if (g == null) return 0; return g.Fire(1); }\n"
+    "}\n";
+
+hotc::TranslateOptions broken_import_options(const TempDir& dir)
+{
+    write_file(dir.path() / "w.h", "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n");
+    write_file(dir.path() / "lib.hot", kBrokenImportLib);
+    hotc::TranslateOptions o = temp_options(dir, "");
+    o.modules = {{"lib.hot", kBrokenImportLib}};
+    o.import_cache = true;
+    return o;
+}
+} // namespace
+
+TEST(Analyze, BrokenImportKeepsTheRefsOfItsValidClasses)
+{
+    TempDir dir;
+    hotc::TranslateOptions o = broken_import_options(dir);
+    o.resolve_refs = true;
+    hotc::TranslatorSession session;
+    const hotc::AnalyzeResult r = hotc::analyze(kBrokenImportMain, o, session);
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.passes, 2);
+    EXPECT_EQ(r.diagnostics.rfind("lib.hot:5:", 0), 0u) << r.diagnostics;
+    EXPECT_NE(r.diagnostics.find("error"), std::string::npos);
+    bool fire = false;
+    for (const hotc::ResolvedRef& x : r.refs)
+        fire = fire || (x.decl == "Gun.Fire" && x.decl_file.find("lib.hot") != std::string::npos);
+    EXPECT_TRUE(fire);
+    // A strict translation of the same script, in the same session, still fails.
+    hotc::TranslateOptions strict = broken_import_options(dir);
+    strict.script_text = kBrokenImportMain;
+    const hotc::TranslateResult t = hotc::translate(strict, session);
+    EXPECT_FALSE(t.ok);
+    EXPECT_NE(t.diagnostics.find("lib.hot:5:"), std::string::npos) << t.diagnostics;
+    EXPECT_TRUE(t.import_diagnostics.empty());
+    // A lenient translation reports the error of the import apart.
+    hotc::TranslateOptions lenient = strict;
+    lenient.lenient_imports = true;
+    const hotc::TranslateResult l = hotc::translate(lenient, session);
+    EXPECT_TRUE(l.ok) << l.diagnostics;
+    EXPECT_NE(l.import_diagnostics.find("lib.hot:5:"), std::string::npos) << l.import_diagnostics;
+    // The lenient hit from the cache gives the same error. The strict lookup stays strict.
+    const hotc::TranslateResult l2 = hotc::translate(lenient, session);
+    EXPECT_EQ(l2.import_diagnostics, l.import_diagnostics);
+    EXPECT_FALSE(hotc::translate(strict, session).ok);
+}

@@ -797,11 +797,21 @@ bool has_bare_this(const ClassDef& c, const std::string& text, uint32_t origin)
 }
 
 // The parser reports all syntax errors in source order. Any error stops the translation.
-Script parse_structure(
-    const std::string& text, uint32_t origin, const hotc::LineMap& map, std::string_view host_array_tpl)
+// "lenient_diag" (not null): the errors of the parse go into it as text, and the parse does not stop
+// the translation. The recovered declarations stay.
+Script parse_structure(const std::string& text, uint32_t origin, const hotc::LineMap& map,
+    std::string_view host_array_tpl, std::string* lenient_diag = nullptr)
 {
+    const size_t before = g_diag.items.size();
     Script sc = hotc::parse_script_array(text, map, g_diag, host_array_tpl, origin);
     g_generic_display.insert(g_generic_display.end(), sc.generic_display.begin(), sc.generic_display.end());
+    if (lenient_diag && g_diag.items.size() > before)
+    {
+        hotc::Diagnostics own;
+        own.items.assign(g_diag.items.begin() + before, g_diag.items.end());
+        g_diag.items.resize(before);
+        *lenient_diag = own.format(g_script);
+    }
     if (!g_diag.items.empty())
         throw TranslateAbort{};
     for (ClassDef& c : sc.classes)
@@ -3658,6 +3668,9 @@ struct TranslatorSession::Impl
         std::shared_ptr<const Script> script;
         unsigned long long iface_hash = 0;
         hotc::ImportView view;
+        // The syntax errors of a lenient parse (TranslateOptions::lenient_imports). A strict lookup
+        // never sees such a value: the key of it has the suffix "\0L".
+        std::string diag_text;
         uint64_t used = 0;
     };
     static constexpr size_t kImportCacheMax = 256;
@@ -4417,8 +4430,9 @@ void translate_impl(
                         auto it = indirect_texts.find(normal_path(file));
                         if (it != indirect_texts.end())
                         {
-                            Script again = parse_structure(
-                                imported_files[it->second].text, imported_files[it->second].base, map, array_tpl);
+                            std::string again_diag;
+                            Script again = parse_structure(imported_files[it->second].text,
+                                imported_files[it->second].base, map, array_tpl, in.lenient_imports ? &again_diag : nullptr);
                             for (Method& f : again.fns)
                                 if (f.access != hotc::ast::Access::Private)
                                 {
@@ -4450,12 +4464,17 @@ void translate_impl(
                 // The import cache: the key has all that the parse reads. The positions depend on the base.
                 std::string cache_key;
                 std::shared_ptr<const hotc::TranslatorSession::Impl::ImportValue> cached;
+                std::string lenient_diag;
                 Script is;
                 if (in.import_cache)
                 {
                     cache_key = file + '\0' + unit + '\0' + std::to_string(base) + '\0' + array_tpl + '\0' + std_ns
                         + '\0' + std::to_string(hotc::text_hash(text));
-                    cached = session.import_get(cache_key, text);
+                    // A lenient parse with errors has its own key. A strict lookup never sees it.
+                    if (in.lenient_imports)
+                        cached = session.import_get(cache_key + std::string("\0L", 2), text);
+                    if (!cached)
+                        cached = session.import_get(cache_key, text);
                 }
                 if (cached)
                 {
@@ -4468,11 +4487,15 @@ void translate_impl(
                     res.timing.import_copy_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
                         std::chrono::steady_clock::now() - t_copy).count();
                     ++res.timing.import_cache_hits;
+                    res.import_diagnostics += cached->diag_text;
+                    lenient_diag = cached->diag_text;
                 }
                 else
                 {
                     const auto t_parse = std::chrono::steady_clock::now();
-                    is = parse_structure(imported_files.back().text, base, map, array_tpl);
+                    is = parse_structure(
+                        imported_files.back().text, base, map, array_tpl, in.lenient_imports ? &lenient_diag : nullptr);
+                    res.import_diagnostics += lenient_diag;
                     res.timing.import_parse_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
                         std::chrono::steady_clock::now() - t_parse).count();
                     if (in.import_cache)
@@ -4484,6 +4507,7 @@ void translate_impl(
                 {
                     fresh = std::make_shared<hotc::TranslatorSession::Impl::ImportValue>();
                     fresh->text = text;
+                    fresh->diag_text = lenient_diag;
                     const hotc::ast::CloneDefaults clone_defaults;
                     fresh->script = std::make_shared<const Script>(is);
                 }
@@ -4541,7 +4565,8 @@ void translate_impl(
                     {
                         fresh->iface_hash = iface_hash;
                         fresh->view = views[normal_path(file)];
-                        session.import_put(cache_key, std::move(fresh));
+                        session.import_put(lenient_diag.empty() ? cache_key : cache_key + std::string("\0L", 2),
+                            std::move(fresh));
                     }
                 }
                 res.timing.import_view_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -11817,8 +11842,31 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
     {
         std::set<std::pair<size_t, size_t>> blanked;
         const std::string script_name = options.script_name.empty() ? std::string("script.hot") : options.script_name;
+        bool lenient_tried = false;
         for (int pass = 0; pass < 4 && !tr.ok; ++pass)
         {
+            // An error in another file: first one retry with lenient imports. The valid parts of an
+            // import with a syntax error stay usable, so its "using" line stays. If the error is not
+            // a syntax error, the retry gives the same error and the blank below handles it.
+            if (!lenient_tried)
+            {
+                bool foreign = false;
+                std::istringstream all(tr.diagnostics);
+                for (std::string ln; std::getline(all, ln);)
+                    foreign = foreign || (ln.compare(0, script_name.size() + 1, script_name + ":") != 0
+                                             && ln.find(": error: ") != std::string::npos);
+                if (foreign)
+                {
+                    lenient_tried = true;
+                    o.lenient_imports = true;
+                    tr = translate(o, session);
+                    add_timing(tr.timing);
+                    if (!tr.base_virtuals.empty())
+                        res.base_virtuals = tr.base_virtuals;
+                    if (tr.ok)
+                        break;
+                }
+            }
             std::vector<std::pair<size_t, size_t>> regions;
             std::istringstream lines(tr.diagnostics);
             for (std::string ln; std::getline(lines, ln);)
