@@ -13,6 +13,7 @@
 #include <gtest/gtest.h>
 
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -193,6 +194,172 @@ TEST_P(BackendTests, ModuleVariableHoldsScriptObjectsOverReload)
     s.world.Tick(kDt);
     EXPECT_EQ(*modvar<int>(s, "seen"), 20); // 3 + 10, and the new field bonus (7)
     EXPECT_EQ(*modvar<int>(s, "left"), 100); // the vector is empty: the object is deleted
+}
+
+// HOT-62: a module variable edit and a reload. The v1 unit has int a, b, c, d, a string, a
+// vector and a struct. Each test sets values, reloads an edited unit and reads the values.
+// The migration works by name (and by alias). The initializer of an old variable does not run.
+struct EditFixture
+{
+    Session s;
+    // The field "f" of the struct variable "pt".
+    int* pt_field(const char* f)
+    {
+        const hot::ModuleStateInfo ms = s.loader.module_state();
+        if (!ms.layout || !*ms.slot)
+            return nullptr;
+        for (uint32_t i = 0; i < ms.layout->field_count; ++i)
+        {
+            const hot::FieldInfo& v = ms.layout->fields[i];
+            if (std::string(v.name) != "pt" || !v.sub)
+                continue;
+            for (uint32_t k = 0; k < v.sub->field_count; ++k)
+                if (std::string(v.sub->fields[k].name) == f)
+                    return reinterpret_cast<int*>(static_cast<char*>(*ms.slot) + v.offset + v.sub->fields[k].offset);
+        }
+        return nullptr;
+    }
+    // Loads the v1 unit and sets the values: a=11 b=22 c=33 d=44 name="hello" list={7,8,9} pt=(5,6).
+    void start_v1(hot::Backend& backend)
+    {
+        hot::LoadResult v1 = backend.load(source("modedit_v1.hot"), 1);
+        ASSERT_TRUE(v1) << v1.error;
+        ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Probe"));
+        s.commit_at_frame_boundary();
+        EXPECT_EQ(*modvar<int>(s, "a"), 1);
+        EXPECT_EQ(*modvar<std::string>(s, "name"), "one");
+        *modvar<int>(s, "a") = 11;
+        *modvar<int>(s, "b") = 22;
+        *modvar<int>(s, "c") = 33;
+        *modvar<int>(s, "d") = 44;
+        *modvar<std::string>(s, "name") = "hello";
+        *modvar<std::vector<int>>(s, "list") = {7, 8, 9};
+        ASSERT_NE(pt_field("x"), nullptr);
+        *pt_field("x") = 5;
+        *pt_field("y") = 6;
+    }
+    // Reloads the unit "file" at the end of one frame.
+    void reload(hot::Backend& backend, const char* file)
+    {
+        hot::LoadResult v2 = backend.load(source(file), 2);
+        ASSERT_TRUE(v2) << v2.error;
+        std::string error;
+        ASSERT_RELOAD_OK(s.loader.request_reload(std::move(*v2.module)));
+        testing::internal::CaptureStderr();
+        s.world.Tick(kDt);
+        log = testing::internal::GetCapturedStderr();
+        ASSERT_FALSE(s.commit_failed);
+        ASSERT_EQ(hot::active_generation, 2u);
+    }
+    // The old values that a reload must keep when the edit does not touch them.
+    void expect_kept(bool a, bool b, bool c, bool d)
+    {
+        if (a)
+            EXPECT_EQ(*modvar<int>(s, "a"), 11);
+        if (b)
+            EXPECT_EQ(*modvar<int>(s, "b"), 22);
+        if (c)
+            EXPECT_EQ(*modvar<int>(s, "c"), 33);
+        if (d)
+            EXPECT_EQ(*modvar<int>(s, "d"), 44);
+        EXPECT_EQ(*modvar<std::string>(s, "name"), "hello");
+        EXPECT_EQ(*modvar<std::vector<int>>(s, "list"), (std::vector<int>{7, 8, 9}));
+        ASSERT_NE(pt_field("x"), nullptr);
+        EXPECT_EQ(*pt_field("x"), 5);
+        EXPECT_EQ(*pt_field("y"), 6);
+    }
+    std::string log;
+};
+
+// (a) A new variable at the end has its initializer. The old variables keep their values.
+TEST_P(BackendTests, ModuleEditAddVariableAtEnd)
+{
+    EditFixture f;
+    ASSERT_NO_FATAL_FAILURE(f.start_v1(*backend));
+    ASSERT_NO_FATAL_FAILURE(f.reload(*backend, "modedit_add.hot"));
+    f.expect_kept(true, true, true, true);
+    ASSERT_NE(modvar<int>(f.s, "e"), nullptr);
+    EXPECT_EQ(*modvar<int>(f.s, "e"), 50);
+}
+
+// (a) A new variable before the old variables: the old values still follow the names.
+TEST_P(BackendTests, ModuleEditAddVariableBeforeOthers)
+{
+    EditFixture f;
+    ASSERT_NO_FATAL_FAILURE(f.start_v1(*backend));
+    ASSERT_NO_FATAL_FAILURE(f.reload(*backend, "modedit_add_mid.hot"));
+    f.expect_kept(true, true, true, true);
+    ASSERT_NE(modvar<int>(f.s, "e"), nullptr);
+    EXPECT_EQ(*modvar<int>(f.s, "e"), 50);
+}
+
+// (b) A removed variable is gone. The others keep their values.
+TEST_P(BackendTests, ModuleEditRemoveVariable)
+{
+    EditFixture f;
+    ASSERT_NO_FATAL_FAILURE(f.start_v1(*backend));
+    ASSERT_NO_FATAL_FAILURE(f.reload(*backend, "modedit_remove.hot"));
+    f.expect_kept(true, false, true, true);
+    EXPECT_EQ(modvar<int>(f.s, "b"), nullptr);
+}
+
+// (c) The variables have a new order. The values follow the names, not the positions.
+TEST_P(BackendTests, ModuleEditReorderVariables)
+{
+    EditFixture f;
+    ASSERT_NO_FATAL_FAILURE(f.start_v1(*backend));
+    ASSERT_NO_FATAL_FAILURE(f.reload(*backend, "modedit_reorder.hot"));
+    f.expect_kept(true, true, true, true);
+}
+
+// (d) An initializer change: the migrated value stays. The new initializer does not run for
+// a variable that exists in both generations.
+TEST_P(BackendTests, ModuleEditInitializerChangeKeepsTheOldValue)
+{
+    EditFixture f;
+    ASSERT_NO_FATAL_FAILURE(f.start_v1(*backend));
+    ASSERT_NO_FATAL_FAILURE(f.reload(*backend, "modedit_init.hot"));
+    EXPECT_EQ(*modvar<int>(f.s, "a"), 11); // the new initializer is 100: it does not apply
+    EXPECT_EQ(*modvar<std::string>(f.s, "name"), "hello"); // the new initializer is "changed"
+    EXPECT_EQ(*modvar<int>(f.s, "b"), 22);
+    EXPECT_EQ(*modvar<int>(f.s, "d"), 44);
+    EXPECT_EQ(*modvar<std::vector<int>>(f.s, "list"), (std::vector<int>{7, 8, 9}));
+}
+
+// (e) A rename with [alias("old")] keeps the value. The old name is gone.
+TEST_P(BackendTests, ModuleEditRenameWithAliasKeepsTheValue)
+{
+    EditFixture f;
+    ASSERT_NO_FATAL_FAILURE(f.start_v1(*backend));
+    ASSERT_NO_FATAL_FAILURE(f.reload(*backend, "modedit_alias.hot"));
+    ASSERT_NE(modvar<int>(f.s, "b2"), nullptr);
+    EXPECT_EQ(*modvar<int>(f.s, "b2"), 22); // the new initializer is 20: it does not apply
+    EXPECT_EQ(modvar<int>(f.s, "b"), nullptr);
+    f.expect_kept(true, false, true, true);
+}
+
+// (f) A type change without a convert hook: the variable takes the new initializer and the
+// loader writes a warning. The other variables keep their values.
+TEST_P(BackendTests, ModuleEditTypeChangeResetsTheVariable)
+{
+    EditFixture f;
+    ASSERT_NO_FATAL_FAILURE(f.start_v1(*backend));
+    ASSERT_NO_FATAL_FAILURE(f.reload(*backend, "modedit_type.hot"));
+    ASSERT_NE(modvar<float>(f.s, "c"), nullptr);
+    EXPECT_FLOAT_EQ(*modvar<float>(f.s, "c"), 9.0f);
+    EXPECT_NE(f.log.find("changed its type"), std::string::npos) << f.log;
+    f.expect_kept(true, true, false, true);
+}
+
+// A struct variable: a new field before the old fields. The old fields keep their values by name.
+TEST_P(BackendTests, ModuleEditStructVariableGetsANewField)
+{
+    EditFixture f;
+    ASSERT_NO_FATAL_FAILURE(f.start_v1(*backend));
+    ASSERT_NO_FATAL_FAILURE(f.reload(*backend, "modedit_ptype.hot"));
+    ASSERT_NE(f.pt_field("z"), nullptr);
+    EXPECT_EQ(*f.pt_field("z"), 7);
+    f.expect_kept(true, true, true, true);
 }
 
 } // namespace
