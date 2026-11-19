@@ -103,7 +103,7 @@ Or add the same flags to the entry of the script in `compile_commands.json`:
 
 `hotc --mask-embedded <in.rml> <prefix-file> -o <out.hot> [--tag script]` masks the `<script>` blocks of a host file with `hot::mask_embedded_scripts` (see [embedding interface](embedding-interface.html)). The tool reads the files as bytes. The prefix is the content of the prefix file without one final line end. The output is byte-equal to the function result.
 
-A file with no block gives no output file. The tool deletes an old file at the output path, prints `hotc: no script block in <in>` on stdout and exits with code 0. A CMake custom command checks the output file, so code 0 suits it. A read or write error prints a message and exits with code 1.
+A file with no block gives no output file. The tool deletes an old file at the output path. It prints `hotc: no script block in <in>` on stdout. It exits with code 0. A CMake custom command checks the output file, so code 0 suits it. A read or write error prints a message and exits with code 1.
 
 ## `hotc --aot` list file and jobs
 

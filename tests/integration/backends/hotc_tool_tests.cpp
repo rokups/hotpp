@@ -2260,4 +2260,32 @@ TEST(HotcTool, MaskEmbeddedReadErrorsExitWithOne)
     EXPECT_FALSE(std::filesystem::exists(dir + "/out.hot"));
 }
 
+TEST(HotcTool, MaskEmbeddedKeepsALoneCarriageReturnOfThePrefix)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_mask_cr");
+    std::filesystem::create_directories(dir);
+    const std::string rml = "<head><script>int a;</script></head>";
+    write_bytes_of(dir + "/in.rml", rml);
+    write_bytes_of(dir + "/prefix.txt", "P\r");
+    std::string log;
+    ASSERT_EQ(run_hotc({"--mask-embedded", dir + "/in.rml", dir + "/prefix.txt", "-o", dir + "/out.hot"}, log), 0) << log;
+    EXPECT_EQ(read_bytes_of(dir + "/out.hot"), hot::mask_embedded_scripts(rml, "script", nullptr, "P\r"));
+}
+
+TEST(HotcTool, MaskEmbeddedRefusesAnOutputThatIsAnInput)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_mask_same");
+    std::filesystem::create_directories(dir);
+    write_bytes_of(dir + "/in.rml", "<rml>no block</rml>");
+    write_bytes_of(dir + "/prefix.txt", "P");
+    std::string log;
+    EXPECT_EQ(run_hotc({"--mask-embedded", dir + "/in.rml", dir + "/prefix.txt", "-o", dir + "/in.rml"}, log), 2) << log;
+    EXPECT_NE(log.find("same as an input file"), std::string::npos) << log;
+    EXPECT_EQ(read_bytes_of(dir + "/in.rml"), "<rml>no block</rml>");
+    EXPECT_EQ(run_hotc({"--mask-embedded", dir + "/in.rml", dir + "/prefix.txt", "-o", dir + "/prefix.txt"}, log), 2) << log;
+    EXPECT_EQ(read_bytes_of(dir + "/prefix.txt"), "P");
+}
+
 } // namespace

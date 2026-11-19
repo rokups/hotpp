@@ -1140,6 +1140,16 @@ int run_mask(int argc, char** argv)
     }
     if (positional.size() != 2 || out.empty() || tag.empty())
         usage();
+    std::error_code same_ec;
+    for (const std::string& in : positional)
+    {
+        // A missing output file gives an error code: it is not the same file.
+        if (fs::equivalent(fs::path(out), fs::path(in), same_ec) && !same_ec)
+        {
+            std::fprintf(stderr, "hotc: error: output path is the same as an input file\n");
+            return 2;
+        }
+    }
     std::string text, prefix;
     if (!read_bytes(positional[0], text))
     {
@@ -1152,9 +1162,11 @@ int run_mask(int argc, char** argv)
         return 1;
     }
     if (!prefix.empty() && prefix.back() == '\n')
+    {
         prefix.pop_back();
-    if (!prefix.empty() && prefix.back() == '\r')
-        prefix.pop_back();
+        if (!prefix.empty() && prefix.back() == '\r')
+            prefix.pop_back();
+    }
     bool found = false;
     const std::string masked = hot::mask_embedded_scripts(text, tag, &found, prefix);
     std::error_code ec;
@@ -1175,6 +1187,7 @@ int run_mask(int argc, char** argv)
     if (!f)
     {
         std::fprintf(stderr, "hotc: error: cannot write %s\n", out.c_str());
+        fs::remove(fs::path(out), ec); // no partial output; the error is ignored
         return 1;
     }
     return 0;
