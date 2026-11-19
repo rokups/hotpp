@@ -80,7 +80,7 @@ struct ReloadResult
     std::vector<std::string> classes; // the names of the classes involved
     // The units involved. DependentsStale: the live units that must go into the batch.
     // ImportMismatch: the units whose import failed the check.
-    std::vector<std::string> units;
+    std::vector<std::string> units = {};
 
     // True for Applied and Pending.
     explicit operator bool() const { return status == ReloadStatus::Applied || status == ReloadStatus::Pending; }
