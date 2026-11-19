@@ -170,7 +170,7 @@ struct SleepAwaiter
 
     Duration delay{};
     bool next_tick = false; // hot::yield(): the next tick resumes the frame
-    std::exception_ptr thrown; // the throw of the park: the co_await throws it
+    std::exception_ptr thrown = nullptr; // the throw of the park: the co_await throws it
 
     bool await_ready() const noexcept { return false; }
     template <class P> std::coroutine_handle<> await_suspend(std::coroutine_handle<P> h) noexcept

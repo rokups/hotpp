@@ -5735,7 +5735,7 @@ void translate_impl(
         const StubSrc* src = nullptr; // the stub, or null for the array template
         bool pattern = false; // the stub is "Name<*>"
         bool handle = false; // a hot::is_handle specialization: written for a class template only
-        std::string kind; // not empty: the spec is written only for this kind of the name (a "lib" type)
+        std::string kind = {}; // not empty: the spec is written only for this kind of the name (a "lib" type)
     };
     std::vector<CheckedSpec> checked_specs;
     if (!sc.is_cpp)
@@ -9848,7 +9848,7 @@ void translate_impl(
                     std::string as;
                     for (const Param& p : m.params)
                         as += (as.empty() ? "" : ", ") + arg_expr(p.type, p.name);
-                    for (const std::string sfx : {std::string(), std::string("_virt")})
+                    for (const std::string& sfx : {std::string(), std::string("_virt")})
                         if (sfx.empty() || (m.vslot_owner == cn && !m.is_override))
                             o.w("[[maybe_unused]] HOT_HIDDEN static " + fn_ret(m) + " " + P + m.name + sfx + "(" + shell
                                 + "* __self" + param_decl_def(m) + ")\n{\n    return __self->" + body_member(m) + "(" + as
@@ -10191,7 +10191,7 @@ void translate_impl(
                 o.w("// Makes the shell with the base arguments. Only the first generation of the class runs it.\n");
                 o.w("// \"key\" names the type of the arguments. An unknown key gives nullptr. \"mem\" null\n");
                 o.w("// gives a shell from \"new\". Else the shell is made in \"mem\".\n");
-                std::string construct_text = "HOT_NODEBUG static hot::ShellBase* " + P
+                std::string construct_text = std::string((cd.iface_parent ? "[[maybe_unused]] " : "")) + "HOT_NODEBUG static hot::ShellBase* " + P
                     + "construct(void* mem, const char* key, const void* args)\n{\n";
                 // The key of the same module is the same pointer, so the compare of the text is rare.
                 for (size_t k = 0; k < ctor_ms.size(); ++k)
@@ -10313,7 +10313,7 @@ void translate_impl(
                 o.w("// The factory of the engine calls it through the canonical record: the current generation\n"
                     "// gives the base arguments and the constructors.\n");
                 const Method& dm = ctor_ms[dflt];
-                mapped(std::string(cd.is_abstract ? "[[maybe_unused]] " : "") + "HOT_NODEBUG static hot::ShellCore* " + P + "new_default()\n{\n" + locals + "    return " + P
+                mapped(std::string(cd.is_abstract || cd.iface_parent ? "[[maybe_unused]] " : "") + "HOT_NODEBUG static hot::ShellCore* " + P + "new_default()\n{\n" + locals + "    return " + P
                         + "build(false" + (defaults.empty() ? "" : ", " + defaults) + ");\n}\n",
                     dm.line > 0 ? dm.line : cd.line, dm.pos != 0 ? dm.pos : cd.pos);
                 o.w("\n");
@@ -10767,7 +10767,7 @@ void translate_impl(
             {
                 o.w("// The signature changed (design 5.3). This thunk serves the new signature. A\n"
                     "// delegate on the thunk of the old signature detaches.\n");
-                mapped("static " + fn_ret(m) + " " + P + m.name + "__thunk(" + B + "* __a" + param_decl(m)
+                mapped(std::string((cd.iface_parent ? "[[maybe_unused]] " : "")) + "static " + fn_ret(m) + " " + P + m.name + "__thunk(" + B + "* __a" + param_decl(m)
                         + ")\n{\n    HOT_NODEBUG_LOCAL auto* __self = static_cast<" + shell
                         + "*>(__a);\n    return hot::call<" + sig + ">(__self, " + slot_id(m.name) + arg_list(m)
                         + ");\n}\n",
@@ -10785,7 +10785,7 @@ void translate_impl(
                 for (const Param& p : m.params)
                     as += (as.empty() ? "" : ", ") + arg_expr(p.type, p.name);
                 const std::string call = "__self->" + body_member(m);
-                mapped("static " + fn_ret(m) + " " + P + m.name + "__thunk(" + B + "* __a" + param_decl(m)
+                mapped(std::string((cd.iface_parent ? "[[maybe_unused]] " : "")) + "static " + fn_ret(m) + " " + P + m.name + "__thunk(" + B + "* __a" + param_decl(m)
                         + ")\n{\n    HOT_NODEBUG_LOCAL auto* __self = static_cast<" + shell
                         + "*>(__a);\n    return hot::call_direct<" + fn_ret(m) + ">(__self, [&]() -> " + fn_ret(m)
                         + " { return " + call + "(" + as + "); });\n}\n",
@@ -10797,7 +10797,7 @@ void translate_impl(
             }
             o.w("// The thunk has the same address in each generation (section 4.11). The\n"
                 "// generation that adds the function emits it. It reads the slot at call time.\n");
-            mapped("static " + fn_ret(m) + " " + P + m.name + "__thunk(" + B + "* __a" + param_decl(m)
+            mapped(std::string((cd.iface_parent ? "[[maybe_unused]] " : "")) + "static " + fn_ret(m) + " " + P + m.name + "__thunk(" + B + "* __a" + param_decl(m)
                     + ")\n{\n    HOT_NODEBUG_LOCAL auto* __self = static_cast<" + shell
                     + "*>(__a);\n    return hot::call<" + fn_ret(m) + "(" + B + "*" + type_list(m) + ")>(__self, "
                     + slot_id(m.name) + arg_list(m) + ");\n}\n",

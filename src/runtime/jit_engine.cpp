@@ -632,7 +632,7 @@ hot_jit_engine* hot_jit_engine_create(int debugger_support, const void* const* h
                 d->pending_name.clear();
                 e->pending.erase(it);
             }
-            return std::move(object);
+            return object;
         });
     // The debugger sees the JIT code: the plugin registers each linked object through the
     // GDB JIT interface (__jit_debug_descriptor). GDB and LLDB read it. The object has the

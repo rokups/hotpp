@@ -71,7 +71,7 @@ constexpr auto any_unit = -dsl::lit_b<0xFF> / dsl::lit_b<0xFF>;
 #define HOT_ERROR_TAG(NAME, TEXT) \
     struct NAME \
     { \
-        static constexpr auto name = TEXT; \
+        [[maybe_unused]] static constexpr auto name = TEXT; \
     }
 
 HOT_ERROR_TAG(e_extern_reserved, "\"extern\" is a reserved word");

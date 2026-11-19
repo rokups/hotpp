@@ -583,10 +583,10 @@ private:
         std::string owner_usr, owner_name, name, mangled;
         bool virt = false;
         uint32_t cpos = 0;
-        std::string vowner;
+        std::string vowner = {};
         // The names for a message and for the class record. They differ from "name" and
         // "owner_name" for a declaration in a namespace: "game::Player" and "game__Player".
-        std::string display, owner_display;
+        std::string display = {}, owner_display = {};
         const std::string& shown() const { return display.empty() ? name : display; }
         const std::string& owner_shown() const { return owner_display.empty() ? owner_name : owner_display; }
     };
@@ -629,7 +629,7 @@ private:
         Range extent;
         const ClassInfo* cls;
         std::function<void(std::string&&)> store;
-        std::string field; // the field of a default member initializer of a script class, else empty
+        std::string field = {}; // the field of a default member initializer of a script class, else empty
     };
 
     // The shell macros of the script classes. A class gets them from the annotations of its header

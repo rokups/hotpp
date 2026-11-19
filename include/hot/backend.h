@@ -31,7 +31,7 @@ struct ScriptSource
     std::string text; // the content of the script
     // The imported scripts ("using "parent.hot";"), as the path in the "using" line and the text.
     // One generation holds them all (design 4.10). A path that is not here is read from disk.
-    std::vector<std::pair<std::string, std::string>> modules;
+    std::vector<std::pair<std::string, std::string>> modules = {};
     // The unit name of the script (doc/module-level.md, "Unit names"). The backend gives it to the
     // translator and sets Module::unit to it. Empty: the translator uses the stem of "name", and
     // Module::unit stays empty.
