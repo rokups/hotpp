@@ -9,6 +9,7 @@
 #include "hot/backend.h"
 #include "hot/clang_files_backend.h"
 #include "hot/command_line.h"
+#include "hot/embedded_script.h"
 #include "hot/config.h"
 #include "hot/module.h"
 #include "hot/paths.h"
@@ -29,6 +30,7 @@
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -2168,6 +2170,122 @@ TEST(HotcTool, AotScriptsFileOptionErrors)
         << log;
     EXPECT_EQ(run_hotc({"--aot", "--scripts-file", dir + "/list.txt", "--jobs", "0", "--out-dir", dir + "/o3"}, log), 2)
         << log;
+}
+
+// The mode --mask-embedded.
+std::string read_bytes_of(const std::string& path)
+{
+    std::ifstream f(path, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+}
+
+void write_bytes_of(const std::string& path, const std::string& bytes)
+{
+    std::ofstream f(path, std::ios::binary);
+    f << bytes;
+}
+
+TEST(HotcTool, MaskEmbeddedWritesTheFunctionResult)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_mask");
+    std::filesystem::create_directories(dir);
+    const std::string rml = "<rml>\n<head>\n  <script>int a;\n</script>\n</head>\n</rml>\n";
+    write_bytes_of(dir + "/in.rml", rml);
+    write_bytes_of(dir + "/prefix.txt", "using Urho3D;\n");
+    std::string log;
+    ASSERT_EQ(run_hotc({"--mask-embedded", dir + "/in.rml", dir + "/prefix.txt", "-o", dir + "/out.hot"}, log), 0) << log;
+    EXPECT_EQ(read_bytes_of(dir + "/out.hot"), hot::mask_embedded_scripts(rml, "script", nullptr, "using Urho3D;"));
+    EXPECT_EQ(read_bytes_of(dir + "/out.hot").rfind("using Urho3D;", 0), 0u);
+}
+
+TEST(HotcTool, MaskEmbeddedWithoutPrefixTextAndCustomTag)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_mask_tag");
+    std::filesystem::create_directories(dir);
+    const std::string rml = "<head><code>int b;</code><script>int a;</script></head>";
+    write_bytes_of(dir + "/in.rml", rml);
+    write_bytes_of(dir + "/prefix.txt", "");
+    std::string log;
+    ASSERT_EQ(run_hotc({"--mask-embedded", dir + "/in.rml", dir + "/prefix.txt", "-o", dir + "/a.hot", "--tag", "code"}, log), 0)
+        << log;
+    EXPECT_EQ(read_bytes_of(dir + "/a.hot"), hot::mask_embedded_scripts(rml, "code"));
+    ASSERT_EQ(run_hotc({"--mask-embedded", dir + "/in.rml", dir + "/prefix.txt", "-o", dir + "/b.hot"}, log), 0) << log;
+    EXPECT_EQ(read_bytes_of(dir + "/b.hot"), hot::mask_embedded_scripts(rml));
+}
+
+TEST(HotcTool, MaskEmbeddedKeepsCrLfBytes)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_mask_crlf");
+    std::filesystem::create_directories(dir);
+    const std::string rml = "<head>\r\n<script>\r\nint a;\r\n</script>\r\n</head>\r\n";
+    write_bytes_of(dir + "/in.rml", rml);
+    write_bytes_of(dir + "/prefix.txt", "P\r\n");
+    std::string log;
+    ASSERT_EQ(run_hotc({"--mask-embedded", dir + "/in.rml", dir + "/prefix.txt", "-o", dir + "/out.hot"}, log), 0) << log;
+    const std::string out = read_bytes_of(dir + "/out.hot");
+    EXPECT_EQ(out, hot::mask_embedded_scripts(rml, "script", nullptr, "P"));
+    EXPECT_NE(out.find("\r\nint a;\r\n"), std::string::npos);
+}
+
+TEST(HotcTool, MaskEmbeddedNoBlockWritesNoFileAndRemovesStaleOne)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_mask_none");
+    std::filesystem::create_directories(dir);
+    write_bytes_of(dir + "/in.rml", "<rml><body>text</body></rml>");
+    write_bytes_of(dir + "/prefix.txt", "P");
+    write_bytes_of(dir + "/out.hot", "stale");
+    std::string log;
+    EXPECT_EQ(run_hotc({"--mask-embedded", dir + "/in.rml", dir + "/prefix.txt", "-o", dir + "/out.hot"}, log), 0) << log;
+    EXPECT_NE(log.find("no script block in"), std::string::npos) << log;
+    EXPECT_FALSE(std::filesystem::exists(dir + "/out.hot"));
+    EXPECT_EQ(run_hotc({"--mask-embedded", dir + "/in.rml", dir + "/prefix.txt", "-o", dir + "/never.hot"}, log), 0) << log;
+    EXPECT_FALSE(std::filesystem::exists(dir + "/never.hot"));
+}
+
+TEST(HotcTool, MaskEmbeddedReadErrorsExitWithOne)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_mask_missing");
+    std::filesystem::create_directories(dir);
+    write_bytes_of(dir + "/in.rml", "<head><script>x</script></head>");
+    write_bytes_of(dir + "/prefix.txt", "P");
+    std::string log;
+    EXPECT_EQ(run_hotc({"--mask-embedded", dir + "/missing.rml", dir + "/prefix.txt", "-o", dir + "/out.hot"}, log), 1) << log;
+    EXPECT_NE(log.find("cannot read"), std::string::npos) << log;
+    EXPECT_EQ(run_hotc({"--mask-embedded", dir + "/in.rml", dir + "/missing.txt", "-o", dir + "/out.hot"}, log), 1) << log;
+    EXPECT_FALSE(std::filesystem::exists(dir + "/out.hot"));
+}
+
+TEST(HotcTool, MaskEmbeddedKeepsALoneCarriageReturnOfThePrefix)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_mask_cr");
+    std::filesystem::create_directories(dir);
+    const std::string rml = "<head><script>int a;</script></head>";
+    write_bytes_of(dir + "/in.rml", rml);
+    write_bytes_of(dir + "/prefix.txt", "P\r");
+    std::string log;
+    ASSERT_EQ(run_hotc({"--mask-embedded", dir + "/in.rml", dir + "/prefix.txt", "-o", dir + "/out.hot"}, log), 0) << log;
+    EXPECT_EQ(read_bytes_of(dir + "/out.hot"), hot::mask_embedded_scripts(rml, "script", nullptr, "P\r"));
+}
+
+TEST(HotcTool, MaskEmbeddedRefusesAnOutputThatIsAnInput)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_mask_same");
+    std::filesystem::create_directories(dir);
+    write_bytes_of(dir + "/in.rml", "<rml>no block</rml>");
+    write_bytes_of(dir + "/prefix.txt", "P");
+    std::string log;
+    EXPECT_EQ(run_hotc({"--mask-embedded", dir + "/in.rml", dir + "/prefix.txt", "-o", dir + "/in.rml"}, log), 2) << log;
+    EXPECT_NE(log.find("same as an input file"), std::string::npos) << log;
+    EXPECT_EQ(read_bytes_of(dir + "/in.rml"), "<rml>no block</rml>");
+    EXPECT_EQ(run_hotc({"--mask-embedded", dir + "/in.rml", dir + "/prefix.txt", "-o", dir + "/prefix.txt"}, log), 2) << log;
+    EXPECT_EQ(read_bytes_of(dir + "/prefix.txt"), "P");
 }
 
 } // namespace

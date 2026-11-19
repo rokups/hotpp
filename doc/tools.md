@@ -99,6 +99,12 @@ Or add the same flags to the entry of the script in `compile_commands.json`:
 
 `hotc --format=std|fmt` picks the format library for `${}` in the C++ text. The default is `std`. The flag is for build systems: `hot_add_scripts` sets it. `fmt` output also compiles as C++17. In build mode (without `--emit-cpp` and `--aot`), the build of `hotc` fixes the library, and a different `--format` is an error. See [CMake](cmake-options.html#the-format-library).
 
+## `hotc --mask-embedded`
+
+`hotc --mask-embedded <in.rml> <prefix-file> -o <out.hot> [--tag script]` masks the `<script>` blocks of a host file with `hot::mask_embedded_scripts` (see [embedding interface](embedding-interface.html)). The tool reads the files as bytes. The prefix is the content of the prefix file without one final line end. The output is byte-equal to the function result.
+
+A file with no block gives no output file. The tool deletes an old file at the output path. It prints `hotc: no script block in <in>` on stdout. It exits with code 0. A CMake custom command checks the output file, so code 0 suits it. A read or write error prints a message and exits with code 1.
+
 ## `hotc --aot` list file and jobs
 
 `hotc --aot --scripts-file FILE` reads the scripts from a list file. Each line is `PATH` or `PATH<TAB>UNIT_NAME`. Do not use `--unit-name` with it. `--jobs N` sets the number of translate threads. `HOT_JOBS` is the second choice. The default is the number of cores, capped at 16. On Windows the default is 1 and `HOT_JOBS` has no effect. `hotc` prints `[i/N] <unit>` on stderr, in script order. `hot_add_scripts` writes the list file `OUT_DIR/scripts.txt` and uses `USES_TERMINAL`. Ninja then shows the progress live and runs one such command at a time.

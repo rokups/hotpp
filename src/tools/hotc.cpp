@@ -70,10 +70,22 @@
 // dependencies of all scripts: one command makes all outputs. In build mode the
 // output is the .so file. In emit mode it needs -o. CMake and Ninja read the file.
 //
+// Mask mode (--mask-embedded): mask the script blocks of a host file (HOT-60, include/hot/embedded_script.h).
+//   hotc --mask-embedded <in.rml> <prefix-file> -o <out.hot> [--tag script]
+// The tool reads the input and the prefix file as bytes (no line end translation). It writes
+// hot::mask_embedded_scripts(input, tag, &found, prefix) to the output as bytes. The prefix is the
+// content of the prefix file without one final line end (LF or CRLF), because the prefix has no
+// line end. The default tag is "script".
+// A file with no block gives no output. The tool deletes an old file at the output path, so a
+// build rule does not keep a stale unit. It prints "hotc: no script block in <in>" on stdout and
+// exits with code 0. CMake checks the output file, so the exit code 0 suits a custom command.
+// A read or write error prints a message and exits with code 1.
+//
 // Exit code: 0 success, 1 error, 2 bad usage.
 #include "hot/backend.h"
 #include "hot/clang_files_backend.h"
 #include "hot/config.h"
+#include "hot/embedded_script.h"
 #include "hot/hotc_lib.h"
 #include "hot/paths.h"
 #include "hot/runtime/hashing.h"
@@ -112,11 +124,13 @@ namespace
         "            [--format=std|fmt] [--view=hot|std] [--resource-dir dir] [--std=c++17|c++20|c++23] [--aot-optimized]\n"
         "            [-D<name>[=value]]... [-U<name>]... [--defines-file file] [--includes-file file]\n"
         "            [--scripts-file file] [--jobs N]\n"
+        "       hotc --mask-embedded <in.rml> <prefix-file> -o <out.hot> [--tag script]\n"
         "  --defines-file <file> (--aot) one define for each line: NAME or NAME=value; -D and -U lines also work\n"
         "  --includes-file <file> (--aot) one include directory for each line, as -I\n"
         "  --scripts-file <file> (--aot) one script for each line: PATH or PATH<TAB>UNIT_NAME; not with --unit-name\n"
         "  --jobs <N>           (--aot) translate on N threads, 1..4096 (default: HOT_JOBS or min(cores, 16); 1 on Windows)\n"
         "  --unit-name <name>   (--aot, --emit-cpp) the unit name of the n-th script (default: the stem)\n"
+        "  --mask-embedded      mask the <script> blocks of <in>, write <out.hot>; no block: no file, exit code 0\n"
         "Each mode also accepts:\n"
         "  --depfile <path>     write the headers and imported scripts that the translation read (Make format)\n"
         "  --target <triple>    the target triple of the parse and of the modules (-target)\n"
@@ -1089,10 +1103,103 @@ int run_build(const Args& args)
     return failed ? 1 : 0;
 }
 
+// Reads a whole file as bytes. A false result means a read error.
+bool read_bytes(const std::string& path, std::string& text)
+{
+    std::ifstream f(path, std::ios::binary);
+    if (!f)
+        return false;
+    std::ostringstream ss;
+    ss << f.rdbuf();
+    if (f.bad())
+        return false;
+    text = ss.str();
+    return true;
+}
+
+// The mode --mask-embedded. The arguments after the flag are: <in> <prefix-file> -o <out> [--tag T].
+int run_mask(int argc, char** argv)
+{
+    std::vector<std::string> positional;
+    std::string out, tag = "script";
+    for (int i = 1; i < argc; ++i)
+    {
+        const std::string a = argv[i];
+        if (a == "--mask-embedded")
+            continue;
+        if (a == "-o" || a == "--tag")
+        {
+            if (i + 1 >= argc)
+                usage();
+            (a == "-o" ? out : tag) = argv[++i];
+        }
+        else if (!a.empty() && a[0] == '-')
+            usage();
+        else
+            positional.push_back(a);
+    }
+    if (positional.size() != 2 || out.empty() || tag.empty())
+        usage();
+    std::error_code same_ec;
+    for (const std::string& in : positional)
+    {
+        // A missing output file gives an error code: it is not the same file.
+        if (fs::equivalent(fs::path(out), fs::path(in), same_ec) && !same_ec)
+        {
+            std::fprintf(stderr, "hotc: error: output path is the same as an input file\n");
+            return 2;
+        }
+    }
+    std::string text, prefix;
+    if (!read_bytes(positional[0], text))
+    {
+        std::fprintf(stderr, "hotc: error: cannot read %s\n", positional[0].c_str());
+        return 1;
+    }
+    if (!read_bytes(positional[1], prefix))
+    {
+        std::fprintf(stderr, "hotc: error: cannot read %s\n", positional[1].c_str());
+        return 1;
+    }
+    if (!prefix.empty() && prefix.back() == '\n')
+    {
+        prefix.pop_back();
+        if (!prefix.empty() && prefix.back() == '\r')
+            prefix.pop_back();
+    }
+    bool found = false;
+    const std::string masked = hot::mask_embedded_scripts(text, tag, &found, prefix);
+    std::error_code ec;
+    if (!found)
+    {
+        fs::remove(fs::path(out), ec); // a stale output must not stay
+        if (ec)
+        {
+            std::fprintf(stderr, "hotc: error: cannot remove %s: %s\n", out.c_str(), ec.message().c_str());
+            return 1;
+        }
+        std::printf("hotc: no script block in %s\n", positional[0].c_str());
+        return 0;
+    }
+    std::ofstream f(out, std::ios::binary | std::ios::trunc);
+    f.write(masked.data(), static_cast<std::streamsize>(masked.size()));
+    f.close();
+    if (!f)
+    {
+        std::fprintf(stderr, "hotc: error: cannot write %s\n", out.c_str());
+        fs::remove(fs::path(out), ec); // no partial output; the error is ignored
+        return 1;
+    }
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
 {
+    for (int i = 1; i < argc; ++i)
+        if (std::string(argv[i]) == "--mask-embedded")
+            return run_mask(argc, argv);
     const Args args = parse_args(argc, argv);
     if (args.aot && args.emit_cpp)
         usage();
