@@ -37,6 +37,7 @@ extern hot::ClassRecord Smith_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Smith_Shell final : Actor, hot::ShellBase {
+    friend struct hot_state_Smith;
 #line 9 "prelude_v1.hot"
     template <class... A>
 #line 9 "prelude_v1.hot"
@@ -49,7 +50,7 @@ struct Smith_Shell final : Actor, hot::ShellBase {
     }
 #line 9 "prelude_v1.hot"
     ~Smith_Shell() override { hot::destroy_state(this); }
-#line 53 "prelude_v1.hot.cpp"
+#line 54 "prelude_v1.hot.cpp"
 #line 9 "prelude_v1.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 9 "prelude_v1.hot"
@@ -58,7 +59,7 @@ struct Smith_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0);
 #line 9 "prelude_v1.hot"
     }
-#line 62 "prelude_v1.hot.cpp"
+#line 63 "prelude_v1.hot.cpp"
 #line 9 "prelude_v1.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 9 "prelude_v1.hot"
@@ -67,7 +68,7 @@ struct Smith_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0, a1);
 #line 9 "prelude_v1.hot"
     }
-#line 71 "prelude_v1.hot.cpp"
+#line 72 "prelude_v1.hot.cpp"
 
 #line 9 "prelude_v1.hot"
     void Tick(float a0) override
@@ -77,7 +78,7 @@ struct Smith_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Smith_SLOT_Tick, a0);
 #line 9 "prelude_v1.hot"
     }
-#line 81 "prelude_v1.hot.cpp"
+#line 82 "prelude_v1.hot.cpp"
 
 #line 9 "prelude_v1.hot"
     void TakeDamage(float a0) override
@@ -87,7 +88,7 @@ struct Smith_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Smith_SLOT_TakeDamage_f, a0);
 #line 9 "prelude_v1.hot"
     }
-#line 91 "prelude_v1.hot.cpp"
+#line 92 "prelude_v1.hot.cpp"
 
 #line 9 "prelude_v1.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -97,7 +98,7 @@ struct Smith_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, Smith_SLOT_TakeDamage_Af, a0, a1);
 #line 9 "prelude_v1.hot"
     }
-#line 101 "prelude_v1.hot.cpp"
+#line 102 "prelude_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -117,7 +118,7 @@ struct hot_state_Smith {
         return static_cast<Smith_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 9 "prelude_v1.hot"
     }
-#line 121 "prelude_v1.hot.cpp"
+#line 122 "prelude_v1.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 9 "prelude_v1.hot"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -127,18 +128,18 @@ struct hot_state_Smith {
         return static_cast<Smith_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 9 "prelude_v1.hot"
     }
-#line 131 "prelude_v1.hot.cpp"
+#line 132 "prelude_v1.hot.cpp"
 };
 
 #line 10 "prelude_v1.hot"
 static void Smith__init_root(void*, void* f) { using T = hot::Intrusive<Object, &Object::AddRef, &Object::Release>; new (f) T(); }
-#line 136 "prelude_v1.hot.cpp"
+#line 137 "prelude_v1.hot.cpp"
 #line 11 "prelude_v1.hot"
 static void Smith__init_item(void*, void* f) { using T = std::shared_ptr<Item>; new (f) T(); }
-#line 139 "prelude_v1.hot.cpp"
+#line 140 "prelude_v1.hot.cpp"
 #line 12 "prelude_v1.hot"
 static void Smith__init_ticks(void*, void* f) { using T = int32_t; new (f) T(); }
-#line 142 "prelude_v1.hot.cpp"
+#line 143 "prelude_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -189,7 +190,7 @@ HOT_HIDDEN static auto Smith__plan()
     return std::make_pair(Smith__super_args(), std::tuple<>());
 #line 9 "prelude_v1.hot"
 }
-#line 193 "prelude_v1.hot.cpp"
+#line 194 "prelude_v1.hot.cpp"
 using Smith_SuperArgs = decltype(Smith__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -214,7 +215,7 @@ HOT_NODEBUG static hot::ShellBase* Smith__construct(void* mem, const char* key, 
     return nullptr;
 #line 9 "prelude_v1.hot"
 }
-#line 218 "prelude_v1.hot.cpp"
+#line 219 "prelude_v1.hot.cpp"
 
 static const char* const Smith__construct_keys[] = {typeid(Smith_SuperArgs).name(), nullptr};
 
@@ -230,7 +231,7 @@ HOT_HIDDEN static Smith_Shell* Smith__build([[maybe_unused]] bool __note)
     return __self;
 #line 9 "prelude_v1.hot"
 }
-#line 234 "prelude_v1.hot.cpp"
+#line 235 "prelude_v1.hot.cpp"
 #line 9 "prelude_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Smith_Shell* Smith__new()
 #line 9 "prelude_v1.hot"
@@ -239,7 +240,7 @@ HOT_HIDDEN static Smith_Shell* Smith__build([[maybe_unused]] bool __note)
     return Smith__build(true);
 #line 9 "prelude_v1.hot"
 }
-#line 243 "prelude_v1.hot.cpp"
+#line 244 "prelude_v1.hot.cpp"
 #line 9 "prelude_v1.hot"
 template <int = 0>
 #line 9 "prelude_v1.hot"
@@ -254,7 +255,7 @@ template <int = 0>
     return __h;
 #line 9 "prelude_v1.hot"
 }
-#line 258 "prelude_v1.hot.cpp"
+#line 259 "prelude_v1.hot.cpp"
 
 static void* Smith___native__thunk(hot::ShellCore* __s)
 {
@@ -294,7 +295,7 @@ HOT_NODEBUG static hot::Instance Smith_create()
     return {static_cast<Actor*>(p), p};
 #line 9 "prelude_v1.hot"
 }
-#line 298 "prelude_v1.hot.cpp"
+#line 299 "prelude_v1.hot.cpp"
 
 #line 9 "prelude_v1.hot"
 HOT_NODEBUG static hot::Instance Smith__make_0([[maybe_unused]] void** __a)
@@ -304,7 +305,7 @@ HOT_NODEBUG static hot::Instance Smith__make_0([[maybe_unused]] void** __a)
     return Smith_create();
 #line 9 "prelude_v1.hot"
 }
-#line 308 "prelude_v1.hot.cpp"
+#line 309 "prelude_v1.hot.cpp"
 
 static const hot::CtorEntry Smith__constructors[] = {
     {hot::ctor_key<>(), &Smith__make_0, hot::ctor_write_mask<>()},
@@ -324,6 +325,7 @@ extern hot::ClassRecord Tool_record;
 struct Tool_Shell final : Object, hot::ShellBase {
     OBJECT_DATA;
     HOT_OBJECT(Tool_Shell, Object);
+    friend struct hot_state_Tool;
 #line 19 "prelude_v1.hot"
     template <class... A>
 #line 19 "prelude_v1.hot"
@@ -336,7 +338,7 @@ struct Tool_Shell final : Object, hot::ShellBase {
     }
 #line 19 "prelude_v1.hot"
     ~Tool_Shell() override { hot::destroy_state(this); }
-#line 340 "prelude_v1.hot.cpp"
+#line 342 "prelude_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -349,7 +351,7 @@ struct hot_state_Tool {
 
 #line 21 "prelude_v1.hot"
 static void Tool__init_uses(void*, void* f) { using T = int32_t; new (f) T(); }
-#line 353 "prelude_v1.hot.cpp"
+#line 355 "prelude_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -397,7 +399,7 @@ HOT_HIDDEN static auto Tool__plan()
     return std::make_pair(Tool__super_args(), std::tuple<>());
 #line 19 "prelude_v1.hot"
 }
-#line 401 "prelude_v1.hot.cpp"
+#line 403 "prelude_v1.hot.cpp"
 using Tool_SuperArgs = decltype(Tool__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -422,7 +424,7 @@ HOT_NODEBUG static hot::ShellBase* Tool__construct(void* mem, const char* key, c
     return nullptr;
 #line 19 "prelude_v1.hot"
 }
-#line 426 "prelude_v1.hot.cpp"
+#line 428 "prelude_v1.hot.cpp"
 
 static const char* const Tool__construct_keys[] = {typeid(Tool_SuperArgs).name(), nullptr};
 
@@ -438,7 +440,7 @@ HOT_HIDDEN static Tool_Shell* Tool__build([[maybe_unused]] bool __note)
     return __self;
 #line 19 "prelude_v1.hot"
 }
-#line 442 "prelude_v1.hot.cpp"
+#line 444 "prelude_v1.hot.cpp"
 #line 19 "prelude_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Tool_Shell* Tool__new()
 #line 19 "prelude_v1.hot"
@@ -447,7 +449,7 @@ HOT_HIDDEN static Tool_Shell* Tool__build([[maybe_unused]] bool __note)
     return Tool__build(true);
 #line 19 "prelude_v1.hot"
 }
-#line 451 "prelude_v1.hot.cpp"
+#line 453 "prelude_v1.hot.cpp"
 #line 19 "prelude_v1.hot"
 template <int = 0>
 #line 19 "prelude_v1.hot"
@@ -462,7 +464,7 @@ template <int = 0>
     return __h;
 #line 19 "prelude_v1.hot"
 }
-#line 466 "prelude_v1.hot.cpp"
+#line 468 "prelude_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -476,7 +478,7 @@ static void Tool__Use__thunk(Object* __a)
     return hot::call<void(Object*)>(__self, Tool_SLOT_Use);
 #line 23 "prelude_v1.hot"
 }
-#line 480 "prelude_v1.hot.cpp"
+#line 482 "prelude_v1.hot.cpp"
 
 static void* Tool___native__thunk(hot::ShellCore* __s)
 {
@@ -514,7 +516,7 @@ HOT_NODEBUG static hot::Instance Tool_create()
     return {static_cast<Object*>(p), p};
 #line 19 "prelude_v1.hot"
 }
-#line 518 "prelude_v1.hot.cpp"
+#line 520 "prelude_v1.hot.cpp"
 
 #line 19 "prelude_v1.hot"
 HOT_NODEBUG static hot::Instance Tool__make_0([[maybe_unused]] void** __a)
@@ -524,7 +526,7 @@ HOT_NODEBUG static hot::Instance Tool__make_0([[maybe_unused]] void** __a)
     return Tool_create();
 #line 19 "prelude_v1.hot"
 }
-#line 528 "prelude_v1.hot.cpp"
+#line 530 "prelude_v1.hot.cpp"
 
 static const hot::CtorEntry Tool__constructors[] = {
     {hot::ctor_key<>(), &Tool__make_0, hot::ctor_write_mask<>()},
@@ -555,7 +557,7 @@ void hot_state_Smith::Tick(float dt)
     HOT_TRACE_LINE(); __st->ticks = __st->ticks + 1;
 #line 16 "prelude_v1.hot"
 }
-#line 559 "prelude_v1.hot.cpp"
+#line 561 "prelude_v1.hot.cpp"
 
 #line 23 "prelude_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Tool__Use(Tool_Shell* __self)
@@ -565,7 +567,7 @@ void hot_state_Smith::Tick(float dt)
     return state_of(__self)->Use();
 #line 23 "prelude_v1.hot"
 }
-#line 569 "prelude_v1.hot.cpp"
+#line 571 "prelude_v1.hot.cpp"
 #line 23 "prelude_v1.hot"
 void hot_state_Tool::Use()
 #line 23 "prelude_v1.hot"
@@ -590,7 +592,7 @@ void hot_state_Tool::Use()
     HOT_TRACE_LINE(); __st->uses = __st->uses + 1;
 #line 25 "prelude_v1.hot"
 }
-#line 594 "prelude_v1.hot.cpp"
+#line 596 "prelude_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

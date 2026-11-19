@@ -42,6 +42,7 @@ const char* kNativeHeader =
     "    virtual void Update(float dt) {}\n"
     "protected:\n"
     "    virtual void OnSceneSet(int scene) {}\n"
+    "    void Poke(int n) {}\n"
     "};\n";
 
 hotc::TranslateResult translate_native(const TempDir& dir, const std::string& script)
@@ -69,6 +70,19 @@ TEST(NativeGapTranslation, LoggerCallWithFormatArguments)
     EXPECT_TRUE(has(r.cpp, "std::remove_cv_t<std::remove_reference_t<decltype(Urho3D::Log::GetLogger())>> logger;")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "Urho3D::Log::GetLogger()")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "Error(\"x {}\"")) << r.cpp;
+}
+
+// A script method calls a protected non-virtual member of the native base. The state struct is a friend of the shell.
+TEST(NativeGapTranslation, ProtectedNonVirtualBaseMemberNeedsFriendState)
+{
+    TempDir dir;
+    const hotc::TranslateResult r = translate_native(dir,
+        "class Foo : Widget {\n"
+        "    void M() { Poke(1); }\n"
+        "}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "friend struct hot_state_Foo;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "__self->Poke(")) << r.cpp;
 }
 
 // G04: a native signal field, Subscribe with a lambda, Unsubscribe and an invoke.

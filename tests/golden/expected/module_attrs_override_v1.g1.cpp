@@ -39,6 +39,7 @@ extern hot::ClassRecord Counter_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Counter_Shell final : Actor, hot::ShellBase {
+    friend struct hot_state_Counter;
 #line 9 "module_attrs_override_v1.hot"
     template <class... A>
 #line 9 "module_attrs_override_v1.hot"
@@ -51,7 +52,7 @@ struct Counter_Shell final : Actor, hot::ShellBase {
     }
 #line 9 "module_attrs_override_v1.hot"
     ~Counter_Shell() override { hot::destroy_state(this); }
-#line 55 "module_attrs_override_v1.hot.cpp"
+#line 56 "module_attrs_override_v1.hot.cpp"
 #line 9 "module_attrs_override_v1.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 9 "module_attrs_override_v1.hot"
@@ -60,7 +61,7 @@ struct Counter_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0);
 #line 9 "module_attrs_override_v1.hot"
     }
-#line 64 "module_attrs_override_v1.hot.cpp"
+#line 65 "module_attrs_override_v1.hot.cpp"
 #line 9 "module_attrs_override_v1.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 9 "module_attrs_override_v1.hot"
@@ -69,7 +70,7 @@ struct Counter_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0, a1);
 #line 9 "module_attrs_override_v1.hot"
     }
-#line 73 "module_attrs_override_v1.hot.cpp"
+#line 74 "module_attrs_override_v1.hot.cpp"
 
 #line 9 "module_attrs_override_v1.hot"
     void Tick(float a0) override
@@ -79,7 +80,7 @@ struct Counter_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 9 "module_attrs_override_v1.hot"
     }
-#line 83 "module_attrs_override_v1.hot.cpp"
+#line 84 "module_attrs_override_v1.hot.cpp"
 
 #line 9 "module_attrs_override_v1.hot"
     void TakeDamage(float a0) override
@@ -89,7 +90,7 @@ struct Counter_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 9 "module_attrs_override_v1.hot"
     }
-#line 93 "module_attrs_override_v1.hot.cpp"
+#line 94 "module_attrs_override_v1.hot.cpp"
 
 #line 9 "module_attrs_override_v1.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -99,7 +100,7 @@ struct Counter_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 9 "module_attrs_override_v1.hot"
     }
-#line 103 "module_attrs_override_v1.hot.cpp"
+#line 104 "module_attrs_override_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -118,7 +119,7 @@ struct hot_state_Counter {
         return static_cast<Counter_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 9 "module_attrs_override_v1.hot"
     }
-#line 122 "module_attrs_override_v1.hot.cpp"
+#line 123 "module_attrs_override_v1.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 9 "module_attrs_override_v1.hot"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -128,15 +129,15 @@ struct hot_state_Counter {
         return static_cast<Counter_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 9 "module_attrs_override_v1.hot"
     }
-#line 132 "module_attrs_override_v1.hot.cpp"
+#line 133 "module_attrs_override_v1.hot.cpp"
 };
 
 #line 10 "module_attrs_override_v1.hot"
 static void Counter__init_label(void*, void* f) { using T = other_std::string; new (f) T("counter"); }
-#line 137 "module_attrs_override_v1.hot.cpp"
+#line 138 "module_attrs_override_v1.hot.cpp"
 #line 11 "module_attrs_override_v1.hot"
 static void Counter__init_history(void*, void* f) { using T = other_std::vector<int32_t>; new (f) T(other_std::vector<int32_t>()); }
-#line 140 "module_attrs_override_v1.hot.cpp"
+#line 141 "module_attrs_override_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -185,7 +186,7 @@ HOT_HIDDEN static auto Counter__plan()
     return other_std::make_pair(Counter__super_args(), other_std::tuple<>());
 #line 9 "module_attrs_override_v1.hot"
 }
-#line 189 "module_attrs_override_v1.hot.cpp"
+#line 190 "module_attrs_override_v1.hot.cpp"
 using Counter_SuperArgs = decltype(Counter__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -210,7 +211,7 @@ HOT_NODEBUG static hot::ShellBase* Counter__construct(void* mem, const char* key
     return nullptr;
 #line 9 "module_attrs_override_v1.hot"
 }
-#line 214 "module_attrs_override_v1.hot.cpp"
+#line 215 "module_attrs_override_v1.hot.cpp"
 
 static const char* const Counter__construct_keys[] = {typeid(Counter_SuperArgs).name(), nullptr};
 
@@ -226,7 +227,7 @@ HOT_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note)
     return __self;
 #line 9 "module_attrs_override_v1.hot"
 }
-#line 230 "module_attrs_override_v1.hot.cpp"
+#line 231 "module_attrs_override_v1.hot.cpp"
 #line 9 "module_attrs_override_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Counter_Shell* Counter__new()
 #line 9 "module_attrs_override_v1.hot"
@@ -235,7 +236,7 @@ HOT_HIDDEN static Counter_Shell* Counter__build([[maybe_unused]] bool __note)
     return Counter__build(true);
 #line 9 "module_attrs_override_v1.hot"
 }
-#line 239 "module_attrs_override_v1.hot.cpp"
+#line 240 "module_attrs_override_v1.hot.cpp"
 
 static void* Counter___native__thunk(hot::ShellCore* __s)
 {
@@ -275,7 +276,7 @@ HOT_NODEBUG static hot::Instance Counter_create()
     return {static_cast<Actor*>(p), p};
 #line 9 "module_attrs_override_v1.hot"
 }
-#line 279 "module_attrs_override_v1.hot.cpp"
+#line 280 "module_attrs_override_v1.hot.cpp"
 
 #line 9 "module_attrs_override_v1.hot"
 HOT_NODEBUG static hot::Instance Counter__make_0([[maybe_unused]] void** __a)
@@ -285,7 +286,7 @@ HOT_NODEBUG static hot::Instance Counter__make_0([[maybe_unused]] void** __a)
     return Counter_create();
 #line 9 "module_attrs_override_v1.hot"
 }
-#line 289 "module_attrs_override_v1.hot.cpp"
+#line 290 "module_attrs_override_v1.hot.cpp"
 
 static const hot::CtorEntry Counter__constructors[] = {
     {hot::ctor_key<>(), &Counter__make_0, hot::ctor_write_mask<>()},
@@ -318,7 +319,7 @@ void hot_state_Counter::Tick(float dt)
     HOT_TRACE_LINE(); __st->label = other_std::to_string(hot::deref(__st->history).size());
 #line 16 "module_attrs_override_v1.hot"
 }
-#line 322 "module_attrs_override_v1.hot.cpp"
+#line 323 "module_attrs_override_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

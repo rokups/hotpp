@@ -82,6 +82,7 @@ extern hot::ClassRecord Bumper_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Bumper_Shell final : Actor, hot::ShellBase {
+    friend struct hot_state_Bumper;
 #line 18 "cpp_namespace_fn.cpp"
     template <class... A>
 #line 18 "cpp_namespace_fn.cpp"
@@ -94,7 +95,7 @@ struct Bumper_Shell final : Actor, hot::ShellBase {
     }
 #line 18 "cpp_namespace_fn.cpp"
     ~Bumper_Shell() override { hot::destroy_state(this); }
-#line 98 "cpp_namespace_fn.cpp.cpp"
+#line 99 "cpp_namespace_fn.cpp.cpp"
 #line 18 "cpp_namespace_fn.cpp"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 18 "cpp_namespace_fn.cpp"
@@ -103,7 +104,7 @@ struct Bumper_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0);
 #line 18 "cpp_namespace_fn.cpp"
     }
-#line 107 "cpp_namespace_fn.cpp.cpp"
+#line 108 "cpp_namespace_fn.cpp.cpp"
 #line 18 "cpp_namespace_fn.cpp"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 18 "cpp_namespace_fn.cpp"
@@ -112,7 +113,7 @@ struct Bumper_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0, a1);
 #line 18 "cpp_namespace_fn.cpp"
     }
-#line 116 "cpp_namespace_fn.cpp.cpp"
+#line 117 "cpp_namespace_fn.cpp.cpp"
 
 #line 18 "cpp_namespace_fn.cpp"
     void Tick(float a0) override
@@ -122,7 +123,7 @@ struct Bumper_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 18 "cpp_namespace_fn.cpp"
     }
-#line 126 "cpp_namespace_fn.cpp.cpp"
+#line 127 "cpp_namespace_fn.cpp.cpp"
 
 #line 18 "cpp_namespace_fn.cpp"
     void TakeDamage(float a0) override
@@ -132,7 +133,7 @@ struct Bumper_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 18 "cpp_namespace_fn.cpp"
     }
-#line 136 "cpp_namespace_fn.cpp.cpp"
+#line 137 "cpp_namespace_fn.cpp.cpp"
 
 #line 18 "cpp_namespace_fn.cpp"
     void TakeDamage(Actor& a0, float a1) override
@@ -142,7 +143,7 @@ struct Bumper_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 18 "cpp_namespace_fn.cpp"
     }
-#line 146 "cpp_namespace_fn.cpp.cpp"
+#line 147 "cpp_namespace_fn.cpp.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -161,7 +162,7 @@ struct hot_state_Bumper {
         return static_cast<Bumper_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 18 "cpp_namespace_fn.cpp"
     }
-#line 165 "cpp_namespace_fn.cpp.cpp"
+#line 166 "cpp_namespace_fn.cpp.cpp"
     // Not overridden: call the implementation of Actor.
 #line 18 "cpp_namespace_fn.cpp"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -171,12 +172,12 @@ struct hot_state_Bumper {
         return static_cast<Bumper_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 18 "cpp_namespace_fn.cpp"
     }
-#line 175 "cpp_namespace_fn.cpp.cpp"
+#line 176 "cpp_namespace_fn.cpp.cpp"
 };
 
 #line 21 "cpp_namespace_fn.cpp"
 static void Bumper__init_last(void*, void* f) { using T = int; new (f) T(0); }
-#line 180 "cpp_namespace_fn.cpp.cpp"
+#line 181 "cpp_namespace_fn.cpp.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -234,7 +235,7 @@ HOT_HIDDEN static void Bumper__ctor_chain(Bumper_Shell* __self, [[maybe_unused]]
     Bumper__ctor(__self);
 #line 23 "cpp_namespace_fn.cpp"
 }
-#line 238 "cpp_namespace_fn.cpp.cpp"
+#line 239 "cpp_namespace_fn.cpp.cpp"
 using Bumper_SuperArgs = decltype(Bumper__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -259,7 +260,7 @@ HOT_NODEBUG static hot::ShellBase* Bumper__construct(void* mem, const char* key,
     return nullptr;
 #line 18 "cpp_namespace_fn.cpp"
 }
-#line 263 "cpp_namespace_fn.cpp.cpp"
+#line 264 "cpp_namespace_fn.cpp.cpp"
 
 static const char* const Bumper__construct_keys[] = {typeid(Bumper_SuperArgs).name(), nullptr};
 
@@ -287,7 +288,7 @@ HOT_HIDDEN static Bumper_Shell* Bumper__build([[maybe_unused]] bool __note)
     return __self;
 #line 23 "cpp_namespace_fn.cpp"
 }
-#line 291 "cpp_namespace_fn.cpp.cpp"
+#line 292 "cpp_namespace_fn.cpp.cpp"
 #line 23 "cpp_namespace_fn.cpp"
 [[maybe_unused]] HOT_HIDDEN static Bumper_Shell* Bumper__new()
 #line 23 "cpp_namespace_fn.cpp"
@@ -296,7 +297,7 @@ HOT_HIDDEN static Bumper_Shell* Bumper__build([[maybe_unused]] bool __note)
     return Bumper__build(true);
 #line 23 "cpp_namespace_fn.cpp"
 }
-#line 300 "cpp_namespace_fn.cpp.cpp"
+#line 301 "cpp_namespace_fn.cpp.cpp"
 #line 23 "cpp_namespace_fn.cpp"
 template <int = 0>
 #line 23 "cpp_namespace_fn.cpp"
@@ -313,7 +314,7 @@ template <int = 0>
     return __h;
 #line 23 "cpp_namespace_fn.cpp"
 }
-#line 317 "cpp_namespace_fn.cpp.cpp"
+#line 318 "cpp_namespace_fn.cpp.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -325,7 +326,7 @@ HOT_NODEBUG static hot::ShellCore* Bumper__new_default()
     return Bumper__build(false);
 #line 23 "cpp_namespace_fn.cpp"
 }
-#line 329 "cpp_namespace_fn.cpp.cpp"
+#line 330 "cpp_namespace_fn.cpp.cpp"
 
 [[maybe_unused]] HOT_HIDDEN static void Bumper__ctor_export0(hot::ShellBase* __s)
 {
@@ -383,7 +384,7 @@ HOT_NODEBUG static hot::Instance Bumper_create()
     return {static_cast<Actor*>(p), p};
 #line 18 "cpp_namespace_fn.cpp"
 }
-#line 387 "cpp_namespace_fn.cpp.cpp"
+#line 388 "cpp_namespace_fn.cpp.cpp"
 
 #line 23 "cpp_namespace_fn.cpp"
 HOT_NODEBUG static hot::Instance Bumper__make_0([[maybe_unused]] void** __a)
@@ -397,7 +398,7 @@ HOT_NODEBUG static hot::Instance Bumper__make_0([[maybe_unused]] void** __a)
     return {static_cast<Actor*>(p), p};
 #line 23 "cpp_namespace_fn.cpp"
 }
-#line 401 "cpp_namespace_fn.cpp.cpp"
+#line 402 "cpp_namespace_fn.cpp.cpp"
 
 static const hot::CtorEntry Bumper__constructors[] = {
     {hot::ctor_key<>(), &Bumper__make_0, hot::ctor_write_mask<>()},
@@ -412,7 +413,7 @@ static const hot::CtorEntry Bumper__constructors[] = {
     return state_of(__self)->ctor();
 #line 23 "cpp_namespace_fn.cpp"
 }
-#line 416 "cpp_namespace_fn.cpp.cpp"
+#line 417 "cpp_namespace_fn.cpp.cpp"
 #line 23 "cpp_namespace_fn.cpp"
 void hot_state_Bumper::ctor()
 #line 23 "cpp_namespace_fn.cpp"
@@ -437,7 +438,7 @@ void hot_state_Bumper::ctor()
 
 #line 23 "cpp_namespace_fn.cpp"
 }
-#line 441 "cpp_namespace_fn.cpp.cpp"
+#line 442 "cpp_namespace_fn.cpp.cpp"
 
 #line 25 "cpp_namespace_fn.cpp"
 void hot_state_Bumper::Tick(float dt)
@@ -467,7 +468,7 @@ void hot_state_Bumper::Tick(float dt)
     
 #line 30 "cpp_namespace_fn.cpp"
 }
-#line 471 "cpp_namespace_fn.cpp.cpp"
+#line 472 "cpp_namespace_fn.cpp.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

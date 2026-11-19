@@ -37,6 +37,7 @@ extern hot::ClassRecord Probe_record;
 
 // The shell overrides every virtual of hot::PlainObject. Each stub reads one slot.
 struct Probe_Shell final : hot::PlainObject, hot::ShellBase {
+    friend struct hot_state_Probe;
 #line 7 "borrowed_args_v1.hot"
     template <class... A>
 #line 7 "borrowed_args_v1.hot"
@@ -49,7 +50,7 @@ struct Probe_Shell final : hot::PlainObject, hot::ShellBase {
     }
 #line 7 "borrowed_args_v1.hot"
     ~Probe_Shell() override { hot::destroy_state(this); }
-#line 53 "borrowed_args_v1.hot.cpp"
+#line 54 "borrowed_args_v1.hot.cpp"
 #line 7 "borrowed_args_v1.hot"
     explicit Probe_Shell(hot::CloneFrom, const hot::ShellBase* src)
 #line 7 "borrowed_args_v1.hot"
@@ -58,7 +59,7 @@ struct Probe_Shell final : hot::PlainObject, hot::ShellBase {
         hot::clone_state(this, &Probe_record, src);
 #line 7 "borrowed_args_v1.hot"
     }
-#line 62 "borrowed_args_v1.hot.cpp"
+#line 63 "borrowed_args_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -75,7 +76,7 @@ struct hot_state_Probe {
 
 #line 8 "borrowed_args_v1.hot"
 static void Probe__init_last(void*, void* f) { using T = float; new (f) T(0); }
-#line 79 "borrowed_args_v1.hot.cpp"
+#line 80 "borrowed_args_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -137,7 +138,7 @@ HOT_HIDDEN static void Probe__ctor_chain(Probe_Shell* __self, [[maybe_unused]] C
     Probe__ctor(__self);
 #line 9 "borrowed_args_v1.hot"
 }
-#line 141 "borrowed_args_v1.hot.cpp"
+#line 142 "borrowed_args_v1.hot.cpp"
 using Probe_SuperArgs = decltype(Probe__plan().first);
 #line 10 "borrowed_args_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static auto Probe__super_args([[maybe_unused]] Vec3* p)
@@ -165,7 +166,7 @@ HOT_HIDDEN static void Probe__ctor_chain(Probe_Shell* __self, [[maybe_unused]] C
     Probe__ctor(__self, p);
 #line 10 "borrowed_args_v1.hot"
 }
-#line 169 "borrowed_args_v1.hot.cpp"
+#line 170 "borrowed_args_v1.hot.cpp"
 using Probe_SuperArgs_1 = decltype(Probe__plan(std::declval<Vec3*>()).first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -210,7 +211,7 @@ HOT_NODEBUG static hot::ShellBase* Probe__construct(void* mem, const char* key, 
     return nullptr;
 #line 7 "borrowed_args_v1.hot"
 }
-#line 214 "borrowed_args_v1.hot.cpp"
+#line 215 "borrowed_args_v1.hot.cpp"
 
 static const char* const Probe__construct_keys[] = {typeid(Probe_SuperArgs).name(), typeid(Probe_SuperArgs_1).name(), hot::kCloneKey, nullptr};
 
@@ -238,7 +239,7 @@ HOT_HIDDEN static Probe_Shell* Probe__build([[maybe_unused]] bool __note)
     return __self;
 #line 9 "borrowed_args_v1.hot"
 }
-#line 242 "borrowed_args_v1.hot.cpp"
+#line 243 "borrowed_args_v1.hot.cpp"
 #line 9 "borrowed_args_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Probe_Shell* Probe__new()
 #line 9 "borrowed_args_v1.hot"
@@ -247,7 +248,7 @@ HOT_HIDDEN static Probe_Shell* Probe__build([[maybe_unused]] bool __note)
     return Probe__build(true);
 #line 9 "borrowed_args_v1.hot"
 }
-#line 251 "borrowed_args_v1.hot.cpp"
+#line 252 "borrowed_args_v1.hot.cpp"
 #line 9 "borrowed_args_v1.hot"
 template <int = 0>
 #line 9 "borrowed_args_v1.hot"
@@ -264,7 +265,7 @@ template <int = 0>
     return __h;
 #line 9 "borrowed_args_v1.hot"
 }
-#line 268 "borrowed_args_v1.hot.cpp"
+#line 269 "borrowed_args_v1.hot.cpp"
 
 #line 10 "borrowed_args_v1.hot"
 HOT_HIDDEN static Probe_Shell* Probe__build([[maybe_unused]] bool __note, Vec3* p)
@@ -290,7 +291,7 @@ HOT_HIDDEN static Probe_Shell* Probe__build([[maybe_unused]] bool __note, Vec3* 
     return __self;
 #line 10 "borrowed_args_v1.hot"
 }
-#line 294 "borrowed_args_v1.hot.cpp"
+#line 295 "borrowed_args_v1.hot.cpp"
 #line 10 "borrowed_args_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Probe_Shell* Probe__new(Vec3* p)
 #line 10 "borrowed_args_v1.hot"
@@ -299,7 +300,7 @@ HOT_HIDDEN static Probe_Shell* Probe__build([[maybe_unused]] bool __note, Vec3* 
     return Probe__build(true, p);
 #line 10 "borrowed_args_v1.hot"
 }
-#line 303 "borrowed_args_v1.hot.cpp"
+#line 304 "borrowed_args_v1.hot.cpp"
 #line 10 "borrowed_args_v1.hot"
 template <int = 0>
 #line 10 "borrowed_args_v1.hot"
@@ -316,7 +317,7 @@ template <int = 0>
     return __h;
 #line 10 "borrowed_args_v1.hot"
 }
-#line 320 "borrowed_args_v1.hot.cpp"
+#line 321 "borrowed_args_v1.hot.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -328,7 +329,7 @@ HOT_NODEBUG static hot::ShellCore* Probe__new_default()
     return Probe__build(false);
 #line 9 "borrowed_args_v1.hot"
 }
-#line 332 "borrowed_args_v1.hot.cpp"
+#line 333 "borrowed_args_v1.hot.cpp"
 
 [[maybe_unused]] HOT_HIDDEN static void Probe__ctor_export0(hot::ShellBase* __s)
 {
@@ -350,7 +351,7 @@ static void Probe__Look__thunk(hot::PlainObject* __a, Vec3& v)
     return hot::call<void(hot::PlainObject*, Vec3&)>(__self, Probe_SLOT_Look, v);
 #line 14 "borrowed_args_v1.hot"
 }
-#line 354 "borrowed_args_v1.hot.cpp"
+#line 355 "borrowed_args_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -364,7 +365,7 @@ static void Probe__Take__thunk(hot::PlainObject* __a, Vec3* p)
     return hot::call<void(hot::PlainObject*, Vec3*)>(__self, Probe_SLOT_Take, p);
 #line 15 "borrowed_args_v1.hot"
 }
-#line 368 "borrowed_args_v1.hot.cpp"
+#line 369 "borrowed_args_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -378,7 +379,7 @@ static float Probe__Pass__thunk(hot::PlainObject* __a, Vec3& v, Vec3* p)
     return hot::call<float(hot::PlainObject*, Vec3&, Vec3*)>(__self, Probe_SLOT_Pass, v, p);
 #line 20 "borrowed_args_v1.hot"
 }
-#line 382 "borrowed_args_v1.hot.cpp"
+#line 383 "borrowed_args_v1.hot.cpp"
 
 static void* Probe___native__thunk(hot::ShellCore* __s)
 {
@@ -432,7 +433,7 @@ HOT_NODEBUG static hot::Instance Probe_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 7 "borrowed_args_v1.hot"
 }
-#line 436 "borrowed_args_v1.hot.cpp"
+#line 437 "borrowed_args_v1.hot.cpp"
 
 #line 9 "borrowed_args_v1.hot"
 HOT_NODEBUG static hot::Instance Probe__make_0([[maybe_unused]] void** __a)
@@ -446,7 +447,7 @@ HOT_NODEBUG static hot::Instance Probe__make_0([[maybe_unused]] void** __a)
     return {static_cast<hot::PlainObject*>(p), p};
 #line 9 "borrowed_args_v1.hot"
 }
-#line 450 "borrowed_args_v1.hot.cpp"
+#line 451 "borrowed_args_v1.hot.cpp"
 #line 10 "borrowed_args_v1.hot"
 HOT_NODEBUG static hot::Instance Probe__make_1([[maybe_unused]] void** __a)
 #line 10 "borrowed_args_v1.hot"
@@ -459,7 +460,7 @@ HOT_NODEBUG static hot::Instance Probe__make_1([[maybe_unused]] void** __a)
     return {static_cast<hot::PlainObject*>(p), p};
 #line 10 "borrowed_args_v1.hot"
 }
-#line 463 "borrowed_args_v1.hot.cpp"
+#line 464 "borrowed_args_v1.hot.cpp"
 
 static const hot::CtorEntry Probe__constructors[] = {
     {hot::ctor_key<>(), &Probe__make_0, hot::ctor_write_mask<>()},
@@ -481,6 +482,7 @@ extern hot::ClassRecord Caller_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Caller_Shell final : Actor, hot::ShellBase {
+    friend struct hot_state_Caller;
 #line 28 "borrowed_args_v1.hot"
     template <class... A>
 #line 28 "borrowed_args_v1.hot"
@@ -493,7 +495,7 @@ struct Caller_Shell final : Actor, hot::ShellBase {
     }
 #line 28 "borrowed_args_v1.hot"
     ~Caller_Shell() override { hot::destroy_state(this); }
-#line 497 "borrowed_args_v1.hot.cpp"
+#line 499 "borrowed_args_v1.hot.cpp"
 #line 28 "borrowed_args_v1.hot"
     HOT_NODEBUG void __hot_base_Tick(float a0)
 #line 28 "borrowed_args_v1.hot"
@@ -502,7 +504,7 @@ struct Caller_Shell final : Actor, hot::ShellBase {
         return Actor::Tick(a0);
 #line 28 "borrowed_args_v1.hot"
     }
-#line 506 "borrowed_args_v1.hot.cpp"
+#line 508 "borrowed_args_v1.hot.cpp"
 #line 28 "borrowed_args_v1.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 28 "borrowed_args_v1.hot"
@@ -511,7 +513,7 @@ struct Caller_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0);
 #line 28 "borrowed_args_v1.hot"
     }
-#line 515 "borrowed_args_v1.hot.cpp"
+#line 517 "borrowed_args_v1.hot.cpp"
 #line 28 "borrowed_args_v1.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 28 "borrowed_args_v1.hot"
@@ -520,7 +522,7 @@ struct Caller_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0, a1);
 #line 28 "borrowed_args_v1.hot"
     }
-#line 524 "borrowed_args_v1.hot.cpp"
+#line 526 "borrowed_args_v1.hot.cpp"
 
 #line 28 "borrowed_args_v1.hot"
     void Tick(float a0) override
@@ -530,7 +532,7 @@ struct Caller_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Caller_SLOT_Tick, a0);
 #line 28 "borrowed_args_v1.hot"
     }
-#line 534 "borrowed_args_v1.hot.cpp"
+#line 536 "borrowed_args_v1.hot.cpp"
 
 #line 28 "borrowed_args_v1.hot"
     void TakeDamage(float a0) override
@@ -540,7 +542,7 @@ struct Caller_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Caller_SLOT_TakeDamage_f, a0);
 #line 28 "borrowed_args_v1.hot"
     }
-#line 544 "borrowed_args_v1.hot.cpp"
+#line 546 "borrowed_args_v1.hot.cpp"
 
 #line 28 "borrowed_args_v1.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -550,7 +552,7 @@ struct Caller_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, Caller_SLOT_TakeDamage_Af, a0, a1);
 #line 28 "borrowed_args_v1.hot"
     }
-#line 554 "borrowed_args_v1.hot.cpp"
+#line 556 "borrowed_args_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -569,7 +571,7 @@ struct hot_state_Caller {
         return static_cast<Caller_Shell*>(__hot_owner)->__hot_base_Tick(a0);
 #line 28 "borrowed_args_v1.hot"
     }
-#line 573 "borrowed_args_v1.hot.cpp"
+#line 575 "borrowed_args_v1.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 28 "borrowed_args_v1.hot"
     HOT_NODEBUG void __fwd_TakeDamage_f(float a0)
@@ -579,7 +581,7 @@ struct hot_state_Caller {
         return static_cast<Caller_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 28 "borrowed_args_v1.hot"
     }
-#line 583 "borrowed_args_v1.hot.cpp"
+#line 585 "borrowed_args_v1.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 28 "borrowed_args_v1.hot"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -589,15 +591,15 @@ struct hot_state_Caller {
         return static_cast<Caller_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 28 "borrowed_args_v1.hot"
     }
-#line 593 "borrowed_args_v1.hot.cpp"
+#line 595 "borrowed_args_v1.hot.cpp"
 };
 
 #line 29 "borrowed_args_v1.hot"
 static void Caller__init_probe(void*, void* f) { using T = std::shared_ptr<Probe>; new (f) T(nullptr); }
-#line 598 "borrowed_args_v1.hot.cpp"
+#line 600 "borrowed_args_v1.hot.cpp"
 #line 30 "borrowed_args_v1.hot"
 static void Caller__init_spot(void*, void* f) { using T = Vec3; new (f) T(); }
-#line 601 "borrowed_args_v1.hot.cpp"
+#line 603 "borrowed_args_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -647,7 +649,7 @@ HOT_HIDDEN static auto Caller__plan()
     return std::make_pair(Caller__super_args(), std::tuple<>());
 #line 28 "borrowed_args_v1.hot"
 }
-#line 651 "borrowed_args_v1.hot.cpp"
+#line 653 "borrowed_args_v1.hot.cpp"
 using Caller_SuperArgs = decltype(Caller__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -672,7 +674,7 @@ HOT_NODEBUG static hot::ShellBase* Caller__construct(void* mem, const char* key,
     return nullptr;
 #line 28 "borrowed_args_v1.hot"
 }
-#line 676 "borrowed_args_v1.hot.cpp"
+#line 678 "borrowed_args_v1.hot.cpp"
 
 static const char* const Caller__construct_keys[] = {typeid(Caller_SuperArgs).name(), nullptr};
 
@@ -688,7 +690,7 @@ HOT_HIDDEN static Caller_Shell* Caller__build([[maybe_unused]] bool __note)
     return __self;
 #line 28 "borrowed_args_v1.hot"
 }
-#line 692 "borrowed_args_v1.hot.cpp"
+#line 694 "borrowed_args_v1.hot.cpp"
 #line 28 "borrowed_args_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Caller_Shell* Caller__new()
 #line 28 "borrowed_args_v1.hot"
@@ -697,7 +699,7 @@ HOT_HIDDEN static Caller_Shell* Caller__build([[maybe_unused]] bool __note)
     return Caller__build(true);
 #line 28 "borrowed_args_v1.hot"
 }
-#line 701 "borrowed_args_v1.hot.cpp"
+#line 703 "borrowed_args_v1.hot.cpp"
 #line 28 "borrowed_args_v1.hot"
 template <int = 0>
 #line 28 "borrowed_args_v1.hot"
@@ -712,7 +714,7 @@ template <int = 0>
     return __h;
 #line 28 "borrowed_args_v1.hot"
 }
-#line 716 "borrowed_args_v1.hot.cpp"
+#line 718 "borrowed_args_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -726,7 +728,7 @@ static float Caller__Run__thunk(Actor* __a, Vec3& v, Vec3* p, bool c)
     return hot::call<float(Actor*, Vec3&, Vec3*, bool)>(__self, Caller_SLOT_Run, v, p, c);
 #line 32 "borrowed_args_v1.hot"
 }
-#line 730 "borrowed_args_v1.hot.cpp"
+#line 732 "borrowed_args_v1.hot.cpp"
 
 static void* Caller___native__thunk(hot::ShellCore* __s)
 {
@@ -767,7 +769,7 @@ HOT_NODEBUG static hot::Instance Caller_create()
     return {static_cast<Actor*>(p), p};
 #line 28 "borrowed_args_v1.hot"
 }
-#line 771 "borrowed_args_v1.hot.cpp"
+#line 773 "borrowed_args_v1.hot.cpp"
 
 #line 28 "borrowed_args_v1.hot"
 HOT_NODEBUG static hot::Instance Caller__make_0([[maybe_unused]] void** __a)
@@ -777,7 +779,7 @@ HOT_NODEBUG static hot::Instance Caller__make_0([[maybe_unused]] void** __a)
     return Caller_create();
 #line 28 "borrowed_args_v1.hot"
 }
-#line 781 "borrowed_args_v1.hot.cpp"
+#line 783 "borrowed_args_v1.hot.cpp"
 
 static const hot::CtorEntry Caller__constructors[] = {
     {hot::ctor_key<>(), &Caller__make_0, hot::ctor_write_mask<>()},
@@ -792,7 +794,7 @@ static const hot::CtorEntry Caller__constructors[] = {
     return state_of(__self)->ctor();
 #line 9 "borrowed_args_v1.hot"
 }
-#line 796 "borrowed_args_v1.hot.cpp"
+#line 798 "borrowed_args_v1.hot.cpp"
 #line 9 "borrowed_args_v1.hot"
 void hot_state_Probe::ctor()
 #line 9 "borrowed_args_v1.hot"
@@ -815,7 +817,7 @@ void hot_state_Probe::ctor()
     HOT_TRACE_FRAME("Probe.Probe", "borrowed_args_v1.hot");
 #line 9 "borrowed_args_v1.hot"
 }
-#line 819 "borrowed_args_v1.hot.cpp"
+#line 821 "borrowed_args_v1.hot.cpp"
 
 #line 10 "borrowed_args_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Probe__ctor(Probe_Shell* __self, Vec3* p)
@@ -825,7 +827,7 @@ void hot_state_Probe::ctor()
     return state_of(__self)->ctor(std::forward<Vec3*>(p));
 #line 10 "borrowed_args_v1.hot"
 }
-#line 829 "borrowed_args_v1.hot.cpp"
+#line 831 "borrowed_args_v1.hot.cpp"
 #line 10 "borrowed_args_v1.hot"
 void hot_state_Probe::ctor(Vec3* p)
 #line 10 "borrowed_args_v1.hot"
@@ -852,7 +854,7 @@ void hot_state_Probe::ctor(Vec3* p)
     HOT_TRACE_LINE(); last = hot::deref(p).x;
 #line 13 "borrowed_args_v1.hot"
 }
-#line 856 "borrowed_args_v1.hot.cpp"
+#line 858 "borrowed_args_v1.hot.cpp"
 
 #line 14 "borrowed_args_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Probe__Look(Probe_Shell* __self, Vec3& v)
@@ -862,7 +864,7 @@ void hot_state_Probe::ctor(Vec3* p)
     return state_of(__self)->Look(std::forward<Vec3&>(v));
 #line 14 "borrowed_args_v1.hot"
 }
-#line 866 "borrowed_args_v1.hot.cpp"
+#line 868 "borrowed_args_v1.hot.cpp"
 #line 14 "borrowed_args_v1.hot"
 void hot_state_Probe::Look(Vec3& v)
 #line 14 "borrowed_args_v1.hot"
@@ -887,7 +889,7 @@ void hot_state_Probe::Look(Vec3& v)
     HOT_TRACE_LINE(); last = hot::deref(v).x;
 #line 14 "borrowed_args_v1.hot"
 }
-#line 891 "borrowed_args_v1.hot.cpp"
+#line 893 "borrowed_args_v1.hot.cpp"
 
 #line 15 "borrowed_args_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Probe__Take(Probe_Shell* __self, Vec3* p)
@@ -897,7 +899,7 @@ void hot_state_Probe::Look(Vec3& v)
     return state_of(__self)->Take(std::forward<Vec3*>(p));
 #line 15 "borrowed_args_v1.hot"
 }
-#line 901 "borrowed_args_v1.hot.cpp"
+#line 903 "borrowed_args_v1.hot.cpp"
 #line 15 "borrowed_args_v1.hot"
 void hot_state_Probe::Take(Vec3* const p)
 #line 15 "borrowed_args_v1.hot"
@@ -924,7 +926,7 @@ void hot_state_Probe::Take(Vec3* const p)
     HOT_TRACE_LINE(); last = hot::deref(p).y;
 #line 18 "borrowed_args_v1.hot"
 }
-#line 928 "borrowed_args_v1.hot.cpp"
+#line 930 "borrowed_args_v1.hot.cpp"
 
 #line 20 "borrowed_args_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static float Probe__Pass(Probe_Shell* __self, Vec3& v, Vec3* p)
@@ -934,7 +936,7 @@ void hot_state_Probe::Take(Vec3* const p)
     return state_of(__self)->Pass(std::forward<Vec3&>(v), std::forward<Vec3*>(p));
 #line 20 "borrowed_args_v1.hot"
 }
-#line 938 "borrowed_args_v1.hot.cpp"
+#line 940 "borrowed_args_v1.hot.cpp"
 #line 20 "borrowed_args_v1.hot"
 float hot_state_Probe::Pass(Vec3& v, Vec3* const p)
 #line 20 "borrowed_args_v1.hot"
@@ -965,7 +967,7 @@ float hot_state_Probe::Pass(Vec3& v, Vec3* const p)
     HOT_TRACE_LINE(); return Distance(v, hot::star(p));
 #line 25 "borrowed_args_v1.hot"
 }
-#line 969 "borrowed_args_v1.hot.cpp"
+#line 971 "borrowed_args_v1.hot.cpp"
 
 #line 32 "borrowed_args_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static float Caller__Run(Caller_Shell* __self, Vec3& v, Vec3* p, bool c)
@@ -975,7 +977,7 @@ float hot_state_Probe::Pass(Vec3& v, Vec3* const p)
     return state_of(__self)->Run(std::forward<Vec3&>(v), std::forward<Vec3*>(p), std::forward<bool>(c));
 #line 32 "borrowed_args_v1.hot"
 }
-#line 979 "borrowed_args_v1.hot.cpp"
+#line 981 "borrowed_args_v1.hot.cpp"
 #line 32 "borrowed_args_v1.hot"
 float hot_state_Caller::Run(Vec3& v, Vec3* p, bool const c)
 #line 32 "borrowed_args_v1.hot"
@@ -1050,7 +1052,7 @@ float hot_state_Caller::Run(Vec3& v, Vec3* p, bool const c)
     HOT_TRACE_LINE(); return d + peeked + Probe__Pass(hot::shell_of<Probe_Shell>(pb, "Probe"), v, p) + Probe__Pass(hot::shell_of<Probe_Shell>(other, "Probe"), hot::star(q), p) + Util::Sum(r);
 #line 59 "borrowed_args_v1.hot"
 }
-#line 1054 "borrowed_args_v1.hot.cpp"
+#line 1056 "borrowed_args_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

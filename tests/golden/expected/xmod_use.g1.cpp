@@ -94,23 +94,24 @@ extern hot::ClassRecord Box_record;
 
 // The shell overrides every virtual of hot::PlainObject. Each stub reads one slot.
 struct Box_Shell final : hot::PlainObject, hot::ShellBase {
-#line 98 "xmod_use.hot.cpp"
+    friend struct hot_state_Box;
+#line 99 "xmod_use.hot.cpp"
     template <class... A>
     explicit Box_Shell(hot::Construct, A&&... a) : hot::PlainObject(std::forward<A>(a)...)
     {
         hot::init_state(this, &Box_record);
     }
     ~Box_Shell() override { hot::destroy_state(this); }
-#line 105 "xmod_use.hot.cpp"
 #line 106 "xmod_use.hot.cpp"
+#line 107 "xmod_use.hot.cpp"
     explicit Box_Shell(hot::CloneFrom, const hot::ShellBase* src)
     {
         hot::clone_state(this, &Box_record, src);
     }
-#line 111 "xmod_use.hot.cpp"
+#line 112 "xmod_use.hot.cpp"
 };
 
-#line 114 "xmod_use.hot.cpp"
+#line 115 "xmod_use.hot.cpp"
 // ---------------------------------------------------------------- interface of Box (unit xmod_lib)
 [[maybe_unused]] HOT_HIDDEN static int32_t Box__area(Box_Shell* __self)
 {
@@ -151,7 +152,7 @@ struct Box_Shell final : hot::PlainObject, hot::ShellBase {
     return std::shared_ptr<Box_Shell>(hot::construct<Box_Shell, int32_t>(hot::class_ref("Box"), std::forward<decltype(s)>(s)));
 }
 
-#line 155 "xmod_use.hot.cpp"
+#line 156 "xmod_use.hot.cpp"
 
 // ---------------------------------------------------------------- class User
 // Slot numbers. Native virtuals come first, in the order of hot::PlainObject.
@@ -164,6 +165,7 @@ extern hot::ClassRecord User_record;
 
 // The shell overrides every virtual of hot::PlainObject. Each stub reads one slot.
 struct User_Shell final : hot::PlainObject, hot::ShellBase {
+    friend struct hot_state_User;
 #line 5 "xmod_use.hot"
     template <class... A>
 #line 5 "xmod_use.hot"
@@ -176,7 +178,7 @@ struct User_Shell final : hot::PlainObject, hot::ShellBase {
     }
 #line 5 "xmod_use.hot"
     ~User_Shell() override { hot::destroy_state(this); }
-#line 180 "xmod_use.hot.cpp"
+#line 182 "xmod_use.hot.cpp"
 #line 5 "xmod_use.hot"
     explicit User_Shell(hot::CloneFrom, const hot::ShellBase* src)
 #line 5 "xmod_use.hot"
@@ -185,7 +187,7 @@ struct User_Shell final : hot::PlainObject, hot::ShellBase {
         hot::clone_state(this, &User_record, src);
 #line 5 "xmod_use.hot"
     }
-#line 189 "xmod_use.hot.cpp"
+#line 191 "xmod_use.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -199,7 +201,7 @@ struct hot_state_User {
 
 #line 6 "xmod_use.hot"
 static void User__init_box(void*, void* f) { using T = std::shared_ptr<Box>; new (f) T(); }
-#line 203 "xmod_use.hot.cpp"
+#line 205 "xmod_use.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -258,7 +260,7 @@ HOT_HIDDEN static void User__ctor_chain(User_Shell* __self, [[maybe_unused]] Cha
     User__ctor(__self);
 #line 8 "xmod_use.hot"
 }
-#line 262 "xmod_use.hot.cpp"
+#line 264 "xmod_use.hot.cpp"
 using User_SuperArgs = decltype(User__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -291,7 +293,7 @@ HOT_NODEBUG static hot::ShellBase* User__construct(void* mem, const char* key, c
     return nullptr;
 #line 5 "xmod_use.hot"
 }
-#line 295 "xmod_use.hot.cpp"
+#line 297 "xmod_use.hot.cpp"
 
 static const char* const User__construct_keys[] = {typeid(User_SuperArgs).name(), hot::kCloneKey, nullptr};
 
@@ -319,7 +321,7 @@ HOT_HIDDEN static User_Shell* User__build([[maybe_unused]] bool __note)
     return __self;
 #line 8 "xmod_use.hot"
 }
-#line 323 "xmod_use.hot.cpp"
+#line 325 "xmod_use.hot.cpp"
 #line 8 "xmod_use.hot"
 [[maybe_unused]] HOT_HIDDEN static User_Shell* User__new()
 #line 8 "xmod_use.hot"
@@ -328,7 +330,7 @@ HOT_HIDDEN static User_Shell* User__build([[maybe_unused]] bool __note)
     return User__build(true);
 #line 8 "xmod_use.hot"
 }
-#line 332 "xmod_use.hot.cpp"
+#line 334 "xmod_use.hot.cpp"
 #line 8 "xmod_use.hot"
 template <int = 0>
 #line 8 "xmod_use.hot"
@@ -345,7 +347,7 @@ template <int = 0>
     return __h;
 #line 8 "xmod_use.hot"
 }
-#line 349 "xmod_use.hot.cpp"
+#line 351 "xmod_use.hot.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -357,7 +359,7 @@ HOT_NODEBUG static hot::ShellCore* User__new_default()
     return User__build(false);
 #line 8 "xmod_use.hot"
 }
-#line 361 "xmod_use.hot.cpp"
+#line 363 "xmod_use.hot.cpp"
 
 [[maybe_unused]] HOT_HIDDEN static void User__ctor_export0(hot::ShellBase* __s)
 {
@@ -375,7 +377,7 @@ static int32_t User__run__thunk(hot::PlainObject* __a)
     return hot::call<int32_t(hot::PlainObject*)>(__self, User_SLOT_run);
 #line 12 "xmod_use.hot"
 }
-#line 379 "xmod_use.hot.cpp"
+#line 381 "xmod_use.hot.cpp"
 
 static void* User___native__thunk(hot::ShellCore* __s)
 {
@@ -427,7 +429,7 @@ HOT_NODEBUG static hot::Instance User_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 5 "xmod_use.hot"
 }
-#line 431 "xmod_use.hot.cpp"
+#line 433 "xmod_use.hot.cpp"
 
 #line 8 "xmod_use.hot"
 HOT_NODEBUG static hot::Instance User__make_0([[maybe_unused]] void** __a)
@@ -441,7 +443,7 @@ HOT_NODEBUG static hot::Instance User__make_0([[maybe_unused]] void** __a)
     return {static_cast<hot::PlainObject*>(p), p};
 #line 8 "xmod_use.hot"
 }
-#line 445 "xmod_use.hot.cpp"
+#line 447 "xmod_use.hot.cpp"
 
 static const hot::CtorEntry User__constructors[] = {
     {hot::ctor_key<>(), &User__make_0, hot::ctor_write_mask<>()},
@@ -454,12 +456,12 @@ static const hot::CtorEntry User__constructors[] = {
     return hot::mod_var<int32_t>(hot::unit_ref("xmod_lib"), __site, "counter");
 }
 
-#line 458 "xmod_use.hot.cpp"
+#line 460 "xmod_use.hot.cpp"
 // ---------------------------------------------------------------- static methods and free functions
 [[maybe_unused]] HOT_HIDDEN static int32_t Box__s_unit();
 [[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_twice(int32_t v);
 
-#line 463 "xmod_use.hot.cpp"
+#line 465 "xmod_use.hot.cpp"
 // ---------------------------------------------------------------- function bodies
 #line 8 "xmod_use.hot"
 [[maybe_unused]] HOT_HIDDEN static void User__ctor(User_Shell* __self)
@@ -469,7 +471,7 @@ static const hot::CtorEntry User__constructors[] = {
     return state_of(__self)->ctor();
 #line 8 "xmod_use.hot"
 }
-#line 473 "xmod_use.hot.cpp"
+#line 475 "xmod_use.hot.cpp"
 #line 8 "xmod_use.hot"
 void hot_state_User::ctor()
 #line 8 "xmod_use.hot"
@@ -494,7 +496,7 @@ void hot_state_User::ctor()
     HOT_TRACE_LINE(); __st->box = std::shared_ptr<Box>(Box__new_shared(3));
 #line 10 "xmod_use.hot"
 }
-#line 498 "xmod_use.hot.cpp"
+#line 500 "xmod_use.hot.cpp"
 
 #line 12 "xmod_use.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t User__run(User_Shell* __self)
@@ -504,7 +506,7 @@ void hot_state_User::ctor()
     return state_of(__self)->run();
 #line 12 "xmod_use.hot"
 }
-#line 508 "xmod_use.hot.cpp"
+#line 510 "xmod_use.hot.cpp"
 #line 12 "xmod_use.hot"
 int32_t hot_state_User::run()
 #line 12 "xmod_use.hot"
@@ -547,25 +549,25 @@ int32_t hot_state_User::run()
     HOT_TRACE_LINE(); return a + hot::deref(p).x + d + hot_mv_counter();
 #line 23 "xmod_use.hot"
 }
-#line 551 "xmod_use.hot.cpp"
-
 #line 553 "xmod_use.hot.cpp"
-[[maybe_unused]] HOT_HIDDEN static int32_t Box__s_unit()
+
 #line 555 "xmod_use.hot.cpp"
+[[maybe_unused]] HOT_HIDDEN static int32_t Box__s_unit()
+#line 557 "xmod_use.hot.cpp"
 {
     static hot::FnSite __site;
     return hot::call_fn<decltype(Box__s_unit)>(hot::unit_ref("xmod_lib"), __site, "Box::unit");
 }
-#line 560 "xmod_use.hot.cpp"
-
 #line 562 "xmod_use.hot.cpp"
-[[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_twice(int32_t v)
+
 #line 564 "xmod_use.hot.cpp"
+[[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_twice(int32_t v)
+#line 566 "xmod_use.hot.cpp"
 {
     static hot::FnSite __site;
     return hot::call_fn<decltype(hot_fn_twice)>(hot::unit_ref("xmod_lib"), __site, "twice", std::forward<decltype(v)>(v));
 }
-#line 569 "xmod_use.hot.cpp"
+#line 571 "xmod_use.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

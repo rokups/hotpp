@@ -125,6 +125,7 @@ extern hot::ClassRecord Box_record;
 
 // The shell overrides every virtual of hot::PlainObject. Each stub reads one slot.
 struct Box_Shell final : hot::PlainObject, hot::ShellBase {
+    friend struct hot_state_Box;
 #line 18 "xmod_lib.hot"
     template <class... A>
 #line 18 "xmod_lib.hot"
@@ -137,7 +138,7 @@ struct Box_Shell final : hot::PlainObject, hot::ShellBase {
     }
 #line 18 "xmod_lib.hot"
     ~Box_Shell() override { hot::destroy_state(this); }
-#line 141 "xmod_lib.hot.cpp"
+#line 142 "xmod_lib.hot.cpp"
 #line 18 "xmod_lib.hot"
     explicit Box_Shell(hot::CloneFrom, const hot::ShellBase* src)
 #line 18 "xmod_lib.hot"
@@ -146,7 +147,7 @@ struct Box_Shell final : hot::PlainObject, hot::ShellBase {
         hot::clone_state(this, &Box_record, src);
 #line 18 "xmod_lib.hot"
     }
-#line 150 "xmod_lib.hot.cpp"
+#line 151 "xmod_lib.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -164,10 +165,10 @@ struct hot_state_Box {
 
 #line 19 "xmod_lib.hot"
 static void Box__init_size(void*, void* f) { using T = int32_t; new (f) T(1); }
-#line 168 "xmod_lib.hot.cpp"
+#line 169 "xmod_lib.hot.cpp"
 #line 20 "xmod_lib.hot"
 static void Box__init_corner(void*, void* f) { using T = Pt; new (f) T(); }
-#line 171 "xmod_lib.hot.cpp"
+#line 172 "xmod_lib.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -231,7 +232,7 @@ HOT_HIDDEN static void Box__ctor_chain(Box_Shell* __self, [[maybe_unused]] Chain
     Box__ctor(__self);
 #line 22 "xmod_lib.hot"
 }
-#line 235 "xmod_lib.hot.cpp"
+#line 236 "xmod_lib.hot.cpp"
 using Box_SuperArgs = decltype(Box__plan().first);
 #line 23 "xmod_lib.hot"
 [[maybe_unused]] HOT_HIDDEN static auto Box__super_args([[maybe_unused]] int32_t s)
@@ -259,7 +260,7 @@ HOT_HIDDEN static void Box__ctor_chain(Box_Shell* __self, [[maybe_unused]] Chain
     Box__ctor(__self, s);
 #line 23 "xmod_lib.hot"
 }
-#line 263 "xmod_lib.hot.cpp"
+#line 264 "xmod_lib.hot.cpp"
 using Box_SuperArgs_1 = decltype(Box__plan(std::declval<int32_t>()).first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -304,7 +305,7 @@ HOT_NODEBUG static hot::ShellBase* Box__construct(void* mem, const char* key, co
     return nullptr;
 #line 18 "xmod_lib.hot"
 }
-#line 308 "xmod_lib.hot.cpp"
+#line 309 "xmod_lib.hot.cpp"
 
 static const char* const Box__construct_keys[] = {typeid(Box_SuperArgs).name(), typeid(Box_SuperArgs_1).name(), hot::kCloneKey, nullptr};
 
@@ -332,7 +333,7 @@ HOT_HIDDEN static Box_Shell* Box__build([[maybe_unused]] bool __note)
     return __self;
 #line 22 "xmod_lib.hot"
 }
-#line 336 "xmod_lib.hot.cpp"
+#line 337 "xmod_lib.hot.cpp"
 #line 22 "xmod_lib.hot"
 [[maybe_unused]] HOT_HIDDEN static Box_Shell* Box__new()
 #line 22 "xmod_lib.hot"
@@ -341,7 +342,7 @@ HOT_HIDDEN static Box_Shell* Box__build([[maybe_unused]] bool __note)
     return Box__build(true);
 #line 22 "xmod_lib.hot"
 }
-#line 345 "xmod_lib.hot.cpp"
+#line 346 "xmod_lib.hot.cpp"
 #line 22 "xmod_lib.hot"
 template <int = 0>
 #line 22 "xmod_lib.hot"
@@ -358,7 +359,7 @@ template <int = 0>
     return __h;
 #line 22 "xmod_lib.hot"
 }
-#line 362 "xmod_lib.hot.cpp"
+#line 363 "xmod_lib.hot.cpp"
 
 #line 23 "xmod_lib.hot"
 HOT_HIDDEN static Box_Shell* Box__build([[maybe_unused]] bool __note, int32_t s)
@@ -384,7 +385,7 @@ HOT_HIDDEN static Box_Shell* Box__build([[maybe_unused]] bool __note, int32_t s)
     return __self;
 #line 23 "xmod_lib.hot"
 }
-#line 388 "xmod_lib.hot.cpp"
+#line 389 "xmod_lib.hot.cpp"
 #line 23 "xmod_lib.hot"
 [[maybe_unused]] HOT_HIDDEN static Box_Shell* Box__new(int32_t s)
 #line 23 "xmod_lib.hot"
@@ -393,7 +394,7 @@ HOT_HIDDEN static Box_Shell* Box__build([[maybe_unused]] bool __note, int32_t s)
     return Box__build(true, s);
 #line 23 "xmod_lib.hot"
 }
-#line 397 "xmod_lib.hot.cpp"
+#line 398 "xmod_lib.hot.cpp"
 #line 23 "xmod_lib.hot"
 template <int = 0>
 #line 23 "xmod_lib.hot"
@@ -410,7 +411,7 @@ template <int = 0>
     return __h;
 #line 23 "xmod_lib.hot"
 }
-#line 414 "xmod_lib.hot.cpp"
+#line 415 "xmod_lib.hot.cpp"
 
 // The factory of the engine calls it through the canonical record: the current generation
 // gives the base arguments and the constructors.
@@ -422,7 +423,7 @@ HOT_NODEBUG static hot::ShellCore* Box__new_default()
     return Box__build(false);
 #line 22 "xmod_lib.hot"
 }
-#line 426 "xmod_lib.hot.cpp"
+#line 427 "xmod_lib.hot.cpp"
 
 [[maybe_unused]] HOT_HIDDEN static void Box__ctor_export0(hot::ShellBase* __s)
 {
@@ -444,7 +445,7 @@ static int32_t Box__area__thunk(hot::PlainObject* __a)
     return hot::call<int32_t(hot::PlainObject*)>(__self, Box_SLOT_area);
 #line 31 "xmod_lib.hot"
 }
-#line 448 "xmod_lib.hot.cpp"
+#line 449 "xmod_lib.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -458,7 +459,7 @@ static void Box__grow__thunk(hot::PlainObject* __a, int32_t by)
     return hot::call<void(hot::PlainObject*, int32_t)>(__self, Box_SLOT_grow, by);
 #line 35 "xmod_lib.hot"
 }
-#line 462 "xmod_lib.hot.cpp"
+#line 463 "xmod_lib.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -472,7 +473,7 @@ static int32_t Box__get_Doubled__thunk(hot::PlainObject* __a)
     return hot::call<int32_t(hot::PlainObject*)>(__self, Box_SLOT_get_Doubled);
 #line 25 "xmod_lib.hot"
 }
-#line 476 "xmod_lib.hot.cpp"
+#line 477 "xmod_lib.hot.cpp"
 
 static void* Box___native__thunk(hot::ShellCore* __s)
 {
@@ -526,7 +527,7 @@ HOT_NODEBUG static hot::Instance Box_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 18 "xmod_lib.hot"
 }
-#line 530 "xmod_lib.hot.cpp"
+#line 531 "xmod_lib.hot.cpp"
 
 #line 22 "xmod_lib.hot"
 HOT_NODEBUG static hot::Instance Box__make_0([[maybe_unused]] void** __a)
@@ -540,7 +541,7 @@ HOT_NODEBUG static hot::Instance Box__make_0([[maybe_unused]] void** __a)
     return {static_cast<hot::PlainObject*>(p), p};
 #line 22 "xmod_lib.hot"
 }
-#line 544 "xmod_lib.hot.cpp"
+#line 545 "xmod_lib.hot.cpp"
 #line 23 "xmod_lib.hot"
 HOT_NODEBUG static hot::Instance Box__make_1([[maybe_unused]] void** __a)
 #line 23 "xmod_lib.hot"
@@ -553,7 +554,7 @@ HOT_NODEBUG static hot::Instance Box__make_1([[maybe_unused]] void** __a)
     return {static_cast<hot::PlainObject*>(p), p};
 #line 23 "xmod_lib.hot"
 }
-#line 557 "xmod_lib.hot.cpp"
+#line 558 "xmod_lib.hot.cpp"
 
 static const hot::CtorEntry Box__constructors[] = {
     {hot::ctor_key<>(), &Box__make_0, hot::ctor_write_mask<>()},
@@ -564,7 +565,7 @@ static const hot::CtorEntry Box__constructors[] = {
 [[maybe_unused]] HOT_HIDDEN static int32_t Box__s_unit();
 [[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_twice(int32_t v);
 
-#line 568 "xmod_lib.hot.cpp"
+#line 569 "xmod_lib.hot.cpp"
 // ---------------------------------------------------------------- function bodies
 #line 22 "xmod_lib.hot"
 [[maybe_unused]] HOT_HIDDEN static void Box__ctor(Box_Shell* __self)
@@ -574,7 +575,7 @@ static const hot::CtorEntry Box__constructors[] = {
     return state_of(__self)->ctor();
 #line 22 "xmod_lib.hot"
 }
-#line 578 "xmod_lib.hot.cpp"
+#line 579 "xmod_lib.hot.cpp"
 #line 22 "xmod_lib.hot"
 void hot_state_Box::ctor()
 #line 22 "xmod_lib.hot"
@@ -597,7 +598,7 @@ void hot_state_Box::ctor()
     HOT_TRACE_FRAME("Box.Box", "xmod_lib.hot");
 #line 22 "xmod_lib.hot"
 }
-#line 601 "xmod_lib.hot.cpp"
+#line 602 "xmod_lib.hot.cpp"
 
 #line 23 "xmod_lib.hot"
 [[maybe_unused]] HOT_HIDDEN static void Box__ctor(Box_Shell* __self, int32_t s)
@@ -607,7 +608,7 @@ void hot_state_Box::ctor()
     return state_of(__self)->ctor(std::forward<int32_t>(s));
 #line 23 "xmod_lib.hot"
 }
-#line 611 "xmod_lib.hot.cpp"
+#line 612 "xmod_lib.hot.cpp"
 #line 23 "xmod_lib.hot"
 void hot_state_Box::ctor(int32_t s)
 #line 23 "xmod_lib.hot"
@@ -632,7 +633,7 @@ void hot_state_Box::ctor(int32_t s)
     HOT_TRACE_LINE(); __st->size = s;
 #line 23 "xmod_lib.hot"
 }
-#line 636 "xmod_lib.hot.cpp"
+#line 637 "xmod_lib.hot.cpp"
 
 #line 31 "xmod_lib.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Box__area(Box_Shell* __self)
@@ -642,7 +643,7 @@ void hot_state_Box::ctor(int32_t s)
     return state_of(__self)->area();
 #line 31 "xmod_lib.hot"
 }
-#line 646 "xmod_lib.hot.cpp"
+#line 647 "xmod_lib.hot.cpp"
 #line 31 "xmod_lib.hot"
 int32_t hot_state_Box::area()
 #line 31 "xmod_lib.hot"
@@ -667,7 +668,7 @@ int32_t hot_state_Box::area()
     HOT_TRACE_LINE(); return __st->size * __st->size;
 #line 33 "xmod_lib.hot"
 }
-#line 671 "xmod_lib.hot.cpp"
+#line 672 "xmod_lib.hot.cpp"
 
 #line 35 "xmod_lib.hot"
 [[maybe_unused]] HOT_HIDDEN static void Box__grow(Box_Shell* __self, int32_t by)
@@ -677,7 +678,7 @@ int32_t hot_state_Box::area()
     return state_of(__self)->grow(std::forward<int32_t>(by));
 #line 35 "xmod_lib.hot"
 }
-#line 681 "xmod_lib.hot.cpp"
+#line 682 "xmod_lib.hot.cpp"
 #line 35 "xmod_lib.hot"
 void hot_state_Box::grow(int32_t const by)
 #line 35 "xmod_lib.hot"
@@ -702,7 +703,7 @@ void hot_state_Box::grow(int32_t const by)
     HOT_TRACE_LINE(); __st->size = __st->size + by;
 #line 37 "xmod_lib.hot"
 }
-#line 706 "xmod_lib.hot.cpp"
+#line 707 "xmod_lib.hot.cpp"
 
 #line 25 "xmod_lib.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Box__get_Doubled(Box_Shell* __self)
@@ -712,7 +713,7 @@ void hot_state_Box::grow(int32_t const by)
     return state_of(__self)->get_Doubled();
 #line 25 "xmod_lib.hot"
 }
-#line 716 "xmod_lib.hot.cpp"
+#line 717 "xmod_lib.hot.cpp"
 #line 25 "xmod_lib.hot"
 int32_t hot_state_Box::get_Doubled()
 #line 25 "xmod_lib.hot"
@@ -737,7 +738,7 @@ int32_t hot_state_Box::get_Doubled()
     HOT_TRACE_LINE(); return __st->size * 2;
 #line 25 "xmod_lib.hot"
 }
-#line 741 "xmod_lib.hot.cpp"
+#line 742 "xmod_lib.hot.cpp"
 
 #line 27 "xmod_lib.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Box__s_unit()
@@ -751,7 +752,7 @@ int32_t hot_state_Box::get_Doubled()
     HOT_TRACE_LINE(); return 1;
 #line 29 "xmod_lib.hot"
 }
-#line 755 "xmod_lib.hot.cpp"
+#line 756 "xmod_lib.hot.cpp"
 
 #line 14 "xmod_lib.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_twice(int32_t v)
@@ -765,7 +766,7 @@ int32_t hot_state_Box::get_Doubled()
     HOT_TRACE_LINE(); return v * 2;
 #line 16 "xmod_lib.hot"
 }
-#line 769 "xmod_lib.hot.cpp"
+#line 770 "xmod_lib.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

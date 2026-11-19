@@ -34,6 +34,7 @@ extern hot::ClassRecord Beeper_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Beeper_Shell final : Actor, hot::ShellBase {
+    friend struct hot_state_Beeper;
 #line 5 "timer_v1.hot"
     template <class... A>
 #line 5 "timer_v1.hot"
@@ -46,7 +47,7 @@ struct Beeper_Shell final : Actor, hot::ShellBase {
     }
 #line 5 "timer_v1.hot"
     ~Beeper_Shell() override { hot::destroy_state(this); }
-#line 50 "timer_v1.hot.cpp"
+#line 51 "timer_v1.hot.cpp"
 #line 5 "timer_v1.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_f(float a0)
 #line 5 "timer_v1.hot"
@@ -55,7 +56,7 @@ struct Beeper_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0);
 #line 5 "timer_v1.hot"
     }
-#line 59 "timer_v1.hot.cpp"
+#line 60 "timer_v1.hot.cpp"
 #line 5 "timer_v1.hot"
     HOT_NODEBUG void __hot_base_TakeDamage_Af(Actor& a0, float a1)
 #line 5 "timer_v1.hot"
@@ -64,7 +65,7 @@ struct Beeper_Shell final : Actor, hot::ShellBase {
         return Actor::TakeDamage(a0, a1);
 #line 5 "timer_v1.hot"
     }
-#line 68 "timer_v1.hot.cpp"
+#line 69 "timer_v1.hot.cpp"
 
 #line 5 "timer_v1.hot"
     void Tick(float a0) override
@@ -74,7 +75,7 @@ struct Beeper_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_Tick, a0);
 #line 5 "timer_v1.hot"
     }
-#line 78 "timer_v1.hot.cpp"
+#line 79 "timer_v1.hot.cpp"
 
 #line 5 "timer_v1.hot"
     void TakeDamage(float a0) override
@@ -84,7 +85,7 @@ struct Beeper_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, SLOT_TakeDamage_f, a0);
 #line 5 "timer_v1.hot"
     }
-#line 88 "timer_v1.hot.cpp"
+#line 89 "timer_v1.hot.cpp"
 
 #line 5 "timer_v1.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -94,7 +95,7 @@ struct Beeper_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, SLOT_TakeDamage_Af, a0, a1);
 #line 5 "timer_v1.hot"
     }
-#line 98 "timer_v1.hot.cpp"
+#line 99 "timer_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -114,7 +115,7 @@ struct hot_state_Beeper {
         return static_cast<Beeper_Shell*>(__hot_owner)->__hot_base_TakeDamage_f(a0);
 #line 5 "timer_v1.hot"
     }
-#line 118 "timer_v1.hot.cpp"
+#line 119 "timer_v1.hot.cpp"
     // Not overridden: call the implementation of Actor.
 #line 5 "timer_v1.hot"
     HOT_NODEBUG void __fwd_TakeDamage_Af(Actor& a0, float a1)
@@ -124,15 +125,15 @@ struct hot_state_Beeper {
         return static_cast<Beeper_Shell*>(__hot_owner)->__hot_base_TakeDamage_Af(a0, a1);
 #line 5 "timer_v1.hot"
     }
-#line 128 "timer_v1.hot.cpp"
+#line 129 "timer_v1.hot.cpp"
 };
 
 #line 6 "timer_v1.hot"
 static void Beeper__init_ticks(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 133 "timer_v1.hot.cpp"
+#line 134 "timer_v1.hot.cpp"
 #line 7 "timer_v1.hot"
 static void Beeper__init_fired(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 136 "timer_v1.hot.cpp"
+#line 137 "timer_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -182,7 +183,7 @@ HOT_HIDDEN static auto Beeper__plan()
     return std::make_pair(Beeper__super_args(), std::tuple<>());
 #line 5 "timer_v1.hot"
 }
-#line 186 "timer_v1.hot.cpp"
+#line 187 "timer_v1.hot.cpp"
 using Beeper_SuperArgs = decltype(Beeper__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -207,7 +208,7 @@ HOT_NODEBUG static hot::ShellBase* Beeper__construct(void* mem, const char* key,
     return nullptr;
 #line 5 "timer_v1.hot"
 }
-#line 211 "timer_v1.hot.cpp"
+#line 212 "timer_v1.hot.cpp"
 
 static const char* const Beeper__construct_keys[] = {typeid(Beeper_SuperArgs).name(), nullptr};
 
@@ -223,7 +224,7 @@ HOT_HIDDEN static Beeper_Shell* Beeper__build([[maybe_unused]] bool __note)
     return __self;
 #line 5 "timer_v1.hot"
 }
-#line 227 "timer_v1.hot.cpp"
+#line 228 "timer_v1.hot.cpp"
 #line 5 "timer_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Beeper_Shell* Beeper__new()
 #line 5 "timer_v1.hot"
@@ -232,7 +233,7 @@ HOT_HIDDEN static Beeper_Shell* Beeper__build([[maybe_unused]] bool __note)
     return Beeper__build(true);
 #line 5 "timer_v1.hot"
 }
-#line 236 "timer_v1.hot.cpp"
+#line 237 "timer_v1.hot.cpp"
 #line 5 "timer_v1.hot"
 template <int = 0>
 #line 5 "timer_v1.hot"
@@ -247,7 +248,7 @@ template <int = 0>
     return __h;
 #line 5 "timer_v1.hot"
 }
-#line 251 "timer_v1.hot.cpp"
+#line 252 "timer_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -261,7 +262,7 @@ static void Beeper__arm__thunk(Actor* __a, World& w, float delay)
     return hot::call<void(Actor*, World&, float)>(__self, SLOT_arm, w, delay);
 #line 13 "timer_v1.hot"
 }
-#line 265 "timer_v1.hot.cpp"
+#line 266 "timer_v1.hot.cpp"
 
 static void* Beeper___native__thunk(hot::ShellCore* __s)
 {
@@ -302,7 +303,7 @@ HOT_NODEBUG static hot::Instance Beeper_create()
     return {static_cast<Actor*>(p), p};
 #line 5 "timer_v1.hot"
 }
-#line 306 "timer_v1.hot.cpp"
+#line 307 "timer_v1.hot.cpp"
 
 #line 5 "timer_v1.hot"
 HOT_NODEBUG static hot::Instance Beeper__make_0([[maybe_unused]] void** __a)
@@ -312,7 +313,7 @@ HOT_NODEBUG static hot::Instance Beeper__make_0([[maybe_unused]] void** __a)
     return Beeper_create();
 #line 5 "timer_v1.hot"
 }
-#line 316 "timer_v1.hot.cpp"
+#line 317 "timer_v1.hot.cpp"
 
 static const hot::CtorEntry Beeper__constructors[] = {
     {hot::ctor_key<>(), &Beeper__make_0, hot::ctor_write_mask<>()},
@@ -343,7 +344,7 @@ void hot_state_Beeper::Tick(float dt)
     HOT_TRACE_LINE(); __st->ticks = __st->ticks + 1;
 #line 11 "timer_v1.hot"
 }
-#line 347 "timer_v1.hot.cpp"
+#line 348 "timer_v1.hot.cpp"
 
 #line 13 "timer_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Beeper__arm(Beeper_Shell* __self, World& w, float delay)
@@ -353,7 +354,7 @@ void hot_state_Beeper::Tick(float dt)
     return state_of(__self)->arm(std::forward<World&>(w), std::forward<float>(delay));
 #line 13 "timer_v1.hot"
 }
-#line 357 "timer_v1.hot.cpp"
+#line 358 "timer_v1.hot.cpp"
 #line 13 "timer_v1.hot"
 void hot_state_Beeper::arm(World& w, float delay)
 #line 13 "timer_v1.hot"
@@ -384,7 +385,7 @@ void hot_state_Beeper::arm(World& w, float delay)
         } }));
 #line 18 "timer_v1.hot"
 }
-#line 388 "timer_v1.hot.cpp"
+#line 389 "timer_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

@@ -40,6 +40,7 @@ extern hot::ClassRecord Shared_record;
 
 // The shell overrides every virtual of hot::PlainObject. Each stub reads one slot.
 struct Shared_Shell final : hot::PlainObject, hot::ShellBase {
+    friend struct hot_state_Shared;
 #line 9 "checked_paths_v1.hot"
     template <class... A>
 #line 9 "checked_paths_v1.hot"
@@ -52,7 +53,7 @@ struct Shared_Shell final : hot::PlainObject, hot::ShellBase {
     }
 #line 9 "checked_paths_v1.hot"
     ~Shared_Shell() override { hot::destroy_state(this); }
-#line 56 "checked_paths_v1.hot.cpp"
+#line 57 "checked_paths_v1.hot.cpp"
 #line 9 "checked_paths_v1.hot"
     explicit Shared_Shell(hot::CloneFrom, const hot::ShellBase* src)
 #line 9 "checked_paths_v1.hot"
@@ -61,7 +62,7 @@ struct Shared_Shell final : hot::PlainObject, hot::ShellBase {
         hot::clone_state(this, &Shared_record, src);
 #line 9 "checked_paths_v1.hot"
     }
-#line 65 "checked_paths_v1.hot.cpp"
+#line 66 "checked_paths_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -72,7 +73,7 @@ struct hot_state_Shared {
 
 #line 10 "checked_paths_v1.hot"
 static void Shared__init_hp(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 76 "checked_paths_v1.hot.cpp"
+#line 77 "checked_paths_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -119,7 +120,7 @@ HOT_HIDDEN static auto Shared__plan()
     return std::make_pair(Shared__super_args(), std::tuple<>());
 #line 9 "checked_paths_v1.hot"
 }
-#line 123 "checked_paths_v1.hot.cpp"
+#line 124 "checked_paths_v1.hot.cpp"
 using Shared_SuperArgs = decltype(Shared__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -152,7 +153,7 @@ HOT_NODEBUG static hot::ShellBase* Shared__construct(void* mem, const char* key,
     return nullptr;
 #line 9 "checked_paths_v1.hot"
 }
-#line 156 "checked_paths_v1.hot.cpp"
+#line 157 "checked_paths_v1.hot.cpp"
 
 static const char* const Shared__construct_keys[] = {typeid(Shared_SuperArgs).name(), hot::kCloneKey, nullptr};
 
@@ -168,7 +169,7 @@ HOT_HIDDEN static Shared_Shell* Shared__build([[maybe_unused]] bool __note)
     return __self;
 #line 9 "checked_paths_v1.hot"
 }
-#line 172 "checked_paths_v1.hot.cpp"
+#line 173 "checked_paths_v1.hot.cpp"
 #line 9 "checked_paths_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Shared_Shell* Shared__new()
 #line 9 "checked_paths_v1.hot"
@@ -177,7 +178,7 @@ HOT_HIDDEN static Shared_Shell* Shared__build([[maybe_unused]] bool __note)
     return Shared__build(true);
 #line 9 "checked_paths_v1.hot"
 }
-#line 181 "checked_paths_v1.hot.cpp"
+#line 182 "checked_paths_v1.hot.cpp"
 #line 9 "checked_paths_v1.hot"
 template <int = 0>
 #line 9 "checked_paths_v1.hot"
@@ -192,7 +193,7 @@ template <int = 0>
     return __h;
 #line 9 "checked_paths_v1.hot"
 }
-#line 196 "checked_paths_v1.hot.cpp"
+#line 197 "checked_paths_v1.hot.cpp"
 
 static void* Shared___native__thunk(hot::ShellCore* __s)
 {
@@ -221,7 +222,7 @@ HOT_NODEBUG static hot::Instance Shared_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 9 "checked_paths_v1.hot"
 }
-#line 225 "checked_paths_v1.hot.cpp"
+#line 226 "checked_paths_v1.hot.cpp"
 
 #line 9 "checked_paths_v1.hot"
 HOT_NODEBUG static hot::Instance Shared__make_0([[maybe_unused]] void** __a)
@@ -231,7 +232,7 @@ HOT_NODEBUG static hot::Instance Shared__make_0([[maybe_unused]] void** __a)
     return Shared_create();
 #line 9 "checked_paths_v1.hot"
 }
-#line 235 "checked_paths_v1.hot.cpp"
+#line 236 "checked_paths_v1.hot.cpp"
 
 static const hot::CtorEntry Shared__constructors[] = {
     {hot::ctor_key<>(), &Shared__make_0, hot::ctor_write_mask<>()},
@@ -248,6 +249,7 @@ extern hot::ClassRecord Q_record;
 
 // The shell overrides every virtual of hot::PlainObject. Each stub reads one slot.
 struct Q_Shell final : hot::PlainObject, hot::ShellBase {
+    friend struct hot_state_Q;
 #line 13 "checked_paths_v1.hot"
     template <class... A>
 #line 13 "checked_paths_v1.hot"
@@ -260,7 +262,7 @@ struct Q_Shell final : hot::PlainObject, hot::ShellBase {
     }
 #line 13 "checked_paths_v1.hot"
     ~Q_Shell() override { hot::destroy_state(this); }
-#line 264 "checked_paths_v1.hot.cpp"
+#line 266 "checked_paths_v1.hot.cpp"
 #line 13 "checked_paths_v1.hot"
     explicit Q_Shell(hot::CloneFrom, const hot::ShellBase* src)
 #line 13 "checked_paths_v1.hot"
@@ -269,7 +271,7 @@ struct Q_Shell final : hot::PlainObject, hot::ShellBase {
         hot::clone_state(this, &Q_record, src);
 #line 13 "checked_paths_v1.hot"
     }
-#line 273 "checked_paths_v1.hot.cpp"
+#line 275 "checked_paths_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -280,7 +282,7 @@ struct hot_state_Q {
 
 #line 14 "checked_paths_v1.hot"
 static void Q__init_items(void*, void* f) { using T = std::vector<int32_t>; new (f) T(); }
-#line 284 "checked_paths_v1.hot.cpp"
+#line 286 "checked_paths_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -327,7 +329,7 @@ HOT_HIDDEN static auto Q__plan()
     return std::make_pair(Q__super_args(), std::tuple<>());
 #line 13 "checked_paths_v1.hot"
 }
-#line 331 "checked_paths_v1.hot.cpp"
+#line 333 "checked_paths_v1.hot.cpp"
 using Q_SuperArgs = decltype(Q__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -360,7 +362,7 @@ HOT_NODEBUG static hot::ShellBase* Q__construct(void* mem, const char* key, cons
     return nullptr;
 #line 13 "checked_paths_v1.hot"
 }
-#line 364 "checked_paths_v1.hot.cpp"
+#line 366 "checked_paths_v1.hot.cpp"
 
 static const char* const Q__construct_keys[] = {typeid(Q_SuperArgs).name(), hot::kCloneKey, nullptr};
 
@@ -376,7 +378,7 @@ HOT_HIDDEN static Q_Shell* Q__build([[maybe_unused]] bool __note)
     return __self;
 #line 13 "checked_paths_v1.hot"
 }
-#line 380 "checked_paths_v1.hot.cpp"
+#line 382 "checked_paths_v1.hot.cpp"
 #line 13 "checked_paths_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Q_Shell* Q__new()
 #line 13 "checked_paths_v1.hot"
@@ -385,7 +387,7 @@ HOT_HIDDEN static Q_Shell* Q__build([[maybe_unused]] bool __note)
     return Q__build(true);
 #line 13 "checked_paths_v1.hot"
 }
-#line 389 "checked_paths_v1.hot.cpp"
+#line 391 "checked_paths_v1.hot.cpp"
 #line 13 "checked_paths_v1.hot"
 template <int = 0>
 #line 13 "checked_paths_v1.hot"
@@ -400,7 +402,7 @@ template <int = 0>
     return __h;
 #line 13 "checked_paths_v1.hot"
 }
-#line 404 "checked_paths_v1.hot.cpp"
+#line 406 "checked_paths_v1.hot.cpp"
 
 static void* Q___native__thunk(hot::ShellCore* __s)
 {
@@ -429,7 +431,7 @@ HOT_NODEBUG static hot::Instance Q_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 13 "checked_paths_v1.hot"
 }
-#line 433 "checked_paths_v1.hot.cpp"
+#line 435 "checked_paths_v1.hot.cpp"
 
 #line 13 "checked_paths_v1.hot"
 HOT_NODEBUG static hot::Instance Q__make_0([[maybe_unused]] void** __a)
@@ -439,7 +441,7 @@ HOT_NODEBUG static hot::Instance Q__make_0([[maybe_unused]] void** __a)
     return Q_create();
 #line 13 "checked_paths_v1.hot"
 }
-#line 443 "checked_paths_v1.hot.cpp"
+#line 445 "checked_paths_v1.hot.cpp"
 
 static const hot::CtorEntry Q__constructors[] = {
     {hot::ctor_key<>(), &Q__make_0, hot::ctor_write_mask<>()},
@@ -465,6 +467,7 @@ extern hot::ClassRecord Player_record;
 
 // The shell overrides every virtual of Actor. Each stub reads one slot.
 struct Player_Shell final : Actor, hot::ShellBase {
+    friend struct hot_state_Player;
 #line 17 "checked_paths_v1.hot"
     template <class... A>
 #line 17 "checked_paths_v1.hot"
@@ -477,7 +480,7 @@ struct Player_Shell final : Actor, hot::ShellBase {
     }
 #line 17 "checked_paths_v1.hot"
     ~Player_Shell() override { hot::destroy_state(this); }
-#line 481 "checked_paths_v1.hot.cpp"
+#line 484 "checked_paths_v1.hot.cpp"
 
 #line 17 "checked_paths_v1.hot"
     void Tick(float a0) override
@@ -487,7 +490,7 @@ struct Player_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Player_SLOT_Tick, a0);
 #line 17 "checked_paths_v1.hot"
     }
-#line 491 "checked_paths_v1.hot.cpp"
+#line 494 "checked_paths_v1.hot.cpp"
 
 #line 17 "checked_paths_v1.hot"
     void TakeDamage(float a0) override
@@ -497,7 +500,7 @@ struct Player_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, float)>(this, Player_SLOT_TakeDamage_f, a0);
 #line 17 "checked_paths_v1.hot"
     }
-#line 501 "checked_paths_v1.hot.cpp"
+#line 504 "checked_paths_v1.hot.cpp"
 
 #line 17 "checked_paths_v1.hot"
     void TakeDamage(Actor& a0, float a1) override
@@ -507,7 +510,7 @@ struct Player_Shell final : Actor, hot::ShellBase {
         return hot::call<void(Actor*, Actor&, float)>(this, Player_SLOT_TakeDamage_Af, a0, a1);
 #line 17 "checked_paths_v1.hot"
     }
-#line 511 "checked_paths_v1.hot.cpp"
+#line 514 "checked_paths_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -531,16 +534,16 @@ struct hot_state_Player {
 
 #line 18 "checked_paths_v1.hot"
 static void Player__init_xs(void*, void* f) { using T = std::vector<int32_t>; new (f) T(); }
-#line 535 "checked_paths_v1.hot.cpp"
+#line 538 "checked_paths_v1.hot.cpp"
 #line 19 "checked_paths_v1.hot"
 static void Player__init_m(void*, void* f) { using T = std::map<int32_t, int32_t>; new (f) T(); }
-#line 538 "checked_paths_v1.hot.cpp"
+#line 541 "checked_paths_v1.hot.cpp"
 #line 20 "checked_paths_v1.hot"
 static void Player__init_label(void*, void* f) { using T = std::string; new (f) T(); }
-#line 541 "checked_paths_v1.hot.cpp"
+#line 544 "checked_paths_v1.hot.cpp"
 #line 21 "checked_paths_v1.hot"
 static void Player__init_shared(void*, void* f) { using T = std::shared_ptr<Shared>; new (f) T(); }
-#line 544 "checked_paths_v1.hot.cpp"
+#line 547 "checked_paths_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -599,7 +602,7 @@ HOT_HIDDEN static auto Player__plan()
     return std::make_pair(Player__super_args(), std::tuple<>());
 #line 17 "checked_paths_v1.hot"
 }
-#line 603 "checked_paths_v1.hot.cpp"
+#line 606 "checked_paths_v1.hot.cpp"
 using Player_SuperArgs = decltype(Player__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -624,7 +627,7 @@ HOT_NODEBUG static hot::ShellBase* Player__construct(void* mem, const char* key,
     return nullptr;
 #line 17 "checked_paths_v1.hot"
 }
-#line 628 "checked_paths_v1.hot.cpp"
+#line 631 "checked_paths_v1.hot.cpp"
 
 static const char* const Player__construct_keys[] = {typeid(Player_SuperArgs).name(), nullptr};
 
@@ -640,7 +643,7 @@ HOT_HIDDEN static Player_Shell* Player__build([[maybe_unused]] bool __note)
     return __self;
 #line 17 "checked_paths_v1.hot"
 }
-#line 644 "checked_paths_v1.hot.cpp"
+#line 647 "checked_paths_v1.hot.cpp"
 #line 17 "checked_paths_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Player_Shell* Player__new()
 #line 17 "checked_paths_v1.hot"
@@ -649,7 +652,7 @@ HOT_HIDDEN static Player_Shell* Player__build([[maybe_unused]] bool __note)
     return Player__build(true);
 #line 17 "checked_paths_v1.hot"
 }
-#line 653 "checked_paths_v1.hot.cpp"
+#line 656 "checked_paths_v1.hot.cpp"
 #line 17 "checked_paths_v1.hot"
 template <int = 0>
 #line 17 "checked_paths_v1.hot"
@@ -664,7 +667,7 @@ template <int = 0>
     return __h;
 #line 17 "checked_paths_v1.hot"
 }
-#line 668 "checked_paths_v1.hot.cpp"
+#line 671 "checked_paths_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -678,7 +681,7 @@ static int32_t Player__Local__thunk(Actor* __a)
     return hot::call<int32_t(Actor*)>(__self, Player_SLOT_Local);
 #line 23 "checked_paths_v1.hot"
 }
-#line 682 "checked_paths_v1.hot.cpp"
+#line 685 "checked_paths_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -692,7 +695,7 @@ static void Player__Element__thunk(Actor* __a, int32_t i)
     return hot::call<void(Actor*, int32_t)>(__self, Player_SLOT_Element, i);
 #line 30 "checked_paths_v1.hot"
 }
-#line 696 "checked_paths_v1.hot.cpp"
+#line 699 "checked_paths_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -706,7 +709,7 @@ static void Player__Owner__thunk(Actor* __a, const std::shared_ptr<Shared>& s)
     return hot::call<void(Actor*, const std::shared_ptr<Shared>&)>(__self, Player_SLOT_Owner, s);
 #line 35 "checked_paths_v1.hot"
 }
-#line 710 "checked_paths_v1.hot.cpp"
+#line 713 "checked_paths_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -720,7 +723,7 @@ static int32_t Player__View__thunk(Actor* __a)
     return hot::call<int32_t(Actor*)>(__self, Player_SLOT_View);
 #line 41 "checked_paths_v1.hot"
 }
-#line 724 "checked_paths_v1.hot.cpp"
+#line 727 "checked_paths_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -734,7 +737,7 @@ static int32_t Player__Loops__thunk(Actor* __a)
     return hot::call<int32_t(Actor*)>(__self, Player_SLOT_Loops);
 #line 47 "checked_paths_v1.hot"
 }
-#line 738 "checked_paths_v1.hot.cpp"
+#line 741 "checked_paths_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -748,7 +751,7 @@ static int32_t Player__PathLoops__thunk(Actor* __a, hot::In<std::vector<std::vec
     return hot::call<int32_t(Actor*, hot::In<std::vector<std::vector<int32_t>>>)>(__self, Player_SLOT_PathLoops, rows);
 #line 55 "checked_paths_v1.hot"
 }
-#line 752 "checked_paths_v1.hot.cpp"
+#line 755 "checked_paths_v1.hot.cpp"
 
 static void* Player___native__thunk(hot::ShellCore* __s)
 {
@@ -794,7 +797,7 @@ HOT_NODEBUG static hot::Instance Player_create()
     return {static_cast<Actor*>(p), p};
 #line 17 "checked_paths_v1.hot"
 }
-#line 798 "checked_paths_v1.hot.cpp"
+#line 801 "checked_paths_v1.hot.cpp"
 
 #line 17 "checked_paths_v1.hot"
 HOT_NODEBUG static hot::Instance Player__make_0([[maybe_unused]] void** __a)
@@ -804,7 +807,7 @@ HOT_NODEBUG static hot::Instance Player__make_0([[maybe_unused]] void** __a)
     return Player_create();
 #line 17 "checked_paths_v1.hot"
 }
-#line 808 "checked_paths_v1.hot.cpp"
+#line 811 "checked_paths_v1.hot.cpp"
 
 static const hot::CtorEntry Player__constructors[] = {
     {hot::ctor_key<>(), &Player__make_0, hot::ctor_write_mask<>()},
@@ -819,7 +822,7 @@ static const hot::CtorEntry Player__constructors[] = {
     return state_of(__self)->Local();
 #line 23 "checked_paths_v1.hot"
 }
-#line 823 "checked_paths_v1.hot.cpp"
+#line 826 "checked_paths_v1.hot.cpp"
 #line 23 "checked_paths_v1.hot"
 int32_t hot_state_Player::Local()
 #line 23 "checked_paths_v1.hot"
@@ -850,7 +853,7 @@ int32_t hot_state_Player::Local()
     HOT_TRACE_LINE(); return n;
 #line 28 "checked_paths_v1.hot"
 }
-#line 854 "checked_paths_v1.hot.cpp"
+#line 857 "checked_paths_v1.hot.cpp"
 
 #line 30 "checked_paths_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Player__Element(Player_Shell* __self, int32_t i)
@@ -860,7 +863,7 @@ int32_t hot_state_Player::Local()
     return state_of(__self)->Element(std::forward<int32_t>(i));
 #line 30 "checked_paths_v1.hot"
 }
-#line 864 "checked_paths_v1.hot.cpp"
+#line 867 "checked_paths_v1.hot.cpp"
 #line 30 "checked_paths_v1.hot"
 void hot_state_Player::Element(int32_t const i)
 #line 30 "checked_paths_v1.hot"
@@ -887,7 +890,7 @@ void hot_state_Player::Element(int32_t const i)
     HOT_TRACE_LINE(); (hot::index(__st->xs, __r0_0)) = 3;
 #line 33 "checked_paths_v1.hot"
 }
-#line 891 "checked_paths_v1.hot.cpp"
+#line 894 "checked_paths_v1.hot.cpp"
 
 #line 35 "checked_paths_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Player__Owner(Player_Shell* __self, const std::shared_ptr<Shared>& s)
@@ -897,7 +900,7 @@ void hot_state_Player::Element(int32_t const i)
     return state_of(__self)->Owner(std::forward<const std::shared_ptr<Shared>&>(s));
 #line 35 "checked_paths_v1.hot"
 }
-#line 901 "checked_paths_v1.hot.cpp"
+#line 904 "checked_paths_v1.hot.cpp"
 #line 35 "checked_paths_v1.hot"
 void hot_state_Player::Owner(const std::shared_ptr<Shared>& s)
 #line 35 "checked_paths_v1.hot"
@@ -926,7 +929,7 @@ void hot_state_Player::Owner(const std::shared_ptr<Shared>& s)
     HOT_TRACE_LINE(); (state_of(hot::shell_of<Shared_Shell>(s, "Shared"))->hp) = 4;
 #line 39 "checked_paths_v1.hot"
 }
-#line 930 "checked_paths_v1.hot.cpp"
+#line 933 "checked_paths_v1.hot.cpp"
 
 #line 41 "checked_paths_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Player__View(Player_Shell* __self)
@@ -936,7 +939,7 @@ void hot_state_Player::Owner(const std::shared_ptr<Shared>& s)
     return state_of(__self)->View();
 #line 41 "checked_paths_v1.hot"
 }
-#line 940 "checked_paths_v1.hot.cpp"
+#line 943 "checked_paths_v1.hot.cpp"
 #line 41 "checked_paths_v1.hot"
 int32_t hot_state_Player::View()
 #line 41 "checked_paths_v1.hot"
@@ -965,7 +968,7 @@ int32_t hot_state_Player::View()
     HOT_TRACE_LINE(); return hot::index((hot::span<int32_t>(__st->xs)), 0) + hot::float_to_int<int32_t>(hot::deref((std::string_view(__st->label))).size());
 #line 45 "checked_paths_v1.hot"
 }
-#line 969 "checked_paths_v1.hot.cpp"
+#line 972 "checked_paths_v1.hot.cpp"
 
 #line 47 "checked_paths_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Player__Loops(Player_Shell* __self)
@@ -975,7 +978,7 @@ int32_t hot_state_Player::View()
     return state_of(__self)->Loops();
 #line 47 "checked_paths_v1.hot"
 }
-#line 979 "checked_paths_v1.hot.cpp"
+#line 982 "checked_paths_v1.hot.cpp"
 #line 47 "checked_paths_v1.hot"
 int32_t hot_state_Player::Loops()
 #line 47 "checked_paths_v1.hot"
@@ -1006,7 +1009,7 @@ int32_t hot_state_Player::Loops()
     HOT_TRACE_LINE(); return sum;
 #line 52 "checked_paths_v1.hot"
 }
-#line 1010 "checked_paths_v1.hot.cpp"
+#line 1013 "checked_paths_v1.hot.cpp"
 
 #line 55 "checked_paths_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Player__PathLoops(Player_Shell* __self, std::vector<std::vector<int32_t>> rows)
@@ -1016,7 +1019,7 @@ int32_t hot_state_Player::Loops()
     return state_of(__self)->PathLoops(std::forward<std::vector<std::vector<int32_t>>>(rows));
 #line 55 "checked_paths_v1.hot"
 }
-#line 1020 "checked_paths_v1.hot.cpp"
+#line 1023 "checked_paths_v1.hot.cpp"
 #line 55 "checked_paths_v1.hot"
 int32_t hot_state_Player::PathLoops(hot::In<std::vector<std::vector<int32_t>>> __rows)
 #line 55 "checked_paths_v1.hot"
@@ -1057,7 +1060,7 @@ int32_t hot_state_Player::PathLoops(hot::In<std::vector<std::vector<int32_t>>> _
     HOT_TRACE_LINE(); return sum;
 #line 64 "checked_paths_v1.hot"
 }
-#line 1061 "checked_paths_v1.hot.cpp"
+#line 1064 "checked_paths_v1.hot.cpp"
 
 #line 66 "checked_paths_v1.hot"
 void hot_state_Player::Tick(float dt)
@@ -1081,7 +1084,7 @@ void hot_state_Player::Tick(float dt)
     HOT_TRACE_FRAME("Player.Tick", "checked_paths_v1.hot");
 #line 66 "checked_paths_v1.hot"
 }
-#line 1085 "checked_paths_v1.hot.cpp"
+#line 1088 "checked_paths_v1.hot.cpp"
 
 #line 67 "checked_paths_v1.hot"
 void hot_state_Player::TakeDamage_f(float amount)
@@ -1105,7 +1108,7 @@ void hot_state_Player::TakeDamage_f(float amount)
     HOT_TRACE_FRAME("Player.TakeDamage", "checked_paths_v1.hot");
 #line 67 "checked_paths_v1.hot"
 }
-#line 1109 "checked_paths_v1.hot.cpp"
+#line 1112 "checked_paths_v1.hot.cpp"
 
 #line 68 "checked_paths_v1.hot"
 void hot_state_Player::TakeDamage_Af(Actor& source, float amount)
@@ -1129,7 +1132,7 @@ void hot_state_Player::TakeDamage_Af(Actor& source, float amount)
     HOT_TRACE_FRAME("Player.TakeDamage", "checked_paths_v1.hot");
 #line 68 "checked_paths_v1.hot"
 }
-#line 1133 "checked_paths_v1.hot.cpp"
+#line 1136 "checked_paths_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

@@ -34,6 +34,7 @@ extern hot::ClassRecord Rig_record;
 
 // The shell overrides every virtual of hot::PlainObject. Each stub reads one slot.
 struct Rig_Shell final : hot::PlainObject, hot::ShellBase {
+    friend struct hot_state_Rig;
 #line 10 "native_ref_getter_v1.hot"
     template <class... A>
 #line 10 "native_ref_getter_v1.hot"
@@ -46,7 +47,7 @@ struct Rig_Shell final : hot::PlainObject, hot::ShellBase {
     }
 #line 10 "native_ref_getter_v1.hot"
     ~Rig_Shell() override { hot::destroy_state(this); }
-#line 50 "native_ref_getter_v1.hot.cpp"
+#line 51 "native_ref_getter_v1.hot.cpp"
 #line 10 "native_ref_getter_v1.hot"
     explicit Rig_Shell(hot::CloneFrom, const hot::ShellBase* src)
 #line 10 "native_ref_getter_v1.hot"
@@ -55,7 +56,7 @@ struct Rig_Shell final : hot::PlainObject, hot::ShellBase {
         hot::clone_state(this, &Rig_record, src);
 #line 10 "native_ref_getter_v1.hot"
     }
-#line 59 "native_ref_getter_v1.hot.cpp"
+#line 60 "native_ref_getter_v1.hot.cpp"
 };
 
 // ---------------------------------------------------------------- state
@@ -70,10 +71,10 @@ struct hot_state_Rig {
 
 #line 11 "native_ref_getter_v1.hot"
 static void Rig__init_anim(void*, void* f) { using T = std::shared_ptr<Animator>; new (f) T(nullptr); }
-#line 74 "native_ref_getter_v1.hot.cpp"
+#line 75 "native_ref_getter_v1.hot.cpp"
 #line 12 "native_ref_getter_v1.hot"
 static void Rig__init_frames(void*, void* f) { using T = int32_t; new (f) T(0); }
-#line 77 "native_ref_getter_v1.hot.cpp"
+#line 78 "native_ref_getter_v1.hot.cpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -124,7 +125,7 @@ HOT_HIDDEN static auto Rig__plan()
     return std::make_pair(Rig__super_args(), std::tuple<>());
 #line 10 "native_ref_getter_v1.hot"
 }
-#line 128 "native_ref_getter_v1.hot.cpp"
+#line 129 "native_ref_getter_v1.hot.cpp"
 using Rig_SuperArgs = decltype(Rig__plan().first);
 // Makes the shell with the base arguments. Only the first generation of the class runs it.
 // "key" names the type of the arguments. An unknown key gives nullptr. "mem" null
@@ -157,7 +158,7 @@ HOT_NODEBUG static hot::ShellBase* Rig__construct(void* mem, const char* key, co
     return nullptr;
 #line 10 "native_ref_getter_v1.hot"
 }
-#line 161 "native_ref_getter_v1.hot.cpp"
+#line 162 "native_ref_getter_v1.hot.cpp"
 
 static const char* const Rig__construct_keys[] = {typeid(Rig_SuperArgs).name(), hot::kCloneKey, nullptr};
 
@@ -173,7 +174,7 @@ HOT_HIDDEN static Rig_Shell* Rig__build([[maybe_unused]] bool __note)
     return __self;
 #line 10 "native_ref_getter_v1.hot"
 }
-#line 177 "native_ref_getter_v1.hot.cpp"
+#line 178 "native_ref_getter_v1.hot.cpp"
 #line 10 "native_ref_getter_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Rig_Shell* Rig__new()
 #line 10 "native_ref_getter_v1.hot"
@@ -182,7 +183,7 @@ HOT_HIDDEN static Rig_Shell* Rig__build([[maybe_unused]] bool __note)
     return Rig__build(true);
 #line 10 "native_ref_getter_v1.hot"
 }
-#line 186 "native_ref_getter_v1.hot.cpp"
+#line 187 "native_ref_getter_v1.hot.cpp"
 #line 10 "native_ref_getter_v1.hot"
 template <int = 0>
 #line 10 "native_ref_getter_v1.hot"
@@ -197,7 +198,7 @@ template <int = 0>
     return __h;
 #line 10 "native_ref_getter_v1.hot"
 }
-#line 201 "native_ref_getter_v1.hot.cpp"
+#line 202 "native_ref_getter_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -211,7 +212,7 @@ static void Rig__Step__thunk(hot::PlainObject* __a)
     return hot::call<void(hot::PlainObject*)>(__self, SLOT_Step);
 #line 14 "native_ref_getter_v1.hot"
 }
-#line 215 "native_ref_getter_v1.hot.cpp"
+#line 216 "native_ref_getter_v1.hot.cpp"
 
 // The thunk has the same address in each generation (section 4.11). The
 // generation that adds the function emits it. It reads the slot at call time.
@@ -225,7 +226,7 @@ static void Rig__Local__thunk(hot::PlainObject* __a, const std::shared_ptr<Anima
     return hot::call<void(hot::PlainObject*, const std::shared_ptr<Animator>&)>(__self, SLOT_Local, a);
 #line 22 "native_ref_getter_v1.hot"
 }
-#line 229 "native_ref_getter_v1.hot.cpp"
+#line 230 "native_ref_getter_v1.hot.cpp"
 
 static void* Rig___native__thunk(hot::ShellCore* __s)
 {
@@ -264,7 +265,7 @@ HOT_NODEBUG static hot::Instance Rig_create()
     return {static_cast<hot::PlainObject*>(p), p};
 #line 10 "native_ref_getter_v1.hot"
 }
-#line 268 "native_ref_getter_v1.hot.cpp"
+#line 269 "native_ref_getter_v1.hot.cpp"
 
 #line 10 "native_ref_getter_v1.hot"
 HOT_NODEBUG static hot::Instance Rig__make_0([[maybe_unused]] void** __a)
@@ -274,7 +275,7 @@ HOT_NODEBUG static hot::Instance Rig__make_0([[maybe_unused]] void** __a)
     return Rig_create();
 #line 10 "native_ref_getter_v1.hot"
 }
-#line 278 "native_ref_getter_v1.hot.cpp"
+#line 279 "native_ref_getter_v1.hot.cpp"
 
 static const hot::CtorEntry Rig__constructors[] = {
     {hot::ctor_key<>(), &Rig__make_0, hot::ctor_write_mask<>()},
@@ -289,7 +290,7 @@ static const hot::CtorEntry Rig__constructors[] = {
     return state_of(__self)->Step();
 #line 14 "native_ref_getter_v1.hot"
 }
-#line 293 "native_ref_getter_v1.hot.cpp"
+#line 294 "native_ref_getter_v1.hot.cpp"
 #line 14 "native_ref_getter_v1.hot"
 void hot_state_Rig::Step()
 #line 14 "native_ref_getter_v1.hot"
@@ -322,7 +323,7 @@ void hot_state_Rig::Step()
     HOT_TRACE_LINE(); hot::deref(k).frame = __st->frames;
 #line 20 "native_ref_getter_v1.hot"
 }
-#line 326 "native_ref_getter_v1.hot.cpp"
+#line 327 "native_ref_getter_v1.hot.cpp"
 
 #line 22 "native_ref_getter_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Rig__Local(Rig_Shell* __self, const std::shared_ptr<Animator>& a)
@@ -332,7 +333,7 @@ void hot_state_Rig::Step()
     return state_of(__self)->Local(std::forward<const std::shared_ptr<Animator>&>(a));
 #line 22 "native_ref_getter_v1.hot"
 }
-#line 336 "native_ref_getter_v1.hot.cpp"
+#line 337 "native_ref_getter_v1.hot.cpp"
 #line 22 "native_ref_getter_v1.hot"
 void hot_state_Rig::Local(const std::shared_ptr<Animator>& a)
 #line 22 "native_ref_getter_v1.hot"
@@ -363,7 +364,7 @@ void hot_state_Rig::Local(const std::shared_ptr<Animator>& a)
     HOT_TRACE_LINE(); hot::deref(s).frame = 3;
 #line 27 "native_ref_getter_v1.hot"
 }
-#line 367 "native_ref_getter_v1.hot.cpp"
+#line 368 "native_ref_getter_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

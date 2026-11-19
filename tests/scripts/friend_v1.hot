@@ -1,0 +1,37 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// A script method calls a protected non-virtual member of the native base: in a method, in a lambda
+// and in a child script class.
+using "ProtBase.h";
+
+class Parent : ProtBase {
+    void PokeDirect(int n) {
+        Poke(n);
+    }
+
+    void PokeThis(int n) {
+        this.Poke(n);
+    }
+
+    void PokeLambda(int n) {
+        var f = () => {
+            Poke(n);
+        };
+        f();
+    }
+}
+
+class Child : Parent {
+    void PokeChild(int n) {
+        Poke(n);
+    }
+
+    void PokeChildLambda(int n) {
+        var f = () => {
+            this.Poke(n);
+        };
+        f();
+    }
+}
