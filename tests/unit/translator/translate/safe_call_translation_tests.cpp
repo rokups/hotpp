@@ -117,3 +117,36 @@ TEST(SafeCallTranslation, PropertyReceiverRunsTheGetterOnce)
     EXPECT_TRUE(has(r.cpp, "auto __safe0 = ")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "if (__safe0) hot::deref(__safe0).Draw(1);")) << r.cpp;
 }
+
+// A call with explicit template arguments after "?.": the receiver in the generic lambda of
+// hot::safe_access is a dependent expression, so the call needs "template".
+static const char* kHost = "[native] class Host;\n[native] class Item;\n";
+
+TEST(SafeCallTranslation, TemplateCallOnANativePointer)
+{
+    for (const char* body : {"    void Run(Host* x) { var y = x?.Get<Item>(); }\n",
+             "    void Run(Host* x) { var y = x?.Get<Item>(1, 2); }\n",
+             "    void Run(Host* x) { var y = x?.Get<Item>()?.N(); }\n",
+             "    void Run(Host* x) { Use(x?.Get<Item>()); }\n    void Use(Item* f) {}\n"})
+    {
+        const hotc::TranslateResult r = check_translate(kHost, body);
+        ASSERT_TRUE(r.ok) << body << r.diagnostics;
+        EXPECT_TRUE(has(r.cpp, ".template Get<")) << r.cpp;
+    }
+}
+
+TEST(SafeCallTranslation, TemplateCallOnAScriptHandle)
+{
+    const hotc::TranslateResult r = check_translate(std::string(kHost) + kDefaultShared + "class Sh : TplHost {}\n",
+        "    void Run($Sh x) { var y = x?.Size<Item>(); }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, ".template Size<")) << r.cpp;
+}
+
+// "x?.A().M<T>()" is "(x?.A()).M<T>()": the call is outside the lambda, so it needs no "template".
+TEST(SafeCallTranslation, TemplateCallAfterAChainIsOutsideTheLambda)
+{
+    const hotc::TranslateResult r = check_translate(kHost, "    void Run(Host* x) { var y = x?.A().Get<Item>(); }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "}))).Get<Item>()") || has(r.cpp, "})).Get<Item>()")) << r.cpp;
+}

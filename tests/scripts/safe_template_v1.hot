@@ -1,0 +1,13 @@
+// A null-conditional call with explicit template arguments on a native pointer.
+using "Actor.h";
+using "SafeHost.h";
+
+class Prober : Actor {
+    int Size(SafeHost* x) {
+        return x?.Size<double>() ?? -1;
+    }
+
+    int Sum(SafeHost* x) {
+        return x?.Sum<char>(2, 3) ?? -1;
+    }
+}

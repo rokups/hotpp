@@ -2854,7 +2854,7 @@ struct Lowerer
         {
             plain_class_marks(m.name);
             // The body of a lambda is a generic C++ lambda: the object is a dependent expression.
-            if (in_lambda)
+            if (in_lambda || in_safe_lambda)
                 m.name = "template " + m.name;
         }
         const uint32_t obj_pos = pos_of(*m.obj);
@@ -3006,6 +3006,8 @@ struct Lowerer
 
     // True while the pass lowers the body of a lambda.
     bool in_lambda = false;
+    // The code is in the generic lambda of hot::safe_access: the receiver is a dependent expression.
+    bool in_safe_lambda = false;
 
     // The state of the places where C++ does not allow "co_await". A catch handler is one. The
     // body of a finally block and the right side of "??" are lambdas in the C++ code.
@@ -4774,7 +4776,9 @@ struct Lowerer
             const ScopeSave scope(cx);
             declare(tmp, recv_type);
             ++lazy_depth; // the code is in a lambda: it cannot hold an "await"
+            const bool outer_safe = std::exchange(in_safe_lambda, true);
             expr(e);
+            in_safe_lambda = outer_safe;
             --lazy_depth;
         }
         ExprP inner = make_expr(ParenExpr{std::move(e), 0});
