@@ -597,6 +597,9 @@ FormatResult Formatter::run()
             {
                 level = top->content;
                 base = top->base;
+                // A "}" that closes a "{" of an argument list has the level of the line of that "{".
+                if (k > 0 && stack_.back().ch == '{')
+                    level = stack_.back().base;
             }
             else
             {
