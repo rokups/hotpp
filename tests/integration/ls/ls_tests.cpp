@@ -4625,6 +4625,71 @@ TEST(LanguageServer, RangeFormattingChangesTheLinesOfTheRangeOnly)
 namespace
 {
 
+const char* const kBraceInput = "class A {\n    void f() {\n        g();\n    }\n}\n";
+const char* const kBraceNext = "class A\n{\n    void f()\n    {\n        g();\n    }\n}\n";
+
+// The new text of a document format and of a range format over all lines, with the brace style of
+// the argument and of the initializationOptions (null: none).
+std::pair<std::string, std::string> brace_formats(hot::ls::BraceStyle arg, const json& init)
+{
+    TempDir dir;
+    hot::ls::ServerOptions o = options(dir, false);
+    o.brace_style = arg;
+    const std::string path = (dir.path() / "a.hot").string();
+    write_file(path, kBraceInput);
+    LsClient client(o);
+    json p = {{"processId", nullptr}, {"rootUri", uri_of(dir.path().string())}, {"capabilities", json::object()}};
+    if (!init.is_null())
+        p["initializationOptions"] = {{"braceStyle", init}};
+    client.request("initialize", p);
+    client.notify("initialized", json::object());
+    client.open(uri_of(path), kBraceInput);
+    const json td = {{"uri", uri_of(path)}};
+    const json fo = {{"tabSize", 4}, {"insertSpaces", true}};
+    const json r = client.request("textDocument/formatting", {{"textDocument", td}, {"options", fo}});
+    const json rr = client.request("textDocument/rangeFormatting",
+        {{"textDocument", td}, {"options", fo}, {"range", {{"start", pos(0, 0)}, {"end", pos(5, 0)}}}});
+    EXPECT_TRUE(r.contains("result") && rr.contains("result")) << r.dump() << rr.dump();
+    auto text = [](const json& x) { return x["result"].empty() ? std::string(kBraceInput) : x["result"][0]["newText"].get<std::string>(); };
+    return {text(r), text(rr)};
+}
+
+} // namespace
+
+TEST(LanguageServer, BraceStyleArgument)
+{
+    hot::ls::ServerOptions o;
+    std::string error;
+    EXPECT_EQ(o.brace_style, hot::ls::BraceStyle::Keep);
+    ASSERT_TRUE(hot::ls::parse_arguments({"--stdio", "--brace-style", "next-line"}, o, error)) << error;
+    EXPECT_EQ(o.brace_style, hot::ls::BraceStyle::NextLine);
+    ASSERT_TRUE(hot::ls::parse_arguments({"--brace-style", "same-line"}, o, error)) << error;
+    EXPECT_EQ(o.brace_style, hot::ls::BraceStyle::SameLine);
+    EXPECT_FALSE(hot::ls::parse_arguments({"--brace-style", "allman"}, o, error));
+    EXPECT_NE(error.find("--brace-style"), std::string::npos) << error;
+    EXPECT_FALSE(hot::ls::parse_arguments({"--brace-style"}, o, error));
+}
+
+TEST(LanguageServer, BraceStyleReachesTheDocumentFormat)
+{
+    using hot::ls::BraceStyle;
+    // The default keeps the braces.
+    EXPECT_EQ(brace_formats(BraceStyle::Keep, nullptr).first, kBraceInput);
+    // The argument.
+    const auto a = brace_formats(BraceStyle::NextLine, nullptr);
+    EXPECT_EQ(a.first, kBraceNext);
+    // A range format keeps the braces in place.
+    EXPECT_EQ(a.second, kBraceInput);
+    // The initializationOptions override the argument. A bad value is ignored.
+    EXPECT_EQ(brace_formats(BraceStyle::Keep, "next-line").first, kBraceNext);
+    EXPECT_EQ(brace_formats(BraceStyle::NextLine, "keep").first, kBraceInput);
+    EXPECT_EQ(brace_formats(BraceStyle::NextLine, "allman").first, kBraceNext);
+    EXPECT_EQ(brace_formats(BraceStyle::NextLine, 3).first, kBraceNext);
+}
+
+namespace
+{
+
 // The result of a range format: the text after the edits, or the text itself when there is no edit.
 std::string range_format(const std::string& text, int l0, int c0, int l1, int c1, bool* has_edit = nullptr)
 {
