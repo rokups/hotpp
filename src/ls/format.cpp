@@ -30,7 +30,8 @@ struct Tok
     Kind kind = Kind::Punct;
     size_t begin = 0, end = 0;
     size_t gap_begin = 0; // the white space before the token starts here
-    size_t nl = 0; // the new lines in the white space before the token
+    size_t nl = 0; // the new lines in the white space before the token in the output
+    size_t src_nl = 0; // the new lines in the white space before the token in the input
 };
 
 bool is_word_char(char c)
@@ -257,6 +258,7 @@ std::vector<Tok> lex(sv s)
             i += punct_len(s.substr(i));
         }
         t.end = i;
+        t.src_nl = t.nl;
         out.push_back(t);
     }
     return out;
@@ -308,6 +310,7 @@ public:
         , t_(lex(text))
     {
         ctrl_close_.assign(t_.size(), false);
+        place_braces();
     }
 
     FormatResult run();
@@ -329,6 +332,8 @@ private:
     bool safe_tight(size_t a, size_t b) const;
     bool op_continues(size_t i, size_t p) const; // p: the last token before i that is no comment
     std::string indent(int level) const;
+    bool brace_head(size_t i) const;
+    void place_braces();
 
     sv s_;
     FormatOptions o_;
@@ -525,6 +530,73 @@ std::string Formatter::indent(int level) const
     return std::string(static_cast<size_t>(level) * static_cast<size_t>(std::max(o_.indent_width, 0)), ' ');
 }
 
+// True when the token before the "{" at i is the end of a block head: ")", ">" or a word that is no
+// operator. A comment between the head and the "{" keeps the "{" in its place.
+bool Formatter::brace_head(size_t i) const
+{
+    static const std::set<sv> ops = {"return", "case", "throw", "in", "new", "await", "yield", "is", "as"};
+    if (i == 0)
+        return false;
+    const size_t p = i - 1;
+    if (t_[p].kind == Kind::Word)
+        return ops.count(txt(p)) == 0;
+    return is_p(p, ")") || is_p(p, ">");
+}
+
+// The brace style. It sets the new lines before each "{" that moves, and before "else", "catch" and
+// "finally" right after the "}" of a moved block. The class of a brace does not depend on the line
+// breaks, so a second format moves nothing.
+void Formatter::place_braces()
+{
+    if (o_.brace == BraceStyle::Keep)
+        return;
+    const size_t want = o_.brace == BraceStyle::NextLine ? 1 : 0;
+    // The input line of each token.
+    std::vector<size_t> line(t_.size(), 0);
+    for (size_t i = 1; i < t_.size(); ++i)
+    {
+        line[i] = line[i - 1] + t_[i].src_nl;
+        for (char c : txt(i - 1))
+            if (c == '\n')
+                ++line[i];
+    }
+    auto in_range = [&](size_t a, size_t b)
+    {
+        return static_cast<long long>(line[a]) >= o_.first_line
+            && (o_.last_line < 0 || static_cast<long long>(line[b]) <= o_.last_line);
+    };
+    struct Open
+    {
+        size_t at;
+        bool can_move;
+    };
+    std::vector<Open> open;
+    for (size_t i = 0; i < t_.size(); ++i)
+    {
+        if (t_[i].kind != Kind::Punct)
+            continue;
+        const sv x = txt(i);
+        if (x == "(" || x == "[" || x == "{")
+        {
+            const bool in_block = open.empty() || is_p(open.back().at, "{");
+            open.push_back({i, x == "{" && in_block && brace_head(i)});
+            continue;
+        }
+        if ((x != ")" && x != "]" && x != "}") || open.empty())
+            continue;
+        const Open o = open.back();
+        open.pop_back();
+        // A "{ }" on one line stays.
+        if (x != "}" || !o.can_move || line[o.at] == line[i])
+            continue;
+        if (in_range(o.at - 1, o.at))
+            t_[o.at].nl = want;
+        if (i + 1 < t_.size() && (is_w(i + 1, "else") || is_w(i + 1, "catch") || is_w(i + 1, "finally"))
+            && in_range(i, i + 1))
+            t_[i + 1].nl = want;
+    }
+}
+
 FormatResult Formatter::run()
 {
     FormatResult res;
@@ -546,6 +618,8 @@ FormatResult Formatter::run()
     int out_line = 0;
     size_t in_line = 0; // the input line where the next gap starts
     int last_base = 0;
+    int last_level = 0;
+    bool last_in_bracket = false;
     bool label_line = false; // the line has started with "case" or "default"
     auto count_nl = [](sv x)
     {
@@ -561,6 +635,8 @@ FormatResult Formatter::run()
     {
         const Tok& tk = t_[i];
         const bool first = i == 0 || tk.nl > 0;
+        if (!first)
+            in_line += tk.src_nl; // a "{" that a brace style joins to the line before
         if (first)
         {
             // The new lines before the token.
@@ -573,7 +649,7 @@ FormatResult Formatter::run()
                     res.line_map[in_line + 1] = out_line + 1;
                 out_line += static_cast<int>(keep);
             }
-            in_line += tk.nl;
+            in_line += tk.src_nl;
             // A label of the previous line that ends with ":" opens the case body.
             if (label_line)
             {
@@ -595,6 +671,9 @@ FormatResult Formatter::run()
             {
                 level = top->content;
                 base = top->base;
+                // A "}" that closes a "{" of an argument list has the level of the line of that "{".
+                if (k > 0 && stack_.back().ch == '{')
+                    level = stack_.back().base;
             }
             else
             {
@@ -613,8 +692,13 @@ FormatResult Formatter::run()
                     level = (top ? top->content : 0) + (in_case ? 1 : 0);
                     base = level;
                 }
+                // "})" and "}}": the line has the level of the line of the first "{" that it closes.
+                if (k > 1 && stack_.back().ch == '{')
+                    level = std::max(level, stack_.back().base);
             }
             last_base = base;
+            last_level = level;
+            last_in_bracket = top && top->ch != '{';
             out += indent(level);
         }
         else
@@ -642,7 +726,8 @@ FormatResult Formatter::run()
         }
         // The token.
         const size_t lines_in = count_nl(txt(i));
-        if (first)
+        // A new line that a moved "{" adds has no input line. A line that it joins maps to -1.
+        if (first && (i == 0 || tk.src_nl > 0))
             res.line_map[in_line] = out_line;
         out += txt(i);
         for (size_t k = 1; k <= lines_in; ++k)
@@ -660,6 +745,11 @@ FormatResult Formatter::run()
                 b.ch = x[0];
                 b.base = last_base;
                 b.content = last_base + 1;
+                if (x == "{" && last_in_bracket && !stack_.empty() && stack_.back().ch != '{')
+                {
+                    b.base = last_level;
+                    b.content = last_level + 1;
+                }
                 if (x == "(")
                 {
                     const size_t p = last_sig;
