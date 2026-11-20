@@ -320,7 +320,9 @@ private:
                 {
                     expr(d.init);
                     if (d.names.empty())
-                        declare(d.name, Kind::Local, d.name_pos ? d.name_pos : d.pos, d.is_ref);
+                        // A local without a name position is the shared cell of a parameter (const_infer.cpp).
+                        // It has the name of the parameter on purpose, so it gives no shadow warning.
+                        declare(d.name, Kind::Local, d.name_pos ? d.name_pos : d.pos, d.is_ref, d.name_pos != 0);
                     else
                         for (size_t i = 0; i < d.names.size(); ++i)
                             declare(d.names[i], Kind::Other, i < d.name_poss.size() ? d.name_poss[i] : d.pos, false);
