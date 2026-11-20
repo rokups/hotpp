@@ -9,6 +9,7 @@ add_executable(unit_runtime_tests
     coalesce_tests.cpp
     container_ops_tests.cpp
     deref_tests.cpp
+    optional_like_tests.cpp
     null_always_on_tests.cpp
     noexcept_result_tests.cpp
     runtime_checks_tests.cpp
