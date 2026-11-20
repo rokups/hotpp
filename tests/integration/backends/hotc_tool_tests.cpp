@@ -2023,6 +2023,18 @@ TEST(HotcTool, AotScriptsFileGivesTheUnitName)
         << log;
     const std::string registry = read_file(dir + "/out/hot_aot_registry.cpp");
     EXPECT_NE(registry.find("sub/unit_a"), std::string::npos) << registry;
+    // The progress line adds the extension of the input file to the unit name.
+    EXPECT_NE(log.find("[1/2] sub/unit_a.hot\n"), std::string::npos) << log;
+    EXPECT_NE(log.find("[2/2] b.hot\n"), std::string::npos) << log;
+}
+
+TEST(HotcTool, AotProgressLineHasTheExtensionOfACppInput)
+{
+    TestScratch scratch;
+    const std::string script = std::string(HOT_SOURCE_DIR) + "/tests/scripts/aot_cover_cpp.cpp";
+    std::string log;
+    EXPECT_EQ(run_hotc(cat({{"--aot", script, "--out-dir", scratch.file("hotc_progress_cpp")}, include_args()}), log), 0) << log;
+    EXPECT_NE(log.find("[1/1] aot_cover_cpp.cpp\n"), std::string::npos) << log;
 }
 
 TEST(HotcTool, AotJobsGiveTheSameFilesAndLog)
@@ -2056,7 +2068,7 @@ TEST(HotcTool, AotJobsGiveTheSameFilesAndLog)
         EXPECT_EQ(texts[0][f], texts[1][f]) << files[f];
     // The progress lines are in script order.
     size_t pos = 0;
-    for (const char* tag : {"[1/4]", "[2/4]", "[3/4]", "[4/4]"})
+    for (const char* tag : {"[1/4] s1.hot\n", "[2/4] s2.hot\n", "[3/4] s3.hot\n", "[4/4] s4.hot\n"})
     {
         const size_t at = logs[1].find(tag, pos);
         ASSERT_NE(at, std::string::npos) << tag << "\n" << logs[1];
