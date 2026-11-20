@@ -107,6 +107,21 @@ set_target_properties(integration_aot_friend_tests PROPERTIES ENABLE_EXPORTS ON)
 hot_gtest(integration_aot_friend_tests PROPERTIES LABELS aot)
 endif()
 
+# A script passes a field of a native value type to a native "T*" parameter (HOT-68).
+if(TARGET hot_backend)
+hot_add_scripts(TARGET aot_addrof_scripts AOT
+    SCRIPTS ${PROJECT_SOURCE_DIR}/tests/scripts/addrof_v1.hot
+    INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
+    DEPENDS ${HOT_HEADERS})
+add_executable(integration_aot_addrof_tests aot_addrof_tests.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+target_include_directories(integration_aot_addrof_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests ${PROJECT_SOURCE_DIR}/tests/engine)
+target_link_libraries(integration_aot_addrof_tests PRIVATE aot_addrof_scripts hot_backend GTest::gtest_main)
+set_target_properties(integration_aot_addrof_tests PROPERTIES ENABLE_EXPORTS ON)
+hot_gtest(integration_aot_addrof_tests PROPERTIES LABELS aot)
+endif()
+
 # Optimized AOT (MODE AOT OPTIMIZED): the same scripts, built with "hotc --aot-optimized". The
 # optimized libraries have no slots, so the loader cannot override or reload them.
 # aot_demo_opt runs the demo like aot_demo. The parity test compares the two outputs.

@@ -142,6 +142,33 @@ TEST(HandleLowering, ValueLvalueToNativeValuePointer)
     EXPECT_EQ(f.body("Weapon w = null; Nudge(w);"), "std::shared_ptr<Weapon> w = nullptr; Nudge(w);");
 }
 
+// The parameter spelling can lack the namespace that the script type has (HOT-68). A field of
+// such a type goes to the "T*" parameter too.
+TEST(HandleLowering, ValueLvalueToNativeValuePointerScopeDiffers)
+{
+    const TypeModel types = stub_model("Weapon", "std::shared_ptr<$T>");
+    Fixture f;
+    f.cx.types = &types;
+    std::string carrier;
+    f.cx.native_key = [](const ast::CallExpr&) { return std::string("Nudge"); };
+    f.cx.native_carrier = [&carrier](const std::string&, size_t arg, size_t) { return arg == 0 ? carrier : std::string(); };
+
+    carrier = "v:Vec3";
+    EXPECT_EQ(f.body("Urho3D.Vec3 v; Nudge(v);"), "Urho3D::Vec3 v = Urho3D::Vec3(); Nudge(hot::as_ptr(v));");
+    carrier = "v:Urho3D::Vec3";
+    EXPECT_EQ(f.body("Vec3 v; Nudge(v);"), "Vec3 v = Vec3(); Nudge(hot::as_ptr(v));");
+    // A different last name keeps the argument.
+    carrier = "v:Urho3D::Vec";
+    EXPECT_EQ(f.body("Vec3 v; Nudge(v);"), "Vec3 v = Vec3(); Nudge(v);");
+    // A name that ends with the same letters, but not after "::", keeps the argument.
+    carrier = "v:MyVec3";
+    EXPECT_EQ(f.body("Vec3 v; Nudge(v);"), "Vec3 v = Vec3(); Nudge(v);");
+    carrier = "v:Urho3D::MyVec3";
+    EXPECT_EQ(f.body("Vec3 v; Nudge(v);"), "Vec3 v = Vec3(); Nudge(v);");
+    carrier = "v:Vec3";
+    EXPECT_EQ(f.body("Urho3D.MyVec3 v; Nudge(v);"), "Urho3D::MyVec3 v = Urho3D::MyVec3(); Nudge(v);");
+}
+
 // A local "T*" goes to a native "T**" out-pointer parameter: "hot::as_out_ptr(p)".
 TEST(HandleLowering, LocalPointerToNativeOutPointer)
 {

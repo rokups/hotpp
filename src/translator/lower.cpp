@@ -2629,10 +2629,17 @@ struct Lowerer
                     if (ch != ' ' && ch != '\t')
                         core += ch;
                 const std::string want = r.substr(2);
+                // The parameter spelling and the script type can differ in the scope: libclang spells a
+                // parameter of a class in a namespace without the namespace ("Variant *"), and the
+                // script type has it ("Urho3D::Variant"). One name can end with the other after "::".
+                auto scope_suffix = [](const std::string& longer, const std::string& shorter)
+                {
+                    return longer.size() > shorter.size() + 2
+                        && longer.compare(longer.size() - shorter.size(), shorter.size(), shorter) == 0
+                        && longer.compare(longer.size() - shorter.size() - 2, 2, "::") == 0;
+                };
                 if (!core.empty() && core[0] != '$' && !is_optional(t) && !cx.types->is_handle(t)
-                    && (core == want || (core.find("::") == std::string::npos && want.size() > core.size() + 2
-                        && want.compare(want.size() - core.size(), core.size(), core) == 0
-                        && want.compare(want.size() - core.size() - 2, 2, "::") == 0)))
+                    && (core == want || scope_suffix(want, core) || scope_suffix(core, want)))
                 {
                     if (r[0] == 'x')
                         error(pos_of(*a),
