@@ -18,6 +18,7 @@
 #include <vector>
 
 namespace fs = std::filesystem;
+using hot::ls::BraceStyle;
 using hot::ls::format_hot;
 using hot::ls::FormatOptions;
 
@@ -226,6 +227,149 @@ void expect_stable(const std::string& text)
 
 } // namespace
 
+TEST(Formatter, StatementsOfABlockKeepTheLevelOfTheBlock)
+{
+    // The lines after "Combatant c = Combatant();" have too little indent. They go to the level of the block.
+    EXPECT_EQ(format_hot("class A {\n"
+                         "    void f() {\n"
+                         "        if (a) {\n"
+                         "            Combatant c = Combatant();\n"
+                         "        c.node = 1;\n"
+                         "        c.slot = 2;\n"
+                         "            d();\n"
+                         "        }\n"
+                         "    }\n"
+                         "}\n"),
+        "class A {\n"
+        "    void f() {\n"
+        "        if (a) {\n"
+        "            Combatant c = Combatant();\n"
+        "            c.node = 1;\n"
+        "            c.slot = 2;\n"
+        "            d();\n"
+        "        }\n"
+        "    }\n"
+        "}\n");
+    // The same after a lambda statement and after a lambda in the arguments of a call.
+    EXPECT_EQ(format_hot("class A {\n"
+                         "    void f() {\n"
+                         "        var g = (T x) => {\n"
+                         "        h();\n"
+                         "        };\n"
+                         "      a();\n"
+                         "      b();\n"
+                         "        s.Subscribe(r,\n"
+                         "        (int q) => {\n"
+                         "        body();\n"
+                         "        });\n"
+                         "      c();\n"
+                         "      d();\n"
+                         "    }\n"
+                         "}\n"),
+        "class A {\n"
+        "    void f() {\n"
+        "        var g = (T x) => {\n"
+        "            h();\n"
+        "        };\n"
+        "        a();\n"
+        "        b();\n"
+        "        s.Subscribe(r,\n"
+        "            (int q) => {\n"
+        "                body();\n"
+        "            });\n"
+        "        c();\n"
+        "        d();\n"
+        "    }\n"
+        "}\n");
+    // Two closing braces on one line: the line has the level of the first one.
+    EXPECT_EQ(format_hot("class A {\n    void f() {\n        g();\n}}\n"), "class A {\n    void f() {\n        g();\n    } }\n");
+    expect_stable("class A {\n"
+                         "    void f() {\n"
+                         "        if (a) {\n"
+                         "            Combatant c = Combatant();\n"
+                         "        c.node = 1;\n"
+                         "        c.slot = 2;\n"
+                         "            d();\n"
+                         "        }\n"
+                         "    }\n"
+                         "}\n");
+    expect_stable("class A {\n"
+        "    void f() {\n"
+        "        if (a) {\n"
+        "            Combatant c = Combatant();\n"
+        "            c.node = 1;\n"
+        "            c.slot = 2;\n"
+        "            d();\n"
+        "        }\n"
+        "    }\n"
+        "}\n");
+    expect_stable("class A {\n"
+                         "    void f() {\n"
+                         "        var g = (T x) => {\n"
+                         "        h();\n"
+                         "        };\n"
+                         "      a();\n"
+                         "      b();\n"
+                         "        s.Subscribe(r,\n"
+                         "        (int q) => {\n"
+                         "        body();\n"
+                         "        });\n"
+                         "      c();\n"
+                         "      d();\n"
+                         "    }\n"
+                         "}\n");
+    expect_stable("class A {\n"
+        "    void f() {\n"
+        "        var g = (T x) => {\n"
+        "            h();\n"
+        "        };\n"
+        "        a();\n"
+        "        b();\n"
+        "        s.Subscribe(r,\n"
+        "            (int q) => {\n"
+        "                body();\n"
+        "            });\n"
+        "        c();\n"
+        "        d();\n"
+        "    }\n"
+        "}\n");
+    expect_stable("class A {\n    void f() {\n        g();\n}}\n");
+}
+
+TEST(Formatter, ClosingBraceOfALambdaInArgumentsHasTheLevelOfItsLine)
+{
+    const auto check = [](const std::string& in, const std::string& want, const FormatOptions& o = FormatOptions())
+    {
+        EXPECT_EQ(format_hot(in, o), want);
+        expect_stable(in);
+        expect_stable(want);
+    };
+    const std::string head = "class A {\n    void f() {\n";
+    // The "}" of the lambda body has the level of "foo(", also when the line goes on.
+    check(head + "        foo(x, () => {\n            b();\n            }, 1);\n    }\n}\n",
+        head + "        foo(x, () => {\n            b();\n        }, 1);\n    }\n}\n");
+    check(head + "        foo(x, () => {\n        b();\n            });\n    }\n}\n",
+        head + "        foo(x, () => {\n            b();\n        });\n    }\n}\n");
+    check(head + "        foo(() => {\n            b();\n        }).x();\n        c([() => {\n        d();\n            }].x);\n    }\n}\n",
+        head + "        foo(() => {\n            b();\n        }).x();\n        c([() => {\n            d();\n        }].x);\n    }\n}\n");
+    // A nested lambda.
+    check(head + "        foo(a, () => {\n        bar(() => {\n        b();\n        }, 2);\n        }, 1);\n    }\n}\n",
+        head + "        foo(a, () => {\n            bar(() => {\n                b();\n            }, 2);\n        }, 1);\n    }\n}\n");
+    // The lambda starts on its own line.
+    check(head + "        s.Subscribe(r,\n        (int q) => {\n        body();\n        }, 1);\n    }\n}\n",
+        head + "        s.Subscribe(r,\n            (int q) => {\n                body();\n            }, 1);\n    }\n}\n");
+    // A normal block, else and lists keep the old rule.
+    check("class A {\n    void f() {\n        if (a) {\n        b();\n            } else {\n        c();\n        }\n    }\n}\n",
+        "class A {\n    void f() {\n        if (a) {\n            b();\n        } else {\n            c();\n        }\n    }\n}\n");
+    check(head + "        var l = new[] {\n        { 1 },\n            }, {\n        2 };\n        var m = [\n        { 1 },\n        { 2 }];\n    }\n}\n",
+        head + "        var l = new[] {\n            { 1 },\n        }, {\n            2 };\n        var m = [\n            { 1 },\n            { 2 }];\n    }\n}\n");
+    // Tabs.
+    FormatOptions tabs;
+    tabs.use_tabs = true;
+    check("class A {\n\tvoid f() {\n\t\tfoo(x, () => {\n\t\t\tb();\n\t\t\t}, 1);\n\t}\n}\n",
+        "class A {\n\tvoid f() {\n\t\tfoo(x, () => {\n\t\t\tb();\n\t\t}, 1);\n\t}\n}\n", tabs);
+}
+
 TEST(Formatter, TheTokenListSeesAChangeOfTheTokens)
 {
     using V = std::vector<std::string>;
@@ -325,6 +469,16 @@ TEST(Formatter, IsIdempotentAndKeepsTheTokensOfEveryExampleScript)
         EXPECT_EQ(format_hot(t, tabs), t) << "tabs: not idempotent: " << f;
         EXPECT_EQ(without_space(t), without_space(text)) << f;
         EXPECT_EQ(hot::ls::format_tokens(t), hot::ls::format_tokens(text)) << "tabs: tokens changed: " << f;
+        for (const BraceStyle b : {BraceStyle::SameLine, BraceStyle::NextLine})
+        {
+            FormatOptions o;
+            o.brace = b;
+            const std::string m = format_hot(text, o);
+            EXPECT_EQ(format_hot(m, o), m) << "brace " << int(b) << ": not idempotent: " << f;
+            EXPECT_EQ(without_space(m), without_space(text)) << "brace " << int(b) << ": " << f;
+            EXPECT_EQ(hot::ls::format_tokens(m), hot::ls::format_tokens(text))
+                << "brace " << int(b) << ": tokens changed: " << f;
+        }
     }
 }
 
@@ -336,8 +490,291 @@ TEST(Formatter, TheFormattedExampleScriptsAnalyzeTheSame)
     {
         const std::string text = read_file(f);
         const std::string once = format_hot(text);
-        EXPECT_EQ(facts_of(once, f, session), facts_of(text, f, session)) << "result changed: " << f;
+        const std::string facts = facts_of(text, f, session);
+        EXPECT_EQ(facts_of(once, f, session), facts) << "result changed: " << f;
+        for (const BraceStyle b : {BraceStyle::SameLine, BraceStyle::NextLine})
+        {
+            FormatOptions o;
+            o.brace = b;
+            EXPECT_EQ(facts_of(format_hot(text, o), f, session), facts) << "brace " << int(b) << ": " << f;
+        }
         ++same;
     }
     EXPECT_GT(same, 100u);
+}
+
+namespace
+{
+
+std::string with_brace(const std::string& text, BraceStyle b)
+{
+    FormatOptions o;
+    o.brace = b;
+    return format_hot(text, o);
+}
+
+// "same" has the "{" at the end of the head line, "next" has it on its own line. Each style gives
+// its form from both forms, a second format changes nothing, and Keep leaves both as they are.
+void expect_brace_forms(const std::string& same, const std::string& next)
+{
+    EXPECT_EQ(with_brace(next, BraceStyle::SameLine), same);
+    EXPECT_EQ(with_brace(same, BraceStyle::SameLine), same);
+    EXPECT_EQ(with_brace(same, BraceStyle::NextLine), next);
+    EXPECT_EQ(with_brace(next, BraceStyle::NextLine), next);
+    EXPECT_EQ(format_hot(same), same);
+    EXPECT_EQ(format_hot(next), next);
+}
+
+// The brace style does not move any brace of the text.
+void expect_braces_stay(const std::string& text)
+{
+    const std::string kept = format_hot(text);
+    EXPECT_EQ(with_brace(text, BraceStyle::SameLine), kept) << text;
+    EXPECT_EQ(with_brace(text, BraceStyle::NextLine), kept) << text;
+}
+
+} // namespace
+
+TEST(Formatter, BraceStyleMovesTheBraceOfEachBlockHead)
+{
+    expect_brace_forms("namespace N {\n"
+                       "    class A : B {\n"
+                       "        int P {\n"
+                       "            get {\n"
+                       "                return 1;\n"
+                       "            }\n"
+                       "            set {\n"
+                       "                x = value;\n"
+                       "            }\n"
+                       "        }\n"
+                       "        void f(int a) {\n"
+                       "            g();\n"
+                       "        }\n"
+                       "        class Inner {\n"
+                       "            int y;\n"
+                       "        }\n"
+                       "    }\n"
+                       "    struct S {\n"
+                       "        int x;\n"
+                       "    }\n"
+                       "    enum E {\n"
+                       "        One,\n"
+                       "        Two\n"
+                       "    }\n"
+                       "    class L<T> : List<T> {\n"
+                       "        int z;\n"
+                       "    }\n"
+                       "}\n",
+        "namespace N\n"
+        "{\n"
+        "    class A : B\n"
+        "    {\n"
+        "        int P\n"
+        "        {\n"
+        "            get\n"
+        "            {\n"
+        "                return 1;\n"
+        "            }\n"
+        "            set\n"
+        "            {\n"
+        "                x = value;\n"
+        "            }\n"
+        "        }\n"
+        "        void f(int a)\n"
+        "        {\n"
+        "            g();\n"
+        "        }\n"
+        "        class Inner\n"
+        "        {\n"
+        "            int y;\n"
+        "        }\n"
+        "    }\n"
+        "    struct S\n"
+        "    {\n"
+        "        int x;\n"
+        "    }\n"
+        "    enum E\n"
+        "    {\n"
+        "        One,\n"
+        "        Two\n"
+        "    }\n"
+        "    class L<T> : List<T>\n"
+        "    {\n"
+        "        int z;\n"
+        "    }\n"
+        "}\n");
+}
+
+TEST(Formatter, BraceStyleMovesTheBraceOfEachStatement)
+{
+    // The lexer reads ">>" as two ">": the "{" after a nested generic moves.
+    expect_brace_forms("class C<List<T>> {\n    int x;\n}\n", "class C<List<T>>\n{\n    int x;\n}\n");
+    expect_brace_forms("void f() {\n"
+                       "    if (a > 0) {\n"
+                       "        g();\n"
+                       "    } else if (a < 0) {\n"
+                       "        h();\n"
+                       "    } else {\n"
+                       "        k();\n"
+                       "    }\n"
+                       "    for (int i = 0; i < 3; ++i) {\n"
+                       "        g();\n"
+                       "    }\n"
+                       "    foreach (var x in xs) {\n"
+                       "        g();\n"
+                       "    }\n"
+                       "    while (a) {\n"
+                       "        g();\n"
+                       "    }\n"
+                       "    do {\n"
+                       "        g();\n"
+                       "    } while (a);\n"
+                       "    try {\n"
+                       "        g();\n"
+                       "    } catch (E e) {\n"
+                       "        h();\n"
+                       "    } finally {\n"
+                       "        k();\n"
+                       "    }\n"
+                       "    lock (o) {\n"
+                       "        g();\n"
+                       "    }\n"
+                       "    using (var r = R()) {\n"
+                       "        g();\n"
+                       "    }\n"
+                       "    var p = new Pt {\n"
+                       "        x = 1\n"
+                       "    };\n"
+                       "}\n",
+        "void f()\n"
+        "{\n"
+        "    if (a > 0)\n"
+        "    {\n"
+        "        g();\n"
+        "    }\n"
+        "    else if (a < 0)\n"
+        "    {\n"
+        "        h();\n"
+        "    }\n"
+        "    else\n"
+        "    {\n"
+        "        k();\n"
+        "    }\n"
+        "    for (int i = 0; i < 3; ++i)\n"
+        "    {\n"
+        "        g();\n"
+        "    }\n"
+        "    foreach (var x in xs)\n"
+        "    {\n"
+        "        g();\n"
+        "    }\n"
+        "    while (a)\n"
+        "    {\n"
+        "        g();\n"
+        "    }\n"
+        "    do\n"
+        "    {\n"
+        "        g();\n"
+        "    } while (a);\n"
+        "    try\n"
+        "    {\n"
+        "        g();\n"
+        "    }\n"
+        "    catch (E e)\n"
+        "    {\n"
+        "        h();\n"
+        "    }\n"
+        "    finally\n"
+        "    {\n"
+        "        k();\n"
+        "    }\n"
+        "    lock (o)\n"
+        "    {\n"
+        "        g();\n"
+        "    }\n"
+        "    using (var r = R())\n"
+        "    {\n"
+        "        g();\n"
+        "    }\n"
+        "    var p = new Pt\n"
+        "    {\n"
+        "        x = 1\n"
+        "    };\n"
+        "}\n");
+    // A switch: the "{" of "case 1:" stays.
+    expect_brace_forms("switch (a) {\n"
+                       "    case 1: {\n"
+                       "        g();\n"
+                       "        break;\n"
+                       "    }\n"
+                       "}\n",
+        "switch (a)\n"
+        "{\n"
+        "    case 1: {\n"
+        "        g();\n"
+        "        break;\n"
+        "    }\n"
+        "}\n");
+    // A block below a head without braces. The brace moves. The level of its "{" and "}" is not
+    // right, also with Keep: they get the level of the "if". The level logic is not in this test.
+    const std::string body = "if (a)\n    for (;;) {\n        g();\n    }\n";
+    const std::string next = with_brace(body, BraceStyle::NextLine);
+    const std::string same = with_brace(next, BraceStyle::SameLine);
+    EXPECT_NE(next.find("for (;;)\n"), std::string::npos) << next;
+    EXPECT_NE(same.find("for (;;) {\n"), std::string::npos) << same;
+    EXPECT_EQ(with_brace(next, BraceStyle::NextLine), next);
+    EXPECT_EQ(with_brace(same, BraceStyle::SameLine), same);
+    EXPECT_EQ(hot::ls::format_tokens(next), hot::ls::format_tokens(body));
+}
+
+TEST(Formatter, BraceStyleKeepsOtherBraces)
+{
+    // A lambda, an initializer, a block on one line, a free block, a brace in a call or in a string.
+    expect_braces_stay("var g = (int x) => {\n"
+                       "    h();\n"
+                       "};\n"
+                       "int[] a = {\n"
+                       "    1, 2\n"
+                       "};\n"
+                       "void f() { g(); }\n"
+                       "if (a)\n"
+                       "{ g(); }\n"
+                       "{\n"
+                       "    g();\n"
+                       "}\n"
+                       "s.Run(new Pt {\n"
+                       "    x = 1\n"
+                       "});\n"
+                       "string t = $\"${ new Pt {\n"
+                       "x = 1 } }\";\n"
+                       "return {\n"
+                       "    1\n"
+                       "};\n");
+    // A comment between the head and the "{" keeps the "{" in its place.
+    expect_braces_stay("if (a) // c\n"
+                       "{\n"
+                       "    g();\n"
+                       "}\n"
+                       "if (a) /* c */ {\n"
+                       "    g();\n"
+                       "}\n");
+    // A comment between "}" and "else" keeps the "else" in its place.
+    EXPECT_EQ(with_brace("if (a)\n{\n    g();\n}\n// c\nelse\n{\n    h();\n}\n", BraceStyle::SameLine),
+        "if (a) {\n    g();\n}\n// c\nelse {\n    h();\n}\n");
+    // An unmatched "{" stays.
+    expect_braces_stay("void f()\n{\n    g();\n");
+}
+
+TEST(Formatter, BraceStyleMapsTheLines)
+{
+    FormatOptions next;
+    next.brace = BraceStyle::NextLine;
+    auto r = hot::ls::format_hot_map("if (a) {\n    g();\n}\n", next);
+    EXPECT_EQ(r.text, "if (a)\n{\n    g();\n}\n");
+    EXPECT_EQ(r.line_map, (std::vector<int>{0, 2, 3, -1}));
+    FormatOptions same;
+    same.brace = BraceStyle::SameLine;
+    r = hot::ls::format_hot_map("if (a)\n\n{\n    g();\n}\n", same);
+    EXPECT_EQ(r.text, "if (a) {\n    g();\n}\n");
+    EXPECT_EQ(r.line_map, (std::vector<int>{0, -1, -1, 1, 2, -1}));
 }
