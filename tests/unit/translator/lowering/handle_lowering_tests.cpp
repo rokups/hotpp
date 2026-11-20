@@ -160,6 +160,13 @@ TEST(HandleLowering, ValueLvalueToNativeValuePointerScopeDiffers)
     // A different last name keeps the argument.
     carrier = "v:Urho3D::Vec";
     EXPECT_EQ(f.body("Vec3 v; Nudge(v);"), "Vec3 v = Vec3(); Nudge(v);");
+    // A name that ends with the same letters, but not after "::", keeps the argument.
+    carrier = "v:MyVec3";
+    EXPECT_EQ(f.body("Vec3 v; Nudge(v);"), "Vec3 v = Vec3(); Nudge(v);");
+    carrier = "v:Urho3D::MyVec3";
+    EXPECT_EQ(f.body("Vec3 v; Nudge(v);"), "Vec3 v = Vec3(); Nudge(v);");
+    carrier = "v:Vec3";
+    EXPECT_EQ(f.body("Urho3D.MyVec3 v; Nudge(v);"), "Urho3D::MyVec3 v = Urho3D::MyVec3(); Nudge(v);");
 }
 
 // A local "T*" goes to a native "T**" out-pointer parameter: "hot::as_out_ptr(p)".
