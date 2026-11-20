@@ -168,6 +168,64 @@ TEST(Formatter, IndentFollowsBracesAndContinuationLinesGetOneMoreLevel)
     EXPECT_EQ(format_hot("class A {\nint x;\n}\n", two), "class A {\n  int x;\n}\n");
 }
 
+TEST(Formatter, StatementsOfABlockKeepTheLevelOfTheBlock)
+{
+    // The lines after "Combatant c = Combatant();" have too little indent. They go to the level of the block.
+    EXPECT_EQ(format_hot("class A {\n"
+                         "    void f() {\n"
+                         "        if (a) {\n"
+                         "            Combatant c = Combatant();\n"
+                         "        c.node = 1;\n"
+                         "        c.slot = 2;\n"
+                         "            d();\n"
+                         "        }\n"
+                         "    }\n"
+                         "}\n"),
+        "class A {\n"
+        "    void f() {\n"
+        "        if (a) {\n"
+        "            Combatant c = Combatant();\n"
+        "            c.node = 1;\n"
+        "            c.slot = 2;\n"
+        "            d();\n"
+        "        }\n"
+        "    }\n"
+        "}\n");
+    // The same after a lambda statement and after a lambda in the arguments of a call.
+    EXPECT_EQ(format_hot("class A {\n"
+                         "    void f() {\n"
+                         "        var g = (T x) => {\n"
+                         "        h();\n"
+                         "        };\n"
+                         "      a();\n"
+                         "      b();\n"
+                         "        s.Subscribe(r,\n"
+                         "        (int q) => {\n"
+                         "        body();\n"
+                         "        });\n"
+                         "      c();\n"
+                         "      d();\n"
+                         "    }\n"
+                         "}\n"),
+        "class A {\n"
+        "    void f() {\n"
+        "        var g = (T x) => {\n"
+        "            h();\n"
+        "        };\n"
+        "        a();\n"
+        "        b();\n"
+        "        s.Subscribe(r,\n"
+        "            (int q) => {\n"
+        "                body();\n"
+        "            });\n"
+        "        c();\n"
+        "        d();\n"
+        "    }\n"
+        "}\n");
+    // Two closing braces on one line: the line has the level of the first one.
+    EXPECT_EQ(format_hot("class A {\n    void f() {\n        g();\n}}\n"), "class A {\n    void f() {\n        g();\n    } }\n");
+}
+
 TEST(Formatter, KeepsTheBracesCommentsAndStringsOfTheAuthor)
 {
     // An Allman brace stays on its own line. A comment keeps its place. A string keeps every byte.

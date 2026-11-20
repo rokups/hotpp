@@ -546,6 +546,8 @@ FormatResult Formatter::run()
     int out_line = 0;
     size_t in_line = 0; // the input line where the next gap starts
     int last_base = 0;
+    int last_level = 0;
+    bool last_in_bracket = false;
     bool label_line = false; // the line has started with "case" or "default"
     auto count_nl = [](sv x)
     {
@@ -613,8 +615,13 @@ FormatResult Formatter::run()
                     level = (top ? top->content : 0) + (in_case ? 1 : 0);
                     base = level;
                 }
+                // "})" and "}}": the line has the level of the line of the first "{" that it closes.
+                if (k > 1 && stack_.back().ch == '{')
+                    level = std::max(level, stack_.back().base);
             }
             last_base = base;
+            last_level = level;
+            last_in_bracket = top && top->ch != '{';
             out += indent(level);
         }
         else
@@ -660,6 +667,11 @@ FormatResult Formatter::run()
                 b.ch = x[0];
                 b.base = last_base;
                 b.content = last_base + 1;
+                if (x == "{" && last_in_bracket && !stack_.empty() && stack_.back().ch != '{')
+                {
+                    b.base = last_level;
+                    b.content = last_level + 1;
+                }
                 if (x == "(")
                 {
                     const size_t p = last_sig;
