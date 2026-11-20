@@ -1,0 +1,24 @@
+// Copyright (c) 2026 the Hot++ project.
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
+
+// A script class passes a field of a native value type to a native "T*" parameter of a method of
+// the native base. The class of the base is in a namespace, so the parameter spelling has no scope.
+using "VarHost.h";
+using Urho3D;
+
+class Panel : VarHost {
+    Variant value;
+
+    void BindPlain() {
+        BindDataModelVariant("a", value);
+    }
+
+    void BindThis() {
+        BindDataModelVariant("b", this.value);
+    }
+
+    void SetValue(int n) {
+        value = Variant(n);
+    }
+}

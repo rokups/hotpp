@@ -240,7 +240,7 @@ A parameter `ref T x` or `out T x` is a reference. A parameter `in T x` is a con
 
 An `out T x` parameter must have a value on every path. The body assigns it before each `return` and before the end of the body. A loop can run zero times, so an assignment in a loop does not count after the loop. The error is `out parameter "x" is not assigned on every path`. A read before the first assignment gives `out parameter "x" is read before it is assigned`. A parameter `[byval] T x` is a copy. `T& x` is an error: write `ref T x`.
 
-There is no prefix `&` (address-of) in `.hot`. Pass a value lvalue `x` to a native `T*` parameter as `f(x)`: the call writes `hot::as_ptr(x)`. `*e` reads through an iterator, an `std.optional`, a smart pointer or a handle. [Native interop](native-interop.html) shows the forms for a handle.
+There is no prefix `&` (address-of) in `.hot`. Pass a value lvalue `x` to a native `T*` parameter as `f(x)`: the call writes `hot::as_ptr(x)`. This also holds for a field, `this.x` and a native type in a namespace. The pointer is the address of the real field, not of a copy. `*e` reads through an iterator, an `std.optional`, a smart pointer or a handle. [Native interop](native-interop.html) shows the forms for a handle.
 
 `ref r = x;` makes a reference local. `var r = x;` copies.
 
