@@ -89,7 +89,7 @@ TEST(SourceMapTranslation, RewrittenTypeMapsToTheStartOfTheOtherRange)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     const int g = line_of(r.cpp, "    const int64_t total = hits + 2;");
     ASSERT_GT(g, 0);
-    // "long" (col 9 to 12) is "int64_t" (col 29 to 35): the lengths differ. The "const" has no segment.
+    // "long" (col 9 to 12) is "int64_t" (col 11 to 17): the lengths differ. The "const" has no segment.
     EXPECT_EQ(r.source_map.map_to_generated(5, 9), (SourcePos{g, 11}));
     EXPECT_EQ(r.source_map.map_to_generated(5, 12), (SourcePos{g, 11}));
     EXPECT_EQ(r.source_map.map_to_script(g, 11), (SourcePos{5, 9}));
@@ -103,7 +103,7 @@ TEST(SourceMapTranslation, TextWithoutSegmentGivesNoValue)
     const int g = line_of(r.cpp, "    const int64_t total = hits + 2;");
     ASSERT_GT(g, 0);
     // The operator "+" and the spaces have no segment.
-    EXPECT_FALSE(r.source_map.map_to_script(g, 50));
+    EXPECT_FALSE(r.source_map.map_to_script(g, 32));
     EXPECT_FALSE(r.source_map.map_to_script(g, 4));
     EXPECT_FALSE(r.source_map.map_to_script(g, 1000));
     EXPECT_FALSE(r.source_map.map_to_script(1, 1)); // the header comment

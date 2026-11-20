@@ -203,7 +203,8 @@ TEST(LanguageServer, ClangdTypeErrorIsAtTheScriptLine)
 }
 
 // The generated C++ is not the script text. The indentation checks of clang and of clang-tidy
-// must not report the generated text. A deliberate type error makes clangd publish the list.
+// must not report the generated text. The lambda has no trace lines: its braceless body is
+// checked as written. A deliberate type error makes clangd publish the list.
 TEST(LanguageServer, ClangdIndentationChecksStaySilent)
 {
     REQUIRE_CLANGD();
@@ -225,9 +226,11 @@ TEST(LanguageServer, ClangdIndentationChecksStaySilent)
         "        else {\n"
         "            this.hp = 2.0;\n"
         "        }\n"
-        "        if (amount > 3.0)\n"
-        "            this.hp = 3.0;\n"
-        "        this.hp = this.hp + 1.0;\n"
+        "        var f = (int n) => {\n"
+        "            if (n > 3)\n"
+        "                this.hp = 3.0;\n"
+        "            this.hp = this.hp + 1.0;\n"
+        "        };\n"
         "    }\n"
         "}\n";
     Session s(true, text, nullptr, "Checks: 'readability-misleading-indentation'\n");
