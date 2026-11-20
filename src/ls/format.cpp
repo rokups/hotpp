@@ -680,9 +680,17 @@ FormatResult Formatter::run()
                 const bool in_case = top && top->in_case && !is_label;
                 const size_t p = last_sig;
                 bool pending = false;
-                if (k == 0 && p != npos && !is_p(i, "{") && !is_comment(i))
-                    pending = (is_p(p, ")") && ctrl_close_[p]) || is_w(p, "else") || is_w(p, "do");
-                if (k == 0 && (pending || op_continues(i, p)))
+                bool head = false; // a "{" below a head without braces has the level of the head line
+                if (k == 0 && p != npos && !is_comment(i))
+                {
+                    head = (is_p(p, ")") && ctrl_close_[p]) || is_w(p, "else") || is_w(p, "do");
+                    pending = head && !is_p(i, "{");
+                }
+                if (head && is_p(i, "{"))
+                {
+                    level = base = last_base;
+                }
+                else if (k == 0 && (pending || op_continues(i, p)))
                 {
                     level = last_base + 1;
                     base = pending ? level : last_base;
@@ -693,7 +701,7 @@ FormatResult Formatter::run()
                     base = level;
                 }
                 // "})" and "}}": the line has the level of the line of the first "{" that it closes.
-                if (k > 1 && stack_.back().ch == '{')
+                if (k > 0 && stack_.back().ch == '{')
                     level = std::max(level, stack_.back().base);
             }
             last_base = base;

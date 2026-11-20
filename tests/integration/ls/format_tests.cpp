@@ -227,6 +227,50 @@ void expect_stable(const std::string& text)
 
 } // namespace
 
+TEST(Formatter, BlockBelowABracelessHeadTakesTheLevelOfItsOwnLine)
+{
+    const std::string expected = "class A {\n"
+                                 "    void f() {\n"
+                                 "        if (a)\n"
+                                 "            for (;;) {\n"
+                                 "                d();\n"
+                                 "            }\n"
+                                 "        e();\n"
+                                 "    }\n"
+                                 "}\n";
+    const std::string once = format_hot("class A {\n"
+                                        "    void f() {\n"
+                                        "        if (a)\n"
+                                        "            for (;;) {\n"
+                                        "                d();\n"
+                                        "            }\n"
+                                        "        e();\n"
+                                        "    }\n"
+                                        "}\n");
+    EXPECT_EQ(once, expected);
+    EXPECT_EQ(format_hot(once), once);
+    // A brace on its own line below the head.
+    const std::string own = format_hot("class A {\n"
+                                       "    void f() {\n"
+                                       "        while (a)\n"
+                                       "            if (b)\n"
+                                       "            {\n"
+                                       "                d();\n"
+                                       "            }\n"
+                                       "    }\n"
+                                       "}\n");
+    EXPECT_EQ(own, "class A {\n"
+                   "    void f() {\n"
+                   "        while (a)\n"
+                   "            if (b)\n"
+                   "            {\n"
+                   "                d();\n"
+                   "            }\n"
+                   "    }\n"
+                   "}\n");
+    EXPECT_EQ(format_hot(own), own);
+}
+
 TEST(Formatter, StatementsOfABlockKeepTheLevelOfTheBlock)
 {
     // The lines after "Combatant c = Combatant();" have too little indent. They go to the level of the block.
