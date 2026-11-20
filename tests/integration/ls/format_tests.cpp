@@ -700,6 +700,14 @@ TEST(Formatter, ElseAndCatchAfterABlockOfANestedHeadKeepTheLevel)
              "    else {\n"
              "        y;\n"
              "    }\n"
+             "}\n",
+             // A head after a block comment on the same line.
+             "void f() {\n"
+             "    if (x)\n"
+             "        y();\n"
+             "    /* c */ if (a)\n"
+             "    {\n"
+             "    }\n"
              "}\n"})
     {
         EXPECT_EQ(format_hot(unindent(good)), good);

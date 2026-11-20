@@ -621,7 +621,7 @@ FormatResult Formatter::run()
     size_t in_line = 0; // the input line where the next gap starts
     int last_base = 0;
     int last_level = 0;
-    int sig_base = 0; // the base of the last line that starts with no comment
+    int sig_base = 0; // the base of the line of last_sig
     bool last_in_bracket = false;
     bool label_line = false; // the line has started with "case" or "default"
     auto count_nl = [](sv x)
@@ -723,8 +723,6 @@ FormatResult Formatter::run()
             }
             last_base = base;
             last_level = level;
-            if (!is_comment(i))
-                sig_base = base;
             last_in_bracket = top && top->ch != '{';
             out += indent(level);
         }
@@ -797,7 +795,10 @@ FormatResult Formatter::run()
             }
         }
         if (!is_comment(i))
+        {
             last_sig = i;
+            sig_base = last_base;
+        }
     }
     out += eol;
     return res;
