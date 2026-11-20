@@ -23,6 +23,10 @@ class Panel : VarHost {
         BindDataModelVariant("c", &value);
         KeepRaw(&value);
         KeepAny(&value);
+    }
+
+    // A local with an initializer: the marker is a write, so the local is not const.
+    void KeepLocal() {
         bool b = true;
         KeepRaw(&b);
     }

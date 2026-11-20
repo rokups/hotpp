@@ -68,6 +68,9 @@ TEST_F(AotAddrOf, MarkerReachesKnownVoidAndTemplateParameters)
     EXPECT_EQ(h.Bound(), field);
     EXPECT_EQ(h.Raw(), static_cast<void*>(field));
     EXPECT_EQ(h.Any(), static_cast<void*>(field));
+    call0("Panel::KeepLocal", h);
+    EXPECT_NE(h.Raw(), nullptr);
+    EXPECT_NE(h.Raw(), static_cast<void*>(field));
     delete &h;
 }
 
