@@ -686,7 +686,10 @@ FormatResult Formatter::run()
                     head = (is_p(p, ")") && ctrl_close_[p]) || is_w(p, "else") || is_w(p, "do");
                     pending = head && !is_p(i, "{");
                 }
-                if (head && is_p(i, "{"))
+                // An "else" or "catch" on its own line has the level of the "}" line before it.
+                const bool after_close = k == 0 && p != npos && is_p(p, "}")
+                    && (is_w(i, "else") || is_w(i, "catch") || is_w(i, "finally"));
+                if ((head && is_p(i, "{")) || after_close)
                 {
                     level = base = last_base;
                 }
@@ -702,7 +705,7 @@ FormatResult Formatter::run()
                 }
                 // "})" and "}}": the line has the level of the line of the first "{" that it closes.
                 if (k > 0 && stack_.back().ch == '{')
-                    level = std::max(level, stack_.back().base);
+                    level = base = std::max(level, stack_.back().base);
             }
             last_base = base;
             last_level = level;

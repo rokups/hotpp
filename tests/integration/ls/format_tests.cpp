@@ -579,6 +579,97 @@ void expect_braces_stay(const std::string& text)
 
 } // namespace
 
+namespace
+{
+
+std::string unindent(const std::string& text)
+{
+    std::string r;
+    bool start = true;
+    for (char c : text)
+    {
+        if (start && c == ' ')
+            continue;
+        start = c == '\n';
+        r += c;
+    }
+    return r;
+}
+
+// "good" is the Keep layout. The same text without indent must give it. The NextLine layout of both is the same.
+void expect_nested_head(const std::string& good)
+{
+    const std::string bad = unindent(good);
+    EXPECT_EQ(format_hot(bad), good);
+    EXPECT_EQ(format_hot(good), good);
+    const std::string next = with_brace(good, BraceStyle::NextLine);
+    EXPECT_EQ(with_brace(bad, BraceStyle::NextLine), next);
+    EXPECT_EQ(with_brace(next, BraceStyle::NextLine), next);
+    EXPECT_EQ(format_hot(next), next);
+}
+
+} // namespace
+
+TEST(Formatter, ElseAndCatchAfterABlockOfANestedHeadKeepTheLevel)
+{
+    expect_nested_head("void f() {\n"
+                       "    if (a)\n"
+                       "        if (b) {\n"
+                       "            x;\n"
+                       "        } else {\n"
+                       "            y;\n"
+                       "        }\n"
+                       "}\n");
+    expect_nested_head("void f() {\n"
+                       "    if (a)\n"
+                       "        if (b) {\n"
+                       "            x;\n"
+                       "        } else\n"
+                       "            y();\n"
+                       "}\n");
+    expect_nested_head("void f() {\n"
+                       "    if (a)\n"
+                       "        if (b) {\n"
+                       "            x;\n"
+                       "        } else if (c) {\n"
+                       "            y;\n"
+                       "        }\n"
+                       "}\n");
+    expect_nested_head("void f() {\n"
+                       "    if (a)\n"
+                       "        try {\n"
+                       "            x;\n"
+                       "        } catch {\n"
+                       "            y;\n"
+                       "        }\n"
+                       "}\n");
+    // The else on its own line below a brace on its own line.
+    expect_nested_head("void f() {\n"
+                       "    if (a)\n"
+                       "        if (b)\n"
+                       "        {\n"
+                       "            x;\n"
+                       "        }\n"
+                       "        else\n"
+                       "        {\n"
+                       "            y;\n"
+                       "        }\n"
+                       "}\n");
+    // Tabs.
+    FormatOptions o;
+    o.use_tabs = true;
+    const std::string tabs = "void f() {\n"
+                             "\tif (a)\n"
+                             "\t\tif (b) {\n"
+                             "\t\t\tx;\n"
+                             "\t\t} else {\n"
+                             "\t\t\ty;\n"
+                             "\t\t}\n"
+                             "}\n";
+    EXPECT_EQ(format_hot(unindent(tabs), o), tabs);
+    EXPECT_EQ(format_hot(tabs, o), tabs);
+}
+
 TEST(Formatter, BraceStyleMovesTheBraceOfEachBlockHead)
 {
     expect_brace_forms("namespace N {\n"
