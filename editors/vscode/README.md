@@ -62,8 +62,11 @@ Put the server arguments in `hot.server.args`. For example:
 | `--private-clangd-dir` | The clangd child keeps its own index in `.cache/hot/clangd/.cache/clangd/index/`. It does not share the index of the clangd extension. |
 | `--clangd-log file` | The stderr of clangd, with `--log=info`. |
 | `--no-rename-host-headers` | Rename does not edit a header of the host (in an include dir and a source dir of the build) outside the workspace folders. |
+| `--brace-style keep\|same-line\|next-line` | The place of the `{` of a block in Format Document. `keep` (the default) does not move a brace. `same-line` puts it at the end of the head line. `next-line` puts it on its own line. |
 
-The client can also give `includeDirs`, `clangd`, `compileCommandsDir`, `privateClangdDir`, `renameHostHeaders` and `preludes` in `initializationOptions`.
+For example, `"hot.server.args": ["--stdio", "--brace-style", "next-line"]` puts each moved `{` on its own line.
+
+The client can also give `includeDirs`, `clangd`, `compileCommandsDir`, `privateClangdDir`, `renameHostHeaders`, `braceStyle` and `preludes` in `initializationOptions`.
 `preludes` is a list of prelude files for the scripts whose host has no `preludes`.
 The extension expands `${workspaceFolder}` in `hot.server.path` and in `hot.server.args`.
 It is the path of the first workspace folder. For example: `"-I", "${workspaceFolder}/include"`.

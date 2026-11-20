@@ -274,11 +274,26 @@ Environment variables:
 
 The translator session of the server keeps the parsed imports in memory (`TranslateOptions::import_cache`, 256 entries, least recently used first). All analyses of the server (open scripts, probes and the background index) share one session. The key of an entry is the file, the unit, the base position, the array template, the std namespace and the hash of the text. An edit of an imported script changes the hash, so that script is parsed again. The other imports of the same importer hit the cache. `hot/indexStats` has the counters `importCacheHits` and `importCacheMisses` in `lastUpdate`. A test checks that the results with the cache are the same as without it.
 
+## Brace placement
+
+The brace style is the argument `--brace-style keep|same-line|next-line` or the setting `braceStyle` in `initializationOptions`. The setting wins over the argument. The default is `keep`. A bad argument stops the server with an error. A bad setting is ignored with a log message. `same-line` puts a moved `{` at the end of the head line. `next-line` puts it on its own line, with one new line before it. The core is `BraceStyle` in `src/ls/format.h`.
+
+A `{` moves when all of these are true:
+
+- The innermost open bracket is a `{`, or there is no open bracket.
+- The token before the `{` is `)`, `>` or a word that is not `return`, `case`, `throw`, `in`, `new`, `await`, `yield`, `is` or `as`.
+- No comment is between that token and the `{`.
+- The matching `}` is on a different line.
+
+This covers the blocks of `class`, `struct`, `enum`, `namespace`, functions, properties, `get`, `set`, `if`, `else`, `for`, `foreach`, `while`, `do`, `switch`, `try`, `catch`, `finally`, `lock` and `using`. An initializer `new Pt {` also moves. An `else`, `catch` or `finally` right after the `}` of a moved block moves with it: `} else {` in `same-line`, `else` on its own line in `next-line`. A comment between the `}` and the word keeps the word in its place. The `while` of a `do` block stays.
+
+A `{` stays in these cases: a block on one line (`{ }`), a `{` after `=>` (all lambdas), a `{` after `=`, `,`, `(`, `[`, `:`, `;`, `{` or `}` (an initializer, a free block, `case 1: {`), a `{` inside `(` or `[`, a `{` without a matching `}` and a brace in `${...}` of a string. The class of a brace does not depend on the line breaks, so a second format moves nothing. A range format moves a brace only when all the lines of the move are in the range: the head line and the line of the `{`, or the `}` and the `else`. The edit never changes a line outside the range.
+
 ## Formatter rules
 
 The formatter of `hot-ls` works on a token stream. It keeps the comments and the literals as tokens. It does not parse the script. The code is `src/ls/format.cpp`. The function `format_hot` is pure. It is idempotent and it never changes a token: only white space changes. Tests check this on all example scripts.
 
-- The line breaks stay as the author put them. The formatter does not move a brace and does not join or split a line.
+- The line breaks stay as the author put them. With the brace style `keep` (the default), the formatter does not move a brace and does not join or split a line. The other styles move a brace only (see "Brace placement").
 - The indent follows the open `{`, `(` and `[`. A line in open parentheses or brackets gets one more level. A line that continues an expression (after `=`, `+`, `&&`, `.` ... or before `&&`, `?`, `.` ...) gets one more level. The body of an `if`, `for`, `while`, `else` or `do` on its own line gets one more level. A `{` that opens in open parentheses (a lambda body in call arguments) has its body one level inside the line of the `{`. A line that starts with the `}` of that body has the level of the line of the `{`, also when the line goes on: `}, 1);`, `})`, `}].x`. A line that starts with `}}` has the level of the first `}`. A `case` or `default` label is one level inside the `switch`. Its body is one more level. The width is the `tabSize` of the request (default 4). `insertSpaces: false` gives one tab for each level.
 - One space goes around a binary operator (`=`, `==`, `+`, `-`, `/`, `&&`, `||`, `=>`, `??` and the compound assignments). `*`, `&` and `&&` get it when the author used the same spacing on both sides. A unary operator takes no space. `<`, `>`, `?` and `:` keep the spacing of the author, because they can be a generic, a nullable type or a label.
 - No space before `,` and `;`. One space after them. No space inside `( )` and `[ ]`. No space before the `(` of a call. One space between `if`, `for`, `foreach`, `while`, `switch`, `catch`, `using`, `lock`, `return` and the `(`. No space around `.`, `?.` and `::`. No space in `operator+(`.

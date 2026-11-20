@@ -2322,6 +2322,12 @@ json Server::on_initialize(const json& p)
             opt_.private_clangd_dir = o["privateClangdDir"].get<bool>();
         if (o.contains("importCache") && o["importCache"].is_boolean())
             opt_.import_cache = o["importCache"].get<bool>();
+        if (o.contains("braceStyle"))
+        {
+            const json& b = o["braceStyle"];
+            if (!b.is_string() || !parse_brace_style(b.get<std::string>(), opt_.brace_style))
+                log_info("ignored braceStyle " + b.dump() + ": use \"keep\", \"same-line\" or \"next-line\"");
+        }
         if (o.contains("nativeSemanticTokens") && o["nativeSemanticTokens"].is_boolean())
             opt_.native_semantic_tokens = o["nativeSemanticTokens"].get<bool>();
         if (o.contains("renameHostHeaders") && o["renameHostHeaders"].is_boolean())
@@ -4951,10 +4957,11 @@ json Server::on_signature_help(const Doc& d, const json& p)
 }
 
 // The options of a format request. The formatter has its own default for the indent width.
-static FormatOptions format_options(const json& p)
+static FormatOptions format_options(const json& p, BraceStyle brace = BraceStyle::Keep)
 {
     const json o = p.value("options", json::object());
     FormatOptions f;
+    f.brace = brace;
     f.indent_width = std::max(o.value("tabSize", 4), 1);
     f.use_tabs = !o.value("insertSpaces", true);
     return f;
@@ -4963,7 +4970,7 @@ static FormatOptions format_options(const json& p)
 // The format of the whole script (see format.h). The reply is one edit.
 json Server::on_formatting(const Doc& d, const json& p)
 {
-    const std::string formatted = format_hot(d.text.s, format_options(p));
+    const std::string formatted = format_hot(d.text.s, format_options(p, opt_.brace_style));
     if (formatted == d.text.s)
         return json::array();
     const int last = static_cast<int>(d.text.starts.size()) - 1;
@@ -4984,7 +4991,10 @@ json Server::on_range_formatting(const Doc& d, const json& p)
         --last;
     first = std::clamp(first, 0, lines - 1);
     last = std::clamp(last, first, lines - 1);
-    const FormatResult f = format_hot_map(t.s, format_options(p));
+    FormatOptions fo = format_options(p, opt_.brace_style);
+    fo.first_line = first;
+    fo.last_line = last;
+    const FormatResult f = format_hot_map(t.s, fo);
     if (f.text == t.s)
         return json::array();
     // The lines of the output.
@@ -5004,6 +5014,14 @@ json Server::on_range_formatting(const Doc& d, const json& p)
         lo = lo < 0 ? m : std::min(lo, m);
         hi = std::max(hi, m);
     }
+    // A "{" that moves to its own line adds an output line with no input line. The edit holds the
+    // output lines up to the line of the first mapped input line after the range.
+    for (int k = last + 1; lo >= 0 && k < static_cast<int>(f.line_map.size()); ++k)
+        if (const int m = f.line_map[static_cast<size_t>(k)]; m >= 0)
+        {
+            hi = std::max(hi, m - 1);
+            break;
+        }
     std::string text;
     for (int k = lo; lo >= 0 && k <= hi && k < static_cast<int>(out.size()); ++k)
         text += out[static_cast<size_t>(k)];
@@ -9466,7 +9484,7 @@ const char* usage_text()
     return "usage: hot-ls [--stdio] [--clangd path] [-I dir]... [--resource-dir dir] [--cxxflag flag]...\n"
            "              [--compile-commands-dir dir] [--private-clangd-dir] [--index-dir dir]\n"
            "              [--hosts-dir dir] [--clangd-log file] [--no-native-tokens]\n"
-           "              [--no-rename-host-headers]\n"
+           "              [--no-rename-host-headers] [--brace-style keep|same-line|next-line]\n"
            "  --clangd path      the clangd binary (default: clangd from PATH). \"\" turns clangd off.\n"
            "  -I dir             an include dir for the script imports and for clangd.\n"
            "  --compile-commands-dir dir\n"
@@ -9483,7 +9501,23 @@ const char* usage_text()
            "  --no-native-tokens\n"
            "                     the semantic tokens have no tokens for native (C++) names.\n"
            "  --no-rename-host-headers\n"
-           "                     a native rename does not edit a header in an include dir of the host.\n";
+           "                     a native rename does not edit a header in an include dir of the host.\n"
+           "  --brace-style keep|same-line|next-line\n"
+           "                     the place of the \"{\" of a block in a document format (default: keep).\n"
+           "                     The braceStyle of the initializationOptions overrides it.\n";
+}
+
+bool parse_brace_style(const std::string& name, BraceStyle& out)
+{
+    if (name == "keep")
+        out = BraceStyle::Keep;
+    else if (name == "same-line")
+        out = BraceStyle::SameLine;
+    else if (name == "next-line")
+        out = BraceStyle::NextLine;
+    else
+        return false;
+    return true;
 }
 
 bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, std::string& error)
@@ -9565,6 +9599,17 @@ bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, s
             if (!next(n))
                 return false;
             out.index_threads = std::atoi(n.c_str());
+        }
+        else if (a == "--brace-style")
+        {
+            std::string n;
+            if (!next(n))
+                return false;
+            if (!parse_brace_style(n, out.brace_style))
+            {
+                error = "bad value of --brace-style: " + n + " (use keep, same-line or next-line)";
+                return false;
+            }
         }
         else if (a == "--index-dir")
         {

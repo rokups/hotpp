@@ -11,6 +11,8 @@
 // script and the generated C++. The diag rewriter changes generated names to script names.
 #pragma once
 
+#include "format.h"
+
 #include <functional>
 #include <optional>
 #include <string>
@@ -85,6 +87,8 @@ struct ServerOptions
     // Default true: the translator keeps the parsed imports in memory (TranslateOptions::import_cache).
     // The environment variable HOT_LS_IMPORT_CACHE=0|1 overrides it.
     bool import_cache = true;
+    // The brace style of textDocument/formatting (--brace-style, "braceStyle" in initializationOptions).
+    BraceStyle brace_style = BraceStyle::Keep;
     // False: no background index (--no-background-index). Tests that count analyses use it.
     bool background_index = true;
     // A test hook of the script rename. It gets the stage name "before_places" or "before_final".
@@ -112,6 +116,9 @@ std::optional<ScriptLine> line_directive_target(const std::string& cpp, int line
 
 // Reads the command line of hot-ls (without argv[0]). Gives false and a message on an error.
 bool parse_arguments(const std::vector<std::string>& args, ServerOptions& out, std::string& error);
+
+// The brace style of a name: "keep", "same-line" or "next-line". False for another name.
+bool parse_brace_style(const std::string& name, BraceStyle& out);
 
 // The text of the usage message.
 const char* usage_text();
