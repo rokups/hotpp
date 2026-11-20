@@ -129,7 +129,7 @@ An AOT build has no loader, no reload and no Clang. `hotc --aot` (the AOT mode) 
 hotc --aot player.hot boss.hot --out-dir gen -I include -I tests/engine
 ```
 
-For many scripts, put one script on each line of a list file and use `--scripts-file list.txt`. A line is `PATH` or `PATH<TAB>UNIT_NAME`. `hotc --aot` translates the scripts on many threads. `--jobs N` or `HOT_JOBS` sets the count. `hotc` prints the progress `[i/N] <unit>` in script order.
+For many scripts, put one script on each line of a list file and use `--scripts-file list.txt`. A line is `PATH` or `PATH<TAB>UNIT_NAME`. `hotc --aot` translates the scripts on many threads. `--jobs N` or `HOT_JOBS` sets the count. `hotc` prints the progress `[i/N] <unit><ext>` (`<ext>` is the extension of the input file) in script order.
 
 ```cpp
 #include "hot/aot.h"

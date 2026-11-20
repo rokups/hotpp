@@ -44,7 +44,7 @@
 // --unit-name with --scripts-file is an error (exit code 1).
 // The option --jobs N (1..4096) sets the count of threads that translate the scripts. Without it,
 // the environment variable HOT_JOBS sets the count. Else the count is min(cores, 16). On Windows the count is 1 and HOT_JOBS has no effect. The tool
-// prints the progress line "[i/N] <unit name>" and the diagnostics of each script in the order
+// prints the progress line "[i/N] <unit name><ext>" (ext: the extension of the input file) and the diagnostics of each script in the order
 // of the scripts, so the output is the same for each count of threads.
 // For each file the tool writes DIR/<name>.aot.cpp (generation 1). It also writes
 // DIR/hot_aot_registry.cpp, which defines the constant table hot::aot_table
@@ -679,7 +679,12 @@ int run_aot(const Args& args)
     {
         while (printed < count && done[printed])
         {
-            std::fprintf(stderr, "[%zu/%zu] %s\n", printed + 1, count, unit_names[printed].c_str());
+            // The progress line names the script with the extension of its input file (.hot or .cpp).
+            std::string name = unit_names[printed];
+            const std::string ext = fs::path(args.inputs[printed]).extension().string();
+            if (name.size() < ext.size() || name.compare(name.size() - ext.size(), ext.size(), ext) != 0)
+                name += ext;
+            std::fprintf(stderr, "[%zu/%zu] %s\n", printed + 1, count, name.c_str());
             std::fputs(results[printed].diag.c_str(), stderr);
             ++printed;
         }
