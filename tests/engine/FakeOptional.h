@@ -52,4 +52,13 @@ template <class T, class U> bool operator!=(const U& v, const optional<T>& o)
 {
     return !(v == o);
 }
+// The comparison with nullopt, as std::optional has it. It is more specialized than the overloads above.
+template <class T> bool operator==(const optional<T>& o, nullopt_t)
+{
+    return !o.has_value();
+}
+template <class T> bool operator!=(const optional<T>& o, nullopt_t)
+{
+    return o.has_value();
+}
 } // namespace fake

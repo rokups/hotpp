@@ -586,3 +586,23 @@ TEST(ModuleAttrsTranslation, TheAttributeOptionalIsValidOnlyInTheList)
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "attribute 'optional' is valid only on a module attribute list")) << r.diagnostics;
 }
+
+TEST(ModuleAttrsTranslation, NullInComparisonCoalesceAndNonNullUsesTheOptionalNamespace)
+{
+    const hotc::TranslateResult r = check_translate(kFake,
+        "    int? o;\n    bool A() { return o == null; }\n    int B() { return o ?? 5; }\n    int C() { return o!; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "fake::nullopt")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "std::nullopt")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "std::optional")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, ANameOptionalStaysAVariableAndAType)
+{
+    const hotc::TranslateResult r = check_translate(kFake,
+        "    int optional = 3;\n    void F() { int? o = null; this.optional = 4; }\n}\nclass optional2 {\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "fake::optional<int32_t> o")) << r.cpp;
+    const hotc::TranslateResult t = check_translate("struct optional { int x; }\n", "    optional v;\n    optional? w;\n");
+    ASSERT_TRUE(t.ok) << t.diagnostics;
+}
