@@ -5535,6 +5535,20 @@ void lower_expr(ast::ExprP& e, RCtx& cx, Diagnostics& diag, const std::string& t
     lw.expr(e);
 }
 
+void lower_base_arg(ast::ExprP& e, RCtx& cx, Diagnostics& diag)
+{
+    const Expr* x = e.get();
+    while (x && std::holds_alternative<ParenExpr>(x->v))
+        x = std::get<ParenExpr>(x->v).inner.get();
+    if (const auto* u = x ? std::get_if<UnaryExpr>(&x->v) : nullptr; u && !u->postfix && u->op == "&" && u->operand)
+    {
+        Lowerer{cx, diag}.error(u->pos ? u->pos : pos_of(*u->operand),
+            "'&' is not allowed in base(...): a constructor parameter ends with the constructor");
+        return;
+    }
+    lower_expr(e, cx, diag);
+}
+
 void check_weak_new(const ast::ExprP& e, RCtx& cx, Diagnostics& diag)
 {
     Lowerer{cx, diag}.reject_weak_new(e);

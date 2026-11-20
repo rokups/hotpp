@@ -274,3 +274,43 @@ TEST(ConstInfer, NonNullAssertionKeepsConstness)
     ASSERT_TRUE(m.ok) << m.diagnostics;
     EXPECT_TRUE(has(m.cpp, "const std::shared_ptr<Weapon> w = ")) << m.cpp;
 }
+
+// The marker "&x" in a call argument is a write of x, as the implicit "f(x)" is (HOT-70).
+TEST(ConstInfer, AddressMarkerWritesTheLocalTheParameterAndTheCapture)
+{
+    const std::string take = "    void Take(int* p) { }\n";
+    const hotc::TranslateResult a = run(take + "    void Run() { bool open = true; Take(&open); int k = 1; Take(&k); }\n");
+    ASSERT_TRUE(a.ok) << a.diagnostics;
+    EXPECT_FALSE(has(a.cpp, "const bool open")) << a.cpp;
+    EXPECT_FALSE(has(a.cpp, "const int32_t k")) << a.cpp;
+    const hotc::TranslateResult b = run(take + "    void Run(int v) { Take(&v); }\n");
+    ASSERT_TRUE(b.ok) << b.diagnostics;
+    EXPECT_FALSE(has(b.cpp, "const int32_t v")) << b.cpp;
+    const hotc::TranslateResult c = run(take + "    void Run() { int x = 0; var f = () => { Take(&x); }; f(); }\n");
+    ASSERT_TRUE(c.ok) << c.diagnostics;
+    EXPECT_FALSE(has(c.cpp, "const int32_t x")) << c.cpp;
+    EXPECT_TRUE(has(c.cpp, "hot::make_cell<int32_t>(0)")) << c.cpp;
+}
+
+TEST(ConstInfer, AddressMarkerOfAMemberChainAndAnIndexWritesTheRoot)
+{
+    const hotc::TranslateResult r = run("    void Take(int* p) { }\n"
+                                        "    void Run() { std.vector<int> xs; xs.push_back(1); Take(&xs[0]); }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_FALSE(has(r.cpp, "const std::vector<int32_t> xs")) << r.cpp;
+}
+
+// "&" in base(...) is an error with its own text. "new T(&x)" works.
+TEST(ConstInfer, AddressMarkerInBaseIsAnErrorAndInNewIsValid)
+{
+    const hotc::TranslateResult a = translate_text(
+        "class P {\n    int n = 0;\n    P(int* p) { }\n}\n"
+        "class C : P {\n    C(int v) : base(&v) { }\n}\n");
+    EXPECT_FALSE(a.ok);
+    EXPECT_TRUE(has(a.diagnostics, "'&' is not allowed in base(...)")) << a.diagnostics;
+    const hotc::TranslateResult b = translate_text(
+        "class P {\n    int n = 0;\n    P(int* p) { }\n}\n"
+        "class D {\n    void Run() { int v = 1; var q = new $P(&v); }\n}\n");
+    ASSERT_TRUE(b.ok) << b.diagnostics;
+    EXPECT_TRUE(has(b.cpp, "std::addressof(v)")) << b.cpp;
+}

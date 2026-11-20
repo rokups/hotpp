@@ -23,6 +23,8 @@ class Panel : VarHost {
         BindDataModelVariant("c", &value);
         KeepRaw(&value);
         KeepAny(&value);
+        bool b = true;
+        KeepRaw(&b);
     }
 
     void SetValue(int n) {

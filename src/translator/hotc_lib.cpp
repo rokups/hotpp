@@ -7252,7 +7252,7 @@ void translate_impl(
                     std::vector<std::string> parts;
                     for (ExprP& a : c->base_args)
                     {
-                        hotc::lower_expr(a, fc, g_diag);
+                        hotc::lower_base_arg(a, fc, g_diag);
                         if (!g_diag.items.empty())
                             throw TranslateAbort{};
                         parts.push_back(hotc::ast::print(*a));
@@ -10133,7 +10133,7 @@ void translate_impl(
                         if (const auto* un = std::get_if<hotc::ast::UnaryExpr>(&a->v);
                             un && !un->postfix && un->op == "*")
                             bind_ref = true;
-                        hotc::lower_expr(a, fc, g_diag);
+                        hotc::lower_base_arg(a, fc, g_diag);
                         if (!g_diag.items.empty())
                             throw TranslateAbort{};
                         parts.push_back(bind_ref ? "\x01std::ref(" + hotc::ast::print(*a) + ")" : hotc::ast::print(*a));
