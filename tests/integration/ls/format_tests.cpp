@@ -336,6 +336,40 @@ TEST(Formatter, StatementsOfABlockKeepTheLevelOfTheBlock)
     expect_stable("class A {\n    void f() {\n        g();\n}}\n");
 }
 
+TEST(Formatter, ClosingBraceOfALambdaInArgumentsHasTheLevelOfItsLine)
+{
+    const auto check = [](const std::string& in, const std::string& want, const FormatOptions& o = FormatOptions())
+    {
+        EXPECT_EQ(format_hot(in, o), want);
+        expect_stable(in);
+        expect_stable(want);
+    };
+    const std::string head = "class A {\n    void f() {\n";
+    // The "}" of the lambda body has the level of "foo(", also when the line goes on.
+    check(head + "        foo(x, () => {\n            b();\n            }, 1);\n    }\n}\n",
+        head + "        foo(x, () => {\n            b();\n        }, 1);\n    }\n}\n");
+    check(head + "        foo(x, () => {\n        b();\n            });\n    }\n}\n",
+        head + "        foo(x, () => {\n            b();\n        });\n    }\n}\n");
+    check(head + "        foo(() => {\n            b();\n        }).x();\n        c([() => {\n        d();\n            }].x);\n    }\n}\n",
+        head + "        foo(() => {\n            b();\n        }).x();\n        c([() => {\n            d();\n        }].x);\n    }\n}\n");
+    // A nested lambda.
+    check(head + "        foo(a, () => {\n        bar(() => {\n        b();\n        }, 2);\n        }, 1);\n    }\n}\n",
+        head + "        foo(a, () => {\n            bar(() => {\n                b();\n            }, 2);\n        }, 1);\n    }\n}\n");
+    // The lambda starts on its own line.
+    check(head + "        s.Subscribe(r,\n        (int q) => {\n        body();\n        }, 1);\n    }\n}\n",
+        head + "        s.Subscribe(r,\n            (int q) => {\n                body();\n            }, 1);\n    }\n}\n");
+    // A normal block, else and lists keep the old rule.
+    check("class A {\n    void f() {\n        if (a) {\n        b();\n            } else {\n        c();\n        }\n    }\n}\n",
+        "class A {\n    void f() {\n        if (a) {\n            b();\n        } else {\n            c();\n        }\n    }\n}\n");
+    check(head + "        var l = new[] {\n        { 1 },\n            }, {\n        2 };\n        var m = [\n        { 1 },\n        { 2 }];\n    }\n}\n",
+        head + "        var l = new[] {\n            { 1 },\n        }, {\n            2 };\n        var m = [\n            { 1 },\n            { 2 }];\n    }\n}\n");
+    // Tabs.
+    FormatOptions tabs;
+    tabs.use_tabs = true;
+    check("class A {\n\tvoid f() {\n\t\tfoo(x, () => {\n\t\t\tb();\n\t\t\t}, 1);\n\t}\n}\n",
+        "class A {\n\tvoid f() {\n\t\tfoo(x, () => {\n\t\t\tb();\n\t\t}, 1);\n\t}\n}\n", tabs);
+}
+
 TEST(Formatter, TheTokenListSeesAChangeOfTheTokens)
 {
     using V = std::vector<std::string>;
