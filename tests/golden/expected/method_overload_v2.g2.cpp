@@ -693,10 +693,12 @@ int32_t hot_state_Ov::Score__ov_int32_Ut(int32_t const x)
 #line 14 "method_overload_v2.hot"
     HOT_TRACE_FRAME("Ov.Score__ov_int32_Ut", "method_overload_v2.hot");
 #line 14 "method_overload_v2.hot"
-    HOT_TRACE_LINE(); return x * 3;
+    HOT_TRACE_LINE();
+#line 14 "method_overload_v2.hot"
+    return x * 3;
 #line 15 "method_overload_v2.hot"
 }
-#line 700 "method_overload_v2.hot.cpp"
+#line 702 "method_overload_v2.hot.cpp"
 
 #line 17 "method_overload_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Ov__Score__ov_float(Ov_Shell* __self, float x)
@@ -706,7 +708,7 @@ int32_t hot_state_Ov::Score__ov_int32_Ut(int32_t const x)
     return state_of(__self)->Score__ov_float(std::forward<float>(x));
 #line 17 "method_overload_v2.hot"
 }
-#line 710 "method_overload_v2.hot.cpp"
+#line 712 "method_overload_v2.hot.cpp"
 #line 17 "method_overload_v2.hot"
 int32_t hot_state_Ov::Score__ov_float(float const x)
 #line 17 "method_overload_v2.hot"
@@ -728,10 +730,12 @@ int32_t hot_state_Ov::Score__ov_float(float const x)
 #line 18 "method_overload_v2.hot"
     HOT_TRACE_FRAME("Ov.Score__ov_float", "method_overload_v2.hot");
 #line 18 "method_overload_v2.hot"
-    HOT_TRACE_LINE(); return 1000;
+    HOT_TRACE_LINE();
+#line 18 "method_overload_v2.hot"
+    return 1000;
 #line 19 "method_overload_v2.hot"
 }
-#line 735 "method_overload_v2.hot.cpp"
+#line 739 "method_overload_v2.hot.cpp"
 
 #line 21 "method_overload_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Ov__Score__ov_int32_Ut_Nint32_Ut(Ov_Shell* __self, int32_t a, int32_t b)
@@ -741,7 +745,7 @@ int32_t hot_state_Ov::Score__ov_float(float const x)
     return state_of(__self)->Score__ov_int32_Ut_Nint32_Ut(std::forward<int32_t>(a), std::forward<int32_t>(b));
 #line 21 "method_overload_v2.hot"
 }
-#line 745 "method_overload_v2.hot.cpp"
+#line 749 "method_overload_v2.hot.cpp"
 #line 21 "method_overload_v2.hot"
 int32_t hot_state_Ov::Score__ov_int32_Ut_Nint32_Ut(int32_t const a, int32_t const b)
 #line 21 "method_overload_v2.hot"
@@ -763,10 +767,12 @@ int32_t hot_state_Ov::Score__ov_int32_Ut_Nint32_Ut(int32_t const a, int32_t cons
 #line 22 "method_overload_v2.hot"
     HOT_TRACE_FRAME("Ov.Score__ov_int32_Ut_Nint32_Ut", "method_overload_v2.hot");
 #line 22 "method_overload_v2.hot"
-    HOT_TRACE_LINE(); return a + b;
+    HOT_TRACE_LINE();
+#line 22 "method_overload_v2.hot"
+    return a + b;
 #line 23 "method_overload_v2.hot"
 }
-#line 770 "method_overload_v2.hot.cpp"
+#line 776 "method_overload_v2.hot.cpp"
 
 #line 25 "method_overload_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Ov__Kind__ov_int32_Ut(Ov_Shell* __self, int32_t x)
@@ -776,7 +782,7 @@ int32_t hot_state_Ov::Score__ov_int32_Ut_Nint32_Ut(int32_t const a, int32_t cons
     return state_of(__self)->Kind__ov_int32_Ut(std::forward<int32_t>(x));
 #line 25 "method_overload_v2.hot"
 }
-#line 780 "method_overload_v2.hot.cpp"
+#line 786 "method_overload_v2.hot.cpp"
 #line 25 "method_overload_v2.hot"
 int32_t hot_state_Ov::Kind__ov_int32_Ut(int32_t x)
 #line 25 "method_overload_v2.hot"
@@ -798,10 +804,12 @@ int32_t hot_state_Ov::Kind__ov_int32_Ut(int32_t x)
 #line 26 "method_overload_v2.hot"
     HOT_TRACE_FRAME("Ov.Kind__ov_int32_Ut", "method_overload_v2.hot");
 #line 26 "method_overload_v2.hot"
-    HOT_TRACE_LINE(); return 1;
+    HOT_TRACE_LINE();
+#line 26 "method_overload_v2.hot"
+    return 1;
 #line 27 "method_overload_v2.hot"
 }
-#line 805 "method_overload_v2.hot.cpp"
+#line 813 "method_overload_v2.hot.cpp"
 
 #line 29 "method_overload_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Ov__Kind__ov_std_Sstring(Ov_Shell* __self, hot::In<std::string> s)
@@ -811,7 +819,7 @@ int32_t hot_state_Ov::Kind__ov_int32_Ut(int32_t x)
     return state_of(__self)->Kind__ov_std_Sstring(std::forward<hot::In<std::string>>(s));
 #line 29 "method_overload_v2.hot"
 }
-#line 815 "method_overload_v2.hot.cpp"
+#line 823 "method_overload_v2.hot.cpp"
 #line 29 "method_overload_v2.hot"
 int32_t hot_state_Ov::Kind__ov_std_Sstring(hot::In<std::string> s)
 #line 29 "method_overload_v2.hot"
@@ -833,10 +841,12 @@ int32_t hot_state_Ov::Kind__ov_std_Sstring(hot::In<std::string> s)
 #line 30 "method_overload_v2.hot"
     HOT_TRACE_FRAME("Ov.Kind__ov_std_Sstring", "method_overload_v2.hot");
 #line 30 "method_overload_v2.hot"
-    HOT_TRACE_LINE(); return 2;
+    HOT_TRACE_LINE();
+#line 30 "method_overload_v2.hot"
+    return 2;
 #line 31 "method_overload_v2.hot"
 }
-#line 840 "method_overload_v2.hot.cpp"
+#line 850 "method_overload_v2.hot.cpp"
 
 #line 33 "method_overload_v2.hot"
 void hot_state_Ov::Tick(float dt)
@@ -859,16 +869,24 @@ void hot_state_Ov::Tick(float dt)
 #line 34 "method_overload_v2.hot"
     HOT_TRACE_FRAME("Ov.Tick", "method_overload_v2.hot");
 #line 34 "method_overload_v2.hot"
-    HOT_TRACE_LINE(); __st->ticks = __st->ticks + 1;
+    HOT_TRACE_LINE();
+#line 34 "method_overload_v2.hot"
+    __st->ticks = __st->ticks + 1;
 #line 35 "method_overload_v2.hot"
-    HOT_TRACE_LINE(); float f = 0.5f;
+    HOT_TRACE_LINE();
+#line 35 "method_overload_v2.hot"
+    float f = 0.5f;
 #line 36 "method_overload_v2.hot"
-    HOT_TRACE_LINE(); __st->total = Ov__Score(__self, 5) + Ov__Score(__self, f) + Ov__Score(__self, 1, 2);
+    HOT_TRACE_LINE();
+#line 36 "method_overload_v2.hot"
+    __st->total = Ov__Score(__self, 5) + Ov__Score(__self, f) + Ov__Score(__self, 1, 2);
 #line 37 "method_overload_v2.hot"
-    HOT_TRACE_LINE(); __st->kinds = Ov__Kind(__self, 1) + Ov__Kind(__self, "a");
+    HOT_TRACE_LINE();
+#line 37 "method_overload_v2.hot"
+    __st->kinds = Ov__Kind(__self, 1) + Ov__Kind(__self, "a");
 #line 38 "method_overload_v2.hot"
 }
-#line 872 "method_overload_v2.hot.cpp"
+#line 890 "method_overload_v2.hot.cpp"
 
 #line 42 "method_overload_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t OvChild__Kind__ov_int32_Ut(OvChild_Shell* __self, int32_t x)
@@ -878,7 +896,7 @@ void hot_state_Ov::Tick(float dt)
     return state_of(__self)->Kind__ov_int32_Ut(std::forward<int32_t>(x));
 #line 42 "method_overload_v2.hot"
 }
-#line 882 "method_overload_v2.hot.cpp"
+#line 900 "method_overload_v2.hot.cpp"
 #line 42 "method_overload_v2.hot"
 int32_t hot_state_OvChild::Kind__ov_int32_Ut(int32_t x)
 #line 42 "method_overload_v2.hot"
@@ -900,10 +918,12 @@ int32_t hot_state_OvChild::Kind__ov_int32_Ut(int32_t x)
 #line 43 "method_overload_v2.hot"
     HOT_TRACE_FRAME("OvChild.Kind__ov_int32_Ut", "method_overload_v2.hot");
 #line 43 "method_overload_v2.hot"
-    HOT_TRACE_LINE(); return 10;
+    HOT_TRACE_LINE();
+#line 43 "method_overload_v2.hot"
+    return 10;
 #line 44 "method_overload_v2.hot"
 }
-#line 907 "method_overload_v2.hot.cpp"
+#line 927 "method_overload_v2.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

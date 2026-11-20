@@ -313,16 +313,22 @@ void hot_state_Player::Tick(float dt)
 #line 11 "player_v1.hot"
     HOT_TRACE_FRAME("Player.Tick", "player_v1.hot");
 #line 11 "player_v1.hot"
-    HOT_TRACE_LINE(); __self->Move(Vec3(__st->speed * dt, 0, 0));
+    HOT_TRACE_LINE();
+#line 11 "player_v1.hot"
+    __self->Move(Vec3(__st->speed * dt, 0, 0));
 #line 12 "player_v1.hot"
-    HOT_TRACE_LINE(); std::printf("[v1] %s: Tick dt=%.4f pos.x=%.4f hp=%.1f\n", hot::deref(__self->Name).c_str(), dt,
+    HOT_TRACE_LINE();
+#line 12 "player_v1.hot"
+    std::printf("[v1] %s: Tick dt=%.4f pos.x=%.4f hp=%.1f\n", hot::deref(__self->Name).c_str(), dt,
 #line 13 "player_v1.hot"
     hot::deref(__self->Position).x, __st->hp);
 #line 14 "player_v1.hot"
-    HOT_TRACE_LINE(); Player__heal(__self, 1.0f);
+    HOT_TRACE_LINE();
+#line 14 "player_v1.hot"
+    Player__heal(__self, 1.0f);
 #line 15 "player_v1.hot"
 }
-#line 326 "player_v1.hot.cpp"
+#line 332 "player_v1.hot.cpp"
 
 #line 17 "player_v1.hot"
 void hot_state_Player::TakeDamage_f(float amount)
@@ -345,12 +351,16 @@ void hot_state_Player::TakeDamage_f(float amount)
 #line 18 "player_v1.hot"
     HOT_TRACE_FRAME("Player.TakeDamage", "player_v1.hot");
 #line 18 "player_v1.hot"
-    HOT_TRACE_LINE(); __st->hp = Math::Max(__st->hp - amount, 0.0f);
+    HOT_TRACE_LINE();
+#line 18 "player_v1.hot"
+    __st->hp = Math::Max(__st->hp - amount, 0.0f);
 #line 19 "player_v1.hot"
-    HOT_TRACE_LINE(); std::printf("[v1] %s: TakeDamage %.1f -> hp=%.1f\n", hot::deref(__self->Name).c_str(), amount, __st->hp);
+    HOT_TRACE_LINE();
+#line 19 "player_v1.hot"
+    std::printf("[v1] %s: TakeDamage %.1f -> hp=%.1f\n", hot::deref(__self->Name).c_str(), amount, __st->hp);
 #line 20 "player_v1.hot"
 }
-#line 354 "player_v1.hot.cpp"
+#line 364 "player_v1.hot.cpp"
 
 #line 22 "player_v1.hot"
 void hot_state_Player::TakeDamage_Af(Actor& source, float amount)
@@ -373,14 +383,20 @@ void hot_state_Player::TakeDamage_Af(Actor& source, float amount)
 #line 23 "player_v1.hot"
     HOT_TRACE_FRAME("Player.TakeDamage", "player_v1.hot");
 #line 23 "player_v1.hot"
-    HOT_TRACE_LINE(); __st->target = hot::deref(source).Name;
+    HOT_TRACE_LINE();
+#line 23 "player_v1.hot"
+    __st->target = hot::deref(source).Name;
 #line 24 "player_v1.hot"
-    HOT_TRACE_LINE(); std::printf("[v1] %s: hit by %s\n", hot::deref(__self->Name).c_str(), hot::deref(__st->target).c_str());
+    HOT_TRACE_LINE();
+#line 24 "player_v1.hot"
+    std::printf("[v1] %s: hit by %s\n", hot::deref(__self->Name).c_str(), hot::deref(__st->target).c_str());
 #line 25 "player_v1.hot"
-    HOT_TRACE_LINE(); __self->TakeDamage(amount);
+    HOT_TRACE_LINE();
+#line 25 "player_v1.hot"
+    __self->TakeDamage(amount);
 #line 26 "player_v1.hot"
 }
-#line 384 "player_v1.hot.cpp"
+#line 400 "player_v1.hot.cpp"
 
 #line 28 "player_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Player__heal(Player_Shell* __self, float amount)
@@ -390,7 +406,7 @@ void hot_state_Player::TakeDamage_Af(Actor& source, float amount)
     return state_of(__self)->heal(std::forward<float>(amount));
 #line 28 "player_v1.hot"
 }
-#line 394 "player_v1.hot.cpp"
+#line 410 "player_v1.hot.cpp"
 #line 28 "player_v1.hot"
 void hot_state_Player::heal(float amount)
 #line 28 "player_v1.hot"
@@ -412,12 +428,16 @@ void hot_state_Player::heal(float amount)
 #line 29 "player_v1.hot"
     HOT_TRACE_FRAME("Player.heal", "player_v1.hot");
 #line 29 "player_v1.hot"
-    HOT_TRACE_LINE(); __st->hp = Math::Min(__st->hp + amount, 100.0f);
+    HOT_TRACE_LINE();
+#line 29 "player_v1.hot"
+    __st->hp = Math::Min(__st->hp + amount, 100.0f);
 #line 30 "player_v1.hot"
-    HOT_TRACE_LINE(); std::printf("[v1] %s: heal %.1f -> hp=%.1f\n", hot::deref(__self->Name).c_str(), amount, __st->hp);
+    HOT_TRACE_LINE();
+#line 30 "player_v1.hot"
+    std::printf("[v1] %s: heal %.1f -> hp=%.1f\n", hot::deref(__self->Name).c_str(), amount, __st->hp);
 #line 31 "player_v1.hot"
 }
-#line 421 "player_v1.hot.cpp"
+#line 441 "player_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

@@ -653,10 +653,12 @@ int32_t hot_state_Base::Power()
 #line 12 "abi_child_v1.hot"
     HOT_TRACE_FRAME("Base.Power", "abi_child_v1.hot");
 #line 12 "abi_child_v1.hot"
-    HOT_TRACE_LINE(); return 1;
+    HOT_TRACE_LINE();
+#line 12 "abi_child_v1.hot"
+    return 1;
 #line 12 "abi_child_v1.hot"
 }
-#line 660 "abi_child_v1.hot.cpp"
+#line 662 "abi_child_v1.hot.cpp"
 
 #line 14 "abi_child_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Base__Twice(Base_Shell* __self)
@@ -666,7 +668,7 @@ int32_t hot_state_Base::Power()
     return state_of(__self)->Twice();
 #line 14 "abi_child_v1.hot"
 }
-#line 670 "abi_child_v1.hot.cpp"
+#line 672 "abi_child_v1.hot.cpp"
 #line 14 "abi_child_v1.hot"
 int32_t hot_state_Base::Twice()
 #line 14 "abi_child_v1.hot"
@@ -688,10 +690,12 @@ int32_t hot_state_Base::Twice()
 #line 14 "abi_child_v1.hot"
     HOT_TRACE_FRAME("Base.Twice", "abi_child_v1.hot");
 #line 14 "abi_child_v1.hot"
-    HOT_TRACE_LINE(); return Base__Power_virt(__self) * 2;
+    HOT_TRACE_LINE();
+#line 14 "abi_child_v1.hot"
+    return Base__Power_virt(__self) * 2;
 #line 14 "abi_child_v1.hot"
 }
-#line 695 "abi_child_v1.hot.cpp"
+#line 699 "abi_child_v1.hot.cpp"
 
 #line 16 "abi_child_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Base__Bump(Base_Shell* __self)
@@ -701,7 +705,7 @@ int32_t hot_state_Base::Twice()
     return state_of(__self)->Bump();
 #line 16 "abi_child_v1.hot"
 }
-#line 705 "abi_child_v1.hot.cpp"
+#line 709 "abi_child_v1.hot.cpp"
 #line 16 "abi_child_v1.hot"
 void hot_state_Base::Bump()
 #line 16 "abi_child_v1.hot"
@@ -723,10 +727,12 @@ void hot_state_Base::Bump()
 #line 16 "abi_child_v1.hot"
     HOT_TRACE_FRAME("Base.Bump", "abi_child_v1.hot");
 #line 16 "abi_child_v1.hot"
-    HOT_TRACE_LINE(); __st->hits = __st->hits + 10;
+    HOT_TRACE_LINE();
+#line 16 "abi_child_v1.hot"
+    __st->hits = __st->hits + 10;
 #line 16 "abi_child_v1.hot"
 }
-#line 730 "abi_child_v1.hot.cpp"
+#line 736 "abi_child_v1.hot.cpp"
 
 #line 18 "abi_child_v1.hot"
 void hot_state_Base::TakeDamage_f(float amount)
@@ -749,12 +755,16 @@ void hot_state_Base::TakeDamage_f(float amount)
 #line 19 "abi_child_v1.hot"
     HOT_TRACE_FRAME("Base.TakeDamage", "abi_child_v1.hot");
 #line 19 "abi_child_v1.hot"
-    HOT_TRACE_LINE(); __st->hp = __st->hp - amount;
+    HOT_TRACE_LINE();
+#line 19 "abi_child_v1.hot"
+    __st->hp = __st->hp - amount;
 #line 20 "abi_child_v1.hot"
-    HOT_TRACE_LINE(); __st->hits = __st->hits + 1;
+    HOT_TRACE_LINE();
+#line 20 "abi_child_v1.hot"
+    __st->hits = __st->hits + 1;
 #line 21 "abi_child_v1.hot"
 }
-#line 758 "abi_child_v1.hot.cpp"
+#line 768 "abi_child_v1.hot.cpp"
 
 #line 29 "abi_child_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Kid__Power(Kid_Shell* __self)
@@ -764,7 +774,7 @@ void hot_state_Base::TakeDamage_f(float amount)
     return state_of(__self)->Power();
 #line 29 "abi_child_v1.hot"
 }
-#line 768 "abi_child_v1.hot.cpp"
+#line 778 "abi_child_v1.hot.cpp"
 #line 29 "abi_child_v1.hot"
 int32_t hot_state_Kid::Power()
 #line 29 "abi_child_v1.hot"
@@ -786,10 +796,12 @@ int32_t hot_state_Kid::Power()
 #line 29 "abi_child_v1.hot"
     HOT_TRACE_FRAME("Kid.Power", "abi_child_v1.hot");
 #line 29 "abi_child_v1.hot"
-    HOT_TRACE_LINE(); return 5;
+    HOT_TRACE_LINE();
+#line 29 "abi_child_v1.hot"
+    return 5;
 #line 29 "abi_child_v1.hot"
 }
-#line 793 "abi_child_v1.hot.cpp"
+#line 805 "abi_child_v1.hot.cpp"
 
 #line 31 "abi_child_v1.hot"
 void hot_state_Kid::TakeDamage_f(float amount)
@@ -812,12 +824,16 @@ void hot_state_Kid::TakeDamage_f(float amount)
 #line 32 "abi_child_v1.hot"
     HOT_TRACE_FRAME("Kid.TakeDamage", "abi_child_v1.hot");
 #line 32 "abi_child_v1.hot"
-    HOT_TRACE_LINE(); Base__base_TakeDamage(__self, amount * 2.0f);
+    HOT_TRACE_LINE();
+#line 32 "abi_child_v1.hot"
+    Base__base_TakeDamage(__self, amount * 2.0f);
 #line 33 "abi_child_v1.hot"
-    HOT_TRACE_LINE(); __st->kid_hits = __st->kid_hits + 1;
+    HOT_TRACE_LINE();
+#line 33 "abi_child_v1.hot"
+    __st->kid_hits = __st->kid_hits + 1;
 #line 34 "abi_child_v1.hot"
 }
-#line 821 "abi_child_v1.hot.cpp"
+#line 837 "abi_child_v1.hot.cpp"
 
 #line 36 "abi_child_v1.hot"
 void hot_state_Kid::Tick(float dt)
@@ -840,20 +856,32 @@ void hot_state_Kid::Tick(float dt)
 #line 37 "abi_child_v1.hot"
     HOT_TRACE_FRAME("Kid.Tick", "abi_child_v1.hot");
 #line 37 "abi_child_v1.hot"
-    HOT_TRACE_LINE(); Base__base_Tick(__self, dt);
+    HOT_TRACE_LINE();
+#line 37 "abi_child_v1.hot"
+    Base__base_Tick(__self, dt);
 #line 38 "abi_child_v1.hot"
-    HOT_TRACE_LINE(); __self->Move(Vec3(1.0f, 0, 0));
+    HOT_TRACE_LINE();
+#line 38 "abi_child_v1.hot"
+    __self->Move(Vec3(1.0f, 0, 0));
 #line 39 "abi_child_v1.hot"
-    HOT_TRACE_LINE(); __st->moved = hot::deref(__self->Position).x;
+    HOT_TRACE_LINE();
+#line 39 "abi_child_v1.hot"
+    __st->moved = hot::deref(__self->Position).x;
 #line 40 "abi_child_v1.hot"
-    HOT_TRACE_LINE(); Base__Bump(__self);
+    HOT_TRACE_LINE();
+#line 40 "abi_child_v1.hot"
+    Base__Bump(__self);
 #line 41 "abi_child_v1.hot"
-    HOT_TRACE_LINE(); __st->twice = Base__Twice(__self);
+    HOT_TRACE_LINE();
+#line 41 "abi_child_v1.hot"
+    __st->twice = Base__Twice(__self);
 #line 42 "abi_child_v1.hot"
-    HOT_TRACE_LINE(); __st->super_power = Base__Power(__self);
+    HOT_TRACE_LINE();
+#line 42 "abi_child_v1.hot"
+    __st->super_power = Base__Power(__self);
 #line 43 "abi_child_v1.hot"
 }
-#line 857 "abi_child_v1.hot.cpp"
+#line 885 "abi_child_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

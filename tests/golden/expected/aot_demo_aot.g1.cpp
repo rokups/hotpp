@@ -1202,10 +1202,12 @@ void hot_state_Fighter::ctor([[maybe_unused]] int32_t start)
 #line 18 "aot_demo.hot"
     HOT_TRACE_FRAME("Fighter.Fighter", "aot_demo.hot");
 #line 18 "aot_demo.hot"
-    HOT_TRACE_LINE(); __st->hp = start + 100;
+    HOT_TRACE_LINE();
+#line 18 "aot_demo.hot"
+    __st->hp = start + 100;
 #line 19 "aot_demo.hot"
 }
-#line 1209 "aot_demo.hot.cpp"
+#line 1211 "aot_demo.hot.cpp"
 
 #line 21 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static void Fighter__dtor(Fighter_Shell* __self)
@@ -1215,7 +1217,7 @@ void hot_state_Fighter::ctor([[maybe_unused]] int32_t start)
     return state_of(__self)->dtor();
 #line 21 "aot_demo.hot"
 }
-#line 1219 "aot_demo.hot.cpp"
+#line 1221 "aot_demo.hot.cpp"
 #line 21 "aot_demo.hot"
 void hot_state_Fighter::dtor()
 #line 21 "aot_demo.hot"
@@ -1235,12 +1237,14 @@ void hot_state_Fighter::dtor()
 #line 22 "aot_demo.hot"
     HOT_TRACE_FRAME("Fighter.~Fighter", "aot_demo.hot");
 #line 22 "aot_demo.hot"
-    HOT_TRACE_LINE(); std::printf("[aot_demo] Fighter dtor %d ticks=%d level=%d shield=%.3f\n", __st->hp, __st->ticks, Fighter__get_Level(__self),
+    HOT_TRACE_LINE();
+#line 22 "aot_demo.hot"
+    std::printf("[aot_demo] Fighter dtor %d ticks=%d level=%d shield=%.3f\n", __st->hp, __st->ticks, Fighter__get_Level(__self),
 #line 23 "aot_demo.hot"
     Fighter__get_Shield(__self));
 #line 24 "aot_demo.hot"
 }
-#line 1244 "aot_demo.hot.cpp"
+#line 1248 "aot_demo.hot.cpp"
 
 #line 26 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Fighter__Power(Fighter_Shell* __self)
@@ -1250,7 +1254,7 @@ void hot_state_Fighter::dtor()
     return state_of(__self)->Power();
 #line 26 "aot_demo.hot"
 }
-#line 1254 "aot_demo.hot.cpp"
+#line 1258 "aot_demo.hot.cpp"
 #line 26 "aot_demo.hot"
 int32_t hot_state_Fighter::Power()
 #line 26 "aot_demo.hot"
@@ -1272,10 +1276,12 @@ int32_t hot_state_Fighter::Power()
 #line 26 "aot_demo.hot"
     HOT_TRACE_FRAME("Fighter.Power", "aot_demo.hot");
 #line 26 "aot_demo.hot"
-    HOT_TRACE_LINE(); return 1;
+    HOT_TRACE_LINE();
+#line 26 "aot_demo.hot"
+    return 1;
 #line 26 "aot_demo.hot"
 }
-#line 1279 "aot_demo.hot.cpp"
+#line 1285 "aot_demo.hot.cpp"
 
 #line 28 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Fighter__Attack(Fighter_Shell* __self)
@@ -1285,7 +1291,7 @@ int32_t hot_state_Fighter::Power()
     return state_of(__self)->Attack();
 #line 28 "aot_demo.hot"
 }
-#line 1289 "aot_demo.hot.cpp"
+#line 1295 "aot_demo.hot.cpp"
 #line 28 "aot_demo.hot"
 int32_t hot_state_Fighter::Attack()
 #line 28 "aot_demo.hot"
@@ -1307,10 +1313,12 @@ int32_t hot_state_Fighter::Attack()
 #line 28 "aot_demo.hot"
     HOT_TRACE_FRAME("Fighter.Attack", "aot_demo.hot");
 #line 28 "aot_demo.hot"
-    HOT_TRACE_LINE(); return Fighter__Power_virt(__self) * 10;
+    HOT_TRACE_LINE();
+#line 28 "aot_demo.hot"
+    return Fighter__Power_virt(__self) * 10;
 #line 28 "aot_demo.hot"
 }
-#line 1314 "aot_demo.hot.cpp"
+#line 1322 "aot_demo.hot.cpp"
 
 #line 30 "aot_demo.hot"
 void hot_state_Fighter::Tick(float dt)
@@ -1333,16 +1341,24 @@ void hot_state_Fighter::Tick(float dt)
 #line 31 "aot_demo.hot"
     HOT_TRACE_FRAME("Fighter.Tick", "aot_demo.hot");
 #line 31 "aot_demo.hot"
-    HOT_TRACE_LINE(); __st->ticks = __st->ticks + 1;
+    HOT_TRACE_LINE();
+#line 31 "aot_demo.hot"
+    __st->ticks = __st->ticks + 1;
 #line 32 "aot_demo.hot"
-    HOT_TRACE_LINE(); Fighter__set_Level(__self, Fighter__get_Level(__self) + 1);
+    HOT_TRACE_LINE();
+#line 32 "aot_demo.hot"
+    Fighter__set_Level(__self, Fighter__get_Level(__self) + 1);
 #line 33 "aot_demo.hot"
-    HOT_TRACE_LINE(); Fighter__set_Shield(__self, Fighter__get_Shield(__self) + 2.0f);
+    HOT_TRACE_LINE();
+#line 33 "aot_demo.hot"
+    Fighter__set_Shield(__self, Fighter__get_Shield(__self) + 2.0f);
 #line 34 "aot_demo.hot"
-    HOT_TRACE_LINE(); __self->Move(Vec3(dt, 0, 0));
+    HOT_TRACE_LINE();
+#line 34 "aot_demo.hot"
+    __self->Move(Vec3(dt, 0, 0));
 #line 35 "aot_demo.hot"
 }
-#line 1346 "aot_demo.hot.cpp"
+#line 1362 "aot_demo.hot.cpp"
 
 #line 37 "aot_demo.hot"
 void hot_state_Fighter::TakeDamage_f(float amount)
@@ -1365,12 +1381,16 @@ void hot_state_Fighter::TakeDamage_f(float amount)
 #line 38 "aot_demo.hot"
     HOT_TRACE_FRAME("Fighter.TakeDamage", "aot_demo.hot");
 #line 38 "aot_demo.hot"
-    HOT_TRACE_LINE(); Fighter__set_Shield(__self, Fighter__get_Shield(__self) - (amount));
+    HOT_TRACE_LINE();
+#line 38 "aot_demo.hot"
+    Fighter__set_Shield(__self, Fighter__get_Shield(__self) - (amount));
 #line 39 "aot_demo.hot"
-    HOT_TRACE_LINE(); if (Fighter__get_Shield(__self) <= 0.0f) __st->hp = __st->hp - 1;
+    HOT_TRACE_LINE();
+#line 39 "aot_demo.hot"
+    if (Fighter__get_Shield(__self) <= 0.0f) __st->hp = __st->hp - 1;
 #line 40 "aot_demo.hot"
 }
-#line 1374 "aot_demo.hot.cpp"
+#line 1394 "aot_demo.hot.cpp"
 
 #line 10 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Fighter__get_Level(Fighter_Shell* __self)
@@ -1380,7 +1400,7 @@ void hot_state_Fighter::TakeDamage_f(float amount)
     return state_of(__self)->get_Level();
 #line 10 "aot_demo.hot"
 }
-#line 1384 "aot_demo.hot.cpp"
+#line 1404 "aot_demo.hot.cpp"
 #line 10 "aot_demo.hot"
 int32_t hot_state_Fighter::get_Level()
 #line 10 "aot_demo.hot"
@@ -1402,10 +1422,12 @@ int32_t hot_state_Fighter::get_Level()
 #line 10 "aot_demo.hot"
     HOT_TRACE_FRAME("Fighter.get_Level", "aot_demo.hot");
 #line 10 "aot_demo.hot"
-    HOT_TRACE_LINE(); return __st->__p_Level;
+    HOT_TRACE_LINE();
+#line 10 "aot_demo.hot"
+    return __st->__p_Level;
 #line 10 "aot_demo.hot"
 }
-#line 1409 "aot_demo.hot.cpp"
+#line 1431 "aot_demo.hot.cpp"
 
 #line 10 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static void Fighter__set_Level(Fighter_Shell* __self, int32_t value)
@@ -1415,7 +1437,7 @@ int32_t hot_state_Fighter::get_Level()
     return state_of(__self)->set_Level(std::forward<int32_t>(value));
 #line 10 "aot_demo.hot"
 }
-#line 1419 "aot_demo.hot.cpp"
+#line 1441 "aot_demo.hot.cpp"
 #line 10 "aot_demo.hot"
 void hot_state_Fighter::set_Level(int32_t const value)
 #line 10 "aot_demo.hot"
@@ -1437,10 +1459,12 @@ void hot_state_Fighter::set_Level(int32_t const value)
 #line 10 "aot_demo.hot"
     HOT_TRACE_FRAME("Fighter.set_Level", "aot_demo.hot");
 #line 10 "aot_demo.hot"
-    HOT_TRACE_LINE(); __st->__p_Level = value;
+    HOT_TRACE_LINE();
+#line 10 "aot_demo.hot"
+    __st->__p_Level = value;
 #line 10 "aot_demo.hot"
 }
-#line 1444 "aot_demo.hot.cpp"
+#line 1468 "aot_demo.hot.cpp"
 
 #line 13 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static float Fighter__get_Shield(Fighter_Shell* __self)
@@ -1450,7 +1474,7 @@ void hot_state_Fighter::set_Level(int32_t const value)
     return state_of(__self)->get_Shield();
 #line 13 "aot_demo.hot"
 }
-#line 1454 "aot_demo.hot.cpp"
+#line 1478 "aot_demo.hot.cpp"
 #line 13 "aot_demo.hot"
 float hot_state_Fighter::get_Shield()
 #line 13 "aot_demo.hot"
@@ -1472,10 +1496,12 @@ float hot_state_Fighter::get_Shield()
 #line 13 "aot_demo.hot"
     HOT_TRACE_FRAME("Fighter.get_Shield", "aot_demo.hot");
 #line 13 "aot_demo.hot"
-    HOT_TRACE_LINE(); return __st->shield_raw;
+    HOT_TRACE_LINE();
+#line 13 "aot_demo.hot"
+    return __st->shield_raw;
 #line 13 "aot_demo.hot"
 }
-#line 1479 "aot_demo.hot.cpp"
+#line 1505 "aot_demo.hot.cpp"
 
 #line 14 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static void Fighter__set_Shield(Fighter_Shell* __self, float value)
@@ -1485,7 +1511,7 @@ float hot_state_Fighter::get_Shield()
     return state_of(__self)->set_Shield(std::forward<float>(value));
 #line 14 "aot_demo.hot"
 }
-#line 1489 "aot_demo.hot.cpp"
+#line 1515 "aot_demo.hot.cpp"
 #line 14 "aot_demo.hot"
 void hot_state_Fighter::set_Shield(float const value)
 #line 14 "aot_demo.hot"
@@ -1507,10 +1533,12 @@ void hot_state_Fighter::set_Shield(float const value)
 #line 14 "aot_demo.hot"
     HOT_TRACE_FRAME("Fighter.set_Shield", "aot_demo.hot");
 #line 14 "aot_demo.hot"
-    HOT_TRACE_LINE(); __st->shield_raw = value < 0.0f ? 0.0f : value;
+    HOT_TRACE_LINE();
+#line 14 "aot_demo.hot"
+    __st->shield_raw = value < 0.0f ? 0.0f : value;
 #line 14 "aot_demo.hot"
 }
-#line 1514 "aot_demo.hot.cpp"
+#line 1542 "aot_demo.hot.cpp"
 
 #line 47 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static void Veteran__ctor(Veteran_Shell* __self, int32_t start, int32_t r)
@@ -1520,7 +1548,7 @@ void hot_state_Fighter::set_Shield(float const value)
     return state_of(__self)->ctor(std::forward<int32_t>(start), std::forward<int32_t>(r));
 #line 47 "aot_demo.hot"
 }
-#line 1524 "aot_demo.hot.cpp"
+#line 1552 "aot_demo.hot.cpp"
 #line 47 "aot_demo.hot"
 void hot_state_Veteran::ctor([[maybe_unused]] int32_t start, [[maybe_unused]] int32_t r)
 #line 47 "aot_demo.hot"
@@ -1542,10 +1570,12 @@ void hot_state_Veteran::ctor([[maybe_unused]] int32_t start, [[maybe_unused]] in
 #line 48 "aot_demo.hot"
     HOT_TRACE_FRAME("Veteran.Veteran", "aot_demo.hot");
 #line 48 "aot_demo.hot"
-    HOT_TRACE_LINE(); __st->rage = r;
+    HOT_TRACE_LINE();
+#line 48 "aot_demo.hot"
+    __st->rage = r;
 #line 49 "aot_demo.hot"
 }
-#line 1549 "aot_demo.hot.cpp"
+#line 1579 "aot_demo.hot.cpp"
 
 #line 51 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static void Veteran__dtor(Veteran_Shell* __self)
@@ -1555,7 +1585,7 @@ void hot_state_Veteran::ctor([[maybe_unused]] int32_t start, [[maybe_unused]] in
     return state_of(__self)->dtor();
 #line 51 "aot_demo.hot"
 }
-#line 1559 "aot_demo.hot.cpp"
+#line 1589 "aot_demo.hot.cpp"
 #line 51 "aot_demo.hot"
 void hot_state_Veteran::dtor()
 #line 51 "aot_demo.hot"
@@ -1575,10 +1605,12 @@ void hot_state_Veteran::dtor()
 #line 52 "aot_demo.hot"
     HOT_TRACE_FRAME("Veteran.~Veteran", "aot_demo.hot");
 #line 52 "aot_demo.hot"
-    HOT_TRACE_LINE(); std::printf("[aot_demo] Veteran dtor %d parent_power=%d\n", __st->rage, __st->parent_power);
+    HOT_TRACE_LINE();
+#line 52 "aot_demo.hot"
+    std::printf("[aot_demo] Veteran dtor %d parent_power=%d\n", __st->rage, __st->parent_power);
 #line 53 "aot_demo.hot"
 }
-#line 1582 "aot_demo.hot.cpp"
+#line 1614 "aot_demo.hot.cpp"
 
 #line 55 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Veteran__Power(Veteran_Shell* __self)
@@ -1588,7 +1620,7 @@ void hot_state_Veteran::dtor()
     return state_of(__self)->Power();
 #line 55 "aot_demo.hot"
 }
-#line 1592 "aot_demo.hot.cpp"
+#line 1624 "aot_demo.hot.cpp"
 #line 55 "aot_demo.hot"
 int32_t hot_state_Veteran::Power()
 #line 55 "aot_demo.hot"
@@ -1610,10 +1642,12 @@ int32_t hot_state_Veteran::Power()
 #line 55 "aot_demo.hot"
     HOT_TRACE_FRAME("Veteran.Power", "aot_demo.hot");
 #line 55 "aot_demo.hot"
-    HOT_TRACE_LINE(); return __st->rage;
+    HOT_TRACE_LINE();
+#line 55 "aot_demo.hot"
+    return __st->rage;
 #line 55 "aot_demo.hot"
 }
-#line 1617 "aot_demo.hot.cpp"
+#line 1651 "aot_demo.hot.cpp"
 
 #line 57 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Veteran__Attack(Veteran_Shell* __self)
@@ -1623,7 +1657,7 @@ int32_t hot_state_Veteran::Power()
     return state_of(__self)->Attack();
 #line 57 "aot_demo.hot"
 }
-#line 1627 "aot_demo.hot.cpp"
+#line 1661 "aot_demo.hot.cpp"
 #line 57 "aot_demo.hot"
 int32_t hot_state_Veteran::Attack()
 #line 57 "aot_demo.hot"
@@ -1645,10 +1679,12 @@ int32_t hot_state_Veteran::Attack()
 #line 57 "aot_demo.hot"
     HOT_TRACE_FRAME("Veteran.Attack", "aot_demo.hot");
 #line 57 "aot_demo.hot"
-    HOT_TRACE_LINE(); return Fighter__Attack(__self) + 1;
+    HOT_TRACE_LINE();
+#line 57 "aot_demo.hot"
+    return Fighter__Attack(__self) + 1;
 #line 57 "aot_demo.hot"
 }
-#line 1652 "aot_demo.hot.cpp"
+#line 1688 "aot_demo.hot.cpp"
 
 #line 59 "aot_demo.hot"
 void hot_state_Veteran::Tick(float dt)
@@ -1671,14 +1707,20 @@ void hot_state_Veteran::Tick(float dt)
 #line 60 "aot_demo.hot"
     HOT_TRACE_FRAME("Veteran.Tick", "aot_demo.hot");
 #line 60 "aot_demo.hot"
-    HOT_TRACE_LINE(); Fighter__base_Tick(__self, dt);
+    HOT_TRACE_LINE();
+#line 60 "aot_demo.hot"
+    Fighter__base_Tick(__self, dt);
 #line 61 "aot_demo.hot"
-    HOT_TRACE_LINE(); __st->rage = __st->rage + 1;
+    HOT_TRACE_LINE();
+#line 61 "aot_demo.hot"
+    __st->rage = __st->rage + 1;
 #line 62 "aot_demo.hot"
-    HOT_TRACE_LINE(); __st->parent_power = Fighter__Power(__self);
+    HOT_TRACE_LINE();
+#line 62 "aot_demo.hot"
+    __st->parent_power = Fighter__Power(__self);
 #line 63 "aot_demo.hot"
 }
-#line 1682 "aot_demo.hot.cpp"
+#line 1724 "aot_demo.hot.cpp"
 
 #line 72 "aot_demo.hot"
 [[maybe_unused]] HOT_HIDDEN static void Spawner__dtor(Spawner_Shell* __self)
@@ -1688,7 +1730,7 @@ void hot_state_Veteran::Tick(float dt)
     return state_of(__self)->dtor();
 #line 72 "aot_demo.hot"
 }
-#line 1692 "aot_demo.hot.cpp"
+#line 1734 "aot_demo.hot.cpp"
 #line 72 "aot_demo.hot"
 void hot_state_Spawner::dtor()
 #line 72 "aot_demo.hot"
@@ -1708,12 +1750,14 @@ void hot_state_Spawner::dtor()
 #line 73 "aot_demo.hot"
     HOT_TRACE_FRAME("Spawner.~Spawner", "aot_demo.hot");
 #line 73 "aot_demo.hot"
-    HOT_TRACE_LINE(); std::printf("[aot_demo] Spawner dtor power=%d attack=%d is_veteran=%d\n", __st->power, __st->attack,
+    HOT_TRACE_LINE();
+#line 73 "aot_demo.hot"
+    std::printf("[aot_demo] Spawner dtor power=%d attack=%d is_veteran=%d\n", __st->power, __st->attack,
 #line 74 "aot_demo.hot"
     __st->is_veteran ? 1 : 0);
 #line 75 "aot_demo.hot"
 }
-#line 1717 "aot_demo.hot.cpp"
+#line 1761 "aot_demo.hot.cpp"
 
 #line 77 "aot_demo.hot"
 void hot_state_Spawner::Tick(float dt)
@@ -1736,20 +1780,32 @@ void hot_state_Spawner::Tick(float dt)
 #line 78 "aot_demo.hot"
     HOT_TRACE_FRAME("Spawner.Tick", "aot_demo.hot");
 #line 78 "aot_demo.hot"
-    HOT_TRACE_LINE(); if (__st->kid == nullptr) __st->kid = std::shared_ptr<Veteran>(Veteran__new_shared(5, 7));
+    HOT_TRACE_LINE();
+#line 78 "aot_demo.hot"
+    if (__st->kid == nullptr) __st->kid = std::shared_ptr<Veteran>(Veteran__new_shared(5, 7));
 #line 79 "aot_demo.hot"
-    HOT_TRACE_LINE(); const std::shared_ptr<Fighter> unit = __st->kid;
+    HOT_TRACE_LINE();
+#line 79 "aot_demo.hot"
+    const std::shared_ptr<Fighter> unit = __st->kid;
 #line 80 "aot_demo.hot"
-    HOT_TRACE_LINE(); if (unit == nullptr) return;
+    HOT_TRACE_LINE();
+#line 80 "aot_demo.hot"
+    if (unit == nullptr) return;
 #line 81 "aot_demo.hot"
-    HOT_TRACE_LINE(); __st->power = Fighter__Power_virt(hot::shell_of<Fighter_Shell>(unit, "Fighter"));
+    HOT_TRACE_LINE();
+#line 81 "aot_demo.hot"
+    __st->power = Fighter__Power_virt(hot::shell_of<Fighter_Shell>(unit, "Fighter"));
 #line 82 "aot_demo.hot"
-    HOT_TRACE_LINE(); __st->attack = Fighter__Attack(hot::shell_of<Fighter_Shell>(unit, "Fighter"));
+    HOT_TRACE_LINE();
+#line 82 "aot_demo.hot"
+    __st->attack = Fighter__Attack(hot::shell_of<Fighter_Shell>(unit, "Fighter"));
 #line 83 "aot_demo.hot"
-    HOT_TRACE_LINE(); __st->is_veteran = hot::is_script(__st->kid, "Veteran");
+    HOT_TRACE_LINE();
+#line 83 "aot_demo.hot"
+    __st->is_veteran = hot::is_script(__st->kid, "Veteran");
 #line 84 "aot_demo.hot"
 }
-#line 1753 "aot_demo.hot.cpp"
+#line 1809 "aot_demo.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

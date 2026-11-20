@@ -406,10 +406,12 @@ int32_t& hot_state_Unit::Hp()
 #line 20 "ref_return_v1.hot"
     HOT_TRACE_FRAME("Unit.Hp", "ref_return_v1.hot");
 #line 20 "ref_return_v1.hot"
-    HOT_TRACE_LINE(); return __st->hp;
+    HOT_TRACE_LINE();
+#line 20 "ref_return_v1.hot"
+    return __st->hp;
 #line 21 "ref_return_v1.hot"
 }
-#line 413 "ref_return_v1.hot.cpp"
+#line 415 "ref_return_v1.hot.cpp"
 
 #line 27 "ref_return_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t& Unit__Choose(Unit_Shell* __self, int32_t& a)
@@ -419,7 +421,7 @@ int32_t& hot_state_Unit::Hp()
     return state_of(__self)->Choose(std::forward<int32_t&>(a));
 #line 27 "ref_return_v1.hot"
 }
-#line 423 "ref_return_v1.hot.cpp"
+#line 425 "ref_return_v1.hot.cpp"
 #line 27 "ref_return_v1.hot"
 int32_t& hot_state_Unit::Choose(int32_t& a)
 #line 27 "ref_return_v1.hot"
@@ -441,10 +443,12 @@ int32_t& hot_state_Unit::Choose(int32_t& a)
 #line 28 "ref_return_v1.hot"
     HOT_TRACE_FRAME("Unit.Choose", "ref_return_v1.hot");
 #line 28 "ref_return_v1.hot"
-    HOT_TRACE_LINE(); return Unit__s_Pick(a, __st->hp);
+    HOT_TRACE_LINE();
+#line 28 "ref_return_v1.hot"
+    return Unit__s_Pick(a, __st->hp);
 #line 29 "ref_return_v1.hot"
 }
-#line 448 "ref_return_v1.hot.cpp"
+#line 452 "ref_return_v1.hot.cpp"
 
 #line 31 "ref_return_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Unit__Run(Unit_Shell* __self)
@@ -454,7 +458,7 @@ int32_t& hot_state_Unit::Choose(int32_t& a)
     return state_of(__self)->Run();
 #line 31 "ref_return_v1.hot"
 }
-#line 458 "ref_return_v1.hot.cpp"
+#line 462 "ref_return_v1.hot.cpp"
 #line 31 "ref_return_v1.hot"
 void hot_state_Unit::Run()
 #line 31 "ref_return_v1.hot"
@@ -476,16 +480,24 @@ void hot_state_Unit::Run()
 #line 32 "ref_return_v1.hot"
     HOT_TRACE_FRAME("Unit.Run", "ref_return_v1.hot");
 #line 32 "ref_return_v1.hot"
-    HOT_TRACE_LINE(); auto& h = Unit__Hp_virt(__self);
+    HOT_TRACE_LINE();
+#line 32 "ref_return_v1.hot"
+    auto& h = Unit__Hp_virt(__self);
 #line 33 "ref_return_v1.hot"
-    HOT_TRACE_LINE(); h = 2;
+    HOT_TRACE_LINE();
+#line 33 "ref_return_v1.hot"
+    h = 2;
 #line 34 "ref_return_v1.hot"
-    HOT_TRACE_LINE(); auto& k = Unit__Choose(__self, h);
+    HOT_TRACE_LINE();
+#line 34 "ref_return_v1.hot"
+    auto& k = Unit__Choose(__self, h);
 #line 35 "ref_return_v1.hot"
-    HOT_TRACE_LINE(); k = 3;
+    HOT_TRACE_LINE();
+#line 35 "ref_return_v1.hot"
+    k = 3;
 #line 36 "ref_return_v1.hot"
 }
-#line 489 "ref_return_v1.hot.cpp"
+#line 501 "ref_return_v1.hot.cpp"
 
 #line 23 "ref_return_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t& Unit__s_Pick(int32_t& a, int32_t& b)
@@ -496,10 +508,12 @@ void hot_state_Unit::Run()
 #line 24 "ref_return_v1.hot"
     HOT_TRACE_FRAME("Unit.Pick", "ref_return_v1.hot");
 #line 24 "ref_return_v1.hot"
-    HOT_TRACE_LINE(); return a > 0 ? a : b;
+    HOT_TRACE_LINE();
+#line 24 "ref_return_v1.hot"
+    return a > 0 ? a : b;
 #line 25 "ref_return_v1.hot"
 }
-#line 503 "ref_return_v1.hot.cpp"
+#line 517 "ref_return_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

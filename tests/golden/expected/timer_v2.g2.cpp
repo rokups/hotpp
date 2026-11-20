@@ -327,10 +327,12 @@ void hot_state_Beeper::Tick(float dt)
 #line 9 "timer_v2.hot"
     HOT_TRACE_FRAME("Beeper.Tick", "timer_v2.hot");
 #line 9 "timer_v2.hot"
-    HOT_TRACE_LINE(); __st->ticks = __st->ticks + 1;
+    HOT_TRACE_LINE();
+#line 9 "timer_v2.hot"
+    __st->ticks = __st->ticks + 1;
 #line 10 "timer_v2.hot"
 }
-#line 334 "timer_v2.hot.cpp"
+#line 336 "timer_v2.hot.cpp"
 
 #line 12 "timer_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static void Beeper__arm(Beeper_Shell* __self, World& w, float delay)
@@ -340,7 +342,7 @@ void hot_state_Beeper::Tick(float dt)
     return state_of(__self)->arm(std::forward<World&>(w), std::forward<float>(delay));
 #line 12 "timer_v2.hot"
 }
-#line 344 "timer_v2.hot.cpp"
+#line 346 "timer_v2.hot.cpp"
 #line 12 "timer_v2.hot"
 void hot_state_Beeper::arm(World& w, float delay)
 #line 12 "timer_v2.hot"
@@ -362,7 +364,9 @@ void hot_state_Beeper::arm(World& w, float delay)
 #line 13 "timer_v2.hot"
     HOT_TRACE_FRAME("Beeper.arm", "timer_v2.hot");
 #line 13 "timer_v2.hot"
-    HOT_TRACE_LINE(); hot::deref(w).AddTimer(delay, hot::make_lambda_deduced<__LamTag_0>(GEN, hot::caps(__self), []([[maybe_unused]] auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self);
+    HOT_TRACE_LINE();
+#line 13 "timer_v2.hot"
+    hot::deref(w).AddTimer(delay, hot::make_lambda_deduced<__LamTag_0>(GEN, hot::caps(__self), []([[maybe_unused]] auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self);
 #line 14 "timer_v2.hot"
             __st->fired = __st->fired + 10;
 #line 15 "timer_v2.hot"
@@ -371,7 +375,7 @@ void hot_state_Beeper::arm(World& w, float delay)
         } }));
 #line 17 "timer_v2.hot"
 }
-#line 375 "timer_v2.hot.cpp"
+#line 379 "timer_v2.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

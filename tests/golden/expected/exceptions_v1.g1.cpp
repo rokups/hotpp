@@ -493,20 +493,28 @@ int32_t hot_state_Thrower::caught()
 #line 24 "exceptions_v1.hot"
     HOT_TRACE_FRAME("Thrower.caught", "exceptions_v1.hot");
 #line 24 "exceptions_v1.hot"
-    HOT_TRACE_LINE(); try {
+    HOT_TRACE_LINE();
+#line 24 "exceptions_v1.hot"
+    try {
 #line 25 "exceptions_v1.hot"
-        HOT_TRACE_LINE(); throw NetError(80);
+        HOT_TRACE_LINE();
+#line 25 "exceptions_v1.hot"
+        throw NetError(80);
 #line 26 "exceptions_v1.hot"
     } catch (const AppError& e) {
 #line 27 "exceptions_v1.hot"
-        HOT_TRACE_LINE(); return hot::deref(e).code + 1;
+        HOT_TRACE_LINE();
+#line 27 "exceptions_v1.hot"
+        return hot::deref(e).code + 1;
 #line 28 "exceptions_v1.hot"
     }
 #line 29 "exceptions_v1.hot"
-    HOT_TRACE_LINE(); return 0;
+    HOT_TRACE_LINE();
+#line 29 "exceptions_v1.hot"
+    return 0;
 #line 30 "exceptions_v1.hot"
 }
-#line 510 "exceptions_v1.hot.cpp"
+#line 518 "exceptions_v1.hot.cpp"
 
 #line 32 "exceptions_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Thrower__escape(Thrower_Shell* __self)
@@ -516,7 +524,7 @@ int32_t hot_state_Thrower::caught()
     return state_of(__self)->escape();
 #line 32 "exceptions_v1.hot"
 }
-#line 520 "exceptions_v1.hot.cpp"
+#line 528 "exceptions_v1.hot.cpp"
 #line 32 "exceptions_v1.hot"
 void hot_state_Thrower::escape()
 #line 32 "exceptions_v1.hot"
@@ -538,10 +546,12 @@ void hot_state_Thrower::escape()
 #line 33 "exceptions_v1.hot"
     HOT_TRACE_FRAME("Thrower.escape", "exceptions_v1.hot");
 #line 33 "exceptions_v1.hot"
-    HOT_TRACE_LINE(); throw AppError("app down");
+    HOT_TRACE_LINE();
+#line 33 "exceptions_v1.hot"
+    throw AppError("app down");
 #line 34 "exceptions_v1.hot"
 }
-#line 545 "exceptions_v1.hot.cpp"
+#line 555 "exceptions_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

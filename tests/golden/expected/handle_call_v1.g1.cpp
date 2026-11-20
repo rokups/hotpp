@@ -554,12 +554,16 @@ int hot_state_Caller::WearRaw(Charm* __c)
 #line 14 "handle_call_v1.hot"
     std::shared_ptr<Charm> c = hot::bind<std::shared_ptr<Charm>>(std::forward<Charm*>(__c));
 #line 14 "handle_call_v1.hot"
-    HOT_TRACE_LINE(); __st->last = c;
+    HOT_TRACE_LINE();
+#line 14 "handle_call_v1.hot"
+    __st->last = c;
 #line 15 "handle_call_v1.hot"
-    HOT_TRACE_LINE(); return 1;
+    HOT_TRACE_LINE();
+#line 15 "handle_call_v1.hot"
+    return 1;
 #line 16 "handle_call_v1.hot"
 }
-#line 563 "handle_call_v1.hot.cpp"
+#line 567 "handle_call_v1.hot.cpp"
 
 #line 19 "handle_call_v1.hot"
 int hot_state_Caller::WearBlade(Blade* __b)
@@ -584,50 +588,78 @@ int hot_state_Caller::WearBlade(Blade* __b)
 #line 20 "handle_call_v1.hot"
     const std::shared_ptr<Blade>& b = hot::bind<std::shared_ptr<Blade>>(std::forward<Blade*>(__b));
 #line 20 "handle_call_v1.hot"
-    HOT_TRACE_LINE(); std::shared_ptr<Charm> local = __st->last;
+    HOT_TRACE_LINE();
+#line 20 "handle_call_v1.hot"
+    std::shared_ptr<Charm> local = __st->last;
 #line 21 "handle_call_v1.hot"
-    HOT_TRACE_LINE(); if (hot::deref(b).power == 0) {
+    HOT_TRACE_LINE();
+#line 21 "handle_call_v1.hot"
+    if (hot::deref(b).power == 0) {
 #line 22 "handle_call_v1.hot"
-        HOT_TRACE_LINE(); return Polish(hot::as_ptr(local));
+        HOT_TRACE_LINE();
+#line 22 "handle_call_v1.hot"
+        return Polish(hot::as_ptr(local));
 #line 23 "handle_call_v1.hot"
     }
 #line 24 "handle_call_v1.hot"
-    HOT_TRACE_LINE(); if (hot::deref(b).power == 1) {
+    HOT_TRACE_LINE();
+#line 24 "handle_call_v1.hot"
+    if (hot::deref(b).power == 1) {
 #line 25 "handle_call_v1.hot"
-        HOT_TRACE_LINE(); return Polish(hot::as_ptr(__st->last));
+        HOT_TRACE_LINE();
+#line 25 "handle_call_v1.hot"
+        return Polish(hot::as_ptr(__st->last));
 #line 26 "handle_call_v1.hot"
     }
 #line 27 "handle_call_v1.hot"
-    HOT_TRACE_LINE(); if (hot::deref(b).power == 2) {
+    HOT_TRACE_LINE();
+#line 27 "handle_call_v1.hot"
+    if (hot::deref(b).power == 2) {
 #line 28 "handle_call_v1.hot"
-        HOT_TRACE_LINE(); try {
+        HOT_TRACE_LINE();
+#line 28 "handle_call_v1.hot"
+        try {
 #line 29 "handle_call_v1.hot"
-            HOT_TRACE_LINE(); return Shine(hot::as_ref(local));
+            HOT_TRACE_LINE();
+#line 29 "handle_call_v1.hot"
+            return Shine(hot::as_ref(local));
 #line 30 "handle_call_v1.hot"
         } catch (const hot::NullReference& e) {
 #line 31 "handle_call_v1.hot"
-            HOT_TRACE_LINE(); return -99;
+            HOT_TRACE_LINE();
+#line 31 "handle_call_v1.hot"
+            return -99;
 #line 32 "handle_call_v1.hot"
         }
 #line 33 "handle_call_v1.hot"
     }
 #line 34 "handle_call_v1.hot"
-    HOT_TRACE_LINE(); if (hot::deref(b).power == 3) {
+    HOT_TRACE_LINE();
+#line 34 "handle_call_v1.hot"
+    if (hot::deref(b).power == 3) {
 #line 35 "handle_call_v1.hot"
-        HOT_TRACE_LINE(); return Polish(hot::cast_ptr<Charm*>(local.get()));
+        HOT_TRACE_LINE();
+#line 35 "handle_call_v1.hot"
+        return Polish(hot::cast_ptr<Charm*>(local.get()));
 #line 36 "handle_call_v1.hot"
     }
 #line 37 "handle_call_v1.hot"
-    HOT_TRACE_LINE(); if (hot::deref(b).power == 4) {
+    HOT_TRACE_LINE();
+#line 37 "handle_call_v1.hot"
+    if (hot::deref(b).power == 4) {
 #line 38 "handle_call_v1.hot"
-        HOT_TRACE_LINE(); return Mixed(hot::cast_ptr<Charm*>(local.get()));
+        HOT_TRACE_LINE();
+#line 38 "handle_call_v1.hot"
+        return Mixed(hot::cast_ptr<Charm*>(local.get()));
 #line 39 "handle_call_v1.hot"
     }
 #line 40 "handle_call_v1.hot"
-    HOT_TRACE_LINE(); return Mixed(hot::star(local));
+    HOT_TRACE_LINE();
+#line 40 "handle_call_v1.hot"
+    return Mixed(hot::star(local));
 #line 41 "handle_call_v1.hot"
 }
-#line 631 "handle_call_v1.hot.cpp"
+#line 663 "handle_call_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

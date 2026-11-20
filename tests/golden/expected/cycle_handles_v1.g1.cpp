@@ -1711,12 +1711,16 @@ int32_t hot_state_Child::ParentHp()
 #line 28 "cycle_handles_v1.hot"
     HOT_TRACE_FRAME("Child.ParentHp", "cycle_handles_v1.hot");
 #line 28 "cycle_handles_v1.hot"
-    HOT_TRACE_LINE(); const std::shared_ptr<Parent> p = hot::lock(parent);
+    HOT_TRACE_LINE();
+#line 28 "cycle_handles_v1.hot"
+    const std::shared_ptr<Parent> p = hot::lock(parent);
 #line 29 "cycle_handles_v1.hot"
-    HOT_TRACE_LINE(); return p != nullptr ? state_of(hot::shell_of<Parent_Shell>(p, "Parent"))->hp + Parent__KidAge(hot::shell_of<Parent_Shell>(p, "Parent")) : -1;
+    HOT_TRACE_LINE();
+#line 29 "cycle_handles_v1.hot"
+    return p != nullptr ? state_of(hot::shell_of<Parent_Shell>(p, "Parent"))->hp + Parent__KidAge(hot::shell_of<Parent_Shell>(p, "Parent")) : -1;
 #line 30 "cycle_handles_v1.hot"
 }
-#line 1720 "cycle_handles_v1.hot.cpp"
+#line 1724 "cycle_handles_v1.hot.cpp"
 
 #line 13 "cycle_handles_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Parent__Adopt(Parent_Shell* __self)
@@ -1726,7 +1730,7 @@ int32_t hot_state_Child::ParentHp()
     return state_of(__self)->Adopt();
 #line 13 "cycle_handles_v1.hot"
 }
-#line 1730 "cycle_handles_v1.hot.cpp"
+#line 1734 "cycle_handles_v1.hot.cpp"
 #line 13 "cycle_handles_v1.hot"
 void hot_state_Parent::Adopt()
 #line 13 "cycle_handles_v1.hot"
@@ -1748,14 +1752,20 @@ void hot_state_Parent::Adopt()
 #line 14 "cycle_handles_v1.hot"
     HOT_TRACE_FRAME("Parent.Adopt", "cycle_handles_v1.hot");
 #line 14 "cycle_handles_v1.hot"
-    HOT_TRACE_LINE(); const std::shared_ptr<Child> child = std::shared_ptr<Child>(Child__new_shared());
+    HOT_TRACE_LINE();
+#line 14 "cycle_handles_v1.hot"
+    const std::shared_ptr<Child> child = std::shared_ptr<Child>(Child__new_shared());
 #line 15 "cycle_handles_v1.hot"
-    HOT_TRACE_LINE(); kid = child;
+    HOT_TRACE_LINE();
+#line 15 "cycle_handles_v1.hot"
+    kid = child;
 #line 16 "cycle_handles_v1.hot"
-    HOT_TRACE_LINE(); state_of(hot::shell_of<Child_Shell>(child, "Child"))->parent = hot::handle_from_this<std::shared_ptr<Parent>>(__self);
+    HOT_TRACE_LINE();
+#line 16 "cycle_handles_v1.hot"
+    state_of(hot::shell_of<Child_Shell>(child, "Child"))->parent = hot::handle_from_this<std::shared_ptr<Parent>>(__self);
 #line 17 "cycle_handles_v1.hot"
 }
-#line 1759 "cycle_handles_v1.hot.cpp"
+#line 1769 "cycle_handles_v1.hot.cpp"
 
 #line 19 "cycle_handles_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Parent__KidAge(Parent_Shell* __self)
@@ -1765,7 +1775,7 @@ void hot_state_Parent::Adopt()
     return state_of(__self)->KidAge();
 #line 19 "cycle_handles_v1.hot"
 }
-#line 1769 "cycle_handles_v1.hot.cpp"
+#line 1779 "cycle_handles_v1.hot.cpp"
 #line 19 "cycle_handles_v1.hot"
 int32_t hot_state_Parent::KidAge()
 #line 19 "cycle_handles_v1.hot"
@@ -1787,10 +1797,12 @@ int32_t hot_state_Parent::KidAge()
 #line 19 "cycle_handles_v1.hot"
     HOT_TRACE_FRAME("Parent.KidAge", "cycle_handles_v1.hot");
 #line 19 "cycle_handles_v1.hot"
-    HOT_TRACE_LINE(); return hot::coalesce(hot::safe_access(kid, [&](auto&& __safe0) { return (state_of(hot::shell_of<Child_Shell>(__safe0, "Child"))->age); }), [&]() -> auto { return (-1); });
+    HOT_TRACE_LINE();
+#line 19 "cycle_handles_v1.hot"
+    return hot::coalesce(hot::safe_access(kid, [&](auto&& __safe0) { return (state_of(hot::shell_of<Child_Shell>(__safe0, "Child"))->age); }), [&]() -> auto { return (-1); });
 #line 19 "cycle_handles_v1.hot"
 }
-#line 1794 "cycle_handles_v1.hot.cpp"
+#line 1806 "cycle_handles_v1.hot.cpp"
 
 #line 44 "cycle_handles_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Pong__Link(Pong_Shell* __self, std::shared_ptr<Ping> p)
@@ -1800,7 +1812,7 @@ int32_t hot_state_Parent::KidAge()
     return state_of(__self)->Link(std::forward<std::shared_ptr<Ping>>(p));
 #line 44 "cycle_handles_v1.hot"
 }
-#line 1804 "cycle_handles_v1.hot.cpp"
+#line 1816 "cycle_handles_v1.hot.cpp"
 #line 44 "cycle_handles_v1.hot"
 void hot_state_Pong::Link(const std::shared_ptr<Ping>& __p)
 #line 44 "cycle_handles_v1.hot"
@@ -1824,14 +1836,20 @@ void hot_state_Pong::Link(const std::shared_ptr<Ping>& __p)
 #line 45 "cycle_handles_v1.hot"
     std::shared_ptr<Ping> const p = std::forward<const std::shared_ptr<Ping>&>(__p);
 #line 45 "cycle_handles_v1.hot"
-    HOT_TRACE_LINE(); other = p;
+    HOT_TRACE_LINE();
+#line 45 "cycle_handles_v1.hot"
+    other = p;
 #line 46 "cycle_handles_v1.hot"
-    HOT_TRACE_LINE(); if (p == nullptr) return;
+    HOT_TRACE_LINE();
+#line 46 "cycle_handles_v1.hot"
+    if (p == nullptr) return;
 #line 47 "cycle_handles_v1.hot"
-    HOT_TRACE_LINE(); state_of(hot::shell_of<Ping_Shell>(p, "Ping"))->other = hot::handle_from_this<std::shared_ptr<Pong>>(__self);
+    HOT_TRACE_LINE();
+#line 47 "cycle_handles_v1.hot"
+    state_of(hot::shell_of<Ping_Shell>(p, "Ping"))->other = hot::handle_from_this<std::shared_ptr<Pong>>(__self);
 #line 48 "cycle_handles_v1.hot"
 }
-#line 1835 "cycle_handles_v1.hot.cpp"
+#line 1853 "cycle_handles_v1.hot.cpp"
 
 #line 50 "cycle_handles_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Pong__Unlink(Pong_Shell* __self)
@@ -1841,7 +1859,7 @@ void hot_state_Pong::Link(const std::shared_ptr<Ping>& __p)
     return state_of(__self)->Unlink();
 #line 50 "cycle_handles_v1.hot"
 }
-#line 1845 "cycle_handles_v1.hot.cpp"
+#line 1863 "cycle_handles_v1.hot.cpp"
 #line 50 "cycle_handles_v1.hot"
 void hot_state_Pong::Unlink()
 #line 50 "cycle_handles_v1.hot"
@@ -1863,10 +1881,12 @@ void hot_state_Pong::Unlink()
 #line 50 "cycle_handles_v1.hot"
     HOT_TRACE_FRAME("Pong.Unlink", "cycle_handles_v1.hot");
 #line 50 "cycle_handles_v1.hot"
-    HOT_TRACE_LINE(); other = nullptr;
+    HOT_TRACE_LINE();
+#line 50 "cycle_handles_v1.hot"
+    other = nullptr;
 #line 50 "cycle_handles_v1.hot"
 }
-#line 1870 "cycle_handles_v1.hot.cpp"
+#line 1890 "cycle_handles_v1.hot.cpp"
 
 #line 37 "cycle_handles_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Ping__Count(Ping_Shell* __self)
@@ -1876,7 +1896,7 @@ void hot_state_Pong::Unlink()
     return state_of(__self)->Count();
 #line 37 "cycle_handles_v1.hot"
 }
-#line 1880 "cycle_handles_v1.hot.cpp"
+#line 1900 "cycle_handles_v1.hot.cpp"
 #line 37 "cycle_handles_v1.hot"
 int32_t hot_state_Ping::Count()
 #line 37 "cycle_handles_v1.hot"
@@ -1898,10 +1918,12 @@ int32_t hot_state_Ping::Count()
 #line 37 "cycle_handles_v1.hot"
     HOT_TRACE_FRAME("Ping.Count", "cycle_handles_v1.hot");
 #line 37 "cycle_handles_v1.hot"
-    HOT_TRACE_LINE(); return hot::coalesce(hot::safe_access(other, [&](auto&& __safe0) { return (state_of(hot::shell_of<Pong_Shell>(__safe0, "Pong"))->n); }), [&]() -> auto { return (0); });
+    HOT_TRACE_LINE();
+#line 37 "cycle_handles_v1.hot"
+    return hot::coalesce(hot::safe_access(other, [&](auto&& __safe0) { return (state_of(hot::shell_of<Pong_Shell>(__safe0, "Pong"))->n); }), [&]() -> auto { return (0); });
 #line 37 "cycle_handles_v1.hot"
 }
-#line 1905 "cycle_handles_v1.hot.cpp"
+#line 1927 "cycle_handles_v1.hot.cpp"
 
 #line 57 "cycle_handles_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Node__Length(Node_Shell* __self)
@@ -1911,7 +1933,7 @@ int32_t hot_state_Ping::Count()
     return state_of(__self)->Length();
 #line 57 "cycle_handles_v1.hot"
 }
-#line 1915 "cycle_handles_v1.hot.cpp"
+#line 1937 "cycle_handles_v1.hot.cpp"
 #line 57 "cycle_handles_v1.hot"
 int32_t hot_state_Node::Length()
 #line 57 "cycle_handles_v1.hot"
@@ -1933,10 +1955,12 @@ int32_t hot_state_Node::Length()
 #line 57 "cycle_handles_v1.hot"
     HOT_TRACE_FRAME("Node.Length", "cycle_handles_v1.hot");
 #line 57 "cycle_handles_v1.hot"
-    HOT_TRACE_LINE(); return 1 + (hot::coalesce(hot::safe_access(next, [&](auto&& __safe0) { return (Node__Length(hot::shell_of<Node_Shell>(__safe0, "Node"))); }), [&]() -> auto { return (0); }));
+    HOT_TRACE_LINE();
+#line 57 "cycle_handles_v1.hot"
+    return 1 + (hot::coalesce(hot::safe_access(next, [&](auto&& __safe0) { return (Node__Length(hot::shell_of<Node_Shell>(__safe0, "Node"))); }), [&]() -> auto { return (0); }));
 #line 57 "cycle_handles_v1.hot"
 }
-#line 1940 "cycle_handles_v1.hot.cpp"
+#line 1964 "cycle_handles_v1.hot.cpp"
 
 #line 71 "cycle_handles_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Part__OwnerBack(Part_Shell* __self)
@@ -1946,7 +1970,7 @@ int32_t hot_state_Node::Length()
     return state_of(__self)->OwnerBack();
 #line 71 "cycle_handles_v1.hot"
 }
-#line 1950 "cycle_handles_v1.hot.cpp"
+#line 1974 "cycle_handles_v1.hot.cpp"
 #line 71 "cycle_handles_v1.hot"
 int32_t hot_state_Part::OwnerBack()
 #line 71 "cycle_handles_v1.hot"
@@ -1968,10 +1992,12 @@ int32_t hot_state_Part::OwnerBack()
 #line 71 "cycle_handles_v1.hot"
     HOT_TRACE_FRAME("Part.OwnerBack", "cycle_handles_v1.hot");
 #line 71 "cycle_handles_v1.hot"
-    HOT_TRACE_LINE(); return owner != nullptr ? 1 : 0;
+    HOT_TRACE_LINE();
+#line 71 "cycle_handles_v1.hot"
+    return owner != nullptr ? 1 : 0;
 #line 71 "cycle_handles_v1.hot"
 }
-#line 1975 "cycle_handles_v1.hot.cpp"
+#line 2001 "cycle_handles_v1.hot.cpp"
 
 #line 64 "cycle_handles_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Owner__Value(Owner_Shell* __self)
@@ -1981,7 +2007,7 @@ int32_t hot_state_Part::OwnerBack()
     return state_of(__self)->Value();
 #line 64 "cycle_handles_v1.hot"
 }
-#line 1985 "cycle_handles_v1.hot.cpp"
+#line 2011 "cycle_handles_v1.hot.cpp"
 #line 64 "cycle_handles_v1.hot"
 int32_t hot_state_Owner::Value()
 #line 64 "cycle_handles_v1.hot"
@@ -2003,10 +2029,12 @@ int32_t hot_state_Owner::Value()
 #line 64 "cycle_handles_v1.hot"
     HOT_TRACE_FRAME("Owner.Value", "cycle_handles_v1.hot");
 #line 64 "cycle_handles_v1.hot"
-    HOT_TRACE_LINE(); return (hot::coalesce(hot::safe_access(part, [&](auto&& __safe0) { return (state_of(hot::shell_of<Part_Shell>(__safe0, "Part"))->v); }), [&]() -> auto { return (0); })) + (hot::coalesce(hot::safe_access(part, [&](auto&& __safe1) { return (Part__OwnerBack(hot::shell_of<Part_Shell>(__safe1, "Part"))); }), [&]() -> auto { return (0); }));
+    HOT_TRACE_LINE();
+#line 64 "cycle_handles_v1.hot"
+    return (hot::coalesce(hot::safe_access(part, [&](auto&& __safe0) { return (state_of(hot::shell_of<Part_Shell>(__safe0, "Part"))->v); }), [&]() -> auto { return (0); })) + (hot::coalesce(hot::safe_access(part, [&](auto&& __safe1) { return (Part__OwnerBack(hot::shell_of<Part_Shell>(__safe1, "Part"))); }), [&]() -> auto { return (0); }));
 #line 64 "cycle_handles_v1.hot"
 }
-#line 2010 "cycle_handles_v1.hot.cpp"
+#line 2038 "cycle_handles_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

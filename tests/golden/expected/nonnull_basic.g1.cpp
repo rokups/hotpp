@@ -648,10 +648,12 @@ std::shared_ptr<Node> hot_state_Node::Next()
 #line 7 "nonnull_basic.hot"
     HOT_TRACE_FRAME("Node.Next", "nonnull_basic.hot");
 #line 7 "nonnull_basic.hot"
-    HOT_TRACE_LINE(); return next;
+    HOT_TRACE_LINE();
+#line 7 "nonnull_basic.hot"
+    return next;
 #line 7 "nonnull_basic.hot"
 }
-#line 655 "nonnull_basic.hot.cpp"
+#line 657 "nonnull_basic.hot.cpp"
 
 #line 14 "nonnull_basic.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Holder__First(Holder_Shell* __self)
@@ -661,7 +663,7 @@ std::shared_ptr<Node> hot_state_Node::Next()
     return state_of(__self)->First();
 #line 14 "nonnull_basic.hot"
 }
-#line 665 "nonnull_basic.hot.cpp"
+#line 667 "nonnull_basic.hot.cpp"
 #line 14 "nonnull_basic.hot"
 int32_t hot_state_Holder::First()
 #line 14 "nonnull_basic.hot"
@@ -683,10 +685,12 @@ int32_t hot_state_Holder::First()
 #line 15 "nonnull_basic.hot"
     HOT_TRACE_FRAME("Holder.First", "nonnull_basic.hot");
 #line 15 "nonnull_basic.hot"
-    HOT_TRACE_LINE(); return state_of(hot::shell_of<Node_Shell>(hot::nonnull(head, "nonnull_basic.hot:15: 'head' is null"), "Node"))->v;
+    HOT_TRACE_LINE();
+#line 15 "nonnull_basic.hot"
+    return state_of(hot::shell_of<Node_Shell>(hot::nonnull(head, "nonnull_basic.hot:15: 'head' is null"), "Node"))->v;
 #line 16 "nonnull_basic.hot"
 }
-#line 690 "nonnull_basic.hot.cpp"
+#line 694 "nonnull_basic.hot.cpp"
 
 #line 18 "nonnull_basic.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Holder__Second(Holder_Shell* __self)
@@ -696,7 +700,7 @@ int32_t hot_state_Holder::First()
     return state_of(__self)->Second();
 #line 18 "nonnull_basic.hot"
 }
-#line 700 "nonnull_basic.hot.cpp"
+#line 704 "nonnull_basic.hot.cpp"
 #line 18 "nonnull_basic.hot"
 int32_t hot_state_Holder::Second()
 #line 18 "nonnull_basic.hot"
@@ -718,12 +722,16 @@ int32_t hot_state_Holder::Second()
 #line 19 "nonnull_basic.hot"
     HOT_TRACE_FRAME("Holder.Second", "nonnull_basic.hot");
 #line 19 "nonnull_basic.hot"
-    HOT_TRACE_LINE(); const std::shared_ptr<Node> x = hot::nonnull(Node__Next(hot::shell_of<Node_Shell>(hot::nonnull(head, "nonnull_basic.hot:19: 'head' is null"), "Node")), "nonnull_basic.hot:19: 'head!.Next()' is null");
+    HOT_TRACE_LINE();
+#line 19 "nonnull_basic.hot"
+    const std::shared_ptr<Node> x = hot::nonnull(Node__Next(hot::shell_of<Node_Shell>(hot::nonnull(head, "nonnull_basic.hot:19: 'head' is null"), "Node")), "nonnull_basic.hot:19: 'head!.Next()' is null");
 #line 20 "nonnull_basic.hot"
-    HOT_TRACE_LINE(); return state_of(hot::shell_of<Node_Shell>(hot::nonnull(x, "nonnull_basic.hot:20: 'x' is null"), "Node"))->v;
+    HOT_TRACE_LINE();
+#line 20 "nonnull_basic.hot"
+    return state_of(hot::shell_of<Node_Shell>(hot::nonnull(x, "nonnull_basic.hot:20: 'x' is null"), "Node"))->v;
 #line 21 "nonnull_basic.hot"
 }
-#line 727 "nonnull_basic.hot.cpp"
+#line 735 "nonnull_basic.hot.cpp"
 
 #line 23 "nonnull_basic.hot"
 [[maybe_unused]] HOT_HIDDEN static void Holder__arm(Holder_Shell* __self, World& w, float delay)
@@ -733,7 +741,7 @@ int32_t hot_state_Holder::Second()
     return state_of(__self)->arm(std::forward<World&>(w), std::forward<float>(delay));
 #line 23 "nonnull_basic.hot"
 }
-#line 737 "nonnull_basic.hot.cpp"
+#line 745 "nonnull_basic.hot.cpp"
 #line 23 "nonnull_basic.hot"
 void hot_state_Holder::arm(World& w, float delay)
 #line 23 "nonnull_basic.hot"
@@ -755,14 +763,16 @@ void hot_state_Holder::arm(World& w, float delay)
 #line 24 "nonnull_basic.hot"
     HOT_TRACE_FRAME("Holder.arm", "nonnull_basic.hot");
 #line 24 "nonnull_basic.hot"
-    HOT_TRACE_LINE(); hot::deref(w).AddTimer(delay, hot::make_lambda_deduced<__LamTag_0>(GEN, hot::caps(__self), []([[maybe_unused]] auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self);
+    HOT_TRACE_LINE();
+#line 24 "nonnull_basic.hot"
+    hot::deref(w).AddTimer(delay, hot::make_lambda_deduced<__LamTag_0>(GEN, hot::caps(__self), []([[maybe_unused]] auto& __c) { [[maybe_unused]] auto& __self = std::get<0>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self);
 #line 25 "nonnull_basic.hot"
             __st->n = state_of(hot::shell_of<Node_Shell>(hot::nonnull(__st->head, "nonnull_basic.hot:25: 'head' is null"), "Node"))->v;
 #line 26 "nonnull_basic.hot"
         } }));
 #line 27 "nonnull_basic.hot"
 }
-#line 766 "nonnull_basic.hot.cpp"
+#line 776 "nonnull_basic.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

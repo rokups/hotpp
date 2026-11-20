@@ -671,20 +671,32 @@ void hot_state_Hero::Tick(float dt)
 #line 45 "functions_v2.hot"
     HOT_TRACE_FRAME("Hero.Tick", "functions_v2.hot");
 #line 45 "functions_v2.hot"
-    HOT_TRACE_LINE(); __st->sum = hot_fn_Add(2, 3);
+    HOT_TRACE_LINE();
+#line 45 "functions_v2.hot"
+    __st->sum = hot_fn_Add(2, 3);
 #line 46 "functions_v2.hot"
-    HOT_TRACE_LINE(); __st->weight = Hero__s_Weight(10) + Hero__s_Weight(0);
+    HOT_TRACE_LINE();
+#line 46 "functions_v2.hot"
+    __st->weight = Hero__s_Weight(10) + Hero__s_Weight(0);
 #line 47 "functions_v2.hot"
-    HOT_TRACE_LINE(); __st->fact = hot_fn_Fact(5);
+    HOT_TRACE_LINE();
+#line 47 "functions_v2.hot"
+    __st->fact = hot_fn_Fact(5);
 #line 48 "functions_v2.hot"
-    HOT_TRACE_LINE(); __st->scaled = hot_fn_Scale(4);
+    HOT_TRACE_LINE();
+#line 48 "functions_v2.hot"
+    __st->scaled = hot_fn_Scale(4);
 #line 49 "functions_v2.hot"
-    HOT_TRACE_LINE(); __st->scaled2 = hot_fn_Scale(4, 5);
+    HOT_TRACE_LINE();
+#line 49 "functions_v2.hot"
+    __st->scaled2 = hot_fn_Scale(4, 5);
 #line 50 "functions_v2.hot"
-    HOT_TRACE_LINE(); __st->twice = Vec__s_Twice(21);
+    HOT_TRACE_LINE();
+#line 50 "functions_v2.hot"
+    __st->twice = Vec__s_Twice(21);
 #line 51 "functions_v2.hot"
 }
-#line 688 "functions_v2.hot.cpp"
+#line 700 "functions_v2.hot.cpp"
 
 #line 58 "functions_v2.hot"
 void hot_state_Helper::Tick(float dt)
@@ -707,10 +719,12 @@ void hot_state_Helper::Tick(float dt)
 #line 59 "functions_v2.hot"
     HOT_TRACE_FRAME("Helper.Tick", "functions_v2.hot");
 #line 59 "functions_v2.hot"
-    HOT_TRACE_LINE(); __st->seen = Hero__s_Weight(100) + hot_fn_Add(1, 1);
+    HOT_TRACE_LINE();
+#line 59 "functions_v2.hot"
+    __st->seen = Hero__s_Weight(100) + hot_fn_Add(1, 1);
 #line 60 "functions_v2.hot"
 }
-#line 714 "functions_v2.hot.cpp"
+#line 728 "functions_v2.hot.cpp"
 
 #line 27 "functions_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Vec__s_Twice(int32_t v)
@@ -721,10 +735,12 @@ void hot_state_Helper::Tick(float dt)
 #line 28 "functions_v2.hot"
     HOT_TRACE_FRAME("Vec.Twice", "functions_v2.hot");
 #line 28 "functions_v2.hot"
-    HOT_TRACE_LINE(); return v * 2;
+    HOT_TRACE_LINE();
+#line 28 "functions_v2.hot"
+    return v * 2;
 #line 29 "functions_v2.hot"
 }
-#line 728 "functions_v2.hot.cpp"
+#line 744 "functions_v2.hot.cpp"
 
 #line 40 "functions_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Hero__s_Weight(int32_t m)
@@ -735,10 +751,12 @@ void hot_state_Helper::Tick(float dt)
 #line 41 "functions_v2.hot"
     HOT_TRACE_FRAME("Hero.Weight", "functions_v2.hot");
 #line 41 "functions_v2.hot"
-    HOT_TRACE_LINE(); return m + 2;
+    HOT_TRACE_LINE();
+#line 41 "functions_v2.hot"
+    return m + 2;
 #line 42 "functions_v2.hot"
 }
-#line 742 "functions_v2.hot.cpp"
+#line 760 "functions_v2.hot.cpp"
 
 #line 9 "functions_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Add(int32_t a, int32_t b)
@@ -749,10 +767,12 @@ void hot_state_Helper::Tick(float dt)
 #line 10 "functions_v2.hot"
     HOT_TRACE_FRAME("Add", "functions_v2.hot");
 #line 10 "functions_v2.hot"
-    HOT_TRACE_LINE(); return a + b + 100;
+    HOT_TRACE_LINE();
+#line 10 "functions_v2.hot"
+    return a + b + 100;
 #line 11 "functions_v2.hot"
 }
-#line 756 "functions_v2.hot.cpp"
+#line 776 "functions_v2.hot.cpp"
 
 #line 13 "functions_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Fact(int32_t n)
@@ -763,16 +783,22 @@ void hot_state_Helper::Tick(float dt)
 #line 14 "functions_v2.hot"
     HOT_TRACE_FRAME("Fact", "functions_v2.hot");
 #line 14 "functions_v2.hot"
-    HOT_TRACE_LINE(); if (n <= 1) {
+    HOT_TRACE_LINE();
+#line 14 "functions_v2.hot"
+    if (n <= 1) {
 #line 15 "functions_v2.hot"
-        HOT_TRACE_LINE(); return 1;
+        HOT_TRACE_LINE();
+#line 15 "functions_v2.hot"
+        return 1;
 #line 16 "functions_v2.hot"
     }
 #line 17 "functions_v2.hot"
-    HOT_TRACE_LINE(); return n * hot_fn_Fact(n - 1);
+    HOT_TRACE_LINE();
+#line 17 "functions_v2.hot"
+    return n * hot_fn_Fact(n - 1);
 #line 18 "functions_v2.hot"
 }
-#line 776 "functions_v2.hot.cpp"
+#line 802 "functions_v2.hot.cpp"
 
 #line 20 "functions_v2.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Scale(int32_t x, int32_t k)
@@ -783,10 +809,12 @@ void hot_state_Helper::Tick(float dt)
 #line 21 "functions_v2.hot"
     HOT_TRACE_FRAME("Scale", "functions_v2.hot");
 #line 21 "functions_v2.hot"
-    HOT_TRACE_LINE(); return x * k;
+    HOT_TRACE_LINE();
+#line 21 "functions_v2.hot"
+    return x * k;
 #line 22 "functions_v2.hot"
 }
-#line 790 "functions_v2.hot.cpp"
+#line 818 "functions_v2.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

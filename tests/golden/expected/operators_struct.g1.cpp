@@ -622,76 +622,144 @@ void hot_state_Holder::Tick(float dt)
 #line 48 "operators_struct.hot"
     HOT_TRACE_FRAME("Holder.Tick", "operators_struct.hot");
 #line 48 "operators_struct.hot"
-    HOT_TRACE_LINE(); __st->ticks = __st->ticks + 1;
+    HOT_TRACE_LINE();
+#line 48 "operators_struct.hot"
+    __st->ticks = __st->ticks + 1;
 #line 49 "operators_struct.hot"
-    HOT_TRACE_LINE(); if (__st->ticks != 1) { HOT_TRACE_LINE(); return; }
+    HOT_TRACE_LINE();
+#line 49 "operators_struct.hot"
+    if (__st->ticks != 1) { HOT_TRACE_LINE(); return; }
 #line 50 "operators_struct.hot"
-    HOT_TRACE_LINE(); Vec2 a = Vec2(1.0f, 2.0f);
+    HOT_TRACE_LINE();
+#line 50 "operators_struct.hot"
+    Vec2 a = Vec2(1.0f, 2.0f);
 #line 51 "operators_struct.hot"
-    HOT_TRACE_LINE(); Vec2 b = Vec2(3.0f, 5.0f);
+    HOT_TRACE_LINE();
+#line 51 "operators_struct.hot"
+    Vec2 b = Vec2(3.0f, 5.0f);
 #line 52 "operators_struct.hot"
-    HOT_TRACE_LINE(); Vec2 s = a + b;
+    HOT_TRACE_LINE();
+#line 52 "operators_struct.hot"
+    Vec2 s = a + b;
 #line 53 "operators_struct.hot"
-    HOT_TRACE_LINE(); __st->r_add = (hot::deref(s).x == 4.0f && hot::deref(s).y == 7.0f) ? 1 : 0;
+    HOT_TRACE_LINE();
+#line 53 "operators_struct.hot"
+    __st->r_add = (hot::deref(s).x == 4.0f && hot::deref(s).y == 7.0f) ? 1 : 0;
 #line 54 "operators_struct.hot"
-    HOT_TRACE_LINE(); const Vec2 n = -a;
+    HOT_TRACE_LINE();
+#line 54 "operators_struct.hot"
+    const Vec2 n = -a;
 #line 55 "operators_struct.hot"
-    HOT_TRACE_LINE(); __st->r_neg = (hot::deref(n).x == -1.0f && hot::deref(n).y == -2.0f) ? 1 : 0;
+    HOT_TRACE_LINE();
+#line 55 "operators_struct.hot"
+    __st->r_neg = (hot::deref(n).x == -1.0f && hot::deref(n).y == -2.0f) ? 1 : 0;
 #line 56 "operators_struct.hot"
-    HOT_TRACE_LINE(); const Vec2 m = b * 2.0f;
+    HOT_TRACE_LINE();
+#line 56 "operators_struct.hot"
+    const Vec2 m = b * 2.0f;
 #line 57 "operators_struct.hot"
-    HOT_TRACE_LINE(); __st->r_mul = (hot::deref(m).x == 6.0f && hot::deref(m).y == 10.0f) ? 1 : 0;
+    HOT_TRACE_LINE();
+#line 57 "operators_struct.hot"
+    __st->r_mul = (hot::deref(m).x == 6.0f && hot::deref(m).y == 10.0f) ? 1 : 0;
 #line 58 "operators_struct.hot"
-    HOT_TRACE_LINE(); __st->r_lt = (a < b) ? 1 : 0;
+    HOT_TRACE_LINE();
+#line 58 "operators_struct.hot"
+    __st->r_lt = (a < b) ? 1 : 0;
 #line 59 "operators_struct.hot"
-    HOT_TRACE_LINE(); __st->r_gt = (b > a) ? 1 : 0;
+    HOT_TRACE_LINE();
+#line 59 "operators_struct.hot"
+    __st->r_gt = (b > a) ? 1 : 0;
 #line 60 "operators_struct.hot"
-    HOT_TRACE_LINE(); Vec2 d = Vec2();
+    HOT_TRACE_LINE();
+#line 60 "operators_struct.hot"
+    Vec2 d = Vec2();
 #line 61 "operators_struct.hot"
-    HOT_TRACE_LINE(); hot::index(d, 0) = 4.0f;
+    HOT_TRACE_LINE();
+#line 61 "operators_struct.hot"
+    hot::index(d, 0) = 4.0f;
 #line 62 "operators_struct.hot"
-    HOT_TRACE_LINE(); hot::index(d, 1) = 9.0f;
+    HOT_TRACE_LINE();
+#line 62 "operators_struct.hot"
+    hot::index(d, 1) = 9.0f;
 #line 63 "operators_struct.hot"
-    HOT_TRACE_LINE(); __st->r_index = (hot::index(d, 0) + hot::index(d, 1) == 13.0f) ? 1 : 0;
+    HOT_TRACE_LINE();
+#line 63 "operators_struct.hot"
+    __st->r_index = (hot::index(d, 0) + hot::index(d, 1) == 13.0f) ? 1 : 0;
 #line 64 "operators_struct.hot"
-    HOT_TRACE_LINE(); Vec2 c = a;
+    HOT_TRACE_LINE();
+#line 64 "operators_struct.hot"
+    Vec2 c = a;
 #line 65 "operators_struct.hot"
-    HOT_TRACE_LINE(); c += b;
+    HOT_TRACE_LINE();
+#line 65 "operators_struct.hot"
+    c += b;
 #line 66 "operators_struct.hot"
-    HOT_TRACE_LINE(); c *= 2.0f;
+    HOT_TRACE_LINE();
+#line 66 "operators_struct.hot"
+    c *= 2.0f;
 #line 67 "operators_struct.hot"
-    HOT_TRACE_LINE(); __st->r_compound = (hot::deref(c).x == 8.0f && hot::deref(c).y == 14.0f) ? 1 : 0;
+    HOT_TRACE_LINE();
+#line 67 "operators_struct.hot"
+    __st->r_compound = (hot::deref(c).x == 8.0f && hot::deref(c).y == 14.0f) ? 1 : 0;
 #line 68 "operators_struct.hot"
-    HOT_TRACE_LINE(); const Vec2 a2 = a;
+    HOT_TRACE_LINE();
+#line 68 "operators_struct.hot"
+    const Vec2 a2 = a;
 #line 69 "operators_struct.hot"
-    HOT_TRACE_LINE(); __st->r_eq = (a == a2) ? 1 : 0;
+    HOT_TRACE_LINE();
+#line 69 "operators_struct.hot"
+    __st->r_eq = (a == a2) ? 1 : 0;
 #line 70 "operators_struct.hot"
-    HOT_TRACE_LINE(); __st->r_ne = (a != b) ? 1 : 0;
+    HOT_TRACE_LINE();
+#line 70 "operators_struct.hot"
+    __st->r_ne = (a != b) ? 1 : 0;
 #line 71 "operators_struct.hot"
-    HOT_TRACE_LINE(); Pair p = Pair();
+    HOT_TRACE_LINE();
+#line 71 "operators_struct.hot"
+    Pair p = Pair();
 #line 72 "operators_struct.hot"
-    HOT_TRACE_LINE(); Pair q = Pair();
+    HOT_TRACE_LINE();
+#line 72 "operators_struct.hot"
+    Pair q = Pair();
 #line 73 "operators_struct.hot"
-    HOT_TRACE_LINE(); __st->r_pair_eq = (p == q) ? 1 : 0;
+    HOT_TRACE_LINE();
+#line 73 "operators_struct.hot"
+    __st->r_pair_eq = (p == q) ? 1 : 0;
 #line 74 "operators_struct.hot"
-    HOT_TRACE_LINE(); hot::deref(hot::deref(q).list).push_back(1);
+    HOT_TRACE_LINE();
+#line 74 "operators_struct.hot"
+    hot::deref(hot::deref(q).list).push_back(1);
 #line 75 "operators_struct.hot"
-    HOT_TRACE_LINE(); __st->r_pair_ne = (p != q) ? 1 : 0;
+    HOT_TRACE_LINE();
+#line 75 "operators_struct.hot"
+    __st->r_pair_ne = (p != q) ? 1 : 0;
 #line 76 "operators_struct.hot"
-    HOT_TRACE_LINE(); std::vector<Vec2> list = std::vector<Vec2>();
+    HOT_TRACE_LINE();
+#line 76 "operators_struct.hot"
+    std::vector<Vec2> list = std::vector<Vec2>();
 #line 77 "operators_struct.hot"
-    HOT_TRACE_LINE(); hot::deref(list).push_back(b);
+    HOT_TRACE_LINE();
+#line 77 "operators_struct.hot"
+    hot::deref(list).push_back(b);
 #line 78 "operators_struct.hot"
-    HOT_TRACE_LINE(); hot::deref(list).push_back(a);
+    HOT_TRACE_LINE();
+#line 78 "operators_struct.hot"
+    hot::deref(list).push_back(a);
 #line 79 "operators_struct.hot"
-    HOT_TRACE_LINE(); hot::deref(list).push_back(s);
+    HOT_TRACE_LINE();
+#line 79 "operators_struct.hot"
+    hot::deref(list).push_back(s);
 #line 80 "operators_struct.hot"
-    HOT_TRACE_LINE(); std::sort(hot::deref(list).begin(), hot::deref(list).end());
+    HOT_TRACE_LINE();
+#line 80 "operators_struct.hot"
+    std::sort(hot::deref(list).begin(), hot::deref(list).end());
 #line 81 "operators_struct.hot"
-    HOT_TRACE_LINE(); __st->r_sorted = (hot::deref(hot::index(list, 0)).x == 1.0f && hot::deref(hot::index(list, 1)).x == 3.0f && hot::deref(hot::index(list, 2)).x == 4.0f) ? 1 : 0;
+    HOT_TRACE_LINE();
+#line 81 "operators_struct.hot"
+    __st->r_sorted = (hot::deref(hot::index(list, 0)).x == 1.0f && hot::deref(hot::index(list, 1)).x == 3.0f && hot::deref(hot::index(list, 2)).x == 4.0f) ? 1 : 0;
 #line 82 "operators_struct.hot"
 }
-#line 695 "operators_struct.hot.cpp"
+#line 763 "operators_struct.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

@@ -312,18 +312,28 @@ void hot_state_Rig::Step()
 #line 15 "native_ref_getter_v1.hot"
     HOT_TRACE_FRAME("Rig.Step", "native_ref_getter_v1.hot");
 #line 15 "native_ref_getter_v1.hot"
-    HOT_TRACE_LINE(); if (__st->anim == nullptr) __st->anim = std::make_shared<Animator>(1);
+    HOT_TRACE_LINE();
+#line 15 "native_ref_getter_v1.hot"
+    if (__st->anim == nullptr) __st->anim = std::make_shared<Animator>(1);
 #line 16 "native_ref_getter_v1.hot"
-    HOT_TRACE_LINE(); auto& m = hot::deref(__st->anim).GetMotion();
+    HOT_TRACE_LINE();
+#line 16 "native_ref_getter_v1.hot"
+    auto& m = hot::deref(__st->anim).GetMotion();
 #line 17 "native_ref_getter_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(m).x = hot::deref(m).x + 1;
+    HOT_TRACE_LINE();
+#line 17 "native_ref_getter_v1.hot"
+    hot::deref(m).x = hot::deref(m).x + 1;
 #line 18 "native_ref_getter_v1.hot"
-    HOT_TRACE_LINE(); auto& k = hot::deref(__st->anim).MotionAt(1);
+    HOT_TRACE_LINE();
+#line 18 "native_ref_getter_v1.hot"
+    auto& k = hot::deref(__st->anim).MotionAt(1);
 #line 19 "native_ref_getter_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(k).frame = __st->frames;
+    HOT_TRACE_LINE();
+#line 19 "native_ref_getter_v1.hot"
+    hot::deref(k).frame = __st->frames;
 #line 20 "native_ref_getter_v1.hot"
 }
-#line 327 "native_ref_getter_v1.hot.cpp"
+#line 337 "native_ref_getter_v1.hot.cpp"
 
 #line 22 "native_ref_getter_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Rig__Local(Rig_Shell* __self, const std::shared_ptr<Animator>& a)
@@ -333,7 +343,7 @@ void hot_state_Rig::Step()
     return state_of(__self)->Local(std::forward<const std::shared_ptr<Animator>&>(a));
 #line 22 "native_ref_getter_v1.hot"
 }
-#line 337 "native_ref_getter_v1.hot.cpp"
+#line 347 "native_ref_getter_v1.hot.cpp"
 #line 22 "native_ref_getter_v1.hot"
 void hot_state_Rig::Local(const std::shared_ptr<Animator>& a)
 #line 22 "native_ref_getter_v1.hot"
@@ -355,16 +365,24 @@ void hot_state_Rig::Local(const std::shared_ptr<Animator>& a)
 #line 23 "native_ref_getter_v1.hot"
     HOT_TRACE_FRAME("Rig.Local", "native_ref_getter_v1.hot");
 #line 23 "native_ref_getter_v1.hot"
-    HOT_TRACE_LINE(); auto& m = hot::deref(a).GetMotion();
+    HOT_TRACE_LINE();
+#line 23 "native_ref_getter_v1.hot"
+    auto& m = hot::deref(a).GetMotion();
 #line 24 "native_ref_getter_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(m).frame = 2;
+    HOT_TRACE_LINE();
+#line 24 "native_ref_getter_v1.hot"
+    hot::deref(m).frame = 2;
 #line 25 "native_ref_getter_v1.hot"
-    HOT_TRACE_LINE(); auto& s = Animator::Shared();
+    HOT_TRACE_LINE();
+#line 25 "native_ref_getter_v1.hot"
+    auto& s = Animator::Shared();
 #line 26 "native_ref_getter_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(s).frame = 3;
+    HOT_TRACE_LINE();
+#line 26 "native_ref_getter_v1.hot"
+    hot::deref(s).frame = 3;
 #line 27 "native_ref_getter_v1.hot"
 }
-#line 368 "native_ref_getter_v1.hot.cpp"
+#line 386 "native_ref_getter_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

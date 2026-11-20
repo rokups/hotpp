@@ -327,12 +327,16 @@ void hot_state_Grid::Tick(float dt)
 #line 12 "module_attrs_array_v1.hot"
     HOT_TRACE_FRAME("Grid.Tick", "module_attrs_array_v1.hot");
 #line 12 "module_attrs_array_v1.hot"
-    HOT_TRACE_LINE(); hot::index(__st->cells, 1) = 7;
+    HOT_TRACE_LINE();
+#line 12 "module_attrs_array_v1.hot"
+    hot::index(__st->cells, 1) = 7;
 #line 13 "module_attrs_array_v1.hot"
-    HOT_TRACE_LINE(); hot::index(hot::index(__st->weights, 1), 2) = dt;
+    HOT_TRACE_LINE();
+#line 13 "module_attrs_array_v1.hot"
+    hot::index(hot::index(__st->weights, 1), 2) = dt;
 #line 14 "module_attrs_array_v1.hot"
 }
-#line 336 "module_attrs_array_v1.hot.cpp"
+#line 340 "module_attrs_array_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
