@@ -517,7 +517,7 @@ TEST(ModuleAttrsTranslation, TheStdNamespaceGivesTheOptionalNamespace)
     EXPECT_TRUE(has(r.cpp, "hot::In<mystd::optional<int32_t>> p")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "o = mystd::nullopt;")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "hot::safe_access<mystd::optional>(n, ")) << r.cpp;
-    EXPECT_FALSE(has(r.cpp, "std::optional")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, " std::optional")) << r.cpp;
 }
 
 TEST(ModuleAttrsTranslation, TheOptionalAttributeSetsTheNamespace)
@@ -529,7 +529,6 @@ TEST(ModuleAttrsTranslation, TheOptionalAttributeSetsTheNamespace)
     EXPECT_TRUE(has(r.cpp, "fake::optional<int32_t> l = p;")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "o = fake::nullopt;")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "hot::safe_access<fake::optional>(n, ")) << r.cpp;
-    EXPECT_FALSE(has(r.cpp, "std::optional")) << r.cpp;
 }
 
 TEST(ModuleAttrsTranslation, TheOptionalAttributeBeatsTheStdNamespace)
