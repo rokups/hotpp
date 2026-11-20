@@ -227,6 +227,50 @@ void expect_stable(const std::string& text)
 
 } // namespace
 
+TEST(Formatter, BlockBelowABracelessHeadTakesTheLevelOfItsOwnLine)
+{
+    const std::string expected = "class A {\n"
+                                 "    void f() {\n"
+                                 "        if (a)\n"
+                                 "            for (;;) {\n"
+                                 "                d();\n"
+                                 "            }\n"
+                                 "        e();\n"
+                                 "    }\n"
+                                 "}\n";
+    const std::string once = format_hot("class A {\n"
+                                        "    void f() {\n"
+                                        "        if (a)\n"
+                                        "            for (;;) {\n"
+                                        "                d();\n"
+                                        "            }\n"
+                                        "        e();\n"
+                                        "    }\n"
+                                        "}\n");
+    EXPECT_EQ(once, expected);
+    EXPECT_EQ(format_hot(once), once);
+    // A brace on its own line below the head.
+    const std::string own = format_hot("class A {\n"
+                                       "    void f() {\n"
+                                       "        while (a)\n"
+                                       "            if (b)\n"
+                                       "            {\n"
+                                       "                d();\n"
+                                       "            }\n"
+                                       "    }\n"
+                                       "}\n");
+    EXPECT_EQ(own, "class A {\n"
+                   "    void f() {\n"
+                   "        while (a)\n"
+                   "            if (b)\n"
+                   "            {\n"
+                   "                d();\n"
+                   "            }\n"
+                   "    }\n"
+                   "}\n");
+    EXPECT_EQ(format_hot(own), own);
+}
+
 TEST(Formatter, StatementsOfABlockKeepTheLevelOfTheBlock)
 {
     // The lines after "Combatant c = Combatant();" have too little indent. They go to the level of the block.
@@ -534,6 +578,155 @@ void expect_braces_stay(const std::string& text)
 }
 
 } // namespace
+
+namespace
+{
+
+std::string unindent(const std::string& text)
+{
+    std::string r;
+    bool start = true;
+    for (char c : text)
+    {
+        if (start && c == ' ')
+            continue;
+        start = c == '\n';
+        r += c;
+    }
+    return r;
+}
+
+// "good" is the Keep layout. The same text without indent must give it. The NextLine layout of both is the same.
+void expect_nested_head(const std::string& good)
+{
+    const std::string bad = unindent(good);
+    EXPECT_EQ(format_hot(bad), good);
+    EXPECT_EQ(format_hot(good), good);
+    const std::string next = with_brace(good, BraceStyle::NextLine);
+    EXPECT_EQ(with_brace(bad, BraceStyle::NextLine), next);
+    EXPECT_EQ(with_brace(next, BraceStyle::NextLine), next);
+    EXPECT_EQ(format_hot(next), next);
+}
+
+} // namespace
+
+TEST(Formatter, ElseAndCatchAfterABlockOfANestedHeadKeepTheLevel)
+{
+    expect_nested_head("void f() {\n"
+                       "    if (a)\n"
+                       "        if (b) {\n"
+                       "            x;\n"
+                       "        } else {\n"
+                       "            y;\n"
+                       "        }\n"
+                       "}\n");
+    expect_nested_head("void f() {\n"
+                       "    if (a)\n"
+                       "        if (b) {\n"
+                       "            x;\n"
+                       "        } else\n"
+                       "            y();\n"
+                       "}\n");
+    expect_nested_head("void f() {\n"
+                       "    if (a)\n"
+                       "        if (b) {\n"
+                       "            x;\n"
+                       "        } else if (c) {\n"
+                       "            y;\n"
+                       "        }\n"
+                       "}\n");
+    expect_nested_head("void f() {\n"
+                       "    if (a)\n"
+                       "        try {\n"
+                       "            x;\n"
+                       "        } catch {\n"
+                       "            y;\n"
+                       "        }\n"
+                       "}\n");
+    // The else on its own line below a brace on its own line.
+    expect_nested_head("void f() {\n"
+                       "    if (a)\n"
+                       "        if (b)\n"
+                       "        {\n"
+                       "            x;\n"
+                       "        }\n"
+                       "        else\n"
+                       "        {\n"
+                       "            y;\n"
+                       "        }\n"
+                       "}\n");
+    // An else after the block of a "for" belongs to the outer "if".
+    expect_nested_head("void f() {\n"
+                       "    if (a)\n"
+                       "        for (;;) {\n"
+                       "            x;\n"
+                       "        }\n"
+                       "    else\n"
+                       "        y;\n"
+                       "}\n");
+    expect_nested_head("void f() {\n"
+                       "    if (a)\n"
+                       "        do {\n"
+                       "            x;\n"
+                       "        }\n"
+                       "        while (y);\n"
+                       "    z;\n"
+                       "}\n");
+    expect_nested_head("void f() {\n"
+                       "    if (a)\n"
+                       "        try {\n"
+                       "            x;\n"
+                       "        }\n"
+                       "        catch (E e) {\n"
+                       "            y;\n"
+                       "        }\n"
+                       "        finally {\n"
+                       "            z;\n"
+                       "        }\n"
+                       "}\n");
+    // "})" and "}}" keep the base of the line of the bracket that they close last.
+    for (const std::string good : {"void f() {\n"
+                                   "    foo(\n"
+                                   "        () => {\n"
+                                   "            x;\n"
+                                   "        })\n"
+                                   "        .Then(y);\n"
+                                   "}\n",
+             "void f() {\n"
+             "    if (a) {\n"
+             "        if (b) {\n"
+             "            x;\n"
+             "        } }\n"
+             "    else {\n"
+             "        y;\n"
+             "    }\n"
+             "}\n",
+             // A head after a block comment on the same line.
+             "void f() {\n"
+             "    if (x)\n"
+             "        y();\n"
+             "    /* c */ if (a)\n"
+             "    {\n"
+             "    }\n"
+             "}\n"})
+    {
+        EXPECT_EQ(format_hot(unindent(good)), good);
+        EXPECT_EQ(format_hot(good), good);
+    }
+    // Tabs.
+    FormatOptions o;
+    o.use_tabs = true;
+    const std::string tabs = "void f() {\n"
+                             "\tif (a)\n"
+                             "\t\tif (b) {\n"
+                             "\t\t\tx;\n"
+                             "\t\t} else {\n"
+                             "\t\t\ty;\n"
+                             "\t\t}\n"
+                             "}\n";
+    EXPECT_EQ(format_hot(unindent(tabs), o), tabs);
+    EXPECT_EQ(format_hot(tabs, o), tabs);
+}
 
 TEST(Formatter, BraceStyleMovesTheBraceOfEachBlockHead)
 {
