@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include <memory>
+#include <string_view>
 #include <optional>
 #include <variant>
 
@@ -113,6 +114,56 @@ TEST(OptionalLikeSafeAccess, FakeOptionalResultAndReceiver)
         hot::safe_access<fake::optional>(p, [](auto&& s) { return fake::optional<Box>(Box{hot::deref(s).v}); }),
         [](auto&& s) { return hot::deref(s).v; });
     EXPECT_EQ(*chain, 7);
+}
+
+// A value type that converts implicitly from "const char*" (like StringHash and ea::string). Its
+// comparison with a pointer compiles, so the comparison with nullptr must not be ambiguous.
+struct Name
+{
+    Name() = default;
+    Name(const char* s) : s_(s) {}
+    bool operator==(const Name& o) const { return s_ == o.s_; }
+    const char* s_ = nullptr;
+};
+
+template <class T> class OptionalNullptr : public ::testing::Test
+{
+};
+using NameOptionals = ::testing::Types<std::optional<Name>, fake::optional<Name>, std::optional<std::string_view>>;
+TYPED_TEST_SUITE(OptionalNullptr, NameOptionals);
+
+TYPED_TEST(OptionalNullptr, AllFourFormsWithAPointerConvertibleValue)
+{
+    TypeParam e;
+    TypeParam o = typename TypeParam::value_type("a");
+    EXPECT_TRUE(e == nullptr);
+    EXPECT_TRUE(nullptr == e);
+    EXPECT_FALSE(e != nullptr);
+    EXPECT_FALSE(nullptr != e);
+    EXPECT_FALSE(o == nullptr);
+    EXPECT_FALSE(nullptr == o);
+    EXPECT_TRUE(o != nullptr);
+    EXPECT_TRUE(nullptr != o);
+}
+
+// A move-only value: a const rvalue gives a reference, not a copy.
+struct MoveOnly
+{
+    MoveOnly() = default;
+    MoveOnly(MoveOnly&&) = default;
+    MoveOnly& operator=(MoveOnly&&) = default;
+    int v = 5;
+};
+
+TYPED_TEST(OptionalLike, ConstRvalueGivesAReference)
+{
+    using M = std::conditional_t<std::is_same_v<TypeParam, std::optional<Box>>, std::optional<MoveOnly>,
+        fake::optional<MoveOnly>>;
+    const M o = M(MoveOnly{});
+    static_assert(std::is_same_v<decltype(hot::deref(std::move(o))), const MoveOnly&>);
+    static_assert(std::is_same_v<decltype(hot::nonnull(std::move(o))), const MoveOnly&>);
+    static_assert(std::is_same_v<decltype(hot::nonnull(std::move(o), "m")), const MoveOnly&>);
+    EXPECT_EQ(hot::deref(std::move(o)).v, 5);
 }
 
 } // namespace

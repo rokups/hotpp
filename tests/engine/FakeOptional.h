@@ -33,4 +33,23 @@ private:
     T value_{};
     bool has_ = false;
 };
+
+// The same non-deduced shape as the comparison of std::optional and of EASTL: it must not make
+// "o == nullptr" ambiguous.
+template <class T, class U> bool operator==(const optional<T>& o, const U& v)
+{
+    return o.has_value() && *o == v;
+}
+template <class T, class U> bool operator==(const U& v, const optional<T>& o)
+{
+    return o.has_value() && v == *o;
+}
+template <class T, class U> bool operator!=(const optional<T>& o, const U& v)
+{
+    return !(o == v);
+}
+template <class T, class U> bool operator!=(const U& v, const optional<T>& o)
+{
+    return !(v == o);
+}
 } // namespace fake

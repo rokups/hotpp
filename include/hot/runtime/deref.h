@@ -78,12 +78,12 @@ template <class H, std::enable_if_t<is_handle_v<H>, int> = 0> HOT_HIDDEN decltyp
     return *h;
 }
 // An optional-like type gives its value. An empty one throws hot::NullReference. An lvalue gives a
-// reference. An rvalue gives the value (moved).
+// reference. A const rvalue gives a const reference. Any other rvalue gives the value (moved).
 template <class O, std::enable_if_t<is_optional_like_v<O>, int> = 0> HOT_HIDDEN decltype(auto) deref(O&& o)
 {
     if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(!o.has_value()))
         detail::throw_null_reference("empty optional dereference");
-    if constexpr (std::is_lvalue_reference_v<O>)
+    if constexpr (std::is_lvalue_reference_v<O> || std::is_const_v<std::remove_reference_t<O>>)
         return (*o);
     else
         return typename detail::remove_cvref_t<O>::value_type(std::move(*o));
@@ -125,7 +125,7 @@ template <class O, std::enable_if_t<is_optional_like_v<O>, int> = 0> HOT_HIDDEN 
 {
     if (HOT_UNLIKELY(!o.has_value()))
         detail::throw_null_reference("empty optional in a checked unwrap");
-    if constexpr (std::is_lvalue_reference_v<O>)
+    if constexpr (std::is_lvalue_reference_v<O> || std::is_const_v<std::remove_reference_t<O>>)
         return (*o);
     else
         return typename detail::remove_cvref_t<O>::value_type(std::move(*o));
@@ -156,7 +156,7 @@ HOT_HIDDEN decltype(auto) nonnull(O&& o, const char* msg)
 {
     if (HOT_UNLIKELY(!o.has_value()))
         detail::throw_null_reference(msg);
-    if constexpr (std::is_lvalue_reference_v<O>)
+    if constexpr (std::is_lvalue_reference_v<O> || std::is_const_v<std::remove_reference_t<O>>)
         return (*o);
     else
         return typename detail::remove_cvref_t<O>::value_type(std::move(*o));
@@ -179,6 +179,8 @@ template <class To, class P> HOT_HIDDEN constexpr decltype(auto) cast_ptr(P&& p)
 
 namespace detail
 {
+template <class T> inline constexpr bool is_std_optional_v = false;
+template <class T> inline constexpr bool is_std_optional_v<std::optional<T>> = true;
 template <class T>
 struct holds_null
     : std::bool_constant<std::is_pointer_v<T> || is_handle_v<T> || is_checked_ptr_v<T> || is_optional_like<T>::value>
@@ -405,25 +407,50 @@ template <class C, class I> HOT_HIDDEN decltype(auto) index(C&& c, I&& i)
 // The script compares "x == null" and "x != null". The translator writes "x == nullptr". For a
 // handle and a pointer this is the C++ comparison. A "T?" that comes from "a?.b" can have a type
 // that the translator does not know ("var d = a?.b; if (d == null)"). These operators make the
-// comparison of an optional-like type with nullptr work. They are in the global namespace, because
-// the generated functions are there. Only an optional-like type can match.
-template <class O, std::enable_if_t<hot::is_optional_like_v<O>, int> = 0>
-HOT_HIDDEN constexpr bool operator==(const O& o, std::nullptr_t) noexcept
+// comparison of an optional with nullptr work. They are in the global namespace, because the
+// generated functions are there.
+// The standard library (and EASTL) has "operator==(const optional<T>&, const U&)". It is viable when
+// the value type converts from a pointer ("std::optional<std::string_view>"). The std::optional
+// overloads are more specialized and win. The generic overloads for the other optional-like types
+// take "nullptr_t&&": the binding of an rvalue reference to the argument "nullptr" wins over the
+// "const U&" of the library, so the comparison is not ambiguous.
+template <class T> HOT_HIDDEN constexpr bool operator==(const std::optional<T>& o, std::nullptr_t) noexcept
 {
     return !o.has_value();
 }
-template <class O, std::enable_if_t<hot::is_optional_like_v<O>, int> = 0>
-HOT_HIDDEN constexpr bool operator==(std::nullptr_t, const O& o) noexcept
+template <class T> HOT_HIDDEN constexpr bool operator==(std::nullptr_t, const std::optional<T>& o) noexcept
 {
     return !o.has_value();
 }
-template <class O, std::enable_if_t<hot::is_optional_like_v<O>, int> = 0>
-HOT_HIDDEN constexpr bool operator!=(const O& o, std::nullptr_t) noexcept
+template <class T> HOT_HIDDEN constexpr bool operator!=(const std::optional<T>& o, std::nullptr_t) noexcept
 {
     return o.has_value();
 }
-template <class O, std::enable_if_t<hot::is_optional_like_v<O>, int> = 0>
-HOT_HIDDEN constexpr bool operator!=(std::nullptr_t, const O& o) noexcept
+template <class T> HOT_HIDDEN constexpr bool operator!=(std::nullptr_t, const std::optional<T>& o) noexcept
+{
+    return o.has_value();
+}
+namespace hot::detail
+{
+template <class O> inline constexpr bool other_optional_like_v = is_optional_like_v<O> && !is_std_optional_v<O>;
+}
+template <class O, std::enable_if_t<hot::detail::other_optional_like_v<O>, int> = 0>
+HOT_HIDDEN constexpr bool operator==(const O& o, std::nullptr_t&&) noexcept
+{
+    return !o.has_value();
+}
+template <class O, std::enable_if_t<hot::detail::other_optional_like_v<O>, int> = 0>
+HOT_HIDDEN constexpr bool operator==(std::nullptr_t&&, const O& o) noexcept
+{
+    return !o.has_value();
+}
+template <class O, std::enable_if_t<hot::detail::other_optional_like_v<O>, int> = 0>
+HOT_HIDDEN constexpr bool operator!=(const O& o, std::nullptr_t&&) noexcept
+{
+    return o.has_value();
+}
+template <class O, std::enable_if_t<hot::detail::other_optional_like_v<O>, int> = 0>
+HOT_HIDDEN constexpr bool operator!=(std::nullptr_t&&, const O& o) noexcept
 {
     return o.has_value();
 }
