@@ -133,10 +133,13 @@ struct Session
     TempDir dir;
     std::string path, uri;
     std::unique_ptr<LsClient> client;
-    explicit Session(bool clangd, const std::string& text = kScript, hot::ls::ServerOptions* o = nullptr)
+    explicit Session(bool clangd, const std::string& text = kScript, hot::ls::ServerOptions* o = nullptr,
+        const char* clang_tidy = nullptr)
     {
         path = (dir.path() / "player.hot").string();
         uri = uri_of(path);
+        if (clang_tidy)
+            write_file(dir.path() / ".clang-tidy", clang_tidy);
         write_file(path, text);
         client = std::make_unique<LsClient>(o ? *o : options(dir, clangd));
         client->initialize(uri_of(dir.path().string()));
@@ -197,6 +200,48 @@ TEST(LanguageServer, ClangdTypeErrorIsAtTheScriptLine)
         EXPECT_EQ(msg.find("int32_t"), std::string::npos) << msg;
     }
     EXPECT_TRUE(found) << n.dump();
+}
+
+// The generated C++ is not the script text. The indentation checks of clang and of clang-tidy
+// must not report the generated text. The lambda has no trace lines: its braceless body is
+// checked as written. A deliberate type error makes clangd publish the list.
+TEST(LanguageServer, ClangdIndentationChecksStaySilent)
+{
+    REQUIRE_CLANGD();
+    const std::string text =
+        "using \"Actor.h\";\n"
+        "\n"
+        "class Player : Actor {\n"
+        "    float hp = 100.0;\n"
+        "\n"
+        "    void heal(float amount) {\n"
+        "        int x = \"abc\";\n"
+        "        if (amount > 1.0)\n"
+        "            this.hp = this.hp + amount;\n"
+        "        else\n"
+        "            this.hp = 0.0;\n"
+        "        if (amount > 2.0) {\n"
+        "            this.hp = 1.0;\n"
+        "        }\n"
+        "        else {\n"
+        "            this.hp = 2.0;\n"
+        "        }\n"
+        "        var f = (int n) => {\n"
+        "            if (n > 3)\n"
+        "                this.hp = 3.0;\n"
+        "            this.hp = this.hp + 1.0;\n"
+        "        };\n"
+        "    }\n"
+        "}\n";
+    Session s(true, text, nullptr, "Checks: 'readability-misleading-indentation'\n");
+    const json n = s.diagnostics([](const json& d) { return has_source(d, "clangd"); });
+    ASSERT_FALSE(n.is_null()) << "no clangd diagnostics";
+    for (const json& d : n["params"]["diagnostics"])
+    {
+        const std::string msg = d.value("message", "");
+        EXPECT_EQ(msg.find("ndentation"), std::string::npos) << d.dump();
+        EXPECT_EQ(msg.find("inside this"), std::string::npos) << d.dump();
+    }
 }
 
 // clangd does not publish again when a new version has the same diagnostics. An edit that gives

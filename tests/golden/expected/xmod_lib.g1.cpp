@@ -630,10 +630,12 @@ void hot_state_Box::ctor(int32_t s)
 #line 23 "xmod_lib.hot"
     HOT_TRACE_FRAME("Box.Box", "xmod_lib.hot");
 #line 23 "xmod_lib.hot"
-    HOT_TRACE_LINE(); __st->size = s;
+    HOT_TRACE_LINE();
+#line 23 "xmod_lib.hot"
+    __st->size = s;
 #line 23 "xmod_lib.hot"
 }
-#line 637 "xmod_lib.hot.cpp"
+#line 639 "xmod_lib.hot.cpp"
 
 #line 31 "xmod_lib.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Box__area(Box_Shell* __self)
@@ -643,7 +645,7 @@ void hot_state_Box::ctor(int32_t s)
     return state_of(__self)->area();
 #line 31 "xmod_lib.hot"
 }
-#line 647 "xmod_lib.hot.cpp"
+#line 649 "xmod_lib.hot.cpp"
 #line 31 "xmod_lib.hot"
 int32_t hot_state_Box::area()
 #line 31 "xmod_lib.hot"
@@ -665,10 +667,12 @@ int32_t hot_state_Box::area()
 #line 32 "xmod_lib.hot"
     HOT_TRACE_FRAME("Box.area", "xmod_lib.hot");
 #line 32 "xmod_lib.hot"
-    HOT_TRACE_LINE(); return __st->size * __st->size;
+    HOT_TRACE_LINE();
+#line 32 "xmod_lib.hot"
+    return __st->size * __st->size;
 #line 33 "xmod_lib.hot"
 }
-#line 672 "xmod_lib.hot.cpp"
+#line 676 "xmod_lib.hot.cpp"
 
 #line 35 "xmod_lib.hot"
 [[maybe_unused]] HOT_HIDDEN static void Box__grow(Box_Shell* __self, int32_t by)
@@ -678,7 +682,7 @@ int32_t hot_state_Box::area()
     return state_of(__self)->grow(std::forward<int32_t>(by));
 #line 35 "xmod_lib.hot"
 }
-#line 682 "xmod_lib.hot.cpp"
+#line 686 "xmod_lib.hot.cpp"
 #line 35 "xmod_lib.hot"
 void hot_state_Box::grow(int32_t const by)
 #line 35 "xmod_lib.hot"
@@ -700,10 +704,12 @@ void hot_state_Box::grow(int32_t const by)
 #line 36 "xmod_lib.hot"
     HOT_TRACE_FRAME("Box.grow", "xmod_lib.hot");
 #line 36 "xmod_lib.hot"
-    HOT_TRACE_LINE(); __st->size = __st->size + by;
+    HOT_TRACE_LINE();
+#line 36 "xmod_lib.hot"
+    __st->size = __st->size + by;
 #line 37 "xmod_lib.hot"
 }
-#line 707 "xmod_lib.hot.cpp"
+#line 713 "xmod_lib.hot.cpp"
 
 #line 25 "xmod_lib.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Box__get_Doubled(Box_Shell* __self)
@@ -713,7 +719,7 @@ void hot_state_Box::grow(int32_t const by)
     return state_of(__self)->get_Doubled();
 #line 25 "xmod_lib.hot"
 }
-#line 717 "xmod_lib.hot.cpp"
+#line 723 "xmod_lib.hot.cpp"
 #line 25 "xmod_lib.hot"
 int32_t hot_state_Box::get_Doubled()
 #line 25 "xmod_lib.hot"
@@ -735,10 +741,12 @@ int32_t hot_state_Box::get_Doubled()
 #line 25 "xmod_lib.hot"
     HOT_TRACE_FRAME("Box.get_Doubled", "xmod_lib.hot");
 #line 25 "xmod_lib.hot"
-    HOT_TRACE_LINE(); return __st->size * 2;
+    HOT_TRACE_LINE();
+#line 25 "xmod_lib.hot"
+    return __st->size * 2;
 #line 25 "xmod_lib.hot"
 }
-#line 742 "xmod_lib.hot.cpp"
+#line 750 "xmod_lib.hot.cpp"
 
 #line 27 "xmod_lib.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Box__s_unit()
@@ -749,10 +757,12 @@ int32_t hot_state_Box::get_Doubled()
 #line 28 "xmod_lib.hot"
     HOT_TRACE_FRAME("Box.unit", "xmod_lib.hot");
 #line 28 "xmod_lib.hot"
-    HOT_TRACE_LINE(); return 1;
+    HOT_TRACE_LINE();
+#line 28 "xmod_lib.hot"
+    return 1;
 #line 29 "xmod_lib.hot"
 }
-#line 756 "xmod_lib.hot.cpp"
+#line 766 "xmod_lib.hot.cpp"
 
 #line 14 "xmod_lib.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_twice(int32_t v)
@@ -763,10 +773,12 @@ int32_t hot_state_Box::get_Doubled()
 #line 15 "xmod_lib.hot"
     HOT_TRACE_FRAME("twice", "xmod_lib.hot");
 #line 15 "xmod_lib.hot"
-    HOT_TRACE_LINE(); return v * 2;
+    HOT_TRACE_LINE();
+#line 15 "xmod_lib.hot"
+    return v * 2;
 #line 16 "xmod_lib.hot"
 }
-#line 770 "xmod_lib.hot.cpp"
+#line 782 "xmod_lib.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

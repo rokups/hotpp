@@ -493,10 +493,12 @@ void hot_state_User::ctor()
 #line 9 "xmod_use.hot"
     HOT_TRACE_FRAME("User.User", "xmod_use.hot");
 #line 9 "xmod_use.hot"
-    HOT_TRACE_LINE(); __st->box = std::shared_ptr<Box>(Box__new_shared(3));
+    HOT_TRACE_LINE();
+#line 9 "xmod_use.hot"
+    __st->box = std::shared_ptr<Box>(Box__new_shared(3));
 #line 10 "xmod_use.hot"
 }
-#line 500 "xmod_use.hot.cpp"
+#line 502 "xmod_use.hot.cpp"
 
 #line 12 "xmod_use.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t User__run(User_Shell* __self)
@@ -506,7 +508,7 @@ void hot_state_User::ctor()
     return state_of(__self)->run();
 #line 12 "xmod_use.hot"
 }
-#line 510 "xmod_use.hot.cpp"
+#line 512 "xmod_use.hot.cpp"
 #line 12 "xmod_use.hot"
 int32_t hot_state_User::run()
 #line 12 "xmod_use.hot"
@@ -528,46 +530,66 @@ int32_t hot_state_User::run()
 #line 13 "xmod_use.hot"
     HOT_TRACE_FRAME("User.run", "xmod_use.hot");
 #line 13 "xmod_use.hot"
-    HOT_TRACE_LINE(); const std::shared_ptr<Box> b = std::shared_ptr<Box>(Box__new_shared(3));
+    HOT_TRACE_LINE();
+#line 13 "xmod_use.hot"
+    const std::shared_ptr<Box> b = std::shared_ptr<Box>(Box__new_shared(3));
 #line 14 "xmod_use.hot"
-    HOT_TRACE_LINE(); Box__grow(hot::shell_of<Box_Shell>(b, "Box"), hot_fn_twice(1));
+    HOT_TRACE_LINE();
+#line 14 "xmod_use.hot"
+    Box__grow(hot::shell_of<Box_Shell>(b, "Box"), hot_fn_twice(1));
 #line 15 "xmod_use.hot"
-    HOT_TRACE_LINE(); const int32_t a = Box__area(hot::shell_of<Box_Shell>(b, "Box"));
+    HOT_TRACE_LINE();
+#line 15 "xmod_use.hot"
+    const int32_t a = Box__area(hot::shell_of<Box_Shell>(b, "Box"));
 #line 16 "xmod_use.hot"
-    HOT_TRACE_LINE(); Box__fld_size(hot::shell_of<Box_Shell>(b, "Box")) = Box__fld_size(hot::shell_of<Box_Shell>(b, "Box")) + kLimit;
+    HOT_TRACE_LINE();
+#line 16 "xmod_use.hot"
+    Box__fld_size(hot::shell_of<Box_Shell>(b, "Box")) = Box__fld_size(hot::shell_of<Box_Shell>(b, "Box")) + kLimit;
 #line 17 "xmod_use.hot"
-    HOT_TRACE_LINE(); const Pt p = Box__fld_corner(hot::shell_of<Box_Shell>(b, "Box"));
+    HOT_TRACE_LINE();
+#line 17 "xmod_use.hot"
+    const Pt p = Box__fld_corner(hot::shell_of<Box_Shell>(b, "Box"));
 #line 18 "xmod_use.hot"
-    HOT_TRACE_LINE(); const int32_t d = Box__get_Doubled(hot::shell_of<Box_Shell>(b, "Box")) + Box__s_unit();
+    HOT_TRACE_LINE();
+#line 18 "xmod_use.hot"
+    const int32_t d = Box__get_Doubled(hot::shell_of<Box_Shell>(b, "Box")) + Box__s_unit();
 #line 19 "xmod_use.hot"
-    HOT_TRACE_LINE(); hot_mv_counter() = hot_mv_counter() + 1;
+    HOT_TRACE_LINE();
+#line 19 "xmod_use.hot"
+    hot_mv_counter() = hot_mv_counter() + 1;
 #line 20 "xmod_use.hot"
-    HOT_TRACE_LINE(); hot_mv_counter() += a;
+    HOT_TRACE_LINE();
+#line 20 "xmod_use.hot"
+    hot_mv_counter() += a;
 #line 21 "xmod_use.hot"
-    HOT_TRACE_LINE(); const Kind _k = Kind::Big;
+    HOT_TRACE_LINE();
+#line 21 "xmod_use.hot"
+    const Kind _k = Kind::Big;
 #line 22 "xmod_use.hot"
-    HOT_TRACE_LINE(); return a + hot::deref(p).x + d + hot_mv_counter();
+    HOT_TRACE_LINE();
+#line 22 "xmod_use.hot"
+    return a + hot::deref(p).x + d + hot_mv_counter();
 #line 23 "xmod_use.hot"
 }
-#line 553 "xmod_use.hot.cpp"
+#line 575 "xmod_use.hot.cpp"
 
-#line 555 "xmod_use.hot.cpp"
+#line 577 "xmod_use.hot.cpp"
 [[maybe_unused]] HOT_HIDDEN static int32_t Box__s_unit()
-#line 557 "xmod_use.hot.cpp"
+#line 579 "xmod_use.hot.cpp"
 {
     static hot::FnSite __site;
     return hot::call_fn<decltype(Box__s_unit)>(hot::unit_ref("xmod_lib"), __site, "Box::unit");
 }
-#line 562 "xmod_use.hot.cpp"
+#line 584 "xmod_use.hot.cpp"
 
-#line 564 "xmod_use.hot.cpp"
+#line 586 "xmod_use.hot.cpp"
 [[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_twice(int32_t v)
-#line 566 "xmod_use.hot.cpp"
+#line 588 "xmod_use.hot.cpp"
 {
     static hot::FnSite __site;
     return hot::call_fn<decltype(hot_fn_twice)>(hot::unit_ref("xmod_lib"), __site, "twice", std::forward<decltype(v)>(v));
 }
-#line 571 "xmod_use.hot.cpp"
+#line 593 "xmod_use.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

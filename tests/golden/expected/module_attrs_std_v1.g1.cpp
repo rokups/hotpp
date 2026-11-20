@@ -314,12 +314,16 @@ void hot_state_Counter::Tick(float dt)
 #line 12 "module_attrs_std_v1.hot"
     HOT_TRACE_FRAME("Counter.Tick", "module_attrs_std_v1.hot");
 #line 12 "module_attrs_std_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(__st->history).push_back(1);
+    HOT_TRACE_LINE();
+#line 12 "module_attrs_std_v1.hot"
+    hot::deref(__st->history).push_back(1);
 #line 13 "module_attrs_std_v1.hot"
-    HOT_TRACE_LINE(); __st->label = mystd::to_string(hot::deref(__st->history).size());
+    HOT_TRACE_LINE();
+#line 13 "module_attrs_std_v1.hot"
+    __st->label = mystd::to_string(hot::deref(__st->history).size());
 #line 14 "module_attrs_std_v1.hot"
 }
-#line 323 "module_attrs_std_v1.hot.cpp"
+#line 327 "module_attrs_std_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

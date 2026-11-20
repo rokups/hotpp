@@ -849,12 +849,16 @@ void hot_state_Probe::ctor(Vec3* p)
 #line 11 "borrowed_args_v1.hot"
     HOT_TRACE_FRAME("Probe.Probe", "borrowed_args_v1.hot");
 #line 11 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); if (p == nullptr) return;
+    HOT_TRACE_LINE();
+#line 11 "borrowed_args_v1.hot"
+    if (p == nullptr) return;
 #line 12 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); last = hot::deref(p).x;
+    HOT_TRACE_LINE();
+#line 12 "borrowed_args_v1.hot"
+    last = hot::deref(p).x;
 #line 13 "borrowed_args_v1.hot"
 }
-#line 858 "borrowed_args_v1.hot.cpp"
+#line 862 "borrowed_args_v1.hot.cpp"
 
 #line 14 "borrowed_args_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Probe__Look(Probe_Shell* __self, Vec3& v)
@@ -864,7 +868,7 @@ void hot_state_Probe::ctor(Vec3* p)
     return state_of(__self)->Look(std::forward<Vec3&>(v));
 #line 14 "borrowed_args_v1.hot"
 }
-#line 868 "borrowed_args_v1.hot.cpp"
+#line 872 "borrowed_args_v1.hot.cpp"
 #line 14 "borrowed_args_v1.hot"
 void hot_state_Probe::Look(Vec3& v)
 #line 14 "borrowed_args_v1.hot"
@@ -886,10 +890,12 @@ void hot_state_Probe::Look(Vec3& v)
 #line 14 "borrowed_args_v1.hot"
     HOT_TRACE_FRAME("Probe.Look", "borrowed_args_v1.hot");
 #line 14 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); last = hot::deref(v).x;
+    HOT_TRACE_LINE();
+#line 14 "borrowed_args_v1.hot"
+    last = hot::deref(v).x;
 #line 14 "borrowed_args_v1.hot"
 }
-#line 893 "borrowed_args_v1.hot.cpp"
+#line 899 "borrowed_args_v1.hot.cpp"
 
 #line 15 "borrowed_args_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Probe__Take(Probe_Shell* __self, Vec3* p)
@@ -899,7 +905,7 @@ void hot_state_Probe::Look(Vec3& v)
     return state_of(__self)->Take(std::forward<Vec3*>(p));
 #line 15 "borrowed_args_v1.hot"
 }
-#line 903 "borrowed_args_v1.hot.cpp"
+#line 909 "borrowed_args_v1.hot.cpp"
 #line 15 "borrowed_args_v1.hot"
 void hot_state_Probe::Take(Vec3* const p)
 #line 15 "borrowed_args_v1.hot"
@@ -921,12 +927,16 @@ void hot_state_Probe::Take(Vec3* const p)
 #line 16 "borrowed_args_v1.hot"
     HOT_TRACE_FRAME("Probe.Take", "borrowed_args_v1.hot");
 #line 16 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); if (p == nullptr) return;
+    HOT_TRACE_LINE();
+#line 16 "borrowed_args_v1.hot"
+    if (p == nullptr) return;
 #line 17 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); last = hot::deref(p).y;
+    HOT_TRACE_LINE();
+#line 17 "borrowed_args_v1.hot"
+    last = hot::deref(p).y;
 #line 18 "borrowed_args_v1.hot"
 }
-#line 930 "borrowed_args_v1.hot.cpp"
+#line 940 "borrowed_args_v1.hot.cpp"
 
 #line 20 "borrowed_args_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static float Probe__Pass(Probe_Shell* __self, Vec3& v, Vec3* p)
@@ -936,7 +946,7 @@ void hot_state_Probe::Take(Vec3* const p)
     return state_of(__self)->Pass(std::forward<Vec3&>(v), std::forward<Vec3*>(p));
 #line 20 "borrowed_args_v1.hot"
 }
-#line 940 "borrowed_args_v1.hot.cpp"
+#line 950 "borrowed_args_v1.hot.cpp"
 #line 20 "borrowed_args_v1.hot"
 float hot_state_Probe::Pass(Vec3& v, Vec3* const p)
 #line 20 "borrowed_args_v1.hot"
@@ -958,16 +968,24 @@ float hot_state_Probe::Pass(Vec3& v, Vec3* const p)
 #line 21 "borrowed_args_v1.hot"
     HOT_TRACE_FRAME("Probe.Pass", "borrowed_args_v1.hot");
 #line 21 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); if (p == nullptr) return 0;
+    HOT_TRACE_LINE();
+#line 21 "borrowed_args_v1.hot"
+    if (p == nullptr) return 0;
 #line 22 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Probe__Look(__self, v);
+    HOT_TRACE_LINE();
+#line 22 "borrowed_args_v1.hot"
+    Probe__Look(__self, v);
 #line 23 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Probe__Take(__self, p);
+    HOT_TRACE_LINE();
+#line 23 "borrowed_args_v1.hot"
+    Probe__Take(__self, p);
 #line 24 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); return Distance(v, hot::star(p));
+    HOT_TRACE_LINE();
+#line 24 "borrowed_args_v1.hot"
+    return Distance(v, hot::star(p));
 #line 25 "borrowed_args_v1.hot"
 }
-#line 971 "borrowed_args_v1.hot.cpp"
+#line 989 "borrowed_args_v1.hot.cpp"
 
 #line 32 "borrowed_args_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static float Caller__Run(Caller_Shell* __self, Vec3& v, Vec3* p, bool c)
@@ -977,7 +995,7 @@ float hot_state_Probe::Pass(Vec3& v, Vec3* const p)
     return state_of(__self)->Run(std::forward<Vec3&>(v), std::forward<Vec3*>(p), std::forward<bool>(c));
 #line 32 "borrowed_args_v1.hot"
 }
-#line 981 "borrowed_args_v1.hot.cpp"
+#line 999 "borrowed_args_v1.hot.cpp"
 #line 32 "borrowed_args_v1.hot"
 float hot_state_Caller::Run(Vec3& v, Vec3* p, bool const c)
 #line 32 "borrowed_args_v1.hot"
@@ -999,66 +1017,124 @@ float hot_state_Caller::Run(Vec3& v, Vec3* p, bool const c)
 #line 33 "borrowed_args_v1.hot"
     HOT_TRACE_FRAME("Caller.Run", "borrowed_args_v1.hot");
 #line 33 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); if (p == nullptr) return 0;
+    HOT_TRACE_LINE();
+#line 33 "borrowed_args_v1.hot"
+    if (p == nullptr) return 0;
 #line 34 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Vec3 a = Vec3();
+    HOT_TRACE_LINE();
+#line 34 "borrowed_args_v1.hot"
+    Vec3 a = Vec3();
 #line 35 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Vec3 b = Vec3();
+    HOT_TRACE_LINE();
+#line 35 "borrowed_args_v1.hot"
+    Vec3 b = Vec3();
 #line 36 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); auto& r = a;
+    HOT_TRACE_LINE();
+#line 36 "borrowed_args_v1.hot"
+    auto& r = a;
 #line 37 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); auto q = p;
+    HOT_TRACE_LINE();
+#line 37 "borrowed_args_v1.hot"
+    auto q = p;
 #line 38 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); probe = std::shared_ptr<Probe>(Probe__new_shared(p));
+    HOT_TRACE_LINE();
+#line 38 "borrowed_args_v1.hot"
+    probe = std::shared_ptr<Probe>(Probe__new_shared(p));
 #line 39 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); const std::shared_ptr<Probe> pb = probe;
+    HOT_TRACE_LINE();
+#line 39 "borrowed_args_v1.hot"
+    const std::shared_ptr<Probe> pb = probe;
 #line 40 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); if (pb == nullptr) return 0;
+    HOT_TRACE_LINE();
+#line 40 "borrowed_args_v1.hot"
+    if (pb == nullptr) return 0;
 #line 41 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); auto other = std::shared_ptr<Probe>(Probe__new_shared(p));
+    HOT_TRACE_LINE();
+#line 41 "borrowed_args_v1.hot"
+    auto other = std::shared_ptr<Probe>(Probe__new_shared(p));
 #line 42 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Probe__Look(hot::shell_of<Probe_Shell>(pb, "Probe"), v);
+    HOT_TRACE_LINE();
+#line 42 "borrowed_args_v1.hot"
+    Probe__Look(hot::shell_of<Probe_Shell>(pb, "Probe"), v);
 #line 43 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Probe__Look(hot::shell_of<Probe_Shell>(pb, "Probe"), a);
+    HOT_TRACE_LINE();
+#line 43 "borrowed_args_v1.hot"
+    Probe__Look(hot::shell_of<Probe_Shell>(pb, "Probe"), a);
 #line 44 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Probe__Take(hot::shell_of<Probe_Shell>(pb, "Probe"), q);
+    HOT_TRACE_LINE();
+#line 44 "borrowed_args_v1.hot"
+    Probe__Take(hot::shell_of<Probe_Shell>(pb, "Probe"), q);
 #line 45 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Probe__Take(hot::shell_of<Probe_Shell>(pb, "Probe"), std::addressof(a));
+    HOT_TRACE_LINE();
+#line 45 "borrowed_args_v1.hot"
+    Probe__Take(hot::shell_of<Probe_Shell>(pb, "Probe"), std::addressof(a));
 #line 46 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); const auto marked = std::shared_ptr<Probe>(Probe__new_shared(std::addressof(b)));
+    HOT_TRACE_LINE();
+#line 46 "borrowed_args_v1.hot"
+    const auto marked = std::shared_ptr<Probe>(Probe__new_shared(std::addressof(b)));
 #line 47 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Nudge(hot::as_ptr(spot), 5);
+    HOT_TRACE_LINE();
+#line 47 "borrowed_args_v1.hot"
+    Nudge(hot::as_ptr(spot), 5);
 #line 48 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Probe__Look(hot::shell_of<Probe_Shell>(pb, "Probe"), r);
+    HOT_TRACE_LINE();
+#line 48 "borrowed_args_v1.hot"
+    Probe__Look(hot::shell_of<Probe_Shell>(pb, "Probe"), r);
 #line 49 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Probe__Take(hot::shell_of<Probe_Shell>(pb, "Probe"), c ? p : nullptr);
+    HOT_TRACE_LINE();
+#line 49 "borrowed_args_v1.hot"
+    Probe__Take(hot::shell_of<Probe_Shell>(pb, "Probe"), c ? p : nullptr);
 #line 50 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Probe__Take(hot::shell_of<Probe_Shell>(pb, "Probe"), hot::cast_ptr<Vec3*>(p));
+    HOT_TRACE_LINE();
+#line 50 "borrowed_args_v1.hot"
+    Probe__Take(hot::shell_of<Probe_Shell>(pb, "Probe"), hot::cast_ptr<Vec3*>(p));
 #line 51 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); auto f = hot::make_lambda_deduced<__LamTag_0>(GEN, hot::caps(__self, pb), []([[maybe_unused]] auto& __c, Vec3& w) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& pb = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); { if (pb) Probe__Look(hot::shell_of<Probe_Shell>(pb, "Probe"), w); } } });
+    HOT_TRACE_LINE();
+#line 51 "borrowed_args_v1.hot"
+    auto f = hot::make_lambda_deduced<__LamTag_0>(GEN, hot::caps(__self, pb), []([[maybe_unused]] auto& __c, Vec3& w) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& pb = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); { if (pb) Probe__Look(hot::shell_of<Probe_Shell>(pb, "Probe"), w); } } });
 #line 52 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); f(a);
+    HOT_TRACE_LINE();
+#line 52 "borrowed_args_v1.hot"
+    f(a);
 #line 53 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); f(v);
+    HOT_TRACE_LINE();
+#line 53 "borrowed_args_v1.hot"
+    f(v);
 #line 54 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Nudge(hot::as_ptr(a), 1);
+    HOT_TRACE_LINE();
+#line 54 "borrowed_args_v1.hot"
+    Nudge(hot::as_ptr(a), 1);
 #line 55 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Nudge(hot::as_ptr(r), 2);
+    HOT_TRACE_LINE();
+#line 55 "borrowed_args_v1.hot"
+    Nudge(hot::as_ptr(r), 2);
 #line 56 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Nudge(hot::as_ptr(v), 0);
+    HOT_TRACE_LINE();
+#line 56 "borrowed_args_v1.hot"
+    Nudge(hot::as_ptr(v), 0);
 #line 57 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Nudge(hot::as_ptr(spot), 3);
+    HOT_TRACE_LINE();
+#line 57 "borrowed_args_v1.hot"
+    Nudge(hot::as_ptr(spot), 3);
 #line 58 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Nudge(hot::as_ptr(__st->spot), 4);
+    HOT_TRACE_LINE();
+#line 58 "borrowed_args_v1.hot"
+    Nudge(hot::as_ptr(__st->spot), 4);
 #line 59 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); const float peeked = Peek(hot::as_ptr(a)) + Peek(hot::as_ptr(a)) + Peek(hot::as_ptr(b)) + Peek(hot::as_ptr(v)) + Peek(nullptr);
+    HOT_TRACE_LINE();
+#line 59 "borrowed_args_v1.hot"
+    const float peeked = Peek(hot::as_ptr(a)) + Peek(hot::as_ptr(a)) + Peek(hot::as_ptr(b)) + Peek(hot::as_ptr(v)) + Peek(nullptr);
 #line 60 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); const float d = Distance(c ? a : b, hot::star(p));
+    HOT_TRACE_LINE();
+#line 60 "borrowed_args_v1.hot"
+    const float d = Distance(c ? a : b, hot::star(p));
 #line 61 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); return d + peeked + Probe__Pass(hot::shell_of<Probe_Shell>(pb, "Probe"), v, p) + Probe__Pass(hot::shell_of<Probe_Shell>(other, "Probe"), hot::star(q), p) + Util::Sum(r);
+    HOT_TRACE_LINE();
+#line 61 "borrowed_args_v1.hot"
+    return d + peeked + Probe__Pass(hot::shell_of<Probe_Shell>(pb, "Probe"), v, p) + Probe__Pass(hot::shell_of<Probe_Shell>(other, "Probe"), hot::star(q), p) + Util::Sum(r);
 #line 62 "borrowed_args_v1.hot"
 }
-#line 1062 "borrowed_args_v1.hot.cpp"
+#line 1138 "borrowed_args_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

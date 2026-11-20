@@ -64,6 +64,8 @@ public:
 
     const std::string& text() const { return out_; }
     int source_line() const { return line_; }
+    // The next mapped token starts a new line with its own "#line".
+    void restart_line() { line_ = 0; }
 
     // True: a statement in a block gets "HOT_TRACE_LINE();" before it (hot/runtime/trace.h).
     // The function body of a script member sets it. A lambda body clears it, because the lambda

@@ -666,10 +666,12 @@ void hot_state_Counter_G_int::Add(int32_t const v)
 #line 12 "generics_v1.hot"
     HOT_TRACE_FRAME("Counter<int>.Add", "generics_v1.hot");
 #line 12 "generics_v1.hot"
-    HOT_TRACE_LINE(); __st->total = __st->total + v;
+    HOT_TRACE_LINE();
+#line 12 "generics_v1.hot"
+    __st->total = __st->total + v;
 #line 12 "generics_v1.hot"
 }
-#line 673 "generics_v1.hot.cpp"
+#line 675 "generics_v1.hot.cpp"
 
 #line 13 "generics_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Counter_G_int__Get(Counter_G_int_Shell* __self)
@@ -679,7 +681,7 @@ void hot_state_Counter_G_int::Add(int32_t const v)
     return state_of(__self)->Get();
 #line 13 "generics_v1.hot"
 }
-#line 683 "generics_v1.hot.cpp"
+#line 685 "generics_v1.hot.cpp"
 #line 13 "generics_v1.hot"
 int32_t hot_state_Counter_G_int::Get()
 #line 13 "generics_v1.hot"
@@ -701,10 +703,12 @@ int32_t hot_state_Counter_G_int::Get()
 #line 13 "generics_v1.hot"
     HOT_TRACE_FRAME("Counter<int>.Get", "generics_v1.hot");
 #line 13 "generics_v1.hot"
-    HOT_TRACE_LINE(); return __st->total;
+    HOT_TRACE_LINE();
+#line 13 "generics_v1.hot"
+    return __st->total;
 #line 13 "generics_v1.hot"
 }
-#line 708 "generics_v1.hot.cpp"
+#line 712 "generics_v1.hot.cpp"
 
 #line 31 "generics_v1.hot"
 void hot_state_Keeper::Tick(float dt)
@@ -727,30 +731,50 @@ void hot_state_Keeper::Tick(float dt)
 #line 32 "generics_v1.hot"
     HOT_TRACE_FRAME("Keeper.Tick", "generics_v1.hot");
 #line 32 "generics_v1.hot"
-    HOT_TRACE_LINE(); std::shared_ptr<Counter_G_int> c = __st->ints;
+    HOT_TRACE_LINE();
+#line 32 "generics_v1.hot"
+    std::shared_ptr<Counter_G_int> c = __st->ints;
 #line 33 "generics_v1.hot"
-    HOT_TRACE_LINE(); if (c == nullptr) {
+    HOT_TRACE_LINE();
+#line 33 "generics_v1.hot"
+    if (c == nullptr) {
 #line 34 "generics_v1.hot"
-        HOT_TRACE_LINE(); c = std::shared_ptr<Counter_G_int>(Counter_G_int__new_shared());
+        HOT_TRACE_LINE();
+#line 34 "generics_v1.hot"
+        c = std::shared_ptr<Counter_G_int>(Counter_G_int__new_shared());
 #line 35 "generics_v1.hot"
-        HOT_TRACE_LINE(); __st->ints = c;
+        HOT_TRACE_LINE();
+#line 35 "generics_v1.hot"
+        __st->ints = c;
 #line 36 "generics_v1.hot"
     }
 #line 37 "generics_v1.hot"
-    HOT_TRACE_LINE(); Counter_G_int__Add(hot::shell_of<Counter_G_int_Shell>(c, "Counter_G_int"), 2);
+    HOT_TRACE_LINE();
+#line 37 "generics_v1.hot"
+    Counter_G_int__Add(hot::shell_of<Counter_G_int_Shell>(c, "Counter_G_int"), 2);
 #line 38 "generics_v1.hot"
-    HOT_TRACE_LINE(); __st->got = Counter_G_int__Get(hot::shell_of<Counter_G_int_Shell>(c, "Counter_G_int"));
+    HOT_TRACE_LINE();
+#line 38 "generics_v1.hot"
+    __st->got = Counter_G_int__Get(hot::shell_of<Counter_G_int_Shell>(c, "Counter_G_int"));
 #line 39 "generics_v1.hot"
-    HOT_TRACE_LINE(); Pair_G_int_G_float p = Pair_G_int_G_float();
+    HOT_TRACE_LINE();
+#line 39 "generics_v1.hot"
+    Pair_G_int_G_float p = Pair_G_int_G_float();
 #line 40 "generics_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(p).a = 7;
+    HOT_TRACE_LINE();
+#line 40 "generics_v1.hot"
+    hot::deref(p).a = 7;
 #line 41 "generics_v1.hot"
-    HOT_TRACE_LINE(); __st->pair = hot::deref(p).First();
+    HOT_TRACE_LINE();
+#line 41 "generics_v1.hot"
+    __st->pair = hot::deref(p).First();
 #line 42 "generics_v1.hot"
-    HOT_TRACE_LINE(); __st->twice = hot_fn_Twice_G_int(3);
+    HOT_TRACE_LINE();
+#line 42 "generics_v1.hot"
+    __st->twice = hot_fn_Twice_G_int(3);
 #line 43 "generics_v1.hot"
 }
-#line 754 "generics_v1.hot.cpp"
+#line 778 "generics_v1.hot.cpp"
 
 #line 23 "generics_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t hot_fn_Twice_G_int(int32_t x)
@@ -761,10 +785,12 @@ void hot_state_Keeper::Tick(float dt)
 #line 23 "generics_v1.hot"
     HOT_TRACE_FRAME("Twice<int>", "generics_v1.hot");
 #line 23 "generics_v1.hot"
-    HOT_TRACE_LINE(); return x + x;
+    HOT_TRACE_LINE();
+#line 23 "generics_v1.hot"
+    return x + x;
 #line 23 "generics_v1.hot"
 }
-#line 768 "generics_v1.hot.cpp"
+#line 794 "generics_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

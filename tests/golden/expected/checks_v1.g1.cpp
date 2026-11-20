@@ -434,10 +434,12 @@ int32_t hot_state_Checks::at(int32_t const i)
 #line 8 "checks_v1.hot"
     HOT_TRACE_FRAME("Checks.at", "checks_v1.hot");
 #line 8 "checks_v1.hot"
-    HOT_TRACE_LINE(); return hot::index(__st->vals, i);
+    HOT_TRACE_LINE();
+#line 8 "checks_v1.hot"
+    return hot::index(__st->vals, i);
 #line 9 "checks_v1.hot"
 }
-#line 441 "checks_v1.hot.cpp"
+#line 443 "checks_v1.hot.cpp"
 
 #line 11 "checks_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Checks__load(Checks_Shell* __self, int32_t* p)
@@ -447,7 +449,7 @@ int32_t hot_state_Checks::at(int32_t const i)
     return state_of(__self)->load(std::forward<int32_t*>(p));
 #line 11 "checks_v1.hot"
 }
-#line 451 "checks_v1.hot.cpp"
+#line 453 "checks_v1.hot.cpp"
 #line 11 "checks_v1.hot"
 int32_t hot_state_Checks::load(int32_t* const p)
 #line 11 "checks_v1.hot"
@@ -469,10 +471,12 @@ int32_t hot_state_Checks::load(int32_t* const p)
 #line 12 "checks_v1.hot"
     HOT_TRACE_FRAME("Checks.load", "checks_v1.hot");
 #line 12 "checks_v1.hot"
-    HOT_TRACE_LINE(); return hot::star(hot::cast_ptr<int32_t*>(hot::nonnull(p, "checks_v1.hot:12: 'p' is null")));
+    HOT_TRACE_LINE();
+#line 12 "checks_v1.hot"
+    return hot::star(hot::cast_ptr<int32_t*>(hot::nonnull(p, "checks_v1.hot:12: 'p' is null")));
 #line 13 "checks_v1.hot"
 }
-#line 476 "checks_v1.hot.cpp"
+#line 480 "checks_v1.hot.cpp"
 
 #line 15 "checks_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Checks__safe_at(Checks_Shell* __self, int32_t i)
@@ -482,7 +486,7 @@ int32_t hot_state_Checks::load(int32_t* const p)
     return state_of(__self)->safe_at(std::forward<int32_t>(i));
 #line 15 "checks_v1.hot"
 }
-#line 486 "checks_v1.hot.cpp"
+#line 490 "checks_v1.hot.cpp"
 #line 15 "checks_v1.hot"
 int32_t hot_state_Checks::safe_at(int32_t const i)
 #line 15 "checks_v1.hot"
@@ -504,18 +508,24 @@ int32_t hot_state_Checks::safe_at(int32_t const i)
 #line 16 "checks_v1.hot"
     HOT_TRACE_FRAME("Checks.safe_at", "checks_v1.hot");
 #line 16 "checks_v1.hot"
-    HOT_TRACE_LINE(); try {
+    HOT_TRACE_LINE();
+#line 16 "checks_v1.hot"
+    try {
 #line 17 "checks_v1.hot"
-        HOT_TRACE_LINE(); return hot::index(__st->vals, i);
+        HOT_TRACE_LINE();
+#line 17 "checks_v1.hot"
+        return hot::index(__st->vals, i);
 #line 18 "checks_v1.hot"
     } catch (const hot::IndexOutOfRange& e) {
 #line 19 "checks_v1.hot"
-        HOT_TRACE_LINE(); return -1;
+        HOT_TRACE_LINE();
+#line 19 "checks_v1.hot"
+        return -1;
 #line 20 "checks_v1.hot"
     }
 #line 21 "checks_v1.hot"
 }
-#line 519 "checks_v1.hot.cpp"
+#line 529 "checks_v1.hot.cpp"
 
 #line 23 "checks_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static int32_t Checks__safe_load(Checks_Shell* __self, int32_t* p)
@@ -525,7 +535,7 @@ int32_t hot_state_Checks::safe_at(int32_t const i)
     return state_of(__self)->safe_load(std::forward<int32_t*>(p));
 #line 23 "checks_v1.hot"
 }
-#line 529 "checks_v1.hot.cpp"
+#line 539 "checks_v1.hot.cpp"
 #line 23 "checks_v1.hot"
 int32_t hot_state_Checks::safe_load(int32_t* const p)
 #line 23 "checks_v1.hot"
@@ -547,26 +557,36 @@ int32_t hot_state_Checks::safe_load(int32_t* const p)
 #line 24 "checks_v1.hot"
     HOT_TRACE_FRAME("Checks.safe_load", "checks_v1.hot");
 #line 24 "checks_v1.hot"
-    HOT_TRACE_LINE(); try {
+    HOT_TRACE_LINE();
+#line 24 "checks_v1.hot"
+    try {
 #line 25 "checks_v1.hot"
-        HOT_TRACE_LINE(); return hot::star(hot::cast_ptr<int32_t*>(hot::nonnull(p, "checks_v1.hot:25: 'p' is null")));
+        HOT_TRACE_LINE();
+#line 25 "checks_v1.hot"
+        return hot::star(hot::cast_ptr<int32_t*>(hot::nonnull(p, "checks_v1.hot:25: 'p' is null")));
 #line 26 "checks_v1.hot"
     } catch (const hot::NullReference& e) {
 #line 27 "checks_v1.hot"
-        HOT_TRACE_LINE(); return -1;
+        HOT_TRACE_LINE();
+#line 27 "checks_v1.hot"
+        return -1;
 #line 28 "checks_v1.hot"
     } catch (const hot::ScriptError& e) {
 #line 29 "checks_v1.hot"
-        HOT_TRACE_LINE(); return -2;
+        HOT_TRACE_LINE();
+#line 29 "checks_v1.hot"
+        return -2;
 #line 30 "checks_v1.hot"
     } catch (...) {
 #line 31 "checks_v1.hot"
-        HOT_TRACE_LINE(); return -3;
+        HOT_TRACE_LINE();
+#line 31 "checks_v1.hot"
+        return -3;
 #line 32 "checks_v1.hot"
     }
 #line 33 "checks_v1.hot"
 }
-#line 570 "checks_v1.hot.cpp"
+#line 590 "checks_v1.hot.cpp"
 
 #line 35 "checks_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void Checks__first_member(Checks_Shell* __self, Actor* other)
@@ -576,7 +596,7 @@ int32_t hot_state_Checks::safe_load(int32_t* const p)
     return state_of(__self)->first_member(std::forward<Actor*>(other));
 #line 35 "checks_v1.hot"
 }
-#line 580 "checks_v1.hot.cpp"
+#line 600 "checks_v1.hot.cpp"
 #line 35 "checks_v1.hot"
 void hot_state_Checks::first_member(Actor* const other)
 #line 35 "checks_v1.hot"
@@ -598,10 +618,12 @@ void hot_state_Checks::first_member(Actor* const other)
 #line 36 "checks_v1.hot"
     HOT_TRACE_FRAME("Checks.first_member", "checks_v1.hot");
 #line 36 "checks_v1.hot"
-    HOT_TRACE_LINE(); hot::deref((hot::cast_ptr<Actor*>(hot::nonnull(other, "checks_v1.hot:36: 'other' is null")))).Move(Vec3());
+    HOT_TRACE_LINE();
+#line 36 "checks_v1.hot"
+    hot::deref((hot::cast_ptr<Actor*>(hot::nonnull(other, "checks_v1.hot:36: 'other' is null")))).Move(Vec3());
 #line 37 "checks_v1.hot"
 }
-#line 605 "checks_v1.hot.cpp"
+#line 627 "checks_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

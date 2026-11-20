@@ -503,6 +503,17 @@ void close_paren(Emitter& e)
     e.space();
 }
 
+
+// The body of a statement. A body with no braces is one level deeper than its statement, as a
+// reader writes it. Clang and clang-tidy check this indentation (misleading-indentation).
+void sub_stmt(const Stmt& s, Emitter& e)
+{
+    const bool plain = !std::holds_alternative<BlockStmt>(s.v);
+    e.depth += plain ? 1 : 0;
+    emit_stmt(s, e);
+    e.depth -= plain ? 1 : 0;
+}
+
 struct StmtPrinter
 {
     Emitter& e;
@@ -536,13 +547,16 @@ struct StmtPrinter
         open_paren(e);
         emit_expr(*n.cond, e);
         close_paren(e);
-        emit_stmt(*n.then, e);
+        sub_stmt(*n.then, e);
         if (n.otherwise)
         {
             e.space();
             e.put("else", n.else_pos);
             e.space();
-            emit_stmt(*n.otherwise, e);
+            if (std::holds_alternative<IfStmt>(n.otherwise->v))
+                emit_stmt(*n.otherwise, e);
+            else
+                sub_stmt(*n.otherwise, e);
         }
     }
     void operator()(const WhileStmt& n) const
@@ -551,13 +565,13 @@ struct StmtPrinter
         open_paren(e);
         emit_expr(*n.cond, e);
         close_paren(e);
-        emit_stmt(*n.body, e);
+        sub_stmt(*n.body, e);
     }
     void operator()(const DoWhileStmt& n) const
     {
         e.put("do", n.pos);
         e.space();
-        emit_stmt(*n.body, e);
+        sub_stmt(*n.body, e);
         e.space();
         e.put("while", n.while_pos);
         open_paren(e);
@@ -591,7 +605,7 @@ struct StmtPrinter
             expr_list(n.step, e);
         }
         close_paren(e);
-        emit_stmt(*n.body, e);
+        sub_stmt(*n.body, e);
     }
     void operator()(const ForOfStmt& n) const
     {
@@ -613,7 +627,7 @@ struct StmtPrinter
         e.space();
         emit_expr(*n.range, e);
         close_paren(e);
-        emit_stmt(*n.body, e);
+        sub_stmt(*n.body, e);
     }
     // "for (auto __it0 = hot::iter(c); __it0.next();) { auto x = __it0.ref(); body }" (foreach.h).
     // A "ref" variable has no declaration: each use is "__it0.ref()" (NameExpr::emit_as).
@@ -668,7 +682,7 @@ struct StmtPrinter
             e.put(" = " + n.guard + ".current();");
             e.space();
         }
-        emit_stmt(*n.body, e);
+        sub_stmt(*n.body, e);
         e.space();
         e.put("}");
     }
@@ -821,8 +835,15 @@ void stmt_list(const std::vector<StmtP>& v, Emitter& e)
                 const int line = e.line_of(pos);
                 if (line != trace_line)
                 {
+                    const bool starts_line = e.source_line() < line;
                     e.put_plain("HOT_TRACE_LINE();", pos);
-                    e.space();
+                    // A macro that starts a script line has its own line. The statement keeps the
+                    // indentation of the block, so "if" and "else" have the same column (clang-tidy
+                    // checks that). A statement on the line of the block start stays on that line.
+                    if (starts_line)
+                        e.restart_line();
+                    else
+                        e.space();
                 }
                 trace_line = simple_stmt ? line : 0;
             }

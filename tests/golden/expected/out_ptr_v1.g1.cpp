@@ -281,18 +281,28 @@ int32_t hot_state_Parser::Run()
 #line 8 "out_ptr_v1.hot"
     HOT_TRACE_FRAME("Parser.Run", "out_ptr_v1.hot");
 #line 8 "out_ptr_v1.hot"
-    HOT_TRACE_LINE(); char* end = nullptr;
+    HOT_TRACE_LINE();
+#line 8 "out_ptr_v1.hot"
+    char* end = nullptr;
 #line 9 "out_ptr_v1.hot"
-    HOT_TRACE_LINE(); const float v = ParseFloat("12.5xyz", hot::as_out_ptr(end));
+    HOT_TRACE_LINE();
+#line 9 "out_ptr_v1.hot"
+    const float v = ParseFloat("12.5xyz", hot::as_out_ptr(end));
 #line 10 "out_ptr_v1.hot"
-    HOT_TRACE_LINE(); int32_t n = 5;
+    HOT_TRACE_LINE();
+#line 10 "out_ptr_v1.hot"
+    int32_t n = 5;
 #line 11 "out_ptr_v1.hot"
-    HOT_TRACE_LINE(); Bump(hot::as_ptr(n), 2);
+    HOT_TRACE_LINE();
+#line 11 "out_ptr_v1.hot"
+    Bump(hot::as_ptr(n), 2);
 #line 12 "out_ptr_v1.hot"
-    HOT_TRACE_LINE(); return Consumed("12.5xyz", end) + n + hot::float_to_int<int32_t>(v);
+    HOT_TRACE_LINE();
+#line 12 "out_ptr_v1.hot"
+    return Consumed("12.5xyz", end) + n + hot::float_to_int<int32_t>(v);
 #line 13 "out_ptr_v1.hot"
 }
-#line 296 "out_ptr_v1.hot.cpp"
+#line 306 "out_ptr_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

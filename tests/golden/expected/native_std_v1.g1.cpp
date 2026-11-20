@@ -357,34 +357,60 @@ void hot_state_Tracker::Tick(float dt)
 #line 19 "native_std_v1.hot"
     HOT_TRACE_FRAME("Tracker.Tick", "native_std_v1.hot");
 #line 19 "native_std_v1.hot"
-    HOT_TRACE_LINE(); auto v = std::vector<float>();
+    HOT_TRACE_LINE();
+#line 19 "native_std_v1.hot"
+    auto v = std::vector<float>();
 #line 20 "native_std_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(v).push_back(4.0f);
+    HOT_TRACE_LINE();
+#line 20 "native_std_v1.hot"
+    hot::deref(v).push_back(4.0f);
 #line 21 "native_std_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(v).push_back(2.5f);
+    HOT_TRACE_LINE();
+#line 21 "native_std_v1.hot"
+    hot::deref(v).push_back(2.5f);
 #line 22 "native_std_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(v).push_back(3.0f);
+    HOT_TRACE_LINE();
+#line 22 "native_std_v1.hot"
+    hot::deref(v).push_back(3.0f);
 #line 23 "native_std_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(v).push_back(1.5f);
+    HOT_TRACE_LINE();
+#line 23 "native_std_v1.hot"
+    hot::deref(v).push_back(1.5f);
 #line 24 "native_std_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(v).push_back(hot::deref(__self->Position).x);
+    HOT_TRACE_LINE();
+#line 24 "native_std_v1.hot"
+    hot::deref(v).push_back(hot::deref(__self->Position).x);
 #line 25 "native_std_v1.hot"
-    HOT_TRACE_LINE(); std::sort(hot::deref(v).begin(), hot::deref(v).end());
+    HOT_TRACE_LINE();
+#line 25 "native_std_v1.hot"
+    std::sort(hot::deref(v).begin(), hot::deref(v).end());
 #line 26 "native_std_v1.hot"
-    HOT_TRACE_LINE(); __st->lowest = Math::Min(hot::index(v, 0), hot::index(v, 1));
+    HOT_TRACE_LINE();
+#line 26 "native_std_v1.hot"
+    __st->lowest = Math::Min(hot::index(v, 0), hot::index(v, 1));
 #line 27 "native_std_v1.hot"
-    HOT_TRACE_LINE(); __st->dist = Distance(__self->Position, Vec3(0, 0, 0));
+    HOT_TRACE_LINE();
+#line 27 "native_std_v1.hot"
+    __st->dist = Distance(__self->Position, Vec3(0, 0, 0));
 #line 28 "native_std_v1.hot"
-    HOT_TRACE_LINE(); __st->sum = Util::Sum(__self->Position);
+    HOT_TRACE_LINE();
+#line 28 "native_std_v1.hot"
+    __st->sum = Util::Sum(__self->Position);
 #line 29 "native_std_v1.hot"
-    HOT_TRACE_LINE(); __st->described = Util::Describe(hot::star(__self));
+    HOT_TRACE_LINE();
+#line 29 "native_std_v1.hot"
+    __st->described = Util::Describe(hot::star(__self));
 #line 30 "native_std_v1.hot"
-    HOT_TRACE_LINE(); __self->Name = FormatVec(__self->Position);
+    HOT_TRACE_LINE();
+#line 30 "native_std_v1.hot"
+    __self->Name = FormatVec(__self->Position);
 #line 31 "native_std_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(__st->history).push_back(hot::float_to_int<int32_t>(hot::deref(__st->history).size()) * 10);
+    HOT_TRACE_LINE();
+#line 31 "native_std_v1.hot"
+    hot::deref(__st->history).push_back(hot::float_to_int<int32_t>(hot::deref(__st->history).size()) * 10);
 #line 32 "native_std_v1.hot"
 }
-#line 388 "native_std_v1.hot.cpp"
+#line 414 "native_std_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

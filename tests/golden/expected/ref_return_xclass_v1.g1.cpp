@@ -609,10 +609,12 @@ Info& hot_state_Catalog::Find(int32_t const i)
 #line 17 "ref_return_xclass_v1.hot"
     HOT_TRACE_FRAME("Catalog.Find", "ref_return_xclass_v1.hot");
 #line 17 "ref_return_xclass_v1.hot"
-    HOT_TRACE_LINE(); return hot::index(__st->items, i);
+    HOT_TRACE_LINE();
+#line 17 "ref_return_xclass_v1.hot"
+    return hot::index(__st->items, i);
 #line 18 "ref_return_xclass_v1.hot"
 }
-#line 616 "ref_return_xclass_v1.hot.cpp"
+#line 618 "ref_return_xclass_v1.hot.cpp"
 
 #line 29 "ref_return_xclass_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void User__Field(User_Shell* __self)
@@ -622,7 +624,7 @@ Info& hot_state_Catalog::Find(int32_t const i)
     return state_of(__self)->Field();
 #line 29 "ref_return_xclass_v1.hot"
 }
-#line 626 "ref_return_xclass_v1.hot.cpp"
+#line 628 "ref_return_xclass_v1.hot.cpp"
 #line 29 "ref_return_xclass_v1.hot"
 void hot_state_User::Field()
 #line 29 "ref_return_xclass_v1.hot"
@@ -644,12 +646,16 @@ void hot_state_User::Field()
 #line 30 "ref_return_xclass_v1.hot"
     HOT_TRACE_FRAME("User.Field", "ref_return_xclass_v1.hot");
 #line 30 "ref_return_xclass_v1.hot"
-    HOT_TRACE_LINE(); auto& r = Catalog__Find(hot::shell_of<Catalog_Shell>(__st->cat, "Catalog"), 0);
+    HOT_TRACE_LINE();
+#line 30 "ref_return_xclass_v1.hot"
+    auto& r = Catalog__Find(hot::shell_of<Catalog_Shell>(__st->cat, "Catalog"), 0);
 #line 31 "ref_return_xclass_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(r).x = 1;
+    HOT_TRACE_LINE();
+#line 31 "ref_return_xclass_v1.hot"
+    hot::deref(r).x = 1;
 #line 32 "ref_return_xclass_v1.hot"
 }
-#line 653 "ref_return_xclass_v1.hot.cpp"
+#line 659 "ref_return_xclass_v1.hot.cpp"
 
 #line 34 "ref_return_xclass_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void User__Param(User_Shell* __self, std::shared_ptr<Catalog>& c)
@@ -659,7 +665,7 @@ void hot_state_User::Field()
     return state_of(__self)->Param(std::forward<std::shared_ptr<Catalog>&>(c));
 #line 34 "ref_return_xclass_v1.hot"
 }
-#line 663 "ref_return_xclass_v1.hot.cpp"
+#line 669 "ref_return_xclass_v1.hot.cpp"
 #line 34 "ref_return_xclass_v1.hot"
 void hot_state_User::Param(std::shared_ptr<Catalog>& c)
 #line 34 "ref_return_xclass_v1.hot"
@@ -681,14 +687,20 @@ void hot_state_User::Param(std::shared_ptr<Catalog>& c)
 #line 35 "ref_return_xclass_v1.hot"
     HOT_TRACE_FRAME("User.Param", "ref_return_xclass_v1.hot");
 #line 35 "ref_return_xclass_v1.hot"
-    HOT_TRACE_LINE(); if (c == nullptr) return;
+    HOT_TRACE_LINE();
+#line 35 "ref_return_xclass_v1.hot"
+    if (c == nullptr) return;
 #line 36 "ref_return_xclass_v1.hot"
-    HOT_TRACE_LINE(); auto& r = Catalog__Find(hot::shell_of<Catalog_Shell>(c, "Catalog"), 0);
+    HOT_TRACE_LINE();
+#line 36 "ref_return_xclass_v1.hot"
+    auto& r = Catalog__Find(hot::shell_of<Catalog_Shell>(c, "Catalog"), 0);
 #line 37 "ref_return_xclass_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(r).x = 2;
+    HOT_TRACE_LINE();
+#line 37 "ref_return_xclass_v1.hot"
+    hot::deref(r).x = 2;
 #line 38 "ref_return_xclass_v1.hot"
 }
-#line 692 "ref_return_xclass_v1.hot.cpp"
+#line 704 "ref_return_xclass_v1.hot.cpp"
 
 #line 40 "ref_return_xclass_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static void User__Static(User_Shell* __self)
@@ -698,7 +710,7 @@ void hot_state_User::Param(std::shared_ptr<Catalog>& c)
     return state_of(__self)->Static();
 #line 40 "ref_return_xclass_v1.hot"
 }
-#line 702 "ref_return_xclass_v1.hot.cpp"
+#line 714 "ref_return_xclass_v1.hot.cpp"
 #line 40 "ref_return_xclass_v1.hot"
 void hot_state_User::Static()
 #line 40 "ref_return_xclass_v1.hot"
@@ -720,12 +732,16 @@ void hot_state_User::Static()
 #line 41 "ref_return_xclass_v1.hot"
     HOT_TRACE_FRAME("User.Static", "ref_return_xclass_v1.hot");
 #line 41 "ref_return_xclass_v1.hot"
-    HOT_TRACE_LINE(); auto& p = Catalog__s_Pick(__st->mine);
+    HOT_TRACE_LINE();
+#line 41 "ref_return_xclass_v1.hot"
+    auto& p = Catalog__s_Pick(__st->mine);
 #line 42 "ref_return_xclass_v1.hot"
-    HOT_TRACE_LINE(); hot::deref(p).x = 3;
+    HOT_TRACE_LINE();
+#line 42 "ref_return_xclass_v1.hot"
+    hot::deref(p).x = 3;
 #line 43 "ref_return_xclass_v1.hot"
 }
-#line 729 "ref_return_xclass_v1.hot.cpp"
+#line 745 "ref_return_xclass_v1.hot.cpp"
 
 #line 20 "ref_return_xclass_v1.hot"
 [[maybe_unused]] HOT_HIDDEN static Info& Catalog__s_Pick(Info& a)
@@ -736,10 +752,12 @@ void hot_state_User::Static()
 #line 21 "ref_return_xclass_v1.hot"
     HOT_TRACE_FRAME("Catalog.Pick", "ref_return_xclass_v1.hot");
 #line 21 "ref_return_xclass_v1.hot"
-    HOT_TRACE_LINE(); return a;
+    HOT_TRACE_LINE();
+#line 21 "ref_return_xclass_v1.hot"
+    return a;
 #line 22 "ref_return_xclass_v1.hot"
 }
-#line 743 "ref_return_xclass_v1.hot.cpp"
+#line 761 "ref_return_xclass_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

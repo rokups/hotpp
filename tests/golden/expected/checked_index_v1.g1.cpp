@@ -335,14 +335,20 @@ void hot_state_Grid::Tick(float dt)
 #line 17 "checked_index_v1.hot"
     HOT_TRACE_FRAME("Grid.Tick", "checked_index_v1.hot");
 #line 17 "checked_index_v1.hot"
-    HOT_TRACE_LINE(); hot::index(__st->cells, 1) = 7;
+    HOT_TRACE_LINE();
+#line 17 "checked_index_v1.hot"
+    hot::index(__st->cells, 1) = 7;
 #line 18 "checked_index_v1.hot"
-    HOT_TRACE_LINE(); hot::index(__st->ring, 2) = 3;
+    HOT_TRACE_LINE();
+#line 18 "checked_index_v1.hot"
+    hot::index(__st->ring, 2) = 3;
 #line 19 "checked_index_v1.hot"
-    HOT_TRACE_LINE(); hot::index(__st->plain, 0) = 1;
+    HOT_TRACE_LINE();
+#line 19 "checked_index_v1.hot"
+    hot::index(__st->plain, 0) = 1;
 #line 20 "checked_index_v1.hot"
 }
-#line 346 "checked_index_v1.hot.cpp"
+#line 352 "checked_index_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
