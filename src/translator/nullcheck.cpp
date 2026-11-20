@@ -663,6 +663,15 @@ private:
     {
         if (!u.operand)
             return {};
+        if (!u.postfix && u.op == "&")
+        {
+            expr(*u.operand);
+            Val v;
+            v.type = "void*";
+            v.ptr = true;
+            v.nonnull = true; // the address of an object is not null
+            return v;
+        }
         const Val ov = expr(*u.operand);
         if (is_bang(u))
         { // "x!" throws when "x" is null: the result is not null, and the name is not null after it

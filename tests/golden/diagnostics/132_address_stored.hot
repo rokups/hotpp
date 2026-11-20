@@ -1,0 +1,10 @@
+using "Actor.h";
+using "Util.h";
+
+class Marker {
+    float Run() {
+        Vec3 v;
+        var p = &v;
+        return Peek(p);
+    }
+}

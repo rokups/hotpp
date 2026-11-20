@@ -181,6 +181,58 @@ TEST(HandleLowering, LocalPointerToNativeOutPointer)
     EXPECT_EQ(f.body("char* end = null; Parse(end);"), "char* end = nullptr; Parse(hot::as_out_ptr(end));");
 }
 
+// The explicit marker "&x" (HOT-70): the same call as the implicit form for a known native
+// "T*" parameter, and the raw address "std::addressof(x)" elsewhere.
+TEST(HandleLowering, AddressMarkerAsCallArgument)
+{
+    const TypeModel types = stub_model("Weapon", "std::shared_ptr<$T>");
+    Fixture f;
+    f.cx.types = &types;
+    std::string carrier;
+    f.cx.native_key = [](const ast::CallExpr&) { return std::string("Nudge"); };
+    f.cx.native_carrier = [&carrier](const std::string&, size_t arg, size_t) { return arg == 0 ? carrier : std::string(); };
+
+    carrier = "v:Vec3";
+    EXPECT_EQ(f.body("Vec3 v; Nudge(&v);"), "Vec3 v = Vec3(); Nudge(hot::as_ptr(v));");
+    EXPECT_EQ(f.body("Vec3 v; Nudge((&v));"), "Vec3 v = Vec3(); Nudge((std::addressof(v)));");
+    carrier = "o:char*";
+    EXPECT_EQ(f.body("char* end = null; Nudge(&end);"), "char* end = nullptr; Nudge(hot::as_out_ptr(end));");
+    // The scope of the parameter type differs from the script type.
+    carrier = "o:Urho3D::Vec3*";
+    EXPECT_EQ(f.body("Urho3D.Vec3* p = null; Nudge(&p);"), "Urho3D::Vec3* p = nullptr; Nudge(hot::as_out_ptr(p));");
+    carrier = "o:Vec3*";
+    EXPECT_EQ(f.body("Urho3D.Vec3* p = null; Nudge(p);"), "Urho3D::Vec3* p = nullptr; Nudge(hot::as_out_ptr(p));");
+    // "void*" (no known "T*"), another type, and a field "T**": the raw address.
+    carrier = "";
+    EXPECT_EQ(f.body("Vec3 v; Nudge(&v);"), "Vec3 v = Vec3(); Nudge(std::addressof(v));");
+    carrier = "v:float";
+    EXPECT_EQ(f.body("Vec3 v; Nudge(&v);"), "Vec3 v = Vec3(); Nudge(std::addressof(v));");
+    carrier = "v:Vec3";
+    EXPECT_EQ(f.body("Vec3 v; Vec3 w; Nudge(&v.x);"), "Vec3 v = Vec3(); Vec3 w = Vec3(); Nudge(std::addressof(hot::deref(v).x));");
+}
+
+TEST(HandleLowering, AddressMarkerErrors)
+{
+    const TypeModel types = stub_model("Weapon", "std::shared_ptr<$T>");
+    Fixture f;
+    f.cx.types = &types;
+    f.cx.native_key = [](const ast::CallExpr&) { return std::string("Nudge"); };
+    f.cx.native_carrier = [](const std::string&, size_t, size_t) { return std::string("v:Vec3"); };
+    f.body("Vec3 v; var p = &v;");
+    ASSERT_EQ(f.errors().size(), 1u);
+    EXPECT_NE(f.errors()[0].find("'&' is valid only as a call argument"), std::string::npos) << f.errors()[0];
+    Fixture g;
+    g.cx.types = &types;
+    g.body("Weapon w = null; Use(&w);");
+    ASSERT_EQ(g.errors().size(), 1u);
+    EXPECT_NE(g.errors()[0].find("'&' on the handle 'w'"), std::string::npos) << g.errors()[0];
+    Fixture h;
+    h.cx.types = &types;
+    h.body("Weapon w = null; std.addressof(w);");
+    ASSERT_EQ(h.errors().size(), 1u);
+    EXPECT_NE(h.errors()[0].find("write &x"), std::string::npos) << h.errors()[0];
+}
+
 TEST(HandleLowering, HandleToNativeNeedsTheHooks)
 {
     const TypeModel types = stub_model("Weapon", "std::shared_ptr<$T>");

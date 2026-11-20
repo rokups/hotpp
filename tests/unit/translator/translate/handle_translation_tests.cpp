@@ -91,8 +91,7 @@ TEST(HandleTranslation, AddressOfAHandleIsTheGeneralError)
 {
     const hotc::TranslateResult r = weapon_translate("    void Run() { Weapon h = null; var q = &h; }\n");
     EXPECT_FALSE(r.ok);
-    EXPECT_TRUE(has(r.diagnostics, "the prefix '&' is not supported")) << r.diagnostics;
-    EXPECT_TRUE(has(r.diagnostics, "cast a handle with (T*)h")) << r.diagnostics;
+    EXPECT_TRUE(has(r.diagnostics, "'&' is valid only as a call argument")) << r.diagnostics;
 }
 
 TEST(HandleTranslation, CastOfAHandleToAPointerGivesTheRawPointer)
@@ -144,10 +143,10 @@ TEST(HandleTranslation, AmpersandAndAndAreUnchanged)
     EXPECT_TRUE(has(r.cpp, "int32_t c = m & n;")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "x && y")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "c = c & 3;")) << r.cpp;
-    // A "&" after a binary "&" is the removed prefix operator.
+    // A "&" after a binary "&" is a prefix "&" outside a call argument.
     const hotc::TranslateResult q = weapon_translate("    int Run(int m, int n) { int c = m & &n; return c; }\n");
     EXPECT_FALSE(q.ok);
-    EXPECT_TRUE(has(q.diagnostics, "the prefix '&' is not supported")) << q.diagnostics;
+    EXPECT_TRUE(has(q.diagnostics, "'&' is valid only as a call argument")) << q.diagnostics;
 }
 
 TEST(HandleTranslation, NewAssignsAField)

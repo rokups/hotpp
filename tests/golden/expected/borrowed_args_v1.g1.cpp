@@ -1023,36 +1023,42 @@ float hot_state_Caller::Run(Vec3& v, Vec3* p, bool const c)
 #line 44 "borrowed_args_v1.hot"
     HOT_TRACE_LINE(); Probe__Take(hot::shell_of<Probe_Shell>(pb, "Probe"), q);
 #line 45 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Probe__Look(hot::shell_of<Probe_Shell>(pb, "Probe"), r);
+    HOT_TRACE_LINE(); Probe__Take(hot::shell_of<Probe_Shell>(pb, "Probe"), std::addressof(a));
 #line 46 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Probe__Take(hot::shell_of<Probe_Shell>(pb, "Probe"), c ? p : nullptr);
+    HOT_TRACE_LINE(); const auto marked = std::shared_ptr<Probe>(Probe__new_shared(std::addressof(b)));
 #line 47 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Probe__Take(hot::shell_of<Probe_Shell>(pb, "Probe"), hot::cast_ptr<Vec3*>(p));
+    HOT_TRACE_LINE(); Nudge(hot::as_ptr(spot), 5);
 #line 48 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); auto f = hot::make_lambda_deduced<__LamTag_0>(GEN, hot::caps(__self, pb), []([[maybe_unused]] auto& __c, Vec3& w) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& pb = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); { if (pb) Probe__Look(hot::shell_of<Probe_Shell>(pb, "Probe"), w); } } });
+    HOT_TRACE_LINE(); Probe__Look(hot::shell_of<Probe_Shell>(pb, "Probe"), r);
 #line 49 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); f(a);
+    HOT_TRACE_LINE(); Probe__Take(hot::shell_of<Probe_Shell>(pb, "Probe"), c ? p : nullptr);
 #line 50 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); f(v);
+    HOT_TRACE_LINE(); Probe__Take(hot::shell_of<Probe_Shell>(pb, "Probe"), hot::cast_ptr<Vec3*>(p));
 #line 51 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Nudge(hot::as_ptr(a), 1);
+    HOT_TRACE_LINE(); auto f = hot::make_lambda_deduced<__LamTag_0>(GEN, hot::caps(__self, pb), []([[maybe_unused]] auto& __c, Vec3& w) { [[maybe_unused]] auto& __self = std::get<0>(__c); [[maybe_unused]] auto& pb = std::get<1>(__c); { HOT_NODEBUG_LOCAL auto* __st = state_of(__self); { if (pb) Probe__Look(hot::shell_of<Probe_Shell>(pb, "Probe"), w); } } });
 #line 52 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Nudge(hot::as_ptr(r), 2);
+    HOT_TRACE_LINE(); f(a);
 #line 53 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Nudge(hot::as_ptr(v), 0);
+    HOT_TRACE_LINE(); f(v);
 #line 54 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Nudge(hot::as_ptr(spot), 3);
+    HOT_TRACE_LINE(); Nudge(hot::as_ptr(a), 1);
 #line 55 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); Nudge(hot::as_ptr(__st->spot), 4);
+    HOT_TRACE_LINE(); Nudge(hot::as_ptr(r), 2);
 #line 56 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); const float peeked = Peek(hot::as_ptr(a)) + Peek(hot::as_ptr(b)) + Peek(hot::as_ptr(v)) + Peek(nullptr);
+    HOT_TRACE_LINE(); Nudge(hot::as_ptr(v), 0);
 #line 57 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); const float d = Distance(c ? a : b, hot::star(p));
+    HOT_TRACE_LINE(); Nudge(hot::as_ptr(spot), 3);
 #line 58 "borrowed_args_v1.hot"
-    HOT_TRACE_LINE(); return d + peeked + Probe__Pass(hot::shell_of<Probe_Shell>(pb, "Probe"), v, p) + Probe__Pass(hot::shell_of<Probe_Shell>(other, "Probe"), hot::star(q), p) + Util::Sum(r);
+    HOT_TRACE_LINE(); Nudge(hot::as_ptr(__st->spot), 4);
 #line 59 "borrowed_args_v1.hot"
+    HOT_TRACE_LINE(); const float peeked = Peek(hot::as_ptr(a)) + Peek(hot::as_ptr(a)) + Peek(hot::as_ptr(b)) + Peek(hot::as_ptr(v)) + Peek(nullptr);
+#line 60 "borrowed_args_v1.hot"
+    HOT_TRACE_LINE(); const float d = Distance(c ? a : b, hot::star(p));
+#line 61 "borrowed_args_v1.hot"
+    HOT_TRACE_LINE(); return d + peeked + Probe__Pass(hot::shell_of<Probe_Shell>(pb, "Probe"), v, p) + Probe__Pass(hot::shell_of<Probe_Shell>(other, "Probe"), hot::star(q), p) + Util::Sum(r);
+#line 62 "borrowed_args_v1.hot"
 }
-#line 1056 "borrowed_args_v1.hot.cpp"
+#line 1062 "borrowed_args_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {

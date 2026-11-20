@@ -28,7 +28,7 @@ The language server serves `.hot` scripts only. It does not serve `demo.cpp`.
 
 1. The script `script/demo.hot` has the class `Demo`. It derives from the host class `UiApp` and
    overrides `Frame`. It includes the real `imgui.h` (`using "imgui.h";`) and calls the ImGui API as it is.
-2. A field goes to a pointer parameter as it is, for example `ImGui.Checkbox("c", on)`. The call writes `hot::as_ptr(on)`.
+2. A field goes to a pointer parameter as it is, for example `ImGui.Checkbox("c", on)`. The call writes `hot::as_ptr(on)`. The marker `ImGui.Checkbox("c", &on)` is the same call.
 3. `main.cpp` fills `hot::ClangFilesOptions` and loads the script. The host calls `Frame` once for each frame.
 4. The host checks the modification time of the script at each frame. When it changes, the host
    compiles a new generation and starts a reload. The commit happens at the frame boundary.

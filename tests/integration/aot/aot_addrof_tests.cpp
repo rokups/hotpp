@@ -55,4 +55,24 @@ TEST_F(AotAddrOf, FieldAddressReachesNativeHost)
     delete &h;
 }
 
+TEST_F(AotAddrOf, MarkerReachesKnownVoidAndTemplateParameters)
+{
+    const hot::ClassEntry* e = loader.find("Panel");
+    ASSERT_NE(e, nullptr);
+    hot::Instance inst = e->create();
+    auto& h = *static_cast<Urho3D::VarHost*>(inst.native);
+    call0("Panel::BindPlain", h);
+    Urho3D::Variant* field = h.Bound();
+    h.KeepRaw(nullptr);
+    call0("Panel::BindMarked", h);
+    EXPECT_EQ(h.Bound(), field);
+    EXPECT_EQ(h.Raw(), static_cast<void*>(field));
+    EXPECT_EQ(h.Any(), static_cast<void*>(field));
+    // The address of a local is dangling after the call: the test only compares it and never dereferences it.
+    call0("Panel::KeepLocal", h);
+    EXPECT_NE(h.Raw(), nullptr);
+    EXPECT_NE(h.Raw(), static_cast<void*>(field));
+    delete &h;
+}
+
 } // namespace

@@ -18,6 +18,19 @@ class Panel : VarHost {
         BindDataModelVariant("b", this.value);
     }
 
+    // The explicit marker: a known "T*", a "void*" and a template parameter.
+    void BindMarked() {
+        BindDataModelVariant("c", &value);
+        KeepRaw(&value);
+        KeepAny(&value);
+    }
+
+    // A local with an initializer: the marker is a write, so the local is not const.
+    void KeepLocal() {
+        bool b = true;
+        KeepRaw(&b);
+    }
+
     void SetValue(int n) {
         value = Variant(n);
     }

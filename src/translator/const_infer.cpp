@@ -306,7 +306,7 @@ struct BodyInfo
                 else if (u->operand && u->op == "await" && !u->postfix)
                     write_through(root(*u->operand));
                 // "&f" makes a pointer that can write the field.
-                else if (self_mode && u->operand && u->op == "&" && !u->postfix)
+                else if (u->operand && u->op == "&" && !u->postfix)
                     write_through(root(*u->operand));
             }
             else if (auto* ix = std::get_if<IndexExpr>(&e.v))

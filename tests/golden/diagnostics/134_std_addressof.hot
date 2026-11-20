@@ -1,0 +1,9 @@
+using "Actor.h";
+using "Util.h";
+
+class Marker {
+    float Run() {
+        Vec3 v;
+        return Peek(std.addressof(v));
+    }
+}
