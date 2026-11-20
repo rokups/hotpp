@@ -4991,8 +4991,10 @@ json Server::on_range_formatting(const Doc& d, const json& p)
         --last;
     first = std::clamp(first, 0, lines - 1);
     last = std::clamp(last, first, lines - 1);
-    // shortcut: a range format keeps the braces in place, the brace style comes to ranges in the next step.
-    const FormatResult f = format_hot_map(t.s, format_options(p));
+    FormatOptions fo = format_options(p, opt_.brace_style);
+    fo.first_line = first;
+    fo.last_line = last;
+    const FormatResult f = format_hot_map(t.s, fo);
     if (f.text == t.s)
         return json::array();
     // The lines of the output.
@@ -5012,6 +5014,14 @@ json Server::on_range_formatting(const Doc& d, const json& p)
         lo = lo < 0 ? m : std::min(lo, m);
         hi = std::max(hi, m);
     }
+    // A "{" that moves to its own line adds an output line with no input line. The edit holds the
+    // output lines up to the line of the first mapped input line after the range.
+    for (int k = last + 1; lo >= 0 && k < static_cast<int>(f.line_map.size()); ++k)
+        if (const int m = f.line_map[static_cast<size_t>(k)]; m >= 0)
+        {
+            hi = std::max(hi, m - 1);
+            break;
+        }
     std::string text;
     for (int k = lo; lo >= 0 && k <= hi && k < static_cast<int>(out.size()); ++k)
         text += out[static_cast<size_t>(k)];

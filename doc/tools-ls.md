@@ -287,7 +287,7 @@ A `{` moves when all of these are true:
 
 This covers the blocks of `class`, `struct`, `enum`, `namespace`, functions, properties, `get`, `set`, `if`, `else`, `for`, `foreach`, `while`, `do`, `switch`, `try`, `catch`, `finally`, `lock` and `using`. An initializer `new Pt {` also moves. An `else`, `catch` or `finally` right after the `}` of a moved block moves with it: `} else {` in `same-line`, `else` on its own line in `next-line`. A comment between the `}` and the word keeps the word in its place. The `while` of a `do` block stays.
 
-A `{` stays in these cases: a block on one line (`{ }`), a `{` after `=>` (all lambdas), a `{` after `=`, `,`, `(`, `[`, `:`, `;`, `{` or `}` (an initializer, a free block, `case 1: {`), a `{` inside `(` or `[`, a `{` without a matching `}` and a brace in `${...}` of a string. The class of a brace does not depend on the line breaks, so a second format moves nothing. A range format keeps all braces in place.
+A `{` stays in these cases: a block on one line (`{ }`), a `{` after `=>` (all lambdas), a `{` after `=`, `,`, `(`, `[`, `:`, `;`, `{` or `}` (an initializer, a free block, `case 1: {`), a `{` inside `(` or `[`, a `{` without a matching `}` and a brace in `${...}` of a string. The class of a brace does not depend on the line breaks, so a second format moves nothing. A range format moves a brace only when all the lines of the move are in the range: the head line and the line of the `{`, or the `}` and the `else`. The edit never changes a line outside the range.
 
 ## Formatter rules
 

@@ -4678,8 +4678,8 @@ TEST(LanguageServer, BraceStyleReachesTheDocumentFormat)
     // The argument.
     const auto a = brace_formats(BraceStyle::NextLine, nullptr);
     EXPECT_EQ(a.first, kBraceNext);
-    // A range format keeps the braces in place.
-    EXPECT_EQ(a.second, kBraceInput);
+    // A range format follows the style.
+    EXPECT_EQ(a.second, kBraceNext);
     // The initializationOptions override the argument. A bad value is ignored.
     EXPECT_EQ(brace_formats(BraceStyle::Keep, "next-line").first, kBraceNext);
     EXPECT_EQ(brace_formats(BraceStyle::NextLine, "keep").first, kBraceInput);
@@ -4691,9 +4691,13 @@ namespace
 {
 
 // The result of a range format: the text after the edits, or the text itself when there is no edit.
-std::string range_format(const std::string& text, int l0, int c0, int l1, int c1, bool* has_edit = nullptr)
+std::string range_format(const std::string& text, int l0, int c0, int l1, int c1, bool* has_edit = nullptr,
+    hot::ls::BraceStyle brace = hot::ls::BraceStyle::Keep)
 {
-    Session s(false, text);
+    TempDir dir;
+    hot::ls::ServerOptions so = options(dir, false);
+    so.brace_style = brace;
+    Session s(false, text, &so);
     json o = {{"tabSize", 4}, {"insertSpaces", true}};
     const json r = s.client->request("textDocument/rangeFormatting",
         {{"textDocument", {{"uri", s.uri}}}, {"options", o}, {"range", {{"start", pos(l0, c0)}, {"end", pos(l1, c1)}}}});
@@ -4730,6 +4734,61 @@ TEST(LanguageServer, RangeFormattingDoesNotChangeTheInsideOfAStringOrAComment)
     range_format(com, 2, 0, 2, 4, &edit);
     EXPECT_FALSE(edit);
     EXPECT_EQ(range_format(com, 1, 0, 3, 4), "class A {\n    /* a\n     b   \n  */\nint  z;\n}\n");
+}
+
+namespace
+{
+
+std::vector<std::string> lines_of(const std::string& text)
+{
+    std::vector<std::string> out;
+    std::stringstream ss(text);
+    for (std::string l; std::getline(ss, l);)
+        out.push_back(l);
+    return out;
+}
+
+// A range format of the lines l0 to l1 with a brace style. The tokens stay, and the lines outside
+// the range stay byte equal.
+std::string range_brace(const std::string& text, int l0, int l1, hot::ls::BraceStyle b)
+{
+    const std::string r = range_format(text, l0, 0, l1 + 1, 0, nullptr, b);
+    EXPECT_EQ(hot::ls::format_tokens(r), hot::ls::format_tokens(text));
+    const std::vector<std::string> a = lines_of(text), c = lines_of(r);
+    const size_t after = a.size() - static_cast<size_t>(l1) - 1;
+    EXPECT_GE(c.size(), static_cast<size_t>(l0) + after) << r;
+    for (size_t k = 0; k < static_cast<size_t>(l0) && k < c.size(); ++k)
+        EXPECT_EQ(c[k], a[k]) << "line " << k << " of " << r;
+    for (size_t k = 1; k <= after && k <= c.size(); ++k)
+        EXPECT_EQ(c[c.size() - k], a[a.size() - k]) << "line -" << k << " of " << r;
+    return r;
+}
+
+} // namespace
+
+TEST(LanguageServer, RangeFormattingMovesABraceInsideTheRangeOnly)
+{
+    using hot::ls::BraceStyle;
+    const std::string same = "class A {\n    void f() {\n        g();\n    }\n}\n";
+    const std::string next = "class A\n{\n    void f()\n    {\n        g();\n    }\n}\n";
+    // The head line only: the "{" moves to a new line. On the first line too.
+    EXPECT_EQ(range_brace(same, 1, 1, BraceStyle::NextLine),
+        "class A {\n    void f()\n    {\n        g();\n    }\n}\n");
+    EXPECT_EQ(range_brace(same, 0, 0, BraceStyle::NextLine),
+        "class A\n{\n    void f() {\n        g();\n    }\n}\n");
+    EXPECT_EQ(range_brace(same, 0, 4, BraceStyle::NextLine), next);
+    // Lines without a head: nothing moves.
+    EXPECT_EQ(range_brace(same, 2, 3, BraceStyle::NextLine), same);
+    // A join needs the head line and the brace line in the range.
+    EXPECT_EQ(range_brace(next, 2, 2, BraceStyle::SameLine), next);
+    EXPECT_EQ(range_brace(next, 3, 3, BraceStyle::SameLine), next);
+    EXPECT_EQ(range_brace(next, 2, 3, BraceStyle::SameLine),
+        "class A\n{\n    void f() {\n        g();\n    }\n}\n");
+    EXPECT_EQ(range_brace(next, 0, 6, BraceStyle::SameLine), same);
+    // "else" joins the "}" only when both lines are in the range.
+    const std::string ifs = "if (a)\n{\n    g();\n}\nelse\n{\n    h();\n}\n";
+    EXPECT_EQ(range_brace(ifs, 3, 3, BraceStyle::SameLine), ifs);
+    EXPECT_EQ(range_brace(ifs, 3, 5, BraceStyle::SameLine), "if (a)\n{\n    g();\n} else {\n    h();\n}\n");
 }
 
 TEST(LanguageServer, RangeFormattingAtTheEndOfTheText)

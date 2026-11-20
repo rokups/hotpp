@@ -560,6 +560,11 @@ void Formatter::place_braces()
             if (c == '\n')
                 ++line[i];
     }
+    auto in_range = [&](size_t a, size_t b)
+    {
+        return static_cast<long long>(line[a]) >= o_.first_line
+            && (o_.last_line < 0 || static_cast<long long>(line[b]) <= o_.last_line);
+    };
     struct Open
     {
         size_t at;
@@ -584,8 +589,10 @@ void Formatter::place_braces()
         // A "{ }" on one line stays.
         if (x != "}" || !o.can_move || line[o.at] == line[i])
             continue;
-        t_[o.at].nl = want;
-        if (i + 1 < t_.size() && (is_w(i + 1, "else") || is_w(i + 1, "catch") || is_w(i + 1, "finally")))
+        if (in_range(o.at - 1, o.at))
+            t_[o.at].nl = want;
+        if (i + 1 < t_.size() && (is_w(i + 1, "else") || is_w(i + 1, "catch") || is_w(i + 1, "finally"))
+            && in_range(i, i + 1))
             t_[i + 1].nl = want;
     }
 }

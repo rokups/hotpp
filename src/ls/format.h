@@ -29,6 +29,10 @@ struct FormatOptions
     int indent_width = 4; // the spaces of one indent level (ignored with use_tabs)
     bool use_tabs = false; // one tab for each level
     BraceStyle brace = BraceStyle::Keep;
+    // A brace moves only when all the input lines of the move are in this range (-1: to the end).
+    // A range format sets them, so the lines outside the range keep their line breaks.
+    int first_line = 0;
+    int last_line = -1;
 };
 
 // The result of a format with the map of the lines. "line_map" has one entry for each line of the
