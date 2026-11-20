@@ -607,6 +607,8 @@ TEST(Formatter, BraceStyleMovesTheBraceOfEachBlockHead)
 
 TEST(Formatter, BraceStyleMovesTheBraceOfEachStatement)
 {
+    // The lexer reads ">>" as two ">": the "{" after a nested generic moves.
+    expect_brace_forms("class C<List<T>> {\n    int x;\n}\n", "class C<List<T>>\n{\n    int x;\n}\n");
     expect_brace_forms("void f() {\n"
                        "    if (a > 0) {\n"
                        "        g();\n"
