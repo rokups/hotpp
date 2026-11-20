@@ -162,13 +162,13 @@ TEST(CppStorage, PointerAndBuiltinStayAsTheyAre)
 TEST(CppStorage, OptionalOfAValueType)
 {
     StorageFixture s;
-    EXPECT_EQ(s.map("int32_t?"), "std::optional<int32_t>");
-    EXPECT_EQ(s.map("Vec3?"), "std::optional<Vec3>");
-    EXPECT_EQ(s.map("Pt?"), "std::optional<Pt>");
-    EXPECT_EQ(s.map("std::string?"), "std::optional<std::string>");
-    EXPECT_EQ(s.map("int32_t?", TypeModel::StorageUse::Param), "hot::In<std::optional<int32_t>>");
-    EXPECT_EQ(s.map("const int32_t?&"), "const std::optional<int32_t>&");
-    EXPECT_EQ(s.map("int32_t?&"), "std::optional<int32_t>&");
+    EXPECT_EQ(s.map("int32_t?"), "\x01std::optional<int32_t>");
+    EXPECT_EQ(s.map("Vec3?"), "\x01std::optional<Vec3>");
+    EXPECT_EQ(s.map("Pt?"), "\x01std::optional<Pt>");
+    EXPECT_EQ(s.map("std::string?"), "\x01std::optional<std::string>");
+    EXPECT_EQ(s.map("int32_t?", TypeModel::StorageUse::Param), "hot::In<\x01std::optional<int32_t>>");
+    EXPECT_EQ(s.map("const int32_t?&"), "const \x01std::optional<int32_t>&");
+    EXPECT_EQ(s.map("int32_t?&"), "\x01std::optional<int32_t>&");
 }
 
 TEST(CppStorage, OptionalNeedsAValueType)
@@ -189,7 +189,7 @@ TEST(CppStorage, SpanOfAnyElement)
     EXPECT_EQ(s.map("const int32_t[]"), "hot::span<const int32_t>");
     EXPECT_EQ(s.map("int32_t[]", TypeModel::StorageUse::Param), "hot::span<int32_t>");
     EXPECT_EQ(s.map("Weapon[]"), "hot::span<std::shared_ptr<Weapon>>");
-    EXPECT_EQ(s.map("int32_t?[]"), "hot::span<std::optional<int32_t>>");
+    EXPECT_EQ(s.map("int32_t?[]"), "hot::span<\x01std::optional<int32_t>>");
 }
 
 TEST(CppStorage, SpanOfAnyElementWithViewTypeStd)
@@ -208,7 +208,7 @@ TEST(CppStorage, MarksInTemplateArguments)
     StorageFixture s;
     EXPECT_EQ(s.map("std::vector<$Squad>"), "std::vector<\x01std::shared_ptr<Squad>>");
     EXPECT_EQ(s.map("std::vector<Squad>"), "std::vector<hot::Value<Squad>>");
-    EXPECT_EQ(s.map("std::vector<int32_t?>"), "std::vector<std::optional<int32_t>>");
+    EXPECT_EQ(s.map("std::vector<int32_t?>"), "std::vector<\x01std::optional<int32_t>>");
     EXPECT_EQ(s.map("std::map<int32_t, $Weapon>"), "std::map<int32_t, std::shared_ptr<Weapon>>");
 }
 
