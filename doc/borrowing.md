@@ -58,7 +58,7 @@ class Hero {
 
 ## Where borrowing is rejected
 
-A field, a return value, a collection element and a lambda capture are errors. The prefix `&` is valid only as a whole call argument: `var p = &x;` is an error. A native callee that keeps a pointer to a field gets a pointer that is not valid after a reload, because the state block moves. A method that gives access to a value struct returns `ref T` or `T?`, not `T*`: see [Type design](type-design.html#lifetime-of-a-ref). A `struct` field of the move-only type `std.unique_ptr<T>` is also an error, because a copy of a struct copies each field. A class field of that type is valid (see [Move-only fields](hot-reload.html#move-only-fields)). A pointer field of a native class with a weak source is the exception (see "Pointer fields").
+A field, a return value, a collection element and a lambda capture are errors. The prefix `&` is valid only as a whole call argument: `var p = &x;` is an error. A native callee that keeps a pointer to a field gets a pointer that is not valid after a reload, because the state block moves. A pointer to a local or a parameter is valid until the function returns: a native callee or a native constructor must not keep it. A method that gives access to a value struct returns `ref T` or `T?`, not `T*`: see [Type design](type-design.html#lifetime-of-a-ref). A `struct` field of the move-only type `std.unique_ptr<T>` is also an error, because a copy of a struct copies each field. A class field of that type is valid (see [Move-only fields](hot-reload.html#move-only-fields)). A pointer field of a native class with a weak source is the exception (see "Pointer fields").
 
 ```hot
 // error
