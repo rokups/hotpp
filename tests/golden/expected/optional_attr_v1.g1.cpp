@@ -411,14 +411,20 @@ void hot_state_Counter::Set(hot::In<fake::optional<int32_t>> __v)
 #line 16 "optional_attr_v1.hot"
     fake::optional<int32_t> const v = std::forward<hot::In<fake::optional<int32_t>>>(__v);
 #line 16 "optional_attr_v1.hot"
-    HOT_TRACE_LINE(); const fake::optional<int32_t> old = v;
+    HOT_TRACE_LINE();
+#line 16 "optional_attr_v1.hot"
+    const fake::optional<int32_t> old = v;
 #line 17 "optional_attr_v1.hot"
-    HOT_TRACE_LINE(); __st->last = fake::nullopt;
+    HOT_TRACE_LINE();
+#line 17 "optional_attr_v1.hot"
+    __st->last = fake::nullopt;
 #line 18 "optional_attr_v1.hot"
-    HOT_TRACE_LINE(); __st->where = fake::nullopt;
+    HOT_TRACE_LINE();
+#line 18 "optional_attr_v1.hot"
+    __st->where = fake::nullopt;
 #line 19 "optional_attr_v1.hot"
 }
-#line 422 "optional_attr_v1.hot.cpp"
+#line 428 "optional_attr_v1.hot.cpp"
 
 extern "C" void script_register(hot::Registry& reg)
 {
