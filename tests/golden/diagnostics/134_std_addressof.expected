@@ -1,0 +1,3 @@
+134_std_addressof.hot:7:21: error: write &x
+    7 |         return Peek(std.addressof(v));
+1 error generated.

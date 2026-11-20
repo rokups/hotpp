@@ -119,7 +119,7 @@ Rules:
   - A local, a plain/`in`/`[byval]` parameter and a temporary are errors.
   - `T` is a builtin, struct or native value type. A class type or a handle type is an error: return the handle `$T` by value.
   - An `async` method cannot return `ref`.
-- R4p was removed. The prefix `&` does not exist, so a method cannot return `&place`. A method returns `ref T` (rule R4) or `T?` for a value struct. A `T*` return of a value struct can give `null` or a pointer that the method got from its caller. A caller `var p = c.Find(0);` is a borrowed pointer. It cannot go into a field, a container element or a lambda.
+- R4p was removed. The prefix `&` is valid only as a call argument, so a method cannot return `&place`. A method returns `ref T` (rule R4) or `T?` for a value struct. A `T*` return of a value struct can give `null` or a pointer that the method got from its caller. A caller `var p = c.Find(0);` is a borrowed pointer. It cannot go into a field, a container element or a lambda.
 - R5 Call. The result of a `ref` call is a place (see the table). Rule R3 applies to each of its roots. A shape change of a root while the `ref` lives is an error:
   - A call on the root of one of these methods: push_back, emplace_back, pop_back, push_front, pop_front, emplace_front, emplace, emplace_hint, insert, insert_or_assign, try_emplace, erase, clear, resize, reserve, shrink_to_fit, assign, swap, rehash, merge, extract, append, replace, remove, remove_if or splice.
   - An assignment to the root, or the root as a `ref` or `out` argument. This includes `F(c)`, `this.F(c)` and `Class.F(c)`.

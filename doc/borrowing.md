@@ -34,7 +34,7 @@ class Hero : Actor {
 | Parameter | `void F(ref Vec3 v)`, `void F(Vec3* v)` | yes |
 | Local | `ref r = x;`, `Vec3* p = a.Best();`, `var p = a.Best();` | yes |
 | `catch`, lambda parameter, `foreach` | `catch (std.exception e)`, `(ref Vec3 v) => ...`, `foreach (ref x in xs)` | yes |
-| A value lvalue in a call to a native `T*` parameter | `Nudge(x)`, `Peek(this.pos)` | yes: the call writes `hot::as_ptr(x)` |
+| A value lvalue in a call to a native `T*` parameter | `Nudge(x)`, `Nudge(&x)`, `Peek(this.pos)` | yes: the call writes `hot::as_ptr(x)`. The marker `&x` is optional and works for any callee |
 | A `T*` parameter passed on in a call, `new` or `base(...)` | `f(p)`, `new $Hero(p)` | yes |
 | Field of a native class with a weak source | `Weapon* last;` | yes: stored as a checked pointer (see "Pointer fields") |
 | Field of another type, return type, collection element, lambda capture | `ref Vec3 last;`, `() => p.x` | no |
@@ -58,7 +58,7 @@ class Hero {
 
 ## Where borrowing is rejected
 
-A field, a return value, a collection element and a lambda capture are errors. The prefix `&` does not exist in `.hot`. A method that gives access to a value struct returns `ref T` or `T?`, not `T*`: see [Type design](type-design.html#lifetime-of-a-ref). A `struct` field of the move-only type `std.unique_ptr<T>` is also an error, because a copy of a struct copies each field. A class field of that type is valid (see [Move-only fields](hot-reload.html#move-only-fields)). A pointer field of a native class with a weak source is the exception (see "Pointer fields").
+A field, a return value, a collection element and a lambda capture are errors. The prefix `&` is valid only as a whole call argument: `var p = &x;` is an error. A native callee that keeps a pointer to a field gets a pointer that is not valid after a reload, because the state block moves. A method that gives access to a value struct returns `ref T` or `T?`, not `T*`: see [Type design](type-design.html#lifetime-of-a-ref). A `struct` field of the move-only type `std.unique_ptr<T>` is also an error, because a copy of a struct copies each field. A class field of that type is valid (see [Move-only fields](hot-reload.html#move-only-fields)). A pointer field of a native class with a weak source is the exception (see "Pointer fields").
 
 ```hot
 // error

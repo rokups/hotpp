@@ -1347,6 +1347,7 @@ struct Lowerer
     std::vector<std::string> key_stack = {};
     std::map<std::string, int> group_seen = {};
     std::set<const Expr*> callees = {};
+    std::set<const Expr*> amp_ok = {}; // the '&' markers that are a call argument
     bool target_next = false; // the same for the next expr() call
 
     // A field of the class "c" (or of a script parent) that has "[weak]".
@@ -2388,9 +2389,76 @@ struct Lowerer
         return true;
     }
 
+    // The explicit marker "&place" is valid only as a whole call argument. This pass accepts the
+    // marker and checks the operand. Parentheses around the marker are valid.
+    void amp_args(const std::vector<ExprP>& args)
+    {
+        for (const ExprP& a : args)
+        {
+            const Expr* x = a.get();
+            while (x)
+            {
+                const auto* p = std::get_if<ParenExpr>(&x->v);
+                if (!p)
+                    break;
+                x = p->inner.get();
+            }
+            const auto* u = x ? std::get_if<UnaryExpr>(&x->v) : nullptr;
+            if (!u || u->postfix || u->op != "&" || !u->operand)
+                continue;
+            amp_ok.insert(x);
+            const Expr& o = *u->operand;
+            const uint32_t pos = u->pos ? u->pos : pos_of(o);
+            const bool place = std::holds_alternative<NameExpr>(o.v) || std::holds_alternative<MemberExpr>(o.v)
+                || std::holds_alternative<IndexExpr>(o.v)
+                || std::holds_alternative<ThisExpr>(o.v)
+                || (std::holds_alternative<UnaryExpr>(o.v) && std::get<UnaryExpr>(o.v).op == "*"
+                    && !std::get<UnaryExpr>(o.v).postfix);
+            if (!place)
+                error(pos, "'&' needs a name, a field, an index or '*p'");
+            else if (const std::string t = type_of(o); !t.empty() && cx.types && cx.types->is_handle(t))
+                error(pos, "'&' on the handle '" + print(o) + "': pass " + print(o) + " or (T*)" + print(o));
+            else if (const std::string w = weak_root(o); !w.empty())
+                weak_ref_error(pos, w);
+        }
+    }
+
+    // "&place" lowers to the raw address "std::addressof(place)". A native "T*" parameter takes the
+    // marker as a form of native_arg_forms before this point.
+    // The marker node of an argument "&x" that the pass accepted (no parentheses), else null.
+    UnaryExpr* amp_marker(const Expr& a) const
+    {
+        const auto* u = std::get_if<UnaryExpr>(&a.v);
+        return u && !u->postfix && u->op == "&" && u->operand && amp_ok.count(&a)
+            ? const_cast<UnaryExpr*>(u) : nullptr;
+    }
+
+    void amp_expr(ExprP& e, UnaryExpr& u)
+    {
+        const uint32_t pos = u.pos ? u.pos : pos_of(*u.operand);
+        if (!amp_ok.count(e.get()))
+        {
+            error(pos, "'&' is valid only as a call argument; write ref name = expr for a local");
+            return;
+        }
+        expr(u.operand);
+        CallExpr c;
+        c.pos = pos;
+        c.callee = raw("std::addressof", pos);
+        c.args.push_back(std::move(u.operand));
+        e = make_expr(std::move(c));
+    }
+
     void call(CallExpr& c)
     {
         callees.insert(c.callee.get());
+        if (const auto* sn = std::get_if<NameExpr>(&c.callee->v);
+            sn && sn->parts.size() == 2 && sn->parts[0] == "std" && sn->parts[1] == "addressof")
+        {
+            error(sn->pos, "write &x");
+            return;
+        }
+        amp_args(c.args);
         method_groups(c);
         check_reset(c);
         if (const std::string* n = simple_name(*c.callee))
@@ -2573,7 +2641,15 @@ struct Lowerer
             c.args.insert(c.args.begin(), std::move(recv));
             return;
         }
-        const std::vector<char> forms = native_arg_forms(c);
+        std::vector<char> forms = native_arg_forms(c);
+        for (size_t i = 0; i < forms.size(); ++i)
+            if (UnaryExpr* m = amp_marker(*c.args[i]))
+            { // "&x" to a known native "T*" or "T**": the form wraps the operand, else the raw address stays
+                if (forms[i] != 'p' && forms[i] != 'o')
+                    forms[i] = 0;
+                else
+                    c.args[i] = std::move(m->operand);
+            }
         expr(c.callee);
         exprs(c.args);
         for (size_t i = 0; i < forms.size(); ++i)
@@ -2614,6 +2690,10 @@ struct Lowerer
             const Expr* a = c.args[i].get();
             if (!a)
                 continue;
+            // The marker "&x" is the explicit form: the operand decides, as for the implicit form.
+            const bool marked = amp_marker(*a) != nullptr;
+            if (marked)
+                a = amp_marker(*a)->operand.get();
             const bool value_form = std::holds_alternative<IndexExpr>(a->v);
             if (!(std::holds_alternative<NameExpr>(a->v) || std::holds_alternative<MemberExpr>(a->v) || value_form))
                 continue;
@@ -2621,6 +2701,12 @@ struct Lowerer
             if (t.empty())
                 continue;
             const std::string r = cx.native_carrier(key, i, c.args.size());
+            auto scope_suffix = [](const std::string& longer, const std::string& shorter)
+              {
+                  return longer.size() > shorter.size() + 2
+                      && longer.compare(longer.size() - shorter.size(), shorter.size(), shorter) == 0
+                      && longer.compare(longer.size() - shorter.size() - 2, 2, "::") == 0;
+              };
             // A value lvalue to a native "T*" or "const T*" parameter of the same type: "hot::as_ptr(x)".
             if (r.size() > 2 && (r[0] == 'v' || r[0] == 'x') && r[1] == ':')
             {
@@ -2632,12 +2718,6 @@ struct Lowerer
                 // The parameter spelling and the script type can differ in the scope: libclang spells a
                 // parameter of a class in a namespace without the namespace ("Variant *"), and the
                 // script type has it ("Urho3D::Variant"). One name can end with the other after "::".
-                auto scope_suffix = [](const std::string& longer, const std::string& shorter)
-                {
-                    return longer.size() > shorter.size() + 2
-                        && longer.compare(longer.size() - shorter.size(), shorter.size(), shorter) == 0
-                        && longer.compare(longer.size() - shorter.size() - 2, 2, "::") == 0;
-                };
                 if (!core.empty() && core[0] != '$' && !is_optional(t) && !cx.types->is_handle(t)
                     && (core == want || scope_suffix(want, core) || scope_suffix(core, want)))
                 {
@@ -2660,9 +2740,10 @@ struct Lowerer
                         core += ch;
                 const std::string want = r.substr(2);
                 const std::string* local = simple_name(*a);
-                if (core == want && local && cx.locals.count(*local))
+                if ((core == want || scope_suffix(want, core) || scope_suffix(core, want)) && local
+                    && cx.locals.count(*local))
                     forms[i] = 'o';
-                else if (!core.empty() && core.find('*') != std::string::npos)
+                else if (!marked && !core.empty() && core.find('*') != std::string::npos)
                     error(pos_of(*a),
                         "a native out-pointer parameter '" + want + "*' needs a local variable of type '" + want
                             + "'. Declare 'T* p = null;' and pass 'p'");
@@ -2727,6 +2808,7 @@ struct Lowerer
     {
         const uint32_t pos = n.pos;
         const bool handle_new = n.type.compare(0, 1, "$") == 0; // "new $C(...)"
+        amp_args(n.args);
         drop_handle_mark(n.type);
         const std::string type = n.type; // "n" is gone after "e" gets a new node
         if (cx.script_interfaces.count(n.type))
@@ -3759,6 +3841,11 @@ struct Lowerer
         }
         else if (auto* u = std::get_if<UnaryExpr>(&x.v))
         {
+            if (!u->postfix && u->op == "&" && u->operand)
+            {
+                amp_expr(e, *u);
+                return;
+            }
             if (!u->postfix && u->op != "!" && u->operand
                 && op_on_handle(*u->operand, u->op, 0, u->pos != 0 ? u->pos : pos_of(*u->operand)))
                 return;

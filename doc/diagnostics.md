@@ -33,6 +33,12 @@ Typos, wrong types and a missing `return` have plain messages.
 1 error generated.
 ```
 
+The prefix `&` is valid only as a whole call argument. Each other use gives an error with a hint. `&` of a handle, `&` of a place in a `[weak]` handle and `std.addressof(x)` are errors too.
+
+```
+132_address_stored.hot:7:17: error: '&' is valid only as a call argument; write ref name = expr for a local
+```
+
 A value that has no formatter in a `${...}` string, for example a native `enum class`, gives one error at the script line:
 
 ```

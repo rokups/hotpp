@@ -42,6 +42,9 @@ class Caller : Actor {
         pb.Look(v);
         pb.Look(a);
         pb.Take(q);
+        pb.Take(&a);
+        var marked = new $Probe(&b);
+        Nudge(&spot, 5);
         pb.Look(r);
         pb.Take(c ? p : null);
         pb.Take((Vec3*)p);
@@ -53,7 +56,7 @@ class Caller : Actor {
         Nudge(v, 0);
         Nudge(spot, 3);
         Nudge(this.spot, 4);
-        float peeked = Peek(a) + Peek(b) + Peek(v) + Peek(null);
+        float peeked = Peek(&a) + Peek(a) + Peek(b) + Peek(v) + Peek(null);
         float d = Distance(c ? a : b, *p);
         return d + peeked + pb.Pass(v, p) + other.Pass(*q, p) + Util.Sum(r);
     }
