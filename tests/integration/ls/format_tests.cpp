@@ -655,6 +655,56 @@ TEST(Formatter, ElseAndCatchAfterABlockOfANestedHeadKeepTheLevel)
                        "            y;\n"
                        "        }\n"
                        "}\n");
+    // An else after the block of a "for" belongs to the outer "if".
+    expect_nested_head("void f() {\n"
+                       "    if (a)\n"
+                       "        for (;;) {\n"
+                       "            x;\n"
+                       "        }\n"
+                       "    else\n"
+                       "        y;\n"
+                       "}\n");
+    expect_nested_head("void f() {\n"
+                       "    if (a)\n"
+                       "        do {\n"
+                       "            x;\n"
+                       "        }\n"
+                       "        while (y);\n"
+                       "    z;\n"
+                       "}\n");
+    expect_nested_head("void f() {\n"
+                       "    if (a)\n"
+                       "        try {\n"
+                       "            x;\n"
+                       "        }\n"
+                       "        catch (E e) {\n"
+                       "            y;\n"
+                       "        }\n"
+                       "        finally {\n"
+                       "            z;\n"
+                       "        }\n"
+                       "}\n");
+    // "})" and "}}" keep the base of the line of the bracket that they close last.
+    for (const std::string good : {"void f() {\n"
+                                   "    foo(\n"
+                                   "        () => {\n"
+                                   "            x;\n"
+                                   "        })\n"
+                                   "        .Then(y);\n"
+                                   "}\n",
+             "void f() {\n"
+             "    if (a) {\n"
+             "        if (b) {\n"
+             "            x;\n"
+             "        } }\n"
+             "    else {\n"
+             "        y;\n"
+             "    }\n"
+             "}\n"})
+    {
+        EXPECT_EQ(format_hot(unindent(good)), good);
+        EXPECT_EQ(format_hot(good), good);
+    }
     // Tabs.
     FormatOptions o;
     o.use_tabs = true;

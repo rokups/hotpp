@@ -297,7 +297,9 @@ struct Bracket
     char ch = '{';
     int content = 0; // the level of the lines inside
     int base = 0; // the level of the logical line that opened the bracket
-    bool ctrl = false; // "(" of if, for, while ...
+    // "(" of for, while ...: 1, of if: 2, of catch: 3. "{" that else, catch or finally can follow: 2,
+    // "{" that while can follow: 3.
+    char ctrl = 0;
     bool in_case = false; // "{" with an open "case" label
 };
 
@@ -309,7 +311,7 @@ public:
         , o_(o)
         , t_(lex(text))
     {
-        ctrl_close_.assign(t_.size(), false);
+        ctrl_close_.assign(t_.size(), 0);
         place_braces();
     }
 
@@ -339,7 +341,7 @@ private:
     FormatOptions o_;
     std::vector<Tok> t_;
     std::vector<Bracket> stack_;
-    std::vector<bool> ctrl_close_;
+    std::vector<char> ctrl_close_; // the "ctrl" of the bracket that the token closes
 };
 
 bool Formatter::operand_end(size_t i) const
@@ -619,6 +621,7 @@ FormatResult Formatter::run()
     size_t in_line = 0; // the input line where the next gap starts
     int last_base = 0;
     int last_level = 0;
+    int sig_base = 0; // the base of the last line that starts with no comment
     bool last_in_bracket = false;
     bool label_line = false; // the line has started with "case" or "default"
     auto count_nl = [](sv x)
@@ -683,15 +686,22 @@ FormatResult Formatter::run()
                 bool head = false; // a "{" below a head without braces has the level of the head line
                 if (k == 0 && p != npos && !is_comment(i))
                 {
-                    head = (is_p(p, ")") && ctrl_close_[p]) || is_w(p, "else") || is_w(p, "do");
+                    head = (is_p(p, ")") && (ctrl_close_[p] == 1 || ctrl_close_[p] == 2)) || is_w(p, "else")
+                        || is_w(p, "do");
                     pending = head && !is_p(i, "{");
                 }
-                // An "else" or "catch" on its own line has the level of the "}" line before it.
-                const bool after_close = k == 0 && p != npos && is_p(p, "}")
-                    && (is_w(i, "else") || is_w(i, "catch") || is_w(i, "finally"));
-                if ((head && is_p(i, "{")) || after_close)
+                // An "else", "catch", "finally" or "while" on its own line continues the "}" line before it.
+                const char c = k == 0 && p != npos && is_p(p, "}") ? ctrl_close_[p] : 0;
+                const bool after_close = (c == 2 && (is_w(i, "else") || is_w(i, "catch") || is_w(i, "finally")))
+                    || (c == 3 && is_w(i, "while"));
+                const bool opens = is_p(i, "{")
+                    && (head
+                        || (k == 0 && p != npos
+                            && (is_w(p, "try") || is_w(p, "catch") || is_w(p, "finally")
+                                || (is_p(p, ")") && ctrl_close_[p] == 3))));
+                if (opens || after_close)
                 {
-                    level = base = last_base;
+                    level = base = sig_base;
                 }
                 else if (k == 0 && (pending || op_continues(i, p)))
                 {
@@ -703,12 +713,18 @@ FormatResult Formatter::run()
                     level = (top ? top->content : 0) + (in_case ? 1 : 0);
                     base = level;
                 }
-                // "})" and "}}": the line has the level of the line of the first "{" that it closes.
+                // A "}" has the level of the line of the first "{" that it closes. The line continues
+                // the logical line of the last bracket that it closes ("})" continues the line of the "(").
                 if (k > 0 && stack_.back().ch == '{')
-                    level = base = std::max(level, stack_.back().base);
+                {
+                    level = std::max(level, stack_.back().base);
+                    base = std::max(base, stack_[stack_.size() - k].base);
+                }
             }
             last_base = base;
             last_level = level;
+            if (!is_comment(i))
+                sig_base = base;
             last_in_bracket = top && top->ch != '{';
             out += indent(level);
         }
@@ -761,19 +777,21 @@ FormatResult Formatter::run()
                     b.base = last_level;
                     b.content = last_level + 1;
                 }
-                if (x == "(")
-                {
-                    const size_t p = last_sig;
-                    b.ctrl = p != npos && t_[p].kind == Kind::Word && is_body_keyword(txt(p));
-                }
+                const size_t p = last_sig;
+                if (x == "(" && p != npos && t_[p].kind == Kind::Word)
+                    b.ctrl = is_w(p, "if") ? 2 : is_w(p, "catch") ? 3 : is_body_keyword(txt(p)) ? 1 : 0;
+                if (x == "{" && p != npos
+                    && ((is_p(p, ")") && ctrl_close_[p] >= 2) || is_w(p, "try") || is_w(p, "catch")))
+                    b.ctrl = 2;
+                if (x == "{" && p != npos && is_w(p, "do"))
+                    b.ctrl = 3;
                 stack_.push_back(b);
             }
             else if (x == ")" || x == "]" || x == "}")
             {
                 if (!stack_.empty())
                 {
-                    if (x == ")")
-                        ctrl_close_[i] = stack_.back().ctrl;
+                    ctrl_close_[i] = stack_.back().ctrl;
                     stack_.pop_back();
                 }
             }
