@@ -343,6 +343,25 @@ TEST(LintShadow, StructuredBindingHidesLocalWarns)
     EXPECT_TRUE(has(w, "'a' hides the local variable 'a' that is declared at line 6")) << w;
 }
 
+TEST(LintShadow, ParameterCapturedByLambdaDoesNotWarn)
+{
+    const std::string members = "    void Wait(std.function<bool()> f) { f(); }\n"
+                                "    void waitState(in std.string step, uint waitTicket, int state)\n"
+                                "    { Wait(() => { return this.calc(waitTicket) == state; }); }\n"
+                                "    void counter(int n) { Wait(() => { n = n + 1; return n > 3; }); }\n"
+                                "    void other(uint waitTicket) { this.count = waitTicket; }\n";
+    const std::string w = warnings_of("        this.count = 1;", members);
+    EXPECT_TRUE(w.empty()) << w;
+}
+
+TEST(LintShadow, LambdaParameterHidesParameterWarns)
+{
+    const std::string members = "    void Wait(std.function<bool(int)> f) { f(1); }\n"
+                                "    void w(int waitTicket) { Wait((int waitTicket) => { return waitTicket > 0; }); }\n";
+    const std::string w = warnings_of("        this.count = 1;", members);
+    EXPECT_TRUE(has(w, "'waitTicket' hides a parameter with the same name")) << w;
+}
+
 TEST(LintShadow, PropertySetterValueHiddenByLocalWarns)
 {
     const std::string members = "    int Val { get { return 1; } set { if (this.count > 0) { int value = 2; "

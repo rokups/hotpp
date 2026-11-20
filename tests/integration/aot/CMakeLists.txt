@@ -363,3 +363,18 @@ if(NOT MSVC)
                     DEPENDS ${HOT_HEADERS})
     target_compile_options(warn_free_scripts PRIVATE -Wall -Wextra -Werror)
 endif()
+
+# A script calls "x?.M<T>()" on a native pointer: the AOT C++ needs ".template".
+if(TARGET hot_backend)
+hot_add_scripts(TARGET aot_safe_template_scripts AOT
+    SCRIPTS ${PROJECT_SOURCE_DIR}/tests/scripts/safe_template_v1.hot
+    INCLUDES ${PROJECT_SOURCE_DIR}/tests/engine
+    DEPENDS ${HOT_HEADERS})
+add_executable(integration_aot_safe_template_tests aot_safe_template_tests.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Actor.cpp
+    ${PROJECT_SOURCE_DIR}/tests/engine/Util.cpp)
+target_include_directories(integration_aot_safe_template_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests ${PROJECT_SOURCE_DIR}/tests/engine)
+target_link_libraries(integration_aot_safe_template_tests PRIVATE aot_safe_template_scripts hot_backend GTest::gtest_main)
+set_target_properties(integration_aot_safe_template_tests PROPERTIES ENABLE_EXPORTS ON)
+hot_gtest(integration_aot_safe_template_tests PROPERTIES LABELS aot)
+endif()

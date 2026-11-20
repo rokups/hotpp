@@ -44,6 +44,7 @@ inline const char* kCheckHeader =
     "struct Owner { Weapon* weapon = nullptr; int N = 0; Weapon* GetWeapon() { return weapon; }\n"
     "    Weapon* Pick() { return weapon; } Weapon* Pick(int) { return weapon; } static Owner* Get() { return nullptr; "
     "} };\n"
+    "struct TplHost { virtual ~TplHost() {} template <class T> int Size() { return 1; } };\n"
     "inline Weapon* FindWeapon() { return nullptr; }\n"
     "inline Weapon* Echo(Weapon* w) { return w; }\n";
 
