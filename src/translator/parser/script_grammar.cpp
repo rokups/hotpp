@@ -1496,6 +1496,9 @@ struct ClassAttrs
     std::string array_tpl; // [array("template")]: valid in a module attribute list only
     bool has_array = false;
     const char* array_pos = nullptr; // the "array" name, or null
+    std::string opt_ns; // [optional("ns")]: valid in a module attribute list only
+    bool has_opt = false;
+    const char* opt_pos = nullptr; // the "optional" name, or null
     std::string fn_invoker; // [fn_invoker("MACRO")]: valid in a module attribute list only
     bool has_fn_invoker = false;
     const char* fn_invoker_pos = nullptr; // the "fn_invoker" name, or null
@@ -1515,7 +1518,7 @@ struct ClassAttr
 };
 constexpr ClassAttr kClassAttrs[] = {{"native", 0}, {"value", 0}, {"self", 0}, {"checked_index", 0}, {"nonnull", 0}, {"weak", 0},
     {"attribute", 0}, {"handle", 1}, {"default_handle", 1}, {"weak_handle", 1}, {"weak_source", 1}, {"factory", 1}, {"raw_pointer", 1}, {"alias", 1}, {"cpp_prelude", 1},
-    {"cpp_overrides", 1}, {"std", 1}, {"lib", 1}, {"array", 1}, {"fn_invoker", 1}, {"intrusive", 2}};
+    {"cpp_overrides", 1}, {"std", 1}, {"lib", 1}, {"array", 1}, {"optional", 1}, {"fn_invoker", 1}, {"intrusive", 2}};
 
 // The expected count of arguments of a class attribute, or -1 for an unknown name.
 int class_attr_arity(const std::string& name)
@@ -1608,6 +1611,12 @@ struct class_attrs_p
                 a.array_tpl = std_from_user(it.args[0]);
                 a.has_array = true;
                 a.array_pos = it.pos;
+            }
+            else if (it.name == "optional")
+            {
+                a.opt_ns = std::move(it.args[0]);
+                a.has_opt = true;
+                a.opt_pos = it.pos;
             }
             else if (it.name == "fn_invoker")
             {
@@ -1834,6 +1843,8 @@ TopItem make_stub(const ParseState& st, const char* pos, const ClassAttrs* a, bo
             st.error(a->std_pos, "attribute 'std' is valid only on a module attribute list: end the list with ';'");
         if (a->has_array)
             st.error(a->array_pos, "attribute 'array' is valid only on a module attribute list: end the list with ';'");
+        if (a->has_opt)
+            st.error(a->opt_pos, "attribute 'optional' is valid only on a module attribute list: end the list with ';'");
         if (a->has_fn_invoker)
             st.error(a->fn_invoker_pos, "attribute 'fn_invoker' is valid only on a module attribute list: end the list with ';'");
         for (const auto& l : a->libs)
@@ -1869,7 +1880,7 @@ TopItem make_stub(const ParseState& st, const char* pos, const ClassAttrs* a, bo
 // needs a row here, a field in ast::ModuleAttrs and a branch in make_module_attrs.
 int module_attr_arity(const std::string& name)
 {
-    if (name == "std" || name == "lib" || name == "array" || name == "fn_invoker")
+    if (name == "std" || name == "lib" || name == "array" || name == "optional" || name == "fn_invoker")
         return 1;
     return -1;
 }
@@ -1926,6 +1937,17 @@ TopItem make_module_attrs(const ParseState& st, const char* pos, const ClassAttr
         }
         else
             st.error(a->array_pos, why);
+    }
+    if (a->has_opt)
+    {
+        if (valid_std_ns(a->opt_ns))
+        {
+            m.has_opt = true;
+            m.opt_ns = a->opt_ns;
+            m.opt_pos = st.offset(a->opt_pos);
+        }
+        else
+            st.error(a->opt_pos, "'" + a->opt_ns + "' is not a C++ namespace name");
     }
     if (a->has_fn_invoker)
     {

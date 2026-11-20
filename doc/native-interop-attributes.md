@@ -117,6 +117,21 @@ The host should also specialize `hot::holds_no_code` for the custom array type, 
 
 A stub in a prelude can name an array type only in the base of a stub such as `class : Wrap<int[3]>;`. That type uses the template of the earlier preludes and of the same prelude.
 
+### The optional type
+
+The attribute `optional("ns")` sets the C++ namespace of the optional type. The script type `T?` becomes `ns::optional<M>`, and `null` for a `T?` becomes `ns::nullopt`.
+
+```
+[optional("ea")];
+```
+
+- Without the attribute, the optional is in the standard namespace. With `[std("eastl")]`, the host gets `eastl::optional` and `eastl::nullopt`.
+- The attribute `optional` has priority over `std` for the optional only.
+- The name is a C++ namespace name, as in `std`. An empty name is an error.
+- The scope rules are the same as for `std` and `array`. A list in a prelude is the default of the host. A list in a script overrides it. A repeat in one file is an error. An imported script cannot set another value.
+- The attribute is not valid on a stub.
+- A safe access `a?.b` of a value member uses `hot::safe_access`. With a namespace set by `optional` or a changed `std`, the translator writes `hot::safe_access<ns::optional>(...)`. Without it, the text is `hot::safe_access(...)`.
+
 ## Script attributes
 
 A script attribute is a tag on a script class. The host reads the tags at run time. For example, a host can register each class with a tag in its own type system.

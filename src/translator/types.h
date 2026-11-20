@@ -84,6 +84,15 @@ public:
     void set_view_type(const std::string& view) { view_head_ = view == "std" ? "std::span<" : "hot::span<"; }
     const std::string& std_ns() const { return std_ns_; }
 
+    // The namespace of "T?" and of "null" for a "T?" (the module attribute "optional"). Empty: the
+    // optional is in the standard namespace, with the placeholder of std_ns.h in the text.
+    void set_optional_ns(std::string ns) { opt_ns_ = std::move(ns); }
+    std::string optional_ns() const { return opt_ns_.empty() ? "\x01std" : opt_ns_; }
+    std::string optional_head() const { return optional_ns() + "::optional<"; }
+    std::string nullopt_text() const { return optional_ns() + "::nullopt"; }
+    // True when the optional is not "std::optional": the explicit template argument of hot::safe_access is needed.
+    bool optional_custom() const { return !opt_ns_.empty() || std_ns_ != "std"; }
+
     // The standard-like library namespaces (the module attribute "lib"). A handle template
     // "L::shared_ptr<$T>" of such a namespace L works like the std one: "L::weak_ptr" is its weak
     // handle and "L::make_shared" makes an object.
@@ -353,6 +362,7 @@ private:
     bool default_nonnull_ = false; // the stub "class *;" has [nonnull]
     std::string default_weak_; // the weak_handle of "class *"
     std::string std_ns_ = "std"; // see set_std_ns()
+    std::string opt_ns_; // see set_optional_ns()
     std::string view_head_ = "hot::span<"; // see set_view_type()
     std::vector<std::string> libs_; // see set_libs()
     // The namespace prefix of a shared pointer template: "\x01std::", "std::", "L::" or empty.

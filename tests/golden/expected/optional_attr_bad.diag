@@ -1,0 +1,2 @@
+optional_attr_bad.hot:4:2: error: '' is not a C++ namespace name
+optional_attr_bad.hot:5:17: error: duplicate attribute 'optional'

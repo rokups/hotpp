@@ -50,7 +50,7 @@ For a checked cast to a script class, use `as` (see "is and as").
 `?.` works on any expression: `a?.b`, `a?.F(x)`, `a?.b?.c`, `var n = a?.b;`, `return a?.b;` and an argument. The receiver `a` runs one time. The result type is the member type made nullable:
 
 - A pointer or a handle member stays that pointer or handle. It is null when `a` is null.
-- A value member (`int`, a struct, a string) gives `T?` (`std::optional<T>`). It is empty when `a` is null.
+- A value member (`int`, a struct, a string) gives `T?` (`std::optional<T>`, or the optional of the module attribute `optional`). It is empty when `a` is null.
 - A call of a function that returns `void` is a statement only: `h?.F();` does nothing when `h` is null.
 
 At the start of an expression statement, `h?.F();` and `h?.x = 1;` become an `if`. Inside an expression, the translator writes `hot::safe_access(a, [&](auto&& __safe0) { return ...; })`. The code in the lambda cannot hold an `await`. A `?.` cannot be the target of an assignment inside an expression. A `.` after a `?.` reads the nullable result: `a?.b.c` is `(a?.b).c`, so write `a?.b?.c`. A call with template arguments works after `?.`: `a?.F<T>(x)` and `node?.GetComponent<T>()`.

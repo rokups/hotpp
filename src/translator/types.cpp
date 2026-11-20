@@ -960,7 +960,7 @@ std::string TypeModel::map_marked(const std::string& type, StorageUse use) const
     if (type.back() == '?')
     {
         const std::string o =
-            "std::optional<" + map_marked(trim_blank(type.substr(0, type.size() - 1)), StorageUse::Local) + ">";
+            optional_head() + map_marked(trim_blank(type.substr(0, type.size() - 1)), StorageUse::Local) + ">";
         return use == StorageUse::Param && !raw_script_refs_ ? "hot::In<" + o + ">" : o;
     }
     if (type[0] == '$')

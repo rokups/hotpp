@@ -516,6 +516,41 @@ TEST(HotcTool, ModuleAttributeStdCompiles)
     EXPECT_EQ(run_cxx(cat({{"-std=c++17", "-fsyntax-only"}, include_args(), {out}}), cc), 0) << cc;
 }
 
+// The module attribute optional in a prelude: the generated C++ uses "fake::optional" and "fake::nullopt" and never
+// "std::optional". The header FakeOptional.h has an optional that is not std::optional.
+TEST(HotcTool, ModuleAttributeOptionalCompiles)
+{
+    TestScratch scratch;
+    const std::string prelude = scratch.file("hotc_module_optional.prelude");
+    const std::string script = scratch.file("hotc_module_optional.hot");
+    const std::string out = scratch.file("hotc_module_optional.cpp");
+    {
+        std::ofstream(prelude) << "[optional(\"fake\")];\n[native, default_handle(\"$std::shared_ptr<$T>\")] class *;\n";
+        std::ofstream(script) << "using \"Actor.h\";\nusing \"FakeOptional.h\";\n\n"
+                                 "struct Box { int v; }\nclass Node { int v; }\n"
+                                 "class Counter : Actor {\n    int? last;\n    Box? box;\n"
+                                 "    int Pick(int? p) { return p ?? 3; }\n"
+                                 "    int Peek($Node p) { var w = p?.v; return w ?? 0; }\n"
+                                 "    override void Tick(float dt) {\n"
+                                 "        int? l = null;\n"
+                                 "        this.last = 4;\n"
+                                 "        if (this.last == null) { this.last = 1; }\n"
+                                 "        int a = this.last ?? 9;\n"
+                                 "        int b = this.last!;\n"
+                                 "        var w = this.Peek(null);\n"
+                                 "        this.box = null;\n    }\n}\n";
+    }
+    std::string log;
+    EXPECT_EQ(run_hotc(cat({{"--emit-cpp", "--prelude", prelude, "-o", out, script}, engine_args()}), log), 0) << log;
+    const std::string cpp = read_file(out);
+    EXPECT_NE(cpp.find("fake::optional<int32_t> last"), std::string::npos);
+    EXPECT_NE(cpp.find("fake::nullopt"), std::string::npos);
+    EXPECT_EQ(cpp.find("std::optional"), std::string::npos);
+    EXPECT_EQ(cpp.find("std::nullopt"), std::string::npos);
+    std::string cc;
+    EXPECT_EQ(run_cxx(cat({{"-std=c++17", "-fsyntax-only"}, include_args(), {out}}), cc), 0) << cc;
+}
+
 // The module attribute array in a prelude: the generated C++ names the host array template. The header
 // ArrayAlias.h has the alias template, so the C++ compiles as C++17.
 TEST(HotcTool, ModuleAttributeArrayCompiles)
