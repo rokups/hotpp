@@ -1,0 +1,20 @@
+// Generation 1: the module attribute optional gives the namespace of "T?" and "null" for a "T?".
+using "Actor.h";
+using "StdAlias.h";
+
+[optional("fake")];
+
+struct Point {
+    int x;
+}
+
+class Counter : Actor {
+    int? last;
+    Point? where;
+
+    void Set(int? v) {
+        int? old = v;
+        this.last = null;
+        this.where = null;
+    }
+}

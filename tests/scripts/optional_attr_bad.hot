@@ -1,0 +1,9 @@
+// Errors: an empty name and a second attribute optional.
+using "Actor.h";
+
+[optional("")];
+[optional("a"), optional("b")];
+
+class Bad : Actor {
+    int? x;
+}

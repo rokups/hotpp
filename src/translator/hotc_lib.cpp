@@ -163,14 +163,14 @@ std::string name_in_type(const std::string& t, const std::string& name)
 // "hot::In<T>" needs sizeof(T). A struct is incomplete in its own member declarations, so a parameter
 // of the own struct type (also "T?") goes by "const T&". Another struct is complete before this one
 // (a cycle is an error), so it keeps the trait.
-void own_struct_in_to_ref(hotc::ast::Param& p, const std::string& cls)
+void own_struct_in_to_ref(hotc::ast::Param& p, const std::string& cls, const hotc::TypeModel& types)
 {
     for (std::string* t : {&p.type, &p.body_type})
     {
         if (t->rfind("hot::In<", 0) != 0 || t->back() != '>')
             continue;
         const std::string inner = t->substr(8, t->size() - 9);
-        if (inner == cls || inner == "std::optional<" + cls + ">")
+        if (inner == cls || inner == types.optional_head() + cls + ">")
             *t = "const " + inner + "&";
     }
 }
@@ -1157,7 +1157,8 @@ std::string module_interface(
         shape += "attribute " + st.name + "\n";
     for (const hotc::ast::ModuleAttrs& m : sc.module_attrs)
     {
-        shape += "attrs " + std::to_string(m.has_std) + " " + m.std_ns + " " + std::to_string(m.has_array) + " " + m.array_tpl;
+        shape += "attrs " + std::to_string(m.has_std) + " " + m.std_ns + " " + std::to_string(m.has_array) + " " + m.array_tpl
+            + " " + std::to_string(m.has_opt) + " " + m.opt_ns;
         for (const std::string& l : m.libs)
             shape += " " + l;
         shape += "\n";
@@ -1323,7 +1324,7 @@ hotc::ImportView import_view_of(
     for (const hotc::ast::ModuleAttrs& m : sc.module_attrs)
     {
         v += "attrs " + std::to_string(m.has_std) + " " + m.std_ns + " " + std::to_string(m.has_array) + " "
-            + m.array_tpl;
+            + m.array_tpl + " " + std::to_string(m.has_opt) + " " + m.opt_ns;
         for (const std::string& l : m.libs)
             v += " lib " + l;
         v += "\n";
@@ -4282,6 +4283,7 @@ void translate_impl(
     std::deque<PreludeData> prelude_data; // the addresses must stay
     std::string std_ns = "std";
     std::string array_tpl(hotc::kDefaultArrayTpl); // the template of the type "T[N]"
+    std::string opt_ns; // the namespace of "T?" (the attribute "optional"); empty: the standard namespace
     // The standard-like library namespaces (the module attribute "lib"). The preludes, the script
     // and its imports add to one set.
     std::vector<std::string> libs;
@@ -4331,6 +4333,8 @@ void translate_impl(
                 std_ns = m.std_ns;
             if (m.has_array)
                 array_tpl = m.array_tpl;
+            if (m.has_opt)
+                opt_ns = m.opt_ns;
             add_libs(m);
         }
         if (!pd.items.empty())
@@ -4416,6 +4420,8 @@ void translate_impl(
                 std_ns = m.std_ns;
             if (m.has_array)
                 array_tpl = m.array_tpl;
+            if (m.has_opt)
+                opt_ns = m.opt_ns;
             add_libs(m);
         }
         hotc::current_std_ns() = std_ns;
@@ -4664,6 +4670,10 @@ void translate_impl(
                                 "the imported script '" + file + "' sets the array template '"
                                     + hotc::std_to_user(m.array_tpl) + "' but the program uses '"
                                     + hotc::std_to_user(array_tpl) + "'");
+                        if (m.has_opt && m.opt_ns != opt_ns)
+                            fail_at(map, m.opt_pos,
+                                "the imported script '" + file + "' sets the optional namespace '" + m.opt_ns
+                                    + "' but the program uses '" + opt_ns + "'");
                     }
                 }
                 for (const Method& f : is.fns)
@@ -4994,6 +5004,7 @@ void translate_impl(
     // ---- the type model: the preludes first, then the stubs of the script
     hotc::TypeModel types;
     types.set_std_ns(std_ns);
+    types.set_optional_ns(opt_ns);
     types.set_view_type(in.view_type);
     types.set_libs(libs);
     // A stub with the place that holds it. The checks of the stubs (7.10.7) report there.
@@ -7066,7 +7077,7 @@ void translate_impl(
             for (Param& p : m.params)
             {
                 p.type = param_type_or_fail(types, map, m.pos, p.type, p.weak, p.value, p.mode == hotc::ast::ParamMode::ByVal);
-                own_struct_in_to_ref(p, cd.name);
+                own_struct_in_to_ref(p, cd.name, types);
             }
             // A method can return "ref T": the C++ return type is "T&".
             if (hotc::ast::is_ref_return_text(m.ret))
@@ -7081,7 +7092,7 @@ void translate_impl(
             for (Param& p : c.params)
             {
                 p.type = param_type_or_fail(types, map, c.pos, p.type, p.weak, p.value, p.mode == hotc::ast::ParamMode::ByVal);
-                own_struct_in_to_ref(p, cd.name);
+                own_struct_in_to_ref(p, cd.name, types);
             }
         // The convert hooks of the module variables: the same rules as a convert hook of a field.
         const bool is_module = cn == kModuleName;
@@ -8807,7 +8818,7 @@ void translate_impl(
                     p.body_type = body;
             }
             for (Param& p : m.params)
-                own_struct_in_to_ref(p, cd.name);
+                own_struct_in_to_ref(p, cd.name, types);
             if (hotc::ast::is_ref_return_text(m.ret))
             {
                 m.ret = ret_type_or_fail(types, map, m.pos, hotc::ast::strip_ref_return_word(m.ret), m.ret_value) + "&";
@@ -8844,7 +8855,7 @@ void translate_impl(
                 p.type = param_type_or_fail(types, map, c.pos, p.type, p.weak, p.value, p.mode == hotc::ast::ParamMode::ByVal);
                 if (!copy.empty())
                     p.type = copy;
-                own_struct_in_to_ref(p, cd.name);
+                own_struct_in_to_ref(p, cd.name, types);
             }
             c.body = std::move(probe.body);
         }

@@ -1914,7 +1914,7 @@ struct Lowerer
     {
         if (e && is_optional(type) && std::holds_alternative<NullExpr>(e->v))
         { // "null" for a "T?" is the empty optional
-            e = raw("std::nullopt", pos_of(*e));
+            e = raw(cx.types ? cx.types->nullopt_text() : "std::nullopt", pos_of(*e));
             return;
         }
         if (e && std::holds_alternative<NullExpr>(e->v) && type.compare(0, 1, "$") != 0)
@@ -4880,7 +4880,10 @@ struct Lowerer
         const std::string open = cx.in_default ? "[]" + param : "[&" + binding_captures(bindings, print(*inner), true) + "]" + param;
         ExprP head = make_expr(UnaryExpr{open, std::move(inner), false, 0});
         ExprP lazy = make_expr(UnaryExpr{"; }", std::move(head), true, 0});
-        e = call_of("hot::safe_access", args_of(std::move(recv), std::move(lazy)), pos);
+        const std::string safe_fn = cx.types && cx.types->optional_custom()
+            ? "hot::safe_access<" + cx.types->optional_ns() + "::optional>"
+            : "hot::safe_access";
+        e = call_of(safe_fn, args_of(std::move(recv), std::move(lazy)), pos);
         return true;
     }
 

@@ -33,7 +33,7 @@ This page records an approved design for the types of HotScript. It is a design 
 | `const T*` | `const T*` | Only in casts. |
 | `$T` | The handle form of the type rule. The default is `std::shared_ptr<T>`. | A shared owner. The analyzer treats it as nullable. A field with no initializer is null. |
 | `T*?` and `$T?` | none | Not valid. `T*` and `$T` are already nullable. |
-| `T?` | `std::optional<T>` | Value types only. It is an error on a pointer, a handle or a script class. |
+| `T?` | `std::optional<T>` (`ns::optional<T>` with the module attribute `optional("ns")` or `std("ns")`) | Value types only. It is an error on a pointer, a handle or a script class. |
 | `T[]` | `hot::span<T>` (or `std::span<T>` with `HOT_VIEW_TYPE=std`) | A view. It is an error on a field and on a property. A local or a parameter is valid. A return of a local `std.vector<T>` or `T[N]` is an error. A view local of a named owner is a checked path (see "Lifetime of a ref", rule V1). The index is checked. The owning list is the std prelude type `std.vector<T>`. |
 | `T[N]` | `std::array<T, N>` | A fixed array. |
 | `[weak] $T` | The weak template of the rule. The default is `std::weak_ptr<T>`. | A read emits `hot::lock(w)` and gives `$T`. |

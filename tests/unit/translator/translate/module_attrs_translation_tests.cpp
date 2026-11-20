@@ -478,3 +478,112 @@ TEST(ModuleAttrsTranslation, UsingStdUsesTheConfiguredNamespace)
     EXPECT_TRUE(has(r.cpp, "using namespace mystd;\n")) << r.cpp;
     EXPECT_FALSE(has(r.cpp, "using namespace std;")) << r.cpp;
 }
+
+// ---- the module attribute optional: the namespace of "T?" and "null" for a "T?".
+
+namespace
+{
+
+const char* kFake = "[optional(\"fake\")];\n";
+const char* kOptShared = "[native, default_handle(\"$std::shared_ptr<$T>\")] class *;\n";
+const char* kOptNode = "class Node { $Node next; int v; }\n";
+const char* kOptBody =
+    "    int? o;\n    void F(int? p) { int? l = p; this.o = null; }\n    void G($Node n) { var x = n?.v; }\n";
+
+std::string opt_head(const char* attrs)
+{
+    return std::string(attrs) + kOptShared + kOptNode;
+}
+
+} // namespace
+
+TEST(ModuleAttrsTranslation, TheOptionalTypeIsStdOptionalByDefault)
+{
+    const hotc::TranslateResult r = check_translate(opt_head(""), kOptBody);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "std::optional<int32_t> o;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::In<std::optional<int32_t>> p")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "std::optional<int32_t> l = p;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "o = std::nullopt;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::safe_access(n, ")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "hot::safe_access<")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, TheStdNamespaceGivesTheOptionalNamespace)
+{
+    const hotc::TranslateResult r = check_translate(opt_head(""), kOptBody, {{"host.prelude", kMystd}});
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "mystd::optional<int32_t> o;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::In<mystd::optional<int32_t>> p")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "o = mystd::nullopt;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::safe_access<mystd::optional>(n, ")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "std::optional")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, TheOptionalAttributeSetsTheNamespace)
+{
+    const hotc::TranslateResult r = check_translate(opt_head(kFake), kOptBody);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "fake::optional<int32_t> o;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::In<fake::optional<int32_t>> p")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "fake::optional<int32_t> l = p;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "o = fake::nullopt;")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "hot::safe_access<fake::optional>(n, ")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "std::optional")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, TheOptionalAttributeBeatsTheStdNamespace)
+{
+    const hotc::TranslateResult r =
+        check_translate("", "    int? o;\n", {{"host.prelude", std::string(kMystd) + "[optional(\"ea\")];\n"}});
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "ea::optional<int32_t> o;")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, ALaterPreludeOverridesTheOptionalOfAnEarlierOne)
+{
+    const hotc::TranslateResult r = check_translate(
+        "", "    int? o;\n", {{"a.prelude", "[optional(\"one\")];\n"}, {"b.prelude", "[optional(\"two\")];\n"}});
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "two::optional<int32_t> o;")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, TheScriptOverridesTheOptionalOfThePrelude)
+{
+    const hotc::TranslateResult r =
+        check_translate("[optional(\"mine\")];\n", "    int? o;\n", {{"host.prelude", kFake}});
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "mine::optional<int32_t> o;")) << r.cpp;
+}
+
+TEST(ModuleAttrsTranslation, AnEmptyOptionalNameIsAnError)
+{
+    const hotc::TranslateResult r = check_translate("[optional(\"\")];\n", "    int x;\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "is not a C++ namespace name")) << r.diagnostics;
+}
+
+TEST(ModuleAttrsTranslation, ARepeatedOptionalAttributeIsAnError)
+{
+    const hotc::TranslateResult one = check_translate(std::string(kFake) + kFake, "    int x;\n");
+    EXPECT_FALSE(one.ok);
+    EXPECT_TRUE(has(one.diagnostics, "attribute 'optional' is given twice in one file")) << one.diagnostics;
+    const hotc::TranslateResult pre = check_translate("", "    int x;\n", {{"a.prelude", std::string(kFake) + kFake}});
+    EXPECT_FALSE(pre.ok);
+    EXPECT_TRUE(has(pre.diagnostics, "attribute 'optional' is given twice in one file")) << pre.diagnostics;
+}
+
+TEST(ModuleAttrsTranslation, TheAttributeOptionalNeedsOneArgument)
+{
+    const hotc::TranslateResult r = check_translate("[optional];\n", "    int x;\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "attribute 'optional' takes 1 arguments")) << r.diagnostics;
+}
+
+TEST(ModuleAttrsTranslation, TheAttributeOptionalIsValidOnlyInTheList)
+{
+    const hotc::TranslateResult r =
+        check_translate("", "    int x;\n", {{"host.prelude", "[optional(\"fake\"), native] class Foo2;\n"}});
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "attribute 'optional' is valid only on a module attribute list")) << r.diagnostics;
+}

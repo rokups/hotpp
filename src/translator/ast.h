@@ -925,6 +925,11 @@ struct ModuleAttrs
     // internal form: the placeholder of std_ns.h stands for "$std::".
     std::string array_tpl = std::string(kDefaultArrayTpl);
     uint32_t array_pos = 0; // the position of the attribute "array"
+    // The attribute [optional("ns")]: the namespace of "T?" ("ns::optional<M>") and of "null" for a "T?"
+    // ("ns::nullopt"). Without it the optional is in the standard namespace.
+    bool has_opt = false;
+    std::string opt_ns;
+    uint32_t opt_pos = 0; // the position of the attribute "optional"
     // The attributes [lib("name")]: the standard-like library namespaces, for example "eastl". A
     // script names their types with the namespace ("eastl.vector<int>"), next to "std.vector<int>".
     std::vector<std::string> libs;

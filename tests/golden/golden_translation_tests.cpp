@@ -361,6 +361,27 @@ TEST(GoldenTranslation, ModuleAttrsArray)
     check_golden("module_attrs_array_v1.g1.slots", r.slots_out);
 }
 
+// The module attribute optional of the script: "T?" and "null" use the namespace of the attribute.
+TEST(GoldenTranslation, OptionalAttr)
+{
+    hotc::TranslateOptions o = engine_options("optional_attr_v1.hot", 1);
+    o.script_name = "optional_attr_v1.hot";
+    const hotc::TranslateResult r = hotc::translate(o);
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    check_golden("optional_attr_v1.g1.cpp", r.cpp);
+    check_golden("optional_attr_v1.g1.slots", r.slots_out);
+}
+
+// An empty name and a second attribute optional in one file are errors.
+TEST(GoldenTranslation, OptionalAttrDiagnostics)
+{
+    hotc::TranslateOptions o = engine_options("optional_attr_bad.hot", 1);
+    o.script_name = "optional_attr_bad.hot";
+    const hotc::TranslateResult r = hotc::translate(o);
+    EXPECT_FALSE(r.ok);
+    check_golden("optional_attr_bad.diag", r.diagnostics);
+}
+
 // A stub with checked_index and the custom array template give a specialization of
 // hot::checked_index. A name that the headers do not declare gets none.
 TEST(GoldenTranslation, CheckedIndexStubs)
