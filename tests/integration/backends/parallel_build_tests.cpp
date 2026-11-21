@@ -800,7 +800,7 @@ TEST(BeginLoadMany, VfsMirrorsDifferAndAreGoneAfterFinish)
 // ---- compile_commands.json writes of a batch ----
 
 std::unique_ptr<hot::ClangFilesBackend> make_db_backend(
-    const TestScratch& scratch, const std::string& work, const std::string& db)
+    const hot::ScratchDir& scratch, const std::string& work, const std::string& db)
 {
     hot::ClangFilesOptions o;
     o.compiler = HOT_CXX;
@@ -992,7 +992,7 @@ TEST(BeginLoadMany, RemovedFilesLeaveTheCachedCompileDatabase)
 // ---- the prewarm of the compile database ----
 
 // Makes a backend with a foreign database of 3 entries.
-std::unique_ptr<hot::ClangFilesBackend> make_prewarm_backend(const TestScratch& scratch, const std::string& db)
+std::unique_ptr<hot::ClangFilesBackend> make_prewarm_backend(const hot::ScratchDir& scratch, const std::string& db)
 {
     std::vector<std::string> entries;
     for (int i = 0; i < 3; ++i)
@@ -1125,11 +1125,11 @@ TEST(BackendPrewarm, RemovedOwnFileLeavesTheDatabase)
     CleanEnv env;
     ScopedEnv off("HOT_PREWARM", "1");
     TestScratch a;
-    TestScratch b;
+    hot::ScratchDir b(a.file("second")); // a second TestScratch has the same path as the first
     std::string texts[2];
     for (int k = 0; k < 2; ++k)
     {
-        TestScratch& sc = k == 0 ? a : b;
+        const hot::ScratchDir& sc = k == 0 ? a : b;
         const std::string db = sc.file("db");
         {
             auto first = make_prewarm_backend(sc, db);
