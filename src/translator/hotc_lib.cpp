@@ -3432,12 +3432,31 @@ int eval_bool(CXCursor var)
     return v;
 }
 
+// The main file of the probe. libclang builds a preamble only when the main file exists on the
+// disk (it reads the status of the file). The text comes from the unsaved file, so the file stays
+// empty. The mode "a" does not truncate a file that is there. No file: no preamble, plain parses.
+const std::string& probe_main_path()
+{
+    static const std::string path = []
+    {
+        std::error_code ec;
+        const std::filesystem::path p = std::filesystem::temp_directory_path(ec) / "hotc_probe.cpp";
+        if (ec)
+            return std::string("hotc_probe.cpp");
+        if (std::FILE* f = std::fopen(p.string().c_str(), "a"))
+            std::fclose(f);
+        return std::filesystem::is_regular_file(p, ec) ? p.string() : std::string("hotc_probe.cpp");
+    }();
+    return path;
+}
+
 // Parses the imports with libclang. Reads the base classes in "names" that it finds.
 // Gives the stamps of all files that the parse included.
 void parse_bases(const std::string& probe, const std::vector<std::string>& args, const std::set<std::string>& names,
     const std::set<std::string>& import_paths, std::map<std::string, BaseInfo>& out, std::vector<FileStamp>& files,
     Hierarchy& hierarchy, const std::vector<FactReq>& reqs, FactMap& facts, const std::vector<std::string>& queries,
-    std::map<std::string, std::string>& answers, const VirtualFiles& virtual_files, hot::FileSystem* fs)
+    std::map<std::string, std::string>& answers, const VirtualFiles& virtual_files, hot::FileSystem* fs,
+    hotc::TuCache* cache, const std::string& key, bool reuse)
 {
     std::vector<std::pair<size_t, std::string>> fact_lines;
     // A template instance as a base ("Tmpl<int>") is named by an alias. The size check makes the
@@ -3454,19 +3473,21 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
             instance_aliases.emplace_back(alias, name);
         }
     // The facts and the queries hold the placeholder of the standard namespace (std_ns.h).
-    const std::string full_probe = hotc::expand_std(
-        reqs.empty() && queries.empty() ? base_probe : base_probe + facts_text(reqs, fact_lines, queries),
-        hotc::current_std_ns());
+    // The "#line" keeps the name "hotc_probe.cpp" in the messages (see probe_main_path).
+    const std::string full_probe = "#line 1 \"hotc_probe.cpp\"\n"
+        + hotc::expand_std(
+            reqs.empty() && queries.empty() ? base_probe : base_probe + facts_text(reqs, fact_lines, queries),
+            hotc::current_std_ns());
+    const std::string& main_path = probe_main_path();
     std::vector<const char*> cargs;
     for (const auto& a : args)
         cargs.push_back(a.c_str());
     ClangHandles ch;
     hotc::register_llvm_targets();
-    CXIndex idx = ch.idx = clang_createIndex(0, 0);
     // The probe and the headers that exist only in memory. libclang reads the texts of
     // "virtual_files" until the parse ends, so the caller keeps them alive.
     std::vector<CXUnsavedFile> unsaved;
-    unsaved.push_back({"hotc_probe.cpp", full_probe.c_str(), static_cast<unsigned long>(full_probe.size())});
+    unsaved.push_back({main_path.c_str(), full_probe.c_str(), static_cast<unsigned long>(full_probe.size())});
     // Each name that the include search of libclang can make (hotc::clang_spellings). A deque
     // keeps the names at the same address.
     // "virtual_names" maps each name back to the path of the file system, for the stamps.
@@ -3479,10 +3500,61 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
             unsaved_names.push_back(std::move(name));
             unsaved.push_back({unsaved_names.back().c_str(), vtext.c_str(), static_cast<unsigned long>(vtext.size())});
         }
-    CXTranslationUnit tu = nullptr;
-    CXErrorCode ec = clang_parseTranslationUnit2(idx, "hotc_probe.cpp", cargs.data(), static_cast<int>(cargs.size()),
-        unsaved.data(), static_cast<unsigned>(unsaved.size()), CXTranslationUnit_SkipFunctionBodies, &tu);
-    ch.tu = tu;
+    // A kept unit of the key has the preamble (the prelude and the includes). The reparse reads
+    // only the rest of the probe. "reuse" is false when a stamp of the entry is stale: the check of
+    // the preamble by libclang does not see all changes (a new header earlier in the include path).
+    if (cache && !cache->enabled())
+        cache = nullptr;
+    const uint64_t gen = cache ? cache->generation() : 0;
+    const long long start_ns = now_ns();
+    CXErrorCode ec = CXError_Failure;
+    if (cache && cache->take(key, ch.idx, ch.tu))
+    {
+        if (reuse && clang_reparseTranslationUnit(ch.tu, static_cast<unsigned>(unsaved.size()), unsaved.data(),
+                         clang_defaultReparseOptions(ch.tu)) == 0)
+            ec = CXError_Success;
+        else
+        { // a failed reparse leaves a unit that only the dispose can use
+            clang_disposeTranslationUnit(ch.tu);
+            clang_disposeIndex(ch.idx);
+            ch.tu = nullptr;
+            ch.idx = nullptr;
+        }
+    }
+    const auto parse_new = [&]
+    {
+        ch.idx = clang_createIndex(0, 0);
+        const unsigned options = CXTranslationUnit_SkipFunctionBodies
+            | (cache ? CXTranslationUnit_PrecompiledPreamble | CXTranslationUnit_CreatePreambleOnFirstParse : 0);
+        ec = clang_parseTranslationUnit2(ch.idx, main_path.c_str(), cargs.data(), static_cast<int>(cargs.size()),
+            unsaved.data(), static_cast<unsigned>(unsaved.size()), options, &ch.tu);
+    };
+    if (!ch.tu)
+        parse_new();
+    // An error of the imports. The facts file has no errors of the imports (see below).
+    const auto import_error = [&]
+    {
+        bool err = false;
+        for (unsigned i = 0, n = clang_getNumDiagnostics(ch.tu); i < n && !err; ++i)
+        {
+            CXDiagnostic d = clang_getDiagnostic(ch.tu, i);
+            CXString file;
+            clang_getPresumedLocation(clang_getDiagnosticLocation(d), &file, nullptr, nullptr);
+            err = clang_getDiagnosticSeverity(d) >= CXDiagnostic_Error && cxs(file) != kFactsFile;
+            clang_disposeDiagnostic(d);
+        }
+        return err;
+    };
+    if (cache && ec == CXError_Success && ch.tu && import_error())
+    { // a diagnostic in a preamble loses the names of "#line": a plain parse gives the messages
+        clang_disposeTranslationUnit(ch.tu);
+        clang_disposeIndex(ch.idx);
+        ch.tu = nullptr;
+        ch.idx = nullptr;
+        cache = nullptr;
+        parse_new();
+    }
+    CXTranslationUnit tu = ch.tu;
     if (ec != CXError_Success || !tu)
         fail(0, "libclang cannot parse the imports");
     bool diag_error = false;
@@ -3518,13 +3590,15 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
         hot::FileSystem* fs;
         const std::map<std::string, std::string>* virtual_names;
         CXTranslationUnit tu;
+        const std::string* main_path;
     };
-    auto on_include = [](CXFile f, CXSourceLocation*, unsigned depth, CXClientData d)
+    auto on_include = [](CXFile f, CXSourceLocation*, unsigned, CXClientData d)
     {
-        if (depth == 0)
-            return; // the probe file
         auto* v = static_cast<IncludeCtx*>(d);
         std::string path = cxs(clang_getFileName(f));
+        // The probe file. Not "depth == 0": with a preamble, libclang gives other depths.
+        if (path == *v->main_path)
+            return;
         const auto vn = v->virtual_names->find(path);
         if (vn != v->virtual_names->end())
             path = vn->second; // an unsaved file: the stamp uses the path of the file system
@@ -3535,9 +3609,11 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
             v->files->back().system = clang_Location_isInSystemHeader(clang_getLocation(v->tu, f, 1, 1)) != 0;
         }
     };
-    IncludeCtx ctx{&seen, &files, fs, &virtual_names, tu};
+    IncludeCtx ctx{&seen, &files, fs, &virtual_names, tu, &main_path};
     files.clear();
     clang_getInclusions(tu, on_include, &ctx);
+    // A preamble gives the inclusions in another order: sort them, so each parse gives the same list.
+    std::sort(files.begin(), files.end(), [](const FileStamp& x, const FileStamp& y) { return x.path < y.path; });
 
     // A new header earlier in the include path hides a header that the parse used.
     std::vector<std::string> dirs;
@@ -3696,6 +3772,17 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
         });
         out[name] = std::move(bi);
     }
+    // Keep the unit. Not when a disk file changed near the start of the parse: the preamble can
+    // have the old text, and the stamps the new one. An error of the imports threw before this.
+    bool keep = cache != nullptr;
+    for (const FileStamp& f : files)
+        keep = keep && (f.virt || f.mtime_ns < start_ns - 50000000LL);
+    if (keep)
+    {
+        cache->put(key, ch.idx, ch.tu, gen); // the cache owns the handles now
+        ch.idx = nullptr;
+        ch.tu = nullptr;
+    }
 }
 
 // The tag table of a field (FieldInfo::attributes). "out" gets the arrays. The result is the
@@ -3780,6 +3867,9 @@ struct TranslatorSession::Impl
     // The libclang units of the .cpp scripts, kept for the reparse. See hotc::TuCache for the
     // thread rule: a parse takes the unit out, so one thread at a time uses a unit.
     hotc::TuCache tu_cache;
+    // The probe units of the native facts (parse_bases), one for each key of "entries". The same
+    // rules as "tu_cache". A probe takes its unit under the entry lock.
+    hotc::TuCache probe_cache;
 
     // The import cache (TranslateOptions::import_cache). A value is immutable: a user copies the
     // script before it changes it. "mutex" guards the map and the tick. The least recently used
@@ -3840,11 +3930,13 @@ int TranslatorSession::parse_count() const
 void TranslatorSession::set_tu_cache_limit(size_t n)
 {
     impl_->tu_cache.set_max_units(n);
+    impl_->probe_cache.set_max_units(n);
 }
 
 void TranslatorSession::set_tu_cache_idle_ms(long long ms)
 {
     impl_->tu_cache.set_idle_limit(std::chrono::milliseconds(ms));
+    impl_->probe_cache.set_idle_limit(std::chrono::milliseconds(ms));
 }
 
 size_t TranslatorSession::tu_cache_size() const
@@ -3866,6 +3958,7 @@ void TranslatorSession::clear()
         old.swap(impl_->entries);
     }
     impl_->tu_cache.clear();
+    impl_->probe_cache.clear();
     {
         std::map<std::string, std::shared_ptr<Impl::ImportValue>> old_imports;
         std::lock_guard<std::mutex> lock(impl_->import_mutex);
@@ -3884,7 +3977,7 @@ namespace
 std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, const std::string& key,
     const std::set<std::string>& names, const std::vector<FactReq>& reqs, const std::vector<std::string>& queries,
     const std::function<void(std::map<std::string, BaseInfo>&, std::vector<FileStamp>&, Hierarchy&, FactMap&,
-        std::map<std::string, std::string>&)>& parse,
+        std::map<std::string, std::string>&, bool)>& parse,
     Hierarchy& hierarchy, FactMap& facts_out, std::map<std::string, std::string>& answers_out, hot::FileSystem* fs,
     std::vector<std::string>* deps, std::vector<std::string>* shadows, int64_t* parse_start_ns,
     hotc::TranslateTiming* timing)
@@ -3959,7 +4052,7 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
         };
         try
         {
-            parse(out, files, hier, facts, answers);
+            parse(out, files, hier, facts, answers, fresh);
         }
         catch (...)
         {
@@ -5920,8 +6013,11 @@ void translate_impl(
     phases.next(nullptr); // the parse and the lock wait have their own fields
     const std::map<std::string, BaseInfo> bases = session_bases(session, key, base_names, reqs, query_texts,
         [&](std::map<std::string, BaseInfo>& out, std::vector<FileStamp>& files, Hierarchy& h, FactMap& fm,
-            std::map<std::string, std::string>& qa)
-    { parse_bases(probe, args, base_names, import_paths, out, files, h, reqs, fm, query_texts, qa, res.virtual_files, fs); },
+            std::map<std::string, std::string>& qa, bool fresh)
+    {
+        parse_bases(probe, args, base_names, import_paths, out, files, h, reqs, fm, query_texts, qa, res.virtual_files,
+            fs, &session.probe_cache, key, fresh);
+    },
         hier, facts, query_answers, fs, &res.dependencies, &res.shadow_paths, &res.parse_start_ns,
         &res.timing);
     for (const auto& [bname, bi] : bases)

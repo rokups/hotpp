@@ -10,10 +10,14 @@
 #include "../diag.h"
 
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
+
+typedef void* CXIndex; // the same types as in clang-c/Index.h
+typedef struct CXTranslationUnitImpl* CXTranslationUnit;
 
 namespace hotc
 {
@@ -51,6 +55,13 @@ public:
     void set_max_units(size_t n);
     void set_idle_limit(std::chrono::milliseconds t); // for the tests
     size_t size() const; // the number of kept units
+    // For another user of the cache (the probe of the native facts). The same rules apply. "take"
+    // moves the unit of "key" out and the caller owns the handles. "put" keeps them or disposes them:
+    // "gen" is the generation() before the parse.
+    bool take(const std::string& key, CXIndex& idx, CXTranslationUnit& tu);
+    void put(const std::string& key, CXIndex idx, CXTranslationUnit tu, uint64_t gen) noexcept;
+    uint64_t generation() const;
+    bool enabled() const; // false when the limit is 0
     struct Impl;
     Impl& state() { return *impl_; } // for the parser only
 

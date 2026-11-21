@@ -897,3 +897,84 @@ TEST(SessionCache, CppTemplateInstantiationErrorsEqualAParseWithoutEarlyInstance
         }
     }
 }
+
+// HOT-57: a new native name in the same session reparses the kept probe unit. The preamble (the
+// standard prelude and the imports) stays, so the reparse is much faster than the first parse.
+// Each step must give the same result as a plain parse (no kept unit).
+TEST(SessionCache, ProbeReparseIsFastAndGivesTheSameResultAsAFreshParse)
+{
+    TempDir dir;
+    // "a_inner.h" sorts before "w.h": the list of the dependencies shows a change of the order.
+    write_file(dir.path() / "a_inner.h", "#pragma once\n");
+    const std::string heavy =
+        "#include <regex>\n#include <iostream>\n#include <unordered_map>\n#include \"a_inner.h\"\n";
+    write_file(dir.path() / "w.h", heavy + kHeaderV1);
+    // A file that changed just before the parse makes the unit not kept: make it older.
+    for (const char* f : {"w.h", "a_inner.h"})
+        fs::last_write_time(dir.path() / f, fs::last_write_time(dir.path() / f) - std::chrono::seconds(5));
+    const std::string panel = "using \"w.h\";\nclass Bar : Panel {\n    override void Layout(int w) { }\n}\n";
+    const std::string panel_draw = "using \"w.h\";\nclass Bar : Panel {\n    override void Draw() { }\n}\n";
+    hotc::TranslatorSession session;
+
+    const hotc::TranslateOptions oa = temp_options(dir, widget_script("Update(float dt)", "override "));
+    const hotc::TranslateResult a = hotc::translate(oa, session);
+    const hotc::TranslateResult a_plain = plain_translate(oa);
+    expect_same(a, a_plain, "first");
+    EXPECT_EQ(a.dependencies, a_plain.dependencies);
+    EXPECT_EQ(a.shadow_paths, a_plain.shadow_paths);
+    ASSERT_EQ(a.timing.parses, 1);
+
+    // A new base name: the entry misses it, so the probe parses again. The preamble stays.
+    const hotc::TranslateOptions ob = temp_options(dir, panel);
+    const hotc::TranslateResult b = hotc::translate(ob, session);
+    const hotc::TranslateResult b_plain = plain_translate(ob);
+    expect_same(b, b_plain, "new name");
+    EXPECT_EQ(b.dependencies, b_plain.dependencies); // the reparse reads the same files
+    EXPECT_EQ(b.shadow_paths, b_plain.shadow_paths);
+    ASSERT_EQ(b.timing.parses, 1);
+    EXPECT_LT(b.timing.parse_ns * 3, a.timing.parse_ns)
+        << "reparse " << b.timing.parse_ns / 1000000 << " ms, first " << a.timing.parse_ns / 1000000 << " ms";
+
+    // A header edit gives new facts: Panel gets "Draw".
+    write_file(dir.path() / "w.h",
+        heavy + "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n"
+                "class Panel { public: virtual ~Panel() {} virtual void Layout(int w) {} virtual void Draw() {} };\n");
+    const hotc::TranslateOptions oc = temp_options(dir, panel_draw);
+    const hotc::TranslateResult c = hotc::translate(oc, session);
+    expect_same(c, plain_translate(oc), "header edit");
+    EXPECT_EQ(c.slots_out.find("Bar::Draw"), std::string::npos) << c.slots_out; // an override
+
+    // An import with an error fails, and the fix works again.
+    write_file(dir.path() / "w.h", heavy + "class Widget { int x = ; };\n" + kHeaderV1);
+    const hotc::TranslateResult d = hotc::translate(ob, session);
+    expect_same(d, plain_translate(ob), "broken header");
+    EXPECT_FALSE(d.ok);
+    write_file(dir.path() / "w.h", heavy + kHeaderV1);
+    expect_same(hotc::translate(ob, session), plain_translate(ob), "fixed header");
+}
+
+// Two keys with other flags have their own units: a macro of one key is not in the other.
+TEST(SessionCache, ProbeUnitsOfOtherFlagsAreNotShared)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h",
+        "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {}\n"
+        "#ifdef EXTRA\n virtual void Draw() {}\n#endif\n};\n"
+        "class Panel { public: virtual ~Panel() {} virtual void Layout(int w) {} };\n");
+    const std::string panel = "using \"w.h\";\nclass Bar : Panel {\n    override void Layout(int w) { }\n}\n";
+    hotc::TranslatorSession session;
+    hotc::TranslateOptions plain = temp_options(dir, panel);
+    hotc::TranslateOptions extra = plain;
+    extra.defines = {"-DEXTRA"};
+    ASSERT_TRUE(hotc::translate(plain, session).ok);
+    ASSERT_TRUE(hotc::translate(extra, session).ok);
+    // Now a new name for each key: each reparse must keep its own macros.
+    plain.script_text = extra.script_text = widget_script("Draw()");
+    const hotc::TranslateResult p = hotc::translate(plain, session);
+    expect_same(p, plain_translate(plain), "no macro");
+    EXPECT_NE(p.slots_out.find("Foo::Draw"), std::string::npos) << p.slots_out; // not an override
+    extra.script_text = widget_script("Draw()", "override ");
+    const hotc::TranslateResult x = hotc::translate(extra, session);
+    expect_same(x, plain_translate(extra), "macro");
+    EXPECT_TRUE(x.ok) << x.diagnostics;
+}
