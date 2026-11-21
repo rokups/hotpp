@@ -113,6 +113,19 @@
       }
     },
     {
+      "name": "web-emscripten",
+      "description": "Emscripten AOT build (needs EMSDK and a host hotc from linux-clang-files, RelWithDebInfo).",
+      "inherits": "base",
+      "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+      "cacheVariables": {
+        "CMAKE_CXX_FLAGS": "-fexceptions",
+        "CMAKE_EXE_LINKER_FLAGS": "-fexceptions",
+        "HOT_HOST_HOTC": "${sourceDir}/cmake-build/linux-clang-files/bin/RelWithDebInfo/hotc",
+        "HOT_BUILD_TESTS": "OFF",
+        "HOT_BUILD_SAMPLES": "ON"
+      }
+    },
+    {
       "name": "vs-files",
       "description": "No generator: CMake takes the newest Visual Studio of the host.",
       "binaryDir": "${sourceDir}/cmake-build/${presetName}",
@@ -219,6 +232,7 @@
     { "name": "linux-clang-aot-rel", "configurePreset": "linux-clang-aot", "configuration": "RelWithDebInfo" },
     { "name": "linux-clang-aot-opt-rel", "configurePreset": "linux-clang-aot-opt", "configuration": "RelWithDebInfo" },
     { "name": "linux-clang-aot-only-rel", "configurePreset": "linux-clang-aot-only", "configuration": "RelWithDebInfo" },
+    { "name": "web-emscripten-rel", "configurePreset": "web-emscripten", "configuration": "RelWithDebInfo" },
     { "name": "vs-aot-rel", "configurePreset": "vs-aot", "configuration": "RelWithDebInfo" },
     { "name": "vs-aot-opt-rel", "configurePreset": "vs-aot-opt", "configuration": "RelWithDebInfo" },
     { "name": "macos-clang-files-rel", "configurePreset": "macos-clang-files", "configuration": "RelWithDebInfo" },
@@ -251,6 +265,7 @@
     { "name": "linux-clang-aot-rel", "inherits": "base-test", "configurePreset": "linux-clang-aot", "configuration": "RelWithDebInfo" },
     { "name": "linux-clang-aot-opt-rel", "inherits": "base-test", "configurePreset": "linux-clang-aot-opt", "configuration": "RelWithDebInfo" },
     { "name": "linux-clang-aot-only-rel", "inherits": "base-test", "configurePreset": "linux-clang-aot-only", "configuration": "RelWithDebInfo" },
+    { "name": "web-emscripten-rel", "inherits": "base-test", "configurePreset": "web-emscripten", "configuration": "RelWithDebInfo" },
     { "name": "vs-aot-rel", "inherits": "base-test", "configurePreset": "vs-aot", "configuration": "RelWithDebInfo" },
     { "name": "vs-aot-opt-rel", "inherits": "base-test", "configurePreset": "vs-aot-opt", "configuration": "RelWithDebInfo" },
     { "name": "macos-clang-files-rel", "inherits": "base-test", "configurePreset": "macos-clang-files", "configuration": "RelWithDebInfo" },

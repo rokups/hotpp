@@ -7,8 +7,8 @@
 # without the translator (HOT_BUILD_TRANSLATOR=OFF) has them only with HOT_HOST_HOTC.
 if(TARGET hot::hotc)
     add_subdirectory(aot)
-    # The sample loads a library at run time, so a forced AOT-only build (no loader) skips it.
-    if(NOT HOT_AOT_ONLY_FORCED)
+    # The sample loads a library at run time, so an AOT-only platform (no loader) skips it.
+    if(NOT HOT_AOT_ONLY_PLATFORM)
         add_subdirectory(precompiled-library)
     endif()
 else()
