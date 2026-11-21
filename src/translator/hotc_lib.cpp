@@ -3908,18 +3908,33 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
         fresh = stamp_fresh(fs, e.files[i]);
     if (!fresh)
         e.reset();
-    bool complete = fresh;
+    // The entry misses these names: the count and the first one go to the timing.
+    int64_t absent = 0;
+    std::string first_absent;
+    const auto miss = [&](const std::string& what)
+    {
+        if (absent++ == 0)
+            first_absent = what;
+    };
     for (const auto& n : names)
-        complete = complete && e.bases.count(n);
+        if (!e.bases.count(n))
+            miss(n);
     for (const FactReq& r : reqs)
     {
         auto it = e.facts.find(r.type);
-        complete = complete && it != e.facts.end();
-        for (const std::string& m : r.members)
-            complete = complete && it != e.facts.end() && it->second.members.count(m);
+        if (it == e.facts.end())
+            miss(r.type);
+        else
+            for (const std::string& m : r.members)
+                if (!it->second.members.count(m))
+                    miss(r.type + "::" + m);
     }
     for (const std::string& q : queries)
-        complete = complete && (is_global_type_query(q) ? e.has_global_types : e.queries.count(q) != 0);
+        if (!(is_global_type_query(q) ? e.has_global_types : e.queries.count(q) != 0))
+            miss(q);
+    const bool complete = fresh && absent == 0;
+    if (timing && !complete && timing->absent++ == 0)
+        timing->first_absent = first_absent.empty() ? "(stale entry)" : first_absent;
     if (!complete)
     {
         std::map<std::string, BaseInfo> out = std::move(e.bases);
@@ -11953,6 +11968,9 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
         res.timing.parse_ns += t.parse_ns;
         res.timing.parse_wait_ns += t.parse_wait_ns;
         res.timing.parses += t.parses;
+        if (res.timing.absent == 0)
+            res.timing.first_absent = t.first_absent;
+        res.timing.absent += t.absent;
         res.timing.front_ns += t.front_ns;
         res.timing.lower_ns += t.lower_ns;
         res.timing.check_ns += t.check_ns;

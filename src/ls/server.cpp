@@ -471,8 +471,9 @@ static void probe_timing_line(const char* label, const hotc::AnalyzeResult& r)
     if (FILE* f = std::fopen(file, "a"))
     {
         std::fprintf(f,
-            "PROBE %s passes=%d parses=%lld parse_ms=%.1f wait_ms=%.1f front_ms=%.1f check_ms=%.1f foreign_ms=%.1f own_ms=%.1f\n",
-            label, r.passes, static_cast<long long>(t.parses), ms(t.parse_ns), ms(t.parse_wait_ns), ms(t.front_ns),
+            "PROBE %s passes=%d parses=%lld absent=%lld first_absent=%s parse_ms=%.1f wait_ms=%.1f front_ms=%.1f check_ms=%.1f foreign_ms=%.1f own_ms=%.1f\n",
+            label, r.passes, static_cast<long long>(t.parses),
+            static_cast<long long>(t.absent), t.first_absent.empty() ? "-" : t.first_absent.c_str(), ms(t.parse_ns), ms(t.parse_wait_ns), ms(t.front_ns),
             ms(t.check_ns), ms(t.foreign_class_ns), ms(t.own_class_ns));
         std::fclose(f);
     }

@@ -355,6 +355,8 @@ struct TranslateTiming
     int64_t parse_ns = 0;      // the libclang parse (zero when the session cache hits)
     int64_t parse_wait_ns = 0; // the wait for the lock of the entry
     int64_t parses = 0;        // the number of parses in this call
+    int64_t absent = 0;        // the session lookups that missed (each one parses)
+    std::string first_absent;  // the first name that the session facts did not have
     int64_t front_ns = 0;      // the time before the session lookup
     int64_t lower_ns = 0;      // from the session lookup to the first check
     int64_t check_ns = 0;      // from the first check to the start of the emit
