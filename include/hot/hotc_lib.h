@@ -56,6 +56,9 @@ struct TranslateOptions
     // The macro flags of the parse of the native headers ("-DNAME", "-DNAME=value", "-UNAME").
     // A backend gives the "-D" and "-U" flags of its compile, so the parse sees the same macros.
     std::vector<std::string> defines = {};
+    // A name part that no header declares (the hole word of a completion probe). A native name, fact
+    // type or query with it gets the answer of a name that is not found, with no parse. Empty: off.
+    std::string unknown_marker = {};
     std::vector<std::pair<std::string, std::string>> preludes = {}; // name, text
     // The texts of the imported scripts ("using "parent.hot";"), as name and text. The name is
     // the path in the "using" line. A name that is not here is read from the directory of the

@@ -794,6 +794,7 @@ private:
         o.script_name = d.path;
         o.generation = 1;
         o.resolve_refs = true; // the table of the resolved names (ref_resolver.h)
+        o.unknown_marker = kHole; // no header declares the hole word: its probe names need no parse
         o.split_shell = split_shell_enabled();
         o.import_cache = import_cache_enabled(opt_.import_cache); // session_ keeps the cache
         const Effective e = effective_options(d.path);

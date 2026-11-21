@@ -978,3 +978,49 @@ TEST(SessionCache, ProbeUnitsOfOtherFlagsAreNotShared)
     expect_same(x, plain_translate(extra), "macro");
     EXPECT_TRUE(x.ok) << x.diagnostics;
 }
+
+// HOT-57: a name with the unknown marker (the hole word of a completion probe) needs no parse. No
+// header declares it, so the answer is the one of a parse: the result equals the one with no marker.
+TEST(SessionCache, MarkedNameNeedsNoParse)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h",
+        std::string("namespace ea { class Scene { public: int hp = 0; }; template <class T> struct function {}; }\n")
+            + kHeaderV1);
+    const auto script = [](const std::string& body, const std::string& field = "")
+    {
+        return "using \"w.h\";\nclass Foo : Widget {\n" + field + "    override void Update(float dt) {\n" + body
+            + "\n    }\n}\n";
+    };
+    const std::string fill = script("        ea.Scene s;\n        ea.function<int> f;");
+    const std::vector<std::string> probes = {
+        script("        ea.__hot_complete x;"),
+        script("        ea.function<ea.__hot_complete> g;"),
+        script("", "    ea.__hot_complete hot_hole_;\n"),
+        script("", "    ea.Scene.__hot_complete hot_hole_;\n"),
+    };
+    for (const std::string& probe : probes)
+    {
+        hotc::TranslatorSession on, off;
+        hotc::TranslateOptions o = temp_options(dir, fill);
+        ASSERT_TRUE(hotc::translate(o, on).ok);
+        ASSERT_TRUE(hotc::translate(o, off).ok);
+        o.script_text = probe;
+        const int n_on = on.parse_count(), n_off = off.parse_count();
+        const hotc::TranslateResult want = hotc::translate(o, off);
+        EXPECT_GT(off.parse_count(), n_off) << "the probe misses without the marker:\n" << probe;
+        o.unknown_marker = "__hot_complete";
+        const hotc::TranslateResult got = hotc::translate(o, on);
+        EXPECT_EQ(on.parse_count(), n_on) << probe;
+        expect_same(got, want, probe);
+    }
+    // A real new name still parses with the marker on.
+    hotc::TranslatorSession s;
+    hotc::TranslateOptions o = temp_options(dir, fill);
+    o.unknown_marker = "__hot_complete";
+    ASSERT_TRUE(hotc::translate(o, s).ok);
+    const int n = s.parse_count();
+    o.script_text = script("        ea.function<ea.Scene> h;\n        ea.__hot_complete;");
+    hotc::translate(o, s);
+    EXPECT_GT(s.parse_count(), n);
+}

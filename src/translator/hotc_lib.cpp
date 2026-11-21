@@ -4002,8 +4002,10 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
         std::map<std::string, std::string>&, bool)>& parse,
     Hierarchy& hierarchy, FactMap& facts_out, std::map<std::string, std::string>& answers_out, hot::FileSystem* fs,
     std::vector<std::string>* deps, std::vector<std::string>* shadows, int64_t* parse_start_ns,
-    hotc::TranslateTiming* timing)
+    hotc::TranslateTiming* timing, const std::string& marker)
 {
+    // A name with the marker is not declared: it is no miss, and the answer is the one of a failed lookup.
+    const auto marked = [&](const std::string& s) { return !marker.empty() && s.find(marker) != std::string::npos; };
     std::shared_ptr<hotc::TranslatorSession::Impl::Entry> entry;
     {
         std::lock_guard<std::mutex> map_lock(S.mutex);
@@ -4036,10 +4038,12 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
             first_absent = what;
     };
     for (const auto& n : names)
-        if (!e.bases.count(n))
+        if (!e.bases.count(n) && !marked(n))
             miss(n);
     for (const FactReq& r : reqs)
     {
+        if (marked(r.type))
+            continue;
         auto it = e.facts.find(r.type);
         if (it == e.facts.end())
             miss(r.type);
@@ -4049,7 +4053,7 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
                     miss(r.type + "::" + m);
     }
     for (const std::string& q : queries)
-        if (!(is_global_type_query(q) ? e.has_global_types : e.queries.count(q) != 0))
+        if (!marked(q) && !(is_global_type_query(q) ? e.has_global_types : e.queries.count(q) != 0))
             miss(q);
     const bool complete = fresh && absent == 0;
     if (timing && !complete && timing->absent++ == 0)
@@ -4132,9 +4136,19 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
         *parse_start_ns = e.parse_start_ns;
     hierarchy = e.hierarchy;
     for (const FactReq& r : reqs)
-        facts_out[r.type] = e.facts[r.type];
+        if (marked(r.type))
+        { // the facts of a type that is not known: each value false
+            TypeFacts f;
+            for (const std::string& m : r.members)
+                f.members[m] = false;
+            facts_out[r.type] = std::move(f);
+        }
+        else
+            facts_out[r.type] = e.facts[r.type];
     for (const std::string& q : queries)
-        if (is_global_type_query(q))
+        if (marked(q))
+            answers_out[q] = is_code_query(q) || is_decl_query(q) ? "0" : ""; // see answer_code_queries, answer_decl_queries
+        else if (is_global_type_query(q))
         {
             const auto it = e.global_types.find(q.substr(7));
             answers_out[q] = it == e.global_types.end() ? std::string() : it->second;
@@ -6045,7 +6059,7 @@ void translate_impl(
             fs, &session.probe_cache, key, fresh, &res.timing);
     },
         hier, facts, query_answers, fs, &res.dependencies, &res.shadow_paths, &res.parse_start_ns,
-        &res.timing);
+        &res.timing, in.unknown_marker);
     for (const auto& [bname, bi] : bases)
         for (const NativeVirtual& v : bi.virtuals)
         {
