@@ -5,6 +5,10 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <chrono>
+#include <future>
+#include <memory>
+#include <thread>
 #include <string>
 #include <vector>
 
@@ -226,6 +230,120 @@ TEST(EmbeddedScript, LineCountProperty)
         EXPECT_EQ(lines(out), lines(text)) << text;
         EXPECT_EQ(lines(hot::mask_embedded_scripts(text, "script", nullptr, "P;")), lines(text)) << text;
     }
+}
+
+std::string stubs(const std::string& text, const std::string& masked = "")
+{
+    return hot::append_handler_stubs(text, masked, "P;", "void {name}() { {expr}; }");
+}
+
+std::string stub_line(const std::string& expr)
+{
+    return "\nvoid " + hot::handler_stub_name(expr) + "() { " + expr + "; }";
+}
+
+TEST(HandlerStubs, NameIsFnv1aHex)
+{
+    EXPECT_EQ(hot::handler_stub_name(""), "rml_on_cbf29ce484222325");
+    EXPECT_EQ(hot::handler_stub_name("a"), "rml_on_af63dc4c8601ec8c");
+}
+
+TEST(HandlerStubs, NoHandler)
+{
+    bool any = true;
+    EXPECT_EQ(hot::append_handler_stubs("<p class=\"a\">x</p>", "M", "P;", "{expr}", &any), "M");
+    EXPECT_FALSE(any);
+}
+
+TEST(HandlerStubs, PrefixPartIsSkipped)
+{
+    EXPECT_EQ(stubs("<a onclick=\"sound:x; f(); event:y\"/>", "M"), "M" + stub_line("f()"));
+    EXPECT_EQ(stubs("<a onclick=\"a::b()\"/>", "M"), "M" + stub_line("a::b()"));
+}
+
+TEST(HandlerStubs, SplitKeepsSemicolonInString)
+{
+    EXPECT_EQ(stubs("<a onclick=\"f('a;b'); g('\\';')\"/>", "M"), "M" + stub_line("f('a;b')") + stub_line("g('\\';')"));
+}
+
+TEST(HandlerStubs, EntitiesAreDecoded)
+{
+    EXPECT_EQ(stubs("<a ONCLICK=\"x &lt; 1 &amp;&amp; y &gt; &quot;z&quot;\"/>", "M"), "M" + stub_line("x < 1 && y > \"z\""));
+}
+
+TEST(HandlerStubs, SingleQuotedAttribute)
+{
+    EXPECT_EQ(stubs("<a onclick='f(\"x\")'/>", "M"), "M" + stub_line("f(\"x\")"));
+}
+
+TEST(HandlerStubs, DuplicateGivesOneStub)
+{
+    EXPECT_EQ(stubs("<a onclick=\"f()\"/><b onmouseover=\"g(); f()\"/>", "M"), "M" + stub_line("f()") + stub_line("g()"));
+}
+
+TEST(HandlerStubs, HandlerOnlyDocumentStartsWithPrefix)
+{
+    bool any = false;
+    EXPECT_EQ(hot::append_handler_stubs("<a onclick=\"f()\"/>", "", "P;", "{name}={expr}", &any),
+        "P;\n" + hot::handler_stub_name("f()") + "=f()");
+    EXPECT_TRUE(any);
+}
+
+TEST(HandlerStubs, CommentAndScriptBodyAreIgnored)
+{
+    const std::string text = "<!-- <a onclick=\"c()\"/> --><script>x = \"<a onclick='s()'>\";</script>"
+                             "<style>a { } </style><a onclick=\"r()\"/>";
+    EXPECT_EQ(stubs(text, "M"), "M" + stub_line("r()"));
+}
+
+TEST(HandlerStubs, StrayQuoteInputEnds)
+{
+    auto done = std::make_shared<std::promise<std::string>>();
+    auto fut = done->get_future();
+    std::thread([done] { done->set_value(hot::append_handler_stubs("<a \"x>y\">", "M", "P;", "{expr}")); }).detach();
+    ASSERT_EQ(fut.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+    EXPECT_EQ(fut.get(), "M");
+}
+
+TEST(HandlerStubs, NameOnIsNoHandler)
+{
+    EXPECT_EQ(stubs("<a on=\"f()\"/>", "M"), "M");
+}
+
+TEST(HandlerStubs, TemplateKeepsLineBreaksAndComment)
+{
+    const std::string out = hot::append_handler_stubs("<a onclick=\"f() // x\"/>", "M", "P;", "void {name}() {\n{expr}\n;}");
+    EXPECT_EQ(out, "M\nvoid " + hot::handler_stub_name("f() // x") + "() {\nf() // x\n;}");
+}
+
+TEST(HandlerStubs, PartEndingWithColonIsSkipped)
+{
+    EXPECT_EQ(stubs("<a onclick=\"sound:; event: ; f()\"/>", "M"), "M" + stub_line("f()"));
+}
+
+TEST(HandlerStubs, UnquotedValue)
+{
+    EXPECT_EQ(stubs("<a onclick=f() id=1/>", "M"), "M" + stub_line("f()"));
+}
+
+TEST(HandlerStubs, GreaterThanInQuotedValue)
+{
+    EXPECT_EQ(stubs("<a onclick=\"if (a > b) f()\"/>", "M"), "M" + stub_line("if (a > b) f()"));
+}
+
+TEST(HandlerStubs, CdataAndProcessingInstructionAreSkipped)
+{
+    EXPECT_EQ(stubs("<![CDATA[ <a onclick=\"c()\"> ]]><?pi <a onclick=\"p()\"> ?><a onclick=\"r()\"/>", "M"), "M" + stub_line("r()"));
+}
+
+TEST(HandlerStubs, DataEventAttributeIsNoHandler)
+{
+    EXPECT_EQ(stubs("<a data-event-click=\"f()\"/>", "M"), "M");
+}
+
+TEST(HandlerStubs, PlaceholderTextInExpressionStaysUnchanged)
+{
+    EXPECT_EQ(hot::append_handler_stubs("<a onclick=\"f('{name}{expr}')\"/>", "M", "P;", "{expr}"), "M\nf('{name}{expr}')");
 }
 
 } // namespace

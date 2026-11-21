@@ -71,11 +71,13 @@
 // output is the .so file. In emit mode it needs -o. CMake and Ninja read the file.
 //
 // Mask mode (--mask-embedded): mask the script blocks of a host file (HOT-60, include/hot/embedded_script.h).
-//   hotc --mask-embedded <in.rml> <prefix-file> -o <out.hot> [--tag script]
+//   hotc --mask-embedded <in.rml> <prefix-file> -o <out.hot> [--tag script] [--handlers <template-file>]
 // The tool reads the input and the prefix file as bytes (no line end translation). It writes
 // hot::mask_embedded_scripts(input, tag, &found, prefix) to the output as bytes. The prefix is the
 // content of the prefix file without one final line end (LF or CRLF), because the prefix has no
 // line end. The default tag is "script".
+// With --handlers <template-file> the tool also applies hot::append_handler_stubs (HOT-79) with the
+// content of the template file. It writes the output when a block or a stub exists.
 // A file with no block gives no output. The tool deletes an old file at the output path, so a
 // build rule does not keep a stale unit. It prints "hotc: no script block in <in>" on stdout and
 // exits with code 0. CMake checks the output file, so the exit code 0 suits a custom command.
@@ -124,7 +126,7 @@ namespace
         "            [--format=std|fmt] [--view=hot|std] [--resource-dir dir] [--std=c++17|c++20|c++23] [--aot-optimized]\n"
         "            [-D<name>[=value]]... [-U<name>]... [--defines-file file] [--includes-file file]\n"
         "            [--scripts-file file] [--jobs N]\n"
-        "       hotc --mask-embedded <in.rml> <prefix-file> -o <out.hot> [--tag script]\n"
+        "       hotc --mask-embedded <in.rml> <prefix-file> -o <out.hot> [--tag script] [--handlers <template-file>]\n"
         "  --defines-file <file> (--aot) one define for each line: NAME or NAME=value; -D and -U lines also work\n"
         "  --includes-file <file> (--aot) one include directory for each line, as -I\n"
         "  --scripts-file <file> (--aot) one script for each line: PATH or PATH<TAB>UNIT_NAME; not with --unit-name\n"
@@ -1137,17 +1139,17 @@ bool read_bytes(const std::string& path, std::string& text)
 int run_mask(int argc, char** argv)
 {
     std::vector<std::string> positional;
-    std::string out, tag = "script";
+    std::string out, tag = "script", handlers;
     for (int i = 1; i < argc; ++i)
     {
         const std::string a = argv[i];
         if (a == "--mask-embedded")
             continue;
-        if (a == "-o" || a == "--tag")
+        if (a == "-o" || a == "--tag" || a == "--handlers")
         {
             if (i + 1 >= argc)
                 usage();
-            (a == "-o" ? out : tag) = argv[++i];
+            (a == "-o" ? out : a == "--tag" ? tag : handlers) = argv[++i];
         }
         else if (!a.empty() && a[0] == '-')
             usage();
@@ -1184,7 +1186,25 @@ int run_mask(int argc, char** argv)
             prefix.pop_back();
     }
     bool found = false;
-    const std::string masked = hot::mask_embedded_scripts(text, tag, &found, prefix);
+    std::string masked = hot::mask_embedded_scripts(text, tag, &found, prefix);
+    if (!handlers.empty())
+    {
+        std::string tpl;
+        if (!read_bytes(handlers, tpl))
+        {
+            std::fprintf(stderr, "hotc: error: cannot read %s\n", handlers.c_str());
+            return 1;
+        }
+        if (!tpl.empty() && tpl.back() == '\n') // as the prefix: one final line end goes away
+        {
+            tpl.pop_back();
+            if (!tpl.empty() && tpl.back() == '\r')
+                tpl.pop_back();
+        }
+        bool stubbed = false;
+        masked = hot::append_handler_stubs(text, std::move(masked), prefix, tpl, &stubbed);
+        found = found || stubbed;
+    }
     std::error_code ec;
     if (!found)
     {

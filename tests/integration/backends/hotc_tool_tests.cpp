@@ -2246,6 +2246,46 @@ TEST(HotcTool, MaskEmbeddedWritesTheFunctionResult)
     EXPECT_EQ(read_bytes_of(dir + "/out.hot").rfind("using Urho3D;", 0), 0u);
 }
 
+TEST(HotcTool, MaskEmbeddedHandlersMatchTheLibrary)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_mask_h");
+    std::filesystem::create_directories(dir);
+    const std::string rml = "<rml>\n<head>\n  <script>int a;\n</script>\n</head>\n<a onclick=\"f(1); sound:x\"/>\n</rml>\n";
+    const std::string tpl = "void {name}() { {expr}; }";
+    write_bytes_of(dir + "/in.rml", rml);
+    write_bytes_of(dir + "/prefix.txt", "using Urho3D;\n");
+    write_bytes_of(dir + "/tpl.txt", tpl);
+    std::string log;
+    ASSERT_EQ(run_hotc({"--mask-embedded", dir + "/in.rml", dir + "/prefix.txt", "-o", dir + "/out.hot", "--handlers",
+                  dir + "/tpl.txt"}, log), 0) << log;
+    EXPECT_EQ(read_bytes_of(dir + "/out.hot"),
+        hot::append_handler_stubs(rml, hot::mask_embedded_scripts(rml, "script", nullptr, "using Urho3D;"), "using Urho3D;", tpl));
+    ASSERT_EQ(run_hotc({"--mask-embedded", dir + "/in.rml", dir + "/prefix.txt", "-o", dir + "/plain.hot"}, log), 0) << log;
+    EXPECT_EQ(read_bytes_of(dir + "/plain.hot"), hot::mask_embedded_scripts(rml, "script", nullptr, "using Urho3D;"));
+
+    const std::string only = "<a onclick=\"g()\"/>";
+    write_bytes_of(dir + "/only.rml", only);
+    ASSERT_EQ(run_hotc({"--mask-embedded", dir + "/only.rml", dir + "/prefix.txt", "-o", dir + "/only.hot", "--handlers",
+                  dir + "/tpl.txt"}, log), 0) << log;
+    EXPECT_EQ(read_bytes_of(dir + "/only.hot"), hot::append_handler_stubs(only, "", "using Urho3D;", tpl));
+    EXPECT_EQ(read_bytes_of(dir + "/only.hot").rfind("using Urho3D;\n", 0), 0u);
+}
+
+TEST(HotcTool, MaskEmbeddedHandlersTemplateLosesOneFinalLineEnd)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_mask_t");
+    std::filesystem::create_directories(dir);
+    const std::string only = "<a onclick=\"g()\"/>";
+    write_bytes_of(dir + "/only.rml", only);
+    write_bytes_of(dir + "/prefix.txt", "P;");
+    write_bytes_of(dir + "/tpl.txt", "{name}\n{expr}\n\r\n");
+    std::string log;
+    ASSERT_EQ(run_hotc({"--mask-embedded", dir + "/only.rml", dir + "/prefix.txt", "-o", dir + "/o.hot", "--handlers", dir + "/tpl.txt"}, log), 0) << log;
+    EXPECT_EQ(read_bytes_of(dir + "/o.hot"), hot::append_handler_stubs(only, "", "P;", "{name}\n{expr}\n"));
+}
+
 TEST(HotcTool, MaskEmbeddedWithoutPrefixTextAndCustomTag)
 {
     TestScratch scratch;
