@@ -119,6 +119,10 @@ public:
     virtual LoadResult load(const ScriptSource& source, uint32_t generation, LoadMode mode = LoadMode::Reload) = 0;
     virtual const char* name() const = 0;
 
+    // Starts cold work in the background before the first load. The host calls it once at start,
+    // with the sources that it will load first. The default does nothing. The call returns at once.
+    virtual void prewarm(const std::vector<ScriptSource>& sources) { (void)sources; }
+
     // Gives the backend the slot and signature manifest of the AOT scripts (AotTable::slots), so
     // the next generation keeps the slot numbers of the AOT code. Call it before the first load.
     // The rule: the backend keeps its slot state only when the state has every line of the text

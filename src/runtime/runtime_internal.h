@@ -112,6 +112,9 @@ extern LiveObjects g_live;
 // The count of commits that ran while a thread was in script code (threads.cpp).
 extern std::atomic<uint64_t> g_unsafe_commits;
 
+// Lowers the priority of the calling thread, for background work (threads.cpp).
+void lower_thread_priority();
+
 // Fills a new state block (migration.cpp).
 void migrate_block(const StateLayout& o, const StateLayout& n, const MigrationPlan& plan, char* from, char* to);
 

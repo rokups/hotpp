@@ -614,6 +614,7 @@ ClangFilesBackend::ClangFilesBackend(ClangFilesOptions options)
 
 ClangFilesBackend::~ClangFilesBackend()
 {
+    wait_for_prewarm(); // the prewarm thread uses the backend options
     wait_for_pch(); // the PCH thread uses the backend and the work directory
     {
         std::thread t;
@@ -631,6 +632,80 @@ ClangFilesBackend::~ClangFilesBackend()
     }
     if (opt_.remove_work_dir_at_exit)
         remove_scratch(opt_.work_dir);
+}
+
+void lower_thread_priority(); // threads.cpp
+
+void ClangFilesBackend::wait_for_prewarm()
+{
+    std::thread t;
+    {
+        std::lock_guard<std::mutex> lock(pw_mutex_);
+        t = std::move(pw_thread_);
+    }
+    if (t.joinable())
+        t.join();
+}
+
+void ClangFilesBackend::prewarm(const std::vector<ScriptSource>&)
+{
+    const char* off = std::getenv("HOT_PREWARM");
+    if (off && std::string(off) == "0")
+        return;
+    if (opt_.compile_commands_dir.empty() || opt_.generated_dir.empty())
+        return;
+    std::lock_guard<std::mutex> lock(pw_mutex_);
+    if (pw_thread_.joinable() || pw_reading_)
+        return; // one prewarm for each backend
+    pw_reading_ = true;
+    try
+    {
+        pw_thread_ = std::thread(
+            [this]
+            {
+                std::map<std::string, CompileCommandEntry> commands;
+                std::map<std::string, std::string> rendered;
+                int64_t mtime = 0;
+                uintmax_t size = 0;
+                bool ok = false;
+                try
+                {
+                    lower_thread_priority();
+                    // The stamp comes before the read: a write after it makes the stamp differ.
+                    const fs::path db = fs::path(opt_.compile_commands_dir) / "compile_commands.json";
+                    std::error_code e1, e2;
+                    const fs::file_time_type t = fs::last_write_time(db, e1);
+                    size = fs::file_size(db, e2);
+                    mtime = static_cast<int64_t>(t.time_since_epoch().count());
+                    if (!e1 && !e2)
+                    {
+                        std::string text;
+                        commands = read_compile_commands(text, rendered);
+                        ok = !rendered.empty() || !commands.empty();
+                    }
+                }
+                catch (...)
+                {
+                    ok = false;
+                }
+                std::lock_guard<std::mutex> l(pw_mutex_);
+                ++pw_reads_;
+                if (ok)
+                {
+                    pw_commands_ = std::move(commands);
+                    pw_rendered_ = std::move(rendered);
+                    pw_mtime_ = mtime;
+                    pw_size_ = size;
+                    pw_ready_ = true;
+                }
+                pw_reading_ = false;
+                pw_cv_.notify_all();
+            });
+    }
+    catch (...)
+    {
+        pw_reading_ = false; // no thread: the first flush reads the file itself
+    }
 }
 
 namespace
@@ -1887,6 +1962,27 @@ void ClangFilesBackend::flush_compile_commands()
     };
     int64_t mtime = 0;
     uintmax_t size = 0;
+    if (!disk_known_)
+    {
+        // The prewarm read is a result only when the file has the same stamp. The wait is for the
+        // read only: the thread never takes "mutex_".
+        std::unique_lock<std::mutex> l(pw_mutex_);
+        pw_cv_.wait(l, [this] { return !pw_reading_; });
+        if (pw_ready_)
+        {
+            pw_ready_ = false;
+            if (stamp(mtime, size) && mtime == pw_mtime_ && size == pw_size_)
+            {
+                disk_commands_ = std::move(pw_commands_);
+                disk_rendered_ = std::move(pw_rendered_);
+                disk_mtime_ = pw_mtime_;
+                disk_size_ = pw_size_;
+                disk_known_ = true;
+            }
+            pw_commands_.clear();
+            pw_rendered_.clear();
+        }
+    }
     // The file is the same as at the last read or write, and it has the entries of this backend:
     // no work. A warm start of many units otherwise reads and writes the file for each unit.
     if (disk_known_ && stamp(mtime, size) && mtime == disk_mtime_ && size == disk_size_)

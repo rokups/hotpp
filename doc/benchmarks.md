@@ -709,3 +709,7 @@ Notes:
 - The first edit after the start takes 2.1 s. A later body edit takes 0.9 s. The shared PCH is not the cause: the line of the first edit has `pch` and the plan finds the PCH of the earlier run. The difference is the translate phase: 1415 ms with a libclang probe parse of 1324 ms, against 106 to 196 ms for the later edits (the parse is not repeated). The first edit also builds the shape PCH of the unit (134 ms, in parallel).
 - The compile of the unit takes 0.5 to 0.7 s and the link about 0.1 s in each edit. The `flush_compile_commands` phase takes 2 to 4 ms (it took 4 s in WAR-2).
 - A cold cache folder (no PCH and no objects on the disk) was not measured here. WAR-2 measured the first reload of such a start at 8.7 s, with a shared PCH build of 6 s.
+
+## HOT-59 prewarm of the compile database
+
+`Backend::prewarm(sources)` starts one low-priority thread. The thread reads the compile database before the first edit. The first `flush_compile_commands` then compares and writes only. It does not read the file (about 350 ms of the first flush in the real game). `HOT_PREWARM=0` turns it off. The PCH prewarm stays in `begin_load_many`: it needs the translated jobs of the load.

@@ -96,6 +96,7 @@ Environment variables of the files backend (a `0` turns a switch off unless the 
 |---|---|
 | `HOT_JOBS` | the number of parallel compiles (default: hardware threads, 16 at most) |
 | `HOT_CACHE`, `HOT_CACHE_DIR`, `HOT_CACHE_MAX_MB` | the object cache switch, its folder and its size limit |
+| `HOT_PREWARM` | `0` turns off the start thread of `Backend::prewarm` (it reads the compile database before the first edit) |
 | `HOT_LINK_CACHE` | the module cache (`0` turns it off) |
 | `HOT_PCH` | the PCH of the native headers (`0` turns it off) |
 | `HOT_SHAPE_PCH` | the shape PCH of a `.hot` unit (`0` turns it off) |
