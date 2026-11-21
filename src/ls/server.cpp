@@ -6124,6 +6124,7 @@ Doc Server::closed_doc(const std::string& path, const std::string& text) const
     tmp.gen_path = path + ".cpp";
     tmp.gen_uri = path_to_uri(tmp.gen_path);
     tmp.text = Text(text);
+    tmp.closed_copy = true; // probe_unit 0: the index and the closed analyses keep no probe unit
     return tmp;
 }
 
