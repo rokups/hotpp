@@ -217,6 +217,12 @@ const char* mode_name(const ::testing::TestParamInfo<Mode>& i)
     return i.param == Mode::Files ? "Files" : i.param == Mode::Jit ? "Jit" : "Aot";
 }
 
+// The tests read the fields of the Boxer by name. Optimized AOT code has no field table, so that
+// build has no Aot mode.
+#ifdef __HOTPP_AOT_OPTIMIZED__
+INSTANTIATE_TEST_SUITE_P(Backends, LambdaBoxScript, ::testing::Values(Mode::Files, Mode::Jit), mode_name);
+#else
 INSTANTIATE_TEST_SUITE_P(Backends, LambdaBoxScript, ::testing::Values(Mode::Files, Mode::Jit, Mode::Aot), mode_name);
+#endif
 
 } // namespace
