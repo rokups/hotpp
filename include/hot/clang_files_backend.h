@@ -13,6 +13,7 @@
 #include "hot/translate_cache.h"
 
 #include <atomic>
+#include <condition_variable>
 #include <chrono>
 #include <filesystem>
 #include <functional>
@@ -135,6 +136,28 @@ public:
     // The number of writes of compile_commands.json by this backend. For tests.
     size_t compile_commands_writes() const { return compile_db_writes_; }
     size_t compile_commands_reads() const { return compile_db_reads_; }
+    // The reads of the file that the prewarm thread did. For tests.
+    size_t compile_commands_prewarm_reads() const { return pw_reads_; }
+    // Starts the background read of the compile database (HOT_PREWARM=0 turns it off). One thread
+    // runs at a time. The PCH prewarm needs the translated jobs of a load, so begin_load_many does it.
+    void prewarm(const std::vector<ScriptSource>& sources) override;
+    // Waits for the prewarm thread. For tests. The destructor waits too.
+    void wait_for_prewarm();
+    // For tests: "hook" runs in the prewarm thread before the read. Set it before prewarm.
+    void set_prewarm_hook(std::function<void()> hook) { pw_hook_ = std::move(hook); }
+    // Records "n" units and does one flush. For the bench tools/bench/compile_db_bench.cpp.
+    void flush_for_bench(size_t n, const std::string& script_dir)
+    {
+        for (size_t i = 0; i < n; ++i)
+            record_compile_command("unit" + std::to_string(i), script_dir, opt_.work_dir + "/u" + std::to_string(i) + ".o", true);
+        flush_compile_commands();
+    }
+    // Reads the compile database. For the bench tools/bench/compile_db_bench.cpp.
+    size_t read_compile_db_for_bench(std::string& text) const
+    {
+        std::map<std::string, std::string> foreign;
+        return read_compile_commands(text, foreign).size();
+    }
 
     // Makes a new .so for each call, so a reload of the same generation is possible.
     // The slots file does not change here. The Module has an "on_accept" callback that writes
@@ -446,6 +469,20 @@ private:
     size_t compile_db_reads_ = 0; // the reads and parses of the file, for tests
     int64_t disk_mtime_ = 0;
     uintmax_t disk_size_ = 0;
+    // The result of the prewarm read. "pw_mutex_" guards these members, not "mutex_": the thread
+    // never takes "mutex_". flush_compile_commands waits for "pw_reading_", then takes the result
+    // when "disk_known_" is false and the stamp of the file is the same.
+    std::mutex pw_mutex_;
+    std::condition_variable pw_cv_;
+    std::thread pw_thread_;
+    std::function<void()> pw_hook_;
+    bool pw_reading_ = false;
+    bool pw_ready_ = false;
+    std::atomic<size_t> pw_reads_{0};
+    std::map<std::string, CompileCommandEntry> pw_commands_;
+    std::map<std::string, std::string> pw_rendered_;
+    int64_t pw_mtime_ = 0;
+    uintmax_t pw_size_ = 0;
     // HOT_TIMING sums of the finish phase, in microseconds. The caller thread writes them.
     int64_t record_us_ = 0;
     int64_t complete_us_ = 0;

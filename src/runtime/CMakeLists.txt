@@ -108,6 +108,15 @@ if(HOT_BUILD_TRANSLATOR)
     target_link_libraries(hot_translate_cache PUBLIC hot_runtime hotc_lib)
     add_library(hot_clang_backend STATIC clang_files_backend.cpp)
     target_link_libraries(hot_clang_backend PUBLIC hot_runtime hotc_lib hot_translate_cache)
+    # HOT_OPTIMIZE_IN_DEBUG: a Debug build compiles the compile database code and the translate
+    # cache with -O2 (GCC and Clang). The first edit of a script scans a database of many MB. An
+    # unoptimized scan is about 4 times slower. Other configurations are not changed. MSVC is not
+    # changed: /O2 conflicts with the /RTC1 run-time checks of its Debug flags.
+    option(HOT_OPTIMIZE_IN_DEBUG "Compile the clang files backend with -O2 in Debug builds (GCC and Clang)" ON)
+    if(HOT_OPTIMIZE_IN_DEBUG AND NOT MSVC)
+        target_compile_options(hot_translate_cache PRIVATE "$<$<CONFIG:Debug>:-O2>")
+        target_compile_options(hot_clang_backend PRIVATE "$<$<CONFIG:Debug>:-O2>")
+    endif()
 elseif(CMAKE_CROSSCOMPILING AND NOT HOT_AOT_ONLY_PLATFORM)
     # A cross build has no translator. This target only compiles the backend source for the
     # target platform (for example the Windows run_command), so a cross build checks it.

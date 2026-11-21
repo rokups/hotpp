@@ -303,6 +303,7 @@ BuildOutput build_batch(hot::Backend& backend, const std::string& script_path, c
     // Phase 1: the worklist in waves. A wave is all the units that wait at that moment. The wave
     // translates on build_jobs threads (begin_load_many). The heads are then processed in the index
     // order of the wave, and the new units wait for the next wave.
+    backend.prewarm({}); // reads the compile database in a thread; a second call does nothing
     while (!todo.empty())
     {
         std::vector<std::string> names;

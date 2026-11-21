@@ -19,7 +19,10 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <condition_variable>
 #include <cstdlib>
+#include <future>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -984,6 +987,186 @@ TEST(BeginLoadMany, RemovedFilesLeaveTheCachedCompileDatabase)
     EXPECT_EQ(text.find(gone), std::string::npos);
     EXPECT_NE(text.find(keep), std::string::npos);
     EXPECT_EQ(backend->compile_commands_reads(), 1u);
+}
+
+// ---- the prewarm of the compile database ----
+
+// Makes a backend with a foreign database of 3 entries.
+std::unique_ptr<hot::ClangFilesBackend> make_prewarm_backend(const TestScratch& scratch, const std::string& db)
+{
+    std::vector<std::string> entries;
+    for (int i = 0; i < 3; ++i)
+    {
+        const std::string f = scratch.file("keep" + std::to_string(i) + ".cpp");
+        std::ofstream(f) << "int x;\n";
+        entries.push_back(odd_foreign_entry(f, 2));
+    }
+    write_db(db, join_db(entries));
+    return make_db_backend(scratch, "work", db);
+}
+
+// The prewarm reads the file once. The first flush does not read it again and keeps the entries.
+TEST(BackendPrewarm, FirstFlushDoesNotReadTheDatabase)
+{
+    SKIP_ON_WINDOWS();
+    CleanEnv env;
+    ScopedEnv off("HOT_PREWARM", "1");
+    TestScratch scratch;
+    const std::string db = scratch.file("db");
+    auto backend = make_prewarm_backend(scratch, db);
+    backend->prewarm({});
+    backend->wait_for_prewarm();
+    EXPECT_EQ(backend->compile_commands_prewarm_reads(), 1u);
+    load_one_unit(*backend, 0);
+    EXPECT_EQ(backend->compile_commands_reads(), 0u);
+    EXPECT_EQ(count_entries_of(read_db(db)), 4u);
+}
+
+// A gate for the prewarm thread: it blocks in the hook until "open" runs.
+struct PrewarmGate
+{
+    std::mutex m;
+    std::condition_variable cv;
+    bool entered = false;
+    bool opened = false;
+    void hook()
+    {
+        std::unique_lock<std::mutex> l(m);
+        entered = true;
+        cv.notify_all();
+        cv.wait(l, [this] { return opened; });
+    }
+    void wait_entered()
+    {
+        std::unique_lock<std::mutex> l(m);
+        cv.wait(l, [this] { return entered; });
+    }
+    void open()
+    {
+        std::lock_guard<std::mutex> l(m);
+        opened = true;
+        cv.notify_all();
+    }
+};
+
+// A load while the prewarm thread is in the read waits for the read and gives the same file as a
+// load without prewarm.
+TEST(BackendPrewarm, LoadDuringPrewarmGivesTheSameDatabase)
+{
+    SKIP_ON_WINDOWS();
+    CleanEnv env;
+    ScopedEnv off("HOT_PREWARM", "1");
+    TestScratch a;
+    TestScratch b;
+    auto plain = make_prewarm_backend(a, a.file("db"));
+    load_one_unit(*plain, 0);
+    auto warm = make_prewarm_backend(b, b.file("db"));
+    PrewarmGate gate;
+    warm->set_prewarm_hook([&] { gate.hook(); });
+    warm->prewarm({});
+    gate.wait_entered();
+    auto done = std::async(std::launch::async, [&] { load_one_unit(*warm, 0); });
+    EXPECT_EQ(done.wait_for(std::chrono::milliseconds(300)), std::future_status::timeout);
+    gate.open();
+    done.get();
+    EXPECT_EQ(warm->compile_commands_reads(), 0u);
+    EXPECT_EQ(count_entries_of(read_db(a.file("db"))), count_entries_of(read_db(b.file("db"))));
+    EXPECT_EQ(count_entries_of(read_db(b.file("db"))), 4u);
+}
+
+// A destroy while the prewarm thread is in the read waits for the thread and does not crash.
+TEST(BackendPrewarm, DestroyDuringPrewarm)
+{
+    SKIP_ON_WINDOWS();
+    CleanEnv env;
+    ScopedEnv off("HOT_PREWARM", "1");
+    TestScratch scratch;
+    auto backend = make_prewarm_backend(scratch, scratch.file("db"));
+    PrewarmGate gate;
+    backend->set_prewarm_hook([&] { gate.hook(); });
+    backend->prewarm({});
+    gate.wait_entered();
+    std::thread opener(
+        [&]
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            gate.open();
+        });
+    backend.reset();
+    opener.join();
+}
+
+// A file of the database that changes after the prewarm read: the flush rejects the result and reads again.
+TEST(BackendPrewarm, ChangedDatabaseIsReadAgain)
+{
+    SKIP_ON_WINDOWS();
+    CleanEnv env;
+    ScopedEnv off("HOT_PREWARM", "1");
+    TestScratch scratch;
+    const std::string db = scratch.file("db");
+    auto backend = make_prewarm_backend(scratch, db);
+    backend->prewarm({});
+    backend->wait_for_prewarm();
+    const std::string extra = scratch.file("extra.cpp");
+    std::ofstream(extra) << "int y;\n";
+    std::string text = read_db(db);
+    text.insert(text.find('{'), odd_foreign_entry(extra, 2) + ",\n");
+    write_db(db, text);
+    load_one_unit(*backend, 0);
+    EXPECT_EQ(backend->compile_commands_reads(), 1u);
+    EXPECT_NE(read_db(db).find(extra), std::string::npos);
+}
+
+// An own generated file that is deleted between the prewarm read and the first flush leaves the
+// file, as after a direct read.
+TEST(BackendPrewarm, RemovedOwnFileLeavesTheDatabase)
+{
+    SKIP_ON_WINDOWS();
+    CleanEnv env;
+    ScopedEnv off("HOT_PREWARM", "1");
+    TestScratch a;
+    TestScratch b;
+    std::string texts[2];
+    for (int k = 0; k < 2; ++k)
+    {
+        TestScratch& sc = k == 0 ? a : b;
+        const std::string db = sc.file("db");
+        {
+            auto first = make_prewarm_backend(sc, db);
+            load_one_unit(*first, 0); // the entry of unit 0 is now an own entry in the file
+        }
+        std::string gen;
+        for (const auto& e : fs::directory_iterator(sc.file("gen")))
+            if (e.path().extension() == ".cpp")
+                gen = e.path().string();
+        auto backend = make_db_backend(sc, "work", db);
+        if (k == 1)
+        {
+            backend->prewarm({});
+            backend->wait_for_prewarm();
+        }
+        ASSERT_TRUE(fs::exists(gen)) << gen;
+        fs::remove(gen);
+        load_one_unit(*backend, 1);
+        texts[k] = read_db(db);
+        EXPECT_EQ(backend->compile_commands_reads(), k == 1 ? 0u : 1u);
+        EXPECT_EQ(texts[k].find(gen), std::string::npos);
+    }
+    // The paths differ between the two scratch folders: compare the counts of entries.
+    EXPECT_EQ(count_entries_of(texts[0]), count_entries_of(texts[1]));
+}
+
+// HOT_PREWARM=0 starts no thread.
+TEST(BackendPrewarm, EnvZeroRunsNoThread)
+{
+    SKIP_ON_WINDOWS();
+    CleanEnv env;
+    ScopedEnv off("HOT_PREWARM", "0");
+    TestScratch scratch;
+    auto backend = make_prewarm_backend(scratch, scratch.file("db"));
+    backend->prewarm({});
+    backend->wait_for_prewarm();
+    EXPECT_EQ(backend->compile_commands_prewarm_reads(), 0u);
 }
 
 // A strict check of the syntax: the text is one JSON array of objects.

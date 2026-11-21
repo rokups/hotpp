@@ -614,6 +614,7 @@ ClangFilesBackend::ClangFilesBackend(ClangFilesOptions options)
 
 ClangFilesBackend::~ClangFilesBackend()
 {
+    wait_for_prewarm(); // the prewarm thread uses the backend options
     wait_for_pch(); // the PCH thread uses the backend and the work directory
     {
         std::thread t;
@@ -1712,8 +1713,27 @@ std::map<std::string, CompileCommandEntry> ClangFilesBackend::read_compile_comma
     text.clear();
     foreign.clear();
     const std::string path = (fs::path(opt_.compile_commands_dir) / "compile_commands.json").string();
+    // HOT_TIMING: the split of the read, in microseconds.
+    using Clock = std::chrono::steady_clock;
+    const bool timing = std::getenv("HOT_TIMING") != nullptr;
+    const auto us_since = [](Clock::time_point t) {
+        return static_cast<long long>(
+            std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - t).count());
+    };
+    long long t_read = 0, t_scan = 0, t_exists = 0, t_copy = 0, t_parse = 0;
+    size_t n_own = 0, n_foreign = 0, n_missing = 0;
+    auto t = Clock::now();
     if (!read_text(path, text))
         return result;
+    t_read = us_since(t);
+    const auto report = [&]
+    {
+        if (timing)
+            std::fprintf(stderr,
+                "hot: timing compile db read %lld us scan %lld us exists %lld us copy %lld us parse-own %lld us; "
+                "bytes %zu own %zu foreign %zu missing %zu\n",
+                t_read, t_scan, t_exists, t_copy, t_parse, text.size(), n_own, n_foreign, n_missing);
+    };
     // An entry of this backend has a file in the generated directory. The backend parses these
     // entries. It keeps the text of each other entry and writes it back as it is.
     std::string prefix = absolute_path(opt_.generated_dir).string();
@@ -1726,18 +1746,30 @@ std::map<std::string, CompileCommandEntry> ClangFilesBackend::read_compile_comma
     };
     std::error_code ec;
     std::vector<DbSlice> slices;
+    t = Clock::now();
     bool scanned = !prefix.empty() && scan_compile_db(text, slices);
+    t_scan = us_since(t);
     if (scanned)
     {
         for (const DbSlice& sl : slices)
         {
-            if (!fs::exists(sl.file, ec))
-                continue;
-            if (!ours(sl.file))
+            t = Clock::now();
+            const bool exists = fs::exists(sl.file, ec);
+            t_exists += us_since(t);
+            if (!exists)
             {
-                foreign[sl.file] = text.substr(sl.begin, sl.end - sl.begin);
+                ++n_missing;
                 continue;
             }
+            if (!ours(sl.file))
+            {
+                t = Clock::now();
+                foreign[sl.file] = text.substr(sl.begin, sl.end - sl.begin);
+                t_copy += us_since(t);
+                ++n_foreign;
+                continue;
+            }
+            t = Clock::now();
             CompileCommandEntry e;
             bool has_arguments = false;
             if (!JsonReader(text.substr(sl.begin, sl.end - sl.begin)).parse_single(e, has_arguments))
@@ -1747,9 +1779,14 @@ std::map<std::string, CompileCommandEntry> ClangFilesBackend::read_compile_comma
             }
             if (has_arguments && !e.file.empty())
                 result[e.file] = std::move(e);
+            t_parse += us_since(t);
+            ++n_own;
         }
         if (scanned)
+        {
+            report();
             return result;
+        }
         result.clear();
         foreign.clear();
     }
@@ -1804,10 +1841,36 @@ void ClangFilesBackend::flush_compile_commands()
     if (!compile_db_dirty_ || opt_.compile_commands_dir.empty() || opt_.generated_dir.empty())
         return;
     compile_db_dirty_ = false;
+    // HOT_TIMING: the time of each phase, in microseconds, in one line.
+    using Clock = std::chrono::steady_clock;
+    const bool timing = std::getenv("HOT_TIMING") != nullptr;
+    auto tp = Clock::now();
+    long long t_exists = 0, t_check = 0, t_read = 0, t_merge = 0, t_text = 0, t_write = 0;
+    const auto lap = [&](long long& acc)
+    {
+        const auto now = Clock::now();
+        acc += std::chrono::duration_cast<std::chrono::microseconds>(now - tp).count();
+        tp = now;
+    };
+    struct Report
+    {
+        bool on;
+        long long &a, &b, &c, &d, &e, &g;
+        size_t commands;
+        ~Report()
+        {
+            if (on)
+                std::fprintf(stderr,
+                    "hot: timing flush split own-exists %lld us check %lld us read-db %lld us merge-render %lld us "
+                    "text-compare %lld us write %lld us; own entries %zu\n",
+                    a, b, c, d, e, g, commands);
+        }
+    } report{timing, t_exists, t_check, t_read, t_merge, t_text, t_write, commands_.size()};
     std::error_code ec;
     // An entry whose generated file is gone (a removed unit) goes.
     for (auto it = commands_.begin(); it != commands_.end();)
         it = fs::exists(it->first, ec) ? std::next(it) : commands_.erase(it);
+    lap(t_exists);
     const fs::path dir(opt_.compile_commands_dir);
     const fs::path db = dir / "compile_commands.json";
     // The stamp of the file. A different stamp means a write of another process.
@@ -1825,6 +1888,27 @@ void ClangFilesBackend::flush_compile_commands()
     };
     int64_t mtime = 0;
     uintmax_t size = 0;
+    if (!disk_known_)
+    {
+        // The prewarm read is a result only when the file has the same stamp. The wait is for the
+        // read only: the thread never takes "mutex_".
+        std::unique_lock<std::mutex> l(pw_mutex_);
+        pw_cv_.wait(l, [this] { return !pw_reading_; });
+        if (pw_ready_)
+        {
+            pw_ready_ = false;
+            if (stamp(mtime, size) && mtime == pw_mtime_ && size == pw_size_)
+            {
+                disk_commands_ = std::move(pw_commands_);
+                disk_rendered_ = std::move(pw_rendered_);
+                disk_mtime_ = pw_mtime_;
+                disk_size_ = pw_size_;
+                disk_known_ = true;
+            }
+            pw_commands_.clear();
+            pw_rendered_.clear();
+        }
+    }
     // The file is the same as at the last read or write, and it has the entries of this backend:
     // no work. A warm start of many units otherwise reads and writes the file for each unit.
     if (disk_known_ && stamp(mtime, size) && mtime == disk_mtime_ && size == disk_size_)
@@ -1842,6 +1926,7 @@ void ClangFilesBackend::flush_compile_commands()
     }
     // The file is the same as at the last write, but an entry changed. The text of the other
     // entries is the same: the backend keeps it, so it does not read and parse the file again.
+    lap(t_check);
     std::map<std::string, CompileCommandEntry> merged;
     std::map<std::string, std::string> rendered;
     std::string old_text;
@@ -1868,6 +1953,7 @@ void ClangFilesBackend::flush_compile_commands()
         merged = read_compile_commands(old_text, rendered);
         ++compile_db_reads_;
     }
+    lap(t_read);
     disk_known_ = false;
     disk_commands_.clear();
     disk_rendered_.clear();
@@ -1879,6 +1965,7 @@ void ClangFilesBackend::flush_compile_commands()
         merged[file] = entry;
         rendered[file] = compile_command_entry_json(entry);
     }
+    lap(t_merge);
     std::string text = "[\n";
     size_t n = 0;
     for (const auto& [file, entry] : merged)
@@ -1892,6 +1979,7 @@ void ClangFilesBackend::flush_compile_commands()
     text += "]\n";
     // "old_text" is empty after a fast start: the text of the file is not known, but the stamp is.
     const bool same_as_disk = !old_text.empty() && text == old_text;
+    lap(t_text);
     bool stamped = false;
     if (!same_as_disk)
     {
@@ -1906,12 +1994,90 @@ void ClangFilesBackend::flush_compile_commands()
         ++compile_db_writes_;
         stamped = disk_size_ != static_cast<uintmax_t>(-1);
     }
+    lap(t_write);
     // The file now has the text of "merged" and "rendered".
     if (stamped || (same_as_disk && stamp(disk_mtime_, disk_size_)))
     {
         disk_commands_ = std::move(merged);
         disk_rendered_ = std::move(rendered);
         disk_known_ = true;
+    }
+}
+
+void ClangFilesBackend::wait_for_prewarm()
+{
+    std::thread t;
+    {
+        std::lock_guard<std::mutex> lock(pw_mutex_);
+        t = std::move(pw_thread_);
+    }
+    if (t.joinable())
+        t.join();
+}
+
+void ClangFilesBackend::prewarm(const std::vector<ScriptSource>&)
+{
+    const char* off = std::getenv("HOT_PREWARM");
+    if (off && std::string(off) == "0")
+        return;
+    if (opt_.compile_commands_dir.empty() || opt_.generated_dir.empty())
+        return;
+    std::lock_guard<std::mutex> lock(pw_mutex_);
+    if (pw_thread_.joinable() || pw_reading_)
+        return; // one prewarm for each backend
+    pw_reading_ = true;
+    try
+    {
+        pw_thread_ = std::thread(
+            [this, hook = pw_hook_]
+            {
+                std::map<std::string, CompileCommandEntry> commands;
+                std::map<std::string, std::string> rendered;
+                int64_t mtime = 0;
+                uintmax_t size = 0;
+                bool ok = false;
+                try
+                {
+                    if (hook)
+                        hook();
+                    // The stamp comes before the read: a write after it makes the stamp differ.
+                    const fs::path db = fs::path(opt_.compile_commands_dir) / "compile_commands.json";
+                    std::error_code e1, e2;
+                    const fs::file_time_type t = fs::last_write_time(db, e1);
+                    size = fs::file_size(db, e2);
+                    mtime = static_cast<int64_t>(t.time_since_epoch().count());
+                    if (!e1 && !e2)
+                    {
+                        std::string text;
+                        commands = read_compile_commands(text, rendered);
+                        // As the direct read path: "rendered" has every key of "commands", so the
+                        // flush prunes a removed own file like it does after a direct read.
+                        for (const auto& [file, entry] : commands)
+                            rendered.emplace(file, compile_command_entry_json(entry));
+                        ok = !rendered.empty() || !commands.empty();
+                    }
+                }
+                catch (...)
+                {
+                    ok = false;
+                }
+                std::lock_guard<std::mutex> l(pw_mutex_);
+                ++pw_reads_;
+                if (ok)
+                {
+                    pw_commands_ = std::move(commands);
+                    pw_rendered_ = std::move(rendered);
+                    pw_mtime_ = mtime;
+                    pw_size_ = size;
+                    pw_ready_ = true;
+                }
+                pw_reading_ = false;
+                pw_cv_.notify_all();
+            });
+    }
+    catch (...)
+    {
+        pw_reading_ = false; // no thread: the first flush reads the file itself
     }
 }
 

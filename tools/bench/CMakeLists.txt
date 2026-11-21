@@ -69,3 +69,8 @@ target_compile_definitions(bench_backends_opt PRIVATE BENCH_AOT_OPT=1
 add_executable(bench_reload bench_reload.cpp)
 target_link_libraries(bench_reload PRIVATE hot_backend)
 set_target_properties(bench_reload PROPERTIES ENABLE_EXPORTS ON)
+
+# compile_db_bench: the time split of ClangFilesBackend::read_compile_commands (HOT-59).
+# Usage: HOT_TIMING=1 compile_db_bench DB_DIR GENERATED_DIR
+add_executable(compile_db_bench compile_db_bench.cpp)
+target_link_libraries(compile_db_bench PRIVATE hot_backend)
