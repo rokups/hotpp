@@ -1024,3 +1024,58 @@ TEST(SessionCache, MarkedNameNeedsNoParse)
     hotc::translate(o, s);
     EXPECT_GT(s.parse_count(), n);
 }
+
+// HOT-57 delta probe: a fresh entry parses only the absent names, facts and queries. Each step
+// must give the same result as a new session. A type miss needs no walk of the root and no hash
+// of the headers, so its walk and stamp times are far below the times of the full parse.
+TEST(SessionCache, DeltaProbeGivesTheSameResultAsANewSession)
+{
+    TempDir dir;
+    const std::string native = "#include <regex>\n#include <iostream>\n#include <unordered_map>\n"
+                               "namespace eng {\n"
+                               "struct Blob { int v = 0; };\nstruct Extra { int n = 0; };\nstruct Other { int k = 0; };\n"
+                               "inline void ReadBlob(const Blob&) {}\ninline void TakeBlob(Blob&) {}\n}\n"
+                               "template <class T> class Tmpl { public: virtual ~Tmpl() {} virtual void Step(T v) {} };\n"
+                               "class Panel { public: virtual ~Panel() {} virtual void Layout(int w) {} };\n";
+    write_file(dir.path() / "w.h",
+        native + "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n");
+    // A file that changed just before the parse makes the unit not kept: make it older.
+    fs::last_write_time(dir.path() / "w.h", fs::last_write_time(dir.path() / "w.h") - std::chrono::seconds(5));
+    const std::string head = "using \"w.h\";\nusing eng;\n"
+                             "class Foo : Tmpl<int> {\n    override void Step(int v) { }\n"
+                             "    void A(Blob b) { ReadBlob(b); }\n}\n";
+    const std::string bar = "class Bar : Widget {\n    override void Update(float dt) { }\n";
+    hotc::TranslatorSession session;
+    const auto step = [&](const std::string& text, const char* what)
+    {
+        const hotc::TranslateOptions o = temp_options(dir, text);
+        const hotc::TranslateResult r = hotc::translate(o, session);
+        expect_same(r, plain_translate(o), what);
+        EXPECT_TRUE(r.ok) << what << "\n" << r.diagnostics;
+        EXPECT_EQ(r.timing.parses, 1) << what;
+        return r;
+    };
+    const hotc::TranslateResult a = step(head + bar + "}\n", "first");
+    EXPECT_NE(a.cpp.find("ReadBlob("), std::string::npos) << a.cpp;
+
+    // A new qualified native type: only its facts are absent.
+    const hotc::TranslateResult b = step(head + bar + "    eng.Extra e;\n}\n", "type miss");
+    EXPECT_EQ(b.timing.unit_reused, 1);
+    EXPECT_LT(b.timing.walk_ns * 4, a.timing.walk_ns)
+        << "walk " << b.timing.walk_ns / 1000 << " us, full " << a.timing.walk_ns / 1000 << " us";
+    EXPECT_LT(b.timing.stamps_ns * 2, a.timing.stamps_ns)
+        << "stamps " << b.timing.stamps_ns / 1000 << " us, full " << a.timing.stamps_ns / 1000 << " us";
+
+    // A bare type (@decl), a new call (@fn), a new base name and a new template instance base.
+    const std::string more = "class Qux : Tmpl<float> {\n    override void Step(float v) { }\n"
+                             "    void T(Blob b) { TakeBlob(b); }\n}\n"
+                             "class Baz : Panel {\n    override void Layout(int w) { }\n}\n";
+    step(head + more + bar + "    eng.Extra e;\n    Other o;\n}\n", "new queries and bases");
+
+    // A header edit between two texts: a full parse with new facts (Widget gets "Draw").
+    write_file(dir.path() / "w.h",
+        native + "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} virtual void Draw() {} };\n");
+    const hotc::TranslateResult d =
+        step(head + more + bar + "    eng.Extra e;\n    Other o;\n    override void Draw() { }\n}\n", "header edit");
+    EXPECT_EQ(d.slots_out.find("Bar::Draw"), std::string::npos) << d.slots_out; // an override
+}

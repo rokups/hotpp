@@ -3046,6 +3046,8 @@ void answer_function_queries(
 void answer_global_queries(
     CXCursor root, const std::vector<std::string>& queries, std::map<std::string, std::string>& answers)
 {
+    if (std::none_of(queries.begin(), queries.end(), is_global_query))
+        return;
     std::set<std::string> declared;
     std::function<CXChildVisitResult(CXCursor)> walk = [&](CXCursor c)
     {
@@ -3176,8 +3178,86 @@ bool maybe_trivially_copyable(CXCursor cls, int depth = 0)
 // Answers the queries "@code:T" (S26). The name T matches the qualified name of a class at its
 // end, or the name of a typedef or an alias. The answer is "1" when the type can hold a code
 // pointer and may be trivially copyable (a class with a destructor already counts as a holder).
-void answer_code_queries(
-    CXCursor root, const std::vector<std::string>& queries, std::map<std::string, std::string>& answers)
+// The answers of a full parse for the walks of the root, kept in the session entry. A reparse
+// with a preamble loads the AST lazily, so its first walk of the root is slow. A delta probe
+// answers "@decl" and "@code" from this index. The headers are the same (the stamps are equal).
+struct ProbeIndex
+{
+    bool ready = false;
+    std::map<std::string, char> declared; // see answer_decl_queries
+    struct Decl
+    {
+        std::string qname, file;
+        unsigned offset = 0;
+    };
+    std::map<std::string, std::vector<Decl>> code; // the declarations of answer_code_queries, by the last name
+};
+
+// The class definitions, the typedefs and the aliases with a last name in "last" (all when null).
+void collect_code_decls(CXCursor root, const std::set<std::string>* last, std::map<std::string, std::vector<CXCursor>>& decls)
+{
+    std::function<CXChildVisitResult(CXCursor)> walk = [&](CXCursor c)
+    {
+        const CXCursorKind k = clang_getCursorKind(c);
+        if (k == CXCursor_ClassDecl || k == CXCursor_StructDecl)
+        {
+            if (clang_isCursorDefinition(c) && (!last || last->count(cxs(clang_getCursorSpelling(c)))))
+                decls[qualified_name(c)].push_back(c);
+            visit(c, walk);
+        }
+        else if (k == CXCursor_TypedefDecl || k == CXCursor_TypeAliasDecl)
+        {
+            if (!last || last->count(cxs(clang_getCursorSpelling(c))))
+                decls[qualified_name(c)].push_back(c);
+        }
+        else if (k == CXCursor_Namespace || k == CXCursor_LinkageSpec)
+        {
+            visit(c, walk);
+        }
+        return CXChildVisit_Continue;
+    };
+    visit(root, walk);
+}
+
+// Fills "out" from the index. False when a declaration is not found again: then a walk answers.
+bool code_decls_from_index(CXTranslationUnit tu, const ProbeIndex& index, const std::set<std::string>& last,
+    std::map<std::string, std::vector<CXCursor>>& out)
+{
+    for (const std::string& n : last)
+    {
+        const auto it = index.code.find(n);
+        if (it == index.code.end())
+            continue;
+        for (const ProbeIndex::Decl& d : it->second)
+        {
+            const CXFile f = clang_getFile(tu, d.file.c_str());
+            const CXCursor c = f ? clang_getCursor(tu, clang_getLocationForOffset(tu, f, d.offset)) : clang_getNullCursor();
+            if (clang_Cursor_isNull(c) || cxs(clang_getCursorSpelling(c)) != n || qualified_name(c) != d.qname)
+                return false;
+            out[d.qname].push_back(c);
+        }
+    }
+    return true;
+}
+
+// Fills the index of a full parse (see ProbeIndex).
+void fill_code_index(CXCursor root, ProbeIndex& index)
+{
+    std::map<std::string, std::vector<CXCursor>> decls;
+    collect_code_decls(root, nullptr, decls);
+    for (const auto& [qn, v] : decls)
+        for (CXCursor c : v)
+        {
+            CXFile f = nullptr;
+            unsigned offset = 0;
+            clang_getFileLocation(clang_getCursorLocation(c), &f, nullptr, nullptr, &offset);
+            const std::string name = cxs(clang_getCursorSpelling(c));
+            index.code[name].push_back({qn, f ? cxs(clang_getFileName(f)) : std::string(), offset});
+        }
+}
+
+void answer_code_queries(CXTranslationUnit tu, CXCursor root, const std::vector<std::string>& queries,
+    std::map<std::string, std::string>& answers, const ProbeIndex* index)
 {
     std::set<std::string> last; // the last name of each type
     for (const std::string& q : queries)
@@ -3190,27 +3270,11 @@ void answer_code_queries(
     if (last.empty())
         return;
     std::map<std::string, std::vector<CXCursor>> decls; // by qualified name
-    std::function<CXChildVisitResult(CXCursor)> walk = [&](CXCursor c)
+    if (!index || !code_decls_from_index(tu, *index, last, decls))
     {
-        const CXCursorKind k = clang_getCursorKind(c);
-        if (k == CXCursor_ClassDecl || k == CXCursor_StructDecl)
-        {
-            if (clang_isCursorDefinition(c) && last.count(cxs(clang_getCursorSpelling(c))))
-                decls[qualified_name(c)].push_back(c);
-            visit(c, walk);
-        }
-        else if (k == CXCursor_TypedefDecl || k == CXCursor_TypeAliasDecl)
-        {
-            if (last.count(cxs(clang_getCursorSpelling(c))))
-                decls[qualified_name(c)].push_back(c);
-        }
-        else if (k == CXCursor_Namespace || k == CXCursor_LinkageSpec)
-        {
-            visit(c, walk);
-        }
-        return CXChildVisit_Continue;
-    };
-    visit(root, walk);
+        decls.clear();
+        collect_code_decls(root, &last, decls);
+    }
     for (const std::string& q : queries)
     {
         if (!is_code_query(q))
@@ -3247,15 +3311,8 @@ void answer_code_queries(
 //   "o": another template: an alias template, or a template with a non-type parameter or a
 //        template template parameter.
 // A template wins over a class of the same name (an explicit specialization).
-void answer_decl_queries(
-    CXCursor root, const std::vector<std::string>& queries, std::map<std::string, std::string>& answers)
+std::map<std::string, char> collect_declared(CXCursor root)
 {
-    std::set<std::string> wanted;
-    for (const std::string& q : queries)
-        if (is_decl_query(q))
-            wanted.insert(q.substr(6));
-    if (wanted.empty())
-        return;
     std::map<std::string, char> declared;
     auto note = [&](const std::string& name, char kind)
     {
@@ -3311,6 +3368,16 @@ void answer_decl_queries(
         return CXChildVisit_Continue;
     };
     visit(root, walk);
+    return declared;
+}
+
+void answer_decl_queries(CXCursor root, const std::vector<std::string>& queries,
+    std::map<std::string, std::string>& answers, const ProbeIndex* index)
+{
+    if (std::none_of(queries.begin(), queries.end(), is_decl_query))
+        return;
+    std::map<std::string, char> walked;
+    const std::map<std::string, char>& declared = index ? index->declared : (walked = collect_declared(root));
     for (const std::string& q : queries)
         if (is_decl_query(q))
         {
@@ -3456,7 +3523,8 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
     const std::set<std::string>& import_paths, std::map<std::string, BaseInfo>& out, std::vector<FileStamp>& files,
     Hierarchy& hierarchy, const std::vector<FactReq>& reqs, FactMap& facts, const std::vector<std::string>& queries,
     std::map<std::string, std::string>& answers, const VirtualFiles& virtual_files, hot::FileSystem* fs,
-    hotc::TuCache* cache, const std::string& key, bool reuse, hotc::TranslateTiming* timing)
+    hotc::TuCache* cache, const std::string& key, bool reuse, bool delta, ProbeIndex& index,
+    hotc::TranslateTiming* timing)
 {
     const auto since = [](std::chrono::steady_clock::time_point& t)
     {
@@ -3600,74 +3668,84 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
     if (diag_error)
         fail(0, "the imports have errors");
 
-    std::set<std::string> seen;
-    struct IncludeCtx
+    // A delta keeps the stamps of the entry: the caller checks them again after the parse. The
+    // inclusions of a unit with a preamble are slow to read.
+    if (!delta)
     {
-        std::set<std::string>* seen;
-        std::vector<FileStamp>* files;
-        hot::FileSystem* fs;
-        const std::map<std::string, std::string>* virtual_names;
-        CXTranslationUnit tu;
-        const std::string* main_path;
-    };
-    auto on_include = [](CXFile f, CXSourceLocation*, unsigned, CXClientData d)
-    {
-        auto* v = static_cast<IncludeCtx*>(d);
-        std::string path = cxs(clang_getFileName(f));
-        // The probe file. Not "depth == 0": with a preamble, libclang gives other depths.
-        if (path == *v->main_path)
-            return;
-        const auto vn = v->virtual_names->find(path);
-        if (vn != v->virtual_names->end())
-            path = vn->second; // an unsaved file: the stamp uses the path of the file system
-        if (v->seen->insert(path).second)
+        std::set<std::string> seen;
+        struct IncludeCtx
         {
-            v->files->push_back(stamp_of(v->fs, path));
-            // The start of the file itself tells if the file is a system header.
-            v->files->back().system = clang_Location_isInSystemHeader(clang_getLocation(v->tu, f, 1, 1)) != 0;
-        }
-    };
-    IncludeCtx ctx{&seen, &files, fs, &virtual_names, tu, &main_path};
-    files.clear();
-    clang_getInclusions(tu, on_include, &ctx);
-    // A preamble gives the inclusions in another order: sort them, so each parse gives the same list.
-    std::sort(files.begin(), files.end(), [](const FileStamp& x, const FileStamp& y) { return x.path < y.path; });
-
-    // A new header earlier in the include path hides a header that the parse used.
-    std::vector<std::string> dirs;
-    for (const auto& a : args)
-        if (a.size() > 2 && a.compare(0, 2, "-I") == 0)
-            dirs.push_back(a.substr(2));
-    for (const auto& ip : import_paths)
-        if (!ip.empty() && ip.front() != '<')
-            add_shadow_stamps(fs, ip, dirs, seen, files);
-        else if (ip.size() > 2)
-            add_shadow_stamps(fs, ip.substr(1, ip.size() - 2), dirs, seen, files);
-    const std::vector<FileStamp> used = files;
-    for (const FileStamp& f : used)
-        for (const auto& d : dirs)
-            if ((f.mtime_ns >= 0 || f.virt) && f.path.size() > d.size() + 1 && f.path.compare(0, d.size() + 1, d + "/") == 0)
+            std::set<std::string>* seen;
+            std::vector<FileStamp>* files;
+            hot::FileSystem* fs;
+                const std::map<std::string, std::string>* virtual_names;
+            CXTranslationUnit tu;
+            const std::string* main_path;
+        };
+        auto on_include = [](CXFile f, CXSourceLocation*, unsigned, CXClientData d)
+        {
+            auto* v = static_cast<IncludeCtx*>(d);
+            std::string path = cxs(clang_getFileName(f));
+            // The probe file. Not "depth == 0": with a preamble, libclang gives other depths.
+            if (path == *v->main_path)
+                return;
+            const auto vn = v->virtual_names->find(path);
+            if (vn != v->virtual_names->end())
+                path = vn->second; // an unsaved file: the stamp uses the path of the file system
+            if (v->seen->insert(path).second)
             {
-                add_shadow_stamps(fs, f.path.substr(d.size() + 1), dirs, seen, files);
-                break;
+                v->files->push_back(stamp_of(v->fs, path));
+                // The start of the file itself tells if the file is a system header.
+                v->files->back().system = clang_Location_isInSystemHeader(clang_getLocation(v->tu, f, 1, 1)) != 0;
             }
+        };
+        IncludeCtx ctx{&seen, &files, fs, &virtual_names, tu, &main_path};
+        files.clear();
+        clang_getInclusions(tu, on_include, &ctx);
+        // A preamble gives the inclusions in another order: sort them, so each parse gives the same list.
+        std::sort(files.begin(), files.end(), [](const FileStamp& x, const FileStamp& y) { return x.path < y.path; });
 
+        // A new header earlier in the include path hides a header that the parse used.
+        std::vector<std::string> dirs;
+        for (const auto& a : args)
+            if (a.size() > 2 && a.compare(0, 2, "-I") == 0)
+                dirs.push_back(a.substr(2));
+        for (const auto& ip : import_paths)
+            if (!ip.empty() && ip.front() != '<')
+                add_shadow_stamps(fs, ip, dirs, seen, files);
+            else if (ip.size() > 2)
+                add_shadow_stamps(fs, ip.substr(1, ip.size() - 2), dirs, seen, files);
+        const std::vector<FileStamp> used = files;
+        for (const FileStamp& f : used)
+            for (const auto& d : dirs)
+                if ((f.mtime_ns >= 0 || f.virt) && f.path.size() > d.size() + 1 && f.path.compare(0, d.size() + 1, d + "/") == 0)
+                {
+                    add_shadow_stamps(fs, f.path.substr(d.size() + 1), dirs, seen, files);
+                    break;
+                }
+    }
     if (timing)
         timing->stamps_ns += since(t_step);
     CXCursor root = clang_getTranslationUnitCursor(tu);
+    // The declaration of a trailer name ("hotc_f1", "hotc_q0") of the probe: the text is "head name =".
+    // The " =" stops "hotc_f1" at "hotc_f10". A cursor at the offset needs no walk of the root.
+    const CXFile main_file = clang_getFile(tu, main_path.c_str());
+    const auto trailer = [&](const std::string& head, const std::string& name, CXCursorKind kind,
+                             std::map<std::string, CXCursor>& found)
+    {
+        const size_t p = full_probe.find(head + name + " =");
+        if (p == std::string::npos || !main_file)
+            return;
+        const CXCursor c = clang_getCursor(
+            tu, clang_getLocationForOffset(tu, main_file, static_cast<unsigned>(p + head.size())));
+        if (clang_getCursorKind(c) == kind && cxs(clang_getCursorSpelling(c)) == name)
+            found[name] = c;
+    };
     if (!reqs.empty())
     {
         std::map<std::string, CXCursor> vars;
-        visit(root, [&](CXCursor c)
-        {
-            if (clang_getCursorKind(c) == CXCursor_VarDecl)
-            {
-                const std::string n = cxs(clang_getCursorSpelling(c));
-                if (n.compare(0, 6, "hotc_f") == 0)
-                    vars[n] = c;
-            }
-            return CXChildVisit_Continue;
-        });
+        for (size_t n = 0; n < fact_lines.size(); ++n)
+            trailer("bool ", "hotc_f" + std::to_string(n + 1), CXCursor_VarDecl, vars);
         for (size_t n = 0; n < fact_lines.size(); ++n)
         {
             auto it = vars.find("hotc_f" + std::to_string(n + 1));
@@ -3702,16 +3780,10 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
     if (!reqs.empty() || !queries.empty())
     {
         std::map<std::string, CXCursor> aliases;
-        visit(root, [&](CXCursor c)
-        {
-            if (clang_getCursorKind(c) == CXCursor_TypeAliasDecl)
-            {
-                const std::string n = cxs(clang_getCursorSpelling(c));
-                if (n.compare(0, 6, "hotc_q") == 0 || n.compare(0, 6, "hotc_c") == 0)
-                    aliases[n] = c;
-            }
-            return CXChildVisit_Continue;
-        });
+        for (size_t i = 0; i < queries.size(); ++i)
+            trailer("using ", "hotc_q" + std::to_string(i), CXCursor_TypeAliasDecl, aliases);
+        for (size_t i = 0; i < reqs.size(); ++i)
+            trailer("using ", "hotc_c" + std::to_string(i), CXCursor_TypeAliasDecl, aliases);
         for (size_t i = 0; i < queries.size(); ++i)
         {
             auto it = aliases.find("hotc_q" + std::to_string(i));
@@ -3719,9 +3791,10 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
                 && !is_decl_query(queries[i]) && !is_global_query(queries[i]) && !is_global_type_query(queries[i]))
                 answers[queries[i]] = it == aliases.end() ? std::string() : alias_type(it->second);
         }
+        const ProbeIndex* use = delta && index.ready ? &index : nullptr;
         answer_function_queries(root, queries, answers);
-        answer_code_queries(root, queries, answers);
-        answer_decl_queries(root, queries, answers);
+        answer_code_queries(tu, root, queries, answers, use);
+        answer_decl_queries(root, queries, answers, use);
         answer_global_queries(root, queries, answers);
         answer_global_type_queries(root, queries, answers);
         for (size_t i = 0; i < reqs.size(); ++i)
@@ -3738,21 +3811,20 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
             }
     }
     hierarchy.clear();
-    collect_hierarchy(root, hierarchy);
+    if (!delta) // a delta keeps the hierarchy and the index of the entry: they hold only the headers
+    {
+        collect_hierarchy(root, hierarchy);
+        index = {};
+        index.declared = collect_declared(root);
+        fill_code_index(root, index);
+        index.ready = true;
+    }
     std::map<std::string, CXCursor> instance_bases; // the class of each instance name
     if (!instance_aliases.empty())
     {
         std::map<std::string, CXCursor> aliases;
-        visit(root, [&](CXCursor c)
-        {
-            if (clang_getCursorKind(c) == CXCursor_TypeAliasDecl)
-            {
-                const std::string n = cxs(clang_getCursorSpelling(c));
-                if (n.compare(0, 6, "hotc_b") == 0)
-                    aliases[n] = c;
-            }
-            return CXChildVisit_Continue;
-        });
+        for (const auto& ia : instance_aliases)
+            trailer("using ", ia.first, CXCursor_TypeAliasDecl, aliases);
         for (const auto& [alias, name] : instance_aliases)
         {
             auto it = aliases.find(alias);
@@ -3866,6 +3938,7 @@ struct TranslatorSession::Impl
         // An absent name has no declaration. The map does not depend on the script classes.
         std::map<std::string, std::string> global_types;
         bool has_global_types = false;
+        ProbeIndex index; // the walks of the root for a delta probe
         // The start of the earliest parse that gave facts to the entry (TranslateResult::parse_start_ns).
         int64_t parse_start_ns = 0;
         // Clears all data fields. The caller holds "mutex". If you add a field, add it here.
@@ -3878,6 +3951,7 @@ struct TranslatorSession::Impl
             queries.clear();
             global_types.clear();
             has_global_types = false;
+            index = {};
             parse_start_ns = 0;
         }
     };
@@ -3999,7 +4073,8 @@ namespace
 std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, const std::string& key,
     const std::set<std::string>& names, const std::vector<FactReq>& reqs, const std::vector<std::string>& queries,
     const std::function<void(std::map<std::string, BaseInfo>&, std::vector<FileStamp>&, Hierarchy&, FactMap&,
-        std::map<std::string, std::string>&, bool)>& parse,
+        std::map<std::string, std::string>&, const std::set<std::string>&, const std::vector<FactReq>&,
+        const std::vector<std::string>&, bool, bool, ProbeIndex&)>& parse,
     Hierarchy& hierarchy, FactMap& facts_out, std::map<std::string, std::string>& answers_out, hot::FileSystem* fs,
     std::vector<std::string>* deps, std::vector<std::string>* shadows, int64_t* parse_start_ns,
     hotc::TranslateTiming* timing, const std::string& marker)
@@ -4030,6 +4105,7 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
     if (!fresh)
         e.reset();
     // The entry misses these names: the count and the first one go to the timing.
+    // A fresh entry parses only these (the delta probe).
     int64_t absent = 0;
     std::string first_absent;
     const auto miss = [&](const std::string& what)
@@ -4037,13 +4113,20 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
         if (absent++ == 0)
             first_absent = what;
     };
+    std::set<std::string> absent_names;
+    std::vector<FactReq> absent_reqs;
+    std::vector<std::string> absent_queries;
     for (const auto& n : names)
         if (!e.bases.count(n) && !marked(n))
+        {
             miss(n);
+            absent_names.insert(n);
+        }
     for (const FactReq& r : reqs)
     {
         if (marked(r.type))
             continue;
+        const int64_t before = absent;
         auto it = e.facts.find(r.type);
         if (it == e.facts.end())
             miss(r.type);
@@ -4051,10 +4134,15 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
             for (const std::string& m : r.members)
                 if (!it->second.members.count(m))
                     miss(r.type + "::" + m);
+        if (absent != before)
+            absent_reqs.push_back(r); // all lines of the type: the probe sets each fact of it again
     }
     for (const std::string& q : queries)
         if (!marked(q) && !(is_global_type_query(q) ? e.has_global_types : e.queries.count(q) != 0))
+        {
             miss(q);
+            absent_queries.push_back(q);
+        }
     const bool complete = fresh && absent == 0;
     if (timing && !complete && timing->absent++ == 0)
         timing->first_absent = first_absent.empty() ? "(stale entry)" : first_absent;
@@ -4080,9 +4168,39 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
                 ++timing->parses;
             }
         };
+        // A delta keeps the stamps, the hierarchy and the index of the entry. The files must be the same
+        // after the parse; else a file changed after the check, and a full parse starts from an empty entry.
+        const bool delta = fresh && !e.hierarchy.empty();
         try
         {
-            parse(out, files, hier, facts, answers, fresh);
+            if (delta)
+            {
+                files = e.files;
+                parse(out, files, hier, facts, answers, absent_names, absent_reqs, absent_queries, true, true, e.index);
+                // The same check as at the start, on a copy: a "stamp_fresh" call can change the record.
+                const auto check_start = std::chrono::steady_clock::now();
+                std::vector<FileStamp> check = e.files;
+                bool same = true;
+                for (size_t i = 0; same && i < check.size(); ++i)
+                    same = stamp_fresh(fs, check[i]);
+                if (timing)
+                    timing->stamps_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now() - check_start).count();
+                if (same)
+                {
+                    hier = std::move(e.hierarchy);
+                }
+                else
+                {
+                    e.reset();
+                    out.clear();
+                    facts.clear();
+                    answers.clear();
+                    parse(out, files, hier, facts, answers, names, reqs, queries, false, false, e.index);
+                }
+            }
+            else
+                parse(out, files, hier, facts, answers, names, reqs, queries, fresh, false, e.index);
         }
         catch (...)
         {
@@ -6053,10 +6171,12 @@ void translate_impl(
     phases.next(nullptr); // the parse and the lock wait have their own fields
     const std::map<std::string, BaseInfo> bases = session_bases(session, key, base_names, reqs, query_texts,
         [&](std::map<std::string, BaseInfo>& out, std::vector<FileStamp>& files, Hierarchy& h, FactMap& fm,
-            std::map<std::string, std::string>& qa, bool fresh)
+            std::map<std::string, std::string>& qa, const std::set<std::string>& names_in,
+            const std::vector<FactReq>& reqs_in, const std::vector<std::string>& queries_in, bool fresh, bool delta,
+            ProbeIndex& index)
     {
-        parse_bases(probe, args, base_names, import_paths, out, files, h, reqs, fm, query_texts, qa, res.virtual_files,
-            fs, &session.probe_cache, key, fresh, &res.timing);
+        parse_bases(probe, args, names_in, import_paths, out, files, h, reqs_in, fm, queries_in, qa,
+            res.virtual_files, fs, &session.probe_cache, key, fresh, delta, index, &res.timing);
     },
         hier, facts, query_answers, fs, &res.dependencies, &res.shadow_paths, &res.parse_start_ns,
         &res.timing, in.unknown_marker);
