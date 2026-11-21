@@ -13,7 +13,7 @@ Some platforms cannot create code at run time. A program on these platforms runs
 |---|---|
 | iOS (and tvOS, visionOS, watchOS) | Required. Not tested. |
 | Android | Wanted. Not tested. |
-| Web (Emscripten) | Wanted. Not tested. |
+| Web (Emscripten) | Wanted. Build and node test in CI. |
 | UWP (`WindowsStore`) | Wanted. Not tested. |
 
 An AOT-only program has no code generation at run time: no libclang or LLVM, no JIT, no compiler process, no `dlopen` of generated libraries and no file watcher. The program links `hot::aot` and `hot::runtime_core`, or `hot::runtime` when it needs the loader for the AOT table (for example rbfx-script).
@@ -37,9 +37,13 @@ The desktop defaults do not change.
 3. Compile the generated C++ with the target toolchain into a static library. Link it with `hot::aot` into the game.
 4. The game registers the units with `hot::AotRegistry` (`hot/aot.h`).
 
+For web, use the preset `web-emscripten` (it needs `EMSDK` and a host `hotc` from the preset `linux-clang-files`, `RelWithDebInfo`). It builds the samples and runs their tests in node. Exceptions need `-fexceptions`: the preset sets it in `CMAKE_CXX_FLAGS` and `CMAKE_EXE_LINKER_FLAGS`. A web program that has no `-fexceptions` aborts at the first `throw`. The message is: `Exception thrown, but exception catching is not enabled`.
+
 The packing step of a game engine (for example `rbfx_script_pack`) is not part of this repository.
 
 ## What is verified
+
+Emscripten 3.1.56 builds the whole web configuration (`hot_runtime`, `hot_aot` and the samples) with `-fexceptions`. The output of the host `hotc --aot` compiles for wasm32 without change. The 4 tests `sample_aot_*` pass in node. The AOT-only build does not reach the thread pool, so it needs no pthreads. A small probe with `try { throw 1; } catch (...) {}` runs in node with `-fexceptions` and aborts without it.
 
 The option `HOT_FORCE_AOT_ONLY` (default `OFF`) builds a desktop host as an AOT-only platform. It sets `HOT_AOT_ONLY_PLATFORM`. The backends stay off and `ON` is a configure error for them. The loader has no `dlopen` and `hot_runtime` has `HOT_AOT_ONLY`. The translator and `hotc` stay on, because the host is the target and the AOT tests need `hotc`. The option needs `HOT_SCRIPT_MODE` `AOT` or `AOT_OPTIMIZED`. The preset `linux-clang-aot-only` sets it.
 
@@ -54,7 +58,11 @@ On Linux with the preset `linux-clang-aot`:
 
 ## What is not verified
 
-- No build for iOS, Android, Emscripten or UWP. No toolchain is available. The target headers are not available for a `--target=... -fsyntax-only` check either.
-- The runtime uses `std::mutex`, `std::condition_variable`, `thread_local` and C++ exceptions (`ScriptError`). Web needs `-fexceptions` (or `-sDISABLE_EXCEPTION_CATCHING=0`). A web build without pthreads has only one thread. A wait on a task from another thread cannot finish there.
+- No build for iOS, Android or UWP. No toolchain is available. The target headers are not available for a `--target=... -fsyntax-only` check either.
+- The web build is not run in a browser.
+- Pthreads and `SharedArrayBuffer` are not tested. A web build without pthreads has only one thread. A wait on a task from another thread cannot finish there.
+- `-fwasm-exceptions` is not tested.
+- No test runs a throw path of the runtime (`ScriptError`) in web.
+- The preset `web-emscripten` is checked with an override of `HOT_HOST_HOTC`. It is not checked with its real host `hotc` path until CI runs.
 - Script coroutines (`frame_reaper.cpp`) need C++20 coroutine support in the target library.
 - UWP forbids some Win32 calls. The AOT part uses none of them, but this is not tested.
