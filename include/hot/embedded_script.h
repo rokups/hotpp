@@ -253,12 +253,17 @@ inline bool is_name_end(char c)
 // Replaces "&lt;", "&gt;", "&amp;" and "&quot;" in one pass.
 inline std::string decode_entities(std::string_view v)
 {
-    static const std::pair<std::string_view, char> map[] = {{"&lt;", '<'}, {"&gt;", '>'}, {"&amp;", '&'}, {"&quot;", '"'}};
+    // The rules of RmlUi StringUtilities::DecodeRml: one pass, so "&amp;quot;" gives "&quot;".
+    // "&#N;" and "&#xH;" have 1 to 8 digits. A code point of 0 stays as text. A code point above
+    // U+10FFFF gives no text.
     std::string r;
+    const auto at = [&](size_t k) { return k < v.size() ? v[k] : '\0'; };
     for (size_t i = 0; i < v.size();)
     {
-        bool hit = false;
         if (v[i] == '&')
+        {
+            static const std::pair<std::string_view, char> map[] = {{"&lt;", '<'}, {"&gt;", '>'}, {"&amp;", '&'}, {"&quot;", '"'}};
+            bool hit = false;
             for (const auto& m : map)
                 if (v.compare(i, m.first.size(), m.first) == 0)
                 {
@@ -267,14 +272,52 @@ inline std::string decode_entities(std::string_view v)
                     hit = true;
                     break;
                 }
-        if (!hit)
-            r += v[i++];
+            if (hit)
+                continue;
+            if (at(i + 1) == '#')
+            {
+                const bool hex = at(i + 2) == 'x';
+                const size_t start = i + 2 + (hex ? 1 : 0);
+                size_t j = 0;
+                unsigned long cp = 0;
+                for (; j < 8; ++j)
+                {
+                    const char c = at(start + j);
+                    int d = -1;
+                    if (c >= '0' && c <= '9')
+                        d = c - '0';
+                    else if (hex && c >= 'a' && c <= 'f')
+                        d = c - 'a' + 10;
+                    else if (hex && c >= 'A' && c <= 'F')
+                        d = c - 'A' + 10;
+                    if (d < 0)
+                        break;
+                    cp = cp * (hex ? 16 : 10) + static_cast<unsigned long>(d);
+                }
+                if (j > 0 && at(start + j) == ';' && cp != 0)
+                {
+                    if (cp < 0x80)
+                        r += static_cast<char>(cp);
+                    else if (cp < 0x800)
+                        r += {char(0xC0 | (cp >> 6)), char(0x80 | (cp & 0x3F))};
+                    else if (cp < 0x10000)
+                        r += {char(0xE0 | (cp >> 12)), char(0x80 | ((cp >> 6) & 0x3F)), char(0x80 | (cp & 0x3F))};
+                    else if (cp <= 0x10FFFF)
+                        r += {char(0xF0 | (cp >> 18)), char(0x80 | ((cp >> 12) & 0x3F)), char(0x80 | ((cp >> 6) & 0x3F)),
+                            char(0x80 | (cp & 0x3F))};
+                    i = start + j + 1;
+                    continue;
+                }
+            }
+        }
+        r += v[i++];
     }
     return r;
 }
 
 // Splits at ";" outside quotes. The rules are the rules of the engine function ParsePipe:
-// only "'" quotes, "\" escapes inside quotes. Each part is trimmed. Empty parts go away.
+// only "'" quotes, "\" escapes inside quotes. Each part loses its leading and trailing spaces
+// and tabs (the EASTL trim of the engine). Empty parts go away.
 inline std::vector<std::string> split_handler_value(std::string_view v)
 {
     std::vector<std::string> parts(1);
@@ -300,9 +343,9 @@ inline std::vector<std::string> split_handler_value(std::string_view v)
     {
         size_t b = 0;
         size_t e = p.size();
-        while (b < e && is_space(p[b]))
+        while (b < e && (p[b] == ' ' || p[b] == '\t'))
             ++b;
-        while (e > b && is_space(p[e - 1]))
+        while (e > b && (p[e - 1] == ' ' || p[e - 1] == '\t'))
             --e;
         if (e > b)
             out.push_back(p.substr(b, e - b));
@@ -310,13 +353,11 @@ inline std::vector<std::string> split_handler_value(std::string_view v)
     return out;
 }
 
-// True for a part such as "sound:x" or "event:y" (a prefix, not a script expression).
+// True for a part that the engine does not give to the script host: it starts with the exact
+// text "sound:" or "event:" (CreateSingleEventListener in RmlEventListeners.cpp).
 inline bool has_handler_prefix(const std::string& p)
 {
-    size_t i = 0;
-    while (i < p.size() && (p[i] == '_' || (lower(p[i]) >= 'a' && lower(p[i]) <= 'z')))
-        ++i;
-    return i > 0 && i < p.size() && p[i] == ':' && (i + 1 == p.size() || p[i + 1] != ':');
+    return p.compare(0, 6, "sound:") == 0 || p.compare(0, 6, "event:") == 0;
 }
 
 } // namespace embedded_script_detail
@@ -337,7 +378,7 @@ inline std::string handler_stub_name(std::string_view expr)
 
 // Adds one stub line for each unique handler expression of the `on*` attributes of `text`.
 // The scan covers the whole text. It skips comments, CDATA, processing instructions and the
-// bodies of `script` and `style`. A part with a prefix (for example `sound:`) is not an expression.
+// bodies of `script` and `style`. A part that starts with `sound:` or `event:` is not an expression.
 // A line is `stub_template` with `{name}` and `{expr}` replaced. Each line follows `masked` after
 // a line end, with no padding. An empty `masked` gives `prefix` first. Without a stub the result
 // is `masked`. The template can hold line breaks. The text of an expression goes in unchanged.
