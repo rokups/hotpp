@@ -316,7 +316,7 @@ inline bool has_handler_prefix(const std::string& p)
     size_t i = 0;
     while (i < p.size() && (p[i] == '_' || (lower(p[i]) >= 'a' && lower(p[i]) <= 'z')))
         ++i;
-    return i > 0 && i + 1 < p.size() && p[i] == ':' && p[i + 1] != ':';
+    return i > 0 && i < p.size() && p[i] == ':' && (i + 1 == p.size() || p[i + 1] != ':');
 }
 
 } // namespace embedded_script_detail
@@ -340,7 +340,10 @@ inline std::string handler_stub_name(std::string_view expr)
 // bodies of `script` and `style`. A part with a prefix (for example `sound:`) is not an expression.
 // A line is `stub_template` with `{name}` and `{expr}` replaced. Each line follows `masked` after
 // a line end, with no padding. An empty `masked` gives `prefix` first. Without a stub the result
-// is `masked`. `any` (if not null) is true when a stub was added.
+// is `masked`. The template can hold line breaks. The text of an expression goes in unchanged.
+// A template must put `{expr}` on its own line, followed by a line with the closing `;}`. Then a
+// `//` comment in an expression ends at its line.
+// `any` (if not null) is true when a stub was added.
 inline std::string append_handler_stubs(std::string_view text, std::string masked, std::string_view prefix,
     std::string_view stub_template, bool* any = nullptr)
 {
@@ -404,6 +407,11 @@ inline std::string append_handler_stubs(std::string_view text, std::string maske
             const size_t ns = i;
             while (i < end && !is_name_end(text[i]))
                 ++i;
+            if (i == ns) // a stray quote or ">" in the tag: skip one byte
+            {
+                ++i;
+                continue;
+            }
             const std::string_view attr = text.substr(ns, i - ns);
             while (i < end && is_space(text[i]))
                 ++i;
@@ -427,7 +435,7 @@ inline std::string append_handler_stubs(std::string_view text, std::string maske
                     ++i;
                 ve = i;
             }
-            if (attr.size() >= 2 && starts_nocase(attr, 0, "on"))
+            if (attr.size() >= 3 && starts_nocase(attr, 0, "on"))
                 add_value(text.substr(vs, ve - vs));
         }
         pos = after;

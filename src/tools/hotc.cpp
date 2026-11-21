@@ -1195,6 +1195,12 @@ int run_mask(int argc, char** argv)
             std::fprintf(stderr, "hotc: error: cannot read %s\n", handlers.c_str());
             return 1;
         }
+        if (!tpl.empty() && tpl.back() == '\n') // as the prefix: one final line end goes away
+        {
+            tpl.pop_back();
+            if (!tpl.empty() && tpl.back() == '\r')
+                tpl.pop_back();
+        }
         bool stubbed = false;
         masked = hot::append_handler_stubs(text, std::move(masked), prefix, tpl, &stubbed);
         found = found || stubbed;
