@@ -12120,3 +12120,49 @@ TEST(LanguageServer, FirstCompletionAfterTheClangdDiagnosticsMakesNoReadyWait)
     EXPECT_TRUE(contains_name(labels, "Vec3"));
     EXPECT_EQ(this_stat(s, "readyWaits"), 0);
 }
+
+// HOT-57: a host change closes the generated document in clangd. clangd then publishes an empty list with
+// no version. That publish does not show a preamble, so the first completion after it still waits.
+TEST(LanguageServerHosts, UnversionedPublishAfterAHostChangeKeepsTheReadyWait)
+{
+    REQUIRE_CLANGD();
+    TempDir dir;
+    const std::filesystem::path root = dir.path();
+    for (const char* sub : {"inc", "scripts", "build", "hosts"})
+        std::filesystem::create_directories(root / sub);
+    write_file((root / "inc" / "thing.h").string(), "#pragma once\nstruct Thing { int value; };\n");
+    const std::string text = "using \"thing.h\";\n\nclass A {\n    int x;\n}\n";
+    const std::string path = (root / "scripts" / "a.hot").string();
+    write_file(path, text);
+    write_file((root / "build" / "CMakeCache.txt").string(), "# cache\n");
+    hot::ls::ServerOptions o;
+    o.clangd = HOT_CLANGD_PATH;
+    o.hosts_dir = (root / "hosts").string();
+    o.include_dirs = {HOT_SOURCE_DIR "/include", (root / "inc").string()};
+    LsClient client(o);
+    client.initialize(uri_of(root.string()));
+    const std::string uri = uri_of(path);
+    client.open(uri, text);
+    const auto stat = [&](const char* key)
+    { return client.request("hot/indexStats", json::object())["result"].value(key, -1); };
+    const auto wait_for = [&](const char* key, int n)
+    {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+        while (stat(key) < n && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        return stat(key) >= n;
+    };
+    ASSERT_TRUE(wait_for("clangdDiagDocs", 1));
+    write_file((root / "hosts" / "h.json").string(),
+        R"({"version":1,"name":"h","binaryDir":")" + (root / "build").generic_string()
+            + R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":[")"
+            + (root / "scripts").generic_string() + R"("],"scripts":[],"includeDirs":[")" + (root / "inc").generic_string()
+            + R"(",")" + HOT_SOURCE_DIR + R"(/include"],"defines":[],"flags":[]})");
+    client.notify("workspace/didChangeWatchedFiles",
+        {{"changes", json::array({{{"uri", uri_of((root / "hosts" / "h.json").string())}, {"type", 1}}})}});
+    ASSERT_TRUE(wait_for("unversionedDiags", 1)); // the publish of the didClose
+    const int before = stat("readyWaits");
+    client.change(uri, 2, "using \"thing.h\";\n\nclass A {\n    Thi\n    int x;\n}\n");
+    const json r = client.request("textDocument/completion", doc_pos(uri, 3, 7));
+    EXPECT_EQ(stat("readyWaits"), before + 1);
+}

@@ -251,19 +251,22 @@ struct Doc
     int gen_version = 0; // the clangd version of the real text
     int sent_version = 0; // the last clangd version
     bool in_clangd = false;
-    // clangd published diagnostics of the generated document since its open: its preamble is there.
-    // The reader thread of clangd sets it, so it is atomic.
-    struct Flag // a copy of a Doc copies the value
+    bool closed_copy = false; // a Doc of Server::closed_doc: the text of a closed file (the index, a closed analysis)
+    // The version of the last clangd publish that has a version (0: none). When it is open_version or later,
+    // clangd built a text of this open with a preamble. A publish with no version (after a didClose) does not
+    // count. The reader thread of clangd sets it, so it is atomic. The versions only grow: no reset is necessary.
+    struct Version // a copy of a Doc copies the value
     {
-        std::atomic<bool> v{false};
-        Flag() = default;
-        Flag(const Flag& o) : v(o.v.load()) {}
-        Flag& operator=(const Flag& o)
+        std::atomic<int> v{0};
+        Version() = default;
+        Version(const Version& o) : v(o.v.load()) {}
+        Version& operator=(const Version& o)
         {
             v = o.v.load();
             return *this;
         }
-    } clangd_diag_seen;
+    } diag_version;
+    int open_version = 0; // the version of the last didOpen of the generated document
     // The header that clangd has for the shell of the unit (Server::send_generated): its path and the hash of its text.
     std::string shell_path;
     size_t shell_hash = 0;
@@ -808,6 +811,7 @@ private:
         o.generation = 1;
         o.resolve_refs = true; // the table of the resolved names (ref_resolver.h)
         o.unknown_marker = kHole; // no header declares the hole word: its probe names need no parse
+        o.probe_unit = d.closed_copy ? 0 : 1; // only an open document keeps a probe unit (LRU of 4)
         o.split_shell = split_shell_enabled();
         o.import_cache = import_cache_enabled(opt_.import_cache); // session_ keeps the cache
         const Effective e = effective_options(d.path);
@@ -1164,9 +1168,9 @@ private:
             return true;
         if (preamble_ready_.count(d.gen_uri))
             return true;
-        // The diagnostics came after a preamble: an AST of the real text is not necessary. A new AST would
+        // The diagnostics of the real text came after a preamble: an AST of the real text is not necessary. A new AST would
         // only delay the AST of the patched text.
-        if (d.clangd_diag_seen.v)
+        if (d.open_version > 0 && d.diag_version.v >= d.open_version)
         {
             wait_for_preamble_index(std::max(0, left()));
             preamble_ready_.insert(d.gen_uri);
@@ -1650,7 +1654,7 @@ private:
     std::map<std::string, ThisEntry> this_cache_;
     std::atomic<int> this_analyzes_{0}, this_hits_{0};
     // HOT-53: the memo text with the new hole word against the real text of the first probe (hot/indexStats).
-    std::atomic<int> ready_waits_{0}, clangd_diag_docs_{0}; // see wait_for_native_ready_until
+    std::atomic<int> ready_waits_{0}, clangd_diag_docs_{0}, unversioned_diags_{0}; // see wait_for_native_ready_until
     std::atomic<int> hole_spec_tried_{0}, hole_spec_equal_{0}, hole_spec_prefix_equal_{0};
     std::atomic<int> hole_spec_used_{0}, hole_spec_dropped_{0}; // the answers of a speculative call: used, not used
     // After a header event clangd builds a new preamble, and its answers can be old for a while. The cache stores
@@ -2183,7 +2187,6 @@ void Server::refresh_hosts(Doc* current, bool force)
         remove_shell(*d);
         d->in_clangd = false;
         preamble_ready_.erase(d->gen_uri);
-        d->clangd_diag_seen.v = false;
         completion_synced_.erase(d->gen_uri);
         if (d.get() != current)
             redo.push_back(d);
@@ -2718,7 +2721,6 @@ std::string Server::unit_for_clangd(Doc& d, const std::string& cpp)
                 else
                 {
                     preamble_ready_.erase(d.gen_uri);
-                    d.clangd_diag_seen.v = false;
                     completion_synced_.erase(d.gen_uri);
                     d.shell_changed = true;
                 }
@@ -2750,7 +2752,6 @@ std::string Server::unit_for_clangd(Doc& d, const std::string& cpp)
         d.shell_unconfirmed = false;
         // clangd builds a new preamble for the new header. The next request waits for it, as for a new document.
         preamble_ready_.erase(d.gen_uri);
-        d.clangd_diag_seen.v = false;
         completion_synced_.erase(d.gen_uri);
         d.shell_changed = true;
     }
@@ -2794,6 +2795,7 @@ void Server::send_generated(Doc& d, const std::string& full)
                     {{d.gen_path,
                         {{"workingDirectory", fs::path(d.gen_path).parent_path().string()},
                             {"compilationCommand", cmd}}}}}}}});
+        d.open_version = v;
         clangd_->notify("textDocument/didOpen",
             {{"textDocument", {{"uri", d.gen_uri}, {"languageId", "cpp"}, {"version", v}, {"text", cpp}}}});
         d.in_clangd = true;
@@ -2911,7 +2913,6 @@ void Server::update(Doc& d)
         remove_shell(d);
         d.in_clangd = false;
         preamble_ready_.erase(d.gen_uri);
-        d.clangd_diag_seen.v = false;
         completion_synced_.erase(d.gen_uri);
         std::lock_guard<std::mutex> lock(docs_mutex_);
         d.facts = hotc::AnalyzeResult();
@@ -3286,11 +3287,14 @@ void Server::on_clangd_notification(const json& msg)
         return;
     Doc& d = *it->second;
     // A diagnostic of a completion text (or of an old text) is not shown.
+    if (!p.contains("version"))
+        ++unversioned_diags_;
+    if (p.contains("version") && p["version"].is_number_integer()
+        && d.diag_version.v.exchange(p["version"].get<int>()) == 0)
+        ++clangd_diag_docs_; // any version of this open shows a preamble (wait_for_native_ready_until)
     if (p.contains("version") && p["version"].is_number_integer() && p["version"].get<int>() != d.gen_version)
         return;
     d.raw_clang_diags = p.value("diagnostics", json::array());
-    if (!d.clangd_diag_seen.v.exchange(true))
-        ++clangd_diag_docs_;
     if (d.dirty)
         return; // HOT-51: the facts are old. The next update() maps these diagnostics and publishes.
     map_clangd_diagnostics(d);
@@ -6253,6 +6257,7 @@ bool Server::with_temp_clangd(Doc& tmp, const std::function<void()>& fn)
     tmp.map = std::make_shared<const hotc::SourceMap>(tmp.facts.source_map);
     tmp.gen_script = tmp.text;
     tmp.gen_version = 1;
+    tmp.closed_copy = true;
     // The client owns the uri of an open script: no temporary document then.
     if (open_doc_at(tmp.path) || gen_docs_.count(tmp.gen_uri))
         return false;
@@ -8950,7 +8955,6 @@ void Server::handle(const json& msg)
         close_lite(*d);
         remove_shell(*d);
         preamble_ready_.erase(d->gen_uri);
-        d->clangd_diag_seen.v = false;
         completion_synced_.erase(d->gen_uri);
         store_closed_shard(*d);
         if (!d->cpp && index_active())
@@ -9055,7 +9059,7 @@ void Server::handle(const json& msg)
             {"holeSpecTried", hole_spec_tried_.load()}, {"holeSpecEqual", hole_spec_equal_.load()},
             {"holeSpecPrefixEqual", hole_spec_prefix_equal_.load()}, {"holeSpecUsed", hole_spec_used_.load()},
             {"holeSpecDropped", hole_spec_dropped_.load()}, {"readyWaits", ready_waits_.load()},
-            {"clangdDiagDocs", clangd_diag_docs_.load()},
+            {"clangdDiagDocs", clangd_diag_docs_.load()}, {"unversionedDiags", unversioned_diags_.load()},
             {"tokenRequests", native_token_requests_.load()}, {"translations", translations_.load()},
             {"liteHits", lite_hits_.load()}, {"liteFallback", lite_fallbacks_.load()}, {"liteMismatch", lite_mismatches_.load()},
             {"translateMs", static_cast<double>(translate_us_.load()) / 1000.0}, {"tableHits", table_hits_},

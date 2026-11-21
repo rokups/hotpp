@@ -59,6 +59,9 @@ struct TranslateOptions
     // A name part that no header declares (the hole word of a completion probe). A native name, fact
     // type or query with it gets the answer of a name that is not found, with no parse. Empty: off.
     std::string unknown_marker = {};
+    // The libclang unit of the native-fact probe in a session. 0: none, a plain parse with no preamble (hotc, the
+    // background index). 1: the session keeps the unit with a preamble, and a new name reparses it (open documents).
+    int probe_unit = 0;
     std::vector<std::pair<std::string, std::string>> preludes = {}; // name, text
     // The texts of the imported scripts ("using "parent.hot";"), as name and text. The name is
     // the path in the "using" line. A name that is not here is read from the directory of the
@@ -365,6 +368,7 @@ struct TranslateTiming
     // "stamps_ns" the stamp check of the entry and the stamps of the parse, "walk_ns" the cursor walk.
     int64_t reparse_ns = 0;
     int64_t stamps_ns = 0;
+    int64_t root_walks = 0; // the walks of the whole probe unit (a delta of a type miss needs none)
     int64_t walk_ns = 0;
     int64_t unit_reused = 0; // the parses that reparsed a kept unit
     int64_t lower_ns = 0;      // from the session lookup to the first check
@@ -593,6 +597,7 @@ public:
     TranslatorSession& operator=(const TranslatorSession&) = delete;
 
     int parse_count() const; // the number of libclang parses until now
+    size_t probe_cache_size() const; // the kept probe units (TranslateOptions::probe_unit)
     void clear(); // drops the cache, also the parsed imports
     // The most libclang units that the session keeps for a reparse of a .cpp script (default 4).
     // 0 turns the reuse off. Call it before the translate calls.

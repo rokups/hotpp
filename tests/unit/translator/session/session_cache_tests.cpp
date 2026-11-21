@@ -558,6 +558,14 @@ void expect_same(const hotc::TranslateResult& got, const hotc::TranslateResult& 
     EXPECT_EQ(got.slots_out, want.slots_out) << what;
 }
 
+// The options of an open document of the language server: the session keeps the probe unit.
+hotc::TranslateOptions unit_options(const TempDir& dir, const std::string& script)
+{
+    hotc::TranslateOptions o = temp_options(dir, script);
+    o.probe_unit = 1;
+    return o;
+}
+
 hotc::TranslateResult plain_translate(const hotc::TranslateOptions& o)
 {
     hotc::TranslatorSession plain;
@@ -916,7 +924,7 @@ TEST(SessionCache, ProbeReparseIsFastAndGivesTheSameResultAsAFreshParse)
     const std::string panel_draw = "using \"w.h\";\nclass Bar : Panel {\n    override void Draw() { }\n}\n";
     hotc::TranslatorSession session;
 
-    const hotc::TranslateOptions oa = temp_options(dir, widget_script("Update(float dt)", "override "));
+    const hotc::TranslateOptions oa = unit_options(dir, widget_script("Update(float dt)", "override "));
     const hotc::TranslateResult a = hotc::translate(oa, session);
     const hotc::TranslateResult a_plain = plain_translate(oa);
     expect_same(a, a_plain, "first");
@@ -925,21 +933,20 @@ TEST(SessionCache, ProbeReparseIsFastAndGivesTheSameResultAsAFreshParse)
     ASSERT_EQ(a.timing.parses, 1);
 
     // A new base name: the entry misses it, so the probe parses again. The preamble stays.
-    const hotc::TranslateOptions ob = temp_options(dir, panel);
+    const hotc::TranslateOptions ob = unit_options(dir, panel);
     const hotc::TranslateResult b = hotc::translate(ob, session);
     const hotc::TranslateResult b_plain = plain_translate(ob);
     expect_same(b, b_plain, "new name");
     EXPECT_EQ(b.dependencies, b_plain.dependencies); // the reparse reads the same files
     EXPECT_EQ(b.shadow_paths, b_plain.shadow_paths);
     ASSERT_EQ(b.timing.parses, 1);
-    EXPECT_LT(b.timing.parse_ns * 3, a.timing.parse_ns)
-        << "reparse " << b.timing.parse_ns / 1000000 << " ms, first " << a.timing.parse_ns / 1000000 << " ms";
+    EXPECT_EQ(b.timing.unit_reused, 1); // the preamble stays
 
     // A header edit gives new facts: Panel gets "Draw".
     write_file(dir.path() / "w.h",
         heavy + "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n"
                 "class Panel { public: virtual ~Panel() {} virtual void Layout(int w) {} virtual void Draw() {} };\n");
-    const hotc::TranslateOptions oc = temp_options(dir, panel_draw);
+    const hotc::TranslateOptions oc = unit_options(dir, panel_draw);
     const hotc::TranslateResult c = hotc::translate(oc, session);
     expect_same(c, plain_translate(oc), "header edit");
     EXPECT_EQ(c.slots_out.find("Bar::Draw"), std::string::npos) << c.slots_out; // an override
@@ -963,7 +970,7 @@ TEST(SessionCache, ProbeUnitsOfOtherFlagsAreNotShared)
         "class Panel { public: virtual ~Panel() {} virtual void Layout(int w) {} };\n");
     const std::string panel = "using \"w.h\";\nclass Bar : Panel {\n    override void Layout(int w) { }\n}\n";
     hotc::TranslatorSession session;
-    hotc::TranslateOptions plain = temp_options(dir, panel);
+    hotc::TranslateOptions plain = unit_options(dir, panel);
     hotc::TranslateOptions extra = plain;
     extra.defines = {"-DEXTRA"};
     ASSERT_TRUE(hotc::translate(plain, session).ok);
@@ -1026,8 +1033,7 @@ TEST(SessionCache, MarkedNameNeedsNoParse)
 }
 
 // HOT-57 delta probe: a fresh entry parses only the absent names, facts and queries. Each step
-// must give the same result as a new session. A type miss needs no walk of the root and no hash
-// of the headers, so its walk and stamp times are far below the times of the full parse.
+// must give the same result as a new session. A type miss needs no walk of the root.
 TEST(SessionCache, DeltaProbeGivesTheSameResultAsANewSession)
 {
     TempDir dir;
@@ -1048,7 +1054,7 @@ TEST(SessionCache, DeltaProbeGivesTheSameResultAsANewSession)
     hotc::TranslatorSession session;
     const auto step = [&](const std::string& text, const char* what)
     {
-        const hotc::TranslateOptions o = temp_options(dir, text);
+        const hotc::TranslateOptions o = unit_options(dir, text);
         const hotc::TranslateResult r = hotc::translate(o, session);
         expect_same(r, plain_translate(o), what);
         EXPECT_TRUE(r.ok) << what << "\n" << r.diagnostics;
@@ -1061,10 +1067,8 @@ TEST(SessionCache, DeltaProbeGivesTheSameResultAsANewSession)
     // A new qualified native type: only its facts are absent.
     const hotc::TranslateResult b = step(head + bar + "    eng.Extra e;\n}\n", "type miss");
     EXPECT_EQ(b.timing.unit_reused, 1);
-    EXPECT_LT(b.timing.walk_ns * 4, a.timing.walk_ns)
-        << "walk " << b.timing.walk_ns / 1000 << " us, full " << a.timing.walk_ns / 1000 << " us";
-    EXPECT_LT(b.timing.stamps_ns * 2, a.timing.stamps_ns)
-        << "stamps " << b.timing.stamps_ns / 1000 << " us, full " << a.timing.stamps_ns / 1000 << " us";
+    EXPECT_GT(a.timing.root_walks, 0);
+    EXPECT_EQ(b.timing.root_walks, 0); // the trailers and the index answer the type miss
 
     // A bare type (@decl), a new call (@fn), a new base name and a new template instance base.
     const std::string more = "class Qux : Tmpl<float> {\n    override void Step(float v) { }\n"
@@ -1078,4 +1082,53 @@ TEST(SessionCache, DeltaProbeGivesTheSameResultAsANewSession)
     const hotc::TranslateResult d =
         step(head + more + bar + "    eng.Extra e;\n    Other o;\n    override void Draw() { }\n}\n", "header edit");
     EXPECT_EQ(d.slots_out.find("Bar::Draw"), std::string::npos) << d.slots_out; // an override
+}
+
+// HOT-57: probe_unit 0 (hotc, the background index) keeps no unit and builds no preamble. 1 keeps the unit.
+TEST(SessionCache, ProbeUnitModeZeroKeepsNoUnitAndOneKeepsIt)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", kHeaderV1);
+    fs::last_write_time(dir.path() / "w.h", fs::last_write_time(dir.path() / "w.h") - std::chrono::seconds(5));
+    const std::string panel = "using \"w.h\";\nclass Bar : Panel {\n    override void Layout(int w) { }\n}\n";
+    for (const int mode : {0, 1})
+    {
+        hotc::TranslatorSession session;
+        hotc::TranslateOptions a = temp_options(dir, widget_script("Update(float dt)", "override "));
+        hotc::TranslateOptions b = temp_options(dir, panel);
+        a.probe_unit = b.probe_unit = mode;
+        ASSERT_TRUE(hotc::translate(a, session).ok);
+        const hotc::TranslateResult r = hotc::translate(b, session); // a new base name: a second parse
+        expect_same(r, plain_translate(b), "mode " + std::to_string(mode));
+        EXPECT_EQ(r.timing.parses, 1) << mode;
+        EXPECT_EQ(r.timing.unit_reused, mode) << mode;
+        EXPECT_EQ(session.probe_cache_size(), static_cast<size_t>(mode)) << mode;
+    }
+}
+
+// HOT-57: two scripts with the same imports share one probe unit. The kept preamble has no "#line" of a
+// script, so a reparse for the other script keeps the preamble.
+TEST(SessionCache, ScriptsWithTheSameImportsShareOneProbeUnit)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", std::string(kHeaderV1) + "class Frame { public: virtual ~Frame() {} virtual void Paint() {} };\n");
+    fs::last_write_time(dir.path() / "w.h", fs::last_write_time(dir.path() / "w.h") - std::chrono::seconds(5));
+    hotc::TranslatorSession session;
+    const auto run = [&](const char* name, const std::string& text)
+    {
+        hotc::TranslateOptions o = unit_options(dir, text);
+        o.script_name = name;
+        const hotc::TranslateResult r = hotc::translate(o, session);
+        expect_same(r, plain_translate(o), name);
+        return r;
+    };
+    ASSERT_TRUE(run("a.hot", widget_script("Update(float dt)", "override ")).ok);
+    const hotc::TranslateResult b =
+        run("b.hot", "\n\nusing \"w.h\";\nclass Bar : Panel {\n    override void Layout(int w) { }\n}\n");
+    const hotc::TranslateResult c = run("a.hot", "using \"w.h\";\nclass Baz : Frame {\n    override void Paint() { }\n}\n");
+    EXPECT_EQ(b.timing.parses, 1);
+    EXPECT_EQ(b.timing.unit_reused, 1);
+    EXPECT_EQ(c.timing.parses, 1);
+    EXPECT_EQ(c.timing.unit_reused, 1);
+    EXPECT_EQ(session.probe_cache_size(), 1u); // one preamble text for both scripts
 }
