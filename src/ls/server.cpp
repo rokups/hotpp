@@ -9059,7 +9059,7 @@ void Server::handle(const json& msg)
             {"dir", index_.dir()}, {"completions", completion_translations_}, {"thisAnalyzes", this_analyzes_.load()}, {"thisHits", this_hits_.load()},
             {"holeSpecTried", hole_spec_tried_.load()}, {"holeSpecEqual", hole_spec_equal_.load()},
             {"holeSpecPrefixEqual", hole_spec_prefix_equal_.load()}, {"holeSpecUsed", hole_spec_used_.load()},
-            {"holeSpecDropped", hole_spec_dropped_.load()}, {"readyWaits", ready_waits_.load()},
+            {"holeSpecDropped", hole_spec_dropped_.load()}, {"readyWaits", ready_waits_.load()}, {"probeUnits", session_.probe_cache_size()},
             {"clangdDiagDocs", clangd_diag_docs_.load()}, {"unversionedDiags", unversioned_diags_.load()},
             {"tokenRequests", native_token_requests_.load()}, {"translations", translations_.load()},
             {"liteHits", lite_hits_.load()}, {"liteFallback", lite_fallbacks_.load()}, {"liteMismatch", lite_mismatches_.load()},

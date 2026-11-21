@@ -3603,13 +3603,17 @@ void parse_bases(const std::string& script_probe, const std::string& shared_prob
     // the preamble by libclang does not see all changes (a new header earlier in the include path).
     const uint64_t gen = cache ? cache->generation() : 0;
     // A tmpfiles cleanup can delete the main file: libclang builds no preamble for a file that is not on the disk.
-    if (cache)
+    if (cache && std::filesystem::path(main_path).is_absolute()) // no stray file in the working directory
         if (std::FILE* f = std::fopen(main_path.c_str(), "a"))
             std::fclose(f);
     const long long start_ns = now_ns();
     CXErrorCode ec = CXError_Failure;
-    if (cache && cache->take(unit_key, ch.idx, ch.tu))
+    const uint64_t head_hash = std::hash<std::string>()(probe);
+    uint64_t kept_head = 0;
+    if (cache && cache->take(unit_key, ch.idx, ch.tu, &kept_head))
     {
+        if (timing && kept_head != head_hash)
+            ++timing->preamble_builds; // libclang builds a new preamble for another head
         if (reuse && clang_reparseTranslationUnit(ch.tu, static_cast<unsigned>(unsaved.size()), unsaved.data(),
                          clang_defaultReparseOptions(ch.tu)) == 0)
         {
@@ -3631,6 +3635,8 @@ void parse_bases(const std::string& script_probe, const std::string& shared_prob
             | (cache ? CXTranslationUnit_PrecompiledPreamble | CXTranslationUnit_CreatePreambleOnFirstParse : 0);
         ec = clang_parseTranslationUnit2(ch.idx, main_path.c_str(), cargs.data(), static_cast<int>(cargs.size()),
             unsaved.data(), static_cast<unsigned>(unsaved.size()), options, &ch.tu);
+        if (cache && timing)
+            ++timing->preamble_builds;
     };
     if (!ch.tu)
         parse_new();
@@ -3906,7 +3912,7 @@ void parse_bases(const std::string& script_probe, const std::string& shared_prob
         keep = keep && (f.virt || f.mtime_ns < start_ns - 50000000LL);
     if (keep)
     {
-        cache->put(unit_key, ch.idx, ch.tu, gen); // the cache owns the handles now
+        cache->put(unit_key, ch.idx, ch.tu, gen, head_hash); // the cache owns the handles now
         ch.idx = nullptr;
         ch.tu = nullptr;
     }
@@ -12281,6 +12287,7 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
         res.timing.walk_ns += t.walk_ns;
         res.timing.root_walks += t.root_walks;
         res.timing.unit_reused += t.unit_reused;
+        res.timing.preamble_builds += t.preamble_builds;
         if (res.timing.absent == 0)
             res.timing.first_absent = t.first_absent;
         res.timing.absent += t.absent;

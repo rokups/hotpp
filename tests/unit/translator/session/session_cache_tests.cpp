@@ -1122,7 +1122,8 @@ TEST(SessionCache, ScriptsWithTheSameImportsShareOneProbeUnit)
         expect_same(r, plain_translate(o), name);
         return r;
     };
-    ASSERT_TRUE(run("a.hot", widget_script("Update(float dt)", "override ")).ok);
+    const hotc::TranslateResult a = run("a.hot", widget_script("Update(float dt)", "override "));
+    ASSERT_TRUE(a.ok);
     const hotc::TranslateResult b =
         run("b.hot", "\n\nusing \"w.h\";\nclass Bar : Panel {\n    override void Layout(int w) { }\n}\n");
     const hotc::TranslateResult c = run("a.hot", "using \"w.h\";\nclass Baz : Frame {\n    override void Paint() { }\n}\n");
@@ -1130,5 +1131,6 @@ TEST(SessionCache, ScriptsWithTheSameImportsShareOneProbeUnit)
     EXPECT_EQ(b.timing.unit_reused, 1);
     EXPECT_EQ(c.timing.parses, 1);
     EXPECT_EQ(c.timing.unit_reused, 1);
+    EXPECT_EQ(a.timing.preamble_builds + b.timing.preamble_builds + c.timing.preamble_builds, 1);
     EXPECT_EQ(session.probe_cache_size(), 1u); // one preamble text for both scripts
 }

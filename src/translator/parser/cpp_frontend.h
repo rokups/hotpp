@@ -58,8 +58,9 @@ public:
     // For another user of the cache (the probe of the native facts). The same rules apply. "take"
     // moves the unit of "key" out and the caller owns the handles. "put" keeps them or disposes them:
     // "gen" is the generation() before the parse.
-    bool take(const std::string& key, CXIndex& idx, CXTranslationUnit& tu);
-    void put(const std::string& key, CXIndex idx, CXTranslationUnit tu, uint64_t gen) noexcept;
+    // "tag": a value of the caller that stays with the unit (the probe: the hash of the preamble text).
+    bool take(const std::string& key, CXIndex& idx, CXTranslationUnit& tu, uint64_t* tag = nullptr);
+    void put(const std::string& key, CXIndex idx, CXTranslationUnit tu, uint64_t gen, uint64_t tag = 0) noexcept;
     uint64_t generation() const;
     bool enabled() const; // false when the limit is 0
     struct Impl;

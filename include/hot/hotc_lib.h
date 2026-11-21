@@ -371,6 +371,7 @@ struct TranslateTiming
     int64_t root_walks = 0; // the walks of the whole probe unit (a delta of a type miss needs none)
     int64_t walk_ns = 0;
     int64_t unit_reused = 0; // the parses that reparsed a kept unit
+    int64_t preamble_builds = 0; // the new parses of a kept unit: each builds a preamble
     int64_t lower_ns = 0;      // from the session lookup to the first check
     int64_t check_ns = 0;      // from the first check to the start of the emit
     int64_t emit_ns = 0;       // from the start of the emit to the end
