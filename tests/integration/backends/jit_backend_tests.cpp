@@ -220,11 +220,9 @@ struct EmptyWorkDir
     size_t entries() const
     {
         size_t n = 0;
+        // The empty main file of the libclang probe is not a cache file (hotc_lib.cpp).
         for (const auto& e : fs::directory_iterator(dir))
-        {
-            (void)e;
-            ++n;
-        }
+            n += e.path().filename() != "hotc_probe.cpp";
         return n;
     }
 };
