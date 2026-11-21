@@ -17,6 +17,7 @@
 #endif
 #ifdef AOT_UNITS_LOADER
 #include "support/script_files.h"
+#include "support/test_env.h"
 #endif
 
 #include <gtest/gtest.h>
@@ -318,7 +319,7 @@ TEST(AotUnits, RevertToAotRestoresTheFineData)
 // too: the loader compares the live interface with the AOT interface, not with a recorded hash.
 TEST(AotUnits, NewMethodOfTheBaseUnitAndItsRevertKeepTheAotImporter)
 {
-    ::unsetenv("HOT_STRICT_IFACE"); // the test needs the new rule
+    test_support::unset_env("HOT_STRICT_IFACE"); // the test needs the new rule
     std::unique_ptr<hot::Backend> backend = hot::make_default_backend();
     backend->seed_slots(hot::aot_table.slots);
     hot::Loader loader;

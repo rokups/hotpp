@@ -1350,7 +1350,6 @@ TEST(PchBackend, ResetWritesTheRandomSaltBeforeTheListAndDropsTheEntry)
 // backend has no hook for a failure of the thread constructor, so a test of this path is not
 // possible here. The call in batch_done has a try/catch, and the build functions reset the state.
 
-#endif
 
 // Two backends in one process share the work directory. The library of the first backend stays
 // mapped. The second backend must run its own new code, not the old library.
@@ -1374,3 +1373,4 @@ TEST(LibraryPathBackend, SecondBackendInSameWorkDirRunsNewCode)
     s2.world.Tick(kDt);
     EXPECT_EQ(*s2.field("result") - *s1.field("result"), 1.0f);
 }
+#endif

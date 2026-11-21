@@ -1362,6 +1362,7 @@ TEST(ObjectCacheBackend, ShapePchAndObjectsAreSharedBetweenProcesses)
 namespace
 {
 
+#if defined(__linux__) // the callers run on Linux only: nm and popen
 // The newest .so of the work dir and the number of defined symbols (nm, whole symbol table) whose
 // name ends with "suffix".
 size_t count_defined_symbols(const fs::path& work_dir, const std::string& suffix)
@@ -1392,6 +1393,7 @@ size_t count_defined_symbols(const fs::path& work_dir, const std::string& suffix
         pclose(p);
     return n;
 }
+#endif
 
 } // namespace
 

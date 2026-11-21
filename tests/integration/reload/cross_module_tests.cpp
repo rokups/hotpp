@@ -9,6 +9,7 @@
 #include "hot/backend.h"
 #include "support/backend_fixture.h"
 #include "support/reload_assert.h"
+#include "support/test_env.h"
 #include "support/script_files.h"
 #include "support/test_support.h"
 
@@ -926,11 +927,11 @@ struct StrictEnv
     explicit StrictEnv(bool on)
     {
         if (on)
-            ::setenv("HOT_STRICT_IFACE", "1", 1);
+            test_support::set_env("HOT_STRICT_IFACE", "1");
         else
-            ::unsetenv("HOT_STRICT_IFACE"); // the test needs the new rule, also when the shell sets the switch
+            test_support::unset_env("HOT_STRICT_IFACE"); // the test needs the new rule, also when the shell sets the switch
     }
-    ~StrictEnv() { ::unsetenv("HOT_STRICT_IFACE"); }
+    ~StrictEnv() { test_support::unset_env("HOT_STRICT_IFACE"); }
 };
 
 // The batch "u" alone must fail with DependentsStale for the units "expect".

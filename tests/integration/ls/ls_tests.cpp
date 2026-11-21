@@ -33,8 +33,10 @@
 #include <tuple>
 #include <vector>
 
-#include <sys/wait.h>
-#include <unistd.h>
+#ifndef _WIN32
+    #include <sys/wait.h>
+    #include <unistd.h>
+#endif
 
 using ls_test::json;
 using ls_test::LsClient;
