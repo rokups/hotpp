@@ -271,6 +271,30 @@ TEST(HandlerStubs, EntitiesAreDecoded)
     EXPECT_EQ(stubs("<a ONCLICK=\"x &lt; 1 &amp;&amp; y &gt; &quot;z&quot;\"/>", "M"), "M" + stub_line("x < 1 && y > \"z\""));
 }
 
+TEST(HandlerStubs, NumericEntitiesAreDecodedAsRmlUi)
+{
+    EXPECT_EQ(stubs("<a onclick=\"Log(&#39;a&#39;)\"/>", "M"), "M" + stub_line("Log('a')"));
+    EXPECT_EQ(stubs("<a onclick=\"f(&#x41;'&#X42;')\"/>", "M"), "M" + stub_line("f(A'&#X42;')"));
+    EXPECT_EQ(stubs("<a onclick=\"f(&#x1F600;)\"/>", "M"), "M" + stub_line("f(\xF0\x9F\x98\x80)"));
+    // Zero, no digits, more than 8 digits and no ";" stay as text (in quotes, so ";" does not split).
+    // A code point above U+10FFFF gives no text.
+    EXPECT_EQ(stubs("<a onclick=\"f('&#0;&#;&#123456789;&#65')\"/>", "M"), "M" + stub_line("f('&#0;&#;&#123456789;&#65')"));
+    EXPECT_EQ(stubs("<a onclick=\"f(&#x110000;)\"/>", "M"), "M" + stub_line("f()"));
+    // One pass: "&amp;quot;" gives "&quot;".
+    EXPECT_EQ(stubs("<a onclick=\"f('&amp;quot;')\"/>", "M"), "M" + stub_line("f('&quot;')"));
+}
+
+TEST(HandlerStubs, OnlyTheEnginePrefixesAreSkipped)
+{
+    EXPECT_EQ(stubs("<a onclick=\"foo:bar; Sound:x; event:y\"/>", "M"), "M" + stub_line("foo:bar") + stub_line("Sound:x"));
+}
+
+TEST(HandlerStubs, TrimIsSpaceAndTabAsTheEngine)
+{
+    EXPECT_EQ(stubs("<a onclick=\" \t\n sound:x\"/>", "M"), "M" + stub_line("\n sound:x"));
+    EXPECT_EQ(stubs("<a onclick=\"\tf() \"/>", "M"), "M" + stub_line("f()"));
+}
+
 TEST(HandlerStubs, SingleQuotedAttribute)
 {
     EXPECT_EQ(stubs("<a onclick='f(\"x\")'/>", "M"), "M" + stub_line("f(\"x\")"));
