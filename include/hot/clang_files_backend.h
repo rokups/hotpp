@@ -135,6 +135,12 @@ public:
     // The number of writes of compile_commands.json by this backend. For tests.
     size_t compile_commands_writes() const { return compile_db_writes_; }
     size_t compile_commands_reads() const { return compile_db_reads_; }
+    // Reads the compile database. For the bench tools/bench/compile_db_bench.cpp.
+    size_t read_compile_db_for_bench(std::string& text) const
+    {
+        std::map<std::string, std::string> foreign;
+        return read_compile_commands(text, foreign).size();
+    }
 
     // Makes a new .so for each call, so a reload of the same generation is possible.
     // The slots file does not change here. The Module has an "on_accept" callback that writes

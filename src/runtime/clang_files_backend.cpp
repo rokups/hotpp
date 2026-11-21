@@ -1712,8 +1712,27 @@ std::map<std::string, CompileCommandEntry> ClangFilesBackend::read_compile_comma
     text.clear();
     foreign.clear();
     const std::string path = (fs::path(opt_.compile_commands_dir) / "compile_commands.json").string();
+    // HOT_TIMING: the split of the read, in microseconds.
+    using Clock = std::chrono::steady_clock;
+    const bool timing = std::getenv("HOT_TIMING") != nullptr;
+    const auto us_since = [](Clock::time_point t) {
+        return static_cast<long long>(
+            std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - t).count());
+    };
+    long long t_read = 0, t_scan = 0, t_exists = 0, t_copy = 0, t_parse = 0;
+    size_t n_own = 0, n_foreign = 0, n_missing = 0;
+    auto t = Clock::now();
     if (!read_text(path, text))
         return result;
+    t_read = us_since(t);
+    const auto report = [&]
+    {
+        if (timing)
+            std::fprintf(stderr,
+                "hot: timing compile db read %lld us scan %lld us exists %lld us copy %lld us parse-own %lld us; "
+                "bytes %zu own %zu foreign %zu missing %zu\n",
+                t_read, t_scan, t_exists, t_copy, t_parse, text.size(), n_own, n_foreign, n_missing);
+    };
     // An entry of this backend has a file in the generated directory. The backend parses these
     // entries. It keeps the text of each other entry and writes it back as it is.
     std::string prefix = absolute_path(opt_.generated_dir).string();
@@ -1726,18 +1745,30 @@ std::map<std::string, CompileCommandEntry> ClangFilesBackend::read_compile_comma
     };
     std::error_code ec;
     std::vector<DbSlice> slices;
+    t = Clock::now();
     bool scanned = !prefix.empty() && scan_compile_db(text, slices);
+    t_scan = us_since(t);
     if (scanned)
     {
         for (const DbSlice& sl : slices)
         {
-            if (!fs::exists(sl.file, ec))
-                continue;
-            if (!ours(sl.file))
+            t = Clock::now();
+            const bool exists = fs::exists(sl.file, ec);
+            t_exists += us_since(t);
+            if (!exists)
             {
-                foreign[sl.file] = text.substr(sl.begin, sl.end - sl.begin);
+                ++n_missing;
                 continue;
             }
+            if (!ours(sl.file))
+            {
+                t = Clock::now();
+                foreign[sl.file] = text.substr(sl.begin, sl.end - sl.begin);
+                t_copy += us_since(t);
+                ++n_foreign;
+                continue;
+            }
+            t = Clock::now();
             CompileCommandEntry e;
             bool has_arguments = false;
             if (!JsonReader(text.substr(sl.begin, sl.end - sl.begin)).parse_single(e, has_arguments))
@@ -1747,9 +1778,14 @@ std::map<std::string, CompileCommandEntry> ClangFilesBackend::read_compile_comma
             }
             if (has_arguments && !e.file.empty())
                 result[e.file] = std::move(e);
+            t_parse += us_since(t);
+            ++n_own;
         }
         if (scanned)
+        {
+            report();
             return result;
+        }
         result.clear();
         foreign.clear();
     }
