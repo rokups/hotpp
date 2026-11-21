@@ -443,7 +443,7 @@ std::string executable_build_id()
         return "unknown";
     const auto size = fs::file_size(exe, ec);
     const auto time = fs::last_write_time(exe, ec).time_since_epoch().count();
-    return std::to_string(size) + ':' + std::to_string(time);
+    return std::to_string(size) + ':' + std::to_string(static_cast<long long>(time));
 }
 } // namespace
 
