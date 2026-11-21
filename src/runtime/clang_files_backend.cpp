@@ -3412,7 +3412,7 @@ ClangFilesBackend::ShapeSplit ClangFilesBackend::plan_shape(const std::string& c
     const auto mtime = fs::last_write_time(base_pch, ec).time_since_epoch().count();
     if (ec)
         return s;
-    std::string material = base_pch + "\n" + base_key + "\n" + std::to_string(size) + "\n" + std::to_string(mtime) + "\n";
+    std::string material = base_pch + "\n" + base_key + "\n" + std::to_string(size) + "\n" + std::to_string(static_cast<long long>(mtime)) + "\n";
     for (const std::string& a : args)
         material += a + "\n";
     // The header has "#line 1 <unit_cpp>" and the build uses the script dir: both belong to the key.
