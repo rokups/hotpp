@@ -3456,8 +3456,17 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
     const std::set<std::string>& import_paths, std::map<std::string, BaseInfo>& out, std::vector<FileStamp>& files,
     Hierarchy& hierarchy, const std::vector<FactReq>& reqs, FactMap& facts, const std::vector<std::string>& queries,
     std::map<std::string, std::string>& answers, const VirtualFiles& virtual_files, hot::FileSystem* fs,
-    hotc::TuCache* cache, const std::string& key, bool reuse)
+    hotc::TuCache* cache, const std::string& key, bool reuse, hotc::TranslateTiming* timing)
 {
+    const auto since = [](std::chrono::steady_clock::time_point& t)
+    {
+        const auto now = std::chrono::steady_clock::now();
+        const int64_t ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now - t).count();
+        t = now;
+        return ns;
+    };
+    auto t_step = std::chrono::steady_clock::now();
+    bool reused = false;
     std::vector<std::pair<size_t, std::string>> fact_lines;
     // A template instance as a base ("Tmpl<int>") is named by an alias. The size check makes the
     // compiler instantiate the class.
@@ -3512,7 +3521,10 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
     {
         if (reuse && clang_reparseTranslationUnit(ch.tu, static_cast<unsigned>(unsaved.size()), unsaved.data(),
                          clang_defaultReparseOptions(ch.tu)) == 0)
+        {
             ec = CXError_Success;
+            reused = true;
+        }
         else
         { // a failed reparse leaves a unit that only the dispose can use
             clang_disposeTranslationUnit(ch.tu);
@@ -3552,7 +3564,13 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
         ch.tu = nullptr;
         ch.idx = nullptr;
         cache = nullptr;
+        reused = false;
         parse_new();
+    }
+    if (timing)
+    {
+        timing->reparse_ns += since(t_step);
+        timing->unit_reused += reused ? 1 : 0;
     }
     CXTranslationUnit tu = ch.tu;
     if (ec != CXError_Success || !tu)
@@ -3634,6 +3652,8 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
                 break;
             }
 
+    if (timing)
+        timing->stamps_ns += since(t_step);
     CXCursor root = clang_getTranslationUnitCursor(tu);
     if (!reqs.empty())
     {
@@ -3772,6 +3792,8 @@ void parse_bases(const std::string& probe, const std::vector<std::string>& args,
         });
         out[name] = std::move(bi);
     }
+    if (timing)
+        timing->walk_ns += since(t_step);
     // Keep the unit. Not when a disk file changed near the start of the parse: the preamble can
     // have the old text, and the stamps the new one. An error of the imports threw before this.
     bool keep = cache != nullptr;
@@ -3996,9 +4018,13 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
         timing->parse_wait_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now() - wait_start).count();
     auto& e = *entry;
+    const auto stamps_start = std::chrono::steady_clock::now();
     bool fresh = !e.files.empty();
     for (size_t i = 0; fresh && i < e.files.size(); ++i)
         fresh = stamp_fresh(fs, e.files[i]);
+    if (timing)
+        timing->stamps_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - stamps_start).count();
     if (!fresh)
         e.reset();
     // The entry misses these names: the count and the first one go to the timing.
@@ -6016,7 +6042,7 @@ void translate_impl(
             std::map<std::string, std::string>& qa, bool fresh)
     {
         parse_bases(probe, args, base_names, import_paths, out, files, h, reqs, fm, query_texts, qa, res.virtual_files,
-            fs, &session.probe_cache, key, fresh);
+            fs, &session.probe_cache, key, fresh, &res.timing);
     },
         hier, facts, query_answers, fs, &res.dependencies, &res.shadow_paths, &res.parse_start_ns,
         &res.timing);
@@ -12064,6 +12090,10 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
         res.timing.parse_ns += t.parse_ns;
         res.timing.parse_wait_ns += t.parse_wait_ns;
         res.timing.parses += t.parses;
+        res.timing.reparse_ns += t.reparse_ns;
+        res.timing.stamps_ns += t.stamps_ns;
+        res.timing.walk_ns += t.walk_ns;
+        res.timing.unit_reused += t.unit_reused;
         if (res.timing.absent == 0)
             res.timing.first_absent = t.first_absent;
         res.timing.absent += t.absent;

@@ -267,7 +267,7 @@ Environment variables:
   - `hot/indexStats` has the counts `updateRuns` and `dirtyDocs`. The parameter `noFlush` keeps the dirty documents dirty (for tests).
 - `HOT_LS_LITE_CHECK=1` asks the full document too for hover, completion and definition. The server logs each difference. `hot/indexStats` has the counts `liteHits`, `liteFallback` and `liteMismatch`.
 - `HOT_LS_SHELL_DIR=<dir>` sets the directory of the header files (the tests use it).
-- `HOT_LS_TIMING=<file>` appends the phases of a completion to the file. It writes one `PHASE` line for each phase: `completion total`, `script facts`, `full sync`, `full clangd call`, `restore`, `post items` and `live update`. It writes one `PROBE` line for each probe text, with the passes, the parses, the translate times, `absent` and `first_absent`. `absent` is the number of names that the session facts did not have. `first_absent` is the first of these names, or `-` when none.
+- `HOT_LS_TIMING=<file>` appends the phases of a completion to the file. It writes one `PHASE` line for each phase: `completion total`, `script facts`, `full sync`, `full clangd call`, `restore`, `post items` and `live update`. It writes one `PROBE` line for each probe text, with the passes, the parses, the translate times, `absent` and `first_absent`. `absent` is the number of names that the session facts did not have. `first_absent` is the first of these names, or `-` when none. `reparse_ms` is the libclang parse or reparse, `stamps_ms` the stamp checks, `walk_ms` the cursor walk of the facts, and `unit_reused` the parses that reparsed a kept unit. The label `live` is the analyze of a live update.
 - `HOT_LS_CLANGD_J=<n>` sets the `-j=` value of `clangd`. The default is 2.
 
 ## Import cache

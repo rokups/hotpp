@@ -471,10 +471,11 @@ static void probe_timing_line(const char* label, const hotc::AnalyzeResult& r)
     if (FILE* f = std::fopen(file, "a"))
     {
         std::fprintf(f,
-            "PROBE %s passes=%d parses=%lld absent=%lld first_absent=%s parse_ms=%.1f wait_ms=%.1f front_ms=%.1f check_ms=%.1f foreign_ms=%.1f own_ms=%.1f\n",
+            "PROBE %s passes=%d parses=%lld absent=%lld first_absent=%s parse_ms=%.1f reparse_ms=%.1f stamps_ms=%.1f walk_ms=%.1f unit_reused=%lld wait_ms=%.1f front_ms=%.1f check_ms=%.1f foreign_ms=%.1f own_ms=%.1f\n",
             label, r.passes, static_cast<long long>(t.parses),
-            static_cast<long long>(t.absent), t.first_absent.empty() ? "-" : t.first_absent.c_str(), ms(t.parse_ns), ms(t.parse_wait_ns), ms(t.front_ns),
-            ms(t.check_ns), ms(t.foreign_class_ns), ms(t.own_class_ns));
+            static_cast<long long>(t.absent), t.first_absent.empty() ? "-" : t.first_absent.c_str(), ms(t.parse_ns),
+            ms(t.reparse_ns), ms(t.stamps_ns), ms(t.walk_ns), static_cast<long long>(t.unit_reused), ms(t.parse_wait_ns),
+            ms(t.front_ns), ms(t.check_ns), ms(t.foreign_class_ns), ms(t.own_class_ns));
         std::fclose(f);
     }
 }
@@ -2905,6 +2906,7 @@ void Server::update(Doc& d)
     const auto update_t0 = std::chrono::steady_clock::now();
     hotc::AnalyzeResult facts =
         timed_translate([&] { return hotc::analyze(d.text.s, translate_options(d), session_); });
+    probe_timing_line("live", facts);
     const auto post_t0 = std::chrono::steady_clock::now();
     LastUpdate last;
     last.timing = facts.timing;

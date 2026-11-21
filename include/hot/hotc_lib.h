@@ -358,6 +358,12 @@ struct TranslateTiming
     int64_t absent = 0;        // the session lookups that missed (each one parses)
     std::string first_absent;  // the first name that the session facts did not have
     int64_t front_ns = 0;      // the time before the session lookup
+    // The parts of parse_ns and the stamp check (HOT-57). "reparse_ns" is the libclang parse or reparse,
+    // "stamps_ns" the stamp check of the entry and the stamps of the parse, "walk_ns" the cursor walk.
+    int64_t reparse_ns = 0;
+    int64_t stamps_ns = 0;
+    int64_t walk_ns = 0;
+    int64_t unit_reused = 0; // the parses that reparsed a kept unit
     int64_t lower_ns = 0;      // from the session lookup to the first check
     int64_t check_ns = 0;      // from the first check to the start of the emit
     int64_t emit_ns = 0;       // from the start of the emit to the end
