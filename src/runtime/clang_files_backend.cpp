@@ -1840,10 +1840,36 @@ void ClangFilesBackend::flush_compile_commands()
     if (!compile_db_dirty_ || opt_.compile_commands_dir.empty() || opt_.generated_dir.empty())
         return;
     compile_db_dirty_ = false;
+    // HOT_TIMING: the time of each phase, in microseconds, in one line.
+    using Clock = std::chrono::steady_clock;
+    const bool timing = std::getenv("HOT_TIMING") != nullptr;
+    auto tp = Clock::now();
+    long long t_exists = 0, t_check = 0, t_read = 0, t_merge = 0, t_text = 0, t_write = 0;
+    const auto lap = [&](long long& acc)
+    {
+        const auto now = Clock::now();
+        acc += std::chrono::duration_cast<std::chrono::microseconds>(now - tp).count();
+        tp = now;
+    };
+    struct Report
+    {
+        bool on;
+        long long &a, &b, &c, &d, &e, &g;
+        size_t commands;
+        ~Report()
+        {
+            if (on)
+                std::fprintf(stderr,
+                    "hot: timing flush split own-exists %lld us check %lld us read-db %lld us merge-render %lld us "
+                    "text-compare %lld us write %lld us; own entries %zu\n",
+                    a, b, c, d, e, g, commands);
+        }
+    } report{timing, t_exists, t_check, t_read, t_merge, t_text, t_write, commands_.size()};
     std::error_code ec;
     // An entry whose generated file is gone (a removed unit) goes.
     for (auto it = commands_.begin(); it != commands_.end();)
         it = fs::exists(it->first, ec) ? std::next(it) : commands_.erase(it);
+    lap(t_exists);
     const fs::path dir(opt_.compile_commands_dir);
     const fs::path db = dir / "compile_commands.json";
     // The stamp of the file. A different stamp means a write of another process.
@@ -1878,6 +1904,7 @@ void ClangFilesBackend::flush_compile_commands()
     }
     // The file is the same as at the last write, but an entry changed. The text of the other
     // entries is the same: the backend keeps it, so it does not read and parse the file again.
+    lap(t_check);
     std::map<std::string, CompileCommandEntry> merged;
     std::map<std::string, std::string> rendered;
     std::string old_text;
@@ -1904,6 +1931,7 @@ void ClangFilesBackend::flush_compile_commands()
         merged = read_compile_commands(old_text, rendered);
         ++compile_db_reads_;
     }
+    lap(t_read);
     disk_known_ = false;
     disk_commands_.clear();
     disk_rendered_.clear();
@@ -1915,6 +1943,7 @@ void ClangFilesBackend::flush_compile_commands()
         merged[file] = entry;
         rendered[file] = compile_command_entry_json(entry);
     }
+    lap(t_merge);
     std::string text = "[\n";
     size_t n = 0;
     for (const auto& [file, entry] : merged)
@@ -1928,6 +1957,7 @@ void ClangFilesBackend::flush_compile_commands()
     text += "]\n";
     // "old_text" is empty after a fast start: the text of the file is not known, but the stamp is.
     const bool same_as_disk = !old_text.empty() && text == old_text;
+    lap(t_text);
     bool stamped = false;
     if (!same_as_disk)
     {
@@ -1942,6 +1972,7 @@ void ClangFilesBackend::flush_compile_commands()
         ++compile_db_writes_;
         stamped = disk_size_ != static_cast<uintmax_t>(-1);
     }
+    lap(t_write);
     // The file now has the text of "merged" and "rendered".
     if (stamped || (same_as_disk && stamp(disk_mtime_, disk_size_)))
     {

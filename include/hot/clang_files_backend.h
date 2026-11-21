@@ -135,6 +135,13 @@ public:
     // The number of writes of compile_commands.json by this backend. For tests.
     size_t compile_commands_writes() const { return compile_db_writes_; }
     size_t compile_commands_reads() const { return compile_db_reads_; }
+    // Records "n" units and does one flush. For the bench tools/bench/compile_db_bench.cpp.
+    void flush_for_bench(size_t n, const std::string& script_dir)
+    {
+        for (size_t i = 0; i < n; ++i)
+            record_compile_command("unit" + std::to_string(i), script_dir, opt_.work_dir + "/u" + std::to_string(i) + ".o", true);
+        flush_compile_commands();
+    }
     // Reads the compile database. For the bench tools/bench/compile_db_bench.cpp.
     size_t read_compile_db_for_bench(std::string& text) const
     {
