@@ -8852,8 +8852,12 @@ TEST(LanguageServerRename, ImporterChainThroughAnIncludeFolderIsNotLeftOut)
 TEST(LanguageServerRename, RenameRefusesWhenAnImporterCannotBeRead)
 {
     REQUIRE_CLANGD();
+#ifdef _WIN32
+    GTEST_SKIP() << "file permissions do not block a read on Windows";
+#else
     if (geteuid() == 0)
         GTEST_SKIP() << "root can read a file without permissions";
+#endif
     Session s(true, kOriginScript);
     const std::filesystem::path other = s.dir.path() / "other.hot";
     write_file(other, "using \"player.hot\";\nclass Kid : Spawn {\n}\n");
@@ -10615,14 +10619,14 @@ TEST(LanguageServer, SplitShellHeaderFollowsAnEditOfAnImport)
     ASSERT_NE(s.client->request("textDocument/hover", doc_pos(s.uri, 3, 30)), nullptr);
     const auto files = shell_files(shells.path());
     ASSERT_EQ(files.size(), 1u);
-    const std::string before = translator_test::read_file(files[0]);
+    const std::string before = translator_test::read_file(files[0].string());
     EXPECT_EQ(before.find("mana"), std::string::npos);
     // The edit of an own body keeps the header file.
     std::string own = kSplitImporter;
     own.replace(own.find("float own = 1.0;"), 16, "float own = 1.0;\n    float extra = 3.0;");
     s.client->change(s.uri, 3, own);
     ASSERT_NE(s.client->request("textDocument/hover", doc_pos(s.uri, 3, 10)), nullptr);
-    EXPECT_EQ(translator_test::read_file(files[0]), before);
+    EXPECT_EQ(translator_test::read_file(files[0].string()), before);
     // The edit of the import changes it.
     std::string base = kSplitBase;
     base.replace(base.find("float hp = 2.0;"), 15, "float hp = 2.0;\n    float mana = 3.0;");
@@ -10646,7 +10650,7 @@ TEST(LanguageServer, SplitShellHeaderFollowsAnEditOfAnImport)
     const auto now = shell_files(shells.path());
     ASSERT_EQ(now.size(), 1u);
     EXPECT_EQ(now[0], files[0]);
-    EXPECT_NE(translator_test::read_file(now[0]).find("mana"), std::string::npos);
+    EXPECT_NE(translator_test::read_file(now[0].string()).find("mana"), std::string::npos);
 }
 
 // HOT-52: after a change of the shell the completion does not wait for the new preamble. clangd answers from the old
@@ -10664,7 +10668,7 @@ TEST(LanguageServer, CompletionAfterAShellChangeAnswersAtOnceAndThenHasTheNewNam
     ASSERT_NE(s.client->request("textDocument/hover", doc_pos(s.uri, 3, 30)), nullptr);
     const auto files = shell_files(shells.path());
     ASSERT_EQ(files.size(), 1u);
-    const std::string before = translator_test::read_file(files[0]);
+    const std::string before = translator_test::read_file(files[0].string());
     // A new class changes the shell. The cursor is after "this.".
     std::string user = kSplitImporter;
     user.replace(user.find("this.Heal(a)"), 12, "this.");
@@ -10691,8 +10695,8 @@ TEST(LanguageServer, CompletionAfterAShellChangeAnswersAtOnceAndThenHasTheNewNam
     const auto now = shell_files(shells.path());
     ASSERT_EQ(now.size(), 1u);
     EXPECT_EQ(now[0], files[0]);
-    EXPECT_NE(translator_test::read_file(now[0]), before);
-    EXPECT_NE(translator_test::read_file(now[0]).find("ExtraThing"), std::string::npos);
+    EXPECT_NE(translator_test::read_file(now[0].string()), before);
+    EXPECT_NE(translator_test::read_file(now[0].string()).find("ExtraThing"), std::string::npos);
     // After the hold the answer is complete and has the new names.
     std::string plain = user;
     plain.replace(plain.find("this."), 5, "ExtraTh");
@@ -10710,6 +10714,7 @@ TEST(LanguageServer, CompletionAfterAShellChangeAnswersAtOnceAndThenHasTheNewNam
     EXPECT_TRUE(found) << r.dump();
 }
 
+#ifndef _WIN32 // uses the python gate proxy
 // HOT-52: after the hold, a reply is final only when clangd shows the new preamble. A clangd that is slower than the
 // hold (here: documentSymbol is held by the proxy) keeps the replies incomplete. When it answers, the reply is final.
 TEST(LanguageServer, CompletionStaysIncompleteWhenTheNewPreambleIsLateAfterTheHold)
@@ -10768,6 +10773,7 @@ TEST(LanguageServer, CompletionStaysIncompleteWhenTheNewPreambleIsLateAfterTheHo
     EXPECT_TRUE(final_reply) << r.dump();
 }
 
+#endif
 // Hover, definition and completion in the bodies of the own functions are the same with the lite document and
 // without it. A hover in a second body, a place outside the bodies and an edit in a body work.
 TEST(LanguageServer, LiteDocGivesTheSameResultsAsTheFullDocument)
