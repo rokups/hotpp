@@ -854,13 +854,15 @@ TEST(PchBackend, SharedPchSecondBatchNoRebuild)
     }
     EXPECT_EQ(f.pch_builds(), 1u);
     const std::string inc = read_file(fs::path(f.cache) / "pch" / "shared.inc");
+    // The first batch may compile its second unit with the PCH that its own build just made.
+    const size_t before = f.pch_compiles();
     {
         auto backend = make_backend(f.scratch, "work_nb2", f.cache, f.cxx, f.incs());
         EXPECT_EQ(load_batch(*backend, {layout_script(2, "c.hot")}), 1u);
         backend->wait_for_pch();
     }
     EXPECT_EQ(f.pch_builds(), 1u);
-    EXPECT_EQ(f.pch_compiles(), 1u);
+    EXPECT_EQ(f.pch_compiles(), before + 1u);
     EXPECT_EQ(read_file(fs::path(f.cache) / "pch" / "shared.inc"), inc);
 }
 
