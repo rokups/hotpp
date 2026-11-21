@@ -818,11 +818,12 @@ TEST(PchBackend, BadSharedPchKeepsExactPch)
     EXPECT_GE(bad_markers(f.cache), 1u);
     EXPECT_GE(pch_files(f.cache).size(), 1u); // the exact PCH of the first unit
     EXPECT_LE(f.pch_builds(), builds + 1u);
+    const size_t compiles = f.pch_compiles(); // the log is cumulative: phase 2 may already use its exact PCH
     {
         auto backend = make_backend(f.scratch, "work_bad3", f.cache, f.cxx, f.incs());
         EXPECT_EQ(load_and_run(*backend, layout_script(9, "a.hot")), 13.0f);
     }
-    EXPECT_EQ(f.pch_compiles(), 1u);
+    EXPECT_EQ(f.pch_compiles(), compiles + 1u);
 }
 
 // A second batch while the shared build runs starts no second build.

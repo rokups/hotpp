@@ -10275,6 +10275,7 @@ TEST(WorkspaceIndexRename, ColdIndexLooksUpOnlyTheFilesWithTheName)
         o.reference_budget_ms = 120000;
         LsClient client(o);
         client.initialize(uri_of(dir.path().string()));
+        client.request("hot/indexStats", json::object()); // the server has handled `initialized` before the files appear
         const std::string lib = (dir.path() / "lib.hot").string();
         write_file(lib, kRefLib);
         client.open(uri_of(lib), kRefLib);
