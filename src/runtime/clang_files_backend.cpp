@@ -18,6 +18,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #endif
+#if !defined(__linux__)
+// The ELF symbol readers return early here; the constants only keep them compiling.
+constexpr int STB_LOCAL = 0, STT_OBJECT = 1, STT_FUNC = 2, STT_TLS = 6;
+#endif
 #include <algorithm>
 #include <atomic>
 #include <map>

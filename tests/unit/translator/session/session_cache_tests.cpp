@@ -27,6 +27,22 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <cstdlib>
+
+namespace
+{
+void set_pch_env(bool off)
+{
+#ifdef _WIN32
+    _putenv_s("HOT_PCH_INSTANTIATE", off ? "0" : "");
+#else
+    if (off)
+        ::setenv("HOT_PCH_INSTANTIATE", "0", 1);
+    else
+        ::unsetenv("HOT_PCH_INSTANTIATE");
+#endif
+}
+} // namespace
 
 using namespace translator_test;
 using namespace stub_translate_test;
@@ -879,9 +895,9 @@ TEST(SessionCache, CppTemplateInstantiationErrorsEqualAParseWithoutEarlyInstance
         hotc::TranslateOptions o = cpp_options(dir, steps[i].script);
         hotc::TranslateResult want;
         {
-            ::setenv("HOT_PCH_INSTANTIATE", "0", 1);
+            set_pch_env(true);
             want = plain_translate(o);
-            ::unsetenv("HOT_PCH_INSTANTIATE");
+            set_pch_env(false);
         }
         EXPECT_EQ(want.ok, i == 0 || i == 3 || i == 5) << "step " << i << "\n" << want.diagnostics;
         if (!want.ok)
@@ -890,9 +906,9 @@ TEST(SessionCache, CppTemplateInstantiationErrorsEqualAParseWithoutEarlyInstance
         if (steps[i].other_script_name)
         {
             const hotc::TranslateOptions other = cpp_options(dir, cpp_script("", "    int v = 1;\n"), steps[i].other_script_name);
-            ::setenv("HOT_PCH_INSTANTIATE", "0", 1);
+            set_pch_env(true);
             const hotc::TranslateResult want_other = plain_translate(other);
-            ::unsetenv("HOT_PCH_INSTANTIATE");
+            set_pch_env(false);
             EXPECT_EQ(hotc::translate(other, shared).cpp, want_other.cpp) << "other unit, step " << i;
         }
     }
