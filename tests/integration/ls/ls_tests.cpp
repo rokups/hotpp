@@ -136,12 +136,15 @@ struct Session
     std::string path, uri;
     std::unique_ptr<LsClient> client;
     explicit Session(bool clangd, const std::string& text = kScript, hot::ls::ServerOptions* o = nullptr,
-        const char* clang_tidy = nullptr)
+        const char* clang_tidy = nullptr, const std::vector<std::pair<std::string, std::string>>& files = {})
     {
         path = (dir.path() / "player.hot").string();
         uri = uri_of(path);
         if (clang_tidy)
             write_file(dir.path() / ".clang-tidy", clang_tidy);
+        // The other files are on disk before the open: a file that comes later changes the shell, and a hold starts.
+        for (const auto& [name, content] : files)
+            write_file(dir.path() / name, content);
         write_file(path, text);
         client = std::make_unique<LsClient>(o ? *o : options(dir, clangd));
         client->initialize(uri_of(dir.path().string()));
@@ -11341,8 +11344,7 @@ TEST(LanguageServer, ThisCacheGivesTheSameCompletionAsNoCache)
     for (int cache = 0; cache < 2; ++cache)
     {
         const EnvGuard env("HOT_LS_THIS_CACHE", cache ? "1" : "0");
-        Session s(true, this_script("Base", "Mo", 1));
-        write_file(s.dir.path() / "base.hot", kThisBase);
+        Session s(true, this_script("Base", "Mo", 1), nullptr, nullptr, {{"base.hot", kThisBase}});
         answers[cache][0] = this_names(s, 2, "Base", "Mo", 1);
         answers[cache][1] = this_names(s, 3, "Base", "Na", 2); // other word, other text: the cache is used
         answers[cache][2] = this_names(s, 4, "Base", "P", 3); // one letter
@@ -11407,8 +11409,7 @@ TEST(LanguageServer, SpeculationGivesTheSameCompletionAsSerial)
     for (int spec = 0; spec < 2; ++spec)
     {
         const EnvGuard env("HOT_LS_SPECULATE", spec ? "1" : "0");
-        Session s(true, this_script("Base", "Mo", 1));
-        write_file(s.dir.path() / "base.hot", kThisBase);
+        Session s(true, this_script("Base", "Mo", 1), nullptr, nullptr, {{"base.hot", kThisBase}});
         answers[spec][0] = spec_names(s, 2, "Mo", 0, "natural"); // first request: no memo
         answers[spec][1] = spec_names(s, 3, "Na", 1, "natural"); // equal text with the new word
         answers[spec][2] = spec_names(s, 4, "Mo", 2, "natural");
@@ -11455,8 +11456,7 @@ TEST(LanguageServer, SpeculationThenNoTranslationGivesTheSerialItems)
     {
         const EnvGuard env("HOT_LS_SPECULATE", spec ? "1" : "0");
         const EnvGuard lite("HOT_LS_LITE_DOC", "0"); // the speculation uses the full document
-        Session s(true, this_script("Base", "Mo", 1));
-        write_file(s.dir.path() / "base.hot", kThisBase);
+        Session s(true, this_script("Base", "Mo", 1), nullptr, nullptr, {{"base.hot", kThisBase}});
         spec_names(s, 2, "Mo", 0, "natural");
         spec_names(s, 3, "Na", 1, "natural"); // the memo
         spec_names(s, 4, "Mo", 2, "natural");
@@ -11497,8 +11497,7 @@ TEST(LanguageServer, SpeculationWithTheMemoOfAClassBodyGivesTheSerialItems)
         pad += "*/ ";
         ASSERT_EQ(head.size() + pad.size(), stmt_head.size());
         const std::string field_tail = "\n    void run() {\n    }\n}\n";
-        Session s(true, head + pad + "Mo" + field_tail);
-        write_file(s.dir.path() / "base.hot", kThisBase);
+        Session s(true, head + pad + "Mo" + field_tail, nullptr, nullptr, {{"base.hot", kThisBase}});
         for (int v = 0; v < 3; ++v) // a type place: the memo holds the hole in the class body
         {
             s.client->change(s.uri, 2 + v, head + pad + "Mo" + std::string(static_cast<size_t>(v), ' ') + field_tail);
