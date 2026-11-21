@@ -353,11 +353,16 @@ inline std::vector<std::string> split_handler_value(std::string_view v)
     return out;
 }
 
-// True for a part that the engine does not give to the script host: it starts with the exact
-// text "sound:" or "event:" (CreateSingleEventListener in RmlEventListeners.cpp).
+// True for a part that gets no stub: after leading spaces, tabs and line ends it starts with the
+// exact text "sound:" or "event:" (CreateSingleEventListener in RmlEventListeners.cpp). The engine
+// trim keeps a line end, so it sends "\n  sound:x" to the script host. Such a part is not valid
+// Hot++, so it gets no stub and the bridge reports "no stub" when the event comes.
 inline bool has_handler_prefix(const std::string& p)
 {
-    return p.compare(0, 6, "sound:") == 0 || p.compare(0, 6, "event:") == 0;
+    size_t i = 0;
+    while (i < p.size() && is_space(p[i]))
+        ++i;
+    return p.compare(i, 6, "sound:") == 0 || p.compare(i, 6, "event:") == 0;
 }
 
 } // namespace embedded_script_detail

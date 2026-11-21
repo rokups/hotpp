@@ -289,9 +289,16 @@ TEST(HandlerStubs, OnlyTheEnginePrefixesAreSkipped)
     EXPECT_EQ(stubs("<a onclick=\"foo:bar; Sound:x; event:y\"/>", "M"), "M" + stub_line("foo:bar") + stub_line("Sound:x"));
 }
 
+TEST(HandlerStubs, PrefixAfterALineEndGetsNoStub)
+{
+    // The engine sends "\n    sound:click.wav" to the script host (its trim keeps the line end). The
+    // part is not valid Hot++, so it gets no stub: the bridge reports "no stub" at event time.
+    EXPECT_EQ(stubs("<a onclick=\"Foo();\n    sound:click.wav\"/>", "M"), "M" + stub_line("Foo()"));
+    EXPECT_EQ(stubs("<a onclick=\"\r\n\tevent:x; f()\n\"/>", "M"), "M" + stub_line("f()\n"));
+}
+
 TEST(HandlerStubs, TrimIsSpaceAndTabAsTheEngine)
 {
-    EXPECT_EQ(stubs("<a onclick=\" \t\n sound:x\"/>", "M"), "M" + stub_line("\n sound:x"));
     EXPECT_EQ(stubs("<a onclick=\"\tf() \"/>", "M"), "M" + stub_line("f()"));
 }
 
