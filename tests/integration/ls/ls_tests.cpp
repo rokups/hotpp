@@ -5765,6 +5765,34 @@ int analyses(LsClient& c)
 
 } // namespace
 
+// HOT-57: the background index keeps no probe unit. Only an open document keeps one.
+TEST(LanguageServer, OnlyAnOpenDocumentKeepsAProbeUnit)
+{
+    REQUIRE_CLANGD();
+    TempDir dir;
+    write_file(dir.path() / "thing.h", "#pragma once\nstruct Thing { int value; };\nstruct Other { int more; };\n");
+    const std::string text = "using \"thing.h\";\n\nclass A {\n    Thing t;\n    void F() { t. }\n}\n";
+    write_file(dir.path() / "a.hot", text);
+    hot::ls::ServerOptions o = options(dir, true);
+    o.background_index = true;
+    o.include_dirs.push_back(dir.path().string());
+    LsClient client(o);
+    client.initialize(dir.path().string());
+    const auto stats = [&] { return client.request("hot/indexStats", json::object())["result"]; };
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    while (stats()["index"].value("analyzed", 0) < 1 && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    ASSERT_GE(stats()["index"].value("analyzed", 0), 1) << stats().dump(); // the index analyzed the closed file
+    EXPECT_EQ(stats().value("probeUnits", -1), 0) << stats().dump();
+    const std::string uri = uri_of((dir.path() / "a.hot").string());
+    std::string open_text = text; // a new name: the facts miss it, so the open document makes a probe
+    open_text.replace(open_text.find("    Thing t;"), 12, "    Thing t;\n    Other o;");
+    client.open(uri, open_text);
+    const json r = client.request("textDocument/completion", doc_pos(uri, 5, 17));
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    EXPECT_EQ(stats().value("probeUnits", -1), 1) << stats().dump();
+}
+
 TEST(LanguageServer, InitializeAdvertisesWorkspaceFolders)
 {
     TempDir dir;
@@ -12102,3 +12130,96 @@ TEST(LanguageServer, HoverOfAScriptMethodThroughBangDotAndSafeDotShowsTheDeclara
 }
 
 } // namespace
+
+// HOT-57: clangd published the diagnostics of the generated document, so its preamble is there. The first
+// completion at a type place of the class body then does not wait for an AST of the real text: only the
+// patched text goes to clangd.
+TEST(LanguageServer, FirstCompletionAfterTheClangdDiagnosticsMakesNoReadyWait)
+{
+    REQUIRE_CLANGD();
+    Session s(true);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    while (this_stat(s, "clangdDiagDocs") < 1 && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    ASSERT_GE(this_stat(s, "clangdDiagDocs"), 1);
+    std::string t = kScript;
+    t.replace(t.find("\n\n    override"), 2, "\n    Ve\n");
+    s.client->change(s.uri, 2, t);
+    const std::vector<std::string> labels = completion_labels(s, 4, 6);
+    EXPECT_TRUE(contains_name(labels, "Vec3"));
+    EXPECT_EQ(this_stat(s, "readyWaits"), 0);
+}
+
+// HOT-57: a new shell with a hash name after a published version. The diagnostics of the old text do not show
+// the new preamble, so the first completion after the change waits.
+TEST(LanguageServer, NewShellNameAfterThePublishMakesAReadyWait)
+{
+    REQUIRE_CLANGD();
+    const EnvGuard env("HOT_LS_SPLIT_SHELL", "1");
+    const EnvGuard stable("HOT_LS_STABLE_SHELL", "0");
+    TempDir shells;
+    const EnvGuard dir_env("HOT_LS_SHELL_DIR", shells.path().string());
+    Session s(true, kSplitImporter);
+    write_file(s.dir.path() / "base.hot", kSplitBase);
+    s.client->change(s.uri, 2, kSplitImporter);
+    ASSERT_NE(s.client->request("textDocument/hover", doc_pos(s.uri, 3, 30)), nullptr);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    while (this_stat(s, "clangdDiagDocs") < 1 && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    ASSERT_GE(this_stat(s, "clangdDiagDocs"), 1);
+    const int waits = this_stat(s, "readyWaits");
+    std::string user = kSplitImporter;
+    user.replace(user.find("this.Heal(a)"), 12, "this.");
+    user += "class ExtraThing { }\n"; // a new class changes the shell
+    s.client->change(s.uri, 3, user);
+    const json r = s.client->request(
+        "textDocument/completion", doc_pos(s.uri, 3, static_cast<int>(std::string("    float Go(float a) { return this.").size())));
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    EXPECT_EQ(this_stat(s, "readyWaits"), waits + 1);
+}
+
+// HOT-57: a host change closes the generated document in clangd. clangd then publishes an empty list with
+// no version. That publish does not show a preamble, so the first completion after it still waits.
+TEST(LanguageServerHosts, UnversionedPublishAfterAHostChangeKeepsTheReadyWait)
+{
+    REQUIRE_CLANGD();
+    TempDir dir;
+    const std::filesystem::path root = dir.path();
+    for (const char* sub : {"inc", "scripts", "build", "hosts"})
+        std::filesystem::create_directories(root / sub);
+    write_file((root / "inc" / "thing.h").string(), "#pragma once\nstruct Thing { int value; };\n");
+    const std::string text = "using \"thing.h\";\n\nclass A {\n    int x;\n}\n";
+    const std::string path = (root / "scripts" / "a.hot").string();
+    write_file(path, text);
+    write_file((root / "build" / "CMakeCache.txt").string(), "# cache\n");
+    hot::ls::ServerOptions o;
+    o.clangd = HOT_CLANGD_PATH;
+    o.hosts_dir = (root / "hosts").string();
+    o.include_dirs = {HOT_SOURCE_DIR "/include", (root / "inc").string()};
+    LsClient client(o);
+    client.initialize(uri_of(root.string()));
+    const std::string uri = uri_of(path);
+    client.open(uri, text);
+    const auto stat = [&](const char* key)
+    { return client.request("hot/indexStats", json::object())["result"].value(key, -1); };
+    const auto wait_for = [&](const char* key, int n)
+    {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+        while (stat(key) < n && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        return stat(key) >= n;
+    };
+    ASSERT_TRUE(wait_for("clangdDiagDocs", 1));
+    write_file((root / "hosts" / "h.json").string(),
+        R"({"version":1,"name":"h","binaryDir":")" + (root / "build").generic_string()
+            + R"(","compiler":"/usr/bin/c++","std":"c++20","resourceDir":"","scriptDirs":[")"
+            + (root / "scripts").generic_string() + R"("],"scripts":[],"includeDirs":[")" + (root / "inc").generic_string()
+            + R"(",")" + HOT_SOURCE_DIR + R"(/include"],"defines":[],"flags":[]})");
+    client.notify("workspace/didChangeWatchedFiles",
+        {{"changes", json::array({{{"uri", uri_of((root / "hosts" / "h.json").string())}, {"type", 1}}})}});
+    ASSERT_TRUE(wait_for("unversionedDiags", 1)); // the publish of the didClose
+    const int before = stat("readyWaits");
+    client.change(uri, 2, "using \"thing.h\";\n\nclass A {\n    Thi\n    int x;\n}\n");
+    const json r = client.request("textDocument/completion", doc_pos(uri, 3, 7));
+    EXPECT_EQ(stat("readyWaits"), before + 1);
+}

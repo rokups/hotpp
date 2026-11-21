@@ -69,7 +69,9 @@ constexpr auto field_count(int) -> decltype(T{std::declval<A>()..., std::declval
 //     with false stays the same as before the option.
 //   - resolve_refs: not in the key. The output does not change. An entry has no table,
 //     so a lookup with this option gives no hit.
-static_assert(field_count<hotc::TranslateOptions>(0) == 26,
+//   - unknown_marker: not in the key. The output does not change: the shortcut gives the answer of a parse.
+//   - probe_unit: not in the key. The output does not change: a kept unit gives the facts of a plain parse.
+static_assert(field_count<hotc::TranslateOptions>(0) == 28,
     "TranslateOptions has a new field: decide if it goes into the key of the translate cache");
 
 void add_list(Hash64& h, const std::vector<std::string>& v)

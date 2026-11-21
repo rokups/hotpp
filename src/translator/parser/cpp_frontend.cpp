@@ -3726,6 +3726,44 @@ size_t TuCache::size() const
     return n;
 }
 
+bool TuCache::take(const std::string& key, CXIndex& idx, CXTranslationUnit& tu, uint64_t* tag)
+{
+    Impl::Slot s;
+    if (!impl_->take(key, s))
+        return false;
+    if (tag)
+        *tag = s.text_hash;
+    idx = s.idx;
+    tu = s.tu;
+    s.idx = nullptr;
+    s.tu = nullptr;
+    return true;
+}
+void TuCache::put(const std::string& key, CXIndex idx, CXTranslationUnit tu, uint64_t gen, uint64_t tag) noexcept
+{
+    Impl::Slot s; // owns the handles from here: an exception below disposes them
+    s.idx = idx;
+    s.tu = tu;
+    s.text_hash = tag;
+    try
+    {
+        s.key = key;
+    }
+    catch (...)
+    {
+        return;
+    }
+    impl_->put(std::move(s), gen);
+}
+uint64_t TuCache::generation() const
+{
+    return impl_->generation.load();
+}
+bool TuCache::enabled() const
+{
+    return impl_->max_units.load() != 0;
+}
+
 Handles::~Handles()
 {
     if (keep && cache && tu && idx)
