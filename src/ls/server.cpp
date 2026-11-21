@@ -7555,7 +7555,15 @@ std::string Server::rename_other_scripts(NativeRenameJob& job, const Doc& d)
             // The generated code of an open script must be the code of its editor text. Else the
             // script has no answer of clangd for its uses of the name.
             if (open->facts.cpp.empty() || open->gen_script.s != open->text.s)
-                return what + ": " + c.path + " does not translate";
+            {
+                // The reason: which part of the condition holds, and the first diagnostic.
+                std::string first = open->facts.errors.empty() ? open->facts.diagnostics : open->facts.errors[0].message;
+                first = first.substr(0, first.find('\n'));
+                return what + ": " + c.path + " does not translate (facts.cpp empty: " +
+                    (open->facts.cpp.empty() ? "yes" : "no") + "; generated text matches: " +
+                    (open->gen_script.s == open->text.s ? "yes" : "no") + "; probe parses: " +
+                    std::to_string(open->facts.timing.parses) + "; first diagnostic: " + first + ")";
+            }
             why = work(*open);
         }
         else

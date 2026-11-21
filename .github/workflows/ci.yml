@@ -864,8 +864,19 @@ jobs:
       - name: Build
         run: cmake --build --preset macos-clang-both-rel
 
+      # Shows why a rename of a native symbol does not translate.
+      - name: Test rename of a field
+        continue-on-error: true
+        run: ctest --preset macos-clang-both-rel -R LanguageServerNative.RenameOfAField --output-on-failure
+
       - name: Test
+        env:
+          HOT_LS_TIMING: ${{ runner.temp }}/hot_ls_timing.txt
         run: ctest --preset macos-clang-both-rel -j "$(sysctl -n hw.ncpu)"
+
+      - name: Show the language server timing
+        if: always()
+        run: cat "${{ runner.temp }}/hot_ls_timing.txt" || true
 
   sdk-smoke-linux:
     needs: linux
