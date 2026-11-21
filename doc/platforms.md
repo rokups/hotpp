@@ -13,7 +13,7 @@ Some platforms cannot create code at run time. A program on these platforms runs
 |---|---|
 | iOS (and tvOS, visionOS, watchOS) | Required. Not tested. |
 | Android | Wanted. Not tested. |
-| Web (Emscripten) | Wanted. Build and node test in CI. |
+| Web (Emscripten) | Wanted. A CI job builds it and runs the node tests. The first CI run is pending. |
 | UWP (`WindowsStore`) | Wanted. Not tested. |
 
 An AOT-only program has no code generation at run time: no libclang or LLVM, no JIT, no compiler process, no `dlopen` of generated libraries and no file watcher. The program links `hot::aot` and `hot::runtime_core`, or `hot::runtime` when it needs the loader for the AOT table (for example rbfx-script).
