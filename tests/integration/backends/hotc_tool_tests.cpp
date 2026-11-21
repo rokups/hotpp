@@ -2246,6 +2246,23 @@ TEST(HotcTool, MaskEmbeddedWritesTheFunctionResult)
     EXPECT_EQ(read_bytes_of(dir + "/out.hot").rfind("using Urho3D;", 0), 0u);
 }
 
+// CMake passes --target and --sysroot to every mode. The mask mode must accept and ignore them.
+TEST(HotcTool, MaskEmbeddedAcceptsTargetAndSysroot)
+{
+    TestScratch scratch;
+    const std::string dir = scratch.file("hotc_mask_target");
+    std::filesystem::create_directories(dir);
+    write_bytes_of(dir + "/in.rml", "<rml>\n<head>\n  <script>int a;\n</script>\n</head>\n</rml>\n");
+    write_bytes_of(dir + "/prefix.txt", "using Urho3D;\n");
+    std::string log;
+    ASSERT_EQ(run_command({HOTC_PATH, "--mask-embedded", dir + "/in.rml", dir + "/prefix.txt", "-o", dir + "/a.hot"}, log), 0)
+        << log;
+    ASSERT_EQ(run_command({HOTC_PATH, "--target", "x", "--sysroot", "/nonexistent", "--host-implib", "y",
+                  "--mask-embedded", dir + "/in.rml", dir + "/prefix.txt", "-o", dir + "/b.hot"}, log), 0)
+        << log;
+    EXPECT_EQ(read_bytes_of(dir + "/b.hot"), read_bytes_of(dir + "/a.hot"));
+}
+
 TEST(HotcTool, MaskEmbeddedHandlersMatchTheLibrary)
 {
     TestScratch scratch;

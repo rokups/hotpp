@@ -1151,6 +1151,12 @@ int run_mask(int argc, char** argv)
                 usage();
             (a == "-o" ? out : a == "--tag" ? tag : handlers) = argv[++i];
         }
+        else if (a == "--target" || a == "--sysroot" || a == "--host-implib")
+        {
+            // The build passes these to every mode. The mask mode ignores them.
+            if (++i >= argc)
+                usage();
+        }
         else if (!a.empty() && a[0] == '-')
             usage();
         else

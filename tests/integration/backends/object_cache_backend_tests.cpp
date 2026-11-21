@@ -801,7 +801,9 @@ TEST(ObjectCacheBackend, ToolchainVariablesArePartOfTheObjectKey)
     }
     for (const char* name : names)
     {
-        EnvGuard changed(name, "hot-test-value");
+        // The Apple clang driver rejects a deployment target that is not a version.
+        const bool version = std::string(name).find("_DEPLOYMENT_TARGET") != std::string::npos;
+        EnvGuard changed(name, version ? "11.0" : "hot-test-value");
         auto backend = make_backend(scratch, std::string("work_") + name, cache);
         EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
         EXPECT_EQ(backend->cache_stats().hits, 0u) << name;
