@@ -143,6 +143,8 @@ public:
     void prewarm(const std::vector<ScriptSource>& sources) override;
     // Waits for the prewarm thread. For tests. The destructor waits too.
     void wait_for_prewarm();
+    // For tests: "hook" runs in the prewarm thread before the read. Set it before prewarm.
+    void set_prewarm_hook(std::function<void()> hook) { pw_hook_ = std::move(hook); }
     // Records "n" units and does one flush. For the bench tools/bench/compile_db_bench.cpp.
     void flush_for_bench(size_t n, const std::string& script_dir)
     {
@@ -473,6 +475,7 @@ private:
     std::mutex pw_mutex_;
     std::condition_variable pw_cv_;
     std::thread pw_thread_;
+    std::function<void()> pw_hook_;
     bool pw_reading_ = false;
     bool pw_ready_ = false;
     std::atomic<size_t> pw_reads_{0};
