@@ -251,6 +251,19 @@ struct Doc
     int gen_version = 0; // the clangd version of the real text
     int sent_version = 0; // the last clangd version
     bool in_clangd = false;
+    // clangd published diagnostics of the generated document since its open: its preamble is there.
+    // The reader thread of clangd sets it, so it is atomic.
+    struct Flag // a copy of a Doc copies the value
+    {
+        std::atomic<bool> v{false};
+        Flag() = default;
+        Flag(const Flag& o) : v(o.v.load()) {}
+        Flag& operator=(const Flag& o)
+        {
+            v = o.v.load();
+            return *this;
+        }
+    } clangd_diag_seen;
     // The header that clangd has for the shell of the unit (Server::send_generated): its path and the hash of its text.
     std::string shell_path;
     size_t shell_hash = 0;
@@ -1151,6 +1164,15 @@ private:
             return true;
         if (preamble_ready_.count(d.gen_uri))
             return true;
+        // The diagnostics came after a preamble: an AST of the real text is not necessary. A new AST would
+        // only delay the AST of the patched text.
+        if (d.clangd_diag_seen.v)
+        {
+            wait_for_preamble_index(std::max(0, left()));
+            preamble_ready_.insert(d.gen_uri);
+            return left() > 0;
+        }
+        ++ready_waits_;
         if (left() <= 0 || !clangd_result("textDocument/documentSymbol", {{"textDocument", {{"uri", d.gen_uri}}}}, left()))
             return false;
         wait_for_preamble_index(std::max(0, left()));
@@ -1628,6 +1650,7 @@ private:
     std::map<std::string, ThisEntry> this_cache_;
     std::atomic<int> this_analyzes_{0}, this_hits_{0};
     // HOT-53: the memo text with the new hole word against the real text of the first probe (hot/indexStats).
+    std::atomic<int> ready_waits_{0}, clangd_diag_docs_{0}; // see wait_for_native_ready_until
     std::atomic<int> hole_spec_tried_{0}, hole_spec_equal_{0}, hole_spec_prefix_equal_{0};
     std::atomic<int> hole_spec_used_{0}, hole_spec_dropped_{0}; // the answers of a speculative call: used, not used
     // After a header event clangd builds a new preamble, and its answers can be old for a while. The cache stores
@@ -2160,6 +2183,7 @@ void Server::refresh_hosts(Doc* current, bool force)
         remove_shell(*d);
         d->in_clangd = false;
         preamble_ready_.erase(d->gen_uri);
+        d->clangd_diag_seen.v = false;
         completion_synced_.erase(d->gen_uri);
         if (d.get() != current)
             redo.push_back(d);
@@ -2694,6 +2718,7 @@ std::string Server::unit_for_clangd(Doc& d, const std::string& cpp)
                 else
                 {
                     preamble_ready_.erase(d.gen_uri);
+                    d.clangd_diag_seen.v = false;
                     completion_synced_.erase(d.gen_uri);
                     d.shell_changed = true;
                 }
@@ -2725,6 +2750,7 @@ std::string Server::unit_for_clangd(Doc& d, const std::string& cpp)
         d.shell_unconfirmed = false;
         // clangd builds a new preamble for the new header. The next request waits for it, as for a new document.
         preamble_ready_.erase(d.gen_uri);
+        d.clangd_diag_seen.v = false;
         completion_synced_.erase(d.gen_uri);
         d.shell_changed = true;
     }
@@ -2885,6 +2911,7 @@ void Server::update(Doc& d)
         remove_shell(d);
         d.in_clangd = false;
         preamble_ready_.erase(d.gen_uri);
+        d.clangd_diag_seen.v = false;
         completion_synced_.erase(d.gen_uri);
         std::lock_guard<std::mutex> lock(docs_mutex_);
         d.facts = hotc::AnalyzeResult();
@@ -3262,6 +3289,8 @@ void Server::on_clangd_notification(const json& msg)
     if (p.contains("version") && p["version"].is_number_integer() && p["version"].get<int>() != d.gen_version)
         return;
     d.raw_clang_diags = p.value("diagnostics", json::array());
+    if (!d.clangd_diag_seen.v.exchange(true))
+        ++clangd_diag_docs_;
     if (d.dirty)
         return; // HOT-51: the facts are old. The next update() maps these diagnostics and publishes.
     map_clangd_diagnostics(d);
@@ -8921,6 +8950,7 @@ void Server::handle(const json& msg)
         close_lite(*d);
         remove_shell(*d);
         preamble_ready_.erase(d->gen_uri);
+        d->clangd_diag_seen.v = false;
         completion_synced_.erase(d->gen_uri);
         store_closed_shard(*d);
         if (!d->cpp && index_active())
@@ -9024,7 +9054,8 @@ void Server::handle(const json& msg)
             {"dir", index_.dir()}, {"completions", completion_translations_}, {"thisAnalyzes", this_analyzes_.load()}, {"thisHits", this_hits_.load()},
             {"holeSpecTried", hole_spec_tried_.load()}, {"holeSpecEqual", hole_spec_equal_.load()},
             {"holeSpecPrefixEqual", hole_spec_prefix_equal_.load()}, {"holeSpecUsed", hole_spec_used_.load()},
-            {"holeSpecDropped", hole_spec_dropped_.load()},
+            {"holeSpecDropped", hole_spec_dropped_.load()}, {"readyWaits", ready_waits_.load()},
+            {"clangdDiagDocs", clangd_diag_docs_.load()},
             {"tokenRequests", native_token_requests_.load()}, {"translations", translations_.load()},
             {"liteHits", lite_hits_.load()}, {"liteFallback", lite_fallbacks_.load()}, {"liteMismatch", lite_mismatches_.load()},
             {"translateMs", static_cast<double>(translate_us_.load()) / 1000.0}, {"tableHits", table_hits_},

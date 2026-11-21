@@ -12101,3 +12101,22 @@ TEST(LanguageServer, HoverOfAScriptMethodThroughBangDotAndSafeDotShowsTheDeclara
 }
 
 } // namespace
+
+// HOT-57: clangd published the diagnostics of the generated document, so its preamble is there. The first
+// completion at a type place of the class body then does not wait for an AST of the real text: only the
+// patched text goes to clangd.
+TEST(LanguageServer, FirstCompletionAfterTheClangdDiagnosticsMakesNoReadyWait)
+{
+    REQUIRE_CLANGD();
+    Session s(true);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    while (this_stat(s, "clangdDiagDocs") < 1 && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    ASSERT_GE(this_stat(s, "clangdDiagDocs"), 1);
+    std::string t = kScript;
+    t.replace(t.find("\n\n    override"), 2, "\n    Ve\n");
+    s.client->change(s.uri, 2, t);
+    const std::vector<std::string> labels = completion_labels(s, 4, 6);
+    EXPECT_TRUE(contains_name(labels, "Vec3"));
+    EXPECT_EQ(this_stat(s, "readyWaits"), 0);
+}
