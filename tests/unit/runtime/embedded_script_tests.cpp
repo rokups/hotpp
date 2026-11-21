@@ -228,4 +228,68 @@ TEST(EmbeddedScript, LineCountProperty)
     }
 }
 
+std::string stubs(const std::string& text, const std::string& masked = "")
+{
+    return hot::append_handler_stubs(text, masked, "P;", "void {name}() { {expr}; }");
+}
+
+std::string stub_line(const std::string& expr)
+{
+    return "\nvoid " + hot::handler_stub_name(expr) + "() { " + expr + "; }";
+}
+
+TEST(HandlerStubs, NameIsFnv1aHex)
+{
+    EXPECT_EQ(hot::handler_stub_name(""), "rml_on_cbf29ce484222325");
+    EXPECT_EQ(hot::handler_stub_name("a"), "rml_on_af63dc4c8601ec8c");
+}
+
+TEST(HandlerStubs, NoHandler)
+{
+    bool any = true;
+    EXPECT_EQ(hot::append_handler_stubs("<p class=\"a\">x</p>", "M", "P;", "{expr}", &any), "M");
+    EXPECT_FALSE(any);
+}
+
+TEST(HandlerStubs, PrefixPartIsSkipped)
+{
+    EXPECT_EQ(stubs("<a onclick=\"sound:x; f(); event:y\"/>", "M"), "M" + stub_line("f()"));
+    EXPECT_EQ(stubs("<a onclick=\"a::b()\"/>", "M"), "M" + stub_line("a::b()"));
+}
+
+TEST(HandlerStubs, SplitKeepsSemicolonInString)
+{
+    EXPECT_EQ(stubs("<a onclick=\"f('a;b'); g('\\';')\"/>", "M"), "M" + stub_line("f('a;b')") + stub_line("g('\\';')"));
+}
+
+TEST(HandlerStubs, EntitiesAreDecoded)
+{
+    EXPECT_EQ(stubs("<a ONCLICK=\"x &lt; 1 &amp;&amp; y &gt; &quot;z&quot;\"/>", "M"), "M" + stub_line("x < 1 && y > \"z\""));
+}
+
+TEST(HandlerStubs, SingleQuotedAttribute)
+{
+    EXPECT_EQ(stubs("<a onclick='f(\"x\")'/>", "M"), "M" + stub_line("f(\"x\")"));
+}
+
+TEST(HandlerStubs, DuplicateGivesOneStub)
+{
+    EXPECT_EQ(stubs("<a onclick=\"f()\"/><b onmouseover=\"g(); f()\"/>", "M"), "M" + stub_line("f()") + stub_line("g()"));
+}
+
+TEST(HandlerStubs, HandlerOnlyDocumentStartsWithPrefix)
+{
+    bool any = false;
+    EXPECT_EQ(hot::append_handler_stubs("<a onclick=\"f()\"/>", "", "P;", "{name}={expr}", &any),
+        "P;\n" + hot::handler_stub_name("f()") + "=f()");
+    EXPECT_TRUE(any);
+}
+
+TEST(HandlerStubs, CommentAndScriptBodyAreIgnored)
+{
+    const std::string text = "<!-- <a onclick=\"c()\"/> --><script>x = \"<a onclick='s()'>\";</script>"
+                             "<style>a { } </style><a onclick=\"r()\"/>";
+    EXPECT_EQ(stubs(text, "M"), "M" + stub_line("r()"));
+}
+
 } // namespace
