@@ -58,9 +58,10 @@ std::string replaced(std::string text, const std::string& from, const std::strin
 }
 
 hotc::TranslateResult run(hotc::TranslatorSession& s, const TempDir& dir, const std::string& a, const std::string& b,
-    const std::string& importer, bool cache)
+    const std::string& importer, bool cache, bool write_header = true)
 {
-    write_file(dir.path() / "w.h", kHeaderV1);
+    if (write_header) // threads must not rewrite a header that other threads read
+        write_file(dir.path() / "w.h", kHeaderV1);
     hotc::TranslateOptions o = temp_options(dir, importer);
     o.modules.emplace_back("a.hot", a);
     o.modules.emplace_back("b.hot", b);
@@ -264,7 +265,7 @@ TEST(ImportCache, TwoThreadsHitOneEntry)
     std::vector<hotc::TranslateResult> got(8);
     std::vector<std::thread> threads;
     for (size_t i = 0; i < got.size(); ++i)
-        threads.emplace_back([&, i] { got[i] = run(s, dir, kDefLib, kB, i % 2 ? kDefImporter2 : kDefImporter1, true); });
+        threads.emplace_back([&, i] { got[i] = run(s, dir, kDefLib, kB, i % 2 ? kDefImporter2 : kDefImporter1, true, false); });
     for (std::thread& t : threads)
         t.join();
     for (size_t i = 0; i < got.size(); ++i)
