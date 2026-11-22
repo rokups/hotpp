@@ -827,7 +827,12 @@ TEST(ObjectCacheBackend, ToolchainVariablesArePartOfTheObjectKey)
         const bool version = std::string(name).find("_DEPLOYMENT_TARGET") != std::string::npos;
         EnvGuard changed(name, version ? "11.0" : "hot-test-value");
         auto backend = make_backend(scratch, std::string("work_") + name, cache);
-        EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
+        // On Apple the driver builds for that platform: the object does not load here, or the
+        // version is refused. Only the key matters.
+        if (version)
+            (void)backend->load(kCalc7, 1);
+        else
+            EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
         EXPECT_EQ(backend->cache_stats().hits, 0u) << name;
         EXPECT_EQ(backend->cache_stats().misses, 1u) << name;
     }
