@@ -7307,8 +7307,12 @@ void translate_impl(
     };
     // The layout text of a struct: the name and the type of each field, in order, and
     // the layout text of each nested struct.
+    // A struct on the current path is not opened again. A recursive struct then gives a text of linear size.
+    std::set<std::string> layout_open;
     std::function<std::string(const std::string&, int)> value_layout = [&](const std::string& name, int depth)
     {
+        if (!layout_open.insert(name).second)
+            return name + "{}";
         std::string text = name + "{";
         for (const ClassDef& c : sc.classes)
         {
@@ -7323,6 +7327,7 @@ void translate_impl(
                     text += value_layout(v, depth + 1);
             }
         }
+        layout_open.erase(name);
         return text + "}";
     };
     // The type key of a field. A native container of a struct adds the hash of the

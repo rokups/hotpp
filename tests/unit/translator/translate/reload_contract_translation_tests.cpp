@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <chrono>
 #include <string>
 
 using namespace translator_test;
@@ -351,6 +352,19 @@ TEST(GenerationFreeText, TextIsTheSameForTwoGenerations)
     hotc::TranslateResult t5 = hotc::translate(engine_options("timer_v1.hot", 5));
     ASSERT_TRUE(t1.ok) << t1.diagnostics;
     EXPECT_EQ(t1.cpp, t5.cpp);
+}
+
+// HOT-82: a struct with two vector fields of its own type must translate in linear time.
+TEST(LayoutKey, SelfRecursiveStructWithTwoVectorsIsFast)
+{
+    const auto t0 = std::chrono::steady_clock::now();
+    const hotc::TranslateResult r = gen(
+        "using <vector>;\nstruct Node {\n    int v;\n    std.vector<Node> a;\n    std.vector<Node> b;\n}\n"
+        "class Holder {\n    Node n;\n}\n",
+        1, "");
+    const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    EXPECT_LT(sec, 10.0);
+    EXPECT_TRUE(has(r.cpp, "hot::layout_keyed(")) << r.diagnostics;
 }
 
 } // namespace
