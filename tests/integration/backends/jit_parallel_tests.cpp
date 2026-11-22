@@ -294,8 +294,10 @@ TEST(JitParallel, JobCountDoesNotChangeTheModules)
     for (size_t i = 0; i < heads[0].size(); ++i)
         EXPECT_TRUE(same_head(heads[0][i], heads[1][i])) << sources[i].unit;
     EXPECT_FALSE(heads[0][3].import_hashes.empty()) << "the kid imports the base";
+#ifndef __APPLE__ // the JIT object cache is on Linux only (kObjectCacheSupported in jit_backend.cpp)
     EXPECT_EQ(objects[0].size(), sources.size());
     EXPECT_TRUE(objects[0] == objects[1]) << "the cached objects differ";
+#endif
 }
 
 // A Clang error in one of five units fails only that entry, in finish. The other entries load.
@@ -332,6 +334,9 @@ TEST(JitParallel, CompileErrorFailsOnlyItsEntry)
 // compile. An object that does not load compiles again in finish, on the caller thread.
 TEST(JitParallel, HitsMissesAndBadObjectsInOneWave)
 {
+#ifdef __APPLE__
+    GTEST_SKIP() << "the JIT object cache is on Linux only (kObjectCacheSupported in jit_backend.cpp)";
+#endif
     CleanEnv env;
     ScopedEnv jobs("HOT_JOBS", "4");
     TestScratch scratch;
