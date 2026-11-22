@@ -150,3 +150,24 @@ TEST(SafeCallTranslation, TemplateCallAfterAChainIsOutsideTheLambda)
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "}))).Get<Item>()") || has(r.cpp, "})).Get<Item>()")) << r.cpp;
 }
+
+// The temporary of a receiver that is not a name keeps its script type: a property and a method
+// of the script class still lower on it.
+static const std::string kWeapon = std::string(kDefaultShared)
+    + "class W { int Hp { get; set; } void Fire() {} }\n";
+
+TEST(SafeCallTranslation, PropertySetterOnATemporaryReceiver)
+{
+    const hotc::TranslateResult r = check_translate(kWeapon, "    $W w;\n    void Run() { this.w?.Hp = 5; }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "auto&& __safe0 = ")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "W__set_Hp(hot::shell_of<W_Shell>(__safe0, \"W\"), 5)")) << r.cpp;
+}
+
+TEST(SafeCallTranslation, MethodCallOnATemporaryReceiver)
+{
+    const hotc::TranslateResult r = check_translate(kWeapon, "    $W w;\n    void Run() { this.w?.Fire(); }\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "auto&& __safe0 = ")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "Fire(")) << r.cpp;
+}

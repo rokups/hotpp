@@ -4825,8 +4825,9 @@ struct Lowerer
             NameExpr tmp;
             tmp.parts.push_back("__safe" + std::to_string(safe_count++));
             tmp.pos = tmp.last_pos = pos;
-            blk.stmts.push_back(
-                make_stmt(VarDeclStmt{false, false, tmp.parts[0], "auto&&", std::move(m->obj), pos, pos}));
+            VarDeclStmt tv{false, false, tmp.parts[0], std::string(), std::move(m->obj), pos, pos};
+            tv.fwd_ref = true; // binds the receiver in place: a write reaches it
+            blk.stmts.push_back(make_stmt(std::move(tv)));
             m->obj = copy_name(tmp);
             cond = copy_name(tmp);
         }

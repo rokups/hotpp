@@ -450,6 +450,7 @@ struct VarDeclStmt
     // True when a lambda writes the local (const_infer.h, G06). The local lives in a shared cell:
     // "auto __cell_x = hot::make_cell<T>(init); T& x = *__cell_x;". The parser leaves it false.
     bool shared = false;
+    bool fwd_ref = false; // the C++ text is "auto&&"; the type stays empty for the inference
 };
 struct IfStmt
 {

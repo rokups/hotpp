@@ -469,7 +469,10 @@ void decl(const VarDeclStmt& d, Emitter& e)
         e.put("*__cell_" + d.name);
         return;
     }
-    put_local_type(e, d.type, d.is_ref, d.is_const, d.pos);
+    if (d.fwd_ref)
+        e.put("auto&&", d.pos);
+    else
+        put_local_type(e, d.type, d.is_ref, d.is_const, d.pos);
     e.space();
     if (!d.names.empty())
         binding_names(d.names, d.name_poss, e);
