@@ -35,4 +35,4 @@ template <class R, class... P> bool run(R (*fn)(P...), const TestInvokeArgs& a)
 }
 } // namespace test_invoke
 
-#define TEST_INVOKER(fn) (+[](const TestInvokeArgs& a) { return test_invoke::run(&fn, a); })
+#define TEST_INVOKER(fn) (+[](const TestInvokeArgs& a) -> bool { return test_invoke::run(&fn, a); })
