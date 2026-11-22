@@ -7311,7 +7311,7 @@ TEST(LanguageServer, BurstOfDidChangeIsAnalyzedOnceAndTheNextRequestSeesTheLastT
                 last.replace(at, 2, "mana");
         s.client->change(s.uri, i + 2, last);
     }
-    const json r = s.client->request("textDocument/hover", doc_pos(s.uri, 11, 16));
+    const json r = s.client->request_answered("textDocument/hover", doc_pos(s.uri, 11, 16));
     ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
     EXPECT_NE(r["result"]["contents"].value("value", "").find("mana"), std::string::npos) << r.dump();
     const int analyses = translations() - before;
@@ -12250,11 +12250,17 @@ const char* const kBangScript =
 
 std::vector<std::string> bang_completion_labels(Session& s, int line, int col)
 {
-    const json r = s.client->request("textDocument/completion", doc_pos(s.uri, line, col));
     std::vector<std::string> labels;
-    if (r.contains("result"))
-        for (const json& i : r["result"]["items"])
-            labels.push_back(i.value("insertText", i.value("label", "")));
+    // HOT-94: a cold document gives an empty list at first. Ask again.
+    for (int tries = 0; tries < 40 && labels.empty(); ++tries)
+    {
+        const json r = s.client->request("textDocument/completion", doc_pos(s.uri, line, col));
+        if (r.contains("result") && r["result"].is_object())
+            for (const json& i : r["result"]["items"])
+                labels.push_back(i.value("insertText", i.value("label", "")));
+        if (labels.empty())
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
     return labels;
 }
 

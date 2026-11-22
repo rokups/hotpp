@@ -342,8 +342,9 @@ std::set<Place> actual(const Case& c, std::string& dump)
     if (c.op == Op::Definition || c.op == Op::PrepareRename)
     {
         const json p = doc_pos(g_ws->uris[f], words(kTexts[f], row.word).back());
-        const json r = client.request(
-            c.op == Op::Definition ? "textDocument/definition" : "textDocument/prepareRename", p);
+        // HOT-94: a cold document gives an empty list at first. Ask again.
+        const json r = c.op == Op::Definition ? client.request_answered("textDocument/definition", p)
+                                              : client.request("textDocument/prepareRename", p);
         dump = r.dump();
         if (!r.contains("result") || r["result"].is_null())
             return {};
