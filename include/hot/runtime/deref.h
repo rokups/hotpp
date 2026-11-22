@@ -358,7 +358,10 @@ template <class T, std::size_t E> struct is_span<std::span<T, E>> : std::true_ty
 // than std::size_t does not wrap to a valid index (std::size_t has 32 bits on wasm32).
 template <class I> constexpr auto wide_index(const I& i) noexcept
 {
-    return static_cast<std::make_unsigned_t<std::common_type_t<remove_cvref_t<I>, long long>>>(i);
+    if constexpr (std::is_integral_v<remove_cvref_t<I>>)
+        return static_cast<std::make_unsigned_t<std::common_type_t<remove_cvref_t<I>, long long>>>(i);
+    else
+        return static_cast<std::size_t>(i); // a float, an enum or a class type: as before
 }
 // Throws when the index is not less than the size. Returns the index as std::size_t.
 template <class I> HOT_HIDDEN std::size_t checked_pos(const I& i, std::size_t size)

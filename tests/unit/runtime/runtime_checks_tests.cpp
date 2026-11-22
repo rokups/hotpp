@@ -132,6 +132,22 @@ TEST(RuntimeChecks, HotSpanSliceOutOfRangeThrows)
     EXPECT_EQ(s.last(5).size(), 5u);
 }
 
+// An index that is not an integer type still converts to std::size_t as before.
+TEST(RuntimeChecks, NonIntegralIndexStillCompiles)
+{
+    enum class E : int
+    {
+        Two = 2,
+        Nine = 9
+    };
+    std::vector<int> v{1, 2, 3};
+    int c[3] = {1, 2, 3};
+    EXPECT_EQ(hot::index(v, 1.5f), 2);
+    EXPECT_EQ(hot::index(c, 2.0), 3);
+    EXPECT_EQ(hot::index(v, E::Two), 3);
+    EXPECT_THROW(hot::index(v, E::Nine), hot::IndexOutOfRange);
+}
+
 #ifdef __SIZEOF_INT128__
 // An index wider than std::size_t must not wrap to a valid index before the bounds test.
 TEST(RuntimeChecks, WideIndexOutOfRangeThrows)
