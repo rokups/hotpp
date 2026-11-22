@@ -1881,7 +1881,12 @@ TEST(HotcTool, GeneratedDirGivesAStableCpp)
             if (line.find(".cpp\"") == std::string::npos)
                 continue; // a "#line" to the script
             ++line_names;
-            EXPECT_NE(line.find(stable), std::string::npos) << line;
+            // Compare the generic form: a "#line" escapes a "\" on Windows, and the separators can mix.
+            std::string name = line;
+            for (size_t i = name.find("\\\\"); i != std::string::npos; i = name.find("\\\\", i + 1))
+                name.erase(i, 1);
+            std::replace(name.begin(), name.end(), '\\', '/');
+            EXPECT_NE(name.find(fs::path(stable).generic_string()), std::string::npos) << line;
         }
         EXPECT_GT(line_names, 0u);
         if (run == 0)
