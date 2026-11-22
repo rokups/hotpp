@@ -116,6 +116,22 @@ TEST(RuntimeChecks, HotSpanIndexOutOfRangeThrows)
     EXPECT_EQ(v[1], 5);
 }
 
+// The slice functions of hot::span have the same bounds test as the index.
+TEST(RuntimeChecks, HotSpanSliceOutOfRangeThrows)
+{
+    std::vector<int> v{1, 2, 3, 4, 5};
+    hot::span<int> s = v;
+    EXPECT_THROW(s.subspan(10), hot::IndexOutOfRange);
+    EXPECT_THROW(s.subspan(6), hot::IndexOutOfRange);
+    EXPECT_THROW(s.subspan(2, 4), hot::IndexOutOfRange);
+    EXPECT_THROW(s.first(100), hot::IndexOutOfRange);
+    EXPECT_THROW(s.last(100), hot::IndexOutOfRange);
+    EXPECT_EQ(s.subspan(5).size(), 0u);
+    EXPECT_EQ(s.subspan(2, 3).size(), 3u);
+    EXPECT_EQ(s.first(5).size(), 5u);
+    EXPECT_EQ(s.last(5).size(), 5u);
+}
+
 #ifdef __cpp_lib_span
 // The std::span<T> of C++20 has the same bounds test as an array.
 TEST(RuntimeChecks, SpanIndexOutOfRangeThrows)

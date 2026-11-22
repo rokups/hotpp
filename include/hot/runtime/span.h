@@ -7,6 +7,8 @@
 // The member operator[] has no check. The function hot::index (see deref.h) has the check.
 #pragma once
 
+#include "hot/runtime/errors.h"
+
 #include <array>
 #include <cstddef>
 #include <iterator>
@@ -122,10 +124,25 @@ public:
     constexpr std::size_t size_bytes() const noexcept { return size_ * sizeof(T); }
     constexpr bool empty() const noexcept { return size_ == 0; }
 
-    constexpr span first(std::size_t count) const { return span(data_, count); }
-    constexpr span last(std::size_t count) const { return span(data_ + (size_ - count), count); }
-    constexpr span subspan(std::size_t offset, std::size_t count = dynamic_extent) const
+    // These throw hot::IndexOutOfRange as hot::index does.
+    span first(std::size_t count) const
     {
+        if (count > size_)
+            detail::throw_index_out_of_range(count, size_);
+        return span(data_, count);
+    }
+    span last(std::size_t count) const
+    {
+        if (count > size_)
+            detail::throw_index_out_of_range(count, size_);
+        return span(data_ + (size_ - count), count);
+    }
+    span subspan(std::size_t offset, std::size_t count = dynamic_extent) const
+    {
+        if (offset > size_)
+            detail::throw_index_out_of_range(offset, size_);
+        if (count != dynamic_extent && count > size_ - offset)
+            detail::throw_index_out_of_range(count, size_ - offset);
         return span(data_ + offset, count == dynamic_extent ? size_ - offset : count);
     }
 
