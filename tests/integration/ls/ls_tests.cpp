@@ -12473,9 +12473,9 @@ TEST(LanguageServer, LineDirectiveOfACppScriptCounts)
 TEST(LanguageServer, NativeLookingNameWithAGeneratedPartIsNotHidden)
 {
     REQUIRE_CLANGD();
-    const std::string text = "using \"Slots.h\";\nclass Hero : Slots {\n    void run() {\n        this.ma;\n    }\n}\n";
-    Session s(true, text, nullptr, nullptr,
-        {{"Slots.h", "#pragma once\n#include \"hot/runtime/export.h\"\nclass HOT_EXPORT Slots\n{\npublic:\n    Slots() = default;\n    virtual ~Slots() = default;\n    int max_slots = 3;\n};\n"}});
+    const std::string text =
+        "using \"NativeSlots.h\";\nclass Hero : NativeSlots {\n    void run() {\n        this.ma;\n    }\n}\n";
+    Session s(true, text);
     json r;
     for (int k = 0; k < 100; ++k) // under load the first answers are "isIncomplete"
     {
