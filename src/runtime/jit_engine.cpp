@@ -26,6 +26,7 @@
 #include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
+#include <llvm/ExecutionEngine/Orc/ObjectFileInterface.h>
 #include <llvm/ExecutionEngine/Orc/ObjectTransformLayer.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -706,13 +707,45 @@ hot_jit_dylib* hot_jit_add_object(hot_jit_engine* engine, const char* id, const 
         llvm::StringRef(static_cast<const char*>(data), size), std::string(id) + "-cached-objectbuffer");
     // The generic platform of LLJIT finds the initializer function (__orc_init_func.) of the
     // object by its name prefix, and the static destructors go through its __cxa_atexit.
-    if (llvm::Error e = engine->jit->addObjectFile(holder->tracker, std::move(buffer)))
+    // With a global prefix (Mach-O), LLVM mangles the name of the function two times. Its search
+    // uses the prefix with one mangle, so it does not find the function. This code runs it.
+    llvm::orc::LLJIT& jit = *engine->jit;
+    std::vector<llvm::orc::SymbolStringPtr> missed_inits;
+    const std::string init_prefix = jit.mangle(jit.mangle("__orc_init_func."));
+    if (init_prefix != jit.mangle("__orc_init_func."))
+    {
+        auto info = llvm::orc::getObjectFileInterface(jit.getExecutionSession(), buffer->getMemBufferRef());
+        if (!info)
+        {
+            put(out_error, "cannot read the object: " + error_text(info.takeError()) + "\n");
+            hot_jit_remove(holder.release());
+            return nullptr;
+        }
+        for (const auto& kv : info->SymbolFlags)
+            if ((*kv.first).starts_with(init_prefix))
+                missed_inits.push_back(kv.first);
+    }
+    if (llvm::Error e = jit.addObjectFile(holder->tracker, std::move(buffer)))
     {
         put(out_error, "cannot add the object: " + error_text(std::move(e)) + "\n");
         hot_jit_remove(holder.release());
         return nullptr;
     }
-    return initialize_dylib(std::move(holder), t_start, out_error);
+    hot_jit_dylib* dylib = initialize_dylib(std::move(holder), t_start, out_error);
+    for (const llvm::orc::SymbolStringPtr& name : missed_inits)
+    {
+        if (!dylib)
+            break;
+        auto address = jit.lookupLinkerMangled(*dylib->dylib, name);
+        if (!address)
+        {
+            put(out_error, "cannot run the static initializers: " + error_text(address.takeError()) + "\n");
+            hot_jit_remove(dylib);
+            return nullptr;
+        }
+        address->toPtr<void (*)()>()();
+    }
+    return dylib;
 }
 
 void hot_jit_capture_objects(hot_jit_engine* engine, int on)
