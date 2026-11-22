@@ -436,6 +436,27 @@ std::string depfile_escape(const std::string& path)
     return r;
 }
 
+// A path as clang writes it in a depfile (PrintFilename, Make format): "\" before "#", "$" doubled,
+// "\" before a space plus one more "\" for each backslash right before that space. Other
+// backslashes stay raw.
+std::string clang_depfile_escape(const std::string& path)
+{
+    std::string r;
+    size_t run = 0; // the backslashes right before this character
+    for (const char c : path)
+    {
+        if (c == ' ')
+            r.append(run + 1, '\\');
+        else if (c == '#')
+            r += '\\';
+        else if (c == '$')
+            r += '$';
+        run = c == '\\' ? run + 1 : 0;
+        r += c;
+    }
+    return r;
+}
+
 // A make rule with the headers of the PCH entry, for the depfile of an object.
 std::string depfile_rule(const std::vector<std::string>& headers)
 {
@@ -4475,7 +4496,7 @@ bool ClangFilesBackend::compile_stage_once(BuildJob& job, bool keep_mirror)
                 // time is new after a build, so the store would refuse them as changed headers.
                 for (const std::string& raw : shape_deps)
                 {
-                    const std::string d = depfile_escape(raw); // the depfile has the Make form
+                    const std::string d = clang_depfile_escape(raw); // the form that clang writes
                     for (size_t at = dep_text.find(d); at != std::string::npos; at = dep_text.find(d, at))
                         dep_text.erase(at, d.size());
                 }
