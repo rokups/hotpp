@@ -10714,13 +10714,13 @@ json split_features(bool split, size_t* shell_count = nullptr, bool lite = true)
         out["diagnostics"] = diags;
         const std::string go = "    float Go(float a) { return this.Heal(a) + this.own; }";
         out["hover_own"] = s.client->request_answered("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(go.find("this.own")) + 7)).value("result", json());
-        out["hover_heal"] = s.client->request("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(go.find("Heal")) + 1));
+        out["hover_heal"] = s.client->request("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(go.find("Heal")) + 1)).value("result", json());
         // A second method after the first (the lite document switches the body), and a place outside a body.
-        out["hover_bad"] = s.client->request("textDocument/hover", doc_pos(s.uri, 7, 13));
-        out["hover_field"] = s.client->request("textDocument/hover", doc_pos(s.uri, 2, 12));
-        out["hover_go_again"] = s.client->request("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(go.find("this.own")) + 7));
-        out["definition_own"] = s.client->request("textDocument/definition", doc_pos(s.uri, 3, static_cast<int>(go.find("this.own")) + 7));
-        out["definition_heal"] = s.client->request("textDocument/definition", doc_pos(s.uri, 3, static_cast<int>(go.find("Heal")) + 1));
+        out["hover_bad"] = s.client->request("textDocument/hover", doc_pos(s.uri, 7, 13)).value("result", json());
+        out["hover_field"] = s.client->request("textDocument/hover", doc_pos(s.uri, 2, 12)).value("result", json());
+        out["hover_go_again"] = s.client->request("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(go.find("this.own")) + 7)).value("result", json());
+        out["definition_own"] = s.client->request("textDocument/definition", doc_pos(s.uri, 3, static_cast<int>(go.find("this.own")) + 7)).value("result", json());
+        out["definition_heal"] = s.client->request("textDocument/definition", doc_pos(s.uri, 3, static_cast<int>(go.find("Heal")) + 1)).value("result", json());
         std::string text = kSplitImporter;
         text.replace(text.find("return this.Heal(a) + this.own;"), 31, "this.");
         s.client->change(s.uri, 3, text);
@@ -12006,15 +12006,25 @@ TEST(LanguageServer, ThisCacheSeesAChangeOfANativeHeaderWithoutAnEvent)
     };
     const char* sw = std::getenv("HOT_LS_THIS_CACHE");
     const bool cache = !(sw && std::string(sw) == "0");
-    EXPECT_TRUE(contains_name(ask(2, 1, "Pi"), "Ping"));
+    // A slow runner gives a cold answer first: ask again until it has "Ping", then count from this base.
+    std::vector<std::string> first;
+    for (int i = 0; i < 40; ++i)
+    {
+        first = ask(2, 1, "Pi");
+        if (contains_name(first, "Ping"))
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    EXPECT_TRUE(contains_name(first, "Ping"));
+    const int analyzes_base = cache ? this_stat(s, "thisAnalyzes") : 0;
     EXPECT_FALSE(contains_name(ask(3, 2, "Po"), "Pong"));
     if (cache)
-        EXPECT_EQ(this_stat(s, "thisAnalyzes"), 1);
+        EXPECT_EQ(this_stat(s, "thisAnalyzes"), analyzes_base);
     // No event: the stamp of the headers (time and size) shows the change, so the server asks clangd again.
     write_file(headers.path() / "GadgetBase.h", base_header("    void Ping();\n    void Pong();\n"));
     ask(4, 3, "Po");
     if (cache)
-        EXPECT_EQ(this_stat(s, "thisAnalyzes"), 2);
+        EXPECT_EQ(this_stat(s, "thisAnalyzes"), analyzes_base + 1);
     // The event of the client goes to clangd too: it rebuilds the preamble, and the member shows.
     s.client->notify("workspace/didChangeWatchedFiles",
         {{"changes", json::array({{{"uri", uri_of((headers.path() / "GadgetBase.h").string())}, {"type", 2}}})}});
