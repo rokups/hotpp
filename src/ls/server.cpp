@@ -57,6 +57,7 @@
 #ifdef _WIN32
     #include <fcntl.h>
     #include <io.h>
+    #include <process.h>
 #endif
 
 #include "hot/runtime/process.h"
@@ -2672,7 +2673,7 @@ const std::string& Server::shell_dir()
             fs::remove_all(e.path(), ec);
     }
 #ifdef _WIN32
-    const long long pid = 0;
+    const long long pid = static_cast<long long>(::_getpid());
 #else
     const long long pid = static_cast<long long>(::getpid());
 #endif
