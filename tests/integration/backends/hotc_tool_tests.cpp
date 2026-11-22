@@ -262,14 +262,13 @@ TEST(HotcTool, EmitCppModeTranslatesWithoutCompiling)
     EXPECT_NE(read_file(out).find("hot::deref"), std::string::npos); // the #line names differ
 }
 
-// A write error of the -o file gives a message and a non-zero exit code (a full disk, here /dev/full).
+// A write error of the -o file gives a message and a non-zero exit code (here: the directory does not exist).
 TEST(HotcTool, EmitCppWriteErrorFails)
 {
-#ifdef __linux__
+    TestScratch scratch;
     std::string text;
-    EXPECT_NE(run_hotc(cat({{"--emit-cpp"}, player_args(), {"-o", "/dev/full"}}), text), 0) << text;
+    EXPECT_NE(run_hotc(cat({{"--emit-cpp"}, player_args(), {"-o", scratch.file("missing_dir/out.cpp")}}), text), 0) << text;
     EXPECT_NE(text.find("cannot write"), std::string::npos) << text;
-#endif
 }
 
 // A warning in a .cpp script (here an error by -Werror) shows the script file, the line, the real
