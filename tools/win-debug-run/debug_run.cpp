@@ -206,15 +206,26 @@ void load_module(HANDLE file, void* base)
     SymLoadModuleEx(g_process, file, name, nullptr, reinterpret_cast<DWORD64>(base), 0, nullptr, 0);
 }
 
+// Windows rule (CommandLineToArgvW): backslashes before a quote are doubled, the quote gets one more
+// backslash, and trailing backslashes are doubled because the closing quote follows them.
 std::string quote(const char* arg)
 {
     std::string s = "\"";
+    size_t slashes = 0;
     for (const char* p = arg; *p; ++p)
     {
+        if (*p == '\\')
+        {
+            ++slashes;
+            s += *p;
+            continue;
+        }
         if (*p == '"')
-            s += '\\';
+            s.append(slashes + 1, '\\');
+        slashes = 0;
         s += *p;
     }
+    s.append(slashes, '\\');
     return s + "\"";
 }
 

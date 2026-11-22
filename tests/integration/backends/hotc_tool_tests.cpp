@@ -262,6 +262,16 @@ TEST(HotcTool, EmitCppModeTranslatesWithoutCompiling)
     EXPECT_NE(read_file(out).find("hot::deref"), std::string::npos); // the #line names differ
 }
 
+// A write error of the -o file gives a message and a non-zero exit code (a full disk, here /dev/full).
+TEST(HotcTool, EmitCppWriteErrorFails)
+{
+#ifdef __linux__
+    std::string text;
+    EXPECT_NE(run_hotc(cat({{"--emit-cpp"}, player_args(), {"-o", "/dev/full"}}), text), 0) << text;
+    EXPECT_NE(text.find("cannot write"), std::string::npos) << text;
+#endif
+}
+
 // A warning in a .cpp script (here an error by -Werror) shows the script file, the line, the real
 // column and the script text. No generated name is visible. --raw-diagnostics keeps the compiler text.
 TEST(HotcTool, CppScriptWarningSpeaksScriptText)

@@ -971,23 +971,13 @@ int run_emit(const Args& args)
     }
     else
     {
-        std::ofstream of(args.output, std::ios::binary);
-        if (!of)
-        {
-            std::fprintf(stderr, "hotc: error: cannot write %s\n", args.output.c_str());
+        if (!write_file(args.output, r.cpp))
             return 1;
-        }
-        of << r.cpp;
     }
     if (!args.slots.empty())
     {
-        std::ofstream mf(args.slots, std::ios::binary);
-        if (!mf)
-        {
-            std::fprintf(stderr, "hotc: error: cannot write %s\n", args.slots.c_str());
+        if (!write_file(args.slots, r.slots_out + r.sigs_out))
             return 1;
-        }
-        mf << r.slots_out << r.sigs_out;
     }
     const std::vector<DepRule> dep_rules{{args.output, r.dependencies}};
     if (!args.depfile.empty() && !write_depfile(args.depfile, dep_rules))
