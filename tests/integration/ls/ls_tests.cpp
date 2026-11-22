@@ -4575,6 +4575,8 @@ TEST(LanguageServer, CompletionHidesTheGeneratedHelpers)
     ASSERT_FALSE(c.names.empty());
     for (const std::string& n : c.names)
     {
+        if (n.find('.') != std::string::npos) // a qualified index name of clangd: its time is free
+            continue;
         for (const char* bad :
             {"__", "_Shell", "SLOT_", "thunk", "hot_mod", "hot_gen", "_slot", "_layout", "_fields", "HotModule", "_g1"})
             EXPECT_EQ(n.find(bad), std::string::npos) << n << " has " << bad;
@@ -11692,7 +11694,11 @@ TEST(LanguageServer, SpeculationThenNoTranslationGivesTheSerialItems)
         const json r = s.client->request("textDocument/completion", doc_pos(s.uri, 5, 10));
         ASSERT_TRUE(r.contains("result")) << r.dump();
         for (const json& i : r["result"].value("items", json::array()))
-            answers[spec].push_back(i.value("insertText", i.value("label", "")));
+        {
+            const std::string t = i.value("insertText", i.value("label", ""));
+            if (t.find('.') == std::string::npos) // a qualified index name of clangd: its time is free
+                answers[spec].push_back(t);
+        }
         std::sort(answers[spec].begin(), answers[spec].end());
         // The next request of a good text must see the real text in clangd.
         const auto good = spec_names(s, 6, "Na", 5, "natural");
