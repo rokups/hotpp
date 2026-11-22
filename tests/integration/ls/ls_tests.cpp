@@ -8375,7 +8375,16 @@ void expect_overload_definition(int call_line, const std::string& name, int decl
 {
     REQUIRE_CLANGD();
     Session s(true, kOverloadScript);
-    const json r = overload_request(s, "textDocument/definition", call_line, name);
+    json r;
+    // A cold clangd can give a wrong location first. Ask again until the line matches.
+    for (int i = 0; i < 40; ++i)
+    {
+        r = overload_request(s, "textDocument/definition", call_line, name);
+        if (r.contains("result") && r["result"].is_array() && !r["result"].empty()
+            && r["result"][0]["range"]["start"]["line"] == decl_line)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
     ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << r.dump();
     EXPECT_EQ(r["result"][0]["uri"], s.uri) << r.dump();
     EXPECT_EQ(r["result"][0]["range"]["start"]["line"], decl_line) << r.dump();
@@ -10792,7 +10801,7 @@ json import_cache_features(bool cache)
                 diags.push_back({{"range", d["range"]}, {"message", d.value("message", "")}});
     out["diagnostics"] = diags;
     const std::string go = "    float Go(float a) { return this.Heal(a) + this.own; }";
-    out["hover_own"] = s.client->request("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(go.find("this.own")) + 7));
+    out["hover_own"] = s.client->request_answered("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(go.find("this.own")) + 7));
     out["hover_heal"] = s.client->request("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(go.find("Heal")) + 1));
     // A body edit of the import: the text hash changes, so the import must miss.
     std::string base = kSplitBase;

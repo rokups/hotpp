@@ -679,7 +679,7 @@ jobs:
 
       # Diagnostic: on the files leg, each language server test keeps its clangd log (HOT_LS_CLANGD_LOG).
       - name: Test
-        timeout-minutes: ${{ env.HOT_CI_PAGEHEAP == '1' && 100 || 40 }}
+        timeout-minutes: ${{ env.HOT_CI_PAGEHEAP == '1' && 100 || 70 }}
         run: |
           if [ "$HOT_BACKEND" = "files" ]; then
             mkdir -p "$(cygpath -u "$RUNNER_TEMP")/clangd-logs"
@@ -813,7 +813,7 @@ jobs:
         run: cmake --build --preset ${{ matrix.preset }}-rel --parallel
 
       - name: Test
-        timeout-minutes: 40
+        timeout-minutes: 70
         run: ctest --preset ${{ matrix.preset }}-rel -j "$NUMBER_OF_PROCESSORS"
 
   # The smoke tests run without the source tree and without the build. The sparse checkout

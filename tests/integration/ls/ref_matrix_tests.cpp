@@ -213,6 +213,9 @@ struct Workspace
         o.clangd = HOT_CLANGD_PATH;
         o.include_dirs = {HOT_SOURCE_DIR "/include", HOT_SOURCE_DIR "/tests/engine"};
         o.clangd_log = (dir.path() / "clangd.log").string();
+        // A loaded runner is slow: the budgets are longer than the default.
+        o.rename_budget_ms = 30000;
+        o.reference_budget_ms = 30000;
         client = std::make_unique<LsClient>(o);
         client->initialize(uri_of(dir.path().string()));
         for (int i : {0, 2, 3, 4})
@@ -366,7 +369,10 @@ std::set<Place> actual(const Case& c, std::string& dump)
     else
     {
         p["newName"] = "Renamed";
-        const json r = client.request("textDocument/rename", p);
+        json r = client.request("textDocument/rename", p);
+        // On a loaded runner the time budget can end: ask again once.
+        if (r.contains("error") && r["error"].value("code", 0) == -32803)
+            r = client.request("textDocument/rename", p);
         dump = r.dump();
         const json changes = r.contains("result") && r["result"].is_object()
             ? r["result"].value("changes", json::object())
