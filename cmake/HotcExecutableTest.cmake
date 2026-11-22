@@ -30,10 +30,17 @@ _run(${CMAKE_COMMAND} -S ${SAMPLE_DIR} -B ${build} -G ${GENERATOR}
      -DCMAKE_CXX_COMPILER=${CXX_COMPILER} -DCMAKE_BUILD_TYPE=Release -DCMAKE_CONFIGURATION_TYPES=Release)
 
 # The project must not have the target hotc.
-execute_process(COMMAND ${CMAKE_COMMAND} --build ${build} --target help
-                OUTPUT_VARIABLE targets RESULT_VARIABLE rc)
-if(NOT rc EQUAL 0 OR targets MATCHES "(^|\n)(\\.\\.\\. )?hotc(:| |\n|$)")
-    message(FATAL_ERROR "The project has the target hotc, or the target list failed:\n${targets}")
+if(GENERATOR MATCHES "Visual Studio")
+    # This generator has no target "help": a target is a project file hotc.vcxproj.
+    if(EXISTS ${build}/hotc.vcxproj)
+        message(FATAL_ERROR "The project has the target hotc (${build}/hotc.vcxproj)")
+    endif()
+else()
+    execute_process(COMMAND ${CMAKE_COMMAND} --build ${build} --target help
+                    OUTPUT_VARIABLE targets RESULT_VARIABLE rc)
+    if(NOT rc EQUAL 0 OR targets MATCHES "(^|\n)(\\.\\.\\. )?hotc(:| |\n|$)")
+        message(FATAL_ERROR "The project has the target hotc, or the target list failed:\n${targets}")
+    endif()
 endif()
 
 _run(${CMAKE_COMMAND} --build ${build} --target sample_aot_hot --config Release)
