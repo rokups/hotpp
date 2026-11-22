@@ -1169,6 +1169,39 @@ TEST(ObjectCacheBackend, ShapePchKeepsResultsAndSurvivesDamage)
 #endif
 }
 
+// The cache path has a space and a "#". The depfile escapes them, so the objects that hit the shape
+// PCH must still be stored: a second backend hits all of them.
+TEST(ObjectCacheBackend, ShapePchObjectsAreStoredWithSpecialCharactersInTheCachePath)
+{
+#if defined(__linux__)
+    CleanEnv env;
+    TestScratch scratch;
+    hot::ClangFilesOptions o = fmt_options(scratch, "sp", {});
+    o.cache_dir = scratch.file("cache dir #1$");
+    auto edit_run = [&](int first, int count) {
+        hot::ClangFilesBackend backend(o);
+        for (int i = first; i < first + count; ++i)
+            EXPECT_EQ(load_and_run(backend, {"calc.hot", script_text((std::to_string(i) + ".0").c_str()), {}, "Calc"}),
+                static_cast<float>(i));
+        return backend.cache_stats().hits;
+    };
+    edit_run(1, 6);
+    const fs::path shape_dir = fs::path(o.cache_dir) / "pch" / "shape";
+    size_t pchs = 0;
+    std::error_code ec;
+    for (const auto& e : fs::directory_iterator(shape_dir, ec))
+        pchs += e.path().extension() == ".pch";
+    if (pchs == 0)
+    {
+        ASSERT_FALSE(shape_pch_expected()) << "no shape PCH was built";
+        GTEST_SKIP() << "no shape PCH was built (no clang or no PCH)";
+    }
+    EXPECT_EQ(edit_run(1, 6), 6u);
+#else
+    GTEST_SKIP() << "ELF only";
+#endif
+}
+
 namespace
 {
 

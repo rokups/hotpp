@@ -421,22 +421,27 @@ std::vector<std::string> with_pch(std::vector<std::string> cmd, const std::strin
     return cmd;
 }
 
+// A path in Make depfile syntax: a space, "#" and a backslash get a backslash, "$" is doubled.
+std::string depfile_escape(const std::string& path)
+{
+    std::string r;
+    for (const char c : path)
+    {
+        if (c == ' ' || c == '#' || c == '\\')
+            r += '\\';
+        if (c == '$')
+            r += '$';
+        r += c;
+    }
+    return r;
+}
+
 // A make rule with the headers of the PCH entry, for the depfile of an object.
 std::string depfile_rule(const std::vector<std::string>& headers)
 {
     std::string r = "pch:";
     for (const std::string& h : headers)
-    {
-        r += ' ';
-        for (const char c : h)
-        {
-            if (c == ' ' || c == '#' || c == '\\')
-                r += '\\';
-            if (c == '$')
-                r += '$';
-            r += c;
-        }
-    }
+        r += ' ' + depfile_escape(h);
     return r + "\n";
 }
 
@@ -4468,9 +4473,12 @@ bool ClangFilesBackend::compile_stage_once(BuildJob& job, bool keep_mirror)
                 // that does not. parse_depfile reads each rule.
                 // The shape PCH and its header are files of the cache: the key has their content. Their
                 // time is new after a build, so the store would refuse them as changed headers.
-                for (const std::string& d : shape_deps)
+                for (const std::string& raw : shape_deps)
+                {
+                    const std::string d = depfile_escape(raw); // the depfile has the Make form
                     for (size_t at = dep_text.find(d); at != std::string::npos; at = dep_text.find(d, at))
                         dep_text.erase(at, d.size());
+                }
                 if (used_pch)
                     dep_text += "\n" + depfile_rule(pch_cache_->headers(pch->key));
                 if (rc != 0)
