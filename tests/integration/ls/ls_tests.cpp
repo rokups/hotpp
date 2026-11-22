@@ -6703,7 +6703,8 @@ TEST(LanguageServerNative, RenameIsRefusedForAClosedScriptThatDoesNotTranslate)
     REQUIRE_CLANGD();
     NativeSession s;
     write_file((s.dir.path() / "bad.hot").string(), "using \"natives.h\";\n\nclass Bad {\n    int cap = Clamp100(7;\n}}}\n");
-    expect_rename_refusal(s, "bad.hot does not translate");
+    expect_rename_refusal(s, "bad.hot does not translate (facts.cpp empty: yes; owned by an open document: no;");
+    expect_rename_refusal(s, "first diagnostic:");
 }
 
 // A second script is open with a syntax error in its editor text. The rename does not skip it.

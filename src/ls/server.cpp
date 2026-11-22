@@ -1409,7 +1409,7 @@ private:
     void drop_import_graph(const std::string& path);
     // Gives the closed script "tmp" (with its facts) to clangd for the call of "fn". Then closes
     // it in clangd. Gives false, and does not call "fn", when the facts have no C++.
-    bool with_temp_clangd(Doc& tmp, const std::function<void()>& fn);
+    bool with_temp_clangd(Doc& tmp, const std::function<void()>& fn, std::string* why_not = nullptr);
 
     // ---- the names through the tables of the resolved names (ref_resolver.h)
     // A resolved name: the ref and the word of the name.
@@ -6250,10 +6250,24 @@ ImportGraph& Server::import_graph(const std::string& also, bool fresh)
     return graph_;
 }
 
-bool Server::with_temp_clangd(Doc& tmp, const std::function<void()>& fn)
+bool Server::with_temp_clangd(Doc& tmp, const std::function<void()>& fn, std::string* why_not)
 {
-    if (tmp.facts.cpp.empty())
+    // The reason text: the checks that fail and the first diagnostic (300 characters at most).
+    const auto fail = [&](bool owned)
+    {
+        if (why_not)
+        {
+            std::string first = tmp.facts.errors.empty() ? tmp.facts.diagnostics : tmp.facts.errors[0].message;
+            *why_not = std::string(" (facts.cpp empty: ") + (tmp.facts.cpp.empty() ? "yes" : "no") +
+                "; owned by an open document: " + (owned ? "yes" : "no") +
+                "; closed_copy: " + (tmp.closed_copy ? "yes" : "no") +
+                "; probe parses: " + std::to_string(tmp.facts.timing.parses) +
+                "; first diagnostic: " + first.substr(0, 300) + ")";
+        }
         return false;
+    };
+    if (tmp.facts.cpp.empty())
+        return fail(false);
     tmp.gen = Text(tmp.facts.cpp);
     tmp.map = std::make_shared<const hotc::SourceMap>(tmp.facts.source_map);
     tmp.gen_script = tmp.text;
@@ -6261,7 +6275,7 @@ bool Server::with_temp_clangd(Doc& tmp, const std::function<void()>& fn)
     tmp.closed_copy = true;
     // The client owns the uri of an open script: no temporary document then.
     if (open_doc_at(tmp.path) || gen_docs_.count(tmp.gen_uri))
-        return false;
+        return fail(true);
     // The guard closes the document in clangd also when "fn" throws.
     struct Close
     {
@@ -7570,8 +7584,9 @@ std::string Server::rename_other_scripts(NativeRenameJob& job, const Doc& d)
         {
             Doc tmp = closed_doc(c.path, *closed_text);
             tmp.facts = timed_translate([&] { return hotc::analyze(tmp.text.s, translate_options(tmp), session_); });
-            if (!with_temp_clangd(tmp, [&] { why = work(tmp); }))
-                return what + ": " + c.path + " does not translate";
+            std::string why_not;
+            if (!with_temp_clangd(tmp, [&] { why = work(tmp); }, &why_not))
+                return what + ": " + c.path + " does not translate" + why_not;
             job.code_lines.erase(&tmp);
         }
         if (!why.empty())
