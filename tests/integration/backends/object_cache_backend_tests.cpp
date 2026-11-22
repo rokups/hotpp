@@ -514,6 +514,7 @@ TEST(ObjectCacheBackend, CompileCommandsEnvironmentOverridesTheOption)
     }
     EXPECT_TRUE(fs::exists(fs::path(env_dir) / "compile_commands.json"));
     EXPECT_FALSE(fs::exists(fs::path(option_dir) / "compile_commands.json"));
+#ifndef _WIN32 // Windows removes a variable that is set to an empty string
     {
         EnvGuard guard("HOT_COMPILE_COMMANDS_DIR", "");
         auto backend = hot::make_default_backend(default_options(scratch, option_dir));
@@ -521,6 +522,7 @@ TEST(ObjectCacheBackend, CompileCommandsEnvironmentOverridesTheOption)
         ASSERT_TRUE(r) << r.error;
     }
     EXPECT_FALSE(fs::exists(fs::path(option_dir) / "compile_commands.json"));
+#endif
     {
         test_support::unset_env("HOT_COMPILE_COMMANDS_DIR");
         auto backend = hot::make_default_backend(default_options(scratch, option_dir));
