@@ -842,7 +842,15 @@ TEST(ObjectCacheBackend, ToolchainVariablesArePartOfTheObjectKey)
         // On Apple the driver builds for that platform: the object does not load here, or the
         // version is refused. Only the key matters.
         if (key_only)
-            (void)backend->load(kCalc7, 1);
+        {
+            [[maybe_unused]] const hot::LoadResult r = backend->load(kCalc7, 1);
+#ifdef __APPLE__
+            // The Apple driver can refuse the value before the object key (for example
+            // XROS_DEPLOYMENT_TARGET). Then there is no lookup. Linux checks the same key code.
+            if (!r && backend->cache_stats().misses == 0)
+                continue;
+#endif
+        }
         else
             EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
         EXPECT_EQ(backend->cache_stats().hits, 0u) << name;
