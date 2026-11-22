@@ -1501,7 +1501,6 @@ struct BaseInfo
     bool default_ctor = false;
     bool any_ctor = false; // the class declares a constructor
     bool final_cls = false; // the class is "final": no class can derive from it
-    bool absent = false; // the headers have no such class (a cache entry for a failed lookup)
     bool too_deep = false; // the chain of bases has more than 32 levels (a recursive template)
 };
 
@@ -1920,28 +1919,47 @@ void collect_ctors(CXCursor cls, BaseInfo& info)
 // The number of walks of a whole probe unit on this thread (TranslateTiming::root_walks).
 thread_local int64_t g_root_walks = 0;
 
-std::string qualified_name(CXCursor c);
 bool ends_with_scope(const std::string& qn, const std::string& key);
 
-CXCursor find_class(CXCursor root, const std::string& qname)
+// The class with this name. A class whose scope ends with the written scope wins ("b::Node" is not
+// "a::Node"). Else the first class with the same last name part gives the answer: the written scope can
+// be a namespace alias, which this lookup does not resolve.
+CXCursor find_class(CXCursor root, const std::string& written)
 {
     ++g_root_walks;
-    std::string name = qname.substr(qname.rfind(':') == std::string::npos ? 0 : qname.rfind(':') + 1);
+    const std::string qname = written.compare(0, 2, "::") == 0 ? written.substr(2) : written;
+    const std::string name = qname.substr(qname.rfind(':') == std::string::npos ? 0 : qname.rfind(':') + 1);
     CXCursor found = clang_getNullCursor();
+    CXCursor same_name = clang_getNullCursor();
     visit(root, [&](CXCursor c)
     {
         CXCursorKind k = clang_getCursorKind(c);
         if ((k == CXCursor_ClassDecl || k == CXCursor_StructDecl) && clang_isCursorDefinition(c)
-            && cxs(clang_getCursorSpelling(c)) == name && ends_with_scope(qualified_name(c), qname))
+            && cxs(clang_getCursorSpelling(c)) == name)
         {
-            found = c;
-            return CXChildVisit_Break;
+            // The name without the inline namespaces: "ns::v1::Base" is "ns::Base".
+            std::string qn = name;
+            for (CXCursor p = clang_getCursorSemanticParent(c);
+                !clang_Cursor_isNull(p) && !clang_isTranslationUnit(clang_getCursorKind(p));
+                p = clang_getCursorSemanticParent(p))
+            {
+                const std::string n = cxs(clang_getCursorSpelling(p));
+                if (!n.empty() && !(clang_getCursorKind(p) == CXCursor_Namespace && clang_Cursor_isInlineNamespace(p)))
+                    qn = n + "::" + qn;
+            }
+            if (ends_with_scope(qn, qname))
+            {
+                found = c;
+                return CXChildVisit_Break;
+            }
+            if (clang_Cursor_isNull(same_name))
+                same_name = c;
         }
         if (k == CXCursor_Namespace)
             return CXChildVisit_Recurse;
         return CXChildVisit_Continue;
     });
-    return found;
+    return clang_Cursor_isNull(found) ? same_name : found;
 }
 
 // What the headers say about a type. "known" is false when libclang cannot name the type.
@@ -3896,10 +3914,7 @@ void parse_bases(const std::string& script_probe, const std::string& shared_prob
         if (auto ib = instance_bases.find(name); ib != instance_bases.end())
             base_cur = ib->second;
         if (clang_Cursor_isNull(base_cur))
-        {
-            out[name].absent = true; // the session cache must not parse again for this name
             continue;
-        }
         BaseInfo bi;
         bi.name = name;
         // libclang does not visit the members of an implicit instance. The pattern has them.
@@ -4351,7 +4366,7 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
     for (const auto& n : names)
     {
         auto it = e.bases.find(n);
-        if (it != e.bases.end() && !it->second.absent)
+        if (it != e.bases.end())
             r.emplace(n, it->second);
     }
     return r;

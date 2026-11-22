@@ -117,3 +117,50 @@ TEST(NamespacedBaseTranslation, BaseNameUsesTheNamespace)
         hotc::translate(temp_options(dir, "using \"nn.h\";\nclass S : b.Node {\n    override void tick() { }\n}\n"));
     EXPECT_TRUE(r.ok) << r.diagnostics;
 }
+
+namespace
+{
+
+// The class "S" derives from "base" of a header and overrides the virtual method "tick".
+hotc::TranslateResult derive_with_tick(const std::string& header, const std::string& base)
+{
+    TempDir dir;
+    write_file(dir.path() / "nb.h", header);
+    return hotc::translate(
+        temp_options(dir, "using \"nb.h\";\nclass S : " + base + " {\n    override void tick() { }\n}\n"));
+}
+
+} // namespace
+
+// HOT-90: the base name is a namespace alias.
+TEST(NamespacedBaseTranslation, BaseNameThroughNamespaceAlias)
+{
+    const hotc::TranslateResult r = derive_with_tick(
+        "namespace ns { class Base { public: virtual ~Base() {} virtual void tick() {} }; }\n"
+        "namespace U = ns;\n",
+        "U.Base");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
+
+// HOT-90: the base name of a .cpp script has a leading "::".
+TEST(NamespacedBaseTranslation, BaseNameWithLeadingScope)
+{
+    TempDir dir;
+    write_file(dir.path() / "nb.h",
+        "namespace ns { class Base { public: virtual ~Base() {} virtual void tick() {} }; }\n");
+    hotc::TranslateOptions o = temp_options(dir,
+        "#include \"nb.h\"\nclass S : public ::ns::Base\n{\npublic:\n    void tick() override { }\n};\n");
+    o.script_name = "t.cpp";
+    const hotc::TranslateResult r = hotc::translate(o);
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_FALSE(r.base_virtuals.empty()) << r.diagnostics;
+}
+
+// HOT-90: the header declares the class in an inline namespace. The script does not name it.
+TEST(NamespacedBaseTranslation, BaseNameSkipsInlineNamespace)
+{
+    const hotc::TranslateResult r = derive_with_tick(
+        "namespace ns { inline namespace v1 { class Base { public: virtual ~Base() {} virtual void tick() {} }; } }\n",
+        "ns.Base");
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}
