@@ -3297,7 +3297,7 @@ TEST(LanguageServer, RenameOnAClosedFileAfterARestartUsesTheIndex)
         const json body = json::parse(shard.substr(nl + 1));
         EXPECT_TRUE(body.contains("tp"));
         EXPECT_FALSE(body["t"]["r"].empty()) << body.dump();
-        EXPECT_EQ(body["t"]["f"], hotc::ref_file_id(other_path));
+        EXPECT_EQ(body["t"]["f"], hotc::ref_file_id(hot::ls::long_path(other_path)));
     }
     s.client.reset(); // the restart
     s.client = std::make_unique<LsClient>(options(s.dir, false));
