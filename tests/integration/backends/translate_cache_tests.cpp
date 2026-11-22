@@ -6,6 +6,7 @@
 // each changed input is a miss.
 #include "hot/backend.h"
 #include "hot/clang_files_backend.h"
+#include "hot/paths.h"
 #include "hot/translate_cache.h"
 #include "hot/vfs.h"
 #include "support/scratch_dir.h"
@@ -729,6 +730,9 @@ std::unique_ptr<hot::ClangFilesBackend> make_backend(
     o.work_dir = scratch.file(work);
     o.cache_dir = cache;
     o.translator_id = id;
+    // Windows: the module DLL links the import library of the host. It is empty on other systems.
+    static const std::string host_lib = hot::default_paths().host_import_library;
+    o.host_import_library = host_lib;
     return std::make_unique<hot::ClangFilesBackend>(std::move(o));
 }
 

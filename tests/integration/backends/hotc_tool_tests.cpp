@@ -1861,6 +1861,7 @@ TEST(HotcTool, GeneratedDirGivesAStableCpp)
         o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
         o.work_dir = scratch.file("work_p4242" + std::to_string(run));
         o.generated_dir = gen_dir;
+        o.host_import_library = build_paths().host_import_library;
         hot::ClangFilesBackend backend(o);
         const std::string so = o.work_dir + "/boss_v1.g1.e" + std::to_string(run) + ".7" + hot::module_suffix();
         std::string error;

@@ -8,6 +8,7 @@
 // CMake defines the macros HOT_SOURCE_DIR and HOT_CXX.
 #include "hot/backend.h"
 #include "hot/clang_files_backend.h"
+#include "hot/paths.h"
 #include "hot/runtime/process.h"
 #include "hot/vfs.h"
 #include "support/scratch_dir.h"
@@ -82,6 +83,23 @@ struct CleanEnv
     EnvGuard direct_link;
 };
 
+// The import library of the host. A module DLL on Windows links it to reach the runtime symbols.
+// It is empty on other systems.
+const std::string& host_import_library()
+{
+    static const std::string lib = hot::default_paths().host_import_library;
+    return lib;
+}
+
+// A path as compile_commands.json has it: native separators, each backslash escaped (Windows).
+std::string json_path(const fs::path& path)
+{
+    std::string r;
+    for (const char c : path.string())
+        r += c == '\\' ? std::string("\\\\") : std::string(1, c);
+    return r;
+}
+
 std::string script_text(const char* value)
 {
     return std::string("using \"Actor.h\";\nclass Calc : Actor {\n    float result = 0.0;\n"
@@ -93,6 +111,7 @@ std::unique_ptr<hot::ClangFilesBackend> make_backend(const TestScratch& scratch,
     const std::string& cache_dir, const std::string& commands_dir = std::string())
 {
     hot::ClangFilesOptions o;
+    o.host_import_library = host_import_library();
     o.compiler = HOT_CXX;
     o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
     o.work_dir = scratch.file(work_name);
@@ -345,14 +364,14 @@ TEST(ObjectCacheBackend, CompileCommandsHasTheUnitEntry)
     EXPECT_EQ(count_text(json, "\"file\":"), 1u);
     const fs::path stable = fs::absolute(fs::path(cache) / "src" / "Calc.cpp").lexically_normal();
     EXPECT_TRUE(fs::exists(stable));
-    EXPECT_NE(json.find("\"file\": \"" + stable.string() + "\""), std::string::npos) << json;
-    EXPECT_NE(json.find("\"directory\": \"" + fs::absolute(cache).lexically_normal().string() + "\""),
+    EXPECT_NE(json.find("\"file\": \"" + json_path(stable) + "\""), std::string::npos) << json;
+    EXPECT_NE(json.find("\"directory\": \"" + json_path(fs::absolute(cache).lexically_normal()) + "\""),
         std::string::npos)
         << json;
     EXPECT_NE(json.find("\"-c\""), std::string::npos);
-    EXPECT_EQ(count_text(json, "\"" + stable.string() + "\""), 2u); // "file" and the argument
+    EXPECT_EQ(count_text(json, "\"" + json_path(stable) + "\""), 2u); // "file" and the argument
     EXPECT_EQ(json.find("-MD"), std::string::npos);
-    EXPECT_NE(json.find("\"output\": \"" + fs::absolute(cache).lexically_normal().string() + "/obj/"),
+    EXPECT_NE(json.find("\"output\": \"" + json_path(fs::absolute(fs::path(cache) / "obj" / "").lexically_normal())),
         std::string::npos)
         << json;
 }
@@ -537,6 +556,7 @@ std::unique_ptr<hot::ClangFilesBackend> make_wrapped_backend(const TestScratch& 
     const std::string& cache_dir, const std::string& compiler, const std::vector<std::string>& extra_flags = {})
 {
     hot::ClangFilesOptions o;
+    o.host_import_library = host_import_library();
     o.compiler = compiler;
     o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
     o.work_dir = scratch.file(work_name);
@@ -675,6 +695,7 @@ std::unique_ptr<hot::ClangFilesBackend> make_layout_backend(
     const TestScratch& scratch, const std::string& work_name, const std::string& cache_dir, const std::string& inc)
 {
     hot::ClangFilesOptions o;
+    o.host_import_library = host_import_library();
     o.compiler = HOT_CXX;
     o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include", inc};
     o.work_dir = scratch.file(work_name);
@@ -730,6 +751,7 @@ TEST(ObjectCacheBackend, NewShadowHeaderMissesTheObject)
     const auto make = [&](const std::string& work)
     {
         hot::ClangFilesOptions o;
+        o.host_import_library = host_import_library();
         o.compiler = HOT_CXX;
         o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include",
             early.string(), inc.string()};
@@ -849,6 +871,7 @@ TEST(ObjectCacheBackend, CompileCommandsHasNoMirrorDirectory)
     const std::string cache = scratch.file("cache");
     const std::string db = scratch.file("db");
     hot::ClangFilesOptions o;
+    o.host_import_library = host_import_library();
     o.compiler = HOT_CXX;
     o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
     o.work_dir = scratch.file("work_a");
@@ -931,6 +954,7 @@ bool shape_pch_expected()
 hot::ClangFilesOptions fmt_options(TestScratch& scratch, const std::string& name, const std::vector<std::string>& flags)
 {
     hot::ClangFilesOptions o;
+    o.host_import_library = host_import_library();
     o.compiler = HOT_CXX;
     o.include_dirs = {std::string(HOT_SOURCE_DIR) + "/tests/engine", std::string(HOT_SOURCE_DIR) + "/include"};
     o.work_dir = scratch.file(name + "_work");
