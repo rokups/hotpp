@@ -1142,6 +1142,8 @@ private:
     // The short time budget of the clangd requests of one editor request (hover, F12, inlay hints,
     // call hierarchy, semantic tokens). A slow clangd then does not hold the editor.
     static constexpr int kNativeBudgetMs = 3000;
+    // The rename conflict check fails closed on a timeout. A loaded clangd needs more than 3 s.
+    static constexpr int kNativeConflictBudgetMs = 10000;
     // The wait for the first preamble of a generated document.
     static constexpr int kPreambleWaitMs = 60000;
     // The wait of a completion for the AST and the answer on the patched text, after the preamble.
@@ -6819,7 +6821,7 @@ std::string Server::native_member_conflict(
         if (!clangd_ || !clangd_->running())
             return unknown;
         wait_for_native_ready(d);
-        const auto r = clangd_result("workspace/symbol", {{"query", base + "::" + new_name}}, kNativeBudgetMs);
+        const auto r = clangd_result("workspace/symbol", {{"query", base + "::" + new_name}}, kNativeConflictBudgetMs);
         if (!r || !r->is_array())
             return unknown;
         for (const json& sym : *r)

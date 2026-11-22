@@ -216,7 +216,12 @@ struct Workspace
         client = std::make_unique<LsClient>(o);
         client->initialize(uri_of(dir.path().string()));
         for (int i : {0, 2, 3, 4})
+        {
             client->open(uris[i], kTexts[i]);
+            // Wait for the preamble, so the first rename does not meet a cold clangd.
+            client->wait_notification(
+                "textDocument/publishDiagnostics", [&, i](const json& p) { return p.value("uri", "") == uris[i]; }, 60000);
+        }
     }
 };
 
