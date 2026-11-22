@@ -948,9 +948,11 @@ unsigned Loader::frame_boundary()
             continue;
         // A removed class without objects can still have its last layout in this generation.
         // A new object of it (the factory) gets an empty state then.
+        // Only a class of this unit: another unit can have the same generation number.
         for (const auto& [name, table] : removed_)
             if (ClassEntry* e = registry_.find(name); e && e->record->generation == g.generation)
-                e->record->layout = &kEmptyLayout;
+                if (const auto cu = unit_of_.find(name); cu != unit_of_.end() && cu->second == g.module.unit)
+                    e->record->layout = &kEmptyLayout;
         // Only the records of this module go: another unit can have the same generation number.
         for (auto it = record_gen_.begin(); it != record_gen_.end();)
         {

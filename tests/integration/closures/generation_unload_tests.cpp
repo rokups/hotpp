@@ -459,4 +459,48 @@ TEST_F(GenerationUnload, ReloadOfOneUnitKeepsTheMethodsOfAnotherUnitLive)
     EXPECT_EQ(count_lines(out, "[v1]"), 2) << out; // the Tick line and the heal line
 }
 
+// Two units of one batch share generation 1. The unit "a" removes its class X while objects of X
+// live. Then the unit "b" reloads and its generation 1 unloads. The unload must not give the
+// layout of X an empty layout: the objects keep their fields, and the state returns with X.
+TEST_F(GenerationUnload, UnloadOfAnotherUnitKeepsTheLayoutOfARemovedClass)
+{
+    const auto unit = [&](const char* name, const char* text, uint32_t gen)
+    {
+        hot::LoadResult r = backend->load(hot::ScriptSource{std::string(name) + ".hot", text, {}, name}, gen);
+        if (!r)
+            throw std::runtime_error(r.error);
+        return std::move(*r.module);
+    };
+    const char* const kX = "using \"Actor.h\"; class X : Actor { int n = 5; override void Tick(float dt) { this.n = this.n + 1; } }";
+    const char* const kZ = "using \"Actor.h\"; class Z : Actor { int q = 0; }";
+    Session s;
+    std::vector<hot::Module> first;
+    first.push_back(unit("a", kX, 1));
+    first.push_back(unit("b", "using \"Actor.h\"; class Y : Actor { int m = 1; }", 1));
+    ASSERT_RELOAD_OK(s.loader.load(std::move(first)));
+    hot::Instance x = s.loader.find("X")->create();
+    s.world.Add(static_cast<Actor*>(x.native));
+    s.commit_at_frame_boundary();
+    s.world.Tick(kDt);
+    ASSERT_NE(hot::field_ptr<int>(x.shell, "n"), nullptr);
+    EXPECT_EQ(*hot::field_ptr<int>(x.shell, "n"), 6);
+
+    testing::internal::CaptureStderr();
+    ASSERT_NO_FATAL_FAILURE(reload(s, unit("a", kZ, 2)));
+    const int n0 = *hot::field_ptr<int>(x.shell, "n");
+    ASSERT_NO_FATAL_FAILURE(reload(s, unit("b", "using \"Actor.h\"; class Y : Actor { int m = 2; }", 3)));
+    for (int i = 0; i < 4; ++i)
+        s.world.Tick(kDt);
+    testing::internal::GetCapturedStderr();
+    ASSERT_NE(hot::field_ptr<int>(x.shell, "n"), nullptr) << "the layout of the removed class is empty";
+    EXPECT_EQ(*hot::field_ptr<int>(x.shell, "n"), n0); // the removed Tick does not run
+
+    testing::internal::CaptureStderr();
+    ASSERT_NO_FATAL_FAILURE(reload(s, unit("a", kX, 4)));
+    testing::internal::GetCapturedStderr();
+    s.world.Tick(kDt);
+    ASSERT_NE(hot::field_ptr<int>(x.shell, "n"), nullptr);
+    EXPECT_GT(*hot::field_ptr<int>(x.shell, "n"), n0); // the state survived and the Tick runs again
+}
+
 } // namespace
