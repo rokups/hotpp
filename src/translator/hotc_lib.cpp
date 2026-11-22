@@ -6351,9 +6351,12 @@ void translate_impl(
     {
         std::set<std::string> dep_seen;
         std::vector<std::string> unique;
-        for (std::string& d : res.dependencies)
-            if (dep_seen.insert(d).second)
-                unique.push_back(std::move(d));
+        for (const std::string& d : res.dependencies)
+        {
+            std::string g = std::filesystem::path(d).generic_string(); // one form: "/" also on Windows
+            if (dep_seen.insert(g).second)
+                unique.push_back(std::move(g));
+        }
         res.dependencies = std::move(unique);
     }
     for (auto& [d, q] : native_q.vars)

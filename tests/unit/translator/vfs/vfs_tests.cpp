@@ -127,9 +127,10 @@ TEST(Vfs, DependenciesListTheFilesThatTheTranslationRead)
     const hotc::TranslateResult first = hotc::translate(o, session);
     ASSERT_TRUE(first.ok) << first.diagnostics;
     const auto& deps = first.dependencies;
-    EXPECT_NE(std::find(deps.begin(), deps.end(), d + "/v.h"), deps.end());
-    EXPECT_NE(std::find(deps.begin(), deps.end(), d + "/inner.h"), deps.end());
-    EXPECT_NE(std::find(deps.begin(), deps.end(), d + "/m.hot"), deps.end());
+    const std::string g = dir.path().generic_string(); // the dependencies use "/" also on Windows
+    EXPECT_NE(std::find(deps.begin(), deps.end(), g + "/v.h"), deps.end());
+    EXPECT_NE(std::find(deps.begin(), deps.end(), g + "/inner.h"), deps.end());
+    EXPECT_NE(std::find(deps.begin(), deps.end(), g + "/m.hot"), deps.end());
     EXPECT_EQ(std::set<std::string>(deps.begin(), deps.end()).size(), deps.size()) << "duplicates";
     for (const std::string& dep : deps)
         EXPECT_EQ(dep.find("/include/c++/"), std::string::npos) << "a system header: " << dep;
