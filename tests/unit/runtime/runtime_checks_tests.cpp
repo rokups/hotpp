@@ -152,6 +152,8 @@ TEST(RuntimeChecks, NonIntegralIndexStillCompiles)
 // An index wider than std::size_t must not wrap to a valid index before the bounds test.
 TEST(RuntimeChecks, WideIndexOutOfRangeThrows)
 {
+    if (!std::is_integral_v<__int128>)
+        GTEST_SKIP() << "__int128 is not an integral type with gnu extensions off";
     std::vector<int> v{1, 2, 3};
     const __int128 wide = static_cast<__int128>(1) << 64; // wraps to 0 in a std::size_t
     EXPECT_THROW(hot::index(v, wide), hot::IndexOutOfRange);
