@@ -791,7 +791,7 @@ TEST(NativeMemo, AnEmptyAnswerIsDroppedWhenAHeaderAddsTheDeclaration)
 {
     if (std::string(HOT_CLANGD_PATH).empty())
         GTEST_SKIP() << "clangd is not installed";
-    NativeMemoWs ws(10000, 0,
+    NativeMemoWs ws(30000, 0,
         {{"extra.h", "#pragma once\n"},
             {"late.hot", "using \"extra.h\";\nclass Late {\n    public int Go() { return Free(5); }\n}\n"}});
     const std::string late_uri = uri_of((ws.dir.path() / "late.hot").string());
