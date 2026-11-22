@@ -4290,7 +4290,7 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
         // A stamp of a missing file is a shadow path, not a dependency.
         const bool exists = f.virt || f.mtime_ns >= 0;
         if (deps && exists)
-            deps->push_back(f.path); // the same on a cache hit and a miss
+            deps->push_back(std::filesystem::path(f.path).generic_string()); // a cache hit and a miss; "/" on Windows
         if (shadows && !exists)
             shadows->push_back(f.path);
     }
