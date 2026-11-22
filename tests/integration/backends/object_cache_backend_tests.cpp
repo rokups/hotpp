@@ -826,12 +826,22 @@ TEST(ObjectCacheBackend, ToolchainVariablesArePartOfTheObjectKey)
     for (const char* name : names)
     {
         // The Apple clang driver rejects a deployment target that is not a version.
-        const bool version = std::string(name).find("_DEPLOYMENT_TARGET") != std::string::npos;
+        const std::string n = name;
+        const bool version = n.find("_DEPLOYMENT_TARGET") != std::string::npos;
+#ifdef _WIN32
+        // The MSVC driver uses a set value in place of its own search. A test value then breaks
+        // the translation before the object key. Linux and macOS check the same key code.
+        if (n == "INCLUDE" || n == "EXTERNAL_INCLUDE" || n == "VCToolsInstallDir" || n == "VCINSTALLDIR")
+            continue;
+        const bool key_only = version || n == "LIB"; // a test LIB breaks the link after the object key
+#else
+        const bool key_only = version;
+#endif
         EnvGuard changed(name, version ? "11.0" : "hot-test-value");
         auto backend = make_backend(scratch, std::string("work_") + name, cache);
         // On Apple the driver builds for that platform: the object does not load here, or the
         // version is refused. Only the key matters.
-        if (version)
+        if (key_only)
             (void)backend->load(kCalc7, 1);
         else
             EXPECT_EQ(load_and_run(*backend, kCalc7), 7.0f);
