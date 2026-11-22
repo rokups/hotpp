@@ -8902,7 +8902,8 @@ TEST(LanguageServerRename, ImporterChainThroughAnIncludeFolderIsNotLeftOut)
         4, 7, "Renamed", &root);
     ASSERT_TRUE(r.contains("error") || r.contains("result")) << r.dump();
     if (r.contains("result"))
-        EXPECT_TRUE(r["result"]["changes"].contains(uri_of((std::filesystem::path(root) / "c.hot").string()))) << r.dump();
+        EXPECT_TRUE(r["result"]["changes"].contains(uri_of((std::filesystem::path(root) / "c.hot").string())))
+            << "expected " << uri_of((std::filesystem::path(root) / "c.hot").string()) << " in " << r.dump();
 }
 
 // An importer that the server cannot read: the rename refuses and names the file.
