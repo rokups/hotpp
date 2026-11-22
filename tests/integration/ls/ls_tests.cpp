@@ -682,6 +682,21 @@ const char* const kNativeScript =
     "    }\n"
     "}\n";
 
+// The error lines ("E[" or "error") of the clangd log of a test, at most 20. A native failure
+// shows them, because a CI run has no other view of clangd.
+std::string clangd_errors(const TempDir& dir)
+{
+    std::ifstream in(dir.path() / "clangd.log");
+    std::string out, line;
+    for (int n = 0; n < 20 && std::getline(in, line);)
+        if (line.rfind("E[", 0) == 0 || line.find("error") != std::string::npos)
+        {
+            out += line + "\n";
+            ++n;
+        }
+    return out;
+}
+
 // A server with the script above. The script uses a header of the temporary directory.
 struct NativeSession
 {
@@ -732,7 +747,7 @@ struct NativeSession
         const int col = static_cast<int>(at - (text.rfind('\n', at - 1) + 1));
         const json r = client->request("textDocument/definition", doc_pos(uri, line, col));
         SCOPED_TRACE(context + " -> " + r.dump());
-        ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty());
+        ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << clangd_errors(dir);
         const json& loc = r["result"][0];
         const std::string file = header == "natives.h" ? (dir.path() / header).string()
                                                        : std::string(HOT_SOURCE_DIR "/tests/engine/") + header;
@@ -888,7 +903,7 @@ void expect_native_references(NativeSession& s, const std::string& context, cons
         if (!have_decl)
             std::this_thread::sleep_for(std::chrono::milliseconds(250));
     }
-    EXPECT_TRUE(have_decl) << "no declaration in natives.h: " << r.dump();
+    EXPECT_TRUE(have_decl) << "no declaration in natives.h: " << r.dump() << "\n" << clangd_errors(s.dir);
     for (const std::string& c : script_contexts)
     {
         const json at = native_pos(c, word);
@@ -906,7 +921,8 @@ void expect_native_hover(NativeSession& s, const std::string& context, const std
 {
     const json r = s.client->request("textDocument/hover", doc_pos(s.uri, native_pos(context, word)["line"],
                                                                native_pos(context, word)["character"]));
-    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << context << " -> " << r.dump();
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object())
+        << context << " -> " << r.dump() << "\n" << clangd_errors(s.dir);
     EXPECT_NE(r["result"].dump().find(want), std::string::npos) << context << " -> " << r.dump();
 }
 
@@ -8032,7 +8048,8 @@ void expect_decl_hover(const std::string& context, const std::string& word, cons
     Session s(true, kDeclScript);
     const json p = decl_pos(context, word);
     const json r = s.client->request("textDocument/hover", doc_pos(s.uri, p["line"], p["character"]));
-    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << context << " -> " << r.dump();
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object())
+        << context << " -> " << r.dump() << "\n" << clangd_errors(s.dir);
     EXPECT_NE(r["result"].dump().find(want), std::string::npos) << context << " -> " << r.dump();
 }
 
@@ -8257,7 +8274,8 @@ void expect_decl_rename(const std::string& context, const std::string& word, std
     json params = doc_pos(s.uri, p["line"], p["character"]);
     params["newName"] = "Renamed";
     const json r = s.client->request("textDocument/rename", params);
-    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << context << " -> " << r.dump();
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object())
+        << context << " -> " << r.dump() << "\n" << clangd_errors(s.dir);
     const json& edits = r["result"]["changes"][s.uri];
     std::vector<int> got;
     for (const json& e : edits)
