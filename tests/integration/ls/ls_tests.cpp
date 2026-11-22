@@ -12324,10 +12324,10 @@ TEST(LanguageServer, NativeLookingNameWithAGeneratedPartIsNotHidden)
     Session s(true, text, nullptr, nullptr,
         {{"Slots.h", "#pragma once\n#include \"hot/runtime/export.h\"\nclass HOT_EXPORT Slots\n{\npublic:\n    Slots() = default;\n    virtual ~Slots() = default;\n    int max_slots = 3;\n};\n"}});
     json r;
-    for (int k = 0; k < 30; ++k) // under load the first answers are "isIncomplete"
+    for (int k = 0; k < 100; ++k) // under load the first answers are "isIncomplete"
     {
         r = s.client->request("textDocument/completion", doc_pos(s.uri, 3, 15));
-        if (r.contains("result") && !r["result"].value("items", json::array()).empty())
+        if (r.contains("result") && r["result"].dump().find("max_slots") != std::string::npos)
             break;
         std::this_thread::sleep_for(std::chrono::milliseconds(300));
     }
