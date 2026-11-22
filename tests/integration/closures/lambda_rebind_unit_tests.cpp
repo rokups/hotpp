@@ -308,6 +308,9 @@ TEST_F(LambdaRebind, StressCopiesAndReleasesWhileCommitsRebind)
             hot::lambda_rebind_module(&g_new, &NewModule::find, &to_a);
         on_a = !on_a;
     }
+    // Wait for a first call: a slow start of a thread must not end the test with no call.
+    for (int i = 0; i < 10000 && calls.load() == 0; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     stop = true;
     for (std::thread& t : workers)
         t.join();
