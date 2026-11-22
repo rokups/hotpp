@@ -20,6 +20,7 @@
 #include <set>
 #include <stdexcept>
 #include <sstream>
+#include <thread>
 
 #include "hot/runtime/process.h"
 #include "long_path.h"
@@ -562,7 +563,20 @@ bool SymbolIndex::store(const std::string& script_path, const std::string& dig, 
             return false;
         }
     }
-    fs::rename(tmp, file, ec); // atomic: a reader sees the old or the new shard
+    // Windows refuses the rename while a reader has the shard open, so it tries 3 times.
+#ifdef _WIN32
+    const int tries = 3;
+#else
+    const int tries = 1;
+#endif
+    for (int i = 0; i < tries; ++i)
+    {
+        if (i > 0)
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        fs::rename(tmp, file, ec); // atomic: a reader sees the old or the new shard
+        if (!ec)
+            break;
+    }
     if (ec)
     {
         fs::remove(tmp, ec);
