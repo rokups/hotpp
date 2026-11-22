@@ -11381,7 +11381,12 @@ std::vector<std::string> this_names(Session& s, int version, const std::string& 
     EXPECT_TRUE(r.contains("result")) << r.dump();
     if (r.contains("result"))
         for (const json& i : r["result"].value("items", json::array()))
-            out.push_back(i.value("insertText", i.value("label", "")));
+        {
+            // A qualified name comes from the index of clangd, which fills after the preamble: its time is free.
+            const std::string t = i.value("insertText", i.value("label", ""));
+            if (t.find('.') == std::string::npos)
+                out.push_back(t);
+        }
     std::sort(out.begin(), out.end());
     return out;
 }
