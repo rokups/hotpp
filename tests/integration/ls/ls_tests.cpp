@@ -8191,7 +8191,16 @@ void expect_decl_definition(const std::string& context, const std::string& word,
     REQUIRE_CLANGD();
     Session s(true, kDeclScript);
     const json p = decl_pos(context, word);
-    const json r = s.client->request_answered("textDocument/definition", doc_pos(s.uri, p["line"], p["character"]));
+    json r;
+    // A cold clangd gives the script own name first. For a header, ask again until the header answers.
+    for (int i = 0; i < 40; ++i)
+    {
+        r = s.client->request_answered("textDocument/definition", doc_pos(s.uri, p["line"], p["character"]));
+        if (header.empty() || !r.contains("result") || !r["result"].is_array() || r["result"].empty()
+            || r["result"][0].value("uri", "").find(header) != std::string::npos)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
     ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << context << " -> " << r.dump();
     const json& loc = r["result"][0];
     if (header.empty())

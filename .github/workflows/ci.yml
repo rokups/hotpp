@@ -456,7 +456,7 @@ jobs:
       # The step has a time limit, so the job ends and its log is available.
       - name: Test
         if: ${{ !cancelled() && steps.hotc.outcome == 'success' }}
-        timeout-minutes: 40
+        timeout-minutes: 70
         run: ctest --preset vs-files-rel -j "$NUMBER_OF_PROCESSORS"
 
       # The test build is large. Remove it before the SDK build, so the disk does not become full.
