@@ -3748,13 +3748,22 @@ void parse_bases(const std::string& script_probe, const std::string& shared_prob
             else if (ip.size() > 2)
                 add_shadow_stamps(fs, ip.substr(1, ip.size() - 2), dirs, seen, files);
         const std::vector<FileStamp> used = files;
+        // The generic form: on Windows libclang joins the include dir and the name with "\".
+        std::vector<std::string> generic_dirs;
+        for (const auto& dir : dirs)
+            generic_dirs.push_back(std::filesystem::path(dir).generic_string());
         for (const FileStamp& f : used)
-            for (const auto& d : dirs)
-                if ((f.mtime_ns >= 0 || f.virt) && f.path.size() > d.size() + 1 && f.path.compare(0, d.size() + 1, d + "/") == 0)
+        {
+            const std::string p = std::filesystem::path(f.path).generic_string();
+            for (const auto& d : generic_dirs)
+            {
+                if ((f.mtime_ns >= 0 || f.virt) && p.size() > d.size() + 1 && p.compare(0, d.size() + 1, d + "/") == 0)
                 {
-                    add_shadow_stamps(fs, f.path.substr(d.size() + 1), dirs, seen, files);
+                    add_shadow_stamps(fs, p.substr(d.size() + 1), dirs, seen, files);
                     break;
                 }
+            }
+        }
     }
     if (timing)
         timing->stamps_ns += since(t_step);
