@@ -500,20 +500,38 @@ TEST(PchBackend, MissingPchDoesNotWriteTheBadMarker)
         EXPECT_NE(e.path().extension(), ".bad");
 }
 
+namespace
+{
+// A PCH build in the hook waits for the gate.
+struct Gate
+{
+    std::promise<void> release;
+    std::shared_future<void> gate = release.get_future().share();
+    std::atomic<int> started{0};
+    std::function<void()> hook()
+    {
+        return [this]
+        {
+            ++started;
+            gate.wait();
+        };
+    }
+};
+} // namespace
+
 // A load while the PCH thread runs uses no PCH and starts no second build. After wait_for_pch,
 // the next load uses the PCH.
 TEST(PchBackend, LoadWhileThePchBuildRunsUsesNoPch)
 {
     Fixture f;
-    const std::string path = f.scratch.file("slow_pch.sh");
-    std::ofstream(path, std::ios::binary)
-        << "#!/bin/sh\ncase \"$*\" in *c++-header*) sleep 2;; esac\nexec " << f.cxx << " \"$@\"\n";
-    fs::permissions(path, fs::perms::owner_all);
-    auto backend = make_backend(f.scratch, "work_slow", f.cache, path, f.incs());
+    auto backend = make_backend(f.scratch, "work_slow", f.cache, f.cxx, f.incs());
+    Gate gate; // holds the PCH build until the release
+    backend->set_pch_build_hook(gate.hook());
     EXPECT_EQ(load_and_run(*backend, layout_script(1)), 5.0f); // starts the PCH thread
     EXPECT_EQ(load_and_run(*backend, layout_script(2)), 6.0f); // no PCH thread starts
     EXPECT_EQ(load_and_run(*backend, layout_script(3)), 7.0f); // the PCH thread still runs
     EXPECT_EQ(f.pch_compiles(), 0u);
+    gate.release.set_value();
     backend->wait_for_pch();
     EXPECT_EQ(pch_files(f.cache).size(), 1u);
     EXPECT_EQ(load_and_run(*backend, layout_script(4)), 8.0f);
@@ -678,22 +696,6 @@ size_t load_batch(hot::ClangFilesBackend& backend, std::vector<hot::ScriptSource
     }
     return ok;
 }
-
-// A PCH build in the hook waits for the gate.
-struct Gate
-{
-    std::promise<void> release;
-    std::shared_future<void> gate = release.get_future().share();
-    std::atomic<int> started{0};
-    std::function<void()> hook()
-    {
-        return [this]
-        {
-            ++started;
-            gate.wait();
-        };
-    }
-};
 
 // Loads one script as a batch of one (begin_load_many, so the shared PCH logic runs), makes a
 // Calc object, runs one tick and gives the result field.
