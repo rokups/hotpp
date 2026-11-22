@@ -79,3 +79,16 @@ TEST(NamespacedBaseTranslation, BareOverrideParameterUnderUsing)
     EXPECT_EQ(a.cpp, b.cpp);
     EXPECT_FALSE(has(a.diagnostics, "hides the virtual method")) << a.diagnostics;
 }
+
+// HOT-80: a recursive class template base has no end. The translator reports an error and does not crash.
+TEST(NamespacedBaseTranslation, RecursiveTemplateBaseIsAnError)
+{
+    TempDir dir;
+    write_file(dir.path() / "chain.h",
+        "template <int N> class Chain : public Chain<N - 1> { public: virtual ~Chain() {} };\n"
+        "template <> class Chain<0> { public: virtual ~Chain() {} };\n"
+        "struct Base : Chain<2> { };\n");
+    const hotc::TranslateResult r = hotc::translate(temp_options(dir, "using \"chain.h\";\nclass S : Base { }\n"));
+    EXPECT_FALSE(r.ok);
+    EXPECT_TRUE(has(r.diagnostics, "levels of bases")) << r.diagnostics;
+}

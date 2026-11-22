@@ -1501,6 +1501,7 @@ struct BaseInfo
     bool default_ctor = false;
     bool any_ctor = false; // the class declares a constructor
     bool final_cls = false; // the class is "final": no class can derive from it
+    bool too_deep = false; // the chain of bases has more than 32 levels (a recursive template)
 };
 
 // The class that a base specifier names. The type declaration is the right one for a template
@@ -1805,8 +1806,13 @@ CXCursor choose_pattern(CXCursor tmpl, const std::vector<std::string>& args, Sub
     return tmpl;
 }
 
-void collect_virtuals(CXCursor cls, BaseInfo& info, const Subst& sub = {})
+void collect_virtuals(CXCursor cls, BaseInfo& info, const Subst& sub = {}, int depth = 0)
 {
+    if (depth > 32)
+    {
+        info.too_deep = true;
+        return;
+    }
     std::string owner = cxs(clang_getCursorSpelling(cls));
     visit(cls, [&](CXCursor c)
     {
@@ -1823,18 +1829,18 @@ void collect_virtuals(CXCursor cls, BaseInfo& info, const Subst& sub = {})
             }
             else if (CXCursor pat = implicit_pattern(def); !clang_Cursor_isNull(pat))
             {
-                collect_virtuals(pat, info, make_subst(def, pat));
+                collect_virtuals(pat, info, make_subst(def, pat), depth + 1);
             }
             else if (clang_getCursorKind(def) == CXCursor_ClassTemplate)
             {
                 // The base of a template pattern: "Other<T>". The arguments hold names of "sub".
                 Subst inner;
                 const CXCursor target = choose_pattern(def, type_args(clang_getCursorType(c), sub), inner);
-                collect_virtuals(target, info, inner);
+                collect_virtuals(target, info, inner, depth + 1);
             }
             else
             {
-                collect_virtuals(def, info);
+                collect_virtuals(def, info, {}, depth + 1);
             }
         }
         else if (k == CXCursor_Destructor)
@@ -3901,6 +3907,8 @@ void parse_bases(const std::string& script_probe, const std::string& shared_prob
             collect_virtuals(base_cur, bi);
             collect_ctors(base_cur, bi);
         }
+        if (bi.too_deep)
+            fail(0, "the base class '" + name + "' has more than 32 levels of bases (a recursive class template?)");
         visit(base_cur, [&](CXCursor a)
         {
             if (clang_getCursorKind(a) == CXCursor_CXXFinalAttr)
