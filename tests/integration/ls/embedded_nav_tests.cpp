@@ -8,6 +8,7 @@
 #include "long_path.h"
 #include "support/translator_test_support.h"
 
+#include <thread>
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -253,7 +254,14 @@ TEST(EmbeddedNav, SameBlockMethodDefinitionAndHover)
     EXPECT_EQ(l["uri"], n.uri) << d.dump();
     EXPECT_EQ(l["range"]["start"]["line"], 4) << d.dump();
     EXPECT_EQ(l["range"]["start"]["character"], base + col_of(body, "g()")) << d.dump();
-    const json h = n.ask("textDocument/hover", 4, base + col_of(body, "g();"));
+    json h;
+    for (int i = 0; i < 40; ++i) // a cold hover gives the class text at first (HOT-94)
+    {
+        h = n.ask("textDocument/hover", 4, base + col_of(body, "g();"));
+        if (h.is_object() && h["contents"]["value"].get<std::string>().find("g") != std::string::npos)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
     ASSERT_FALSE(h.is_null());
     EXPECT_NE(h["contents"]["value"].get<std::string>().find("g"), std::string::npos) << h.dump();
 }

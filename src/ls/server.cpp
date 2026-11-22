@@ -1364,7 +1364,7 @@ private:
     // is the message when the word is not a symbol that clangd knows.
     std::variant<json, std::string> native_rename(
         const Doc& d, Pos cur, const std::string& old_name, const std::string& new_name, const std::string& no_symbol,
-        bool prepare);
+        bool prepare, std::chrono::steady_clock::time_point deadline);
     // The helpers of native_rename. Each gives a refusal text, or an empty string when it is done.
     // The edits of one script, mapped to script places and merged in the job.
     std::string map_script_edits(NativeRenameJob& job, const Doc& o, const json& edits);
@@ -1375,7 +1375,8 @@ private:
     // True when the range of a real C++ file holds exactly the old name.
     bool is_old_name(NativeRenameJob& job, const std::string& uri, const json& range);
     std::string rename_other_scripts(NativeRenameJob& job, const Doc& d);
-    void native_uses_in_scripts(const Doc& d, Pos ask, const std::string& word_name, json& out);
+    void native_uses_in_scripts(const Doc& d, Pos ask, const std::string& word_name, json& out,
+        std::chrono::steady_clock::time_point ask_deadline);
     // True when a stored table (cache or shard, no analyze) of the closed script shows that the
     // script has no code word "word" that is not a resolved script ref. False when no table is available.
     bool table_lacks_word(const std::string& path, const std::string& text, const std::string& word);
@@ -1410,7 +1411,7 @@ private:
     // the word is not in the table, and the native path is used. With "prepare" the answer is the
     // range and the placeholder of prepareRename, and "new_name" is not used.
     std::optional<std::variant<json, std::string>> table_rename(
-        const Doc& d, Pos cur, const std::string& new_name, bool prepare);
+        const Doc& d, Pos cur, const std::string& new_name, bool prepare, std::chrono::steady_clock::time_point deadline);
     Pos class_name_pos(const Doc& d, const hotc::AnalyzedClass& c) const;
     bool is_script_class(const Doc& d, const std::string& name) const;
     // The scripts in the workspace folders. "with_import_dirs" adds the script dirs and the
@@ -1497,7 +1498,8 @@ private:
     // replaces the file of the declaration and its importers: the caller did the import walk.
     std::variant<PlaceMap, std::string> places_of(const Resolved& r, bool strict, const std::string& also = std::string(),
         std::map<std::string, Text>* texts = nullptr, const std::vector<std::string>* files = nullptr,
-        const IndexSnapshot* given = nullptr);
+        const IndexSnapshot* given = nullptr,
+        std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kNativeBudgetMs));
 
     int in_, out_;
     ServerOptions opt_;
@@ -5374,10 +5376,12 @@ std::vector<int> Server::gen_script_lines(const Doc& d) const
 
 json Server::on_locations(const Doc& d, const json& p, const std::string& method)
 {
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kInteractiveBudgetMs);
+    // The references request waits longer: "no references" would be wrong. The other requests answer in 1 s.
+    const bool is_ref = method == "textDocument/references";
+    const auto deadline = std::chrono::steady_clock::now()
+        + std::chrono::milliseconds(is_ref ? kNativeConflictBudgetMs : kInteractiveBudgetMs);
     json out = json::array();
     const Pos here = from_lsp(d.text, p["position"], utf8_);
-    const bool is_ref = method == "textDocument/references";
     const std::string here_word = word(d, here);
     // A script symbol: the table of the resolved names gives the places (resolve_at). No value:
     // the name is not a script symbol, and clangd gives the places (below).
@@ -5487,7 +5491,7 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
         if (!wait_for_native_ready_until(d, deadline))
             return json::array();
         std::map<std::string, Text> texts;
-        auto found = places_of(*r, false, d.path, &texts);
+        auto found = places_of(*r, false, d.path, &texts, nullptr, nullptr, deadline);
         json list = json::array();
         if (auto* m = std::get_if<PlaceMap>(&found))
         {
@@ -5544,7 +5548,8 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
                     && loc.is_object() && !gen_docs_.count(loc.value("uri", std::string())))
                     out.push_back(loc);
             }
-            if (!out.empty())
+            // No answer in time: the by_table place below is the script itself, not the base method.
+            if (!out.empty() || ms_left(deadline) <= 0)
                 return out;
         }
     }
@@ -5642,7 +5647,7 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
         }
     }
     if (is_ref && hit_ask)
-        native_uses_in_scripts(d, *hit_ask, here_word, out);
+        native_uses_in_scripts(d, *hit_ask, here_word, out, deadline);
     // A symbol word with a place in the generated text (or no generated text at all, because the
     // translation never worked), but no answer, and no host in use (a host that
     // matches, or the nearest host): tell the user one time why F12 cannot find the symbol.
@@ -5665,7 +5670,8 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
 // in the generated files of other scripts. The places in a generated file of another script have
 // no map here. Remove them. Then find the uses in the other scripts of the workspace: the script
 // words with the name that have the same declaration as the symbol at "ask".
-void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& word_name, json& out)
+void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& word_name, json& out,
+    std::chrono::steady_clock::time_point ask_deadline)
 {
     auto is_gen = [&](const json& l)
     {
@@ -5678,13 +5684,13 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
     using Target = std::tuple<std::string, int, int>;
     // True when an ask had no answer (time-out or clangd gone). A null result is an answer.
     bool ask_failed = false;
-    auto targets_at = [&](const Doc& o, Pos g)
+    auto targets_at = [&](const Doc& o, Pos g, int ask_ms = kNativeBudgetMs)
     {
         std::vector<Target> list;
         const json tdp = {{"textDocument", {{"uri", o.gen_uri}}}, {"position", gen_pos(o, g)}};
         for (const char* kind : {"textDocument/declaration", "textDocument/definition"})
         {
-            const json raw = clangd_ && clangd_->running() ? clangd_request(kind, tdp, kNativeBudgetMs) : json();
+            const json raw = clangd_ && clangd_->running() ? clangd_request(kind, tdp, ask_ms) : json();
             ask_failed = ask_failed || !clangd_answered(raw);
             const std::optional<json> r = raw.is_object() && raw.contains("result") && !raw["result"].is_null()
                 ? std::optional<json>(raw["result"]) : std::nullopt;
@@ -5699,7 +5705,7 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
         }
         return list;
     };
-    const std::vector<Target> target = targets_at(d, ask);
+    const std::vector<Target> target = targets_at(d, ask, std::min(kNativeBudgetMs, std::max(ms_left(ask_deadline), 1)));
     if (target.empty())
         return; // not a native symbol
     // The references request is single-threaded: a long budget blocks all other requests (HOT-36).
@@ -6419,7 +6425,7 @@ std::optional<Server::Resolved> Server::resolve_at(const Doc& d, Pos cur, int ti
 
 std::variant<Server::PlaceMap, std::string> Server::places_of(
     const Resolved& r, bool strict, const std::string& also, std::map<std::string, Text>* texts,
-    const std::vector<std::string>* only, const IndexSnapshot* given)
+    const std::vector<std::string>* only, const IndexSnapshot* given, std::chrono::steady_clock::time_point deadline)
 {
     PlaceMap out;
     const std::string& name = r.name;
@@ -6554,11 +6560,12 @@ std::variant<Server::PlaceMap, std::string> Server::places_of(
             for (const uint32_t off : asks)
             {
                 const auto [line, col] = doc.text.pos(off);
-                const ClangdRef c = clangd_ref(doc, {line, col});
+                const ClangdRef c = clangd_ref(doc, {line, col}, std::max(ms_left(deadline), 1));
                 if (c.kind == ClangdRef::Found && c.ref.id == r.ref.id)
                     out[uri].insert({line, col});
                 else if (c.kind == ClangdRef::Unknown && strict && error.empty())
-                    error = "cannot resolve " + name + " at " + path + ":" + std::to_string(line + 1);
+                    error = ms_left(deadline) <= 0 ? rename_over_text()
+                                                   : "cannot resolve " + name + " at " + path + ":" + std::to_string(line + 1);
             }
         };
         if (open)
@@ -6597,11 +6604,16 @@ static bool has_word(std::string_view text, const std::string& name)
 }
 
 std::optional<std::variant<json, std::string>> Server::table_rename(
-    const Doc& d, Pos cur, const std::string& new_name, bool prepare)
+    const Doc& d, Pos cur, const std::string& new_name, bool prepare, std::chrono::steady_clock::time_point deadline)
 {
-    const auto r = resolve_at(d, cur);
+    const auto r = resolve_at(d, cur, std::max(ms_left(deadline), 1));
     if (!r)
+    {
+        // A time-out is not "not a script symbol": fail closed.
+        if (ms_left(deadline) <= 0)
+            return std::variant<json, std::string>("cannot rename: " + rename_over_text());
         return std::nullopt;
+    }
     const std::string& old_name = r->name;
     const std::string what = "cannot rename " + old_name + ": ";
     const bool local = file_local(r->ref.kind);
@@ -6779,7 +6791,7 @@ std::optional<std::variant<json, std::string>> Server::table_rename(
     if (opt_.rename_hook)
         opt_.rename_hook("before_places");
     std::map<std::string, Text> texts;
-    auto found = places_of(*r, true, d.path, &texts, &files, &snap);
+    auto found = places_of(*r, true, d.path, &texts, &files, &snap, deadline);
     if (const auto* e = std::get_if<std::string>(&found))
         return what + *e;
     const PlaceMap& at = std::get<PlaceMap>(found);
@@ -6917,14 +6929,14 @@ std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(opt_.rename_budget_ms);
     if (!wait_for_native_ready_until(d, deadline))
         return "cannot rename: " + rename_over_text();
-    if (auto t = table_rename(d, cur, new_name, false))
+    if (auto t = table_rename(d, cur, new_name, false, deadline))
         return std::move(*t);
     // Not in the table: a native symbol (clangd renames it) or a name that the translator makes.
     Pos decl;
     bool generated = false;
     const auto r = symbol_places(d, cur, old_name, deadline, &decl, &generated);
     if (const auto* e = std::get_if<std::string>(&r))
-        return generated || ms_left(deadline) <= 0 ? *e : native_rename(d, cur, old_name, new_name, *e, false);
+        return generated || ms_left(deadline) <= 0 ? *e : native_rename(d, cur, old_name, new_name, *e, false, deadline);
     return untabled_refusal(d, old_name);
 }
 
@@ -7340,7 +7352,8 @@ std::string Server::add_answer(NativeRenameJob& job, const Doc& d, const Doc& as
 }
 
 std::variant<json, std::string> Server::native_rename(const Doc& d, Pos cur, const std::string& old_name,
-    const std::string& new_name, const std::string& no_symbol, bool prepare)
+    const std::string& new_name, const std::string& no_symbol, bool prepare,
+    std::chrono::steady_clock::time_point deadline)
 {
     if (!clangd_ || !is_symbol_word(old_name))
         return no_symbol;
@@ -7355,7 +7368,7 @@ std::variant<json, std::string> Server::native_rename(const Doc& d, Pos cur, con
     job.what = "cannot rename the native symbol " + old_name;
     const std::string& what = job.what;
     // All the clangd calls of one rename share a time budget.
-    job.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(opt_.rename_budget_ms);
+    job.deadline = deadline;
     auto left_ms = [&]
     {
         return static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -7442,7 +7455,7 @@ std::variant<json, std::string> Server::native_rename(const Doc& d, Pos cur, con
         break;
     }
     if (!found)
-        return what + ": " + last_error;
+        return what + ": " + (left_ms() <= 0 ? rename_over_text() : last_error);
     // prepareRename checks the start script and the declaration only.
     if (prepare)
     {
@@ -7641,7 +7654,7 @@ std::variant<json, std::string> Server::on_prepare_rename(const Doc& d, const js
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(opt_.rename_budget_ms);
     if (!wait_for_native_ready_until(d, deadline))
         return "cannot rename: " + rename_over_text();
-    if (auto t = table_rename(d, cur, std::string(), true))
+    if (auto t = table_rename(d, cur, std::string(), true, deadline))
         return std::move(*t);
     Pos decl;
     bool generated = false;
@@ -7654,7 +7667,7 @@ std::variant<json, std::string> Server::on_prepare_rename(const Doc& d, const js
         // native rename, so that prepareRename and rename give the same answer.
         if (generated)
             return *e;
-        const auto n = native_rename(d, cur, old_name, "hot_rename_probe", *e, true);
+        const auto n = native_rename(d, cur, old_name, "hot_rename_probe", *e, true, deadline);
         if (const auto* ne = std::get_if<std::string>(&n))
             return *ne;
         const auto [b, e2] = word_at(d, cur);

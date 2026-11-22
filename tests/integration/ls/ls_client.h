@@ -92,8 +92,8 @@ public:
             [&](const json& m) { return m.contains("id") && m["id"] == id && !m.contains("method"); }, timeout_ms);
     }
     // HOT-94: a cold document gives null or an empty list at first (a request waits at most 1 s for
-    // clangd). This asks again until the result has content: up to "tries" times, 250 ms apart.
-    json request_answered(const std::string& method, const json& params, int tries = 120)
+    // clangd). This asks again until the result has content: up to "tries" times (about 10 s), 250 ms apart.
+    json request_answered(const std::string& method, const json& params, int tries = 40)
     {
         json r;
         for (int i = 0; i < tries; ++i)

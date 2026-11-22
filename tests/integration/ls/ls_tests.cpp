@@ -1134,20 +1134,19 @@ TEST(LanguageServerNative, FirstHoverGivesNullWhenClangdIsStalledAndALaterHoverG
     expect_native_hover(s, "Clamp100(MAX_HP)", "Clamp100", "int Clamp100(int v)");
 }
 
-// HOT-94: clangd holds the answers of hover and signature help for 3 s (after the document is ready).
-// Both requests answer in less than 1.2 s, with null and no error.
-TEST(LanguageServerNative, HoverAndSignatureHelpAnswerInTheInteractiveBudgetWhenClangdIsSlow)
+// A clangd stand-in (a python proxy): while the file "flag" exists, it holds each request of the "methods"
+// for "seconds" s. The path of the clangd program is the result.
+static std::string stall_clangd(const TempDir& tools, const std::string& flag, const std::vector<std::string>& methods, int seconds)
 {
-    REQUIRE_CLANGD();
-    if (std::system("python3 -c \"\" >/dev/null 2>&1") != 0)
-        GTEST_SKIP() << "python3 is not installed";
-    TempDir tools;
-    const std::string flag = (tools.path() / "stall").string();
+    std::string list;
+    for (const std::string& m : methods)
+        list += (list.empty() ? "" : ", ") + std::string("b'\"") + m + "\"'";
     const std::string proxy = (tools.path() / "stall_clangd.py").string();
     write_file(proxy,
         "import os, subprocess, sys, time\n"
         "p = subprocess.Popen(sys.argv[1:], stdin=subprocess.PIPE)\n"
         "src = sys.stdin.buffer\n"
+        "held = [" + list + "]\n"
         "while True:\n"
         "    head = b''\n"
         "    while not head.endswith(b'\\r\\n\\r\\n'):\n"
@@ -1162,13 +1161,26 @@ TEST(LanguageServerNative, HoverAndSignatureHelpAnswerInTheInteractiveBudgetWhen
         "        if line.lower().startswith(b'content-length:'):\n"
         "            size = int(line.split(b':')[1])\n"
         "    body = src.read(size)\n"
-        "    if os.path.exists('" + flag + "') and (b'\"textDocument/hover\"' in body or b'\"textDocument/signatureHelp\"' in body):\n"
-        "        time.sleep(3)\n"
+        "    if os.path.exists('" + flag + "') and any(m in body for m in held):\n"
+        "        time.sleep(" + std::to_string(seconds) + ")\n"
         "    p.stdin.write(head + body)\n"
         "    p.stdin.flush()\n");
     const std::string clangd = (tools.path() / "stall_clangd").string();
     write_file(clangd, "#!/bin/sh\nexec python3 '" + proxy + "' '" HOT_CLANGD_PATH "' \"$@\"\n");
     std::filesystem::permissions(clangd, std::filesystem::perms::owner_all, std::filesystem::perm_options::add);
+    return clangd;
+}
+
+// HOT-94: clangd holds the answers of hover and signature help for 3 s (after the document is ready).
+// Both requests answer in less than 1.2 s, with null and no error.
+TEST(LanguageServerNative, HoverAndSignatureHelpAnswerInTheInteractiveBudgetWhenClangdIsSlow)
+{
+    REQUIRE_CLANGD();
+    if (std::system("python3 -c \"\" >/dev/null 2>&1") != 0)
+        GTEST_SKIP() << "python3 is not installed";
+    TempDir tools;
+    const std::string flag = (tools.path() / "stall").string();
+    const std::string clangd = stall_clangd(tools, flag, {"textDocument/hover", "textDocument/signatureHelp"}, 3);
     NativeSession s(kNativeScript, 10000, true, clangd);
     const json at = native_pos("Clamp100(MAX_HP)", "Clamp100");
     expect_native_hover(s, "Clamp100(MAX_HP)", "Clamp100", "int Clamp100(int v)"); // the document is ready
@@ -1184,6 +1196,53 @@ TEST(LanguageServerNative, HoverAndSignatureHelpAnswerInTheInteractiveBudgetWhen
     EXPECT_FALSE(hover.contains("error")) << hover.dump();
     EXPECT_LT(timed("textDocument/signatureHelp", at["character"].get<int>() + 9, sig), 1200);
     EXPECT_FALSE(sig.contains("error")) << sig.dump();
+}
+
+// HOT-94: clangd holds the definition for 3 s (after the document is ready). F12 gives [] in less than 1.2 s.
+TEST(LanguageServerNative, DefinitionAnswersEmptyInTheInteractiveBudgetWhenClangdIsSlow)
+{
+    REQUIRE_CLANGD();
+    if (std::system("python3 -c \"\" >/dev/null 2>&1") != 0)
+        GTEST_SKIP() << "python3 is not installed";
+    TempDir tools;
+    const std::string flag = (tools.path() / "stall").string();
+    const std::string clangd =
+        stall_clangd(tools, flag, {"textDocument/definition", "textDocument/declaration"}, 3);
+    NativeSession s(kNativeScript, 10000, true, clangd);
+    expect_native_hover(s, "Clamp100(MAX_HP)", "Clamp100", "int Clamp100(int v)"); // the document is ready
+    write_file(flag, "1");
+    const json at = native_pos("Clamp100(MAX_HP)", "Clamp100");
+    const auto t0 = std::chrono::steady_clock::now();
+    const json r = s.client->request("textDocument/definition", doc_pos(s.uri, at["line"], at["character"]));
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+    EXPECT_LT(ms, 1200);
+    EXPECT_FALSE(r.contains("error")) << r.dump();
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    EXPECT_TRUE(r["result"].is_null() || (r["result"].is_array() && r["result"].empty())) << r.dump();
+}
+
+// HOT-94: clangd holds the answers that a rename needs for 4 s, and the rename budget is 2 s. The rename
+// gives the time budget error and never an edit.
+TEST(LanguageServerNative, RenameGivesTheTimeBudgetErrorWhenClangdIsSlow)
+{
+    REQUIRE_CLANGD();
+    if (std::system("python3 -c \"\" >/dev/null 2>&1") != 0)
+        GTEST_SKIP() << "python3 is not installed";
+    TempDir tools;
+    const std::string flag = (tools.path() / "stall").string();
+    const std::string clangd = stall_clangd(tools, flag,
+        {"textDocument/definition", "textDocument/declaration", "textDocument/references", "textDocument/rename",
+            "textDocument/prepareRename"},
+        4);
+    NativeSession s(kNativeScript, 10000, true, clangd, 2000);
+    expect_native_hover(s, "Clamp100(MAX_HP)", "Clamp100", "int Clamp100(int v)"); // the document is ready
+    write_file(flag, "1");
+    const json p = {{"textDocument", {{"uri", s.uri}}}, {"position", native_pos("Clamp100(MAX_HP)", "Clamp100")},
+        {"newName", "ClampHp"}};
+    const json r = s.client->request("textDocument/rename", p);
+    EXPECT_FALSE(r.contains("result") && r["result"].is_object()) << r.dump(); // never an edit
+    ASSERT_TRUE(r.contains("error")) << r.dump();
+    EXPECT_NE(r["error"]["message"].get<std::string>().find("time budget of 2 s"), std::string::npos) << r.dump();
 }
 #endif
 
@@ -8205,7 +8264,15 @@ void expect_override_in_header(const std::string& lib, const std::string& extra)
     main.replace(main.find("%s"), 2, extra);
     DegradedSession s(lib, main);
     // "Tick" on line 3: character 18.
-    const json r = s.ask("textDocument/definition", 3, 19, true);
+    // The index of clangd can be late: the first answers can be the script itself (HOT-94). Ask again.
+    json r;
+    for (int i = 0; i < 40; ++i)
+    {
+        r = s.ask("textDocument/definition", 3, 19, true);
+        if (r.dump().find("Actor.h") != std::string::npos)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
     ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << r.dump();
     EXPECT_NE(r["result"][0].value("uri", "").find("Actor.h"), std::string::npos) << r.dump();
 }
