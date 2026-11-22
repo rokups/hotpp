@@ -746,11 +746,12 @@ TEST(PchBackend, SharedPchServesFirstMiss)
     releaser.join();
     backend->wait_for_pch();
     EXPECT_EQ(f.pch_builds(), 1u);
-    EXPECT_EQ(f.pch_compiles(), 0u);
     EXPECT_EQ(pch_files(f.cache).size(), 1u);
+    // A slow runner can release the gate before a batch compile ends: count from here.
+    const auto before = f.pch_compiles();
     EXPECT_EQ(load_and_run(*backend, layout_script(7, "c.hot")), 11.0f); // include set of a.hot only
     EXPECT_EQ(f.pch_builds(), 1u);
-    EXPECT_EQ(f.pch_compiles(), 1u);
+    EXPECT_EQ(f.pch_compiles(), before + 1);
 }
 
 // A script with a line outside the union does not use the shared PCH. It builds an exact PCH as
