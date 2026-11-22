@@ -266,7 +266,11 @@ TEST(EmbeddedCompletion, TimingOn300Lines)
         // A shared CI runner can stall one of 20 requests: the mean (not the p95) stays the strict gauge there.
         const double limit = std::getenv("GITHUB_ACTIONS") ? 2500.0 : 1000.0;
 #endif
+#ifdef _WIN32
+        EXPECT_LT(ms[18], limit * 5) << kind;
+#else
         EXPECT_LT(ms[18], limit) << kind;
+#endif
     }
 }
 

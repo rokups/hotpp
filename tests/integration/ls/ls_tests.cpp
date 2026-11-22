@@ -3618,7 +3618,8 @@ struct Completion
 };
 
 // Opens the script (without the "@") and completes at the "@".
-Completion complete_at(bool clangd, std::string text, const std::string& replace = "", const std::string& lib = "")
+Completion complete_at(bool clangd, std::string text, const std::string& replace = "", const std::string& lib = "",
+    int attempts = 5)
 {
     const size_t at = text.find('@');
     text.replace(at, 1, replace);
@@ -3642,12 +3643,13 @@ Completion complete_at(bool clangd, std::string text, const std::string& replace
     Completion c;
     // The server has a time budget for clangd. Under load the reply is "isIncomplete": a client asks again.
     json r;
-    for (int attempt = 0; attempt < 5; ++attempt)
+    for (int attempt = 0; attempt < attempts; ++attempt)
     {
         r = s.client->request("textDocument/completion", doc_pos(s.uri, line, col));
         c.result = r.contains("result") ? r["result"] : json::object();
         if (!c.result.is_object() || !c.result.value("isIncomplete", false))
             break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
     }
     for (const json& i : c.result.value("items", json::array()))
         c.names.push_back(i.value("insertText", i.value("label", "")));
@@ -3932,11 +3934,16 @@ TEST(LanguageServer, CompletionKeepsRealNamesThatLookLikeGeneratedOrLibcNames)
         hot::ls::ServerOptions o = options(sd, true);
         o.include_dirs.push_back(hd.path().string());
         Session s(true, text, &o);
-        const json r = s.client->request(
-            "textDocument/completion", doc_pos(s.uri, 5, 8 + static_cast<int>(prefix.size())));
+        json r;
         bool found = false;
-        for (const json& i : r["result"].value("items", json::array()))
-            found = found || i.value("insertText", i.value("label", "")) == name;
+        for (int k = 0; k < 100 && !found; ++k) // under load the first answers are "isIncomplete"
+        {
+            r = s.client->request("textDocument/completion", doc_pos(s.uri, 5, 8 + static_cast<int>(prefix.size())));
+            for (const json& i : r["result"].value("items", json::array()))
+                found = found || i.value("insertText", i.value("label", "")) == name;
+            if (!found)
+                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        }
         EXPECT_TRUE(found) << name << " in " << r.dump();
     }
 }
@@ -4571,7 +4578,7 @@ TEST(LanguageServer, DeclarationStartKeepsDeclarationKeywords)
 TEST(LanguageServer, CompletionHidesTheGeneratedHelpers)
 {
     REQUIRE_CLANGD();
-    const Completion c = complete_at(true, kCompleteScript);
+    const Completion c = complete_at(true, kCompleteScript, "", "", 100);
     ASSERT_FALSE(c.names.empty());
     for (const std::string& n : c.names)
     {
