@@ -113,6 +113,13 @@ public:
     void notify() noexcept;
     // True when the calling thread is the one that ticked last (the tick thread of the host).
     bool is_tick_thread() const noexcept { return ticker_.load(std::memory_order_relaxed) == std::this_thread::get_id(); }
+    // Like is_tick_thread, but a scheduler that never ticked gets the calling thread as its tick thread.
+    bool claim_tick_thread() noexcept
+    {
+        std::thread::id none;
+        ticker_.compare_exchange_strong(none, std::this_thread::get_id(), std::memory_order_relaxed);
+        return is_tick_thread();
+    }
 
 private:
     std::atomic<std::thread::id> ticker_{}; // the thread of the last tick
@@ -506,7 +513,7 @@ inline void Scheduler::wait_work(uint64_t seq, Clock::time_point deadline) const
 inline bool detail::pump_if_tick_thread(TaskPromiseBase& p)
 {
     Scheduler& s = scheduler();
-    if (!s.is_tick_thread())
+    if (!s.claim_tick_thread())
         return false;
     while (!p.is_finished())
     {

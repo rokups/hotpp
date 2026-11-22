@@ -152,13 +152,13 @@ Task<int> yield_then_value()
 // sync_wait on the tick thread must tick the scheduler: nobody else resumes the parked frame.
 TEST(TaskTests, SyncWaitOnTickThreadTicksTheScheduler)
 {
-    std::promise<int> done;
-    std::future<int> result = done.get_future();
+    auto done = std::make_shared<std::promise<int>>(); // the detached thread can outlive the test
+    std::future<int> result = done->get_future();
     std::thread host(
-        [&done]
+        [done]
         {
             hot::scheduler().tick(); // this thread is the tick thread, like the main thread of a host
-            done.set_value(hot::sync_wait(yield_then_value()));
+            done->set_value(hot::sync_wait(yield_then_value()));
         });
     const bool ok = result.wait_for(std::chrono::seconds(5)) == std::future_status::ready;
     if (ok)
@@ -171,6 +171,17 @@ TEST(TaskTests, SyncWaitOnTickThreadTicksTheScheduler)
         host.detach(); // the thread hangs in sync_wait: the test fails and the process ends
         ADD_FAILURE() << "sync_wait hangs on the tick thread";
     }
+}
+
+// A scheduler that never ticked gives the tick thread to the first thread that waits.
+TEST(TaskTests, SyncWaitClaimsAnEmptyTickThread)
+{
+    hot::Scheduler fresh;
+    EXPECT_FALSE(fresh.is_tick_thread());
+    EXPECT_TRUE(fresh.claim_tick_thread());
+    bool other = true;
+    std::thread([&] { other = fresh.claim_tick_thread(); }).join();
+    EXPECT_FALSE(other);
 }
 
 TEST(TaskTests, EmptyTaskAwaitThrows)
