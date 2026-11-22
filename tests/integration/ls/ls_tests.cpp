@@ -694,14 +694,17 @@ struct NativeSession
     // budget of the scan of the other scripts for one references request.
     explicit NativeSession(const char* script = kNativeScript, int token_wait_ms = 10000, bool native_tokens = true,
         const std::string& clangd = "", int rename_budget_ms = 10000, const char* header = kNativeHeader,
-        int reference_budget_ms = 10000)
+        int reference_budget_ms = 10000, bool include_by_link = false)
     {
         write_file((dir.path() / "natives.h").string(), header);
         path = (dir.path() / "hero.hot").string();
         uri = uri_of(path);
         write_file(path, script);
         hot::ls::ServerOptions o = options(dir, true);
-        o.include_dirs.push_back(dir.path().string());
+        // With include_by_link, the include dir is a link to the dir: a second spelling of each script.
+        if (include_by_link)
+            std::filesystem::create_directory_symlink(dir.path(), dir.path() / "self");
+        o.include_dirs.push_back(include_by_link ? (dir.path() / "self").string() : dir.path().string());
         o.native_token_wait_ms = token_wait_ms;
         o.native_semantic_tokens = native_tokens;
         o.rename_budget_ms = rename_budget_ms;
@@ -6439,6 +6442,15 @@ TEST(LanguageServerNative, RenameOfAClassDoesNotChangeTheClassOfAnotherNamespace
     // clangd does not give the use in the base list of Item (the index has no reference there).
     EXPECT_NE(out.find("{ Item(); }"), std::string::npos) << out;
     EXPECT_NE(out.find("inline B::Pnt::Pnt(int) {}"), std::string::npos) << out;
+}
+
+// The include dir and the open document give two spellings of one script (a link, or "/var" and
+// "/private/var" on macOS). The rename must see one script, not an open one and a closed one.
+TEST(LanguageServerNative, RenameWithAnIncludeDirThatIsALink)
+{
+    REQUIRE_CLANGD();
+    NativeSession s(kNativeScript, 10000, true, "", 10000, kNativeHeader, 10000, true);
+    expect_native_rename(s, "this.counter.count", "count", "total", {place_of("int count)", "count"), place_of("= count;", "count")});
 }
 
 TEST(LanguageServerNative, RenameOfAMethod)

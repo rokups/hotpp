@@ -1498,14 +1498,10 @@ private:
         const Server* server = nullptr;
         bool read(const std::string& path, std::string& out) override
         {
-            const std::string norm = fs::path(path).lexically_normal().string();
-            for (const auto& [uri, doc] : server->docs_)
-                if (!doc->embedded && fs::path(doc->path).lexically_normal().string() == norm)
-                {
-                    out = doc->text.s;
-                    return true;
-                }
-            return false;
+            const std::shared_ptr<Doc> doc = server->open_doc_at(path);
+            if (doc)
+                out = doc->text.s;
+            return doc != nullptr;
         }
         hot::VfsStat stat(const std::string& path) override { return hot::disk_file_system()->stat(path); }
     };
@@ -5676,7 +5672,7 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
         return; // not a native symbol
     // The references request is single-threaded: a long budget blocks all other requests (HOT-36).
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(opt_.reference_budget_ms);
-    auto norm = [](const std::string& p) { return fs::path(p).lexically_normal().string(); };
+    auto norm = [](const std::string& p) { return real_key(p); }; // one key for two spellings of a file
     std::vector<std::string> todo;
     std::set<std::string> known = {norm(d.path)};
     auto add = [&](const std::string& path)
@@ -6112,6 +6108,11 @@ std::shared_ptr<Doc> Server::open_doc_at(const std::string& path, bool with_embe
     const fs::path want = fs::path(path).lexically_normal();
     for (const auto& [uri, doc] : docs_)
         if ((with_embedded || !doc->embedded) && (doc->path == path || fs::path(doc->path).lexically_normal() == want))
+            return doc;
+    // Another spelling of the file (a link, "/var" and "/private/var", "\\" and "/"): the real paths.
+    const std::string key = real_key(path);
+    for (const auto& [uri, doc] : docs_)
+        if ((with_embedded || !doc->embedded) && real_key(doc->path) == key)
             return doc;
     return nullptr;
 }
@@ -7426,7 +7427,7 @@ std::string Server::rename_other_scripts(NativeRenameJob& job, const Doc& d)
         return static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
             job.deadline - std::chrono::steady_clock::now()).count());
     };
-    auto norm = [](const std::string& p) { return fs::path(p).lexically_normal().string(); };
+    auto norm = [](const std::string& p) { return real_key(p); }; // one key for two spellings of a file
     struct Candidate
     {
         std::string path;

@@ -169,16 +169,15 @@ std::vector<std::string> Host::cxx_flags() const
     return out;
 }
 
-namespace
-{
-
-// The real path of s (symlinks resolved), in the form of the host set.
 std::string real_key(const std::string& s)
 {
     std::error_code ec;
     const fs::path c = fs::weakly_canonical(utf8_path(s), ec);
     return strip_slash(path_key(ec ? utf8_path(s) : c));
 }
+
+namespace
+{
 
 // True when the path is below one of the dirs (a path component border).
 bool below_any_dir(const std::vector<std::string>& dirs, const std::string& real_path)

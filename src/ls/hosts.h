@@ -68,6 +68,10 @@ struct Host
 // component border. The caller checks the workspace folders and the setting renameHostHeaders.
 std::string host_header_refusal(const Host& host, const std::string& path);
 
+// The identity of a file: the real path (symlinks resolved), "/" separators, and an upper case
+// drive letter on Windows. Two spellings of one existing file give the same key.
+std::string real_key(const std::string& path);
+
 // True when the real path of path is below the build dir of the host (binaryDir).
 bool host_in_build_dir(const Host& host, const std::string& path);
 
