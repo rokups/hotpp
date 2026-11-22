@@ -484,6 +484,21 @@ bool TypeModel::base_rule(const std::string& base, TypeRule& out) const
 
 TypeRule TypeModel::lookup_stub(const std::string& cpp_type) const
 {
+    // A cycle of script bases recurses through lookup. The checker reports the cycle later.
+    struct Depth
+    {
+        int& n;
+        explicit Depth(int& v) : n(v) { ++n; }
+        ~Depth() { --n; }
+    } guard(lookup_depth_);
+    if (lookup_depth_ > 64)
+    {
+        TypeRule r;
+        r.owner = cpp_type;
+        r.kind = Kind::Handle;
+        r.handle_tpl = "\x01std::shared_ptr<$T>";
+        return r;
+    }
     // Breadth first walk of the bases. The visited set stops a cycle.
     auto walk = [&](TypeRule& out)
     {

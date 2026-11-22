@@ -345,6 +345,7 @@ private:
     std::string param_form(const std::string& type, bool in) const;
     std::string carrier_parse(const std::string& native_param_type, char& form) const;
     TypeRule lookup_stub(const std::string& cpp_type) const;
+    mutable int lookup_depth_ = 0; // the depth of lookup_stub, a cycle of script bases stops at 64
 
     // The direct bases of a type: the bases of a script class, else the base callback.
     std::vector<std::string> direct_bases(const std::string& name) const;

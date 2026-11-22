@@ -404,6 +404,13 @@ TEST(ScriptKindsTranslation, ClassesThatDeriveFromEachOtherAreAnError)
     expect_error("class A : B { int x = 0; }\nclass B : A { int y = 0; }\n", "derive from each other");
 }
 
+// HOT-81: a field of a class in the cycle makes the type lookup walk the cycle. It must not crash.
+TEST(ScriptKindsTranslation, CycleOfBasesWithAFieldOfTheTypeIsAnError)
+{
+    expect_error("class A : B { }\nclass B : A { }\nclass C { A a; void f() { a = new A(); } }\n",
+        "derive from each other");
+}
+
 TEST(ScriptKindsTranslation, ValueClassCannotUseAHandleClass)
 {
     expect_error(
