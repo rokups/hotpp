@@ -1333,6 +1333,9 @@ private:
     // Null when the file is not readable.
     const hotc::AnalyzeResult* script_facts(const std::string& uri, Text& text);
     json on_to_script(const json& p);
+    // The request "hot/genAt" (a test diagnostic): the generated lines at the asks of a script
+    // position, the clangd answer of "method" at the first ask and the clangd errors of the unit.
+    json on_gen_at(const Doc& d, const json& p);
     // Gives the edit, or an error message.
     std::variant<json, std::string> on_rename(const Doc& d, const json& p);
     // Gives the range of the word that a rename changes, or an error message.
@@ -8864,6 +8867,50 @@ json Server::on_to_script(const json& p)
     return disk_to_script(uri_to_path(uri), pos.value("line", 0));
 }
 
+json Server::on_gen_at(const Doc& d, const json& p)
+{
+    json out = json::object();
+    if (!d.map)
+        return {{"error", "no generated text"}};
+    bool by_word = false;
+    const std::vector<Pos> asks = gen_asks(d, from_lsp(d.text, p.value("position", json::object()), utf8_), by_word);
+    out["byWord"] = by_word;
+    out["genUri"] = d.gen_uri;
+    out["shell"] = d.shell_active ? d.shell_path : std::string();
+    json list = json::array();
+    for (const Pos& g : asks)
+        list.push_back(gen_pos(d, g));
+    out["asks"] = list;
+    if (!asks.empty())
+    {
+        // The lines around the first ask. ">" marks the line, "|" marks the column.
+        const Pos g = asks[0];
+        std::istringstream in(d.gen.s);
+        std::string text, line;
+        for (int n = 0; std::getline(in, line); ++n)
+            if (n >= g.line - 5 && n <= g.line + 5)
+            {
+                if (n == g.line && g.col >= 0 && g.col <= static_cast<int>(line.size()))
+                    line.insert(static_cast<size_t>(g.col), "|");
+                text += (n == g.line ? "> " : "  ") + line + "\n";
+            }
+        out["gen"] = text;
+        json params = {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, g)}};
+        const std::string method = p.value("method", std::string("textDocument/hover"));
+        if (method == "textDocument/references")
+            params["context"] = {{"includeDeclaration", true}};
+        const auto r = clangd_result(method, params, kNativeBudgetMs);
+        out["answer"] = r ? *r : json("no answer");
+    }
+    json errors = json::array();
+    std::lock_guard<std::mutex> lock(docs_mutex_); // the clangd reader thread writes raw_clang_diags
+    for (const json& x : d.raw_clang_diags)
+        if (x.value("severity", 0) == 1 && errors.size() < 10)
+            errors.push_back(x);
+    out["errors"] = errors;
+    return out;
+}
+
 // ------------------------------------------------------------------ dispatch
 
 void Server::handle(const json& msg)
@@ -9125,6 +9172,11 @@ void Server::handle(const json& msg)
     }
     if (method == "hot/toScript")
         return reply(id, on_to_script(p));
+    if (method == "hot/genAt")
+    {
+        const auto d = doc_of(p);
+        return reply(id, d ? on_gen_at(*d, p) : json(nullptr));
+    }
 
     // These requests carry an item of a call hierarchy, not a text document.
     if (method == "callHierarchy/incomingCalls" || method == "callHierarchy/outgoingCalls")

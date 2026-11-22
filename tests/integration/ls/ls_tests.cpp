@@ -697,6 +697,20 @@ std::string clangd_errors(const TempDir& dir)
     return out;
 }
 
+// The facts of a native request that has no answer: the generated lines at the position, the
+// clangd answer there and the clangd errors of the unit (hot/genAt), and the clangd log errors.
+std::string native_facts(LsClient& client, const TempDir& dir, const std::string& uri, const json& position,
+    const std::string& method)
+{
+    const json r = client.request("hot/genAt", {{"textDocument", {{"uri", uri}}}, {"position", position}, {"method", method}});
+    const json g = r.value("result", json());
+    std::string out = "genAt: " + (g.is_object() ? g.value("gen", std::string()) : std::string());
+    json rest = g;
+    if (rest.is_object())
+        rest.erase("gen");
+    return out + rest.dump() + "\n" + clangd_errors(dir);
+}
+
 // A server with the script above. The script uses a header of the temporary directory.
 struct NativeSession
 {
@@ -747,7 +761,8 @@ struct NativeSession
         const int col = static_cast<int>(at - (text.rfind('\n', at - 1) + 1));
         const json r = client->request("textDocument/definition", doc_pos(uri, line, col));
         SCOPED_TRACE(context + " -> " + r.dump());
-        ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << clangd_errors(dir);
+        ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty())
+            << native_facts(*client, dir, uri, pos(line, col), "textDocument/definition");
         const json& loc = r["result"][0];
         const std::string file = header == "natives.h" ? (dir.path() / header).string()
                                                        : std::string(HOT_SOURCE_DIR "/tests/engine/") + header;
@@ -903,7 +918,8 @@ void expect_native_references(NativeSession& s, const std::string& context, cons
         if (!have_decl)
             std::this_thread::sleep_for(std::chrono::milliseconds(250));
     }
-    EXPECT_TRUE(have_decl) << "no declaration in natives.h: " << r.dump() << "\n" << clangd_errors(s.dir);
+    EXPECT_TRUE(have_decl) << "no declaration in natives.h: " << r.dump() << "\n"
+                           << native_facts(*s.client, s.dir, s.uri, p["position"], "textDocument/references");
     for (const std::string& c : script_contexts)
     {
         const json at = native_pos(c, word);
@@ -922,7 +938,8 @@ void expect_native_hover(NativeSession& s, const std::string& context, const std
     const json r = s.client->request("textDocument/hover", doc_pos(s.uri, native_pos(context, word)["line"],
                                                                native_pos(context, word)["character"]));
     ASSERT_TRUE(r.contains("result") && r["result"].is_object())
-        << context << " -> " << r.dump() << "\n" << clangd_errors(s.dir);
+        << context << " -> " << r.dump() << "\n"
+        << native_facts(*s.client, s.dir, s.uri, native_pos(context, word), "textDocument/hover");
     EXPECT_NE(r["result"].dump().find(want), std::string::npos) << context << " -> " << r.dump();
 }
 
@@ -6286,7 +6303,8 @@ void expect_native_rename(NativeSession& s, const std::string& context, const st
 {
     const json r = native_rename_request(s, context, word, name);
     SCOPED_TRACE(context + " -> " + r.dump());
-    ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
+    ASSERT_TRUE(r.contains("result") && r["result"].is_object())
+        << r.dump() << "\n" << native_facts(*s.client, s.dir, s.uri, native_pos(context, word, script_text), "textDocument/definition");
     EXPECT_EQ(edit_places(r["result"], s.uri, name), word_places(script_text, word, script_skip));
     const std::string header_uri = uri_of((s.dir.path() / "natives.h").string());
     EXPECT_EQ(edit_places(r["result"], header_uri, name), word_places(kNativeHeader, word, header_skip));
