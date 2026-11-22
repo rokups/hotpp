@@ -3333,9 +3333,13 @@ json Server::map_location(const Doc& d, const json& loc) const
 // A word that the translator or the shell makes. It is not a script name (see design 4.2).
 static bool is_generated_name(const std::string& n)
 {
-    static const char* const parts[] = {
-        "__", "_Shell", "_SLOT_", "_thunk", "_slot", "_layout", "_fields", "_g1", "_vtable"};
-    for (const char* x : parts)
+    // The translator makes these as a suffix. The names "<ScriptClass>_slot" and so on need the
+    // class list: see is_generated_class_name. "max_slots" is a native name.
+    static const char* const suffixes[] = {"_thunk", "_g1", "_vtable"};
+    for (const std::string_view x : suffixes)
+        if (n.size() >= x.size() && n.compare(n.size() - x.size(), x.size(), x) == 0)
+            return true;
+    for (const char* x : {"__", "_Shell", "_SLOT_"})
         if (n.find(x) != std::string::npos)
             return true;
     // A script class name cannot start with "hot_" (the prefix of the generated code).
@@ -3376,10 +3380,11 @@ static bool is_libc_name(const std::string& n)
 }
 
 // The record and the create function that the translator makes for a script class: the name is
-// "<ScriptClass>_record" or "<ScriptClass>_create". Other names with the suffix stay.
+// "<ScriptClass>_record", "<ScriptClass>_create", "_slot", "_slots", "_layout" or "_fields". Other
+// names with the suffix stay.
 static bool is_generated_class_name(const Doc& d, const std::string& n)
 {
-    for (const char* suffix : {"_record", "_create"})
+    for (const char* suffix : {"_record", "_create", "_slot", "_slots", "_layout", "_fields"})
     {
         const std::string x = suffix;
         if (n.size() > x.size() && n.compare(n.size() - x.size(), x.size(), x) == 0)
@@ -3477,7 +3482,7 @@ json Server::using_completion(const Doc& d, Pos cur, size_t off, size_t line_beg
         if (code.find("using") == std::string::npos || !std::regex_search(line, m, re))
             continue;
         const std::string file = m[1].str();
-        if (file.size() < 2 || file.compare(file.size() - 4, 4, ".hot") == 0)
+        if (file.size() < 2 || (file.size() >= 4 && file.compare(file.size() - 4, 4, ".hot") == 0))
             continue;
         for (const std::string& base : dirs)
         {
@@ -9583,8 +9588,8 @@ std::optional<ScriptLine> line_directive_target(const std::string& cpp, int line
                 ++i;
             file += m[2].first[i];
         }
-        const bool is_cpp = file.size() > 4 && file.compare(file.size() - 4, 4, ".cpp") == 0;
-        if (is_cpp)
+        // The same rule as "last_script_line" (diag_rewrite.cpp): a .cpp script counts.
+        if (is_hotc_output(file))
         {
             in_cpp_text = true;
             continue;

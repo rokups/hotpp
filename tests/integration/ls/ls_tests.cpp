@@ -12300,3 +12300,41 @@ TEST(LanguageServerHosts, UnversionedPublishAfterAHostChangeKeepsTheReadyWait)
     const json r = client.request("textDocument/completion", doc_pos(uri, 3, 7));
     EXPECT_EQ(stat("readyWaits"), before + 1);
 }
+
+// ------------------------------------------------------------------ HOT-95
+
+TEST(LanguageServer, LineDirectiveOfACppScriptCounts)
+{
+    const std::string cpp = "#line 1 \"p.g1.cpp\"\nint a;\n#line 12 \"Player.cpp\"\nint b;\nint c;\n";
+    const auto t = hot::ls::line_directive_target(cpp, 4);
+    ASSERT_TRUE(t);
+    EXPECT_EQ(t->file, "Player.cpp");
+    EXPECT_EQ(t->line, 12);
+}
+
+TEST(LanguageServer, NativeLookingNameWithAGeneratedPartIsNotHidden)
+{
+    REQUIRE_CLANGD();
+    const std::string text = "using \"Slots.h\";\nclass Hero : Slots {\n    void run() {\n        this.ma;\n    }\n}\n";
+    Session s(true, text, nullptr, nullptr,
+        {{"Slots.h", "#pragma once\n#include \"hot/runtime/export.h\"\nclass HOT_EXPORT Slots\n{\npublic:\n    Slots() = default;\n    virtual ~Slots() = default;\n    int max_slots = 3;\n};\n"}});
+    json r;
+    for (int k = 0; k < 30; ++k) // under load the first answers are "isIncomplete"
+    {
+        r = s.client->request("textDocument/completion", doc_pos(s.uri, 3, 15));
+        if (r.contains("result") && !r["result"].value("items", json::array()).empty())
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    }
+    ASSERT_TRUE(r.contains("result")) << r.dump();
+    const json items = r["result"].value("items", json::array());
+    EXPECT_TRUE(std::any_of(items.begin(), items.end(), [](const json& i) { return i.value("label", "") == "max_slots"; })) << r.dump();
+}
+
+TEST(LanguageServer, UsingWordWorksWithAShortImportPath)
+{
+    const auto setup = [](const TempDir&, const TempDir& hd)
+    { write_file((hd.path() / "a.h").string(), "#pragma once\nnamespace Zed { }\n"); };
+    const json items = using_items("using \"a.h\";\nusing ", setup);
+    EXPECT_TRUE(std::any_of(items.begin(), items.end(), [](const json& i) { return i.value("label", "") == "Zed"; })) << items.dump();
+}
