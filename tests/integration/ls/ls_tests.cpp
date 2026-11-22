@@ -110,6 +110,8 @@ hot::ls::ServerOptions options(const TempDir& dir, bool clangd)
     // HOT_LS_CLANGD_LOG keeps the clangd log after the test (the temporary dir goes away).
     // A directory gets one log file for each test.
     const char* log = std::getenv("HOT_LS_CLANGD_LOG");
+    if (log && !*log)
+        log = nullptr; // an empty value means: the log of the session dir (the lite tests read it)
     o.clangd_log = log ? log : (dir.path() / "clangd.log").string();
     std::error_code ec;
     if (log && std::filesystem::is_directory(log, ec))
@@ -10692,6 +10694,7 @@ json split_features(bool split, size_t* shell_count = nullptr, bool lite = true)
     const EnvGuard lite_env("HOT_LS_LITE_DOC", lite ? "1" : "0");
     TempDir shells;
     const EnvGuard dir_env("HOT_LS_SHELL_DIR", shells.path().string());
+    const EnvGuard log_env("HOT_LS_CLANGD_LOG", ""); // lite_in_clangd_log reads clangd.log of the session dir
     json out;
     {
         Session s(true, "using \"Actor.h\";\n");
@@ -11119,6 +11122,7 @@ TEST(LanguageServer, LiteDocDiagnosticsNeverReplaceTheFullDiagnostics)
     const EnvGuard lite_env("HOT_LS_LITE_DOC", "1");
     TempDir shells;
     const EnvGuard dir_env("HOT_LS_SHELL_DIR", shells.path().string());
+    const EnvGuard log_env("HOT_LS_CLANGD_LOG", ""); // lite_in_clangd_log reads clangd.log of the session dir
     Session s(true, "using \"Actor.h\";\n");
     write_file(s.dir.path() / "base.hot", kSplitBase);
     s.client->change(s.uri, 2, kSplitImporter);
@@ -11165,6 +11169,7 @@ struct LiteSession
     EnvGuard lite_env;
     TempDir shells;
     EnvGuard dir_env;
+    EnvGuard log_env{"HOT_LS_CLANGD_LOG", ""}; // the lite tests read clangd.log of the session dir
     Session s;
     LiteSession(bool lite, const char* text = kLiteCalls, const char* base = kSplitBase)
         : lite_env("HOT_LS_LITE_DOC", lite ? "1" : "0"), dir_env("HOT_LS_SHELL_DIR", shells.path().string()),
