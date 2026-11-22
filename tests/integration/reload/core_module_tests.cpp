@@ -333,7 +333,7 @@ TEST(CoreModule, CopyDoesNotFollowPlantedSymlink)
     const fs::path decoy = fs::temp_directory_path() / ("hot-decoy-" + std::to_string(getpid()));
     { std::ofstream(decoy) << "decoy"; }
     std::vector<fs::path> links;
-    for (int n = 0; n < 4; ++n)
+    for (int n = 0; n < 64; ++n)
     {
         links.push_back(fs::temp_directory_path()
             / ("hot-core-" + std::to_string(getpid()) + "-" + std::to_string(n) + "-"
@@ -344,9 +344,27 @@ TEST(CoreModule, CopyDoesNotFollowPlantedSymlink)
     }
     hot::LoadResult r = hot::module_from_library(STRESS_SO);
     ASSERT_TRUE(r) << r.error;
+    // The copy must live in a new private directory, and the directory must go with the copy.
+    auto core_entries = [] {
+        std::set<fs::path> names;
+        for (const auto& e : fs::directory_iterator(fs::temp_directory_path()))
+            if (e.path().filename().string().rfind("hot-core-", 0) == 0)
+                names.insert(e.path());
+        return names;
+    };
+    const std::set<fs::path> before = core_entries();
     hot::LoadResult core = r.module->make_core();
     EXPECT_TRUE(core) << core.error;
+    std::set<fs::path> created;
+    for (const fs::path& e : core_entries())
+        if (!before.count(e))
+            created.insert(e);
+    for (const fs::path& e : created)
+        EXPECT_TRUE(fs::is_directory(fs::symlink_status(e))) << e;
+    EXPECT_FALSE(created.empty());
     core = {};
+    for (const fs::path& e : created)
+        EXPECT_FALSE(fs::exists(fs::symlink_status(e))) << e;
     r = {};
     std::ifstream in(decoy);
     std::string text;
