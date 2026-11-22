@@ -65,6 +65,7 @@ extern "C"
 // The compiler calls these functions for a local static variable.
 void __cdecl _Init_thread_header(int* once);
 void __cdecl _Init_thread_footer(int* once);
+void __cdecl _Init_thread_abort(int* once);
 // The epoch of the local statics of the thread. The JIT code reads it through emulated TLS.
 extern __declspec(thread) int _Init_thread_epoch;
 }
@@ -152,6 +153,7 @@ void add_msvc_host_symbols(std::vector<const char*>& names, std::vector<uint64_t
     add("?__type_info_root_node@@3U__type_info_node@@A", &__type_info_root_node);
     add("_Init_thread_header", reinterpret_cast<const void*>(&_Init_thread_header));
     add("_Init_thread_footer", reinterpret_cast<const void*>(&_Init_thread_footer));
+    add("_Init_thread_abort", reinterpret_cast<const void*>(&_Init_thread_abort));
     add("__emutls_v._Init_thread_epoch", &g_epoch_control);
     add("__emutls_get_address", reinterpret_cast<const void*>(&emutls_get_address));
     add("_Cnd_timedwait_for_unchecked", reinterpret_cast<const void*>(&_Cnd_timedwait_for_unchecked));
