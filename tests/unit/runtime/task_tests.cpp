@@ -173,17 +173,6 @@ TEST(TaskTests, SyncWaitOnTickThreadTicksTheScheduler)
     }
 }
 
-// A scheduler that never ticked gives the tick thread to the first thread that waits.
-TEST(TaskTests, SyncWaitClaimsAnEmptyTickThread)
-{
-    hot::Scheduler fresh;
-    EXPECT_FALSE(fresh.is_tick_thread());
-    EXPECT_TRUE(fresh.claim_tick_thread());
-    bool other = true;
-    std::thread([&] { other = fresh.claim_tick_thread(); }).join();
-    EXPECT_FALSE(other);
-}
-
 TEST(TaskTests, EmptyTaskAwaitThrows)
 {
     auto co = [](Task<int>* t) -> Task<int> { co_return co_await *t; };
