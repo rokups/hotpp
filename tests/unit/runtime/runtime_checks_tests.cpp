@@ -132,6 +132,20 @@ TEST(RuntimeChecks, HotSpanSliceOutOfRangeThrows)
     EXPECT_EQ(s.last(5).size(), 5u);
 }
 
+#ifdef __SIZEOF_INT128__
+// An index wider than std::size_t must not wrap to a valid index before the bounds test.
+TEST(RuntimeChecks, WideIndexOutOfRangeThrows)
+{
+    std::vector<int> v{1, 2, 3};
+    const __int128 wide = static_cast<__int128>(1) << 64; // wraps to 0 in a std::size_t
+    EXPECT_THROW(hot::index(v, wide), hot::IndexOutOfRange);
+    int c[3] = {1, 2, 3};
+    EXPECT_THROW(hot::index(c, wide), hot::IndexOutOfRange);
+    EXPECT_THROW(hot::index(v, static_cast<short>(-1)), hot::IndexOutOfRange);
+    EXPECT_EQ(hot::index(v, static_cast<short>(2)), 3);
+}
+#endif
+
 #ifdef __cpp_lib_span
 // The std::span<T> of C++20 has the same bounds test as an array.
 TEST(RuntimeChecks, SpanIndexOutOfRangeThrows)

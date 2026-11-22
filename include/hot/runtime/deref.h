@@ -354,6 +354,20 @@ template <class T, std::size_t E> struct is_span<std::span<T, E>> : std::true_ty
 {
 };
 #endif
+// The index in the widest unsigned type: a negative value becomes a large one, and a value wider
+// than std::size_t does not wrap to a valid index (std::size_t has 32 bits on wasm32).
+template <class I> constexpr auto wide_index(const I& i) noexcept
+{
+    return static_cast<std::make_unsigned_t<std::common_type_t<remove_cvref_t<I>, long long>>>(i);
+}
+// Throws when the index is not less than the size. Returns the index as std::size_t.
+template <class I> HOT_HIDDEN std::size_t checked_pos(const I& i, std::size_t size)
+{
+    const auto w = wide_index(i);
+    if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(w >= size))
+        throw_index_out_of_range(static_cast<std::size_t>(w), size);
+    return static_cast<std::size_t>(w);
+}
 } // namespace detail
 
 template <class C> struct checked_index : detail::default_checked_index<C>
@@ -369,34 +383,29 @@ template <class C> struct checked_index : detail::default_checked_index<C>
 // Any other container (std::map, a native type) uses its own operator[].
 template <class T, std::size_t N, class I> HOT_HIDDEN T& index(T (&c)[N], I i)
 {
-    if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(static_cast<std::size_t>(i) >= N))
-        detail::throw_index_out_of_range(static_cast<std::size_t>(i), N);
-    return c[static_cast<std::size_t>(i)];
+    return c[detail::checked_pos(i, N)];
 }
 template <class T, std::size_t N, class I> HOT_HIDDEN const T& index(const T (&c)[N], I i)
 {
-    if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(static_cast<std::size_t>(i) >= N))
-        detail::throw_index_out_of_range(static_cast<std::size_t>(i), N);
-    return c[static_cast<std::size_t>(i)];
+    return c[detail::checked_pos(i, N)];
 }
 template <class C, class I> HOT_HIDDEN decltype(auto) index(C&& c, I&& i)
 {
     if constexpr (checked_index<detail::remove_cvref_t<C>>::value)
     {
-        if (HOT_RUNTIME_CHECKS && HOT_UNLIKELY(static_cast<std::size_t>(i) >= static_cast<std::size_t>(c.size())))
-            detail::throw_index_out_of_range(static_cast<std::size_t>(i), static_cast<std::size_t>(c.size()));
-        using R = decltype(static_cast<C&&>(c)[static_cast<I&&>(i)]);
+        const std::size_t pos = detail::checked_pos(i, static_cast<std::size_t>(c.size()));
+        using R = decltype(static_cast<C&&>(c)[pos]);
         if constexpr (detail::is_span<detail::remove_cvref_t<C>>::value)
-            return static_cast<C&&>(c)[static_cast<I&&>(i)]; // the element lives in the owner
+            return static_cast<C&&>(c)[pos]; // the element lives in the owner
         else if constexpr (!std::is_lvalue_reference_v<C> && std::is_lvalue_reference_v<R>
             && !std::is_const_v<std::remove_reference_t<R>>)
-            return std::remove_reference_t<R>(std::move(c[static_cast<I&&>(i)]));
+            return std::remove_reference_t<R>(std::move(c[pos]));
         else if constexpr (!std::is_lvalue_reference_v<C> && detail::index_proxy<detail::remove_cvref_t<C>, R>::value)
             // A proxy (std::vector<bool>) would keep a pointer to the dead temporary.
             return static_cast<typename detail::index_proxy<detail::remove_cvref_t<C>, R>::type>(
-                c[static_cast<I&&>(i)]);
+                c[pos]);
         else
-            return static_cast<C&&>(c)[static_cast<I&&>(i)];
+            return static_cast<C&&>(c)[pos];
     }
     else
         return static_cast<C&&>(c)[static_cast<I&&>(i)];
