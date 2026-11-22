@@ -12305,11 +12305,16 @@ TEST(LanguageServerHosts, UnversionedPublishAfterAHostChangeKeepsTheReadyWait)
 
 TEST(LanguageServer, LineDirectiveOfACppScriptCounts)
 {
-    const std::string cpp = "#line 1 \"p.g1.cpp\"\nint a;\n#line 12 \"Player.cpp\"\nint b;\nint c;\n";
+    const std::string cpp = "#line 1 \"/x/Player.cpp.cpp\"\nint a;\n#line 12 \"/x/Player.cpp\"\nint b;\nint c;\n";
     const auto t = hot::ls::line_directive_target(cpp, 4);
     ASSERT_TRUE(t);
-    EXPECT_EQ(t->file, "Player.cpp");
+    EXPECT_EQ(t->file, "/x/Player.cpp");
     EXPECT_EQ(t->line, 12);
+    // The reset directive of a .hot script names "<script>.cpp": it is translator text.
+    const auto h = hot::ls::line_directive_target("#line 5 \"/x/Player.hot\"\nfoo;\n#line 40 \"/x/Player.hot.cpp\"\nshell;\n", 3);
+    ASSERT_TRUE(h);
+    EXPECT_EQ(h->file, "/x/Player.hot");
+    EXPECT_EQ(h->line, 4);
 }
 
 TEST(LanguageServer, NativeLookingNameWithAGeneratedPartIsNotHidden)

@@ -3393,6 +3393,10 @@ static bool is_generated_class_name(const Doc& d, const std::string& n)
             for (const hotc::AnalyzedClass& c : d.facts.classes)
                 if (c.name == cls)
                     return true;
+            // An imported class has its record in the generated text too ("extern" or the definition).
+            const std::string rec = "hot::ClassRecord " + cls + "_record";
+            if (d.gen.s.find(rec + ";") != std::string::npos || d.gen.s.find(rec + " =") != std::string::npos)
+                return true;
         }
     }
     return false;
@@ -9588,8 +9592,10 @@ std::optional<ScriptLine> line_directive_target(const std::string& cpp, int line
                 ++i;
             file += m[2].first[i];
         }
-        // The same rule as "last_script_line" (diag_rewrite.cpp): a .cpp script counts.
-        if (is_hotc_output(file))
+        // The same rule as "last_script_line" (diag_rewrite.cpp): a .cpp script counts. The reset
+        // directive names the generated file: "<script>.cpp" (the default) or "<stem>.g<N>.cpp".
+        const auto ends = [&file](const char* x) { return file.size() >= std::strlen(x) && file.compare(file.size() - std::strlen(x), std::strlen(x), x) == 0; };
+        if (is_hotc_output(file) || ends(".hot.cpp") || ends(".cpp.cpp"))
         {
             in_cpp_text = true;
             continue;
