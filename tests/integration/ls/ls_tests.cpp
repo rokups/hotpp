@@ -6,6 +6,7 @@
 // clangd are skipped when CMake did not find clangd.
 #include "attributes.h"
 #include "clangd_process.h"
+#include "hosts.h"
 #include "integration/ls/ls_client.h"
 #include "long_path.h"
 #include "semantic.h"
@@ -3274,7 +3275,7 @@ TEST(LanguageServer, RenameOnAClosedFileAfterARestartUsesTheIndex)
         // The saved shard has the table of the resolved names and the table marker.
         hot::ls::SymbolIndex index;
         index.open((s.dir.path() / ".cache" / "hot" / "index").string());
-        const std::string shard = read_all(index.shard_path(other_path));
+        const std::string shard = read_all(index.shard_path(hot::ls::long_path(other_path)));
         const size_t nl = shard.find('\n');
         ASSERT_NE(nl, std::string::npos);
         const json body = json::parse(shard.substr(nl + 1));
@@ -3337,7 +3338,7 @@ TEST(LanguageServer, TheRefTablesComeFromTheDocumentTheShardAndTheImportGraph)
     r = stats({{"tables", {uri_of(user)}}, {"importersOf", uri_of(dep)}});
     EXPECT_GT(r["tableRefs"][0].get<int>(), 0) << r.dump();
     EXPECT_EQ(r["tableAnalyses"], 2);
-    EXPECT_EQ(r["importers"], json::array({hotc::ref_file_id(user)})) << r.dump();
+    EXPECT_EQ(r["importers"], json::array({hotc::ref_file_id(hot::ls::long_path(user))})) << r.dump();
 
     client.reset(); // the restart
     client = std::make_unique<LsClient>(o);
@@ -3354,7 +3355,7 @@ TEST(LanguageServer, TheRefTablesComeFromTheDocumentTheShardAndTheImportGraph)
     write_file(dep, "int k() { return 1; }\nint j() { return 2; }\n");
     r = stats({{"tables", {uri_of(user)}}, {"importersOf", uri_of(dep)}});
     EXPECT_EQ(r["tableAnalyses"], 1);
-    EXPECT_EQ(r["importers"], json::array({hotc::ref_file_id(user)}));
+    EXPECT_EQ(r["importers"], json::array({hotc::ref_file_id(hot::ls::long_path(user))}));
     // An importer without the import is not an importer.
     write_file(user, "int f() { return 12; }\n");
     r = stats({{"importersOf", uri_of(dep)}});
@@ -10201,10 +10202,11 @@ json script_rename_run(bool background_index, int which, bool prepare, const std
     const std::string root = uri_of(dir.path().string());
     for (size_t at; (at = out.find(root)) != std::string::npos;)
         out.replace(at, root.size(), "ROOT");
-    const std::string plain = dir.path().string();
+    // The error text has the path form of the server (real_key): "C:/Users/runneradmin" on Windows.
+    const std::string plain = hot::ls::real_key(dir.path().string());
     for (size_t at; (at = out.find(plain)) != std::string::npos;)
         out.replace(at, plain.size(), "ROOT");
-    const std::string plain_extra = extra.path().string();
+    const std::string plain_extra = hot::ls::real_key(extra.path().string());
     for (size_t at; (at = out.find(plain_extra)) != std::string::npos;)
         out.replace(at, plain_extra.size(), "EXTRA");
     return json::parse(out);
