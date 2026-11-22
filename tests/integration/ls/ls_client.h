@@ -91,6 +91,22 @@ public:
         return wait(
             [&](const json& m) { return m.contains("id") && m["id"] == id && !m.contains("method"); }, timeout_ms);
     }
+    // HOT-94: a cold document gives null or an empty list at first (a request waits at most 1 s for
+    // clangd). This asks again until the result has content: up to "tries" times, 250 ms apart.
+    json request_answered(const std::string& method, const json& params, int tries = 120)
+    {
+        json r;
+        for (int i = 0; i < tries; ++i)
+        {
+            r = request(method, params);
+            const bool has = r.contains("result") && !r["result"].is_null()
+                && !(r["result"].is_array() && r["result"].empty());
+            if (has)
+                break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        }
+        return r;
+    }
     // Sends a request and does not wait. Gives the id. wait_response takes the response.
     int send_request(const std::string& method, json params)
     {

@@ -308,7 +308,7 @@ TEST(LanguageServer, HoverOnAScriptFieldShowsItsType)
 {
     REQUIRE_CLANGD();
     Session s(true);
-    const json r = s.client->request("textDocument/hover", doc_pos(s.uri, 11, 14));
+    const json r = s.client->request_answered("textDocument/hover", doc_pos(s.uri, 11, 14));
     ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
     const std::string v = r["result"]["contents"].value("value", "");
     EXPECT_NE(v.find("hp"), std::string::npos) << v;
@@ -447,13 +447,13 @@ TEST(LanguageServer, DefinitionAfterATranslationErrorUsesTheShiftedPositions)
 {
     REQUIRE_CLANGD();
     Session s(true);
-    ASSERT_TRUE(s.client->request("textDocument/definition", doc_pos(s.uri, 7, 14)).contains("result"));
+    ASSERT_TRUE(s.client->request_answered("textDocument/definition", doc_pos(s.uri, 7, 14)).contains("result"));
     std::string text = kScript;
     text.replace(text.find("\nclass Player"), 0, "using \"missing.hot\";\n\n");
     s.client->change(s.uri, 2, text);
     const json n = s.diagnostics([](const json& d) { return has_source(d, "hot"); });
     ASSERT_FALSE(n.is_null()) << "the translation must fail";
-    const json r = s.client->request("textDocument/definition", doc_pos(s.uri, 9, 14));
+    const json r = s.client->request_answered("textDocument/definition", doc_pos(s.uri, 9, 14));
     ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << r.dump();
     EXPECT_EQ(r["result"][0]["uri"], s.uri);
     EXPECT_EQ(r["result"][0]["range"]["start"]["line"], 12) << r.dump();
@@ -603,7 +603,7 @@ TEST(LanguageServer, DefinitionOfANativeMethodIsInTheNativeHeader)
 {
     REQUIRE_CLANGD();
     Session s(true);
-    const json r = s.client->request("textDocument/definition", doc_pos(s.uri, 6, 14));
+    const json r = s.client->request_answered("textDocument/definition", doc_pos(s.uri, 6, 14));
     ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << r.dump();
     const std::string uri = r["result"][0].value("uri", "");
     EXPECT_NE(uri.find("Actor"), std::string::npos) << r.dump();
@@ -759,7 +759,7 @@ struct NativeSession
         at += context.rfind(word);
         const int line = static_cast<int>(std::count(text.begin(), text.begin() + static_cast<long>(at), '\n'));
         const int col = static_cast<int>(at - (text.rfind('\n', at - 1) + 1));
-        const json r = client->request("textDocument/definition", doc_pos(uri, line, col));
+        const json r = client->request_answered("textDocument/definition", doc_pos(uri, line, col));
         SCOPED_TRACE(context + " -> " + r.dump());
         ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty())
             << native_facts(*client, dir, uri, pos(line, col), "textDocument/definition");
@@ -932,11 +932,19 @@ void expect_native_references(NativeSession& s, const std::string& context, cons
     }
 }
 
-// The hover text of the word in the context has the text "want".
+// The hover text of the word in the context has the text "want". A cold document gives null at first
+// (HOT-94: a hover waits at most 1 s for clangd), so the helper asks again until the document is ready.
 void expect_native_hover(NativeSession& s, const std::string& context, const std::string& word, const std::string& want)
 {
-    const json r = s.client->request("textDocument/hover", doc_pos(s.uri, native_pos(context, word)["line"],
-                                                               native_pos(context, word)["character"]));
+    json r;
+    for (int i = 0; i < 120; ++i)
+    {
+        r = s.client->request("textDocument/hover", doc_pos(s.uri, native_pos(context, word)["line"],
+                                                        native_pos(context, word)["character"]));
+        if (r.contains("result") && r["result"].is_object())
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
     ASSERT_TRUE(r.contains("result") && r["result"].is_object())
         << context << " -> " << r.dump() << "\n"
         << native_facts(*s.client, s.dir, s.uri, native_pos(context, word), "textDocument/hover");
@@ -992,7 +1000,7 @@ TEST(LanguageServerNative, HoverRangeIsTheWordInUtf16Columns)
     NativeSession s;
     const json at = native_pos("after = Clamp100(2)", "Clamp100");
     EXPECT_EQ(at["character"], 39); // the byte column is 40: the character has two bytes
-    const json r = s.client->request("textDocument/hover", doc_pos(s.uri, at["line"], at["character"]));
+    const json r = s.client->request_answered("textDocument/hover", doc_pos(s.uri, at["line"], at["character"]));
     ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
     EXPECT_EQ(r["result"]["range"]["start"], at) << r.dump();
     EXPECT_EQ(r["result"]["range"]["end"], pos(at["line"], at["character"].get<int>() + 8)) << r.dump();
@@ -1020,7 +1028,7 @@ TEST(LanguageServerNative, ReferencesSkipAParameterWithTheNameOfTheSymbol)
     REQUIRE_CLANGD();
     NativeSession s;
     const json at = native_pos("Counter local;", "Counter");
-    const json r = s.client->request("textDocument/references",
+    const json r = s.client->request_answered("textDocument/references",
         {{"textDocument", {{"uri", s.uri}}}, {"position", at}, {"context", {{"includeDeclaration", true}}}});
     ASSERT_TRUE(r.contains("result") && r["result"].is_array()) << r.dump();
     const json param = native_pos("Take(Counter Counter)", "Counter"); // the parameter name
@@ -1047,7 +1055,7 @@ TEST(LanguageServerNative, ReferencesSkipAParameterWithTheNameOfAMember)
     for (const Case& c : {Case{"local.Bump(", "Bump", "c.Bump(", "c.Bump(Bump)"},
              Case{"this.counter.count", "count", "c.count =", "= count;"}})
     {
-        const json r = s.client->request("textDocument/references",
+        const json r = s.client->request_answered("textDocument/references",
             {{"textDocument", {{"uri", s.uri}}}, {"position", native_pos(c.symbol, c.word)},
                 {"context", {{"includeDeclaration", true}}}});
         ASSERT_TRUE(r.contains("result") && r["result"].is_array()) << r.dump();
@@ -1076,8 +1084,9 @@ TEST(LanguageServerNative, HoverOfAFunction)
 #ifndef _WIN32
 // A slow machine builds the first preamble of a document in more time than the budget of a hover.
 // The proxy below gives the first didOpen to clangd 4.5 s late, and all later messages wait
-// behind it. The first native hover must wait for the preamble and give the native answer.
-TEST(LanguageServerNative, HoverBeforeTheFirstPreambleGivesTheNativeAnswer)
+// behind it. The first native hover gives null in less than 1.2 s (HOT-94). A later hover gives the
+// native answer.
+TEST(LanguageServerNative, FirstHoverGivesNullWhenClangdIsStalledAndALaterHoverGivesTheNativeAnswer)
 {
     REQUIRE_CLANGD();
     if (std::system("python3 -c \"\" >/dev/null 2>&1") != 0)
@@ -1112,7 +1121,69 @@ TEST(LanguageServerNative, HoverBeforeTheFirstPreambleGivesTheNativeAnswer)
     write_file(clangd, "#!/bin/sh\nexec python3 '" + proxy + "' '" HOT_CLANGD_PATH "' \"$@\"\n");
     std::filesystem::permissions(clangd, std::filesystem::perms::owner_all, std::filesystem::perm_options::add);
     NativeSession s(kNativeScript, 10000, true, clangd);
+    const json at = native_pos("Clamp100(MAX_HP)", "Clamp100");
+    // The open is processed first: the time below is the time of the hover, not of the open.
+    s.client->request("hot/indexStats", json::object());
+    const auto t0 = std::chrono::steady_clock::now();
+    const json first = s.client->request("textDocument/hover", doc_pos(s.uri, at["line"], at["character"]));
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+    EXPECT_LT(ms, 1200);
+    ASSERT_TRUE(first.contains("result")) << first.dump();
+    EXPECT_FALSE(first.contains("error")) << first.dump();
+    EXPECT_TRUE(first["result"].is_null()) << first.dump();
     expect_native_hover(s, "Clamp100(MAX_HP)", "Clamp100", "int Clamp100(int v)");
+}
+
+// HOT-94: clangd holds the answers of hover and signature help for 3 s (after the document is ready).
+// Both requests answer in less than 1.2 s, with null and no error.
+TEST(LanguageServerNative, HoverAndSignatureHelpAnswerInTheInteractiveBudgetWhenClangdIsSlow)
+{
+    REQUIRE_CLANGD();
+    if (std::system("python3 -c \"\" >/dev/null 2>&1") != 0)
+        GTEST_SKIP() << "python3 is not installed";
+    TempDir tools;
+    const std::string flag = (tools.path() / "stall").string();
+    const std::string proxy = (tools.path() / "stall_clangd.py").string();
+    write_file(proxy,
+        "import os, subprocess, sys, time\n"
+        "p = subprocess.Popen(sys.argv[1:], stdin=subprocess.PIPE)\n"
+        "src = sys.stdin.buffer\n"
+        "while True:\n"
+        "    head = b''\n"
+        "    while not head.endswith(b'\\r\\n\\r\\n'):\n"
+        "        c = src.read(1)\n"
+        "        if not c:\n"
+        "            p.stdin.close()\n"
+        "            p.wait()\n"
+        "            sys.exit(0)\n"
+        "        head += c\n"
+        "    size = 0\n"
+        "    for line in head.split(b'\\r\\n'):\n"
+        "        if line.lower().startswith(b'content-length:'):\n"
+        "            size = int(line.split(b':')[1])\n"
+        "    body = src.read(size)\n"
+        "    if os.path.exists('" + flag + "') and (b'\"textDocument/hover\"' in body or b'\"textDocument/signatureHelp\"' in body):\n"
+        "        time.sleep(3)\n"
+        "    p.stdin.write(head + body)\n"
+        "    p.stdin.flush()\n");
+    const std::string clangd = (tools.path() / "stall_clangd").string();
+    write_file(clangd, "#!/bin/sh\nexec python3 '" + proxy + "' '" HOT_CLANGD_PATH "' \"$@\"\n");
+    std::filesystem::permissions(clangd, std::filesystem::perms::owner_all, std::filesystem::perm_options::add);
+    NativeSession s(kNativeScript, 10000, true, clangd);
+    const json at = native_pos("Clamp100(MAX_HP)", "Clamp100");
+    expect_native_hover(s, "Clamp100(MAX_HP)", "Clamp100", "int Clamp100(int v)"); // the document is ready
+    write_file(flag, "1");
+    auto timed = [&](const char* method, int col, json& r)
+    {
+        const auto t0 = std::chrono::steady_clock::now();
+        r = s.client->request(method, doc_pos(s.uri, at["line"], col));
+        return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+    };
+    json hover, sig;
+    EXPECT_LT(timed("textDocument/hover", at["character"], hover), 1200);
+    EXPECT_FALSE(hover.contains("error")) << hover.dump();
+    EXPECT_LT(timed("textDocument/signatureHelp", at["character"].get<int>() + 9, sig), 1200);
+    EXPECT_FALSE(sig.contains("error")) << sig.dump();
 }
 #endif
 
@@ -2287,12 +2358,12 @@ struct DegradedSession
         client->initialize(uri_of(dir.path().string()));
         client->open(main_uri, main);
     }
-    json ask(const std::string& method, int line, int character)
+    json ask(const std::string& method, int line, int character, bool until_answered = false)
     {
         json p = {{"textDocument", {{"uri", main_uri}}}, {"position", pos(line, character)}};
         if (method == "textDocument/references")
             p["context"] = {{"includeDeclaration", true}};
-        return client->request(method, p);
+        return until_answered ? client->request_answered(method, p) : client->request(method, p);
     }
 };
 } // namespace
@@ -4522,7 +4593,7 @@ TEST(LanguageServer, SignatureHelpShowsTheScriptMethodAndTheActiveParameter)
     REQUIRE_CLANGD();
     Session s(true);
     // Line 7 is "        this.heal(1.0);". The cursor is right after the "(".
-    const json a = s.client->request("textDocument/signatureHelp", doc_pos(s.uri, 7, 18));
+    const json a = s.client->request_answered("textDocument/signatureHelp", doc_pos(s.uri, 7, 18));
     ASSERT_TRUE(a.contains("result") && a["result"].is_object()) << a.dump();
     ASSERT_FALSE(a["result"]["signatures"].empty()) << a.dump();
     const std::string label = a["result"]["signatures"][0].value("label", "");
@@ -4571,11 +4642,11 @@ json sig_reply(const std::string& body, const std::string& open_body = "")
     if (open_body.empty())
     {
         Session s(true, text);
-        return s.client->request("textDocument/signatureHelp", doc_pos(s.uri, line, col));
+        return s.client->request_answered("textDocument/signatureHelp", doc_pos(s.uri, line, col));
     }
     Session s(true, head + open_body + tail);
     s.client->change(s.uri, 2, text);
-    return s.client->request("textDocument/signatureHelp", doc_pos(s.uri, line, col));
+    return s.client->request_answered("textDocument/signatureHelp", doc_pos(s.uri, line, col));
 }
 
 void expect_sig(const json& r, const std::string& name, int active)
@@ -5300,7 +5371,7 @@ TEST(LanguageServerHosts, DefinitionUsesTheNearestHostWhenNoHostMatchesTheScript
 {
     REQUIRE_CLANGD();
     NoMatchCase c(true);
-    const json r = c.client->request("textDocument/definition", doc_pos(c.uri, 4, 9));
+    const json r = c.client->request_answered("textDocument/definition", doc_pos(c.uri, 4, 9));
     ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << r.dump();
     EXPECT_NE(r["result"][0].value("uri", "").find("/inc/thing.h"), std::string::npos) << r.dump();
     EXPECT_EQ(r["result"][0]["range"]["start"]["line"], 1) << r.dump();
@@ -8052,7 +8123,7 @@ void expect_decl_definition(const std::string& context, const std::string& word,
     REQUIRE_CLANGD();
     Session s(true, kDeclScript);
     const json p = decl_pos(context, word);
-    const json r = s.client->request("textDocument/definition", doc_pos(s.uri, p["line"], p["character"]));
+    const json r = s.client->request_answered("textDocument/definition", doc_pos(s.uri, p["line"], p["character"]));
     ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << context << " -> " << r.dump();
     const json& loc = r["result"][0];
     if (header.empty())
@@ -8069,7 +8140,7 @@ void expect_decl_hover(const std::string& context, const std::string& word, cons
     REQUIRE_CLANGD();
     Session s(true, kDeclScript);
     const json p = decl_pos(context, word);
-    const json r = s.client->request("textDocument/hover", doc_pos(s.uri, p["line"], p["character"]));
+    const json r = s.client->request_answered("textDocument/hover", doc_pos(s.uri, p["line"], p["character"]));
     ASSERT_TRUE(r.contains("result") && r["result"].is_object())
         << context << " -> " << r.dump() << "\n" << clangd_errors(s.dir);
     EXPECT_NE(r["result"].dump().find(want), std::string::npos) << context << " -> " << r.dump();
@@ -8134,7 +8205,7 @@ void expect_override_in_header(const std::string& lib, const std::string& extra)
     main.replace(main.find("%s"), 2, extra);
     DegradedSession s(lib, main);
     // "Tick" on line 3: character 18.
-    const json r = s.ask("textDocument/definition", 3, 19);
+    const json r = s.ask("textDocument/definition", 3, 19, true);
     ASSERT_TRUE(r.contains("result") && r["result"].is_array() && !r["result"].empty()) << r.dump();
     EXPECT_NE(r["result"][0].value("uri", "").find("Actor.h"), std::string::npos) << r.dump();
 }
@@ -8212,7 +8283,7 @@ json overload_request(Session& s, const char* method, int call_line, const std::
     for (int i = 0; i <= call_line; ++i)
         std::getline(in, line);
     const int col = static_cast<int>(line.find(name + "("));
-    return s.client->request(method, doc_pos(s.uri, call_line, col + 1));
+    return s.client->request_answered(method, doc_pos(s.uri, call_line, col + 1));
 }
 
 void expect_overload_definition(int call_line, const std::string& name, int decl_line)
@@ -8229,7 +8300,15 @@ void expect_overload_hover(int call_line, const std::string& name, const std::st
 {
     REQUIRE_CLANGD();
     Session s(true, kOverloadScript);
-    const json r = overload_request(s, "textDocument/hover", call_line, name);
+    // A cold hover gives the script text at first (HOT-94). Ask again until the native text is there.
+    json r;
+    for (int i = 0; i < 120; ++i)
+    {
+        r = overload_request(s, "textDocument/hover", call_line, name);
+        if (r.dump().find(want) != std::string::npos)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
     ASSERT_TRUE(r.contains("result") && r["result"].is_object()) << r.dump();
     EXPECT_NE(r["result"].dump().find(want), std::string::npos) << r.dump();
 }
@@ -10727,7 +10806,14 @@ TEST(LanguageServer, CompletionAfterAShellChangeAnswersAtOnceAndThenHasTheNewNam
     // A hover on "own" goes to clangd and waits for the first preamble. Without it, the completion below waits for
     // the first preamble and there is no old preamble to answer from.
     const std::string line3 = "    float Go(float a) { return this.Heal(a) + this.own; }";
-    const json h = s.client->request("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(line3.find("this.own")) + 6));
+    json h;
+    for (int i = 0; i < 120; ++i) // a hover gives null until the preamble is ready (HOT-94)
+    {
+        h = s.client->request("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(line3.find("this.own")) + 6));
+        if (h.contains("result") && h["result"].is_object())
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
     ASSERT_TRUE(h.contains("result") && h["result"].is_object()) << h.dump();
     const auto files = shell_files(shells.path());
     ASSERT_EQ(files.size(), 1u);
@@ -12122,7 +12208,7 @@ TEST(LanguageServer, DefinitionAndHoverThroughBangDot)
     Session s(true, kBangScript);
     for (const auto& [line, col] : {std::pair{9, 12}, std::pair{10, 22}})
     {
-        const json d = s.client->request("textDocument/definition", doc_pos(s.uri, line, col));
+        const json d = s.client->request_answered("textDocument/definition", doc_pos(s.uri, line, col));
         ASSERT_TRUE(d.contains("result") && d["result"].is_array() && !d["result"].empty()) << d.dump();
         EXPECT_EQ(d["result"][0]["uri"], s.uri);
         EXPECT_EQ(d["result"][0]["range"]["start"]["line"], 6) << d.dump();
@@ -12133,7 +12219,7 @@ TEST(LanguageServer, DefinitionAndHoverThroughBangDot)
     Session m(true, text);
     for (const auto& [line, col] : {std::pair{9, 12}})
     {
-        const json h = m.client->request("textDocument/hover", doc_pos(m.uri, line, col));
+        const json h = m.client->request_answered("textDocument/hover", doc_pos(m.uri, line, col));
         ASSERT_TRUE(h.contains("result") && h["result"].is_object()) << h.dump();
         EXPECT_NE(h["result"]["contents"].value("value", "").find("Move"), std::string::npos) << h.dump();
     }

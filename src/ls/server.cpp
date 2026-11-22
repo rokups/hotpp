@@ -1147,6 +1147,22 @@ private:
     static constexpr int kNativeConflictBudgetMs = 10000;
     // The wait for the first preamble of a generated document.
     static constexpr int kPreambleWaitMs = 60000;
+    // The time budget of hover, definition and signature help, with the wait for the preamble. After it
+    // the answer is empty (null or an empty list), never an error.
+    static constexpr int kInteractiveBudgetMs = 1000;
+    // The time budget of a rename, for the message of a time-out.
+    std::string rename_over_text() const
+    {
+        const std::string budget = opt_.rename_budget_ms % 1000 == 0
+            ? std::to_string(opt_.rename_budget_ms / 1000) + " s"
+            : std::to_string(opt_.rename_budget_ms) + " ms";
+        return "the time budget of " + budget + " is over";
+    }
+    static int ms_left(std::chrono::steady_clock::time_point deadline)
+    {
+        return static_cast<int>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now()).count());
+    }
     // The wait of a completion for the AST and the answer on the patched text, after the preamble.
     static constexpr int kCompletionAstMs = 5000;
 
@@ -1213,7 +1229,7 @@ private:
         return r;
     }
 
-    std::optional<json> clangd_result(const std::string& method, json params, int timeout_ms = 60000)
+    std::optional<json> clangd_result(const std::string& method, json params, int timeout_ms = kNativeBudgetMs)
     {
         if (!clangd_ || !clangd_->running())
             return std::nullopt;
@@ -1386,7 +1402,8 @@ private:
     // message. "decl" gets the script place of the declaration.
     // "generated" (if not null) is set when the error is a name that the translator makes.
     std::variant<std::set<Pos>, std::string> symbol_places(
-        const Doc& d, Pos cur, const std::string& name, Pos* decl, bool* generated = nullptr);
+        const Doc& d, Pos cur, const std::string& name, std::chrono::steady_clock::time_point deadline, Pos* decl,
+        bool* generated = nullptr);
     // False when no workspace root and no host script dir is known: the importers are unknown.
     bool importers_known() const;
     // The rename of the script symbol at "cur" through the table (resolve_at, places_of). No value:
@@ -1464,12 +1481,12 @@ private:
     };
     // Asks clangd for the declaration of the name at "at" in "d" (an open document, or a closed
     // script in clangd through with_temp_clangd). Then finds the ref there (ref_at).
-    ClangdRef clangd_ref(const Doc& d, Pos at);
+    ClangdRef clangd_ref(const Doc& d, Pos at, int timeout_ms = kNativeBudgetMs);
     // The table of "d": file_refs for an open document, else the table of the facts of "d".
     std::shared_ptr<const FileRefs> refs_of(const Doc& d);
     // The symbol at "cur": the table first. A name of the table of unresolved names, or in a raw
     // body, goes to clangd. No value: no script symbol (a native name or no name).
-    std::optional<Resolved> resolve_at(const Doc& d, Pos cur);
+    std::optional<Resolved> resolve_at(const Doc& d, Pos cur, int timeout_ms = kNativeBudgetMs);
     // The places of the symbol in the scripts. A local or a parameter: the file of the
     // declaration only. Else the file of the declaration and its importers (import_graph). An
     // unresolved name or a raw body word with the same name goes to clangd. "strict" (rename):
@@ -4634,6 +4651,7 @@ json Server::on_completion(const Doc& d, const json& p)
 
 json Server::on_hover(const Doc& d, const json& p)
 {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kInteractiveBudgetMs);
     const Pos here = from_lsp(d.text, p["position"], utf8_);
     // A static member of a script class has no map segment: the script gives the answer.
     // The table gives the declaration line. The text scan serves only the degraded mode.
@@ -4664,7 +4682,7 @@ json Server::on_hover(const Doc& d, const json& p)
             t.resize(cut);
         return fenced(std::move(t));
     };
-    const auto at_ref = resolve_at(d, here);
+    const auto at_ref = resolve_at(d, here, std::max(ms_left(deadline), 1));
     if (at_ref)
     {
         const hotc::RefKind k = at_ref->ref.kind;
@@ -4683,32 +4701,20 @@ json Server::on_hover(const Doc& d, const json& p)
             return nullptr;
     }
     bool by_word = false;
-    const std::vector<Pos> asks = gen_asks(d, here, by_word);
-    if (!asks.empty())
-        wait_for_native_ready(d);
-    // The asks of a word share a short time budget (see on_locations).
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kNativeBudgetMs);
+    std::vector<Pos> asks = gen_asks(d, here, by_word);
+    // The asks share the interactive budget (see on_locations). No native answer after it.
+    if (!asks.empty() && !wait_for_native_ready_until(d, deadline))
+        asks.clear();
     for (const Pos& g : asks)
     {
-        int timeout_ms = 60000;
-        if (by_word)
-        {
-            const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
-                deadline - std::chrono::steady_clock::now()).count();
-            if (left <= 0)
-                break;
-            timeout_ms = static_cast<int>(left);
-        }
+        int timeout_ms = ms_left(deadline);
+        if (timeout_ms <= 0)
+            break;
         // The open of the lite document uses part of the budget. A time-out gives the full document.
         const std::string target = lite_uri(d, d.gen.s, g.line, timeout_ms);
-        if (by_word)
-        {
-            const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
-                deadline - std::chrono::steady_clock::now()).count();
-            if (left <= 0)
-                break;
-            timeout_ms = static_cast<int>(left);
-        }
+        timeout_ms = ms_left(deadline);
+        if (timeout_ms <= 0)
+            break;
         const json hover_params = {{"textDocument", {{"uri", target}}}, {"position", gen_pos(d, g)}};
         auto r = clangd_result("textDocument/hover", hover_params, timeout_ms);
         if (r)
@@ -4935,6 +4941,7 @@ static std::optional<SigCall> find_call_at(const std::string& text, size_t curso
 // brackets, as in a completion, and clangd gets the generated text of that patched text.
 json Server::on_signature_help(const Doc& d, const json& p)
 {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kInteractiveBudgetMs);
     const std::string& t = d.text.s;
     const Pos cur = from_lsp(d.text, p["position"], utf8_);
     const size_t cursor = d.text.offset(cur.line, cur.col);
@@ -4948,8 +4955,12 @@ json Server::on_signature_help(const Doc& d, const json& p)
         const size_t paren = gl.find('(', static_cast<size_t>(g.col));
         if (paren == std::string_view::npos)
             return std::nullopt;
+        const int left = ms_left(deadline);
+        if (left <= 0)
+            return std::nullopt;
         auto r = clangd_result("textDocument/signatureHelp",
-            {{"textDocument", {{"uri", d.gen_uri}}}, {"position", to_lsp(gen, {g.line, static_cast<int>(paren) + 1}, clangd_utf8_)}});
+            {{"textDocument", {{"uri", d.gen_uri}}}, {"position", to_lsp(gen, {g.line, static_cast<int>(paren) + 1}, clangd_utf8_)}},
+            left);
         if (!r || !r->contains("signatures") || (*r)["signatures"].empty())
             return std::nullopt;
         return *r;
@@ -4958,14 +4969,13 @@ json Server::on_signature_help(const Doc& d, const json& p)
     const auto [nl, nc] = d.text.pos(call->name_begin);
     if (const auto g = to_gen(d, {nl, nc}))
         r = ask(d.gen, *g);
-    if (!r && clangd_ && clangd_->running())
+    if (!r && clangd_ && clangd_->running() && wait_for_native_ready_until(d, deadline))
     {
         // The hole goes at the cursor. A try with the text after the cursor, then a try with the
         // closing brackets and the end of the statement.
         const std::string before = t.substr(0, cursor), after = t.substr(cursor);
         const std::vector<std::string> texts = {
             before + "hot_hole_" + call->closers + ";" + after, before + "hot_hole_" + after};
-        wait_for_native_ready(d);
         Doc& md = const_cast<Doc&>(d);
         bool sent = false;
         struct Restore
@@ -5364,6 +5374,7 @@ std::vector<int> Server::gen_script_lines(const Doc& d) const
 
 json Server::on_locations(const Doc& d, const json& p, const std::string& method)
 {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kInteractiveBudgetMs);
     json out = json::array();
     const Pos here = from_lsp(d.text, p["position"], utf8_);
     const bool is_ref = method == "textDocument/references";
@@ -5372,7 +5383,7 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
     // the name is not a script symbol, and clangd gives the places (below).
     auto by_table = [&]() -> std::optional<json>
     {
-        const auto r = resolve_at(d, here);
+        const auto r = resolve_at(d, here, std::max(ms_left(deadline), 1));
         if (!r)
             return std::nullopt;
         const int len = static_cast<int>(r->name.size());
@@ -5422,15 +5433,17 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
             if (decl_count > 1 && !r->ref.is_decl && clangd_)
                 if (const auto g = to_gen(d, here))
                 {
-                    wait_for_native_ready(d);
+                    // Not ready in time: no answer, because the root declaration can be another overload.
+                    if (!wait_for_native_ready_until(d, deadline))
+                        return json::array();
                     auto locations = [&](const json& at, const char* kind) -> json
                     {
-                        const auto defs = clangd_result(kind, at, kNativeBudgetMs);
+                        const auto defs = clangd_result(kind, at, std::max(ms_left(deadline), 1));
                         if (defs)
                             lite_check(kind, at, d, *defs, "definition");
                         return defs ? (defs->is_array() ? *defs : json::array({*defs})) : json::array();
                     };
-                    const json first = {{"textDocument", {{"uri", lite_uri(d, d.gen.s, g->line)}}}, {"position", gen_pos(d, *g)}};
+                    const json first = {{"textDocument", {{"uri", lite_uri(d, d.gen.s, g->line, std::max(ms_left(deadline), 1))}}}, {"position", gen_pos(d, *g)}};
                     for (const json& l : locations(first, "textDocument/definition"))
                     {
                         const std::string uri = l.contains("targetUri") ? l.value("targetUri", std::string())
@@ -5471,7 +5484,8 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
             return json::array({loc(decl_uri, decl_text, *decl_pos)});
         }
         // The words that only clangd resolves need a ready clangd, as on the clangd path below.
-        wait_for_native_ready(d);
+        if (!wait_for_native_ready_until(d, deadline))
+            return json::array();
         std::map<std::string, Text> texts;
         auto found = places_of(*r, false, d.path, &texts);
         json list = json::array();
@@ -5519,8 +5533,10 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
         if (owner && !owner->base.empty() && we > wb && ov != std::string_view::npos && !is_id_char(ov > 0 ? l[ov - 1] : ' ')
             && l.substr(ov + 8, static_cast<size_t>(wb) - ov - 8).find_first_of("(;{=") == std::string_view::npos)
         {
-            wait_for_native_ready(d);
-            const auto r = clangd_result("workspace/symbol", {{"query", owner->base + "::" + here_word}}, kNativeBudgetMs);
+            // Not ready in time: no answer, because the by_table place below is the script itself.
+            if (!wait_for_native_ready_until(d, deadline))
+                return out;
+            const auto r = clangd_result("workspace/symbol", {{"query", owner->base + "::" + here_word}}, std::max(ms_left(deadline), 1));
             for (const json& sym : r && r->is_array() ? *r : json::array())
             {
                 const json loc = sym.value("location", json());
@@ -5550,25 +5566,18 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
     // a base class, a name after "new") has the places of the same word in the generated lines
     // of its script line. The first place that gives an answer wins.
     bool by_word = false;
-    const std::vector<Pos> asks = gen_asks(d, here, by_word);
-    if (!asks.empty())
-        wait_for_native_ready(d);
-    // The asks of a word share a short time budget: a place that clangd does not answer in time
-    // does not hold the editor.
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kNativeBudgetMs);
+    std::vector<Pos> asks = gen_asks(d, here, by_word);
+    // The asks share the interactive budget: a place that clangd does not answer in time does not
+    // hold the editor.
+    if (!asks.empty() && !wait_for_native_ready_until(d, deadline))
+        asks.clear();
     std::set<std::string> seen;
     std::optional<Pos> hit_ask;
     for (const Pos& g : asks)
     {
-        int timeout_ms = 60000;
-        if (by_word)
-        {
-            const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
-                deadline - std::chrono::steady_clock::now()).count();
-            if (left <= 0)
-                break;
-            timeout_ms = static_cast<int>(left);
-        }
+        const int timeout_ms = ms_left(deadline);
+        if (timeout_ms <= 0)
+            break;
         json params = {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, g)}};
         if (method == "textDocument/references")
             params["context"] = {{"includeDeclaration", true}};
@@ -5613,16 +5622,14 @@ json Server::on_locations(const Doc& d, const json& p, const std::string& method
             // place is already there. The two calls share a short budget.
             const bool have_native = std::any_of(out.begin(), out.end(),
                 [&](const json& l) { return l.value("uri", std::string()) != d.uri; });
-            const auto extra_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kNativeBudgetMs);
             if (is_ref && !have_native)
                 for (const char* kind : {"textDocument/declaration", "textDocument/definition"})
                 {
-                    const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
-                        extra_deadline - std::chrono::steady_clock::now()).count();
+                    const int left = ms_left(deadline);
                     if (left <= 0)
                         break;
                     const auto decl = clangd_result(kind,
-                        {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, g)}}, static_cast<int>(left));
+                        {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, g)}}, left);
                     for (const json& loc : decl ? (decl->is_array() ? *decl : json::array({*decl})) : json::array())
                     {
                         json m = map_location(d, loc);
@@ -5993,7 +6000,8 @@ bool Server::is_script_class(const Doc& d, const std::string& name) const
 }
 
 std::variant<std::set<Pos>, std::string> Server::symbol_places(
-    const Doc& d, Pos cur, const std::string& old_name, Pos* decl, bool* generated)
+    const Doc& d, Pos cur, const std::string& old_name, std::chrono::steady_clock::time_point deadline, Pos* decl,
+    bool* generated)
 {
     if (generated)
         *generated = false;
@@ -6009,7 +6017,9 @@ std::variant<std::set<Pos>, std::string> Server::symbol_places(
     if (!g || !clangd_)
         return std::string("no script symbol at the position");
     const json tdp = {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, *g)}};
-    const auto defs = clangd_result("textDocument/definition", tdp);
+    const auto defs = clangd_result("textDocument/definition", tdp, std::max(ms_left(deadline), 1));
+    if (!defs && ms_left(deadline) <= 0)
+        return "cannot rename: " + rename_over_text(); // fail closed, never an empty set
     const json def_list = defs ? (defs->is_array() ? *defs : json::array({*defs})) : json::array();
     if (def_list.empty())
         return std::string("no script symbol at the position");
@@ -6040,7 +6050,9 @@ std::variant<std::set<Pos>, std::string> Server::symbol_places(
     }
     json params = tdp;
     params["context"] = {{"includeDeclaration", true}};
-    const auto refs = clangd_result("textDocument/references", params);
+    const auto refs = clangd_result("textDocument/references", params, std::max(ms_left(deadline), 1));
+    if (!refs && ms_left(deadline) <= 0)
+        return "cannot rename: " + rename_over_text();
     std::set<Pos> starts;
     for (const json& loc : refs ? *refs : json::array())
     {
@@ -6335,14 +6347,14 @@ std::shared_ptr<const FileRefs> Server::refs_of(const Doc& d)
     return std::make_shared<const FileRefs>(table_of_doc(d));
 }
 
-Server::ClangdRef Server::clangd_ref(const Doc& d, Pos at)
+Server::ClangdRef Server::clangd_ref(const Doc& d, Pos at, int timeout_ms)
 {
     ClangdRef out;
     const auto g = to_gen(d, at);
     if (!g || !clangd_)
         return out;
     const auto defs = clangd_result(
-        "textDocument/definition", {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, *g)}});
+        "textDocument/definition", {{"textDocument", {{"uri", d.gen_uri}}}, {"position", gen_pos(d, *g)}}, timeout_ms);
     const json def_list = defs ? (defs->is_array() ? *defs : json::array({*defs})) : json::array();
     if (def_list.empty())
         return out;
@@ -6381,7 +6393,7 @@ Server::ClangdRef Server::clangd_ref(const Doc& d, Pos at)
     return out;
 }
 
-std::optional<Server::Resolved> Server::resolve_at(const Doc& d, Pos cur)
+std::optional<Server::Resolved> Server::resolve_at(const Doc& d, Pos cur, int timeout_ms)
 {
     const auto table = refs_of(d);
     if (!table)
@@ -6399,7 +6411,7 @@ std::optional<Server::Resolved> Server::resolve_at(const Doc& d, Pos cur)
     const auto [b, e] = word_at(d, cur);
     if (b == e)
         return std::nullopt;
-    const ClangdRef c = clangd_ref(d, {cur.line, b});
+    const ClangdRef c = clangd_ref(d, {cur.line, b}, timeout_ms);
     if (c.kind != ClangdRef::Found)
         return std::nullopt;
     return Resolved{c.ref, std::string(d.text.line(cur.line).substr(static_cast<size_t>(b), static_cast<size_t>(e - b)))};
@@ -6902,15 +6914,17 @@ std::variant<json, std::string> Server::on_rename(const Doc& d, const json& p)
     if (new_name.empty() || !std::all_of(new_name.begin(), new_name.end(), is_id_char)
         || (new_name[0] >= '0' && new_name[0] <= '9'))
         return std::string("the new name is not an identifier: " + new_name);
-    wait_for_native_ready(d);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(opt_.rename_budget_ms);
+    if (!wait_for_native_ready_until(d, deadline))
+        return "cannot rename: " + rename_over_text();
     if (auto t = table_rename(d, cur, new_name, false))
         return std::move(*t);
     // Not in the table: a native symbol (clangd renames it) or a name that the translator makes.
     Pos decl;
     bool generated = false;
-    const auto r = symbol_places(d, cur, old_name, &decl, &generated);
+    const auto r = symbol_places(d, cur, old_name, deadline, &decl, &generated);
     if (const auto* e = std::get_if<std::string>(&r))
-        return generated ? *e : native_rename(d, cur, old_name, new_name, *e, false);
+        return generated || ms_left(deadline) <= 0 ? *e : native_rename(d, cur, old_name, new_name, *e, false);
     return untabled_refusal(d, old_name);
 }
 
@@ -7503,10 +7517,7 @@ std::string Server::rename_other_scripts(NativeRenameJob& job, const Doc& d)
         if (job.target.empty())
             return what + ": clangd gives no declaration";
         // The budget is in milliseconds when it is not a whole number of seconds.
-        const std::string budget = opt_.rename_budget_ms % 1000 == 0
-            ? std::to_string(opt_.rename_budget_ms / 1000) + " s"
-            : std::to_string(opt_.rename_budget_ms) + " ms";
-        const std::string over = what + ": the time budget of " + budget + " is over at " + c.path;
+        const std::string over = what + ": " + rename_over_text() + " at " + c.path;
         auto ask = [&](const std::string& method, const json& params, json& result) -> std::string
         {
             if (left_ms() <= 0)
@@ -7627,14 +7638,18 @@ std::variant<json, std::string> Server::on_prepare_rename(const Doc& d, const js
     const std::string old_name = word(d, cur);
     if (old_name.empty())
         return std::string("no symbol at the position");
-    wait_for_native_ready(d);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(opt_.rename_budget_ms);
+    if (!wait_for_native_ready_until(d, deadline))
+        return "cannot rename: " + rename_over_text();
     if (auto t = table_rename(d, cur, std::string(), true))
         return std::move(*t);
     Pos decl;
     bool generated = false;
-    const auto r = symbol_places(d, cur, old_name, &decl, &generated);
+    const auto r = symbol_places(d, cur, old_name, deadline, &decl, &generated);
     if (const auto* e = std::get_if<std::string>(&r))
     {
+        if (ms_left(deadline) <= 0)
+            return *e;
         // The probe name makes clangd do the full check (the declaration, the files, the map) of a
         // native rename, so that prepareRename and rename give the same answer.
         if (generated)
@@ -8518,7 +8533,7 @@ json Server::on_workspace_symbol(const json& p)
 {
     json out = json::array();
     const std::string query = p.value("query", std::string());
-    auto r = clangd_result("workspace/symbol", {{"query", query}});
+    auto r = clangd_result("workspace/symbol", {{"query", query}}, kNativeBudgetMs);
     if (r && r->is_array())
         map_clangd_symbols(*r, out);
     add_script_symbols(query, out);

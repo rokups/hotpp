@@ -76,7 +76,7 @@ struct Nav
     }
     json ask(const char* method, int line, int character)
     {
-        return client->request(method, {{"textDocument", {{"uri", uri}}}, {"position", {{"line", line}, {"character", character}}}})["result"];
+        return client->request_answered(method, {{"textDocument", {{"uri", uri}}}, {"position", {{"line", line}, {"character", character}}}})["result"];
     }
 };
 
