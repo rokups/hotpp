@@ -6774,9 +6774,13 @@ TEST(LanguageServerNative, RenameIsRefusedForAHotcOutputFile)
     write_file((dir.path() / "natives.h").string(), kNativeHeader);
     const std::string use = (dir.path() / "use.g1.cpp").string();
     write_file(use, "#include \"natives.h\"\nint UseIt() { return Clamp100(3); }\n");
+    // The server uses the real path of a document: the database must spell the files the same way
+    // (macOS "/var" is "/private/var"), with "/" separators for the JSON.
+    const std::string root = std::filesystem::path(hot::ls::long_path(dir.path().string())).generic_string();
+    const std::string use_json = root + "/use.g1.cpp";
     write_file((dir.path() / "compile_commands.json").string(),
-        "[{\"directory\":\"" + dir.path().generic_string() + "\",\"file\":\"" + use + "\",\"command\":\"clang++ -std=c++20 -I"
-            + dir.path().generic_string() + " -c " + use + "\"}]\n");
+        "[{\"directory\":\"" + root + "\",\"file\":\"" + use_json + "\",\"command\":\"clang++ -std=c++20 -I"
+            + root + " -c " + use_json + "\"}]\n");
     const std::string script = "using \"natives.h\";\n\nclass Hero {\n    int x = Clamp100(1);\n}\n";
     const std::string path = (dir.path() / "hero.hot").string();
     write_file(path, script);
@@ -10719,7 +10723,11 @@ TEST(LanguageServer, CompletionAfterAShellChangeAnswersAtOnceAndThenHasTheNewNam
     Session s(true, kSplitImporter);
     write_file(s.dir.path() / "base.hot", kSplitBase);
     s.client->change(s.uri, 2, kSplitImporter);
-    ASSERT_NE(s.client->request("textDocument/hover", doc_pos(s.uri, 3, 30)), nullptr);
+    // A hover on "own" goes to clangd and waits for the first preamble. Without it, the completion below waits for
+    // the first preamble and there is no old preamble to answer from.
+    const std::string line3 = "    float Go(float a) { return this.Heal(a) + this.own; }";
+    const json h = s.client->request("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(line3.find("this.own")) + 6));
+    ASSERT_TRUE(h.contains("result") && h["result"].is_object()) << h.dump();
     const auto files = shell_files(shells.path());
     ASSERT_EQ(files.size(), 1u);
     const std::string before = translator_test::read_file(files[0].string());
