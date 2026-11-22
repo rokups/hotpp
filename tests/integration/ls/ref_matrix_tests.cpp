@@ -184,7 +184,14 @@ std::vector<std::pair<int, int>> words(const std::string& text, const std::strin
 
 std::string uri_of(const std::string& path)
 {
+#ifdef _WIN32
+    // The same form as the server: file:///C:/dir/a.hot.
+    std::string p = hot::ls::long_path(path);
+    std::replace(p.begin(), p.end(), '\\', '/');
+    return "file:///" + p;
+#else
     return "file://" + hot::ls::long_path(path);
+#endif
 }
 
 // One server for all the cases. The cases do not change the files (a rename gives only edits).
