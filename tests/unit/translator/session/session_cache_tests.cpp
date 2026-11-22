@@ -855,9 +855,9 @@ TEST(SessionCache, CppIdleUnitIsDisposed)
     write_file(dir.path() / "w.h", kCppHeaderV1);
     settle();
     hotc::TranslatorSession s;
-    s.set_tu_cache_idle_ms(600); // the translate after the parse must be shorter
     EXPECT_TRUE(hotc::translate(cpp_options(dir, cpp_script("#include \"w.h\"\n", "")), s).ok);
     EXPECT_EQ(s.tu_cache_size(), 1u);
+    s.set_tu_cache_idle_ms(600); // set after the parse: the parse time does not count
     std::this_thread::sleep_for(std::chrono::milliseconds(900));
     EXPECT_EQ(s.tu_cache_size(), 0u);
 }
