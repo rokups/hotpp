@@ -1524,7 +1524,8 @@ using Subst = std::vector<std::pair<std::string, std::string>>;
 // normal class and an explicit specialization have members that libclang visits.
 CXCursor implicit_pattern(CXCursor inst)
 {
-    if (clang_Cursor_isNull(inst) || clang_getCursorKind(inst) != CXCursor_ClassDecl)
+    if (clang_Cursor_isNull(inst)
+        || (clang_getCursorKind(inst) != CXCursor_ClassDecl && clang_getCursorKind(inst) != CXCursor_StructDecl))
         return clang_getNullCursor();
     CXCursor pat = clang_getSpecializedCursorTemplate(inst);
     if (clang_Cursor_isNull(pat))

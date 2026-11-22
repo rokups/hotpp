@@ -93,6 +93,19 @@ TEST(NamespacedBaseTranslation, RecursiveTemplateBaseIsAnError)
     EXPECT_TRUE(has(r.diagnostics, "levels of bases")) << r.diagnostics;
 }
 
+// HOT-90: a class template that is declared with "struct" keeps its virtual methods.
+TEST(NamespacedBaseTranslation, StructTemplateBaseKeepsVirtuals)
+{
+    TempDir dir;
+    write_file(dir.path() / "st.h",
+        "template <int N> struct T1 { virtual void f() {} virtual ~T1() {} };\n"
+        "struct Base : T1<2> { };\n");
+    const hotc::TranslateResult r =
+        hotc::translate(temp_options(dir, "using \"st.h\";\nclass S : Base {\n    override void f() { }\n}\n"));
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_FALSE(has(r.diagnostics, "no virtual destructor")) << r.diagnostics;
+}
+
 // HOT-90: two namespaces have a class "Node". The base "b.Node" is the class of namespace b.
 TEST(NamespacedBaseTranslation, BaseNameUsesTheNamespace)
 {
