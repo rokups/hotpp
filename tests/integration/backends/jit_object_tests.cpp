@@ -58,7 +58,9 @@ extern "C"
 namespace
 {
 
-    #if defined(__x86_64__) || defined(__aarch64__)
+    // Only ELF has static TLS at a fixed offset from the thread pointer. Mach-O has TLV
+    // descriptors, so the runtime uses call_depth_slot() there (doc/macos.md, "Call depth").
+    #if defined(__ELF__) && (defined(__x86_64__) || defined(__aarch64__))
         #define HOT_S1_TLS 1
 // Two thread variables of the host. Each engine gets the offset of one of them as the absolute
 // symbol "hot_s1_tp_offset", the same as hot_call_depth_tp_offset.
