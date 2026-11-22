@@ -855,7 +855,8 @@ function(hot_script_host)
         # A multi-config generator evaluates each file once for each configuration. The values can
         # differ, and CMake rejects that. hot-ls reads one file, so write only the first configuration.
         set(side_cond "")
-        if(CMAKE_CONFIGURATION_TYPES)
+        get_property(multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+        if(multi_config AND CMAKE_CONFIGURATION_TYPES)
             list(GET CMAKE_CONFIGURATION_TYPES 0 first_config)
             set(side_cond CONDITION "$<CONFIG:${first_config}>")
         endif()
