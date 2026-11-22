@@ -237,6 +237,7 @@ private:
     std::vector<LoopCtx> loops_;
     std::set<std::pair<uint32_t, std::string>> seen_;
     int quiet_ = 0; // not zero: a dry run, nothing is reported
+    std::set<std::string> lambda_written_; // the names that a lambda of this body assigns
     std::set<std::string>* store_log_ = nullptr; // the names that a call can store through
 
     // ---------------------------------------------------------------- reports
@@ -759,6 +760,15 @@ private:
         return v;
     }
 
+    // The lambda runs at the call: the call clears the narrowing of every name that a lambda assigns.
+    // shortcut: any call through a variable counts, the lambda value is not tracked.
+    void call_lambda()
+    {
+        strip_names(st_, lambda_written_);
+        if (store_log_)
+            store_log_->insert(lambda_written_.begin(), lambda_written_.end());
+    }
+
     Val call(const CallExpr& c)
     {
         Val result;
@@ -772,7 +782,10 @@ private:
             {
                 const std::string& head = n->parts[0];
                 if (find_var(head) >= 0 || member_of(&cd_, head) || (opt_.module_var && opt_.module_var(head)))
+                {
                     require(chain(*n, 1), n->pos); // a call through a variable
+                    call_lambda();
+                }
                 else if ((m = method_of(&cd_, head)))
                     result = ret_val(*m);
             }
@@ -800,6 +813,7 @@ private:
         else
         {
             require(expr(*c.callee), pos_of(*c.callee));
+            call_lambda();
         }
         for (size_t i = 0; i < c.args.size(); ++i)
         {
@@ -839,6 +853,7 @@ private:
         // A captured variable that the lambda assigns loses its narrowing.
         const std::set<std::string> names = assigned_by([&](auto& w) { w.block(l.body); });
         strip_names(st_, names);
+        lambda_written_.insert(names.begin(), names.end());
     }
 
     // ---------------------------------------------------------------- conditions
@@ -1269,6 +1284,7 @@ private:
         scopes_.emplace_back();
         st_ = State{};
         loops_.clear();
+        lambda_written_.clear();
     }
 
     void init(const ExprP& e)

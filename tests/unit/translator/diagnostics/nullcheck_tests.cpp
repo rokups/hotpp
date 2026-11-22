@@ -415,6 +415,13 @@ TEST(NullCheck, LambdaThatAssignsACaptureClearsTheNarrowing)
     EXPECT_EQ(warns("if (p == null) return; var g = () => { p = q; }; p.hp = 1;"), 1);
 }
 
+// The lambda runs at the call, so the call clears the narrowing of a name that the lambda writes.
+TEST(NullCheck, CallOfALambdaThatAssignsACaptureClearsTheNarrowing)
+{
+    EXPECT_EQ(warns("var g = () => { p = null; }; if (p == null) return; g(); p.hp = 1;"), 1);
+    EXPECT_EQ(warns("var g = () => { q = null; }; if (p == null) return; g(); p.hp = 1;"), 0);
+}
+
 // ---- try
 TEST(NullCheck, NarrowingOfTheTryBlockDoesNotHoldInCatch)
 {
