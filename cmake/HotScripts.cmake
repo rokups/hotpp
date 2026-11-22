@@ -852,9 +852,16 @@ function(hot_script_host)
         # The scripts are C++. So the C++ values go to the file of the JSON, and each other
         # language writes its own file "<name>.<lang>.<kind>", which hot-ls does not read.
         set(lang "$<$<NOT:$<COMPILE_LANGUAGE:CXX>>:.$<COMPILE_LANGUAGE>>")
-        file(GENERATE OUTPUT "${HOT_HOSTS_DIR}/${A_NAME}${lang}.defines" CONTENT "${side_defines}")
-        file(GENERATE OUTPUT "${HOT_HOSTS_DIR}/${A_NAME}${lang}.options" CONTENT "${side_options}")
-        file(GENERATE OUTPUT "${HOT_HOSTS_DIR}/${A_NAME}${lang}.includes" CONTENT "${side_includes}")
+        # A multi-config generator evaluates each file once for each configuration. The values can
+        # differ, and CMake rejects that. hot-ls reads one file, so write only the first configuration.
+        set(side_cond "")
+        if(CMAKE_CONFIGURATION_TYPES)
+            list(GET CMAKE_CONFIGURATION_TYPES 0 first_config)
+            set(side_cond CONDITION "$<CONFIG:${first_config}>")
+        endif()
+        file(GENERATE OUTPUT "${HOT_HOSTS_DIR}/${A_NAME}${lang}.defines" CONTENT "${side_defines}" ${side_cond})
+        file(GENERATE OUTPUT "${HOT_HOSTS_DIR}/${A_NAME}${lang}.options" CONTENT "${side_options}" ${side_cond})
+        file(GENERATE OUTPUT "${HOT_HOSTS_DIR}/${A_NAME}${lang}.includes" CONTENT "${side_includes}" ${side_cond})
     endif()
 
     # One deferred call writes the .roots files of all hosts.
