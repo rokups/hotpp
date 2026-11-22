@@ -4826,7 +4826,7 @@ struct Lowerer
             tmp.parts.push_back("__safe" + std::to_string(safe_count++));
             tmp.pos = tmp.last_pos = pos;
             blk.stmts.push_back(
-                make_stmt(VarDeclStmt{false, false, tmp.parts[0], std::string(), std::move(m->obj), pos, pos}));
+                make_stmt(VarDeclStmt{false, false, tmp.parts[0], "auto&&", std::move(m->obj), pos, pos}));
             m->obj = copy_name(tmp);
             cond = copy_name(tmp);
         }

@@ -38,7 +38,7 @@ TEST(SafeCallTranslation, ReceiverThatIsNotAnameRunsOnce)
     const hotc::TranslateResult r =
         check_translate(kDefaultShared, "    Weapon Get() { return null; }\n    void Run() { this.Get()?.Draw(); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "auto __safe0 = ")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "auto&& __safe0 = ")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "if (__safe0) hot::deref(__safe0).Draw();")) << r.cpp;
 }
 
@@ -86,7 +86,7 @@ TEST(SafeCallTranslation, ReceiverIsAnArgumentOfTheHelper)
     const hotc::TranslateResult r = check_translate(kNode, "    void Run($Node n) { if (n == null) return; var x = n.Self()?.v; }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_TRUE(has(r.cpp, "hot::safe_access(")) << r.cpp;
-    EXPECT_FALSE(has(r.cpp, "auto __safe0 = ")) << r.cpp;
+    EXPECT_FALSE(has(r.cpp, "auto&& __safe0 = ")) << r.cpp;
 }
 
 TEST(SafeCallTranslation, VoidCallInsideAnExpressionContext)
@@ -114,7 +114,7 @@ TEST(SafeCallTranslation, PropertyReceiverRunsTheGetterOnce)
     const hotc::TranslateResult r =
         check_translate(kDefaultShared, "    Weapon W { get; set; }\n    void Run() { W?.Draw(1); }\n");
     ASSERT_TRUE(r.ok) << r.diagnostics;
-    EXPECT_TRUE(has(r.cpp, "auto __safe0 = ")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "auto&& __safe0 = ")) << r.cpp;
     EXPECT_TRUE(has(r.cpp, "if (__safe0) hot::deref(__safe0).Draw(1);")) << r.cpp;
 }
 

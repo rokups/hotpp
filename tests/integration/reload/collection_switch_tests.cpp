@@ -136,4 +136,37 @@ class Player : Actor {
     EXPECT_EQ(*s.field("total"), 42.0f);
 }
 
+// The statement "a?.x = v" on an optional member writes the member, not a copy.
+TEST_P(BackendTests, SafeAssignOnOptionalMemberWritesTheMember)
+{
+    const hot::ScriptSource src = {"safe_w.hot", R"(
+using "Actor.h";
+
+struct P { int x = 0; }
+
+class Player : Actor {
+    P? p;
+    float total = 0.0;
+
+    override void Tick(float dt) {
+        this.p = P();
+        this.p?.x = 5;
+        var q = this.p;
+        if (q != null)
+            this.total = q.x;
+    }
+
+    override void TakeDamage(float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
+}
+)"};
+    hot::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
+    s.world.Tick(kDt);
+    ASSERT_NE(s.field("total"), nullptr);
+    EXPECT_EQ(*s.field("total"), 5.0f);
+}
+
 } // namespace
