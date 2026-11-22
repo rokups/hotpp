@@ -886,6 +886,20 @@ private:
         }
         return best;
     }
+    // The options of the clangd compile command of the generated file of a script: the backend
+    // options and "-fno-delayed-template-parsing". The msvc target of clang parses a template body
+    // only at its first use, so clangd has no AST in it (as clang_args of hotc).
+    hot::ClangFilesOptions clangd_compile_options(const std::string& path) const
+    {
+        hot::ClangFilesOptions co;
+        const Effective e = effective_options(path);
+        co.include_dirs = e.include_dirs;
+        co.resource_dir = e.resource_dir;
+        co.std_version = e.std_version;
+        co.extra_flags = e.extra_flags;
+        co.extra_flags.push_back("-fno-delayed-template-parsing");
+        return co;
+    }
     // The options for one script: the host first, then the options of the command line. A script
     // that no host matches uses the nearest host, so that its "using" headers are found. When
     // the command line has no include dir and no host is near, the default include dirs of the
@@ -2566,12 +2580,7 @@ std::string Server::lite_uri_impl(const Doc& d, const std::string& full, int gen
             const int v = ++st.version;
             if (!st.open)
             {
-                hot::ClangFilesOptions co;
-                const Effective e = effective_options(d.path);
-                co.include_dirs = e.include_dirs;
-                co.resource_dir = e.resource_dir;
-                co.std_version = e.std_version;
-                co.extra_flags = e.extra_flags;
+                const hot::ClangFilesOptions co = clangd_compile_options(d.path);
                 const std::vector<std::string> cmd = hot::compile_object_command(co, path, path + ".o", std::string());
                 clangd_->notify("workspace/didChangeConfiguration",
                     {{"settings",
@@ -2782,12 +2791,7 @@ void Server::send_generated(Doc& d, const std::string& full)
     if (!d.in_clangd)
     {
         // The compile command of the backend for the virtual file (design 10.1).
-        hot::ClangFilesOptions co;
-        const Effective e = effective_options(d.path);
-        co.include_dirs = e.include_dirs;
-        co.resource_dir = e.resource_dir;
-        co.std_version = e.std_version;
-        co.extra_flags = e.extra_flags;
+        const hot::ClangFilesOptions co = clangd_compile_options(d.path);
         const std::vector<std::string> cmd = hot::compile_object_command(co, d.gen_path, d.gen_path + ".o", std::string());
         clangd_->notify("workspace/didChangeConfiguration",
             {{"settings",
