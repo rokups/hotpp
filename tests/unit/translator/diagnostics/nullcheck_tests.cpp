@@ -435,6 +435,13 @@ TEST(NullCheck, NarrowingBeforeTheTryHoldsInCatchUnlessAssigned)
     EXPECT_EQ(warns("if (p == null) return; try { p = q; } catch (...) { p.hp = 2; }"), 1);
 }
 
+// A call in the try can store null through a name argument. The catch and the finally see it.
+TEST(NullCheck, StoreThroughAnArgumentInTheTryClearsTheNarrowingInCatchAndFinally)
+{
+    EXPECT_EQ(warns("if (p == null) return; try { clear(p); risky(); } catch (...) { p.hp = 2; }"), 1);
+    EXPECT_EQ(warns("if (p == null) return; try { clear(p); risky(); } finally { p.hp = 2; }"), 1);
+}
+
 // A "break" in the try leaves through the finally block. The block can assign a name.
 TEST(NullCheck, BreakThroughAFinallyThatAssignsClearsTheNarrowing)
 {

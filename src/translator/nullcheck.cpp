@@ -1230,14 +1230,22 @@ private:
         std::vector<std::pair<size_t, size_t>> exits; // the "break" and "continue" states that exist before the try
         for (const LoopCtx& l : loops_)
             exits.emplace_back(l.breaks.size(), l.continues.size());
-        const auto in_try = assigned_by([&](auto& wk) { wk.block(tr.block); });
+        auto in_try = assigned_by([&](auto& wk) { wk.block(tr.block); });
         auto all = in_try;
         for (const CatchClause& c : tr.catches)
         {
             const auto n = assigned_by([&](auto& wk) { wk.block(c.block); });
             all.insert(n.begin(), n.end());
         }
+        // A call in the try block can store null through a name argument.
+        std::set<std::string> stored;
+        std::set<std::string>* outer_log = std::exchange(store_log_, &stored);
         block(tr.block);
+        store_log_ = outer_log;
+        if (store_log_)
+            store_log_->insert(stored.begin(), stored.end());
+        in_try.insert(stored.begin(), stored.end());
+        all.insert(stored.begin(), stored.end());
         State out = st_;
         for (const CatchClause& c : tr.catches)
         {
