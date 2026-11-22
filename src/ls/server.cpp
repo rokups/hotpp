@@ -2378,10 +2378,12 @@ json Server::on_initialize(const json& p)
             read_compile_commands();
         }
     }
-    // The include dirs get the long names of uri_to_path. Then an import id and a document path of
-    // one file have one spelling ("RUNNER~1" is "runneradmin" on Windows).
+    // The include dirs and the preludes get the long names of uri_to_path. Then an import id, a
+    // watched event and a document path of one file have one spelling ("RUNNER~1" is "runneradmin").
     for (std::string& d : opt_.include_dirs)
         d = long_path(d);
+    for (std::string& f : opt_.preludes)
+        f = long_path(f);
     roots_.clear();
     if (p.contains("workspaceFolders") && p["workspaceFolders"].is_array())
     {
