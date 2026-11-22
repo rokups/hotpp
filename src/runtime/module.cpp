@@ -28,7 +28,9 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <cstdio>
+#include <cstring>
 #include <cstdlib>
 #include <filesystem>
 #include <system_error>
@@ -58,6 +60,16 @@ std::string last_error_text()
 }
 #endif
 
+// Removes a private core copy. On POSIX the copy is alone in a private directory: remove it too.
+void remove_owned_copy(const std::string& path)
+{
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+#ifndef _WIN32
+    std::filesystem::remove(std::filesystem::path(path).parent_path(), ec);
+#endif
+}
+
 // Opens the library at "path". When "owned_copy" is true, the keep-alive object also removes
 // the file after dlclose: the file is a private copy for a core instance.
 #ifdef HOT_AOT_ONLY
@@ -68,10 +80,7 @@ LoadResult open_library(const std::string& path, const std::string&, bool owned_
     LoadResult r;
     r.error = "this build cannot load a library (HOT_AOT_ONLY): " + path;
     if (owned_copy)
-    {
-        std::error_code ec;
-        std::filesystem::remove(path, ec);
-    }
+        remove_owned_copy(path);
     return r;
 }
 #else
@@ -96,10 +105,7 @@ LoadResult open_library(const std::string& path, const std::string& origin, bool
 #endif
 #endif
         if (owned_copy)
-        {
-            std::error_code ec;
-            std::filesystem::remove(path, ec);
-        }
+            remove_owned_copy(path);
         return r;
     }
     std::shared_ptr<void> owner(h, [path, owned_copy](void* handle)
@@ -110,10 +116,7 @@ LoadResult open_library(const std::string& path, const std::string& origin, bool
         dlclose(handle);
 #endif
         if (owned_copy)
-        {
-            std::error_code ec;
-            std::filesystem::remove(path, ec);
-        }
+            remove_owned_copy(path);
     });
 #ifdef _WIN32
     auto fn = reinterpret_cast<Module::RegisterFn>(
@@ -164,11 +167,22 @@ LoadResult open_core_copy(const std::string& path)
 #else
     const unsigned long pid = static_cast<unsigned long>(getpid());
 #endif
+#ifndef _WIN32
+    // A private directory (mode 0700) keeps another user from planting a symlink at the copy name.
+    std::string tmpl = (dir / "hot-core-XXXXXX").string();
+    if (!mkdtemp(tmpl.data()))
+    {
+        r.error = "cannot create a directory for the core module: " + std::string(std::strerror(errno));
+        return r;
+    }
+    dir = tmpl;
+#endif
     const fs::path copy = dir
         / ("hot-core-" + std::to_string(pid) + "-" + std::to_string(sequence.fetch_add(1)) + "-"
             + fs::path(path).filename().string());
     if (!fs::copy_file(path, copy, fs::copy_options::overwrite_existing, ec))
     {
+        remove_owned_copy(copy.string());
         r.error = "cannot copy " + path + " for the core module: " + ec.message();
         return r;
     }

@@ -25,6 +25,7 @@
 #include <fstream>
 #include <set>
 #include <string>
+#include <vector>
 #ifdef __APPLE__
     #include <mach-o/dyld.h> // _dyld_image_count, _dyld_get_image_name
 #endif
@@ -320,6 +321,42 @@ TEST_P(BackendTests, CodeHoldingFieldBlocksTheUnload)
     EXPECT_TRUE(st.state_holds_code);
     EXPECT_EQ(find_gen(st, 1)->state, GenState::Retired);
     EXPECT_NE(s.loader.stats_text().find("unload blocked"), std::string::npos);
+}
+
+// The core copy must not follow a symlink that another user planted at the old predictable name.
+TEST(CoreModule, CopyDoesNotFollowPlantedSymlink)
+{
+#ifdef _WIN32
+    GTEST_SKIP() << "POSIX symlink test";
+#else
+    namespace fs = std::filesystem;
+    const fs::path decoy = fs::temp_directory_path() / ("hot-decoy-" + std::to_string(getpid()));
+    { std::ofstream(decoy) << "decoy"; }
+    std::vector<fs::path> links;
+    for (int n = 0; n < 4; ++n)
+    {
+        links.push_back(fs::temp_directory_path()
+            / ("hot-core-" + std::to_string(getpid()) + "-" + std::to_string(n) + "-"
+                + fs::path(STRESS_SO).filename().string()));
+        std::error_code ec;
+        fs::remove(links.back(), ec);
+        fs::create_symlink(decoy, links.back());
+    }
+    hot::LoadResult r = hot::module_from_library(STRESS_SO);
+    ASSERT_TRUE(r) << r.error;
+    hot::LoadResult core = r.module->make_core();
+    EXPECT_TRUE(core) << core.error;
+    core = {};
+    r = {};
+    std::ifstream in(decoy);
+    std::string text;
+    std::getline(in, text);
+    EXPECT_EQ(text, "decoy");
+    std::error_code ec;
+    for (const fs::path& l : links)
+        fs::remove(l, ec);
+    fs::remove(decoy, ec);
+#endif
 }
 
 } // namespace
