@@ -92,3 +92,15 @@ TEST(NamespacedBaseTranslation, RecursiveTemplateBaseIsAnError)
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(has(r.diagnostics, "levels of bases")) << r.diagnostics;
 }
+
+// HOT-90: two namespaces have a class "Node". The base "b.Node" is the class of namespace b.
+TEST(NamespacedBaseTranslation, BaseNameUsesTheNamespace)
+{
+    TempDir dir;
+    write_file(dir.path() / "nn.h",
+        "namespace a { class Node { public: virtual ~Node() {} }; }\n"
+        "namespace b { class Node { public: virtual ~Node() {} virtual void tick() {} }; }\n");
+    const hotc::TranslateResult r =
+        hotc::translate(temp_options(dir, "using \"nn.h\";\nclass S : b.Node {\n    override void tick() { }\n}\n"));
+    EXPECT_TRUE(r.ok) << r.diagnostics;
+}

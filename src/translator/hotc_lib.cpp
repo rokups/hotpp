@@ -1501,6 +1501,7 @@ struct BaseInfo
     bool default_ctor = false;
     bool any_ctor = false; // the class declares a constructor
     bool final_cls = false; // the class is "final": no class can derive from it
+    bool absent = false; // the headers have no such class (a cache entry for a failed lookup)
     bool too_deep = false; // the chain of bases has more than 32 levels (a recursive template)
 };
 
@@ -1918,6 +1919,9 @@ void collect_ctors(CXCursor cls, BaseInfo& info)
 // The number of walks of a whole probe unit on this thread (TranslateTiming::root_walks).
 thread_local int64_t g_root_walks = 0;
 
+std::string qualified_name(CXCursor c);
+bool ends_with_scope(const std::string& qn, const std::string& key);
+
 CXCursor find_class(CXCursor root, const std::string& qname)
 {
     ++g_root_walks;
@@ -1927,7 +1931,7 @@ CXCursor find_class(CXCursor root, const std::string& qname)
     {
         CXCursorKind k = clang_getCursorKind(c);
         if ((k == CXCursor_ClassDecl || k == CXCursor_StructDecl) && clang_isCursorDefinition(c)
-            && cxs(clang_getCursorSpelling(c)) == name)
+            && cxs(clang_getCursorSpelling(c)) == name && ends_with_scope(qualified_name(c), qname))
         {
             found = c;
             return CXChildVisit_Break;
@@ -3891,7 +3895,10 @@ void parse_bases(const std::string& script_probe, const std::string& shared_prob
         if (auto ib = instance_bases.find(name); ib != instance_bases.end())
             base_cur = ib->second;
         if (clang_Cursor_isNull(base_cur))
+        {
+            out[name].absent = true; // the session cache must not parse again for this name
             continue;
+        }
         BaseInfo bi;
         bi.name = name;
         // libclang does not visit the members of an implicit instance. The pattern has them.
@@ -4343,7 +4350,7 @@ std::map<std::string, BaseInfo> session_bases(hotc::TranslatorSession::Impl& S, 
     for (const auto& n : names)
     {
         auto it = e.bases.find(n);
-        if (it != e.bases.end())
+        if (it != e.bases.end() && !it->second.absent)
             r.emplace(n, it->second);
     }
     return r;
