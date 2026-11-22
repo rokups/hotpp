@@ -129,6 +129,7 @@ HOT_EXPORT std::condition_variable& task_cv();
 HOT_EXPORT std::atomic<int>& task_waiters();
 
 struct TaskPromiseBase;
+bool pump_if_tick_thread(TaskPromiseBase& p); // scheduler.h
 // A host await_suspend that runs on a frame (Wrapped::suspend_host). The frame does not run then,
 // but the suspending thread still uses it after the call. A destroy on another thread waits until
 // the record goes. The record is on the stack of the suspending thread, not in the frame: so its
@@ -953,6 +954,7 @@ template <class T> T sync_wait(Task<T>& t)
     }
     if (wait)
     {
+        detail::pump_if_tick_thread(p); // the tick thread must tick: nobody else resumes a parked frame
         {
             std::unique_lock<std::mutex> lock(st.m);
             st.cv.wait(lock, [&] { return st.finished; });

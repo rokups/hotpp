@@ -21,6 +21,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <future>
 #include <thread>
 #include <vector>
 
@@ -139,6 +140,37 @@ TEST(TaskTests, EmptyTask)
         EXPECT_STREQ(e.what(), "empty task");
     }
     EXPECT_THROW(hot::sync_wait(t), hot::ScriptError);
+}
+
+Task<int> yield_then_value()
+{
+    co_await hot::yield();
+    co_await hot::sleep(std::chrono::milliseconds(1));
+    co_return 7;
+}
+
+// sync_wait on the tick thread must tick the scheduler: nobody else resumes the parked frame.
+TEST(TaskTests, SyncWaitOnTickThreadTicksTheScheduler)
+{
+    std::promise<int> done;
+    std::future<int> result = done.get_future();
+    std::thread host(
+        [&done]
+        {
+            hot::scheduler().tick(); // this thread is the tick thread, like the main thread of a host
+            done.set_value(hot::sync_wait(yield_then_value()));
+        });
+    const bool ok = result.wait_for(std::chrono::seconds(5)) == std::future_status::ready;
+    if (ok)
+    {
+        host.join();
+        EXPECT_EQ(result.get(), 7);
+    }
+    else
+    {
+        host.detach(); // the thread hangs in sync_wait: the test fails and the process ends
+        ADD_FAILURE() << "sync_wait hangs on the tick thread";
+    }
 }
 
 TEST(TaskTests, EmptyTaskAwaitThrows)

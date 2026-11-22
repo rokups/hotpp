@@ -22,6 +22,7 @@
 #if defined(HOT_HAS_TASK)
 
     #include <algorithm>
+    #include <atomic>
     #include <chrono>
     #include <condition_variable>
     #include <coroutine>
@@ -29,6 +30,7 @@
     #include <cstdint>
     #include <deque>
     #include <mutex>
+    #include <thread>
     #include <type_traits>
     #include <vector>
 
@@ -109,8 +111,12 @@ public:
     void detach(detail::TaskPromiseBase& p) noexcept;
     // Wakes a thread that waits in run() or run_until_done().
     void notify() noexcept;
+    // True when the calling thread is the one that ticked last (the tick thread of the host).
+    bool is_tick_thread() const noexcept { return ticker_.load(std::memory_order_relaxed) == std::this_thread::get_id(); }
 
 private:
+    std::atomic<std::thread::id> ticker_{}; // the thread of the last tick
+    friend bool detail::pump_if_tick_thread(detail::TaskPromiseBase&);
     friend struct SleepAwaiter;
 
     struct Entry
@@ -409,6 +415,7 @@ template <class T> TaskId Scheduler::spawn(Task<T>& t)
 
 inline size_t Scheduler::tick(Clock::time_point now)
 {
+    ticker_.store(std::this_thread::get_id(), std::memory_order_relaxed);
     uint64_t limit = 0;
     {
         std::lock_guard<std::mutex> lock(m_);
@@ -493,6 +500,22 @@ inline void Scheduler::wait_work(uint64_t seq, Clock::time_point deadline) const
         cv_.wait(lock, work);
     else
         cv_.wait_until(lock, until, work);
+}
+
+// Used by sync_wait: on the tick thread a parked frame resumes only at a tick, so the wait ticks.
+inline bool detail::pump_if_tick_thread(TaskPromiseBase& p)
+{
+    Scheduler& s = scheduler();
+    if (!s.is_tick_thread())
+        return false;
+    while (!p.is_finished())
+    {
+        const uint64_t seq = s.wake_seq();
+        s.tick();
+        if (!p.is_finished())
+            s.wait_work(seq, Clock::now() + std::chrono::milliseconds(5));
+    }
+    return true;
 }
 
 inline bool Scheduler::run(Duration timeout)
