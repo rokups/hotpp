@@ -8816,7 +8816,7 @@ json rename_in_files(const std::vector<std::pair<std::string, std::string>>& fil
             text = body;
     }
     if (root_out)
-        *root_out = dir.path().string();
+        *root_out = hot::ls::long_path(dir.path().string()); // the folder is gone when the caller reads it
     const std::string path = (dir.path() / "player.hot").string();
     LsClient client(o);
     client.initialize(uri_of(dir.path().string()));
@@ -11453,7 +11453,12 @@ std::vector<std::string> spec_names(Session& s, int version, const std::string& 
     EXPECT_TRUE(r.contains("result")) << r.dump();
     if (r.contains("result"))
         for (const json& i : r["result"].value("items", json::array()))
-            out.push_back(i.value("insertText", i.value("label", "")));
+        {
+            // A qualified name comes from the index of clangd, which fills after the preamble: its time is free.
+            const std::string t = i.value("insertText", i.value("label", ""));
+            if (t.find('.') == std::string::npos)
+                out.push_back(t);
+        }
     std::sort(out.begin(), out.end());
     return out;
 }
