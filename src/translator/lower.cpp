@@ -5483,7 +5483,9 @@ struct Lowerer
             ExprP cond;
             for (ExprP& l : c.labels)
             {
-                ExprP eq = make_expr(BinaryExpr{"==", raw(name, 0), std::move(l), 0});
+                ExprP eq = make_expr(CallExpr{raw("hot::case_eq", 0), {}, 0});
+                std::get<CallExpr>(eq->v).args.push_back(raw(name, 0));
+                std::get<CallExpr>(eq->v).args.push_back(std::move(l));
                 cond = cond ? make_expr(BinaryExpr{"||", std::move(cond), std::move(eq), 0}) : std::move(eq);
             }
             IfStmt n;

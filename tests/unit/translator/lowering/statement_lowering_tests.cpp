@@ -162,8 +162,8 @@ TEST(StatementLowering, StringSwitchBecomesAnIfChain)
 {
     Fixture f;
     EXPECT_EQ(f.body("switch (s) { case \"a\": f(); break; case \"b\": case \"c\": return; default: g(); }"),
-        "{ const auto& __sw_1 = s; if (__sw_1 == \"a\") { f(); } else "
-        "if (__sw_1 == \"b\" || __sw_1 == \"c\") { return; } else { g(); } }");
+        "{ const auto& __sw_1 = s; if (hot::case_eq(__sw_1, \"a\")) { f(); } else "
+        "if (hot::case_eq(__sw_1, \"b\") || hot::case_eq(__sw_1, \"c\")) { return; } else { g(); } }");
     EXPECT_EQ(f.errors().size(), 0u);
 }
 
@@ -171,7 +171,7 @@ TEST(StatementLowering, StringSwitchWithoutDefaultAndTheLastCaseNeedsNoJump)
 {
     Fixture f;
     EXPECT_EQ(f.body("switch (s) { case \"a\": f(); break; case \"b\": g(); }"),
-        "{ const auto& __sw_1 = s; if (__sw_1 == \"a\") { f(); } else if (__sw_1 == \"b\") { g(); } }");
+        "{ const auto& __sw_1 = s; if (hot::case_eq(__sw_1, \"a\")) { f(); } else if (hot::case_eq(__sw_1, \"b\")) { g(); } }");
     EXPECT_EQ(f.errors().size(), 0u);
 }
 
@@ -180,10 +180,10 @@ TEST(StatementLowering, StringSwitchWithNestedBreakUsesDoWhile)
 {
     Fixture f;
     EXPECT_EQ(f.body("switch (s) { case \"a\": if (x) { break; } f(); break; }"),
-        "{ const auto& __sw_1 = s; do { if (__sw_1 == \"a\") { if (x) { break; } f(); } } while (false); }");
+        "{ const auto& __sw_1 = s; do { if (hot::case_eq(__sw_1, \"a\")) { if (x) { break; } f(); } } while (false); }");
     // A break in a loop in the case belongs to the loop: no do-while.
     EXPECT_EQ(f.body("switch (s) { case \"a\": while (x) { break; } break; }"),
-        "{ const auto& __sw_1 = s; if (__sw_1 == \"a\") { while (x) { break; } } }");
+        "{ const auto& __sw_1 = s; if (hot::case_eq(__sw_1, \"a\")) { while (x) { break; } } }");
     EXPECT_EQ(f.errors().size(), 0u);
 }
 
@@ -192,8 +192,8 @@ TEST(StatementLowering, StringSwitchesInOneBodyGetOwnNames)
 {
     Fixture f;
     EXPECT_EQ(f.body("switch (a) { case \"x\": f(); } switch (b) { case \"y\": g(); }"),
-        "{ const auto& __sw_1 = a; if (__sw_1 == \"x\") { f(); } } "
-        "{ const auto& __sw_2 = b; if (__sw_2 == \"y\") { g(); } }");
+        "{ const auto& __sw_1 = a; if (hot::case_eq(__sw_1, \"x\")) { f(); } } "
+        "{ const auto& __sw_2 = b; if (hot::case_eq(__sw_2, \"y\")) { g(); } }");
 }
 
 TEST(StatementLowering, NumberSwitchStaysASwitch)

@@ -22,8 +22,8 @@ TEST(CollectionSwitchTranslation, StringSwitchBecomesAnIfChain)
                       "default: this.n = 3; }")));
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("const auto& __sw_1 = s;"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("if (__sw_1 == \"a\")"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("__sw_1 == \"b\" || __sw_1 == \"c\""), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("if (hot::case_eq(__sw_1, \"a\"))"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("hot::case_eq(__sw_1, \"b\") || hot::case_eq(__sw_1, \"c\")"), std::string::npos) << r.cpp;
     EXPECT_EQ(r.cpp.find("switch"), std::string::npos) << r.cpp;
 }
 

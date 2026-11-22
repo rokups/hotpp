@@ -14,6 +14,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstring>
 #include <deque>
 #include <memory>
 #include <optional>
@@ -187,6 +188,20 @@ struct holds_null
 {
 };
 } // namespace detail
+
+// A case label of a string switch: "hot::case_eq(subject, "a")". A subject that is a C string
+// (a "const char*") compares the text. A null C string matches no label.
+template <class S, class L>
+HOT_HIDDEN bool case_eq(const S& s, const L& label)
+{
+    if constexpr (std::is_convertible_v<const S&, const char*>)
+    {
+        const char* p = s;
+        return p && std::strcmp(p, label) == 0;
+    }
+    else
+        return s == label;
+}
 
 // The script writes "a?.b" and "a?.f(x)" in an expression. The translator writes
 // "hot::safe_access(a, [&](auto&& s) { return hot::deref(s).b; })". The helper reads "a" one

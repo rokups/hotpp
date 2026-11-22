@@ -136,6 +136,46 @@ class Player : Actor {
     EXPECT_EQ(*s.field("total"), 42.0f);
 }
 
+// A string switch on a C string compares the text, not the pointers. A null C string matches no case.
+TEST_P(BackendTests, StringSwitchOnCStringComparesText)
+{
+    const hot::ScriptSource src = {"strsw_c.hot", R"(
+using "Actor.h";
+using <string>;
+
+class Player : Actor {
+    float total = 0.0;
+
+    int pick(const char* c) {
+        switch (c) {
+            case "a":
+                return 1;
+            case "bc":
+                return 2;
+            default:
+                return 9;
+        }
+    }
+
+    override void Tick(float dt) {
+        std.string a = "a";
+        std.string bc = "bc";
+        this.total = this.pick(a.c_str()) + this.pick(bc.c_str()) * 10 + this.pick("zz") * 100 + this.pick(null) * 1000;
+    }
+
+    override void TakeDamage(float amount) {}
+    override void TakeDamage(ref Actor source, float amount) {}
+}
+)"};
+    hot::LoadResult r = backend->load(src, 1);
+    ASSERT_TRUE(r) << r.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*r.module)));
+    s.world.Tick(kDt);
+    ASSERT_NE(s.field("total"), nullptr);
+    EXPECT_EQ(*s.field("total"), 1.0f + 20.0f + 900.0f + 9000.0f);
+}
+
 // The statement "a?.x = v" on an optional member writes the member, not a copy.
 TEST_P(BackendTests, SafeAssignOnOptionalMemberWritesTheMember)
 {
