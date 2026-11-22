@@ -175,7 +175,9 @@ if(TARGET libclang AND NOT HOT_CLANG_C_LIBRARY)
         endif()
     endif()
 endif()
-if(_hot_use_package)
+if(NOT TARGET hot::hotc_lib)
+    # The SDK has no translator. Nothing needs libclang.
+elseif(_hot_use_package)
     set_property(TARGET hot::hotc_lib APPEND PROPERTY INTERFACE_LINK_LIBRARIES libclang)
 else()
     find_library(HOT_CLANG_C_LIBRARY NAMES clang libclang
@@ -191,7 +193,11 @@ else()
 endif()
 
 # The tools of the SDK, as file paths.
-get_target_property(HOT_HOTC_LOCATION hot::hotc LOCATION)
-get_target_property(HOT_LS_EXECUTABLE hot::hot_ls LOCATION)
+if(TARGET hot::hotc)
+    get_target_property(HOT_HOTC_LOCATION hot::hotc LOCATION)
+endif()
+if(TARGET hot::hot_ls)
+    get_target_property(HOT_LS_EXECUTABLE hot::hot_ls LOCATION)
+endif()
 
 check_required_components(Hot)
