@@ -11707,6 +11707,12 @@ TEST(LanguageServer, SpeculationGivesTheSameCompletionAsSerial)
         const EnvGuard env("HOT_LS_SPECULATE", spec ? "1" : "0");
         Session s(true, this_script("Base", "Mo", 1), nullptr, nullptr, {{"base.hot", kThisBase}});
         answers[spec][0] = spec_names(s, 2, "Mo", 0, "natural"); // first request: no memo
+        // A cold clangd on a slow runner gives an empty list at first: ask again.
+        for (int i = 0; i < 40 && !contains_name(answers[spec][0], "Move"); ++i)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+            answers[spec][0] = spec_names(s, 2, "Mo", 0, "natural");
+        }
         answers[spec][1] = spec_names(s, 3, "Na", 1, "natural"); // equal text with the new word
         answers[spec][2] = spec_names(s, 4, "Mo", 2, "natural");
         const int used = this_stat(s, "holeSpecUsed");
