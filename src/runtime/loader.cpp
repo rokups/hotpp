@@ -937,6 +937,11 @@ unsigned Loader::frame_boundary()
             continue;
         if (pin_count(g.generation) != 0)
             continue;
+        // The read order is load-bearing: pin count first, then work count. A work can run module
+        // code with no pin. The loader does not wait: it skips all unloads (the work can run the
+        // code of any generation). The generations stay Retired, so the next boundary tries again.
+        if (detail::suspend_work_count() != 0)
+            break;
         if (!have_live)
         {
             // A field value can point to the code of any generation that ran (design 4.9).

@@ -91,6 +91,9 @@ HOT_HIDDEN void store_entry_counters(bool value)
 }
 HOT_NODEBUG HOT_EXPORT void enter_script(); // the slow path of ScriptEntry (threads.cpp)
 HOT_NODEBUG HOT_EXPORT void leave_script();
+// The number of suspend works (the code after a coroutine suspension) that run now on a trampoline.
+// They run module code after the frame is published, so the pin count can be 0 while they run.
+HOT_EXPORT uint32_t suspend_work_count() noexcept;
 } // namespace detail
 
 // True when the process uses the EntryCounters mode.

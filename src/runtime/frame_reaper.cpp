@@ -7,6 +7,7 @@
 // has the one copy: a module can unload, so the code of a trampoline must not be in a module.
 
 #include "hot/runtime/export.h"
+#include "hot/runtime/threads.h"
 
 #include <atomic>
 #include <coroutine>
@@ -83,18 +84,27 @@ struct Pool
     }
 };
 
+std::atomic<uint32_t> g_works{0};
+
 std::coroutine_handle<> Trampoline::Step::await_suspend(std::coroutine_handle<>) const noexcept
 {
     // The frame of the work is suspended, and only this thread can use it until the work
     // publishes the suspension. After the publication the work does not touch that frame.
     Trampoline& s = *t;
-    std::coroutine_handle<> next = s.work(s.ctx, s.frame);
+    g_works.fetch_add(1);
+    std::coroutine_handle<> next = s.work(s.ctx, s.frame); // noexcept
+    g_works.fetch_sub(1);
     s.next_free = s.pool->free; // free again: nothing runs on this thread until the transfer
     s.pool->free = &s;
     // The returned handle goes into the frame of the trampoline. That frame lives.
     return next ? next : std::noop_coroutine();
 }
 } // namespace
+
+uint32_t suspend_work_count() noexcept
+{
+    return g_works.load();
+}
 
 HOT_EXPORT std::coroutine_handle<> after_suspend(SuspendWork work, void* ctx, std::coroutine_handle<> frame) noexcept
 {

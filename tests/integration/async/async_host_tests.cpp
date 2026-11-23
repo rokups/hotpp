@@ -22,6 +22,7 @@
 
 #include <gtest/gtest.h>
 
+#include <latch>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -662,6 +663,101 @@ std::string mode_name(const ::testing::TestParamInfo<Mode>& info)
         return "Aot";
     }
     return "Unknown";
+}
+
+// HOT-99: a worker destroys a task of generation 77. The destroy runs the destructor of a
+// coroutine parameter after the promise. The generation stays pinned until the destroy ends.
+struct Blocker
+{
+    std::latch* in_dtor = nullptr;
+    std::latch* go = nullptr;
+    Blocker(std::latch* a, std::latch* b) : in_dtor(a), go(b) {}
+    Blocker(Blocker&& o) noexcept : in_dtor(o.in_dtor), go(o.go) { o.in_dtor = o.go = nullptr; }
+    ~Blocker()
+    {
+        if (!in_dtor)
+            return;
+        in_dtor->count_down();
+        go->wait();
+    }
+};
+
+hot::Task<void> blocked_param_task(hot::detail::TaskOriginData, Blocker)
+{
+    co_return;
+}
+
+TEST(AsyncHostPin, ParameterDestructorRunsUnderThePin)
+{
+    std::latch in_dtor(1), go(1);
+    std::thread worker(
+        [&]
+        {
+            hot::detail::TaskOriginData o;
+            o.gen = 77;
+            hot::Task<void> t = blocked_param_task(o, Blocker(&in_dtor, &go));
+        });
+    in_dtor.wait();
+    EXPECT_EQ(hot::pin_count(77), 1u);
+    go.count_down();
+    worker.join();
+    EXPECT_EQ(hot::pin_count(77), 0u);
+}
+
+// HOT-99: a host await_suspend runs in module code after the frame is published. The work count
+// is 1 then, and the loader does not unload a generation.
+struct BlockingAwait
+{
+    std::latch* in_wait;
+    std::latch* go;
+    bool await_ready() const noexcept { return false; }
+    bool await_suspend(std::coroutine_handle<>) const
+    {
+        in_wait->count_down();
+        go->wait();
+        return false;
+    }
+    void await_resume() const noexcept {}
+};
+
+hot::Task<void> blocking_task(std::latch* in_wait, std::latch* go)
+{
+    co_await BlockingAwait{in_wait, go};
+}
+
+TEST_P(AsyncHost, SuspendWorkCountBlocksAnUnloadUntilTheWorkEnds)
+{
+    Host h;
+    ASSERT_NO_FATAL_FAILURE(start(h, "async_sched_v1.hot", "SchedRunner"));
+    sync_call<hot::TaskHandle>(h, "SchedRunner::StartLong");
+    hot::scheduler().tick();
+    ASSERT_NO_FATAL_FAILURE(reload(h, "async_sched_v2.hot", 2, "async_sched_v1"));
+    testing::internal::CaptureStderr();
+    hot::scheduler().tick();
+    testing::internal::GetCapturedStderr();
+    hot::scheduler().cancel_all();
+    EXPECT_EQ(hot::pin_count(1), 0u);
+
+    std::latch in_wait(1), go(1);
+    hot::Task<void> t = blocking_task(&in_wait, &go);
+    std::thread worker([&] { t.resume(); });
+    in_wait.wait();
+    EXPECT_EQ(hot::detail::suspend_work_count(), 1u);
+    h.loader.frame_boundary();
+    hot::LoaderStats st = h.loader.stats();
+    ASSERT_NE(find_gen(st, 1), nullptr);
+    if (!aot()) // AOT code does not unload
+        EXPECT_EQ(find_gen(st, 1)->state, hot::GenState::Retired);
+    go.count_down();
+    worker.join();
+    EXPECT_EQ(hot::detail::suspend_work_count(), 0u);
+    EXPECT_TRUE(t.done());
+    h.loader.frame_boundary();
+    if (aot())
+        return;
+    st = h.loader.stats();
+    ASSERT_NE(find_gen(st, 1), nullptr);
+    EXPECT_EQ(find_gen(st, 1)->state, hot::GenState::Unloaded);
 }
 
 // The Aot mode overrides an AOT unit and reads the fields of an AOT object. That needs the slots and

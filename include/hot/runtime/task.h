@@ -242,8 +242,9 @@ inline bool is_cancellation(const std::exception_ptr& e) noexcept
 }
 
 // The part of a task promise that does not depend on the result type.
-// The pin is the first member, so the runtime destroys it last. The generation code stays
-// loaded until the runtime destroys all other members (the same rule as GuardedFn).
+// The pin is the first member, so the runtime destroys it last of the promise. The compiler
+// destroys the parameter copies of a coroutine after the promise, so discard_frame holds
+// a second pin across h.destroy().
 // The lock task_mutex() guards: the links (continuation, parent, awaiting, awaiter_slot), on_done,
 // started, awaited, sched, parked_in, orphaned. The flags finished and running are atomic. A writer sets finished under the
 // lock, with release order. done() and await_ready read it with acquire order, without the lock.
@@ -532,6 +533,7 @@ inline void report_discarded(TaskPromiseBase& p) noexcept
 inline void discard_frame(TaskPromiseBase& p, std::coroutine_handle<> h) noexcept
 {
     report_discarded(p);
+    const GenerationPin keep(p.pin.gen); // the promise is gone after h.destroy(); the module code still runs
     h.destroy();
 }
 
