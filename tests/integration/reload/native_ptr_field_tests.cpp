@@ -144,6 +144,29 @@ TEST_P(BackendTests, CheckedPtrFieldOverAWeakSourceRegistry)
     EXPECT_THROW({ (void)(*field)->power; }, hot::NullReference);
 }
 
+// The script module gets the raw pointer from a native call and assigns it to the field. The
+// module code looks up the registry of the host. A private copy in the module reads null.
+TEST_P(BackendTests, WeakSourceAssignInScriptUsesTheHostRegistry)
+{
+    hot::LoadResult v1 = backend->load(source("weak_source_assign_v1.hot"), 1);
+    ASSERT_TRUE(v1) << v1.error;
+    Session s;
+    ASSERT_NO_FATAL_FAILURE(s.start(std::move(*v1.module), "Holder"));
+    s.commit_at_frame_boundary();
+
+    auto* field = hot::field_ptr<hot::CheckedPtr<Rune>>(s.inst.shell, "target");
+    ASSERT_NE(field, nullptr);
+    Rune rune;
+    hot::weak_registry<Rune>::add(&rune);
+    Vault* vault = dynamic_cast<Vault*>(s.actor);
+    ASSERT_NE(vault, nullptr);
+    vault->rune = &rune;
+    s.world.Tick(kDt);
+    EXPECT_EQ(field->get(), &rune);
+    hot::weak_registry<Rune>::remove(&rune);
+    EXPECT_EQ(field->get(), nullptr);
+}
+
 // The expression forms on a pointer field, in both frontends. The ".hot" script and the ".cpp"
 // script do the same work. The host sets "phase" and runs Tick.
 template <class T> T* module_var(Session& s, const char* name)

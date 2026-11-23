@@ -9,13 +9,24 @@
 // Each class has one registry for the whole process. The host calls add and remove for each object.
 #pragma once
 #include "hot/runtime/checked_ptr.h"
+#include "hot/runtime/export.h"
 
 #include <memory>
-#include <mutex>
-#include <unordered_map>
+#include <type_traits>
+#include <typeinfo>
 
 namespace hot
 {
+
+namespace detail
+{
+// The storage lives in the host (src/runtime/weak_registry.cpp). A module has its own copy of
+// each inline function and each static local, so a map in this header would be empty in a module.
+// The key is a type name: the type_info address of one type can differ between two images.
+HOT_EXPORT void weak_registry_add(const char* type_key, void* p, std::shared_ptr<void> keep);
+HOT_EXPORT void weak_registry_remove(const char* type_key, void* p);
+HOT_EXPORT std::shared_ptr<void> weak_registry_find(const char* type_key, void* p);
+} // namespace detail
 
 template <class T> class weak_registry
 {
@@ -25,44 +36,23 @@ public:
     {
         if (!p)
             return;
-        std::lock_guard<std::mutex> lock(mutex());
         // The owner is the registry. The deleter does nothing: the host owns the object.
-        map().try_emplace(p, std::shared_ptr<T>(p, [](T*) {}));
+        detail::weak_registry_add(key(), const_cast<std::remove_const_t<T>*>(p),
+                                  std::shared_ptr<T>(p, [](T*) {}));
     }
 
     // Stops to track the object. Each weak pointer to it reads null from now on.
-    static void remove(T* p)
-    {
-        std::shared_ptr<T> dropped;
-        {
-            std::lock_guard<std::mutex> lock(mutex());
-            auto it = map().find(p);
-            if (it == map().end())
-                return;
-            dropped = std::move(it->second);
-            map().erase(it);
-        }
-    }
+    static void remove(T* p) { detail::weak_registry_remove(key(), const_cast<std::remove_const_t<T>*>(p)); }
 
     // The strong handle of a tracked object, or a null handle.
     static std::shared_ptr<T> find(T* p)
     {
-        std::lock_guard<std::mutex> lock(mutex());
-        auto it = map().find(p);
-        return it == map().end() ? std::shared_ptr<T>() : it->second;
+        return std::static_pointer_cast<T>(
+            detail::weak_registry_find(key(), const_cast<std::remove_const_t<T>*>(p)));
     }
 
 private:
-    static std::mutex& mutex()
-    {
-        static std::mutex m;
-        return m;
-    }
-    static std::unordered_map<T*, std::shared_ptr<T>>& map()
-    {
-        static std::unordered_map<T*, std::shared_ptr<T>> m;
-        return m;
-    }
+    static const char* key() { return typeid(T).name(); }
 };
 
 // The base of weak_ref_traits<T> for a class that the host tracks with weak_registry<T>.

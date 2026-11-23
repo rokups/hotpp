@@ -194,7 +194,7 @@ The runtime has `hot::registered_weak_ref<T>` and `hot::weak_registry<T>` (`hot/
 The rules:
 
 - The host must call `add` and `remove` for each object. A missing `remove` leaves a dangling pointer: the registry cannot see the death.
-- The registry is one for each class in the whole process. `add` and `remove` can run on any thread.
+- The registry is one for each class in the whole process. Its storage is in the host runtime, so a script module reads the same registry as the host. Rebuild a module that you built with an older header. `add` and `remove` can run on any thread.
 - A host that reads the field with `hot::field_ptr<hot::CheckedPtr<T>>` writes the same specialization: `template <> struct hot::weak_ref_traits<T> : hot::registered_weak_ref<T> {};`
 - A different base is possible for a class with its own token: the base needs `strong_type`, `weak_type`, `to_weak`, `lock` and, for an assignment from `T*`, `from_raw` (see `checked_ptr.h`).
 - `weak_source` is an error on a stub with `handle`, `intrusive` or `value`, on `class *`, and without `$T`.
