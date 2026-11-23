@@ -307,7 +307,15 @@ TEST(LanguageServer, CompletionAfterThisListsNativeAndScriptMembers)
     std::string text = kScript;
     text.replace(text.find("this.hp = this.hp + amount;"), 27, "this.");
     Session s(true, text);
-    const json r = s.client->request("textDocument/completion", doc_pos(s.uri, 11, 13));
+    // Before clangd is ready the answer has only the script members and "isIncomplete" is true: ask again.
+    json r;
+    for (int i = 0; i < 40; ++i)
+    {
+        r = s.client->request("textDocument/completion", doc_pos(s.uri, 11, 13));
+        if (r.contains("result") && !r["result"].value("isIncomplete", false))
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
     ASSERT_TRUE(r.contains("result")) << r.dump();
     std::vector<std::string> labels;
     for (const json& i : r["result"]["items"])
