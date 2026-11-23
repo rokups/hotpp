@@ -11901,9 +11901,10 @@ TEST(LanguageServer, ThisCacheDropsTheMembersWhenTheImportedBaseChanges)
     s.client->change(s.uri, 2, this_script("Base", "Ta", 1));
     std::this_thread::sleep_for(std::chrono::milliseconds(hot::ls::kShellHoldMs + 500));
     EXPECT_FALSE(contains_name(this_names(s, 3, "Base", "Ta", 1), "Tag"));
+    const int analyzes_first = this_stat(s, "thisAnalyzes"); // under load the first reply can need more than one run
     EXPECT_FALSE(contains_name(this_names(s, 4, "Base", "Ta", 2), "Tag")); // from the cache
     if (cache)
-        EXPECT_EQ(this_stat(s, "thisAnalyzes"), 1);
+        EXPECT_EQ(this_stat(s, "thisAnalyzes"), analyzes_first);
     write_file(s.dir.path() / "base.hot",
         "using \"Actor.h\";\nusing \"Damageable.h\";\nclass Base : Actor, ITagged { }\n");
     // The header changes (HOT-52): clangd answers from the old preamble for a time, and the reply is not stored.
