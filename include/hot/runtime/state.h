@@ -525,10 +525,13 @@ template <class T> inline T* field_ptr(ShellCore* s, const char* name)
 }
 
 // The cache of one access site of a field of another unit (field, mod_var). The site is a static
-// variable of the generated code. Worker threads share it. The first layout that fills the site
-// owns it in one link epoch. "packed" holds the offset (low 32 bit) and the link epoch plus one (high
-// 32 bit) of the owner. Other layouts resolve each time and do not write the site. At a reload
-// barrier no worker runs script code, so a new layout takes a site with a stale epoch.
+// variable of the generated code. Worker threads share it. One thread fills the site in one link
+// epoch: it moves "packed" from an older epoch to "busy", then writes "layout", then writes the
+// offset. "packed" holds the offset (low 32 bit) and the link epoch plus one (high 32 bit). The
+// offset 0xffffffff is "busy": no field has this offset. A reader accepts the site only when
+// "packed" is the same before and after it reads "layout". Other layouts resolve each time.
+// The link epoch can change while workers run (EntryCounters mode). The protocol tolerates mixed
+// epochs. The plain read of "link_epoch" is a known benign race: a later change must make it atomic.
 struct FieldSite
 {
     std::atomic<const StateLayout*> layout{nullptr};
@@ -546,25 +549,26 @@ HOT_NODEBUG HOT_EXPORT uint32_t resolve_field_offset(
 // The offset for "layout" through the site. "resolve" finds the offset by name and may throw.
 template <class F> HOT_HIDDEN uint32_t site_offset(FieldSite& site, const StateLayout* layout, F&& resolve)
 {
-    constexpr uint64_t offset_mask = 0xffffffffull;
-    const uint64_t tag = (uint64_t(link_epoch) + 1) << 32;
-    if (layout && site.layout.load(std::memory_order_acquire) == layout)
+    constexpr uint32_t busy = 0xffffffffu; // a fill runs now
+    const uint64_t ep = uint64_t(link_epoch) + 1;
+    uint64_t p = site.packed.load(std::memory_order_acquire);
+    if (layout && (p >> 32) == ep && uint32_t(p) != busy)
     {
-        const uint64_t p = site.packed.load(std::memory_order_acquire);
-        if ((p & ~offset_mask) == tag)
+        const StateLayout* owner = site.layout.load(std::memory_order_relaxed);
+        std::atomic_thread_fence(std::memory_order_acquire);
+        if (owner == layout && site.packed.load(std::memory_order_relaxed) == p)
             return uint32_t(p);
     }
     const uint32_t off = resolve();
-    const StateLayout* cur = site.layout.load(std::memory_order_acquire);
-    if (cur != layout)
+    // One fill in one epoch: only the thread that moves "packed" from an older epoch to "busy"
+    // writes the site. A thread with an older epoch value cannot move the site back.
+    if (layout && (p >> 32) < ep
+        && site.packed.compare_exchange_strong(p, (ep << 32) | busy, std::memory_order_relaxed))
     {
-        // Another layout owns the site in this epoch: do not cache.
-        if (cur && (site.packed.load(std::memory_order_acquire) & ~offset_mask) == tag)
-            return off;
-        if (!site.layout.compare_exchange_strong(cur, layout, std::memory_order_acq_rel))
-            return off;
+        std::atomic_thread_fence(std::memory_order_release);
+        site.layout.store(layout, std::memory_order_relaxed);
+        site.packed.store((ep << 32) | off, std::memory_order_release);
     }
-    site.packed.store(tag | off, std::memory_order_release);
     return off;
 }
 } // namespace detail

@@ -10,6 +10,7 @@
 
 #include <cstddef>
 #include <atomic>
+#include <memory>
 #include <string>
 #include <thread>
 
@@ -165,25 +166,33 @@ TEST_F(CrossModule, FieldOffsetResolvesAgainAfterALayoutChange)
     EXPECT_EQ(hot::field<int>(&sh, site, "a"), 8);
 }
 
-TEST_F(CrossModule, OneSiteTwoLayoutsInTwoThreads)
+TEST_F(CrossModule, ManySitesTwoLayoutsInTwoThreads)
 {
+    constexpr int count = 100000;
     V1 b1{3, 1.5f};
     V2 b2{2.5f, 0, 7, 8};
     hot::ClassRecord r1 = make_record("B", &layout1);
     hot::ClassRecord r2 = make_record("B", &layout2);
-    hot::FieldSite site;
+    auto sites = std::make_unique<hot::FieldSite[]>(count);
+    std::atomic<bool> gate{false};
     std::atomic<int> bad{0};
+    // Both threads fill each fresh site at the same time. Every read must see its own offset.
     auto run = [&](hot::ClassRecord* rec, void* block, int want)
     {
         TestShell sh;
         sh.cls = rec;
         sh.state = block;
-        for (int i = 0; i < 200000; ++i)
-            if (hot::field<int>(&sh, site, "a") != want)
-                ++bad;
+        while (!gate.load())
+        {
+        }
+        for (int i = 0; i < count; ++i)
+            for (int k = 0; k < 2; ++k)
+                if (hot::field<int>(&sh, sites[i], "a") != want)
+                    ++bad;
     };
     std::thread t1(run, &r1, &b1, 3);
     std::thread t2(run, &r2, &b2, 7);
+    gate = true;
     t1.join();
     t2.join();
     EXPECT_EQ(bad.load(), 0);
@@ -201,6 +210,7 @@ TEST_F(CrossModule, FieldTypeMismatchThrows)
     EXPECT_EQ(site.layout.load(), nullptr); // a failed resolve does not fill the site
     // A change of the type at a reload: the cached site resolves again and throws.
     EXPECT_EQ(hot::field<float>(&sh, site, "b"), 1.5f);
+    ++hot::link_epoch;
     rec.layout = &layout2;
     V2 new_block{2.5f, 0, 7, 8};
     sh.state = &new_block;
