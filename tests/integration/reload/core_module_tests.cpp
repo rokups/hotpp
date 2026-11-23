@@ -323,6 +323,40 @@ TEST_P(BackendTests, CodeHoldingFieldBlocksTheUnload)
     EXPECT_NE(s.loader.stats_text().find("unload blocked"), std::string::npos);
 }
 
+#ifndef _WIN32
+// A private TMPDIR: tests that run in parallel (ctest -j) do not add "hot-core-*" entries to the counted folder.
+struct PrivateTmp
+{
+    std::string old;
+    bool had = false;
+    std::filesystem::path dir;
+    PrivateTmp()
+    {
+        if (const char* o = std::getenv("TMPDIR"))
+        {
+            had = true;
+            old = o;
+        }
+        std::error_code ec;
+        std::string tmpl = (std::filesystem::temp_directory_path(ec) / "hot-test-tmp-XXXXXX").string();
+        if (mkdtemp(tmpl.data()))
+        {
+            dir = tmpl;
+            setenv("TMPDIR", tmpl.c_str(), 1);
+        }
+    }
+    ~PrivateTmp()
+    {
+        if (had)
+            setenv("TMPDIR", old.c_str(), 1);
+        else
+            unsetenv("TMPDIR");
+        std::error_code ec;
+        std::filesystem::remove_all(dir, ec);
+    }
+};
+#endif
+
 // The loader unlinks the private core copy right after the load: a crash leaves no file behind.
 TEST(CoreModule, CopyIsUnlinkedAfterLoad)
 {
@@ -330,6 +364,7 @@ TEST(CoreModule, CopyIsUnlinkedAfterLoad)
     GTEST_SKIP() << "a loaded DLL cannot be deleted";
 #else
     namespace fs = std::filesystem;
+    const PrivateTmp tmp;
     auto count = [] {
         size_t n = 0;
         for (const auto& e : fs::directory_iterator(fs::temp_directory_path()))
@@ -353,6 +388,7 @@ TEST(CoreModule, CopyDoesNotFollowPlantedSymlink)
     GTEST_SKIP() << "POSIX symlink test";
 #else
     namespace fs = std::filesystem;
+    const PrivateTmp tmp;
     const fs::path decoy = fs::temp_directory_path() / ("hot-decoy-" + std::to_string(getpid()));
     { std::ofstream(decoy) << "decoy"; }
     std::vector<fs::path> links;
