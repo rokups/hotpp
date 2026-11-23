@@ -167,6 +167,19 @@ inline Scheduler& scheduler()
     return *static_cast<Scheduler*>(detail::default_scheduler([]() -> void* { return new Scheduler; }));
 }
 
+namespace detail
+{
+// The scheduler that owns the task or an ancestor that awaits it (a child runs inline in the
+// owner's tick), else the fallback. Call it under the lock: it reads sched and parent.
+inline Scheduler& owner_or(TaskPromiseBase& p, Scheduler& fallback) noexcept
+{
+    for (TaskPromiseBase* q = &p; q; q = q->parent)
+        if (q->sched)
+            return *q->sched;
+    return fallback;
+}
+} // namespace detail
+
 // The awaiter of hot::yield() and hot::sleep(d). Only a task can await it. The frame parks in
 // the scheduler that owns it (hot::spawn), else in hot::scheduler().
 struct SleepAwaiter
@@ -195,7 +208,7 @@ struct SleepAwaiter
             Scheduler& fallback = scheduler();
             const Clock::time_point when = a.next_tick ? Clock::time_point::min() : detail::time_after(Clock::now(), a.delay);
             std::lock_guard<std::mutex> lock(detail::task_mutex());
-            Scheduler& s = p.sched ? *p.sched : fallback;
+            Scheduler& s = detail::owner_or(p, fallback);
             s.park_locked(p, h, when); // a throw leaves the frame running: the co_await throws
             // From here another thread can resume or destroy the frame: do not touch "a".
         }

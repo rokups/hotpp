@@ -314,6 +314,36 @@ TEST_F(SchedulerTest, YieldIsRoundRobin)
     EXPECT_EQ(s.size(), 0u);
 }
 
+Task<int> yield_child()
+{
+    co_await hot::yield();
+    co_return 7;
+}
+
+Task<int> sleep_child()
+{
+    co_await hot::sleep(1ms);
+    co_return 8;
+}
+
+TEST_F(SchedulerTest, ChildYieldParksInTheOwnerOfTheParent)
+{
+    Scheduler s;
+    Task<int> child = yield_child();
+    Task<int> parent = await_ptr(&child);
+    EXPECT_TRUE(s.run_until_done(parent, 200ms));
+    EXPECT_EQ(parent.result(), 7);
+}
+
+TEST_F(SchedulerTest, ChildSleepParksInTheOwnerOfTheParent)
+{
+    Scheduler s;
+    Task<int> child = sleep_child();
+    Task<int> parent = await_ptr(&child);
+    EXPECT_TRUE(s.run_until_done(parent, 200ms));
+    EXPECT_EQ(parent.result(), 8);
+}
+
 TEST_F(SchedulerTest, SleepUsesTheInjectedTime)
 {
     Scheduler s;
