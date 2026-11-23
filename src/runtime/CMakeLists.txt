@@ -82,7 +82,8 @@ target_compile_definitions(hot_runtime PRIVATE HOT_DEFAULT_CXXFLAGS="${HOT_CXXFL
 # a portable build does not have it (paths.cpp then uses ""). The compiler finds its own sysroot.
 target_compile_definitions(hot_runtime PRIVATE HOT_DEFAULT_TARGET="${HOT_HOTC_TARGET}")
 if(NOT HOT_PORTABLE)
-    target_compile_definitions(hot_runtime PRIVATE HOT_DEFAULT_SYSROOT="${HOT_SCRIPT_SYSROOT}")
+    hot_c_string(HOT_DEFAULT_SYSROOT_C "${HOT_SCRIPT_SYSROOT}")
+    target_compile_definitions(hot_runtime PRIVATE HOT_DEFAULT_SYSROOT="${HOT_DEFAULT_SYSROOT_C}")
 endif()
 if(HOT_PORTABLE)
     target_compile_definitions(hot_runtime PRIVATE HOT_PORTABLE=1)

@@ -111,8 +111,9 @@ else()
     target_compile_definitions(hotc_lib PRIVATE HOT_RESOURCE_DIR="${CLANG_RESOURCE_DIR_C}")
     # The target and the sysroot of the parse: the same as for the script modules. An empty value
     # adds no flag (the default of libclang).
+    hot_c_string(HOT_PARSE_SYSROOT_C "${HOT_SCRIPT_SYSROOT}")
     target_compile_definitions(hotc_lib PRIVATE HOT_PARSE_TARGET="${HOT_HOTC_TARGET}"
-        HOT_PARSE_SYSROOT="${HOT_SCRIPT_SYSROOT}")
+        HOT_PARSE_SYSROOT="${HOT_PARSE_SYSROOT_C}")
 endif()
 # HOT_TRANSLATOR_OPTIMIZE: a Debug build compiles the translator with optimization and keeps the
 # debug information. An unoptimized translator is about 4 times slower, and each script translate
